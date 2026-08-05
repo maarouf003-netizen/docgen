@@ -1,0 +1,24 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
+@import 'tailwindcss';
+
+:root {
+  font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
+  line-height: 1.6;
+}
+
+body {
+  margin: 0;
+  background-color: #f3f4f6;
+  color: #1f2937;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+input,
+select,
+textarea {
+  min-height: 44px;
+}

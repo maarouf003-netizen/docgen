@@ -1,0 +1,23 @@
+# .NET build outputs
+**/bin/
+**/obj/
+*.user
+*.suo
+.vs/
+
+# Frontend
+node_modules/
+dist/
+frontend/dist/
+
+# Local databases & logs (بيانات، وليست كودًا)
+*.db
+*.db-wal
+*.db-shm
+*.log
+logs/
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+*.rar

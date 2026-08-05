@@ -1,0 +1,217 @@
+import { useEffect, useState } from 'react';
+import { api, getApiErrorMessage } from '../api/client';
+import { useAuth } from '../auth/useAuth';
+import { useIsMobile } from '../hooks/useMediaQuery';
+import type { DocumentResponse, PagedResult } from '../types';
+
+function fullName(d: DocumentResponse) {
+  return [d.borrowerName, d.borrowerFather, d.borrowerFamily].filter(Boolean).join(' ');
+}
+
+function displayFileNumber(d: DocumentResponse) {
+  if (d.isDraft) return '';
+  const number = d.fileNumber ?? '';
+  const type = d.fileType ?? '';
+  return type ? `${number} ${type}`.trim() : number;
+}
+
+function formatDeletedAt(value?: string) {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('ar-SY');
+}
+
+export default function DeletedDocuments() {
+  const { user } = useAuth();
+  const isMobile = useIsMobile();
+  // الاستعادة من اختصاص المحامي صاحب الملف فقط؛ والرئيس/المشرف يعرضون فقط.
+  const canRestore = user?.role === 'lawyer';
+  const [query, setQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [data, setData] = useState<PagedResult<DocumentResponse> | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [confirmId, setConfirmId] = useState<number | null>(null);
+  const [restoringId, setRestoringId] = useState<number | null>(null);
+
+  const load = () => {
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (query) params.set('q', query);
+    params.set('page', String(page));
+    params.set('perPage', '20');
+    api
+      .get<PagedResult<DocumentResponse>>(`/documents/deleted?${params.toString()}`)
+      .then((r) => setData(r.data))
+      .catch((err) => setError(getApiErrorMessage(err)))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, page]);
+
+  const handleRestore = async (d: DocumentResponse) => {
+    setRestoringId(d.id);
+    setError('');
+    try {
+      await api.post(`/documents/${d.id}/restore`);
+      setMessage(`تمت استعادة المستند "${fullName(d) || d.id}"`);
+      setConfirmId(null);
+      load();
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+    } finally {
+      setRestoringId(null);
+    }
+  };
+
+  const restoreButton = (d: DocumentResponse) =>
+    confirmId === d.id ? (
+      <div className="flex gap-2 flex-wrap">
+        <button
+          type="button"
+          onClick={() => handleRestore(d)}
+          disabled={restoringId === d.id}
+          className="bg-emerald-800 hover:bg-emerald-700 text-white rounded-lg px-3 py-1.5 text-sm font-medium min-h-11"
+        >
+          {restoringId === d.id ? 'جارِ الاستعادة...' : 'تأكيد الاستعادة'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setConfirmId(null)}
+          disabled={restoringId === d.id}
+          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-700 min-h-11"
+        >
+          إلغاء
+        </button>
+      </div>
+    ) : (
+      <button
+        type="button"
+        onClick={() => setConfirmId(d.id)}
+        className="border border-emerald-700 text-emerald-800 hover:bg-emerald-50 rounded-lg px-3 py-1.5 text-sm font-medium min-h-11"
+      >
+        استعادة
+      </button>
+    );
+
+  return (
+    <div className="max-w-6xl mx-auto">
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">المستندات المحذوفة</h2>
+
+      <div className="bg-white rounded-xl shadow p-4 mb-6 flex flex-col sm:flex-row gap-3">
+        <input
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setPage(1); }}
+          placeholder="بحث بالاسم الثنائي أو الثلاثي لأحد المنفذ عليهم، رقم العقد، دائرة التنفيذ..."
+          className="flex-1 min-w-64 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-11"
+        />
+      </div>
+
+      {error && <div className="text-red-600 mb-4">{error}</div>}
+      {message && <div className="text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2 mb-4">{message}</div>}
+
+      {loading && <div className="text-gray-500">جارِ البحث...</div>}
+
+      {data && (
+        <>
+          {isMobile ? (
+            <div className="flex flex-col gap-4">
+              {data.items.map((d) => (
+                <article key={d.id} className="bg-white rounded-xl shadow p-4">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="text-emerald-800 font-bold text-lg">
+                      {fullName(d) || `مستند ${d.id}`}
+                    </div>
+                    <span className="text-xs text-gray-500 shrink-0 whitespace-nowrap">
+                      حُذف في {formatDeletedAt(d.deletedAt)}
+                    </span>
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    {d.applicant || '—'} · {d.branchName || '—'} · {d.court || '—'}
+                  </div>
+                  <div className="text-sm font-medium text-gray-800 mt-1">
+                    رقم الملف: {displayFileNumber(d) || '—'}
+                  </div>
+                  {canRestore && (
+                    <div className="mt-3 pt-3 border-t border-gray-100">{restoreButton(d)}</div>
+                  )}
+                </article>
+              ))}
+              {data.items.length === 0 && (
+                <div className="bg-white rounded-xl shadow p-8 text-center text-gray-400">
+                  لا توجد مستندات محذوفة
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl shadow overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-600">
+                  <tr className="text-right">
+                    <th className="px-4 py-3">تاريخ الحذف</th>
+                    <th className="px-4 py-3">المنفذ عليه</th>
+                    <th className="px-4 py-3">طالب التنفيذ</th>
+                    <th className="px-4 py-3">دائرة التنفيذ</th>
+                    <th className="px-4 py-3">الفرع</th>
+                    <th className="px-4 py-3">رقم الملف</th>
+                    <th className="px-4 py-3">إجراء</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {data.items.map((d) => (
+                    <tr key={d.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 whitespace-nowrap text-gray-600">
+                        {formatDeletedAt(d.deletedAt)}
+                      </td>
+                      <td className="px-4 py-3 font-medium text-gray-800">
+                        {fullName(d) || `مستند ${d.id}`}
+                      </td>
+                      <td className="px-4 py-3">{d.applicant || '—'}</td>
+                      <td className="px-4 py-3">{d.court || '—'}</td>
+                      <td className="px-4 py-3">{d.branchName || '—'}</td>
+                      <td className="px-4 py-3">{displayFileNumber(d)}</td>
+                      <td className="px-4 py-3">{canRestore ? restoreButton(d) : '—'}</td>
+                    </tr>
+                  ))}
+                  {data.items.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
+                        لا توجد مستندات محذوفة
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between mt-4 text-sm text-gray-600 flex-wrap gap-2">
+            <span>
+              صفحة {data.page} من {data.totalPages || 1} ({data.totalCount} نتيجة)
+            </span>
+            <div className="flex gap-2">
+              <button
+                disabled={page <= 1}
+                onClick={() => setPage(page - 1)}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50 min-h-11"
+              >
+                السابق
+              </button>
+              <button
+                disabled={page >= data.totalPages}
+                onClick={() => setPage(page + 1)}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50 min-h-11"
+              >
+                التالي
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,233 @@
+using System.Net;
+using System.Net.Http.Json;
+using DocGenerator.Application.DTOs;
+using DocGenerator.Domain.Enums;
+using DocGenerator.Infrastructure.Persistence;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace DocGenerator.Api.Tests;
+
+public class UserManagementIntegrationTests : IClassFixture<ApiFactory>
+{
+    private readonly ApiFactory _factory;
+
+    public UserManagementIntegrationTests(ApiFactory factory) => _factory = factory;
+
+    private Task<int> BranchIdAsync(string code)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+        return Task.FromResult(db.Branches.Single(b => b.Code == code).Id);
+    }
+
+    private static string NewUsername(string prefix) => $"{prefix}_{Guid.NewGuid():N}"[..20];
+
+    [Fact]
+    public async Task UserManagement_NonAdminRoles_Forbidden()
+    {
+        foreach (var username in new[] { "manager", "head1", "lawyer1" })
+        {
+            var client = _factory.AuthorizedClient(username);
+            var response = await client.GetAsync("/api/users");
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task Admin_ListsUsers_ContainsSeeded()
+    {
+        var admin = _factory.AuthorizedClient("admin");
+        var response = await admin.GetAsync("/api/users");
+        response.EnsureSuccessStatusCode();
+        var users = await response.Content.ReadFromJsonAsync<List<UserListItemDto>>();
+
+        Assert.NotNull(users);
+        Assert.Contains(users, u => u.Username == "admin");
+        Assert.Contains(users, u => u.Username == "lawyer1");
+    }
+
+    [Fact]
+    public async Task Admin_CreatesUser_NewUserCanLogin()
+    {
+        var username = NewUsername("u");
+        var admin = _factory.AuthorizedClient("admin");
+        var response = await admin.PostAsJsonAsync("/api/users", new
+        {
+            username,
+            fullName = "رئيس قسم جديد",
+            role = "head",
+            branchId = await BranchIdAsync("DAM"),
+            password = "123456",
+        });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        var created = await response.Content.ReadFromJsonAsync<UserListItemDto>();
+        Assert.NotNull(created);
+        Assert.Equal(username, created.Username);
+        Assert.Equal("head", created.Role);
+
+        var login = await _factory.LoginAsync(username, "123456");
+        Assert.Equal(HttpStatusCode.OK, (HttpStatusCode)login!.StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_UpdatesUser_DeactivateInvalidatesToken()
+    {
+        var username = NewUsername("u");
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, await BranchIdAsync("DAM"));
+        var token = (await _factory.LoginAsync(username, "123456"))!.Token;
+        Assert.False(string.IsNullOrWhiteSpace(token));
+
+        var admin = _factory.AuthorizedClient("admin");
+        var users = await (await admin.GetAsync("/api/users")).Content.ReadFromJsonAsync<List<UserListItemDto>>();
+        var target = users!.Single(u => u.Username == username);
+
+        var update = await admin.PutAsJsonAsync($"/api/users/{target.Id}", new
+        {
+            fullName = "محامي معدل",
+            role = "lawyer",
+            branchId = await BranchIdAsync("DAM"),
+            isActive = false,
+            password = (string?)null,
+        });
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+
+        var login = await _factory.LoginAsync(username, "123456");
+        Assert.Equal(HttpStatusCode.Unauthorized, (HttpStatusCode)login!.StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_CannotDeactivateHimself()
+    {
+        var admin = _factory.AuthorizedClient("admin");
+        var users = await (await admin.GetAsync("/api/users")).Content.ReadFromJsonAsync<List<UserListItemDto>>();
+        var self = users!.Single(u => u.Username == "admin");
+
+        var response = await admin.PutAsJsonAsync($"/api/users/{self.Id}", new
+        {
+            fullName = "مشرف النظام",
+            role = "admin",
+            branchId = (int?)null,
+            isActive = false,
+            password = (string?)null,
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_CreatesUser_InvalidRole_BadRequest()
+    {
+        var admin = _factory.AuthorizedClient("admin");
+        var response = await admin.PostAsJsonAsync("/api/users", new
+        {
+            username = NewUsername("b"),
+            fullName = "مستخدم",
+            role = "king",
+            branchId = (int?)null,
+            password = "123456",
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Head_ListsLawyers_OnlyOwnBranch()
+    {
+        var head = _factory.AuthorizedClient("head1");
+        var response = await head.GetAsync("/api/users/lawyers");
+        response.EnsureSuccessStatusCode();
+        var lawyers = await response.Content.ReadFromJsonAsync<List<LawyerListItemDto>>();
+        var damascusId = await BranchIdAsync("DAM");
+
+        Assert.NotNull(lawyers);
+        Assert.DoesNotContain(lawyers, l => l.BranchId != damascusId);
+    }
+
+    [Fact]
+    public async Task Head_AddsLawyer_IgnoresForeignBranch()
+    {
+        var head = _factory.AuthorizedClient("head1");
+        var response = await head.PostAsJsonAsync("/api/users/lawyers", new
+        {
+            username = NewUsername("l"),
+            fullName = "محامي جديد",
+            password = "123456",
+            branchId = await BranchIdAsync("ALP"),
+        });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var lawyer = await response.Content.ReadFromJsonAsync<LawyerListItemDto>();
+        Assert.Equal(await BranchIdAsync("DAM"), lawyer!.BranchId);
+    }
+
+    [Fact]
+    public async Task Admin_AddsLawyer_ToSpecifiedBranch()
+    {
+        var admin = _factory.AuthorizedClient("admin");
+        var response = await admin.PostAsJsonAsync("/api/users/lawyers", new
+        {
+            username = NewUsername("l"),
+            fullName = "محامي حلب",
+            password = "123456",
+            branchId = await BranchIdAsync("ALP"),
+        });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var lawyer = await response.Content.ReadFromJsonAsync<LawyerListItemDto>();
+        Assert.Equal(await BranchIdAsync("ALP"), lawyer!.BranchId);
+    }
+
+    [Fact]
+    public async Task Admin_AddsLawyer_WithoutBranch_BadRequest()
+    {
+        var admin = _factory.AuthorizedClient("admin");
+        var response = await admin.PostAsJsonAsync("/api/users/lawyers", new
+        {
+            username = NewUsername("l"),
+            fullName = "محامي",
+            password = "123456",
+            branchId = (int?)null,
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Head_DeactivatesForeignBranchLawyer_NotFound()
+    {
+        var admin = _factory.AuthorizedClient("admin");
+        var created = await admin.PostAsJsonAsync("/api/users/lawyers", new
+        {
+            username = NewUsername("l"),
+            fullName = "محامي حلب",
+            password = "123456",
+            branchId = await BranchIdAsync("ALP"),
+        });
+        var aleppoLawyer = (await created.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
+
+        var head = _factory.AuthorizedClient("head1");
+        var response = await head.PatchAsJsonAsync($"/api/users/{aleppoLawyer.Id}/active", new { isActive = false });
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Head_DeactivatesOwnLawyer_ThenLoginFails()
+    {
+        var admin = _factory.AuthorizedClient("admin");
+        var created = await admin.PostAsJsonAsync("/api/users/lawyers", new
+        {
+            username = NewUsername("l"),
+            fullName = "محامي دمشق",
+            password = "123456",
+            branchId = await BranchIdAsync("DAM"),
+        });
+        var lawyer = (await created.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
+        var token = (await _factory.LoginAsync(lawyer.Username, "123456"))!.Token;
+        Assert.False(string.IsNullOrWhiteSpace(token));
+
+        var head = _factory.AuthorizedClient("head1");
+        var response = await head.PatchAsJsonAsync($"/api/users/{lawyer.Id}/active", new { isActive = false });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var login = await _factory.LoginAsync(lawyer.Username, "123456");
+        Assert.Equal(HttpStatusCode.Unauthorized, (HttpStatusCode)login!.StatusCode);
+    }
+}
