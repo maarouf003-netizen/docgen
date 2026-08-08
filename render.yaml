@@ -1,3 +1,9 @@
+databases:
+  - name: docgen-db
+    databaseName: docgen
+    user: docgen
+    plan: free
+
 services:
   - type: web
     name: docgen
@@ -5,6 +11,12 @@ services:
     plan: free
     dockerfilePath: ./Dockerfile
     envVars:
+      - key: Database__UsePostgres
+        value: "true"
+      - key: ConnectionStrings__DefaultConnection
+        fromDatabase:
+          name: docgen-db
+          property: connectionString
       - key: Jwt__Secret
         sync: false
       - key: Bootstrap__AdminPassword

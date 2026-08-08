@@ -10,6 +10,12 @@ public class DocGeneratorDbContext : DbContext
     {
     }
 
+    /// <summary>للسياقات المشتقة (مثل سياق Postgres)؛ DbContextOptions&lt;T&gt; ثابتة الأنواع.</summary>
+    protected DocGeneratorDbContext(DbContextOptions options)
+        : base(options)
+    {
+    }
+
     public DbSet<User> Users => Set<User>();
     public DbSet<Branch> Branches => Set<Branch>();
     public DbSet<Document> Documents => Set<Document>();

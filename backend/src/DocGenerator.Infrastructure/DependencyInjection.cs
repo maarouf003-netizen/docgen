@@ -14,16 +14,20 @@ public static class DependencyInjection
         string connectionString,
         bool usePostgres = false)
     {
-        services.AddDbContext<DocGeneratorDbContext>(options =>
+        if (usePostgres)
         {
-            if (usePostgres)
+            // عند Postgres يُسجَّل السياق المشتق كتنفيذ لنوع الخدمة، فتعمل كل التبعيات القائمة
+            // عليه دون تغيير، ويطبق MigrateAsync هجرات Postgres (المنفصلة عن هجرات SQLite).
+            services.AddDbContext<DocGeneratorDbContext, DocGeneratorPostgresDbContext>(options =>
                 options.UseNpgsql(connectionString, npg => npg
-                    .UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery));
-            else
+                    .UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
+        }
+        else
+        {
+            services.AddDbContext<DocGeneratorDbContext>(options =>
                 options.UseSqlite(connectionString, sqlite => sqlite
-                    .UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery));
-        });
-
+                    .UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
+        }
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
         services.AddScoped<IDocumentRepository, DocumentRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
