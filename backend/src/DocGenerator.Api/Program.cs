@@ -36,12 +36,30 @@ if (usePostgres)
     if (!parseable)
     {
         throw new InvalidOperationException(
-            "Database:UsePostgres=true requires ConnectionStrings__DefaultConnection to be a "
-            + "valid Postgres connection string (e.g. postgres://user:pass@host:5432/dbname). "
-            + $"Current value (masked): {(string.IsNullOrWhiteSpace(conn) ? "empty" : $"first char '{conn[0]}', length {conn.Length}")}. "
+            "Database:UsePostgres=true requires a valid Postgres connection string. "
+            + $"Diagnosis of ConnectionStrings__DefaultConnection: {DiagnoseConnectionString(conn)}. "
             + "Set the variable in Render > Service docgen > Settings > Environment exactly as "
-            + "ConnectionStrings__DefaultConnection and redeploy.");
+            + "ConnectionStrings__DefaultConnection (paste the Internal Database URL with no quotes/spaces) "
+            + "and redeploy.");
     }
+}
+
+static string DiagnoseConnectionString(string raw)
+{
+    if (string.IsNullOrWhiteSpace(raw))
+        return "empty";
+    var parts = new List<string> { $"length={raw.Length}" };
+    parts.Add($"prefix 'postgres://'={raw.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase)}");
+    parts.Add($"prefix 'postgresql://'={raw.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase)}");
+    parts.Add($"contains '@'={raw.Contains('@')}");
+    parts.Add($"contains 'Host='={raw.Contains("Host=", StringComparison.OrdinalIgnoreCase)}");
+    parts.Add($"contains newline={raw.Contains('\n') || raw.Contains('\r')}");
+    parts.Add($"quoted={raw[0] is '"' or '\'' || raw[^1] is '"' or '\''}");
+    parts.Add($"has spaces={raw.Any(char.IsWhiteSpace)}");
+    parts.Add($"has control chars={raw.Any(char.IsControl)}");
+    parts.Add($"first char='{raw[0]}' (0x{(int)raw[0]:X4})");
+    parts.Add($"last char='{raw[^1]}' (0x{(int)raw[^1]:X4})");
+    return string.Join("; ", parts);
 }
 
 var jwt = builder.Configuration.GetSection("Jwt").Get<JwtOptions>() ?? new JwtOptions();
