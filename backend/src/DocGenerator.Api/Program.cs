@@ -9,6 +9,7 @@ using DocGenerator.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,16 +19,26 @@ var usePostgres = builder.Configuration.GetValue<bool>("Database:UsePostgres");
 
 if (usePostgres)
 {
-    var looksLikePostgres = !string.IsNullOrWhiteSpace(conn)
-        && (conn.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase)
-            || conn.StartsWith("Host=", StringComparison.OrdinalIgnoreCase)
-            || conn.StartsWith("Server=", StringComparison.OrdinalIgnoreCase));
-    if (!looksLikePostgres)
+    // التحقق عبر محلّل Npgsql نفسه: أي سلسلة يقبلها (postgres:// أو postgresql:// أو كلمات مفتاحية)
+    // تعمل؛ ولا نمنع إلا ما لا يمكن تحليله فعلًا ليعطي رسالة تشخيصية واضحة.
+    var parseable = false;
+    if (!string.IsNullOrWhiteSpace(conn))
+    {
+        try
+        {
+            _ = new NpgsqlConnectionStringBuilder(conn);
+            parseable = true;
+        }
+        catch (ArgumentException)
+        {
+        }
+    }
+    if (!parseable)
     {
         throw new InvalidOperationException(
             "Database:UsePostgres=true requires ConnectionStrings__DefaultConnection to be a "
-            + "valid Postgres connection string starting with 'postgres://'. "
-            + $"Current value (masked): {(conn.Length > 0 ? $"first char '{conn[0]}', length {conn.Length}" : "empty")}. "
+            + "valid Postgres connection string (e.g. postgres://user:pass@host:5432/dbname). "
+            + $"Current value (masked): {(string.IsNullOrWhiteSpace(conn) ? "empty" : $"first char '{conn[0]}', length {conn.Length}")}. "
             + "Set the variable in Render > Service docgen > Settings > Environment exactly as "
             + "ConnectionStrings__DefaultConnection and redeploy.");
     }
