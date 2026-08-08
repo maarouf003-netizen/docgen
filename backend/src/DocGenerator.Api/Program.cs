@@ -6,6 +6,7 @@ using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Options;
 using DocGenerator.Infrastructure;
+using DocGenerator.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -13,14 +14,19 @@ using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var conn = builder.Configuration.GetConnectionString("DefaultConnection")
+// يدعم Render ربط قاعدة Postgres فيحقن DATABASE_URL تلقائيًا؛ وهو مصدر موثوق يغني عن اللصق اليدوي.
+var databaseUrl = builder.Configuration["DATABASE_URL"];
+var usePostgres = builder.Configuration.GetValue<bool>("Database:UsePostgres")
+    || !string.IsNullOrWhiteSpace(databaseUrl);
+
+var rawConn = databaseUrl
+    ?? builder.Configuration.GetConnectionString("DefaultConnection")
     ?? "Data Source=docgen.db";
-var usePostgres = builder.Configuration.GetValue<bool>("Database:UsePostgres");
+var conn = usePostgres ? PostgresConnectionString.Normalize(rawConn) : rawConn;
 
 if (usePostgres)
 {
-    // التحقق عبر محلّل Npgsql نفسه: أي سلسلة يقبلها (postgres:// أو postgresql:// أو كلمات مفتاحية)
-    // تعمل؛ ولا نمنع إلا ما لا يمكن تحليله فعلًا ليعطي رسالة تشخيصية واضحة.
+    // بعد التحويل يجب أن تكون القيمة بصيغة كلامية يقبلها Npgsql دائمًا؛ هذا الحارس يفضح أي تشوّه.
     var parseable = false;
     if (!string.IsNullOrWhiteSpace(conn))
     {
@@ -36,30 +42,25 @@ if (usePostgres)
     if (!parseable)
     {
         throw new InvalidOperationException(
-            "Database:UsePostgres=true requires a valid Postgres connection string. "
-            + $"Diagnosis of ConnectionStrings__DefaultConnection: {DiagnoseConnectionString(conn)}. "
-            + "Set the variable in Render > Service docgen > Settings > Environment exactly as "
-            + "ConnectionStrings__DefaultConnection (paste the Internal Database URL with no quotes/spaces) "
-            + "and redeploy.");
+            "Database:UsePostgres=true requires a valid Postgres connection string "
+            + $"(e.g. Host=...;Port=...;Database=... or a postgres:// URL). "
+            + $"Raw value (masked): {DescribeRawValue(rawConn)}. "
+            + "Provide ConnectionStrings__DefaultConnection (or link the database so Render "
+            + "injects DATABASE_URL) in Service docgen > Settings > Environment, then redeploy.");
     }
 }
 
-static string DiagnoseConnectionString(string raw)
+static string DescribeRawValue(string? raw)
 {
     if (string.IsNullOrWhiteSpace(raw))
         return "empty";
-    var parts = new List<string> { $"length={raw.Length}" };
-    parts.Add($"prefix 'postgres://'={raw.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase)}");
-    parts.Add($"prefix 'postgresql://'={raw.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase)}");
-    parts.Add($"contains '@'={raw.Contains('@')}");
-    parts.Add($"contains 'Host='={raw.Contains("Host=", StringComparison.OrdinalIgnoreCase)}");
-    parts.Add($"contains newline={raw.Contains('\n') || raw.Contains('\r')}");
-    parts.Add($"quoted={raw[0] is '"' or '\'' || raw[^1] is '"' or '\''}");
-    parts.Add($"has spaces={raw.Any(char.IsWhiteSpace)}");
-    parts.Add($"has control chars={raw.Any(char.IsControl)}");
-    parts.Add($"first char='{raw[0]}' (0x{(int)raw[0]:X4})");
-    parts.Add($"last char='{raw[^1]}' (0x{(int)raw[^1]:X4})");
-    return string.Join("; ", parts);
+    var uriLike = raw.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase)
+        || raw.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase);
+    var scheme = raw.Contains("://", StringComparison.Ordinal)
+        ? raw[..raw.IndexOf("://", StringComparison.Ordinal)]
+        : "keyword-style";
+    return $"length={raw.Length}, scheme='{scheme}', uri-like={uriLike}, "
+        + $"has-spaces={raw.Any(char.IsWhiteSpace)}, has-control={raw.Any(char.IsControl)}";
 }
 
 var jwt = builder.Configuration.GetSection("Jwt").Get<JwtOptions>() ?? new JwtOptions();
