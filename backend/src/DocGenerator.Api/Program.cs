@@ -16,6 +16,23 @@ var conn = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? "Data Source=docgen.db";
 var usePostgres = builder.Configuration.GetValue<bool>("Database:UsePostgres");
 
+if (usePostgres)
+{
+    var looksLikePostgres = !string.IsNullOrWhiteSpace(conn)
+        && (conn.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase)
+            || conn.StartsWith("Host=", StringComparison.OrdinalIgnoreCase)
+            || conn.StartsWith("Server=", StringComparison.OrdinalIgnoreCase));
+    if (!looksLikePostgres)
+    {
+        throw new InvalidOperationException(
+            "Database:UsePostgres=true requires ConnectionStrings__DefaultConnection to be a "
+            + "valid Postgres connection string starting with 'postgres://'. "
+            + $"Current value (masked): {(conn.Length > 0 ? $"first char '{conn[0]}', length {conn.Length}" : "empty")}. "
+            + "Set the variable in Render > Service docgen > Settings > Environment exactly as "
+            + "ConnectionStrings__DefaultConnection and redeploy.");
+    }
+}
+
 var jwt = builder.Configuration.GetSection("Jwt").Get<JwtOptions>() ?? new JwtOptions();
 if (string.IsNullOrWhiteSpace(jwt.Secret))
     throw new InvalidOperationException(
