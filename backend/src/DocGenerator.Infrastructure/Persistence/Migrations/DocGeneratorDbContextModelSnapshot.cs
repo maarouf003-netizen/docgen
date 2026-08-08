@@ -225,6 +225,20 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ExecutedDescription")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("ExecutedPaidAmount")
+                        .HasColumnType("decimal(20,2)");
+
+                    b.Property<decimal?>("ExecutedRequiredAmount")
+                        .HasColumnType("decimal(20,2)");
+
+                    b.Property<string>("ExecutedStatus")
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("FileIncoming")
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
@@ -241,6 +255,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("FileReceiptDate")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("FileType")
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
@@ -251,6 +268,11 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("FullData")
                         .HasColumnType("text");
+
+                    b.Property<string>("GeneralEntitySide")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("ImmediateActions")
                         .HasMaxLength(1000)
@@ -298,6 +320,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("StruckOffDate")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("TarithDate")
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
@@ -333,9 +358,51 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("DocumentType");
 
+                    b.HasIndex("ExecutedStatus");
+
+                    b.HasIndex("GeneralEntitySide");
+
                     b.HasIndex("SearchText");
 
                     b.ToTable("Documents", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentBaseNumber", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("BaseNumber")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Year")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("DocumentId", "Year")
+                        .IsUnique();
+
+                    b.ToTable("DocumentBaseNumbers", (string)null);
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentRegistrationDate", b =>
@@ -350,6 +417,128 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.HasKey("DocumentId");
 
                     b.ToTable("DocumentRegistrationDates", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ExecutedHeir", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AddressType")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ExecutedNaturalPersonId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ExecutionApplicantId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("HeirAddress")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HeirFamily")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HeirFather")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HeirName")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("ExecutedNaturalPersonId");
+
+                    b.HasIndex("ExecutionApplicantId");
+
+                    b.ToTable("ExecutedHeirs", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ExecutedNaturalPerson", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AddressOrRepresentative")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AddressType")
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DeceasedFamily")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DeceasedFather")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DeceasedName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Family")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Father")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentationType")
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.ToTable("ExecutedNaturalPersons", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ExecutedPublicEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("EntityBranch")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EntityName")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.ToTable("ExecutedPublicEntities", (string)null);
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.ExecutionAction", b =>
@@ -381,7 +570,6 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Text")
                         .IsRequired()
-                        .HasMaxLength(2000)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Type")
@@ -398,6 +586,54 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.HasIndex("DocumentId");
 
                     b.ToTable("ExecutionActions", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ExecutionApplicant", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DeceasedFamily")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DeceasedFather")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DeceasedName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Family")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Father")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LegalRepresentative")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentationType")
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.ToTable("ExecutionApplicants", (string)null);
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.Guarantor", b =>
@@ -455,6 +691,108 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.ToTable("Guarantors", (string)null);
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.HeadAlert", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("BranchId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("DocumentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("TargetLawyerId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("TargetType")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("TargetLawyerId");
+
+                    b.ToTable("HeadAlerts", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.HeadAlertRecipient", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("HeadAlertId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HeadAlertId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("HeadAlertRecipients", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.Heir", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AddressType")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("GuarantorNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("HeirAddress")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HeirName")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.ToTable("Heirs", (string)null);
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.LoginAttempt", b =>
                 {
                     b.Property<int>("Id")
@@ -489,10 +827,6 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Owner")
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("Property")
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
@@ -514,6 +848,30 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.HasIndex("DocumentId");
 
                     b.ToTable("RealEstates", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.RealEstateOwner", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("RealEstateId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RealEstateId");
+
+                    b.ToTable("RealEstateOwners", (string)null);
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.User", b =>
@@ -574,7 +932,7 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("BranchId");
 
-                    b.HasIndex("Username")
+                    b.HasIndex("Username", "BranchId")
                         .IsUnique();
 
                     b.ToTable("Users", (string)null);
@@ -598,11 +956,77 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Navigation("CreatedBy");
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentBaseNumber", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.Document", "Document")
+                        .WithMany("BaseNumbers")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("Document");
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentRegistrationDate", b =>
                 {
                     b.HasOne("DocGenerator.Domain.Entities.Document", "Document")
                         .WithOne("RegistrationDate")
                         .HasForeignKey("DocGenerator.Domain.Entities.DocumentRegistrationDate", "DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Document");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ExecutedHeir", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.Document", "Document")
+                        .WithMany("ExecutedHeirs")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.ExecutedNaturalPerson", "ExecutedNaturalPerson")
+                        .WithMany("Heirs")
+                        .HasForeignKey("ExecutedNaturalPersonId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("DocGenerator.Domain.Entities.ExecutionApplicant", "ExecutionApplicant")
+                        .WithMany("Heirs")
+                        .HasForeignKey("ExecutionApplicantId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("Document");
+
+                    b.Navigation("ExecutedNaturalPerson");
+
+                    b.Navigation("ExecutionApplicant");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ExecutedNaturalPerson", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.Document", "Document")
+                        .WithMany("ExecutedNaturalPersons")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Document");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ExecutedPublicEntity", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.Document", "Document")
+                        .WithMany("ExecutedPublicEntities")
+                        .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -628,10 +1052,84 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Navigation("Document");
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ExecutionApplicant", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.Document", "Document")
+                        .WithMany("ExecutionApplicants")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Document");
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.Guarantor", b =>
                 {
                     b.HasOne("DocGenerator.Domain.Entities.Document", "Document")
                         .WithMany("Guarantors")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Document");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.HeadAlert", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.Document", "Document")
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("DocGenerator.Domain.Entities.User", "TargetLawyer")
+                        .WithMany()
+                        .HasForeignKey("TargetLawyerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("Document");
+
+                    b.Navigation("TargetLawyer");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.HeadAlertRecipient", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.HeadAlert", "HeadAlert")
+                        .WithMany("Recipients")
+                        .HasForeignKey("HeadAlertId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("HeadAlert");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.Heir", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.Document", "Document")
+                        .WithMany("Heirs")
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -648,6 +1146,17 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Document");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.RealEstateOwner", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.RealEstate", "RealEstate")
+                        .WithMany("Owners")
+                        .HasForeignKey("RealEstateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("RealEstate");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.User", b =>
@@ -668,13 +1177,45 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.Document", b =>
                 {
+                    b.Navigation("BaseNumbers");
+
+                    b.Navigation("ExecutedHeirs");
+
+                    b.Navigation("ExecutedNaturalPersons");
+
+                    b.Navigation("ExecutedPublicEntities");
+
                     b.Navigation("ExecutionActions");
 
+                    b.Navigation("ExecutionApplicants");
+
                     b.Navigation("Guarantors");
+
+                    b.Navigation("Heirs");
 
                     b.Navigation("RealEstates");
 
                     b.Navigation("RegistrationDate");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ExecutedNaturalPerson", b =>
+                {
+                    b.Navigation("Heirs");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ExecutionApplicant", b =>
+                {
+                    b.Navigation("Heirs");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.HeadAlert", b =>
+                {
+                    b.Navigation("Recipients");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.RealEstate", b =>
+                {
+                    b.Navigation("Owners");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.User", b =>

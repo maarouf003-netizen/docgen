@@ -26,4 +26,24 @@ public class AuditLogger : IAuditLogger
         });
         await _db.SaveChangesAsync(ct);
     }
+
+    public async Task LogManyAsync(IReadOnlyList<AuditLogEntry> entries, CancellationToken ct = default)
+    {
+        if (entries is null || entries.Count == 0)
+            return;
+
+        foreach (var entry in entries)
+        {
+            _db.AuditLogs.Add(new AuditLog
+            {
+                Timestamp = DateTime.UtcNow,
+                UserName = entry.UserName,
+                ActionType = entry.ActionType,
+                DocumentId = entry.DocumentId,
+                DocumentType = entry.DocumentType,
+                Details = entry.Details,
+            });
+        }
+        await _db.SaveChangesAsync(ct);
+    }
 }

@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Reflection;
 using System.Security.Claims;
 using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Security;
 using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -176,5 +177,69 @@ public class LoginRateLimiterTests : IDisposable
         typeof(DbLoginRateLimiter)
             .GetField("_lastPruneTicks", BindingFlags.NonPublic | BindingFlags.Static)!
             .SetValue(null, DateTime.MinValue.Ticks);
+    }
+}
+
+public class HtmlInputSanitizerTests
+{
+    [Fact]
+    public void Sanitize_RemovesScriptAndEventHandlers_KeepsPlainText()
+    {
+        var html = "<p onclick=\"alert(1)\">نص</p><script>evil()</script><img src=\"x\" onerror=\"alert(1)\">";
+
+        var result = HtmlInputSanitizer.Sanitize(html);
+
+        Assert.DoesNotContain("<script", result);
+        Assert.DoesNotContain("onclick", result);
+        Assert.DoesNotContain("onerror", result);
+        Assert.DoesNotContain("<img", result);
+        Assert.Contains("نص", result);
+    }
+
+    [Fact]
+    public void Sanitize_RemovesDisallowedTags_KeepsAllowedFormatting()
+    {
+        var html = "<h1>عنوان</h1><p><strong>بند</strong> و<em>تشديد</em></p>";
+
+        var result = HtmlInputSanitizer.Sanitize(html);
+
+        Assert.DoesNotContain("<h1", result);
+        Assert.Contains("<strong>بند</strong>", result);
+        Assert.Contains("<em>تشديد</em>", result);
+    }
+
+    [Fact]
+    public void Sanitize_KeepsOnlyColorCssProperty()
+    {
+        var html = "<span style=\"color:#dc2626;background:url(javascript:evil())\">نص</span>";
+
+        var result = HtmlInputSanitizer.Sanitize(html);
+
+        Assert.Contains("color", result);
+        Assert.DoesNotContain("background", result);
+        Assert.DoesNotContain("url", result);
+        Assert.Contains("نص", result);
+    }
+
+    [Fact]
+    public void Sanitize_NullOrEmpty_ReturnsEmpty()
+    {
+        Assert.Equal(string.Empty, HtmlInputSanitizer.Sanitize(null));
+        Assert.Equal(string.Empty, HtmlInputSanitizer.Sanitize("   "));
+    }
+
+    [Fact]
+    public void ToPlainText_ExtractsText_WithoutTags()
+    {
+        var result = HtmlInputSanitizer.ToPlainText("<p>إجراء <strong>هام</strong></p><p>سطر ثانٍ</p>");
+
+        Assert.Equal("إجراء هام سطر ثانٍ", result);
+    }
+
+    [Fact]
+    public void ToPlainText_NullOrEmpty_ReturnsEmpty()
+    {
+        Assert.Equal(string.Empty, HtmlInputSanitizer.ToPlainText(null));
+        Assert.Equal(string.Empty, HtmlInputSanitizer.ToPlainText(string.Empty));
     }
 }

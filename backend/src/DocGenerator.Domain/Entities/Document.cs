@@ -64,6 +64,42 @@ public class Document
     public string? ExecStatus { get; set; } = string.Empty;
     public string? ExecSubStatus { get; set; }
     public decimal? CollectedAmount { get; set; }
+
+    /// <summary>
+    /// صفة الملف الثابتة عند الإنشاء:
+    /// Applicant = ملف «طالبة تنفيذ» (النموذج الحالي)، Executed = وضع «منفذ عليه» الجديد.
+    /// تُثبَّت من أول حفظ ولا تتغير أثناء التعديل.
+    /// </summary>
+    public string GeneralEntitySide { get; set; } = GeneralEntitySideCatalog.Applicant;
+
+    /// <summary>
+    /// حالة وضع «منفذ عليه» (Executed): متداول (فارغة = لا حالة)، منفذ، مشطوب.
+    /// معزولة تمامًا عن حالة نظام «طالبة تنفيذ» (ExecStatus/ExecSubStatus).
+    /// </summary>
+    public string? ExecutedStatus { get; set; } = string.Empty;
+
+    /// <summary>وصف/بيان إضافي في وضع «منفذ عليه».</summary>
+    public string? ExecutedDescription { get; set; }
+
+    /// <summary>
+    /// تاريخ ورود الملف في وضع «منفذ عليه»: لحظة إعلام الجهة (المحامي) بالملف للدفاع
+    /// عنها. عمود مستقل يغذي فترة إحصائية «متداول للضد»، فلا يُستخدم تاريخ قيد الملف هنا
+    /// لأن الملف يقيده الخصم وليس محامي الدولة.
+    /// </summary>
+    public DateTime? FileReceiptDate { get; set; }
+
+    /// <summary>المبلغ المطلوب دفعه من الجهة العامة في وضع «منفذ عليه» (يغذي إحصائية «متداول للضد»).</summary>
+    public decimal? ExecutedRequiredAmount { get; set; }
+
+    /// <summary>المبلغ الذي دفعته الجهة العامة في وضع «منفذ عليه» (يغذي إحصائية «منفذ للضد»).</summary>
+    public decimal? ExecutedPaidAmount { get; set; }
+
+    /// <summary>
+    /// لحظة الشطب (UTC) في وضع «منفذ عليه»: المشطوب يُخفى من القوائم والتصدير
+    /// ويظهر في صفحة «الملفات المشطوبة» (StruckOffDocuments). يبقى التاريخ محفوظًا
+    /// حتى بعد إعادة الملف إلى المتداول ليبقى سجل الشطب ظاهرًا في تفاصيل الملف.
+    /// </summary>
+    public DateTime? StruckOffDate { get; set; }
     public string? BaraetNumber { get; set; }
     public string? BaraetDate { get; set; }
     public string? BaraetRegNumber { get; set; }
@@ -87,6 +123,17 @@ public class Document
     public Branch? Branch { get; set; }
     public ICollection<Guarantor> Guarantors { get; set; } = new List<Guarantor>();
     public ICollection<RealEstate> RealEstates { get; set; } = new List<RealEstate>();
+    public ICollection<Heir> Heirs { get; set; } = new List<Heir>();
     public ICollection<ExecutionAction> ExecutionActions { get; set; } = new List<ExecutionAction>();
     public DocumentRegistrationDate? RegistrationDate { get; set; }
+    public ICollection<DocumentBaseNumber> BaseNumbers { get; set; } = new List<DocumentBaseNumber>();
+
+    /// <summary>طالبو التنفيذ في وضع «منفذ عليه» (واحد أو أكثر).</summary>
+    public ICollection<ExecutionApplicant> ExecutionApplicants { get; set; } = new List<ExecutionApplicant>();
+    /// <summary>الجهات العامة المنفذ عليها في وضع «منفذ عليه» (واحد أو أكثر).</summary>
+    public ICollection<ExecutedPublicEntity> ExecutedPublicEntities { get; set; } = new List<ExecutedPublicEntity>();
+    /// <summary>الأشخاص الطبيعيون المنفذ عليهم في وضع «منفذ عليه» (واحد أو أكثر).</summary>
+    public ICollection<ExecutedNaturalPerson> ExecutedNaturalPersons { get; set; } = new List<ExecutedNaturalPerson>();
+    /// <summary>ورثة المورثين المتوفين في وضع «منفذ عليه» (مرتبطون بالملف والمورث).</summary>
+    public ICollection<ExecutedHeir> ExecutedHeirs { get; set; } = new List<ExecutedHeir>();
 }

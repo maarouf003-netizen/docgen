@@ -56,6 +56,13 @@ function stubMobile(matches: boolean) {
   });
 }
 
+function mockGetWithCount(count: number) {
+  (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+    if (url.startsWith('/documents/owner/')) return Promise.resolve({ data: { count } });
+    return Promise.resolve({ data: [lawyer(), lawyer({ id: 2, fullName: 'محامي ثانٍ' })] });
+  });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   stubMobile(false);
@@ -83,14 +90,13 @@ describe('BranchLawyers', () => {
     expect(await screen.findByLabelText('الفرع')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '+ إضافة محامٍ' }));
-    await user.type(screen.getByPlaceholderText('اسم المحامي...'), 'محامي جديد');
-    await user.type(screen.getByPlaceholderText('بدون مسافات...'), 'new_lawyer');
+    await user.type(screen.getByPlaceholderText('مثال: محمد أحمد علي'), 'محامي جديد');
     await user.type(screen.getByLabelText(/كلمة المرور/), '123456');
     await user.click(screen.getByRole('button', { name: 'حفظ المحامي' }));
 
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith('/users/lawyers', {
-        username: 'new_lawyer',
+        username: 'محامي جديد',
         fullName: 'محامي جديد',
         password: '123456',
         branchId: 1,
@@ -103,14 +109,13 @@ describe('BranchLawyers', () => {
     render(<BranchLawyers />);
 
     await user.click(await screen.findByRole('button', { name: '+ إضافة محامٍ' }));
-    await user.type(screen.getByPlaceholderText('اسم المحامي...'), 'محامي جديد');
-    await user.type(screen.getByPlaceholderText('بدون مسافات...'), 'new_lawyer');
+    await user.type(screen.getByPlaceholderText('مثال: محمد أحمد علي'), 'محامي جديد');
     await user.type(screen.getByLabelText(/كلمة المرور/), '123456');
     await user.click(screen.getByRole('button', { name: 'حفظ المحامي' }));
 
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith('/users/lawyers', {
-        username: 'new_lawyer',
+        username: 'محامي جديد',
         fullName: 'محامي جديد',
         password: '123456',
         branchId: null,
@@ -134,12 +139,68 @@ describe('BranchLawyers', () => {
     render(<BranchLawyers />);
 
     await user.click(await screen.findByRole('button', { name: '+ إضافة محامٍ' }));
-    await user.type(screen.getByPlaceholderText('اسم المحامي...'), 'محامي جديد');
-    await user.type(screen.getByPlaceholderText('بدون مسافات...'), 'new_lawyer');
+    await user.type(screen.getByPlaceholderText('مثال: محمد أحمد علي'), 'محامي جديد');
     await user.type(screen.getByLabelText(/كلمة المرور/), '123');
     await user.click(screen.getByRole('button', { name: 'حفظ المحامي' }));
 
     expect(await screen.findByText(/يجب أن تكون 6 أحرف/)).toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('يعرض زر النقل الجماعي لرئيس القسم فقط', async () => {
+    render(<BranchLawyers />);
+
+    expect(await screen.findByRole('button', { name: 'نقل كامل ملفاته' })).toBeInTheDocument();
+  });
+
+  it('لا يعرض زر النقل الجماعي للمشرف', async () => {
+    useAuthMock.mockReturnValue({ user: { role: 'admin' } });
+    (api.get as unknown as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ data: [{ id: 1, name: 'دمشق', code: 'DAM' }] })
+      .mockResolvedValueOnce({ data: [lawyer()] });
+    render(<BranchLawyers />);
+
+    expect(await screen.findByText('محامي دمشق')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'نقل كامل ملفاته' })).not.toBeInTheDocument();
+  });
+
+  it('يمنع متابعة النقل الجماعي دون اختيار الهدف', async () => {
+    mockGetWithCount(2);
+    const user = userEvent.setup();
+    render(<BranchLawyers />);
+
+    const buttons = await screen.findAllByRole('button', { name: 'نقل كامل ملفاته' });
+    await user.click(buttons[0]);
+    await user.click(await screen.findByRole('button', { name: 'متابعة' }));
+
+    expect(screen.getByText('اختر المحامي المستهدف')).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('ينفذ النقل الجماعي بخطوتين ويعرض النتيجة', async () => {
+    mockGetWithCount(3);
+    (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { transferredCount: 3 } });
+    const user = userEvent.setup();
+    render(<BranchLawyers />);
+
+    const buttons = await screen.findAllByRole('button', { name: 'نقل كامل ملفاته' });
+    await user.click(buttons[0]);
+
+    // الخطوة الأولى: معاينة العدد واختيار المحامي المستهدف.
+    expect(await screen.findByText(/سيتم نقل 3 ملفًا من محامي دمشق/)).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('المحامي المستهدف'), '2');
+    await user.click(screen.getByRole('button', { name: 'متابعة' }));
+
+    // الخطوة الثانية: التأكيد النهائي ثم التنفيذ.
+    expect(screen.getByText(/تأكيد نهائي/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'تأكيد النقل النهائي' }));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/documents/transfer-all', {
+        sourceLawyerId: 1,
+        targetLawyerId: 2,
+      });
+    });
+    expect(await screen.findByText(/تم نقل 3 ملفًا إلى محامي ثانٍ/)).toBeInTheDocument();
   });
 });

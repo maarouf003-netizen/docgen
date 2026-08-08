@@ -20,6 +20,8 @@ vi.mock('../api/client', () => ({
 
 import { api } from '../api/client';
 
+const editorBox = () => screen.getByLabelText('أدخل نص الإجراء أو الملاحظة...');
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -62,14 +64,14 @@ describe('ExecutionActionsModal', () => {
     await screen.findByText('لا توجد إجراءات أو ملاحظات بعد');
     await user.click(screen.getByText('+ إضافة إجراء أو ملاحظة'));
 
-    await user.type(screen.getByPlaceholderText('أدخل نص الإجراء أو الملاحظة...'), 'إجراء جديد');
+    await user.type(editorBox(), 'إجراء جديد');
     await user.type(screen.getByPlaceholderText('مثال: 1/8/2026'), '3/8/2026');
     await user.click(screen.getByRole('button', { name: 'حفظ كإجراء' }));
 
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith('/documents/7/actions', {
         type: 'action',
-        text: 'إجراء جديد',
+        text: '<p>إجراء جديد</p>',
         actionDate: '3/8/2026',
         reminderDuration: null,
         reminderColor: null,
@@ -101,13 +103,13 @@ describe('ExecutionActionsModal', () => {
     await screen.findByText('لا توجد إجراءات أو ملاحظات بعد');
     await user.click(screen.getByText('+ إضافة إجراء أو ملاحظة'));
 
-    await user.type(screen.getByPlaceholderText('أدخل نص الإجراء أو الملاحظة...'), 'ملاحظة بلا تاريخ');
+    await user.type(editorBox(), 'ملاحظة بلا تاريخ');
     await user.click(screen.getByRole('button', { name: 'حفظ كملاحظة' }));
 
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith('/documents/7/actions', {
         type: 'note',
-        text: 'ملاحظة بلا تاريخ',
+        text: '<p>ملاحظة بلا تاريخ</p>',
         actionDate: null,
         reminderDuration: null,
         reminderColor: null,
@@ -147,14 +149,14 @@ describe('ExecutionActionsModal', () => {
 
     await screen.findByText('إجراء قديم');
     await user.click(screen.getByLabelText('تعديل'));
-    await user.clear(screen.getByPlaceholderText('أدخل نص الإجراء أو الملاحظة...'));
-    await user.type(screen.getByPlaceholderText('أدخل نص الإجراء أو الملاحظة...'), 'إجراء محدث');
+    await user.clear(editorBox());
+    await user.type(editorBox(), 'إجراء محدث');
     await user.click(screen.getByRole('button', { name: 'حفظ التعديل' }));
 
     await waitFor(() => {
       expect(api.put).toHaveBeenCalledWith('/documents/7/actions/1', {
         type: 'action',
-        text: 'إجراء محدث',
+        text: '<p>إجراء محدث</p>',
         actionDate: '1/1/2026',
         reminderDuration: null,
         reminderColor: null,
@@ -186,7 +188,7 @@ describe('ExecutionActionsModal', () => {
     await screen.findByText('لا توجد إجراءات أو ملاحظات بعد');
     await user.click(screen.getByText('+ إضافة إجراء أو ملاحظة'));
 
-    await user.type(screen.getByPlaceholderText('أدخل نص الإجراء أو الملاحظة...'), 'متابعة المحكمة');
+    await user.type(editorBox(), 'متابعة المحكمة');
     await user.type(screen.getByPlaceholderText('مثال: 1/8/2026'), '3/8/2026');
     await user.click(screen.getByRole('button', { name: 'ذكرني' }));
 
@@ -197,12 +199,48 @@ describe('ExecutionActionsModal', () => {
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith('/documents/7/actions', {
         type: 'action',
-        text: 'متابعة المحكمة',
+        text: '<p>متابعة المحكمة</p>',
         actionDate: '3/8/2026',
         reminderDuration: 'أسبوع',
         reminderColor: 'أحمر',
       });
     });
+  });
+
+  it('يبقي أزرار الحفظ والإلغاء داخل النافذة في منطقة قابلة للتمرير داخليًا', async () => {
+    const user = userEvent.setup();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: [] });
+
+    render(<ExecutionActionsModal documentId={7} onClose={() => {}} />);
+
+    await screen.findByText('لا توجد إجراءات أو ملاحظات بعد');
+    await user.click(screen.getByText('+ إضافة إجراء أو ملاحظة'));
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveClass('overflow-hidden');
+
+    const scrollRegion = dialog.querySelector('.overflow-y-auto');
+    expect(scrollRegion).not.toBeNull();
+    expect(scrollRegion).toContainElement(screen.getByRole('button', { name: 'حفظ كإجراء' }));
+    expect(scrollRegion).toContainElement(screen.getByRole('button', { name: 'إلغاء' }));
+  });
+
+  it('يبقي زر «حفظ التعديل» داخل النافذة عند فتح نموذج التعديل', async () => {
+    const user = userEvent.setup();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: [{ id: 1, type: 'action', text: 'إجراء قديم', actionDate: '1/1/2026', createdAt: '2026-08-01' }],
+    });
+
+    render(<ExecutionActionsModal documentId={7} onClose={() => {}} />);
+
+    await screen.findByText('إجراء قديم');
+    await user.click(screen.getByLabelText('تعديل'));
+
+    const dialog = screen.getByRole('dialog');
+    const scrollRegion = dialog.querySelector('.overflow-y-auto');
+    expect(scrollRegion).not.toBeNull();
+    expect(scrollRegion).toContainElement(screen.getByRole('button', { name: 'حفظ التعديل' }));
+    expect(scrollRegion).toContainElement(screen.getByRole('button', { name: 'إلغاء' }));
   });
 
   it('يعرض شارة التذكير الملونة في القائمة', async () => {

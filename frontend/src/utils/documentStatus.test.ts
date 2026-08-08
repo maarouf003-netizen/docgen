@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getDocumentStatus, getDocumentBadge } from './documentStatus';
+import { getDocumentStatus, getDocumentBadge, getExecutedStatus } from './documentStatus';
 import type { DocumentResponse } from '../types';
 
 function doc(overrides: Partial<Pick<DocumentResponse, 'execStatus' | 'execSubStatus' | 'isDraft'>>) {
@@ -35,6 +35,38 @@ describe('getDocumentStatus', () => {
     expect(getDocumentBadge(doc({ isDraft: false }))).toEqual({
       text: 'متداول',
       cls: 'bg-blue-100 text-blue-700',
+    });
+  });
+});
+
+describe('getExecutedStatus', () => {
+  const executed = (executedStatus: string) => ({
+    execStatus: '',
+    execSubStatus: '',
+    isDraft: false,
+    generalEntitySide: 'executed' as const,
+    executedStatus,
+  });
+
+  it('يعزل حالة وضع «منفذ عليه» عن نظام «طالبة تنفيذ»', () => {
+    expect(getExecutedStatus(executed(''))).toBe('متداول');
+    expect(getExecutedStatus(executed('منفذ'))).toBe('منفذ');
+    expect(getExecutedStatus(executed('مشطوب'))).toBe('مشطوب');
+  });
+
+  it('getDocumentStatus يعالج ملفات الصفة executed بحالتها المعزولة حتى لو حملت execStatus قديمًا', () => {
+    expect(
+      getDocumentStatus({ ...executed('مشطوب'), execStatus: 'منفذ بالتسوية', isDraft: true }),
+    ).toBe('مشطوب');
+    expect(
+      getDocumentStatus({ ...executed(''), execStatus: 'تريث', isDraft: true }),
+    ).toBe('متداول');
+  });
+
+  it('يعطي شارة العرض الصحيحة للمشطوب', () => {
+    expect(getDocumentBadge(executed('مشطوب'))).toEqual({
+      text: 'مشطوب',
+      cls: 'bg-gray-200 text-gray-700',
     });
   });
 });

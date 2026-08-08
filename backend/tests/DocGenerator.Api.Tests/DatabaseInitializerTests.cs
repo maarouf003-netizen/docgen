@@ -131,13 +131,16 @@ public class DatabaseInitializerTests
                 PasswordHash = new PasswordHasher().Hash("123456"),
             });
             await db.SaveChangesAsync();
-            var doc = new Document { CreatedById = 1, IsDraft = true, DocumentType = "بيان" };
-            db.Documents.Add(doc);
-            await db.SaveChangesAsync();
+            // إدراج المستند بـ SQL خام بالأعمدة الموجودة في القاعدة القديمة فقط،
+            // لأن نموذج EF الحالي يحمل أعمدة وضع «منفذ عليه» غير الموجودة في هذا السكيمة.
+            await db.Database.ExecuteSqlRawAsync(
+                "INSERT INTO \"Documents\" (\"CreatedAt\", \"UpdatedAt\", \"CreatedById\", \"IsDraft\", \"DocumentType\", \"AmountNumeric\", \"Amount2Numeric\", \"InclusionAmountNumeric\", \"ViewCount\", \"PrintCount\") VALUES ({0}, {0}, {1}, {2}, {3}, 0, 0, 0, 0, 0)",
+                DateTime.UtcNow, 1, true, "بيان");
+            var docId = await db.Documents.Select(d => d.Id).MaxAsync();
 
             // محاكاة ملف يتيم (بلا محامٍ مختص) موجود في القاعدة القديمة.
             await db.Database.ExecuteSqlRawAsync(
-                "UPDATE \"Documents\" SET \"CreatedById\" = NULL WHERE \"Id\" = {0}", doc.Id);
+                "UPDATE \"Documents\" SET \"CreatedById\" = NULL WHERE \"Id\" = {0}", docId);
 
             // تطبيق مهاجرة AddRequiredDocumentOwner: يجب أن تُسند اليتيم لأدنى مستخدم ثم تفرض NOT NULL.
             await db.Database.MigrateAsync();
@@ -145,6 +148,49 @@ public class DatabaseInitializerTests
             var migrated = await db.Documents.SingleAsync();
             Assert.Equal(1, migrated.CreatedById);
             Assert.False(migrated.CreatedBy is null);
+        }
+        finally
+        {
+            await db.DisposeAsync();
+            Cleanup(path);
+        }
+    }
+
+    [Fact]
+    public async Task AddRealEstateOwnersMigration_MovesExistingOwnersIntoList()
+    {
+        var (path, db, initializer) = CreateInitializer();
+        try
+        {
+            // قاعدة تُهاجَر حتى المهاجرة السابقة (قبل قائمة الملاك) ثم يُحقن عقار
+            // بقيمة المالك المفرد كما كانت القاعدة القديمة.
+            await db.GetService<IMigrator>().MigrateAsync("20260807221412_AddHeirs");
+
+            db.Users.Add(new User
+            {
+                Username = "admin",
+                FullName = "المشرف العام",
+                Role = UserRole.Admin,
+                PasswordHash = new PasswordHasher().Hash("123456"),
+            });
+            await db.SaveChangesAsync();
+            // إدراج المستند بـ SQL خام بالأعمدة الموجودة في القاعدة القديمة فقط،
+            // لأن نموذج EF الحالي يحمل أعمدة وضع «منفذ عليه» غير الموجودة في هذا السكيمة.
+            await db.Database.ExecuteSqlRawAsync(
+                "INSERT INTO \"Documents\" (\"CreatedAt\", \"UpdatedAt\", \"CreatedById\", \"IsDraft\", \"DocumentType\", \"AmountNumeric\", \"Amount2Numeric\", \"InclusionAmountNumeric\", \"ViewCount\", \"PrintCount\") VALUES ({0}, {0}, {1}, {2}, {3}, 0, 0, 0, 0, 0)",
+                DateTime.UtcNow, 1, true, "بيان");
+            var docId = await db.Documents.Select(d => d.Id).MaxAsync();
+            await db.Database.ExecuteSqlRawAsync(
+                "INSERT INTO \"RealEstates\" (\"DocumentId\", \"Owner\", \"Property\", \"PropertyNumber\", \"PropertyDistrict\", \"LandRegistry\", \"ShareType\") VALUES ({0}, {1}, {2}, NULL, NULL, NULL, NULL)",
+                docId, "أحمد محمد خالد", "منزل");
+
+            // تطبيق مهاجرة AddRealEstateOwners: يجب ترحيل قيمة Owner إلى جدول الملاك.
+            await db.Database.MigrateAsync();
+
+            var migrated = await db.RealEstates.Include(r => r.Owners).SingleAsync();
+            var owner = Assert.Single(migrated.Owners);
+            Assert.Equal("أحمد محمد خالد", owner.Name);
+            Assert.Equal(0, owner.Order);
         }
         finally
         {

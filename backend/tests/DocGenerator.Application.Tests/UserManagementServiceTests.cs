@@ -181,4 +181,70 @@ public class UserManagementServiceTests : IDisposable
 
         Assert.Null(result);
     }
+
+    [Fact]
+    public async Task CreateLawyer_SameNameDifferentBranch_Allowed()
+    {
+        await AddUserAsync("محمد احمد علي", "محمد أحمد علي", UserRole.Lawyer, DamascusId);
+
+        var lawyer = await _service.CreateLawyerAsync(AleppoId,
+            new CreateLawyerRequest("محمد أحمد علي", "محمد أحمد علي", "123456"), "admin");
+
+        Assert.Equal("محمد احمد علي", lawyer.Username);
+        Assert.Equal(AleppoId, lawyer.BranchId);
+    }
+
+    [Fact]
+    public async Task CreateLawyer_ArabicNameWithSpaces_AcceptedAndNormalized()
+    {
+        var lawyer = await _service.CreateLawyerAsync(DamascusId,
+            new CreateLawyerRequest("محمد أحمد علي", "محمد أحمد علي", "123456"), "head1");
+
+        // تُخزَّن النسخة المطبّعة (أ/إ/آ → ا) لتكون معياراً موحداً للدخول والتفرد.
+        Assert.Equal("محمد احمد علي", lawyer.Username);
+        Assert.Equal("محمد أحمد علي", lawyer.FullName);
+    }
+
+    [Fact]
+    public async Task CreateLawyer_EquivalentArabicSpelling_SameBranch_Throws()
+    {
+        await _service.CreateLawyerAsync(DamascusId,
+            new CreateLawyerRequest("محمد أحمد علي", "محمد أحمد علي", "123456"), "head1");
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateLawyerAsync(DamascusId,
+                new CreateLawyerRequest("محمد احمد علي", "محمد أحمد علي", "123456"), "head1"));
+
+        Assert.Contains("نفس الفرع", ex.Message);
+    }
+
+    [Fact]
+    public async Task CreateUser_SameNameSameBranch_Throws()
+    {
+        await _service.CreateUserAsync(
+            new CreateUserRequest("خالد حسن", "خالد حسن", "head", DamascusId, "123456"), "admin");
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateUserAsync(
+                new CreateUserRequest("خالد حسن", "خالد حسن", "lawyer", DamascusId, "123456"), "admin"));
+    }
+
+    [Fact]
+    public async Task UpdateUser_Rename_SyncsUsernameAndBlocksDuplicates()
+    {
+        var user = await AddUserAsync("قاسم علي", "قاسم علي", UserRole.Lawyer, DamascusId);
+        await _service.CreateLawyerAsync(DamascusId,
+            new CreateLawyerRequest("مروان سعيد", "مروان سعيد", "123456"), "head1");
+
+        // تغيير الاسم يحدّث اسم الدخول ليبقى مساوياً للاسم الثلاثي.
+        var renamed = await _service.UpdateUserAsync(
+            user.Id, new UpdateUserRequest("قاسم علي محمد", "lawyer", DamascusId, true, null), 999, "admin");
+        Assert.NotNull(renamed);
+        Assert.Equal("قاسم علي محمد", renamed.Username);
+
+        // اسم مطابق لمستخدم آخر في نفس الفرع مرفوض.
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateUserAsync(
+                user.Id, new UpdateUserRequest("مروان سعيد", "lawyer", DamascusId, true, null), 999, "admin"));
+    }
 }

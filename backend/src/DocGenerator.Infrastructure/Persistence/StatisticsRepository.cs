@@ -71,12 +71,17 @@ public class StatisticsRepository : IStatisticsRepository
 
     public async Task<List<MonthlyStatDto>> GetMonthlyStatsAsync(int? branchId, CancellationToken ct = default)
     {
-        return await _db.Documents.AsNoTracking()
+        // شهر الملف هو تاريخ قيده؛ وإن لم يُقيد بعد (تحت رفع) فيُحسب بشهر إدخاله.
+        var dates = await _db.Documents.AsNoTracking()
             .Where(d => branchId == null || d.BranchId == branchId)
-            .GroupBy(d => new { d.CreatedAt.Year, d.CreatedAt.Month })
-            .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Month)
-            .Select(g => new MonthlyStatDto(g.Key.Year, g.Key.Month, g.Count()))
+            .Select(d => new
+            {
+                RegDate = d.RegistrationDate != null ? d.RegistrationDate.Date : null,
+                d.CreatedAt,
+            })
             .ToListAsync(ct);
+
+        return GroupMonths(dates.Select(x => TryParseActionDate(x.RegDate) ?? x.CreatedAt.Date));
     }
 
     public async Task<List<BranchSummaryDto>> GetBranchesSummaryAsync(CancellationToken ct = default)
@@ -142,21 +147,81 @@ public class StatisticsRepository : IStatisticsRepository
             .ToList();
     }
 
-    public async Task<ManagerStatsDto> GetManagerStatsAsync(StatsPeriod period, int? branchId, CancellationToken ct = default)
+    /// <summary>صف خام لإحصاءات المدير/المحامي؛ تاريخ القيد نصّي في DB لذا RegDate من نوع string.</summary>
+    private sealed class ManagerStatRow
     {
-        var window = GetPeriodWindow(period);
+        public bool IsDraft { get; set; }
+        public string? ExecStatus { get; set; }
+        public string? ExecSubStatus { get; set; }
+        public string? GeneralEntitySide { get; set; }
+        public string? ExecutedStatus { get; set; }
+        public decimal AmountNumeric { get; set; }
+        public decimal Amount2Numeric { get; set; }
+        public decimal? CollectedAmount { get; set; }
+        public decimal? ExecutedRequiredAmount { get; set; }
+        public decimal? ExecutedPaidAmount { get; set; }
+        public DateTime? FileReceiptDate { get; set; }
+        public string? RegDate { get; set; }
+        public DateTime CreatedAt { get; set; }
+    }
+
+    public async Task<ManagerStatsDto> GetManagerStatsAsync(StatsPeriod period, int? branchId,
+        int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default)
+    {
+        var window = GetPeriodWindow(period, year, month, quarter);
         var rows = await _db.Documents.AsNoTracking()
             .Where(d => branchId == null || d.BranchId == branchId)
-            .Select(d => new
+            .Select(d => new ManagerStatRow
             {
-                d.IsDraft,
-                d.ExecStatus,
-                d.ExecSubStatus,
-                d.CollectedAmount,
+                IsDraft = d.IsDraft,
+                ExecStatus = d.ExecStatus,
+                ExecSubStatus = d.ExecSubStatus,
+                GeneralEntitySide = d.GeneralEntitySide,
+                ExecutedStatus = d.ExecutedStatus,
+                AmountNumeric = d.AmountNumeric,
+                Amount2Numeric = d.Amount2Numeric,
+                CollectedAmount = d.CollectedAmount,
+                ExecutedRequiredAmount = d.ExecutedRequiredAmount,
+                ExecutedPaidAmount = d.ExecutedPaidAmount,
+                FileReceiptDate = d.FileReceiptDate,
                 RegDate = d.RegistrationDate != null ? d.RegistrationDate.Date : null,
+                CreatedAt = d.CreatedAt,
             })
             .ToListAsync(ct);
 
+        return AggregateManagerStats(rows, period, window);
+    }
+
+    public async Task<ManagerStatsDto> GetPersonalStatsAsync(StatsPeriod period, int userId,
+        int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default)
+    {
+        var window = GetPeriodWindow(period, year, month, quarter);
+        var rows = await _db.Documents.AsNoTracking()
+            .Where(d => d.CreatedById == userId)
+            .Select(d => new ManagerStatRow
+            {
+                IsDraft = d.IsDraft,
+                ExecStatus = d.ExecStatus,
+                ExecSubStatus = d.ExecSubStatus,
+                GeneralEntitySide = d.GeneralEntitySide,
+                ExecutedStatus = d.ExecutedStatus,
+                AmountNumeric = d.AmountNumeric,
+                Amount2Numeric = d.Amount2Numeric,
+                CollectedAmount = d.CollectedAmount,
+                ExecutedRequiredAmount = d.ExecutedRequiredAmount,
+                ExecutedPaidAmount = d.ExecutedPaidAmount,
+                FileReceiptDate = d.FileReceiptDate,
+                RegDate = d.RegistrationDate != null ? d.RegistrationDate.Date : null,
+                CreatedAt = d.CreatedAt,
+            })
+            .ToListAsync(ct);
+
+        return AggregateManagerStats(rows, period, window);
+    }
+
+    private static ManagerStatsDto AggregateManagerStats(
+        List<ManagerStatRow> rows, StatsPeriod period, (DateTime Start, DateTime End) window)
+    {
         var active = 0;
         var drafts = 0;
         var deferred = 0;
@@ -164,11 +229,47 @@ public class StatisticsRepository : IStatisticsRepository
         decimal settledCollected = 0;
         var forcibleCount = 0;
         decimal forcibleCollected = 0;
+        var tradingAgainstCount = 0;
+        decimal tradingAgainstAmount = 0;
+        var executedAgainstCount = 0;
+        decimal executedAgainstAmount = 0;
+        decimal activeAmount = 0;
+        decimal draftsAmount = 0;
+        decimal deferredAmount = 0;
+        decimal activeAmount2 = 0;
+        decimal draftsAmount2 = 0;
+        decimal deferredAmount2 = 0;
 
         foreach (var r in rows)
         {
-            var regDate = TryParseActionDate(r.RegDate);
-            if (regDate is null || regDate.Value < window.Start || regDate.Value >= window.End)
+            // ملف «الجهة العامة منفذ عليها»: يُحتسب في بطاقة «متداول للضد» (المتداول فقط)
+            // أو «منفذ للضد» (المنفذ فقط)، والمشطوب مستبعد من الاثنتين، وفترة الملف
+            // من تاريخ وروده لا من تاريخ قيده (المقيد من الخصم لا من محامي الدولة).
+            if (r.GeneralEntitySide == GeneralEntitySideCatalog.Executed)
+            {
+                if (r.ExecutedStatus == ExecutedStatusCatalog.StruckOff)
+                    continue;
+
+                var executedPeriodDate = r.FileReceiptDate?.Date ?? r.CreatedAt.Date;
+                if (executedPeriodDate < window.Start || executedPeriodDate >= window.End)
+                    continue;
+
+                if (r.ExecutedStatus == ExecutedStatusCatalog.Executed)
+                {
+                    executedAgainstCount++;
+                    executedAgainstAmount += r.ExecutedPaidAmount ?? 0;
+                }
+                else
+                {
+                    tradingAgainstCount++;
+                    tradingAgainstAmount += r.ExecutedRequiredAmount ?? 0;
+                }
+                continue;
+            }
+
+            // فترة الملف: تاريخ قيده، وإن لم يُقيد بعد (تحت رفع) فشهر إدخاله.
+            var periodDate = TryParseActionDate(r.RegDate) ?? r.CreatedAt.Date;
+            if (periodDate < window.Start || periodDate >= window.End)
                 continue;
 
             if (r.ExecStatus == ExecutionStatusCatalog.ExecutedBySettlement)
@@ -185,19 +286,27 @@ public class StatisticsRepository : IStatisticsRepository
             else if (r.IsDraft && string.IsNullOrEmpty(r.ExecStatus))
             {
                 drafts++;
+                draftsAmount += r.AmountNumeric;
+                draftsAmount2 += r.Amount2Numeric;
             }
             else if (r.ExecStatus == ExecutionStatusCatalog.Deferred)
             {
                 deferred++;
+                deferredAmount += r.AmountNumeric;
+                deferredAmount2 += r.Amount2Numeric;
             }
             else if (r.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
                 && r.ExecSubStatus == ExecutionStatusCatalog.SubPartiallyExecuted)
             {
                 active++;
+                activeAmount += r.AmountNumeric;
+                activeAmount2 += r.Amount2Numeric;
             }
             else if (string.IsNullOrEmpty(r.ExecStatus) && !r.IsDraft)
             {
                 active++;
+                activeAmount += r.AmountNumeric;
+                activeAmount2 += r.Amount2Numeric;
             }
         }
 
@@ -206,24 +315,38 @@ public class StatisticsRepository : IStatisticsRepository
             Active: active,
             Drafts: drafts,
             Deferred: deferred,
+            TotalAmount: activeAmount + draftsAmount + deferredAmount,
+            ActiveAmount: activeAmount,
+            DraftsAmount: draftsAmount,
+            DeferredAmount: deferredAmount,
+            TotalAmount2: activeAmount2 + draftsAmount2 + deferredAmount2,
+            ActiveAmount2: activeAmount2,
+            DraftsAmount2: draftsAmount2,
+            DeferredAmount2: deferredAmount2,
             SettledCount: settledCount,
             SettledCollected: settledCollected,
             ForcibleCount: forcibleCount,
             ForcibleCollected: forcibleCollected,
+            TradingAgainstCount: tradingAgainstCount,
+            TradingAgainstAmount: tradingAgainstAmount,
+            ExecutedAgainstCount: executedAgainstCount,
+            ExecutedAgainstAmount: executedAgainstAmount,
             PeriodYear: window.Start.Year,
             PeriodQuarter: period == StatsPeriod.Quarterly ? (window.Start.Month - 1) / 3 + 1 : null,
             PeriodMonth: period == StatsPeriod.Monthly ? window.Start.Month : null);
     }
 
-    public async Task<List<ManagerLawyerStatDto>> GetManagerLawyerStatsAsync(StatsPeriod period, int branchId, CancellationToken ct = default)
+    public async Task<List<ManagerLawyerStatDto>> GetManagerLawyerStatsAsync(StatsPeriod period, int branchId,
+        int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default)
     {
-        var window = GetPeriodWindow(period);
+        var window = GetPeriodWindow(period, year, month, quarter);
         var rows = await _db.Documents.AsNoTracking()
             .Where(d => d.BranchId == branchId)
             .Select(d => new
             {
                 d.CreatedById,
                 RegDate = d.RegistrationDate != null ? d.RegistrationDate.Date : null,
+                CreatedAt = d.CreatedAt,
             })
             .ToListAsync(ct);
 
@@ -235,11 +358,12 @@ public class StatisticsRepository : IStatisticsRepository
         var counts = new Dictionary<int, Dictionary<(int Year, int Month), int>>();
         foreach (var r in rows)
         {
-            var regDate = TryParseActionDate(r.RegDate);
-            if (regDate is null || regDate.Value < window.Start || regDate.Value >= window.End)
+            // فترة الملف: تاريخ قيده، وإن لم يُقيد بعد (تحت رفع) فشهر إدخاله.
+            var periodDate = TryParseActionDate(r.RegDate) ?? r.CreatedAt.Date;
+            if (periodDate < window.Start || periodDate >= window.End)
                 continue;
 
-            var key = (regDate.Value.Year, regDate.Value.Month);
+            var key = (periodDate.Year, periodDate.Month);
             if (!counts.TryGetValue(r.CreatedById, out var months))
             {
                 months = new Dictionary<(int, int), int>();
@@ -274,10 +398,47 @@ public class StatisticsRepository : IStatisticsRepository
     }
 
     /// <summary>
-    /// نطاق الفترة الحالية: شهري = الشهر الحالي، ربعي = الربع الحالي، عام = السنة الحالية.
-    /// النطاق نصف مفتوح [Start, End).
+    /// الأشهر المتاحة (تاريخ القيد، وإن لم يُقيد بعد فشهر الإدخال) ضمن نطاق الفرع/المستخدم،
+    /// لتغذية منتقي الفترة المحددة في الواجهة.
     /// </summary>
-    private static (DateTime Start, DateTime End) GetPeriodWindow(StatsPeriod period)
+    public async Task<List<MonthlyStatDto>> GetAvailablePeriodsAsync(int? branchId, int? userId, CancellationToken ct = default)
+    {
+        var dates = await _db.Documents.AsNoTracking()
+            .Where(d => branchId == null || d.BranchId == branchId)
+            .Where(d => userId == null || d.CreatedById == userId)
+            .Select(d => new
+            {
+                RegDate = d.RegistrationDate != null ? d.RegistrationDate.Date : null,
+                d.CreatedAt,
+            })
+            .ToListAsync(ct);
+
+        return GroupMonths(dates.Select(x => TryParseActionDate(x.RegDate) ?? x.CreatedAt.Date));
+    }
+
+    private static List<MonthlyStatDto> GroupMonths(IEnumerable<DateTime> dates)
+    {
+        var counts = new Dictionary<(int Year, int Month), int>();
+        foreach (var date in dates)
+        {
+            var key = (date.Year, date.Month);
+            counts[key] = counts.TryGetValue(key, out var c) ? c + 1 : 1;
+        }
+
+        return counts
+            .OrderBy(k => k.Key.Year)
+            .ThenBy(k => k.Key.Month)
+            .Select(k => new MonthlyStatDto(k.Key.Year, k.Key.Month, k.Value))
+            .ToList();
+    }
+
+    /// <summary>
+    /// نطاق الفترة: شهري = شهر محدد (افتراضيًا الحالي)، ربعي = ربع محدد (افتراضيًا الحالي)،
+    /// عام = سنة محددة (افتراضيًا الحالية). النطاق نصف مفتوح [Start, End).
+    /// year/month/quarter تُتحقق من صحة قيمها في المتحكم قبل الوصول إلى هنا.
+    /// </summary>
+    private static (DateTime Start, DateTime End) GetPeriodWindow(StatsPeriod period,
+        int? year = null, int? month = null, int? quarter = null)
     {
         var now = DateTime.Now;
         var months = period switch
@@ -286,21 +447,23 @@ public class StatisticsRepository : IStatisticsRepository
             StatsPeriod.Quarterly => 3,
             _ => 12,
         };
-        var start = period switch
+        var startYear = year ?? now.Year;
+        var startMonth = period switch
         {
-            StatsPeriod.Monthly => new DateTime(now.Year, now.Month, 1),
-            StatsPeriod.Quarterly => new DateTime(now.Year, ((now.Month - 1) / 3) * 3 + 1, 1),
-            _ => new DateTime(now.Year, 1, 1),
+            StatsPeriod.Monthly => month ?? now.Month,
+            StatsPeriod.Quarterly when quarter is >= 1 and <= 4 => (quarter!.Value - 1) * 3 + 1,
+            StatsPeriod.Quarterly => ((now.Month - 1) / 3) * 3 + 1,
+            _ => 1,
         };
+        var start = new DateTime(startYear, startMonth, 1);
         return (start, start.AddMonths(months));
     }
 
-    public async Task<List<ReminderDto>> GetRemindersAsync(int? branchId, int? userId, CancellationToken ct = default)
+    public async Task<List<ReminderDto>> GetRemindersAsync(int userId, CancellationToken ct = default)
     {
         var rows = await _db.ExecutionActions.AsNoTracking()
             .Where(a => a.ReminderDuration != null || a.ReminderColor != null)
-            .Where(a => branchId == null || a.Document.BranchId == branchId)
-            .Where(a => userId == null || a.Document.CreatedById == userId)
+            .Where(a => a.Document.CreatedById == userId)
             .Select(a => new
             {
                 a.Id,

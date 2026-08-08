@@ -9,5 +9,6 @@ public interface IWordDocumentGenerator
         string templateCode,
         int recipient = 0,
         int[]? estateIds = null,
+        int heirId = 0,
         CancellationToken ct = default);
 }

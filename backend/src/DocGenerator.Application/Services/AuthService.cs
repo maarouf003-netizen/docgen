@@ -39,9 +39,43 @@ public sealed class AuthService : IAuthService
     public async Task<LoginResult> LoginAsync(LoginRequest request, CancellationToken ct = default)
     {
         var username = request.Username.Trim();
-        var user = await _users.FindByUsernameAsync(username, ct);
+        var matches = await _users.FindByUsernameAllAsync(username, ct);
+        var candidates = matches.Where(m => m.IsActive).ToList();
 
-        if (user is null || !user.IsActive)
+        User? user;
+        if (candidates.Count == 1)
+        {
+            user = candidates[0];
+        }
+        else if (candidates.Count > 1)
+        {
+            if (request.BranchId.HasValue)
+            {
+                // 0 يُرسل عند اختيار الحساب الذي لا يتبع فرعاً؛ والقيمة الموجبة تطابق معرّف الفرع.
+                user = request.BranchId == 0
+                    ? candidates.FirstOrDefault(m => m.BranchId is null)
+                    : candidates.FirstOrDefault(m => m.BranchId == request.BranchId);
+            }
+            else
+            {
+                // القرار المتعمّد: اختيار الفرع يسبق التحقق من كلمة المرور، لأن كلمة المرور
+                // لا يمكن التحقق منها قبل معرفة الحساب المقصود. بهذا لا يُكشَف أي شيء عن صحة
+                // كلمة المرور في هذه المرحلة (المحاولة الخاطئة تمرّ بمرحلة الاختيار ثم تفشل)،
+                // والاسم الثلاثي نفسه معلن أصلاً في الملفات، لذا كشف وجود حسابات به ضمن فروع
+                // مختلفة غير مؤثر أمنياً. التخمين الفعلي لكلمة المرور يبقى مقيداً بمحدد المحاولات
+                // وبقفل الحساب بمجرد اختيار الفرع.
+                var branches = candidates
+                    .Select(m => new LoginBranchChoiceDto(m.BranchId, m.Branch?.Name))
+                    .ToList();
+                return new LoginResult(LoginStatus.BranchSelectionRequired, null, branches);
+            }
+        }
+        else
+        {
+            user = null;
+        }
+
+        if (user is null)
         {
             await _audit.LogAsync(username, "login_failed", details: "محاولة دخول فاشلة", ct: ct);
             return new LoginResult(LoginStatus.InvalidCredentials, null);

@@ -82,8 +82,7 @@ describe('UsersManagement', () => {
     render(<UsersManagement />);
 
     await user.click(await screen.findByRole('button', { name: '+ إضافة مستخدم' }));
-    await user.type(screen.getByPlaceholderText('اسم المستخدم الكامل...'), 'رئيس جديد');
-    await user.type(screen.getByPlaceholderText('بدون مسافات...'), 'new_head');
+    await user.type(screen.getByPlaceholderText('مثال: محمد أحمد علي'), 'رئيس جديد');
     await user.selectOptions(screen.getByLabelText('الدور'), 'head');
     await user.selectOptions(screen.getByLabelText('الفرع'), '1');
     await user.type(screen.getByLabelText(/كلمة المرور/), '123456');
@@ -91,7 +90,7 @@ describe('UsersManagement', () => {
 
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith('/users', {
-        username: 'new_head',
+        username: 'رئيس جديد',
         fullName: 'رئيس جديد',
         role: 'head',
         branchId: 1,
@@ -105,8 +104,7 @@ describe('UsersManagement', () => {
     render(<UsersManagement />);
 
     await user.click(await screen.findByRole('button', { name: '+ إضافة مستخدم' }));
-    await user.type(screen.getByPlaceholderText('اسم المستخدم الكامل...'), 'رئيس جديد');
-    await user.type(screen.getByPlaceholderText('بدون مسافات...'), 'new_head');
+    await user.type(screen.getByPlaceholderText('مثال: محمد أحمد علي'), 'رئيس جديد');
     await user.selectOptions(screen.getByLabelText('الدور'), 'head');
     await user.selectOptions(screen.getByLabelText('الفرع'), '');
     await user.type(screen.getByLabelText(/كلمة المرور/), '123456');
@@ -123,8 +121,8 @@ describe('UsersManagement', () => {
     await user.click(await screen.findByRole('button', { name: 'تعديل' }));
     expect(screen.getByRole('dialog', { name: 'تعديل مستخدم' })).toBeInTheDocument();
 
-    await user.clear(screen.getByLabelText('الاسم الكامل'));
-    await user.type(screen.getByLabelText('الاسم الكامل'), 'محامي معدل');
+    await user.clear(screen.getByLabelText(/الاسم الثلاثي/));
+    await user.type(screen.getByLabelText(/الاسم الثلاثي/), 'محامي معدل');
     await user.type(screen.getByLabelText(/كلمة مرور جديدة/), '654321');
     await user.click(screen.getByRole('button', { name: 'حفظ التعديل' }));
 

@@ -10,18 +10,97 @@ public class ManagerStatsIntegrationTests : IClassFixture<ApiFactory>
 
     public ManagerStatsIntegrationTests(ApiFactory factory) => _factory = factory;
 
-    [Theory]
-    [InlineData("head1")]
-    [InlineData("lawyer1")]
-    public async Task ManagerStats_Endpoints_ForbiddenForNonManagerRoles(string username)
+    [Fact]
+    public async Task ManagerStats_Endpoints_ForbiddenForLawyer()
     {
-        var client = _factory.AuthorizedClient(username);
+        var client = _factory.AuthorizedClient("lawyer1");
 
         var stats = await client.GetAsync("/api/stats/manager?period=monthly");
         Assert.Equal(HttpStatusCode.Forbidden, stats.StatusCode);
 
         var lawyers = await client.GetAsync("/api/stats/manager/lawyers?period=monthly&branchId=1");
         Assert.Equal(HttpStatusCode.Forbidden, lawyers.StatusCode);
+    }
+
+    [Fact]
+    public async Task ManagerStats_Head_SeesOwnBranchStatsAndLawyers()
+    {
+        var head = _factory.AuthorizedClient("head1");
+
+        var statsResponse = await head.GetAsync("/api/stats/manager?period=monthly");
+        statsResponse.EnsureSuccessStatusCode();
+        var stats = await statsResponse.Content.ReadFromJsonAsync<ManagerStatsDto>();
+        Assert.NotNull(stats);
+
+        // دون تمرير branchId: يُحتسب رئيس القسم على فرعه تلقائيًا.
+        var lawyersResponse = await head.GetAsync("/api/stats/manager/lawyers?period=monthly");
+        lawyersResponse.EnsureSuccessStatusCode();
+        var lawyers = await lawyersResponse.Content.ReadFromJsonAsync<List<ManagerLawyerStatDto>>();
+        Assert.NotNull(lawyers);
+    }
+
+    [Fact]
+    public async Task ManagerStats_SpecificMonth_ReturnsSelectedPeriod()
+    {
+        var manager = _factory.AuthorizedClient("manager");
+        var response = await manager.GetAsync("/api/stats/manager?period=monthly&year=2026&month=5");
+        response.EnsureSuccessStatusCode();
+        var stats = await response.Content.ReadFromJsonAsync<ManagerStatsDto>();
+
+        Assert.NotNull(stats);
+        Assert.Equal(2026, stats.PeriodYear);
+        Assert.Equal(5, stats.PeriodMonth);
+        Assert.Null(stats.PeriodQuarter);
+    }
+
+    [Fact]
+    public async Task ManagerStats_SpecificQuarter_ReturnsSelectedQuarter()
+    {
+        var manager = _factory.AuthorizedClient("manager");
+        var response = await manager.GetAsync("/api/stats/manager?period=quarterly&year=2026&quarter=2");
+        response.EnsureSuccessStatusCode();
+        var stats = await response.Content.ReadFromJsonAsync<ManagerStatsDto>();
+
+        Assert.NotNull(stats);
+        Assert.Equal(2026, stats.PeriodYear);
+        Assert.Equal(2, stats.PeriodQuarter);
+        Assert.Null(stats.PeriodMonth);
+    }
+
+    [Fact]
+    public async Task ManagerStats_InvalidPeriodParams_ReturnBadRequest()
+    {
+        var manager = _factory.AuthorizedClient("manager");
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await manager.GetAsync("/api/stats/manager?period=monthly&year=1800")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await manager.GetAsync("/api/stats/manager?period=monthly&month=13")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await manager.GetAsync("/api/stats/manager?period=quarterly&quarter=5")).StatusCode);
+    }
+
+    [Fact]
+    public async Task PersonalStats_Lawyer_SeesOwnStatsForSelectedPeriod()
+    {
+        var lawyer = _factory.AuthorizedClient("lawyer1");
+        var response = await lawyer.GetAsync("/api/stats/me?period=monthly&year=2026&month=5");
+        response.EnsureSuccessStatusCode();
+        var stats = await response.Content.ReadFromJsonAsync<ManagerStatsDto>();
+
+        Assert.NotNull(stats);
+        Assert.Equal(2026, stats.PeriodYear);
+        Assert.Equal(5, stats.PeriodMonth);
+    }
+
+    [Fact]
+    public async Task AvailablePeriods_ReturnsMonthsWithRegisteredFiles()
+    {
+        var manager = _factory.AuthorizedClient("manager");
+        var response = await manager.GetAsync("/api/stats/periods");
+        response.EnsureSuccessStatusCode();
+        var periods = await response.Content.ReadFromJsonAsync<List<MonthlyStatDto>>();
+
+        Assert.NotNull(periods);
+        Assert.All(periods, p => Assert.True(p.Count >= 1));
+        Assert.Equal(periods.OrderBy(p => p.Year).ThenBy(p => p.Month), periods);
     }
 
     [Fact]

@@ -56,6 +56,28 @@ public class AuditIntegrationTests : IClassFixture<ApiFactory>
 
         body.Dispose();
     }
+
+    [Fact]
+    public async Task AuditLogs_CreateEvent_MentionsActorFullName()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        await _factory.CreateDocumentAsync(token, "مقترض تدقيق", borrowerFamily: "الخطيب");
+
+        var manager = _factory.AuthorizedClient("manager");
+        var response = await manager.GetAsync("/api/audit-logs?userName=lawyer1&perPage=50");
+        var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var items = body!.RootElement.GetProperty("items");
+
+        var create = items.EnumerateArray()
+            .FirstOrDefault(e => e.GetProperty("actionType").GetString() == "create");
+        Assert.NotEqual(default, create);
+        var details = create.GetProperty("details").GetString() ?? string.Empty;
+        Assert.Contains("المنفذ عليه", details);
+        Assert.Contains("مقترض تدقيق", details);
+        Assert.Contains("الخطيب", details);
+
+        body.Dispose();
+    }
 }
 
 public class StatisticsIntegrationTests : IClassFixture<ApiFactory>
@@ -92,5 +114,26 @@ public class StatisticsIntegrationTests : IClassFixture<ApiFactory>
         var response = await client.GetAsync("/api/users/activity");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Reminders_ForLawyer_Ok()
+    {
+        var client = _factory.AuthorizedClient("lawyer1");
+        var response = await client.GetAsync("/api/reminders");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("head1")]
+    [InlineData("manager")]
+    [InlineData("admin")]
+    public async Task Reminders_ForNonLawyer_Forbidden(string username)
+    {
+        var client = _factory.AuthorizedClient(username);
+        var response = await client.GetAsync("/api/reminders");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 }

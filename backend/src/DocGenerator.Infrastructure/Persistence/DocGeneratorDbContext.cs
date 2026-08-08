@@ -15,10 +15,19 @@ public class DocGeneratorDbContext : DbContext
     public DbSet<Document> Documents => Set<Document>();
     public DbSet<Guarantor> Guarantors => Set<Guarantor>();
     public DbSet<RealEstate> RealEstates => Set<RealEstate>();
+    public DbSet<RealEstateOwner> RealEstateOwners => Set<RealEstateOwner>();
+    public DbSet<Heir> Heirs => Set<Heir>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<ExecutionAction> ExecutionActions => Set<ExecutionAction>();
+    public DbSet<DocumentBaseNumber> BaseNumbers => Set<DocumentBaseNumber>();
     public DbSet<LoginAttempt> LoginAttempts => Set<LoginAttempt>();
     public DbSet<DocumentRegistrationDate> DocumentRegistrationDates => Set<DocumentRegistrationDate>();
+    public DbSet<HeadAlert> HeadAlerts => Set<HeadAlert>();
+    public DbSet<HeadAlertRecipient> HeadAlertRecipients => Set<HeadAlertRecipient>();
+    public DbSet<ExecutionApplicant> ExecutionApplicants => Set<ExecutionApplicant>();
+    public DbSet<ExecutedPublicEntity> ExecutedPublicEntities => Set<ExecutedPublicEntity>();
+    public DbSet<ExecutedNaturalPerson> ExecutedNaturalPersons => Set<ExecutedNaturalPerson>();
+    public DbSet<ExecutedHeir> ExecutedHeirs => Set<ExecutedHeir>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -114,6 +114,13 @@ var app = builder.Build();
 
 app.UseExceptionHandler();
 
+// توزيع من أصل واحد: الخلفية تخدم الواجهة المبنية (wwwroot) بنفس الأصل فيغني عن CORS في الإنتاج.
+if (!builder.Environment.IsDevelopment())
+{
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
+}
+
 using (var scope = app.Services.CreateScope())
 {
     var initializer = scope.ServiceProvider.GetRequiredService<IDatabaseInitializer>();
@@ -134,6 +141,12 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// كل مسارات SPA غير المعروفة تعود إلى index.html (تُستخدم مع خدمة الملفات الثابتة أعلاه).
+if (!builder.Environment.IsDevelopment())
+{
+    app.MapFallbackToFile("index.html");
+}
 
 app.Run();
 

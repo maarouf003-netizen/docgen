@@ -19,6 +19,13 @@ public class FakeAuditLogger : IAuditLogger
         Actions.Add(actionType);
         return Task.CompletedTask;
     }
+
+    public Task LogManyAsync(IReadOnlyList<AuditLogEntry> entries, CancellationToken ct = default)
+    {
+        foreach (var entry in entries)
+            Actions.Add(entry.ActionType);
+        return Task.CompletedTask;
+    }
 }
 
 public class DocumentServiceTests : IDisposable
@@ -45,10 +52,11 @@ public class DocumentServiceTests : IDisposable
         var guarantors = new Repository<Guarantor>(_db);
         var estates = new Repository<RealEstate>(_db);
         var actions = new Repository<ExecutionAction>(_db);
+        var baseNumbers = new Repository<DocumentBaseNumber>(_db);
         var registrationDates = new Repository<DocumentRegistrationDate>(_db);
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
-        _service = new DocumentService(documents, users, guarantors, estates, actions, registrationDates, uow, tx, _audit);
+        _service = new DocumentService(documents, users, guarantors, estates, actions, baseNumbers, registrationDates, uow, tx, _audit);
     }
 
     public void Dispose() => _db.Dispose();
@@ -63,16 +71,16 @@ public class DocumentServiceTests : IDisposable
         ContractNumber = "12/2024",
         Court = "دمشق",
         Applicant = "المدعي",
-        Lawyer = "محامي",
         FileNumber = "520",
         FileYear = "2024",
+        FileRegistrationDate = "1/1/2024",
         Guarantors = new()
         {
-            new GuarantorDto(null, 1, "سمير", "حسن", "علي", null, null, null, null, "حلب", "موطن مختار"),
+            new GuarantorDto(null, 1, "سمير", "حسن", "علي", null, null, null, null, "حلب", "موطن مختار", new()),
         },
         RealEstates = new()
         {
-            new RealEstateDto(null, "المدعى عليه", "بيت", "12345", "المزة", "الصالحية", "تمام العقار"),
+            new RealEstateDto(null, new List<string> { "المدعى عليه" }, "بيت", "12345", "المزة", "الصالحية", "تمام العقار"),
         },
     };
 
@@ -124,6 +132,55 @@ public class DocumentServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Create_RegisteredWithoutRegistrationDate_Throws()
+    {
+        var req = Sample();
+        req.FileRegistrationDate = null;
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(req, 1, "lawyer1", 1));
+        Assert.Contains("تاريخ قيد الملف مطلوب", ex.Message);
+    }
+
+    [Fact]
+    public async Task Create_RegisteredWithInvalidRegistrationDate_Throws()
+    {
+        var req = Sample();
+        req.FileRegistrationDate = "ليس تاريخاً";
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(req, 1, "lawyer1", 1));
+        Assert.Contains("غير صالح", ex.Message);
+    }
+
+    [Fact]
+    public async Task Create_DraftWithoutRegistrationDate_IsAllowed()
+    {
+        var req = Sample();
+        req.FileNumber = "";
+        req.FileYear = "";
+        req.FileRegistrationDate = null;
+
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        Assert.True(doc.IsDraft);
+    }
+
+    [Fact]
+    public async Task Update_BecomingRegisteredWithoutRegistrationDate_Throws()
+    {
+        var req = Sample();
+        req.FileNumber = "";
+        req.FileYear = "";
+        var draft = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        Assert.True(draft.IsDraft);
+
+        var update = Sample();
+        update.FileRegistrationDate = null;
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.UpdateAsync(draft.Id, update, "lawyer1"));
+        Assert.Contains("تاريخ قيد الملف مطلوب", ex.Message);
+    }
+
+    [Fact]
     public async Task Search_ByQuery_FiltersResults()
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
@@ -131,7 +188,7 @@ public class DocumentServiceTests : IDisposable
         req2.BorrowerName = "سعاد";
         await _service.CreateAsync(req2, 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync("أحمد", null, null, null, null, null, 1, 20);
+        var result = await _service.SearchAsync("أحمد", null, null, null, null, null, null, 1, 20);
         Assert.Equal(1, result.TotalCount);
         Assert.Equal("أحمد", result.Items[0].BorrowerName);
     }
@@ -141,7 +198,7 @@ public class DocumentServiceTests : IDisposable
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync("سمير", null, null, null, null, null, 1, 20);
+        var result = await _service.SearchAsync("سمير", null, null, null, null, null, null, 1, 20);
         Assert.Equal(1, result.TotalCount);
     }
 
@@ -155,7 +212,7 @@ public class DocumentServiceTests : IDisposable
             await _service.CreateAsync(req, 1, "lawyer1", 1);
         }
 
-        var page = await _service.SearchAsync(null, null, null, null, null, null, 2, 2);
+        var page = await _service.SearchAsync(null, null, null, null, null, null, null, 2, 2);
         Assert.Equal(5, page.TotalCount);
         Assert.Equal(2, page.Items.Count);
     }
@@ -165,7 +222,7 @@ public class DocumentServiceTests : IDisposable
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync("أحمد الخطيب", null, null, null, null, null, 1, 20);
+        var result = await _service.SearchAsync("أحمد الخطيب", null, null, null, null, null, null, 1, 20);
         Assert.Equal(1, result.TotalCount);
     }
 
@@ -174,7 +231,7 @@ public class DocumentServiceTests : IDisposable
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync("أحمد خالد الخطيب", null, null, null, null, null, 1, 20);
+        var result = await _service.SearchAsync("أحمد خالد الخطيب", null, null, null, null, null, null, 1, 20);
         Assert.Equal(1, result.TotalCount);
     }
 
@@ -183,7 +240,7 @@ public class DocumentServiceTests : IDisposable
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync("12/2024", null, null, null, null, null, 1, 20);
+        var result = await _service.SearchAsync("12/2024", null, null, null, null, null, null, 1, 20);
         Assert.Equal(1, result.TotalCount);
     }
 
@@ -192,7 +249,7 @@ public class DocumentServiceTests : IDisposable
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync("دمشق", null, null, null, null, null, 1, 20);
+        var result = await _service.SearchAsync("دمشق", null, null, null, null, null, null, 1, 20);
         Assert.Equal(1, result.TotalCount);
     }
 
@@ -204,7 +261,7 @@ public class DocumentServiceTests : IDisposable
         req2.Applicant = "مدعي آخر";
         await _service.CreateAsync(req2, 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync(null, null, "المدعي", null, null, null, 1, 20);
+        var result = await _service.SearchAsync(null, null, "المدعي", null, null, null, null, 1, 20);
         Assert.Equal(1, result.TotalCount);
     }
 
@@ -216,7 +273,7 @@ public class DocumentServiceTests : IDisposable
         req2.Court = "حلب";
         await _service.CreateAsync(req2, 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync(null, null, null, "حلب", null, null, 1, 20);
+        var result = await _service.SearchAsync(null, null, null, "حلب", null, null, null, 1, 20);
         Assert.Equal(1, result.TotalCount);
     }
 
@@ -224,13 +281,42 @@ public class DocumentServiceTests : IDisposable
     public async Task Search_ByLawyerFilter_FiltersResults()
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        var req2 = Sample();
-        req2.Lawyer = "محامي آخر";
-        await _service.CreateAsync(req2, 1, "lawyer1", 1);
+        _db.Users.Add(new User
+        {
+            Username = "lawyer2",
+            FullName = "محامي آخر",
+            Role = UserRole.Lawyer,
+            BranchId = 1,
+            PasswordHash = new PasswordHasher().Hash("123456"),
+        });
+        await _db.SaveChangesAsync();
+        await _service.CreateAsync(Sample(), 2, "lawyer2", 1);
 
-        var result = await _service.SearchAsync(null, null, null, null, "محامي آخر", null, 1, 20);
+        var result = await _service.SearchAsync(null, null, null, null, "محامي آخر", null, null, 1, 20);
         Assert.Equal(1, result.TotalCount);
         Assert.Equal("محامي آخر", result.Items[0].Lawyer);
+    }
+
+    [Fact]
+    public async Task Create_SetsLawyerFromActorFullName()
+    {
+        var doc = await _service.CreateAsync(Sample(), userId: 1, actorName: "lawyer1", branchId: 1);
+
+        Assert.Equal("محامي", doc.Lawyer);
+    }
+
+    [Fact]
+    public async Task Update_PreservesLawyer()
+    {
+        var created = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        Assert.Equal("محامي", created.Lawyer);
+
+        var req = Sample();
+        req.Notes = "تعديل لاحق على بيانات الملف";
+        var updated = await _service.UpdateAsync(created.Id, req, "lawyer1");
+
+        Assert.NotNull(updated);
+        Assert.Equal("محامي", updated!.Lawyer);
     }
 
     [Fact]
@@ -241,11 +327,11 @@ public class DocumentServiceTests : IDisposable
         req2.Applicant = "مدعي آخر";
         await _service.CreateAsync(req2, 1, "lawyer1", 1);
 
-        var (applicants, courts, lawyers) = await _service.GetFilterOptionsAsync();
-        Assert.Contains("المدعي", applicants);
-        Assert.Contains("مدعي آخر", applicants);
-        Assert.Contains("دمشق", courts);
-        Assert.Contains("محامي", lawyers);
+        var options = await _service.GetFilterOptionsAsync(null, null, null, null, null, null);
+        Assert.Contains("المدعي", options.Applicants);
+        Assert.Contains("مدعي آخر", options.Applicants);
+        Assert.Contains("دمشق", options.Courts);
+        Assert.Contains("محامي", options.Lawyers);
     }
 
     [Fact]
@@ -253,7 +339,7 @@ public class DocumentServiceTests : IDisposable
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync(null, null, null, null, null, null, 1, 20);
+        var result = await _service.SearchAsync(null, null, null, null, null, null, null, 1, 20);
         var doc = Assert.Single(result.Items);
         Assert.Equal("دمشق", doc.AdministrativeBranchName);
     }
@@ -324,6 +410,131 @@ public class DocumentServiceTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => _service.TransferAsync(created.Id, 1, "head1"));
     }
 
+    private async Task<int> AddLawyerInBranch1Async(string username, string fullName, bool isActive = true)
+    {
+        _db.Users.Add(new User
+        {
+            Username = username,
+            FullName = fullName,
+            Role = UserRole.Lawyer,
+            BranchId = 1,
+            IsActive = isActive,
+            PasswordHash = new PasswordHasher().Hash("123456"),
+        });
+        await _db.SaveChangesAsync();
+        return _db.Users.Single(u => u.Username == username).Id;
+    }
+
+    [Fact]
+    public async Task TransferAll_MovesAllFilesOfSourceToTarget()
+    {
+        await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        var req2 = Sample();
+        req2.BorrowerName = "سامي";
+        await _service.CreateAsync(req2, 1, "lawyer1", 1);
+        var targetId = await AddLawyerInBranch1Async("lawyer2", "محامي ثانٍ");
+
+        var transferred = await _service.TransferAllAsync(1, targetId, scopeBranchId: 1, "head1");
+
+        Assert.Equal(2, transferred);
+        var docs = await _db.Documents.AsNoTracking().ToListAsync();
+        Assert.Equal(2, docs.Count);
+        Assert.All(docs, d => Assert.Equal(targetId, d.CreatedById));
+        Assert.All(docs, d => Assert.Equal("محامي ثانٍ", d.Lawyer));
+        Assert.Equal(2, _audit.Actions.Count(a => a == "transfer"));
+    }
+
+    [Fact]
+    public async Task TransferAll_ToLawyerInAnotherBranch_Throws()
+    {
+        await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        _db.Branches.Add(new Branch { Name = "حلب", Code = "ALP" });
+        _db.Users.Add(new User
+        {
+            Username = "lawyer3",
+            FullName = "محامي حلب",
+            Role = UserRole.Lawyer,
+            BranchId = 2,
+            PasswordHash = new PasswordHasher().Hash("123456"),
+        });
+        await _db.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.TransferAllAsync(1, 2, scopeBranchId: 1, "head1"));
+    }
+
+    [Fact]
+    public async Task TransferAll_ToInactiveLawyer_Throws()
+    {
+        await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        await AddLawyerInBranch1Async("lawyer4", "محامي موقوف", isActive: false);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.TransferAllAsync(1, 2, scopeBranchId: 1, "head1"));
+    }
+
+    [Fact]
+    public async Task TransferAll_SourceInAnotherBranch_Throws()
+    {
+        await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        await AddLawyerInBranch1Async("lawyer2", "محامي ثانٍ");
+
+        // نطاق رئيس القسم فرع 2 بينما المحامي المصدر في فرع 1.
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.TransferAllAsync(1, 2, scopeBranchId: 2, "head1"));
+    }
+
+    [Fact]
+    public async Task TransferAll_SourceIsTarget_Throws()
+    {
+        await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.TransferAllAsync(1, 1, scopeBranchId: 1, "head1"));
+    }
+
+    [Fact]
+    public async Task TransferAll_NoFiles_ReturnsZero()
+    {
+        var targetId = await AddLawyerInBranch1Async("lawyer2", "محامي ثانٍ");
+
+        var transferred = await _service.TransferAllAsync(1, targetId, scopeBranchId: 1, "head1");
+
+        Assert.Equal(0, transferred);
+        Assert.DoesNotContain("transfer", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task TransferAll_ExcludesDeletedFiles()
+    {
+        var created = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        await _service.DeleteAsync(created.Id, "lawyer1");
+        var targetId = await AddLawyerInBranch1Async("lawyer2", "محامي ثانٍ");
+
+        var transferred = await _service.TransferAllAsync(1, targetId, scopeBranchId: 1, "head1");
+
+        Assert.Equal(0, transferred);
+        var doc = await _db.Documents.IgnoreQueryFilters().SingleAsync(d => d.Id == created.Id);
+        Assert.Equal(1, doc.CreatedById);
+        Assert.True(doc.IsDeleted);
+    }
+
+    [Fact]
+    public async Task CountFilesByOwner_ReturnsOnlyActiveFiles()
+    {
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        await _service.DeleteAsync(doc.Id, "lawyer1");
+
+        var count = await _service.CountFilesByOwnerAsync(1, scopeBranchId: 1);
+
+        Assert.Equal(1, count);
+    }
+
+    [Fact]
+    public async Task CountFilesByOwner_FromAnotherBranch_Throws()
+    {
+        await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.CountFilesByOwnerAsync(1, scopeBranchId: 2));
+    }
+
     [Fact]
     public async Task Update_ChangesBorrower()
     {
@@ -336,6 +547,177 @@ public class DocumentServiceTests : IDisposable
         Assert.NotNull(updated);
         Assert.Equal("محمود", updated!.BorrowerName);
         Assert.Contains("update", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task Create_WithBorrowerAndGuarantorHeirs_PersistsBoth()
+    {
+        var req = Sample();
+        req.BorrowerHeirs = new List<HeirDto>
+        {
+            new(null, "محمود الحلبي", "عنوان", "المزة"),
+            new(null, "نور الدين", "وكيل", "المحامي سامر"),
+        };
+        req.Guarantors[0] = req.Guarantors[0] with
+        {
+            Heirs = new List<HeirDto>
+            {
+                new(null, "فارس الخالد", null, "حلب الجديدة"),
+            },
+        };
+
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        var reloaded = await _service.GetAsync(doc.Id);
+        Assert.NotNull(reloaded);
+        Assert.Equal(2, reloaded!.BorrowerHeirs.Count);
+        Assert.Contains(reloaded.BorrowerHeirs, h => h.Name == "محمود الحلبي" && h.Address == "المزة" && h.AddressType == "عنوان");
+        Assert.Contains(reloaded.BorrowerHeirs, h => h.Name == "نور الدين" && h.AddressType == "وكيل");
+        var guarantor = Assert.Single(reloaded.Guarantors);
+        var heir = Assert.Single(guarantor.Heirs ?? new List<HeirDto>());
+        Assert.Equal("فارس الخالد", heir.Name);
+        Assert.Equal("حلب الجديدة", heir.Address);
+        Assert.Equal(3, _db.Heirs.Count());
+    }
+
+    [Fact]
+    public async Task Create_IgnoresHeirsWithBlankNames()
+    {
+        var req = Sample();
+        req.BorrowerHeirs = new List<HeirDto>
+        {
+            new(null, "   ", "عنوان", "المزة"),
+            new(null, "أحمد العلي", "وكيل", "وكيل قانوني"),
+        };
+
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        var reloaded = await _service.GetAsync(doc.Id);
+        Assert.NotNull(reloaded);
+        var heir = Assert.Single(reloaded!.BorrowerHeirs);
+        Assert.Equal("أحمد العلي", heir.Name);
+        Assert.Equal(1, _db.Heirs.Count());
+    }
+
+    [Fact]
+    public async Task Update_ReplacesHeirsAndNormalizesAddressType()
+    {
+        var req = Sample();
+        req.BorrowerHeirs = new List<HeirDto> { new(null, "الوريث الأول", "عنوان", "المزة") };
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        var update = Sample();
+        update.BorrowerHeirs = new List<HeirDto>
+        {
+            new(null, "الوريث الجديد", "", null),
+            new(null, "الممثل", "غريب", "وكيل فريد"),
+        };
+
+        var updated = await _service.UpdateAsync(doc.Id, update, "lawyer1");
+
+        Assert.NotNull(updated);
+        Assert.Equal(2, updated!.BorrowerHeirs.Count);
+        Assert.All(updated.BorrowerHeirs, h => Assert.Equal("عنوان", h.AddressType));
+        Assert.DoesNotContain(updated.BorrowerHeirs, h => h.Name == "الوريث الأول");
+        Assert.Equal(2, _db.Heirs.Count());
+    }
+
+    [Fact]
+    public async Task Create_PersistsMultipleOwnersInSelectionOrder()
+    {
+        var req = Sample();
+        req.RealEstates[0] = req.RealEstates[0] with
+        {
+            Owners = new List<string> { "سمير حسن علي", "أحمد خالد الخطيب" },
+        };
+
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        var reloaded = await _service.GetAsync(doc.Id);
+        Assert.NotNull(reloaded);
+        var estate = Assert.Single(reloaded!.RealEstates);
+        Assert.Equal(new List<string> { "سمير حسن علي", "أحمد خالد الخطيب" }, estate.Owners);
+    }
+
+    [Fact]
+    public async Task Create_IgnoresBlankAndDuplicateOwnerNames()
+    {
+        var req = Sample();
+        req.RealEstates[0] = req.RealEstates[0] with
+        {
+            Owners = new List<string> { "   ", "أحمد العلي", "أحمد العلي", null!, "محمد خالد" },
+        };
+
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        var reloaded = await _service.GetAsync(doc.Id);
+        Assert.NotNull(reloaded);
+        var estate = Assert.Single(reloaded!.RealEstates);
+        Assert.Equal(new List<string> { "أحمد العلي", "محمد خالد" }, estate.Owners);
+    }
+
+    [Fact]
+    public async Task Update_ReplacesOwnersWithNormalizedList()
+    {
+        var req = Sample();
+        req.RealEstates[0] = req.RealEstates[0] with { Owners = new List<string> { "المالك الأول" } };
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        var update = Sample();
+        update.RealEstates[0] = update.RealEstates[0] with
+        {
+            Owners = new List<string> { "المالك الجديد", "المالك المشارك" },
+        };
+
+        var updated = await _service.UpdateAsync(doc.Id, update, "lawyer1");
+
+        Assert.NotNull(updated);
+        var estate = Assert.Single(updated!.RealEstates);
+        Assert.Equal(new List<string> { "المالك الجديد", "المالك المشارك" }, estate.Owners);
+    }
+
+    [Fact]
+    public async Task Create_WithMultipleOwners_ForcesShareTypeToShareOfShares()
+    {
+        var req = Sample();
+        req.RealEstates[0] = req.RealEstates[0] with
+        {
+            Owners = new List<string> { "سمير حسن علي", "أحمد خالد الخطيب" },
+            ShareType = "تمام العقار",
+        };
+
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        var reloaded = await _service.GetAsync(doc.Id);
+        Assert.NotNull(reloaded);
+        var estate = Assert.Single(reloaded!.RealEstates);
+        Assert.Equal("حصة سهمية", estate.ShareType);
+    }
+
+    [Fact]
+    public async Task Create_WithSingleOwner_KeepsChosenShareType()
+    {
+        var req = Sample();
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        var reloaded = await _service.GetAsync(doc.Id);
+        Assert.NotNull(reloaded);
+        var estate = Assert.Single(reloaded!.RealEstates);
+        Assert.Equal("تمام العقار", estate.ShareType);
+    }
+
+    [Fact]
+    public async Task Create_WithSingleOwnerAndExplicitShare_KeepsIt()
+    {
+        var req = Sample();
+        req.RealEstates[0] = req.RealEstates[0] with { ShareType = "حصة سهمية" };
+
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        var reloaded = await _service.GetAsync(doc.Id);
+        Assert.NotNull(reloaded);
+        var estate = Assert.Single(reloaded!.RealEstates);
+        Assert.Equal("حصة سهمية", estate.ShareType);
     }
 
     [Fact]
@@ -376,6 +758,8 @@ public class DocumentServiceTests : IDisposable
         req.FileRegistrationDate = "1/8/2026";
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
         var update = Sample();
+        update.FileNumber = "";
+        update.FileYear = "";
         update.FileRegistrationDate = "";
 
         var updated = await _service.UpdateAsync(doc.Id, update, "lawyer1");
@@ -940,6 +1324,792 @@ public class DocumentServiceTests : IDisposable
         var cleared = await _service.ClearReminderAsync(doc.Id, 9999, "lawyer1");
         Assert.False(cleared);
     }
+
+    [Fact]
+    public async Task Create_WithInitialActions_SeedsExecutionActions()
+    {
+        var req = Sample();
+        req.InitialActions = new()
+        {
+            new AddExecutionActionRequest { Type = "action", Text = "تم إشعار المنفذ عليه", ActionDate = "1/8/2026" },
+            new AddExecutionActionRequest { Type = "note", Text = "ملاحظة افتتاحية" },
+        };
+
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        var list = await _service.GetExecutionActionsAsync(doc.Id);
+        Assert.Equal(2, list.Count);
+        var action = list.Single(a => a.Type == "action");
+        Assert.Equal("تم إشعار المنفذ عليه", action.Text);
+        Assert.Equal("1/8/2026", action.ActionDate);
+        var note = list.Single(a => a.Type == "note");
+        Assert.Equal("ملاحظة افتتاحية", note.Text);
+        Assert.Equal(DateTime.Today.ToString("yyyy-MM-dd"), note.ActionDate);
+        Assert.Contains("action", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task Create_WithBlankInitialAction_IgnoresIt()
+    {
+        var req = Sample();
+        req.InitialActions = new()
+        {
+            new AddExecutionActionRequest { Type = "action", Text = "   ", ActionDate = "1/8/2026" },
+        };
+
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        Assert.Empty(await _service.GetExecutionActionsAsync(doc.Id));
+    }
+
+    [Fact]
+    public async Task Create_WithMaliciousInitialAction_RollsBackWholeSave()
+    {
+        var req = Sample();
+        req.InitialActions = new()
+        {
+            new AddExecutionActionRequest { Type = "action", Text = "<script>alert(1)</script>", ActionDate = "1/8/2026" },
+        };
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(req, 1, "lawyer1", 1));
+
+        // الذرّية: رفض الإجراء الخبيث يُرجع كل معاملة الحفظ (لا مستند ولا إجراءات).
+        Assert.Equal(0, _db.Documents.AsNoTracking().Count());
+        Assert.Equal(0, _db.ExecutionActions.AsNoTracking().Count());
+    }
+
+    [Fact]
+    public async Task Update_WithInitialActionMatchingExisting_SkipsDuplicate()
+    {
+        var req = Sample();
+        req.InitialActions = new()
+        {
+            new AddExecutionActionRequest { Type = "action", Text = "إشعار أول", ActionDate = "1/8/2026" },
+        };
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        var update = Sample();
+        update.InitialActions = new()
+        {
+            new AddExecutionActionRequest { Type = "action", Text = "إشعار أول", ActionDate = "2/8/2026" },
+            new AddExecutionActionRequest { Type = "note", Text = "متابعة لاحقة" },
+        };
+        await _service.UpdateAsync(doc.Id, update, "lawyer1", userId: 1);
+
+        // لا يتضاعف الإجراء المطابق، وتُضاف الملاحظة الجديدة فقط.
+        var list = await _service.GetExecutionActionsAsync(doc.Id);
+        Assert.Equal(2, list.Count);
+        Assert.Single(list.Where(a => a.Type == "action" && a.Text == "إشعار أول"));
+        Assert.Single(list.Where(a => a.Type == "note" && a.Text == "متابعة لاحقة"));
+    }
+
+    [Fact]
+    public async Task Update_WithNewInitialAction_AddsPreservingExisting()
+    {
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        await _service.AddExecutionActionAsync(doc.Id,
+            new AddExecutionActionRequest { Type = "action", Text = "إجراء قائم", ActionDate = "1/1/2026" },
+            userId: 1, actorName: "lawyer1");
+
+        var update = Sample();
+        update.InitialActions = new()
+        {
+            new AddExecutionActionRequest { Type = "note", Text = "ملاحظة جديدة" },
+        };
+        await _service.UpdateAsync(doc.Id, update, "lawyer1", userId: 1);
+
+        var list = await _service.GetExecutionActionsAsync(doc.Id);
+        Assert.Equal(2, list.Count);
+        Assert.Single(list.Where(a => a.Type == "action" && a.Text == "إجراء قائم"));
+        Assert.Single(list.Where(a => a.Type == "note" && a.Text == "ملاحظة جديدة"));
+    }
+
+    private async Task SeedUser2Async()
+    {
+        _db.Users.Add(new User
+        {
+            Username = "lawyer2",
+            FullName = "محامي آخر",
+            Role = UserRole.Lawyer,
+            BranchId = 1,
+            PasswordHash = new PasswordHasher().Hash("123456"),
+        });
+        await _db.SaveChangesAsync();
+    }
+
+    private async Task<Document> CreateDocForRotation(
+        int ownerId,
+        string? execStatus = null,
+        string? execSubStatus = null,
+        bool draft = false,
+        bool deleted = false)
+    {
+        var req = Sample();
+        if (draft)
+        {
+            req.FileNumber = null;
+            req.FileYear = null;
+        }
+        req.FileType = "حقوق";
+        var resp = await _service.CreateAsync(req, ownerId, "lawyer1", 1);
+        var doc = await _db.Documents.FirstAsync(d => d.Id == resp.Id);
+        if (execStatus is not null) doc.ExecStatus = execStatus;
+        if (execSubStatus is not null) doc.ExecSubStatus = execSubStatus;
+        if (deleted)
+        {
+            doc.IsDeleted = true;
+            doc.DeletedAt = DateTime.UtcNow;
+        }
+        await _db.SaveChangesAsync();
+        return doc;
+    }
+
+    [Fact]
+    public async Task GetRotationList_ReturnsOnlyEligibleOwnedFiles()
+    {
+        var active = await CreateDocForRotation(1);
+        var partially = await CreateDocForRotation(1, ExecutionStatusCatalog.ExecutedForcibly, ExecutionStatusCatalog.SubPartiallyExecuted);
+        var settled = await CreateDocForRotation(1, ExecutionStatusCatalog.ExecutedBySettlement);
+        var forced = await CreateDocForRotation(1, ExecutionStatusCatalog.ExecutedForcibly, ExecutionStatusCatalog.SubFullyExecuted);
+        var draft = await CreateDocForRotation(1, draft: true);
+        var deleted = await CreateDocForRotation(1, deleted: true);
+        await SeedUser2Async();
+        var otherOwner = await CreateDocForRotation(1);
+        otherOwner.CreatedById = 2;
+        await _db.SaveChangesAsync();
+
+        var list = await _service.GetRotationListAsync(1, 1, 100);
+        var ids = list.Items.Select(r => r.DocumentId).ToHashSet();
+
+        Assert.Contains(active.Id, ids);
+        Assert.Contains(partially.Id, ids);
+        Assert.DoesNotContain(settled.Id, ids);
+        Assert.DoesNotContain(forced.Id, ids);
+        Assert.DoesNotContain(draft.Id, ids);
+        Assert.DoesNotContain(deleted.Id, ids);
+        Assert.DoesNotContain(otherOwner.Id, ids);
+    }
+
+    [Fact]
+    public async Task GetRotationList_ExcludesFilesWithCurrentYearBaseNumber()
+    {
+        var current = DateTime.Today.Year;
+
+        // دوّر للسنة الحالية فقط → مخفي.
+        var rotated = await CreateDocForRotation(1);
+        _db.BaseNumbers.Add(new DocumentBaseNumber
+        {
+            DocumentId = rotated.Id,
+            Year = current,
+            BaseNumber = "2200",
+            CreatedById = 1,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        });
+
+        // دوّر في سنة سابقة فقط → يظهر (لم يُدوَّر لهذا العام).
+        var previousOnly = await CreateDocForRotation(1);
+        _db.BaseNumbers.Add(new DocumentBaseNumber
+        {
+            DocumentId = previousOnly.Id,
+            Year = current - 1,
+            BaseNumber = "1100",
+            CreatedById = 1,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        });
+
+        // دوّر للسنتين معًا → مخفي لأنه يملك رقمًا للسنة الحالية.
+        var both = await CreateDocForRotation(1);
+        _db.BaseNumbers.Add(new DocumentBaseNumber
+        {
+            DocumentId = both.Id,
+            Year = current - 1,
+            BaseNumber = "1100",
+            CreatedById = 1,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        });
+        _db.BaseNumbers.Add(new DocumentBaseNumber
+        {
+            DocumentId = both.Id,
+            Year = current,
+            BaseNumber = "2200",
+            CreatedById = 1,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        });
+
+        // لم يُدوَّر أبدًا → يظهر.
+        var never = await CreateDocForRotation(1);
+
+        // مقيد في السنة الحالية دون أي تدوير → مخفي (رقم ملفه الأصلي هو نفسه رقم أساس سنته).
+        var currentYearRegistered = await CreateDocForRotation(1);
+        currentYearRegistered.FileYear = current.ToString();
+
+        await _db.SaveChangesAsync();
+
+        var list = await _service.GetRotationListAsync(1, 1, 100);
+        var ids = list.Items.Select(r => r.DocumentId).ToHashSet();
+
+        Assert.DoesNotContain(rotated.Id, ids);
+        Assert.DoesNotContain(both.Id, ids);
+        Assert.DoesNotContain(currentYearRegistered.Id, ids);
+        Assert.Contains(previousOnly.Id, ids);
+        Assert.Contains(never.Id, ids);
+
+        // رقم السنة الحالية دائمًا فارغ في الاستجابة لأن الظاهرين فقط لم يُدوَّروا لها.
+        Assert.All(list.Items, r => Assert.Null(r.BaseNumber));
+
+        // بقية الحقول تصل سليمة.
+        var row = Assert.Single(list.Items, r => r.DocumentId == previousOnly.Id);
+        Assert.Equal(previousOnly.Court, row.Court);
+        Assert.Equal("520", row.FileNumber);
+        Assert.Equal("حقوق", row.FileType);
+    }
+
+    [Fact]
+    public async Task GetRotationList_PaginatesResultsAcrossPages()
+    {
+        var doc1 = await CreateDocForRotation(1);
+        var doc2 = await CreateDocForRotation(1);
+        var doc3 = await CreateDocForRotation(1);
+
+        var first = await _service.GetRotationListAsync(1, 1, 2);
+        Assert.Equal(3, first.TotalCount);
+        Assert.Equal(1, first.Page);
+        Assert.Equal(2, first.PerPage);
+        Assert.Equal(2, first.Items.Count);
+
+        var second = await _service.GetRotationListAsync(1, 2, 2);
+        Assert.Equal(3, second.TotalCount);
+        Assert.Equal(2, second.Page);
+        var secondDoc = Assert.Single(second.Items);
+        Assert.Contains(secondDoc.DocumentId, new[] { doc1.Id, doc2.Id, doc3.Id });
+
+        // الصفحة خارج النطاق تُرجع قائمة فارغة دون خطأ.
+        var beyond = await _service.GetRotationListAsync(1, 10, 2);
+        Assert.Equal(3, beyond.TotalCount);
+        Assert.Empty(beyond.Items);
+    }
+
+    [Fact]
+    public async Task GetAsync_DisplayFileNumber_ReplacesFileNumberWithCurrentYearBaseNumber()
+    {
+        var doc = await CreateDocForRotation(1);
+
+        // دون تدوير: الرقم الظاهر = رقم الملف الأصلي.
+        var before = await _service.GetAsync(doc.Id);
+        Assert.Equal("520", before!.DisplayFileNumber);
+        Assert.Equal("520", before.FileNumber);
+
+        await _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, "1500") }, "lawyer1");
+
+        // بعد التدوير: الرقم الظاهر يحل محل رقم الملف، والأصلي يبقى محفوظًا للتاريخ.
+        var after = await _service.GetAsync(doc.Id);
+        Assert.Equal("1500", after!.DisplayFileNumber);
+        Assert.Equal("520", after.FileNumber);
+    }
+
+    [Fact]
+    public async Task GetBaseNumberHistory_ReturnsAllYearsDescending()
+    {
+        var doc = await CreateDocForRotation(1);
+        var current = DateTime.Today.Year;
+        _db.BaseNumbers.AddRange(
+            new DocumentBaseNumber { DocumentId = doc.Id, Year = current - 2, BaseNumber = "300", CreatedById = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow },
+            new DocumentBaseNumber { DocumentId = doc.Id, Year = current, BaseNumber = "1500", CreatedById = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow },
+            new DocumentBaseNumber { DocumentId = doc.Id, Year = current - 1, BaseNumber = "900", CreatedById = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        await _db.SaveChangesAsync();
+
+        var history = await _service.GetBaseNumberHistoryAsync(doc.Id);
+
+        Assert.Equal(3, history.Count);
+        Assert.Equal(new[] { current, current - 1, current - 2 }, history.Select(h => h.Year));
+        Assert.Equal("1500", history[0].BaseNumber);
+        Assert.Equal("900", history[1].BaseNumber);
+        Assert.Equal("300", history[2].BaseNumber);
+    }
+
+    [Fact]
+    public async Task GetBaseNumberHistory_UnknownDocument_ReturnsEmpty()
+    {
+        var history = await _service.GetBaseNumberHistoryAsync(999999);
+        Assert.Empty(history);
+    }
+
+    [Fact]
+    public async Task GetRotationList_ClampsPagingParameters()
+    {
+        var doc1 = await CreateDocForRotation(1);
+        var doc2 = await CreateDocForRotation(1);
+
+        // page=0 يُعتبر الصفحة الأولى، و perPage أكبر من الحد الأقصى يُقصّ إلى 100.
+        var clamped = await _service.GetRotationListAsync(1, 0, 500);
+        Assert.Equal(1, clamped.Page);
+        Assert.Equal(100, clamped.PerPage);
+        Assert.Equal(2, clamped.TotalCount);
+        Assert.Contains(doc1.Id, clamped.Items.Select(i => i.DocumentId));
+    }
+
+    [Fact]
+    public async Task SaveBaseNumbers_CreatesThenUpdatesSameYear()
+    {
+        var doc = await CreateDocForRotation(1);
+        var year = DateTime.Today.Year;
+
+        await _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, " 1500 ") }, "lawyer1");
+        var row = await _db.BaseNumbers.AsNoTracking().SingleAsync(b => b.DocumentId == doc.Id);
+        Assert.Equal(year, row.Year);
+        Assert.Equal("1500", row.BaseNumber);
+        Assert.Contains("rotate", _audit.Actions);
+
+        // تحديث نفس السنة لا يُنشئ سجلًا مكررًا.
+        _db.ChangeTracker.Clear();
+        await _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, "1501") }, "lawyer1");
+        var rows = await _db.BaseNumbers.AsNoTracking().Where(b => b.DocumentId == doc.Id).ToListAsync();
+        Assert.Single(rows);
+        Assert.Equal("1501", rows[0].BaseNumber);
+        Assert.Equal(doc.Id, rows[0].DocumentId);
+    }
+
+    [Fact]
+    public async Task SaveBaseNumbers_EmptyClearsCurrentYearPreservingPrevious()
+    {
+        var doc = await CreateDocForRotation(1);
+        var year = DateTime.Today.Year;
+        _db.BaseNumbers.AddRange(
+            new DocumentBaseNumber { DocumentId = doc.Id, Year = year - 1, BaseNumber = "999", CreatedById = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow },
+            new DocumentBaseNumber { DocumentId = doc.Id, Year = year, BaseNumber = "1500", CreatedById = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        await _db.SaveChangesAsync();
+
+        _db.ChangeTracker.Clear();
+        await _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, "   ") }, "lawyer1");
+
+        var rows = await _db.BaseNumbers.AsNoTracking().Where(b => b.DocumentId == doc.Id).OrderBy(b => b.Year).ToListAsync();
+        var single = Assert.Single(rows);
+        Assert.Equal(year - 1, single.Year);
+        Assert.Equal("999", single.BaseNumber);
+    }
+
+    [Fact]
+    public async Task SaveBaseNumbers_RejectsNonOwnedFile()
+    {
+        await SeedUser2Async();
+        var doc = await CreateDocForRotation(1);
+        doc.CreatedById = 2;
+        await _db.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, "1500") }, "lawyer1"));
+        Assert.Equal(0, _db.BaseNumbers.AsNoTracking().Count());
+    }
+
+    [Fact]
+    public async Task SaveBaseNumbers_RejectsExecutedFile()
+    {
+        var doc = await CreateDocForRotation(1, ExecutionStatusCatalog.ExecutedBySettlement);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, "1500") }, "lawyer1"));
+        Assert.Equal(0, _db.BaseNumbers.AsNoTracking().Count());
+    }
+
+    [Fact]
+    public async Task SaveBaseNumbers_RejectsDraftFile()
+    {
+        var doc = await CreateDocForRotation(1, draft: true);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, "1500") }, "lawyer1"));
+        Assert.Equal(0, _db.BaseNumbers.AsNoTracking().Count());
+    }
+
+    [Fact]
+    public async Task SaveBaseNumbers_RejectsFileRegisteredInCurrentYear()
+    {
+        // قاعدة القيد: رقم الملف الأصلي هو نفسه رقم أساس سنة قيده، فالملف المقيد في السنة
+        // الحالية يملك رقم أساس لها بالفعل فلا يُدوَّر.
+        var doc = await CreateDocForRotation(1);
+        doc.FileYear = DateTime.Today.Year.ToString();
+        await _db.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, "1500") }, "lawyer1"));
+        Assert.Equal(0, _db.BaseNumbers.AsNoTracking().Count());
+    }
+
+    [Fact]
+    public async Task SaveBaseNumbers_RejectsDuplicateEntry()
+    {
+        var doc = await CreateDocForRotation(1);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.SaveBaseNumbersAsync(1,
+                new List<BaseNumberEntry> { new(doc.Id, "1500"), new(doc.Id, "1501") }, "lawyer1"));
+    }
+    [Fact]
+    public async Task SaveBaseNumbers_RejectsNullEntry()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { null! }, "lawyer1"));
+        Assert.Equal(0, _db.BaseNumbers.AsNoTracking().Count());
+    }
+
+    [Fact]
+    public async Task SaveBaseNumbers_RejectsTooLongNumber()
+    {
+        var doc = await CreateDocForRotation(1);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, new string('9', 51)) }, "lawyer1"));
+        Assert.Equal(0, _db.BaseNumbers.AsNoTracking().Count());
+    }
+
+    [Fact]
+    public async Task SaveBaseNumbers_InvalidEntryRollsBackWholeSave()
+    {
+        var doc = await CreateDocForRotation(1);
+        var executed = await CreateDocForRotation(1, ExecutionStatusCatalog.ExecutedBySettlement);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.SaveBaseNumbersAsync(1,
+                new List<BaseNumberEntry> { new(doc.Id, "1500"), new(executed.Id, "1600") }, "lawyer1"));
+
+        // الذرّية: لا يُحفظ أي سجل حتى للصف الصالح.
+        Assert.Equal(0, _db.BaseNumbers.AsNoTracking().Count());
+    }
+
+    [Fact]
+    public async Task SaveBaseNumbers_BatchesMultipleFilesInOneSave()
+    {
+        var doc1 = await CreateDocForRotation(1);
+        var doc2 = await CreateDocForRotation(1);
+        var doc3 = await CreateDocForRotation(1);
+        var year = DateTime.Today.Year;
+
+        _audit.Actions.Clear();
+
+        await _service.SaveBaseNumbersAsync(1,
+            new List<BaseNumberEntry>
+            {
+                new(doc1.Id, "1500"),
+                new(doc2.Id, "1600"),
+                new(doc3.Id, "1700"),
+            }, "lawyer1");
+
+        var rows = _db.BaseNumbers.AsNoTracking().OrderBy(b => b.DocumentId).ToList();
+        Assert.Equal(3, rows.Count);
+        Assert.All(rows, r => Assert.Equal(year, r.Year));
+        Assert.Equal("1500", rows.Single(r => r.DocumentId == doc1.Id).BaseNumber);
+        Assert.Equal("1600", rows.Single(r => r.DocumentId == doc2.Id).BaseNumber);
+        Assert.Equal("1700", rows.Single(r => r.DocumentId == doc3.Id).BaseNumber);
+
+        // دفعة تدقيق واحدة بنفس عدد العمليات — لكل ملف إدخال واحد.
+        Assert.Equal(3, _audit.Actions.Count(a => a == "rotate"));
+    }
+
+    [Fact]
+    public async Task NeedsRotation_ReflectsRedRule()
+    {
+        var current = DateTime.Today.Year;
+
+        // 1) مقيد غير منفَّذ برقم أساس لسنة سابقة فقط → يحتاج تدوير (أحمر).
+        var doc1 = await CreateDocForRotation(1);
+        _db.BaseNumbers.Add(new DocumentBaseNumber { DocumentId = doc1.Id, Year = current - 1, BaseNumber = "999", CreatedById = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+
+        // 2) لديه رقم أساس للسنة الحالية → لا يحتاج.
+        var doc2 = await CreateDocForRotation(1);
+        _db.BaseNumbers.Add(new DocumentBaseNumber { DocumentId = doc2.Id, Year = current, BaseNumber = "1500", CreatedById = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+
+        // 3) منفَّذ برقم أساس لسنة سابقة فقط → لا يحتاج.
+        var doc3 = await CreateDocForRotation(1, ExecutionStatusCatalog.ExecutedBySettlement);
+        _db.BaseNumbers.Add(new DocumentBaseNumber { DocumentId = doc3.Id, Year = current - 1, BaseNumber = "888", CreatedById = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+
+        // 4) تحت رفع برقم أساس لسنة سابقة فقط → لا يحتاج.
+        var doc4 = await CreateDocForRotation(1, draft: true);
+        _db.BaseNumbers.Add(new DocumentBaseNumber { DocumentId = doc4.Id, Year = current - 1, BaseNumber = "777", CreatedById = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+
+        // 5) جديد بلا أي رقم أساس → لا يحتاج.
+        var doc5 = await CreateDocForRotation(1);
+
+        // 6) منفذ جزئيا (متداول) برقم أساس لسنة سابقة فقط → يحتاج تدوير.
+        var doc6 = await CreateDocForRotation(1, ExecutionStatusCatalog.ExecutedForcibly, ExecutionStatusCatalog.SubPartiallyExecuted);
+        _db.BaseNumbers.Add(new DocumentBaseNumber { DocumentId = doc6.Id, Year = current - 1, BaseNumber = "666", CreatedById = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+
+        await _db.SaveChangesAsync();
+
+        Assert.True((await _service.GetAsync(doc1.Id))!.NeedsRotation);
+        Assert.False((await _service.GetAsync(doc2.Id))!.NeedsRotation);
+        Assert.False((await _service.GetAsync(doc3.Id))!.NeedsRotation);
+        Assert.False((await _service.GetAsync(doc4.Id))!.NeedsRotation);
+        Assert.False((await _service.GetAsync(doc5.Id))!.NeedsRotation);
+        Assert.True((await _service.GetAsync(doc6.Id))!.NeedsRotation);
+    }
+
+    private static DocumentUpsertRequest ExecutedSample() => new()
+    {
+        GeneralEntitySide = GeneralEntitySideCatalog.Executed,
+        DocumentType = "الجهة العامة منفذ عليها",
+        FileNumber = "777",
+        FileYear = "2024",
+        FileRegistrationDate = null,
+        ContractTypeSelector = "عادي",
+        Court = "دمشق",
+        Applicant = "المدعي",
+        FileReceiptDate = "5/1/2024",
+        ExecutedRequiredAmount = 1000m,
+        ExecutedPaidAmount = null,
+        ExecutionApplicants = new()
+        {
+            new ExecutionApplicantDto(null, "أحمد", "خالد", "الخطيب", null, "أصالة", null, null, null, new()),
+        },
+        ExecutedPublicEntities = new()
+        {
+            new ExecutedPublicEntityDto(null, "المصرف العقاري", "فرع المزة"),
+        },
+        ExecutedNaturalPersons = new()
+        {
+            new ExecutedNaturalPersonDto(null, "سامر", "حسن", "علي", "عنوان", "دمشق - المزة", "أصالة", null, null, null, new()),
+        },
+    };
+
+    [Fact]
+    public async Task Create_ExecutedSide_SetsSideAndParties()
+    {
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+
+        Assert.Equal(GeneralEntitySideCatalog.Executed, doc.GeneralEntitySide);
+        Assert.Equal("الجهة العامة منفذ عليها", doc.GeneralEntitySideLabel);
+        Assert.False(doc.IsDraft);
+        Assert.Equal(ExecutedStatusCatalog.None, doc.ExecutedStatus);
+        Assert.Single(doc.ExecutionApplicants);
+        Assert.Single(doc.ExecutedPublicEntities);
+        Assert.Single(doc.ExecutedNaturalPersons);
+        Assert.Equal("أحمد", doc.ExecutionApplicants[0].Name);
+        Assert.Equal("المصرف العقاري", doc.ExecutedPublicEntities[0].EntityName);
+        Assert.Equal(new DateTime(2024, 1, 5), doc.FileReceiptDate);
+        Assert.Equal(1000m, doc.ExecutedRequiredAmount);
+        Assert.Null(doc.ExecutedPaidAmount);
+    }
+
+    [Fact]
+    public async Task Create_ExecutedSide_WithDeceasedAndHeirs_MapsThem()
+    {
+        var req = ExecutedSample();
+        req.ExecutionApplicants = new()
+        {
+            new ExecutionApplicantDto(null, "أحمد", "خالد", "الخطيب", "الوكيل", "إضافة لتركة",
+                "مورث", "م1", "م2", new()
+                {
+                    new ExecutedHeirDto(null, "وريث أول", "والد1", "عائلة1", "عنوان", "دمشق"),
+                    new ExecutedHeirDto(null, "وريث ثان", "والد2", "عائلة2", null, null),
+                }),
+        };
+
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        var applicant = Assert.Single(doc.ExecutionApplicants);
+        Assert.Equal("إضافة لتركة", applicant.RepresentationType);
+        Assert.Equal("مورث", applicant.DeceasedName);
+        Assert.Equal(2, applicant.Heirs.Count);
+        Assert.Equal("عنوان", applicant.Heirs[0].AddressType);
+        Assert.Equal("وريث أول", applicant.Heirs[0].HeirName);
+        Assert.Equal("والد1", applicant.Heirs[0].HeirFather);
+        Assert.Equal("عائلة1", applicant.Heirs[0].HeirFamily);
+    }
+
+    [Fact]
+    public async Task Create_ExecutedSide_RejectsBankingContract()
+    {
+        var req = ExecutedSample();
+        req.ContractTypeSelector = "مصرفي";
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.CreateAsync(req, 1, "lawyer1", 1));
+    }
+
+    [Fact]
+    public async Task Create_ExecutedSide_RejectsGuarantorsOrEstates()
+    {
+        var req = ExecutedSample();
+        req.Guarantors.Add(new GuarantorDto(null, 1, "كفيل", "ح", "ع", null, null, null, null, null, null, new()));
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.CreateAsync(req, 1, "lawyer1", 1));
+    }
+
+    [Fact]
+    public async Task Create_ExecutedSide_RequiresFileNumber()
+    {
+        var req = ExecutedSample();
+        req.FileNumber = "";
+        req.FileYear = "";
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.CreateAsync(req, 1, "lawyer1", 1));
+    }
+
+    [Fact]
+    public async Task Create_ExecutedSide_DoesNotRequireRegistrationDate()
+    {
+        // ملف «منفذ عليها» لا يحمل تاريخ قيد (يقيده الخصم)، فالتحقق من تاريخ القيد
+        // يُستثنى لهذه الصفة حتى مع إدخال رقم وسنة الملف.
+        var req = ExecutedSample();
+        req.FileNumber = "999";
+        req.FileYear = "2025";
+        req.FileRegistrationDate = "";
+
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        Assert.Equal(GeneralEntitySideCatalog.Executed, doc.GeneralEntitySide);
+        Assert.False(doc.IsDraft);
+    }
+
+    [Fact]
+    public async Task Create_ExecutedSide_WhenStruckOff_AppliesSubmittedStruckOffDate()
+    {
+        var req = ExecutedSample();
+        req.ExecutedStatus = ExecutedStatusCatalog.StruckOff;
+        req.StruckOffDate = "10/6/2024";
+
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        Assert.Equal(ExecutedStatusCatalog.StruckOff, doc.ExecutedStatus);
+        Assert.Equal(new DateTime(2024, 6, 10), doc.StruckOffDate);
+    }
+
+    [Fact]
+    public async Task Create_ExecutedSide_WhenStruckOff_RejectsInvalidStruckOffDate()
+    {
+        var req = ExecutedSample();
+        req.ExecutedStatus = ExecutedStatusCatalog.StruckOff;
+        req.StruckOffDate = "ليست تاريخًا";
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.CreateAsync(req, 1, "lawyer1", 1));
+        Assert.Contains("تاريخ الشطب", ex.Message);
+    }
+
+    [Fact]
+    public async Task Create_ExecutedSide_AcceptsFreeTextFileReceiptDate()
+    {
+        // «تاريخ ورود الملف» نص حر بصيغ مألوفة (1/5/2024، yyyy-MM-dd) ويُخزَّن زمنيًا.
+        var req = ExecutedSample();
+        req.FileReceiptDate = "2024-01-05";
+
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        Assert.Equal(new DateTime(2024, 1, 5), doc.FileReceiptDate);
+    }
+
+    [Fact]
+    public async Task Create_ExecutedSide_RejectsInvalidFileReceiptDate()
+    {
+        var req = ExecutedSample();
+        req.FileReceiptDate = "ليست تاريخًا";
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.CreateAsync(req, 1, "lawyer1", 1));
+        Assert.Contains("تاريخ ورود الملف", ex.Message);
+    }
+
+    [Fact]
+    public async Task Create_ApplicantSide_StillRequiresBorrowerName()
+    {
+        var req = Sample();
+        req.BorrowerName = "";
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.CreateAsync(req, 1, "lawyer1", 1));
+    }
+
+    [Fact]
+    public async Task Update_ExecutedSide_DoesNotChangeStoredSide()
+    {
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+
+        var req = Sample();
+        req.GeneralEntitySide = GeneralEntitySideCatalog.Applicant;
+        var updated = await _service.UpdateAsync(doc.Id, req, "lawyer1", 1);
+
+        // صفة الملف تُثبَّت عند الإنشاء ولا تتغير عند التعديل.
+        Assert.Equal(GeneralEntitySideCatalog.Executed, updated!.GeneralEntitySide);
+    }
+
+    [Fact]
+    public async Task UpdateExecutedStatus_SetsStruckOffWithDate()
+    {
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+
+        var ok = await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        Assert.True(ok);
+
+        var updated = await _service.GetAsync(doc.Id);
+        Assert.Equal(ExecutedStatusCatalog.StruckOff, updated!.ExecutedStatus);
+        Assert.NotNull(updated.StruckOffDate);
+        Assert.Contains("executed-status", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task RestoreStruckOff_KeepsStruckOffDateButClearsStatus()
+    {
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        var struckOffDate = (await _service.GetAsync(doc.Id))!.StruckOffDate;
+
+        var ok = await _service.RestoreStruckOffAsync(doc.Id, "lawyer1");
+        Assert.True(ok);
+
+        var restored = await _service.GetAsync(doc.Id);
+        Assert.Equal(ExecutedStatusCatalog.None, restored!.ExecutedStatus);
+        Assert.Equal(struckOffDate, restored.StruckOffDate);
+        Assert.Contains("restore-struck-off", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task UpdateExecutedStatus_OnApplicantSideFile_Throws()
+    {
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1"));
+    }
+
+    [Fact]
+    public async Task UpdateExecutedStatus_WithInvalidStatus_Throws()
+    {
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.UpdateExecutedStatusAsync(doc.Id, "حالة-غير-صالحة", "lawyer1"));
+    }
+
+    [Fact]
+    public async Task SearchStruckOff_ReturnsOnlyStruckOffExecutedFiles()
+    {
+        var struck = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        await _service.UpdateExecutedStatusAsync(struck.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1); // منفذ عليه متداول
+        await _service.CreateAsync(Sample(), 1, "lawyer1", 1);          // طالبة تنفيذ
+
+        var result = await _service.SearchStruckOffAsync(null, 1, 20);
+
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal(struck.Id, result.Items.Single().Id);
+    }
+
+    [Fact]
+    public async Task SearchAsync_ExcludesStruckOffFiles()
+    {
+        var struck = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        await _service.UpdateExecutedStatusAsync(struck.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+
+        var result = await _service.SearchAsync(null, null, null, null, null, null, null, 1, 20);
+
+        Assert.DoesNotContain(result.Items, d => d.Id == struck.Id);
+    }
 }
 
 public class AuthServiceTests : IDisposable
@@ -1113,6 +2283,118 @@ public class AuthServiceTests : IDisposable
         var user = _db.Users.First();
         await Assert.ThrowsAsync<ArgumentException>(() =>
             service.ChangePasswordAsync(user.Id, "123456", "123"));
+    }
+
+    [Fact]
+    public async Task Login_DuplicateNameAcrossBranches_ReturnsBranchSelection()
+    {
+        var b1 = _db.Branches.Add(new Branch { Name = "فرع أ", Code = "B1" }).Entity;
+        var b2 = _db.Branches.Add(new Branch { Name = "فرع ب", Code = "B2" }).Entity;
+        _db.SaveChanges();
+        var name = ArabicNameNormalizer.Normalize("فارس أحمد يوسف");
+        _db.Users.Add(new User { Username = name, FullName = name, Role = UserRole.Lawyer, BranchId = b1.Id, PasswordHash = new PasswordHasher().Hash("123456") });
+        _db.Users.Add(new User { Username = name, FullName = name, Role = UserRole.Lawyer, BranchId = b2.Id, PasswordHash = new PasswordHasher().Hash("123456") });
+        _db.SaveChanges();
+
+        var result = await CreateService().LoginAsync(new LoginRequest("فارس أحمد يوسف", "123456"));
+
+        Assert.Equal(LoginStatus.BranchSelectionRequired, result.Status);
+        Assert.Null(result.Response);
+        Assert.NotNull(result.Branches);
+        Assert.Equal(2, result.Branches!.Count);
+        Assert.Contains(result.Branches, c => c.BranchId == b1.Id && c.BranchName == "فرع أ");
+        Assert.Contains(result.Branches, c => c.BranchId == b2.Id && c.BranchName == "فرع ب");
+        Assert.DoesNotContain("login_failed", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task Login_DuplicateName_WithBranchId_LogsIntoThatBranch()
+    {
+        var b1 = _db.Branches.Add(new Branch { Name = "فرع أ", Code = "B1" }).Entity;
+        var b2 = _db.Branches.Add(new Branch { Name = "فرع ب", Code = "B2" }).Entity;
+        _db.SaveChanges();
+        var name = ArabicNameNormalizer.Normalize("رامي سامر فادي");
+        _db.Users.Add(new User { Username = name, FullName = name, Role = UserRole.Lawyer, BranchId = b1.Id, PasswordHash = new PasswordHasher().Hash("123456") });
+        _db.Users.Add(new User { Username = name, FullName = name, Role = UserRole.Lawyer, BranchId = b2.Id, PasswordHash = new PasswordHasher().Hash("123456") });
+        _db.SaveChanges();
+
+        var result = await CreateService().LoginAsync(new LoginRequest("رامي سامر فادي", "123456", b2.Id));
+
+        Assert.Equal(LoginStatus.Success, result.Status);
+        Assert.Equal(b2.Id, result.Response!.User.BranchId);
+    }
+
+    [Fact]
+    public async Task Login_DuplicateName_ZeroBranchId_SelectsNoBranchAccount()
+    {
+        var b1 = _db.Branches.Add(new Branch { Name = "فرع أ", Code = "B1" }).Entity;
+        _db.SaveChanges();
+        var name = ArabicNameNormalizer.Normalize("مازن خالد رشيد");
+        var noBranch = new User { Username = name, FullName = name, Role = UserRole.Manager, BranchId = null, PasswordHash = new PasswordHasher().Hash("123456") };
+        _db.Users.Add(noBranch);
+        _db.Users.Add(new User { Username = name, FullName = name, Role = UserRole.Lawyer, BranchId = b1.Id, PasswordHash = new PasswordHasher().Hash("123456") });
+        _db.SaveChanges();
+
+        var result = await CreateService().LoginAsync(new LoginRequest("مازن خالد رشيد", "123456", 0));
+
+        Assert.Equal(LoginStatus.Success, result.Status);
+        Assert.Equal(noBranch.Id, result.Response!.User.Id);
+    }
+
+    [Fact]
+    public async Task Login_DuplicateName_UnknownBranchId_ReturnsInvalidCredentials()
+    {
+        var b1 = _db.Branches.Add(new Branch { Name = "فرع أ", Code = "B1" }).Entity;
+        _db.SaveChanges();
+        var name = ArabicNameNormalizer.Normalize("غسان وائل هاني");
+        _db.Users.Add(new User { Username = name, FullName = name, Role = UserRole.Lawyer, BranchId = b1.Id, PasswordHash = new PasswordHasher().Hash("123456") });
+        _db.Users.Add(new User { Username = name, FullName = name, Role = UserRole.Lawyer, BranchId = null, PasswordHash = new PasswordHasher().Hash("123456") });
+        _db.SaveChanges();
+
+        var result = await CreateService().LoginAsync(new LoginRequest("غسان وائل هاني", "123456", 999));
+
+        Assert.Equal(LoginStatus.InvalidCredentials, result.Status);
+        Assert.Null(result.Response);
+        Assert.Contains("login_failed", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task Login_DuplicateName_WrongPassword_DoesNotRevealPasswordValidityAtSelection()
+    {
+        var b1 = _db.Branches.Add(new Branch { Name = "فرع أ", Code = "B1" }).Entity;
+        var b2 = _db.Branches.Add(new Branch { Name = "فرع ب", Code = "B2" }).Entity;
+        _db.SaveChanges();
+        var name = ArabicNameNormalizer.Normalize("ياسر محمد سامر");
+        _db.Users.Add(new User { Username = name, FullName = name, Role = UserRole.Lawyer, BranchId = b1.Id, PasswordHash = new PasswordHasher().Hash("123456") });
+        _db.Users.Add(new User { Username = name, FullName = name, Role = UserRole.Lawyer, BranchId = b2.Id, PasswordHash = new PasswordHasher().Hash("123456") });
+        _db.SaveChanges();
+
+        // المرحلة الأولى تعرض الاختيار دون أي إشارة لصحة كلمة المرور،
+        // والتحقق الحقيقي يقع فقط بعد اختيار الفرع.
+        var selection = await CreateService().LoginAsync(new LoginRequest("ياسر محمد سامر", "wrong-password"));
+        Assert.Equal(LoginStatus.BranchSelectionRequired, selection.Status);
+        Assert.DoesNotContain("login_failed", _audit.Actions);
+
+        var failed = await CreateService().LoginAsync(new LoginRequest("ياسر محمد سامر", "wrong-password", b1.Id));
+        Assert.Equal(LoginStatus.InvalidCredentials, failed.Status);
+        Assert.Contains("login_failed", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task Login_DuplicateNameWithInactiveAccount_SkipsBranchSelection()
+    {
+        var b1 = _db.Branches.Add(new Branch { Name = "فرع أ", Code = "B1" }).Entity;
+        var b2 = _db.Branches.Add(new Branch { Name = "فرع ب", Code = "B2" }).Entity;
+        _db.SaveChanges();
+        var name = ArabicNameNormalizer.Normalize("نائل عمر عادل");
+        _db.Users.Add(new User { Username = name, FullName = name, Role = UserRole.Lawyer, BranchId = b1.Id, IsActive = true, PasswordHash = new PasswordHasher().Hash("123456") });
+        _db.Users.Add(new User { Username = name, FullName = name, Role = UserRole.Lawyer, BranchId = b2.Id, IsActive = false, PasswordHash = new PasswordHasher().Hash("123456") });
+        _db.SaveChanges();
+
+        var result = await CreateService().LoginAsync(new LoginRequest("نائل عمر عادل", "123456"));
+
+        Assert.Equal(LoginStatus.Success, result.Status);
+        Assert.Equal(b1.Id, result.Response!.User.BranchId);
     }
 }
 

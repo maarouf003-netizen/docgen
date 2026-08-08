@@ -175,6 +175,62 @@ public class DocumentContextBuilderTests : IDisposable
     }
 
     [Fact]
+    public async Task BuildContext_CurrentYearBaseNumber_ReplacesFileNumber()
+    {
+        var id = await AddAsync(new Document
+        {
+            Court = "دمشق",
+            BorrowerName = "أحمد",
+            FileNumber = "520",
+            FileYear = "2026",
+            FileType = "حقوق",
+        });
+        _db.BaseNumbers.Add(new DocumentBaseNumber
+        {
+            DocumentId = id,
+            Year = DateTime.Today.Year,
+            BaseNumber = "1500",
+            CreatedById = 1,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        });
+        await _db.SaveChangesAsync();
+
+        var ctx = await _builder.BuildContextAsync(id, "001");
+
+        Assert.Equal("1500", ctx["file_number"]);
+        Assert.Equal("1500/2026", ctx["file_number_full"]);
+    }
+
+    [Fact]
+    public async Task BuildContext_NoCurrentYearBaseNumber_FallsBackToFileNumber()
+    {
+        var id = await AddAsync(new Document
+        {
+            Court = "دمشق",
+            BorrowerName = "أحمد",
+            FileNumber = "520",
+            FileYear = "2026",
+            FileType = "حقوق",
+        });
+        _db.BaseNumbers.Add(new DocumentBaseNumber
+        {
+            DocumentId = id,
+            Year = DateTime.Today.Year - 1,
+            BaseNumber = "900",
+            CreatedById = 1,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        });
+        await _db.SaveChangesAsync();
+
+        var ctx = await _builder.BuildContextAsync(id, "001");
+
+        Assert.Equal("520", ctx["file_number"]);
+        Assert.Equal("520/2026", ctx["file_number_full"]);
+    }
+
+    [Fact]
     public async Task BuildContext_GuarantorNotice_WithRecipient_UsesGuarantorData()
     {
         var id = await AddAsync(new Document
@@ -242,7 +298,7 @@ public class DocumentContextBuilderTests : IDisposable
             {
                 new()
                 {
-                    Owner = "أحمد محمد خالد",
+                    Owners = new List<RealEstateOwner> { new() { Name = "أحمد محمد خالد", Order = 0 } },
                     Property = "منزل",
                     PropertyNumber = "12",
                     PropertyDistrict = "المزة",
@@ -269,7 +325,7 @@ public class DocumentContextBuilderTests : IDisposable
             {
                 new()
                 {
-                    Owner = "أحمد محمد خالد",
+                    Owners = new List<RealEstateOwner> { new() { Name = "أحمد محمد خالد", Order = 0 } },
                     Property = "منزل",
                     PropertyNumber = "12",
                     PropertyDistrict = "المزة",
@@ -291,6 +347,119 @@ public class DocumentContextBuilderTests : IDisposable
     }
 
     [Fact]
+    public async Task BuildContext_005_MultipleOwners_JoinsNamesInSelectionOrder()
+    {
+        var id = await AddAsync(new Document
+        {
+            Court = "دمشق",
+            BorrowerName = "أحمد",
+            AmountWords = "مليون ليرة",
+            ContractTypeSelector = "مصرفي",
+            ContractType = "تعهد",
+            RealEstates = new List<RealEstate>
+            {
+                new()
+                {
+                    Owners = new List<RealEstateOwner>
+                    {
+                        new() { Name = "سمير حسن علي", Order = 1 },
+                        new() { Name = "أحمد محمد خالد", Order = 0 },
+                    },
+                    Property = "منزل",
+                    PropertyNumber = "12",
+                    PropertyDistrict = "المزة",
+                    LandRegistry = "سجل 3",
+                    ShareType = "حصة سهمية",
+                },
+            },
+        });
+
+        var estateId = _db.RealEstates.Single().Id;
+        var ctx = await _builder.BuildContextAsync(id, "005", estateIds: new[] { estateId });
+
+        Assert.Equal("أحمد محمد خالد و سمير حسن علي", ctx["property_owner"]);
+        Assert.Equal("أحمد محمد خالد و سمير حسن علي", ctx["borrower_name"]);
+        Assert.Equal(string.Empty, ctx["borrower_father"]);
+        Assert.Equal(string.Empty, ctx["borrower_family"]);
+        // تعدد الملاك يُلزم الحصة السهمية فيصوغ المستند «حصتك السهمية بالعقار...».
+        Assert.Equal("حصتك السهمية بالعقار 12 من المنطقة العقارية المزة", ctx["property"]);
+    }
+
+    [Fact]
+    public async Task BuildContext_006_MultipleOwners_JoinsResolvedDebtorNames()
+    {
+        var id = await AddAsync(new Document
+        {
+            Court = "دمشق",
+            BorrowerName = "أحمد",
+            AmountWords = "مليون ليرة",
+            ContractTypeSelector = "مصرفي",
+            ContractType = "تعهد",
+            Guarantors = new List<Guarantor>
+            {
+                new() { GuarantorNumber = 1, GuarantorName = "سمير", GuarantorFather = "حسن", GuarantorFamily = "علي" },
+            },
+            RealEstates = new List<RealEstate>
+            {
+                new()
+                {
+                    Owners = new List<RealEstateOwner>
+                    {
+                        new() { Name = "سمير حسن علي", Order = 0 },
+                        new() { Name = "أحمد محمد خالد", Order = 1 },
+                    },
+                    Property = "منزل",
+                    PropertyNumber = "12",
+                    PropertyDistrict = "المزة",
+                    LandRegistry = "سجل 3",
+                    ShareType = "حصة سهمية",
+                },
+            },
+        });
+
+        var estateId = _db.RealEstates.Single().Id;
+        var ctx = await _builder.BuildContextAsync(id, "006", estateIds: new[] { estateId });
+
+        Assert.Equal("سمير حسن علي و أحمد محمد خالد", ctx["execution_debtor"]);
+        Assert.Equal("سمير حسن علي و أحمد محمد خالد", ctx["property_owner"]);
+        Assert.Equal("حصتك السهمية بالعقار 12 من المنطقة العقارية المزة", ctx["property"]);
+    }
+
+    [Fact]
+    public async Task BuildContext_PS_MultipleOwners_JoinsDebtorNames()
+    {
+        var id = await AddAsync(new Document
+        {
+            Court = "دمشق",
+            BorrowerName = "أحمد",
+            AmountWords = "مليون ليرة",
+            ContractTypeSelector = "مصرفي",
+            ContractType = "تعهد",
+            RealEstates = new List<RealEstate>
+            {
+                new()
+                {
+                    Owners = new List<RealEstateOwner>
+                    {
+                        new() { Name = "المالك الأول", Order = 0 },
+                        new() { Name = "المالك الثاني", Order = 1 },
+                    },
+                    Property = "منزل",
+                    PropertyNumber = "12",
+                    PropertyDistrict = "المزة",
+                    LandRegistry = "سجل 3",
+                    ShareType = "حصة سهمية",
+                },
+            },
+        });
+
+        var estateId = _db.RealEstates.Single().Id;
+        var ctx = await _builder.BuildContextAsync(id, "PS", estateIds: new[] { estateId });
+
+        Assert.Equal("المالك الأول و المالك الثاني", ctx["execution_debtor"]);
+    }
+
+    [Fact]
     public async Task BuildContext_PropertySalePaper_WithEstates_SetsDebtor()
     {
         var id = await AddAsync(new Document
@@ -306,7 +475,7 @@ public class DocumentContextBuilderTests : IDisposable
             {
                 new()
                 {
-                    Owner = "أحمد محمد خالد",
+                    Owners = new List<RealEstateOwner> { new() { Name = "أحمد محمد خالد", Order = 0 } },
                     Property = "منزل",
                     PropertyNumber = "12",
                     PropertyDistrict = "المزة",
@@ -397,7 +566,7 @@ public class DocumentContextBuilderTests : IDisposable
             {
                 new()
                 {
-                    Owner = "أحمد محمد خالد",
+                    Owners = new List<RealEstateOwner> { new() { Name = "أحمد محمد خالد", Order = 0 } },
                     Property = "منزل",
                     PropertyNumber = "12",
                     PropertyDistrict = "المزة",
@@ -415,5 +584,382 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Equal("12", ctx["property_number"]);
         Assert.Equal("المزة", ctx["property_district"]);
         Assert.Equal("مليون ليرة", ctx["amount_words"]);
+    }
+
+    [Fact]
+    public async Task BuildContext_RepresentedType_UsesYmthaluPhraseForBorrowerAndGuarantor()
+    {
+        var id = await AddAsync(new Document
+        {
+            Court = "دمشق",
+            BorrowerName = "أحمد",
+            BorrowerFather = "خالد",
+            BorrowerFamily = "الخطيب",
+            BorrowerAddress = "المحامي فلان الفلاني",
+            BorrowerAddressType = "يمثله",
+            AmountWords = "خمسمئة ألف ليرة سورية",
+            ContractType = "تعهد",
+            ContractTypeSelector = "مصرفي",
+            Applicant = "المدير العام",
+            Guarantors = new List<Guarantor>
+            {
+                new()
+                {
+                    GuarantorNumber = 1,
+                    GuarantorName = "سمير",
+                    GuarantorFather = "حسن",
+                    GuarantorFamily = "علي",
+                    GuarantorAddress = "المحامية فلانة",
+                    AddressType = "يمثله",
+                },
+            },
+        });
+
+        var ctx = await _builder.BuildContextAsync(id, "001");
+
+        // المنفذ عليه: «يمثله» ثم نص الوكيل.
+        var singular = (string)ctx["execution_debtor_and_its_adress"];
+        Assert.Contains("أحمد خالد الخطيب", singular);
+        Assert.Contains("يمثله المحامي فلان الفلاني", singular);
+
+        // حقل العنوان المجرد للمقترض (غني في قالب 001 يتضمن الاسم).
+        Assert.Contains("يمثله المحامي فلان الفلاني", (string)ctx["borrower_address"]);
+
+        // القائمة الغنية (001/002) تشمل المقترض والكفيل معًا.
+        var rich = (string)ctx["execution_debtors_and_its_adresses"];
+        Assert.Contains("أحمد خالد الخطيب", rich);
+        Assert.Contains("يمثله المحامي فلان الفلاني", rich);
+        Assert.Contains("سمير حسن علي", rich);
+        Assert.Contains("يمثله المحامية فلانة", rich);
+
+        // حقل عنوان الكفيل.
+        Assert.Equal("يمثله المحامية فلانة", ctx["guarantor_1_address"]);
+    }
+
+    [Fact]
+    public async Task BuildContext_OrdinaryAddressType_StillUsesUnwanuPhrase()
+    {
+        var id = await AddAsync(new Document
+        {
+            Court = "دمشق",
+            BorrowerName = "أحمد",
+            BorrowerFather = "خالد",
+            BorrowerFamily = "الخطيب",
+            BorrowerAddress = "المزة",
+            BorrowerAddressType = "سكني",
+            AmountWords = "خمسمئة ألف ليرة سورية",
+            ContractType = "تعهد",
+            ContractTypeSelector = "مصرفي",
+            Applicant = "المدير العام",
+        });
+
+        var ctx = await _builder.BuildContextAsync(id, "001");
+
+        var singular = (string)ctx["execution_debtor_and_its_adress"];
+        Assert.Contains("عنوانه المزة", singular);
+        Assert.Contains("المزة", (string)ctx["borrower_address"]);
+    }
+
+    [Fact]
+    public async Task BuildContext_EmptyAddress_ProducesNoPrefixRegardlessOfType()
+    {
+        var id = await AddAsync(new Document
+        {
+            Court = "دمشق",
+            BorrowerName = "أحمد",
+            BorrowerFather = "خالد",
+            BorrowerFamily = "الخطيب",
+            BorrowerAddress = string.Empty,
+            BorrowerAddressType = "موطن مختار",
+            AmountWords = "خمسمئة ألف ليرة سورية",
+            ContractType = "تعهد",
+            ContractTypeSelector = "مصرفي",
+            Applicant = "المدير العام",
+            Guarantors = new List<Guarantor>
+            {
+                new()
+                {
+                    GuarantorNumber = 1,
+                    GuarantorName = "سمير",
+                    GuarantorFather = "حسن",
+                    GuarantorFamily = "علي",
+                    GuarantorAddress = string.Empty,
+                    AddressType = "يمثله",
+                },
+            },
+        });
+
+        // قالب 003: حقول العناوين المجردة فارغة تمامًا دون أي سابقة، حتى لموطن مختار/يمثله.
+        var plainCtx = await _builder.BuildContextAsync(id, "003");
+
+        Assert.Equal(string.Empty, plainCtx["borrower_address"]);
+        Assert.Equal(string.Empty, plainCtx["guarantor_1_address"]);
+        Assert.Equal("أحمد خالد الخطيب", plainCtx["execution_debtor_and_its_adress"]);
+
+        // قالب 001: الحقل الغني يحمل الاسم فقط دون أي سابقة عنوان.
+        var richCtx = await _builder.BuildContextAsync(id, "001");
+
+        Assert.Contains("أحمد خالد الخطيب", (string)richCtx["borrower_address"]);
+        Assert.DoesNotContain("موطناً مختاراً", (string)richCtx["borrower_address"]);
+        Assert.DoesNotContain("متخذا موطنا مختارا", (string)richCtx["borrower_address"]);
+    }
+
+    // ── ورثة المنفذ عليهم المتوفين ──
+
+    private Document DeceasedBorrowerDoc(string? heirAddress = "المزة", string heirAddressType = "عنوان") => new()
+    {
+        Court = "دمشق",
+        BorrowerName = "أحمد",
+        BorrowerFather = "خالد",
+        BorrowerFamily = "الخطيب",
+        AmountWords = "مليون ليرة",
+        ContractTypeSelector = "مصرفي",
+        ContractType = "تعهد",
+        Heirs = new List<Heir>
+        {
+            new() { GuarantorNumber = null, HeirName = "محمود الحلبي", AddressType = heirAddressType, HeirAddress = heirAddress },
+        },
+    };
+
+    [Fact]
+    public async Task BuildContext_001_DeceasedBorrower_UsesHeirsRichItem()
+    {
+        var id = await AddAsync(DeceasedBorrowerDoc());
+
+        var ctx = await _builder.BuildContextAsync(id, "001");
+
+        Assert.Equal(string.Empty, ctx["borrower_name"]);
+        var rich = (string)ctx["borrower_address"];
+        Assert.Contains("ورثة المتوفى أحمد خالد الخطيب", rich);
+        Assert.Contains("وهم:", rich);
+        Assert.Contains("محمود الحلبي", rich);
+        Assert.Contains("عنوانه المزة", rich);
+        Assert.Contains("إضافة لتركة مورثهم (أحمد خالد الخطيب)", rich);
+
+        var debtors = (string)ctx["execution_debtors_and_its_adresses"];
+        Assert.Contains("ورثة المتوفى أحمد خالد الخطيب", debtors);
+    }
+
+    [Fact]
+    public async Task BuildContext_001_DeceasedBorrower_EmptyHeirAddress_OmitsPhrase()
+    {
+        var id = await AddAsync(DeceasedBorrowerDoc(heirAddress: "", heirAddressType: "وكيل"));
+
+        var ctx = await _builder.BuildContextAsync(id, "001");
+
+        var rich = (string)ctx["borrower_address"];
+        Assert.Contains("محمود الحلبي", rich);
+        Assert.DoesNotContain("وكيله", rich);
+        Assert.DoesNotContain("عنوانه", rich);
+    }
+
+    [Fact]
+    public async Task BuildContext_001_DeceasedGuarantor_InRichDebtorsList()
+    {
+        var id = await AddAsync(new Document
+        {
+            Court = "دمشق",
+            BorrowerName = "أحمد",
+            BorrowerFather = "خالد",
+            BorrowerFamily = "الخطيب",
+            AmountWords = "مليون ليرة",
+            ContractTypeSelector = "مصرفي",
+            ContractType = "تعهد",
+            Guarantors = new List<Guarantor>
+            {
+                new() { GuarantorNumber = 1, GuarantorName = "سمير", GuarantorFather = "حسن", GuarantorFamily = "علي" },
+            },
+            Heirs = new List<Heir>
+            {
+                new() { GuarantorNumber = 1, HeirName = "فارس الخالد", AddressType = "وكيل", HeirAddress = "المحامي سامر" },
+            },
+        });
+
+        var ctx = await _builder.BuildContextAsync(id, "001");
+
+        var debtors = (string)ctx["execution_debtors_and_its_adresses"];
+        Assert.Contains("ورثة المتوفى سمير حسن علي", debtors);
+        Assert.Contains("فارس الخالد، يمثله المحامي سامر", debtors);
+        Assert.Contains("إضافة لتركة مورثهم (سمير حسن علي)", debtors);
+    }
+
+    [Fact]
+    public async Task BuildContext_001_DeceasedGuarantor_AttorneyPhrase_NoDuplicateYmthalu()
+    {
+        var id = await AddAsync(new Document
+        {
+            Court = "دمشق",
+            BorrowerName = "أحمد",
+            BorrowerFather = "خالد",
+            BorrowerFamily = "الخطيب",
+            AmountWords = "مليون ليرة",
+            ContractTypeSelector = "مصرفي",
+            ContractType = "تعهد",
+            Guarantors = new List<Guarantor>
+            {
+                new() { GuarantorNumber = 1, GuarantorName = "سمير", GuarantorFather = "حسن", GuarantorFamily = "علي" },
+            },
+            Heirs = new List<Heir>
+            {
+                new() { GuarantorNumber = 1, HeirName = "فارس الخالد", AddressType = "وكيل", HeirAddress = "يمثله المحامي سامر" },
+            },
+        });
+
+        var ctx = await _builder.BuildContextAsync(id, "001");
+
+        var debtors = (string)ctx["execution_debtors_and_its_adresses"];
+        Assert.Contains("فارس الخالد، يمثله المحامي سامر", debtors);
+        Assert.DoesNotContain("وكيله", debtors);
+        Assert.DoesNotContain("يمثله يمثله", debtors);
+    }
+
+    [Fact]
+    public async Task BuildContext_003_HeirNotice_UsesHeirLineWithAddress()
+    {
+        var id = await AddAsync(DeceasedBorrowerDoc());
+
+        var heirId = _db.Heirs.Single().Id;
+        var ctx = await _builder.BuildContextAsync(id, "003", heirId: heirId);
+
+        Assert.Equal("محمود الحلبي", ctx["borrower_name"]);
+        Assert.Equal(
+            "محمود الحلبي إضافة لتركة المتوفى (أحمد خالد الخطيب)\nعنوانه المزة",
+            ctx["execution_debtor_and_its_adress"]);
+    }
+
+    [Fact]
+    public async Task BuildContext_003_HeirNotice_EmptyAddress_OmitsPhrase()
+    {
+        var id = await AddAsync(DeceasedBorrowerDoc(heirAddress: "", heirAddressType: "وكيل"));
+
+        var heirId = _db.Heirs.Single().Id;
+        var ctx = await _builder.BuildContextAsync(id, "003", heirId: heirId);
+
+        Assert.Equal(
+            "محمود الحلبي إضافة لتركة المتوفى (أحمد خالد الخطيب)",
+            ctx["execution_debtor_and_its_adress"]);
+    }
+
+    [Fact]
+    public async Task BuildContext_003_GuarantorHeir_ResolvesDeceasedGuarantor()
+    {
+        var id = await AddAsync(new Document
+        {
+            Court = "دمشق",
+            BorrowerName = "أحمد",
+            AmountWords = "مليون ليرة",
+            ContractTypeSelector = "مصرفي",
+            ContractType = "تعهد",
+            Guarantors = new List<Guarantor>
+            {
+                new() { GuarantorNumber = 1, GuarantorName = "سمير", GuarantorFather = "حسن", GuarantorFamily = "علي" },
+            },
+            Heirs = new List<Heir>
+            {
+                new() { GuarantorNumber = 1, HeirName = "فارس الخالد", AddressType = "عنوان", HeirAddress = "حلب الجديدة" },
+            },
+        });
+
+        var heirId = _db.Heirs.Single().Id;
+        var ctx = await _builder.BuildContextAsync(id, "003", heirId: heirId);
+
+        Assert.Contains("فارس الخالد إضافة لتركة المتوفى (سمير حسن علي)", (string)ctx["execution_debtor_and_its_adress"]);
+        Assert.Contains("عنوانه حلب الجديدة", (string)ctx["execution_debtor_and_its_adress"]);
+    }
+
+    [Fact]
+    public async Task BuildContext_003_UnknownHeir_Throws()
+    {
+        var id = await AddAsync(DeceasedBorrowerDoc());
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _builder.BuildContextAsync(id, "003", heirId: 999));
+    }
+
+    [Fact]
+    public async Task BuildContext_005_Heir_OverridesDebtorLine_WithAddress()
+    {
+        var id = await AddAsync(new Document
+        {
+            Court = "دمشق",
+            BorrowerName = "أحمد",
+            BorrowerFather = "محمد",
+            BorrowerFamily = "خالد",
+            AmountWords = "مليون ليرة",
+            ContractTypeSelector = "مصرفي",
+            ContractType = "تعهد",
+            RealEstates = new List<RealEstate>
+            {
+                new()
+                {
+                    Owners = new List<RealEstateOwner> { new() { Name = "أحمد محمد خالد", Order = 0 } },
+                    Property = "منزل",
+                    PropertyNumber = "12",
+                    PropertyDistrict = "المزة",
+                    LandRegistry = "سجل 3",
+                    ShareType = "كامل",
+                },
+            },
+            Heirs = new List<Heir>
+            {
+                new() { GuarantorNumber = null, HeirName = "محمود الحلبي", AddressType = "عنوان", HeirAddress = "المزة" },
+            },
+        });
+
+        var estateId = _db.RealEstates.Single().Id;
+        var heirId = _db.Heirs.Single().Id;
+        var ctx = await _builder.BuildContextAsync(id, "005", estateIds: new[] { estateId }, heirId: heirId);
+
+        Assert.Equal(
+            "محمود الحلبي إضافة لتركة المتوفى (أحمد محمد خالد)\nعنوانه المزة",
+            ctx["execution_debtor_and_its_adress"]);
+    }
+
+    [Fact]
+    public async Task BuildContext_006_Heir_OverridesDebtor_WithoutAddress()
+    {
+        var id = await AddAsync(new Document
+        {
+            Court = "دمشق",
+            BorrowerName = "أحمد",
+            BorrowerFather = "محمد",
+            BorrowerFamily = "خالد",
+            AmountWords = "مليون ليرة",
+            ContractTypeSelector = "مصرفي",
+            ContractType = "تعهد",
+            RealEstates = new List<RealEstate>
+            {
+                new()
+                {
+                    Owners = new List<RealEstateOwner> { new() { Name = "أحمد محمد خالد", Order = 0 } },
+                    Property = "منزل",
+                    PropertyNumber = "12",
+                    PropertyDistrict = "المزة",
+                    LandRegistry = "سجل 3",
+                    ShareType = "كامل",
+                },
+            },
+            Heirs = new List<Heir>
+            {
+                new() { GuarantorNumber = null, HeirName = "محمود الحلبي", AddressType = "عنوان", HeirAddress = "المزة" },
+            },
+        });
+
+        var estateId = _db.RealEstates.Single().Id;
+        var heirId = _db.Heirs.Single().Id;
+        var ctx = await _builder.BuildContextAsync(id, "006", estateIds: new[] { estateId }, heirId: heirId);
+
+        Assert.Equal("محمود الحلبي إضافة لتركة المتوفى (أحمد محمد خالد)", ctx["execution_debtor"]);
+    }
+
+    [Fact]
+    public async Task BuildContext_007_HeirPaper_SetsRecipientNameAndNoAddress()
+    {
+        var id = await AddAsync(DeceasedBorrowerDoc());
+
+        var heirId = _db.Heirs.Single().Id;
+        var ctx = await _builder.BuildContextAsync(id, "007", heirId: heirId);
+
+        Assert.Equal("محمود الحلبي", ctx["recipient_name"]);
+        Assert.Equal("محمود الحلبي إضافة لتركة المتوفى (أحمد خالد الخطيب)", ctx["execution_debtor"]);
     }
 }

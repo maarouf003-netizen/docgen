@@ -7,11 +7,14 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import DocumentsList from './pages/DocumentsList';
 import DeletedDocuments from './pages/DeletedDocuments';
+import StruckOffDocuments from './pages/StruckOffDocuments';
+import Rotation from './pages/Rotation';
 import DocumentForm from './pages/DocumentForm';
 import DocumentView from './pages/DocumentView';
 import UsersActivity from './pages/UsersActivity';
 import BranchLawyers from './pages/BranchLawyers';
 import UsersManagement from './pages/UsersManagement';
+import BranchesManagement from './pages/BranchesManagement';
 import AuditLogs from './pages/AuditLogs';
 import ChangePassword from './pages/ChangePassword';
 
@@ -40,11 +43,14 @@ export default function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/documents" element={<DocumentsList />} />
             <Route path="/documents/deleted" element={<DeletedDocuments />} />
+            <Route path="/documents/struck-off" element={<StruckOffDocuments />} />
+            <Route path="/documents/rotate" element={<Rotation />} />
             <Route path="/documents/new" element={<DocumentForm />} />
             <Route path="/documents/:id" element={<DocumentView />} />
             <Route path="/documents/:id/edit" element={<DocumentForm />} />
             <Route path="/branch-lawyers" element={<BranchLawyers />} />
             <Route path="/users/manage" element={<UsersManagement />} />
+            <Route path="/branches/manage" element={<BranchesManagement />} />
             <Route path="/users" element={<UsersActivity />} />
             <Route path="/audit-logs" element={<AuditLogs />} />
             <Route path="/change-password" element={<ChangePassword />} />

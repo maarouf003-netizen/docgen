@@ -14,11 +14,40 @@ export interface LoginResponse {
   user: UserDto;
 }
 
+export interface LoginBranchChoiceDto {
+  branchId: number | null;
+  branchName: string | null;
+}
+
+export interface LoginBranchSelectionResponse {
+  requiresBranchSelection: true;
+  branches: LoginBranchChoiceDto[];
+}
+
 export interface BranchDto {
   id: number;
   name: string;
   code: string;
   address?: string;
+  phone?: string;
+  isActive?: boolean;
+  userCount?: number;
+  documentCount?: number;
+}
+
+export interface CreateBranchRequest {
+  name: string;
+  code: string;
+  address?: string | null;
+  phone?: string | null;
+}
+
+export interface UpdateBranchRequest {
+  name: string;
+  code: string;
+  address?: string | null;
+  phone?: string | null;
+  isActive: boolean;
 }
 
 export interface GuarantorDto {
@@ -33,11 +62,21 @@ export interface GuarantorDto {
   nationalId?: string;
   address?: string;
   addressType?: string;
+  heirs?: HeirDto[];
 }
 
+/** وريث لمنفذ عليه متوفى (المقترض أو أحد الكفلاء). */
+export interface HeirDto {
+  id?: number;
+  name?: string;
+  addressType?: string;
+  address?: string;
+}
+
+/** عقار ضمن قائمة العقارات المرهونة، ملاكه قائمة أسماء (واحد أو أكثر) بترتيب الاختيار. */
 export interface RealEstateDto {
   id?: number;
-  owner?: string;
+  owners?: string[];
   property?: string;
   propertyNumber?: string;
   propertyDistrict?: string;
@@ -54,6 +93,63 @@ export interface ExecutionActionDto {
   reminderColor?: string;
   createdByName?: string;
   createdAt: string;
+}
+
+/** صفة الملف الثابتة (تُثبَّت عند الإنشاء ولا تتغير أثناء التعديل). */
+export type GeneralEntitySide = 'applicant' | 'executed';
+
+/** وريث لمورثٍ متوفى في وضع «منفذ عليه» (اسم ثلاثي). */
+export interface ExecutedHeirDto {
+  id?: number;
+  heirName?: string;
+  heirFather?: string;
+  heirFamily?: string;
+  addressType?: string;
+  heirAddress?: string;
+}
+
+/** طالب التنفيذ في وضع «منفذ عليه» مع ورثة مورثه المتوفى (إن اختير «إضافة لتركة»). */
+export interface ExecutionApplicantDto {
+  id?: number;
+  name?: string;
+  father?: string;
+  family?: string;
+  legalRepresentative?: string;
+  representationType?: string;
+  deceasedName?: string;
+  deceasedFather?: string;
+  deceasedFamily?: string;
+  heirs?: ExecutedHeirDto[];
+}
+
+/** الجهة العامة المنفذ عليها في وضع «منفذ عليه». */
+export interface ExecutedPublicEntityDto {
+  id?: number;
+  entityName?: string;
+  entityBranch?: string;
+}
+
+/** الشخص الطبيعي المنفذ عليه في وضع «منفذ عليه» مع ورثة مورثه المتوفى (إن اختير «إضافة لتركة»). */
+export interface ExecutedNaturalPersonDto {
+  id?: number;
+  name?: string;
+  father?: string;
+  family?: string;
+  addressType?: string;
+  addressOrRepresentative?: string;
+  representationType?: string;
+  deceasedName?: string;
+  deceasedFather?: string;
+  deceasedFamily?: string;
+  heirs?: ExecutedHeirDto[];
+}
+
+export interface InitialActionRequest {
+  type: 'action' | 'note';
+  text: string;
+  actionDate?: string | null;
+  reminderDuration?: string | null;
+  reminderColor?: string | null;
 }
 
 export interface DocumentResponse {
@@ -91,6 +187,8 @@ export interface DocumentResponse {
   applicant?: string;
   lawyer?: string;
   fileNumber?: string;
+  /** الرقم الظاهر: رقم أساس السنة الحالية إن وُجد، وإلا رقم الملف الأصلي. */
+  displayFileNumber?: string;
   fileType?: string;
   fileYear?: string;
   fileIncoming?: string;
@@ -117,9 +215,30 @@ export interface DocumentResponse {
   printCount: number;
   createdByName?: string;
   deletedAt?: string;
+  needsRotation?: boolean;
+  /** صفة الملف: applicant = الجهة العامة طالبة التنفيذ، executed = الجهة العامة منفذ عليها. */
+  generalEntitySide?: GeneralEntitySide;
+  /** التسمية العربية للصفة (الجهة العامة طالبة التنفيذ / الجهة العامة منفذ عليها). */
+  generalEntitySideLabel?: string;
+  /** حالة وضع «الجهة العامة منفذ عليها»: متداول (فارغ) / منفذ / مشطوب. */
+  executedStatus?: string;
+  /** وصف/بيان إضافي في وضع «الجهة العامة منفذ عليها». */
+  executedDescription?: string;
+  /** تاريخ ورود الملف في وضع «الجهة العامة منفذ عليها» (يغذي فترة إحصائية «متداول للضد»). */
+  fileReceiptDate?: string;
+  /** المبلغ المطلوب دفعه من الجهة العامة في وضع «الجهة العامة منفذ عليها». */
+  executedRequiredAmount?: number;
+  /** المبلغ الذي دفعته الجهة العامة في وضع «الجهة العامة منفذ عليها». */
+  executedPaidAmount?: number;
+  /** لحظة شطب الملف (تاريخ إدخاله من النموذج وتبقى محفوظة بعد الإعادة). */
+  struckOffDate?: string;
   guarantors: GuarantorDto[];
   realEstates: RealEstateDto[];
+  borrowerHeirs?: HeirDto[];
   executionActions?: ExecutionActionDto[];
+  executionApplicants: ExecutionApplicantDto[];
+  executedPublicEntities: ExecutedPublicEntityDto[];
+  executedNaturalPersons: ExecutedNaturalPersonDto[];
 }
 
 export interface DocumentUpsertRequest {
@@ -149,7 +268,6 @@ export interface DocumentUpsertRequest {
   inclusionCurrency?: string;
   court?: string;
   applicant?: string;
-  lawyer?: string;
   fileNumber?: string;
   fileType?: string;
   fileYear?: string;
@@ -163,6 +281,25 @@ export interface DocumentUpsertRequest {
   notes?: string;
   guarantors: GuarantorDto[];
   realEstates: RealEstateDto[];
+  borrowerHeirs?: HeirDto[];
+  initialActions?: InitialActionRequest[];
+  /** صفة الملف: تُثبَّت عند الإنشاء ولا تُغيَّر عند التعديل. */
+  generalEntitySide?: GeneralEntitySide;
+  /** حالة وضع «الجهة العامة منفذ عليها»: متداول (فارغ) / منفذ / مشطوب. */
+  executedStatus?: string;
+  /** تاريخ الشطب (يُدخل عند اختيار «مشطوب»). */
+  struckOffDate?: string;
+  /** وصف/بيان إضافي في وضع «الجهة العامة منفذ عليها». */
+  executedDescription?: string;
+  /** تاريخ ورود الملف في وضع «الجهة العامة منفذ عليها». */
+  fileReceiptDate?: string;
+  /** المبلغ المطلوب دفعه من الجهة العامة في وضع «الجهة العامة منفذ عليها». */
+  executedRequiredAmount?: number;
+  /** المبلغ الذي دفعته الجهة العامة في وضع «الجهة العامة منفذ عليها». */
+  executedPaidAmount?: number;
+  executionApplicants: ExecutionApplicantDto[];
+  executedPublicEntities: ExecutedPublicEntityDto[];
+  executedNaturalPersons: ExecutedNaturalPersonDto[];
 }
 
 export interface PagedResult<T> {
@@ -215,9 +352,33 @@ export interface ManagerStatsDto {
   settledCollected: number;
   forcibleCount: number;
   forcibleCollected: number;
+  /** عدد ملفات وضع «الجهة العامة منفذ عليها» المتداولة في الفترة (بطاقة «متداول للضد»). */
+  tradingAgainstCount: number;
+  /** مجموع المبالغ المطلوب دفعها من الجهات العامة في ملفات المتداول (بطاقة «متداول للضد»). */
+  tradingAgainstAmount: number;
+  /** عدد ملفات وضع «الجهة العامة منفذ عليها» المنفذة في الفترة (بطاقة «منفذ للضد»). */
+  executedAgainstCount: number;
+  /** مجموع المبالغ التي دفعتها الجهات العامة في ملفات المنفذ (بطاقة «منفذ للضد»). */
+  executedAgainstAmount: number;
+  totalAmount: number;
+  activeAmount: number;
+  draftsAmount: number;
+  deferredAmount: number;
+  totalAmount2: number;
+  activeAmount2: number;
+  draftsAmount2: number;
+  deferredAmount2: number;
   periodYear: number;
   periodQuarter: number | null;
   periodMonth: number | null;
+}
+
+export interface DocumentFilterOptionsDto {
+  applicants: string[];
+  courts: string[];
+  lawyers: string[];
+  administrativeBranches: string[];
+  branches: string[];
 }
 
 export interface ManagerPeriodPointDto {
@@ -290,3 +451,59 @@ export interface UpdateUserRequest {
 export interface TransferDocumentRequest {
   targetLawyerId: number;
 }
+
+export interface TransferAllRequest {
+  sourceLawyerId: number;
+  targetLawyerId: number;
+}
+
+export type HeadAlertTargetType = 'document' | 'lawyer' | 'branch';
+
+export interface HeadAlertDto {
+  id: number;
+  message: string;
+  targetType: HeadAlertTargetType;
+  documentId?: number | null;
+  documentTitle?: string | null;
+  targetLawyerId?: number | null;
+  targetLawyerName?: string | null;
+  isRead?: boolean;
+  recipientCount?: number;
+  unreadCount?: number;
+  createdAt: string;
+  createdByName?: string;
+}
+
+export interface CreateHeadAlertRequest {
+  targetType: HeadAlertTargetType;
+  documentId?: number | null;
+  targetLawyerId?: number | null;
+  message: string;
+}
+
+export interface RotationDocumentDto {
+  documentId: number;
+  court?: string;
+  borrowerName?: string;
+  borrowerFather?: string;
+  borrowerFamily?: string;
+  fileNumber?: string;
+  fileType?: string;
+  baseNumber?: string;
+}
+
+export interface BaseNumberEntry {
+  documentId: number;
+  baseNumber?: string | null;
+}
+
+export interface SaveBaseNumbersRequest {
+  entries: BaseNumberEntry[];
+}
+
+/** سجل سنة واحدة في تاريخ أرقام الأساس للملف. */
+export interface BaseNumberHistoryDto {
+  year: number;
+  baseNumber: string;
+}
+

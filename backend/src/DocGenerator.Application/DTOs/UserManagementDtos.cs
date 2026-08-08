@@ -47,3 +47,6 @@ public record UpdateUserRequest(
 
 /// <summary>نقل ملف إلى محامٍ آخر — رئيس القسم (ضمن فرعه).</summary>
 public record TransferDocumentRequest(int TargetLawyerId);
+
+/// <summary>نقل كامل ملفات محامٍ إلى محامٍ آخر بجميع الحالات — رئيس القسم (ضمن فرعه).</summary>
+public record TransferAllRequest(int SourceLawyerId, int TargetLawyerId);

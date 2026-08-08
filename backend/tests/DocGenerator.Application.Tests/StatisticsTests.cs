@@ -9,6 +9,9 @@ namespace DocGenerator.Application.Tests;
 
 public class StatisticsRepositoryTests : IDisposable
 {
+    /// <summary>تاريخ إدخال قديم ثابت للوثائق الأولية بلا تاريخ قيد، كي لا تلوّث نوافذ الفترات الحالية.</summary>
+    private static readonly DateTime LegacyDate = new(2020, 1, 15);
+
     private readonly DocGeneratorDbContext _db;
     private readonly IStatisticsRepository _stats;
 
@@ -21,10 +24,10 @@ public class StatisticsRepositoryTests : IDisposable
         _db.Users.Add(new User { Username = "u1", FullName = "مستخدم 1", Role = UserRole.Lawyer, BranchId = branch.Id });
         _db.SaveChanges();
         _db.Documents.AddRange(
-            new Document { BranchId = branch.Id, CreatedById = 1, IsDraft = true, BorrowerName = "أحمد", BorrowerFamily = "العلي", AmountNumeric = 0, ExecStatus = string.Empty },
-            new Document { BranchId = branch.Id, CreatedById = 1, IsDraft = false, BorrowerName = "أحمد", BorrowerFamily = "العلي", AmountNumeric = 500, ExecStatus = "منفذ بالتسوية", CollectedAmount = 200 },
-            new Document { BranchId = branch.Id, CreatedById = 1, IsDraft = false, BorrowerName = "سامر", BorrowerFamily = "حسن", AmountNumeric = 700, ExecStatus = "تريث" },
-            new Document { BranchId = null, CreatedById = 1, IsDraft = false, BorrowerName = "بلا فرع", BorrowerFamily = "س", AmountNumeric = 100, ExecStatus = "منفذ جبريا", CollectedAmount = 100 });
+            new Document { BranchId = branch.Id, CreatedById = 1, IsDraft = true, BorrowerName = "أحمد", BorrowerFamily = "العلي", AmountNumeric = 0, ExecStatus = string.Empty, CreatedAt = LegacyDate },
+            new Document { BranchId = branch.Id, CreatedById = 1, IsDraft = false, BorrowerName = "أحمد", BorrowerFamily = "العلي", AmountNumeric = 500, ExecStatus = "منفذ بالتسوية", CollectedAmount = 200, CreatedAt = LegacyDate },
+            new Document { BranchId = branch.Id, CreatedById = 1, IsDraft = false, BorrowerName = "سامر", BorrowerFamily = "حسن", AmountNumeric = 700, ExecStatus = "تريث", CreatedAt = LegacyDate },
+            new Document { BranchId = null, CreatedById = 1, IsDraft = false, BorrowerName = "بلا فرع", BorrowerFamily = "س", AmountNumeric = 100, ExecStatus = "منفذ جبريا", CollectedAmount = 100, CreatedAt = LegacyDate });
         _db.SaveChanges();
         _stats = new StatisticsRepository(_db);
     }
@@ -113,7 +116,7 @@ public class StatisticsRepositoryTests : IDisposable
             new ExecutionAction { DocumentId = doc.Id, CreatedById = 1, Type = "action", Text = "بدون تذكير", ActionDate = "1/7/2026", CreatedAt = new DateTime(2026, 8, 3) });
         _db.SaveChanges();
 
-        var reminders = await _stats.GetRemindersAsync(null, null);
+        var reminders = await _stats.GetRemindersAsync(1);
 
         Assert.Equal(2, reminders.Count);
         Assert.DoesNotContain(reminders, r => r.ActionText == "بدون تذكير");
@@ -129,7 +132,7 @@ public class StatisticsRepositoryTests : IDisposable
     }
 
     [Fact]
-    public async Task Reminders_FiltersByBranchAndUser()
+    public async Task Reminders_FiltersByUser()
     {
         var doc = new Document { BranchId = 1, CreatedById = 1, IsDraft = false, BorrowerName = "أحمد", BorrowerFamily = "العلي", AmountNumeric = 100, ExecStatus = string.Empty };
         _db.Documents.Add(doc);
@@ -137,9 +140,8 @@ public class StatisticsRepositoryTests : IDisposable
         _db.ExecutionActions.Add(new ExecutionAction { DocumentId = doc.Id, CreatedById = 1, Type = "action", Text = "تذكير أ", ActionDate = "1/8/2026", ReminderDuration = "3 أيام", ReminderColor = "أحمر", CreatedAt = new DateTime(2026, 8, 1) });
         _db.SaveChanges();
 
-        Assert.Single(await _stats.GetRemindersAsync(1, 1));
-        Assert.Empty(await _stats.GetRemindersAsync(999, null));
-        Assert.Empty(await _stats.GetRemindersAsync(null, 999));
+        Assert.Single(await _stats.GetRemindersAsync(1));
+        Assert.Empty(await _stats.GetRemindersAsync(999));
     }
 
     [Fact]
@@ -151,7 +153,7 @@ public class StatisticsRepositoryTests : IDisposable
         _db.ExecutionActions.Add(new ExecutionAction { DocumentId = doc.Id, CreatedById = 1, Type = "note", Text = "ملاحظة بلا تاريخ", ActionDate = null, ReminderDuration = "أسبوعين", ReminderColor = "بنفسجي", CreatedAt = new DateTime(2026, 8, 1) });
         _db.SaveChanges();
 
-        var reminders = await _stats.GetRemindersAsync(1, 1);
+        var reminders = await _stats.GetRemindersAsync(1);
 
         var reminder = Assert.Single(reminders);
         Assert.Equal(new DateTime(2026, 8, 15), reminder.DueDate);
@@ -182,7 +184,7 @@ public class StatisticsRepositoryTests : IDisposable
     private static string D(int year, int month, int day) => $"{day}/{month}/{year}";
 
     private static Document RegisteredDoc(int branchId, bool isDraft, string? execStatus, string date,
-        string? execSubStatus = null, decimal? collected = null) =>
+        string? execSubStatus = null, decimal? collected = null, decimal amount = 0, decimal amount2 = 0) =>
         new()
         {
             BranchId = branchId,
@@ -191,6 +193,8 @@ public class StatisticsRepositoryTests : IDisposable
             ExecStatus = execStatus ?? string.Empty,
             ExecSubStatus = execSubStatus,
             CollectedAmount = collected,
+            AmountNumeric = amount,
+            Amount2Numeric = amount2,
             RegistrationDate = new DocumentRegistrationDate { Date = date },
         };
 
@@ -214,10 +218,11 @@ public class StatisticsRepositoryTests : IDisposable
 
         var s = await _stats.GetManagerStatsAsync(StatsPeriod.Monthly, 1);
 
-        // متداول + منفذ جزئيا = active (2)؛ تحت رفع = draft؛ تريث = deferred
-        Assert.Equal(4, s.TotalFiles);
+        // متداول + منفذ جزئيا = active (2)؛ مسودتان (بإحداهما تاريخ قيد) = draft (2)؛ تريث = deferred
+        // المسودة الأخيرة بلا تاريخ قيد تُحسب في شهر إدخالها (الحالي). TotalFiles = active + drafts + deferred
+        Assert.Equal(5, s.TotalFiles);
         Assert.Equal(2, s.Active);
-        Assert.Equal(1, s.Drafts);
+        Assert.Equal(2, s.Drafts);
         Assert.Equal(1, s.Deferred);
         Assert.Equal(1, s.SettledCount);
         Assert.Equal(300m, s.SettledCollected);
@@ -246,6 +251,99 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(1, s.TotalFiles);
         Assert.Equal(1, s.Active);
         Assert.Equal(0, s.Deferred);
+    }
+
+    [Fact]
+    public async Task ManagerStats_CountsExecutedSideFilesInTheirOwnCards()
+    {
+        // ملفات وضع «الجهة العامة منفذ عليها» تُحتسب في بطاقتي «متداول للضد»/«منفذ للضد»
+        // حسب حالة الوضع، معزولة تمامًا عن عدادتي «منفذ بالتسوية»/«منفذ جبريا» الخاصتين
+        // بنظام «طالبة تنفيذ»، والمشطوب مستبعد من البطاقتين.
+        var today = DateTime.Today;
+        _db.Documents.AddRange(
+            RegisteredDoc(1, false, null, D(today.Year, today.Month, 2)),
+            new Document
+            {
+                BranchId = 1,
+                CreatedById = 1,
+                IsDraft = false,
+                GeneralEntitySide = GeneralEntitySideCatalog.Executed,
+                ExecutedStatus = ExecutedStatusCatalog.Executed,
+                ExecutedPaidAmount = 1000,
+                FileReceiptDate = new DateTime(today.Year, today.Month, 3),
+            },
+            new Document
+            {
+                BranchId = 1,
+                CreatedById = 1,
+                IsDraft = false,
+                GeneralEntitySide = GeneralEntitySideCatalog.Executed,
+                ExecutedStatus = ExecutedStatusCatalog.None,
+                ExecutedRequiredAmount = 500,
+                FileReceiptDate = new DateTime(today.Year, today.Month, 4),
+            },
+            new Document
+            {
+                BranchId = 1,
+                CreatedById = 1,
+                IsDraft = false,
+                GeneralEntitySide = GeneralEntitySideCatalog.Executed,
+                ExecutedStatus = ExecutedStatusCatalog.StruckOff,
+                ExecutedPaidAmount = 2000,
+                ExecutedRequiredAmount = 900,
+                StruckOffDate = DateTime.UtcNow,
+                FileReceiptDate = new DateTime(today.Year, today.Month, 5),
+            });
+        _db.SaveChanges();
+
+        var s = await _stats.GetManagerStatsAsync(StatsPeriod.Monthly, 1);
+
+        // ملف واحد من «طالبة تنفيذ» (متداول) + ملفان من وضع «منفذ عليها» (منفذ/متداول)
+        // والمشطوب مستبعد: «منفذ للضد» يحمل المبلغ المدفوع، «متداول للضد» يحمل المبلغ المطلوب.
+        Assert.Equal(1, s.Active);
+        Assert.Equal(0, s.SettledCount);
+        Assert.Equal(0, s.ForcibleCount);
+        Assert.Equal(1, s.ExecutedAgainstCount);
+        Assert.Equal(1000m, s.ExecutedAgainstAmount);
+        Assert.Equal(1, s.TradingAgainstCount);
+        Assert.Equal(500m, s.TradingAgainstAmount);
+    }
+
+    [Fact]
+    public async Task ManagerStats_ExecutedSideUsesFileReceiptDateAsPeriod()
+    {
+        // فترة ملف «منفذ عليها» من تاريخ ورود الملف لا من تاريخ قيده (المقيد من الخصم)،
+        // فملف ورد في شهر مضى لا يُحتسب في نافذة الشهر الحالي مهما كان تاريخ إدخاله.
+        var today = DateTime.Today;
+        var lastMonth = today.AddMonths(-1);
+        _db.Documents.AddRange(
+            new Document
+            {
+                BranchId = 1,
+                CreatedById = 1,
+                IsDraft = false,
+                GeneralEntitySide = GeneralEntitySideCatalog.Executed,
+                ExecutedStatus = ExecutedStatusCatalog.None,
+                ExecutedRequiredAmount = 700,
+                FileReceiptDate = new DateTime(lastMonth.Year, lastMonth.Month, lastMonth.Day),
+                CreatedAt = new DateTime(today.Year, today.Month, 1, 10, 0, 0),
+            },
+            new Document
+            {
+                BranchId = 1,
+                CreatedById = 1,
+                IsDraft = false,
+                GeneralEntitySide = GeneralEntitySideCatalog.Executed,
+                ExecutedStatus = ExecutedStatusCatalog.None,
+                ExecutedRequiredAmount = 300,
+                FileReceiptDate = new DateTime(today.Year, today.Month, 6),
+            });
+        _db.SaveChanges();
+
+        var s = await _stats.GetManagerStatsAsync(StatsPeriod.Monthly, 1);
+
+        Assert.Equal(1, s.TradingAgainstCount);
+        Assert.Equal(300m, s.TradingAgainstAmount);
     }
 
     [Fact]
@@ -318,6 +416,42 @@ public class StatisticsRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task ManagerStats_AmountsPerStatus_SumAmountNumeric()
+    {
+        var today = DateTime.Today;
+
+        _db.Documents.AddRange(
+            RegisteredDoc(1, false, null, D(today.Year, today.Month, 5), amount: 100, amount2: 3000),
+            RegisteredDoc(1, false, "منفذ جبريا", D(today.Year, today.Month, 6),
+                execSubStatus: "منفذ جزئيا", amount: 200, amount2: 2000),
+            RegisteredDoc(1, true, null, D(today.Year, today.Month, 7), amount: 300),
+            RegisteredDoc(1, false, "تريث", D(today.Year, today.Month, 8), amount: 400),
+            RegisteredDoc(1, false, "منفذ بالتسوية", D(today.Year, today.Month, 9),
+                collected: 50, amount: 500));
+        _db.SaveChanges();
+
+        var s = await _stats.GetManagerStatsAsync(StatsPeriod.Monthly, 1);
+
+        // متداول (2 ملفات) = 100 + 200، تحت رفع = 300، تريث = 400.
+        Assert.Equal(2, s.Active);
+        Assert.Equal(300m, s.ActiveAmount);
+        Assert.Equal(1, s.Drafts);
+        Assert.Equal(300m, s.DraftsAmount);
+        Assert.Equal(1, s.Deferred);
+        Assert.Equal(400m, s.DeferredAmount);
+        Assert.Equal(1000m, s.TotalAmount);
+        Assert.Equal(300m + 300m + 400m, s.TotalAmount);
+        // عملة الدولار: المتداول فقط (3000 + 2000)، وتحت الرفع/التريث صفر.
+        Assert.Equal(5000m, s.ActiveAmount2);
+        Assert.Equal(0m, s.DraftsAmount2);
+        Assert.Equal(0m, s.DeferredAmount2);
+        Assert.Equal(5000m, s.TotalAmount2);
+        // مبالغ المنفذ لا تدخل في TotalAmount (دون المنفذ).
+        Assert.Equal(1, s.SettledCount);
+        Assert.Equal(50m, s.SettledCollected);
+    }
+
+    [Fact]
     public async Task ManagerLawyerStats_ListsBranchLawyersWithMonthlyPoints()
     {
         var today = DateTime.Today;
@@ -357,5 +491,165 @@ public class StatisticsRepositoryTests : IDisposable
 
         Assert.Equal(2, stats.Count);
         Assert.All(stats, s => Assert.Equal(0, s.TotalCount));
+    }
+
+    [Fact]
+    public async Task ManagerStats_ExplicitMonth_CountsOnlyThatMonth()
+    {
+        _db.Documents.AddRange(
+            RegisteredDoc(1, false, null, "5/5/2026"),
+            RegisteredDoc(1, false, "تريث", "6/5/2026"),
+            RegisteredDoc(1, false, "تريث", "7/6/2026"));
+        _db.SaveChanges();
+
+        var s = await _stats.GetManagerStatsAsync(StatsPeriod.Monthly, 1, year: 2026, month: 5);
+
+        Assert.Equal(2, s.TotalFiles);
+        Assert.Equal(1, s.Active);
+        Assert.Equal(1, s.Deferred);
+        Assert.Equal(2026, s.PeriodYear);
+        Assert.Equal(5, s.PeriodMonth);
+        Assert.Null(s.PeriodQuarter);
+    }
+
+    [Fact]
+    public async Task ManagerStats_ExplicitQuarter_CountsOnlyThatQuarter()
+    {
+        _db.Documents.AddRange(
+            RegisteredDoc(1, false, null, "10/4/2026"),
+            RegisteredDoc(1, false, null, "20/5/2026"),
+            RegisteredDoc(1, false, "تريث", "5/7/2026"));
+        _db.SaveChanges();
+
+        var s = await _stats.GetManagerStatsAsync(StatsPeriod.Quarterly, 1, year: 2026, quarter: 2);
+
+        Assert.Equal(2, s.TotalFiles);
+        Assert.Equal(2, s.Active);
+        Assert.Equal(0, s.Deferred);
+        Assert.Equal(2026, s.PeriodYear);
+        Assert.Equal(2, s.PeriodQuarter);
+        Assert.Null(s.PeriodMonth);
+    }
+
+    [Fact]
+    public async Task ManagerStats_ExplicitYear_CountsOnlyThatYear()
+    {
+        _db.Documents.AddRange(
+            RegisteredDoc(1, false, null, "10/1/2025"),
+            RegisteredDoc(1, false, null, "20/12/2026"),
+            RegisteredDoc(1, false, "تريث", "5/3/2027"));
+        _db.SaveChanges();
+
+        var s = await _stats.GetManagerStatsAsync(StatsPeriod.Yearly, 1, year: 2026);
+
+        Assert.Equal(1, s.TotalFiles);
+        Assert.Equal(1, s.Active);
+        Assert.Equal(0, s.Deferred);
+        Assert.Equal(2026, s.PeriodYear);
+        Assert.Null(s.PeriodQuarter);
+        Assert.Null(s.PeriodMonth);
+    }
+
+    [Fact]
+    public async Task PersonalStats_FiltersByUser()
+    {
+        var branch = await _db.Branches.FirstAsync();
+        var user2 = new User { Username = "u2", FullName = "مستخدم 2", Role = UserRole.Lawyer, BranchId = branch.Id };
+        _db.Users.Add(user2);
+        _db.SaveChanges();
+
+        _db.Documents.AddRange(
+            RegisteredDoc(branch.Id, false, null, "5/5/2026"),
+            RegisteredDoc(branch.Id, false, "تريث", "6/5/2026"));
+        _db.SaveChanges();
+
+        var last = await _db.Documents.SingleAsync(d => d.RegistrationDate != null && d.RegistrationDate.Date == "5/5/2026");
+        last.CreatedById = user2.Id;
+        _db.SaveChanges();
+
+        var mine = await _stats.GetPersonalStatsAsync(StatsPeriod.Monthly, user2.Id, year: 2026, month: 5);
+        var other = await _stats.GetPersonalStatsAsync(StatsPeriod.Monthly, 1, year: 2026, month: 5);
+
+        Assert.Equal(1, mine.TotalFiles);
+        Assert.Equal(0, mine.Deferred);
+        Assert.Equal(1, other.TotalFiles);
+        Assert.Equal(1, other.Deferred);
+    }
+
+    [Fact]
+    public async Task AvailablePeriods_ListsOnlyRegisteredMonthsWithCounts()
+    {
+        var branch = await _db.Branches.FirstAsync();
+        _db.Documents.AddRange(
+            RegisteredDoc(branch.Id, false, null, "5/5/2026"),
+            RegisteredDoc(branch.Id, false, null, "6/5/2026"),
+            RegisteredDoc(branch.Id, false, null, "7/6/2026"));
+        _db.SaveChanges();
+
+        var all = await _stats.GetAvailablePeriodsAsync(null, null);
+
+        Assert.Contains(all, p => p.Year == 2026 && p.Month == 5 && p.Count == 2);
+        Assert.Contains(all, p => p.Year == 2026 && p.Month == 6 && p.Count == 1);
+        Assert.All(all, p => Assert.True(p.Count >= 1));
+    }
+
+    [Fact]
+    public async Task AvailablePeriods_ScopesByBranch()
+    {
+        var branch = await _db.Branches.FirstAsync();
+        var other = new Branch { Name = "حلب", Code = "ALP" };
+        _db.Branches.Add(other);
+        _db.SaveChanges();
+
+        _db.Documents.AddRange(
+            RegisteredDoc(branch.Id, false, null, "5/5/2026"),
+            RegisteredDoc(other.Id, false, null, "6/6/2026"));
+        _db.SaveChanges();
+
+        var branchOnly = await _stats.GetAvailablePeriodsAsync(branch.Id, null);
+
+        Assert.DoesNotContain(branchOnly, p => p.Year == 2026 && p.Month == 6);
+        Assert.Contains(branchOnly, p => p.Year == 2026 && p.Month == 5);
+    }
+
+    [Fact]
+    public async Task AvailablePeriods_IncludesCreationMonthForDraftsWithoutRegistrationDate()
+    {
+        var branch = await _db.Branches.FirstAsync();
+        _db.Documents.Add(new Document
+        {
+            BranchId = branch.Id,
+            CreatedById = 1,
+            IsDraft = true,
+            ExecStatus = string.Empty,
+            CreatedAt = new DateTime(2026, 7, 31),
+        });
+        _db.SaveChanges();
+
+        var all = await _stats.GetAvailablePeriodsAsync(branch.Id, null);
+
+        Assert.Contains(all, p => p.Year == 2026 && p.Month == 7);
+    }
+
+    [Fact]
+    public async Task PersonalStats_CountsDraftWithoutRegistrationDateInItsCreationMonth()
+    {
+        var branch = await _db.Branches.FirstAsync();
+        _db.Documents.Add(new Document
+        {
+            BranchId = branch.Id,
+            CreatedById = 1,
+            IsDraft = true,
+            ExecStatus = string.Empty,
+            CreatedAt = new DateTime(2026, 7, 31),
+        });
+        _db.SaveChanges();
+
+        var july = await _stats.GetPersonalStatsAsync(StatsPeriod.Monthly, 1, year: 2026, month: 7);
+        var august = await _stats.GetPersonalStatsAsync(StatsPeriod.Monthly, 1, year: 2026, month: 8);
+
+        Assert.Equal(1, july.TotalFiles);
+        Assert.Equal(1, july.Drafts);
+        Assert.Equal(0, august.TotalFiles);
     }
 }

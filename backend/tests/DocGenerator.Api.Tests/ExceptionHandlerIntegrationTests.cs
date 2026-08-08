@@ -168,13 +168,22 @@ public class ExceptionHandlerIntegrationTests : IClassFixture<ApiFactory>
         public Task<List<UserActivityDto>> GetUserActivityAsync(CancellationToken ct = default)
             => throw new InvalidOperationException("تعطلت خدمة الإحصاءات");
 
-        public Task<List<ReminderDto>> GetRemindersAsync(int? branchId, int? userId, CancellationToken ct = default)
+        public Task<List<ReminderDto>> GetRemindersAsync(int userId, CancellationToken ct = default)
             => throw new InvalidOperationException("تعطلت خدمة الإحصاءات");
 
-        public Task<ManagerStatsDto> GetManagerStatsAsync(StatsPeriod period, int? branchId, CancellationToken ct = default)
+        public Task<ManagerStatsDto> GetManagerStatsAsync(StatsPeriod period, int? branchId,
+            int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default)
             => throw new InvalidOperationException("تعطلت خدمة الإحصاءات");
 
-        public Task<List<ManagerLawyerStatDto>> GetManagerLawyerStatsAsync(StatsPeriod period, int branchId, CancellationToken ct = default)
+        public Task<List<ManagerLawyerStatDto>> GetManagerLawyerStatsAsync(StatsPeriod period, int branchId,
+            int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default)
+            => throw new InvalidOperationException("تعطلت خدمة الإحصاءات");
+
+        public Task<ManagerStatsDto> GetPersonalStatsAsync(StatsPeriod period, int userId,
+            int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default)
+            => throw new InvalidOperationException("تعطلت خدمة الإحصاءات");
+
+        public Task<List<MonthlyStatDto>> GetAvailablePeriodsAsync(int? branchId, int? userId, CancellationToken ct = default)
             => throw new InvalidOperationException("تعطلت خدمة الإحصاءات");
     }
 }

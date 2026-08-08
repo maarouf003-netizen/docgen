@@ -1,0 +1,14 @@
+**/bin
+**/obj
+**/node_modules
+**/dist
+**/.git
+**/*.db
+**/*.db-wal
+**/*.db-shm
+**/logs
+**/*.log
+.vscode
+.vs
+.DS_Store
+Thumbs.db

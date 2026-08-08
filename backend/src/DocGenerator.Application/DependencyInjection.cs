@@ -14,9 +14,12 @@ public static class DependencyInjection
         services.AddScoped<IStatisticsService, StatisticsService>();
         services.AddScoped<IAuditLogService, AuditLogService>();
         services.AddScoped<IUserManagementService, UserManagementService>();
+        services.AddScoped<IBranchManagementService, BranchManagementService>();
+        services.AddScoped<IHeadAlertService, HeadAlertService>();
         services.AddScoped<IDocumentContextBuilder, DocumentContextBuilder>();
         services.AddScoped<IDocumentRenderer, WordTemplateRenderer>();
         services.AddScoped<IWordDocumentGenerator, WordDocumentGenerator>();
+        services.AddScoped<IExcelExportService, ExcelExportService>();
         return services;
     }
 }

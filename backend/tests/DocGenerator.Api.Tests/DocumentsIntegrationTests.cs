@@ -355,6 +355,7 @@ public class DocumentsIntegrationTests : IClassFixture<ApiFactory>
             contractType = "تعهد",
             fileNumber = "220",
             fileYear = "2026",
+            fileRegistrationDate = "01/03/2026",
             fileIncoming = incoming,
             fileIncomingDate = incomingDate,
             underFilingNumber = underFiling,
@@ -400,6 +401,7 @@ public class DocumentsIntegrationTests : IClassFixture<ApiFactory>
             amountNumeric = 20,
             fileNumber = "991",
             fileYear = "2026",
+            fileRegistrationDate = "01/06/2026",
         });
         var active = await activeResponse.Content.ReadFromJsonAsync<JsonDocument>();
         var activeId = active!.RootElement.GetProperty("id").GetInt32();
@@ -449,6 +451,7 @@ public class DocumentsIntegrationTests : IClassFixture<ApiFactory>
             amountNumeric = 200,
             fileNumber = "777",
             fileYear = "2026",
+            fileRegistrationDate = "01/05/2026",
         });
         Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
         var doc = await updateResponse.Content.ReadFromJsonAsync<JsonDocument>();
@@ -810,11 +813,15 @@ public class DocumentsIntegrationTests : IClassFixture<ApiFactory>
     public async Task Search_ByLawyerFilter_AsHead_FiltersResults()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var id1 = await _factory.CreateDocumentAsync(token, "مستند محامي دمشق", lawyer: "محامي");
-        var id2 = await _factory.CreateDocumentAsync(token, "مستند محامي آخر", lawyer: "محامي آخر");
+        var id1 = await _factory.CreateDocumentAsync(token, "مستند محامي دمشق");
+
+        var damId = await BranchIdAsync("DAM");
+        await _factory.CreateUserAsync("lawyer_filter_other", UserRole.Lawyer, damId);
+        var otherToken = (await _factory.LoginAsync("lawyer_filter_other", "123456"))!.Token!;
+        var id2 = await _factory.CreateDocumentAsync(otherToken, "مستند محامي آخر");
 
         var headClient = _factory.AuthorizedClient("head1");
-        var response = await headClient.GetAsync("/api/documents?lawyer=" + Uri.EscapeDataString("محامي") + "&perPage=50");
+        var response = await headClient.GetAsync("/api/documents?lawyer=" + Uri.EscapeDataString("محامي دمشق") + "&perPage=50");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
         var ids = body!.RootElement.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetInt32());
@@ -826,14 +833,14 @@ public class DocumentsIntegrationTests : IClassFixture<ApiFactory>
     public async Task GetFilterOptions_AsManager_ReturnsLawyers()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        await _factory.CreateDocumentAsync(token, "مستند خيارات محام", lawyer: "محامي");
+        await _factory.CreateDocumentAsync(token, "مستند خيارات محام");
 
         var managerClient = _factory.AuthorizedClient("manager");
         var response = await managerClient.GetAsync("/api/documents/filter-options");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
         var lawyers = body!.RootElement.GetProperty("lawyers").EnumerateArray().Select(l => l.GetString());
-        Assert.Contains("محامي", lawyers);
+        Assert.Contains("محامي دمشق", lawyers);
     }
 
     [Fact]
@@ -924,5 +931,264 @@ public class DocumentsIntegrationTests : IClassFixture<ApiFactory>
             .Select(i => i.GetProperty("id").GetInt32()).ToList();
         Assert.Contains(ownId, ids);
         Assert.DoesNotContain(otherId, ids);
+    }
+
+    [Fact]
+    public async Task BaseNumbersHistory_AfterRotation_ReturnsYearsAndDisplayFileNumber()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.WithToken(token);
+        var id = await _factory.CreateDocumentAsync(token);
+
+        // قيد الملف (رقم + سنة + تاريخ قيد) في سنة سابقة حتى يخرج من «تحت رفع» ويصبح مؤهلًا
+        // للتدوير في السنة الحالية (الملف المقيد في السنة الحالية لا يُدوَّر لأن رقمه هو رقم أساسه).
+        var previousYear = DateTime.Today.Year - 1;
+        var update = await client.PutAsJsonAsync($"/api/documents/{id}", new
+        {
+            documentType = "بيان دعوى",
+            borrowerName = "مقترض",
+            contractType = "تعهد",
+            amountNumeric = 500,
+            fileNumber = "520",
+            fileYear = previousYear.ToString(),
+            fileRegistrationDate = "1/8/" + previousYear,
+        });
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+
+        // تدوير: إدخال رقم أساس للسنة الحالية.
+        var rotate = await client.PutAsJsonAsync("/api/documents/rotate", new
+        {
+            entries = new[] { new { documentId = id, baseNumber = "1500" } },
+        });
+        Assert.Equal(HttpStatusCode.NoContent, rotate.StatusCode);
+
+        // تاريخ أرقام الأساس.
+        var historyResponse = await client.GetAsync($"/api/documents/{id}/base-numbers");
+        Assert.Equal(HttpStatusCode.OK, historyResponse.StatusCode);
+        var history = await historyResponse.Content.ReadFromJsonAsync<List<BaseNumberYearDto>>();
+        var entry = Assert.Single(history!);
+        Assert.Equal(DateTime.Today.Year, entry.Year);
+        Assert.Equal("1500", entry.BaseNumber);
+
+        // الرقم الفعّال في العرض التفصيلي يحل محل رقم الملف، والأصلي يبقى للتاريخ.
+        var detail = await client.GetAsync($"/api/documents/{id}");
+        Assert.Equal(HttpStatusCode.OK, detail.StatusCode);
+        using var detailJson = await detail.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.Equal("1500", detailJson!.RootElement.GetProperty("displayFileNumber").GetString());
+        Assert.Equal("520", detailJson.RootElement.GetProperty("fileNumber").GetString());
+    }
+
+    [Fact]
+    public async Task BaseNumbersHistory_AnotherLawyer_Forbidden()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var id = await _factory.CreateDocumentAsync(token);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+            var damascus = db.Branches.Single(b => b.Code == "DAM");
+            await _factory.CreateUserAsync("lawyer_other_bn", UserRole.Lawyer, damascus.Id);
+        }
+        var otherToken = (await _factory.LoginAsync("lawyer_other_bn", "123456"))!.Token!;
+        var otherClient = _factory.WithToken(otherToken);
+
+        var response = await otherClient.GetAsync($"/api/documents/{id}/base-numbers");
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetRotationList_ExcludesFilesRegisteredInCurrentYear()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.WithToken(token);
+        var currentYear = DateTime.Today.Year;
+
+        // ملف مقيد في السنة الحالية → لا يظهر في جدول التدوير (رقمه الأصلي هو رقم أساس سنته).
+        var currentRegistered = await _factory.CreateDocumentAsync(token);
+        var updateCurrent = await client.PutAsJsonAsync($"/api/documents/{currentRegistered}", new
+        {
+            documentType = "بيان دعوى",
+            borrowerName = "مقترض حال",
+            contractType = "تعهد",
+            amountNumeric = 500,
+            fileNumber = "60",
+            fileYear = currentYear.ToString(),
+            fileRegistrationDate = "1/8/" + currentYear,
+        });
+        Assert.Equal(HttpStatusCode.OK, updateCurrent.StatusCode);
+
+        // ملف مقيد في سنة سابقة → يظهر ويستحق التدوير.
+        var previousRegistered = await _factory.CreateDocumentAsync(token);
+        var updatePrevious = await client.PutAsJsonAsync($"/api/documents/{previousRegistered}", new
+        {
+            documentType = "بيان دعوى",
+            borrowerName = "مقترض سابق",
+            contractType = "تعهد",
+            amountNumeric = 500,
+            fileNumber = "61",
+            fileYear = (currentYear - 1).ToString(),
+            fileRegistrationDate = "1/8/" + (currentYear - 1),
+        });
+        Assert.Equal(HttpStatusCode.OK, updatePrevious.StatusCode);
+
+        var list = await client.GetAsync("/api/documents/rotate?perPage=50");
+        Assert.Equal(HttpStatusCode.OK, list.StatusCode);
+        using var body = await list.Content.ReadFromJsonAsync<JsonDocument>();
+        var ids = body!.RootElement.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("documentId").GetInt32()).ToList();
+        Assert.DoesNotContain(currentRegistered, ids);
+        Assert.Contains(previousRegistered, ids);
+    }
+
+    [Fact]
+    public async Task SaveBaseNumbers_FileRegisteredInCurrentYear_Rejected()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.WithToken(token);
+        var currentYear = DateTime.Today.Year;
+
+        // قيد ملف في السنة الحالية ثم محاولة تدويره → تُرفض.
+        var id = await _factory.CreateDocumentAsync(token);
+        var update = await client.PutAsJsonAsync($"/api/documents/{id}", new
+        {
+            documentType = "بيان دعوى",
+            borrowerName = "مقترض",
+            contractType = "تعهد",
+            amountNumeric = 500,
+            fileNumber = "70",
+            fileYear = currentYear.ToString(),
+            fileRegistrationDate = "1/8/" + currentYear,
+        });
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+
+        var rotate = await client.PutAsJsonAsync("/api/documents/rotate", new
+        {
+            entries = new[] { new { documentId = id, baseNumber = "1500" } },
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, rotate.StatusCode);
+
+        // لا يُحفظ أي رقم أساس للملف.
+        var historyResponse = await client.GetAsync($"/api/documents/{id}/base-numbers");
+        Assert.Equal(HttpStatusCode.OK, historyResponse.StatusCode);
+        var history = await historyResponse.Content.ReadFromJsonAsync<List<BaseNumberYearDto>>();
+        Assert.Empty(history!);
+    }
+
+    private async Task<int> BranchIdAsync(string code)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+        var branch = await db.Branches.AsNoTracking().SingleAsync(b => b.Code == code);
+        return branch.Id;
+    }
+
+    private async Task<int> CreateExecutedDocumentAsync(string token)
+    {
+        var client = _factory.WithToken(token);
+        var response = await client.PostAsJsonAsync("/api/documents", new
+        {
+            generalEntitySide = "executed",
+            documentType = "الجهة العامة منفذ عليها",
+            fileNumber = "999",
+            fileYear = "2024",
+            fileRegistrationDate = (string?)null,
+            fileReceiptDate = "2024-01-05",
+            executedRequiredAmount = 1000,
+            contractTypeSelector = "عادي",
+            court = "دمشق",
+            applicant = "المدعي",
+            executionApplicants = new[]
+            {
+                new { name = "أحمد", father = "خالد", family = "الخطيب", representationType = "أصالة" },
+            },
+            executedPublicEntities = new[]
+            {
+                new { entityName = "المصرف العقاري", entityBranch = "فرع المزة" },
+            },
+            executedNaturalPersons = new[]
+            {
+                new { name = "سامر", father = "حسن", family = "علي", addressType = "عنوان", addressOrRepresentative = "دمشق", representationType = "أصالة" },
+            },
+        });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        using var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        return body!.RootElement.GetProperty("id").GetInt32();
+    }
+
+    [Fact]
+    public async Task ExecutedSide_Create_ThenStrikeOff_ThenRestore_AndSearch()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.WithToken(token);
+
+        // إنشاء ملف وضع «الجهة العامة منفذ عليها» يحمل الصفة والكيانات الفرعية.
+        var id = await CreateExecutedDocumentAsync(token);
+        var created = await client.GetAsync($"/api/documents/{id}");
+        Assert.Equal(HttpStatusCode.OK, created.StatusCode);
+        using var createdBody = await created.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.Equal("الجهة العامة منفذ عليها", createdBody!.RootElement.GetProperty("generalEntitySideLabel").GetString());
+        Assert.Equal("المصرف العقاري", createdBody.RootElement.GetProperty("executedPublicEntities")[0].GetProperty("entityName").GetString());
+        Assert.Equal(1000, createdBody.RootElement.GetProperty("executedRequiredAmount").GetInt32());
+
+        // ظاهر في البحث العام قبل الشطب.
+        var before = await client.GetAsync("/api/documents?q=المصرف العقاري");
+        Assert.Equal(HttpStatusCode.OK, before.StatusCode);
+        using var beforeBody = await before.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.Contains(id, beforeBody!.RootElement.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("id").GetInt32()));
+
+        // شطب الملف → يختفي من البحث العام ويظهر في صفحة المشطوبة.
+        var strike = await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new { status = "مشطوب" });
+        Assert.Equal(HttpStatusCode.OK, strike.StatusCode);
+
+        var after = await client.GetAsync("/api/documents?q=المصرف العقاري");
+        Assert.Equal(HttpStatusCode.OK, after.StatusCode);
+        using var afterBody = await after.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.DoesNotContain(id, afterBody!.RootElement.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("id").GetInt32()));
+
+        var struckOff = await client.GetAsync("/api/documents/struck-off?q=المصرف العقاري");
+        Assert.Equal(HttpStatusCode.OK, struckOff.StatusCode);
+        using var struckOffBody = await struckOff.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.Contains(id, struckOffBody!.RootElement.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("id").GetInt32()));
+
+        // إعادة الشطب: يعود إلى البحث العام ويبقى تاريخ الشطب محفوظًا.
+        var restore = await client.PostAsync($"/api/documents/{id}/restore-struck-off", null);
+        Assert.Equal(HttpStatusCode.OK, restore.StatusCode);
+
+        var restored = await client.GetAsync($"/api/documents/{id}");
+        Assert.Equal(HttpStatusCode.OK, restored.StatusCode);
+        using var restoredBody = await restored.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.Equal("", restoredBody!.RootElement.GetProperty("executedStatus").GetString());
+        Assert.NotNull(restoredBody.RootElement.GetProperty("struckOffDate").GetString());
+    }
+
+    [Fact]
+    public async Task Generate_ForExecutedSideDocument_Rejected()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.WithToken(token);
+        var id = await CreateExecutedDocumentAsync(token);
+
+        var response = await client.GetAsync($"/api/documents/{id}/generate?template=basic_docs");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task StruckOff_Page_AsNonPrivilegedRole_Forbidden()
+    {
+        // الملفات المشطوبة بنفس صلاحيات المحذوفات: المدير لا يرى هذه الصفحة.
+        var managerClient = _factory.AuthorizedClient("manager");
+        var response = await managerClient.GetAsync("/api/documents/struck-off");
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    private sealed class BaseNumberYearDto
+    {
+        public int Year { get; set; }
+        public string BaseNumber { get; set; } = string.Empty;
     }
 }

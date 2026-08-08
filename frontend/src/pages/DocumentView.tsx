@@ -1,11 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { getDocumentStatus, getDocumentBadge } from '../utils/documentStatus';
 import ExecutionActionsModal from '../components/ExecutionActionsModal';
 import TransferDocumentModal from '../components/TransferDocumentModal';
-import type { DocumentResponse, RealEstateDto } from '../types';
+import FileAlertModal from '../components/FileAlertModal';
+import BaseNumbersModal from '../components/BaseNumbersModal';
+import type {
+  DocumentResponse,
+  ExecutedHeirDto,
+  HeirDto,
+  RealEstateDto,
+} from '../types';
 
 function Row({
   label,
@@ -31,7 +38,8 @@ function formatAmount(numeric: number, currency?: string): string {
 }
 
 function formatFileNumber(doc: DocumentResponse): string {
-  const parts = [doc.fileNumber];
+  const number = doc.displayFileNumber ?? doc.fileNumber ?? '';
+  const parts = [number];
   if (doc.fileType) parts.push(doc.fileType);
   if (doc.fileYear) parts.push(`لعام ${doc.fileYear}`);
   return parts.filter(Boolean).join(' ');
@@ -148,10 +156,158 @@ function PersonDetails({ person, showEmpty = false }: { person: PersonFields; sh
       <Row label="مكان وتاريخ الولادة" value={person.birth} showEmpty={showEmpty} />
       <Row label="مكان ورقم القيد" value={person.register} showEmpty={showEmpty} />
       <Row label="الرقم الوطني" value={person.nationalId} showEmpty={showEmpty} />
-      <Row label="نوع العنوان" value={person.addressType} showEmpty={showEmpty} />
-      <Row label="العنوان" value={person.address} showEmpty={showEmpty} />
+      {person.addressType === 'يمثله' ? (
+        <Row label="وكيله" value={person.address} showEmpty={showEmpty} />
+      ) : (
+        <>
+          <Row label="نوع العنوان" value={person.addressType} showEmpty={showEmpty} />
+          <Row label="العنوان" value={person.address} showEmpty={showEmpty} />
+        </>
+      )}
     </>
   );
+}
+
+function HeirsDisplay({ heirs, deceasedName }: { heirs: HeirDto[] | undefined; deceasedName: string }) {
+  const visible = (heirs ?? []).filter((h) => (h.name ?? '').trim());
+  if (visible.length === 0) return null;
+  return (
+    <div className="mt-2 pt-2 border-t border-dashed border-gray-200">
+      <span className="text-gray-500 text-xs block mb-1">
+        ورثة المتوفى ({deceasedName})
+      </span>
+      {visible.map((h, i) => (
+        <span key={i} className="text-gray-800 block text-sm">
+          {h.name}
+          {(h.address ?? '').trim()
+            ? h.addressType === 'وكيل'
+              ? ` — يمثله: ${h.address}`
+              : ` — ${h.addressType ?? 'عنوان'}: ${h.address}`
+            : ''}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function ExecutedHeirsDisplay({ heirs, deceasedName }: { heirs: ExecutedHeirDto[] | undefined; deceasedName: string }) {
+  const visible = (heirs ?? []).filter((h) => (h.heirName ?? '').trim());
+  if (visible.length === 0) return null;
+  return (
+    <div className="mt-2 pt-2 border-t border-dashed border-gray-200">
+      <span className="text-gray-500 text-xs block mb-1">
+        ورثة المتوفى ({deceasedName})
+      </span>
+      {visible.map((h, i) => (
+        <span key={i} className="text-gray-800 block text-sm">
+          {[h.heirName, h.heirFather, h.heirFamily].filter(Boolean).join(' ')}
+          {(h.heirAddress ?? '').trim()
+            ? h.addressType === 'وكيل'
+              ? ` — يمثله: ${h.heirAddress}`
+              : ` — ${h.addressType ?? 'عنوان'}: ${h.heirAddress}`
+            : ''}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function ExecutedApplicantsSection({ doc }: { doc: DocumentResponse }) {
+  return (
+    <div className="bg-white rounded-xl shadow p-5">
+      <h3 className="font-bold text-gray-800 mb-3">طالب التنفيذ</h3>
+      {doc.executionApplicants.length === 0 && <p className="text-gray-400 text-sm">لا يوجد طالب تنفيذ</p>}
+      {doc.executionApplicants.map((a, i) => (
+        <div key={a.id ?? i} className="mb-4 pb-4 border-b border-gray-100 last:border-0">
+          <div className="font-bold text-emerald-800 mb-2">طالب التنفيذ {i + 1}</div>
+          <Row label="الاسم الثلاثي" value={fullName(a)} showEmpty />
+          <Row label="الوكيل القانوني" value={a.legalRepresentative} showEmpty />
+          <Row label="نوع التمثيل" value={a.representationType} showEmpty />
+          {a.representationType === 'إضافة لتركة' && (
+            <>
+              <Row
+                label="المورث المتوفى"
+                value={fullName({ name: a.deceasedName, father: a.deceasedFather, family: a.deceasedFamily })}
+                showEmpty
+              />
+              <ExecutedHeirsDisplay
+                heirs={a.heirs}
+                deceasedName={fullName({ name: a.deceasedName, father: a.deceasedFather, family: a.deceasedFamily }) || fullName(a)}
+              />
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ExecutedEntitiesSection({ doc }: { doc: DocumentResponse }) {
+  return (
+    <div className="bg-white rounded-xl shadow p-5">
+      <h3 className="font-bold text-gray-800 mb-3">الجهات العامة المنفذ عليها</h3>
+      {doc.executedPublicEntities.length === 0 && <p className="text-gray-400 text-sm">لا توجد جهات عامة</p>}
+      {doc.executedPublicEntities.map((e, i) => (
+        <div key={e.id ?? i} className="flex flex-wrap items-center gap-x-5 gap-y-1 py-2 border-b border-gray-100 last:border-0 text-sm">
+          <span className="font-bold text-gray-700">جهة عامة {i + 1}</span>
+          <span className="text-gray-800">{e.entityName || '—'}</span>
+          <span className="text-gray-500">
+            الفرع: <span className="text-gray-800">{e.entityBranch || '—'}</span>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ExecutedNaturalPersonsSection({ doc }: { doc: DocumentResponse }) {
+  return (
+    <div className="bg-white rounded-xl shadow p-5">
+      <h3 className="font-bold text-gray-800 mb-3">الأشخاص الطبيعيون المنفذ عليهم</h3>
+      {doc.executedNaturalPersons.length === 0 && <p className="text-gray-400 text-sm">لا يوجد أشخاص طبيعيون</p>}
+      {doc.executedNaturalPersons.map((p, i) => (
+        <div key={p.id ?? i} className="mb-4 pb-4 border-b border-gray-100 last:border-0">
+          <div className="font-bold text-emerald-800 mb-2">شخص طبيعي {i + 1}</div>
+          <Row label="الاسم الثلاثي" value={fullName(p)} showEmpty />
+          <Row label="نوع العنوان" value={p.addressType} showEmpty />
+          <Row
+            label={p.addressType === 'وكيل' ? 'الوكيل' : 'العنوان'}
+            value={p.addressOrRepresentative}
+            showEmpty
+          />
+          <Row label="نوع التمثيل" value={p.representationType} showEmpty />
+          {p.representationType === 'إضافة لتركة' && (
+            <>
+              <Row
+                label="المورث المتوفى"
+                value={fullName({ name: p.deceasedName, father: p.deceasedFather, family: p.deceasedFamily })}
+                showEmpty
+              />
+              <ExecutedHeirsDisplay
+                heirs={p.heirs}
+                deceasedName={fullName({ name: p.deceasedName, father: p.deceasedFather, family: p.deceasedFamily }) || fullName(p)}
+              />
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** عنوان ملف وضع «منفذ عليه»: أول منفذ عليه (طبيعي/جهة)، ثم طالب التنفيذ، ثم الصفة. */
+function executedTitle(doc: DocumentResponse): string {
+  const person = doc.executedNaturalPersons[0];
+  const personName = person ? fullName(person) : '';
+  const entity = doc.executedPublicEntities[0]?.entityName ?? '';
+  const applicant = doc.applicant ?? '';
+  return personName || entity || applicant || doc.generalEntitySideLabel || `مستند #${doc.id}`;
+}
+
+function formatDate(value?: string): string {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('ar-SY');
 }
 
 function PartiesSection({ doc }: { doc: DocumentResponse }) {
@@ -170,6 +326,7 @@ function PartiesSection({ doc }: { doc: DocumentResponse }) {
             {itemLabel} {isOrdinary ? i + 2 : (g.guarantorNumber ?? i + 1)}
           </div>
           <PersonDetails person={g} />
+          <HeirsDisplay heirs={g.heirs} deceasedName={fullName(g)} />
         </div>
       ))}
     </div>
@@ -201,7 +358,7 @@ function RealEstatesSection({ doc }: { doc: DocumentResponse }) {
           </span>
           <span className="inline-flex items-center gap-1">
             <span className="text-gray-500">مالك العقار</span>
-            <span className="text-gray-800">{r.owner || '—'}</span>
+            <span className="text-gray-800">{(r.owners ?? []).join(' و ') || '—'}</span>
           </span>
         </div>
       ))}
@@ -231,7 +388,7 @@ function EstateSelection({
             checked={r.id !== undefined && selected.includes(r.id)}
             onChange={() => r.id !== undefined && onToggle(r.id)}
           />
-          {r.property} — {r.owner}
+          {r.property} — {(r.owners ?? []).join(' و ')}
         </label>
       ))}
     </div>
@@ -240,7 +397,6 @@ function EstateSelection({
 
 export default function DocumentView() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const { user } = useAuth();
   const [doc, setDoc] = useState<DocumentResponse | null>(null);
   const [error, setError] = useState('');
@@ -251,12 +407,20 @@ export default function DocumentView() {
   const [estateSel, setEstateSel] = useState<number[]>([]);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [alertOpen, setAlertOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [execStatus, setExecStatus] = useState('');
+  const [execStatusBusy, setExecStatusBusy] = useState(false);
+  const [execStatusError, setExecStatusError] = useState('');
+  const [execStatusMsg, setExecStatusMsg] = useState('');
 
   const load = () => {
     api
       .get<DocumentResponse>(`/documents/${id}`)
       .then((r) => {
         setDoc(r.data);
+        setExecStatus(r.data.executedStatus ?? '');
+        setExecStatusError('');
       })
       .catch((err) => setError(getApiErrorMessage(err)));
   };
@@ -270,8 +434,41 @@ export default function DocumentView() {
   if (!doc) return <div className="text-gray-500">جارِ التحميل...</div>;
 
   const canEdit = user?.role === 'lawyer';
-  const canDelete = canEdit;
   const canTransfer = user?.role === 'head';
+  const canDirectAlert = user?.role === 'head';
+  const isExecuted = doc.generalEntitySide === 'executed';
+
+  const saveExecutedStatus = async () => {
+    if (!id) return;
+    setExecStatusBusy(true);
+    setExecStatusError('');
+    setExecStatusMsg('');
+    try {
+      await api.post(`/documents/${id}/executed-status`, { status: execStatus });
+      setExecStatusMsg('تم تحديث حالة الملف');
+      load();
+    } catch (err) {
+      setExecStatusError(getApiErrorMessage(err));
+    } finally {
+      setExecStatusBusy(false);
+    }
+  };
+
+  const restoreStruckOff = async () => {
+    if (!id) return;
+    setExecStatusBusy(true);
+    setExecStatusError('');
+    setExecStatusMsg('');
+    try {
+      await api.post(`/documents/${id}/restore-struck-off`);
+      setExecStatusMsg('أعيد الملف المشطوب إلى المتداول');
+      load();
+    } catch (err) {
+      setExecStatusError(getApiErrorMessage(err));
+    } finally {
+      setExecStatusBusy(false);
+    }
+  };
 
   const toggleNotice = (number: number) => {
     setNoticeSel((prev) =>
@@ -285,11 +482,12 @@ export default function DocumentView() {
     );
   };
 
-  const downloadOne = async (code: string, recipient: number, estateIds: number[]) => {
+  const downloadOne = async (code: string, recipient: number, estateIds: number[], heirId?: number) => {
     const res = await api.get(`/documents/${id}/generate`, {
       params: {
         template: code,
         recipient,
+        heirId: heirId || undefined,
         estateIds: estateIds.length > 0 ? estateIds : undefined,
       },
       responseType: 'blob',
@@ -362,8 +560,9 @@ export default function DocumentView() {
     await runGeneration(
       code,
       async () => {
-        for (const recipient of noticeSel) {
-          await downloadOne(code, recipient, []);
+        for (const person of noticePersons) {
+          if (!noticeSel.includes(person.number)) continue;
+          await downloadOne(code, person.heirId != null ? 0 : person.number, [], person.heirId);
         }
       },
       code === '007'
@@ -383,24 +582,29 @@ export default function DocumentView() {
       return;
     }
     const label = code === '005' ? 'إخطار بيع أموال غير منقولة' : 'إخطار بيع أموال غير منقولة بالصحف';
+    const ownerHeirs = findEstateHeirs(selectedEstates[0]);
+    const heirList = ownerHeirs ?? [];
+    const hasIdHeirs = heirList.filter((h) => h.id != null);
+    const perHeir = heirList.length > 0 && hasIdHeirs.length > 0;
     await runGeneration(
       code,
-      () => downloadOne(code, 0, estateSel),
-      code === '005'
-        ? '✅ تم إنشاء إخطار بيع أموال غير منقولة بنجاح'
-        : 'تم إنشاء إخطار بيع أموال غير منقولة بالصحف بنجاح',
+      () =>
+        perHeir
+          ? (async () => {
+              for (const heir of hasIdHeirs) {
+                await downloadOne(code, 0, estateSel, heir.id);
+              }
+            })()
+          : downloadOne(code, 0, estateSel),
+      perHeir
+        ? code === '005'
+          ? `✅ تم إنشاء ${hasIdHeirs.length} إخطار بيع أموال غير منقولة بنجاح`
+          : `✅ تم إنشاء ${hasIdHeirs.length} إخطار بيع أموال غير منقولة بالصحف بنجاح`
+        : code === '005'
+          ? '✅ تم إنشاء إخطار بيع أموال غير منقولة بنجاح'
+          : 'تم إنشاء إخطار بيع أموال غير منقولة بالصحف بنجاح',
       `فشل توليد ${label} — تحقق من اكتمال البيانات`,
     );
-  };
-
-  const deleteDoc = async () => {
-    if (!confirm('هل أنت متأكد من حذف هذا المستند؟')) return;
-    try {
-      await api.delete(`/documents/${id}`);
-      navigate('/documents');
-    } catch {
-      setError('فشل الحذف');
-    }
   };
 
   const debtor = {
@@ -418,25 +622,82 @@ export default function DocumentView() {
   const statusBadge = getDocumentBadge(doc);
 
   const isOrdinary = doc.contractTypeSelector === 'عادي';
-  const noticePersons: { number: number; label: string }[] = [];
-  if (doc.borrowerName) {
-    noticePersons.push({
-      number: 0,
-      label: `المقترض :  ${[doc.borrowerName, doc.borrowerFamily].filter(Boolean).join(' ')}`,
+
+  const findEstateHeirs = (estate?: RealEstateDto): HeirDto[] | null => {
+    const owners = (estate?.owners ?? []).filter((o) => (o ?? '').trim());
+    if (owners.length === 0) return null;
+
+    const result: HeirDto[] = [];
+    const seen = new Set<number | string>();
+    const add = (heir: HeirDto) => {
+      const key = heir.id ?? (heir.name ?? '').trim();
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      result.push(heir);
+    };
+
+    for (const owner of owners) {
+      if (doc.borrowerHeirs?.length && owner === fullName(debtor)) {
+        doc.borrowerHeirs.forEach(add);
+        continue;
+      }
+      const guarantor = doc.guarantors.find((x) => fullName(x) === owner);
+      if (guarantor?.heirs?.length) {
+        guarantor.heirs.forEach(add);
+        continue;
+      }
+      [
+        ...(doc.borrowerHeirs ?? []).filter((h) => (h.name ?? '').trim() === owner),
+        ...doc.guarantors.flatMap((x) =>
+          (x.heirs ?? []).filter((h) => (h.name ?? '').trim() === owner),
+        ),
+      ].forEach(add);
+    }
+
+    return result.length > 0 ? result : null;
+  };
+
+  const noticePersons: { number: number; heirId?: number; label: string }[] = [];
+  let heirKey = 100;
+  const pushHeirs = (heirs: HeirDto[] | undefined, deceasedFull: string) => {
+    (heirs ?? []).forEach((h) => {
+      const name = (h.name ?? '').trim();
+      if (!name) return;
+      noticePersons.push({
+        number: heirKey++,
+        heirId: h.id,
+        label: `الوريث :  ${name} — إضافة لتركة ${deceasedFull}`,
+      });
     });
+  };
+  if (doc.borrowerName) {
+    if (doc.borrowerHeirs && doc.borrowerHeirs.length > 0) {
+      pushHeirs(doc.borrowerHeirs, fullName(debtor));
+    } else {
+      noticePersons.push({
+        number: 0,
+        label: `المقترض :  ${[doc.borrowerName, doc.borrowerFamily].filter(Boolean).join(' ')}`,
+      });
+    }
   }
   doc.guarantors.forEach((g) => {
     const role = isOrdinary ? 'منفذ عليه' : 'كفيل';
     const family = g.family ? `  ${g.family}` : '';
-    noticePersons.push({
-      number: g.guarantorNumber,
-      label: `${role} ${g.guarantorNumber} :  ${g.name ?? ''}${family}`,
-    });
+    const gFull = fullName(g);
+    if (g.heirs && g.heirs.length > 0) {
+      pushHeirs(g.heirs, gFull || `${role} ${g.guarantorNumber}`);
+    } else {
+      noticePersons.push({
+        number: g.guarantorNumber,
+        label: `${role} ${g.guarantorNumber} :  ${g.name ?? ''}${family}`,
+      });
+    }
   });
   const selectedEstates = doc.realEstates.filter(
     (r) => r.id !== undefined && estateSel.includes(r.id),
   );
-  const multiOwner = new Set(selectedEstates.map((r) => r.owner ?? '')).size > 1;
+  const estateOwnersKey = (r: RealEstateDto) => [...(r.owners ?? [])].sort().join('|');
+  const multiOwner = new Set(selectedEstates.map(estateOwnersKey)).size > 1;
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -445,7 +706,7 @@ export default function DocumentView() {
           <span className={`rounded-full px-3 py-1 text-sm ${statusBadge.cls}`}>
             {statusBadge.text}
           </span>
-          <span>{debtorFullName || doc.documentType || `مستند #${doc.id}`}</span>
+          <span>{isExecuted ? executedTitle(doc) : debtorFullName || doc.documentType || `مستند #${doc.id}`}</span>
         </h2>
         <div className="flex gap-2 flex-wrap">
           {canEdit && (
@@ -455,10 +716,18 @@ export default function DocumentView() {
           )}
           <button
             onClick={() => setActionsOpen(true)}
-            className="bg-emerald-800 hover:bg-emerald-700 text-white rounded-lg px-4 py-2 text-sm min-h-11"
+            className="bg-blue-700 hover:bg-blue-600 text-white rounded-lg px-4 py-2 text-sm min-h-11"
           >
             الإجراءات والملاحظات
           </button>
+          {canDirectAlert && (
+            <button
+              onClick={() => setAlertOpen(true)}
+              className="bg-red-600 hover:bg-red-500 text-white rounded-lg px-4 py-2 text-sm min-h-11"
+            >
+              توجيه تنبيه
+            </button>
+          )}
           {canTransfer && (
             <button
               onClick={() => setTransferOpen(true)}
@@ -470,49 +739,141 @@ export default function DocumentView() {
           <Link to="/documents" className="border border-gray-300 rounded-lg px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 inline-flex items-center min-h-11">
             عودة
           </Link>
-          {canDelete && (
-            <button onClick={deleteDoc} className="bg-red-600 hover:bg-red-500 text-white rounded-lg px-4 py-2 text-sm min-h-11">
-              حذف
-            </button>
-          )}
         </div>
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl shadow p-5">
-          <h3 className="font-bold text-gray-800 mb-3">بيانات المنفذ عليه</h3>
-          <PersonDetails person={debtor} showEmpty />
-        </div>
-
-        <ContractSection doc={doc} />
+        {isExecuted ? (
+          <>
+            <ExecutedApplicantsSection doc={doc} />
+            <ExecutedEntitiesSection doc={doc} />
+            <ExecutedNaturalPersonsSection doc={doc} />
+          </>
+        ) : (
+          <>
+            <div className="bg-white rounded-xl shadow p-5">
+              <h3 className="font-bold text-gray-800 mb-3">بيانات المنفذ عليه</h3>
+              <PersonDetails person={debtor} showEmpty />
+              <HeirsDisplay heirs={doc.borrowerHeirs} deceasedName={fullName(debtor)} />
+            </div>
+            <ContractSection doc={doc} />
+            <PartiesSection doc={doc} />
+            <RealEstatesSection doc={doc} />
+          </>
+        )}
 
         <div className="bg-white rounded-xl shadow p-5">
           <h3 className="font-bold text-gray-800 mb-3">بيانات الملف</h3>
           <Row label="دائرة التنفيذ" value={doc.court} />
           <Row label="طالب التنفيذ" value={formatApplicant(doc)} />
           <Row label="المحامي" value={doc.lawyer} />
-          <Row label="رقم الملف" value={formatFileNumber(doc)} />
+          <div className="py-2 border-b border-gray-100 last:border-0">
+            <span className="text-gray-500 text-xs block">رقم الملف</span>
+            {formatFileNumber(doc) ? (
+              <button
+                type="button"
+                onClick={() => setHistoryOpen(true)}
+                aria-label="عرض أرقام الأساس للسنوات السابقة"
+                className="text-emerald-800 font-medium hover:underline inline-flex items-center gap-1 min-h-11"
+              >
+                {formatFileNumber(doc)}
+              </button>
+            ) : (
+              <span className="text-gray-800">—</span>
+            )}
+          </div>
           <Row label="رقم كتاب الجهة العامة" value={doc.fileIncoming} />
           <Row label="تاريخ كتاب الجهة العامة" value={doc.fileIncomingDate} />
           <Row label="رقم تحت رفع" value={doc.underFilingNumber} />
           <Row label="تاريخ قيد الملف" value={doc.fileRegistrationDate} />
+          <Row label="تاريخ ورود الملف" value={formatDate(doc.fileReceiptDate)} />
           <Row label="تاريخ الحجز" value={doc.seizureDate} />
+          {isExecuted && (
+            <>
+              <Row
+                label="حالة الملف"
+                value={doc.executedStatus || 'متداول'}
+                showEmpty
+              />
+              <Row label="المبلغ المطلوب دفعه من الجهة العامة" value={formatAmount(doc.executedRequiredAmount ?? 0)} showEmpty />
+              <Row label="المبلغ الذي دفعته الجهة العامة" value={formatAmount(doc.executedPaidAmount ?? 0)} showEmpty />
+              <Row label="كيفية تنفيذ الملف" value={doc.executedDescription} />
+              {doc.struckOffDate && (
+                <Row label="تاريخ الشطب" value={formatDate(doc.struckOffDate)} showEmpty />
+              )}
+            </>
+          )}
           <Row label="منشئ المستند" value={doc.createdByName} />
         </div>
-
-        <PartiesSection doc={doc} />
-
-        <RealEstatesSection doc={doc} />
       </div>
 
-      <div className="bg-white rounded-xl shadow p-5 mt-6">
-        <h3 className="font-bold text-gray-800 mb-3">الحالة</h3>
-        <p className="text-gray-800">{buildStatusSummary(doc)}</p>
-        <p className="text-xs text-gray-500 mt-2">لتغيير الحالة اضغط زر «تعديل»</p>
-      </div>
+      {isExecuted ? (
+        <div className="bg-white rounded-xl shadow p-5 mt-6">
+          <h3 className="font-bold text-gray-800 mb-3">حالة الملف</h3>
+          {execStatusMsg && (
+            <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg px-4 py-2 mb-3 text-sm">
+              {execStatusMsg}
+            </div>
+          )}
+          {execStatusError && <p className="text-red-600 text-sm mb-3">{execStatusError}</p>}
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className={`rounded-full px-3 py-1 text-sm ${statusBadge.cls}`}>
+              {statusBadge.text}
+            </span>
+            {doc.struckOffDate && (
+              <span className="text-xs text-gray-500">تاريخ الشطب: {formatDate(doc.struckOffDate)}</span>
+            )}
+          </div>
+          {doc.executedStatus === 'مشطوب' ? (
+            canEdit && (
+              <button
+                type="button"
+                onClick={restoreStruckOff}
+                disabled={execStatusBusy}
+                className="mt-4 bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg px-4 py-2 text-sm min-h-11"
+              >
+                {execStatusBusy ? 'جارِ الإعادة...' : 'إعادة الملف إلى المتداول'}
+              </button>
+            )
+          ) : canEdit ? (
+            <div className="mt-4 flex flex-wrap items-end gap-3">
+              <div>
+                <label htmlFor="executedStatus" className="block text-xs font-bold text-gray-600 mb-1">
+                  الحالة
+                </label>
+                <select
+                  id="executedStatus"
+                  value={execStatus}
+                  onChange={(e) => setExecStatus(e.target.value)}
+                  className="min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                >
+                  <option value="">متداول</option>
+                  <option value="منفذ">منفذ</option>
+                  <option value="مشطوب">مشطوب</option>
+                </select>
+              </div>
+              <button
+                type="button"
+                onClick={saveExecutedStatus}
+                disabled={execStatusBusy}
+                className="bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white rounded-lg px-4 py-2 text-sm min-h-11"
+              >
+                {execStatusBusy ? 'جارِ الحفظ...' : 'حفظ الحالة'}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl shadow p-5 mt-6">
+          <h3 className="font-bold text-gray-800 mb-3">الحالة</h3>
+          <p className="text-gray-800">{buildStatusSummary(doc)}</p>
+          <p className="text-xs text-gray-500 mt-2">لتغيير الحالة اضغط زر «تعديل»</p>
+        </div>
+      )}
 
-      <div className="bg-white rounded-xl shadow p-5 mt-6">
-        <h3 className="font-bold text-gray-800 mb-3">توليد المستندات التنفيذية</h3>
+      {!isExecuted && (
+        <div className="bg-white rounded-xl shadow p-5 mt-6">
+          <h3 className="font-bold text-gray-800 mb-3">توليد المستندات التنفيذية</h3>
         {downloadError && <p className="text-red-600 text-sm mb-3">{downloadError}</p>}
         {downloadSuccess && <p className="text-emerald-700 text-sm mb-3">{downloadSuccess}</p>}
 
@@ -616,6 +977,7 @@ export default function DocumentView() {
           </div>
         </div>
       </div>
+      )}
 
       {actionsOpen && id !== undefined && (
         <ExecutionActionsModal
@@ -631,6 +993,24 @@ export default function DocumentView() {
           currentOwnerId={doc.createdById}
           onClose={() => setTransferOpen(false)}
           onTransferred={load}
+        />
+      )}
+
+      {alertOpen && id !== undefined && (
+        <FileAlertModal
+          documentId={Number(id)}
+          documentTitle={debtorFullName || doc.documentType || `مستند #${doc.id}`}
+          recipientName={doc.lawyer}
+          onClose={() => setAlertOpen(false)}
+        />
+      )}
+
+      {historyOpen && id !== undefined && (
+        <BaseNumbersModal
+          documentId={Number(id)}
+          documentTitle={debtorFullName || doc.documentType || `مستند #${doc.id}`}
+          fileType={doc.fileType}
+          onClose={() => setHistoryOpen(false)}
         />
       )}
     </div>

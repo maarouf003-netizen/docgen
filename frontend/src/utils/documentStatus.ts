@@ -1,8 +1,8 @@
 import type { DocumentResponse } from '../types';
 
-export type DocumentStatus = 'منفذ' | 'تريث' | 'تحت رفع' | 'متداول' | 'متداول / منفذ جزئيا';
+export type DocumentStatus = 'منفذ' | 'تريث' | 'تحت رفع' | 'متداول' | 'متداول / منفذ جزئيا' | 'مشطوب';
 
-export const STATUS_OPTIONS: Exclude<DocumentStatus, 'متداول / منفذ جزئيا'>[] = ['منفذ', 'تريث', 'تحت رفع', 'متداول'];
+export const STATUS_OPTIONS: Exclude<DocumentStatus, 'متداول / منفذ جزئيا' | 'مشطوب'>[] = ['منفذ', 'تريث', 'تحت رفع', 'متداول'];
 
 export const STATUS_BADGES: Record<DocumentStatus, { text: string; cls: string }> = {
   منفذ: { text: 'منفذ', cls: 'bg-green-100 text-green-700' },
@@ -10,11 +10,23 @@ export const STATUS_BADGES: Record<DocumentStatus, { text: string; cls: string }
   'تحت رفع': { text: 'تحت رفع', cls: 'bg-amber-100 text-amber-700' },
   متداول: { text: 'متداول', cls: 'bg-blue-100 text-blue-700' },
   'متداول / منفذ جزئيا': { text: 'متداول / منفذ جزئيا', cls: 'bg-cyan-100 text-cyan-700' },
+  مشطوب: { text: 'مشطوب', cls: 'bg-gray-200 text-gray-700' },
 };
 
-export type StatusSource = Pick<DocumentResponse, 'execStatus' | 'execSubStatus' | 'isDraft'>;
+export type StatusSource = Pick<
+  DocumentResponse,
+  'execStatus' | 'execSubStatus' | 'isDraft' | 'generalEntitySide' | 'executedStatus'
+>;
+
+/** حالة وضع «منفذ عليه» (متداول/منفذ/مشطوب)، معزولة تمامًا عن نظام «طالبة تنفيذ». */
+export function getExecutedStatus(doc: StatusSource): DocumentStatus {
+  if (doc.executedStatus === 'مشطوب') return 'مشطوب';
+  if (doc.executedStatus === 'منفذ') return 'منفذ';
+  return 'متداول';
+}
 
 export function getDocumentStatus(doc: StatusSource): DocumentStatus {
+  if (doc.generalEntitySide === 'executed') return getExecutedStatus(doc);
   if (doc.execStatus === 'تريث') return 'تريث';
   if (doc.execStatus === 'منفذ جبريا' && doc.execSubStatus === 'منفذ جزئيا') return 'متداول / منفذ جزئيا';
   if (doc.execStatus === 'منفذ جبريا' || doc.execStatus === 'منفذ بالتسوية') return 'منفذ';

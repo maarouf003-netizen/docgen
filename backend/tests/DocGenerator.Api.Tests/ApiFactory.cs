@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -40,10 +41,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         }
     }
 
-    public async Task<LoginResult?> LoginAsync(string username, string password)
+    public async Task<LoginResult?> LoginAsync(string username, string password, int? branchId = null)
     {
         var client = CreateClient();
-        var body = JsonSerializer.Serialize(new { username, password });
+        var body = JsonSerializer.Serialize(new { username, password, branchId });
         var response = await client.PostAsync("/api/auth/login",
             new StringContent(body, Encoding.UTF8, "application/json"));
         var content = await response.Content.ReadAsStringAsync();
@@ -51,7 +52,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             return new LoginResult(null, (int)response.StatusCode, content);
 
         using var doc = JsonDocument.Parse(content);
-        var token = doc.RootElement.GetProperty("token").GetString();
+        var token = doc.RootElement.TryGetProperty("token", out var tokenProp) ? tokenProp.GetString() : null;
         return new LoginResult(token, (int)response.StatusCode, content);
     }
 
@@ -64,17 +65,18 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         return client;
     }
 
-    public async Task<User> CreateUserAsync(string username, UserRole role, int? branchId = null, string password = "123456")
+    public async Task<User> CreateUserAsync(string username, UserRole role, int? branchId = null, string password = "123456", bool isActive = true)
     {
         using var scope = Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
         var user = new User
         {
-            Username = username,
+            Username = ArabicNameNormalizer.Normalize(username),
             FullName = username,
             Role = role,
             BranchId = branchId,
+            IsActive = isActive,
             PasswordHash = hasher.Hash(password),
         };
         db.Users.Add(user);
@@ -84,8 +86,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 
     public async Task<int> CreateDocumentAsync(string token, string borrowerName = "مقترض",
         string? applicant = "المدعي", string? court = "دمشق",
-        string? borrowerFather = null, string? borrowerFamily = null,
-        string? lawyer = null)
+        string? borrowerFather = null, string? borrowerFamily = null)
     {
         var client = CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -97,7 +98,6 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             borrowerFamily,
             applicant,
             court,
-            lawyer,
             contractType = "تعهد",
             amountNumeric = 500,
             branchName = "الفرع الرئيسي - دمشق",

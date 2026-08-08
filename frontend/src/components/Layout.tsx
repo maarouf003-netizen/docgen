@@ -22,8 +22,6 @@ export default function Layout() {
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const canViewAuditLogs = hasFullAccess || isHead;
-  const canViewDeleted =
-    user?.role === 'lawyer' || user?.role === 'head' || user?.role === 'admin';
   const canManageBranchLawyers = user?.role === 'head' || user?.role === 'admin';
   const canManageUsers = user?.role === 'admin';
 
@@ -31,9 +29,9 @@ export default function Layout() {
     { to: '/', label: 'لوحة التحكم', end: true },
     { to: '/documents', label: 'الملفات التنفيذية' },
   ];
-  if (canViewDeleted) navItems.push({ to: '/documents/deleted', label: 'المستندات المحذوفة' });
   if (canManageBranchLawyers) navItems.push({ to: '/branch-lawyers', label: 'محامو الفرع' });
   if (canManageUsers) navItems.push({ to: '/users/manage', label: 'إدارة المستخدمين' });
+  if (canManageUsers) navItems.push({ to: '/branches/manage', label: 'إدارة الفروع' });
   if (hasFullAccess) navItems.push({ to: '/users', label: 'نشاط المستخدمين' });
   if (canViewAuditLogs) navItems.push({ to: '/audit-logs', label: 'سجل التدقيق' });
 

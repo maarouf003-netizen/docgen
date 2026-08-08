@@ -1,3 +1,4 @@
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
@@ -65,8 +66,8 @@ public sealed class UserManagementService : IUserManagementService
         if (string.IsNullOrWhiteSpace(request.FullName))
             throw new ArgumentException("الاسم الكامل مطلوب");
 
-        if (await _users.UsernameExistsAsync(username, null, ct))
-            throw new ArgumentException("اسم المستخدم مستخدم مسبقاً");
+        if (await _users.UsernameExistsAsync(username, branchId, null, ct))
+            throw new ArgumentException(DuplicateUsernameMessage(branchId));
 
         var branch = await _branches.GetByIdAsync(branchId, ct);
         if (branch is null)
@@ -139,8 +140,8 @@ public sealed class UserManagementService : IUserManagementService
         var role = ParseRole(request.Role);
         var branchId = await ResolveBranchAsync(request.BranchId, role, ct);
 
-        if (await _users.UsernameExistsAsync(username, null, ct))
-            throw new ArgumentException("اسم المستخدم مستخدم مسبقاً");
+        if (await _users.UsernameExistsAsync(username, branchId, null, ct))
+            throw new ArgumentException(DuplicateUsernameMessage(branchId));
 
         var user = new User
         {
@@ -179,7 +180,16 @@ public sealed class UserManagementService : IUserManagementService
             throw new ArgumentException("لا يمكنك إيقاف حسابك أو تغيير دورك أنت بنفسك");
 
         if (!string.IsNullOrWhiteSpace(request.FullName))
+        {
+            // الاسم الثلاثي هو اسم الدخول: تعديل الاسم يحدّث اسم الدخول تلقائياً مع بقاء التفرد ضمن الفرع.
+            var newUsername = ArabicNameNormalizer.Normalize(request.FullName.Trim());
+            if (newUsername != user.Username
+                && await _users.UsernameExistsAsync(newUsername, branchId, user.Id, ct))
+                throw new ArgumentException(DuplicateUsernameMessage(branchId));
+
             user.FullName = request.FullName.Trim();
+            user.Username = newUsername;
+        }
         user.Role = role;
         user.BranchId = branchId;
         user.UpdatedAt = DateTime.UtcNow;
@@ -233,17 +243,21 @@ public sealed class UserManagementService : IUserManagementService
 
     private static string NormalizeUsername(string username)
     {
-        var normalized = username?.Trim() ?? string.Empty;
+        var normalized = ArabicNameNormalizer.Normalize(username);
         if (string.IsNullOrWhiteSpace(normalized))
-            throw new ArgumentException("اسم المستخدم مطلوب");
+            throw new ArgumentException("الاسم الثلاثي مطلوب");
         return normalized;
     }
 
     private static void ValidateUsername(string username)
     {
-        if (username.Any(ch => char.IsWhiteSpace(ch)))
-            throw new ArgumentException("اسم المستخدم لا يحوي مسافات");
+        if (username.Length > 50)
+            throw new ArgumentException("الاسم الثلاثي أطول من المسموح (50 حرفاً)");
     }
+
+    private static string DuplicateUsernameMessage(int? branchId) => branchId is null
+        ? "يوجد مستخدم بنفس الاسم الثلاثي، يرجى اختيار اسم مختلف"
+        : "يوجد مستخدم بنفس الاسم الثلاثي في نفس الفرع، يرجى اختيار اسم مختلف";
 
     private static void ValidatePassword(string password)
     {

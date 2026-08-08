@@ -3,6 +3,9 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using DocGenerator.Domain.Enums;
+using DocGenerator.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace DocGenerator.Api.Tests;
 
@@ -100,6 +103,81 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
         var response = await client.GetAsync("/api/documents");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Login_DuplicateTripartiteNameAcrossBranches_ReturnsBranchSelection()
+    {
+        var branch1 = await GetBranchIdAsync("DAM");
+        var branch2 = await GetBranchIdAsync("ALP");
+        await _factory.CreateUserAsync("محمد أحمد علي", UserRole.Lawyer, branch1);
+        await _factory.CreateUserAsync("محمد أحمد علي", UserRole.Lawyer, branch2);
+
+        var result = await _factory.LoginAsync("محمد أحمد علي", "123456");
+        Assert.Equal((int)HttpStatusCode.OK, result!.StatusCode);
+
+        using var doc = JsonDocument.Parse(result.Content);
+        var root = doc.RootElement;
+        Assert.True(root.GetProperty("requiresBranchSelection").GetBoolean());
+        var branches = root.GetProperty("branches").EnumerateArray()
+            .Select(b => b.GetProperty("branchId").GetInt32())
+            .OrderBy(x => x)
+            .ToArray();
+        Assert.Equal(new[] { branch1, branch2 }, branches);
+    }
+
+    [Fact]
+    public async Task Login_DuplicateTripartiteName_SelectingBranch_LogsIntoCalledBranch()
+    {
+        var branch1 = await GetBranchIdAsync("DAM");
+        var branch2 = await GetBranchIdAsync("ALP");
+        await _factory.CreateUserAsync("خالد علي حسن", UserRole.Lawyer, branch1);
+        await _factory.CreateUserAsync("خالد علي حسن", UserRole.Lawyer, branch2);
+
+        var result = await _factory.LoginAsync("خالد علي حسن", "123456", branch2);
+        Assert.Equal((int)HttpStatusCode.OK, result!.StatusCode);
+
+        using var doc = JsonDocument.Parse(result.Content);
+        var root = doc.RootElement;
+        Assert.Equal("lawyer", root.GetProperty("user").GetProperty("role").GetString());
+        Assert.Equal(branch2, root.GetProperty("user").GetProperty("branchId").GetInt32());
+    }
+
+    [Fact]
+    public async Task Login_DuplicateTripartiteName_WrongBranch_ReturnsUnauthorized()
+    {
+        var branch1 = await GetBranchIdAsync("DAM");
+        var branch2 = await GetBranchIdAsync("ALP");
+        await _factory.CreateUserAsync("سامر أحمد محمود", UserRole.Lawyer, branch1);
+        await _factory.CreateUserAsync("سامر أحمد محمود", UserRole.Lawyer, branch2);
+
+        var result = await _factory.LoginAsync("سامر أحمد محمود", "123456", 9999);
+        Assert.Equal((int)HttpStatusCode.Unauthorized, result!.StatusCode);
+    }
+
+    [Fact]
+    public async Task Login_DuplicateNameWithInactiveAccount_NoBranchSelectionNeeded()
+    {
+        var branch1 = await GetBranchIdAsync("DAM");
+        var branch2 = await GetBranchIdAsync("ALP");
+        await _factory.CreateUserAsync("حسن عمر فارس", UserRole.Lawyer, branch1);
+        await _factory.CreateUserAsync("حسن عمر فارس", UserRole.Lawyer, branch2, isActive: false);
+
+        var result = await _factory.LoginAsync("حسن عمر فارس", "123456");
+        Assert.Equal((int)HttpStatusCode.OK, result!.StatusCode);
+
+        using var doc = JsonDocument.Parse(result.Content);
+        var root = doc.RootElement;
+        Assert.False(root.TryGetProperty("requiresBranchSelection", out _));
+        Assert.Equal(branch1, root.GetProperty("user").GetProperty("branchId").GetInt32());
+    }
+
+    private async Task<int> GetBranchIdAsync(string code)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+        var branch = await db.Branches.AsNoTracking().FirstAsync(b => b.Code == code);
+        return branch.Id;
     }
 }
 

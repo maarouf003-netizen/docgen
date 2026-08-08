@@ -19,11 +19,13 @@ public class DocumentsController : ControllerBase
 
     private readonly IDocumentService _documents;
     private readonly IWordDocumentGenerator _generator;
+    private readonly IExcelExportService _excel;
 
-    public DocumentsController(IDocumentService documents, IWordDocumentGenerator generator)
+    public DocumentsController(IDocumentService documents, IWordDocumentGenerator generator, IExcelExportService excel)
     {
         _documents = documents;
         _generator = generator;
+        _excel = excel;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -37,6 +39,7 @@ public class DocumentsController : ControllerBase
     private bool CanChangeStatus => RolePermissions.CanChangeDocumentStatus(Role);
     private bool CanDelete => RolePermissions.CanDeleteDocuments(Role);
     private bool CanManageActions => RolePermissions.CanManageExecutionActions(Role);
+    private bool CanRotate => RolePermissions.CanRotate(Role);
 
     private DocumentResponse Sanitize(DocumentResponse doc)
     {
@@ -57,7 +60,8 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> Search(
         [FromQuery] string? q, [FromQuery] string? status,
         [FromQuery] string? applicant, [FromQuery] string? court,
-        [FromQuery] string? lawyer,
+        [FromQuery] string? lawyer, [FromQuery] string? branch,
+        [FromQuery] string? administrativeBranch,
         [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
     {
         // البحث/الفلترة باسم المحامي محصور برئيس القسم/المدير/المشرف.
@@ -67,25 +71,61 @@ public class DocumentsController : ControllerBase
         var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
         var visibleUser = HasFullAccess || IsHead ? (int?)null : User.GetUserId();
 
-        var result = await _documents.SearchAsync(q, status, applicant, court, lawyer, null, page, perPage,
-            visibleBranch, visibleUser, ct);
+        var result = await _documents.SearchAsync(q, status, applicant, court, lawyer, branch, administrativeBranch,
+            page, perPage, visibleBranch, visibleUser, ct);
         if (!CanViewCounters)
             result.Items = result.Items.Select(Sanitize).ToList();
         return Ok(result);
     }
 
     [HttpGet("filter-options")]
-    public async Task<IActionResult> GetFilterOptions(CancellationToken ct)
+    public async Task<IActionResult> GetFilterOptions(
+        [FromQuery] string? status, [FromQuery] string? applicant,
+        [FromQuery] string? court, [FromQuery] string? lawyer,
+        [FromQuery] string? branch, [FromQuery] string? administrativeBranch,
+        CancellationToken ct)
     {
         var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
         var visibleUser = HasFullAccess || IsHead ? (int?)null : User.GetUserId();
-        var options = await _documents.GetFilterOptionsAsync(visibleBranch, visibleUser, ct);
+        var options = await _documents.GetFilterOptionsAsync(status, applicant, court, lawyer, branch,
+            administrativeBranch, visibleBranch, visibleUser, ct);
         return Ok(new
         {
             applicants = options.Applicants,
             courts = options.Courts,
             lawyers = CanSearchByLawyer ? options.Lawyers : new List<string>(),
+            administrativeBranches = options.AdministrativeBranches,
+            branches = options.Branches,
         });
+    }
+
+    [HttpGet("export")]
+    public async Task<IActionResult> Export(
+        [FromQuery] string? q, [FromQuery] string? status,
+        [FromQuery] string? applicant, [FromQuery] string? court,
+        [FromQuery] string? lawyer, [FromQuery] string? branch,
+        [FromQuery] string? administrativeBranch, CancellationToken ct)
+    {
+        // التصدير يحترم نفس أذونات الفلترة: البحث باسم المحامي محصور برئيس القسم/المدير/المشرف.
+        if (!string.IsNullOrWhiteSpace(lawyer) && !CanSearchByLawyer)
+            return Forbid();
+
+        var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
+        var visibleUser = HasFullAccess || IsHead ? (int?)null : User.GetUserId();
+
+        var items = await _documents.ExportAsync(q, status, applicant, court, lawyer, branch, administrativeBranch,
+            visibleBranch, visibleUser, ct);
+        if (!CanViewCounters)
+            items = items.Select(Sanitize).ToList();
+
+        var bytes = _excel.BuildDocumentsWorkbook(
+            items,
+            includeAdministrativeBranch: RolePermissions.CanSeeAdministrativeBranch(Role),
+            includeAssignedLawyer: RolePermissions.CanSeeAssignedLawyer(Role),
+            includeViewCount: CanViewCounters);
+
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            $"الملفات التنفيذية {DateTime.Now:yyyy-MM-dd}.xlsx");
     }
 
     [HttpGet("deleted")]
@@ -104,6 +144,23 @@ public class DocumentsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("struck-off")]
+    public async Task<IActionResult> GetStruckOff(
+        [FromQuery] string? q,
+        [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
+    {
+        // رؤية الملفات المشطوبة في وضع «منفذ عليه» بنفس صلاحيات المحذوفات:
+        // محامٍ (ملفاته) / رئيس قسم (فرعه) / مشرف (الكل)، والمدير لا يراها.
+        if (!RolePermissions.CanViewDeletedDocuments(Role))
+            return Forbid();
+
+        var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
+        var visibleUser = IsHead ? (int?)null : User.GetUserId();
+
+        var result = await _documents.SearchStruckOffAsync(q, page, perPage, visibleBranch, visibleUser, ct);
+        return Ok(result);
+    }
+
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Get(int id, CancellationToken ct)
     {
@@ -111,6 +168,16 @@ public class DocumentsController : ControllerBase
         if (doc is null) return NotFound();
         if (!CanAccess(doc)) return Forbid();
         return Ok(Sanitize(doc));
+    }
+
+    [HttpGet("{id:int}/base-numbers")]
+    public async Task<IActionResult> GetBaseNumberHistory(int id, CancellationToken ct)
+    {
+        // تاريخ أرقام الأساس — بنفس صلاحيات العرض المفصّل للملف.
+        var doc = await _documents.GetAsync(id, ct);
+        if (doc is null) return NotFound();
+        if (!CanAccess(doc)) return Forbid();
+        return Ok(await _documents.GetBaseNumberHistoryAsync(id, ct));
     }
 
     [HttpPost]
@@ -141,8 +208,36 @@ public class DocumentsController : ControllerBase
         if (doc is null) return NotFound();
         if (!CanAccess(doc)) return Forbid();
 
-        var updated = await _documents.UpdateAsync(id, request, ActorName, ct);
+        var updated = await _documents.UpdateAsync(id, request, ActorName, User.GetUserId(), ct);
         return updated is null ? NotFound() : Ok(Sanitize(updated));
+    }
+
+    [HttpGet("rotate")]
+    public async Task<IActionResult> GetRotationList([FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
+    {
+        // تدوير أرقام الأساس للمحامي فقط — على ملفاته.
+        if (!CanRotate)
+            return Forbid();
+
+        return Ok(await _documents.GetRotationListAsync(User.GetUserId(), page, perPage, ct));
+    }
+
+    [HttpPut("rotate")]
+    public async Task<IActionResult> SaveBaseNumbers([FromBody] SaveBaseNumbersRequest request, CancellationToken ct)
+    {
+        // تدوير أرقام الأساس للمحامي فقط — على ملفاته.
+        if (!CanRotate)
+            return Forbid();
+
+        try
+        {
+            await _documents.SaveBaseNumbersAsync(User.GetUserId(), request.Entries, ActorName, ct);
+            return NoContent();
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
     }
 
     [HttpDelete("{id:int}")]
@@ -211,6 +306,51 @@ public class DocumentsController : ControllerBase
             : NotFound();
     }
 
+    [HttpPost("{id:int}/executed-status")]
+    public async Task<IActionResult> SetExecutedStatus(int id, [FromBody] ExecutedStatusRequest request, CancellationToken ct)
+    {
+        // تغيير حالة وضع «الجهة العامة منفذ عليها» محصور بالمحامي (للملفات التي يملكها) —
+        // يعمل على ملفات صفة executed فقط.
+        if (!CanChangeStatus) return Forbid();
+
+        var doc = await _documents.GetAsync(id, ct);
+        if (doc is null) return NotFound();
+        if (!CanAccess(doc)) return Forbid();
+
+        try
+        {
+            var ok = await _documents.UpdateExecutedStatusAsync(id, request.Status, ActorName, ct);
+            return ok ? Ok(new { message = "تم تحديث حالة وضع «الجهة العامة منفذ عليها»" }) : NotFound();
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+    }
+
+    [HttpPost("{id:int}/restore-struck-off")]
+    public async Task<IActionResult> RestoreStruckOff(int id, CancellationToken ct)
+    {
+        // إعادة ملف مشطوب إلى المتداول من اختصاص المحامي صاحب الملف فقط
+        // (بذات حكم الاستعادة في المحذوفات).
+        if (!CanDelete) return Forbid();
+
+        var doc = await _documents.GetAsync(id, ct);
+        if (doc is null) return NotFound();
+        if (!CanAccess(doc)) return Forbid();
+
+        try
+        {
+            return await _documents.RestoreStruckOffAsync(id, ActorName, ct)
+                ? Ok(new { message = "أعيد الملف المشطوب إلى المتداول" })
+                : NotFound();
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+    }
+
     [HttpPost("{id:int}/view")]
     public async Task<IActionResult> TrackView(int id, CancellationToken ct)
     {
@@ -227,6 +367,7 @@ public class DocumentsController : ControllerBase
         [FromQuery] string template,
         [FromQuery] int recipient = 0,
         [FromQuery] int[]? estateIds = null,
+        [FromQuery] int heirId = 0,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(template))
@@ -236,9 +377,13 @@ public class DocumentsController : ControllerBase
         if (doc is null) return NotFound();
         if (!CanAccess(doc)) return Forbid();
 
+        // توليد المستندات محصور بنظام «طالبة تنفيذ»: ملفات وضع «منفذ عليه» لا تُولَّد.
+        if (doc.GeneralEntitySide == GeneralEntitySideCatalog.Executed)
+            return BadRequest(new { message = "لا يُولَّد مستند لملفات وضع «الجهة العامة منفذ عليها»" });
+
         try
         {
-            var result = await _generator.GenerateAsync(id, template, recipient, estateIds, ct);
+            var result = await _generator.GenerateAsync(id, template, recipient, estateIds, heirId, ct);
             return File(result.Bytes, WordContentType, result.FileName);
         }
         catch (KeyNotFoundException)
@@ -252,6 +397,61 @@ public class DocumentsController : ControllerBase
         catch (FileNotFoundException e)
         {
             return StatusCode(500, new { message = $"القالب غير متوفر: {e.Message}" });
+        }
+    }
+
+    [HttpGet("owner/{lawyerId:int}/count")]
+    public async Task<IActionResult> CountFilesByOwner(int lawyerId, CancellationToken ct)
+    {
+        // عدد ملفات المحامي (معاينة قبل النقل الجماعي) — رئيس القسم (ضمن فرعه) فقط.
+        if (!RolePermissions.CanTransferDocuments(Role))
+            return Forbid();
+
+        // رئيس القسم بلا فرع لا يملك نطاقًا صالحًا للنقل (يُمنع صراحةً كبقية عمليات الفرع).
+        var scopeBranchId = User.GetBranchId();
+        if (scopeBranchId is null)
+            return Forbid();
+
+        try
+        {
+            var count = await _documents.CountFilesByOwnerAsync(lawyerId, scopeBranchId, ct);
+            return Ok(new { count });
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+    }
+
+    [HttpPost("transfer-all")]
+    public async Task<IActionResult> TransferAll([FromBody] TransferAllRequest request, CancellationToken ct)
+    {
+        // نقل كامل ملفات محامٍ إلى محامٍ آخر بجميع الحالات — رئيس القسم (ضمن فرعه) فقط.
+        if (!RolePermissions.CanTransferDocuments(Role))
+            return Forbid();
+
+        // رئيس القسم بلا فرع لا يملك نطاقًا صالحًا للنقل (يُمنع صراحةً كبقية عمليات الفرع).
+        var scopeBranchId = User.GetBranchId();
+        if (scopeBranchId is null)
+            return Forbid();
+
+        try
+        {
+            var transferredCount = await _documents.TransferAllAsync(
+                request.SourceLawyerId, request.TargetLawyerId, scopeBranchId, ActorName, ct);
+            return Ok(new { transferredCount });
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+        catch (DocumentConflictException e)
+        {
+            return Conflict(new { message = e.Message });
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
         }
     }
 
@@ -377,5 +577,10 @@ public class DocumentsController : ControllerBase
     {
         public string Status { get; set; } = string.Empty;
         public Dictionary<string, string?>? Fields { get; set; }
+    }
+
+    public class ExecutedStatusRequest
+    {
+        public string Status { get; set; } = string.Empty;
     }
 }

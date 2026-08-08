@@ -27,6 +27,9 @@ public static class RolePermissions
     /// <summary>إضافة/تعديل/حذف إجراءات التنفيذ وإلغاء التذكير — المحامي فقط.</summary>
     public static bool CanManageExecutionActions(UserRole role) => role == UserRole.Lawyer;
 
+    /// <summary>تدوير أرقام أساس الملفات السنوي — المحامي فقط (على ملفاته).</summary>
+    public static bool CanRotate(UserRole role) => role == UserRole.Lawyer;
+
     /// <summary>رؤية عدادات المشاهدة/الطباعة — رئيس قسم/مدير/مشرف.</summary>
     public static bool CanViewCounters(UserRole role) =>
         role is UserRole.Head or UserRole.Manager or UserRole.Admin;
@@ -42,6 +45,12 @@ public static class RolePermissions
 
     /// <summary>إدارة المستخدمين بكاملها — المشرف فقط.</summary>
     public static bool CanManageUsers(UserRole role) => role == UserRole.Admin;
+
+    /// <summary>إدارة الفروع (إضافة/تعديل/حذف) — المشرف فقط.</summary>
+    public static bool CanManageBranches(UserRole role) => role == UserRole.Admin;
+
+    /// <summary>إصدار تنبيهات للمحامين — رئيس القسم (فرعه) فقط.</summary>
+    public static bool CanCreateAlerts(UserRole role) => role == UserRole.Head;
 
     /// <summary>رؤية عمود «فرع الإدارة» — مدير/مشرف فقط.</summary>
     public static bool CanSeeAdministrativeBranch(UserRole role) =>

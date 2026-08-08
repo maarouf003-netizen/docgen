@@ -115,7 +115,7 @@ describe('Layout', () => {
     expect(screen.getByRole('link', { name: 'سجل التدقيق' })).toBeInTheDocument();
   });
 
-  it('يعرض رابط «المستندات المحذوفة» لرئيس القسم والمحامي والمشرف', () => {
+  it('لا يعرض رابط «الملفات المحذوفة» في الشريط الجانبي لأي دور (انتقل داخل الملفات التنفيذية)', () => {
     for (const role of ['head', 'lawyer', 'admin']) {
       useAuthMock.mockReturnValue({
         ...baseUser(),
@@ -123,15 +123,12 @@ describe('Layout', () => {
       });
       stubMatchMedia(true);
       const { unmount } = render(<Layout />);
-      expect(screen.getByRole('link', { name: 'المستندات المحذوفة' })).toHaveAttribute(
-        'href',
-        '/documents/deleted',
-      );
+      expect(screen.queryByRole('link', { name: 'الملفات المحذوفة' })).not.toBeInTheDocument();
       unmount();
     }
   });
 
-  it('يخفي رابط «المستندات المحذوفة» عن المدير', () => {
+  it('لا يعرض رابط «الملفات المحذوفة» عن المدير في الشريط الجانبي', () => {
     useAuthMock.mockReturnValue({
       ...baseUser(),
       user: { ...baseUser().user, role: 'manager' },
@@ -139,7 +136,7 @@ describe('Layout', () => {
     stubMatchMedia(true);
     render(<Layout />);
 
-    expect(screen.queryByRole('link', { name: 'المستندات المحذوفة' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'الملفات المحذوفة' })).not.toBeInTheDocument();
   });
 
   it('يخفي روابط الصلاحيات الخاصة عن المحامي', () => {

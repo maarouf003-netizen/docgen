@@ -49,6 +49,9 @@ function doc(overrides: Partial<DocumentResponse>): DocumentResponse {
     guarantors: [],
     realEstates: [],
     executionActions: [],
+    executionApplicants: [],
+    executedPublicEntities: [],
+    executedNaturalPersons: [],
     ...overrides,
   };
 }
@@ -66,7 +69,7 @@ beforeEach(() => {
 });
 
 describe('DeletedDocuments', () => {
-  it('يعرض المستندات المحذوفة في جدول على المكتبي مع تاريخ الحذف', async () => {
+  it('يعرض الملفات المحذوفة في جدول على المكتبي مع تاريخ الحذف', async () => {
     mockPage([doc({ id: 7, deletedAt: '2026-08-04T10:00:00' })]);
 
     render(<DeletedDocuments />);
@@ -96,7 +99,7 @@ describe('DeletedDocuments', () => {
     mockPage([]);
 
     render(<DeletedDocuments />);
-    await screen.findByText('لا توجد مستندات محذوفة');
+    await screen.findByText('لا توجد ملفات محذوفة');
 
     await user.type(screen.getByPlaceholderText(/بحث بالاسم الثنائي/), 'أحمد');
 
@@ -117,7 +120,7 @@ describe('DeletedDocuments', () => {
     await user.click(within(table).getByRole('button', { name: 'تأكيد الاستعادة' }));
 
     expect(api.post).toHaveBeenCalledWith('/documents/7/restore');
-    expect(await screen.findByText(/تمت استعادة المستند/)).toBeInTheDocument();
+    expect(await screen.findByText(/تمت استعادة الملف/)).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith(expect.stringContaining('/documents/deleted'));
   });
 
@@ -152,12 +155,12 @@ describe('DeletedDocuments', () => {
     expect(await screen.findByText('حدث خطأ في الخادم. حاول مرة أخرى لاحقاً')).toBeInTheDocument();
   });
 
-  it('يعرض «لا توجد مستندات محذوفة» عند قائمة فارغة', async () => {
+  it('يعرض «لا توجد ملفات محذوفة» عند قائمة فارغة', async () => {
     mockPage([]);
 
     render(<DeletedDocuments />);
 
-    expect(await screen.findByText('لا توجد مستندات محذوفة')).toBeInTheDocument();
+    expect(await screen.findByText('لا توجد ملفات محذوفة')).toBeInTheDocument();
   });
 
   it('يعرض «—» في تاريخ الحذف عند غياب القيمة', async () => {

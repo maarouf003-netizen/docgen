@@ -1,12 +1,14 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import TransferAllFilesModal from '../components/TransferAllFilesModal';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import type { BranchDto, LawyerListItem } from '../types';
 
 export default function BranchLawyers() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const isHead = user?.role === 'head';
   const isMobile = useIsMobile();
 
   const [branches, setBranches] = useState<BranchDto[]>([]);
@@ -17,12 +19,12 @@ export default function BranchLawyers() {
 
   const [showForm, setShowForm] = useState(false);
   const [fullName, setFullName] = useState('');
-  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [transferSource, setTransferSource] = useState<LawyerListItem | null>(null);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -54,7 +56,6 @@ export default function BranchLawyers() {
 
   const resetForm = () => {
     setFullName('');
-    setUsername('');
     setPassword('');
     setFormError('');
     setShowForm(false);
@@ -63,11 +64,7 @@ export default function BranchLawyers() {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!fullName.trim()) {
-      setFormError('الاسم الكامل مطلوب');
-      return;
-    }
-    if (!username.trim() || /\s/.test(username)) {
-      setFormError('اسم المستخدم مطلوب ولا يحوي مسافات');
+      setFormError('الاسم الثلاثي مطلوب');
       return;
     }
     if (password.length < 6) {
@@ -78,9 +75,10 @@ export default function BranchLawyers() {
     setSaving(true);
     setFormError('');
     try {
+      const name = fullName.trim();
       await api.post('/users/lawyers', {
-        username: username.trim(),
-        fullName: fullName.trim(),
+        username: name,
+        fullName: name,
         password,
         branchId: isAdmin ? branchId : null,
       });
@@ -146,23 +144,13 @@ export default function BranchLawyers() {
           onSubmit={submit}
           className="bg-white rounded-xl shadow p-4 mb-4 grid sm:grid-cols-2 gap-4"
         >
-          <div>
-            <label htmlFor="lawyer-fullname" className="block text-xs font-medium text-gray-600 mb-1">الاسم الكامل</label>
+          <div className="sm:col-span-2">
+            <label htmlFor="lawyer-fullname" className="block text-xs font-medium text-gray-600 mb-1">الاسم الثلاثي (اسم الدخول)</label>
             <input
               id="lawyer-fullname"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              placeholder="اسم المحامي..."
-              className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            />
-          </div>
-          <div>
-            <label htmlFor="lawyer-username" className="block text-xs font-medium text-gray-600 mb-1">اسم المستخدم</label>
-            <input
-              id="lawyer-username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="بدون مسافات..."
+              placeholder="مثال: محمد أحمد علي"
               className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
@@ -219,17 +207,27 @@ export default function BranchLawyers() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() => toggleActive(l)}
-                      disabled={busyId === l.id}
-                      className={`rounded-lg px-3 py-1.5 text-xs min-h-11 ${
-                        l.isActive
-                          ? 'bg-red-50 text-red-700 hover:bg-red-100'
-                          : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                      }`}
-                    >
-                      {busyId === l.id ? 'جارٍ...' : l.isActive ? 'إيقاف' : 'تفعيل'}
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      {isHead && (
+                        <button
+                          onClick={() => setTransferSource(l)}
+                          className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg px-3 py-1.5 text-xs min-h-11"
+                        >
+                          نقل كامل ملفاته
+                        </button>
+                      )}
+                      <button
+                        onClick={() => toggleActive(l)}
+                        disabled={busyId === l.id}
+                        className={`rounded-lg px-3 py-1.5 text-xs min-h-11 ${
+                          l.isActive
+                            ? 'bg-red-50 text-red-700 hover:bg-red-100'
+                            : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                        }`}
+                      >
+                        {busyId === l.id ? 'جارٍ...' : l.isActive ? 'إيقاف' : 'تفعيل'}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -263,22 +261,41 @@ export default function BranchLawyers() {
                   {l.username}
                   {l.branchName ? <span className="text-gray-400"> · {l.branchName}</span> : null}
                 </div>
-                <button
-                  onClick={() => toggleActive(l)}
-                  disabled={busyId === l.id}
-                  className={`mt-3 rounded-lg px-3 py-2 text-xs min-h-11 ${
-                    l.isActive
-                      ? 'bg-red-50 text-red-700 hover:bg-red-100'
-                      : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                  }`}
-                >
-                  {busyId === l.id ? 'جارٍ...' : l.isActive ? 'إيقاف الحساب' : 'تفعيل الحساب'}
-                </button>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {isHead && (
+                    <button
+                      onClick={() => setTransferSource(l)}
+                      className="rounded-lg px-3 py-2 text-xs min-h-11 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                    >
+                      نقل كامل ملفاته
+                    </button>
+                  )}
+                  <button
+                    onClick={() => toggleActive(l)}
+                    disabled={busyId === l.id}
+                    className={`rounded-lg px-3 py-2 text-xs min-h-11 ${
+                      l.isActive
+                        ? 'bg-red-50 text-red-700 hover:bg-red-100'
+                        : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                    }`}
+                  >
+                    {busyId === l.id ? 'جارٍ...' : l.isActive ? 'إيقاف الحساب' : 'تفعيل الحساب'}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
+          )}
+        </div>
+
+        {transferSource && (
+          <TransferAllFilesModal
+            sourceLawyer={transferSource}
+            lawyers={lawyers}
+            onClose={() => setTransferSource(null)}
+            onTransferred={() => load(branchId)}
+          />
         )}
       </div>
-    </div>
   );
 }

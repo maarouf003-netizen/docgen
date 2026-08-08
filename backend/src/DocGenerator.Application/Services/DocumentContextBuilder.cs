@@ -18,6 +18,7 @@ public class DocumentContextBuilder : IDocumentContextBuilder
         string templateCode,
         int recipient = 0,
         int[]? estateIds = null,
+        int heirId = 0,
         CancellationToken ct = default)
     {
         var doc = await _documents.GetByIdAsync(documentId, ct)
@@ -52,12 +53,18 @@ public class DocumentContextBuilder : IDocumentContextBuilder
         context["current_date_arabic"] = ToArabicIndicDigits(DateTime.Today.ToString("dd/MM/yyyy"));
         context["currency"] = doc.Currency ?? "ليرة سورية";
         context["contract_type_selector"] = contractTypeSelector;
-        context["file_number"] = doc.FileNumber ?? string.Empty;
+        // الرقم الظاهر في المستندات: رقم أساس السنة الحالية إن وُجد، وإلا رقم الملف الأصلي
+        // (القرار: رقم الأساس للسنة الحالية يحل محل رقم الملف في المستندات المولدة).
+        var effectiveFileNumber = doc.BaseNumbers
+            .Where(b => b.Year == DateTime.Today.Year)
+            .Select(b => b.BaseNumber)
+            .FirstOrDefault() ?? doc.FileNumber ?? string.Empty;
+        context["file_number"] = effectiveFileNumber;
         context["file_type"] = doc.FileType ?? string.Empty;
         context["file_year"] = doc.FileYear ?? string.Empty;
         context["file_number_full"] = string.IsNullOrWhiteSpace(doc.FileYear)
-            ? doc.FileNumber ?? string.Empty
-            : $"{doc.FileNumber}/{doc.FileYear}";
+            ? effectiveFileNumber
+            : $"{effectiveFileNumber}/{doc.FileYear}";
         context["immediate_actions"] = doc.ImmediateActions ?? string.Empty;
         context["immediate_actions_prefix"] = string.IsNullOrWhiteSpace(doc.ImmediateActions)
             ? string.Empty
@@ -74,9 +81,8 @@ public class DocumentContextBuilder : IDocumentContextBuilder
         {
             if (!string.IsNullOrWhiteSpace(borrowerAddress))
             {
-                context["execution_debtor_and_its_adress"] = doc.BorrowerAddressType == "موطن مختار"
-                    ? $"{borrowerFull}\nمتخذا موطنا مختارا: {borrowerAddress}"
-                    : $"{borrowerFull}\nعنوانه {borrowerAddress}";
+                context["execution_debtor_and_its_adress"] =
+                    $"{borrowerFull}\n{AddressPhraseOf(doc.BorrowerAddressType, borrowerAddress, withColon: true)}";
             }
             else
             {
@@ -88,8 +94,7 @@ public class DocumentContextBuilder : IDocumentContextBuilder
             context["execution_debtor_and_its_adress"] = string.Empty;
         }
 
-        var addressPrefix = doc.BorrowerAddressType == "موطن مختار" ? "موطناً مختاراً " : string.Empty;
-        context["borrower_address"] = addressPrefix + (doc.BorrowerAddress ?? string.Empty);
+        context["borrower_address"] = PrefixedAddress(doc.BorrowerAddressType, doc.BorrowerAddress);
         context["borrower_address_type"] = doc.BorrowerAddressType ?? "موطن مختار";
 
         var applicant = doc.Applicant ?? string.Empty;
@@ -141,6 +146,7 @@ public class DocumentContextBuilder : IDocumentContextBuilder
 
         // الكفلاء (1 إلى 5)
         var guarantors = doc.Guarantors.OrderBy(g => g.GuarantorNumber).ToList();
+        var heirs = doc.Heirs.ToList();
         for (var i = 1; i <= 5; i++)
         {
             var guarantor = guarantors.FirstOrDefault(g => g.GuarantorNumber == i);
@@ -148,7 +154,6 @@ public class DocumentContextBuilder : IDocumentContextBuilder
 
             if (!string.IsNullOrWhiteSpace(name))
             {
-                var gAddressPrefix = guarantor?.AddressType == "موطن مختار" ? "موطناً مختاراً " : string.Empty;
                 context[$"guarantor_{i}_name"] = name;
                 context[$"guarantor_{i}_father"] = guarantor?.GuarantorFather ?? string.Empty;
                 context[$"guarantor_{i}_family"] = guarantor?.GuarantorFamily ?? string.Empty;
@@ -156,7 +161,7 @@ public class DocumentContextBuilder : IDocumentContextBuilder
                 context[$"guarantor_{i}_birth"] = guarantor?.GuarantorBirth ?? string.Empty;
                 context[$"guarantor_{i}_register"] = guarantor?.GuarantorRegister ?? string.Empty;
                 context[$"guarantor_{i}_national_id"] = guarantor?.GuarantorNationalId ?? string.Empty;
-                context[$"guarantor_{i}_address"] = gAddressPrefix + (guarantor?.GuarantorAddress ?? string.Empty);
+                context[$"guarantor_{i}_address"] = PrefixedAddress(guarantor?.AddressType, guarantor?.GuarantorAddress);
                 context[$"guarantor_{i}_address_type"] = guarantor?.AddressType ?? "موطن مختار";
             }
             else
@@ -177,11 +182,11 @@ public class DocumentContextBuilder : IDocumentContextBuilder
         var estates = doc.RealEstates.ToList();
         context["real_estates"] = estates;
         context["property"] = estates.Count > 0 ? estates[0].Property ?? string.Empty : string.Empty;
-        context["property_owner"] = estates.Count > 0 ? estates[0].Owner ?? string.Empty : string.Empty;
+        context["property_owner"] = estates.Count > 0 ? JoinOwners(OwnerNames(estates[0])) : string.Empty;
 
         // المنفذ عليهم مع عناوينهم (RichText بالاسم العريض)
         context["execution_debtors_and_its_adresses"] =
-            BuildDebtorsRichXml(borrowerFull, borrowerAddress, doc.BorrowerAddressType, guarantors);
+            BuildDebtorsRichXml(borrowerFull, borrowerAddress, doc.BorrowerAddressType, guarantors, heirs);
 
         // المنفذون عليهم نصاً عادياً (لكل منها سطر) — مستخدم في قالب الحجز العقاري
         context["execution_debtors"] = BuildExecutionDebtorsPlain(borrowerFull, guarantors);
@@ -192,8 +197,17 @@ public class DocumentContextBuilder : IDocumentContextBuilder
         {
             if (!string.IsNullOrWhiteSpace(borrowerFull))
             {
-                context["borrower_address"] = BuildBorrowerAddressRichXml(
-                    borrowerFull, addressPrefix + (doc.BorrowerAddress ?? string.Empty));
+                var borrowerHeirs = HeirsOf(heirs, null);
+                if (borrowerHeirs.Count > 0)
+                {
+                    var heirsItem = BuildHeirsRichItem(borrowerFull, borrowerHeirs);
+                    context["borrower_address"] = BuildRichPairXml(heirsItem.Name, heirsItem.Address);
+                }
+                else
+                {
+                    context["borrower_address"] = BuildBorrowerAddressRichXml(
+                        borrowerFull, PrefixedAddress(doc.BorrowerAddressType, doc.BorrowerAddress));
+                }
                 context["borrower_name"] = string.Empty;
                 context["borrower_father"] = string.Empty;
                 context["borrower_family"] = string.Empty;
@@ -203,8 +217,13 @@ public class DocumentContextBuilder : IDocumentContextBuilder
         {
             context["contain"] = context["contain_notice"];
 
+            // إخطار تنفيذي لوريث محدد (heirId = معرف الوريث)
+            if (heirId > 0)
+            {
+                BuildHeirNoticeContext(context, ResolveHeirContext(heirs, heirId, borrowerFull, guarantors));
+            }
             // إخطار تنفيذي لكفيل محدد (recipient = رقم الكفيل)
-            if (recipient > 0)
+            else if (recipient > 0)
             {
                 var guarantor = guarantors.FirstOrDefault(g => g.GuarantorNumber == recipient)
                     ?? throw new ArgumentException($"كفيل غير موجود: {recipient}");
@@ -215,16 +234,33 @@ public class DocumentContextBuilder : IDocumentContextBuilder
         {
             var selected = SelectEstates(estates, estateIds);
             BuildPropertySaleContext(context, selected);
+            if (heirId > 0)
+            {
+                var resolved = ResolveHeirContext(heirs, heirId, borrowerFull, guarantors);
+                context["execution_debtor_and_its_adress"] =
+                    BuildHeirLine(resolved.Heir, resolved.DeceasedFullName, withAddress: true);
+            }
         }
         else if (templateCode == "006")
         {
             var selected = SelectEstates(estates, estateIds);
             BuildPropertySalePaperContext(context, selected, borrowerFull, guarantors);
+            if (heirId > 0)
+            {
+                var resolved = ResolveHeirContext(heirs, heirId, borrowerFull, guarantors);
+                context["execution_debtor"] =
+                    BuildHeirLine(resolved.Heir, resolved.DeceasedFullName, withAddress: false);
+            }
         }
         else if (templateCode == "007")
         {
-            var target = ResolveRecipient(recipient, doc, guarantors);
-            BuildNoticePaperContext(context, target, recipient, isOrdinary);
+            if (heirId > 0)
+                BuildHeirPaperContext(context, ResolveHeirContext(heirs, heirId, borrowerFull, guarantors));
+            else
+            {
+                var target = ResolveRecipient(recipient, doc, guarantors);
+                BuildNoticePaperContext(context, target, recipient, isOrdinary);
+            }
         }
         else if (templateCode == "PS")
         {
@@ -276,32 +312,163 @@ public class DocumentContextBuilder : IDocumentContextBuilder
         return context;
     }
 
-    private static string BuildBorrowerAddressRichXml(string borrowerFull, string addressText)
+    private static string BuildBorrowerAddressRichXml(string borrowerFull, string addressText) =>
+        BuildRichPairXml(borrowerFull, addressText);
+
+    /// <summary>
+    /// زوج (اسم عريض + عنوان عادي) بصيغة RichText صالحة داخل فقرة Word.
+    /// </summary>
+    private static string BuildRichPairXml(string name, string addressText)
     {
-        if (string.IsNullOrWhiteSpace(borrowerFull))
+        if (string.IsNullOrWhiteSpace(name))
             return addressText;
 
-        var xml = $"<w:r><w:rPr><w:b/><w:rtl/></w:rPr><w:t xml:space=\"preserve\">{XmlEscape(borrowerFull)}</w:t></w:r>";
+        var xml = $"<w:r><w:rPr><w:b/><w:rtl/></w:rPr><w:t xml:space=\"preserve\">{XmlEscape(name)}</w:t></w:r>";
         if (!string.IsNullOrWhiteSpace(addressText))
             xml += $"<w:r><w:rPr><w:rtl/></w:rPr><w:t xml:space=\"preserve\"> {XmlEscape(addressText)}</w:t></w:r>";
         return xml;
+    }
+
+    // ── ورثة المنفذ عليهم المتوفين ──
+
+    /// <summary>ورثة منفذ عليه محدد (GuarantorNumber = null يعني ورثة المقترض).</summary>
+    private static List<Heir> HeirsOf(IEnumerable<Heir> heirs, int? guarantorNumber) =>
+        heirs.Where(h => h.GuarantorNumber == guarantorNumber).ToList();
+
+    /// <summary>
+    /// عبارة عنوان/وكيل الوريث: «عنوانه …» أو «يمثله …». إذا كان الحقل فارغًا تُلغى
+    /// السابقة كليًا فيُذكر الاسم الثلاثي للوريث فقط. عند اختيار «وكيل» تُستخدم صيغة
+    /// «يمثله …» دون تكرار إن كانت القيمة المخزنة تحمل السابقة ذاتها.
+    /// </summary>
+    private static string HeirAddressPhrase(Heir heir)
+    {
+        var value = (heir.HeirAddress ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+        if (heir.AddressType != "وكيل")
+            return $"عنوانه {value}";
+
+        if (value.StartsWith("يمثله", StringComparison.Ordinal))
+        {
+            var attorney = value["يمثله".Length..].TrimStart();
+            if (string.IsNullOrWhiteSpace(attorney))
+                return string.Empty;
+            value = attorney;
+        }
+
+        return $"يمثله {value}";
+    }
+
+    /// <summary>
+    /// سطر الوريث في الإخطارات: «[الوريث] إضافة لتركة المتوفى ([المتوفى])». مع
+    /// (withAddress) تُلحق عبارة العنوان/الوكيل في سطر تالٍ إن وُجدت — وتُهمل في
+    /// إخطارات الصحف (006/007) التي تذكر الوريث والعبارة فقط بلا عنوان ولا وكيل.
+    /// </summary>
+    private static string BuildHeirLine(Heir heir, string deceasedFull, bool withAddress)
+    {
+        var line = $"{heir.HeirName?.Trim()} إضافة لتركة المتوفى ({deceasedFull})";
+        if (!withAddress)
+            return line;
+
+        var phrase = HeirAddressPhrase(heir);
+        return string.IsNullOrWhiteSpace(phrase) ? line : $"{line}\n{phrase}";
+    }
+
+    /// <summary>
+    /// كتلة «ورثة المتوفى» لقوائم الاستدعاء والمحضر (001/002): الاسم العريض
+    /// «ورثة المتوفى [المتوفى]» تليه العبارة «وهم: [قائمة الورثة] إضافة لتركة مورثهم ([المتوفى])».
+    /// </summary>
+    private static (string Name, string Address) BuildHeirsRichItem(string deceasedFull, List<Heir> heirs)
+    {
+        var list = heirs
+            .Select(h =>
+            {
+                var name = (h.HeirName ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(name))
+                    return string.Empty;
+                var phrase = HeirAddressPhrase(h);
+                return string.IsNullOrWhiteSpace(phrase) ? name : $"{name}، {phrase}";
+            })
+            .Where(p => p.Length > 0)
+            .ToList();
+
+        var joined = string.Join("، ", list);
+        if (string.IsNullOrWhiteSpace(joined))
+            return (deceasedFull, string.Empty);
+
+        return (
+            $"ورثة المتوفى {deceasedFull}",
+            $"وهم: {joined} إضافة لتركة مورثهم ({deceasedFull})");
+    }
+
+    /// <summary>
+    /// يحل الوريث بمعرفه ويعيده مع الاسم الثلاثي لمورثه (المقترض أو الكفيل صاحب الوريث).
+    /// </summary>
+    private static (Heir Heir, string DeceasedFullName) ResolveHeirContext(
+        IEnumerable<Heir> heirs,
+        int heirId,
+        string borrowerFull,
+        List<Guarantor> guarantors)
+    {
+        var heir = heirs.FirstOrDefault(h => h.Id == heirId)
+            ?? throw new ArgumentException("الوريث المحدد غير موجود");
+
+        string deceasedFull;
+        if (heir.GuarantorNumber is null)
+        {
+            deceasedFull = borrowerFull;
+        }
+        else
+        {
+            var guarantor = guarantors.FirstOrDefault(g => g.GuarantorNumber == heir.GuarantorNumber);
+            deceasedFull = JoinNonEmpty(new[]
+            {
+                guarantor?.GuarantorName, guarantor?.GuarantorFather, guarantor?.GuarantorFamily
+            });
+        }
+
+        return (heir, deceasedFull);
+    }
+
+    /// <summary>إخطار تنفيذي موجَّه إلى وريث (003 + heirId): يذكر المتوفى مع العنوان/الوكيل.</summary>
+    private static void BuildHeirNoticeContext(
+        Dictionary<string, object> context,
+        (Heir Heir, string DeceasedFullName) resolved)
+    {
+        context["borrower_name"] = resolved.Heir.HeirName ?? string.Empty;
+        context["execution_debtor_and_its_adress"] =
+            BuildHeirLine(resolved.Heir, resolved.DeceasedFullName, withAddress: true);
+    }
+
+    /// <summary>إخطار تنفيذي بالصحف موجَّه إلى وريث (007 + heirId): بلا عنوان ولا وكيل.</summary>
+    private static void BuildHeirPaperContext(
+        Dictionary<string, object> context,
+        (Heir Heir, string DeceasedFullName) resolved)
+    {
+        var heirName = resolved.Heir.HeirName ?? string.Empty;
+        context["execution_debtor"] = BuildHeirLine(resolved.Heir, resolved.DeceasedFullName, withAddress: false);
+        context["recipient_name"] = heirName;
     }
 
     private static string BuildDebtorsRichXml(
         string borrowerFull,
         string borrowerAddress,
         string? borrowerAddressType,
-        List<Guarantor> guarantors)
+        List<Guarantor> guarantors,
+        List<Heir> heirs)
     {
         var items = new List<(string Name, string Address)>();
 
-        if (!string.IsNullOrWhiteSpace(borrowerFull))
+        var borrowerHeirs = HeirsOf(heirs, null);
+        if (borrowerHeirs.Count > 0)
+        {
+            items.Add(BuildHeirsRichItem(borrowerFull, borrowerHeirs));
+        }
+        else if (!string.IsNullOrWhiteSpace(borrowerFull))
         {
             var address = string.Empty;
             if (!string.IsNullOrWhiteSpace(borrowerAddress))
-                address = borrowerAddressType == "موطن مختار"
-                    ? $"متخذا موطنا مختارا {borrowerAddress}"
-                    : $"عنوانه {borrowerAddress}";
+                address = AddressPhraseOf(borrowerAddressType, borrowerAddress, withColon: false);
             items.Add((borrowerFull, address));
         }
 
@@ -316,11 +483,16 @@ public class DocumentContextBuilder : IDocumentContextBuilder
             if (string.IsNullOrWhiteSpace(name))
                 continue;
 
+            var guarantorHeirs = HeirsOf(heirs, i);
+            if (guarantorHeirs.Count > 0)
+            {
+                items.Add(BuildHeirsRichItem(name, guarantorHeirs));
+                continue;
+            }
+
             var address = string.Empty;
             if (!string.IsNullOrWhiteSpace(guarantor?.GuarantorAddress))
-                address = guarantor.AddressType == "موطن مختار"
-                    ? $"متخذا موطنا مختارا {guarantor.GuarantorAddress}"
-                    : $"عنوانه {guarantor.GuarantorAddress}";
+                address = AddressPhraseOf(guarantor.AddressType, guarantor.GuarantorAddress, withColon: false);
             items.Add((name, address));
         }
 
@@ -349,6 +521,18 @@ public class DocumentContextBuilder : IDocumentContextBuilder
 
     private static string JoinNonEmpty(IEnumerable<string?> values) =>
         string.Join(' ', values.Where(v => !string.IsNullOrWhiteSpace(v))).Trim();
+
+    /// <summary>
+    /// أسماء ملاك عقار بترتيب الاختيار (من قائمة الملاك الفرعية).
+    /// </summary>
+    private static List<string> OwnerNames(RealEstate estate) =>
+        estate.Owners.OrderBy(o => o.Order).Select(o => o.Name).ToList();
+
+    /// <summary>
+    /// دمج أسماء الملاك المتعددين في نص واحد يفصل بينها « و »، مع تجاهل الفارغ.
+    /// </summary>
+    private static string JoinOwners(IEnumerable<string> owners) =>
+        string.Join(" و ", owners.Where(o => !string.IsNullOrWhiteSpace(o)));
 
     private static string BuildExecutionDebtorsPlain(string borrowerFull, List<Guarantor> guarantors)
     {
@@ -382,8 +566,7 @@ public class DocumentContextBuilder : IDocumentContextBuilder
     private static void BuildGuarantorNoticeContext(Dictionary<string, object> context, Guarantor guarantor)
     {
         var name = guarantor.GuarantorName ?? string.Empty;
-        var addressPrefix = guarantor.AddressType == "موطن مختار" ? "موطناً مختاراً " : string.Empty;
-        var address = addressPrefix + (guarantor.GuarantorAddress ?? string.Empty);
+        var address = PrefixedAddress(guarantor.AddressType, guarantor.GuarantorAddress);
 
         context["borrower_name"] = name;
         context["borrower_father"] = guarantor.GuarantorFather ?? string.Empty;
@@ -403,14 +586,27 @@ public class DocumentContextBuilder : IDocumentContextBuilder
     // ── إخطار بيع أموال غير منقولة (005) — مطابق generate_005_direct ──
     private static void BuildPropertySaleContext(Dictionary<string, object> context, List<RealEstate> estates)
     {
-        var owner = estates[0].Owner ?? string.Empty;
-        var (ownerName, ownerFather, ownerFamily) = SplitOwnerName(owner);
+        var owners = OwnerNames(estates[0]);
+        var owner = JoinOwners(owners);
 
         context["property"] = FormatProperties(estates);
         context["property_owner"] = owner;
-        context["borrower_name"] = ownerName;
-        context["borrower_father"] = ownerFather;
-        context["borrower_family"] = ownerFamily;
+
+        // الاسم الثلاثي للمالك الوحيد يُفكك إلى (الاسم/الأب/العائلة)، وعند تعدد الملاك
+        // يُذكر النص المجمع في الاسم ويُترك حقلا الأب والعائلة فارغين.
+        if (owners.Count == 1)
+        {
+            var (ownerName, ownerFather, ownerFamily) = SplitOwnerName(owners[0]);
+            context["borrower_name"] = ownerName;
+            context["borrower_father"] = ownerFather;
+            context["borrower_family"] = ownerFamily;
+        }
+        else
+        {
+            context["borrower_name"] = owner;
+            context["borrower_father"] = string.Empty;
+            context["borrower_family"] = string.Empty;
+        }
 
         if (!string.IsNullOrWhiteSpace((string)context["amount_words"]))
             context["amount_words"] = ((string)context["amount_words"]).Trim() + " مع توابعه القانونية";
@@ -423,12 +619,13 @@ public class DocumentContextBuilder : IDocumentContextBuilder
         string borrowerFull,
         List<Guarantor> guarantors)
     {
-        var owner = estates[0].Owner ?? string.Empty;
+        var owners = OwnerNames(estates[0]);
+        var owner = JoinOwners(owners);
         var combined = FormatProperties(estates);
 
         context["property"] = combined;
         context["property_owner"] = owner;
-        context["execution_debtor"] = ResolveOwnerFullName(owner, borrowerFull, guarantors);
+        context["execution_debtor"] = JoinOwners(owners.Select(o => ResolveOwnerFullName(o, borrowerFull, guarantors)));
 
         if (!string.IsNullOrWhiteSpace((string)context["amount_words"]))
             context["amount_words"] = ((string)context["amount_words"]).Trim() + " مع توابعه القانونية";
@@ -474,7 +671,7 @@ public class DocumentContextBuilder : IDocumentContextBuilder
             amountWords = amountWords["الزامك بدفع ".Length..];
 
         context["Land_Registry"] = estate.LandRegistry ?? string.Empty;
-        context["execution_debtor"] = estate.Owner ?? string.Empty;
+        context["execution_debtor"] = JoinOwners(OwnerNames(estate));
         context["property_number"] = estate.PropertyNumber ?? string.Empty;
         context["property_district"] = estate.PropertyDistrict ?? string.Empty;
         context["execution_debtors"] = BuildExecutionDebtorsPlain(borrowerFull, guarantors);
@@ -563,5 +760,44 @@ public class DocumentContextBuilder : IDocumentContextBuilder
             guarantor.GuarantorRegister ?? string.Empty,
             guarantor.GuarantorNationalId ?? string.Empty,
             guarantor.GuarantorAddress ?? string.Empty);
+    }
+
+    /// <summary>
+    /// السابقة النصية لحقل العنوان المجرد حسب نوع العنوان: «موطناً مختاراً » للموطن المختار،
+    /// «يمثله » عندما يكون الطرف ممثَّلًا بوكيل، ولا سابقة لبقية الأنواع.
+    /// </summary>
+    private static string AddressPrefixOf(string? addressType) => addressType switch
+    {
+        "موطن مختار" => "موطناً مختاراً ",
+        "يمثله" => "يمثله ",
+        _ => string.Empty,
+    };
+
+    /// <summary>
+    /// يعيد العنوان مع سابقته المناسبة لنوعه إذا كان العنوان غير فارغ؛ وإلا يعيد سلسلة فارغة
+    /// دون ذكر أي سابقة مهما كان نوع العنوان.
+    /// </summary>
+    private static string PrefixedAddress(string? addressType, string? address)
+    {
+        var value = (address ?? string.Empty).Trim();
+        return string.IsNullOrWhiteSpace(value)
+            ? string.Empty
+            : AddressPrefixOf(addressType) + value;
+    }
+
+    /// <summary>
+    /// صيغة جملة عنوان/وكيل الطرف في المستندات: «متخذا موطنا مختارا …» للموطن المختار،
+    /// «يمثله …» عندما يكون الطرف ممثَّلًا، و«عنوانه …» لبقية الأنواع. علامة (withColon)
+    /// تحافظ على الصيغتين التاريخيتين «متخذا موطنا مختارا: …» و«متخذا موطنا مختارا …».
+    /// </summary>
+    private static string AddressPhraseOf(string? addressType, string address, bool withColon)
+    {
+        if (addressType == "يمثله")
+            return $"يمثله {address}";
+        return addressType == "موطن مختار"
+            ? withColon
+                ? $"متخذا موطنا مختارا: {address}"
+                : $"متخذا موطنا مختارا {address}"
+            : $"عنوانه {address}";
     }
 }

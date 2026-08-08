@@ -21,3 +21,15 @@ public enum ExecutionStatus
     ExecutedBySettlement = 2,
     Deferred = 3
 }
+
+/// <summary>
+/// نطاق استهداف تنبيه رئيس القسم:
+/// Document = مرتبط بملف معين (يصل للمحامي المختص)،
+/// Lawyer = رسالة خاصة لمحامٍ معين، Branch = تعميم لكل محامي الفرع.
+/// </summary>
+public enum HeadAlertTargetType
+{
+    Document = 1,
+    Lawyer = 2,
+    Branch = 3
+}

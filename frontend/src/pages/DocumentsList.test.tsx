@@ -44,15 +44,24 @@ function doc(overrides: Partial<DocumentResponse>): DocumentResponse {
     guarantors: [],
     realEstates: [],
     executionActions: [],
+    executionApplicants: [],
+    executedPublicEntities: [],
+    executedNaturalPersons: [],
     ...overrides,
   };
 }
 
 function mockPage(items: DocumentResponse[]) {
   (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
-    if (url === '/documents/filter-options') {
+    if (url.startsWith('/documents/filter-options')) {
       return Promise.resolve({
-        data: { applicants: ['المدعي'], courts: ['دمشق'], lawyers: ['المحامي سامر'] },
+        data: {
+          applicants: ['المدعي'],
+          courts: ['دمشق'],
+          lawyers: ['المحامي سامر'],
+          administrativeBranches: ['الفرع الرئيسي - دمشق'],
+          branches: ['فرع المزة'],
+        },
       });
     }
     return Promise.resolve({
@@ -108,7 +117,7 @@ beforeEach(() => {
 });
 
 describe('DocumentsList', () => {
-  it('يعرض الأعمدة الجديدة بترتيبها: الحالة، طالب التنفيذ، الفرع، المنفذ عليه، دائرة التنفيذ، رقم الملف، الإجراءات والملاحظات', async () => {
+  it('يعرض الأعمدة الجديدة بالترتيب المعتمد: فرع الإدارة، الحالة، طالب التنفيذ، الفرع، المنفذ عليه، دائرة التنفيذ، رقم الملف، المحامي المختص، الإجراءات والملاحظات، عدد المشاهدات', async () => {
     const page: PagedResult<DocumentResponse> = {
       page: 1,
       perPage: 20,
@@ -124,13 +133,22 @@ describe('DocumentsList', () => {
 
     const table = await screen.findByRole('table');
     const headers = within(table).getAllByRole('columnheader').map((h) => h.textContent ?? '');
-    expect(headers.some((t) => t.includes('الحالة'))).toBe(true);
-    expect(headers.some((t) => t.includes('طالب التنفيذ'))).toBe(true);
-    expect(headers.some((t) => t.includes('الفرع'))).toBe(true);
-    expect(headers.some((t) => t.includes('المنفذ عليه'))).toBe(true);
-    expect(headers.some((t) => t.includes('دائرة التنفيذ'))).toBe(true);
-    expect(headers.some((t) => t.includes('رقم الملف'))).toBe(true);
-    expect(headers.some((t) => t.includes('الإجراءات والملاحظات'))).toBe(true);
+    const expected = [
+      'فرع الإدارة',
+      'الحالة',
+      'طالب التنفيذ',
+      'الفرع',
+      'المنفذ عليه',
+      'دائرة التنفيذ',
+      'رقم الملف',
+      'المحامي المختص',
+      'الإجراءات والملاحظات',
+      'عدد المشاهدات',
+    ];
+    expect(headers.length).toBe(expected.length);
+    expected.forEach((label, i) => {
+      expect(headers[i]).toContain(label);
+    });
     expect(within(table).getByRole('button', { name: 'فلترة الحالة' })).toBeInTheDocument();
     expect(within(table).getByRole('button', { name: 'فلترة طالب التنفيذ' })).toBeInTheDocument();
     expect(within(table).getByRole('button', { name: 'فلترة دائرة التنفيذ' })).toBeInTheDocument();
@@ -206,6 +224,26 @@ describe('DocumentsList', () => {
 
     const table = await screen.findByRole('table');
     expect(within(table).getByText('99 حقوق')).toBeInTheDocument();
+  });
+
+  it('يعرض رقم أساس السنة الحالية بدل رقم الملف عند وجوده: «1500 حقوق»', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        page: 1,
+        perPage: 20,
+        totalCount: 1,
+        totalPages: 1,
+        items: [
+          doc({ fileNumber: '99', displayFileNumber: '1500', fileType: 'حقوق', isDraft: false }),
+        ],
+      },
+    });
+
+    renderList();
+
+    const table = await screen.findByRole('table');
+    expect(within(table).getByText('1500 حقوق')).toBeInTheDocument();
+    expect(within(table).queryByText('99 حقوق')).not.toBeInTheDocument();
   });
 
   it('يعرض رقم الملف فقط عند غياب النوع', async () => {
@@ -348,7 +386,10 @@ describe('DocumentsList', () => {
     await user.click(within(menu).getByRole('menuitem', { name: 'متداول' }));
     let [url] = vi.mocked(api.get).mock.calls.at(-1) as [string];
     expect(url).toContain('status=' + encodeURIComponent('متداول'));
-    expect(within(table).getByRole('button', { name: 'فلترة الحالة' }).className).toContain('text-emerald-700');
+    const activeButton = within(table).getByRole('button', { name: 'فلترة الحالة' });
+    expect(activeButton.className).toContain('text-emerald-900');
+    expect(activeButton.className).toContain('font-bold');
+    expect(activeButton.querySelector('svg')?.getAttribute('class')).toContain('text-red-600');
 
     await user.click(within(table).getByRole('button', { name: 'فلترة الحالة' }));
     menu = screen.getByRole('menu', { name: 'فلترة الحالة' });
@@ -356,7 +397,10 @@ describe('DocumentsList', () => {
     [url] = vi.mocked(api.get).mock.calls.at(-1) as [string];
     expect(url).not.toContain('status=');
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
-    expect(within(table).getByRole('button', { name: 'فلترة الحالة' }).className).toContain('text-gray-700');
+    const clearedButton = within(table).getByRole('button', { name: 'فلترة الحالة' });
+    expect(clearedButton.className).toContain('text-emerald-900');
+    expect(clearedButton.className).toContain('font-bold');
+    expect(clearedButton.querySelector('svg')?.getAttribute('class')).toContain('text-gray-400');
   });
 
   it('يغلق قائمة فلتر العمود بمفتاح Escape دون تطبيق التغيير', async () => {
@@ -642,5 +686,289 @@ describe('DocumentsList', () => {
     expect(await screen.findByRole('link', { name: 'أحمد خالد الخطيب' })).toBeInTheDocument();
     expect(screen.getByText(/المحامي المختص: المحامي سامر/)).toBeInTheDocument();
     expect(screen.getByText(/فرع الإدارة: فرع الرقة/)).toBeInTheDocument();
+  });
+
+  it('يُفلتر بالفرع عند الاختيار من عمود «الفرع»', async () => {
+    const user = userEvent.setup();
+    mockPage([doc({ id: 1 })]);
+
+    renderList();
+    const table = await screen.findByRole('table');
+
+    await user.click(within(table).getByRole('button', { name: 'فلترة الفرع' }));
+    const menu = screen.getByRole('menu', { name: 'فلترة الفرع' });
+    await user.click(within(menu).getByRole('menuitem', { name: 'فرع المزة' }));
+
+    const [url] = vi.mocked(api.get).mock.calls.at(-1) as [string];
+    const params = new URLSearchParams(url.split('?')[1] ?? '');
+    expect(params.get('branch')).toBe('فرع المزة');
+  });
+
+  it('يُفلتر بفرع الإدارة عند الاختيار من عمود «فرع الإدارة» للمدير', async () => {
+    const user = userEvent.setup();
+    mockPage([doc({ id: 1 })]);
+
+    renderList();
+    const table = await screen.findByRole('table');
+
+    await user.click(within(table).getByRole('button', { name: 'فلترة فرع الإدارة' }));
+    const menu = screen.getByRole('menu', { name: 'فلترة فرع الإدارة' });
+    await user.click(within(menu).getByRole('menuitem', { name: 'الفرع الرئيسي - دمشق' }));
+
+    const [url] = vi.mocked(api.get).mock.calls.at(-1) as [string];
+    const params = new URLSearchParams(url.split('?')[1] ?? '');
+    expect(params.get('administrativeBranch')).toBe('الفرع الرئيسي - دمشق');
+  });
+
+  it('يخفي فلتر «فرع الإدارة» عن المحامي', async () => {
+    useAuthMock.mockReturnValue({ hasFullAccess: false, isHead: false, user: { role: 'lawyer' } });
+    mockPage([doc({ id: 1 })]);
+
+    renderList();
+    const table = await screen.findByRole('table');
+
+    expect(within(table).getByRole('button', { name: 'فلترة الفرع' })).toBeInTheDocument();
+    expect(within(table).queryByRole('button', { name: 'فلترة فرع الإدارة' })).not.toBeInTheDocument();
+  });
+
+  it('يعرض زر «تصدير إكسل» للمدير وينزّل الملف بفلاتر الحالية', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({ hasFullAccess: true, isHead: false, user: { role: 'manager' } });
+    mockPage([doc({ id: 1 })]);
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ ok: true, blob: () => Promise.resolve(new Blob(['xlsx'])) });
+    vi.stubGlobal('fetch', fetchMock);
+    URL.createObjectURL = vi.fn(() => 'blob:fake');
+    URL.revokeObjectURL = vi.fn();
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    renderList();
+    const table = await screen.findByRole('table');
+
+    const statusButton = within(table).getByRole('button', { name: 'فلترة الحالة' });
+    await user.click(statusButton);
+    const menu = screen.getByRole('menu', { name: 'فلترة الحالة' });
+    await user.click(within(menu).getByRole('menuitem', { name: 'منفذ' }));
+
+    const exportBtn = screen.getByRole('button', { name: 'تصدير إكسل' });
+    expect(exportBtn).toBeEnabled();
+    expect(screen.queryByText('طبّق فلترًا واحدًا على الأقل قبل التصدير')).not.toBeInTheDocument();
+    await user.click(exportBtn);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/documents/export?status=' + encodeURIComponent('منفذ'),
+      expect.objectContaining({ headers: expect.any(Object) }),
+    );
+
+    clickSpy.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it('يعرض رسالة ولا يرسل طلب تصدير عند النقر دون تطبيق أي فلتر', async () => {
+    const user = userEvent.setup();
+    mockPage([doc({ id: 1 })]);
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ ok: true, blob: () => Promise.resolve(new Blob(['xlsx'])) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderList();
+    await screen.findByRole('table');
+
+    const exportBtn = screen.getByRole('button', { name: 'تصدير إكسل' });
+    expect(exportBtn).toBeEnabled();
+
+    await user.click(exportBtn);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('طبّق فلترًا واحدًا على الأقل قبل التصدير');
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    vi.unstubAllGlobals();
+  });
+
+  it('يُصدر بعد تطبيق فلتر ويعيد الرسالة بعد إلغائه', async () => {
+    const user = userEvent.setup();
+    mockPage([doc({ id: 1 })]);
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ ok: true, blob: () => Promise.resolve(new Blob(['xlsx'])) });
+    vi.stubGlobal('fetch', fetchMock);
+    URL.createObjectURL = vi.fn(() => 'blob:fake');
+    URL.revokeObjectURL = vi.fn();
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    renderList();
+    const table = await screen.findByRole('table');
+
+    const statusButton = within(table).getByRole('button', { name: 'فلترة الحالة' });
+    await user.click(statusButton);
+    let menu = screen.getByRole('menu', { name: 'فلترة الحالة' });
+    await user.click(within(menu).getByRole('menuitem', { name: 'منفذ' }));
+
+    const exportBtn = screen.getByRole('button', { name: 'تصدير إكسل' });
+    await user.click(exportBtn);
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/documents/export?status=' + encodeURIComponent('منفذ'),
+      expect.objectContaining({ headers: expect.any(Object) }),
+    );
+
+    await user.click(within(table).getByRole('button', { name: 'فلترة الحالة' }));
+    menu = screen.getByRole('menu', { name: 'فلترة الحالة' });
+    await user.click(within(menu).getByRole('menuitem', { name: 'كل الحالات' }));
+
+    await user.click(exportBtn);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('طبّق فلترًا واحدًا على الأقل قبل التصدير');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    clickSpy.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it('يعرض الرسالة على الجوال عند النقر دون فلتر ويُصدر بعد اختيار فلتر الحالة', async () => {
+    const user = userEvent.setup();
+    stubMobile();
+    mockPage([doc({ id: 1 })]);
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ ok: true, blob: () => Promise.resolve(new Blob(['xlsx'])) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderList();
+    await screen.findByRole('combobox', { name: 'فلترة الحالة' });
+
+    const exportBtn = screen.getByRole('button', { name: 'تصدير إكسل' });
+    await user.click(exportBtn);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('طبّق فلترًا واحدًا على الأقل قبل التصدير');
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'فلترة الحالة' }), 'منفذ');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    await user.click(exportBtn);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/documents/export?status=' + encodeURIComponent('منفذ'),
+      expect.objectContaining({ headers: expect.any(Object) }),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it('يعرض زر «الملفات المحذوفة» للمحامي ورئيس القسم والمشرف ولا يعرضه للمدير', async () => {
+    mockPage([]);
+
+    const roles = ['lawyer', 'head', 'admin'];
+    for (const role of roles) {
+      useAuthMock.mockReturnValue({
+        hasFullAccess: role === 'admin',
+        isHead: role === 'head',
+        user: { role },
+      });
+      const { unmount } = renderList();
+      const link = await screen.findByRole('link', { name: 'الملفات المحذوفة' });
+      expect(link).toHaveAttribute('href', '/documents/deleted');
+      unmount();
+    }
+
+    useAuthMock.mockReturnValue({ hasFullAccess: true, isHead: false, user: { role: 'manager' } });
+    renderList();
+    await screen.findByRole('table');
+    expect(screen.queryByRole('link', { name: 'الملفات المحذوفة' })).not.toBeInTheDocument();
+  });
+
+  it('يعرض زر «تدوير أرقام الأساس» للمحامي فقط', async () => {
+    useAuthMock.mockReturnValue({ hasFullAccess: false, isHead: false, user: { role: 'lawyer' } });
+    mockPage([]);
+
+    renderList();
+
+    const link = await screen.findByRole('link', { name: 'تدوير أرقام الأساس' });
+    expect(link).toHaveAttribute('href', '/documents/rotate');
+  });
+
+  it('يخفي زر «تدوير أرقام الأساس» عن المدير ورئيس القسم والمشرف', async () => {
+    mockPage([]);
+
+    const roles = ['manager', 'head', 'admin'];
+    for (const role of roles) {
+      useAuthMock.mockReturnValue({
+        hasFullAccess: role !== 'head',
+        isHead: role === 'head',
+        user: { role },
+      });
+      const { unmount } = renderList();
+      if (role === 'head') {
+        await screen.findByRole('link', { name: 'الملفات المحذوفة' });
+      } else {
+        await screen.findByRole('table');
+      }
+      expect(screen.queryByRole('link', { name: 'تدوير أرقام الأساس' })).not.toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it('يعرض رقم الملف بالأحمر في الجدول عندما يحتاج الملف التدوير', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        page: 1,
+        perPage: 20,
+        totalCount: 1,
+        totalPages: 1,
+        items: [doc({ id: 9, needsRotation: true })],
+      },
+    });
+
+    renderList();
+
+    const table = await screen.findByRole('table');
+    const fileNumber = within(table).getByText('99 حقوق');
+    expect(fileNumber.className).toContain('text-red-600');
+    expect(fileNumber.className).toContain('font-bold');
+  });
+
+  it('يعرض رقم الملف بالأحمر في بطاقة الموبايل عندما يحتاج الملف التدوير', async () => {
+    stubMobile();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        page: 1,
+        perPage: 20,
+        totalCount: 1,
+        totalPages: 1,
+        items: [doc({ id: 9, needsRotation: true })],
+      },
+    });
+
+    renderList();
+
+    const fileNumber = await screen.findByText('99 حقوق');
+    expect(fileNumber.className).toContain('text-red-600');
+    expect(fileNumber.className).toContain('font-bold');
+  });
+
+  it('لا يلوّن رقم الملف بالأحمر عندما لا يحتاج الملف التدوير', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        page: 1,
+        perPage: 20,
+        totalCount: 1,
+        totalPages: 1,
+        items: [doc({ id: 9, needsRotation: false })],
+      },
+    });
+
+    renderList();
+
+    const table = await screen.findByRole('table');
+    const fileNumber = within(table).getByText('99 حقوق');
+    expect(fileNumber.className).not.toContain('text-red-600');
   });
 });

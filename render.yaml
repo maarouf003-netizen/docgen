@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: docgen
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: Jwt__Secret
+        sync: false
+      - key: Bootstrap__AdminPassword
+        sync: false
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production

@@ -41,6 +41,11 @@ public class AuthController : ControllerBase
                 new { message = "الحساب مقفل مؤقتاً بسبب كثرة محاولات الدخول الفاشلة، حاول لاحقاً" }),
             LoginStatus.Success => await HandleSuccessAsync(rateKey, result.Response!, ct),
             LoginStatus.InvalidCredentials => await HandleFailureAsync(rateKey, ct),
+            LoginStatus.BranchSelectionRequired => Ok(new
+            {
+                requiresBranchSelection = true,
+                branches = result.Branches ?? new List<LoginBranchChoiceDto>(),
+            }),
             _ => throw new ArgumentOutOfRangeException(nameof(result.Status), result.Status,
                 "حالة دخول غير معروفة"),
         };

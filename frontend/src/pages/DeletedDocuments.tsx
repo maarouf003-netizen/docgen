@@ -10,7 +10,7 @@ function fullName(d: DocumentResponse) {
 
 function displayFileNumber(d: DocumentResponse) {
   if (d.isDraft) return '';
-  const number = d.fileNumber ?? '';
+  const number = d.displayFileNumber ?? d.fileNumber ?? '';
   const type = d.fileType ?? '';
   return type ? `${number} ${type}`.trim() : number;
 }
@@ -58,7 +58,7 @@ export default function DeletedDocuments() {
     setError('');
     try {
       await api.post(`/documents/${d.id}/restore`);
-      setMessage(`تمت استعادة المستند "${fullName(d) || d.id}"`);
+      setMessage(`تمت استعادة الملف "${fullName(d) || d.id}"`);
       setConfirmId(null);
       load();
     } catch (err) {
@@ -100,7 +100,7 @@ export default function DeletedDocuments() {
 
   return (
     <div className="max-w-6xl mx-auto">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">المستندات المحذوفة</h2>
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">الملفات المحذوفة</h2>
 
       <div className="bg-white rounded-xl shadow p-4 mb-6 flex flex-col sm:flex-row gap-3">
         <input
@@ -143,7 +143,7 @@ export default function DeletedDocuments() {
               ))}
               {data.items.length === 0 && (
                 <div className="bg-white rounded-xl shadow p-8 text-center text-gray-400">
-                  لا توجد مستندات محذوفة
+                        لا توجد ملفات محذوفة
                 </div>
               )}
             </div>
@@ -155,8 +155,8 @@ export default function DeletedDocuments() {
                     <th className="px-4 py-3">تاريخ الحذف</th>
                     <th className="px-4 py-3">المنفذ عليه</th>
                     <th className="px-4 py-3">طالب التنفيذ</th>
-                    <th className="px-4 py-3">دائرة التنفيذ</th>
                     <th className="px-4 py-3">الفرع</th>
+                    <th className="px-4 py-3">دائرة التنفيذ</th>
                     <th className="px-4 py-3">رقم الملف</th>
                     <th className="px-4 py-3">إجراء</th>
                   </tr>
@@ -171,8 +171,8 @@ export default function DeletedDocuments() {
                         {fullName(d) || `مستند ${d.id}`}
                       </td>
                       <td className="px-4 py-3">{d.applicant || '—'}</td>
-                      <td className="px-4 py-3">{d.court || '—'}</td>
                       <td className="px-4 py-3">{d.branchName || '—'}</td>
+                      <td className="px-4 py-3">{d.court || '—'}</td>
                       <td className="px-4 py-3">{displayFileNumber(d)}</td>
                       <td className="px-4 py-3">{canRestore ? restoreButton(d) : '—'}</td>
                     </tr>
@@ -180,7 +180,7 @@ export default function DeletedDocuments() {
                   {data.items.length === 0 && (
                     <tr>
                       <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
-                        لا توجد مستندات محذوفة
+                  لا توجد ملفات محذوفة
                       </td>
                     </tr>
                   )}

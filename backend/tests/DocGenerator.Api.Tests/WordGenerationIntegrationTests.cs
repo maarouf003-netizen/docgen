@@ -41,6 +41,7 @@ public class WordGenerationIntegrationTests : IClassFixture<ApiFactory>
             fileNumber = "520",
             fileType = "أساس",
             fileYear = "2024",
+            fileRegistrationDate = "01/01/2024",
             seizureDate = "15/03/2025",
             guarantors = new[]
             {
@@ -58,7 +59,7 @@ public class WordGenerationIntegrationTests : IClassFixture<ApiFactory>
             {
                 new
                 {
-                    owner = "أحمد خالد الخطيب",
+                    owners = new[] { "أحمد خالد الخطيب" },
                     property = "منزل",
                     propertyNumber = "12",
                     propertyDistrict = "المزة",
@@ -79,6 +80,45 @@ public class WordGenerationIntegrationTests : IClassFixture<ApiFactory>
         response.EnsureSuccessStatusCode();
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         return doc.RootElement.GetProperty("realEstates")[0].GetProperty("id").GetInt32();
+    }
+
+    private static async Task<(int DocId, int HeirId, int EstateId)> CreateDocumentWithHeirsAndEstateAsync(
+        ApiFactory factory, string token)
+    {
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var response = await client.PostAsJsonAsync("/api/documents", new
+        {
+            borrowerName = "أحمد",
+            borrowerFather = "خالد",
+            borrowerFamily = "الخطيب",
+            court = "دمشق",
+            contractType = "تعهد",
+            contractTypeSelector = "مصرفي",
+            amountNumeric = 500,
+            borrowerHeirs = new[]
+            {
+                new { name = "محمود الحلبي", addressType = "عنوان", address = "المزة" },
+            },
+            realEstates = new[]
+            {
+                new
+                {
+                    owners = new[] { "أحمد خالد الخطيب" },
+                    property = "منزل",
+                    propertyNumber = "12",
+                    propertyDistrict = "المزة",
+                    landRegistry = "سجل 3",
+                    shareType = "كامل",
+                },
+            },
+        });
+        response.EnsureSuccessStatusCode();
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var docId = doc.RootElement.GetProperty("id").GetInt32();
+        var heirId = doc.RootElement.GetProperty("borrowerHeirs")[0].GetProperty("id").GetInt32();
+        var estateId = doc.RootElement.GetProperty("realEstates")[0].GetProperty("id").GetInt32();
+        return (docId, heirId, estateId);
     }
 
     private static async Task<string> ReadDocumentXmlAsync(HttpResponseMessage response)
@@ -264,6 +304,62 @@ public class WordGenerationIntegrationTests : IClassFixture<ApiFactory>
         Assert.DoesNotContain("{{", xml);
         Assert.DoesNotContain("}}", xml);
         Assert.Contains("أحمد", xml);
+    }
+
+    [Fact]
+    public async Task Generate_HeirNotice_WithHeirId_ReturnsValidDocx()
+    {
+        var token = await LoginLawyerAsync();
+        var (id, heirId, _) = await CreateDocumentWithHeirsAndEstateAsync(_factory, token);
+
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var response = await client.GetAsync($"/api/documents/{id}/generate?template=003&heirId={heirId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(WordContentType, response.Content.Headers.ContentType!.MediaType);
+        var xml = await ReadDocumentXmlAsync(response);
+        Assert.DoesNotContain("{{", xml);
+        Assert.DoesNotContain("}}", xml);
+        Assert.Contains("محمود الحلبي إضافة لتركة المتوفى (أحمد خالد الخطيب)", xml);
+        Assert.Contains("عنوانه المزة", xml);
+    }
+
+    [Fact]
+    public async Task Generate_PropertySaleHeir_WithHeirId_ReturnsValidDocx()
+    {
+        var token = await LoginLawyerAsync();
+        var (id, heirId, estateId) = await CreateDocumentWithHeirsAndEstateAsync(_factory, token);
+
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var response = await client.GetAsync($"/api/documents/{id}/generate?template=005&estateIds={estateId}&heirId={heirId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(WordContentType, response.Content.Headers.ContentType!.MediaType);
+        var xml = await ReadDocumentXmlAsync(response);
+        Assert.DoesNotContain("{{", xml);
+        Assert.DoesNotContain("}}", xml);
+        Assert.Contains("محمود الحلبي إضافة لتركة المتوفى (أحمد خالد الخطيب)", xml);
+    }
+
+    [Fact]
+    public async Task Generate_HeirPaperNotice_WithHeirId_ReturnsValidDocx()
+    {
+        var token = await LoginLawyerAsync();
+        var (id, heirId, _) = await CreateDocumentWithHeirsAndEstateAsync(_factory, token);
+
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var response = await client.GetAsync($"/api/documents/{id}/generate?template=007&heirId={heirId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(WordContentType, response.Content.Headers.ContentType!.MediaType);
+        var xml = await ReadDocumentXmlAsync(response);
+        Assert.DoesNotContain("{{", xml);
+        Assert.DoesNotContain("}}", xml);
+        Assert.Contains("محمود الحلبي إضافة لتركة المتوفى (أحمد خالد الخطيب)", xml);
+        Assert.DoesNotContain("عنوانه المزة", xml);
     }
 
     [Fact]

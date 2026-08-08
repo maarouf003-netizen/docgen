@@ -27,13 +27,14 @@ public class WordDocumentGenerator : IWordDocumentGenerator
         string templateCode,
         int recipient = 0,
         int[]? estateIds = null,
+        int heirId = 0,
         CancellationToken ct = default)
     {
         var document = await _documents.GetByIdAsync(documentId, ct)
             ?? throw new KeyNotFoundException($"المستند غير موجود: {documentId}");
 
         var context = await _contextBuilder.BuildContextAsync(
-            documentId, templateCode, recipient, estateIds, ct);
+            documentId, templateCode, recipient, estateIds, heirId, ct);
         var bytes = await _renderer.RenderAsync(context, templateCode, ct);
 
         document.PrintCount++;

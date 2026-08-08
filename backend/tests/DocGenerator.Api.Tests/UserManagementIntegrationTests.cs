@@ -230,4 +230,82 @@ public class UserManagementIntegrationTests : IClassFixture<ApiFactory>
         var login = await _factory.LoginAsync(lawyer.Username, "123456");
         Assert.Equal(HttpStatusCode.Unauthorized, (HttpStatusCode)login!.StatusCode);
     }
+
+    [Fact]
+    public async Task Admin_CreatesUser_ArabicTripartiteName_LoginWithEquivalentSpelling()
+    {
+        var name = "أحمد خالد العلي";
+        var admin = _factory.AuthorizedClient("admin");
+        var response = await admin.PostAsJsonAsync("/api/users", new
+        {
+            username = name,
+            fullName = name,
+            role = "head",
+            branchId = await BranchIdAsync("DAM"),
+            password = "123456",
+        });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<UserListItemDto>();
+
+        // تُخزَّن النسخة المطبّعة (أ/إ/آ → ا) كمعيار موحد.
+        Assert.Equal("احمد خالد العلي", created!.Username);
+
+        // الدخول بالنسخة ذات الهمزة يعمل لأن التطبيع على الطرفين.
+        var login = await _factory.LoginAsync("أحمد خالد العلي", "123456");
+        Assert.Equal(HttpStatusCode.OK, (HttpStatusCode)login!.StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_CreatesUser_DuplicateTripartiteNameSameBranch_BadRequest()
+    {
+        var name = "سامر محمود عيد";
+        var admin = _factory.AuthorizedClient("admin");
+        var first = await admin.PostAsJsonAsync("/api/users", new
+        {
+            username = name,
+            fullName = name,
+            role = "head",
+            branchId = await BranchIdAsync("DAM"),
+            password = "123456",
+        });
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+
+        var second = await admin.PostAsJsonAsync("/api/users", new
+        {
+            username = name,
+            fullName = name,
+            role = "lawyer",
+            branchId = await BranchIdAsync("DAM"),
+            password = "123456",
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, second.StatusCode);
+        var body = await second.Content.ReadAsStringAsync();
+        Assert.Contains("نفس الفرع", body);
+    }
+
+    [Fact]
+    public async Task Admin_CreatesUser_SameTripartiteNameDifferentBranch_Allowed()
+    {
+        var name = "نزار عادل صالح";
+        var admin = _factory.AuthorizedClient("admin");
+        var first = await admin.PostAsJsonAsync("/api/users", new
+        {
+            username = name,
+            fullName = name,
+            role = "head",
+            branchId = await BranchIdAsync("DAM"),
+            password = "123456",
+        });
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+
+        var second = await admin.PostAsJsonAsync("/api/users", new
+        {
+            username = name,
+            fullName = name,
+            role = "head",
+            branchId = await BranchIdAsync("ALP"),
+            password = "123456",
+        });
+        Assert.Equal(HttpStatusCode.Created, second.StatusCode);
+    }
 }

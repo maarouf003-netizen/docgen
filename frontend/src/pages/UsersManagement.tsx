@@ -27,7 +27,6 @@ export default function UsersManagement() {
   const [error, setError] = useState('');
 
   const [showForm, setShowForm] = useState(false);
-  const [username, setUsername] = useState('');
   const [fullName, setFullName] = useState('');
   const [role, setRole] = useState<Role>('lawyer');
   const [branchId, setBranchId] = useState<number | null>(null);
@@ -64,7 +63,6 @@ export default function UsersManagement() {
   }, []);
 
   const resetForm = () => {
-    setUsername('');
     setFullName('');
     setRole('lawyer');
     setBranchId(null);
@@ -74,8 +72,7 @@ export default function UsersManagement() {
   };
 
   const validate = (pw: string): string => {
-    if (!fullName.trim()) return 'الاسم الكامل مطلوب';
-    if (!username.trim() || /\s/.test(username)) return 'اسم المستخدم مطلوب ولا يحوي مسافات';
+    if (!fullName.trim()) return 'الاسم الثلاثي مطلوب';
     if (pw.length < 6) return 'كلمة المرور يجب أن تكون 6 أحرف على الأقل';
     return '';
   };
@@ -95,9 +92,10 @@ export default function UsersManagement() {
     setSaving(true);
     setFormError('');
     try {
+      const name = fullName.trim();
       await api.post('/users', {
-        username: username.trim(),
-        fullName: fullName.trim(),
+        username: name,
+        fullName: name,
         role,
         branchId: branchRequired(role) ? branchId : null,
         password,
@@ -184,23 +182,13 @@ export default function UsersManagement() {
           onSubmit={submit}
           className="bg-white rounded-xl shadow p-4 mb-4 grid sm:grid-cols-2 gap-4"
         >
-          <div>
-            <label htmlFor="user-fullname" className="block text-xs font-medium text-gray-600 mb-1">الاسم الكامل</label>
+          <div className="sm:col-span-2">
+            <label htmlFor="user-fullname" className="block text-xs font-medium text-gray-600 mb-1">الاسم الثلاثي (اسم الدخول)</label>
             <input
               id="user-fullname"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              placeholder="اسم المستخدم الكامل..."
-              className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            />
-          </div>
-          <div>
-            <label htmlFor="user-username" className="block text-xs font-medium text-gray-600 mb-1">اسم المستخدم</label>
-            <input
-              id="user-username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="بدون مسافات..."
+              placeholder="مثال: محمد أحمد علي"
               className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
@@ -360,13 +348,14 @@ export default function UsersManagement() {
 
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
-                <label htmlFor="edit-fullname" className="block text-xs font-medium text-gray-600 mb-1">الاسم الكامل</label>
+                <label htmlFor="edit-fullname" className="block text-xs font-medium text-gray-600 mb-1">الاسم الثلاثي (اسم الدخول)</label>
                 <input
                   id="edit-fullname"
                   value={editFullName}
                   onChange={(e) => setEditFullName(e.target.value)}
                   className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
+                <p className="text-[11px] text-gray-400 mt-1">تعديل الاسم يحدّث اسم الدخول تلقائياً.</p>
               </div>
               <div>
                 <label htmlFor="edit-role" className="block text-xs font-medium text-gray-600 mb-1">الدور</label>
