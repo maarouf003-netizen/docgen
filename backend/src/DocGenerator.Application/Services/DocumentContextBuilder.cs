@@ -52,6 +52,10 @@ public class DocumentContextBuilder : IDocumentContextBuilder
         context["contract_type"] = contractType;
         context["contract_number"] = doc.ContractNumber ?? string.Empty;
         context["contract_date"] = doc.ContractDate ?? string.Empty;
+        // مفاتيح ملحق العقد (للعقد المصرفي؛ اختيارية وتظهر في القالب إذا وُضعت رموزها).
+        context["annex_type"] = doc.AnnexType ?? string.Empty;
+        context["annex_number"] = doc.AnnexNumber ?? string.Empty;
+        context["annex_date"] = doc.AnnexDate ?? string.Empty;
         context["amount_numeric"] = doc.AmountNumeric;
         context["amount_words"] = doc.AmountWords ?? string.Empty;
         context["current_date"] = DateTime.Today.ToString("dd/MM/yyyy");

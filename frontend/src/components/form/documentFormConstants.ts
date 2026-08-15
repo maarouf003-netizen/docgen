@@ -175,6 +175,17 @@ export const requiredCurrencyKeys = [
   'executedRequiredCurrency2',
   'executedRequiredCurrency3',
 ] as const;
+/** مفاتيح المبالغ المدفوعة (حتى ثلاثة) بعملاتها في وضع «منفذ عليه»/«عرض وايداع». */
+export const paidAmountKeys = [
+  'executedPaidAmount',
+  'executedPaidAmount2',
+  'executedPaidAmount3',
+] as const;
+export const paidCurrencyKeys = [
+  'executedPaidCurrency',
+  'executedPaidCurrency2',
+  'executedPaidCurrency3',
+] as const;
 export const bankingAmountKeys = [
   'amountNumeric',
   'amount2Numeric',
@@ -218,6 +229,9 @@ export function toUpsert(d: DocumentResponse): DocumentUpsertRequest {
     contractTypeSelector: d.contractTypeSelector ?? 'مصرفي',
     contractNumber: d.contractNumber ?? '',
     contractDate: d.contractDate ?? '',
+    annexType: d.annexType ?? '',
+    annexNumber: d.annexNumber ?? '',
+    annexDate: d.annexDate ?? '',
     inclusionText: d.inclusionText ?? '',
     amountNumeric: d.amountNumeric,
     amountWords: d.amountWords ?? '',
@@ -270,6 +284,11 @@ export function toUpsert(d: DocumentResponse): DocumentUpsertRequest {
     executedRequiredAmount3: d.executedRequiredAmount3,
     executedRequiredCurrency3: d.executedRequiredCurrency3 ?? 'ليرة سورية',
     executedPaidAmount: d.executedPaidAmount,
+    executedPaidCurrency: d.executedPaidCurrency ?? 'ليرة سورية',
+    executedPaidAmount2: d.executedPaidAmount2,
+    executedPaidCurrency2: d.executedPaidCurrency2 ?? 'ليرة سورية',
+    executedPaidAmount3: d.executedPaidAmount3,
+    executedPaidCurrency3: d.executedPaidCurrency3 ?? 'ليرة سورية',
     executedDepositDate: d.executedDepositDate?.slice(0, 10) ?? '',
     executionApplicants: [],
     executedPublicEntities: [],

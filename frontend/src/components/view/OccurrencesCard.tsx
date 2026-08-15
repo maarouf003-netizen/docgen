@@ -19,7 +19,7 @@ export function OccurrencesCard({
 
   return (
     <div className="bg-white rounded-xl shadow p-5">
-      <h3 className="font-bold text-gray-800 mb-3">وقوعات الملف</h3>
+      <h3 className="font-bold text-emerald-800 mb-3">وقوعات الملف</h3>
       {occurrences.length > 0 ? (
         <button
           type="button"

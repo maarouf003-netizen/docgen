@@ -168,6 +168,7 @@ public class StatisticsRepository : IStatisticsRepository
         public string? ExecSubStatus { get; set; }
         public string? GeneralEntitySide { get; set; }
         public string? ExecutedStatus { get; set; }
+        public bool WasDepositExecuted { get; set; }
         public string? ContractTypeSelector { get; set; }
         public decimal AmountNumeric { get; set; }
         public string? Currency { get; set; }
@@ -194,6 +195,8 @@ public class StatisticsRepository : IStatisticsRepository
         public decimal? ExecutedRequiredAmount3 { get; set; }
         public string? ExecutedRequiredCurrency3 { get; set; }
         public decimal? ExecutedPaidAmount { get; set; }
+        public decimal? ExecutedPaidAmount2 { get; set; }
+        public decimal? ExecutedPaidAmount3 { get; set; }
         public DateTime PeriodDate { get; set; }
     }
 
@@ -211,6 +214,7 @@ public class StatisticsRepository : IStatisticsRepository
                 ExecSubStatus = d.ExecSubStatus,
                 GeneralEntitySide = d.GeneralEntitySide,
                 ExecutedStatus = d.ExecutedStatus,
+                WasDepositExecuted = d.WasDepositExecuted,
                 ContractTypeSelector = d.ContractTypeSelector,
                 AmountNumeric = d.AmountNumeric,
                 Currency = d.Currency,
@@ -237,6 +241,8 @@ public class StatisticsRepository : IStatisticsRepository
                 ExecutedRequiredAmount3 = d.ExecutedRequiredAmount3,
                 ExecutedRequiredCurrency3 = d.ExecutedRequiredCurrency3,
                 ExecutedPaidAmount = d.ExecutedPaidAmount,
+                ExecutedPaidAmount2 = d.ExecutedPaidAmount2,
+                ExecutedPaidAmount3 = d.ExecutedPaidAmount3,
                 PeriodDate = d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
                     || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit
                         ? d.FileReceiptDate ?? d.CreatedAt
@@ -262,6 +268,7 @@ public class StatisticsRepository : IStatisticsRepository
                 ExecSubStatus = d.ExecSubStatus,
                 GeneralEntitySide = d.GeneralEntitySide,
                 ExecutedStatus = d.ExecutedStatus,
+                WasDepositExecuted = d.WasDepositExecuted,
                 ContractTypeSelector = d.ContractTypeSelector,
                 AmountNumeric = d.AmountNumeric,
                 Currency = d.Currency,
@@ -288,6 +295,8 @@ public class StatisticsRepository : IStatisticsRepository
                 ExecutedRequiredAmount3 = d.ExecutedRequiredAmount3,
                 ExecutedRequiredCurrency3 = d.ExecutedRequiredCurrency3,
                 ExecutedPaidAmount = d.ExecutedPaidAmount,
+                ExecutedPaidAmount2 = d.ExecutedPaidAmount2,
+                ExecutedPaidAmount3 = d.ExecutedPaidAmount3,
                 PeriodDate = d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
                     || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit
                         ? d.FileReceiptDate ?? d.CreatedAt
@@ -376,7 +385,9 @@ public class StatisticsRepository : IStatisticsRepository
                 if (r.ExecutedStatus == ExecutedStatusCatalog.Executed)
                 {
                     executedAgainstCount++;
-                    executedAgainstAmount += r.ExecutedPaidAmount ?? 0;
+                    executedAgainstAmount += (r.ExecutedPaidAmount ?? 0)
+                        + (r.ExecutedPaidAmount2 ?? 0)
+                        + (r.ExecutedPaidAmount3 ?? 0);
                 }
                 else
                 {
@@ -390,15 +401,19 @@ public class StatisticsRepository : IStatisticsRepository
 
             // ملف «عرض وايداع»: يُحتسب «للصالح» كسطر فرعي داخل بطاقتي متداول/منفذ.
             // المتداول يظهر بعدده فقط، والمنفذ بعدده ومجموع المبالغ المودعة، والمشطوب مستبعد.
+            // الملف الذي سبق تنفيذه يبقى محسوبًا «منفذًا» عددًا ومبلغًا حتى بعد عودته إلى
+            // المتداول بكتاب السير بالملف (WasDepositExecuted) — فلا يخرج مبلغه من الإحصاء.
             if (r.GeneralEntitySide == GeneralEntitySideCatalog.Deposit)
             {
                 if (r.ExecutedStatus == ExecutedStatusCatalog.StruckOff)
                     continue;
 
-                if (r.ExecutedStatus == ExecutedStatusCatalog.Executed)
+                if (r.ExecutedStatus == ExecutedStatusCatalog.Executed || r.WasDepositExecuted)
                 {
                     depositExecutedCount++;
-                    depositExecutedAmount += r.ExecutedPaidAmount ?? 0;
+                    depositExecutedAmount += (r.ExecutedPaidAmount ?? 0)
+                        + (r.ExecutedPaidAmount2 ?? 0)
+                        + (r.ExecutedPaidAmount3 ?? 0);
                 }
                 else
                 {

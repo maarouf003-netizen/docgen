@@ -63,13 +63,30 @@ describe('StatusChangeModal', () => {
     });
 
     await user.selectOptions(screen.getByLabelText('الإجراء'), 'منفذ جبريا');
+    await user.type(screen.getByLabelText('تاريخ قرار الإحالة القطعية'), '1/6/2026');
     await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
 
     expect(screen.getByText('اختر العقارات التي جرى بيعها بالمزاد العلني على الأقل')).toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
   });
 
-  it('يرسل العقارات المباعة عند تعبئة منفذ جبريا', async () => {
+  it('يرفض منفذ جبريا دون تاريخ قرار الإحالة القطعية', async () => {
+    const user = userEvent.setup();
+    renderModal({
+      isDraft: false,
+      execStatus: '',
+      realEstates: [{ id: 1, property: 'بيت' }],
+    });
+
+    await user.selectOptions(screen.getByLabelText('الإجراء'), 'منفذ جبريا');
+    await user.click(screen.getByLabelText(/بيت/));
+    await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
+
+    expect(screen.getByText('يجب إدخال تاريخ قرار الإحالة القطعية')).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('يرسل العقارات المباعة وتاريخ قرار الإحالة القطعية عند تعبئة منفذ جبريا', async () => {
     const user = userEvent.setup();
     renderModal({
       isDraft: false,
@@ -78,12 +95,13 @@ describe('StatusChangeModal', () => {
     });
 
     await user.selectOptions(screen.getByLabelText('الإجراء'), 'منفذ جبريا');
+    await user.type(screen.getByLabelText('تاريخ قرار الإحالة القطعية'), '٥/٦/٢٠٢٦');
     await user.click(screen.getByLabelText(/بيت/));
     await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
 
     expect(api.post).toHaveBeenCalledWith('/documents/1/status', {
       status: 'منفذ جبريا',
-      fields: { execSubStatus: 'منفذ كاملا', soldEstateIds: '7' },
+      fields: { execSubStatus: 'منفذ كاملا', forcedExecutionDate: '5/6/2026', soldEstateIds: '7' },
     });
   });
 

@@ -3,7 +3,7 @@ import { formatDate } from '../../utils/dates';
 import { isExecutedLike } from '../../utils/documentDisplay';
 import { Row } from './Row';
 import { RowTriple } from './RowTriple';
-import { formatFileNumber } from './viewFormat';
+import { formatFileNumber, formatPaidAmounts } from './viewFormat';
 
 /** بطاقة «بيانات الملف» الموحّدة: دائرة التنفيذ، الفرع/المحامي حسب الصلاحية، رقم الملف وأرقام الأساس، وحقول كل صفة. */
 export function FileDataCard({
@@ -23,10 +23,11 @@ export function FileDataCard({
 }) {
   const isExecuted = isExecutedLike(doc.generalEntitySide);
   const fileNumber = formatFileNumber(doc);
+  const paidAmounts = isExecuted ? formatPaidAmounts(doc) : '';
 
   return (
     <div className="bg-white rounded-xl shadow p-5">
-      <h3 className="font-bold text-gray-800 mb-3">بيانات الملف</h3>
+      <h3 className="font-bold text-emerald-800 mb-3">بيانات الملف</h3>
 
       <Row label="دائرة التنفيذ المختصة" value={doc.court} />
       {showBranch && <Row label="فرع الملف" value={doc.branchName} />}
@@ -81,8 +82,12 @@ export function FileDataCard({
           <Row label="رقم ورود الاخطار التنفيذي" value={doc.fileReceiptNumber} />
           <Row label="تاريخ ورود الاخطار التنفيذي" value={formatDate(doc.fileReceiptDate)} />
           <Row label="كيفية تنفيذ الملف" value={doc.executedDescription} showEmpty />
-          {doc.executedPaidAmount != null && doc.executedPaidAmount > 0 && (
-            <Row label="المبلغ الذي دفعته الجهة العامة" value={String(doc.executedPaidAmount)} showEmpty />
+          {paidAmounts && (
+            <Row
+              label={doc.generalEntitySide === 'deposit' ? 'المبلغ المودع' : 'المبلغ الذي دفعته الجهة العامة'}
+              value={paidAmounts}
+              showEmpty
+            />
           )}
         </>
       ) : (

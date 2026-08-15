@@ -279,7 +279,7 @@ public class DocumentsIntegrationTests : IClassFixture<ApiFactory>
         var estateId = await FirstEstateIdAsync(token, id);
 
         var response = await client.PostAsJsonAsync($"/api/documents/{id}/status",
-            new { status = "منفذ جبريا", fields = new { execSubStatus = "منفذ كاملا", collectedAmount = "1000", soldEstateIds = estateId.ToString() } });
+            new { status = "منفذ جبريا", fields = new { execSubStatus = "منفذ كاملا", collectedAmount = "1000", soldEstateIds = estateId.ToString(), forcedExecutionDate = "1/1/2024" } });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
@@ -288,6 +288,7 @@ public class DocumentsIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal("منفذ كاملا", doc!.RootElement.GetProperty("execSubStatus").GetString());
         Assert.Null(doc.RootElement.GetProperty("baraetNumber").GetString());
         Assert.Equal(1000m, doc.RootElement.GetProperty("collectedAmount").GetDecimal());
+        Assert.Equal("1/1/2024", doc.RootElement.GetProperty("forcedExecutionDate").GetString());
         doc.Dispose();
     }
 
@@ -300,7 +301,7 @@ public class DocumentsIntegrationTests : IClassFixture<ApiFactory>
         var estateId = await FirstEstateIdAsync(token, id);
 
         var response = await client.PostAsJsonAsync($"/api/documents/{id}/status",
-            new { status = "منفذ جبريا", fields = new { execSubStatus = "منفذ جزئيا", collectedAmount = "750", soldEstateIds = estateId.ToString() } });
+            new { status = "منفذ جبريا", fields = new { execSubStatus = "منفذ جزئيا", collectedAmount = "750", soldEstateIds = estateId.ToString(), forcedExecutionDate = "1/2/2024" } });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
@@ -309,6 +310,7 @@ public class DocumentsIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal("منفذ جبريا", doc!.RootElement.GetProperty("execStatus").GetString());
         Assert.Equal("منفذ جزئيا", doc.RootElement.GetProperty("execSubStatus").GetString());
         Assert.Equal(750m, doc.RootElement.GetProperty("collectedAmount").GetDecimal());
+        Assert.Equal("1/2/2024", doc.RootElement.GetProperty("forcedExecutionDate").GetString());
         doc.Dispose();
     }
 
@@ -1408,6 +1410,106 @@ public class DocumentsIntegrationTests : IClassFixture<ApiFactory>
         return body!.RootElement.GetProperty("id").GetInt32();
     }
 
+    private async Task<int> CreateDepositDocumentAsync(string token)
+    {
+        var client = _factory.WithToken(token);
+        var response = await client.PostAsJsonAsync("/api/documents", new
+        {
+            generalEntitySide = "deposit",
+            documentType = "عرض وايداع",
+            fileNumber = "888",
+            fileYear = "2024",
+            fileRegistrationDate = (string?)null,
+            fileReceiptDate = "2024-01-05",
+            executedRequiredAmount = 1500,
+            contractTypeSelector = "عادي",
+            court = "دمشق",
+            applicant = "معروض",
+            executionApplicants = new[]
+            {
+                new { name = "هاني", father = "سامر", family = "النجار", representationType = "أصالة" },
+            },
+            executedPublicEntities = new[]
+            {
+                new { entityName = "المصرف التجاري", entityBranch = "فرع دمشق" },
+            },
+            executedNaturalPersons = new[]
+            {
+                new { name = "رامي", father = "سالم", family = "عبد", addressType = "عنوان", addressOrRepresentative = "دمشق", representationType = "أصالة" },
+            },
+        });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        using var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        return body!.RootElement.GetProperty("id").GetInt32();
+    }
+
+    [Fact]
+    public async Task ExecutedSide_FromExecuted_IsTerminal()
+    {
+        // صفة «الجهة العامة منفذ عليها»: حالة «منفذ» نهائية؛ لا إرجاع إلى متداول ولا شطب.
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.WithToken(token);
+        var id = await CreateExecutedDocumentAsync(token);
+        await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new { status = "منفذ" });
+
+        var toTrading = await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new { status = "" });
+        Assert.Equal(HttpStatusCode.BadRequest, toTrading.StatusCode);
+        var toStruckOff = await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new { status = "مشطوب" });
+        Assert.Equal(HttpStatusCode.BadRequest, toStruckOff.StatusCode);
+
+        using var doc = await (await client.GetAsync($"/api/documents/{id}")).Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.Equal("منفذ", doc!.RootElement.GetProperty("executedStatus").GetString());
+    }
+
+    [Fact]
+    public async Task Deposit_FromExecutedToStruckOff_Forbidden()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.WithToken(token);
+        var id = await CreateDepositDocumentAsync(token);
+        await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new { status = "منفذ" });
+
+        var toStruckOff = await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new { status = "مشطوب" });
+        Assert.Equal(HttpStatusCode.BadRequest, toStruckOff.StatusCode);
+    }
+
+    [Fact]
+    public async Task Deposit_FromExecutedToCirculating_RequiresSayerAndKeepsAmount()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.WithToken(token);
+        var id = await CreateDepositDocumentAsync(token);
+        await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new
+        {
+            status = "منفذ",
+            executedPaidAmount = 1250,
+            executedDepositDate = "10/6/2024",
+        });
+
+        // دون كتاب السير بالملف يُرفض.
+        var without = await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new { status = "" });
+        Assert.Equal(HttpStatusCode.BadRequest, without.StatusCode);
+
+        // بالكتاب يُقبل: يعود إلى متداول مع بقاء المبلغ المودع وتاريخه، وتُضبط العلامة الدائمة.
+        var with = await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new
+        {
+            status = "",
+            sayerNumber = "44",
+            sayerDate = "1/8/2026",
+            sayerRegNumber = "55",
+            sayerRegDate = "2/8/2026",
+        });
+        Assert.Equal(HttpStatusCode.OK, with.StatusCode);
+
+        using var doc = await (await client.GetAsync($"/api/documents/{id}")).Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.Equal("", doc!.RootElement.GetProperty("executedStatus").GetString());
+        Assert.Equal(1250m, doc.RootElement.GetProperty("executedPaidAmount").GetDecimal());
+        Assert.Equal("44", doc.RootElement.GetProperty("sayerNumber").GetString());
+        Assert.Equal("1/8/2026", doc.RootElement.GetProperty("sayerDate").GetString());
+        Assert.Equal("55", doc.RootElement.GetProperty("sayerRegNumber").GetString());
+        Assert.Equal("2/8/2026", doc.RootElement.GetProperty("sayerRegDate").GetString());
+    }
+
     [Fact]
     public async Task ExecutedSide_Create_ThenStrikeOff_ThenRestore_AndSearch()
     {
@@ -1479,6 +1581,140 @@ public class DocumentsIntegrationTests : IClassFixture<ApiFactory>
         var restore = await client.PostAsJsonAsync($"/api/documents/{id}/restore-struck-off", new { });
 
         Assert.Equal(HttpStatusCode.BadRequest, restore.StatusCode);
+    }
+
+    [Fact]
+    public async Task ExecutedPage_ListExecutedLike_FullyExecuted_WithExecutionDate()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.WithToken(token);
+        var id = await CreateExecutedDocumentAsync(token);
+
+        // تنفيذ الملف بوضع «منفذ» مع تاريخ التنفيذ → يظهر في صفحة «الملفات المنفذة».
+        var run = await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new
+        {
+            status = "منفذ",
+            executedExecutionDate = "2026-06-01",
+            executedDescription = "دفع كامل",
+            executedPaidAmount = 1000,
+        });
+        Assert.Equal(HttpStatusCode.OK, run.StatusCode);
+
+        var page = await client.GetAsync("/api/documents/executed");
+        Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+        using var pageBody = await page.Content.ReadFromJsonAsync<JsonDocument>();
+        var items = pageBody!.RootElement.GetProperty("items").EnumerateArray().ToList();
+        Assert.Contains(items, i => i.GetProperty("id").GetInt32() == id);
+        var mine = items.Single(i => i.GetProperty("id").GetInt32() == id);
+        Assert.Equal("منفذ", mine.GetProperty("executedStatus").GetString());
+        Assert.NotNull(mine.GetProperty("executedExecutionDate").GetString());
+    }
+
+    [Fact]
+    public async Task ExecutedPage_ExcludesTradingAndStruckOff()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.WithToken(token);
+        var id = await CreateExecutedDocumentAsync(token);
+
+        // قبل التنفيذ (متداول) لا يظهر في صفحة «الملفات المنفذة».
+        var before = await client.GetAsync("/api/documents/executed");
+        using var beforeBody = await before.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.DoesNotContain(id, beforeBody!.RootElement.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("id").GetInt32()));
+
+        // بعد الشطب لا يظهر أيضًا (لا منفذ ولا مشطوب).
+        await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new { status = "مشطوب" });
+        var after = await client.GetAsync("/api/documents/executed");
+        using var afterBody = await after.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.DoesNotContain(id, afterBody!.RootElement.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("id").GetInt32()));
+    }
+
+    [Fact]
+    public async Task MainList_HidesExecutedFamily_UnlessTextSearch()
+    {
+        // عائلة «منفذ عليها/عرض وايداع» بحالة «منفذ» تُخفى من القائمة العامة، وتظهر فقط عند البحث النصي.
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.WithToken(token);
+        var id = await CreateExecutedDocumentAsync(token);
+
+        var run = await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new { status = "منفذ" });
+        Assert.Equal(HttpStatusCode.OK, run.StatusCode);
+
+        var plain = await client.GetAsync("/api/documents?perPage=50");
+        using var plainBody = await plain.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.DoesNotContain(id, plainBody!.RootElement.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("id").GetInt32()));
+
+        var searched = await client.GetAsync("/api/documents?q=" + Uri.EscapeDataString("المصرف العقاري") + "&perPage=50");
+        using var searchedBody = await searched.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.Contains(id, searchedBody!.RootElement.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("id").GetInt32()));
+    }
+
+    [Fact]
+    public async Task MainList_HidesApplicantSideExecuted_UnlessTextSearch()
+    {
+        // «طالبة تنفيذ» منفذة (بالتسوية) تُخفى من القائمة العامة، وتظهر فقط عند البحث النصي.
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.WithToken(token);
+        var id = await CreateCirculatingDocumentAsync(token);
+
+        var run = await client.PostAsJsonAsync($"/api/documents/{id}/status", new
+        {
+            status = "منفذ بالتسوية",
+            fields = new { baraetNumber = "1/1", baraetDate = "1/3/2026" },
+        });
+        Assert.Equal(HttpStatusCode.OK, run.StatusCode);
+
+        var plain = await client.GetAsync("/api/documents?perPage=50");
+        using var plainBody = await plain.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.DoesNotContain(id, plainBody!.RootElement.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("id").GetInt32()));
+
+        var searched = await client.GetAsync("/api/documents?q=" + Uri.EscapeDataString("مقترض") + "&perPage=50");
+        using var searchedBody = await searched.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.Contains(id, searchedBody!.RootElement.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("id").GetInt32()));
+    }
+
+    [Fact]
+    public async Task Annex_ForBankingDocument_RoundTripsAndIsSearchable()
+    {
+        // ملحق العقد (للعقد المصرفي): يُحفظ ويُعاد عرضه، ويمكن البحث برقمه (مُضمّن في SearchText).
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.WithToken(token);
+
+        var create = await client.PostAsJsonAsync("/api/documents", new
+        {
+            generalEntitySide = "applicant",
+            borrowerName = "مقترض الملحق",
+            applicant = "المصرف",
+            court = "دمشق",
+            contractType = "تعهد",
+            contractTypeSelector = "مصرفي",
+            contractNumber = "C-777",
+            annexType = "تعديل",
+            annexNumber = "A-888",
+            annexDate = "15/3/2026",
+            amountNumeric = 500,
+            branchName = "الفرع الرئيسي - دمشق",
+        });
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        using var createdBody = await create.Content.ReadFromJsonAsync<JsonDocument>();
+        var id = createdBody!.RootElement.GetProperty("id").GetInt32();
+
+        using var fetched = await (await client.GetAsync($"/api/documents/{id}")).Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.Equal("تعديل", fetched!.RootElement.GetProperty("annexType").GetString());
+        Assert.Equal("A-888", fetched.RootElement.GetProperty("annexNumber").GetString());
+        Assert.Equal("15/3/2026", fetched.RootElement.GetProperty("annexDate").GetString());
+
+        // البحث النصي برقم الملحق يجد الملف (AnnexNumber ضمن SearchText).
+        var searched = await client.GetAsync("/api/documents?q=" + Uri.EscapeDataString("A-888") + "&perPage=50");
+        using var searchedBody = await searched.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.Contains(id, searchedBody!.RootElement.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("id").GetInt32()));
     }
 
     [Fact]

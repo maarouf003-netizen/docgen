@@ -207,6 +207,60 @@ public class RenewalRequest
     public string? RenewalDate { get; set; }
 }
 
+/// <summary>
+/// تعيين حالة وضع «الجهة العامة منفذ عليها» (متداول/منفذ/مشطوب) من صفحة التفاصيل.
+/// عند الانتقال إلى «منفذ» تُحفظ حقوله (المبلغ/كيفية التنفيذ/تاريخ الإيداع)، وعند الانتقال
+/// إلى «مشطوب» يُحفظ تاريخ الشطب (نص حر؛ إن غاب يُثبَّت توقيت الانتقال)، وعند الإعادة إلى
+/// متداول تُطبَّق حقول التجديد الموروثة (رقم الملف الجديد إلزامي عند إعادة الملف المشطوب).
+/// </summary>
+public class ExecutedStatusRequest : RenewalRequest
+{
+    /// <summary>الحالة المستهدفة: متداول (سلسلة فارغة) / منفذ / مشطوب.</summary>
+    public string Status { get; set; } = string.Empty;
+
+    /// <summary>تاريخ الشطب عند الانتقال إلى «مشطوب» (نص حر؛ إن غاب يُحفظ توقيت الانتقال).</summary>
+    public string? StruckOffDate { get; set; }
+
+    /// <summary>المبلغ الذي دفعته الجهة العامة (صفة «منفذ عليها») أو المبلغ المودع (صفة «عرض وايداع»).</summary>
+    public decimal? ExecutedPaidAmount { get; set; }
+
+    /// <summary>عملة المبلغ المدفوع الأول (افتراضيًا ليرة سورية).</summary>
+    public string? ExecutedPaidCurrency { get; set; }
+
+    /// <summary>المبلغ المدفوع الثاني (اختياري) في وضع «منفذ عليه» / «عرض وايداع»، بعملته الخاصة.</summary>
+    public decimal? ExecutedPaidAmount2 { get; set; }
+
+    /// <summary>عملة المبلغ المدفوع الثاني (افتراضيًا ليرة سورية).</summary>
+    public string? ExecutedPaidCurrency2 { get; set; }
+
+    /// <summary>المبلغ المدفوع الثالث (اختياري) في وضع «منفذ عليه» / «عرض وايداع»، بعملته الخاصة.</summary>
+    public decimal? ExecutedPaidAmount3 { get; set; }
+
+    /// <summary>عملة المبلغ المدفوع الثالث (افتراضيًا ليرة سورية).</summary>
+    public string? ExecutedPaidCurrency3 { get; set; }
+
+    /// <summary>كيفية تنفيذ الملف (صفة «الجهة العامة منفذ عليها» فقط).</summary>
+    public string? ExecutedDescription { get; set; }
+
+    /// <summary>تاريخ ايداعه حساب الجهة العامة (صفة «عرض وايداع» فقط).</summary>
+    public string? ExecutedDepositDate { get; set; }
+
+    /// <summary>تاريخ التنفيذ (صفة «الجهة العامة منفذ عليها» فقط، نص حر يُفسَّر بصيغ «1/8/2026»).</summary>
+    public string? ExecutedExecutionDate { get; set; }
+
+    /// <summary>رقم كتاب الجهة العامة بالسير بالملف عند إرجاع «عرض وايداع» من «منفذ» إلى «متداول» (إلزامي).</summary>
+    public string? SayerNumber { get; set; }
+
+    /// <summary>تاريخ كتاب الجهة العامة بالسير بالملف عند الإرجاع من «منفذ» إلى «متداول» (إلزامي).</summary>
+    public string? SayerDate { get; set; }
+
+    /// <summary>رقم ورود كتاب بالسير بالملف عند الإرجاع من «منفذ» إلى «متداول» (إلزامي).</summary>
+    public string? SayerRegNumber { get; set; }
+
+    /// <summary>تاريخ ورود كتاب بالسير بالملف عند الإرجاع من «منفذ» إلى «متداول» (إلزامي).</summary>
+    public string? SayerRegDate { get; set; }
+}
+
 public class DocumentUpsertRequest : RenewalRequest
 {
     public string? DocumentType { get; set; }
@@ -239,6 +293,9 @@ public class DocumentUpsertRequest : RenewalRequest
     public string? ContractTypeSelector { get; set; } = "مصرفي";
     public string? ContractNumber { get; set; }
     public string? ContractDate { get; set; }
+    public string? AnnexType { get; set; }
+    public string? AnnexNumber { get; set; }
+    public string? AnnexDate { get; set; }
     public string? InclusionText { get; set; }
 
     public decimal? AmountNumeric { get; set; }
@@ -321,11 +378,32 @@ public class DocumentUpsertRequest : RenewalRequest
     /// <summary>عملة المبلغ المطلوب الثالث في وضع «منفذ عليه» (افتراضيًا ليرة سورية).</summary>
     public string? ExecutedRequiredCurrency3 { get; set; }
 
-    /// <summary>المبلغ الذي دفعته الجهة العامة في وضع «منفذ عليه».</summary>
+    /// <summary>المبلغ الذي دفعته الجهة العامة في وضع «منفذ عليه» / المبلغ المودع في «عرض وايداع».</summary>
     public decimal? ExecutedPaidAmount { get; set; }
+
+    /// <summary>عملة المبلغ المدفوع الأول (افتراضيًا ليرة سورية).</summary>
+    public string? ExecutedPaidCurrency { get; set; }
+
+    /// <summary>المبلغ المدفوع الثاني (اختياري) في وضع «منفذ عليه» / «عرض وايداع».</summary>
+    public decimal? ExecutedPaidAmount2 { get; set; }
+
+    /// <summary>عملة المبلغ المدفوع الثاني (افتراضيًا ليرة سورية).</summary>
+    public string? ExecutedPaidCurrency2 { get; set; }
+
+    /// <summary>المبلغ المدفوع الثالث (اختياري) في وضع «منفذ عليه» / «عرض وايداع».</summary>
+    public decimal? ExecutedPaidAmount3 { get; set; }
+
+    /// <summary>عملة المبلغ المدفوع الثالث (افتراضيًا ليرة سورية).</summary>
+    public string? ExecutedPaidCurrency3 { get; set; }
 
     /// <summary>تاريخ ايداعه حساب الجهة العامة في وضع «عرض وايداع» (نص حر يُفسَّر بصيغ «1/8/2026»).</summary>
     public string? ExecutedDepositDate { get; set; }
+
+    /// <summary>تاريخ التنفيذ في وضع «الجهة العامة منفذ عليها» (نص حر يُفسَّر بصيغ «1/8/2026»).</summary>
+    public string? ExecutedExecutionDate { get; set; }
+
+    /// <summary>تاريخ قرار الإحالة القطعية في «منفذ جبريا» (نص حر).</summary>
+    public string? ForcedExecutionDate { get; set; }
 
     /// <summary>طالبو التنفيذ في وضع «منفذ عليه».</summary>
     public List<ExecutionApplicantDto> ExecutionApplicants { get; set; } = new();
@@ -479,6 +557,9 @@ public class DocumentResponse
     public string? ContractTypeSelector { get; set; }
     public string? ContractNumber { get; set; }
     public string? ContractDate { get; set; }
+    public string? AnnexType { get; set; }
+    public string? AnnexNumber { get; set; }
+    public string? AnnexDate { get; set; }
     public string? InclusionText { get; set; }
     public decimal AmountNumeric { get; set; }
     public string? AmountWords { get; set; }
@@ -543,8 +624,17 @@ public class DocumentResponse
     public decimal? ExecutedRequiredAmount3 { get; set; }
     public string? ExecutedRequiredCurrency3 { get; set; }
     public decimal? ExecutedPaidAmount { get; set; }
+    public string? ExecutedPaidCurrency { get; set; }
+    public decimal? ExecutedPaidAmount2 { get; set; }
+    public string? ExecutedPaidCurrency2 { get; set; }
+    public decimal? ExecutedPaidAmount3 { get; set; }
+    public string? ExecutedPaidCurrency3 { get; set; }
     /// <summary>تاريخ ايداعه حساب الجهة العامة في وضع «عرض وايداع».</summary>
     public DateTime? ExecutedDepositDate { get; set; }
+    /// <summary>تاريخ التنفيذ في وضع «الجهة العامة منفذ عليها».</summary>
+    public DateTime? ExecutedExecutionDate { get; set; }
+    /// <summary>تاريخ قرار الإحالة القطعية في «منفذ جبريا» (نص حر).</summary>
+    public string? ForcedExecutionDate { get; set; }
     public DateTime? StruckOffDate { get; set; }
     /// <summary>رقم ورود اخطار التجديد عند إعادة ملف مشطوب إلى المتداول (اختياري).</summary>
     public string? RenewalFileReceiptNumber { get; set; }
@@ -638,6 +728,9 @@ public class DocumentResponse
         ContractTypeSelector = d.ContractTypeSelector,
         ContractNumber = d.ContractNumber,
         ContractDate = d.ContractDate,
+        AnnexType = d.AnnexType,
+        AnnexNumber = d.AnnexNumber,
+        AnnexDate = d.AnnexDate,
         InclusionText = d.InclusionText,
         AmountNumeric = d.AmountNumeric,
         AmountWords = d.AmountWords,
@@ -695,7 +788,13 @@ public class DocumentResponse
         ExecutedRequiredAmount3 = d.ExecutedRequiredAmount3,
         ExecutedRequiredCurrency3 = d.ExecutedRequiredCurrency3,
         ExecutedPaidAmount = d.ExecutedPaidAmount,
+        ExecutedPaidCurrency = d.ExecutedPaidCurrency,
+        ExecutedPaidAmount2 = d.ExecutedPaidAmount2,
+        ExecutedPaidCurrency2 = d.ExecutedPaidCurrency2,
+        ExecutedPaidAmount3 = d.ExecutedPaidAmount3,
+        ExecutedPaidCurrency3 = d.ExecutedPaidCurrency3,
         ExecutedDepositDate = d.ExecutedDepositDate,
+        ExecutedExecutionDate = d.ExecutedExecutionDate,
         StruckOffDate = d.StruckOffDate,
         RenewalFileReceiptNumber = d.RenewalFileReceiptNumber,
         RenewalFileReceiptDate = d.RenewalFileReceiptDate,
@@ -704,6 +803,7 @@ public class DocumentResponse
         RenewalDate = d.RenewalDate,
         BaraetNumber = d.BaraetNumber,
         BaraetDate = d.BaraetDate,
+        ForcedExecutionDate = d.ForcedExecutionDate,
         BaraetRegNumber = d.BaraetRegNumber,
         BaraetRegDate = d.BaraetRegDate,
         TarithNumber = d.TarithNumber,

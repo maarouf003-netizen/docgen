@@ -1,7 +1,7 @@
 import { useAuth } from '../auth/useAuth';
 import ArchivedDocumentsList, { type ArchivedDocumentsListConfig } from '../components/ArchivedDocumentsList';
 import { getDocumentBadge } from '../utils/documentStatus';
-import { executedFullName, fullName, isExecutedLike } from '../utils/documentDisplay';
+import { fullName } from '../utils/documentDisplay';
 import { formatDate } from '../utils/dates';
 
 export default function StruckOffDocuments() {
@@ -31,7 +31,7 @@ export default function StruckOffDocuments() {
     ),
     // الاسم المعروض: لملفات «طالبة تنفيذ» اسم المقترض الثلاثي، ولفئات «منفذ عليها»/«عرض وايداع»
     // اسم أول منفذٍ عليه — فيتسق العرض مع هوية الملف الفعلية في صفحة المشطوبة.
-    displayName: (d) => (isExecutedLike(d.generalEntitySide) ? executedFullName(d) : fullName(d)),
+    displayName: fullName,
     linkToDocument: true,
     canRestore,
     requiresRenewal: true,

@@ -249,7 +249,7 @@ export function DocumentGenerationSection({ doc, id }: { doc: DocumentResponse; 
 
   return (
     <div className="bg-white rounded-xl shadow p-5 mt-6">
-      <h3 className="font-bold text-gray-800 mb-3">توليد المستندات التنفيذية</h3>
+      <h3 className="font-bold text-emerald-800 mb-3">توليد المستندات التنفيذية</h3>
       {downloadError && <Toast type="error" message={downloadError} onClose={() => setDownloadError('')} />}
       {downloadSuccess && (
         <Toast type="success" message={downloadSuccess} onClose={() => setDownloadSuccess('')} />

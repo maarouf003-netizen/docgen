@@ -14,17 +14,32 @@ export function formatAmount(numeric: number, currency?: string): string {
   return numeric > 0 ? `${numeric} ${currency ?? ''}`.trim() : '';
 }
 
-/** المبالغ المطلوب دفعها من الجهة العامة (حتى ثلاثة) مجتمعةً بعملاتها. */
-export function formatRequiredAmounts(doc: DocumentResponse): string {
-  const amounts: Array<[number | undefined, string | undefined]> = [
-    [doc.executedRequiredAmount, doc.executedRequiredCurrency],
-    [doc.executedRequiredAmount2, doc.executedRequiredCurrency2],
-    [doc.executedRequiredAmount3, doc.executedRequiredCurrency3],
-  ];
-  return amounts
+/** يجمع خانات المبالغ (حتى ثلاثة) بعملاتها في نصٍ واحد عبر الفاصل « — »، متجاهلًا الفارغ منها. */
+function combineAmountSlots(
+  pairs: ReadonlyArray<Readonly<[number | undefined, string | undefined]>>,
+): string {
+  return pairs
     .map(([amount, currency]) => formatAmount(amount ?? 0, currency))
     .filter(Boolean)
     .join(' — ');
+}
+
+/** المبالغ المطلوب دفعها من الجهة العامة (حتى ثلاثة) مجتمعةً بعملاتها. */
+export function formatRequiredAmounts(doc: DocumentResponse): string {
+  return combineAmountSlots([
+    [doc.executedRequiredAmount, doc.executedRequiredCurrency],
+    [doc.executedRequiredAmount2, doc.executedRequiredCurrency2],
+    [doc.executedRequiredAmount3, doc.executedRequiredCurrency3],
+  ]);
+}
+
+/** المبالغ المدفوعة من الجهة العامة / المبالغ المودعة (حتى ثلاثة) مجتمعةً بعملاتها. */
+export function formatPaidAmounts(doc: DocumentResponse): string {
+  return combineAmountSlots([
+    [doc.executedPaidAmount, doc.executedPaidCurrency],
+    [doc.executedPaidAmount2, doc.executedPaidCurrency2],
+    [doc.executedPaidAmount3, doc.executedPaidCurrency3],
+  ]);
 }
 
 export function formatFileNumber(doc: DocumentResponse): string {
@@ -184,11 +199,9 @@ export function applicantNaturalRows(a: {
   ];
   const deceased = fullName({ name: a.deceasedName, father: a.deceasedFather, family: a.deceasedFamily });
   if (deceased) rows.push({ label: 'المورث المتوفى', value: deceased });
-  if (a.representationType === 'إضافة لتركة' || a.representationType === 'أصالة وإضافة') {
-    if (!deceased) rows.push({ label: 'الوكيل القانوني', value: a.legalRepresentative ?? '' });
-  } else {
-    rows.push({ label: 'الوكيل القانوني', value: a.legalRepresentative ?? '' });
-  }
+  // الوكيل القانوني صف دائم: يظهر (بعد فلترة الفارغ في النافذة) متى وُجدت قيمته،
+  // مهما كان نوع التمثيل أو وجود مورث متوفى — فلا تُفقد هذه المعلومة عن قصد.
+  rows.push({ label: 'الوكيل القانوني', value: a.legalRepresentative ?? '' });
   rows.push(...representativeRows({
     representativeName: a.representativeName,
     representativeFather: a.representativeFather,
@@ -210,15 +223,11 @@ export function executedTitle(doc: DocumentResponse): string {
 
 /** المبالغ المحصَّلة (حتى ثلاثة بعملاتها) مجتمعةً. */
 export function formatCollectedAmounts(doc: DocumentResponse): string {
-  const amounts: Array<[number | undefined, string | undefined]> = [
+  return combineAmountSlots([
     [doc.collectedAmount, doc.collectedCurrency],
     [doc.collectedAmount2, doc.collectedCurrency2],
     [doc.collectedAmount3, doc.collectedCurrency3],
-  ];
-  return amounts
-    .map(([amount, currency]) => formatAmount(amount ?? 0, currency))
-    .filter(Boolean)
-    .join(' — ');
+  ]);
 }
 
 export function buildStatusSummary(doc: DocumentResponse): string {

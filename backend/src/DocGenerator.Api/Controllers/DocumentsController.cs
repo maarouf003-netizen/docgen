@@ -166,6 +166,20 @@ public class DocumentsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("executed")]
+    public async Task<IActionResult> GetExecuted(
+        [FromQuery] string? q,
+        [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
+    {
+        // صفحة «الملفات المنفذة» ظاهرة لجميع الأدوار (لا تُحجب بصلاحية المحذوفات):
+        // محامٍ (ملفاته) / رئيس قسم (فرعه) / ذو الوصول الكامل (الكل).
+        var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
+        var visibleUser = HasFullAccess || IsHead ? (int?)null : User.GetUserId();
+
+        var result = await _documents.SearchExecutedAsync(q, page, perPage, visibleBranch, visibleUser, ct);
+        return Ok(result);
+    }
+
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Get(int id, CancellationToken ct)
     {
@@ -648,10 +662,5 @@ public class DocumentsController : ControllerBase
     {
         public string Status { get; set; } = string.Empty;
         public Dictionary<string, string?>? Fields { get; set; }
-    }
-
-    public class ExecutedStatusRequest : RenewalRequest
-    {
-        public string Status { get; set; } = string.Empty;
     }
 }

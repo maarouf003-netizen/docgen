@@ -153,11 +153,26 @@ function renderView() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sessionStorage.clear();
   useAuthMock.mockReturnValue({ isHead: false, user: { role: 'lawyer' } });
   (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: mockDoc });
 });
 
 describe('DocumentView', () => {
+  it('يعرض عناوين بطاقات التفاصيل بلون أخضر غامق', async () => {
+    renderView();
+
+    for (const title of [
+      'أطراف الملف التنفيذي',
+      'بيانات الملف',
+      'بيانات السند التنفيذي',
+      'توليد المستندات التنفيذية',
+    ]) {
+      const heading = await screen.findByText(title);
+      expect(heading.className).toContain('text-emerald-800');
+    }
+  });
+
   it('يعرض اسم المقترض في بطاقة أطراف الملف ويفتح نافذة بهويته الكاملة عند الضغط', async () => {
     const user = userEvent.setup();
     renderView();
@@ -197,7 +212,7 @@ describe('DocumentView', () => {
     expect(within(dialog).queryByText('يمثله')).not.toBeInTheDocument();
   });
 
-  it('يعرض تسميات هوية المقترض كاملة حتى لو كانت قيمها فارغة', async () => {
+  it('يخفي صفوف هوية المقترض الفارغة في نافذة الأطراف ويعرض المدخل فقط', async () => {
     const user = userEvent.setup();
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: { ...mockDoc, borrowerMother: '', borrowerBirth: '', borrowerRegister: '', borrowerNationalId: '' },
@@ -209,10 +224,12 @@ describe('DocumentView', () => {
     await user.click(within(card).getByText('أحمد محمد خالد'));
     const dialog = screen.getByRole('dialog', { name: 'مقترض' });
     expect(within(dialog).getByText('الاسم الثلاثي')).toBeInTheDocument();
-    expect(within(dialog).getByText('اسم الأم')).toBeInTheDocument();
-    expect(within(dialog).getByText('مكان وتاريخ الولادة')).toBeInTheDocument();
-    expect(within(dialog).getByText('مكان ورقم القيد')).toBeInTheDocument();
-    expect(within(dialog).getByText('الرقم الوطني')).toBeInTheDocument();
+    expect(within(dialog).getByText('أحمد محمد خالد')).toBeInTheDocument();
+    // الصفوف الفارغة تُخفى: لا تسمية ولا قيمة لِما لم يُدخل.
+    expect(within(dialog).queryByText('اسم الأم')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('مكان وتاريخ الولادة')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('مكان ورقم القيد')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('الرقم الوطني')).not.toBeInTheDocument();
   });
 
   it('يعرض قسم «بيانات السند التنفيذي» للمصرفي: نوع العقد ورقمه وتاريخه والمبلغ المطالب به', async () => {
@@ -234,6 +251,30 @@ describe('DocumentView', () => {
     expect(within(card).queryByText('رقم القرار')).not.toBeInTheDocument();
     expect(within(card).queryByText('المحكمة مصدرة القرار')).not.toBeInTheDocument();
     expect(within(card).queryByText('خلاصة الحكم')).not.toBeInTheDocument();
+  });
+
+  it('يعرض «ملحق العقد» في بيانات السند التنفيذي عندما يكون محفوظًا', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        ...mockDoc,
+        contractTypeSelector: 'مصرفي',
+        annexType: 'تعديل',
+        annexNumber: 'A-42',
+        annexDate: '2026-03-01',
+      },
+    });
+    renderView();
+
+    const heading = await screen.findByText('بيانات السند التنفيذي');
+    const card = heading.closest('div') as HTMLElement;
+    expect(within(card).getByText('ملحق العقد')).toBeInTheDocument();
+    expect(within(card).getByText('تعديل — A-42 — 2026-03-01')).toBeInTheDocument();
+  });
+
+  it('يخفي صف «ملحق العقد» عندما لا يوجد ملحق محفوظ', async () => {
+    renderView();
+    await screen.findByText('بيانات السند التنفيذي');
+    expect(screen.queryByText('ملحق العقد')).not.toBeInTheDocument();
   });
 
   it('يعرض قسم «بيانات السند التنفيذي» للعادي: رقم وتاريخ القرار والمحكمة والخلاصة والمبلغ', async () => {
@@ -1306,15 +1347,38 @@ describe('DocumentView', () => {
     expect(within(heirsDialog).getByText('فارس أحمد علي — عنوان: حلب')).toBeInTheDocument();
   });
 
-  it('لا يعرض وسيلة لتغيير الحالة في تفاصيل ملف وضع «منفذ عليه» (تعديل من صفحة «تعديل» حصرًا)', async () => {
+  it('يعرض زر «تغيير الحالة» في تفاصيل ملف وضع «منفذ عليه» ويفتح نافذة حالات الوضع', async () => {
+    const user = userEvent.setup();
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: { ...mockDoc, generalEntitySide: 'executed', executedStatus: 'منفذ' },
+      data: { ...mockDoc, generalEntitySide: 'executed', executedStatus: 'متداول' },
     });
     renderView();
 
-    await screen.findByText('بيانات الملف');
-    expect(screen.queryByRole('button', { name: 'حفظ الحالة' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'إعادة الملف إلى المتداول' })).not.toBeInTheDocument();
+    const button = await screen.findByRole('button', { name: 'تغيير الحالة' });
+    await user.click(button);
+
+    const dialog = screen.getByRole('dialog', { name: 'تغيير الحالة' });
+    expect(within(dialog).getByText('الحالة الحالية')).toBeInTheDocument();
+    expect(within(dialog).getByText('متداول')).toBeInTheDocument();
+    // خيارات الانتقال من المتداول: منفذ ثم مشطوب.
+    expect(within(dialog).getByLabelText('الحالة')).toHaveValue('منفذ');
+  });
+
+  it('يفتح نافذة «تغيير الحالة» لملف «منفذ عليه» مشطوب بالإعادة إلى متداول أولًا', async () => {
+    const user = userEvent.setup();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { ...mockDoc, generalEntitySide: 'executed', executedStatus: 'مشطوب', struckOffDate: '2026-08-05' },
+    });
+    renderView();
+
+    const button = await screen.findByRole('button', { name: 'تغيير الحالة' });
+    await user.click(button);
+
+    const dialog = screen.getByRole('dialog', { name: 'تغيير الحالة' });
+    expect(within(dialog).getByText('مشطوب')).toBeInTheDocument();
+    // الإعادة إلى متداول تُعرض أولًا للملف المشطوب، مع حقول التجديد (رقم الملف الجديد إلزامي).
+    expect(within(dialog).getByLabelText('الحالة')).toHaveValue('متداول');
+    expect(within(dialog).getByLabelText(/رقم الملف الجديد/)).toBeInTheDocument();
   });
 
   it('يعرض تاريخ الشطب فقط دون زر إعادة في تفاصيل ملف «عرض وايداع» مشطوب', async () => {
@@ -1511,5 +1575,123 @@ describe('DocumentView', () => {
     const card = heading.closest('div') as HTMLElement;
     expect(within(card).getByText('المصرف التجاري السوري (فرع 1) - محافظة دمشق')).toBeInTheDocument();
     expect(within(card).getByText('مديرية زراعة اللاذقية - محافظة اللاذقية')).toBeInTheDocument();
+  });
+
+  it('يعرض «الوكيل القانوني» لطالب التنفيذ الطبيعي حتى مع تمثيل «إضافة لتركة» ومورث متوفى', async () => {
+    const user = userEvent.setup();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        ...mockDoc,
+        generalEntitySide: 'executed',
+        executedStatus: 'متداول',
+        executionApplicants: [
+          {
+            id: 1,
+            name: 'سليم',
+            father: 'حسن',
+            family: 'علي',
+            representationType: 'إضافة لتركة',
+            deceasedName: 'محمود',
+            deceasedFather: 'سامر',
+            deceasedFamily: 'الخطيب',
+            legalRepresentative: 'المحامي سامر',
+          },
+        ],
+      },
+    });
+    renderView();
+
+    const heading = await screen.findByText('أطراف الملف التنفيذي');
+    const card = heading.closest('div') as HTMLElement;
+    await user.click(within(card).getByText('سليم حسن علي'));
+    const dialog = screen.getByRole('dialog', { name: 'طالب التنفيذ' });
+    expect(within(dialog).getByText('الوكيل القانوني')).toBeInTheDocument();
+    expect(within(dialog).getByText('المحامي سامر')).toBeInTheDocument();
+    expect(within(dialog).getByText('المورث المتوفى')).toBeInTheDocument();
+    expect(within(dialog).getByText('محمود سامر الخطيب')).toBeInTheDocument();
+  });
+
+  it('يخفي صفوف طالب التنفيذ الفارغة ويُبقي المدخل منها فقط', async () => {
+    const user = userEvent.setup();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        ...mockDoc,
+        generalEntitySide: 'executed',
+        executedStatus: 'متداول',
+        executionApplicants: [
+          {
+            id: 1,
+            name: 'سليم',
+            father: 'حسن',
+            family: 'علي',
+            representationType: '',
+            legalRepresentative: '',
+          },
+        ],
+      },
+    });
+    renderView();
+
+    const heading = await screen.findByText('أطراف الملف التنفيذي');
+    const card = heading.closest('div') as HTMLElement;
+    await user.click(within(card).getByText('سليم حسن علي'));
+    const dialog = screen.getByRole('dialog', { name: 'طالب التنفيذ' });
+    expect(within(dialog).getByText('الاسم الثلاثي')).toBeInTheDocument();
+    expect(within(dialog).getByText('سليم حسن علي')).toBeInTheDocument();
+    // كل ما خلا الاسم فارغ فيُخفى تمامًا (لا تسمية ولا قيمة).
+    expect(within(dialog).queryByText('نوع التمثيل')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('الوكيل القانوني')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('المورث المتوفى')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('الممثل الشرعي')).not.toBeInTheDocument();
+  });
+
+  it('يعرض رسالة فارغة في نافذة طالب التنفيذ عند خلوّ كل بياناته', async () => {
+    const user = userEvent.setup();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        ...mockDoc,
+        generalEntitySide: 'executed',
+        executedStatus: 'متداول',
+        executionApplicants: [{ id: 1, name: '', father: '', family: '', representationType: '', legalRepresentative: '' }],
+      },
+    });
+    renderView();
+
+    const heading = await screen.findByText('أطراف الملف التنفيذي');
+    const card = heading.closest('div') as HTMLElement;
+    await user.click(within(card).getByRole('button', { name: /طالب التنفيذ/ }));
+    const dialog = screen.getByRole('dialog', { name: 'طالب التنفيذ' });
+    expect(within(dialog).getByText('لا توجد بيانات مدخلة لهذا الطرف')).toBeInTheDocument();
+    expect(within(dialog).queryByText('الاسم الثلاثي')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('نوع التمثيل')).not.toBeInTheDocument();
+  });
+
+  it('يعرض اسم الجهة العامة فقط في نافذتها حين يخلو الفرع والمحافظة', async () => {
+    const user = userEvent.setup();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        ...mockDoc,
+        generalEntitySide: 'executed',
+        executedStatus: 'متداول',
+        executedPublicEntities: [{ id: 1, entityName: 'المصرف العقاري', entityBranch: '', governorate: '' }],
+      },
+    });
+    renderView();
+
+    const heading = await screen.findByText('أطراف الملف التنفيذي');
+    const card = heading.closest('div') as HTMLElement;
+    await user.click(within(card).getByText('المصرف العقاري'));
+    const dialog = screen.getByRole('dialog', { name: 'الجهة العامة' });
+    expect(within(dialog).getByText('اسم الجهة')).toBeInTheDocument();
+    expect(within(dialog).getByText('المصرف العقاري')).toBeInTheDocument();
+    expect(within(dialog).queryByText('الفرع')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('المحافظة')).not.toBeInTheDocument();
+  });
+
+  it('يُسجّل الملف كآخر ما فُتح في الجلسة ليُميَّز في القائمة عند العودة', async () => {
+    renderView();
+
+    await screen.findByText('أطراف الملف التنفيذي');
+    expect(sessionStorage.getItem('lastViewedDocumentId')).toBe('1');
   });
 });

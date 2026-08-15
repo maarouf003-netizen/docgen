@@ -49,3 +49,14 @@ export function makeStruckOffDocument(overrides: Partial<DocumentResponse> = {})
     ...overrides,
   });
 }
+
+/** وثيقة منفذة (صفة منفذ عليها بحالة «منفذ» + منفذ طبيعي افتراضي) لاختبارات صفحة الملفات المنفذة. */
+export function makeExecutedDocument(overrides: Partial<DocumentResponse> = {}): DocumentResponse {
+  return makeDocument({
+    generalEntitySide: 'executed',
+    executedStatus: 'منفذ',
+    executedExecutionDate: '2026-08-04',
+    executedNaturalPersons: [{ name: 'محمود', father: 'علي', family: 'حسن' }],
+    ...overrides,
+  });
+}

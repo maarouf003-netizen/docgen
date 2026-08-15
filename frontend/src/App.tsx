@@ -10,6 +10,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const DocumentsList = lazy(() => import('./pages/DocumentsList'));
 const DeletedDocuments = lazy(() => import('./pages/DeletedDocuments'));
 const StruckOffDocuments = lazy(() => import('./pages/StruckOffDocuments'));
+const ExecutedDocuments = lazy(() => import('./pages/ExecutedDocuments'));
 const Rotation = lazy(() => import('./pages/Rotation'));
 const DocumentForm = lazy(() => import('./pages/DocumentForm'));
 const DocumentView = lazy(() => import('./pages/DocumentView'));
@@ -67,6 +68,7 @@ export default function App() {
             <Route path="/documents" element={<DocumentsList />} />
             <Route path="/documents/deleted" element={<DeletedDocuments />} />
             <Route path="/documents/struck-off" element={<StruckOffDocuments />} />
+            <Route path="/documents/executed" element={<ExecutedDocuments />} />
             <Route
               path="/documents/rotate"
               element={

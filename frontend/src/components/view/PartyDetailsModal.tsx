@@ -10,6 +10,9 @@ export function PartyDetailsModal({ modal, onClose }: { modal: PartyModal; onClo
         ? 'الجهة العامة'
         : `ورثة المتوفى (${modal.deceasedName})`;
 
+  // صفوف الشخص الطبيعي المعروضة: المدخلة فعلاً فقط (القيم الفارغة/البيضاء لا تُعرض).
+  const visibleRows = modal.kind === 'person' ? modal.rows.filter((row) => nonEmpty(row.value)) : [];
+
   return (
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
@@ -32,13 +35,17 @@ export function PartyDetailsModal({ modal, onClose }: { modal: PartyModal; onClo
 
         <div className="px-5 py-4 overflow-y-auto">
           {modal.kind === 'person' &&
-            modal.rows.map((row) => <Row key={row.label} label={row.label} value={row.value} showEmpty />)}
+            (visibleRows.length === 0 ? (
+              <p className="text-gray-400 text-sm">لا توجد بيانات مدخلة لهذا الطرف</p>
+            ) : (
+              visibleRows.map((row) => <Row key={row.label} label={row.label} value={row.value} />)
+            ))}
 
           {modal.kind === 'entity' && (
             <>
-              <Row label="اسم الجهة" value={modal.name} showEmpty />
-              <Row label="الفرع" value={modal.branch} showEmpty />
-              <Row label="المحافظة" value={modal.governorate} showEmpty />
+              {nonEmpty(modal.name) && <Row label="اسم الجهة" value={modal.name} />}
+              {nonEmpty(modal.branch) && <Row label="الفرع" value={modal.branch} />}
+              {nonEmpty(modal.governorate) && <Row label="المحافظة" value={modal.governorate} />}
             </>
           )}
 
@@ -65,4 +72,9 @@ export function PartyDetailsModal({ modal, onClose }: { modal: PartyModal; onClo
       </div>
     </div>
   );
+}
+
+/** القيمة «مُدخلة» فعلاً: أي قيمة غير الخالية/البياض تُعدّ معلومات يعرضها؛ وإلا تُهمل. */
+function nonEmpty(value?: string): boolean {
+  return (value ?? '').trim() !== '';
 }

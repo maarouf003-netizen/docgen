@@ -86,6 +86,21 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         // والتصدير العام: تظهر فقط في صفحة «الملفات المشطوبة» عبر SearchStruckOffAsync.
         q = q.Where(d => d.ExecutedStatus != ExecutedStatusCatalog.StruckOff
             && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff);
+        // الملفات «المنفذة» (عائلة «منفذ عليه»/«عرض وايداع» بحالة «منفذ»، وملفات «طالبة تنفيذ»
+        // المنفذة بالتسوية أو الجبري الكامل) تُخفى من القائمة والتصدير العام إلا عند البحث النصي
+        // عنها (query)، فتظهر للعثور عليها. التعريف مطابق تمامًا لصفحة «الملفات المنفذة»
+        // (SearchExecutedAsync) فلا يتسرب أي ملف منفذ إلى القائمة في غير ذلك.
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            q = q.Where(d =>
+                !((d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
+                    || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit)
+                    && d.ExecutedStatus == ExecutedStatusCatalog.Executed)
+                && !(d.GeneralEntitySide == GeneralEntitySideCatalog.Applicant
+                    && (d.ExecStatus == ExecutionStatusCatalog.ExecutedBySettlement
+                        || (d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
+                            && d.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted))));
+        }
         if (!string.IsNullOrWhiteSpace(status))
         {
             if (status == ExecutionStatusCatalog.ExecutedFilter)
@@ -577,6 +592,71 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
 
         var items = await WithStandardIncludes(
             q.OrderByDescending(d => d.StruckOffDate)
+                .ThenByDescending(d => d.Id)
+                .Skip((page - 1) * perPage)
+                .Take(perPage))
+            .ToListAsync(ct);
+
+        return (total, items);
+    }
+
+    public async Task<(int TotalCount, List<Document> Items)> SearchExecutedAsync(
+        string? query,
+        int? visibleBranchId,
+        int? visibleUserId,
+        int page,
+        int perPage,
+        CancellationToken ct = default)
+    {
+        // ملفات «منفذ عليها»/«عرض وايداع» بحالة «منفذ» فقط، وملفات «طالبة تنفيذ» المنفذة
+        // (بالتسوية أو الجبري الكامل) — تُخفى من البحث العام إلا عند البحث النصي عنها،
+        // فيُعرض سجلها في صفحة «الملفات المنفذة». غير المحذوفة (Query Filter مطبق تلقائيًا)
+        // وتُستبعد المشطوبة لأن حالتها «مشطوب» تُبقيها خارج شرط «منفذ» (فهي في صفحة
+        // «الملفات المشطوبة»).
+        IQueryable<Document> q = Db.Documents.AsNoTracking()
+            .Where(d =>
+                ((d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
+                    || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit)
+                    && d.ExecutedStatus == ExecutedStatusCatalog.Executed)
+                || (d.GeneralEntitySide == GeneralEntitySideCatalog.Applicant
+                    && (d.ExecStatus == ExecutionStatusCatalog.ExecutedBySettlement
+                        || (d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
+                            && d.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted))));
+
+        if (visibleBranchId.HasValue)
+            q = q.Where(d => d.BranchId == visibleBranchId);
+
+        if (visibleUserId.HasValue)
+            q = q.Where(d => d.CreatedById == visibleUserId);
+
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            var term = query.Trim();
+            q = q.Where(d =>
+                (d.SearchText != null && d.SearchText.Contains(term)) ||
+                (d.BorrowerName != null &&
+                    ((d.BorrowerName + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term) ||
+                     (d.BorrowerName + " " + (d.BorrowerFather ?? string.Empty) + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term))) ||
+                d.ExecutionApplicants.Any(a =>
+                    (a.Name != null &&
+                        ((a.Name + " " + (a.Family ?? string.Empty)).Contains(term) ||
+                         (a.Name + " " + (a.Father ?? string.Empty) + " " + (a.Family ?? string.Empty)).Contains(term))) ||
+                    ((a.DeceasedName ?? string.Empty) + " " + (a.DeceasedFamily ?? string.Empty)).Contains(term)) ||
+                d.ExecutedNaturalPersons.Any(p =>
+                    p.Name != null &&
+                    ((p.Name + " " + (p.Family ?? string.Empty)).Contains(term) ||
+                     (p.Name + " " + (p.Father ?? string.Empty) + " " + (p.Family ?? string.Empty)).Contains(term))) ||
+                d.ExecutedPublicEntities.Any(e => e.EntityName != null && e.EntityName.Contains(term)) ||
+                d.ExecutedHeirs.Any(h =>
+                    h.HeirName != null &&
+                    ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
+                     (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term))));
+        }
+
+        var total = await q.CountAsync(ct);
+
+        var items = await WithStandardIncludes(
+            q.OrderByDescending(d => d.UpdatedAt)
                 .ThenByDescending(d => d.Id)
                 .Skip((page - 1) * perPage)
                 .Take(perPage))

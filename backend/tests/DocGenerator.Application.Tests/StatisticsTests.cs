@@ -345,6 +345,33 @@ public class StatisticsRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task ManagerStats_ExecutedAgainstAmountSumsAllThreePaidSlots()
+    {
+        // المبلغ المدفوع يتبع القاعدة العامة «حتى ثلاثة مبالغ بعملات متمايزة»، فمبلغ
+        // «منفذ للضد» يجمع خاناته الثلاث جميعًا ولا يكتفي بأولاها.
+        var today = DateTime.Today;
+        _db.Documents.Add(
+            new Document
+            {
+                BranchId = 1,
+                CreatedById = 1,
+                IsDraft = false,
+                GeneralEntitySide = GeneralEntitySideCatalog.Executed,
+                ExecutedStatus = ExecutedStatusCatalog.Executed,
+                ExecutedPaidAmount = 1000,
+                ExecutedPaidAmount2 = 2000,
+                ExecutedPaidAmount3 = 500,
+                FileReceiptDate = new DateTime(today.Year, today.Month, 3),
+            });
+        _db.SaveChanges();
+
+        var s = await _stats.GetManagerStatsAsync(StatsPeriod.Monthly, 1);
+
+        Assert.Equal(1, s.ExecutedAgainstCount);
+        Assert.Equal(3500m, s.ExecutedAgainstAmount);
+    }
+
+    [Fact]
     public async Task ManagerStats_ExecutedSideUsesFileReceiptDateAsPeriod()
     {
         // فترة ملف «منفذ عليها» من تاريخ ورود الاخطار لا من تاريخ قيده (المقيد من الخصم)،
@@ -433,6 +460,43 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(0, s.ExecutedAgainstCount);
         Assert.Equal(0m, s.ExecutedAgainstAmount);
         Assert.Empty(s.TradingAgainstAmounts);
+    }
+
+    [Fact]
+    public async Task ManagerStats_DepositRevertedToTrading_StaysExecutedInStats()
+    {
+        // «عرض وايداع» عاد من «منفذ» إلى متداول بكتاب السير بالملف: العلامة الدائمة «سبق تنفيذه»
+        // تُبقيه محسوبًا «منفذًا» عددًا ومبلغًا في الإحصاءات، ولا ينتقل عدديًا إلى المتداول.
+        var today = DateTime.Today;
+        _db.Documents.AddRange(
+            new Document
+            {
+                BranchId = 1,
+                CreatedById = 1,
+                IsDraft = false,
+                GeneralEntitySide = GeneralEntitySideCatalog.Deposit,
+                ExecutedStatus = ExecutedStatusCatalog.None,
+                WasDepositExecuted = true,
+                ExecutedPaidAmount = 1250,
+                FileReceiptDate = new DateTime(today.Year, today.Month, 5),
+            },
+            new Document
+            {
+                BranchId = 1,
+                CreatedById = 1,
+                IsDraft = false,
+                GeneralEntitySide = GeneralEntitySideCatalog.Deposit,
+                ExecutedStatus = ExecutedStatusCatalog.None,
+                WasDepositExecuted = false,
+                FileReceiptDate = new DateTime(today.Year, today.Month, 6),
+            });
+        _db.SaveChanges();
+
+        var s = await _stats.GetManagerStatsAsync(StatsPeriod.Monthly, 1);
+
+        Assert.Equal(1, s.DepositTradingCount);
+        Assert.Equal(1, s.DepositExecutedCount);
+        Assert.Equal(1250m, s.DepositExecutedAmount);
     }
 
     [Fact]

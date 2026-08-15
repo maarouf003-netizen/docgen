@@ -4,7 +4,9 @@ import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { getDocumentBadge } from '../utils/documentStatus';
 import { isExecutedLike } from '../utils/documentDisplay';
+import { saveLastViewedDocumentId } from '../utils/listSession';
 import ExecutionActionsModal from '../components/ExecutionActionsModal';
+import ExecutedStatusModal from '../components/ExecutedStatusModal';
 import StatusChangeModal from '../components/StatusChangeModal';
 import TransferDocumentModal from '../components/TransferDocumentModal';
 import FileAlertModal from '../components/FileAlertModal';
@@ -52,6 +54,8 @@ export default function DocumentView() {
 
   useEffect(() => {
     load();
+    // يُسجَّل الملف كآخر ما فُتح في الجلسة ليُميَّز في القائمة عند العودة (حتى لو فُتح من غير القائمة).
+    if (id) saveLastViewedDocumentId(Number(id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -97,7 +101,7 @@ export default function DocumentView() {
               تعديل
             </Link>
           )}
-          {canEdit && !isExecuted && (
+          {canEdit && (
             <button
               onClick={() => setStatusOpen(true)}
               className="bg-blue-700 hover:bg-blue-600 text-white rounded-lg px-4 py-2 text-sm min-h-11"
@@ -107,7 +111,7 @@ export default function DocumentView() {
           )}
           <button
             onClick={() => setActionsOpen(true)}
-            className="bg-gray-700 hover:bg-gray-600 text-white rounded-lg px-4 py-2 text-sm min-h-11"
+            className="bg-[#800000] hover:bg-[#9e0e0e] text-white rounded-lg px-4 py-2 text-sm min-h-11"
           >
             الإجراءات والملاحظات
           </button>
@@ -173,9 +177,11 @@ export default function DocumentView() {
         />
       )}
 
-      {statusOpen && (
+      {statusOpen && (isExecuted ? (
+        <ExecutedStatusModal doc={doc} onClose={() => setStatusOpen(false)} onChanged={load} />
+      ) : (
         <StatusChangeModal doc={doc} onClose={() => setStatusOpen(false)} onChanged={load} />
-      )}
+      ))}
 
       {transferOpen && id !== undefined && (
         <TransferDocumentModal

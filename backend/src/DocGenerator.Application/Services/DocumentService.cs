@@ -32,6 +32,11 @@ public interface IDocumentService
     /// بنفس صلاحيات المحذوفات: محامٍ (ملفاته) / رئيس قسم (فرعه) / مشرف (الكل).
     /// </summary>
     Task<PagedResult<DocumentResponse>> SearchStruckOffAsync(string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default);
+    /// <summary>
+    /// بحث ترحّلي عن الملفات المنفذة (منفذ عليها/عرض وايداع بحالة «منفذ»، وطالبة تنفيذ
+    /// بالتسوية أو الجبري الكامل) — صفحة «الملفات المنفذة»، ظاهرة لجميع الأدوار.
+    /// </summary>
+    Task<PagedResult<DocumentResponse>> SearchExecutedAsync(string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default);
     Task<List<DocumentResponse>> ExportAsync(string? query, string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default);
     Task<DocumentFilterOptions> GetFilterOptionsAsync(string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default);
     Task<bool> UpdateStatusAsync(int documentId, string status, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default);
@@ -48,10 +53,13 @@ public interface IDocumentService
     /// </summary>
     Task<bool> UpdateExecutedStatusAsync(int documentId, string status, string? actorName, CancellationToken ct = default);
     /// <summary>
-    /// تعيين حالة وضع «منفذ عليه» مع تجديد (إعادة ملف مشطوب إلى متداول برقم ملف جديد لسنة الإعادة).
-    /// عند العودة من مشطوب إلى متداول يُطبَّق بيان التجديد (رقم الملف الجديد إلزامي).
+    /// تعيين حالة وضع «منفذ عليه» مع حقولها (ExecutedStatusRequest): عند الانتقال إلى «منفذ»
+    /// تُحفظ حقوله (المبلغ/كيفية التنفيذ/تاريخ الإيداع)، وعند الانتقال إلى «مشطوب» يُحفظ
+    /// تاريخ الشطب المُرسَل إن وُجد وإلا توقيت الانتقال. عند العودة من مشطوب إلى متداول
+    /// يُطبَّق بيان التجديد (رقم الملف الجديد إلزامي). إعادة الحالة إلى متداول (سلسلة فارغة)
+    /// تُبقي تاريخ الشطب محفوظًا لعرضه بعد الإعادة.
     /// </summary>
-    Task<bool> UpdateExecutedStatusAsync(int documentId, string status, RenewalRequest? renewal, string? actorName, CancellationToken ct = default);
+    Task<bool> UpdateExecutedStatusAsync(int documentId, string status, ExecutedStatusRequest? request, string? actorName, CancellationToken ct = default);
     /// <summary>
     /// إعادة ملف مشطوب إلى المتداول في وضع «منفذ عليه» (فك الشطب): تُصفَّر ExecutedStatus
     /// وتبقى StruckOffDate محفوظة (تُعرض في تفاصيل الملف بعد الإعادة).
@@ -394,6 +402,23 @@ public sealed class DocumentService : IDocumentService
         };
     }
 
+    public async Task<PagedResult<DocumentResponse>> SearchExecutedAsync(
+        string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default)
+    {
+        page = Math.Max(1, page);
+        perPage = Math.Clamp(perPage, 1, 100);
+
+        var (total, items) = await _documents.SearchExecutedAsync(query, visibleBranchId, visibleUserId, page, perPage, ct);
+
+        return new PagedResult<DocumentResponse>
+        {
+            Items = items.Select(DocumentResponse.FromEntity).ToList(),
+            Page = page,
+            PerPage = perPage,
+            TotalCount = total,
+        };
+    }
+
     public async Task<PagedResult<DocumentResponse>> SearchAsync(
         string? query, string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch, int page, int perPage,
         int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default)
@@ -461,6 +486,9 @@ public sealed class DocumentService : IDocumentService
                 ClearBaraetFields(doc);
                 ClearTarithFields(doc);
                 ClearSayerFields(doc);
+                RequireField(fields, "forcedExecutionDate", "تاريخ قرار الإحالة القطعية");
+                doc.ForcedExecutionDate = fields.GetValueOrDefault("forcedExecutionDate");
+                CopyDetail(details, "forcedExecutionDate", doc.ForcedExecutionDate);
                 break;
             case ExecutionStatusCatalog.ExecutedBySettlement:
                 RequireField(fields, "baraetNumber", "رقم كتاب براءة الذمة");
@@ -476,6 +504,7 @@ public sealed class DocumentService : IDocumentService
                 ApplyCollectedAmounts(doc, fields, details);
                 ClearTarithFields(doc);
                 ClearSayerFields(doc);
+                ClearForcedExecutionField(doc);
                 doc.ExecSubStatus = null;
                 doc.SoldEstateIds = null;
                 break;
@@ -492,6 +521,7 @@ public sealed class DocumentService : IDocumentService
                 CopyDetail(details, "tarithRegDate", doc.TarithRegDate);
                 ClearBaraetFields(doc);
                 ClearSayerFields(doc);
+                ClearForcedExecutionField(doc);
                 doc.ExecSubStatus = null;
                 ClearCollectedFields(doc);
                 doc.SoldEstateIds = null;
@@ -505,6 +535,7 @@ public sealed class DocumentService : IDocumentService
                 ClearBaraetFields(doc);
                 ClearTarithFields(doc);
                 ClearSayerFields(doc);
+                ClearForcedExecutionField(doc);
                 doc.ExecSubStatus = null;
                 ClearCollectedFields(doc);
                 doc.SoldEstateIds = null;
@@ -585,6 +616,7 @@ public sealed class DocumentService : IDocumentService
         ClearCollectedFields(doc);
         ClearBaraetFields(doc);
         ClearTarithFields(doc);
+        ClearForcedExecutionField(doc);
         doc.SoldEstateIds = null;
 
         return await _tx.RunAsync(async token =>
@@ -612,7 +644,7 @@ public sealed class DocumentService : IDocumentService
     public async Task<bool> UpdateExecutedStatusAsync(int documentId, string status, string? actorName, CancellationToken ct = default)
         => await UpdateExecutedStatusAsync(documentId, status, null, actorName, ct);
 
-    public async Task<bool> UpdateExecutedStatusAsync(int documentId, string status, RenewalRequest? renewal, string? actorName, CancellationToken ct = default)
+    public async Task<bool> UpdateExecutedStatusAsync(int documentId, string status, ExecutedStatusRequest? request, string? actorName, CancellationToken ct = default)
     {
         var doc = await _documents.GetByIdAsync(documentId, ct);
         if (doc is null)
@@ -624,29 +656,138 @@ public sealed class DocumentService : IDocumentService
         if (!ExecutedStatusCatalog.ValidStatuses.Contains(status))
             throw new ArgumentException("حالة غير صالحة");
 
-        var wasStruckOff = ExecutedStatusCatalog.IsStruckOff(doc.ExecutedStatus);
+        var current = doc.ExecutedStatus;
+        // حالة «منفذ» في صفة «الجهة العامة منفذ عليها» نهائية: لا تُغيَّر إلى متداول ولا إلى مشطوب
+        // (ويبقى الدخول مجددًا إلى «منفذ» ذاتها مسموحًا لتحديث حقول الحالة).
+        if (doc.GeneralEntitySide == GeneralEntitySideCatalog.Executed
+            && current == ExecutedStatusCatalog.Executed
+            && status != ExecutedStatusCatalog.Executed)
+            throw new ArgumentException("حالة «منفذ» في صفة «الجهة العامة منفذ عليها» نهائية لا يمكن تغييرها");
+        // «عرض وايداع» يُشطب من متداوله فقط؛ أما المنفذ فلا يُشطب بل يُعاد إلى متداول بكتاب السير بالملف.
+        if (doc.GeneralEntitySide == GeneralEntitySideCatalog.Deposit
+            && current == ExecutedStatusCatalog.Executed
+            && status == ExecutedStatusCatalog.StruckOff)
+            throw new ArgumentException("«عرض وايداع» المنفذ لا يُشطب؛ يمكن إرجاعه إلى متداول بكتاب الجهة العامة بالسير بالملف");
+
+        // الإرجاع من «منفذ» إلى «متداول» في «عرض وايداع»: كتاب الجهة العامة بالسير بالملف إلزامي
+        // (رقم وتاريخ الكتاب وورودهما)، ويُحفظ مع بقاء المبالغ المودعة، ويُسجَّل وقعة تراجع.
+        // يُتحقق هنا قبل أي تعديل على حالة الملف كي لا تترك حالةُ فشلٍ أثرًا على السجل.
+        var depositRevert = doc.GeneralEntitySide == GeneralEntitySideCatalog.Deposit
+            && current == ExecutedStatusCatalog.Executed
+            && status == ExecutedStatusCatalog.None;
+        Dictionary<string, string>? revertDetails = null;
+        if (depositRevert)
+        {
+            var sayerFields = new Dictionary<string, string?>
+            {
+                ["sayerNumber"] = request?.SayerNumber,
+                ["sayerDate"] = request?.SayerDate,
+                ["sayerRegNumber"] = request?.SayerRegNumber,
+                ["sayerRegDate"] = request?.SayerRegDate,
+            };
+            RequireField(sayerFields, "sayerNumber", "رقم كتاب الجهة العامة بالسير بالملف");
+            RequireField(sayerFields, "sayerDate", "تاريخ كتاب الجهة العامة بالسير بالملف");
+            RequireField(sayerFields, "sayerRegNumber", "رقم ورود كتاب بالسير بالملف");
+            RequireField(sayerFields, "sayerRegDate", "تاريخ ورود كتاب بالسير بالملف");
+            doc.SayerNumber = sayerFields["sayerNumber"];
+            doc.SayerDate = sayerFields["sayerDate"];
+            doc.SayerRegNumber = sayerFields["sayerRegNumber"];
+            doc.SayerRegDate = sayerFields["sayerRegDate"];
+            revertDetails = new Dictionary<string, string>();
+            CopyDetail(revertDetails, "sayerNumber", doc.SayerNumber);
+            CopyDetail(revertDetails, "sayerDate", doc.SayerDate);
+            CopyDetail(revertDetails, "sayerRegNumber", doc.SayerRegNumber);
+            CopyDetail(revertDetails, "sayerRegDate", doc.SayerRegDate);
+        }
+
+        var wasStruckOff = ExecutedStatusCatalog.IsStruckOff(current);
         doc.ExecutedStatus = ExecutedStatusCatalog.IsStored(status) ? status : ExecutedStatusCatalog.None;
-        // عند الدخول إلى «مشطوب» يُحدَّث تاريخ الشطب للآن دومًا: فلو عاد الملف إلى المتداول
-        // (مع إبقاء تاريخ الشطب السابق لعرضه بعد الإعادة) ثم شُطب من جديد، فيجب أن يحمل
-        // الشطبُ الجديد تاريخَه الخاص لا تاريخ شطبه الأول.
+        // عند الدخول إلى «مشطوب» يُحدَّث تاريخ الشطب: بتاريخه المُرسَل إن وُجد وإلا للآن.
+        // فلو عاد الملف إلى المتداول (مع إبقاء تاريخ الشطب السابق لعرضه بعد الإعادة) ثم شُطب
+        // من جديد، فيجب أن يحمل الشطبُ الجديد تاريخَه الخاص لا تاريخ شطبه الأول.
         if (!wasStruckOff && doc.ExecutedStatus == ExecutedStatusCatalog.StruckOff)
-            doc.StruckOffDate = DateTime.UtcNow;
+        {
+            var submitted = ParseDateTime(request?.StruckOffDate, "تاريخ الشطب");
+            doc.StruckOffDate = submitted ?? DateTime.UtcNow;
+        }
+        // عند الدخول إلى «منفذ» تُحفظ حقول الحالة المقدَّمة فقط ولا تُمسّ المحفوظة سابقًا:
+        // المبلغ وهو خاص بالصفين (تنفيذ/ايداع)، والوصف خاص بصفة «منفذ عليها»، وتاريخ الإيداع
+        // خاص بصفة «عرض وايداع». الإعادة إلى منفذ بحقول فارغة تُبقي ما سبق تسجيله.
+        if (doc.ExecutedStatus == ExecutedStatusCatalog.Executed)
+        {
+            // المبلغ المدفوع (حتى ثلاثة بعملاتها) خاص بالصفين (تنفيذ/ايداع): تُحفظ الخانة
+            // المقدَّمة فقط بعملتها، ولا تُمسّ المحفوظة سابقًا في سواها. وعملة الخانة عائدة
+            // لمنهج «كل مبلغ له عملة»: المقدَّمة، وإلا المحفوظة سابقًا، وإلا الافتراضية.
+            if (request?.ExecutedPaidAmount is { } paidAmount)
+            {
+                doc.ExecutedPaidAmount = paidAmount;
+                doc.ExecutedPaidCurrency = request.ExecutedPaidCurrency ?? doc.ExecutedPaidCurrency ?? "ليرة سورية";
+            }
+            if (request?.ExecutedPaidAmount2 is { } paidAmount2)
+            {
+                doc.ExecutedPaidAmount2 = paidAmount2;
+                doc.ExecutedPaidCurrency2 = request.ExecutedPaidCurrency2 ?? doc.ExecutedPaidCurrency2 ?? "ليرة سورية";
+            }
+            if (request?.ExecutedPaidAmount3 is { } paidAmount3)
+            {
+                doc.ExecutedPaidAmount3 = paidAmount3;
+                doc.ExecutedPaidCurrency3 = request.ExecutedPaidCurrency3 ?? doc.ExecutedPaidCurrency3 ?? "ليرة سورية";
+            }
+            if (doc.GeneralEntitySide == GeneralEntitySideCatalog.Executed)
+            {
+                var description = (request?.ExecutedDescription ?? string.Empty).Trim();
+                if (description.Length > 0)
+                    doc.ExecutedDescription = description;
+                var executionDate = ParseDateTime(request?.ExecutedExecutionDate, "تاريخ التنفيذ");
+                if (executionDate is not null)
+                    doc.ExecutedExecutionDate = executionDate;
+            }
+            else
+            {
+                doc.ExecutedDescription = null;
+                doc.ExecutedExecutionDate = null;
+            }
+            if (doc.GeneralEntitySide == GeneralEntitySideCatalog.Deposit)
+            {
+                // عند دخول «عرض وايداع» إلى «منفذ» تُضبط العلامة الدائمة «سبق تنفيذه» فلا يخرج
+                // مبلغه المودع من الإحصاءات (عددًا ومبلغًا) حتى بعد عودته إلى المتداول.
+                doc.WasDepositExecuted = true;
+                var depositDate = ParseDateTime(request?.ExecutedDepositDate, "تاريخ ايداعه حساب الجهة العامة");
+                if (depositDate is not null)
+                    doc.ExecutedDepositDate = depositDate;
+            }
+        }
 
         return await _tx.RunAsync(async token =>
         {
             // العودة من مشطوب إلى متداول تستلزم تجديد الملف برقم ملف جديد لسنة الإعادة.
             if (wasStruckOff && doc.ExecutedStatus == ExecutedStatusCatalog.None)
-                await ApplyRenewalAsync(doc, renewal ?? new RenewalRequest(), true, doc.CreatedById, token);
+                await ApplyRenewalAsync(doc, request ?? new RenewalRequest(), true, doc.CreatedById, token);
             // الانتقال إلى مشطوب يُسجَّل وقعة شطب في سجل وقوعات الملف.
             else if (!wasStruckOff && ExecutedStatusCatalog.IsStruckOff(doc.ExecutedStatus))
                 await AddStruckOffOccurrenceAsync(doc, doc.CreatedById, token);
+            // الإرجاع من «منفذ» إلى «متداول» (عرض وايداع) يُسجَّل وقعة تراجع بحقول كتاب السير.
+            else if (depositRevert)
+                await _occurrences.AddAsync(new DocumentOccurrence
+                {
+                    DocumentId = doc.Id,
+                    OccurrenceType = OccurrenceTypeCatalog.Revert,
+                    EventDate = DateTime.UtcNow,
+                    Details = revertDetails?.Count > 0 ? SerializeDetails(revertDetails) : null,
+                    CreatedById = doc.CreatedById,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                }, token);
             doc.UpdatedAt = DateTime.UtcNow;
             _documents.Update(doc);
             await _uow.SaveChangesAsync(token);
             var label = ExecutedStatusCatalog.ToLabel(doc.ExecutedStatus);
             var sideLabel = GeneralEntitySideCatalog.ToLabel(doc.GeneralEntitySide);
+            var auditDetail = depositRevert
+                ? $"أعاد «{sideLabel}» إلى المتداول بكتاب الجهة العامة بالسير بالملف"
+                : $"حالة وضع «{sideLabel}»: {label}";
             await _audit.LogAsync(actorName, "executed-status", doc.Id, doc.DocumentType,
-                AuditWithActor($"حالة وضع «{sideLabel}»: {label}", doc), token);
+                AuditWithActor(auditDetail, doc), token);
             return true;
         }, ct);
     }
@@ -1415,6 +1556,11 @@ public sealed class DocumentService : IDocumentService
         doc.BaraetRegDate = null;
     }
 
+    private static void ClearForcedExecutionField(Document doc)
+    {
+        doc.ForcedExecutionDate = null;
+    }
+
     private static void ClearTarithFields(Document doc)
     {
         doc.TarithNumber = null;
@@ -1591,6 +1737,9 @@ public sealed class DocumentService : IDocumentService
         doc.ContractTypeSelector = r.ContractTypeSelector;
         doc.ContractNumber = r.ContractNumber;
         doc.ContractDate = r.ContractDate;
+        doc.AnnexType = r.AnnexType;
+        doc.AnnexNumber = r.AnnexNumber;
+        doc.AnnexDate = r.AnnexDate;
         doc.InclusionText = r.InclusionText;
         doc.AmountNumeric = r.AmountNumeric ?? 0;
         doc.AmountWords = r.AmountWords;
@@ -1666,8 +1815,16 @@ public sealed class DocumentService : IDocumentService
             doc.ExecutedRequiredAmount3 = r.ExecutedRequiredAmount3;
             doc.ExecutedRequiredCurrency3 = r.ExecutedRequiredCurrency3;
             doc.ExecutedPaidAmount = r.ExecutedPaidAmount;
+            doc.ExecutedPaidCurrency = r.ExecutedPaidCurrency;
+            doc.ExecutedPaidAmount2 = r.ExecutedPaidAmount2;
+            doc.ExecutedPaidCurrency2 = r.ExecutedPaidCurrency2;
+            doc.ExecutedPaidAmount3 = r.ExecutedPaidAmount3;
+            doc.ExecutedPaidCurrency3 = r.ExecutedPaidCurrency3;
             doc.ExecutedDepositDate = doc.GeneralEntitySide == GeneralEntitySideCatalog.Deposit
                 ? ParseDateTime(r.ExecutedDepositDate, "تاريخ ايداعه حساب الجهة العامة")
+                : null;
+            doc.ExecutedExecutionDate = doc.GeneralEntitySide == GeneralEntitySideCatalog.Executed
+                ? ParseDateTime(r.ExecutedExecutionDate, "تاريخ التنفيذ")
                 : null;
         }
         else
@@ -1683,7 +1840,13 @@ public sealed class DocumentService : IDocumentService
             doc.ExecutedRequiredAmount3 = null;
             doc.ExecutedRequiredCurrency3 = null;
             doc.ExecutedPaidAmount = null;
+            doc.ExecutedPaidCurrency = null;
+            doc.ExecutedPaidAmount2 = null;
+            doc.ExecutedPaidCurrency2 = null;
+            doc.ExecutedPaidAmount3 = null;
+            doc.ExecutedPaidCurrency3 = null;
             doc.ExecutedDepositDate = null;
+            doc.ExecutedExecutionDate = null;
             doc.StruckOffDate = null;
         }
 
@@ -2260,7 +2423,7 @@ public sealed class DocumentService : IDocumentService
             doc.Applicant = applicantText;
 
         var parts = new[] { doc.BorrowerName, doc.BorrowerFamily, doc.Applicant, doc.Lawyer,
-            doc.Court, doc.FileNumber, doc.ContractNumber, doc.BorrowerNationalId,
+            doc.Court, doc.FileNumber, doc.ContractNumber, doc.AnnexNumber, doc.BorrowerNationalId,
             doc.BorrowerRegistrationNumber, doc.BorrowerRepresentedBy,
             doc.FileArrivalNumber, doc.FileArrivalDate }
             .Where(v => !string.IsNullOrWhiteSpace(v));

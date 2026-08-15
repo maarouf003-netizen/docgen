@@ -257,6 +257,10 @@ export interface DocumentResponse {
   contractTypeSelector?: string;
   contractNumber?: string;
   contractDate?: string;
+  /** ملحق العقد (للعقد المصرفي فقط، اختياري): نوعه ورقمه وتاريخه. */
+  annexType?: string;
+  annexNumber?: string;
+  annexDate?: string;
   inclusionText?: string;
   amountNumeric: number;
   amountWords?: string;
@@ -305,6 +309,8 @@ export interface DocumentResponse {
   collectedCurrency3?: string;
   baraetNumber?: string;
   baraetDate?: string;
+  /** تاريخ قرار الإحالة القطعية في «منفذ جبريا» (نص حر). */
+  forcedExecutionDate?: string;
   baraetRegNumber?: string;
   baraetRegDate?: string;
   tarithNumber?: string;
@@ -352,8 +358,20 @@ export interface DocumentResponse {
   executedRequiredCurrency3?: string;
   /** المبلغ الذي دفعته الجهة العامة في وضع «الجهة العامة منفذ عليها». */
   executedPaidAmount?: number;
+  /** عملة المبلغ المدفوع الأول في وضع «الجهة العامة منفذ عليها» (افتراضيًا ليرة سورية). */
+  executedPaidCurrency?: string;
+  /** المبلغ المدفوع الثاني (اختياري) في وضع «الجهة العامة منفذ عليها». */
+  executedPaidAmount2?: number;
+  /** عملة المبلغ المدفوع الثاني (افتراضيًا ليرة سورية). */
+  executedPaidCurrency2?: string;
+  /** المبلغ المدفوع الثالث (اختياري) في وضع «الجهة العامة منفذ عليها». */
+  executedPaidAmount3?: number;
+  /** عملة المبلغ المدفوع الثالث (افتراضيًا ليرة سورية). */
+  executedPaidCurrency3?: string;
   /** تاريخ ايداعه حساب الجهة العامة في وضع «عرض وايداع». */
   executedDepositDate?: string;
+  /** تاريخ التنفيذ في وضع «الجهة العامة منفذ عليها». */
+  executedExecutionDate?: string;
   /** لحظة شطب الملف (تاريخ إدخاله من النموذج وتبقى محفوظة بعد الإعادة). */
   struckOffDate?: string;
   /** رقم ورود اخطار التجديد عند إعادة ملف مشطوب إلى المتداول (اختياري). */
@@ -412,6 +430,10 @@ export interface DocumentUpsertRequest {
   contractTypeSelector?: string;
   contractNumber?: string;
   contractDate?: string;
+  /** ملحق العقد (للعقد المصرفي فقط، اختياري): نوعه ورقمه وتاريخه. */
+  annexType?: string;
+  annexNumber?: string;
+  annexDate?: string;
   inclusionText?: string;
   amountNumeric?: number;
   amountWords?: string;
@@ -486,8 +508,22 @@ export interface DocumentUpsertRequest {
   executedRequiredCurrency3?: string;
   /** المبلغ الذي دفعته الجهة العامة في وضع «الجهة العامة منفذ عليها». */
   executedPaidAmount?: number;
+  /** عملة المبلغ المدفوع الأول في وضع «الجهة العامة منفذ عليها» (افتراضيًا ليرة سورية). */
+  executedPaidCurrency?: string;
+  /** المبلغ المدفوع الثاني (اختياري) في وضع «الجهة العامة منفذ عليها». */
+  executedPaidAmount2?: number;
+  /** عملة المبلغ المدفوع الثاني (افتراضيًا ليرة سورية). */
+  executedPaidCurrency2?: string;
+  /** المبلغ المدفوع الثالث (اختياري) في وضع «الجهة العامة منفذ عليها». */
+  executedPaidAmount3?: number;
+  /** عملة المبلغ المدفوع الثالث (افتراضيًا ليرة سورية). */
+  executedPaidCurrency3?: string;
   /** تاريخ ايداعه حساب الجهة العامة في وضع «عرض وايداع». */
   executedDepositDate?: string;
+  /** تاريخ التنفيذ في وضع «الجهة العامة منفذ عليها». */
+  executedExecutionDate?: string;
+  /** تاريخ قرار الإحالة القطعية في «منفذ جبريا» (نص حر). */
+  forcedExecutionDate?: string;
   executionApplicants: ExecutionApplicantDto[];
   executedPublicEntities: ExecutedPublicEntityDto[];
   executedNaturalPersons: ExecutedNaturalPersonDto[];

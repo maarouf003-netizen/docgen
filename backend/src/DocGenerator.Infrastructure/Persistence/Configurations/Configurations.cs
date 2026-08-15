@@ -80,6 +80,9 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.ContractTypeSelector).HasMaxLength(30);
         builder.Property(d => d.ContractNumber).HasMaxLength(100);
         builder.Property(d => d.ContractDate).HasMaxLength(50);
+        builder.Property(d => d.AnnexType).HasMaxLength(100);
+        builder.Property(d => d.AnnexNumber).HasMaxLength(100);
+        builder.Property(d => d.AnnexDate).HasMaxLength(50);
         builder.Property(d => d.InclusionText).HasMaxLength(1000);
 
         builder.Property(d => d.AmountNumeric).HasColumnType("decimal(20,2)");
@@ -145,9 +148,16 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.ExecutedRequiredAmount3).HasColumnType("decimal(20,2)");
         builder.Property(d => d.ExecutedRequiredCurrency3).HasMaxLength(50);
         builder.Property(d => d.ExecutedPaidAmount).HasColumnType("decimal(20,2)");
+        builder.Property(d => d.ExecutedPaidCurrency).HasMaxLength(50);
+        builder.Property(d => d.ExecutedPaidAmount2).HasColumnType("decimal(20,2)");
+        builder.Property(d => d.ExecutedPaidCurrency2).HasMaxLength(50);
+        builder.Property(d => d.ExecutedPaidAmount3).HasColumnType("decimal(20,2)");
+        builder.Property(d => d.ExecutedPaidCurrency3).HasMaxLength(50);
         builder.Property(d => d.ExecutedDepositDate).HasColumnType("datetime2");
+        builder.Property(d => d.ExecutedExecutionDate).HasColumnType("datetime2");
         builder.Property(d => d.BaraetNumber).HasMaxLength(100);
         builder.Property(d => d.BaraetDate).HasMaxLength(50);
+        builder.Property(d => d.ForcedExecutionDate).HasMaxLength(50);
         builder.Property(d => d.BaraetRegNumber).HasMaxLength(100);
         builder.Property(d => d.BaraetRegDate).HasMaxLength(50);
         builder.Property(d => d.TarithNumber).HasMaxLength(100);

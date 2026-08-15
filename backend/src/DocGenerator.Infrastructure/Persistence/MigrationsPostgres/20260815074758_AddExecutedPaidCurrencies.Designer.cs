@@ -3,6 +3,7 @@ using System;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 {
     [DbContext(typeof(DocGeneratorPostgresDbContext))]
-    partial class DocGeneratorPostgresDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260815074758_AddExecutedPaidCurrencies")]
+    partial class AddExecutedPaidCurrencies
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -157,18 +160,6 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Property<string>("AmountWords")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
-
-                    b.Property<string>("AnnexDate")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<string>("AnnexNumber")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("AnnexType")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("Applicant")
                         .HasMaxLength(200)
@@ -353,9 +344,6 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
-                    b.Property<DateTime?>("ExecutedExecutionDate")
-                        .HasColumnType("datetime2");
-
                     b.Property<decimal?>("ExecutedPaidAmount")
                         .HasColumnType("decimal(20,2)");
 
@@ -438,10 +426,6 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .HasColumnType("character varying(100)");
 
                     b.Property<string>("FileYear")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<string>("ForcedExecutionDate")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
@@ -593,9 +577,6 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.Property<int>("ViewCount")
                         .HasColumnType("integer");
-
-                    b.Property<bool>("WasDepositExecuted")
-                        .HasColumnType("boolean");
 
                     b.HasKey("Id");
 

@@ -49,6 +49,7 @@ type StatusFields = {
   sayerRegNumber: string;
   sayerRegDate: string;
   execSubStatus: string;
+  forcedExecutionDate: string;
   collectedAmount?: number;
   collectedAmount2?: number;
   collectedAmount3?: number;
@@ -74,6 +75,7 @@ function emptyFields(): StatusFields {
     sayerRegNumber: '',
     sayerRegDate: '',
     execSubStatus: 'منفذ كاملا',
+    forcedExecutionDate: '',
     collectedCurrency: 'ليرة سورية',
     collectedCurrency2: 'دولار أمريكي',
     collectedCurrency3: 'يورو',
@@ -143,6 +145,10 @@ export default function StatusChangeModal({
       }
     } else if (target === 'منفذ جبريا') {
       payload.execSubStatus = fields.execSubStatus;
+      if (!fields.forcedExecutionDate.trim()) {
+        throw new Error('يجب إدخال تاريخ قرار الإحالة القطعية');
+      }
+      payload.forcedExecutionDate = normalize(fields.forcedExecutionDate);
       for (let i = 0; i < collectedSlots; i++) {
         const amount = fields[COLLECTED_AMOUNT_KEYS[i]];
         if (amount != null) {
@@ -280,6 +286,12 @@ export default function StatusChangeModal({
                     value={fields.execSubStatus}
                     onChange={(v) => set('execSubStatus', v)}
                     options={['منفذ جزئيا', 'منفذ كاملا']}
+                  />
+                  <FieldInput
+                    id="forcedExecutionDate"
+                    label="تاريخ قرار الإحالة القطعية"
+                    value={fields.forcedExecutionDate}
+                    onChange={(v) => set('forcedExecutionDate', v)}
                   />
                   <MultiAmountEditor
                     idPrefix="status-collected"

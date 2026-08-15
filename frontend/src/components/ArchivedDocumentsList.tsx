@@ -4,6 +4,7 @@ import { api, getApiErrorMessage } from '../api/client';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { applicantName, displayFileNumber, isExecutedLike } from '../utils/documentDisplay';
 import { RenewalFields, type RenewalFieldsValue } from './form/RenewalFields';
+import { trimNull } from '../utils/serialization';
 import type { DocumentResponse, PagedResult } from '../types';
 
 /** إعدادات القائمة الأرشيفية (محذوفة/مشطوبة)؛ كل اختلاف بين الصفحتين يمر عبر هذه الخيارات. */
@@ -18,16 +19,16 @@ export interface ArchivedDocumentsListConfig {
   showBackLink: boolean;
   /** نقطة جلب القائمة (مثل /documents/deleted). */
   fetchEndpoint: string;
-  /** نقطة إعادة الملف للفهرس المحدد (مثل /documents/7/restore). */
-  restoreEndpoint: (id: number) => string;
-  /** تسمية زر الإعادة قبل التأكيد. */
-  restoreButtonLabel: string;
-  /** تسمية زر تأكيد الإعادة. */
-  confirmRestoreLabel: string;
-  /** تسمية الزر أثناء جارٍ الإعادة. */
-  restoringLabel: string;
-  /** رسالة النجاح بعد الإعادة؛ تستقبل الاسم المعروض. */
-  successMessage: (name: string) => string;
+  /** نقطة إعادة الملف للفهرس المحدد (مثل /documents/7/restore). مطلوبة عند تفعيل canRestore فقط. */
+  restoreEndpoint?: (id: number) => string;
+  /** تسمية زر الإعادة قبل التأكيد. مطلوبة عند تفعيل canRestore فقط. */
+  restoreButtonLabel?: string;
+  /** تسمية زر تأكيد الإعادة. مطلوبة عند تفعيل canRestore فقط. */
+  confirmRestoreLabel?: string;
+  /** تسمية الزر أثناء جارٍ الإعادة. مطلوبة عند تفعيل canRestore فقط. */
+  restoringLabel?: string;
+  /** رسالة النجاح بعد الإعادة؛ تستقبل الاسم المعروض. مطلوبة عند تفعيل canRestore فقط. */
+  successMessage?: (name: string) => string;
   /** تسمية عمود التاريخ في الجدول. */
   dateColumnHeader: string;
   /** قيمة خلية التاريخ المنسّقة. */
@@ -44,11 +45,6 @@ export interface ArchivedDocumentsListConfig {
   canRestore: boolean;
   /** هل تستلزم الإعادة إدخال بيان تجديد (رقم ملف جديد)؟ (الملفات المشطوبة فقط). */
   requiresRenewal?: boolean;
-}
-
-/** يُحوّل القيمة الفارغة إلى null لتُهملها الخلفية في جسم طلب الإعادة. */
-function trimNull(value: string | undefined): string | null {
-  return value?.trim() ? value.trim() : null;
 }
 
 export default function ArchivedDocumentsList({ config }: { config: ArchivedDocumentsListConfig }) {
@@ -94,6 +90,7 @@ export default function ArchivedDocumentsList({ config }: { config: ArchivedDocu
   }, [query, page]);
 
   const handleRestore = async (d: DocumentResponse) => {
+    if (!config.canRestore || !config.restoreEndpoint) return;
     if (config.requiresRenewal) {
       if (!(renewal.renewalFileNumber ?? '').trim()) {
         setRenewalError('رقم الملف الجديد مطلوب عند إعادة الملف المشطوب');
@@ -120,7 +117,7 @@ export default function ArchivedDocumentsList({ config }: { config: ArchivedDocu
       } else {
         await api.post(config.restoreEndpoint(d.id));
       }
-      setMessage(config.successMessage(config.displayName(d) || String(d.id)));
+      setMessage(config.successMessage?.(config.displayName(d) || String(d.id)) ?? '');
       setConfirmId(null);
       load();
     } catch (err) {

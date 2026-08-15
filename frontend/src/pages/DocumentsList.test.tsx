@@ -74,7 +74,7 @@ function expectExportRequestedWithStatus() {
   expect(api.get).toHaveBeenCalledWith(
     '/documents/export',
     expect.objectContaining({
-      params: expect.objectContaining({ status: 'منفذ' }),
+      params: expect.objectContaining({ status: 'متداول' }),
       responseType: 'blob',
     }),
   );
@@ -118,7 +118,9 @@ function stubDesktop() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sessionStorage.clear();
   stubDesktop();
+  Element.prototype.scrollIntoView = vi.fn();
   useAuthMock.mockReturnValue({
     hasFullAccess: true,
     isHead: false,
@@ -432,9 +434,25 @@ describe('DocumentsList', () => {
     expect(statusButton).toBeInTheDocument();
     await user.click(statusButton);
     menu = screen.getByRole('menu', { name: 'فلترة الحالة' });
-    await user.click(within(menu).getByRole('menuitem', { name: 'منفذ' }));
+    await user.click(within(menu).getByRole('menuitem', { name: 'تريث' }));
     [url] = vi.mocked(api.get).mock.calls.at(-1) as [string];
-    expect(url).toContain('status=' + encodeURIComponent('منفذ'));
+    expect(url).toContain('status=' + encodeURIComponent('تريث'));
+  });
+
+  it('يستبعد «منفذ» من فلتر الحالة في القائمة الرئيسية (صفحته مستقلة)', async () => {
+    const user = userEvent.setup();
+    mockPage([makeDocument({ id: 1 })]);
+
+    renderList();
+    const table = await screen.findByRole('table');
+    const statusButton = within(table).getByRole('button', { name: 'فلترة الحالة' });
+    await user.click(statusButton);
+
+    const menu = screen.getByRole('menu', { name: 'فلترة الحالة' });
+    expect(within(menu).queryByRole('menuitem', { name: 'منفذ' })).not.toBeInTheDocument();
+    for (const option of ['تريث', 'تحت رفع', 'متداول']) {
+      expect(within(menu).getByRole('menuitem', { name: option })).toBeInTheDocument();
+    }
   });
 
   it('يُلغي «عرض الكل» الفلتر النشط ويغلق قائمة العمود ويميز السهم بلون الفلتر النشط', async () => {
@@ -913,7 +931,7 @@ describe('DocumentsList', () => {
     const statusButton = within(table).getByRole('button', { name: 'فلترة الحالة' });
     await user.click(statusButton);
     const menu = screen.getByRole('menu', { name: 'فلترة الحالة' });
-    await user.click(within(menu).getByRole('menuitem', { name: 'منفذ' }));
+    await user.click(within(menu).getByRole('menuitem', { name: 'متداول' }));
 
     await user.click(screen.getByRole('button', { name: 'المزيد' }));
     const moreMenu = screen.getByRole('menu', { name: 'المزيد' });
@@ -961,7 +979,7 @@ describe('DocumentsList', () => {
     const statusButton = within(table).getByRole('button', { name: 'فلترة الحالة' });
     await user.click(statusButton);
     let menu = screen.getByRole('menu', { name: 'فلترة الحالة' });
-    await user.click(within(menu).getByRole('menuitem', { name: 'منفذ' }));
+    await user.click(within(menu).getByRole('menuitem', { name: 'متداول' }));
 
     await user.click(screen.getByRole('button', { name: 'المزيد' }));
     await user.click(
@@ -1006,7 +1024,7 @@ describe('DocumentsList', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('طبّق فلترًا واحدًا على الأقل قبل التصدير');
     expect(api.get).not.toHaveBeenCalledWith('/documents/export', expect.anything());
 
-    await user.selectOptions(screen.getByRole('combobox', { name: 'فلترة الحالة' }), 'منفذ');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'فلترة الحالة' }), 'متداول');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'المزيد' }));
@@ -1192,5 +1210,91 @@ describe('DocumentsList', () => {
     const table = await screen.findByRole('table');
     const fileNumber = within(table).getByText('99 حقوق');
     expect(fileNumber.className).not.toContain('text-red-600');
+  });
+
+  it('يستعيد موضع القائمة المحفوظ (بحث وصفحة) عند العودة من صفحة ملف', async () => {
+    sessionStorage.setItem(
+      'documentsListPosition',
+      JSON.stringify({
+        query: 'محمود',
+        status: 'منفذ',
+        applicant: '',
+        court: 'دمشق',
+        lawyer: '',
+        administrativeBranch: '',
+        executedEntity: '',
+        publicEntityBranch: '',
+        page: 2,
+      }),
+    );
+    mockPage([]);
+
+    renderList();
+    await screen.findByText('لا توجد نتائج');
+
+    const called = vi.mocked(api.get).mock.calls.some(([url]) =>
+      String(url).includes('/documents?') && String(url).includes('q=') && String(url).includes('page=2'));
+    expect(called).toBe(true);
+    expect(screen.getByPlaceholderText(/بحث بالاسم/)).toHaveValue('محمود');
+  });
+
+  it('يميّز الملف الذي كان مفتوحًا في الجدول بشارة وخلفية ويمرر إليه', async () => {
+    sessionStorage.setItem('lastViewedDocumentId', '5');
+    mockPage([makeDocument({ id: 5, borrowerName: 'محمود', borrowerFather: 'علي', borrowerFamily: 'حسن' })]);
+
+    renderList();
+
+    const table = await screen.findByRole('table');
+    const row = table.querySelector('tr[id="doc-row-5"]');
+    expect(row).not.toBeNull();
+    expect(row!.className).toContain('bg-emerald-50');
+    expect(within(table).getByText('آخر ملف تم فتحه')).toBeInTheDocument();
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+  });
+
+  it('يميّز بطاقة الجوال للملف الذي كان مفتوحًا', async () => {
+    stubMobile();
+    sessionStorage.setItem('lastViewedDocumentId', '5');
+    mockPage([makeDocument({ id: 5, borrowerName: 'محمود', borrowerFather: 'علي', borrowerFamily: 'حسن' })]);
+
+    renderList();
+
+    const card = await screen.findByText('محمود علي حسن');
+    const article = card.closest('article');
+    expect(article).not.toBeNull();
+    expect(article!.className).toContain('bg-emerald-50');
+    expect(screen.getByText('آخر ملف تم فتحه')).toBeInTheDocument();
+  });
+
+  it('يعرض شريطًا احتياطيًا يربط بالملف عندما لا يكون الملف المفتوح ظاهرًا في الصفحة', async () => {
+    sessionStorage.setItem('lastViewedDocumentId', '99');
+    mockPage([makeDocument({ id: 1, borrowerName: 'أحمد', borrowerFamily: 'الخطيب' })]);
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/documents/99') {
+        return Promise.resolve({ data: makeDocument({ id: 99, borrowerName: 'منى', borrowerFather: 'سامر', borrowerFamily: 'نور' }) });
+      }
+      if (url.startsWith('/documents/filter-options')) {
+        return Promise.resolve({ data: { applicants: [], courts: [], lawyers: [], administrativeBranches: [], branches: [], publicEntityBranches: [] } });
+      }
+      return Promise.resolve({ data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [makeDocument({ id: 1, borrowerName: 'أحمد', borrowerFamily: 'الخطيب' })] } });
+    });
+
+    renderList();
+
+    expect(await screen.findByText(/كنت تعمل على ملف «منى سامر نور»/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'فتح الملف' })).toHaveAttribute('href', '/documents/99');
+  });
+
+  it('يحفظ موضع القائمة وآخر ملف مفتوح عند النقر على ملف', async () => {
+    const user = userEvent.setup();
+    mockPage([makeDocument({ id: 5, borrowerName: 'محمود', borrowerFather: 'علي', borrowerFamily: 'حسن' })]);
+
+    renderList();
+
+    const link = await screen.findByRole('link', { name: 'محمود علي حسن' });
+    await user.click(link);
+
+    expect(sessionStorage.getItem('lastViewedDocumentId')).toBe('5');
+    expect(JSON.parse(sessionStorage.getItem('documentsListPosition') ?? '{}')).toMatchObject({ page: 1, query: '' });
   });
 });

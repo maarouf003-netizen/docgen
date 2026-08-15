@@ -162,6 +162,75 @@ describe('DocumentForm', () => {
     expect(screen.queryByText(/المبلغ كتابة/)).not.toBeInTheDocument();
   });
 
+  it('يضيف ملحق العقد للمصرفي ويرسله مع بيانات السند عند الحفظ', async () => {
+    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    await user.click(screen.getByRole('button', { name: 'إضافة ملحق' }));
+    expect(screen.getByLabelText('نوع الملحق')).toBeInTheDocument();
+    expect(screen.getByLabelText('رقم الملحق')).toBeInTheDocument();
+    expect(screen.getByLabelText('تاريخ الملحق')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('نوع الملحق'), 'تعديل');
+    await user.type(screen.getByLabelText('رقم الملحق'), 'A-42');
+    await user.type(screen.getByLabelText('تاريخ الملحق'), '15/3/2026');
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.annexType).toBe('تعديل');
+    expect(payload.annexNumber).toBe('A-42');
+    expect(payload.annexDate).toBe('15/3/2026');
+  });
+
+  it('يخفي زر «إضافة ملحق» للعقد العادي', async () => {
+    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    await user.selectOptions(screen.getByLabelText('نوع السند'), 'عادي');
+    expect(screen.queryByRole('button', { name: 'إضافة ملحق' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('نوع الملحق')).not.toBeInTheDocument();
+  });
+
+  it('يعرض بيانات الملحق المحفوظة عند تعديل عقد مصرفي ويسمح بإزالتها', async () => {
+    await renderEdit({
+      ...mockDoc,
+      contractTypeSelector: 'مصرفي',
+      annexType: 'تعديل',
+      annexNumber: 'A-42',
+      annexDate: '15/3/2026',
+    });
+
+    expect(screen.getByLabelText('نوع الملحق')).toHaveValue('تعديل');
+    expect(screen.getByLabelText('رقم الملحق')).toHaveValue('A-42');
+    expect(screen.getByLabelText('تاريخ الملحق')).toHaveValue('15/3/2026');
+    expect(screen.getByRole('button', { name: 'إزالة الملحق' })).toBeInTheDocument();
+  });
+
+  it('يزيل الملحق المحفوظ عند الضغط على «إزالة الملحق» ويُرسل قيمه فارغة عند الحفظ', async () => {
+    const user = userEvent.setup();
+    await renderEdit({
+      ...mockDoc,
+      contractTypeSelector: 'مصرفي',
+      annexType: 'تعديل',
+      annexNumber: 'A-42',
+      annexDate: '15/3/2026',
+    });
+
+    await user.click(screen.getByRole('button', { name: 'إزالة الملحق' }));
+    expect(screen.queryByLabelText('نوع الملحق')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('رقم الملحق')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('تاريخ الملحق')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'إضافة ملحق' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /حفظ التعديلات/ }));
+
+    const [, payload] = vi.mocked(api.put).mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.annexType).toBe('');
+    expect(payload.annexNumber).toBe('');
+    expect(payload.annexDate).toBe('');
+  });
+
   it('يخفي «فرع الملف» من النموذج (يُحفظ تلقائيًا) ويعرض «فرع الجهة» مع بقية حقول المعلومات الأساسية', () => {
     render(<DocumentForm />);
 
@@ -763,7 +832,6 @@ describe('DocumentForm', () => {
 
     await user.selectOptions(screen.getByLabelText('الحالة'), 'منفذ');
     await user.type(screen.getByLabelText('كيفية تنفيذ الملف'), 'تم التحصيل');
-    await user.click(screen.getByRole('button', { name: '➕ إضافة مبلغ' }));
     await user.type(screen.getByLabelText('المبلغ الذي دفعته الجهة العامة'), '2000');
 
     await user.click(screen.getByRole('button', { name: /حفظ/ }));
@@ -854,6 +922,47 @@ describe('DocumentForm', () => {
 
     expect(screen.getAllByLabelText('العملة')[0]).toHaveValue('يورو');
     expect(screen.getAllByLabelText('العملة')[1]).toHaveValue('ليرة سورية');
+  });
+
+  it('يرسل حتى ثلاثة مبالغ مدفوعة بعملاتها عند إضافة خانات جديدة', async () => {
+    const user = userEvent.setup();
+    await selectExecutedSide(user);
+
+    await user.type(screen.getByLabelText('رقم الملف'), '55');
+    await user.selectOptions(screen.getByLabelText('سنة الملف'), '2026');
+
+    await user.selectOptions(screen.getByLabelText('الحالة'), 'منفذ');
+    await user.type(screen.getByLabelText('المبلغ الذي دفعته الجهة العامة'), '2000');
+    await user.selectOptions(screen.getByLabelText('العملة'), 'دولار أمريكي');
+    await user.click(screen.getByRole('button', { name: '➕ مبلغ آخر' }));
+    await user.type(screen.getByLabelText('المبلغ الذي دفعته الجهة العامة 2'), '3000');
+    await user.selectOptions(screen.getAllByLabelText('العملة')[1], 'يورو');
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.executedPaidAmount).toBe(2000);
+    expect(payload.executedPaidCurrency).toBe('دولار أمريكي');
+    expect(payload.executedPaidAmount2).toBe(3000);
+    expect(payload.executedPaidCurrency2).toBe('يورو');
+    expect(payload.executedPaidAmount3).toBeUndefined();
+  });
+
+  it('يعيد عرض المبالغ المدفوعة المحفوظة بعملاتها عند التعديل', async () => {
+    await renderEdit({
+      ...mockDoc,
+      generalEntitySide: 'executed',
+      executedStatus: 'منفذ',
+      executedPaidAmount: 2000,
+      executedPaidCurrency: 'دولار أمريكي',
+      executedPaidAmount2: 3000,
+      executedPaidCurrency2: 'يورو',
+    });
+
+    expect(screen.getByLabelText('المبلغ الذي دفعته الجهة العامة')).toHaveValue(2000);
+    expect(screen.getAllByLabelText('العملة')[0]).toHaveValue('دولار أمريكي');
+    expect(screen.getByLabelText('المبلغ الذي دفعته الجهة العامة 2')).toHaveValue(3000);
+    expect(screen.getAllByLabelText('العملة')[1]).toHaveValue('يورو');
   });
 
   it('يعيد عرض المبالغ المطلوب دفعها المحفوظة بعملاتها عند التعديل', async () => {

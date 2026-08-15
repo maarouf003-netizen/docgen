@@ -3,7 +3,7 @@ import type { DocumentResponse } from '../../types';
 export function RealEstatesSection({ doc }: { doc: DocumentResponse }) {
   return (
     <div className="bg-white rounded-xl shadow p-5">
-      <h3 className="font-bold text-gray-800 mb-3">العقارات</h3>
+      <h3 className="font-bold text-emerald-800 mb-3">العقارات</h3>
       {doc.realEstates.length === 0 && <p className="text-gray-400 text-sm">لا توجد عقارات</p>}
       {doc.realEstates.map((r, i) => (
         <div

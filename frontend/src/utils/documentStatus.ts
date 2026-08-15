@@ -3,7 +3,10 @@ import { isExecutedLike } from './documentDisplay';
 
 export type DocumentStatus = 'منفذ' | 'تريث' | 'تحت رفع' | 'متداول' | 'متداول / منفذ جزئيا' | 'مشطوب';
 
-export const STATUS_OPTIONS: Exclude<DocumentStatus, 'متداول / منفذ جزئيا' | 'مشطوب'>[] = ['منفذ', 'تريث', 'تحت رفع', 'متداول'];
+// الملفات «المنفذة» لها صفحتها الخاصة («الملفات المنفذة»)، فتُستبعد من فلتر الحالة في
+// القائمة الرئيسية — ولا تظهر فيها إلا عند البحث النصي. بقي الخيار «متداول» للعمل الحالي
+// و«تريث» و«تحت رفع»، أما «منفذ» فيُدار من صفحة الملفات المنفذة.
+export const STATUS_OPTIONS: Exclude<DocumentStatus, 'متداول / منفذ جزئيا' | 'مشطوب' | 'منفذ'>[] = ['تريث', 'تحت رفع', 'متداول'];
 
 export const STATUS_BADGES: Record<DocumentStatus, { text: string; cls: string }> = {
   منفذ: { text: 'منفذ', cls: 'bg-green-100 text-green-700' },

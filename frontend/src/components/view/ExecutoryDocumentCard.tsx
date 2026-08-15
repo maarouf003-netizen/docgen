@@ -24,7 +24,7 @@ export function ExecutoryDocumentCard({ doc }: { doc: DocumentResponse }) {
 
   return (
     <div className="bg-white rounded-xl shadow p-5">
-      <h3 className="font-bold text-gray-800 mb-3">بيانات السند التنفيذي</h3>
+      <h3 className="font-bold text-emerald-800 mb-3">بيانات السند التنفيذي</h3>
       <RowPair
         firstLabel="نوع السند"
         firstValue={doc.contractTypeSelector}
@@ -37,6 +37,12 @@ export function ExecutoryDocumentCard({ doc }: { doc: DocumentResponse }) {
         secondLabel={dateLabel}
         secondValue={doc.contractDate}
       />
+      {(doc.annexType || doc.annexNumber || doc.annexDate) && (
+        <Row
+          label="ملحق العقد"
+          value={[doc.annexType, doc.annexNumber, doc.annexDate].filter((v) => v && v.trim()).join(' — ')}
+        />
+      )}
       {isOrdinary && <Row label="خلاصة الحكم" value={doc.inclusionText} showEmpty />}
       {isExecuted ? (
         <Row

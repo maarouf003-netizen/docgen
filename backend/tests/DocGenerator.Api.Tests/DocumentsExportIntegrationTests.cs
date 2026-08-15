@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
 
@@ -47,16 +48,16 @@ public class DocumentsExportIntegrationTests : IClassFixture<ApiFactory>
         var sheetData = worksheetPart.Worksheet.GetFirstChild<SheetData>()!;
         var headerRow = sheetData.Elements<Row>().First();
 
-        // رؤوس المدير الكاملة العشرة بترتيبها المعتمد:
+        // رؤوس المدير الكاملة بتسلسلها المعتمد:
         // فرع الإدارة، الحالة، طالب التنفيذ، الفرع، المنفذ عليه، دائرة التنفيذ،
-        // رقم الملف، المحامي المختص، الإجراءات والملاحظات، عدد المشاهدات.
+        // رقم الملف، ملحق العقد، المحامي المختص، الإجراءات والملاحظات، عدد المشاهدات.
         var headers = headerRow.Elements<Cell>()
             .Select(c => c.InlineString?.Text?.Text ?? string.Empty)
             .ToList();
         Assert.Equal(new[]
         {
             "فرع الإدارة", "الحالة", "طالب التنفيذ", "الفرع", "المنفذ عليه",
-            "دائرة التنفيذ", "رقم الملف", "المحامي المختص", "الإجراءات والملاحظات", "عدد المشاهدات",
+            "دائرة التنفيذ", "رقم الملف", "ملحق العقد", "المحامي المختص", "الإجراءات والملاحظات", "عدد المشاهدات",
         }, headers);
 
         // AutoFilter يملك Reference صالحًا يغطي العنوان والبيانات (صالح في إكسل).
@@ -83,5 +84,44 @@ public class DocumentsExportIntegrationTests : IClassFixture<ApiFactory>
         var anonymous = _factory.CreateClient();
         var forbidden = await anonymous.GetAsync("/api/documents/export");
         Assert.Equal(HttpStatusCode.Unauthorized, forbidden.StatusCode);
+    }
+
+    [Fact]
+    public async Task Export_IncludesAnnexNumberInItsColumn()
+    {
+        // عمود «ملحق العقد» في التصدير يعرض رقم الملحق للمصرفي.
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.WithToken(token);
+        var create = await client.PostAsJsonAsync("/api/documents", new
+        {
+            generalEntitySide = "applicant",
+            borrowerName = "مقترض تصدير ملحق",
+            applicant = "المصرف",
+            contractType = "تعهد",
+            contractTypeSelector = "مصرفي",
+            annexNumber = "A-12345",
+            amountNumeric = 100,
+        });
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+
+        var manager = _factory.AuthorizedClient("manager");
+        var response = await manager.GetAsync("/api/documents/export");
+        var bytes = await response.Content.ReadAsByteArrayAsync();
+
+        using var stream = new MemoryStream(bytes);
+        using var doc = SpreadsheetDocument.Open(stream, false);
+        var sheetData = doc.WorkbookPart!.WorksheetParts.First().Worksheet.GetFirstChild<SheetData>()!;
+        var headerRow = sheetData.Elements<Row>().First();
+        var headers = headerRow.Elements<Cell>()
+            .Select(c => c.InlineString?.Text?.Text ?? string.Empty)
+            .ToList();
+        var annexCol = headers.IndexOf("ملحق العقد");
+        Assert.True(annexCol >= 0, "عمود «ملحق العقد» غير موجود في التصدير");
+
+        var dataRows = sheetData.Elements<Row>()
+            .Skip(1)
+            .Select(r => r.Elements<Cell>().Select(c => c.InlineString?.Text?.Text ?? string.Empty).ToList())
+            .ToList();
+        Assert.Contains(dataRows, row => row.Count > annexCol && row[annexCol] == "A-12345");
     }
 }

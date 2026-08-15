@@ -338,7 +338,7 @@ export function PartiesCard({ doc, onOpen }: { doc: DocumentResponse; onOpen: (m
 
   return (
     <div className="bg-white rounded-xl shadow p-5">
-      <h3 className="font-bold text-gray-800 mb-1">أطراف الملف التنفيذي</h3>
+      <h3 className="font-bold text-emerald-800 mb-1">أطراف الملف التنفيذي</h3>
       <PartiesGroup title={doc.generalEntitySide === 'deposit' ? 'طالب العرض' : 'طالب التنفيذ'}>
         {isExecuted ? (
           <ExecutedApplicants applicants={doc.executionApplicants} onOpen={onOpen} />

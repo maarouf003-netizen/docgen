@@ -26,7 +26,7 @@ public sealed class ExcelExportService : IExcelExportService
     private static readonly string[] BaseColumns =
     {
         "الحالة", "طالب التنفيذ", "الفرع", "المنفذ عليه", "دائرة التنفيذ",
-        "رقم الملف",
+        "رقم الملف", "ملحق العقد",
     };
 
     public byte[] BuildDocumentsWorkbook(
@@ -103,6 +103,7 @@ public sealed class ExcelExportService : IExcelExportService
         values.Add(FullName(doc));
         values.Add(doc.Court ?? string.Empty);
         values.Add(FileNumberText(doc));
+        values.Add(doc.AnnexNumber ?? string.Empty);
         if (includeAssignedLawyer)
             values.Add(doc.Lawyer ?? string.Empty);
         values.Add(HtmlInputSanitizer.ToPlainText(doc.ExecutionActions.FirstOrDefault()?.Text));

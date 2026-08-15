@@ -61,6 +61,13 @@ public class Document
     public string? ContractTypeSelector { get; set; } = "مصرفي";
     public string? ContractNumber { get; set; }
     public string? ContractDate { get; set; }
+    /// <summary>
+    /// ملحق العقد (للعقد المصرفي فقط، ملحق واحد اختياري): نوعه ورقمه وتاريخه.
+    /// يُحفظ كمصطلحًا اختياريًا إلى جانب بيانات العقد ولا يُنشئ جدولًا مستقلاً.
+    /// </summary>
+    public string? AnnexType { get; set; }
+    public string? AnnexNumber { get; set; }
+    public string? AnnexDate { get; set; }
     public string? InclusionText { get; set; }
 
     public decimal AmountNumeric { get; set; }
@@ -137,6 +144,13 @@ public class Document
     /// </summary>
     public string? ExecutedStatus { get; set; } = string.Empty;
 
+    /// <summary>
+    /// علامة دائمة بأن الملف (صفة «عرض وايداع») سبق تنفيذه: تُضبط عند أول دخول إلى «منفذ»
+    /// ولا تُمسّ عند العودة إلى متداول، فيبقى المبلغ المودع محسوبًا في الإحصاءات عددًا ومبلغًا
+    /// حتى بعد الإرجاع (بموجب كتاب الجهة العامة بالسير بالملف).
+    /// </summary>
+    public bool WasDepositExecuted { get; set; }
+
     /// <summary>وصف/بيان إضافي في وضع «منفذ عليه».</summary>
     public string? ExecutedDescription { get; set; }
 
@@ -168,14 +182,36 @@ public class Document
     /// <summary>عملة المبلغ المطلوب الثالث في وضع «منفذ عليه» (افتراضيًا ليرة سورية).</summary>
     public string? ExecutedRequiredCurrency3 { get; set; } = "ليرة سورية";
 
-    /// <summary>المبلغ الذي دفعته الجهة العامة في وضع «منفذ عليه» (يغذي إحصائية «منفذ للضد»).</summary>
+    /// <summary>المبلغ الذي دفعته الجهة العامة في وضع «منفذ عليه» / المبلغ المودع في «عرض وايداع» (يغذي إحصائية «منفذ للضد»).</summary>
     public decimal? ExecutedPaidAmount { get; set; }
+
+    /// <summary>عملة المبلغ المدفوع الأول في وضع «منفذ عليه» / «عرض وايداع» (افتراضيًا ليرة سورية).</summary>
+    public string? ExecutedPaidCurrency { get; set; } = "ليرة سورية";
+
+    /// <summary>المبلغ المدفوع الثاني (اختياري) في وضع «منفذ عليه» / «عرض وايداع»، بعملته الخاصة.</summary>
+    public decimal? ExecutedPaidAmount2 { get; set; }
+
+    /// <summary>عملة المبلغ المدفوع الثاني في وضع «منفذ عليه» / «عرض وايداع» (افتراضيًا ليرة سورية).</summary>
+    public string? ExecutedPaidCurrency2 { get; set; } = "ليرة سورية";
+
+    /// <summary>المبلغ المدفوع الثالث (اختياري) في وضع «منفذ عليه» / «عرض وايداع»، بعملته الخاصة.</summary>
+    public decimal? ExecutedPaidAmount3 { get; set; }
+
+    /// <summary>عملة المبلغ المدفوع الثالث في وضع «منفذ عليه» / «عرض وايداع» (افتراضيًا ليرة سورية).</summary>
+    public string? ExecutedPaidCurrency3 { get; set; } = "ليرة سورية";
 
     /// <summary>
     /// تاريخ ايداعه حساب الجهة العامة في وضع «عرض وايداع» (Deposit): لحظة إيداع المبلغ
     /// المعروض في حساب الجهة، يظهر عند الحالة «منفذ». يخص صفة العرض وحدها دون منفذ عليها.
     /// </summary>
     public DateTime? ExecutedDepositDate { get; set; }
+
+    /// <summary>
+    /// تاريخ التنفيذ في وضع «الجهة العامة منفذ عليها» (Executed): لحظة تنفيذ الملف،
+    /// يُدخل من نافذة «تغيير الحالة» عند الانتقال إلى «منفذ»، ويظهر في صفحة «الملفات المنفذة».
+    /// يخص صفة «منفذ عليها» وحدها دون «عرض وايداع».
+    /// </summary>
+    public DateTime? ExecutedExecutionDate { get; set; }
 
     /// <summary>
     /// لحظة الشطب (UTC) في وضع «منفذ عليه»: المشطوب يُخفى من القوائم والتصدير
@@ -208,6 +244,12 @@ public class Document
     public string? BaraetDate { get; set; }
     public string? BaraetRegNumber { get; set; }
     public string? BaraetRegDate { get; set; }
+
+    /// <summary>
+    /// تاريخ قرار الإحالة القطعية في «منفذ جبريا» (نص حر): يُدخل من نافذة «تغيير الحالة»
+    /// عند الانتقال إلى «منفذ جبريا»، ويظهر في صفحة «الملفات المنفذة» كتاريخ تنفيذ الملف.
+    /// </summary>
+    public string? ForcedExecutionDate { get; set; }
     public string? TarithNumber { get; set; }
     public string? TarithDate { get; set; }
     public string? TarithRegNumber { get; set; }

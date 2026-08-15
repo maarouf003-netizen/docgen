@@ -7,6 +7,7 @@ import { useIsMobile } from '../hooks/useMediaQuery';
 import { richToPlainText } from '../utils/richText';
 import { STATUS_BADGES, STATUS_OPTIONS, getDocumentStatus } from '../utils/documentStatus';
 import { applicantName, displayFileNumber, fullName, publicEntityBranch as entityBranchDisplay } from '../utils/documentDisplay';
+import { loadDocumentsListPosition, loadLastViewedDocumentId, saveDocumentsListPosition, saveLastViewedDocumentId } from '../utils/listSession';
 import ExecutionActionsModal from '../components/ExecutionActionsModal';
 import type { DocumentResponse, PagedResult } from '../types';
 
@@ -295,6 +296,14 @@ function MoreMenu({
                 الملفات المشطوبة
               </Link>
             )}
+            <Link
+              to="/documents/executed"
+              role="menuitem"
+              onClick={close}
+              className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50"
+            >
+              الملفات المنفذة
+            </Link>
             {canRotate && (
               <Link
                 to="/documents/rotate"
@@ -347,15 +356,20 @@ function ActionsCell({ d, onClick }: { d: DocumentResponse; onClick: () => void 
 export default function DocumentsList() {
   const { hasFullAccess, isHead, user } = useAuth();
   const isMobile = useIsMobile();
-  const [query, setQuery] = useState('');
-  const [status, setStatus] = useState('');
-  const [applicant, setApplicant] = useState('');
-  const [court, setCourt] = useState('');
-  const [lawyer, setLawyer] = useState('');
-  const [administrativeBranch, setAdministrativeBranch] = useState('');
-  const [executedEntity, setExecutedEntity] = useState('');
-  const [publicEntityBranch, setPublicEntityBranch] = useState('');
-  const [page, setPage] = useState(1);
+  // استعادة موضع القائمة (البحث/الفلاتر/الصفحة) وملف «آخر ما فُتح» من جلسة المتصفح عند العودة
+  // من صفحة ملف، فيعود المستخدم إلى مكانه ويُميَّز الملف الذي كان يعمل عليه.
+  const [saved] = useState(() => loadDocumentsListPosition());
+  const [query, setQuery] = useState(saved?.query ?? '');
+  const [status, setStatus] = useState(saved?.status ?? '');
+  const [applicant, setApplicant] = useState(saved?.applicant ?? '');
+  const [court, setCourt] = useState(saved?.court ?? '');
+  const [lawyer, setLawyer] = useState(saved?.lawyer ?? '');
+  const [administrativeBranch, setAdministrativeBranch] = useState(saved?.administrativeBranch ?? '');
+  const [executedEntity, setExecutedEntity] = useState(saved?.executedEntity ?? '');
+  const [publicEntityBranch, setPublicEntityBranch] = useState(saved?.publicEntityBranch ?? '');
+  const [page, setPage] = useState(saved?.page ?? 1);
+  const [focusId] = useState(() => loadLastViewedDocumentId());
+  const [focusName, setFocusName] = useState<string | null>(null);
   const [data, setData] = useState<PagedResult<DocumentResponse> | null>(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -396,15 +410,48 @@ export default function DocumentsList() {
     params.set('perPage', '20');
     api
       .get<PagedResult<DocumentResponse>>(`/documents?${params.toString()}`)
-      .then((r) => setData(r.data))
+      .then((r) => {
+        setData(r.data);
+        // موضع مستعاد يتجاوز عدد الصفحات بعد تغيّر البيانات أثناء الغياب: العودة لآخر صفحة صالحة.
+        if (r.data.items.length === 0 && page > 1 && r.data.totalPages >= 1 && r.data.totalPages < page) {
+          setPage(r.data.totalPages);
+        }
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     load();
+    // يُحفظ الموضع الحالي في كل جلب كي تُستعاد القائمة في مكانها عند العودة من صفحة ملف.
+    saveDocumentsListPosition({ query, status, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, page });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, status, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, page]);
+
+  // عند فتح ملف من القائمة: يُحفظ الموضع الحالي ويُسجَّل الملف كآخر ما فُتح ليميّز عند العودة.
+  const openDocument = (id: number) => {
+    saveDocumentsListPosition({ query, status, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, page });
+    saveLastViewedDocumentId(id);
+  };
+
+  const focusVisible = focusId != null && data != null && data.items.some((x) => x.id === focusId);
+  const scrolledToFocus = useRef(false);
+  useEffect(() => {
+    // ينتظر اكتمال جلب القائمة: يُمرَّر إلى الملف إذا كان ظاهرًا، ولا يُجلب اسمه (للشريط الاحتياطي)
+    // إلا عند تأكد الغياب عن الصفحة المستعادة؛ فلا يُرسل طلب زائد في كل زيارة.
+    if (focusId == null || data == null) return;
+    if (focusVisible) {
+      if (!scrolledToFocus.current) {
+        scrolledToFocus.current = true;
+        document.getElementById(`doc-row-${focusId}`)?.scrollIntoView({ block: 'center' });
+      }
+    } else if (focusName == null) {
+      api
+        .get<DocumentResponse>(`/documents/${focusId}`)
+        .then((r) => setFocusName(fullName(r.data) || `مستند ${focusId}`))
+        .catch(() => setFocusName(`مستند ${focusId}`));
+    }
+  }, [focusId, focusVisible, focusName, data]);
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -584,12 +631,25 @@ export default function DocumentsList() {
 
       {loading && <div className="text-gray-500">جارِ البحث...</div>}
 
+      {focusId != null && !focusVisible && focusName && (
+        <div className="mb-4 flex items-center justify-between gap-3 flex-wrap bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2 text-sm text-emerald-800">
+          <span>كنت تعمل على ملف «{focusName}»</span>
+          <Link to={`/documents/${focusId}`} className="font-bold underline whitespace-nowrap min-h-11 inline-flex items-center">
+            فتح الملف
+          </Link>
+        </div>
+      )}
+
       {data && (
         <>
           {isMobile ? (
             <div className="flex flex-col gap-4">
               {data.items.map((d) => (
-                <article key={d.id} className="bg-white rounded-xl shadow p-4">
+                <article
+                  key={d.id}
+                  id={`doc-row-${d.id}`}
+                  className={d.id === focusId ? 'bg-emerald-50 ring-2 ring-emerald-500 rounded-xl shadow p-4' : 'bg-white rounded-xl shadow p-4'}
+                >
                   {canSeeAdministrativeBranch && (
                     <div className="text-xs text-gray-500 mb-2">
                       فرع الإدارة: {d.administrativeBranchName || '—'}
@@ -601,9 +661,15 @@ export default function DocumentsList() {
                   </div>
                   <Link
                     to={`/documents/${d.id}`}
-                    className="text-emerald-800 font-bold text-lg hover:underline flex items-center min-h-11 mb-1"
+                    onClick={() => openDocument(d.id)}
+                    className="text-emerald-800 font-bold text-lg hover:underline flex items-center min-h-11 mb-1 gap-2"
                   >
                     {fullName(d) || `مستند ${d.id}`}
+                    {d.id === focusId && (
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 whitespace-nowrap">
+                        آخر ملف تم فتحه
+                      </span>
+                    )}
                   </Link>
                   <div className="text-sm text-gray-600">
                     {[applicantName(d), entityBranchDisplay(d), d.court].filter(Boolean).join(' · ') || '—'}
@@ -713,7 +779,11 @@ export default function DocumentsList() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {data.items.map((d) => (
-                    <tr key={d.id} className="hover:bg-gray-50">
+                    <tr
+                      key={d.id}
+                      id={`doc-row-${d.id}`}
+                      className={d.id === focusId ? 'bg-emerald-50' : 'hover:bg-gray-50'}
+                    >
                       {canSeeAdministrativeBranch && (
                         <td className="px-4 py-3">{d.administrativeBranchName || '—'}</td>
                       )}
@@ -723,8 +793,17 @@ export default function DocumentsList() {
                       <td className="px-4 py-3">{applicantName(d) || '—'}</td>
                       <td className="px-4 py-3">{entityBranchDisplay(d) || '—'}</td>
                       <td className="px-4 py-3">
-                        <Link to={`/documents/${d.id}`} className="inline-flex items-center min-h-11 text-emerald-800 font-bold hover:underline">
+                        <Link
+                          to={`/documents/${d.id}`}
+                          onClick={() => openDocument(d.id)}
+                          className="inline-flex items-center gap-2 min-h-11 text-emerald-800 font-bold hover:underline"
+                        >
                           {fullName(d) || `مستند ${d.id}`}
+                          {d.id === focusId && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 whitespace-nowrap">
+                              آخر ملف تم فتحه
+                            </span>
+                          )}
                         </Link>
                       </td>
                       <td className="px-4 py-3">{d.court || '—'}</td>

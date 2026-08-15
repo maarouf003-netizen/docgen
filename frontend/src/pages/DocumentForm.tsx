@@ -75,7 +75,7 @@ export default function DocumentForm() {
   const [applicantPublicEntities, setApplicantPublicEntities] = useState<ApplicantPublicEntityDto[]>([freshApplicantEntity()]);
   const [executedNaturalPersons, setExecutedNaturalPersons] = useState<ExecutedNaturalPersonDto[]>([]);
   const [showInclusionAmount, setShowInclusionAmount] = useState(false);
-  const [showPaidAmount, setShowPaidAmount] = useState(false);
+  const [paidAmountSlots, setPaidAmountSlots] = useState(1);
   const [showRequiredAmount, setShowRequiredAmount] = useState(false);
   const [requiredAmountSlots, setRequiredAmountSlots] = useState(1);
   const [wasOriginallyStruckOff, setWasOriginallyStruckOff] = useState(false);
@@ -118,7 +118,12 @@ export default function DocumentForm() {
         setShowInclusionAmount(
           Boolean(d.inclusionAmountNumeric || d.inclusionAmountWords),
         );
-        setShowPaidAmount(Boolean(d.executedPaidAmount));
+        // المبالغ المدفوعة (حتى ثلاثة) تظهر عند التعديل بحسب ما هو محفوظ منها.
+        setPaidAmountSlots(
+          Math.max(1, Number(Boolean(d.executedPaidAmount))
+            + Number(Boolean(d.executedPaidAmount2))
+            + Number(Boolean(d.executedPaidAmount3))),
+        );
         // مبالغ «طالبة التنفيذ»: المصرفي (المطالب به) والعادي (المتضمن) حتى ثلاثة
         // بحسب ما هو محفوظ منها عند التعديل.
         setBankingAmountSlots(
@@ -438,7 +443,7 @@ export default function DocumentForm() {
     setApplicantPublicEntities([freshApplicantEntity()]);
     setExecutedNaturalPersons([]);
     setShowInclusionAmount(false);
-    setShowPaidAmount(false);
+    setPaidAmountSlots(1);
     setRequiredAmountSlots(1);
     setBankingAmountSlots(1);
     setOrdinaryAmountSlots(1);
@@ -525,6 +530,7 @@ export default function DocumentForm() {
         // ليتسق المخزَّن مع ما يُعرض ولتقبله الخلفية في تحليلها (تحافظ على الحقول الأخرى كما هي).
         borrowerBirth: normalizeArabicDigits(form.borrowerBirth ?? ''),
         contractDate: normalizeArabicDigits(form.contractDate ?? ''),
+        annexDate: normalizeArabicDigits(form.annexDate ?? ''),
         fileIncomingDate: normalizeArabicDigits(form.fileIncomingDate ?? ''),
         fileRegistrationDate: normalizeArabicDigits(form.fileRegistrationDate ?? ''),
         seizureDate: normalizeArabicDigits(form.seizureDate ?? ''),
@@ -818,8 +824,8 @@ export default function DocumentForm() {
             onPersonHeirRemove={removeExecutedPersonHeir}
             onPersonRepActivate={activatePersonRep}
             onPersonRepRemove={removePersonRep}
-            showPaidAmount={showPaidAmount}
-            setShowPaidAmount={setShowPaidAmount}
+            paidAmountSlots={paidAmountSlots}
+            setPaidAmountSlots={setPaidAmountSlots}
             wasOriginallyStruckOff={wasOriginallyStruckOff}
           />
         ) : (

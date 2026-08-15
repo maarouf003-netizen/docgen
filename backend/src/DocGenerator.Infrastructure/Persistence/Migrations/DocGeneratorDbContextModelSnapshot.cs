@@ -145,6 +145,18 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("AnnexDate")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AnnexNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AnnexType")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Applicant")
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
@@ -328,8 +340,29 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("ExecutedExecutionDate")
+                        .HasColumnType("datetime2");
+
                     b.Property<decimal?>("ExecutedPaidAmount")
                         .HasColumnType("decimal(20,2)");
+
+                    b.Property<decimal?>("ExecutedPaidAmount2")
+                        .HasColumnType("decimal(20,2)");
+
+                    b.Property<decimal?>("ExecutedPaidAmount3")
+                        .HasColumnType("decimal(20,2)");
+
+                    b.Property<string>("ExecutedPaidCurrency")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ExecutedPaidCurrency2")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ExecutedPaidCurrency3")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
 
                     b.Property<decimal?>("ExecutedRequiredAmount")
                         .HasColumnType("decimal(20,2)");
@@ -392,6 +425,10 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("FileYear")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ForcedExecutionDate")
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
@@ -542,6 +579,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<int>("ViewCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("WasDepositExecuted")
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");

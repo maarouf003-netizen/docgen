@@ -106,11 +106,6 @@ export default function Layout() {
 
   return (
     <div className="h-dvh flex flex-col" dir="rtl">
-      <div className="flex h-1.5 shrink-0" aria-hidden="true">
-        <span className="flex-1 bg-[#007A3D]" />
-        <span className="flex-1 bg-white" />
-        <span className="flex-1 bg-neutral-900" />
-      </div>
       <NetworkStatusBanner />
       <div className="flex flex-1 min-h-0">
         {!isMobile && (

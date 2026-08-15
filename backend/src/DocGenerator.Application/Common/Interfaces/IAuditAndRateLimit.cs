@@ -158,6 +158,19 @@ public interface IDocumentRepository : IRepository<Document>
         int page,
         int perPage,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// بحث ترحّلي عن الملفات المنفذة: ملفات وضع «منفذ عليه»/«عرض وايداع» بحالة «منفذ» فقط،
+    /// وملفات «طالبة تنفيذ» المنفذة (بالتسوية أو الجبري الكامل) — يُعرض سجلها في صفحة
+    /// «الملفات المنفذة». غير المحذوفة (Query Filter مطبق تلقائيًا) وتُستبعد المشطوبة.
+    /// </summary>
+    Task<(int TotalCount, List<Document> Items)> SearchExecutedAsync(
+        string? query,
+        int? visibleBranchId,
+        int? visibleUserId,
+        int page,
+        int perPage,
+        CancellationToken ct = default);
 }
 
 /// <summary>

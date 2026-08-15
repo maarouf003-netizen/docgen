@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from 'react';
+import { useState, type Dispatch, type SetStateAction } from 'react';
 import AutoResizeTextarea from '../AutoResizeTextarea';
 import MultiAmountEditor from '../MultiAmountEditor';
 import type { DocumentUpsertRequest, GuarantorDto, HeirDto, PartyNature, RealEstateDto } from '../../types';
@@ -103,6 +103,22 @@ export function ApplicantSideSections({
   const isBanking = !isOrdinary;
   const { field, selectField, optionSelectField } = makeFieldHelpers(form, set);
 
+  // «إضافة ملحق» للعقد المصرفي فقط: يُوسّع ثلاثة حقول (نوع/رقم/تاريخ الملحق). إن كانت
+  // بيانات الملحق موجودة (عند التعديل) تُعرض مباشرة، ويصبح الزر «إزالة الملحق».
+  const hasAnnex = Boolean(form.annexType || form.annexNumber || form.annexDate);
+  const [annexOpen, setAnnexOpen] = useState(() => false);
+  const showAnnexFields = annexOpen || hasAnnex;
+  const toggleAnnex = () => {
+    if (showAnnexFields) {
+      set('annexType', '');
+      set('annexNumber', '');
+      set('annexDate', '');
+      setAnnexOpen(false);
+    } else {
+      setAnnexOpen(true);
+    }
+  };
+
   const borrowerHasHeirs = borrowerHeirs.length > 0;
   const borrowerHasRep = hasRepresentative({
     representativeName: form.borrowerRepresentativeName,
@@ -118,8 +134,32 @@ export function ApplicantSideSections({
         {selectField('نوع السند', 'contractTypeSelector', ['مصرفي', 'عادي'], form.contractTypeSelector ?? 'مصرفي', (v) => set('contractTypeSelector', v))}
         {field(isOrdinary ? 'المحكمة مصدرة القرار' : 'نوع العقد', 'contractType')}
         {field(isOrdinary ? 'رقم القرار' : 'رقم العقد', 'contractNumber')}
-        {field(isOrdinary ? 'تاريخ القرار' : 'تاريخ العقد', 'contractDate')}
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            {field(isOrdinary ? 'تاريخ القرار' : 'تاريخ العقد', 'contractDate')}
+          </div>
+          {isBanking && (
+            <button
+              type="button"
+              onClick={toggleAnnex}
+              className="shrink-0 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
+            >
+              {showAnnexFields ? 'إزالة الملحق' : 'إضافة ملحق'}
+            </button>
+          )}
+        </div>
       </div>
+
+      {isBanking && showAnnexFields && (
+        <div className="mt-4 rounded-lg bg-gray-50 border border-gray-200 p-4">
+          <span className="block text-xs font-bold text-gray-600 mb-2">ملحق العقد</span>
+          <div className="grid md:grid-cols-3 gap-4">
+            {field('نوع الملحق', 'annexType')}
+            {field('رقم الملحق', 'annexNumber')}
+            {field('تاريخ الملحق', 'annexDate')}
+          </div>
+        </div>
+      )}
 
       {isOrdinary && (
         <div className="mt-4 rounded-lg bg-gray-50 border border-gray-200 p-4">

@@ -20,6 +20,8 @@ import {
   addressLabelOf,
   hasRepresentative,
   heirAddressLabelOf,
+  paidAmountKeys,
+  paidCurrencyKeys,
   requiredAmountKeys,
   requiredCurrencyKeys,
 } from './documentFormConstants';
@@ -61,8 +63,9 @@ export interface ExecutedSideSectionsProps {
   onPersonHeirRemove: (i: number, hi: number) => void;
   onPersonRepActivate: (i: number) => void;
   onPersonRepRemove: (i: number) => void;
-  showPaidAmount: boolean;
-  setShowPaidAmount: Dispatch<SetStateAction<boolean>>;
+  /** عدد خانات المبلغ المدفوع المعروضة (1 إلى 3) في وضع «منفذ عليها»/«عرض وايداع». */
+  paidAmountSlots: number;
+  setPaidAmountSlots: (n: number) => void;
   /** هل كان الملف مشطوبًا قبل التعديل؟ (يكشف انتقال مشطوب ← متداول يُظهر حقول التجديد). */
   wasOriginallyStruckOff?: boolean;
 }
@@ -99,8 +102,8 @@ export function ExecutedSideSections({
   onPersonHeirRemove,
   onPersonRepActivate,
   onPersonRepRemove,
-  showPaidAmount,
-  setShowPaidAmount,
+  paidAmountSlots,
+  setPaidAmountSlots,
   wasOriginallyStruckOff,
 }: ExecutedSideSectionsProps) {
   const { field } = makeFieldHelpers(form, set);
@@ -513,8 +516,18 @@ export function ExecutedSideSections({
         {form.executedStatus === 'منفذ' && (
           <div className="mt-4 rounded-lg bg-white border border-gray-200 p-4">
             {isDeposit ? (
-              <div className="grid md:grid-cols-2 gap-4 items-end">
-                {field('المبلغ المودع', 'executedPaidAmount', '', 'number')}
+              <div className="grid gap-4">
+                <MultiAmountEditor
+                  idPrefix="paid-deposit"
+                  amountKeys={paidAmountKeys}
+                  currencyKeys={paidCurrencyKeys}
+                  values={form}
+                  onSet={(k, v) => set(k as keyof DocumentUpsertRequest, v)}
+                  slots={paidAmountSlots}
+                  onSlotsChange={setPaidAmountSlots}
+                  firstLabel="المبلغ المودع"
+                  otherLabel={(i) => `المبلغ المودع ${i + 1}`}
+                />
                 {field('تاريخ ايداعه حساب الجهة العامة', 'executedDepositDate', 'مثال: 1/8/2026')}
               </div>
             ) : (
@@ -532,19 +545,18 @@ export function ExecutedSideSections({
                   className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
                 <div className="mt-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowPaidAmount((v) => !v)}
-                    className="bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-md px-3 py-2 shrink-0 min-h-11"
-                  >
-                    {showPaidAmount ? '− إخفاء المبلغ' : '➕ إضافة مبلغ'}
-                  </button>
+                  <MultiAmountEditor
+                    idPrefix="paid-executed"
+                    amountKeys={paidAmountKeys}
+                    currencyKeys={paidCurrencyKeys}
+                    values={form}
+                    onSet={(k, v) => set(k as keyof DocumentUpsertRequest, v)}
+                    slots={paidAmountSlots}
+                    onSlotsChange={setPaidAmountSlots}
+                    firstLabel="المبلغ الذي دفعته الجهة العامة"
+                    otherLabel={(i) => `المبلغ الذي دفعته الجهة العامة ${i + 1}`}
+                  />
                 </div>
-                {showPaidAmount && (
-                  <div className="mt-4">
-                    {field('المبلغ الذي دفعته الجهة العامة', 'executedPaidAmount', '', 'number')}
-                  </div>
-                )}
               </>
             )}
           </div>

@@ -1044,6 +1044,7 @@ public class DocumentServiceTests : IDisposable
                 ["execSubStatus"] = "منفذ جزئيا",
                 ["collectedAmount"] = "1000",
                 ["soldEstateIds"] = estateId.ToString(),
+                ["forcedExecutionDate"] = "١/١/٢٠٢٤",
             }, "lawyer1");
 
         Assert.True(ok);
@@ -1052,6 +1053,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("منفذ جزئيا", updated.ExecSubStatus);
         Assert.Equal(1000m, updated.CollectedAmount);
         Assert.Null(updated.BaraetNumber);
+        Assert.Equal("١/١/٢٠٢٤", updated.ForcedExecutionDate);
     }
 
     [Fact]
@@ -1138,6 +1140,7 @@ public class DocumentServiceTests : IDisposable
                 ["execSubStatus"] = "منفذ كاملا",
                 ["collectedAmount"] = "1000",
                 ["soldEstateIds"] = estateId.ToString(),
+                ["forcedExecutionDate"] = "1/1/2024",
             }, "lawyer1");
 
         Assert.True(ok);
@@ -1146,6 +1149,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(1000m, updated.CollectedAmount);
         Assert.Null(updated.BaraetNumber);
         Assert.Null(updated.BaraetDate);
+        Assert.Equal("1/1/2024", updated.ForcedExecutionDate);
     }
 
     [Fact]
@@ -2889,6 +2893,271 @@ public class DocumentServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task UpdateExecutedStatus_ToExecuted_PersistsExecutedFields()
+    {
+        // الانتقال إلى «منفذ» من النافذة يحفظ حقول الحالة كاملة كما في صفحة التعديل:
+        // المبلغ الذي دفعته الجهة العامة وكيفية التنفيذ.
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+
+        var ok = await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
+            new ExecutedStatusRequest
+            {
+                Status = ExecutedStatusCatalog.Executed,
+                ExecutedPaidAmount = 2000m,
+                ExecutedDescription = "تم التحصيل",
+            }, "lawyer1");
+        Assert.True(ok);
+
+        var updated = await _service.GetAsync(doc.Id);
+        Assert.Equal(ExecutedStatusCatalog.Executed, updated!.ExecutedStatus);
+        Assert.Equal(2000m, updated.ExecutedPaidAmount);
+        Assert.Equal("تم التحصيل", updated.ExecutedDescription);
+        Assert.Contains("executed-status", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task UpdateExecutedStatus_ToExecuted_PersistsThreePaidAmountsWithCurrencies()
+    {
+        // المبلغ المدفوع يتبع القاعدة العامة «حتى ثلاثة مبالغ بعملات متمايزة»: الخانة التي
+        // تُرسل بلا عملة تحتفظ بالافتراضية، والمرسَلة بعملتها تُحفظ كما هي.
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+
+        var ok = await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
+            new ExecutedStatusRequest
+            {
+                Status = ExecutedStatusCatalog.Executed,
+                ExecutedPaidAmount = 2000m,
+                ExecutedPaidCurrency = "دولار أمريكي",
+                ExecutedPaidAmount2 = 3000m,
+                ExecutedPaidCurrency2 = "يورو",
+                ExecutedPaidAmount3 = 500m,
+            }, "lawyer1");
+        Assert.True(ok);
+
+        var updated = await _service.GetAsync(doc.Id);
+        Assert.Equal(2000m, updated!.ExecutedPaidAmount);
+        Assert.Equal("دولار أمريكي", updated.ExecutedPaidCurrency);
+        Assert.Equal(3000m, updated.ExecutedPaidAmount2);
+        Assert.Equal("يورو", updated.ExecutedPaidCurrency2);
+        Assert.Equal(500m, updated.ExecutedPaidAmount3);
+        Assert.Equal("ليرة سورية", updated.ExecutedPaidCurrency3);
+    }
+
+    [Fact]
+    public async Task UpdateExecutedStatus_ToExecuted_KeepsPriorPaidSlotsWhenNotProvided()
+    {
+        // إعادة الدخول إلى «منفذ» بقيمة جديدة للخانة الأولى فقط تُبقي الخانة الثانية والثالثة
+        // والعملات المحفوظة سابقًا دون مسّ — فلا تُفقد بيانات سبق تسجيلها.
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
+            new ExecutedStatusRequest
+            {
+                Status = ExecutedStatusCatalog.Executed,
+                ExecutedPaidAmount = 2000m,
+                ExecutedPaidAmount2 = 3000m,
+                ExecutedPaidCurrency2 = "يورو",
+            }, "lawyer1");
+
+        var ok = await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
+            new ExecutedStatusRequest
+            {
+                Status = ExecutedStatusCatalog.Executed,
+                ExecutedPaidAmount = 3500m,
+            }, "lawyer1");
+        Assert.True(ok);
+
+        var updated = await _service.GetAsync(doc.Id);
+        Assert.Equal(3500m, updated!.ExecutedPaidAmount);
+        Assert.Equal(3000m, updated.ExecutedPaidAmount2);
+        Assert.Equal("يورو", updated.ExecutedPaidCurrency2);
+    }
+
+    [Fact]
+    public async Task UpdateExecutedStatus_ToExecuted_KeepsPriorFieldsWhenNotProvided()
+    {
+        // الإعادة إلى «منفذ» بحقول فارغة لا تُمسّ ما سبق تسجيله (المبلغ والوصف) — فلا تُفقد
+        // بيانات سبق حفظها عبر صفحة التعديل أو نقطة الحالة بمجرد تغيير الحالة مجددًا.
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
+            new ExecutedStatusRequest
+            {
+                Status = ExecutedStatusCatalog.Executed,
+                ExecutedPaidAmount = 2000m,
+                ExecutedDescription = "تم التحصيل",
+            }, "lawyer1");
+        // الدخول مجددًا إلى «منفذ» بلا حقول: تُحفظ المحفوظة سابقًا كما هي.
+        var ok = await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
+            new ExecutedStatusRequest { Status = ExecutedStatusCatalog.Executed }, "lawyer1");
+        Assert.True(ok);
+
+        var updated = await _service.GetAsync(doc.Id);
+        Assert.Equal(2000m, updated!.ExecutedPaidAmount);
+        Assert.Equal("تم التحصيل", updated.ExecutedDescription);
+
+        // قيمة جديدة مقدَّمة تحلّ محل القديمة، ويبقى الوصف المحفوظ دون مس.
+        await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
+            new ExecutedStatusRequest { Status = ExecutedStatusCatalog.Executed, ExecutedPaidAmount = 3500m }, "lawyer1");
+        var replaced = await _service.GetAsync(doc.Id);
+        Assert.Equal(3500m, replaced!.ExecutedPaidAmount);
+        Assert.Equal("تم التحصيل", replaced.ExecutedDescription);
+    }
+
+    [Fact]
+    public async Task UpdateExecutedStatus_ToExecuted_OnDeposit_PersistsDepositFields()
+    {
+        // صفة «عرض وايداع»: الانتقال إلى «منفذ» يحفظ المبلغ المودع وتاريخ ايداعه حساب الجهة
+        // العامة، بلا وصف تنفيذ (حقل خاص بصفة «منفذ عليها»).
+        var doc = await _service.CreateAsync(DepositSample(), 1, "lawyer1", 1);
+
+        var ok = await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
+            new ExecutedStatusRequest
+            {
+                Status = ExecutedStatusCatalog.Executed,
+                ExecutedPaidAmount = 1250m,
+                ExecutedDepositDate = "10/6/2024",
+            }, "lawyer1");
+        Assert.True(ok);
+
+        var updated = await _service.GetAsync(doc.Id);
+        Assert.Equal(ExecutedStatusCatalog.Executed, updated!.ExecutedStatus);
+        Assert.Equal(1250m, updated.ExecutedPaidAmount);
+        Assert.Equal(new DateTime(2024, 6, 10), updated.ExecutedDepositDate);
+        Assert.Null(updated.ExecutedDescription);
+        Assert.True(_db.Documents.First(d => d.Id == doc.Id).WasDepositExecuted);
+    }
+
+    [Fact]
+    public async Task UpdateExecutedStatus_ToStruckOff_UsesSubmittedDate()
+    {
+        // تاريخ الشطب المُرسَل من النافذة يُحفظ حرفيًا (نص حر يُفسَّر) بدل توقيت الانتقال.
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+
+        var ok = await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff,
+            new ExecutedStatusRequest { Status = ExecutedStatusCatalog.StruckOff, StruckOffDate = "1/8/2026" }, "lawyer1");
+        Assert.True(ok);
+
+        var updated = await _service.GetAsync(doc.Id);
+        Assert.Equal(ExecutedStatusCatalog.StruckOff, updated!.ExecutedStatus);
+        Assert.Equal(new DateTime(2026, 8, 1), updated.StruckOffDate);
+    }
+
+    [Fact]
+    public async Task UpdateExecutedStatus_FromStruckOffToCirculating_AppliesRenewal()
+    {
+        // الإعادة إلى متداول من ملف مشطوب (عبر نفس نقطة الحالة): تجديد برقم ملف جديد
+        // إلزامي، ويُسجَّل رقم أساس لسنة الإعادة فيعود الملف بالرقم الجديد.
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        var struckOffDate = (await _service.GetAsync(doc.Id))!.StruckOffDate;
+
+        var ok = await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.None,
+            new ExecutedStatusRequest
+            {
+                Status = ExecutedStatusCatalog.None,
+                RenewalFileNumber = "2026/55",
+                RenewalFileType = "قضية تنفيذ",
+            }, "lawyer1");
+        Assert.True(ok);
+
+        var restored = await _service.GetAsync(doc.Id);
+        Assert.Equal(ExecutedStatusCatalog.None, restored!.ExecutedStatus);
+        Assert.Equal(struckOffDate, restored.StruckOffDate);
+        Assert.Equal("2026/55", restored.RenewalFileNumber);
+        Assert.Equal("2026/55", restored.DisplayFileNumber);
+    }
+
+    [Fact]
+    public async Task UpdateExecutedStatus_FromStruckOffToCirculating_WithoutRenewalNumber_Throws()
+    {
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.None,
+                new ExecutedStatusRequest { Status = ExecutedStatusCatalog.None }, "lawyer1"));
+    }
+
+    [Fact]
+    public async Task UpdateExecutedStatus_ExecutedSide_FromExecuted_IsTerminal()
+    {
+        // صفة «الجهة العامة منفذ عليها»: حالة «منفذ» نهائية لا تُغيَّر إلى متداول ولا مشطوب.
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
+            new ExecutedStatusRequest { Status = ExecutedStatusCatalog.Executed, ExecutedPaidAmount = 2000m }, "lawyer1");
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.None,
+                new ExecutedStatusRequest { Status = ExecutedStatusCatalog.None }, "lawyer1"));
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff,
+                new ExecutedStatusRequest { Status = ExecutedStatusCatalog.StruckOff }, "lawyer1"));
+
+        var updated = await _service.GetAsync(doc.Id);
+        Assert.Equal(ExecutedStatusCatalog.Executed, updated!.ExecutedStatus);
+    }
+
+    [Fact]
+    public async Task UpdateExecutedStatus_Deposit_FromExecutedToStruckOff_Throws()
+    {
+        // «عرض وايداع» المنفذ لا يُشطب؛ إرجاعه الوحيد إلى متداول بكتاب السير بالملف.
+        var doc = await _service.CreateAsync(DepositSample(), 1, "lawyer1", 1);
+        await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
+            new ExecutedStatusRequest { Status = ExecutedStatusCatalog.Executed, ExecutedPaidAmount = 1250m }, "lawyer1");
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff,
+                new ExecutedStatusRequest { Status = ExecutedStatusCatalog.StruckOff }, "lawyer1"));
+
+        var updated = await _service.GetAsync(doc.Id);
+        Assert.Equal(ExecutedStatusCatalog.Executed, updated!.ExecutedStatus);
+    }
+
+    [Fact]
+    public async Task UpdateExecutedStatus_Deposit_FromExecutedToCirculating_RequiresSayerAndKeepsAmount()
+    {
+        // العودة من «منفذ» إلى متداول في «عرض وايداع»: كتاب الجهة العامة بالسير بالملف إلزامي
+        // (رقم وتاريخ الكتاب وورودهما)، ويبقى المبلغ المودع محفوظًا، وتُضبط العلامة الدائمة
+        // فيبقى محسوبًا في الإحصاءات، ويُسجَّل وقعة تراجع في وقوعات الملف.
+        var doc = await _service.CreateAsync(DepositSample(), 1, "lawyer1", 1);
+        await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed,
+            new ExecutedStatusRequest
+            {
+                Status = ExecutedStatusCatalog.Executed,
+                ExecutedPaidAmount = 1250m,
+                ExecutedDepositDate = "10/6/2024",
+            }, "lawyer1");
+
+        // دون حقول السير بالملف يُرفض.
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.None,
+                new ExecutedStatusRequest { Status = ExecutedStatusCatalog.None }, "lawyer1"));
+
+        var ok = await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.None,
+            new ExecutedStatusRequest
+            {
+                Status = ExecutedStatusCatalog.None,
+                SayerNumber = "44",
+                SayerDate = "1/8/2026",
+                SayerRegNumber = "55",
+                SayerRegDate = "2/8/2026",
+            }, "lawyer1");
+        Assert.True(ok);
+
+        var updated = await _service.GetAsync(doc.Id);
+        Assert.Equal(ExecutedStatusCatalog.None, updated!.ExecutedStatus);
+        Assert.Equal(1250m, updated.ExecutedPaidAmount);
+        Assert.Equal(new DateTime(2024, 6, 10), updated.ExecutedDepositDate);
+        Assert.True(_db.Documents.First(d => d.Id == doc.Id).WasDepositExecuted);
+        Assert.Equal("44", updated.SayerNumber);
+        Assert.Equal("1/8/2026", updated.SayerDate);
+        Assert.Equal("55", updated.SayerRegNumber);
+        Assert.Equal("2/8/2026", updated.SayerRegDate);
+        Assert.Null(updated.RenewalFileNumber);
+        Assert.Contains(_db.DocumentOccurrences,
+            o => o.DocumentId == doc.Id && o.OccurrenceType == OccurrenceTypeCatalog.Revert);
+    }
+
+    [Fact]
     public async Task RestoreStruckOff_KeepsStruckOffDateButClearsStatus()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
@@ -2996,6 +3265,29 @@ public class DocumentServiceTests : IDisposable
         // صفة العرض لا تحمل وصفًا إضافيًا: يسجل الفارغ مهما أُرسل.
         Assert.Null(doc.ExecutedDescription);
         Assert.Equal(new DateTime(2024, 1, 5), doc.FileReceiptDate);
+    }
+
+    [Fact]
+    public async Task Create_ExecutedSide_PersistsThreePaidAmountsWithCurrencies()
+    {
+        // المبلغ المدفوع يتبع القاعدة العامة «حتى ثلاثة مبالغ بعملات متمايزة» عند الإنشاء
+        // كما عند نقطة الحالة: كل خانة مبلغ تُحفظ بعملتها المقدَّمة، والغائبة تبقى فارغة.
+        var req = ExecutedSample();
+        req.ExecutedStatus = ExecutedStatusCatalog.Executed;
+        req.ExecutedPaidAmount = 2000m;
+        req.ExecutedPaidCurrency = "دولار أمريكي";
+        req.ExecutedPaidAmount2 = 3000m;
+        req.ExecutedPaidCurrency2 = "يورو";
+        req.ExecutedPaidAmount3 = 500m;
+
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        Assert.Equal(2000m, doc.ExecutedPaidAmount);
+        Assert.Equal("دولار أمريكي", doc.ExecutedPaidCurrency);
+        Assert.Equal(3000m, doc.ExecutedPaidAmount2);
+        Assert.Equal("يورو", doc.ExecutedPaidCurrency2);
+        Assert.Equal(500m, doc.ExecutedPaidAmount3);
+        Assert.Null(doc.ExecutedPaidCurrency3);
     }
 
     [Fact]
