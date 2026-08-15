@@ -61,7 +61,8 @@ public class DocumentsController : ControllerBase
         [FromQuery] string? q, [FromQuery] string? status,
         [FromQuery] string? applicant, [FromQuery] string? court,
         [FromQuery] string? lawyer, [FromQuery] string? branch,
-        [FromQuery] string? administrativeBranch,
+        [FromQuery] string? administrativeBranch, [FromQuery] string? executedEntity,
+        [FromQuery] string? publicEntityBranch,
         [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
     {
         // البحث/الفلترة باسم المحامي محصور برئيس القسم/المدير/المشرف.
@@ -71,7 +72,7 @@ public class DocumentsController : ControllerBase
         var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
         var visibleUser = HasFullAccess || IsHead ? (int?)null : User.GetUserId();
 
-        var result = await _documents.SearchAsync(q, status, applicant, court, lawyer, branch, administrativeBranch,
+        var result = await _documents.SearchAsync(q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
             page, perPage, visibleBranch, visibleUser, ct);
         if (!CanViewCounters)
             result.Items = result.Items.Select(Sanitize).ToList();
@@ -83,12 +84,13 @@ public class DocumentsController : ControllerBase
         [FromQuery] string? status, [FromQuery] string? applicant,
         [FromQuery] string? court, [FromQuery] string? lawyer,
         [FromQuery] string? branch, [FromQuery] string? administrativeBranch,
+        [FromQuery] string? executedEntity, [FromQuery] string? publicEntityBranch,
         CancellationToken ct)
     {
         var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
         var visibleUser = HasFullAccess || IsHead ? (int?)null : User.GetUserId();
         var options = await _documents.GetFilterOptionsAsync(status, applicant, court, lawyer, branch,
-            administrativeBranch, visibleBranch, visibleUser, ct);
+            administrativeBranch, executedEntity, publicEntityBranch, visibleBranch, visibleUser, ct);
         return Ok(new
         {
             applicants = options.Applicants,
@@ -96,6 +98,8 @@ public class DocumentsController : ControllerBase
             lawyers = CanSearchByLawyer ? options.Lawyers : new List<string>(),
             administrativeBranches = options.AdministrativeBranches,
             branches = options.Branches,
+            executedEntities = options.ExecutedEntities,
+            publicEntityBranches = options.PublicEntityBranches,
         });
     }
 
@@ -104,7 +108,8 @@ public class DocumentsController : ControllerBase
         [FromQuery] string? q, [FromQuery] string? status,
         [FromQuery] string? applicant, [FromQuery] string? court,
         [FromQuery] string? lawyer, [FromQuery] string? branch,
-        [FromQuery] string? administrativeBranch, CancellationToken ct)
+        [FromQuery] string? administrativeBranch, [FromQuery] string? executedEntity,
+        [FromQuery] string? publicEntityBranch, CancellationToken ct)
     {
         // التصدير يحترم نفس أذونات الفلترة: البحث باسم المحامي محصور برئيس القسم/المدير/المشرف.
         if (!string.IsNullOrWhiteSpace(lawyer) && !CanSearchByLawyer)
@@ -113,7 +118,7 @@ public class DocumentsController : ControllerBase
         var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
         var visibleUser = HasFullAccess || IsHead ? (int?)null : User.GetUserId();
 
-        var items = await _documents.ExportAsync(q, status, applicant, court, lawyer, branch, administrativeBranch,
+        var items = await _documents.ExportAsync(q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
             visibleBranch, visibleUser, ct);
         if (!CanViewCounters)
             items = items.Select(Sanitize).ToList();
@@ -291,19 +296,26 @@ public class DocumentsController : ControllerBase
         }
     }
 
-    [HttpPost("{id:int}/cancel-status")]
-    public async Task<IActionResult> CancelStatus(int id, CancellationToken ct)
+    [HttpPost("{id:int}/revert-status")]
+    public async Task<IActionResult> RevertStatus(int id, [FromBody] StatusRequest request, CancellationToken ct)
     {
-        // إلغاء الحالة محصور بالمحامي (للملفات التي يملكها).
+        // التراجع عن الحالة (من تريث/منفذ بالتسوية/منفذ جبريا إلى متداول) محصور بالمحامي
+        // (للملفات التي يملكها) — بموجب كتاب الجهة العامة بالسير بالملف.
         if (!CanChangeStatus) return Forbid();
 
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
         if (!CanAccess(doc)) return Forbid();
 
-        return await _documents.CancelStatusAsync(id, ActorName, ct)
-            ? Ok(new { message = "تم إلغاء الحالة" })
-            : NotFound();
+        try
+        {
+            var ok = await _documents.RevertStatusAsync(id, request.Fields ?? new(), ActorName, ct);
+            return ok ? Ok(new { message = "عُد الملف إلى المتداول" }) : NotFound();
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
     }
 
     [HttpPost("{id:int}/executed-status")]
@@ -319,7 +331,7 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var ok = await _documents.UpdateExecutedStatusAsync(id, request.Status, ActorName, ct);
+            var ok = await _documents.UpdateExecutedStatusAsync(id, request.Status, request, ActorName, ct);
             return ok ? Ok(new { message = "تم تحديث حالة وضع «الجهة العامة منفذ عليها»" }) : NotFound();
         }
         catch (ArgumentException e)
@@ -329,7 +341,7 @@ public class DocumentsController : ControllerBase
     }
 
     [HttpPost("{id:int}/restore-struck-off")]
-    public async Task<IActionResult> RestoreStruckOff(int id, CancellationToken ct)
+    public async Task<IActionResult> RestoreStruckOff(int id, [FromBody] RenewalRequest request, CancellationToken ct)
     {
         // إعادة ملف مشطوب إلى المتداول من اختصاص المحامي صاحب الملف فقط
         // (بذات حكم الاستعادة في المحذوفات).
@@ -341,7 +353,7 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            return await _documents.RestoreStruckOffAsync(id, ActorName, ct)
+            return await _documents.RestoreStruckOffAsync(id, request, ActorName, ct)
                 ? Ok(new { message = "أعيد الملف المشطوب إلى المتداول" })
                 : NotFound();
         }
@@ -377,9 +389,9 @@ public class DocumentsController : ControllerBase
         if (doc is null) return NotFound();
         if (!CanAccess(doc)) return Forbid();
 
-        // توليد المستندات محصور بنظام «طالبة تنفيذ»: ملفات وضع «منفذ عليه» لا تُولَّد.
-        if (doc.GeneralEntitySide == GeneralEntitySideCatalog.Executed)
-            return BadRequest(new { message = "لا يُولَّد مستند لملفات وضع «الجهة العامة منفذ عليها»" });
+        // توليد المستندات محصور بنظام «طالبة تنفيذ»: ملفات عائلة وضع «منفذ عليه» لا تُولَّد.
+        if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
+            return BadRequest(new { message = "لا يُولَّد مستند لملفات وضع «الجهة العامة منفذ عليها» و«عرض وايداع»" });
 
         try
         {
@@ -394,9 +406,10 @@ public class DocumentsController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
-        catch (FileNotFoundException e)
+        catch (FileNotFoundException)
         {
-            return StatusCode(500, new { message = $"القالب غير متوفر: {e.Message}" });
+            // لا يُكشف مسار قالب الخادم للمستخدم؛ تُرجع رسالة عامة.
+            return StatusCode(500, new { message = "القالب غير متوفر على الخادم" });
         }
     }
 
@@ -573,13 +586,71 @@ public class DocumentsController : ControllerBase
             : NotFound();
     }
 
+    [HttpPost("{id:int}/occurrences")]
+    public async Task<IActionResult> AddOccurrence(int id, [FromBody] UpsertOccurrenceRequest request, CancellationToken ct)
+    {
+        // إدارة وقوعات الملف للمحامي صاحب الملف فقط.
+        if (!CanEdit) return Forbid();
+
+        var doc = await _documents.GetAsync(id, ct);
+        if (doc is null) return NotFound();
+        if (!CanAccess(doc)) return Forbid();
+
+        try
+        {
+            var occurrence = await _documents.AddOccurrenceAsync(id, request, User.GetUserId(), ActorName, ct);
+            return Ok(occurrence);
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+    }
+
+    [HttpPut("{id:int}/occurrences/{occurrenceId:int}")]
+    public async Task<IActionResult> UpdateOccurrence(int id, int occurrenceId, [FromBody] UpsertOccurrenceRequest request, CancellationToken ct)
+    {
+        // إدارة وقوعات الملف للمحامي صاحب الملف فقط.
+        if (!CanEdit) return Forbid();
+
+        var doc = await _documents.GetAsync(id, ct);
+        if (doc is null) return NotFound();
+        if (!CanAccess(doc)) return Forbid();
+
+        try
+        {
+            var occurrence = await _documents.UpdateOccurrenceAsync(id, occurrenceId, request, ActorName, ct);
+            if (occurrence is null) return NotFound();
+            return Ok(occurrence);
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+    }
+
+    [HttpDelete("{id:int}/occurrences/{occurrenceId:int}")]
+    public async Task<IActionResult> DeleteOccurrence(int id, int occurrenceId, CancellationToken ct)
+    {
+        // إدارة وقوعات الملف للمحامي صاحب الملف فقط.
+        if (!CanEdit) return Forbid();
+
+        var doc = await _documents.GetAsync(id, ct);
+        if (doc is null) return NotFound();
+        if (!CanAccess(doc)) return Forbid();
+
+        return await _documents.DeleteOccurrenceAsync(id, occurrenceId, ActorName, ct)
+            ? NoContent()
+            : NotFound();
+    }
+
     public class StatusRequest
     {
         public string Status { get; set; } = string.Empty;
         public Dictionary<string, string?>? Fields { get; set; }
     }
 
-    public class ExecutedStatusRequest
+    public class ExecutedStatusRequest : RenewalRequest
     {
         public string Status { get; set; } = string.Empty;
     }

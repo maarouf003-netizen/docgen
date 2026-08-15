@@ -1,4 +1,3 @@
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using DocGenerator.Application.Common;
@@ -41,6 +40,11 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         }
     }
 
+    /// <summary>
+    /// يُسجّل الدخول على عميل جديد يحتفظ بـ Cookie المصادقة (Set-Cookie من الاستجابة) فيتولى
+    /// ترويض الترويسات لاحقًا تلقائيًا — كما يفعل متصفح حقيقي مع HttpOnly + SameSite=Strict.
+    /// يعيد Token للفحص/التأكيد في الاختبارات (قيمة الـ Cookie نفسها = JWT).
+    /// </summary>
     public async Task<LoginResult?> LoginAsync(string username, string password, int? branchId = null)
     {
         var client = CreateClient();
@@ -48,20 +52,46 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         var response = await client.PostAsync("/api/auth/login",
             new StringContent(body, Encoding.UTF8, "application/json"));
         var content = await response.Content.ReadAsStringAsync();
-        if (!response.IsSuccessStatusCode)
-            return new LoginResult(null, (int)response.StatusCode, content);
-
-        using var doc = JsonDocument.Parse(content);
-        var token = doc.RootElement.TryGetProperty("token", out var tokenProp) ? tokenProp.GetString() : null;
-        return new LoginResult(token, (int)response.StatusCode, content);
+        var token = ExtractCookieValue(response, "docgen_token");
+        var csrf = ExtractCookieValue(response, "docgen_csrf");
+        var result = new LoginResult(client, token, (int)response.StatusCode, content);
+        if (csrf is not null)
+            client.DefaultRequestHeaders.Add("X-CSRF-Token", csrf);
+        return result;
     }
 
+    /// <summary>يجلب قيمة Cookie من ترويسة Set-Cookie بالاسم المحدد (أول قيمة قبل الفواصل المنقوطة).</summary>
+    public static string? ExtractCookieValue(HttpResponseMessage response, string name)
+    {
+        if (!response.Headers.TryGetValues("Set-Cookie", out var setCookies))
+            return null;
+        foreach (var value in setCookies)
+        {
+            var start = value.IndexOf(name + "=", StringComparison.OrdinalIgnoreCase);
+            if (start < 0)
+                continue;
+            var segment = value[(start + name.Length + 1)..];
+            var end = segment.IndexOf(';');
+            return end < 0 ? segment : segment[..end];
+        }
+        return null;
+    }
+
+    /// <summary>عميل مُصادَق عبر Cookie الدخول الفعلي (POST /api/auth/login).</summary>
     public HttpClient AuthorizedClient(string username, string password = "123456")
     {
         var login = LoginAsync(username, password).GetAwaiter().GetResult();
+        if (login?.Token is null)
+            throw new InvalidOperationException(
+                $"Login failed for '{username}' (status {(login?.StatusCode ?? 0)}).");
+        return login.Client;
+    }
+
+    /// <summary>عميل مُصادَق بحقن قيمة التوكن مباشرة في Cookie (مسار سريع لاختبارات الوثائق).</summary>
+    public HttpClient ClientWithToken(string token)
+    {
         var client = CreateClient();
-        client.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", login?.Token ?? string.Empty);
+        client.SetAuthCookie(token);
         return client;
     }
 
@@ -86,10 +116,11 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 
     public async Task<int> CreateDocumentAsync(string token, string borrowerName = "مقترض",
         string? applicant = "المدعي", string? court = "دمشق",
-        string? borrowerFather = null, string? borrowerFamily = null)
+        string? borrowerFather = null, string? borrowerFamily = null,
+        bool withEstate = false)
     {
         var client = CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.SetAuthCookie(token);
         var body = JsonSerializer.Serialize(new
         {
             documentType = "بيان دعوى",
@@ -101,6 +132,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             contractType = "تعهد",
             amountNumeric = 500,
             branchName = "الفرع الرئيسي - دمشق",
+            realEstates = withEstate
+                ? new[] { new { property = "بيت", propertyNumber = "12345", propertyDistrict = "المزة", landRegistry = "الصالحية", shareType = "تمام العقار", owners = new[] { "المدعى عليه" } } }
+                : Array.Empty<object>(),
         });
         var response = await client.PostAsync("/api/documents",
             new StringContent(body, Encoding.UTF8, "application/json"));
@@ -110,4 +144,18 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     }
 }
 
-public sealed record LoginResult(string? Token, int StatusCode, string Content);
+/// <summary>حقن قيمة التوكن في Cookie المصادقة على عميل مع زوج Cookie/ترويسة CSRF متناسق
+/// (بديل العميل الحقيقي للاختبارات السريعة).</summary>
+public static class AuthCookieTestExtensions
+{
+    public static void SetAuthCookie(this HttpClient client, string token)
+    {
+        const string csrf = "test-csrf-token";
+        client.DefaultRequestHeaders.Remove("Cookie");
+        client.DefaultRequestHeaders.Add("Cookie", $"docgen_token={token}; docgen_csrf={csrf}");
+        client.DefaultRequestHeaders.Remove("X-CSRF-Token");
+        client.DefaultRequestHeaders.Add("X-CSRF-Token", csrf);
+    }
+}
+
+public sealed record LoginResult(HttpClient Client, string? Token, int StatusCode, string Content);

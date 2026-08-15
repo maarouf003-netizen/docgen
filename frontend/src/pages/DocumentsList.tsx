@@ -6,30 +6,9 @@ import { useAuth } from '../auth/useAuth';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { richToPlainText } from '../utils/richText';
 import { STATUS_BADGES, STATUS_OPTIONS, getDocumentStatus } from '../utils/documentStatus';
+import { applicantName, displayFileNumber, fullName, publicEntityBranch as entityBranchDisplay } from '../utils/documentDisplay';
 import ExecutionActionsModal from '../components/ExecutionActionsModal';
 import type { DocumentResponse, PagedResult } from '../types';
-
-function executedFullName(d: DocumentResponse): string {
-  const person = d.executedNaturalPersons?.[0];
-  const personName = person
-    ? [person.name, person.father, person.family].filter(Boolean).join(' ')
-    : '';
-  const entity = d.executedPublicEntities?.[0]?.entityName ?? '';
-  const applicant = d.applicant ?? '';
-  return personName || entity || applicant || '';
-}
-
-function fullName(d: DocumentResponse) {
-  if (d.generalEntitySide === 'executed') return executedFullName(d);
-  return [d.borrowerName, d.borrowerFather, d.borrowerFamily].filter(Boolean).join(' ');
-}
-
-function displayFileNumber(d: DocumentResponse) {
-  if (d.isDraft) return '';
-  const number = d.displayFileNumber ?? d.fileNumber ?? '';
-  const type = d.fileType ?? '';
-  return type ? `${number} ${type}`.trim() : number;
-}
 
 function FileNumber({ d }: { d: DocumentResponse }) {
   const text = displayFileNumber(d);
@@ -207,6 +186,144 @@ function ColumnFilter({ label, ariaLabel, value, onChange, allLabel, options }: 
   );
 }
 
+/** قائمة «المزيد» المنسدلة: تجمع إجراءات الأرشيف والتدوير والتصدير في زر واحد. */
+function MoreMenu({
+  canViewDeleted,
+  canRotate,
+  exporting,
+  onExport,
+}: {
+  canViewDeleted: boolean;
+  canRotate: boolean;
+  exporting: boolean;
+  onExport: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState<{ top: number; right: number } | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const updatePosition = () => {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setPosition({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+    };
+    updatePosition();
+    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition);
+    return () => {
+      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+      if (buttonRef.current?.contains(e.target as Node)) return;
+      if (menuRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+    };
+  }, [open]);
+
+  const close = () => setOpen(false);
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 rounded-lg px-4 py-2 text-sm font-medium min-h-11 inline-flex items-center gap-1"
+      >
+        المزيد
+        <svg
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          aria-hidden="true"
+          className="w-4 h-4 shrink-0 text-gray-400"
+        >
+          <path
+            fillRule="evenodd"
+            d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.06l3.71-3.83a.75.75 0 1 1 1.08 1.04l-4.25 4.39a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06Z"
+            clipRule="evenodd"
+          />
+        </svg>
+      </button>
+      {open &&
+        position &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            aria-label="المزيد"
+            className="fixed z-50 w-64 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden py-1"
+            style={{ top: position.top, right: position.right }}
+          >
+            {canViewDeleted && (
+              <Link
+                to="/documents/deleted"
+                role="menuitem"
+                onClick={close}
+                className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50"
+              >
+                الملفات المحذوفة
+              </Link>
+            )}
+            {canViewDeleted && (
+              <Link
+                to="/documents/struck-off"
+                role="menuitem"
+                onClick={close}
+                className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50"
+              >
+                الملفات المشطوبة
+              </Link>
+            )}
+            {canRotate && (
+              <Link
+                to="/documents/rotate"
+                role="menuitem"
+                onClick={close}
+                className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50"
+              >
+                تدوير أرقام الأساس
+              </Link>
+            )}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                close();
+                onExport();
+              }}
+              disabled={exporting}
+              className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50 disabled:opacity-50"
+            >
+              {exporting ? 'جارِ التصدير...' : 'تصدير إكسل'}
+            </button>
+          </div>,
+          document.body,
+        )}
+    </>
+  );
+}
+
 function ActionsCell({ d, onClick }: { d: DocumentResponse; onClick: () => void }) {
   const latest = d.executionActions?.[0];
   return (
@@ -235,8 +352,9 @@ export default function DocumentsList() {
   const [applicant, setApplicant] = useState('');
   const [court, setCourt] = useState('');
   const [lawyer, setLawyer] = useState('');
-  const [branch, setBranch] = useState('');
   const [administrativeBranch, setAdministrativeBranch] = useState('');
+  const [executedEntity, setExecutedEntity] = useState('');
+  const [publicEntityBranch, setPublicEntityBranch] = useState('');
   const [page, setPage] = useState(1);
   const [data, setData] = useState<PagedResult<DocumentResponse> | null>(null);
   const [loading, setLoading] = useState(false);
@@ -246,8 +364,9 @@ export default function DocumentsList() {
   const [applicants, setApplicants] = useState<string[]>([]);
   const [courts, setCourts] = useState<string[]>([]);
   const [lawyers, setLawyers] = useState<string[]>([]);
-  const [branches, setBranches] = useState<string[]>([]);
   const [administrativeBranches, setAdministrativeBranches] = useState<string[]>([]);
+  const [executedEntities, setExecutedEntities] = useState<string[]>([]);
+  const [publicEntityBranches, setPublicEntityBranches] = useState<string[]>([]);
   const canViewCounters = hasFullAccess || isHead;
   const canSeeAdministrativeBranch = hasFullAccess;
   const canSeeAssignedLawyer = hasFullAccess || isHead;
@@ -259,7 +378,7 @@ export default function DocumentsList() {
   // يُمنع تصدير كل الملفات: يتطلب التصدير تطبيق فلتر واحد على الأقل (بحث أو أي فلتر منسدل)،
   // وإلا يُعطَّل الزر ويُعترض الطلب دفاعيًا قبل الإرسال.
   const hasActiveFilter = Boolean(
-    query || status || applicant || court || lawyer || branch || administrativeBranch,
+    query || status || applicant || court || lawyer || administrativeBranch || executedEntity || publicEntityBranch,
   );
 
   const load = () => {
@@ -270,8 +389,9 @@ export default function DocumentsList() {
     if (applicant) params.set('applicant', applicant);
     if (court) params.set('court', court);
     if (lawyer) params.set('lawyer', lawyer);
-    if (branch) params.set('branch', branch);
     if (administrativeBranch) params.set('administrativeBranch', administrativeBranch);
+    if (executedEntity) params.set('executedEntity', executedEntity);
+    if (publicEntityBranch) params.set('publicEntityBranch', publicEntityBranch);
     params.set('page', String(page));
     params.set('perPage', '20');
     api
@@ -284,7 +404,7 @@ export default function DocumentsList() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, status, applicant, court, lawyer, branch, administrativeBranch, page]);
+  }, [query, status, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, page]);
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -292,22 +412,24 @@ export default function DocumentsList() {
     if (applicant) params.set('applicant', applicant);
     if (court) params.set('court', court);
     if (lawyer) params.set('lawyer', lawyer);
-    if (branch) params.set('branch', branch);
     if (administrativeBranch) params.set('administrativeBranch', administrativeBranch);
+    if (executedEntity) params.set('executedEntity', executedEntity);
+    if (publicEntityBranch) params.set('publicEntityBranch', publicEntityBranch);
     const qs = params.toString();
     api
-      .get<{ applicants: string[]; courts: string[]; lawyers?: string[]; branches: string[]; administrativeBranches: string[] }>(
+      .get<{ applicants: string[]; courts: string[]; lawyers?: string[]; administrativeBranches: string[]; executedEntities: string[]; publicEntityBranches: string[] }>(
         `/documents/filter-options${qs ? `?${qs}` : ''}`,
       )
       .then((r) => {
         setApplicants(Array.isArray(r.data.applicants) ? r.data.applicants : []);
         setCourts(Array.isArray(r.data.courts) ? r.data.courts : []);
         setLawyers(Array.isArray(r.data.lawyers) ? r.data.lawyers : []);
-        setBranches(Array.isArray(r.data.branches) ? r.data.branches : []);
         setAdministrativeBranches(Array.isArray(r.data.administrativeBranches) ? r.data.administrativeBranches : []);
+        setExecutedEntities(Array.isArray(r.data.executedEntities) ? r.data.executedEntities : []);
+        setPublicEntityBranches(Array.isArray(r.data.publicEntityBranches) ? r.data.publicEntityBranches : []);
       })
       .catch(() => {});
-  }, [status, applicant, court, lawyer, branch, administrativeBranch]);
+  }, [status, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch]);
 
   useEffect(() => {
     if (hasActiveFilter) setExportMsg('');
@@ -320,22 +442,15 @@ export default function DocumentsList() {
     }
     setExportMsg('');
     setExporting(true);
-    const params = new URLSearchParams();
-    if (query) params.set('q', query);
-    if (status) params.set('status', status);
-    if (applicant) params.set('applicant', applicant);
-    if (court) params.set('court', court);
-    if (lawyer) params.set('lawyer', lawyer);
-    if (branch) params.set('branch', branch);
-    if (administrativeBranch) params.set('administrativeBranch', administrativeBranch);
-    const token = localStorage.getItem('docgen_token');
-    const url = `/api/documents/export${params.toString() ? `?${params.toString()}` : ''}`;
-    fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-      .then((res) => {
-        if (!res.ok) throw new Error('export failed');
-        return res.blob();
+    // عبر مثيل axios المشترك: يضيف الترويسة والوسم تلقائيًا، ويعيد توجيه 401،
+    // ولا يكرر قراءة مفتاح التوكن يدويًا.
+    api
+      .get('/documents/export', {
+        params: { q: query, status, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch },
+        responseType: 'blob',
       })
-      .then((blob) => {
+      .then((res) => {
+        const blob = res.data as Blob;
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
         link.download = `الملفات التنفيذية ${new Date().toISOString().slice(0, 10)}.xlsx`;
@@ -344,7 +459,9 @@ export default function DocumentsList() {
         link.remove();
         URL.revokeObjectURL(link.href);
       })
-      .catch(() => {})
+      .catch(() => {
+        setExportMsg('تعذر تصدير الملف. حاول مرة أخرى');
+      })
       .finally(() => setExporting(false));
   };
 
@@ -358,38 +475,12 @@ export default function DocumentsList() {
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <h2 className="text-2xl font-bold text-gray-800">الملفات التنفيذية</h2>
         <div className="flex items-center gap-2 flex-wrap">
-          {canViewDeleted && (
-            <Link
-              to="/documents/deleted"
-              className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 rounded-lg px-4 py-2 text-sm font-medium min-h-11 inline-flex items-center"
-            >
-              الملفات المحذوفة
-            </Link>
-          )}
-          {canViewDeleted && (
-            <Link
-              to="/documents/struck-off"
-              className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 rounded-lg px-4 py-2 text-sm font-medium min-h-11 inline-flex items-center"
-            >
-              الملفات المشطوبة
-            </Link>
-          )}
-          {canRotate && (
-            <Link
-              to="/documents/rotate"
-              className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 rounded-lg px-4 py-2 text-sm font-medium min-h-11 inline-flex items-center"
-            >
-              تدوير أرقام الأساس
-            </Link>
-          )}
-          <button
-            type="button"
-            onClick={exportExcel}
-            disabled={exporting}
-            className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 rounded-lg px-4 py-2 text-sm font-medium min-h-11 inline-flex items-center disabled:opacity-50"
-          >
-            {exporting ? 'جارِ التصدير...' : 'تصدير إكسل'}
-          </button>
+          <MoreMenu
+            canViewDeleted={canViewDeleted}
+            canRotate={canRotate}
+            exporting={exporting}
+            onExport={exportExcel}
+          />
           {canCreate && (
             <Link
               to="/documents/new"
@@ -414,7 +505,7 @@ export default function DocumentsList() {
         <input
           value={query}
           onChange={(e) => { setQuery(e.target.value); setPage(1); }}
-          placeholder="بحث بالاسم الثنائي أو الثلاثي لأحد المنفذ عليهم، رقم العقد، دائرة التنفيذ..."
+          placeholder="بحث بالاسم الثنائي أو الثلاثي لأحد المنفذ عليهم أو ورثة المتوفى، رقم العقد، دائرة التنفيذ..."
           className="flex-1 min-w-64 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-11"
         />
         {isMobile && (
@@ -457,16 +548,6 @@ export default function DocumentsList() {
                 className="sm:w-44"
               />
             )}
-            {branches.length > 0 && (
-              <FilterSelect
-                value={branch}
-                onChange={(v) => { setBranch(v); setPage(1); }}
-                ariaLabel="فلترة الفرع"
-                allLabel="كل الفروع"
-                options={branches}
-                className="sm:w-44"
-              />
-            )}
             {canSeeAdministrativeBranch && administrativeBranches.length > 0 && (
               <FilterSelect
                 value={administrativeBranch}
@@ -474,6 +555,26 @@ export default function DocumentsList() {
                 ariaLabel="فلترة فرع الإدارة"
                 allLabel="كل فروع الإدارة"
                 options={administrativeBranches}
+                className="sm:w-44"
+              />
+            )}
+            {executedEntities.length > 0 && (
+              <FilterSelect
+                value={executedEntity}
+                onChange={(v) => { setExecutedEntity(v); setPage(1); }}
+                ariaLabel="فلترة الجهة العامة المنفذ عليها"
+                allLabel="كل الجهات العامة المنفذ عليها"
+                options={executedEntities}
+                className="sm:w-44"
+              />
+            )}
+            {publicEntityBranches.length > 0 && (
+              <FilterSelect
+                value={publicEntityBranch}
+                onChange={(v) => { setPublicEntityBranch(v); setPage(1); }}
+                ariaLabel="فلترة فرع الجهة العامة"
+                allLabel="كل فروع الجهات العامة"
+                options={publicEntityBranches}
                 className="sm:w-44"
               />
             )}
@@ -505,7 +606,7 @@ export default function DocumentsList() {
                     {fullName(d) || `مستند ${d.id}`}
                   </Link>
                   <div className="text-sm text-gray-600">
-                    {d.applicant || '—'} · {d.branchName || '—'} · {d.court || '—'}
+                    {[applicantName(d), entityBranchDisplay(d), d.court].filter(Boolean).join(' · ') || '—'}
                   </div>
                   {canSeeAssignedLawyer && (
                     <div className="text-xs text-gray-500 mt-1">
@@ -563,17 +664,26 @@ export default function DocumentsList() {
                         options={applicants}
                       />
                     </th>
-                    <th className="px-4 py-3 align-top w-[8%]">
+                    <th className="px-4 py-3 align-top w-[10%]">
                       <ColumnFilter
-                        label="الفرع"
-                        ariaLabel="فلترة الفرع"
-                        value={branch}
-                        onChange={(v) => { setBranch(v); setPage(1); }}
-                        allLabel="كل الفروع"
-                        options={branches}
+                        label="فرع الجهة العامة"
+                        ariaLabel="فلترة فرع الجهة العامة"
+                        value={publicEntityBranch}
+                        onChange={(v) => { setPublicEntityBranch(v); setPage(1); }}
+                        allLabel="كل فروع الجهات العامة"
+                        options={publicEntityBranches}
                       />
                     </th>
-                    <th className="px-4 py-3 align-top w-[14%]">المنفذ عليه</th>
+                    <th className="px-4 py-3 align-top w-[14%]">
+                      <ColumnFilter
+                        label="المنفذ عليه"
+                        ariaLabel="فلترة الجهة العامة المنفذ عليها"
+                        value={executedEntity}
+                        onChange={(v) => { setExecutedEntity(v); setPage(1); }}
+                        allLabel="كل الجهات العامة المنفذ عليها"
+                        options={executedEntities}
+                      />
+                    </th>
                     <th className="px-4 py-3 align-top w-[11%]">
                       <ColumnFilter
                         label="دائرة التنفيذ"
@@ -610,8 +720,8 @@ export default function DocumentsList() {
                       <td className="px-4 py-3">
                         <StatusBadge d={d} />
                       </td>
-                      <td className="px-4 py-3">{d.applicant || '—'}</td>
-                      <td className="px-4 py-3">{d.branchName || '—'}</td>
+                      <td className="px-4 py-3">{applicantName(d) || '—'}</td>
+                      <td className="px-4 py-3">{entityBranchDisplay(d) || '—'}</td>
                       <td className="px-4 py-3">
                         <Link to={`/documents/${d.id}`} className="inline-flex items-center min-h-11 text-emerald-800 font-bold hover:underline">
                           {fullName(d) || `مستند ${d.id}`}

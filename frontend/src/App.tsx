@@ -1,22 +1,28 @@
+import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthContext';
 import { useAuth } from './auth/useAuth';
 import ErrorBoundary from './components/ErrorBoundary';
 import Layout from './components/Layout';
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import DocumentsList from './pages/DocumentsList';
-import DeletedDocuments from './pages/DeletedDocuments';
-import StruckOffDocuments from './pages/StruckOffDocuments';
-import Rotation from './pages/Rotation';
-import DocumentForm from './pages/DocumentForm';
-import DocumentView from './pages/DocumentView';
-import UsersActivity from './pages/UsersActivity';
-import BranchLawyers from './pages/BranchLawyers';
-import UsersManagement from './pages/UsersManagement';
-import BranchesManagement from './pages/BranchesManagement';
-import AuditLogs from './pages/AuditLogs';
-import ChangePassword from './pages/ChangePassword';
+
+const Login = lazy(() => import('./pages/Login'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const DocumentsList = lazy(() => import('./pages/DocumentsList'));
+const DeletedDocuments = lazy(() => import('./pages/DeletedDocuments'));
+const StruckOffDocuments = lazy(() => import('./pages/StruckOffDocuments'));
+const Rotation = lazy(() => import('./pages/Rotation'));
+const DocumentForm = lazy(() => import('./pages/DocumentForm'));
+const DocumentView = lazy(() => import('./pages/DocumentView'));
+const UsersActivity = lazy(() => import('./pages/UsersActivity'));
+const BranchLawyers = lazy(() => import('./pages/BranchLawyers'));
+const UsersManagement = lazy(() => import('./pages/UsersManagement'));
+const BranchesManagement = lazy(() => import('./pages/BranchesManagement'));
+const AuditLogs = lazy(() => import('./pages/AuditLogs'));
+const ChangePassword = lazy(() => import('./pages/ChangePassword'));
+
+function PageLoader() {
+  return <div className="min-h-screen flex items-center justify-center text-gray-500">جارِ التحميل...</div>;
+}
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -27,11 +33,28 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function RequireRole({
+  allowed,
+  children,
+}: {
+  allowed: (role: string | undefined, hasFullAccess: boolean, isHead: boolean) => boolean;
+  children: React.ReactNode;
+}) {
+  const { user, hasFullAccess, isHead, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-500">جارِ التحميل...</div>;
+  if (!user || !allowed(user.role, hasFullAccess, isHead))
+    return <Navigate to="/" replace state={{ from: location }} />;
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
-        <Routes>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
           <Route path="/login" element={<Login />} />
           <Route
             element={
@@ -44,19 +67,62 @@ export default function App() {
             <Route path="/documents" element={<DocumentsList />} />
             <Route path="/documents/deleted" element={<DeletedDocuments />} />
             <Route path="/documents/struck-off" element={<StruckOffDocuments />} />
-            <Route path="/documents/rotate" element={<Rotation />} />
+            <Route
+              path="/documents/rotate"
+              element={
+                <RequireRole allowed={(role) => role === 'lawyer'}>
+                  <Rotation />
+                </RequireRole>
+              }
+            />
             <Route path="/documents/new" element={<DocumentForm />} />
             <Route path="/documents/:id" element={<DocumentView />} />
             <Route path="/documents/:id/edit" element={<DocumentForm />} />
-            <Route path="/branch-lawyers" element={<BranchLawyers />} />
-            <Route path="/users/manage" element={<UsersManagement />} />
-            <Route path="/branches/manage" element={<BranchesManagement />} />
-            <Route path="/users" element={<UsersActivity />} />
-            <Route path="/audit-logs" element={<AuditLogs />} />
+            <Route
+              path="/branch-lawyers"
+              element={
+                <RequireRole allowed={(role) => role === 'head' || role === 'admin'}>
+                  <BranchLawyers />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/users/manage"
+              element={
+                <RequireRole allowed={(role) => role === 'admin'}>
+                  <UsersManagement />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/branches/manage"
+              element={
+                <RequireRole allowed={(role) => role === 'admin'}>
+                  <BranchesManagement />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/users"
+              element={
+                <RequireRole allowed={(_role, hasFullAccess) => hasFullAccess}>
+                  <UsersActivity />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/audit-logs"
+              element={
+                <RequireRole allowed={(_role, hasFullAccess, isHead) => hasFullAccess || isHead}>
+                  <AuditLogs />
+                </RequireRole>
+              }
+            />
             <Route path="/change-password" element={<ChangePassword />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+          </Routes>
+        </Suspense>
       </AuthProvider>
     </ErrorBoundary>
   );

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { sanitizeRichText, richToPlainText } from '../utils/richText';
+import { normalizeArabicDigits } from '../utils/arabicDigits';
 import RichTextEditor from './RichTextEditor';
 import type { ExecutionActionDto } from '../types';
 
@@ -85,7 +86,7 @@ export default function ExecutionActionsModal({
       const payload = {
         type: targetType,
         text,
-        actionDate: actionDate || null,
+        actionDate: normalizeArabicDigits(actionDate) || null,
         reminderDuration: remind ? reminderDuration || null : null,
         reminderColor: remind ? reminderColor || null : null,
       };

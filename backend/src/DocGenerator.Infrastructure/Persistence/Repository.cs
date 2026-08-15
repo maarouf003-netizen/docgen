@@ -55,7 +55,11 @@ public class Repository<T> : IRepository<T> where T : class
                 .Include(d => ((Document)(object)d).ExecutedPublicEntities)
                 .Include(d => ((Document)(object)d).ExecutedNaturalPersons)
                 .ThenInclude(p => p.Heirs)
-                .Include(d => ((Document)(object)d).ExecutedHeirs);
+                .Include(d => ((Document)(object)d).ExecutedHeirs)
+                .Include(d => ((Document)(object)d).Occurrences)
+                .ThenInclude(o => o.CreatedBy)
+                .Include(d => ((Document)(object)d).ApplicantPublicEntities)
+                .Include(d => ((Document)(object)d).Assignments);
         }
         else if (typeof(T) == typeof(User))
         {

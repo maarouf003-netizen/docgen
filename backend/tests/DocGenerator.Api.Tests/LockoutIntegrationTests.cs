@@ -31,12 +31,7 @@ public class LockoutIntegrationTests : IClassFixture<ApiFactory>
     {
         var client = factory.CreateClient();
         var response = await client.PostAsJsonAsync("/api/auth/login", new { username, password });
-        string? token = null;
-        if (response.IsSuccessStatusCode)
-        {
-            using var doc = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-            token = doc.RootElement.GetProperty("token").GetString();
-        }
+        var token = ApiFactory.ExtractCookieValue(response, "docgen_token");
         return ((int)response.StatusCode, token);
     }
 

@@ -83,6 +83,20 @@ describe('Layout', () => {
     expect(screen.queryByRole('button', { name: 'فتح القائمة' })).not.toBeInTheDocument();
   });
 
+  it('يعرض النسر والهوية وبيانات المستخدم في الشريط الجانبي دون العلم', () => {
+    stubMatchMedia(false);
+    render(<Layout />);
+
+    expect(screen.getByAltText('شعار نسر صلاح الدين')).toBeInTheDocument();
+    expect(screen.queryByAltText('علم الجمهورية العربية السورية')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'مسار' })).toBeInTheDocument();
+    // شريط بيانات المستخدم ثابت ودائم الظهور في الصفحة الرئيسية.
+    expect(screen.getByText('أحمد الخطيب')).toBeInTheDocument();
+    expect(screen.getByText('محامي — دمشق')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'تسجيل الخروج' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'تغيير كلمة المرور' })).toBeInTheDocument();
+  });
+
   it('يعرض زر القائمة والتنقل السفلي على شاشة الموبايل', () => {
     stubMatchMedia(true);
     render(<Layout />);

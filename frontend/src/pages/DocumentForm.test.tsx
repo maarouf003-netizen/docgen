@@ -48,7 +48,10 @@ describe('DocumentForm', () => {
     borrowerFamily: 'الخطيب',
     amountNumeric: 0,
     amount2Numeric: 0,
+    amount3Numeric: 0,
     inclusionAmountNumeric: 0,
+    inclusionAmount2Numeric: 0,
+    inclusionAmount3Numeric: 0,
     viewCount: 0,
     printCount: 0,
     guarantors: [],
@@ -62,18 +65,49 @@ describe('DocumentForm', () => {
     paramsMock.id = '1';
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: doc });
     render(<DocumentForm />);
-    return screen.findByText('⚙️ تغيير الحالة');
+    return screen.findByText('📂 وقوعات الملف');
   }
 
-  it('يحوّل تسمية حقل عنوان المقترض إلى «الوكيل» عند اختيار «يمثله»', async () => {
+  async function renderExecutedEdit(doc: Partial<DocumentResponse>) {
+    paramsMock.id = '1';
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { ...mockDoc, ...doc } });
+    render(<DocumentForm />);
+    return screen.findByText('📋 حالة الملف');
+  }
+
+  it('يحوّل تسمية حقل عنوان المقترض إلى «الوكيل القانوني» عند اختيار «وكيله القانوني»', async () => {
     const user = userEvent.setup();
     render(<DocumentForm />);
 
     expect(screen.getByLabelText('العنوان')).toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText('نوع العنوان'), 'يمثله');
 
-    expect(screen.getByLabelText('الوكيل')).toBeInTheDocument();
+    expect(screen.getByLabelText('الوكيل القانوني')).toBeInTheDocument();
     expect(screen.queryByLabelText('العنوان')).not.toBeInTheDocument();
+  });
+
+  it('يوسّع حقل عنوان المقترض والكفيل عمودين ليستغلا الخلية الفارغة المجاورة', () => {
+    const { container } = render(<DocumentForm />);
+
+    const borrowerAddress = container.querySelector('#borrowerAddress') as HTMLElement;
+    expect(borrowerAddress.closest('.md\\:col-span-2')).toBeTruthy();
+
+    const guarantorCard = screen.getByText('كفيل 1').closest('.rounded-xl') as HTMLElement;
+    const guarantorAddress = Array.from(guarantorCard.querySelectorAll('input')).find(
+      (el) => el.previousElementSibling?.textContent === 'العنوان',
+    ) as HTMLElement;
+    expect(guarantorAddress.closest('.md\\:col-span-2')).toBeTruthy();
+  });
+
+  it('يحاذي زر «إضافة ممثل شرعي» إلى الجهة المقابلة (نهاية الصف) في قسمي المقترض والكفيل', () => {
+    render(<DocumentForm />);
+
+    const repButtons = screen.getAllByRole('button', { name: '＋ إضافة ممثل شرعي' });
+    expect(repButtons.length).toBeGreaterThan(0);
+    repButtons.forEach((btn) => {
+      const wrapper = btn.parentElement as HTMLElement;
+      expect(wrapper.className).toContain('justify-end');
+    });
   });
 
   it('يعرض أسماء الحقول بخط عريض في الإدخال الجديد', () => {
@@ -122,22 +156,85 @@ describe('DocumentForm', () => {
     expect(screen.getByText('👤 بيانات المقترض')).toBeInTheDocument();
     expect(screen.getByText('👥 الكفلاء')).toBeInTheDocument();
     expect(screen.getByText('كفيل 1')).toBeInTheDocument();
-    expect(screen.getByText('➕ إضافة كفيل')).toBeInTheDocument();
+    expect(screen.getByText('➕ إضافة كفيل (شخص طبيعي)')).toBeInTheDocument();
 
     expect(screen.queryByText('المتضمن')).not.toBeInTheDocument();
     expect(screen.queryByText(/المبلغ كتابة/)).not.toBeInTheDocument();
   });
 
-  it('يعرض الفرع ورقم/تاريخ كتاب الجهة العامة ورقم تحت رفع في المعلومات الأساسية', () => {
+  it('يخفي «فرع الملف» من النموذج (يُحفظ تلقائيًا) ويعرض «فرع الجهة» مع بقية حقول المعلومات الأساسية', () => {
     render(<DocumentForm />);
 
-    expect(screen.getByLabelText('الفرع')).toBeInTheDocument();
-    expect(screen.getByLabelText('الفرع')).not.toHaveAttribute('placeholder');
+    expect(screen.queryByLabelText('فرع الملف')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('فرع الجهة 1')).toBeInTheDocument();
+    expect(screen.getByLabelText('فرع الجهة 1')).toHaveAttribute('placeholder', 'فرع الجهة');
     expect(screen.getByLabelText('رقم كتاب الجهة العامة')).toBeInTheDocument();
     expect(screen.getByLabelText('تاريخ كتاب الجهة العامة')).toBeInTheDocument();
     expect(screen.getByLabelText('رقم تحت رفع')).toBeInTheDocument();
     expect(screen.getByLabelText('تاريخ قيد الملف')).toBeInTheDocument();
     expect(screen.getByLabelText('تاريخ إلقاء حجز المنظومة')).toBeInTheDocument();
+  });
+
+  it('يحفظ «فرع الملف» تلقائيًا من فرع المحامي دون إظهاره في النموذج', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({ user: { role: 'lawyer', branchName: 'الفرع الرئيسي - دمشق' } });
+    render(<DocumentForm />);
+
+    expect(screen.queryByLabelText('فرع الملف')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.branchName).toBe('الفرع الرئيسي - دمشق');
+  });
+
+  it('يملأ «المحافظة» للجهة الطالبة تلقائيًا من فرع المحامي ويبقى قابلاً للتعديل ويُرسل عند الحفظ', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({ user: { role: 'lawyer', branchName: 'الفرع الرئيسي - دمشق' } });
+    render(<DocumentForm />);
+
+    const governorate = screen.getByLabelText('المحافظة 1');
+    expect(governorate).toHaveValue('دمشق');
+
+    await user.clear(governorate);
+    await user.type(governorate, 'حلب');
+    await user.type(screen.getByLabelText('اسم الجهة 1'), 'المصرف التجاري السوري');
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+    const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.applicantPublicEntities).toEqual([
+      expect.objectContaining({ name: 'المصرف التجاري السوري', branch: '', governorate: 'حلب' }),
+    ]);
+  });
+
+  it('يملأ «المحافظة» تلقائيًا عند إضافة جهة جديدة طالبة للتنفيذ', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({ user: { role: 'lawyer', branchName: 'فرع حلب' } });
+    render(<DocumentForm />);
+
+    await user.click(screen.getByRole('button', { name: /إضافة جهة/ }));
+    expect(screen.getByLabelText('المحافظة 1')).toHaveValue('حلب');
+    expect(screen.getByLabelText('المحافظة 2')).toHaveValue('حلب');
+  });
+
+  it('يملأ «المحافظة» للجهة العامة المنفذ عليها تلقائيًا من فرع المحامي', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({ user: { role: 'lawyer', branchName: 'الفرع الرئيسي - دمشق' } });
+    render(<DocumentForm />);
+    await user.click(screen.getByLabelText('الجهة العامة منفذ عليها'));
+
+    const card = screen.getByText('جهة عامة 1').closest('.rounded-xl') as HTMLElement;
+    expect(within(card).getByDisplayValue('دمشق')).toBeInTheDocument();
+  });
+
+  it('يملأ «المحافظة» للشخص الاعتباري المنفذ عليه تلقائيًا من فرع المحامي', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({ user: { role: 'lawyer', branchName: 'فرع حلب' } });
+    render(<DocumentForm />);
+    await user.click(screen.getByLabelText('الجهة العامة منفذ عليها'));
+    await user.click(screen.getByRole('button', { name: '＋ إضافة شخص اعتباري' }));
+
+    const card = screen.getByText('شخص اعتباري 2').closest('.rounded-xl') as HTMLElement;
+    expect(within(card).getByDisplayValue('حلب')).toBeInTheDocument();
   });
 
   it('يرسل تاريخ قيد الملف مع بيانات الملف عند الحفظ', async () => {
@@ -224,7 +321,7 @@ describe('DocumentForm', () => {
     expect(screen.getByText('👤 بيانات المنفذ عليه')).toBeInTheDocument();
     expect(screen.getByText('👥 المنفذ عليهم الآخرون')).toBeInTheDocument();
     expect(screen.getByText('منفذ عليه 2')).toBeInTheDocument();
-    expect(screen.getByText('➕ إضافة منفذ عليه')).toBeInTheDocument();
+    expect(screen.getByText('➕ إضافة منفذ عليه (شخص طبيعي)')).toBeInTheDocument();
 
     await user.selectOptions(screen.getByLabelText('نوع السند'), 'مصرفي');
 
@@ -255,11 +352,12 @@ describe('DocumentForm', () => {
     render(<DocumentForm />);
 
     for (let i = 1; i < 4; i++) {
-      await user.click(screen.getByText('➕ إضافة كفيل'));
+      await user.click(screen.getByText('➕ إضافة كفيل (شخص طبيعي)'));
     }
 
-    const button = screen.getByRole('button', { name: /🛑 الحد الأقصى/ });
-    expect(button).toBeDisabled();
+    const buttons = screen.getAllByRole('button', { name: /🛑 الحد الأقصى/ });
+    expect(buttons.length).toBeGreaterThan(0);
+    buttons.forEach((b) => expect(b).toBeDisabled());
   });
 
   it('يعرض زر «إعادة تعيين» في الإدخال الجديد فقط', async () => {
@@ -269,114 +367,6 @@ describe('DocumentForm', () => {
 
     await renderEdit();
     expect(screen.queryByRole('button', { name: /إعادة تعيين/ })).not.toBeInTheDocument();
-  });
-
-  it('يعرض قسم «تغيير الحالة» فقط عند تعديل ملف موجود', async () => {
-    render(<DocumentForm />);
-    expect(screen.queryByText('⚙️ تغيير الحالة')).not.toBeInTheDocument();
-
-    await renderEdit();
-    expect(screen.getByLabelText('الحالة')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'حفظ الحالة' })).toBeInTheDocument();
-  });
-
-  it('يعرض حقول تغيير الحالة وفق الحالة المختارة في التعديل', async () => {
-    const user = userEvent.setup();
-    await renderEdit();
-
-    expect(screen.getByLabelText('نوع التنفيذ')).toBeInTheDocument();
-    expect(screen.getByLabelText('المبلغ المحصل')).toBeInTheDocument();
-    expect(screen.queryByText('رقم كتاب براءة الذمة')).not.toBeInTheDocument();
-
-    await user.selectOptions(screen.getByLabelText('الحالة'), 'منفذ بالتسوية');
-
-    expect(screen.getByText('رقم كتاب براءة الذمة')).toBeInTheDocument();
-    expect(screen.getByText('تاريخ كتاب براءة الذمة')).toBeInTheDocument();
-    expect(screen.getByText('رقم ورود كتاب براءة الذمة')).toBeInTheDocument();
-    expect(screen.getByText('تاريخ ورود كتاب براءة الذمة')).toBeInTheDocument();
-    expect(screen.getByLabelText('المبلغ المحصل')).toBeInTheDocument();
-
-    await user.selectOptions(screen.getByLabelText('الحالة'), 'تريث');
-
-    expect(screen.getByText('رقم كتاب التريث')).toBeInTheDocument();
-    expect(screen.getByText('تاريخ كتاب التريث')).toBeInTheDocument();
-    expect(screen.getByText('رقم ورود كتاب التريث')).toBeInTheDocument();
-    expect(screen.getByText('تاريخ ورود كتاب التريث')).toBeInTheDocument();
-    expect(screen.queryByText('المبلغ المحصل')).not.toBeInTheDocument();
-  });
-
-  it('يمنع تعيين تريث دون رقم وتاريخ كتاب التريث في التعديل', async () => {
-    const user = userEvent.setup();
-    await renderEdit();
-
-    await user.selectOptions(screen.getByLabelText('الحالة'), 'تريث');
-    await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
-
-    expect(screen.getByText('يجب إدخال رقم وتاريخ كتاب التريث على الأقل')).toBeInTheDocument();
-    expect(api.post).not.toHaveBeenCalled();
-  });
-
-  it('يمنع تعيين منفذ بالتسوية دون رقم وتاريخ كتاب براءة الذمة في التعديل', async () => {
-    const user = userEvent.setup();
-    await renderEdit();
-
-    await user.selectOptions(screen.getByLabelText('الحالة'), 'منفذ بالتسوية');
-    await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
-
-    expect(screen.getByText('يجب إدخال رقم وتاريخ كتاب براءة الذمة على الأقل')).toBeInTheDocument();
-    expect(api.post).not.toHaveBeenCalled();
-  });
-
-  it('يرسل حقول براءة الذمة عند تعيين منفذ بالتسوية مكتمل في التعديل', async () => {
-    const user = userEvent.setup();
-    await renderEdit();
-
-    await user.selectOptions(screen.getByLabelText('الحالة'), 'منفذ بالتسوية');
-    await user.type(screen.getByLabelText('رقم كتاب براءة الذمة'), '77');
-    await user.type(screen.getByLabelText('تاريخ كتاب براءة الذمة'), '1/1/2024');
-    await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
-
-    expect(api.post).toHaveBeenCalledWith('/documents/1/status', {
-      status: 'منفذ بالتسوية',
-      fields: { baraetNumber: '77', baraetDate: '1/1/2024' },
-    });
-  });
-
-  it('يرسل نوع التنفيذ والمبلغ المحصل عند تعيين منفذ جبريا كاملا في التعديل', async () => {
-    const user = userEvent.setup();
-    await renderEdit();
-
-    await user.type(screen.getByLabelText('المبلغ المحصل'), '750');
-    await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
-
-    expect(api.post).toHaveBeenCalledWith('/documents/1/status', {
-      status: 'منفذ جبريا',
-      fields: { execSubStatus: 'منفذ كاملا', collectedAmount: '750' },
-    });
-  });
-
-  it('يرسل نوع التنفيذ الفرعي والمبلغ المحصل عند تحديث حالة «منفذ جبريا» في التعديل', async () => {
-    const user = userEvent.setup();
-    await renderEdit();
-
-    await user.selectOptions(screen.getByLabelText('نوع التنفيذ'), 'منفذ جزئيا');
-    await user.type(screen.getByLabelText('المبلغ المحصل'), '750');
-    await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
-
-    expect(api.post).toHaveBeenCalledWith('/documents/1/status', {
-      status: 'منفذ جبريا',
-      fields: { execSubStatus: 'منفذ جزئيا', collectedAmount: '750' },
-    });
-  });
-
-  it('يعرض زر «إلغاء الحالة» فقط عند وجود حالة سابقة ويستدعي cancel-status', async () => {
-    const user = userEvent.setup();
-    await renderEdit({ ...mockDoc, execStatus: 'منفذ جبريا', execSubStatus: 'منفذ جزئيا', collectedAmount: 500 });
-
-    expect(screen.getByRole('button', { name: 'إلغاء الحالة' })).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'إلغاء الحالة' }));
-    expect(api.post).toHaveBeenCalledWith('/documents/1/cancel-status');
   });
 
   it('يرسل الإجراءات المطلوب إضافتها كإجراء بتاريخ اليوم في initialActions عند الحفظ', async () => {
@@ -449,9 +439,16 @@ describe('DocumentForm', () => {
     await user.type(screen.getByLabelText('الاسم'), 'أحمد');
     await user.click(screen.getAllByRole('button', { name: '＋ إضافة وريث' })[0]);
 
-    const heirName = screen.getByLabelText('الاسم الثلاثي للوريث');
-    await user.type(heirName, 'محمود الحلبي');
+    const heirName = screen.getByLabelText('اسم الوريث');
+    await user.type(heirName, 'محمود');
+    await user.type(screen.getByLabelText('اسم أب الوريث'), 'خالد');
     const heirRow = heirName.closest('.grid') as HTMLElement;
+    await user.type(
+      Array.from(heirRow.querySelectorAll('input')).find(
+        (el) => el.previousElementSibling?.textContent === 'النسبة',
+      ) as HTMLInputElement,
+      'الحلبي',
+    );
     const heirAddress = Array.from(heirRow.querySelectorAll('input')).find(
       (el) => el.previousElementSibling?.textContent === 'العنوان',
     ) as HTMLInputElement;
@@ -460,7 +457,9 @@ describe('DocumentForm', () => {
     await user.click(screen.getByRole('button', { name: /حفظ/ }));
 
     const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
-    expect(payload.borrowerHeirs).toEqual([{ name: 'محمود الحلبي', addressType: 'عنوان', address: 'المزة' }]);
+    expect(payload.borrowerHeirs).toEqual([
+      { name: 'محمود', father: 'خالد', family: 'الحلبي', capacity: 'أصالة', addressType: 'عنوان', address: 'المزة' },
+    ]);
   });
 
   it('يرسل ورثة الكفيل مع بيانات الكفيل عند الحفظ', async () => {
@@ -474,13 +473,16 @@ describe('DocumentForm', () => {
     await user.type(gName, 'سمير');
 
     await user.click(within(card).getByRole('button', { name: '＋ إضافة وريث' }));
-    await user.type(within(card).getByLabelText('الاسم الثلاثي للوريث'), 'فارس الخالد');
+    await user.type(within(card).getByLabelText('اسم الوريث'), 'فارس');
+    await user.type(within(card).getByLabelText('النسبة'), 'الخالد');
 
     await user.click(screen.getByRole('button', { name: /حفظ/ }));
 
     const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
     const guarantors = payload.guarantors as { heirs: unknown[] }[];
-    expect(guarantors[0].heirs).toEqual([{ name: 'فارس الخالد', addressType: 'عنوان', address: '' }]);
+    expect(guarantors[0].heirs).toEqual([
+      { name: 'فارس', father: '', family: 'الخالد', capacity: 'أصالة', addressType: 'عنوان', address: '' },
+    ]);
   });
 
   it('يتجاهل ورثة بلا اسم ثلاثي عند الحفظ', async () => {
@@ -496,21 +498,21 @@ describe('DocumentForm', () => {
     expect(payload.borrowerHeirs).toEqual([]);
   });
 
-  it('يبدّل تسمية حقل الوريث بين «العنوان» و«الوكيل»', async () => {
+  it('يبدّل تسمية حقل الوريث بين «العنوان» و«الوكيل القانوني»', async () => {
     const user = userEvent.setup();
     render(<DocumentForm />);
 
     await user.click(screen.getAllByRole('button', { name: '＋ إضافة وريث' })[0]);
 
-    const heirName = screen.getByLabelText('الاسم الثلاثي للوريث');
+    const heirName = screen.getByLabelText('اسم الوريث');
     const heirRow = heirName.closest('.grid') as HTMLElement;
-    const typeSelect = heirRow.querySelector('select') as HTMLSelectElement;
+    const typeSelect = within(heirRow).getByLabelText('نوع العنوان') as HTMLSelectElement;
 
     expect(Array.from(heirRow.querySelectorAll('input')).some((el) => el.previousElementSibling?.textContent === 'العنوان')).toBe(true);
 
     await user.selectOptions(typeSelect, 'وكيل');
 
-    expect(Array.from(heirRow.querySelectorAll('input')).some((el) => el.previousElementSibling?.textContent === 'الوكيل')).toBe(true);
+    expect(Array.from(heirRow.querySelectorAll('input')).some((el) => el.previousElementSibling?.textContent === 'الوكيل القانوني')).toBe(true);
   });
 
   it('يعرض ورثة المقترض والكفيل المحفوظة عند التعديل', async () => {
@@ -532,11 +534,11 @@ describe('DocumentForm', () => {
     };
     await renderEdit(docWithHeirs);
 
-    expect(screen.getAllByLabelText('الاسم الثلاثي للوريث')[0]).toHaveValue('محمود الحلبي');
+    expect(screen.getAllByLabelText('اسم الوريث')[0]).toHaveValue('محمود الحلبي');
 
     const card = screen.getByText('كفيل 1').closest('.rounded-xl') as HTMLElement;
-    expect(within(card).getByLabelText('الاسم الثلاثي للوريث')).toHaveValue('فارس الخالد');
-    expect(within(card).getByLabelText('الوكيل')).toHaveValue('المحامي سامر');
+    expect(within(card).getByLabelText('اسم الوريث')).toHaveValue('فارس الخالد');
+    expect(within(card).getByLabelText('الوكيل القانوني')).toHaveValue('المحامي سامر');
   });
 
   it('يعرض ورثة المقترض في قائمة مالكي العقار ويُرسل المختارين عند الحفظ', async () => {
@@ -546,7 +548,15 @@ describe('DocumentForm', () => {
     await user.type(screen.getByLabelText('الاسم'), 'أحمد');
     await user.type(screen.getByLabelText('النسبة'), 'الخطيب');
     await user.click(screen.getAllByRole('button', { name: '＋ إضافة وريث' })[0]);
-    await user.type(screen.getByLabelText('الاسم الثلاثي للوريث'), 'محمود الحلبي');
+    const heirName = screen.getByLabelText('اسم الوريث');
+    await user.type(heirName, 'محمود');
+    const heirRow = heirName.closest('.grid') as HTMLElement;
+    await user.type(
+      Array.from(heirRow.querySelectorAll('input')).find(
+        (el) => el.previousElementSibling?.textContent === 'النسبة',
+      ) as HTMLInputElement,
+      'الحلبي',
+    );
 
     await user.click(screen.getByRole('button', { name: /🏡 إضافة عقار/ }));
 
@@ -709,11 +719,12 @@ describe('DocumentForm', () => {
     await selectExecutedSide(user);
 
     expect(screen.getByText('📄 بيانات السند التنفيذي')).toBeInTheDocument();
-    expect(screen.getByText('المبلغ المطلوب دفعه من الجهة العامة')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '➕ إضافة مبلغ' })).toBeInTheDocument();
     expect(screen.getByText('👤 طالب التنفيذ')).toBeInTheDocument();
     expect(screen.getByText('🏛️ المنفذ عليه')).toBeInTheDocument();
     expect(screen.getByText('📋 حالة الملف')).toBeInTheDocument();
-    expect(screen.getByLabelText('تاريخ ورود الملف')).toBeInTheDocument();
+    expect(screen.getByLabelText('رقم ورود الإخطار التنفيذي')).toBeInTheDocument();
+    expect(screen.getByLabelText('تاريخ ورود الاخطار')).toBeInTheDocument();
     expect(screen.getByLabelText('المحكمة مصدرة القرار')).toBeInTheDocument();
 
     expect(screen.queryByLabelText('تاريخ قيد الملف')).not.toBeInTheDocument();
@@ -721,18 +732,31 @@ describe('DocumentForm', () => {
     expect(screen.queryByText('اكتب ما تم من اجراءات لإضافتها الى الإخطار التنفيذي')).not.toBeInTheDocument();
   });
 
+  it('يعرض زر «إضافة طالب عرض» بلا «أل» في وضع «عرض وايداع» مع بقاء عنوان القسم «طالب العرض»', async () => {
+    const user = userEvent.setup();
+    await selectExecutedSide(user);
+    await user.click(screen.getByLabelText('عرض وايداع'));
+
+    expect(screen.getByRole('button', { name: '＋ إضافة طالب عرض (شخص طبيعي)' })).toBeInTheDocument();
+    expect(screen.getByText('👤 طالب العرض')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '＋ إضافة طالب التنفيذ (شخص طبيعي)' })).not.toBeInTheDocument();
+  });
+
   it('يرسل بيانات وضع «منفذ عليه» (الملف والسند والمبالغ وحالة الملف) عند الحفظ', async () => {
+    // اختبار تكاملي طويل (تعبئة كاملة + حفظ) يتجاوز مهلة الاختبار الافتراضية في بعض البيئات.
     const user = userEvent.setup();
     await selectExecutedSide(user);
 
     await user.type(screen.getByLabelText('دائرة التنفيذ'), 'دمشق');
     await user.type(screen.getByLabelText('رقم الملف'), '55');
     await user.selectOptions(screen.getByLabelText('سنة الملف'), '2026');
-    await user.type(screen.getByLabelText('تاريخ ورود الملف'), '1/8/2026');
+    await user.type(screen.getByLabelText('رقم ورود الإخطار التنفيذي'), '77');
+    await user.type(screen.getByLabelText('تاريخ ورود الاخطار'), '1/8/2026');
     await user.type(screen.getByLabelText('المحكمة مصدرة القرار'), 'محكمة التنفيذ');
     await user.type(screen.getByLabelText('رقم القرار'), '101');
     fireEvent.change(screen.getByLabelText('تاريخ القرار'), { target: { value: '2026-07-15' } });
     await user.type(screen.getByLabelText('المتضمن'), 'خلاصة القرار');
+    await user.click(screen.getByRole('button', { name: '➕ إضافة مبلغ' }));
     await user.type(screen.getByLabelText('المبلغ المطلوب دفعه من الجهة العامة'), '5000');
     const applicantCard = screen.getByText('طالب التنفيذ 1').closest('.rounded-xl') as HTMLElement;
     await user.type(applicantCard.querySelector('input') as HTMLInputElement, 'سليم');
@@ -745,12 +769,16 @@ describe('DocumentForm', () => {
     await user.click(screen.getByRole('button', { name: /حفظ/ }));
 
     const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.fileReceiptNumber).toBe('77');
     expect(payload.fileReceiptDate).toBe('1/8/2026');
     expect(payload.contractType).toBe('محكمة التنفيذ');
     expect(payload.contractNumber).toBe('101');
     expect(payload.contractDate).toBe('2026-07-15');
     expect(payload.inclusionText).toBe('خلاصة القرار');
     expect(payload.executedRequiredAmount).toBe(5000);
+    expect(payload.executedRequiredCurrency).toBe('ليرة سورية');
+    expect(payload.executedRequiredAmount2).toBeUndefined();
+    expect(payload.executedRequiredAmount3).toBeUndefined();
     expect(payload.executedStatus).toBe('منفذ');
     expect(payload.executedDescription).toBe('تم التحصيل');
     expect(payload.executedPaidAmount).toBe(2000);
@@ -758,6 +786,90 @@ describe('DocumentForm', () => {
     expect(payload.guarantors).toEqual([]);
     expect(payload.borrowerHeirs).toEqual([]);
     expect(payload.realEstates).toEqual([]);
+  }, 12000);
+
+  it('يرسل حتى ثلاثة مبالغ مطلوب دفعها بعملاتها عند إضافة خانات جديدة', async () => {
+    const user = userEvent.setup();
+    await selectExecutedSide(user);
+
+    await user.type(screen.getByLabelText('رقم الملف'), '55');
+    await user.selectOptions(screen.getByLabelText('سنة الملف'), '2026');
+
+    await user.click(screen.getByRole('button', { name: '➕ إضافة مبلغ' }));
+    await user.type(screen.getByLabelText('المبلغ المطلوب دفعه من الجهة العامة'), '5000');
+    await user.selectOptions(screen.getByLabelText('العملة'), 'دولار أمريكي');
+
+    await user.click(screen.getByRole('button', { name: '➕ مبلغ آخر' }));
+    await user.type(screen.getByLabelText('المبلغ المطلوب 2'), '3000');
+    await user.selectOptions(screen.getAllByLabelText('العملة')[1], 'يورو');
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.executedRequiredAmount).toBe(5000);
+    expect(payload.executedRequiredCurrency).toBe('دولار أمريكي');
+    expect(payload.executedRequiredAmount2).toBe(3000);
+    expect(payload.executedRequiredCurrency2).toBe('يورو');
+    expect(payload.executedRequiredAmount3).toBeUndefined();
+  });
+
+  it('لا يسمح بإضافة أكثر من ثلاثة مبالغ مطلوب دفعها', async () => {
+    const user = userEvent.setup();
+    await selectExecutedSide(user);
+
+    await user.click(screen.getByRole('button', { name: '➕ إضافة مبلغ' }));
+    await user.click(screen.getByRole('button', { name: '➕ مبلغ آخر' }));
+    await user.click(screen.getByRole('button', { name: '➕ مبلغ آخر' }));
+
+    expect(screen.queryByRole('button', { name: '➕ مبلغ آخر' })).not.toBeInTheDocument();
+    expect(screen.getByText('المبلغ المطلوب 3')).toBeInTheDocument();
+  });
+
+  it('يستثني عملة المبلغ الأول من خيارات عملتي المبلغين الثاني والثالث', async () => {
+    const user = userEvent.setup();
+    await selectExecutedSide(user);
+
+    await user.click(screen.getByRole('button', { name: '➕ إضافة مبلغ' }));
+    await user.selectOptions(screen.getByLabelText('العملة'), 'دولار أمريكي');
+    await user.click(screen.getByRole('button', { name: '➕ مبلغ آخر' }));
+    await user.click(screen.getByRole('button', { name: '➕ مبلغ آخر' }));
+
+    const second = screen.getAllByLabelText('العملة')[1] as HTMLSelectElement;
+    const third = screen.getAllByLabelText('العملة')[2] as HTMLSelectElement;
+    expect([...second.options].map((o) => o.textContent)).toEqual(['ليرة سورية', 'يورو']);
+    expect([...third.options].map((o) => o.textContent)).toEqual(['يورو']);
+  });
+
+  it('يفترض عملة غير مستعملة للخانة اللاحقة ويعيد ضبطها تلقائيًا عند تعارض العملات', async () => {
+    const user = userEvent.setup();
+    await selectExecutedSide(user);
+
+    await user.click(screen.getByRole('button', { name: '➕ إضافة مبلغ' }));
+    await user.click(screen.getByRole('button', { name: '➕ مبلغ آخر' }));
+
+    expect(screen.getAllByLabelText('العملة')[1]).toHaveValue('دولار أمريكي');
+
+    await user.selectOptions(screen.getAllByLabelText('العملة')[1], 'يورو');
+    await user.selectOptions(screen.getAllByLabelText('العملة')[0], 'يورو');
+
+    expect(screen.getAllByLabelText('العملة')[0]).toHaveValue('يورو');
+    expect(screen.getAllByLabelText('العملة')[1]).toHaveValue('ليرة سورية');
+  });
+
+  it('يعيد عرض المبالغ المطلوب دفعها المحفوظة بعملاتها عند التعديل', async () => {
+    await renderEdit({
+      ...mockDoc,
+      generalEntitySide: 'executed',
+      executedRequiredAmount: 5000,
+      executedRequiredCurrency: 'دولار أمريكي',
+      executedRequiredAmount2: 3000,
+      executedRequiredCurrency2: 'يورو',
+    });
+
+    expect(screen.getByLabelText('المبلغ المطلوب دفعه من الجهة العامة')).toHaveValue(5000);
+    expect(screen.getAllByLabelText('العملة')[0]).toHaveValue('دولار أمريكي');
+    expect(screen.getByLabelText('المبلغ المطلوب 2')).toHaveValue(3000);
+    expect(screen.getAllByLabelText('العملة')[1]).toHaveValue('يورو');
   });
 
   it('يرسل تاريخ الشطب عند اختيار «مشطوب» في حالة الملف', async () => {
@@ -785,5 +897,483 @@ describe('DocumentForm', () => {
 
     expect(screen.getByText('ملف «الجهة العامة منفذ عليها» يجب أن يكون مقيدًا برقم وسنة الملف')).toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('يعرض حقول التجديد عند تعديل ملف مشطوب واختيار «متداول»', async () => {
+    await renderExecutedEdit({
+      generalEntitySide: 'executed',
+      executedStatus: 'مشطوب',
+      struckOffDate: '2026-08-01',
+      fileNumber: '55',
+      fileYear: '2026',
+    });
+
+    expect(screen.queryByLabelText(/رقم الملف الجديد/)).not.toBeInTheDocument();
+
+    await userEvent
+      .setup()
+      .selectOptions(screen.getByLabelText('الحالة'), 'متداول');
+
+    expect(screen.getByLabelText(/رقم الملف الجديد/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/رقم ورود اخطار التجديد/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/تاريخ ورود اخطار التجديد/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/نوع الملف الجديد/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/تاريخ التجديد/)).toBeInTheDocument();
+  });
+
+  it('لا يعرض حقول التجديد عند تعديل ملف مشطوب والإبقاء على «مشطوب»', async () => {
+    await renderExecutedEdit({
+      generalEntitySide: 'executed',
+      executedStatus: 'مشطوب',
+      struckOffDate: '2026-08-01',
+      fileNumber: '55',
+      fileYear: '2026',
+    });
+
+    expect(screen.getByLabelText('تاريخ الشطب')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/رقم الملف الجديد/)).not.toBeInTheDocument();
+  });
+
+  it('يمنع الحفظ عند انتقال ملف مشطوب إلى متداول دون رقم الملف الجديد', async () => {
+    const user = userEvent.setup();
+    await renderExecutedEdit({
+      generalEntitySide: 'executed',
+      executedStatus: 'مشطوب',
+      struckOffDate: '2026-08-01',
+      fileNumber: '55',
+      fileYear: '2026',
+    });
+
+    await user.selectOptions(screen.getByLabelText('الحالة'), 'متداول');
+    await user.click(screen.getByRole('button', { name: /حفظ التعديلات/ }));
+
+    expect(screen.getByText('رقم الملف الجديد مطلوب عند إعادة الملف المشطوب إلى المتداول')).toBeInTheDocument();
+    expect(api.put).not.toHaveBeenCalled();
+  });
+
+  it('يرسل رقم الملف الجديد وبيانات التجديد عند إعادة ملف مشطوب إلى متداول', async () => {
+    const user = userEvent.setup();
+    await renderExecutedEdit({
+      generalEntitySide: 'executed',
+      executedStatus: 'مشطوب',
+      struckOffDate: '2026-08-01',
+      fileNumber: '55',
+      fileYear: '2026',
+    });
+
+    await user.selectOptions(screen.getByLabelText('الحالة'), 'متداول');
+    await user.type(screen.getByLabelText(/رقم الملف الجديد/), '100');
+    await user.type(screen.getByLabelText(/نوع الملف الجديد/), 'حقوقي');
+    await user.type(screen.getByLabelText(/تاريخ التجديد/), '1/8/2026');
+    await user.click(screen.getByRole('button', { name: /حفظ التعديلات/ }));
+
+    const [, payload] = vi.mocked(api.put).mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.executedStatus).toBe('');
+    expect(payload.renewalFileNumber).toBe('100');
+    expect(payload.renewalFileType).toBe('حقوقي');
+    expect(payload.renewalDate).toBe('1/8/2026');
+  });
+
+  it('يرسل حتى ثلاثة مبالغ مصرفية بعملاتها الافتراضية عند إضافة خانات جديدة', async () => {
+    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    await user.type(screen.getByLabelText('المبلغ المطالب به'), '1000');
+    await user.click(screen.getByRole('button', { name: '➕ مبلغ آخر' }));
+    await user.type(screen.getByLabelText('المبلغ الثاني'), '2000');
+    await user.click(screen.getByRole('button', { name: '➕ مبلغ آخر' }));
+    await user.type(screen.getByLabelText('المبلغ الثالث'), '3000');
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.amountNumeric).toBe(1000);
+    expect(payload.currency).toBe('ليرة سورية');
+    expect(payload.amount2Numeric).toBe(2000);
+    expect(payload.currency2).toBe('دولار أمريكي');
+    expect(payload.amount3Numeric).toBe(3000);
+    expect(payload.currency3).toBe('يورو');
+  });
+
+  it('يستثني عملتي المبلغين الأولين من خيارات عملة المبلغ الثالث المصرفي', async () => {
+    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    await user.type(screen.getByLabelText('المبلغ المطالب به'), '1000');
+    await user.selectOptions(screen.getByLabelText('العملة'), 'يورو');
+    await user.click(screen.getByRole('button', { name: '➕ مبلغ آخر' }));
+    await user.click(screen.getByRole('button', { name: '➕ مبلغ آخر' }));
+
+    const third = screen.getAllByLabelText('العملة')[2] as HTMLSelectElement;
+    expect([...third.options].map((o) => o.textContent)).toEqual(['ليرة سورية']);
+    expect(third).toHaveValue('ليرة سورية');
+  });
+
+  it('يعيد عرض المبالغ المصرفية الثلاثة المحفوظة بعملاتها عند التعديل', async () => {
+    await renderEdit({
+      ...mockDoc,
+      amountNumeric: 1000,
+      currency: 'ليرة سورية',
+      amount2Numeric: 2000,
+      currency2: 'دولار أمريكي',
+      amount3Numeric: 3000,
+      currency3: 'يورو',
+    });
+
+    expect(screen.getByLabelText('المبلغ المطالب به')).toHaveValue(1000);
+    expect(screen.getAllByLabelText('العملة')[0]).toHaveValue('ليرة سورية');
+    expect(screen.getByLabelText('المبلغ الثاني')).toHaveValue(2000);
+    expect(screen.getAllByLabelText('العملة')[1]).toHaveValue('دولار أمريكي');
+    expect(screen.getByLabelText('المبلغ الثالث')).toHaveValue(3000);
+    expect(screen.getAllByLabelText('العملة')[2]).toHaveValue('يورو');
+  });
+
+  it('يرسل حتى ثلاثة مبالغ عادية (المتضمن) بعملاتها عند إضافة خانات جديدة', async () => {
+    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    await user.selectOptions(screen.getByLabelText('نوع السند'), 'عادي');
+    await user.click(screen.getByRole('button', { name: '➕ إضافة مبلغ' }));
+    await user.type(screen.getByLabelText('المبلغ'), '500');
+    await user.click(screen.getByRole('button', { name: '➕ مبلغ آخر' }));
+    await user.type(screen.getByLabelText('المبلغ 2'), '600');
+    await user.click(screen.getByRole('button', { name: '➕ مبلغ آخر' }));
+    await user.type(screen.getByLabelText('المبلغ 3'), '700');
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.inclusionAmountNumeric).toBe(500);
+    expect(payload.inclusionCurrency).toBe('ليرة سورية');
+    expect(payload.inclusionAmount2Numeric).toBe(600);
+    expect(payload.inclusionCurrency2).toBe('دولار أمريكي');
+    expect(payload.inclusionAmount3Numeric).toBe(700);
+    expect(payload.inclusionCurrency3).toBe('يورو');
+  });
+
+  it('يعيد عرض المبالغ العادية الثلاثة المحفوظة بعملاتها عند التعديل', async () => {
+    await renderEdit({
+      ...mockDoc,
+      contractTypeSelector: 'عادي',
+      inclusionAmountNumeric: 500,
+      inclusionAmount2Numeric: 600,
+      inclusionCurrency2: 'يورو',
+      inclusionAmount3Numeric: 700,
+      inclusionCurrency3: 'دولار أمريكي',
+    });
+
+    expect(screen.getByLabelText('المبلغ')).toHaveValue(500);
+    expect(screen.getAllByLabelText('العملة')[0]).toHaveValue('ليرة سورية');
+    expect(screen.getByLabelText('المبلغ 2')).toHaveValue(600);
+    expect(screen.getAllByLabelText('العملة')[1]).toHaveValue('يورو');
+    expect(screen.getByLabelText('المبلغ 3')).toHaveValue(700);
+    expect(screen.getAllByLabelText('العملة')[2]).toHaveValue('دولار أمريكي');
+  });
+
+  it('يُظهر حقول «الممثل الشرعي» للمقترض ويخفي حقل عنوانه ويُرسل بياناته', async () => {
+    const user = userEvent.setup();
+    const { container } = render(<DocumentForm />);
+
+    expect(container.querySelector('#borrowerAddress')).toBeTruthy();
+
+    await user.click(screen.getAllByRole('button', { name: '＋ إضافة ممثل شرعي' })[0]);
+
+    expect(container.querySelector('#borrowerAddress')).toBeNull();
+    expect(screen.getByLabelText('اسم الممثل الشرعي')).toBeInTheDocument();
+    expect(screen.getByLabelText('صفة الممثل الشرعي')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('اسم الممثل الشرعي'), 'الولي');
+    await user.type(screen.getByLabelText('اسم أب الممثل الشرعي'), 'أب');
+    await user.selectOptions(screen.getByLabelText('صفة الممثل الشرعي'), 'ولي');
+    await user.selectOptions(screen.getByLabelText('نوع العنوان'), 'وكيل قانوني');
+    await user.type(screen.getByLabelText('الوكيل القانوني'), 'المحامي سامر');
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.borrowerRepresentativeName).toBe('الولي');
+    expect(payload.borrowerRepresentativeFather).toBe('أب');
+    expect(payload.borrowerRepresentativeCapacity).toBe('ولي');
+    expect(payload.borrowerRepresentativeAddressType).toBe('وكيل قانوني');
+    expect(payload.borrowerRepresentativeAddress).toBe('المحامي سامر');
+    expect(payload.borrowerAddressType).toBe('');
+    expect(payload.borrowerAddress).toBe('');
+  });
+
+  it('يخفي حقل عنوان المقترض عند إضافة وريث', async () => {
+    const user = userEvent.setup();
+    const { container } = render(<DocumentForm />);
+
+    expect(container.querySelector('#borrowerAddress')).toBeTruthy();
+
+    await user.click(screen.getAllByRole('button', { name: '＋ إضافة وريث' })[0]);
+
+    expect(container.querySelector('#borrowerAddress')).toBeNull();
+  });
+
+  it('يعرض قائمة «صفة الوريث» للوريث ويُرسل صفته عند الحفظ', async () => {
+    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    await user.type(screen.getByLabelText('الاسم'), 'أحمد');
+    await user.click(screen.getAllByRole('button', { name: '＋ إضافة وريث' })[0]);
+    await user.type(screen.getByLabelText('اسم الوريث'), 'محمود');
+
+    await user.selectOptions(screen.getByLabelText('صفة الوريث'), 'إضافة لتركة');
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.borrowerHeirs).toEqual([
+      { name: 'محمود', father: '', family: '', capacity: 'إضافة لتركة', addressType: 'عنوان', address: '' },
+    ]);
+  });
+
+  it('يُرسل بيانات «الممثل الشرعي» للكفيل ويصفّر عنوان الكفيل', async () => {
+    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    const card = screen.getByText('كفيل 1').closest('.rounded-xl') as HTMLElement;
+    const gName = Array.from(card.querySelectorAll('input')).find(
+      (el) => el.previousElementSibling?.textContent === 'الاسم',
+    ) as HTMLInputElement;
+    await user.type(gName, 'سمير');
+
+    await user.click(within(card).getByRole('button', { name: '＋ إضافة ممثل شرعي' }));
+    await user.type(within(card).getByLabelText('اسم الممثل الشرعي'), 'الوصي');
+    await user.selectOptions(within(card).getByLabelText('صفة الممثل الشرعي'), 'وصي');
+    await user.selectOptions(within(card).getByLabelText('نوع العنوان'), 'موطن مختار');
+    await user.type(within(card).getByLabelText('الموطن المختار'), 'دمشق');
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
+    const guarantors = payload.guarantors as Record<string, unknown>[];
+    expect(guarantors[0].representativeName).toBe('الوصي');
+    expect(guarantors[0].representativeCapacity).toBe('وصي');
+    expect(guarantors[0].representativeAddressType).toBe('موطن مختار');
+    expect(guarantors[0].representativeAddress).toBe('دمشق');
+    expect(guarantors[0].addressType).toBe('');
+    expect(guarantors[0].address).toBe('');
+  });
+
+  it('يعرض حقول المورث عند «أصالة وإضافة» ويظهر ممثل شرعي عند الإضافة', async () => {
+    const user = userEvent.setup();
+    await selectExecutedSide(user);
+
+    const applicantCard = screen.getByText('طالب التنفيذ 1').closest('.rounded-xl') as HTMLElement;
+
+    expect(within(applicantCard).queryByText('اسم المورث المتوفى')).not.toBeInTheDocument();
+
+    await user.selectOptions(within(applicantCard).getAllByRole('combobox')[1], 'أصالة وإضافة');
+    expect(within(applicantCard).getByText('اسم المورث المتوفى')).toBeInTheDocument();
+
+    await user.click(within(applicantCard).getByRole('button', { name: '＋ إضافة ممثل شرعي' }));
+    expect(within(applicantCard).getByLabelText('اسم الممثل الشرعي')).toBeInTheDocument();
+    expect(within(applicantCard).getByLabelText('صفة الممثل الشرعي')).toBeInTheDocument();
+    expect(within(applicantCard).getByLabelText('الوكيل القانوني')).toBeInTheDocument();
+  });
+
+  it('يُرسل بيانات «الممثل الشرعي» للشخص الطبيعي عند الحفظ', async () => {
+    const user = userEvent.setup();
+    await selectExecutedSide(user);
+
+    await user.type(screen.getByLabelText('رقم الملف'), '55');
+    await user.selectOptions(screen.getByLabelText('سنة الملف'), '2026');
+
+    await user.click(screen.getByRole('button', { name: '＋ إضافة شخص طبيعي' }));
+
+    const personCard = screen.getByText('شخص طبيعي 1').closest('.rounded-xl') as HTMLElement;
+    await user.type(personCard.querySelector('input') as HTMLInputElement, 'سامر');
+    await user.click(within(personCard).getByRole('button', { name: '＋ إضافة ممثل شرعي' }));
+    await user.type(within(personCard).getByLabelText('اسم الممثل الشرعي'), 'الولي');
+    await user.selectOptions(within(personCard).getByLabelText('صفة الممثل الشرعي'), 'ولي');
+    await user.selectOptions(within(personCard).getByLabelText('نوع العنوان'), 'عنوان');
+    await user.type(within(personCard).getByLabelText('العنوان'), 'حلب');
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
+    const persons = payload.executedNaturalPersons as Record<string, unknown>[];
+    expect(persons[0].name).toBe('سامر');
+    expect(persons[0].representativeName).toBe('الولي');
+    expect(persons[0].representativeCapacity).toBe('ولي');
+    expect(persons[0].representativeAddressType).toBe('عنوان');
+    expect(persons[0].representativeAddress).toBe('حلب');
+  });
+
+  it('يعرض محرر وقوعات الملف مع الوقوعات القائمة في تعديل ملف «منفذ عليه»', async () => {
+    await renderExecutedEdit({
+      generalEntitySide: 'executed',
+      fileNumber: '55',
+      fileYear: '2026',
+      occurrences: [
+        {
+          id: 1,
+          occurrenceType: 'struck-off',
+          occurrenceTypeLabel: 'شطب',
+          eventDate: '2026-08-01',
+          fileNumber: '55',
+          year: 2026,
+        },
+        {
+          id: 2,
+          occurrenceType: 'renewal',
+          occurrenceTypeLabel: 'تجديد',
+          eventDate: '2026-09-01',
+          fileNumber: '100',
+          fileType: 'حقوقي',
+          year: 2026,
+          receiptNumber: 'و-9',
+        },
+      ],
+    });
+
+    expect(await screen.findByText('📂 وقوعات الملف')).toBeInTheDocument();
+    expect(await screen.findByText(/تم شطب الملف بتاريخ/)).toBeInTheDocument();
+    expect(await screen.findByText(/وجُدِّد الملف برقم 100/)).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '+ إضافة وقعة' })).toBeInTheDocument();
+  });
+
+  it('يضيف وقعة شطب يدويًا عبر محرر وقوعات الملف ويحفظها فورًا', async () => {
+    const user = userEvent.setup();
+    await renderExecutedEdit({
+      generalEntitySide: 'executed',
+      fileNumber: '55',
+      fileYear: '2026',
+      occurrences: [],
+    });
+
+    (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        id: 5,
+        occurrenceType: 'struck-off',
+        occurrenceTypeLabel: 'شطب',
+        eventDate: '5/8/2026',
+        fileNumber: '55',
+        year: 2026,
+      },
+    });
+
+    await user.click(screen.getByRole('button', { name: '+ إضافة وقعة' }));
+    await user.type(screen.getByLabelText('تاريخ الشطب'), '5/8/2026');
+    await user.type(screen.getByLabelText('الرقم المشطوب'), '55');
+    await user.click(screen.getByRole('button', { name: 'حفظ الوقعة' }));
+
+    const [url, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
+    expect(url).toBe('/documents/1/occurrences');
+    expect(payload.occurrenceType).toBe('struck-off');
+    expect(payload.eventDate).toBe('5/8/2026');
+    expect(payload.fileNumber).toBe('55');
+
+    expect(await screen.findByText(/تم شطب الملف بتاريخ/)).toBeInTheDocument();
+  });
+
+  it('يمنع إضافة وقعة تجديد دون رقم الملف الجديد', async () => {
+    const user = userEvent.setup();
+    await renderExecutedEdit({
+      generalEntitySide: 'executed',
+      fileNumber: '55',
+      fileYear: '2026',
+      occurrences: [],
+    });
+
+    await user.click(screen.getByRole('button', { name: '+ إضافة وقعة' }));
+    await user.selectOptions(screen.getByLabelText('نوع الوقعة'), 'renewal');
+    await user.click(screen.getByRole('button', { name: 'حفظ الوقعة' }));
+
+    expect(screen.getByText('رقم الملف الجديد مطلوب لوقعة التجديد')).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('يضيف وقعة «تريث» يدويًا لملف طالبة تنفيذ بحقولها في محرر الوقوعات', async () => {
+    const user = userEvent.setup();
+    await renderEdit();
+
+    (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        id: 6,
+        occurrenceType: 'deferred',
+        occurrenceTypeLabel: 'تريث',
+        eventDate: '1/1/2024',
+        details: { tarithNumber: '33', tarithDate: '1/1/2024' },
+      },
+    });
+
+    await user.click(screen.getByRole('button', { name: '+ إضافة وقعة' }));
+    await user.selectOptions(screen.getByLabelText('نوع الوقعة'), 'deferred');
+    await user.type(screen.getByLabelText('رقم كتاب التريث'), '33');
+    await user.type(screen.getByLabelText('تاريخ كتاب التريث'), '1/1/2024');
+    await user.click(screen.getByRole('button', { name: 'حفظ الوقعة' }));
+
+    const [url, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
+    expect(url).toBe('/documents/1/occurrences');
+    expect(payload.occurrenceType).toBe('deferred');
+    expect(payload.details).toEqual({ tarithNumber: '33', tarithDate: '1/1/2024' });
+
+    expect(await screen.findByText(/تريث بموجب كتاب التريث رقم 33/)).toBeInTheDocument();
+  });
+
+  it('يحذف وقعة من سجل وقوعات الملف بعد التأكيد', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await renderExecutedEdit({
+      generalEntitySide: 'executed',
+      fileNumber: '55',
+      fileYear: '2026',
+      occurrences: [
+        {
+          id: 9,
+          occurrenceType: 'struck-off',
+          occurrenceTypeLabel: 'شطب',
+          eventDate: '2026-08-01',
+          fileNumber: '55',
+        },
+      ],
+    });
+
+    (api.delete as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    await user.click(await screen.findByRole('button', { name: 'حذف' }));
+    expect(api.delete).toHaveBeenCalledWith('/documents/1/occurrences/9');
+    expect(await screen.findByText('لا توجد وقوعات مسجلة لهذا الملف')).toBeInTheDocument();
+    confirmSpy.mockRestore();
+  });
+
+  it('يبدّل المقترض إلى «شخص اعتباري» فيعرض حقوله ويخفي الهوية الطبيعية', async () => {
+    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    // قائمة «نوع الطرف» للمقترض تظهر أولًا في DOM (قبل بطاقة الكفيل الأولى).
+    await user.selectOptions(screen.getAllByLabelText('نوع الطرف')[0], 'legal');
+
+    expect(screen.getByLabelText('الشخص الاعتباري')).toBeInTheDocument();
+    expect(screen.getByLabelText('رقم تسجيله')).toBeInTheDocument();
+    expect(screen.getByLabelText('يمثلها')).toBeInTheDocument();
+    expect(screen.queryByLabelText('اسم الأب')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('الرقم الوطني')).not.toBeInTheDocument();
+  });
+
+  it('يضيف كفيلًا اعتباريًا عبر زر «إضافة كفيل (شخص اعتباري)» ويعرض حقوله', async () => {
+    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    await user.click(screen.getByRole('button', { name: '➕ إضافة كفيل (شخص اعتباري)' }));
+
+    const card = screen.getByText('كفيل 2').closest('.rounded-xl') as HTMLElement;
+    expect(within(card).getByText('الشخص الاعتباري')).toBeInTheDocument();
+    expect(within(card).getByText('رقم تسجيله')).toBeInTheDocument();
+    expect(within(card).getByText('يمثلها')).toBeInTheDocument();
+  });
+
+  it('يضيف شخصًا اعتباريًا في «المنفذ عليه» عبر زر الإضافة ويعرض حقوله', async () => {
+    const user = userEvent.setup();
+    await selectExecutedSide(user);
+
+    await user.click(screen.getByRole('button', { name: '＋ إضافة شخص اعتباري' }));
+
+    const card = screen.getByText('شخص اعتباري 2').closest('.rounded-xl') as HTMLElement;
+    expect(within(card).getByText('الشخص الاعتباري')).toBeInTheDocument();
+    expect(within(card).getByText('رقم تسجيله')).toBeInTheDocument();
+    expect(within(card).getByText('يمثلها')).toBeInTheDocument();
   });
 });

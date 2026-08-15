@@ -3,6 +3,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import DeletedDocuments from './DeletedDocuments';
 import type { DocumentResponse } from '../types';
+import { makeDeletedDocument } from '../test/factories';
 
 const isMobileMock = vi.hoisted(() => vi.fn());
 const useAuthMock = vi.hoisted(() => vi.fn());
@@ -25,37 +26,6 @@ vi.mock('../hooks/useMediaQuery', () => ({
 
 import { api } from '../api/client';
 
-function doc(overrides: Partial<DocumentResponse>): DocumentResponse {
-  return {
-    id: 1,
-    createdAt: '2026-07-31',
-    updatedAt: '2026-07-31',
-    documentType: 'متداول - مقترض',
-    isDraft: false,
-    amountNumeric: 0,
-    amount2Numeric: 0,
-    inclusionAmountNumeric: 0,
-    viewCount: 0,
-    printCount: 0,
-    borrowerName: 'أحمد',
-    borrowerFather: 'خالد',
-    borrowerFamily: 'الخطيب',
-    applicant: 'المدعي',
-    court: 'دمشق',
-    fileNumber: '99',
-    fileType: 'حقوق',
-    fileYear: '2026',
-    deletedAt: '2026-08-04T10:00:00',
-    guarantors: [],
-    realEstates: [],
-    executionActions: [],
-    executionApplicants: [],
-    executedPublicEntities: [],
-    executedNaturalPersons: [],
-    ...overrides,
-  };
-}
-
 function mockPage(items: DocumentResponse[]) {
   (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
     data: { page: 1, perPage: 20, totalCount: items.length, totalPages: 1, items },
@@ -70,7 +40,7 @@ beforeEach(() => {
 
 describe('DeletedDocuments', () => {
   it('يعرض الملفات المحذوفة في جدول على المكتبي مع تاريخ الحذف', async () => {
-    mockPage([doc({ id: 7, deletedAt: '2026-08-04T10:00:00' })]);
+    mockPage([makeDeletedDocument({ id: 7 })]);
 
     render(<DeletedDocuments />);
 
@@ -82,9 +52,24 @@ describe('DeletedDocuments', () => {
     expect(within(table).getByText('99 حقوق')).toBeInTheDocument();
   });
 
+  it('يعرض اسم المنفذ عليه (الجهة العامة) للملفات المحذوفة في وضع «منفذ عليه»', async () => {
+    mockPage([
+      makeDeletedDocument({
+        id: 8,
+        generalEntitySide: 'executed',
+        executedPublicEntities: [{ id: 1, entityName: 'المصرف العقاري', entityBranch: 'فرع المزة' }],
+      }),
+    ]);
+
+    render(<DeletedDocuments />);
+
+    const table = await screen.findByRole('table');
+    expect(within(table).getByText('المصرف العقاري')).toBeInTheDocument();
+  });
+
   it('يعرض بطاقات على الجوال مع زر استعادة', async () => {
     isMobileMock.mockReturnValue(true);
-    mockPage([doc({ id: 7 })]);
+    mockPage([makeDeletedDocument({ id: 7 })]);
 
     render(<DeletedDocuments />);
 
@@ -110,7 +95,7 @@ describe('DeletedDocuments', () => {
 
   it('يستعيد المستند بعد التأكيد ويعرض رسالة النجاح ويعيد تحميل القائمة', async () => {
     const user = userEvent.setup();
-    mockPage([doc({ id: 7 })]);
+    mockPage([makeDeletedDocument({ id: 7 })]);
     (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });
 
     render(<DeletedDocuments />);
@@ -126,7 +111,7 @@ describe('DeletedDocuments', () => {
 
   it('يلغي التأكيد دون إرسال طلب الاستعادة', async () => {
     const user = userEvent.setup();
-    mockPage([doc({ id: 7 })]);
+    mockPage([makeDeletedDocument({ id: 7 })]);
 
     render(<DeletedDocuments />);
     const table = await screen.findByRole('table');
@@ -140,7 +125,7 @@ describe('DeletedDocuments', () => {
 
   it('يعرض رسالة خطأ عند فشل الاستعادة', async () => {
     const user = userEvent.setup();
-    mockPage([doc({ id: 7 })]);
+    mockPage([makeDeletedDocument({ id: 7 })]);
     (api.post as unknown as ReturnType<typeof vi.fn>).mockRejectedValue({
       isAxiosError: true,
       response: { status: 500 },
@@ -164,7 +149,7 @@ describe('DeletedDocuments', () => {
   });
 
   it('يعرض «—» في تاريخ الحذف عند غياب القيمة', async () => {
-    mockPage([doc({ deletedAt: undefined })]);
+    mockPage([makeDeletedDocument({ deletedAt: undefined })]);
 
     render(<DeletedDocuments />);
 
@@ -175,7 +160,7 @@ describe('DeletedDocuments', () => {
 
   it('يخفي زر الاستعادة عن رئيس القسم والمشرف (عرض فقط)', async () => {
     useAuthMock.mockReturnValue({ user: { role: 'head' } });
-    mockPage([doc({ id: 7 })]);
+    mockPage([makeDeletedDocument({ id: 7 })]);
 
     render(<DeletedDocuments />);
 

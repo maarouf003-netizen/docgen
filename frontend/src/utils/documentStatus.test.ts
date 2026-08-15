@@ -63,6 +63,23 @@ describe('getExecutedStatus', () => {
     ).toBe('متداول');
   });
 
+  it('getDocumentStatus يعالج ملفات صفة «عرض وايداع» بحالتها المعزولة مثل executed', () => {
+    expect(
+      getDocumentStatus({
+        ...executed('منفذ'),
+        generalEntitySide: 'deposit' as const,
+      }),
+    ).toBe('منفذ');
+    expect(
+      getDocumentStatus({
+        ...executed(''),
+        generalEntitySide: 'deposit' as const,
+        execStatus: 'تريث',
+        isDraft: true,
+      }),
+    ).toBe('متداول');
+  });
+
   it('يعطي شارة العرض الصحيحة للمشطوب', () => {
     expect(getDocumentBadge(executed('مشطوب'))).toEqual({
       text: 'مشطوب',

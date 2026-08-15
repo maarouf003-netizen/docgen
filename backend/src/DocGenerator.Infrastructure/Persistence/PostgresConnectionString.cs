@@ -1,8 +1,9 @@
 namespace DocGenerator.Infrastructure.Persistence;
 
 /// <summary>
-/// يحوّل سلسلة اتصال Postgres بصيغة URI (postgres:// أو postgresql:// الشائعة في Render وHeroku
-/// وNeon) إلى الصيغة الكلامية التي يتطلبها Npgsql (Host=...;Port=...;Database=...;Username=...;Password=...).
+/// يحوّل سلسلة اتصال Postgres بصيغة URI (postgres:// أو postgresql:// الشائعة في المضيفين السحابيين
+/// الذين يمنحون قواعد مُدارة) إلى الصيغة الكلامية التي يتطلبها Npgsql
+/// (Host=...;Port=...;Database=...;Username=...;Password=...).
 /// السلاسل الكلامية تُمرَّر كما هي دون أي تعديل، والقيم الفارغة تبقى فارغة.
 /// </summary>
 public static class PostgresConnectionString

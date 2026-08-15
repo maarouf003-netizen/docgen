@@ -23,7 +23,6 @@ vi.mock('react-router-dom', () => ({
 }));
 
 const successResponse: LoginResponse = {
-  token: 'token-1',
   user: {
     id: 1,
     username: 'محمد أحمد علي',
@@ -41,6 +40,15 @@ beforeEach(() => {
 });
 
 describe('Login', () => {
+  it('يعرض شعار النسر والعلم في ترويسة الدخول', () => {
+    render(<Login />);
+
+    expect(screen.getByAltText('شعار نسر صلاح الدين')).toBeInTheDocument();
+    expect(screen.getByAltText('علم الجمهورية العربية السورية')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'مسار' })).toBeInTheDocument();
+    expect(screen.getByText('مساعد محامي الدولة الذكي في إدارة الملفات التنفيذية')).toBeInTheDocument();
+  });
+
   it('ينجح الدخول العادي ويوجّه للرئيسية', async () => {
     loginMock.mockResolvedValue(successResponse);
     const user = userEvent.setup();

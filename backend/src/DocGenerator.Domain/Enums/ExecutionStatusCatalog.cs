@@ -15,6 +15,12 @@ public static class ExecutionStatusCatalog
     public const string SubPartiallyExecuted = "منفذ جزئيا";
     public const string SubFullyExecuted = "منفذ كاملا";
 
+    /// <summary>حالة «مشطوب» في نظام «طالبة تنفيذ» (موحّدة مع صفحة «الملفات المشطوبة»).</summary>
+    public const string StateStruckOff = "مشطوب";
+
+    /// <summary>الحالة «متداول» في آلة الحالات (حالة ملف مقيد بلا حالة تغيير).</summary>
+    public const string StateCirculating = "متداول";
+
     /// <summary>قيمة فلتر "منفذ" في البحث — تغطي التنفيذ الجبري والتنفيذ بالتسوية.</summary>
     public const string ExecutedFilter = "منفذ";
 
@@ -53,5 +59,61 @@ public static class ExecutionStatusCatalog
         ExecutionStatus.ExecutedBySettlement => ExecutedBySettlement,
         ExecutionStatus.Deferred => Deferred,
         _ => None,
+    };
+
+    /// <summary>الحالة الحالية للملف (نظام «طالبة تنفيذ») لآلة الحالات.</summary>
+    public static string CurrentState(bool isDraft, string? status, string? executedStatus)
+    {
+        if (executedStatus == ExecutedStatusCatalog.StruckOff || status == StateStruckOff)
+            return StateStruckOff;
+        if (status == Deferred) return Deferred;
+        if (status == ExecutedBySettlement) return ExecutedBySettlement;
+        if (status == ExecutedForcibly) return ExecutedForcibly;
+        return isDraft ? DraftFilter : StateCirculating;
+    }
+
+    /// <summary>
+    /// الانتقالات المسموحة من الحالة الحالية عبر «تغيير الحالة» (تريث/منفذ بالتسوية/منفذ جبريا/مشطوب).
+    /// «تحت رفع → متداول» يتم بتسجيل رقم الملف في التعديل (المنطق القائم) وليس عبر تغيير الحالة،
+    /// و«التراجع إلى متداول» من تريث/المنفذين إجراء مستقل (Revert) بحقوله الخاصة.
+    /// </summary>
+    public static IReadOnlySet<string> AllowedStatusChanges(string currentState) => currentState switch
+    {
+        DraftFilter => new HashSet<string> { Deferred, ExecutedBySettlement },
+        StateCirculating => new HashSet<string> { Deferred, ExecutedBySettlement, ExecutedForcibly, StateStruckOff },
+        Deferred => new HashSet<string> { ExecutedBySettlement },
+        ExecutedBySettlement => new HashSet<string>(),
+        ExecutedForcibly => new HashSet<string>(),
+        StateStruckOff => new HashSet<string>(),
+        _ => new HashSet<string>(),
+    };
+
+    public static bool IsAllowedStatusChange(string currentState, string target) =>
+        AllowedStatusChanges(currentState).Contains(target);
+
+    /// <summary>هل يجوز «التراجع» (إعادة إلى متداول بحقوقه) من الحالة الحالية؟</summary>
+    public static bool CanRevert(string currentState) =>
+        currentState == Deferred || currentState == ExecutedBySettlement || currentState == ExecutedForcibly;
+
+    /// <summary>تسمية الحالة الحالية في رسائل التحقق (تُقرأ من قيم آلة الحالات).</summary>
+    public static string ToStateLabel(string state) => state switch
+    {
+        DraftFilter => DraftFilter,
+        StateCirculating => StateCirculating,
+        Deferred => Deferred,
+        ExecutedBySettlement => ExecutedBySettlement,
+        ExecutedForcibly => ExecutedForcibly,
+        StateStruckOff => StateStruckOff,
+        _ => StateCirculating,
+    };
+
+    /// <summary>تسمية الحالة المستهدفة في رسائل التحقق.</summary>
+    public static string ToStatusLabel(string status) => status switch
+    {
+        ExecutedForcibly => ExecutedForcibly,
+        ExecutedBySettlement => ExecutedBySettlement,
+        Deferred => Deferred,
+        StateStruckOff => StateStruckOff,
+        _ => StateCirculating,
     };
 }

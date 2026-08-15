@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace DocGenerator.Api.Tests;
@@ -307,5 +308,26 @@ public class UserManagementIntegrationTests : IClassFixture<ApiFactory>
             password = "123456",
         });
         Assert.Equal(HttpStatusCode.Created, second.StatusCode);
+    }
+
+    [Fact]
+    public async Task DbConstraint_SameUsernameWithoutBranch_Rejected()
+    {
+        var username = NewUsername("nb");
+        await _factory.CreateUserAsync(username, UserRole.Manager);
+
+        // الفهرس الفريد الجزئي (BranchId IS NULL) يمنع تكرار اسم المدير/المشرف في قاعدة البيانات.
+        await Assert.ThrowsAsync<DbUpdateException>(() =>
+            _factory.CreateUserAsync(username, UserRole.Manager));
+    }
+
+    [Fact]
+    public async Task DbConstraint_SameUsername_OneWithBranchOneWithout_Allowed()
+    {
+        var username = NewUsername("mix");
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, await BranchIdAsync("DAM"));
+
+        // الاسم نفسه مسموح مرةً بلا فرع وأخرى بفرع: قيود الفرعين مستقلتان.
+        await _factory.CreateUserAsync(username, UserRole.Manager);
     }
 }

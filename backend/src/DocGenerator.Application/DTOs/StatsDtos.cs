@@ -54,14 +54,33 @@ public enum StatsPeriod
     Monthly = 3,
 }
 
+/// <summary>مبلغ مجمّع بعملة محددة (ليرة سورية / دولار أمريكي / يورو)، بقيمة غير صفرية.</summary>
+public record CurrencyAmountDto(string Currency, decimal Amount);
+
+/// <summary>
+/// توزيع حالة على نوعَي العقد (مصرفي/عادي) مع مبالغ كل نوع مجمّعة حسب العملة الفعلية.
+/// كل ملف ذو مبلغين (المطالب به بعمله والمبلغ الثاني بعمله) يُسجَّل كل مبلغ في سلة عملته،
+/// والسلات مرتبة ترتيبًا ثابتًا: ليرة سورية، دولار أمريكي، يورو (تُستبعد العملات صفرية القيمة).
+/// </summary>
+public record ManagerContractSplitDto(
+    int BankingCount,
+    int OrdinaryCount,
+    List<CurrencyAmountDto> BankingAmounts,
+    List<CurrencyAmountDto> OrdinaryAmounts);
+
 /// <summary>
 /// بطاقات إحصاءات المدير على الملفات المقيَّدة في نطاق الفترة.
 /// إجمالي الملفات = متداول + تحت رفع + تريث (دون المنفذ).
-/// مبالغ البطاقات بعملتين: مجموع AmountNumeric (ل.س) وAmount2Numeric (دولار) لملفات كل حالة:
-/// TotalAmount = ActiveAmount + DraftsAmount + DeferredAmount، وبالمثل TotalAmount2.
+/// مبالغ كل حالة (للصالح/تحت رفع/تريث) مجمّعة حسب العملة الفعلية ومفصولة مصرفي/عادي:
+/// المتداول بطاقة مركبة عددها الكبير = Active + TradingAgainstCount وداخلها صفّا
+/// «متداول للصالح» (ActiveSplit) و«متداول للضد» (TradingAgainstCount + TradingAgainstAmounts
+/// حيث المبالغ المطلوبة الثلاثة كلٌّ بعملتها)، وبطاقة «التريث» مفصولة مصرفي/عادي (DeferredSplit).
 /// بطاقتا وضع «الجهة العامة منفذ عليها» معزولتان عن نظام «طالبة التنفيذ»:
-/// «متداول للضد» = ملفات متداول فقط (المنفذ/المشطوب مستبعدان) ومبلغها المطلوب دفعه من الجهة العامة،
-/// «منفذ للضد» = ملفات منفذ فقط ومبلغها الذي دفعته الجهة العامة، وفترة البطاقتين من تاريخ ورود الملف.
+/// «متداول للضد» = ملفات متداول فقط (المنفذ/المشطوب مستبعدان)،
+/// «منفذ للضد» = ملفات منفذ فقط ومبلغها الذي دفعته الجهة العامة، وفترة البطاقتين من تاريخ ورود الاخطار.
+/// صفة «عرض وايداع» تُحتسب «للصالح» كأسطر فرعية داخل بطاقتي متداول/منفذ:
+/// DepositTradingCount = عدد ملفات العرض المتداولة، DepositExecutedCount + DepositExecutedAmount
+/// = عدد ملفات العرض المنفذة ومجموع المبالغ المودعة، وفترة العرض من تاريخ ورود الاخطار أيضًا.
 /// حقول الفترة توضح النطاق المعروض فعليًا على الخادم:
 /// شهريًا: PeriodMonth مع PeriodYear، ربعيًا: PeriodQuarter مع PeriodYear، سنويًا: PeriodYear فقط.
 /// </summary>
@@ -70,22 +89,23 @@ public record ManagerStatsDto(
     int Active,
     int Drafts,
     int Deferred,
-    decimal TotalAmount,
-    decimal ActiveAmount,
-    decimal DraftsAmount,
-    decimal DeferredAmount,
-    decimal TotalAmount2,
-    decimal ActiveAmount2,
-    decimal DraftsAmount2,
-    decimal DeferredAmount2,
+    ManagerContractSplitDto ActiveSplit,
+    ManagerContractSplitDto DraftsSplit,
+    ManagerContractSplitDto DeferredSplit,
+    List<CurrencyAmountDto> TotalAmounts,
+    List<CurrencyAmountDto> TradingAgainstAmounts,
     int SettledCount,
     decimal SettledCollected,
+    List<CurrencyAmountDto> SettledCollectedAmounts,
     int ForcibleCount,
     decimal ForcibleCollected,
+    List<CurrencyAmountDto> ForcibleCollectedAmounts,
     int TradingAgainstCount,
-    decimal TradingAgainstAmount,
     int ExecutedAgainstCount,
     decimal ExecutedAgainstAmount,
+    int DepositTradingCount,
+    int DepositExecutedCount,
+    decimal DepositExecutedAmount,
     int PeriodYear,
     int? PeriodQuarter,
     int? PeriodMonth);

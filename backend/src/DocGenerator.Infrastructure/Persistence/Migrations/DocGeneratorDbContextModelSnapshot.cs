@@ -15,7 +15,35 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "8.0.11");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ApplicantPublicEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Branch")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Governorate")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.ToTable("ApplicantPublicEntities", (string)null);
+                });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.AuditLog", b =>
                 {
@@ -103,6 +131,13 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal>("Amount3Numeric")
+                        .HasColumnType("decimal(20,2)");
+
+                    b.Property<string>("Amount3Words")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
                     b.Property<decimal>("AmountNumeric")
                         .HasColumnType("decimal(20,2)");
 
@@ -162,8 +197,47 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("BorrowerNature")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("natural");
+
                     b.Property<string>("BorrowerRegister")
                         .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BorrowerRegistrationNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BorrowerRepresentativeAddress")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BorrowerRepresentativeAddressType")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BorrowerRepresentativeCapacity")
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BorrowerRepresentativeFamily")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BorrowerRepresentativeFather")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BorrowerRepresentativeName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BorrowerRepresentedBy")
+                        .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
                     b.Property<int?>("BranchId")
@@ -175,6 +249,24 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.Property<decimal?>("CollectedAmount")
                         .HasColumnType("decimal(20,2)");
+
+                    b.Property<decimal?>("CollectedAmount2")
+                        .HasColumnType("decimal(20,2)");
+
+                    b.Property<decimal?>("CollectedAmount3")
+                        .HasColumnType("decimal(20,2)");
+
+                    b.Property<string>("CollectedCurrency")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CollectedCurrency2")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CollectedCurrency3")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("ContractDate")
                         .HasMaxLength(50)
@@ -210,6 +302,10 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Currency3")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("TEXT");
 
@@ -225,6 +321,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("ExecutedDepositDate")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("ExecutedDescription")
                         .HasMaxLength(2000)
                         .HasColumnType("TEXT");
@@ -235,8 +334,34 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Property<decimal?>("ExecutedRequiredAmount")
                         .HasColumnType("decimal(20,2)");
 
+                    b.Property<decimal?>("ExecutedRequiredAmount2")
+                        .HasColumnType("decimal(20,2)");
+
+                    b.Property<decimal?>("ExecutedRequiredAmount3")
+                        .HasColumnType("decimal(20,2)");
+
+                    b.Property<string>("ExecutedRequiredCurrency")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ExecutedRequiredCurrency2")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ExecutedRequiredCurrency3")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ExecutedStatus")
                         .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FileArrivalDate")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FileArrivalNumber")
+                        .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("FileIncoming")
@@ -258,6 +383,10 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("FileReceiptDate")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("FileReceiptNumber")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("FileType")
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
@@ -278,6 +407,20 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal>("InclusionAmount2Numeric")
+                        .HasColumnType("decimal(20,2)");
+
+                    b.Property<string>("InclusionAmount2Words")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("InclusionAmount3Numeric")
+                        .HasColumnType("decimal(20,2)");
+
+                    b.Property<string>("InclusionAmount3Words")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
                     b.Property<decimal>("InclusionAmountNumeric")
                         .HasColumnType("decimal(20,2)");
 
@@ -286,6 +429,14 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("InclusionCurrency")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("InclusionCurrency2")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("InclusionCurrency3")
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
@@ -312,6 +463,47 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Property<int>("PrintCount")
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTime?>("ReferredAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ReferredFromLawyer")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("RenewalDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RenewalFileNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("RenewalFileReceiptDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RenewalFileReceiptNumber")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RenewalFileType")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SayerDate")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SayerNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SayerRegDate")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SayerRegNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("SearchText")
                         .HasMaxLength(1000)
                         .HasColumnType("TEXT");
@@ -319,6 +511,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Property<string>("SeizureDate")
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
+
+                    b.Property<string>("SoldEstateIds")
+                        .HasColumnType("text");
 
                     b.Property<DateTime?>("StruckOffDate")
                         .HasColumnType("TEXT");
@@ -340,6 +535,7 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("UnderFilingNumber")
+                        .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("UpdatedAt")
@@ -365,6 +561,39 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.HasIndex("SearchText");
 
                     b.ToTable("Documents", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentAssignment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("AssignedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("AssignedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LawyerName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.ToTable("DocumentAssignments", (string)null);
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentBaseNumber", b =>
@@ -405,6 +634,66 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.ToTable("DocumentBaseNumbers", (string)null);
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentOccurrence", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Details")
+                        .HasColumnType("text");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("EventDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FileNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FileType")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OccurrenceType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ReceiptDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ReceiptNumber")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("Year")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("EventDate");
+
+                    b.HasIndex("OccurrenceType");
+
+                    b.ToTable("DocumentOccurrences", (string)null);
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentRegistrationDate", b =>
                 {
                     b.Property<int>("DocumentId")
@@ -414,7 +703,12 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("DateParsed")
+                        .HasColumnType("datetime2");
+
                     b.HasKey("DocumentId");
+
+                    b.HasIndex("DateParsed");
 
                     b.ToTable("DocumentRegistrationDates", (string)null);
                 });
@@ -510,6 +804,30 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("RepresentativeAddress")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeAddressType")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeCapacity")
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeFamily")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeFather")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("DocumentId");
@@ -523,6 +841,14 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Address")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AddressType")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("DocumentId")
                         .HasColumnType("INTEGER");
 
@@ -531,6 +857,25 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("EntityName")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EntityNature")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("public");
+
+                    b.Property<string>("Governorate")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RegistrationNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentedBy")
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
@@ -594,6 +939,29 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ApplicantAddress")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ApplicantAddressType")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ApplicantNature")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("natural");
+
+                    b.Property<string>("ApplicantRegistrationNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ApplicantRepresentedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("DeceasedFamily")
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
@@ -627,6 +995,26 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("RepresentationType")
                         .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeCapacity")
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeFamily")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeFather")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeLegalRepresentative")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeName")
+                        .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -677,10 +1065,49 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("GuarantorNature")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("natural");
+
                     b.Property<int>("GuarantorNumber")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("GuarantorRegister")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GuarantorRegistrationNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GuarantorRepresentedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeAddress")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeAddressType")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeCapacity")
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeFamily")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeFather")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeName")
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
@@ -780,6 +1207,18 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("HeirAddress")
                         .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HeirCapacity")
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HeirFamily")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HeirFather")
+                        .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("HeirName")
@@ -932,10 +1371,25 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("BranchId");
 
+                    b.HasIndex("Username")
+                        .IsUnique()
+                        .HasFilter("\"BranchId\" IS NULL");
+
                     b.HasIndex("Username", "BranchId")
                         .IsUnique();
 
                     b.ToTable("Users", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ApplicantPublicEntity", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.Document", "Document")
+                        .WithMany("ApplicantPublicEntities")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Document");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.Document", b =>
@@ -956,6 +1410,17 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Navigation("CreatedBy");
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentAssignment", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.Document", "Document")
+                        .WithMany("Assignments")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Document");
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentBaseNumber", b =>
                 {
                     b.HasOne("DocGenerator.Domain.Entities.User", "CreatedBy")
@@ -966,6 +1431,25 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.HasOne("DocGenerator.Domain.Entities.Document", "Document")
                         .WithMany("BaseNumbers")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("Document");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentOccurrence", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.Document", "Document")
+                        .WithMany("Occurrences")
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -1177,6 +1661,10 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.Document", b =>
                 {
+                    b.Navigation("ApplicantPublicEntities");
+
+                    b.Navigation("Assignments");
+
                     b.Navigation("BaseNumbers");
 
                     b.Navigation("ExecutedHeirs");
@@ -1192,6 +1680,8 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Navigation("Guarantors");
 
                     b.Navigation("Heirs");
+
+                    b.Navigation("Occurrences");
 
                     b.Navigation("RealEstates");
 

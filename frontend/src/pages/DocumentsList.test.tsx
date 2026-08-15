@@ -4,9 +4,14 @@ import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import DocumentsList from './DocumentsList';
 import type { DocumentResponse, PagedResult } from '../types';
+import { makeDocument } from '../test/factories';
 
 vi.mock('react-router-dom', () => ({
-  Link: ({ children, to }: { children: ReactNode; to: string }) => <a href={to}>{children}</a>,
+  Link: ({ children, to, ...rest }: { children: ReactNode; to: string } & Record<string, unknown>) => (
+    <a href={to} {...rest}>
+      {children}
+    </a>
+  ),
 }));
 
 const useAuthMock = vi.hoisted(() => vi.fn());
@@ -21,36 +26,6 @@ vi.mock('../api/client', () => ({
 
 import { api } from '../api/client';
 
-function doc(overrides: Partial<DocumentResponse>): DocumentResponse {
-  return {
-    id: 1,
-    createdAt: '2026-07-31',
-    updatedAt: '2026-07-31',
-    documentType: 'متداول - مقترض',
-    isDraft: false,
-    amountNumeric: 0,
-    amount2Numeric: 0,
-    inclusionAmountNumeric: 0,
-    viewCount: 0,
-    printCount: 0,
-    borrowerName: 'أحمد',
-    borrowerFather: 'خالد',
-    borrowerFamily: 'الخطيب',
-    applicant: 'المدعي',
-    court: 'دمشق',
-    fileNumber: '99',
-    fileType: 'حقوق',
-    fileYear: '2026',
-    guarantors: [],
-    realEstates: [],
-    executionActions: [],
-    executionApplicants: [],
-    executedPublicEntities: [],
-    executedNaturalPersons: [],
-    ...overrides,
-  };
-}
-
 function mockPage(items: DocumentResponse[]) {
   (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
     if (url.startsWith('/documents/filter-options')) {
@@ -61,6 +36,7 @@ function mockPage(items: DocumentResponse[]) {
           lawyers: ['المحامي سامر'],
           administrativeBranches: ['الفرع الرئيسي - دمشق'],
           branches: ['فرع المزة'],
+          publicEntityBranches: ['فرع المزة'],
         },
       });
     }
@@ -68,6 +44,40 @@ function mockPage(items: DocumentResponse[]) {
       data: { page: 1, perPage: 20, totalCount: items.length, totalPages: 1, items },
     });
   });
+}
+
+/** تحميل القائمة مع تصدير إكسل عبر axios (blob) كما يفعل المكوّن الفعلي. */
+function mockPageWithExport(items: DocumentResponse[]) {
+  (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+    if (url.startsWith('/documents/export')) {
+      return Promise.resolve({ data: new Blob(['xlsx']) });
+    }
+    if (url.startsWith('/documents/filter-options')) {
+      return Promise.resolve({
+        data: {
+          applicants: ['المدعي'],
+          courts: ['دمشق'],
+          lawyers: ['المحامي سامر'],
+          administrativeBranches: ['الفرع الرئيسي - دمشق'],
+          branches: ['فرع المزة'],
+          publicEntityBranches: ['فرع المزة'],
+        },
+      });
+    }
+    return Promise.resolve({
+      data: { page: 1, perPage: 20, totalCount: items.length, totalPages: 1, items },
+    });
+  });
+}
+
+function expectExportRequestedWithStatus() {
+  expect(api.get).toHaveBeenCalledWith(
+    '/documents/export',
+    expect.objectContaining({
+      params: expect.objectContaining({ status: 'منفذ' }),
+      responseType: 'blob',
+    }),
+  );
 }
 
 function renderList() {
@@ -117,14 +127,14 @@ beforeEach(() => {
 });
 
 describe('DocumentsList', () => {
-  it('يعرض الأعمدة الجديدة بالترتيب المعتمد: فرع الإدارة، الحالة، طالب التنفيذ، الفرع، المنفذ عليه، دائرة التنفيذ، رقم الملف، المحامي المختص، الإجراءات والملاحظات، عدد المشاهدات', async () => {
+  it('يعرض الأعمدة الجديدة بالترتيب المعتمد: فرع الإدارة، الحالة، طالب التنفيذ، فرع الجهة العامة، المنفذ عليه، دائرة التنفيذ، رقم الملف، المحامي المختص، الإجراءات والملاحظات، عدد المشاهدات', async () => {
     const page: PagedResult<DocumentResponse> = {
       page: 1,
       perPage: 20,
       totalCount: 1,
       totalPages: 1,
       items: [
-        doc({ id: 1, isDraft: true, execStatus: '', documentType: 'تحت رفع - س' }),
+        makeDocument({ id: 1, isDraft: true, execStatus: '', documentType: 'تحت رفع - س' }),
       ],
     };
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: page });
@@ -137,7 +147,7 @@ describe('DocumentsList', () => {
       'فرع الإدارة',
       'الحالة',
       'طالب التنفيذ',
-      'الفرع',
+      'فرع الجهة العامة',
       'المنفذ عليه',
       'دائرة التنفيذ',
       'رقم الملف',
@@ -156,6 +166,57 @@ describe('DocumentsList', () => {
     expect(within(table).queryByText('المقترض')).not.toBeInTheDocument();
   });
 
+  it('يعرض اسم أول «طالب تنفيذ» (الاسم الثلاثي) في عمود طالب التنفيذ لملف وضع «منفذ عليه»', async () => {
+    const page: PagedResult<DocumentResponse> = {
+      page: 1,
+      perPage: 20,
+      totalCount: 1,
+      totalPages: 1,
+      items: [
+        makeDocument({
+          id: 9,
+          generalEntitySide: 'executed',
+          applicant: '',
+          executionApplicants: [{ id: 1, name: 'سليم', father: 'حسن', family: 'علي' }],
+          executedNaturalPersons: [{ name: 'محمود', father: 'علي', family: 'حسن' }],
+        }),
+      ],
+    };
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: page });
+
+    renderList();
+
+    const table = await screen.findByRole('table');
+    expect(within(table).getByText('سليم حسن علي')).toBeInTheDocument();
+    expect(within(table).getByText('محمود علي حسن')).toBeInTheDocument();
+  });
+
+  it('يعرض «—» في عمود طالب التنفيذ لملف «منفذ عليه» بلا طالب تنفيذ ولا حقل applicant', async () => {
+    const page: PagedResult<DocumentResponse> = {
+      page: 1,
+      perPage: 20,
+      totalCount: 1,
+      totalPages: 1,
+      items: [
+        makeDocument({
+          id: 10,
+          generalEntitySide: 'executed',
+          applicant: '',
+          executionApplicants: [],
+          executedNaturalPersons: [{ name: 'محمود', father: 'علي', family: 'حسن' }],
+        }),
+      ],
+    };
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: page });
+
+    renderList();
+
+    const table = await screen.findByRole('table');
+    const rows = within(table).getAllByRole('row');
+    expect(rows[1].textContent).toContain('محمود علي حسن');
+    expect(rows[1].textContent).not.toContain('سليم');
+  });
+
   it('يعرض الحالة بأحد أشكالها الأربعة دون «بدون حالة»', async () => {
     const page: PagedResult<DocumentResponse> = {
       page: 1,
@@ -163,10 +224,10 @@ describe('DocumentsList', () => {
       totalCount: 4,
       totalPages: 1,
       items: [
-        doc({ id: 1, isDraft: true, execStatus: '', documentType: 'تحت رفع - س' }),
-        doc({ id: 2, isDraft: false, execStatus: '', documentType: 'متداول - ص' }),
-        doc({ id: 3, isDraft: false, execStatus: 'منفذ بالتسوية', documentType: 'متداول - ق' }),
-        doc({ id: 4, isDraft: true, execStatus: 'تريث', documentType: 'تحت رفع - ر' }),
+        makeDocument({ id: 1, isDraft: true, execStatus: '', documentType: 'تحت رفع - س' }),
+        makeDocument({ id: 2, isDraft: false, execStatus: '', documentType: 'متداول - ص' }),
+        makeDocument({ id: 3, isDraft: false, execStatus: 'منفذ بالتسوية', documentType: 'متداول - ق' }),
+        makeDocument({ id: 4, isDraft: true, execStatus: 'تريث', documentType: 'تحت رفع - ر' }),
       ],
     };
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: page });
@@ -200,7 +261,7 @@ describe('DocumentsList', () => {
 
   it('يعرض اسم المنفذ عليه الثلاثي كرابط لصفحة التفاصيل', async () => {
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [doc({ id: 5 })] },
+      data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [makeDocument({ id: 5 })] },
     });
 
     renderList();
@@ -216,7 +277,7 @@ describe('DocumentsList', () => {
         perPage: 20,
         totalCount: 1,
         totalPages: 1,
-        items: [doc({ fileNumber: '99', fileType: 'حقوق', isDraft: false })],
+        items: [makeDocument({ fileNumber: '99', fileType: 'حقوق', isDraft: false })],
       },
     });
 
@@ -234,7 +295,7 @@ describe('DocumentsList', () => {
         totalCount: 1,
         totalPages: 1,
         items: [
-          doc({ fileNumber: '99', displayFileNumber: '1500', fileType: 'حقوق', isDraft: false }),
+          makeDocument({ fileNumber: '99', displayFileNumber: '1500', fileType: 'حقوق', isDraft: false }),
         ],
       },
     });
@@ -253,7 +314,7 @@ describe('DocumentsList', () => {
         perPage: 20,
         totalCount: 1,
         totalPages: 1,
-        items: [doc({ fileNumber: '99', fileType: undefined, isDraft: false })],
+        items: [makeDocument({ fileNumber: '99', fileType: undefined, isDraft: false })],
       },
     });
 
@@ -263,7 +324,7 @@ describe('DocumentsList', () => {
     expect(within(table).getByText('99')).toBeInTheDocument();
   });
 
-  it('يعرض عمود «الفرع» بين طالب التنفيذ والمنفذ عليه بقيمة الفرع', async () => {
+  it('يعرض أعمدة المحامي بالترتيب المعتمد: الحالة، طالب التنفيذ، الفرع، المنفذ عليه، دائرة التنفيذ، رقم الملف، الإجراءات', async () => {
     useAuthMock.mockReturnValue({ hasFullAccess: false, isHead: false, user: { role: 'lawyer' } });
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: {
@@ -271,7 +332,7 @@ describe('DocumentsList', () => {
         perPage: 20,
         totalCount: 1,
         totalPages: 1,
-        items: [doc({ id: 1, branchName: 'فرع المزة' })],
+        items: [makeDocument({ id: 1, applicantPublicEntities: [{ id: 1, name: 'المصرف', branch: 'فرع 1' }] })],
       },
     });
 
@@ -280,8 +341,11 @@ describe('DocumentsList', () => {
     const table = await screen.findByRole('table');
     const cells = within(table).getAllByRole('cell');
     expect(cells[1].textContent).toBe('المدعي');
-    expect(cells[2].textContent).toBe('فرع المزة');
+    expect(cells[2].textContent).toBe('فرع 1');
     expect(cells[3].textContent).toBe('أحمد خالد الخطيب');
+    expect(cells[4].textContent).toBe('دمشق');
+    expect(within(table).queryByRole('button', { name: 'فلترة الفرع' })).not.toBeInTheDocument();
+    expect(within(table).queryByRole('button', { name: 'فلترة فرع الإدارة' })).not.toBeInTheDocument();
   });
 
   it('يعرض فراغًا في رقم الملف عندما يكون الملف تحت رفع', async () => {
@@ -292,7 +356,7 @@ describe('DocumentsList', () => {
         perPage: 20,
         totalCount: 1,
         totalPages: 1,
-        items: [doc({ fileNumber: undefined, fileYear: undefined, isDraft: true })],
+        items: [makeDocument({ fileNumber: undefined, fileYear: undefined, isDraft: true })],
       },
     });
 
@@ -305,7 +369,7 @@ describe('DocumentsList', () => {
 
   it('يعرض عمود «عدد المشاهدات» للمدير', async () => {
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [doc({ viewCount: 7 })] },
+      data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [makeDocument({ viewCount: 7 })] },
     });
 
     renderList();
@@ -318,7 +382,7 @@ describe('DocumentsList', () => {
   it('يعرض عمود «عدد المشاهدات» لرئيس القسم', async () => {
     useAuthMock.mockReturnValue({ hasFullAccess: false, isHead: true });
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [doc({ viewCount: 3 })] },
+      data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [makeDocument({ viewCount: 3 })] },
     });
 
     renderList();
@@ -331,7 +395,7 @@ describe('DocumentsList', () => {
   it('يخفي عمود «عدد المشاهدات» عن المحامي', async () => {
     useAuthMock.mockReturnValue({ hasFullAccess: false, isHead: false });
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [doc({ viewCount: 7 })] },
+      data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [makeDocument({ viewCount: 7 })] },
     });
 
     renderList();
@@ -343,7 +407,7 @@ describe('DocumentsList', () => {
 
   it('يعرض فلاتر الحالة وطالب التنفيذ ودائرة التنفيذ بجانب أعمدة الجدول على المكتبي ويُفلتر عند الاختيار', async () => {
     const user = userEvent.setup();
-    mockPage([doc({ id: 1 })]);
+    mockPage([makeDocument({ id: 1 })]);
 
     renderList();
     const table = await screen.findByRole('table');
@@ -375,7 +439,7 @@ describe('DocumentsList', () => {
 
   it('يُلغي «عرض الكل» الفلتر النشط ويغلق قائمة العمود ويميز السهم بلون الفلتر النشط', async () => {
     const user = userEvent.setup();
-    mockPage([doc({ id: 1 })]);
+    mockPage([makeDocument({ id: 1 })]);
 
     renderList();
     const table = await screen.findByRole('table');
@@ -405,7 +469,7 @@ describe('DocumentsList', () => {
 
   it('يغلق قائمة فلتر العمود بمفتاح Escape دون تطبيق التغيير', async () => {
     const user = userEvent.setup();
-    mockPage([doc({ id: 1 })]);
+    mockPage([makeDocument({ id: 1 })]);
 
     renderList();
     const table = await screen.findByRole('table');
@@ -420,7 +484,7 @@ describe('DocumentsList', () => {
 
   it('يغلق قائمة فلتر العمود عند النقر خارجها دون تطبيق التغيير', async () => {
     const user = userEvent.setup();
-    mockPage([doc({ id: 1 })]);
+    mockPage([makeDocument({ id: 1 })]);
 
     renderList();
     const table = await screen.findByRole('table');
@@ -434,7 +498,7 @@ describe('DocumentsList', () => {
   });
 
   it('لا يعرض فلاتر طالب التنفيذ ودائرة التنفيذ في شريط الفلترة على المكتبي (موجودة في رؤوس الأعمدة)', async () => {
-    mockPage([doc({ id: 1 })]);
+    mockPage([makeDocument({ id: 1 })]);
 
     renderList();
     await screen.findByRole('table');
@@ -448,7 +512,7 @@ describe('DocumentsList', () => {
 
   it('يعرض فلاتر طالب التنفيذ ودائرة التنفيذ في شريط الفلترة على الجوال', async () => {
     stubMobile();
-    mockPage([doc({ id: 1 })]);
+    mockPage([makeDocument({ id: 1 })]);
 
     renderList();
     await screen.findByRole('link', { name: 'أحمد خالد الخطيب' });
@@ -467,7 +531,7 @@ describe('DocumentsList', () => {
         totalCount: 1,
         totalPages: 1,
         items: [
-          doc({
+          makeDocument({
             executionActions: [
               { id: 2, type: 'action', text: 'الإجراء الأحدث', actionDate: '2/8/2026', createdByName: 'محامي', createdAt: '2026-08-02' },
               { id: 1, type: 'action', text: 'إجراء أقدم', actionDate: '1/8/2026', createdByName: 'محامي', createdAt: '2026-08-01' },
@@ -495,7 +559,7 @@ describe('DocumentsList', () => {
         perPage: 20,
         totalCount: 1,
         totalPages: 1,
-        items: [doc({ id: 5, executionActions: [] })],
+        items: [makeDocument({ id: 5, executionActions: [] })],
       },
     });
 
@@ -516,7 +580,7 @@ describe('DocumentsList', () => {
         perPage: 20,
         totalCount: 1,
         totalPages: 1,
-        items: [doc({ id: 5, viewCount: 7 })],
+        items: [makeDocument({ id: 5, viewCount: 7 })],
       },
     });
 
@@ -531,7 +595,7 @@ describe('DocumentsList', () => {
     expect(screen.getByText(/مشاهدات: 7/)).toBeInTheDocument();
   });
 
-  it('يعرض الفرع في بطاقة الموبايل بين طالب التنفيذ ودائرة التنفيذ', async () => {
+  it('يعرض بطاقة الموبايل للمحامي بصيغة «طالب التنفيذ · فرع الجهة العامة · دائرة التنفيذ»', async () => {
     stubMobile();
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: {
@@ -539,7 +603,7 @@ describe('DocumentsList', () => {
         perPage: 20,
         totalCount: 1,
         totalPages: 1,
-        items: [doc({ id: 5, branchName: 'فرع المزة' })],
+        items: [makeDocument({ id: 5, applicantPublicEntities: [{ id: 1, name: 'المصرف', branch: 'فرع المزة' }] })],
       },
     });
 
@@ -597,7 +661,7 @@ describe('DocumentsList', () => {
         perPage: 20,
         totalCount: 1,
         totalPages: 1,
-        items: [doc({ id: 1, lawyer: 'المحامي سامر', administrativeBranchName: 'الفرع الرئيسي - دمشق' })],
+        items: [makeDocument({ id: 1, lawyer: 'المحامي سامر', administrativeBranchName: 'الفرع الرئيسي - دمشق' })],
       },
     });
 
@@ -618,7 +682,7 @@ describe('DocumentsList', () => {
         perPage: 20,
         totalCount: 1,
         totalPages: 1,
-        items: [doc({ id: 1, lawyer: 'المحامي سامر', administrativeBranchName: 'الفرع الرئيسي - دمشق' })],
+        items: [makeDocument({ id: 1, lawyer: 'المحامي سامر', administrativeBranchName: 'الفرع الرئيسي - دمشق' })],
       },
     });
 
@@ -633,7 +697,7 @@ describe('DocumentsList', () => {
   it('يخفي عمودي «فرع الإدارة» و«المحامي المختص» عن المحامي', async () => {
     useAuthMock.mockReturnValue({ hasFullAccess: false, isHead: false, user: { role: 'lawyer' } });
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [doc({ id: 1 })] },
+      data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [makeDocument({ id: 1 })] },
     });
 
     renderList();
@@ -645,7 +709,7 @@ describe('DocumentsList', () => {
 
   it('يُفلتر باسم المحامي عند الاختيار من عمود «المحامي المختص»', async () => {
     const user = userEvent.setup();
-    mockPage([doc({ id: 1 })]);
+    mockPage([makeDocument({ id: 1 })]);
 
     renderList();
     const table = await screen.findByRole('table');
@@ -661,7 +725,7 @@ describe('DocumentsList', () => {
 
   it('يعرض فلتر المحامي المختص في شريط الفلترة على الجوال لرئيس القسم والمدير', async () => {
     stubMobile();
-    mockPage([doc({ id: 1 })]);
+    mockPage([makeDocument({ id: 1 })]);
 
     renderList();
     await screen.findByRole('link', { name: 'أحمد خالد الخطيب' });
@@ -677,7 +741,7 @@ describe('DocumentsList', () => {
         perPage: 20,
         totalCount: 1,
         totalPages: 1,
-        items: [doc({ id: 5, lawyer: 'المحامي سامر', administrativeBranchName: 'فرع الرقة' })],
+        items: [makeDocument({ id: 5, lawyer: 'المحامي سامر', administrativeBranchName: 'فرع الرقة' })],
       },
     });
 
@@ -688,25 +752,9 @@ describe('DocumentsList', () => {
     expect(screen.getByText(/فرع الإدارة: فرع الرقة/)).toBeInTheDocument();
   });
 
-  it('يُفلتر بالفرع عند الاختيار من عمود «الفرع»', async () => {
-    const user = userEvent.setup();
-    mockPage([doc({ id: 1 })]);
-
-    renderList();
-    const table = await screen.findByRole('table');
-
-    await user.click(within(table).getByRole('button', { name: 'فلترة الفرع' }));
-    const menu = screen.getByRole('menu', { name: 'فلترة الفرع' });
-    await user.click(within(menu).getByRole('menuitem', { name: 'فرع المزة' }));
-
-    const [url] = vi.mocked(api.get).mock.calls.at(-1) as [string];
-    const params = new URLSearchParams(url.split('?')[1] ?? '');
-    expect(params.get('branch')).toBe('فرع المزة');
-  });
-
   it('يُفلتر بفرع الإدارة عند الاختيار من عمود «فرع الإدارة» للمدير', async () => {
     const user = userEvent.setup();
-    mockPage([doc({ id: 1 })]);
+    mockPage([makeDocument({ id: 1 })]);
 
     renderList();
     const table = await screen.findByRole('table');
@@ -720,26 +768,141 @@ describe('DocumentsList', () => {
     expect(params.get('administrativeBranch')).toBe('الفرع الرئيسي - دمشق');
   });
 
-  it('يخفي فلتر «فرع الإدارة» عن المحامي', async () => {
-    useAuthMock.mockReturnValue({ hasFullAccess: false, isHead: false, user: { role: 'lawyer' } });
-    mockPage([doc({ id: 1 })]);
+  it('يُفلتر بالجهة العامة المنفذ عليها عند الاختيار من عمود «المنفذ عليه»', async () => {
+    const user = userEvent.setup();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url.startsWith('/documents/filter-options')) {
+        return Promise.resolve({
+          data: {
+            applicants: [],
+            courts: [],
+            lawyers: [],
+            administrativeBranches: [],
+            branches: [],
+            executedEntities: ['المصرف العقاري'],
+          },
+        });
+      }
+      return Promise.resolve({
+        data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [makeDocument({ id: 1 })] },
+      });
+    });
 
     renderList();
     const table = await screen.findByRole('table');
 
-    expect(within(table).getByRole('button', { name: 'فلترة الفرع' })).toBeInTheDocument();
+    await user.click(within(table).getByRole('button', { name: 'فلترة الجهة العامة المنفذ عليها' }));
+    const menu = screen.getByRole('menu', { name: 'فلترة الجهة العامة المنفذ عليها' });
+    await user.click(within(menu).getByRole('menuitem', { name: 'المصرف العقاري' }));
+
+    const [url] = vi.mocked(api.get).mock.calls.at(-1) as [string];
+    const params = new URLSearchParams(url.split('?')[1] ?? '');
+    expect(params.get('executedEntity')).toBe('المصرف العقاري');
+  });
+
+  it('يعرض فلتر الجهة العامة المنفذ عليها في شريط الفلاتر على الموبايل', async () => {
+    stubMobile();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url.startsWith('/documents/filter-options')) {
+        return Promise.resolve({
+          data: {
+            applicants: [],
+            courts: [],
+            lawyers: [],
+            administrativeBranches: [],
+            branches: [],
+            executedEntities: ['المصرف التجاري'],
+          },
+        });
+      }
+      return Promise.resolve({
+        data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [makeDocument({ id: 1 })] },
+      });
+    });
+
+    renderList();
+
+    const select = await screen.findByRole('combobox', { name: 'فلترة الجهة العامة المنفذ عليها' });
+    expect(select).toBeInTheDocument();
+  });
+
+  it('يُفلتر بفرع الجهة العامة عند الاختيار من عمود «فرع الجهة العامة»', async () => {
+    const user = userEvent.setup();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url.startsWith('/documents/filter-options')) {
+        return Promise.resolve({
+          data: {
+            applicants: [],
+            courts: [],
+            lawyers: [],
+            administrativeBranches: [],
+            branches: [],
+            executedEntities: ['المصرف العقاري'],
+            publicEntityBranches: ['فرع المزة'],
+          },
+        });
+      }
+      return Promise.resolve({
+        data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [makeDocument({ id: 1 })] },
+      });
+    });
+
+    renderList();
+    const table = await screen.findByRole('table');
+
+    await user.click(within(table).getByRole('button', { name: 'فلترة فرع الجهة العامة' }));
+    const menu = screen.getByRole('menu', { name: 'فلترة فرع الجهة العامة' });
+    await user.click(within(menu).getByRole('menuitem', { name: 'فرع المزة' }));
+
+    const [url] = vi.mocked(api.get).mock.calls.at(-1) as [string];
+    const params = new URLSearchParams(url.split('?')[1] ?? '');
+    expect(params.get('publicEntityBranch')).toBe('فرع المزة');
+  });
+
+  it('يعرض فلتر فرع الجهة العامة في شريط الفلاتر على الموبايل', async () => {
+    stubMobile();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url.startsWith('/documents/filter-options')) {
+        return Promise.resolve({
+          data: {
+            applicants: [],
+            courts: [],
+            lawyers: [],
+            administrativeBranches: [],
+            branches: [],
+            executedEntities: [],
+            publicEntityBranches: ['فرع حلب'],
+          },
+        });
+      }
+      return Promise.resolve({
+        data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [makeDocument({ id: 1 })] },
+      });
+    });
+
+    renderList();
+
+    const select = await screen.findByRole('combobox', { name: 'فلترة فرع الجهة العامة' });
+    expect(select).toBeInTheDocument();
+  });
+
+  it('يعرض عمود «فرع الجهة العامة» للمحامي ويخفي عمود وفلتر «فرع الإدارة» عنه', async () => {
+    useAuthMock.mockReturnValue({ hasFullAccess: false, isHead: false, user: { role: 'lawyer' } });
+    mockPage([makeDocument({ id: 1 })]);
+
+    renderList();
+    const table = await screen.findByRole('table');
+
+    expect(within(table).getByRole('button', { name: 'فلترة فرع الجهة العامة' })).toBeInTheDocument();
+    expect(within(table).queryByText('فرع الإدارة')).not.toBeInTheDocument();
     expect(within(table).queryByRole('button', { name: 'فلترة فرع الإدارة' })).not.toBeInTheDocument();
   });
 
   it('يعرض زر «تصدير إكسل» للمدير وينزّل الملف بفلاتر الحالية', async () => {
     const user = userEvent.setup();
     useAuthMock.mockReturnValue({ hasFullAccess: true, isHead: false, user: { role: 'manager' } });
-    mockPage([doc({ id: 1 })]);
+    mockPageWithExport([makeDocument({ id: 1 })]);
 
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue({ ok: true, blob: () => Promise.resolve(new Blob(['xlsx'])) });
-    vi.stubGlobal('fetch', fetchMock);
     URL.createObjectURL = vi.fn(() => 'blob:fake');
     URL.revokeObjectURL = vi.fn();
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
@@ -752,15 +915,14 @@ describe('DocumentsList', () => {
     const menu = screen.getByRole('menu', { name: 'فلترة الحالة' });
     await user.click(within(menu).getByRole('menuitem', { name: 'منفذ' }));
 
-    const exportBtn = screen.getByRole('button', { name: 'تصدير إكسل' });
-    expect(exportBtn).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'المزيد' }));
+    const moreMenu = screen.getByRole('menu', { name: 'المزيد' });
+    const exportItem = within(moreMenu).getByRole('menuitem', { name: 'تصدير إكسل' });
+    expect(exportItem).toBeEnabled();
     expect(screen.queryByText('طبّق فلترًا واحدًا على الأقل قبل التصدير')).not.toBeInTheDocument();
-    await user.click(exportBtn);
+    await user.click(exportItem);
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/documents/export?status=' + encodeURIComponent('منفذ'),
-      expect.objectContaining({ headers: expect.any(Object) }),
-    );
+    expectExportRequestedWithStatus();
 
     clickSpy.mockRestore();
     vi.unstubAllGlobals();
@@ -768,35 +930,27 @@ describe('DocumentsList', () => {
 
   it('يعرض رسالة ولا يرسل طلب تصدير عند النقر دون تطبيق أي فلتر', async () => {
     const user = userEvent.setup();
-    mockPage([doc({ id: 1 })]);
-
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue({ ok: true, blob: () => Promise.resolve(new Blob(['xlsx'])) });
-    vi.stubGlobal('fetch', fetchMock);
+    mockPage([makeDocument({ id: 1 })]);
 
     renderList();
     await screen.findByRole('table');
 
-    const exportBtn = screen.getByRole('button', { name: 'تصدير إكسل' });
-    expect(exportBtn).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'المزيد' }));
+    const exportItem = within(screen.getByRole('menu', { name: 'المزيد' })).getByRole('menuitem', {
+      name: 'تصدير إكسل',
+    });
+    expect(exportItem).toBeEnabled();
 
-    await user.click(exportBtn);
+    await user.click(exportItem);
 
     expect(screen.getByRole('alert')).toHaveTextContent('طبّق فلترًا واحدًا على الأقل قبل التصدير');
-    expect(fetchMock).not.toHaveBeenCalled();
-
-    vi.unstubAllGlobals();
+    expect(api.get).not.toHaveBeenCalledWith('/documents/export', expect.anything());
   });
 
   it('يُصدر بعد تطبيق فلتر ويعيد الرسالة بعد إلغائه', async () => {
     const user = userEvent.setup();
-    mockPage([doc({ id: 1 })]);
+    mockPageWithExport([makeDocument({ id: 1 })]);
 
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue({ ok: true, blob: () => Promise.resolve(new Blob(['xlsx'])) });
-    vi.stubGlobal('fetch', fetchMock);
     URL.createObjectURL = vi.fn(() => 'blob:fake');
     URL.revokeObjectURL = vi.fn();
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
@@ -809,23 +963,28 @@ describe('DocumentsList', () => {
     let menu = screen.getByRole('menu', { name: 'فلترة الحالة' });
     await user.click(within(menu).getByRole('menuitem', { name: 'منفذ' }));
 
-    const exportBtn = screen.getByRole('button', { name: 'تصدير إكسل' });
-    await user.click(exportBtn);
+    await user.click(screen.getByRole('button', { name: 'المزيد' }));
+    await user.click(
+      within(screen.getByRole('menu', { name: 'المزيد' })).getByRole('menuitem', { name: 'تصدير إكسل' }),
+    );
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/documents/export?status=' + encodeURIComponent('منفذ'),
-      expect.objectContaining({ headers: expect.any(Object) }),
-    );
+    expectExportRequestedWithStatus();
 
     await user.click(within(table).getByRole('button', { name: 'فلترة الحالة' }));
     menu = screen.getByRole('menu', { name: 'فلترة الحالة' });
     await user.click(within(menu).getByRole('menuitem', { name: 'كل الحالات' }));
 
-    await user.click(exportBtn);
+    await user.click(screen.getByRole('button', { name: 'المزيد' }));
+    await user.click(
+      within(screen.getByRole('menu', { name: 'المزيد' })).getByRole('menuitem', { name: 'تصدير إكسل' }),
+    );
 
     expect(screen.getByRole('alert')).toHaveTextContent('طبّق فلترًا واحدًا على الأقل قبل التصدير');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const exportCalls = (api.get as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (call: unknown[]) => call[0] === '/documents/export',
+    );
+    expect(exportCalls).toHaveLength(1);
 
     clickSpy.mockRestore();
     vi.unstubAllGlobals();
@@ -834,36 +993,34 @@ describe('DocumentsList', () => {
   it('يعرض الرسالة على الجوال عند النقر دون فلتر ويُصدر بعد اختيار فلتر الحالة', async () => {
     const user = userEvent.setup();
     stubMobile();
-    mockPage([doc({ id: 1 })]);
-
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue({ ok: true, blob: () => Promise.resolve(new Blob(['xlsx'])) });
-    vi.stubGlobal('fetch', fetchMock);
+    mockPageWithExport([makeDocument({ id: 1 })]);
 
     renderList();
     await screen.findByRole('combobox', { name: 'فلترة الحالة' });
 
-    const exportBtn = screen.getByRole('button', { name: 'تصدير إكسل' });
-    await user.click(exportBtn);
+    await user.click(screen.getByRole('button', { name: 'المزيد' }));
+    await user.click(
+      within(screen.getByRole('menu', { name: 'المزيد' })).getByRole('menuitem', { name: 'تصدير إكسل' }),
+    );
 
     expect(screen.getByRole('alert')).toHaveTextContent('طبّق فلترًا واحدًا على الأقل قبل التصدير');
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(api.get).not.toHaveBeenCalledWith('/documents/export', expect.anything());
 
     await user.selectOptions(screen.getByRole('combobox', { name: 'فلترة الحالة' }), 'منفذ');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
-    await user.click(exportBtn);
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/documents/export?status=' + encodeURIComponent('منفذ'),
-      expect.objectContaining({ headers: expect.any(Object) }),
+    await user.click(screen.getByRole('button', { name: 'المزيد' }));
+    await user.click(
+      within(screen.getByRole('menu', { name: 'المزيد' })).getByRole('menuitem', { name: 'تصدير إكسل' }),
     );
+
+    expectExportRequestedWithStatus();
 
     vi.unstubAllGlobals();
   });
 
   it('يعرض زر «الملفات المحذوفة» للمحامي ورئيس القسم والمشرف ولا يعرضه للمدير', async () => {
+    const user = userEvent.setup();
     mockPage([]);
 
     const roles = ['lawyer', 'head', 'admin'];
@@ -874,28 +1031,45 @@ describe('DocumentsList', () => {
         user: { role },
       });
       const { unmount } = renderList();
-      const link = await screen.findByRole('link', { name: 'الملفات المحذوفة' });
-      expect(link).toHaveAttribute('href', '/documents/deleted');
+      await screen.findByRole('table');
+      await user.click(screen.getByRole('button', { name: 'المزيد' }));
+      const moreMenu = screen.getByRole('menu', { name: 'المزيد' });
+      expect(within(moreMenu).getByRole('menuitem', { name: 'الملفات المحذوفة' })).toHaveAttribute(
+        'href',
+        '/documents/deleted',
+      );
       unmount();
     }
 
     useAuthMock.mockReturnValue({ hasFullAccess: true, isHead: false, user: { role: 'manager' } });
     renderList();
     await screen.findByRole('table');
-    expect(screen.queryByRole('link', { name: 'الملفات المحذوفة' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'المزيد' }));
+    expect(
+      within(screen.getByRole('menu', { name: 'المزيد' })).queryByRole('menuitem', {
+        name: 'الملفات المحذوفة',
+      }),
+    ).not.toBeInTheDocument();
   });
 
   it('يعرض زر «تدوير أرقام الأساس» للمحامي فقط', async () => {
+    const user = userEvent.setup();
     useAuthMock.mockReturnValue({ hasFullAccess: false, isHead: false, user: { role: 'lawyer' } });
     mockPage([]);
 
     renderList();
+    await screen.findByRole('table');
+    await user.click(screen.getByRole('button', { name: 'المزيد' }));
 
-    const link = await screen.findByRole('link', { name: 'تدوير أرقام الأساس' });
-    expect(link).toHaveAttribute('href', '/documents/rotate');
+    expect(
+      within(screen.getByRole('menu', { name: 'المزيد' })).getByRole('menuitem', {
+        name: 'تدوير أرقام الأساس',
+      }),
+    ).toHaveAttribute('href', '/documents/rotate');
   });
 
   it('يخفي زر «تدوير أرقام الأساس» عن المدير ورئيس القسم والمشرف', async () => {
+    const user = userEvent.setup();
     mockPage([]);
 
     const roles = ['manager', 'head', 'admin'];
@@ -906,14 +1080,62 @@ describe('DocumentsList', () => {
         user: { role },
       });
       const { unmount } = renderList();
-      if (role === 'head') {
-        await screen.findByRole('link', { name: 'الملفات المحذوفة' });
-      } else {
-        await screen.findByRole('table');
-      }
-      expect(screen.queryByRole('link', { name: 'تدوير أرقام الأساس' })).not.toBeInTheDocument();
+      await screen.findByRole('table');
+      await user.click(screen.getByRole('button', { name: 'المزيد' }));
+      expect(
+        within(screen.getByRole('menu', { name: 'المزيد' })).queryByRole('menuitem', {
+          name: 'تدوير أرقام الأساس',
+        }),
+      ).not.toBeInTheDocument();
       unmount();
     }
+  });
+
+  it('يعرض زر «المزيد» ويجمع الإجراءات الأربعة للمحامي في قائمة منسدلة ويغلقها بمفتاح Escape', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({ hasFullAccess: false, isHead: false, user: { role: 'lawyer' } });
+    mockPage([]);
+
+    renderList();
+    await screen.findByRole('table');
+
+    const moreBtn = screen.getByRole('button', { name: 'المزيد' });
+    expect(screen.queryByRole('menu', { name: 'المزيد' })).not.toBeInTheDocument();
+
+    await user.click(moreBtn);
+    const menu = screen.getByRole('menu', { name: 'المزيد' });
+    expect(within(menu).getByRole('menuitem', { name: 'الملفات المحذوفة' })).toHaveAttribute(
+      'href',
+      '/documents/deleted',
+    );
+    expect(within(menu).getByRole('menuitem', { name: 'الملفات المشطوبة' })).toHaveAttribute(
+      'href',
+      '/documents/struck-off',
+    );
+    expect(within(menu).getByRole('menuitem', { name: 'تدوير أرقام الأساس' })).toHaveAttribute(
+      'href',
+      '/documents/rotate',
+    );
+    expect(within(menu).getByRole('menuitem', { name: 'تصدير إكسل' })).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('menu', { name: 'المزيد' })).not.toBeInTheDocument();
+  });
+
+  it('يغلق قائمة «المزيد» عند النقر خارجها دون تنفيذ أي إجراء', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({ hasFullAccess: false, isHead: false, user: { role: 'lawyer' } });
+    mockPage([]);
+
+    renderList();
+    await screen.findByRole('table');
+
+    await user.click(screen.getByRole('button', { name: 'المزيد' }));
+    expect(screen.getByRole('menu', { name: 'المزيد' })).toBeInTheDocument();
+
+    await user.click(screen.getByText('الملفات التنفيذية'));
+    expect(screen.queryByRole('menu', { name: 'المزيد' })).not.toBeInTheDocument();
+    expect(api.get).not.toHaveBeenCalledWith('/documents/export', expect.anything());
   });
 
   it('يعرض رقم الملف بالأحمر في الجدول عندما يحتاج الملف التدوير', async () => {
@@ -923,7 +1145,7 @@ describe('DocumentsList', () => {
         perPage: 20,
         totalCount: 1,
         totalPages: 1,
-        items: [doc({ id: 9, needsRotation: true })],
+        items: [makeDocument({ id: 9, needsRotation: true })],
       },
     });
 
@@ -943,7 +1165,7 @@ describe('DocumentsList', () => {
         perPage: 20,
         totalCount: 1,
         totalPages: 1,
-        items: [doc({ id: 9, needsRotation: true })],
+        items: [makeDocument({ id: 9, needsRotation: true })],
       },
     });
 
@@ -961,7 +1183,7 @@ describe('DocumentsList', () => {
         perPage: 20,
         totalCount: 1,
         totalPages: 1,
-        items: [doc({ id: 9, needsRotation: false })],
+        items: [makeDocument({ id: 9, needsRotation: false })],
       },
     });
 

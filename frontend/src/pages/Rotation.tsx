@@ -2,17 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { useIsMobile } from '../hooks/useMediaQuery';
+import { fileNumberLabel, tripleName } from '../utils/documentDisplay';
 import type { PagedResult, RotationDocumentDto } from '../types';
 
-function fullName(r: RotationDocumentDto) {
-  return [r.borrowerName, r.borrowerFather, r.borrowerFamily].filter(Boolean).join(' ');
-}
-
-function displayFileNumber(r: RotationDocumentDto) {
-  const number = r.fileNumber ?? '';
-  const type = r.fileType ?? '';
-  return type ? `${number} ${type}`.trim() : number;
-}
+const fullName = (r: RotationDocumentDto) =>
+  r.displayName || tripleName(r.borrowerName, r.borrowerFather, r.borrowerFamily);
+const displayFileNumber = (r: RotationDocumentDto) => fileNumberLabel(r.fileNumber, r.fileType);
 
 const PER_PAGE = 20;
 

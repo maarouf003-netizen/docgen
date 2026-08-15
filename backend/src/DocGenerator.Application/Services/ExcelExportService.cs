@@ -3,6 +3,7 @@ using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
 using DocGenerator.Application.Common.Security;
 using DocGenerator.Application.DTOs;
+using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Services;
 
@@ -97,7 +98,7 @@ public sealed class ExcelExportService : IExcelExportService
         if (includeAdministrativeBranch)
             values.Add(doc.AdministrativeBranchName ?? string.Empty);
         values.Add(StatusText(doc));
-        values.Add(doc.Applicant ?? string.Empty);
+        values.Add(ApplicantText(doc));
         values.Add(doc.BranchName ?? string.Empty);
         values.Add(FullName(doc));
         values.Add(doc.Court ?? string.Empty);
@@ -110,11 +111,25 @@ public sealed class ExcelExportService : IExcelExportService
         return values;
     }
 
+    /// <summary>اسم طالب التنفيذ/العرض: في عائلة وضع «منفذ عليه» يُؤخذ من أول «طالب تنفيذ/عرض» (اسم ثلاثي)، وإلا الحقل المباشر.</summary>
+    private static string ApplicantText(DocumentResponse doc)
+    {
+        if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
+        {
+            var applicant = doc.ExecutionApplicants
+                .Select(a => string.Join(' ', a.Name, a.Father, a.Family))
+                .FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+            if (!string.IsNullOrWhiteSpace(applicant))
+                return applicant;
+        }
+        return doc.Applicant ?? string.Empty;
+    }
+
     private static string StatusText(DocumentResponse doc)
     {
-        // ملف وضع «منفذ عليه»: الحالة من ExecutedStatus (متداول/منفذ/مشطوب) معزولة
-        // تمامًا عن حالة نظام «طالبة تنفيذ».
-        if (doc.GeneralEntitySide == "executed")
+        // ملف عائلة وضع «منفذ عليه» (Executed + Deposit): الحالة من ExecutedStatus (متداول/منفذ/مشطوب)
+        // معزولة تمامًا عن حالة نظام «طالبة تنفيذ».
+        if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
         {
             if (string.IsNullOrWhiteSpace(doc.ExecutedStatus)) return "متداول";
             return doc.ExecutedStatus == "مشطوب" ? "مشطوب" : "منفذ";
@@ -127,9 +142,9 @@ public sealed class ExcelExportService : IExcelExportService
 
     private static string FullName(DocumentResponse doc)
     {
-        // ملف وضع «منفذ عليه»: الاسم المعروض هو أول طرف (طالب التنفيذ أولًا، ثم الجهة/
-        // الشخص المنفذ عليه) — بلا مقترض.
-        if (doc.GeneralEntitySide == "executed")
+        // ملف عائلة وضع «منفذ عليه» (Executed + Deposit): الاسم المعروض هو أول طرف
+        // (طالب التنفيذ/العرض أولًا، ثم الجهة/الشخص المنفذ عليه) — بلا مقترض.
+        if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
         {
             var applicant = doc.ExecutionApplicants
                 .Select(a => string.Join(' ', a.Name, a.Father, a.Family))

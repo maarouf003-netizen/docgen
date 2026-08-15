@@ -12,6 +12,12 @@ public class Heir
     public int DocumentId { get; set; }
     public int? GuarantorNumber { get; set; }
     public string? HeirName { get; set; }
+    public string? HeirFather { get; set; }
+    public string? HeirFamily { get; set; }
+
+    /// <summary>صفة الوريث: أصالة / إضافة لتركة / أصالة وإضافة (Default أصالة).</summary>
+    public string? HeirCapacity { get; set; } = "أصالة";
+
     public string? AddressType { get; set; } = "عنوان";
     public string? HeirAddress { get; set; }
 

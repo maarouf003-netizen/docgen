@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -23,7 +22,7 @@ public class TokenRevocationIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal((int)HttpStatusCode.OK, firstLogin!.StatusCode);
 
         var client = _factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", firstLogin.Token);
+        client.SetAuthCookie(firstLogin.Token!);
         var change = await client.PostAsJsonAsync("/api/auth/change-password",
             new { oldPassword = "123456", newPassword = "654321" });
         Assert.Equal(HttpStatusCode.OK, change.StatusCode);
@@ -35,7 +34,7 @@ public class TokenRevocationIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal(HttpStatusCode.OK, (HttpStatusCode)newLogin!.StatusCode);
 
         var freshClient = _factory.CreateClient();
-        freshClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", newLogin.Token);
+        freshClient.SetAuthCookie(newLogin.Token!);
         var ok = await freshClient.GetAsync("/api/auth/me");
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
     }
@@ -58,7 +57,7 @@ public class TokenRevocationIntegrationTests : IClassFixture<ApiFactory>
         }
 
         var client = _factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.Token);
+        client.SetAuthCookie(login.Token!);
         var response = await client.GetAsync("/api/auth/me");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);

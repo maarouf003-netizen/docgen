@@ -1,6 +1,7 @@
 using System.Text;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Domain.Entities;
+using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Services;
 
@@ -44,6 +45,10 @@ public class DocumentContextBuilder : IDocumentContextBuilder
         context["borrower_birth"] = doc.BorrowerBirth ?? string.Empty;
         context["borrower_register"] = doc.BorrowerRegister ?? string.Empty;
         context["borrower_national_id"] = doc.BorrowerNationalId ?? string.Empty;
+        // مفاتيح الشخص الاعتباري (تُستعمل عند تحديث القوالب لاحقًا؛ لا تؤثر على القوالب الحالية).
+        context["borrower_nature"] = doc.BorrowerNature ?? PartyNatureCatalog.Natural;
+        context["borrower_registration_number"] = doc.BorrowerRegistrationNumber ?? string.Empty;
+        context["borrower_represented_by"] = doc.BorrowerRepresentedBy ?? string.Empty;
         context["contract_type"] = contractType;
         context["contract_number"] = doc.ContractNumber ?? string.Empty;
         context["contract_date"] = doc.ContractDate ?? string.Empty;
@@ -163,6 +168,9 @@ public class DocumentContextBuilder : IDocumentContextBuilder
                 context[$"guarantor_{i}_national_id"] = guarantor?.GuarantorNationalId ?? string.Empty;
                 context[$"guarantor_{i}_address"] = PrefixedAddress(guarantor?.AddressType, guarantor?.GuarantorAddress);
                 context[$"guarantor_{i}_address_type"] = guarantor?.AddressType ?? "موطن مختار";
+                context[$"guarantor_{i}_nature"] = guarantor?.GuarantorNature ?? string.Empty;
+                context[$"guarantor_{i}_registration_number"] = guarantor?.GuarantorRegistrationNumber ?? string.Empty;
+                context[$"guarantor_{i}_represented_by"] = guarantor?.GuarantorRepresentedBy ?? string.Empty;
             }
             else
             {
@@ -175,6 +183,9 @@ public class DocumentContextBuilder : IDocumentContextBuilder
                 context[$"guarantor_{i}_national_id"] = string.Empty;
                 context[$"guarantor_{i}_address"] = string.Empty;
                 context[$"guarantor_{i}_address_type"] = string.Empty;
+                context[$"guarantor_{i}_nature"] = string.Empty;
+                context[$"guarantor_{i}_registration_number"] = string.Empty;
+                context[$"guarantor_{i}_represented_by"] = string.Empty;
             }
         }
 
@@ -366,7 +377,7 @@ public class DocumentContextBuilder : IDocumentContextBuilder
     /// </summary>
     private static string BuildHeirLine(Heir heir, string deceasedFull, bool withAddress)
     {
-        var line = $"{heir.HeirName?.Trim()} إضافة لتركة المتوفى ({deceasedFull})";
+        var line = $"{JoinNonEmpty(new[] { heir.HeirName, heir.HeirFather, heir.HeirFamily })} إضافة لتركة المتوفى ({deceasedFull})";
         if (!withAddress)
             return line;
 
@@ -383,7 +394,7 @@ public class DocumentContextBuilder : IDocumentContextBuilder
         var list = heirs
             .Select(h =>
             {
-                var name = (h.HeirName ?? string.Empty).Trim();
+                var name = JoinNonEmpty(new[] { h.HeirName, h.HeirFather, h.HeirFamily });
                 if (string.IsNullOrWhiteSpace(name))
                     return string.Empty;
                 var phrase = HeirAddressPhrase(h);
@@ -435,7 +446,7 @@ public class DocumentContextBuilder : IDocumentContextBuilder
         Dictionary<string, object> context,
         (Heir Heir, string DeceasedFullName) resolved)
     {
-        context["borrower_name"] = resolved.Heir.HeirName ?? string.Empty;
+        context["borrower_name"] = JoinNonEmpty(new[] { resolved.Heir.HeirName, resolved.Heir.HeirFather, resolved.Heir.HeirFamily });
         context["execution_debtor_and_its_adress"] =
             BuildHeirLine(resolved.Heir, resolved.DeceasedFullName, withAddress: true);
     }
@@ -445,7 +456,7 @@ public class DocumentContextBuilder : IDocumentContextBuilder
         Dictionary<string, object> context,
         (Heir Heir, string DeceasedFullName) resolved)
     {
-        var heirName = resolved.Heir.HeirName ?? string.Empty;
+        var heirName = JoinNonEmpty(new[] { resolved.Heir.HeirName, resolved.Heir.HeirFather, resolved.Heir.HeirFamily });
         context["execution_debtor"] = BuildHeirLine(resolved.Heir, resolved.DeceasedFullName, withAddress: false);
         context["recipient_name"] = heirName;
     }

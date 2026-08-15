@@ -1,7 +1,8 @@
 using System.Net;
-using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -83,6 +84,54 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
             new StringContent(body, Encoding.UTF8, "application/json"));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task MutatingRequest_WithoutCsrfHeader_ReturnsForbidden()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        // عميل يحمل Cookie المصادقة فقط دون ترويسة CSRF (محاكاة طلب مزيّف لم يقرأ الـ Cookie)
+        var bare = _factory.CreateClient();
+        bare.DefaultRequestHeaders.Add("Cookie", $"docgen_token={token}");
+
+        var response = await bare.PostAsJsonAsync("/api/auth/change-password",
+            new { oldPassword = "123456", newPassword = "654321" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task MutatingRequest_WithMismatchedCsrfHeader_ReturnsForbidden()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var bare = _factory.CreateClient();
+        bare.DefaultRequestHeaders.Add("Cookie", $"docgen_token={token}; docgen_csrf=cookie-value");
+        bare.DefaultRequestHeaders.Add("X-CSRF-Token", "different-value");
+
+        var response = await bare.PostAsJsonAsync("/api/auth/change-password",
+            new { oldPassword = "123456", newPassword = "654321" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Login_SetsCsrfCookie_WithSameLifetimeAsAuthCookie()
+    {
+        // كان الـ CSRF Cookie جلسةً قصيرة تُحذف عند إغلاق المتصفح بينما يبقى Cookie الجلسة ساريًا،
+        // فيستمر الدخول بعد إعادة فتح المتصفح لكن كل طلب يغيّر الحالة (تعديل/حفظ) يُرفض بـ 403.
+        // العقدة الحاسمة: يجب أن يتزامن عمراهما بالضبط ليبقى التعديل يعمل ما دامت الجلسة حيّة.
+        var client = _factory.CreateClient();
+        var body = JsonSerializer.Serialize(new { username = "lawyer1", password = "123456" });
+        var response = await client.PostAsync("/api/auth/login",
+            new StringContent(body, Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var authMaxAge = MaxAgeOf(response, "docgen_token");
+        var csrfMaxAge = MaxAgeOf(response, "docgen_csrf");
+
+        Assert.NotNull(authMaxAge);
+        Assert.NotNull(csrfMaxAge);
+        Assert.Equal(authMaxAge, csrfMaxAge);
     }
 
     [Fact]
@@ -172,6 +221,20 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal(branch1, root.GetProperty("user").GetProperty("branchId").GetInt32());
     }
 
+    private static long? MaxAgeOf(HttpResponseMessage response, string name)
+    {
+        if (!response.Headers.TryGetValues("Set-Cookie", out var setCookies))
+            return null;
+        foreach (var value in setCookies)
+        {
+            if (value.IndexOf(name + "=", StringComparison.OrdinalIgnoreCase) < 0)
+                continue;
+            var match = Regex.Match(value, @"Max-Age=(\d+)", RegexOptions.IgnoreCase);
+            return match.Success ? long.Parse(match.Groups[1].Value) : null;
+        }
+        return null;
+    }
+
     private async Task<int> GetBranchIdAsync(string code)
     {
         using var scope = _factory.Services.CreateScope();
@@ -184,9 +247,5 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
 public static class TokenExtensions
 {
     public static HttpClient WithToken(this ApiFactory factory, string token)
-    {
-        var client = factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        return client;
-    }
+        => factory.ClientWithToken(token);
 }

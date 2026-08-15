@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const TOKEN_KEY = 'docgen_token';
+const CSRF_COOKIE = 'docgen_csrf';
+const CSRF_HEADER = 'X-CSRF-Token';
 
 export function getApiErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
@@ -34,18 +35,20 @@ export const api = axios.create({
   },
 });
 
-export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
-}
-
-export function setToken(token: string | null) {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
+// الجلسة Cookie مصادقة HttpOnly (SameSite=Strict): لا يُخزَّن أي توكن في localStorage
+// ولا تُرسل ترويسة Authorization. حماية CSRF دفاعًا إضافيًا: كل طلب يغيّر الحالة يحمل
+// ترويسة تقابل قيمة Cookie CSRF القابلة للقراءة (المتصفح لا يرسلها عبر المواقع المخالفة).
+export function getCsrfToken(): string | null {
+  const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${CSRF_COOKIE}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
 }
 
 api.interceptors.request.use((config) => {
-  const token = getToken();
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  const method = (config.method ?? 'get').toLowerCase();
+  if (method !== 'get' && method !== 'head' && method !== 'options') {
+    const csrf = getCsrfToken();
+    if (csrf) config.headers[CSRF_HEADER] = csrf;
+  }
   return config;
 });
 
@@ -53,7 +56,6 @@ api.interceptors.response.use(
   (res) => res,
   (error) => {
     if (error.response?.status === 401) {
-      setToken(null);
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';
       }

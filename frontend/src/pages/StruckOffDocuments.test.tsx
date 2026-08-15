@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import StruckOffDocuments from './StruckOffDocuments';
 import type { DocumentResponse } from '../types';
+import { makeStruckOffDocument } from '../test/factories';
 
 vi.mock('react-router-dom', () => ({
   Link: ({ children, to }: { children: ReactNode; to: string }) => <a href={to}>{children}</a>,
@@ -30,39 +31,6 @@ vi.mock('../hooks/useMediaQuery', () => ({
 
 import { api } from '../api/client';
 
-function doc(overrides: Partial<DocumentResponse>): DocumentResponse {
-  return {
-    id: 1,
-    createdAt: '2026-07-31',
-    updatedAt: '2026-07-31',
-    documentType: 'متداول - مقترض',
-    isDraft: false,
-    amountNumeric: 0,
-    amount2Numeric: 0,
-    inclusionAmountNumeric: 0,
-    viewCount: 0,
-    printCount: 0,
-    borrowerName: 'أحمد',
-    borrowerFather: 'خالد',
-    borrowerFamily: 'الخطيب',
-    applicant: 'المدعي',
-    court: 'دمشق',
-    fileNumber: '99',
-    fileType: 'حقوق',
-    fileYear: '2026',
-    generalEntitySide: 'executed',
-    executedStatus: 'مشطوب',
-    struckOffDate: '2026-08-04T10:00:00',
-    guarantors: [],
-    realEstates: [],
-    executionActions: [],
-    executionApplicants: [],
-    executedPublicEntities: [],
-    executedNaturalPersons: [{ name: 'محمود', father: 'علي', family: 'حسن' }],
-    ...overrides,
-  };
-}
-
 function mockPage(items: DocumentResponse[]) {
   (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
     data: { page: 1, perPage: 20, totalCount: items.length, totalPages: 1, items },
@@ -77,7 +45,7 @@ beforeEach(() => {
 
 describe('StruckOffDocuments', () => {
   it('يعرض الملفات المشطوبة في جدول على المكتبي مع تاريخ الشطب واسم المنفذ عليه', async () => {
-    mockPage([doc({ id: 7, struckOffDate: '2026-08-04T10:00:00' })]);
+    mockPage([makeStruckOffDocument({ id: 7 })]);
 
     render(<StruckOffDocuments />);
 
@@ -92,7 +60,7 @@ describe('StruckOffDocuments', () => {
 
   it('يعرض بطاقات على الجوال مع شارة «مشطوب» وزر إعادة الملف', async () => {
     isMobileMock.mockReturnValue(true);
-    mockPage([doc({ id: 7 })]);
+    mockPage([makeStruckOffDocument({ id: 7 })]);
 
     render(<StruckOffDocuments />);
 
@@ -105,7 +73,7 @@ describe('StruckOffDocuments', () => {
   });
 
   it('يعرض اسم الجهة العامة المنفذ عليها عند غياب الشخص الطبيعي', async () => {
-    mockPage([doc({ executedNaturalPersons: [], executedPublicEntities: [{ entityName: 'المصرف العقاري' }] })]);
+    mockPage([makeStruckOffDocument({ executedNaturalPersons: [], executedPublicEntities: [{ entityName: 'المصرف العقاري' }] })]);
 
     render(<StruckOffDocuments />);
 
@@ -114,12 +82,21 @@ describe('StruckOffDocuments', () => {
   });
 
   it('يعرض اسم طالب التنفيذ كبديل عند غياب المنفذ عليهم', async () => {
-    mockPage([doc({ executedNaturalPersons: [], executedPublicEntities: [] })]);
+    mockPage([makeStruckOffDocument({ executedNaturalPersons: [], executedPublicEntities: [] })]);
 
     render(<StruckOffDocuments />);
 
     await screen.findByRole('table');
     expect(screen.getByRole('link', { name: 'المدعي' })).toHaveAttribute('href', '/documents/1');
+  });
+
+  it('يعرض اسم أول «طالب تنفيذ» (الاسم الثلاثي) في عمود طالب التنفيذ', async () => {
+    mockPage([makeStruckOffDocument({ executionApplicants: [{ id: 1, name: 'سليم', father: 'حسن', family: 'علي' }] })]);
+
+    render(<StruckOffDocuments />);
+
+    const table = await screen.findByRole('table');
+    expect(within(table).getByText('سليم حسن علي')).toBeInTheDocument();
   });
 
   it('يرسل نص البحث إلى الخلفية مع الصفحة الأولى', async () => {
@@ -138,8 +115,24 @@ describe('StruckOffDocuments', () => {
 
   it('يعيد الملف إلى المتداول بعد التأكيد ويعرض رسالة النجاح ويعيد تحميل القائمة', async () => {
     const user = userEvent.setup();
-    mockPage([doc({ id: 7 })]);
+    mockPage([makeStruckOffDocument({ id: 7 })]);
     (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });
+
+    render(<StruckOffDocuments />);
+    const table = await screen.findByRole('table');
+
+    await user.click(within(table).getByRole('button', { name: 'إعادة الملف' }));
+    await user.type(screen.getByLabelText(/رقم الملف الجديد/), '100');
+    await user.click(within(table).getByRole('button', { name: 'تأكيد الإعادة' }));
+
+    expect(api.post).toHaveBeenCalledWith('/documents/7/restore-struck-off', expect.objectContaining({ renewalFileNumber: '100' }));
+    expect(await screen.findByText(/أعيد الملف "محمود علي حسن" إلى المتداول/)).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith(expect.stringContaining('/documents/struck-off'));
+  });
+
+  it('يمنع الإعادة للملف المشطوب دون رقم الملف الجديد ويعرض الخطأ دون إرسال', async () => {
+    const user = userEvent.setup();
+    mockPage([makeStruckOffDocument({ id: 7 })]);
 
     render(<StruckOffDocuments />);
     const table = await screen.findByRole('table');
@@ -147,14 +140,57 @@ describe('StruckOffDocuments', () => {
     await user.click(within(table).getByRole('button', { name: 'إعادة الملف' }));
     await user.click(within(table).getByRole('button', { name: 'تأكيد الإعادة' }));
 
-    expect(api.post).toHaveBeenCalledWith('/documents/7/restore-struck-off');
+    expect(screen.getByText('رقم الملف الجديد مطلوب عند إعادة الملف المشطوب')).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('يرسل بقية حقول التجديد عند إعادة الملف المشطوب', async () => {
+    const user = userEvent.setup();
+    mockPage([makeStruckOffDocument({ id: 7 })]);
+    (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });
+
+    render(<StruckOffDocuments />);
+    const table = await screen.findByRole('table');
+
+    await user.click(within(table).getByRole('button', { name: 'إعادة الملف' }));
+    await user.type(screen.getByLabelText(/رقم الملف الجديد/), '100');
+    await user.type(screen.getByLabelText(/رقم ورود اخطار التجديد/), 'A-5');
+    await user.type(screen.getByLabelText(/تاريخ ورود اخطار التجديد/), '1/8/2026');
+    await user.type(screen.getByLabelText(/نوع الملف الجديد/), 'حقوقي');
+    await user.type(screen.getByLabelText(/تاريخ التجديد/), '1/8/2026');
+    await user.click(within(table).getByRole('button', { name: 'تأكيد الإعادة' }));
+
+    expect(api.post).toHaveBeenCalledWith('/documents/7/restore-struck-off', {
+      renewalFileReceiptNumber: 'A-5',
+      renewalFileReceiptDate: '1/8/2026',
+      renewalFileNumber: '100',
+      renewalFileType: 'حقوقي',
+      renewalDate: '1/8/2026',
+    });
+  });
+
+  it('يعرض حقول التجديد على الجوال عند تأكيد الإعادة ويرسل رقم الملف الجديد', async () => {
+    isMobileMock.mockReturnValue(true);
+    const user = userEvent.setup();
+    mockPage([makeStruckOffDocument({ id: 7 })]);
+    (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });
+
+    render(<StruckOffDocuments />);
+    expect(await screen.findByText('محمود علي حسن')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'إعادة الملف' }));
+    expect(screen.getByLabelText(/رقم الملف الجديد/)).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/رقم الملف الجديد/), '100');
+    await user.click(screen.getByRole('button', { name: 'تأكيد الإعادة' }));
+
+    expect(api.post).toHaveBeenCalledWith('/documents/7/restore-struck-off', expect.objectContaining({ renewalFileNumber: '100' }));
     expect(await screen.findByText(/أعيد الملف "محمود علي حسن" إلى المتداول/)).toBeInTheDocument();
-    expect(api.get).toHaveBeenCalledWith(expect.stringContaining('/documents/struck-off'));
   });
 
   it('يلغي التأكيد دون إرسال طلب الإعادة', async () => {
     const user = userEvent.setup();
-    mockPage([doc({ id: 7 })]);
+    mockPage([makeStruckOffDocument({ id: 7 })]);
 
     render(<StruckOffDocuments />);
     const table = await screen.findByRole('table');
@@ -168,7 +204,7 @@ describe('StruckOffDocuments', () => {
 
   it('يعرض رسالة خطأ عند فشل الإعادة', async () => {
     const user = userEvent.setup();
-    mockPage([doc({ id: 7 })]);
+    mockPage([makeStruckOffDocument({ id: 7 })]);
     (api.post as unknown as ReturnType<typeof vi.fn>).mockRejectedValue({
       isAxiosError: true,
       response: { status: 500 },
@@ -178,6 +214,7 @@ describe('StruckOffDocuments', () => {
     const table = await screen.findByRole('table');
 
     await user.click(within(table).getByRole('button', { name: 'إعادة الملف' }));
+    await user.type(screen.getByLabelText(/رقم الملف الجديد/), '100');
     await user.click(within(table).getByRole('button', { name: 'تأكيد الإعادة' }));
 
     expect(await screen.findByText('حدث خطأ في الخادم. حاول مرة أخرى لاحقاً')).toBeInTheDocument();
@@ -192,7 +229,7 @@ describe('StruckOffDocuments', () => {
   });
 
   it('يعرض «—» في تاريخ الشطب عند غياب القيمة', async () => {
-    mockPage([doc({ struckOffDate: undefined })]);
+    mockPage([makeStruckOffDocument({ struckOffDate: undefined })]);
 
     render(<StruckOffDocuments />);
 
@@ -203,7 +240,7 @@ describe('StruckOffDocuments', () => {
 
   it('يخفي زر الإعادة عن رئيس القسم والمشرف (عرض فقط)', async () => {
     useAuthMock.mockReturnValue({ user: { role: 'head' } });
-    mockPage([doc({ id: 7 })]);
+    mockPage([makeStruckOffDocument({ id: 7 })]);
 
     render(<StruckOffDocuments />);
 

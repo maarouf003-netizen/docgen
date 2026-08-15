@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../auth/useAuth';
 import type { LoginBranchSelectionResponse, LoginResponse } from '../types';
+import nationalEmblem from '../assets/national.png';
+import syrianFlag from '../assets/flag.jpg';
 
 const isBranchSelection = (
   result: LoginResponse | LoginBranchSelectionResponse,
@@ -65,11 +67,30 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-emerald-900 flex items-center justify-center p-4" dir="rtl">
+      <div className="flex h-1.5 -mx-8 -mt-8 mb-6 rounded-t-2xl overflow-hidden" aria-hidden="true">
+        <span className="flex-1 bg-[#007A3D]" />
+        <span className="flex-1 bg-white" />
+        <span className="flex-1 bg-neutral-900" />
+      </div>
       <form onSubmit={submit} className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
+        <div className="flex items-center justify-between mb-4">
+          <img
+            src={syrianFlag}
+            alt="علم الجمهورية العربية السورية"
+            className="w-16 rounded-md shadow-md aspect-[2/1] object-cover"
+          />
+          <img
+            src={nationalEmblem}
+            alt="شعار نسر صلاح الدين"
+            className="w-16 h-16 drop-shadow-sm"
+          />
+        </div>
         <h1 className="text-2xl font-bold text-emerald-900 text-center mb-1">
-          مولد المستندات التنفيذية
+          مسار
         </h1>
-        <p className="text-center text-gray-500 text-sm mb-6">تسجيل الدخول</p>
+        <p className="text-center text-gray-500 text-sm mb-6">
+          مساعد محامي الدولة الذكي في إدارة الملفات التنفيذية
+        </p>
 
         {error && (
           <div className="bg-red-50 text-red-700 border border-red-200 rounded-lg p-3 mb-4 text-sm">

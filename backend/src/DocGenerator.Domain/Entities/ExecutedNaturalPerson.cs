@@ -22,10 +22,24 @@ public class ExecutedNaturalPerson
     /// <summary>طريقة التمثيل: أصالة / إضافة لتركة (Default أصالة).</summary>
     public string? RepresentationType { get; set; } = "أصالة";
 
-    /// <summary>الاسم الثلاثي لمورث المطلوب التنفيذ عليه — يُعبأ عند اختيار «إضافة لتركة».</summary>
+    /// <summary>الاسم الثلاثي لمورث المطلوب التنفيذ عليه — يُعبأ عند اختيار «إضافة لتركة» أو «أصالة وإضافة».</summary>
     public string? DeceasedName { get; set; }
     public string? DeceasedFather { get; set; }
     public string? DeceasedFamily { get; set; }
+
+    /// <summary>
+    /// الممثل الشرعي للشخص الطبيعي (ولي/وصي/قيم) إن وُجد: اسمه الثلاثي وصفته وعنوانه.
+    /// عند وجوده يصبح عنوان الممثل هو المعتبر.
+    /// </summary>
+    public string? RepresentativeName { get; set; }
+    public string? RepresentativeFather { get; set; }
+    public string? RepresentativeFamily { get; set; }
+    /// <summary>صفة الممثل الشرعي: ولي / وصي / قيم.</summary>
+    public string? RepresentativeCapacity { get; set; }
+    /// <summary>نوع عنوان الممثل الشرعي: موطن مختار / عنوان / وكيل قانوني.</summary>
+    public string? RepresentativeAddressType { get; set; }
+    /// <summary>عنوان الممثل الشرعي أو وكيله القانوني حسب نوع العنوان.</summary>
+    public string? RepresentativeAddress { get; set; }
 
     public Document Document { get; set; } = null!;
     public ICollection<ExecutedHeir> Heirs { get; set; } = new List<ExecutedHeir>();

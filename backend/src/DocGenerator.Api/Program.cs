@@ -1,5 +1,7 @@
+using System.Net;
 using System.Security.Claims;
 using System.Text;
+using DocGenerator.Api.Auth;
 using DocGenerator.Api.Middleware;
 using DocGenerator.Application;
 using DocGenerator.Application.Common;
@@ -14,7 +16,8 @@ using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// يدعم Render ربط قاعدة Postgres فيحقن DATABASE_URL تلقائيًا؛ وهو مصدر موثوق يغني عن اللصق اليدوي.
+// يدعم المضيفون السحابيون ربط قاعدة Postgres فيحقنون DATABASE_URL تلقائيًا بصيغة postgres://؛
+// وهو مصدر موثوق يغني عن اللصق اليدوي لسلسلة الاتصال.
 var databaseUrl = builder.Configuration["DATABASE_URL"];
 var usePostgres = builder.Configuration.GetValue<bool>("Database:UsePostgres")
     || !string.IsNullOrWhiteSpace(databaseUrl);
@@ -45,8 +48,8 @@ if (usePostgres)
             "Database:UsePostgres=true requires a valid Postgres connection string "
             + $"(e.g. Host=...;Port=...;Database=... or a postgres:// URL). "
             + $"Raw value (masked): {DescribeRawValue(rawConn)}. "
-            + "Provide ConnectionStrings__DefaultConnection (or link the database so Render "
-            + "injects DATABASE_URL) in Service docgen > Settings > Environment, then redeploy.");
+            + "Provide ConnectionStrings__DefaultConnection, or set the DATABASE_URL environment "
+            + "variable to a postgres:// URL (as injected by most hosting platforms), then redeploy.");
     }
 }
 
@@ -108,6 +111,15 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
         o.Events = new JwtBearerEvents
         {
+            // جلاسة المصادقة Cookie HttpOnly؛ يقرأها المُصدِّق كبديل لترويسة Authorization
+            // (تُحترم الترويسة إن وُجدت، لمن يريد الاتصال البرمجي بالخادم).
+            OnMessageReceived = context =>
+            {
+                var token = context.Request.Cookies[AuthCookie.Name];
+                if (string.IsNullOrEmpty(context.Token) && !string.IsNullOrEmpty(token))
+                    context.Token = token;
+                return Task.CompletedTask;
+            },
             OnTokenValidated = async context =>
             {
                 var sub = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier)
@@ -134,6 +146,37 @@ builder.Services.AddAuthorization();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+
+// ForwardedHeaders موثوق: يعالج X-Forwarded-For / X-Forwarded-Proto فقط إذا جاء الطلب من
+// وكيل معروف صراحةً في الإعدادات (Security:KnownProxies، عنوان IP أو نطاق CIDR). بلا أي وكيل
+// معروف يبقى النظام مغلقًا ضد التزوير: أي ترويسة X-Forwarded-For يرسلها عميل مباشر تُتجاهَل.
+builder.Services.Configure<ForwardedHeadersOptions>(o =>
+{
+    o.ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor
+        | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto;
+
+    var known = builder.Configuration.GetSection("Security:KnownProxies").Get<string[]>() ?? [];
+    foreach (var entry in known)
+    {
+        var item = entry.Trim();
+        if (item.Length == 0)
+            continue;
+        if (item.Contains('/'))
+        {
+            var parts = item.Split('/');
+            if (parts.Length == 2
+                && IPAddress.TryParse(parts[0], out var networkAddress)
+                && int.TryParse(parts[1], out var prefix))
+            {
+                o.KnownIPNetworks.Add(new System.Net.IPNetwork(networkAddress, prefix));
+                continue;
+            }
+        }
+        if (IPAddress.TryParse(item, out var ip))
+            o.KnownProxies.Add(ip);
+    }
+});
+
 builder.Services.AddSwaggerGen(o =>
 {
     o.SwaggerDoc("v1", new OpenApiInfo { Title = "DocGenerator API", Version = "v1" });
@@ -159,7 +202,11 @@ builder.Services.AddSwaggerGen(o =>
 
 var app = builder.Build();
 
+// أول وسيط في السلسلة حتى تعكس Request.Scheme وRemoteIpAddress البروتوكول والعنوان الحقيقيين
+// للعميل (المعالجة تعتمد على وكلاء معروفين فقط؛ بلا وكيل تُتجاهَل كل الترويسات فتبقى الحالة مغلقة).
+app.UseForwardedHeaders();
 app.UseExceptionHandler();
+app.UseMiddleware<CsrfMiddleware>();
 
 // توزيع من أصل واحد: الخلفية تخدم الواجهة المبنية (wwwroot) بنفس الأصل فيغني عن CORS في الإنتاج.
 if (!builder.Environment.IsDevelopment())

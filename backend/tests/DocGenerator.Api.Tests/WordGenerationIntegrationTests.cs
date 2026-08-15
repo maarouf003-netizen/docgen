@@ -1,6 +1,5 @@
 using System.IO.Compression;
 using System.Net;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -23,7 +22,7 @@ public class WordGenerationIntegrationTests : IClassFixture<ApiFactory>
     private static async Task<int> CreateFullDocumentAsync(ApiFactory factory, string token)
     {
         var client = factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.SetAuthCookie(token);
         var response = await client.PostAsJsonAsync("/api/documents", new
         {
             borrowerName = "أحمد",
@@ -86,7 +85,7 @@ public class WordGenerationIntegrationTests : IClassFixture<ApiFactory>
         ApiFactory factory, string token)
     {
         var client = factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.SetAuthCookie(token);
         var response = await client.PostAsJsonAsync("/api/documents", new
         {
             borrowerName = "أحمد",
@@ -139,7 +138,7 @@ public class WordGenerationIntegrationTests : IClassFixture<ApiFactory>
         var id = await CreateFullDocumentAsync(_factory, token);
 
         var client = _factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.SetAuthCookie(token);
         var response = await client.GetAsync($"/api/documents/{id}/generate?template=004");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -173,7 +172,7 @@ public class WordGenerationIntegrationTests : IClassFixture<ApiFactory>
         var id = await CreateFullDocumentAsync(_factory, token);
 
         var client = _factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.SetAuthCookie(token);
         var response = await client.GetAsync($"/api/documents/{id}/generate");
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -186,7 +185,7 @@ public class WordGenerationIntegrationTests : IClassFixture<ApiFactory>
         var id = await CreateFullDocumentAsync(_factory, token);
 
         var client = _factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.SetAuthCookie(token);
         var response = await client.GetAsync($"/api/documents/{id}/generate?template=999");
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -198,7 +197,7 @@ public class WordGenerationIntegrationTests : IClassFixture<ApiFactory>
         var token = await LoginLawyerAsync();
 
         var client = _factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.SetAuthCookie(token);
         var response = await client.GetAsync($"/api/documents/999999/generate?template=004");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
@@ -226,7 +225,7 @@ public class WordGenerationIntegrationTests : IClassFixture<ApiFactory>
         var id = await CreateFullDocumentAsync(_factory, token);
 
         var client = _factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.SetAuthCookie(token);
         var response = await client.GetAsync($"/api/documents/{id}/generate?template=003&recipient=1");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -244,7 +243,7 @@ public class WordGenerationIntegrationTests : IClassFixture<ApiFactory>
         var id = await CreateFullDocumentAsync(_factory, token);
 
         var client = _factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.SetAuthCookie(token);
         var response = await client.GetAsync($"/api/documents/{id}/generate?template=005");
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -257,7 +256,7 @@ public class WordGenerationIntegrationTests : IClassFixture<ApiFactory>
         var id = await CreateFullDocumentAsync(_factory, token);
 
         var client = _factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.SetAuthCookie(token);
         var estateId = await GetFirstEstateIdAsync(client, id);
         var response = await client.GetAsync($"/api/documents/{id}/generate?template=005&estateIds={estateId}");
 
@@ -276,7 +275,7 @@ public class WordGenerationIntegrationTests : IClassFixture<ApiFactory>
         var id = await CreateFullDocumentAsync(_factory, token);
 
         var client = _factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.SetAuthCookie(token);
         var estateId = await GetFirstEstateIdAsync(client, id);
         var response = await client.GetAsync($"/api/documents/{id}/generate?template=006&estateIds={estateId}");
 
@@ -295,7 +294,7 @@ public class WordGenerationIntegrationTests : IClassFixture<ApiFactory>
         var id = await CreateFullDocumentAsync(_factory, token);
 
         var client = _factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.SetAuthCookie(token);
         var response = await client.GetAsync($"/api/documents/{id}/generate?template=007&recipient=0");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -313,7 +312,7 @@ public class WordGenerationIntegrationTests : IClassFixture<ApiFactory>
         var (id, heirId, _) = await CreateDocumentWithHeirsAndEstateAsync(_factory, token);
 
         var client = _factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.SetAuthCookie(token);
         var response = await client.GetAsync($"/api/documents/{id}/generate?template=003&heirId={heirId}");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -332,7 +331,7 @@ public class WordGenerationIntegrationTests : IClassFixture<ApiFactory>
         var (id, heirId, estateId) = await CreateDocumentWithHeirsAndEstateAsync(_factory, token);
 
         var client = _factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.SetAuthCookie(token);
         var response = await client.GetAsync($"/api/documents/{id}/generate?template=005&estateIds={estateId}&heirId={heirId}");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -350,7 +349,7 @@ public class WordGenerationIntegrationTests : IClassFixture<ApiFactory>
         var (id, heirId, _) = await CreateDocumentWithHeirsAndEstateAsync(_factory, token);
 
         var client = _factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.SetAuthCookie(token);
         var response = await client.GetAsync($"/api/documents/{id}/generate?template=007&heirId={heirId}");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -369,7 +368,7 @@ public class WordGenerationIntegrationTests : IClassFixture<ApiFactory>
         var id = await CreateFullDocumentAsync(_factory, token);
 
         var client = _factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.SetAuthCookie(token);
         var estateId = await GetFirstEstateIdAsync(client, id);
         var response = await client.GetAsync($"/api/documents/{id}/generate?template=PS&estateIds={estateId}");
 

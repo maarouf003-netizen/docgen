@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
+import { formatDateTime } from '../utils/dates';
 
 interface AuditLogDto {
   id: number;
@@ -118,7 +119,7 @@ export default function AuditLogs() {
             {rows.map((r) => (
               <tr key={r.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3 whitespace-nowrap">
-                  {new Date(r.timestamp).toLocaleString('ar-SY')}
+                  {formatDateTime(r.timestamp)}
                 </td>
                 <td className="px-4 py-3">{r.userName}</td>
                 <td className="px-4 py-3">

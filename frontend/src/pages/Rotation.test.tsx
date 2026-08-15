@@ -118,6 +118,20 @@ describe('Rotation', () => {
     expect(screen.getByText(/نوعه: حقوق/)).toBeInTheDocument();
   });
 
+  it('يعرض displayName باسم العرض لملفات العائلتين Executed + Deposit', async () => {
+    (api.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: page([
+        row({ documentId: 3, displayName: 'أحمد خالد الخطيب', borrowerName: undefined, borrowerFather: undefined, borrowerFamily: undefined, fileNumber: '77', fileType: 'الجهة العامة منفذ عليها' }),
+      ]),
+    });
+    render(<Rotation />);
+
+    const table = await screen.findByRole('table');
+    expect(within(table).getByText('أحمد خالد الخطيب')).toBeInTheDocument();
+    // الحقل النصي يُسمّى بالاسم المعروض وليس اسم مقترض غير موجود.
+    expect(within(table).getByRole('textbox', { name: 'رقم أساس أحمد خالد الخطيب' })).toBeInTheDocument();
+  });
+
   it('يحفظ التغييرات فقط عبر PUT /documents/rotate ويظهر رسالة النجاح ويعيد التحميل', async () => {
     const user = userEvent.setup();
     (api.put as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });

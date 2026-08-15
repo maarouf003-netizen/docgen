@@ -26,12 +26,14 @@ public class TransferConcurrencyTests
         await using var db = new DocGeneratorDbContext(Options(connection));
         var repo = new DocumentRepository(db);
 
-        var transferred = await repo.TransferOwnerAsync(1, expectedCreatedById: 1, targetId: 2, "سامر");
+        var transferred = await repo.TransferOwnerAsync(1, expectedCreatedById: 1, targetId: 2, "سامر", "أحمد");
 
         Assert.NotNull(transferred);
         Assert.Equal(2, transferred!.CreatedById);
         Assert.Equal("سامر", transferred.Lawyer);
         Assert.Equal("سامر", transferred.CreatedBy!.FullName);
+        Assert.Equal("أحمد", transferred.ReferredFromLawyer);
+        Assert.NotNull(transferred.ReferredAt);
     }
 
     [Fact]
@@ -45,7 +47,7 @@ public class TransferConcurrencyTests
         await using (var dbA = new DocGeneratorDbContext(Options(connection)))
         {
             var transferred = await new DocumentRepository(dbA)
-                .TransferOwnerAsync(1, expectedCreatedById: 1, targetId: 2, "سامر");
+                .TransferOwnerAsync(1, expectedCreatedById: 1, targetId: 2, "سامر", "أحمد");
             Assert.NotNull(transferred);
         }
 
@@ -53,7 +55,7 @@ public class TransferConcurrencyTests
         await using (var dbB = new DocGeneratorDbContext(Options(connection)))
         {
             var transferred = await new DocumentRepository(dbB)
-                .TransferOwnerAsync(1, expectedCreatedById: 1, targetId: 3, "خالد");
+                .TransferOwnerAsync(1, expectedCreatedById: 1, targetId: 3, "خالد", "سامر");
             Assert.Null(transferred);
         }
 

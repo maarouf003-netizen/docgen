@@ -20,6 +20,18 @@ public sealed class DbLoginRateLimiter : ILoginRateLimiter
     private static readonly object PruneLock = new();
     private static long _lastPruneTicks = DateTime.MinValue.Ticks;
 
+    /// <summary>
+    /// إدراج مشروط ذرّي يعمل على SQLite وPostgres معًا: يُدرج السطر فقط إن كان عدد
+    /// المحاولات الفاشلة للمفتاح ضمن النافذة أقل من الحد. الفحص والتسجيل في جملة
+    /// واحدة يزيل سباق TOCTOU بين فحص مبدئي منفصل وتسجيل لاحق منفصل.
+    /// أسماء الأعمدة مقتبسة بـ "" (متوافق مع المزودين) والمعاملات @p0..@p3.
+    /// </summary>
+    private const string InsertIfUnderLimitSql =
+        "INSERT INTO \"LoginAttempts\" (\"Key\", \"AttemptedAtUtc\") " +
+        "SELECT @p0, @p1 " +
+        "WHERE (SELECT COUNT(*) FROM \"LoginAttempts\" " +
+        "WHERE \"Key\" = @p0 AND \"AttemptedAtUtc\" >= @p2) < @p3;";
+
     private readonly DocGeneratorDbContext _db;
     private readonly int _maxAttempts;
     private readonly TimeSpan _window;
@@ -38,11 +50,16 @@ public sealed class DbLoginRateLimiter : ILoginRateLimiter
         return count < _maxAttempts;
     }
 
-    public async Task RecordFailureAsync(string key, CancellationToken ct = default)
+    public async Task<bool> TryRecordFailureAsync(string key, CancellationToken ct = default)
     {
-        _db.LoginAttempts.Add(new LoginAttempt { Key = key, AttemptedAtUtc = DateTime.UtcNow });
-        await _db.SaveChangesAsync(ct);
+        var now = DateTime.UtcNow;
+        var cutoff = now - _window;
+        var inserted = await _db.Database.ExecuteSqlRawAsync(
+            InsertIfUnderLimitSql,
+            new object[] { key, now, cutoff, _maxAttempts },
+            ct);
         await PruneOldAsync(ct);
+        return inserted == 1;
     }
 
     public async Task ResetAsync(string key, CancellationToken ct = default)

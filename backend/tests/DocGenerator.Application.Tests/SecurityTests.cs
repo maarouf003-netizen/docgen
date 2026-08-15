@@ -130,19 +130,20 @@ public class LoginRateLimiterTests : IDisposable
     {
         var limiter = Create(max: 3);
         Assert.True(await limiter.IsAllowedAsync("k"));
-        await limiter.RecordFailureAsync("k");
+        Assert.True(await limiter.TryRecordFailureAsync("k"));
         Assert.True(await limiter.IsAllowedAsync("k"));
-        await limiter.RecordFailureAsync("k");
+        Assert.True(await limiter.TryRecordFailureAsync("k"));
         Assert.True(await limiter.IsAllowedAsync("k"));
-        await limiter.RecordFailureAsync("k");
+        Assert.True(await limiter.TryRecordFailureAsync("k"));
         Assert.False(await limiter.IsAllowedAsync("k"));
+        Assert.False(await limiter.TryRecordFailureAsync("k"));
     }
 
     [Fact]
     public async Task Reset_ClearsFailures()
     {
         var limiter = Create(max: 1);
-        await limiter.RecordFailureAsync("k");
+        Assert.True(await limiter.TryRecordFailureAsync("k"));
         Assert.False(await limiter.IsAllowedAsync("k"));
         await limiter.ResetAsync("k");
         Assert.True(await limiter.IsAllowedAsync("k"));
@@ -152,7 +153,7 @@ public class LoginRateLimiterTests : IDisposable
     public async Task Keys_AreIsolated()
     {
         var limiter = Create(max: 1);
-        await limiter.RecordFailureAsync("a");
+        Assert.True(await limiter.TryRecordFailureAsync("a"));
         Assert.True(await limiter.IsAllowedAsync("b"));
         Assert.False(await limiter.IsAllowedAsync("a"));
     }
@@ -166,10 +167,54 @@ public class LoginRateLimiterTests : IDisposable
         await _db.SaveChangesAsync();
 
         var limiter = Create(max: 5);
-        await limiter.RecordFailureAsync("fresh");
+        Assert.True(await limiter.TryRecordFailureAsync("fresh"));
 
         Assert.Equal(0, await _db.LoginAttempts.CountAsync(a => a.Key == "old"));
         Assert.Equal(1, await _db.LoginAttempts.CountAsync(a => a.Key == "fresh"));
+    }
+
+    /// <summary>
+    /// يثبت القضاء على سباق TOCTOU: حتى مع 12 محاولة متزامنة فلا يتجاوز عدد الصفوف
+    /// المدرجة الحد أبدًا — الفحص والتسجيل في جملة إدراج مشروط واحدة ذرّية على المزودين.
+    /// </summary>
+    [Fact]
+    public async Task ConcurrentFailures_NeverExceedMax()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"ratelimit_{Guid.NewGuid():N}.db");
+        var connectionString = $"Data Source={path};Mode=ReadWriteCreate;Pooling=False";
+        try
+        {
+            using (var setup = new DocGeneratorDbContext(new DbContextOptionsBuilder<DocGeneratorDbContext>()
+                .UseSqlite(connectionString).Options))
+            {
+                setup.Database.EnsureCreated();
+            }
+
+            var options = new DbContextOptionsBuilder<DocGeneratorDbContext>()
+                .UseSqlite(connectionString).Options;
+
+            var tasks = Enumerable.Range(0, 12).Select(_ => Task.Run(async () =>
+            {
+                using var db = new DocGeneratorDbContext(options);
+                var limiter = new DbLoginRateLimiter(db,
+                    Microsoft.Extensions.Options.Options.Create(new RateLimitOptions
+                    {
+                        MaxLoginAttempts = 5,
+                        WindowMinutes = 5,
+                    }));
+                return await limiter.TryRecordFailureAsync("concurrent-key");
+            }));
+
+            var results = await Task.WhenAll(tasks);
+            Assert.Equal(5, results.Count(r => r));
+
+            using var verify = new DocGeneratorDbContext(options);
+            Assert.Equal(5, await verify.LoginAttempts.CountAsync(a => a.Key == "concurrent-key"));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     private static void ResetPruneTimestamp()

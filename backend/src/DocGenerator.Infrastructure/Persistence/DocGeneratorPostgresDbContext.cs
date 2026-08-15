@@ -24,5 +24,29 @@ public class DocGeneratorPostgresDbContext : DocGeneratorDbContext
         modelBuilder.Entity<Document>()
             .Property(d => d.FileReceiptDate)
             .HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<Document>()
+            .Property(d => d.ExecutedDepositDate)
+            .HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<Document>()
+            .Property(d => d.ReferredAt)
+            .HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<Document>()
+            .Property(d => d.RenewalFileReceiptDate)
+            .HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<Document>()
+            .Property(d => d.RenewalDate)
+            .HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<DocumentRegistrationDate>()
+            .Property(r => r.DateParsed)
+            .HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<DocumentOccurrence>()
+            .Property(o => o.EventDate)
+            .HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<DocumentOccurrence>()
+            .Property(o => o.ReceiptDate)
+            .HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<DocumentAssignment>()
+            .Property(a => a.AssignedAt)
+            .HasColumnType("timestamp with time zone");
     }
 }

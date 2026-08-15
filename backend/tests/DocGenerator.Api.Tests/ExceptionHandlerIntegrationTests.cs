@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using DocGenerator.Api.Middleware;
@@ -35,11 +34,10 @@ public class ExceptionHandlerIntegrationTests : IClassFixture<ApiFactory>
         var loginResponse = await factory.CreateClient().PostAsync("/api/auth/login",
             new StringContent(loginBody, Encoding.UTF8, "application/json"));
         loginResponse.EnsureSuccessStatusCode();
-        using var loginDoc = JsonDocument.Parse(await loginResponse.Content.ReadAsStringAsync());
-        var token = loginDoc.RootElement.GetProperty("token").GetString();
+        var token = ApiFactory.ExtractCookieValue(loginResponse, "docgen_token");
 
         var client = factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.SetAuthCookie(token!);
 
         var response = await client.GetAsync("/api/dashboard");
 

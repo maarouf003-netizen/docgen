@@ -34,6 +34,9 @@ public class DocGeneratorDbContext : DbContext
     public DbSet<ExecutedPublicEntity> ExecutedPublicEntities => Set<ExecutedPublicEntity>();
     public DbSet<ExecutedNaturalPerson> ExecutedNaturalPersons => Set<ExecutedNaturalPerson>();
     public DbSet<ExecutedHeir> ExecutedHeirs => Set<ExecutedHeir>();
+    public DbSet<DocumentOccurrence> DocumentOccurrences => Set<DocumentOccurrence>();
+    public DbSet<ApplicantPublicEntity> ApplicantPublicEntities => Set<ApplicantPublicEntity>();
+    public DbSet<DocumentAssignment> DocumentAssignments => Set<DocumentAssignment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -50,9 +50,18 @@ const mockDoc: DocumentResponse = {
   amount2Numeric: 0,
   amount2Words: '',
   currency2: '',
+  amount3Numeric: 0,
+  amount3Words: '',
+  currency3: '',
   inclusionAmountNumeric: 0,
   inclusionAmountWords: '',
   inclusionCurrency: '',
+  inclusionAmount2Numeric: 0,
+  inclusionAmount2Words: '',
+  inclusionCurrency2: '',
+  inclusionAmount3Numeric: 0,
+  inclusionAmount3Words: '',
+  inclusionCurrency3: '',
   court: 'محكمة دمشق',
   applicant: 'المصرف',
   lawyer: 'المحامي سامر',
@@ -149,51 +158,61 @@ beforeEach(() => {
 });
 
 describe('DocumentView', () => {
-  it('يعرض جميع بيانات المنفذ عليه ضمن «بيانات المنفذ عليه»', async () => {
+  it('يعرض اسم المقترض في بطاقة أطراف الملف ويفتح نافذة بهويته الكاملة عند الضغط', async () => {
+    const user = userEvent.setup();
     renderView();
 
-    const heading = await screen.findByText('بيانات المنفذ عليه');
+    const heading = await screen.findByText('أطراف الملف التنفيذي');
     const card = heading.closest('div') as HTMLElement;
-    expect(card).not.toBeNull();
     expect(within(card).getByText('أحمد محمد خالد')).toBeInTheDocument();
-    expect(within(card).getByText('فاطمة')).toBeInTheDocument();
-    expect(within(card).getByText('1980-01-01')).toBeInTheDocument();
-    expect(within(card).getByText('123')).toBeInTheDocument();
-    expect(within(card).getByText('N456')).toBeInTheDocument();
-    expect(within(card).getByText('سكني')).toBeInTheDocument();
-    expect(within(card).getByText('دمشق')).toBeInTheDocument();
-    expect(within(card).getByText('مكان وتاريخ الولادة')).toBeInTheDocument();
-    expect(within(card).getByText('مكان ورقم القيد')).toBeInTheDocument();
+
+    await user.click(within(card).getByText('أحمد محمد خالد'));
+    const dialog = screen.getByRole('dialog', { name: 'مقترض' });
+    expect(within(dialog).getByText('أحمد محمد خالد')).toBeInTheDocument();
+    expect(within(dialog).getByText('فاطمة')).toBeInTheDocument();
+    expect(within(dialog).getByText('1980-01-01')).toBeInTheDocument();
+    expect(within(dialog).getByText('123')).toBeInTheDocument();
+    expect(within(dialog).getByText('N456')).toBeInTheDocument();
+    expect(within(dialog).getByText('سكني')).toBeInTheDocument();
+    expect(within(dialog).getByText('دمشق')).toBeInTheDocument();
+    expect(within(dialog).getByText('مكان وتاريخ الولادة')).toBeInTheDocument();
+    expect(within(dialog).getByText('مكان ورقم القيد')).toBeInTheDocument();
     expect(screen.queryByText('بيانات المقترض')).not.toBeInTheDocument();
   });
 
-  it('يعرض حقل «وكيله» وحيدًا بدل «نوع العنوان» و«العنوان» عندما تكون الوكالة «يمثله»', async () => {
+  it('يعرض حقل «وكيله القانوني» وحيدًا بدل «نوع العنوان» و«العنوان» عندما تكون الوكالة «يمثله»', async () => {
+    const user = userEvent.setup();
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: { ...mockDoc, borrowerAddress: 'المحامي فلان الفلاني', borrowerAddressType: 'يمثله' },
     });
     renderView();
 
-    const heading = await screen.findByText('بيانات المنفذ عليه');
+    const heading = await screen.findByText('أطراف الملف التنفيذي');
     const card = heading.closest('div') as HTMLElement;
-    expect(within(card).getByText('وكيله')).toBeInTheDocument();
-    expect(within(card).getByText('المحامي فلان الفلاني')).toBeInTheDocument();
-    expect(within(card).queryByText('نوع العنوان')).not.toBeInTheDocument();
-    expect(within(card).queryByText('يمثله')).not.toBeInTheDocument();
+    await user.click(within(card).getByText('أحمد محمد خالد'));
+    const dialog = screen.getByRole('dialog', { name: 'مقترض' });
+    expect(within(dialog).getByText('وكيله القانوني')).toBeInTheDocument();
+    expect(within(dialog).getByText('المحامي فلان الفلاني')).toBeInTheDocument();
+    expect(within(dialog).queryByText('نوع العنوان')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('يمثله')).not.toBeInTheDocument();
   });
 
-  it('يعرض تسميات بيانات المنفذ عليه كاملة حتى لو كانت قيمها فارغة', async () => {
+  it('يعرض تسميات هوية المقترض كاملة حتى لو كانت قيمها فارغة', async () => {
+    const user = userEvent.setup();
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: { ...mockDoc, borrowerMother: '', borrowerBirth: '', borrowerRegister: '', borrowerNationalId: '' },
     });
     renderView();
 
-    const heading = await screen.findByText('بيانات المنفذ عليه');
+    const heading = await screen.findByText('أطراف الملف التنفيذي');
     const card = heading.closest('div') as HTMLElement;
-    expect(within(card).getByText('الاسم الثلاثي')).toBeInTheDocument();
-    expect(within(card).getByText('اسم الأم')).toBeInTheDocument();
-    expect(within(card).getByText('مكان وتاريخ الولادة')).toBeInTheDocument();
-    expect(within(card).getByText('مكان ورقم القيد')).toBeInTheDocument();
-    expect(within(card).getByText('الرقم الوطني')).toBeInTheDocument();
+    await user.click(within(card).getByText('أحمد محمد خالد'));
+    const dialog = screen.getByRole('dialog', { name: 'مقترض' });
+    expect(within(dialog).getByText('الاسم الثلاثي')).toBeInTheDocument();
+    expect(within(dialog).getByText('اسم الأم')).toBeInTheDocument();
+    expect(within(dialog).getByText('مكان وتاريخ الولادة')).toBeInTheDocument();
+    expect(within(dialog).getByText('مكان ورقم القيد')).toBeInTheDocument();
+    expect(within(dialog).getByText('الرقم الوطني')).toBeInTheDocument();
   });
 
   it('يعرض قسم «بيانات السند التنفيذي» للمصرفي: نوع العقد ورقمه وتاريخه والمبلغ المطالب به', async () => {
@@ -210,8 +229,8 @@ describe('DocumentView', () => {
     expect(within(card).getByText('تاريخ العقد')).toBeInTheDocument();
     expect(within(card).getByText('2026-01-01')).toBeInTheDocument();
     expect(within(card).getByText('المبلغ المطالب به')).toBeInTheDocument();
-    expect(within(card).getByText('1000 ل.س')).toBeInTheDocument();
     expect(within(card).getByText('ألف')).toBeInTheDocument();
+    expect(within(card).queryByText('1000 ل.س')).not.toBeInTheDocument();
     expect(within(card).queryByText('رقم القرار')).not.toBeInTheDocument();
     expect(within(card).queryByText('المحكمة مصدرة القرار')).not.toBeInTheDocument();
     expect(within(card).queryByText('خلاصة الحكم')).not.toBeInTheDocument();
@@ -248,8 +267,8 @@ describe('DocumentView', () => {
     expect(within(card).getByText('خلاصة الحكم')).toBeInTheDocument();
     expect(within(card).getByText('حكم بخلاصة')).toBeInTheDocument();
     expect(within(card).getByText('المبلغ المطالب به')).toBeInTheDocument();
-    expect(within(card).getByText('500 ل.س')).toBeInTheDocument();
     expect(within(card).getByText('خمسمائة')).toBeInTheDocument();
+    expect(within(card).queryByText('500 ل.س')).not.toBeInTheDocument();
     expect(within(card).queryByText('نوع العقد')).not.toBeInTheDocument();
     expect(within(card).queryByText('رقم العقد')).not.toBeInTheDocument();
     expect(within(card).queryByText('تاريخ العقد')).not.toBeInTheDocument();
@@ -279,17 +298,72 @@ describe('DocumentView', () => {
     expect(within(card).queryByText('المبلغ المطالب به')).not.toBeInTheDocument();
   });
 
-  it('يعرض «بيانات الملف» بدائرة التنفيذ والفرع بجانب طالب التنفيذ ورقم الملف دون الإجراءات المستعجلة', async () => {
+  it('يعرض المبلغين الثاني والثالث للمصرفي بعملتيهما عند وجودهما', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        ...mockDoc,
+        amount2Numeric: 2000,
+        amount2Words: 'ألفان',
+        currency2: 'يورو',
+        amount3Numeric: 3000,
+        amount3Words: 'ثلاثة آلاف',
+        currency3: 'دولار أمريكي',
+      },
+    });
+    renderView();
+
+    const heading = await screen.findByText('بيانات السند التنفيذي');
+    const card = heading.closest('div') as HTMLElement;
+    expect(within(card).getByText('المبلغ المطالب به')).toBeInTheDocument();
+    expect(within(card).getByText('ألف و ألفان و ثلاثة آلاف')).toBeInTheDocument();
+    expect(within(card).queryByText('المبلغ الثاني')).not.toBeInTheDocument();
+    expect(within(card).queryByText('2000 يورو')).not.toBeInTheDocument();
+    expect(within(card).queryByText('المبلغ الثالث')).not.toBeInTheDocument();
+    expect(within(card).queryByText('3000 دولار أمريكي')).not.toBeInTheDocument();
+  });
+
+  it('يعرض المبلغين الثاني والثالث للعادي بعملتيهما عند وجودهما', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        ...mockDoc,
+        contractTypeSelector: 'عادي',
+        contractType: 'محكمة دمشق',
+        contractNumber: 'ق-5',
+        contractDate: '2026-02-02',
+        inclusionText: 'حكم بخلاصة',
+        inclusionAmountNumeric: 500,
+        inclusionAmountWords: 'خمسمائة',
+        inclusionCurrency: 'ل.س',
+        amountNumeric: 0,
+        amountWords: '',
+        inclusionAmount2Numeric: 600,
+        inclusionAmount2Words: 'ستمائة',
+        inclusionCurrency2: 'يورو',
+        inclusionAmount3Numeric: 700,
+        inclusionAmount3Words: 'سبعمائة',
+        inclusionCurrency3: 'دولار أمريكي',
+      },
+    });
+    renderView();
+
+    const heading = await screen.findByText('بيانات السند التنفيذي');
+    const card = heading.closest('div') as HTMLElement;
+    expect(within(card).getByText('المبلغ المطالب به')).toBeInTheDocument();
+    expect(within(card).getByText('خمسمائة و ستمائة و سبعمائة')).toBeInTheDocument();
+    expect(within(card).queryByText('المبلغ الثاني')).not.toBeInTheDocument();
+    expect(within(card).queryByText('600 يورو')).not.toBeInTheDocument();
+    expect(within(card).queryByText('المبلغ الثالث')).not.toBeInTheDocument();
+    expect(within(card).queryByText('700 دولار أمريكي')).not.toBeInTheDocument();
+  });
+
+  it('يعرض «بيانات الملف» بدائرة التنفيذ المختصة ورقم الملف دون الإجراءات المستعجلة', async () => {
     renderView();
 
     expect(await screen.findByText('بيانات الملف')).toBeInTheDocument();
     expect(screen.queryByText('بيانات الدعوى')).not.toBeInTheDocument();
-    expect(screen.getByText('دائرة التنفيذ')).toBeInTheDocument();
+    expect(screen.getByText('دائرة التنفيذ المختصة')).toBeInTheDocument();
     expect(screen.queryByText('المحكمة')).not.toBeInTheDocument();
-    expect(screen.getByText('طالب التنفيذ')).toBeInTheDocument();
-    expect(screen.getByText('المصرف — فرع المزة')).toBeInTheDocument();
-    expect(screen.queryByText('الفرع')).not.toBeInTheDocument();
-    expect(screen.getByText('رقم الملف')).toBeInTheDocument();
+    expect(screen.getByText('رقم الملف ونوعه لعام 2026')).toBeInTheDocument();
     expect(screen.getByText('99 لعام 2026')).toBeInTheDocument();
     expect(screen.queryByText('المدعي')).not.toBeInTheDocument();
     expect(screen.getByText('تاريخ كتاب الجهة العامة')).toBeInTheDocument();
@@ -302,6 +376,57 @@ describe('DocumentView', () => {
     expect(screen.queryByText('إجراء عاجل')).not.toBeInTheDocument();
     expect(screen.queryByText('عدد المشاهدات')).not.toBeInTheDocument();
     expect(screen.queryByText('7')).not.toBeInTheDocument();
+  });
+
+  it('يجمع حقول كتب الجهات بجانب بعضها في بطاقة بيانات الملف', async () => {
+    renderView();
+    await screen.findByText('بيانات الملف');
+
+    const gridOf = (label: string) => screen.getByText(label).closest('.grid');
+    expect(gridOf('رقم كتاب الجهة العامة')).toBe(gridOf('تاريخ كتاب الجهة العامة'));
+    expect(gridOf('رقم كتاب الجهة العامة')).toBe(gridOf('رقم ورود الملف'));
+  });
+
+  it('يعرض بطاقة «بيانات الملف» قبل بطاقة «بيانات السند التنفيذي» للمصرفي', async () => {
+    renderView();
+
+    await screen.findByText('بيانات الملف');
+    const fileInfo = screen.getByText('بيانات الملف');
+    const contract = screen.getByText('بيانات السند التنفيذي');
+    expect(fileInfo.compareDocumentPosition(contract) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('يخفي «المحامي» و«منشئ المستند» عن المحامي ويعرض ملاحظة الإحالة فقط إذا أُحيل إليه الملف', async () => {
+    const { unmount } = renderView();
+
+    await screen.findByText('بيانات الملف');
+    expect(screen.queryByText('المحامي')).not.toBeInTheDocument();
+    expect(screen.queryByText('منشئ المستند')).not.toBeInTheDocument();
+    expect(screen.queryByText(/أُحيل لك هذا الملف/)).not.toBeInTheDocument();
+    unmount();
+
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { ...mockDoc, referredFromLawyer: 'المحامي سامر', referredAt: '2026-08-05' },
+    });
+    renderView();
+
+    await screen.findByText('بيانات الملف');
+    expect(screen.queryByText('المحامي')).not.toBeInTheDocument();
+    expect(screen.queryByText('منشئ المستند')).not.toBeInTheDocument();
+    expect(screen.getByText(/أُحيل لك هذا الملف من المحامي سامر بتاريخ/)).toBeInTheDocument();
+  });
+
+  it('يعرض «المحامي» و«منشئ المستند» لرئيس القسم دون ملاحظة الإحالة', async () => {
+    useAuthMock.mockReturnValue({ isHead: true, user: { role: 'head' } });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { ...mockDoc, referredFromLawyer: 'المحامي سامر', referredAt: '2026-08-05' },
+    });
+    renderView();
+
+    await screen.findByText('بيانات الملف');
+    expect(screen.getByText('المحامي المختص')).toBeInTheDocument();
+    expect(screen.getByText('منشئ المستند')).toBeInTheDocument();
+    expect(screen.queryByText(/أُحيل لك هذا الملف/)).not.toBeInTheDocument();
   });
 
   it('يعرض رقم الملف مع نوعه إذا وُجد: «99 سند مصارف لعام 2026»', async () => {
@@ -384,10 +509,51 @@ describe('DocumentView', () => {
 
     expect(await screen.findByText('الحالة')).toBeInTheDocument();
     expect(screen.getAllByText('متداول').length).toBeGreaterThan(0);
-    expect(screen.getByText('لتغيير الحالة اضغط زر «تعديل»')).toBeInTheDocument();
+    expect(screen.getByText('لتغيير الحالة اضغط زر «تغيير الحالة»')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'تحديث الحالة' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'حفظ الحالة' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('نوع التنفيذ')).not.toBeInTheDocument();
+  });
+
+  it('يعرض زر «تغيير الحالة» للمحامي في ملف طالبة تنفيذ ويفتح نافذة الحالات', async () => {
+    const user = userEvent.setup();
+    renderView();
+
+    const button = await screen.findByRole('button', { name: 'تغيير الحالة' });
+    await user.click(button);
+
+    expect(screen.getByRole('dialog', { name: 'تغيير الحالة' })).toBeInTheDocument();
+    expect(screen.getByText('الحالة الحالية')).toBeInTheDocument();
+  });
+
+  it('لا يعرض زر «تغيير الحالة» للمدير', async () => {
+    useAuthMock.mockReturnValue({ isHead: false, user: { role: 'manager' } });
+    renderView();
+
+    expect(await screen.findByText('الحالة')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'تغيير الحالة' })).not.toBeInTheDocument();
+  });
+
+  it('يعرض بطاقة وقوعات الملف لملف طالبة تنفيذ حامل لوقعة تغيير حالة', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        ...mockDoc,
+        execStatus: 'تريث',
+        occurrences: [
+          {
+            id: 1,
+            occurrenceType: 'deferred',
+            occurrenceTypeLabel: 'تريث',
+            eventDate: '2026-08-01',
+            details: { tarithNumber: '33', tarithDate: '3/3/2024' },
+          },
+        ],
+      },
+    });
+    renderView();
+
+    expect(await screen.findByText('وقوعات الملف')).toBeInTheDocument();
+    expect(screen.getByText(/تريث بموجب كتاب التريث رقم 33/)).toBeInTheDocument();
   });
 
   it('يعرض ملخص «منفذ بالتسوية» كاملاً في تفاصيل الملف', async () => {
@@ -453,43 +619,56 @@ describe('DocumentView', () => {
     expect(heading.textContent).toContain('أحمد محمد خالد');
   });
 
-  it('يعرض بيانات جميع الكفلاء كاملة بالتسميات الجديدة', async () => {
+  it('يعرض الكفلاء في بطاقة أطراف الملف مع صفتهم ويفتح نافذة هوية كلٍّ عند الضغط', async () => {
+    const user = userEvent.setup();
     renderView();
 
-    const heading = await screen.findByText('الكفلاء');
+    const heading = await screen.findByText('أطراف الملف التنفيذي');
     const card = heading.closest('div') as HTMLElement;
-    expect(within(card).getByText('كفيل 1')).toBeInTheDocument();
-    expect(within(card).getByText('كفيل 2')).toBeInTheDocument();
-    expect(within(card).getAllByText('الاسم الثلاثي').length).toBeGreaterThan(0);
-    expect(within(card).getAllByText('اسم الأم').length).toBeGreaterThan(0);
-    expect(within(card).getAllByText('مكان وتاريخ الولادة').length).toBeGreaterThan(0);
-    expect(within(card).getAllByText('مكان ورقم القيد').length).toBeGreaterThan(0);
-    expect(within(card).getAllByText('الرقم الوطني').length).toBeGreaterThan(0);
     expect(within(card).getByText('خالد عمر زكي')).toBeInTheDocument();
     expect(within(card).getByText('لينا فادي نور')).toBeInTheDocument();
-    expect(within(card).getByText('سميرة')).toBeInTheDocument();
-    expect(within(card).getByText('هند')).toBeInTheDocument();
-    expect(within(card).getByText('1975-05-05')).toBeInTheDocument();
-    expect(within(card).getByText('1985-06-06')).toBeInTheDocument();
-    expect(within(card).getByText('789')).toBeInTheDocument();
-    expect(within(card).getByText('101')).toBeInTheDocument();
-    expect(within(card).getByText('N789')).toBeInTheDocument();
-    expect(within(card).getByText('N101')).toBeInTheDocument();
-    expect(within(card).getByText('حلب')).toBeInTheDocument();
-    expect(within(card).getByText('حمص')).toBeInTheDocument();
+
+    await user.click(within(card).getByText('خالد عمر زكي'));
+    const firstDialog = screen.getByRole('dialog', { name: 'كفيل 1' });
+    expect(within(firstDialog).getAllByText('الاسم الثلاثي').length).toBeGreaterThan(0);
+    expect(within(firstDialog).getAllByText('اسم الأم').length).toBeGreaterThan(0);
+    expect(within(firstDialog).getAllByText('مكان وتاريخ الولادة').length).toBeGreaterThan(0);
+    expect(within(firstDialog).getAllByText('مكان ورقم القيد').length).toBeGreaterThan(0);
+    expect(within(firstDialog).getAllByText('الرقم الوطني').length).toBeGreaterThan(0);
+    expect(within(firstDialog).getByText('خالد عمر زكي')).toBeInTheDocument();
+    expect(within(firstDialog).getByText('سميرة')).toBeInTheDocument();
+    expect(within(firstDialog).getByText('1975-05-05')).toBeInTheDocument();
+    expect(within(firstDialog).getByText('789')).toBeInTheDocument();
+    expect(within(firstDialog).getByText('N789')).toBeInTheDocument();
+    expect(within(firstDialog).getByText('حلب')).toBeInTheDocument();
+    await user.click(within(firstDialog).getByLabelText('إغلاق'));
+
+    await user.click(within(card).getByText('لينا فادي نور'));
+    const secondDialog = screen.getByRole('dialog', { name: 'كفيل 2' });
+    expect(within(secondDialog).getByText('لينا فادي نور')).toBeInTheDocument();
+    expect(within(secondDialog).getByText('هند')).toBeInTheDocument();
+    expect(within(secondDialog).getByText('1985-06-06')).toBeInTheDocument();
+    expect(within(secondDialog).getByText('101')).toBeInTheDocument();
+    expect(within(secondDialog).getByText('N101')).toBeInTheDocument();
+    expect(within(secondDialog).getByText('حمص')).toBeInTheDocument();
   });
 
-  it('يعرض «المنفذ عليهم الآخرون» بدل «الكفلاء» عند السند العادي مع ترقيم يبدأ من 2', async () => {
+  it('يعرض «المنفذ عليه» بصفته مع ترقيم يبدأ من 2 عند السند العادي', async () => {
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: { ...mockDoc, contractTypeSelector: 'عادي' },
     });
     renderView();
 
-    const heading = await screen.findByText('المنفذ عليهم الآخرون');
+    const heading = await screen.findByText('أطراف الملف التنفيذي');
     const card = heading.closest('div') as HTMLElement;
+    expect(within(card).getByText('أحمد محمد خالد')).toBeInTheDocument();
+    expect(within(card).getByText('خالد عمر زكي')).toBeInTheDocument();
+    expect(within(card).getByText('لينا فادي نور')).toBeInTheDocument();
+    expect(within(card).getByText('منفذ عليه')).toBeInTheDocument();
     expect(within(card).getByText('منفذ عليه 2')).toBeInTheDocument();
     expect(within(card).getByText('منفذ عليه 3')).toBeInTheDocument();
     expect(screen.queryByText('الكفلاء')).not.toBeInTheDocument();
+    expect(screen.queryByText('المنفذ عليهم الآخرون')).not.toBeInTheDocument();
   });
 
   it('يعرض العقارات في قسم منفصل بكل تفاصيلها', async () => {
@@ -947,7 +1126,8 @@ describe('DocumentView', () => {
     });
   });
 
-  it('يعرض ورثة المتوفى في بطاقة بيانات المنفذ عليه', async () => {
+  it('يعرض «ورثة المتوفى» في بطاقة أطراف الملف ويفتح نافذة ورثتهم عند الضغط', async () => {
+    const user = userEvent.setup();
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: {
         ...mockDoc,
@@ -959,11 +1139,14 @@ describe('DocumentView', () => {
     });
     renderView();
 
-    const heading = await screen.findByText('بيانات المنفذ عليه');
+    const heading = await screen.findByText('أطراف الملف التنفيذي');
     const card = heading.closest('div') as HTMLElement;
     expect(within(card).getByText('ورثة المتوفى (أحمد محمد خالد)')).toBeInTheDocument();
-    expect(within(card).getByText('محمود الحلبي — عنوان: المزة')).toBeInTheDocument();
-    expect(within(card).getByText('نور الدين — يمثله: المحامي سامر')).toBeInTheDocument();
+
+    await user.click(within(card).getByText('ورثة المتوفى (أحمد محمد خالد)'));
+    const dialog = screen.getByRole('dialog', { name: 'ورثة المتوفى (أحمد محمد خالد)' });
+    expect(within(dialog).getByText('محمود الحلبي — عنوان: المزة')).toBeInTheDocument();
+    expect(within(dialog).getByText('نور الدين — يمثله المحامي سامر')).toBeInTheDocument();
   });
 
   it('يستبدل المتوفى بورثته في قائمة المنفَّذ عليهم ولا يُدرج المتوفى نفسه', async () => {
@@ -1058,12 +1241,13 @@ describe('DocumentView', () => {
     vi.unstubAllGlobals();
   });
 
-  it('يعرض بيانات وضع «منفذ عليه» بالتسميات الجديدة والمبالغ وتاريخ ورود الملف والورثة الثلاثي', async () => {
+  it('يعرض بيانات وضع «منفذ عليه» بالتسميات الجديدة والمبالغ ورقم وتاريخ ورود الإخطار والورثة الثلاثي', async () => {
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: {
         ...mockDoc,
         generalEntitySide: 'executed',
         contractTypeSelector: 'عادي',
+        fileReceiptNumber: '77',
         fileReceiptDate: '2026-08-02',
         executedStatus: 'منفذ',
         executedRequiredAmount: 5000,
@@ -1093,19 +1277,239 @@ describe('DocumentView', () => {
 
     const dataHeading = await screen.findByText('بيانات الملف');
     const dataCard = dataHeading.closest('div') as HTMLElement;
-    expect(within(dataCard).getByText('المبلغ المطلوب دفعه من الجهة العامة')).toBeInTheDocument();
-    expect(within(dataCard).getByText('5000')).toBeInTheDocument();
+    expect(within(dataCard).getByText('رقم ورود الاخطار التنفيذي')).toBeInTheDocument();
+    expect(within(dataCard).getByText('77')).toBeInTheDocument();
+    expect(within(dataCard).getByText('تاريخ ورود الاخطار التنفيذي')).toBeInTheDocument();
+    expect(within(dataCard).getByText('كيفية تنفيذ الملف')).toBeInTheDocument();
     expect(within(dataCard).getByText('المبلغ الذي دفعته الجهة العامة')).toBeInTheDocument();
     expect(within(dataCard).getByText('2000')).toBeInTheDocument();
-    expect(within(dataCard).getByText('كيفية تنفيذ الملف')).toBeInTheDocument();
-    expect(within(dataCard).getByText('تاريخ ورود الملف')).toBeInTheDocument();
 
-    expect(await screen.findByRole('button', { name: 'حفظ الحالة' })).toBeInTheDocument();
-    const statusSection = screen.getByRole('button', { name: 'حفظ الحالة' }).closest('.bg-white.rounded-xl') as HTMLElement;
-    expect(within(statusSection).getByText('حالة الملف')).toBeInTheDocument();
+    // المبلغ المطلوب دفعه من الجهة العامة يعرض في بطاقة «بيانات السند التنفيذي».
+    const execHeading = await screen.findByText('بيانات السند التنفيذي');
+    const execCard = execHeading.closest('div') as HTMLElement;
+    expect(within(execCard).getByText('المبلغ المطلوب دفعه من الجهة العامة')).toBeInTheDocument();
+    expect(within(execCard).getByText('5000')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'حالة الملف' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'حفظ الحالة' })).not.toBeInTheDocument();
+    // «طالب التنفيذ» يعرض في بطاقة أطراف الملف — لا صفٌّ مكرر داخل «بيانات الملف».
+    expect(screen.getByText('طالب التنفيذ')).toBeInTheDocument();
+    expect(within(dataCard).queryByText('طالب التنفيذ')).not.toBeInTheDocument();
 
-    const personCard = screen.getByText('شخص طبيعي 1').closest('.rounded-xl') as HTMLElement;
-    expect(within(personCard).getByText('ورثة المتوفى (محمد خالد الخطيب)')).toBeInTheDocument();
-    expect(within(personCard).getByText('فارس أحمد علي — عنوان: حلب')).toBeInTheDocument();
+    const user = userEvent.setup();
+    const partiesHeading = await screen.findByText('أطراف الملف التنفيذي');
+    const partiesCard = partiesHeading.closest('div') as HTMLElement;
+    expect(within(partiesCard).getByText('المصرف العقاري (المزة)')).toBeInTheDocument();
+    expect(within(partiesCard).getByText('ورثة المتوفى (محمد خالد الخطيب)')).toBeInTheDocument();
+
+    await user.click(within(partiesCard).getByText('ورثة المتوفى (محمد خالد الخطيب)'));
+    const heirsDialog = screen.getByRole('dialog', { name: 'ورثة المتوفى (محمد خالد الخطيب)' });
+    expect(within(heirsDialog).getByText('فارس أحمد علي — عنوان: حلب')).toBeInTheDocument();
+  });
+
+  it('لا يعرض وسيلة لتغيير الحالة في تفاصيل ملف وضع «منفذ عليه» (تعديل من صفحة «تعديل» حصرًا)', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { ...mockDoc, generalEntitySide: 'executed', executedStatus: 'منفذ' },
+    });
+    renderView();
+
+    await screen.findByText('بيانات الملف');
+    expect(screen.queryByRole('button', { name: 'حفظ الحالة' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'إعادة الملف إلى المتداول' })).not.toBeInTheDocument();
+  });
+
+  it('يعرض تاريخ الشطب فقط دون زر إعادة في تفاصيل ملف «عرض وايداع» مشطوب', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { ...mockDoc, generalEntitySide: 'deposit', executedStatus: 'مشطوب', struckOffDate: '2026-08-05' },
+    });
+    renderView();
+
+    await screen.findByText('بيانات الملف');
+    // شارة الحالة في الترويسة تعرض «مشطوب».
+    expect(screen.getByText('مشطوب')).toBeInTheDocument();
+    // بطاقة وقوعات الملف تعرض تاريخ الشطب (بلا وقوعات).
+    expect(screen.getByText(/تاريخ الشطب/)).toBeInTheDocument();
+    // «طالب العرض» يعرض في بطاقة أطراف الملف — لا صفٌّ مكرر داخل «بيانات الملف».
+    expect(screen.getByText('طالب العرض')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'إعادة الملف إلى المتداول' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'حفظ الحالة' })).not.toBeInTheDocument();
+  });
+
+  it('يعرض سرد وقوعات الملف في بطاقتها ويفتح نافذة التفاصيل عند الضغط', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        ...mockDoc,
+        generalEntitySide: 'executed',
+        executedStatus: 'متداول',
+        struckOffDate: '2026-07-01',
+        occurrences: [
+          {
+            id: 1,
+            occurrenceType: 'struck-off',
+            occurrenceTypeLabel: 'شطب',
+            eventDate: '2026-07-01',
+            fileNumber: '99',
+            year: 2026,
+          },
+          {
+            id: 2,
+            occurrenceType: 'renewal',
+            occurrenceTypeLabel: 'تجديد',
+            eventDate: '2026-08-01',
+            fileNumber: '150',
+            fileType: 'سند جديد',
+            year: 2026,
+            receiptNumber: 'و-500',
+            receiptDate: '2026-08-02',
+          },
+        ],
+      },
+    });
+    renderView();
+
+    const occHeading = await screen.findByText('وقوعات الملف');
+    const occCard = occHeading.closest('div') as HTMLElement;
+    expect(within(occCard).getByText(/تم شطب الملف بتاريخ/)).toBeInTheDocument();
+    expect(within(occCard).getByText(/وجُدِّد الملف برقم 150/)).toBeInTheDocument();
+    expect(within(occCard).getByRole('button', { name: 'عرض تفاصيل وقوعات الملف' })).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(within(occCard).getByRole('button', { name: 'عرض تفاصيل وقوعات الملف' }));
+    const dialog = screen.getByRole('dialog', { name: 'وقوعات الملف' });
+    expect(within(dialog).getByText('شطب')).toBeInTheDocument();
+    expect(within(dialog).getByText('تجديد')).toBeInTheDocument();
+    expect(within(dialog).getByText('الرقم المشطوب')).toBeInTheDocument();
+    expect(within(dialog).getByText('99')).toBeInTheDocument();
+    expect(within(dialog).getByText('رقم الملف الجديد')).toBeInTheDocument();
+    expect(within(dialog).getByText('150')).toBeInTheDocument();
+    expect(within(dialog).getByText('رقم ورود اخطار التجديد')).toBeInTheDocument();
+    expect(within(dialog).getByText('و-500')).toBeInTheDocument();
+  });
+
+  it('يعرض الشخص الاعتباري المنفذ عليه بحقوله ويفتح نافذته الكاملة', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        ...mockDoc,
+        generalEntitySide: 'executed',
+        executedStatus: 'متداول',
+        executedPublicEntities: [
+          {
+            id: 1,
+            entityName: 'شركة الهدى',
+            entityBranch: '',
+            nature: 'legal',
+            registrationNumber: '777',
+            representedBy: 'المدير العام',
+            addressType: 'يمثله',
+            address: 'المحامي فلان',
+          },
+        ],
+      },
+    });
+    renderView();
+
+    const user = userEvent.setup();
+    const heading = await screen.findByText('أطراف الملف التنفيذي');
+    const card = heading.closest('div') as HTMLElement;
+    await user.click(within(card).getByText('شركة الهدى'));
+
+    const dialog = screen.getByRole('dialog', { name: 'شخص اعتباري' });
+    expect(within(dialog).getByText('شركة الهدى')).toBeInTheDocument();
+    expect(within(dialog).getByText('777')).toBeInTheDocument();
+    expect(within(dialog).getByText('المدير العام')).toBeInTheDocument();
+    expect(within(dialog).getByText('المحامي فلان')).toBeInTheDocument();
+  });
+
+  it('يعرض المقترض الشخص الاعتباري في بطاقة أطراف الملف', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        ...mockDoc,
+        borrowerName: 'شركة التجارة',
+        borrowerFather: '',
+        borrowerFamily: '',
+        borrowerNature: 'legal',
+        borrowerRegistrationNumber: '555',
+        borrowerRepresentedBy: 'مديرها',
+      },
+    });
+    renderView();
+
+    const heading = await screen.findByText('أطراف الملف التنفيذي');
+    const card = heading.closest('div') as HTMLElement;
+    expect(within(card).getByText('شركة التجارة')).toBeInTheDocument();
+    expect(screen.queryByText('أحمد محمد الخطيب')).not.toBeInTheDocument();
+  });
+
+  it('يعرض محافظة الجهة العامة المنفذ عليها ويفتح نافذتها بحقل المحافظة', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        ...mockDoc,
+        generalEntitySide: 'executed',
+        executedPublicEntities: [
+          { id: 1, entityName: 'المصرف العقاري', entityBranch: 'فرع المزة', governorate: 'دمشق' },
+        ],
+      },
+    });
+    renderView();
+
+    const user = userEvent.setup();
+    const heading = await screen.findByText('أطراف الملف التنفيذي');
+    const card = heading.closest('div') as HTMLElement;
+    expect(within(card).getByText('محافظة دمشق')).toBeInTheDocument();
+
+    await user.click(within(card).getByText(/المصرف العقاري/));
+    const dialog = screen.getByRole('dialog', { name: 'الجهة العامة' });
+    expect(within(dialog).getByText('المحافظة')).toBeInTheDocument();
+    expect(within(dialog).getByText('دمشق')).toBeInTheDocument();
+  });
+
+  it('يعرض محافظة الشخص الاعتباري المنفذ عليه في نافذته الكاملة', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        ...mockDoc,
+        generalEntitySide: 'executed',
+        executedPublicEntities: [
+          {
+            id: 1,
+            entityName: 'شركة الهدى',
+            entityBranch: '',
+            nature: 'legal',
+            registrationNumber: '777',
+            representedBy: 'المدير العام',
+            governorate: 'حلب',
+            addressType: 'يمثله',
+            address: 'المحامي فلان',
+          },
+        ],
+      },
+    });
+    renderView();
+
+    const user = userEvent.setup();
+    const heading = await screen.findByText('أطراف الملف التنفيذي');
+    const card = heading.closest('div') as HTMLElement;
+    expect(within(card).getByText('محافظة حلب')).toBeInTheDocument();
+
+    await user.click(within(card).getByText('شركة الهدى'));
+    const dialog = screen.getByRole('dialog', { name: 'شخص اعتباري' });
+    expect(within(dialog).getByText('المحافظة')).toBeInTheDocument();
+    expect(within(dialog).getByText('حلب')).toBeInTheDocument();
+  });
+
+  it('يعرض محافظة الجهات العامة الطالبة للتنفيذ في بطاقة الأطراف', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        ...mockDoc,
+        applicantPublicEntities: [
+          { id: 1, name: 'المصرف التجاري السوري', branch: 'فرع 1', governorate: 'دمشق' },
+          { id: 2, name: 'مديرية زراعة اللاذقية', branch: '', governorate: 'اللاذقية' },
+        ],
+      },
+    });
+    renderView();
+
+    const heading = await screen.findByText('أطراف الملف التنفيذي');
+    const card = heading.closest('div') as HTMLElement;
+    expect(within(card).getByText('المصرف التجاري السوري (فرع 1) - محافظة دمشق')).toBeInTheDocument();
+    expect(within(card).getByText('مديرية زراعة اللاذقية - محافظة اللاذقية')).toBeInTheDocument();
   });
 });

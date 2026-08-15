@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { api, setToken, getToken } from '../api/client';
+import { api } from '../api/client';
 import type { LoginBranchSelectionResponse, LoginResponse, UserDto } from '../types';
 import { AuthContext } from './auth-context';
 
@@ -7,16 +7,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserDto | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // الجلسة Cookie مصادقة HttpOnly يرسلها المتصفح تلقائيًا؛ يُسترجَع المستخدم دائمًا
+  // من /auth/me دون أي تخزين محلي للتوكن. 401 تعني عدم وجود جلسة = غير مسجّل دخول.
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      setLoading(false);
-      return;
-    }
     api
       .get<UserDto>('/auth/me')
       .then((res) => setUser(res.data))
-      .catch(() => setToken(null))
+      .catch(() => setUser(null))
       .finally(() => setLoading(false));
   }, []);
 
@@ -32,14 +29,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     if (res.data && 'requiresBranchSelection' in res.data) return res.data;
     const loginRes = res.data as LoginResponse;
-    setToken(loginRes.token);
     setUser(loginRes.user);
     return loginRes;
   };
 
   const logout = () => {
-    setToken(null);
-    setUser(null);
+    // حذف Cookie الجلسة خادميًا ثم العودة لصفحة الدخول (الملاحة بإعادة تحميل تنظّف الحالة).
+    void api.post('/auth/logout').finally(() => {
+      setUser(null);
+      window.location.href = '/login?logged_out=1';
+    });
   };
 
   return (

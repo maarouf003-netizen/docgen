@@ -150,6 +150,42 @@ public class WordTemplateRendererTests : IDisposable
     }
 
     [Fact]
+    public async Task Render_PlainTokenWithXmlValue_RendersAsLiteralTextNotRawXml()
+    {
+        // أمان: قيمة تبدأ بـ <w: عبر رمز عادي (بدون البادئة r) لا تُدرج كـ XML خام أبدًا؛
+        // تُهرب كنص حرفي فلا يمكن حقن عناصر OOXML من بيانات مستخدم.
+        WriteTemplate("a.docx", new[] { "{{execution_debtor_and_its_adress}}" });
+        var renderer = CreateRenderer("a.docx");
+
+        var result = await renderer.RenderAsync(
+            new Dictionary<string, object>
+            {
+                ["execution_debtor_and_its_adress"] =
+                    "<w:r><w:rPr><w:b/></w:rPr><w:t xml:space=\"preserve\">خطر</w:t></w:r>"
+            }, "a");
+
+        var xml = ReadDocumentXml(result);
+        Assert.Contains("&lt;w:r&gt;", xml);
+        Assert.DoesNotContain("<w:rPr", xml);
+        Assert.DoesNotContain("<w:b/>", xml);
+        Assert.DoesNotContain("{{", xml);
+    }
+
+    [Fact]
+    public async Task Render_RichPrefixWithPlainValue_FallsBackToLiteralText()
+    {
+        // قيمة عادية عبر البادئة r تُهرب كنص حرفي بدل إدراجها خامًا.
+        WriteTemplate("a.docx", new[] { "{{r execution_debtors_and_its_adresses}}" });
+        var renderer = CreateRenderer("a.docx");
+
+        var result = await renderer.RenderAsync(
+            new Dictionary<string, object> { ["execution_debtors_and_its_adresses"] = "نص عادي" }, "a");
+
+        Assert.Contains("نص عادي", ReadDocumentText(result));
+        Assert.DoesNotContain("<w:rPr", ReadDocumentXml(result));
+    }
+
+    [Fact]
     public async Task Render_NewlinesBecomeBreaks()
     {
         WriteTemplate("a.docx", new[] { "{{amount_words}}" });

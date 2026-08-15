@@ -13,8 +13,9 @@ namespace DocGenerator.Application.Services;
 /// محاكاة لسلوك docxtpl:
 ///  - معالجة على مستوى الـ runs في مكانها (لا تُهدم الفقرة أبداً)،
 ///  - تجميع نصوص الـ runs المنقسمة داخل الفقرة قبل المطابقة،
-///  - القيمة التي تحتوي <w:r> تُدرج كنصوص XML خام (rich text)،
-///  - القيمة العادية يُهرب نصها وتتحول الأسطر الجديدة إلى <w:br/>،
+///  - البادئة الصريحة {{r key}} فقط تُدرج قيمة السياق كنصوص XML خام (rich text)؛
+///    أي قيمة أخرى تُهرب نصًا حرفيًا (Text) ولا يمكنها حقن عناصر OOXML،
+///  - القيمة العادية تُهرب نصها وتتحول الأسطر الجديدة إلى <w:br/>،
 ///  - فقرات الرسوم (مربعات النصوص/الصور) لا تُمس؛ تُعالج فقراتها الداخلية فرادى.
 /// </summary>
 public class WordTemplateRenderer : IDocumentRenderer
@@ -24,7 +25,7 @@ public class WordTemplateRenderer : IDocumentRenderer
     private static readonly XNamespace W = WordNs;
     private static readonly XNamespace XmlNs = "http://www.w3.org/XML/1998/namespace";
     private static readonly Regex TokenRegex = new(
-        @"\{\s*\{\s*(?:r\s+)?([A-Za-z0-9_]+)((?:\s+[A-Za-z0-9_]+)*)\s*\}\s*\}",
+        @"\{\s*\{\s*(r\s+)?([A-Za-z0-9_]+)((?:\s+[A-Za-z0-9_]+)*)\s*\}\s*\}",
         RegexOptions.Compiled);
 
     private readonly WordTemplatesOptions _options;
@@ -172,14 +173,16 @@ public class WordTemplateRenderer : IDocumentRenderer
                 if (match.Index > position)
                     newNodes.Add(CreateTextNode(full.Substring(position, match.Index - position)));
 
-                var key = match.Groups[1].Value;
-                var rest = match.Groups[2].Value;
+                var key = match.Groups[2].Value;
+                var rest = match.Groups[3].Value;
+                var isRich = match.Groups[1].Success;
                 var raw = context.TryGetValue(key, out var value)
                     ? value?.ToString() ?? string.Empty
                     : string.Empty;
 
-                // داخل الفقرات الحاملة للرسوم لا تُدرج نصوص XML خام؛ نستعمل النص المهرب فقط.
-                if (raw.StartsWith("<w:", StringComparison.Ordinal))
+                // داخل الفقرات الحاملة للرسوم لا تُدرج نصوص XML خام؛
+                // {{r key}} تُعامل هنا كنص عادي (فارغ) بدل حقن عناصر تُكسر بنية مربع النص.
+                if (isRich)
                     raw = string.Empty;
 
                 newNodes.AddRange(CreateTextNodesForValue(raw + rest));
@@ -250,11 +253,14 @@ public class WordTemplateRenderer : IDocumentRenderer
 
         void EmitReplacement(Match match)
         {
-            var key = match.Groups[1].Value;
-            var rest = match.Groups[2].Value;
+            var isRich = match.Groups[1].Success;
+            var key = match.Groups[2].Value;
+            var rest = match.Groups[3].Value;
             var raw = context.TryGetValue(key, out var value) ? value?.ToString() ?? string.Empty : string.Empty;
 
-            if (raw.StartsWith("<w:", StringComparison.Ordinal))
+            // الإدراج الخام محصور بالبادئة الصريحة {{r key}}، ومع قيمة XML فعلية فقط؛
+            // أي قيمة أخرى (مهما بدأت بـ <w:) تُهرب كنص حرفي فلا يمكن حقن عناصر OOXML.
+            if (isRich && raw.StartsWith("<w:", StringComparison.Ordinal))
             {
                 content.AddRange(ParseRawXml(raw));
                 if (rest.Length > 0)

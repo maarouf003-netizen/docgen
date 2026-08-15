@@ -3,6 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import NetworkStatusBanner from './NetworkStatusBanner';
+import nationalEmblem from '../assets/national.png';
 
 const ROLES: Record<string, string> = {
   lawyer: 'محامي',
@@ -45,11 +46,18 @@ export default function Layout() {
 
   const renderSidebarContent = (onNavigate?: () => void) => (
     <>
-      <div className="p-5 border-b border-emerald-700">
-        <h1 className="text-lg font-bold">مولد المستندات التنفيذية</h1>
-        <p className="text-xs text-emerald-300 mt-1">النظام الإلكتروني</p>
+      <div className="p-4 border-b border-emerald-700 text-center">
+        <img
+          src={nationalEmblem}
+          alt="شعار نسر صلاح الدين"
+          className="w-14 h-14 mx-auto mb-1 drop-shadow-md"
+        />
+        <h1 className="text-xl font-bold">مسار</h1>
+        <p className="text-xs text-emerald-300 mt-1">
+          مساعد محامي الدولة الذكي في إدارة الملفات التنفيذية
+        </p>
       </div>
-      <nav className="flex-1 p-3 overflow-y-auto" aria-label="القائمة الرئيسية">
+      <nav className="flex-1 min-h-0 p-3 overflow-y-auto" aria-label="القائمة الرئيسية">
         {navItems.map((item) => (
           <NavLink
             key={item.to}
@@ -97,15 +105,20 @@ export default function Layout() {
   );
 
   return (
-    <div className="min-h-screen flex flex-col" dir="rtl">
+    <div className="h-dvh flex flex-col" dir="rtl">
+      <div className="flex h-1.5 shrink-0" aria-hidden="true">
+        <span className="flex-1 bg-[#007A3D]" />
+        <span className="flex-1 bg-white" />
+        <span className="flex-1 bg-neutral-900" />
+      </div>
       <NetworkStatusBanner />
-      <div className="flex flex-1">
+      <div className="flex flex-1 min-h-0">
         {!isMobile && (
-          <aside className="w-64 bg-emerald-900 text-white flex flex-col shrink-0 min-h-screen">
+          <aside className="w-64 bg-emerald-900 text-white flex flex-col shrink-0 h-full">
             {renderSidebarContent()}
           </aside>
         )}
-        <main className="flex-1 bg-gray-100 p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
+        <main className="flex-1 min-h-0 bg-gray-100 p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
           {isMobile && (
             <div className="mb-4 flex items-center gap-2">
               <button
@@ -115,7 +128,13 @@ export default function Layout() {
               >
                 ☰
               </button>
-              <h1 className="text-lg font-bold text-emerald-900">مولد المستندات التنفيذية</h1>
+              <img
+                src={nationalEmblem}
+                alt=""
+                aria-hidden="true"
+                className="w-9 h-9 shrink-0"
+              />
+              <h1 className="text-lg font-bold text-emerald-900">مسار</h1>
             </div>
           )}
           <Outlet />

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import Dashboard from './Dashboard';
@@ -47,20 +47,45 @@ const MANAGER_STATS: ManagerStatsDto = {
   deferred: 1,
   settledCount: 2,
   settledCollected: 1500,
+  settledCollectedAmounts: [{ currency: 'ليرة سورية', amount: 1500 }],
   forcibleCount: 1,
   forcibleCollected: 500,
+  forcibleCollectedAmounts: [{ currency: 'ليرة سورية', amount: 500 }],
   tradingAgainstCount: 0,
-  tradingAgainstAmount: 0,
   executedAgainstCount: 0,
   executedAgainstAmount: 0,
-  totalAmount: 4500,
-  activeAmount: 2000,
-  draftsAmount: 1500,
-  deferredAmount: 1000,
-  totalAmount2: 5200,
-  activeAmount2: 5000,
-  draftsAmount2: 200,
-  deferredAmount2: 0,
+  depositTradingCount: 1,
+  depositExecutedCount: 2,
+  depositExecutedAmount: 750,
+  totalAmounts: [{ currency: 'ليرة سورية', amount: 4500 }],
+  activeSplit: {
+    bankingCount: 2,
+    ordinaryCount: 0,
+    bankingAmounts: [
+      { currency: 'ليرة سورية', amount: 2000 },
+      { currency: 'دولار أمريكي', amount: 5000 },
+    ],
+    ordinaryAmounts: [],
+  },
+  draftsSplit: {
+    bankingCount: 1,
+    ordinaryCount: 0,
+    bankingAmounts: [
+      { currency: 'ليرة سورية', amount: 1600 },
+      { currency: 'دولار أمريكي', amount: 200 },
+    ],
+    ordinaryAmounts: [],
+  },
+  deferredSplit: {
+    bankingCount: 1,
+    ordinaryCount: 0,
+    bankingAmounts: [
+      { currency: 'ليرة سورية', amount: 1000 },
+      { currency: 'دولار أمريكي', amount: 5200 },
+    ],
+    ordinaryAmounts: [],
+  },
+  tradingAgainstAmounts: [],
   periodYear: 2026,
   periodQuarter: null,
   periodMonth: 8,
@@ -154,7 +179,7 @@ function mockApi(overrides?: {
       if (url === '/monthly-stats') return Promise.resolve({ data: monthly });
       if (url === '/stats/periods') return Promise.resolve({ data: PERIODS });
       if (url === '/stats/me') {
-        const period = typeof config?.params?.period === 'string' ? config.params.period : 'monthly';
+        const period = typeof config?.params?.period === 'string' ? config.params.period : 'yearly';
         return Promise.resolve({ data: managerStatsFor(period) });
       }
       if (url === '/branches') {
@@ -166,7 +191,7 @@ function mockApi(overrides?: {
         });
       }
       if (url === '/stats/manager') {
-        const period = typeof config?.params?.period === 'string' ? config.params.period : 'monthly';
+        const period = typeof config?.params?.period === 'string' ? config.params.period : 'yearly';
         return Promise.resolve({ data: managerStatsFor(period) });
       }
       if (url === '/stats/manager/lawyers') return Promise.resolve({ data: MANAGER_LAWYERS });
@@ -194,7 +219,7 @@ describe('Dashboard للمحامي', () => {
     expect(screen.getByRole('button', { name: 'شهري' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'ربعي' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'سنوي' })).toBeInTheDocument();
-    expect(await screen.findAllByText('آب 2026')).not.toHaveLength(0);
+    expect(await screen.findAllByText('السنة 2026')).not.toHaveLength(0);
 
     expect(api.get).toHaveBeenCalledWith('/stats/me', expect.any(Object));
     expect(api.get).toHaveBeenCalledWith('/stats/periods', expect.any(Object));
@@ -503,27 +528,30 @@ describe('Dashboard للمدير/المشرف', () => {
     expect(screen.getByText('متداول')).toBeInTheDocument();
     expect(screen.getByText('تحت رفع')).toBeInTheDocument();
     expect(screen.getByText('تريث')).toBeInTheDocument();
-    expect(screen.getByText('المنفذ')).toBeInTheDocument();
+    expect(screen.getByText('منفذ')).toBeInTheDocument();
+    expect(screen.getByText('منفذ للصالح')).toBeInTheDocument();
     expect(screen.getByText('منفذ بالتسوية')).toBeInTheDocument();
     expect(screen.getByText('منفذ جبريا')).toBeInTheDocument();
+    expect(screen.getByText('منفذ للضد')).toBeInTheDocument();
     expect(screen.getByText('2,000 ل.س')).toBeInTheDocument();
-    expect(screen.getByText('1,500 ل.س')).toBeInTheDocument();
+    expect(screen.getByText('1,600 ل.س')).toBeInTheDocument();
     expect(screen.getByText('1,000 ل.س')).toBeInTheDocument();
     expect(screen.getByText('4,500 ل.س')).toBeInTheDocument();
-    expect(screen.getByText('1,500')).toBeInTheDocument();
+    expect(screen.getByText('1,500 ل.س')).toBeInTheDocument();
+    expect(screen.getByText('500 ل.س')).toBeInTheDocument();
     expect(screen.getByText('5,000 دولار')).toBeInTheDocument();
     expect(screen.getByText('5,200 دولار')).toBeInTheDocument();
     expect(screen.getByText('200 دولار')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'شهري' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'ربعي' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'سنوي' })).toBeInTheDocument();
-    expect(await screen.findAllByText('آب 2026')).not.toHaveLength(0);
+    expect(await screen.findAllByText('السنة 2026')).not.toHaveLength(0);
 
     expect(api.get).toHaveBeenCalledWith('/branches');
     expect(api.get).toHaveBeenCalledWith('/stats/periods', expect.any(Object));
     expect(api.get).toHaveBeenCalledWith(
       '/stats/manager',
-      expect.objectContaining({ params: expect.objectContaining({ period: 'monthly' }) }),
+      expect.objectContaining({ params: expect.objectContaining({ period: 'yearly' }) }),
     );
     expect(api.get).not.toHaveBeenCalledWith('/stats/manager/lawyers');
     expect(api.get).not.toHaveBeenCalledWith('/dashboard');
@@ -534,6 +562,71 @@ describe('Dashboard للمدير/المشرف', () => {
     expect(screen.queryByText('المستندات شهرياً')).not.toBeInTheDocument();
     expect(screen.queryByText('عدد المقترضين')).not.toBeInTheDocument();
     expect(screen.getByText(/عرض الفترة/)).toBeInTheDocument();
+  });
+
+  it('يجمع إحصائيات المنفذ في بطاقة واحدة: للصالح (بالتسوية + جبريا + عرض وايداع) وللضد بعدد الملفات والمبالغ', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 1, username: 'manager1', fullName: 'مدير', role: 'manager', branchId: null },
+    });
+    mockApi();
+
+    render(<Dashboard />);
+
+    await screen.findByText('إجمالي الملفات');
+
+    const card = screen.getByText('منفذ').closest('.bg-white.rounded-2xl') as HTMLElement;
+    expect(card).toBeTruthy();
+
+    expect(within(card).getByText('5')).toBeInTheDocument();
+    expect(within(card).getByText('منفذ للصالح')).toBeInTheDocument();
+    expect(within(card).getByText('منفذ بالتسوية')).toBeInTheDocument();
+    expect(within(card).getByText('منفذ جبريا')).toBeInTheDocument();
+    expect(within(card).getByText('عرض وايداع')).toBeInTheDocument();
+    expect(within(card).getByText('منفذ للضد')).toBeInTheDocument();
+    expect(within(card).getByText('1,500 ل.س')).toBeInTheDocument();
+    expect(within(card).getByText('500 ل.س')).toBeInTheDocument();
+    expect(within(card).getByText('750 ل.س')).toBeInTheDocument();
+    expect(within(card).getByText('0 ل.س')).toBeInTheDocument();
+    expect(screen.queryByText('المبلغ المحصل')).not.toBeInTheDocument();
+  });
+
+  it('يثبّت عداد الملفات في موضع واحد في جميع بطاقات الإحصائيات', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 1, username: 'manager1', fullName: 'مدير', role: 'manager', branchId: null },
+    });
+    mockApi();
+
+    render(<Dashboard />);
+
+    await screen.findByText('إجمالي الملفات');
+
+    const counters = Array.from(document.querySelectorAll('.font-bold.tabular-nums'));
+    expect(counters).toHaveLength(5);
+    counters.forEach((el) => {
+      expect(el.getAttribute('dir')).toBe('ltr');
+      expect(el.className).toContain('text-right');
+    });
+
+    const contentBlocks = Array.from(document.querySelectorAll('.bg-white.rounded-2xl .flex-1.min-w-0'));
+    expect(contentBlocks).toHaveLength(5);
+  });
+
+  it('يعرض ملفات «عرض وايداع» المتداولة كسطر فرعي داخل بطاقة متداول', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 1, username: 'manager1', fullName: 'مدير', role: 'manager', branchId: null },
+    });
+    mockApi();
+
+    render(<Dashboard />);
+
+    await screen.findByText('إجمالي الملفات');
+
+    const card = screen.getByText('متداول').closest('.bg-white.rounded-2xl') as HTMLElement;
+    expect(card).toBeTruthy();
+
+    expect(within(card).getByText('متداول للصالح')).toBeInTheDocument();
+    expect(within(card).getByText('عرض وايداع')).toBeInTheDocument();
+    expect(within(card).getByText('متداول للضد')).toBeInTheDocument();
   });
 
   it('تغيير الفترة يعيد الجلب بالفترة الجديدة', async () => {
@@ -568,7 +661,7 @@ describe('Dashboard للمدير/المشرف', () => {
 
     expect(api.get).toHaveBeenCalledWith(
       '/stats/manager/lawyers',
-      expect.objectContaining({ params: expect.objectContaining({ branchId: 1, period: 'monthly' }) }),
+      expect.objectContaining({ params: expect.objectContaining({ branchId: 1, period: 'yearly' }) }),
     );
     expect(await screen.findByText('إحصائيات محامي الفرع')).toBeInTheDocument();
     expect(screen.getByText('محامي دمشق')).toBeInTheDocument();

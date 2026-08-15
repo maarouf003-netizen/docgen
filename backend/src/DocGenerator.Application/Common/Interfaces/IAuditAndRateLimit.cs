@@ -16,6 +16,8 @@ public interface IDocumentRepository : IRepository<Document>
         string? lawyer,
         string? branch,
         string? administrativeBranch,
+        string? executedEntity,
+        string? publicEntityBranch,
         int? visibleBranchId,
         int? visibleUserId,
         int page,
@@ -33,6 +35,8 @@ public interface IDocumentRepository : IRepository<Document>
         string? lawyer,
         string? branch,
         string? administrativeBranch,
+        string? executedEntity,
+        string? publicEntityBranch,
         int? visibleBranchId,
         int? visibleUserId,
         CancellationToken ct = default);
@@ -48,6 +52,8 @@ public interface IDocumentRepository : IRepository<Document>
         string? lawyer,
         string? branch,
         string? administrativeBranch,
+        string? executedEntity,
+        string? publicEntityBranch,
         int? visibleBranchId,
         int? visibleUserId,
         CancellationToken ct = default);
@@ -73,19 +79,35 @@ public interface IDocumentRepository : IRepository<Document>
     /// نقل ذرّي آمن للتفاؤلية: يحدّث المحامي المختص للملف بشرط أن يكون المحامي المختص
     /// الحالي ما زال هو المتوقع (WHERE على CreatedById)، فيرجع المستند المحدّث،
     /// أو null إن تغيّر المحامي أثناء العملية (تعارض متزامن).
+    /// يسجّل مصدر الإحالة ووقتها على الملف (ReferredFromLawyer/ReferredAt) ليَظهر
+    /// الناقل باسمه في «بيانات الملف» للمحامي المستلم.
     /// </summary>
     Task<Document?> TransferOwnerAsync(
         int id,
         int expectedCreatedById,
         int targetId,
         string targetFullName,
+        string referredFromLawyer,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// تسجيل سجل تعاقب على الملف (منشئ create أو إحالة transfer) في جدول
+    /// DocumentAssignments، ليبقى تاريخ كامل لمن تعاقبوا على الملف مع تواريخ الإحالة.
+    /// </summary>
+    Task AddAssignmentAsync(int documentId, string kind, string lawyerName, string? assignedByName, DateTime assignedAt, CancellationToken ct = default);
 
     /// <summary>
     /// عدد ملفات المحامي غير المحذوفة (بجميع الحالات) — يُستخدم لمعاينة
     /// العدد قبل تنفيذ النقل الجماعي (لا يشمل المحذوف تلقائياً عبر Query Filter).
     /// </summary>
     Task<int> CountByOwnerAsync(int ownerId, CancellationToken ct = default);
+
+    /// <summary>
+    /// زيادة عداد مشاهدات الملف ذرّيًا على مستوى قاعدة البيانات (UPDATE مباشر)
+    /// بدل تحميل المستند بكامل علاقاته وتعديله ثم حفظه — أسرع وغير قابل للتعارض
+    /// المتزامن، ولا يشمل المحذوف (Query Filter مطبق تلقائيًا).
+    /// </summary>
+    Task<int> IncrementViewCountAsync(int documentId, CancellationToken ct = default);
 
     /// <summary>
     /// ملفات المحامي غير المحذوفة ببياناتها الأساسية (رقم/نوع/اسم المنفذ عليه)
@@ -97,11 +119,13 @@ public interface IDocumentRepository : IRepository<Document>
     /// نقل جماعي ذرّي: يحدّث المحامي المختص لكل ملفات المصدر غير المحذوفة
     /// (WHERE على CreatedById) ويُرجع عدد الصفوف المتأثرة، فيمكن التحقق من
     /// تطابق العدد المتوقع مع ما نُقل فعلياً.
+    /// يسجّل مصدر الإحالة ووقتها على كل ملف (ReferredFromLawyer/ReferredAt).
     /// </summary>
     Task<int> TransferAllOwnerAsync(
         int sourceOwnerId,
         int targetId,
         string targetFullName,
+        string referredFromLawyer,
         CancellationToken ct = default);
 
     /// <summary>
@@ -144,7 +168,15 @@ public interface IDocumentRepository : IRepository<Document>
 public interface ILoginRateLimiter
 {
     Task<bool> IsAllowedAsync(string key, CancellationToken ct = default);
-    Task RecordFailureAsync(string key, CancellationToken ct = default);
+
+    /// <summary>
+    /// يسجّل محاولة فاشلة ذرّيًا: يُدرج السطر فقط إذا كان عدد المحاولات الفاشلة ضمن النافذة
+    /// أقل من الحد، ويعيد <c>true</c> إن سُجّلت المحاولة و<c>false</c> إن كان الحد قد بلغه.
+    /// الفحص والتسجيل في جملة واحدة يزيل سباق TOCTOU بين التحقق الأولي (IsAllowedAsync)
+    /// والتسجيل اللاحق — فلا يتجاوز عددُ المحاولات الفعلية الحدَّ حتى تحت التزامن.
+    /// </summary>
+    Task<bool> TryRecordFailureAsync(string key, CancellationToken ct = default);
+
     Task ResetAsync(string key, CancellationToken ct = default);
 }
 

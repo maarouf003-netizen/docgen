@@ -1,4 +1,4 @@
-using System.Globalization;
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
@@ -19,8 +19,11 @@ public class StatisticsRepository : IStatisticsRepository
 
     public async Task<DashboardStatsDto> GetDashboardStatsAsync(int? branchId, CancellationToken ct = default)
     {
+        // الملفات المشطوبة (وضع «منفذ عليه») مستثناة من الإحصائيات كما هي مستثناة من
+        // القوائم والتصدير؛ سجلها الوحيد هو صفحة «الملفات المشطوبة».
         var q = _db.Documents.AsNoTracking()
-            .Where(d => branchId == null || d.BranchId == branchId);
+            .Where(d => branchId == null || d.BranchId == branchId)
+            .Where(d => d.ExecutedStatus != ExecutedStatusCatalog.StruckOff && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff);
 
         // كل ملف له حالة واحدة محددة تُحسب مباشرة بشرطها الخاص:
         //   تحت رفع  = مسودة بلا حالة تنفيذ
@@ -45,11 +48,13 @@ public class StatisticsRepository : IStatisticsRepository
 
         // جمع المبالغ عميل-side بالنوع decimal بدل Sum(double) الذي يفقد الدقة؛
         // يعمل على SQLite وPostgreSQL معًا دون أي تعديل عند الترحيل.
+        // الملف المصرفي يضع مبلغه في AmountNumeric والعادي في InclusionAmountNumeric.
         var amounts = await q
-            .Select(d => new { d.IsDraft, d.AmountNumeric, d.CollectedAmount })
+            .Select(d => new { d.IsDraft, d.AmountNumeric, d.InclusionAmountNumeric, d.CollectedAmount })
             .ToListAsync(ct);
 
-        var totalAmount = amounts.Where(d => !d.IsDraft).Sum(d => d.AmountNumeric);
+        var totalAmount = amounts.Where(d => !d.IsDraft)
+            .Sum(d => d.AmountNumeric + d.InclusionAmountNumeric);
         var totalCollectedAmount = amounts.Sum(d => d.CollectedAmount) ?? 0;
 
         var borrowers = await q
@@ -72,23 +77,26 @@ public class StatisticsRepository : IStatisticsRepository
     public async Task<List<MonthlyStatDto>> GetMonthlyStatsAsync(int? branchId, CancellationToken ct = default)
     {
         // شهر الملف هو تاريخ قيده؛ وإن لم يُقيد بعد (تحت رفع) فيُحسب بشهر إدخاله.
+        // الملفات المشطوبة مستثناة لتوافق الشهري مع القوائم والتصدير.
         var dates = await _db.Documents.AsNoTracking()
             .Where(d => branchId == null || d.BranchId == branchId)
+            .Where(d => d.ExecutedStatus != ExecutedStatusCatalog.StruckOff && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff)
             .Select(d => new
             {
-                RegDate = d.RegistrationDate != null ? d.RegistrationDate.Date : null,
+                RegDateParsed = d.RegistrationDate != null ? d.RegistrationDate.DateParsed : null,
                 d.CreatedAt,
             })
             .ToListAsync(ct);
 
-        return GroupMonths(dates.Select(x => TryParseActionDate(x.RegDate) ?? x.CreatedAt.Date));
+        return GroupMonths(dates.Select(x => x.RegDateParsed ?? x.CreatedAt.Date));
     }
 
     public async Task<List<BranchSummaryDto>> GetBranchesSummaryAsync(CancellationToken ct = default)
     {
         var rows = await _db.Documents.AsNoTracking()
             .Where(d => d.BranchId != null)
-            .Select(d => new { d.BranchId, d.IsDraft, d.AmountNumeric })
+            .Where(d => d.ExecutedStatus != ExecutedStatusCatalog.StruckOff && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff)
+            .Select(d => new { d.BranchId, d.IsDraft, d.AmountNumeric, d.InclusionAmountNumeric })
             .ToListAsync(ct);
 
         var grouped = rows
@@ -99,7 +107,7 @@ public class StatisticsRepository : IStatisticsRepository
                 BranchId = g.Key,
                 Total = g.Count(),
                 Drafts = g.Count(d => d.IsDraft),
-                Amount = g.Where(d => !d.IsDraft).Sum(d => d.AmountNumeric),
+                Amount = g.Where(d => !d.IsDraft).Sum(d => d.AmountNumeric + d.InclusionAmountNumeric),
             })
             .ToList();
 
@@ -124,6 +132,7 @@ public class StatisticsRepository : IStatisticsRepository
     public async Task<List<UserActivityDto>> GetUserActivityAsync(CancellationToken ct = default)
     {
         var grouped = await _db.Documents.AsNoTracking()
+            .Where(d => d.ExecutedStatus != ExecutedStatusCatalog.StruckOff && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff)
             .GroupBy(d => d.CreatedById)
             .Select(g => new
             {
@@ -147,7 +156,11 @@ public class StatisticsRepository : IStatisticsRepository
             .ToList();
     }
 
-    /// <summary>صف خام لإحصاءات المدير/المحامي؛ تاريخ القيد نصّي في DB لذا RegDate من نوع string.</summary>
+    /// <summary>
+    /// صف خام لإحصاءات المدير/المحامي. فترة الملف تُحسب في SQL عبر PeriodDate:
+    /// تاريخ القيد المحلول (DateParsed) أو تاريخ الإدخال عند غيابه،
+    /// ولعائلة وضع «الجهة العامة منفذ عليها» (Executed + Deposit) من تاريخ ورود الاخطار.
+    /// </summary>
     private sealed class ManagerStatRow
     {
         public bool IsDraft { get; set; }
@@ -155,14 +168,33 @@ public class StatisticsRepository : IStatisticsRepository
         public string? ExecSubStatus { get; set; }
         public string? GeneralEntitySide { get; set; }
         public string? ExecutedStatus { get; set; }
+        public string? ContractTypeSelector { get; set; }
         public decimal AmountNumeric { get; set; }
+        public string? Currency { get; set; }
         public decimal Amount2Numeric { get; set; }
+        public string? Currency2 { get; set; }
+        public decimal Amount3Numeric { get; set; }
+        public string? Currency3 { get; set; }
+        public decimal InclusionAmountNumeric { get; set; }
+        public string? InclusionCurrency { get; set; }
+        public decimal InclusionAmount2Numeric { get; set; }
+        public string? InclusionCurrency2 { get; set; }
+        public decimal InclusionAmount3Numeric { get; set; }
+        public string? InclusionCurrency3 { get; set; }
         public decimal? CollectedAmount { get; set; }
+        public decimal? CollectedAmount2 { get; set; }
+        public decimal? CollectedAmount3 { get; set; }
+        public string? CollectedCurrency { get; set; }
+        public string? CollectedCurrency2 { get; set; }
+        public string? CollectedCurrency3 { get; set; }
         public decimal? ExecutedRequiredAmount { get; set; }
+        public string? ExecutedRequiredCurrency { get; set; }
+        public decimal? ExecutedRequiredAmount2 { get; set; }
+        public string? ExecutedRequiredCurrency2 { get; set; }
+        public decimal? ExecutedRequiredAmount3 { get; set; }
+        public string? ExecutedRequiredCurrency3 { get; set; }
         public decimal? ExecutedPaidAmount { get; set; }
-        public DateTime? FileReceiptDate { get; set; }
-        public string? RegDate { get; set; }
-        public DateTime CreatedAt { get; set; }
+        public DateTime PeriodDate { get; set; }
     }
 
     public async Task<ManagerStatsDto> GetManagerStatsAsync(StatsPeriod period, int? branchId,
@@ -171,6 +203,7 @@ public class StatisticsRepository : IStatisticsRepository
         var window = GetPeriodWindow(period, year, month, quarter);
         var rows = await _db.Documents.AsNoTracking()
             .Where(d => branchId == null || d.BranchId == branchId)
+            .Where(d => d.ExecutedStatus != ExecutedStatusCatalog.StruckOff && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff)
             .Select(d => new ManagerStatRow
             {
                 IsDraft = d.IsDraft,
@@ -178,15 +211,38 @@ public class StatisticsRepository : IStatisticsRepository
                 ExecSubStatus = d.ExecSubStatus,
                 GeneralEntitySide = d.GeneralEntitySide,
                 ExecutedStatus = d.ExecutedStatus,
+                ContractTypeSelector = d.ContractTypeSelector,
                 AmountNumeric = d.AmountNumeric,
+                Currency = d.Currency,
                 Amount2Numeric = d.Amount2Numeric,
+                Currency2 = d.Currency2,
+                Amount3Numeric = d.Amount3Numeric,
+                Currency3 = d.Currency3,
+                InclusionAmountNumeric = d.InclusionAmountNumeric,
+                InclusionCurrency = d.InclusionCurrency,
+                InclusionAmount2Numeric = d.InclusionAmount2Numeric,
+                InclusionCurrency2 = d.InclusionCurrency2,
+                InclusionAmount3Numeric = d.InclusionAmount3Numeric,
+                InclusionCurrency3 = d.InclusionCurrency3,
                 CollectedAmount = d.CollectedAmount,
+                CollectedAmount2 = d.CollectedAmount2,
+                CollectedAmount3 = d.CollectedAmount3,
+                CollectedCurrency = d.CollectedCurrency,
+                CollectedCurrency2 = d.CollectedCurrency2,
+                CollectedCurrency3 = d.CollectedCurrency3,
                 ExecutedRequiredAmount = d.ExecutedRequiredAmount,
+                ExecutedRequiredCurrency = d.ExecutedRequiredCurrency,
+                ExecutedRequiredAmount2 = d.ExecutedRequiredAmount2,
+                ExecutedRequiredCurrency2 = d.ExecutedRequiredCurrency2,
+                ExecutedRequiredAmount3 = d.ExecutedRequiredAmount3,
+                ExecutedRequiredCurrency3 = d.ExecutedRequiredCurrency3,
                 ExecutedPaidAmount = d.ExecutedPaidAmount,
-                FileReceiptDate = d.FileReceiptDate,
-                RegDate = d.RegistrationDate != null ? d.RegistrationDate.Date : null,
-                CreatedAt = d.CreatedAt,
+                PeriodDate = d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
+                    || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit
+                        ? d.FileReceiptDate ?? d.CreatedAt
+                        : d.RegistrationDate!.DateParsed ?? d.CreatedAt,
             })
+            .Where(r => r.PeriodDate >= window.Start && r.PeriodDate < window.End)
             .ToListAsync(ct);
 
         return AggregateManagerStats(rows, period, window);
@@ -198,6 +254,7 @@ public class StatisticsRepository : IStatisticsRepository
         var window = GetPeriodWindow(period, year, month, quarter);
         var rows = await _db.Documents.AsNoTracking()
             .Where(d => d.CreatedById == userId)
+            .Where(d => d.ExecutedStatus != ExecutedStatusCatalog.StruckOff && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff)
             .Select(d => new ManagerStatRow
             {
                 IsDraft = d.IsDraft,
@@ -205,19 +262,74 @@ public class StatisticsRepository : IStatisticsRepository
                 ExecSubStatus = d.ExecSubStatus,
                 GeneralEntitySide = d.GeneralEntitySide,
                 ExecutedStatus = d.ExecutedStatus,
+                ContractTypeSelector = d.ContractTypeSelector,
                 AmountNumeric = d.AmountNumeric,
+                Currency = d.Currency,
                 Amount2Numeric = d.Amount2Numeric,
+                Currency2 = d.Currency2,
+                Amount3Numeric = d.Amount3Numeric,
+                Currency3 = d.Currency3,
+                InclusionAmountNumeric = d.InclusionAmountNumeric,
+                InclusionCurrency = d.InclusionCurrency,
+                InclusionAmount2Numeric = d.InclusionAmount2Numeric,
+                InclusionCurrency2 = d.InclusionCurrency2,
+                InclusionAmount3Numeric = d.InclusionAmount3Numeric,
+                InclusionCurrency3 = d.InclusionCurrency3,
                 CollectedAmount = d.CollectedAmount,
+                CollectedAmount2 = d.CollectedAmount2,
+                CollectedAmount3 = d.CollectedAmount3,
+                CollectedCurrency = d.CollectedCurrency,
+                CollectedCurrency2 = d.CollectedCurrency2,
+                CollectedCurrency3 = d.CollectedCurrency3,
                 ExecutedRequiredAmount = d.ExecutedRequiredAmount,
+                ExecutedRequiredCurrency = d.ExecutedRequiredCurrency,
+                ExecutedRequiredAmount2 = d.ExecutedRequiredAmount2,
+                ExecutedRequiredCurrency2 = d.ExecutedRequiredCurrency2,
+                ExecutedRequiredAmount3 = d.ExecutedRequiredAmount3,
+                ExecutedRequiredCurrency3 = d.ExecutedRequiredCurrency3,
                 ExecutedPaidAmount = d.ExecutedPaidAmount,
-                FileReceiptDate = d.FileReceiptDate,
-                RegDate = d.RegistrationDate != null ? d.RegistrationDate.Date : null,
-                CreatedAt = d.CreatedAt,
+                PeriodDate = d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
+                    || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit
+                        ? d.FileReceiptDate ?? d.CreatedAt
+                        : d.RegistrationDate!.DateParsed ?? d.CreatedAt,
             })
+            .Where(r => r.PeriodDate >= window.Start && r.PeriodDate < window.End)
             .ToListAsync(ct);
 
         return AggregateManagerStats(rows, period, window);
     }
+
+    /// <summary>العملات المعروفة في شاشة الإحصاءات بترتيب العرض الثابت.</summary>
+    private static readonly string[] KnownCurrencies =
+        { "ليرة سورية", "دولار أمريكي", "يورو" };
+
+    private static string NormalizeCurrency(string? currency) =>
+        string.IsNullOrWhiteSpace(currency) ? "ليرة سورية" : currency.Trim();
+
+    /// <summary>ملف «مصرفي» ما لم يُحدد «عادي» صراحة (القيمة الافتراضية للعقد مصرفي).</summary>
+    private static bool IsBanking(string? contractTypeSelector) =>
+        !string.Equals(contractTypeSelector?.Trim(), "عادي", StringComparison.Ordinal);
+
+    /// <summary>
+    /// يُضيف مبلغًا لسلة عملته متجاهلًا الصفر والغائب؛
+    /// والعملات خارج المعروفة تُهمل من العرض (لا يُفترض حدوثها لكون النموذج مقيدًا بها).
+    /// </summary>
+    private static void AddAmount(Dictionary<string, decimal> buckets, string? currency, decimal? amount)
+    {
+        if (amount == null || amount.Value == 0)
+            return;
+        var key = NormalizeCurrency(currency);
+        if (!KnownCurrencies.Contains(key))
+            return;
+        buckets[key] = buckets.TryGetValue(key, out var current) ? current + amount.Value : amount.Value;
+    }
+
+    /// <summary>السلات بالترتيب الثابت المعروف، وتستبعد العملات غير المجمّعة (صفرية).</summary>
+    private static List<CurrencyAmountDto> ToCurrencyAmounts(Dictionary<string, decimal> buckets) =>
+        KnownCurrencies
+            .Where(buckets.ContainsKey)
+            .Select(c => new CurrencyAmountDto(c, buckets[c]))
+            .ToList();
 
     private static ManagerStatsDto AggregateManagerStats(
         List<ManagerStatRow> rows, StatsPeriod period, (DateTime Start, DateTime End) window)
@@ -226,32 +338,39 @@ public class StatisticsRepository : IStatisticsRepository
         var drafts = 0;
         var deferred = 0;
         var settledCount = 0;
-        decimal settledCollected = 0;
         var forcibleCount = 0;
-        decimal forcibleCollected = 0;
         var tradingAgainstCount = 0;
-        decimal tradingAgainstAmount = 0;
         var executedAgainstCount = 0;
         decimal executedAgainstAmount = 0;
-        decimal activeAmount = 0;
-        decimal draftsAmount = 0;
-        decimal deferredAmount = 0;
-        decimal activeAmount2 = 0;
-        decimal draftsAmount2 = 0;
-        decimal deferredAmount2 = 0;
+        var depositTradingCount = 0;
+        var depositExecutedCount = 0;
+        decimal depositExecutedAmount = 0;
+
+        var activeBanking = 0;
+        var activeOrdinary = 0;
+        var draftsBanking = 0;
+        var draftsOrdinary = 0;
+        var deferredBanking = 0;
+        var deferredOrdinary = 0;
+
+        var activeBankingBuckets = new Dictionary<string, decimal>();
+        var activeOrdinaryBuckets = new Dictionary<string, decimal>();
+        var draftsBankingBuckets = new Dictionary<string, decimal>();
+        var draftsOrdinaryBuckets = new Dictionary<string, decimal>();
+        var deferredBankingBuckets = new Dictionary<string, decimal>();
+        var deferredOrdinaryBuckets = new Dictionary<string, decimal>();
+        var totalBuckets = new Dictionary<string, decimal>();
+        var tradingAgainstBuckets = new Dictionary<string, decimal>();
+        var settledCollectedBuckets = new Dictionary<string, decimal>();
+        var forcibleCollectedBuckets = new Dictionary<string, decimal>();
 
         foreach (var r in rows)
         {
-            // ملف «الجهة العامة منفذ عليها»: يُحتسب في بطاقة «متداول للضد» (المتداول فقط)
-            // أو «منفذ للضد» (المنفذ فقط)، والمشطوب مستبعد من الاثنتين، وفترة الملف
-            // من تاريخ وروده لا من تاريخ قيده (المقيد من الخصم لا من محامي الدولة).
+            // ملف «الجهة العامة منفذ عليها»: يُحتسب في «متداول للضد» (المتداول فقط)
+            // أو «منفذ للضد» (المنفذ فقط)، والمشطوب مستبعد من الاثنتين (فلتُر في SQL).
             if (r.GeneralEntitySide == GeneralEntitySideCatalog.Executed)
             {
                 if (r.ExecutedStatus == ExecutedStatusCatalog.StruckOff)
-                    continue;
-
-                var executedPeriodDate = r.FileReceiptDate?.Date ?? r.CreatedAt.Date;
-                if (executedPeriodDate < window.Start || executedPeriodDate >= window.End)
                     continue;
 
                 if (r.ExecutedStatus == ExecutedStatusCatalog.Executed)
@@ -262,51 +381,75 @@ public class StatisticsRepository : IStatisticsRepository
                 else
                 {
                     tradingAgainstCount++;
-                    tradingAgainstAmount += r.ExecutedRequiredAmount ?? 0;
+                    AddAmount(tradingAgainstBuckets, r.ExecutedRequiredCurrency, r.ExecutedRequiredAmount);
+                    AddAmount(tradingAgainstBuckets, r.ExecutedRequiredCurrency2, r.ExecutedRequiredAmount2);
+                    AddAmount(tradingAgainstBuckets, r.ExecutedRequiredCurrency3, r.ExecutedRequiredAmount3);
                 }
                 continue;
             }
 
-            // فترة الملف: تاريخ قيده، وإن لم يُقيد بعد (تحت رفع) فشهر إدخاله.
-            var periodDate = TryParseActionDate(r.RegDate) ?? r.CreatedAt.Date;
-            if (periodDate < window.Start || periodDate >= window.End)
+            // ملف «عرض وايداع»: يُحتسب «للصالح» كسطر فرعي داخل بطاقتي متداول/منفذ.
+            // المتداول يظهر بعدده فقط، والمنفذ بعدده ومجموع المبالغ المودعة، والمشطوب مستبعد.
+            if (r.GeneralEntitySide == GeneralEntitySideCatalog.Deposit)
+            {
+                if (r.ExecutedStatus == ExecutedStatusCatalog.StruckOff)
+                    continue;
+
+                if (r.ExecutedStatus == ExecutedStatusCatalog.Executed)
+                {
+                    depositExecutedCount++;
+                    depositExecutedAmount += r.ExecutedPaidAmount ?? 0;
+                }
+                else
+                {
+                    depositTradingCount++;
+                }
                 continue;
+            }
 
             if (r.ExecStatus == ExecutionStatusCatalog.ExecutedBySettlement)
             {
                 settledCount++;
-                settledCollected += r.CollectedAmount ?? 0;
+                AddAmount(settledCollectedBuckets, r.CollectedCurrency, r.CollectedAmount);
+                AddAmount(settledCollectedBuckets, r.CollectedCurrency2, r.CollectedAmount2);
+                AddAmount(settledCollectedBuckets, r.CollectedCurrency3, r.CollectedAmount3);
             }
             else if (r.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
                 && r.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted)
             {
                 forcibleCount++;
-                forcibleCollected += r.CollectedAmount ?? 0;
+                AddAmount(forcibleCollectedBuckets, r.CollectedCurrency, r.CollectedAmount);
+                AddAmount(forcibleCollectedBuckets, r.CollectedCurrency2, r.CollectedAmount2);
+                AddAmount(forcibleCollectedBuckets, r.CollectedCurrency3, r.CollectedAmount3);
             }
             else if (r.IsDraft && string.IsNullOrEmpty(r.ExecStatus))
             {
                 drafts++;
-                draftsAmount += r.AmountNumeric;
-                draftsAmount2 += r.Amount2Numeric;
+                AccumulateContract(r,
+                    ref draftsBanking, ref draftsOrdinary,
+                    draftsBankingBuckets, draftsOrdinaryBuckets, totalBuckets);
             }
             else if (r.ExecStatus == ExecutionStatusCatalog.Deferred)
             {
                 deferred++;
-                deferredAmount += r.AmountNumeric;
-                deferredAmount2 += r.Amount2Numeric;
+                AccumulateContract(r,
+                    ref deferredBanking, ref deferredOrdinary,
+                    deferredBankingBuckets, deferredOrdinaryBuckets, totalBuckets);
             }
             else if (r.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
                 && r.ExecSubStatus == ExecutionStatusCatalog.SubPartiallyExecuted)
             {
                 active++;
-                activeAmount += r.AmountNumeric;
-                activeAmount2 += r.Amount2Numeric;
+                AccumulateContract(r,
+                    ref activeBanking, ref activeOrdinary,
+                    activeBankingBuckets, activeOrdinaryBuckets, totalBuckets);
             }
             else if (string.IsNullOrEmpty(r.ExecStatus) && !r.IsDraft)
             {
                 active++;
-                activeAmount += r.AmountNumeric;
-                activeAmount2 += r.Amount2Numeric;
+                AccumulateContract(r,
+                    ref activeBanking, ref activeOrdinary,
+                    activeBankingBuckets, activeOrdinaryBuckets, totalBuckets);
             }
         }
 
@@ -315,25 +458,67 @@ public class StatisticsRepository : IStatisticsRepository
             Active: active,
             Drafts: drafts,
             Deferred: deferred,
-            TotalAmount: activeAmount + draftsAmount + deferredAmount,
-            ActiveAmount: activeAmount,
-            DraftsAmount: draftsAmount,
-            DeferredAmount: deferredAmount,
-            TotalAmount2: activeAmount2 + draftsAmount2 + deferredAmount2,
-            ActiveAmount2: activeAmount2,
-            DraftsAmount2: draftsAmount2,
-            DeferredAmount2: deferredAmount2,
+            ActiveSplit: new ManagerContractSplitDto(
+                activeBanking, activeOrdinary,
+                ToCurrencyAmounts(activeBankingBuckets), ToCurrencyAmounts(activeOrdinaryBuckets)),
+            DraftsSplit: new ManagerContractSplitDto(
+                draftsBanking, draftsOrdinary,
+                ToCurrencyAmounts(draftsBankingBuckets), ToCurrencyAmounts(draftsOrdinaryBuckets)),
+            DeferredSplit: new ManagerContractSplitDto(
+                deferredBanking, deferredOrdinary,
+                ToCurrencyAmounts(deferredBankingBuckets), ToCurrencyAmounts(deferredOrdinaryBuckets)),
+            TotalAmounts: ToCurrencyAmounts(totalBuckets),
+            TradingAgainstAmounts: ToCurrencyAmounts(tradingAgainstBuckets),
             SettledCount: settledCount,
-            SettledCollected: settledCollected,
+            SettledCollected: settledCollectedBuckets.TryGetValue("ليرة سورية", out var settledPrimary) ? settledPrimary : 0,
+            SettledCollectedAmounts: ToCurrencyAmounts(settledCollectedBuckets),
             ForcibleCount: forcibleCount,
-            ForcibleCollected: forcibleCollected,
+            ForcibleCollected: forcibleCollectedBuckets.TryGetValue("ليرة سورية", out var forciblePrimary) ? forciblePrimary : 0,
+            ForcibleCollectedAmounts: ToCurrencyAmounts(forcibleCollectedBuckets),
             TradingAgainstCount: tradingAgainstCount,
-            TradingAgainstAmount: tradingAgainstAmount,
             ExecutedAgainstCount: executedAgainstCount,
             ExecutedAgainstAmount: executedAgainstAmount,
+            DepositTradingCount: depositTradingCount,
+            DepositExecutedCount: depositExecutedCount,
+            DepositExecutedAmount: depositExecutedAmount,
             PeriodYear: window.Start.Year,
             PeriodQuarter: period == StatsPeriod.Quarterly ? (window.Start.Month - 1) / 3 + 1 : null,
             PeriodMonth: period == StatsPeriod.Monthly ? window.Start.Month : null);
+    }
+
+    /// <summary>
+    /// يوزّع المبالغ الثلاثة على سلة نوع العقد (مصرفي/عادي) بعملاتهما،
+    /// مع تحديث عداد النوع وسلة الإجمالي (دون المنفذ).
+    /// الملف المصرفي يحفظ مبالغه في Amount/Amount2/Amount3، والعادي في Inclusion*.
+    /// </summary>
+    private static void AccumulateContract(
+        ManagerStatRow r,
+        ref int bankingCount, ref int ordinaryCount,
+        Dictionary<string, decimal> bankingBuckets, Dictionary<string, decimal> ordinaryBuckets,
+        Dictionary<string, decimal> totalBuckets)
+    {
+        var banking = IsBanking(r.ContractTypeSelector);
+        if (banking) bankingCount++;
+        else ordinaryCount++;
+
+        if (banking)
+        {
+            AddAmount(bankingBuckets, r.Currency, r.AmountNumeric);
+            AddAmount(bankingBuckets, r.Currency2, r.Amount2Numeric);
+            AddAmount(bankingBuckets, r.Currency3, r.Amount3Numeric);
+            AddAmount(totalBuckets, r.Currency, r.AmountNumeric);
+            AddAmount(totalBuckets, r.Currency2, r.Amount2Numeric);
+            AddAmount(totalBuckets, r.Currency3, r.Amount3Numeric);
+        }
+        else
+        {
+            AddAmount(ordinaryBuckets, r.InclusionCurrency, r.InclusionAmountNumeric);
+            AddAmount(ordinaryBuckets, r.InclusionCurrency2, r.InclusionAmount2Numeric);
+            AddAmount(ordinaryBuckets, r.InclusionCurrency3, r.InclusionAmount3Numeric);
+            AddAmount(totalBuckets, r.InclusionCurrency, r.InclusionAmountNumeric);
+            AddAmount(totalBuckets, r.InclusionCurrency2, r.InclusionAmount2Numeric);
+            AddAmount(totalBuckets, r.InclusionCurrency3, r.InclusionAmount3Numeric);
+        }
     }
 
     public async Task<List<ManagerLawyerStatDto>> GetManagerLawyerStatsAsync(StatsPeriod period, int branchId,
@@ -342,10 +527,11 @@ public class StatisticsRepository : IStatisticsRepository
         var window = GetPeriodWindow(period, year, month, quarter);
         var rows = await _db.Documents.AsNoTracking()
             .Where(d => d.BranchId == branchId)
+            .Where(d => d.ExecutedStatus != ExecutedStatusCatalog.StruckOff && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff)
             .Select(d => new
             {
                 d.CreatedById,
-                RegDate = d.RegistrationDate != null ? d.RegistrationDate.Date : null,
+                RegDateParsed = d.RegistrationDate != null ? d.RegistrationDate.DateParsed : null,
                 CreatedAt = d.CreatedAt,
             })
             .ToListAsync(ct);
@@ -359,7 +545,7 @@ public class StatisticsRepository : IStatisticsRepository
         foreach (var r in rows)
         {
             // فترة الملف: تاريخ قيده، وإن لم يُقيد بعد (تحت رفع) فشهر إدخاله.
-            var periodDate = TryParseActionDate(r.RegDate) ?? r.CreatedAt.Date;
+            var periodDate = r.RegDateParsed ?? r.CreatedAt.Date;
             if (periodDate < window.Start || periodDate >= window.End)
                 continue;
 
@@ -406,14 +592,15 @@ public class StatisticsRepository : IStatisticsRepository
         var dates = await _db.Documents.AsNoTracking()
             .Where(d => branchId == null || d.BranchId == branchId)
             .Where(d => userId == null || d.CreatedById == userId)
+            .Where(d => d.ExecutedStatus != ExecutedStatusCatalog.StruckOff && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff)
             .Select(d => new
             {
-                RegDate = d.RegistrationDate != null ? d.RegistrationDate.Date : null,
+                RegDateParsed = d.RegistrationDate != null ? d.RegistrationDate.DateParsed : null,
                 d.CreatedAt,
             })
             .ToListAsync(ct);
 
-        return GroupMonths(dates.Select(x => TryParseActionDate(x.RegDate) ?? x.CreatedAt.Date));
+        return GroupMonths(dates.Select(x => x.RegDateParsed ?? x.CreatedAt.Date));
     }
 
     private static List<MonthlyStatDto> GroupMonths(IEnumerable<DateTime> dates)
@@ -508,25 +695,7 @@ public class StatisticsRepository : IStatisticsRepository
         return baseDate.Date.AddDays(DurationDays(duration));
     }
 
-    private static DateTime? TryParseActionDate(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return null;
-
-        var formats = new[]
-        {
-            "d/M/yyyy", "dd/MM/yyyy", "d-M-yyyy", "dd-MM-yyyy",
-            "yyyy-MM-dd", "d/M/yy", "dd/MM/yy",
-        };
-        if (DateTime.TryParseExact(value, formats, CultureInfo.InvariantCulture,
-                DateTimeStyles.None, out var parsed))
-            return parsed.Date;
-
-        if (DateTime.TryParse(value, CultureInfo.CurrentCulture, DateTimeStyles.None, out var loose))
-            return loose.Date;
-
-        return null;
-    }
+    private static DateTime? TryParseActionDate(string? value) => ActionDateParser.TryParse(value);
 
     private static int DurationDays(string? duration) => duration switch
     {

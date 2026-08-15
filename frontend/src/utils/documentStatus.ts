@@ -1,4 +1,5 @@
 import type { DocumentResponse } from '../types';
+import { isExecutedLike } from './documentDisplay';
 
 export type DocumentStatus = 'منفذ' | 'تريث' | 'تحت رفع' | 'متداول' | 'متداول / منفذ جزئيا' | 'مشطوب';
 
@@ -18,7 +19,7 @@ export type StatusSource = Pick<
   'execStatus' | 'execSubStatus' | 'isDraft' | 'generalEntitySide' | 'executedStatus'
 >;
 
-/** حالة وضع «منفذ عليه» (متداول/منفذ/مشطوب)، معزولة تمامًا عن نظام «طالبة تنفيذ». */
+/** حالة وضع «منفذ عليه»/«عرض وايداع» (متداول/منفذ/مشطوب)، معزولة تمامًا عن نظام «طالبة تنفيذ». */
 export function getExecutedStatus(doc: StatusSource): DocumentStatus {
   if (doc.executedStatus === 'مشطوب') return 'مشطوب';
   if (doc.executedStatus === 'منفذ') return 'منفذ';
@@ -26,7 +27,9 @@ export function getExecutedStatus(doc: StatusSource): DocumentStatus {
 }
 
 export function getDocumentStatus(doc: StatusSource): DocumentStatus {
-  if (doc.generalEntitySide === 'executed') return getExecutedStatus(doc);
+  if (isExecutedLike(doc.generalEntitySide)) return getExecutedStatus(doc);
+  // «مشطوب» في نظام «طالبة تنفيذ» موحّد مع صفحة «الملفات المشطوبة».
+  if (doc.execStatus === 'مشطوب') return 'مشطوب';
   if (doc.execStatus === 'تريث') return 'تريث';
   if (doc.execStatus === 'منفذ جبريا' && doc.execSubStatus === 'منفذ جزئيا') return 'متداول / منفذ جزئيا';
   if (doc.execStatus === 'منفذ جبريا' || doc.execStatus === 'منفذ بالتسوية') return 'منفذ';

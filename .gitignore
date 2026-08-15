@@ -5,6 +5,9 @@
 *.suo
 .vs/
 
+# Local build-verify output (إخراج تحقق محلي من البناء، وليس كودًا)
+backend/build-verify/
+
 # Frontend
 node_modules/
 dist/
