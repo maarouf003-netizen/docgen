@@ -20,6 +20,19 @@ frontend/dist/
 *.log
 logs/
 
+# Secrets & local-only config (تحمي الملفات الشخصية من الرفع مستقبلًا; appsettings.json الآمن يبقى متتبعًا)
+.env
+*.env
+**/appsettings.Development.json
+**/appsettings.*Local*.json
+**/appsettings.Secret*.json
+*.secret.json
+*.pfx
+*.pem
+*.key
+*.snk
+*.jks
+
 # OS / editor junk
 .DS_Store
 Thumbs.db
