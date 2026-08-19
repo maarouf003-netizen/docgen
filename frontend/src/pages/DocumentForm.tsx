@@ -4,9 +4,12 @@ import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { ApplicantSideSections } from '../components/form/ApplicantSideSections';
 import {
+  ASSET_KINDS,
+  emptyAsset,
   FILE_YEARS,
-  MAX_ESTATES,
+  MAX_ASSETS_PER_KIND,
   MAX_GUARANTORS,
+  SHAREABLE_ASSET_KINDS,
   bankingCurrencyKeys,
   emptyExecutedNaturalPerson,
   emptyExecutedPublicEntity,
@@ -15,7 +18,6 @@ import {
   emptyApplicantPublicEntity,
   emptyGuarantor,
   emptyHeir,
-  emptyEstate,
   hasHeirName,
   hasRepresentative,
   ordinaryCurrencyKeys,
@@ -32,6 +34,7 @@ import { tripleName, isExecutedLike } from '../utils/documentDisplay';
 import { governorateFromBranch } from '../utils/governorate';
 import type {
   ApplicantPublicEntityDto,
+  AssetDto,
   DocumentOccurrenceDto,
   DocumentResponse,
   DocumentUpsertRequest,
@@ -44,7 +47,6 @@ import type {
   HeirDto,
   PartyNature,
   EntityNature,
-  RealEstateDto,
 } from '../types';
 
 export default function DocumentForm() {
@@ -69,7 +71,7 @@ export default function DocumentForm() {
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [guarantors, setGuarantors] = useState<GuarantorDto[]>([emptyGuarantor()]);
   const [borrowerHeirs, setBorrowerHeirs] = useState<HeirDto[]>([]);
-  const [estates, setEstates] = useState<RealEstateDto[]>([]);
+  const [assets, setAssets] = useState<AssetDto[]>([]);
   const [executionApplicants, setExecutionApplicants] = useState<ExecutionApplicantDto[]>([emptyExecutionApplicant()]);
   const [executedPublicEntities, setExecutedPublicEntities] = useState<ExecutedPublicEntityDto[]>([freshExecutedEntity()]);
   const [applicantPublicEntities, setApplicantPublicEntities] = useState<ApplicantPublicEntityDto[]>([freshApplicantEntity()]);
@@ -84,7 +86,7 @@ export default function DocumentForm() {
   const [ordinaryAmountSlots, setOrdinaryAmountSlots] = useState(1);
   const [form, setForm] = useState<DocumentUpsertRequest>({
     guarantors: [],
-    realEstates: [],
+    assets: [],
     currency: 'ليرة سورية',
     currency2: 'دولار أمريكي',
     inclusionCurrency: 'ليرة سورية',
@@ -108,11 +110,15 @@ export default function DocumentForm() {
         setForm(toUpsert(d));
         setGuarantors(d.guarantors.length ? d.guarantors : [emptyGuarantor()]);
         setBorrowerHeirs(d.borrowerHeirs ?? []);
-        // تصحيح أي بيانات قديمة متناقضة عند التحميل: تمام العقار لا يكون إلا لمالك واحد.
-        setEstates(
-          (d.realEstates ?? []).map((r) => ({
-            ...r,
-            shareType: (r.owners ?? []).length > 1 ? 'حصة سهمية' : r.shareType,
+        // تصحيح أي بيانات قديمة متناقضة عند التحميل: تمام الأصل لا يكون إلا لمالك واحد،
+        // والأنواع غير الحصصية (كفالة الرواتب والمتجر غير المسجل) لا تحمل مقدار حصة أصلًا.
+        setAssets(
+          (d.assets ?? []).map((a) => ({
+            ...a,
+            shareType:
+              SHAREABLE_ASSET_KINDS.has(a.assetKind ?? '') && (a.owners ?? []).length > 1
+                ? 'حصة سهمية'
+                : a.shareType,
           })),
         );
         setShowInclusionAmount(
@@ -171,26 +177,32 @@ export default function DocumentForm() {
   const setG = (i: number, key: keyof GuarantorDto, value: string) =>
     setGuarantors((gs) => gs.map((g, idx) => (idx === i ? { ...g, [key]: value } : g)));
 
-  const setE = (i: number, key: keyof RealEstateDto, value: string) =>
-    setEstates((es) => es.map((e, idx) => (idx === i ? { ...e, [key]: value } : e)));
+  const setE = (i: number, key: keyof AssetDto, value: string) =>
+    setAssets((as) => as.map((a, idx) => (idx === i ? { ...a, [key]: value } : a)));
 
   const toggleOwner = (i: number, name: string) =>
-    setEstates((es) =>
-      es.map((e, idx) => {
-        if (idx !== i) return e;
-        const current = e.owners ?? [];
+    setAssets((as) =>
+      as.map((a, idx) => {
+        if (idx !== i) return a;
+        const current = a.owners ?? [];
         const owners = current.includes(name)
           ? current.filter((o) => o !== name)
           : [...current, name];
         return {
-          ...e,
+          ...a,
           owners,
-          // تمام العقار لا يكون إلا لمالك واحد؛ عند تعدد الملاك تُفرض الحصة السهمية تلقائيًا
-          // حتى لو نسي المحامي اختيارها، مع عدم الرجوع عنها عند النقص من ملاك متعددين.
-          shareType: owners.length > 1 ? 'حصة سهمية' : e.shareType,
+          // تمام الأصل لا يكون إلا لمالك واحد؛ عند تعدد الملاك تُفرض الحصة السهمية تلقائيًا
+          // (للأنواع الحصصية فقط) حتى لو نسي المحامي اختيارها، مع عدم الرجوع عنها عند النقص.
+          shareType:
+            SHAREABLE_ASSET_KINDS.has(a.assetKind ?? '') && owners.length > 1
+              ? 'حصة سهمية'
+              : a.shareType,
         };
       }),
     );
+
+  const setSingleOwner = (i: number, name: string) =>
+    setAssets((as) => as.map((a, idx) => (idx === i ? { ...a, owners: name ? [name] : [] } : a)));
 
   const setBorrowerHeir = (i: number, key: keyof HeirDto, value: string) =>
     setBorrowerHeirs((hs) => hs.map((h, idx) => (idx === i ? { ...h, [key]: value } : h)));
@@ -411,17 +423,18 @@ export default function DocumentForm() {
     setGuarantors((gs) => gs.filter((_, idx) => idx !== i));
   };
 
-  const addEstate = () => {
-    if (estates.length >= MAX_ESTATES) return;
-    setEstates((es) => [...es, emptyEstate()]);
+  const addEstate = (kind: string) => {
+    const count = assets.filter((a) => a.assetKind === kind).length;
+    if (count >= MAX_ASSETS_PER_KIND) return;
+    setAssets((as) => [...as, emptyAsset(kind)]);
   };
 
-  const removeEstate = (i: number) => setEstates((es) => es.filter((_, idx) => idx !== i));
+  const removeEstate = (i: number) => setAssets((as) => as.filter((_, idx) => idx !== i));
 
   const resetForm = () => {
     setForm({
       guarantors: [],
-      realEstates: [],
+      assets: [],
       currency: 'ليرة سورية',
       currency2: 'دولار أمريكي',
       inclusionCurrency: 'ليرة سورية',
@@ -437,7 +450,7 @@ export default function DocumentForm() {
     });
     setGuarantors([emptyGuarantor()]);
     setBorrowerHeirs([]);
-    setEstates([]);
+    setAssets([]);
     setExecutionApplicants([emptyExecutionApplicant()]);
     setExecutedPublicEntities([freshExecutedEntity()]);
     setApplicantPublicEntities([freshApplicantEntity()]);
@@ -553,7 +566,7 @@ export default function DocumentForm() {
         inclusionCurrency: slotDefaultCurrency(form, ordinaryCurrencyKeys, 0),
         inclusionCurrency2: slotDefaultCurrency(form, ordinaryCurrencyKeys, 1),
         inclusionCurrency3: slotDefaultCurrency(form, ordinaryCurrencyKeys, 2),
-        // وضع «منفذ عليه»: عادي فقط، بلا مقترض/كفلاء/عقارات (مطابق لتحقق الخلفية).
+        // وضع «منفذ عليه»: عادي فقط، بلا مقترض/كفلاء/أموال (مطابق لتحقق الخلفية).
         contractTypeSelector: isExecutedSubmit ? 'عادي' : (form.contractTypeSelector ?? 'مصرفي'),
         // عنوان المقترض يُصفَّر عند وجود وريث أو ممثل شرعي (الوريث/الممثل هو الحامل الفعلي للعنوان).
         borrowerAddressType: isExecutedSubmit || borrowerHasHeirs || borrowerHasRep ? '' : form.borrowerAddressType,
@@ -582,11 +595,22 @@ export default function DocumentForm() {
               addressType: borrowerHasRep ? '' : h.addressType,
               address: borrowerHasRep ? '' : h.address,
             })),
-        realEstates: isExecutedSubmit ? [] : estates
-          .filter((r) => r.propertyNumber?.trim() || (r.owners ?? []).some((o) => (o ?? '').trim()))
-          .map((r) => ({
-            ...r,
-            property: `${r.propertyNumber ?? ''} ${r.propertyDistrict ?? ''}`.trim(),
+        assets: isExecutedSubmit ? [] : assets
+          .filter((a) => {
+            const kind = a.assetKind;
+            if (kind === ASSET_KINDS.realEstate) return a.propertyNumber?.trim() || (a.owners ?? []).some((o) => (o ?? '').trim());
+            if (kind === ASSET_KINDS.vehicle) return a.plateNumber?.trim() || (a.owners ?? []).some((o) => (o ?? '').trim());
+            if (kind === ASSET_KINDS.shop) return a.registerNumber?.trim() || (a.owners ?? []).some((o) => (o ?? '').trim());
+            if (kind === ASSET_KINDS.salaryGuarantee) return (a.owners ?? []).some((o) => (o ?? '').trim());
+            if (kind === ASSET_KINDS.unregisteredShop) return a.licenseNumber?.trim() || (a.owners ?? []).some((o) => (o ?? '').trim());
+            return (a.owners ?? []).some((o) => (o ?? '').trim());
+          })
+          .map((a) => ({
+            ...a,
+            property: `${a.propertyNumber ?? ''} ${a.propertyDistrict ?? ''}`.trim(),
+            // تطبيع الأرقام العربية/الفارسية في تاريخَي المتجر قبل الإرسال (تتقبلها الخلفية كتواريخ حرة).
+            registrationDate: normalizeArabicDigits(a.registrationDate ?? '').trim(),
+            licenseDate: normalizeArabicDigits(a.licenseDate ?? '').trim(),
           })),
         executionApplicants: isExecutedSubmit
           ? executionApplicants
@@ -856,10 +880,11 @@ export default function DocumentForm() {
             onBorrowerRepRemove={removeBorrowerRep}
             onGuarantorRepActivate={activateGuarantorRep}
             onGuarantorRepRemove={removeGuarantorRep}
-            estates={estates}
+            assets={assets}
             onEstateSet={setE}
             onEstateRemove={removeEstate}
             onOwnerToggle={toggleOwner}
+            onSingleOwnerSet={setSingleOwner}
             onEstateAdd={addEstate}
             ownerOptions={ownerOptions}
           />

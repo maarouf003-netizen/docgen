@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import DocumentView from './DocumentView';
@@ -116,9 +116,10 @@ const mockDoc: DocumentResponse = {
       addressType: 'سكني',
     },
   ],
-  realEstates: [
+  assets: [
     {
       id: 1,
+      assetKind: 'عقار',
       owners: ['أحمد محمد خالد'],
       property: 'منزل',
       propertyNumber: '12',
@@ -128,6 +129,7 @@ const mockDoc: DocumentResponse = {
     },
     {
       id: 2,
+      assetKind: 'عقار',
       owners: ['أحمد محمد خالد'],
       property: 'أرض',
       propertyNumber: '34',
@@ -166,7 +168,6 @@ describe('DocumentView', () => {
       'أطراف الملف التنفيذي',
       'بيانات الملف',
       'بيانات السند التنفيذي',
-      'توليد المستندات التنفيذية',
     ]) {
       const heading = await screen.findByText(title);
       expect(heading.className).toContain('text-emerald-800');
@@ -247,7 +248,7 @@ describe('DocumentView', () => {
     expect(within(card).getByText('2026-01-01')).toBeInTheDocument();
     expect(within(card).getByText('المبلغ المطالب به')).toBeInTheDocument();
     expect(within(card).getByText('ألف')).toBeInTheDocument();
-    expect(within(card).queryByText('1000 ل.س')).not.toBeInTheDocument();
+    expect(within(card).queryByText('1,000 ل.س')).not.toBeInTheDocument();
     expect(within(card).queryByText('رقم القرار')).not.toBeInTheDocument();
     expect(within(card).queryByText('المحكمة مصدرة القرار')).not.toBeInTheDocument();
     expect(within(card).queryByText('خلاصة الحكم')).not.toBeInTheDocument();
@@ -358,9 +359,9 @@ describe('DocumentView', () => {
     expect(within(card).getByText('المبلغ المطالب به')).toBeInTheDocument();
     expect(within(card).getByText('ألف و ألفان و ثلاثة آلاف')).toBeInTheDocument();
     expect(within(card).queryByText('المبلغ الثاني')).not.toBeInTheDocument();
-    expect(within(card).queryByText('2000 يورو')).not.toBeInTheDocument();
+    expect(within(card).queryByText('2,000 يورو')).not.toBeInTheDocument();
     expect(within(card).queryByText('المبلغ الثالث')).not.toBeInTheDocument();
-    expect(within(card).queryByText('3000 دولار أمريكي')).not.toBeInTheDocument();
+    expect(within(card).queryByText('3,000 دولار أمريكي')).not.toBeInTheDocument();
   });
 
   it('يعرض المبلغين الثاني والثالث للعادي بعملتيهما عند وجودهما', async () => {
@@ -550,7 +551,8 @@ describe('DocumentView', () => {
 
     expect(await screen.findByText('الحالة')).toBeInTheDocument();
     expect(screen.getAllByText('متداول').length).toBeGreaterThan(0);
-    expect(screen.getByText('لتغيير الحالة اضغط زر «تغيير الحالة»')).toBeInTheDocument();
+    // الجملة الإرشادية زالت لأن زر «تغيير الحالة» صار داخل البطاقة نفسها.
+    expect(screen.queryByText('لتغيير الحالة اضغط زر «تغيير الحالة»')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'تحديث الحالة' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'حفظ الحالة' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('نوع التنفيذ')).not.toBeInTheDocument();
@@ -573,6 +575,36 @@ describe('DocumentView', () => {
 
     expect(await screen.findByText('الحالة')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'تغيير الحالة' })).not.toBeInTheDocument();
+  });
+
+  it('يعرض بطاقة «الحالة» لملف «منفذ عليه» والزر داخلها للمحامي ويفتح نافذة حالات الوضع', async () => {
+    const user = userEvent.setup();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { ...mockDoc, generalEntitySide: 'executed', executedStatus: 'منفذ', executedExecutionDate: '2026-08-10' },
+    });
+    renderView();
+
+    const statusHeading = await screen.findByRole('heading', { name: 'الحالة' });
+    const card = statusHeading.closest('div') as HTMLElement;
+    expect(within(card).getByText(/منفذ بتاريخ/)).toBeInTheDocument();
+    expect(screen.queryByText('لتغيير الحالة اضغط زر «تغيير الحالة»')).not.toBeInTheDocument();
+
+    await user.click(within(card).getByRole('button', { name: 'تغيير الحالة' }));
+    const dialog = screen.getByRole('dialog', { name: 'تغيير الحالة' });
+    expect(within(dialog).getByText('الحالة الحالية')).toBeInTheDocument();
+  });
+
+  it('يعرض بطاقة «الحالة» لملف «منفذ عليه» مشطوب بملخصها دون زر للمدير', async () => {
+    useAuthMock.mockReturnValue({ isHead: false, user: { role: 'manager' } });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { ...mockDoc, generalEntitySide: 'executed', executedStatus: 'مشطوب', struckOffDate: '2026-07-01' },
+    });
+    renderView();
+
+    const statusHeading = await screen.findByRole('heading', { name: 'الحالة' });
+    const card = statusHeading.closest('div') as HTMLElement;
+    expect(within(card).getByText(/مشطوب بتاريخ/)).toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: 'تغيير الحالة' })).not.toBeInTheDocument();
   });
 
   it('يعرض بطاقة وقوعات الملف لملف طالبة تنفيذ حامل لوقعة تغيير حالة', async () => {
@@ -712,15 +744,15 @@ describe('DocumentView', () => {
     expect(screen.queryByText('المنفذ عليهم الآخرون')).not.toBeInTheDocument();
   });
 
-  it('يعرض العقارات في قسم منفصل بكل تفاصيلها', async () => {
+  it('يعرض الأموال في قسم منفصل بكل تفاصيلها', async () => {
     renderView();
 
-    const heading = await screen.findByText('العقارات');
+    const heading = await screen.findByText('الأموال المنقولة وغير المنقولة');
     const card = heading.closest('div') as HTMLElement;
     expect(within(card).getAllByText('رقم العقار').length).toBeGreaterThan(0);
     expect(within(card).getAllByText('المنطقة العقارية').length).toBeGreaterThan(0);
     expect(within(card).getAllByText('المصالح العقارية المختصة').length).toBeGreaterThan(0);
-    expect(within(card).getAllByText('مالك العقار').length).toBeGreaterThan(0);
+    expect(within(card).getAllByText('الملاك').length).toBeGreaterThan(0);
     expect(within(card).getByText('12')).toBeInTheDocument();
     expect(within(card).getByText('34')).toBeInTheDocument();
     expect(within(card).getAllByText('المزة').length).toBeGreaterThan(0);
@@ -742,6 +774,47 @@ describe('DocumentView', () => {
     return heading.closest('div')!.parentElement as HTMLElement;
   }
 
+  async function openGeneration() {
+    await screen.findByRole('button', { name: 'توليد مستندات' });
+    fireEvent.click(screen.getByRole('button', { name: 'توليد مستندات' }));
+    await screen.findByRole('dialog', { name: 'توليد المستندات التنفيذية' });
+  }
+
+  it('يعرض زر «توليد مستندات» في الترويسة ولا يعرض بطاقة التوليد داخل الصفحة قبل فتحها', async () => {
+    renderView();
+
+    await screen.findByRole('button', { name: 'توليد مستندات' });
+    expect(screen.queryByRole('dialog', { name: 'توليد المستندات التنفيذية' })).not.toBeInTheDocument();
+    expect(screen.queryByText('المستندات الأساسية')).not.toBeInTheDocument();
+  });
+
+  it('يفتح نافذة توليد المستندات عند النقر على «توليد مستندات» ويغلقها بزر الإغلاق', async () => {
+    const user = userEvent.setup();
+    renderView();
+
+    await user.click(await screen.findByRole('button', { name: 'توليد مستندات' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'توليد المستندات التنفيذية' });
+    const title = within(dialog).getByText('توليد المستندات التنفيذية');
+    expect(title.className).toContain('text-emerald-800');
+    expect(within(dialog).getByText('المستندات الأساسية')).toBeInTheDocument();
+    expect(within(dialog).getByText('إخطار تنفيذي')).toBeInTheDocument();
+    expect(within(dialog).getByText('إخطار بيع أموال غير منقولة')).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: 'إغلاق' }));
+    expect(screen.queryByRole('dialog', { name: 'توليد المستندات التنفيذية' })).not.toBeInTheDocument();
+  });
+
+  it('لا يعرض زر «توليد مستندات» لملف «منفذ عليه»', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { ...mockDoc, generalEntitySide: 'executed' },
+    });
+    renderView();
+
+    await screen.findByText('بيانات الملف');
+    expect(screen.queryByRole('button', { name: 'توليد مستندات' })).not.toBeInTheDocument();
+  });
+
   it('ينزّل استدعاء تنفيذي عند النقر على «توليد» في المستندات الأساسية', async () => {
     const createObjectURL = vi.fn(() => 'blob:mock');
     const revokeObjectURL = vi.fn();
@@ -750,6 +823,7 @@ describe('DocumentView', () => {
 
     (api.get as unknown as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({ data: mockDoc })
+      .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({
         data: new Blob(['docx']),
         headers: { 'content-disposition': 'attachment; filename="أحمد_001.docx"' },
@@ -758,7 +832,7 @@ describe('DocumentView', () => {
     const user = userEvent.setup();
     renderView();
 
-    await screen.findByText('توليد المستندات التنفيذية');
+    await openGeneration();
     const row = findBasicRow('استدعاء تنفيذي');
     await user.click(within(row).getByRole('button', { name: 'توليد' }));
 
@@ -775,7 +849,8 @@ describe('DocumentView', () => {
   it('يعرض الأقسام الثلاثة بأسماء الأزرار والرسائل المطابقة لتطبيق سطح المكتب', async () => {
     renderView();
 
-    expect(await screen.findByText('توليد المستندات التنفيذية')).toBeInTheDocument();
+    await openGeneration();
+    expect(screen.getByRole('dialog', { name: 'توليد المستندات التنفيذية' })).toBeInTheDocument();
     expect(screen.getByText('المستندات الأساسية')).toBeInTheDocument();
     for (const label of ['استدعاء تنفيذي', 'محضر تنفيذي', 'حجز عقاري', 'حجز منظومة']) {
       expect(screen.getByText(label)).toBeInTheDocument();
@@ -794,6 +869,8 @@ describe('DocumentView', () => {
   it('يعرض أسماء المنفَّذ عليهم في قائمة الإخطار التنفيذي كما في سطح المكتب', async () => {
     renderView();
 
+    await openGeneration();
+
     expect(await screen.findByText(/اختر المنفَّذ عليهم الذين تريد تسطير إخطار تنفيذي لهم :/)).toBeInTheDocument();
     expect(screen.getByLabelText(/المقترض :\s+أحمد خالد/)).toBeInTheDocument();
     expect(screen.getByLabelText(/كفيل 1 :\s+خالد\s+زكي/)).toBeInTheDocument();
@@ -806,6 +883,8 @@ describe('DocumentView', () => {
     });
     renderView();
 
+    await openGeneration();
+
     expect(await screen.findByLabelText(/منفذ عليه 1 :/)).toBeInTheDocument();
     expect(screen.getByLabelText(/منفذ عليه 2 :/)).toBeInTheDocument();
   });
@@ -816,6 +895,8 @@ describe('DocumentView', () => {
     });
     renderView();
 
+    await openGeneration();
+
     expect(await screen.findByText('لا يوجد أشخاص — أدخل المقترض والكفلاء أولاً')).toBeInTheDocument();
   });
 
@@ -823,7 +904,7 @@ describe('DocumentView', () => {
     const user = userEvent.setup();
     renderView();
 
-    await screen.findByText('توليد المستندات التنفيذية');
+    await openGeneration();
     await user.click(screen.getByRole('button', { name: 'توليد إخطار تنفيذي' }));
 
     expect(await screen.findByText('اختر شخصاً واحداً على الأقل من قائمة المنفَّذ عليهم')).toBeInTheDocument();
@@ -842,6 +923,7 @@ describe('DocumentView', () => {
     const apiGet = api.get as unknown as ReturnType<typeof vi.fn>;
     apiGet
       .mockResolvedValueOnce({ data: mockDoc })
+      .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({
         data: new Blob(['docx']),
         headers: { 'content-disposition': 'attachment; filename="أحمد_003.docx"' },
@@ -854,16 +936,16 @@ describe('DocumentView', () => {
     const user = userEvent.setup();
     renderView();
 
-    await screen.findByText('توليد المستندات التنفيذية');
+    await openGeneration();
     await user.click(screen.getByLabelText(/المقترض :/));
     await user.click(screen.getByLabelText(/كفيل 1 :/));
     await user.click(screen.getByRole('button', { name: 'توليد إخطار تنفيذي' }));
 
     await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(2));
     expect(await screen.findByText('✅ تم إنشاء 2 إخطار بنجاح')).toBeInTheDocument();
-    expect(apiGet).toHaveBeenNthCalledWith(2, '/documents/1/generate',
-      expect.objectContaining({ params: { template: '003', recipient: 0 } }));
     expect(apiGet).toHaveBeenNthCalledWith(3, '/documents/1/generate',
+      expect.objectContaining({ params: { template: '003', recipient: 0 } }));
+    expect(apiGet).toHaveBeenNthCalledWith(4, '/documents/1/generate',
       expect.objectContaining({ params: { template: '003', recipient: 1 } }));
 
     vi.unstubAllGlobals();
@@ -878,6 +960,7 @@ describe('DocumentView', () => {
     const apiGet = api.get as unknown as ReturnType<typeof vi.fn>;
     apiGet
       .mockResolvedValueOnce({ data: mockDoc })
+      .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({
         data: new Blob(['docx']),
         headers: { 'content-disposition': 'attachment; filename="أحمد_007.docx"' },
@@ -886,13 +969,13 @@ describe('DocumentView', () => {
     const user = userEvent.setup();
     renderView();
 
-    await screen.findByText('توليد المستندات التنفيذية');
+    await openGeneration();
     await user.click(screen.getByLabelText(/كفيل 2 :/));
     await user.click(screen.getByRole('button', { name: 'توليد إخطار بالصحف' }));
 
     await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1));
     expect(await screen.findByText('✅ تم إنشاء 1 إخطار تنفيذي بالصحف بنجاح')).toBeInTheDocument();
-    expect(apiGet).toHaveBeenNthCalledWith(2, '/documents/1/generate',
+    expect(apiGet).toHaveBeenNthCalledWith(3, '/documents/1/generate',
       expect.objectContaining({ params: { template: '007', recipient: 2 } }));
 
     vi.unstubAllGlobals();
@@ -902,7 +985,7 @@ describe('DocumentView', () => {
     const user = userEvent.setup();
     renderView();
 
-    await screen.findByText('توليد المستندات التنفيذية');
+    await openGeneration();
     await user.click(screen.getByRole('button', { name: 'توليد إخطار بيع غير منقولة' }));
 
     expect(await screen.findByText('اختر عقاراً واحداً على الأقل من قائمة العقارات')).toBeInTheDocument();
@@ -917,6 +1000,7 @@ describe('DocumentView', () => {
     const apiGet = api.get as unknown as ReturnType<typeof vi.fn>;
     apiGet
       .mockResolvedValueOnce({ data: mockDoc })
+      .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({
         data: new Blob(['docx']),
         headers: { 'content-disposition': 'attachment; filename="أحمد_005.docx"' },
@@ -925,13 +1009,13 @@ describe('DocumentView', () => {
     const user = userEvent.setup();
     renderView();
 
-    await screen.findByText('توليد المستندات التنفيذية');
+    await openGeneration();
     await user.click(within(estateNoticeCard()).getByLabelText(/منزل/));
     await user.click(screen.getByRole('button', { name: 'توليد إخطار بيع غير منقولة' }));
 
     await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
     expect(await screen.findByText('✅ تم إنشاء إخطار بيع أموال غير منقولة بنجاح')).toBeInTheDocument();
-    expect(apiGet).toHaveBeenNthCalledWith(2, '/documents/1/generate',
+    expect(apiGet).toHaveBeenNthCalledWith(3, '/documents/1/generate',
       expect.objectContaining({ params: { template: '005', recipient: 0, estateIds: [1] } }));
 
     vi.unstubAllGlobals();
@@ -941,16 +1025,16 @@ describe('DocumentView', () => {
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: {
         ...mockDoc,
-        realEstates: [
-          mockDoc.realEstates[0],
-          { ...mockDoc.realEstates[1], owners: ['لينا فادي نور'] },
+        assets: [
+          mockDoc.assets[0],
+          { ...mockDoc.assets[1], owners: ['لينا فادي نور'] },
         ],
       },
     });
     const user = userEvent.setup();
     renderView();
 
-    await screen.findByText('توليد المستندات التنفيذية');
+    await openGeneration();
     await user.click(within(estateNoticeCard()).getByLabelText(/منزل/));
     await user.click(within(estateNoticeCard()).getByLabelText(/أرض/));
 
@@ -961,16 +1045,16 @@ describe('DocumentView', () => {
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: {
         ...mockDoc,
-        realEstates: [
-          mockDoc.realEstates[0],
-          { ...mockDoc.realEstates[1], owners: ['لينا فادي نور'] },
+        assets: [
+          mockDoc.assets[0],
+          { ...mockDoc.assets[1], owners: ['لينا فادي نور'] },
         ],
       },
     });
     const user = userEvent.setup();
     renderView();
 
-    await screen.findByText('توليد المستندات التنفيذية');
+    await openGeneration();
     await user.click(within(estateNoticeCard()).getByLabelText(/منزل/));
     await user.click(within(estateNoticeCard()).getByLabelText(/أرض/));
     await user.click(screen.getByRole('button', { name: 'توليد إخطار بيع غير منقولة' }));
@@ -991,6 +1075,7 @@ describe('DocumentView', () => {
     const apiGet = api.get as unknown as ReturnType<typeof vi.fn>;
     apiGet
       .mockResolvedValueOnce({ data: mockDoc })
+      .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({
         data: new Blob(['docx']),
         headers: { 'content-disposition': 'attachment; filename="أحمد_PS.docx"' },
@@ -999,14 +1084,14 @@ describe('DocumentView', () => {
     const user = userEvent.setup();
     renderView();
 
-    await screen.findByText('توليد المستندات التنفيذية');
+    await openGeneration();
     await user.click(within(basicDocsCard()).getByLabelText(/منزل/));
     const row = findBasicRow('حجز عقاري');
     await user.click(within(row).getByRole('button', { name: 'توليد' }));
 
     await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
     expect(await screen.findByText('✅ تم إنشاء 1 مستند حجز عقاري')).toBeInTheDocument();
-    expect(apiGet).toHaveBeenNthCalledWith(2, '/documents/1/generate',
+    expect(apiGet).toHaveBeenNthCalledWith(3, '/documents/1/generate',
       expect.objectContaining({ params: { template: 'PS', recipient: 0, estateIds: [1] } }));
 
     vi.unstubAllGlobals();
@@ -1015,7 +1100,7 @@ describe('DocumentView', () => {
   it('يعرض مربعات اختيار العقارات بجوار زر «حجز عقاري» في المستندات الأساسية', async () => {
     renderView();
 
-    await screen.findByText('توليد المستندات التنفيذية');
+    await openGeneration();
     expect(within(basicDocsCard()).getByText(/اختر العقارات التي تريد الحجز عليها/)).toBeInTheDocument();
     expect(within(basicDocsCard()).getByLabelText(/منزل/)).toBeInTheDocument();
     expect(within(basicDocsCard()).getByLabelText(/أرض/)).toBeInTheDocument();
@@ -1024,7 +1109,7 @@ describe('DocumentView', () => {
   it('يعرض «حجز منظومة» قبل «حجز عقاري» وتظهر العقارات مباشرة أسفل «حجز عقاري»', async () => {
     renderView();
 
-    await screen.findByText('توليد المستندات التنفيذية');
+    await openGeneration();
     const card = basicDocsCard();
     const labels = within(card)
       .getAllByText(/^(استدعاء تنفيذي|محضر تنفيذي|حجز منظومة|حجز عقاري)$/)
@@ -1040,7 +1125,7 @@ describe('DocumentView', () => {
     const user = userEvent.setup();
     renderView();
 
-    await screen.findByText('توليد المستندات التنفيذية');
+    await openGeneration();
     const row = findBasicRow('حجز عقاري');
     await user.click(within(row).getByRole('button', { name: 'توليد' }));
 
@@ -1054,12 +1139,13 @@ describe('DocumentView', () => {
   it('يعرض رسالة فشل عند تعذر التوليد', async () => {
     (api.get as unknown as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({ data: mockDoc })
+      .mockResolvedValueOnce({ data: [] })
       .mockRejectedValueOnce(new Error('network'));
 
     const user = userEvent.setup();
     renderView();
 
-    await screen.findByText('توليد المستندات التنفيذية');
+    await openGeneration();
     const row = findBasicRow('محضر تنفيذي');
     await user.click(within(row).getByRole('button', { name: 'توليد' }));
 
@@ -1080,7 +1166,7 @@ describe('DocumentView', () => {
     const user = userEvent.setup();
     renderView();
 
-    await screen.findByText('توليد المستندات التنفيذية');
+    await screen.findByText('بيانات الملف');
     await user.click(screen.getByRole('button', { name: 'الإجراءات والملاحظات' }));
 
     expect((await screen.findAllByText('الإجراءات والملاحظات')).length).toBeGreaterThan(0);
@@ -1090,13 +1176,13 @@ describe('DocumentView', () => {
   it('يعرض زر «نقل الملف» لرئيس القسم فقط ولا يعرضه للمحامي', async () => {
     const { unmount } = renderView();
 
-    await screen.findByText('توليد المستندات التنفيذية');
+    await screen.findByText('بيانات الملف');
     expect(screen.queryByRole('button', { name: 'نقل الملف' })).not.toBeInTheDocument();
     unmount();
 
     useAuthMock.mockReturnValue({ isHead: true, user: { role: 'head' } });
     renderView();
-    await screen.findByText('توليد المستندات التنفيذية');
+    await screen.findByText('بيانات الملف');
     expect(screen.getByRole('button', { name: 'نقل الملف' })).toBeInTheDocument();
   });
 
@@ -1113,7 +1199,7 @@ describe('DocumentView', () => {
     const user = userEvent.setup();
     renderView();
 
-    await screen.findByText('توليد المستندات التنفيذية');
+    await screen.findByText('بيانات الملف');
     await user.click(screen.getByRole('button', { name: 'نقل الملف' }));
 
     expect(screen.getByRole('dialog', { name: 'نقل الملف' })).toBeInTheDocument();
@@ -1132,13 +1218,13 @@ describe('DocumentView', () => {
   it('يعرض زر «توجيه تنبيه» لرئيس القسم فقط ولا يعرضه للمحامي', async () => {
     const { unmount } = renderView();
 
-    await screen.findByText('توليد المستندات التنفيذية');
+    await screen.findByText('بيانات الملف');
     expect(screen.queryByRole('button', { name: 'توجيه تنبيه' })).not.toBeInTheDocument();
     unmount();
 
     useAuthMock.mockReturnValue({ isHead: true, user: { role: 'head' } });
     renderView();
-    await screen.findByText('توليد المستندات التنفيذية');
+    await screen.findByText('بيانات الملف');
     expect(screen.getByRole('button', { name: 'توجيه تنبيه' })).toBeInTheDocument();
   });
 
@@ -1147,7 +1233,7 @@ describe('DocumentView', () => {
     const user = userEvent.setup();
     renderView();
 
-    await screen.findByText('توليد المستندات التنفيذية');
+    await screen.findByText('بيانات الملف');
     await user.click(screen.getByRole('button', { name: 'توجيه تنبيه' }));
 
     const dialog = screen.getByRole('dialog', { name: 'توجيه تنبيه' });
@@ -1199,7 +1285,7 @@ describe('DocumentView', () => {
     });
     renderView();
 
-    await screen.findByText('توليد المستندات التنفيذية');
+    await openGeneration();
     expect(screen.getByLabelText(/محمود الحلبي — إضافة لتركة أحمد محمد خالد/)).toBeInTheDocument();
     expect(screen.queryByLabelText(/المقترض :/)).not.toBeInTheDocument();
   });
@@ -1221,6 +1307,7 @@ describe('DocumentView', () => {
           ],
         },
       })
+      .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({
         data: new Blob(['docx']),
         headers: { 'content-disposition': 'attachment; filename="مستند_003.docx"' },
@@ -1233,16 +1320,16 @@ describe('DocumentView', () => {
     const user = userEvent.setup();
     renderView();
 
-    await screen.findByText('توليد المستندات التنفيذية');
+    await openGeneration();
     await user.click(screen.getByLabelText(/محمود الحلبي/));
     await user.click(screen.getByLabelText(/نور الدين/));
     await user.click(screen.getByRole('button', { name: 'توليد إخطار تنفيذي' }));
 
     await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(2));
     expect(await screen.findByText('✅ تم إنشاء 2 إخطار بنجاح')).toBeInTheDocument();
-    expect(apiGet).toHaveBeenNthCalledWith(2, '/documents/1/generate',
-      expect.objectContaining({ params: expect.objectContaining({ template: '003', heirId: 10 }) }));
     expect(apiGet).toHaveBeenNthCalledWith(3, '/documents/1/generate',
+      expect.objectContaining({ params: expect.objectContaining({ template: '003', heirId: 10 }) }));
+    expect(apiGet).toHaveBeenNthCalledWith(4, '/documents/1/generate',
       expect.objectContaining({ params: expect.objectContaining({ template: '003', heirId: 11 }) }));
 
     vi.unstubAllGlobals();
@@ -1262,6 +1349,7 @@ describe('DocumentView', () => {
           borrowerHeirs: [{ id: 10, name: 'محمود الحلبي', addressType: 'عنوان', address: 'المزة' }],
         },
       })
+      .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({
         data: new Blob(['docx']),
         headers: { 'content-disposition': 'attachment; filename="مستند_005.docx"' },
@@ -1270,13 +1358,13 @@ describe('DocumentView', () => {
     const user = userEvent.setup();
     renderView();
 
-    await screen.findByText('توليد المستندات التنفيذية');
+    await openGeneration();
     await user.click(within(estateNoticeCard()).getByLabelText(/منزل/));
     await user.click(screen.getByRole('button', { name: 'توليد إخطار بيع غير منقولة' }));
 
     await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1));
     expect(await screen.findByText('✅ تم إنشاء 1 إخطار بيع أموال غير منقولة بنجاح')).toBeInTheDocument();
-    expect(apiGet).toHaveBeenNthCalledWith(2, '/documents/1/generate',
+    expect(apiGet).toHaveBeenNthCalledWith(3, '/documents/1/generate',
       expect.objectContaining({ params: expect.objectContaining({ template: '005', heirId: 10 }) }));
 
     vi.unstubAllGlobals();
@@ -1323,13 +1411,13 @@ describe('DocumentView', () => {
     expect(within(dataCard).getByText('تاريخ ورود الاخطار التنفيذي')).toBeInTheDocument();
     expect(within(dataCard).getByText('كيفية تنفيذ الملف')).toBeInTheDocument();
     expect(within(dataCard).getByText('المبلغ الذي دفعته الجهة العامة')).toBeInTheDocument();
-    expect(within(dataCard).getByText('2000')).toBeInTheDocument();
+    expect(within(dataCard).getByText('2,000')).toBeInTheDocument();
 
     // المبلغ المطلوب دفعه من الجهة العامة يعرض في بطاقة «بيانات السند التنفيذي».
     const execHeading = await screen.findByText('بيانات السند التنفيذي');
     const execCard = execHeading.closest('div') as HTMLElement;
     expect(within(execCard).getByText('المبلغ المطلوب دفعه من الجهة العامة')).toBeInTheDocument();
-    expect(within(execCard).getByText('5000')).toBeInTheDocument();
+    expect(within(execCard).getByText('5,000')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'حالة الملف' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'حفظ الحالة' })).not.toBeInTheDocument();
     // «طالب التنفيذ» يعرض في بطاقة أطراف الملف — لا صفٌّ مكرر داخل «بيانات الملف».
@@ -1693,5 +1781,284 @@ describe('DocumentView', () => {
 
     await screen.findByText('أطراف الملف التنفيذي');
     expect(sessionStorage.getItem('lastViewedDocumentId')).toBe('1');
+  });
+
+  it('يعرض زر «تسطير إنابة» لمحامي المالك على ملف متداول ويفتح نموذج الإنابة', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({ isHead: false, user: { role: 'lawyer', id: 7 } });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { ...mockDoc, createdById: 7 },
+    });
+    renderView();
+
+    await screen.findByText('تشعبات الملف');
+    await user.click(screen.getByRole('button', { name: 'تسطير إنابة' }));
+    expect(screen.getByRole('dialog', { name: 'تسطير إنابة' })).toBeInTheDocument();
+  });
+
+  it('لا يعرض زر «تسطير إنابة» لغير المالك ولا لملف منفذ', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { ...mockDoc, createdById: 7, execStatus: 'منفذ جبريا', execSubStatus: 'منفذ كاملا' },
+    });
+    useAuthMock.mockReturnValue({ isHead: false, user: { role: 'lawyer', id: 8 } });
+    renderView();
+
+    await screen.findByText('بيانات الملف');
+    expect(screen.queryByRole('button', { name: 'تسطير إنابة' })).not.toBeInTheDocument();
+    expect(screen.queryByText('تشعبات الملف')).not.toBeInTheDocument();
+  });
+
+  it('يعرض «تشعبات الملف» مع الإنابات وأزرار تعديل وحذف للمالك، ويحذف بعد التأكيد', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({ isHead: false, user: { role: 'lawyer', id: 7 } });
+    const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
+    let delegationsFetches = 0;
+    getMock.mockImplementation((url: string) => {
+      if (url === '/documents/1/delegations') {
+        delegationsFetches += 1;
+        if (delegationsFetches > 1) return Promise.resolve({ data: [] });
+        return Promise.resolve({
+          data: [
+            {
+              id: 9,
+              sourceDocumentId: 1,
+              sourceDocumentLabel: 'أحمد محمد خالد',
+              targetDocumentId: null,
+              delegatedCourt: 'محكمة التنفيذ الأولى',
+              isExternal: false,
+              externalBranchId: null,
+              externalBranchName: null,
+              delegationDate: '2026-08-01',
+              delegationText: '',
+              depositBookNumber: '',
+              depositBookDate: '',
+              sendBookNumber: '',
+              sendBookDate: '',
+              assignedLawyerId: null,
+              assignedLawyerName: null,
+              returnDate: '',
+              status: 'بانتظار رئيس القسم',
+              createdAt: '2026-08-01',
+              createdByName: 'سامر',
+              createdById: 7,
+              assets: [{ id: 100, assetKind: 'مركبة', assetLabel: 'مركبة لوحة 123' }],
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ data: { ...mockDoc, createdById: 7 } });
+    });
+    renderView();
+
+    expect(await screen.findByText('محكمة التنفيذ الأولى')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'حذف' }));
+    expect(
+      screen.getByRole('dialog', { name: 'تأكيد حذف الإنابة' }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'تأكيد الحذف' }));
+
+    expect(api.delete).toHaveBeenCalledWith('/delegations/9');
+    await waitFor(() => expect(screen.queryByText('محكمة التنفيذ الأولى')).not.toBeInTheDocument());
+  });
+
+  it('يعرض «معلومات الملف المنيب» للملف المناب من إنابته', async () => {
+    const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
+    getMock.mockImplementation((url: string) => {
+      if (url === '/documents/1/delegations') {
+        return Promise.resolve({
+          data: [
+            {
+              id: 9,
+              sourceDocumentId: 10,
+              sourceDocumentLabel: 'أحمد محمد خالد',
+              targetDocumentId: 1,
+              delegatedCourt: 'محكمة التنفيذ الأولى',
+              isExternal: true,
+              externalBranchId: 2,
+              externalBranchName: 'فرع حمص',
+              delegationDate: '2026-08-01',
+              delegationText: '',
+              depositBookNumber: '',
+              depositBookDate: '',
+              sendBookNumber: '',
+              sendBookDate: '',
+              assignedLawyerId: 4,
+              assignedLawyerName: 'المحامي هشام',
+              returnDate: '',
+              status: 'محالة',
+              createdAt: '2026-08-01',
+              createdByName: 'سامر',
+              createdById: 7,
+              assets: [{ id: 100, assetKind: 'مركبة', assetLabel: 'مركبة لوحة 123' }],
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ data: mockDoc });
+    });
+    renderView();
+
+    expect(await screen.findByText('معلومات الملف المنيب')).toBeInTheDocument();
+    expect(screen.getByText('المحامي هشام')).toBeInTheDocument();
+    expect(screen.queryByText('تشعبات الملف')).not.toBeInTheDocument();
+  });
+
+  it('يعرض «منفذ» لملف «منفذ إنابة» ويخفي توليد المستندات وتغيير الحالة', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { ...mockDoc, execStatus: 'منفذ إنابة' },
+    });
+    renderView();
+
+    await screen.findByText('بيانات الملف');
+    expect(within(screen.getByRole('heading', { level: 2 })).getByText('منفذ')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'توليد مستندات' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'تغيير الحالة' })).not.toBeInTheDocument();
+  });
+
+  it('يعرض «تسجيل أصولًا» لمحامي الملف المناب على إنابة محالة ويُسجِّل أصولًا بعد التعبئة', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({ isHead: false, user: { role: 'lawyer', id: 7 } });
+    const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
+    getMock.mockImplementation((url: string) => {
+      if (url === '/documents/1/delegations') {
+        return Promise.resolve({
+          data: [
+            {
+              id: 9,
+              sourceDocumentId: 10,
+              sourceDocumentLabel: 'أحمد محمد خالد',
+              targetDocumentId: 1,
+              delegatedCourt: 'محكمة التنفيذ الأولى',
+              isExternal: false,
+              externalBranchId: null,
+              externalBranchName: null,
+              delegationDate: '2026-08-01',
+              delegationText: '',
+              depositBookNumber: '',
+              depositBookDate: '',
+              sendBookNumber: '',
+              sendBookDate: '',
+              assignedLawyerId: 4,
+              assignedLawyerName: 'المحامي هشام',
+              returnDate: '',
+              status: 'محالة',
+              createdAt: '2026-08-01',
+              createdByName: 'سامر',
+              createdById: 7,
+              assets: [{ id: 100, assetKind: 'مركبة', assetLabel: 'مركبة لوحة 123' }],
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ data: { ...mockDoc, createdById: 7 } });
+    });
+    renderView();
+
+    await screen.findByText('معلومات الملف المنيب');
+    await user.click(screen.getByRole('button', { name: 'تسجيل أصولًا' }));
+    const dialog = screen.getByRole('dialog', { name: 'تسجيل الإنابة أصولًا' });
+    expect(dialog).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('رقم أساس الإنابة'), '890');
+    await user.type(screen.getByLabelText('سنة قيد الإنابة'), '2026');
+    await user.type(screen.getByLabelText('تاريخ قيد الإنابة'), '5/8/2026');
+    await user.click(within(dialog).getByRole('button', { name: 'تسجيل أصولًا' }));
+
+    expect(api.post).toHaveBeenCalledWith('/delegations/9/register', {
+      fileNumber: '890',
+      fileYear: '2026',
+      fileRegistrationDate: '5/8/2026',
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'تسجيل الإنابة أصولًا' })).not.toBeInTheDocument(),
+    );
+  });
+
+  it('يعرض «إتمام الإنابة» لمحامي الملف المناب على إنابة مسجلة أصولًا', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({ isHead: false, user: { role: 'lawyer', id: 7 } });
+    const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
+    getMock.mockImplementation((url: string) => {
+      if (url === '/documents/1/delegations') {
+        return Promise.resolve({
+          data: [
+            {
+              id: 9,
+              sourceDocumentId: 10,
+              sourceDocumentLabel: 'أحمد محمد خالد',
+              targetDocumentId: 1,
+              delegatedCourt: 'محكمة التنفيذ الأولى',
+              isExternal: false,
+              externalBranchId: null,
+              externalBranchName: null,
+              delegationDate: '2026-08-01',
+              delegationText: '',
+              depositBookNumber: '',
+              depositBookDate: '',
+              sendBookNumber: '',
+              sendBookDate: '',
+              assignedLawyerId: 4,
+              assignedLawyerName: 'المحامي هشام',
+              returnDate: '',
+              status: 'مسجلة أصولًا',
+              createdAt: '2026-08-01',
+              createdByName: 'سامر',
+              createdById: 7,
+              assets: [{ id: 100, assetKind: 'مركبة', assetLabel: 'مركبة لوحة 123' }],
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ data: { ...mockDoc, createdById: 7 } });
+    });
+    renderView();
+
+    await screen.findByText('معلومات الملف المنيب');
+    await user.click(screen.getByRole('button', { name: 'إتمام الإنابة' }));
+    expect(screen.getByRole('dialog', { name: 'إتمام الإنابة' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'تسجيل أصولًا' })).not.toBeInTheDocument();
+  });
+
+  it('لا يعرض أزرار متابعة الإنابة لغير محامي الملف المناب', async () => {
+    useAuthMock.mockReturnValue({ isHead: false, user: { role: 'lawyer', id: 8 } });
+    const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
+    getMock.mockImplementation((url: string) => {
+      if (url === '/documents/1/delegations') {
+        return Promise.resolve({
+          data: [
+            {
+              id: 9,
+              sourceDocumentId: 10,
+              sourceDocumentLabel: 'أحمد محمد خالد',
+              targetDocumentId: 1,
+              delegatedCourt: 'محكمة التنفيذ الأولى',
+              isExternal: false,
+              externalBranchId: null,
+              externalBranchName: null,
+              delegationDate: '2026-08-01',
+              delegationText: '',
+              depositBookNumber: '',
+              depositBookDate: '',
+              sendBookNumber: '',
+              sendBookDate: '',
+              assignedLawyerId: 4,
+              assignedLawyerName: 'المحامي هشام',
+              returnDate: '',
+              status: 'محالة',
+              createdAt: '2026-08-01',
+              createdByName: 'سامر',
+              createdById: 7,
+              assets: [{ id: 100, assetKind: 'مركبة', assetLabel: 'مركبة لوحة 123' }],
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ data: { ...mockDoc, createdById: 7 } });
+    });
+    renderView();
+
+    await screen.findByText('معلومات الملف المنيب');
+    expect(screen.queryByRole('button', { name: 'تسجيل أصولًا' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'إتمام الإنابة' })).not.toBeInTheDocument();
   });
 });

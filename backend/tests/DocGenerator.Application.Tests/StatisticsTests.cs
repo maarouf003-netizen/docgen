@@ -66,9 +66,36 @@ public class StatisticsRepositoryTests : IDisposable
     }
 
     [Fact]
-    public async Task Dashboard_CountsActiveDirectly()
+    public async Task Dashboard_CountsDelegationExecutedAsExecuted()
     {
-        _db.Documents.AddRange(
+        // الملف المناب «منفذ إنابة» يُعامل منفذًا في إحصاءات لوحة القيادة
+        // (لا يبقى محسوبًا في المتداول ولا يخرج من الإجمالي).
+        var branch = await _db.Branches.FirstAsync();
+        _db.Documents.Add(new Document
+        {
+            BranchId = branch.Id,
+            CreatedById = 1,
+            IsDraft = false,
+            BorrowerName = "مناب",
+            BorrowerFamily = "س",
+            AmountNumeric = 400,
+            ExecStatus = ExecutionStatusCatalog.DelegationExecuted,
+            RegistrationDate = new DocumentRegistrationDate { Date = "1/1/2026", DateParsed = new DateTime(2026, 1, 1) },
+        });
+        _db.SaveChanges();
+
+        var s = await _stats.GetDashboardStatsAsync(branch.Id);
+
+        Assert.Equal(4, s.TotalDocuments);
+        Assert.Equal(1, s.TotalDrafts);
+        Assert.Equal(2, s.TotalExecuted);
+        Assert.Equal(1, s.TotalDeferred);
+        Assert.Equal(0, s.TotalActive);
+    }
+
+    [Fact]
+    public async Task Dashboard_CountsActiveDirectly()
+    {        _db.Documents.AddRange(
             new Document { BranchId = 1, CreatedById = 1, IsDraft = false, BorrowerName = "م", BorrowerFamily = "م", AmountNumeric = 100, ExecStatus = string.Empty },
             new Document { BranchId = 1, CreatedById = 1, IsDraft = false, BorrowerName = "ن", BorrowerFamily = "ن", AmountNumeric = 200, ExecStatus = "منفذ جبريا", ExecSubStatus = "منفذ جزئيا" },
             new Document { BranchId = 1, CreatedById = 1, IsDraft = true, BorrowerName = "ح", BorrowerFamily = "ح", AmountNumeric = 0, ExecStatus = "تريث" });
@@ -266,6 +293,71 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(today.Year, s.PeriodYear);
         Assert.Equal(today.Month, s.PeriodMonth);
         Assert.Null(s.PeriodQuarter);
+    }
+
+    [Fact]
+    public async Task ManagerStats_ForcibleMineebIncludesExecutedDelegationSales()
+    {
+        // مجموع بدل المبيع لإنابات المنيب المنفذة («منفذ إنابة») يُضاف إلى سلة «منفذ جبريا»
+        // (ليرة سورية) عند اعتبار المنيب منفذًا جبريًا؛ والإنابات غير المنفذة (لم تُبع بعد)
+        // وأصولها بلا بدل مبيع لا تُحتسب في المبلغ.
+        var today = DateTime.Today;
+        var mineeb = RegisteredDoc(1, false, "منفذ جبريا", D(today.Year, today.Month, 4), collected: 700);
+        _db.Documents.Add(mineeb);
+        _db.SaveChanges();
+
+        _db.DocumentDelegations.AddRange(
+            new DocumentDelegation
+            {
+                SourceDocumentId = mineeb.Id,
+                CreatedById = 1,
+                DelegatedCourt = "دائرة تنفيذ حلب",
+                Status = DelegationStatusCatalog.Executed,
+                Assets = new List<DelegationAsset>
+                {
+                    new() { AssetKind = AssetKindCatalog.RealEstate, AssetLabel = "عقار رقم 77 — المزة", SalePrice = 250 },
+                    new() { AssetKind = AssetKindCatalog.RealEstate, AssetLabel = "عقار رقم 15", SalePrice = 80 },
+                },
+            },
+            new DocumentDelegation
+            {
+                SourceDocumentId = mineeb.Id,
+                CreatedById = 1,
+                DelegatedCourt = "دائرة تنفيذ حماة",
+                Status = DelegationStatusCatalog.Assigned,
+                Assets = new List<DelegationAsset>
+                {
+                    new() { AssetKind = AssetKindCatalog.RealEstate, AssetLabel = "عقار لم يُبع بعد", SalePrice = null },
+                },
+            });
+        _db.SaveChanges();
+
+        var s = await _stats.GetManagerStatsAsync(StatsPeriod.Monthly, 1);
+
+        Assert.Equal(1, s.ForcibleCount);
+        Assert.Equal(700m + 250m + 80m, s.ForcibleCollected);
+        Assert.Equal("ليرة سورية", s.ForcibleCollectedAmounts.Single().Currency);
+        Assert.Equal(1030m, s.ForcibleCollectedAmounts.Single().Amount);
+    }
+
+    [Fact]
+    public async Task ManagerStats_DelegationExecutedTarget_CountsAsSettled()
+    {
+        // الملف المناب عند إتمام إنابته («منفذ إنابة») منفَّذ فعليًا: يُحتسب ضمن بطاقة
+        // «منفذ بالتسوية» عددًا فقط — بلا مبالغ بيع الأموال (تُحسب في بطاقة المنيب عند
+        // اعتباره منفذًا جبريًا)، ولا يبقى ضائعًا بين الفئات.
+        var today = DateTime.Today;
+
+        _db.Documents.Add(RegisteredDoc(1, false, ExecutionStatusCatalog.DelegationExecuted,
+            D(today.Year, today.Month, 3)));
+        _db.SaveChanges();
+
+        var s = await _stats.GetManagerStatsAsync(StatsPeriod.Monthly, 1);
+
+        Assert.Equal(1, s.SettledCount);
+        Assert.Equal(0m, s.SettledCollected);
+        Assert.Equal(0, s.Active);
+        Assert.Equal(0, s.TotalFiles);
     }
 
     [Fact]

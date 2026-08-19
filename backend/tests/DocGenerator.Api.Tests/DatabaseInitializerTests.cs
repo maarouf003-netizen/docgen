@@ -320,7 +320,7 @@ public class DatabaseInitializerTests
             // تطبيق مهاجرة AddRealEstateOwners: يجب ترحيل قيمة Owner إلى جدول الملاك.
             await db.Database.MigrateAsync();
 
-            var migrated = await db.RealEstates.Include(r => r.Owners).SingleAsync();
+            var migrated = await db.Assets.Include(a => a.Owners).SingleAsync();
             var owner = Assert.Single(migrated.Owners);
             Assert.Equal("أحمد محمد خالد", owner.Name);
             Assert.Equal(0, owner.Order);
@@ -500,5 +500,124 @@ public class DatabaseInitializerTests
         {
             await db.Database.EnsureDeletedAsync();
         }
+    }
+
+    [Fact]
+    public async Task AddDelegationsMigration_CreatesTables_AndPersistsDelegationGraph()
+    {
+        var (path, db, initializer) = CreateInitializer();
+        try
+        {
+            await initializer.InitializeAsync(development: true, bootstrapAdminPassword: null);
+
+            // الجداول الجديدة موجودة بعد الترحيل حتى آخر مهاجرة.
+            Assert.True(await TableExistsAsync(db, "DocumentDelegations"));
+            Assert.True(await TableExistsAsync(db, "DelegationAssets"));
+
+            var branch = await db.Branches.FirstAsync();
+            var sourceLawyer = await db.Users.FirstAsync(u => u.Username == "lawyer1");
+            var targetLawyer = await db.Users.FirstAsync(u => u.Username == "head1");
+
+            var source = new Document
+            {
+                CreatedById = sourceLawyer.Id,
+                BranchId = branch.Id,
+                BorrowerName = "المنيب",
+                GeneralEntitySide = GeneralEntitySideCatalog.Applicant,
+                DocumentType = "متداول - المنيب",
+            };
+            db.Documents.Add(source);
+            await db.SaveChangesAsync();
+
+            var asset = new Asset
+            {
+                DocumentId = source.Id,
+                AssetKind = AssetKindCatalog.RealEstate,
+                PropertyNumber = "77",
+                PropertyDistrict = "المزة",
+            };
+            db.Assets.Add(asset);
+            await db.SaveChangesAsync();
+
+            var delegation = new DocumentDelegation
+            {
+                SourceDocumentId = source.Id,
+                DelegatedCourt = "دائرة تنفيذ دمشق",
+                IsExternal = true,
+                ExternalBranchId = branch.Id,
+                DelegationDate = new DateTime(2026, 8, 1),
+                DelegationText = "الإنابة على عقار رقم 77",
+                DepositBookNumber = "كتاب-1",
+                DepositBookDate = new DateTime(2026, 8, 2),
+                Status = DelegationStatusCatalog.Assigned,
+                AssignedLawyerId = targetLawyer.Id,
+                CreatedById = sourceLawyer.Id,
+                Assets =
+                {
+                    new DelegationAsset { AssetKind = AssetKindCatalog.RealEstate, AssetLabel = "عقار رقم 77 — المزة", SalePrice = 500_000m },
+                },
+            };
+            db.DocumentDelegations.Add(delegation);
+            await db.SaveChangesAsync();
+
+            // الملف المناب يرتبط بإنابته عبر SourceDelegationId الفريد (1:1).
+            var target = new Document
+            {
+                CreatedById = targetLawyer.Id,
+                BranchId = branch.Id,
+                SourceDelegationId = delegation.Id,
+                GeneralEntitySide = GeneralEntitySideCatalog.Applicant,
+                DocumentType = "منفذ إنابة - المناب",
+            };
+            db.Documents.Add(target);
+            await db.SaveChangesAsync();
+
+            var reloaded = await db.Documents
+                .Include(d => d.SourceDelegation)
+                    .ThenInclude(dl => dl!.Assets)
+                .Include(d => d.Delegations)
+                    .ThenInclude(dl => dl.Assets)
+                .FirstAsync(d => d.Id == source.Id);
+
+            Assert.Single(reloaded.Delegations);
+            Assert.Equal("دائرة تنفيذ دمشق", reloaded.Delegations.Single().DelegatedCourt);
+            Assert.True(reloaded.Delegations.Single().IsExternal);
+            var delegatedAsset = reloaded.Delegations.Single().Assets.Single();
+            Assert.Equal("عقار رقم 77 — المزة", delegatedAsset.AssetLabel);
+            Assert.Equal(AssetKindCatalog.RealEstate, delegatedAsset.AssetKind);
+            Assert.Equal(500_000m, delegatedAsset.SalePrice);
+
+            var targetReloaded = await db.Documents
+                .Include(d => d.SourceDelegation)
+                    .ThenInclude(dl => dl!.SourceDocument)
+                .FirstAsync(d => d.Id == target.Id);
+            Assert.Equal(source.Id, targetReloaded.SourceDelegation!.SourceDocumentId);
+            Assert.Equal(DelegationStatusCatalog.Assigned, targetReloaded.SourceDelegation.Status);
+
+            // لا يمكن ربط ملفين منابين بإنابة واحدة (فهرس فريد على SourceDelegationId).
+            // نُفرغ التتبع ليمر الإدراج المكرر إلى القاعدة مباشرة ويرتد من الفهرس الفريد.
+            db.ChangeTracker.Clear();
+            var duplicate = new Document
+            {
+                CreatedById = targetLawyer.Id,
+                BranchId = branch.Id,
+                SourceDelegationId = delegation.Id,
+                GeneralEntitySide = GeneralEntitySideCatalog.Applicant,
+                DocumentType = "منفذ إنابة - المناب المكرر",
+            };
+            db.Documents.Add(duplicate);
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        }
+        finally
+        {
+            await db.Database.EnsureDeletedAsync();
+        }
+    }
+
+    private static async Task<bool> TableExistsAsync(DocGeneratorDbContext db, string table)
+    {
+        var found = await db.Database.SqlQueryRaw<string>(
+            "SELECT name AS Value FROM pragma_table_info('" + table + "') WHERE name = 'Id'").AnyAsync();
+        return found;
     }
 }

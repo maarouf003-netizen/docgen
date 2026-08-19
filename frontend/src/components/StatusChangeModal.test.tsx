@@ -59,14 +59,14 @@ describe('StatusChangeModal', () => {
     renderModal({
       isDraft: false,
       execStatus: '',
-      realEstates: [{ id: 1, property: 'بيت' }],
+      assets: [{ id: 1, assetKind: 'عقار', property: 'بيت' }],
     });
 
     await user.selectOptions(screen.getByLabelText('الإجراء'), 'منفذ جبريا');
     await user.type(screen.getByLabelText('تاريخ قرار الإحالة القطعية'), '1/6/2026');
     await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
 
-    expect(screen.getByText('اختر العقارات التي جرى بيعها بالمزاد العلني على الأقل')).toBeInTheDocument();
+    expect(screen.getByText('اختر الأموال التي جرى بيعها بالمزاد العلني على الأقل')).toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
   });
 
@@ -75,7 +75,7 @@ describe('StatusChangeModal', () => {
     renderModal({
       isDraft: false,
       execStatus: '',
-      realEstates: [{ id: 1, property: 'بيت' }],
+      assets: [{ id: 1, assetKind: 'عقار', property: 'بيت' }],
     });
 
     await user.selectOptions(screen.getByLabelText('الإجراء'), 'منفذ جبريا');
@@ -91,7 +91,7 @@ describe('StatusChangeModal', () => {
     renderModal({
       isDraft: false,
       execStatus: '',
-      realEstates: [{ id: 7, property: 'بيت' }],
+      assets: [{ id: 7, assetKind: 'عقار', property: 'بيت' }],
     });
 
     await user.selectOptions(screen.getByLabelText('الإجراء'), 'منفذ جبريا');
@@ -101,7 +101,7 @@ describe('StatusChangeModal', () => {
 
     expect(api.post).toHaveBeenCalledWith('/documents/1/status', {
       status: 'منفذ جبريا',
-      fields: { execSubStatus: 'منفذ كاملا', forcedExecutionDate: '5/6/2026', soldEstateIds: '7' },
+      fields: { execSubStatus: 'منفذ كاملا', forcedExecutionDate: '5/6/2026', soldAssetIds: '7' },
     });
   });
 

@@ -12,6 +12,8 @@ public interface IHeadAlertService
     Task<int> CountUnreadAsync(int userId, CancellationToken ct = default);
     Task<HeadAlertDto> CreateAsync(CreateHeadAlertRequest request, int actorUserId, int actorBranchId, string? actorName, CancellationToken ct = default);
     Task<bool> MarkReadAsync(int alertId, int userId, CancellationToken ct = default);
+    Task<HeadAlertDto?> UpdateDelegationAlertAsync(int delegationId, string message, CancellationToken ct = default);
+    Task<bool> DeleteByDelegationAsync(int delegationId, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -86,8 +88,9 @@ public sealed class HeadAlertService : IHeadAlertService
             BranchId = actorBranchId,
             CreatedById = actorUserId,
             TargetType = targetType,
-            DocumentId = targetType == HeadAlertTargetType.Document ? request.DocumentId : null,
+            DocumentId = targetType == HeadAlertTargetType.Lawyer ? null : request.DocumentId,
             TargetLawyerId = targetType == HeadAlertTargetType.Lawyer ? request.TargetLawyerId : null,
+            DelegationId = request.DelegationId,
             Message = message,
             CreatedAt = DateTime.UtcNow,
             Recipients = recipients.Select(u => new HeadAlertRecipient { UserId = u.Id }).ToList(),
@@ -122,6 +125,47 @@ public sealed class HeadAlertService : IHeadAlertService
         {
             recipient.IsRead = true;
             recipient.ReadAt = DateTime.UtcNow;
+            await _uow.SaveChangesAsync(token);
+        }, ct);
+        return true;
+    }
+
+    /// <summary>
+    /// تحديث رسالة آخر تنبيه لإنابة معلّقة (بانتظار الاعتماد) بعد تعديل الإنابة —
+    /// يعيد null عندما لا يوجد تنبيه للإنابة (لم يُنشأ حينها)، ويُبقي المستلمين وعلامات القراءة.
+    /// </summary>
+    public async Task<HeadAlertDto?> UpdateDelegationAlertAsync(int delegationId, string message, CancellationToken ct = default)
+    {
+        var alert = await _alerts.FindLatestByDelegationAsync(delegationId, ct);
+        if (alert is null)
+            return null;
+
+        var trimmed = message?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(trimmed))
+            throw new ArgumentException("نص التنبيه مطلوب");
+        if (alert.Message == trimmed)
+            return ToHeadDto(alert);
+
+        alert.Message = trimmed;
+        await _tx.RunAsync(async token =>
+        {
+            _alerts.Update(alert);
+            await _uow.SaveChangesAsync(token);
+        }, ct);
+        return ToHeadDto(alert);
+    }
+
+    /// <summary>حذف كل تنبيهات الإنابة (تصفية المرحلية منها عند الاعتماد أو الإتمام أو حذف الإنابة).</summary>
+    public async Task<bool> DeleteByDelegationAsync(int delegationId, CancellationToken ct = default)
+    {
+        var alerts = await _alerts.ListByDelegationAsync(delegationId, ct);
+        if (alerts.Count == 0)
+            return false;
+
+        await _tx.RunAsync(async token =>
+        {
+            foreach (var alert in alerts)
+                _alerts.Remove(alert);
             await _uow.SaveChangesAsync(token);
         }, ct);
         return true;
@@ -163,6 +207,10 @@ public sealed class HeadAlertService : IHeadAlertService
             }
             case HeadAlertTargetType.Branch:
                 return await _alerts.ListActiveLawyersAsync(branchId, ct);
+            case HeadAlertTargetType.Head:
+                // تنبيهات النظام لروّاد القسم (مراحل الإنابة): تصل لرؤساء أقسام الفرع المفعلين،
+                // وعند غياب أي رئيس يُرفض الإنشاء ويُسجَّل فشل الإشعار في سجل التدقيق.
+                return await _alerts.ListActiveHeadsAsync(branchId, ct);
             default:
                 throw new ArgumentException("نوع التنبيه غير صالح");
         }

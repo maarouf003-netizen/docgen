@@ -19,7 +19,8 @@ public enum ExecutionStatus
     None = 0,
     ExecutedForcibly = 1,
     ExecutedBySettlement = 2,
-    Deferred = 3
+    Deferred = 3,
+    DelegationExecuted = 4
 }
 
 /// <summary>
@@ -31,5 +32,6 @@ public enum HeadAlertTargetType
 {
     Document = 1,
     Lawyer = 2,
-    Branch = 3
+    Branch = 3,
+    Head = 4
 }

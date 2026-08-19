@@ -138,7 +138,7 @@ function StatusChangeOccurrenceDetails({ occurrence }: { occurrence: DocumentOcc
     case 'forcible':
       pushIf(pairs, 'نوع التنفيذ', d.execSubStatus);
       pushCollected(pairs, d);
-      pushIf(pairs, 'العقارات المباعة بالمزاد', d.soldEstateNames);
+      pushIf(pairs, 'الأموال المباعة بالمزاد', d.soldAssetNames);
       break;
     case 'revert':
       pushIf(pairs, 'رقم كتاب الجهة العامة بالسير بالملف', d.sayerNumber);

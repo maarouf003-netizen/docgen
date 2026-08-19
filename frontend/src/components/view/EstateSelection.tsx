@@ -1,16 +1,16 @@
-import type { RealEstateDto } from '../../types';
+import type { AssetDto } from '../../types';
 
 export function EstateSelection({
   estates,
   selected,
   onToggle,
 }: {
-  estates: RealEstateDto[];
+  estates: AssetDto[];
   selected: number[];
   onToggle: (id: number) => void;
 }) {
   if (estates.length === 0) {
-    return <p className="text-gray-400 text-sm">لا توجد ضمانات عقارية — أضف عقاراً أولاً ثم احفظ</p>;
+    return <p className="text-gray-400 text-sm">لا توجد عقارات — أضف عقاراً أولاً ثم احفظ</p>;
   }
 
   return (

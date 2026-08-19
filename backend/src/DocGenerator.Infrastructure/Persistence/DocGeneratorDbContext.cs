@@ -20,8 +20,8 @@ public class DocGeneratorDbContext : DbContext
     public DbSet<Branch> Branches => Set<Branch>();
     public DbSet<Document> Documents => Set<Document>();
     public DbSet<Guarantor> Guarantors => Set<Guarantor>();
-    public DbSet<RealEstate> RealEstates => Set<RealEstate>();
-    public DbSet<RealEstateOwner> RealEstateOwners => Set<RealEstateOwner>();
+    public DbSet<Asset> Assets => Set<Asset>();
+    public DbSet<AssetOwner> AssetOwners => Set<AssetOwner>();
     public DbSet<Heir> Heirs => Set<Heir>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<ExecutionAction> ExecutionActions => Set<ExecutionAction>();
@@ -37,6 +37,8 @@ public class DocGeneratorDbContext : DbContext
     public DbSet<DocumentOccurrence> DocumentOccurrences => Set<DocumentOccurrence>();
     public DbSet<ApplicantPublicEntity> ApplicantPublicEntities => Set<ApplicantPublicEntity>();
     public DbSet<DocumentAssignment> DocumentAssignments => Set<DocumentAssignment>();
+    public DbSet<DocumentDelegation> DocumentDelegations => Set<DocumentDelegation>();
+    public DbSet<DelegationAsset> DelegationAssets => Set<DelegationAsset>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -4,6 +4,7 @@ using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 namespace DocGenerator.Application.Tests;
 
@@ -248,5 +249,88 @@ public class HeadAlertServiceTests : IDisposable
         var ok = await _service.MarkReadAsync(alert.Id, _lawyer2.Id);
 
         Assert.False(ok);
+    }
+
+    [Fact]
+    public async Task Create_HeadTargeted_ReachesAllActiveHeads()
+    {
+        // رئيس فرع موقوف لا يستقبل تنبيهات النظام المرحلية (نطاق «head»).
+        _db.Users.Add(new User
+        {
+            Username = "head_stopped",
+            FullName = "رئيس قسم موقوف",
+            Role = UserRole.Head,
+            BranchId = _branchId,
+            IsActive = false,
+            PasswordHash = new PasswordHasher().Hash("123456"),
+        });
+        await _db.SaveChangesAsync();
+
+        var alert = await _service.CreateAsync(
+            new CreateHeadAlertRequest("head", null, null, "بانتظار اعتماد الإنابة — ثمّة إنابة معلّقة", DelegationId: 77),
+            _head.Id, _branchId, "head_x");
+
+        Assert.Equal("head", alert.TargetType);
+        Assert.Equal(1, alert.RecipientCount); // الرأس المفعل فقط
+
+        var stored = await _db.HeadAlerts.Include(a => a.Recipients).SingleAsync(a => a.Id == alert.Id);
+        Assert.Equal(77, stored.DelegationId);
+        Assert.Contains(_head.Id, stored.Recipients.Select(r => r.UserId));
+
+        var headList = await _service.ListForLawyerAsync(_head.Id);
+        Assert.Contains(headList, a => a.Id == alert.Id);
+    }
+
+    [Fact]
+    public async Task Create_HeadTargeted_NoActiveHeads_Throws()
+    {
+        var blocked = _db.Users.Single(u => u.Id == _head.Id);
+        blocked.IsActive = false;
+        await _db.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(new CreateHeadAlertRequest("head", null, null, "رسالة بلا مستلم", DelegationId: 1),
+                _head.Id, _branchId, "head_x"));
+    }
+
+    [Fact]
+    public async Task UpdateDelegationAlert_UpdatesLatestMessageKeepingRecipients()
+    {
+        var alert = await _service.CreateAsync(
+            new CreateHeadAlertRequest("head", null, null, "بانتظار اعتماد الإنابة — رسالة أولى", DelegationId: 5),
+            _head.Id, _branchId, "head_x");
+        await _service.MarkReadAsync(alert.Id, _head.Id);
+
+        var updated = await _service.UpdateDelegationAlertAsync(5, "بانتظار اعتماد الإنابة — رسالة معدّلة");
+
+        Assert.NotNull(updated);
+        Assert.Equal("بانتظار اعتماد الإنابة — رسالة معدّلة", updated!.Message);
+
+        // المستلمون وعلامات القراءة صامدة بعد التحديث.
+        var stored = await _db.HeadAlerts.Include(a => a.Recipients).SingleAsync(a => a.Id == alert.Id);
+        var recipient = Assert.Single(stored.Recipients);
+        Assert.True(recipient.IsRead);
+    }
+
+    [Fact]
+    public async Task UpdateDelegationAlert_WithoutExistingAlert_ReturnsNull()
+    {
+        var updated = await _service.UpdateDelegationAlertAsync(999, "رسالة");
+        Assert.Null(updated);
+    }
+
+    [Fact]
+    public async Task DeleteByDelegation_RemovesOnlyThatDelegationsAlerts()
+    {
+        var first = await _service.CreateAsync(
+            new CreateHeadAlertRequest("head", null, null, "إنابة أولى", DelegationId: 1), _head.Id, _branchId, "head_x");
+        var second = await _service.CreateAsync(
+            new CreateHeadAlertRequest("head", null, null, "إنابة ثانية", DelegationId: 2), _head.Id, _branchId, "head_x");
+
+        Assert.True(await _service.DeleteByDelegationAsync(1));
+        Assert.False(await _service.DeleteByDelegationAsync(1)); // لا شيء متبقٍ للإنابة الأولى
+
+        Assert.Null(await _db.HeadAlerts.FindAsync(first.Id));
+        Assert.NotNull(await _db.HeadAlerts.FindAsync(second.Id));
     }
 }

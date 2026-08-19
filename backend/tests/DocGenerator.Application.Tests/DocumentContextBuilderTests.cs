@@ -1,5 +1,6 @@
 using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
+using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 
 namespace DocGenerator.Application.Tests;
@@ -294,11 +295,12 @@ public class DocumentContextBuilderTests : IDisposable
             AmountWords = "مليون ليرة",
             ContractTypeSelector = "مصرفي",
             ContractType = "تعهد",
-            RealEstates = new List<RealEstate>
+            Assets = new List<Asset>
             {
                 new()
                 {
-                    Owners = new List<RealEstateOwner> { new() { Name = "أحمد محمد خالد", Order = 0 } },
+                    AssetKind = AssetKindCatalog.RealEstate,
+                    Owners = new List<AssetOwner> { new() { Name = "أحمد محمد خالد", Order = 0 } },
                     Property = "منزل",
                     PropertyNumber = "12",
                     PropertyDistrict = "المزة",
@@ -321,11 +323,12 @@ public class DocumentContextBuilderTests : IDisposable
             AmountWords = "مليون ليرة",
             ContractTypeSelector = "مصرفي",
             ContractType = "تعهد",
-            RealEstates = new List<RealEstate>
+            Assets = new List<Asset>
             {
                 new()
                 {
-                    Owners = new List<RealEstateOwner> { new() { Name = "أحمد محمد خالد", Order = 0 } },
+                    AssetKind = AssetKindCatalog.RealEstate,
+                    Owners = new List<AssetOwner> { new() { Name = "أحمد محمد خالد", Order = 0 } },
                     Property = "منزل",
                     PropertyNumber = "12",
                     PropertyDistrict = "المزة",
@@ -335,7 +338,7 @@ public class DocumentContextBuilderTests : IDisposable
             },
         });
 
-        var estateId = _db.RealEstates.Single().Id;
+        var estateId = _db.Assets.Single().Id;
         var ctx = await _builder.BuildContextAsync(id, "005", estateIds: new[] { estateId });
 
         Assert.Equal("تمام عقارك رقم 12 من المنطقة العقارية المزة", ctx["property"]);
@@ -356,11 +359,12 @@ public class DocumentContextBuilderTests : IDisposable
             AmountWords = "مليون ليرة",
             ContractTypeSelector = "مصرفي",
             ContractType = "تعهد",
-            RealEstates = new List<RealEstate>
+            Assets = new List<Asset>
             {
                 new()
                 {
-                    Owners = new List<RealEstateOwner>
+                    AssetKind = AssetKindCatalog.RealEstate,
+                    Owners = new List<AssetOwner>
                     {
                         new() { Name = "سمير حسن علي", Order = 1 },
                         new() { Name = "أحمد محمد خالد", Order = 0 },
@@ -374,7 +378,7 @@ public class DocumentContextBuilderTests : IDisposable
             },
         });
 
-        var estateId = _db.RealEstates.Single().Id;
+        var estateId = _db.Assets.Single().Id;
         var ctx = await _builder.BuildContextAsync(id, "005", estateIds: new[] { estateId });
 
         Assert.Equal("أحمد محمد خالد و سمير حسن علي", ctx["property_owner"]);
@@ -399,11 +403,12 @@ public class DocumentContextBuilderTests : IDisposable
             {
                 new() { GuarantorNumber = 1, GuarantorName = "سمير", GuarantorFather = "حسن", GuarantorFamily = "علي" },
             },
-            RealEstates = new List<RealEstate>
+            Assets = new List<Asset>
             {
                 new()
                 {
-                    Owners = new List<RealEstateOwner>
+                    AssetKind = AssetKindCatalog.RealEstate,
+                    Owners = new List<AssetOwner>
                     {
                         new() { Name = "سمير حسن علي", Order = 0 },
                         new() { Name = "أحمد محمد خالد", Order = 1 },
@@ -417,7 +422,7 @@ public class DocumentContextBuilderTests : IDisposable
             },
         });
 
-        var estateId = _db.RealEstates.Single().Id;
+        var estateId = _db.Assets.Single().Id;
         var ctx = await _builder.BuildContextAsync(id, "006", estateIds: new[] { estateId });
 
         Assert.Equal("سمير حسن علي و أحمد محمد خالد", ctx["execution_debtor"]);
@@ -435,11 +440,12 @@ public class DocumentContextBuilderTests : IDisposable
             AmountWords = "مليون ليرة",
             ContractTypeSelector = "مصرفي",
             ContractType = "تعهد",
-            RealEstates = new List<RealEstate>
+            Assets = new List<Asset>
             {
                 new()
                 {
-                    Owners = new List<RealEstateOwner>
+                    AssetKind = AssetKindCatalog.RealEstate,
+                    Owners = new List<AssetOwner>
                     {
                         new() { Name = "المالك الأول", Order = 0 },
                         new() { Name = "المالك الثاني", Order = 1 },
@@ -453,7 +459,7 @@ public class DocumentContextBuilderTests : IDisposable
             },
         });
 
-        var estateId = _db.RealEstates.Single().Id;
+        var estateId = _db.Assets.Single().Id;
         var ctx = await _builder.BuildContextAsync(id, "PS", estateIds: new[] { estateId });
 
         Assert.Equal("المالك الأول و المالك الثاني", ctx["execution_debtor"]);
@@ -471,11 +477,12 @@ public class DocumentContextBuilderTests : IDisposable
             AmountWords = "مليون ليرة",
             ContractTypeSelector = "مصرفي",
             ContractType = "تعهد",
-            RealEstates = new List<RealEstate>
+            Assets = new List<Asset>
             {
                 new()
                 {
-                    Owners = new List<RealEstateOwner> { new() { Name = "أحمد محمد خالد", Order = 0 } },
+                    AssetKind = AssetKindCatalog.RealEstate,
+                    Owners = new List<AssetOwner> { new() { Name = "أحمد محمد خالد", Order = 0 } },
                     Property = "منزل",
                     PropertyNumber = "12",
                     PropertyDistrict = "المزة",
@@ -485,7 +492,7 @@ public class DocumentContextBuilderTests : IDisposable
             },
         });
 
-        var estateId = _db.RealEstates.Single().Id;
+        var estateId = _db.Assets.Single().Id;
         var ctx = await _builder.BuildContextAsync(id, "006", estateIds: new[] { estateId });
 
         Assert.Equal("أحمد محمد خالد", ctx["execution_debtor"]);
@@ -562,11 +569,12 @@ public class DocumentContextBuilderTests : IDisposable
             AmountWords = "مليون ليرة",
             ContractTypeSelector = "مصرفي",
             ContractType = "تعهد",
-            RealEstates = new List<RealEstate>
+            Assets = new List<Asset>
             {
                 new()
                 {
-                    Owners = new List<RealEstateOwner> { new() { Name = "أحمد محمد خالد", Order = 0 } },
+                    AssetKind = AssetKindCatalog.RealEstate,
+                    Owners = new List<AssetOwner> { new() { Name = "أحمد محمد خالد", Order = 0 } },
                     Property = "منزل",
                     PropertyNumber = "12",
                     PropertyDistrict = "المزة",
@@ -576,7 +584,7 @@ public class DocumentContextBuilderTests : IDisposable
             },
         });
 
-        var estateId = _db.RealEstates.Single().Id;
+        var estateId = _db.Assets.Single().Id;
         var ctx = await _builder.BuildContextAsync(id, "PS", estateIds: new[] { estateId });
 
         Assert.Equal("سجل 3", ctx["Land_Registry"]);
@@ -887,11 +895,12 @@ public class DocumentContextBuilderTests : IDisposable
             AmountWords = "مليون ليرة",
             ContractTypeSelector = "مصرفي",
             ContractType = "تعهد",
-            RealEstates = new List<RealEstate>
+            Assets = new List<Asset>
             {
                 new()
                 {
-                    Owners = new List<RealEstateOwner> { new() { Name = "أحمد محمد خالد", Order = 0 } },
+                    AssetKind = AssetKindCatalog.RealEstate,
+                    Owners = new List<AssetOwner> { new() { Name = "أحمد محمد خالد", Order = 0 } },
                     Property = "منزل",
                     PropertyNumber = "12",
                     PropertyDistrict = "المزة",
@@ -905,7 +914,7 @@ public class DocumentContextBuilderTests : IDisposable
             },
         });
 
-        var estateId = _db.RealEstates.Single().Id;
+        var estateId = _db.Assets.Single().Id;
         var heirId = _db.Heirs.Single().Id;
         var ctx = await _builder.BuildContextAsync(id, "005", estateIds: new[] { estateId }, heirId: heirId);
 
@@ -926,11 +935,12 @@ public class DocumentContextBuilderTests : IDisposable
             AmountWords = "مليون ليرة",
             ContractTypeSelector = "مصرفي",
             ContractType = "تعهد",
-            RealEstates = new List<RealEstate>
+            Assets = new List<Asset>
             {
                 new()
                 {
-                    Owners = new List<RealEstateOwner> { new() { Name = "أحمد محمد خالد", Order = 0 } },
+                    AssetKind = AssetKindCatalog.RealEstate,
+                    Owners = new List<AssetOwner> { new() { Name = "أحمد محمد خالد", Order = 0 } },
                     Property = "منزل",
                     PropertyNumber = "12",
                     PropertyDistrict = "المزة",
@@ -944,7 +954,7 @@ public class DocumentContextBuilderTests : IDisposable
             },
         });
 
-        var estateId = _db.RealEstates.Single().Id;
+        var estateId = _db.Assets.Single().Id;
         var heirId = _db.Heirs.Single().Id;
         var ctx = await _builder.BuildContextAsync(id, "006", estateIds: new[] { estateId }, heirId: heirId);
 

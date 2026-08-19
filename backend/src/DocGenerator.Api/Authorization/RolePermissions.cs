@@ -52,6 +52,18 @@ public static class RolePermissions
     /// <summary>إصدار تنبيهات للمحامين — رئيس القسم (فرعه) فقط.</summary>
     public static bool CanCreateAlerts(UserRole role) => role == UserRole.Head;
 
+    /// <summary>
+    /// تسطير/تعديل/حذف الإنابات على ملف يملكه المحامي (الملف المنيب) — المحامي فقط،
+    /// وقبل اعتماد رئيس القسم.
+    /// </summary>
+    public static bool CanManageDelegations(UserRole role) => role == UserRole.Lawyer;
+
+    /// <summary>
+    /// اعتماد الإنابات واختيار المحامي المختص (نافذة «طلبات الإنابة») — رئيس القسم
+    /// لفرعه فقط.
+    /// </summary>
+    public static bool CanApproveDelegations(UserRole role) => role == UserRole.Head;
+
     /// <summary>رؤية عمود «فرع الإدارة» — مدير/مشرف فقط.</summary>
     public static bool CanSeeAdministrativeBranch(UserRole role) =>
         role is UserRole.Manager or UserRole.Admin;

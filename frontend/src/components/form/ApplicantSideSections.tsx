@@ -1,24 +1,26 @@
 import { useState, type Dispatch, type SetStateAction } from 'react';
 import AutoResizeTextarea from '../AutoResizeTextarea';
 import MultiAmountEditor from '../MultiAmountEditor';
-import type { DocumentUpsertRequest, GuarantorDto, HeirDto, PartyNature, RealEstateDto } from '../../types';
+import type { AssetDto, DocumentUpsertRequest, GuarantorDto, HeirDto, PartyNature } from '../../types';
 import {
+  ASSET_KINDS,
   ADDRESS_TYPE_OPTIONS,
-  MAX_ESTATES,
+  MAX_ASSETS_PER_KIND,
   MAX_GUARANTORS,
   PARTY_NATURE_OPTIONS,
-  SHARE_TYPES,
   addressLabelOf,
   bankingAmountKeys,
   bankingCurrencyKeys,
   hasRepresentative,
   ordinaryAmountKeys,
   ordinaryCurrencyKeys,
+  shareTypesFor,
 } from './documentFormConstants';
 import { HeirsEditor } from './HeirsEditors';
 import { RepresentativeEditor } from './RepresentativeEditor';
 import { FormSectionTitle } from './FormSectionTitle';
 import { makeFieldHelpers, type FormSet } from './formFields';
+import { assetKindLabel } from '../../utils/assetDisplay';
 
 /** مطابقة مفاتيح محرر الممثل العام (بلا بادئة) إلى مفاتيح الممثل الشرعي للمقترض (ببادئة borrower). */
 const BORROWER_REP_KEYS: Record<string, keyof DocumentUpsertRequest> = {
@@ -57,11 +59,12 @@ export interface ApplicantSideSectionsProps {
   onBorrowerRepRemove: () => void;
   onGuarantorRepActivate: (i: number) => void;
   onGuarantorRepRemove: (i: number) => void;
-  estates: RealEstateDto[];
-  onEstateSet: (i: number, key: keyof RealEstateDto, value: string) => void;
+  assets: AssetDto[];
+  onEstateSet: (i: number, key: keyof AssetDto, value: string) => void;
   onEstateRemove: (i: number) => void;
   onOwnerToggle: (i: number, name: string) => void;
-  onEstateAdd: () => void;
+  onSingleOwnerSet: (i: number, name: string) => void;
+  onEstateAdd: (kind: string) => void;
   ownerOptions: () => string[];
 }
 
@@ -93,10 +96,11 @@ export function ApplicantSideSections({
   onBorrowerRepRemove,
   onGuarantorRepActivate,
   onGuarantorRepRemove,
-  estates,
+  assets,
   onEstateSet,
   onEstateRemove,
   onOwnerToggle,
+  onSingleOwnerSet,
   onEstateAdd,
   ownerOptions,
 }: ApplicantSideSectionsProps) {
@@ -440,70 +444,201 @@ export function ApplicantSideSections({
         </span>
       </div>
 
-      <FormSectionTitle title="العقارات" />
-      {estates.map((e, i) => (
-        <div key={i} className="border border-gray-200 rounded-xl p-4 mb-4">
-          <div className="flex justify-between items-center mb-3">
-            <span className="font-medium text-gray-700 text-sm">عقار {i + 1}</span>
-            <button type="button" onClick={() => onEstateRemove(i)} className="text-red-500 text-xs hover:underline min-h-11">
-              ✖ حذف
-            </button>
-          </div>
-          <div className="grid md:grid-cols-5 gap-3">
-            {([
-              ['propertyNumber', 'رقم العقار'],
-              ['propertyDistrict', 'المنطقة العقارية'],
-              ['landRegistry', 'المصالح العقارية'],
-            ] as const).map(([k, label]) => (
-              <div key={k}>
-                <label className="block text-xs font-bold text-gray-600 mb-1">{label}</label>
-                <input value={e[k] ?? ''} onChange={(ev) => onEstateSet(i, k, ev.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-              </div>
-            ))}
-            <div>
-              <label className="block text-xs font-bold text-gray-600 mb-1">مقدار الحصة</label>
-              <select value={e.shareType ?? 'تمام العقار'} onChange={(ev) => onEstateSet(i, 'shareType', ev.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none">
-                {SHARE_TYPES.map((o) => (
-                  <option key={o}>{o}</option>
-                ))}
-              </select>
+      <FormSectionTitle title="الأموال المنقولة وغير المنقولة" />
+      {assets.map((a, i) => {
+        const kind = a.assetKind ?? ASSET_KINDS.realEstate;
+        const kindLabel = assetKindLabel(kind);
+        const shareable = shareTypesFor(kind).length > 0;
+        const singleOwner = kind === ASSET_KINDS.salaryGuarantee;
+        const ownersLabel = singleOwner
+          ? 'صاحب الراتب'
+          : kind === ASSET_KINDS.vehicle
+            ? 'مالكو المركبة'
+            : kind === ASSET_KINDS.shop
+              ? 'مالكو المتجر'
+              : kind === ASSET_KINDS.unregisteredShop
+                ? 'مالك المتجر'
+                : 'مالكو العقار';
+        const options = [...new Set([...ownerOptions(), ...(a.owners ?? [])])];
+        return (
+          <div key={i} className="border border-gray-200 rounded-xl p-4 mb-4">
+            <div className="flex justify-between items-center mb-3">
+              <span className="font-medium text-gray-700 text-sm">{kindLabel} {i + 1}</span>
+              <button type="button" onClick={() => onEstateRemove(i)} className="text-red-500 text-xs hover:underline min-h-11">
+                ✖ حذف
+              </button>
             </div>
-          </div>
-          <div className="mt-3">
-            <span className="block text-xs font-bold text-gray-600 mb-1">مالكو العقار</span>
-            {(() => {
-              // الخيارات: الأسماء المتاحة (مقترض/كفلاء/ورثة) + أي مالك محفوظ سابقًا
-              // لم يعد من بينها، حتى لا يُفقد عند حفظ التعديل.
-              const options = [...new Set([...ownerOptions(), ...(e.owners ?? [])])];
-              return options.length > 0 ? (
-                <div className="flex flex-wrap gap-x-5 gap-y-1">
-                  {options.map((o) => (
-                    <label key={o} className="flex items-center gap-2 min-h-11 text-sm text-gray-700">
-                      <input
-                        type="checkbox"
-                        checked={(e.owners ?? []).includes(o)}
-                        onChange={() => onOwnerToggle(i, o)}
-                        className="h-4 w-4 text-emerald-600"
-                      />
-                      {o}
-                    </label>
-                  ))}
+
+            {kind === ASSET_KINDS.realEstate && (
+              <div className="grid md:grid-cols-3 gap-3">
+                {([
+                  ['propertyNumber', 'رقم العقار'],
+                  ['propertyDistrict', 'المنطقة العقارية'],
+                  ['landRegistry', 'المصالح العقارية'],
+                ] as const).map(([k, label]) => (
+                  <div key={k}>
+                    <label className="block text-xs font-bold text-gray-600 mb-1">{label}</label>
+                    <input value={a[k] ?? ''} onChange={(ev) => onEstateSet(i, k, ev.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {kind === ASSET_KINDS.vehicle && (
+              <div className="grid md:grid-cols-4 gap-3">
+                {([
+                  ['vehicleType', 'النوع'],
+                  ['vehicleClass', 'الفئة'],
+                  ['plateNumber', 'رقم اللوحة'],
+                  ['vehicleGovernorate', 'محافظة المركبة'],
+                ] as const).map(([k, label]) => (
+                  <div key={k}>
+                    <label className="block text-xs font-bold text-gray-600 mb-1">{label}</label>
+                    <input value={a[k] ?? ''} onChange={(ev) => onEstateSet(i, k, ev.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {kind === ASSET_KINDS.shop && (
+              <div className="grid md:grid-cols-3 gap-3">
+                {([
+                  ['registerNumber', 'رقم السجل'],
+                  ['registrationDate', 'تاريخ التسجيل', 'مثال: 1/8/2026'],
+                  ['shopGovernorate', 'المحافظة'],
+                  ['shopDescription', 'وصف المتجر'],
+                  ['shopLocation', 'موقعه'],
+                ] as const).map(([k, label, placeholder]) => (
+                  <div key={k}>
+                    <label className="block text-xs font-bold text-gray-600 mb-1">{label}</label>
+                    <input
+                      value={a[k] ?? ''}
+                      onChange={(ev) => onEstateSet(i, k, ev.target.value)}
+                      type="text"
+                      placeholder={placeholder}
+                      className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {kind === ASSET_KINDS.salaryGuarantee && (
+              <div className="grid md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1">{ownersLabel}</label>
+                  <select
+                    value={(a.owners ?? [])[0] ?? ''}
+                    onChange={(ev) => onSingleOwnerSet(i, ev.target.value)}
+                    className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                  >
+                    <option value="">— اختر —</option>
+                    {options.map((o) => (
+                      <option key={o} value={o}>{o}</option>
+                    ))}
+                  </select>
+                  {options.length === 0 && (
+                    <p className="text-xs text-gray-400">أدخل اسم المقترض أو الكفيل أو الورثة أولًا لاختيار صاحب الراتب</p>
+                  )}
                 </div>
-              ) : (
-                <p className="text-xs text-gray-400">أدخل اسم المقترض أو الكفيل أو الورثة أولًا لاختيار المالك</p>
-              );
-            })()}
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1">الجهة العامة التي يعمل لديها</label>
+                  <input value={a.publicEntity ?? ''} onChange={(ev) => onEstateSet(i, 'publicEntity', ev.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-bold text-gray-600 mb-1">ملاحظات</label>
+                  <textarea value={a.notes ?? ''} onChange={(ev) => onEstateSet(i, 'notes', ev.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+              </div>
+            )}
+
+            {kind === ASSET_KINDS.unregisteredShop && (
+              <div className="grid md:grid-cols-3 gap-3">
+                {([
+                  ['licenseNumber', 'رقم الترخيص'],
+                  ['licenseDate', 'تاريخ الترخيص', 'مثال: 1/8/2026'],
+                  ['licenseIssuer', 'الجهة مصدرة الترخيص'],
+                ] as const).map(([k, label, placeholder]) => (
+                  <div key={k}>
+                    <label className="block text-xs font-bold text-gray-600 mb-1">{label}</label>
+                    <input
+                      value={a[k] ?? ''}
+                      onChange={(ev) => onEstateSet(i, k, ev.target.value)}
+                      type="text"
+                      placeholder={placeholder}
+                      className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {shareable && (
+              <div className="mt-3 max-w-xs">
+                <label className="block text-xs font-bold text-gray-600 mb-1">مقدار الحصة</label>
+                <select
+                  value={a.shareType ?? shareTypesFor(kind)[0]}
+                  onChange={(ev) => onEstateSet(i, 'shareType', ev.target.value)}
+                  className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                >
+                  {shareTypesFor(kind).map((o) => (
+                    <option key={o}>{o}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {!singleOwner && (
+              <div className="mt-3">
+                <span className="block text-xs font-bold text-gray-600 mb-1">{ownersLabel}</span>
+                {options.length > 0 ? (
+                  <div className="flex flex-wrap gap-x-5 gap-y-1">
+                    {options.map((o) => (
+                      <label key={o} className="flex items-center gap-2 min-h-11 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={(a.owners ?? []).includes(o)}
+                          onChange={() => onOwnerToggle(i, o)}
+                          className="h-4 w-4 text-emerald-600"
+                        />
+                        {o}
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400">أدخل اسم المقترض أو الكفيل أو الورثة أولًا لاختيار المالك</p>
+                )}
+              </div>
+            )}
           </div>
-        </div>
-      ))}
-      <button
-        type="button"
-        onClick={onEstateAdd}
-        disabled={estates.length >= MAX_ESTATES}
-        className="bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
-      >
-        {estates.length >= MAX_ESTATES ? '🛑 الحد الأقصى' : '🏡 إضافة عقار'}
-      </button>
+        );
+      })}
+      <div className="flex flex-wrap gap-2">
+        {ASSET_ADD_BUTTONS.map((b) => {
+          const count = assets.filter((a) => a.assetKind === b.kind).length;
+          const atMax = count >= MAX_ASSETS_PER_KIND;
+          return (
+            <button
+              key={b.kind}
+              type="button"
+              onClick={() => onEstateAdd(b.kind)}
+              disabled={atMax}
+              className="bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
+            >
+              {atMax ? '🛑 الحد الأقصى' : `${b.icon} ${b.label}`}
+            </button>
+          );
+        })}
+      </div>
     </>
   );
 }
+
+/** أزرار إضافة الأموال (بالترتيب المعتمد) مع تسمية بطاقة العرض لكل نوع. */
+const ASSET_ADD_BUTTONS: { kind: string; label: string; icon: string }[] = [
+  { kind: ASSET_KINDS.realEstate, label: 'إضافة عقار', icon: '🏡' },
+  { kind: ASSET_KINDS.vehicle, label: 'إضافة مركبة', icon: '🚗' },
+  { kind: ASSET_KINDS.shop, label: 'إضافة متجر', icon: '🏪' },
+  { kind: ASSET_KINDS.salaryGuarantee, label: 'إضافة كفالة رواتب', icon: '💼' },
+  { kind: ASSET_KINDS.unregisteredShop, label: 'إضافة متجر غير مسجل', icon: '🛒' },
+];

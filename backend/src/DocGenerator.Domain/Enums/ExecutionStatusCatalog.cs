@@ -12,6 +12,13 @@ public static class ExecutionStatusCatalog
     public const string ExecutedBySettlement = "منفذ بالتسوية";
     public const string Deferred = "تريث";
 
+    /// <summary>
+    /// حالة الملف المناب عند إتمام الإنابة: بيع الأموال موضوع الإنابة بالمزاد العلني
+    /// وإعادة الملف إلى الدائرة المنيبة. حالة نهائية تُعامل «منفذًا» في القوائم والإحصاءات،
+    /// ولا تُختار عبر آلة الحالات العادية (يضبطها مسار إتمام الإنابة حصرًا).
+    /// </summary>
+    public const string DelegationExecuted = "منفذ إنابة";
+
     public const string SubPartiallyExecuted = "منفذ جزئيا";
     public const string SubFullyExecuted = "منفذ كاملا";
 
@@ -29,7 +36,7 @@ public static class ExecutionStatusCatalog
 
     public static readonly IReadOnlySet<string> ValidStatuses = new HashSet<string>
     {
-        None, ExecutedForcibly, ExecutedBySettlement, Deferred,
+        None, ExecutedForcibly, ExecutedBySettlement, Deferred, DelegationExecuted,
     };
 
     public static readonly IReadOnlySet<string> ValidSubStatuses = new HashSet<string>
@@ -42,15 +49,18 @@ public static class ExecutionStatusCatalog
         ExecutedForcibly => ExecutionStatus.ExecutedForcibly,
         ExecutedBySettlement => ExecutionStatus.ExecutedBySettlement,
         Deferred => ExecutionStatus.Deferred,
+        DelegationExecuted => ExecutionStatus.DelegationExecuted,
         _ => ExecutionStatus.None,
     };
 
     /// <summary>
     /// هل الملف منفَّذ وانتهى (لا يدور بعده ولا يُدوَّر)؟ يشمل التسوية والتنفيذ الجبري
-    /// الكامل. أما «منفذ جبريا / منفذ جزئيا» فما زال متداولًا ويخضع لمنطق المتداول.
+    /// الكامل، وحالة «منفذ إنابة» للملف المناب. أما «منفذ جبريا / منفذ جزئيا» فما زال
+    /// متداولًا ويخضع لمنطق المتداول.
     /// </summary>
     public static bool IsExecuted(string? status, string? subStatus) =>
         status == ExecutedBySettlement
+        || status == DelegationExecuted
         || (status == ExecutedForcibly && subStatus != SubPartiallyExecuted);
 
     public static string ToLabel(ExecutionStatus status) => status switch
@@ -58,6 +68,7 @@ public static class ExecutionStatusCatalog
         ExecutionStatus.ExecutedForcibly => ExecutedForcibly,
         ExecutionStatus.ExecutedBySettlement => ExecutedBySettlement,
         ExecutionStatus.Deferred => Deferred,
+        ExecutionStatus.DelegationExecuted => DelegationExecuted,
         _ => None,
     };
 
@@ -66,6 +77,7 @@ public static class ExecutionStatusCatalog
     {
         if (executedStatus == ExecutedStatusCatalog.StruckOff || status == StateStruckOff)
             return StateStruckOff;
+        if (status == DelegationExecuted) return DelegationExecuted;
         if (status == Deferred) return Deferred;
         if (status == ExecutedBySettlement) return ExecutedBySettlement;
         if (status == ExecutedForcibly) return ExecutedForcibly;
@@ -103,6 +115,7 @@ public static class ExecutionStatusCatalog
         Deferred => Deferred,
         ExecutedBySettlement => ExecutedBySettlement,
         ExecutedForcibly => ExecutedForcibly,
+        DelegationExecuted => DelegationExecuted,
         StateStruckOff => StateStruckOff,
         _ => StateCirculating,
     };
@@ -113,6 +126,7 @@ public static class ExecutionStatusCatalog
         ExecutedForcibly => ExecutedForcibly,
         ExecutedBySettlement => ExecutedBySettlement,
         Deferred => Deferred,
+        DelegationExecuted => DelegationExecuted,
         StateStruckOff => StateStruckOff,
         _ => StateCirculating,
     };

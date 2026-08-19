@@ -28,7 +28,7 @@ public class StatisticsRepository : IStatisticsRepository
         // كل ملف له حالة واحدة محددة تُحسب مباشرة بشرطها الخاص:
         //   تحت رفع  = مسودة بلا حالة تنفيذ
         //   متداول   = مقيد بلا حالة تنفيذ، أو "منفذ جبريا" بحالة "منفذ جزئيا"
-        //   منفذ     = "منفذ بالتسوية"، أو "منفذ جبريا" غير "منفذ جزئيا"
+        //   منفذ     = "منفذ بالتسوية"، أو "منفذ جبريا" غير "منفذ جزئيا"، أو "منفذ إنابة" (المناب)
         //   تريث     = "تريث"
         var totals = await q
             .GroupBy(_ => 1)
@@ -37,6 +37,7 @@ public class StatisticsRepository : IStatisticsRepository
                 Total = g.Count(),
                 Drafts = g.Count(d => d.IsDraft && string.IsNullOrEmpty(d.ExecStatus)),
                 Executed = g.Count(d => d.ExecStatus == ExecutionStatusCatalog.ExecutedBySettlement
+                    || d.ExecStatus == ExecutionStatusCatalog.DelegationExecuted
                     || (d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
                         && d.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted)),
                 Deferred = g.Count(d => d.ExecStatus == ExecutionStatusCatalog.Deferred),
@@ -197,6 +198,8 @@ public class StatisticsRepository : IStatisticsRepository
         public decimal? ExecutedPaidAmount { get; set; }
         public decimal? ExecutedPaidAmount2 { get; set; }
         public decimal? ExecutedPaidAmount3 { get; set; }
+        /// <summary>مجموع بدل المبيع لإنابات الملف المنفذة (تُضاف لسلة «منفذ جبريا» عند اعتباره منفذًا).</summary>
+        public decimal? DelegationSalesAmount { get; set; }
         public DateTime PeriodDate { get; set; }
     }
 
@@ -243,6 +246,10 @@ public class StatisticsRepository : IStatisticsRepository
                 ExecutedPaidAmount = d.ExecutedPaidAmount,
                 ExecutedPaidAmount2 = d.ExecutedPaidAmount2,
                 ExecutedPaidAmount3 = d.ExecutedPaidAmount3,
+                DelegationSalesAmount = d.Delegations
+                    .Where(dl => dl.Status == DelegationStatusCatalog.Executed)
+                    .SelectMany(dl => dl.Assets)
+                    .Sum(a => (decimal?)a.SalePrice),
                 PeriodDate = d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
                     || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit
                         ? d.FileReceiptDate ?? d.CreatedAt
@@ -297,6 +304,10 @@ public class StatisticsRepository : IStatisticsRepository
                 ExecutedPaidAmount = d.ExecutedPaidAmount,
                 ExecutedPaidAmount2 = d.ExecutedPaidAmount2,
                 ExecutedPaidAmount3 = d.ExecutedPaidAmount3,
+                DelegationSalesAmount = d.Delegations
+                    .Where(dl => dl.Status == DelegationStatusCatalog.Executed)
+                    .SelectMany(dl => dl.Assets)
+                    .Sum(a => (decimal?)a.SalePrice),
                 PeriodDate = d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
                     || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit
                         ? d.FileReceiptDate ?? d.CreatedAt
@@ -422,7 +433,11 @@ public class StatisticsRepository : IStatisticsRepository
                 continue;
             }
 
-            if (r.ExecStatus == ExecutionStatusCatalog.ExecutedBySettlement)
+            // «منفذ إنابة» (الملف المناب عند إتمام إنابته): الملف منفَّذ فعليًا فيُحتسب ضمن
+            // المنفذين (التسوية) بعددها فقط — بلا مبالغ بيع الأموال (المبالغ المحصّلة من بيع
+            // الأموال موضوع الإنابة تُضاف في بطاقة المنيب عند اعتباره منفذًا جبريًا).
+            if (r.ExecStatus == ExecutionStatusCatalog.ExecutedBySettlement
+                || r.ExecStatus == ExecutionStatusCatalog.DelegationExecuted)
             {
                 settledCount++;
                 AddAmount(settledCollectedBuckets, r.CollectedCurrency, r.CollectedAmount);
@@ -436,6 +451,10 @@ public class StatisticsRepository : IStatisticsRepository
                 AddAmount(forcibleCollectedBuckets, r.CollectedCurrency, r.CollectedAmount);
                 AddAmount(forcibleCollectedBuckets, r.CollectedCurrency2, r.CollectedAmount2);
                 AddAmount(forcibleCollectedBuckets, r.CollectedCurrency3, r.CollectedAmount3);
+                // مجموع بدل المبيع لإنابات الملف المنفذة (منفذ إنابة): يُضاف لسلة «منفذ جبريا»
+                // (ليرة سورية) عند اعتبار المنيب منفذًا جبريًا — المبالغ المحصّلة من بيع الأموال
+                // موضوع الإنابة بالمزاد العلني تتمّ بالليرة السورية دائمًا.
+                AddAmount(forcibleCollectedBuckets, "ليرة سورية", r.DelegationSalesAmount);
             }
             else if (r.IsDraft && string.IsNullOrEmpty(r.ExecStatus))
             {

@@ -193,8 +193,8 @@ public class DocumentContextBuilder : IDocumentContextBuilder
             }
         }
 
-        // الضمانات العقارية
-        var estates = doc.RealEstates.ToList();
+        // الضمانات العقارية (توليد العقار يقتصر على نوع «عقار»؛ الأنواع الأخرى تُضاف لاحقًا)
+        var estates = doc.Assets.Where(a => a.AssetKind == AssetKindCatalog.RealEstate).ToList();
         context["real_estates"] = estates;
         context["property"] = estates.Count > 0 ? estates[0].Property ?? string.Empty : string.Empty;
         context["property_owner"] = estates.Count > 0 ? JoinOwners(OwnerNames(estates[0])) : string.Empty;
@@ -538,9 +538,9 @@ public class DocumentContextBuilder : IDocumentContextBuilder
         string.Join(' ', values.Where(v => !string.IsNullOrWhiteSpace(v))).Trim();
 
     /// <summary>
-    /// أسماء ملاك عقار بترتيب الاختيار (من قائمة الملاك الفرعية).
+    /// أسماء ملاك أصل بترتيب الاختيار (من قائمة الملاك الفرعية).
     /// </summary>
-    private static List<string> OwnerNames(RealEstate estate) =>
+    private static List<string> OwnerNames(Asset estate) =>
         estate.Owners.OrderBy(o => o.Order).Select(o => o.Name).ToList();
 
     /// <summary>
@@ -565,7 +565,7 @@ public class DocumentContextBuilder : IDocumentContextBuilder
         return string.Join('\n', names);
     }
 
-    private static List<RealEstate> SelectEstates(List<RealEstate> estates, int[]? estateIds)
+    private static List<Asset> SelectEstates(List<Asset> estates, int[]? estateIds)
     {
         if (estateIds is null || estateIds.Length == 0)
             throw new ArgumentException("يرجى اختيار عقار واحد على الأقل");
@@ -599,7 +599,7 @@ public class DocumentContextBuilder : IDocumentContextBuilder
     }
 
     // ── إخطار بيع أموال غير منقولة (005) — مطابق generate_005_direct ──
-    private static void BuildPropertySaleContext(Dictionary<string, object> context, List<RealEstate> estates)
+    private static void BuildPropertySaleContext(Dictionary<string, object> context, List<Asset> estates)
     {
         var owners = OwnerNames(estates[0]);
         var owner = JoinOwners(owners);
@@ -630,7 +630,7 @@ public class DocumentContextBuilder : IDocumentContextBuilder
     // ── إخطار بيع أموال غير منقولة بالصحف (006) — مطابق generate_006_paper_notice ──
     private static void BuildPropertySalePaperContext(
         Dictionary<string, object> context,
-        List<RealEstate> estates,
+        List<Asset> estates,
         string borrowerFull,
         List<Guarantor> guarantors)
     {
@@ -677,7 +677,7 @@ public class DocumentContextBuilder : IDocumentContextBuilder
     // ── حجز عقاري (PS) — مطابق generate_property_seizure ──
     private static void BuildPropertySeizureContext(
         Dictionary<string, object> context,
-        RealEstate estate,
+        Asset estate,
         string borrowerFull,
         List<Guarantor> guarantors)
     {
@@ -703,7 +703,7 @@ public class DocumentContextBuilder : IDocumentContextBuilder
         return (name, father, family);
     }
 
-    private static string FormatProperties(List<RealEstate> estates)
+    private static string FormatProperties(List<Asset> estates)
     {
         var texts = estates.Select(e =>
         {

@@ -55,7 +55,7 @@ describe('DocumentForm', () => {
     viewCount: 0,
     printCount: 0,
     guarantors: [],
-    realEstates: [],
+    assets: [],
     executionApplicants: [],
     executedPublicEntities: [],
     executedNaturalPersons: [],
@@ -639,16 +639,17 @@ describe('DocumentForm', () => {
     await user.click(screen.getByRole('button', { name: /حفظ/ }));
 
     const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
-    const realEstates = payload.realEstates as { owners: string[] }[];
-    expect(realEstates[0].owners).toEqual(['محمود الحلبي', 'أحمد الخطيب']);
+    const assets = payload.assets as { owners: string[] }[];
+    expect(assets[0].owners).toEqual(['محمود الحلبي', 'أحمد الخطيب']);
   });
 
   it('يحافظ على مالك محفوظ سابقًا غير موجود ضمن الخيارات عند التعديل', async () => {
     const docWithOldOwner: DocumentResponse = {
       ...mockDoc,
-      realEstates: [
+      assets: [
         {
           id: 7,
+          assetKind: 'عقار',
           owners: ['سمير حسن علي'],
           property: 'منزل',
           propertyNumber: '12',
@@ -700,17 +701,61 @@ describe('DocumentForm', () => {
     await user.click(screen.getByRole('button', { name: /حفظ/ }));
 
     const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
-    const realEstates = payload.realEstates as { owners: string[]; shareType: string }[];
-    expect(realEstates[0].owners).toEqual(['سمير علي']);
-    expect(realEstates[0].shareType).toEqual('حصة سهمية');
+    const assets = payload.assets as { owners: string[]; shareType: string }[];
+    expect(assets[0].owners).toEqual(['سمير علي']);
+    expect(assets[0].shareType).toEqual('حصة سهمية');
+  });
+
+  it('يسمح بإدخال تاريخ تسجيل المتجر وترخيص المتجر غير المسجل كنص حر مع تطبيع الأرقام', async () => {
+    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    await user.type(screen.getByLabelText('الاسم'), 'أحمد');
+    await user.type(screen.getByLabelText('النسبة'), 'الخطيب');
+
+    await user.click(screen.getByRole('button', { name: /🏪 إضافة متجر/ }));
+    const shopCard = screen.getByText('متجر 1').closest('.rounded-xl') as HTMLElement;
+    const regDate = Array.from(shopCard.querySelectorAll('input')).find(
+      (el) => el.previousElementSibling?.textContent === 'تاريخ التسجيل',
+    ) as HTMLInputElement;
+    expect(regDate).toHaveAttribute('placeholder', 'مثال: 1/8/2026');
+    expect(regDate).toHaveAttribute('type', 'text');
+    await user.type(regDate, '١/٨/٢٠٢٦');
+    const regNumber = Array.from(shopCard.querySelectorAll('input')).find(
+      (el) => el.previousElementSibling?.textContent === 'رقم السجل',
+    ) as HTMLInputElement;
+    await user.type(regNumber, '888');
+
+    await user.click(screen.getByRole('button', { name: /🛒 إضافة متجر غير مسجل/ }));
+    const unregCard = screen.getByText('متجر غير مسجل 2').closest('.rounded-xl') as HTMLElement;
+    const licDate = Array.from(unregCard.querySelectorAll('input')).find(
+      (el) => el.previousElementSibling?.textContent === 'تاريخ الترخيص',
+    ) as HTMLInputElement;
+    expect(licDate).toHaveAttribute('placeholder', 'مثال: 1/8/2026');
+    expect(licDate).toHaveAttribute('type', 'text');
+    await user.type(licDate, '15-1-2025');
+    const licNumber = Array.from(unregCard.querySelectorAll('input')).find(
+      (el) => el.previousElementSibling?.textContent === 'رقم الترخيص',
+    ) as HTMLInputElement;
+    await user.type(licNumber, '456');
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
+    const assets = payload.assets as { registrationDate?: string; licenseDate?: string }[];
+    const shop = assets.find((a) => a.registrationDate);
+    const unregistered = assets.find((a) => a.licenseDate);
+    expect(shop?.registrationDate).toBe('1/8/2026');
+    expect(unregistered?.licenseDate).toBe('15-1-2025');
   });
 
   it('يصحّح حصة العقار إلى «حصة سهمية» عند التحميل لعقار بملاك متعددين', async () => {
     const docWithInvalidShare: DocumentResponse = {
       ...mockDoc,
-      realEstates: [
+      assets: [
         {
           id: 8,
+          assetKind: 'عقار',
           owners: ['سمير حسن علي', 'أحمد محمد خالد'],
           property: 'منزل',
           propertyNumber: '12',
@@ -853,7 +898,7 @@ describe('DocumentForm', () => {
     expect(payload.contractTypeSelector).toBe('عادي');
     expect(payload.guarantors).toEqual([]);
     expect(payload.borrowerHeirs).toEqual([]);
-    expect(payload.realEstates).toEqual([]);
+    expect(payload.assets).toEqual([]);
   }, 12000);
 
   it('يرسل حتى ثلاثة مبالغ مطلوب دفعها بعملاتها عند إضافة خانات جديدة', async () => {

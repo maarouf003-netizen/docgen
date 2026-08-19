@@ -8,6 +8,7 @@ public class ExecutionStatusCatalogTests
     [InlineData("منفذ جبريا", ExecutionStatus.ExecutedForcibly)]
     [InlineData("منفذ بالتسوية", ExecutionStatus.ExecutedBySettlement)]
     [InlineData("تريث", ExecutionStatus.Deferred)]
+    [InlineData("منفذ إنابة", ExecutionStatus.DelegationExecuted)]
     [InlineData("", ExecutionStatus.None)]
     [InlineData("غير معروف", ExecutionStatus.None)]
     public void Classify_MapsKnownAndUnknownStatuses(string status, ExecutionStatus expected)
@@ -19,6 +20,7 @@ public class ExecutionStatusCatalogTests
     [InlineData(ExecutionStatus.ExecutedForcibly, "منفذ جبريا")]
     [InlineData(ExecutionStatus.ExecutedBySettlement, "منفذ بالتسوية")]
     [InlineData(ExecutionStatus.Deferred, "تريث")]
+    [InlineData(ExecutionStatus.DelegationExecuted, "منفذ إنابة")]
     [InlineData(ExecutionStatus.None, "")]
     public void ToLabel_MapsEnumToArabicLabel(ExecutionStatus status, string expected)
     {
@@ -29,7 +31,7 @@ public class ExecutionStatusCatalogTests
     public void ValidStatuses_IncludeEmptyAndAllExecutionStatuses()
     {
         Assert.Equal(
-            new[] { "", "تريث", "منفذ بالتسوية", "منفذ جبريا" },
+            new[] { "", "تريث", "منفذ إنابة", "منفذ بالتسوية", "منفذ جبريا" },
             ExecutionStatusCatalog.ValidStatuses.OrderBy(s => s, StringComparer.Ordinal).ToArray());
     }
 

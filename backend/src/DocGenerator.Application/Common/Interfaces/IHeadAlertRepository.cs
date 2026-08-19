@@ -22,4 +22,13 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
 
     /// <summary>محامو الفرع المفعلون (مستلمو التعميم).</summary>
     Task<List<User>> ListActiveLawyersAsync(int branchId, CancellationToken ct = default);
+
+    /// <summary>رؤساء أقسام الفرع المفعلون (مستلمو تنبيهات النظام المرحلية، كمراحل الإنابة).</summary>
+    Task<List<User>> ListActiveHeadsAsync(int branchId, CancellationToken ct = default);
+
+    /// <summary>كل تنبيهات الإنابة المحددة (لتصفيتها عند اعتمادها/إتمامها أو حذفها).</summary>
+    Task<List<HeadAlert>> ListByDelegationAsync(int delegationId, CancellationToken ct = default);
+
+    /// <summary>أحدث تنبيه للإنابة (لتحديث رسالته عند تعديل الإنابة).</summary>
+    Task<HeadAlert?> FindLatestByDelegationAsync(int delegationId, CancellationToken ct = default);
 }

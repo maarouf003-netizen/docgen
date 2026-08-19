@@ -168,7 +168,7 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.SayerDate).HasMaxLength(50);
         builder.Property(d => d.SayerRegNumber).HasMaxLength(100);
         builder.Property(d => d.SayerRegDate).HasMaxLength(50);
-        builder.Property(d => d.SoldEstateIds).HasColumnType("text");
+        builder.Property(d => d.SoldAssetIds).HasColumnType("text");
 
         builder.Property(d => d.SeizureDate).HasMaxLength(50);
         builder.Property(d => d.ImmediateActions).HasMaxLength(1000);
@@ -187,6 +187,10 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
             .WithMany(b => b.Documents)
             .HasForeignKey(d => d.BranchId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // الملف المناب: يرتبط بإنابته بمفتاح أجنبي فريد (كل إنابة تُنشئ ملفًا منابًا واحدًا).
+        builder.Property(d => d.SourceDelegationId);
+        builder.HasIndex(d => d.SourceDelegationId).IsUnique();
     }
 }
 
@@ -226,41 +230,62 @@ public class GuarantorConfiguration : IEntityTypeConfiguration<Guarantor>
     }
 }
 
-public class RealEstateConfiguration : IEntityTypeConfiguration<RealEstate>
+public class AssetConfiguration : IEntityTypeConfiguration<Asset>
 {
-    public void Configure(EntityTypeBuilder<RealEstate> builder)
+    public void Configure(EntityTypeBuilder<Asset> builder)
     {
-        builder.ToTable("RealEstates");
-        builder.HasKey(r => r.Id);
+        builder.ToTable("Assets");
+        builder.HasKey(a => a.Id);
         // عامل مطابق لقفل الحذف المنطقي للمستند الأب
-        builder.HasQueryFilter(r => r.Document == null || !r.Document.IsDeleted);
-        builder.Property(r => r.Property).HasMaxLength(200);
-        builder.Property(r => r.PropertyNumber).HasMaxLength(100);
-        builder.Property(r => r.PropertyDistrict).HasMaxLength(200);
-        builder.Property(r => r.LandRegistry).HasMaxLength(200);
-        builder.Property(r => r.ShareType).HasMaxLength(100);
+        builder.HasQueryFilter(a => a.Document == null || !a.Document.IsDeleted);
+        builder.Property(a => a.AssetKind).HasMaxLength(50).IsRequired();
+        builder.Property(a => a.ShareType).HasMaxLength(100);
+        // العقار
+        builder.Property(a => a.Property).HasMaxLength(200);
+        builder.Property(a => a.PropertyNumber).HasMaxLength(100);
+        builder.Property(a => a.PropertyDistrict).HasMaxLength(200);
+        builder.Property(a => a.LandRegistry).HasMaxLength(200);
+        // المركبة
+        builder.Property(a => a.VehicleType).HasMaxLength(200);
+        builder.Property(a => a.VehicleClass).HasMaxLength(200);
+        builder.Property(a => a.PlateNumber).HasMaxLength(100);
+        builder.Property(a => a.VehicleGovernorate).HasMaxLength(100);
+        // المتجر المسجل
+        builder.Property(a => a.RegisterNumber).HasMaxLength(100);
+        builder.Property(a => a.RegistrationDate).HasColumnType("datetime2");
+        builder.Property(a => a.ShopGovernorate).HasMaxLength(100);
+        builder.Property(a => a.ShopDescription).HasMaxLength(300);
+        builder.Property(a => a.ShopLocation).HasMaxLength(300);
+        // كفالة الرواتب
+        builder.Property(a => a.PublicEntity).HasMaxLength(300);
+        // المتجر غير المسجل
+        builder.Property(a => a.LicenseNumber).HasMaxLength(100);
+        builder.Property(a => a.LicenseDate).HasColumnType("datetime2");
+        builder.Property(a => a.LicenseIssuer).HasMaxLength(300);
+        // الملاحظات
+        builder.Property(a => a.Notes).HasMaxLength(2000);
 
-        builder.HasOne(r => r.Document)
-            .WithMany(d => d.RealEstates)
-            .HasForeignKey(r => r.DocumentId)
+        builder.HasOne(a => a.Document)
+            .WithMany(d => d.Assets)
+            .HasForeignKey(a => a.DocumentId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }
 
-public class RealEstateOwnerConfiguration : IEntityTypeConfiguration<RealEstateOwner>
+public class AssetOwnerConfiguration : IEntityTypeConfiguration<AssetOwner>
 {
-    public void Configure(EntityTypeBuilder<RealEstateOwner> builder)
+    public void Configure(EntityTypeBuilder<AssetOwner> builder)
     {
-        builder.ToTable("RealEstateOwners");
+        builder.ToTable("AssetOwners");
         builder.HasKey(o => o.Id);
         // عامل مطابق لقفل الحذف المنطقي للمستند الأب
-        builder.HasQueryFilter(o => o.RealEstate == null || o.RealEstate.Document == null || !o.RealEstate.Document.IsDeleted);
+        builder.HasQueryFilter(o => o.Asset == null || o.Asset.Document == null || !o.Asset.Document.IsDeleted);
         builder.Property(o => o.Name).HasMaxLength(200).IsRequired();
-        builder.HasIndex(o => o.RealEstateId);
+        builder.HasIndex(o => o.AssetId);
 
-        builder.HasOne(o => o.RealEstate)
-            .WithMany(r => r.Owners)
-            .HasForeignKey(o => o.RealEstateId)
+        builder.HasOne(o => o.Asset)
+            .WithMany(a => a.Owners)
+            .HasForeignKey(o => o.AssetId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }
@@ -395,6 +420,7 @@ public class HeadAlertConfiguration : IEntityTypeConfiguration<HeadAlert>
         builder.Property(a => a.Message).HasMaxLength(2000).IsRequired();
         builder.HasIndex(a => a.BranchId);
         builder.HasIndex(a => a.CreatedAt);
+        builder.HasIndex(a => a.DelegationId);
 
         builder.HasOne(a => a.Branch)
             .WithMany()
@@ -636,6 +662,80 @@ public class DocumentAssignmentConfiguration : IEntityTypeConfiguration<Document
         builder.HasOne(a => a.Document)
             .WithMany(d => d.Assignments)
             .HasForeignKey(a => a.DocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class DocumentDelegationConfiguration : IEntityTypeConfiguration<DocumentDelegation>
+{
+    public void Configure(EntityTypeBuilder<DocumentDelegation> builder)
+    {
+        builder.ToTable("DocumentDelegations");
+        builder.HasKey(d => d.Id);
+
+        // الإنابة جزء من الملف المنيب: تُخفى عند الحذف المنطقي للمصدر (مطابق لعوامل الأبناء).
+        builder.HasQueryFilter(d => d.SourceDocument == null || !d.SourceDocument.IsDeleted);
+
+        // الإنابة جزء من الملف المنيب: تُحذف بحذفه، وتُخفى عند الحذف المنطقي للمصدر.
+        builder.HasOne(d => d.SourceDocument)
+            .WithMany(doc => doc.Delegations)
+            .HasForeignKey(d => d.SourceDocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // الملف المناب: كل إنابة تُنشئ ملفًا منابًا واحدًا (1:1) عبر SourceDelegationId على Document.
+        builder.HasOne(d => d.TargetDocument)
+            .WithOne(doc => doc.SourceDelegation)
+            .HasForeignKey<Document>(doc => doc.SourceDelegationId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Property(d => d.DelegatedCourt).HasMaxLength(300);
+        builder.Property(d => d.DelegationText).HasMaxLength(2000);
+        builder.Property(d => d.DepositBookNumber).HasMaxLength(200);
+        builder.Property(d => d.DepositBookDate).HasColumnType("datetime2");
+        builder.Property(d => d.SendBookNumber).HasMaxLength(200);
+        builder.Property(d => d.SendBookDate).HasColumnType("datetime2");
+        builder.Property(d => d.DelegationDate).HasColumnType("datetime2");
+        builder.Property(d => d.ReturnDate).HasColumnType("datetime2");
+        builder.Property(d => d.Status).HasMaxLength(50).IsRequired();
+        builder.HasIndex(d => d.Status);
+        builder.HasIndex(d => d.SourceDocumentId);
+
+        builder.HasOne(d => d.ExternalBranch)
+            .WithMany()
+            .HasForeignKey(d => d.ExternalBranchId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(d => d.AssignedLawyer)
+            .WithMany()
+            .HasForeignKey(d => d.AssignedLawyerId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(d => d.CreatedBy)
+            .WithMany()
+            .HasForeignKey(d => d.CreatedById)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public class DelegationAssetConfiguration : IEntityTypeConfiguration<DelegationAsset>
+{
+    public void Configure(EntityTypeBuilder<DelegationAsset> builder)
+    {
+        builder.ToTable("DelegationAssets");
+        builder.HasKey(a => a.Id);
+        builder.Property(a => a.AssetKind).HasMaxLength(50).IsRequired();
+        builder.Property(a => a.AssetLabel).HasMaxLength(300).IsRequired();
+        builder.Property(a => a.SalePrice).HasColumnType("decimal(20,2)");
+        builder.HasIndex(a => a.DelegationId);
+
+        // مطابق لعامل الحذف المنطقي للإنابة (وأصلها): تُخفى الأصول التابعة بحذف المصدر.
+        builder.HasQueryFilter(a => a.Delegation == null
+            || a.Delegation.SourceDocument == null
+            || !a.Delegation.SourceDocument.IsDeleted);
+
+        builder.HasOne(a => a.Delegation)
+            .WithMany(d => d.Assets)
+            .HasForeignKey(a => a.DelegationId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

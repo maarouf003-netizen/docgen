@@ -279,7 +279,7 @@ public class DocumentsIntegrationTests : IClassFixture<ApiFactory>
         var estateId = await FirstEstateIdAsync(token, id);
 
         var response = await client.PostAsJsonAsync($"/api/documents/{id}/status",
-            new { status = "منفذ جبريا", fields = new { execSubStatus = "منفذ كاملا", collectedAmount = "1000", soldEstateIds = estateId.ToString(), forcedExecutionDate = "1/1/2024" } });
+            new { status = "منفذ جبريا", fields = new { execSubStatus = "منفذ كاملا", collectedAmount = "1000", soldAssetIds = estateId.ToString(), forcedExecutionDate = "1/1/2024" } });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
@@ -301,7 +301,7 @@ public class DocumentsIntegrationTests : IClassFixture<ApiFactory>
         var estateId = await FirstEstateIdAsync(token, id);
 
         var response = await client.PostAsJsonAsync($"/api/documents/{id}/status",
-            new { status = "منفذ جبريا", fields = new { execSubStatus = "منفذ جزئيا", collectedAmount = "750", soldEstateIds = estateId.ToString(), forcedExecutionDate = "1/2/2024" } });
+            new { status = "منفذ جبريا", fields = new { execSubStatus = "منفذ جزئيا", collectedAmount = "750", soldAssetIds = estateId.ToString(), forcedExecutionDate = "1/2/2024" } });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
@@ -1360,9 +1360,9 @@ public class DocumentsIntegrationTests : IClassFixture<ApiFactory>
             fileYear = "2024",
             fileRegistrationDate = "1/1/2024",
             branchName = "الفرع الرئيسي - دمشق",
-            realEstates = new[]
+            assets = new[]
             {
-                new { property = "بيت", propertyNumber = "12345", propertyDistrict = "المزة", landRegistry = "الصالحية", shareType = "تمام العقار", owners = new[] { "المدعى عليه" } },
+                new { assetKind = "عقار", property = "بيت", propertyNumber = "12345", propertyDistrict = "المزة", landRegistry = "الصالحية", shareType = "تمام العقار", owners = new[] { "المدعى عليه" } },
             },
         });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
@@ -1374,7 +1374,7 @@ public class DocumentsIntegrationTests : IClassFixture<ApiFactory>
     {
         var client = _factory.WithToken(token);
         using var doc = await (await client.GetAsync($"/api/documents/{documentId}")).Content.ReadFromJsonAsync<JsonDocument>();
-        return doc!.RootElement.GetProperty("realEstates")[0].GetProperty("id").GetInt32();
+        return doc!.RootElement.GetProperty("assets")[0].GetProperty("id").GetInt32();
     }
 
     private async Task<int> CreateExecutedDocumentAsync(string token)

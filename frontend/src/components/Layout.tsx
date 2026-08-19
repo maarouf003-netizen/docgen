@@ -31,6 +31,7 @@ export default function Layout() {
     { to: '/documents', label: 'الملفات التنفيذية' },
   ];
   if (canManageBranchLawyers) navItems.push({ to: '/branch-lawyers', label: 'محامو الفرع' });
+  if (user?.role === 'head') navItems.push({ to: '/delegations/requests', label: 'طلبات الإنابة' });
   if (canManageUsers) navItems.push({ to: '/users/manage', label: 'إدارة المستخدمين' });
   if (canManageUsers) navItems.push({ to: '/branches/manage', label: 'إدارة الفروع' });
   if (hasFullAccess) navItems.push({ to: '/users', label: 'نشاط المستخدمين' });

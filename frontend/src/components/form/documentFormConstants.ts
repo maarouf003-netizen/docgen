@@ -1,5 +1,6 @@
 import type {
   ApplicantPublicEntityDto,
+  AssetDto,
   DocumentResponse,
   DocumentUpsertRequest,
   ExecutedHeirDto,
@@ -8,7 +9,6 @@ import type {
   ExecutionApplicantDto,
   GuarantorDto,
   HeirDto,
-  RealEstateDto,
 } from '../../types';
 
 export const FILE_YEARS = ['2026', '2027', '2028', '2029', '2030'];
@@ -58,9 +58,47 @@ export const REPRESENTATIVE_ADDRESS_TYPE_OPTIONS: LabelValueOption[] = [
 export const HEIR_CAPACITIES = ['أصالة', 'إضافة لتركة', 'أصالة وإضافة'] as const;
 export const REPRESENTATIVE_CAPACITIES = ['ولي', 'وصي', 'قيم'] as const;
 
-export const SHARE_TYPES = ['تمام العقار', 'حصة سهمية'];
+/** الأنواع المدعومة للأموال (مطابقة AssetKindCatalog في الخلفية). */
+export const ASSET_KINDS = {
+  realEstate: 'عقار',
+  vehicle: 'مركبة',
+  shop: 'متجر',
+  salaryGuarantee: 'كفالة رواتب',
+  unregisteredShop: 'متجر غير مسجل',
+} as const;
+
+/** الأنواع الحاملة لمقدار الحصة (تمام/حصة سهمية). */
+export const SHAREABLE_ASSET_KINDS = new Set<string>([ASSET_KINDS.realEstate, ASSET_KINDS.vehicle, ASSET_KINDS.shop]);
+
+/** قيمة «تمام» الخاصة بنوع الأصل. */
+export function fullShareLabel(kind: string | undefined): string {
+  if (kind === ASSET_KINDS.vehicle) return 'تمام المركبة';
+  if (kind === ASSET_KINDS.shop) return 'تمام المتجر';
+  return 'تمام العقار';
+}
+
+/** خيارات مقدار الحصة حسب نوع الأصل (العقار/المركبة/المتجر فقط). */
+export function shareTypesFor(kind: string | undefined): string[] {
+  if (!kind || !SHAREABLE_ASSET_KINDS.has(kind)) return [];
+  return [fullShareLabel(kind), 'حصة سهمية'];
+}
+
+/** سقف عدد الأصول من كل نوع على حدة. */
+export const MAX_ASSETS_PER_KIND = 20;
+
+/** سقف عدد الكفلاء. */
 export const MAX_GUARANTORS = 4;
-export const MAX_ESTATES = 20;
+
+/** أنواع الأموال التي تُعرض في «منفذ جبريا» (كفالة الرواتب مستثناة). */
+export function isAuctionableKind(kind: string | undefined): boolean {
+  return Boolean(kind && kind !== ASSET_KINDS.salaryGuarantee);
+}
+
+export function emptyAsset(kind: string): AssetDto {
+  const base: AssetDto = { assetKind: kind, owners: [] };
+  if (SHAREABLE_ASSET_KINDS.has(kind)) base.shareType = fullShareLabel(kind);
+  return base;
+}
 export const REPRESENTATION_TYPES = ['أصالة', 'إضافة لتركة', 'أصالة وإضافة'] as const;
 export const EXECUTED_STATUS_OPTIONS = [
   { value: '', label: 'متداول' },
@@ -112,10 +150,6 @@ export function hasRepresentative(rep: {
 /** هل الوريث حاضر (اسمه أو أبيه أو نسبته غير فارغ)؟ */
 export function hasHeirName(h: { name?: string; father?: string; family?: string }): boolean {
   return Boolean((h.name ?? '').trim() || (h.father ?? '').trim() || (h.family ?? '').trim());
-}
-
-export function emptyEstate(): RealEstateDto {
-  return { owners: [], property: '', propertyNumber: '', propertyDistrict: '', landRegistry: '', shareType: 'تمام العقار' };
 }
 
 export function emptyExecutedHeir(): ExecutedHeirDto {
@@ -265,7 +299,7 @@ export function toUpsert(d: DocumentResponse): DocumentUpsertRequest {
     immediateActions: d.immediateActions ?? '',
     notes: d.notes ?? '',
     guarantors: [],
-    realEstates: [],
+    assets: [],
     generalEntitySide: d.generalEntitySide ?? 'applicant',
     executedStatus: d.executedStatus ?? '',
     struckOffDate: d.struckOffDate?.slice(0, 10) ?? '',

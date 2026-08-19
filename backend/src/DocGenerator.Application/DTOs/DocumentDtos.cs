@@ -55,17 +55,41 @@ public record HeirDto(
     string? Address);
 
 /// <summary>
-/// عقار ضمن قائمة العقارات المرهونة. الملاك قائمة أسماء (واحد أو أكثر) بترتيب الاختيار،
-/// وتُستخدم في النصوص والتوليد مجمعةً، ويُوجَّه توليد 005/006 لكل وريثٍ من الورثة.
+/// مال مرهون ضمن قائمة الأموال المرهونة (منقول أو غير منقول). الملاك قائمة أسماء (واحد أو أكثر)
+/// بترتيب الاختيار، وتُستخدم في النصوص والتوليد مجمعةً، ويُوجَّه توليد 005/006 لكل وريثٍ من الورثة.
+/// الحقول غير المعنية بنوع الأصل تبقى فارغة.
 /// </summary>
-public record RealEstateDto(
+public record AssetDto(
     int? Id,
+    string? AssetKind,
     List<string>? Owners,
+    string? ShareType,
+    // العقار
     string? Property,
     string? PropertyNumber,
     string? PropertyDistrict,
     string? LandRegistry,
-    string? ShareType);
+    // المركبة
+    string? VehicleType,
+    string? VehicleClass,
+    string? PlateNumber,
+    string? VehicleGovernorate,
+    // المتجر المسجل
+    string? RegisterNumber,
+    /// <summary>تاريخ تسجيل المتجر (نص حر يُفسَّر بصيغ «1/8/2026» فيُخزَّن زمنيًا: مثل بقية تواريخ الملفات).</summary>
+    string? RegistrationDate,
+    string? ShopGovernorate,
+    string? ShopDescription,
+    string? ShopLocation,
+    // كفالة الرواتب
+    string? PublicEntity,
+    // المتجر غير المسجل
+    string? LicenseNumber,
+    /// <summary>تاريخ الترخيص (نص حر يُفسَّر بصيغ «1/8/2026» فيُخزَّن زمنيًا: مثل بقية تواريخ الملفات).</summary>
+    string? LicenseDate,
+    string? LicenseIssuer,
+    // الملاحظات
+    string? Notes);
 
 public record ExecutionActionDto(
     int Id,
@@ -334,14 +358,14 @@ public class DocumentUpsertRequest : RenewalRequest
     public string? Notes { get; set; }
 
     public List<GuarantorDto> Guarantors { get; set; } = new();
-    public List<RealEstateDto> RealEstates { get; set; } = new();
+    public List<AssetDto> Assets { get; set; } = new();
 
     /// <summary>ورثة المقترض المتوفى (إن وُجدوا)؛ الصفوف بلا اسم تُتجاهل عند الحفظ.</summary>
     public List<HeirDto> BorrowerHeirs { get; set; } = new();
 
     /// <summary>
     /// صفة الملف (GeneralEntitySideCatalog): تُثبَّت عند الإنشاء ولا تُغيّر عند التعديل.
-    /// في وضع «منفذ عليه» يُشترط عادي فقط (لا مصرفي) وتُلغى بيانات المقترض والكفلاء والعقارات.
+    /// في وضع «منفذ عليه» يُشترط عادي فقط (لا مصرفي) وتُلغى بيانات المقترض والكفلاء والأموال.
     /// </summary>
     public string? GeneralEntitySide { get; set; } = GeneralEntitySideCatalog.Applicant;
 
@@ -517,7 +541,7 @@ public class UpsertOccurrenceRequest
 
     /// <summary>
     /// حقول إجراءات تغيير الحالة (نظام «طالبة تنفيذ»): المفاتيح المعتمدة في الخدمة
-    /// (execSubStatus، collectedAmount/2/3 + العملات، baraet*، tarith*، sayer*، soldEstateIds).
+    /// (execSubStatus، collectedAmount/2/3 + العملات، baraet*، tarith*، sayer*، soldAssetIds).
     /// </summary>
     public Dictionary<string, string?>? Details { get; set; }
 }
@@ -659,8 +683,8 @@ public class DocumentResponse
     public string? SayerDate { get; set; }
     public string? SayerRegNumber { get; set; }
     public string? SayerRegDate { get; set; }
-    /// <summary>معرّفات العقارات المباعة بالمزاد العلني في «منفذ جبريا» (من عقارات الملف).</summary>
-    public List<int> SoldEstateIds { get; set; } = new();
+    /// <summary>معرّفات الأموال المباعة بالمزاد العلني في «منفذ جبريا» (من أموال الملف، عدا كفالة الرواتب).</summary>
+    public List<int> SoldAssetIds { get; set; } = new();
     public string? SeizureDate { get; set; }
     public string? ImmediateActions { get; set; }
     public string? Notes { get; set; }
@@ -675,7 +699,7 @@ public class DocumentResponse
     /// </summary>
     public bool NeedsRotation { get; set; }
     public List<GuarantorDto> Guarantors { get; set; } = new();
-    public List<RealEstateDto> RealEstates { get; set; } = new();
+    public List<AssetDto> Assets { get; set; } = new();
     /// <summary>ورثة المقترض المتوفى (إن وُجدوا).</summary>
     public List<HeirDto> BorrowerHeirs { get; set; } = new();
     public List<ExecutionActionDto> ExecutionActions { get; set; } = new();
@@ -814,7 +838,7 @@ public class DocumentResponse
         SayerDate = d.SayerDate,
         SayerRegNumber = d.SayerRegNumber,
         SayerRegDate = d.SayerRegDate,
-        SoldEstateIds = ParseSoldEstateIds(d.SoldEstateIds),
+        SoldAssetIds = ParseSoldAssetIds(d.SoldAssetIds),
         SeizureDate = d.SeizureDate,
         ImmediateActions = d.ImmediateActions,
         Notes = d.Notes,
@@ -833,11 +857,16 @@ public class DocumentResponse
                 ToHeirDtos(d.Heirs, g.GuarantorNumber),
                 g.GuarantorNature, g.GuarantorRegistrationNumber, g.GuarantorRepresentedBy))
             .ToList(),
-        RealEstates = d.RealEstates
-            .Select(r => new RealEstateDto(r.Id,
-                r.Owners.OrderBy(o => o.Order).Select(o => o.Name).ToList(),
-                r.Property, r.PropertyNumber,
-                r.PropertyDistrict, r.LandRegistry, r.ShareType))
+        Assets = d.Assets
+            .Select(a => new AssetDto(a.Id, a.AssetKind,
+                a.Owners.OrderBy(o => o.Order).Select(o => o.Name).ToList(),
+                a.ShareType,
+                a.Property, a.PropertyNumber, a.PropertyDistrict, a.LandRegistry,
+                a.VehicleType, a.VehicleClass, a.PlateNumber, a.VehicleGovernorate,
+                a.RegisterNumber, a.RegistrationDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), a.ShopGovernorate, a.ShopDescription, a.ShopLocation,
+                a.PublicEntity,
+                a.LicenseNumber, a.LicenseDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), a.LicenseIssuer,
+                a.Notes))
             .ToList(),
         BorrowerHeirs = ToHeirDtos(d.Heirs, null),
         ExecutionActions = d.ExecutionActions
@@ -885,8 +914,8 @@ public class DocumentResponse
             .ToList(),
     };
 
-    /// <summary>فكّ قائمة معرّفات العقارات المباعة من JSON المخزن (أو قائمة فارغة عند العطب).</summary>
-    private static List<int> ParseSoldEstateIds(string? json)
+    /// <summary>فكّ قائمة معرّفات الأموال المباعة من JSON المخزن (أو قائمة فارغة عند العطب).</summary>
+    private static List<int> ParseSoldAssetIds(string? json)
     {
         if (string.IsNullOrWhiteSpace(json)) return new();
         try

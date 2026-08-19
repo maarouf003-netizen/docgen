@@ -6,7 +6,7 @@ import type {
   StatsPeriod,
 } from '../../types';
 import { ContractSplit, CurrencyAmountList } from './CurrencyAmountList';
-import { MONTHS, PERIODS, currencyLabel, periodLabel, periodOptions, selectionValue } from './dashboardFormat';
+import { MONTHS, PERIODS, currencyLabel, formatNumber, periodLabel, periodOptions, selectionValue } from './dashboardFormat';
 import { ICONS } from './dashboardIcons';
 import type { PeriodSelection } from './dashboardTypes';
 import { StatCard } from './StatCard';
@@ -167,8 +167,8 @@ export function ManagerStatsSection({
                   <span className="tabular-nums text-gray-500" dir="ltr">({stats.settledCount})</span>
                   <span className="text-emerald-700 tabular-nums whitespace-nowrap" dir="ltr">
                     {stats.settledCollectedAmounts?.length
-                      ? stats.settledCollectedAmounts.map((a) => `${Number(a.amount).toLocaleString('en-US')} ${currencyLabel(a.currency)}`).join(' + ')
-                      : `${stats.settledCollected.toLocaleString('en-US')} ${currencyLabel('ليرة سورية')}`}
+                      ? stats.settledCollectedAmounts.map((a) => `${formatNumber(Number(a.amount))} ${currencyLabel(a.currency)}`).join(' + ')
+                      : `${formatNumber(stats.settledCollected)} ${currencyLabel('ليرة سورية')}`}
                   </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -177,8 +177,8 @@ export function ManagerStatsSection({
                   <span className="tabular-nums text-gray-500" dir="ltr">({stats.forcibleCount})</span>
                   <span className="text-red-700 tabular-nums whitespace-nowrap" dir="ltr">
                     {stats.forcibleCollectedAmounts?.length
-                      ? stats.forcibleCollectedAmounts.map((a) => `${Number(a.amount).toLocaleString('en-US')} ${currencyLabel(a.currency)}`).join(' + ')
-                      : `${stats.forcibleCollected.toLocaleString('en-US')} ${currencyLabel('ليرة سورية')}`}
+                      ? stats.forcibleCollectedAmounts.map((a) => `${formatNumber(Number(a.amount))} ${currencyLabel(a.currency)}`).join(' + ')
+                      : `${formatNumber(stats.forcibleCollected)} ${currencyLabel('ليرة سورية')}`}
                   </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -186,7 +186,7 @@ export function ManagerStatsSection({
                   <span className="text-gray-700">عرض وايداع</span>
                   <span className="tabular-nums text-gray-500" dir="ltr">({stats.depositExecutedCount ?? 0})</span>
                   <span className="text-sky-700 tabular-nums whitespace-nowrap" dir="ltr">
-                    {Number(stats.depositExecutedAmount ?? 0).toLocaleString('en-US')} {currencyLabel('ليرة سورية')}
+                    {formatNumber(Number(stats.depositExecutedAmount ?? 0))} {currencyLabel('ليرة سورية')}
                   </span>
                 </div>
               </div>
@@ -195,7 +195,7 @@ export function ManagerStatsSection({
               <span className="font-bold text-gray-800">منفذ للضد</span>
               <span className="text-gray-500 tabular-nums" dir="ltr"> ({Number(stats.executedAgainstCount ?? 0)})</span>
               <div className="text-indigo-700 tabular-nums whitespace-nowrap" dir="ltr">
-                {Number(stats.executedAgainstAmount ?? 0).toLocaleString('en-US')} {currencyLabel('ليرة سورية')}
+                {formatNumber(Number(stats.executedAgainstAmount ?? 0))} {currencyLabel('ليرة سورية')}
               </div>
             </div>
           </div>

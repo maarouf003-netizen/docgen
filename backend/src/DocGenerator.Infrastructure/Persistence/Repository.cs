@@ -42,8 +42,8 @@ public class Repository<T> : IRepository<T> where T : class
         {
             query = query
                 .Include(d => ((Document)(object)d).Guarantors)
-                .Include(d => ((Document)(object)d).RealEstates)
-                .ThenInclude(r => r.Owners)
+                .Include(d => ((Document)(object)d).Assets)
+                .ThenInclude(a => a.Owners)
                 .Include(d => ((Document)(object)d).Heirs)
                 .Include(d => ((Document)(object)d).ExecutionActions)
                 .Include(d => ((Document)(object)d).RegistrationDate)
@@ -59,7 +59,13 @@ public class Repository<T> : IRepository<T> where T : class
                 .Include(d => ((Document)(object)d).Occurrences)
                 .ThenInclude(o => o.CreatedBy)
                 .Include(d => ((Document)(object)d).ApplicantPublicEntities)
-                .Include(d => ((Document)(object)d).Assignments);
+                .Include(d => ((Document)(object)d).Assignments)
+                .Include(d => ((Document)(object)d).Delegations)
+                .ThenInclude(dl => dl.Assets)
+                .Include(d => ((Document)(object)d).Delegations)
+                .ThenInclude(dl => dl.ExternalBranch)
+                .Include(d => ((Document)(object)d).SourceDelegation)
+                .ThenInclude(dl => dl!.SourceDocument);
         }
         else if (typeof(T) == typeof(User))
         {

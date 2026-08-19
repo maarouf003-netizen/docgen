@@ -186,6 +186,32 @@ describe('Layout', () => {
     expect(screen.queryByRole('link', { name: 'محامو الفرع' })).not.toBeInTheDocument();
   });
 
+  it('يعرض «طلبات الإنابة» لرئيس القسم فقط', () => {
+    useAuthMock.mockReturnValue({
+      ...baseUser(),
+      user: { ...baseUser().user, role: 'head' },
+    });
+    stubMatchMedia(true);
+    render(<Layout />);
+    expect(screen.getByRole('link', { name: 'طلبات الإنابة' })).toHaveAttribute(
+      'href',
+      '/delegations/requests',
+    );
+  });
+
+  it('يخفي «طلبات الإنابة» عن غير رئيس القسم', () => {
+    for (const role of ['lawyer', 'admin', 'manager']) {
+      useAuthMock.mockReturnValue({
+        ...baseUser(),
+        user: { ...baseUser().user, role },
+      });
+      stubMatchMedia(true);
+      const { unmount } = render(<Layout />);
+      expect(screen.queryByRole('link', { name: 'طلبات الإنابة' })).not.toBeInTheDocument();
+      unmount();
+    }
+  });
+
   it('يعرض «إدارة المستخدمين» للمشرف فقط', () => {
     useAuthMock.mockReturnValue({
       ...baseUser(),

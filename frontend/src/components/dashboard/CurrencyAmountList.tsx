@@ -1,5 +1,5 @@
 import type { CurrencyAmountDto, ManagerContractSplitDto } from '../../types';
-import { currencyLabel } from './dashboardFormat';
+import { currencyLabel, formatNumber } from './dashboardFormat';
 
 /** مبالغ مجمّعة بعملاتها الفعلية (كل مبلغ بتسمية عملته لا بوسم ثابت). */
 export function CurrencyAmountList({ amounts }: { amounts: CurrencyAmountDto[] }) {
@@ -8,7 +8,7 @@ export function CurrencyAmountList({ amounts }: { amounts: CurrencyAmountDto[] }
     <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs font-semibold text-gray-700 mt-1.5">
       {amounts.map((a) => (
         <span key={a.currency} className="whitespace-nowrap tabular-nums" dir="ltr">
-          {Number(a.amount).toLocaleString('en-US')} {currencyLabel(a.currency)}
+          {formatNumber(Number(a.amount))} {currencyLabel(a.currency)}
         </span>
       ))}
     </div>

@@ -43,7 +43,7 @@ public class ApplicantAndAssignmentTests : IDisposable
         var documents = new DocumentRepository(_db);
         var users = new UserRepository(_db);
         var guarantors = new Repository<Guarantor>(_db);
-        var estates = new Repository<RealEstate>(_db);
+        var estates = new Repository<Asset>(_db);
         var actions = new Repository<ExecutionAction>(_db);
         var baseNumbers = new Repository<DocumentBaseNumber>(_db);
         var registrationDates = new Repository<DocumentRegistrationDate>(_db);

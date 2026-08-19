@@ -54,10 +54,11 @@ public class WordGenerationIntegrationTests : IClassFixture<ApiFactory>
                     addressType = "موطن مختار",
                 },
             },
-            realEstates = new[]
+            assets = new[]
             {
                 new
                 {
+                    assetKind = "عقار",
                     owners = new[] { "أحمد خالد الخطيب" },
                     property = "منزل",
                     propertyNumber = "12",
@@ -78,7 +79,7 @@ public class WordGenerationIntegrationTests : IClassFixture<ApiFactory>
         var response = await client.GetAsync($"/api/documents/{docId}");
         response.EnsureSuccessStatusCode();
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        return doc.RootElement.GetProperty("realEstates")[0].GetProperty("id").GetInt32();
+        return doc.RootElement.GetProperty("assets")[0].GetProperty("id").GetInt32();
     }
 
     private static async Task<(int DocId, int HeirId, int EstateId)> CreateDocumentWithHeirsAndEstateAsync(
@@ -99,10 +100,11 @@ public class WordGenerationIntegrationTests : IClassFixture<ApiFactory>
             {
                 new { name = "محمود الحلبي", addressType = "عنوان", address = "المزة" },
             },
-            realEstates = new[]
+            assets = new[]
             {
                 new
                 {
+                    assetKind = "عقار",
                     owners = new[] { "أحمد خالد الخطيب" },
                     property = "منزل",
                     propertyNumber = "12",
@@ -116,7 +118,7 @@ public class WordGenerationIntegrationTests : IClassFixture<ApiFactory>
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var docId = doc.RootElement.GetProperty("id").GetInt32();
         var heirId = doc.RootElement.GetProperty("borrowerHeirs")[0].GetProperty("id").GetInt32();
-        var estateId = doc.RootElement.GetProperty("realEstates")[0].GetProperty("id").GetInt32();
+        var estateId = doc.RootElement.GetProperty("assets")[0].GetProperty("id").GetInt32();
         return (docId, heirId, estateId);
     }
 

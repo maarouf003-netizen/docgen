@@ -25,7 +25,7 @@ export function makeDocument(overrides: Partial<DocumentResponse> = {}): Documen
     fileType: 'حقوق',
     fileYear: '2026',
     guarantors: [],
-    realEstates: [],
+    assets: [],
     executionActions: [],
     executionApplicants: [],
     executedPublicEntities: [],

@@ -88,15 +88,42 @@ export interface HeirDto {
   address?: string;
 }
 
-/** عقار ضمن قائمة العقارات المرهونة، ملاكه قائمة أسماء (واحد أو أكثر) بترتيب الاختيار. */
-export interface RealEstateDto {
+/**
+ * مال مرهون ضمن قائمة الأموال المرهونة (منقول أو غير منقول). الملاك قائمة أسماء (واحد أو أكثر)
+ * بترتيب الاختيار، وتُستخدم في النصوص والتوليد مجمعةً، ويُوجَّه توليد 005/006 لكل وريثٍ من الورثة.
+ * الحقول غير المعنية بنوع الأصل تبقى فارغة.
+ */
+export interface AssetDto {
   id?: number;
+  /** نوع الأصل: عقار / مركبة / متجر / كفالة رواتب / متجر غير مسجل. */
+  assetKind?: string;
   owners?: string[];
+  /** مقدار الحصة (تمام العقار/المركبة/المتجر أو حصة سهمية) — بلا قيمة لكفالة الرواتب والمتجر غير المسجل. */
+  shareType?: string;
+  // العقار
   property?: string;
   propertyNumber?: string;
   propertyDistrict?: string;
   landRegistry?: string;
-  shareType?: string;
+  // المركبة
+  vehicleType?: string;
+  vehicleClass?: string;
+  plateNumber?: string;
+  vehicleGovernorate?: string;
+  // المتجر المسجل
+  registerNumber?: string;
+  registrationDate?: string;
+  shopGovernorate?: string;
+  shopDescription?: string;
+  shopLocation?: string;
+  // كفالة الرواتب
+  publicEntity?: string;
+  // المتجر غير المسجل
+  licenseNumber?: string;
+  licenseDate?: string;
+  licenseIssuer?: string;
+  // الملاحظات (كفالة الرواتب والمتجر غير المسجل)
+  notes?: string;
 }
 
 export interface ExecutionActionDto {
@@ -322,8 +349,8 @@ export interface DocumentResponse {
   sayerDate?: string;
   sayerRegNumber?: string;
   sayerRegDate?: string;
-  /** معرّفات العقارات المباعة بالمزاد العلني في «منفذ جبريا» (من عقارات الملف). */
-  soldEstateIds?: number[];
+  /** معرّفات الأموال المباعة بالمزاد العلني في «منفذ جبريا» (من أموال الملف، عدا كفالة الرواتب). */
+  soldAssetIds?: number[];
   seizureDate?: string;
   immediateActions?: string;
   notes?: string;
@@ -385,7 +412,7 @@ export interface DocumentResponse {
   /** تاريخ التجديد عند إعادة الملف المشطوب (اختياري). */
   renewalDate?: string;
   guarantors: GuarantorDto[];
-  realEstates: RealEstateDto[];
+  assets: AssetDto[];
   borrowerHeirs?: HeirDto[];
   executionActions?: ExecutionActionDto[];
   executionApplicants: ExecutionApplicantDto[];
@@ -401,6 +428,89 @@ export interface DocumentResponse {
   fileArrivalDate?: string;
   /** «وقوعات الملف»: سجل زمني لكل شطب وتجديد في وضع «منفذ عليه»/«عرض وايداع» (مرتب تصاعديًا). */
   occurrences?: DocumentOccurrenceDto[];
+}
+
+/** أصل موضوع إنابة: وصف قراءة (النوع + وصفه) وبدل المبيع عند البيع (بالليرة السورية). */
+export interface DelegationAssetDto {
+  id: number;
+  assetKind: string;
+  assetLabel: string;
+  salePrice?: number | null;
+}
+
+/** إنابة للعرض: بطاقة «تشعبات الملف» في المنيب و«معلومات الملف المنيب» في المناب. */
+export interface DelegationDto {
+  id: number;
+  sourceDocumentId: number;
+  sourceDocumentLabel?: string;
+  /** رقم أساس الملف المنيب الحالي: رقم أساس سنة التدوير إن وُجد وإلا رقم ملفه الأصلي. */
+  sourceFileNumber?: string | null;
+  /** سنة الرقم المعروض للملف المنيب (سنة التدوير إن وُجدت وإلا سنة ملفه الأصلي). */
+  sourceFileYear?: string | null;
+  targetDocumentId?: number | null;
+  delegatedCourt?: string;
+  isExternal: boolean;
+  externalBranchId?: number | null;
+  externalBranchName?: string | null;
+  /** تاريخ الإنابة (نص بصيغة yyyy-MM-dd من الخلفية). */
+  delegationDate?: string;
+  delegationText?: string;
+  depositBookNumber?: string;
+  depositBookDate?: string;
+  sendBookNumber?: string;
+  sendBookDate?: string;
+  assignedLawyerId?: number | null;
+  assignedLawyerName?: string | null;
+  /** تاريخ إعادة الملف إلى الدائرة المنيبة عند إتمام الإنابة (yyyy-MM-dd). */
+  returnDate?: string;
+  /** إحدى حالات DelegationStatusCatalog: بانتظار رئيس القسم/محالة/مسجلة أصولًا/منفذ إنابة. */
+  status: string;
+  createdAt: string;
+  createdByName?: string;
+  /** محامي الملف المنيب الذي سطّر الإنابة (صاحب صلاحية تعديلها/حذفها ما دامت معلّقة). */
+  createdById: number;
+  assets: DelegationAssetDto[];
+}
+
+/** تسطير/تعديل إنابة: التواريخ نصوص حرة تُفسَّر في الخلفية؛ الخارجية تتطلب الفرع المناب. */
+export interface UpsertDelegationRequest {
+  delegatedCourt?: string | null;
+  isExternal: boolean;
+  externalBranchId?: number | null;
+  delegationDate?: string | null;
+  delegationText?: string | null;
+  depositBookNumber?: string | null;
+  depositBookDate?: string | null;
+  sendBookNumber?: string | null;
+  sendBookDate?: string | null;
+  /** معرفات أصول الملف المنيب موضوع الإنابة. */
+  assetIds: number[];
+}
+
+/** اعتماد الإنابة: تعيين المحامي المختص من رئيس القسم (يُنشأ الملف المناب تلقائيًا). */
+export interface AssignDelegationRequest {
+  assignedLawyerId: number;
+}
+
+/** تسجيل الإنابة أصولًا من محامي الملف المناب: رقم أساس الإنابة وتاريخ قيدها. */
+export interface RegisterDelegationRequest {
+  fileNumber: string;
+  fileYear: string;
+  /** تاريخ قيد الإنابة (نص حر). */
+  fileRegistrationDate: string;
+}
+
+/** بدل المبيع لأصل مباعٍ بالمزاد ضمن إتمام الإنابة (بالليرة السورية). */
+export interface DelegationSaleDto {
+  delegationAssetId: number;
+  salePrice: number;
+}
+
+/** إتمام الإنابة من محامي الملف المناب: بيع الأموال موضوع الإنابة وتاريخ إعادة الملف. */
+export interface CompleteDelegationRequest {
+  /** تاريخ إعادة الملف إلى الدائرة المنيبة (نص حر). */
+  returnDate: string;
+  sales: DelegationSaleDto[];
 }
 
 export interface DocumentUpsertRequest {
@@ -467,7 +577,7 @@ export interface DocumentUpsertRequest {
   immediateActions?: string;
   notes?: string;
   guarantors: GuarantorDto[];
-  realEstates: RealEstateDto[];
+  assets: AssetDto[];
   borrowerHeirs?: HeirDto[];
   initialActions?: InitialActionRequest[];
   /** صفة الملف: تُثبَّت عند الإنشاء ولا تُغيَّر عند التعديل. */
@@ -719,7 +829,7 @@ export interface TransferAllRequest {
   targetLawyerId: number;
 }
 
-export type HeadAlertTargetType = 'document' | 'lawyer' | 'branch';
+export type HeadAlertTargetType = 'document' | 'lawyer' | 'branch' | 'head';
 
 export interface HeadAlertDto {
   id: number;
@@ -792,7 +902,7 @@ export interface DocumentOccurrenceDto {
   receiptNumber?: string;
   /** تاريخ ورود اخطار التجديد عند التجديد. */
   receiptDate?: string;
-  /** حقول إجراءات تغيير الحالة (مفاتيح الخدمة: tarith*، baraet*، sayer*، collectedAmount*، execSubStatus، soldEstateIds). */
+  /** حقول إجراءات تغيير الحالة (مفاتيح الخدمة: tarith*، baraet*، sayer*، collectedAmount*، execSubStatus، soldAssetIds). */
   details?: Record<string, string>;
   /** اسم من أدخل الوقعة. */
   createdByName?: string;

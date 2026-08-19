@@ -16,6 +16,7 @@ public static class DependencyInjection
         services.AddScoped<IUserManagementService, UserManagementService>();
         services.AddScoped<IBranchManagementService, BranchManagementService>();
         services.AddScoped<IHeadAlertService, HeadAlertService>();
+        services.AddScoped<IDocumentDelegationService, DocumentDelegationService>();
         services.AddScoped<IDocumentContextBuilder, DocumentContextBuilder>();
         services.AddScoped<IDocumentRenderer, WordTemplateRenderer>();
         services.AddScoped<IWordDocumentGenerator, WordDocumentGenerator>();

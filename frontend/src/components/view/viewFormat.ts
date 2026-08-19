@@ -6,12 +6,17 @@ import type {
   HeirDto,
 } from '../../types';
 import { getDocumentStatus } from '../../utils/documentStatus';
-import { tripleName } from '../../utils/documentDisplay';
+import { isExecutedLike, tripleName } from '../../utils/documentDisplay';
 import { formatDate } from '../../utils/dates';
 import type { DetailsRow, HeirLine, PersonFields } from './viewTypes';
 
+/** تنسيق المبالغ الصحيحة (حتى ثلاث كسور عشرية) عبر Intl.NumberFormat — الأصل الوحيد لعرض الأرقام هنا. */
+const amountFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 3 });
+
 export function formatAmount(numeric: number, currency?: string): string {
-  return numeric > 0 ? `${numeric} ${currency ?? ''}`.trim() : '';
+  if (numeric <= 0) return '';
+  const formatted = amountFormatter.format(numeric);
+  return currency ? `${formatted} ${currency}`.trim() : formatted;
 }
 
 /** يجمع خانات المبالغ (حتى ثلاثة) بعملاتها في نصٍ واحد عبر الفاصل « — »، متجاهلًا الفارغ منها. */
@@ -264,6 +269,23 @@ export function buildStatusSummary(doc: DocumentResponse): string {
     const parts = ['مشطوب'];
     if (doc.struckOffDate) parts.push(`بتاريخ ${formatDate(doc.struckOffDate)}`);
     return parts.join(' ');
+  }
+  // عائلة وضع «منفذ عليه»/«عرض وايداع»: ملخص وصفي (متداول/منفذ/مشطوب) مع التاريخ عند وجوده،
+  // بدل التسمية المجردة التي تُعيدها الدالة المساندة.
+  if (isExecutedLike(doc.generalEntitySide)) {
+    if (doc.executedStatus === 'مشطوب') {
+      const parts = ['مشطوب'];
+      if (doc.struckOffDate) parts.push(`بتاريخ ${formatDate(doc.struckOffDate)}`);
+      return parts.join(' ');
+    }
+    if (doc.executedStatus === 'منفذ') {
+      const parts = ['منفذ'];
+      const executionDate =
+        doc.generalEntitySide === 'deposit' ? doc.executedDepositDate : doc.executedExecutionDate;
+      if (executionDate) parts.push(`بتاريخ ${formatDate(executionDate)}`);
+      return parts.join(' ');
+    }
+    return 'متداول';
   }
   return getDocumentStatus(doc);
 }

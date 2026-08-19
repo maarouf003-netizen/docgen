@@ -15,6 +15,8 @@ public class HeadAlert
     public HeadAlertTargetType TargetType { get; set; }
     public int? DocumentId { get; set; }
     public int? TargetLawyerId { get; set; }
+    /// <summary>رابط تنبيهات دورة حياة الإنابة (بانتظار الاعتماد/الإتمام) بالإنابة نفسها لتصفيتها تلقائيًا.</summary>
+    public int? DelegationId { get; set; }
     public string Message { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

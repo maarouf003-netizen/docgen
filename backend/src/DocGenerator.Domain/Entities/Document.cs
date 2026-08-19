@@ -265,10 +265,10 @@ public class Document
     public string? SayerRegDate { get; set; }
 
     /// <summary>
-    /// معرّفات العقارات المباعة بالمزاد العلني في حالة «منفذ جبريا» (JSON لقائمة int) —
-    /// تُتحقق من عقارات الملف نفسه، وتُمسح عند التراجع.
+    /// معرّفات الأموال المباعة بالمزاد العلني في حالة «منفذ جبريا» (JSON لقائمة int) —
+    /// تُتحقق من أموال الملف نفسه (عدا كفالة الرواتب)، وتُمسح عند التراجع.
     /// </summary>
-    public string? SoldEstateIds { get; set; }
+    public string? SoldAssetIds { get; set; }
 
     public string? SeizureDate { get; set; }
     public string? ImmediateActions { get; set; }
@@ -282,8 +282,19 @@ public class Document
 
     public User? CreatedBy { get; set; }
     public Branch? Branch { get; set; }
+
+    /// <summary>
+    /// الإنابة التي نشأ عنها هذا الملف إذا كان ملفًا منابًا (فارغًا للملفات العادية والمنيبة):
+    /// يُربط الملف المناب بملفه المنيب عبر هذه الإنابة، ويبقى للمناب بياناته وإجراءاته الخاصة.
+    /// </summary>
+    public int? SourceDelegationId { get; set; }
+    /// <summary>الإنابة التي نشأ عنها الملف المناب (المقابل لـ SourceDelegationId).</summary>
+    public DocumentDelegation? SourceDelegation { get; set; }
+    /// <summary>الإنابات الصادرة عن هذا الملف (المنيب) — واحدة أو أكثر.</summary>
+    public ICollection<DocumentDelegation> Delegations { get; set; } = new List<DocumentDelegation>();
+
     public ICollection<Guarantor> Guarantors { get; set; } = new List<Guarantor>();
-    public ICollection<RealEstate> RealEstates { get; set; } = new List<RealEstate>();
+    public ICollection<Asset> Assets { get; set; } = new List<Asset>();
     public ICollection<Heir> Heirs { get; set; } = new List<Heir>();
     public ICollection<ExecutionAction> ExecutionActions { get; set; } = new List<ExecutionAction>();
     public DocumentRegistrationDate? RegistrationDate { get; set; }

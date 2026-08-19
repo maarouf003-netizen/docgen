@@ -58,4 +58,30 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             .OrderBy(u => u.FullName)
             .ToListAsync(ct);
     }
+
+    public async Task<List<User>> ListActiveHeadsAsync(int branchId, CancellationToken ct = default)
+    {
+        return await Db.Users
+            .Where(u => u.Role == UserRole.Head && u.BranchId == branchId && u.IsActive)
+            .OrderBy(u => u.FullName)
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<HeadAlert>> ListByDelegationAsync(int delegationId, CancellationToken ct = default)
+    {
+        // تتبُّع مفعّل: تُحذف هذه الكيانات عبر Remove فتُعاد للمُغيّر ذاتها (لا نسخًا منفصلة
+        // تصطدم مع النسخ المتتبعة في ChangeTracker).
+        return await Db.HeadAlerts
+            .Where(a => a.DelegationId == delegationId)
+            .OrderByDescending(a => a.CreatedAt)
+            .ToListAsync(ct);
+    }
+
+    public async Task<HeadAlert?> FindLatestByDelegationAsync(int delegationId, CancellationToken ct = default)
+    {
+        return await Db.HeadAlerts
+            .Where(a => a.DelegationId == delegationId)
+            .OrderByDescending(a => a.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+    }
 }

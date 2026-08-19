@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '../../api/client';
-import type { DocumentResponse, HeirDto, RealEstateDto } from '../../types';
+import { ASSET_KINDS } from '../form/documentFormConstants';
+import type { AssetDto, DocumentResponse, HeirDto } from '../../types';
 import { Toast } from '../Toast';
 import { EstateSelection } from './EstateSelection';
 import { fullName } from './viewFormat';
@@ -171,7 +172,7 @@ export function DocumentGenerationSection({ doc, id }: { doc: DocumentResponse; 
     );
   };
 
-  const findEstateHeirs = (estate?: RealEstateDto): HeirDto[] | null => {
+  const findEstateHeirs = (estate?: AssetDto): HeirDto[] | null => {
     const owners = (estate?.owners ?? []).filter((o) => (o ?? '').trim());
     if (owners.length === 0) return null;
 
@@ -241,15 +242,16 @@ export function DocumentGenerationSection({ doc, id }: { doc: DocumentResponse; 
       });
     }
   });
-  const selectedEstates = doc.realEstates.filter(
+  // التوليد الحالي للعقار فقط؛ تُفلتر الأموال لنوع «عقار» (توليد بقية الأنواع يُهيكل لاحقًا).
+  const realEstateAssets = (doc.assets ?? []).filter((a) => a.assetKind === ASSET_KINDS.realEstate);
+  const selectedEstates = realEstateAssets.filter(
     (r) => r.id !== undefined && estateSel.includes(r.id),
   );
-  const estateOwnersKey = (r: RealEstateDto) => [...(r.owners ?? [])].sort().join('|');
+  const estateOwnersKey = (r: AssetDto) => [...(r.owners ?? [])].sort().join('|');
   const multiOwner = new Set(selectedEstates.map(estateOwnersKey)).size > 1;
 
   return (
-    <div className="bg-white rounded-xl shadow p-5 mt-6">
-      <h3 className="font-bold text-emerald-800 mb-3">توليد المستندات التنفيذية</h3>
+    <>
       {downloadError && <Toast type="error" message={downloadError} onClose={() => setDownloadError('')} />}
       {downloadSuccess && (
         <Toast type="success" message={downloadSuccess} onClose={() => setDownloadSuccess('')} />
@@ -275,7 +277,7 @@ export function DocumentGenerationSection({ doc, id }: { doc: DocumentResponse; 
           ))}
           <div className="px-4 py-3 border-t border-gray-100">
             <p className="text-gray-600 text-sm mb-2">اختر العقارات التي تريد الحجز عليها :</p>
-            <EstateSelection estates={doc.realEstates} selected={estateSel} onToggle={toggleEstate} />
+                <EstateSelection estates={realEstateAssets} selected={estateSel} onToggle={toggleEstate} />
           </div>
         </div>
 
@@ -345,7 +347,7 @@ export function DocumentGenerationSection({ doc, id }: { doc: DocumentResponse; 
                 <span className="text-red-600 font-bold">(يجب أن تكون لنفس المالك)</span>
               </p>
               <div className="mt-2 border border-gray-200 rounded-lg p-3 space-y-2">
-                <EstateSelection estates={doc.realEstates} selected={estateSel} onToggle={toggleEstate} />
+            <EstateSelection estates={realEstateAssets} selected={estateSel} onToggle={toggleEstate} />
                 {multiOwner && (
                   <p className="text-red-600 text-xs">⚠️  العقارات لمالكين مختلفين — اختر عقارات مالك واحد فقط</p>
                 )}
@@ -354,6 +356,6 @@ export function DocumentGenerationSection({ doc, id }: { doc: DocumentResponse; 
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

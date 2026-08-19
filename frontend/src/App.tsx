@@ -16,6 +16,7 @@ const DocumentForm = lazy(() => import('./pages/DocumentForm'));
 const DocumentView = lazy(() => import('./pages/DocumentView'));
 const UsersActivity = lazy(() => import('./pages/UsersActivity'));
 const BranchLawyers = lazy(() => import('./pages/BranchLawyers'));
+const DelegationRequests = lazy(() => import('./pages/DelegationRequests'));
 const UsersManagement = lazy(() => import('./pages/UsersManagement'));
 const BranchesManagement = lazy(() => import('./pages/BranchesManagement'));
 const AuditLogs = lazy(() => import('./pages/AuditLogs'));
@@ -85,6 +86,14 @@ export default function App() {
               element={
                 <RequireRole allowed={(role) => role === 'head' || role === 'admin'}>
                   <BranchLawyers />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/delegations/requests"
+              element={
+                <RequireRole allowed={(role) => role === 'head'}>
+                  <DelegationRequests />
                 </RequireRole>
               }
             />

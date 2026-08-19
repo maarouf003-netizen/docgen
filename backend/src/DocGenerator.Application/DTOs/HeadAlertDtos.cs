@@ -2,13 +2,15 @@ namespace DocGenerator.Application.DTOs;
 
 /// <summary>
 /// إنشاء تنبيه — رئيس القسم لفرعه فقط.
-/// TargetType: "document" (مع DocumentId) / "lawyer" (مع TargetLawyerId) / "branch" (تعميم للفرع).
+/// TargetType: "document" (مع DocumentId) / "lawyer" (مع TargetLawyerId) / "branch" (تعميم للفرع) /
+/// "head" (تنبيهات النظام لرئيس القسم، مثل مراحل الإنابة — مع DelegationId لتصفيتها تلقائيًا).
 /// </summary>
 public record CreateHeadAlertRequest(
     string TargetType,
     int? DocumentId,
     int? TargetLawyerId,
-    string Message);
+    string Message,
+    int? DelegationId = null);
 
 /// <summary>
 /// تنبيه لعرض المحامي (IsRead) أو رئيس القسم (RecipientCount/UnreadCount).

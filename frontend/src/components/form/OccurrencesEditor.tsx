@@ -15,7 +15,7 @@ interface OccurrenceFormState {
   year: string;
   receiptNumber: string;
   receiptDate: string;
-  /** حقول إجراءات تغيير الحالة (نظام «طالبة تنفيذ»): tarith*، baraet*، sayer*، execSubStatus، المبالغ، العقارات. */
+  /** حقول إجراءات تغيير الحالة (نظام «طالبة تنفيذ»): tarith*، baraet*، sayer*، execSubStatus، المبالغ، soldAssetIds. */
   details: Record<string, string>;
 }
 
@@ -450,10 +450,10 @@ function StatusChangeFields({
           <CollectedInput key={i} index={i} details={details} onSet={onSet} inputCls={inputCls} />
         ))}
         <label className="block md:col-span-2">
-          <span className="text-xs text-gray-500 block mb-1">أرقام العقارات المباعة بالمزاد (مفصولة بفواصل)</span>
+          <span className="text-xs text-gray-500 block mb-1">أرقام الأموال المباعة بالمزاد (مفصولة بفواصل)</span>
           <input
-            value={details.soldEstateIds ?? ''}
-            onChange={(e) => onSet('soldEstateIds', e.target.value)}
+            value={details.soldAssetIds ?? ''}
+            onChange={(e) => onSet('soldAssetIds', e.target.value)}
             placeholder="مثال: 1,2"
             className={inputCls}
           />

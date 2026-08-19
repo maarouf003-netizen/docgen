@@ -137,7 +137,8 @@ public sealed class ExcelExportService : IExcelExportService
         }
         if (doc.ExecStatus == "تريث") return "تريث";
         if (doc.ExecStatus == "منفذ جبريا" && doc.ExecSubStatus == "منفذ جزئيا") return "متداول / منفذ جزئيا";
-        if (doc.ExecStatus == "منفذ جبريا" || doc.ExecStatus == "منفذ بالتسوية") return "منفذ";
+        if (doc.ExecStatus == "منفذ جبريا" || doc.ExecStatus == "منفذ بالتسوية"
+            || doc.ExecStatus == ExecutionStatusCatalog.DelegationExecuted) return "منفذ";
         return doc.IsDraft ? "تحت رفع" : "متداول";
     }
 

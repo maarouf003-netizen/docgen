@@ -113,3 +113,14 @@ npm test
 - `Swagger:Enabled` مغلق افتراضياً خارج التطوير؛ فعّله صراحةً عند الحاجة.
 - `RateLimiting:MaxLoginAttempts` / `RateLimiting:WindowMinutes` — إعدادات تحديد محاولات الدخول
   (مخزّنة في جدول `LoginAttempts` لتكون مشتركة بين عقد النشر).
+
+### تطبيق هجرات قاعدة البيانات عند النشر (إلزامي)
+
+- أي تغيير في الكود يضيف/يعدّل هجرات EF (`Persistence\Migrations\` لـ SQLite و`src\DocGenerator.Infrastructure\MigrationsPostgres\` لـ PostgreSQL) **لا يصل إلى قواعد البيانات الموجودة تلقائيًا** — الكود الجديد وحده لا يكفي.
+- أثناء نافذة نشر خاضعة للتحكم نفّذ على الخادم (من مجلد `backend\`):
+  ```powershell
+  dotnet ef database update --context DocGeneratorDbContext          # قاعدة SQLite المحلية
+  dotnet ef database update --context DocGeneratorPostgresDbContext   # قاعدة PostgreSQL في الإنتاج
+  ```
+- تتصل الأوامر بسلسلة الاتصال الموجودة في `appsettings.json` لبيئة الخادم (مع `Database:UsePostgres = true` لقاعدة الإنتاج). إن لم يكن `dotnet-ef` مثبتًا عالميًا: `dotnet tool install --global dotnet-ef`.
+- **تذكير للجلسات القادمة**: بعد كل تعديل يضيف هجرات جديدة، يجب ذكرها بالاسم وعددها في تقرير الإنجاز وتنبيه النشر — انظر `AGENTS.md`.

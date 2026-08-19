@@ -19,6 +19,15 @@ describe('getDocumentStatus', () => {
     expect(getDocumentStatus(doc({ isDraft: false }))).toBe('متداول');
   });
 
+  it('يعامل «منفذ إنابة» كحالة منفذة نهائية (شاشة «منفذ») حتى لو بقي مسودةً', () => {
+    expect(getDocumentStatus(doc({ execStatus: 'منفذ إنابة' }))).toBe('منفذ');
+    expect(getDocumentStatus(doc({ execStatus: 'منفذ إنابة', isDraft: true }))).toBe('منفذ');
+    expect(getDocumentBadge(doc({ execStatus: 'منفذ إنابة' }))).toEqual({
+      text: 'منفذ',
+      cls: 'bg-green-100 text-green-700',
+    });
+  });
+
   it('يعطي كل حالة شارة العرض الصحيحة', () => {
     expect(getDocumentBadge(doc({ execStatus: 'منفذ بالتسوية' }))).toEqual({
       text: 'منفذ',

@@ -132,8 +132,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             contractType = "تعهد",
             amountNumeric = 500,
             branchName = "الفرع الرئيسي - دمشق",
-            realEstates = withEstate
-                ? new[] { new { property = "بيت", propertyNumber = "12345", propertyDistrict = "المزة", landRegistry = "الصالحية", shareType = "تمام العقار", owners = new[] { "المدعى عليه" } } }
+            assets = withEstate
+                ? new[] { new { assetKind = "عقار", property = "بيت", propertyNumber = "12345", propertyDistrict = "المزة", landRegistry = "الصالحية", shareType = "تمام العقار", owners = new[] { "المدعى عليه" } } }
                 : Array.Empty<object>(),
         });
         var response = await client.PostAsync("/api/documents",

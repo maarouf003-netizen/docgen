@@ -6,12 +6,14 @@ export const TARGET_TYPE_LABELS: Record<HeadAlertTargetType, string> = {
   document: 'مرتبط بملف',
   lawyer: 'رسالة لمحامٍ',
   branch: 'تعميم للفرع',
+  head: 'مرحلة إنابة',
 };
 
 export const TARGET_TYPE_BADGES: Record<HeadAlertTargetType, string> = {
   document: 'bg-sky-100 text-sky-700 border-sky-200',
   lawyer: 'bg-purple-100 text-purple-700 border-purple-200',
   branch: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  head: 'bg-slate-100 text-slate-700 border-slate-200',
 };
 
 export const MONTHS = [
@@ -36,6 +38,13 @@ const CURRENCY_SHORT: Record<string, string> = {
 
 export function currencyLabel(currency: string): string {
   return CURRENCY_SHORT[currency] ?? currency;
+}
+
+/** الأصل الوحيد لعرض الأرقام في لوحة التحكم: فواصل الآلاف عبر Intl.NumberFormat (بدل toLocaleString المكرر). */
+const numberFormatter = new Intl.NumberFormat('en-US');
+
+export function formatNumber(value: number): string {
+  return numberFormatter.format(value);
 }
 
 /** تسمية توضيحية للفترة المعروضة، محسوبة من حقول الفترة الصادرة من الخادم. */

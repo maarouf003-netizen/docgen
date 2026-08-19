@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
 import { normalizeArabicDigits } from '../utils/arabicDigits';
-import type { DocumentResponse, RealEstateDto } from '../types';
+import { assetDisplayName } from '../utils/assetDisplay';
+import { isAuctionableKind } from './form/documentFormConstants';
+import type { AssetDto, DocumentResponse } from '../types';
 import { FieldInput, SelectInput } from './form/FormInputs';
 import MultiAmountEditor from './MultiAmountEditor';
 
@@ -57,7 +59,7 @@ type StatusFields = {
   collectedCurrency2: string;
   collectedCurrency3: string;
   struckOffDate: string;
-  soldEstateIds: number[];
+  soldAssetIds: number[];
 };
 
 function emptyFields(): StatusFields {
@@ -80,7 +82,7 @@ function emptyFields(): StatusFields {
     collectedCurrency2: 'دولار أمريكي',
     collectedCurrency3: 'يورو',
     struckOffDate: '',
-    soldEstateIds: [],
+    soldAssetIds: [],
   };
 }
 
@@ -110,10 +112,10 @@ export default function StatusChangeModal({
     setFields((f) => ({ ...f, [key]: value }));
 
   const toggleEstate = (id: number) => {
-    const ids = fields.soldEstateIds.includes(id)
-      ? fields.soldEstateIds.filter((x) => x !== id)
-      : [...fields.soldEstateIds, id];
-    set('soldEstateIds', ids);
+    const ids = fields.soldAssetIds.includes(id)
+      ? fields.soldAssetIds.filter((x) => x !== id)
+      : [...fields.soldAssetIds, id];
+    set('soldAssetIds', ids);
   };
 
   const normalize = (s: string) => normalizeArabicDigits(s);
@@ -156,10 +158,10 @@ export default function StatusChangeModal({
           payload[COLLECTED_CURRENCY_KEYS[i]] = fields[COLLECTED_CURRENCY_KEYS[i]];
         }
       }
-      if (fields.soldEstateIds.length === 0) {
-        throw new Error('اختر العقارات التي جرى بيعها بالمزاد العلني على الأقل');
+      if (fields.soldAssetIds.length === 0) {
+        throw new Error('اختر الأموال التي جرى بيعها بالمزاد العلني على الأقل');
       }
-      payload.soldEstateIds = fields.soldEstateIds.join(',');
+      payload.soldAssetIds = fields.soldAssetIds.join(',');
     } else if (target === 'مشطوب') {
       if (!fields.struckOffDate.trim()) {
         throw new Error('يجب إدخال تاريخ الشطب');
@@ -306,29 +308,33 @@ export default function StatusChangeModal({
                   />
                   <div>
                     <p className="block text-xs font-bold text-gray-600 mb-1">
-                      العقارات المباعة بالمزاد العلني
+                      الأموال المباعة بالمزاد العلني
                     </p>
-                    {(doc.realEstates ?? []).filter((r) => r.id != null).length === 0 ? (
-                      <p className="text-gray-400 text-sm">لا توجد عقارات مدخلة في الملف</p>
-                    ) : (
-                      <div className="border border-gray-300 rounded-lg p-3 space-y-2">
-                        {doc.realEstates.filter((r): r is RealEstateDto & { id: number } => r.id != null).map((r) => {
-                          const label = r.property ? `عقار ${r.property}${r.propertyNumber ? ` (رقم ${r.propertyNumber})` : ''}` : `عقار ${r.id}`;
-                          const checked = fields.soldEstateIds.includes(r.id);
-                          return (
-                            <label key={r.id} className="flex items-center gap-2 min-h-11 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => toggleEstate(r.id)}
-                                className="w-4 h-4"
-                              />
-                              <span className="text-sm text-gray-800">{label}</span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    )}
+                    {(() => {
+                      const auctionable = (doc.assets ?? []).filter(
+                        (r): r is AssetDto & { id: number } => r.id != null && isAuctionableKind(r.assetKind),
+                      );
+                      return auctionable.length === 0 ? (
+                        <p className="text-gray-400 text-sm">لا توجد أموال قابلة للبيع في الملف</p>
+                      ) : (
+                        <div className="border border-gray-300 rounded-lg p-3 space-y-2">
+                          {auctionable.map((r) => {
+                            const checked = fields.soldAssetIds.includes(r.id);
+                            return (
+                              <label key={r.id} className="flex items-center gap-2 min-h-11 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleEstate(r.id)}
+                                  className="w-4 h-4"
+                                />
+                                <span className="text-sm text-gray-800">{assetDisplayName(r)}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               )}

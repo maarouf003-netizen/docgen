@@ -106,7 +106,7 @@ public sealed class DocumentService : IDocumentService
     private readonly IDocumentRepository _documents;
     private readonly IUserRepository _users;
     private readonly IRepository<Guarantor> _guarantors;
-    private readonly IRepository<RealEstate> _realEstates;
+    private readonly IRepository<Asset> _assets;
     private readonly IRepository<ExecutionAction> _actions;
     private readonly IRepository<DocumentBaseNumber> _baseNumbers;
     private readonly IRepository<DocumentRegistrationDate> _registrationDates;
@@ -119,7 +119,7 @@ public sealed class DocumentService : IDocumentService
         IDocumentRepository documents,
         IUserRepository users,
         IRepository<Guarantor> guarantors,
-        IRepository<RealEstate> realEstates,
+        IRepository<Asset> assets,
         IRepository<ExecutionAction> actions,
         IRepository<DocumentBaseNumber> baseNumbers,
         IRepository<DocumentRegistrationDate> registrationDates,
@@ -131,7 +131,7 @@ public sealed class DocumentService : IDocumentService
         _documents = documents;
         _users = users;
         _guarantors = guarantors;
-        _realEstates = realEstates;
+        _assets = assets;
         _actions = actions;
         _baseNumbers = baseNumbers;
         _registrationDates = registrationDates;
@@ -482,7 +482,7 @@ public sealed class DocumentService : IDocumentService
                 doc.ExecSubStatus = sub;
                 details["execSubStatus"] = sub;
                 ApplyCollectedAmounts(doc, fields, details);
-                ApplySoldEstates(doc, fields, details);
+                ApplySoldAssets(doc, fields, details);
                 ClearBaraetFields(doc);
                 ClearTarithFields(doc);
                 ClearSayerFields(doc);
@@ -506,7 +506,7 @@ public sealed class DocumentService : IDocumentService
                 ClearSayerFields(doc);
                 ClearForcedExecutionField(doc);
                 doc.ExecSubStatus = null;
-                doc.SoldEstateIds = null;
+                doc.SoldAssetIds = null;
                 break;
             case ExecutionStatusCatalog.Deferred:
                 RequireField(fields, "tarithNumber", "رقم كتاب التريث");
@@ -524,7 +524,7 @@ public sealed class DocumentService : IDocumentService
                 ClearForcedExecutionField(doc);
                 doc.ExecSubStatus = null;
                 ClearCollectedFields(doc);
-                doc.SoldEstateIds = null;
+                doc.SoldAssetIds = null;
                 break;
             default: // مشطوب (نظام «طالبة تنفيذ»): يُخفى من القوائم ويظهر في صفحة «الملفات المشطوبة».
                 var struckOffDateRaw = fields.GetValueOrDefault("struckOffDate");
@@ -538,7 +538,7 @@ public sealed class DocumentService : IDocumentService
                 ClearForcedExecutionField(doc);
                 doc.ExecSubStatus = null;
                 ClearCollectedFields(doc);
-                doc.SoldEstateIds = null;
+                doc.SoldAssetIds = null;
                 break;
         }
 
@@ -617,7 +617,7 @@ public sealed class DocumentService : IDocumentService
         ClearBaraetFields(doc);
         ClearTarithFields(doc);
         ClearForcedExecutionField(doc);
-        doc.SoldEstateIds = null;
+        doc.SoldAssetIds = null;
 
         return await _tx.RunAsync(async token =>
         {
@@ -1624,34 +1624,39 @@ public sealed class DocumentService : IDocumentService
     }
 
     /// <summary>
-    /// تطبيق العقارات المباعة بالمزاد العلني (إلزامية في «منفذ جبريا»): تُتحقق المعرّفات
-    /// من عقارات الملف نفسه، وتُخزَّن JSON، وتُضمَّن أسماؤها في سجل الوقعة للعرض.
+    /// تطبيق الأموال المباعة بالمزاد العلني (إلزامية في «منفذ جبريا»): تُتحقق المعرّفات
+    /// من أموال الملف نفسه (عدا كفالة الرواتب)، وتُخزَّن JSON، وتُضمَّن أسماؤها في سجل الوقعة للعرض.
     /// </summary>
-    private static void ApplySoldEstates(Document doc, Dictionary<string, string?> fields, Dictionary<string, string> details)
+    private static void ApplySoldAssets(Document doc, Dictionary<string, string?> fields, Dictionary<string, string> details)
     {
-        var raw = (fields.GetValueOrDefault("soldEstateIds") ?? string.Empty).Trim();
+        var raw = (fields.GetValueOrDefault("soldAssetIds") ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(raw))
-            throw new ArgumentException("اختر العقارات التي جرى بيعها بالمزاد العلني على الأقل");
+            throw new ArgumentException("اختر الأموال التي جرى بيعها بالمزاد العلني على الأقل");
 
         var ids = new List<int>();
         foreach (var part in raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             if (!int.TryParse(part, out var id))
-                throw new ArgumentException("معرّف عقار مباع غير صالح");
+                throw new ArgumentException("معرّف مال مباع غير صالح");
             ids.Add(id);
         }
-        var ownedIds = new HashSet<int>(doc.RealEstates.Select(r => r.Id));
+        var ownedIds = new HashSet<int>(doc.Assets
+            .Where(a => AssetKindCatalog.IsAuctionable(a.AssetKind))
+            .Select(a => a.Id));
         if (ids.Any(id => !ownedIds.Contains(id)))
-            throw new ArgumentException("العقارات المختارة ليست من عقارات الملف");
+            throw new ArgumentException("الأموال المختارة ليست من أموال الملف");
 
-        doc.SoldEstateIds = SerializeJson(ids);
-        details["soldEstateIds"] = string.Join(",", ids);
-        var soldNames = doc.RealEstates
-            .Where(r => ids.Contains(r.Id))
-            .Select(r => (r.Property ?? string.Empty).Trim())
+        doc.SoldAssetIds = SerializeJson(ids);
+        details["soldAssetIds"] = string.Join(",", ids);
+        var soldNames = doc.Assets
+            .Where(a => ids.Contains(a.Id))
+            .Select(AssetDisplayName)
             .Where(v => !string.IsNullOrWhiteSpace(v));
-        details["soldEstateNames"] = string.Join("، ", soldNames);
+        details["soldAssetNames"] = string.Join("، ", soldNames);
     }
+
+    /// <summary>تسمية قراءة للأصل (تُستخدم في «منفذ جبريا» وفي قوائم العرض).</summary>
+    private static string AssetDisplayName(Asset a) => AssetDisplay.Label(a);
 
     private static void ClearSayerFields(Document doc)
     {
@@ -1926,33 +1931,62 @@ public sealed class DocumentService : IDocumentService
                 foreach (var h in NormalizeHeirs(g.Heirs, g.GuarantorNumber))
                     doc.Heirs.Add(h);
 
-        doc.RealEstates.Clear();
-        foreach (var re in r.RealEstates)
+        doc.Assets.Clear();
+        foreach (var re in r.Assets)
         {
-            var estate = new RealEstate
+            var kind = (re.AssetKind ?? string.Empty).Trim();
+            if (!AssetKindCatalog.IsValid(kind))
+                throw new ArgumentException($"نوع الأصل غير صالح: {kind}");
+
+            var asset = new Asset
             {
+                AssetKind = kind,
+                ShareType = re.ShareType,
                 Property = re.Property,
                 PropertyNumber = re.PropertyNumber,
                 PropertyDistrict = re.PropertyDistrict,
                 LandRegistry = re.LandRegistry,
-                ShareType = re.ShareType,
+                VehicleType = re.VehicleType,
+                VehicleClass = re.VehicleClass,
+                PlateNumber = re.PlateNumber,
+                VehicleGovernorate = re.VehicleGovernorate,
+                RegisterNumber = re.RegisterNumber,
+                RegistrationDate = ParseDateTime(re.RegistrationDate, "تاريخ تسجيل المتجر"),
+                ShopGovernorate = re.ShopGovernorate,
+                ShopDescription = re.ShopDescription,
+                ShopLocation = re.ShopLocation,
+                PublicEntity = re.PublicEntity,
+                LicenseNumber = re.LicenseNumber,
+                LicenseDate = ParseDateTime(re.LicenseDate, "تاريخ الترخيص"),
+                LicenseIssuer = re.LicenseIssuer,
+                Notes = re.Notes,
             };
-            estate.Owners = NormalizeOwners(re.Owners);
-            // تمام العقار لا يكون إلا لمالك واحد؛ عند تعدد الملاك تُفرض الحصة السهمية
+            asset.Owners = NormalizeOwners(re.Owners);
+            // تمام الأصل لا يكون إلا لمالك واحد؛ عند تعدد الملاك تُفرض الحصة السهمية
             // حتى لو أُرسل نوع حصة آخر (حماية البيانات على مستوى الخدمة).
-            if (estate.Owners.Count > 1)
-                estate.ShareType = "حصة سهمية";
-            doc.RealEstates.Add(estate);
+            // الأنواع غير الحصصية (كفالة الرواتب والمتجر غير المسجل) لا تحمل مقدار حصة.
+            if (AssetKindCatalog.HasShare(kind))
+            {
+                if (asset.Owners.Count > 1)
+                    asset.ShareType = "حصة سهمية";
+                else if (string.IsNullOrWhiteSpace(asset.ShareType))
+                    asset.ShareType = AssetKindCatalog.FullShareLabel(kind);
+            }
+            else
+            {
+                asset.ShareType = null;
+            }
+            doc.Assets.Add(asset);
         }
     }
 
     /// <summary>
-    /// تطبيع قائمة ملاك العقار: يُتجاهل الاسم الفارغ، ويُقصّ الاسم من الطرفين،
+    /// تطبيع قائمة ملاك الأصل: يُتجاهل الاسم الفارغ، ويُقصّ الاسم من الطرفين،
     /// وتُلغى التكرارات مع الحفاظ على ترتيب الاختيار الأصلي.
     /// </summary>
-    private static List<RealEstateOwner> NormalizeOwners(IEnumerable<string>? owners)
+    private static List<AssetOwner> NormalizeOwners(IEnumerable<string>? owners)
     {
-        var result = new List<RealEstateOwner>();
+        var result = new List<AssetOwner>();
         if (owners is null)
             return result;
 
@@ -1964,7 +1998,7 @@ public sealed class DocumentService : IDocumentService
             if (string.IsNullOrWhiteSpace(name) || !seen.Add(name))
                 continue;
 
-            result.Add(new RealEstateOwner { Name = name, Order = order++ });
+            result.Add(new AssetOwner { Name = name, Order = order++ });
         }
 
         return result;
@@ -2299,7 +2333,7 @@ public sealed class DocumentService : IDocumentService
 
     /// <summary>
     /// قيود عائلة وضع «الجهة العامة منفذ عليها» (Executed + Deposit): عادي فقط (لا مصرفي)،
-    /// مقيد (لا مسودة)، وبلا مقترض/كفلاء/عقارات. وتُطبق أيضًا على الملفات الحالية التي
+    /// مقيد (لا مسودة)، وبلا مقترض/كفلاء/أموال. وتُطبق أيضًا على الملفات الحالية التي
     /// تُحرَّر بوضعها الجديد.
     /// </summary>
     private static void ValidateExecutedRequest(DocumentUpsertRequest request)
@@ -2320,9 +2354,9 @@ public sealed class DocumentService : IDocumentService
 
         if (!string.IsNullOrWhiteSpace(request.BorrowerName)
             || request.Guarantors.Count > 0
-            || request.RealEstates.Count > 0
+            || request.Assets.Count > 0
             || request.BorrowerHeirs.Count > 0)
-            throw new ArgumentException($"ملف «{sideLabel}» لا يتضمن مقترضًا أو كفلاء أو عقارات");
+            throw new ArgumentException($"ملف «{sideLabel}» لا يتضمن مقترضًا أو كفلاء أو أموالًا");
     }
 
     /// <summary>
@@ -2364,15 +2398,7 @@ public sealed class DocumentService : IDocumentService
     /// في القاعدة. الفارغ يعني null، وغير الصالح يُرفض برسالة تحمل اسم الحقل.
     /// </summary>
     private static DateTime? ParseDateTime(string? value, string fieldName)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return null;
-
-        if (!TryParseDate(value, out var date))
-            throw new ArgumentException($"{fieldName} غير صالح — استخدم مثال: 1/8/2026");
-
-        return date;
-    }
+        => FreeDateParser.Parse(value, fieldName);
 
     private void ApplyRegistrationDate(Document doc, string? value)
     {
