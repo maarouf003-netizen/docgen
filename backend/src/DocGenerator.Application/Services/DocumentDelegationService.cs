@@ -542,11 +542,13 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         {
             try
             {
+                var targetLabel = TargetFileLabel(target);
+                var assetsLine = string.Join(" و", delegation.Assets.Select(a => a.AssetLabel));
                 await _alerts.CreateAsync(new CreateHeadAlertRequest(
                     TargetType: "document",
                     DocumentId: delegation.SourceDocumentId,
                     TargetLawyerId: null,
-                    Message: $"أُتمت إنابتك (رقم {delegation.Id}): بيع الأموال موضوع الإنابة بالمزاد وأُعيد الملف للدائرة المنيبة"),
+                    Message: $"نفذت إنابتك في {targetLabel} للتنفيذ على {assetsLine} وأُعيد الملف للدائرة المنيبة، يرجى المراجعة والمتابعة أصولًا"),
                     userId, sourceBranchId.Value, actorName, ct);
             }
             catch (Exception ex)
@@ -560,6 +562,19 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         return await _delegations.GetByIdWithDetailsAsync(delegation.Id, ct) is { } reloaded
             ? ToDto(reloaded, reloaded.SourceDocument)
             : null;
+    }
+
+    /// <summary>التسمية المعروضة للملف المناب في إشعار الإتمام: «ملف الرقم/السنة» عبر قاعدة
+    /// DisplayFileNumber نفسها (رقم أساس سنة التدوير الحالية إن وُجد، وإلا رقم ملفه الأصلي)،
+    /// وإلا رقمه الداخلي.</summary>
+    private static string TargetFileLabel(Document? target)
+    {
+        if (target is null) return "الملف المناب";
+        var number = SourceFileNumber(target);
+        var year = SourceFileYear(target);
+        if (!string.IsNullOrWhiteSpace(number))
+            return string.IsNullOrWhiteSpace(year) ? $"ملف {number}" : $"ملف {number}/{year}";
+        return $"ملف {target.Id}";
     }
 
     // ── أدوات مساعدة ─────────────────────────────────────────────

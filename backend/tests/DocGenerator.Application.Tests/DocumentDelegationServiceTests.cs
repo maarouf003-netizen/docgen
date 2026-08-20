@@ -548,7 +548,9 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(_lawyer2.Id, alert.CreatedById);
         Assert.Null(alert.TargetLawyerId);
         Assert.Contains(_lawyer1.Id, alert.Recipients.Select(r => r.UserId));
-        Assert.Contains("أُتمت إنابتك", alert.Message);
+        Assert.Contains("نفذت إنابتك في ملف 890/2026", alert.Message);
+        Assert.Contains("للتنفيذ على عقار رقم 77", alert.Message);
+        Assert.Contains("يرجى المراجعة والمتابعة أصولًا", alert.Message);
     }
 
     [Fact]
@@ -576,7 +578,8 @@ public class DocumentDelegationServiceTests : IDisposable
             .SingleAsync(a => a.DocumentId == source.Id);
         Assert.Equal(_branch.Id, alert.BranchId);
         Assert.Contains(_lawyer1.Id, alert.Recipients.Select(r => r.UserId));
-        Assert.Contains("أُتمت إنابتك", alert.Message);
+        Assert.Contains("نفذت إنابتك في ملف 890/2026", alert.Message);
+        Assert.Contains("للتنفيذ على عقار رقم 77", alert.Message);
     }
 
     [Fact]
@@ -840,10 +843,10 @@ public class DocumentDelegationServiceTests : IDisposable
             new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }, "12/8/2026"),
             _lawyer2.Id, "lawyer2");
 
-        // بعد الإتمام: لا تنبيهات مرحلية للإنابة، ويبقى إشعار «أُتمت إنابتك» لمحامي المنيب.
+        // بعد الإتمام: لا تنبيهات مرحلية للإنابة، ويبقى إشعار «نفذت إنابتك» لمحامي المنيب.
         Assert.Empty(_db.HeadAlerts.Where(a => a.DelegationId == created.Id));
         var done = await _db.HeadAlerts.SingleAsync(a => a.DocumentId == source.Id);
-        Assert.Contains("أُتمت إنابتك", done.Message);
+        Assert.Contains("نفذت إنابتك", done.Message);
     }
 
     [Fact]
