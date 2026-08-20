@@ -45,6 +45,7 @@ public class DocumentDelegationServiceTests : IDisposable
             new UserRepository(_db),
             new Repository<Branch>(_db),
             new Repository<DocumentRegistrationDate>(_db),
+            new Repository<DocumentOccurrence>(_db),
             new UnitOfWork(_db),
             new TransactionRunner(_db),
             _audit,
@@ -114,8 +115,6 @@ public class DocumentDelegationServiceTests : IDisposable
         DelegationText: "الإنابة على العقار المذكور",
         DepositBookNumber: "كتاب-1",
         DepositBookDate: "2/8/2026",
-        SendBookNumber: null,
-        SendBookDate: null,
         AssetIds: assetIds.ToList());
 
     [Fact]
@@ -302,6 +301,94 @@ public class DocumentDelegationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Assign_CopiesAllSourcePartiesAndBooksToTarget()
+    {
+        var source = await CreateSourceAsync();
+        source.FileArrivalNumber = "ورود-7";
+        source.FileArrivalDate = "5/8/2026";
+        source.FileIncoming = "كتاب-الجهة-44";
+        source.FileIncomingDate = "6/8/2026";
+        source.UnderFilingNumber = "تحت-3";
+        source.FileReceiptNumber = "قيد-9";
+        source.FileReceiptDate = new DateTime(2026, 8, 7);
+        _db.ApplicantPublicEntities.Add(new ApplicantPublicEntity
+        {
+            DocumentId = source.Id,
+            Name = "المصرف العقاري",
+            Branch = "فرع دمشق",
+            Governorate = "دمشق",
+        });
+        _db.Guarantors.Add(new Guarantor
+        {
+            DocumentId = source.Id,
+            GuarantorNumber = 2,
+            GuarantorName = "محمود",
+            GuarantorFather = "سامي",
+            GuarantorFamily = "الحلبي",
+            GuarantorNature = PartyNatureCatalog.Natural,
+        });
+        _db.Heirs.Add(new Heir
+        {
+            DocumentId = source.Id,
+            GuarantorNumber = 2,
+            HeirName = "حسن",
+            HeirFather = "محمود",
+            HeirFamily = "الحلبي",
+        });
+        await _db.SaveChangesAsync();
+
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+
+        var target = await _db.Documents
+            .Include(d => d.ApplicantPublicEntities)
+            .Include(d => d.Guarantors)
+            .Include(d => d.Heirs)
+            .FirstAsync(d => d.Id == dto!.TargetDocumentId!.Value);
+
+        // أطراف الملف المنيب كلها تنتقل، فلا يظهر صف «الجهات العامة» أو «الكفلاء» فارغًا على الملف المناب.
+        var entity = Assert.Single(target.ApplicantPublicEntities);
+        Assert.Equal("المصرف العقاري", entity.Name);
+        Assert.Equal("فرع دمشق", entity.Branch);
+        var guarantor = Assert.Single(target.Guarantors);
+        Assert.Equal("محمود", guarantor.GuarantorName);
+        Assert.Equal("الحلبي", guarantor.GuarantorFamily);
+        var heir = Assert.Single(target.Heirs);
+        Assert.Equal("حسن", heir.HeirName);
+
+        // كتب الملف المنيب تنتقل كلها.
+        Assert.Equal("ورود-7", target.FileArrivalNumber);
+        Assert.Equal("5/8/2026", target.FileArrivalDate);
+        Assert.Equal("كتاب-الجهة-44", target.FileIncoming);
+        Assert.Equal("6/8/2026", target.FileIncomingDate);
+        Assert.Equal("تحت-3", target.UnderFilingNumber);
+        Assert.Equal("قيد-9", target.FileReceiptNumber);
+        Assert.Equal(new DateTime(2026, 8, 7), target.FileReceiptDate);
+    }
+
+    [Fact]
+    public async Task Assign_TargetIsFrozenSnapshot_IndependentFromSourceEdits()
+    {
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = dto!.TargetDocumentId!.Value;
+
+        // تعديل الملف المنيب بعد الاعتماد لا يمس الملف المناب (لقطة مجمدة منفصلة).
+        source.BorrowerName = "غيّر-حالياً";
+        source.AmountNumeric = 2_000_000;
+        await _db.SaveChangesAsync();
+
+        var target = await _db.Documents.FindAsync(targetId);
+        Assert.Equal("أحمد", target!.BorrowerName);
+        Assert.Equal(1_000_000, target.AmountNumeric);
+    }
+
+    [Fact]
     public async Task Assign_NotifiesAssignedLawyerViaHeadAlert()
     {
         var source = await CreateSourceAsync();
@@ -311,8 +398,8 @@ public class DocumentDelegationServiceTests : IDisposable
         var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
 
-        // تنبيه بموجب نظام تنبيهات رئيس القسم: موجه لملف «الملف المناب» (يصل محاميه المختص)،
-        // مرتبط بالملف المناب المولّد (ينقله من لوحة التنبيهات إلى صفحة الملف).
+        // تنبيه بموجب نظام تنبيهات رئيس القسم: يُخبر المحامي المختص بإحالة ملف الإنابة عليه
+        // (يصل محاميه)، مرتبط بالملف المناب المولّد (ينقله من لوحة التنبيهات إلى صفحة الملف).
         var alert = await _db.HeadAlerts
             .Include(a => a.Recipients)
             .SingleAsync(a => a.DocumentId == dto!.TargetDocumentId);
@@ -320,7 +407,9 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(_head1.Id, alert.CreatedById);
         Assert.Null(alert.TargetLawyerId);
         Assert.Contains(_lawyer2.Id, alert.Recipients.Select(r => r.UserId));
-        Assert.Contains("الملف المناب", alert.Message);
+        Assert.Contains("أحال إليك رئيس القسم ملف إنابة لقيده أصولًا", alert.Message);
+        Assert.Contains("دائرة تنفيذ حلب", alert.Message);
+        Assert.EndsWith("ملف أحمد خالد الخطيب)", alert.Message);
     }
 
     [Fact]
@@ -423,7 +512,7 @@ public class DocumentDelegationServiceTests : IDisposable
             new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto>
             {
                 new(assetDto.Id, 750_000m),
-            }), _lawyer2.Id, "lawyer2");
+            }, "12/8/2026"), _lawyer2.Id, "lawyer2");
 
         Assert.NotNull(dto);
         Assert.Equal(DelegationStatusCatalog.Executed, dto!.Status);
@@ -447,7 +536,7 @@ public class DocumentDelegationServiceTests : IDisposable
         var assetDto = (await _service.ListForDocumentAsync(source.Id)).Single().Assets.Single();
 
         await _service.CompleteAsync(created.Id,
-            new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }),
+            new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }, "12/8/2026"),
             _lawyer2.Id, "lawyer2");
 
         // إشعار محامي المنيب بإتمام الإنابة: تنبيه مرتبط بالملف المنيب في فرعه،
@@ -477,7 +566,7 @@ public class DocumentDelegationServiceTests : IDisposable
         var assetDto = (await _service.ListForDocumentAsync(source.Id)).Single().Assets.Single();
 
         await _service.CompleteAsync(created.Id,
-            new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }),
+            new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }, "12/8/2026"),
             _externalLawyer.Id, "externalLawyer");
 
         // على الرغم من أن التنفيذ جرى في فرع اللاذقية، يُنشأ تنبيه الإتمام في فرع الملف المنيب
@@ -504,37 +593,39 @@ public class DocumentDelegationServiceTests : IDisposable
 
         var noDate = await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CompleteAsync(created.Id,
-                new CompleteDelegationRequest(null, new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }),
+                new CompleteDelegationRequest(null, new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }, "12/8/2026"),
                 _lawyer2.Id, "lawyer2"));
         Assert.Contains("تاريخ إعادة", noDate.Message);
 
         var noPrice = await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CompleteAsync(created.Id,
-                new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto>()),
+                new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto>(), "12/8/2026"),
                 _lawyer2.Id, "lawyer2"));
         Assert.Contains("بدل المبيع", noPrice.Message);
+
+        var noForcedDate = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CompleteAsync(created.Id,
+                new CompleteDelegationRequest("10/8/2026",
+                    new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }),
+                _lawyer2.Id, "lawyer2"));
+        Assert.Contains("تاريخ قرار الإحالة القطعية", noForcedDate.Message);
     }
 
     [Fact]
-    public async Task Create_External_PersistsBranchAndSendBook()
+    public async Task Create_External_PersistsBranchAndDepositBook()
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
 
         var dto = await _service.CreateAsync(source.Id,
-            SampleRequest(assetId) with
-            {
-                IsExternal = true,
-                ExternalBranchId = _otherBranch.Id,
-                SendBookNumber = "إرسال-1",
-                SendBookDate = "3/8/2026",
-            }, _lawyer1.Id, "lawyer1");
+            SampleRequest(assetId) with { IsExternal = true, ExternalBranchId = _otherBranch.Id },
+            _lawyer1.Id, "lawyer1");
 
         Assert.True(dto.IsExternal);
         Assert.Equal(_otherBranch.Id, dto.ExternalBranchId);
         Assert.Equal("اللاذقية", dto.ExternalBranchName);
-        Assert.Equal("إرسال-1", dto.SendBookNumber);
-        Assert.Equal("2026-08-03", dto.SendBookDate);
+        Assert.Equal("كتاب-1", dto.DepositBookNumber);
+        Assert.Equal("2026-08-02", dto.DepositBookDate);
     }
 
     [Fact]
@@ -555,7 +646,7 @@ public class DocumentDelegationServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Update_Pending_ToExternal_PersistsBranchAndSendBook()
+    public async Task Update_Pending_ToExternal_PersistsBranchAndDepositBook()
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
@@ -566,15 +657,15 @@ public class DocumentDelegationServiceTests : IDisposable
             {
                 IsExternal = true,
                 ExternalBranchId = _otherBranch.Id,
-                SendBookNumber = "إرسال-2",
-                SendBookDate = "4/8/2026",
+                DepositBookNumber = "كتاب-2",
+                DepositBookDate = "4/8/2026",
             }, _lawyer1.Id, "lawyer1");
 
         Assert.NotNull(updated);
         Assert.True(updated!.IsExternal);
         Assert.Equal(_otherBranch.Id, updated.ExternalBranchId);
-        Assert.Equal("إرسال-2", updated.SendBookNumber);
-        Assert.Equal("2026-08-04", updated.SendBookDate);
+        Assert.Equal("كتاب-2", updated.DepositBookNumber);
+        Assert.Equal("2026-08-04", updated.DepositBookDate);
     }
 
     [Fact]
@@ -746,7 +837,7 @@ public class DocumentDelegationServiceTests : IDisposable
         var assetDto = (await _service.ListForDocumentAsync(source.Id)).Single().Assets.Single();
 
         await _service.CompleteAsync(created.Id,
-            new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }),
+            new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }, "12/8/2026"),
             _lawyer2.Id, "lawyer2");
 
         // بعد الإتمام: لا تنبيهات مرحلية للإنابة، ويبقى إشعار «أُتمت إنابتك» لمحامي المنيب.

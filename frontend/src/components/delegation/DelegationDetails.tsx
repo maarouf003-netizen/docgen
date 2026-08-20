@@ -20,9 +20,9 @@ export function DelegationDetails({ d }: { d: DelegationDto }) {
   const badge = delegationStatusBadge(d.status);
   const books: string[] = [
     bookRow('كتاب الإيداع', d.depositBookNumber, d.depositBookDate),
-    bookRow('كتاب الإرسال', d.sendBookNumber, d.sendBookDate),
   ].filter(Boolean);
   const assetsLine = delegationAssetsLine(d);
+  const snapshotsAdjusted = d.assets.some((a) => a.snapshotAdjusted);
 
   return (
     <div className="space-y-2 min-w-0">
@@ -64,6 +64,12 @@ export function DelegationDetails({ d }: { d: DelegationDto }) {
         <p className="text-sm text-gray-700">
           <span className="text-gray-500 text-xs block">المحامي المختص</span>
           {d.assignedLawyerName}
+        </p>
+      )}
+
+      {snapshotsAdjusted && (
+        <p className="text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          عُدِّلت بيانات بعض الأموال في الملف المنيب بعد التسطير — حُدِّثت لقطة الإنابة تلقائيًا.
         </p>
       )}
 

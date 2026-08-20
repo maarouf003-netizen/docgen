@@ -659,6 +659,10 @@ public class DocumentResponse
     public DateTime? ExecutedExecutionDate { get; set; }
     /// <summary>تاريخ قرار الإحالة القطعية في «منفذ جبريا» (نص حر).</summary>
     public string? ForcedExecutionDate { get; set; }
+    /// <summary>تاريخ تحويل بدل المبيع للجهة العامة عند «اعتبار الملف منفذًا كاملًا بهذا البيع» — نص حر يُعرَض «yyyy-MM-dd» (مثل بقية حقول التخزين الزمني الحر).</summary>
+    public string? ForcibleTransferDate { get; set; }
+    /// <summary>رقم الإشعار (اختياري) عند تحويل بدل المبيع للجهة العامة.</summary>
+    public string? ForcibleTransferNoticeNumber { get; set; }
     public DateTime? StruckOffDate { get; set; }
     /// <summary>رقم ورود اخطار التجديد عند إعادة ملف مشطوب إلى المتداول (اختياري).</summary>
     public string? RenewalFileReceiptNumber { get; set; }
@@ -828,6 +832,8 @@ public class DocumentResponse
         BaraetNumber = d.BaraetNumber,
         BaraetDate = d.BaraetDate,
         ForcedExecutionDate = d.ForcedExecutionDate,
+        ForcibleTransferDate = d.ForcibleTransferDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+        ForcibleTransferNoticeNumber = d.ForcibleTransferNoticeNumber,
         BaraetRegNumber = d.BaraetRegNumber,
         BaraetRegDate = d.BaraetRegDate,
         TarithNumber = d.TarithNumber,

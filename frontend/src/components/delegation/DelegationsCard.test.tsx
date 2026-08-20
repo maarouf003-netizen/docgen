@@ -17,8 +17,6 @@ function delegation(overrides: Partial<DelegationDto> = {}): DelegationDto {
     delegationText: '',
     depositBookNumber: 'K-1',
     depositBookDate: '2026-08-02',
-    sendBookNumber: '',
-    sendBookDate: '',
     assignedLawyerId: null,
     assignedLawyerName: null,
     returnDate: '',
@@ -26,7 +24,7 @@ function delegation(overrides: Partial<DelegationDto> = {}): DelegationDto {
     createdAt: '2026-08-01',
     createdByName: 'سامر',
     createdById: 7,
-    assets: [{ id: 100, assetKind: 'مركبة', assetLabel: 'مركبة سيارة — لوحة 123' }],
+    assets: [{ id: 100, assetKind: 'مركبة', assetLabel: 'مركبة سيارة — لوحة 123', snapshotAdjusted: false }],
     ...overrides,
   };
 }

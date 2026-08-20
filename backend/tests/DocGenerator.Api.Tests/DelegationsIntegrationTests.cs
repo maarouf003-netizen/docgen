@@ -7,7 +7,8 @@ using DocGenerator.Infrastructure.Persistence;
 
 namespace DocGenerator.Api.Tests;
 
-public class DelegationsIntegrationTests : IClassFixture<ApiFactory>
+[Collection(ApiTestCollection.Name)]
+public class DelegationsIntegrationTests
 {
     private readonly ApiFactory _factory;
 
@@ -34,8 +35,6 @@ public class DelegationsIntegrationTests : IClassFixture<ApiFactory>
         string? DelegationText,
         string? DepositBookNumber,
         string? DepositBookDate,
-        string? SendBookNumber,
-        string? SendBookDate,
         int[] AssetIds);
 
     private static DelegationRequestBody SampleBody(int assetId) => new(
@@ -46,8 +45,6 @@ public class DelegationsIntegrationTests : IClassFixture<ApiFactory>
         "الإنابة على العقار المذكور",
         "كتاب-1",
         "2/8/2026",
-        null,
-        null,
         new[] { assetId });
 
     [Fact]
@@ -95,6 +92,7 @@ public class DelegationsIntegrationTests : IClassFixture<ApiFactory>
             {
                 returnDate = "10/8/2026",
                 sales = new[] { new { delegationAssetId = assetDto.Id, salePrice = 750_000m } },
+                forcedExecutionDate = "12/8/2026",
             });
         Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
         var completed = await complete.Content.ReadFromJsonAsync<DelegationDto>();
@@ -169,14 +167,13 @@ public class DelegationsIntegrationTests : IClassFixture<ApiFactory>
 
         // تسطير إنابة خارجية إلى فرع اللاذقية (محامي الملف المنيب في دمشق).
         var lawyer1 = _factory.AuthorizedClient("lawyer1");
-        var body = SampleBody(assetId) with { IsExternal = true, ExternalBranchId = latBranchId, SendBookNumber = "إرسال-1" };
+        var body = SampleBody(assetId) with { IsExternal = true, ExternalBranchId = latBranchId };
         var response = await lawyer1.PostAsJsonAsync($"/api/documents/{docId}/delegations", body);
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var dto = await response.Content.ReadFromJsonAsync<DelegationDto>();
         Assert.NotNull(dto);
         Assert.True(dto!.IsExternal);
         Assert.Equal(latBranchId, dto.ExternalBranchId);
-        Assert.Equal("إرسال-1", dto.SendBookNumber);
 
         // تظهر لرئيس قسم الفرع المناب (اللاذقية)، ولا تظهر لرئيس قسم الفرع المنيب.
         var damHead = _factory.AuthorizedClient("head1");
@@ -203,6 +200,59 @@ public class DelegationsIntegrationTests : IClassFixture<ApiFactory>
         var target = db.Documents.Single(d => d.Id == assigned.TargetDocumentId!.Value);
         Assert.Equal(latBranchId, target.BranchId);
         Assert.Equal("فرع اللاذقية", target.BranchName);
+    }
+
+    [Fact]
+    public async Task ConsiderExecutedByDelegation_AfterCompletion_ClosesPartialAndPersistsTransfer()
+    {
+        var (docId, assetId) = await CreateSourceWithAssetAsync();
+        var lawyer1 = _factory.AuthorizedClient("lawyer1");
+        var created = await (await lawyer1.PostAsJsonAsync($"/api/documents/{docId}/delegations", SampleBody(assetId)))
+            .Content.ReadFromJsonAsync<DelegationDto>();
+        Assert.NotNull(created);
+
+        var head = _factory.AuthorizedClient("head1");
+        var targetLawyer = await _factory.CreateUserAsync(NewName("lawyer_cons"), UserRole.Lawyer, branchId: await BranchIdAsync("DAM"));
+        await head.PostAsJsonAsync($"/api/delegations/{created!.Id}/assign", new { assignedLawyerId = targetLawyer.Id });
+        var targetClient = _factory.AuthorizedClient(targetLawyer.Username);
+        var regResponse = await targetClient.PostAsJsonAsync($"/api/delegations/{created.Id}/register",
+            new { fileNumber = "892", fileYear = "2026", fileRegistrationDate = "5/8/2026" });
+        Assert.Equal(HttpStatusCode.OK, regResponse.StatusCode);
+        var registered = await regResponse.Content.ReadFromJsonAsync<DelegationDto>();
+        var complete = await targetClient.PostAsJsonAsync($"/api/delegations/{created.Id}/complete",
+            new
+            {
+                returnDate = "10/8/2026",
+                sales = new[] { new { delegationAssetId = registered!.Assets.Single().Id, salePrice = 750_000m } },
+                forcedExecutionDate = "12/8/2026",
+            });
+        Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
+
+        // المنيب فُعّل تلقائيًا «منفذ جبريا — منفذ جزئيا» حتى يعتبره محاميه منفذًا كاملًا بهذا البيع.
+        var before = await (await lawyer1.GetAsync($"/api/documents/{docId}")).Content.ReadFromJsonAsync<DocumentResponse>();
+        Assert.Equal("منفذ جبريا", before!.ExecStatus);
+        Assert.Equal("منفذ جزئيا", before.ExecSubStatus);
+
+        var missingDate = await lawyer1.PostAsJsonAsync($"/api/documents/{docId}/consider-executed-by-delegation",
+            new { fields = new { forcedTransferNoticeNumber = "77/2026" } });
+        Assert.Equal(HttpStatusCode.BadRequest, missingDate.StatusCode);
+
+        var consider = await lawyer1.PostAsJsonAsync($"/api/documents/{docId}/consider-executed-by-delegation",
+            new { fields = new { forcedTransferDate = "١٥/٨/٢٠٢٦", forcedTransferNoticeNumber = "77/2026" } });
+        Assert.Equal(HttpStatusCode.OK, consider.StatusCode);
+
+        var after = await (await lawyer1.GetAsync($"/api/documents/{docId}")).Content.ReadFromJsonAsync<DocumentResponse>();
+        Assert.Equal("منفذ كاملا", after!.ExecSubStatus);
+        Assert.Equal("2026-08-15", after.ForcibleTransferDate);
+        Assert.Equal("77/2026", after.ForcibleTransferNoticeNumber);
+
+        // وقعة «منفذ جبريا» كاملة (بتحويل البدل) سُجِّلت في «وقوعات الملف» للعرض.
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+        var occurrence = db.DocumentOccurrences.OrderByDescending(o => o.Id)
+            .First(o => o.DocumentId == docId && o.OccurrenceType == OccurrenceTypeCatalog.Forcible);
+        Assert.Contains("15/8/2026", occurrence.Details);
+        Assert.Contains("77/2026", occurrence.Details);
     }
 
     private async Task<int> BranchIdAsync(string code)

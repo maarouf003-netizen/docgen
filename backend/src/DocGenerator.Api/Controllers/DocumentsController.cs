@@ -332,6 +332,29 @@ public class DocumentsController : ControllerBase
         }
     }
 
+    [HttpPost("{id:int}/consider-executed-by-delegation")]
+    public async Task<IActionResult> ConsiderExecutedByDelegation(int id, [FromBody] StatusRequest request, CancellationToken ct)
+    {
+        // «اعتبار الملف منفذًا كاملًا بهذا البيع» (إغلاق «منفذ جبريا — منفذ جزئيا» الذي
+        // فُعّل تلقائيًا بإتمام إنابة) محصور بالمحامي (للملفات التي يملكها) — يُلزم إدخال
+        // «تاريخ تحويل بدل المبيع للجهة العامة» مع «رقم الإشعار» الاختياري.
+        if (!CanChangeStatus) return Forbid();
+
+        var doc = await _documents.GetAsync(id, ct);
+        if (doc is null) return NotFound();
+        if (!CanAccess(doc)) return Forbid();
+
+        try
+        {
+            var ok = await _documents.ConsiderExecutedByDelegationAsync(id, request.Fields ?? new(), ActorName, ct);
+            return ok ? Ok(new { message = "اعتُبر الملف منفذًا كاملًا بهذا البيع" }) : NotFound();
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+    }
+
     [HttpPost("{id:int}/executed-status")]
     public async Task<IActionResult> SetExecutedStatus(int id, [FromBody] ExecutedStatusRequest request, CancellationToken ct)
     {

@@ -17,6 +17,12 @@ public class DelegationRepository : Repository<DocumentDelegation>, IDelegationR
         return await Db.DocumentDelegations
             .Include(d => d.SourceDocument)
                 .ThenInclude(s => s!.BaseNumbers)
+            .Include(d => d.SourceDocument)
+                .ThenInclude(s => s!.ApplicantPublicEntities)
+            .Include(d => d.SourceDocument)
+                .ThenInclude(s => s!.Guarantors)
+            .Include(d => d.SourceDocument)
+                .ThenInclude(s => s!.Heirs)
             .Include(d => d.TargetDocument)
                 .ThenInclude(t => t!.RegistrationDate)
             .Include(d => d.ExternalBranch)

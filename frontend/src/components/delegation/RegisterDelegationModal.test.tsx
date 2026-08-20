@@ -28,8 +28,6 @@ function assignedDelegation(): DelegationDto {
     delegationText: '',
     depositBookNumber: '',
     depositBookDate: '',
-    sendBookNumber: '',
-    sendBookDate: '',
     assignedLawyerId: 2,
     assignedLawyerName: 'المحامي خالد',
     returnDate: '',
@@ -37,7 +35,7 @@ function assignedDelegation(): DelegationDto {
     createdAt: '2026-08-01',
     createdByName: 'سامر',
     createdById: 7,
-    assets: [{ id: 100, assetKind: 'عقار', assetLabel: 'عقار — المزة 77' }],
+    assets: [{ id: 100, assetKind: 'عقار', assetLabel: 'عقار — المزة 77', snapshotAdjusted: false }],
   };
 }
 

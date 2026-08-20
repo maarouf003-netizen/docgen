@@ -7,7 +7,8 @@ using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Api.Tests;
 
-public class WordGenerationIntegrationTests : IClassFixture<ApiFactory>
+[Collection(ApiTestCollection.Name)]
+public class WordGenerationIntegrationTests
 {
     private const string WordContentType =
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document";

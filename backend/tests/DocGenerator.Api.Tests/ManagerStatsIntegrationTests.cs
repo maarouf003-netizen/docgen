@@ -4,7 +4,8 @@ using DocGenerator.Application.DTOs;
 
 namespace DocGenerator.Api.Tests;
 
-public class ManagerStatsIntegrationTests : IClassFixture<ApiFactory>
+[Collection(ApiTestCollection.Name)]
+public class ManagerStatsIntegrationTests
 {
     private readonly ApiFactory _factory;
 

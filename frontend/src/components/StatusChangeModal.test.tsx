@@ -124,6 +124,50 @@ describe('StatusChangeModal', () => {
     });
   });
 
+  it('من «منفذ جبريا — منفذ جزئيا» يعرض «منفذ كاملا بهذا البيع» مع التراجع', () => {
+    renderModal({ isDraft: false, execStatus: 'منفذ جبريا', execSubStatus: 'منفذ جزئيا' });
+
+    const select = screen.getByLabelText('الإجراء') as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+      'تراجع',
+      'منفذ كاملا بهذا البيع',
+    ]);
+  });
+
+  it('من «منفذ جبريا — منفذ كاملا» لا يعرض «منفذ كاملا بهذا البيع»', () => {
+    renderModal({ isDraft: false, execStatus: 'منفذ جبريا', execSubStatus: 'منفذ كاملا' });
+
+    const select = screen.getByLabelText('الإجراء') as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual(['تراجع']);
+  });
+
+  it('«منفذ كاملا بهذا البيع» يستدعي consider-executed-by-delegation بتاريخ التحويل ورقم الإشعار', async () => {
+    const user = userEvent.setup();
+    renderModal({ isDraft: false, execStatus: 'منفذ جبريا', execSubStatus: 'منفذ جزئيا' });
+
+    await user.selectOptions(screen.getByLabelText('الإجراء'), 'منفذ كاملا بهذا البيع');
+    await user.type(screen.getByLabelText('تاريخ تحويل بدل المبيع للجهة العامة'), '١٥/٨/٢٠٢٦');
+    await user.type(screen.getByLabelText('رقم إشعار التحويل (اختياري)'), '999/٢٠٢٦');
+    await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
+
+    expect(api.post).toHaveBeenCalledWith('/documents/1/consider-executed-by-delegation', {
+      fields: { forcedTransferDate: '15/8/2026', forcedTransferNoticeNumber: '999/2026' },
+    });
+  });
+
+  it('يرفض «منفذ كاملا بهذا البيع» دون تاريخ تحويل بدل المبيع', async () => {
+    const user = userEvent.setup();
+    renderModal({ isDraft: false, execStatus: 'منفذ جبريا', execSubStatus: 'منفذ جزئيا' });
+
+    await user.selectOptions(screen.getByLabelText('الإجراء'), 'منفذ كاملا بهذا البيع');
+    await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
+
+    expect(
+      screen.getByText('يجب إدخال تاريخ تحويل بدل المبيع للجهة العامة'),
+    ).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
   it('لملف مشطوب لا يعرض انتقالات ويذكر صفحة «الملفات المشطوبة»', () => {
     renderModal({ isDraft: false, execStatus: 'مشطوب' });
 

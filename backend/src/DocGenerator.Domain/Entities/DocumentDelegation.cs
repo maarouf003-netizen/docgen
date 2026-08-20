@@ -43,12 +43,6 @@ public class DocumentDelegation
     /// <summary>تاريخ كتاب إيداع رئيس القسم كتاب الإنابة (نص حر).</summary>
     public DateTime? DepositBookDate { get; set; }
 
-    /// <summary>رقم كتاب إرسال الإنابة (للكيان «الإنابة الخارجية» إلى محافظة أخرى).</summary>
-    public string? SendBookNumber { get; set; }
-
-    /// <summary>تاريخ كتاب إرسال الإنابة (نص حر).</summary>
-    public DateTime? SendBookDate { get; set; }
-
     /// <summary>المحامي المختص الذي يتابع الإنابة في الدائرة/الفرع المناب (يختاره رئيس القسم).</summary>
     public int? AssignedLawyerId { get; set; }
 

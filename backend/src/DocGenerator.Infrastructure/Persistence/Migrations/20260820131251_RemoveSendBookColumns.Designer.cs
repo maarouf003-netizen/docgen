@@ -3,6 +3,7 @@ using System;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DocGenerator.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(DocGeneratorDbContext))]
-    partial class DocGeneratorDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260820131251_RemoveSendBookColumns")]
+    partial class RemoveSendBookColumns
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
@@ -258,11 +261,6 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.Property<decimal?>("SalePrice")
                         .HasColumnType("decimal(20,2)");
-
-                    b.Property<bool>("SnapshotAdjusted")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER")
-                        .HasDefaultValue(false);
 
                     b.HasKey("Id");
 
@@ -583,13 +581,6 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("ForcedExecutionDate")
                         .HasMaxLength(50)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("ForcibleTransferDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("ForcibleTransferNoticeNumber")
-                        .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("FullData")

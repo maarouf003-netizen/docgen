@@ -16,6 +16,12 @@ public record CreateLawyerRequest(
     string Password,
     int? BranchId = null);
 
+/// <summary>تعديل محامٍ في فرع — رئيس القسم لمحامي فرعه، والمشرف لأي فرع.
+/// الاسم اختياري (يحدّث اسم الدخول تلقائياً)، وكلمة المرور اختيارية تُترك فارغة للإبقاء.</summary>
+public record UpdateLawyerRequest(
+    string? FullName,
+    string? Password = null);
+
 /// <summary>تفعيل/إيقاف حساب (تُستخدم لإيقاف/إعادة تفعيل المحامي أو أي مستخدم).</summary>
 public record SetUserActiveRequest(bool IsActive);
 

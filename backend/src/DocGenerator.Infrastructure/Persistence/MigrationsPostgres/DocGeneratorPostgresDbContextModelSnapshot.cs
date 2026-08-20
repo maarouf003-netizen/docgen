@@ -276,6 +276,11 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Property<decimal?>("SalePrice")
                         .HasColumnType("decimal(20,2)");
 
+                    b.Property<bool>("SnapshotAdjusted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.HasKey("Id");
 
                     b.HasIndex("DelegationId");
@@ -508,7 +513,7 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .HasColumnType("character varying(2000)");
 
                     b.Property<DateTime?>("ExecutedExecutionDate")
-                        .HasColumnType("datetime2");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<decimal?>("ExecutedPaidAmount")
                         .HasColumnType("decimal(20,2)");
@@ -598,6 +603,13 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Property<string>("ForcedExecutionDate")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime?>("ForcibleTransferDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ForcibleTransferNoticeNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("FullData")
                         .HasColumnType("text");
@@ -894,13 +906,6 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.Property<DateTime?>("ReturnDate")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("SendBookDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("SendBookNumber")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
 
                     b.Property<int>("SourceDocumentId")
                         .HasColumnType("integer");

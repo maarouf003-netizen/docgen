@@ -22,5 +22,12 @@ public class DelegationAsset
     /// <summary>بدل المبيع لهذا الأصل بالمزاد العلني (بالليرة السورية) — يُملأ عند إتمام الإنابة.</summary>
     public decimal? SalePrice { get; set; }
 
+    /// <summary>
+    /// علم بأن بيانات هذا الأصل عُدّلت في الملف المنيب بعد تسطير الإنابة (وقبل إتمامها):
+    /// حُدّثت اللقطة تلقائيًا بنوع الأصل ووصفه الجديدين، ويُعرض تنبيه بهذا التعديل في
+    /// بطاقة «تشعبات الملف» (لا يُطبَّق على الإنابات المنفذة فهي سجل نهائي بالبدل).
+    /// </summary>
+    public bool SnapshotAdjusted { get; set; }
+
     public DocumentDelegation Delegation { get; set; } = null!;
 }

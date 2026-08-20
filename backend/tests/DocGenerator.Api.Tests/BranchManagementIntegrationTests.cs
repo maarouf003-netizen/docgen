@@ -6,7 +6,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace DocGenerator.Api.Tests;
 
-public class BranchManagementIntegrationTests : IClassFixture<ApiFactory>
+[Collection(ApiTestCollection.Name)]
+public class BranchManagementIntegrationTests
 {
     private readonly ApiFactory _factory;
 

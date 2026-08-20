@@ -158,6 +158,8 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.BaraetNumber).HasMaxLength(100);
         builder.Property(d => d.BaraetDate).HasMaxLength(50);
         builder.Property(d => d.ForcedExecutionDate).HasMaxLength(50);
+        builder.Property(d => d.ForcibleTransferDate).HasColumnType("datetime2");
+        builder.Property(d => d.ForcibleTransferNoticeNumber).HasMaxLength(100);
         builder.Property(d => d.BaraetRegNumber).HasMaxLength(100);
         builder.Property(d => d.BaraetRegDate).HasMaxLength(50);
         builder.Property(d => d.TarithNumber).HasMaxLength(100);
@@ -692,8 +694,6 @@ public class DocumentDelegationConfiguration : IEntityTypeConfiguration<Document
         builder.Property(d => d.DelegationText).HasMaxLength(2000);
         builder.Property(d => d.DepositBookNumber).HasMaxLength(200);
         builder.Property(d => d.DepositBookDate).HasColumnType("datetime2");
-        builder.Property(d => d.SendBookNumber).HasMaxLength(200);
-        builder.Property(d => d.SendBookDate).HasColumnType("datetime2");
         builder.Property(d => d.DelegationDate).HasColumnType("datetime2");
         builder.Property(d => d.ReturnDate).HasColumnType("datetime2");
         builder.Property(d => d.Status).HasMaxLength(50).IsRequired();
@@ -726,6 +726,7 @@ public class DelegationAssetConfiguration : IEntityTypeConfiguration<DelegationA
         builder.Property(a => a.AssetKind).HasMaxLength(50).IsRequired();
         builder.Property(a => a.AssetLabel).HasMaxLength(300).IsRequired();
         builder.Property(a => a.SalePrice).HasColumnType("decimal(20,2)");
+        builder.Property(a => a.SnapshotAdjusted).IsRequired().HasDefaultValue(false);
         builder.HasIndex(a => a.DelegationId);
 
         // مطابق لعامل الحذف المنطقي للإنابة (وأصلها): تُخفى الأصول التابعة بحذف المصدر.

@@ -338,6 +338,10 @@ export interface DocumentResponse {
   baraetDate?: string;
   /** تاريخ قرار الإحالة القطعية في «منفذ جبريا» (نص حر). */
   forcedExecutionDate?: string;
+  /** تاريخ تحويل بدل المبيع للجهة العامة عند «اعتبار الملف منفذًا كاملًا بهذا البيع». */
+  forcibleTransferDate?: string;
+  /** رقم الإشعار (اختياري) عند تحويل بدل المبيع للجهة العامة. */
+  forcibleTransferNoticeNumber?: string;
   baraetRegNumber?: string;
   baraetRegDate?: string;
   tarithNumber?: string;
@@ -436,6 +440,8 @@ export interface DelegationAssetDto {
   assetKind: string;
   assetLabel: string;
   salePrice?: number | null;
+  /** عُدّلت بيانات الأصل في الملف المنيب بعد الإنابة فحُدِّثت اللقطة تلقائيًا. */
+  snapshotAdjusted: boolean;
 }
 
 /** إنابة للعرض: بطاقة «تشعبات الملف» في المنيب و«معلومات الملف المنيب» في المناب. */
@@ -457,8 +463,6 @@ export interface DelegationDto {
   delegationText?: string;
   depositBookNumber?: string;
   depositBookDate?: string;
-  sendBookNumber?: string;
-  sendBookDate?: string;
   assignedLawyerId?: number | null;
   assignedLawyerName?: string | null;
   /** تاريخ إعادة الملف إلى الدائرة المنيبة عند إتمام الإنابة (yyyy-MM-dd). */
@@ -481,8 +485,6 @@ export interface UpsertDelegationRequest {
   delegationText?: string | null;
   depositBookNumber?: string | null;
   depositBookDate?: string | null;
-  sendBookNumber?: string | null;
-  sendBookDate?: string | null;
   /** معرفات أصول الملف المنيب موضوع الإنابة. */
   assetIds: number[];
 }
@@ -511,6 +513,8 @@ export interface CompleteDelegationRequest {
   /** تاريخ إعادة الملف إلى الدائرة المنيبة (نص حر). */
   returnDate: string;
   sales: DelegationSaleDto[];
+  /** تاريخ قرار الإحالة القطعية (نص حر) — يُحفظ على الملف المنيب عند تفعيله «منفذ جبريا». */
+  forcedExecutionDate: string;
 }
 
 export interface DocumentUpsertRequest {

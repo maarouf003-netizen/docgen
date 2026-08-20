@@ -122,6 +122,28 @@ public class UserManagementController : ControllerBase
         }
     }
 
+    [HttpPut("lawyers/{id:int}")]
+    public async Task<IActionResult> UpdateLawyer(int id, [FromBody] UpdateLawyerRequest request, CancellationToken ct)
+    {
+        if (!CanManageBranchLawyers)
+            return Forbid();
+
+        // نطاق رئيس القسم محصور بمحامي فرعه؛ المشرف بلا نطاق.
+        var scopeBranchId = IsHead ? User.GetBranchId() : (int?)null;
+        if (IsHead && scopeBranchId is null)
+            return Forbid();
+
+        try
+        {
+            var lawyer = await _users.UpdateLawyerAsync(id, request, scopeBranchId, ActorName, ct);
+            return lawyer is null ? NotFound() : Ok(lawyer);
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+    }
+
     [HttpPatch("{id:int}/active")]
     public async Task<IActionResult> SetActive(int id, [FromBody] SetUserActiveRequest request, CancellationToken ct)
     {

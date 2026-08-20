@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Api.Tests.TestServices;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -14,6 +15,8 @@ namespace DocGenerator.Api.Tests;
 /// <summary>
 /// WebApplicationFactory بقاعدة SQLite مؤقتة معزولة لكل مجموعة اختبارات،
 /// مع إعدادات صريحة (Secret، RateLimiting، Swagger) — تطبيق حقيقي من Program.cs.
+/// يُستبدل مشتّق كلمات المرور الثقيل (PBKDF2 200k) بنسخة سريعة مكافئة للسلوك
+/// (<see cref="FastTestPasswordHasher"/>) لأن تكلفته تُدفع عند كل تسجيل دخول/إنشاء مستخدم.
 /// </summary>
 public sealed class ApiFactory : WebApplicationFactory<Program>
 {
@@ -29,6 +32,14 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Jwt:Secret", "integration-test-secret-0123456789-0123456789-0123456789");
         builder.UseSetting("RateLimiting:MaxLoginAttempts", "5");
         builder.UseSetting("RateLimiting:WindowMinutes", "5");
+
+        builder.ConfigureServices(services =>
+        {
+            var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IPasswordHasher));
+            if (descriptor is not null)
+                services.Remove(descriptor);
+            services.AddScoped<IPasswordHasher, FastTestPasswordHasher>();
+        });
     }
 
     protected override void Dispose(bool disposing)

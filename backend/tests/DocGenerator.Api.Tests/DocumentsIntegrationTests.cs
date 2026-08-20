@@ -8,7 +8,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace DocGenerator.Api.Tests;
 
-public class DocumentsIntegrationTests : IClassFixture<ApiFactory>
+[Collection(ApiTestCollection.Name)]
+public class DocumentsIntegrationTests
 {
     private readonly ApiFactory _factory;
 

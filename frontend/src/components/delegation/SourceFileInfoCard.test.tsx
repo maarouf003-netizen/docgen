@@ -19,8 +19,6 @@ const delegation: DelegationDto = {
   delegationText: 'لبيع الأموال المرهونة بالمزاد العلني',
   depositBookNumber: 'K-1',
   depositBookDate: '2026-08-02',
-  sendBookNumber: 'S-9',
-  sendBookDate: '2026-08-03',
   assignedLawyerId: 4,
   assignedLawyerName: 'المحامي هشام',
   returnDate: '',
@@ -28,7 +26,7 @@ const delegation: DelegationDto = {
   createdAt: '2026-08-01',
   createdByName: 'سامر',
   createdById: 7,
-  assets: [{ id: 100, assetKind: 'مركبة', assetLabel: 'مركبة سيارة — لوحة 123' }],
+  assets: [{ id: 100, assetKind: 'مركبة', assetLabel: 'مركبة سيارة — لوحة 123', snapshotAdjusted: false }],
 };
 
 describe('SourceFileInfoCard', () => {

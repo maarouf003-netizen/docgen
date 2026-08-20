@@ -247,9 +247,19 @@ public class Document
 
     /// <summary>
     /// تاريخ قرار الإحالة القطعية في «منفذ جبريا» (نص حر): يُدخل من نافذة «تغيير الحالة»
-    /// عند الانتقال إلى «منفذ جبريا»، ويظهر في صفحة «الملفات المنفذة» كتاريخ تنفيذ الملف.
+    /// عند الانتقال إلى «منفذ جبريا»، أو من نافذة «إتمام الإنابة» (حيث يدخله محامي الملف
+    /// المناب مع تاريخ الإعادة وبدل المبيع)، ويظهر في صفحة «الملفات المنفذة» كتاريخ تنفيذ الملف.
     /// </summary>
     public string? ForcedExecutionDate { get; set; }
+
+    /// <summary>
+    /// تاريخ تحويل بدل المبيع للجهة العامة عند «اعتبار الملف منفذًا كاملًا بهذا البيع»
+    /// (بيع الإنابة): نص حر يُفسَّر ويُخزَّن زمنيًا (قاعدة Date Fields Rule).
+    /// </summary>
+    public DateTime? ForcibleTransferDate { get; set; }
+
+    /// <summary>رقم الإشعار (اختياري) عند تحويل بدل المبيع للجهة العامة.</summary>
+    public string? ForcibleTransferNoticeNumber { get; set; }
     public string? TarithNumber { get; set; }
     public string? TarithDate { get; set; }
     public string? TarithRegNumber { get; set; }

@@ -28,8 +28,6 @@ function pendingDelegation(overrides: Partial<DelegationDto> = {}): DelegationDt
     delegationText: 'الإنابة على العقار المذكور',
     depositBookNumber: '',
     depositBookDate: '',
-    sendBookNumber: '',
-    sendBookDate: '',
     assignedLawyerId: null,
     assignedLawyerName: null,
     returnDate: '',
@@ -37,7 +35,7 @@ function pendingDelegation(overrides: Partial<DelegationDto> = {}): DelegationDt
     createdAt: '2026-08-01',
     createdByName: 'سامر',
     createdById: 7,
-    assets: [{ id: 100, assetKind: 'عقار', assetLabel: 'عقار — المزة 77' }],
+    assets: [{ id: 100, assetKind: 'عقار', assetLabel: 'عقار — المزة 77', snapshotAdjusted: false }],
     ...overrides,
   };
 }

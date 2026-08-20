@@ -6,7 +6,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace DocGenerator.Api.Tests;
 
-public class TokenRevocationIntegrationTests : IClassFixture<ApiFactory>
+[Collection(ApiTestCollection.Name)]
+public class TokenRevocationIntegrationTests
 {
     private readonly ApiFactory _factory;
 

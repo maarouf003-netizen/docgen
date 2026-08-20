@@ -11,7 +11,7 @@ vi.mock('../auth/useAuth', () => ({
 }));
 
 vi.mock('../api/client', () => ({
-  api: { get: vi.fn(), post: vi.fn(), patch: vi.fn() },
+  api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn() },
   getApiErrorMessage: (error: unknown) => {
     const e = error as {
       isAxiosError?: boolean;
@@ -132,6 +132,66 @@ describe('BranchLawyers', () => {
     await waitFor(() => {
       expect(api.patch).toHaveBeenCalledWith('/users/1/active', { isActive: false });
     });
+  });
+
+  it('يعدّل اسم المحامي عبر PUT ويحدّث القائمة', async () => {
+    const user = userEvent.setup();
+    render(<BranchLawyers />);
+
+    await user.click(await screen.findByRole('button', { name: 'تعديل' }));
+    const nameInput = screen.getByLabelText(/الاسم الثلاثي/);
+    await user.clear(nameInput);
+    await user.type(nameInput, 'محامي معدل');
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديل' }));
+
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith('/users/lawyers/1', {
+        fullName: 'محامي معدل',
+        password: null,
+      });
+    });
+    expect(api.get).toHaveBeenCalled();
+  });
+
+  it('يعيد تعيين كلمة مرور المحامي عبر PUT', async () => {
+    const user = userEvent.setup();
+    render(<BranchLawyers />);
+
+    await user.click(await screen.findByRole('button', { name: 'تعديل' }));
+    await user.type(screen.getByLabelText(/كلمة مرور جديدة/), '654321');
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديل' }));
+
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith('/users/lawyers/1', {
+        fullName: 'محامي دمشق',
+        password: '654321',
+      });
+    });
+  });
+
+  it('يمنع التعديل بكلمة مرور قصيرة ويعرض رسالة خطأ', async () => {
+    const user = userEvent.setup();
+    render(<BranchLawyers />);
+
+    await user.click(await screen.findByRole('button', { name: 'تعديل' }));
+    await user.type(screen.getByLabelText(/كلمة مرور جديدة/), '123');
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديل' }));
+
+    expect(await screen.findByText(/كلمة المرور الجديدة يجب أن تكون 6 أحرف/)).toBeInTheDocument();
+    expect(api.put).not.toHaveBeenCalled();
+  });
+
+  it('يمنع التعديل بلا اسم ويعرض رسالة خطأ', async () => {
+    const user = userEvent.setup();
+    render(<BranchLawyers />);
+
+    await user.click(await screen.findByRole('button', { name: 'تعديل' }));
+    const nameInput = screen.getByLabelText(/الاسم الثلاثي/);
+    await user.clear(nameInput);
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديل' }));
+
+    expect(await screen.findByText(/الاسم الثلاثي مطلوب/)).toBeInTheDocument();
+    expect(api.put).not.toHaveBeenCalled();
   });
 
   it('يمنع الإضافة عند كلمة مرور قصيرة ويعرض رسالة خطأ', async () => {

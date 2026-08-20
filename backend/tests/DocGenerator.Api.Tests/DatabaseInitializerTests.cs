@@ -1,5 +1,5 @@
 using DocGenerator.Application.Common.Interfaces;
-using DocGenerator.Application.Services;
+using DocGenerator.Api.Tests.TestServices;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -19,7 +19,7 @@ public class DatabaseInitializerTests
             .UseSqlite($"Data Source={path}")
             .Options;
         var db = new DocGeneratorDbContext(options);
-        return (path, db, new DatabaseInitializer(db, new PasswordHasher()));
+        return (path, db, new DatabaseInitializer(db, new FastTestPasswordHasher()));
     }
 
     private static void Cleanup(string path)
@@ -98,7 +98,7 @@ public class DatabaseInitializerTests
                 Username = "existing",
                 FullName = "مستخدم موجود",
                 Role = UserRole.Lawyer,
-                PasswordHash = new PasswordHasher().Hash("123456"),
+                PasswordHash = new FastTestPasswordHasher().Hash("123456"),
             });
             await db.SaveChangesAsync();
 
@@ -129,7 +129,7 @@ public class DatabaseInitializerTests
                 Username = "admin",
                 FullName = "المشرف العام",
                 Role = UserRole.Admin,
-                PasswordHash = new PasswordHasher().Hash("123456"),
+                PasswordHash = new FastTestPasswordHasher().Hash("123456"),
             });
             await db.SaveChangesAsync();
             // إدراج المستند بـ SQL خام بالأعمدة الموجودة في القاعدة القديمة فقط،
@@ -172,7 +172,7 @@ public class DatabaseInitializerTests
                 Username = "admin",
                 FullName = "المشرف العام",
                 Role = UserRole.Admin,
-                PasswordHash = new PasswordHasher().Hash("123456"),
+                PasswordHash = new FastTestPasswordHasher().Hash("123456"),
             });
             await db.SaveChangesAsync();
 
@@ -244,7 +244,7 @@ public class DatabaseInitializerTests
                 Username = "admin",
                 FullName = "المشرف العام",
                 Role = UserRole.Admin,
-                PasswordHash = new PasswordHasher().Hash("123456"),
+                PasswordHash = new FastTestPasswordHasher().Hash("123456"),
             });
             await db.SaveChangesAsync();
             // إدراج مستند قديم يحمل «طالب التنفيذ» نصيًا (Applicant) كما كان قبل الهجرة.
@@ -304,7 +304,7 @@ public class DatabaseInitializerTests
                 Username = "admin",
                 FullName = "المشرف العام",
                 Role = UserRole.Admin,
-                PasswordHash = new PasswordHasher().Hash("123456"),
+                PasswordHash = new FastTestPasswordHasher().Hash("123456"),
             });
             await db.SaveChangesAsync();
             // إدراج المستند بـ SQL خام بالأعمدة الموجودة في القاعدة القديمة فقط،
@@ -357,7 +357,7 @@ public class DatabaseInitializerTests
                 Username = "admin",
                 FullName = "المشرف العام",
                 Role = UserRole.Admin,
-                PasswordHash = new PasswordHasher().Hash("123456"),
+                PasswordHash = new FastTestPasswordHasher().Hash("123456"),
             });
             await db.SaveChangesAsync();
 
@@ -458,7 +458,7 @@ public class DatabaseInitializerTests
                 Username = "admin",
                 FullName = "المشرف العام",
                 Role = UserRole.Admin,
-                PasswordHash = new PasswordHasher().Hash("123456"),
+                PasswordHash = new FastTestPasswordHasher().Hash("123456"),
             });
             await db.SaveChangesAsync();
 

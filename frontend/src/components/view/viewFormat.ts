@@ -263,6 +263,8 @@ export function buildStatusSummary(doc: DocumentResponse): string {
     if (doc.execSubStatus) parts.push(`(${doc.execSubStatus})`);
     const collected = formatCollectedAmounts(doc);
     if (collected) parts.push(`المبلغ المحصل: ${collected}`);
+    if (doc.forcibleTransferDate) parts.push(`تحويل البدل بتاريخ ${formatDate(doc.forcibleTransferDate)}`);
+    if (doc.forcibleTransferNoticeNumber) parts.push(`بإشعار رقم ${doc.forcibleTransferNoticeNumber}`);
     return parts.join(' ');
   }
   if (doc.execStatus === 'مشطوب') {
@@ -320,6 +322,8 @@ export function occurrenceLine(occurrence: DocumentOccurrenceDto): string {
     case 'forcible': {
       const parts = ['منفذ جبريا'];
       if (d.execSubStatus) parts.push(`(${d.execSubStatus})`);
+      if (d.forcedTransferDate) parts.push(`تحويل البدل بتاريخ ${formatDate(d.forcedTransferDate)}`);
+      if (d.forcedTransferNoticeNumber) parts.push(`بإشعار رقم ${d.forcedTransferNoticeNumber}`);
       return parts.join(' ');
     }
     case 'revert':

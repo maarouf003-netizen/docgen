@@ -10,6 +10,7 @@ public interface IUserManagementService
 {
     Task<List<LawyerListItemDto>> ListLawyersAsync(int? branchId, CancellationToken ct = default);
     Task<LawyerListItemDto> CreateLawyerAsync(int branchId, CreateLawyerRequest request, string? actorName, CancellationToken ct = default);
+    Task<LawyerListItemDto?> UpdateLawyerAsync(int userId, UpdateLawyerRequest request, int? scopeBranchId, string? actorName, CancellationToken ct = default);
     Task<bool> SetLawyerActiveAsync(int userId, bool isActive, int? scopeBranchId, string? actorName, CancellationToken ct = default);
     Task<List<UserListItemDto>> ListUsersAsync(CancellationToken ct = default);
     Task<UserListItemDto> CreateUserAsync(CreateUserRequest request, string? actorName, CancellationToken ct = default);
@@ -93,6 +94,52 @@ public sealed class UserManagementService : IUserManagementService
         }, ct);
 
         return new LawyerListItemDto(user.Id, user.Username, user.FullName, user.IsActive, user.BranchId, branch.Name);
+    }
+
+    public async Task<LawyerListItemDto?> UpdateLawyerAsync(int userId, UpdateLawyerRequest request, int? scopeBranchId, string? actorName, CancellationToken ct = default)
+    {
+        var user = await _users.GetByIdAsync(userId, ct);
+        if (user is null || user.Role != UserRole.Lawyer)
+            return null;
+
+        // رئيس القسم يعدّل محامي فرعه فقط.
+        if (scopeBranchId.HasValue && user.BranchId != scopeBranchId)
+            return null;
+
+        if (string.IsNullOrWhiteSpace(request.FullName) && string.IsNullOrWhiteSpace(request.Password))
+            throw new ArgumentException("لا يوجد تغيير لإجرائه — حدّد اسماً جديداً أو كلمة مرور جديدة");
+
+        if (!string.IsNullOrWhiteSpace(request.FullName))
+        {
+            // الاسم الثلاثي هو اسم الدخول: تعديل الاسم يحدّث اسم الدخول تلقائياً مع بقاء التفرد ضمن الفرع.
+            var newUsername = NormalizeUsername(request.FullName);
+            ValidateUsername(newUsername);
+            if (newUsername != user.Username
+                && await _users.UsernameExistsAsync(newUsername, user.BranchId, user.Id, ct))
+                throw new ArgumentException(DuplicateUsernameMessage(user.BranchId));
+
+            user.FullName = request.FullName.Trim();
+            user.Username = newUsername;
+        }
+
+        user.UpdatedAt = DateTime.UtcNow;
+
+        return await _tx.RunAsync(async token =>
+        {
+            if (!string.IsNullOrWhiteSpace(request.Password))
+            {
+                ValidatePassword(request.Password);
+                user.PasswordHash = _hasher.Hash(request.Password);
+                // إبطال الرموز الصادرة سابقاً عند تغيير كلمة المرور.
+                user.TokenVersion++;
+            }
+
+            _users.Update(user);
+            await _uow.SaveChangesAsync(token);
+            await _audit.LogAsync(actorName, "update_user",
+                details: $"عدّل المحامي: {user.FullName} ({user.Username})", ct: token);
+            return ToLawyerDto(user);
+        }, ct);
     }
 
     public async Task<bool> SetLawyerActiveAsync(int userId, bool isActive, int? scopeBranchId, string? actorName, CancellationToken ct = default)

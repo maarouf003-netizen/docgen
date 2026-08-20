@@ -1,3 +1,4 @@
+using System.Text.Json;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
@@ -17,6 +18,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
     private readonly IUserRepository _users;
     private readonly IRepository<Branch> _branches;
     private readonly IRepository<DocumentRegistrationDate> _registrationDates;
+    private readonly IRepository<DocumentOccurrence> _occurrences;
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
@@ -28,6 +30,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         IUserRepository users,
         IRepository<Branch> branches,
         IRepository<DocumentRegistrationDate> registrationDates,
+        IRepository<DocumentOccurrence> occurrences,
         IUnitOfWork uow,
         ITransactionRunner tx,
         IAuditLogger audit,
@@ -38,6 +41,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         _users = users;
         _branches = branches;
         _registrationDates = registrationDates;
+        _occurrences = occurrences;
         _uow = uow;
         _tx = tx;
         _audit = audit;
@@ -70,8 +74,6 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
             DelegationText = Normalize(request.DelegationText),
             DepositBookNumber = Normalize(request.DepositBookNumber),
             DepositBookDate = fields.DepositBookDate,
-            SendBookNumber = Normalize(request.SendBookNumber),
-            SendBookDate = fields.SendBookDate,
             Status = DelegationStatusCatalog.PendingHead,
             CreatedById = userId,
             CreatedAt = DateTime.UtcNow,
@@ -143,8 +145,6 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         delegation.DelegationText = Normalize(request.DelegationText);
         delegation.DepositBookNumber = Normalize(request.DepositBookNumber);
         delegation.DepositBookDate = fields.DepositBookDate;
-        delegation.SendBookNumber = Normalize(request.SendBookNumber);
-        delegation.SendBookDate = fields.SendBookDate;
         delegation.UpdatedAt = DateTime.UtcNow;
         ApplyDelegationAssets(delegation, source, request.AssetIds);
 
@@ -319,7 +319,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
                     TargetType: "document",
                     DocumentId: target.Id,
                     TargetLawyerId: null,
-                    Message: $"أُنشئ الملف المناب لك بتكليف من رئيس القسم على الملف ({SourceLabel(source)}) — دائرة {delegation.DelegatedCourt}"),
+                    Message: $"أحال إليك رئيس القسم ملف إنابة لقيده أصولًا في {delegation.DelegatedCourt} (ملف {SourceLabel(source)})"),
                     userId, targetBranch!.Value, actorName, ct);
             }
             catch (Exception ex)
@@ -436,6 +436,13 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         if (returnDate is null)
             throw new ArgumentException("تاريخ إعادة الملف للدائرة المنيبة مطلوب");
 
+        // «تاريخ قرار الإحالة القطعية»: يدخله محامي الملف المناب مع تاريخ الإعادة وبدل المبيع
+        // (إلزامي)، ويُحفظ على الملف المنيب عند تفعيله «منفذ جبريا» (نص حر مُوحَّد الأرقام).
+        var forcedExecutionDateRaw = (request.ForcedExecutionDate ?? string.Empty).Trim();
+        if (FreeDateParser.Parse(forcedExecutionDateRaw, "تاريخ قرار الإحالة القطعية") is null)
+            throw new ArgumentException("تاريخ قرار الإحالة القطعية مطلوب");
+        var forcedExecutionDate = ArabicDigitNormalizer.Normalize(forcedExecutionDateRaw);
+
         var sales = request.Sales ?? new List<DelegationSaleDto>();
         var salesByAssetId = sales.ToDictionary(s => s.DelegationAssetId);
         foreach (var asset in delegation.Assets)
@@ -458,11 +465,54 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
             target.ExecStatus = ExecutionStatusCatalog.DelegationExecuted;
             target.UpdatedAt = DateTime.UtcNow;
             _documents.Update(target);
+
+            // قاعدة «يسري على المنيب»: يُفعَّل المنيب تلقائيًا «منفذ جبريا (منفذ جزئيا)» فيُحتسب
+            // متداولًا في القوائم والإحصاءات، وعلى محامي المنيب لاحقًا «اعتبار الملف منفذًا
+            // كاملًا بهذا البيع» (تاريخ تحويل البدل ورقم الإشعار) من نافذة تغيير الحالة — وحينها
+            // فقط يدخل مبلغ الإنابة ضمن «إحصاءات منفذ جبريا» مرة واحدة (مسار DelegationSalesAmount).
+            var source = delegation.SourceDocument;
+            var markApplied = false;
+            if (source is not null)
+            {
+                var alreadyMarked = source.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
+                    && source.ExecSubStatus == ExecutionStatusCatalog.SubPartiallyExecuted;
+                if (!alreadyMarked)
+                {
+                    source.ExecStatus = ExecutionStatusCatalog.ExecutedForcibly;
+                    source.ExecSubStatus = ExecutionStatusCatalog.SubPartiallyExecuted;
+                    source.ForcedExecutionDate = forcedExecutionDate;
+                    ClearTarithAndSayerFields(source);
+                    source.UpdatedAt = DateTime.UtcNow;
+                    _documents.Update(source);
+                    markApplied = true;
+                }
+            }
             await _uow.SaveChangesAsync(token);
+
+            // وقعة تغيير حالة المنيب (تفعيل تلقائي «منفذ جبريا — منفذ جزئيا») ضمن المعاملة نفسها،
+            // لتُسجَّل في «وقوعات الملف» كأي وقعة «منفذ جبريا» (تُسجَّل مرة واحدة لكل تفعيل).
+            if (markApplied && source is not null)
+            {
+                await _occurrences.AddAsync(new DocumentOccurrence
+                {
+                    DocumentId = source.Id,
+                    OccurrenceType = OccurrenceTypeCatalog.Forcible,
+                    EventDate = DateTime.UtcNow,
+                    Details = SerializeDetails(new Dictionary<string, string>
+                    {
+                        ["execSubStatus"] = ExecutionStatusCatalog.SubPartiallyExecuted,
+                        ["forcedExecutionDate"] = source.ForcedExecutionDate ?? string.Empty,
+                    }),
+                    CreatedById = source.CreatedById,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                }, token);
+                await _uow.SaveChangesAsync(token);
+            }
 
             await _audit.LogAsync(actorName, "complete_delegation",
                 delegation.SourceDocumentId, delegation.SourceDocument.DocumentType,
-                $"أتم إنابة (رقم {delegation.Id}): بيع الأموال موضوع الإنابة وإعادة الملف للدائرة المنيبة", token);
+                $"أتم إنابة (رقم {delegation.Id}): بيع الأموال موضوع الإنابة وإعادة الملف للدائرة المنيبة — اعتُبر الملف المنيب «منفذ جبريا (منفذ جزئيا)» تلقائيًا حتى اعتباره منفذًا كاملًا بهذا البيع", token);
         }, ct);
 
         // تصفية تنبيه «بانتظار الإتمام» بعد إتمام الإنابة (أنجز مهمّته). إشعار فرعي —
@@ -563,8 +613,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
             isExternal,
             externalBranchId,
             delegationDate,
-            FreeDateParser.Parse(request.DepositBookDate, "تاريخ كتاب إيداع رئيس القسم"),
-            FreeDateParser.Parse(request.SendBookDate, "تاريخ كتاب إرسال الإنابة")));
+            FreeDateParser.Parse(request.DepositBookDate, "تاريخ كتاب إيداع رئيس القسم")));
     }
 
     /// <summary>حقول الإنابة المنبثقة من الطلب بعد التحقق (الجهة الخارجية وتواريخها النصية الحرة).</summary>
@@ -572,8 +621,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         bool IsExternal,
         int? ExternalBranchId,
         DateTime? DelegationDate,
-        DateTime? DepositBookDate,
-        DateTime? SendBookDate);
+        DateTime? DepositBookDate);
 
     private void ApplyDelegationAssets(DocumentDelegation delegation, Document source, List<int>? assetIds)
     {
@@ -597,8 +645,37 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         }
     }
 
-    /// <summary>لقطة مجمّدة من أطراف الملف المنيب وبيانات سنده إلى الملف المناب (منفصلة عنه).</summary>
+    /// <summary>
+    /// لقطة مجمّدة من الملف المنيب إلى الملف المناب (منفصلة عنه): أطرافه (المقترض والكفلاء
+    /// والجهات العامة وورثتهم) وبيانات سنده وكتبه — فلا يظهر أي صف أطراف أو كتاب فارغًا
+    /// على الملف المناب رغم وجوده على الملف المنيب. الإنابة تخص ملفات «طالبة تنفيذ» فقط
+    /// (ValidateSourceForDelegation)، فأطرافها هي: المقترض والكفلاء والورثة والجهات العامة.
+    /// </summary>
     private static void CopySourcePartiesAndBond(Document source, Document target)
+    {
+        CopyBorrower(source, target);
+        CopyBond(source, target);
+        CopyBooks(source, target);
+
+        // الكفلاء.
+        foreach (var g in source.Guarantors)
+            target.Guarantors.Add(CopyGuarantor(g));
+
+        // ورثة المقترض/الكفلاء.
+        foreach (var h in source.Heirs)
+            target.Heirs.Add(CopyHeir(h));
+
+        // الجهات العامة طالبة التنفيذ.
+        foreach (var e in source.ApplicantPublicEntities)
+            target.ApplicantPublicEntities.Add(new ApplicantPublicEntity
+            {
+                Name = e.Name,
+                Branch = e.Branch,
+                Governorate = e.Governorate,
+            });
+    }
+
+    private static void CopyBorrower(Document source, Document target)
     {
         target.BorrowerName = source.BorrowerName;
         target.BorrowerFather = source.BorrowerFather;
@@ -613,6 +690,16 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         target.BorrowerRegistrationNumber = source.BorrowerRegistrationNumber;
         target.BorrowerRepresentedBy = source.BorrowerRepresentedBy;
 
+        target.BorrowerRepresentativeName = source.BorrowerRepresentativeName;
+        target.BorrowerRepresentativeFather = source.BorrowerRepresentativeFather;
+        target.BorrowerRepresentativeFamily = source.BorrowerRepresentativeFamily;
+        target.BorrowerRepresentativeCapacity = source.BorrowerRepresentativeCapacity;
+        target.BorrowerRepresentativeAddressType = source.BorrowerRepresentativeAddressType;
+        target.BorrowerRepresentativeAddress = source.BorrowerRepresentativeAddress;
+    }
+
+    private static void CopyBond(Document source, Document target)
+    {
         target.ContractType = source.ContractType;
         target.ContractTypeSelector = source.ContractTypeSelector;
         target.ContractNumber = source.ContractNumber;
@@ -645,6 +732,52 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         target.Applicant = source.Applicant;
     }
 
+    /// <summary>كتب الملف المنيب التي تنتقل معه إلى الملف المناب: ورود الملف وكتاب الجهة العامة ورقم تحت رفع.</summary>
+    private static void CopyBooks(Document source, Document target)
+    {
+        target.FileArrivalNumber = source.FileArrivalNumber;
+        target.FileArrivalDate = source.FileArrivalDate;
+        target.FileIncoming = source.FileIncoming;
+        target.FileIncomingDate = source.FileIncomingDate;
+        target.UnderFilingNumber = source.UnderFilingNumber;
+        target.FileReceiptNumber = source.FileReceiptNumber;
+        target.FileReceiptDate = source.FileReceiptDate;
+    }
+
+    private static Guarantor CopyGuarantor(Guarantor g) => new()
+    {
+        GuarantorNumber = g.GuarantorNumber,
+        GuarantorName = g.GuarantorName,
+        GuarantorFather = g.GuarantorFather,
+        GuarantorFamily = g.GuarantorFamily,
+        GuarantorMother = g.GuarantorMother,
+        GuarantorBirth = g.GuarantorBirth,
+        GuarantorRegister = g.GuarantorRegister,
+        GuarantorNationalId = g.GuarantorNationalId,
+        GuarantorAddress = g.GuarantorAddress,
+        AddressType = g.AddressType,
+        GuarantorNature = g.GuarantorNature,
+        GuarantorRegistrationNumber = g.GuarantorRegistrationNumber,
+        GuarantorRepresentedBy = g.GuarantorRepresentedBy,
+        RepresentativeName = g.RepresentativeName,
+        RepresentativeFather = g.RepresentativeFather,
+        RepresentativeFamily = g.RepresentativeFamily,
+        RepresentativeCapacity = g.RepresentativeCapacity,
+        RepresentativeAddressType = g.RepresentativeAddressType,
+        RepresentativeAddress = g.RepresentativeAddress,
+    };
+
+    private static Heir CopyHeir(Heir h) => new()
+    {
+        GuarantorNumber = h.GuarantorNumber,
+        HeirName = h.HeirName,
+        HeirFather = h.HeirFather,
+        HeirFamily = h.HeirFamily,
+        HeirCapacity = h.HeirCapacity,
+        AddressType = h.AddressType,
+        HeirAddress = h.HeirAddress,
+    };
+
     /// <summary>
     /// يُسجَّل تاريخ قيد الملف المناب (DocumentRegistrationDate 1:1 بمفتاح DocumentId):
     /// يُضاف عند غيابه ويُحدَّث إن وُجد.
@@ -675,6 +808,25 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
     private static string? Normalize(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
+    /// <summary>
+    /// تطهير حقول «التريث» و«كتاب السير بالملف» عند التفعيل التلقائي «منفذ جبريا (منفذ جزئيا)»
+    /// — بنفس معاملة مسار «تغيير الحالة» اليدوية (منفذ جبريا ينظف حقول التريث والسير).
+    /// </summary>
+    private static void ClearTarithAndSayerFields(Document source)
+    {
+        source.TarithNumber = null;
+        source.TarithDate = null;
+        source.TarithRegNumber = null;
+        source.TarithRegDate = null;
+        source.SayerNumber = null;
+        source.SayerDate = null;
+        source.SayerRegNumber = null;
+        source.SayerRegDate = null;
+    }
+
+    private static string SerializeDetails(Dictionary<string, string> details) =>
+        JsonSerializer.Serialize(details);
+
     private static DelegationDto ToDto(DocumentDelegation d, Document source) => new(
         d.Id,
         d.SourceDocumentId,
@@ -690,15 +842,13 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         d.DelegationText,
         d.DepositBookNumber,
         FreeDateParser.ToResponse(d.DepositBookDate),
-        d.SendBookNumber,
-        FreeDateParser.ToResponse(d.SendBookDate),
         d.AssignedLawyerId,
         d.AssignedLawyer?.FullName,
         FreeDateParser.ToResponse(d.ReturnDate),
         d.Status,
         d.CreatedAt,
         d.CreatedBy?.FullName,
-        d.Assets.Select(a => new DelegationAssetDto(a.Id, a.AssetKind, a.AssetLabel, a.SalePrice)).ToList(),
+        d.Assets.Select(a => new DelegationAssetDto(a.Id, a.AssetKind, a.AssetLabel, a.SalePrice, a.SnapshotAdjusted)).ToList(),
         d.CreatedById);
 
     private static string SourceLabel(Document source)

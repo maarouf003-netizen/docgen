@@ -7,6 +7,9 @@ import type { AssetDto, DocumentResponse } from '../types';
 import { FieldInput, SelectInput } from './form/FormInputs';
 import MultiAmountEditor from './MultiAmountEditor';
 
+/** نمط التاريخ الحر المعتمد: «مثال: 1/8/2026» (يوم/شهر/سنة) لكل حقول التواريخ. */
+const DATE_PLACEHOLDER = 'مثال: 1/8/2026';
+
 /** الحالة الحالية لنظام «طالبة تنفيذ» (مطابقة لآلة الحالات في الخلفية). */
 function currentStateOf(doc: DocumentResponse): string {
   if (doc.execStatus === 'مشطوب' || doc.executedStatus === 'مشطوب') return 'مشطوب';
@@ -28,7 +31,7 @@ function allowedTargetsOf(state: string): string[] {
     case 'منفذ بالتسوية':
       return ['تراجع'];
     case 'منفذ جبريا':
-      return ['تراجع'];
+      return ['تراجع', 'منفذ كاملا بهذا البيع'];
     default:
       return [];
   }
@@ -52,6 +55,8 @@ type StatusFields = {
   sayerRegDate: string;
   execSubStatus: string;
   forcedExecutionDate: string;
+  forcedTransferDate: string;
+  forcedTransferNoticeNumber: string;
   collectedAmount?: number;
   collectedAmount2?: number;
   collectedAmount3?: number;
@@ -78,6 +83,8 @@ function emptyFields(): StatusFields {
     sayerRegDate: '',
     execSubStatus: 'منفذ كاملا',
     forcedExecutionDate: '',
+    forcedTransferDate: '',
+    forcedTransferNoticeNumber: '',
     collectedCurrency: 'ليرة سورية',
     collectedCurrency2: 'دولار أمريكي',
     collectedCurrency3: 'يورو',
@@ -96,7 +103,11 @@ export default function StatusChangeModal({
   onChanged: () => void;
 }) {
   const state = currentStateOf(doc);
-  const targets = allowedTargetsOf(state);
+  // «اعتبار الملف منفذًا كاملًا بهذا البيع» يخص فقط «منفذ جبريا — منفذ جزئيا» (المنيِّب
+  // الذي فُعّل تلقائيًا بإتمام إنابته)؛ أما «منفذ كاملا» فلا يُعرض له هذا الإجراء.
+  const targets = allowedTargetsOf(state).filter(
+    (t) => t !== 'منفذ كاملا بهذا البيع' || doc.execSubStatus === 'منفذ جزئيا',
+  );
   const [target, setTarget] = useState<string>(targets[0] ?? '');
   const [fields, setFields] = useState<StatusFields>(emptyFields());
   const [collectedSlots, setCollectedSlots] = useState(1);
@@ -162,6 +173,14 @@ export default function StatusChangeModal({
         throw new Error('اختر الأموال التي جرى بيعها بالمزاد العلني على الأقل');
       }
       payload.soldAssetIds = fields.soldAssetIds.join(',');
+    } else if (target === 'منفذ كاملا بهذا البيع') {
+      if (!fields.forcedTransferDate.trim()) {
+        throw new Error('يجب إدخال تاريخ تحويل بدل المبيع للجهة العامة');
+      }
+      payload.forcedTransferDate = normalize(fields.forcedTransferDate);
+      if (fields.forcedTransferNoticeNumber.trim()) {
+        payload.forcedTransferNoticeNumber = normalize(fields.forcedTransferNoticeNumber);
+      }
     } else if (target === 'مشطوب') {
       if (!fields.struckOffDate.trim()) {
         throw new Error('يجب إدخال تاريخ الشطب');
@@ -193,6 +212,10 @@ export default function StatusChangeModal({
     try {
       if (target === 'تراجع') {
         await api.post(`/documents/${doc.id}/revert-status`, { fields: payload });
+      } else if (target === 'منفذ كاملا بهذا البيع') {
+        await api.post(`/documents/${doc.id}/consider-executed-by-delegation`, {
+          fields: payload,
+        });
       } else {
         await api.post(`/documents/${doc.id}/status`, { status: target, fields: payload });
       }
@@ -252,9 +275,9 @@ export default function StatusChangeModal({
               {target === 'تريث' && (
                 <div className="grid sm:grid-cols-2 gap-3">
                   <FieldInput id="tarithNumber" label="رقم كتاب التريث" value={fields.tarithNumber} onChange={(v) => set('tarithNumber', v)} />
-                  <FieldInput id="tarithDate" label="تاريخ كتاب التريث" value={fields.tarithDate} onChange={(v) => set('tarithDate', v)} />
+                  <FieldInput id="tarithDate" label="تاريخ كتاب التريث" value={fields.tarithDate} onChange={(v) => set('tarithDate', v)} placeholder={DATE_PLACEHOLDER} />
                   <FieldInput id="tarithRegNumber" label="رقم ورود كتاب التريث" value={fields.tarithRegNumber} onChange={(v) => set('tarithRegNumber', v)} />
-                  <FieldInput id="tarithRegDate" label="تاريخ ورود كتاب التريث" value={fields.tarithRegDate} onChange={(v) => set('tarithRegDate', v)} />
+                  <FieldInput id="tarithRegDate" label="تاريخ ورود كتاب التريث" value={fields.tarithRegDate} onChange={(v) => set('tarithRegDate', v)} placeholder={DATE_PLACEHOLDER} />
                 </div>
               )}
 
@@ -262,9 +285,9 @@ export default function StatusChangeModal({
                 <div className="grid gap-4">
                   <div className="grid sm:grid-cols-2 gap-3">
                     <FieldInput id="baraetNumber" label="رقم كتاب براءة الذمة" value={fields.baraetNumber} onChange={(v) => set('baraetNumber', v)} />
-                    <FieldInput id="baraetDate" label="تاريخ كتاب براءة الذمة" value={fields.baraetDate} onChange={(v) => set('baraetDate', v)} />
+                    <FieldInput id="baraetDate" label="تاريخ كتاب براءة الذمة" value={fields.baraetDate} onChange={(v) => set('baraetDate', v)} placeholder={DATE_PLACEHOLDER} />
                     <FieldInput id="baraetRegNumber" label="رقم ورود كتاب براءة الذمة" value={fields.baraetRegNumber} onChange={(v) => set('baraetRegNumber', v)} />
-                    <FieldInput id="baraetRegDate" label="تاريخ ورود كتاب براءة الذمة" value={fields.baraetRegDate} onChange={(v) => set('baraetRegDate', v)} />
+                    <FieldInput id="baraetRegDate" label="تاريخ ورود كتاب براءة الذمة" value={fields.baraetRegDate} onChange={(v) => set('baraetRegDate', v)} placeholder={DATE_PLACEHOLDER} />
                   </div>
                   <MultiAmountEditor
                     idPrefix="status-collected"
@@ -294,6 +317,7 @@ export default function StatusChangeModal({
                     label="تاريخ قرار الإحالة القطعية"
                     value={fields.forcedExecutionDate}
                     onChange={(v) => set('forcedExecutionDate', v)}
+                    placeholder={DATE_PLACEHOLDER}
                   />
                   <MultiAmountEditor
                     idPrefix="status-collected"
@@ -339,16 +363,34 @@ export default function StatusChangeModal({
                 </div>
               )}
 
+              {target === 'منفذ كاملا بهذا البيع' && (
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <FieldInput
+                    id="forcedTransferDate"
+                    label="تاريخ تحويل بدل المبيع للجهة العامة"
+                    value={fields.forcedTransferDate}
+                    onChange={(v) => set('forcedTransferDate', v)}
+                    placeholder={DATE_PLACEHOLDER}
+                  />
+                  <FieldInput
+                    id="forcedTransferNoticeNumber"
+                    label="رقم إشعار التحويل (اختياري)"
+                    value={fields.forcedTransferNoticeNumber}
+                    onChange={(v) => set('forcedTransferNoticeNumber', v)}
+                  />
+                </div>
+              )}
+
               {target === 'مشطوب' && (
-                <FieldInput id="struckOffDate" label="تاريخ الشطب" value={fields.struckOffDate} onChange={(v) => set('struckOffDate', v)} />
+                <FieldInput id="struckOffDate" label="تاريخ الشطب" value={fields.struckOffDate} onChange={(v) => set('struckOffDate', v)} placeholder={DATE_PLACEHOLDER} />
               )}
 
               {target === 'تراجع' && (
                 <div className="grid sm:grid-cols-2 gap-3">
                   <FieldInput id="sayerNumber" label="رقم كتاب الجهة العامة بالسير بالملف" value={fields.sayerNumber} onChange={(v) => set('sayerNumber', v)} />
-                  <FieldInput id="sayerDate" label="تاريخ كتاب الجهة العامة بالسير بالملف" value={fields.sayerDate} onChange={(v) => set('sayerDate', v)} />
+                  <FieldInput id="sayerDate" label="تاريخ كتاب الجهة العامة بالسير بالملف" value={fields.sayerDate} onChange={(v) => set('sayerDate', v)} placeholder={DATE_PLACEHOLDER} />
                   <FieldInput id="sayerRegNumber" label="رقم ورود كتاب بالسير بالملف" value={fields.sayerRegNumber} onChange={(v) => set('sayerRegNumber', v)} />
-                  <FieldInput id="sayerRegDate" label="تاريخ ورود كتاب بالسير بالملف" value={fields.sayerRegDate} onChange={(v) => set('sayerRegDate', v)} />
+                  <FieldInput id="sayerRegDate" label="تاريخ ورود كتاب بالسير بالملف" value={fields.sayerRegDate} onChange={(v) => set('sayerRegDate', v)} placeholder={DATE_PLACEHOLDER} />
                 </div>
               )}
 

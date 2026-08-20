@@ -4,7 +4,8 @@ using System.Text.Json;
 
 namespace DocGenerator.Api.Tests;
 
-public class AuditIntegrationTests : IClassFixture<ApiFactory>
+[Collection(ApiTestCollection.Name)]
+public class AuditIntegrationTests
 {
     private readonly ApiFactory _factory;
 
@@ -80,7 +81,8 @@ public class AuditIntegrationTests : IClassFixture<ApiFactory>
     }
 }
 
-public class StatisticsIntegrationTests : IClassFixture<ApiFactory>
+[Collection(ApiTestCollection.Name)]
+public class StatisticsIntegrationTests
 {
     private readonly ApiFactory _factory;
 

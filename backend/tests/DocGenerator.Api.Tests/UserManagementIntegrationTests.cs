@@ -8,7 +8,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace DocGenerator.Api.Tests;
 
-public class UserManagementIntegrationTests : IClassFixture<ApiFactory>
+[Collection(ApiTestCollection.Name)]
+public class UserManagementIntegrationTests
 {
     private readonly ApiFactory _factory;
 
@@ -329,5 +330,150 @@ public class UserManagementIntegrationTests : IClassFixture<ApiFactory>
 
         // الاسم نفسه مسموح مرةً بلا فرع وأخرى بفرع: قيود الفرعين مستقلتان.
         await _factory.CreateUserAsync(username, UserRole.Manager);
+    }
+
+    [Fact]
+    public async Task Head_UpdatesOwnLawyer_RenameAndResetPassword()
+    {
+        var username = NewUsername("l");
+        var admin = _factory.AuthorizedClient("admin");
+        var created = await admin.PostAsJsonAsync("/api/users/lawyers", new
+        {
+            username,
+            fullName = "محامي دمشق",
+            password = "123456",
+            branchId = await BranchIdAsync("DAM"),
+        });
+        var lawyer = (await created.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
+        Assert.Equal(HttpStatusCode.OK, created.StatusCode);
+
+        var head = _factory.AuthorizedClient("head1");
+        var update = await head.PutAsJsonAsync($"/api/users/lawyers/{lawyer.Id}", new
+        {
+            fullName = "محامي محدث للاختبار",
+            password = "654321",
+        });
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+        var updated = await update.Content.ReadFromJsonAsync<LawyerListItemDto>();
+        Assert.Equal("محامي محدث للاختبار", updated!.FullName);
+        Assert.Equal("محامي محدث للاختبار", updated.Username);
+
+        // الدخول بالاسم القديم مرفوض (تغيّر اسم الدخول) وبكلمة المرور القديمة مرفوض (إبطال الرموز).
+        var oldLogin = await _factory.LoginAsync(username, "123456");
+        Assert.Equal(HttpStatusCode.Unauthorized, (HttpStatusCode)oldLogin!.StatusCode);
+
+        var newLogin = await _factory.LoginAsync("محامي محدث للاختبار", "654321");
+        Assert.Equal(HttpStatusCode.OK, (HttpStatusCode)newLogin!.StatusCode);
+    }
+
+    [Fact]
+    public async Task Head_UpdatesForeignBranchLawyer_NotFound()
+    {
+        var admin = _factory.AuthorizedClient("admin");
+        var created = await admin.PostAsJsonAsync("/api/users/lawyers", new
+        {
+            username = NewUsername("l"),
+            fullName = "محامي حلب",
+            password = "123456",
+            branchId = await BranchIdAsync("ALP"),
+        });
+        var aleppoLawyer = (await created.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
+
+        var head = _factory.AuthorizedClient("head1");
+        var response = await head.PutAsJsonAsync($"/api/users/lawyers/{aleppoLawyer.Id}", new
+        {
+            fullName = "اسم معدل",
+        });
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_UpdatesLawyer_AnyBranch()
+    {
+        var admin = _factory.AuthorizedClient("admin");
+        var created = await admin.PostAsJsonAsync("/api/users/lawyers", new
+        {
+            username = NewUsername("l"),
+            fullName = "محامي حلب",
+            password = "123456",
+            branchId = await BranchIdAsync("ALP"),
+        });
+        var aleppoLawyer = (await created.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
+
+        var update = await admin.PutAsJsonAsync($"/api/users/lawyers/{aleppoLawyer.Id}", new
+        {
+            fullName = "محامي حلب معدل",
+        });
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+        var updated = await update.Content.ReadFromJsonAsync<LawyerListItemDto>();
+        Assert.Equal("محامي حلب معدل", updated!.Username);
+        Assert.Equal(await BranchIdAsync("ALP"), updated.BranchId);
+    }
+
+    [Fact]
+    public async Task UpdateLawyer_AsLawyer_Forbidden()
+    {
+        var headClient = _factory.AuthorizedClient("head1");
+        var headResponse = await headClient.GetAsync("/api/users/lawyers");
+        var damLawyers = await headResponse.Content.ReadFromJsonAsync<List<LawyerListItemDto>>();
+        var lawyer = damLawyers!.First();
+
+        var client = _factory.AuthorizedClient("lawyer1");
+        var response = await client.PutAsJsonAsync($"/api/users/lawyers/{lawyer.Id}", new { fullName = "معدل" });
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Head_UpdatesOwnLawyer_NoChanges_BadRequest()
+    {
+        var admin = _factory.AuthorizedClient("admin");
+        var created = await admin.PostAsJsonAsync("/api/users/lawyers", new
+        {
+            username = NewUsername("l"),
+            fullName = "محامي دمشق",
+            password = "123456",
+            branchId = await BranchIdAsync("DAM"),
+        });
+        var lawyer = (await created.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
+
+        var head = _factory.AuthorizedClient("head1");
+        var response = await head.PutAsJsonAsync($"/api/users/lawyers/{lawyer.Id}", new
+        {
+            fullName = (string?)null,
+            password = (string?)null,
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("لا يوجد تغيير", body);
+    }
+
+    [Fact]
+    public async Task Head_UpdatesOwnLawyer_DuplicateName_BadRequest()
+    {
+        var admin = _factory.AuthorizedClient("admin");
+        var first = await admin.PostAsJsonAsync("/api/users/lawyers", new
+        {
+            username = "مروان سعيد",
+            fullName = "مروان سعيد",
+            password = "123456",
+            branchId = await BranchIdAsync("DAM"),
+        });
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+
+        var second = await admin.PostAsJsonAsync("/api/users/lawyers", new
+        {
+            username = "قاسم علي",
+            fullName = "قاسم علي",
+            password = "123456",
+            branchId = await BranchIdAsync("DAM"),
+        });
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        var target = (await second.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
+
+        var head = _factory.AuthorizedClient("head1");
+        var response = await head.PutAsJsonAsync($"/api/users/lawyers/{target.Id}", new { fullName = "مروان سعيد" });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("نفس الفرع", body);
     }
 }

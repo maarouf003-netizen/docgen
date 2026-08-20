@@ -3,7 +3,7 @@ import type { AssetDto, DelegationAssetDto } from '../types';
 import { delegationAssetLabel, delegationAssetsLine, matchDelegationAssets } from './delegationAssets';
 
 function snapshot(id: number, kind: string, label: string): DelegationAssetDto {
-  return { id, assetKind: kind, assetLabel: label };
+  return { id, assetKind: kind, assetLabel: label, snapshotAdjusted: false };
 }
 
 function asset(id: number, kind: string, overrides: Record<string, string> = {}): AssetDto {

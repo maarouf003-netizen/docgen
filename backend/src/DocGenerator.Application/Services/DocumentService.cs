@@ -41,6 +41,14 @@ public interface IDocumentService
     Task<DocumentFilterOptions> GetFilterOptionsAsync(string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default);
     Task<bool> UpdateStatusAsync(int documentId, string status, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default);
     /// <summary>
+    /// «اعتبار الملف منفذًا كاملًا بهذا البيع» (نظام «طالبة تنفيذ»): إغلاق «منفذ جبريا (منفذ
+    /// جزئيا)» الذي فُعّل تلقائيًا بإتمام إنابة إلى «منفذ كاملا» — يُخصم من ملفٍ منفذ جزئيًا
+    /// وفيه إنابة منفذة، ويُلزم إدخال «تاريخ تحويل بدل المبيع للجهة العامة» (و«رقم الإشعار»
+    /// اختياريًا)، ويُسجَّل وقعة «منفذ جبريا» في وقوعات الملف. حينها فقط يدخل بدل الإنابة
+    /// ضمن «إحصاءات منفذ جبريا» مرة واحدة (عبر مسار DelegationSalesAmount القائم).
+    /// </summary>
+    Task<bool> ConsiderExecutedByDelegationAsync(int documentId, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default);
+    /// <summary>
     /// «التراجع» في نظام «طالبة تنفيذ»: إعادة الملف إلى المتداول من تريث أو منفذ بالتسوية أو منفذ
     /// جبريا بموجب كتاب الجهة العامة بالسير بالملف (رقم وتاريخ الكتاب وورودهما إلزاميان)،
     /// ويُسجَّل وقعة «تراجع» بحقولها في وقوعات الملف.
@@ -111,6 +119,7 @@ public sealed class DocumentService : IDocumentService
     private readonly IRepository<DocumentBaseNumber> _baseNumbers;
     private readonly IRepository<DocumentRegistrationDate> _registrationDates;
     private readonly IRepository<DocumentOccurrence> _occurrences;
+    private readonly IDelegationRepository _delegations;
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
@@ -124,6 +133,7 @@ public sealed class DocumentService : IDocumentService
         IRepository<DocumentBaseNumber> baseNumbers,
         IRepository<DocumentRegistrationDate> registrationDates,
         IRepository<DocumentOccurrence> occurrences,
+        IDelegationRepository delegations,
         IUnitOfWork uow,
         ITransactionRunner tx,
         IAuditLogger audit)
@@ -136,6 +146,7 @@ public sealed class DocumentService : IDocumentService
         _baseNumbers = baseNumbers;
         _registrationDates = registrationDates;
         _occurrences = occurrences;
+        _delegations = delegations;
         _uow = uow;
         _tx = tx;
         _audit = audit;
@@ -229,6 +240,7 @@ public sealed class DocumentService : IDocumentService
                 await AddStruckOffOccurrenceAsync(doc, userId, token);
             _documents.Update(doc);
             await _uow.SaveChangesAsync(token);
+            await SyncDelegationSnapshotsForDocumentAsync(doc, token);
             await _audit.LogAsync(actorName, "update", doc.Id, doc.DocumentType,
                 AuditWithActor($"عدّل المستند (رقم {doc.Id})", doc), token);
             await SeedInitialActionsAsync(doc, request.InitialActions, userId, actorName, token);
@@ -505,6 +517,7 @@ public sealed class DocumentService : IDocumentService
                 ClearTarithFields(doc);
                 ClearSayerFields(doc);
                 ClearForcedExecutionField(doc);
+                ClearForcibleTransferFields(doc);
                 doc.ExecSubStatus = null;
                 doc.SoldAssetIds = null;
                 break;
@@ -522,6 +535,7 @@ public sealed class DocumentService : IDocumentService
                 ClearBaraetFields(doc);
                 ClearSayerFields(doc);
                 ClearForcedExecutionField(doc);
+                ClearForcibleTransferFields(doc);
                 doc.ExecSubStatus = null;
                 ClearCollectedFields(doc);
                 doc.SoldAssetIds = null;
@@ -536,6 +550,7 @@ public sealed class DocumentService : IDocumentService
                 ClearTarithFields(doc);
                 ClearSayerFields(doc);
                 ClearForcedExecutionField(doc);
+                ClearForcibleTransferFields(doc);
                 doc.ExecSubStatus = null;
                 ClearCollectedFields(doc);
                 doc.SoldAssetIds = null;
@@ -617,6 +632,7 @@ public sealed class DocumentService : IDocumentService
         ClearBaraetFields(doc);
         ClearTarithFields(doc);
         ClearForcedExecutionField(doc);
+        ClearForcibleTransferFields(doc);
         doc.SoldAssetIds = null;
 
         return await _tx.RunAsync(async token =>
@@ -637,6 +653,72 @@ public sealed class DocumentService : IDocumentService
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "status", doc.Id, doc.DocumentType,
                 AuditWithActor("تراجع عن الحالة وعاد الملف إلى المتداول", doc), token);
+            return true;
+        }, ct);
+    }
+
+    public async Task<bool> ConsiderExecutedByDelegationAsync(int documentId, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default)
+    {
+        var doc = await _documents.GetByIdAsync(documentId, ct);
+        if (doc is null)
+            return false;
+        if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
+            throw new ArgumentException("حالة نظام «طالبة تنفيذ» تخص ملفات «الجهة العامة طالبة التنفيذ» فقط");
+
+        // «اعتبار الملف منفذًا كاملًا بهذا البيع»: إغلاق «منفذ جبريا (منفذ جزئيا)» فحسب —
+        // الحالة التي يُفعَّل بها المنيب تلقائيًا عند إتمام إنابته (أو ما يوازيها من ملفات
+        // «منفذ جبريا» ذات إنابة منفذة). حينها فقط يدخل بدل الإنابة إحصاءات «منفذ جبريا».
+        if (doc.ExecStatus != ExecutionStatusCatalog.ExecutedForcibly
+            || doc.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted)
+        {
+            var current = ExecutionStatusCatalog.CurrentState(doc.IsDraft, doc.ExecStatus, doc.ExecutedStatus);
+            throw new ArgumentException(
+                $"لا يمكن اعتبار الملف منفذًا كاملًا بهذا البيع من حالته الحالية «{ExecutionStatusCatalog.ToStateLabel(current)}»");
+        }
+
+        var executedDelegation = (await _delegations.ListBySourceAsync(documentId, ct))
+            .FirstOrDefault(d => d.Status == DelegationStatusCatalog.Executed);
+        if (executedDelegation is null)
+            throw new ArgumentException("لا توجد إنابة منفذة للملف ليُعتبر منفذًا بهذا البيع");
+
+        // «تاريخ تحويل بدل المبيع للجهة العامة» إلزامي (نص حر يُفسَّر ويُخزَّن زمنيًا)،
+        // و«رقم الإشعار» اختياري — يدخلهما محامي المنيب من نافذة تغيير الحالة.
+        var transferRaw = ArabicDigitNormalizer.Normalize(fields.GetValueOrDefault("forcedTransferDate"));
+        if (string.IsNullOrWhiteSpace(transferRaw))
+            throw new ArgumentException("يجب إدخال تاريخ تحويل بدل المبيع للجهة العامة على الأقل");
+        doc.ForcibleTransferDate = ParseDateTime(transferRaw, "تاريخ تحويل بدل المبيع للجهة العامة");
+        var notice = fields.GetValueOrDefault("forcedTransferNoticeNumber")?.Trim();
+        doc.ForcibleTransferNoticeNumber = string.IsNullOrWhiteSpace(notice) ? null : notice;
+
+        var details = new Dictionary<string, string>
+        {
+            ["execSubStatus"] = ExecutionStatusCatalog.SubFullyExecuted,
+            ["forcedTransferDate"] = transferRaw,
+        };
+        CopyDetail(details, "forcedTransferNoticeNumber", doc.ForcibleTransferNoticeNumber);
+        CopyDetail(details, "forcedExecutionDate", doc.ForcedExecutionDate);
+
+        doc.ExecSubStatus = ExecutionStatusCatalog.SubFullyExecuted;
+        doc.UpdatedAt = DateTime.UtcNow;
+
+        return await _tx.RunAsync(async token =>
+        {
+            _documents.Update(doc);
+            await _uow.SaveChangesAsync(token);
+            // وقعة «منفذ جبريا» كاملة بحقولها — سجل زمني مستقل يبقى ظاهرًا في «وقوعات الملف».
+            await _occurrences.AddAsync(new DocumentOccurrence
+            {
+                DocumentId = doc.Id,
+                OccurrenceType = OccurrenceTypeCatalog.Forcible,
+                EventDate = DateTime.UtcNow,
+                Details = SerializeDetails(details),
+                CreatedById = doc.CreatedById,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            }, token);
+            await _uow.SaveChangesAsync(token);
+            await _audit.LogAsync(actorName, "status", doc.Id, doc.DocumentType,
+                AuditWithActor("اعتُبر الملف منفذًا كاملًا بهذا البيع (منفذ جبريا — منفذ كاملا)", doc), token);
             return true;
         }, ct);
     }
@@ -1559,6 +1641,61 @@ public sealed class DocumentService : IDocumentService
     private static void ClearForcedExecutionField(Document doc)
     {
         doc.ForcedExecutionDate = null;
+    }
+
+    /// <summary>
+    /// تطهير حقلي «تحويل بدل المبيع» (تاريخ التحويل ورقم الإشعار) عند ترك حالة «منفذ جبريا»
+    /// (تسوية/تريث/شطب/تراجع) — يخصان «منفذ جبريا» حصرًا، فيُصفَّران بنفس منطق نظيرهما.
+    /// </summary>
+    private static void ClearForcibleTransferFields(Document doc)
+    {
+        doc.ForcibleTransferDate = null;
+        doc.ForcibleTransferNoticeNumber = null;
+    }
+
+    /// <summary>
+    /// مزامنة لقطات أصول الإنابات غير المنفذة للملف المنيب بعد تعديل أصوله: أصول الملف
+    /// تُعاد بناؤها بمعرفات جديدة عند كل تعديل، فتُطابَق اللقطات مع الأصول الحالية بالنوع
+    /// ثم الوصف — الأصل المطابق تمامًا (نوع + وصف) يبقى بلا تغيير، والأصل الذي تغيّر وصفه
+    /// من النوع نفسه تُحدَّث لقطته وتُعلَّم بأن بياناته عُدّلت بعد التسطير (يظهر تنبيه في
+    /// بطاقة «تشعبات الملف»). الإنابات المنفذة سجل نهائي بالبدل فلا تُمسّ لقطاتها.
+    /// </summary>
+    private async Task SyncDelegationSnapshotsForDocumentAsync(Document doc, CancellationToken token)
+    {
+        var delegations = await _delegations.ListBySourceAsync(doc.Id, token);
+        var pending = delegations.Where(d => d.Status != DelegationStatusCatalog.Executed).ToList();
+        if (pending.Count == 0)
+            return;
+
+        var remaining = doc.Assets.ToList();
+        var changed = false;
+        foreach (var snapshot in pending.SelectMany(d => d.Assets))
+        {
+            // تطابق تام (نوع + وصف): لم تتغير بيانات الأصل — تُستهلك وتُترك بلا تغيير.
+            var exact = remaining.FindIndex(a => a.AssetKind == snapshot.AssetKind && AssetDisplay.Label(a) == snapshot.AssetLabel);
+            if (exact >= 0)
+            {
+                remaining.RemoveAt(exact);
+                continue;
+            }
+            // تعديل وصف أصل من النوع نفسه بعد التسطير: تُحدَّث اللقطة ويُعلَّم التعديل.
+            var sameKind = remaining.FindIndex(a => a.AssetKind == snapshot.AssetKind);
+            if (sameKind >= 0)
+            {
+                var assetLabel = AssetDisplay.Label(remaining[sameKind]);
+                remaining.RemoveAt(sameKind);
+                if (snapshot.AssetLabel != assetLabel)
+                {
+                    snapshot.AssetLabel = assetLabel;
+                    snapshot.SnapshotAdjusted = true;
+                    changed = true;
+                }
+            }
+            // بلا أصل من النوع نفسه في الملف الحالي: تبقى اللقطة كما سُطّرت (سجل التسطير).
+        }
+
+        if (changed)
+            await _uow.SaveChangesAsync(token);
     }
 
     private static void ClearTarithFields(Document doc)

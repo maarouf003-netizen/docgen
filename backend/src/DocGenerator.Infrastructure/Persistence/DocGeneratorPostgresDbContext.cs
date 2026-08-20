@@ -28,6 +28,12 @@ public class DocGeneratorPostgresDbContext : DocGeneratorDbContext
             .Property(d => d.ExecutedDepositDate)
             .HasColumnType("timestamp with time zone");
         modelBuilder.Entity<Document>()
+            .Property(d => d.ExecutedExecutionDate)
+            .HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<Document>()
+            .Property(d => d.ForcibleTransferDate)
+            .HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<Document>()
             .Property(d => d.ReferredAt)
             .HasColumnType("timestamp with time zone");
         modelBuilder.Entity<Document>()
@@ -59,9 +65,6 @@ public class DocGeneratorPostgresDbContext : DocGeneratorDbContext
             .HasColumnType("timestamp with time zone");
         modelBuilder.Entity<DocumentDelegation>()
             .Property(d => d.DepositBookDate)
-            .HasColumnType("timestamp with time zone");
-        modelBuilder.Entity<DocumentDelegation>()
-            .Property(d => d.SendBookDate)
             .HasColumnType("timestamp with time zone");
         modelBuilder.Entity<DocumentDelegation>()
             .Property(d => d.ReturnDate)

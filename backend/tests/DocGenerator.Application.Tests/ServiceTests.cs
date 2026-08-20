@@ -57,7 +57,7 @@ public class DocumentServiceTests : IDisposable
         var occurrences = new Repository<DocumentOccurrence>(_db);
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
-        _service = new DocumentService(documents, users, guarantors, estates, actions, baseNumbers, registrationDates, occurrences, uow, tx, _audit);
+        _service = new DocumentService(documents, users, guarantors, estates, actions, baseNumbers, registrationDates, occurrences, new DelegationRepository(_db), uow, tx, _audit);
     }
 
     public void Dispose() => _db.Dispose();
@@ -4115,6 +4115,256 @@ public class AuthServiceTests : IDisposable
 
         Assert.Equal(LoginStatus.Success, result.Status);
         Assert.Equal(b1.Id, result.Response!.User.BranchId);
+    }
+}
+
+public class ConsiderDelegationExecutedTests : IDisposable
+{
+    private readonly DocGeneratorDbContext _db;
+    private readonly IDocumentService _service;
+    private readonly FakeAuditLogger _audit = new();
+
+    public ConsiderDelegationExecutedTests()
+    {
+        _db = TestDb.Create();
+        _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" });
+        _db.Users.Add(new User { Username = "lawyer1", FullName = "محامي", Role = UserRole.Lawyer, BranchId = 1, PasswordHash = new PasswordHasher().Hash("123456") });
+        _db.SaveChanges();
+        var uow = new UnitOfWork(_db);
+        var tx = new TransactionRunner(_db);
+        _service = new DocumentService(
+            new DocumentRepository(_db), new UserRepository(_db), new Repository<Guarantor>(_db),
+            new Repository<Asset>(_db), new Repository<ExecutionAction>(_db),
+            new Repository<DocumentBaseNumber>(_db), new Repository<DocumentRegistrationDate>(_db),
+            new Repository<DocumentOccurrence>(_db), new DelegationRepository(_db), uow, tx, _audit);
+    }
+
+    public void Dispose() => _db.Dispose();
+
+    private async Task<Document> CreateSourceAsync()
+    {
+        var req = new DocumentUpsertRequest
+        {
+            BorrowerName = "أحمد",
+            BorrowerFather = "خالد",
+            BorrowerFamily = "الخطيب",
+            AmountNumeric = 1000,
+            Currency = "ليرة سورية",
+            ContractNumber = "1/2025",
+            Court = "دمشق",
+            Applicant = "المدعي",
+            FileNumber = "900",
+            FileYear = "2025",
+            FileRegistrationDate = "2/1/2025",
+            Assets = new()
+            {
+                new AssetDto(null, AssetKindCatalog.RealEstate, new List<string> { "المدعى عليه" }, "تمام العقار",
+                    "بيت", "1", "المزة", "الصالحية",
+                    null, null, null, null,
+                    null, null, null, null, null,
+                    null,
+                    null, null, null,
+                    null),
+            },
+        };
+        var dto = await _service.CreateAsync(req, userId: 1, actorName: "lawyer1", branchId: 1);
+        return await _db.Documents.SingleAsync(d => d.Id == dto.Id);
+    }
+
+    private async Task<Document> SourceInPartialForciblyAsync()
+    {
+        var doc = await CreateSourceAsync();
+        doc.ExecStatus = ExecutionStatusCatalog.ExecutedForcibly;
+        doc.ExecSubStatus = ExecutionStatusCatalog.SubPartiallyExecuted;
+        _db.Documents.Update(doc);
+        await _db.SaveChangesAsync();
+        return doc;
+    }
+
+    private async Task AddExecutedDelegationAsync(int sourceId)
+    {
+        _db.DocumentDelegations.Add(new DocumentDelegation
+        {
+            SourceDocumentId = sourceId,
+            CreatedById = 1,
+            DelegatedCourt = "دائرة تنفيذ حلب",
+            Status = DelegationStatusCatalog.Executed,
+            Assets = new List<DelegationAsset>
+            {
+                new() { AssetKind = AssetKindCatalog.RealEstate, AssetLabel = "بيت", SalePrice = 500 },
+            },
+        });
+        await _db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task ConsiderExecuted_WithExecutedDelegation_MarksFullyAndPersistsTransferFields()
+    {
+        var source = await SourceInPartialForciblyAsync();
+        await AddExecutedDelegationAsync(source.Id);
+
+        var ok = await _service.ConsiderExecutedByDelegationAsync(source.Id, new Dictionary<string, string?>
+        {
+            ["forcedTransferDate"] = "١٥/٨/٢٠٢٦",
+            ["forcedTransferNoticeNumber"] = "77/2026",
+        }, "lawyer1");
+
+        Assert.True(ok);
+        var loaded = await _db.Documents.SingleAsync(d => d.Id == source.Id);
+        Assert.Equal(ExecutionStatusCatalog.SubFullyExecuted, loaded.ExecSubStatus);
+        Assert.Equal(new DateTime(2026, 8, 15), loaded.ForcibleTransferDate);
+        Assert.Equal("77/2026", loaded.ForcibleTransferNoticeNumber);
+
+        // وقعة «منفذ جبريا» كاملة بحقولها تُسجَّل في «وقوعات الملف».
+        var occ = await _db.DocumentOccurrences.SingleAsync(o => o.DocumentId == source.Id);
+        Assert.Equal(OccurrenceTypeCatalog.Forcible, occ.OccurrenceType);
+        Assert.Contains("forcedTransferDate", occ.Details);
+        Assert.Contains("15/8/2026", occ.Details);
+        Assert.Contains("77/2026", occ.Details);
+        Assert.Contains("status", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task ConsiderExecuted_TransferNoticeOptional_PersistsNullWhenAbsent()
+    {
+        var source = await SourceInPartialForciblyAsync();
+        await AddExecutedDelegationAsync(source.Id);
+
+        var ok = await _service.ConsiderExecutedByDelegationAsync(source.Id, new Dictionary<string, string?>
+        {
+            ["forcedTransferDate"] = "15/8/2026",
+            ["forcedTransferNoticeNumber"] = "   ",
+        }, "lawyer1");
+
+        Assert.True(ok);
+        var loaded = await _db.Documents.SingleAsync(d => d.Id == source.Id);
+        Assert.Equal(new DateTime(2026, 8, 15), loaded.ForcibleTransferDate);
+        Assert.Null(loaded.ForcibleTransferNoticeNumber);
+    }
+
+    [Fact]
+    public async Task ConsiderExecuted_WithoutExecutedDelegation_Throws()
+    {
+        var source = await SourceInPartialForciblyAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.ConsiderExecutedByDelegationAsync(source.Id, new Dictionary<string, string?>
+            {
+                ["forcedTransferDate"] = "15/8/2026",
+            }, "lawyer1"));
+
+        Assert.Contains("لا توجد إنابة منفذة", ex.Message);
+    }
+
+    [Fact]
+    public async Task ConsiderExecuted_FromWrongState_Throws()
+    {
+        var source = await CreateSourceAsync();
+        await AddExecutedDelegationAsync(source.Id);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.ConsiderExecutedByDelegationAsync(source.Id, new Dictionary<string, string?>
+            {
+                ["forcedTransferDate"] = "15/8/2026",
+            }, "lawyer1"));
+
+        Assert.Contains("لا يمكن اعتبار الملف منفذًا كاملًا بهذا البيع", ex.Message);
+    }
+
+    [Fact]
+    public async Task ConsiderExecuted_MissingTransferDate_Throws()
+    {
+        var source = await SourceInPartialForciblyAsync();
+        await AddExecutedDelegationAsync(source.Id);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.ConsiderExecutedByDelegationAsync(source.Id, new Dictionary<string, string?>(), "lawyer1"));
+
+        Assert.Contains("تاريخ تحويل بدل المبيع للجهة العامة", ex.Message);
+    }
+
+    [Fact]
+    public async Task ConsiderExecuted_UnknownDocument_ReturnsFalse()
+    {
+        var ok = await _service.ConsiderExecutedByDelegationAsync(999_999, new Dictionary<string, string?>(), "lawyer1");
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public async Task UpdateSourceAssets_RefreshesPendingDelegationSnapshot_FlagsAdjusted_LeavesExecutedUntouched()
+    {
+        var doc = await CreateSourceAsync();
+        var asset = await _db.Assets.SingleAsync(a => a.DocumentId == doc.Id);
+        var originalLabel = AssetDisplay.Label(asset);
+        Assert.Equal("بيت", originalLabel);
+
+        _db.DocumentDelegations.AddRange(
+            new DocumentDelegation
+            {
+                SourceDocumentId = doc.Id,
+                CreatedById = 1,
+                DelegatedCourt = "دائرة تنفيذ حلب",
+                Status = DelegationStatusCatalog.PendingHead,
+                Assets = new List<DelegationAsset>
+                {
+                    new() { AssetKind = AssetKindCatalog.RealEstate, AssetLabel = originalLabel },
+                },
+            },
+            new DocumentDelegation
+            {
+                SourceDocumentId = doc.Id,
+                CreatedById = 1,
+                DelegatedCourt = "دائرة تنفيذ حماة",
+                Status = DelegationStatusCatalog.Executed,
+                Assets = new List<DelegationAsset>
+                {
+                    new() { AssetKind = AssetKindCatalog.RealEstate, AssetLabel = originalLabel, SalePrice = 500 },
+                },
+            });
+        await _db.SaveChangesAsync();
+        var pendingDelegationId = await _db.DocumentDelegations
+            .Where(d => d.SourceDocumentId == doc.Id && d.Status == DelegationStatusCatalog.PendingHead)
+            .Select(d => d.Id)
+            .SingleAsync();
+
+        // تعديل وصف الأصل في الملف المنيب (نفس النوع) يُحدِّث لقطة الإنابة المعلقة ويُعلِّمها؛
+        // أما الإنابة المنفذة فسجل نهائي بالبدل فلا تُمسّ لقطتها.
+        var req = new DocumentUpsertRequest
+        {
+            BorrowerName = "أحمد",
+            BorrowerFather = "خالد",
+            BorrowerFamily = "الخطيب",
+            AmountNumeric = 1000,
+            Currency = "ليرة سورية",
+            ContractNumber = "1/2025",
+            Court = "دمشق",
+            Applicant = "المدعي",
+            FileNumber = "900",
+            FileYear = "2025",
+            FileRegistrationDate = "2/1/2025",
+            Assets = new()
+            {
+                new AssetDto(asset.Id, AssetKindCatalog.RealEstate, new List<string> { "المدعى عليه" },
+                    "تمام العقار", "بيت — المزة 77", asset.PropertyNumber, asset.PropertyDistrict, asset.LandRegistry,
+                    null, null, null, null,
+                    null, null, null, null, null,
+                    null,
+                    null, null, null,
+                    null),
+            },
+        };
+        await _service.UpdateAsync(doc.Id, req, actorName: "lawyer1", userId: 1);
+
+        var pendingSnapshot = await _db.DelegationAssets
+            .SingleAsync(a => a.DelegationId == pendingDelegationId);
+        Assert.Equal("بيت — المزة 77", pendingSnapshot.AssetLabel);
+        Assert.True(pendingSnapshot.SnapshotAdjusted);
+
+        var executedSnapshot = await _db.DelegationAssets
+            .SingleAsync(a => a.Delegation.SourceDocumentId == doc.Id
+                && a.Delegation.Status == DelegationStatusCatalog.Executed);
+        Assert.Equal(originalLabel, executedSnapshot.AssetLabel);
+        Assert.False(executedSnapshot.SnapshotAdjusted);
     }
 }
 

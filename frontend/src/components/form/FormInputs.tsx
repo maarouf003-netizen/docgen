@@ -4,12 +4,14 @@ export function FieldInput({
   value,
   onChange,
   type = 'text',
+  placeholder,
 }: {
   id: string;
   label: string;
   value: string;
   onChange: (value: string) => void;
   type?: string;
+  placeholder?: string;
 }) {
   return (
     <div>
@@ -20,6 +22,7 @@ export function FieldInput({
         id={id}
         type={type}
         value={value}
+        placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
         onWheel={type === 'number' ? (e) => e.currentTarget.blur() : undefined}
         className="min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"

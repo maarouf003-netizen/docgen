@@ -16,7 +16,8 @@ function parsePrice(value: string): number | null {
 
 /**
  * نافذة «إتمام الإنابة» لمحامي الملف المناب: بيع الأموال موضوع الإنابة بالمزاد العلني
- * (بدل المبيع لكل أصل بالليرة السورية) وتاريخ إعادة الملف إلى الدائرة المنيبة.
+ * (بدل المبيع لكل أصل بالليرة السورية) وتاريخ إعادة الملف إلى الدائرة المنيبة،
+ * وتاريخ «قرار الإحالة القطعية» (إلزامي — يُحفظ على الملف المنيب عند تفعيله «منفذ جبريا»).
  * يُصبح الملف المناب «منفذ إنابة» بعد الإتمام.
  */
 export default function CompleteDelegationModal({
@@ -29,6 +30,7 @@ export default function CompleteDelegationModal({
   onCompleted: () => void;
 }) {
   const [returnDate, setReturnDate] = useState('');
+  const [forcedExecutionDate, setForcedExecutionDate] = useState('');
   const [prices, setPrices] = useState<Record<number, string>>(() => {
     const initial: Record<number, string> = {};
     for (const asset of delegation.assets) {
@@ -46,6 +48,7 @@ export default function CompleteDelegationModal({
 
   const validate = (): string => {
     if (!returnDate.trim()) return 'تاريخ إعادة الملف للدائرة المنيبة مطلوب';
+    if (!forcedExecutionDate.trim()) return 'تاريخ قرار الإحالة القطعية مطلوب';
     for (const asset of delegation.assets) {
       const price = parsePrice(prices[asset.id] ?? '');
       if (price === null) return `بدل المبيع مطلوب للأصل (${asset.assetLabel})`;
@@ -71,6 +74,7 @@ export default function CompleteDelegationModal({
     const payload: CompleteDelegationRequest = {
       returnDate: normalizeArabicDigits(returnDate).trim(),
       sales,
+      forcedExecutionDate: normalizeArabicDigits(forcedExecutionDate).trim(),
     };
     try {
       await api.post(`/delegations/${delegation.id}/complete`, payload);
@@ -134,9 +138,27 @@ export default function CompleteDelegationModal({
             />
           </div>
 
+          <div>
+            <label htmlFor="forcedExecutionDate" className="block text-xs font-bold text-gray-600 mb-1">
+              تاريخ قرار الإحالة القطعية
+            </label>
+            <input
+              id="forcedExecutionDate"
+              type="text"
+              value={forcedExecutionDate}
+              onChange={(e) => setForcedExecutionDate(e.target.value)}
+              placeholder={DATE_PLACEHOLDER}
+              className={inputCls}
+              autoComplete="off"
+            />
+            <p className="mt-1 text-xs text-gray-400">
+              يُحفظ على الملف المنيب عند تفعيله «منفذ جبريا» مع رقم الإشعار لاحقًا.
+            </p>
+          </div>
+
           <fieldset>
             <legend className="block text-xs font-bold text-gray-600 mb-1">
-              بدل المبيع لكل أصل موضوع الإنابة (بالليرة السورية)
+              بدل المبيع بالليرة السورية
             </legend>
             {delegation.assets.length === 0 ? (
               <p className="text-sm text-gray-400">لا توجد أموال مسجلة على هذه الإنابة</p>
@@ -144,13 +166,20 @@ export default function CompleteDelegationModal({
               <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
                 {delegation.assets.map((asset) => (
                   <li key={asset.id} className="px-3 py-3 sm:flex sm:items-center sm:justify-between gap-3">
-                    <p className="text-sm text-gray-800 min-w-0 break-words sm:flex-1">{asset.assetLabel}</p>
+                    <p className="text-sm text-gray-800 min-w-0 break-words sm:flex-1">
+                      {asset.assetLabel}
+                      {asset.snapshotAdjusted && (
+                        <span className="block text-xs text-amber-700 mt-0.5">
+                          عُدِّلت بياناته بعد التسطير — حُدِّثت اللقطة تلقائيًا
+                        </span>
+                      )}
+                    </p>
                     <div className="mt-2 sm:mt-0 sm:w-48">
                       <label
                         htmlFor={`salePrice-${asset.id}`}
                         className="block text-xs text-gray-500 mb-1 sm:hidden"
                       >
-                        بدل المبيع
+                        بدل المبيع بالليرة السورية
                       </label>
                       <input
                         id={`salePrice-${asset.id}`}

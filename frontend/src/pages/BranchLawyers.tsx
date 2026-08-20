@@ -26,6 +26,12 @@ export default function BranchLawyers() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [transferSource, setTransferSource] = useState<LawyerListItem | null>(null);
 
+  const [editing, setEditing] = useState<LawyerListItem | null>(null);
+  const [editFullName, setEditFullName] = useState('');
+  const [editPassword, setEditPassword] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState('');
+
   useEffect(() => {
     if (!isAdmin) return;
     api
@@ -106,6 +112,46 @@ export default function BranchLawyers() {
   };
 
   const activeCount = lawyers.filter((l) => l.isActive).length;
+
+  const openEdit = (l: LawyerListItem) => {
+    setEditing(l);
+    setEditFullName(l.fullName);
+    setEditPassword('');
+    setEditError('');
+  };
+
+  const closeEdit = () => {
+    setEditing(null);
+    setEditPassword('');
+    setEditError('');
+  };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    if (!editFullName.trim()) {
+      setEditError('الاسم الثلاثي مطلوب');
+      return;
+    }
+    if (editPassword && editPassword.length < 6) {
+      setEditError('كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل');
+      return;
+    }
+
+    setEditSaving(true);
+    setEditError('');
+    try {
+      await api.put(`/users/lawyers/${editing.id}`, {
+        fullName: editFullName.trim(),
+        password: editPassword || null,
+      });
+      closeEdit();
+      load(branchId);
+    } catch (err) {
+      setEditError(getApiErrorMessage(err));
+    } finally {
+      setEditSaving(false);
+    }
+  };
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -208,6 +254,12 @@ export default function BranchLawyers() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => openEdit(l)}
+                        className="text-sky-700 hover:bg-sky-50 rounded-lg px-3 py-1.5 text-xs min-h-11"
+                      >
+                        تعديل
+                      </button>
                       {isHead && (
                         <button
                           onClick={() => setTransferSource(l)}
@@ -262,6 +314,12 @@ export default function BranchLawyers() {
                   {l.branchName ? <span className="text-gray-400"> · {l.branchName}</span> : null}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    onClick={() => openEdit(l)}
+                    className="rounded-lg px-3 py-2 text-xs min-h-11 text-sky-700 hover:bg-sky-50"
+                  >
+                    تعديل
+                  </button>
                   {isHead && (
                     <button
                       onClick={() => setTransferSource(l)}
@@ -287,6 +345,73 @@ export default function BranchLawyers() {
           </div>
           )}
         </div>
+
+        {editing && (
+          <div
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            dir="rtl"
+            role="dialog"
+            aria-modal="true"
+            aria-label="تعديل محامٍ"
+          >
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-y-auto p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-gray-800">تعديل محامٍ</h3>
+                <button
+                  onClick={closeEdit}
+                  className="text-gray-400 hover:text-gray-600 text-xl leading-none px-2 min-h-11"
+                  aria-label="إغلاق"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label htmlFor="edit-lawyer-fullname" className="block text-xs font-medium text-gray-600 mb-1">الاسم الثلاثي (اسم الدخول)</label>
+                  <input
+                    id="edit-lawyer-fullname"
+                    value={editFullName}
+                    onChange={(e) => setEditFullName(e.target.value)}
+                    autoComplete="off"
+                    className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">تعديل الاسم يحدّث اسم الدخول تلقائياً.</p>
+                </div>
+                <div className="sm:col-span-2">
+                  <label htmlFor="edit-lawyer-password" className="block text-xs font-medium text-gray-600 mb-1">كلمة مرور جديدة (اختياري)</label>
+                  <input
+                    id="edit-lawyer-password"
+                    type="password"
+                    value={editPassword}
+                    onChange={(e) => setEditPassword(e.target.value)}
+                    placeholder="اتركها فارغة للإبقاء"
+                    autoComplete="new-password"
+                    className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+
+              {editError && <p className="text-red-600 text-sm mt-3">{editError}</p>}
+
+              <div className="mt-5 flex flex-wrap gap-2">
+                <button
+                  onClick={saveEdit}
+                  disabled={editSaving}
+                  className="bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg px-4 py-2 text-sm min-h-11"
+                >
+                  {editSaving ? 'جارِ الحفظ...' : 'حفظ التعديل'}
+                </button>
+                <button
+                  onClick={closeEdit}
+                  className="border border-gray-300 rounded-lg px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 min-h-11"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {transferSource && (
           <TransferAllFilesModal

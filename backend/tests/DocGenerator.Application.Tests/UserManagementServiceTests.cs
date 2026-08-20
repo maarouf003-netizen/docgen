@@ -183,6 +183,121 @@ public class UserManagementServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task UpdateLawyer_Rename_SyncsUsernameAndFullName()
+    {
+        var lawyer = await _service.CreateLawyerAsync(DamascusId,
+            new CreateLawyerRequest("محمود علي", "محمود علي", "123456"), "head1");
+
+        var updated = await _service.UpdateLawyerAsync(
+            lawyer.Id, new UpdateLawyerRequest("محمود علي حسن"), DamascusId, "head1");
+
+        Assert.NotNull(updated);
+        Assert.Equal("محمود علي حسن", updated.FullName);
+        Assert.Equal("محمود علي حسن", updated.Username);
+        Assert.Equal(DamascusId, updated.BranchId);
+        Assert.Equal("دمشق", updated.BranchName);
+        Assert.Contains("update_user", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task UpdateLawyer_ResetPassword_IncrementsTokenVersion()
+    {
+        var lawyer = await _service.CreateLawyerAsync(DamascusId,
+            new CreateLawyerRequest("lawyer_pw", "محامي كلمة المرور", "123456"), "head1");
+
+        var updated = await _service.UpdateLawyerAsync(
+            lawyer.Id, new UpdateLawyerRequest(null, "654321"), DamascusId, "head1");
+
+        Assert.NotNull(updated);
+        var reloaded = await _db.Users.FindAsync(lawyer.Id);
+        Assert.Equal(1, reloaded!.TokenVersion);
+        Assert.True(_hasher.Verify("654321", reloaded.PasswordHash));
+        Assert.Equal("lawyer_pw", reloaded.Username);
+    }
+
+    [Fact]
+    public async Task UpdateLawyer_OutsideScope_ReturnsNull()
+    {
+        var aleppoLawyer = await AddUserAsync("alep_edit", "محامي حلب", UserRole.Lawyer, AleppoId);
+
+        var result = await _service.UpdateLawyerAsync(
+            aleppoLawyer.Id, new UpdateLawyerRequest("اسم جديد"), DamascusId, "head1");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task UpdateLawyer_OnNonLawyer_ReturnsNull()
+    {
+        var headUser = await AddUserAsync("head_edit", "رئيس قسم", UserRole.Head, DamascusId);
+
+        var result = await _service.UpdateLawyerAsync(
+            headUser.Id, new UpdateLawyerRequest("اسم جديد"), null, "admin");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task UpdateLawyer_NotFound_ReturnsNull()
+    {
+        var result = await _service.UpdateLawyerAsync(
+            999, new UpdateLawyerRequest("اسم جديد"), null, "head1");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task UpdateLawyer_DuplicateNameSameBranch_Throws()
+    {
+        await _service.CreateLawyerAsync(DamascusId,
+            new CreateLawyerRequest("مروان سعيد", "مروان سعيد", "123456"), "head1");
+        var lawyer = await _service.CreateLawyerAsync(DamascusId,
+            new CreateLawyerRequest("قاسم علي", "قاسم علي", "123456"), "head1");
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateLawyerAsync(lawyer.Id, new UpdateLawyerRequest("مروان سعيد"), DamascusId, "head1"));
+
+        Assert.Contains("نفس الفرع", ex.Message);
+    }
+
+    [Fact]
+    public async Task UpdateLawyer_WeakPassword_Throws()
+    {
+        var lawyer = await _service.CreateLawyerAsync(DamascusId,
+            new CreateLawyerRequest("lawyer_wp", "محامي", "123456"), "head1");
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateLawyerAsync(lawyer.Id, new UpdateLawyerRequest(null, "123"), DamascusId, "head1"));
+    }
+
+    [Fact]
+    public async Task UpdateLawyer_NoChanges_Throws()
+    {
+        var lawyer = await _service.CreateLawyerAsync(DamascusId,
+            new CreateLawyerRequest("lawyer_nc", "محامي", "123456"), "head1");
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateLawyerAsync(lawyer.Id, new UpdateLawyerRequest(null, null), DamascusId, "head1"));
+
+        Assert.Contains("لا يوجد تغيير", ex.Message);
+    }
+
+    [Fact]
+    public async Task UpdateLawyer_EquivalentSpelling_PresentationChange_Allowed()
+    {
+        var lawyer = await _service.CreateLawyerAsync(DamascusId,
+            new CreateLawyerRequest("محمد احمد علي", "محمد احمد علي", "123456"), "head1");
+
+        // النسخة ذات الهمزة تُطبَّع إلى اسم الدخول نفسه فلا تكون تكراراً — يُحدَّث العرض فقط.
+        var updated = await _service.UpdateLawyerAsync(
+            lawyer.Id, new UpdateLawyerRequest("محمد أحمد علي"), DamascusId, "head1");
+
+        Assert.NotNull(updated);
+        Assert.Equal("محمد احمد علي", updated.Username);
+        Assert.Equal("محمد أحمد علي", updated.FullName);
+    }
+
+    [Fact]
     public async Task CreateLawyer_SameNameDifferentBranch_Allowed()
     {
         await AddUserAsync("محمد احمد علي", "محمد أحمد علي", UserRole.Lawyer, DamascusId);

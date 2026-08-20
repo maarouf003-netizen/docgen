@@ -6,7 +6,8 @@ using DocumentFormat.OpenXml.Spreadsheet;
 
 namespace DocGenerator.Api.Tests;
 
-public class DocumentsExportIntegrationTests : IClassFixture<ApiFactory>
+[Collection(ApiTestCollection.Name)]
+public class DocumentsExportIntegrationTests
 {
     private readonly ApiFactory _factory;
 

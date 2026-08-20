@@ -34,8 +34,6 @@ export default function DelegationFormModal({
   const [delegationText, setDelegationText] = useState(initial?.delegationText ?? '');
   const [depositBookNumber, setDepositBookNumber] = useState(initial?.depositBookNumber ?? '');
   const [depositBookDate, setDepositBookDate] = useState(initial?.depositBookDate ?? '');
-  const [sendBookNumber, setSendBookNumber] = useState(initial?.sendBookNumber ?? '');
-  const [sendBookDate, setSendBookDate] = useState(initial?.sendBookDate ?? '');
   const [selectedAssetIds, setSelectedAssetIds] = useState<Set<number>>(() => {
     const initialMatch = matchDelegationAssets(initial?.assets ?? [], assets);
     return new Set(initialMatch.matchedIds);
@@ -109,8 +107,6 @@ export default function DelegationFormModal({
       delegationText: normalizeArabicDigits(delegationText).trim() || null,
       depositBookNumber: normalizeArabicDigits(depositBookNumber).trim() || null,
       depositBookDate: normalizeArabicDigits(depositBookDate).trim() || null,
-      sendBookNumber: normalizeArabicDigits(sendBookNumber).trim() || null,
-      sendBookDate: normalizeArabicDigits(sendBookDate).trim() || null,
       assetIds: [...selectedAssetIds],
     };
     try {
@@ -267,39 +263,8 @@ export default function DelegationFormModal({
                 className={inputCls}
                 autoComplete="off"
               />
-            </div>
-          </div>
-
-          <div className="grid sm:grid-cols-2 gap-3">
-            <div>
-              <label htmlFor="sendBookNumber" className="block text-xs font-bold text-gray-600 mb-1">
-                رقم كتاب إرسال الإنابة
-              </label>
-              <input
-                id="sendBookNumber"
-                type="text"
-                value={sendBookNumber}
-                onChange={(e) => setSendBookNumber(e.target.value)}
-                placeholder="اختياري…"
-                className={inputCls}
-                autoComplete="off"
-              />
-            </div>
-            <div>
-              <label htmlFor="sendBookDate" className="block text-xs font-bold text-gray-600 mb-1">
-                تاريخ كتاب الإرسال
-              </label>
-              <input
-                id="sendBookDate"
-                type="text"
-                value={sendBookDate}
-                onChange={(e) => setSendBookDate(e.target.value)}
-                placeholder={DATE_PLACEHOLDER}
-                className={inputCls}
-                autoComplete="off"
-              />
-            </div>
-          </div>
+</div>
+        </div>
 
           <fieldset>
             <legend className="block text-xs font-bold text-gray-600 mb-1">

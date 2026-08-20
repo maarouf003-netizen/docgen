@@ -16,7 +16,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace DocGenerator.Api.Tests;
 
-public class ExceptionHandlerIntegrationTests : IClassFixture<ApiFactory>
+[Collection(ApiTestCollection.Name)]
+public class ExceptionHandlerIntegrationTests
 {
     private readonly ApiFactory _factory;
 

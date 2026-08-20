@@ -50,7 +50,7 @@ public class ApplicantAndAssignmentTests : IDisposable
         var occurrences = new Repository<DocumentOccurrence>(_db);
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
-        _service = new DocumentService(documents, users, guarantors, estates, actions, baseNumbers, registrationDates, occurrences, uow, tx, _audit);
+        _service = new DocumentService(documents, users, guarantors, estates, actions, baseNumbers, registrationDates, occurrences, new DelegationRepository(_db), uow, tx, _audit);
     }
 
     public void Dispose() => _db.Dispose();

@@ -1,13 +1,15 @@
 namespace DocGenerator.Application.DTOs;
 
 /// <summary>
-/// أصلٌ موضوع إنابة في طلب/استجابة الإنابة: وصف قراءة (النوع + وصفه) وبدل المبيع عند البيع.
+/// أصلٌ موضوع إنابة في طلب/استجابة الإنابة: وصف قراءة (النوع + وصفه) وبدل المبيع عند البيع،
+/// وعلم «عُدّلت بياناته بعد التسطير» (تُحدَّث اللقطة تلقائيًا ويظهر تنبيه للمستخدم).
 /// </summary>
 public record DelegationAssetDto(
     int Id,
     string AssetKind,
     string AssetLabel,
-    decimal? SalePrice);
+    decimal? SalePrice,
+    bool SnapshotAdjusted);
 
 /// <summary>
 /// إنشاء/تعديل إنابة (تسطير من محامي الملف المنيب). التواريخ نصوص حرة تُفسَّر وتُخزَّن زمنيًا
@@ -22,8 +24,6 @@ public record UpsertDelegationRequest(
     string? DelegationText,
     string? DepositBookNumber,
     string? DepositBookDate,
-    string? SendBookNumber,
-    string? SendBookDate,
     List<int>? AssetIds);
 
 /// <summary>
@@ -42,11 +42,13 @@ public record RegisterDelegationRequest(
 
 /// <summary>
 /// إتمام الإنابة من محامي الملف المناب: بيع الأموال موضوع الإنابة بالمزاد العلني،
-/// مع بدل المبيع لكل أصل (بالليرة السورية) وتاريخ إعادة الملف إلى الدائرة المنيبة.
+/// مع بدل المبيع لكل أصل (بالليرة السورية) وتاريخ إعادة الملف إلى الدائرة المنيبة،
+/// وتاريخ «قرار الإحالة القطعية» (إلزامي — يُحفظ على الملف المنيب عند تفعيله «منفذ جبريا»).
 /// </summary>
 public record CompleteDelegationRequest(
     string? ReturnDate,
-    List<DelegationSaleDto>? Sales);
+    List<DelegationSaleDto>? Sales,
+    string? ForcedExecutionDate = null);
 
 /// <summary>بدل المبيع لأصل مباعٍ بالمزاد ضمن إتمام الإنابة (بالليرة السورية).</summary>
 public record DelegationSaleDto(
@@ -74,8 +76,6 @@ public record DelegationDto(
     string? DelegationText,
     string? DepositBookNumber,
     string? DepositBookDate,
-    string? SendBookNumber,
-    string? SendBookDate,
     int? AssignedLawyerId,
     string? AssignedLawyerName,
     string? ReturnDate,

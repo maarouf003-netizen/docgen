@@ -36,8 +36,6 @@ function pendingDelegation(): DelegationDto {
     delegationText: 'نص سابق',
     depositBookNumber: '',
     depositBookDate: '',
-    sendBookNumber: '',
-    sendBookDate: '',
     assignedLawyerId: null,
     assignedLawyerName: null,
     returnDate: '',
@@ -46,8 +44,8 @@ function pendingDelegation(): DelegationDto {
     createdByName: 'سامر',
     createdById: 7,
     assets: [
-      { id: 100, assetKind: 'مركبة', assetLabel: 'مركبة لوحة 77' },
-      { id: 101, assetKind: 'متجر', assetLabel: 'متجر سجل رقم 3' },
+      { id: 100, assetKind: 'مركبة', assetLabel: 'مركبة لوحة 77', snapshotAdjusted: false },
+      { id: 101, assetKind: 'متجر', assetLabel: 'متجر سجل رقم 3', snapshotAdjusted: false },
     ],
   };
 }
@@ -140,8 +138,6 @@ describe('DelegationFormModal', () => {
         delegationText: 'لبيع الأموال بالمزاد',
         depositBookNumber: null,
         depositBookDate: null,
-        sendBookNumber: null,
-        sendBookDate: null,
         assetIds: [1],
       }),
     );
@@ -248,8 +244,6 @@ describe('DelegationFormModal', () => {
         delegationText: 'نص سابق',
         depositBookNumber: 'K-7',
         depositBookDate: '1/8/2026',
-        sendBookNumber: null,
-        sendBookDate: null,
         assetIds: [1],
       }),
     );

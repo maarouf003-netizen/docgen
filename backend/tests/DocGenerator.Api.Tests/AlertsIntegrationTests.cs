@@ -7,7 +7,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace DocGenerator.Api.Tests;
 
-public class AlertsIntegrationTests : IClassFixture<ApiFactory>
+[Collection(ApiTestCollection.Name)]
+public class AlertsIntegrationTests
 {
     private readonly ApiFactory _factory;
 
