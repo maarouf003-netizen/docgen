@@ -1,4 +1,5 @@
 import type { DocumentResponse } from '../../types';
+import { SectionCard } from './SectionCard';
 import { buildStatusSummary } from './viewFormat';
 
 /**
@@ -15,10 +16,11 @@ export function StatusCard({
   onOpenStatus: () => void;
 }) {
   return (
-    <div className="bg-white rounded-xl shadow p-5">
-      <h3 className="font-bold text-emerald-800 mb-3">الحالة</h3>
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-gray-800 flex-1 min-w-0">{buildStatusSummary(doc)}</p>
+    <SectionCard title="الحالة">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-gray-800 flex-1 min-w-0 rounded-lg bg-gray-50 border border-gray-100 px-3 py-2.5">
+          {buildStatusSummary(doc)}
+        </p>
         {canChangeStatus && (
           <button
             type="button"
@@ -29,6 +31,6 @@ export function StatusCard({
           </button>
         )}
       </div>
-    </div>
+    </SectionCard>
   );
 }

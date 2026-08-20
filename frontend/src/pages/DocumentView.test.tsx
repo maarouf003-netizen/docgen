@@ -143,6 +143,22 @@ const mockDoc: DocumentResponse = {
   executedNaturalPersons: [],
 };
 
+function stubMobile(matches: boolean) {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+}
+
 function renderView() {
   return render(
     <MemoryRouter initialEntries={['/documents/1']}>
@@ -2050,5 +2066,45 @@ describe('DocumentView', () => {
     await screen.findByText('معلومات الملف المنيب');
     expect(screen.queryByRole('button', { name: 'تسجيل أصولًا' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'إتمام الإنابة' })).not.toBeInTheDocument();
+  });
+
+  it('يعرض شريط هوية لاصقًا أعلى الصفحة ببطاقات الملف الأساسية (رقم/سنة/دائرة)', async () => {
+    renderView();
+
+    await screen.findByText('بيانات الملف');
+    const facts = screen.getByText('رقم الملف').closest('dl') as HTMLElement;
+    expect(within(facts).getByText('99')).toBeInTheDocument();
+    expect(within(facts).getByText('2026')).toBeInTheDocument();
+    expect(within(facts).getByText('محكمة دمشق')).toBeInTheDocument();
+  });
+
+  it('يعرض تبويبات أقسام الملف على الجوال ويستخدم تبويبًا واحدًا تلو الآخر', async () => {
+    stubMobile(true);
+    const user = userEvent.setup();
+    renderView();
+
+    expect(await screen.findByRole('tab', { name: 'المعلومات' })).toBeInTheDocument();
+    const infoPanel = screen.getByRole('tabpanel');
+    expect(within(infoPanel).getByText('بيانات الملف')).toBeInTheDocument();
+    expect(within(infoPanel).queryByText('بيانات السند التنفيذي')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: 'السند والأموال' }));
+    const securityPanel = screen.getByRole('tabpanel');
+    expect(within(securityPanel).getByText('بيانات السند التنفيذي')).toBeInTheDocument();
+    expect(within(securityPanel).queryByText('بيانات الملف')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: 'الحالة' }));
+    const statusPanel = screen.getByRole('tabpanel');
+    expect(within(statusPanel).getByRole('heading', { name: 'الحالة' })).toBeInTheDocument();
+  });
+
+  it('يعرض أعمدة الملف الثلاثة معًا على المكتبي بلا تبويبات', async () => {
+    stubMobile(false);
+    renderView();
+
+    await screen.findByText('بيانات الملف');
+    expect(screen.queryByRole('tab', { name: 'المعلومات' })).not.toBeInTheDocument();
+    expect(screen.getAllByText('بيانات السند التنفيذي')).toHaveLength(1);
+    expect(screen.getAllByText('بيانات الملف')).toHaveLength(1);
   });
 });

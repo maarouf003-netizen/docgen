@@ -1,6 +1,7 @@
 import type { DocumentResponse } from '../../types';
 import { formatDate } from '../../utils/dates';
-import { Row } from './Row';
+import { FieldCell } from './FieldCell';
+import { SectionCard } from './SectionCard';
 import { buildOccurrenceLines } from './viewFormat';
 
 /** بطاقة «وقوعات الملف»: سرد الشطب والتجديد الحالي، مع نافذة التفاصيل الكاملة عند الضغط. */
@@ -18,8 +19,7 @@ export function OccurrencesCard({
   if (occurrences.length === 0 && !legacyStruckOffDate) return null;
 
   return (
-    <div className="bg-white rounded-xl shadow p-5">
-      <h3 className="font-bold text-emerald-800 mb-3">وقوعات الملف</h3>
+    <SectionCard title="وقوعات الملف">
       {occurrences.length > 0 ? (
         <button
           type="button"
@@ -27,7 +27,7 @@ export function OccurrencesCard({
           aria-label="عرض تفاصيل وقوعات الملف"
           className="block w-full text-right min-h-11"
         >
-          <ul className="text-gray-800 text-sm space-y-1">
+          <ul className="text-gray-800 text-sm space-y-1.5">
             {occurrenceLines.map((line, i) => (
               <li key={i}>{line}</li>
             ))}
@@ -37,8 +37,8 @@ export function OccurrencesCard({
           </span>
         </button>
       ) : (
-        <Row label="تاريخ الشطب" value={formatDate(legacyStruckOffDate)} showEmpty />
+        <FieldCell label="تاريخ الشطب" value={formatDate(legacyStruckOffDate)} showEmpty />
       )}
-    </div>
+    </SectionCard>
   );
 }

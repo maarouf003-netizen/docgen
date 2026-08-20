@@ -6,6 +6,7 @@ import { getDocumentBadge, EXEC_STATUS_FORCIBLY, EXEC_STATUS_SETTLED, EXEC_STATU
 import { isExecutedLike } from '../utils/documentDisplay';
 import { DELEGATION_STATUS_ASSIGNED, DELEGATION_STATUS_REGISTERED } from '../utils/delegationStatus';
 import { saveLastViewedDocumentId } from '../utils/listSession';
+import { useIsMobile } from '../hooks/useMediaQuery';
 import ExecutionActionsModal from '../components/ExecutionActionsModal';
 import ExecutedStatusModal from '../components/ExecutedStatusModal';
 import StatusChangeModal from '../components/StatusChangeModal';
@@ -52,6 +53,9 @@ export default function DocumentView() {
   const [completeOpen, setCompleteOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DelegationDto | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // مسار الجوال: تبويبات أقسام الملف (نمط تفصيلي للشاشات الصغيرة) بدل الأعمدة المتوازية.
+  const isMobile = useIsMobile();
+  const [activeTab, setActiveTab] = useState<'info' | 'security' | 'delegations' | 'status'>('info');
 
   const load = () => {
     api
@@ -144,6 +148,63 @@ export default function DocumentView() {
     setDelegationFormOpen(true);
   };
 
+  // أعمدة (Facets) صفحة التفاصيل: العمود الأول «المعلومات»، الثاني «السند والأموال»،
+  // والثالث «الإنابات والوقوعات» — وتتحول على الجوال إلى تبويبات يختارها المستخدم.
+  const infoPanel = (
+    <>
+      <PartiesCard doc={doc} onOpen={setPartyModal} />
+      <FileDataCard
+        doc={doc}
+        isLawyer={isLawyer}
+        showBranch={showBranch}
+        showLawyer={showLawyer}
+        onOpenBaseNumbers={() => setHistoryOpen(true)}
+        onOpenAssignments={() => setAssignmentsOpen(true)}
+      />
+    </>
+  );
+  const securityPanel = (
+    <>
+      <ExecutoryDocumentCard doc={doc} />
+      {!isExecuted && <AssetsSection doc={doc} />}
+    </>
+  );
+  const delegationsPanel = (
+    <>
+      {delegationOfThisFile ? (
+        <SourceFileInfoCard
+          delegation={delegationOfThisFile}
+          canRegister={canRegisterDelegation}
+          canComplete={canCompleteDelegation}
+          onRegister={() => setRegisterOpen(true)}
+          onComplete={() => setCompleteOpen(true)}
+        />
+      ) : (
+        showDelegationsCard && (
+          <DelegationsCard
+            delegations={delegations}
+            canCreate={canCreateDelegation}
+            currentUserId={user?.role === 'lawyer' ? user.id : undefined}
+            onCreate={openCreateDelegation}
+            onEdit={openEditDelegation}
+            onDelete={setDeleteTarget}
+          />
+        )
+      )}
+      <OccurrencesCard doc={doc} onOpen={() => setOccurrencesOpen(true)} />
+    </>
+  );
+  const statusPanel = (
+    <StatusCard doc={doc} canChangeStatus={canEdit && !isDelegationExecuted} onOpenStatus={() => setStatusOpen(true)} />
+  );
+
+  const tabs = [
+    { id: 'info', label: 'المعلومات', panel: infoPanel },
+    { id: 'security', label: 'السند والأموال', panel: securityPanel },
+    { id: 'delegations', label: 'الإنابات والوقوعات', panel: delegationsPanel },
+    { id: 'status', label: 'الحالة', panel: statusPanel },
+  ] as const;
+
   const confirmDeleteDelegation = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -161,100 +222,126 @@ export default function DocumentView() {
 
   return (
     <div className="max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-3">
-          <span className={`rounded-full px-3 py-1 text-sm ${statusBadge.cls}`}>
-            {statusBadge.text}
-          </span>
-          <span>{isExecuted ? executedTitle(doc) : debtorFullName || doc.documentType || `مستند #${doc.id}`}</span>
-        </h2>
-        <div className="flex gap-2 flex-wrap">
-          {canEdit && (
-            <Link to={`/documents/${id}/edit`} className="bg-emerald-800 hover:bg-emerald-700 text-white rounded-lg px-4 py-2 text-sm inline-flex items-center min-h-11">
-              تعديل
+      <div className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-gray-200 rounded-b-xl shadow-sm px-4 py-3 mb-5">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="text-xl md:text-2xl font-bold text-gray-800 flex items-center gap-3 min-w-0">
+            <span className={`rounded-full px-3 py-1 text-sm ${statusBadge.cls}`}>
+              {statusBadge.text}
+            </span>
+            <span className="min-w-0 truncate">
+              {isExecuted ? executedTitle(doc) : debtorFullName || doc.documentType || `مستند #${doc.id}`}
+            </span>
+          </h2>
+          <div className="flex gap-2 flex-wrap">
+            {canEdit && (
+              <Link to={`/documents/${id}/edit`} className="bg-emerald-800 hover:bg-emerald-700 text-white rounded-lg px-4 py-2 text-sm inline-flex items-center min-h-11">
+                تعديل
+              </Link>
+            )}
+            {!isExecuted && !isDelegationExecuted && (
+              <button
+                onClick={() => setGenerationOpen(true)}
+                className="bg-gray-800 hover:bg-gray-700 text-white rounded-lg px-4 py-2 text-sm min-h-11"
+              >
+                توليد مستندات
+              </button>
+            )}
+            <button
+              onClick={() => setActionsOpen(true)}
+              className="bg-[#800000] hover:bg-[#9e0e0e] text-white rounded-lg px-4 py-2 text-sm min-h-11"
+            >
+              الإجراءات والملاحظات
+            </button>
+            {canDirectAlert && (
+              <button
+                onClick={() => setAlertOpen(true)}
+                className="bg-red-600 hover:bg-red-500 text-white rounded-lg px-4 py-2 text-sm min-h-11"
+              >
+                توجيه تنبيه
+              </button>
+            )}
+            {canTransfer && (
+              <button
+                onClick={() => setTransferOpen(true)}
+                className="bg-sky-800 hover:bg-sky-700 text-white rounded-lg px-4 py-2 text-sm min-h-11"
+              >
+                نقل الملف
+              </button>
+            )}
+            <Link to="/documents" className="border border-gray-300 rounded-lg px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 inline-flex items-center min-h-11">
+              عودة
             </Link>
-          )}
-          {!isExecuted && !isDelegationExecuted && (
-            <button
-              onClick={() => setGenerationOpen(true)}
-              className="bg-gray-800 hover:bg-gray-700 text-white rounded-lg px-4 py-2 text-sm min-h-11"
-            >
-              توليد مستندات
-            </button>
-          )}
-          <button
-            onClick={() => setActionsOpen(true)}
-            className="bg-[#800000] hover:bg-[#9e0e0e] text-white rounded-lg px-4 py-2 text-sm min-h-11"
-          >
-            الإجراءات والملاحظات
-          </button>
-          {canDirectAlert && (
-            <button
-              onClick={() => setAlertOpen(true)}
-              className="bg-red-600 hover:bg-red-500 text-white rounded-lg px-4 py-2 text-sm min-h-11"
-            >
-              توجيه تنبيه
-            </button>
-          )}
-          {canTransfer && (
-            <button
-              onClick={() => setTransferOpen(true)}
-              className="bg-sky-800 hover:bg-sky-700 text-white rounded-lg px-4 py-2 text-sm min-h-11"
-            >
-              نقل الملف
-            </button>
-          )}
-          <Link to="/documents" className="border border-gray-300 rounded-lg px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 inline-flex items-center min-h-11">
-            عودة
-          </Link>
+          </div>
         </div>
+
+        {/* شريط الهوية: بطاقات الملف الأساسية (رقم/سنة/دائرة/فرع/محامٍ) لقراءة فورية أثناء التمرير. */}
+        <dl className="mt-3 flex flex-wrap gap-2 text-sm">
+          <div className="inline-flex items-baseline gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-1.5">
+            <dt className="text-xs text-emerald-800 font-medium">رقم الملف</dt>
+            <dd className="text-gray-800 font-semibold tabular-nums">
+              {doc.displayFileNumber ?? doc.fileNumber ?? '—'}
+            </dd>
+          </div>
+          <div className="inline-flex items-baseline gap-1.5 rounded-lg bg-gray-50 border border-gray-200 px-3 py-1.5">
+            <dt className="text-xs text-gray-500 font-medium">السنة</dt>
+            <dd className="text-gray-800 font-semibold tabular-nums">{doc.fileYear || '—'}</dd>
+          </div>
+          <div className="inline-flex items-baseline gap-1.5 rounded-lg bg-gray-50 border border-gray-200 px-3 py-1.5">
+            <dt className="text-xs text-gray-500 font-medium">الدائرة</dt>
+            <dd className="text-gray-800 font-semibold">{doc.court || '—'}</dd>
+          </div>
+          {showBranch && (
+            <div className="inline-flex items-baseline gap-1.5 rounded-lg bg-gray-50 border border-gray-200 px-3 py-1.5">
+              <dt className="text-xs text-gray-500 font-medium">الفرع</dt>
+              <dd className="text-gray-800 font-semibold">{doc.branchName || '—'}</dd>
+            </div>
+          )}
+        </dl>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6 items-start">
-        <PartiesCard doc={doc} onOpen={setPartyModal} />
-        <FileDataCard
-          doc={doc}
-          isLawyer={isLawyer}
-          showBranch={showBranch}
-          showLawyer={showLawyer}
-          onOpenBaseNumbers={() => setHistoryOpen(true)}
-          onOpenAssignments={() => setAssignmentsOpen(true)}
-        />
-        <ExecutoryDocumentCard doc={doc} />
-        {delegationOfThisFile ? (
-          <SourceFileInfoCard
-            delegation={delegationOfThisFile}
-            canRegister={canRegisterDelegation}
-            canComplete={canCompleteDelegation}
-            onRegister={() => setRegisterOpen(true)}
-            onComplete={() => setCompleteOpen(true)}
-          />
-        ) : (
-          showDelegationsCard && (
-            <DelegationsCard
-              delegations={delegations}
-              canCreate={canCreateDelegation}
-              currentUserId={user?.role === 'lawyer' ? user.id : undefined}
-              onCreate={openCreateDelegation}
-              onEdit={openEditDelegation}
-              onDelete={setDeleteTarget}
-            />
-          )
-        )}
-        {isExecuted ? (
-          <OccurrencesCard doc={doc} onOpen={() => setOccurrencesOpen(true)} />
-        ) : (
-          <>
-            <AssetsSection doc={doc} />
-            {/* «وقوعات الملف» لنظام «طالبة تنفيذ»: تسجّل إجراءات تغيير الحالة (تريث/منفذ/تراجع). */}
-            <OccurrencesCard doc={doc} onOpen={() => setOccurrencesOpen(true)} />
-          </>
-        )}
-      </div>
+      {isMobile ? (
+        <div>
+          <div
+            role="tablist"
+            aria-label="أقسام الملف"
+            className="flex gap-2 overflow-x-auto pb-1 mb-4 -mx-1 px-1"
+          >
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                id={`document-tab-${t.id}`}
+                aria-selected={activeTab === t.id}
+                aria-controls={`document-panel-${t.id}`}
+                onClick={() => setActiveTab(t.id)}
+                className={`shrink-0 min-h-11 px-4 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === t.id
+                    ? 'bg-emerald-800 text-white'
+                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div
+            role="tabpanel"
+            id={`document-panel-${activeTab}`}
+            aria-labelledby={`document-tab-${activeTab}`}
+          >
+            {tabs.find((t) => t.id === activeTab)?.panel}
+          </div>
+        </div>
+      ) : (
+        <div className="grid md:grid-cols-3 gap-5 items-stretch">
+          <div className="flex flex-col gap-5 min-w-0">{infoPanel}</div>
+          <div className="flex flex-col gap-5 min-w-0">{securityPanel}</div>
+          <div className="flex flex-col gap-5 min-w-0">{delegationsPanel}</div>
+        </div>
+      )}
 
-      <div className="mt-6">
-        <StatusCard doc={doc} canChangeStatus={canEdit && !isDelegationExecuted} onOpenStatus={() => setStatusOpen(true)} />
-      </div>
+      {!isMobile && <div className="mt-6">{statusPanel}</div>}
 
       {actionsOpen && id !== undefined && (
         <ExecutionActionsModal

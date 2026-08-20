@@ -36,7 +36,7 @@ function PartyRow({
       type="button"
       onClick={onClick}
       disabled={!onClick}
-      className="w-full flex items-center justify-between gap-3 py-3 border-b border-gray-100 last:border-0 text-right hover:bg-gray-50 disabled:hover:bg-transparent min-h-11"
+      className="w-full flex items-center justify-between gap-3 py-2.5 px-2 -mx-2 rounded-lg border-b border-gray-100 last:border-0 text-right hover:bg-gray-50 disabled:hover:bg-transparent min-h-11"
     >
       <span className="min-w-0 flex-1">
         <span className="block text-xs text-gray-500">{label}</span>
@@ -337,8 +337,8 @@ export function PartiesCard({ doc, onOpen }: { doc: DocumentResponse; onOpen: (m
   const isOrdinary = doc.contractTypeSelector === 'عادي';
 
   return (
-    <div className="bg-white rounded-xl shadow p-5">
-      <h3 className="font-bold text-emerald-800 mb-1">أطراف الملف التنفيذي</h3>
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4">
+      <h3 className="font-bold text-emerald-800 mb-3">أطراف الملف التنفيذي</h3>
       <PartiesGroup title={doc.generalEntitySide === 'deposit' ? 'طالب العرض' : 'طالب التنفيذ'}>
         {isExecuted ? (
           <ExecutedApplicants applicants={doc.executionApplicants} onOpen={onOpen} />

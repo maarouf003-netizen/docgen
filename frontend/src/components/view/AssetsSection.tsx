@@ -1,33 +1,33 @@
 import { ASSET_KINDS } from '../form/documentFormConstants';
 import { assetDisplayName } from '../../utils/assetDisplay';
 import type { AssetDto, DocumentResponse } from '../../types';
+import { SectionCard } from './SectionCard';
 
 /** يعرض قائمة الأموال المرهونة (المنقولة وغير المنقولة) في بطاقات. */
 export function AssetsSection({ doc }: { doc: DocumentResponse }) {
   const assets = doc.assets ?? [];
   return (
-    <div className="bg-white rounded-xl shadow p-5">
-      <h3 className="font-bold text-emerald-800 mb-3">الأموال المنقولة وغير المنقولة</h3>
+    <SectionCard title="الأموال المنقولة وغير المنقولة">
       {assets.length === 0 && <p className="text-gray-400 text-sm">لا توجد أموال مرهونة</p>}
       {assets.map((r, i) => (
         <AssetRow key={r.id ?? i} asset={r} />
       ))}
-    </div>
+    </SectionCard>
   );
 }
 
 function AssetRow({ asset: r }: { asset: AssetDto }) {
   const kind = r.assetKind;
   return (
-    <div
-      className="flex flex-wrap items-center gap-x-5 gap-y-1 py-2 border-b border-gray-100 last:border-0 text-sm"
-    >
-      <span className="font-bold text-gray-700">{assetDisplayName(r)}</span>
-      <Rows kind={kind} asset={r} />
-      <span className="inline-flex items-center gap-1">
-        <span className="text-gray-500">الملاك</span>
-        <span className="text-gray-800">{(r.owners ?? []).join(' و ') || '—'}</span>
-      </span>
+    <div className="rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2.5 mb-2 last:mb-0 text-sm">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
+        <span className="font-bold text-emerald-900">{assetDisplayName(r)}</span>
+        <Rows kind={kind} asset={r} />
+        <span className="inline-flex items-center gap-1">
+          <span className="text-gray-500">الملاك</span>
+          <span className="text-gray-800">{(r.owners ?? []).join(' و ') || '—'}</span>
+        </span>
+      </div>
     </div>
   );
 }

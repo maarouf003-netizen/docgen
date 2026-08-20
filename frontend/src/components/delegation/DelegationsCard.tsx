@@ -1,5 +1,6 @@
 import type { DelegationDto } from '../../types';
 import { isDelegationPending } from '../../utils/delegationStatus';
+import { SectionCard } from '../view/SectionCard';
 import { DelegationDetails } from './DelegationDetails';
 
 /**
@@ -23,10 +24,11 @@ export function DelegationsCard({
   onDelete: (d: DelegationDto) => void;
 }) {
   return (
-    <div className="bg-white rounded-xl shadow p-5">
-      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-        <h3 className="font-bold text-emerald-800">تشعبات الملف</h3>
-        {canCreate && (
+    <SectionCard
+      title="تشعبات الملف"
+     
+      actions={
+        canCreate && (
           <button
             type="button"
             onClick={onCreate}
@@ -34,8 +36,9 @@ export function DelegationsCard({
           >
             تسطير إنابة
           </button>
-        )}
-      </div>
+        )
+      }
+    >
 
       {delegations.length === 0 ? (
         <p className="text-gray-400 text-sm">لا توجد إنابات مسجلة لهذا الملف</p>
@@ -69,6 +72,6 @@ export function DelegationsCard({
           })}
         </ul>
       )}
-    </div>
+    </SectionCard>
   );
 }

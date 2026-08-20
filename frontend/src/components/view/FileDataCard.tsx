@@ -1,8 +1,9 @@
 import type { DocumentResponse } from '../../types';
 import { formatDate } from '../../utils/dates';
 import { isExecutedLike } from '../../utils/documentDisplay';
-import { Row } from './Row';
+import { FieldCell } from './FieldCell';
 import { RowTriple } from './RowTriple';
+import { SectionCard } from './SectionCard';
 import { formatFileNumber, formatPaidAmounts } from './viewFormat';
 
 /** بطاقة «بيانات الملف» الموحّدة: دائرة التنفيذ، الفرع/المحامي حسب الصلاحية، رقم الملف وأرقام الأساس، وحقول كل صفة. */
@@ -25,23 +26,30 @@ export function FileDataCard({
   const fileNumber = formatFileNumber(doc);
   const paidAmounts = isExecuted ? formatPaidAmounts(doc) : '';
 
-  return (
-    <div className="bg-white rounded-xl shadow p-5">
-      <h3 className="font-bold text-emerald-800 mb-3">بيانات الملف</h3>
+  const interactiveTile =
+    'w-full flex items-center justify-between gap-3 text-right rounded-lg border border-gray-200 bg-gray-50 hover:bg-emerald-50 hover:border-emerald-200 px-3 py-2 min-h-11';
 
-      <Row label="دائرة التنفيذ المختصة" value={doc.court} />
-      {showBranch && <Row label="فرع الملف" value={doc.branchName} />}
+  return (
+    <SectionCard title="بيانات الملف">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5 items-start">
+        <FieldCell label="دائرة التنفيذ المختصة" value={doc.court} />
+        {showBranch && <FieldCell label="فرع الملف" value={doc.branchName} />}
+      </div>
 
       {showLawyer ? (
-        <div className="py-2 border-b border-gray-100">
-          <span className="text-gray-500 text-xs block">المحامي المختص</span>
+        <div className="mt-2.5">
           <button
             type="button"
             onClick={onOpenAssignments}
             aria-label="عرض سجل التعاقب على الملف"
-            className="w-full flex items-center justify-between gap-3 text-right text-emerald-800 font-medium text-sm hover:underline min-h-11"
+            className={interactiveTile}
           >
-            <span>{doc.lawyer || '—'}</span>
+            <span className="min-w-0">
+              <span className="block text-xs text-gray-500">المحامي المختص</span>
+              <span className="block font-medium text-emerald-800 text-sm truncate">
+                {doc.lawyer || '—'}
+              </span>
+            </span>
             <span className="text-gray-400 text-sm shrink-0" aria-hidden="true">←</span>
           </button>
         </div>
@@ -49,7 +57,7 @@ export function FileDataCard({
         isLawyer &&
         doc.referredFromLawyer &&
         doc.referredAt && (
-          <div className="py-2 border-b border-gray-100 bg-amber-50 rounded px-3 -mx-3 mt-1">
+          <div className="mt-2.5 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
             <span className="text-amber-800 text-xs block font-medium">إحالة الملف</span>
             <span className="text-amber-900 text-sm">
               أُحيل لك هذا الملف من {doc.referredFromLawyer} بتاريخ {formatDate(doc.referredAt)}
@@ -58,56 +66,73 @@ export function FileDataCard({
         )
       )}
 
-      <div className="py-2 border-b border-gray-100">
-        <span className="text-gray-500 text-xs block">رقم الملف ونوعه لعام {doc.fileYear}</span>
-        {fileNumber ? (
-          <button
-            type="button"
-            onClick={onOpenBaseNumbers}
-            aria-label="عرض أرقام الأساس للسنوات السابقة"
-            className="w-full flex items-center justify-between gap-3 text-right hover:underline min-h-11"
-          >
-            <span className={doc.needsRotation ? 'text-red-600 font-medium text-sm' : 'text-gray-800 text-sm'}>
-              {fileNumber}
+      <div className="mt-2.5">
+        <button
+          type="button"
+          onClick={onOpenBaseNumbers}
+          aria-label="عرض أرقام الأساس للسنوات السابقة"
+          className={interactiveTile}
+        >
+          <span className="min-w-0">
+            <span className="block text-xs text-gray-500">
+              رقم الملف ونوعه لعام {doc.fileYear}
             </span>
-            <span className="text-gray-400 text-sm shrink-0" aria-hidden="true">←</span>
-          </button>
-        ) : (
-          <span className="text-gray-800 text-sm">—</span>
-        )}
+            <span
+              className={`block text-sm truncate ${
+                doc.needsRotation ? 'text-red-600 font-medium' : 'text-gray-800'
+              }`}
+            >
+              {fileNumber || '—'}
+            </span>
+          </span>
+          <span className="text-gray-400 text-sm shrink-0" aria-hidden="true">←</span>
+        </button>
       </div>
 
       {isExecuted ? (
-        <>
-          <Row label="رقم ورود الاخطار التنفيذي" value={doc.fileReceiptNumber} />
-          <Row label="تاريخ ورود الاخطار التنفيذي" value={formatDate(doc.fileReceiptDate)} />
-          <Row label="كيفية تنفيذ الملف" value={doc.executedDescription} showEmpty />
+        <div className="mt-2.5 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5 items-start">
+          <FieldCell label="رقم ورود الاخطار التنفيذي" value={doc.fileReceiptNumber} />
+          <FieldCell label="تاريخ ورود الاخطار التنفيذي" value={formatDate(doc.fileReceiptDate)} />
+          <FieldCell label="كيفية تنفيذ الملف" value={doc.executedDescription} showEmpty />
           {paidAmounts && (
-            <Row
-              label={doc.generalEntitySide === 'deposit' ? 'المبلغ المودع' : 'المبلغ الذي دفعته الجهة العامة'}
+            <FieldCell
+              label={
+                doc.generalEntitySide === 'deposit'
+                  ? 'المبلغ المودع'
+                  : 'المبلغ الذي دفعته الجهة العامة'
+              }
               value={paidAmounts}
               showEmpty
+              emphasized
             />
           )}
-        </>
+        </div>
       ) : (
         <>
-          <RowTriple
-            firstLabel="رقم كتاب الجهة العامة"
-            firstValue={doc.fileIncoming}
-            secondLabel="تاريخ كتاب الجهة العامة"
-            secondValue={doc.fileIncomingDate}
-            thirdLabel="رقم ورود الملف"
-            thirdValue={doc.fileArrivalNumber}
-          />
-          <Row label="تاريخ ورود الملف" value={doc.fileArrivalDate} />
-          <Row label="رقم تحت رفع" value={doc.underFilingNumber} />
-          <Row label="تاريخ قيد الملف" value={doc.fileRegistrationDate} />
-          <Row label="تاريخ القاء حجز المنظومة" value={doc.seizureDate} />
+          <div className="mt-2.5">
+            <RowTriple
+              firstLabel="رقم كتاب الجهة العامة"
+              firstValue={doc.fileIncoming}
+              secondLabel="تاريخ كتاب الجهة العامة"
+              secondValue={doc.fileIncomingDate}
+              thirdLabel="رقم ورود الملف"
+              thirdValue={doc.fileArrivalNumber}
+            />
+          </div>
+          <div className="mt-2.5 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5 items-start">
+            <FieldCell label="تاريخ ورود الملف" value={doc.fileArrivalDate} />
+            <FieldCell label="رقم تحت رفع" value={doc.underFilingNumber} />
+            <FieldCell label="تاريخ قيد الملف" value={doc.fileRegistrationDate} />
+            <FieldCell label="تاريخ القاء حجز المنظومة" value={doc.seizureDate} />
+          </div>
         </>
       )}
 
-      {!isLawyer && <Row label="منشئ المستند" value={doc.createdByName} />}
-    </div>
+      {!isLawyer && (
+        <div className="mt-2.5">
+          <FieldCell label="منشئ المستند" value={doc.createdByName} />
+        </div>
+      )}
+    </SectionCard>
   );
 }

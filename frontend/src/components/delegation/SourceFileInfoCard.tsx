@@ -1,4 +1,6 @@
 import type { DelegationDto } from '../../types';
+import { FieldCell } from '../view/FieldCell';
+import { SectionCard } from '../view/SectionCard';
 import { DelegationDetails } from './DelegationDetails';
 
 /**
@@ -26,20 +28,13 @@ export function SourceFileInfoCard({
     .join('/');
 
   return (
-    <div className="bg-white rounded-xl shadow p-5">
-      <h3 className="font-bold text-emerald-800 mb-3">معلومات الملف المنيب</h3>
-
-      <div className="space-y-2 min-w-0">
-        <p className="text-sm text-gray-700">
-          <span className="text-gray-500 text-xs block">الملف المنيب</span>
-          {delegation.sourceDocumentLabel || `ملف رقم ${delegation.sourceDocumentId}`}
-        </p>
-        {sourceNumber && (
-          <p className="text-sm text-gray-700">
-            <span className="text-gray-500 text-xs block">رقم أساس الملف المنيب</span>
-            {sourceNumber}
-          </p>
-        )}
+    <SectionCard title="معلومات الملف المنيب">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-start">
+        <FieldCell
+          label="الملف المنيب"
+          value={delegation.sourceDocumentLabel || `ملف رقم ${delegation.sourceDocumentId}`}
+        />
+        {sourceNumber && <FieldCell label="رقم أساس الملف المنيب" value={sourceNumber} />}
       </div>
 
       <div className="mt-3 pt-3 border-t border-gray-100">
@@ -68,6 +63,6 @@ export function SourceFileInfoCard({
           )}
         </div>
       )}
-    </div>
+    </SectionCard>
   );
 }

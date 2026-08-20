@@ -1,7 +1,7 @@
 import type { DocumentResponse } from '../../types';
 import { isExecutedLike } from '../../utils/documentDisplay';
-import { Row } from './Row';
-import { RowPair } from './RowPair';
+import { FieldCell } from './FieldCell';
+import { SectionCard } from './SectionCard';
 import { formatRequiredAmounts } from './viewFormat';
 
 function joinAmountWords(...parts: Array<string | null | undefined>): string {
@@ -23,36 +23,42 @@ export function ExecutoryDocumentCard({ doc }: { doc: DocumentResponse }) {
   );
 
   return (
-    <div className="bg-white rounded-xl shadow p-5">
-      <h3 className="font-bold text-emerald-800 mb-3">بيانات السند التنفيذي</h3>
-      <RowPair
-        firstLabel="نوع السند"
-        firstValue={doc.contractTypeSelector}
-        secondLabel={typeLabel}
-        secondValue={doc.contractType}
-      />
-      <RowPair
-        firstLabel={numberLabel}
-        firstValue={doc.contractNumber}
-        secondLabel={dateLabel}
-        secondValue={doc.contractDate}
-      />
+    <SectionCard title="بيانات السند التنفيذي">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-start">
+        <FieldCell label="نوع السند" value={doc.contractTypeSelector} />
+        <FieldCell label={typeLabel} value={doc.contractType} />
+        <FieldCell label={numberLabel} value={doc.contractNumber} />
+        <FieldCell label={dateLabel} value={doc.contractDate} />
+      </div>
       {(doc.annexType || doc.annexNumber || doc.annexDate) && (
-        <Row
-          label="ملحق العقد"
-          value={[doc.annexType, doc.annexNumber, doc.annexDate].filter((v) => v && v.trim()).join(' — ')}
-        />
+        <div className="mt-2.5">
+          <FieldCell
+            label="ملحق العقد"
+            value={[doc.annexType, doc.annexNumber, doc.annexDate].filter((v) => v && v.trim()).join(' — ')}
+          />
+        </div>
       )}
-      {isOrdinary && <Row label="خلاصة الحكم" value={doc.inclusionText} showEmpty />}
+      {isOrdinary && (
+        <div className="mt-2.5">
+          <FieldCell label="خلاصة الحكم" value={doc.inclusionText} showEmpty />
+        </div>
+      )}
       {isExecuted ? (
-        <Row
-          label={isDeposit ? 'المبلغ المعروض' : 'المبلغ المطلوب دفعه من الجهة العامة'}
-          value={formatRequiredAmounts(doc)}
-          showEmpty
-        />
+        <div className="mt-2.5">
+          <FieldCell
+            label={isDeposit ? 'المبلغ المعروض' : 'المبلغ المطلوب دفعه من الجهة العامة'}
+            value={formatRequiredAmounts(doc)}
+            showEmpty
+            emphasized
+          />
+        </div>
       ) : (
-        amountWords && <Row label="المبلغ المطالب به" value={amountWords} />
+        amountWords && (
+          <div className="mt-2.5">
+            <FieldCell label="المبلغ المطالب به" value={amountWords} emphasized />
+          </div>
+        )
       )}
-    </div>
+    </SectionCard>
   );
 }
