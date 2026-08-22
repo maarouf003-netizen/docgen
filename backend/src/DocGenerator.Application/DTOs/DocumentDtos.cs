@@ -90,7 +90,9 @@ public record AssetDto(
     string? LicenseDate,
     string? LicenseIssuer,
     // الملاحظات
-    string? Notes);
+    string? Notes,
+    /// <summary>تاريخ القاء الحجز على الأصل (نص حر يُفسَّر زمنيًا ويُستبدل في قوالب الوورد).</summary>
+    string? SeizureDate);
 
 public record ExecutionActionDto(
     int Id,
@@ -878,7 +880,8 @@ public class UpsertOccurrenceRequest
                 a.RegisterNumber, a.RegistrationDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), a.ShopGovernorate, a.ShopDescription, a.ShopLocation,
                 a.PublicEntity,
                 a.LicenseNumber, a.LicenseDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), a.LicenseIssuer,
-                a.Notes))
+                a.Notes,
+                a.SeizureDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)))
             .ToList(),
         BorrowerHeirs = ToHeirDtos(d.Heirs, null),
         ExecutionActions = d.ExecutionActions

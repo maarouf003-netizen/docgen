@@ -472,6 +472,7 @@ public sealed partial class DocumentService
                 LicenseDate = DocumentValidator.ParseDateTime(re.LicenseDate, "تاريخ الترخيص"),
                 LicenseIssuer = re.LicenseIssuer,
                 Notes = re.Notes,
+                SeizureDate = DocumentValidator.ParseDateTime(re.SeizureDate, "تاريخ القاء الحجز"),
             };
             asset.Owners = AssetMapper.NormalizeOwners(re.Owners);
             // تمام الأصل لا يكون إلا لمالك واحد؛ عند تعدد الملاك تُفرض الحصة السهمية

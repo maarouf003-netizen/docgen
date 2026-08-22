@@ -105,6 +105,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("RegistrationDate")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("SeizureDate")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ShareType")
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");

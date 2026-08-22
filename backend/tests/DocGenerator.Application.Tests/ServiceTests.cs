@@ -87,7 +87,7 @@ public class DocumentServiceTests : IDisposable
                 null, null, null, null, null,
                 null,
                 null, null, null,
-                null),
+                null, null),
         },
     };
 
@@ -979,7 +979,7 @@ public class DocumentServiceTests : IDisposable
                 null, null, null, null, null,
                 null,
                 null, null, null,
-                null),
+                null, null),
         };
 
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
@@ -1006,7 +1006,7 @@ public class DocumentServiceTests : IDisposable
                 "888", "10/5/2024", "حلب", "متجر أقمشة", "شارع الجمهورية",
                 null,
                 null, null, null,
-                null),
+                null, null),
         };
 
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
@@ -1034,7 +1034,7 @@ public class DocumentServiceTests : IDisposable
                 null, null, null, null, null,
                 "المصرف العقاري - دمشق",
                 null, null, null,
-                "ملاحظات الكفالة"),
+                "ملاحظات الكفالة", null),
         };
 
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
@@ -1060,7 +1060,7 @@ public class DocumentServiceTests : IDisposable
                 null, null, null, null, null,
                 null,
                 "456", "15/1/2023", "مديرية التجارة الداخلية",
-                "ملاحظات المتجر"),
+                "ملاحظات المتجر", null),
         };
 
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
@@ -1087,7 +1087,7 @@ public class DocumentServiceTests : IDisposable
                 "888", "10-5-2024", "حلب", "متجر أقمشة", "شارع الجمهورية",
                 null,
                 null, null, null,
-                null),
+                null, null),
         };
 
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
@@ -1109,7 +1109,7 @@ public class DocumentServiceTests : IDisposable
                 null, null, null, null, null,
                 null,
                 "456", "٢٩/٢/٢٠٢٤", "مديرية التجارة الداخلية",
-                null),
+                null, null),
         };
 
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
@@ -1131,7 +1131,7 @@ public class DocumentServiceTests : IDisposable
                 "888", "ليس تاريخاً", "حلب", "متجر أقمشة", "شارع الجمهورية",
                 null,
                 null, null, null,
-                null),
+                null, null),
         };
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(req, 1, "lawyer1", 1));
@@ -1150,7 +1150,7 @@ public class DocumentServiceTests : IDisposable
                 null, null, null, null, null,
                 null,
                 "456", "غير صحيح", "مديرية التجارة الداخلية",
-                null),
+                null, null),
         };
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(req, 1, "lawyer1", 1));
@@ -1169,7 +1169,7 @@ public class DocumentServiceTests : IDisposable
                 "888", "", "حلب", "متجر أقمشة", "شارع الجمهورية",
                 null,
                 null, null, null,
-                null),
+                null, null),
         };
 
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
@@ -1191,7 +1191,7 @@ public class DocumentServiceTests : IDisposable
                 null, null, null, null, null,
                 null,
                 "456", null, "مديرية التجارة الداخلية",
-                null),
+                null, null),
         };
 
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
@@ -1213,7 +1213,7 @@ public class DocumentServiceTests : IDisposable
                 null, null, null, null, null,
                 null,
                 null, null, null,
-                null),
+                null, null),
         };
 
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
@@ -1236,7 +1236,7 @@ public class DocumentServiceTests : IDisposable
                 null, null, null, null, null,
                 null,
                 null, null, null,
-                null),
+                null, null),
         };
 
         await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(req, 1, "lawyer1", 1));
@@ -1271,21 +1271,21 @@ public class DocumentServiceTests : IDisposable
                 null, null, null, null, null,
                 null,
                 null, null, null,
-                null),
+                null, null),
             new AssetDto(null, AssetKindCatalog.Vehicle, new List<string> { "المدعى عليه" }, "تمام المركبة",
                 null, null, null, null,
                 "سيارة", "خاصة", "99", "دمشق",
                 null, null, null, null, null,
                 null,
                 null, null, null,
-                null),
+                null, null),
             new AssetDto(null, AssetKindCatalog.SalaryGuarantee, new List<string> { "المدعى عليه" }, null,
                 null, null, null, null,
                 null, null, null, null,
                 null, null, null, null, null,
                 "المصرف",
                 null, null, null,
-                null),
+                null, null),
         };
 
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
@@ -1327,14 +1327,14 @@ public class DocumentServiceTests : IDisposable
                 null, null, null, null, null,
                 null,
                 null, null, null,
-                null),
+                null, null),
             new AssetDto(null, AssetKindCatalog.Vehicle, new List<string> { "المدعى عليه" }, "تمام المركبة",
                 null, null, null, null,
                 "سيارة", "خاصة", "99", "دمشق",
                 null, null, null, null, null,
                 null,
                 null, null, null,
-                null),
+                null, null),
         };
 
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
@@ -4159,12 +4159,12 @@ public class ConsiderDelegationExecutedTests : IDisposable
             Assets = new()
             {
                 new AssetDto(null, AssetKindCatalog.RealEstate, new List<string> { "المدعى عليه" }, "تمام العقار",
-                    "بيت", "1", "المزة", "الصالحية",
+                    "بيت", "12345", "المزة", "الصالحية",
                     null, null, null, null,
                     null, null, null, null, null,
                     null,
                     null, null, null,
-                    null),
+                    null, null),
             },
         };
         var dto = await _service.CreateAsync(req, userId: 1, actorName: "lawyer1", branchId: 1);
@@ -4350,7 +4350,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
                     null, null, null, null, null,
                     null,
                     null, null, null,
-                    null),
+                    null, null),
             },
         };
         await _service.UpdateAsync(doc.Id, req, actorName: "lawyer1", userId: 1);

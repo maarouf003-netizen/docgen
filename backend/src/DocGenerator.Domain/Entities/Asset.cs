@@ -50,6 +50,9 @@ public class Asset
     /// <summary>ملاحظات (كفالة الرواتب والمتجر غير المسجل).</summary>
     public string? Notes { get; set; }
 
+    /// <summary>تاريخ القاء الحجز على الأصل — نص حر من المستخدم يُفسَّر زمنيًا ويُستبدل في قوالب الوورد.</summary>
+    public DateTime? SeizureDate { get; set; }
+
     public ICollection<AssetOwner> Owners { get; set; } = new List<AssetOwner>();
 
     public Document Document { get; set; } = null!;
