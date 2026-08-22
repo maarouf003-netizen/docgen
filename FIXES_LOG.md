@@ -36,8 +36,8 @@
 6. **[منجز — الخيار 1: الخلفية مصدر الحقيقة]** توحيد خرائط حالات الملف: `DocumentStatusResolver` في Common يشتق `DisplayStatus` على `DocumentResponse` (عبر عقد `IDocumentExecutionState` الذي يحققه الكيان والـDTO معًا)، و`ExcelExportService.StatusText` مفوَّض إليه — حُذف التكرار من مصدره. الواجهة تستهلك `displayStatus` أولًا مع مسار احتياطي مؤقت للبيانات العتيقة/الـmocks (يُحذف مع #12). اختبارات مصفوفة على الـresolver (+4). commits: `cce4b76`, `432c2e9`.
 
 ### جودة واجهة
-7. **a11y تسجيل الدخول**: `autocomplete="username"/"current-password"` وإزالة `autoFocus` غير المبرر.
-8. **درج الجوال**: إغلاق بمفتاح Escape + focus trap.
+7. **[منجز]** نموذج الدخول: ‏`autoComplete="username"/"current-password"` + `name` للحقلين، وحذف `autoFocus` غير المبرر.
+8. **[منجز]** درج الجوال: إغلاق بمفتاح Escape + focus trap (Tab يدور داخل الدرج) + تركيز أولي على زر الإغلاق واستعادة التركيز لزر الفتح — بنمط WAI-ARIA Dialog في useEffect واحد مع تنظيف كامل.
 9. ~~**جدول `UsersActivity`**: غلاف `overflow-x-auto` على المقاسات الصغيرة~~ — **✔️ منجز**: النمط الكامل المعياري (غلاف تمرير + `min-w-[36rem]` للجدول + `tabular-nums whitespace-nowrap` للعدّادات) مع أول ملف اختبار للصفحة (3 حالات: صفوف/فراغ/خطأ). الترقية إلى بطاقات جوال تبقى مرشحة شرطية إن زادت الأعمدة مستقبلًا.
 10. **[منجز]** مركزية helper ‏`stubMobile` في `src/test/stubMobile.ts` — نسخة كاملة بمعامل افتراضي `false` (مكتبي)، و6 ملفات اختبار هُجرت للاستيراد، مع جعل القصد صريحًا (`stubMobile(true)`) في المواضع التي كانت تعتمد نسخة «جوال ضمنيًا» — حذف 108 أسطر مكررة (commit `7bd85c0`).
 
