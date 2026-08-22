@@ -11,6 +11,9 @@ namespace DocGenerator.Application.Services;
 
 public sealed partial class DocumentService
 {
+    // ملاحظة إعادة هيكلة (المرحلة 3 — مؤجلة): عند أول تعديل يمس إجراءات التنفيذ
+    // أو التذكيرات في هذا الملف، تُستخرج إلى خدمة مستقلة خلف واجهة (ExecutionActionService)
+    // بدل إضافة المزيد هنا. المرجع: FIXES_LOG.md بند المعلقات #4.
     public async Task<List<ExecutionActionDto>> GetExecutionActionsAsync(int documentId, CancellationToken ct = default)
     {
         var doc = await _documents.GetByIdAsync(documentId, ct);

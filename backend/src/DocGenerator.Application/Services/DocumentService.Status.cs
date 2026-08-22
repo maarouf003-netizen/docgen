@@ -11,6 +11,9 @@ namespace DocGenerator.Application.Services;
 
 public sealed partial class DocumentService
 {
+    // ملاحظة إعادة هيكلة (المرحلة 3 — مؤجلة): عند أول تعديل يمس منطق انتقالات الحالة
+    // أو الشطب/التجديد في هذا الملف، تُستخرج هذه التدفقات إلى خدمة مستقلة خلف واجهة
+    // (StatusTransitionService) بدل إضافة المزيد هنا. المرجع: FIXES_LOG.md بند المعلقات #4.
     public async Task<bool> UpdateStatusAsync(int documentId, string status, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default)
     {
         var doc = await _documents.GetByIdAsync(documentId, ct);
