@@ -24,6 +24,7 @@ vi.mock('../api/client', async (importOriginal) => {
 });
 
 import { api } from '../api/client';
+import { stubMobile } from '../test/stubMobile';
 
 const mockDoc: DocumentResponse = {
   id: 1,
@@ -142,22 +143,6 @@ const mockDoc: DocumentResponse = {
   executedPublicEntities: [],
   executedNaturalPersons: [],
 };
-
-function stubMobile(matches: boolean) {
-  Object.defineProperty(window, 'matchMedia', {
-    writable: true,
-    value: vi.fn().mockImplementation((query: string) => ({
-      matches,
-      media: query,
-      onchange: null,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })),
-  });
-}
 
 function renderView() {
   return render(

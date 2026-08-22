@@ -27,6 +27,7 @@ vi.mock('../api/client', () => ({
 }));
 
 import { api } from '../api/client';
+import { stubMobile } from '../test/stubMobile';
 
 function mockPage(items: DocumentResponse[]) {
   (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
@@ -84,22 +85,6 @@ function expectExportRequestedWithStatus() {
 
 function renderList() {
   return render(<DocumentsList />);
-}
-
-function stubMobile() {
-  Object.defineProperty(window, 'matchMedia', {
-    writable: true,
-    value: vi.fn().mockImplementation((query: string) => ({
-      matches: true,
-      media: query,
-      onchange: null,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })),
-  });
 }
 
 function stubDesktop() {
@@ -531,7 +516,7 @@ describe('DocumentsList', () => {
   });
 
   it('يعرض فلاتر طالب التنفيذ ودائرة التنفيذ في شريط الفلترة على الجوال', async () => {
-    stubMobile();
+    stubMobile(true);
     mockPage([makeDocument({ id: 1 })]);
 
     renderList();
@@ -593,7 +578,7 @@ describe('DocumentsList', () => {
   });
 
   it('يعرض بطاقات على شاشة الموبايل بدلاً من الجدول', async () => {
-    stubMobile();
+    stubMobile(true);
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: {
         page: 1,
@@ -616,7 +601,7 @@ describe('DocumentsList', () => {
   });
 
   it('يعرض بطاقة الموبايل للمحامي بصيغة «طالب التنفيذ · فرع الجهة العامة · دائرة التنفيذ»', async () => {
-    stubMobile();
+    stubMobile(true);
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: {
         page: 1,
@@ -634,7 +619,7 @@ describe('DocumentsList', () => {
   });
 
   it('يعرض «لا توجد نتائج» كبطاقة عند عدم وجود ملفات على الموبايل', async () => {
-    stubMobile();
+    stubMobile(true);
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: { page: 1, perPage: 20, totalCount: 0, totalPages: 0, items: [] },
     });
@@ -744,7 +729,7 @@ describe('DocumentsList', () => {
   });
 
   it('يعرض فلتر المحامي المختص في شريط الفلترة على الجوال لرئيس القسم والمدير', async () => {
-    stubMobile();
+    stubMobile(true);
     mockPage([makeDocument({ id: 1 })]);
 
     renderList();
@@ -754,7 +739,7 @@ describe('DocumentsList', () => {
   });
 
   it('يعرض فرع الإدارة والمحامي المختص في بطاقة الموبايل للمدير', async () => {
-    stubMobile();
+    stubMobile(true);
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: {
         page: 1,
@@ -821,7 +806,7 @@ describe('DocumentsList', () => {
   });
 
   it('يعرض فلتر الجهة العامة المنفذ عليها في شريط الفلاتر على الموبايل', async () => {
-    stubMobile();
+    stubMobile(true);
     (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
       if (url.startsWith('/documents/filter-options')) {
         return Promise.resolve({
@@ -880,7 +865,7 @@ describe('DocumentsList', () => {
   });
 
   it('يعرض فلتر فرع الجهة العامة في شريط الفلاتر على الموبايل', async () => {
-    stubMobile();
+    stubMobile(true);
     (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
       if (url.startsWith('/documents/filter-options')) {
         return Promise.resolve({
@@ -1012,7 +997,7 @@ describe('DocumentsList', () => {
 
   it('يعرض الرسالة على الجوال عند النقر دون فلتر ويُصدر بعد اختيار فلتر الحالة', async () => {
     const user = userEvent.setup();
-    stubMobile();
+    stubMobile(true);
     mockPageWithExport([makeDocument({ id: 1 })]);
 
     renderList();
@@ -1178,7 +1163,7 @@ describe('DocumentsList', () => {
   });
 
   it('يعرض رقم الملف بالأحمر في بطاقة الموبايل عندما يحتاج الملف التدوير', async () => {
-    stubMobile();
+    stubMobile(true);
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: {
         page: 1,
@@ -1255,7 +1240,7 @@ describe('DocumentsList', () => {
   });
 
   it('يميّز بطاقة الجوال للملف الذي كان مفتوحًا', async () => {
-    stubMobile();
+    stubMobile(true);
     sessionStorage.setItem('lastViewedDocumentId', '5');
     mockPage([makeDocument({ id: 5, borrowerName: 'محمود', borrowerFather: 'علي', borrowerFamily: 'حسن' })]);
 

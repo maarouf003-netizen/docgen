@@ -27,6 +27,7 @@ vi.mock('../api/client', () => ({
 }));
 
 import { api } from '../api/client';
+import { stubMobile } from '../test/stubMobile';
 
 function branchItem(overrides: Partial<BranchDto> = {}): BranchDto {
   return {
@@ -39,22 +40,6 @@ function branchItem(overrides: Partial<BranchDto> = {}): BranchDto {
     documentCount: 5,
     ...overrides,
   };
-}
-
-function stubMobile(matches: boolean) {
-  Object.defineProperty(window, 'matchMedia', {
-    writable: true,
-    value: vi.fn().mockImplementation((query: string) => ({
-      matches,
-      media: query,
-      onchange: null,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })),
-  });
 }
 
 beforeEach(() => {

@@ -16,22 +16,7 @@ vi.mock('../api/client', () => ({
 }));
 
 import { api } from '../api/client';
-
-function stubMobile() {
-  Object.defineProperty(window, 'matchMedia', {
-    writable: true,
-    value: vi.fn().mockImplementation((query: string) => ({
-      matches: true,
-      media: query,
-      onchange: null,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })),
-  });
-}
+import { stubMobile } from '../test/stubMobile';
 
 function stubDesktop() {
   Object.defineProperty(window, 'matchMedia', {
@@ -109,7 +94,7 @@ describe('Rotation', () => {
   });
 
   it('يعرض بطاقات على الجوال بدلاً من الجدول', async () => {
-    stubMobile();
+    stubMobile(true);
     render(<Rotation />);
 
     expect(await screen.findByText('أحمد خالد الخطيب')).toBeInTheDocument();
