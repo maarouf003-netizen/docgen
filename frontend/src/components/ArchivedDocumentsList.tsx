@@ -67,6 +67,7 @@ export default function ArchivedDocumentsList({ config }: { config: ArchivedDocu
   const beginRestore = (d: DocumentResponse) => {
     setRenewal({});
     setRenewalError('');
+    setActionError('');
     setConfirmId(d.id);
   };
 
@@ -99,6 +100,7 @@ export default function ArchivedDocumentsList({ config }: { config: ArchivedDocu
       }
     }
     setRestoringId(d.id);
+    setActionError('');
     try {
       if (config.requiresRenewal) {
         await api.post(config.restoreEndpoint(d.id), {
