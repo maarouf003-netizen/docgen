@@ -26,7 +26,7 @@
 ## ثانيًا: المعلّقات (مرتبة حسب الأولوية)
 
 ### أمان / موثوقية
-1. **تهجير بقية مسارات القراءة إلى `useCancellableRequest`** — **تقدم جزئي**: هُجرت `Dashboard`, `AuditLogs`, `DocumentsList`, `DelegationRequests`, `UsersActivity`, `TransferDocumentModal` (جلب المحامين), `Rotation`. **الباقي**: `DocumentView` (جلبان)، `BranchesManagement`, `ArchivedDocumentsList`، وتوحيد مودالات الإنابة الثلاثة التي تستخدم علم `cancelled` القديم (آمنة أصلًا) على الـhook الموحد.
+1. **تهجير بقية مسارات القراءة إلى `useCancellableRequest`** — **تقدم جزئي**: هُجرت `Dashboard`, `AuditLogs`, `DocumentsList`, `DelegationRequests`, `UsersActivity`, `TransferDocumentModal` (جلب المحامين), `Rotation`, `BranchesManagement`, `ArchivedDocumentsList`. **الباقي**: `DocumentView` (جلبان)، وتوحيد مودالات الإنابة الثلاثة التي تستخدم علم `cancelled` القديم (آمنة أصلًا) على الـhook الموحد.
 2. ~~**تنظيف أرشيف جذر المستودع**: `documents.db.enc`, `db_crypto.py`, `config.ini` (هاشات بلا ملح), `test_password_123`, `react-dotnet-app.rar` (106MB)~~ — **✔️ منجز**: نُقلت الخمسة بسلامة (تحقق SHA-256 قبل/بعد) إلى `⁦%USERPROFILE%\Documents\docgen-legacy-archive\⁩` خارج أي مستودع، وأُضيف `⁦.gitignore⁩` في جذر المشروع القديم يمنع عودتها، وتأكد أن التطبيق الفعّال لا يشير إليها إطلاقًا (المرجع الوحيد في `FIXES_LOG.md` ذاته).
 3. **قرار منتج معلّق**: سياسة موعد نهائي لحسابات خاملة ما تزال على صيغة كلمة مرور تاريخية (قفل أو إجبار إعادة تعيين بعد X شهر خمول). آلية الترقية الشفافة (#7) تغطي كل من يسجل دخولًا فقط.
 
