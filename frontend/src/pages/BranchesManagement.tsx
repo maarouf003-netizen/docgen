@@ -1,14 +1,20 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
 import { useIsMobile } from '../hooks/useMediaQuery';
+import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import type { BranchDto } from '../types';
 
 export default function BranchesManagement() {
   const isMobile = useIsMobile();
 
-  const [branches, setBranches] = useState<BranchDto[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const branchesQuery = useCancellableRequest<BranchDto[]>(
+    (signal) => api.get('/branches', { signal }).then((r) => r.data),
+    [],
+  );
+  const branches = branchesQuery.data ?? [];
+  const loading = branchesQuery.isLoading;
+  const fetchError = branchesQuery.error;
+  const load = branchesQuery.refetch;
 
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
@@ -29,20 +35,7 @@ export default function BranchesManagement() {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const load = () => {
-    setLoading(true);
-    setError('');
-    api
-      .get<BranchDto[]>('/branches')
-      .then((r) => setBranches(r.data))
-      .catch((err) => setError(getApiErrorMessage(err)))
-      .finally(() => setLoading(false));
-  };
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const resetForm = () => {
     setName('');
@@ -232,7 +225,7 @@ export default function BranchesManagement() {
         </form>
       )}
 
-      {error && <div className="text-red-600 mb-4">{error}</div>}
+      {fetchError && <div className="text-red-600 mb-4">{fetchError}</div>}
 
       <div className="bg-white rounded-xl shadow overflow-hidden">
         {!isMobile && (
