@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import { normalizeDocumentResponse } from '../utils/apiNormalization';
 import { getDocumentBadge, EXEC_STATUS_FORCIBLY, EXEC_STATUS_SETTLED, EXEC_STATUS_STRUCK_OFF, EXEC_STATUS_DELEGATION_EXECUTED } from '../utils/documentStatus';
 import { isExecutedLike } from '../utils/documentDisplay';
 import { DELEGATION_STATUS_ASSIGNED, DELEGATION_STATUS_REGISTERED } from '../utils/delegationStatus';
 import { saveLastViewedDocumentId } from '../utils/listSession';
 import { useIsMobile } from '../hooks/useMediaQuery';
+import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import ExecutionActionsModal from '../components/ExecutionActionsModal';
 import ExecutedStatusModal from '../components/ExecutedStatusModal';
 import StatusChangeModal from '../components/StatusChangeModal';
@@ -35,8 +37,6 @@ import type { PartyModal } from '../components/view/viewTypes';
 export default function DocumentView() {
   const { id } = useParams();
   const { user } = useAuth();
-  const [doc, setDoc] = useState<DocumentResponse | null>(null);
-  const [error, setError] = useState('');
   const [actionsOpen, setActionsOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
@@ -46,7 +46,6 @@ export default function DocumentView() {
   const [assignmentsOpen, setAssignmentsOpen] = useState(false);
   const [generationOpen, setGenerationOpen] = useState(false);
   const [partyModal, setPartyModal] = useState<PartyModal | null>(null);
-  const [delegations, setDelegations] = useState<DelegationDto[]>([]);
   const [delegationFormOpen, setDelegationFormOpen] = useState(false);
   const [editingDelegation, setEditingDelegation] = useState<DelegationDto | null>(null);
   const [registerOpen, setRegisterOpen] = useState(false);
@@ -57,32 +56,36 @@ export default function DocumentView() {
   const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState<'info' | 'security' | 'delegations' | 'status'>('info');
 
-  const load = () => {
-    api
-      .get<DocumentResponse>(`/documents/${id}`)
-      .then((r) => {
-        setDoc(r.data);
-        setError('');
-      })
-      .catch((err) => setError(getApiErrorMessage(err)));
-  };
+  // حد الثقة: تُطبَّع استجابة الملف قبل انتشارها للبطاقات.
+  const docQuery = useCancellableRequest<DocumentResponse | null>(
+    (signal) =>
+      api
+        .get<DocumentResponse>(`/documents/${id}`, { signal })
+        .then((r) => normalizeDocumentResponse(r.data)),
+    [id],
+    { enabled: Boolean(id) },
+  );
+  const delegationsQuery = useCancellableRequest<DelegationDto[]>(
+    (signal) =>
+      api
+        .get<DelegationDto[]>(`/documents/${id}/delegations`, { signal })
+        .then((r) => (Array.isArray(r.data) ? r.data : [])),
+    [id],
+    { enabled: Boolean(id) },
+  );
 
-  const loadDelegations = () => {
-    api
-      .get<DelegationDto[]>(`/documents/${id}/delegations`)
-      .then((r) => setDelegations(Array.isArray(r.data) ? r.data : []))
-      .catch(() => setDelegations([]));
-  };
+  const doc = docQuery.data ?? null;
+  const delegations = delegationsQuery.data ?? [];
+  const fetchError = docQuery.error;
+  const load = docQuery.refetch;
+  const loadDelegations = delegationsQuery.refetch;
 
+  // يُسجَّل الملف كآخر ما فُتح في الجلسة ليُميَّز في القائمة عند العودة (حتى لو فُتح من غير القائمة).
   useEffect(() => {
-    load();
-    loadDelegations();
-    // يُسجَّل الملف كآخر ما فُتح في الجلسة ليُميَّز في القائمة عند العودة (حتى لو فُتح من غير القائمة).
     if (id) saveLastViewedDocumentId(Number(id));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  if (error) return <div className="text-red-600">{error}</div>;
+  if (fetchError) return <div role="alert" className="text-red-600">{fetchError}</div>;
   if (!doc) return <div className="text-gray-500">جارِ التحميل...</div>;
 
   const canEdit = user?.role === 'lawyer';
@@ -214,7 +217,7 @@ export default function DocumentView() {
       loadDelegations();
     } catch (err) {
       setDeleteTarget(null);
-      setError(getApiErrorMessage(err));
+      window.alert(getApiErrorMessage(err));
     } finally {
       setDeleting(false);
     }
