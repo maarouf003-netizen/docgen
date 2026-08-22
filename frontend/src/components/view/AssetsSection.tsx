@@ -72,6 +72,7 @@ function Rows({ kind, asset: r }: { kind: string | undefined; asset: AssetDto })
         <Row label="المحافظة" value={r.shopGovernorate} />
         <Row label="وصف المتجر" value={r.shopDescription} />
         <Row label="الموقع" value={r.shopLocation} />
+        <Row label="تاريخ القاء الحجز" value={r.seizureDate?.slice(0, 10)} />
         {r.shareType ? <Row label="مقدار الحصة" value={r.shareType} /> : null}
       </>
     );
@@ -81,18 +82,20 @@ function Rows({ kind, asset: r }: { kind: string | undefined; asset: AssetDto })
       <>
         <Row label="الجهة العامة" value={r.publicEntity} />
         {r.notes ? <Row label="ملاحظات" value={r.notes} /> : null}
+        <Row label="تاريخ القاء الحجز" value={r.seizureDate?.slice(0, 10)} />
       </>
     );
   }
-  if (kind === ASSET_KINDS.unregisteredShop) {
-    return (
-      <>
-        <Row label="رقم الترخيص" value={r.licenseNumber} />
-        <Row label="تاريخ الترخيص" value={r.licenseDate?.slice(0, 10)} />
-        <Row label="الجهة مصدرة الترخيص" value={r.licenseIssuer} />
-        {r.notes ? <Row label="ملاحظات" value={r.notes} /> : null}
-      </>
-    );
-  }
-  return null;
-}
+   if (kind === ASSET_KINDS.unregisteredShop) {
+     return (
+       <>
+         <Row label="رقم الترخيص" value={r.licenseNumber} />
+         <Row label="تاريخ الترخيص" value={r.licenseDate?.slice(0, 10)} />
+         <Row label="الجهة مصدرة الترخيص" value={r.licenseIssuer} />
+         <Row label="تاريخ القاء الحجز" value={r.seizureDate?.slice(0, 10)} />
+         {r.notes ? <Row label="ملاحظات" value={r.notes} /> : null}
+       </>
+     );
+   }
+   return <Row label="تاريخ القاء الحجز" value={r.seizureDate?.slice(0, 10)} />;
+ }

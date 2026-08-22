@@ -612,6 +612,7 @@ export default function DocumentForm() {
             // تطبيع الأرقام العربية/الفارسية في تاريخَي المتجر قبل الإرسال (تتقبلها الخلفية كتواريخ حرة).
             registrationDate: normalizeArabicDigits(a.registrationDate ?? '').trim(),
             licenseDate: normalizeArabicDigits(a.licenseDate ?? '').trim(),
+            seizureDate: normalizeArabicDigits(a.seizureDate ?? '').trim(),
           })),
         executionApplicants: isExecutedSubmit
           ? executionApplicants

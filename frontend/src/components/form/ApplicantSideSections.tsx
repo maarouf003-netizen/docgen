@@ -573,6 +573,18 @@ export function ApplicantSideSections({
               </div>
             )}
 
+            {/* تاريخ القاء الحجز: حقل موحّد لكل أنواع الأموال (منقولة وغير منقولة) — نص حر بقاعدة التواريخ */}
+            <div className="mt-3 max-w-xs">
+              <label className="block text-xs font-bold text-gray-600 mb-1">تاريخ القاء الحجز</label>
+              <input
+                value={a.seizureDate ?? ''}
+                onChange={(ev) => onEstateSet(i, 'seizureDate', ev.target.value)}
+                type="text"
+                placeholder="مثال: 1/8/2026"
+                className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
             {shareable && (
               <div className="mt-3 max-w-xs">
                 <label className="block text-xs font-bold text-gray-600 mb-1">مقدار الحصة</label>

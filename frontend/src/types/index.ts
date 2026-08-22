@@ -120,6 +120,8 @@ export interface AssetDto {
   publicEntity?: string;
   // المتجر غير المسجل
   licenseNumber?: string;
+  /** تاريخ القاء الحجز على الأصل — نص حر يُفسَّر زمنيًا بالخلفية. */
+  seizureDate?: string;
   licenseDate?: string;
   licenseIssuer?: string;
   // الملاحظات (كفالة الرواتب والمتجر غير المسجل)
