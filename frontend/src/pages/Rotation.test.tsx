@@ -148,6 +148,7 @@ describe('Rotation', () => {
     expect(await screen.findByText('تم حفظ أرقام الأساس بنجاح')).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith('/documents/rotate', {
       params: { page: 1, perPage: 20 },
+      signal: expect.any(AbortSignal),
     });
   });
 
@@ -232,6 +233,7 @@ describe('Rotation', () => {
 
     expect(api.get).toHaveBeenLastCalledWith('/documents/rotate', {
       params: { page: 2, perPage: 20 },
+      signal: expect.any(AbortSignal),
     });
     expect(await screen.findByText(/صفحة 2 من 2 \(2 نتيجة\)/)).toBeInTheDocument();
 
@@ -239,6 +241,7 @@ describe('Rotation', () => {
 
     expect(api.get).toHaveBeenLastCalledWith('/documents/rotate', {
       params: { page: 1, perPage: 20 },
+      signal: expect.any(AbortSignal),
     });
   });
 });

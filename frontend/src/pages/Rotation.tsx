@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { useIsMobile } from '../hooks/useMediaQuery';
+import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { fileNumberLabel, tripleName } from '../utils/documentDisplay';
 import type { PagedResult, RotationDocumentDto } from '../types';
 
@@ -14,12 +15,9 @@ const PER_PAGE = 20;
 export default function Rotation() {
   const { user } = useAuth();
   const isMobile = useIsMobile();
-  const [rows, setRows] = useState<RotationDocumentDto[]>([]);
-  const [data, setData] = useState<PagedResult<RotationDocumentDto> | null>(null);
   const [page, setPage] = useState(1);
   const [values, setValues] = useState<Record<number, string>>({});
   const [initial, setInitial] = useState<Record<number, string>>({});
-  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -27,34 +25,33 @@ export default function Rotation() {
   const year = new Date().getFullYear();
   const canRotate = user?.role === 'lawyer';
 
-  const load = () => {
-    setLoading(true);
-    setError('');
-    api
-      .get<PagedResult<RotationDocumentDto>>('/documents/rotate', {
-        params: { page, perPage: PER_PAGE },
-      })
-      .then((r) => {
-        const result = r.data ?? { items: [], page, perPage: PER_PAGE, totalCount: 0, totalPages: 0 };
-        const list = result.items ?? [];
-        setData(result);
-        setRows(list);
-        const v: Record<number, string> = {};
-        list.forEach((row) => {
-          v[row.documentId] = row.baseNumber ?? '';
-        });
-        setValues(v);
-        setInitial(v);
-      })
-      .catch((err) => setError(getApiErrorMessage(err)))
-      .finally(() => setLoading(false));
-  };
+  const rotationQuery = useCancellableRequest<PagedResult<RotationDocumentDto>>(
+    (signal) =>
+      api
+        .get<PagedResult<RotationDocumentDto>>('/documents/rotate', {
+          params: { page, perPage: PER_PAGE },
+          signal,
+        })
+        .then((r) => r.data),
+    [page],
+    { enabled: Boolean(canRotate) },
+  );
 
+  const data = rotationQuery.data;
+  const rows = useMemo(() => data?.items ?? [], [data]);
+  const loading = rotationQuery.isLoading;
+  const loadError = rotationQuery.error;
+
+  // إعادة تهيئة الحقول القابلة للتعديل من بيانات الصفحة المجلوبة حديثًا.
   useEffect(() => {
-    if (!canRotate) return;
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canRotate, page]);
+    if (!data) return;
+    const v: Record<number, string> = {};
+    (data.items ?? []).forEach((row) => {
+      v[row.documentId] = row.baseNumber ?? '';
+    });
+    setValues(v);
+    setInitial(v);
+  }, [data]);
 
   const changedEntries = useMemo(
     () =>
@@ -74,7 +71,7 @@ export default function Rotation() {
     try {
       await api.put('/documents/rotate', { entries: changedEntries });
       setMessage('تم حفظ أرقام الأساس بنجاح');
-      load();
+      rotationQuery.refetch();
     } catch (err) {
       setError(getApiErrorMessage(err));
     } finally {
@@ -106,7 +103,7 @@ export default function Rotation() {
         السنة.
       </p>
 
-      {error && <div className="text-red-600 mb-4">{error}</div>}
+      {(error || loadError) && <div className="text-red-600 mb-4">{error || loadError}</div>}
       {message && (
         <div className="text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2 mb-4">
           {message}
@@ -115,7 +112,7 @@ export default function Rotation() {
 
       {loading && <div className="text-gray-500">جارِ التحميل...</div>}
 
-      {!loading && data && data.totalCount === 0 && !error && (
+      {!loading && data && (data.totalCount ?? 0) === 0 && !error && !loadError && (
         <div className="bg-white rounded-xl shadow p-8 text-center text-gray-400">
           لا توجد ملفات مؤهلة للتدوير
         </div>
