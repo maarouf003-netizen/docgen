@@ -182,6 +182,20 @@ export default function DocumentView() {
           onRegister={() => setRegisterOpen(true)}
           onComplete={() => setCompleteOpen(true)}
         />
+      ) : delegationsQuery.error ? (
+        <div
+          role="alert"
+          className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800 flex items-center justify-between gap-3 flex-wrap"
+        >
+          <span>تعذر تحميل الإنابات — تفقّد الاتصال وأعد المحاولة.</span>
+          <button
+            type="button"
+            onClick={loadDelegations}
+            className="min-h-11 px-4 rounded-lg border border-amber-300 hover:bg-amber-100 text-amber-900 font-medium"
+          >
+            إعادة المحاولة
+          </button>
+        </div>
       ) : (
         showDelegationsCard && (
           <DelegationsCard

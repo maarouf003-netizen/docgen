@@ -508,6 +508,51 @@ describe('DocumentView', () => {
     expect(screen.queryByText('99 سند مصارف لعام 2026')).not.toBeInTheDocument();
   });
 
+  it('يعرض شريط خطأ محصورًا عند فشل جلب الإنابات مع إعادة محاولة ناجحة', async () => {
+    const user = userEvent.setup();
+    const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
+    const delegation = {
+      id: 9,
+      sourceDocumentId: 10,
+      sourceDocumentLabel: 'ملف إنابة تجريبية',
+      targetDocumentId: 1,
+      delegatedCourt: 'دائرة التنفيذ',
+      isExternal: false,
+      externalBranchId: null,
+      externalBranchName: null,
+      delegationDate: '2026-08-01',
+      delegationText: '',
+      depositBookNumber: '',
+      depositBookDate: '',
+      assignedLawyerId: 2,
+      assignedLawyerName: 'المحامي المختص',
+      returnDate: '',
+      status: 'مُسنَدة',
+      createdAt: '2026-08-01',
+      createdByName: 'رئيس القسم',
+      createdById: 7,
+      assets: [],
+    };
+    getMock.mockImplementation((url: string) => {
+      if (url.endsWith('/delegations')) {
+        const priorCalls = getMock.mock.calls.filter((c) => c[0] === url).length;
+        return priorCalls > 1
+          ? Promise.resolve({ data: [delegation] })
+          : Promise.reject(new Error('انقطع الاتصال'));
+      }
+      return Promise.resolve({ data: { ...mockDoc } });
+    });
+    renderView();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('تعذر تحميل الإنابات');
+    expect(screen.getByRole('button', { name: 'إعادة المحاولة' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'إعادة المحاولة' }));
+
+    expect(await screen.findByText('ملف إنابة تجريبية')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('يفتح نافذة أرقام الأساس عند الضغط على رقم الملف ويعرض السنوات والأرقام والنوع', async () => {
     const user = userEvent.setup();
     const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
