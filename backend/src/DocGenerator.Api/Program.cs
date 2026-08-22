@@ -81,6 +81,7 @@ if (!Path.IsPathRooted(wordTemplates.Path))
 
 builder.Services
     .AddSingleton(jwt)
+    .Configure<DocGenerator.Application.Common.ExportOptions>(builder.Configuration.GetSection("Export"))
     .Configure<RateLimitOptions>(builder.Configuration.GetSection("RateLimiting"))
     .Configure<LockoutOptions>(builder.Configuration.GetSection("Lockout"))
     .Configure<WordTemplatesOptions>(o =>

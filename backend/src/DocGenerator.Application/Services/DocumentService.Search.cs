@@ -90,6 +90,13 @@ public sealed partial class DocumentService
         string? query, string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch,
         int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default)
     {
+        // سقف التصدير: يُعدَّل عدد النتائج المطابقة أولًا قبل جلب أي صف إلى الذاكرة،
+        // فيُرفض التصدير الواسع برسالة واضحة بدل ذروة ذاكرة غير محصورة على الخادم.
+        var total = await _documents.CountExportAsync(
+            query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, ct);
+        if (total > _maxExportRows)
+            throw new ArgumentException($"عدد النتائج يتجاوز الحد الأقصى للتصدير ({_maxExportRows:N0}) — طبّق فلترًا أضيق");
+
         var items = await _documents.ExportAsync(
             query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, ct);
         return items.Select(DocumentResponse.FromEntity).ToList();

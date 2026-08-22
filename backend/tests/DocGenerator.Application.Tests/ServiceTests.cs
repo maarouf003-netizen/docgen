@@ -1,4 +1,4 @@
-﻿using DocGenerator.Application.Common;
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -57,7 +57,7 @@ public class DocumentServiceTests : IDisposable
         var occurrences = new Repository<DocumentOccurrence>(_db);
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
-        _service = new DocumentService(documents, users, guarantors, estates, actions, baseNumbers, registrationDates, occurrences, new DelegationRepository(_db), uow, tx, _audit);
+        _service = new DocumentService(documents, users, guarantors, estates, actions, baseNumbers, registrationDates, occurrences, new DelegationRepository(_db), uow, tx, _audit, Microsoft.Extensions.Options.Options.Create(new DocGenerator.Application.Common.ExportOptions()));
     }
 
     public void Dispose() => _db.Dispose();
@@ -4136,7 +4136,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
             new DocumentRepository(_db), new UserRepository(_db), new Repository<Guarantor>(_db),
             new Repository<Asset>(_db), new Repository<ExecutionAction>(_db),
             new Repository<DocumentBaseNumber>(_db), new Repository<DocumentRegistrationDate>(_db),
-            new Repository<DocumentOccurrence>(_db), new DelegationRepository(_db), uow, tx, _audit);
+            new Repository<DocumentOccurrence>(_db), new DelegationRepository(_db), uow, tx, _audit, Microsoft.Extensions.Options.Options.Create(new DocGenerator.Application.Common.ExportOptions()));
     }
 
     public void Dispose() => _db.Dispose();

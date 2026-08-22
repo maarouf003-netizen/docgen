@@ -123,6 +123,7 @@ public sealed partial class DocumentService : IDocumentService
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
+    private readonly int _maxExportRows;
 
     public DocumentService(
         IDocumentRepository documents,
@@ -136,7 +137,8 @@ public sealed partial class DocumentService : IDocumentService
         IDelegationRepository delegations,
         IUnitOfWork uow,
         ITransactionRunner tx,
-        IAuditLogger audit)
+        IAuditLogger audit,
+        Microsoft.Extensions.Options.IOptions<Common.ExportOptions> exportOptions)
     {
         _documents = documents;
         _users = users;
@@ -150,6 +152,7 @@ public sealed partial class DocumentService : IDocumentService
         _uow = uow;
         _tx = tx;
         _audit = audit;
+        _maxExportRows = Math.Max(1, exportOptions.Value.MaxRows);
     }
 
     public async Task<DocumentResponse?> GetAsync(int documentId, CancellationToken ct = default)

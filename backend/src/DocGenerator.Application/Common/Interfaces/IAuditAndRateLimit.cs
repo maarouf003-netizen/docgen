@@ -42,6 +42,24 @@ public interface IDocumentRepository : IRepository<Document>
         CancellationToken ct = default);
 
     /// <summary>
+    /// عدد المستندات المطابقة لفلاتر التصدير نفسها — يُستخدم للتحقق من سقف الصفوف
+    /// قبل جلب أي بيانات إلى الذاكرة.
+    /// </summary>
+    Task<int> CountExportAsync(
+        string? query,
+        string? status,
+        string? applicant,
+        string? court,
+        string? lawyer,
+        string? branch,
+        string? administrativeBranch,
+        string? executedEntity,
+        string? publicEntityBranch,
+        int? visibleBranchId,
+        int? visibleUserId,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// خيارات فلترة «الملفات التنفيذية» بأسلوب إكسل. كل قائمة مُقيَّدة بباقي الفلاتر
     /// النشطة ما عدا فلتر الحقل نفسه، فيلتزم الاختيار اللاحق بنتائج الفلتر السابق تلقائيًا.
     /// </summary>

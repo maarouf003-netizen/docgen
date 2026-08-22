@@ -64,6 +64,26 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             .ToListAsync(ct);
     }
 
+    public async Task<int> CountExportAsync(
+        string? query,
+        string? status,
+        string? applicant,
+        string? court,
+        string? lawyer,
+        string? branch,
+        string? administrativeBranch,
+        string? executedEntity,
+        string? publicEntityBranch,
+        int? visibleBranchId,
+        int? visibleUserId,
+        CancellationToken ct = default)
+    {
+        IQueryable<Document> q = ApplySearchFilters(
+            Db.Documents.AsNoTracking(), query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId);
+
+        return await q.CountAsync(ct);
+    }
+
     private static IQueryable<Document> ApplySearchFilters(
         IQueryable<Document> q,
         string? query,
