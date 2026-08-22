@@ -32,7 +32,7 @@
 
 ### أداء / بنية
 4. **تفكيك `DocumentService.cs`** (2682 سطرًا) — **تقدم جزئي منجز**: المرحلة 1 تقسيم ميكانيكي إلى 5 partials ‏(Core/Search/Status/Actions/Apply — commit `d5ac941`)، والمرحلة 2 استخراج النقيين `DocumentValidator` و`AssetMapper` مع 15 اختبار وحدة جديدة (commit `54b1425`). **المتبقي (مرحلة 3)**: استخراج متعاونين حالة‌يين خلف واجهات (`ExecutionActionService`, `StatusTransitionService`) واحدًا واحدًا عند أول لمسة تطويرية لمنطقه — **معلَّم في الكود نفسه** بملاحظة أعلى `DocumentService.Status.cs` و`DocumentService.Actions.cs`.
-5. **سقف أو بث لتصدير Excel** (`ExportAsync` يحمّل كل النتائج بالذاكرة).
+5. ~~**سقف أو بث لتصدير Excel**~~ — **✔️ منجز (الخيار A)**: سقف قابل للضبط `Export:MaxRows` افتراضيًا 10,000، مع عدّ مسبق (`CountExportAsync`) قبل جلب أي صف ورفض برسالة عربية واضحة؛ البث الحقيقي (OpenXmlWriter + AsAsyncEnumerable) مسجل كبديل مستقبلي حين يصبح السقف قيدًا تجاريًا (commit `4da64a4`).
 6. **توحيد مصدر خرائط حالات الملف** بين `ExcelExportService` و`frontend/utils/documentStatus.ts`.
 
 ### جودة واجهة
