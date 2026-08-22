@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
 import { useIsMobile } from '../hooks/useMediaQuery';
@@ -22,6 +22,49 @@ export default function Layout() {
   const { user, logout, hasFullAccess, isHead } = useAuth();
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const drawerTriggerRef = useRef<HTMLButtonElement>(null);
+  const drawerCloseRef = useRef<HTMLButtonElement>(null);
+
+  // نمط WAI-ARIA Dialog: Escape يغلق، والتركيز محصور داخل الدرج أثناء فتحه،
+  // ويعاد إلى زر الفتح عند الإغلاق — دورة تركيز كاملة لمستخدمي لوحة المفاتيح.
+  useEffect(() => {
+    if (!isMobile || !drawerOpen) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    drawerCloseRef.current?.focus();
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setDrawerOpen(false);
+        return;
+      }
+      if (e.key !== 'Tab' || !drawerRef.current) return;
+      const focusables = Array.from(
+        drawerRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => el.offsetParent !== null);
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey && (active === first || !drawerRef.current.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      previouslyFocused?.focus?.();
+    };
+  }, [isMobile, drawerOpen]);
+
   const canViewAuditLogs = hasFullAccess || isHead;
   const canManageBranchLawyers = user?.role === 'head' || user?.role === 'admin';
   const canManageUsers = user?.role === 'admin';
@@ -118,6 +161,7 @@ export default function Layout() {
           {isMobile && (
             <div className="mb-4 flex items-center gap-2">
               <button
+                ref={drawerTriggerRef}
                 onClick={() => setDrawerOpen(true)}
                 aria-label="فتح القائمة"
                 className="bg-emerald-800 text-white rounded-lg px-3 py-2 min-h-11 min-w-11"
@@ -139,12 +183,15 @@ export default function Layout() {
 
       {isMobile && drawerOpen && (
         <div
+          ref={drawerRef}
           className="fixed inset-0 z-50"
           role="dialog"
           aria-modal="true"
           aria-label="قائمة التنقل"
         >
           <button
+            ref={drawerCloseRef}
+            autoFocus
             onClick={() => setDrawerOpen(false)}
             aria-label="إغلاق القائمة"
             className="absolute inset-0 bg-black/50 w-full h-full cursor-default min-h-11"
