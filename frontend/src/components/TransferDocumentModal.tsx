@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
 import { useTimeout } from '../hooks/useTimeout';
+import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import type { LawyerListItem } from '../types';
 
 export default function TransferDocumentModal({
@@ -14,8 +15,6 @@ export default function TransferDocumentModal({
   onClose: () => void;
   onTransferred?: () => void;
 }) {
-  const [lawyers, setLawyers] = useState<LawyerListItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [targetId, setTargetId] = useState<number | ''>('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -23,17 +22,18 @@ export default function TransferDocumentModal({
 
   useTimeout(onClose, success ? 700 : null);
 
-  const eligible = lawyers.filter((l) => l.isActive && l.id !== currentOwnerId);
+  const lawyersQuery = useCancellableRequest<LawyerListItem[]>(
+    (signal) =>
+      api
+        .get<LawyerListItem[]>('/users/lawyers', { signal })
+        .then((r) => (Array.isArray(r.data) ? r.data : [])),
+    [],
+  );
+  const lawyers = lawyersQuery.data ?? [];
+  const loading = lawyersQuery.isLoading;
+  const fetchError = lawyersQuery.error;
 
-  useEffect(() => {
-    setLoading(true);
-    setError('');
-    api
-      .get<LawyerListItem[]>('/users/lawyers')
-      .then((r) => setLawyers(Array.isArray(r.data) ? r.data : []))
-      .catch((err) => setError(getApiErrorMessage(err)))
-      .finally(() => setLoading(false));
-  }, []);
+  const eligible = lawyers.filter((l) => l.isActive && l.id !== currentOwnerId);
 
   const submit = async () => {
     if (targetId === '') {
@@ -101,7 +101,9 @@ export default function TransferDocumentModal({
             </>
           )}
 
-          {error && <p className="text-red-600 text-sm mt-3">{error}</p>}
+          {(error || fetchError) && (
+        <p className="text-red-600 text-sm mt-3" role="alert">{error || fetchError}</p>
+      )}
           {success && <p className="text-emerald-700 text-sm mt-3">{success}</p>}
 
           <div className="mt-5 flex flex-wrap gap-2">

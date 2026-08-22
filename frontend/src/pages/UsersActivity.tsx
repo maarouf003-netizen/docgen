@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { api, getApiErrorMessage } from '../api/client';
+import { api } from '../api/client';
+import { useCancellableRequest } from '../hooks/useCancellableRequest';
 
 interface UserActivityDto {
   username: string;
@@ -9,15 +9,12 @@ interface UserActivityDto {
 }
 
 export default function UsersActivity() {
-  const [rows, setRows] = useState<UserActivityDto[]>([]);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    api
-      .get<UserActivityDto[]>('/users/activity')
-      .then((r) => setRows(r.data))
-      .catch((err) => setError(getApiErrorMessage(err)));
-  }, []);
+  const activityQuery = useCancellableRequest<UserActivityDto[]>(
+    (signal) => api.get('/users/activity', { signal }).then((r) => r.data),
+    [],
+  );
+  const rows = activityQuery.data ?? [];
+  const error = activityQuery.error;
 
   if (error) return <div role="alert" className="text-red-600 mb-6">{error}</div>;
 

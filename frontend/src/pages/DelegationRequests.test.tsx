@@ -52,7 +52,7 @@ describe('DelegationRequests', () => {
     });
     render(<DelegationRequests />);
 
-    expect(api.get).toHaveBeenCalledWith('/delegations/pending');
+    expect(api.get).toHaveBeenCalledWith('/delegations/pending', expect.any(Object));
     expect(await screen.findByText('أحمد خالد الخطيب')).toBeInTheDocument();
     expect(screen.getByText('فاطمة علي')).toBeInTheDocument();
     expect(screen.getByText('2 طلبات معلّقة')).toBeInTheDocument();

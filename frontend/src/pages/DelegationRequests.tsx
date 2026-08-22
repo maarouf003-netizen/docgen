@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
-import { api, getApiErrorMessage } from '../api/client';
+import { useState } from 'react';
+import { api } from '../api/client';
 import type { DelegationDto } from '../types';
+import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { DelegationDetails } from '../components/delegation/DelegationDetails';
 import AssignDelegationModal from '../components/delegation/AssignDelegationModal';
 
@@ -10,30 +11,25 @@ import AssignDelegationModal from '../components/delegation/AssignDelegationModa
  * باختيار المحامي المختص، فيُنشأ الملف المناب تلقائيًا ويُشعَر المحامي بتنبييه.
  */
 export default function DelegationRequests() {
-  const [delegations, setDelegations] = useState<DelegationDto[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
   const [assignTarget, setAssignTarget] = useState<DelegationDto | null>(null);
   const [successMessage, setSuccessMessage] = useState('');
 
-  const load = useCallback(() => {
-    setLoading(true);
-    setLoadError('');
-    api
-      .get<DelegationDto[]>('/delegations/pending')
-      .then((r) => setDelegations(Array.isArray(r.data) ? r.data : []))
-      .catch((err) => setLoadError(getApiErrorMessage(err)))
-      .finally(() => setLoading(false));
-  }, []);
+  const requestsQuery = useCancellableRequest<DelegationDto[]>(
+    (signal) =>
+      api
+        .get<DelegationDto[]>('/delegations/pending', { signal })
+        .then((r) => (Array.isArray(r.data) ? r.data : [])),
+    [],
+  );
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const delegations = requestsQuery.data ?? [];
+  const loading = requestsQuery.isLoading;
+  const loadError = requestsQuery.error;
 
   const handleAssigned = (lawyerName: string) => {
     setAssignTarget(null);
     setSuccessMessage(`تم اعتماد الإنابة وتكليف المحامي ${lawyerName || 'المختص'}`);
-    load();
+    requestsQuery.refetch();
   };
 
   return (
@@ -61,7 +57,7 @@ export default function DelegationRequests() {
           <p>{loadError}</p>
           <button
             type="button"
-            onClick={load}
+            onClick={requestsQuery.refetch}
             className="mt-2 text-red-800 underline underline-offset-2 min-h-11"
           >
             إعادة المحاولة
