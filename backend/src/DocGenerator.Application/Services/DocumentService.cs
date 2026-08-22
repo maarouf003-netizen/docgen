@@ -171,9 +171,9 @@ public sealed partial class DocumentService : IDocumentService
                 || string.IsNullOrEmpty(request.GeneralEntitySide)))
             throw new ArgumentException("اسم المقترض مطلوب");
 
-        ValidateSide(request);
-        ValidateExecutedRequest(request);
-        ValidateRegistrationDate(request);
+        DocumentValidator.ValidateSide(request);
+        DocumentValidator.ValidateExecutedRequest(request);
+        DocumentValidator.ValidateRegistrationDate(request);
 
         // المحامي المختص هو الذي سجّل الدخول وأنشأ الملف: يُسنَد الملف إليه تلقائياً
         // باسمه الكامل (وليس من الطلب)، ويبقى محصّناً من أي كتابة عبر نموذج التعديل.
@@ -219,9 +219,9 @@ public sealed partial class DocumentService : IDocumentService
         if (doc is null)
             return null;
 
-        ValidateSide(request);
-        ValidateExecutedRequest(request);
-        ValidateRegistrationDate(request);
+        DocumentValidator.ValidateSide(request);
+        DocumentValidator.ValidateExecutedRequest(request);
+        DocumentValidator.ValidateRegistrationDate(request);
 
         // التجديد عند تعديل ملف مشطوب إلى متداول: يُطبَّق بيان التجديد (رقم الملف الجديد إلزامي)
         // فيعود الملف برقمه ونوعه الجديدين لسنة الإعادة. التعديل دون تغيير الحالة لا يُجدَّد.

@@ -243,7 +243,7 @@ public sealed partial class DocumentService
                     break;
             }
             occurrence.OccurrenceType = type;
-            occurrence.EventDate = ParseDateTime(request.EventDate, "تاريخ الوقعة");
+            occurrence.EventDate = DocumentValidator.ParseDateTime(request.EventDate, "تاريخ الوقعة");
             occurrence.FileNumber = null;
             occurrence.FileType = null;
             occurrence.Year = null;
@@ -271,13 +271,13 @@ public sealed partial class DocumentService
             throw new ArgumentException("سنة الوقعة غير صالحة");
 
         occurrence.OccurrenceType = type;
-        occurrence.EventDate = ParseDateTime(request.EventDate,
+        occurrence.EventDate = DocumentValidator.ParseDateTime(request.EventDate,
             type == OccurrenceTypeCatalog.Renewal ? "تاريخ التجديد" : "تاريخ الشطب");
         occurrence.FileNumber = string.IsNullOrEmpty(number) ? null : number;
         occurrence.FileType = string.IsNullOrEmpty(fileType) ? null : fileType;
         occurrence.Year = request.Year;
         occurrence.ReceiptNumber = string.IsNullOrEmpty(receiptNumber) ? null : receiptNumber;
-        occurrence.ReceiptDate = ParseDateTime(request.ReceiptDate, "تاريخ ورود اخطار التجديد");
+        occurrence.ReceiptDate = DocumentValidator.ParseDateTime(request.ReceiptDate, "تاريخ ورود اخطار التجديد");
         occurrence.Details = null;
     }
 

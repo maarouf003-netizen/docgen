@@ -45,13 +45,13 @@ public sealed partial class DocumentService
                 ClearBaraetFields(doc);
                 ClearTarithFields(doc);
                 ClearSayerFields(doc);
-                RequireField(fields, "forcedExecutionDate", "تاريخ قرار الإحالة القطعية");
+                DocumentValidator.RequireField(fields, "forcedExecutionDate", "تاريخ قرار الإحالة القطعية");
                 doc.ForcedExecutionDate = fields.GetValueOrDefault("forcedExecutionDate");
                 CopyDetail(details, "forcedExecutionDate", doc.ForcedExecutionDate);
                 break;
             case ExecutionStatusCatalog.ExecutedBySettlement:
-                RequireField(fields, "baraetNumber", "رقم كتاب براءة الذمة");
-                RequireField(fields, "baraetDate", "تاريخ كتاب براءة الذمة");
+                DocumentValidator.RequireField(fields, "baraetNumber", "رقم كتاب براءة الذمة");
+                DocumentValidator.RequireField(fields, "baraetDate", "تاريخ كتاب براءة الذمة");
                 doc.BaraetNumber = fields.GetValueOrDefault("baraetNumber");
                 doc.BaraetDate = fields.GetValueOrDefault("baraetDate");
                 doc.BaraetRegNumber = fields.GetValueOrDefault("baraetRegNumber");
@@ -69,8 +69,8 @@ public sealed partial class DocumentService
                 doc.SoldAssetIds = null;
                 break;
             case ExecutionStatusCatalog.Deferred:
-                RequireField(fields, "tarithNumber", "رقم كتاب التريث");
-                RequireField(fields, "tarithDate", "تاريخ كتاب التريث");
+                DocumentValidator.RequireField(fields, "tarithNumber", "رقم كتاب التريث");
+                DocumentValidator.RequireField(fields, "tarithDate", "تاريخ كتاب التريث");
                 doc.TarithNumber = fields.GetValueOrDefault("tarithNumber");
                 doc.TarithDate = fields.GetValueOrDefault("tarithDate");
                 doc.TarithRegNumber = fields.GetValueOrDefault("tarithRegNumber");
@@ -91,7 +91,7 @@ public sealed partial class DocumentService
                 var struckOffDateRaw = fields.GetValueOrDefault("struckOffDate");
                 if (string.IsNullOrWhiteSpace(struckOffDateRaw))
                     throw new ArgumentException("يجب إدخال تاريخ الشطب");
-                doc.StruckOffDate = ParseDateTime(struckOffDateRaw, "تاريخ الشطب");
+                doc.StruckOffDate = DocumentValidator.ParseDateTime(struckOffDateRaw, "تاريخ الشطب");
                 details["struckOffDate"] = struckOffDateRaw;
                 ClearBaraetFields(doc);
                 ClearTarithFields(doc);
@@ -156,10 +156,10 @@ public sealed partial class DocumentService
                 $"لا يمكن التراجع عن الحالة الحالية «{ExecutionStatusCatalog.ToStateLabel(current)}»");
 
         // حقول كتاب الجهة العامة بالسير بالملف: رقم وتاريخ الكتاب وورودهما إلزامية.
-        RequireField(fields, "sayerNumber", "رقم كتاب الجهة العامة بالسير بالملف");
-        RequireField(fields, "sayerDate", "تاريخ كتاب الجهة العامة بالسير بالملف");
-        RequireField(fields, "sayerRegNumber", "رقم ورود كتاب بالسير بالملف");
-        RequireField(fields, "sayerRegDate", "تاريخ ورود كتاب بالسير بالملف");
+        DocumentValidator.RequireField(fields, "sayerNumber", "رقم كتاب الجهة العامة بالسير بالملف");
+        DocumentValidator.RequireField(fields, "sayerDate", "تاريخ كتاب الجهة العامة بالسير بالملف");
+        DocumentValidator.RequireField(fields, "sayerRegNumber", "رقم ورود كتاب بالسير بالملف");
+        DocumentValidator.RequireField(fields, "sayerRegDate", "تاريخ ورود كتاب بالسير بالملف");
         doc.SayerNumber = fields.GetValueOrDefault("sayerNumber");
         doc.SayerDate = fields.GetValueOrDefault("sayerDate");
         doc.SayerRegNumber = fields.GetValueOrDefault("sayerRegNumber");
@@ -233,7 +233,7 @@ public sealed partial class DocumentService
         var transferRaw = ArabicDigitNormalizer.Normalize(fields.GetValueOrDefault("forcedTransferDate"));
         if (string.IsNullOrWhiteSpace(transferRaw))
             throw new ArgumentException("يجب إدخال تاريخ تحويل بدل المبيع للجهة العامة على الأقل");
-        doc.ForcibleTransferDate = ParseDateTime(transferRaw, "تاريخ تحويل بدل المبيع للجهة العامة");
+        doc.ForcibleTransferDate = DocumentValidator.ParseDateTime(transferRaw, "تاريخ تحويل بدل المبيع للجهة العامة");
         var notice = fields.GetValueOrDefault("forcedTransferNoticeNumber")?.Trim();
         doc.ForcibleTransferNoticeNumber = string.IsNullOrWhiteSpace(notice) ? null : notice;
 
@@ -314,10 +314,10 @@ public sealed partial class DocumentService
                 ["sayerRegNumber"] = request?.SayerRegNumber,
                 ["sayerRegDate"] = request?.SayerRegDate,
             };
-            RequireField(sayerFields, "sayerNumber", "رقم كتاب الجهة العامة بالسير بالملف");
-            RequireField(sayerFields, "sayerDate", "تاريخ كتاب الجهة العامة بالسير بالملف");
-            RequireField(sayerFields, "sayerRegNumber", "رقم ورود كتاب بالسير بالملف");
-            RequireField(sayerFields, "sayerRegDate", "تاريخ ورود كتاب بالسير بالملف");
+            DocumentValidator.RequireField(sayerFields, "sayerNumber", "رقم كتاب الجهة العامة بالسير بالملف");
+            DocumentValidator.RequireField(sayerFields, "sayerDate", "تاريخ كتاب الجهة العامة بالسير بالملف");
+            DocumentValidator.RequireField(sayerFields, "sayerRegNumber", "رقم ورود كتاب بالسير بالملف");
+            DocumentValidator.RequireField(sayerFields, "sayerRegDate", "تاريخ ورود كتاب بالسير بالملف");
             doc.SayerNumber = sayerFields["sayerNumber"];
             doc.SayerDate = sayerFields["sayerDate"];
             doc.SayerRegNumber = sayerFields["sayerRegNumber"];
@@ -336,7 +336,7 @@ public sealed partial class DocumentService
         // من جديد، فيجب أن يحمل الشطبُ الجديد تاريخَه الخاص لا تاريخ شطبه الأول.
         if (!wasStruckOff && doc.ExecutedStatus == ExecutedStatusCatalog.StruckOff)
         {
-            var submitted = ParseDateTime(request?.StruckOffDate, "تاريخ الشطب");
+            var submitted = DocumentValidator.ParseDateTime(request?.StruckOffDate, "تاريخ الشطب");
             doc.StruckOffDate = submitted ?? DateTime.UtcNow;
         }
         // عند الدخول إلى «منفذ» تُحفظ حقول الحالة المقدَّمة فقط ولا تُمسّ المحفوظة سابقًا:
@@ -367,7 +367,7 @@ public sealed partial class DocumentService
                 var description = (request?.ExecutedDescription ?? string.Empty).Trim();
                 if (description.Length > 0)
                     doc.ExecutedDescription = description;
-                var executionDate = ParseDateTime(request?.ExecutedExecutionDate, "تاريخ التنفيذ");
+                var executionDate = DocumentValidator.ParseDateTime(request?.ExecutedExecutionDate, "تاريخ التنفيذ");
                 if (executionDate is not null)
                     doc.ExecutedExecutionDate = executionDate;
             }
@@ -381,7 +381,7 @@ public sealed partial class DocumentService
                 // عند دخول «عرض وايداع» إلى «منفذ» تُضبط العلامة الدائمة «سبق تنفيذه» فلا يخرج
                 // مبلغه المودع من الإحصاءات (عددًا ومبلغًا) حتى بعد عودته إلى المتداول.
                 doc.WasDepositExecuted = true;
-                var depositDate = ParseDateTime(request?.ExecutedDepositDate, "تاريخ ايداعه حساب الجهة العامة");
+                var depositDate = DocumentValidator.ParseDateTime(request?.ExecutedDepositDate, "تاريخ ايداعه حساب الجهة العامة");
                 if (depositDate is not null)
                     doc.ExecutedDepositDate = depositDate;
             }
@@ -499,8 +499,8 @@ public sealed partial class DocumentService
 
         doc.RenewalFileNumber = number;
         doc.RenewalFileReceiptNumber = string.IsNullOrEmpty(receiptNumber) ? null : receiptNumber;
-        doc.RenewalFileReceiptDate = ParseDateTime(renewal?.RenewalFileReceiptDate, "تاريخ ورود اخطار التجديد");
-        doc.RenewalDate = ParseDateTime(renewal?.RenewalDate, "تاريخ التجديد");
+        doc.RenewalFileReceiptDate = DocumentValidator.ParseDateTime(renewal?.RenewalFileReceiptDate, "تاريخ ورود اخطار التجديد");
+        doc.RenewalDate = DocumentValidator.ParseDateTime(renewal?.RenewalDate, "تاريخ التجديد");
         doc.RenewalFileType = string.IsNullOrEmpty(type) ? doc.FileType : type;
         // النوع الجديد إن وُجد يُطبَّق على نوع الملف الظاهر.
         if (!string.IsNullOrEmpty(type))

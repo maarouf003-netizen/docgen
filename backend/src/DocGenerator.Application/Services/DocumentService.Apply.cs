@@ -87,12 +87,6 @@ public sealed partial class DocumentService
         doc.TarithRegDate = null;
     }
 
-    private static void RequireField(Dictionary<string, string?> fields, string key, string label)
-    {
-        if (string.IsNullOrWhiteSpace(fields.GetValueOrDefault(key)))
-            throw new ArgumentException($"يجب إدخال {label} على الأقل");
-    }
-
     private static decimal? ParseCollectedAmount(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw))
@@ -323,13 +317,13 @@ public sealed partial class DocumentService
             doc.ExecutedStatus = ExecutedStatusCatalog.IsStored(executedStatus) ? executedStatus : ExecutedStatusCatalog.None;
             if (doc.ExecutedStatus == ExecutedStatusCatalog.StruckOff)
             {
-                var submitted = ParseDateTime(r.StruckOffDate, "تاريخ الشطب");
+                var submitted = DocumentValidator.ParseDateTime(r.StruckOffDate, "تاريخ الشطب");
                 doc.StruckOffDate = submitted ?? doc.StruckOffDate ?? DateTime.UtcNow;
             }
             doc.ExecutedDescription = doc.GeneralEntitySide == GeneralEntitySideCatalog.Executed
                 ? (r.ExecutedDescription ?? string.Empty).Trim()
                 : null;
-            doc.FileReceiptDate = ParseDateTime(r.FileReceiptDate, "تاريخ ورود الاخطار");
+            doc.FileReceiptDate = DocumentValidator.ParseDateTime(r.FileReceiptDate, "تاريخ ورود الاخطار");
             doc.FileReceiptNumber = (r.FileReceiptNumber ?? string.Empty).Trim();
             doc.ExecutedRequiredAmount = r.ExecutedRequiredAmount;
             doc.ExecutedRequiredCurrency = r.ExecutedRequiredCurrency;
@@ -344,10 +338,10 @@ public sealed partial class DocumentService
             doc.ExecutedPaidAmount3 = r.ExecutedPaidAmount3;
             doc.ExecutedPaidCurrency3 = r.ExecutedPaidCurrency3;
             doc.ExecutedDepositDate = doc.GeneralEntitySide == GeneralEntitySideCatalog.Deposit
-                ? ParseDateTime(r.ExecutedDepositDate, "تاريخ ايداعه حساب الجهة العامة")
+                ? DocumentValidator.ParseDateTime(r.ExecutedDepositDate, "تاريخ ايداعه حساب الجهة العامة")
                 : null;
             doc.ExecutedExecutionDate = doc.GeneralEntitySide == GeneralEntitySideCatalog.Executed
-                ? ParseDateTime(r.ExecutedExecutionDate, "تاريخ التنفيذ")
+                ? DocumentValidator.ParseDateTime(r.ExecutedExecutionDate, "تاريخ التنفيذ")
                 : null;
         }
         else
@@ -469,17 +463,17 @@ public sealed partial class DocumentService
                 PlateNumber = re.PlateNumber,
                 VehicleGovernorate = re.VehicleGovernorate,
                 RegisterNumber = re.RegisterNumber,
-                RegistrationDate = ParseDateTime(re.RegistrationDate, "تاريخ تسجيل المتجر"),
+                RegistrationDate = DocumentValidator.ParseDateTime(re.RegistrationDate, "تاريخ تسجيل المتجر"),
                 ShopGovernorate = re.ShopGovernorate,
                 ShopDescription = re.ShopDescription,
                 ShopLocation = re.ShopLocation,
                 PublicEntity = re.PublicEntity,
                 LicenseNumber = re.LicenseNumber,
-                LicenseDate = ParseDateTime(re.LicenseDate, "تاريخ الترخيص"),
+                LicenseDate = DocumentValidator.ParseDateTime(re.LicenseDate, "تاريخ الترخيص"),
                 LicenseIssuer = re.LicenseIssuer,
                 Notes = re.Notes,
             };
-            asset.Owners = NormalizeOwners(re.Owners);
+            asset.Owners = AssetMapper.NormalizeOwners(re.Owners);
             // تمام الأصل لا يكون إلا لمالك واحد؛ عند تعدد الملاك تُفرض الحصة السهمية
             // حتى لو أُرسل نوع حصة آخر (حماية البيانات على مستوى الخدمة).
             // الأنواع غير الحصصية (كفالة الرواتب والمتجر غير المسجل) لا تحمل مقدار حصة.
@@ -501,33 +495,6 @@ public sealed partial class DocumentService
     /// <summary>
     /// تطبيع قائمة ملاك الأصل: يُتجاهل الاسم الفارغ، ويُقصّ الاسم من الطرفين،
     /// وتُلغى التكرارات مع الحفاظ على ترتيب الاختيار الأصلي.
-    /// </summary>
-    private static List<AssetOwner> NormalizeOwners(IEnumerable<string>? owners)
-    {
-        var result = new List<AssetOwner>();
-        if (owners is null)
-            return result;
-
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var order = 0;
-        foreach (var owner in owners)
-        {
-            var name = (owner ?? string.Empty).Trim();
-            if (string.IsNullOrWhiteSpace(name) || !seen.Add(name))
-                continue;
-
-            result.Add(new AssetOwner { Name = name, Order = order++ });
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    /// تصفية صفوف الورثة الصالحة فقط: يُتجاهل الوريث الخالي من الاسم الثلاثي كاملًا
-    /// (الاسم واسم الأب والنسبة جميعًا)، ويُقيَّد نوع العنوان بالقيم المسموح بها
-    /// («عنوان»/«موطن مختار»/«وكيل») مع معاملة أي قيمة أخرى أو فارغة كـ«عنوان»،
-    /// وصفة الوريث بالقيم المسموح بها («أصالة»/«إضافة لتركة»/«أصالة وإضافة»)
-    /// مع معاملة أي قيمة أخرى أو فارغة كـ«أصالة».
     /// </summary>
     private static List<Heir> NormalizeHeirs(IEnumerable<HeirDto>? heirs, int? guarantorNumber)
     {
@@ -832,91 +799,6 @@ public sealed partial class DocumentService
         var value = (representationType ?? string.Empty).Trim();
         return value is "إضافة لتركة" or "أصالة وإضافة" ? value : "أصالة";
     }
-
-    /// <summary>
-    /// صفة الملف تُثبَّت عند الإنشاء: تُقبل القيم الصالحة فقط (applicant/executed)،
-    /// والقيمة الفارغة تُفسَّر على أنها «الجهة العامة طالبة التنفيذ» للحفاظ على توافق الطلبات القائمة.
-    /// </summary>
-    private static void ValidateSide(DocumentUpsertRequest request)
-    {
-        var side = string.IsNullOrWhiteSpace(request.GeneralEntitySide)
-            ? GeneralEntitySideCatalog.Applicant
-            : request.GeneralEntitySide.Trim();
-
-        if (!GeneralEntitySideCatalog.ValidSides.Contains(side))
-            throw new ArgumentException("صفة الجهة العامة غير صالحة");
-
-        request.GeneralEntitySide = side;
-    }
-
-    /// <summary>
-    /// قيود عائلة وضع «الجهة العامة منفذ عليها» (Executed + Deposit): عادي فقط (لا مصرفي)،
-    /// مقيد (لا مسودة)، وبلا مقترض/كفلاء/أموال. وتُطبق أيضًا على الملفات الحالية التي
-    /// تُحرَّر بوضعها الجديد.
-    /// </summary>
-    private static void ValidateExecutedRequest(DocumentUpsertRequest request)
-    {
-        if (!GeneralEntitySideCatalog.IsExecutedLike(request.GeneralEntitySide))
-            return;
-
-        var sideLabel = GeneralEntitySideCatalog.ToLabel(request.GeneralEntitySide!);
-
-        if (string.IsNullOrWhiteSpace(request.FileNumber) || string.IsNullOrWhiteSpace(request.FileYear))
-            throw new ArgumentException($"ملف «{sideLabel}» يجب أن يكون مقيدًا برقم وسنة الملف");
-
-        var selector = string.IsNullOrWhiteSpace(request.ContractTypeSelector)
-            ? "عادي"
-            : request.ContractTypeSelector.Trim();
-        if (selector == "مصرفي")
-            throw new ArgumentException($"ملف «{sideLabel}» يكون بعقد عادي فقط (لا مصرفي)");
-
-        if (!string.IsNullOrWhiteSpace(request.BorrowerName)
-            || request.Guarantors.Count > 0
-            || request.Assets.Count > 0
-            || request.BorrowerHeirs.Count > 0)
-            throw new ArgumentException($"ملف «{sideLabel}» لا يتضمن مقترضًا أو كفلاء أو أموالًا");
-    }
-
-    /// <summary>
-    /// الملف المقيّد (بعد إدخال رقم الملف وسنة الملف) لا بد أن يحمل تاريخ قيد صالحًا،
-    /// لأنه المعيار الوحيد في إحصاءات المتداول. وتُستثنى عائلة وضع «الجهة العامة منفذ عليها»
-    /// لأن ملفها يقيده الخصم لا محامي الدولة، فتاريخ ورود الاخطار يغني عن تاريخ القيد.
-    /// </summary>
-    private static void ValidateRegistrationDate(DocumentUpsertRequest request)
-    {
-        if (GeneralEntitySideCatalog.IsExecutedLike(request.GeneralEntitySide))
-            return;
-
-        var hasFileNumber = !string.IsNullOrWhiteSpace(request.FileNumber);
-        var hasFileYear = !string.IsNullOrWhiteSpace(request.FileYear);
-        if (!hasFileNumber || !hasFileYear)
-            return;
-
-        if (string.IsNullOrWhiteSpace(request.FileRegistrationDate))
-            throw new ArgumentException("تاريخ قيد الملف مطلوب عند إدخال رقم الملف وسنة الملف");
-
-        if (!TryParseDate(request.FileRegistrationDate, out _))
-            throw new ArgumentException("تاريخ قيد الملف غير صالح — استخدم مثال: 1/8/2026");
-    }
-
-    private static bool TryParseDate(string? value, out DateTime date)
-    {
-        var parsed = ActionDateParser.TryParse(value);
-        if (parsed is { } result)
-        {
-            date = result;
-            return true;
-        }
-        date = default;
-        return false;
-    }
-
-    /// <summary>
-    /// التاريخ في وضع «منفذ عليه» يُرسَل نصًا حرًا (مثال: 1/8/2026) فيُفسَّر ويُخزَّن زمنيًا
-    /// في القاعدة. الفارغ يعني null، وغير الصالح يُرفض برسالة تحمل اسم الحقل.
-    /// </summary>
-    private static DateTime? ParseDateTime(string? value, string fieldName)
-        => FreeDateParser.Parse(value, fieldName);
 
     private void ApplyRegistrationDate(Document doc, string? value)
     {
