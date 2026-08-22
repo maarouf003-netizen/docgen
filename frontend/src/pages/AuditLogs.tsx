@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { api, getApiErrorMessage } from '../api/client';
+import { useMemo, useState, type FormEvent } from 'react';
+import { api } from '../api/client';
 import { formatDateTime } from '../utils/dates';
+import { useCancellableRequest } from '../hooks/useCancellableRequest';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 
 interface AuditLogDto {
   id: number;
@@ -36,31 +38,33 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 export default function AuditLogs() {
-  const [rows, setRows] = useState<AuditLogDto[]>([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [userName, setUserName] = useState('');
   const [actionType, setActionType] = useState('');
-  const [error, setError] = useState('');
   const perPage = 20;
 
-  const load = useCallback(() => {
+  const debouncedUserName = useDebouncedValue(userName, 300);
+
+  const logsQuery = useCancellableRequest<Paged<AuditLogDto>>((signal) => {
     const params = new URLSearchParams({ page: String(page), perPage: String(perPage) });
-    if (userName) params.set('userName', userName);
+    if (debouncedUserName) params.set('userName', debouncedUserName);
     if (actionType) params.set('actionType', actionType);
+    return api.get(`/audit-logs?${params.toString()}`, { signal }).then((r) => r.data);
+  }, [page, debouncedUserName, actionType]);
 
-    api
-      .get<Paged<AuditLogDto>>(`/audit-logs?${params.toString()}`)
-      .then((r) => {
-        setRows(r.data.items);
-        setTotal(r.data.totalCount);
-      })
-      .catch((err) => setError(getApiErrorMessage(err)));
-  }, [page, userName, actionType]);
+  const rows = useMemo(() => logsQuery.data?.items ?? [], [logsQuery.data]);
+  const total = logsQuery.data?.totalCount ?? 0;
+  const error = logsQuery.error ?? '';
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const updateUserName = (value: string) => {
+    setUserName(value);
+    setPage(1);
+  };
+
+  const updateActionType = (value: string) => {
+    setActionType(value);
+    setPage(1);
+  };
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -75,19 +79,23 @@ export default function AuditLogs() {
 
       <form onSubmit={submit} className="bg-white rounded-xl shadow p-4 mb-6 flex flex-wrap gap-3 items-end">
         <div className="flex flex-col">
-          <label className="text-sm text-gray-600 mb-1">اسم المستخدم</label>
+          <label htmlFor="audit-user-name" className="text-sm text-gray-600 mb-1">اسم المستخدم</label>
           <input
+            id="audit-user-name"
+            name="userName"
             value={userName}
-            onChange={(e) => setUserName(e.target.value)}
-            className="min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none"
+            onChange={(e) => updateUserName(e.target.value)}
+            className="min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
         <div className="flex flex-col">
-          <label className="text-sm text-gray-600 mb-1">نوع الحدث</label>
+          <label htmlFor="audit-action-type" className="text-sm text-gray-600 mb-1">نوع الحدث</label>
           <select
+            id="audit-action-type"
+            name="actionType"
             value={actionType}
-            onChange={(e) => setActionType(e.target.value)}
-            className="min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none"
+            onChange={(e) => updateActionType(e.target.value)}
+            className="min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           >
             <option value="">الكل</option>
             {Object.entries(ACTION_LABELS).map(([k, v]) => (

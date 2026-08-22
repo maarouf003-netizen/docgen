@@ -29,11 +29,13 @@ export default function CompleteDelegationModal({
   onClose: () => void;
   onCompleted: () => void;
 }) {
+  // حد الثقة الوحيد لبيانات الإنابة: تُضمن المصفوفة مرة واحدة وتُقرأ بعد ذلك بأمان.
+  const assets = delegation.assets ?? [];
   const [returnDate, setReturnDate] = useState('');
   const [forcedExecutionDate, setForcedExecutionDate] = useState('');
   const [prices, setPrices] = useState<Record<number, string>>(() => {
     const initial: Record<number, string> = {};
-    for (const asset of delegation.assets) {
+    for (const asset of assets) {
       if (asset.salePrice != null && asset.salePrice > 0) initial[asset.id] = String(asset.salePrice);
     }
     return initial;
@@ -49,7 +51,7 @@ export default function CompleteDelegationModal({
   const validate = (): string => {
     if (!returnDate.trim()) return 'تاريخ إعادة الملف للدائرة المنيبة مطلوب';
     if (!forcedExecutionDate.trim()) return 'تاريخ قرار الإحالة القطعية مطلوب';
-    for (const asset of delegation.assets) {
+    for (const asset of assets) {
       const price = parsePrice(prices[asset.id] ?? '');
       if (price === null) return `بدل المبيع مطلوب للأصل (${asset.assetLabel})`;
       if (price <= 0) return `بدل المبيع غير صالح للأصل (${asset.assetLabel})`;
@@ -67,7 +69,7 @@ export default function CompleteDelegationModal({
     }
     setFormError('');
     setSaving(true);
-    const sales: DelegationSaleDto[] = delegation.assets.map((asset) => ({
+    const sales: DelegationSaleDto[] = assets.map((asset) => ({
       delegationAssetId: asset.id,
       salePrice: parsePrice(prices[asset.id] ?? '') ?? 0,
     }));
@@ -117,7 +119,7 @@ export default function CompleteDelegationModal({
                 {delegation.sourceDocumentLabel || `ملف رقم ${delegation.sourceDocumentId}`}
               </span>
             </p>
-            <DelegationDetails d={delegation} />
+            <DelegationDetails d={{ ...delegation, assets }} />
           </div>
 
           {formError && <p className="text-red-600 text-sm" role="alert">{formError}</p>}
@@ -160,11 +162,11 @@ export default function CompleteDelegationModal({
             <legend className="block text-xs font-bold text-gray-600 mb-1">
               بدل المبيع بالليرة السورية
             </legend>
-            {delegation.assets.length === 0 ? (
+            {assets.length === 0 ? (
               <p className="text-sm text-gray-400">لا توجد أموال مسجلة على هذه الإنابة</p>
             ) : (
               <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
-                {delegation.assets.map((asset) => (
+                {assets.map((asset) => (
                   <li key={asset.id} className="px-3 py-3 sm:flex sm:items-center sm:justify-between gap-3">
                     <p className="text-sm text-gray-800 min-w-0 break-words sm:flex-1">
                       {asset.assetLabel}

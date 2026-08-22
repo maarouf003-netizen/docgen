@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
+import { useTimeout } from '../hooks/useTimeout';
 import type { LawyerListItem } from '../types';
 
 export default function TransferDocumentModal({
@@ -19,6 +20,8 @@ export default function TransferDocumentModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  useTimeout(onClose, success ? 700 : null);
 
   const eligible = lawyers.filter((l) => l.isActive && l.id !== currentOwnerId);
 
@@ -44,7 +47,6 @@ export default function TransferDocumentModal({
       await api.post(`/documents/${documentId}/transfer`, { targetLawyerId: Number(targetId) });
       setSuccess('تم نقل الملف بنجاح');
       onTransferred?.();
-      window.setTimeout(onClose, 700);
     } catch (err) {
       setError(getApiErrorMessage(err));
     } finally {

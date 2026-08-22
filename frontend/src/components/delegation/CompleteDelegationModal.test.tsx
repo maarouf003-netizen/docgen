@@ -49,6 +49,23 @@ describe('CompleteDelegationModal', () => {
     vi.clearAllMocks();
   });
 
+  it('يتحمل إنابة ناقصة مصفوفة الأموال دون انهيار ويعرض حالتها الفارغة', () => {
+    const { assets, ...withoutAssets } = registeredDelegation();
+    void assets;
+
+    render(
+      <CompleteDelegationModal
+        delegation={withoutAssets as unknown as DelegationDto}
+        onClose={noop}
+        onCompleted={noop}
+      />,
+    );
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('لا توجد أموال مسجلة على هذه الإنابة')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'إتمام الإنابة' })).toBeEnabled();
+  });
+
   it('يعرض حقلي تاريخ الإعادة وتاريخ قرار الإحالة القطعية وحقل بدل مبيع لكل أصل', () => {
     render(
       <CompleteDelegationModal delegation={registeredDelegation()} onClose={noop} onCompleted={noop} />,

@@ -75,6 +75,20 @@ describe('DocumentForm', () => {
     return screen.findByText('📋 حالة الملف');
   }
 
+  it('يتحمل استجابة تعديل ناقصة المصفوفات دون انهيار (تطبيع حد الثقة)', async () => {
+    const stripped: DocumentResponse = { ...mockDoc };
+    delete (stripped as Partial<DocumentResponse>).guarantors;
+    delete (stripped as Partial<DocumentResponse>).assets;
+    delete (stripped as Partial<DocumentResponse>).executionApplicants;
+    delete (stripped as Partial<DocumentResponse>).executedPublicEntities;
+    delete (stripped as Partial<DocumentResponse>).executedNaturalPersons;
+
+    await renderEdit(stripped);
+
+    expect(screen.getByDisplayValue('أحمد')).toBeInTheDocument();
+    expect(screen.getByText('📂 وقوعات الملف')).toBeInTheDocument();
+  });
+
   it('يحوّل تسمية حقل عنوان المقترض إلى «الوكيل القانوني» عند اختيار «وكيله القانوني»', async () => {
     const user = userEvent.setup();
     render(<DocumentForm />);

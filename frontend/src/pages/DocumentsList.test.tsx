@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import DocumentsList from './DocumentsList';
@@ -22,6 +22,8 @@ vi.mock('../auth/useAuth', () => ({
 
 vi.mock('../api/client', () => ({
   api: { get: vi.fn(), post: vi.fn() },
+  getApiErrorMessage: (error: unknown) =>
+    (error as { message?: string })?.message ?? 'حدث خطأ غير متوقع',
 }));
 
 import { api } from '../api/client';
@@ -1296,5 +1298,65 @@ describe('DocumentsList', () => {
 
     expect(sessionStorage.getItem('lastViewedDocumentId')).toBe('5');
     expect(JSON.parse(sessionStorage.getItem('documentsListPosition') ?? '{}')).toMatchObject({ page: 1, query: '' });
+  });
+
+  it('يعرض حالة خطأ كاملة مع إعادة محاولة ناجحة عند فشل الجلب الأول', async () => {
+    const user = userEvent.setup();
+    const get = api.get as unknown as ReturnType<typeof vi.fn>;
+    get.mockImplementation((url: string) => {
+      if (url.startsWith('/documents/filter-options')) {
+        return Promise.resolve({ data: { applicants: [], courts: [], lawyers: [], administrativeBranches: [], branches: [], publicEntityBranches: [] } });
+      }
+      return Promise.reject(new Error('انقطع الاتصال بالخادم'));
+    });
+
+    renderList();
+
+    expect(await screen.findByText('انقطع الاتصال بالخادم')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+
+    get.mockImplementation((url: string) => {
+      if (url.startsWith('/documents/filter-options')) {
+        return Promise.resolve({ data: { applicants: [], courts: [], lawyers: [], administrativeBranches: [], branches: [], publicEntityBranches: [] } });
+      }
+      return Promise.resolve({ data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [makeDocument({ id: 3 })] } });
+    });
+    await user.click(screen.getByRole('button', { name: 'إعادة المحاولة' }));
+
+    expect(await screen.findByRole('link', { name: 'أحمد خالد الخطيب' })).toBeInTheDocument();
+    expect(screen.queryByText('انقطع الاتصال بالخادم')).not.toBeInTheDocument();
+  });
+
+  it('يُبقي الصفوف القديمة ويعرض تنبيه تحديث عند فشل تحديث خلفي، وتزيله إعادة محاولة ناجحة', async () => {
+    const user = userEvent.setup();
+    const get = api.get as unknown as ReturnType<typeof vi.fn>;
+    let listShouldFail = false;
+    get.mockImplementation((url: string) => {
+      if (url.startsWith('/documents/filter-options')) {
+        return Promise.resolve({ data: { applicants: [], courts: [], lawyers: [], administrativeBranches: [], branches: [], publicEntityBranches: [] } });
+      }
+      if (listShouldFail) return Promise.reject(new Error('فشل التحديث'));
+      return Promise.resolve({
+        data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [makeDocument({ id: 9 })] },
+      });
+    });
+
+    renderList();
+
+    await screen.findByRole('link', { name: 'أحمد خالد الخطيب' });
+
+    listShouldFail = true;
+    await user.type(screen.getByPlaceholderText('بحث بالاسم الثنائي أو الثلاثي لأحد المنفذ عليهم أو ورثة المتوفى، رقم العقد، دائرة التنفيذ...'), 'س');
+
+    expect(await screen.findByText('تعذر تحديث القائمة — تُعرض بيانات سابقة.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'أحمد خالد الخطيب' })).toBeInTheDocument();
+
+    listShouldFail = false;
+    await user.click(screen.getByRole('button', { name: 'إعادة المحاولة' }));
+
+    await waitFor(() =>
+      expect(screen.queryByText('تعذر تحديث القائمة — تُعرض بيانات سابقة.')).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole('link', { name: 'أحمد خالد الخطيب' })).toBeInTheDocument();
   });
 });

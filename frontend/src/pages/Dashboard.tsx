@@ -1,6 +1,7 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import type {
   BranchDto,
   HeadAlertDto,
@@ -25,12 +26,9 @@ export default function Dashboard() {
   const isManager = user?.role === 'manager' || user?.role === 'admin';
   const isHead = user?.role === 'head';
 
-  const [reminders, setReminders] = useState<ReminderDto[]>([]);
   const [cancellingKey, setCancellingKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
 
-  const [alerts, setAlerts] = useState<HeadAlertDto[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [alertsError, setAlertsError] = useState('');
   const [markingKey, setMarkingKey] = useState<string | null>(null);
 
@@ -40,16 +38,92 @@ export default function Dashboard() {
   const [alertMessage, setAlertMessage] = useState('');
   const [alertSubmitting, setAlertSubmitting] = useState(false);
   const [alertFormError, setAlertFormError] = useState('');
-  const [branchLawyers, setBranchLawyers] = useState<LawyerListItem[]>([]);
-
   const [period, setPeriod] = useState<StatsPeriod>('yearly');
-  const [available, setAvailable] = useState<MonthlyStatDto[]>([]);
   const [selection, setSelection] = useState<PeriodSelection | null>(null);
-  const [branches, setBranches] = useState<BranchDto[]>([]);
   const [branchId, setBranchId] = useState<number | null>(null);
-  const [managerStats, setManagerStats] = useState<ManagerStatsDto | null>(null);
-  const [lawyerStats, setLawyerStats] = useState<ManagerLawyerStatDto[]>([]);
-  const [managerError, setManagerError] = useState('');
+
+  const userReady = Boolean(user);
+
+  const branchesQuery = useCancellableRequest<BranchDto[]>(
+    (signal) => api.get('/branches', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
+    [isManager],
+    { enabled: userReady && isManager },
+  );
+
+  // التذكيرات خاصة بالمحامي فقط؛ لا تُجلب لرئيس القسم.
+  const remindersQuery = useCancellableRequest<ReminderDto[]>(
+    (signal) => api.get('/reminders', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
+    [isLawyer],
+    { enabled: userReady && !isManager && isLawyer },
+  );
+
+  const alertsQuery = useCancellableRequest<HeadAlertDto[]>(
+    (signal) => api.get('/alerts', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
+    [],
+    { enabled: userReady && !isManager },
+  );
+
+  const unreadQuery = useCancellableRequest<{ count: number }>(
+    (signal) => api.get('/alerts/unread-count', { signal }).then((r) => r.data),
+    [isLawyer],
+    { enabled: userReady && !isManager && isLawyer },
+  );
+
+  const branchLawyersQuery = useCancellableRequest<LawyerListItem[]>(
+    (signal) => api.get('/users/lawyers', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
+    [],
+    { enabled: isHead },
+  );
+
+  const availableQuery = useCancellableRequest<MonthlyStatDto[]>(
+    (signal) => {
+      const params: Record<string, unknown> = {};
+      if (isManager && branchId) params.branchId = branchId;
+      return api
+        .get('/stats/periods', { params, signal })
+        .then((r) => (Array.isArray(r.data) ? r.data : []));
+    },
+    [isManager, branchId],
+    { enabled: userReady },
+  );
+
+  const statsQuery = useCancellableRequest<ManagerStatsDto>((signal) => {
+    const params: Record<string, unknown> = { period };
+    if (selection) {
+      params.year = selection.year;
+      if (selection.month != null) params.month = selection.month;
+      if (selection.quarter != null) params.quarter = selection.quarter;
+    }
+    const url = isLawyer ? '/stats/me' : '/stats/manager';
+    if (!isLawyer && isManager && branchId) params.branchId = branchId;
+    return api.get<ManagerStatsDto>(url, { params, signal }).then((r) => r.data);
+  }, [isLawyer, isManager, period, selection, branchId], { enabled: userReady });
+
+  const lawyersBranch = isManager ? branchId : (user?.branchId ?? null);
+  const lawyerStatsQuery = useCancellableRequest<ManagerLawyerStatDto[]>((signal) => {
+    const params: Record<string, unknown> = { period };
+    if (selection) {
+      params.year = selection.year;
+      if (selection.month != null) params.month = selection.month;
+      if (selection.quarter != null) params.quarter = selection.quarter;
+    }
+    if (isManager && branchId) params.branchId = branchId;
+    return api
+      .get('/stats/manager/lawyers', { params: { ...params, branchId: lawyersBranch }, signal })
+      .then((r) => (Array.isArray(r.data) ? r.data : []));
+  }, [isLawyer, isManager, period, selection, branchId, lawyersBranch], { enabled: userReady && lawyersBranch != null });
+
+  const reminders = useMemo(() => remindersQuery.data ?? [], [remindersQuery.data]);
+  const alerts = useMemo(() => alertsQuery.data ?? [], [alertsQuery.data]);
+  const branches = useMemo(() => branchesQuery.data ?? [], [branchesQuery.data]);
+  const branchLawyers = useMemo(() => branchLawyersQuery.data ?? [], [branchLawyersQuery.data]);
+  const available = useMemo(() => availableQuery.data ?? [], [availableQuery.data]);
+  const managerStats = statsQuery.data;
+  const lawyerStats = useMemo(
+    () => (lawyersBranch != null ? (lawyerStatsQuery.data ?? []) : []),
+    [lawyersBranch, lawyerStatsQuery.data],
+  );
+  const unreadCount = Math.max(0, Number(unreadQuery.data?.count) || 0);
 
   const cancelReminder = async (r: ReminderDto) => {
     const key = String(r.actionId);
@@ -57,7 +131,7 @@ export default function Dashboard() {
     setActionError('');
     try {
       await api.delete(`/documents/${r.documentId}/actions/${r.actionId}/reminder`);
-      setReminders((prev) => prev.filter((x) => x.actionId !== r.actionId));
+      remindersQuery.setData((prev) => (prev ?? []).filter((x) => x.actionId !== r.actionId));
     } catch (err) {
       setActionError(getApiErrorMessage(err));
     } finally {
@@ -71,8 +145,8 @@ export default function Dashboard() {
     setAlertsError('');
     try {
       await api.patch(`/alerts/${a.id}/read`);
-      setAlerts((prev) => prev.map((x) => (x.id === a.id ? { ...x, isRead: true } : x)));
-      setUnreadCount((c) => Math.max(0, c - 1));
+      alertsQuery.setData((prev) => (prev ?? []).map((x) => (x.id === a.id ? { ...x, isRead: true } : x)));
+      unreadQuery.setData((prev) => (prev ? { count: Math.max(0, prev.count - 1) } : prev));
     } catch (err) {
       setAlertsError(getApiErrorMessage(err));
     } finally {
@@ -104,7 +178,7 @@ export default function Dashboard() {
         targetLawyerId,
         message: alertMessage.trim(),
       });
-      setAlerts((prev) => [data, ...prev]);
+      alertsQuery.setData((prev) => [data, ...(prev ?? [])]);
       setShowAlertForm(false);
       setAlertMessage('');
       setAlertLawyerId('');
@@ -116,103 +190,9 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    if (!user) return;
-
-    if (isManager) {
-      api
-        .get<BranchDto[]>('/branches')
-        .then((r) => setBranches(Array.isArray(r.data) ? r.data : []))
-        .catch(() => {});
-      return;
-    }
-
-    // التذكيرات خاصة بالمحامي فقط؛ لا تُجلب لرئيس القسم.
-    if (isLawyer) {
-      api
-        .get<ReminderDto[]>('/reminders')
-        .then((r) => setReminders(Array.isArray(r.data) ? r.data : []))
-        .catch(() => {});
-    }
-  }, [isLawyer, isManager, user]);
-
-  useEffect(() => {
-    if (!user || isManager) return;
-
-    api
-      .get<HeadAlertDto[]>('/alerts')
-      .then((r) => setAlerts(Array.isArray(r.data) ? r.data : []))
-      .catch(() => setAlerts([]));
-
-    if (isLawyer) {
-      api
-        .get<{ count: number }>('/alerts/unread-count')
-        .then((r) => setUnreadCount(Number(r.data.count) || 0))
-        .catch(() => setUnreadCount(0));
-    }
-  }, [isLawyer, isManager, user]);
-
-  useEffect(() => {
-    if (!isHead) return;
-
-    api
-      .get<LawyerListItem[]>('/users/lawyers')
-      .then((r) => setBranchLawyers(Array.isArray(r.data) ? r.data : []))
-      .catch(() => setBranchLawyers([]));
-  }, [isHead]);
-
-  useEffect(() => {
-    if (!user) return;
-
-    const params: Record<string, unknown> = {};
-    if (isManager && branchId) params.branchId = branchId;
-    api
-      .get<MonthlyStatDto[]>('/stats/periods', { params })
-      .then((r) => setAvailable(Array.isArray(r.data) ? r.data : []))
-      .catch(() => setAvailable([]));
-  }, [isManager, branchId, user]);
-
-  useEffect(() => {
     const recent = mostRecentSelection(available, period);
     setSelection(recent);
   }, [available, period]);
-
-  useEffect(() => {
-    if (!user) return;
-
-    setManagerError('');
-    const params: Record<string, unknown> = { period };
-    if (selection) {
-      params.year = selection.year;
-      if (selection.month != null) params.month = selection.month;
-      if (selection.quarter != null) params.quarter = selection.quarter;
-    }
-
-    if (isLawyer) {
-      api
-        .get<ManagerStatsDto>('/stats/me', { params })
-        .then((r) => setManagerStats(r.data))
-        .catch((err) => setManagerError(getApiErrorMessage(err)));
-      return;
-    }
-
-    if (isManager && branchId) params.branchId = branchId;
-    api
-      .get<ManagerStatsDto>('/stats/manager', { params })
-      .then((r) => setManagerStats(r.data))
-      .catch((err) => setManagerError(getApiErrorMessage(err)));
-
-    const lawyersBranch = isManager ? branchId : (user?.branchId ?? null);
-    if (lawyersBranch) {
-      api
-        .get<ManagerLawyerStatDto[]>('/stats/manager/lawyers', {
-          params: { ...params, branchId: lawyersBranch },
-        })
-        .then((r) => setLawyerStats(Array.isArray(r.data) ? r.data : []))
-        .catch(() => setLawyerStats([]));
-    } else {
-      setLawyerStats([]);
-    }
-  }, [isLawyer, isManager, period, selection, branchId, user]);
 
   if (isManager) {
     return (
@@ -229,7 +209,7 @@ export default function Dashboard() {
           onBranchChange={setBranchId}
           stats={managerStats}
           lawyers={lawyerStats}
-          error={managerError}
+          error={statsQuery.error ?? ''}
         />
       </div>
     );
@@ -252,7 +232,7 @@ export default function Dashboard() {
         showLawyerTable={!isLawyer}
         stats={managerStats}
         lawyers={lawyerStats}
-        error={managerError}
+        error={statsQuery.error ?? ''}
       />
 
       {isLawyer ? (
@@ -269,9 +249,9 @@ export default function Dashboard() {
               <span className="text-xs text-gray-400">الأقرب أولاً</span>
             </div>
 
-            {actionError ? (
+            {actionError || remindersQuery.error ? (
               <div className="px-4 sm:px-5 py-2.5 bg-red-50 border-b border-red-100">
-                <p className="text-red-700 text-sm">{actionError}</p>
+                <p className="text-red-700 text-sm">{actionError || remindersQuery.error}</p>
               </div>
             ) : null}
 
@@ -298,9 +278,9 @@ export default function Dashboard() {
               <span className="text-xs text-gray-400">الأحدث أولاً</span>
             </div>
 
-            {alertsError ? (
+            {(alertsError || alertsQuery.error) ? (
               <div className="px-4 sm:px-5 py-2.5 bg-red-50 border-b border-red-100">
-                <p className="text-red-700 text-sm">{alertsError}</p>
+                <p className="text-red-700 text-sm">{alertsError || alertsQuery.error}</p>
               </div>
             ) : null}
 
@@ -353,9 +333,9 @@ export default function Dashboard() {
               />
             ) : null}
 
-            {alertsError ? (
+            {(alertsError || alertsQuery.error) ? (
               <div className="px-4 sm:px-5 py-2.5 bg-red-50 border-b border-red-100">
-                <p className="text-red-700 text-sm">{alertsError}</p>
+                <p className="text-red-700 text-sm">{alertsError || alertsQuery.error}</p>
               </div>
             ) : null}
 

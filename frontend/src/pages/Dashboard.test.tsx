@@ -223,14 +223,14 @@ describe('Dashboard للمحامي', () => {
 
     expect(api.get).toHaveBeenCalledWith('/stats/me', expect.any(Object));
     expect(api.get).toHaveBeenCalledWith('/stats/periods', expect.any(Object));
-    expect(api.get).toHaveBeenCalledWith('/reminders');
-    expect(api.get).toHaveBeenCalledWith('/alerts');
-    expect(api.get).toHaveBeenCalledWith('/alerts/unread-count');
-    expect(api.get).not.toHaveBeenCalledWith('/users/lawyers');
+    expect(api.get).toHaveBeenCalledWith('/reminders', expect.any(Object));
+    expect(api.get).toHaveBeenCalledWith('/alerts', expect.any(Object));
+    expect(api.get).toHaveBeenCalledWith('/alerts/unread-count', expect.any(Object));
+    expect(api.get).not.toHaveBeenCalledWith('/users/lawyers', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/dashboard');
     expect(api.get).not.toHaveBeenCalledWith('/monthly-stats');
     expect(api.get).not.toHaveBeenCalledWith('/stats/manager');
-    expect(api.get).not.toHaveBeenCalledWith('/branches');
+    expect(api.get).not.toHaveBeenCalledWith('/branches', expect.any(Object));
     expect(screen.queryByText('المستندات شهرياً')).not.toBeInTheDocument();
     expect(screen.queryByText('إحصائيات محامي الفرع')).not.toBeInTheDocument();
   });
@@ -365,12 +365,12 @@ describe('Dashboard لرئيس القسم', () => {
     expect(screen.getByText('محامي دمشق')).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith('/stats/manager', expect.any(Object));
     expect(api.get).toHaveBeenCalledWith('/stats/periods', expect.any(Object));
-    expect(api.get).not.toHaveBeenCalledWith('/reminders');
-    expect(api.get).toHaveBeenCalledWith('/alerts');
-    expect(api.get).toHaveBeenCalledWith('/users/lawyers');
-    expect(api.get).not.toHaveBeenCalledWith('/branches');
+    expect(api.get).not.toHaveBeenCalledWith('/reminders', expect.any(Object));
+    expect(api.get).toHaveBeenCalledWith('/alerts', expect.any(Object));
+    expect(api.get).toHaveBeenCalledWith('/users/lawyers', expect.any(Object));
+    expect(api.get).not.toHaveBeenCalledWith('/branches', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/dashboard');
-    expect(api.get).not.toHaveBeenCalledWith('/alerts/unread-count');
+    expect(api.get).not.toHaveBeenCalledWith('/alerts/unread-count', expect.any(Object));
     expect(screen.queryByText('عدد المقترضين')).not.toBeInTheDocument();
   });
 
@@ -385,7 +385,7 @@ describe('Dashboard لرئيس القسم', () => {
     expect(await screen.findByText('تنبيهات رئيس القسم')).toBeInTheDocument();
     expect(screen.queryByText('التذكيرات')).not.toBeInTheDocument();
     expect(screen.queryByText('لا توجد تذكيرات حالياً')).not.toBeInTheDocument();
-    expect(api.get).not.toHaveBeenCalledWith('/reminders');
+    expect(api.get).not.toHaveBeenCalledWith('/reminders', expect.any(Object));
   });
 
   it('يعرض تنبيهات الفرع مع عدادات غير مقروء', async () => {
@@ -547,7 +547,7 @@ describe('Dashboard للمدير/المشرف', () => {
     expect(screen.getByRole('button', { name: 'سنوي' })).toBeInTheDocument();
     expect(await screen.findAllByText('السنة 2026')).not.toHaveLength(0);
 
-    expect(api.get).toHaveBeenCalledWith('/branches');
+    expect(api.get).toHaveBeenCalledWith('/branches', expect.any(Object));
     expect(api.get).toHaveBeenCalledWith('/stats/periods', expect.any(Object));
     expect(api.get).toHaveBeenCalledWith(
       '/stats/manager',
@@ -556,9 +556,9 @@ describe('Dashboard للمدير/المشرف', () => {
     expect(api.get).not.toHaveBeenCalledWith('/stats/manager/lawyers');
     expect(api.get).not.toHaveBeenCalledWith('/dashboard');
     expect(api.get).not.toHaveBeenCalledWith('/monthly-stats');
-    expect(api.get).not.toHaveBeenCalledWith('/reminders');
-    expect(api.get).not.toHaveBeenCalledWith('/alerts');
-    expect(api.get).not.toHaveBeenCalledWith('/users/lawyers');
+    expect(api.get).not.toHaveBeenCalledWith('/reminders', expect.any(Object));
+    expect(api.get).not.toHaveBeenCalledWith('/alerts', expect.any(Object));
+    expect(api.get).not.toHaveBeenCalledWith('/users/lawyers', expect.any(Object));
     expect(screen.queryByText('المستندات شهرياً')).not.toBeInTheDocument();
     expect(screen.queryByText('عدد المقترضين')).not.toBeInTheDocument();
     expect(screen.getByText(/عرض الفترة/)).toBeInTheDocument();

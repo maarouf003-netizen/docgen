@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
+import { normalizeDocumentResponse } from '../utils/apiNormalization';
 import { useAuth } from '../auth/useAuth';
 import { ApplicantSideSections } from '../components/form/ApplicantSideSections';
 import {
@@ -106,14 +107,14 @@ export default function DocumentForm() {
     api
       .get<DocumentResponse>(`/documents/${id}`)
       .then((r) => {
-        const d = r.data;
+        const d = normalizeDocumentResponse(r.data);
         setForm(toUpsert(d));
         setGuarantors(d.guarantors.length ? d.guarantors : [emptyGuarantor()]);
-        setBorrowerHeirs(d.borrowerHeirs ?? []);
+        setBorrowerHeirs(d.borrowerHeirs);
         // تصحيح أي بيانات قديمة متناقضة عند التحميل: تمام الأصل لا يكون إلا لمالك واحد،
         // والأنواع غير الحصصية (كفالة الرواتب والمتجر غير المسجل) لا تحمل مقدار حصة أصلًا.
         setAssets(
-          (d.assets ?? []).map((a) => ({
+          d.assets.map((a) => ({
             ...a,
             shareType:
               SHAREABLE_ASSET_KINDS.has(a.assetKind ?? '') && (a.owners ?? []).length > 1
@@ -152,12 +153,12 @@ export default function DocumentForm() {
             + Number(Boolean(d.executedRequiredAmount3))),
         );
         // طالب تنفيذ واحد وجهة عامة واحدة يظهران دائمًا (وإن لم يكن للملف أي منهما محفوظًا).
-        setExecutionApplicants(d.executionApplicants?.length ? d.executionApplicants : [emptyExecutionApplicant()]);
-        setExecutedPublicEntities(d.executedPublicEntities?.length ? d.executedPublicEntities : [{ ...emptyExecutedPublicEntity(), governorate: defaultGovernorateRef.current }]);
-        setApplicantPublicEntities(d.applicantPublicEntities?.length ? d.applicantPublicEntities : [{ ...emptyApplicantPublicEntity(), governorate: defaultGovernorateRef.current }]);
-        setExecutedNaturalPersons(d.executedNaturalPersons ?? []);
+        setExecutionApplicants(d.executionApplicants.length ? d.executionApplicants : [emptyExecutionApplicant()]);
+        setExecutedPublicEntities(d.executedPublicEntities.length ? d.executedPublicEntities : [{ ...emptyExecutedPublicEntity(), governorate: defaultGovernorateRef.current }]);
+        setApplicantPublicEntities(d.applicantPublicEntities.length ? d.applicantPublicEntities : [{ ...emptyApplicantPublicEntity(), governorate: defaultGovernorateRef.current }]);
+        setExecutedNaturalPersons(d.executedNaturalPersons);
         setWasOriginallyStruckOff(d.executedStatus === 'مشطوب');
-        setOccurrences(d.occurrences ?? []);
+        setOccurrences(d.occurrences);
       })
       .catch((err) => setError(getApiErrorMessage(err)));
   }, [id, isEdit]);

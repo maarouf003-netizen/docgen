@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
+import { useTimeout } from '../hooks/useTimeout';
 
 export default function FileAlertModal({
   documentId,
@@ -19,6 +20,8 @@ export default function FileAlertModal({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  useTimeout(onClose, success ? 700 : null);
+
   const submit = async () => {
     if (!message.trim()) {
       setError('نص التنبيه مطلوب');
@@ -36,7 +39,6 @@ export default function FileAlertModal({
       });
       setSuccess('تم توجيه التنبيه إلى المحامي المختص');
       onSent?.();
-      window.setTimeout(onClose, 700);
     } catch (err) {
       setError(getApiErrorMessage(err));
     } finally {

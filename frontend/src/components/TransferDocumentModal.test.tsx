@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import TransferDocumentModal from './TransferDocumentModal';
 import type { LawyerListItem } from '../types';
+
+const wait = (ms: number) => act(() => new Promise((resolve) => setTimeout(resolve, ms)));
 
 vi.mock('../api/client', () => ({
   api: { get: vi.fn(), post: vi.fn() },
@@ -72,6 +74,41 @@ describe('TransferDocumentModal', () => {
       expect(api.post).toHaveBeenCalledWith('/documents/5/transfer', { targetLawyerId: 2 });
     });
     expect(onTransferred).toHaveBeenCalled();
+
+    expect(await screen.findByText('تم نقل الملف بنجاح')).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+
+    await wait(800);
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('الإغلاق اليدوي خلال نافذة الإغلاق التلقائي يمنع النداء المتأخر المزدوج', async () => {
+    (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });
+    const onClose = vi.fn();
+    const onTransferred = vi.fn();
+    const user = userEvent.setup();
+    const { unmount } = render(
+      <TransferDocumentModal
+        documentId={5}
+        currentOwnerId={1}
+        onClose={onClose}
+        onTransferred={onTransferred}
+      />,
+    );
+
+    await user.selectOptions(await screen.findByLabelText('المحامي المستهدف'), '2');
+    await user.click(screen.getByRole('button', { name: 'نقل الملف' }));
+    expect(await screen.findByText('تم نقل الملف بنجاح')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'إلغاء' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    unmount();
+
+    await wait(800);
+
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('يعرض رسالة تحقق عند محاولة النقل دون اختيار محامٍ', async () => {

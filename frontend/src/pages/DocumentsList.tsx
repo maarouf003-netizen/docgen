@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { useIsMobile } from '../hooks/useMediaQuery';
+import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { richToPlainText } from '../utils/richText';
 import { STATUS_BADGES, STATUS_OPTIONS, getDocumentStatus } from '../utils/documentStatus';
 import { applicantName, displayFileNumber, fullName, publicEntityBranch as entityBranchDisplay } from '../utils/documentDisplay';
@@ -370,8 +371,6 @@ export default function DocumentsList() {
   const [page, setPage] = useState(saved?.page ?? 1);
   const [focusId] = useState(() => loadLastViewedDocumentId());
   const [focusName, setFocusName] = useState<string | null>(null);
-  const [data, setData] = useState<PagedResult<DocumentResponse> | null>(null);
-  const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState('');
   const [actionsDocId, setActionsDocId] = useState<number | null>(null);
@@ -395,8 +394,7 @@ export default function DocumentsList() {
     query || status || applicant || court || lawyer || administrativeBranch || executedEntity || publicEntityBranch,
   );
 
-  const load = () => {
-    setLoading(true);
+  const listQuery = useCancellableRequest<PagedResult<DocumentResponse>>((signal) => {
     const params = new URLSearchParams();
     if (query) params.set('q', query);
     if (status) params.set('status', status);
@@ -408,25 +406,23 @@ export default function DocumentsList() {
     if (publicEntityBranch) params.set('publicEntityBranch', publicEntityBranch);
     params.set('page', String(page));
     params.set('perPage', '20');
-    api
-      .get<PagedResult<DocumentResponse>>(`/documents?${params.toString()}`)
-      .then((r) => {
-        setData(r.data);
-        // موضع مستعاد يتجاوز عدد الصفحات بعد تغيّر البيانات أثناء الغياب: العودة لآخر صفحة صالحة.
-        if (r.data.items.length === 0 && page > 1 && r.data.totalPages >= 1 && r.data.totalPages < page) {
-          setPage(r.data.totalPages);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    load();
-    // يُحفظ الموضع الحالي في كل جلب كي تُستعاد القائمة في مكانها عند العودة من صفحة ملف.
-    saveDocumentsListPosition({ query, status, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, page });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return api.get(`/documents?${params.toString()}`, { signal }).then((r) => r.data);
   }, [query, status, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, page]);
+
+  const data = listQuery.data;
+  const loading = listQuery.isLoading;
+
+  // يُحفظ الموضع الحالي في كل تغيير للفلاتر أو الصفحة كي تُستعاد القائمة في مكانها عند العودة من صفحة ملف.
+  useEffect(() => {
+    saveDocumentsListPosition({ query, status, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, page });
+  }, [query, status, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, page]);
+
+  // موضع مستعاد يتجاوز عدد الصفحات بعد تغيّر البيانات أثناء الغياب: العودة لآخر صفحة صالحة.
+  useEffect(() => {
+    if (data && data.items.length === 0 && page > 1 && data.totalPages >= 1 && data.totalPages < page) {
+      setPage(data.totalPages);
+    }
+  }, [data, page]);
 
   // عند فتح ملف من القائمة: يُحفظ الموضع الحالي ويُسجَّل الملف كآخر ما فُتح ليميّز عند العودة.
   const openDocument = (id: number) => {
@@ -630,6 +626,38 @@ export default function DocumentsList() {
       </div>
 
       {loading && <div className="text-gray-500">جارِ البحث...</div>}
+
+      {listQuery.error && !data && (
+        <div
+          role="alert"
+          className="mb-4 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700 flex items-center justify-between gap-3 flex-wrap"
+        >
+          <span>{listQuery.error}</span>
+          <button
+            type="button"
+            onClick={listQuery.refetch}
+            className="min-h-11 px-4 rounded-lg bg-emerald-800 hover:bg-emerald-700 text-white font-medium"
+          >
+            إعادة المحاولة
+          </button>
+        </div>
+      )}
+
+      {listQuery.error && data && (
+        <div
+          role="status"
+          className="mb-4 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800 flex items-center justify-between gap-3 flex-wrap"
+        >
+          <span>تعذر تحديث القائمة — تُعرض بيانات سابقة.</span>
+          <button
+            type="button"
+            onClick={listQuery.refetch}
+            className="min-h-11 px-4 rounded-lg border border-amber-300 hover:bg-amber-100 text-amber-900 font-medium"
+          >
+            إعادة المحاولة
+          </button>
+        </div>
+      )}
 
       {focusId != null && !focusVisible && focusName && (
         <div className="mb-4 flex items-center justify-between gap-3 flex-wrap bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2 text-sm text-emerald-800">
@@ -859,7 +887,7 @@ export default function DocumentsList() {
         <ExecutionActionsModal
           documentId={actionsDocId}
           onClose={() => setActionsDocId(null)}
-          onChanged={load}
+          onChanged={listQuery.refetch}
         />
       )}
     </div>
