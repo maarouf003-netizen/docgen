@@ -25,6 +25,17 @@ public sealed class FastTestPasswordHasher : IPasswordHasher
         return Convert.ToHexString(salt).ToLowerInvariant() + ":" + Convert.ToHexString(key).ToLowerInvariant();
     }
 
+    public bool NeedsUpgrade(string storedHash)
+    {
+        // الصيغة المعيارية لهذا البديل السريع هي saltHex:hashHex؛ كل ما عداه يُعد بحاجة لترقية.
+        if (string.IsNullOrEmpty(storedHash))
+            return true;
+
+        var parts = storedHash.Split(':');
+        return !(parts.Length == 2
+            && parts[0].Length == SaltSize * 2
+            && parts[1].Length == KeySize * 2);
+    }
     public bool Verify(string password, string storedHash)
     {
         if (string.IsNullOrEmpty(storedHash))

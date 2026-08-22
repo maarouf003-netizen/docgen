@@ -75,6 +75,62 @@ public class TokenServiceTests
     }
 }
 
+public class PasswordHasherV1Tests
+{
+    private const string V1Prefix = "$docgen$v1$";
+
+    [Fact]
+    public void Hash_ProducesSelfDescribingV1Format_AndRoundTrips()
+    {
+        var hasher = new PasswordHasher();
+
+        var hash = hasher.Hash("123456");
+
+        Assert.StartsWith(V1Prefix, hash);
+        var segments = hash[V1Prefix.Length..].Split('$');
+        Assert.Equal(3, segments.Length);
+        Assert.Equal("600000", segments[0]);
+        Assert.True(hasher.Verify("123456", hash));
+        Assert.False(hasher.Verify("654321", hash));
+    }
+
+    [Fact]
+    public void Hash_UsesRandomSalt_SoSamePasswordYieldsDifferentHashes()
+    {
+        var hasher = new PasswordHasher();
+
+        Assert.NotEqual(hasher.Hash("123456"), hasher.Hash("123456"));
+    }
+
+    [Theory]
+    [InlineData("$docgen$v1$600000$c2FsdA==$aGFzaA==", false)]
+    [InlineData("pbkdf2:sha256:600000$c2FsdA==$aGFzaA==", true)]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", true)]
+    [InlineData("aaaa:bbbb", true)]
+    [InlineData("", true)]
+    public void NeedsUpgrade_FlagsEveryNonCanonicalFormat(string storedHash, bool expected)
+    {
+        var hasher = new PasswordHasher();
+
+        Assert.Equal(expected, hasher.NeedsUpgrade(storedHash));
+    }
+
+    [Fact]
+    public void Verify_AcceptsLegacyHexPairFormat_WithFixedIterations()
+    {
+        // هاش بصيغة saltHex:hashHex القديمة (200k) يبقى صالحًا أثناء الفترة الانتقالية.
+        byte[] salt = System.Security.Cryptography.RandomNumberGenerator.GetBytes(16);
+        byte[] key = System.Security.Cryptography.Rfc2898DeriveBytes.Pbkdf2(
+            "123456", salt, 200_000, System.Security.Cryptography.HashAlgorithmName.SHA256, 32);
+        var legacy = Convert.ToHexString(salt).ToLowerInvariant() + ":"
+            + Convert.ToHexString(key).ToLowerInvariant();
+        var hasher = new PasswordHasher();
+
+        Assert.True(hasher.Verify("123456", legacy));
+        Assert.False(hasher.Verify("wrong", legacy));
+        Assert.True(hasher.NeedsUpgrade(legacy));
+    }
+}
 public class PasswordHasherLegacyTests
 {
     [Fact]

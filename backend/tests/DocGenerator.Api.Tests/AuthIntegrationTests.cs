@@ -221,6 +221,71 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal(branch1, root.GetProperty("user").GetProperty("branchId").GetInt32());
     }
 
+    [Fact]
+    public async Task Login_WithLegacyUnsaltedSha256_UpgradeHashTransparently()
+    {
+        var username = $"lg_{Guid.NewGuid():N}"[..16];
+        await _factory.CreateUserAsync(username, UserRole.Lawyer);
+
+        int tokenVersionBefore;
+        string legacyHash;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+            var hasher = scope.ServiceProvider.GetRequiredService<DocGenerator.Application.Common.Interfaces.IPasswordHasher>();
+            var user = await db.Users.FirstAsync(u => u.Username == username);
+            legacyHash = Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes("123456")))
+                .ToLowerInvariant();
+            user.PasswordHash = legacyHash;
+            await db.SaveChangesAsync();
+            tokenVersionBefore = user.TokenVersion;
+            Assert.True(hasher.NeedsUpgrade(legacyHash));
+        }
+
+        var login = await _factory.LoginAsync(username, "123456");
+        Assert.Equal(HttpStatusCode.OK, (HttpStatusCode)login!.StatusCode);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+            var hasher = scope.ServiceProvider.GetRequiredService<DocGenerator.Application.Common.Interfaces.IPasswordHasher>();
+            var user = await db.Users.AsNoTracking().FirstAsync(u => u.Username == username);
+            Assert.NotEqual(legacyHash, user.PasswordHash);
+            Assert.False(hasher.NeedsUpgrade(user.PasswordHash));
+            Assert.True(hasher.Verify("123456", user.PasswordHash));
+            Assert.Equal(tokenVersionBefore, user.TokenVersion);
+        }
+
+        var secondLogin = await _factory.LoginAsync(username, "123456");
+        Assert.Equal(HttpStatusCode.OK, (HttpStatusCode)secondLogin!.StatusCode);
+    }
+
+    [Fact]
+    public async Task Login_WithCanonicalFormat_DoesNotRehash()
+    {
+        var username = $"cn_{Guid.NewGuid():N}"[..16];
+        await _factory.CreateUserAsync(username, UserRole.Lawyer);
+
+        string canonical;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+            var user = await db.Users.FirstAsync(u => u.Username == username);
+            canonical = user.PasswordHash;
+        }
+
+        var login = await _factory.LoginAsync(username, "123456");
+        Assert.Equal(HttpStatusCode.OK, (HttpStatusCode)login!.StatusCode);
+
+        using (var verifyScope = _factory.Services.CreateScope())
+        {
+            var db = verifyScope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+            var user = await db.Users.AsNoTracking().FirstAsync(u => u.Username == username);
+            Assert.Equal(canonical, user.PasswordHash);
+        }
+    }
+
     private static long? MaxAgeOf(HttpResponseMessage response, string name)
     {
         if (!response.Headers.TryGetValues("Set-Cookie", out var setCookies))

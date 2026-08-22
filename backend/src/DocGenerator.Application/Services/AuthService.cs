@@ -119,6 +119,13 @@ public sealed class AuthService : IAuthService
 
         return await _tx.RunAsync(async token =>
         {
+            // ترقية شفافة لصيغة كلمة المرور: أي هاش ليس بالصيغة المعيارية يُعاد تجزئته
+            // بنفس الكلمة الصحيحة داخل معاملة الدخول نفسها، فلا تبقى حسابات على صيغ
+            // تاريخية أضعف بعد أول دخول ناجح. لا يُلمس token_version فلا خروج قسري.
+            var passwordFormatUpgraded = _hasher.NeedsUpgrade(user.PasswordHash);
+            if (passwordFormatUpgraded)
+                user.PasswordHash = _hasher.Hash(request.Password);
+
             user.FailedLoginCount = 0;
             user.LockoutEndUtc = null;
             user.LastLogin = DateTime.UtcNow;
@@ -126,6 +133,11 @@ public sealed class AuthService : IAuthService
             _users.Update(user);
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(user.Username, "login", details: "تسجيل دخول ناجح", ct: token);
+            if (passwordFormatUpgraded)
+            {
+                await _audit.LogAsync(user.Username, "upgrade_password_format",
+                    details: "ترقية تلقائية لصيغة كلمة المرور إلى الصيغة المعيارية", ct: token);
+            }
             return new LoginResult(LoginStatus.Success,
                 new LoginResponse(_tokenService.CreateToken(user), ToDto(user)));
         }, ct);
