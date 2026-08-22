@@ -49,6 +49,7 @@ function Rows({ kind, asset: r }: { kind: string | undefined; asset: AssetDto })
         <Row label="رقم العقار" value={r.propertyNumber} />
         <Row label="المنطقة العقارية" value={r.propertyDistrict} />
         <Row label="المصالح العقارية المختصة" value={r.landRegistry} />
+        <Row label="تاريخ القاء الحجز" value={r.seizureDate?.slice(0, 10)} />
         {r.shareType ? <Row label="مقدار الحصة" value={r.shareType} /> : null}
       </>
     );
@@ -60,6 +61,7 @@ function Rows({ kind, asset: r }: { kind: string | undefined; asset: AssetDto })
         <Row label="الفئة" value={r.vehicleClass} />
         <Row label="رقم اللوحة" value={r.plateNumber} />
         <Row label="محافظة المركبة" value={r.vehicleGovernorate} />
+        <Row label="تاريخ القاء الحجز" value={r.seizureDate?.slice(0, 10)} />
         {r.shareType ? <Row label="مقدار الحصة" value={r.shareType} /> : null}
       </>
     );
