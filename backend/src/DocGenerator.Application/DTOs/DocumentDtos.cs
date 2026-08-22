@@ -1,3 +1,4 @@
+using DocGenerator.Application.Common;
 using System.Text.Json;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -546,7 +547,7 @@ public class UpsertOccurrenceRequest
     public Dictionary<string, string?>? Details { get; set; }
 }
 
-public class DocumentResponse
+    public class DocumentResponse : DocGenerator.Domain.Entities.IDocumentExecutionState
 {
     public int Id { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -623,6 +624,9 @@ public class DocumentResponse
     public string? BranchName { get; set; }
     /// <summary>اسم الفرع الإداري للملف (فرع المستخدم الذي أدخله) عبر BranchId.</summary>
     public string? AdministrativeBranchName { get; set; }
+    /// <summary>حالة العرض الموحدة المشتقة من الخلفية (المصدر الوحيد للقواعد) — تعرضها الواجهة كما هي.</summary>
+    public string DisplayStatus { get; set; } = string.Empty;
+
     public string? ExecStatus { get; set; }
     public string? ExecSubStatus { get; set; }
     /// <summary>المبالغ المحصَّلة (حتى ثلاثة بعملاتها) في «منفذ بالتسوية»/«منفذ جبريا».</summary>
@@ -727,6 +731,8 @@ public class DocumentResponse
 
     public static DocumentResponse FromEntity(Document d) => new()
     {
+
+            DisplayStatus = DocumentStatusResolver.Resolve(d),
         Id = d.Id,
         CreatedAt = d.CreatedAt,
         UpdatedAt = d.UpdatedAt,

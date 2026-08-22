@@ -1,3 +1,4 @@
+using DocGenerator.Application.Common;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
@@ -127,20 +128,7 @@ public sealed class ExcelExportService : IExcelExportService
     }
 
     private static string StatusText(DocumentResponse doc)
-    {
-        // ملف عائلة وضع «منفذ عليه» (Executed + Deposit): الحالة من ExecutedStatus (متداول/منفذ/مشطوب)
-        // معزولة تمامًا عن حالة نظام «طالبة تنفيذ».
-        if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
-        {
-            if (string.IsNullOrWhiteSpace(doc.ExecutedStatus)) return "متداول";
-            return doc.ExecutedStatus == "مشطوب" ? "مشطوب" : "منفذ";
-        }
-        if (doc.ExecStatus == "تريث") return "تريث";
-        if (doc.ExecStatus == "منفذ جبريا" && doc.ExecSubStatus == "منفذ جزئيا") return "متداول / منفذ جزئيا";
-        if (doc.ExecStatus == "منفذ جبريا" || doc.ExecStatus == "منفذ بالتسوية"
-            || doc.ExecStatus == ExecutionStatusCatalog.DelegationExecuted) return "منفذ";
-        return doc.IsDraft ? "تحت رفع" : "متداول";
-    }
+        => DocumentStatusResolver.Resolve(doc);
 
     private static string FullName(DocumentResponse doc)
     {
