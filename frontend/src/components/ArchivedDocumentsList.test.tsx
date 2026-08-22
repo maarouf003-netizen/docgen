@@ -112,7 +112,10 @@ describe('ArchivedDocumentsList', () => {
 
     render(<ArchivedDocumentsList config={cfg} />);
     const table = await screen.findByRole('table');
-    expect(api.get).toHaveBeenCalledWith(expect.stringContaining('/documents/struck-off'));
+    expect(api.get).toHaveBeenCalledWith(
+      expect.stringContaining('/documents/struck-off'),
+      expect.any(Object),
+    );
 
     await user.click(within(table).getByRole('button', { name: 'إعادة الملف' }));
     await user.click(within(table).getByRole('button', { name: 'تأكيد الإعادة' }));

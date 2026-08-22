@@ -1,6 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
+import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { applicantName, displayFileNumber, isExecutedLike } from '../utils/documentDisplay';
 import { RenewalFields, type RenewalFieldsValue } from './form/RenewalFields';
@@ -51,14 +52,12 @@ export default function ArchivedDocumentsList({ config }: { config: ArchivedDocu
   const isMobile = useIsMobile();
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
-  const [data, setData] = useState<PagedResult<DocumentResponse> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [confirmId, setConfirmId] = useState<number | null>(null);
   const [restoringId, setRestoringId] = useState<number | null>(null);
   const [renewal, setRenewal] = useState<RenewalFieldsValue>({});
   const [renewalError, setRenewalError] = useState('');
+  const [actionError, setActionError] = useState('');
 
   const onRenewalSet = (key: keyof RenewalFieldsValue, value: string) => {
     setRenewal((r) => ({ ...r, [key]: key === 'renewalYear' ? (value.trim() ? Number(value.trim()) : undefined) : value }));
@@ -71,23 +70,20 @@ export default function ArchivedDocumentsList({ config }: { config: ArchivedDocu
     setConfirmId(d.id);
   };
 
-  const load = () => {
-    setLoading(true);
-    const params = new URLSearchParams();
-    if (query) params.set('q', query);
-    params.set('page', String(page));
-    params.set('perPage', '20');
-    api
-      .get<PagedResult<DocumentResponse>>(`${config.fetchEndpoint}?${params.toString()}`)
-      .then((r) => setData(r.data))
-      .catch((err) => setError(getApiErrorMessage(err)))
-      .finally(() => setLoading(false));
-  };
+  const listQuery = useCancellableRequest<PagedResult<DocumentResponse>>(
+    (signal) => {
+      const params = new URLSearchParams();
+      if (query) params.set('q', query);
+      params.set('page', String(page));
+      params.set('perPage', '20');
+      return api.get(`${config.fetchEndpoint}?${params.toString()}`, { signal }).then((r) => r.data);
+    },
+    [query, page],
+  );
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, page]);
+  const data = listQuery.data;
+  const loading = listQuery.isLoading;
+
 
   const handleRestore = async (d: DocumentResponse) => {
     if (!config.canRestore || !config.restoreEndpoint) return;
@@ -103,7 +99,6 @@ export default function ArchivedDocumentsList({ config }: { config: ArchivedDocu
       }
     }
     setRestoringId(d.id);
-    setError('');
     try {
       if (config.requiresRenewal) {
         await api.post(config.restoreEndpoint(d.id), {
@@ -119,9 +114,9 @@ export default function ArchivedDocumentsList({ config }: { config: ArchivedDocu
       }
       setMessage(config.successMessage?.(config.displayName(d) || String(d.id)) ?? '');
       setConfirmId(null);
-      load();
+      listQuery.refetch();
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      setActionError(getApiErrorMessage(err));
     } finally {
       setRestoringId(null);
     }
@@ -212,7 +207,7 @@ export default function ArchivedDocumentsList({ config }: { config: ArchivedDocu
         />
       </div>
 
-      {error && <div className="text-red-600 mb-4">{error}</div>}
+      {(listQuery.error || actionError) && <div role="alert" className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm mb-4">{listQuery.error || actionError}</div>}
       {message && <div className="text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2 mb-4">{message}</div>}
 
       {loading && <div className="text-gray-500">جارِ البحث...</div>}

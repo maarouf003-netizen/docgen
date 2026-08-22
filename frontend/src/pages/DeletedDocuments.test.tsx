@@ -106,7 +106,10 @@ describe('DeletedDocuments', () => {
 
     expect(api.post).toHaveBeenCalledWith('/documents/7/restore');
     expect(await screen.findByText(/تمت استعادة الملف/)).toBeInTheDocument();
-    expect(api.get).toHaveBeenCalledWith(expect.stringContaining('/documents/deleted'));
+    expect(api.get).toHaveBeenCalledWith(
+      expect.stringContaining('/documents/deleted'),
+      expect.any(Object),
+    );
   });
 
   it('يلغي التأكيد دون إرسال طلب الاستعادة', async () => {
