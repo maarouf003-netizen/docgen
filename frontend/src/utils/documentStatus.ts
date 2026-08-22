@@ -39,6 +39,11 @@ export function getExecutedStatus(doc: StatusSource): DocumentStatus {
 }
 
 export function getDocumentStatus(doc: StatusSource): DocumentStatus {
+  // المصدر الوحيد للقواعد هو الخلفية (DocumentStatusResolver) عبر displayStatus.
+  // المسار الاحتياطي أدناه للـmocks/البيانات العتيقة فقط — يُحذف مع أول تنظيف لاحق.
+  const server = (doc as { displayStatus?: string }).displayStatus;
+  if (server) return server as DocumentStatus;
+
   if (isExecutedLike(doc.generalEntitySide)) return getExecutedStatus(doc);
   // «مشطوب» في نظام «طالبة تنفيذ» موحّد مع صفحة «الملفات المشطوبة».
   if (doc.execStatus === EXEC_STATUS_STRUCK_OFF) return 'مشطوب';

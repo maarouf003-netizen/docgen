@@ -325,6 +325,8 @@ export interface DocumentResponse {
   fileRegistrationDate?: string;
   branchName?: string;
   administrativeBranchName?: string;
+  /** حالة العرض الموحدة المشتقة من الخلفية (منفذ/تريث/تحت رفع/متداول/متداول / منفذ جزئيا/مشطوب). */
+  displayStatus?: string;
   execStatus?: string;
   execSubStatus?: string;
   /** المبالغ المحصَّلة (حتى ثلاثة بعملاتها) في «منفذ بالتسوية»/«منفذ جبريا». */
