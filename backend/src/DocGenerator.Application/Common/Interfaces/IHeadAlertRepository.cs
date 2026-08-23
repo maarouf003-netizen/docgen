@@ -31,4 +31,7 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
 
     /// <summary>أحدث تنبيه للإنابة (لتحديث رسالته عند تعديل الإنابة).</summary>
     Task<HeadAlert?> FindLatestByDelegationAsync(int delegationId, CancellationToken ct = default);
+
+    /// <summary>كل تنبيهات الاستئناف المحدد (لتصفية تنبيه «اختيار المحامي» عند الإسناد).</summary>
+    Task<List<HeadAlert>> ListByAppealAsync(int appealId, CancellationToken ct = default);
 }

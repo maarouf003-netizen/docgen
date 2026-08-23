@@ -8,6 +8,9 @@ namespace DocGenerator.Application.Common.Interfaces;
 /// </summary>
 public interface IDocumentRepository : IRepository<Document>
 {
+    /// <summary>هل يوجد ملف (غير محذوف منطقيًا) بمعرف معين؟ — فحص وجود رخيص.</summary>
+    Task<bool> ExistsAsync(int id, CancellationToken ct = default);
+
     Task<(int TotalCount, List<Document> Items)> SearchAsync(
         string? query,
         string? status,

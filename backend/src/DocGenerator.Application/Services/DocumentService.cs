@@ -120,6 +120,7 @@ public sealed partial class DocumentService : IDocumentService
     private readonly IRepository<DocumentRegistrationDate> _registrationDates;
     private readonly IRepository<DocumentOccurrence> _occurrences;
     private readonly IDelegationRepository _delegations;
+    private readonly IAppealRepository _appeals;
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
@@ -135,6 +136,7 @@ public sealed partial class DocumentService : IDocumentService
         IRepository<DocumentRegistrationDate> registrationDates,
         IRepository<DocumentOccurrence> occurrences,
         IDelegationRepository delegations,
+        IAppealRepository appeals,
         IUnitOfWork uow,
         ITransactionRunner tx,
         IAuditLogger audit,
@@ -149,6 +151,7 @@ public sealed partial class DocumentService : IDocumentService
         _registrationDates = registrationDates;
         _occurrences = occurrences;
         _delegations = delegations;
+        _appeals = appeals;
         _uow = uow;
         _tx = tx;
         _audit = audit;

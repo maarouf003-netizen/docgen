@@ -8,6 +8,8 @@ import Layout from './components/Layout';
 const Login = lazy(() => import('./pages/Login'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const DocumentsList = lazy(() => import('./pages/DocumentsList'));
+const AppealsList = lazy(() => import('./pages/AppealsList'));
+const AppealDetail = lazy(() => import('./pages/AppealDetail'));
 const DeletedDocuments = lazy(() => import('./pages/DeletedDocuments'));
 const StruckOffDocuments = lazy(() => import('./pages/StruckOffDocuments'));
 const ExecutedDocuments = lazy(() => import('./pages/ExecutedDocuments'));
@@ -67,6 +69,8 @@ export default function App() {
           >
             <Route path="/" element={<Dashboard />} />
             <Route path="/documents" element={<DocumentsList />} />
+          <Route path="/appeals" element={<AppealsList />} />
+          <Route path="/appeals/:id" element={<AppealDetail />} />
             <Route path="/documents/deleted" element={<DeletedDocuments />} />
             <Route path="/documents/struck-off" element={<StruckOffDocuments />} />
             <Route path="/documents/executed" element={<ExecutedDocuments />} />

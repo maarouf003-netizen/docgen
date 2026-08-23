@@ -20,12 +20,18 @@ public class DocumentsController : ControllerBase
     private readonly IDocumentService _documents;
     private readonly IWordDocumentGenerator _generator;
     private readonly IExcelExportService _excel;
+    private readonly IDocumentAppealService _appeals;
 
-    public DocumentsController(IDocumentService documents, IWordDocumentGenerator generator, IExcelExportService excel)
+    public DocumentsController(
+        IDocumentService documents,
+        IWordDocumentGenerator generator,
+        IExcelExportService excel,
+        IDocumentAppealService appeals)
     {
         _documents = documents;
         _generator = generator;
         _excel = excel;
+        _appeals = appeals;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -55,6 +61,13 @@ public class DocumentsController : ControllerBase
         if (IsHead) return doc.BranchId == User.GetBranchId();
         return doc.CreatedById == User.GetUserId();
     }
+
+    /// <summary>
+    /// وصول القراءة الموسّع: يضيف على قاعدة CanAccess المحامي المُسند إليه متابعة
+    /// استئناف على هذا الملف (قراءة فقط — لصفحة تفاصيل الاستئناف).
+    /// </summary>
+    private async Task<bool> CanAccessOrFollowAsync(DocumentResponse doc)
+        => CanAccess(doc) || await _appeals.IsAssignedFollowerAsync(doc.Id, User.GetUserId());
 
     [HttpGet]
     public async Task<IActionResult> Search(
@@ -185,7 +198,7 @@ public class DocumentsController : ControllerBase
     {
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!CanAccess(doc)) return Forbid();
+        if (!await CanAccessOrFollowAsync(doc)) return Forbid();
         return Ok(Sanitize(doc));
     }
 
@@ -195,7 +208,7 @@ public class DocumentsController : ControllerBase
         // تاريخ أرقام الأساس — بنفس صلاحيات العرض المفصّل للملف.
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!CanAccess(doc)) return Forbid();
+        if (!await CanAccessOrFollowAsync(doc)) return Forbid();
         return Ok(await _documents.GetBaseNumberHistoryAsync(id, ct));
     }
 
@@ -540,7 +553,7 @@ public class DocumentsController : ControllerBase
     {
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!CanAccess(doc)) return Forbid();
+        if (!await CanAccessOrFollowAsync(doc)) return Forbid();
 
         var actions = await _documents.GetExecutionActionsAsync(id, ct);
         return Ok(actions);

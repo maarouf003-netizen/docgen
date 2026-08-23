@@ -316,7 +316,42 @@ public class StatisticsRepository : IStatisticsRepository
             .Where(r => r.PeriodDate >= window.Start && r.PeriodDate < window.End)
             .ToListAsync(ct);
 
-        return AggregateManagerStats(rows, period, window);
+        return AggregateManagerStats(rows, period, window)
+            with { Appeals = await GetPersonalAppealsStatsAsync(userId, window.Start, window.End, ct) };
+    }
+
+    /// <summary>
+    /// عدادات استئنافات المحامي في نطاق الفترة (المسندة إليه للمتابعة):
+    /// المنظورة بحسب لحظة التسطير، والمحسومة للصالح/للضد بحسب تاريخ قرار الحسم
+    /// (وبديلٍ لحظة التسطير إن غاب). null عند غياب أي استئناف.
+    /// </summary>
+    private async Task<AppealsStatsDto?> GetPersonalAppealsStatsAsync(
+        int userId, DateTime start, DateTime end, CancellationToken ct)
+    {
+        var rows = await _db.DocumentAppeals.AsNoTracking()
+            .Where(a => a.AssignedLawyerId == userId)
+            .Select(a => new
+            {
+                a.Status,
+                a.Outcome,
+                a.CreatedAt,
+                a.DecisionDate,
+            })
+            .ToListAsync(ct);
+        if (rows.Count == 0)
+            return null;
+
+        var pending = rows.Count(r =>
+            r.Status == AppealStatusCatalog.Pending
+            && r.CreatedAt >= start && r.CreatedAt < end);
+        var inFavor = rows.Count(r =>
+            r.Status == AppealStatusCatalog.Decided && r.Outcome == AppealOutcomeCatalog.InFavor
+            && (r.DecisionDate ?? r.CreatedAt) >= start && (r.DecisionDate ?? r.CreatedAt) < end);
+        var against = rows.Count(r =>
+            r.Status == AppealStatusCatalog.Decided && r.Outcome == AppealOutcomeCatalog.Against
+            && (r.DecisionDate ?? r.CreatedAt) >= start && (r.DecisionDate ?? r.CreatedAt) < end);
+
+        return new AppealsStatsDto(pending, inFavor, against);
     }
 
     /// <summary>العملات المعروفة في شاشة الإحصاءات بترتيب العرض الثابت.</summary>
@@ -713,30 +748,9 @@ public class StatisticsRepository : IStatisticsRepository
                 r.ActionDate,
                 r.ReminderDuration,
                 r.ReminderColor,
-                ComputeDueDate(r.ActionDate, r.ReminderDuration, r.CreatedAt)))
+                ActionReminderCalculator.ComputeDueDate(r.ActionDate, r.ReminderDuration, r.CreatedAt)))
             .OrderBy(r => r.DueDate)
             .ThenBy(r => r.DocumentId)
             .ToList();
     }
-
-    /// <summary>
-    /// تاريخ الاستحقاق = تاريخ الإجراء + مدة التذكير،
-    /// وإن غاب تاريخ الإجراء فتاريخ الإنشاء + مدة التذكير.
-    /// </summary>
-    private static DateTime ComputeDueDate(string? actionDate, string? duration, DateTime createdAt)
-    {
-        var baseDate = TryParseActionDate(actionDate) ?? createdAt;
-        return baseDate.Date.AddDays(DurationDays(duration));
-    }
-
-    private static DateTime? TryParseActionDate(string? value) => ActionDateParser.TryParse(value);
-
-    private static int DurationDays(string? duration) => duration switch
-    {
-        "3 أيام" => 3,
-        "أسبوع" => 7,
-        "أسبوعين" => 14,
-        "شهر" => 30,
-        _ => 0,
-    };
 }

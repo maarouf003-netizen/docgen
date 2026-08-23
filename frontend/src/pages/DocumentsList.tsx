@@ -12,11 +12,27 @@ import { loadDocumentsListPosition, loadLastViewedDocumentId, saveDocumentsListP
 import ExecutionActionsModal from '../components/ExecutionActionsModal';
 import type { DocumentResponse, PagedResult } from '../types';
 
-function FileNumber({ d }: { d: DocumentResponse }) {
+export function FileNumber({ d, fallback }: { d: DocumentResponse; fallback?: string }) {
   const text = displayFileNumber(d);
-  if (!text) return <span className="text-gray-800">{text}</span>;
+  const hasAppealBadge = Boolean(d.hasAppeals && d.matchedAppealId);
+  // الفراغ الأصلي يُحفظ لملفات «تحت الرفع» بلا شارة؛ والبديل (؟) للبطاقات الجوالة فقط.
+  if (!text && !hasAppealBadge) {
+    return <span className="text-gray-800">{fallback ?? ''}</span>;
+  }
   return (
-    <span className={d.needsRotation ? 'text-red-600 font-bold' : 'text-gray-800'}>{text}</span>
+    <div className="flex flex-col items-start gap-1">
+      <span className={d.needsRotation ? 'text-red-600 font-bold' : 'text-gray-800'}>{text}</span>
+      {/* شارة «استئناف»: للملفات التي عليها استئناف — تفتح تفاصيل الاستئناف. */}
+      {hasAppealBadge && (
+        <Link
+          to={`/appeals/${d.matchedAppealId}`}
+          aria-label={`فتح تفاصيل استئناف الملف رقم ${text}`}
+          className="text-[11px] px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 font-medium"
+        >
+          استئناف
+        </Link>
+      )}
+    </div>
   );
 }
 
@@ -287,6 +303,15 @@ function MoreMenu({
                 الملفات المحذوفة
               </Link>
             )}
+            {/* بند «الاستئنافات» — بخط أحمر مميز كما هو معتمد. */}
+            <Link
+              to="/appeals"
+              role="menuitem"
+              onClick={close}
+              className="block w-full text-right px-4 py-2 min-h-11 text-sm font-medium text-red-700 hover:bg-red-50"
+            >
+              الاستئنافات
+            </Link>
             {canViewDeleted && (
               <Link
                 to="/documents/struck-off"
@@ -708,7 +733,7 @@ export default function DocumentsList() {
                     </div>
                   )}
                   <div className="text-sm font-medium text-gray-800 mt-1">
-                    رقم الملف: {displayFileNumber(d) ? <FileNumber d={d} /> : '—'}
+                    رقم الملف: <FileNumber d={d} fallback="؟" />
                   </div>
                   <div className="mt-3 pt-3 border-t border-gray-100">
                     <ActionsCell d={d} onClick={() => setActionsDocId(d.id)} />

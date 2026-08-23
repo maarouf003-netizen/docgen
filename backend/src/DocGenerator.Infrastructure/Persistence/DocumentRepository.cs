@@ -13,6 +13,10 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
 {
     public DocumentRepository(DocGeneratorDbContext db) : base(db) { }
 
+    /// <summary>فحص وجود رخيص (يحترم فلتر الحذف المنطقي).</summary>
+    public Task<bool> ExistsAsync(int id, CancellationToken ct = default)
+        => Db.Documents.AnyAsync(d => d.Id == id, ct);
+
     public async Task<(int TotalCount, List<Document> Items)> SearchAsync(
         string? query,
         string? status,
@@ -84,7 +88,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         return await q.CountAsync(ct);
     }
 
-    private static IQueryable<Document> ApplySearchFilters(
+    private IQueryable<Document> ApplySearchFilters(
         IQueryable<Document> q,
         string? query,
         string? status,
@@ -192,6 +196,9 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         if (!string.IsNullOrWhiteSpace(query))
         {
             var term = query.Trim();
+            // البحث بأسماء المستأنف/المستأنف عليهم من لقطات الاستئنافات: ملفٌ يطابق
+            // إذا كان عليه استئناف تحوي الاسم في لقطته — تظهر نتائجه بشارة «استئناف».
+            var appeals = Db.DocumentAppeals;
             q = q.Where(d =>
                 (d.SearchText != null && d.SearchText.Contains(term)) ||
                 (d.BorrowerName != null &&
@@ -210,7 +217,11 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
                 d.ExecutedHeirs.Any(h =>
                     h.HeirName != null &&
                     ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
-                     (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term))));
+                     (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term))) ||
+                appeals.Any(a =>
+                    a.DocumentId == d.Id &&
+                    ((a.AppellantsJson != null && a.AppellantsJson.Contains(term)) ||
+                     (a.AppelleesJson != null && a.AppelleesJson.Contains(term)))));
         }
 
         return q;

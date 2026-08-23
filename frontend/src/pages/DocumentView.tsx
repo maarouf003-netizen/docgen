@@ -20,7 +20,9 @@ import RegisterDelegationModal from '../components/delegation/RegisterDelegation
 import CompleteDelegationModal from '../components/delegation/CompleteDelegationModal';
 import { DelegationsCard } from '../components/delegation/DelegationsCard';
 import { SourceFileInfoCard } from '../components/delegation/SourceFileInfoCard';
-import type { DelegationDto, DocumentResponse } from '../types';
+import AppealFormModal from '../components/appeal/AppealFormModal';
+import AppealInfoModal from '../components/appeal/AppealInfoModal';
+import type { AppealDirection, AppealDto, DelegationDto, DocumentResponse } from '../types';
 import DocumentGenerationModal from '../components/view/DocumentGenerationModal';
 import { ExecutoryDocumentCard } from '../components/view/ExecutoryDocumentCard';
 import { FileDataCard } from '../components/view/FileDataCard';
@@ -52,6 +54,11 @@ export default function DocumentView() {
   const [completeOpen, setCompleteOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DelegationDto | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // الاستئنافات: قائمة استئنافات الملف، وقائمة «استئناف» المنسدلة، ونموذج التسطير
+  // باتجاهه (مستأنِفين/مستأنف علينا)، ونافذة تفاصيل الاستئناف المفتوحة.
+  const [appealMenuOpen, setAppealMenuOpen] = useState(false);
+  const [appealFormVariant, setAppealFormVariant] = useState<AppealDirection | null>(null);
+  const [infoAppeal, setInfoAppeal] = useState<AppealDto | null>(null);
   // مسار الجوال: تبويبات أقسام الملف (نمط تفصيلي للشاشات الصغيرة) بدل الأعمدة المتوازية.
   const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState<'info' | 'security' | 'delegations' | 'status'>('info');
@@ -73,16 +80,32 @@ export default function DocumentView() {
     [id],
     { enabled: Boolean(id) },
   );
+  // استئنافات الملف: تُغذّي جزء «الاستئنافات» في بطاقة وقوعات الملف.
+  const appealsQuery = useCancellableRequest<AppealDto[]>(
+    (signal) =>
+      api
+        .get<AppealDto[]>(`/documents/${id}/appeals`, { signal })
+        .then((r) => (Array.isArray(r.data) ? r.data : [])),
+    [id],
+    { enabled: Boolean(id) },
+  );
 
   const doc = docQuery.data ?? null;
   const delegations = delegationsQuery.data ?? [];
+  const appeals = appealsQuery.data ?? [];
   const fetchError = docQuery.error;
   const load = docQuery.refetch;
   const loadDelegations = delegationsQuery.refetch;
+  const loadAppeals = appealsQuery.refetch;
 
   // يُسجَّل الملف كآخر ما فُتح في الجلسة ليُميَّز في القائمة عند العودة (حتى لو فُتح من غير القائمة).
   useEffect(() => {
     if (id) saveLastViewedDocumentId(Number(id));
+    // الانتقال بين ملفين يعيد استخدام نفس الصفحة: تُغلق واجهات الاستئناف المعلّقة
+    // حتى لا تبقى مفتوحة على محتوى ملف سابق.
+    setAppealMenuOpen(false);
+    setAppealFormVariant(null);
+    setInfoAppeal(null);
   }, [id]);
 
   if (fetchError) return <div role="alert" className="text-red-600">{fetchError}</div>;
@@ -120,6 +143,8 @@ export default function DocumentView() {
   // تسطير الإنابة من محامي الملف المالك على ملف «طالبة تنفيذ» متداول غير منفذ/مشطوب
   // (نفس شروط الخلفية: ValidateSourceForDelegation).
   const isOwner = doc.createdById != null && doc.createdById === user?.id;
+  // تسطير استئناف: محامي الملف المالك على أي ملف مقيد (غير تحت الرفع) — حتى المنفذ/المشطوب.
+  const canCreateAppeal = canEdit && isOwner && !doc.isDraft;
   const canCreateDelegation =
     canEdit &&
     isOwner &&
@@ -208,7 +233,12 @@ export default function DocumentView() {
           />
         )
       )}
-      <OccurrencesCard doc={doc} onOpen={() => setOccurrencesOpen(true)} />
+      <OccurrencesCard
+        doc={doc}
+        appeals={appeals}
+        onOpen={() => setOccurrencesOpen(true)}
+        onOpenAppeal={setInfoAppeal}
+      />
     </>
   );
   const statusPanel = (
@@ -254,6 +284,64 @@ export default function DocumentView() {
               <Link to={`/documents/${id}/edit`} className="bg-emerald-800 hover:bg-emerald-700 text-white rounded-lg px-4 py-2 text-sm inline-flex items-center min-h-11">
                 تعديل
               </Link>
+            )}
+            {/* زر «استئناف» بقائمة منسدلة (مستأنِفين / مستأنف علينا) — محامي الملف المالك. */}
+            {canCreateAppeal && (
+              <div
+                className="relative"
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setAppealMenuOpen(false);
+                }}
+              >
+                <button
+                  type="button"
+                  aria-haspopup="menu"
+                  aria-expanded={appealMenuOpen}
+                  onClick={() => setAppealMenuOpen((v) => !v)}
+                  className="bg-[#800000] hover:bg-[#9e0e0e] text-white rounded-lg px-4 py-2 text-sm min-h-11 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  استئناف ▾
+                </button>
+                {appealMenuOpen && (
+                  <>
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      aria-label="إغلاق قائمة الاستئناف"
+                      onClick={() => setAppealMenuOpen(false)}
+                      className="fixed inset-0 z-40 cursor-default"
+                    />
+                    <div
+                      role="menu"
+                      aria-label="نوع الاستئناف"
+                      className="absolute z-50 mt-1 w-44 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden"
+                    >
+                      <button
+                        role="menuitem"
+                        type="button"
+                        onClick={() => {
+                          setAppealMenuOpen(false);
+                          setAppealFormVariant('appellants');
+                        }}
+                        className="block w-full text-right px-4 py-3 text-sm text-gray-800 hover:bg-red-50 min-h-11 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500"
+                      >
+                        مستأنِفين
+                      </button>
+                      <button
+                        role="menuitem"
+                        type="button"
+                        onClick={() => {
+                          setAppealMenuOpen(false);
+                          setAppealFormVariant('against-us');
+                        }}
+                        className="block w-full text-right px-4 py-3 text-sm text-gray-800 hover:bg-red-50 min-h-11 border-t border-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500"
+                      >
+                        مستأنف علينا
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             )}
             {!isExecuted && !isDelegationExecuted && (
               <button
@@ -421,6 +509,20 @@ export default function DocumentView() {
       )}
 
       {partyModal && <PartyDetailsModal modal={partyModal} onClose={() => setPartyModal(null)} />}
+
+      {appealFormVariant && doc && (
+        <AppealFormModal
+          doc={doc}
+          variant={appealFormVariant}
+          onClose={() => setAppealFormVariant(null)}
+          onSaved={() => {
+            setAppealFormVariant(null);
+            loadAppeals();
+          }}
+        />
+      )}
+
+      <AppealInfoModal appeal={infoAppeal} onClose={() => setInfoAppeal(null)} />
 
       {delegationFormOpen && id !== undefined && (
         <DelegationFormModal

@@ -708,6 +708,13 @@ public class UpsertOccurrenceRequest
     /// فيظهر رقم ملفه بالأحمر في «الملفات التنفيذية».
     /// </summary>
     public bool NeedsRotation { get; set; }
+    /// <summary>
+    /// صحيح إذا كان على الملف استئناف واحد على الأقل — تُعرض بجانب نتيجة البحث
+    /// شارة «استئناف»، ويفتح النقر عليها تفاصيل الاستئناف (MatchedAppealId).
+    /// </summary>
+    public bool HasAppeals { get; set; }
+    /// <summary>معرف أول استئناف على الملف عند وجوده (للانتقال إلى تفاصيل الاستئناف).</summary>
+    public int? MatchedAppealId { get; set; }
     public List<GuarantorDto> Guarantors { get; set; } = new();
     public List<AssetDto> Assets { get; set; } = new();
     /// <summary>ورثة المقترض المتوفى (إن وُجدوا).</summary>

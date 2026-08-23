@@ -39,6 +39,9 @@ public class DocGeneratorDbContext : DbContext
     public DbSet<DocumentAssignment> DocumentAssignments => Set<DocumentAssignment>();
     public DbSet<DocumentDelegation> DocumentDelegations => Set<DocumentDelegation>();
     public DbSet<DelegationAsset> DelegationAssets => Set<DelegationAsset>();
+    public DbSet<DocumentAppeal> DocumentAppeals => Set<DocumentAppeal>();
+    public DbSet<AppealAction> AppealActions => Set<AppealAction>();
+    public DbSet<AppealBaseNumber> AppealBaseNumbers => Set<AppealBaseNumber>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -34,6 +34,7 @@ public static class DependencyInjection
         services.AddScoped<IBranchRepository, BranchRepository>();
         services.AddScoped<IHeadAlertRepository, HeadAlertRepository>();
         services.AddScoped<IDelegationRepository, DelegationRepository>();
+        services.AddScoped<IAppealRepository, AppealRepository>();
         services.AddScoped<IStatisticsRepository, StatisticsRepository>();
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();
         services.AddScoped<IAuditLogger, AuditLogger>();

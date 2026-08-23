@@ -84,4 +84,13 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             .OrderByDescending(a => a.CreatedAt)
             .FirstOrDefaultAsync(ct);
     }
+
+    public async Task<List<HeadAlert>> ListByAppealAsync(int appealId, CancellationToken ct = default)
+    {
+        // تتبُّع مفعّل: تُحذف هذه الكيانات عبر Remove فتُعاد للمُغيّر ذاتها (نمط ListByDelegationAsync).
+        return await Db.HeadAlerts
+            .Where(a => a.AppealId == appealId)
+            .OrderByDescending(a => a.CreatedAt)
+            .ToListAsync(ct);
+    }
 }

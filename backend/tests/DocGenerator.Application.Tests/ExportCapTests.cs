@@ -46,6 +46,7 @@ public class ExportCapTests : IDisposable
             new Repository<DocumentRegistrationDate>(_db),
             new Repository<DocumentOccurrence>(_db),
             new DelegationRepository(_db),
+            new AppealRepository(_db),
             new UnitOfWork(_db),
             new TransactionRunner(_db),
             _audit,

@@ -16,6 +16,28 @@ export const TARGET_TYPE_BADGES: Record<HeadAlertTargetType, string> = {
   head: 'bg-slate-100 text-slate-700 border-slate-200',
 };
 
+/**
+ * تسمية نوع التنبيه واعية بالاستئناف: التنبيهات المرتبطة باستئناف (`appealId`)
+ * تحصل على تسميات مرحلتها الخاصة بدل تسميات الإنابة/الرسائل العامة —
+ * والبقية تبقى على التسميات الأصلية كما هي.
+ */
+export function appealAwareTypeLabel(alert: { targetType: string; appealId?: number }): string {
+  if (alert.appealId) {
+    switch (alert.targetType) {
+      case 'head':
+        return 'بانتظار اختيار محامٍ للاستئناف';
+      case 'lawyer':
+        return 'إسناد استئناف';
+      case 'document':
+        return 'حالة استئناف';
+      default:
+        break;
+    }
+  }
+  const labels = TARGET_TYPE_LABELS as Record<string, string>;
+  return labels[alert.targetType] ?? alert.targetType;
+}
+
 export const MONTHS = [
   'كانون الثاني', 'شباط', 'آذار', 'نيسان', 'أيار', 'حزيران',
   'تموز', 'آب', 'أيلول', 'تشرين الأول', 'تشرين الثاني', 'كانون الأول',

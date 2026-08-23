@@ -17,6 +17,8 @@ public class HeadAlert
     public int? TargetLawyerId { get; set; }
     /// <summary>رابط تنبيهات دورة حياة الإنابة (بانتظار الاعتماد/الإتمام) بالإنابة نفسها لتصفيتها تلقائيًا.</summary>
     public int? DelegationId { get; set; }
+    /// <summary>رابط تنبيهات دورة حياة الاستئناف (بانتظار اختيار المحامي/الحسم/الشطب) بالاستئناف نفسه لتصفيتها تلقائيًا.</summary>
+    public int? AppealId { get; set; }
     public string Message { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
@@ -24,5 +26,6 @@ public class HeadAlert
     public User? CreatedBy { get; set; }
     public Document? Document { get; set; }
     public User? TargetLawyer { get; set; }
+    public DocumentAppeal? Appeal { get; set; }
     public ICollection<HeadAlertRecipient> Recipients { get; set; } = new List<HeadAlertRecipient>();
 }

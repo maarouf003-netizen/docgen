@@ -436,6 +436,10 @@ export interface DocumentResponse {
   fileArrivalDate?: string;
   /** «وقوعات الملف»: سجل زمني لكل شطب وتجديد في وضع «منفذ عليه»/«عرض وايداع» (مرتب تصاعديًا). */
   occurrences?: DocumentOccurrenceDto[];
+  /** هل للملف استئناف واحد على الأقل — لشارة «استئناف» بجانب نتائج البحث. */
+  hasAppeals?: boolean;
+  /** معرف أول استئناف على الملف عند وجوده (للانتقال إلى تفاصيل الاستئناف). */
+  matchedAppealId?: number;
 }
 
 /** أصل موضوع إنابة: وصف قراءة (النوع + وصفه) وبدل المبيع عند البيع (بالليرة السورية). */
@@ -749,6 +753,15 @@ export interface ManagerStatsDto {
   periodYear: number;
   periodQuarter: number | null;
   periodMonth: number | null;
+  /** إحصاء استئنافات المحامي وفق فلاتر الفترة — null عند غياب أي استئناف (تُخفى البطاقة). */
+  appeals?: AppealsStatsDto | null;
+}
+
+/** عدادات بطاقة «الاستئنافات» في لوحة المحامي. */
+export interface AppealsStatsDto {
+  pendingCount: number;
+  decidedInFavor: number;
+  decidedAgainst: number;
 }
 
 export interface DocumentFilterOptionsDto {
@@ -850,8 +863,23 @@ export interface HeadAlertDto {
   isRead?: boolean;
   recipientCount?: number;
   unreadCount?: number;
+  /** الاستئناف المرتبط بالتنبيه — للانتقال المباشر إلى تفاصيله. */
+  appealId?: number;
   createdAt: string;
   createdByName?: string;
+}
+
+/** تذكير إجراء على استئناف يتابعه المحامي (بطاقة التذكيرات). */
+export interface AppealReminderDto {
+  actionId: number;
+  appealId: number;
+  documentId: number;
+  appealTitle: string;
+  actionText: string;
+  actionDate?: string;
+  reminderDuration?: string;
+  reminderColor?: string;
+  dueDate: string;
 }
 
 export interface CreateHeadAlertRequest {
@@ -928,4 +956,177 @@ export interface UpsertOccurrenceRequest {
   /** حقول إجراءات تغيير الحالة (نظام «طالبة تنفيذ»). */
   details?: Record<string, string>;
 }
+
+/* ── الاستئنافات على الملف التنفيذي ──────────────────────────────────── */
+
+/** اتجاه الاستئناف: مستأنِفين (نحن) أو مستأنف علينا. */
+export type AppealDirection = 'appellants' | 'against-us';
+
+/** حالة الاستئناف: منظور (قيد النظر) / محسوم / مشطوب. */
+export type AppealStatus = 'pending' | 'decided' | 'struck-off';
+
+/** نتيجة الاستئناف المحسوم: للصالح / للضد. */
+export type AppealOutcome = 'in-favor' | 'against';
+
+/** طرف ضمن استئناف (لقطة وقت الإنشاء): نوعه المرجعي ومعرّفه واسمه المعروض. */
+export interface AppealPartyDto {
+  kind: string;
+  partyId: number;
+  name: string;
+}
+
+/** اختيار المستأنف من الواجهة (يُعاد بناء الاسم من الملف الأساس على الخادم). */
+export interface AppealPartySelectionDto {
+  kind: string;
+  partyId: number;
+}
+
+/** استئناف كامل التفاصيل (التواريخ نصية بصيغة yyyy-MM-dd من الخلفية). */
+export interface AppealDto {
+  id: number;
+  documentId: number;
+  documentLabel?: string;
+  fileNumber?: string;
+  fileType?: string;
+  fileYear?: string;
+  court?: string;
+  direction: AppealDirection;
+  directionLabel: string;
+  status: AppealStatus;
+  statusLabel: string;
+  appealTypeLabel?: string;
+  appellants: AppealPartyDto[];
+  appellees: AppealPartyDto[];
+  appealedDecisionText?: string;
+  appealedDecisionSummary?: string;
+  appealedDecisionDate?: string;
+  inspectionBookNumber?: string;
+  inspectionBookDate?: string;
+  groundsSummary?: string;
+  noticeNumber?: string;
+  noticeDate?: string;
+  appellateCourt?: string;
+  appealBaseNumber?: string;
+  appealYear?: string;
+  depositBookNumber?: string;
+  depositBookDate?: string;
+  defenseOpinion?: string;
+  registrationDate?: string;
+  decisionNumber?: string;
+  decisionDate?: string;
+  decisionRuling?: string;
+  outcome?: AppealOutcome;
+  outcomeLabel?: string;
+  struckOffDate?: string;
+  struckOffDecisionNumber?: string;
+  notes?: string;
+  /** يحتاج تدوير رقم أساسه لسنة التدوير الحالية (يظهر بالأحمر). */
+  needsRotation: boolean;
+  /** رقم الأساس المعروض: سجل السنة الحالية إن وُجد وإلا الرقم الأصلي المسجّل. */
+  currentBaseNumber?: string;
+  assignedLawyerId?: number;
+  assignedLawyerName?: string;
+  createdAt: string;
+  createdByName?: string;
+  createdById: number;
+}
+
+/** تسطير/تعديل استئناف قبل الإسناد (التواريخ نصوص حرة بصيغة «1/8/2026»). */
+export interface UpsertAppealRequest {
+  direction: AppealDirection;
+  appellants?: AppealPartySelectionDto[];
+  appealTypeLabel?: string;
+  appealedDecisionText?: string;
+  appealedDecisionSummary?: string;
+  appealedDecisionDate?: string;
+  inspectionBookNumber?: string;
+  inspectionBookDate?: string;
+  groundsSummary?: string;
+  noticeNumber?: string;
+  noticeDate?: string;
+  appellateCourt?: string;
+  appealBaseNumber?: string;
+  appealYear?: string;
+  depositBookNumber?: string;
+  depositBookDate?: string;
+  defenseOpinion?: string;
+  notes?: string;
+}
+
+/** تحديث حقول القيد للاستئناف — المحامي المتابع. */
+export interface UpdateAppealRegistrationRequest {
+  appealTypeLabel?: string;
+  appellateCourt?: string;
+  appealBaseNumber?: string;
+  appealYear?: string;
+  registrationDate?: string;
+}
+
+/** حسم الاستئناف برقم قرار الحسم وتاريخه ومنطوقه ونتيجته. */
+export interface DecideAppealRequest {
+  decisionNumber: string;
+  decisionDate: string;
+  decisionRuling: string;
+  outcome: AppealOutcome;
+}
+
+/** شطب الاستئناف بتاريخ الشطب ورقم قرار الشطب. */
+export interface StrikeAppealRequest {
+  struckOffDecisionNumber: string;
+  struckOffDate: string;
+}
+
+/** إسناد الاستئناف إلى محامٍ للمتابعة — رئيس القسم. */
+export interface AssignAppealRequest {
+  assignedLawyerId: number;
+}
+
+/** نقل استئناف مفرد بين محامي الفرع — رئيس القسم. */
+export interface TransferAppealRequest {
+  targetLawyerId: number;
+}
+
+/** نقل كل استئنافات محامٍ إلى محامٍ آخر ضمن الفرع نفسه. */
+export interface TransferAllAppealsRequest {
+  sourceLawyerId: number;
+  targetLawyerId: number;
+}
+
+/** إدخال رقم الأساس الاستئنافي لسنة التدوير الحالية. */
+export interface AppealBaseNumberEntry {
+  baseNumber?: string;
+}
+
+export interface SaveAppealBaseNumbersRequest {
+  entries: AppealBaseNumberEntry[];
+}
+
+/** سجل رقم أساس استئنافي لسنة سابقة أو حالية. */
+export interface AppealBaseNumberHistoryDto {
+  year: number;
+  baseNumber: string;
+}
+
+/** إجراء/ملاحظة على الاستئناف مع تذكيره الاختياري (مدة + لون). */
+export interface AddAppealActionRequest {
+  type?: string;
+  text: string;
+  actionDate?: string;
+  reminderDuration?: string;
+  reminderColor?: string;
+}
+
+export interface UpdateAppealActionRequest extends AddAppealActionRequest {}
+
+export interface AppealActionDto {
+  id: number;
+  type: string;
+  text: string;
+  actionDate?: string;
+  reminderDuration?: string;
+  reminderColor?: string;
+  createdByName?: string;
+  createdAt: string;
+}
+
 

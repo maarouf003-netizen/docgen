@@ -64,6 +64,17 @@ public static class RolePermissions
     /// </summary>
     public static bool CanApproveDelegations(UserRole role) => role == UserRole.Head;
 
+    /// <summary>
+    /// تسطير الاستئنافات على ملفات المحامي وإدخال إجراءاتها وتغيير حالتها
+    /// (حسم/شطب) وتدوير رقم أساسها — المحامي فقط.
+    /// </summary>
+    public static bool CanManageAppeals(UserRole role) => role == UserRole.Lawyer;
+
+    /// <summary>
+    /// إسناد الاستئنافات إلى محامي الفرع ونقلها بينهم — رئيس القسم لفرعه فقط.
+    /// </summary>
+    public static bool CanAssignAppeals(UserRole role) => role == UserRole.Head;
+
     /// <summary>رؤية عمود «فرع الإدارة» — مدير/مشرف فقط.</summary>
     public static bool CanSeeAdministrativeBranch(UserRole role) =>
         role is UserRole.Manager or UserRole.Admin;

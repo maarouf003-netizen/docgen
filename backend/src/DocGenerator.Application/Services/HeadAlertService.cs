@@ -14,6 +14,8 @@ public interface IHeadAlertService
     Task<bool> MarkReadAsync(int alertId, int userId, CancellationToken ct = default);
     Task<HeadAlertDto?> UpdateDelegationAlertAsync(int delegationId, string message, CancellationToken ct = default);
     Task<bool> DeleteByDelegationAsync(int delegationId, CancellationToken ct = default);
+    /// <summary>حذف كل تنبيهات الاستئناف (تصفية تنبيه «اختيار المحامي» بعد الإسناد).</summary>
+    Task<bool> DeleteByAppealAsync(int appealId, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -91,6 +93,7 @@ public sealed class HeadAlertService : IHeadAlertService
             DocumentId = targetType == HeadAlertTargetType.Lawyer ? null : request.DocumentId,
             TargetLawyerId = targetType == HeadAlertTargetType.Lawyer ? request.TargetLawyerId : null,
             DelegationId = request.DelegationId,
+            AppealId = request.AppealId,
             Message = message,
             CreatedAt = DateTime.UtcNow,
             Recipients = recipients.Select(u => new HeadAlertRecipient { UserId = u.Id }).ToList(),
@@ -159,6 +162,22 @@ public sealed class HeadAlertService : IHeadAlertService
     public async Task<bool> DeleteByDelegationAsync(int delegationId, CancellationToken ct = default)
     {
         var alerts = await _alerts.ListByDelegationAsync(delegationId, ct);
+        if (alerts.Count == 0)
+            return false;
+
+        await _tx.RunAsync(async token =>
+        {
+            foreach (var alert in alerts)
+                _alerts.Remove(alert);
+            await _uow.SaveChangesAsync(token);
+        }, ct);
+        return true;
+    }
+
+    /// <summary>حذف كل تنبيهات الاستئناف (تصفية تنبيه «اختيار المحامي» بعد إسناد الاستئناف).</summary>
+    public async Task<bool> DeleteByAppealAsync(int appealId, CancellationToken ct = default)
+    {
+        var alerts = await _alerts.ListByAppealAsync(appealId, ct);
         if (alerts.Count == 0)
             return false;
 
@@ -247,7 +266,8 @@ public sealed class HeadAlertService : IHeadAlertService
         null,
         null,
         a.CreatedAt,
-        a.CreatedBy?.FullName);
+        a.CreatedBy?.FullName,
+        a.AppealId);
 
     private static HeadAlertDto ToHeadDto(HeadAlert a) => new(
         a.Id,
@@ -261,5 +281,6 @@ public sealed class HeadAlertService : IHeadAlertService
         a.Recipients.Count,
         a.Recipients.Count(r => !r.IsRead),
         a.CreatedAt,
-        a.CreatedBy?.FullName);
+        a.CreatedBy?.FullName,
+        a.AppealId);
 }

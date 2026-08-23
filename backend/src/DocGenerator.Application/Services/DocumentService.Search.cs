@@ -72,13 +72,38 @@ public sealed partial class DocumentService
         var (total, items) = await _documents.SearchAsync(
             query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, page, perPage, ct);
 
-        return new PagedResult<DocumentResponse>
+        var result = new PagedResult<DocumentResponse>
         {
             Items = items.Select(DocumentResponse.FromEntity).ToList(),
             Page = page,
             PerPage = perPage,
             TotalCount = total,
         };
+        await EnrichAppealFlagsAsync(result.Items, ct);
+        return result;
+    }
+
+    /// <summary>
+    /// إثراء نتائج القائمة بعلم وجود استئنافات على الملف ومعرف أول استئناف —
+    /// لشارة «استئناف» بجانب النتائج والانتقال إلى تفاصيل الاستئناف.
+    /// استعلام دفعي واحد لمعرفات الصفحة الحالية فقط.
+    /// </summary>
+    private async Task EnrichAppealFlagsAsync(List<DocumentResponse> items, CancellationToken ct)
+    {
+        if (items.Count == 0)
+            return;
+        var ids = items.Select(i => i.Id).ToList();
+        var map = await _appeals.MapFirstAppealIdByDocumentIdsAsync(ids, ct);
+        if (map.Count == 0)
+            return;
+        foreach (var item in items)
+        {
+            if (map.TryGetValue(item.Id, out var appealId))
+            {
+                item.HasAppeals = true;
+                item.MatchedAppealId = appealId;
+            }
+        }
     }
 
     public async Task<DocumentFilterOptions> GetFilterOptionsAsync(

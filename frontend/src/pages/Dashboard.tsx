@@ -3,6 +3,7 @@ import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import type {
+  AppealReminderDto,
   BranchDto,
   HeadAlertDto,
   HeadAlertTargetType,
@@ -55,6 +56,13 @@ export default function Dashboard() {
     (signal) => api.get('/reminders', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
     [isLawyer],
     { enabled: userReady && !isManager && isLawyer },
+  );
+
+  // تذكيرات إجراءات الاستئنافات التي يتابعها المحامي — تُدمج في بطاقة التذكيرات نفسها.
+  const appealRemindersQuery = useCancellableRequest<AppealReminderDto[]>(
+    (signal) => api.get('/appeals/reminders', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
+    [isLawyer],
+    { enabled: userReady && isLawyer },
   );
 
   const alertsQuery = useCancellableRequest<HeadAlertDto[]>(
@@ -114,6 +122,7 @@ export default function Dashboard() {
   }, [isLawyer, isManager, period, selection, branchId, lawyersBranch], { enabled: userReady && lawyersBranch != null });
 
   const reminders = useMemo(() => remindersQuery.data ?? [], [remindersQuery.data]);
+  const appealReminders = useMemo(() => appealRemindersQuery.data ?? [], [appealRemindersQuery.data]);
   const alerts = useMemo(() => alertsQuery.data ?? [], [alertsQuery.data]);
   const branches = useMemo(() => branchesQuery.data ?? [], [branchesQuery.data]);
   const branchLawyers = useMemo(() => branchLawyersQuery.data ?? [], [branchLawyersQuery.data]);
@@ -132,6 +141,20 @@ export default function Dashboard() {
     try {
       await api.delete(`/documents/${r.documentId}/actions/${r.actionId}/reminder`);
       remindersQuery.setData((prev) => (prev ?? []).filter((x) => x.actionId !== r.actionId));
+    } catch (err) {
+      setActionError(getApiErrorMessage(err));
+    } finally {
+      setCancellingKey(null);
+    }
+  };
+
+  const cancelAppealReminder = async (r: AppealReminderDto) => {
+    const key = `appeal-${r.actionId}`;
+    setCancellingKey(key);
+    setActionError('');
+    try {
+      await api.delete(`/appeals/${r.appealId}/actions/${r.actionId}/reminder`);
+      appealRemindersQuery.setData((prev) => (prev ?? []).filter((x) => x.actionId !== r.actionId));
     } catch (err) {
       setActionError(getApiErrorMessage(err));
     } finally {
@@ -233,6 +256,7 @@ export default function Dashboard() {
         stats={managerStats}
         lawyers={lawyerStats}
         error={statsQuery.error ?? ''}
+        appealsStats={isLawyer ? (managerStats?.appeals ?? null) : null}
       />
 
       {isLawyer ? (
@@ -243,24 +267,30 @@ export default function Dashboard() {
                 <span className="w-2 h-2 rounded-full bg-amber-500" aria-hidden="true" />
                 <h3 className="font-bold text-gray-900">التذكيرات</h3>
                 <span className="text-xs bg-emerald-100 text-emerald-800 rounded-full px-2 py-0.5 font-medium">
-                  {reminders.length}
+                  {reminders.length + appealReminders.length}
                 </span>
               </div>
               <span className="text-xs text-gray-400">الأقرب أولاً</span>
             </div>
 
-            {actionError || remindersQuery.error ? (
+            {actionError || remindersQuery.error || appealRemindersQuery.error ? (
               <div className="px-4 sm:px-5 py-2.5 bg-red-50 border-b border-red-100">
-                <p className="text-red-700 text-sm">{actionError || remindersQuery.error}</p>
+                <p className="text-red-700 text-sm">{actionError || remindersQuery.error || appealRemindersQuery.error}</p>
               </div>
             ) : null}
 
-            {reminders.length === 0 ? (
+            {reminders.length === 0 && appealReminders.length === 0 ? (
               <div className="p-10 text-center">
                 <p className="text-gray-400 text-sm">لا توجد تذكيرات حالياً</p>
               </div>
             ) : (
-              <ReminderList reminders={reminders} onCancel={cancelReminder} cancellingKey={cancellingKey} />
+              <ReminderList
+                reminders={reminders}
+                appealReminders={appealReminders}
+                onCancel={cancelReminder}
+                onCancelAppeal={cancelAppealReminder}
+                cancellingKey={cancellingKey}
+              />
             )}
           </div>
 

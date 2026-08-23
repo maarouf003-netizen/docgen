@@ -108,7 +108,19 @@ public record ManagerStatsDto(
     decimal DepositExecutedAmount,
     int PeriodYear,
     int? PeriodQuarter,
-    int? PeriodMonth);
+    int? PeriodMonth,
+    /// <summary>
+    /// إحصاء استئنافات المحامي في نطاق الفترة (للمحامي فقط عبر /stats/me):
+    /// المنظورة قيد النظر، والمحسومة للصالح وللضد. null عند غياب أي استئناف
+    /// لِيُخفى البطاقة من اللوحة.
+    /// </summary>
+    AppealsStatsDto? Appeals = null);
+
+/// <summary>عدادات بطاقة «الاستئنافات» في لوحة المحامي وفق فلاتر الفترة.</summary>
+public record AppealsStatsDto(
+    int PendingCount,
+    int DecidedInFavor,
+    int DecidedAgainst);
 
 /// <summary>نقطة زمنية داخل نطاق الفترة (شهر) لجدول محامي الفرع.</summary>
 public record ManagerPeriodPointDto(int Year, int Month, int Count);

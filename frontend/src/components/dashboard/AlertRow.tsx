@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { HeadAlertDto } from '../../types';
-import { TARGET_TYPE_BADGES, TARGET_TYPE_LABELS } from './dashboardFormat';
+import { TARGET_TYPE_BADGES, appealAwareTypeLabel } from './dashboardFormat';
 import { formatDateTime } from '../../utils/dates';
 
 /**
@@ -25,7 +25,15 @@ export function AlertRow({
           aria-hidden="true"
         />
         <div className="min-w-0 flex-1">
-          {alert.documentId ? (
+          {/* التنبيهات المرتبطة باستئناف تفتح تفاصيل الاستئناف، وسواهر تفتح الملف. */}
+          {alert.appealId ? (
+            <Link
+              to={`/appeals/${alert.appealId}`}
+              className="block font-medium text-gray-800 hover:text-emerald-700 truncate"
+            >
+              {alert.message}
+            </Link>
+          ) : alert.documentId ? (
             <Link
               to={`/documents/${alert.documentId}`}
               className="block font-medium text-gray-800 hover:text-emerald-700 truncate"
@@ -44,7 +52,7 @@ export function AlertRow({
                 TARGET_TYPE_BADGES[alert.targetType] ?? 'bg-gray-100 text-gray-700 border-gray-200'
               }`}
             >
-              {TARGET_TYPE_LABELS[alert.targetType] ?? alert.targetType}
+              {appealAwareTypeLabel(alert)}
             </span>
             {alert.targetLawyerName ? (
               <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200">

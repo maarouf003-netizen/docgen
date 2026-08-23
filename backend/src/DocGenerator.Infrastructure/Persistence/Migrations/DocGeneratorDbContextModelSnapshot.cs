@@ -17,6 +17,91 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.AppealAction", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ActionDate")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("AppealId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ReminderColor")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReminderDuration")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AppealId");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("CreatedById");
+
+                    b.ToTable("AppealActions", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.AppealBaseNumber", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("AppealId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("BaseNumber")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Year")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AppealId");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("AppealId", "Year")
+                        .IsUnique();
+
+                    b.ToTable("AppealBaseNumbers", (string)null);
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.ApplicantPublicEntity", b =>
                 {
                     b.Property<int>("Id")
@@ -772,6 +857,150 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.ToTable("Documents", (string)null);
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentAppeal", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AppealBaseNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AppealTypeLabel")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AppealYear")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("AppealedDecisionDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("AppealedDecisionSummary")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AppealedDecisionText")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AppellantsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("AppellateCourt")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AppelleesJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("AssignedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("AssignedLawyerId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("DecisionDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DecisionNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DecisionRuling")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DefenseOpinion")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("DepositBookDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DepositBookNumber")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Direction")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("GroundsSummary")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("InspectionBookDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("InspectionBookNumber")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("NoticeDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("NoticeNumber")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Outcome")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("RegistrationDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("StruckOffDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("StruckOffDecisionNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssignedLawyerId");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("Direction");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("DocumentAppeals", (string)null);
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentAssignment", b =>
                 {
                     b.Property<int>("Id")
@@ -1401,6 +1630,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("AppealId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("BranchId")
                         .HasColumnType("INTEGER");
 
@@ -1428,6 +1660,8 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AppealId");
 
                     b.HasIndex("BranchId");
 
@@ -1603,6 +1837,44 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.ToTable("Users", (string)null);
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.AppealAction", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.DocumentAppeal", "Appeal")
+                        .WithMany("Actions")
+                        .HasForeignKey("AppealId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Appeal");
+
+                    b.Navigation("CreatedBy");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.AppealBaseNumber", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.DocumentAppeal", "Appeal")
+                        .WithMany("BaseNumbers")
+                        .HasForeignKey("AppealId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Appeal");
+
+                    b.Navigation("CreatedBy");
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.ApplicantPublicEntity", b =>
                 {
                     b.HasOne("DocGenerator.Domain.Entities.Document", "Document")
@@ -1670,6 +1942,32 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Navigation("CreatedBy");
 
                     b.Navigation("SourceDelegation");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentAppeal", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.User", "AssignedLawyer")
+                        .WithMany()
+                        .HasForeignKey("AssignedLawyerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DocGenerator.Domain.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.Document", "Document")
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("AssignedLawyer");
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("Document");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentAssignment", b =>
@@ -1855,6 +2153,11 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.HeadAlert", b =>
                 {
+                    b.HasOne("DocGenerator.Domain.Entities.DocumentAppeal", "Appeal")
+                        .WithMany()
+                        .HasForeignKey("AppealId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("DocGenerator.Domain.Entities.Branch", "Branch")
                         .WithMany()
                         .HasForeignKey("BranchId")
@@ -1876,6 +2179,8 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("TargetLawyerId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Appeal");
 
                     b.Navigation("Branch");
 
@@ -1966,6 +2271,13 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Navigation("Occurrences");
 
                     b.Navigation("RegistrationDate");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentAppeal", b =>
+                {
+                    b.Navigation("Actions");
+
+                    b.Navigation("BaseNumbers");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentDelegation", b =>

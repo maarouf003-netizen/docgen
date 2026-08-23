@@ -1,4 +1,5 @@
 import type {
+  AppealsStatsDto,
   BranchDto,
   ManagerLawyerStatDto,
   ManagerStatsDto,
@@ -25,6 +26,7 @@ export function ManagerStatsSection({
   stats,
   lawyers,
   error,
+  appealsStats = null,
 }: {
   period: StatsPeriod;
   onPeriodChange: (p: StatsPeriod) => void;
@@ -39,6 +41,8 @@ export function ManagerStatsSection({
   stats: ManagerStatsDto | null;
   lawyers: ManagerLawyerStatDto[];
   error: string;
+  /** بطاقة «الاستئنافات» للمحامي فقط — تُمرر null لإخفائها. */
+  appealsStats?: AppealsStatsDto | null;
 }) {
   if (error) return <div className="text-red-600">{error}</div>;
   if (!stats) return <div className="text-gray-500">جارِ التحميل...</div>;
@@ -117,7 +121,7 @@ export function ManagerStatsSection({
         عرض الفترة: <span className="font-medium text-gray-800">{periodLabel(stats)}</span>
       </p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 sm:gap-4 mb-6">
+      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6 ${appealsStats ? 'xl:grid-cols-6' : 'xl:grid-cols-5'}`}>
         <StatCard label="إجمالي الملفات" value={stats.totalFiles} accent="#059669" icon={ICONS.documents}>
           <CurrencyAmountList amounts={stats.totalAmounts} />
         </StatCard>
@@ -200,6 +204,32 @@ export function ManagerStatsSection({
             </div>
           </div>
         </StatCard>
+        {appealsStats && (
+          <StatCard
+            label="الاستئنافات"
+            value={appealsStats.pendingCount + appealsStats.decidedInFavor + appealsStats.decidedAgainst}
+            accent="#9f1239"
+            icon={ICONS.documents}
+          >
+            <div className="mt-2 space-y-1.5 text-xs">
+              <div className="flex items-center gap-x-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-600 shrink-0" aria-hidden="true" />
+                <span className="text-gray-700">منظور</span>
+                <span className="text-gray-500 tabular-nums" dir="ltr">({appealsStats.pendingCount})</span>
+              </div>
+              <div className="flex items-center gap-x-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 shrink-0" aria-hidden="true" />
+                <span className="text-gray-700">محسوم للصالح</span>
+                <span className="text-emerald-700 tabular-nums" dir="ltr">({appealsStats.decidedInFavor})</span>
+              </div>
+              <div className="flex items-center gap-x-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-600 shrink-0" aria-hidden="true" />
+                <span className="text-gray-700">محسوم للضد</span>
+                <span className="text-red-700 tabular-nums" dir="ltr">({appealsStats.decidedAgainst})</span>
+              </div>
+            </div>
+          </StatCard>
+        )}
       </div>
 
       {showLawyerTable && branchId ? (

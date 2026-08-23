@@ -423,6 +423,7 @@ public class HeadAlertConfiguration : IEntityTypeConfiguration<HeadAlert>
         builder.HasIndex(a => a.BranchId);
         builder.HasIndex(a => a.CreatedAt);
         builder.HasIndex(a => a.DelegationId);
+        builder.HasIndex(a => a.AppealId);
 
         builder.HasOne(a => a.Branch)
             .WithMany()
@@ -443,6 +444,13 @@ public class HeadAlertConfiguration : IEntityTypeConfiguration<HeadAlert>
             .WithMany()
             .HasForeignKey(a => a.TargetLawyerId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // الاستئناف المرتبط بالتنبيه: عند حذفه يُبقى التنبيه ويُفكّ رابطه (SetNull)
+        // حتى تبقى سجلّات التنبيهات التاريخية سليمة.
+        builder.HasOne(a => a.Appeal)
+            .WithMany()
+            .HasForeignKey(a => a.AppealId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }
 
@@ -713,6 +721,145 @@ public class DocumentDelegationConfiguration : IEntityTypeConfiguration<Document
         builder.HasOne(d => d.CreatedBy)
             .WithMany()
             .HasForeignKey(d => d.CreatedById)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+/// <summary>
+/// الاستئنافات على الملف التنفيذي: أبناء الملف تُحذف بحذفه وتُخفى عند حذفه منطقيًا،
+/// مع فهرسة الحالة والاتجاه والمحامي المسند إليها لتصفيات صفحة «الاستئنافات».
+/// </summary>
+public class DocumentAppealConfiguration : IEntityTypeConfiguration<DocumentAppeal>
+{
+    public void Configure(EntityTypeBuilder<DocumentAppeal> builder)
+    {
+        builder.ToTable("DocumentAppeals");
+        builder.HasKey(a => a.Id);
+
+        // عامل مطابق لقفل الحذف المنطقي للملف الأب.
+        builder.HasQueryFilter(a => a.Document == null || !a.Document.IsDeleted);
+
+        // الاستئناف جزء من الملف: يُحذف بحذفه فيزيائيًا ويُخفى عند الحذف المنطقي.
+        builder.HasOne(a => a.Document)
+            .WithMany()
+            .HasForeignKey(a => a.DocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Property(a => a.Direction).HasMaxLength(20).IsRequired();
+        builder.HasIndex(a => a.Direction);
+        builder.Property(a => a.Status).HasMaxLength(20).IsRequired();
+        builder.HasIndex(a => a.Status);
+        builder.Property(a => a.AppealTypeLabel).HasMaxLength(100);
+
+        builder.Property(a => a.AppellantsJson).HasColumnType("text").IsRequired();
+        builder.Property(a => a.AppelleesJson).HasColumnType("text").IsRequired();
+
+        builder.Property(a => a.AppealedDecisionText).HasMaxLength(2000);
+        builder.Property(a => a.AppealedDecisionSummary).HasMaxLength(2000);
+        builder.Property(a => a.AppealedDecisionDate).HasColumnType("datetime2");
+        builder.Property(a => a.InspectionBookNumber).HasMaxLength(200);
+        builder.Property(a => a.InspectionBookDate).HasColumnType("datetime2");
+        builder.Property(a => a.GroundsSummary).HasMaxLength(2000);
+
+        builder.Property(a => a.NoticeNumber).HasMaxLength(200);
+        builder.Property(a => a.NoticeDate).HasColumnType("datetime2");
+        builder.Property(a => a.AppellateCourt).HasMaxLength(300);
+        builder.Property(a => a.AppealBaseNumber).HasMaxLength(100);
+        builder.Property(a => a.AppealYear).HasMaxLength(50);
+        builder.Property(a => a.DepositBookNumber).HasMaxLength(200);
+        builder.Property(a => a.DepositBookDate).HasColumnType("datetime2");
+        builder.Property(a => a.DefenseOpinion).HasMaxLength(2000);
+
+        builder.Property(a => a.RegistrationDate).HasColumnType("datetime2");
+
+        builder.Property(a => a.DecisionNumber).HasMaxLength(100);
+        builder.Property(a => a.DecisionDate).HasColumnType("datetime2");
+        builder.Property(a => a.DecisionRuling).HasMaxLength(2000);
+        builder.Property(a => a.Outcome).HasMaxLength(20);
+
+        builder.Property(a => a.StruckOffDate).HasColumnType("datetime2");
+        builder.Property(a => a.StruckOffDecisionNumber).HasMaxLength(100);
+
+        builder.Property(a => a.Notes).HasMaxLength(2000);
+
+        builder.HasIndex(a => a.DocumentId);
+        builder.HasIndex(a => a.AssignedLawyerId);
+        builder.HasIndex(a => a.CreatedAt);
+
+        builder.HasOne(a => a.AssignedLawyer)
+            .WithMany()
+            .HasForeignKey(a => a.AssignedLawyerId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(a => a.CreatedBy)
+            .WithMany()
+            .HasForeignKey(a => a.CreatedById)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+/// <summary>
+/// إجراءات وملاحظات الاستئناف (قائمة مستقلة عن إجراءات الملف الأساس) مع حقول التذكير،
+/// تُحذف بحذف استئنافها وتُخفى عند الحذف المنطقي للملف الأصل.
+/// </summary>
+public class AppealActionConfiguration : IEntityTypeConfiguration<AppealAction>
+{
+    public void Configure(EntityTypeBuilder<AppealAction> builder)
+    {
+        builder.ToTable("AppealActions");
+        builder.HasKey(a => a.Id);
+        // عامل مطابق لقفل الحذف المنطقي للملف عبر سلسلة الاستئناف.
+        builder.HasQueryFilter(a => a.Appeal == null
+            || a.Appeal.Document == null
+            || !a.Appeal.Document.IsDeleted);
+
+        builder.Property(a => a.Type).HasMaxLength(20).IsRequired();
+        builder.Property(a => a.Text).IsRequired();
+        builder.Property(a => a.ActionDate).HasMaxLength(50);
+        builder.Property(a => a.ReminderDuration).HasMaxLength(20);
+        builder.Property(a => a.ReminderColor).HasMaxLength(20);
+        builder.HasIndex(a => a.AppealId);
+        builder.HasIndex(a => a.CreatedAt);
+
+        builder.HasOne(a => a.Appeal)
+            .WithMany(ap => ap.Actions)
+            .HasForeignKey(a => a.AppealId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(a => a.CreatedBy)
+            .WithMany()
+            .HasForeignKey(a => a.CreatedById)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+/// <summary>
+/// تاريخ أرقام الأساس الاستئنافية لكل سنة (التدوير السنوي): سجل واحد لكل
+/// (استئناف، سنة) بفهرس فريد يحفظ أرقام السنوات السابقة دون فقدانها.
+/// </summary>
+public class AppealBaseNumberConfiguration : IEntityTypeConfiguration<AppealBaseNumber>
+{
+    public void Configure(EntityTypeBuilder<AppealBaseNumber> builder)
+    {
+        builder.ToTable("AppealBaseNumbers");
+        builder.HasKey(b => b.Id);
+        // سجل واحد لكل (استئناف، سنة): يمنع تكرار رقم أساس لنفس السنة.
+        builder.HasIndex(b => new { b.AppealId, b.Year }).IsUnique();
+        builder.HasIndex(b => b.AppealId);
+        builder.Property(b => b.BaseNumber).HasMaxLength(50).IsRequired();
+        // عامل مطابق لقفل الحذف المنطقي للملف عبر سلسلة الاستئناف.
+        builder.HasQueryFilter(b => b.Appeal == null
+            || b.Appeal.Document == null
+            || !b.Appeal.Document.IsDeleted);
+
+        builder.HasOne(b => b.Appeal)
+            .WithMany(a => a.BaseNumbers)
+            .HasForeignKey(b => b.AppealId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(b => b.CreatedBy)
+            .WithMany()
+            .HasForeignKey(b => b.CreatedById)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }
