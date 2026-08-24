@@ -21,6 +21,8 @@ const BranchLawyers = lazy(() => import('./pages/BranchLawyers'));
 const DelegationRequests = lazy(() => import('./pages/DelegationRequests'));
 const UsersManagement = lazy(() => import('./pages/UsersManagement'));
 const BranchesManagement = lazy(() => import('./pages/BranchesManagement'));
+const EntityRegistryManagement = lazy(() => import('./pages/EntityRegistryManagement'));
+const EntityProposalsQueue = lazy(() => import('./pages/EntityProposalsQueue'));
 const AuditLogs = lazy(() => import('./pages/AuditLogs'));
 const ChangePassword = lazy(() => import('./pages/ChangePassword'));
 const ReviewsList = lazy(() => import('./pages/ReviewsList'));
@@ -118,6 +120,22 @@ export default function App() {
               element={
                 <RequireRole allowed={(role) => role === 'admin'}>
                   <BranchesManagement />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/entities/registry"
+              element={
+                <RequireRole allowed={(_role, hasFullAccess, isHead) => hasFullAccess || isHead}>
+                  <EntityRegistryManagement />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/entities/proposals"
+              element={
+                <RequireRole allowed={(role) => role === 'head' || role === 'manager' || role === 'admin'}>
+                  <EntityProposalsQueue />
                 </RequireRole>
               }
             />

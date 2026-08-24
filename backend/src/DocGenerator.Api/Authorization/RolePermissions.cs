@@ -96,4 +96,17 @@ public static class RolePermissions
     /// <summary>قراءة مطلقة على الملفات (بلا إدخال/تعديل/حالة) — مدير/مشرف.</summary>
     public static bool IsReadOnlyOnDocuments(UserRole role) =>
         role is UserRole.Manager or UserRole.Admin;
+
+    /// <summary>
+    /// إدارة سجل الجهات العامة (إنشاء/تعديل/أسماء بديلة/استيراد) —
+    /// مدير/مشرف على كل السجل، ورئيس القسم مقصورًا على محافظة فرعه عند التنفيذ (د3/د5).
+    /// </summary>
+    public static bool CanManageEntityRegistry(UserRole role) =>
+        role is UserRole.Manager or UserRole.Admin or UserRole.Head;
+
+    /// <summary>اعتماد/رفض اقتراحات الجهات الجديدة — رئيس القسم ضمن نطاق محافظته (د4).</summary>
+    public static bool CanApproveEntityProposals(UserRole role) => role == UserRole.Head;
+
+    /// <summary>بوابة مندوب الجهة العامة: قراءة + تصدير إكسل فقط (د10/د11 — المرحلة 3).</summary>
+    public static bool CanUseDelegatePortal(UserRole role) => role == UserRole.EntityManager;
 }

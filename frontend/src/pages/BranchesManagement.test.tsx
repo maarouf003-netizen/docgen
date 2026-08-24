@@ -77,7 +77,26 @@ describe('BranchesManagement', () => {
         code: 'HMS',
         address: 'حمص',
         phone: '031222333',
+        governorate: null,
       });
+    });
+  });
+
+  it('ينشئ فرعاً مع محافظة محددة لنطاق رئيس القسم', async () => {
+    const user = userEvent.setup();
+    render(<BranchesManagement />);
+
+    await user.click(await screen.findByRole('button', { name: '+ إضافة فرع' }));
+    await user.type(screen.getByLabelText('اسم الفرع'), 'فرع درعا');
+    await user.type(screen.getByLabelText('كود الفرع'), 'DRA');
+    await user.selectOptions(screen.getByLabelText('المحافظة'), 'درعا');
+    await user.click(screen.getByRole('button', { name: 'إنشاء الفرع' }));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/branches', expect.objectContaining({
+        name: 'فرع درعا',
+        governorate: 'درعا',
+      }));
     });
   });
 
@@ -111,6 +130,7 @@ describe('BranchesManagement', () => {
         code: 'DAM',
         address: 'دمشق',
         phone: null,
+        governorate: null,
         isActive: false,
       });
     });

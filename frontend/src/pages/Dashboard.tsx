@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
@@ -11,6 +12,7 @@ import type {
   ManagerLawyerStatDto,
   ManagerStatsDto,
   MonthlyStatDto,
+  PublicEntityProposalDto,
   ReminderDto,
   StatsPeriod,
 } from '../types';
@@ -82,6 +84,16 @@ export default function Dashboard() {
     [],
     { enabled: isHead },
   );
+
+  // اقتراحات الجهات الجديدة بانتظار اعتماد رئيس القسم (د4).
+  const entityProposalsQuery = useCancellableRequest<PublicEntityProposalDto[]>(
+    (signal) => api
+      .get('/entity-registry/proposals/pending', { signal })
+      .then((r) => (Array.isArray(r.data) ? r.data : [])),
+    [isHead],
+    { enabled: userReady && isHead },
+  );
+  const entityProposals = entityProposalsQuery.data ?? [];
 
   const availableQuery = useCancellableRequest<MonthlyStatDto[]>(
     (signal) => {
@@ -381,6 +393,49 @@ export default function Dashboard() {
               </ul>
             )}
           </div>
+
+          {isHead && (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden mt-8">
+              <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-4 border-b border-gray-100">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-500" aria-hidden="true" />
+                  <h3 className="font-bold text-gray-900">اقتراحات الجهات العامة</h3>
+                  <span
+                    className={`text-xs rounded-full px-2 py-0.5 font-medium ${
+                      entityProposals.length > 0
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-emerald-100 text-emerald-800'
+                    }`}
+                  >
+                    {entityProposals.length}
+                  </span>
+                </div>
+                <Link to="/entities/proposals" className="text-sm text-sky-700 hover:bg-sky-50 rounded-lg px-3 py-2 min-h-11">
+                  إدارة الاقتراحات…
+                </Link>
+              </div>
+              {entityProposalsQuery.error ? (
+                <div className="px-4 sm:px-5 py-2.5 bg-red-50 border-b border-red-100">
+                  <p className="text-red-700 text-sm">{entityProposalsQuery.error}</p>
+                </div>
+              ) : entityProposals.length === 0 ? (
+                <div className="p-6 text-center">
+                  <p className="text-gray-400 text-sm">لا توجد اقتراحات بانتظار الاعتماد</p>
+                </div>
+              ) : (
+                <ul className="divide-y divide-gray-100">
+                  {entityProposals.slice(0, 5).map((p) => (
+                    <li key={p.id} className="px-4 sm:px-5 py-3">
+                      <p className="font-medium text-gray-800 break-words">{p.proposedName}</p>
+                      <p className="text-xs text-gray-500 mt-0.5 tabular-nums">
+                        {p.governorate} / {p.branchName} · من {p.proposedByName || 'محامٍ'}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
+import { GOVERNORATES } from '../utils/governorate';
 import type { BranchDto } from '../types';
 
 export default function BranchesManagement() {
@@ -21,6 +22,7 @@ export default function BranchesManagement() {
   const [code, setCode] = useState('');
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
+  const [governorate, setGovernorate] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
@@ -29,6 +31,7 @@ export default function BranchesManagement() {
   const [editCode, setEditCode] = useState('');
   const [editAddress, setEditAddress] = useState('');
   const [editPhone, setEditPhone] = useState('');
+  const [editGovernorate, setEditGovernorate] = useState('');
   const [editActive, setEditActive] = useState(true);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
@@ -42,6 +45,7 @@ export default function BranchesManagement() {
     setCode('');
     setAddress('');
     setPhone('');
+    setGovernorate('');
     setFormError('');
     setShowForm(false);
   };
@@ -68,6 +72,7 @@ export default function BranchesManagement() {
         code: code.trim(),
         address: address.trim() || null,
         phone: phone.trim() || null,
+        governorate: governorate || null,
       });
       resetForm();
       load();
@@ -84,6 +89,7 @@ export default function BranchesManagement() {
     setEditCode(b.code);
     setEditAddress(b.address ?? '');
     setEditPhone(b.phone ?? '');
+    setEditGovernorate(b.governorate ?? '');
     setEditActive(b.isActive ?? true);
     setEditError('');
     setConfirmingDelete(false);
@@ -111,6 +117,7 @@ export default function BranchesManagement() {
         code: editCode.trim(),
         address: editAddress.trim() || null,
         phone: editPhone.trim() || null,
+        governorate: editGovernorate || null,
         isActive: editActive,
       });
       closeEdit();
@@ -212,6 +219,18 @@ export default function BranchesManagement() {
               className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
+          <div>
+            <label htmlFor="branch-governorate" className="block text-xs font-medium text-gray-600 mb-1">المحافظة</label>
+            <select
+              id="branch-governorate"
+              value={governorate}
+              onChange={(e) => setGovernorate(e.target.value)}
+              className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="">اختياري…</option>
+              {GOVERNORATES.map((g) => <option key={g} value={g}>{g}</option>)}
+            </select>
+          </div>
           {formError && <p className="text-red-600 text-sm sm:col-span-2">{formError}</p>}
           <div className="sm:col-span-2 flex gap-2">
             <button
@@ -234,6 +253,7 @@ export default function BranchesManagement() {
               <tr className="text-right">
                 <th className="px-4 py-3">الاسم</th>
                 <th className="px-4 py-3">الكود</th>
+                <th className="px-4 py-3">المحافظة</th>
                 <th className="px-4 py-3">العنوان</th>
                 <th className="px-4 py-3">الاستخدام</th>
                 <th className="px-4 py-3">الحالة</th>
@@ -245,6 +265,7 @@ export default function BranchesManagement() {
                 <tr key={b.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium text-gray-800">{b.name}</td>
                   <td className="px-4 py-3">{b.code}</td>
+                  <td className="px-4 py-3 text-gray-500">{b.governorate || '—'}</td>
                   <td className="px-4 py-3 text-gray-500">{b.address || '—'}</td>
                   <td className="px-4 py-3 text-gray-500">{usageLine(b)}</td>
                   <td className="px-4 py-3">{statusBadge(b)}</td>
@@ -260,7 +281,7 @@ export default function BranchesManagement() {
               ))}
               {!loading && branches.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-gray-400">لا توجد فروع</td>
+                  <td colSpan={7} className="px-4 py-8 text-center text-gray-400">لا توجد فروع</td>
                 </tr>
               )}
             </tbody>
@@ -281,7 +302,7 @@ export default function BranchesManagement() {
                   {statusBadge(b)}
                 </div>
                 <div className="text-sm text-gray-600 mt-1">
-                  {b.address || '—'} · {usageLine(b)}
+                  {b.governorate ? `${b.governorate} · ` : ''}{b.address || '—'} · {usageLine(b)}
                 </div>
                 <button
                   onClick={() => openEdit(b)}
@@ -351,6 +372,19 @@ export default function BranchesManagement() {
                   onChange={(e) => setEditPhone(e.target.value)}
                   className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
+              </div>
+              <div className="sm:col-span-2">
+                <label htmlFor="edit-branch-governorate" className="block text-xs font-medium text-gray-600 mb-1">المحافظة</label>
+                <select
+                  id="edit-branch-governorate"
+                  value={editGovernorate}
+                  onChange={(e) => setEditGovernorate(e.target.value)}
+                  className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  <option value="">غير محددة…</option>
+                  {GOVERNORATES.map((g) => <option key={g} value={g}>{g}</option>)}
+                </select>
+                <p className="text-xs text-gray-400 mt-1">تحدد نطاق رئيس القسم في سجل الجهات العامة.</p>
               </div>
             </div>
 

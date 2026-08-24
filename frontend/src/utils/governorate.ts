@@ -16,6 +16,9 @@ const SYRIAN_GOVERNORATES = [
   'درعا',
 ] as const;
 
+/** كتالوج المحافظات للقوائم المنسدلة (سجل الجهات العامة ونحوها). */
+export const GOVERNORATES: readonly string[] = SYRIAN_GOVERNORATES;
+
 /** صيغ بديلة شائعة تُرجع التسمية الرسمية للمحافظة. */
 const GOVERNORATE_ALIASES: Array<readonly [alias: string, canonical: string]> = [
   ['حماه', 'حماة'],

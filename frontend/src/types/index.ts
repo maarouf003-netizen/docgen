@@ -29,6 +29,8 @@ export interface BranchDto {
   code: string;
   address?: string;
   phone?: string;
+  /** المحافظة التابعة لها الفرع — تحدد نطاق رئيس القسم في سجل الجهات العامة. */
+  governorate?: string | null;
   isActive?: boolean;
   userCount?: number;
   documentCount?: number;
@@ -39,6 +41,7 @@ export interface CreateBranchRequest {
   code: string;
   address?: string | null;
   phone?: string | null;
+  governorate?: string | null;
 }
 
 export interface UpdateBranchRequest {
@@ -47,6 +50,7 @@ export interface UpdateBranchRequest {
   address?: string | null;
   phone?: string | null;
   isActive: boolean;
+  governorate?: string | null;
 }
 
 export interface GuarantorDto {
@@ -1218,6 +1222,140 @@ export interface DocumentChangeGroupDto {
   userName?: string | null;
   timestamp: string;
   changes: DocumentFieldChangeDto[];
+}
+
+/* ── السجل المرجعي للجهات العامة (بوابة الجهات — المرحلة 1) ───────────── */
+
+/** نوع الجهة (كتالوج الخمسة المعتمد). */
+export type PublicEntityType =
+  | 'ministry'
+  | 'administration'
+  | 'authority'
+  | 'foundation'
+  | 'company';
+
+/** حالة قيد الجهة: نهائي (يظهر للمندوبين) أو بانتظار الاعتماد. */
+export type PublicEntityStatus = 'final' | 'pending';
+
+/** صيغة مناداة ممثل الجهة القانونية: إضافة لوظيفته / إضافة لمنصبه. */
+export type CitationFormula = 'add-to-job' | 'add-to-position';
+
+/** قيد جهة في السجل بمستوى محافظة + فرع. */
+export interface PublicEntityEntryDto {
+  id: number;
+  groupId: number;
+  canonicalName: string;
+  entityType: PublicEntityType;
+  governorate: string;
+  branchName: string;
+  citationFormula: CitationFormula;
+  status: PublicEntityStatus;
+  isActive: boolean;
+  createdAt: string;
+  aliases: string[];
+  createdByName?: string | null;
+}
+
+/** نتيجة قائمة/بحث السجل المصدّرة. */
+export interface PublicEntityListResponse {
+  items: PublicEntityEntryDto[];
+  page: number;
+  perPage: number;
+  totalCount: number;
+  totalPages: number;
+}
+
+export interface CreatePublicEntityRequest {
+  canonicalName: string;
+  entityType: PublicEntityType;
+  governorate: string;
+  branchName: string;
+  citationFormula?: CitationFormula | null;
+  aliases?: string[] | null;
+}
+
+/** أي حقل يُترك undefined يبقى كما هو؛ canonicalName يعني إعادة تسمية جماعية. */
+export interface UpdatePublicEntityRequest {
+  canonicalName?: string | null;
+  entityType?: PublicEntityType | null;
+  governorate?: string | null;
+  branchName?: string | null;
+  citationFormula?: CitationFormula | null;
+  status?: PublicEntityStatus | null;
+  isActive?: boolean | null;
+}
+
+export interface AddPublicEntityAliasRequest {
+  aliasText: string;
+}
+
+/** اقتراح محامٍ لإضافة جهة جديدة (بانتظار اعتماد رئيس القسم). */
+export interface PublicEntityProposalDto {
+  id: number;
+  proposedName: string;
+  entityType: PublicEntityType;
+  governorate: string;
+  branchName: string;
+  citationFormula: CitationFormula;
+  proposedById: number;
+  proposedByName: string;
+  sourceDocumentId?: number | null;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: string;
+  rejectionReason?: string | null;
+  createdPublicEntityId?: number | null;
+}
+
+export interface CreatePublicEntityProposalRequest {
+  proposedName: string;
+  entityType: PublicEntityType;
+  governorate: string;
+  branchName: string;
+  citationFormula: CitationFormula;
+  sourceDocumentId?: number | null;
+}
+
+/** كتابة متمايزة واحدة لنص جهة في الاستيراد مع عدّاد ملفاتها. */
+export interface ImportVariantDto {
+  text: string;
+  /** مصدر الكتابة: applicant = طالب تنفيذ، executed = منفذ عليها. */
+  side: 'applicant' | 'executed';
+  governorate?: string | null;
+  documentCount: number;
+}
+
+/** مرشّح استيراد يجمع كتابات متطابقة بعد التطبيع تحت اسم مقترح. */
+export interface ImportPreviewItemDto {
+  normalizedName: string;
+  suggestedCanonicalName: string;
+  totalDocuments: number;
+  governorates: string[];
+  variants: ImportVariantDto[];
+}
+
+export interface ImportPreviewResponse {
+  generatedAtUtc: string;
+  items: ImportPreviewItemDto[];
+}
+
+export interface ImportCommitItemRequest {
+  normalizedName: string;
+  canonicalName: string;
+  entityType: PublicEntityType;
+  governorate: string;
+  branchName: string;
+  citationFormula?: CitationFormula | null;
+  addVariantsAsAliases?: boolean;
+}
+
+export interface ImportCommitRequest {
+  items: ImportCommitItemRequest[];
+}
+
+export interface ImportCommitResultDto {
+  groupsCreated: number;
+  entriesCreated: number;
+  aliasesAdded: number;
 }
 
 

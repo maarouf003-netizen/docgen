@@ -305,6 +305,10 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Governorate")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("INTEGER");
 
@@ -1813,6 +1817,187 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.ToTable("LoginAttempts", (string)null);
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.PublicEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("BranchName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CitationFormula")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Governorate")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("GroupId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("Governorate");
+
+                    b.HasIndex("GroupId");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("GroupId", "Governorate", "BranchName")
+                        .IsUnique();
+
+                    b.ToTable("PublicEntities", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.PublicEntityAlias", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AliasText")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PublicEntityId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AliasText");
+
+                    b.HasIndex("PublicEntityId");
+
+                    b.ToTable("PublicEntityAliases", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.PublicEntityGroup", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CanonicalName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CanonicalName")
+                        .IsUnique();
+
+                    b.HasIndex("EntityType");
+
+                    b.ToTable("PublicEntityGroups", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.PublicEntityProposal", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("BranchName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CitationFormula")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("CreatedPublicEntityId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Governorate")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ProposedById")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ProposedName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("RejectedById")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("SourceDocumentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedPublicEntityId");
+
+                    b.HasIndex("Governorate");
+
+                    b.HasIndex("ProposedById");
+
+                    b.HasIndex("RejectedById");
+
+                    b.HasIndex("SourceDocumentId");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("PublicEntityProposals", (string)null);
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.ReviewLetter", b =>
                 {
                     b.Property<int>("Id")
@@ -2391,6 +2576,68 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Navigation("Document");
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.PublicEntity", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.PublicEntityGroup", "Group")
+                        .WithMany("Entries")
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("Group");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.PublicEntityAlias", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.PublicEntity", "PublicEntity")
+                        .WithMany("Aliases")
+                        .HasForeignKey("PublicEntityId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PublicEntity");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.PublicEntityProposal", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.PublicEntity", "CreatedPublicEntity")
+                        .WithMany()
+                        .HasForeignKey("CreatedPublicEntityId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("DocGenerator.Domain.Entities.User", "ProposedBy")
+                        .WithMany()
+                        .HasForeignKey("ProposedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.User", "RejectedBy")
+                        .WithMany()
+                        .HasForeignKey("RejectedById")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DocGenerator.Domain.Entities.Document", "SourceDocument")
+                        .WithMany()
+                        .HasForeignKey("SourceDocumentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("CreatedPublicEntity");
+
+                    b.Navigation("ProposedBy");
+
+                    b.Navigation("RejectedBy");
+
+                    b.Navigation("SourceDocument");
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.ReviewLetter", b =>
                 {
                     b.HasOne("DocGenerator.Domain.Entities.Branch", "Branch")
@@ -2512,6 +2759,16 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("DocGenerator.Domain.Entities.HeadAlert", b =>
                 {
                     b.Navigation("Recipients");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.PublicEntity", b =>
+                {
+                    b.Navigation("Aliases");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.PublicEntityGroup", b =>
+                {
+                    b.Navigation("Entries");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.ReviewLetter", b =>

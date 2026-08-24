@@ -136,3 +136,7 @@ npm test
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260823110935_AddDocumentAppeals.cs` — ينشئ جداول `DocumentAppeals` و`AppealActions` و`AppealBaseNumbers` ويضيف عمود `AppealId` إلى `HeadAlerts`.
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `MigrationsPostgres\20260823110958_AddDocumentAppealsPg.cs` — نفسه.
   - بدون التطبيق سيفشل الإتمام/الاعتبار فعليًا برسالة `no such column: …` رغم نجاح الاختبارات محليًا.
+- [ ] **2026-08-24 — `AddEntityRegistry` / `AddEntityRegistryPg`** (ميزة «بوابة الجهات العامة» — المرحلة 1):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260824173935_AddEntityRegistry.cs` — ينشئ جداول `PublicEntityGroups` و`PublicEntities` و`PublicEntityAliases` و`PublicEntityProposals` ويضيف عمود `Governorate` إلى `Branches`.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `MigrationsPostgres\20260824174004_AddEntityRegistryPg.cs` — نفسه.
+  - بدون التطبيق سيفشل فتح شاشة «سجل الجهات العامة» وأي عملية فيها برسالة `no such table: …`.

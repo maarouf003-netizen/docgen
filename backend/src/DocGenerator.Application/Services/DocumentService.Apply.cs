@@ -849,74 +849,17 @@ public sealed partial class DocumentService
         if (!string.IsNullOrWhiteSpace(applicantText) || string.IsNullOrWhiteSpace(doc.Applicant))
             doc.Applicant = applicantText;
 
-        var parts = new[] { doc.BorrowerName, doc.BorrowerFamily, doc.Applicant, doc.Lawyer,
-            doc.Court, doc.FileNumber, doc.ContractNumber, doc.AnnexNumber, doc.BorrowerNationalId,
-            doc.BorrowerRegistrationNumber, doc.BorrowerRepresentedBy,
-            doc.FileArrivalNumber, doc.FileArrivalDate }
-            .Where(v => !string.IsNullOrWhiteSpace(v));
-        // أسماء ورثة المتوفين (المقترض/الكفلاء) تنضم إلى نص البحث ليكون البحث بأسماء الورثة
-        // متسقًا عبر SearchText وفلتر الورثة المباشر في المستودع.
-        var applicantHeirNames = doc.Heirs
-            .Select(h => string.Join(' ', h.HeirName, h.HeirFather, h.HeirFamily))
-            .Where(v => !string.IsNullOrWhiteSpace(v));
-        parts = parts.Concat(applicantHeirNames);
-        // أسماء الكفلاء الاعتباريين وأرقام تسجيلهم تنضم إلى نص البحث.
-        var guarantorLegalNames = doc.Guarantors
-            .SelectMany(g => new[] { g.GuarantorName, g.GuarantorRegistrationNumber, g.GuarantorRepresentedBy })
-            .Where(v => !string.IsNullOrWhiteSpace(v));
-        parts = parts.Concat(guarantorLegalNames);
         if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
         {
             // ملف «منفذ عليه»/«عرض وايداع»: مقيد دائمًا، والعنوان يعتمد على حالة الوضع،
             // واسم البحث يضم أسماء طلبات التنفيذ/العرض والجهات/الأشخاص المنفذ عليهم.
             doc.IsDraft = false;
             doc.DocumentType = $"{ExecutedStatusCatalog.ToLabel(doc.ExecutedStatus ?? ExecutedStatusCatalog.None)}";
-            var applicantNames = doc.ExecutionApplicants
-                .Select(a => string.Join(' ', a.Name, a.Father, a.Family))
-                .Where(v => !string.IsNullOrWhiteSpace(v));
-            var applicantLegalFields = doc.ExecutionApplicants
-                .SelectMany(a => new[] { a.ApplicantRegistrationNumber, a.ApplicantRepresentedBy })
-                .Where(v => !string.IsNullOrWhiteSpace(v));
-            var executedNames = doc.ExecutedPublicEntities
-                .Select(e => string.Join(' ', e.EntityName, e.Governorate))
-                .Concat(doc.ExecutedNaturalPersons.Select(p => string.Join(' ', p.Name, p.Father, p.Family)))
-                .Where(v => !string.IsNullOrWhiteSpace(v));
-            var entityLegalFields = doc.ExecutedPublicEntities
-                .SelectMany(e => new[] { e.RegistrationNumber, e.RepresentedBy })
-                .Where(v => !string.IsNullOrWhiteSpace(v));
-            var executedHeirNames = doc.ExecutedHeirs
-                .Select(h => string.Join(' ', h.HeirName, h.HeirFather, h.HeirFamily))
-                .Where(v => !string.IsNullOrWhiteSpace(v));
-            parts = parts
-                .Concat(applicantNames)
-                .Concat(applicantLegalFields)
-                .Concat(executedNames)
-                .Concat(entityLegalFields)
-                .Concat(executedHeirNames);
         }
-        // SearchText معرف بحد طول 1000 (HasMaxLength)؛ PostgreSQL يرفض القيم الأطول عند
-        // الإدراج/التحديث بخلاف SQLite. يُقتطع إلى الحد الأقصى ليبقى عمود البحث متسقًا.
-        doc.SearchText = TruncateSearchText(string.Join(' ', parts));
 
-        doc.FullData = JsonSerializer.Serialize(new
-        {
-            doc.BorrowerName, doc.BorrowerFamily, doc.AmountNumeric, doc.Currency,
-            doc.ContractNumber, doc.Court, doc.Applicant, doc.Lawyer
-        });
-    }
+        doc.SearchText = Common.DocumentSearchTextBuilder.Build(doc);
 
-    private const int SearchTextMaxLength = 1000;
-
-    private static string TruncateSearchText(string value)
-    {
-        if (value.Length <= SearchTextMaxLength)
-            return value;
-
-        // تجنب قصّ بداية زوج بديل UTF-16 (surrogate pair) في النهاية.
-        var end = SearchTextMaxLength;
-        if (end > 0 && char.IsHighSurrogate(value[end - 1]) && end < value.Length && char.IsLowSurrogate(value[end]))
-            end--;
-        return value[..end];
+        doc.FullData = Common.DocumentSearchTextBuilder.BuildFullData(doc);
     }
 
     private static string FormatAmountWords(decimal amount, string? currency)
@@ -933,14 +876,5 @@ public sealed partial class DocumentService
     /// الفرع لا يُضمّن هنا؛ يُعرض ويُفلتر عبر حقل الفرع المستقل في ApplicantPublicEntities.Branch.
     /// </summary>
     private static string BuildApplicantText(IEnumerable<ApplicantPublicEntity> entities) =>
-        string.Join(" و ", entities
-            .Select(e =>
-            {
-                var name = (e.Name ?? string.Empty).Trim();
-                if (string.IsNullOrWhiteSpace(name))
-                    return string.Empty;
-                var governorate = (e.Governorate ?? string.Empty).Trim();
-                return string.IsNullOrWhiteSpace(governorate) ? name : $"{name} - محافظة {governorate}";
-            })
-            .Where(v => v.Length > 0));
+        Common.ApplicantTextBuilder.Build(entities);
 }

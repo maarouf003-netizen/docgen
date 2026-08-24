@@ -38,6 +38,7 @@ public class BranchConfiguration : IEntityTypeConfiguration<Branch>
         builder.HasIndex(b => b.Code).IsUnique();
         builder.Property(b => b.Address).HasMaxLength(300);
         builder.Property(b => b.Phone).HasMaxLength(30);
+        builder.Property(b => b.Governorate).HasMaxLength(100);
     }
 }
 
@@ -976,5 +977,121 @@ public class DocumentFieldChangeConfiguration : IEntityTypeConfiguration<Documen
             .WithMany(a => a.FieldChanges)
             .HasForeignKey(c => c.AuditLogId)
             .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+/// <summary>
+/// الهوية الأم للجهة العامة في السجل المرجعي المركزي: الاسم المعتمد فريد،
+/// والقيود (المحافظة + الفرع) تحته تُحذف تبعًا له.
+/// </summary>
+public class PublicEntityGroupConfiguration : IEntityTypeConfiguration<PublicEntityGroup>
+{
+    public void Configure(EntityTypeBuilder<PublicEntityGroup> builder)
+    {
+        builder.ToTable("PublicEntityGroups");
+        builder.HasKey(g => g.Id);
+        builder.Property(g => g.CanonicalName).HasMaxLength(200).IsRequired();
+        builder.HasIndex(g => g.CanonicalName).IsUnique();
+        builder.Property(g => g.EntityType).HasMaxLength(30).IsRequired();
+        builder.HasIndex(g => g.EntityType);
+    }
+}
+
+/// <summary>
+/// قيد الجهة بمستوى المحافظة + الفرع: فهرس فريد مركب يمنع تكرار القيد نفسه
+/// تحت الهوية الأم، وفهرسة الحالة والمحافظة لتصفيات السجل والبوابة.
+/// </summary>
+public class PublicEntityConfiguration : IEntityTypeConfiguration<PublicEntity>
+{
+    public void Configure(EntityTypeBuilder<PublicEntity> builder)
+    {
+        builder.ToTable("PublicEntities");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.Governorate).HasMaxLength(100).IsRequired();
+        builder.Property(e => e.BranchName).HasMaxLength(200).IsRequired();
+        builder.Property(e => e.CitationFormula).HasMaxLength(20).IsRequired();
+        builder.Property(e => e.Status).HasMaxLength(20).IsRequired();
+
+        builder.HasIndex(e => new { e.GroupId, e.Governorate, e.BranchName }).IsUnique();
+        builder.HasIndex(e => e.Governorate);
+        builder.HasIndex(e => e.Status);
+        builder.HasIndex(e => e.GroupId);
+
+        builder.HasOne(e => e.Group)
+            .WithMany(g => g.Entries)
+            .HasForeignKey(e => e.GroupId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(e => e.CreatedBy)
+            .WithMany()
+            .HasForeignKey(e => e.CreatedById)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+/// <summary>
+/// أسماء كتابية بديلة لقيد الجهة: تُفهرس للبحث وتُحذف تبعًا لقيدِها.
+/// </summary>
+public class PublicEntityAliasConfiguration : IEntityTypeConfiguration<PublicEntityAlias>
+{
+    public void Configure(EntityTypeBuilder<PublicEntityAlias> builder)
+    {
+        builder.ToTable("PublicEntityAliases");
+        builder.HasKey(a => a.Id);
+        builder.Property(a => a.AliasText).HasMaxLength(500).IsRequired();
+
+        builder.HasIndex(a => a.AliasText);
+        builder.HasIndex(a => a.PublicEntityId);
+
+        builder.HasOne(a => a.PublicEntity)
+            .WithMany(e => e.Aliases)
+            .HasForeignKey(a => a.PublicEntityId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+/// <summary>
+/// اقتراحات المحامين لإضافة جهات جديدة: تُفهرس بالحالة لنافذة انتظار الاعتماد،
+/// وترابط الملف المصدر ومَن رفض والقيد الناتج كلها تفكّ ارتباط (SetNull/Restrict)
+/// حفاظًا على سجل الاقتراح بعد الحذف أو الاعتماد.
+/// </summary>
+public class PublicEntityProposalConfiguration : IEntityTypeConfiguration<PublicEntityProposal>
+{
+    public void Configure(EntityTypeBuilder<PublicEntityProposal> builder)
+    {
+        builder.ToTable("PublicEntityProposals");
+        builder.HasKey(p => p.Id);
+        builder.Property(p => p.ProposedName).HasMaxLength(200).IsRequired();
+        builder.Property(p => p.EntityType).HasMaxLength(30).IsRequired();
+        builder.Property(p => p.Governorate).HasMaxLength(100).IsRequired();
+        builder.Property(p => p.BranchName).HasMaxLength(200).IsRequired();
+        builder.Property(p => p.CitationFormula).HasMaxLength(20).IsRequired();
+        builder.Property(p => p.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+        builder.Property(p => p.RejectionReason).HasMaxLength(500);
+
+        builder.HasIndex(p => p.Status);
+        builder.HasIndex(p => p.Governorate);
+        builder.HasIndex(p => p.ProposedById);
+
+        builder.HasOne(p => p.ProposedBy)
+            .WithMany()
+            .HasForeignKey(p => p.ProposedById)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // الملف المصدر سياق اختياري فقط: حذفه لا يحذف الاقتراح.
+        builder.HasOne(p => p.SourceDocument)
+            .WithMany()
+            .HasForeignKey(p => p.SourceDocumentId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        builder.HasOne(p => p.RejectedBy)
+            .WithMany()
+            .HasForeignKey(p => p.RejectedById)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(p => p.CreatedPublicEntity)
+            .WithMany()
+            .HasForeignKey(p => p.CreatedPublicEntityId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }

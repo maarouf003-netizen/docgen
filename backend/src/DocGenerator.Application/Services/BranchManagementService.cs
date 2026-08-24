@@ -67,6 +67,7 @@ public sealed class BranchManagementService : IBranchManagementService
             Code = code,
             Address = NormalizeOptional(request.Address),
             Phone = NormalizeOptional(request.Phone),
+            Governorate = NormalizeOptional(request.Governorate),
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
         };
@@ -100,6 +101,7 @@ public sealed class BranchManagementService : IBranchManagementService
         branch.Code = code;
         branch.Address = NormalizeOptional(request.Address);
         branch.Phone = NormalizeOptional(request.Phone);
+        branch.Governorate = NormalizeOptional(request.Governorate);
         branch.IsActive = request.IsActive;
 
         var userCounts = await _branches.CountUsersByBranchAsync(ct);
@@ -159,6 +161,7 @@ public sealed class BranchManagementService : IBranchManagementService
         branch.Code,
         branch.Address,
         branch.Phone,
+        branch.Governorate,
         branch.IsActive,
         userCount,
         documentCount);

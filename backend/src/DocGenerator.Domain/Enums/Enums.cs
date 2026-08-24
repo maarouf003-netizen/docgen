@@ -5,7 +5,13 @@ public enum UserRole
     Lawyer = 1,
     Head = 2,
     Manager = 3,
-    Admin = 4
+    Admin = 4,
+
+    /// <summary>
+    /// مندوب الجهة العامة (بوابة قراءة فقط + تصدير Excel) — يُربط بهوية جهة
+    /// (Group) أو قيد (Entry) ويُمنع بنيويًا من كل مسارات الكتابة.
+    /// </summary>
+    EntityManager = 5
 }
 
 public enum ContractTypeSelector

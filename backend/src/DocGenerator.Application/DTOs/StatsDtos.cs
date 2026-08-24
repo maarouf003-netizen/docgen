@@ -1,7 +1,7 @@
 namespace DocGenerator.Application.DTOs;
 
 /// <summary>
-/// فرع للإدارة والعرض: مع الهاتف وحالة التفعيل وأعداد الاستخدام
+/// فرع للإدارة والعرض: مع الهاتف والمحافظة وحالة التفعيل وأعداد الاستخدام
 /// (المستخدمون/المستندات المرتبطة) لاتخاذ قرار الحذف/التعطيل بصورة مطلعة.
 /// </summary>
 public record BranchDto(
@@ -10,6 +10,7 @@ public record BranchDto(
     string Code,
     string? Address,
     string? Phone,
+    string? Governorate,
     bool IsActive,
     int UserCount,
     int DocumentCount);
