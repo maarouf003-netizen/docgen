@@ -294,20 +294,23 @@ public sealed class PublicEntityService : IPublicEntityService
 
     /// <summary>
     /// قائمة انتظار الاقتراحات: رئيس القسم يرى محافظة فرعه حصرًا (د4) —
-    /// والفرع بلا محافظة مضبوطة يرى قائمة فارغة حتى تضبطها الإدارة،
+    /// والفرع بلا محافظة مضبوطة لا يرى شيئًا حتى تضبطها الإدارة،
     /// أما المدير/المشرف فيرىان كل المحافظات.
     /// </summary>
     public async Task<List<PublicEntityProposalDto>> ListPendingProposalsAsync(EntityRegistryActor actor, CancellationToken ct = default)
     {
-        string? governorateFilter = null;
         if (actor.Role == UserRole.Head)
         {
             var branch = actor.BranchId is null ? null : await _branches.GetByIdAsync(actor.BranchId.Value, ct);
-            governorateFilter = NormalizeOptional(branch?.Governorate)
-                ?? "— نطاق غير مضبوط —";
+            var branchGov = NormalizeOptional(branch?.Governorate);
+            if (branchGov is null)
+                return new List<PublicEntityProposalDto>();
+            var proposals = await _entities.ListPendingProposalsAsync(branchGov, ct);
+            return proposals.Select(ToProposalDto).ToList();
         }
-        var proposals = await _entities.ListPendingProposalsAsync(governorateFilter, ct);
-        return proposals.Select(ToProposalDto).ToList();
+
+        var all = await _entities.ListPendingProposalsAsync(governorate: null, ct);
+        return all.Select(ToProposalDto).ToList();
     }
 
     public async Task<PublicEntityProposalDto?> ApproveProposalAsync(int proposalId, EntityRegistryActor actor, CancellationToken ct = default)
@@ -566,8 +569,7 @@ public sealed class PublicEntityService : IPublicEntityService
         if (applicantNames.Count > 0)
         {
             var rows = await _entities.ListApplicantRowsByNamesAsync(applicantNames, token);
-            var docIds = rows.Select(r => r.DocumentId).Distinct().ToList();
-            var docs = await _entities.ListDocumentsWithApplicantsAsync(docIds, token);
+            var docs = rows.Select(r => r.Document).GroupBy(d => d.Id).Select(g => g.First()).ToList();
             var oldTexts = docs.ToDictionary(d => d.Id, d => d.Applicant);
 
             foreach (var row in rows)
@@ -598,8 +600,12 @@ public sealed class PublicEntityService : IPublicEntityService
                 row.EntityName = newCanonical;
                 AddLog(row.DocumentId, "__Col_ExecutedPublicEntities", "الجهات العامة المنفذ عليها",
                     oldSignature, JoinNameBranch(row.EntityName, row.EntityBranch));
-                row.Document.SearchText = DocumentSearchTextBuilder.Build(row.Document);
             }
+
+            // إعادة بناء نص البحث مرة واحدة لكل ملف متأثر (لا لكل صف مطابق).
+            var executedDocs = rows.Select(r => r.Document).GroupBy(d => d.Id).Select(g => g.First());
+            foreach (var doc in executedDocs)
+                doc.SearchText = DocumentSearchTextBuilder.Build(doc);
         }
 
         await _uow.SaveChangesAsync(token);

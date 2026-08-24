@@ -194,18 +194,37 @@ export default function Layout() {
     </>
   );
 
-  const renderBottomNav = () => (
-    <nav
-      className="fixed bottom-0 inset-x-0 z-40 bg-emerald-900 text-white flex border-t border-emerald-700 pb-[env(safe-area-inset-bottom)]"
-      aria-label="التنقل السفلي"
-    >
-      {navItems.map((item) => (
-        <NavLink key={item.to} to={item.to} end={item.end} className={bottomNavClass}>
-          {renderNavLabel(item)}
-        </NavLink>
-      ))}
-    </nav>
-  );
+  const renderBottomNav = () => {
+    // شريط سفلي بأهداف لمس مريحة: أول 4 بنود فقط، والبقية عبر درج «المزيد».
+    const BOTTOM_NAV_LIMIT = 4;
+    const bottomItems = navItems.slice(0, BOTTOM_NAV_LIMIT);
+    const hasMore = navItems.length > BOTTOM_NAV_LIMIT;
+    const moreClass =
+      'flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-14 text-xs transition-colors text-emerald-100 hover:bg-emerald-700/40';
+    return (
+      <nav
+        className="fixed bottom-0 inset-x-0 z-40 bg-emerald-900 text-white flex border-t border-emerald-700 pb-[env(safe-area-inset-bottom)]"
+        aria-label="التنقل السفلي"
+      >
+        {bottomItems.map((item) => (
+          <NavLink key={item.to} to={item.to} end={item.end} className={bottomNavClass}>
+            {renderNavLabel(item)}
+          </NavLink>
+        ))}
+        {hasMore && (
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            className={moreClass}
+            aria-haspopup="dialog"
+            aria-label={`المزيد: ${navItems.length - bottomItems.length} بنودًا إضافية`}
+          >
+            المزيد ⋯
+          </button>
+        )}
+      </nav>
+    );
+  };
 
   return (
     <div className="h-dvh flex flex-col" dir="rtl">

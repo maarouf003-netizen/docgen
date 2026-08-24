@@ -87,26 +87,35 @@ public class PublicEntityRepository : IPublicEntityRepository
     }
 
     // ── مزامنة النصوص عند إعادة التسمية (د5) ──
+    //
+    // إعادة بناء SearchText تمرّ على كل مجموعات الملف (ورثة/كفلاء/طالبو تنفيذ/منفذ
+    // عليهم/ورثة الجهات)، لذا يجب تحميلها كاملة مع الملف وإلا فقدت توكنات بحث غير
+    // متأثرة بإعادة التسمية. SplitQuery مفعّل على السياق فيجعل التحميل المتعدد فعالًا.
 
     public Task<List<ApplicantPublicEntity>> ListApplicantRowsByNamesAsync(
         IReadOnlyCollection<string> names, CancellationToken ct = default)
         => _db.ApplicantPublicEntities
-            .Include(a => a.Document)
+            .Include(a => a.Document).ThenInclude(d => d.ApplicantPublicEntities)
+            .Include(a => a.Document).ThenInclude(d => d.Heirs)
+            .Include(a => a.Document).ThenInclude(d => d.Guarantors)
+            .Include(a => a.Document).ThenInclude(d => d.ExecutionApplicants)
+            .Include(a => a.Document).ThenInclude(d => d.ExecutedPublicEntities)
+            .Include(a => a.Document).ThenInclude(d => d.ExecutedNaturalPersons)
+            .Include(a => a.Document).ThenInclude(d => d.ExecutedHeirs)
             .Where(a => a.Name != null && names.Contains(a.Name))
             .ToListAsync(ct);
 
     public Task<List<ExecutedPublicEntity>> ListExecutedRowsByNamesAsync(
         IReadOnlyCollection<string> names, CancellationToken ct = default)
         => _db.ExecutedPublicEntities
-            .Include(e => e.Document)
+            .Include(e => e.Document).ThenInclude(d => d.ApplicantPublicEntities)
+            .Include(e => e.Document).ThenInclude(d => d.Heirs)
+            .Include(e => e.Document).ThenInclude(d => d.Guarantors)
+            .Include(e => e.Document).ThenInclude(d => d.ExecutionApplicants)
+            .Include(e => e.Document).ThenInclude(d => d.ExecutedPublicEntities)
+            .Include(e => e.Document).ThenInclude(d => d.ExecutedNaturalPersons)
+            .Include(e => e.Document).ThenInclude(d => d.ExecutedHeirs)
             .Where(e => e.EntityName != null && e.EntityNature == PartyNatureCatalog.PublicEntity
                 && names.Contains(e.EntityName))
-            .ToListAsync(ct);
-
-    public Task<List<Document>> ListDocumentsWithApplicantsAsync(
-        IReadOnlyCollection<int> documentIds, CancellationToken ct = default)
-        => _db.Documents
-            .Include(d => d.ApplicantPublicEntities)
-            .Where(d => documentIds.Contains(d.Id))
             .ToListAsync(ct);
 }

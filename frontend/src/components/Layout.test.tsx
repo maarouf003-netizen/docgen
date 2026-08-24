@@ -121,13 +121,40 @@ describe('Layout', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('يعرض روابط صلاحية خاصة فقط: نشاط المستخدمين للمدير وسجل التدقيق لرئيس القسم', () => {
+  it('يقصر الشريط السفلي على أول 4 بنود مع زر «المزيد» على الجوال (أهداف لمس مريحة)', () => {
     useAuthMock.mockReturnValue({ ...baseUser(), hasFullAccess: true, isHead: true });
     stubMatchMedia(true);
     render(<Layout />);
 
-    expect(screen.getByRole('link', { name: 'نشاط المستخدمين' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'سجل التدقيق' })).toBeInTheDocument();
+    const bottomNav = screen.getByRole('navigation', { name: 'التنقل السفلي' });
+    expect(within(bottomNav).getAllByRole('link')).toHaveLength(4);
+    expect(within(bottomNav).getByRole('button', { name: /المزيد/ })).toHaveAttribute(
+      'aria-haspopup',
+      'dialog',
+    );
+    // بنود متأخرة لا تظهر كروابط مباشرة في الشريط.
+    expect(within(bottomNav).queryByRole('link', { name: 'سجل التدقيق' })).not.toBeInTheDocument();
+  });
+
+  it('يبقي كل البنود ظاهرة كروابط في الشريط الجانبي المكتبية', () => {
+    useAuthMock.mockReturnValue({ ...baseUser(), hasFullAccess: true, isHead: true });
+    stubMatchMedia(false);
+    render(<Layout />);
+
+    const sidebar = screen.getByRole('navigation', { name: 'القائمة الرئيسية' });
+    expect(within(sidebar).getAllByRole('link').length).toBeGreaterThan(4);
+  });
+
+  it('يعرض روابط صلاحية خاصة فقط: نشاط المستخدمين للمدير وسجل التدقيق لرئيس القسم', async () => {
+    useAuthMock.mockReturnValue({ ...baseUser(), hasFullAccess: true, isHead: true });
+    stubMatchMedia(true);
+    render(<Layout />);
+
+    // على الجوال البنود المتأخرة خلف زر «المزيد» الذي يفتح درج التنقل.
+    await userEvent.setup().click(screen.getByRole('button', { name: /المزيد/ }));
+    const dialog = screen.getByRole('dialog', { name: 'قائمة التنقل' });
+    expect(within(dialog).getByRole('link', { name: 'نشاط المستخدمين' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('link', { name: 'سجل التدقيق' })).toBeInTheDocument();
   });
 
   it('لا يعرض رابط «الملفات المحذوفة» في الشريط الجانبي لأي دور (انتقل داخل الملفات التنفيذية)', () => {
@@ -187,14 +214,17 @@ describe('Layout', () => {
     expect(screen.queryByRole('link', { name: 'محامو الفرع' })).not.toBeInTheDocument();
   });
 
-  it('يعرض «طلبات الإنابة» لرئيس القسم فقط', () => {
+  it('يعرض «طلبات الإنابة» لرئيس القسم فقط', async () => {
     useAuthMock.mockReturnValue({
       ...baseUser(),
       user: { ...baseUser().user, role: 'head' },
     });
     stubMatchMedia(true);
     render(<Layout />);
-    expect(screen.getByRole('link', { name: 'طلبات الإنابة' })).toHaveAttribute(
+
+    await userEvent.setup().click(screen.getByRole('button', { name: /المزيد/ }));
+    const dialog = screen.getByRole('dialog', { name: 'قائمة التنقل' });
+    expect(within(dialog).getByRole('link', { name: 'طلبات الإنابة' })).toHaveAttribute(
       'href',
       '/delegations/requests',
     );
@@ -213,14 +243,18 @@ describe('Layout', () => {
     }
   });
 
-  it('يعرض «إدارة المستخدمين» للمشرف فقط', () => {
+  it('يعرض «إدارة المستخدمين» للمشرف فقط', async () => {
     useAuthMock.mockReturnValue({
       ...baseUser(),
       user: { ...baseUser().user, role: 'admin' },
     });
     stubMatchMedia(true);
     const { unmount: unmountAdmin } = render(<Layout />);
-    expect(screen.getByRole('link', { name: 'إدارة المستخدمين' })).toHaveAttribute(
+
+    // بند متأخر على الجوال: خلف زر «المزيد».
+    await userEvent.setup().click(screen.getByRole('button', { name: /المزيد/ }));
+    const dialog = screen.getByRole('dialog', { name: 'قائمة التنقل' });
+    expect(within(dialog).getByRole('link', { name: 'إدارة المستخدمين' })).toHaveAttribute(
       'href',
       '/users/manage',
     );

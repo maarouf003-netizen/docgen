@@ -42,12 +42,16 @@ public interface IPublicEntityRepository
 
     // ── مزامنة النصوص عند إعادة التسمية (د5) ──
 
-    /// <summary>صفوف طالب التنفيذ التي تطابق أسماؤها إحدى الأسماء المعطاة (متتبَّعة مع ملفها).</summary>
+    /// <summary>
+    /// صفوف طالب التنفيذ المطابقة لأحد الأسماء المعطاة، مع ملفها محمّلًا بكامل
+    /// المجموعات التي يقرؤها بناء نص البحث (ورثة/كفلاء/طالبو تنفيذ/منفذ عليهم)
+    /// حتى لا تُفقَد توكنات غير متأثرة عند إعادة بناء SearchText.
+    /// </summary>
     Task<List<ApplicantPublicEntity>> ListApplicantRowsByNamesAsync(IReadOnlyCollection<string> names, CancellationToken ct = default);
 
-    /// <summary>صفوف المنفذ عليها (جهة عامة) التي تطابق أسماؤها إحدى الأسماء المعطاة (متتبَّعة مع ملفها).</summary>
+    /// <summary>
+    /// صفوف المنفذ عليه (جهة عامة فقط) المطابقة لأحد الأسماء المعطاة، مع ملفها
+    /// محمّلًا بكامل مجموعات نص البحث كما في الطرف المقابل.
+    /// </summary>
     Task<List<ExecutedPublicEntity>> ListExecutedRowsByNamesAsync(IReadOnlyCollection<string> names, CancellationToken ct = default);
-
-    /// <summary>ملفات محددة مع جهاتها طالبة التنفيذ كاملة — لإعادة بناء نص Applicant بعد المزامنة.</summary>
-    Task<List<Document>> ListDocumentsWithApplicantsAsync(IReadOnlyCollection<int> documentIds, CancellationToken ct = default);
 }

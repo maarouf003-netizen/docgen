@@ -225,6 +225,55 @@ public class PublicEntityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Update_Rename_PreservesUnrelatedSearchTokens_AndRebuildsOncePerDocument()
+    {
+        // ملف طالب تنفيذ غني: كفيل وورث ومنفذ ثانٍ — يجب أن تبقى توكناتهم في
+        // SearchText بعد إعادة تسمية الجهة، وأن يُعاد بناء النص لكل ملف مرة واحدة.
+        var doc = new Document
+        {
+            BranchId = _damascusId,
+            CreatedById = _lawyerId,
+            IsDraft = false,
+            BorrowerName = "شركة المباني",
+            AmountNumeric = 0,
+            ExecStatus = string.Empty,
+            GeneralEntitySide = "executed",
+        };
+        doc.ApplicantPublicEntities.Add(new ApplicantPublicEntity { Name = "وزارة التعليم", Governorate = "دمشق" });
+        doc.Guarantors.Add(new Guarantor { GuarantorNumber = 1, GuarantorName = "كفيل مستقل", GuarantorFamily = "عنابي" });
+        doc.Heirs.Add(new Heir { HeirName = "وريث مستقل" });
+        doc.ExecutedPublicEntities.Add(new ExecutedPublicEntity { EntityName = "وزارة التعليم", EntityNature = "public" });
+        doc.ExecutedPublicEntities.Add(new ExecutedPublicEntity { EntityName = "هيئة أخرى", EntityNature = "public" });
+        doc.Applicant = "وزارة التعليم - محافظة دمشق";
+        // DocumentService يبني نص البحث عند الإنشاء؛ نمثّل حالته الابتدائية الغنية.
+        doc.SearchText = DocumentSearchTextBuilder.Build(doc);
+        _db.Documents.Add(doc);
+        await _db.SaveChangesAsync();
+
+        Assert.Contains("كفيل مستقل", doc.SearchText);
+        Assert.Contains("وريث مستقل", doc.SearchText);
+        Assert.Contains("هيئة أخرى", doc.SearchText);
+
+        var entry = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        _audit.Actions.Clear();
+
+        await _service.UpdateAsync(entry.Id,
+            new UpdatePublicEntityRequest("وزارة التربية", null, null, null, null, null, null), ManagerActor());
+
+        var after = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == doc.Id);
+        Assert.Contains("وزارة التربية", after.SearchText);
+        Assert.Contains("كفيل مستقل", after.SearchText);
+        Assert.Contains("وريث مستقل", after.SearchText);
+        Assert.Contains("هيئة أخرى", after.SearchText);
+        Assert.DoesNotContain("وزارة التعليم", after.SearchText);
+
+        // إدخال تدقيق واحد للملف يجمع تغيّرَي الطالب والمنفذ المطابق.
+        var syncLog = Assert.Single(_audit.ChangeLogs.Where(c => c.DocumentId == doc.Id));
+        Assert.Contains(syncLog.Changes, c => c.FieldKey == nameof(Document.Applicant));
+        Assert.Contains(syncLog.Changes, c => c.FieldKey == "__Col_ExecutedPublicEntities");
+    }
+
+    [Fact]
     public async Task Update_RenameByHead_OfOtherGovernorate_IsForbidden()
     {
         var entry = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "حلب", "فرع حلب"), ManagerActor());
