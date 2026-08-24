@@ -46,6 +46,18 @@ public class UserRepository : Repository<User>, IUserRepository
             .ToListAsync(ct);
     }
 
+    /// <summary>حسابات مندوبي الجهات مع نطاقهم (الهوية/القيد) لشاشة إدارة المندوبين.</summary>
+    public async Task<List<User>> ListEntityManagersAsync(CancellationToken ct = default)
+    {
+        return await Db.Users
+            .AsNoTracking()
+            .Include(u => u.PortalGroup)
+            .Include(u => u.PortalEntry).ThenInclude(e => e!.Group)
+            .Where(u => u.Role == UserRole.EntityManager)
+            .OrderBy(u => u.FullName)
+            .ToListAsync(ct);
+    }
+
     public async Task<bool> UsernameExistsAsync(string username, int? branchId, int? excludeUserId, CancellationToken ct = default)
     {
         var normalized = ArabicNameNormalizer.Normalize(username);

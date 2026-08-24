@@ -9,6 +9,7 @@ const ROLE_LABELS: Record<Role, string> = {
   head: 'رئيس قسم',
   manager: 'مدير',
   admin: 'مشرف نظام',
+  entitymanager: 'مندوب جهة',
 };
 
 const BRANCH_ROLES: Role[] = ['lawyer', 'head'];

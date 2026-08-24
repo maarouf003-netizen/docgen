@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
@@ -230,7 +230,11 @@ export default function Dashboard() {
   }, [available, period]);
 
   if (isManager) {
-    return (
+  // مندوب الجهة لا يملك لوحة تحكم — يُحوَّل مباشرة إلى بوابته القرائية
+  // (بعد كل الخطافات التزامًا بقواعد React).
+  if (user?.role === 'entitymanager') return <Navigate to="/portal" replace />;
+
+  return (
       <div className="max-w-7xl mx-auto">
         <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-6">لوحة التحكم</h2>
         <ManagerStatsSection

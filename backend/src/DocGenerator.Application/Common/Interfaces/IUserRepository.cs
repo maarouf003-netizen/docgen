@@ -21,4 +21,7 @@ public interface IUserRepository : IRepository<User>
     /// branchId يحدد النطاق؛ excludeUserId يستثني مستخدماً معيناً عند التحديث.
     /// </summary>
     Task<bool> UsernameExistsAsync(string username, int? branchId, int? excludeUserId, CancellationToken ct = default);
+
+    /// <summary>حسابات مندوبي الجهات مع نطاقهم (الهوية/القيد) لشاشة إدارة المندوبين.</summary>
+    Task<List<User>> ListEntityManagersAsync(CancellationToken ct = default);
 }

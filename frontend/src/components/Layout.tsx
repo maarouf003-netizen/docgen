@@ -101,24 +101,35 @@ export default function Layout() {
   const canManageBranchLawyers = user?.role === 'head' || user?.role === 'admin';
   const canManageUsers = user?.role === 'admin';
   const canManageEntityRegistry = hasFullAccess || isHead;
+  const canManageDelegates = hasFullAccess || isHead;
+  // مندوب الجهة: قائمة بوابة مختصرة فقط (ملفاتي/تصدير) دون باقي البنود (المرحلة 3).
+  const isEntityManager = user?.role === 'entitymanager';
 
-  const navItems: NavItem[] = [
-    { to: '/', label: 'لوحة التحكم', end: true },
-    { to: '/documents', label: 'الملفات التنفيذية' },
-  ];
-  navItems.push({
-    to: '/reviews',
-    label: user?.role === 'lawyer' ? 'المطالعات' : 'كتب المطالعات',
-    badge: isLawyerUser && unseenReplies > 0 ? unseenReplies : undefined,
-  });
-  if (canManageBranchLawyers) navItems.push({ to: '/branch-lawyers', label: 'محامو الفرع' });
-  if (user?.role === 'head') navItems.push({ to: '/delegations/requests', label: 'طلبات الإنابة' });
-  if (canManageEntityRegistry) navItems.push({ to: '/entities/registry', label: 'سجل الجهات العامة' });
-  if (user?.role === 'head') navItems.push({ to: '/entities/proposals', label: 'اقتراحات الجهات' });
-  if (canManageUsers) navItems.push({ to: '/users/manage', label: 'إدارة المستخدمين' });
-  if (canManageUsers) navItems.push({ to: '/branches/manage', label: 'إدارة الفروع' });
-  if (hasFullAccess) navItems.push({ to: '/users', label: 'نشاط المستخدمين' });
-  if (canViewAuditLogs) navItems.push({ to: '/audit-logs', label: 'سجل التدقيق' });
+  const navItems: NavItem[] = [];
+
+  if (isEntityManager) {
+    // مندوب الجهة: قائمة بوابة مختصرة فقط (ملفاتي/تصدير) دون باقي البنود (المرحلة 3).
+    navItems.push({ to: '/portal', label: 'ملفات الجهة' });
+  } else {
+    navItems.push(
+      { to: '/', label: 'لوحة التحكم', end: true },
+      { to: '/documents', label: 'الملفات التنفيذية' },
+    );
+    navItems.push({
+      to: '/reviews',
+      label: user?.role === 'lawyer' ? 'المطالعات' : 'كتب المطالعات',
+      badge: isLawyerUser && unseenReplies > 0 ? unseenReplies : undefined,
+    });
+    if (canManageBranchLawyers) navItems.push({ to: '/branch-lawyers', label: 'محامو الفرع' });
+    if (user?.role === 'head') navItems.push({ to: '/delegations/requests', label: 'طلبات الإنابة' });
+    if (canManageEntityRegistry) navItems.push({ to: '/entities/registry', label: 'سجل الجهات العامة' });
+    if (user?.role === 'head') navItems.push({ to: '/entities/proposals', label: 'اقتراحات الجهات' });
+    if (canManageDelegates) navItems.push({ to: '/delegates', label: 'مندوبو الجهات' });
+    if (canManageUsers) navItems.push({ to: '/users/manage', label: 'إدارة المستخدمين' });
+    if (canManageUsers) navItems.push({ to: '/branches/manage', label: 'إدارة الفروع' });
+    if (hasFullAccess) navItems.push({ to: '/users', label: 'نشاط المستخدمين' });
+    if (canViewAuditLogs) navItems.push({ to: '/audit-logs', label: 'سجل التدقيق' });
+  }
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     'block rounded-lg px-4 py-2.5 mb-1 transition-colors min-h-11 ' +

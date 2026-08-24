@@ -2159,6 +2159,12 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("PortalEntryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("PortalGroupId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Role")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -2178,6 +2184,10 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("BranchId");
+
+                    b.HasIndex("PortalEntryId");
+
+                    b.HasIndex("PortalGroupId");
 
                     b.HasIndex("Username")
                         .IsUnique()
@@ -2710,7 +2720,21 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .WithMany("Users")
                         .HasForeignKey("BranchId");
 
+                    b.HasOne("DocGenerator.Domain.Entities.PublicEntity", "PortalEntry")
+                        .WithMany()
+                        .HasForeignKey("PortalEntryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("DocGenerator.Domain.Entities.PublicEntityGroup", "PortalGroup")
+                        .WithMany()
+                        .HasForeignKey("PortalGroupId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Branch");
+
+                    b.Navigation("PortalEntry");
+
+                    b.Navigation("PortalGroup");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.Asset", b =>

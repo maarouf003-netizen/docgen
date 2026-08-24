@@ -144,3 +144,7 @@ npm test
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260824190803_AddEntityRegistryLinks.cs` — يضيف `RegistryId` إلى `ApplicantPublicEntities` و`ExecutedPublicEntities` (FK SetNull + فهارس) و`ApplicantRegistryId` إلى `Documents` (فهرس).
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `MigrationsPostgres\20260824190820_AddEntityRegistryLinksPg.cs` — نفسه.
   - بدون التطبيق سيفشل حفظ أي ملف برسالة `no such column: r.RegistryId`.
+- [ ] **2026-08-24 — `AddEntityPortal` / `AddEntityPortalPg`** (بوابة الجهات العامة — المرحلة 3):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260824202637_AddEntityPortal.cs` — يضيف `PortalGroupId` و`PortalEntryId` إلى `Users` (FK SetNull + فهارس) لنطاق حسابات المندوبين.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `MigrationsPostgres\20260824202706_AddEntityPortalPg.cs` — نفسه.
+  - بدون التطبيق سيفشل إنشاء/قراءة أي حساب مندوب برسالة `no such column: u.PortalGroupId`.

@@ -33,6 +33,19 @@ public class User
     public Branch? Branch { get; set; }
     public ICollection<Document> Documents { get; set; } = new List<Document>();
 
+    /// <summary>
+    /// نطاق بوابة مندوب الجهة (دور EntityManager فقط): هوية أم تشمل كل قيودها،
+    /// ويُضبط أحد النطاقين حصرًا. يُفكّ الارتباط بحذف القيد/الهوية (SetNull).
+    /// </summary>
+    public int? PortalGroupId { get; set; }
+
+    /// <summary>نطاق البوابة عند التقييد بقيد واحد بعينه (المحافظة + الفرع).</summary>
+    public int? PortalEntryId { get; set; }
+
+    public PublicEntityGroup? PortalGroup { get; set; }
+
+    public PublicEntity? PortalEntry { get; set; }
+
     public bool HasFullAccess =>
         Role is UserRole.Manager or UserRole.Admin;
 

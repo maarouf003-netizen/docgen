@@ -109,4 +109,8 @@ public static class RolePermissions
 
     /// <summary>بوابة مندوب الجهة العامة: قراءة + تصدير إكسل فقط (د10/د11 — المرحلة 3).</summary>
     public static bool CanUseDelegatePortal(UserRole role) => role == UserRole.EntityManager;
+
+    /// <summary>إضافة/تعديل حسابات مندوبي الجهات وربط نطاقهم — مدير/مشرف/رئيس قسم (د11).</summary>
+    public static bool CanManageDelegates(UserRole role) =>
+        role is UserRole.Manager or UserRole.Admin or UserRole.Head;
 }

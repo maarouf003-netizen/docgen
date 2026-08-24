@@ -280,4 +280,19 @@ describe('Layout', () => {
     const dialog = screen.getByRole('dialog', { name: 'قائمة التنقل' });
     expect(dialog).toBeInTheDocument();
   });
+
+  it('يقصر قائمة مندوب الجهة على بوابته القرائية حصرًا (المرحلة 3)', () => {
+    useAuthMock.mockReturnValue({
+      ...baseUser(),
+      user: { ...baseUser().user, role: 'entitymanager', fullName: 'مندوب الوزارة' },
+    });
+    stubMatchMedia(false);
+    render(<Layout />);
+
+    const sidebar = screen.getByRole('navigation', { name: 'القائمة الرئيسية' });
+    expect(within(sidebar).getByRole('link', { name: 'ملفات الجهة' })).toHaveAttribute('href', '/portal');
+    expect(within(sidebar).queryByRole('link', { name: 'لوحة التحكم' })).not.toBeInTheDocument();
+    expect(within(sidebar).queryByRole('link', { name: 'الملفات التنفيذية' })).not.toBeInTheDocument();
+    expect(within(sidebar).queryByRole('link', { name: 'سجل التدقيق' })).not.toBeInTheDocument();
+  });
 });

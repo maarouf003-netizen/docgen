@@ -24,6 +24,18 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.Email).HasMaxLength(150);
         builder.Property(u => u.Role).HasConversion<string>().HasMaxLength(20);
         builder.Property(u => u.LockoutEndUtc);
+
+        // نطاق بوابة مندوب الجهة: يُفكّ الارتباط بحذف القيد/الهوية (SetNull) مع فهارس للتصفية.
+        builder.HasIndex(u => u.PortalGroupId);
+        builder.HasIndex(u => u.PortalEntryId);
+        builder.HasOne(u => u.PortalGroup)
+            .WithMany()
+            .HasForeignKey(u => u.PortalGroupId)
+            .OnDelete(DeleteBehavior.SetNull);
+        builder.HasOne(u => u.PortalEntry)
+            .WithMany()
+            .HasForeignKey(u => u.PortalEntryId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }
 

@@ -17,6 +17,8 @@ public static class DependencyInjection
         services.AddScoped<IBranchManagementService, BranchManagementService>();
         services.AddScoped<IHeadAlertService, HeadAlertService>();
         services.AddScoped<IPublicEntityService, PublicEntityService>();
+        services.AddScoped<IPortalService, PortalService>();
+        services.AddScoped<IEntityDelegateService, EntityDelegateService>();
         services.AddScoped<IReviewLetterService, ReviewLetterService>();
         services.AddScoped<IDocumentDelegationService, DocumentDelegationService>();
         services.AddScoped<IDocumentAppealService, DocumentAppealService>();

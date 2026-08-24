@@ -234,6 +234,8 @@ if (swaggerEnabled)
 app.UseCors("Vite");
 app.UseAuthentication();
 app.UseAuthorization();
+// عزل بنيوي لدور مندوب الجهة: يُمنع من كل مسارات API عدا بوابته القرائية (المرحلة 3).
+app.UseMiddleware<EntityManagerPortalGuard>();
 
 app.MapControllers();
 

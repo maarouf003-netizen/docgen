@@ -1,4 +1,4 @@
-export type Role = 'lawyer' | 'head' | 'manager' | 'admin';
+export type Role = 'lawyer' | 'head' | 'manager' | 'admin' | 'entitymanager';
 
 export interface UserDto {
   id: number;
@@ -1362,6 +1362,82 @@ export interface ImportCommitResultDto {
   groupsCreated: number;
   entriesCreated: number;
   aliasesAdded: number;
+}
+
+/* ── بوابة مندوب الجهة العامة (المرحلة 3) ────────────────────────────── */
+
+/** نطاق المندوب: هوية أم بكل قيودها أو قيد بعينه. */
+export interface PortalScopeDto {
+  scopeType: 'group' | 'entry';
+  groupId: number;
+  canonicalName: string;
+  entityType: PublicEntityType;
+  entries: PortalScopeEntryDto[];
+}
+
+export interface PortalScopeEntryDto {
+  id: number;
+  governorate: string;
+  branchName: string;
+  isActive: boolean;
+}
+
+/** ملف في قائمة البوابة — قراءة فقط بلا حقول داخلية للمحامين. */
+export interface PortalFileListItemDto {
+  id: number;
+  documentType: string;
+  isDraft: boolean;
+  borrowerName?: string | null;
+  applicant?: string | null;
+  executedEntitiesSummary: string;
+  amountNumeric: number;
+  currency?: string | null;
+  execStatus?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PortalFilesResponse = PagedResult<PortalFileListItemDto>;
+
+/** استئناف قرائي على بطاقة استئنافات البوابة. */
+export interface PortalAppealDto {
+  id: number;
+  direction: string;
+  status: string;
+  appealTypeLabel?: string | null;
+  appealBaseNumber?: string | null;
+  appealYear?: string | null;
+  createdAt: string;
+  decisionDate?: string | null;
+  decisionRuling?: string | null;
+}
+
+export interface CreateDelegateRequest {
+  username: string;
+  fullName: string;
+  password: string;
+  portalGroupId?: number | null;
+  portalEntryId?: number | null;
+}
+
+export interface UpdateDelegateRequest {
+  fullName?: string | null;
+  isActive?: boolean | null;
+  newPassword?: string | null;
+  portalGroupId?: number | null;
+  portalEntryId?: number | null;
+}
+
+export interface DelegateDto {
+  id: number;
+  username: string;
+  fullName: string;
+  isActive: boolean;
+  portalGroupId?: number | null;
+  portalGroupName?: string | null;
+  portalEntryId?: number | null;
+  portalEntryLabel?: string | null;
+  createdAt: string;
 }
 
 

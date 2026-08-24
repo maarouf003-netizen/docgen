@@ -23,6 +23,9 @@ const UsersManagement = lazy(() => import('./pages/UsersManagement'));
 const BranchesManagement = lazy(() => import('./pages/BranchesManagement'));
 const EntityRegistryManagement = lazy(() => import('./pages/EntityRegistryManagement'));
 const EntityProposalsQueue = lazy(() => import('./pages/EntityProposalsQueue'));
+const EntityDelegates = lazy(() => import('./pages/EntityDelegates'));
+const PortalFiles = lazy(() => import('./pages/PortalFiles'));
+const PortalFileDetail = lazy(() => import('./pages/PortalFileDetail'));
 const AuditLogs = lazy(() => import('./pages/AuditLogs'));
 const ChangePassword = lazy(() => import('./pages/ChangePassword'));
 const ReviewsList = lazy(() => import('./pages/ReviewsList'));
@@ -136,6 +139,30 @@ export default function App() {
               element={
                 <RequireRole allowed={(role) => role === 'head' || role === 'manager' || role === 'admin'}>
                   <EntityProposalsQueue />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/portal"
+              element={
+                <RequireRole allowed={(role) => role === 'entitymanager'}>
+                  <PortalFiles />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/portal/files/:id"
+              element={
+                <RequireRole allowed={(role) => role === 'entitymanager'}>
+                  <PortalFileDetail />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/delegates"
+              element={
+                <RequireRole allowed={(_role, hasFullAccess, isHead) => hasFullAccess || isHead}>
+                  <EntityDelegates />
                 </RequireRole>
               }
             />
