@@ -29,8 +29,12 @@ public static class HtmlInputSanitizer
         sanitizer.AllowedAttributes.Clear();
         sanitizer.AllowedAttributes.Add("style");
 
+        // مطابقة للقائمة البيضاء في الواجهة (utils/richText.ts): اللون والخط وحجم الخط،
+        // ويتولى HtmlSanitizer نفسه رفض القيم غير الآمنة (url()/expression...).
         sanitizer.AllowedCssProperties.Clear();
         sanitizer.AllowedCssProperties.Add("color");
+        sanitizer.AllowedCssProperties.Add("font-family");
+        sanitizer.AllowedCssProperties.Add("font-size");
 
         return sanitizer;
     }

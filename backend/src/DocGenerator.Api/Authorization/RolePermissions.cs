@@ -79,6 +79,12 @@ public static class RolePermissions
     public static bool CanSeeAdministrativeBranch(UserRole role) =>
         role is UserRole.Manager or UserRole.Admin;
 
+    /// <summary>تسطير كتب المطالعة وإضافة اللاحقات — المحامي فقط.</summary>
+    public static bool CanCreateReviewLetters(UserRole role) => role == UserRole.Lawyer;
+
+    /// <summary>الرد على كتب المطالعة — رئيس القسم لفرعه فقط.</summary>
+    public static bool CanReplyReviewLetters(UserRole role) => role == UserRole.Head;
+
     /// <summary>رؤية عمود «المحامي المختص» — رئيس قسم/مدير/مشرف.</summary>
     public static bool CanSeeAssignedLawyer(UserRole role) =>
         role is UserRole.Head or UserRole.Manager or UserRole.Admin;

@@ -9,4 +9,7 @@ public class AuditLog
     public int? DocumentId { get; set; }
     public string? DocumentType { get; set; }
     public string? Details { get; set; }
+
+    /// <summary>تغييرات الحقول التفصيلية المرتبطة بهذا الإدخال (تعديلات الملفات على مستوى الحقل).</summary>
+    public ICollection<DocumentFieldChange> FieldChanges { get; set; } = new List<DocumentFieldChange>();
 }

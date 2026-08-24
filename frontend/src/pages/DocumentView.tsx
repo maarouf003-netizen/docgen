@@ -20,6 +20,7 @@ import RegisterDelegationModal from '../components/delegation/RegisterDelegation
 import CompleteDelegationModal from '../components/delegation/CompleteDelegationModal';
 import { DelegationsCard } from '../components/delegation/DelegationsCard';
 import { SourceFileInfoCard } from '../components/delegation/SourceFileInfoCard';
+import DocumentReviewLettersCard from '../components/review/DocumentReviewLettersCard';
 import AppealFormModal from '../components/appeal/AppealFormModal';
 import AppealInfoModal from '../components/appeal/AppealInfoModal';
 import type { AppealDirection, AppealDto, DelegationDto, DocumentResponse } from '../types';
@@ -32,18 +33,20 @@ import { PartiesCard } from '../components/view/PartiesCard';
 import { PartyDetailsModal } from '../components/view/PartyDetailsModal';
 import { AssetsSection } from '../components/view/AssetsSection';
 import { TransferHistoryModal } from '../components/view/TransferHistoryModal';
+import DocumentChangesModal from '../components/view/DocumentChangesModal';
 import { executedTitle, fullName } from '../components/view/viewFormat';
 import { StatusCard } from '../components/view/StatusCard';
 import type { PartyModal } from '../components/view/viewTypes';
 
 export default function DocumentView() {
   const { id } = useParams();
-  const { user } = useAuth();
+  const { user, hasFullAccess } = useAuth();
   const [actionsOpen, setActionsOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [alertOpen, setAlertOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [changesOpen, setChangesOpen] = useState(false);
   const [occurrencesOpen, setOccurrencesOpen] = useState(false);
   const [assignmentsOpen, setAssignmentsOpen] = useState(false);
   const [generationOpen, setGenerationOpen] = useState(false);
@@ -186,8 +189,10 @@ export default function DocumentView() {
         isLawyer={isLawyer}
         showBranch={showBranch}
         showLawyer={showLawyer}
+        canViewChanges={hasFullAccess || showLawyer || isOwner}
         onOpenBaseNumbers={() => setHistoryOpen(true)}
         onOpenAssignments={() => setAssignmentsOpen(true)}
+        onOpenChanges={() => setChangesOpen(true)}
       />
     </>
   );
@@ -239,6 +244,13 @@ export default function DocumentView() {
         onOpen={() => setOccurrencesOpen(true)}
         onOpenAppeal={setInfoAppeal}
       />
+      {id !== undefined && (
+        <DocumentReviewLettersCard
+          documentId={Number(id)}
+          documentTitle={debtorFullName || doc.documentType || undefined}
+          canCreate={canEdit && isOwner}
+        />
+      )}
     </>
   );
   const statusPanel = (
@@ -453,6 +465,13 @@ export default function DocumentView() {
           documentId={Number(id)}
           onClose={() => setActionsOpen(false)}
           onChanged={load}
+        />
+      )}
+
+      {changesOpen && id !== undefined && (
+        <DocumentChangesModal
+          documentId={Number(id)}
+          onClose={() => setChangesOpen(false)}
         />
       )}
 

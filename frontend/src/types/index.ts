@@ -865,6 +865,8 @@ export interface HeadAlertDto {
   unreadCount?: number;
   /** الاستئناف المرتبط بالتنبيه — للانتقال المباشر إلى تفاصيله. */
   appealId?: number;
+  /** كتاب المطالعة المرتبط (تنبيه الرد) — للانتقال المباشر إلى صفحة الكتاب. */
+  reviewLetterId?: number | null;
   createdAt: string;
   createdByName?: string;
 }
@@ -1128,5 +1130,95 @@ export interface AppealActionDto {
   createdByName?: string;
   createdAt: string;
 }
+
+/* ── كتب المطالعة ─────────────────────────────────────────────────────── */
+
+export type ReviewLetterMessageKind = 'letter' | 'addendum' | 'reply';
+
+/** سياق الملف المرتبط بصيغة العرض: مطالعة بملف (الاسم الثلاثي) رقم.. نوع.. لعام.. دائرة تنفيذ.. */
+export interface ReviewLetterFileContext {
+  executedName: string;
+  fileNumber?: string | null;
+  fileType?: string | null;
+  fileYear?: string | null;
+  court?: string | null;
+}
+
+/** رسالة واحدة ضمن كتاب المطالعة (الأصل letter أو لاحق addendum أو رد reply). */
+export interface ReviewLetterMessageDto {
+  id: number;
+  kind: ReviewLetterMessageKind;
+  bodyHtml: string;
+  messageNumber: string;
+  messageDate: string;
+  authorId: number;
+  authorName: string;
+  authorRole: 'lawyer' | 'head';
+}
+
+/** سطر كتاب في القائمة؛ fileContext فارغ للكتاب العام غير المرتبط بملف. */
+export interface ReviewLetterListItemDto {
+  id: number;
+  letterNumber: string;
+  letterDate: string;
+  isAnswered: boolean;
+  documentId?: number | null;
+  fileContext?: ReviewLetterFileContext | null;
+  lawyerName: string;
+  snippet: string;
+  lastKind: ReviewLetterMessageKind;
+  /** فيه ردّ رئيس قسم لم يطّلع عليه محامي الكتاب بعد. */
+  hasUnseenReply: boolean;
+  messagesCount: number;
+  updatedAt: string;
+}
+
+export interface ReviewLetterDto {
+  id: number;
+  letterNumber: string;
+  letterDate: string;
+  isAnswered: boolean;
+  documentId?: number | null;
+  fileContext?: ReviewLetterFileContext | null;
+  branchId: number;
+  lawyerName: string;
+  /** فيه ردّ لم يُطَّلع بعد — يُعلَّم مقروءًا تلقائيًا عند فتح المحامي للصفحة. */
+  hasUnseenReply?: boolean;
+  messages: ReviewLetterMessageDto[];
+  createdAt: string;
+}
+
+export interface CreateReviewLetterRequest {
+  documentId?: number | null;
+  bodyHtml: string;
+}
+
+export interface AddReviewLetterAddendumRequest {
+  bodyHtml: string;
+}
+
+export interface ReplyReviewLetterRequest {
+  bodyHtml: string;
+}
+
+/* ── سجل تعديلات الملف على مستوى الحقول ───────────────────────────────── */
+
+/** تغيّر حقل واحد: القيمة قبل التعديل وبعده بتسمية عربية مجمّدة. */
+export interface DocumentFieldChangeDto {
+  fieldLabel: string;
+  fieldKey: string;
+  oldValue?: string | null;
+  newValue?: string | null;
+}
+
+/** مجموعة تعديلات واحدة (إدخال تدقيق) بكل حقولها المتغيرة. */
+export interface DocumentChangeGroupDto {
+  auditLogId: number;
+  actionType: string;
+  userName?: string | null;
+  timestamp: string;
+  changes: DocumentFieldChangeDto[];
+}
+
 
 

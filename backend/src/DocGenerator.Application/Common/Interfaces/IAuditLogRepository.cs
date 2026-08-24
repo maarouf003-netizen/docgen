@@ -13,4 +13,14 @@ public interface IAuditLogRepository : IRepository<AuditLog>
         int page,
         int perPage,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// صفحة «سجل التعديلات» لملف محدد: إدخالات التدقيق التي لها تغييرات حقول،
+    /// الأحدث أولًا، مع صفوف التغييرات التابعة لكل إدخال.
+    /// </summary>
+    Task<(int TotalCount, List<AuditLog> Items)> PageDocumentChangeGroupsAsync(
+        int documentId,
+        int page,
+        int perPage,
+        CancellationToken ct = default);
 }

@@ -12,15 +12,20 @@ export function FileDataCard({
   isLawyer,
   showBranch,
   showLawyer,
+  canViewChanges,
   onOpenBaseNumbers,
   onOpenAssignments,
+  onOpenChanges,
 }: {
   doc: DocumentResponse;
   isLawyer: boolean;
   showBranch: boolean;
   showLawyer: boolean;
+  /** سجل التعديلات أداة مراجعة داخلية: صاحب الملف ورئيس القسم والإدارة فقط. */
+  canViewChanges: boolean;
   onOpenBaseNumbers: () => void;
   onOpenAssignments: () => void;
+  onOpenChanges: () => void;
 }) {
   const isExecuted = isExecutedLike(doc.generalEntitySide);
   const fileNumber = formatFileNumber(doc);
@@ -88,6 +93,25 @@ export function FileDataCard({
           <span className="text-gray-400 text-sm shrink-0" aria-hidden="true">←</span>
         </button>
       </div>
+
+      {canViewChanges && (
+        <div className="mt-2.5">
+          <button
+            type="button"
+            onClick={onOpenChanges}
+            aria-label="عرض سجل التعديلات على مستوى الحقول"
+            className={interactiveTile}
+          >
+            <span className="min-w-0">
+              <span className="block text-xs text-gray-500">سجل التعديلات</span>
+              <span className="block text-sm truncate text-emerald-800 font-medium">
+                تتبع تغيّرات الحقول (قبل/بعد)
+              </span>
+            </span>
+            <span className="text-gray-400 text-sm shrink-0" aria-hidden="true">←</span>
+          </button>
+        </div>
+      )}
 
       {isExecuted ? (
         <div className="mt-2.5 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5 items-start">

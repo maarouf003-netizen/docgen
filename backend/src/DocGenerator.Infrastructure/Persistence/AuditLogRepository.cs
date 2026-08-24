@@ -41,4 +41,26 @@ public class AuditLogRepository : Repository<AuditLog>, IAuditLogRepository
 
         return (total, items);
     }
+
+    public async Task<(int TotalCount, List<AuditLog> Items)> PageDocumentChangeGroupsAsync(
+        int documentId,
+        int page,
+        int perPage,
+        CancellationToken ct = default)
+    {
+        var q = Db.AuditLogs
+            .AsNoTracking()
+            .Where(a => a.DocumentId == documentId && a.FieldChanges.Any());
+
+        var total = await q.CountAsync(ct);
+
+        var items = await q
+            .OrderByDescending(a => a.Id)
+            .Skip((page - 1) * perPage)
+            .Take(perPage)
+            .Include(a => a.FieldChanges.OrderBy(c => c.Id))
+            .ToListAsync(ct);
+
+        return (total, items);
+    }
 }

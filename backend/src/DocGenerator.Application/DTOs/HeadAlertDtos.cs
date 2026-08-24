@@ -31,4 +31,6 @@ public record HeadAlertDto(
     DateTime CreatedAt,
     string? CreatedByName,
     /// <summary>الاستئناف المرتبط بالتنبيه — للانتقال المباشر إلى تفاصيله من الواجهة.</summary>
-    int? AppealId = null);
+    int? AppealId = null,
+    /// <summary>كتاب المطالعة المرتبط (تنبيه الرد) — للانتقال المباشر إلى صفحة الكتاب.</summary>
+    int? ReviewLetterId = null);

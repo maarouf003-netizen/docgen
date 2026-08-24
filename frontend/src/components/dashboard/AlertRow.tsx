@@ -25,8 +25,15 @@ export function AlertRow({
           aria-hidden="true"
         />
         <div className="min-w-0 flex-1">
-          {/* التنبيهات المرتبطة باستئناف تفتح تفاصيل الاستئناف، وسواهر تفتح الملف. */}
-          {alert.appealId ? (
+          {/* التنبيهات المرتبطة بكتاب مطالعة تفتح الكتاب، وباستئناف تفتح تفاصيله، وسواهر تفتح الملف. */}
+          {alert.reviewLetterId ? (
+            <Link
+              to={`/reviews/${alert.reviewLetterId}`}
+              className="block font-medium text-gray-800 hover:text-emerald-700 truncate"
+            >
+              {alert.message}
+            </Link>
+          ) : alert.appealId ? (
             <Link
               to={`/appeals/${alert.appealId}`}
               className="block font-medium text-gray-800 hover:text-emerald-700 truncate"

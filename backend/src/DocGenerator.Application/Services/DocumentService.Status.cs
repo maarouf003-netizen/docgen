@@ -1,5 +1,6 @@
 using System.Text.Json;
 using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Audit;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Security;
 using DocGenerator.Application.DTOs;
@@ -11,6 +12,32 @@ namespace DocGenerator.Application.Services;
 
 public sealed partial class DocumentService
 {
+    /// <summary>
+    /// تسجيل تدقيق عمليات الملف مع تفاصيل تغيّرات الحقول: حين تُرصد فروقات
+    /// تُسجَّل صفوفًا (حقل/قبل/بعد) مرتبطة بالإدخال، وإلا يبقى التسجيل نصيًا كالسابق.
+    /// </summary>
+    private async Task LogDocumentChangesAsync(
+        Dictionary<string, string?> before,
+        Document after,
+        string? actorName,
+        string actionType,
+        string baseDetail,
+        CancellationToken token)
+    {
+        var changes = DocumentChangeTracker.Diff(before, after);
+        if (changes.Count == 0)
+        {
+            // لا تغييرات متتبعة: يبقى التسجيل النصي كما كان تاريخيًا.
+            await _audit.LogAsync(actorName, actionType, after.Id, after.DocumentType,
+                AuditWithActor(baseDetail, after), token);
+            return;
+        }
+
+        await _audit.LogDocumentChangeAsync(
+            actorName, actionType, after.Id, after.DocumentType,
+            AuditWithActor($"{baseDetail} — غيّر {changes.Count} حقلًا", after), changes, token);
+    }
+
     // ملاحظة إعادة هيكلة (المرحلة 3 — مؤجلة): عند أول تعديل يمس منطق انتقالات الحالة
     // أو الشطب/التجديد في هذا الملف، تُستخرج هذه التدفقات إلى خدمة مستقلة خلف واجهة
     // (StatusTransitionService) بدل إضافة المزيد هنا. المرجع: FIXES_LOG.md بند المعلقات #4.
@@ -33,6 +60,9 @@ public sealed partial class DocumentService
         if (!ExecutionStatusCatalog.IsAllowedStatusChange(current, status))
             throw new ArgumentException(
                 $"لا يمكن الانتقال من الحالة «{ExecutionStatusCatalog.ToStateLabel(current)}» إلى «{ExecutionStatusCatalog.ToStatusLabel(status)}»");
+
+        // لقطة ما قبل التغيير — لتوليد صفوف «حقل/قبل/بعد» في سجل التعديلات.
+        var statusBefore = DocumentChangeTracker.Capture(doc);
 
         var details = new Dictionary<string, string>();
         switch (status)
@@ -139,8 +169,7 @@ public sealed partial class DocumentService
             var auditDetail = status == ExecutionStatusCatalog.StateStruckOff
                 ? $"حالة {ExecutionStatusCatalog.StateStruckOff}"
                 : $"حالة {ExecutionStatusCatalog.ToLabel(ExecutionStatusCatalog.Classify(status))}";
-            await _audit.LogAsync(actorName, "status", doc.Id, doc.DocumentType,
-                AuditWithActor(auditDetail, doc), token);
+            await LogDocumentChangesAsync(statusBefore, doc, actorName, "status", auditDetail, token);
             return true;
         }, ct);
     }
@@ -157,6 +186,9 @@ public sealed partial class DocumentService
         if (!ExecutionStatusCatalog.CanRevert(current))
             throw new ArgumentException(
                 $"لا يمكن التراجع عن الحالة الحالية «{ExecutionStatusCatalog.ToStateLabel(current)}»");
+
+        // لقطة ما قبل التغيير — لتوليد صفوف «حقل/قبل/بعد» في سجل التعديلات.
+        var revertBefore = DocumentChangeTracker.Capture(doc);
 
         // حقول كتاب الجهة العامة بالسير بالملف: رقم وتاريخ الكتاب وورودهما إلزامية.
         DocumentValidator.RequireField(fields, "sayerNumber", "رقم كتاب الجهة العامة بالسير بالملف");
@@ -201,8 +233,8 @@ public sealed partial class DocumentService
                 UpdatedAt = DateTime.UtcNow,
             }, token);
             await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actorName, "status", doc.Id, doc.DocumentType,
-                AuditWithActor("تراجع عن الحالة وعاد الملف إلى المتداول", doc), token);
+            await LogDocumentChangesAsync(revertBefore, doc, actorName, "status",
+                "تراجع عن الحالة وعاد الملف إلى المتداول", token);
             return true;
         }, ct);
     }
@@ -230,6 +262,9 @@ public sealed partial class DocumentService
             .FirstOrDefault(d => d.Status == DelegationStatusCatalog.Executed);
         if (executedDelegation is null)
             throw new ArgumentException("لا توجد إنابة منفذة للملف ليُعتبر منفذًا بهذا البيع");
+
+        // لقطة ما قبل التغيير — لتوليد صفوف «حقل/قبل/بعد» في سجل التعديلات.
+        var considerBefore = DocumentChangeTracker.Capture(doc);
 
         // «تاريخ تحويل بدل المبيع للجهة العامة» إلزامي (نص حر يُفسَّر ويُخزَّن زمنيًا)،
         // و«رقم الإشعار» اختياري — يدخلهما محامي المنيب من نافذة تغيير الحالة.
@@ -267,8 +302,8 @@ public sealed partial class DocumentService
                 UpdatedAt = DateTime.UtcNow,
             }, token);
             await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actorName, "status", doc.Id, doc.DocumentType,
-                AuditWithActor("اعتُبر الملف منفذًا كاملًا بهذا البيع (منفذ جبريا — منفذ كاملا)", doc), token);
+            await LogDocumentChangesAsync(considerBefore, doc, actorName, "status",
+                "اعتُبر الملف منفذًا كاملًا بهذا البيع (منفذ جبريا — منفذ كاملا)", token);
             return true;
         }, ct);
     }
@@ -287,6 +322,9 @@ public sealed partial class DocumentService
         status = (status ?? string.Empty).Trim();
         if (!ExecutedStatusCatalog.ValidStatuses.Contains(status))
             throw new ArgumentException("حالة غير صالحة");
+
+        // لقطة ما قبل التغيير — لتوليد صفوف «حقل/قبل/بعد» في سجل التعديلات.
+        var executedBefore = DocumentChangeTracker.Capture(doc);
 
         var current = doc.ExecutedStatus;
         // حالة «منفذ» في صفة «الجهة العامة منفذ عليها» نهائية: لا تُغيَّر إلى متداول ولا إلى مشطوب
@@ -418,8 +456,7 @@ public sealed partial class DocumentService
             var auditDetail = depositRevert
                 ? $"أعاد «{sideLabel}» إلى المتداول بكتاب الجهة العامة بالسير بالملف"
                 : $"حالة وضع «{sideLabel}»: {label}";
-            await _audit.LogAsync(actorName, "executed-status", doc.Id, doc.DocumentType,
-                AuditWithActor(auditDetail, doc), token);
+            await LogDocumentChangesAsync(executedBefore, doc, actorName, "executed-status", auditDetail, token);
             return true;
         }, ct);
     }
@@ -442,6 +479,9 @@ public sealed partial class DocumentService
         if (!executedLike && !struckOff)
             throw new ArgumentException("فك الشطب يخص ملفًا مشطوبًا");
 
+        // لقطة ما قبل التغيير — لتوليد صفوف «حقل/قبل/بعد» في سجل التعديلات.
+        var restoreBefore = DocumentChangeTracker.Capture(doc);
+
         // فك الشطب: العودة إلى متداول مع الإبقاء على تاريخ الشطب محفوظًا لعرضه بعد الإعادة.
         if (executedLike)
             doc.ExecutedStatus = ExecutedStatusCatalog.None;
@@ -457,8 +497,8 @@ public sealed partial class DocumentService
             doc.UpdatedAt = DateTime.UtcNow;
             _documents.Update(doc);
             await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actorName, "restore-struck-off", doc.Id, doc.DocumentType,
-                AuditWithActor("أعاد ملفًا مشطوبًا إلى المتداول مع تجديد رقم الملف", doc), token);
+            await LogDocumentChangesAsync(restoreBefore, doc, actorName, "restore-struck-off",
+                "أعاد ملفًا مشطوبًا إلى المتداول مع تجديد رقم الملف", token);
             return true;
         }, ct);
     }

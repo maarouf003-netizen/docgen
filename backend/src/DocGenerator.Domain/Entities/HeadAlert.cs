@@ -19,6 +19,8 @@ public class HeadAlert
     public int? DelegationId { get; set; }
     /// <summary>رابط تنبيهات دورة حياة الاستئناف (بانتظار اختيار المحامي/الحسم/الشطب) بالاستئناف نفسه لتصفيتها تلقائيًا.</summary>
     public int? AppealId { get; set; }
+    /// <summary>رابط تنبيهات الرد على كتاب المطالعة — للانتقال المباشر من التنبيه إلى الكتاب.</summary>
+    public int? ReviewLetterId { get; set; }
     public string Message { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
@@ -27,5 +29,7 @@ public class HeadAlert
     public Document? Document { get; set; }
     public User? TargetLawyer { get; set; }
     public DocumentAppeal? Appeal { get; set; }
+    /// <summary>كتاب المطالعة المرتبط بالتنبيه (لتنبيهات الرد على المحامي).</summary>
+    public ReviewLetter? ReviewLetter { get; set; }
     public ICollection<HeadAlertRecipient> Recipients { get; set; } = new List<HeadAlertRecipient>();
 }

@@ -323,6 +323,31 @@ public class HtmlInputSanitizerTests
     }
 
     [Fact]
+    public void Sanitize_KeepsFontFamilyAndFontSize_ForFrontendParity()
+    {
+        // مطابقة قائمة الواجهة البيضاء (richText.ts): الخط وحجمه يبقيان، وما سواهما يسقط
+        var html = "<span style=\"font-family:'Traditional Arabic', Arial;font-size:16px;margin:4px\">نص</span>";
+
+        var result = HtmlInputSanitizer.Sanitize(html);
+
+        Assert.Contains("font-family", result);
+        Assert.Contains("font-size", result);
+        Assert.DoesNotContain("margin", result);
+        Assert.Contains("نص", result);
+    }
+
+    [Fact]
+    public void Sanitize_RejectsUnsafeCssValues_EvenForAllowedProperties()
+    {
+        var html = "<span style=\"font-family:url(evil);font-size:expression(alert(1))\">نص</span>";
+
+        var result = HtmlInputSanitizer.Sanitize(html);
+
+        Assert.DoesNotContain("url", result);
+        Assert.DoesNotContain("expression", result);
+    }
+
+    [Fact]
     public void Sanitize_NullOrEmpty_ReturnsEmpty()
     {
         Assert.Equal(string.Empty, HtmlInputSanitizer.Sanitize(null));

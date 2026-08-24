@@ -424,6 +424,7 @@ public class HeadAlertConfiguration : IEntityTypeConfiguration<HeadAlert>
         builder.HasIndex(a => a.CreatedAt);
         builder.HasIndex(a => a.DelegationId);
         builder.HasIndex(a => a.AppealId);
+        builder.HasIndex(a => a.ReviewLetterId);
 
         builder.HasOne(a => a.Branch)
             .WithMany()
@@ -450,6 +451,13 @@ public class HeadAlertConfiguration : IEntityTypeConfiguration<HeadAlert>
         builder.HasOne(a => a.Appeal)
             .WithMany()
             .HasForeignKey(a => a.AppealId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // كتاب المطالعة المرتبط (تنبيه الرد): الكتاب سجل رسمي لا يُحذف،
+        // ويبقى السلوك نفسه بحكم الحماية عند أي تطور مستقبلي.
+        builder.HasOne(a => a.ReviewLetter)
+            .WithMany()
+            .HasForeignKey(a => a.ReviewLetterId)
             .OnDelete(DeleteBehavior.SetNull);
     }
 }
@@ -884,6 +892,89 @@ public class DelegationAssetConfiguration : IEntityTypeConfiguration<DelegationA
         builder.HasOne(a => a.Delegation)
             .WithMany(d => d.Assets)
             .HasForeignKey(a => a.DelegationId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class ReviewLetterConfiguration : IEntityTypeConfiguration<ReviewLetter>
+{
+    public void Configure(EntityTypeBuilder<ReviewLetter> builder)
+    {
+        builder.ToTable("ReviewLetters");
+        builder.HasKey(l => l.Id);
+
+        builder.Property(l => l.LetterNumber).HasMaxLength(50).IsRequired();
+        builder.HasIndex(l => l.LetterNumber).IsUnique();
+
+        builder.Property(l => l.LetterDate).HasColumnType("datetime2");
+
+        builder.HasIndex(l => l.BranchId);
+        builder.HasIndex(l => l.DocumentId);
+        builder.HasIndex(l => l.CreatedById);
+        builder.HasIndex(l => l.IsAnswered);
+        builder.HasIndex(l => l.UpdatedAt);
+
+        builder.HasOne(l => l.Branch)
+            .WithMany()
+            .HasForeignKey(l => l.BranchId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(l => l.CreatedBy)
+            .WithMany()
+            .HasForeignKey(l => l.CreatedById)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // الملف المرتبط اختياري (كتاب عام عندما يكون null)؛ الكتاب وثيقة رسمية
+        // لا تُحذف بحذف الملف، لذا يُفكّ الرابط فقط (SetNull).
+        builder.HasOne(l => l.Document)
+            .WithMany()
+            .HasForeignKey(l => l.DocumentId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        builder.HasMany(l => l.Messages)
+            .WithOne(m => m.ReviewLetter)
+            .HasForeignKey(m => m.ReviewLetterId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class ReviewLetterMessageConfiguration : IEntityTypeConfiguration<ReviewLetterMessage>
+{
+    public void Configure(EntityTypeBuilder<ReviewLetterMessage> builder)
+    {
+        builder.ToTable("ReviewLetterMessages");
+        builder.HasKey(m => m.Id);
+
+        builder.Property(m => m.Kind).HasMaxLength(20).IsRequired();
+        builder.Property(m => m.MessageNumber).HasMaxLength(50).IsRequired();
+        builder.Property(m => m.AuthorName).HasMaxLength(100).IsRequired();
+        builder.Property(m => m.AuthorRole).HasMaxLength(20).IsRequired();
+        builder.HasIndex(m => m.ReviewLetterId);
+        builder.HasIndex(m => m.BodyPlainText);
+    }
+}
+
+public class DocumentFieldChangeConfiguration : IEntityTypeConfiguration<DocumentFieldChange>
+{
+    public void Configure(EntityTypeBuilder<DocumentFieldChange> builder)
+    {
+        builder.ToTable("DocumentFieldChanges");
+        builder.HasKey(c => c.Id);
+
+        builder.Property(c => c.FieldKey).HasMaxLength(120).IsRequired();
+        builder.Property(c => c.FieldLabel).HasMaxLength(150).IsRequired();
+        builder.Property(c => c.OldValue).HasMaxLength(2000);
+        builder.Property(c => c.NewValue).HasMaxLength(2000);
+
+        // الفهرس المركب يخدم صفحة «سجل التعديلات» للملف: تجميع إدخالات التدقيق
+        // ذات التغييرات لملف محدد بترتيبها الزمني.
+        builder.HasIndex(c => new { c.DocumentId, c.Id });
+        builder.HasIndex(c => c.AuditLogId);
+
+        // صفوف التغييرات لا معنى لها بمعزل عن إدخال التدقيق الأب: تُحذف تبعًا له.
+        builder.HasOne(c => c.AuditLog)
+            .WithMany(a => a.FieldChanges)
+            .HasForeignKey(c => c.AuditLogId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

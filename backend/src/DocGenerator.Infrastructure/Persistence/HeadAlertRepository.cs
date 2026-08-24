@@ -93,4 +93,15 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             .OrderByDescending(a => a.CreatedAt)
             .ToListAsync(ct);
     }
+
+    public async Task<HeadAlert?> FindLatestUnseenByReviewLetterAsync(
+        int reviewLetterId, int recipientUserId, CancellationToken ct = default)
+    {
+        // متتبَّعة عمدًا: ستُحدَّث رسالتها وزمنها لدمج الردود المتتالية في تنبيه واحد.
+        return await Db.HeadAlerts
+            .Include(a => a.Recipients)
+            .Where(a => a.ReviewLetterId == reviewLetterId)
+            .OrderByDescending(a => a.CreatedAt)
+            .FirstOrDefaultAsync(a => a.Recipients.Any(r => r.UserId == recipientUserId && !r.IsRead), ct);
+    }
 }

@@ -12,6 +12,7 @@ namespace DocGenerator.Application.Tests;
 public class FakeAuditLogger : IAuditLogger
 {
     public List<string> Actions { get; } = new();
+    public List<(string ActionType, int? DocumentId, IReadOnlyList<DocumentFieldChange> Changes)> ChangeLogs { get; } = new();
 
     public Task LogAsync(string? userName, string actionType, int? documentId = null,
         string? documentType = null, string? details = null, CancellationToken ct = default)
@@ -24,6 +25,15 @@ public class FakeAuditLogger : IAuditLogger
     {
         foreach (var entry in entries)
             Actions.Add(entry.ActionType);
+        return Task.CompletedTask;
+    }
+
+    public Task LogDocumentChangeAsync(string? userName, string actionType, int documentId,
+        string? documentType, string details, IReadOnlyList<DocumentFieldChange> changes,
+        CancellationToken ct = default)
+    {
+        Actions.Add(actionType);
+        ChangeLogs.Add((actionType, documentId, changes));
         return Task.CompletedTask;
     }
 }

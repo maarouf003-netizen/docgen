@@ -11,10 +11,13 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // تصحيح تاريخي: العمود وُلّد سابقًا بنوع datetime2 الخاص بـ SQL Server/SQLite
+            // وهو غير موجود في PostgreSQL، فكان يفشل تطبيق السلسلة كاملة من قاعدة فارغة.
+            // التعديل آمن لأن هذه الهجرة لا يمكن أن تكون طُبّقت بنجاح على PostgreSQL أصيل قبل التصحيح.
             migrationBuilder.AddColumn<DateTime>(
                 name: "ExecutedExecutionDate",
                 table: "Documents",
-                type: "datetime2",
+                type: "timestamp with time zone",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(

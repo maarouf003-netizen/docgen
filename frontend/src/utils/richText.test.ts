@@ -30,6 +30,26 @@ describe('richText', () => {
     expect(out).not.toContain('javascript');
   });
 
+  it('يحافظ على الخط وحجم الخط ويرفض قيمهما غير الآمنة', () => {
+    const html =
+      '<span style="font-family: \'Traditional Arabic\', Arial; font-size: 16px">سليم</span>';
+    expect(sanitizeRichText(html)).toContain('font-family: \'Traditional Arabic\', Arial');
+    expect(sanitizeRichText(html)).toContain('font-size: 16px');
+
+    const evil = '<span style="font-family: url(evil); font-size: expression(alert(1))">خبيث</span>';
+    const out = sanitizeRichText(evil);
+    expect(out).not.toContain('url');
+    expect(out).not.toContain('expression');
+
+    const invalid = '<span style="font-size: 100%">كبير</span>';
+    expect(sanitizeRichText(invalid)).not.toContain('font-size');
+  });
+
+  it('يحذف سمة style بالكامل إذا لم يبق فيها أي خاصية مسموحة', () => {
+    const html = '<span style="margin-top: 4px">نص</span>';
+    expect(sanitizeRichText(html)).toBe('<span>نص</span>');
+  });
+
   it('يبقي علامات التنسيق الأساسية ويحذف غير المسموح', () => {
     const html = '<ul><li><strong>بند</strong></li></ul><h1>عنوان</h1>';
     const out = sanitizeRichText(html);

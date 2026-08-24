@@ -229,6 +229,9 @@ public sealed partial class DocumentService : IDocumentService
         DocumentValidator.ValidateExecutedRequest(request);
         DocumentValidator.ValidateRegistrationDate(request);
 
+        // لقطة ما قبل التعديل — لتوليد صفوف «حقل/قبل/بعد» في سجل التعديلات.
+        var before = Common.Audit.DocumentChangeTracker.Capture(doc);
+
         // التجديد عند تعديل ملف مشطوب إلى متداول: يُطبَّق بيان التجديد (رقم الملف الجديد إلزامي)
         // فيعود الملف برقمه ونوعه الجديدين لسنة الإعادة. التعديل دون تغيير الحالة لا يُجدَّد.
         var wasStruckOff = ExecutedStatusCatalog.IsStruckOff(doc.ExecutedStatus);
@@ -247,8 +250,8 @@ public sealed partial class DocumentService : IDocumentService
             _documents.Update(doc);
             await _uow.SaveChangesAsync(token);
             await SyncDelegationSnapshotsForDocumentAsync(doc, token);
-            await _audit.LogAsync(actorName, "update", doc.Id, doc.DocumentType,
-                AuditWithActor($"عدّل المستند (رقم {doc.Id})", doc), token);
+            await LogDocumentChangesAsync(before, doc, actorName, "update",
+                $"عدّل المستند (رقم {doc.Id})", token);
             await SeedInitialActionsAsync(doc, request.InitialActions, userId, actorName, token);
             return DocumentResponse.FromEntity(doc);
         }, ct);

@@ -46,4 +46,35 @@ public class AuditLogger : IAuditLogger
         }
         await _db.SaveChangesAsync(ct);
     }
+
+    public async Task LogDocumentChangeAsync(string? userName, string actionType, int documentId,
+        string? documentType, string details, IReadOnlyList<DocumentFieldChange> changes,
+        CancellationToken ct = default)
+    {
+        if (changes is null || changes.Count == 0)
+        {
+            await LogAsync(userName, actionType, documentId, documentType, details, ct);
+            return;
+        }
+
+        var log = new AuditLog
+        {
+            Timestamp = DateTime.UtcNow,
+            UserName = userName,
+            ActionType = actionType,
+            DocumentId = documentId,
+            DocumentType = documentType,
+            Details = details,
+        };
+        _db.AuditLogs.Add(log);
+        await _db.SaveChangesAsync(ct);
+
+        foreach (var change in changes)
+        {
+            change.AuditLogId = log.Id;
+            change.DocumentId = documentId;
+            _db.DocumentFieldChanges.Add(change);
+        }
+        await _db.SaveChangesAsync(ct);
+    }
 }

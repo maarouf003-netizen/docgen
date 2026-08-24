@@ -1140,6 +1140,45 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.ToTable("DocumentDelegations", (string)null);
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentFieldChange", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("AuditLogId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FieldKey")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FieldLabel")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NewValue")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OldValue")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuditLogId");
+
+                    b.HasIndex("DocumentId", "Id");
+
+                    b.ToTable("DocumentFieldChanges", (string)null);
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentOccurrence", b =>
                 {
                     b.Property<int>("Id")
@@ -1653,6 +1692,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("ReviewLetterId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("TargetLawyerId")
                         .HasColumnType("INTEGER");
 
@@ -1672,6 +1714,8 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.HasIndex("DelegationId");
 
                     b.HasIndex("DocumentId");
+
+                    b.HasIndex("ReviewLetterId");
 
                     b.HasIndex("TargetLawyerId");
 
@@ -1767,6 +1811,114 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.HasIndex("Key");
 
                     b.ToTable("LoginAttempts", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ReviewLetter", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("BranchId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("DocumentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsAnswered")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("LetterDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("LetterNumber")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("IsAnswered");
+
+                    b.HasIndex("LetterNumber")
+                        .IsUnique();
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.ToTable("ReviewLetters", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ReviewLetterMessage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("AuthorId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AuthorName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AuthorRole")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BodyHtml")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BodyPlainText")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsSeenByLawyer")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("MessageDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MessageNumber")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ReviewLetterId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BodyPlainText");
+
+                    b.HasIndex("ReviewLetterId");
+
+                    b.ToTable("ReviewLetterMessages", (string)null);
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.User", b =>
@@ -2033,6 +2185,17 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Navigation("SourceDocument");
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentFieldChange", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.AuditLog", "AuditLog")
+                        .WithMany("FieldChanges")
+                        .HasForeignKey("AuditLogId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("AuditLog");
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentOccurrence", b =>
                 {
                     b.HasOne("DocGenerator.Domain.Entities.User", "CreatedBy")
@@ -2175,6 +2338,11 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("DocGenerator.Domain.Entities.ReviewLetter", "ReviewLetter")
+                        .WithMany()
+                        .HasForeignKey("ReviewLetterId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("DocGenerator.Domain.Entities.User", "TargetLawyer")
                         .WithMany()
                         .HasForeignKey("TargetLawyerId")
@@ -2187,6 +2355,8 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Navigation("CreatedBy");
 
                     b.Navigation("Document");
+
+                    b.Navigation("ReviewLetter");
 
                     b.Navigation("TargetLawyer");
                 });
@@ -2221,6 +2391,43 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Navigation("Document");
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ReviewLetter", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.Document", "Document")
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("Document");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ReviewLetterMessage", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.ReviewLetter", "ReviewLetter")
+                        .WithMany("Messages")
+                        .HasForeignKey("ReviewLetterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ReviewLetter");
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.User", b =>
                 {
                     b.HasOne("DocGenerator.Domain.Entities.Branch", "Branch")
@@ -2233,6 +2440,11 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("DocGenerator.Domain.Entities.Asset", b =>
                 {
                     b.Navigation("Owners");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.AuditLog", b =>
+                {
+                    b.Navigation("FieldChanges");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.Branch", b =>
@@ -2300,6 +2512,11 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("DocGenerator.Domain.Entities.HeadAlert", b =>
                 {
                     b.Navigation("Recipients");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ReviewLetter", b =>
+                {
+                    b.Navigation("Messages");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.User", b =>

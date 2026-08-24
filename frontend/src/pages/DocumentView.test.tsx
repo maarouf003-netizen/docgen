@@ -871,6 +871,7 @@ describe('DocumentView', () => {
       .mockResolvedValueOnce({ data: mockDoc })
       .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({ data: [] })
+      .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({
         data: new Blob(['docx']),
         headers: { 'content-disposition': 'attachment; filename="أحمد_001.docx"' },
@@ -972,6 +973,7 @@ describe('DocumentView', () => {
       .mockResolvedValueOnce({ data: mockDoc })
       .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({ data: [] })
+      .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({
         data: new Blob(['docx']),
         headers: { 'content-disposition': 'attachment; filename="أحمد_003.docx"' },
@@ -991,9 +993,9 @@ describe('DocumentView', () => {
 
     await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(2));
     expect(await screen.findByText('✅ تم إنشاء 2 إخطار بنجاح')).toBeInTheDocument();
-    expect(apiGet).toHaveBeenNthCalledWith(4, '/documents/1/generate',
-      expect.objectContaining({ params: { template: '003', recipient: 0 } }));
     expect(apiGet).toHaveBeenNthCalledWith(5, '/documents/1/generate',
+      expect.objectContaining({ params: { template: '003', recipient: 0 } }));
+    expect(apiGet).toHaveBeenNthCalledWith(6, '/documents/1/generate',
       expect.objectContaining({ params: { template: '003', recipient: 1 } }));
 
     vi.unstubAllGlobals();
@@ -1010,6 +1012,7 @@ describe('DocumentView', () => {
       .mockResolvedValueOnce({ data: mockDoc })
       .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({ data: [] })
+      .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({
         data: new Blob(['docx']),
         headers: { 'content-disposition': 'attachment; filename="أحمد_007.docx"' },
@@ -1024,7 +1027,7 @@ describe('DocumentView', () => {
 
     await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1));
     expect(await screen.findByText('✅ تم إنشاء 1 إخطار تنفيذي بالصحف بنجاح')).toBeInTheDocument();
-    expect(apiGet).toHaveBeenNthCalledWith(4, '/documents/1/generate',
+    expect(apiGet).toHaveBeenNthCalledWith(5, '/documents/1/generate',
       expect.objectContaining({ params: { template: '007', recipient: 2 } }));
 
     vi.unstubAllGlobals();
@@ -1051,6 +1054,7 @@ describe('DocumentView', () => {
       .mockResolvedValueOnce({ data: mockDoc })
       .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({ data: [] })
+      .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({
         data: new Blob(['docx']),
         headers: { 'content-disposition': 'attachment; filename="أحمد_005.docx"' },
@@ -1065,7 +1069,7 @@ describe('DocumentView', () => {
 
     await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
     expect(await screen.findByText('✅ تم إنشاء إخطار بيع أموال غير منقولة بنجاح')).toBeInTheDocument();
-    expect(apiGet).toHaveBeenNthCalledWith(4, '/documents/1/generate',
+    expect(apiGet).toHaveBeenNthCalledWith(5, '/documents/1/generate',
       expect.objectContaining({ params: { template: '005', recipient: 0, estateIds: [1] } }));
 
     vi.unstubAllGlobals();
@@ -1127,6 +1131,7 @@ describe('DocumentView', () => {
       .mockResolvedValueOnce({ data: mockDoc })
       .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({ data: [] })
+      .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({
         data: new Blob(['docx']),
         headers: { 'content-disposition': 'attachment; filename="أحمد_PS.docx"' },
@@ -1142,7 +1147,7 @@ describe('DocumentView', () => {
 
     await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
     expect(await screen.findByText('✅ تم إنشاء 1 مستند حجز عقاري')).toBeInTheDocument();
-    expect(apiGet).toHaveBeenNthCalledWith(4, '/documents/1/generate',
+    expect(apiGet).toHaveBeenNthCalledWith(5, '/documents/1/generate',
       expect.objectContaining({ params: { template: 'PS', recipient: 0, estateIds: [1] } }));
 
     vi.unstubAllGlobals();
@@ -1360,6 +1365,7 @@ describe('DocumentView', () => {
       })
       .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({ data: [] })
+      .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({
         data: new Blob(['docx']),
         headers: { 'content-disposition': 'attachment; filename="مستند_003.docx"' },
@@ -1379,9 +1385,9 @@ describe('DocumentView', () => {
 
     await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(2));
     expect(await screen.findByText('✅ تم إنشاء 2 إخطار بنجاح')).toBeInTheDocument();
-    expect(apiGet).toHaveBeenNthCalledWith(4, '/documents/1/generate',
-      expect.objectContaining({ params: expect.objectContaining({ template: '003', heirId: 10 }) }));
     expect(apiGet).toHaveBeenNthCalledWith(5, '/documents/1/generate',
+      expect.objectContaining({ params: expect.objectContaining({ template: '003', heirId: 10 }) }));
+    expect(apiGet).toHaveBeenNthCalledWith(6, '/documents/1/generate',
       expect.objectContaining({ params: expect.objectContaining({ template: '003', heirId: 11 }) }));
 
     vi.unstubAllGlobals();
@@ -1403,6 +1409,7 @@ describe('DocumentView', () => {
       })
       .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({ data: [] })
+      .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({
         data: new Blob(['docx']),
         headers: { 'content-disposition': 'attachment; filename="مستند_005.docx"' },
@@ -1417,7 +1424,7 @@ describe('DocumentView', () => {
 
     await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1));
     expect(await screen.findByText('✅ تم إنشاء 1 إخطار بيع أموال غير منقولة بنجاح')).toBeInTheDocument();
-    expect(apiGet).toHaveBeenNthCalledWith(4, '/documents/1/generate',
+    expect(apiGet).toHaveBeenNthCalledWith(5, '/documents/1/generate',
       expect.objectContaining({ params: expect.objectContaining({ template: '005', heirId: 10 }) }));
 
     vi.unstubAllGlobals();

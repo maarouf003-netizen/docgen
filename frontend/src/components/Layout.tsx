@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
+import { api } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import NetworkStatusBanner from './NetworkStatusBanner';
+import ReviewPendingBell from './review/ReviewPendingBell';
+import { REVIEWS_UNSEEN_EVENT } from './review/reviewDisplay';
 import nationalEmblem from '../assets/national.png';
 
 const ROLES: Record<string, string> = {
@@ -16,15 +19,44 @@ interface NavItem {
   to: string;
   label: string;
   end?: boolean;
+  /** عدد عناصر تحتاج انتباه صاحب الدور (مثل ردود غير مطّلع عليها). */
+  badge?: number;
 }
 
 export default function Layout() {
   const { user, logout, hasFullAccess, isHead } = useAuth();
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [unseenReplies, setUnseenReplies] = useState(0);
   const drawerRef = useRef<HTMLDivElement>(null);
   const drawerTriggerRef = useRef<HTMLButtonElement>(null);
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
+  const isLawyerUser = user?.role === 'lawyer';
+
+  // عدّاد كتب المطالعة فيها ردّ لم يطّلع عليه المحامي — شارة حمراء على بند المطالعات،
+  // تُحدَّث كل دقيقة وفورًا عند فتح كتاب بعد الاطلاع (حدث reviews:unseen-changed).
+  useEffect(() => {
+    if (!isLawyerUser) return undefined;
+    let cancelled = false;
+    const fetchCount = () =>
+      api
+        .get<{ count: number }>('/review-letters/unseen-replies-count')
+        .then((r) => {
+          if (!cancelled) setUnseenReplies(r.data.count);
+        })
+        .catch(() => {
+          /* الشارة تبقى على آخر قيمة معروفة عند فشل التحديث */
+        });
+    void fetchCount();
+    const timer = window.setInterval(fetchCount, 60_000);
+    const onSeenChanged = () => fetchCount();
+    window.addEventListener(REVIEWS_UNSEEN_EVENT, onSeenChanged);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener(REVIEWS_UNSEEN_EVENT, onSeenChanged);
+    };
+  }, [isLawyerUser]);
 
   // نمط WAI-ARIA Dialog: Escape يغلق، والتركيز محصور داخل الدرج أثناء فتحه،
   // ويعاد إلى زر الفتح عند الإغلاق — دورة تركيز كاملة لمستخدمي لوحة المفاتيح.
@@ -73,6 +105,11 @@ export default function Layout() {
     { to: '/', label: 'لوحة التحكم', end: true },
     { to: '/documents', label: 'الملفات التنفيذية' },
   ];
+  navItems.push({
+    to: '/reviews',
+    label: user?.role === 'lawyer' ? 'المطالعات' : 'كتب المطالعات',
+    badge: isLawyerUser && unseenReplies > 0 ? unseenReplies : undefined,
+  });
   if (canManageBranchLawyers) navItems.push({ to: '/branch-lawyers', label: 'محامو الفرع' });
   if (user?.role === 'head') navItems.push({ to: '/delegations/requests', label: 'طلبات الإنابة' });
   if (canManageUsers) navItems.push({ to: '/users/manage', label: 'إدارة المستخدمين' });
@@ -88,6 +125,20 @@ export default function Layout() {
     'flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-14 text-xs transition-colors ' +
     (isActive ? 'bg-emerald-700 text-white' : 'text-emerald-100 hover:bg-emerald-700/40');
 
+  const renderNavLabel = (item: NavItem) => (
+    <span className="inline-flex items-center gap-1.5 min-w-0 max-w-full">
+      <span className="truncate">{item.label}</span>
+      {item.badge != null && (
+        <span
+          className="shrink-0 min-w-5 h-5 px-1 rounded-full bg-red-600 border border-red-400/60 text-white text-[11px] font-bold inline-flex items-center justify-center tabular-nums"
+          aria-label={`${item.label}: ${item.badge} تحتاج انتباهك`}
+        >
+          {item.badge > 99 ? '+99' : item.badge}
+        </span>
+      )}
+    </span>
+  );
+
   const renderSidebarContent = (onNavigate?: () => void) => (
     <>
       <div className="p-4 border-b border-emerald-700 text-center">
@@ -100,6 +151,11 @@ export default function Layout() {
         <p className="text-xs text-emerald-300 mt-1">
           مساعد محامي الدولة الذكي في إدارة الملفات التنفيذية
         </p>
+        {user?.role === 'head' && (
+          <div className="flex justify-center mt-2">
+            <ReviewPendingBell />
+          </div>
+        )}
       </div>
       <nav className="flex-1 min-h-0 p-3 overflow-y-auto" aria-label="القائمة الرئيسية">
         {navItems.map((item) => (
@@ -110,7 +166,7 @@ export default function Layout() {
             onClick={onNavigate}
             className={linkClass}
           >
-            {item.label}
+            {renderNavLabel(item)}
           </NavLink>
         ))}
       </nav>
@@ -142,7 +198,7 @@ export default function Layout() {
     >
       {navItems.map((item) => (
         <NavLink key={item.to} to={item.to} end={item.end} className={bottomNavClass}>
-          <span>{item.label}</span>
+          {renderNavLabel(item)}
         </NavLink>
       ))}
     </nav>
@@ -175,6 +231,7 @@ export default function Layout() {
                 className="w-9 h-9 shrink-0"
               />
               <h1 className="text-lg font-bold text-emerald-900">مسار</h1>
+              <ReviewPendingBell className="ms-auto" />
             </div>
           )}
           <Outlet />

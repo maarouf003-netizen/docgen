@@ -42,6 +42,9 @@ public class DocGeneratorDbContext : DbContext
     public DbSet<DocumentAppeal> DocumentAppeals => Set<DocumentAppeal>();
     public DbSet<AppealAction> AppealActions => Set<AppealAction>();
     public DbSet<AppealBaseNumber> AppealBaseNumbers => Set<AppealBaseNumber>();
+    public DbSet<ReviewLetter> ReviewLetters => Set<ReviewLetter>();
+    public DbSet<ReviewLetterMessage> ReviewLetterMessages => Set<ReviewLetterMessage>();
+    public DbSet<DocumentFieldChange> DocumentFieldChanges => Set<DocumentFieldChange>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

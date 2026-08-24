@@ -26,6 +26,7 @@ vi.mock('react-router-dom', () => ({
       {children}
     </a>
   ),
+  Link: ({ children, to }: { children: ReactNode; to: string }) => <a href={to}>{children}</a>,
   Outlet: () => <div>محتوى الصفحة</div>,
 }));
 

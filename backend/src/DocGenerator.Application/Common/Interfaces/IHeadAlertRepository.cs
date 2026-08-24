@@ -34,4 +34,11 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
 
     /// <summary>كل تنبيهات الاستئناف المحدد (لتصفية تنبيه «اختيار المحامي» عند الإسناد).</summary>
     Task<List<HeadAlert>> ListByAppealAsync(int appealId, CancellationToken ct = default);
+
+    /// <summary>
+    /// أحدث تنبيه ردٍّ غير مقروء لكتاب مطالعة محدد لدى محاميه — لدمج الردود المتتالية
+    /// في تنبيه واحد بدل تراكمها (متتبَّع لإمكانية تحديث رسالته).
+    /// </summary>
+    Task<HeadAlert?> FindLatestUnseenByReviewLetterAsync(
+        int reviewLetterId, int recipientUserId, CancellationToken ct = default);
 }

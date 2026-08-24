@@ -267,7 +267,8 @@ public sealed class HeadAlertService : IHeadAlertService
         null,
         a.CreatedAt,
         a.CreatedBy?.FullName,
-        a.AppealId);
+        a.AppealId,
+        a.ReviewLetterId);
 
     private static HeadAlertDto ToHeadDto(HeadAlert a) => new(
         a.Id,
@@ -282,5 +283,6 @@ public sealed class HeadAlertService : IHeadAlertService
         a.Recipients.Count(r => !r.IsRead),
         a.CreatedAt,
         a.CreatedBy?.FullName,
-        a.AppealId);
+        a.AppealId,
+        a.ReviewLetterId);
 }

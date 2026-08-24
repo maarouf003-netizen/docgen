@@ -237,4 +237,13 @@ public interface IAuditLogger
     /// حفظ منفصل لكل إدخال في العمليات الكبيرة (مثل تدوير آلاف الملفات).
     /// </summary>
     Task LogManyAsync(IReadOnlyList<AuditLogEntry> entries, CancellationToken ct = default);
+
+    /// <summary>
+    /// تسجيل تعديل ملف على مستوى الحقول: يُنشئ إدخال التدقيق ثم تُربط به صفوف
+    /// التغييرات (حقل/قيمة قبل/قيمة بعد) — ضمن معاملة المستدعي نفسها. حين تكون
+    /// القائمة فارغة يتصرف كـ LogAsync عادي دون صفوف.
+    /// </summary>
+    Task LogDocumentChangeAsync(string? userName, string actionType, int documentId,
+        string? documentType, string details, IReadOnlyList<DocumentFieldChange> changes,
+        CancellationToken ct = default);
 }

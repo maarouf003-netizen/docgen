@@ -23,6 +23,8 @@ const UsersManagement = lazy(() => import('./pages/UsersManagement'));
 const BranchesManagement = lazy(() => import('./pages/BranchesManagement'));
 const AuditLogs = lazy(() => import('./pages/AuditLogs'));
 const ChangePassword = lazy(() => import('./pages/ChangePassword'));
+const ReviewsList = lazy(() => import('./pages/ReviewsList'));
+const ReviewDetail = lazy(() => import('./pages/ReviewDetail'));
 
 function PageLoader() {
   return <div className="min-h-screen flex items-center justify-center text-gray-500">جارِ التحميل...</div>;
@@ -69,6 +71,8 @@ export default function App() {
           >
             <Route path="/" element={<Dashboard />} />
             <Route path="/documents" element={<DocumentsList />} />
+            <Route path="/reviews" element={<ReviewsList />} />
+            <Route path="/reviews/:id" element={<ReviewDetail />} />
           <Route path="/appeals" element={<AppealsList />} />
           <Route path="/appeals/:id" element={<AppealDetail />} />
             <Route path="/documents/deleted" element={<DeletedDocuments />} />

@@ -13,6 +13,44 @@ const TEXT_COLOR_PRESETS = [
   { label: 'نص أسود', value: '#111827' },
 ] as const;
 
+const FONT_FAMILY_PRESETS = [
+  { label: 'الخط الافتراضي', value: '' },
+  { label: 'كايرو', value: "'Cairo', Tahoma, sans-serif" },
+  { label: 'سيمبليفايد عربي', value: "'Simplified Arabic', Tahoma, sans-serif" },
+  { label: 'تقليدي عربي', value: "'Traditional Arabic', 'Times New Roman', serif" },
+  { label: 'تايمز نيو رومان', value: "'Times New Roman', serif" },
+] as const;
+
+const FONT_SIZE_PRESETS = [
+  { label: 'الحجم الافتراضي', value: '' },
+  { label: 'صغير (12px)', value: '12px' },
+  { label: 'عادي (14px)', value: '14px' },
+  { label: 'متوسط (16px)', value: '16px' },
+  { label: 'كبير (18px)', value: '18px' },
+  { label: 'ضخم (24px)', value: '24px' },
+] as const;
+
+/** امتداد TextStyle بخصائص الخط وحجمه — يُحفظان ضمن style للـ span. */
+const StyledTextStyle = TextStyle.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      fontFamily: {
+        default: null,
+        parseHTML: (element) => element.style.fontFamily || null,
+        renderHTML: (attributes) =>
+          attributes.fontFamily ? { style: `font-family: ${attributes.fontFamily}` } : {},
+      },
+      fontSize: {
+        default: null,
+        parseHTML: (element) => element.style.fontSize || null,
+        renderHTML: (attributes) =>
+          attributes.fontSize ? { style: `font-size: ${attributes.fontSize}` } : {},
+      },
+    };
+  },
+});
+
 function ToolbarButton({
   active,
   onClick,
@@ -46,6 +84,38 @@ function ToolbarButton({
   );
 }
 
+function ToolbarSelect({
+  label,
+  ariaLabel,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  ariaLabel: string;
+  value: string;
+  options: ReadonlyArray<{ label: string; value: string }>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="flex items-center gap-1 text-xs text-gray-500">
+      <span>{label}</span>
+      <select
+        aria-label={ariaLabel}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="min-h-11 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 export default function RichTextEditor({
   value,
   onChange,
@@ -70,7 +140,7 @@ export default function RichTextEditor({
         listItem: false,
         link: false,
       }),
-      TextStyle.configure(),
+      StyledTextStyle.configure(),
       Color.configure({ types: ['textStyle'] }),
       Placeholder.configure({ placeholder: placeholder ?? 'اكتب هنا...' }),
     ],
@@ -98,7 +168,23 @@ export default function RichTextEditor({
 
   if (!editor) return null;
 
-  const currentColor = editor.getAttributes('textStyle').color as string | undefined;
+  const textStyleAttributes = editor.getAttributes('textStyle');
+  const currentColor = textStyleAttributes.color as string | undefined;
+  const currentFontFamily = (textStyleAttributes.fontFamily as string | undefined) ?? '';
+  const currentFontSize = (textStyleAttributes.fontSize as string | undefined) ?? '';
+
+  /**
+   * تطبيق خصائص النمط على العلامة الحالية مع دمجها مع خصائصها القائمة
+   * (تغيير الخط لا يلغي اللون والعكس)، وإزالة الخاصية عند القيمة الفارغة.
+   */
+  const applyTextStyleAttrs = (attrs: Record<string, string | null>) => {
+    const merged: Record<string, string> = { ...editor.getAttributes('textStyle') };
+    for (const [name, next] of Object.entries(attrs)) {
+      if (next === null || next === '') delete merged[name];
+      else merged[name] = next;
+    }
+    editor.chain().focus().setMark('textStyle', merged).run();
+  };
 
   return (
     <div>
@@ -124,13 +210,27 @@ export default function RichTextEditor({
         >
           <b>B</b>
         </ToolbarButton>
+        <ToolbarSelect
+          label="الخط:"
+          ariaLabel="نوع الخط"
+          value={currentFontFamily}
+          options={[...FONT_FAMILY_PRESETS]}
+          onChange={(next) => applyTextStyleAttrs({ fontFamily: next })}
+        />
+        <ToolbarSelect
+          label="الحجم:"
+          ariaLabel="حجم الخط"
+          value={currentFontSize}
+          options={[...FONT_SIZE_PRESETS]}
+          onChange={(next) => applyTextStyleAttrs({ fontSize: next })}
+        />
         <div className="flex items-center gap-1.5" role="group" aria-label="لون النص">
           {TEXT_COLOR_PRESETS.map((c) => (
             <ToolbarButton
               key={c.value}
               label={c.label}
               active={currentColor === c.value}
-              onClick={() => editor.chain().focus().setColor(c.value).run()}
+              onClick={() => applyTextStyleAttrs({ color: c.value })}
             >
               <span
                 className="inline-block w-4 h-4 rounded-full border border-gray-300"

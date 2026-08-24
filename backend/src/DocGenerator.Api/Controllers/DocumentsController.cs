@@ -21,17 +21,20 @@ public class DocumentsController : ControllerBase
     private readonly IWordDocumentGenerator _generator;
     private readonly IExcelExportService _excel;
     private readonly IDocumentAppealService _appeals;
+    private readonly IAuditLogService _auditLogs;
 
     public DocumentsController(
         IDocumentService documents,
         IWordDocumentGenerator generator,
         IExcelExportService excel,
-        IDocumentAppealService appeals)
+        IDocumentAppealService appeals,
+        IAuditLogService auditLogs)
     {
         _documents = documents;
         _generator = generator;
         _excel = excel;
         _appeals = appeals;
+        _auditLogs = auditLogs;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -210,6 +213,20 @@ public class DocumentsController : ControllerBase
         if (doc is null) return NotFound();
         if (!await CanAccessOrFollowAsync(doc)) return Forbid();
         return Ok(await _documents.GetBaseNumberHistoryAsync(id, ct));
+    }
+
+    /// <summary>
+    /// سجل تعديلات الملف على مستوى الحقول (قبل/بعد) — لصاحب الملف ورئيس قسمه
+    /// والمدير/المشرف. أداة المراجعة المؤسسية؛ لا تُفتح لمتابعي الإنابة/الاستئناف.
+    /// </summary>
+    [HttpGet("{id:int}/changes")]
+    public async Task<IActionResult> GetChanges(
+        int id, [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
+    {
+        var doc = await _documents.GetAsync(id, ct);
+        if (doc is null) return NotFound();
+        if (!CanAccess(doc)) return Forbid();
+        return Ok(await _auditLogs.GetDocumentChangesAsync(id, page, perPage, ct));
     }
 
     [HttpPost]
