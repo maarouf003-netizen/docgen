@@ -42,7 +42,11 @@ public class EntityRegistryController : ControllerBase
             new EntityRegistryListQuery(q, governorate, status, IncludePending: true, page, perPage), ct));
     }
 
-    /// <summary>بحث السجل (لنافذة الإدخال لاحقًا) — متاح لكل الطاقم عدا دور المندوب، وقيد الانتظار لا يظهر إلا للمخوّلين.</summary>
+    /// <summary>
+    /// بحث السجل لنافذة الإدخال: متاح لكل الطاقم عدا دور المندوب؛ قيود الانتظار
+    /// تظهر للمحامي كي يستطيع ربطها على ملفه مع تمييزها بصريًا (§5.3/د4)،
+    /// ولا تظهر لأي بوابٍ قبل الاعتماد.
+    /// </summary>
     [HttpGet("search")]
     public async Task<IActionResult> Search(
         [FromQuery] string? q,
@@ -51,9 +55,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (Role == UserRole.EntityManager)
             return Forbid();
-        var includePending = RolePermissions.CanManageEntityRegistry(Role);
         return Ok(await _registry.ListAsync(
-            new EntityRegistryListQuery(q, governorate, null, includePending, 1, 50), ct));
+            new EntityRegistryListQuery(q, governorate, null, IncludePending: true, 1, 50), ct));
     }
 
     /// <summary>إنشاء قيد نهائي مباشر — رئيس قسم (ضمن محافظته)/مدير/مشرف.</summary>

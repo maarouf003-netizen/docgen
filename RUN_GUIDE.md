@@ -140,3 +140,7 @@ npm test
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260824173935_AddEntityRegistry.cs` — ينشئ جداول `PublicEntityGroups` و`PublicEntities` و`PublicEntityAliases` و`PublicEntityProposals` ويضيف عمود `Governorate` إلى `Branches`.
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `MigrationsPostgres\20260824174004_AddEntityRegistryPg.cs` — نفسه.
   - بدون التطبيق سيفشل فتح شاشة «سجل الجهات العامة» وأي عملية فيها برسالة `no such table: …`.
+- [ ] **2026-08-24 — `AddEntityRegistryLinks` / `AddEntityRegistryLinksPg`** (بوابة الجهات العامة — المرحلة 2):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260824190803_AddEntityRegistryLinks.cs` — يضيف `RegistryId` إلى `ApplicantPublicEntities` و`ExecutedPublicEntities` (FK SetNull + فهارس) و`ApplicantRegistryId` إلى `Documents` (فهرس).
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `MigrationsPostgres\20260824190820_AddEntityRegistryLinksPg.cs` — نفسه.
+  - بدون التطبيق سيفشل حفظ أي ملف برسالة `no such column: r.RegistryId`.

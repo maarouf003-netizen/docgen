@@ -107,6 +107,9 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
 
         builder.Property(d => d.Court).HasMaxLength(200);
         builder.Property(d => d.Applicant).HasMaxLength(200);
+        // نسخة تسريع لفلترة جهة الطالب في البوابة — تُحدَّث عند الحفظ من صفوف الجهات.
+        builder.Property(d => d.ApplicantRegistryId);
+        builder.HasIndex(d => d.ApplicantRegistryId);
         builder.Property(d => d.Lawyer).HasMaxLength(200);
         builder.Property(d => d.ReferredFromLawyer).HasMaxLength(200);
         builder.Property(d => d.ReferredAt).HasColumnType("datetime2");
@@ -538,11 +541,19 @@ public class ExecutedPublicEntityConfiguration : IEntityTypeConfiguration<Execut
         builder.Property(e => e.AddressType).HasMaxLength(50);
         builder.Property(e => e.Address).HasMaxLength(300);
         builder.HasIndex(e => e.DocumentId);
+        // ربط السجل المرجعي للجهات العامة فقط: SetNull بحذف القيد + فهرس.
+        builder.HasIndex(e => e.RegistryId);
+        builder.Property(e => e.RegistryId);
 
         builder.HasOne(e => e.Document)
             .WithMany(d => d.ExecutedPublicEntities)
             .HasForeignKey(e => e.DocumentId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(e => e.Registry)
+            .WithMany()
+            .HasForeignKey(e => e.RegistryId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }
 
@@ -656,11 +667,19 @@ public class ApplicantPublicEntityConfiguration : IEntityTypeConfiguration<Appli
         builder.Property(a => a.Branch).HasMaxLength(200);
         builder.Property(a => a.Governorate).HasMaxLength(100);
         builder.HasIndex(a => a.DocumentId);
+        // ربط السجل المرجعي: يُفكّ الارتباط (SetNull) بحذف القيد مع فهرس للتصفية.
+        builder.HasIndex(a => a.RegistryId);
+        builder.Property(a => a.RegistryId);
 
         builder.HasOne(a => a.Document)
             .WithMany(d => d.ApplicantPublicEntities)
             .HasForeignKey(a => a.DocumentId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(a => a.Registry)
+            .WithMany()
+            .HasForeignKey(a => a.RegistryId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }
 

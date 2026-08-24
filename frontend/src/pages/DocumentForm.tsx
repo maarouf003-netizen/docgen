@@ -29,6 +29,7 @@ import { ExecutedSideSections } from '../components/form/ExecutedSideSections';
 import { OccurrencesEditor } from '../components/form/OccurrencesEditor';
 import { makeFieldHelpers } from '../components/form/formFields';
 import { FormSectionTitle } from '../components/form/FormSectionTitle';
+import { PublicEntityPickerModal } from '../components/entity/PublicEntityPickerModal';
 import { slotDefaultCurrency } from '../utils/amountCurrencies';
 import { normalizeArabicDigits } from '../utils/arabicDigits';
 import { tripleName, isExecutedLike } from '../utils/documentDisplay';
@@ -48,6 +49,7 @@ import type {
   HeirDto,
   PartyNature,
   EntityNature,
+  PublicEntityEntryDto,
 } from '../types';
 
 export default function DocumentForm() {
@@ -70,6 +72,11 @@ export default function DocumentForm() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  // نافذة اختيار الجهة العامة من السجل المرجعي (المرحلة 2): الجهة المستهدفة
+  // من الطرفين ورقم صفها، وتُملأ حقولها النصية من القيد المختار مع ربطه.
+  const [registryPicker, setRegistryPicker] = useState<
+    { side: 'applicant' | 'executed'; index: number } | null
+  >(null);
   const [guarantors, setGuarantors] = useState<GuarantorDto[]>([emptyGuarantor()]);
   const [borrowerHeirs, setBorrowerHeirs] = useState<HeirDto[]>([]);
   const [assets, setAssets] = useState<AssetDto[]>([]);
@@ -250,8 +257,25 @@ export default function DocumentForm() {
       ),
     );
 
+  // حقول الهوية النصية للجهة: أي تحرير يدوي لها يفكّ ربط السجل المرجعي تلقائيًا
+  // حتى لا يبقى الملف مربوطًا بقيد لم يعد يطابق نصَّه.
+  const APPLICANT_IDENTITY_KEYS: ReadonlyArray<keyof ApplicantPublicEntityDto> = ['name', 'branch', 'governorate'];
+  const EXECUTED_IDENTITY_KEYS: ReadonlyArray<keyof ExecutedPublicEntityDto> = [
+    'entityName', 'entityBranch', 'governorate',
+  ];
+
   const setExecutedEntity = (i: number, key: keyof ExecutedPublicEntityDto, value: string) =>
-    setExecutedPublicEntities((xs) => xs.map((x, idx) => (idx === i ? { ...x, [key]: value } : x)));
+    setExecutedPublicEntities((xs) =>
+      xs.map((x, idx) =>
+        idx === i
+          ? {
+              ...x,
+              [key]: value,
+              ...(EXECUTED_IDENTITY_KEYS.includes(key) && x.registryId != null ? { registryId: null } : {}),
+            }
+          : x,
+      ),
+    );
 
   const addExecutedEntity = (nature: EntityNature = 'public') =>
     setExecutedPublicEntities((xs) => [...xs, freshExecutedEntity(nature)]);
@@ -260,12 +284,47 @@ export default function DocumentForm() {
     setExecutedPublicEntities((xs) => xs.filter((_, idx) => idx !== i));
 
   const setApplicantPublicEntity = (i: number, key: keyof ApplicantPublicEntityDto, value: string) =>
-    setApplicantPublicEntities((xs) => xs.map((x, idx) => (idx === i ? { ...x, [key]: value } : x)));
+    setApplicantPublicEntities((xs) =>
+      xs.map((x, idx) =>
+        idx === i
+          ? {
+              ...x,
+              [key]: value,
+              ...(APPLICANT_IDENTITY_KEYS.includes(key) && x.registryId != null ? { registryId: null } : {}),
+            }
+          : x,
+      ),
+    );
 
   const addApplicantPublicEntity = () => setApplicantPublicEntities((xs) => [...xs, freshApplicantEntity()]);
 
   const removeApplicantPublicEntity = (i: number) =>
     setApplicantPublicEntities((xs) => xs.filter((_, idx) => idx !== i));
+
+  // ربط صف جهة بالقيد المختار من نافذة السجل: تُملأ حقول الهوية النصية من القيد
+  // المعتمد نفسه فتظل الأعمدة النصية متسقة مع السجل، ويُحفظ معرّف الربط.
+  const applyRegistryPick = (entry: PublicEntityEntryDto) => {
+    if (!registryPicker) return;
+    const { side, index } = registryPicker;
+    if (side === 'applicant') {
+      setApplicantPublicEntities((xs) =>
+        xs.map((x, idx) =>
+          idx === index
+            ? { ...x, name: entry.canonicalName, branch: entry.branchName, governorate: entry.governorate, registryId: entry.id }
+            : x,
+        ),
+      );
+    } else {
+      setExecutedPublicEntities((xs) =>
+        xs.map((x, idx) =>
+          idx === index
+            ? { ...x, entityName: entry.canonicalName, entityBranch: entry.branchName, governorate: entry.governorate, registryId: entry.id }
+            : x,
+        ),
+      );
+    }
+    setRegistryPicker(null);
+  };
 
   const setExecutedPerson = (i: number, key: keyof ExecutedNaturalPersonDto, value: string) =>
     setExecutedNaturalPersons((xs) => xs.map((x, idx) => (idx === i ? { ...x, [key]: value } : x)));
@@ -797,6 +856,18 @@ export default function DocumentForm() {
                         ✖ حذف
                       </button>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => setRegistryPicker({ side: 'applicant', index: i })}
+                      className="border border-emerald-200 text-emerald-800 hover:bg-emerald-50 rounded-lg px-3 py-2 text-xs min-h-11"
+                    >
+                      اختيار من السجل…
+                    </button>
+                    {a.registryId != null && (
+                      <span className="self-center rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 px-2 py-0.5 text-[11px] whitespace-nowrap">
+                        مرتبطة بالسجل ✓
+                      </span>
+                    )}
                   </div>
                 ))}
                 <button
@@ -841,6 +912,7 @@ export default function DocumentForm() {
             onEntitySet={setExecutedEntity}
             onEntityAdd={addExecutedEntity}
             onEntityRemove={removeExecutedEntity}
+            onPickRegistry={(i) => setRegistryPicker({ side: 'executed', index: i })}
             executedNaturalPersons={executedNaturalPersons}
             onPersonSet={setExecutedPerson}
             onPersonAdd={addExecutedPerson}
@@ -950,6 +1022,14 @@ export default function DocumentForm() {
           </div>
         )}
       </form>
+
+      {registryPicker && (
+        <PublicEntityPickerModal
+          sourceDocumentId={isEdit && id !== undefined ? Number(id) : null}
+          onClose={() => setRegistryPicker(null)}
+          onPick={applyRegistryPick}
+        />
+      )}
     </div>
   );
 }

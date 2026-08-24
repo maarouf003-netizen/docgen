@@ -54,6 +54,8 @@ export interface ExecutedSideSectionsProps {
   onEntitySet: (i: number, key: keyof ExecutedPublicEntityDto, value: string) => void;
   onEntityAdd: (nature?: EntityNature) => void;
   onEntityRemove: (i: number) => void;
+  /** فتح نافذة اختيار الجهة العامة من السجل المرجعي لصف المنفذ رقم i (اختياري). */
+  onPickRegistry?: (i: number) => void;
   executedNaturalPersons: ExecutedNaturalPersonDto[];
   onPersonSet: (i: number, key: keyof ExecutedNaturalPersonDto, value: string) => void;
   onPersonAdd: () => void;
@@ -93,6 +95,7 @@ export function ExecutedSideSections({
   onEntitySet,
   onEntityAdd,
   onEntityRemove,
+  onPickRegistry,
   executedNaturalPersons,
   onPersonSet,
   onPersonAdd,
@@ -363,8 +366,24 @@ export function ExecutedSideSections({
             ) : (
               <div className="grid md:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-gray-600 mb-1">اسم الجهة العامة</label>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <label className="block text-xs font-bold text-gray-600">اسم الجهة العامة</label>
+                    {e.registryId != null && (
+                      <span className="rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 px-2 py-0.5 text-[11px] whitespace-nowrap">
+                        مرتبطة بالسجل ✓
+                      </span>
+                    )}
+                  </div>
                   <input value={e.entityName ?? ''} onChange={(ev) => onEntitySet(i, 'entityName', ev.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  {onPickRegistry && (
+                    <button
+                      type="button"
+                      onClick={() => onPickRegistry(i)}
+                      className="mt-1.5 border border-emerald-200 text-emerald-800 hover:bg-emerald-50 rounded-lg px-3 py-2 text-xs min-h-11"
+                    >
+                      اختيار من السجل…
+                    </button>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-600 mb-1">الفرع</label>

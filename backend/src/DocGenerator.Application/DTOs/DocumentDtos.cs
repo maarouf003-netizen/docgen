@@ -151,14 +151,18 @@ public record ExecutedPublicEntityDto(
     string? RepresentedBy = null,
     string? AddressType = null,
     string? Address = null,
-    string? Governorate = null);
+    string? Governorate = null,
+    /// <summary>معرّف قيد الجهة في السجل المرجعي (اختياري — من نافذة الاختيار).</summary>
+    int? RegistryId = null);
 
 /// <summary>الجهة العامة طالبة التنفيذ في وضع «الجهة العامة طالبة تنفيذ» (اسم الجهة + فرعها + محافظتها).</summary>
 public record ApplicantPublicEntityDto(
     int? Id,
     string? Name,
     string? Branch,
-    string? Governorate = null);
+    string? Governorate = null,
+    /// <summary>معرّف قيد الجهة في السجل المرجعي (اختياري — من نافذة الاختيار).</summary>
+    int? RegistryId = null);
 
 /// <summary>سجل تعاقب محامٍ على الملف: منشئ الملف (create) أو إحالة (transfer).</summary>
 public record DocumentAssignmentDto(
@@ -608,6 +612,8 @@ public class UpsertOccurrenceRequest
     public string? InclusionCurrency3 { get; set; }
     public string? Court { get; set; }
     public string? Applicant { get; set; }
+    /// <summary>نسخة تسريع: معرّف قيد أول جهة طالب مرتبطة بالسجل (للفلترة في البوابة).</summary>
+    public int? ApplicantRegistryId { get; set; }
     public string? Lawyer { get; set; }
     public string? ReferredFromLawyer { get; set; }
     public DateTime? ReferredAt { get; set; }
@@ -795,6 +801,7 @@ public class UpsertOccurrenceRequest
         InclusionCurrency3 = d.InclusionCurrency3,
         Court = d.Court,
         Applicant = d.Applicant,
+        ApplicantRegistryId = d.ApplicantRegistryId,
         Lawyer = d.Lawyer,
         ReferredFromLawyer = d.ReferredFromLawyer,
         ReferredAt = d.ReferredAt,
@@ -909,7 +916,7 @@ public class UpsertOccurrenceRequest
         ExecutedPublicEntities = d.ExecutedPublicEntities
             .Select(e => new ExecutedPublicEntityDto(e.Id, e.EntityName, e.EntityBranch,
                 e.EntityNature, e.RegistrationNumber, e.RepresentedBy, e.AddressType, e.Address,
-                e.Governorate))
+                e.Governorate, e.RegistryId))
             .ToList(),
         ExecutedNaturalPersons = d.ExecutedNaturalPersons
             .Select(p => new ExecutedNaturalPersonDto(p.Id, p.Name, p.Father, p.Family,
@@ -920,7 +927,7 @@ public class UpsertOccurrenceRequest
                 ToExecutedHeirDtos(d.ExecutedHeirs, null, p.Id)))
             .ToList(),
         ApplicantPublicEntities = d.ApplicantPublicEntities
-            .Select(e => new ApplicantPublicEntityDto(e.Id, e.Name, e.Branch, e.Governorate))
+            .Select(e => new ApplicantPublicEntityDto(e.Id, e.Name, e.Branch, e.Governorate, e.RegistryId))
             .ToList(),
         Assignments = d.Assignments
             .OrderBy(a => a.AssignedAt)

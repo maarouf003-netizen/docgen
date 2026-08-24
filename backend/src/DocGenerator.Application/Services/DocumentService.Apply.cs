@@ -620,6 +620,8 @@ public sealed partial class DocumentService
                 EntityName = name,
                 EntityBranch = isLegal ? null : (e.EntityBranch ?? string.Empty).Trim(),
                 Governorate = (e.Governorate ?? string.Empty).Trim(),
+                // ربط السجل المرجعي خاص بجهات الدولة العامة لا بالأشخاص الاعتباريين.
+                RegistryId = isLegal ? null : e.RegistryId,
                 EntityNature = nature,
                 RegistrationNumber = isLegal ? (e.RegistrationNumber ?? string.Empty).Trim() : null,
                 RepresentedBy = isLegal ? (e.RepresentedBy ?? string.Empty).Trim() : null,
@@ -652,6 +654,7 @@ public sealed partial class DocumentService
                 Name = name,
                 Branch = (e.Branch ?? string.Empty).Trim(),
                 Governorate = (e.Governorate ?? string.Empty).Trim(),
+                RegistryId = e.RegistryId,
             });
         }
 
@@ -848,6 +851,12 @@ public sealed partial class DocumentService
         var applicantText = BuildApplicantText(doc.ApplicantPublicEntities);
         if (!string.IsNullOrWhiteSpace(applicantText) || string.IsNullOrWhiteSpace(doc.Applicant))
             doc.Applicant = applicantText;
+
+        // نسخة تسريع لفلترة جهة الطالب في البوابة: أول ربط سجلي غير فارغ بين صفوف الجهات،
+        // وتُصفَّر تلقائيًا حين تفرغ القائمة أو يزول الربط.
+        doc.ApplicantRegistryId = doc.ApplicantPublicEntities
+            .Select(a => a.RegistryId)
+            .FirstOrDefault(id => id.HasValue);
 
         if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
         {

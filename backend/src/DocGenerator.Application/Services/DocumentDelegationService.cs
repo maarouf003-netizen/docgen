@@ -680,14 +680,18 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         foreach (var h in source.Heirs)
             target.Heirs.Add(CopyHeir(h));
 
-        // الجهات العامة طالبة التنفيذ.
+        // الجهات العامة طالبة التنفيذ — مع ربط السجل المرجعي ونسخة التسريع للفلترة.
         foreach (var e in source.ApplicantPublicEntities)
             target.ApplicantPublicEntities.Add(new ApplicantPublicEntity
             {
                 Name = e.Name,
                 Branch = e.Branch,
                 Governorate = e.Governorate,
+                RegistryId = e.RegistryId,
             });
+        target.ApplicantRegistryId = target.ApplicantPublicEntities
+            .Select(a => a.RegistryId)
+            .FirstOrDefault(id => id.HasValue);
     }
 
     private static void CopyBorrower(Document source, Document target)

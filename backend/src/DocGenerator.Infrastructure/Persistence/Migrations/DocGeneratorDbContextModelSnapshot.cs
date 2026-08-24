@@ -123,9 +123,14 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("RegistryId")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
                     b.HasIndex("DocumentId");
+
+                    b.HasIndex("RegistryId");
 
                     b.ToTable("ApplicantPublicEntities", (string)null);
                 });
@@ -405,6 +410,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Property<string>("Applicant")
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
+
+                    b.Property<int?>("ApplicantRegistryId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("BaraetDate")
                         .HasMaxLength(50)
@@ -840,6 +848,8 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ApplicantRegistryId");
 
                     b.HasIndex("BranchId");
 
@@ -1424,6 +1434,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("RegistryId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("RepresentedBy")
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
@@ -1431,6 +1444,8 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("DocumentId");
+
+                    b.HasIndex("RegistryId");
 
                     b.ToTable("ExecutedPublicEntities", (string)null);
                 });
@@ -2220,7 +2235,14 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("DocGenerator.Domain.Entities.PublicEntity", "Registry")
+                        .WithMany()
+                        .HasForeignKey("RegistryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Document");
+
+                    b.Navigation("Registry");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.Asset", b =>
@@ -2455,7 +2477,14 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("DocGenerator.Domain.Entities.PublicEntity", "Registry")
+                        .WithMany()
+                        .HasForeignKey("RegistryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Document");
+
+                    b.Navigation("Registry");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.ExecutionAction", b =>

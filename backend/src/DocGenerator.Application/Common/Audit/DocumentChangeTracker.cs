@@ -84,6 +84,7 @@ public static class DocumentChangeTracker
         [nameof(Document.InclusionCurrency3)] = "عملة التضمين الثالث",
         [nameof(Document.Court)] = "دائرة التنفيذ",
         [nameof(Document.Applicant)] = "طالب التنفيذ",
+        [nameof(Document.ApplicantRegistryId)] = "ربط جهة الطالب بالسجل المرجعي",
         [nameof(Document.Lawyer)] = "المحامي",
         [nameof(Document.ReferredFromLawyer)] = "محامي الإحالة",
         [nameof(Document.ReferredAt)] = "تاريخ الإحالة",

@@ -176,11 +176,11 @@ export function emptyExecutionApplicant(): ExecutionApplicantDto {
 }
 
 export function emptyExecutedPublicEntity(): ExecutedPublicEntityDto {
-  return { entityName: '', entityBranch: '', nature: 'public', registrationNumber: '', representedBy: '', addressType: '', address: '' };
+  return { entityName: '', entityBranch: '', nature: 'public', registrationNumber: '', representedBy: '', addressType: '', address: '', registryId: null };
 }
 
 export function emptyApplicantPublicEntity(): ApplicantPublicEntityDto {
-  return { name: '', branch: '' };
+  return { name: '', branch: '', registryId: null };
 }
 
 export function emptyExecutedNaturalPerson(): ExecutedNaturalPersonDto {

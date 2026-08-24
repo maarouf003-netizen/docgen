@@ -17,6 +17,12 @@ public class ExecutedPublicEntity
     /// <summary>المحافظة التي تتبع لها الجهة العامة أو الشخص الاعتباري (مثل: دمشق/اللاذقية) — قابلة للتعديل.</summary>
     public string? Governorate { get; set; }
 
+    /// <summary>معرّف قيد هذه الجهة في السجل المرجعي المركزي عند الطبيعة (public) — اختياري ويُفكّ بحذف القيد.</summary>
+    public int? RegistryId { get; set; }
+
+    /// <summary>القيد المرجعي المرتبط.</summary>
+    public PublicEntity? Registry { get; set; }
+
     /// <summary>نوع المنفذ عليه الاعتباري: جهة عامة (public) أو شخص اعتباري (legal).</summary>
     public string EntityNature { get; set; } = PartyNatureCatalog.PublicEntity;
     /// <summary>رقم تسجيل الشخص الاعتباري عند الطبيعة (legal) — اختياري.</summary>

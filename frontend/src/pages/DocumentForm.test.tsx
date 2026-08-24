@@ -89,6 +89,52 @@ describe('DocumentForm', () => {
     expect(screen.getByText('📂 وقوعات الملف')).toBeInTheDocument();
   });
 
+  it('يربط صف جهة الطالب بقيد السجل عبر نافذة الاختيار ويملأ نصوصه (المرحلة 2)', async () => {
+    const user = userEvent.setup();
+    await renderEdit();
+
+    // نافذة الاختيار تجلب نتائج البحث عند الفتح.
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        items: [
+          {
+            id: 11, groupId: 5, canonicalName: 'وزارة التعليم', entityType: 'ministry',
+            governorate: 'دمشق', branchName: 'الفرع الرئيسي', citationFormula: 'add-to-job',
+            status: 'final', isActive: true, createdAt: '2026-08-24', aliases: [],
+          },
+        ],
+        page: 1, perPage: 50, totalCount: 1, totalPages: 1,
+      },
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'اختيار من السجل…' }));
+    const dialog = screen.getByRole('dialog', { name: 'اختيار الجهة العامة' });
+    await user.click(within(dialog).getByRole('button', { name: /وزارة التعليم/ }));
+
+    const nameInput = screen.getByLabelText('اسم الجهة 1') as HTMLInputElement;
+    expect(nameInput.value).toBe('وزارة التعليم');
+    expect((screen.getByLabelText('فرع الجهة 1') as HTMLInputElement).value).toBe('الفرع الرئيسي');
+    expect((screen.getByLabelText('المحافظة 1') as HTMLInputElement).value).toBe('دمشق');
+    expect(screen.getByText('مرتبطة بالسجل ✓')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'اختيار الجهة العامة' })).not.toBeInTheDocument();
+  });
+
+  it('يفكّ ربط السجل تلقائيًا عند التحرير اليدوي لنص الجهة', async () => {
+    const user = userEvent.setup();
+    await renderEdit({
+      ...mockDoc,
+      applicantPublicEntities: [
+        { id: 3, name: 'وزارة التعليم', branch: 'الفرع الرئيسي', governorate: 'دمشق', registryId: 11 },
+      ],
+    } as DocumentResponse);
+
+    expect(screen.getByText('مرتبطة بالسجل ✓')).toBeInTheDocument();
+    await user.clear(screen.getByLabelText('اسم الجهة 1'));
+    await user.type(screen.getByLabelText('اسم الجهة 1'), 'وزارة التعليم العالي');
+
+    expect(screen.queryByText('مرتبطة بالسجل ✓')).not.toBeInTheDocument();
+  });
+
   it('يحوّل تسمية حقل عنوان المقترض إلى «الوكيل القانوني» عند اختيار «وكيله القانوني»', async () => {
     const user = userEvent.setup();
     render(<DocumentForm />);
