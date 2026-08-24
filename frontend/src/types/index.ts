@@ -585,6 +585,8 @@ export interface DocumentUpsertRequest {
   inclusionCurrency3?: string;
   court?: string;
   applicant?: string;
+  /** نسخة تسريع: معرّف قيد أول جهة طالب مرتبطة بالسجل — تُحدَّث عند الحفظ (للفلترة في البوابة). */
+  applicantRegistryId?: number | null;
   fileNumber?: string;
   fileType?: string;
   fileYear?: string;
