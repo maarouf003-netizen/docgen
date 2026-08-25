@@ -158,14 +158,22 @@ public class PortalRepository : IPortalRepository
         return q;
     }
 
-    // ── إحصاءات الجهة (المرحلة 4) — كلها فوق ScopePredicate الموحد ──
+    // ── إحصاءات الجهة (المرحلة 4) — قاعدة أساس موحّدة لكل الاستعلامات الإحصائية ──
+
+    /// <summary>
+    /// نقطة انطلاق الاستعلامات الإحصائية: يستبعد المشطوب دائمًا (مطابقًا للقائمة)
+    /// فوق مسند الرؤية الموحد؛ والحذف المنطقي يُستبعد آليًا بعامل الاستعلام العام.
+    /// </summary>
+    private IQueryable<Document> StatsBase(List<int> ids)
+        => _db.Documents.AsNoTracking()
+            .Where(d => d.ExecStatus != ExecutionStatusCatalog.StateStruckOff)
+            .Where(ScopePredicate(ids));
 
     /// <inheritdoc />
     public async Task<List<(bool IsDraft, string? ExecStatus)>> ListStatusPairsAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default)
     {
         var ids = entryIds.ToList();
-        var rows = await _db.Documents.AsNoTracking()
-            .Where(ScopePredicate(ids))
+        var rows = await StatsBase(ids)
             .Select(d => new { d.IsDraft, d.ExecStatus })
             .ToListAsync(ct);
         return rows.Select(r => (r.IsDraft, r.ExecStatus)).ToList();
@@ -175,8 +183,7 @@ public class PortalRepository : IPortalRepository
     public Task<List<DateTime>> ListCreatedDatesAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default)
     {
         var ids = entryIds.ToList();
-        return _db.Documents.AsNoTracking()
-            .Where(ScopePredicate(ids))
+        return StatsBase(ids)
             .Select(d => d.CreatedAt)
             .ToListAsync(ct);
     }
@@ -185,8 +192,7 @@ public class PortalRepository : IPortalRepository
     public async Task<List<(string? Currency, decimal Amount)>> ListCurrencyAmountsAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default)
     {
         var ids = entryIds.ToList();
-        var rows = await _db.Documents.AsNoTracking()
-            .Where(ScopePredicate(ids))
+        var rows = await StatsBase(ids)
             .Select(d => new { d.Currency, d.AmountNumeric })
             .ToListAsync(ct);
         return rows.Select(r => (r.Currency, r.AmountNumeric)).ToList();
@@ -198,29 +204,30 @@ public class PortalRepository : IPortalRepository
         var ids = entryIds.ToList();
 
         // ارتباطات طرف الطالب: قيد نهائي ضمن النطاق على ملف داخل النطاق.
-        var applicantPairs = await _db.Documents.AsNoTracking()
-            .Where(ScopePredicate(ids))
+        var applicantPairs = await StatsBase(ids)
             .SelectMany(d => d.ApplicantPublicEntities
                 .Where(a => a.RegistryId != null && a.Registry != null
                     && a.Registry.Status == EntityStatusCatalog.Final
                     && ids.Contains(a.RegistryId.Value))
-                .Select(a => a.RegistryId!.Value))
+                .Select(a => new { DocId = a.DocumentId, EntryId = a.RegistryId!.Value }))
             .ToListAsync(ct);
 
         // ارتباطات طرف المنفذ (جهة عامة فقط).
-        var executedPairs = await _db.Documents.AsNoTracking()
-            .Where(ScopePredicate(ids))
+        var executedPairs = await StatsBase(ids)
             .SelectMany(d => d.ExecutedPublicEntities
                 .Where(e => e.EntityNature == PartyNatureCatalog.PublicEntity
                     && e.RegistryId != null && e.Registry != null
                     && e.Registry.Status == EntityStatusCatalog.Final
                     && ids.Contains(e.RegistryId.Value))
-                .Select(e => e.RegistryId!.Value))
+                .Select(e => new { DocId = e.DocumentId, EntryId = e.RegistryId!.Value }))
             .ToListAsync(ct);
 
+        // تمييز أزواج (ملف×قيد): الملف نفسه بتكرار صفوف لنفس القيد يُعدّ مرة واحدة،
+        // بينما يُحتسب تحت كل قيد مختلف ارتبط به فعليًا (توزيع ارتباط لا تجزئة حصرية).
+        var distinctPairs = applicantPairs.Concat(executedPairs).Distinct();
         var counts = new Dictionary<int, int>();
-        foreach (var entryId in applicantPairs.Concat(executedPairs))
-            counts[entryId] = counts.TryGetValue(entryId, out var n) ? n + 1 : 1;
+        foreach (var pair in distinctPairs)
+            counts[pair.EntryId] = counts.TryGetValue(pair.EntryId, out var n) ? n + 1 : 1;
         return counts;
     }
 
@@ -231,7 +238,7 @@ public class PortalRepository : IPortalRepository
         // لا توجد مجموعة تنقل من الملف إلى استئنافاته؛ الجمع يدوي بفاصل صريح يُترجم إلى SQL.
         var statuses = await
             (from appeal in _db.DocumentAppeals.AsNoTracking()
-             join document in _db.Documents.AsNoTracking().Where(ScopePredicate(ids))
+             join document in StatsBase(ids)
                  on appeal.DocumentId equals document.Id
              select appeal.Status)
             .ToListAsync(ct);

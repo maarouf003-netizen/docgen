@@ -80,7 +80,7 @@ public class PortalStatsTests : IDisposable
     }
 
     [Fact]
-    public async Task Stats_ClassifyStatuses_ExactlyLikeListFilters()
+    public async Task Stats_ClassifyStatuses_ExactlyLikeListFilters_AndExcludeStruckOff()
     {
         var now = DateTime.UtcNow.AddMonths(-1);
         await SeedApplicantDocAsync("متداول أ", null, isDraft: false, now);
@@ -88,18 +88,24 @@ public class PortalStatsTests : IDisposable
         await SeedApplicantDocAsync("منفذ ج", ExecutionStatusCatalog.ExecutedBySettlement, false, now);
         await SeedApplicantDocAsync("منفذ د", ExecutionStatusCatalog.DelegationExecuted, false, now);
         await SeedApplicantDocAsync("تريث هـ", ExecutionStatusCatalog.Deferred, false, now);
-        // مشطوب: مستبعد من القائمة والإحصاء معًا.
-        var struck = new Document { CreatedById = 1, BorrowerName = "مشطوب", IsDraft = false, ExecStatus = ExecutionStatusCatalog.StateStruckOff, AmountNumeric = 10, GeneralEntitySide = "applicant" };
+        // مشطوب لكنه مرتبط بقيد النطاق: يجب استبعاده كما تستبعدنه القائمة دائمًا.
+        var struck = new Document { CreatedById = 1, BorrowerName = "مشطوب مرتبط", IsDraft = false, ExecStatus = ExecutionStatusCatalog.StateStruckOff, AmountNumeric = 10, GeneralEntitySide = "applicant" };
+        struck.ApplicantPublicEntities.Add(new ApplicantPublicEntity { Name = "وزارة التعليم", Governorate = "دمشق", RegistryId = _entryAId });
         _db.Documents.Add(struck);
         await _db.SaveChangesAsync();
 
         var stats = await _portal.GetStatsAsync(_delegateGroupId);
 
-        Assert.Equal(5, stats.TotalFiles); // المشطوب خارج الحساب
+        Assert.Equal(5, stats.TotalFiles); // المشطوب المرتبط خارج الحساب
         Assert.Equal(1, stats.DraftFiles);
         Assert.Equal(1, stats.CirculatingFiles);
         Assert.Equal(2, stats.ExecutedFiles);
         Assert.Equal(1, stats.DeferredFiles);
+        // لا يُحتسب القيد المشطوب المرتبط في توزيع الارتباطات إطلاقًا:
+        // الخمسة كلها مرتبطة بقيد دمشق، والمشطوب السادس مستبعد قبل العدّ.
+        var damascus = stats.PerEntry.Single(e => e.EntryId == _entryAId);
+        Assert.Equal(5, damascus.Files);
+        Assert.Equal(2, stats.PerEntry.Count);
     }
 
     [Fact]
@@ -158,12 +164,15 @@ public class PortalStatsTests : IDisposable
         };
         doc.ApplicantPublicEntities.Add(new ApplicantPublicEntity { Name = "وزارة التعليم", Governorate = "دمشق", RegistryId = _entryAId });
         doc.ApplicantPublicEntities.Add(new ApplicantPublicEntity { Name = "وزارة التعليم", Governorate = "حلب", RegistryId = secondEntryId });
+        // صف ثالث يكرر القيد الأول نفسه على الملف نفسه: لا يجب أن يضخّم عدّاد القيد.
+        doc.ApplicantPublicEntities.Add(new ApplicantPublicEntity { Name = "وزارة التعليم", Governorate = "دمشق", RegistryId = _entryAId });
         _db.Documents.Add(doc);
         await _db.SaveChangesAsync();
 
         var stats = await _portal.GetStatsAsync(_delegateGroupId);
 
-        // توزيع ارتباط لا تجزئة حصرية (موثّق): الملف يُحتسب تحت كل قيد ارتبط به.
+        // توزيع ارتباط لا تجزئة حصرية (موثّق): الملف يُحتسب تحت كل قيد ارتبط به،
+        // وتمييز الأزواج (ملف×قيد) يمنع تضخم العدّاد بتكرار صفوف نفس الارتباط.
         Assert.Equal(2, stats.PerEntry.Count);
         Assert.All(stats.PerEntry, e => Assert.Equal(1, e.Files));
         Assert.Equal(2, stats.PerEntry.Sum(e => e.Files));
