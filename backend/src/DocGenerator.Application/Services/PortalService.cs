@@ -27,6 +27,9 @@ public interface IPortalService
     /// ExportOptions.MaxRows وتدقيق export_entity_portal_excel.
     /// </summary>
     Task<byte[]> ExportWorkbookAsync(int userId, string? query, string? status, string? viewerName, CancellationToken ct = default);
+
+    /// <summary>إحصاءات قرائية لنطاق المندوب (المرحلة 4).</summary>
+    Task<PortalStatsDto> GetStatsAsync(int userId, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -141,6 +144,97 @@ public sealed class PortalService : IPortalService
     {
         var scope = await _portal.ResolveForUserAsync(userId, ct);
         return await _portal.IsDocumentInScopeAsync(documentId, scope?.EntryIds ?? new List<int>(), ct);
+    }
+
+    // ── إحصاءات الجهة (المرحلة 4) ──
+
+    /// <inheritdoc />
+    public async Task<PortalStatsDto> GetStatsAsync(int userId, CancellationToken ct = default)
+    {
+        var scope = await _portal.ResolveForUserAsync(userId, ct);
+        var ids = scope?.EntryIds ?? new List<int>();
+
+        var statusPairs = await _portal.ListStatusPairsAsync(ids, ct);
+        int draft = 0, circulating = 0, executed = 0, deferred = 0;
+        foreach (var (isDraft, execStatus) in statusPairs)
+        {
+            if (!string.IsNullOrEmpty(execStatus))
+            {
+                if (execStatus == ExecutionStatusCatalog.ExecutedForcibly
+                    || execStatus == ExecutionStatusCatalog.ExecutedBySettlement
+                    || execStatus == ExecutionStatusCatalog.DelegationExecuted)
+                    executed++;
+                else if (execStatus == ExecutionStatusCatalog.Deferred)
+                    deferred++;
+                // الإحصاء يطابق فلتر القائمة حرفيًا (الثلاثة منفذة + تريث) ليتطابق
+                // رقم البطاقة مع نتيجة الفلتر نفسه دون أي انحراف.
+            }
+            else if (isDraft) draft++;
+            else circulating++;
+        }
+
+        var createdDates = await _portal.ListCreatedDatesAsync(ids, ct);
+        var monthly = BuildMonthlySeries(createdDates);
+
+        var perEntryCounts = await _portal.CountDocsPerEntryAsync(ids, ct);
+        var perEntry = (scope?.Entries ?? Array.Empty<(int Id, string Governorate, string BranchName, bool IsActive)>())
+            .Select(e => new PortalEntryStatDto(
+                e.Id,
+                e.Governorate,
+                e.BranchName,
+                perEntryCounts.GetValueOrDefault(e.Id)))
+            .OrderByDescending(e => e.Files)
+            .ThenBy(e => e.Governorate, StringComparer.Ordinal)
+            .ThenBy(e => e.BranchName, StringComparer.Ordinal)
+            .ToList();
+
+        var currencyAmounts = await _portal.ListCurrencyAmountsAsync(ids, ct);
+        var topCurrencies = currencyAmounts
+            .GroupBy(x => string.IsNullOrWhiteSpace(x.Currency) ? "غير محددة" : x.Currency!.Trim(), StringComparer.Ordinal)
+            .Select(g => new PortalCurrencyStatDto(g.Key, g.Count(), g.Sum(x => x.Amount)))
+            .OrderByDescending(c => c.Files)
+            .ThenByDescending(c => c.TotalAmount)
+            .Take(5)
+            .ToList();
+
+        var (pendingAppeals, closedAppeals) = await _portal.AppealsBreakdownAsync(ids, ct);
+
+        return new PortalStatsDto(
+            TotalFiles: statusPairs.Count,
+            DraftFiles: draft,
+            CirculatingFiles: circulating,
+            ExecutedFiles: executed,
+            DeferredFiles: deferred,
+            PendingAppeals: pendingAppeals,
+            ClosedAppeals: closedAppeals,
+            Monthly: monthly,
+            PerEntry: perEntry,
+            TopCurrencies: topCurrencies);
+    }
+
+    /// <summary>سلسلة آخر 12 شهرًا متصلة حتى الشهر الحالي (UTC)، الأشهر بلا ملفات = 0.</summary>
+    private static List<PortalMonthlyCountDto> BuildMonthlySeries(IReadOnlyList<DateTime> createdAtDates)
+    {
+        var nowUtc = DateTime.UtcNow;
+        var start = new DateTime(nowUtc.Year, nowUtc.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(-11);
+
+        var counts = new Dictionary<(int Year, int Month), int>();
+        foreach (var date in createdAtDates)
+        {
+            var key = (date.Year, date.Month);
+            counts[key] = counts.TryGetValue(key, out var n) ? n + 1 : 1;
+        }
+
+        var series = new List<PortalMonthlyCountDto>(12);
+        for (var i = 0; i < 12; i++)
+        {
+            var monthStart = start.AddMonths(i);
+            series.Add(new PortalMonthlyCountDto(
+                monthStart.Year,
+                monthStart.Month,
+                counts.TryGetValue((monthStart.Year, monthStart.Month), out var n) ? n : 0));
+        }
+        return series;
     }
 
     private static PortalFileListItemDto ToListItem(Document d) => new(

@@ -72,3 +72,37 @@ public record DelegateDto(
     int? PortalEntryId,
     string? PortalEntryLabel,
     DateTime CreatedAt);
+
+/* ── إحصاءات الجهة (المرحلة 4) ── */
+
+/// <summary>
+/// إحصاءات قرائية لنطاق مندوب الجهة: تصنيف الحالة يطابق فلاتر القائمة
+/// (منفذ/تريث/تحت رفع/متداول)، والمشطوب مستبعد دائمًا كما في القائمة.
+/// </summary>
+public record PortalStatsDto(
+    int TotalFiles,
+    int DraftFiles,
+    int CirculatingFiles,
+    int ExecutedFiles,
+    int DeferredFiles,
+    int PendingAppeals,
+    int ClosedAppeals,
+    /// <summary>آخر 12 شهرًا متصلة حتى الشهر الحالي (UTC) شاملة الأشهر الصفرية.</summary>
+    IReadOnlyList<PortalMonthlyCountDto> Monthly,
+    /// <summary>توزيع الارتباط على قيود النطاق؛ قد يُحتسب الملف تحت أكثر من قيد.</summary>
+    IReadOnlyList<PortalEntryStatDto> PerEntry,
+    /// <summary>أعلى العملات بعدد الملفات مع مجموع مبالغها ضمن العملة نفسها.</summary>
+    IReadOnlyList<PortalCurrencyStatDto> TopCurrencies);
+
+/// <summary>عدد ملفات شهر محدد في السلسلة الشهرية.</summary>
+public record PortalMonthlyCountDto(int Year, int Month, int Files);
+
+/// <summary>عدد الملفات المرتبطة بقيد بعينه من قيود النطاق.</summary>
+public record PortalEntryStatDto(
+    int EntryId,
+    string Governorate,
+    string BranchName,
+    int Files);
+
+/// <summary>عملة مجمّعة: عدد الملفات ومجموع مبالغها بالعملة نفسها فقط.</summary>
+public record PortalCurrencyStatDto(string Currency, int Files, decimal TotalAmount);

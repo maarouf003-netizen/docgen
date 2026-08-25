@@ -1440,5 +1440,41 @@ export interface DelegateDto {
   createdAt: string;
 }
 
+/* ── إحصاءات الجهة (المرحلة 4) ───────────────────────────────────────── */
+
+export interface PortalMonthlyCountDto {
+  year: number;
+  month: number;
+  files: number;
+}
+
+/** توزيع الارتباط على قيود النطاق؛ قد يُحتسب الملف تحت أكثر من قيد. */
+export interface PortalEntryStatDto {
+  entryId: number;
+  governorate: string;
+  branchName: string;
+  files: number;
+}
+
+export interface PortalCurrencyStatDto {
+  currency: string;
+  files: number;
+  totalAmount: number;
+}
+
+export interface PortalStatsDto {
+  totalFiles: number;
+  draftFiles: number;
+  circulatingFiles: number;
+  executedFiles: number;
+  deferredFiles: number;
+  pendingAppeals: number;
+  closedAppeals: number;
+  /** آخر 12 شهرًا متصلة حتى الشهر الحالي شاملة الأشهر الصفرية. */
+  monthly: PortalMonthlyCountDto[];
+  perEntry: PortalEntryStatDto[];
+  topCurrencies: PortalCurrencyStatDto[];
+}
+
 
 

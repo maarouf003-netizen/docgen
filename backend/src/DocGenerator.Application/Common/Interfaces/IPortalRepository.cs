@@ -38,4 +38,24 @@ public interface IPortalRepository
     /// <summary>عدد ملفات النطاق المطابقة (للتحقق من سقف التصدير قبل الجلب).</summary>
     Task<int> CountScopedAsync(
         IReadOnlyCollection<int> entryIds, string? query, string? status, CancellationToken ct = default);
+
+    // ── إحصاءات الجهة (المرحلة 4) — كلها فوق ScopePredicate الموحد وبلا صفحات ──
+
+    /// <summary>ثنائيات (IsDraft، ExecStatus) لملفات النطاق — يُصنّفها المستدعي وفق كتالوج الحالات.</summary>
+    Task<List<(bool IsDraft, string? ExecStatus)>> ListStatusPairsAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default);
+
+    /// <summary>تواريخ إنشاء ملفات النطاق (UTC) لبناء السلسلة الشهرية.</summary>
+    Task<List<DateTime>> ListCreatedDatesAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default);
+
+    /// <summary>ثنائيات (العملة، المبلغ) لملفات النطاق لتجميع العملات الأعلى.</summary>
+    Task<List<(string? Currency, decimal Amount)>> ListCurrencyAmountsAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// عدد الملفات المرتبطة بكل قيد من قيود النطاق. قد يُحتسب الملف الواحد تحت أكثر
+    /// من قيد إذا ارتبط بأطراف متعددة ضمن النطاق نفسه (توزيع ارتباط لا تجزئة حصرية).
+    /// </summary>
+    Task<Dictionary<int, int>> CountDocsPerEntryAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default);
+
+    /// <summary>استئنافات ملفات النطاق: (معلّقة، مغلقة) — المغلق يشمل المحسوم والمشطوب.</summary>
+    Task<(int Pending, int Closed)> AppealsBreakdownAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default);
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import PortalFiles from './PortalFiles';
@@ -28,6 +28,29 @@ function fileItem(overrides: Record<string, unknown> = {}) {
   };
 }
 
+const statsPayload = {
+  totalFiles: 5,
+  draftFiles: 1,
+  circulatingFiles: 2,
+  executedFiles: 1,
+  deferredFiles: 1,
+  pendingAppeals: 2,
+  closedAppeals: 3,
+  monthly: Array.from({ length: 12 }, (_, i) => ({
+    year: 2026,
+    month: ((7 + i) % 12) + 1, // شباط…كانون الثاني تقريبًا — الأهم أن 12 دلوًا
+    files: i === 11 ? 3 : i % 4,
+  })),
+  perEntry: [
+    { entryId: 11, governorate: 'دمشق', branchName: 'الفرع الرئيسي', files: 4 },
+    { entryId: 12, governorate: 'حلب', branchName: 'فرع حلب', files: 1 },
+  ],
+  topCurrencies: [
+    { currency: 'ليرة سورية', files: 3, totalAmount: 4500 },
+    { currency: 'دولار أمريكي', files: 1, totalAmount: 90 },
+  ],
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
@@ -52,6 +75,9 @@ beforeEach(() => {
           totalPages: 1,
         },
       });
+    }
+    if (url === '/portal/stats') {
+      return Promise.resolve({ data: statsPayload });
     }
     return Promise.reject(new Error(`unexpected GET ${url}`));
   });
@@ -104,5 +130,39 @@ describe('PortalFiles', () => {
     );
     const last = calls[calls.length - 1][1];
     expect(last.params.status).toBe('منفذ');
+  });
+
+  it('يعرض بطاقة الإحصاءات: عدادات الحالة والاستئنافات وسلسلة 12 شهرًا (المرحلة 4)', async () => {
+    render(<MemoryRouter><PortalFiles /></MemoryRouter>);
+
+    const section = await screen.findByRole('region', { name: 'إحصاءات نطاق جهتك' });
+
+    // عدادات الحالة الخمسة بقيم الـmock (محدودة ببطاقة الإحصاءات).
+    expect(screen.getByText('الإجمالي').nextElementSibling).toHaveTextContent('5');
+    expect(within(section).getByText(/^متداول$/).nextElementSibling).toHaveTextContent('2');
+    expect(within(section).getByText(/^منفذ$/).nextElementSibling).toHaveTextContent('1');
+    expect(within(section).getByText(/^تحت رفع$/).nextElementSibling).toHaveTextContent('1');
+    expect(screen.getByText(/الاستئنافات:/)).toHaveTextContent('2 معلّقًا · 3 مغلقًا');
+
+    // 12 دلوًا شهريًا + توزيع القيود بأعمدته.
+    expect(screen.getByRole('img', { name: /ملفات آخر 12 شهرًا/ })).toBeInTheDocument();
+    expect(screen.getByText('توزيع الارتباط على القيود')).toBeInTheDocument();
+    expect(screen.getByText('دمشق/الفرع الرئيسي')).toBeInTheDocument();
+    expect(screen.getByText('حلب/فرع حلب')).toBeInTheDocument();
+  });
+
+  it('يعرض أعلى العملات بمجاميعها داخل العملة نفسها دون خلط', async () => {
+    render(<MemoryRouter><PortalFiles /></MemoryRouter>);
+
+    const liraRow = await screen.findByText('ليرة سورية');
+    expect(liraRow.parentElement).toHaveTextContent('3 ملفًا · ٤٬٥٠٠');
+    const dollarRow = screen.getByText('دولار أمريكي');
+    expect(dollarRow.parentElement).toHaveTextContent('1 ملفًا · ٩٠');
+  });
+
+  it('يظهر تنبيه الاحتساب المتعدد فقط لنطاق الهوية الأم', async () => {
+    render(<MemoryRouter><PortalFiles /></MemoryRouter>);
+
+    expect(await screen.findByText(/يُحتسب تحت كل قيد ارتبط به/)).toBeInTheDocument();
   });
 });

@@ -157,4 +157,91 @@ public class PortalRepository : IPortalRepository
 
         return q;
     }
+
+    // ── إحصاءات الجهة (المرحلة 4) — كلها فوق ScopePredicate الموحد ──
+
+    /// <inheritdoc />
+    public async Task<List<(bool IsDraft, string? ExecStatus)>> ListStatusPairsAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default)
+    {
+        var ids = entryIds.ToList();
+        var rows = await _db.Documents.AsNoTracking()
+            .Where(ScopePredicate(ids))
+            .Select(d => new { d.IsDraft, d.ExecStatus })
+            .ToListAsync(ct);
+        return rows.Select(r => (r.IsDraft, r.ExecStatus)).ToList();
+    }
+
+    /// <inheritdoc />
+    public Task<List<DateTime>> ListCreatedDatesAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default)
+    {
+        var ids = entryIds.ToList();
+        return _db.Documents.AsNoTracking()
+            .Where(ScopePredicate(ids))
+            .Select(d => d.CreatedAt)
+            .ToListAsync(ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<List<(string? Currency, decimal Amount)>> ListCurrencyAmountsAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default)
+    {
+        var ids = entryIds.ToList();
+        var rows = await _db.Documents.AsNoTracking()
+            .Where(ScopePredicate(ids))
+            .Select(d => new { d.Currency, d.AmountNumeric })
+            .ToListAsync(ct);
+        return rows.Select(r => (r.Currency, r.AmountNumeric)).ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task<Dictionary<int, int>> CountDocsPerEntryAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default)
+    {
+        var ids = entryIds.ToList();
+
+        // ارتباطات طرف الطالب: قيد نهائي ضمن النطاق على ملف داخل النطاق.
+        var applicantPairs = await _db.Documents.AsNoTracking()
+            .Where(ScopePredicate(ids))
+            .SelectMany(d => d.ApplicantPublicEntities
+                .Where(a => a.RegistryId != null && a.Registry != null
+                    && a.Registry.Status == EntityStatusCatalog.Final
+                    && ids.Contains(a.RegistryId.Value))
+                .Select(a => a.RegistryId!.Value))
+            .ToListAsync(ct);
+
+        // ارتباطات طرف المنفذ (جهة عامة فقط).
+        var executedPairs = await _db.Documents.AsNoTracking()
+            .Where(ScopePredicate(ids))
+            .SelectMany(d => d.ExecutedPublicEntities
+                .Where(e => e.EntityNature == PartyNatureCatalog.PublicEntity
+                    && e.RegistryId != null && e.Registry != null
+                    && e.Registry.Status == EntityStatusCatalog.Final
+                    && ids.Contains(e.RegistryId.Value))
+                .Select(e => e.RegistryId!.Value))
+            .ToListAsync(ct);
+
+        var counts = new Dictionary<int, int>();
+        foreach (var entryId in applicantPairs.Concat(executedPairs))
+            counts[entryId] = counts.TryGetValue(entryId, out var n) ? n + 1 : 1;
+        return counts;
+    }
+
+    /// <inheritdoc />
+    public async Task<(int Pending, int Closed)> AppealsBreakdownAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default)
+    {
+        var ids = entryIds.ToList();
+        // لا توجد مجموعة تنقل من الملف إلى استئنافاته؛ الجمع يدوي بفاصل صريح يُترجم إلى SQL.
+        var statuses = await
+            (from appeal in _db.DocumentAppeals.AsNoTracking()
+             join document in _db.Documents.AsNoTracking().Where(ScopePredicate(ids))
+                 on appeal.DocumentId equals document.Id
+             select appeal.Status)
+            .ToListAsync(ct);
+
+        int pending = 0, closed = 0;
+        foreach (var status in statuses)
+        {
+            if (status == AppealStatusCatalog.Pending) pending++;
+            else closed++;
+        }
+        return (pending, closed);
+    }
 }

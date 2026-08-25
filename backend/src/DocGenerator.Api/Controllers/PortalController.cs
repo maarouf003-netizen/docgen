@@ -55,6 +55,11 @@ public class PortalController : ControllerBase
         return appeals is null ? NotFound() : Ok(appeals);
     }
 
+    /// <summary>إحصاءات قرائية لنطاق الجهة (المرحلة 4).</summary>
+    [HttpGet("stats")]
+    public async Task<IActionResult> Stats(CancellationToken ct)
+        => Ok(await _portal.GetStatsAsync(UserId, ct));
+
     /// <summary>تصدير Excel لملفات النطاق وفق نفس الفلاتر وبسقف صفوف التصدير.</summary>
     [HttpGet("export")]
     public async Task<IActionResult> Export(

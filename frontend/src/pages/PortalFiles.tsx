@@ -2,7 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
-import type { PortalFileListItemDto, PortalFilesResponse, PortalScopeDto } from '../types';
+import type {
+  PortalFileListItemDto,
+  PortalFilesResponse,
+  PortalScopeDto,
+  PortalStatsDto,
+} from '../types';
 
 const PAGE_SIZE = 20;
 
@@ -14,13 +19,25 @@ const STATUS_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
   { value: 'تحت رفع', label: 'تحت رفع' },
 ];
 
-/** صفحة «ملفات الجهة» — البوابة القرائية لمندوب الجهة العامة (المرحلة 3). */
+const AR_MONTHS = ['ك2', 'شباط', 'آذار', 'نيسان', 'أيار', 'حزيران', 'تموز', 'آب', 'أيلول', 'ت1', 'ت2', 'كانون الأول'];
+
+function monthLabel(year: number, month: number): string {
+  return `${AR_MONTHS[month - 1] ?? month} ${year}`;
+}
+
+/** صفحة «ملفات الجهة» — البوابة القرائية لمندوب الجهة العامة (المراحل 3+4). */
 export default function PortalFiles() {
   const scopeQuery = useCancellableRequest<PortalScopeDto>(
     (signal) => api.get('/portal/my-scope', { signal }).then((r) => r.data),
     [],
   );
   const scope = scopeQuery.data;
+
+  const statsQuery = useCancellableRequest<PortalStatsDto>(
+    (signal) => api.get('/portal/stats', { signal }).then((r) => r.data),
+    [],
+  );
+  const stats = statsQuery.data;
 
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('');
@@ -134,6 +151,103 @@ export default function PortalFiles() {
 
       {exportMsg && <p role="alert" className="text-red-600 text-sm mb-3">{exportMsg}</p>}
       {error && <div role="alert" className="text-red-600 mb-4">{error}</div>}
+
+      {/* بطاقة إحصاءات الجهة (المرحلة 4) — قرائية بالكامل */}
+      {stats && (
+        <section aria-labelledby="portal-stats-title" className="bg-white rounded-xl shadow p-4 sm:p-5 mb-4">
+          <h3 id="portal-stats-title" className="font-bold text-gray-800 mb-3">إحصاءات نطاق جهتك</h3>
+
+          <dl className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
+            {([
+              ['الإجمالي', stats.totalFiles, 'bg-emerald-800 text-white'],
+              ['متداول', stats.circulatingFiles, 'bg-emerald-50 text-emerald-900'],
+              ['منفذ', stats.executedFiles, 'bg-sky-50 text-sky-900'],
+              ['تريث', stats.deferredFiles, 'bg-amber-50 text-amber-900'],
+              ['تحت رفع', stats.draftFiles, 'bg-gray-100 text-gray-700'],
+            ] as const).map(([label, value, cls]) => (
+              <div key={label} className={`rounded-lg px-2 py-3 ${cls}`}>
+                <dt className="text-[11px] opacity-80">{label}</dt>
+                <dd className="text-xl font-bold tabular-nums">{value}</dd>
+              </div>
+            ))}
+          </dl>
+
+          <p className="mt-3 text-xs text-gray-500 tabular-nums">
+            الاستئنافات: {stats.pendingAppeals} معلّقًا · {stats.closedAppeals} مغلقًا
+          </p>
+
+          {/* سلسلة آخر 12 شهرًا */}
+          <h4 className="text-xs font-bold text-gray-600 mt-4 mb-1">الملفات الواردة — آخر 12 شهرًا</h4>
+          <div className="flex items-end gap-1 h-20" role="img"
+               aria-label={`ملفات آخر 12 شهرًا، الإجمالي ${stats.monthly.reduce((s, m) => s + m.files, 0)}`}>
+            {(() => {
+              const max = Math.max(1, ...stats.monthly.map((m) => m.files));
+              return stats.monthly.map((m) => (
+                <div key={`${m.year}-${m.month}`} className="flex-1 flex flex-col items-center justify-end gap-0.5 min-w-0"
+                     title={`${monthLabel(m.year, m.month)}: ${m.files}`}>
+                  <span className="text-[9px] text-gray-400 tabular-nums">{m.files || ''}</span>
+                  <div
+                    className="w-full bg-emerald-600/80 rounded-t"
+                    style={{ height: `${Math.max(2, Math.round((m.files / max) * 56))}px` }}
+                    aria-hidden="true"
+                  />
+                  <span className="text-[8px] text-gray-400 truncate w-full text-center">{AR_MONTHS[m.month - 1] ?? m.month}</span>
+                </div>
+              ));
+            })()}
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-5 mt-5">
+            {/* توزيع القيود */}
+            <div>
+              <h4 className="text-xs font-bold text-gray-600 mb-1">توزيع الارتباط على القيود</h4>
+              {(() => {
+                const max = Math.max(1, ...stats.perEntry.map((e) => e.files));
+                return (
+                  <ul className="space-y-1.5">
+                    {stats.perEntry.slice(0, 6).map((e) => (
+                      <li key={e.entryId} className="text-xs">
+                        <div className="flex justify-between gap-2 mb-0.5">
+                          <span className="truncate text-gray-700">{e.governorate}/{e.branchName}</span>
+                          <span className="tabular-nums text-gray-500 shrink-0">{e.files}</span>
+                        </div>
+                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-emerald-600/70" style={{ width: `${(e.files / max) * 100}%` }} aria-hidden="true" />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                );
+              })()}
+            </div>
+
+            {/* العملات الأعلى */}
+            <div>
+              <h4 className="text-xs font-bold text-gray-600 mb-1">أعلى العملات</h4>
+              {stats.topCurrencies.length === 0 ? (
+                <p className="text-xs text-gray-400">لا توجد مبالغ مسجلة</p>
+              ) : (
+                <ul className="divide-y divide-gray-100">
+                  {stats.topCurrencies.map((c) => (
+                    <li key={c.currency} className="py-1.5 flex items-center justify-between gap-3 text-sm">
+                      <span className="truncate text-gray-700">{c.currency}</span>
+                      <span className="shrink-0 tabular-nums text-gray-600">
+                        {c.files} ملفًا · {c.totalAmount.toLocaleString('ar-SY')}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          {scope?.scopeType === 'group' && (
+            <p className="mt-3 text-[11px] text-gray-400">
+              ملاحظة: الملف المرتبط بأكثر من قيد ضمن النطاق يُحتسب تحت كل قيد ارتبط به.
+            </p>
+          )}
+        </section>
+      )}
 
       <div className="bg-white rounded-xl shadow overflow-hidden">
         {/* قائمة قرائية: كل صف رابط للتفاصيل فقط، لا أزرار تعديل إطلاقًا */}
