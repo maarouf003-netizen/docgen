@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -16,21 +17,29 @@ public class PortalRepository : IPortalRepository
 
     public PortalRepository(DocGeneratorDbContext db) => _db = db;
 
+    /// <summary>
+    /// قاعدة الرؤية الموحّدة (مصدر حقيقة واحد): ملف داخل النطاق إذا كان فيه أي
+    /// طرف مرتبط بقيد نهائي ضمن معرّفات نطاق المندوب — تُستخدم في القائمة
+    /// والتصدير وفحص التفاصيل معًا فلا يمكن أن يظهر ملف في القائمة ثم يُعاد 404 له.
+    /// </summary>
+    private static Expression<Func<Document, bool>> ScopePredicate(List<int> ids) => d =>
+        d.ApplicantPublicEntities.Any(a => a.RegistryId != null
+            && a.Registry != null
+            && a.Registry.Status == EntityStatusCatalog.Final
+            && ids.Contains(a.RegistryId.Value))
+        || d.ExecutedPublicEntities.Any(e => e.EntityNature == PartyNatureCatalog.PublicEntity
+            && e.RegistryId != null
+            && e.Registry != null
+            && e.Registry.Status == EntityStatusCatalog.Final
+            && ids.Contains(e.RegistryId.Value));
+
     public Task<bool> IsDocumentInScopeAsync(int documentId, IReadOnlyCollection<int> entryIds, CancellationToken ct = default)
     {
         var ids = entryIds.ToList();
         return _db.Documents.AsNoTracking()
             .Where(d => d.Id == documentId)
-            .AnyAsync(d =>
-                d.ApplicantPublicEntities.Any(a => a.RegistryId != null
-                    && a.Registry != null
-                    && a.Registry.Status == EntityStatusCatalog.Final
-                    && ids.Contains(a.RegistryId.Value))
-                || d.ExecutedPublicEntities.Any(e => e.EntityNature == PartyNatureCatalog.PublicEntity
-                    && e.RegistryId != null
-                    && e.Registry != null
-                    && e.Registry.Status == EntityStatusCatalog.Final
-                    && ids.Contains(e.RegistryId.Value)), ct);
+            .Where(ScopePredicate(ids))
+            .AnyAsync(ct);
     }
 
     public async Task<(int TotalCount, List<Document> Items)> SearchScopedAsync(
@@ -126,16 +135,7 @@ public class PortalRepository : IPortalRepository
         var q = _db.Documents.AsNoTracking()
             .Where(d => !d.IsDeleted)
             .Where(d => d.ExecStatus != ExecutionStatusCatalog.StateStruckOff)
-            .Where(d =>
-                d.ApplicantPublicEntities.Any(a => a.RegistryId != null
-                    && a.Registry != null
-                    && a.Registry.Status == EntityStatusCatalog.Final
-                    && ids.Contains(a.RegistryId.Value))
-                || d.ExecutedPublicEntities.Any(e => e.EntityNature == PartyNatureCatalog.PublicEntity
-                    && e.RegistryId != null
-                    && e.Registry != null
-                    && e.Registry.Status == EntityStatusCatalog.Final
-                    && ids.Contains(e.RegistryId.Value)));
+            .Where(ScopePredicate(ids));
 
         var term = query?.Trim();
         if (!string.IsNullOrWhiteSpace(term))
