@@ -137,4 +137,18 @@ public class EntityDelegateServiceTests : IDisposable
 
         Assert.Contains("6 أحرف", ex.Message);
     }
+
+    [Fact]
+    public async Task Deactivate_WithoutPasswordChange_BumpsTokenVersion_ToRevokeSessions()
+    {
+        var created = await _service.CreateAsync(new CreateDelegateRequest("delegate.off", "مندوب", "old1234", _groupId, null), "مدير");
+        var before = await _db.Users.AsNoTracking().SingleAsync(u => u.Id == created.Id);
+
+        await _service.UpdateAsync(created.Id,
+            new UpdateDelegateRequest(null, IsActive: false, null, _groupId, null), "المدير");
+
+        var after = await _db.Users.AsNoTracking().SingleAsync(u => u.Id == created.Id);
+        Assert.False(after.IsActive);
+        Assert.True(after.TokenVersion > before.TokenVersion);
+    }
 }

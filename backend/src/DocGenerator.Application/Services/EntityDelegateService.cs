@@ -116,8 +116,13 @@ public sealed class EntityDelegateService : IEntityDelegateService
         }
         if (!string.IsNullOrWhiteSpace(request.FullName))
             user.FullName = request.FullName.Trim();
-        if (request.IsActive.HasValue)
+        if (request.IsActive.HasValue && user.IsActive != request.IsActive.Value)
+        {
             user.IsActive = request.IsActive.Value;
+            // إيقاف الحساب يبطل رموزه الصادرة سابقًا (مطابق لسلوك إدارة المستخدمين).
+            if (!user.IsActive)
+                user.TokenVersion++;
+        }
         user.PortalGroupId = groupId;
         user.PortalEntryId = entryId;
 
