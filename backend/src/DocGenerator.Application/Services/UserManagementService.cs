@@ -222,6 +222,14 @@ public sealed class UserManagementService : IUserManagementService
         var role = request.Role is null ? user.Role : ParseRole(request.Role);
         var branchId = await ResolveBranchAsync(request.BranchId ?? user.BranchId, role, ct);
 
+        // انضباط بيانات (بوابة الجهات): الانتقال بعيدًا عن دور المندوب يفكّ نطاق
+        // البوابة كليًا فلا تبقى ارتباطات خاملة تتراكم بلا دور يستخدمها.
+        if (user.Role == UserRole.EntityManager && role != UserRole.EntityManager)
+        {
+            user.PortalGroupId = null;
+            user.PortalEntryId = null;
+        }
+
         // منع المشرف من قفل حسابه أو خفض دوره بنفسه (تفادي فقدان الوصول).
         if (userId == actorUserId && (!request.IsActive || role != UserRole.Admin))
             throw new ArgumentException("لا يمكنك إيقاف حسابك أو تغيير دورك أنت بنفسك");

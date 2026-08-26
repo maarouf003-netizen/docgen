@@ -45,7 +45,7 @@ public class EntityRegistryController : ControllerBase
     /// <summary>
     /// بحث السجل لنافذة الإدخال: متاح لكل الطاقم عدا دور المندوب؛ قيود الانتظار
     /// تظهر للمحامي كي يستطيع ربطها على ملفه مع تمييزها بصريًا (§5.3/د4)،
-    /// ولا تظهر لأي بوابٍ قبل الاعتماد.
+    /// ولا تظهر لأي بوابٍ قبل الاعتماد. القيود الموقوفة لا تصلح للربط فتُستبعد.
     /// </summary>
     [HttpGet("search")]
     public async Task<IActionResult> Search(
@@ -56,7 +56,7 @@ public class EntityRegistryController : ControllerBase
         if (Role == UserRole.EntityManager)
             return Forbid();
         return Ok(await _registry.ListAsync(
-            new EntityRegistryListQuery(q, governorate, null, IncludePending: true, 1, 50), ct));
+            new EntityRegistryListQuery(q, governorate, null, IncludePending: true, 1, 50, IncludeInactive: false), ct));
     }
 
     /// <summary>إنشاء قيد نهائي مباشر — رئيس قسم (ضمن محافظته)/مدير/مشرف.</summary>

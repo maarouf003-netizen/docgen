@@ -21,7 +21,9 @@ public sealed record EntityRegistryListQuery(
     string? Status,
     bool IncludePending,
     int Page,
-    int PerPage);
+    int PerPage,
+    /// <summary>شاشة الإدارة ترى الموقوف أيضًا؛ نافذة الاختيار وربط المندوبين لا يريانه (افتراضيًا يُرى).</summary>
+    bool IncludeInactive = true);
 
 public interface IPublicEntityService
 {
@@ -83,6 +85,7 @@ public sealed class PublicEntityService : IPublicEntityService
         var entries = groups
             .SelectMany(g => g.Entries.Select(e => (Group: g, Entry: e)))
             .Where(x => query.IncludePending || x.Entry.Status != EntityStatusCatalog.Pending)
+            .Where(x => query.IncludeInactive || x.Entry.IsActive)
             .Where(x => governorate is null || x.Entry.Governorate == governorate)
             .Where(x => status is null || x.Entry.Status == status)
             .Where(x => qNorm.Length == 0

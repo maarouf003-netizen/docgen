@@ -4,6 +4,7 @@ using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 namespace DocGenerator.Application.Tests;
 
@@ -43,8 +44,7 @@ public class UserManagementServiceTests : IDisposable
             Role = role,
             BranchId = branchId,
             IsActive = isActive,
-            PasswordHash = _hasher.Hash("123456"),
-        };
+            PasswordHash = _hasher.Hash("123456"),        };
         _db.Users.Add(user);
         await _db.SaveChangesAsync();
         return user;
@@ -361,5 +361,28 @@ public class UserManagementServiceTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.UpdateUserAsync(
                 user.Id, new UpdateUserRequest("مروان سعيد", "lawyer", DamascusId, true, null), 999, "admin"));
+    }
+
+    [Fact]
+    public async Task UpdateUser_LeavingEntityManagerRole_ClearsPortalBindings()
+    {
+        // مندوب مربوط بهوية: تحويله لمحامٍ عبر الشاشة القديمة يجب أن يفكّ نطاق
+        // البوابة كليًا فلا تبقى ارتباطات خاملة تتراكم بلا دور يستخدمها.
+        var delegateUser = await AddUserAsync("delegate.bind", "مندوب مربوط", UserRole.EntityManager, branchId: null);
+        var group = new PublicEntityGroup { CanonicalName = "وزارة التعليم", EntityType = PublicEntityTypeCatalog.Ministry };
+        group.Entries.Add(new PublicEntity { Governorate = "دمشق", BranchName = "الفرع الرئيسي", Status = EntityStatusCatalog.Final, CreatedById = delegateUser.Id });
+        _db.PublicEntityGroups.Add(group);
+        await _db.SaveChangesAsync();
+        delegateUser.PortalGroupId = group.Id;
+        await _db.SaveChangesAsync();
+
+        var updated = await _service.UpdateUserAsync(
+            delegateUser.Id, new UpdateUserRequest(delegateUser.FullName, "manager", null, true, null), 999, "admin");
+
+        Assert.NotNull(updated);
+        Assert.Equal("manager", updated.Role);
+        var stored = await _db.Users.AsNoTracking().SingleAsync(u => u.Id == delegateUser.Id);
+        Assert.Null(stored.PortalGroupId);
+        Assert.Null(stored.PortalEntryId);
     }
 }
