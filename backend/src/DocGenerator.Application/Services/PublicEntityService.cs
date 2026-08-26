@@ -47,6 +47,12 @@ public interface IPublicEntityService
 
     /// <summary>نقل جميع قيود هوية أم إلى هوية أم أخرى (د3 — الوضع أ فقط).</summary>
     Task<MoveAllEntriesResponse> MoveAllEntriesAsync(MoveAllEntriesRequest request, EntityRegistryActor actor, CancellationToken ct = default);
+
+    /// <summary>معاينة دمج جهات متعددة في هوية واحدة (د5 §4).</summary>
+    Task<MergePreviewResponse> PreviewMergeAsync(MergePreviewRequest request, CancellationToken ct = default);
+
+    /// <summary>تنفيذ دمج جهات متعددة في هوية واحدة (د5 §4).</summary>
+    Task<MergeCommitResponse> CommitMergeAsync(MergeCommitRequest request, EntityRegistryActor actor, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -1099,6 +1105,275 @@ public sealed class PublicEntityService : IPublicEntityService
                 ct: token);
 
             return new MoveAllEntriesResponse(sourceGroup.Id, targetGroup.Id, entriesMoved, totalAffectedDocs, changeEvent.Id);
+        }, ct);
+    }
+
+    // ── الدمج N←1 (د5 §4) ──
+
+    /// <inheritdoc/>
+    public async Task<MergePreviewResponse> PreviewMergeAsync(MergePreviewRequest request, CancellationToken ct = default)
+    {
+        var survivorGroup = await _entities.GetGroupAsync(request.SurvivorGroupId, ct)
+            ?? throw new ArgumentException("الهوية الأم الناجية غير موجودة");
+        if (!survivorGroup.IsActive)
+            throw new ArgumentException("الهوية الأم الناجية غير نشطة");
+
+        if (request.AbsorbedGroupIds.Count == 0)
+            throw new ArgumentException("حدد هوية أم واحدة على الأقل للدمج");
+
+        if (request.AbsorbedGroupIds.Contains(request.SurvivorGroupId))
+            throw new ArgumentException("لا يمكن دمج هوية في نفسها");
+
+        var survivorEntryEntities = await _entities.ListEntriesByGroupAsync(survivorGroup.Id, ct);
+        var activeSurvivorEntries = survivorEntryEntities.Where(e => e.IsActive).ToList();
+        if (activeSurvivorEntries.Count == 0)
+            throw new ArgumentException("الهوية الأم الناجية بلا قيود نشطة");
+
+        var warnings = new List<string>();
+        var absorbedDtos = new List<AbsorbedGroupPreviewDto>();
+        int totalAffected = 0;
+
+        foreach (var ae in survivorEntryEntities.Where(e => e.NeedsReview))
+            warnings.Add($"القيد «{ae.Governorate}/{ae.BranchName}» في «{survivorGroup.CanonicalName}» (الناجي) بانتظار المراجعة");
+
+        foreach (var absorbedId in request.AbsorbedGroupIds.Distinct())
+        {
+            var absorbedGroup = await _entities.GetGroupAsync(absorbedId, ct)
+                ?? throw new ArgumentException($"الهوية الأم #{absorbedId} غير موجودة");
+            if (!absorbedGroup.IsActive)
+                throw new ArgumentException($"الهوية الأم «{absorbedGroup.CanonicalName}» غير نشطة");
+
+            var absorbedEntryEntities = await _entities.ListEntriesByGroupAsync(absorbedId, ct);
+
+            foreach (var ae in absorbedEntryEntities.Where(e => e.NeedsReview))
+                warnings.Add($"القيد «{ae.Governorate}/{ae.BranchName}» في «{absorbedGroup.CanonicalName}» بانتظار المراجعة");
+
+            var entryDtos = new List<AbsorbedEntryPreviewDto>();
+            int groupDocCount = 0;
+
+            foreach (var ae in absorbedEntryEntities)
+            {
+                var matchedSurvivor = activeSurvivorEntries
+                    .FirstOrDefault(se => se.Governorate == ae.Governorate && se.BranchName == ae.BranchName);
+
+                var defaultEntry = activeSurvivorEntries.First();
+                int mappedToId = matchedSurvivor?.Id ?? defaultEntry.Id;
+                bool conflictsWithSurvivor = matchedSurvivor is null;
+
+                var linkedDocs = await _entities.ListDocumentsLinkedToEntryAsync(ae.Id, ct);
+                int docCount = linkedDocs.Count;
+                groupDocCount += docCount;
+
+                entryDtos.Add(new AbsorbedEntryPreviewDto(
+                    ae.Id, ae.Governorate, ae.BranchName,
+                    docCount,
+                    mappedToId, conflictsWithSurvivor));
+            }
+
+            totalAffected += groupDocCount;
+
+            var aliases = absorbedEntryEntities
+                .SelectMany(e => e.Aliases)
+                .Select(a => a.AliasText)
+                .Distinct()
+                .ToList();
+
+            absorbedDtos.Add(new AbsorbedGroupPreviewDto(
+                absorbedGroup.Id, absorbedGroup.CanonicalName,
+                entryDtos, groupDocCount, aliases));
+        }
+
+        return new MergePreviewResponse(survivorGroup.CanonicalName, absorbedDtos, totalAffected, warnings);
+    }
+
+    /// <inheritdoc/>
+    public async Task<MergeCommitResponse> CommitMergeAsync(MergeCommitRequest request, EntityRegistryActor actor, CancellationToken ct = default)
+    {
+        return await _tx.RunAsync(async token =>
+        {
+            var survivorGroup = await _entities.GetGroupAsync(request.SurvivorGroupId, token)
+                ?? throw new ArgumentException("الهوية الأم الناجية غير موجودة");
+            if (!survivorGroup.IsActive)
+                throw new ArgumentException("الهوية الأم الناجية غير نشطة");
+
+            if (request.AbsorbedGroupIds.Count == 0)
+                throw new ArgumentException("حدد هوية أم واحدة على الأقل للدمج");
+
+            if (request.AbsorbedGroupIds.Contains(request.SurvivorGroupId))
+                throw new ArgumentException("لا يمكن دمج هوية في نفسها");
+
+            var survivorEntries = await _entities.ListEntriesByGroupAsync(survivorGroup.Id, token);
+            var activeSurvivorEntries = survivorEntries.Where(e => e.IsActive).ToList();
+
+            if (activeSurvivorEntries.Count == 0)
+                throw new ArgumentException("الهوية الأم الناجية بلا قيود نشطة");
+
+            if (survivorEntries.Any(e => e.NeedsReview))
+                throw new ArgumentException("يجب إتمام مراجعة جميع قيود الهوية الأم الناجية قبل الدمج");
+
+            var absorbedGroupsProcessed = 0;
+            var entriesMigrated = 0;
+            var aliasesAdded = 0;
+            var totalAffectedDocs = 0;
+            var affectedGovernorates = new HashSet<string>();
+            var affectedDocsById = new Dictionary<int, Document>();
+            var branchMap = new List<object>();
+
+            foreach (var absorbedId in request.AbsorbedGroupIds.Distinct())
+            {
+                var absorbedGroup = await _entities.GetGroupAsync(absorbedId, token)
+                    ?? throw new ArgumentException($"الهوية الأم #{absorbedId} غير موجودة");
+                if (!absorbedGroup.IsActive)
+                    throw new ArgumentException($"الهوية الأم «{absorbedGroup.CanonicalName}» غير نشطة");
+
+                var absorbedEntries = await _entities.ListEntriesByGroupAsync(absorbedId, token);
+
+                if (absorbedEntries.Any(e => e.NeedsReview))
+                    throw new ArgumentException($"يجب إتمام مراجعة جميع قيود «{absorbedGroup.CanonicalName}» قبل الدمج");
+
+                foreach (var ae in absorbedEntries.Where(e => e.IsActive))
+                {
+                    var matchedSurvivor = activeSurvivorEntries
+                        .FirstOrDefault(se => se.Governorate == ae.Governorate && se.BranchName == ae.BranchName);
+
+                    var targetEntry = matchedSurvivor ?? activeSurvivorEntries.First();
+
+                    // ترحيل روابط RegistryId
+                    var linkedDocs = await _entities.ListDocumentsLinkedToEntryAsync(ae.Id, token);
+                    foreach (var doc in linkedDocs)
+                    {
+                        if (!affectedDocsById.ContainsKey(doc.Id))
+                            affectedDocsById[doc.Id] = doc;
+                    }
+                    affectedGovernorates.Add(ae.Governorate);
+
+                    foreach (var doc in linkedDocs)
+                    {
+                        foreach (var a in doc.ApplicantPublicEntities.Where(a => a.RegistryId == ae.Id))
+                            a.RegistryId = targetEntry.Id;
+                        foreach (var e in doc.ExecutedPublicEntities.Where(e => e.RegistryId == ae.Id))
+                            e.RegistryId = targetEntry.Id;
+                        doc.ApplicantRegistryId = targetEntry.GroupId;
+                    }
+
+                    // إيقاف القيد المُدمَج
+                    ae.IsActive = false;
+
+                    // إضافة الأسماء البديلة
+                    var fullName = $"{absorbedGroup.CanonicalName} — {ae.Governorate} / {ae.BranchName}";
+                    var normalizedEntry = ArabicNameNormalizer.Normalize(absorbedGroup.CanonicalName);
+                    if (!targetEntry.Aliases.Any(a => ArabicNameNormalizer.Normalize(a.AliasText) == normalizedEntry))
+                    {
+                        targetEntry.Aliases.Add(new PublicEntityAlias
+                        {
+                            PublicEntityId = targetEntry.Id,
+                            AliasText = absorbedGroup.CanonicalName,
+                        });
+                        aliasesAdded++;
+                    }
+                    var normalizedFull = ArabicNameNormalizer.Normalize(fullName);
+                    if (!targetEntry.Aliases.Any(a => ArabicNameNormalizer.Normalize(a.AliasText) == normalizedFull))
+                    {
+                        targetEntry.Aliases.Add(new PublicEntityAlias
+                        {
+                            PublicEntityId = targetEntry.Id,
+                            AliasText = fullName,
+                        });
+                        aliasesAdded++;
+                    }
+
+                    branchMap.Add(new
+                    {
+                        absorbedEntryId = ae.Id,
+                        absorbedGov = ae.Governorate,
+                        absorbedBranch = ae.BranchName,
+                        targetEntryId = targetEntry.Id,
+                        targetGov = targetEntry.Governorate,
+                        targetBranch = targetEntry.BranchName,
+                        docsAffected = linkedDocs.Count,
+                    });
+
+                    entriesMigrated++;
+                }
+
+                absorbedGroup.IsActive = false;
+                absorbedGroupsProcessed++;
+            }
+
+            totalAffectedDocs = affectedDocsById.Count;
+
+            // مزامنة النصوص للملفات المتأثرة
+            var affectedDocs = affectedDocsById.Values.ToList();
+            if (affectedDocs.Count > 0)
+            {
+                await SyncTextsAfterFoldAsync(affectedDocs, actor.Name, token);
+            }
+
+            // حدث الدمج الأب
+            var payload = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                survivorGroupId = survivorGroup.Id,
+                survivorGroup = survivorGroup.CanonicalName,
+                absorbedGroupIds = request.AbsorbedGroupIds,
+                entriesMigrated,
+                aliasesAdded,
+                totalAffectedDocs,
+                branchMap,
+                unifyTexts = request.UnifyTexts,
+            });
+            var changeEvent = new PublicEntityChangeEvent
+            {
+                GroupId = survivorGroup.Id,
+                ActionKind = ActionKindCatalog.Merge,
+                PayloadJson = payload,
+                ActorUserId = actor.UserId,
+                CreatedAtUtc = DateTime.UtcNow,
+            };
+            await _changeEvents.AddAsync(changeEvent, token);
+            await _uow.SaveChangesAsync(token);
+
+            // وقوعات آلية لكل ملف متأثر
+            foreach (var docId in affectedDocsById.Keys)
+            {
+                var occurrence = new DocumentOccurrence
+                {
+                    DocumentId = docId,
+                    OccurrenceType = OccurrenceTypeCatalog.EntityChange,
+                    EventDate = DateTime.UtcNow,
+                    CreatedById = actor.UserId,
+                    Details = $"تم دمج جهات في «{survivorGroup.CanonicalName}»",
+                };
+                await _occurrences.AddAsync(occurrence, token);
+            }
+
+            // تنبيه رؤساء الأقسام المتأثرين
+            foreach (var gov in affectedGovernorates)
+            {
+                var heads = await _entities.ListActiveHeadsByGovernorateAsync(gov, token);
+                foreach (var head in heads.Where(h => h.BranchId.HasValue))
+                {
+                    var msg = $"دمج جهات في «{survivorGroup.CanonicalName}» — يرجى أخذ العلم";
+                    var alert = new HeadAlert
+                    {
+                        BranchId = head.BranchId!.Value,
+                        CreatedById = actor.UserId,
+                        TargetType = HeadAlertTargetType.Branch,
+                        Message = msg.Length > 2000 ? msg[..2000] : msg,
+                        CreatedAt = DateTime.UtcNow,
+                        Recipients = { new HeadAlertRecipient { UserId = head.Id } },
+                    };
+                    await _headAlerts.AddAsync(alert, token);
+                }
+            }
+
+            await _uow.SaveChangesAsync(token);
+
+            await _audit.LogAsync(actor.Name, "merge_entity_registry",
+                documentId: null, documentType: null,
+                details: $"دمج {absorbedGroupsProcessed} هويات أم في «{survivorGroup.CanonicalName}» — {entriesMigrated} قيد، {totalAffectedDocs} ملفًا متأثرًا",
+                ct: token);
+
+            return new MergeCommitResponse(absorbedGroupsProcessed, entriesMigrated, aliasesAdded, totalAffectedDocs, changeEvent.Id);
         }, ct);
     }
 

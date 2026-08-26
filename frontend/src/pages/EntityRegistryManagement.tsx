@@ -18,6 +18,7 @@ import type {
   PublicEntityStatus,
 } from '../types';
 import { ImportModal } from '../components/entity/ImportModal';
+import { MergeModal } from '../components/entity/MergeModal';
 
 const PAGE_SIZE = 20;
 
@@ -217,6 +218,10 @@ export default function EntityRegistryManagement() {
   const [showImport, setShowImport] = useState(false);
   const [importSummary, setImportSummary] = useState('');
 
+  // ── الدمج N←1 ──
+  const [showMerge, setShowMerge] = useState(false);
+  const [mergeSummary, setMergeSummary] = useState('');
+
   const statusBadge = (s: PublicEntityStatus) => (
     <span
       className={`inline-block rounded-full px-2 py-0.5 text-xs whitespace-nowrap ${
@@ -276,6 +281,14 @@ export default function EntityRegistryManagement() {
             استيراد النصوص التاريخية…
           </button>
         )}
+        {hasFullAccess && (
+          <button
+            onClick={() => setShowMerge(true)}
+            className="border border-amber-200 text-amber-800 hover:bg-amber-50 rounded-lg px-4 py-2 text-sm min-h-11"
+          >
+            دمج جهات…
+          </button>
+        )}
         <button
           onClick={() => setShowForm((v) => !v)}
           aria-expanded={showForm}
@@ -288,6 +301,12 @@ export default function EntityRegistryManagement() {
       {importSummary && (
         <p role="status" className="mb-4 bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-lg p-3 text-sm">
           {importSummary}
+        </p>
+      )}
+
+      {mergeSummary && (
+        <p role="status" className="mb-4 bg-amber-50 border border-amber-100 text-amber-800 rounded-lg p-3 text-sm">
+          {mergeSummary}
         </p>
       )}
 
@@ -666,6 +685,18 @@ export default function EntityRegistryManagement() {
           onCommitted={(summary) => {
             setShowImport(false);
             setImportSummary(summary);
+            setPage(1);
+            reload();
+          }}
+        />
+      )}
+
+      {showMerge && (
+        <MergeModal
+          onClose={() => setShowMerge(false)}
+          onCommitted={(summary) => {
+            setShowMerge(false);
+            setMergeSummary(summary);
             setPage(1);
             reload();
           }}

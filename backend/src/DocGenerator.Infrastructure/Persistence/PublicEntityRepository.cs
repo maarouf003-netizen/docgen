@@ -142,4 +142,14 @@ public class PublicEntityRepository : IPublicEntityRepository
     public Task<PublicEntity?> FindEntryInGroupAsync(int groupId, string governorate, string branchName, CancellationToken ct = default)
         => _db.PublicEntities.FirstOrDefaultAsync(
             e => e.GroupId == groupId && e.Governorate == governorate && e.BranchName == branchName, ct);
+
+    // ── الدمج (د5 §4) ──
+
+    public async Task<List<PublicEntity>> ListEntriesByGroupAsync(int groupId, CancellationToken ct = default)
+    {
+        return await _db.PublicEntities
+            .Include(e => e.Aliases)
+            .Where(e => e.GroupId == groupId)
+            .ToListAsync(ct);
+    }
 }

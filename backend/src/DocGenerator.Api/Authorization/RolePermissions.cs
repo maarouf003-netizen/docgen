@@ -110,4 +110,8 @@ public static class RolePermissions
     /// <summary>إضافة/تعديل حسابات مندوبي الجهات وربط نطاقهم — مدير/مشرف/رئيس قسم (د11).</summary>
     public static bool CanManageDelegates(UserRole role) =>
         role is UserRole.Manager or UserRole.Admin or UserRole.Head;
+
+    /// <summary>دمج جهات عامة متعددة في هوية واحدة — مدير/مشرف فقط (د5 §4).</summary>
+    public static bool CanMergeEntities(UserRole role) =>
+        role is UserRole.Manager or UserRole.Admin;
 }

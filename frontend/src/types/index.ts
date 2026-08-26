@@ -1384,6 +1384,57 @@ export interface MoveAllEntriesResponse {
   changeEventId: number;
 }
 
+/* ── الدمج N←1 (د5 §4) ─────────────────────────────────────────── */
+
+/** طلب معاينة الدمج قبل الاعتماد. */
+export interface MergePreviewRequest {
+  survivorGroupId: number;
+  absorbedGroupIds: number[];
+}
+
+/** قيد مُهمَل في المعاينة مع مسار امتصاصه. */
+export interface AbsorbedEntryPreviewDto {
+  entryId: number;
+  governorate: string;
+  branchName: string;
+  documentCount: number;
+  mappedToEntryId: number;
+  conflictsWithSurvivor: boolean;
+}
+
+/** هوية أم مُهمَلة في المعاينة. */
+export interface AbsorbedGroupPreviewDto {
+  groupId: number;
+  name: string;
+  entries: AbsorbedEntryPreviewDto[];
+  totalDocuments: number;
+  aliases: string[];
+}
+
+/** نتيجة معاينة الدمج. */
+export interface MergePreviewResponse {
+  survivorName: string;
+  absorbedGroups: AbsorbedGroupPreviewDto[];
+  totalAffectedDocuments: number;
+  warnings: string[];
+}
+
+/** طلب اعتماد الدمج. */
+export interface MergeCommitRequest {
+  survivorGroupId: number;
+  absorbedGroupIds: number[];
+  unifyTexts?: boolean;
+}
+
+/** نتيجة الدمج. */
+export interface MergeCommitResponse {
+  absorbedGroupsCount: number;
+  entriesMigrated: number;
+  aliasesAdded: number;
+  totalAffectedDocuments: number;
+  changeEventId: number;
+}
+
 /* ── بوابة مندوب الجهة العامة (المرحلة 3) ────────────────────────────── */
 
 /** نطاق المندوب: هوية أم بكل قيودها أو قيد بعينه. */

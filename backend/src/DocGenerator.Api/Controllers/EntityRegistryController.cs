@@ -221,4 +221,42 @@ public class EntityRegistryController : ControllerBase
             return Forbid();
         }
     }
+
+    // ── الدمج N←1 (د5 §4) — صلاحية مخصصة: CanMergeEntities ──
+
+    /// <summary>معاينة دمج جهات متعددة في هوية واحدة (د5 §4).</summary>
+    [HttpPost("merge-preview")]
+    public async Task<IActionResult> MergePreview([FromBody] MergePreviewRequest request, CancellationToken ct)
+    {
+        if (!RolePermissions.CanMergeEntities(Role))
+            return Forbid();
+        try
+        {
+            return Ok(await _registry.PreviewMergeAsync(request, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+    }
+
+    /// <summary>تنفيذ اعتماد الدمج (د5 §4).</summary>
+    [HttpPost("merge-commit")]
+    public async Task<IActionResult> MergeCommit([FromBody] MergeCommitRequest request, CancellationToken ct)
+    {
+        if (!RolePermissions.CanMergeEntities(Role))
+            return Forbid();
+        try
+        {
+            return Ok(await _registry.CommitMergeAsync(request, Actor, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
 }

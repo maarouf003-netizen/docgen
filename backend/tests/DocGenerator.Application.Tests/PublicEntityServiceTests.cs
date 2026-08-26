@@ -837,4 +837,174 @@ public class PublicEntityServiceTests : IDisposable
         var payload = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(evt.PayloadJson);
         Assert.Equal("نقل جماعي", payload.GetProperty("note").GetString());
     }
+
+    // ── الدمج N←1 (د5 §4) ──
+
+    private async Task<(int survivorGroupId, int absorbedGroupId1, int absorbedGroupId2)> SeedThreeGroupsForMergeAsync()
+    {
+        var survivor = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "وزارة الصحة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var absorbed1 = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "مديرية الصحة", "administration", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var absorbed2 = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "هيئة الإغاثة", "authority", "حلب", "فرع حلب"), ManagerActor());
+        return (survivor.GroupId, absorbed1.GroupId, absorbed2.GroupId);
+    }
+
+    [Fact]
+    public async Task PreviewMerge_ShowsCorrectBranchMapping()
+    {
+        var (sg, ag1, ag2) = await SeedThreeGroupsForMergeAsync();
+        var preview = await _service.PreviewMergeAsync(new MergePreviewRequest(sg, new[] { ag1, ag2 }));
+
+        Assert.Equal(2, preview.AbsorbedGroups.Count);
+        Assert.Equal(0, preview.Warnings.Count);
+        Assert.True(preview.TotalAffectedDocuments >= 0);
+    }
+
+    [Fact]
+    public async Task PreviewMerge_SurvivorNotFound_Throws()
+    {
+        var (_, ag1, _) = await SeedThreeGroupsForMergeAsync();
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.PreviewMergeAsync(new MergePreviewRequest(9999, new[] { ag1 })));
+    }
+
+    [Fact]
+    public async Task PreviewMerge_SelfMerge_Throws()
+    {
+        var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.PreviewMergeAsync(new MergePreviewRequest(sg, new[] { sg })));
+    }
+
+    [Fact]
+    public async Task PreviewMerge_EmptyAbsorbed_Throws()
+    {
+        var (sg, _, _) = await SeedThreeGroupsForMergeAsync();
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.PreviewMergeAsync(new MergePreviewRequest(sg, Array.Empty<int>())));
+    }
+
+    [Fact]
+    public async Task CommitMerge_MigratesAndDeactivates()
+    {
+        var (sg, ag1, ag2) = await SeedThreeGroupsForMergeAsync();
+        var doc = await SeedApplicantDocumentAsync("مديرية الصحة", "دمشق");
+        var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
+        var absorbedEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == ag1);
+        row.RegistryId = absorbedEntry.Id;
+        await _db.SaveChangesAsync();
+
+        var result = await _service.CommitMergeAsync(
+            new MergeCommitRequest(sg, new[] { ag1, ag2 }), ManagerActor());
+
+        Assert.Equal(2, result.AbsorbedGroupsCount);
+        Assert.True(result.TotalAffectedDocuments > 0);
+        Assert.True(result.AliasesAdded > 0);
+
+        var absorbedGroup1 = await _db.PublicEntityGroups.FindAsync(ag1);
+        Assert.False(absorbedGroup1!.IsActive);
+
+        var absorbedGroup2 = await _db.PublicEntityGroups.FindAsync(ag2);
+        Assert.False(absorbedGroup2!.IsActive);
+
+        var updatedRow = await _db.ApplicantPublicEntities.FindAsync(row.Id);
+        var survivorEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == sg);
+        Assert.Equal(survivorEntry.Id, updatedRow!.RegistryId);
+
+        Assert.Contains("merge_entity_registry", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task CommitMerge_CreatesChangeEvent()
+    {
+        var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
+        await _service.CommitMergeAsync(new MergeCommitRequest(sg, new[] { ag1 }), ManagerActor());
+
+        var evt = await _db.PublicEntityChangeEvents.SingleAsync();
+        Assert.Equal(ActionKindCatalog.Merge, evt.ActionKind);
+        Assert.Equal(sg, evt.GroupId);
+        var payload = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(evt.PayloadJson);
+        Assert.Equal(1, payload.GetProperty("entriesMigrated").GetInt32());
+    }
+
+    [Fact]
+    public async Task CommitMerge_SendsHeadAlert()
+    {
+        var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
+        await _service.CommitMergeAsync(new MergeCommitRequest(sg, new[] { ag1 }), ManagerActor());
+
+        var alerts = await _db.HeadAlerts.Include(h => h.Recipients).ToListAsync();
+        Assert.Contains(alerts, a => a.Message.Contains("دمج"));
+    }
+
+    [Fact]
+    public async Task CommitMerge_CreatesDocumentOccurrences()
+    {
+        var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
+        var doc = await SeedApplicantDocumentAsync("مديرية الصحة", "دمشق");
+        var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
+        var absorbedEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == ag1);
+        row.RegistryId = absorbedEntry.Id;
+        await _db.SaveChangesAsync();
+
+        await _service.CommitMergeAsync(new MergeCommitRequest(sg, new[] { ag1 }), ManagerActor());
+
+        var occ = await _db.DocumentOccurrences.SingleAsync(o => o.DocumentId == doc.Id);
+        Assert.Equal(OccurrenceTypeCatalog.EntityChange, occ.OccurrenceType);
+        Assert.Contains("دمج", occ.Details!);
+    }
+
+    [Fact]
+    public async Task CommitMerge_AddsAliases()
+    {
+        var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
+        var absorbedEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == ag1);
+        var absorbedGroup = await _db.PublicEntityGroups.FindAsync(ag1);
+
+        await _service.CommitMergeAsync(new MergeCommitRequest(sg, new[] { ag1 }), ManagerActor());
+
+        var survivorEntries = await _db.PublicEntities
+            .Include(e => e.Aliases)
+            .Where(e => e.GroupId == sg)
+            .ToListAsync();
+
+        Assert.Contains(survivorEntries.SelectMany(e => e.Aliases),
+            a => a.AliasText == absorbedGroup!.CanonicalName);
+    }
+
+    [Fact]
+    public async Task CommitMerge_SelfMerge_Throws()
+    {
+        var (sg, _, _) = await SeedThreeGroupsForMergeAsync();
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CommitMergeAsync(new MergeCommitRequest(sg, new[] { sg }), ManagerActor()));
+    }
+
+    [Fact]
+    public async Task CommitMerge_NeedsReviewOnAbsorbed_Throws()
+    {
+        var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
+        var absorbedEntry = await _db.PublicEntities.FirstAsync(e => e.GroupId == ag1);
+        absorbedEntry.NeedsReview = true;
+        await _db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CommitMergeAsync(new MergeCommitRequest(sg, new[] { ag1 }), ManagerActor()));
+        Assert.Contains("مراجعة", ex.Message);
+    }
+
+    [Fact]
+    public async Task CommitMerge_NeedsReviewOnSurvivor_Throws()
+    {
+        var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
+        var survivorEntry = await _db.PublicEntities.FirstAsync(e => e.GroupId == sg);
+        survivorEntry.NeedsReview = true;
+        await _db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CommitMergeAsync(new MergeCommitRequest(sg, new[] { ag1 }), ManagerActor()));
+        Assert.Contains("مراجعة", ex.Message);
+    }
 }

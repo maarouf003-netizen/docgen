@@ -65,4 +65,9 @@ public interface IPublicEntityRepository
 
     /// <summary>إيجاد قيد في هوية أم محددة بنفس المحافظة والفرع.</summary>
     Task<PublicEntity?> FindEntryInGroupAsync(int groupId, string governorate, string branchName, CancellationToken ct = default);
+
+    // ── الدمج (د5 §4) ──
+
+    /// <summary>كل القيود في مجموعة معينة (متتبعة للتعديل).</summary>
+    Task<List<PublicEntity>> ListEntriesByGroupAsync(int groupId, CancellationToken ct = default);
 }

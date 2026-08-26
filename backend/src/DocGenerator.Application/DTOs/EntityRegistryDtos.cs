@@ -123,3 +123,49 @@ public record MoveAllEntriesResponse(
     int EntriesMoved,
     int AffectedDocuments,
     int ChangeEventId);
+
+// ── الدمج N←1 (د5 §4) ──
+
+/// <summary>طلب معاينة الدمج قبل الاعتماد.</summary>
+public record MergePreviewRequest(
+    int SurvivorGroupId,
+    IReadOnlyList<int> AbsorbedGroupIds);
+
+/// <summary>قيد مُهمَل في المعاينة مع مسار امتصاصه.</summary>
+public record AbsorbedEntryPreviewDto(
+    int EntryId,
+    string Governorate,
+    string BranchName,
+    int DocumentCount,
+    /// <summary>القيد في الهوية الناجية المطابق (same gov+branch)، أو القيد الافتراضي إن لم يطابق.</summary>
+    int MappedToEntryId,
+    bool ConflictsWithSurvivor);
+
+/// <summary>هوية أم مُهمَلة في المعاينة.</summary>
+public record AbsorbedGroupPreviewDto(
+    int GroupId,
+    string Name,
+    IReadOnlyList<AbsorbedEntryPreviewDto> Entries,
+    int TotalDocuments,
+    IReadOnlyList<string> Aliases);
+
+/// <summary>نتيجة معاينة الدمج.</summary>
+public record MergePreviewResponse(
+    string SurvivorName,
+    IReadOnlyList<AbsorbedGroupPreviewDto> AbsorbedGroups,
+    int TotalAffectedDocuments,
+    IReadOnlyList<string> Warnings);
+
+/// <summary>طلب اعتماد الدمج.</summary>
+public record MergeCommitRequest(
+    int SurvivorGroupId,
+    IReadOnlyList<int> AbsorbedGroupIds,
+    bool UnifyTexts = false);
+
+/// <summary>نتيجة الدمج.</summary>
+public record MergeCommitResponse(
+    int AbsorbedGroupsCount,
+    int EntriesMigrated,
+    int AliasesAdded,
+    int TotalAffectedDocuments,
+    int ChangeEventId);
