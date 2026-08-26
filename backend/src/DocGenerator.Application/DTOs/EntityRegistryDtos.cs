@@ -25,7 +25,7 @@ public record UpdatePublicEntityRequest(
 /// <summary>إضافة اسم كتابي بديل لقيد.</summary>
 public record AddPublicEntityAliasRequest(string AliasText);
 
-/// <summary>قيد في السجل — لشاشة الإدارة ونتائج البحث.</summary>
+/// <summary>قيد في السجل — لشاشة الإدارة ونتائج البحث وقائمة المراجعة.</summary>
 public record PublicEntityEntryDto(
     int Id,
     int GroupId,
@@ -38,35 +38,9 @@ public record PublicEntityEntryDto(
     bool IsActive,
     DateTime CreatedAt,
     IReadOnlyList<string> Aliases,
-    string? CreatedByName = null);
-
-/// <summary>اقتراح محامٍ لإضافة جهة جديدة (د4/د7/د8).</summary>
-public record CreatePublicEntityProposalRequest(
-    string ProposedName,
-    string EntityType,
-    string Governorate,
-    string BranchName,
-    string CitationFormula,
-    int? SourceDocumentId = null);
-
-/// <summary>اقتراح لعرض نافذة انتظار الاعتماد لدى رئيس القسم.</summary>
-public record PublicEntityProposalDto(
-    int Id,
-    string ProposedName,
-    string EntityType,
-    string Governorate,
-    string BranchName,
-    string CitationFormula,
-    int ProposedById,
-    string ProposedByName,
-    int? SourceDocumentId,
-    string Status,
-    DateTime CreatedAt,
-    string? RejectionReason = null,
-    int? CreatedPublicEntityId = null);
-
-/// <summary>رفض اقتراح — السبب إلزامي ويُعرض لمقدم الاقتراح.</summary>
-public record RejectPublicEntityProposalRequest(string Reason);
+    string? CreatedByName = null,
+    /// <summary>أدخلها محامٍ وهي بانتظار مراجعة رئيس القسم (النموذج الجديد).</summary>
+    bool NeedsReview = false);
 
 /// <summary>كتابة متمايزة واحدة لنص جهة مع عدّاد ملفاتها وجهتها في الاستيراد.</summary>
 public record ImportVariantDto(

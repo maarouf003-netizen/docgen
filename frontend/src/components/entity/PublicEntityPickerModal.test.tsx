@@ -50,7 +50,7 @@ describe('PublicEntityPickerModal', () => {
     const onPick = vi.fn();
     const onClose = vi.fn();
     const user = userEvent.setup();
-    render(<PublicEntityPickerModal sourceDocumentId={7} onClose={onClose} onPick={onPick} />);
+    render(<PublicEntityPickerModal onClose={onClose} onPick={onPick} />);
 
     await user.click(await screen.findByRole('button', { name: /وزارة التعليم/ }));
 
@@ -95,9 +95,9 @@ describe('PublicEntityPickerModal', () => {
     );
   });
 
-  it('يعرض نموذج الاقتراح بنص التحذير الحرفي والـplaceholder المعتمدين (د7)', async () => {
+  it('يعرض نموذج الإدخال بنص التحذير الحرفي والـplaceholder المعتمدين (د7)', async () => {
     const user = userEvent.setup();
-    render(<PublicEntityPickerModal sourceDocumentId={7} onClose={vi.fn()} onPick={vi.fn()} />);
+    render(<PublicEntityPickerModal onClose={vi.fn()} onPick={vi.fn()} />);
 
     await user.click(await screen.findByRole('button', { name: /جهة غير موجودة؟ اقترح إضافة…/ }));
 
@@ -110,10 +110,10 @@ describe('PublicEntityPickerModal', () => {
     expect(screen.getByLabelText('الصيغة')).toHaveTextContent('إضافة لمنصبه');
   });
 
-  it('يرسل الاقتراح بحالة انتظار مع معرّف الملف المصدر ويعرض رسالة نجاح', async () => {
+  it('يدخل الجهة نهائيًا فورًا في السجل (نموذج الحوكمة الجديد)', async () => {
     (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });
     const user = userEvent.setup();
-    render(<PublicEntityPickerModal sourceDocumentId={7} onClose={vi.fn()} onPick={vi.fn()} />);
+    render(<PublicEntityPickerModal onClose={vi.fn()} onPick={vi.fn()} />);
 
     await user.click(await screen.findByRole('button', { name: /جهة غير موجودة؟ اقترح إضافة…/ }));
     await user.type(screen.getByLabelText('اسم الجهة'), 'هيئة جديدة كلية');
@@ -121,16 +121,15 @@ describe('PublicEntityPickerModal', () => {
     await user.click(screen.getByRole('button', { name: 'إرسال الاقتراح' }));
 
     await waitFor(() => {
-      expect(api.post).toHaveBeenCalledWith('/entity-registry/proposals', {
-        proposedName: 'هيئة جديدة كلية',
+      expect(api.post).toHaveBeenCalledWith('/entity-registry', {
+        canonicalName: 'هيئة جديدة كلية',
         entityType: 'ministry',
         governorate: 'حمص',
         branchName: 'الفرع الرئيسي',
         citationFormula: 'add-to-job',
-        sourceDocumentId: 7,
       });
     });
-    expect(await screen.findByRole('status')).toHaveTextContent(/بانتظار اعتماد رئيس القسم/);
+    expect(await screen.findByRole('status')).toHaveTextContent(/متاحة الآن للربط فورًا/);
   });
 
   it('يرفض تقديم الاقتراح دون محافظة برسالة واضحة', async () => {

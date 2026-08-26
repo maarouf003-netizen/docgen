@@ -1042,11 +1042,14 @@ public class PublicEntityConfiguration : IEntityTypeConfiguration<PublicEntity>
         builder.Property(e => e.BranchName).HasMaxLength(200).IsRequired();
         builder.Property(e => e.CitationFormula).HasMaxLength(20).IsRequired();
         builder.Property(e => e.Status).HasMaxLength(20).IsRequired();
+        builder.Property(e => e.ReviewedAtUtc);
 
         builder.HasIndex(e => new { e.GroupId, e.Governorate, e.BranchName }).IsUnique();
         builder.HasIndex(e => e.Governorate);
         builder.HasIndex(e => e.Status);
         builder.HasIndex(e => e.GroupId);
+        builder.HasIndex(e => e.NeedsReview);
+        builder.HasIndex(e => e.ReviewedById);
 
         builder.HasOne(e => e.Group)
             .WithMany(g => g.Entries)
@@ -1057,6 +1060,12 @@ public class PublicEntityConfiguration : IEntityTypeConfiguration<PublicEntity>
             .WithMany()
             .HasForeignKey(e => e.CreatedById)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // مُراجِع القيد: يُفكّ الارتباط بحذف حسابه دون المساس بالقيد.
+        builder.HasOne(e => e.ReviewedBy)
+            .WithMany()
+            .HasForeignKey(e => e.ReviewedById)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }
 
@@ -1078,51 +1087,5 @@ public class PublicEntityAliasConfiguration : IEntityTypeConfiguration<PublicEnt
             .WithMany(e => e.Aliases)
             .HasForeignKey(a => a.PublicEntityId)
             .OnDelete(DeleteBehavior.Cascade);
-    }
-}
-
-/// <summary>
-/// اقتراحات المحامين لإضافة جهات جديدة: تُفهرس بالحالة لنافذة انتظار الاعتماد،
-/// وترابط الملف المصدر ومَن رفض والقيد الناتج كلها تفكّ ارتباط (SetNull/Restrict)
-/// حفاظًا على سجل الاقتراح بعد الحذف أو الاعتماد.
-/// </summary>
-public class PublicEntityProposalConfiguration : IEntityTypeConfiguration<PublicEntityProposal>
-{
-    public void Configure(EntityTypeBuilder<PublicEntityProposal> builder)
-    {
-        builder.ToTable("PublicEntityProposals");
-        builder.HasKey(p => p.Id);
-        builder.Property(p => p.ProposedName).HasMaxLength(200).IsRequired();
-        builder.Property(p => p.EntityType).HasMaxLength(30).IsRequired();
-        builder.Property(p => p.Governorate).HasMaxLength(100).IsRequired();
-        builder.Property(p => p.BranchName).HasMaxLength(200).IsRequired();
-        builder.Property(p => p.CitationFormula).HasMaxLength(20).IsRequired();
-        builder.Property(p => p.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
-        builder.Property(p => p.RejectionReason).HasMaxLength(500);
-
-        builder.HasIndex(p => p.Status);
-        builder.HasIndex(p => p.Governorate);
-        builder.HasIndex(p => p.ProposedById);
-
-        builder.HasOne(p => p.ProposedBy)
-            .WithMany()
-            .HasForeignKey(p => p.ProposedById)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // الملف المصدر سياق اختياري فقط: حذفه لا يحذف الاقتراح.
-        builder.HasOne(p => p.SourceDocument)
-            .WithMany()
-            .HasForeignKey(p => p.SourceDocumentId)
-            .OnDelete(DeleteBehavior.SetNull);
-
-        builder.HasOne(p => p.RejectedBy)
-            .WithMany()
-            .HasForeignKey(p => p.RejectedById)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        builder.HasOne(p => p.CreatedPublicEntity)
-            .WithMany()
-            .HasForeignKey(p => p.CreatedPublicEntityId)
-            .OnDelete(DeleteBehavior.SetNull);
     }
 }

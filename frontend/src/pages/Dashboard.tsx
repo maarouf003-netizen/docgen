@@ -12,7 +12,7 @@ import type {
   ManagerLawyerStatDto,
   ManagerStatsDto,
   MonthlyStatDto,
-  PublicEntityProposalDto,
+  PublicEntityEntryDto,
   ReminderDto,
   StatsPeriod,
 } from '../types';
@@ -85,15 +85,15 @@ export default function Dashboard() {
     { enabled: isHead },
   );
 
-  // اقتراحات الجهات الجديدة بانتظار اعتماد رئيس القسم (د4).
-  const entityProposalsQuery = useCancellableRequest<PublicEntityProposalDto[]>(
+  // جهات أدخلها المحامون وبانتظار مراجعة رئيس القسم (نموذج الحوكمة الجديد).
+  const entityReviewQuery = useCancellableRequest<PublicEntityEntryDto[]>(
     (signal) => api
-      .get('/entity-registry/proposals/pending', { signal })
+      .get('/entity-registry/pending-review', { signal })
       .then((r) => (Array.isArray(r.data) ? r.data : [])),
     [isHead],
     { enabled: userReady && isHead },
   );
-  const entityProposals = entityProposalsQuery.data ?? [];
+  const entityReview = entityReviewQuery.data ?? [];
 
   const availableQuery = useCancellableRequest<MonthlyStatDto[]>(
     (signal) => {
@@ -403,36 +403,36 @@ export default function Dashboard() {
               <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-4 border-b border-gray-100">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-amber-500" aria-hidden="true" />
-                  <h3 className="font-bold text-gray-900">اقتراحات الجهات العامة</h3>
+                  <h3 className="font-bold text-gray-900">مراجعة سجل الجهات العامة</h3>
                   <span
                     className={`text-xs rounded-full px-2 py-0.5 font-medium ${
-                      entityProposals.length > 0
+                      entityReview.length > 0
                         ? 'bg-amber-100 text-amber-800'
                         : 'bg-emerald-100 text-emerald-800'
                     }`}
                   >
-                    {entityProposals.length}
+                    {entityReview.length}
                   </span>
                 </div>
-                <Link to="/entities/proposals" className="text-sm text-sky-700 hover:bg-sky-50 rounded-lg px-3 py-2 min-h-11">
-                  إدارة الاقتراحات…
+                <Link to="/entities/review" className="text-sm text-sky-700 hover:bg-sky-50 rounded-lg px-3 py-2 min-h-11">
+                  مراجعة السجل…
                 </Link>
               </div>
-              {entityProposalsQuery.error ? (
+              {entityReviewQuery.error ? (
                 <div className="px-4 sm:px-5 py-2.5 bg-red-50 border-b border-red-100">
-                  <p className="text-red-700 text-sm">{entityProposalsQuery.error}</p>
+                  <p className="text-red-700 text-sm">{entityReviewQuery.error}</p>
                 </div>
-              ) : entityProposals.length === 0 ? (
+              ) : entityReview.length === 0 ? (
                 <div className="p-6 text-center">
-                  <p className="text-gray-400 text-sm">لا توجد اقتراحات بانتظار الاعتماد</p>
+                  <p className="text-gray-400 text-sm">لا توجد جهات بانتظار المراجعة</p>
                 </div>
               ) : (
                 <ul className="divide-y divide-gray-100">
-                  {entityProposals.slice(0, 5).map((p) => (
-                    <li key={p.id} className="px-4 sm:px-5 py-3">
-                      <p className="font-medium text-gray-800 break-words">{p.proposedName}</p>
+                  {entityReview.slice(0, 5).map((e) => (
+                    <li key={e.id} className="px-4 sm:px-5 py-3">
+                      <p className="font-medium text-gray-800 break-words">{e.canonicalName}</p>
                       <p className="text-xs text-gray-500 mt-0.5 tabular-nums">
-                        {p.governorate} / {p.branchName} · من {p.proposedByName || 'محامٍ'}
+                        {e.governorate} / {e.branchName} · أدخلها {e.createdByName || 'محامٍ'}
                       </p>
                     </li>
                   ))}

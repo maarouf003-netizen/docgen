@@ -14,6 +14,7 @@ public class PublicEntityRepository : IPublicEntityRepository
     public Task<List<PublicEntityGroup>> ListGroupsWithEntriesAsync(CancellationToken ct = default)
         => _db.PublicEntityGroups.AsNoTracking()
             .Include(g => g.Entries).ThenInclude(e => e.Aliases)
+            .Include(g => g.Entries).ThenInclude(e => e.CreatedBy)
             .OrderBy(g => g.CanonicalName)
             .ToListAsync(ct);
 
@@ -42,26 +43,15 @@ public class PublicEntityRepository : IPublicEntityRepository
     public async Task AddEntryAsync(PublicEntity entry, CancellationToken ct = default)
         => await _db.PublicEntities.AddAsync(entry, ct);
 
-    // ── الاقتراحات ──
+    // ── تنبيه المراجعة: رؤساء الأقسام النشطون لمحافظة محددة ──
 
-    public Task<List<PublicEntityProposal>> ListPendingProposalsAsync(string? governorate, CancellationToken ct = default)
-    {
-        var query = _db.PublicEntityProposals.AsNoTracking()
-            .Include(p => p.ProposedBy)
-            .Where(p => p.Status == ProposalStatus.Pending);
-        if (!string.IsNullOrWhiteSpace(governorate))
-            query = query.Where(p => p.Governorate == governorate);
-        return query.OrderByDescending(p => p.CreatedAt).ToListAsync(ct);
-    }
-
-    public Task<PublicEntityProposal?> GetProposalAsync(int proposalId, CancellationToken ct = default)
-        => _db.PublicEntityProposals
-            .Include(p => p.ProposedBy)
-            .Include(p => p.RejectedBy)
-            .FirstOrDefaultAsync(p => p.Id == proposalId, ct);
-
-    public async Task AddProposalAsync(PublicEntityProposal proposal, CancellationToken ct = default)
-        => await _db.PublicEntityProposals.AddAsync(proposal, ct);
+    public Task<List<User>> ListActiveHeadsByGovernorateAsync(string governorate, CancellationToken ct = default)
+        => _db.Users.AsNoTracking()
+            .Include(u => u.Branch)
+            .Where(u => u.Role == UserRole.Head && u.IsActive
+                && u.Branch != null && u.Branch.Governorate == governorate)
+            .OrderBy(u => u.Id)
+            .ToListAsync(ct);
 
     // ── الاستيراد (د12): نصوص متمايزة مع عدّاد ملفاتها، والتطبيع يجري في الذاكرة ──
 

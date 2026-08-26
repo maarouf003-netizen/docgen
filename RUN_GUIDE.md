@@ -148,3 +148,7 @@ npm test
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260824202637_AddEntityPortal.cs` — يضيف `PortalGroupId` و`PortalEntryId` إلى `Users` (FK SetNull + فهارس) لنطاق حسابات المندوبين.
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `MigrationsPostgres\20260824202706_AddEntityPortalPg.cs` — نفسه.
   - بدون التطبيق سيفشل إنشاء/قراءة أي حساب مندوب برسالة `no such column: u.PortalGroupId`.
+- [ ] **2026-08-26 — `AddEntityRegistryReview` / `AddEntityRegistryReviewPg`** (بوابة الجهات — نموذج الحوكمة الجديد):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260826010109_AddEntityRegistryReview.cs` — يضيف `NeedsReview/ReviewedAtUtc/ReviewedById` إلى `PublicEntities` (فهارس + FK SetNull) و**يُسقط جدول `PublicEntityProposals`**.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `MigrationsPostgres\20260826010201_AddEntityRegistryReviewPg.cs` — نفسه.
+  - ⚠️ يسقط بيانات الاقتراحات القديمة نهائيًا — تأكد قبل التطبيق، وبعدده فشل شاشة المراجعة (`no such column`).

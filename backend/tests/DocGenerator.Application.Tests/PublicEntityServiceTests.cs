@@ -9,6 +9,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DocGenerator.Application.Tests;
 
+/// <summary>
+/// اختبارات خدمة السجل المرجعي للجهات العامة وفق نموذج الحوكمة الجديد:
+/// ما يُدخله المحامي يُعتمد فورًا ويبقى «بحاجة مراجعة» مع تنبيه رئيس محافظته،
+/// والاعتماد يقفل المراجعة بصمت، والتعديل — وتغيير التسمية تحديدًا — يبلّغ المُدخِل.
+/// </summary>
 public class PublicEntityServiceTests : IDisposable
 {
     private readonly DocGeneratorDbContext _db;
@@ -16,6 +21,9 @@ public class PublicEntityServiceTests : IDisposable
     private readonly FakeAuditLogger _audit = new();
     private readonly int _damascusId;
     private readonly int _aleppoId;
+    private readonly int _managerId;
+    private readonly int _headDamascusId;
+    private readonly int _headAleppoId;
     private readonly int _lawyerId;
 
     public PublicEntityServiceTests()
@@ -24,25 +32,26 @@ public class PublicEntityServiceTests : IDisposable
         _db.Branches.AddRange(
             new Branch { Name = "الفرع الرئيسي - دمشق", Code = "DAM", Governorate = "دمشق" },
             new Branch { Name = "فرع حلب", Code = "ALP", Governorate = "حلب" });
-        _db.Users.AddRange(
-            new User { Username = "head_dam", FullName = "رئيس قسم دمشق", Role = UserRole.Head, PasswordHash = "x" },
-            new User { Username = "mgr", FullName = "المدير", Role = UserRole.Manager, PasswordHash = "x" });
         _db.SaveChanges();
 
         _damascusId = _db.Branches.Single(b => b.Code == "DAM").Id;
         _aleppoId = _db.Branches.Single(b => b.Code == "ALP").Id;
-        var headDamascus = _db.Users.Single(u => u.Username == "head_dam");
-        _db.Users.Add(new User { Username = "head_alp", FullName = "رئيس قسم حلب", Role = UserRole.Head, BranchId = _aleppoId, PasswordHash = "x" });
+
+        var mgr = new User { Username = "mgr", FullName = "المدير", Role = UserRole.Manager, PasswordHash = "x" };
+        var headDam = new User { Username = "head_dam", FullName = "رئيس قسم دمشق", Role = UserRole.Head, BranchId = _damascusId, PasswordHash = "x" };
+        var headAlp = new User { Username = "head_alp", FullName = "رئيس قسم حلب", Role = UserRole.Head, BranchId = _aleppoId, PasswordHash = "x" };
         var lawyer = new User { Username = "lawyer1", FullName = "محامي دمشق", Role = UserRole.Lawyer, BranchId = _damascusId, PasswordHash = "x" };
-        _db.Users.Add(lawyer);
+        _db.Users.AddRange(mgr, headDam, headAlp, lawyer);
         _db.SaveChanges();
+        _managerId = mgr.Id;
+        _headDamascusId = headDam.Id;
+        _headAleppoId = headAlp.Id;
         _lawyerId = lawyer.Id;
-        headDamascus.BranchId = _damascusId;
-        _db.SaveChanges();
 
         _service = new PublicEntityService(
             new PublicEntityRepository(_db),
             new Repository<Branch>(_db),
+            new Repository<HeadAlert>(_db),
             new UnitOfWork(_db),
             new TransactionRunner(_db),
             _audit);
@@ -50,14 +59,14 @@ public class PublicEntityServiceTests : IDisposable
 
     public void Dispose() => _db.Dispose();
 
-    private EntityRegistryActor ManagerActor() =>
-        new(UserId(), "المدير", UserRole.Manager, null);
+    private EntityRegistryActor ManagerActor() => new(_managerId, "المدير", UserRole.Manager, null);
 
-    private int UserId() => _db.Users.Single(u => u.Username == "mgr").Id;
+    private int UserId() => _managerId;
 
-    private int HeadDamascusUserId() => _db.Users.Single(u => u.Username == "head_dam").Id;
+    private EntityRegistryActor LawyerActor() => new(_lawyerId, "محامي دمشق", UserRole.Lawyer, _damascusId);
 
-    private int HeadAleppoUserId() => _db.Users.Single(u => u.Username == "head_alp").Id;
+    private EntityRegistryActor HeadDamascusActor() =>
+        new(_headDamascusId, "رئيس قسم دمشق", UserRole.Head, _damascusId);
 
     private async Task<Document> SeedApplicantDocumentAsync(string entityName, string governorate, string generalSide = "applicant")
     {
@@ -146,7 +155,7 @@ public class PublicEntityServiceTests : IDisposable
         var pendingEntry = new PublicEntity
         {
             GroupId = final.GroupId, Governorate = "حلب", BranchName = "فرع حلب",
-            Status = EntityStatusCatalog.Pending, CreatedById = UserId(),
+            Status = EntityStatusCatalog.Pending, CreatedById = _managerId,
         };
         _db.PublicEntities.Add(pendingEntry);
         await _db.SaveChangesAsync();
@@ -170,6 +179,20 @@ public class PublicEntityServiceTests : IDisposable
         var result = await _service.ListAsync(new EntityRegistryListQuery("الاداره العامه", null, null, IncludePending: false, 1, 20));
 
         Assert.Equal(1, result.TotalCount);
+    }
+
+    [Fact]
+    public async Task Search_ExcludesInactiveEntries_SoTheyCannotBeLinkedOrBound()
+    {
+        var entry = await _service.CreateAsync(new CreatePublicEntityRequest("هيئة معايير قديمة", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _service.UpdateAsync(entry.Id,
+            new UpdatePublicEntityRequest(null, null, null, null, null, null, IsActive: false), ManagerActor());
+
+        var pickerView = await _service.ListAsync(new EntityRegistryListQuery(null, null, null, IncludePending: true, 1, 50, IncludeInactive: false));
+        var managementView = await _service.ListAsync(new EntityRegistryListQuery(null, null, null, IncludePending: true, 1, 50));
+
+        Assert.Equal(0, pickerView.TotalCount);      // نافذة الاختيار وربط المندوبين
+        Assert.Equal(1, managementView.TotalCount);  // شاشة الإدارة ترى الموقوف أيضًا
     }
 
     [Fact]
@@ -227,8 +250,6 @@ public class PublicEntityServiceTests : IDisposable
     [Fact]
     public async Task Update_Rename_PreservesUnrelatedSearchTokens_AndRebuildsOncePerDocument()
     {
-        // ملف طالب تنفيذ غني: كفيل وورث ومنفذ ثانٍ — يجب أن تبقى توكناتهم في
-        // SearchText بعد إعادة تسمية الجهة، وأن يُعاد بناء النص لكل ملف مرة واحدة.
         var doc = new Document
         {
             BranchId = _damascusId,
@@ -277,7 +298,7 @@ public class PublicEntityServiceTests : IDisposable
     public async Task Update_RenameByHead_OfOtherGovernorate_IsForbidden()
     {
         var entry = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "حلب", "فرع حلب"), ManagerActor());
-        var headDamascus = new EntityRegistryActor(HeadDamascusUserId(), "رئيس قسم دمشق", UserRole.Head, _damascusId);
+        var headDamascus = new EntityRegistryActor(_headDamascusId, "رئيس قسم دمشق", UserRole.Head, _damascusId);
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _service.UpdateAsync(entry.Id,
@@ -291,7 +312,7 @@ public class PublicEntityServiceTests : IDisposable
     public async Task Update_RenameByHeadWithinHisGovernorate_Succeeds()
     {
         var entry = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var headDamascus = new EntityRegistryActor(HeadDamascusUserId(), "رئيس قسم دمشق", UserRole.Head, _damascusId);
+        var headDamascus = new EntityRegistryActor(_headDamascusId, "رئيس قسم دمشق", UserRole.Head, _damascusId);
 
         var updated = await _service.UpdateAsync(entry.Id,
             new UpdatePublicEntityRequest("وزارة المواصلات", null, null, null, null, null, null), headDamascus);
@@ -323,103 +344,121 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("التعليم العالي", updated.Aliases);
     }
 
+    // ── نموذج الحوكمة الجديد: دخول فوري + مراجعة لاحقة ──
+
     [Fact]
-    public async Task Proposal_EntersPending_AndIsHiddenFromFinalSearch()
+    public async Task Create_ByLawyer_IsFinalImmediately_NeedsReview_AndNotifiesGovernorateHead()
     {
-        var proposal = await _service.CreateProposalAsync(new CreatePublicEntityProposalRequest(
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
             "هيئة التفتيش", "authority", "دمشق", "الفرع الرئيسي", CitationFormulaCatalog.AddToJob),
-            _lawyerId, "محامي دمشق");
+            LawyerActor());
 
-        Assert.Equal(ProposalStatus.Pending.ToString().ToLowerInvariant(), proposal.Status);
-        Assert.Contains("propose_public_entity", _audit.Actions);
+        // تُعتمد أصوليًا نهائية فورًا وتظهر للربط والبوابة لحظيًا.
+        Assert.Equal(EntityStatusCatalog.Final, dto.Status);
+        Assert.True(dto.NeedsReview);
 
-        // بوابة المندوبين تقرأ Final فقط؛ الاقتراح لا يظهر فيها قبل الاعتماد (د4).
-        var portalView = await _service.ListAsync(new EntityRegistryListQuery("هيئة التفتيش", null, null, IncludePending: false, 1, 20));
-        Assert.Equal(0, portalView.TotalCount);
+        var stored = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == dto.Id);
+        Assert.True(stored.NeedsReview);
+
+        // تنبيه رئيس قسم دمشق فقط (محافظة القيد)، ولا تنبيه لرئيس حلب.
+        var alerts = await _db.HeadAlerts.AsNoTracking().Include(a => a.Recipients).ToListAsync();
+        var alert = Assert.Single(alerts);
+        Assert.Equal(_headDamascusId, alert.Recipients.Single().UserId);
+        Assert.Contains("محامي دمشق", alert.Message);
+        Assert.Contains("هيئة التفتيش", alert.Message);
+        Assert.Contains("يرجى مراجعتها", alert.Message);
     }
 
     [Fact]
-    public async Task Proposal_ForAlreadyRegisteredEntity_Throws()
+    public async Task ApproveReview_ClearsFlagSilently_NoAlertToCreator()
     {
-        await _service.CreateAsync(new CreatePublicEntityRequest("هيئة المعايير", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "هيئة التخطيط", "authority", "دمشق", "الفرع الرئيسي", CitationFormulaCatalog.AddToJob),
+            LawyerActor());
+        var headDamascus = new EntityRegistryActor(_headDamascusId, "رئيس قسم دمشق", UserRole.Head, _damascusId);
 
-        await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateProposalAsync(new CreatePublicEntityProposalRequest(
-                "هيئه المعايير", "authority", "دمشق", "الفرع الرئيسي", CitationFormulaCatalog.AddToJob),
-                _lawyerId, "محامي"));
-    }
-
-    [Fact]
-    public async Task Approve_CreatesFinalLinkedEntry_VisibleAfterwards()
-    {
-        var proposal = await _service.CreateProposalAsync(new CreatePublicEntityProposalRequest(
-            "هيئة التخطيط", "authority", "دمشق", "الفرع الرئيسي", CitationFormulaCatalog.AddToPosition),
-            _lawyerId, "محامي دمشق");
-        var headDamascus = new EntityRegistryActor(HeadDamascusUserId(), "رئيس قسم دمشق", UserRole.Head, _damascusId);
-
-        var approved = await _service.ApproveProposalAsync(proposal.Id, headDamascus);
+        var approved = await _service.ApproveReviewAsync(dto.Id, headDamascus);
 
         Assert.NotNull(approved);
-        Assert.Equal(ProposalStatus.Approved.ToString().ToLowerInvariant(), approved.Status);
-        Assert.True(approved.CreatedPublicEntityId > 0);
-
-        var stored = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == approved.CreatedPublicEntityId);
-        Assert.Equal(EntityStatusCatalog.Final, stored.Status);
-        Assert.Equal(CitationFormulaCatalog.AddToPosition, stored.CitationFormula);
-
-        var visibleNow = await _service.ListAsync(new EntityRegistryListQuery("هيئة التخطيط", null, null, IncludePending: false, 1, 20));
-        Assert.Equal(1, visibleNow.TotalCount);
-        Assert.Contains("approve_entity_proposal", _audit.Actions);
+        Assert.False(approved.NeedsReview);
+        var stored = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == dto.Id);
+        Assert.False(stored.NeedsReview);
+        Assert.NotNull(stored.ReviewedAtUtc);
+        Assert.Equal(_headDamascusId, stored.ReviewedById);
+        // الاعتماد كما هو بلا أي تعديل: لا إشعار للمُدخِل (حسب القرار).
+        Assert.Equal(1, await _db.HeadAlerts.CountAsync(a => a.TargetType == HeadAlertTargetType.Branch));
+        Assert.Equal(0, await _db.HeadAlerts.CountAsync(a => a.TargetType == HeadAlertTargetType.Lawyer));
+        Assert.Contains("approve_entity_review", _audit.Actions);
     }
 
     [Fact]
-    public async Task Approve_ByHeadOfOtherGovernorate_IsForbidden()
+    public async Task ApproveReview_ByHeadOfOtherGovernorate_IsForbidden()
     {
-        var proposal = await _service.CreateProposalAsync(new CreatePublicEntityProposalRequest(
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
             "هيئة الري", "authority", "حلب", "فرع حلب", CitationFormulaCatalog.AddToJob),
-            _lawyerId, "محامي دمشق");
-        var headDamascus = new EntityRegistryActor(HeadDamascusUserId(), "رئيس قسم دمشق", UserRole.Head, _damascusId);
+            LawyerActor());
+        var headDamascus = new EntityRegistryActor(_headDamascusId, "رئيس قسم دمشق", UserRole.Head, _damascusId);
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.ApproveProposalAsync(proposal.Id, headDamascus));
+            _service.ApproveReviewAsync(dto.Id, headDamascus));
     }
 
     [Fact]
-    public async Task Reject_RequiresReason_AndStoresIt()
+    public async Task RenameDuringReview_ByHead_NotifiesCreatorLawyer_WithOldAndNewNames_AndClosesReview()
     {
-        var proposal = await _service.CreateProposalAsync(new CreatePublicEntityProposalRequest(
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
             "هيئة السوق", "authority", "دمشق", "الفرع الرئيسي", CitationFormulaCatalog.AddToJob),
-            _lawyerId, "محامي دمشق");
-        var headDamascus = new EntityRegistryActor(HeadDamascusUserId(), "رئيس قسم دمشق", UserRole.Head, _damascusId);
+            LawyerActor());
+        var headDamascus = new EntityRegistryActor(_headDamascusId, "رئيس قسم دمشق", UserRole.Head, _damascusId);
+        var alertsBefore = await _db.HeadAlerts.CountAsync();
 
-        await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.RejectProposalAsync(proposal.Id, new RejectPublicEntityProposalRequest(" "), headDamascus));
+        var edited = await _service.UpdateAsync(dto.Id,
+            new UpdatePublicEntityRequest("هيئة السوق المركزية", null, null, null, null, null, null), headDamascus);
 
-        var rejected = await _service.RejectProposalAsync(proposal.Id, new RejectPublicEntityProposalRequest("جهة مكررة"), headDamascus);
+        Assert.Equal("هيئة السوق المركزية", edited.CanonicalName);
+        Assert.False(edited.NeedsReview);
 
-        Assert.Equal(ProposalStatus.Rejected.ToString().ToLowerInvariant(), rejected.Status);
-        Assert.Equal("جهة مكررة", rejected.RejectionReason);
-        Assert.Null(rejected.CreatedPublicEntityId);
+        var stored = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == dto.Id);
+        Assert.False(stored.NeedsReview);
+        Assert.NotNull(stored.ReviewedAtUtc);
+
+        // تنبيهان: تنبيه المراجعة الأول لرئيس القسم + إشعار تعديل الاسم للمحامي.
+        Assert.Equal(alertsBefore + 1, await _db.HeadAlerts.CountAsync());
+        var notice = await _db.HeadAlerts.AsNoTracking()
+            .Include(a => a.Recipients)
+            .SingleAsync(a => a.TargetType == HeadAlertTargetType.Lawyer);
+        Assert.Equal(_lawyerId, notice.Recipients.Single().UserId);
+        Assert.Contains("هيئة السوق", notice.Message);
+        Assert.Contains("هيئة السوق المركزية", notice.Message);
     }
 
     [Fact]
-    public async Task PendingQueue_HeadSeesOnlyHisGovernorate()
+    public async Task ReviewQueue_HeadSeesOnlyHisGovernorate_ManagerSeesAll()
     {
-        await _service.CreateProposalAsync(new CreatePublicEntityProposalRequest(
-            "هيئة أ", "authority", "دمشق", "الفرع الرئيسي", CitationFormulaCatalog.AddToJob), _lawyerId, "محامي");
-        await _service.CreateProposalAsync(new CreatePublicEntityProposalRequest(
-            "هيئة ب", "authority", "حلب", "فرع حلب", CitationFormulaCatalog.AddToJob), _lawyerId, "محامي");
+        await _service.CreateAsync(new CreatePublicEntityRequest("هيئة أ", "authority", "دمشق", "الفرع الرئيسي", CitationFormulaCatalog.AddToJob),
+            LawyerActor());
+        await _service.CreateAsync(new CreatePublicEntityRequest("هيئة ب", "authority", "حلب", "فرع حلب", CitationFormulaCatalog.AddToJob),
+            LawyerActor());
 
-        var headDamascus = new EntityRegistryActor(HeadDamascusUserId(), "رئيس قسم دمشق", UserRole.Head, _damascusId);
-        var headAleppo = new EntityRegistryActor(HeadAleppoUserId(), "رئيس قسم حلب", UserRole.Head, _aleppoId);
-
-        var forDamascus = await _service.ListPendingProposalsAsync(headDamascus);
-        var forAleppo = await _service.ListPendingProposalsAsync(headAleppo);
+        var headDamascus = new EntityRegistryActor(_headDamascusId, "رئيس قسم دمشق", UserRole.Head, _damascusId);
+        var forDamascus = await _service.ListNeedsReviewAsync(headDamascus);
+        var forManager = await _service.ListNeedsReviewAsync(ManagerActor());
 
         Assert.Single(forDamascus);
-        Assert.Equal("هيئة أ", forDamascus[0].ProposedName);
-        Assert.Single(forAleppo);
-        Assert.Equal("هيئة ب", forAleppo[0].ProposedName);
+        Assert.Equal("هيئة أ", forDamascus[0].CanonicalName);
+        Assert.Equal(2, forManager.Count);
+        // مُدخلها ظاهر في بطاقة المراجعة.
+        Assert.All(forManager, i => Assert.Equal("محامي دمشق", i.CreatedByName));
+    }
+
+    [Fact]
+    public async Task Create_ByManager_DoesNotNeedReview()
+    {
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("هيئة إدارية", "authority", "دمشق", "الفرع الرئيسي"),
+            ManagerActor());
+
+        Assert.False(dto.NeedsReview);
+        Assert.Equal(0, await _db.HeadAlerts.CountAsync());
     }
 
     [Fact]
@@ -441,7 +480,7 @@ public class PublicEntityServiceTests : IDisposable
 
         var item = Assert.Single(preview.Items);
         Assert.Equal(ArabicNameNormalizer.Normalize("مديرية النقل"), item.NormalizedName);
-        Assert.Equal("مديرية النقل", item.SuggestedCanonicalName); // الكتابة الأكثر تكرارًا (2 مقابل 1)
+        Assert.Equal("مديرية النقل", item.SuggestedCanonicalName);
         Assert.Equal(3, item.TotalDocuments);
         Assert.Equal(new[] { "دمشق", "حلب" }, item.Governorates);
         Assert.Equal(3, item.Variants.Count);

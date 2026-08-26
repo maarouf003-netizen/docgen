@@ -123,7 +123,7 @@ export default function Layout() {
     if (canManageBranchLawyers) navItems.push({ to: '/branch-lawyers', label: 'محامو الفرع' });
     if (user?.role === 'head') navItems.push({ to: '/delegations/requests', label: 'طلبات الإنابة' });
     if (canManageEntityRegistry) navItems.push({ to: '/entities/registry', label: 'سجل الجهات العامة' });
-    if (user?.role === 'head') navItems.push({ to: '/entities/proposals', label: 'اقتراحات الجهات' });
+    if (user?.role === 'head') navItems.push({ to: '/entities/review', label: 'مراجعة سجل الجهات' });
     if (canManageDelegates) navItems.push({ to: '/delegates', label: 'مندوبو الجهات' });
     if (canManageUsers) navItems.push({ to: '/users/manage', label: 'إدارة المستخدمين' });
     if (canManageUsers) navItems.push({ to: '/branches/manage', label: 'إدارة الفروع' });

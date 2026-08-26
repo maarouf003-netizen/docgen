@@ -29,6 +29,20 @@ public class PublicEntity
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    /// <summary>
+    /// نموذج الحوكمة الجديد: الجهة التي أدخلها محامٍ تُعتمد أصوليًا نهائية فورًا
+    /// لكنها تبقى «بحاجة مراجعة» حتى يعتمدها/عدّلها رئيس قسم محافظتها أو الإدارة.
+    /// </summary>
+    public bool NeedsReview { get; set; }
+
+    /// <summary>لحظة إقفال المراجعة (اعتمادًا أو تعديلًا) — null ما دامت قيد المراجعة.</summary>
+    public DateTime? ReviewedAtUtc { get; set; }
+
+    /// <summary>من أقفل المراجعة.</summary>
+    public int? ReviewedById { get; set; }
+
+    public User? ReviewedBy { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public PublicEntityGroup Group { get; set; } = null!;

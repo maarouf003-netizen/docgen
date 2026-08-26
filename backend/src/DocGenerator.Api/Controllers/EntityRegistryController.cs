@@ -59,11 +59,15 @@ public class EntityRegistryController : ControllerBase
             new EntityRegistryListQuery(q, governorate, null, IncludePending: true, 1, 50, IncludeInactive: false), ct));
     }
 
-    /// <summary>إنشاء قيد نهائي مباشر — رئيس قسم (ضمن محافظته)/مدير/مشرف.</summary>
+    /// <summary>
+    /// إنشاء قيد جهة نهائي مباشر: رئيس قسم (ضمن محافظته)/مدير/مشرف، **أو محامٍ**
+    /// وفق نموذج الحوكمة الجديد — يدخل نهائيًا فورًا ويبقى بانتظار مراجعة رئيس
+    /// محافظته مع تنبيه له.
+    /// </summary>
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreatePublicEntityRequest request, CancellationToken ct)
     {
-        if (!RolePermissions.CanManageEntityRegistry(Role))
+        if (Role == UserRole.EntityManager)
             return Forbid();
         try
         {
@@ -121,74 +125,36 @@ public class EntityRegistryController : ControllerBase
         }
     }
 
-    // ── الاقتراحات ──
+    // ── مراجعة سجل الجهات العامة الممثلة (نموذج الحوكمة الجديد) ──
 
-    /// <summary>تقديم اقتراح جهة جديدة — المحامي فقط (د4)، ويدخل بحالة انتظار.</summary>
-    [HttpPost("proposals")]
-    [Authorize(Roles = "lawyer")]
-    public async Task<IActionResult> CreateProposal([FromBody] CreatePublicEntityProposalRequest request, CancellationToken ct)
+    /// <summary>
+    /// قائمة «بحاجة مراجعة»: رئيس القسم يرى محافظة فرعه حصرًا، والمدير/المشرف
+    /// يرىان كل السجل. تُستخدم لبطاقة التنبيه وصفحة المراجعة.
+    /// </summary>
+    [HttpGet("pending-review")]
+    public async Task<IActionResult> PendingReview(CancellationToken ct)
     {
-        try
-        {
-            return Ok(await _registry.CreateProposalAsync(request, User.GetUserId(), ActorName, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = e.Message });
-        }
-    }
-
-    /// <summary>نافذة انتظار الاعتماد — رئيس القسم ضمن محافظته (د4).</summary>
-    [HttpGet("proposals/pending")]
-    public async Task<IActionResult> PendingProposals(CancellationToken ct)
-    {
-        if (!RolePermissions.CanApproveEntityProposals(Role) && !RolePermissions.HasFullAccess(Role))
+        if (!RolePermissions.CanManageEntityRegistry(Role))
             return Forbid();
-        return Ok(await _registry.ListPendingProposalsAsync(Actor, ct));
+        return Ok(await _registry.ListNeedsReviewAsync(Actor, ct));
     }
 
-    /// <summary>اعتماد اقتراح وإنشاء القيد النهائي — رئيس القسم ضمن محافظته.</summary>
-    [HttpPost("proposals/{id:int}/approve")]
-    public async Task<IActionResult> ApproveProposal(int id, CancellationToken ct)
+    /// <summary>اعتماد قيد كما هو: يقفل مراجعته دون تعديل ودون إشعار للمُدخِل.</summary>
+    [HttpPost("{id:int}/approve-review")]
+    public async Task<IActionResult> ApproveReview(int id, CancellationToken ct)
     {
-        if (!RolePermissions.CanApproveEntityProposals(Role))
+        if (!RolePermissions.CanManageEntityRegistry(Role))
             return Forbid();
         try
         {
-            var dto = await _registry.ApproveProposalAsync(id, Actor, ct);
+            var dto = await _registry.ApproveReviewAsync(id, Actor, ct);
             return dto is null ? NotFound() : Ok(dto);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = e.Message });
         }
         catch (UnauthorizedAccessException)
         {
             return Forbid();
         }
     }
-
-    /// <summary>رفض اقتراح بسبب معلن — رئيس القسم ضمن محافظته.</summary>
-    [HttpPost("proposals/{id:int}/reject")]
-    public async Task<IActionResult> RejectProposal(int id, [FromBody] RejectPublicEntityProposalRequest request, CancellationToken ct)
-    {
-        if (!RolePermissions.CanApproveEntityProposals(Role))
-            return Forbid();
-        try
-        {
-            var dto = await _registry.RejectProposalAsync(id, request, Actor, ct);
-            return dto is null ? NotFound() : Ok(dto);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = e.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
-    }
-
     // ── الاستيراد التاريخي (د12) — إداري: مدير/مشرف ──
 
     /// <summary>معاينة النصوص التاريخية المتمايزة بعد التطبيع مع عدّادات ملفاتها.</summary>

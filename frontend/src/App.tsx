@@ -22,7 +22,7 @@ const DelegationRequests = lazy(() => import('./pages/DelegationRequests'));
 const UsersManagement = lazy(() => import('./pages/UsersManagement'));
 const BranchesManagement = lazy(() => import('./pages/BranchesManagement'));
 const EntityRegistryManagement = lazy(() => import('./pages/EntityRegistryManagement'));
-const EntityProposalsQueue = lazy(() => import('./pages/EntityProposalsQueue'));
+const EntityRegistryReview = lazy(() => import('./pages/EntityRegistryReview'));
 const EntityDelegates = lazy(() => import('./pages/EntityDelegates'));
 const PortalFiles = lazy(() => import('./pages/PortalFiles'));
 const PortalFileDetail = lazy(() => import('./pages/PortalFileDetail'));
@@ -135,10 +135,10 @@ export default function App() {
               }
             />
             <Route
-              path="/entities/proposals"
+              path="/entities/review"
               element={
-                <RequireRole allowed={(role) => role === 'head' || role === 'manager' || role === 'admin'}>
-                  <EntityProposalsQueue />
+                <RequireRole allowed={(_role, hasFullAccess, isHead) => hasFullAccess || isHead}>
+                  <EntityRegistryReview />
                 </RequireRole>
               }
             />

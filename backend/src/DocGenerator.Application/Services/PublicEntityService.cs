@@ -28,24 +28,28 @@ public sealed record EntityRegistryListQuery(
 public interface IPublicEntityService
 {
     Task<PagedResult<PublicEntityEntryDto>> ListAsync(EntityRegistryListQuery query, CancellationToken ct = default);
+
     Task<PublicEntityEntryDto> CreateAsync(CreatePublicEntityRequest request, EntityRegistryActor actor, CancellationToken ct = default);
     Task<PublicEntityEntryDto?> UpdateAsync(int entryId, UpdatePublicEntityRequest request, EntityRegistryActor actor, CancellationToken ct = default);
     Task<PublicEntityEntryDto?> AddAliasAsync(int entryId, AddPublicEntityAliasRequest request, EntityRegistryActor actor, CancellationToken ct = default);
 
-    Task<PublicEntityProposalDto> CreateProposalAsync(CreatePublicEntityProposalRequest request, int proposerUserId, string? proposerName, CancellationToken ct = default);
-    Task<List<PublicEntityProposalDto>> ListPendingProposalsAsync(EntityRegistryActor actor, CancellationToken ct = default);
-    Task<PublicEntityProposalDto?> ApproveProposalAsync(int proposalId, EntityRegistryActor actor, CancellationToken ct = default);
-    Task<PublicEntityProposalDto?> RejectProposalAsync(int proposalId, RejectPublicEntityProposalRequest request, EntityRegistryActor actor, CancellationToken ct = default);
+    /// <summary>قيود بانتظار مراجعة رئيس القسم ضمن نطاقه (المدير/المشرف يرىان الكل).</summary>
+    Task<List<PublicEntityEntryDto>> ListNeedsReviewAsync(EntityRegistryActor actor, CancellationToken ct = default);
+
+    /// <summary>اعتماد قيد كما هو: يقفل مراجعته دون أي تعديل ولا إشعار للمُدخِل.</summary>
+    Task<PublicEntityEntryDto?> ApproveReviewAsync(int entryId, EntityRegistryActor actor, CancellationToken ct = default);
 
     Task<ImportPreviewResponse> PreviewImportAsync(CancellationToken ct = default);
     Task<ImportCommitResultDto> CommitImportAsync(ImportCommitRequest request, int actorUserId, string? actorName, CancellationToken ct = default);
 }
 
 /// <summary>
-/// خدمة السجل المرجعي للجهات العامة: إنشاء/تعديل القيود وهوياتها الأم مع إعادة
-/// التسمية الجماعية المزامِنة للأعمدة النصية ضمن معاملة واحدة (د5)، واقتراحات
-/// المحامين واعتمادها (د4)، وأداة الاستيراد التاريخي بحالة نهائية مباشرة (د12).
-/// حدود رئيس القسم (محافظة فرعه) مفروضة هنا؛ المتحكم يفحص الدور فقط عبر RolePermissions.
+/// خدمة السجل المرجعي للجهات العامة (نموذج الحوكمة الجديد): أي جهة يُدخلها
+/// محامٍ تُعتمد أصوليًا نهائية فورًا لكنها تبقى «بحاجة مراجعة» مع تنبيه رؤساء
+/// محافظتها؛ الاعتماد يقفل المراجعة بصمت، والتعديل — وتغيير التسمية تحديدًا —
+/// يبلّغ المُدخِل بالاسم القديم والجديد. الإدارة تعدّل كل السجل بتنفيذ فوري.
+/// إعادة التسمية الجماعية تزامن الأعمدة النصية ضمن معاملة واحدة (د5)، وأداة
+/// الاستيراد التاريخي تعتمد نهائيًا مباشرة (د12).
 /// </summary>
 public sealed class PublicEntityService : IPublicEntityService
 {
@@ -53,6 +57,7 @@ public sealed class PublicEntityService : IPublicEntityService
 
     private readonly IPublicEntityRepository _entities;
     private readonly IRepository<Branch> _branches;
+    private readonly IRepository<HeadAlert> _headAlerts;
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
@@ -60,12 +65,14 @@ public sealed class PublicEntityService : IPublicEntityService
     public PublicEntityService(
         IPublicEntityRepository entities,
         IRepository<Branch> branches,
+        IRepository<HeadAlert> headAlerts,
         IUnitOfWork uow,
         ITransactionRunner tx,
         IAuditLogger audit)
     {
         _entities = entities;
         _branches = branches;
+        _headAlerts = headAlerts;
         _uow = uow;
         _tx = tx;
         _audit = audit;
@@ -138,6 +145,9 @@ public sealed class PublicEntityService : IPublicEntityService
             entry.CreatedById = actor.UserId;
             entry.CreatedAt = DateTime.UtcNow;
             entry.IsActive = true;
+            // نموذج الحوكمة الجديد: ما أدخله محامٍ يُعتمد فورًا ويبقى بانتظار
+            // مراجعة رئيس قسم المحافظة، أما الإدارة/الرئيس فيدخلون مُراجَعًا.
+            entry.NeedsReview = actor.Role == UserRole.Lawyer;
             foreach (var alias in aliases)
                 entry.Aliases.Add(new PublicEntityAlias { AliasText = alias });
 
@@ -145,11 +155,49 @@ public sealed class PublicEntityService : IPublicEntityService
                 await _entities.AddGroupAsync(group, token);
             await _entities.AddEntryAsync(entry, token);
             await _uow.SaveChangesAsync(token);
+
+            if (entry.NeedsReview)
+                await InsertEntryReviewAlertsAsync(entry, actor.Name, token);
+
             await _audit.LogAsync(actor.Name, "create_public_entity",
-                details: $"أضاف قيد جهة: {canonical} ({governorate} / {branchName})", ct: token);
+                details: $"أضاف قيد جهة: {canonical} ({governorate} / {branchName})"
+                    + (entry.NeedsReview ? " — بانتظار مراجعة رئيس القسم" : string.Empty),
+                ct: token);
         }, ct);
 
         return ToEntryDto(group, entry);
+    }
+
+    /// <summary>
+    /// تنبيه رؤساء الأقسام النشطين لمحافظة القيد المُدخل حديثًا بواسطة محامٍ:
+    /// «المحامي فلان أدخل جهة عامة جديدة يرجى مراجعتها». إن لم يوجد رئيس بمحافظة
+    /// مطابقة فلا تنبيه — صفحة المراجعة تعرضه للمدير/المشرف على كل الأحوال.
+    /// </summary>
+    private async Task InsertEntryReviewAlertsAsync(PublicEntity entry, string? actorName, CancellationToken token)
+    {
+        var creator = await _entities.GetEntryWithDetailsAsync(entry.Id, token);
+        var creatorFullName = creator?.CreatedBy?.FullName ?? actorName ?? "محامٍ";
+        var heads = await _entities.ListActiveHeadsByGovernorateAsync(entry.Governorate, token);
+        if (heads.Count == 0)
+            return;
+
+        var message = $"المحامي {creatorFullName} أدخل جهة عامة جديدة «{entry.Group.CanonicalName}» "
+            + $"({entry.Governorate} / {entry.BranchName}) — يرجى مراجعتها";
+
+        foreach (var head in heads)
+        {
+            var alert = new HeadAlert
+            {
+                BranchId = head.BranchId!.Value,
+                CreatedById = head.Id,
+                TargetType = HeadAlertTargetType.Branch,
+                Message = message.Length > 2000 ? message[..2000] : message,
+                CreatedAt = DateTime.UtcNow,
+                Recipients = { new HeadAlertRecipient { UserId = head.Id } },
+            };
+            await _headAlerts.AddAsync(alert, token);
+        }
+        await _uow.SaveChangesAsync(token);
     }
 
     // ── تعديل قيد / إعادة تسمية جماعية (د5) ──
@@ -205,16 +253,31 @@ public sealed class PublicEntityService : IPublicEntityService
 
         var oldCanonical = group.CanonicalName;
         var renamed = newCanonical is not null;
+        // حالة المراجعة قبل التعديل: من كان قيد المراجعة يُقفلها أي تعديل مراجِع،
+        // وتغيير التسمية خلالها يوجّه إشعارًا للمُدخِل المحامي بالاسمين.
+        var wasNeedsReview = entry.NeedsReview;
+        var createdByLawyer = entry.CreatedBy?.Role == UserRole.Lawyer;
+
         if (renamed)
             group.CanonicalName = newCanonical!;
         entry.Governorate = newGovernorate;
         entry.BranchName = newBranchName;
+        if (entry.NeedsReview)
+        {
+            entry.NeedsReview = false;
+            entry.ReviewedAtUtc = DateTime.UtcNow;
+            entry.ReviewedById = actor.UserId;
+        }
 
         await _tx.RunAsync(async token =>
         {
             var affected = renamed
                 ? await SyncTextsAfterRenameAsync(oldCanonical, newCanonical!, actor.Name, token)
                 : 0;
+
+            if (renamed && wasNeedsReview && createdByLawyer)
+                await InsertRenameNoticeToCreatorAsync(entry, oldCanonical, group.CanonicalName, token);
+
             await _uow.SaveChangesAsync(token);
             if (renamed)
             {
@@ -226,6 +289,30 @@ public sealed class PublicEntityService : IPublicEntityService
         }, ct);
 
         return ToEntryDto(group, entry);
+    }
+
+    /// <summary>
+    /// إبلاغ المُدخِل المحامي بتغيير تسمية جهته أثناء المراجعة:
+    /// «تم تعديل اسم الجهة التي أدخلتها من “القديم” إلى “الجديد”».
+    /// </summary>
+    private async Task InsertRenameNoticeToCreatorAsync(PublicEntity entry, string oldName, string newName, CancellationToken token)
+    {
+        var creator = entry.CreatedBy;
+        if (creator is null || creator.BranchId is null)
+            return;
+
+        var message = $"تم تعديل اسم الجهة العامة التي أدخلتها من «{oldName}» إلى «{newName}»";
+        var alert = new HeadAlert
+        {
+            BranchId = creator.BranchId.Value,
+            CreatedById = entry.ReviewedById ?? creator.Id,
+            TargetType = HeadAlertTargetType.Lawyer,
+            TargetLawyerId = creator.Id,
+            Message = message.Length > 2000 ? message[..2000] : message,
+            CreatedAt = DateTime.UtcNow,
+            Recipients = { new HeadAlertRecipient { UserId = creator.Id } },
+        };
+        await _headAlerts.AddAsync(alert, token);
     }
 
     public async Task<PublicEntityEntryDto?> AddAliasAsync(int entryId, AddPublicEntityAliasRequest request, EntityRegistryActor actor, CancellationToken ct = default)
@@ -254,133 +341,53 @@ public sealed class PublicEntityService : IPublicEntityService
         return ToEntryDto(entry.Group, entry);
     }
 
-    // ── الاقتراحات (د4) ──
-
-    public async Task<PublicEntityProposalDto> CreateProposalAsync(CreatePublicEntityProposalRequest request, int proposerUserId, string? proposerName, CancellationToken ct = default)
-    {
-        var proposedName = Required(request.ProposedName, "اسم الجهة مطلوب", 200);
-        var entityType = ValidEntityType(request.EntityType);
-        var governorate = Required(request.Governorate, "المحافظة مطلوبة", 100);
-        var branchName = RequiredWithFallback(request.BranchName, DefaultBranchName, 200);
-        var citationFormula = ValidCitationFormula(request.CitationFormula, CitationFormulaCatalog.AddToJob);
-
-        var nameNorm = ArabicNameNormalizer.Normalize(proposedName);
-        var groups = await _entities.ListGroupsWithEntriesAsync(ct);
-        var duplicated = groups.Any(g => ArabicNameNormalizer.Normalize(g.CanonicalName) == nameNorm
-            && g.Entries.Any(e => e.Status == EntityStatusCatalog.Final));
-        if (duplicated)
-            throw new ArgumentException("الجهة مسجلة مسبقًا في السجل كقيد نهائي");
-
-        var proposal = new PublicEntityProposal
-        {
-            ProposedName = proposedName,
-            EntityType = entityType,
-            Governorate = governorate,
-            BranchName = branchName,
-            CitationFormula = citationFormula,
-            ProposedById = proposerUserId,
-            SourceDocumentId = request.SourceDocumentId,
-            Status = ProposalStatus.Pending,
-            CreatedAt = DateTime.UtcNow,
-        };
-
-        await _tx.RunAsync(async token =>
-        {
-            await _entities.AddProposalAsync(proposal, token);
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(proposerName, "propose_public_entity",
-                details: $"اقترح جهة جديدة: {proposedName} ({governorate} / {branchName})", ct: token);
-        }, ct);
-
-        return ToProposalDto(proposal);
-    }
+    // ── مراجعة سجل الجهات العامة الممثلة (النموذج الجديد) ──
 
     /// <summary>
-    /// قائمة انتظار الاقتراحات: رئيس القسم يرى محافظة فرعه حصرًا (د4) —
-    /// والفرع بلا محافظة مضبوطة لا يرى شيئًا حتى تضبطها الإدارة،
-    /// أما المدير/المشرف فيرىان كل المحافظات.
+    /// قائمة «بحاجة مراجعة»: رئيس القسم يرى محافظة فرعه حصرًا، والمدير/المشرف
+    /// يرىان كل السجل. الفرع بلا محافظة مضبوطة يعني قائمة فارغة للرئيس.
     /// </summary>
-    public async Task<List<PublicEntityProposalDto>> ListPendingProposalsAsync(EntityRegistryActor actor, CancellationToken ct = default)
+    public async Task<List<PublicEntityEntryDto>> ListNeedsReviewAsync(EntityRegistryActor actor, CancellationToken ct = default)
     {
+        string? governorateFilter = null;
         if (actor.Role == UserRole.Head)
         {
             var branch = actor.BranchId is null ? null : await _branches.GetByIdAsync(actor.BranchId.Value, ct);
-            var branchGov = NormalizeOptional(branch?.Governorate);
-            if (branchGov is null)
-                return new List<PublicEntityProposalDto>();
-            var proposals = await _entities.ListPendingProposalsAsync(branchGov, ct);
-            return proposals.Select(ToProposalDto).ToList();
+            governorateFilter = NormalizeOptional(branch?.Governorate);
+            if (governorateFilter is null)
+                return new List<PublicEntityEntryDto>();
         }
 
-        var all = await _entities.ListPendingProposalsAsync(governorate: null, ct);
-        return all.Select(ToProposalDto).ToList();
+        var groups = await _entities.ListGroupsWithEntriesAsync(ct);
+        return groups
+            .SelectMany(g => g.Entries.Select(e => (Group: g, Entry: e)))
+            .Where(x => x.Entry.NeedsReview)
+            .Where(x => governorateFilter is null || x.Entry.Governorate == governorateFilter)
+            .OrderByDescending(x => x.Entry.CreatedAt)
+            .Select(x => ToEntryDto(x.Group, x.Entry))
+            .ToList();
     }
 
-    public async Task<PublicEntityProposalDto?> ApproveProposalAsync(int proposalId, EntityRegistryActor actor, CancellationToken ct = default)
+    /// <summary>اعتماد قيد كما هو: يقفل المراجعة دون تعديل ودون إشعار للمُدخِل (حسب القرار).</summary>
+    public async Task<PublicEntityEntryDto?> ApproveReviewAsync(int entryId, EntityRegistryActor actor, CancellationToken ct = default)
     {
-        var proposal = await _entities.GetProposalAsync(proposalId, ct);
-        if (proposal is null)
+        var entry = await _entities.GetEntryWithDetailsAsync(entryId, ct);
+        if (entry is null)
             return null;
-        if (proposal.Status != ProposalStatus.Pending)
-            throw new ArgumentException("الاقتراح حُسم مسبقًا");
 
-        await EnsureHeadScopeAsync(actor, proposal.Governorate, ct);
-
-        var canonical = proposal.ProposedName;
-        await EnsureNoDuplicateEntryAsync(null, canonical, proposal.Governorate, proposal.BranchName, ct);
-
-        PublicEntityGroup group = new();
-        var entry = new PublicEntity();
-        await _tx.RunAsync(async token =>
-        {
-            group = await FindOrCreateGroupAsync(canonical, proposal.EntityType, actor.UserId, token);
-            entry.Group = group;
-            entry.GroupId = group.Id;
-            entry.Governorate = proposal.Governorate;
-            entry.BranchName = proposal.BranchName;
-            entry.CitationFormula = proposal.CitationFormula;
-            entry.Status = EntityStatusCatalog.Final;
-            entry.CreatedById = actor.UserId;
-            entry.CreatedAt = DateTime.UtcNow;
-
-            if (group.Id == 0)
-                await _entities.AddGroupAsync(group, token);
-            await _entities.AddEntryAsync(entry, token);
-
-            proposal.Status = ProposalStatus.Approved;
-            proposal.CreatedPublicEntity = entry;
-
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actor.Name, "approve_entity_proposal",
-                details: $"اعتمد اقتراح جهة: {canonical} ({proposal.Governorate} / {proposal.BranchName})", ct: token);
-        }, ct);
-
-        proposal.CreatedPublicEntityId = entry.Id;
-        return ToProposalDto(proposal);
-    }
-
-    public async Task<PublicEntityProposalDto?> RejectProposalAsync(int proposalId, RejectPublicEntityProposalRequest request, EntityRegistryActor actor, CancellationToken ct = default)
-    {
-        var proposal = await _entities.GetProposalAsync(proposalId, ct);
-        if (proposal is null)
-            return null;
-        if (proposal.Status != ProposalStatus.Pending)
-            throw new ArgumentException("الاقتراح حُسم مسبقًا");
-
-        var reason = Required(request.Reason, "سبب الرفض مطلوب", 500);
-        await EnsureHeadScopeAsync(actor, proposal.Governorate, ct);
+        await EnsureHeadScopeAsync(actor, entry.Governorate, ct);
 
         await _tx.RunAsync(async token =>
         {
-            proposal.Status = ProposalStatus.Rejected;
-            proposal.RejectedById = actor.UserId;
-            proposal.RejectionReason = reason;
+            entry.NeedsReview = false;
+            entry.ReviewedAtUtc = DateTime.UtcNow;
+            entry.ReviewedById = actor.UserId;
             await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actor.Name, "reject_entity_proposal",
-                details: $"رفض اقتراح جهة: {proposal.ProposedName} — السبب: {reason}", ct: token);
+            await _audit.LogAsync(actor.Name, "approve_entity_review",
+                details: $"اعتمد مراجعة قيد الجهة: {entry.Group.CanonicalName} ({entry.Governorate} / {entry.BranchName})", ct: token);
         }, ct);
 
-        return ToProposalDto(proposal);
+        return ToEntryDto(entry.Group, entry);
     }
 
     // ── الاستيراد التاريخي (د12) ──
@@ -760,20 +767,6 @@ public sealed class PublicEntityService : IPublicEntityService
         entry.IsActive,
         entry.CreatedAt,
         entry.Aliases.Select(a => a.AliasText).ToList(),
-        entry.CreatedBy?.FullName);
-
-    private static PublicEntityProposalDto ToProposalDto(PublicEntityProposal p) => new(
-        p.Id,
-        p.ProposedName,
-        p.EntityType,
-        p.Governorate,
-        p.BranchName,
-        p.CitationFormula,
-        p.ProposedById,
-        p.ProposedBy?.FullName ?? string.Empty,
-        p.SourceDocumentId,
-        p.Status.ToString().ToLowerInvariant(),
-        p.CreatedAt,
-        p.RejectionReason,
-        p.CreatedPublicEntityId);
+        entry.CreatedBy?.FullName,
+        entry.NeedsReview);
 }

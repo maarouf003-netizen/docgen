@@ -104,9 +104,6 @@ public static class RolePermissions
     public static bool CanManageEntityRegistry(UserRole role) =>
         role is UserRole.Manager or UserRole.Admin or UserRole.Head;
 
-    /// <summary>اعتماد/رفض اقتراحات الجهات الجديدة — رئيس القسم ضمن نطاق محافظته (د4).</summary>
-    public static bool CanApproveEntityProposals(UserRole role) => role == UserRole.Head;
-
     /// <summary>بوابة مندوب الجهة العامة: قراءة + تصدير إكسل فقط (د10/د11 — المرحلة 3).</summary>
     public static bool CanUseDelegatePortal(UserRole role) => role == UserRole.EntityManager;
 

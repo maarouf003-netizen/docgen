@@ -8,7 +8,7 @@ import {
   publicEntityStatusLabel,
 } from '../../utils/entityRegistry';
 import type {
-  CreatePublicEntityProposalRequest,
+  CreatePublicEntityRequest,
   CitationFormula,
   PublicEntityEntryDto,
   PublicEntityListResponse,
@@ -23,8 +23,6 @@ export const PROPOSAL_WARNING_TEXT =
 export const PROPOSAL_NAME_PLACEHOLDER = 'مثال: المدير العام للمصرف التجاري السوري';
 
 interface PublicEntityPickerModalProps {
-  /** الملف الذي قُدِّر منه الاقتراح عند التقديم من داخل نموذج ملف. */
-  sourceDocumentId?: number | null;
   onClose: () => void;
   /** يُستدعى عند اختيار قيد من نتائج البحث لربطه بالملف. */
   onPick: (entry: PublicEntityEntryDto) => void;
@@ -33,10 +31,10 @@ interface PublicEntityPickerModalProps {
 /**
  * نافذة «اختيار الجهة العامة» (§5 — د4/د7/د8/د9):
  * بحث واحد بنتائج قابلة للتبديل حسب المحافظة مع اقتراحات الفروع المستخلصة،
- * وبلا عدّاد ملفات إطلاقًا (د9)، وتحويل مباشر إلى نموذج اقتراح جهة جديدة
- * يُرسل بحالة انتظار اعتماد رئيس القسم.
+ * وبلا عدّاد ملفات إطلاقًا (د9)، وتحويل مباشر إلى نموذج إدخال جهة جديدة
+ * تُعتمد فورًا وتبقى بانتظار مراجعة رئيس القسم (نموذج الحوكمة الجديد).
  */
-export function PublicEntityPickerModal({ sourceDocumentId, onClose, onPick }: PublicEntityPickerModalProps) {
+export function PublicEntityPickerModal({ onClose, onPick }: PublicEntityPickerModalProps) {
   const [query, setQuery] = useState('');
   const [governorateFilter, setGovernorateFilter] = useState('');
   const [items, setItems] = useState<PublicEntityEntryDto[] | null>(null);
@@ -111,17 +109,16 @@ export function PublicEntityPickerModal({ sourceDocumentId, onClose, onPick }: P
     setProposeSaving(true);
     setProposeError('');
     try {
-      const payload: CreatePublicEntityProposalRequest = {
-        proposedName: proposeName.trim(),
+      const payload: CreatePublicEntityRequest = {
+        canonicalName: proposeName.trim(),
         entityType: proposeType,
         governorate: proposeGovernorate,
         branchName: proposeBranch.trim(),
         citationFormula: proposeCitation,
-        sourceDocumentId: sourceDocumentId ?? null,
       };
-      await api.post('/entity-registry/proposals', payload);
+      await api.post('/entity-registry', payload);
       setSuccessMsg(
-        'أُرسل الاقتراح بنجاح وهو الآن بانتظار اعتماد رئيس القسم؛ يمكنك ربطه بعد ظهوره في السجل.',
+        'أُضيفت الجهة إلى السجل وهي متاحة الآن للربط فورًا؛ وستصل رئيس قسمك مراجعتها.',
       );
     } catch (err) {
       setProposeError(getApiErrorMessage(err));

@@ -19,11 +19,11 @@ public class EntityRegistryPermissionsTests
     [Theory]
     [InlineData(UserRole.Lawyer, false)]
     [InlineData(UserRole.Head, true)]
-    [InlineData(UserRole.Manager, false)]
-    [InlineData(UserRole.Admin, false)]
+    [InlineData(UserRole.Manager, true)]
+    [InlineData(UserRole.Admin, true)]
     [InlineData(UserRole.EntityManager, false)]
-    public void CanApproveEntityProposals_IsHeadOnly(UserRole role, bool expected)
-        => Assert.Equal(expected, RolePermissions.CanApproveEntityProposals(role));
+    public void CanManageDelegates_MatchesDecisionD11(UserRole role, bool expected)
+        => Assert.Equal(expected, RolePermissions.CanManageDelegates(role));
 
     [Theory]
     [InlineData(UserRole.Lawyer, false)]

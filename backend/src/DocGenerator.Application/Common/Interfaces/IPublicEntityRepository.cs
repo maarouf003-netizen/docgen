@@ -27,10 +27,10 @@ public interface IPublicEntityRepository
     Task AddGroupAsync(PublicEntityGroup group, CancellationToken ct = default);
     Task AddEntryAsync(PublicEntity entry, CancellationToken ct = default);
 
-    // ── الاقتراحات ──
-    Task<List<PublicEntityProposal>> ListPendingProposalsAsync(string? governorate, CancellationToken ct = default);
-    Task<PublicEntityProposal?> GetProposalAsync(int proposalId, CancellationToken ct = default);
-    Task AddProposalAsync(PublicEntityProposal proposal, CancellationToken ct = default);
+    // ── الاقتراحات ── (أُلغي نموذج الاقتراحات — استُبدل بالمراجعة اللاحقة)
+
+    /// <summary>رؤساء الأقسام النشطون الذين تتبع فروعهم محافظة محددة — لتوجيه تنبيه المراجعة.</summary>
+    Task<List<User>> ListActiveHeadsByGovernorateAsync(string governorate, CancellationToken ct = default);
 
     // ── الاستيراد (د12) ──
 

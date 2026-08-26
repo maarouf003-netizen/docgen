@@ -1922,6 +1922,15 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("NeedsReview")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("ReviewedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("ReviewedById")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -1934,6 +1943,11 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.HasIndex("Governorate");
 
                     b.HasIndex("GroupId");
+
+                    b.HasIndex("NeedsReview");
+
+                    b.HasIndex("ReviewedById")
+                        .IsUnique();
 
                     b.HasIndex("Status");
 
@@ -2000,80 +2014,6 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.HasIndex("EntityType");
 
                     b.ToTable("PublicEntityGroups", (string)null);
-                });
-
-            modelBuilder.Entity("DocGenerator.Domain.Entities.PublicEntityProposal", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("BranchName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<string>("CitationFormula")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int?>("CreatedPublicEntityId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("EntityType")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)");
-
-                    b.Property<string>("Governorate")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<int>("ProposedById")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("ProposedName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<int?>("RejectedById")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("RejectionReason")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<int?>("SourceDocumentId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedPublicEntityId");
-
-                    b.HasIndex("Governorate");
-
-                    b.HasIndex("ProposedById");
-
-                    b.HasIndex("RejectedById");
-
-                    b.HasIndex("SourceDocumentId");
-
-                    b.HasIndex("Status");
-
-                    b.ToTable("PublicEntityProposals", (string)null);
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.ReviewLetter", b =>
@@ -2698,9 +2638,16 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("DocGenerator.Domain.Entities.User", "ReviewedBy")
+                        .WithMany()
+                        .HasForeignKey("ReviewedById")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("CreatedBy");
 
                     b.Navigation("Group");
+
+                    b.Navigation("ReviewedBy");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.PublicEntityAlias", b =>
@@ -2712,38 +2659,6 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .IsRequired();
 
                     b.Navigation("PublicEntity");
-                });
-
-            modelBuilder.Entity("DocGenerator.Domain.Entities.PublicEntityProposal", b =>
-                {
-                    b.HasOne("DocGenerator.Domain.Entities.PublicEntity", "CreatedPublicEntity")
-                        .WithMany()
-                        .HasForeignKey("CreatedPublicEntityId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("DocGenerator.Domain.Entities.User", "ProposedBy")
-                        .WithMany()
-                        .HasForeignKey("ProposedById")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("DocGenerator.Domain.Entities.User", "RejectedBy")
-                        .WithMany()
-                        .HasForeignKey("RejectedById")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("DocGenerator.Domain.Entities.Document", "SourceDocument")
-                        .WithMany()
-                        .HasForeignKey("SourceDocumentId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("CreatedPublicEntity");
-
-                    b.Navigation("ProposedBy");
-
-                    b.Navigation("RejectedBy");
-
-                    b.Navigation("SourceDocument");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.ReviewLetter", b =>

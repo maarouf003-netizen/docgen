@@ -1260,6 +1260,8 @@ export interface PublicEntityEntryDto {
   createdAt: string;
   aliases: string[];
   createdByName?: string | null;
+  /** أدخلها محامٍ وهي بانتظار مراجعة رئيس القسم (نموذج الحوكمة الجديد). */
+  needsReview?: boolean;
 }
 
 /** نتيجة قائمة/بحث السجل المصدّرة. */
@@ -1293,32 +1295,6 @@ export interface UpdatePublicEntityRequest {
 
 export interface AddPublicEntityAliasRequest {
   aliasText: string;
-}
-
-/** اقتراح محامٍ لإضافة جهة جديدة (بانتظار اعتماد رئيس القسم). */
-export interface PublicEntityProposalDto {
-  id: number;
-  proposedName: string;
-  entityType: PublicEntityType;
-  governorate: string;
-  branchName: string;
-  citationFormula: CitationFormula;
-  proposedById: number;
-  proposedByName: string;
-  sourceDocumentId?: number | null;
-  status: 'pending' | 'approved' | 'rejected';
-  createdAt: string;
-  rejectionReason?: string | null;
-  createdPublicEntityId?: number | null;
-}
-
-export interface CreatePublicEntityProposalRequest {
-  proposedName: string;
-  entityType: PublicEntityType;
-  governorate: string;
-  branchName: string;
-  citationFormula: CitationFormula;
-  sourceDocumentId?: number | null;
 }
 
 /** كتابة متمايزة واحدة لنص جهة في الاستيراد مع عدّاد ملفاتها. */

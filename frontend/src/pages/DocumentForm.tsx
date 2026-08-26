@@ -1025,7 +1025,6 @@ export default function DocumentForm() {
 
       {registryPicker && (
         <PublicEntityPickerModal
-          sourceDocumentId={isEdit && id !== undefined ? Number(id) : null}
           onClose={() => setRegistryPicker(null)}
           onPick={applyRegistryPick}
         />

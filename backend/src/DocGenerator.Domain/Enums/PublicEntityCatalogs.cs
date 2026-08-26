@@ -47,11 +47,3 @@ public static class CitationFormulaCatalog
     public static bool IsValid(string? value)
         => value is AddToJob or AddToPosition;
 }
-
-/// <summary>حالة اقتراح الجهة الجديدة: بانتظار الاعتماد / معتمد / مرفوض.</summary>
-public enum ProposalStatus
-{
-    Pending = 1,
-    Approved = 2,
-    Rejected = 3,
-}
