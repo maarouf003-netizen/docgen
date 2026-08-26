@@ -1848,6 +1848,10 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("CoverageLabel")
+                        .HasMaxLength(150)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
@@ -1887,6 +1891,8 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("GroupId");
 
+                    b.HasIndex("IsActive");
+
                     b.HasIndex("NeedsReview");
 
                     b.HasIndex("ReviewedById")
@@ -1921,6 +1927,59 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.HasIndex("PublicEntityId");
 
                     b.ToTable("PublicEntityAliases", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.PublicEntityChangeEvent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ActionKind")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ActorUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("DecreeDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DecreeKind")
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DecreeNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("EntryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("GroupId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActionKind");
+
+                    b.HasIndex("ActorUserId");
+
+                    b.HasIndex("CreatedAtUtc");
+
+                    b.HasIndex("EntryId");
+
+                    b.HasIndex("GroupId");
+
+                    b.ToTable("PublicEntityChangeEvents", (string)null);
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.PublicEntityGroup", b =>
@@ -2592,6 +2651,31 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("PublicEntity");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.PublicEntityChangeEvent", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.User", "ActorUser")
+                        .WithMany()
+                        .HasForeignKey("ActorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.PublicEntity", "Entry")
+                        .WithMany()
+                        .HasForeignKey("EntryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("DocGenerator.Domain.Entities.PublicEntityGroup", "Group")
+                        .WithMany()
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("ActorUser");
+
+                    b.Navigation("Entry");
+
+                    b.Navigation("Group");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.ReviewLetter", b =>

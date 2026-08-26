@@ -54,4 +54,15 @@ public interface IPublicEntityRepository
     /// محمّلًا بكامل مجموعات نص البحث كما في الطرف المقابل.
     /// </summary>
     Task<List<ExecutedPublicEntity>> ListExecutedRowsByNamesAsync(IReadOnlyCollection<string> names, CancellationToken ct = default);
+
+    // ── نقل القيد (د3) ──
+
+    /// <summary>
+    /// الملفات المربوطة بقيد معين عبر ApplicantPublicEntity.RegistryId أو ExecutedPublicEntity.RegistryId
+    /// مع تحميل المجموعات الفرعية اللازمة لمزامنة نص البحث.
+    /// </summary>
+    Task<List<Document>> ListDocumentsLinkedToEntryAsync(int entryId, CancellationToken ct = default);
+
+    /// <summary>إيجاد قيد في هوية أم محددة بنفس المحافظة والفرع.</summary>
+    Task<PublicEntity?> FindEntryInGroupAsync(int groupId, string governorate, string branchName, CancellationToken ct = default);
 }

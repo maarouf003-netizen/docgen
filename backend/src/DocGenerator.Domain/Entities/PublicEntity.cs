@@ -19,6 +19,14 @@ public class PublicEntity
     /// <summary>اسم الفرع (max 200) — «الفرع الرئيسي» قيمة افتراضية مسموحة.</summary>
     public string BranchName { get; set; } = string.Empty;
 
+    /// <summary>
+    /// تسمية التغطية (max 150): تصف النطاق الجغرافي للقيد إذا كان يخدم أكثر من محافظة.
+    /// يُعرض في البطاقات والبحث بدل المحافظة (CoverageLabel ?? Governorate)؛
+    /// الحوكمة والفلترة والتجميع والفهرس الفريد تبقى على Governorate حصرًا.
+    /// يُرفض إذا طابق اسم محافظة واحدة من الكتالوج.
+    /// </summary>
+    public string? CoverageLabel { get; set; }
+
     /// <summary>صيغة المناداة (د8): add-to-job / add-to-position.</summary>
     public string CitationFormula { get; set; } = CitationFormulaCatalog.AddToJob;
 

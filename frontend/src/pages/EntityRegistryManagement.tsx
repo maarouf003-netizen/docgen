@@ -8,6 +8,7 @@ import {
   ENTITY_TYPE_OPTIONS,
   citationFormulaLabel,
   entityTypeLabel,
+  formatEntityCoverage,
   publicEntityStatusLabel,
 } from '../utils/entityRegistry';
 import type {
@@ -76,6 +77,8 @@ export default function EntityRegistryManagement() {
   const [formBranch, setFormBranch] = useState('الفرع الرئيسي');
   const [formCitation, setFormCitation] = useState<'add-to-job' | 'add-to-position'>('add-to-job');
   const [formAliases, setFormAliases] = useState('');
+  const [formShowCoverage, setFormShowCoverage] = useState(false);
+  const [formCoverageLabel, setFormCoverageLabel] = useState('');
   const [formSaving, setFormSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
@@ -86,6 +89,8 @@ export default function EntityRegistryManagement() {
     setFormBranch('الفرع الرئيسي');
     setFormCitation('add-to-job');
     setFormAliases('');
+    setFormShowCoverage(false);
+    setFormCoverageLabel('');
     setFormError('');
     setShowForm(false);
   };
@@ -111,6 +116,7 @@ export default function EntityRegistryManagement() {
         branchName: formBranch.trim(),
         citationFormula: formCitation,
         aliases: formAliases.split('\n').map((a) => a.trim()).filter(Boolean),
+        coverageLabel: formShowCoverage && formCoverageLabel.trim() ? formCoverageLabel.trim() : null,
       });
       resetForm();
       reload();
@@ -130,6 +136,8 @@ export default function EntityRegistryManagement() {
   const [editCitation, setEditCitation] = useState<'add-to-job' | 'add-to-position'>('add-to-job');
   const [editStatus, setEditStatus] = useState<PublicEntityStatus>('final');
   const [editActive, setEditActive] = useState(true);
+  const [editShowCoverage, setEditShowCoverage] = useState(false);
+  const [editCoverageLabel, setEditCoverageLabel] = useState('');
   const [newAlias, setNewAlias] = useState('');
   const [editSaving, setEditSaving] = useState(false);
   const [aliasSaving, setAliasSaving] = useState(false);
@@ -144,6 +152,8 @@ export default function EntityRegistryManagement() {
     setEditCitation(entry.citationFormula === 'add-to-position' ? 'add-to-position' : 'add-to-job');
     setEditStatus(entry.status === 'pending' ? 'pending' : 'final');
     setEditActive(entry.isActive);
+    setEditShowCoverage(!!entry.coverageLabel);
+    setEditCoverageLabel(entry.coverageLabel ?? '');
     setNewAlias('');
     setEditError('');
   };
@@ -175,6 +185,7 @@ export default function EntityRegistryManagement() {
         citationFormula: editCitation,
         status: editStatus,
         isActive: editActive,
+        coverageLabel: editShowCoverage && editCoverageLabel.trim() ? editCoverageLabel.trim() : null,
       });
       closeEdit();
       reload();
@@ -348,6 +359,29 @@ export default function EntityRegistryManagement() {
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
+          <label className="inline-flex items-center gap-2 text-sm cursor-pointer min-h-11 sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={formShowCoverage}
+              onChange={(e) => { setFormShowCoverage(e.target.checked); if (!e.target.checked) setFormCoverageLabel(''); }}
+              className="h-4 w-4"
+            />
+            تغطية الجهة تشمل أكثر من محافظة
+          </label>
+          {formShowCoverage && (
+            <div className="sm:col-span-2">
+              <label htmlFor="fe-coverage" className="block text-xs font-medium text-gray-600 mb-1">تسمية التغطية (حد أقصى 150 حرفًا)</label>
+              <input
+                id="fe-coverage"
+                value={formCoverageLabel}
+                onChange={(e) => setFormCoverageLabel(e.target.value)}
+                placeholder="مثال: دمشق وريف دمشق والقنيطرة"
+                maxLength={150}
+                autoComplete="off"
+                className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+          )}
           {formError && <p role="alert" className="text-red-600 text-sm sm:col-span-2">{formError}</p>}
           <div className="sm:col-span-2">
             <button
@@ -388,7 +422,7 @@ export default function EntityRegistryManagement() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-gray-600">{entityTypeLabel(entry.entityType)}</td>
-                  <td className="px-4 py-3 text-gray-600">{entry.governorate} / {entry.branchName}</td>
+                  <td className="px-4 py-3 text-gray-600">{formatEntityCoverage(entry)} / {entry.branchName}</td>
                   <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{citationFormulaLabel(entry.citationFormula)}</td>
                   <td className="px-4 py-3">{statusBadge(entry.status)}</td>
                   <td className="px-4 py-3">
@@ -420,7 +454,7 @@ export default function EntityRegistryManagement() {
                   {statusBadge(entry.status)}
                 </div>
                 <p className="text-sm text-gray-600 mt-1">
-                  {entityTypeLabel(entry.entityType)} · {entry.governorate} / {entry.branchName}
+                  {entityTypeLabel(entry.entityType)} · {formatEntityCoverage(entry)} / {entry.branchName}
                 </p>
                 <p className="text-xs text-gray-400 mt-0.5">{citationFormulaLabel(entry.citationFormula)}</p>
                 <button
@@ -552,7 +586,29 @@ export default function EntityRegistryManagement() {
                 <input type="checkbox" checked={editActive} onChange={(e) => setEditActive(e.target.checked)} />
                 القيد مفعّل
               </label>
+              <label className="inline-flex items-center gap-2 text-sm cursor-pointer min-h-11">
+                <input
+                  type="checkbox"
+                  checked={editShowCoverage}
+                  onChange={(e) => { setEditShowCoverage(e.target.checked); if (!e.target.checked) setEditCoverageLabel(''); }}
+                />
+                تغطية أكثر من محافظة
+              </label>
             </div>
+
+            {editShowCoverage && (
+              <div className="mt-3">
+                <label htmlFor="ed-coverage" className="block text-xs font-medium text-gray-600 mb-1">تسمية التغطية (حد أقصى 150 حرفًا)</label>
+                <input
+                  id="ed-coverage"
+                  value={editCoverageLabel}
+                  onChange={(e) => setEditCoverageLabel(e.target.value)}
+                  maxLength={150}
+                  autoComplete="off"
+                  className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+            )}
 
             <div className="mt-4">
               <span className="block text-xs font-medium text-gray-600 mb-1">الأسماء البديلة</span>

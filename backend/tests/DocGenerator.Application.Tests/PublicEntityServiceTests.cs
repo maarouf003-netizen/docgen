@@ -52,6 +52,8 @@ public class PublicEntityServiceTests : IDisposable
             new PublicEntityRepository(_db),
             new Repository<Branch>(_db),
             new Repository<HeadAlert>(_db),
+            new Repository<PublicEntityChangeEvent>(_db),
+            new Repository<DocumentOccurrence>(_db),
             new UnitOfWork(_db),
             new TransactionRunner(_db),
             _audit);
@@ -533,5 +535,306 @@ public class PublicEntityServiceTests : IDisposable
             {
                 new ImportCommitItemRequest("غير موجود", "غير موجود", "ministry", "دمشق", "الفرع الرئيسي"),
             }), UserId(), "المدير"));
+    }
+
+    // ── MoveEntry tests ──
+
+    private async Task<(int groupId1, int entryId1, int groupId2, int entryId2)> SeedTwoGroupsForMoveAsync()
+    {
+        var dto1 = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var dto2 = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "هيئة سكن", "authority", "دمشق", "فرع التجهيز"), ManagerActor());
+        return (dto1.GroupId, dto1.Id, dto2.GroupId, dto2.Id);
+    }
+
+    private async Task<(int groupId1, int entryId1, int groupId2, int entryId2)> SeedTwoGroupsSameBranchForFoldAsync()
+    {
+        var dto1 = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var dto2 = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "هيئة سكن", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        return (dto1.GroupId, dto1.Id, dto2.GroupId, dto2.Id);
+    }
+
+    private async Task SeedConflictEntryAsync(int groupId, string name, string governorate, string branch)
+    {
+        var group = await _db.PublicEntityGroups.FindAsync(groupId);
+        var conflictEntry = new PublicEntity
+        {
+            GroupId = groupId,
+            Group = group!,
+            Governorate = governorate,
+            BranchName = branch,
+            Status = "final",
+            IsActive = true,
+            CreatedById = _managerId,
+        };
+        _db.PublicEntities.Add(conflictEntry);
+        await _db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task MoveEntry_ModeA_ReassignsGroupId()
+    {
+        var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
+        var result = await _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, null, null, null, null), ManagerActor());
+
+        Assert.Equal(g2, result.ToGroupId);
+        Assert.Equal(g1, result.FromGroupId);
+
+        var entry = await _db.PublicEntities.FindAsync(e1);
+        Assert.Equal(g2, entry!.GroupId);
+        Assert.Contains("move_entity_registry", _audit.Actions);
+
+        var changeEvent = await _db.PublicEntityChangeEvents.SingleAsync();
+        Assert.Equal(ActionKindCatalog.Move, changeEvent.ActionKind);
+        Assert.Equal(e1, changeEvent.EntryId);
+    }
+
+    [Fact]
+    public async Task MoveEntry_FoldInto_MigratesRegistryLinksAndDeactivatesSource()
+    {
+        var (g1, e1, g2, e2) = await SeedTwoGroupsSameBranchForFoldAsync();
+        var doc = await SeedApplicantDocumentAsync("وزارة التعليم", "دمشق");
+        var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
+        row.RegistryId = e1;
+        await _db.SaveChangesAsync();
+
+        var result = await _service.MoveEntryAsync(e1, new MoveEntryRequest(null, e2, null, null, null, null), ManagerActor());
+
+        Assert.Equal(g2, result.ToGroupId);
+        Assert.True(result.AffectedDocuments > 0);
+
+        var sourceEntry = await _db.PublicEntities.FindAsync(e1);
+        Assert.False(sourceEntry!.IsActive);
+
+        var targetEntry = await _db.PublicEntities.Include(e => e.Aliases).SingleAsync(e => e.Id == e2);
+        Assert.Contains(targetEntry.Aliases, a => a.AliasText == "وزارة التعليم");
+
+        var updatedRow = await _db.ApplicantPublicEntities.FindAsync(row.Id);
+        Assert.Equal(e2, updatedRow!.RegistryId);
+
+        Assert.Contains("move_entity_registry", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task MoveEntry_NeedsReview_Throws()
+    {
+        var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
+        var entry = await _db.PublicEntities.FindAsync(e1);
+        entry!.NeedsReview = true;
+        await _db.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, null, null, null, null), ManagerActor()));
+    }
+
+    [Fact]
+    public async Task MoveEntry_ConflictInTargetGroup_Throws()
+    {
+        var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
+        await SeedConflictEntryAsync(g2, "هيئة سكن", "دمشق", "الفرع الرئيسي");
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, null, null, null, null), ManagerActor()));
+    }
+
+    [Fact]
+    public async Task MoveEntry_NoTarget_Throws()
+    {
+        var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.MoveEntryAsync(e1, new MoveEntryRequest(null, null, null, null, null, null), ManagerActor()));
+    }
+
+    [Fact]
+    public async Task MoveEntry_SendsHeadAlert()
+    {
+        var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
+        await _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, null, null, null, null), ManagerActor());
+
+        var alert = await _db.HeadAlerts.Include(h => h.Recipients).SingleAsync();
+        Assert.Contains("أُلحق بقيدكم فرع", alert.Message);
+        Assert.Contains(alert.Recipients, r => r.UserId == _headDamascusId);
+    }
+
+    [Fact]
+    public async Task MoveAllEntries_ModeA_TransfersAllEntries()
+    {
+        var (g1, e1, g2, e2) = await SeedTwoGroupsForMoveAsync();
+        var result = await _service.MoveAllEntriesAsync(
+            new MoveAllEntriesRequest(g1, g2, null, null, null, null), ManagerActor());
+
+        Assert.Equal(1, result.EntriesMoved);
+        Assert.Equal(g2, result.TargetGroupId);
+
+        var movedEntry = await _db.PublicEntities.FindAsync(e1);
+        Assert.Equal(g2, movedEntry!.GroupId);
+
+        Assert.Contains("move_all_entity_registry", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task MoveAllEntries_ConflictInTarget_Throws()
+    {
+        var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
+        await SeedConflictEntryAsync(g2, "هيئة سكن", "دمشق", "الفرع الرئيسي");
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.MoveAllEntriesAsync(new MoveAllEntriesRequest(g1, g2, null, null, null, null), ManagerActor()));
+    }
+
+    [Fact]
+    public async Task MoveEntry_SelfMoveFold_Throws()
+    {
+        var (g1, e1, _, _) = await SeedTwoGroupsForMoveAsync();
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.MoveEntryAsync(e1, new MoveEntryRequest(null, e1, null, null, null, null), ManagerActor()));
+    }
+
+    [Fact]
+    public async Task MoveEntry_NonExistentEntry_Throws()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.MoveEntryAsync(9999, new MoveEntryRequest(1, null, null, null, null, null), ManagerActor()));
+    }
+
+    [Fact]
+    public async Task MoveEntry_SameGroup_Throws()
+    {
+        var (g1, e1, _, _) = await SeedTwoGroupsForMoveAsync();
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.MoveEntryAsync(e1, new MoveEntryRequest(g1, null, null, null, null, null), ManagerActor()));
+    }
+
+    [Fact]
+    public async Task MoveAllEntries_SameGroup_Throws()
+    {
+        var (g1, _, _, _) = await SeedTwoGroupsForMoveAsync();
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.MoveAllEntriesAsync(new MoveAllEntriesRequest(g1, g1, null, null, null, null), ManagerActor()));
+    }
+
+    [Fact]
+    public async Task Create_WithCoverageLabel_StoresLabel()
+    {
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "وزارة الصحة", "ministry", "دمشق", "الفرع الرئيسي", CoverageLabel: "تغطية دمشق"), ManagerActor());
+
+        Assert.Equal("تغطية دمشق", dto.CoverageLabel);
+        var stored = await _db.PublicEntities.FindAsync(dto.Id);
+        Assert.Equal("تغطية دمشق", stored!.CoverageLabel);
+    }
+
+    [Fact]
+    public async Task Create_CoverageLabelExceeds150_Throws()
+    {
+        var longLabel = new string('أ', 151);
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(new CreatePublicEntityRequest(
+                "هيئة جديدة", "authority", "دمشق", "الفرع الرئيسي", CoverageLabel: longLabel), ManagerActor()));
+    }
+
+    [Fact]
+    public async Task Create_CoverageLabelMatchesGovernorate_Throws()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(new CreatePublicEntityRequest(
+                "هيئة جديدة", "authority", "دمشق", "الفرع الرئيسي", CoverageLabel: "دمشق"), ManagerActor()));
+    }
+
+    [Fact]
+    public async Task Update_CoverageLabel_StoresLabel()
+    {
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "وزارة الصحة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var updated = await _service.UpdateAsync(dto.Id, new UpdatePublicEntityRequest(
+            null, null, null, null, null, null, null, CoverageLabel: "تغطية دمشق"), ManagerActor());
+        Assert.Equal("تغطية دمشق", updated!.CoverageLabel);
+    }
+
+    [Fact]
+    public async Task Update_CoverageLabelMatchesGovernorate_Throws()
+    {
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "هيئة جديدة", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateAsync(dto.Id, new UpdatePublicEntityRequest(
+                null, null, null, null, null, null, null, CoverageLabel: "دمشق"), ManagerActor()));
+    }
+
+    [Fact]
+    public async Task Create_CoverageLabelWithArabicDigits_Throws()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(new CreatePublicEntityRequest(
+                "هيئة جديدة", "authority", "دمشق", "الفرع الرئيسي", CoverageLabel: "تغطية ١٢٣"), ManagerActor()));
+    }
+
+    [Fact]
+    public async Task Create_CoverageLabelTrimmed()
+    {
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "وزارة الثقافة", "ministry", "دمشق", "الفرع الرئيسي", CoverageLabel: "  تغطية ثقافة  "), ManagerActor());
+        Assert.Equal("تغطية ثقافة", dto.CoverageLabel);
+    }
+
+    [Fact]
+    public async Task MoveEntry_Fold_CreatesDocumentOccurrence()
+    {
+        var doc = await SeedApplicantDocumentAsync("وزارة التعليم", "دمشق");
+        var (g1, e1, g2, e2) = await SeedTwoGroupsSameBranchForFoldAsync();
+        var entry1 = await _db.PublicEntities.FindAsync(e1);
+        doc.ApplicantPublicEntities.First().RegistryId = e1;
+        await _db.SaveChangesAsync();
+
+        await _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, e2, null, null, null, null), ManagerActor());
+
+        var occ = await _db.DocumentOccurrences.SingleAsync(o => o.DocumentId == doc.Id);
+        Assert.Equal(OccurrenceTypeCatalog.EntityChange, occ.OccurrenceType);
+        Assert.Contains("نقل", occ.Details!);
+    }
+
+    [Fact]
+    public async Task MoveEntry_ModeA_CreatesDocumentOccurrence()
+    {
+        var doc = await SeedApplicantDocumentAsync("وزارة التعليم", "دمشق");
+        var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
+        doc.ApplicantPublicEntities.First().RegistryId = e1;
+        await _db.SaveChangesAsync();
+
+        await _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, null, null, null, null), ManagerActor());
+
+        var occ = await _db.DocumentOccurrences.SingleAsync(o => o.DocumentId == doc.Id);
+        Assert.Equal(OccurrenceTypeCatalog.EntityChange, occ.OccurrenceType);
+        Assert.Contains("نقل", occ.Details!);
+    }
+
+    [Fact]
+    public async Task MoveEntry_CreatesChangeEvent()
+    {
+        var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
+        await _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, "admin_decision", "123", "2026/1/1", "ملاحظة"), ManagerActor());
+
+        var evt = await _db.PublicEntityChangeEvents.SingleAsync();
+        Assert.Equal(e1, evt.EntryId);
+        Assert.Equal(ActionKindCatalog.Move, evt.ActionKind);
+        Assert.Equal("admin_decision", evt.DecreeKind);
+        Assert.Equal("123", evt.DecreeNumber);
+        var payload = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(evt.PayloadJson);
+        Assert.Equal("ملاحظة", payload.GetProperty("note").GetString());
+    }
+
+    [Fact]
+    public async Task MoveAllEntries_CreatesChangeEvent()
+    {
+        var (g1, _, g2, _) = await SeedTwoGroupsForMoveAsync();
+        await _service.MoveAllEntriesAsync(new MoveAllEntriesRequest(g1, g2, null, null, null, "نقل جماعي"), ManagerActor());
+
+        var evt = await _db.PublicEntityChangeEvents.SingleAsync();
+        Assert.Equal(ActionKindCatalog.Move, evt.ActionKind);
+        var payload = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(evt.PayloadJson);
+        Assert.Equal("نقل جماعي", payload.GetProperty("note").GetString());
     }
 }

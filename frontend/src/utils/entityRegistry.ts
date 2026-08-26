@@ -40,3 +40,8 @@ export function publicEntityStatusLabel(status: string | null | undefined): stri
       return status ?? '';
   }
 }
+
+/** اسم المحافظة المعروض: CoverageLabel إن وُجد، وإلا المحافظة الأصلية. */
+export function formatEntityCoverage(entry: { coverageLabel?: string | null; governorate: string }): string {
+  return entry.coverageLabel?.trim() || entry.governorate;
+}

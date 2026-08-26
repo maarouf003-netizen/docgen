@@ -7,7 +7,8 @@ public record CreatePublicEntityRequest(
     string Governorate,
     string BranchName,
     string? CitationFormula = null,
-    IReadOnlyList<string>? Aliases = null);
+    IReadOnlyList<string>? Aliases = null,
+    string? CoverageLabel = null);
 
 /// <summary>
 /// تعديل قيد/هوية: أي حقل يُترك null يبقى كما هو. تغيير CanonicalName يعني
@@ -20,7 +21,8 @@ public record UpdatePublicEntityRequest(
     string? BranchName,
     string? CitationFormula,
     string? Status,
-    bool? IsActive);
+    bool? IsActive,
+    string? CoverageLabel = null);
 
 /// <summary>إضافة اسم كتابي بديل لقيد.</summary>
 public record AddPublicEntityAliasRequest(string AliasText);
@@ -40,7 +42,9 @@ public record PublicEntityEntryDto(
     IReadOnlyList<string> Aliases,
     string? CreatedByName = null,
     /// <summary>أدخلها محامٍ وهي بانتظار مراجعة رئيس القسم (النموذج الجديد).</summary>
-    bool NeedsReview = false);
+    bool NeedsReview = false,
+    /// <summary>تسمية التغطية الجغرافية (تظهر بدل المحافظة في البطاقات والبحث).</summary>
+    string? CoverageLabel = null);
 
 /// <summary>كتابة متمايزة واحدة لنص جهة مع عدّاد ملفاتها وجهتها في الاستيراد.</summary>
 public record ImportVariantDto(
@@ -83,3 +87,39 @@ public record ImportCommitResultDto(
     int GroupsCreated,
     int EntriesCreated,
     int AliasesAdded);
+
+// ── النقل (MoveEntry) ──
+
+/// <summary>طلب نقل قيد جهة من هوية إلى أخرى أو طيّه في قيد قائم.</summary>
+public record MoveEntryRequest(
+    int? TargetGroupId,
+    int? TargetEntryId,
+    string? DecreeKind,
+    string? DecreeNumber,
+    string? DecreeDate,
+    string? Note);
+
+/// <summary>طلب نقل جميع قيود مجموعة إلى مجموعة أخرى (تبعية كاملة).</summary>
+public record MoveAllEntriesRequest(
+    int SourceGroupId,
+    int TargetGroupId,
+    string? DecreeKind,
+    string? DecreeNumber,
+    string? DecreeDate,
+    string? Note);
+
+/// <summary>نتيجة نقل قيد واحد.</summary>
+public record MoveEntryResponse(
+    int EntryId,
+    int FromGroupId,
+    int ToGroupId,
+    int AffectedDocuments,
+    int ChangeEventId);
+
+/// <summary>نتيجة نقل جميع قيود مجموعة.</summary>
+public record MoveAllEntriesResponse(
+    int SourceGroupId,
+    int TargetGroupId,
+    int EntriesMoved,
+    int AffectedDocuments,
+    int ChangeEventId);

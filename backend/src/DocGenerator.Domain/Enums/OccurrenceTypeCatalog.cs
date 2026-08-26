@@ -30,9 +30,12 @@ public static class OccurrenceTypeCatalog
     /// </summary>
     public const string Revert = "revert";
 
+    /// <summary>حدث تغيير على قيد أو هوية أم في سجل الجهات (يُسجَّل آليًا فقط).</summary>
+    public const string EntityChange = "entity-change";
+
     public static readonly IReadOnlySet<string> ValidTypes = new HashSet<string>
     {
-        StruckOff, Renewal, Deferred, Settled, Forcible, Revert,
+        StruckOff, Renewal, Deferred, Settled, Forcible, Revert, EntityChange,
     };
 
     public static string ToLabel(string type) => type switch
@@ -43,6 +46,7 @@ public static class OccurrenceTypeCatalog
         Settled => "منفذ بالتسوية",
         Forcible => "منفذ جبريا",
         Revert => "تراجع / إلغاء",
+        EntityChange => "تغيير جهة",
         _ => StruckOff,
     };
 

@@ -930,7 +930,7 @@ export interface BaseNumberHistoryDto {
 }
 
 /** نوع وقعة الملف: شطب/تجديد (وضع «منفذ عليه») أو إجراء تغيير حالة (نظام «طالبة تنفيذ»). */
-export type OccurrenceType = 'struck-off' | 'renewal' | 'deferred' | 'settled' | 'forcible' | 'revert';
+export type OccurrenceType = 'struck-off' | 'renewal' | 'deferred' | 'settled' | 'forcible' | 'revert' | 'entity-change';
 
 /** وقعة واحدة من «وقوعات الملف»: شطب/تجديد أو إجراء تغيير حالة (تريث/منفذ/تراجع). */
 export interface DocumentOccurrenceDto {
@@ -1262,6 +1262,8 @@ export interface PublicEntityEntryDto {
   createdByName?: string | null;
   /** أدخلها محامٍ وهي بانتظار مراجعة رئيس القسم (نموذج الحوكمة الجديد). */
   needsReview?: boolean;
+  /** تسمية التغطية الجغرافية (تظهر بدل المحافظة في البطاقات والبحث). */
+  coverageLabel?: string | null;
 }
 
 /** نتيجة قائمة/بحث السجل المصدّرة. */
@@ -1280,6 +1282,7 @@ export interface CreatePublicEntityRequest {
   branchName: string;
   citationFormula?: CitationFormula | null;
   aliases?: string[] | null;
+  coverageLabel?: string | null;
 }
 
 /** أي حقل يُترك undefined يبقى كما هو؛ canonicalName يعني إعادة تسمية جماعية. */
@@ -1291,6 +1294,7 @@ export interface UpdatePublicEntityRequest {
   citationFormula?: CitationFormula | null;
   status?: PublicEntityStatus | null;
   isActive?: boolean | null;
+  coverageLabel?: string | null;
 }
 
 export interface AddPublicEntityAliasRequest {
@@ -1338,6 +1342,46 @@ export interface ImportCommitResultDto {
   groupsCreated: number;
   entriesCreated: number;
   aliasesAdded: number;
+}
+
+/* ── النقل (MoveEntry) ──────────────────────────────────────────────── */
+
+/** طلب نقل قيد جهة من هوية إلى أخرى أو طيّه في قيد قائم. */
+export interface MoveEntryRequest {
+  targetGroupId?: number | null;
+  targetEntryId?: number | null;
+  decreeKind?: string | null;
+  decreeNumber?: string | null;
+  decreeDate?: string | null;
+  note?: string | null;
+}
+
+/** طلب نقل جميع قيود مجموعة إلى مجموعة أخرى (تبعية كاملة). */
+export interface MoveAllEntriesRequest {
+  sourceGroupId: number;
+  targetGroupId: number;
+  decreeKind?: string | null;
+  decreeNumber?: string | null;
+  decreeDate?: string | null;
+  note?: string | null;
+}
+
+/** نتيجة نقل قيد واحد. */
+export interface MoveEntryResponse {
+  entryId: number;
+  fromGroupId: number;
+  toGroupId: number;
+  affectedDocuments: number;
+  changeEventId: number;
+}
+
+/** نتيجة نقل جميع قيود مجموعة. */
+export interface MoveAllEntriesResponse {
+  sourceGroupId: number;
+  targetGroupId: number;
+  entriesMoved: number;
+  affectedDocuments: number;
+  changeEventId: number;
 }
 
 /* ── بوابة مندوب الجهة العامة (المرحلة 3) ────────────────────────────── */

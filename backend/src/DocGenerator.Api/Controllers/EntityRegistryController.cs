@@ -181,4 +181,44 @@ public class EntityRegistryController : ControllerBase
             return BadRequest(new { message = e.Message });
         }
     }
+
+    /// <summary>نقل قيد من هوية أم إلى أخرى أو طيه في قيد مطابق (د3).</summary>
+    [HttpPost("{id:int}/move")]
+    public async Task<IActionResult> MoveEntry(int id, [FromBody] MoveEntryRequest request, CancellationToken ct)
+    {
+        if (!RolePermissions.CanManageEntityRegistry(Role))
+            return Forbid();
+        try
+        {
+            return Ok(await _registry.MoveEntryAsync(id, request, Actor, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    /// <summary>نقل جميع قيود هوية أم إلى هوية أم أخرى (د3 — الوضع أ فقط).</summary>
+    [HttpPost("move-all")]
+    public async Task<IActionResult> MoveAllEntries([FromBody] MoveAllEntriesRequest request, CancellationToken ct)
+    {
+        if (!RolePermissions.HasFullAccess(Role))
+            return Forbid();
+        try
+        {
+            return Ok(await _registry.MoveAllEntriesAsync(request, Actor, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
 }

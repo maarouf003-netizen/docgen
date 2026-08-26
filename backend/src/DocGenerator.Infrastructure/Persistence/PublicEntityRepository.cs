@@ -108,4 +108,38 @@ public class PublicEntityRepository : IPublicEntityRepository
             .Where(e => e.EntityName != null && e.EntityNature == PartyNatureCatalog.PublicEntity
                 && names.Contains(e.EntityName))
             .ToListAsync(ct);
+
+    // ── نقل القيد (د3) ──
+
+    public async Task<List<Document>> ListDocumentsLinkedToEntryAsync(int entryId, CancellationToken ct = default)
+    {
+        var ids = new List<int>();
+        ids.AddRange(await _db.ApplicantPublicEntities.AsNoTracking()
+            .Where(a => a.RegistryId == entryId)
+            .Select(a => a.DocumentId)
+            .Distinct()
+            .ToListAsync(ct));
+        ids.AddRange(await _db.ExecutedPublicEntities.AsNoTracking()
+            .Where(e => e.RegistryId == entryId)
+            .Select(e => e.DocumentId)
+            .Distinct()
+            .ToListAsync(ct));
+        var uniqueIds = ids.Distinct().ToList();
+        if (uniqueIds.Count == 0)
+            return new List<Document>();
+        return await _db.Documents
+            .Include(d => d.ApplicantPublicEntities).ThenInclude(a => a.Registry).ThenInclude(r => r!.Group)
+            .Include(d => d.ExecutedPublicEntities).ThenInclude(e => e.Registry).ThenInclude(r => r!.Group)
+            .Include(d => d.Heirs)
+            .Include(d => d.Guarantors)
+            .Include(d => d.ExecutionApplicants)
+            .Include(d => d.ExecutedNaturalPersons)
+            .Include(d => d.ExecutedHeirs)
+            .Where(d => uniqueIds.Contains(d.Id))
+            .ToListAsync(ct);
+    }
+
+    public Task<PublicEntity?> FindEntryInGroupAsync(int groupId, string governorate, string branchName, CancellationToken ct = default)
+        => _db.PublicEntities.FirstOrDefaultAsync(
+            e => e.GroupId == groupId && e.Governorate == governorate && e.BranchName == branchName, ct);
 }
