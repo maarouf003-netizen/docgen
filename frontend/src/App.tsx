@@ -27,6 +27,7 @@ const EntityDelegates = lazy(() => import('./pages/EntityDelegates'));
 const PortalFiles = lazy(() => import('./pages/PortalFiles'));
 const PortalFileDetail = lazy(() => import('./pages/PortalFileDetail'));
 const AuditLogs = lazy(() => import('./pages/AuditLogs'));
+const EntityChangeLog = lazy(() => import('./pages/EntityChangeLog'));
 const ChangePassword = lazy(() => import('./pages/ChangePassword'));
 const ReviewsList = lazy(() => import('./pages/ReviewsList'));
 const ReviewDetail = lazy(() => import('./pages/ReviewDetail'));
@@ -179,6 +180,14 @@ export default function App() {
               element={
                 <RequireRole allowed={(_role, hasFullAccess, isHead) => hasFullAccess || isHead}>
                   <AuditLogs />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/entity-change-log"
+              element={
+                <RequireRole allowed={(_role, hasFullAccess) => hasFullAccess}>
+                  <EntityChangeLog />
                 </RequireRole>
               }
             />

@@ -1042,6 +1042,7 @@ public class PublicEntityConfiguration : IEntityTypeConfiguration<PublicEntity>
         builder.Property(e => e.BranchName).HasMaxLength(200).IsRequired();
         builder.Property(e => e.CitationFormula).HasMaxLength(20).IsRequired();
         builder.Property(e => e.Status).HasMaxLength(20).IsRequired();
+        builder.Property(e => e.CoverageLabel).HasMaxLength(150);
         builder.Property(e => e.ReviewedAtUtc);
 
         builder.HasIndex(e => new { e.GroupId, e.Governorate, e.BranchName }).IsUnique();
@@ -1050,6 +1051,7 @@ public class PublicEntityConfiguration : IEntityTypeConfiguration<PublicEntity>
         builder.HasIndex(e => e.GroupId);
         builder.HasIndex(e => e.NeedsReview);
         builder.HasIndex(e => e.ReviewedById);
+        builder.HasIndex(e => e.IsActive);
 
         builder.HasOne(e => e.Group)
             .WithMany(g => g.Entries)
@@ -1087,5 +1089,44 @@ public class PublicEntityAliasConfiguration : IEntityTypeConfiguration<PublicEnt
             .WithMany(e => e.Aliases)
             .HasForeignKey(a => a.PublicEntityId)
             .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+/// <summary>
+/// حدث تغيير على قيد أو هوية أم في سجل الجهات: يُفهرس حسب القيد والهوية وال风机 والزمن.
+/// </summary>
+public class PublicEntityChangeEventConfiguration : IEntityTypeConfiguration<PublicEntityChangeEvent>
+{
+    public void Configure(EntityTypeBuilder<PublicEntityChangeEvent> builder)
+    {
+        builder.ToTable("PublicEntityChangeEvents");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.ActionKind).HasMaxLength(30).IsRequired();
+        builder.Property(e => e.DecreeKind).HasMaxLength(30);
+        builder.Property(e => e.DecreeNumber).HasMaxLength(50);
+        builder.Property(e => e.PayloadJson).IsRequired();
+
+        builder.HasIndex(e => e.EntryId);
+        builder.HasIndex(e => e.GroupId);
+        builder.HasIndex(e => e.CreatedAtUtc);
+        builder.HasIndex(e => e.ActionKind);
+
+        // القيد المتأثر: يُفكّ بحذفه (SetNull).
+        builder.HasOne(e => e.Entry)
+            .WithMany()
+            .HasForeignKey(e => e.EntryId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // الهوية الأم المتأثرة: يُفكّ بحذفها (SetNull).
+        builder.HasOne(e => e.Group)
+            .WithMany()
+            .HasForeignKey(e => e.GroupId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // الفاعل: منع حذف المستخدم إن كان لديه أحداث مسجلة.
+        builder.HasOne(e => e.ActorUser)
+            .WithMany()
+            .HasForeignKey(e => e.ActorUserId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

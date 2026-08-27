@@ -22,6 +22,7 @@ import { mostRecentSelection } from '../components/dashboard/dashboardFormat';
 import type { PeriodSelection } from '../components/dashboard/dashboardTypes';
 import { ManagerStatsSection } from '../components/dashboard/ManagerStatsSection';
 import { ReminderList } from '../components/dashboard/ReminderList';
+import { formatEntityCoverage } from '../utils/entityRegistry';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -432,7 +433,7 @@ export default function Dashboard() {
                     <li key={e.id} className="px-4 sm:px-5 py-3">
                       <p className="font-medium text-gray-800 break-words">{e.canonicalName}</p>
                       <p className="text-xs text-gray-500 mt-0.5 tabular-nums">
-                        {e.governorate} / {e.branchName} · أدخلها {e.createdByName || 'محامٍ'}
+                        {formatEntityCoverage(e)} / {e.branchName} · أدخلها {e.createdByName || 'محامٍ'}
                       </p>
                     </li>
                   ))}

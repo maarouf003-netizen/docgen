@@ -128,6 +128,7 @@ export default function Layout() {
     if (canManageUsers) navItems.push({ to: '/users/manage', label: 'إدارة المستخدمين' });
     if (canManageUsers) navItems.push({ to: '/branches/manage', label: 'إدارة الفروع' });
     if (hasFullAccess) navItems.push({ to: '/users', label: 'نشاط المستخدمين' });
+    if (hasFullAccess) navItems.push({ to: '/entity-change-log', label: 'سجل تغييرات الجهات' });
     if (canViewAuditLogs) navItems.push({ to: '/audit-logs', label: 'سجل التدقيق' });
   }
 

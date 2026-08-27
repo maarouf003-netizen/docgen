@@ -6,6 +6,7 @@ import {
   CITATION_FORMULA_OPTIONS,
   ENTITY_TYPE_OPTIONS,
   entityTypeLabel,
+  formatEntityCoverage,
 } from '../utils/entityRegistry';
 import type { PublicEntityEntryDto } from '../types';
 
@@ -252,7 +253,7 @@ export default function EntityRegistryReview() {
               <div className="min-w-0">
                 <h3 className="font-bold text-gray-800 break-words">{entry.canonicalName}</h3>
                 <p className="text-sm text-gray-600 mt-1">
-                  {entityTypeLabel(entry.entityType)} · {entry.governorate} / {entry.branchName}
+                  {entityTypeLabel(entry.entityType)} · {formatEntityCoverage(entry)} / {entry.branchName}
                 </p>
                 <p className="text-xs text-gray-400 mt-0.5">
                   أدخلها: {entry.createdByName || 'محامٍ'}

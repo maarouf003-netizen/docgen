@@ -5,6 +5,7 @@ import {
   CITATION_FORMULA_OPTIONS,
   ENTITY_TYPE_OPTIONS,
   entityTypeLabel,
+  formatEntityCoverage,
   publicEntityStatusLabel,
 } from '../../utils/entityRegistry';
 import type {
@@ -221,7 +222,7 @@ export function PublicEntityPickerModal({ onClose, onPick }: PublicEntityPickerM
                       {entry.canonicalName}
                     </span>
                     <span className="block text-xs text-gray-500 mt-0.5">
-                      {entityTypeLabel(entry.entityType)} · {entry.governorate} / {entry.branchName}
+                      {entityTypeLabel(entry.entityType)} · {formatEntityCoverage(entry)} / {entry.branchName}
                     </span>
                   </span>
                   {entry.status === 'pending' ? (

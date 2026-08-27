@@ -129,13 +129,39 @@ npm test
 
 > ضع هنا أي هجرة جديدة لم تُطبَّق على قواعد البيانات بعد، واشطب السطر بعد `dotnet ef database update` الناجح في النشر.
 
+- [ ] **2026-08-19 — `AddHeadAlertDelegationLink`** (ربط تنبيهات رؤساء الأقسام بالمندوبية):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260819124219_AddHeadAlertDelegationLink.cs` — يضيف عمود `DelegationId` إلى `HeadAlerts` (FK SetNull + فهرس).
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `MigrationsPostgres\20260819124309_AddHeadAlertDelegationLink.cs` — نفسه.
+  - بدون التطبيق سيفشل ربط تنبيه المراجعة بالمندوبية برسالة `no such column: h.DelegationId`.
 - [ ] **2026-08-20 — `AddForcibleTransferAndSnapshotAdjusted`** (ميزة «تاريخ قرار الإحالة القطعية»/«اعتبار الملف منفذًا كاملًا بهذا البيع»):
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260820180256_AddForcibleTransferAndSnapshotAdjusted.cs` — يضيف `ForcibleTransferDate` و`ForcibleTransferNoticeNumber` إلى `Documents` و`SnapshotAdjusted` إلى `DelegationAssets`.
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `MigrationsPostgres\20260820180319_AddForcibleTransferAndSnapshotAdjusted.cs` — نفسه.
+- [ ] **2026-08-20 — `RemoveSendBookColumns`** (حذف أعمدة كتاب الإرسال من المندوبية):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260820131251_RemoveSendBookColumns.cs` — يحذف `SendBookDate` و`SendBookNumber` من `DocumentDelegations`.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `MigrationsPostgres\20260820131305_RemoveSendBookColumns.cs` — نفسه.
+- [ ] **2026-08-20 — `AlignPostgresTimestampTypes`** (تنسيق أنواع التوقيت في PostgreSQL فقط):
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `MigrationsPostgres\20260820211413_AlignPostgresTimestampTypes.cs` — يحوّل `ForcibleTransferDate` و`ExecutedExecutionDate` في `Documents` إلى `timestamp with time zone`.
+  - ⚠️ هذا للـ PostgreSQL فقط — لا يوجد SQLite مقابل.
+- [ ] **2026-08-22 — `AddAssetSeizureDate`** (تاريخ صك seizure على الأصول):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260822215648_AddAssetSeizureDate.cs` — يضيف عمود `SeizureDate` إلى `Assets`.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `MigrationsPostgres\20260822215846_AddAssetSeizureDatePg.cs` — نفسه.
+  - بدون التطبيق سيفشل عرض/حفظ تاريخ صك seizures برسالة `no such column: a.SeizureDate`.
 - [ ] **2026-08-23 — `AddDocumentAppeals` / `AddDocumentAppealsPg`** (ميزة «الاستئنافات» — المرحلة 1):
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260823110935_AddDocumentAppeals.cs` — ينشئ جداول `DocumentAppeals` و`AppealActions` و`AppealBaseNumbers` ويضيف عمود `AppealId` إلى `HeadAlerts`.
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `MigrationsPostgres\20260823110958_AddDocumentAppealsPg.cs` — نفسه.
   - بدون التطبيق سيفشل الإتمام/الاعتبار فعليًا برسالة `no such column: …` رغم نجاح الاختبارات محليًا.
+- [ ] **2026-08-24 — `AddReviewLetters`** (ميزة خطابات المراجعة — المرحلة 1):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260824060821_AddReviewLetters.cs` — ينشئ جداول `ReviewLetters` و`ReviewLetterMessages` مع FKs وفهارس.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `MigrationsPostgres\20260824064804_AddReviewLettersPg.cs` — نفسه.
+  - بدون التطبيق سيفشل فتح شاشة خطابات المراجعة برسالة `no such table: ReviewLetters`.
+- [ ] **2026-08-24 — `AddReviewLetterNotifications`** (إشعارات خطابات المراجعة):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260824073441_AddReviewLetterNotifications.cs` — يضيف `IsSeenByLawyer` إلى `ReviewLetterMessages` و`ReviewLetterId` إلى `HeadAlerts` (FK SetNull + فهرس).
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `MigrationsPostgres\20260824073458_AddReviewLetterNotificationsPg.cs` — نفسه.
+  - بدون التطبيق سيفشل إرسال إشعار خطاب مراجعة للمحامي برسالة `no such column: h.ReviewLetterId`.
+- [ ] **2026-08-24 — `AddDocumentFieldChanges`** (تغييرات حقول المستند في سجل التدقيق):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260824104831_AddDocumentFieldChanges.cs` — ينشئ جدول `DocumentFieldChanges` مع FK إلى `AuditLogs` + فهارس مركبة.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `MigrationsPostgres\20260824104844_AddDocumentFieldChangesPg.cs` — نفسه.
+  - بدون التطبيق سيفشل تسجيل تغييرات الحقول في سجل التدقيق برسالة `no such table: DocumentFieldChanges`.
 - [ ] **2026-08-24 — `AddEntityRegistry` / `AddEntityRegistryPg`** (ميزة «بوابة الجهات العامة» — المرحلة 1):
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260824173935_AddEntityRegistry.cs` — ينشئ جداول `PublicEntityGroups` و`PublicEntities` و`PublicEntityAliases` و`PublicEntityProposals` ويضيف عمود `Governorate` إلى `Branches`.
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `MigrationsPostgres\20260824174004_AddEntityRegistryPg.cs` — نفسه.
@@ -152,3 +178,13 @@ npm test
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260826010109_AddEntityRegistryReview.cs` — يضيف `NeedsReview/ReviewedAtUtc/ReviewedById` إلى `PublicEntities` (فهارس + FK SetNull) و**يُسقط جدول `PublicEntityProposals`**.
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `MigrationsPostgres\20260826010122_AddEntityRegistryReviewPg.cs` — نفسه.
   - ⚠️ يسقط بيانات الاقتراحات القديمة نهائيًا — تأكد قبل التطبيق، وبعدده فشل شاشة المراجعة (`no such column`).
+- [ ] **2026-08-26 — `AddCoverageLabel` / `AddCoverageLabelPg`** (تسمية التغطية + سجل تغييرات الهوية — المرحلة 1):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260826152120_AddCoverageLabel.cs` — يضيف عمود `CoverageLabel` إلى `PublicEntities` (max 150) وينشئ جدول `PublicEntityChangeEvents` مع 3 FKs و5 فهارس.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `MigrationsPostgres\20260826152156_AddCoverageLabelPg.cs` — نفسه بأنواع Postgres (`character varying(150)` + `timestamp with time zone`).
+  - بدون التطبيق سيفشل إنشاء قيد جديد بتسمية تغطية وأي عملية نقل/طيّ برسالة `no such column: e.CoverageLabel` أو `no such table: PublicEntityChangeEvents`.
+- [ ] **2026-08-26 — `AddEntityEvents` / `AddEntityEventsPg`** (Snapshot فارغ — الجدول أُنشئ أعلاه):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260826152236_AddEntityEvents.cs` — فارغ (لا إجراء).
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `MigrationsPostgres\20260826152302_AddEntityEventsPg.cs` — نفسه.
+- [ ] **2026-08-26 — `AddIsActiveIndex` / `AddIsActiveIndexPg`** (فهرس `IsActive` على `PublicEntities`):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260826181557_AddIsActiveIndex.cs` — ينشئ `IX_PublicEntities_IsActive`.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `MigrationsPostgres\20260826181623_AddIsActiveIndexPg.cs` — نفسه.

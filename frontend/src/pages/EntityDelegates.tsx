@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
+import { formatEntityCoverage } from '../utils/entityRegistry';
 import type { DelegateDto, PublicEntityEntryDto } from '../types';
 
 interface ScopeDraft {
@@ -170,7 +171,7 @@ export default function EntityDelegates() {
           >
             <option value="">اختر القيد…</option>
             {entries.filter((e) => e.status === 'final').map((e) => (
-              <option key={e.id} value={e.id}>{`${e.canonicalName} — ${e.governorate}/${e.branchName}`}</option>
+              <option key={e.id} value={e.id}>{`${e.canonicalName} — ${formatEntityCoverage(e)}/${e.branchName}`}</option>
             ))}
           </select>
         </div>

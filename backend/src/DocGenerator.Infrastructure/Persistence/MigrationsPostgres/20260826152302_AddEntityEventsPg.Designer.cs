@@ -3,6 +3,7 @@ using System;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 {
     [DbContext(typeof(DocGeneratorPostgresDbContext))]
-    partial class DocGeneratorPostgresDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260826152302_AddEntityEventsPg")]
+    partial class AddEntityEventsPg
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1947,8 +1950,6 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.HasIndex("Governorate");
 
                     b.HasIndex("GroupId");
-
-                    b.HasIndex("IsActive");
 
                     b.HasIndex("NeedsReview");
 

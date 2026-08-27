@@ -32,6 +32,9 @@ public interface IPublicEntityRepository
     /// <summary>رؤساء الأقسام النشطون الذين تتبع فروعهم محافظة محددة — لتوجيه تنبيه المراجعة.</summary>
     Task<List<User>> ListActiveHeadsByGovernorateAsync(string governorate, CancellationToken ct = default);
 
+    /// <summary>رؤساء الأقسام النشطون لفرع محدد — لتوجيه تنبيه المراجعة إلى رئيس فرع المُدخِل.</summary>
+    Task<List<User>> ListActiveHeadsByBranchAsync(int branchId, CancellationToken ct = default);
+
     // ── الاستيراد (د12) ──
 
     /// <summary>نصوص الجهات طالبة التنفيذ المتمايزة مع محافظتها وعدّاد ملفاتها.</summary>
@@ -54,4 +57,23 @@ public interface IPublicEntityRepository
     /// محمّلًا بكامل مجموعات نص البحث كما في الطرف المقابل.
     /// </summary>
     Task<List<ExecutedPublicEntity>> ListExecutedRowsByNamesAsync(IReadOnlyCollection<string> names, CancellationToken ct = default);
+
+    // ── نقل القيد (د3) ──
+
+    /// <summary>
+    /// الملفات المربوطة بقيد معين عبر ApplicantPublicEntity.RegistryId أو ExecutedPublicEntity.RegistryId
+    /// مع تحميل المجموعات الفرعية اللازمة لمزامنة نص البحث.
+    /// </summary>
+    Task<List<Document>> ListDocumentsLinkedToEntryAsync(int entryId, CancellationToken ct = default);
+
+    /// <summary>إيجاد قيد في هوية أم محددة بنفس المحافظة والفرع.</summary>
+    Task<PublicEntity?> FindEntryInGroupAsync(int groupId, string governorate, string branchName, CancellationToken ct = default);
+
+    // ── الدمج (د5 §4) ──
+
+    /// <summary>كل القيود في مجموعة معينة (متتبعة للتعديل).</summary>
+    Task<List<PublicEntity>> ListEntriesByGroupAsync(int groupId, CancellationToken ct = default);
+
+    /// <summary>سجل تغييرات الجهات مع الفاعل والقيد/الهوية — للمراقبة والتصدير.</summary>
+    Task<List<PublicEntityChangeEvent>> ListChangeEventsAsync(CancellationToken ct = default);
 }

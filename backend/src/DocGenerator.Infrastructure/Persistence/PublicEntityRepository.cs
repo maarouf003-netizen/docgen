@@ -53,6 +53,14 @@ public class PublicEntityRepository : IPublicEntityRepository
             .OrderBy(u => u.Id)
             .ToListAsync(ct);
 
+    public Task<List<User>> ListActiveHeadsByBranchAsync(int branchId, CancellationToken ct = default)
+        => _db.Users.AsNoTracking()
+            .Include(u => u.Branch)
+            .Where(u => u.Role == UserRole.Head && u.IsActive
+                && u.BranchId == branchId)
+            .OrderBy(u => u.Id)
+            .ToListAsync(ct);
+
     // ── الاستيراد (د12): نصوص متمايزة مع عدّاد ملفاتها، والتطبيع يجري في الذاكرة ──
 
     public async Task<List<(string Name, string? Governorate, int DocumentCount)>> ListDistinctApplicantTextsAsync(CancellationToken ct = default)
@@ -107,5 +115,58 @@ public class PublicEntityRepository : IPublicEntityRepository
             .Include(e => e.Document).ThenInclude(d => d.ExecutedHeirs)
             .Where(e => e.EntityName != null && e.EntityNature == PartyNatureCatalog.PublicEntity
                 && names.Contains(e.EntityName))
+            .ToListAsync(ct);
+
+    // ── نقل القيد (د3) ──
+
+    public async Task<List<Document>> ListDocumentsLinkedToEntryAsync(int entryId, CancellationToken ct = default)
+    {
+        var ids = new List<int>();
+        ids.AddRange(await _db.ApplicantPublicEntities.AsNoTracking()
+            .Where(a => a.RegistryId == entryId)
+            .Select(a => a.DocumentId)
+            .Distinct()
+            .ToListAsync(ct));
+        ids.AddRange(await _db.ExecutedPublicEntities.AsNoTracking()
+            .Where(e => e.RegistryId == entryId)
+            .Select(e => e.DocumentId)
+            .Distinct()
+            .ToListAsync(ct));
+        var uniqueIds = ids.Distinct().ToList();
+        if (uniqueIds.Count == 0)
+            return new List<Document>();
+        return await _db.Documents
+            .Include(d => d.ApplicantPublicEntities).ThenInclude(a => a.Registry).ThenInclude(r => r!.Group)
+            .Include(d => d.ExecutedPublicEntities).ThenInclude(e => e.Registry).ThenInclude(r => r!.Group)
+            .Include(d => d.Heirs)
+            .Include(d => d.Guarantors)
+            .Include(d => d.ExecutionApplicants)
+            .Include(d => d.ExecutedNaturalPersons)
+            .Include(d => d.ExecutedHeirs)
+            .Where(d => uniqueIds.Contains(d.Id))
+            .ToListAsync(ct);
+    }
+
+    public Task<PublicEntity?> FindEntryInGroupAsync(int groupId, string governorate, string branchName, CancellationToken ct = default)
+        => _db.PublicEntities.FirstOrDefaultAsync(
+            e => e.GroupId == groupId && e.Governorate == governorate && e.BranchName == branchName, ct);
+
+    // ── الدمج (د5 §4) ──
+
+    public async Task<List<PublicEntity>> ListEntriesByGroupAsync(int groupId, CancellationToken ct = default)
+    {
+        return await _db.PublicEntities
+            .Include(e => e.Aliases)
+            .Include(e => e.CreatedBy)
+            .Where(e => e.GroupId == groupId)
+            .ToListAsync(ct);
+    }
+
+    public Task<List<PublicEntityChangeEvent>> ListChangeEventsAsync(CancellationToken ct = default)
+        => _db.PublicEntityChangeEvents.AsNoTracking()
+            .Include(c => c.ActorUser)
+            .Include(c => c.Entry)
+            .Include(c => c.Group)
+            .OrderByDescending(c => c.CreatedAtUtc)
             .ToListAsync(ct);
 }

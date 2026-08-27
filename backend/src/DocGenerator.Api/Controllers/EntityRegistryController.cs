@@ -181,4 +181,117 @@ public class EntityRegistryController : ControllerBase
             return BadRequest(new { message = e.Message });
         }
     }
+
+    /// <summary>نقل قيد من هوية أم إلى أخرى أو طيه في قيد مطابق (د3).</summary>
+    [HttpPost("{id:int}/move")]
+    public async Task<IActionResult> MoveEntry(int id, [FromBody] MoveEntryRequest request, CancellationToken ct)
+    {
+        if (!RolePermissions.CanManageEntityRegistry(Role))
+            return Forbid();
+        try
+        {
+            return Ok(await _registry.MoveEntryAsync(id, request, Actor, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    /// <summary>نقل جميع قيود هوية أم إلى هوية أم أخرى (د3 — الوضع أ فقط).</summary>
+    [HttpPost("move-all")]
+    public async Task<IActionResult> MoveAllEntries([FromBody] MoveAllEntriesRequest request, CancellationToken ct)
+    {
+        if (!RolePermissions.HasFullAccess(Role))
+            return Forbid();
+        try
+        {
+            return Ok(await _registry.MoveAllEntriesAsync(request, Actor, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    // ── الدمج N←1 (د5 §4) — صلاحية مخصصة: CanMergeEntities ──
+
+    /// <summary>معاينة دمج جهات متعددة في هوية واحدة (د5 §4).</summary>
+    [HttpPost("merge-preview")]
+    public async Task<IActionResult> MergePreview([FromBody] MergePreviewRequest request, CancellationToken ct)
+    {
+        if (!RolePermissions.CanMergeEntities(Role))
+            return Forbid();
+        try
+        {
+            return Ok(await _registry.PreviewMergeAsync(request, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+    }
+
+    /// <summary>تنفيذ اعتماد الدمج (د5 §4).</summary>
+    [HttpPost("merge-commit")]
+    public async Task<IActionResult> MergeCommit([FromBody] MergeCommitRequest request, CancellationToken ct)
+    {
+        if (!RolePermissions.CanMergeEntities(Role))
+            return Forbid();
+        try
+        {
+            return Ok(await _registry.CommitMergeAsync(request, Actor, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    /// <summary>سجل تغييرات الجهات — مصدره PublicEntityChangeEvent فقط (د5 §7).</summary>
+    [HttpGet("change-events")]
+    public async Task<IActionResult> ListChangeEvents(
+        [FromQuery] string? governorate,
+        [FromQuery] string? actionKind,
+        [FromQuery] int? actorUserId,
+        [FromQuery] string? from,
+        [FromQuery] string? to,
+        [FromQuery] int page = 1,
+        [FromQuery] int perPage = 20,
+        CancellationToken ct = default)
+    {
+        if (!RolePermissions.HasFullAccess(Role))
+            return Forbid();
+        return Ok(await _registry.ListChangeEventsAsync(
+            new EntityChangeEventQuery(governorate, actionKind, actorUserId, from, to, page, perPage), ct));
+    }
+
+    /// <summary>تصدير سجل التغييرات إلى Excel (نفس فلاتر القائمة).</summary>
+    [HttpGet("change-events/export")]
+    public async Task<IActionResult> ExportChangeEvents(
+        [FromQuery] string? governorate,
+        [FromQuery] string? actionKind,
+        [FromQuery] int? actorUserId,
+        [FromQuery] string? from,
+        [FromQuery] string? to,
+        CancellationToken ct = default)
+    {
+        if (!RolePermissions.HasFullAccess(Role))
+            return Forbid();
+        var bytes = await _registry.ExportChangeEventsAsync(
+            new EntityChangeEventQuery(governorate, actionKind, actorUserId, from, to, 1, 5000), ct);
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "change-events.xlsx");
+    }
 }

@@ -20,6 +20,8 @@ public interface IExcelExportService
         bool includeAdministrativeBranch,
         bool includeAssignedLawyer,
         bool includeViewCount);
+
+    byte[] BuildChangeEventsWorkbook(IReadOnlyList<EntityChangeEventDto> events);
 }
 
 public sealed class ExcelExportService : IExcelExportService
@@ -160,6 +162,47 @@ public sealed class ExcelExportService : IExcelExportService
         var number = doc.DisplayFileNumber ?? doc.FileNumber ?? string.Empty;
         var type = doc.FileType ?? string.Empty;
         return type.Length > 0 ? $"{number} {type}".Trim() : number;
+    }
+
+    public byte[] BuildChangeEventsWorkbook(IReadOnlyList<EntityChangeEventDto> events)
+    {
+        using var stream = new MemoryStream();
+        using (var document = SpreadsheetDocument.Create(stream, SpreadsheetDocumentType.Workbook))
+        {
+            var workbookPart = document.AddWorkbookPart();
+            workbookPart.Workbook = new Workbook(new Sheets());
+            var worksheetPart = workbookPart.AddNewPart<WorksheetPart>();
+            worksheetPart.Worksheet = new Worksheet(new SheetData());
+            worksheetPart.Worksheet.Append(new AutoFilter());
+            var sheets = workbookPart.Workbook.GetFirstChild<Sheets>()!;
+            sheets.AppendChild(new Sheet
+            {
+                Id = workbookPart.GetIdOfPart(worksheetPart),
+                SheetId = 1,
+                Name = "سجل التغييرات",
+            });
+            var sheetData = worksheetPart.Worksheet.GetFirstChild<SheetData>()!;
+            var headers = new[] { "التاريخ", "الفاعل", "النوع", "الجهة", "المحافظة", "المرسوم", "التفاصيل" };
+            sheetData.AppendChild(BuildRow(headers));
+            foreach (var e in events)
+            {
+                var decree = string.Join(" ", new[] { e.DecreeKind, e.DecreeNumber, e.DecreeDate }.Where(v => !string.IsNullOrWhiteSpace(v)));
+                sheetData.AppendChild(BuildRow(new[]
+                {
+                    e.CreatedAtUtc ?? string.Empty,
+                    e.ActorName ?? string.Empty,
+                    e.ActionKind ?? string.Empty,
+                    e.CanonicalName ?? string.Empty,
+                    e.Governorate ?? string.Empty,
+                    decree,
+                    e.PayloadJson ?? string.Empty,
+                }));
+            }
+            worksheetPart.Worksheet.GetFirstChild<AutoFilter>()!.Reference =
+                $"A1:{ColumnLetter(headers.Length)}{1 + events.Count}";
+            worksheetPart.Worksheet.Save();
+        }
+        return stream.ToArray();
     }
 
     private static Row BuildRow(IReadOnlyList<string> values)
