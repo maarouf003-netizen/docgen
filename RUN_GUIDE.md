@@ -128,6 +128,7 @@ npm test
 ### هجرات بانتظار التطبيق (قائمة تراكمية — تُشطب بعد التطبيق)
 
 > ضع هنا أي هجرة جديدة لم تُطبَّق على قواعد البيانات بعد، واشطب السطر بعد `dotnet ef database update` الناجح في النشر.
+> **هجرات الإصدار الحالي `[1.11.0]` فقط (3/سياق — إجمالي 6 ملفات): `AddCoverageLabel` + `AddEntityEvents` (فارغ — الجدول أُنشئ في `AddCoverageLabel`) + `AddIsActiveIndex` ونظائرها `Pg` — انظر التفاصيل أدناه عند `2026-08-26`. البنود الأقدم بقيت معلقة إن لم تُطبَّق سابقًا.
 
 - [ ] **2026-08-19 — `AddHeadAlertDelegationLink`** (ربط تنبيهات رؤساء الأقسام بالمندوبية):
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260819124219_AddHeadAlertDelegationLink.cs` — يضيف عمود `DelegationId` إلى `HeadAlerts` (FK SetNull + فهرس).
