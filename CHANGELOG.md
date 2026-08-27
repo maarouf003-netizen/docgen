@@ -13,6 +13,30 @@
 
 ---
 
+## [1.11.0] — 2026-08-27
+
+### Added — المرحلة 5: تغيير التبعية + الدمج + سجل تغييرات الجهات (ENTITY_MERGE_MOVE_SPEC)
+- **تسمية التغطية** `PublicEntity.CoverageLabel` (string? max 150): تُعرض كـ `CoverageLabel ?? Governorate` في البطاقات/البحث/التوليد، والحوكمة والفلترة والتجميع والفهرس الفريد تبقى على `Governorate` حصرًا؛ تُرفض إن طابقت اسم محافظة من الكتالوج.
+- **جدول `PublicEntityChangeEvents`** (العمود الفقري): `EntryId?/GroupId?/ActionKind/DecreeKind/Number/Date/PayloadJson/ActorUserId/CreatedAtUtc` مع 5 فهارس؛ يُكتب داخل نفس معاملة كل عملية (نقل/طيّ/دمج) ومصدر شاشة المراقبة والوقوعات والتنبيهات.
+- **`MoveEntry` على مستوى القيد (وضعيتان)**: (أ) نقل إلى هوية أم أخرى بتغيير `GroupId`، (ب) طيّ في قيد مطابق بترحيل `RegistryId` وإيقاف المصدر وإضافة اسمه اسمًا بديلًا؛ مع `MoveAllEntries` (تبعية كاملة) — كلها مع وقوعات `entity-change` وتنبيه رئيس الهوية الجديدة وتدقيق `move_entity_registry`.
+- **الدمج `N←1`**: `CanMergeEntities` (Manager/Admin فقط)، `POST merge-preview` + `merge-commit` مع حواجز `NeedsReview` ومنع الذات، وترحيل الروابط حسب خريطة الفروع، ونقل الأسماء البديلة، وإيقاف المُهمَل، وحدث دمج أب بـ `PayloadJson` كامل.
+- **شاشة المراقبة «سجل تغييرات الجهات»** (`GET /api/entity-registry/change-events` + `GET .../export`): مصدرها `PublicEntityChangeEvent` فقط، بفلاتر محافظة/نوع حدث/مستخدم/فترة وترقيم وتصدير `Excel` (`blob` + `ExcelExportService.BuildChangeEventsWorkbook` + `AutoFilter`) — جدول `desktop` + بطاقات `mobile`، `debounce`، `focus-visible:ring`، وتدقيق `export_change_events`.
+- **قسم الوقوعات `entity-change`**: نوع جديد في `OccurrenceTypeCatalog` (`EntityChange`) يظهر في تفاصيل الملف وطباعة الوقوعات.
+
+### Changed
+- **نطاق رئيس القسم**: أصبح ما أدخله محامو فرعه (بغض النظر عن محافظة الجهة — قد يُقيم محامي ملفًا تنفيذيًا على جهة تتبع محافظة أخرى) **أو** قيود محافظة فرعه التي أدخلتها الإدارة (`inCreatorBranch || inGovernorate` في `EnsureHeadScopeAsync` و`ListNeedsReviewAsync` و`ListChangeEvents` عبر `MatchesGovernorate`). تنبيه المراجعة يُوجَّه أولًا لرئيس فرع المُدخِل (`ListActiveHeadsByBranchAsync`) واحتياطًا لرؤساء المحافظة.
+
+### الهجرات الإلزامية عند النشر
+| السياق | الهجرات |
+|---|---|
+| `DocGeneratorDbContext` (SQLite) | `AddCoverageLabel` · `AddEntityEvents` · `AddIsActiveIndex` |
+| `DocGeneratorPostgresDbContext` (PostgreSQL) | `AddCoverageLabelPg` · `AddEntityEventsPg` · `AddIsActiveIndexPg` |
+
+> ⚠️ يجب تنفيذها في نافذة النشر قبل تشغيل الإصدار:
+> `dotnet ef database update --context DocGeneratorDbContext` ثم
+> `dotnet ef database update --context DocGeneratorPostgresDbContext` —
+> وإلا فشل إنشاء قيد بتسمية تغطية أو أي نقل/طيّ/سجل (`no such column/table`). التفاصيل: `RUN_GUIDE.md` §9.
+
 ## [1.10.0] — 2026-08-26
 
 ### Changed — بوابة الجهات: نموذج حوكمة جديد «الدخول الفوري والمراجعة اللاحقة»

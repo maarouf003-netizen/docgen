@@ -169,3 +169,31 @@ public record MergeCommitResponse(
     int AliasesAdded,
     int TotalAffectedDocuments,
     int ChangeEventId);
+
+// ── سجل تغييرات الجهات (د5 §7) ──
+
+/// <summary>سطر في سجل تغييرات الجهات — مصدره PublicEntityChangeEvent فقط.</summary>
+public record EntityChangeEventDto(
+    int Id,
+    int? EntryId,
+    int? GroupId,
+    string ActionKind,
+    string? DecreeKind,
+    string? DecreeNumber,
+    string? DecreeDate,
+    string PayloadJson,
+    int ActorUserId,
+    string? ActorName,
+    string CreatedAtUtc,
+    string? Governorate,
+    string? CanonicalName);
+
+/// <summary>استعلام سجل التغييرات مع ترقيم وفلترة.</summary>
+public record EntityChangeEventQuery(
+    string? Governorate,
+    string? ActionKind,
+    int? ActorUserId,
+    string? From,
+    string? To,
+    int Page = 1,
+    int PerPage = 20);

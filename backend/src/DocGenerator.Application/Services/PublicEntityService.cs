@@ -36,6 +36,12 @@ public interface IPublicEntityService
     /// <summary>قيود بانتظار مراجعة رئيس القسم ضمن نطاقه (المدير/المشرف يرىان الكل).</summary>
     Task<List<PublicEntityEntryDto>> ListNeedsReviewAsync(EntityRegistryActor actor, CancellationToken ct = default);
 
+    /// <summary>سجل تغييرات الجهات — مصدره PublicEntityChangeEvent فقط (د5 §7).</summary>
+    Task<PagedResult<EntityChangeEventDto>> ListChangeEventsAsync(EntityChangeEventQuery query, CancellationToken ct = default);
+
+    /// <summary>تصدير سجل التغييرات إلى Excel (نفس فلاتر القائمة).</summary>
+    Task<byte[]> ExportChangeEventsAsync(EntityChangeEventQuery query, CancellationToken ct = default);
+
     /// <summary>اعتماد قيد كما هو: يقفل مراجعته دون أي تعديل ولا إشعار للمُدخِل.</summary>
     Task<PublicEntityEntryDto?> ApproveReviewAsync(int entryId, EntityRegistryActor actor, CancellationToken ct = default);
 
@@ -147,7 +153,7 @@ public sealed class PublicEntityService : IPublicEntityService
         var aliases = CleanAliases(request.Aliases, ArabicNameNormalizer.Normalize(canonical));
         var coverageLabel = ValidateCoverageLabel(request.CoverageLabel);
 
-        await EnsureHeadScopeAsync(actor, governorate, ct);
+        await EnsureHeadScopeAsync(actor, null, governorate, ct);
         await EnsureNoDuplicateEntryAsync(excludeEntryId: null, canonical, governorate, branchName, ct);
 
         PublicEntityGroup group = new();
@@ -189,15 +195,23 @@ public sealed class PublicEntityService : IPublicEntityService
     }
 
     /// <summary>
-    /// تنبيه رؤساء الأقسام النشطين لمحافظة القيد المُدخل حديثًا بواسطة محامٍ:
-    /// «المحامي فلان أدخل جهة عامة جديدة يرجى مراجعتها». إن لم يوجد رئيس بمحافظة
-    /// مطابقة فلا تنبيه — صفحة المراجعة تعرضه للمدير/المشرف على كل الأحوال.
+    /// تنبيه رئيس فرع المُدخِل (ومحافظة القيد كاحتياط): «المحامي فلان أدخل جهة عامة
+    /// جديدة يرجى مراجعتها». نطاق المراجعة الآن هو ما أدخله محامو فرع الرئيس
+    /// بغض النظر عن محافظة الجهة، لذا يُوجَّه التنبيه أولًا إلى رؤساء فرع المُدخِل؛
+    /// وإن لم يوجد رئيس لفرعه يُحتاط بإرساله إلى رؤساء محافظة القيد.
     /// </summary>
     private async Task InsertEntryReviewAlertsAsync(PublicEntity entry, string? actorName, CancellationToken token)
     {
         var creator = await _entities.GetEntryWithDetailsAsync(entry.Id, token);
         var creatorFullName = creator?.CreatedBy?.FullName ?? actorName ?? "محامٍ";
-        var heads = await _entities.ListActiveHeadsByGovernorateAsync(entry.Governorate, token);
+        var creatorBranchId = creator?.CreatedBy?.BranchId;
+        List<User> heads;
+        if (creatorBranchId.HasValue)
+            heads = await _entities.ListActiveHeadsByBranchAsync(creatorBranchId.Value, token);
+        else
+            heads = await _entities.ListActiveHeadsByGovernorateAsync(entry.Governorate, token);
+        if (heads.Count == 0 && creatorBranchId.HasValue)
+            heads = await _entities.ListActiveHeadsByGovernorateAsync(entry.Governorate, token);
         if (heads.Count == 0)
             return;
 
@@ -246,7 +260,7 @@ public sealed class PublicEntityService : IPublicEntityService
             newBranchName = RequiredWithFallback(request.BranchName, DefaultBranchName, 200);
 
         // نطاق رئيس القسم: قيود محافظته فقط، ولا يعيد تسمية هوية تشمل محافظات أخرى (د5/د6).
-        await EnsureHeadScopeAsync(actor, entry.Governorate, ct);
+        await EnsureHeadScopeAsync(actor, entry, entry.Governorate, ct);
         if (actor.Role == UserRole.Head)
         {
             if (!string.Equals(newGovernorate, entry.Governorate, StringComparison.Ordinal))
@@ -343,7 +357,7 @@ public sealed class PublicEntityService : IPublicEntityService
         if (entry is null)
             return null;
 
-        await EnsureHeadScopeAsync(actor, entry.Governorate, ct);
+        await EnsureHeadScopeAsync(actor, entry, entry.Governorate, ct);
 
         var aliasText = Required(request.AliasText, "الاسم البديل مطلوب", 500);
         var aliasNorm = ArabicNameNormalizer.Normalize(aliasText);
@@ -366,17 +380,18 @@ public sealed class PublicEntityService : IPublicEntityService
     // ── مراجعة سجل الجهات العامة الممثلة (النموذج الجديد) ──
 
     /// <summary>
-    /// قائمة «بحاجة مراجعة»: رئيس القسم يرى محافظة فرعه حصرًا، والمدير/المشرف
-    /// يرىان كل السجل. الفرع بلا محافظة مضبوطة يعني قائمة فارغة للرئيس.
+    /// قائمة «بحاجة مراجعة»: رئيس القسم يرى ما أدخله محامو فرعه (بغض النظر عن محافظة
+    /// الجهة نفسها — قد يُقيم محامٍ ملفًا تنفيذيًا على جهة تتبع محافظة أخرى)، والمدير/
+    /// المشرف يرىان كل السجل. رئيس بلا فرع مضبوط تعني قائمة فارغة.
     /// </summary>
     public async Task<List<PublicEntityEntryDto>> ListNeedsReviewAsync(EntityRegistryActor actor, CancellationToken ct = default)
     {
-        string? governorateFilter = null;
+        int? headBranchId = null;
         if (actor.Role == UserRole.Head)
         {
             var branch = actor.BranchId is null ? null : await _branches.GetByIdAsync(actor.BranchId.Value, ct);
-            governorateFilter = NormalizeOptional(branch?.Governorate);
-            if (governorateFilter is null)
+            headBranchId = branch?.Id;
+            if (headBranchId is null)
                 return new List<PublicEntityEntryDto>();
         }
 
@@ -384,11 +399,83 @@ public sealed class PublicEntityService : IPublicEntityService
         return groups
             .SelectMany(g => g.Entries.Select(e => (Group: g, Entry: e)))
             .Where(x => x.Entry.NeedsReview)
-            .Where(x => governorateFilter is null || x.Entry.Governorate == governorateFilter)
+            .Where(x => headBranchId is null
+                || (x.Entry.CreatedBy != null && x.Entry.CreatedBy.BranchId == headBranchId))
             .OrderByDescending(x => x.Entry.CreatedAt)
             .Select(x => ToEntryDto(x.Group, x.Entry))
             .ToList();
     }
+
+    // ── سجل تغييرات الجهات (د5 §7) ──
+
+    private static (DateTime? From, DateTime? To) ParseChangeEventPeriod(string? fromRaw, string? toRaw)
+    {
+        DateTime? from = null, to = null;
+        var f = ActionDateParser.TryParse(fromRaw);
+        if (f.HasValue) from = f.Value.Date;
+        var t = ActionDateParser.TryParse(toRaw);
+        if (t.HasValue) to = t.Value.Date.AddDays(1).AddTicks(-1);
+        return (from, to);
+    }
+
+    private static bool MatchesGovernorate(PublicEntityChangeEvent e, string? governorate)
+    {
+        if (governorate is null) return true;
+        if (e.Entry != null && e.Entry.Governorate == governorate) return true;
+        if (e.Group != null && e.Group.Entries.Any(en => en.Governorate == governorate)) return true;
+        return false;
+    }
+
+    private async Task<List<PublicEntityChangeEvent>> GetFilteredChangeEventsAsync(EntityChangeEventQuery query, CancellationToken ct)
+    {
+        var all = await _entities.ListChangeEventsAsync(ct);
+        var governorate = NormalizeOptional(query.Governorate);
+        var actionKind = NormalizeOptional(query.ActionKind);
+        var (from, to) = ParseChangeEventPeriod(query.From, query.To);
+        return all
+            .Where(e => MatchesGovernorate(e, governorate))
+            .Where(e => actionKind is null || e.ActionKind == actionKind)
+            .Where(e => query.ActorUserId is null || e.ActorUserId == query.ActorUserId)
+            .Where(e => from is null || e.CreatedAtUtc >= from)
+            .Where(e => to is null || e.CreatedAtUtc <= to)
+            .OrderByDescending(e => e.CreatedAtUtc)
+            .ToList();
+    }
+
+    public async Task<PagedResult<EntityChangeEventDto>> ListChangeEventsAsync(EntityChangeEventQuery query, CancellationToken ct = default)
+    {
+        var filtered = await GetFilteredChangeEventsAsync(query, ct);
+        var page = Math.Max(1, query.Page);
+        var perPage = Math.Clamp(query.PerPage <= 0 ? 20 : query.PerPage, 1, 100);
+        var total = filtered.Count;
+        var items = filtered.Skip((page - 1) * perPage).Take(perPage).Select(ToChangeEventDto).ToList();
+        return new PagedResult<EntityChangeEventDto> { Items = items, Page = page, PerPage = perPage, TotalCount = total };
+    }
+
+    public async Task<byte[]> ExportChangeEventsAsync(EntityChangeEventQuery query, CancellationToken ct = default)
+    {
+        var filtered = await GetFilteredChangeEventsAsync(query, ct);
+        var items = filtered.Take(5000).Select(ToChangeEventDto).ToList();
+        await _audit.LogAsync("system", "export_change_events",
+            details: $"تصدير سجل تغييرات الجهات: {items.Count} سطرًا" + (query.Governorate != null ? $" محافظة={query.Governorate}" : ""), ct: ct);
+        var exporter = new ExcelExportService();
+        return exporter.BuildChangeEventsWorkbook(items);
+    }
+
+    private static EntityChangeEventDto ToChangeEventDto(PublicEntityChangeEvent e) => new(
+        e.Id,
+        e.EntryId,
+        e.GroupId,
+        e.ActionKind,
+        e.DecreeKind,
+        e.DecreeNumber,
+        e.DecreeDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+        e.PayloadJson,
+        e.ActorUserId,
+        e.ActorUser?.FullName ?? e.ActorUser?.Username,
+        e.CreatedAtUtc.ToString("yyyy-MM-ddTHH:mm:ssZ", System.Globalization.CultureInfo.InvariantCulture),
+        e.Entry?.Governorate ?? e.Group?.Entries.FirstOrDefault()?.Governorate,
+        e.Group?.CanonicalName ?? e.Entry?.Group?.CanonicalName);
 
     /// <summary>اعتماد قيد كما هو: يقفل المراجعة دون تعديل ودون إشعار للمُدخِل (حسب القرار).</summary>
     public async Task<PublicEntityEntryDto?> ApproveReviewAsync(int entryId, EntityRegistryActor actor, CancellationToken ct = default)
@@ -397,7 +484,7 @@ public sealed class PublicEntityService : IPublicEntityService
         if (entry is null)
             return null;
 
-        await EnsureHeadScopeAsync(actor, entry.Governorate, ct);
+        await EnsureHeadScopeAsync(actor, entry, entry.Governorate, ct);
 
         await _tx.RunAsync(async token =>
         {
@@ -650,14 +737,32 @@ public sealed class PublicEntityService : IPublicEntityService
 
     // ── مساعدات خاصة ──
 
-    private async Task EnsureHeadScopeAsync(EntityRegistryActor actor, string targetGovernorate, CancellationToken ct)
+    private async Task EnsureHeadScopeAsync(EntityRegistryActor actor, PublicEntity? entry, string? fallbackGovernorate, CancellationToken ct)
     {
         if (actor.Role != UserRole.Head)
             return;
         var branch = actor.BranchId is null ? null : await _branches.GetByIdAsync(actor.BranchId.Value, ct);
         var branchGov = NormalizeOptional(branch?.Governorate);
-        if (branchGov is null || !string.Equals(branchGov, targetGovernorate.Trim(), StringComparison.Ordinal))
-            throw new UnauthorizedAccessException("رئيس القسم مقصور على قيود محافظة فرعه؛ اطلب من الإدارة ضبط محافظة الفرع أولًا");
+
+        // نطاق رئيس القسم (قرار مالك المشروع): يدير ويراجع ما أدخله محامو فرعه،
+        // بغض النظر عن المحافظة التي تتبع لها الجهة نفسها — فقد يُقيم محامٍ ملفًا
+        // تنفيذيًا على جهة عامة تتبع محافظة أخرى. إضافةً إلى قيود محافظة فرعه
+        // التي أدخلتها الإدارة (بلا محامٍ مُدخِل).
+        if (entry?.CreatedBy is { BranchId: not null } creator)
+        {
+            var inCreatorBranch = creator.BranchId.Value == actor.BranchId;
+            var inGovernorate = branchGov is not null
+                && string.Equals(branchGov, entry.Governorate.Trim(), StringComparison.Ordinal);
+            if (inCreatorBranch || inGovernorate)
+                return;
+            throw new UnauthorizedAccessException(
+                "رئيس القسم مقصور على ما أدخله محامو فرعه أو قيود محافظة فرعه؛ اطلب من الإدارة ضبط محافظة الفرع أولًا");
+        }
+
+        var scopeGov = fallbackGovernorate ?? entry?.Governorate;
+        if (branchGov is null || scopeGov is null || !string.Equals(branchGov, scopeGov.Trim(), StringComparison.Ordinal))
+            throw new UnauthorizedAccessException(
+                "رئيس القسم مقصور على ما أدخله محامو فرعه أو قيود محافظة فرعه؛ اطلب من الإدارة ضبط محافظة الفرع أولًا");
     }
 
     private async Task<PublicEntityGroup> FindOrCreateGroupAsync(string canonical, string entityType, int actorUserId, CancellationToken token)
@@ -826,7 +931,8 @@ public sealed class PublicEntityService : IPublicEntityService
                     throw new ArgumentException("الطيّ يتطلب مطابقة المحافظة والفرع");
 
                 toGroupId = targetEntry.GroupId;
-                await EnsureHeadScopeAsync(actor, targetEntry.Governorate, token);
+                // نطاق رئيس القسم: القيد المنقول نفسه يجب أن يكون ضمن نطاقه (لمحامٍ من فرعه).
+                await EnsureHeadScopeAsync(actor, entry, entry.Governorate, token);
                 targetEntryId = targetEntry.Id;
 
                 // ترحيل روابط RegistryId
@@ -882,7 +988,7 @@ public sealed class PublicEntityService : IPublicEntityService
                 toGroupId = targetGroup.Id;
                 targetEntryId = entryId;
 
-                await EnsureHeadScopeAsync(actor, entry.Governorate, token);
+                await EnsureHeadScopeAsync(actor, entry, entry.Governorate, token);
 
                 // فحص تعارض المحافظة والفرع
                 var conflict = await _entities.FindEntryInGroupAsync(toGroupId, entry.Governorate, entry.BranchName, token);
@@ -1008,7 +1114,7 @@ public sealed class PublicEntityService : IPublicEntityService
 
             foreach (var entry in sourceEntries)
             {
-                await EnsureHeadScopeAsync(actor, entry.Governorate, token);
+                await EnsureHeadScopeAsync(actor, entry, entry.Governorate, token);
 
                 // فحص تعارض
                 var conflict = await _entities.FindEntryInGroupAsync(request.TargetGroupId, entry.Governorate, entry.BranchName, token);

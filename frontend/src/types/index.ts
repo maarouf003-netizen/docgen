@@ -1435,6 +1435,34 @@ export interface MergeCommitResponse {
   changeEventId: number;
 }
 
+/* ── سجل تغييرات الجهات (د5 §7) ───────────────────────────────────── */
+
+export interface EntityChangeEventDto {
+  id: number;
+  entryId?: number | null;
+  groupId?: number | null;
+  actionKind: string;
+  decreeKind?: string | null;
+  decreeNumber?: string | null;
+  decreeDate?: string | null;
+  payloadJson: string;
+  actorUserId: number;
+  actorName?: string | null;
+  createdAtUtc: string;
+  governorate?: string | null;
+  canonicalName?: string | null;
+}
+
+export interface EntityChangeEventQuery {
+  governorate?: string | null;
+  actionKind?: string | null;
+  actorUserId?: number | null;
+  from?: string | null;
+  to?: string | null;
+  page?: number;
+  perPage?: number;
+}
+
 /* ── بوابة مندوب الجهة العامة (المرحلة 3) ────────────────────────────── */
 
 /** نطاق المندوب: هوية أم بكل قيودها أو قيد بعينه. */

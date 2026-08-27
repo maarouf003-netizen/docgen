@@ -53,6 +53,14 @@ public class PublicEntityRepository : IPublicEntityRepository
             .OrderBy(u => u.Id)
             .ToListAsync(ct);
 
+    public Task<List<User>> ListActiveHeadsByBranchAsync(int branchId, CancellationToken ct = default)
+        => _db.Users.AsNoTracking()
+            .Include(u => u.Branch)
+            .Where(u => u.Role == UserRole.Head && u.IsActive
+                && u.BranchId == branchId)
+            .OrderBy(u => u.Id)
+            .ToListAsync(ct);
+
     // ── الاستيراد (د12): نصوص متمايزة مع عدّاد ملفاتها، والتطبيع يجري في الذاكرة ──
 
     public async Task<List<(string Name, string? Governorate, int DocumentCount)>> ListDistinctApplicantTextsAsync(CancellationToken ct = default)
@@ -149,7 +157,16 @@ public class PublicEntityRepository : IPublicEntityRepository
     {
         return await _db.PublicEntities
             .Include(e => e.Aliases)
+            .Include(e => e.CreatedBy)
             .Where(e => e.GroupId == groupId)
             .ToListAsync(ct);
     }
+
+    public Task<List<PublicEntityChangeEvent>> ListChangeEventsAsync(CancellationToken ct = default)
+        => _db.PublicEntityChangeEvents.AsNoTracking()
+            .Include(c => c.ActorUser)
+            .Include(c => c.Entry)
+            .Include(c => c.Group)
+            .OrderByDescending(c => c.CreatedAtUtc)
+            .ToListAsync(ct);
 }

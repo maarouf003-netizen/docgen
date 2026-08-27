@@ -32,6 +32,9 @@ public interface IPublicEntityRepository
     /// <summary>رؤساء الأقسام النشطون الذين تتبع فروعهم محافظة محددة — لتوجيه تنبيه المراجعة.</summary>
     Task<List<User>> ListActiveHeadsByGovernorateAsync(string governorate, CancellationToken ct = default);
 
+    /// <summary>رؤساء الأقسام النشطون لفرع محدد — لتوجيه تنبيه المراجعة إلى رئيس فرع المُدخِل.</summary>
+    Task<List<User>> ListActiveHeadsByBranchAsync(int branchId, CancellationToken ct = default);
+
     // ── الاستيراد (د12) ──
 
     /// <summary>نصوص الجهات طالبة التنفيذ المتمايزة مع محافظتها وعدّاد ملفاتها.</summary>
@@ -70,4 +73,7 @@ public interface IPublicEntityRepository
 
     /// <summary>كل القيود في مجموعة معينة (متتبعة للتعديل).</summary>
     Task<List<PublicEntity>> ListEntriesByGroupAsync(int groupId, CancellationToken ct = default);
+
+    /// <summary>سجل تغييرات الجهات مع الفاعل والقيد/الهوية — للمراقبة والتصدير.</summary>
+    Task<List<PublicEntityChangeEvent>> ListChangeEventsAsync(CancellationToken ct = default);
 }

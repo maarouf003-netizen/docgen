@@ -259,4 +259,39 @@ public class EntityRegistryController : ControllerBase
             return Forbid();
         }
     }
+
+    /// <summary>سجل تغييرات الجهات — مصدره PublicEntityChangeEvent فقط (د5 §7).</summary>
+    [HttpGet("change-events")]
+    public async Task<IActionResult> ListChangeEvents(
+        [FromQuery] string? governorate,
+        [FromQuery] string? actionKind,
+        [FromQuery] int? actorUserId,
+        [FromQuery] string? from,
+        [FromQuery] string? to,
+        [FromQuery] int page = 1,
+        [FromQuery] int perPage = 20,
+        CancellationToken ct = default)
+    {
+        if (!RolePermissions.HasFullAccess(Role))
+            return Forbid();
+        return Ok(await _registry.ListChangeEventsAsync(
+            new EntityChangeEventQuery(governorate, actionKind, actorUserId, from, to, page, perPage), ct));
+    }
+
+    /// <summary>تصدير سجل التغييرات إلى Excel (نفس فلاتر القائمة).</summary>
+    [HttpGet("change-events/export")]
+    public async Task<IActionResult> ExportChangeEvents(
+        [FromQuery] string? governorate,
+        [FromQuery] string? actionKind,
+        [FromQuery] int? actorUserId,
+        [FromQuery] string? from,
+        [FromQuery] string? to,
+        CancellationToken ct = default)
+    {
+        if (!RolePermissions.HasFullAccess(Role))
+            return Forbid();
+        var bytes = await _registry.ExportChangeEventsAsync(
+            new EntityChangeEventQuery(governorate, actionKind, actorUserId, from, to, 1, 5000), ct);
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "change-events.xlsx");
+    }
 }
