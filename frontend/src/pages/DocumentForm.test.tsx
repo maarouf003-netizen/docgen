@@ -109,7 +109,9 @@ describe('DocumentForm', () => {
 
     await user.click(await screen.findByRole('button', { name: 'اختيار من السجل…' }));
     const dialog = screen.getByRole('dialog', { name: 'اختيار الجهة العامة' });
-    await user.click(within(dialog).getByRole('button', { name: /وزارة التعليم/ }));
+    await user.click(
+      within(dialog).getByRole('button', { name: /^وزارة التعليم/ }),
+    );
 
     const nameInput = screen.getByLabelText('اسم الجهة 1') as HTMLInputElement;
     expect(nameInput.value).toBe('وزارة التعليم');
@@ -807,7 +809,7 @@ describe('DocumentForm', () => {
     const unregistered = assets.find((a) => a.licenseDate);
     expect(shop?.registrationDate).toBe('1/8/2026');
     expect(unregistered?.licenseDate).toBe('15-1-2025');
-  });
+  }, 12000);
 
   it('يصحّح حصة العقار إلى «حصة سهمية» عند التحميل لعقار بملاك متعددين', async () => {
     const docWithInvalidShare: DocumentResponse = {

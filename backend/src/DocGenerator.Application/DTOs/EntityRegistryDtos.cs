@@ -13,19 +13,32 @@ public record CreatePublicEntityRequest(
 /// <summary>
 /// تعديل قيد/هوية: أي حقل يُترك null يبقى كما هو. تغيير CanonicalName يعني
 /// إعادة تسمية جماعية تُزامن الأعمدة النصية في كل الصفوف المرتبطة (د5).
+/// حقول المرسوم اختيارية للتعديلات العامة لاحقًا بمرسوم (المدير/المشرف).
 /// </summary>
 public record UpdatePublicEntityRequest(
-    string? CanonicalName,
-    string? EntityType,
-    string? Governorate,
-    string? BranchName,
-    string? CitationFormula,
-    string? Status,
-    bool? IsActive,
-    string? CoverageLabel = null);
+    string? CanonicalName = null,
+    string? EntityType = null,
+    string? Governorate = null,
+    string? BranchName = null,
+    string? CitationFormula = null,
+    string? Status = null,
+    bool? IsActive = null,
+    string? CoverageLabel = null,
+    string? DecreeKind = null,
+    string? DecreeNumber = null,
+    string? DecreeDate = null);
 
 /// <summary>إضافة اسم كتابي بديل لقيد.</summary>
 public record AddPublicEntityAliasRequest(string AliasText);
+
+/// <summary>اقتراح تعديل فردي من المحامي (يبقى بانتظار المراجعة — لا يزامن النصوص حتى الاعتماد).</summary>
+public record ProposeEditRequest(
+    string? CanonicalName = null,
+    string? EntityType = null,
+    string? Governorate = null,
+    string? BranchName = null,
+    string? CitationFormula = null,
+    string? CoverageLabel = null);
 
 /// <summary>قيد في السجل — لشاشة الإدارة ونتائج البحث وقائمة المراجعة.</summary>
 public record PublicEntityEntryDto(
@@ -168,6 +181,61 @@ public record MergeCommitResponse(
     int EntriesMigrated,
     int AliasesAdded,
     int TotalAffectedDocuments,
+    int ChangeEventId);
+
+// ── قائمة المجموعات (الهويات الأم) — للعرض المستقل وتوحيد التسمية N←1 ──
+
+/// <summary>مجموعة (هوية أم) مع عدّادات قيودها ومحافظاتها — مصدرها PublicEntityGroup.</summary>
+public record PublicEntityGroupDto(
+    int GroupId,
+    string CanonicalName,
+    string EntityType,
+    bool IsActive,
+    int EntryCount,
+    IReadOnlyList<string> Governorates);
+
+/// <summary>استعلام قائمة المجموعات مع بحث وترقيم.</summary>
+public record EntityGroupListQuery(
+    string? Q,
+    string? Governorate,
+    int Page = 1,
+    int PerPage = 20);
+
+// ── توحيد التسمية N←1 (المدير/المشرف — بلا هجرة روابط ملفات) ──
+
+/// <summary>طلب معاينة توحيد التسمية قبل الاعتماد.</summary>
+public record UnifyNamesPreviewRequest(
+    int TargetGroupId,
+    IReadOnlyList<int> AbsorbedGroupIds);
+
+/// <summary>هوية أم مُهمَلة في معاينة التوحيد.</summary>
+public record AbsorbedGroupUnifyPreviewDto(
+    int GroupId,
+    string Name,
+    int EntryCount,
+    IReadOnlyList<string> Governorates);
+
+/// <summary>نتيجة معاينة توحيد التسمية.</summary>
+public record UnifyNamesPreviewResponse(
+    string TargetName,
+    IReadOnlyList<AbsorbedGroupUnifyPreviewDto> AbsorbedGroups,
+    int TotalEntriesToMove,
+    IReadOnlyList<string> Warnings);
+
+/// <summary>طلب اعتماد توحيد التسمية (ينقل القيود ويعطّل المجموعات الممتصة بلا هجرة ملفات) — مع مرسوم اختياري للتعديلات العامة.</summary>
+public record UnifyNamesRequest(
+    int TargetGroupId,
+    IReadOnlyList<int> AbsorbedGroupIds,
+    string? DecreeKind = null,
+    string? DecreeNumber = null,
+    string? DecreeDate = null);
+
+/// <summary>نتيجة توحيد التسمية.</summary>
+public record UnifyNamesResponse(
+    int TargetGroupId,
+    string CanonicalName,
+    int GroupsUnified,
+    int EntriesMoved,
     int ChangeEventId);
 
 // ── سجل تغييرات الجهات (د5 §7) ──

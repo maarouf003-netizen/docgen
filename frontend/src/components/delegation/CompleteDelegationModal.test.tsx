@@ -74,6 +74,7 @@ describe('CompleteDelegationModal', () => {
     expect(screen.getByRole('dialog', { name: 'إتمام الإنابة' })).toBeInTheDocument();
     expect(screen.getByLabelText('تاريخ إعادة الملف للدائرة المنيبة')).toBeInTheDocument();
     expect(screen.getByLabelText('تاريخ قرار الإحالة القطعية')).toBeInTheDocument();
+    expect(screen.getByLabelText('هل غطى بدل المبيع كامل المديونية؟')).toBeInTheDocument();
     expect(screen.getByText('عقار — المزة 77')).toBeInTheDocument();
     expect(screen.getByText('مركبة — لوحة 123')).toBeInTheDocument();
     expect(screen.getAllByLabelText('بدل المبيع بالليرة السورية')).toHaveLength(2);
@@ -110,6 +111,7 @@ describe('CompleteDelegationModal', () => {
 
     await user.type(screen.getByLabelText('تاريخ إعادة الملف للدائرة المنيبة'), '10/8/2026');
     await user.type(screen.getByLabelText('تاريخ قرار الإحالة القطعية'), '12/8/2026');
+    await user.selectOptions(screen.getByLabelText('هل غطى بدل المبيع كامل المديونية؟'), 'true');
     await user.click(screen.getByRole('button', { name: 'إتمام الإنابة' }));
 
     expect(screen.getByRole('alert').textContent).toContain('بدل المبيع مطلوب');
@@ -140,6 +142,20 @@ describe('CompleteDelegationModal', () => {
     expect(api.post).not.toHaveBeenCalled();
   });
 
+  it('يتطلب تحديد تغطية البدل قبل الإرسال', async () => {
+    const user = userEvent.setup();
+    render(
+      <CompleteDelegationModal delegation={registeredDelegation()} onClose={noop} onCompleted={noop} />,
+    );
+
+    await user.type(screen.getByLabelText('تاريخ إعادة الملف للدائرة المنيبة'), '10/8/2026');
+    await user.type(screen.getByLabelText('تاريخ قرار الإحالة القطعية'), '12/8/2026');
+    await user.click(screen.getByRole('button', { name: 'إتمام الإنابة' }));
+
+    expect(screen.getByRole('alert').textContent).toContain('غطى كامل المديونية');
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
   it('يرفض بدل المبيع الصفري أو غير الرقمي', async () => {
     const user = userEvent.setup();
     render(
@@ -149,6 +165,7 @@ describe('CompleteDelegationModal', () => {
     const priceInputs = screen.getAllByLabelText('بدل المبيع بالليرة السورية');
     await user.type(screen.getByLabelText('تاريخ إعادة الملف للدائرة المنيبة'), '10/8/2026');
     await user.type(screen.getByLabelText('تاريخ قرار الإحالة القطعية'), '12/8/2026');
+    await user.selectOptions(screen.getByLabelText('هل غطى بدل المبيع كامل المديونية؟'), 'true');
     await user.type(priceInputs[0], '0');
     await user.type(priceInputs[1], 'abc');
     await user.click(screen.getByRole('button', { name: 'إتمام الإنابة' }));
@@ -172,6 +189,7 @@ describe('CompleteDelegationModal', () => {
     const priceInputs = screen.getAllByLabelText('بدل المبيع بالليرة السورية');
     await user.type(screen.getByLabelText('تاريخ إعادة الملف للدائرة المنيبة'), '١٠/٨/٢٠٢٦');
     await user.type(screen.getByLabelText('تاريخ قرار الإحالة القطعية'), '١٢/٨/٢٠٢٦');
+    await user.selectOptions(screen.getByLabelText('هل غطى بدل المبيع كامل المديونية؟'), 'true');
     await user.type(priceInputs[0], '٧٥٠٠٠٠');
     await user.type(priceInputs[1], '1,250,000');
     await user.click(screen.getByRole('button', { name: 'إتمام الإنابة' }));
@@ -183,7 +201,28 @@ describe('CompleteDelegationModal', () => {
         { delegationAssetId: 101, salePrice: 1250000 },
       ],
       forcedExecutionDate: '12/8/2026',
+      saleCoversFullDebt: true,
     });
+    expect(onCompleted).toHaveBeenCalled();
+  });
+
+  it('يرسل تغطية عدم الاكتمال عند اختيار لم يغطِ', async () => {
+    const user = userEvent.setup();
+    const onCompleted = vi.fn();
+    (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });
+    render(
+      <CompleteDelegationModal delegation={registeredDelegation()} onClose={noop} onCompleted={onCompleted} />,
+    );
+
+    const priceInputs = screen.getAllByLabelText('بدل المبيع بالليرة السورية');
+    await user.type(screen.getByLabelText('تاريخ إعادة الملف للدائرة المنيبة'), '10/8/2026');
+    await user.type(screen.getByLabelText('تاريخ قرار الإحالة القطعية'), '12/8/2026');
+    await user.selectOptions(screen.getByLabelText('هل غطى بدل المبيع كامل المديونية؟'), 'false');
+    await user.type(priceInputs[0], '500000');
+    await user.type(priceInputs[1], '300000');
+    await user.click(screen.getByRole('button', { name: 'إتمام الإنابة' }));
+
+    expect(api.post).toHaveBeenCalledWith('/delegations/9/complete', expect.objectContaining({ saleCoversFullDebt: false }));
     expect(onCompleted).toHaveBeenCalled();
   });
 
@@ -199,6 +238,7 @@ describe('CompleteDelegationModal', () => {
     const priceInputs = screen.getAllByLabelText('بدل المبيع بالليرة السورية');
     await user.type(screen.getByLabelText('تاريخ إعادة الملف للدائرة المنيبة'), '10/8/2026');
     await user.type(screen.getByLabelText('تاريخ قرار الإحالة القطعية'), '12/8/2026');
+    await user.selectOptions(screen.getByLabelText('هل غطى بدل المبيع كامل المديونية؟'), 'true');
     await user.type(priceInputs[0], '750000');
     await user.type(priceInputs[1], '1250000');
     await user.click(screen.getByRole('button', { name: 'إتمام الإنابة' }));

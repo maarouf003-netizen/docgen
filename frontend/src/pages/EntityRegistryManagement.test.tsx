@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import EntityRegistryManagement from './EntityRegistryManagement';
 import type { PublicEntityEntryDto } from '../types';
@@ -145,6 +145,99 @@ describe('EntityRegistryManagement', () => {
     );
     render(<EntityRegistryManagement />);
 
-    expect(await screen.findByText('بانتظار الاعتماد')).toBeInTheDocument();
+    await screen.findByText('وزارة التعليم');
+    // الشارة تعرض «بانتظار المراجعة» بجانب اسم القيد (وليس خيار فلتر الحالة)
+    const row = screen.getByText('وزارة التعليم').closest('tr');
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).getByText('بانتظار المراجعة')).toBeInTheDocument();
+  });
+
+  it('يعرض تبويب المجموعات للمدير/المشرف', async () => {
+    render(<EntityRegistryManagement />);
+    await screen.findByText('وزارة التعليم');
+    expect(screen.getByRole('button', { name: 'عرض المجموعات' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'عرض القيود' })).toBeInTheDocument();
+  });
+
+  it('يعرض زر توحيد التسمية للمدير/المشرف في شريط القيود', async () => {
+    render(<EntityRegistryManagement />);
+    await screen.findByText('وزارة التعليم');
+    expect(screen.getByRole('button', { name: 'توحيد تسمية…' })).toBeInTheDocument();
+  });
+
+  it('لا يعرض زر توحيد التسمية لرئيس القسم لكن يعرض إدارة الفروع في المجموعات', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({ user: { id: 5, role: 'head' } });
+    const groupsResponse = {
+      data: {
+        items: [{ groupId: 10, canonicalName: 'وزارة النقل', entityType: 'ministry', isActive: true, entryCount: 1, governorates: ['دمشق'] }],
+        page: 1, perPage: 20, totalCount: 1, totalPages: 1,
+      },
+    };
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/entity-registry/groups') return Promise.resolve(groupsResponse);
+      return Promise.resolve(listResponse([entryItem()]));
+    });
+    render(<EntityRegistryManagement />);
+
+    await screen.findByText('وزارة التعليم');
+    expect(screen.queryByRole('button', { name: 'توحيد تسمية…' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'عرض المجموعات' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'عرض المجموعات' }));
+    expect(await screen.findByRole('button', { name: 'إدارة الفروع' })).toBeInTheDocument();
+  });
+
+  it('يعرض قائمة المجموعات مع زر توحيد داخل كل مجموعة', async () => {
+    const user = userEvent.setup();
+    const groupsResponse = {
+      data: {
+        items: [
+          { groupId: 10, canonicalName: 'وزارة النقل', entityType: 'ministry', isActive: true, entryCount: 2, governorates: ['دمشق', 'حلب'] },
+          { groupId: 11, canonicalName: 'وزارة التعليم', entityType: 'ministry', isActive: true, entryCount: 1, governorates: ['دمشق'] },
+        ],
+        page: 1,
+        perPage: 20,
+        totalCount: 2,
+        totalPages: 1,
+      },
+    };
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/entity-registry/groups') return Promise.resolve(groupsResponse);
+      return Promise.resolve(listResponse([entryItem()]));
+    });
+    render(<EntityRegistryManagement />);
+
+    await screen.findByText('وزارة التعليم');
+    await user.click(screen.getByRole('button', { name: 'عرض المجموعات' }));
+
+    expect(await screen.findByText('وزارة النقل')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'توحيد تسمية' }).length).toBe(2);
+    // المحافظات كشارات
+    expect(screen.getAllByText('دمشق').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('يفتح نافذة توحيد التسمية مع المجموعة المحددة عند الضغط داخل المجموعة', async () => {
+    const user = userEvent.setup();
+    const groupsResponse = {
+      data: {
+        items: [{ groupId: 10, canonicalName: 'وزارة النقل', entityType: 'ministry', isActive: true, entryCount: 2, governorates: ['دمشق'] }],
+        page: 1,
+        perPage: 20,
+        totalCount: 1,
+        totalPages: 1,
+      },
+    };
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/entity-registry/groups') return Promise.resolve(groupsResponse);
+      return Promise.resolve(listResponse([entryItem()]));
+    });
+    render(<EntityRegistryManagement />);
+
+    await screen.findByText('وزارة التعليم');
+    await user.click(screen.getByRole('button', { name: 'عرض المجموعات' }));
+    await screen.findByText('وزارة النقل');
+    await user.click(screen.getByRole('button', { name: 'توحيد تسمية' }));
+
+    expect(await screen.findByRole('dialog', { name: 'توحيد تسمية جهات عامة' })).toBeInTheDocument();
   });
 });

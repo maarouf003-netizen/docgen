@@ -454,10 +454,14 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
             asset.SalePrice = sale.SalePrice;
         }
 
+        if (request.SaleCoversFullDebt is null)
+            throw new ArgumentException("يجب تحديد ما إذا كان بدل المبيع غطى كامل المديونية");
+
         await _tx.RunAsync(async token =>
         {
             delegation.ReturnDate = returnDate;
             delegation.Status = DelegationStatusCatalog.Executed;
+            delegation.SaleCoversFullDebt = request.SaleCoversFullDebt.Value;
             delegation.UpdatedAt = DateTime.UtcNow;
             _delegations.Update(delegation);
 
@@ -544,11 +548,17 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
             {
                 var targetLabel = TargetFileLabel(target);
                 var assetsLine = string.Join(" و", delegation.Assets.Select(a => a.AssetLabel));
+                var coverageText = delegation.SaleCoversFullDebt == true
+                    ? "غطى كامل المديونية"
+                    : delegation.SaleCoversFullDebt == false
+                        ? "لم يغطِ كامل المديونية"
+                        : "—";
+                var court = delegation.DelegatedCourt ?? "الدائرة المنابة";
                 await _alerts.CreateAsync(new CreateHeadAlertRequest(
                     TargetType: "document",
                     DocumentId: delegation.SourceDocumentId,
                     TargetLawyerId: null,
-                    Message: $"نفذت إنابتك في {targetLabel} للتنفيذ على {assetsLine} وأُعيد الملف للدائرة المنيبة، يرجى المراجعة والمتابعة أصولًا"),
+                    Message: $"أُعيدت الإنابة المسطرة إلى دائرة {court} في ملف {SourceLabel(delegation.SourceDocument)} منفذة — البدل {coverageText} — يرجى تغيير حالة الملف (الضغط يفتح الملف المنيب) — المناب {targetLabel} للتنفيذ على {assetsLine}"),
                     userId, sourceBranchId.Value, actorName, ct);
             }
             catch (Exception ex)
@@ -868,7 +878,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         d.CreatedAt,
         d.CreatedBy?.FullName,
         d.Assets.Select(a => new DelegationAssetDto(a.Id, a.AssetKind, a.AssetLabel, a.SalePrice, a.SnapshotAdjusted)).ToList(),
-        d.CreatedById);
+        d.CreatedById,
+        d.SaleCoversFullDebt);
 
     private static string SourceLabel(Document source)
     {

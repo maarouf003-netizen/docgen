@@ -43,12 +43,14 @@ public record RegisterDelegationRequest(
 /// <summary>
 /// إتمام الإنابة من محامي الملف المناب: بيع الأموال موضوع الإنابة بالمزاد العلني،
 /// مع بدل المبيع لكل أصل (بالليرة السورية) وتاريخ إعادة الملف إلى الدائرة المنيبة،
-/// وتاريخ «قرار الإحالة القطعية» (إلزامي — يُحفظ على الملف المنيب عند تفعيله «منفذ جبريا»).
+/// وتاريخ «قرار الإحالة القطعية» (إلزامي — يُحفظ على الملف المنيب عند تفعيله «منفذ جبريا»)،
+/// وهل غطى بدل المبيع كامل المديونية (يحدده محامي المناب عند الإتمام).
 /// </summary>
 public record CompleteDelegationRequest(
     string? ReturnDate,
     List<DelegationSaleDto>? Sales,
-    string? ForcedExecutionDate = null);
+    string? ForcedExecutionDate = null,
+    bool? SaleCoversFullDebt = null);
 
 /// <summary>بدل المبيع لأصل مباعٍ بالمزاد ضمن إتمام الإنابة (بالليرة السورية).</summary>
 public record DelegationSaleDto(
@@ -83,4 +85,6 @@ public record DelegationDto(
     DateTime CreatedAt,
     string? CreatedByName,
     List<DelegationAssetDto> Assets,
-    int CreatedById);
+    int CreatedById,
+    /// <summary>هل غطى بدل المبيع كامل المديونية؟ يحدده محامي المناب عند الإتمام — null قبل الإتمام.</summary>
+    bool? SaleCoversFullDebt = null);

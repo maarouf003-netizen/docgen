@@ -1159,6 +1159,9 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Property<DateTime?>("ReturnDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool?>("SaleCoversFullDebt")
+                        .HasColumnType("boolean");
+
                     b.Property<int>("SourceDocumentId")
                         .HasColumnType("integer");
 

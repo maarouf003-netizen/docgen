@@ -33,6 +33,17 @@ public static class EntityStatusCatalog
 
     public static bool IsValid(string? value)
         => value is Final or Pending;
+
+    /// <summary>
+    /// هل القيد «مُعتمد نهائيًا» ويظهر لبوات المندوبين؟
+    /// المستهلكون النهائيون (بوابة المندوب: النطاق/التصدير/الإحصاءات) يُضمّنون
+    /// هذا الشرط حرفيًا في الاستعلام (قرار المواءمة السلوكية §6bis): أي قيد دخل
+    /// به محامٍ و`NeedsReview=true` لا يظهر لأي مندوب قبل اعتماد رئيس القسم،
+    /// رغم أنه مُخزَّن بـ `Status=Final`. يُستخدم للتوثيق فقط — لا يصلح داخل أشجار
+    /// التعبير المُترجَمة إلى SQL، لذا يُكتب الشرط هنا صراحةً في كل مصرف نهائي.
+    /// </summary>
+    public static bool IsApproved(string status, bool needsReview)
+        => status == Final && !needsReview;
 }
 
 /// <summary>

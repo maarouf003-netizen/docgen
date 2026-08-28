@@ -26,11 +26,13 @@ public class PortalRepository : IPortalRepository
         d.ApplicantPublicEntities.Any(a => a.RegistryId != null
             && a.Registry != null
             && a.Registry.Status == EntityStatusCatalog.Final
+            && !a.Registry.NeedsReview
             && ids.Contains(a.RegistryId.Value))
         || d.ExecutedPublicEntities.Any(e => e.EntityNature == PartyNatureCatalog.PublicEntity
             && e.RegistryId != null
             && e.Registry != null
             && e.Registry.Status == EntityStatusCatalog.Final
+            && !e.Registry.NeedsReview
             && ids.Contains(e.RegistryId.Value));
 
     public Task<bool> IsDocumentInScopeAsync(int documentId, IReadOnlyCollection<int> entryIds, CancellationToken ct = default)
@@ -101,7 +103,7 @@ public class PortalRepository : IPortalRepository
             return new PortalScopeResolution(
                 "group", group.Id, group.CanonicalName, group.EntityType,
                 group.Entries
-                    .Where(e => e.Status == EntityStatusCatalog.Final && e.IsActive)
+                    .Where(e => e.Status == EntityStatusCatalog.Final && !e.NeedsReview && e.IsActive)
                     .OrderBy(e => e.Governorate, StringComparer.Ordinal)
                     .ThenBy(e => e.BranchName, StringComparer.Ordinal)
                     .Select(e => (e.Id, e.Governorate, e.BranchName, e.IsActive))
@@ -111,7 +113,8 @@ public class PortalRepository : IPortalRepository
         if (user.PortalEntryId.HasValue && user.PortalEntry is not null)
         {
             var entry = user.PortalEntry;
-            var active = entry.Status == EntityStatusCatalog.Final && entry.IsActive;
+            var active = entry.Status == EntityStatusCatalog.Final
+                && !entry.NeedsReview && entry.IsActive;
             return new PortalScopeResolution(
                 "entry", entry.GroupId, entry.Group.CanonicalName, entry.Group.EntityType,
                 active
@@ -208,6 +211,7 @@ public class PortalRepository : IPortalRepository
             .SelectMany(d => d.ApplicantPublicEntities
                 .Where(a => a.RegistryId != null && a.Registry != null
                     && a.Registry.Status == EntityStatusCatalog.Final
+                    && !a.Registry.NeedsReview
                     && ids.Contains(a.RegistryId.Value))
                 .Select(a => new { DocId = a.DocumentId, EntryId = a.RegistryId!.Value }))
             .ToListAsync(ct);
@@ -218,6 +222,7 @@ public class PortalRepository : IPortalRepository
                 .Where(e => e.EntityNature == PartyNatureCatalog.PublicEntity
                     && e.RegistryId != null && e.Registry != null
                     && e.Registry.Status == EntityStatusCatalog.Final
+                    && !e.Registry.NeedsReview
                     && ids.Contains(e.RegistryId.Value))
                 .Select(e => new { DocId = e.DocumentId, EntryId = e.RegistryId!.Value }))
             .ToListAsync(ct);

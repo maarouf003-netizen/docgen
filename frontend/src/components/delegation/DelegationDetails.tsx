@@ -79,6 +79,14 @@ export function DelegationDetails({ d }: { d: DelegationDto }) {
           {assetsLine}
         </p>
       )}
+
+      {d.saleCoversFullDebt !== null && d.saleCoversFullDebt !== undefined && (
+        <p
+          className={`text-xs font-bold rounded-lg px-3 py-2 border ${d.saleCoversFullDebt ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}
+        >
+          {d.saleCoversFullDebt ? 'البدل غطى كامل المديونية' : 'البدل لم يغطِ كامل المديونية'}
+        </p>
+      )}
     </div>
   );
 }

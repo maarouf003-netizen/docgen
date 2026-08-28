@@ -54,6 +54,12 @@ public class DocumentDelegation
     /// </summary>
     public string Status { get; set; } = DelegationStatusCatalog.PendingHead;
 
+    /// <summary>
+    /// هل غطى بدل المبيع (المحدد عند الإتمام) كامل المديونية؟ يحدده محامي الملف المناب عند الإتمام
+    /// عبر قائمة منسدلة (غطى كامل المديونية / لم يغطِ). null قبل الإتمام.
+    /// </summary>
+    public bool? SaleCoversFullDebt { get; set; }
+
     public int CreatedById { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

@@ -188,3 +188,7 @@ npm test
 - [ ] **2026-08-26 — `AddIsActiveIndex` / `AddIsActiveIndexPg`** (فهرس `IsActive` على `PublicEntities`):
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260826181557_AddIsActiveIndex.cs` — ينشئ `IX_PublicEntities_IsActive`.
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `MigrationsPostgres\20260826181623_AddIsActiveIndexPg.cs` — نفسه.
+- [ ] **2026-08-27 — `AddDelegationSaleCoversFullDebt`** (ميزة «تغطية بدل المبيع لكامل المديونية» عند إتمام الإنابة):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260827131401_AddDelegationSaleCoversFullDebt.cs` — يضيف عمود `SaleCoversFullDebt` (nullable `bool`) إلى `DocumentDelegations`.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `MigrationsPostgres\20260827131448_AddDelegationSaleCoversFullDebt.cs` — نفسه (`boolean` nullable).
+  - بدون التطبيق سيفشل إتمام الإنابة برسالة `no such column: d.SaleCoversFullDebt` رغم نجاح الاختبارات محليًا.

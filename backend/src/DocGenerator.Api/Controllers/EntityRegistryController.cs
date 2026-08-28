@@ -32,6 +32,7 @@ public class EntityRegistryController : ControllerBase
         [FromQuery] string? q,
         [FromQuery] string? governorate,
         [FromQuery] string? status,
+        [FromQuery] string? branchName,
         [FromQuery] int page = 1,
         [FromQuery] int perPage = 20,
         CancellationToken ct = default)
@@ -39,7 +40,7 @@ public class EntityRegistryController : ControllerBase
         if (!RolePermissions.CanManageEntityRegistry(Role))
             return Forbid();
         return Ok(await _registry.ListAsync(
-            new EntityRegistryListQuery(q, governorate, status, IncludePending: true, page, perPage), ct));
+            new EntityRegistryListQuery(q, governorate, status, IncludePending: true, page, perPage, BranchName: branchName), ct));
     }
 
     /// <summary>
@@ -51,12 +52,13 @@ public class EntityRegistryController : ControllerBase
     public async Task<IActionResult> Search(
         [FromQuery] string? q,
         [FromQuery] string? governorate,
+        [FromQuery] string? branchName,
         CancellationToken ct = default)
     {
         if (Role == UserRole.EntityManager)
             return Forbid();
         return Ok(await _registry.ListAsync(
-            new EntityRegistryListQuery(q, governorate, null, IncludePending: true, 1, 50, IncludeInactive: false), ct));
+            new EntityRegistryListQuery(q, governorate, null, IncludePending: true, 1, 50, IncludeInactive: false, BranchName: branchName), ct));
     }
 
     /// <summary>
@@ -113,6 +115,27 @@ public class EntityRegistryController : ControllerBase
         try
         {
             var updated = await _registry.AddAliasAsync(id, request, Actor, ct);
+            return updated is null ? NotFound() : Ok(updated);
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    /// <summary>اقتراح تعديل فردي من المحامي (يبقى بانتظار المراجعة — لا يزامن النصوص).</summary>
+    [HttpPost("{id:int}/propose-edit")]
+    public async Task<IActionResult> ProposeEdit(int id, [FromBody] ProposeEditRequest request, CancellationToken ct)
+    {
+        if (Role != UserRole.Lawyer)
+            return Forbid();
+        try
+        {
+            var updated = await _registry.ProposeEditAsync(id, request, Actor, ct);
             return updated is null ? NotFound() : Ok(updated);
         }
         catch (ArgumentException e)
@@ -211,6 +234,74 @@ public class EntityRegistryController : ControllerBase
         try
         {
             return Ok(await _registry.MoveAllEntriesAsync(request, Actor, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    // ── قائمة المجموعات (الهويات الأم) وتوحيد التسمية N←1 (المدير/المشرف — بلا هجرة ملفات) ──
+
+    /// <summary>قائمة المجموعات (الهويات الأم) مع ترقيم وبحث — للعرض المستقل وتوحيد التسمية/إدارة الفروع.</summary>
+    [HttpGet("groups")]
+    public async Task<IActionResult> ListGroups(
+        [FromQuery] string? q,
+        [FromQuery] string? governorate,
+        [FromQuery] int page = 1,
+        [FromQuery] int perPage = 20,
+        CancellationToken ct = default)
+    {
+        if (!RolePermissions.CanManageEntityRegistry(Role))
+            return Forbid();
+        return Ok(await _registry.ListGroupsAsync(new EntityGroupListQuery(q, governorate, page, perPage), Actor, ct));
+    }
+
+    /// <summary>قيود مجموعة واحدة — لرئيس القسم (محافظته فقط) وإدارة الفروع.</summary>
+    [HttpGet("groups/{groupId:int}/entries")]
+    public async Task<IActionResult> ListGroupEntries(int groupId, CancellationToken ct)
+    {
+        if (!RolePermissions.CanManageEntityRegistry(Role))
+            return Forbid();
+        try
+        {
+            return Ok(await _registry.ListEntriesByGroupAsync(groupId, Actor, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+    }
+
+    /// <summary>معاينة توحيد التسمية N←1 (المدير/المشرف — بلا هجرة ملفات).</summary>
+    [HttpPost("groups/unify-preview")]
+    public async Task<IActionResult> UnifyPreview([FromBody] UnifyNamesPreviewRequest request, CancellationToken ct)
+    {
+        if (!RolePermissions.HasFullAccess(Role))
+            return Forbid();
+        try
+        {
+            return Ok(await _registry.PreviewUnifyAsync(request, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+    }
+
+    /// <summary>تنفيذ توحيد التسمية N←1 (المدير/المشرف — ينقل القيود ويعطّل المجموعات الممتصة بلا هجرة ملفات).</summary>
+    [HttpPost("groups/unify")]
+    public async Task<IActionResult> Unify([FromBody] UnifyNamesRequest request, CancellationToken ct)
+    {
+        if (!RolePermissions.HasFullAccess(Role))
+            return Forbid();
+        try
+        {
+            return Ok(await _registry.UnifyNamesAsync(request, Actor, ct));
         }
         catch (ArgumentException e)
         {

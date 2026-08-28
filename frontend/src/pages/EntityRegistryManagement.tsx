@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
+import { normalizeArabicDigits } from '../utils/arabicDigits';
 import { useAuth } from '../auth/useAuth';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { GOVERNORATES } from '../utils/governorate';
@@ -9,15 +10,20 @@ import {
   citationFormulaLabel,
   entityTypeLabel,
   formatEntityCoverage,
+  isEntryPendingReview,
   publicEntityStatusLabel,
 } from '../utils/entityRegistry';
 import type {
   PublicEntityEntryDto,
   PublicEntityListResponse,
+  PublicEntityGroupListResponse,
   PublicEntityType,
   PublicEntityStatus,
 } from '../types';
 import { ImportModal } from '../components/entity/ImportModal';
+import { MergeModal } from '../components/entity/MergeModal';
+import { UnifyNamesModal } from '../components/entity/UnifyNamesModal';
+import { BranchManagementModal } from '../components/entity/BranchManagementModal';
 
 const PAGE_SIZE = 20;
 
@@ -25,6 +31,11 @@ export default function EntityRegistryManagement() {
   const { user } = useAuth();
   const isMobile = useIsMobile();
   const hasFullAccess = user?.role === 'manager' || user?.role === 'admin';
+  const isHead = user?.role === 'head';
+  const canViewGroups = hasFullAccess || isHead;
+
+  // ── وضع العرض: قيود (مسطّح) أو مجموعات (هويات أم) ──
+  const [viewMode, setViewMode] = useState<'entries' | 'groups'>('entries');
 
   // ── قائمة السجل والفلاتر ──
   const [query, setQuery] = useState('');
@@ -142,6 +153,9 @@ export default function EntityRegistryManagement() {
   const [editSaving, setEditSaving] = useState(false);
   const [aliasSaving, setAliasSaving] = useState(false);
   const [editError, setEditError] = useState('');
+  const [editDecreeKind, setEditDecreeKind] = useState('');
+  const [editDecreeNumber, setEditDecreeNumber] = useState('');
+  const [editDecreeDate, setEditDecreeDate] = useState('');
 
   const openEdit = (entry: PublicEntityEntryDto) => {
     setEditing(entry);
@@ -156,6 +170,9 @@ export default function EntityRegistryManagement() {
     setEditCoverageLabel(entry.coverageLabel ?? '');
     setNewAlias('');
     setEditError('');
+    setEditDecreeKind('');
+    setEditDecreeNumber('');
+    setEditDecreeDate('');
   };
 
   const closeEdit = () => {
@@ -186,6 +203,9 @@ export default function EntityRegistryManagement() {
         status: editStatus,
         isActive: editActive,
         coverageLabel: editShowCoverage && editCoverageLabel.trim() ? editCoverageLabel.trim() : null,
+        decreeKind: editDecreeKind.trim() || null,
+        decreeNumber: editDecreeNumber.trim() || null,
+        decreeDate: normalizeArabicDigits(editDecreeDate).trim() || null,
       });
       closeEdit();
       reload();
@@ -217,13 +237,78 @@ export default function EntityRegistryManagement() {
   const [showImport, setShowImport] = useState(false);
   const [importSummary, setImportSummary] = useState('');
 
-  const statusBadge = (s: PublicEntityStatus) => (
+  // ── الدمج N←1 ──
+  const [showMerge, setShowMerge] = useState(false);
+  const [mergeSummary, setMergeSummary] = useState('');
+
+  // ── قائمة المجموعات (للعرض المستقل وتوحيد التسمية) ──
+  const [groupsQuery, setGroupsQuery] = useState('');
+  const [groupsGov, setGroupsGov] = useState('');
+  const [groupsPage, setGroupsPage] = useState(1);
+  const [groupsList, setGroupsList] = useState<PublicEntityGroupListResponse | null>(null);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [groupsError, setGroupsError] = useState('');
+  const [groupsReloadTick, setGroupsReloadTick] = useState(0);
+  const reloadGroups = useCallback(() => setGroupsReloadTick((t) => t + 1), []);
+
+  useEffect(() => {
+    if (!canViewGroups || viewMode !== 'groups') return;
+    let active = true;
+    setGroupsLoading(true);
+    setGroupsError('');
+    api
+      .get<PublicEntityGroupListResponse>('/entity-registry/groups', {
+        params: {
+          q: groupsQuery.trim() || undefined,
+          governorate: groupsGov || undefined,
+          page: groupsPage,
+          perPage: PAGE_SIZE,
+        },
+      })
+      .then((res) => {
+        if (active) setGroupsList(res.data);
+      })
+      .catch((err) => {
+        if (active) setGroupsError(getApiErrorMessage(err));
+      })
+      .finally(() => {
+        if (active) setGroupsLoading(false);
+      });
+    return () => { active = false; };
+  }, [canViewGroups, viewMode, groupsQuery, groupsGov, groupsPage, groupsReloadTick]);
+
+  const groups = groupsList?.items ?? [];
+  const groupsTotalCount = groupsList?.totalCount ?? 0;
+  const groupsTotalPages = Math.max(1, Math.ceil(groupsTotalCount / PAGE_SIZE));
+
+  // ── توحيد التسمية N←1 (بديل دمج الملفات) ──
+  const [showUnify, setShowUnify] = useState(false);
+  const [unifyInitialGroupId, setUnifyInitialGroupId] = useState<number | undefined>(undefined);
+  const [unifySummary, setUnifySummary] = useState('');
+
+  const openUnify = useCallback((groupId?: number) => {
+    setUnifyInitialGroupId(groupId);
+    setShowUnify(true);
+  }, []);
+
+  // ── إدارة فروع الجهة لرئيس القسم (محافظته فقط) ──
+  const [showBranchManage, setShowBranchManage] = useState(false);
+  const [branchManageGroupId, setBranchManageGroupId] = useState<number | null>(null);
+  const [branchManageGroupName, setBranchManageGroupName] = useState('');
+
+  const openBranchManage = useCallback((groupId: number, groupName: string) => {
+    setBranchManageGroupId(groupId);
+    setBranchManageGroupName(groupName);
+    setShowBranchManage(true);
+  }, []);
+
+  const statusBadge = (e: { status: PublicEntityStatus; needsReview?: boolean | null }) => (
     <span
       className={`inline-block rounded-full px-2 py-0.5 text-xs whitespace-nowrap ${
-        s === 'pending' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+        isEntryPendingReview(e) ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
       }`}
     >
-      {publicEntityStatusLabel(s)}
+      {isEntryPendingReview(e) ? 'بانتظار المراجعة' : publicEntityStatusLabel(e.status)}
     </span>
   );
 
@@ -231,63 +316,150 @@ export default function EntityRegistryManagement() {
     <div className="max-w-6xl mx-auto">
       <h2 className="text-2xl font-bold text-gray-800 mb-6">سجل الجهات العامة</h2>
 
-      <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-center gap-3">
-        <div className="grow min-w-[200px]">
-          <label htmlFor="reg-search" className="sr-only">بحث بالاسم</label>
-          <input
-            id="reg-search"
-            value={query}
-            onChange={(e) => { setQuery(e.target.value); setPage(1); }}
-            placeholder="بحث باسم الجهة…"
-            autoComplete="off"
-            className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-        </div>
-        <div>
-          <label htmlFor="reg-gov" className="sr-only">فلتر المحافظة</label>
-          <select
-            id="reg-gov"
-            value={governorateFilter}
-            onChange={(e) => { setGovernorateFilter(e.target.value); setPage(1); }}
-            className="min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          >
-            <option value="">كل المحافظات</option>
-            {GOVERNORATES.map((g) => <option key={g} value={g}>{g}</option>)}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="reg-status" className="sr-only">فلتر الحالة</label>
-          <select
-            id="reg-status"
-            value={statusFilter}
-            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-            className="min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          >
-            <option value="">كل الحالات</option>
-            <option value="final">نهائي</option>
-            <option value="pending">بانتظار الاعتماد</option>
-          </select>
-        </div>
-        {hasFullAccess && (
+      {canViewGroups && (
+        <div className="mb-4 flex items-center gap-2 bg-white rounded-xl shadow p-1 w-fit">
           <button
-            onClick={() => setShowImport(true)}
-            className="border border-sky-200 text-sky-800 hover:bg-sky-50 rounded-lg px-4 py-2 text-sm min-h-11"
+            onClick={() => setViewMode('entries')}
+            aria-pressed={viewMode === 'entries'}
+            className={`rounded-lg px-4 py-2 text-sm min-h-11 font-medium transition-colors focus-visible:ring-2 focus-visible:ring-emerald-500 ${viewMode === 'entries' ? 'bg-emerald-700 text-white shadow' : 'text-gray-600 hover:bg-gray-50'}`}
           >
-            استيراد النصوص التاريخية…
+            عرض القيود
           </button>
+          <button
+            onClick={() => { setViewMode('groups'); setGroupsPage(1); }}
+            aria-pressed={viewMode === 'groups'}
+            className={`rounded-lg px-4 py-2 text-sm min-h-11 font-medium transition-colors focus-visible:ring-2 focus-visible:ring-emerald-500 ${viewMode === 'groups' ? 'bg-emerald-700 text-white shadow' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            عرض المجموعات
+          </button>
+        </div>
+      )}
+
+      <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-center gap-3">
+        {viewMode === 'entries' ? (
+          <>
+            <div className="grow min-w-[200px]">
+              <label htmlFor="reg-search" className="sr-only">بحث بالاسم</label>
+              <input
+                id="reg-search"
+                value={query}
+                onChange={(e) => { setQuery(e.target.value); setPage(1); }}
+                placeholder="بحث باسم الجهة…"
+                autoComplete="off"
+                className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+            <div>
+              <label htmlFor="reg-gov" className="sr-only">فلتر المحافظة</label>
+              <select
+                id="reg-gov"
+                value={governorateFilter}
+                onChange={(e) => { setGovernorateFilter(e.target.value); setPage(1); }}
+                className="min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="">كل المحافظات</option>
+                {GOVERNORATES.map((g) => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="reg-status" className="sr-only">فلتر الحالة</label>
+              <select
+                id="reg-status"
+                value={statusFilter}
+                onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+                className="min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="">كل الحالات</option>
+                <option value="final">نهائي</option>
+                <option value="pending">بانتظار المراجعة</option>
+              </select>
+            </div>
+            {hasFullAccess && (
+              <button
+                onClick={() => setShowImport(true)}
+                className="border border-sky-200 text-sky-800 hover:bg-sky-50 rounded-lg px-4 py-2 text-sm min-h-11 focus-visible:ring-2 focus-visible:ring-sky-500"
+              >
+                استيراد النصوص التاريخية…
+              </button>
+            )}
+            {hasFullAccess && (
+              <button
+                onClick={() => setShowMerge(true)}
+                className="border border-amber-200 text-amber-800 hover:bg-amber-50 rounded-lg px-4 py-2 text-sm min-h-11 focus-visible:ring-2 focus-visible:ring-amber-500"
+              >
+                دمج جهات…
+              </button>
+            )}
+            {hasFullAccess && (
+              <button
+                onClick={() => openUnify()}
+                className="border border-emerald-200 text-emerald-800 hover:bg-emerald-50 rounded-lg px-4 py-2 text-sm min-h-11 focus-visible:ring-2 focus-visible:ring-emerald-500"
+              >
+                توحيد تسمية…
+              </button>
+            )}
+            <button
+              onClick={() => setShowForm((v) => !v)}
+              aria-expanded={showForm}
+              className="bg-emerald-800 hover:bg-emerald-700 text-white rounded-lg px-4 py-2 text-sm min-h-11 focus-visible:ring-2 focus-visible:ring-emerald-500"
+            >
+              {showForm ? 'إلغاء' : '+ إضافة جهة'}
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="grow min-w-[200px]">
+              <label htmlFor="groups-search" className="sr-only">بحث باسم المجموعة</label>
+              <input
+                id="groups-search"
+                value={groupsQuery}
+                onChange={(e) => { setGroupsQuery(e.target.value); setGroupsPage(1); }}
+                placeholder="بحث باسم المجموعة…"
+                autoComplete="off"
+                className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+            {hasFullAccess && (
+              <div>
+                <label htmlFor="groups-gov" className="sr-only">فلتر المحافظة للمجموعات</label>
+                <select
+                  id="groups-gov"
+                  value={groupsGov}
+                  onChange={(e) => { setGroupsGov(e.target.value); setGroupsPage(1); }}
+                  className="min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  <option value="">كل المحافظات</option>
+                  {GOVERNORATES.map((g) => <option key={g} value={g}>{g}</option>)}
+                </select>
+              </div>
+            )}
+            {hasFullAccess && (
+              <button
+                onClick={() => openUnify()}
+                className="border border-emerald-200 text-emerald-800 hover:bg-emerald-50 rounded-lg px-4 py-2 text-sm min-h-11 focus-visible:ring-2 focus-visible:ring-emerald-500"
+              >
+                توحيد تسمية…
+              </button>
+            )}
+          </>
         )}
-        <button
-          onClick={() => setShowForm((v) => !v)}
-          aria-expanded={showForm}
-          className="bg-emerald-800 hover:bg-emerald-700 text-white rounded-lg px-4 py-2 text-sm min-h-11"
-        >
-          {showForm ? 'إلغاء' : '+ إضافة جهة'}
-        </button>
       </div>
 
       {importSummary && (
         <p role="status" className="mb-4 bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-lg p-3 text-sm">
           {importSummary}
+        </p>
+      )}
+
+      {mergeSummary && (
+        <p role="status" className="mb-4 bg-amber-50 border border-amber-100 text-amber-800 rounded-lg p-3 text-sm">
+          {mergeSummary}
+        </p>
+      )}
+
+      {unifySummary && (
+        <p role="status" className="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg p-3 text-sm">
+          {unifySummary}
         </p>
       )}
 
@@ -395,99 +567,225 @@ export default function EntityRegistryManagement() {
         </form>
       )}
 
-      {listError && <div role="alert" className="text-red-600 mb-4">{listError}</div>}
+      {viewMode === 'entries' ? (
+        <>
+          {listError && <div role="alert" className="text-red-600 mb-4">{listError}</div>}
 
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        {!isMobile && (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-gray-600">
-              <tr className="text-right">
-                <th className="px-4 py-3">الجهة</th>
-                <th className="px-4 py-3">النوع</th>
-                <th className="px-4 py-3">المحافظة / الفرع</th>
-                <th className="px-4 py-3">الصيغة</th>
-                <th className="px-4 py-3">الحالة</th>
-                <th className="px-4 py-3">إجراء</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {entries.map((entry) => (
-                <tr key={entry.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-gray-800">{entry.canonicalName}</div>
-                    {entry.aliases.length > 0 && (
-                      <div className="text-xs text-gray-400 truncate max-w-xs" title={entry.aliases.join('، ')}>
-                        أسماء أخرى: {entry.aliases.length}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">{entityTypeLabel(entry.entityType)}</td>
-                  <td className="px-4 py-3 text-gray-600">{formatEntityCoverage(entry)} / {entry.branchName}</td>
-                  <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{citationFormulaLabel(entry.citationFormula)}</td>
-                  <td className="px-4 py-3">{statusBadge(entry.status)}</td>
-                  <td className="px-4 py-3">
+          <div className="bg-white rounded-xl shadow overflow-hidden">
+            {!isMobile && (
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-600">
+                  <tr className="text-right">
+                    <th className="px-4 py-3">الجهة</th>
+                    <th className="px-4 py-3">النوع</th>
+                    <th className="px-4 py-3">المحافظة / الفرع</th>
+                    <th className="px-4 py-3">الصيغة</th>
+                    <th className="px-4 py-3">الحالة</th>
+                    <th className="px-4 py-3">إجراء</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {entries.map((entry) => (
+                    <tr key={entry.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-gray-800">{entry.canonicalName}</div>
+                        {entry.aliases.length > 0 && (
+                          <div className="text-xs text-gray-400 truncate max-w-xs" title={entry.aliases.join('، ')}>
+                            أسماء أخرى: {entry.aliases.length}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">{entityTypeLabel(entry.entityType)}</td>
+                      <td className="px-4 py-3 text-gray-600">{formatEntityCoverage(entry)} / {entry.branchName}</td>
+                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{citationFormulaLabel(entry.citationFormula)}</td>
+                      <td className="px-4 py-3">{statusBadge(entry)}</td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => openEdit(entry)}
+                          className="text-sky-700 hover:bg-sky-50 rounded-lg px-3 py-1.5 text-xs min-h-11 focus-visible:ring-2 focus-visible:ring-sky-500"
+                        >
+                          تعديل
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {!loading && entries.length === 0 && (
+                    <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">لا توجد جهات مطابقة</td></tr>
+                  )}
+                </tbody>
+              </table>
+            )}
+
+            {isMobile && (
+              <div className="divide-y divide-gray-100">
+                {!loading && entries.length === 0 && (
+                  <div className="px-4 py-8 text-center text-gray-400">لا توجد جهات مطابقة</div>
+                )}
+                {entries.map((entry) => (
+                  <article key={entry.id} className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <h3 className="font-bold text-gray-800 leading-snug break-words">{entry.canonicalName}</h3>
+                      {statusBadge(entry)}
+                    </div>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {entityTypeLabel(entry.entityType)} · {formatEntityCoverage(entry)} / {entry.branchName}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">{citationFormulaLabel(entry.citationFormula)}</p>
                     <button
                       onClick={() => openEdit(entry)}
-                      className="text-sky-700 hover:bg-sky-50 rounded-lg px-3 py-1.5 text-xs min-h-11"
+                      className="mt-3 text-sky-700 hover:bg-sky-50 rounded-lg px-3 py-2 text-xs min-h-11 focus-visible:ring-2 focus-visible:ring-sky-500"
                     >
                       تعديل
                     </button>
-                  </td>
-                </tr>
-              ))}
-              {!loading && entries.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">لا توجد جهات مطابقة</td></tr>
-              )}
-            </tbody>
-          </table>
-        )}
-
-        {isMobile && (
-          <div className="divide-y divide-gray-100">
-            {!loading && entries.length === 0 && (
-              <div className="px-4 py-8 text-center text-gray-400">لا توجد جهات مطابقة</div>
+                  </article>
+                ))}
+              </div>
             )}
-            {entries.map((entry) => (
-              <article key={entry.id} className="p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <h3 className="font-bold text-gray-800 leading-snug break-words">{entry.canonicalName}</h3>
-                  {statusBadge(entry.status)}
-                </div>
-                <p className="text-sm text-gray-600 mt-1">
-                  {entityTypeLabel(entry.entityType)} · {formatEntityCoverage(entry)} / {entry.branchName}
-                </p>
-                <p className="text-xs text-gray-400 mt-0.5">{citationFormulaLabel(entry.citationFormula)}</p>
-                <button
-                  onClick={() => openEdit(entry)}
-                  className="mt-3 text-sky-700 hover:bg-sky-50 rounded-lg px-3 py-2 text-xs min-h-11"
-                >
-                  تعديل
-                </button>
-              </article>
-            ))}
-          </div>
-        )}
 
-        {totalCount > PAGE_SIZE && (
-          <nav aria-label="تصفح السجل" className="flex items-center justify-between gap-2 px-4 py-3 border-t border-gray-100 text-sm">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1 || loading}
-              className="border border-gray-300 rounded-lg px-3 py-2 min-h-11 disabled:opacity-40 hover:bg-gray-50"
-            >
-              السابق
-            </button>
-            <span className="text-gray-500 tabular-nums">{page} من {totalPages} — {totalCount} جهة</span>
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages || loading}
-              className="border border-gray-300 rounded-lg px-3 py-2 min-h-11 disabled:opacity-40 hover:bg-gray-50"
-            >
-              التالي
-            </button>
-          </nav>
-        )}
-      </div>
+            {totalCount > PAGE_SIZE && (
+              <nav aria-label="تصفح السجل" className="flex items-center justify-between gap-2 px-4 py-3 border-t border-gray-100 text-sm">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1 || loading}
+                  className="border border-gray-300 rounded-lg px-3 py-2 min-h-11 disabled:opacity-40 hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-emerald-500"
+                >
+                  السابق
+                </button>
+                <span className="text-gray-500 tabular-nums">{page} من {totalPages} — {totalCount} جهة</span>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages || loading}
+                  className="border border-gray-300 rounded-lg px-3 py-2 min-h-11 disabled:opacity-40 hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-emerald-500"
+                >
+                  التالي
+                </button>
+              </nav>
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          {groupsError && <div role="alert" className="text-red-600 mb-4">{groupsError}</div>}
+
+          <div className="bg-white rounded-xl shadow overflow-hidden">
+            {groupsLoading && <p className="text-sm text-gray-500 p-6 text-center">جارِ تحميل المجموعات…</p>}
+
+            {!groupsLoading && !isMobile && (
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-600">
+                  <tr className="text-right">
+                    <th className="px-4 py-3">المجموعة (الهوية الأم)</th>
+                    <th className="px-4 py-3">النوع</th>
+                    <th className="px-4 py-3">عدد القيود</th>
+                    <th className="px-4 py-3">المحافظات</th>
+                    <th className="px-4 py-3">إجراء</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {groups.map((g) => (
+                    <tr key={g.groupId} className="hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        <div className="font-bold text-gray-800">{g.canonicalName}</div>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">{entityTypeLabel(g.entityType)}</td>
+                      <td className="px-4 py-3 text-gray-600 tabular-nums">{g.entryCount}</td>
+                      <td className="px-4 py-3 text-gray-600">
+                        {g.governorates.length > 0 ? (
+                          <span className="inline-flex flex-wrap gap-1">
+                            {g.governorates.map((gov) => (
+                              <span key={gov} className="bg-gray-100 text-gray-700 rounded-full px-2 py-0.5 text-xs">{gov}</span>
+                            ))}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {hasFullAccess ? (
+                          <button
+                            onClick={() => openUnify(g.groupId)}
+                            className="border border-emerald-200 text-emerald-700 hover:bg-emerald-50 rounded-lg px-3 py-1.5 text-xs min-h-11 focus-visible:ring-2 focus-visible:ring-emerald-500"
+                          >
+                            توحيد تسمية
+                          </button>
+                        ) : isHead ? (
+                          <button
+                            onClick={() => openBranchManage(g.groupId, g.canonicalName)}
+                            className="border border-sky-200 text-sky-700 hover:bg-sky-50 rounded-lg px-3 py-1.5 text-xs min-h-11 focus-visible:ring-2 focus-visible:ring-sky-500"
+                          >
+                            إدارة الفروع
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                  {!groupsLoading && groups.length === 0 && (
+                    <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">لا توجد مجموعات مطابقة</td></tr>
+                  )}
+                </tbody>
+              </table>
+            )}
+
+            {!groupsLoading && isMobile && (
+              <div className="divide-y divide-gray-100">
+                {!groupsLoading && groups.length === 0 && (
+                  <div className="px-4 py-8 text-center text-gray-400">لا توجد مجموعات مطابقة</div>
+                )}
+                {groups.map((g) => (
+                  <article key={g.groupId} className="p-4">
+                    <h3 className="font-bold text-gray-800 leading-snug break-words text-pretty">{g.canonicalName}</h3>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {entityTypeLabel(g.entityType)} · {g.entryCount} قيد
+                    </p>
+                    {g.governorates.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {g.governorates.map((gov) => (
+                          <span key={gov} className="bg-gray-100 text-gray-700 rounded-full px-2 py-0.5 text-xs">{gov}</span>
+                        ))}
+                      </div>
+                    )}
+                    {hasFullAccess ? (
+                      <button
+                        onClick={() => openUnify(g.groupId)}
+                        className="mt-3 border border-emerald-200 text-emerald-700 hover:bg-emerald-50 rounded-lg px-3 py-2 text-xs min-h-11 w-full focus-visible:ring-2 focus-visible:ring-emerald-500"
+                      >
+                        توحيد تسمية هذه المجموعة
+                      </button>
+                    ) : isHead ? (
+                      <button
+                        onClick={() => openBranchManage(g.groupId, g.canonicalName)}
+                        className="mt-3 border border-sky-200 text-sky-700 hover:bg-sky-50 rounded-lg px-3 py-2 text-xs min-h-11 w-full focus-visible:ring-2 focus-visible:ring-sky-500"
+                      >
+                        إدارة فروع هذه المجموعة
+                      </button>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            )}
+
+            {groupsTotalCount > PAGE_SIZE && (
+              <nav aria-label="تصفح المجموعات" className="flex items-center justify-between gap-2 px-4 py-3 border-t border-gray-100 text-sm">
+                <button
+                  onClick={() => setGroupsPage((p) => Math.max(1, p - 1))}
+                  disabled={groupsPage <= 1 || groupsLoading}
+                  className="border border-gray-300 rounded-lg px-3 py-2 min-h-11 disabled:opacity-40 hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-emerald-500"
+                >
+                  السابق
+                </button>
+                <span className="text-gray-500 tabular-nums">{groupsPage} من {groupsTotalPages} — {groupsTotalCount} مجموعة</span>
+                <button
+                  onClick={() => setGroupsPage((p) => Math.min(groupsTotalPages, p + 1))}
+                  disabled={groupsPage >= groupsTotalPages || groupsLoading}
+                  className="border border-gray-300 rounded-lg px-3 py-2 min-h-11 disabled:opacity-40 hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-emerald-500"
+                >
+                  التالي
+                </button>
+              </nav>
+            )}
+          </div>
+        </>
+      )}
 
       {editing && (
         <div
@@ -579,7 +877,7 @@ export default function EntityRegistryManagement() {
                   className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 >
                   <option value="final">نهائي</option>
-                  <option value="pending">بانتظار الاعتماد</option>
+                  <option value="pending">بانتظار المراجعة</option>
                 </select>
               </div>
               <label className="inline-flex items-center gap-2 text-sm cursor-pointer min-h-11">
@@ -607,6 +905,48 @@ export default function EntityRegistryManagement() {
                   autoComplete="off"
                   className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
+              </div>
+            )}
+
+            {hasFullAccess && (
+              <div className="mt-4 border-t border-gray-100 pt-4">
+                <h4 className="text-sm font-bold text-gray-700 mb-2">المرسوم (للتعديلات العامة — اختياري)</h4>
+                <div className="grid sm:grid-cols-3 gap-3">
+                  <div>
+                    <label htmlFor="ed-decree-kind" className="block text-xs font-medium text-gray-600 mb-1">نوع المرسوم</label>
+                    <input
+                      id="ed-decree-kind"
+                      value={editDecreeKind}
+                      onChange={(e) => setEditDecreeKind(e.target.value)}
+                      placeholder="مثال: مرسوم تشريعي…"
+                      autoComplete="off"
+                      className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="ed-decree-number" className="block text-xs font-medium text-gray-600 mb-1">رقم المرسوم</label>
+                    <input
+                      id="ed-decree-number"
+                      value={editDecreeNumber}
+                      onChange={(e) => setEditDecreeNumber(e.target.value)}
+                      placeholder="مثال: 123…"
+                      autoComplete="off"
+                      className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="ed-decree-date" className="block text-xs font-medium text-gray-600 mb-1">تاريخ المرسوم</label>
+                    <input
+                      id="ed-decree-date"
+                      type="text"
+                      value={editDecreeDate}
+                      onChange={(e) => setEditDecreeDate(e.target.value)}
+                      placeholder="مثال: 1/8/2026"
+                      autoComplete="off"
+                      className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
               </div>
             )}
 
@@ -668,6 +1008,46 @@ export default function EntityRegistryManagement() {
             setImportSummary(summary);
             setPage(1);
             reload();
+          }}
+        />
+      )}
+
+      {showMerge && (
+        <MergeModal
+          onClose={() => setShowMerge(false)}
+          onCommitted={(summary) => {
+            setShowMerge(false);
+            setMergeSummary(summary);
+            setPage(1);
+            reload();
+          }}
+        />
+      )}
+
+      {showUnify && (
+        <UnifyNamesModal
+          initialGroupId={unifyInitialGroupId}
+          onClose={() => setShowUnify(false)}
+          onCommitted={(summary) => {
+            setShowUnify(false);
+            setUnifySummary(summary);
+            setPage(1);
+            reload();
+            reloadGroups();
+          }}
+        />
+      )}
+
+      {showBranchManage && branchManageGroupId !== null && (
+        <BranchManagementModal
+          groupId={branchManageGroupId}
+          groupName={branchManageGroupName}
+          onClose={() => setShowBranchManage(false)}
+          onCommitted={(summary) => {
+            setShowBranchManage(false);
+            setUnifySummary(summary);
+            reload();
+            reloadGroups();
           }}
         />
       )}

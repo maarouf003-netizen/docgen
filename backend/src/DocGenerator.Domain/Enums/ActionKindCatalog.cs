@@ -12,10 +12,13 @@ public static class ActionKindCatalog
     public const string Create = "create";
     public const string Review = "review";
     public const string Import = "import";
+    public const string Unify = "unify";
+    public const string Update = "update";
+    public const string Propose = "propose";
 
     public static readonly IReadOnlySet<string> ValidKinds = new HashSet<string>
     {
-        Rename, Move, Merge, Abolish, Create, Review, Import,
+        Rename, Move, Merge, Abolish, Create, Review, Import, Unify, Update, Propose,
     };
 
     public static string ToLabel(string kind) => kind switch
@@ -27,6 +30,9 @@ public static class ActionKindCatalog
         Create => "إنشاء",
         Review => "مراجعة",
         Import => "استيراد",
+        Unify => "توحيد تسمية",
+        Update => "تحديث عام",
+        Propose => "اقتراح تعديل",
         _ => kind,
     };
 

@@ -35,10 +35,23 @@ export function publicEntityStatusLabel(status: string | null | undefined): stri
     case 'final':
       return 'نهائي';
     case 'pending':
-      return 'بانتظار الاعتماد';
+      return 'بانتظار المراجعة';
     default:
       return status ?? '';
   }
+}
+
+/**
+ * هل القيد «بانتظار مراجعة/اعتماد» بصريًا؟ صحيح إذا كان مخزَّنًا بـ status=pending
+ * (النموذج القديم) أو بـ status=final لكن needsReview=true (النموذج الحوكمي الحالي:
+ * ما أدخله المحامي يُخزَّن نهائيًا لكنه لا يظهر لبوات المندوبين قبل إقفال المراجعة —
+ * انظر المواصفة §6bis). تُستخدم في نافذة الاختيار لتمييز القيد بصريًا (د4/§5.3).
+ */
+export function isEntryPendingReview(entry: {
+  status?: string | null;
+  needsReview?: boolean | null;
+}): boolean {
+  return entry.status === 'pending' || entry.needsReview === true;
 }
 
 /** اسم المحافظة المعروض: CoverageLabel إن وُجد، وإلا المحافظة الأصلية. */

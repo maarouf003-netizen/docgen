@@ -744,6 +744,7 @@ public class DocumentDelegationConfiguration : IEntityTypeConfiguration<Document
         builder.Property(d => d.DepositBookDate).HasColumnType("datetime2");
         builder.Property(d => d.DelegationDate).HasColumnType("datetime2");
         builder.Property(d => d.ReturnDate).HasColumnType("datetime2");
+        builder.Property(d => d.SaleCoversFullDebt);
         builder.Property(d => d.Status).HasMaxLength(50).IsRequired();
         builder.HasIndex(d => d.Status);
         builder.HasIndex(d => d.SourceDocumentId);
