@@ -13,6 +13,31 @@
 
 ---
 
+## [1.11.0] — 2026-08-28
+
+### Changed — نافذة اختيار الجهة العامة + أدوات إدارة السجل + تغطية الإنابة
+- **نافذة «اختيار جهة عامة» (`PublicEntityPickerModal`)**: أصبحت قائمة منسدلة تُفلتر برقم الفرع
+  (`branchName`) — «الفرع الرئيسي» يثبَّت أعلى القائمة، وتوسّع `GET /api/entity-registry/search`
+  و`/list` بمعامل `branchName` عبر `PublicEntityService.ListAsync` للفلترة من الخادم للجهات
+  المتوافقة مع فرع المُدخِل.
+- **أدوات إدارة سجل الجهات (مرحلة 5)**: مودالات اقتراح التعديل `ProposeEditModal`، توحيد الأسماء
+  `UnifyNamesModal`، الدمج `MergeModal`، وإدارة الفروع `BranchManagementModal` — مع صفحة سجل
+  التغييرات `EntityChangeLog` واختباراتها.
+- **تغطية الإنابة `SaleCoversFullDebt`**: حقل يحدد إن كان بيع المندوب يُغطي كامل الدين، مع هجرته
+  للسياقين — يعمل به في إكمال الإنابة `CompleteDelegationModal` وتفاصيلها `DelegationDetails`.
+- **بنية معمارية**: ملفان `ARCHITECTURE_MAP.md` و`docs/ARCHITECTURE_MAP.md` يوثّقان بنية النظام.
+
+### الهجرات الإلزامية عند النشر
+| السياق | الهجرة |
+|---|---|
+| `DocGeneratorDbContext` (SQLite) | `AddDelegationSaleCoversFullDebt` |
+| `DocGeneratorPostgresDbContext` (PostgreSQL) | `AddDelegationSaleCoversFullDebt` |
+
+> ⚠️ يجب تنفيذها في نافذة النشر قبل تشغيل الإصدار:
+> `dotnet ef database update --context DocGeneratorDbContext` ثم
+> `dotnet ef database update --context DocGeneratorPostgresDbContext` —
+> وإلا فشل إكمال الإنابة (`no such column`). التفاصيل: `RUN_GUIDE.md` §9.
+
 ## [1.10.0] — 2026-08-26
 
 ### Changed — بوابة الجهات: نموذج حوكمة جديد «الدخول الفوري والمراجعة اللاحقة»
