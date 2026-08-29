@@ -490,6 +490,8 @@ export interface DelegationDto {
   /** محامي الملف المنيب الذي سطّر الإنابة (صاحب صلاحية تعديلها/حذفها ما دامت معلّقة). */
   createdById: number;
   assets: DelegationAssetDto[];
+  /** هل غطى بدل المبيع كامل المديونية؟ يحدده محامي المناب عند الإتمام — null قبل الإتمام. */
+  saleCoversFullDebt?: boolean | null;
 }
 
 /** تسطير/تعديل إنابة: التواريخ نصوص حرة تُفسَّر في الخلفية؛ الخارجية تتطلب الفرع المناب. */
@@ -531,6 +533,8 @@ export interface CompleteDelegationRequest {
   sales: DelegationSaleDto[];
   /** تاريخ قرار الإحالة القطعية (نص حر) — يُحفظ على الملف المنيب عند تفعيله «منفذ جبريا». */
   forcedExecutionDate: string;
+  /** هل غطى بدل المبيع كامل المديونية؟ يحدده محامي المناب عند الإتمام. */
+  saleCoversFullDebt?: boolean | null;
 }
 
 export interface DocumentUpsertRequest {
@@ -1240,7 +1244,7 @@ export type PublicEntityType =
   | 'foundation'
   | 'company';
 
-/** حالة قيد الجهة: نهائي (يظهر للمندوبين) أو بانتظار الاعتماد. */
+/** حالة قيد الجهة: نهائي (يظهر للمندوبين) أو بانتظار المراجعة. */
 export type PublicEntityStatus = 'final' | 'pending';
 
 /** صيغة مناداة ممثل الجهة القانونية: إضافة لوظيفته / إضافة لمنصبه. */
@@ -1264,6 +1268,8 @@ export interface PublicEntityEntryDto {
   needsReview?: boolean;
   /** تسمية التغطية الجغرافية (تظهر بدل المحافظة في البطاقات والبحث). */
   coverageLabel?: string | null;
+  /** قيد «الجهة الأم» (بلا فرع): يغطي كل المحافظات ويظهر مرة واحدة — وفروعه تحته. */
+  isParentEntity?: boolean;
 }
 
 /** نتيجة قائمة/بحث السجل المصدّرة. */
@@ -1283,9 +1289,11 @@ export interface CreatePublicEntityRequest {
   citationFormula?: CitationFormula | null;
   aliases?: string[] | null;
   coverageLabel?: string | null;
+  /** جعل القيد قيد «الجهة الأم» (بلا فرع) — يُخزَّن مرة واحدة ويغطي كل المحافظات. */
+  isParentEntity?: boolean;
 }
 
-/** أي حقل يُترك undefined يبقى كما هو؛ canonicalName يعني إعادة تسمية جماعية. */
+/** أي حقل يُترك undefined يبقى كما هو؛ canonicalName يعني إعادة تسمية جماعية. حقول المرسوم للتعديلات العامة بمرسوم. */
 export interface UpdatePublicEntityRequest {
   canonicalName?: string | null;
   entityType?: PublicEntityType | null;
@@ -1295,10 +1303,24 @@ export interface UpdatePublicEntityRequest {
   status?: PublicEntityStatus | null;
   isActive?: boolean | null;
   coverageLabel?: string | null;
+  decreeKind?: string | null;
+  decreeNumber?: string | null;
+  decreeDate?: string | null;
+  isParentEntity?: boolean | null;
 }
 
 export interface AddPublicEntityAliasRequest {
   aliasText: string;
+}
+
+export interface ProposeEditRequest {
+  canonicalName?: string | null;
+  entityType?: PublicEntityType | null;
+  governorate?: string | null;
+  branchName?: string | null;
+  citationFormula?: CitationFormula | null;
+  coverageLabel?: string | null;
+  isParentEntity?: boolean | null;
 }
 
 /** كتابة متمايزة واحدة لنص جهة في الاستيراد مع عدّاد ملفاتها. */
@@ -1432,6 +1454,60 @@ export interface MergeCommitResponse {
   entriesMigrated: number;
   aliasesAdded: number;
   totalAffectedDocuments: number;
+  changeEventId: number;
+}
+
+/* ── قائمة المجموعات (الهويات الأم) وتوحيد التسمية N←1 ───────────────── */
+
+export interface PublicEntityGroupDto {
+  groupId: number;
+  canonicalName: string;
+  entityType: PublicEntityType;
+  isActive: boolean;
+  entryCount: number;
+  governorates: string[];
+}
+
+export interface PublicEntityGroupListResponse {
+  items: PublicEntityGroupDto[];
+  page: number;
+  perPage: number;
+  totalCount: number;
+  totalPages: number;
+}
+
+export interface UnifyPreviewRequest {
+  targetGroupId: number;
+  absorbedGroupIds: number[];
+}
+
+export interface AbsorbedGroupUnifyPreviewDto {
+  groupId: number;
+  name: string;
+  entryCount: number;
+  governorates: string[];
+}
+
+export interface UnifyPreviewResponse {
+  targetName: string;
+  absorbedGroups: AbsorbedGroupUnifyPreviewDto[];
+  totalEntriesToMove: number;
+  warnings: string[];
+}
+
+export interface UnifyRequest {
+  targetGroupId: number;
+  absorbedGroupIds: number[];
+  decreeKind?: string | null;
+  decreeNumber?: string | null;
+  decreeDate?: string | null;
+}
+
+export interface UnifyResponse {
+  targetGroupId: number;
+  canonicalName: string;
+  groupsUnified: number;
+  entriesMoved: number;
   changeEventId: number;
 }
 

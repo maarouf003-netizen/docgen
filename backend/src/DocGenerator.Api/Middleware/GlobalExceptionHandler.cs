@@ -1,5 +1,6 @@
 using DocGenerator.Application.Common;
 using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.EntityFrameworkCore;
 
 namespace DocGenerator.Api.Middleware;
 
@@ -45,6 +46,8 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         var message = exception switch
         {
             ArgumentException or KeyNotFoundException or DocumentConflictException => exception.Message,
+            DbUpdateException ex when _environment.IsDevelopment() => DescribeDbUpdateException(ex),
+            DbUpdateException => "فشل حفظ التغييرات في قاعدة البيانات",
             _ when _environment.IsDevelopment() => exception.Message,
             _ => "حدث خطأ غير متوقع في الخادم",
         };
@@ -52,5 +55,22 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         httpContext.Response.StatusCode = statusCode;
         await httpContext.Response.WriteAsJsonAsync(new { message }, cancellationToken);
         return true;
+    }
+
+    /// <summary>
+    /// رسالة فعلية من غلاف فشل الحفظ: غلاف <c>DbUpdateException</c> يردّ نصًا عامًا
+    /// («An error occurred while saving the entity changes...») بلا فائدة تشخيصية، بينما
+    /// يحمل الجذر الداخلي القيد المخالَف أو سبب SQL الحقيقي (مثل
+    /// <c>SQLite Error 19: UNIQUE constraint failed: ...</c>)، فيُمشى نحو أعمق استثناء
+    /// داخلي. تُستخدم في بيئة التطوير فقط لتشخيص فوري دون كشف أي تفاصيل في الإنتاج.
+    /// </summary>
+    private static string DescribeDbUpdateException(DbUpdateException exception)
+    {
+        if (exception.InnerException is not Exception inner)
+            return "فشل حفظ التغييرات في قاعدة البيانات";
+        var deepest = inner;
+        while (deepest.InnerException is not null)
+            deepest = deepest.InnerException;
+        return deepest.Message;
     }
 }

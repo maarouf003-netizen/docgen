@@ -13,6 +13,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.EntityFrameworkCore;
 
 namespace DocGenerator.Api.Tests;
 
@@ -85,6 +86,50 @@ public class ExceptionHandlerIntegrationTests
 
         Assert.Equal(StatusCodes.Status500InternalServerError, status);
         Assert.Equal("تفاصيل تصحيح", ReadMessage(body));
+    }
+
+    [Fact]
+    public async Task DbUpdateException_Development_ReturnsRealConstraintFromInnerException()
+    {
+        var inner = new InvalidOperationException(
+            "SQLite Error 19: 'UNIQUE constraint failed: PublicEntities.GroupId, PublicEntities.Governorate, PublicEntities.BranchName'");
+        var ex = new DbUpdateException(
+            "An error occurred while saving the entity changes. See the inner exception for details.", inner);
+
+        var (status, body) = await HandleAsync(ex, environment: "Development");
+
+        Assert.Equal(StatusCodes.Status500InternalServerError, status);
+        Assert.Contains("UNIQUE constraint failed", ReadMessage(body));
+    }
+
+    [Fact]
+    public async Task DbUpdateException_Development_PrefersDeepestInnerException()
+    {
+        var sqlite = new InvalidOperationException(
+            "SQLite Error 19: 'UNIQUE constraint failed: PublicEntities.BranchName'");
+        var wrapped = new InvalidOperationException("السبب الوسيط بلا فائدة تشخيصية", sqlite);
+        var ex = new DbUpdateException(
+            "An error occurred while saving the entity changes. See the inner exception for details.", wrapped);
+
+        var (status, body) = await HandleAsync(ex, environment: "Development");
+
+        Assert.Equal(StatusCodes.Status500InternalServerError, status);
+        Assert.Contains("UNIQUE constraint failed", ReadMessage(body));
+        Assert.DoesNotContain("السبب الوسيط", ReadMessage(body));
+    }
+
+    [Fact]
+    public async Task DbUpdateException_Production_ReturnsGenericSaveMessageWithoutLeakingInner()
+    {
+        var ex = new DbUpdateException(
+            "An error occurred while saving the entity changes. See the inner exception for details.",
+            new InvalidOperationException("SQLite Error 19: 'UNIQUE constraint failed: PublicEntities...'"));
+
+        var (status, body) = await HandleAsync(ex, environment: "Production");
+
+        Assert.Equal(StatusCodes.Status500InternalServerError, status);
+        Assert.Equal("فشل حفظ التغييرات في قاعدة البيانات", ReadMessage(body));
+        Assert.DoesNotContain("UNIQUE", body);
     }
 
     [Fact]

@@ -104,4 +104,16 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             .OrderByDescending(a => a.CreatedAt)
             .FirstOrDefaultAsync(a => a.Recipients.Any(r => r.UserId == recipientUserId && !r.IsRead), ct);
     }
+
+    public async Task<HeadAlert?> FindLatestPendingByEntityAsync(
+        int publicEntityId, int recipientUserId, CancellationToken ct = default)
+    {
+        // متتبَّعة عمدًا: ستُحدَّث رسالتها وزمنها لدمج اقتراحات تعديل الجهة المتلاحقة
+        // قبل الاعتماد في تنبيه واحد بآخر تعديل.
+        return await Db.HeadAlerts
+            .Include(a => a.Recipients)
+            .Where(a => a.PublicEntityId == publicEntityId)
+            .OrderByDescending(a => a.CreatedAt)
+            .FirstOrDefaultAsync(a => a.Recipients.Any(r => r.UserId == recipientUserId && !r.IsRead), ct);
+    }
 }

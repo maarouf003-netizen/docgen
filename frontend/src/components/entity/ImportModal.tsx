@@ -70,7 +70,7 @@ export function ImportModal({ onClose, onCommitted }: ImportModalProps) {
         canonicalName: (canonicals[p.normalizedName] ?? p.suggestedCanonicalName).trim(),
         entityType: 'ministry',
         governorate: governorates[p.normalizedName] ?? p.governorates[0] ?? 'دمشق',
-        branchName: 'الفرع الرئيسي',
+        branchName: 'الجهة الأم',
         addVariantsAsAliases: true,
       }));
     if (items.length === 0) {

@@ -20,6 +20,9 @@ const ACTION_LABELS: Record<string, string> = {
   abolish: 'إلغاء',
   review: 'مراجعة',
   import: 'استيراد',
+  unify: 'توحيد تسمية',
+  update: 'تحديث عام',
+  propose: 'اقتراح تعديل',
 };
 
 export default function EntityChangeLog() {

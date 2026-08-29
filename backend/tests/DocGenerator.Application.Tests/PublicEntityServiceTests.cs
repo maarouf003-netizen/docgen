@@ -51,7 +51,7 @@ public class PublicEntityServiceTests : IDisposable
         _service = new PublicEntityService(
             new PublicEntityRepository(_db),
             new Repository<Branch>(_db),
-            new Repository<HeadAlert>(_db),
+            new HeadAlertRepository(_db),
             new Repository<PublicEntityChangeEvent>(_db),
             new Repository<DocumentOccurrence>(_db),
             new UnitOfWork(_db),
@@ -69,6 +69,9 @@ public class PublicEntityServiceTests : IDisposable
 
     private EntityRegistryActor HeadDamascusActor() =>
         new(_headDamascusId, "رئيس قسم دمشق", UserRole.Head, _damascusId);
+
+    private EntityRegistryActor HeadAleppoActor() =>
+        new(_headAleppoId, "رئيس قسم حلب", UserRole.Head, _aleppoId);
 
     private async Task<Document> SeedApplicantDocumentAsync(string entityName, string governorate, string generalSide = "applicant")
     {
@@ -147,7 +150,8 @@ public class PublicEntityServiceTests : IDisposable
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest("مديرية النقل", "administration", "حمص", ""), ManagerActor());
 
-        Assert.Equal("الفرع الرئيسي", dto.BranchName);
+        Assert.Equal("الجهة الأم", dto.BranchName);
+        Assert.True(dto.IsParentEntity);
     }
 
     [Fact]
@@ -195,6 +199,75 @@ public class PublicEntityServiceTests : IDisposable
 
         Assert.Equal(0, pickerView.TotalCount);      // نافذة الاختيار وربط المندوبين
         Assert.Equal(1, managementView.TotalCount);  // شاشة الإدارة ترى الموقوف أيضًا
+    }
+
+    [Fact]
+    public async Task Search_FiltersByExactBranchName()
+    {
+        // الجهة الأم تُبقي ظاهرة عند فلترة الفرع (تغطي كل المحافظات)، لكن الفرع الآخر غير المطابق يُستثنى.
+        await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الجهة الأم"), ManagerActor());
+        await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "حلب", "فرع حلب"), ManagerActor());
+        await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "فرع المزة"), ManagerActor());
+
+        var onlyMain = await _service.ListAsync(new EntityRegistryListQuery("وزارة التعليم", null, null, IncludePending: true, 1, 50, IncludeInactive: false, BranchName: "الجهة الأم"));
+        var onlyBranch = await _service.ListAsync(new EntityRegistryListQuery("وزارة التعليم", null, null, IncludePending: true, 1, 50, IncludeInactive: false, BranchName: "فرع حلب"));
+        var all = await _service.ListAsync(new EntityRegistryListQuery("وزارة التعليم", null, null, IncludePending: true, 1, 50, IncludeInactive: false));
+
+        // فلتر «الجهة الأم» يعيدها فقط.
+        Assert.Equal(1, onlyMain.TotalCount);
+        Assert.Equal("الجهة الأم", onlyMain.Items[0].BranchName);
+        Assert.True(onlyMain.Items[0].IsParentEntity);
+        // فلتر «فرع حلب» يضيّق على فرع حلب ويبقي الجهة الأم — ويستبعد فرع المزة.
+        Assert.Equal(2, onlyBranch.TotalCount);
+        Assert.Contains(onlyBranch.Items, i => i.BranchName == "فرع حلب" && !i.IsParentEntity);
+        Assert.Contains(onlyBranch.Items, i => i.IsParentEntity);
+        Assert.Equal(3, all.TotalCount);
+    }
+
+    [Fact]
+    public async Task Search_MainBranch_IsReachableAcrossGovernorates_ForFundamentalEntity()
+    {
+        // الجهة الأم (بلا فرع — تغطي كل المحافظات) تُخزَّن في محافظة ما لكنها تمثل كيانًا عامًا؛
+        // بحثٌ بفرع «الجهة الأم» يعيدها أينما كانت محافظتها كي يمكن اختيارها عند مخاصمة الجهة الأساسية.
+        await _service.CreateAsync(new CreatePublicEntityRequest("المركزي", "company", "حلب", "الجهة الأم"), ManagerActor());
+        await _service.CreateAsync(new CreatePublicEntityRequest("المركزي", "company", "دمشق", "فرع دمشق"), ManagerActor());
+
+        var main = await _service.ListAsync(new EntityRegistryListQuery("المركزي", null, null, IncludePending: true, 1, 50, IncludeInactive: false, BranchName: "الجهة الأم"));
+
+        Assert.Equal(1, main.TotalCount);
+        Assert.Equal("حلب", main.Items[0].Governorate);
+        Assert.Equal("الجهة الأم", main.Items[0].BranchName);
+        Assert.True(main.Items[0].IsParentEntity);
+    }
+
+    [Fact]
+    public async Task List_IncludesParentEntity_AcrossAnyGovernorateFilter()
+    {
+        // الجهة الأم تخزَّن في محافظة واحدة لكنها تمثل كل المحافظات؛ فلتر المحافظة يجب أن يبقيها ظاهرة.
+        var parent = await _service.CreateAsync(new CreatePublicEntityRequest("المركزي", "company", "دمشق", "الجهة الأم"), ManagerActor());
+        await _service.CreateAsync(new CreatePublicEntityRequest("المركزي", "company", "حلب", "فرع حلب"), ManagerActor());
+
+        var aleppoFiltered = await _service.ListAsync(new EntityRegistryListQuery("المركزي", "حلب", null, IncludePending: true, 1, 50, IncludeInactive: false));
+
+        Assert.True(parent.IsParentEntity);
+        Assert.Equal(2, aleppoFiltered.TotalCount); // الأم (دمشق المخزّنة) + فرع حلب
+        Assert.Contains(aleppoFiltered.Items, i => i.IsParentEntity);
+        Assert.Contains(aleppoFiltered.Items, i => i.Governorate == "حلب" && !i.IsParentEntity);
+    }
+
+    [Fact]
+    public async Task List_IncludesParentEntity_WhenFilteringByBranch()
+    {
+        // فلتر الفرع يضيّق على فرع محدد لكنه يُبقي الجهة الأم ظاهرة (تغطي كل المحافظات) لاختيارها.
+        var parent = await _service.CreateAsync(new CreatePublicEntityRequest("المركزي", "company", "دمشق", "الجهة الأم"), ManagerActor());
+        await _service.CreateAsync(new CreatePublicEntityRequest("المركزي", "company", "حلب", "فرع حلب"), ManagerActor());
+
+        var branchFiltered = await _service.ListAsync(new EntityRegistryListQuery("المركزي", null, null, IncludePending: true, 1, 50, IncludeInactive: false, BranchName: "فرع حلب"));
+
+        Assert.True(parent.IsParentEntity);
+        Assert.Equal(2, branchFiltered.TotalCount); // الأم + فرع حلب المختار
+        Assert.Contains(branchFiltered.Items, i => i.IsParentEntity);
+        Assert.Contains(branchFiltered.Items, i => i.BranchName == "فرع حلب" && !i.IsParentEntity);
     }
 
     [Fact]
@@ -355,7 +428,8 @@ public class PublicEntityServiceTests : IDisposable
             "هيئة التفتيش", "authority", "دمشق", "الفرع الرئيسي", CitationFormulaCatalog.AddToJob),
             LawyerActor());
 
-        // تُعتمد أصوليًا نهائية فورًا وتظهر للربط والبوابة لحظيًا.
+        // تُعتمد أصوليًا نهائية فورًا (Status=Final) لكنها تبقى «بحاجة مراجعة»؛
+        // لا تظهر لبوات المندوبين حتى يُقفلها رئيس القسم (المواءمة السلوكية §6bis).
         Assert.Equal(EntityStatusCatalog.Final, dto.Status);
         Assert.True(dto.NeedsReview);
 
@@ -1115,5 +1189,314 @@ public class PublicEntityServiceTests : IDisposable
         Assert.True(bytes.Length > 100);
         Assert.Equal((byte)'P', bytes[0]); // PK zip header
         Assert.Equal((byte)'K', bytes[1]);
+    }
+
+    // ── قائمة المجموعات وتوحيد التسمية N←1 (المدير/المشرف) ──
+
+    [Fact]
+    public async Task ListGroups_ReturnsGroupsOrderedWithCountsAndGovernorates()
+    {
+        await _service.CreateAsync(new CreatePublicEntityRequest("جهة مجموعة أ", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _service.CreateAsync(new CreatePublicEntityRequest("جهة مجموعة ب", "authority", "حلب", "فرع حلب"), ManagerActor());
+        await _service.CreateAsync(new CreatePublicEntityRequest("جهة مجموعة أ", "ministry", "حمص", "فرع حمص"), ManagerActor());
+
+        var paged = await _service.ListGroupsAsync(new EntityGroupListQuery(null, null, 1, 20), ManagerActor());
+        Assert.True(paged.TotalCount >= 2);
+        // مرتبة حسب CanonicalName
+        Assert.True(string.Compare(paged.Items[0].CanonicalName, paged.Items[1].CanonicalName, StringComparison.Ordinal) <= 0);
+        var groupA = paged.Items.First(g => g.CanonicalName == "جهة مجموعة أ");
+        Assert.Equal(2, groupA.EntryCount);
+        Assert.Contains("دمشق", groupA.Governorates);
+        Assert.Contains("حمص", groupA.Governorates);
+    }
+
+    [Fact]
+    public async Task ListGroups_FiltersByQueryAndGovernorate()
+    {
+        await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "حلب", "فرع حلب"), ManagerActor());
+
+        var qPaged = await _service.ListGroupsAsync(new EntityGroupListQuery("النقل", null, 1, 20), ManagerActor());
+        Assert.Single(qPaged.Items);
+        Assert.Equal("وزارة النقل", qPaged.Items[0].CanonicalName);
+
+        var govPaged = await _service.ListGroupsAsync(new EntityGroupListQuery(null, "حلب", 1, 20), ManagerActor());
+        Assert.All(govPaged.Items, g => Assert.Contains("حلب", g.Governorates));
+    }
+
+    [Fact]
+    public async Task ListGroups_HeadSeesOnlyHisGovernorate()
+    {
+        await _service.CreateAsync(new CreatePublicEntityRequest("جهة دمشق فقط", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _service.CreateAsync(new CreatePublicEntityRequest("جهة حلب فقط", "ministry", "حلب", "فرع حلب"), ManagerActor());
+
+        var damPaged = await _service.ListGroupsAsync(new EntityGroupListQuery(null, null, 1, 20), HeadDamascusActor());
+        Assert.All(damPaged.Items, g => Assert.Contains("دمشق", g.Governorates));
+        Assert.DoesNotContain(damPaged.Items, g => g.CanonicalName == "جهة حلب فقط");
+
+        var alpPaged = await _service.ListGroupsAsync(new EntityGroupListQuery(null, null, 1, 20), HeadAleppoActor());
+        Assert.All(alpPaged.Items, g => Assert.Contains("حلب", g.Governorates));
+    }
+
+    [Fact]
+    public async Task ListGroups_PaginationWorks()
+    {
+        for (int i = 0; i < 5; i++)
+            await _service.CreateAsync(new CreatePublicEntityRequest($"جهة ترقيم {i}", "ministry", "دمشق", $"فرع {i}"), ManagerActor());
+
+        var p1 = await _service.ListGroupsAsync(new EntityGroupListQuery("جهة ترقيم", null, 1, 2), ManagerActor());
+        var p2 = await _service.ListGroupsAsync(new EntityGroupListQuery("جهة ترقيم", null, 2, 2), ManagerActor());
+        Assert.Equal(2, p1.Items.Count);
+        Assert.Equal(2, p2.Items.Count);
+        Assert.NotEqual(p1.Items[0].GroupId, p2.Items[0].GroupId);
+        Assert.Equal(5, p1.TotalCount);
+    }
+
+    private async Task<(int targetGroupId, int absorbedGroupId)> SeedTwoGroupsForUnifyAsync()
+    {
+        var target = await _service.CreateAsync(new CreatePublicEntityRequest("الجهة الموحدة الهدف", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest("الجهة الممتصة", "ministry", "حلب", "فرع حلب"), ManagerActor());
+        return (target.GroupId, absorbed.GroupId);
+    }
+
+    [Fact]
+    public async Task PreviewUnify_ShowsTotalEntriesAndWarnings()
+    {
+        var (target, absorbed) = await SeedTwoGroupsForUnifyAsync();
+        var preview = await _service.PreviewUnifyAsync(new UnifyNamesPreviewRequest(target, new[] { absorbed }));
+        Assert.Equal("الجهة الموحدة الهدف", preview.TargetName);
+        Assert.Single(preview.AbsorbedGroups);
+        Assert.Equal(1, preview.TotalEntriesToMove);
+    }
+
+    [Fact]
+    public async Task PreviewUnify_WarnsOnGovernorateConflict()
+    {
+        var target = await _service.CreateAsync(new CreatePublicEntityRequest("جهة تعارض", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest("جهة تعارض ممتصة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var preview = await _service.PreviewUnifyAsync(new UnifyNamesPreviewRequest(target.GroupId, new[] { absorbed.GroupId }));
+        Assert.Contains(preview.Warnings, w => w.Contains("تعارض"));
+    }
+
+    [Fact]
+    public async Task PreviewUnify_SelfUnify_Throws()
+    {
+        var (target, _) = await SeedTwoGroupsForUnifyAsync();
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.PreviewUnifyAsync(new UnifyNamesPreviewRequest(target, new[] { target })));
+    }
+
+    [Fact]
+    public async Task PreviewUnify_EmptyAbsorbed_Throws()
+    {
+        var (target, _) = await SeedTwoGroupsForUnifyAsync();
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.PreviewUnifyAsync(new UnifyNamesPreviewRequest(target, Array.Empty<int>())));
+    }
+
+    [Fact]
+    public async Task Unify_MovesEntriesAndDeactivatesGroupsAndLogsEvent()
+    {
+        var (target, absorbed) = await SeedTwoGroupsForUnifyAsync();
+        var result = await _service.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { absorbed }), ManagerActor());
+
+        Assert.Equal(1, result.GroupsUnified);
+        Assert.Equal(1, result.EntriesMoved);
+        Assert.Equal(target, result.TargetGroupId);
+
+        var absorbedGroup = await _db.PublicEntityGroups.FindAsync(absorbed);
+        Assert.False(absorbedGroup!.IsActive);
+
+        var movedEntry = await _db.PublicEntities.SingleAsync(e => e.Governorate == "حلب" && e.BranchName == "فرع حلب");
+        Assert.Equal(target, movedEntry.GroupId);
+
+        var evt = await _db.PublicEntityChangeEvents.SingleAsync(e => e.GroupId == target);
+        Assert.Equal(ActionKindCatalog.Unify, evt.ActionKind);
+        var payloadEl = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(evt.PayloadJson);
+        var oldNames = payloadEl.GetProperty("oldCanonicalNames").EnumerateArray().Select(e => e.GetString()).ToList();
+        Assert.Contains("الجهة الممتصة", oldNames);
+        Assert.Contains("unify_entity_names", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task Unify_KeepsOldNamesOnlyInPayloadNotAliases()
+    {
+        var (target, absorbed) = await SeedTwoGroupsForUnifyAsync();
+        await _service.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { absorbed }), ManagerActor());
+
+        var targetEntries = await _db.PublicEntities.Include(e => e.Aliases).Where(e => e.GroupId == target).ToListAsync();
+        var allAliases = targetEntries.SelectMany(e => e.Aliases).Select(a => a.AliasText).ToList();
+        // الأسماء القديمة لا تُحفظ كأسماء بديلة حسب القرار
+        Assert.DoesNotContain("الجهة الممتصة", allAliases);
+    }
+
+    [Fact]
+    public async Task Unify_DuplicateEntryConflict_Throws()
+    {
+        var target = await _service.CreateAsync(new CreatePublicEntityRequest("جهة مكررة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest("جهة مكررة ممتصة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.UnifyNamesAsync(new UnifyNamesRequest(target.GroupId, new[] { absorbed.GroupId }), ManagerActor()));
+        Assert.Contains("تعارض", ex.Message);
+    }
+
+    [Fact]
+    public async Task Unify_NeedsReview_Throws()
+    {
+        var (target, absorbed) = await SeedTwoGroupsForUnifyAsync();
+        var absorbedEntry = await _db.PublicEntities.FirstAsync(e => e.GroupId == absorbed);
+        absorbedEntry.NeedsReview = true;
+        await _db.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { absorbed }), ManagerActor()));
+    }
+
+    [Fact]
+    public async Task Unify_SelfUnify_Throws()
+    {
+        var (target, _) = await SeedTwoGroupsForUnifyAsync();
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { target }), ManagerActor()));
+    }
+
+    [Fact]
+    public async Task ListEntriesByGroup_HeadSeesOnlyHisGovernorate()
+    {
+        var g1 = await _service.CreateAsync(new CreatePublicEntityRequest("جهة فروع", "ministry", "دمشق", "فرع دمشق 1"), ManagerActor());
+        await _service.CreateAsync(new CreatePublicEntityRequest("جهة فروع", "ministry", "حلب", "فرع حلب 1"), ManagerActor());
+
+        var damEntries = await _service.ListEntriesByGroupAsync(g1.GroupId, HeadDamascusActor());
+        Assert.All(damEntries, e => Assert.Equal("دمشق", e.Governorate));
+        Assert.Single(damEntries);
+
+        var managerEntries = await _service.ListEntriesByGroupAsync(g1.GroupId, ManagerActor());
+        Assert.Equal(2, managerEntries.Count);
+    }
+
+    [Fact]
+    public async Task Update_WithDecree_SucceedsAndStoresDecree()
+    {
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة مرسوم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var updated = await _service.UpdateAsync(dto.Id, new UpdatePublicEntityRequest(CanonicalName: "جهة مرسوم جديدة", DecreeKind: "مرسوم تشريعي", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
+        Assert.NotNull(updated);
+        Assert.Equal("جهة مرسوم جديدة", updated!.CanonicalName);
+        var evt = await _db.PublicEntityChangeEvents.OrderByDescending(e => e.Id).FirstAsync();
+        Assert.Equal("مرسوم تشريعي", evt.DecreeKind);
+        Assert.Equal("123", evt.DecreeNumber);
+        Assert.NotNull(evt.DecreeDate);
+        Assert.Equal(new DateTime(2026, 8, 1), evt.DecreeDate!.Value.Date);
+    }
+
+    [Fact]
+    public async Task Update_WithInvalidDecreeDate_Throws()
+    {
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة مرسوم 2", "ministry", "دمشق", "فرع 2"), ManagerActor());
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.UpdateAsync(dto.Id, new UpdatePublicEntityRequest(CanonicalName: "جهة مرسوم 2 جديدة", DecreeDate: "تاريخ فاسد"), ManagerActor()));
+        Assert.Contains("تاريخ المرسوم", ex.Message);
+    }
+
+    [Fact]
+    public async Task Unify_WithDecree_SucceedsAndStoresDecree()
+    {
+        var (target, absorbed) = await SeedTwoGroupsForUnifyAsync();
+        var result = await _service.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { absorbed }, DecreeKind: "قرار وزاري", DecreeNumber: "99", DecreeDate: "15/3/2026"), ManagerActor());
+        Assert.Equal(1, result.GroupsUnified);
+        var evt = await _db.PublicEntityChangeEvents.OrderByDescending(e => e.Id).FirstAsync();
+        Assert.Equal("قرار وزاري", evt.DecreeKind);
+        Assert.Equal("99", evt.DecreeNumber);
+        Assert.NotNull(evt.DecreeDate);
+    }
+
+    [Fact]
+    public async Task Unify_WithInvalidDecreeDate_Throws()
+    {
+        var (target, absorbed) = await SeedTwoGroupsForUnifyAsync();
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { absorbed }, DecreeDate: "not-a-date-xyz"), ManagerActor()));
+        Assert.Contains("تاريخ المرسوم", ex.Message);
+    }
+
+    [Fact]
+    public async Task Unify_WithArabicDigitsDecreeDate_Succeeds()
+    {
+        var (target, absorbed) = await SeedTwoGroupsForUnifyAsync();
+        // أرقام عربية-هندية ١٥/٣/٢٠٢٦
+        var result = await _service.UnifyNamesAsync(new UnifyNamesRequest(target, new[] { absorbed }, DecreeDate: "١٥/٣/٢٠٢٦"), ManagerActor());
+        Assert.Equal(1, result.GroupsUnified);
+        var evt = await _db.PublicEntityChangeEvents.OrderByDescending(e => e.Id).FirstAsync();
+        Assert.NotNull(evt.DecreeDate);
+    }
+
+    [Fact]
+    public async Task ProposeEdit_ByLawyer_SucceedsAndNotifiesHead()
+    {
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة قابلة للاقتراح", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var proposed = await _service.ProposeEditAsync(dto.Id, new ProposeEditRequest(CanonicalName: "جهة مقترحة جديدة"), LawyerActor());
+        Assert.NotNull(proposed);
+        Assert.Equal("جهة مقترحة جديدة", proposed!.CanonicalName);
+        Assert.True(proposed.NeedsReview);
+        var evt = await _db.PublicEntityChangeEvents.OrderByDescending(e => e.Id).FirstAsync();
+        Assert.Equal(ActionKindCatalog.Propose, evt.ActionKind);
+        Assert.Equal(dto.Id, evt.EntryId);
+        var alert = await _db.HeadAlerts.OrderByDescending(h => h.Id).FirstAsync();
+        Assert.Contains("اقترح", alert.Message);
+        Assert.Equal(dto.Id, alert.PublicEntityId);
+        Assert.Contains(alert.Recipients, r => r.UserId == _headDamascusId);
+    }
+
+    [Fact]
+    public async Task ProposeEdit_ByNonLawyer_Throws()
+    {
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة أخرى", "ministry", "دمشق", "فرع 2"), ManagerActor());
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.ProposeEditAsync(dto.Id, new ProposeEditRequest(CanonicalName: "تعديل"), ManagerActor()));
+    }
+
+    [Fact]
+    public async Task ProposeEdit_DuplicateBranch_Throws()
+    {
+        var dto1 = await _service.CreateAsync(new CreatePublicEntityRequest("جهة مكررة فروع", "ministry", "دمشق", "فرع 1"), ManagerActor());
+        await _service.CreateAsync(new CreatePublicEntityRequest("جهة مكررة فروع", "ministry", "دمشق", "فرع 2"), ManagerActor());
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.ProposeEditAsync(dto1.Id, new ProposeEditRequest(BranchName: "فرع 2"), LawyerActor()));
+    }
+
+    [Fact]
+    public async Task ProposeEdit_MultipleProposalsOnSameEntityBeforeApproval_MergeIntoSingleAlertWithLatestEdit()
+    {
+        // تعديلان متتاليان على الجهة نفسها قبل الاعتماد يدمجان في تنبيه واحد بآخر تعديل.
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الادماج", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _service.ProposeEditAsync(dto.Id, new ProposeEditRequest(CanonicalName: "جهة الادماج (تعديل أول)"), LawyerActor());
+        await _service.ProposeEditAsync(dto.Id, new ProposeEditRequest(CanonicalName: "جهة الادماج (التعديل الأخير)"), LawyerActor());
+
+        var alerts = await _db.HeadAlerts.AsNoTracking()
+            .Include(a => a.Recipients)
+            .Where(a => a.PublicEntityId == dto.Id)
+            .ToListAsync();
+        // تنبيه واحد فقط — لا تراكم على كل اقتراح.
+        Assert.Single(alerts);
+        var alert = alerts[0];
+        // كثير الأهداف هو التعديل الأخير (لا التعديل الأول).
+        Assert.Contains("→ «جهة الادماج (التعديل الأخير)»", alert.Message);
+        Assert.DoesNotContain("→ «جهة الادماج (تعديل أول)»", alert.Message);
+        // موجّه لرئيس محافظة القيد.
+        Assert.Contains(alert.Recipients, r => r.UserId == _headDamascusId);
+    }
+
+    [Fact]
+    public async Task ProposeEdit_AfterHeadReadsAlert_NextProposalCreatesNewAlert()
+    {
+        // بعد قراءة الرئيس للتنبيه يبدأ تنبيه جديد بأحدث تعديل (نطاق «قبل الاعتماد» فقط يدمج).
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة القراءة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _service.ProposeEditAsync(dto.Id, new ProposeEditRequest(CanonicalName: "جهة القراءة (أول)"), LawyerActor());
+
+        var firstAlert = await _db.HeadAlerts
+            .Include(a => a.Recipients)
+            .SingleAsync(a => a.PublicEntityId == dto.Id);
+        firstAlert.Recipients.Single(r => r.UserId == _headDamascusId).IsRead = true;
+        await _db.SaveChangesAsync();
+
+        await _service.ProposeEditAsync(dto.Id, new ProposeEditRequest(CanonicalName: "جهة القراءة (ثانٍ)"), LawyerActor());
+
+        var alerts = await _db.HeadAlerts.AsNoTracking()
+            .Where(a => a.PublicEntityId == dto.Id)
+            .ToListAsync();
+        // تنبيهان: الأول المقروء يبقى سجلًا، والجديد يحمل التعديل الأخير.
+        Assert.Equal(2, alerts.Count);
+        var latest = alerts.OrderByDescending(a => a.Id).First();
+        Assert.Contains("جهة القراءة (ثانٍ)", latest.Message);
     }
 }

@@ -3,17 +3,20 @@ using System;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
+namespace DocGenerator.Infrastructure.MigrationsPostgres
 {
     [DbContext(typeof(DocGeneratorPostgresDbContext))]
-    partial class DocGeneratorPostgresDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260827131448_AddDelegationSaleCoversFullDebt")]
+    partial class AddDelegationSaleCoversFullDebt
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1763,9 +1766,6 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
-                    b.Property<int?>("PublicEntityId")
-                        .HasColumnType("integer");
-
                     b.Property<int?>("ReviewLetterId")
                         .HasColumnType("integer");
 
@@ -1788,8 +1788,6 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.HasIndex("DelegationId");
 
                     b.HasIndex("DocumentId");
-
-                    b.HasIndex("PublicEntityId");
 
                     b.HasIndex("ReviewLetterId");
 
@@ -1934,9 +1932,6 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
-                    b.Property<bool>("IsParentEntity")
-                        .HasColumnType("boolean");
-
                     b.Property<bool>("NeedsReview")
                         .HasColumnType("boolean");
 
@@ -1961,11 +1956,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.HasIndex("IsActive");
 
-                    b.HasIndex("IsParentEntity");
-
                     b.HasIndex("NeedsReview");
 
-                    b.HasIndex("ReviewedById");
+                    b.HasIndex("ReviewedById")
+                        .IsUnique();
 
                     b.HasIndex("Status");
 
@@ -2644,11 +2638,6 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("DocGenerator.Domain.Entities.PublicEntity", "PublicEntity")
-                        .WithMany()
-                        .HasForeignKey("PublicEntityId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("DocGenerator.Domain.Entities.ReviewLetter", "ReviewLetter")
                         .WithMany()
                         .HasForeignKey("ReviewLetterId")
@@ -2666,8 +2655,6 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Navigation("CreatedBy");
 
                     b.Navigation("Document");
-
-                    b.Navigation("PublicEntity");
 
                     b.Navigation("ReviewLetter");
 

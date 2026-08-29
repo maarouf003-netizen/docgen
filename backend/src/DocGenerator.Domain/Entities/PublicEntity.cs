@@ -16,8 +16,15 @@ public class PublicEntity
     /// <summary>المحافظة (max 100) — من كتالوج المحافظات المعتمد في الواجهة.</summary>
     public string Governorate { get; set; } = string.Empty;
 
-    /// <summary>اسم الفرع (max 200) — «الفرع الرئيسي» قيمة افتراضية مسموحة.</summary>
+    /// <summary>اسم الفرع (max 200) — «الجهة الأم» قيمة افتراضية مسموحة.</summary>
     public string BranchName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// قيد الجهة الأم (بلا فرع): يمثل الكيان الأساسي للجهة على مستوى كل المحافظات،
+    /// يُخزَّن مرة واحدة ويظهر مرة واحدة في نتائج البحث مهما كان فلتر المحافظة،
+    /// وتظهر فروعه (القيود الأخرى ذات GroupId نفسه) تحته إن وُجدت.
+    /// </summary>
+    public bool IsParentEntity { get; set; }
 
     /// <summary>
     /// تسمية التغطية (max 150): تصف النطاق الجغرافي للقيد إذا كان يخدم أكثر من محافظة.

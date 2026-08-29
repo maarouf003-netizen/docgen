@@ -469,11 +469,18 @@ public class HeadAlertConfiguration : IEntityTypeConfiguration<HeadAlert>
             .HasForeignKey(a => a.AppealId)
             .OnDelete(DeleteBehavior.SetNull);
 
-        // كتاب المطالعة المرتبط (تنبيه الرد): الكتاب سجل رسمي لا يُحذف،
+// كتاب المطالعة المرتبط (تنبيه الرد): الكتاب سجل رسمي لا يُحذف،
         // ويبقى السلوك نفسه بحكم الحماية عند أي تطور مستقبلي.
         builder.HasOne(a => a.ReviewLetter)
             .WithMany()
             .HasForeignKey(a => a.ReviewLetterId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // الجهة العامة المرتبطة (تنبيه اقتراح التعديل/المراجعة): تبقى سجلات التنبيهات
+        // التاريخية سليمة عند حذف القيد فيُفكّ الرابط (SetNull) دون حذف التنبيه.
+        builder.HasOne(a => a.PublicEntity)
+            .WithMany()
+            .HasForeignKey(a => a.PublicEntityId)
             .OnDelete(DeleteBehavior.SetNull);
     }
 }
@@ -744,6 +751,7 @@ public class DocumentDelegationConfiguration : IEntityTypeConfiguration<Document
         builder.Property(d => d.DepositBookDate).HasColumnType("datetime2");
         builder.Property(d => d.DelegationDate).HasColumnType("datetime2");
         builder.Property(d => d.ReturnDate).HasColumnType("datetime2");
+        builder.Property(d => d.SaleCoversFullDebt);
         builder.Property(d => d.Status).HasMaxLength(50).IsRequired();
         builder.HasIndex(d => d.Status);
         builder.HasIndex(d => d.SourceDocumentId);
@@ -1044,14 +1052,16 @@ public class PublicEntityConfiguration : IEntityTypeConfiguration<PublicEntity>
         builder.Property(e => e.Status).HasMaxLength(20).IsRequired();
         builder.Property(e => e.CoverageLabel).HasMaxLength(150);
         builder.Property(e => e.ReviewedAtUtc);
+        builder.Property(e => e.IsParentEntity);
 
         builder.HasIndex(e => new { e.GroupId, e.Governorate, e.BranchName }).IsUnique();
         builder.HasIndex(e => e.Governorate);
         builder.HasIndex(e => e.Status);
         builder.HasIndex(e => e.GroupId);
         builder.HasIndex(e => e.NeedsReview);
-        builder.HasIndex(e => e.ReviewedById);
+        builder.HasIndex(e => e.ReviewedById).IsUnique(false);
         builder.HasIndex(e => e.IsActive);
+        builder.HasIndex(e => e.IsParentEntity);
 
         builder.HasOne(e => e.Group)
             .WithMany(g => g.Entries)

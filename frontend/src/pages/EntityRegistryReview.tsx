@@ -41,7 +41,7 @@ export default function EntityRegistryReview() {
   const [newType, setNewType] = useState<PublicEntityEntryDto['entityType']>('ministry');
   const [newCitation, setNewCitation] = useState<'add-to-job' | 'add-to-position'>('add-to-job');
   const [newGov, setNewGov] = useState('');
-  const [newBranch, setNewBranch] = useState('الفرع الرئيسي');
+  const [newBranch, setNewBranch] = useState('الجهة الأم');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
 

@@ -1128,6 +1128,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("ReturnDate")
                         .HasColumnType("datetime2");
 
+                    b.Property<bool?>("SaleCoversFullDebt")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("SourceDocumentId")
                         .HasColumnType("INTEGER");
 
@@ -1711,6 +1714,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("PublicEntityId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("ReviewLetterId")
                         .HasColumnType("INTEGER");
 
@@ -1733,6 +1739,8 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.HasIndex("DelegationId");
 
                     b.HasIndex("DocumentId");
+
+                    b.HasIndex("PublicEntityId");
 
                     b.HasIndex("ReviewLetterId");
 
@@ -1869,6 +1877,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("IsParentEntity")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("NeedsReview")
                         .HasColumnType("INTEGER");
 
@@ -1893,10 +1904,11 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("IsActive");
 
+                    b.HasIndex("IsParentEntity");
+
                     b.HasIndex("NeedsReview");
 
-                    b.HasIndex("ReviewedById")
-                        .IsUnique();
+                    b.HasIndex("ReviewedById");
 
                     b.HasIndex("Status");
 
@@ -2563,6 +2575,11 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("DocGenerator.Domain.Entities.PublicEntity", "PublicEntity")
+                        .WithMany()
+                        .HasForeignKey("PublicEntityId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("DocGenerator.Domain.Entities.ReviewLetter", "ReviewLetter")
                         .WithMany()
                         .HasForeignKey("ReviewLetterId")
@@ -2580,6 +2597,8 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Navigation("CreatedBy");
 
                     b.Navigation("Document");
+
+                    b.Navigation("PublicEntity");
 
                     b.Navigation("ReviewLetter");
 

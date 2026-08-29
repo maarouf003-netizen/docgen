@@ -33,6 +33,7 @@ export default function CompleteDelegationModal({
   const assets = delegation.assets ?? [];
   const [returnDate, setReturnDate] = useState('');
   const [forcedExecutionDate, setForcedExecutionDate] = useState('');
+  const [saleCoversFullDebt, setSaleCoversFullDebt] = useState('');
   const [prices, setPrices] = useState<Record<number, string>>(() => {
     const initial: Record<number, string> = {};
     for (const asset of assets) {
@@ -51,6 +52,8 @@ export default function CompleteDelegationModal({
   const validate = (): string => {
     if (!returnDate.trim()) return 'تاريخ إعادة الملف للدائرة المنيبة مطلوب';
     if (!forcedExecutionDate.trim()) return 'تاريخ قرار الإحالة القطعية مطلوب';
+    if (saleCoversFullDebt !== 'true' && saleCoversFullDebt !== 'false')
+      return 'يجب تحديد ما إذا كان بدل المبيع غطى كامل المديونية';
     for (const asset of assets) {
       const price = parsePrice(prices[asset.id] ?? '');
       if (price === null) return `بدل المبيع مطلوب للأصل (${asset.assetLabel})`;
@@ -77,6 +80,7 @@ export default function CompleteDelegationModal({
       returnDate: normalizeArabicDigits(returnDate).trim(),
       sales,
       forcedExecutionDate: normalizeArabicDigits(forcedExecutionDate).trim(),
+      saleCoversFullDebt: saleCoversFullDebt === 'true',
     };
     try {
       await api.post(`/delegations/${delegation.id}/complete`, payload);
@@ -155,6 +159,26 @@ export default function CompleteDelegationModal({
             />
             <p className="mt-1 text-xs text-gray-400">
               يُحفظ على الملف المنيب عند تفعيله «منفذ جبريا» مع رقم الإشعار لاحقًا.
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="saleCoversFullDebt" className="block text-xs font-bold text-gray-600 mb-1">
+              هل غطى بدل المبيع كامل المديونية؟
+            </label>
+            <select
+              id="saleCoversFullDebt"
+              value={saleCoversFullDebt}
+              onChange={(e) => setSaleCoversFullDebt(e.target.value)}
+              className={inputCls}
+              aria-label="هل غطى بدل المبيع كامل المديونية"
+            >
+              <option value="">اختر…</option>
+              <option value="true">غطى كامل المديونية</option>
+              <option value="false">لم يغطِ كامل المديونية</option>
+            </select>
+            <p className="mt-1 text-xs text-gray-400">
+              يحدد محامي المناب — يُظهر للمنيب في التنبيه لتسريع تغيير الحالة.
             </p>
           </div>
 

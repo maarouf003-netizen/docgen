@@ -1,0 +1,15 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    ["opencode-rtl", {
+      "language": "ar",
+      "forceDirection": "rtl",
+      "isolateAssistantText": "always",
+      "isolateUserMessages": "auto",
+      "alignRtlParagraphs": true,
+      "digitMode": "preserve",
+      "systemGuidance": true
+    }]
+  ],
+  "instructions": ["AGENTS.md"]
+}

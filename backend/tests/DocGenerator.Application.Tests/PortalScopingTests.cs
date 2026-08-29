@@ -254,4 +254,71 @@ public class PortalScopingTests : IDisposable
         Assert.Empty(files.Items);
         Assert.Equal(0, files.TotalCount);
     }
+
+    // ── المواءمة السلوكية (§6bis): قيد بانتظار مراجعة (Status=Final + NeedsReview=true)
+    //    — كما يُنشئه CreateAsync للمحامي — لا يظهر لبوات المندوبين قبل اعتماد رئيس القسم. ──
+
+    [Fact]
+    public async Task NeedsReviewEntry_IsHiddenFromPortal_UntilApproved()
+    {
+        // قيد Status=Final لكن NeedsReview=true (الحالة التي يُنتجها CreateAsync للمحامي).
+        var pendingEntry = new PublicEntity
+        {
+            GroupId = _groupAId,
+            Governorate = "حمص",
+            BranchName = "فرع حمص",
+            Status = EntityStatusCatalog.Final,
+            NeedsReview = true,
+            CreatedById = 1,
+        };
+        _db.PublicEntities.Add(pendingEntry);
+        await _db.SaveChangesAsync();
+
+        var pendingId = pendingEntry.Id;
+        var delegateEntryId = new User
+        {
+            Username = "delegate_review", FullName = "مندوب مراجعة",
+            Role = UserRole.EntityManager, PasswordHash = "x", PortalEntryId = pendingId,
+        };
+        _db.Users.Add(delegateEntryId);
+        await _db.SaveChangesAsync();
+
+        await SeedDocumentAsync("ملف بانتظار مراجعة", applicantRegistryId: pendingId);
+
+        // قبل الاعتماد: لا يظهر الملف للمندوب (DoD#5) رغم أن Status=Final.
+        var before = await _portal.ListFilesAsync(delegateEntryId.Id, null, null, 1, 20);
+        Assert.Equal(0, before.TotalCount);
+
+        // الاعتماد (approve-review) يقفل NeedsReview فيظهر الملف للمندوب لحظيًا.
+        var entry = await _db.PublicEntities.SingleAsync(e => e.Id == pendingId);
+        entry.NeedsReview = false;
+        await _db.SaveChangesAsync();
+
+        var after = await _portal.ListFilesAsync(delegateEntryId.Id, null, null, 1, 20);
+        Assert.Equal(1, after.TotalCount);
+    }
+
+    [Fact]
+    public async Task NeedsReviewGroupEntries_AreExcludedFromScopeResolution()
+    {
+        // مندوب مربوط بمجموعة: القيد (Status=Final + NeedsReview=true) لا يدخل نطاقه.
+        var pendingEntry = new PublicEntity
+        {
+            GroupId = _groupAId,
+            Governorate = "طرطوس",
+            BranchName = "فرع طرطوس",
+            Status = EntityStatusCatalog.Final,
+            NeedsReview = true,
+            CreatedById = 1,
+        };
+        _db.PublicEntities.Add(pendingEntry);
+        await _db.SaveChangesAsync();
+        var pendingId = pendingEntry.Id;
+
+        var scope = await _portal.GetMyScopeAsync(_delegateGroupId);
+
+        Assert.NotNull(scope);
+        Assert.DoesNotContain(scope.Entries, e => e.Id == pendingId);
+        Assert.Contains(scope.Entries, e => e.Id == _entryAId);
+    }
 }

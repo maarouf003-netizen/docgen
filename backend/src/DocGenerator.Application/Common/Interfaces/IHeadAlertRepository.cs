@@ -36,8 +36,16 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
     Task<List<HeadAlert>> ListByAppealAsync(int appealId, CancellationToken ct = default);
 
     /// <summary>
-    /// أحدث تنبيه ردٍّ غير مقروء لكتاب مطالعة محدد لدى محاميه — لدمج الردود المتتالية
-    /// في تنبيه واحد بدل تراكمها (متتبَّع لإمكانية تحديث رسالته).
+    /// أحدث تنبيه تعديل غير مقروء مرتبط بجهة عامة معينة لمستلم محدد — تستخدمه
+    /// الاقتراحات المتلاحقة لتعديل الجهة نفسها قبل الاعتماد لدمجها في تنبيه واحد
+    /// بآخر تعديل بدل تراكم تنبيهات متعددة.
+    /// </summary>
+    Task<HeadAlert?> FindLatestPendingByEntityAsync(
+        int publicEntityId, int recipientUserId, CancellationToken ct = default);
+
+    /// <summary>
+    /// أحدث تنبيه تعديل غير مقروء مرتبط بكتاب مطالعة محدد لمستلم محدد — يُحدَّث
+    /// نُصّه وزمنه لدمج الردود المتتالية في تنبيه واحد بدل تراكم التنبيهات.
     /// </summary>
     Task<HeadAlert?> FindLatestUnseenByReviewLetterAsync(
         int reviewLetterId, int recipientUserId, CancellationToken ct = default);

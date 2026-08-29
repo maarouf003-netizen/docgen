@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   entityTypeLabel,
   citationFormulaLabel,
+  isEntryPendingReview,
   publicEntityStatusLabel,
 } from './entityRegistry';
 
@@ -27,7 +28,15 @@ describe('entityRegistry catalogs', () => {
 
   it('يعرض حالات القيد بالعربية', () => {
     expect(publicEntityStatusLabel('final')).toBe('نهائي');
-    expect(publicEntityStatusLabel('pending')).toBe('بانتظار الاعتماد');
+    expect(publicEntityStatusLabel('pending')).toBe('بانتظار المراجعة');
     expect(publicEntityStatusLabel('other')).toBe('other');
+  });
+
+  it('يحدد قيد بانتظار المراجعة (status=pending أو needsReview=true)', () => {
+    expect(isEntryPendingReview({ status: 'pending' })).toBe(true);
+    expect(isEntryPendingReview({ status: 'final', needsReview: true })).toBe(true);
+    expect(isEntryPendingReview({ status: 'final', needsReview: false })).toBe(false);
+    expect(isEntryPendingReview({ status: 'final' })).toBe(false);
+    expect(isEntryPendingReview({ status: null, needsReview: null })).toBe(false);
   });
 });

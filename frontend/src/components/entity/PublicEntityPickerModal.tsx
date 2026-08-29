@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, getApiErrorMessage } from '../../api/client';
-import { GOVERNORATES } from '../../utils/governorate';
+import { useAuth } from '../../auth/useAuth';
+import { ProposeEditModal } from './ProposeEditModal';
+import { GOVERNORATES, governorateFromBranch } from '../../utils/governorate';
 import {
   CITATION_FORMULA_OPTIONS,
   ENTITY_TYPE_OPTIONS,
   entityTypeLabel,
   formatEntityCoverage,
+  isEntryPendingReview,
   publicEntityStatusLabel,
 } from '../../utils/entityRegistry';
 import type {
@@ -33,14 +36,24 @@ interface PublicEntityPickerModalProps {
  * نافذة «اختيار الجهة العامة» (§5 — د4/د7/د8/د9):
  * بحث واحد بنتائج قابلة للتبديل حسب المحافظة مع اقتراحات الفروع المستخلصة،
  * وبلا عدّاد ملفات إطلاقًا (د9)، وتحويل مباشر إلى نموذج إدخال جهة جديدة
- * تُعتمد فورًا وتبقى بانتظار مراجعة رئيس القسم (نموذج الحوكمة الجديد).
+ * تُخزَّن نهائيًا لكنها تبقى بانتظار مراجعة رئيس القسم فلا تظهر لبوات المندوبين
+ * قبل الاعتماد (§6bis). قيود المراجعة تُعلَّم بصريًا (د4/§5.3).
  */
 export function PublicEntityPickerModal({ onClose, onPick }: PublicEntityPickerModalProps) {
+  const { user } = useAuth();
+  const isLawyer = user?.role === 'lawyer';
+  // المحافظة الافتراضية = محافظة فرع المحامي (مثل «دمشق»)؛ إن لم تُطابق كتالوجًا فتُترك فارغة = الكل.
+  const defaultGovernorate = governorateFromBranch(user?.branchName);
   const [query, setQuery] = useState('');
-  const [governorateFilter, setGovernorateFilter] = useState('');
+  const [governorateFilter, setGovernorateFilter] = useState(defaultGovernorate);
+  const [branchFilter, setBranchFilter] = useState('');
   const [items, setItems] = useState<PublicEntityEntryDto[] | null>(null);
+  // نتيجة المحافظة الأساسية (غير مضيّقة بالفرع) للمحافظة المختارة — تُبقي خيارات الفرع ثابتة.
+  const [governorateItems, setGovernorateItems] = useState<PublicEntityEntryDto[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [proposeEditEntry, setProposeEditEntry] = useState<PublicEntityEntryDto | null>(null);
+  const [proposeSuccess, setProposeSuccess] = useState('');
 
   // نموذج الاقتراح (د7/د8) — ترتيب الحقول كما اعتُمد.
   const [showPropose, setShowPropose] = useState(false);
@@ -48,21 +61,45 @@ export function PublicEntityPickerModal({ onClose, onPick }: PublicEntityPickerM
   const [proposeType, setProposeType] = useState<PublicEntityType>('ministry');
   const [proposeCitation, setProposeCitation] = useState<CitationFormula>('add-to-job');
   const [proposeGovernorate, setProposeGovernorate] = useState('');
-  const [proposeBranch, setProposeBranch] = useState('الفرع الرئيسي');
+  const [proposeBranch, setProposeBranch] = useState('الجهة الأم');
   const [proposeSaving, setProposeSaving] = useState(false);
   const [proposeError, setProposeError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  // مؤشّر إعادة تحميل نتائج البحث: يُزوَّد بعد إضافة جهة جديدة كي تظهر فورًا
+  // في الاقتراحات دون الحاجة لإغلاق النافذة/إعادة فتحها (§5.6 — د4).
+  const [reloadTick, setReloadTick] = useState(0);
+
+  const reload = useCallback(() => setReloadTick((t) => t + 1), []);
+
+  // إعادة تعيين الفرع المستهدف عند تغيير المحافظة أو نص البحث كي تُبنى خياراته من الأساس الجديد.
+  const prevScope = useRef('');
+  useEffect(() => {
+    const scope = `${governorateFilter}|${query}`;
+    if (prevScope.current && prevScope.current !== scope && branchFilter) {
+      setBranchFilter('');
+    }
+    prevScope.current = scope;
+  }, [governorateFilter, query, branchFilter]);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
+    // فلترة الخادم: المحافظة إلزامية (تُفلتر الفروع)، والفرع المختار (عند توضيحه) يُفلتر برمز
+    // فرع دقيق. الجهة الأم تبقى ظاهرة دائمًا مهما كان فلتر المحافظة أو الفرع (تغطي كل المحافظات).
     api
       .get<PublicEntityListResponse>('/entity-registry/search', {
-        params: { q: query.trim() || undefined, governorate: governorateFilter || undefined },
+        params: {
+          q: query.trim() || undefined,
+          governorate: governorateFilter || undefined,
+          branchName: branchFilter || undefined,
+        },
       })
       .then((res) => {
         if (!active) return;
-        setItems(Array.isArray(res.data?.items) ? res.data.items : []);
+        const list = Array.isArray(res.data?.items) ? res.data.items : [];
+        setItems(list);
+        // عند عدم تضييق الفرع تُعتبر النتيجة هي أساس محافظة الفرع أيضًا.
+        if (!branchFilter) setGovernorateItems(list);
         setError('');
       })
       .catch((err) => {
@@ -74,19 +111,29 @@ export function PublicEntityPickerModal({ onClose, onPick }: PublicEntityPickerM
     return () => {
       active = false;
     };
-  }, [query, governorateFilter]);
+  }, [query, governorateFilter, branchFilter, reloadTick]);
 
-  // محافظات النتائج الحالية للتبديل السريع بينها.
-  const resultGovernorates = useMemo(() => {
+  // فروع الجهات المطابقة (الخطوة الثانية) تُستخلص من نتيجة المحافظة الأساسية كي تبقى الخيارات
+  // ثابتة مهما ضُيّق الفرع المعروض، مع بقاء «الجهة الأم» خيارًا مستقلًا.
+  const branchOptions = useMemo(() => {
     const set = new Set<string>();
-    for (const item of items ?? []) set.add(item.governorate);
-    return Array.from(set).sort();
-  }, [items]);
+    for (const item of governorateItems ?? []) {
+      if (item.branchName.trim()) set.add(item.branchName.trim());
+    }
+    return Array.from(set);
+  }, [governorateItems]);
 
+  // نتيجة مُرتَّبة: الجهة الأم (بلا فرع — تغطي كل المحافظات) ثابتة أعلى نتائج كل هوية، ثم فروعها.
   const visibleItems = useMemo(() => {
     const list = items ?? [];
-    return governorateFilter ? list.filter((i) => i.governorate === governorateFilter) : list;
-  }, [items, governorateFilter]);
+    const sorted = [...list].sort((a, b) => {
+      const ag = a.isParentEntity ? 0 : 1;
+      const bg = b.isParentEntity ? 0 : 1;
+      if (ag !== bg) return ag - bg;
+      return a.canonicalName.localeCompare(b.canonicalName, 'ar');
+    });
+    return sorted;
+  }, [items]);
 
   // اقتراحات الفرع مستخلصة من القيود المطابقة نفسها (§5.1).
   const branchSuggestions = useMemo(() => {
@@ -119,8 +166,11 @@ export function PublicEntityPickerModal({ onClose, onPick }: PublicEntityPickerM
       };
       await api.post('/entity-registry', payload);
       setSuccessMsg(
-        'أُضيفت الجهة إلى السجل وهي متاحة الآن للربط فورًا؛ وستصل رئيس قسمك مراجعتها.',
+        'أُضيفت الجهة إلى السجل وسيقوم رئيس قسمك بمراجعتها قبل ظهورها نهائيًا في بوابات المندوبين.',
       );
+      // إعادة تحميل نتائج البحث كي تظهر الجهة المضافة فورًا في الاقتراحات
+      // (وإن لم تكن مطابقة للنص الحالي تُرجِع الخادم قائمة متأثرة مقابلة للفلاتر).
+      reload();
     } catch (err) {
       setProposeError(getApiErrorMessage(err));
     } finally {
@@ -161,43 +211,57 @@ export function PublicEntityPickerModal({ onClose, onPick }: PublicEntityPickerM
             className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
 
-          {/* تبديل التجميع حسب المحافظة من كتالوج المحافظات */}
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            <button
-              type="button"
-              onClick={() => setGovernorateFilter('')}
-              aria-pressed={governorateFilter === ''}
-              className={`rounded-full px-3 py-1.5 text-xs min-h-11 ${
-                governorateFilter === ''
-                  ? 'bg-emerald-800 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              كل المحافظات
-            </button>
-            {(resultGovernorates.length > 0 ? resultGovernorates : []).map((gov) => (
-              <button
-                key={gov}
-                type="button"
-                onClick={() => setGovernorateFilter(governorateFilter === gov ? '' : gov)}
-                aria-pressed={governorateFilter === gov}
-                className={`rounded-full px-3 py-1.5 text-xs min-h-11 ${
-                  governorateFilter === gov
-                    ? 'bg-emerald-800 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {gov}
-              </button>
+          {/* قائمة المحافظات المنسدلة — الافتراضي محافظة فرع المحامي (د7). */}
+          <label htmlFor="pep-governorate" className="mt-3 block text-xs font-medium text-gray-600 mb-1">
+            محافظة البحث
+          </label>
+          <select
+            id="pep-governorate"
+            value={governorateFilter}
+            onChange={(e) => setGovernorateFilter(e.target.value)}
+            className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          >
+            <option value="">كل المحافظات</option>
+            {GOVERNORATES.map((gov) => (
+              <option key={gov} value={gov}>{gov}</option>
             ))}
-          </div>
+            {!GOVERNORATES.includes(governorateFilter) && governorateFilter !== '' && (
+              <option value={governorateFilter}>{governorateFilter}</option>
+            )}
+          </select>
 
-          {/* اقتراحات الفرع المستخلصة من القيود المطابقة */}
-          {!loading && branchSuggestions.length > 0 && (
-            <p className="mt-3 text-xs text-gray-500">
-              فروع مقترحة من القيود المطابقة:{' '}
-              <span className="text-gray-700">{branchSuggestions.join(' · ')}</span>
-            </p>
+          {/* الخطوة الثانية: اختيار الفرع — يُفلتر حسب فرع الجهة المستهدف (مع بقاء الجهة الأم ظاهرة). */}
+          {branchOptions.length > 0 && (
+            <div className="mt-3">
+              <span className="block text-xs font-medium text-gray-600 mb-1">الفرع المستهدف</span>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBranchFilter('')}
+                  className={`px-3 py-1.5 text-sm rounded-full border min-h-11 ${
+                    branchFilter === ''
+                      ? 'border-emerald-700 bg-emerald-50 text-emerald-800'
+                      : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  كل الفروع
+                </button>
+                {branchOptions.map((br) => (
+                  <button
+                    key={br}
+                    type="button"
+                    onClick={() => setBranchFilter(branchFilter === br ? '' : br)}
+                    className={`px-3 py-1.5 text-sm rounded-full border min-h-11 ${
+                      branchFilter === br
+                        ? 'border-emerald-700 bg-emerald-50 text-emerald-800'
+                        : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    {br}
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
 
           <ul className="mt-3 divide-y divide-gray-100">
@@ -211,23 +275,26 @@ export function PublicEntityPickerModal({ onClose, onPick }: PublicEntityPickerM
               </li>
             )}
             {visibleItems.map((entry) => (
-              <li key={entry.id}>
+              <li key={entry.id} className="flex items-center gap-2 py-1">
                 <button
                   type="button"
                   onClick={() => onPick(entry)}
-                  className="w-full text-right py-3 flex flex-wrap items-start justify-between gap-2 hover:bg-emerald-50/60 rounded-lg px-2 min-h-11"
+                  className="grow text-right py-3 flex flex-wrap items-start justify-between gap-2 hover:bg-emerald-50/60 rounded-lg px-2 min-h-11"
                 >
                   <span className="min-w-0">
                     <span className="block font-medium text-gray-800 break-words">
                       {entry.canonicalName}
                     </span>
                     <span className="block text-xs text-gray-500 mt-0.5">
-                      {entityTypeLabel(entry.entityType)} · {formatEntityCoverage(entry)} / {entry.branchName}
+                      {entityTypeLabel(entry.entityType)} · {formatEntityCoverage(entry)}
+                      {entry.isParentEntity
+                        ? <span className="font-medium text-emerald-700"> · الجهة الأم</span>
+                        : ` / ${entry.branchName}`}
                     </span>
                   </span>
-                  {entry.status === 'pending' ? (
+                  {isEntryPendingReview(entry) ? (
                     <span className="shrink-0 rounded-full bg-amber-100 text-amber-800 px-2 py-0.5 text-xs whitespace-nowrap">
-                      بانتظار الاعتماد
+                      بانتظار المراجعة
                     </span>
                   ) : (
                     <span className="shrink-0 rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.5 text-xs whitespace-nowrap">
@@ -235,6 +302,16 @@ export function PublicEntityPickerModal({ onClose, onPick }: PublicEntityPickerM
                     </span>
                   )}
                 </button>
+                {isLawyer && (
+                  <button
+                    type="button"
+                    onClick={() => setProposeEditEntry(entry)}
+                    className="shrink-0 border border-amber-200 text-amber-800 hover:bg-amber-50 rounded-lg px-3 py-1.5 text-xs min-h-11 focus-visible:ring-2 focus-visible:ring-amber-500"
+                    aria-label={`اقتراح تعديل ${entry.canonicalName}`}
+                  >
+                    اقتراح تعديل
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -367,12 +444,27 @@ export function PublicEntityPickerModal({ onClose, onPick }: PublicEntityPickerM
               {successMsg}
             </p>
           )}
+          {proposeSuccess && (
+            <p role="status" className="mt-3 bg-amber-50 border border-amber-100 text-amber-800 rounded-lg p-3 text-sm">
+              {proposeSuccess}
+            </p>
+          )}
         </div>
 
         <div className="px-5 py-3 border-t border-gray-100 text-xs text-gray-400">
-          الاقتراح الجديد يُراجعه رئيس قسمك قبل ظهوره نهائيًا في السجل.
+          الاقتراح الجديد يُراجعه رئيس قسمك قبل ظهوره نهائيًا في السجل وبوابات المندوبين.
         </div>
       </div>
+      {proposeEditEntry && (
+        <ProposeEditModal
+          entry={proposeEditEntry}
+          onClose={() => setProposeEditEntry(null)}
+          onCommitted={(msg) => {
+            setProposeEditEntry(null);
+            setProposeSuccess(msg);
+          }}
+        />
+      )}
     </div>
   );
 }

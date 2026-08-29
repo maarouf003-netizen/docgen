@@ -93,12 +93,14 @@ public class DelegationsIntegrationTests
                 returnDate = "10/8/2026",
                 sales = new[] { new { delegationAssetId = assetDto.Id, salePrice = 750_000m } },
                 forcedExecutionDate = "12/8/2026",
+                saleCoversFullDebt = true,
             });
         Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
         var completed = await complete.Content.ReadFromJsonAsync<DelegationDto>();
         Assert.NotNull(completed);
         Assert.Equal(DelegationStatusCatalog.Executed, completed!.Status);
         Assert.Equal(750_000m, completed.Assets.Single().SalePrice);
+        Assert.Equal(true, completed.SaleCoversFullDebt);
 
         // بطاقة «تشعبات الملف» في المنيب تعرض الإنابة المكتملة.
         var list = await (await lawyer1.GetAsync($"/api/documents/{docId}/delegations")).Content.ReadFromJsonAsync<List<DelegationDto>>();
@@ -117,6 +119,38 @@ public class DelegationsIntegrationTests
         Assert.NotNull(mainList);
         Assert.DoesNotContain(targetId, mainList!.RootElement.GetProperty("items").EnumerateArray()
             .Select(i => i.GetProperty("id").GetInt32()));
+    }
+
+    [Fact]
+    public async Task Complete_WithoutSaleCoversFullDebt_BadRequest()
+    {
+        // حقل تغطية البدل إلزامي عند الإتمام: غيابه يُرفض برسالة واضحة رغم صحة باقي المدخلات.
+        var (docId, assetId) = await CreateSourceWithAssetAsync();
+        var lawyer1 = _factory.AuthorizedClient("lawyer1");
+        var created = await (await lawyer1.PostAsJsonAsync($"/api/documents/{docId}/delegations", SampleBody(assetId)))
+            .Content.ReadFromJsonAsync<DelegationDto>();
+        Assert.NotNull(created);
+
+        var head = _factory.AuthorizedClient("head1");
+        var targetLawyer = await _factory.CreateUserAsync(NewName("lawyer_missingcov"), UserRole.Lawyer, branchId: await BranchIdAsync("DAM"));
+        await head.PostAsJsonAsync($"/api/delegations/{created!.Id}/assign", new { assignedLawyerId = targetLawyer.Id });
+        var targetClient = _factory.AuthorizedClient(targetLawyer.Username);
+        var regResponse = await targetClient.PostAsJsonAsync($"/api/delegations/{created.Id}/register",
+            new { fileNumber = "895", fileYear = "2026", fileRegistrationDate = "5/8/2026" });
+        Assert.Equal(HttpStatusCode.OK, regResponse.StatusCode);
+        var registered = await regResponse.Content.ReadFromJsonAsync<DelegationDto>();
+
+        var response = await targetClient.PostAsJsonAsync($"/api/delegations/{created.Id}/complete",
+            new
+            {
+                returnDate = "10/8/2026",
+                sales = new[] { new { delegationAssetId = registered!.Assets.Single().Id, salePrice = 750_000m } },
+                forcedExecutionDate = "12/8/2026",
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var content = await response.Content.ReadAsStringAsync();
+        Assert.Contains("غطى كامل المديونية", content);
     }
 
     [Fact]
@@ -225,8 +259,12 @@ public class DelegationsIntegrationTests
                 returnDate = "10/8/2026",
                 sales = new[] { new { delegationAssetId = registered!.Assets.Single().Id, salePrice = 750_000m } },
                 forcedExecutionDate = "12/8/2026",
+                saleCoversFullDebt = false,
             });
         Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
+        var completed = await complete.Content.ReadFromJsonAsync<DelegationDto>();
+        Assert.NotNull(completed);
+        Assert.Equal(false, completed!.SaleCoversFullDebt);
 
         // المنيب فُعّل تلقائيًا «منفذ جبريا — منفذ جزئيا» حتى يعتبره محاميه منفذًا كاملًا بهذا البيع.
         var before = await (await lawyer1.GetAsync($"/api/documents/{docId}")).Content.ReadFromJsonAsync<DocumentResponse>();

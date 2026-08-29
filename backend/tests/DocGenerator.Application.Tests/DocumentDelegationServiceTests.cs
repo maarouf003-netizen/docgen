@@ -512,12 +512,17 @@ public class DocumentDelegationServiceTests : IDisposable
             new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto>
             {
                 new(assetDto.Id, 750_000m),
-            }, "12/8/2026"), _lawyer2.Id, "lawyer2");
+            }, "12/8/2026", true), _lawyer2.Id, "lawyer2");
 
         Assert.NotNull(dto);
         Assert.Equal(DelegationStatusCatalog.Executed, dto!.Status);
         Assert.Equal("2026-08-10", dto.ReturnDate);
         Assert.Equal(750_000m, dto.Assets.Single().SalePrice);
+
+        // دائرة كاملة لتغطية البدل: يُرسَل → يُخزّن → يُعاد قراءةً ويظهر في الاستجابة.
+        Assert.Equal(true, dto.SaleCoversFullDebt);
+        var stored = await _db.DocumentDelegations.SingleAsync(d => d.Id == created.Id);
+        Assert.Equal(true, stored.SaleCoversFullDebt);
 
         var target = await _db.Documents.FirstAsync(d => d.Id == targetId);
         Assert.Equal(ExecutionStatusCatalog.DelegationExecuted, target.ExecStatus);
@@ -536,7 +541,7 @@ public class DocumentDelegationServiceTests : IDisposable
         var assetDto = (await _service.ListForDocumentAsync(source.Id)).Single().Assets.Single();
 
         await _service.CompleteAsync(created.Id,
-            new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }, "12/8/2026"),
+            new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }, "12/8/2026", true),
             _lawyer2.Id, "lawyer2");
 
         // إشعار محامي المنيب بإتمام الإنابة: تنبيه مرتبط بالملف المنيب في فرعه،
@@ -548,9 +553,10 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(_lawyer2.Id, alert.CreatedById);
         Assert.Null(alert.TargetLawyerId);
         Assert.Contains(_lawyer1.Id, alert.Recipients.Select(r => r.UserId));
-        Assert.Contains("نفذت إنابتك في ملف 890/2026", alert.Message);
-        Assert.Contains("للتنفيذ على عقار رقم 77", alert.Message);
-        Assert.Contains("يرجى المراجعة والمتابعة أصولًا", alert.Message);
+        Assert.Contains("أُعيدت الإنابة المسطرة", alert.Message);
+        Assert.Contains("البدل غطى كامل المديونية", alert.Message);
+        Assert.Contains("يرجى تغيير حالة الملف", alert.Message);
+        Assert.Contains("المناب ملف 890/2026 للتنفيذ على عقار رقم 77", alert.Message);
     }
 
     [Fact]
@@ -568,7 +574,7 @@ public class DocumentDelegationServiceTests : IDisposable
         var assetDto = (await _service.ListForDocumentAsync(source.Id)).Single().Assets.Single();
 
         await _service.CompleteAsync(created.Id,
-            new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }, "12/8/2026"),
+            new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }, "12/8/2026", false),
             _externalLawyer.Id, "externalLawyer");
 
         // على الرغم من أن التنفيذ جرى في فرع اللاذقية، يُنشأ تنبيه الإتمام في فرع الملف المنيب
@@ -578,7 +584,8 @@ public class DocumentDelegationServiceTests : IDisposable
             .SingleAsync(a => a.DocumentId == source.Id);
         Assert.Equal(_branch.Id, alert.BranchId);
         Assert.Contains(_lawyer1.Id, alert.Recipients.Select(r => r.UserId));
-        Assert.Contains("نفذت إنابتك في ملف 890/2026", alert.Message);
+        Assert.Contains("أُعيدت الإنابة المسطرة", alert.Message);
+        Assert.Contains("البدل لم يغطِ كامل المديونية", alert.Message);
         Assert.Contains("للتنفيذ على عقار رقم 77", alert.Message);
     }
 
@@ -612,6 +619,13 @@ public class DocumentDelegationServiceTests : IDisposable
                     new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }),
                 _lawyer2.Id, "lawyer2"));
         Assert.Contains("تاريخ قرار الإحالة القطعية", noForcedDate.Message);
+
+        var noCoverage = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CompleteAsync(created.Id,
+                new CompleteDelegationRequest("10/8/2026",
+                    new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }, "12/8/2026"),
+                _lawyer2.Id, "lawyer2"));
+        Assert.Contains("غطى كامل المديونية", noCoverage.Message);
     }
 
     [Fact]
@@ -840,13 +854,13 @@ public class DocumentDelegationServiceTests : IDisposable
         var assetDto = (await _service.ListForDocumentAsync(source.Id)).Single().Assets.Single();
 
         await _service.CompleteAsync(created.Id,
-            new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }, "12/8/2026"),
+            new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }, "12/8/2026", true),
             _lawyer2.Id, "lawyer2");
 
-        // بعد الإتمام: لا تنبيهات مرحلية للإنابة، ويبقى إشعار «نفذت إنابتك» لمحامي المنيب.
+        // بعد الإتمام: لا تنبيهات مرحلية للإنابة، ويبقى إشعار «أُعيدت الإنابة… منفذة» لمحامي المنيب.
         Assert.Empty(_db.HeadAlerts.Where(a => a.DelegationId == created.Id));
         var done = await _db.HeadAlerts.SingleAsync(a => a.DocumentId == source.Id);
-        Assert.Contains("نفذت إنابتك", done.Message);
+        Assert.Contains("أُعيدت الإنابة المسطرة", done.Message);
     }
 
     [Fact]
