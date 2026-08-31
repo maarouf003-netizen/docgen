@@ -9,7 +9,7 @@ echo    Close this window to finish.
 echo ==========================================================
 
 if not exist "%ROOT%backend\DocGenerator.sln" (
-    echo ERROR: backend project not found. Run this file from react-dotnet-app.
+    echo ERROR: backend project not found. Run this file from the project root ^(the folder containing backend and frontend^).
     pause
     exit /b 1
 )

@@ -26,7 +26,7 @@
   الحوكمة والفلترة والتجميع والفهرس الفريد تبقى على `Governorate` (المقر) حصرًا.
 - تحقق: يُرفض إن طابق اسم محافظة واحدة من الكتالوج؛ حد 150؛ trim.
 - FE: زر ☑ «يخدم أكثر من محافظة» يُظهر الحقل؛ عرضه بـbreak-words.
-- مرجع العرض المشترك: استبدال نقاط العرض في EntityRegistryManagement/Review/Picker/PortalCards.
+- مرجع العرض المشترك: استبدال نقاط العرض في الشاشة الموحدة `EntityRegistryReviewManagement`/Review/Picker/PortalCards.
 
 ## 2) جدول أحداث الجهات المهيكلة (م-3) — العمود الفقري
 ```csharp
@@ -63,16 +63,22 @@ POST /api/entity-registry/move-all         { sourceGroupId, targetGroupId, ... }
 ## 4) الدمج N←1 (4-B) — يبني على MoveEntry
 - صلاحية جديدة: `RolePermissions.CanMergeEntities(role)` => Manager || Admin (حصرًا).
 - حواجز: رفض إذا أي طرف `NeedsReview=true`؛ منع الذات؛ تنفيذ ثنائي متسلسل؛ تأكيد بكتابة اسم الناجي.
-- API:
+- API (المسارات المعتمدة الحالية في `EntityRegistryController`):
 ```
-POST /api/entity-registry/merge-preview { survivorGroupId, absorbedGroupIds[] }
-POST /api/entity-registry/merge-commit  { same + unifyTexts=false default }
+POST /api/entity-registry/groups/unify-preview     { survivorGroupId, absorbedGroupIds[] }
+POST /api/entity-registry/merge-preview            { survivorGroupId, absorbedGroupIds[] }
+POST /api/entity-registry/merge-commit             { survivorGroupId, absorbedGroupIds[], ... }
+POST /api/entity-registry/groups/{groupId:int}/rename-preview
+POST /api/entity-registry/groups/{groupId:int}/rename
+POST /api/entity-registry/groups/abolish-preview
+POST /api/entity-registry/groups/abolish-and-replace
 ```
 - خطوات commit داخل معاملة: لكل مُهمَل: ترحيل روابط حسب خريطة الفروع (قديم←ناجٍ مطابق gov/branch
   وإلا القيد الافتراضي للناجي)، إعادة بناء المسرّعات، نقل الأسماء البديلة، إعادة توجيه مندوبَي
   الهوية/القيود المُهمَلة إلى الناجي، إيقاف المُهمل، اسمه الكامل اسمًا بديلًا، وقوعات آلية للملفات،
   حدث دمج أب ببيانات المرسوم وPayloadJson كامل بخريطة الدمج (أساس أي تراجع مستقبلي).
 - `unifyTexts=true` (معطل افتراضيًا): يعيد استخدام آلية SyncTextsAfterRenameAsync للتوحيد مع تدقيق قبل/بعد.
+- نصوص التنبيه/الوقعة/الحدث موحّدة من `EntityChangeMessages` (§8.9 من خطة إعادة الهيكلة) الحرفيًا.
 
 ## 5) الإشعارات (مصفوفة معتمدة)
 | الحالة | الجمهور | القناة/النص |
@@ -92,6 +98,10 @@ POST /api/entity-registry/merge-commit  { same + unifyTexts=false default }
 - مصدرها PublicEntityChangeEvent فقط (بلا parsing نصوص AuditLogs).
 - فلاتر: محافظة/نوع الحدث/المستخدم/فترة + تصدير Excel (نمط blob القائم).
 - سطور تفصيلية: من/ماذا/متى/قبل←بعد/المرسوم — تلبي حرفيًا: «يُظهران رئيس قسم اللاذقية قام بهذا…».
+- الواجهة الموحدة على مسار `frontend /entities/review-management` (تبويب `?tab=log` للسجل، `?tab=add`
+  للإضافة، و`?tab=unify` للتوحيد). الروابط القديمة `/entities/registry` و`/entity-change-log` تبقى
+  معاد توجيهها ببانر تنبيه (`LegacyRouteBanner`) لمدة إصدار واحد (§8.6 من خطة إعادة الهيكلة).
+- عمليات التسمية/الدمج/الحلول على تلك الشاشة تتطلب تأكيدًا بكتابة الاسم (الهدف/الجديد) §8.3.
 
 ## 8) ترتيب التنفيذ داخل هذه المرحلة
 1. CoverageLabel (+عرض+تحقق+اختبار).
@@ -114,3 +124,47 @@ POST /api/entity-registry/merge-commit  { same + unifyTexts=false default }
 - هجرتان جديدتان متوقعتان لهذه المرحلة: `AddEntityEvents` / `AddEntityEventsPg`
   (+ CoverageLabel ضمن الأولى أو هجرة مستقلة `AddCoverageLabel` بحسب ما يولّده ef).
 - تطبيق `dotnet ef database update` للسياقين في نافذة النشر وإدراجهما في §9.
+
+---
+
+## 11) تحديث سدّ الثغرتين الحرجتين (جلسة المراجعة 2026-08-31)
+
+### 11.1 التغيير الكاسر: `MergeCommitRequest` — مرجع إلزامي
+- `MergeCommitRequest` الآن يتطلب **`DecreeKind`/`DecreeNumber`/`DecreeDate`** (غير اختيارية بعد أن
+  كانت اختيارية `""` افتراضيًا). الخلفية ترفض الطلب برسالة «نوع المرجع مطلوب» إن غابت.
+- **الأثر على العملاء**: أي عميل/اختبار قديم يرسل دمجًا بلا المرجع يحصل على `400`.
+  الواجهة الموحدة (`EntityRegistryReviewManagement.tsx`) ترسل المرجع دائمًا عبر `FreeDateInput`.
+- **التزام**: تُحدَّث `frontend/src/types/index.ts` وتمُرَّر القيم الثلاث في كل استدعاء دمج.
+
+### 11.2 ما نُفّذ لإغلاق الثغرتين (منطق فقط، بلا تغيير بنية DB)
+1. **مزامنة وثائق الناجي عند دمج باسم نهائي** (`PublicEntityService.CommitMergeAsync`):
+   - حفظ الاسم القديم للناجي (`previousSurvivorName`) اسمًا بديلًا (`Alias`) على كل قيوده النشطة
+     (مواءمة `RenameGroupAsync` وإعادة التسمية) كي يبقى البحث بالاسم القديم يعمل.
+   - `SyncTextsAfterRenameAsync` تُستدعى لكل name من `absorbedNames` + `previousSurvivorName` →
+     الاسم النهائي، فيُستبدل النص الحرفي القديم (نام الصف وEntityName وSearchText وFullData) في
+     كل الملفات المعنية بما فيها وثائق الناجي الخاصة. تلاها `SyncTextsAfterFoldAsync` لإعادة بناء
+     نصوص الملفات المرتطمة عبر `RegistryId`.
+2. **ترحيل مندوبي مستوى القيد (`Entry`)** (`UserRepository.ListEntityManagersByGroupIdsAsync`):
+   - إضافة `Include(u => u.PortalEntry).ThenInclude(e => e.Group)` + توسيع `Where` عبر استعلام
+     صريح بمعرّفات القيود (`entryIds`) — آمن الترجمة على SQLite/Postgres — فيلتقط مندوبي القيد
+     إضافةً لمندوبي الهوية، فصار فرعا `PortalEntry is not null` في الدمج والحلول فعّالين.
+   - امتداد ثانوي: عداد `AbolishPreview.DelegatesToReassign` صار يعدّ مندوبي القيد أيضًا.
+
+### 11.3 وضع الهجرات النهائي (مهم — يُقرأ مع §10)
+- **لم تُضف هجرات جديدة** في هذا التحديث: التغيير أعلاه على مستوى الاستعلام والمنطق فقط،
+  بلا أعمدة أو جداول جديدة (مطابق للخطة الأصلية §4).
+- **تبقى الهجرات السابقة للمرحلة** هي الواجب تطبيقها عند النشر (واحدة لكل سياق):
+  - SQLite: `DocGeneratorDbContext` — `AddParentEntityFlag` (+ `AddEntityEvents` إن لم تُطبَّق).
+  - Postgres: `DocGeneratorPostgresDbContext` — `AddHeadAlertPublicEntityLinkPg` / `AddEntityEventsPg`.
+- **أوامر التطبيق في نافذة النشر** (لا تُطبَّق تلقائيًا على القواعد الموجودة):
+  ```
+  dotnet ef database update --context DocGeneratorDbContext
+  dotnet ef database update --context DocGeneratorPostgresDbContext
+  ```
+  نسيان التطبيق يسبب فشل تشغيل فعلي (`no such column: …`) رغم نجاح الاختبارات محليًا.
+
+### 11.4 التحقق بعد التغيير
+- `dotnet test` ✅ (764 Application + 283 Api)، `npx oxlint src` ✅، `npx tsc -b` ✅،
+  `npx vitest run` ✅ (676)، `npm run build` ✅.
+- اختبارات جديدة: مزامنة وثائق الناجي/الممتص باسم نهائي، ترحيل مندوبي مستوى القيد (دمج/حلول)،
+  وعدّاد المعاينة لمندوبي القيد.

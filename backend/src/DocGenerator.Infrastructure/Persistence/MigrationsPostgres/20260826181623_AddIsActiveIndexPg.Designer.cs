@@ -9,11 +9,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace DocGenerator.Infrastructure.MigrationsPostgres
+namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 {
     [DbContext(typeof(DocGeneratorPostgresDbContext))]
-    [Migration("20260827131448_AddDelegationSaleCoversFullDebt")]
-    partial class AddDelegationSaleCoversFullDebt
+    [Migration("20260826181623_AddIsActiveIndexPg")]
+    partial class AddIsActiveIndexPg
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -1161,9 +1161,6 @@ namespace DocGenerator.Infrastructure.MigrationsPostgres
 
                     b.Property<DateTime?>("ReturnDate")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool?>("SaleCoversFullDebt")
-                        .HasColumnType("boolean");
 
                     b.Property<int>("SourceDocumentId")
                         .HasColumnType("integer");

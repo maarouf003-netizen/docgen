@@ -76,6 +76,18 @@ public interface IPublicEntityService
 
     /// <summary>اقتراح تعديل فردي من المحامي (يبقى بانتظار المراجعة — لا يزامن النصوص).</summary>
     Task<PublicEntityEntryDto?> ProposeEditAsync(int entryId, ProposeEditRequest request, EntityRegistryActor actor, CancellationToken ct = default);
+
+    /// <summary>معاينة إعادة تسمية هوية أم على مستوى المجموعة (المدير/المشرف — قبل التنفيذ).</summary>
+    Task<RenameGroupPreviewResponse> PreviewRenameGroupAsync(RenameGroupPreviewRequest request, CancellationToken ct = default);
+
+    /// <summary>إعادة تسمية هوية أم واحدة على مستوى المجموعة بمرسوم إلزامي (المدير/المشرف).</summary>
+    Task<RenameGroupResponse> RenameGroupAsync(RenameGroupRequest request, EntityRegistryActor actor, CancellationToken ct = default);
+
+    /// <summary>معاينة إلغاء عدة هويات أم واستبدالها بهوية جديدة (المدير/المشرف — قبل التنفيذ).</summary>
+    Task<AbolishReplacePreviewResponse> PreviewAbolishAndReplaceAsync(AbolishReplacePreviewRequest request, CancellationToken ct = default);
+
+    /// <summary>إلغاء عدة هويات أم واستبدالها بهوية أم جديدة بمرسوم إلزامي (المدير/المشرف).</summary>
+    Task<AbolishAndReplaceResponse> AbolishAndReplaceAsync(AbolishAndReplaceRequest request, EntityRegistryActor actor, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -99,6 +111,7 @@ public sealed class PublicEntityService : IPublicEntityService
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
+    private readonly IUserRepository _users;
 
     public PublicEntityService(
         IPublicEntityRepository entities,
@@ -108,7 +121,8 @@ public sealed class PublicEntityService : IPublicEntityService
         IRepository<DocumentOccurrence> occurrences,
         IUnitOfWork uow,
         ITransactionRunner tx,
-        IAuditLogger audit)
+        IAuditLogger audit,
+        IUserRepository users)
     {
         _entities = entities;
         _branches = branches;
@@ -118,6 +132,7 @@ public sealed class PublicEntityService : IPublicEntityService
         _uow = uow;
         _tx = tx;
         _audit = audit;
+        _users = users;
     }
 
     // ── القراءة ──
@@ -168,6 +183,9 @@ public sealed class PublicEntityService : IPublicEntityService
         var perPage = Math.Clamp(query.PerPage <= 0 ? 20 : query.PerPage, 1, 100);
         var qNorm = ArabicNameNormalizer.Normalize(query.Q);
         var governorate = NormalizeOptional(query.Governorate);
+        var excludeIds = query.ExcludeIds is null
+            ? new HashSet<int>()
+            : new HashSet<int>(query.ExcludeIds.Distinct());
 
         // نطاق رئيس القسم: محافظة فرعه فقط — بلا فرع/محافظة لا يُعرض شيء
         string? headGovernorate = null;
@@ -186,6 +204,7 @@ public sealed class PublicEntityService : IPublicEntityService
 
         var filtered = groups
             .Where(g => g.IsActive)
+            .Where(g => !excludeIds.Contains(g.Id))
             .Where(g => !isHead || g.Entries.Any(e => e.IsActive && e.Governorate == headGovernorate))
             .Where(g => governorate is null || g.Entries.Any(e => e.IsActive && e.Governorate == governorate))
             .Where(g => qNorm.Length == 0
@@ -1577,6 +1596,12 @@ public sealed class PublicEntityService : IPublicEntityService
     /// <inheritdoc/>
     public async Task<MergeCommitResponse> CommitMergeAsync(MergeCommitRequest request, EntityRegistryActor actor, CancellationToken ct = default)
     {
+        var decreeKind = Required(request.DecreeKind, "نوع المرجع مطلوب", 100);
+        var decreeNumber = Required(request.DecreeNumber, "رقم المرجع مطلوب", 100);
+        var decreeDate = FreeDateParser.Parse(request.DecreeDate, "تاريخ المرجع");
+        if (decreeDate is null)
+            throw new ArgumentException("تاريخ المرجع مطلوب — استخدم مثال: 1/8/2026");
+
         return await _tx.RunAsync(async token =>
         {
             var survivorGroup = await _entities.GetGroupAsync(request.SurvivorGroupId, token)
@@ -1599,13 +1624,43 @@ public sealed class PublicEntityService : IPublicEntityService
             if (survivorEntries.Any(e => e.NeedsReview))
                 throw new ArgumentException("يجب إتمام مراجعة جميع قيود الهوية الأم الناجية قبل الدمج");
 
+            // اسم نهائي اختياري على مستوى المجموعة (7-هـ): يُطبَّق قبل ترحيل الروابط كي تزامن النصوص
+            // في خطوة واحدة بنهاية المعاملة الاسمَ الأخير.
+            string? previousSurvivorName = null;
+            if (!string.IsNullOrWhiteSpace(request.NewCanonicalName))
+            {
+                var newName = Required(request.NewCanonicalName, "الاسم النهائي مطلوب", 200);
+                previousSurvivorName = survivorGroup.CanonicalName;
+                await EnsureCanonicalAvailableAsync(newName, survivorGroup.Id, token);
+                survivorGroup.CanonicalName = newName;
+            }
+
             var absorbedGroupsProcessed = 0;
             var entriesMigrated = 0;
             var aliasesAdded = 0;
             var totalAffectedDocs = 0;
-            var affectedGovernorates = new HashSet<string>();
             var affectedDocsById = new Dictionary<int, Document>();
             var branchMap = new List<object>();
+            var absorbedNames = new List<string>();
+
+            // حفظ الاسم القديم للناجي اسمًا بديلًا (حجّة قانونية) على كل قيوده النشطة،
+            // كي يبقى البحث بالاسم القديم يعثر على الجهة بعد الدمج (مواءمة 7-هـ وإعادة التسمية).
+            if (previousSurvivorName is not null)
+            {
+                var normOldSurvivor = ArabicNameNormalizer.Normalize(previousSurvivorName);
+                foreach (var se in activeSurvivorEntries.Where(e => e.IsActive))
+                {
+                    if (!se.Aliases.Any(a => ArabicNameNormalizer.Normalize(a.AliasText) == normOldSurvivor))
+                    {
+                        se.Aliases.Add(new PublicEntityAlias
+                        {
+                            PublicEntityId = se.Id,
+                            AliasText = previousSurvivorName,
+                        });
+                        aliasesAdded++;
+                    }
+                }
+            }
 
             foreach (var absorbedId in request.AbsorbedGroupIds.Distinct())
             {
@@ -1613,6 +1668,7 @@ public sealed class PublicEntityService : IPublicEntityService
                     ?? throw new ArgumentException($"الهوية الأم #{absorbedId} غير موجودة");
                 if (!absorbedGroup.IsActive)
                     throw new ArgumentException($"الهوية الأم «{absorbedGroup.CanonicalName}» غير نشطة");
+                absorbedNames.Add(absorbedGroup.CanonicalName);
 
                 var absorbedEntries = await _entities.ListEntriesByGroupAsync(absorbedId, token);
 
@@ -1633,7 +1689,6 @@ public sealed class PublicEntityService : IPublicEntityService
                         if (!affectedDocsById.ContainsKey(doc.Id))
                             affectedDocsById[doc.Id] = doc;
                     }
-                    affectedGovernorates.Add(ae.Governorate);
 
                     foreach (var doc in linkedDocs)
                     {
@@ -1690,29 +1745,71 @@ public sealed class PublicEntityService : IPublicEntityService
 
             totalAffectedDocs = affectedDocsById.Count;
 
-            // مزامنة النصوص للملفات المتأثرة
+            // مزامنة النصوص على مستوى المجموعة (تعويض): يُستبدل كل اسم قديم — أسماء الجهات
+            // المُدمجة واسم الناجي السابق إن تغيّر — بالاسم النهائي عبر كل الملفات المرتبطة،
+            // بما فيها الملفات المربوطة بقيود الناجي نفسها (مواءمة 7-هـ و7-و).
+            var mergeTargetName = survivorGroup.CanonicalName;
+            var namesToSync = absorbedNames
+                .Append(previousSurvivorName)
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            foreach (var oldName in namesToSync)
+            {
+                await SyncTextsAfterRenameAsync(oldName!, mergeTargetName, actor.Name, token);
+            }
+
+            // أعد بناء نصوص المستندات المتأثرة بالترحيل (RegistryId) التي لم تُلتقط بالمزامنة الاسمية.
             var affectedDocs = affectedDocsById.Values.ToList();
             if (affectedDocs.Count > 0)
             {
                 await SyncTextsAfterFoldAsync(affectedDocs, actor.Name, token);
             }
 
+            // ترحيل مندوبي الجهات المُدمجة إلى الناجية (مواءمة 7-ز)
+            var absorbedIdsSet = new HashSet<int>(request.AbsorbedGroupIds.Distinct());
+            var delegates = await _users.ListEntityManagersByGroupIdsAsync(absorbedIdsSet, token);
+            foreach (var delegateUser in delegates)
+            {
+                if (delegateUser.PortalGroupId.HasValue && absorbedIdsSet.Contains(delegateUser.PortalGroupId.Value))
+                    delegateUser.PortalGroupId = survivorGroup.Id;
+                if (delegateUser.PortalEntryId.HasValue
+                    && delegateUser.PortalEntry is not null
+                    && absorbedIdsSet.Contains(delegateUser.PortalEntry.GroupId))
+                {
+                    delegateUser.PortalGroupId = survivorGroup.Id;
+                    var survivorDefault = activeSurvivorEntries.FirstOrDefault();
+                    if (survivorDefault is not null)
+                        delegateUser.PortalEntryId = survivorDefault.Id;
+                }
+            }
+
             // حدث الدمج الأب
+            var renamedSurvivor = previousSurvivorName is not null;
             var payload = System.Text.Json.JsonSerializer.Serialize(new
             {
                 survivorGroupId = survivorGroup.Id,
                 survivorGroup = survivorGroup.CanonicalName,
+                oldCanonicalNames = absorbedNames,
                 absorbedGroupIds = request.AbsorbedGroupIds,
+                newCanonical = survivorGroup.CanonicalName,
+                renamedSurvivor,
                 entriesMigrated,
                 aliasesAdded,
                 totalAffectedDocs,
                 branchMap,
                 unifyTexts = request.UnifyTexts,
+                decreeKind,
+                decreeNumber,
+                decreeDate = decreeDate!.Value.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
             });
             var changeEvent = new PublicEntityChangeEvent
             {
                 GroupId = survivorGroup.Id,
                 ActionKind = ActionKindCatalog.Merge,
+                DecreeKind = decreeKind,
+                DecreeNumber = decreeNumber,
+                DecreeDate = decreeDate,
                 PayloadJson = payload,
                 ActorUserId = actor.UserId,
                 CreatedAtUtc = DateTime.UtcNow,
@@ -1721,6 +1818,7 @@ public sealed class PublicEntityService : IPublicEntityService
             await _uow.SaveChangesAsync(token);
 
             // وقوعات آلية لكل ملف متأثر
+            var absorbedNamesJoined = string.Join('،', absorbedNames);
             foreach (var docId in affectedDocsById.Keys)
             {
                 var occurrence = new DocumentOccurrence
@@ -1729,36 +1827,24 @@ public sealed class PublicEntityService : IPublicEntityService
                     OccurrenceType = OccurrenceTypeCatalog.EntityChange,
                     EventDate = DateTime.UtcNow,
                     CreatedById = actor.UserId,
-                    Details = $"تم دمج جهات في «{survivorGroup.CanonicalName}»",
+                    Details = EntityChangeMessages.MergeOccurrence(absorbedNamesJoined, survivorGroup.CanonicalName, decreeKind, decreeNumber, decreeDate),
                 };
                 await _occurrences.AddAsync(occurrence, token);
             }
 
-            // تنبيه رؤساء الأقسام المتأثرين
-            foreach (var gov in affectedGovernorates)
-            {
-                var heads = await _entities.ListActiveHeadsByGovernorateAsync(gov, token);
-                foreach (var head in heads.Where(h => h.BranchId.HasValue))
-                {
-                    var msg = $"دمج جهات في «{survivorGroup.CanonicalName}» — يرجى أخذ العلم";
-                    var alert = new HeadAlert
-                    {
-                        BranchId = head.BranchId!.Value,
-                        CreatedById = actor.UserId,
-                        TargetType = HeadAlertTargetType.Branch,
-                        Message = msg.Length > 2000 ? msg[..2000] : msg,
-                        CreatedAt = DateTime.UtcNow,
-                        Recipients = { new HeadAlertRecipient { UserId = head.Id } },
-                    };
-                    await _headAlerts.AddAsync(alert, token);
-                }
-            }
+            // تنبيه عام لكل المحامين + تنبيه خاص لرؤساء الأقسام
+            await BroadcastEntityChangeToAllLawyersAsync(
+                EntityChangeMessages.MergeLawyersAlert(absorbedNamesJoined, survivorGroup.CanonicalName, decreeKind, decreeNumber, decreeDate),
+                actor.UserId, token);
+            await BroadcastToAllHeadsAsync(
+                EntityChangeMessages.MergeHeadsAlert(absorbedNamesJoined, survivorGroup.CanonicalName, decreeKind, decreeNumber, decreeDate),
+                actor.UserId, token);
 
             await _uow.SaveChangesAsync(token);
 
             await _audit.LogAsync(actor.Name, "merge_entity_registry",
                 documentId: null, documentType: null,
-                details: $"دمج {absorbedGroupsProcessed} هويات أم في «{survivorGroup.CanonicalName}» — {entriesMigrated} قيد، {totalAffectedDocs} ملفًا متأثرًا",
+                details: $"دمج {absorbedGroupsProcessed} هويات أم في «{survivorGroup.CanonicalName}» بموجب {BuildDecreeSuffix(decreeKind, decreeNumber, decreeDate)} — {entriesMigrated} قيد، {totalAffectedDocs} ملفًا متأثرًا",
                 ct: token);
 
             return new MergeCommitResponse(absorbedGroupsProcessed, entriesMigrated, aliasesAdded, totalAffectedDocs, changeEvent.Id);
@@ -1964,4 +2050,470 @@ public sealed class PublicEntityService : IPublicEntityService
         entry.NeedsReview,
         entry.CoverageLabel,
         entry.IsParentEntity);
+
+    // ── أداة إعادة تسمية الهوية الأم (المدير/المشرف — مستوى المجموعة) ──
+    // القاعدة: إعادة التسمية على مستوى المجموعة لا تمس Governorate/BranchName/CitationFormula/CoverageLabel
+    // — تغيّر Group.CanonicalName فقط، وتُحفظ الأسماء القديمة أسماءً بديلة (حجّة قانونية د5).
+
+    /// <inheritdoc/>
+    public async Task<RenameGroupPreviewResponse> PreviewRenameGroupAsync(
+        RenameGroupPreviewRequest request, CancellationToken ct = default)
+    {
+        var group = await _entities.GetGroupAsync(request.GroupId, ct)
+            ?? throw new ArgumentException("الهوية الأم غير موجودة");
+        var newName = Required(request.NewCanonicalName, "اسم الجهة مطلوب", 200);
+        if (group.Entries.Any(e => e.NeedsReview))
+            throw new ArgumentException("يجب إتمام مراجعة جميع قيود الهوية الأم قبل إعادة تسميتها");
+
+        var affected = await CountDocumentsForGroupAsync(request.GroupId, ct);
+        var branches = await BranchNamesForGroupAsync(request.GroupId, ct);
+        return new RenameGroupPreviewResponse(group.CanonicalName, newName, affected, branches);
+    }
+
+    /// <inheritdoc/>
+    public async Task<RenameGroupResponse> RenameGroupAsync(
+        RenameGroupRequest request, EntityRegistryActor actor, CancellationToken ct = default)
+    {
+        if (!RolePermissions_IsFullAccess(actor.Role))
+            throw new UnauthorizedAccessException("إعادة التسمية للمدير أو المشرف فقط");
+
+        var newCanonical = Required(request.NewCanonicalName, "اسم الجهة مطلوب", 200);
+        var decreeKind = Required(request.DecreeKind, "نوع المرجع مطلوب", 100);
+        var decreeNumber = Required(request.DecreeNumber, "رقم المرجع مطلوب", 100);
+        var decreeDate = FreeDateParser.Parse(request.DecreeDate, "تاريخ المرجع");
+        if (decreeDate is null)
+            throw new ArgumentException("تاريخ المرجع مطلوب — استخدم مثال: 1/8/2026");
+
+        return await _tx.RunAsync(async token =>
+        {
+            var group = await _entities.GetGroupAsync(request.GroupId, token)
+                ?? throw new ArgumentException("الهوية الأم غير موجودة");
+            if (!group.IsActive)
+                throw new ArgumentException("الهوية الأم غير نشطة");
+            if (group.Entries.Any(e => e.NeedsReview))
+                throw new ArgumentException("يجب إتمام مراجعة جميع قيود الهوية الأم قبل إعادة تسميتها");
+
+            var oldCanonical = group.CanonicalName;
+            if (string.Equals(ArabicNameNormalizer.Normalize(oldCanonical),
+                ArabicNameNormalizer.Normalize(newCanonical), StringComparison.Ordinal))
+                throw new ArgumentException("الاسم الجديد مطابق للاسم الحالي");
+
+            await EnsureCanonicalAvailableAsync(newCanonical, group.Id, token);
+
+            group.CanonicalName = newCanonical;
+
+            // حفظ الاسم القديم اسمًا بديلًا (حجّة قانونية): يُضاف على القيد الأم بمحافظة الفرع
+            // وعلى كل قيود المجموعة ليبقى البحث بالاسم القديم يعثر على الجهة.
+            var entries = await _entities.ListEntriesByGroupAsync(group.Id, token);
+            foreach (var entry in entries.Where(e => e.IsActive))
+            {
+                var normOld = ArabicNameNormalizer.Normalize(oldCanonical);
+                if (!entry.Aliases.Any(a => ArabicNameNormalizer.Normalize(a.AliasText) == normOld))
+                {
+                    entry.Aliases.Add(new PublicEntityAlias
+                    {
+                        PublicEntityId = entry.Id,
+                        AliasText = oldCanonical,
+                    });
+                }
+            }
+
+            // مزامنة النصوص على مستوى المجموعة (الاسم القديم ← الجديد عبر كل الملفات المرتبطة)
+            var affected = await SyncTextsAfterRenameAsync(oldCanonical, newCanonical, actor.Name, token);
+
+            // سجل التغيير
+            var payload = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                oldCanonicalNames = new[] { oldCanonical },
+                newCanonical = group.CanonicalName,
+                entityType = group.EntityType,
+                decreeKind,
+                decreeNumber,
+                decreeDate = decreeDate!.Value.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+                affectedDocuments = affected,
+            });
+            var changeEvent = new PublicEntityChangeEvent
+            {
+                GroupId = group.Id,
+                ActionKind = ActionKindCatalog.Rename,
+                DecreeKind = decreeKind,
+                DecreeNumber = decreeNumber,
+                DecreeDate = decreeDate,
+                PayloadJson = payload,
+                ActorUserId = actor.UserId,
+                CreatedAtUtc = DateTime.UtcNow,
+            };
+            await _changeEvents.AddAsync(changeEvent, token);
+
+            await _uow.SaveChangesAsync(token);
+
+            // وقوعات آلية لكل ملف متأثر
+            await WriteAffectedOccurrencesAsync(
+                group.Id,
+                actor.UserId,
+                EntityChangeMessages.RenameOccurrence(oldCanonical, group.CanonicalName, decreeKind, decreeNumber, decreeDate),
+                token);
+
+            // تنبيه عام لكل المحامين + تنبيه خاص لرؤساء الأقسام
+            await BroadcastEntityChangeToAllLawyersAsync(
+                EntityChangeMessages.RenameLawyersAlert(oldCanonical, group.CanonicalName, decreeKind, decreeNumber, decreeDate),
+                actor.UserId, token);
+            await BroadcastToAllHeadsAsync(
+                EntityChangeMessages.RenameHeadsAlert(oldCanonical, group.CanonicalName, decreeKind, decreeNumber, decreeDate),
+                actor.UserId, token);
+
+            await _uow.SaveChangesAsync(token);
+
+            await _audit.LogAsync(actor.Name, "rename_public_entity_group",
+                documentId: null, documentType: null,
+                details: $"أعاد تسمية الهوية الأم: «{oldCanonical}» إلى «{group.CanonicalName}» بموجب {BuildDecreeSuffix(decreeKind, decreeNumber, decreeDate)} — {affected} ملفًا متأثرًا",
+                ct: token);
+
+            return new RenameGroupResponse(group.Id, oldCanonical, group.CanonicalName, affected, changeEvent.Id);
+        }, ct);
+    }
+
+    // ── أداة الحلول (إلغاء عدة هويات أم واستبدالها بهوية جديدة) ──
+
+    /// <inheritdoc/>
+    public async Task<AbolishReplacePreviewResponse> PreviewAbolishAndReplaceAsync(
+        AbolishReplacePreviewRequest request, CancellationToken ct = default)
+    {
+        if (request.AbolishedGroupIds is null || request.AbolishedGroupIds.Count == 0)
+            throw new ArgumentException("حدد هوية أم واحدة على الأقل للإلغاء");
+
+        var names = new List<string>();
+        var affectedDocs = 0;
+        var branches = new HashSet<string>(StringComparer.Ordinal);
+        var abolishedGroupIds = new HashSet<int>(request.AbolishedGroupIds);
+
+        foreach (var id in request.AbolishedGroupIds.Distinct())
+        {
+            var group = await _entities.GetGroupAsync(id, ct)
+                ?? throw new ArgumentException($"الهوية الأم #{id} غير موجودة");
+            if (!group.IsActive)
+                throw new ArgumentException($"الهوية الأم «{group.CanonicalName}» غير نشطة");
+            if (group.Entries.Any(e => e.NeedsReview))
+                throw new ArgumentException($"يجب إتمام مراجعة جميع قيود «{group.CanonicalName}» قبل الإلغاء");
+            names.Add(group.CanonicalName);
+            affectedDocs += await CountDocumentsForGroupAsync(id, ct);
+            foreach (var b in await BranchNamesForGroupAsync(id, ct))
+                branches.Add(b);
+        }
+
+        var delegates = await _users.ListEntityManagersByGroupIdsAsync(abolishedGroupIds, ct);
+        return new AbolishReplacePreviewResponse(
+            names, request.AbolishedGroupIds.Count,
+            await CountActiveEntriesForGroupsAsync(abolishedGroupIds, ct),
+            affectedDocs, delegates.Count, branches.OrderBy(x => x).ToList());
+    }
+
+    /// <inheritdoc/>
+    public async Task<AbolishAndReplaceResponse> AbolishAndReplaceAsync(
+        AbolishAndReplaceRequest request, EntityRegistryActor actor, CancellationToken ct = default)
+    {
+        if (!RolePermissions_IsFullAccess(actor.Role))
+            throw new UnauthorizedAccessException("الحلول (إلغاء واستبدال) للمدير أو المشرف فقط");
+        if (request.AbolishedGroupIds is null || request.AbolishedGroupIds.Count == 0)
+            throw new ArgumentException("حدد هوية أم واحدة على الأقل للإلغاء");
+
+        var newCanonical = Required(request.NewCanonicalName, "اسم الجهة مطلوب", 200);
+        var entityType = ValidEntityType(request.EntityType);
+        var governorate = Required(request.Governorate, "المحافظة مطلوبة", 100);
+        var citationFormula = ValidCitationFormula(request.CitationFormula, CitationFormulaCatalog.AddToJob);
+        var coverageLabel = ValidateCoverageLabel(request.CoverageLabel);
+        var decreeKind = Required(request.DecreeKind, "نوع المرجع مطلوب", 100);
+        var decreeNumber = Required(request.DecreeNumber, "رقم المرجع مطلوب", 100);
+        var decreeDate = FreeDateParser.Parse(request.DecreeDate, "تاريخ المرجع");
+        if (decreeDate is null)
+            throw new ArgumentException("تاريخ المرجع مطلوب — استخدم مثال: 1/8/2026");
+
+        var abolishedIds = request.AbolishedGroupIds.Distinct().ToList();
+
+        return await _tx.RunAsync(async token =>
+        {
+            // 1) تحقق: كل الجهات المُلغاة نشطة بلا NeedsReview؛ الاسم الجديد فريد
+            foreach (var id in abolishedIds)
+            {
+                var g = await _entities.GetGroupAsync(id, token)
+                    ?? throw new ArgumentException($"الهوية الأم #{id} غير موجودة");
+                if (!g.IsActive)
+                    throw new ArgumentException($"الهوية الأم «{g.CanonicalName}» غير نشطة");
+                if (g.Entries.Any(e => e.NeedsReview))
+                    throw new ArgumentException($"يجب إتمام مراجعة جميع قيود «{g.CanonicalName}» قبل الإلغاء");
+            }
+            await EnsureCanonicalAvailableAsync(newCanonical, 0, token);
+
+            // 2) إنشاء الهوية الأم الجديدة + قيدها الأم
+            var newGroup = new PublicEntityGroup
+            {
+                CanonicalName = newCanonical,
+                EntityType = entityType,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow,
+            };
+            await _entities.AddGroupAsync(newGroup, token);
+            await _uow.SaveChangesAsync(token);
+
+            var newParentEntry = new PublicEntity
+            {
+                GroupId = newGroup.Id,
+                Group = newGroup,
+                Governorate = governorate,
+                BranchName = DefaultBranchName,
+                IsParentEntity = true,
+                CoverageLabel = coverageLabel,
+                CitationFormula = citationFormula,
+                Status = EntityStatusCatalog.Final,
+                IsActive = true,
+                NeedsReview = false,
+                CreatedById = actor.UserId,
+                CreatedAt = DateTime.UtcNow,
+            };
+            var aliases = CleanAliases(request.Aliases, ArabicNameNormalizer.Normalize(newCanonical));
+            foreach (var alias in aliases)
+                newParentEntry.Aliases.Add(new PublicEntityAlias { PublicEntityId = newParentEntry.Id, AliasText = alias });
+            await _entities.AddEntryAsync(newParentEntry, token);
+            await _uow.SaveChangesAsync(token);
+
+            // 3) ترحيل روابط القيود الفعّالة للجهات المُلغاة إلى القيد الأم الجديد + إيقافها
+            var abolishedIdsSet = new HashSet<int>(abolishedIds);
+            var abolishedNames = new List<string>();
+            var affectedDocsById = new Dictionary<int, Document>();
+            var entriesMoved = 0;
+
+            foreach (var id in abolishedIds)
+            {
+                var group = await _entities.GetGroupAsync(id, token)
+                    ?? throw new ArgumentException($"الهوية الأم #{id} غير موجودة");
+                abolishedNames.Add(group.CanonicalName);
+                var entries = await _entities.ListEntriesByGroupAsync(id, token);
+
+                foreach (var entry in entries.Where(e => e.IsActive))
+                {
+                    var linkedDocs = await _entities.ListDocumentsLinkedToEntryAsync(entry.Id, token);
+                    foreach (var doc in linkedDocs)
+                    {
+                        foreach (var a in doc.ApplicantPublicEntities.Where(a => a.RegistryId == entry.Id))
+                            a.RegistryId = newParentEntry.Id;
+                        foreach (var e in doc.ExecutedPublicEntities.Where(e => e.RegistryId == entry.Id))
+                            e.RegistryId = newParentEntry.Id;
+                        doc.ApplicantRegistryId = newGroup.Id;
+                        if (!affectedDocsById.ContainsKey(doc.Id))
+                            affectedDocsById[doc.Id] = doc;
+                        await _occurrences.AddAsync(new DocumentOccurrence
+                        {
+                            DocumentId = doc.Id,
+                            OccurrenceType = OccurrenceTypeCatalog.EntityChange,
+                            EventDate = DateTime.UtcNow,
+                            CreatedById = actor.UserId,
+                            Details = EntityChangeMessages.AbolishOccurrence(newCanonical, group.CanonicalName, decreeKind, decreeNumber, decreeDate),
+                        }, token);
+                    }
+
+                    // حفظ أسماء الجهات المُلغاة أسماءً بديلة على القيد الجديد
+                    var norm = ArabicNameNormalizer.Normalize(group.CanonicalName);
+                    if (!newParentEntry.Aliases.Any(a => ArabicNameNormalizer.Normalize(a.AliasText) == norm))
+                        newParentEntry.Aliases.Add(new PublicEntityAlias
+                        {
+                            PublicEntityId = newParentEntry.Id,
+                            AliasText = group.CanonicalName,
+                        });
+
+                    entry.IsActive = false;
+                    entriesMoved++;
+                }
+
+                group.IsActive = false;
+            }
+
+            // 4) مزامنة النصوص للملفات المتأثرة (يحلّ الاسم الجديد محل القديم)
+            if (affectedDocsById.Count > 0)
+            {
+                await SyncTextsAfterFoldAsync(affectedDocsById.Values.ToList(), actor.Name, token);
+            }
+            await _uow.SaveChangesAsync(token);
+
+            // 5) ترحيل مندوبي الجهات المُلغاة إلى الهوية الجديدة (مواءمة 7-ز)
+            var delegates = await _users.ListEntityManagersByGroupIdsAsync(abolishedIdsSet, token);
+            foreach (var delegateUser in delegates)
+            {
+                if (delegateUser.PortalGroupId.HasValue && abolishedIdsSet.Contains(delegateUser.PortalGroupId.Value))
+                    delegateUser.PortalGroupId = newGroup.Id;
+                if (delegateUser.PortalEntryId.HasValue
+                    && delegateUser.PortalEntry is not null
+                    && abolishedIdsSet.Contains(delegateUser.PortalEntry.GroupId))
+                {
+                    delegateUser.PortalGroupId = newGroup.Id;
+                    delegateUser.PortalEntryId = newParentEntry.Id;
+                }
+            }
+
+            // 6) سجل التغيير
+            var payload = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                abolishedGroupIds = abolishedIds,
+                oldCanonicalNames = abolishedNames,
+                newCanonical = newGroup.CanonicalName,
+                entityType = newGroup.EntityType,
+                governorate,
+                branchName = DefaultBranchName,
+                entriesMoved,
+                affectedDocuments = affectedDocsById.Count,
+                delegatesReassigned = delegates.Count,
+                decreeKind,
+                decreeNumber,
+                decreeDate = decreeDate!.Value.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+            });
+            var changeEvent = new PublicEntityChangeEvent
+            {
+                GroupId = newGroup.Id,
+                ActionKind = ActionKindCatalog.Abolish,
+                DecreeKind = decreeKind,
+                DecreeNumber = decreeNumber,
+                DecreeDate = decreeDate,
+                PayloadJson = payload,
+                ActorUserId = actor.UserId,
+                CreatedAtUtc = DateTime.UtcNow,
+            };
+            await _changeEvents.AddAsync(changeEvent, token);
+            await _uow.SaveChangesAsync(token);
+
+            // 8) تنبيه عام لكل المحامين + رؤساء الأقسام
+            var abolishedNamesJoined = string.Join('،', abolishedNames);
+            await BroadcastEntityChangeToAllLawyersAsync(
+                EntityChangeMessages.AbolishLawyersAlert(newGroup.CanonicalName, abolishedNamesJoined, decreeKind, decreeNumber, decreeDate),
+                actor.UserId, token);
+            await BroadcastToAllHeadsAsync(
+                EntityChangeMessages.AbolishHeadsAlert(newGroup.CanonicalName, abolishedNamesJoined, decreeKind, decreeNumber, decreeDate),
+                actor.UserId, token);
+
+            await _uow.SaveChangesAsync(token);
+
+            await _audit.LogAsync(actor.Name, "abolish_and_replace_entity",
+                documentId: null, documentType: null,
+                details: $"حلّت «{newGroup.CanonicalName}» محل {abolishedIds.Count} هويات، {entriesMoved} قيدًا، {affectedDocsById.Count} ملفًا متأثرًا، {delegates.Count} مندوبًا",
+                ct: token);
+
+            return new AbolishAndReplaceResponse(
+                newGroup.Id, newGroup.CanonicalName, abolishedIds.Count, entriesMoved,
+                affectedDocsById.Count, changeEvent.Id);
+        }, ct);
+    }
+
+    // ── مساعدات البث العام لكل الفروع (أ1) ──
+
+    /// <summary>تنبيه تعميم لكل المحامين في كل الفروع النشطة — كل تنبيه برسالة مُقصّرة عند 2000.</summary>
+    /// <remarks>يُلتحم بالمعاملة الخارجية الواحدة التي يفتحها <see cref="TransactionRunner"/>، فيُثبَّت الكل أو يُتراجع الكل مع سائر التغييرات.</remarks>
+    private async Task BroadcastEntityChangeToAllLawyersAsync(string message, int actorUserId, CancellationToken token)
+    {
+        var grouped = await _headAlerts.ListAllActiveLawyersGroupedByBranchAsync(token);
+        foreach (var (branchId, lawyers) in grouped)
+        {
+            if (lawyers.Count == 0)
+                continue;
+            var alert = new HeadAlert
+            {
+                BranchId = branchId,
+                CreatedById = actorUserId,
+                TargetType = HeadAlertTargetType.Branch,
+                Message = message.Length > 2000 ? message[..2000] : message,
+                CreatedAt = DateTime.UtcNow,
+                Recipients = { },
+            };
+            foreach (var lawyer in lawyers)
+                alert.Recipients.Add(new HeadAlertRecipient { UserId = lawyer.Id });
+            await _headAlerts.AddAsync(alert, token);
+        }
+    }
+
+    /// <summary>تنبيه لكل رؤساء الأقسام في كل الفروع النشطة.</summary>
+    /// <remarks>يُلتحم بالمعاملة الخارجية الواحدة التي يفتحها <see cref="TransactionRunner"/>، فيُثبَّت الكل أو يُتراجع الكل مع سائر التغييرات.</remarks>
+    private async Task BroadcastToAllHeadsAsync(string message, int actorUserId, CancellationToken token)
+    {
+        var grouped = await _headAlerts.ListAllActiveHeadsGroupedByBranchAsync(token);
+        foreach (var (branchId, heads) in grouped)
+        {
+            if (heads.Count == 0)
+                continue;
+            var alert = new HeadAlert
+            {
+                BranchId = branchId,
+                CreatedById = actorUserId,
+                TargetType = HeadAlertTargetType.Branch,
+                Message = message.Length > 2000 ? message[..2000] : message,
+                CreatedAt = DateTime.UtcNow,
+                Recipients = { },
+            };
+            foreach (var head in heads)
+                alert.Recipients.Add(new HeadAlertRecipient { UserId = head.Id });
+            await _headAlerts.AddAsync(alert, token);
+        }
+    }
+
+    // ── مساعدات مشتركة ──
+
+    /// <summary>سقف لاحقة المرجع — يفوّض إلى <see cref="EntityChangeMessages.DecreeSuffix"/> (المصدر الموحّد).</summary>
+    private static string BuildDecreeSuffix(string decreeKind, string decreeNumber, DateTime? decreeDate)
+        => EntityChangeMessages.DecreeSuffix(decreeKind, decreeNumber, decreeDate);
+
+    /// <summary>كتابة وقوعات entity-change على الملفات المتأثرة بهوية أم (عبر قيودها النشطة).</summary>
+    private async Task WriteAffectedOccurrencesAsync(int groupId, int actorUserId, string details, CancellationToken token)
+    {
+        var entries = await _entities.ListEntriesByGroupAsync(groupId, token);
+        var docIds = new HashSet<int>();
+        foreach (var entry in entries.Where(e => e.IsActive))
+        {
+            var linked = await _entities.ListDocumentsLinkedToEntryAsync(entry.Id, token);
+            foreach (var d in linked)
+                docIds.Add(d.Id);
+        }
+        foreach (var docId in docIds)
+        {
+            var occurrence = new DocumentOccurrence
+            {
+                DocumentId = docId,
+                OccurrenceType = OccurrenceTypeCatalog.EntityChange,
+                EventDate = DateTime.UtcNow,
+                CreatedById = actorUserId,
+                Details = details,
+            };
+            await _occurrences.AddAsync(occurrence, token);
+        }
+    }
+
+    private async Task<int> CountDocumentsForGroupAsync(int groupId, CancellationToken token)
+    {
+        var entries = await _entities.ListEntriesByGroupAsync(groupId, token);
+        var ids = new HashSet<int>();
+        foreach (var entry in entries.Where(e => e.IsActive))
+        {
+            foreach (var d in await _entities.ListDocumentsLinkedToEntryAsync(entry.Id, token))
+                ids.Add(d.Id);
+        }
+        return ids.Count;
+    }
+
+    private async Task<List<string>> BranchNamesForGroupAsync(int groupId, CancellationToken token)
+    {
+        var entries = await _entities.ListEntriesByGroupAsync(groupId, token);
+        var branches = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var entry in entries.Where(e => e.IsActive))
+        {
+            if (!string.IsNullOrWhiteSpace(entry.BranchName) && entry.BranchName != DefaultBranchName)
+                branches.Add(entry.BranchName);
+        }
+        return branches.OrderBy(x => x).ToList();
+    }
+
+    private async Task<int> CountActiveEntriesForGroupsAsync(IReadOnlyCollection<int> groupIds, CancellationToken token)
+    {
+        var count = 0;
+        foreach (var id in groupIds)
+            count += (await _entities.ListEntriesByGroupAsync(id, token)).Count(e => e.IsActive);
+        return count;
+    }
+
+    private static bool RolePermissions_IsFullAccess(DocGenerator.Domain.Enums.UserRole role)
+        => role is DocGenerator.Domain.Enums.UserRole.Manager or DocGenerator.Domain.Enums.UserRole.Admin;
 }

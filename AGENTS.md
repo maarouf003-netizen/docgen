@@ -67,10 +67,10 @@
 
 # Deploy Reminder (Mandatory — apply to every change that touches EF migrations)
 
-هذا النظام يعمل بقاعدتي بيانات: SQLite (`DocGeneratorDbContext`، هجراته في `react-dotnet-app\backend\src\DocGenerator.Infrastructure\Persistence\Migrations`) وPostgreSQL (`DocGeneratorPostgresDbContext`، هجراته في `react-dotnet-app\backend\src\DocGenerator.Infrastructure\MigrationsPostgres`). أي تغيير يضيف أو يعدّل هجرات EF **لا يُطبَّق على القواعد الموجودة عند النشر تلقائيًا**، فيجب:
+هذا النظام يعمل بقاعدتي بيانات: SQLite (`DocGeneratorDbContext`، هجراته في `backend\src\DocGenerator.Infrastructure\Persistence\Migrations`) وPostgreSQL (`DocGeneratorPostgresDbContext`، هجراته في `backend\src\DocGenerator.Infrastructure\Persistence\MigrationsPostgres`). أي تغيير يضيف أو يعدّل هجرات EF **لا يُطبَّق على القواعد الموجودة عند النشر تلقائيًا**، فيجب:
 
 - في تقرير الإنجاز النهائي لأي مهمة تتضمن هجرات جديدة، ذِكر الهجرات بأسمائها وعددها (واحدة لكل سياق عادةً: SQLite + Postgres).
 - كتابة تنبيه صريح للمستخدم بوجوب التطبيق في نافذة النشر: `dotnet ef database update --context DocGeneratorDbContext` و`dotnet ef database update --context DocGeneratorPostgresDbContext`.
 - عدم اعتبار المهمة «منجزة» قبل أن يُقرّ هذا التنبيه في التقرير، لأن نسيان التطبيق يؤدي لفشل تشغيل فعلي («no such column: …») رغم نجاح الاختبارات محليًا.
-- المرجع العملي للمستخدم: `react-dotnet-app/RUN_GUIDE.md` §9 «تطبيق هجرات قاعدة البيانات عند النشر».
+- المرجع العملي للمستخدم: `RUN_GUIDE.md` §9 «تطبيق هجرات قاعدة البيانات عند النشر».
 

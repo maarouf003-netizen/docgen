@@ -175,11 +175,15 @@ public record MergePreviewResponse(
     int TotalAffectedDocuments,
     IReadOnlyList<string> Warnings);
 
-/// <summary>طلب اعتماد الدمج.</summary>
+/// <summary>طلب اعتماد الدمج (بموجب مرجع إلزامي، مع اسم نهائي اختياري).</summary>
 public record MergeCommitRequest(
     int SurvivorGroupId,
     IReadOnlyList<int> AbsorbedGroupIds,
-    bool UnifyTexts = false);
+    bool UnifyTexts = false,
+    string? NewCanonicalName = null,
+    string DecreeKind = "",
+    string DecreeNumber = "",
+    string DecreeDate = "");
 
 /// <summary>نتيجة الدمج.</summary>
 public record MergeCommitResponse(
@@ -205,7 +209,8 @@ public record EntityGroupListQuery(
     string? Q,
     string? Governorate,
     int Page = 1,
-    int PerPage = 20);
+    int PerPage = 20,
+    IReadOnlyList<int>? ExcludeIds = null);
 
 // ── توحيد التسمية N←1 (المدير/المشرف — بلا هجرة روابط ملفات) ──
 
@@ -271,3 +276,67 @@ public record EntityChangeEventQuery(
     string? To,
     int Page = 1,
     int PerPage = 20);
+
+// ── إعادة تسمية هوية أم (المدير/المشرف — على مستوى المجموعة مع مرسوم إلزامي) ──
+
+/// <summary>طلب إعادة تسمية هوية أم واحدة بموجب مرجع (قرار/قانون/مرسوم).</summary>
+public record RenameGroupRequest(
+    int GroupId,
+    string NewCanonicalName,
+    string DecreeKind,
+    string DecreeNumber,
+    string DecreeDate);
+
+/// <summary>نتيجة إعادة تسمية الهوية الأم.</summary>
+public record RenameGroupResponse(
+    int GroupId,
+    string OldCanonicalName,
+    string NewCanonicalName,
+    int AffectedDocuments,
+    int ChangeEventId);
+
+/// <summary>طلب معاينة إعادة تسمية هوية أم قبل الاعتماد.</summary>
+public record RenameGroupPreviewRequest(int GroupId, string NewCanonicalName);
+
+/// <summary>نتيجة معاينة إعادة التسمية: عدد الملفات المتأثرة وفروعها.</summary>
+public record RenameGroupPreviewResponse(
+    string OldCanonicalName,
+    string NewCanonicalName,
+    int AffectedDocuments,
+    IReadOnlyList<string> Branches);
+
+// ── الحلول (إلغاء عدة هويات أم واستبدالها بهوية جديدة) ──
+
+/// <summary>طلب إلغاء عدة هويات أم واستبدالها بهوية أم جديدة تحلّ محلها.</summary>
+public record AbolishAndReplaceRequest(
+    IReadOnlyList<int> AbolishedGroupIds,
+    string NewCanonicalName,
+    string EntityType,
+    string Governorate,
+    string? CitationFormula = null,
+    IReadOnlyList<string>? Aliases = null,
+    string? CoverageLabel = null,
+    string DecreeKind = "",
+    string DecreeNumber = "",
+    string DecreeDate = "");
+
+/// <summary>نتيجة الإلغاء والاستبدال.</summary>
+public record AbolishAndReplaceResponse(
+    int NewGroupId,
+    string NewCanonicalName,
+    int AbolishedGroups,
+    int EntriesMoved,
+    int AffectedDocuments,
+    int ChangeEventId);
+
+/// <summary>طلب معاينة الإلغاء والاستبدال قبل الاعتماد.</summary>
+public record AbolishReplacePreviewRequest(IReadOnlyList<int> AbolishedGroupIds);
+
+/// <summary>نتيجة معاينة الإلغاء والاستبدال.</summary>
+public record AbolishReplacePreviewResponse(
+    IReadOnlyList<string> AbolishedNames,
+    int AbolishedGroups,
+    int ActiveEntries,
+    int AffectedDocuments,
+    int DelegatesToReassign,
+    IReadOnlyList<string> Branches);

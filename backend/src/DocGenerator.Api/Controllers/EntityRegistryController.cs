@@ -252,13 +252,21 @@ public class EntityRegistryController : ControllerBase
     public async Task<IActionResult> ListGroups(
         [FromQuery] string? q,
         [FromQuery] string? governorate,
+        [FromQuery] string? excludeIds,
         [FromQuery] int page = 1,
         [FromQuery] int perPage = 20,
         CancellationToken ct = default)
     {
         if (!RolePermissions.CanManageEntityRegistry(Role))
             return Forbid();
-        return Ok(await _registry.ListGroupsAsync(new EntityGroupListQuery(q, governorate, page, perPage), Actor, ct));
+        var excl = string.IsNullOrWhiteSpace(excludeIds)
+            ? null
+            : excludeIds.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(s => int.TryParse(s, out var v) ? v : (int?)null)
+                .Where(v => v.HasValue)
+                .Select(v => v!.Value)
+                .ToList();
+        return Ok(await _registry.ListGroupsAsync(new EntityGroupListQuery(q, governorate, page, perPage, excl), Actor, ct));
     }
 
     /// <summary>قيود مجموعة واحدة — لرئيس القسم (محافظته فقط) وإدارة الفروع.</summary>
@@ -340,6 +348,86 @@ public class EntityRegistryController : ControllerBase
         try
         {
             return Ok(await _registry.CommitMergeAsync(request, Actor, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    // ── إعادة تسمية هوية أم (المدير/المشرف — بمرسوم إلزامي) ──
+
+    /// <summary>معاينة إعادة تسمية هوية أم واحدة قبل الاعتماد (تعدد الملفات المتأثرة وفروعها).</summary>
+    [HttpPost("groups/{groupId:int}/rename-preview")]
+    public async Task<IActionResult> RenameGroupPreview(int groupId, [FromBody] RenameGroupPreviewRequest request, CancellationToken ct)
+    {
+        if (!RolePermissions.HasFullAccess(Role))
+            return Forbid();
+        if (request.GroupId != groupId)
+            return BadRequest(new { message = "تعارض معرف المجموعة في المسار" });
+        try
+        {
+            return Ok(await _registry.PreviewRenameGroupAsync(request, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+    }
+
+    /// <summary>تنفيذ إعادة تسمية هوية أم واحدة بموجب مرجع (المدير/المشرف).</summary>
+    [HttpPost("groups/{groupId:int}/rename")]
+    public async Task<IActionResult> RenameGroup(int groupId, [FromBody] RenameGroupRequest request, CancellationToken ct)
+    {
+        if (!RolePermissions.HasFullAccess(Role))
+            return Forbid();
+        if (request.GroupId != groupId)
+            return BadRequest(new { message = "تعارض معرف المجموعة في المسار" });
+        try
+        {
+            return Ok(await _registry.RenameGroupAsync(request, Actor, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    // ── الحلول (إلغاء عدة هويات أم واستبدالها بهوية جديدة — المدير/المشرف) ──
+
+    /// <summary>معاينة الحلول (إلغاء واستبدال) قبل الاعتماد.</summary>
+    [HttpPost("groups/abolish-preview")]
+    public async Task<IActionResult> AbolishPreview([FromBody] AbolishReplacePreviewRequest request, CancellationToken ct)
+    {
+        if (!RolePermissions.HasFullAccess(Role))
+            return Forbid();
+        try
+        {
+            return Ok(await _registry.PreviewAbolishAndReplaceAsync(request, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+    }
+
+    /// <summary>تنفيذ الحلول: إلغاء عدة هويات أم واستبدالها بهوية أم جديدة (المدير/المشرف).</summary>
+    [HttpPost("groups/abolish-and-replace")]
+    public async Task<IActionResult> AbolishAndReplace([FromBody] AbolishAndReplaceRequest request, CancellationToken ct)
+    {
+        if (!RolePermissions.HasFullAccess(Role))
+            return Forbid();
+        try
+        {
+            return Ok(await _registry.AbolishAndReplaceAsync(request, Actor, ct));
         }
         catch (ArgumentException e)
         {

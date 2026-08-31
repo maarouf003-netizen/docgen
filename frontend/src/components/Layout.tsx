@@ -100,7 +100,6 @@ export default function Layout() {
   const canViewAuditLogs = hasFullAccess || isHead;
   const canManageBranchLawyers = user?.role === 'head' || user?.role === 'admin';
   const canManageUsers = user?.role === 'admin';
-  const canManageEntityRegistry = hasFullAccess || isHead;
   const canManageDelegates = hasFullAccess || isHead;
   // مندوب الجهة: قائمة بوابة مختصرة فقط (ملفاتي/تصدير) دون باقي البنود (المرحلة 3).
   const isEntityManager = user?.role === 'entitymanager';
@@ -122,13 +121,12 @@ export default function Layout() {
     });
     if (canManageBranchLawyers) navItems.push({ to: '/branch-lawyers', label: 'محامو الفرع' });
     if (user?.role === 'head') navItems.push({ to: '/delegations/requests', label: 'طلبات الإنابة' });
-    if (canManageEntityRegistry) navItems.push({ to: '/entities/registry', label: 'سجل الجهات العامة' });
+    if (hasFullAccess) navItems.push({ to: '/entities/review-management', label: 'مراجعة سجل الجهات العامة' });
     if (user?.role === 'head') navItems.push({ to: '/entities/review', label: 'مراجعة سجل الجهات' });
     if (canManageDelegates) navItems.push({ to: '/delegates', label: 'مندوبو الجهات' });
     if (canManageUsers) navItems.push({ to: '/users/manage', label: 'إدارة المستخدمين' });
     if (canManageUsers) navItems.push({ to: '/branches/manage', label: 'إدارة الفروع' });
     if (hasFullAccess) navItems.push({ to: '/users', label: 'نشاط المستخدمين' });
-    if (hasFullAccess) navItems.push({ to: '/entity-change-log', label: 'سجل تغييرات الجهات' });
     if (canViewAuditLogs) navItems.push({ to: '/audit-logs', label: 'سجل التدقيق' });
   }
 

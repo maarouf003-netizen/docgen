@@ -58,6 +58,30 @@ public class UserRepository : Repository<User>, IUserRepository
             .ToListAsync(ct);
     }
 
+    /// <summary>مندوبو الجهات ضمن مجموعة هويات أم محددة — متتبَّعة للتعديل (ترحيل النطاق).</summary>
+    public async Task<List<User>> ListEntityManagersByGroupIdsAsync(
+        IReadOnlyCollection<int> groupIds, CancellationToken ct = default)
+    {
+        if (groupIds is null || groupIds.Count == 0)
+            return new List<User>();
+
+        var idSet = groupIds as IReadOnlySet<int> ?? new HashSet<int>(groupIds);
+
+        // معرّفات القيود (Entry) التابعة للهويات الأم المطلوبة، لتعيين مندوبي مستوى القيد.
+        var entryIds = await Db.PublicEntities
+            .Where(e => idSet.Contains(e.GroupId))
+            .Select(e => (int?)e.Id)
+            .ToListAsync(ct);
+
+        return await Db.Users
+            .Include(u => u.PortalEntry).ThenInclude(e => e!.Group)
+            .Where(u => u.Role == UserRole.EntityManager
+                && ((u.PortalGroupId != null && idSet.Contains(u.PortalGroupId.Value))
+                    || (u.PortalEntryId != null && entryIds.Contains(u.PortalEntryId))))
+            .OrderBy(u => u.FullName)
+            .ToListAsync(ct);
+    }
+
     public async Task<bool> UsernameExistsAsync(string username, int? branchId, int? excludeUserId, CancellationToken ct = default)
     {
         var normalized = ArabicNameNormalizer.Normalize(username);

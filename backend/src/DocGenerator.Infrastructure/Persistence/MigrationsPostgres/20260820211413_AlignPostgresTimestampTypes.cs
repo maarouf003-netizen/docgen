@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace DocGenerator.Infrastructure.MigrationsPostgres
+namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 {
     /// <inheritdoc />
     public partial class AlignPostgresTimestampTypes : Migration

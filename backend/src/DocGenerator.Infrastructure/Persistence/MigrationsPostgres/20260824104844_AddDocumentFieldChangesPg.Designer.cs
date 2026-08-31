@@ -9,11 +9,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace DocGenerator.Infrastructure.MigrationsPostgres
+namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 {
     [DbContext(typeof(DocGeneratorPostgresDbContext))]
-    [Migration("20260820211413_AlignPostgresTimestampTypes")]
-    partial class AlignPostgresTimestampTypes
+    [Migration("20260824104844_AddDocumentFieldChangesPg")]
+    partial class AddDocumentFieldChangesPg
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -24,6 +24,95 @@ namespace DocGenerator.Infrastructure.MigrationsPostgres
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.AppealAction", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ActionDate")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<int>("AppealId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ReminderColor")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("ReminderDuration")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AppealId");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("CreatedById");
+
+                    b.ToTable("AppealActions", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.AppealBaseNumber", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AppealId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("BaseNumber")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Year")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AppealId");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("AppealId", "Year")
+                        .IsUnique();
+
+                    b.ToTable("AppealBaseNumbers", (string)null);
+                });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.ApplicantPublicEntity", b =>
                 {
@@ -115,6 +204,9 @@ namespace DocGenerator.Infrastructure.MigrationsPostgres
                         .HasColumnType("character varying(100)");
 
                     b.Property<DateTime?>("RegistrationDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("SeizureDate")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("ShareType")
@@ -791,6 +883,152 @@ namespace DocGenerator.Infrastructure.MigrationsPostgres
                     b.ToTable("Documents", (string)null);
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentAppeal", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AppealBaseNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("AppealTypeLabel")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("AppealYear")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime?>("AppealedDecisionDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("AppealedDecisionSummary")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("AppealedDecisionText")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("AppellantsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("AppellateCourt")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("AppelleesJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("AssignedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("AssignedLawyerId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("DecisionDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DecisionNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("DecisionRuling")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("DefenseOpinion")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime?>("DepositBookDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DepositBookNumber")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Direction")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("GroundsSummary")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime?>("InspectionBookDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("InspectionBookNumber")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime?>("NoticeDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("NoticeNumber")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Outcome")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("RegistrationDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("StruckOffDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("StruckOffDecisionNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssignedLawyerId");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("Direction");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("DocumentAppeals", (string)null);
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentAssignment", b =>
                 {
                     b.Property<int>("Id")
@@ -934,6 +1172,47 @@ namespace DocGenerator.Infrastructure.MigrationsPostgres
                     b.HasIndex("Status");
 
                     b.ToTable("DocumentDelegations", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentFieldChange", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AuditLogId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FieldKey")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("FieldLabel")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<string>("NewValue")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("OldValue")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuditLogId");
+
+                    b.HasIndex("DocumentId", "Id");
+
+                    b.ToTable("DocumentFieldChanges", (string)null);
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentOccurrence", b =>
@@ -1442,6 +1721,9 @@ namespace DocGenerator.Infrastructure.MigrationsPostgres
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<int?>("AppealId")
+                        .HasColumnType("integer");
+
                     b.Property<int>("BranchId")
                         .HasColumnType("integer");
 
@@ -1462,6 +1744,9 @@ namespace DocGenerator.Infrastructure.MigrationsPostgres
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
+                    b.Property<int?>("ReviewLetterId")
+                        .HasColumnType("integer");
+
                     b.Property<int?>("TargetLawyerId")
                         .HasColumnType("integer");
 
@@ -1469,6 +1754,8 @@ namespace DocGenerator.Infrastructure.MigrationsPostgres
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AppealId");
 
                     b.HasIndex("BranchId");
 
@@ -1479,6 +1766,8 @@ namespace DocGenerator.Infrastructure.MigrationsPostgres
                     b.HasIndex("DelegationId");
 
                     b.HasIndex("DocumentId");
+
+                    b.HasIndex("ReviewLetterId");
 
                     b.HasIndex("TargetLawyerId");
 
@@ -1582,6 +1871,118 @@ namespace DocGenerator.Infrastructure.MigrationsPostgres
                     b.ToTable("LoginAttempts", (string)null);
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ReviewLetter", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BranchId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("DocumentId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsAnswered")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("LetterDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LetterNumber")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("IsAnswered");
+
+                    b.HasIndex("LetterNumber")
+                        .IsUnique();
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.ToTable("ReviewLetters", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ReviewLetterMessage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AuthorId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("AuthorName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("AuthorRole")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("BodyHtml")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("BodyPlainText")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsSeenByLawyer")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime>("MessageDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MessageNumber")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<int>("ReviewLetterId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BodyPlainText");
+
+                    b.HasIndex("ReviewLetterId");
+
+                    b.ToTable("ReviewLetterMessages", (string)null);
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.User", b =>
                 {
                     b.Property<int>("Id")
@@ -1650,6 +2051,44 @@ namespace DocGenerator.Infrastructure.MigrationsPostgres
                         .IsUnique();
 
                     b.ToTable("Users", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.AppealAction", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.DocumentAppeal", "Appeal")
+                        .WithMany("Actions")
+                        .HasForeignKey("AppealId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Appeal");
+
+                    b.Navigation("CreatedBy");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.AppealBaseNumber", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.DocumentAppeal", "Appeal")
+                        .WithMany("BaseNumbers")
+                        .HasForeignKey("AppealId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Appeal");
+
+                    b.Navigation("CreatedBy");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.ApplicantPublicEntity", b =>
@@ -1721,6 +2160,32 @@ namespace DocGenerator.Infrastructure.MigrationsPostgres
                     b.Navigation("SourceDelegation");
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentAppeal", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.User", "AssignedLawyer")
+                        .WithMany()
+                        .HasForeignKey("AssignedLawyerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DocGenerator.Domain.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.Document", "Document")
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("AssignedLawyer");
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("Document");
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentAssignment", b =>
                 {
                     b.HasOne("DocGenerator.Domain.Entities.Document", "Document")
@@ -1782,6 +2247,17 @@ namespace DocGenerator.Infrastructure.MigrationsPostgres
                     b.Navigation("ExternalBranch");
 
                     b.Navigation("SourceDocument");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentFieldChange", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.AuditLog", "AuditLog")
+                        .WithMany("FieldChanges")
+                        .HasForeignKey("AuditLogId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("AuditLog");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentOccurrence", b =>
@@ -1904,6 +2380,11 @@ namespace DocGenerator.Infrastructure.MigrationsPostgres
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.HeadAlert", b =>
                 {
+                    b.HasOne("DocGenerator.Domain.Entities.DocumentAppeal", "Appeal")
+                        .WithMany()
+                        .HasForeignKey("AppealId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("DocGenerator.Domain.Entities.Branch", "Branch")
                         .WithMany()
                         .HasForeignKey("BranchId")
@@ -1921,16 +2402,25 @@ namespace DocGenerator.Infrastructure.MigrationsPostgres
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("DocGenerator.Domain.Entities.ReviewLetter", "ReviewLetter")
+                        .WithMany()
+                        .HasForeignKey("ReviewLetterId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("DocGenerator.Domain.Entities.User", "TargetLawyer")
                         .WithMany()
                         .HasForeignKey("TargetLawyerId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Appeal");
 
                     b.Navigation("Branch");
 
                     b.Navigation("CreatedBy");
 
                     b.Navigation("Document");
+
+                    b.Navigation("ReviewLetter");
 
                     b.Navigation("TargetLawyer");
                 });
@@ -1965,6 +2455,43 @@ namespace DocGenerator.Infrastructure.MigrationsPostgres
                     b.Navigation("Document");
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ReviewLetter", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.Document", "Document")
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("Document");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ReviewLetterMessage", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.ReviewLetter", "ReviewLetter")
+                        .WithMany("Messages")
+                        .HasForeignKey("ReviewLetterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ReviewLetter");
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.User", b =>
                 {
                     b.HasOne("DocGenerator.Domain.Entities.Branch", "Branch")
@@ -1977,6 +2504,11 @@ namespace DocGenerator.Infrastructure.MigrationsPostgres
             modelBuilder.Entity("DocGenerator.Domain.Entities.Asset", b =>
                 {
                     b.Navigation("Owners");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.AuditLog", b =>
+                {
+                    b.Navigation("FieldChanges");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.Branch", b =>
@@ -2017,6 +2549,13 @@ namespace DocGenerator.Infrastructure.MigrationsPostgres
                     b.Navigation("RegistrationDate");
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentAppeal", b =>
+                {
+                    b.Navigation("Actions");
+
+                    b.Navigation("BaseNumbers");
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentDelegation", b =>
                 {
                     b.Navigation("Assets");
@@ -2037,6 +2576,11 @@ namespace DocGenerator.Infrastructure.MigrationsPostgres
             modelBuilder.Entity("DocGenerator.Domain.Entities.HeadAlert", b =>
                 {
                     b.Navigation("Recipients");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ReviewLetter", b =>
+                {
+                    b.Navigation("Messages");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.User", b =>

@@ -33,4 +33,22 @@ public class EntityRegistryPermissionsTests
     [InlineData(UserRole.EntityManager, true)]
     public void CanUseDelegatePortal_IsEntityManagerOnly(UserRole role, bool expected)
         => Assert.Equal(expected, RolePermissions.CanUseDelegatePortal(role));
+
+    [Theory]
+    [InlineData(UserRole.Lawyer, false)]
+    [InlineData(UserRole.Head, false)]
+    [InlineData(UserRole.Manager, true)]
+    [InlineData(UserRole.Admin, true)]
+    [InlineData(UserRole.EntityManager, false)]
+    public void CanMergeEntities_IsManagerOrAdminOnly(UserRole role, bool expected)
+        => Assert.Equal(expected, RolePermissions.CanMergeEntities(role));
+
+    [Theory]
+    [InlineData(UserRole.Lawyer, false)]
+    [InlineData(UserRole.Head, false)]
+    [InlineData(UserRole.Manager, true)]
+    [InlineData(UserRole.Admin, true)]
+    [InlineData(UserRole.EntityManager, false)]
+    public void HasFullAccess_IsManagerOrAdminOnly(UserRole role, bool expected)
+        => Assert.Equal(expected, RolePermissions.HasFullAccess(role));
 }

@@ -1446,6 +1446,10 @@ export interface MergeCommitRequest {
   survivorGroupId: number;
   absorbedGroupIds: number[];
   unifyTexts?: boolean;
+  newCanonicalName?: string | null;
+  decreeKind?: string;
+  decreeNumber?: string;
+  decreeDate?: string;
 }
 
 /** نتيجة الدمج. */
@@ -1454,6 +1458,81 @@ export interface MergeCommitResponse {
   entriesMigrated: number;
   aliasesAdded: number;
   totalAffectedDocuments: number;
+  changeEventId: number;
+}
+
+/* ── إعادة تسمية هوية أم (المدير/المشرف) ─────────────────────────────── */
+
+/** طلب معاينة إعادة تسمية هوية أم قبل الاعتماد. */
+export interface RenameGroupPreviewRequest {
+  groupId: number;
+  newCanonicalName: string;
+}
+
+/** نتيجة معاينة إعادة التسمية. */
+export interface RenameGroupPreviewResponse {
+  oldCanonicalName: string;
+  newCanonicalName: string;
+  affectedDocuments: number;
+  branches: string[];
+}
+
+/** طلب إعادة تسمية هوية أم واحدة بموجب مرجع (قرار/قانون/مرسوم). */
+export interface RenameGroupRequest {
+  groupId: number;
+  newCanonicalName: string;
+  decreeKind: string;
+  decreeNumber: string;
+  decreeDate: string;
+}
+
+/** نتيجة إعادة تسمية الهوية الأم. */
+export interface RenameGroupResponse {
+  groupId: number;
+  oldCanonicalName: string;
+  newCanonicalName: string;
+  affectedDocuments: number;
+  changeEventId: number;
+}
+
+/* ── الحلول: إلغاء هويات أم واستبدالها بهوية جديدة ─────────────────────── */
+
+/** طلب معاينة الإلغاء والاستبدال قبل الاعتماد. */
+export interface AbolishReplacePreviewRequest {
+  abolishedGroupIds: number[];
+}
+
+/** نتيجة معاينة الإلغاء والاستبدال. */
+export interface AbolishReplacePreviewResponse {
+  abolishedNames: string[];
+  abolishedGroups: number;
+  activeEntries: number;
+  affectedDocuments: number;
+  delegatesToReassign: number;
+  branches: string[];
+}
+
+/** طلب إلغاء عدة هويات أم واستبدالها بهوية أم جديدة تحلّ محلها. */
+export interface AbolishAndReplaceRequest {
+  abolishedGroupIds: number[];
+  newCanonicalName: string;
+  entityType: PublicEntityType;
+  governorate: string;
+  citationFormula?: string | null;
+  aliases?: string[];
+  coverageLabel?: string | null;
+  decreeKind: string;
+  decreeNumber: string;
+  decreeDate: string;
+}
+
+/** نتيجة الإلغاء والاستبدال. */
+export interface AbolishAndReplaceResponse {
+  newGroupId: number;
+  newCanonicalName: string;
+  abolishedGroups: number;
+  entriesMoved: number;
+  affectedDocuments: number;
   changeEventId: number;
 }
 

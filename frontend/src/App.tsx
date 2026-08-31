@@ -4,6 +4,7 @@ import { AuthProvider } from './auth/AuthContext';
 import { useAuth } from './auth/useAuth';
 import ErrorBoundary from './components/ErrorBoundary';
 import Layout from './components/Layout';
+import LegacyRouteBanner from './components/LegacyRouteBanner';
 
 const Login = lazy(() => import('./pages/Login'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -21,13 +22,12 @@ const BranchLawyers = lazy(() => import('./pages/BranchLawyers'));
 const DelegationRequests = lazy(() => import('./pages/DelegationRequests'));
 const UsersManagement = lazy(() => import('./pages/UsersManagement'));
 const BranchesManagement = lazy(() => import('./pages/BranchesManagement'));
-const EntityRegistryManagement = lazy(() => import('./pages/EntityRegistryManagement'));
+const EntityRegistryReviewManagement = lazy(() => import('./pages/EntityRegistryReviewManagement'));
 const EntityRegistryReview = lazy(() => import('./pages/EntityRegistryReview'));
 const EntityDelegates = lazy(() => import('./pages/EntityDelegates'));
 const PortalFiles = lazy(() => import('./pages/PortalFiles'));
 const PortalFileDetail = lazy(() => import('./pages/PortalFileDetail'));
 const AuditLogs = lazy(() => import('./pages/AuditLogs'));
-const EntityChangeLog = lazy(() => import('./pages/EntityChangeLog'));
 const ChangePassword = lazy(() => import('./pages/ChangePassword'));
 const ReviewsList = lazy(() => import('./pages/ReviewsList'));
 const ReviewDetail = lazy(() => import('./pages/ReviewDetail'));
@@ -130,8 +130,19 @@ export default function App() {
             <Route
               path="/entities/registry"
               element={
-                <RequireRole allowed={(_role, hasFullAccess, isHead) => hasFullAccess || isHead}>
-                  <EntityRegistryManagement />
+                <RequireRole allowed={(_role, hasFullAccess) => hasFullAccess}>
+                  <LegacyRouteBanner
+                    to="/entities/review-management?tab=add"
+                    message="هذا الرابط القديم لسجل الجهات لم يعد معتمدًا — انتقل إلى «إدارة سجل الجهات»"
+                  />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/entities/review-management"
+              element={
+                <RequireRole allowed={(_role, hasFullAccess) => hasFullAccess}>
+                  <EntityRegistryReviewManagement />
                 </RequireRole>
               }
             />
@@ -187,7 +198,10 @@ export default function App() {
               path="/entity-change-log"
               element={
                 <RequireRole allowed={(_role, hasFullAccess) => hasFullAccess}>
-                  <EntityChangeLog />
+                  <LegacyRouteBanner
+                    to="/entities/review-management?tab=log"
+                    message="هذا الرابط القديم لسجل تغييرات الجهات لم يعد معتمدًا — انتقل إلى «سجل تغييرات الجهات»"
+                  />
                 </RequireRole>
               }
             />

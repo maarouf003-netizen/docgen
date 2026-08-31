@@ -56,7 +56,8 @@ public class PublicEntityServiceTests : IDisposable
             new Repository<DocumentOccurrence>(_db),
             new UnitOfWork(_db),
             new TransactionRunner(_db),
-            _audit);
+            _audit,
+            new UserRepository(_db));
     }
 
     public void Dispose() => _db.Dispose();
@@ -1027,7 +1028,8 @@ public class PublicEntityServiceTests : IDisposable
         await _db.SaveChangesAsync();
 
         var result = await _service.CommitMergeAsync(
-            new MergeCommitRequest(sg, new[] { ag1, ag2 }), ManagerActor());
+            new MergeCommitRequest(sg, new[] { ag1, ag2 },
+                DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
 
         Assert.Equal(2, result.AbsorbedGroupsCount);
         Assert.True(result.TotalAffectedDocuments > 0);
@@ -1050,7 +1052,9 @@ public class PublicEntityServiceTests : IDisposable
     public async Task CommitMerge_CreatesChangeEvent()
     {
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
-        await _service.CommitMergeAsync(new MergeCommitRequest(sg, new[] { ag1 }), ManagerActor());
+        await _service.CommitMergeAsync(
+            new MergeCommitRequest(sg, new[] { ag1 },
+                DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
 
         var evt = await _db.PublicEntityChangeEvents.SingleAsync();
         Assert.Equal(ActionKindCatalog.Merge, evt.ActionKind);
@@ -1063,7 +1067,9 @@ public class PublicEntityServiceTests : IDisposable
     public async Task CommitMerge_SendsHeadAlert()
     {
         var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
-        await _service.CommitMergeAsync(new MergeCommitRequest(sg, new[] { ag1 }), ManagerActor());
+        await _service.CommitMergeAsync(
+            new MergeCommitRequest(sg, new[] { ag1 },
+                DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
 
         var alerts = await _db.HeadAlerts.Include(h => h.Recipients).ToListAsync();
         Assert.Contains(alerts, a => a.Message.Contains("دمج"));
@@ -1079,7 +1085,9 @@ public class PublicEntityServiceTests : IDisposable
         row.RegistryId = absorbedEntry.Id;
         await _db.SaveChangesAsync();
 
-        await _service.CommitMergeAsync(new MergeCommitRequest(sg, new[] { ag1 }), ManagerActor());
+        await _service.CommitMergeAsync(
+            new MergeCommitRequest(sg, new[] { ag1 },
+                DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
 
         var occ = await _db.DocumentOccurrences.SingleAsync(o => o.DocumentId == doc.Id);
         Assert.Equal(OccurrenceTypeCatalog.EntityChange, occ.OccurrenceType);
@@ -1093,7 +1101,9 @@ public class PublicEntityServiceTests : IDisposable
         var absorbedEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == ag1);
         var absorbedGroup = await _db.PublicEntityGroups.FindAsync(ag1);
 
-        await _service.CommitMergeAsync(new MergeCommitRequest(sg, new[] { ag1 }), ManagerActor());
+        await _service.CommitMergeAsync(
+            new MergeCommitRequest(sg, new[] { ag1 },
+                DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
 
         var survivorEntries = await _db.PublicEntities
             .Include(e => e.Aliases)
@@ -1105,11 +1115,175 @@ public class PublicEntityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CommitMerge_MissingDecree_Throws()
+    {
+        var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CommitMergeAsync(new MergeCommitRequest(sg, new[] { ag1 }), ManagerActor()));
+        Assert.Contains("نوع المرجع", ex.Message);
+    }
+
+    [Fact]
+    public async Task CommitMerge_WithNewName_RenamesSurvivor()
+    {
+        var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
+        await _service.CommitMergeAsync(
+            new MergeCommitRequest(sg, new[] { ag1 },
+                NewCanonicalName: "وزارة الصحة والسكان",
+                DecreeKind: "قرار", DecreeNumber: "55", DecreeDate: "15/9/2026"), ManagerActor());
+
+        var survivor = await _db.PublicEntityGroups.FindAsync(sg);
+        Assert.Equal("وزارة الصحة والسكان", survivor!.CanonicalName);
+
+        var evt = await _db.PublicEntityChangeEvents.SingleAsync();
+        Assert.Equal(ActionKindCatalog.Merge, evt.ActionKind);
+        Assert.Equal("قرار", evt.DecreeKind);
+        Assert.Equal("55", evt.DecreeNumber);
+        var payload = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(evt.PayloadJson);
+        Assert.True(payload.GetProperty("renamedSurvivor").GetBoolean());
+        Assert.Equal("وزارة الصحة والسكان", payload.GetProperty("newCanonical").GetString());
+    }
+
+    [Fact]
+    public async Task CommitMerge_MigratesDelegates()
+    {
+        var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
+        var delegateUser = new User
+        {
+            Username = "delegate_abs",
+            FullName = "مندوب مديرية الصحة",
+            Role = UserRole.EntityManager,
+            PortalGroupId = ag1,
+            PasswordHash = "x",
+        };
+        _db.Users.Add(delegateUser);
+        await _db.SaveChangesAsync();
+
+        await _service.CommitMergeAsync(
+            new MergeCommitRequest(sg, new[] { ag1 },
+                DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
+
+        var updated = await _db.Users.SingleAsync(u => u.Id == delegateUser.Id);
+        Assert.Equal(sg, updated.PortalGroupId);
+    }
+
+    [Fact]
+    public async Task CommitMerge_WithNewName_SyncsSurvivorOwnDocs_ToNewName()
+    {
+        var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
+        var survivorEntry = await _db.PublicEntities.FirstAsync(e => e.GroupId == sg);
+
+        // ملف مرتطم بقيد الناجي نفسه (بلا أي ترحيل من جهة ممتصة) — الاسم القديم للناجي.
+        var doc = new Document
+        {
+            BranchId = _damascusId,
+            CreatedById = _lawyerId,
+            IsDraft = false,
+            BorrowerName = "شركة المباني",
+            AmountNumeric = 0,
+            ExecStatus = string.Empty,
+            GeneralEntitySide = "applicant",
+            ApplicantPublicEntities =
+            {
+                new ApplicantPublicEntity { Name = "وزارة الصحة", Governorate = "دمشق", Branch = "فرع الجهة", RegistryId = survivorEntry.Id },
+            },
+        };
+        doc.Applicant = "وزارة الصحة - محافظة دمشق";
+        _db.Documents.Add(doc);
+        await _db.SaveChangesAsync();
+
+        await _service.CommitMergeAsync(
+            new MergeCommitRequest(sg, new[] { ag1 },
+                NewCanonicalName: "وزارة الصحة والسكان",
+                DecreeKind: "قرار", DecreeNumber: "55", DecreeDate: "15/9/2026"), ManagerActor());
+
+        var row = await _db.ApplicantPublicEntities.AsNoTracking().SingleAsync(a => a.DocumentId == doc.Id);
+        Assert.Equal("وزارة الصحة والسكان", row.Name);
+
+        var after = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == doc.Id);
+        Assert.Equal("وزارة الصحة والسكان - محافظة دمشق", after.Applicant);
+        Assert.Contains("وزارة الصحة والسكان", after.SearchText);
+        Assert.False(ArabicNameNormalizer.Normalize(after.SearchText)
+            .Contains("وزارة الصحة -", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task CommitMerge_WithNewName_SyncsAbsorbedDocs_ToNewName()
+    {
+        var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
+        var absorbedEntry = await _db.PublicEntities.FirstAsync(e => e.GroupId == ag1);
+
+        // ملف مرتطم بقيد الجهة الممتصة — اسمها القديم.
+        var doc = new Document
+        {
+            BranchId = _damascusId,
+            CreatedById = _lawyerId,
+            IsDraft = false,
+            BorrowerName = "شركة المباني",
+            AmountNumeric = 0,
+            ExecStatus = string.Empty,
+            GeneralEntitySide = "applicant",
+            ApplicantPublicEntities =
+            {
+                new ApplicantPublicEntity { Name = "مديرية الصحة", Governorate = "دمشق", Branch = "فرع الجهة", RegistryId = absorbedEntry.Id },
+            },
+        };
+        doc.Applicant = "مديرية الصحة - محافظة دمشق";
+        _db.Documents.Add(doc);
+        await _db.SaveChangesAsync();
+
+        await _service.CommitMergeAsync(
+            new MergeCommitRequest(sg, new[] { ag1 },
+                NewCanonicalName: "وزارة الصحة والسكان",
+                DecreeKind: "قرار", DecreeNumber: "56", DecreeDate: "16/9/2026"), ManagerActor());
+
+        var row = await _db.ApplicantPublicEntities.AsNoTracking().SingleAsync(a => a.DocumentId == doc.Id);
+        Assert.Equal("وزارة الصحة والسكان", row.Name);
+
+        var after = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == doc.Id);
+        Assert.Equal("وزارة الصحة والسكان - محافظة دمشق", after.Applicant);
+        Assert.Contains("وزارة الصحة والسكان", after.SearchText);
+        Assert.DoesNotContain("مديرية الصحة", after.SearchText);
+    }
+
+    [Fact]
+    public async Task CommitMerge_MigratesEntryLevelDelegates()
+    {
+        var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
+        var absorbedEntry = await _db.PublicEntities.FirstAsync(e => e.GroupId == ag1);
+
+        var delegateUser = new User
+        {
+            Username = "delegate_entry_abs",
+            FullName = "مندوب قيد مديرية الصحة",
+            Role = UserRole.EntityManager,
+            PortalEntryId = absorbedEntry.Id,
+            PortalGroupId = null,
+            PasswordHash = "x",
+        };
+        _db.Users.Add(delegateUser);
+        await _db.SaveChangesAsync();
+
+        await _service.CommitMergeAsync(
+            new MergeCommitRequest(sg, new[] { ag1 },
+                DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
+
+        var updated = await _db.Users.SingleAsync(u => u.Id == delegateUser.Id);
+        Assert.Equal(sg, updated.PortalGroupId);
+        Assert.NotNull(updated.PortalEntryId);
+        Assert.Equal(
+            await _db.PublicEntities.Where(e => e.GroupId == sg).Select(e => e.Id).FirstOrDefaultAsync(),
+            updated.PortalEntryId);
+    }
+
+    [Fact]
     public async Task CommitMerge_SelfMerge_Throws()
     {
         var (sg, _, _) = await SeedThreeGroupsForMergeAsync();
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CommitMergeAsync(new MergeCommitRequest(sg, new[] { sg }), ManagerActor()));
+            _service.CommitMergeAsync(
+                new MergeCommitRequest(sg, new[] { sg },
+                    DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor()));
     }
 
     [Fact]
@@ -1121,7 +1295,9 @@ public class PublicEntityServiceTests : IDisposable
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CommitMergeAsync(new MergeCommitRequest(sg, new[] { ag1 }), ManagerActor()));
+            _service.CommitMergeAsync(
+                new MergeCommitRequest(sg, new[] { ag1 },
+                    DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor()));
         Assert.Contains("مراجعة", ex.Message);
     }
 
@@ -1134,7 +1310,9 @@ public class PublicEntityServiceTests : IDisposable
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CommitMergeAsync(new MergeCommitRequest(sg, new[] { ag1 }), ManagerActor()));
+            _service.CommitMergeAsync(
+                new MergeCommitRequest(sg, new[] { ag1 },
+                    DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor()));
         Assert.Contains("مراجعة", ex.Message);
     }
 
@@ -1498,5 +1676,195 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(2, alerts.Count);
         var latest = alerts.OrderByDescending(a => a.Id).First();
         Assert.Contains("جهة القراءة (ثانٍ)", latest.Message);
+    }
+
+    // ── إعادة تسمية هوية أم (أ2) ──
+
+    [Fact]
+    public async Task RenameGroup_RenamesAndSyncsTexts()
+    {
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var doc = await SeedApplicantDocumentAsync("وزارة النقل", "دمشق");
+
+        var result = await _service.RenameGroupAsync(
+            new RenameGroupRequest(dto.GroupId, "وزارة المواصلات", "قرار", "77", "10/5/2026"), ManagerActor());
+
+        Assert.Equal("وزارة المواصلات", result.NewCanonicalName);
+        Assert.Equal("وزارة النقل", result.OldCanonicalName);
+        Assert.True(result.AffectedDocuments > 0);
+
+        var group = await _db.PublicEntityGroups.FindAsync(dto.GroupId);
+        Assert.Equal("وزارة المواصلات", group!.CanonicalName);
+
+        var evt = await _db.PublicEntityChangeEvents.OrderByDescending(e => e.Id).FirstAsync();
+        Assert.Equal(ActionKindCatalog.Rename, evt.ActionKind);
+        Assert.Equal("قرار", evt.DecreeKind);
+        Assert.NotNull(evt.DecreeDate);
+
+        Assert.Contains("rename_public_entity_group", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task RenameGroup_SavesOldNameAsAlias()
+    {
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("الهيئة العامة للطيران", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _service.RenameGroupAsync(
+            new RenameGroupRequest(dto.GroupId, "الهيئة العامة للطيران المدني", "مرسوم", "5", "1/1/2026"), ManagerActor());
+
+        var entries = await _db.PublicEntities.Include(e => e.Aliases).Where(e => e.GroupId == dto.GroupId).ToListAsync();
+        Assert.Contains(entries.SelectMany(e => e.Aliases), a => a.AliasText == "الهيئة العامة للطيران");
+    }
+
+    [Fact]
+    public async Task RenameGroup_MissingDecree_Throws()
+    {
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة بدون مرسوم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.RenameGroupAsync(new RenameGroupRequest(dto.GroupId, "اسم جديد", "", "1", "1/1/2026"), ManagerActor()));
+        Assert.Contains("نوع المرجع", ex.Message);
+    }
+
+    [Fact]
+    public async Task RenameGroup_ByHead_Throws()
+    {
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الحوكمة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.RenameGroupAsync(new RenameGroupRequest(dto.GroupId, "اسم محظور", "قرار", "1", "1/1/2026"), HeadDamascusActor()));
+    }
+
+    [Fact]
+    public async Task RenameGroup_NeedsReview_Throws()
+    {
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة بانتظار المراجعة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var entry = await _db.PublicEntities.FirstAsync(e => e.GroupId == dto.GroupId);
+        entry.NeedsReview = true;
+        await _db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.RenameGroupAsync(new RenameGroupRequest(dto.GroupId, "اسم جديد", "قرار", "1", "1/1/2026"), ManagerActor()));
+        Assert.Contains("مراجعة", ex.Message);
+    }
+
+    // ── الحلول: الإلغاء والاستبدال (أ4) ──
+
+    [Fact]
+    public async Task AbolishAndReplace_CreatesNewAndMovesLinks()
+    {
+        var absorbed1 = await _service.CreateAsync(new CreatePublicEntityRequest("المؤسسة القديمة أ", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var absorbed2 = await _service.CreateAsync(new CreatePublicEntityRequest("المؤسسة القديمة ب", "authority", "حلب", "فرع حلب"), ManagerActor());
+        var doc = await SeedApplicantDocumentAsync("المؤسسة القديمة أ", "دمشق");
+        var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
+        var absorbedEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == absorbed1.GroupId);
+        row.RegistryId = absorbedEntry.Id;
+        await _db.SaveChangesAsync();
+
+        var result = await _service.AbolishAndReplaceAsync(
+            new AbolishAndReplaceRequest(
+                new[] { absorbed1.GroupId, absorbed2.GroupId },
+                "المؤسسة الجديدة", "authority", "دمشق",
+                DecreeKind: "قرار", DecreeNumber: "200", DecreeDate: "20/6/2026"), ManagerActor());
+
+        Assert.True(result.NewGroupId > 0);
+        Assert.Equal(2, result.AbolishedGroups);
+
+        var oldGroup1 = await _db.PublicEntityGroups.FindAsync(absorbed1.GroupId);
+        Assert.False(oldGroup1!.IsActive);
+
+        var updatedRow = await _db.ApplicantPublicEntities.FindAsync(row.Id);
+        var newEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == result.NewGroupId);
+        Assert.Equal(newEntry.Id, updatedRow!.RegistryId);
+
+        var evt = await _db.PublicEntityChangeEvents.OrderByDescending(e => e.Id).FirstAsync();
+        Assert.Equal(ActionKindCatalog.Abolish, evt.ActionKind);
+        Assert.Equal("قرار", evt.DecreeKind);
+
+        Assert.Contains("abolish_and_replace_entity", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task AbolishAndReplace_MissingDecree_Throws()
+    {
+        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الحل أ", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.AbolishAndReplaceAsync(
+                new AbolishAndReplaceRequest(new[] { absorbed.GroupId }, "جهة جديدة", "authority", "دمشق"), ManagerActor()));
+        Assert.Contains("نوع المرجع", ex.Message);
+    }
+
+    [Fact]
+    public async Task AbolishAndReplace_ByHead_Throws()
+    {
+        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الحل ب", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.AbolishAndReplaceAsync(
+                new AbolishAndReplaceRequest(new[] { absorbed.GroupId }, "جهة جديدة", "authority", "دمشق",
+                    DecreeKind: "قرار", DecreeNumber: "1", DecreeDate: "1/1/2026"), HeadDamascusActor()));
+    }
+
+    [Fact]
+    public async Task AbolishAndReplace_MigratesDelegates()
+    {
+        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest("جهة المناديب", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var delegateUser = new User
+        {
+            Username = "delegate_abol",
+            FullName = "مندوب الجهة الملغاة",
+            Role = UserRole.EntityManager,
+            PortalGroupId = absorbed.GroupId,
+            PasswordHash = "x",
+        };
+        _db.Users.Add(delegateUser);
+        await _db.SaveChangesAsync();
+
+        var result = await _service.AbolishAndReplaceAsync(
+            new AbolishAndReplaceRequest(new[] { absorbed.GroupId }, "الجهة البديلة", "authority", "دمشق",
+                DecreeKind: "قرار", DecreeNumber: "9", DecreeDate: "3/4/2026"), ManagerActor());
+
+        var updated = await _db.Users.SingleAsync(u => u.Id == delegateUser.Id);
+        Assert.Equal(result.NewGroupId, updated.PortalGroupId);
+    }
+
+    [Fact]
+    public async Task AbolishAndReplace_MigratesEntryLevelDelegates()
+    {
+        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest("جهة المناديب قيد", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var absorbedEntry = await _db.PublicEntities.FirstAsync(e => e.GroupId == absorbed.GroupId);
+
+        var delegateUser = new User
+        {
+            Username = "delegate_entry_abol",
+            FullName = "مندوب قيد الجهة الملغاة",
+            Role = UserRole.EntityManager,
+            PortalEntryId = absorbedEntry.Id,
+            PortalGroupId = null,
+            PasswordHash = "x",
+        };
+        _db.Users.Add(delegateUser);
+        await _db.SaveChangesAsync();
+
+        var result = await _service.AbolishAndReplaceAsync(
+            new AbolishAndReplaceRequest(new[] { absorbed.GroupId }, "الجهة البديلة القيد", "authority", "دمشق",
+                DecreeKind: "قرار", DecreeNumber: "9", DecreeDate: "3/4/2026"), ManagerActor());
+
+        var updated = await _db.Users.SingleAsync(u => u.Id == delegateUser.Id);
+        Assert.Equal(result.NewGroupId, updated.PortalGroupId);
+        Assert.NotNull(updated.PortalEntryId);
+    }
+
+    [Fact]
+    public async Task AbolishPreview_CountsEntryLevelDelegates()
+    {
+        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest("جهة العدادة قيد", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var absorbedEntry = await _db.PublicEntities.FirstAsync(e => e.GroupId == absorbed.GroupId);
+
+        _db.Users.AddRange(
+            new User { Username = "d_group", FullName = "مندوب مجموعة", Role = UserRole.EntityManager, PortalGroupId = absorbed.GroupId, PasswordHash = "x" },
+            new User { Username = "d_entry", FullName = "مندوب قيد", Role = UserRole.EntityManager, PortalEntryId = absorbedEntry.Id, PortalGroupId = null, PasswordHash = "x" });
+        await _db.SaveChangesAsync();
+
+        var preview = await _service.PreviewAbolishAndReplaceAsync(
+            new AbolishReplacePreviewRequest(new[] { absorbed.GroupId }));
+
+        Assert.Equal(2, preview.DelegatesToReassign);
     }
 }

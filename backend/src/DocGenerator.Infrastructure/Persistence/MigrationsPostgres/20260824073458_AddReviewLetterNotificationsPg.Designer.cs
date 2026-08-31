@@ -9,7 +9,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace DocGenerator.Infrastructure.MigrationsPostgres
+namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 {
     [DbContext(typeof(DocGeneratorPostgresDbContext))]
     [Migration("20260824073458_AddReviewLetterNotificationsPg")]

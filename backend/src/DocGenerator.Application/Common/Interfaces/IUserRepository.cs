@@ -24,4 +24,10 @@ public interface IUserRepository : IRepository<User>
 
     /// <summary>حسابات مندوبي الجهات مع نطاقهم (الهوية/القيد) لشاشة إدارة المندوبين.</summary>
     Task<List<User>> ListEntityManagersAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// مندوبو الجهات (EntityManager) الذين نطاقهم (PortalGroupId أو PortalEntryId) يقع ضمن
+    /// مجموعة هويات أم معينة — لترحيل/إعادة توجيه نطاقهم عند دمج أو إلغاء جهات (متتبَّعة للتعديل).
+    /// </summary>
+    Task<List<User>> ListEntityManagersByGroupIdsAsync(IReadOnlyCollection<int> groupIds, CancellationToken ct = default);
 }

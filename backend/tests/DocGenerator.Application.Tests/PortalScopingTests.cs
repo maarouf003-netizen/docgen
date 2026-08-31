@@ -1,5 +1,6 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -17,6 +18,7 @@ public class PortalScopingTests : IDisposable
 {
     private readonly DocGeneratorDbContext _db;
     private readonly IPortalService _portal;
+    private readonly IPublicEntityService _entities;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _groupAId;
     private readonly int _entryAId;
@@ -24,6 +26,7 @@ public class PortalScopingTests : IDisposable
     private readonly int _entryPendingId;
     private readonly int _delegateGroupId;
     private readonly int _delegateEntryAId;
+    private readonly int _managerId;
 
     public PortalScopingTests()
     {
@@ -32,6 +35,11 @@ public class PortalScopingTests : IDisposable
         // مستخدم مرجعي (Id=1) لملكية إنشاء القيود قبل إدراجها.
         _db.Users.Add(new User { Username = "creator", FullName = "منشئ", Role = UserRole.Admin, PasswordHash = "x" });
         _db.SaveChanges();
+
+        var manager = new User { Username = "entity_manager", FullName = "مدير السجل", Role = UserRole.Manager, PasswordHash = "x" };
+        _db.Users.Add(manager);
+        _db.SaveChanges();
+        _managerId = manager.Id;
 
         var groupA = new PublicEntityGroup { CanonicalName = "وزارة التعليم", EntityType = PublicEntityTypeCatalog.Ministry };
         groupA.Entries.Add(new PublicEntity { Governorate = "دمشق", BranchName = "الفرع الرئيسي", Status = EntityStatusCatalog.Final, CreatedById = 1 });
@@ -63,6 +71,17 @@ public class PortalScopingTests : IDisposable
             new ExcelExportService(),
             _audit,
             Options.Create(new ExportOptions { MaxRows = 10_000 }));
+
+        _entities = new PublicEntityService(
+            new PublicEntityRepository(_db),
+            new Repository<Branch>(_db),
+            new HeadAlertRepository(_db),
+            new Repository<PublicEntityChangeEvent>(_db),
+            new Repository<DocumentOccurrence>(_db),
+            new UnitOfWork(_db),
+            new TransactionRunner(_db),
+            _audit,
+            new UserRepository(_db));
     }
 
     public void Dispose() => _db.Dispose();
@@ -320,5 +339,50 @@ public class PortalScopingTests : IDisposable
         Assert.NotNull(scope);
         Assert.DoesNotContain(scope.Entries, e => e.Id == pendingId);
         Assert.Contains(scope.Entries, e => e.Id == _entryAId);
+    }
+
+    // ── المواءمة السلوكية (§8.7): عمليات مراجعة السجل (rename) لا تُظهر للمندوب
+    //     الملفات المرتبطة بقيدٍ ما زال بانتظار مراجعة رئيس القسم (NeedsReview=true). ──
+
+    [Fact]
+    public async Task Rename_ProducedEntriesSurface_WhilePendingReviewEntry_StaysHiddenUntilApproval()
+    {
+        var doc = await SeedDocumentAsync("ملف وزارة التعليم", applicantRegistryId: _entryAId);
+
+        // إعادة تسمية جماعية ناجحة عبر خدمة السجل (ريّن يُنتج قيودًا نهائية غير NeedsReview).
+        var rename = await _entities.RenameGroupAsync(
+            new RenameGroupRequest(_groupAId, "وزارة التربية", "قرار", "88", "1/8/2026"),
+            new EntityRegistryActor(_managerId, "مدير السجل", UserRole.Manager, null));
+
+        Assert.Equal("وزارة التربية", rename.NewCanonicalName);
+
+        // بعد الريّن: ملف القيد النهائي يظهر للمندوب فورًا (لا NeedsReview).
+        var afterRename = await _portal.ListFilesAsync(_delegateGroupId, null, null, 1, 20);
+        Assert.Contains(afterRename.Items, i => i.Id == doc);
+
+        // اقتراح محامٍ جديد داخل الهوية المُعاد تسميتها: قيد Final + NeedsReview=true
+        // لا يُظهر ملفه للمندوب قبل اعتماد رئيس القسم (عزل §6bis/§8.7).
+        var propEntry = new PublicEntity
+        {
+            GroupId = _groupAId,
+            Governorate = "حمص",
+            BranchName = "فرع حمص",
+            Status = EntityStatusCatalog.Final,
+            NeedsReview = true,
+            CreatedById = _db.Users.Single(u => u.Username == "entity_manager").Id,
+        };
+        _db.PublicEntities.Add(propEntry);
+        await _db.SaveChangesAsync();
+        var pendingDoc = await SeedDocumentAsync("ملف مقترح بانتظار المراجعة", applicantRegistryId: propEntry.Id);
+
+        var pendingFiles = await _portal.ListFilesAsync(_delegateGroupId, null, null, 1, 20);
+        Assert.DoesNotContain(pendingFiles.Items, i => i.Id == pendingDoc);
+
+        // الاعتماد يقفل NeedsReview فيظهر الملف فورًا.
+        propEntry.NeedsReview = false;
+        await _db.SaveChangesAsync();
+
+        var afterApproval = await _portal.ListFilesAsync(_delegateGroupId, null, null, 1, 20);
+        Assert.Contains(afterApproval.Items, i => i.Id == pendingDoc);
     }
 }

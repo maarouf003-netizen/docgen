@@ -67,6 +67,64 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             .ToListAsync(ct);
     }
 
+    public async Task<List<(int BranchId, List<User> Lawyers)>> ListAllActiveLawyersGroupedByBranchAsync(CancellationToken ct = default)
+    {
+        var rows = await Db.Users
+            .AsNoTracking()
+            .Where(u => u.Role == UserRole.Lawyer && u.BranchId != null && u.IsActive)
+            .OrderBy(u => u.FullName)
+            .Select(u => new { BranchId = u.BranchId!.Value, u.Id, u.FullName, u.Username, u.Email, u.Role, u.IsActive, u.CreatedAt, u.UpdatedAt })
+            .ToListAsync(ct);
+
+        var result = new List<(int BranchId, List<User> Lawyers)>();
+        foreach (var group in rows.GroupBy(x => x.BranchId))
+        {
+            var lawyers = group.Select(g => new User
+            {
+                Id = g.Id,
+                FullName = g.FullName,
+                Username = g.Username,
+                Email = g.Email,
+                Role = g.Role,
+                IsActive = g.IsActive,
+                BranchId = g.BranchId,
+                CreatedAt = g.CreatedAt,
+                UpdatedAt = g.UpdatedAt,
+            }).ToList();
+            result.Add((group.Key, lawyers));
+        }
+        return result;
+    }
+
+    public async Task<List<(int BranchId, List<User> Heads)>> ListAllActiveHeadsGroupedByBranchAsync(CancellationToken ct = default)
+    {
+        var rows = await Db.Users
+            .AsNoTracking()
+            .Where(u => u.Role == UserRole.Head && u.BranchId != null && u.IsActive)
+            .OrderBy(u => u.FullName)
+            .Select(u => new { BranchId = u.BranchId!.Value, u.Id, u.FullName, u.Username, u.Email, u.Role, u.IsActive, u.CreatedAt, u.UpdatedAt })
+            .ToListAsync(ct);
+
+        var result = new List<(int BranchId, List<User> Heads)>();
+        foreach (var group in rows.GroupBy(x => x.BranchId))
+        {
+            var heads = group.Select(g => new User
+            {
+                Id = g.Id,
+                FullName = g.FullName,
+                Username = g.Username,
+                Email = g.Email,
+                Role = g.Role,
+                IsActive = g.IsActive,
+                BranchId = g.BranchId,
+                CreatedAt = g.CreatedAt,
+                UpdatedAt = g.UpdatedAt,
+            }).ToList();
+            result.Add((group.Key, heads));
+        }
+        return result;
+    }
+
     public async Task<List<HeadAlert>> ListByDelegationAsync(int delegationId, CancellationToken ct = default)
     {
         // تتبُّع مفعّل: تُحذف هذه الكيانات عبر Remove فتُعاد للمُغيّر ذاتها (لا نسخًا منفصلة

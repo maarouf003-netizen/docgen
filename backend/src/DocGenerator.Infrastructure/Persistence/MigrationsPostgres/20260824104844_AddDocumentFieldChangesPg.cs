@@ -3,7 +3,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace DocGenerator.Infrastructure.MigrationsPostgres
+namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 {
     /// <inheritdoc />
     public partial class AddDocumentFieldChangesPg : Migration

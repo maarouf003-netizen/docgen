@@ -26,6 +26,18 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
     /// <summary>رؤساء أقسام الفرع المفعلون (مستلمو تنبيهات النظام المرحلية، كمراحل الإنابة).</summary>
     Task<List<User>> ListActiveHeadsAsync(int branchId, CancellationToken ct = default);
 
+    /// <summary>
+    /// محامو كل الفروع المفعلة مجمّعين حسب الفرع — للبث العام لكل المحامين
+    /// عند تغييرٍ على الجهات (تعديل تسمية/دمج/حلول). يعيد زوج (BranchId، محامو الفرع النشطون).
+    /// </summary>
+    Task<List<(int BranchId, List<User> Lawyers)>> ListAllActiveLawyersGroupedByBranchAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// رؤساء أقسام كل الفروع المفعلة مجمّعين حسب الفرع — للبث الخاص برؤساء الأقسام
+    /// عند تغييرٍ على الجهات. يعيد زوج (BranchId، رؤساء الفرع النشطون).
+    /// </summary>
+    Task<List<(int BranchId, List<User> Heads)>> ListAllActiveHeadsGroupedByBranchAsync(CancellationToken ct = default);
+
     /// <summary>كل تنبيهات الإنابة المحددة (لتصفيتها عند اعتمادها/إتمامها أو حذفها).</summary>
     Task<List<HeadAlert>> ListByDelegationAsync(int delegationId, CancellationToken ct = default);
 

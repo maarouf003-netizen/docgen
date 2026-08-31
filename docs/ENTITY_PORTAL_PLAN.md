@@ -168,6 +168,16 @@ PUT    /api/entity-registry/{id}                  (تعديل/إعادة تسم�
 POST   /api/entity-registry/{id}/aliases
 GET    /api/entity-registry/search?q=&governorate=   (لنافذة الإدخال — متاح للمحامي)
 
+# عمليات الهويات الأم (rename / merge / abolish — عبر الشاشة الموحدة)
+POST   /api/entity-registry/groups/{groupId:int}/rename-preview
+POST   /api/entity-registry/groups/{groupId:int}/rename
+POST   /api/entity-registry/groups/unify-preview
+POST   /api/entity-registry/merge-preview
+POST   /api/entity-registry/merge-commit
+POST   /api/entity-registry/groups/abolish-preview
+POST   /api/entity-registry/groups/abolish-and-replace
+# نصوص التنبيه/الوقعة/الحدث موحّدة من EntityChangeMessages (تحسين 8.9)؛ تأكيد كتابة الاسم §8.3.
+
 # الاقتراحات
 POST   /api/entity-registry/proposals             (محامٍ)
 GET    /api/entity-registry/proposals/pending     (رئيس القسم — نطاق محافظته)
@@ -248,7 +258,7 @@ GET    /api/portal/export?...(نفس فلاتر القائمة)   (Excel — س�
 | مصفوفة الصلاحيات | `Api/Authorization/RolePermissions.cs` + `ClaimsPrincipalExtensions.GetRoleEnum()` |
 | تواريخ/أسماء عربية | `Common/ActionDateParser.cs`, `Common/ArabicNameNormalizer.cs`, `FreeDateParser.Parse(value, fieldName)` |
 | تدقيق حقول قبل/بعد | `Application/Common/Audit/DocumentChangeTracker.cs` + `IAuditLogger.LogDocumentChangeAsync` |
-| هجرات مزدوجة | أوامر `dotnet ef migrations add … --context … --output-dir Persistence\Migrations` و `MigrationsPostgres` + تنبيه `RUN_GUIDE.md §9` |
+| هجرات مزدوجة | أوامر `dotnet ef migrations add … --context … --output-dir Persistence\Migrations` و `Persistence\MigrationsPostgres` + تنبيه `RUN_GUIDE.md §9` |
 | اختبارات DB | `TestDb.Create()` (SQLite in-memory) + `FakeAuditLogger` |
 | FE: axios/CSRF | `src/api/client.ts` (`api`, `getApiErrorMessage`) |
 | FE: نافذة بحث منسدلة | نمط `ColumnFilter` في `DocumentsList.tsx` (Portal + Escape + خارج النقر) |
