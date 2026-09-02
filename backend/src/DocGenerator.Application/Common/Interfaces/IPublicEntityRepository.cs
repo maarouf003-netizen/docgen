@@ -43,6 +43,9 @@ public interface IPublicEntityRepository
     /// <summary>نصوص الجهات المنفذ عليها (جهة عامة فقط) المتمايزة مع محافظتها وعدّاد ملفاتها.</summary>
     Task<List<(string EntityName, string? Governorate, int DocumentCount)>> ListDistinctExecutedTextsAsync(CancellationToken ct = default);
 
+    /// <summary>نصوص طالبي التنفيذ الاعتباريين المربوطين جهة عامة (RegistryId != null) المتمايزة.</summary>
+    Task<List<(string Name, int DocumentCount)>> ListDistinctExecutionApplicantTextsAsync(CancellationToken ct = default);
+
     // ── مزامنة النصوص عند إعادة التسمية (د5) ──
 
     /// <summary>
@@ -57,6 +60,12 @@ public interface IPublicEntityRepository
     /// محمّلًا بكامل مجموعات نص البحث كما في الطرف المقابل.
     /// </summary>
     Task<List<ExecutedPublicEntity>> ListExecutedRowsByNamesAsync(IReadOnlyCollection<string> names, CancellationToken ct = default);
+
+    /// <summary>
+    /// صفوف طالب التنفيذ الاعتباري المربوطة جهة عامة (RegistryId != null) المطابقة لأحد
+    /// الأسماء، مع ملفها محمّلًا بكامل مجموعات نص البحث حتى لا تُفقَد توكنات غير متأثرة.
+    /// </summary>
+    Task<List<ExecutionApplicant>> ListExecutionApplicantRowsByNamesAsync(IReadOnlyCollection<string> names, CancellationToken ct = default);
 
     // ── نقل القيد (د3) ──
 

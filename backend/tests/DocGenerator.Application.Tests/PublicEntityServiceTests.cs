@@ -57,7 +57,8 @@ public class PublicEntityServiceTests : IDisposable
             new UnitOfWork(_db),
             new TransactionRunner(_db),
             _audit,
-            new UserRepository(_db));
+            new UserRepository(_db),
+            new AppealRepository(_db));
     }
 
     public void Dispose() => _db.Dispose();
@@ -1866,5 +1867,380 @@ public class PublicEntityServiceTests : IDisposable
             new AbolishReplacePreviewRequest(new[] { absorbed.GroupId }));
 
         Assert.Equal(2, preview.DelegatesToReassign);
+    }
+
+    // ── مزامنة لقطات الاستئنافات عند حلول / دمج / إعادة تسمية الجهات العامة ──
+
+    private async Task<DocumentAppeal> SeedAppealAsync(
+        int documentId,
+        List<AppealPartyDto> appellants,
+        List<AppealPartyDto> appellees)
+    {
+        var appeal = new DocumentAppeal
+        {
+            DocumentId = documentId,
+            Direction = AppealDirectionCatalog.Appellants,
+            Status = AppealStatusCatalog.Pending,
+            AppellantsJson = AppealSnapshotSerializer.SerializeParties(appellants),
+            AppelleesJson = AppealSnapshotSerializer.SerializeParties(appellees),
+            CreatedById = _lawyerId,
+        };
+        _db.DocumentAppeals.Add(appeal);
+        await _db.SaveChangesAsync();
+        return appeal;
+    }
+
+    private static AppealPartyDto EntityParty(string kind, int partyId, string name)
+        => new(kind, partyId, name);
+
+    [Fact]
+    public async Task AbolishAndReplace_UpdatesFileAndAppealSnapshots()
+    {
+        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "المركز الوطني للصحة", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var doc = await SeedApplicantDocumentAsync("المركز الوطني للصحة", "دمشق");
+        var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
+        var absorbedEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == absorbed.GroupId);
+        row.RegistryId = absorbedEntry.Id;
+        await _db.SaveChangesAsync();
+
+        var appeal = await SeedAppealAsync(
+            doc.Id,
+            new List<AppealPartyDto> { EntityParty("applicant-entity", row.Id, "المركز الوطني للصحة") },
+            new List<AppealPartyDto>());
+
+        var result = await _service.AbolishAndReplaceAsync(
+            new AbolishAndReplaceRequest(
+                new[] { absorbed.GroupId },
+                "هيئة الصحة العامة", "authority", "دمشق",
+                DecreeKind: "قرار", DecreeNumber: "300", DecreeDate: "21/6/2026"), ManagerActor());
+
+        // الاسم في صف الطالب حُلّ مباشرة بالاسم الجديد
+        var updatedRow = await _db.ApplicantPublicEntities.FindAsync(row.Id);
+        Assert.Equal("هيئة الصحة العامة", updatedRow!.Name);
+
+        // لقطة الاستئناف حُلّت باسم الجهة الجديدة
+        var updatedAppeal = await _db.DocumentAppeals.FindAsync(appeal.Id);
+        var parties = AppealSnapshotSerializer.DeserializeParties(updatedAppeal!.AppellantsJson);
+        Assert.Single(parties);
+        Assert.Equal("هيئة الصحة العامة", parties[0].Name);
+
+        Assert.Contains("appeal_entity_sync", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task AbolishAndReplace_NameSnapshot_DifferingFromCanonical()
+    {
+        // الثغرة: اسم اللقطة المخزَّن يختلف عن الاسم المعياري المُلغى — يجب أن يُحدَّث مباشرة
+        // لأن التقاط الملف يتم بالـ RegistryId وليس بمطابقة الاسم.
+        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "مصلحة الضرائب العامة", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var doc = await SeedApplicantDocumentAsync("مصلحة الضرائب", "دمشق");
+        var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
+        var absorbedEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == absorbed.GroupId);
+        row.RegistryId = absorbedEntry.Id;
+        await _db.SaveChangesAsync();
+
+        var appeal = await SeedAppealAsync(
+            doc.Id,
+            new List<AppealPartyDto> { EntityParty("applicant-entity", row.Id, "مصلحة الضرائب") },
+            new List<AppealPartyDto>());
+
+        var result = await _service.AbolishAndReplaceAsync(
+            new AbolishAndReplaceRequest(
+                new[] { absorbed.GroupId },
+                "الهيئة الضريبية الوطنية", "authority", "دمشق",
+                DecreeKind: "قرار", DecreeNumber: "301", DecreeDate: "22/6/2026"), ManagerActor());
+
+        var updatedRow = await _db.ApplicantPublicEntities.FindAsync(row.Id);
+        Assert.Equal("الهيئة الضريبية الوطنية", updatedRow!.Name);
+
+        var updatedAppeal = await _db.DocumentAppeals.FindAsync(appeal.Id);
+        var parties = AppealSnapshotSerializer.DeserializeParties(updatedAppeal!.AppellantsJson);
+        Assert.Single(parties);
+        Assert.Equal("الهيئة الضريبية الوطنية", parties[0].Name);
+    }
+
+    [Fact]
+    public async Task AbolishAndReplace_SingleGroup_IsAllowedAndMovesLinks()
+    {
+        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "جهة واحدة للحل", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var doc = await SeedApplicantDocumentAsync("جهة واحدة للحل", "دمشق");
+        var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
+        var absorbedEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == absorbed.GroupId);
+        row.RegistryId = absorbedEntry.Id;
+        await _db.SaveChangesAsync();
+
+        var result = await _service.AbolishAndReplaceAsync(
+            new AbolishAndReplaceRequest(
+                new[] { absorbed.GroupId },
+                "الجهة البديلة الوحيدة", "authority", "دمشق",
+                DecreeKind: "قرار", DecreeNumber: "302", DecreeDate: "23/6/2026"), ManagerActor());
+
+        Assert.Equal(1, result.AbolishedGroups);
+        var updatedRow = await _db.ApplicantPublicEntities.FindAsync(row.Id);
+        var newEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == result.NewGroupId);
+        Assert.Equal(newEntry.Id, updatedRow!.RegistryId);
+    }
+
+    [Fact]
+    public async Task AbolishAndReplace_AppealEmptyJson_StaysUnchanged()
+    {
+        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "جهة لقطة فارغة", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var doc = await SeedApplicantDocumentAsync("جهة لقطة فارغة", "دمشق");
+        var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
+        var absorbedEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == absorbed.GroupId);
+        row.RegistryId = absorbedEntry.Id;
+        await _db.SaveChangesAsync();
+
+        // لقطة بلا أطراف ([] أو فارغة)
+        var appeal = await SeedAppealAsync(doc.Id, new List<AppealPartyDto>(), new List<AppealPartyDto>());
+
+        await _service.AbolishAndReplaceAsync(
+            new AbolishAndReplaceRequest(
+                new[] { absorbed.GroupId },
+                "الجهة الجديدة الفارغة", "authority", "دمشق",
+                DecreeKind: "قرار", DecreeNumber: "303", DecreeDate: "24/6/2026"), ManagerActor());
+
+        var updatedAppeal = await _db.DocumentAppeals.FindAsync(appeal.Id);
+        Assert.Equal("[]", updatedAppeal!.AppellantsJson);
+        Assert.Equal("[]", updatedAppeal.AppelleesJson);
+        // لا يُكتب سجل تدقيق للمزامنة لأن لا تغيير
+        Assert.DoesNotContain("appeal_entity_sync", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task AbolishAndReplace_AppealNoMatch_StaysUnchanged()
+    {
+        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "جهة المنفذة", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var doc = await SeedApplicantDocumentAsync("جهة المنفذة", "دمشق");
+        var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
+        var absorbedEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == absorbed.GroupId);
+        row.RegistryId = absorbedEntry.Id;
+        await _db.SaveChangesAsync();
+
+        // طرف آخر في اللقطة غير مطابق (معرّف صف وصلة مختلف / شخص طبيعي) — يبقى كما هو
+        var appeal = await SeedAppealAsync(
+            doc.Id,
+            new List<AppealPartyDto> { EntityParty("applicant-entity", row.Id + 1000, "شركة البناء الحديثة") },
+            new List<AppealPartyDto>());
+
+        await _service.AbolishAndReplaceAsync(
+            new AbolishAndReplaceRequest(
+                new[] { absorbed.GroupId },
+                "الجهة الجديدة", "authority", "دمشق",
+                DecreeKind: "قرار", DecreeNumber: "304", DecreeDate: "25/6/2026"), ManagerActor());
+
+        var updatedAppeal = await _db.DocumentAppeals.FindAsync(appeal.Id);
+        var parties = AppealSnapshotSerializer.DeserializeParties(updatedAppeal!.AppellantsJson);
+        Assert.Single(parties);
+        Assert.Equal("شركة البناء الحديثة", parties[0].Name);
+        Assert.DoesNotContain("appeal_entity_sync", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task RenameGroup_UpdatesAppealSnapshots()
+    {
+        var group = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var doc = await SeedApplicantDocumentAsync("وزارة النقل", "دمشق");
+        var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
+
+        var appeal = await SeedAppealAsync(
+            doc.Id,
+            new List<AppealPartyDto> { EntityParty("applicant-entity", row.Id, "وزارة النقل") },
+            new List<AppealPartyDto>());
+
+        await _service.RenameGroupAsync(
+            new RenameGroupRequest(group.GroupId, "وزارة النقل والمواصلات",
+                DecreeKind: "قرار", DecreeNumber: "105", DecreeDate: "5/7/2026"), ManagerActor());
+
+        var updatedAppeal = await _db.DocumentAppeals.FindAsync(appeal.Id);
+        var parties = AppealSnapshotSerializer.DeserializeParties(updatedAppeal!.AppellantsJson);
+        Assert.Single(parties);
+        Assert.Equal("وزارة النقل والمواصلات", parties[0].Name);
+
+        Assert.Contains("appeal_entity_sync", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task RenameGroup_ExecutedParty_UpdatesAppealSnapshots()
+    {
+        var group = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "بلدية دمشق", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var doc = new Document
+        {
+            BranchId = _damascusId,
+            CreatedById = _lawyerId,
+            IsDraft = false,
+            BorrowerName = "شركة الإنشاءات",
+            AmountNumeric = 0,
+            ExecStatus = string.Empty,
+            ExecutedPublicEntities =
+            {
+                new ExecutedPublicEntity { EntityName = "بلدية دمشق", EntityBranch = "المركزي", Governorate = "دمشق" },
+            },
+        };
+        _db.Documents.Add(doc);
+        await _db.SaveChangesAsync();
+        var executedRow = await _db.ExecutedPublicEntities.SingleAsync(e => e.DocumentId == doc.Id);
+
+        var appeal = await SeedAppealAsync(
+            doc.Id,
+            new List<AppealPartyDto>(),
+            new List<AppealPartyDto> { EntityParty("executed-public", executedRow.Id, "بلدية دمشق") });
+
+        await _service.RenameGroupAsync(
+            new RenameGroupRequest(group.GroupId, "أمانة دمشق",
+                DecreeKind: "قرار", DecreeNumber: "106", DecreeDate: "6/7/2026"), ManagerActor());
+
+        var updatedAppeal = await _db.DocumentAppeals.FindAsync(appeal.Id);
+        var appellees = AppealSnapshotSerializer.DeserializeParties(updatedAppeal!.AppelleesJson);
+        Assert.Single(appellees);
+        Assert.Equal("أمانة دمشق", appellees[0].Name);
+        Assert.Contains("appeal_entity_sync", _audit.Actions);
+    }
+
+    private async Task<Document> SeedExecutionApplicantDocumentAsync(
+        string entityName, string governorate, int registryId)
+    {
+        var doc = new Document
+        {
+            BranchId = _damascusId,
+            CreatedById = _lawyerId,
+            IsDraft = false,
+            BorrowerName = "شركة البناء",
+            AmountNumeric = 0,
+            ExecStatus = string.Empty,
+            GeneralEntitySide = "executed",
+            ExecutionApplicants =
+            {
+                new ExecutionApplicant
+                {
+                    Name = entityName,
+                    ApplicantNature = PartyNatureCatalog.Legal,
+                    RegistryId = registryId,
+                },
+            },
+        };
+        doc.Applicant = entityName;
+        _db.Documents.Add(doc);
+        await _db.SaveChangesAsync();
+        return doc;
+    }
+
+    [Fact]
+    public async Task AbolishAndReplace_MigratesExecutionApplicantRegistryIdAndName()
+    {
+        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "المؤسسة السورية للتجارة", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var absorbed2 = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "مؤسسة إضافية", "authority", "حلب", "فرع حلب"), ManagerActor());
+        var absorbedEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == absorbed.GroupId);
+        var doc = await SeedExecutionApplicantDocumentAsync("المؤسسة السورية للتجارة", "دمشق", absorbedEntry.Id);
+        var row = await _db.ExecutionApplicants.SingleAsync(a => a.DocumentId == doc.Id);
+
+        var result = await _service.AbolishAndReplaceAsync(
+            new AbolishAndReplaceRequest(
+                new[] { absorbed.GroupId, absorbed2.GroupId },
+                "هيئة التجارة الموحدة", "authority", "دمشق",
+                DecreeKind: "قرار", DecreeNumber: "300", DecreeDate: "20/6/2026"), ManagerActor());
+
+        var newEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == result.NewGroupId);
+        var updatedRow = await _db.ExecutionApplicants.FindAsync(row.Id);
+        Assert.Equal(newEntry.Id, updatedRow!.RegistryId);
+        Assert.Equal("هيئة التجارة الموحدة", updatedRow.Name);
+
+        var after = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == doc.Id);
+        Assert.Contains("هيئة التجارة الموحدة", after.SearchText);
+        Assert.DoesNotContain("المؤسسة السورية للتجارة", after.SearchText);
+    }
+
+    [Fact]
+    public async Task CommitMerge_MigratesExecutionApplicantRegistryId()
+    {
+        var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
+        var absorbedEntry = await _db.PublicEntities.FirstAsync(e => e.GroupId == ag1);
+        var doc = new Document
+        {
+            BranchId = _damascusId,
+            CreatedById = _lawyerId,
+            IsDraft = false,
+            BorrowerName = "شركة البناء",
+            AmountNumeric = 0,
+            ExecStatus = string.Empty,
+            GeneralEntitySide = "executed",
+            ExecutionApplicants =
+            {
+                new ExecutionApplicant
+                {
+                    Name = "مديرية الصحة",
+                    ApplicantNature = PartyNatureCatalog.Legal,
+                    RegistryId = absorbedEntry.Id,
+                },
+            },
+        };
+        doc.Applicant = "مديرية الصحة";
+        _db.Documents.Add(doc);
+        await _db.SaveChangesAsync();
+        var row = await _db.ExecutionApplicants.SingleAsync(a => a.DocumentId == doc.Id);
+
+        await _service.CommitMergeAsync(
+            new MergeCommitRequest(sg, new[] { ag1 },
+                NewCanonicalName: "وزارة الصحة والسكان",
+                DecreeKind: "قرار", DecreeNumber: "57", DecreeDate: "17/9/2026"), ManagerActor());
+
+        var survivorEntry = await _db.PublicEntities.FirstAsync(e => e.GroupId == sg);
+        var updatedRow = await _db.ExecutionApplicants.FindAsync(row.Id);
+        Assert.Equal(survivorEntry.Id, updatedRow!.RegistryId);
+        Assert.Equal("وزارة الصحة والسكان", updatedRow.Name);
+
+        // الاسم الجديد يُعاد بناء نص البحث، ولا يبقى الاسم القديم في SearchText.
+        var after = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == doc.Id);
+        Assert.Contains("وزارة الصحة والسكان", after.SearchText);
+        Assert.DoesNotContain("مديرية الصحة", after.SearchText);
+    }
+
+    [Fact]
+    public async Task RenameGroup_ExecutionApplicant_UpdatesSnapshotAndTexts()
+    {
+        var group = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "المؤسسة السورية للتجارة", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var entry = await _db.PublicEntities.SingleAsync(e => e.GroupId == group.GroupId);
+        var doc = await SeedExecutionApplicantDocumentAsync("المؤسسة السورية للتجارة", "دمشق", entry.Id);
+        var row = await _db.ExecutionApplicants.SingleAsync(a => a.DocumentId == doc.Id);
+
+        var appeal = await SeedAppealAsync(
+            doc.Id,
+            new List<AppealPartyDto> { EntityParty("execution-applicant", row.Id, "المؤسسة السورية للتجارة") },
+            new List<AppealPartyDto>());
+
+        await _service.RenameGroupAsync(
+            new RenameGroupRequest(group.GroupId, "هيئة التجارة الموحدة",
+                DecreeKind: "قرار", DecreeNumber: "108", DecreeDate: "8/7/2026"), ManagerActor());
+
+        var updatedAppeal = await _db.DocumentAppeals.FindAsync(appeal.Id);
+        var parties = AppealSnapshotSerializer.DeserializeParties(updatedAppeal!.AppellantsJson);
+        Assert.Single(parties);
+        Assert.Equal("هيئة التجارة الموحدة", parties[0].Name);
+
+        var updatedRow = await _db.ExecutionApplicants.AsNoTracking().SingleAsync(a => a.Id == row.Id);
+        Assert.Equal("هيئة التجارة الموحدة", updatedRow.Name);
+        var after = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == doc.Id);
+        Assert.Contains("هيئة التجارة الموحدة", after.SearchText);
+        Assert.DoesNotContain("المؤسسة السورية للتجارة", after.SearchText);
+
+        Assert.Contains("appeal_entity_sync", _audit.Actions);
+
+        // توقيع عمود طالبي التنفيذ يتضمن الاسم ورقم القيد (تغيير B7) فيُسجَّل التغيير في سجل
+        // مزامنة إعادة التسمية بالاسم القديم والجديد.
+        var syncLog = _audit.ChangeLogs.Single(c => c.DocumentId == doc.Id
+            && c.ActionType == "rename_public_entity_sync");
+        Assert.Contains(syncLog.Changes, ch => ch.FieldKey == "__Col_ExecutionApplicants"
+            && ch.OldValue!.Contains("المؤسسة السورية للتجارة")
+            && ch.NewValue!.Contains("هيئة التجارة الموحدة"));
     }
 }

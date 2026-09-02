@@ -1,4 +1,3 @@
-using System.Text.Json;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
@@ -14,15 +13,6 @@ namespace DocGenerator.Application.Services;
 /// </summary>
 public sealed class DocumentAppealService : IDocumentAppealService
 {
-    /// <summary>
-    /// تسلسل لقطات الأطراف: بترميز مرتاخٍ (UnsafeRelaxedJsonEscaping) حتى تبقى الأسماء
-    /// العربية نصًا مقروءًا في العمود — يلزم لبحث «الاستئنافات» بالأسماء عبر Contains.
-    /// </summary>
-    private static readonly JsonSerializerOptions SnapshotJsonOptions = new()
-    {
-        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-    };
-
     private readonly IAppealRepository _appeals;
     private readonly IDocumentRepository _documents;
     private readonly IUserRepository _users;
@@ -841,8 +831,8 @@ public sealed class DocumentAppealService : IDocumentAppealService
             .ToList();
 
         return (
-            JsonSerializer.Serialize(appellants, SnapshotJsonOptions),
-            JsonSerializer.Serialize(appellees, SnapshotJsonOptions));
+            AppealSnapshotSerializer.SerializeParties(appellants),
+            AppealSnapshotSerializer.SerializeParties(appellees));
     }
 
     private static void ApplyUpsertFields(DocumentAppeal appeal, UpsertAppealRequest request)
@@ -1029,8 +1019,8 @@ public sealed class DocumentAppealService : IDocumentAppealService
             a.Status,
             AppealStatusCatalog.ToLabel(a.Status),
             a.AppealTypeLabel,
-            DeserializeParties(a.AppellantsJson),
-            DeserializeParties(a.AppelleesJson),
+            AppealSnapshotSerializer.DeserializeParties(a.AppellantsJson),
+            AppealSnapshotSerializer.DeserializeParties(a.AppelleesJson),
             a.AppealedDecisionText,
             a.AppealedDecisionSummary,
             FreeDateParser.ToResponse(a.AppealedDecisionDate),
@@ -1062,9 +1052,6 @@ public sealed class DocumentAppealService : IDocumentAppealService
             a.CreatedBy?.FullName,
             a.CreatedById);
     }
-
-    private static List<AppealPartyDto> DeserializeParties(string json)
-        => JsonSerializer.Deserialize<List<AppealPartyDto>>(json, SnapshotJsonOptions) ?? new List<AppealPartyDto>();
 
     /// <summary>خيار طرف داخل لقطات الاستئناف (بناء داخلي قبل التسلسل).</summary>
     private sealed record PartyOption(string Kind, int PartyId, string Name);

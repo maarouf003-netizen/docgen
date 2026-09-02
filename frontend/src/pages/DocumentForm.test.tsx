@@ -137,6 +137,50 @@ describe('DocumentForm', () => {
     expect(screen.queryByText('مرتبطة بالسجل ✓')).not.toBeInTheDocument();
   });
 
+  it('يربط طالب تنفيذ اعتباري بقيد السجل عبر نافذة الاختيار ويملأ اسمه ورقم ربطه', async () => {
+    const user = userEvent.setup();
+    await renderExecutedEdit({
+      generalEntitySide: 'executed',
+      executionApplicants: [{ id: 1, name: 'المؤسسة السورية للتجارة', nature: 'legal' }],
+    });
+
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        items: [
+          {
+            id: 22, groupId: 9, canonicalName: 'هيئة التجارة الموحدة', entityType: 'authority',
+            governorate: 'دمشق', branchName: 'الفرع الرئيسي', citationFormula: 'add-to-position',
+            status: 'final', isActive: true, createdAt: '2026-08-24', aliases: [],
+          },
+        ],
+        page: 1, perPage: 50, totalCount: 1, totalPages: 1,
+      },
+    });
+
+    const applicantCard = screen.getByText('طالب التنفيذ 1').closest('.rounded-xl') as HTMLElement;
+    await user.click(within(applicantCard).getByRole('button', { name: 'اختيار من السجل…' }));
+    const dialog = screen.getByRole('dialog', { name: 'اختيار الجهة العامة' });
+    await user.click(within(dialog).getByRole('button', { name: /^هيئة التجارة الموحدة/ }));
+
+    expect(screen.getByText('مرتبطة بالسجل ✓')).toBeInTheDocument();
+    expect(screen.getByLabelText('الشخص الاعتباري')).toHaveValue('هيئة التجارة الموحدة');
+    expect(screen.queryByRole('dialog', { name: 'اختيار الجهة العامة' })).not.toBeInTheDocument();
+  });
+
+  it('يفكّ ربط طالب التنفيذ الاعتباري عند التحرير اليدوي لاسمه', async () => {
+    const user = userEvent.setup();
+    await renderExecutedEdit({
+      generalEntitySide: 'executed',
+      executionApplicants: [{ id: 1, name: 'هيئة التجارة الموحدة', nature: 'legal', registryId: 22 }],
+    });
+
+    expect(screen.getByText('مرتبطة بالسجل ✓')).toBeInTheDocument();
+    await user.clear(screen.getByLabelText('الشخص الاعتباري'));
+    await user.type(screen.getByLabelText('الشخص الاعتباري'), 'المؤسسة السورية للتجارة');
+
+    expect(screen.queryByText('مرتبطة بالسجل ✓')).not.toBeInTheDocument();
+  });
+
   it('يحوّل تسمية حقل عنوان المقترض إلى «الوكيل القانوني» عند اختيار «وكيله القانوني»', async () => {
     const user = userEvent.setup();
     render(<DocumentForm />);

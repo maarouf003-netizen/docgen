@@ -103,6 +103,21 @@ describe('EntityRegistryReviewManagement', () => {
     expect(screen.getByRole('menuitem', { name: 'تعديل تسمية' })).toBeDisabled();
   });
 
+  it('يمنع الدمج بجهة واحدة ويبقي حلول مفعّلاً', async () => {
+    const user = userEvent.setup();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      groupsResponse([group({ groupId: 1, canonicalName: 'وزارة التعليم' })]),
+    );
+    renderPage();
+
+    await user.type(screen.getByLabelText('بحث باسم الجهة'), 'وزارة');
+    await user.click(await screen.findByRole('button', { name: /وزارة التعليم/ }));
+    await user.click(screen.getByRole('button', { name: /تعديل ▾/ }));
+    expect(screen.getByRole('menuitem', { name: 'دمج' })).toBeDisabled();
+    expect(screen.getByRole('menuitem', { name: 'حلول' })).toBeEnabled();
+    expect(screen.getByRole('menuitem', { name: 'تعديل تسمية' })).toBeEnabled();
+  });
+
   it('يُنفّذ إعادة تسمية بمعاينة ومرجع (نوع+رقم+تاريخ)', async () => {
     const user = userEvent.setup();
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -191,6 +206,56 @@ describe('EntityRegistryReviewManagement', () => {
           decreeKind: 'مرسوم',
           decreeNumber: '7',
           decreeDate: '2/8/2026',
+        }),
+      );
+    });
+  });
+
+  it('يسمح بالحلول بجهة واحدة (المعتمد) مع بقاء الدمج مشروطًا بجهتين', async () => {
+    const user = userEvent.setup();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      groupsResponse([group({ groupId: 1, canonicalName: 'وزارة التعليم' })]),
+    );
+    (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        newGroupId: 9,
+        newCanonicalName: 'الهيئة التعليمية الوطنية',
+        abolishedGroups: 1,
+        entriesMoved: 2,
+        affectedDocuments: 3,
+        changeEventId: 7,
+      },
+    });
+    renderPage();
+
+    await user.type(screen.getByLabelText('بحث باسم الجهة'), 'وزارة');
+    await user.click(await screen.findByRole('button', { name: /وزارة التعليم/ }));
+
+    await user.click(screen.getByRole('button', { name: /تعديل ▾/ }));
+    const dmerge = screen.getByRole('menuitem', { name: 'دمج' });
+    const abolish = screen.getByRole('menuitem', { name: 'حلول' });
+    expect(dmerge).toBeDisabled();
+    expect(abolish).toBeEnabled();
+    await user.click(abolish);
+
+    expect(await screen.findByRole('heading', { name: 'حلول جهة عامة' })).toBeInTheDocument();
+    await user.type(screen.getByLabelText('اسم الجهة الجديدة'), 'الهيئة التعليمية الوطنية');
+    await user.selectOptions(screen.getByLabelText('المحافظة'), 'دمشق');
+    await user.selectOptions(screen.getByLabelText('نوع المرجع'), 'قرار');
+    await user.type(screen.getByLabelText('رقم المرجع'), '300');
+    await user.type(screen.getByLabelText('تاريخ المرجع'), '1/8/2026');
+    await user.type(screen.getByLabelText('تأكيد كتابة اسم الجهة الجديدة'), 'الهيئة التعليمية الوطنية');
+    await user.click(screen.getByRole('button', { name: 'تأكيد الحلول' }));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith(
+        '/entity-registry/groups/abolish-and-replace',
+        expect.objectContaining({
+          abolishedGroupIds: [1],
+          newCanonicalName: 'الهيئة التعليمية الوطنية',
+          decreeKind: 'قرار',
+          decreeNumber: '300',
+          decreeDate: '1/8/2026',
         }),
       );
     });

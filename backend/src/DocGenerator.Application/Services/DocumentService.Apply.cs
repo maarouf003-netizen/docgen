@@ -584,6 +584,7 @@ public sealed partial class DocumentService
                 RepresentativeFamily = hasRep ? (a.RepresentativeFamily ?? string.Empty).Trim() : null,
                 RepresentativeCapacity = hasRep ? NormalizeRepresentativeCapacity(a.RepresentativeCapacity) : null,
                 RepresentativeLegalRepresentative = hasRep ? (a.RepresentativeLegalRepresentative ?? string.Empty).Trim() : null,
+                RegistryId = isLegal ? a.RegistryId : null,
             };
             if (!isLegal)
             {

@@ -139,7 +139,9 @@ public record ExecutionApplicantDto(
     string? RegistrationNumber = null,
     string? RepresentedBy = null,
     string? AddressType = null,
-    string? Address = null);
+    string? Address = null,
+    /// <summary>معرّف قيد طالب التنفيذ الاعتباري (الجهة العامة) في السجل المرجعي (اختياري — من نافذة الاختيار).</summary>
+    int? RegistryId = null);
 
 /// <summary>الجهة العامة أو الشخص الاعتباري المنفذ عليه في وضع «منفذ عليه».</summary>
 public record ExecutedPublicEntityDto(
@@ -911,7 +913,8 @@ public class UpsertOccurrenceRequest
                 a.RepresentativeCapacity, a.RepresentativeLegalRepresentative,
                 ToExecutedHeirDtos(d.ExecutedHeirs, a.Id, null),
                 a.ApplicantNature, a.ApplicantRegistrationNumber, a.ApplicantRepresentedBy,
-                a.ApplicantAddressType, a.ApplicantAddress))
+                a.ApplicantAddressType, a.ApplicantAddress,
+                a.RegistryId))
             .ToList(),
         ExecutedPublicEntities = d.ExecutedPublicEntities
             .Select(e => new ExecutedPublicEntityDto(e.Id, e.EntityName, e.EntityBranch,

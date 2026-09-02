@@ -56,6 +56,8 @@ export interface ExecutedSideSectionsProps {
   onEntityRemove: (i: number) => void;
   /** فتح نافذة اختيار الجهة العامة من السجل المرجعي لصف المنفذ رقم i (اختياري). */
   onPickRegistry?: (i: number) => void;
+  /** فتح نافذة اختيار الجهة العامة من السجل المرجعي لصف طالب التنفيذ رقم i (اختياري). */
+  onPickExecutionApplicantRegistry?: (i: number) => void;
   executedNaturalPersons: ExecutedNaturalPersonDto[];
   onPersonSet: (i: number, key: keyof ExecutedNaturalPersonDto, value: string) => void;
   onPersonAdd: () => void;
@@ -96,6 +98,7 @@ export function ExecutedSideSections({
   onEntityAdd,
   onEntityRemove,
   onPickRegistry,
+  onPickExecutionApplicantRegistry,
   executedNaturalPersons,
   onPersonSet,
   onPersonAdd,
@@ -193,8 +196,35 @@ export function ExecutedSideSections({
             {aIsLegal ? (
               <div className="grid md:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-gray-600 mb-1">الشخص الاعتباري</label>
-                  <input value={a.name ?? ''} onChange={(e) => onApplicantSet(i, 'name', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="block text-xs font-bold text-gray-600">الشخص الاعتباري</span>
+                    {a.registryId != null && (
+                      <span className="rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 px-2 py-0.5 text-[11px] whitespace-nowrap">
+                        مرتبطة بالسجل ✓
+                      </span>
+                    )}
+                  </div>
+                  <input aria-label="الشخص الاعتباري" value={a.name ?? ''} onChange={(e) => onApplicantSet(i, 'name', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  {onPickExecutionApplicantRegistry && (
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <button
+                        type="button"
+                        onClick={() => onPickExecutionApplicantRegistry(i)}
+                        className="border border-emerald-200 text-emerald-800 hover:bg-emerald-50 rounded-lg px-3 py-2 text-xs min-h-11"
+                      >
+                        اختيار من السجل…
+                      </button>
+                      {a.registryId != null && (
+                        <button
+                          type="button"
+                          onClick={() => onApplicantSet(i, 'registryId', '')}
+                          className="border border-gray-200 text-gray-500 hover:bg-gray-50 rounded-lg px-3 py-2 text-xs min-h-11"
+                        >
+                          فك الربط
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-600 mb-1">رقم تسجيله</label>

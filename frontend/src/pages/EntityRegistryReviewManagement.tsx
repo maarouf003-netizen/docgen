@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { normalizeArabicDigits } from '../utils/arabicDigits';
 import { GOVERNORATES } from '../utils/governorate';
+import { useFloatingMenu } from '../hooks/useFloatingMenu';
 import {
   CITATION_FORMULA_OPTIONS,
   ENTITY_TYPE_OPTIONS,
@@ -234,8 +236,7 @@ function EditEntityTab() {
   const [searching, setSearching] = useState(false);
   const [selected, setSelected] = useState<GroupPick[]>([]);
   const [error, setError] = useState('');
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const editMenu = useFloatingMenu();
 
   // حالة الأفعال
   const [modal, setModal] = useState<'rename' | 'merge' | 'abolish' | null | 'waiting'>(
@@ -271,14 +272,6 @@ function EditEntityTab() {
     debouncedSearch(query);
   }, [query, debouncedSearch, selected]);
 
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
-    };
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, []);
-
   const addPick = (g: PublicEntityGroupDto) => {
     setSelected((prev) =>
       prev.some((p) => p.groupId === g.groupId)
@@ -304,14 +297,18 @@ function EditEntityTab() {
   };
 
   const runAction = (action: MenuAction) => {
-    setMenuOpen(false);
+    editMenu.setOpen(false);
     setError('');
     if (action === 'rename' && selected.length !== 1) {
       setError('اختر جهة واحدة لتعديل تسميتها');
       return;
     }
-    if (action !== 'rename' && selected.length < 2) {
-      setError(action === 'merge' ? 'اختر جهتين على الأقل للدمج' : 'اختر جهتين على الأقل للحلول');
+    if (action === 'merge' && selected.length < 2) {
+      setError('اختر جهتين على الأقل للدمج');
+      return;
+    }
+    if (action === 'abolish' && selected.length === 0) {
+      setError('اختر جهة واحدة على الأقل للحلول');
       return;
     }
     setModal(action);
@@ -449,28 +446,33 @@ function EditEntityTab() {
       )}
 
       {/* زر الإجراءات — أخضر نظام (التأكيدات الخطرة تبقى حمراء داخل النوافذ) */}
-      <div className="relative inline-block" ref={menuRef}>
-        <button
-          type="button"
-          onClick={() => setMenuOpen((o) => !o)}
-          disabled={selected.length === 0}
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          className="bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg px-5 py-2 text-sm font-bold min-h-11 focus-visible:ring-2 focus-visible:ring-emerald-500 shadow-sm"
-        >
-          تعديل ▾
-        </button>
-        {menuOpen && (
+      <button
+        ref={editMenu.refs.setReference}
+        type="button"
+        {...editMenu.getReferenceProps()}
+        disabled={selected.length === 0}
+        aria-haspopup="menu"
+        aria-expanded={editMenu.open}
+        className="bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg px-5 py-2 text-sm font-bold min-h-11 focus-visible:ring-2 focus-visible:ring-emerald-500 shadow-sm"
+      >
+        تعديل ▾
+      </button>
+      {editMenu.open &&
+        createPortal(
           <div
+            ref={editMenu.refs.setFloating}
             role="menu"
-            className="absolute z-20 mt-1 right-0 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1"
+            aria-label="قائمة إجراءات الجهة"
+            style={editMenu.floatingStyles}
+            {...editMenu.getFloatingProps()}
+            className="fixed z-50 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1"
           >
             <MenuItem label="تعديل تسمية" onClick={() => runAction('rename')} disabled={selected.length !== 1} />
             <MenuItem label="دمج" onClick={() => runAction('merge')} disabled={selected.length < 2} />
-            <MenuItem label="حلول" onClick={() => runAction('abolish')} disabled={selected.length < 2} />
-          </div>
+            <MenuItem label="حلول" onClick={() => runAction('abolish')} disabled={selected.length === 0} />
+          </div>,
+          document.body,
         )}
-      </div>
 
       {/* النوافذ */}
       {modal === 'rename' && selected.length === 1 && (

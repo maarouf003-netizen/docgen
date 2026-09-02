@@ -75,7 +75,7 @@ export default function DocumentForm() {
   // نافذة اختيار الجهة العامة من السجل المرجعي (المرحلة 2): الجهة المستهدفة
   // من الطرفين ورقم صفها، وتُملأ حقولها النصية من القيد المختار مع ربطه.
   const [registryPicker, setRegistryPicker] = useState<
-    { side: 'applicant' | 'executed'; index: number } | null
+    { side: 'applicant' | 'executed' | 'execution-applicant'; index: number } | null
   >(null);
   const [guarantors, setGuarantors] = useState<GuarantorDto[]>([emptyGuarantor()]);
   const [borrowerHeirs, setBorrowerHeirs] = useState<HeirDto[]>([]);
@@ -220,8 +220,21 @@ export default function DocumentForm() {
   const removeBorrowerHeir = (i: number) =>
     setBorrowerHeirs((hs) => hs.filter((_, idx) => idx !== i));
 
+  const EXECUTION_APPLICANT_IDENTITY_KEYS: ReadonlyArray<keyof ExecutionApplicantDto> = ['name'];
+
   const setApplicant = (i: number, key: keyof ExecutionApplicantDto, value: string) =>
-    setExecutionApplicants((xs) => xs.map((x, idx) => (idx === i ? { ...x, [key]: value } : x)));
+    setExecutionApplicants((xs) =>
+      xs.map((x, idx) => {
+        if (idx !== i) return x;
+        const next = key === 'registryId'
+          ? { ...x, registryId: value ? Number(value) : null }
+          : { ...x, [key]: value };
+        return {
+          ...next,
+          ...(EXECUTION_APPLICANT_IDENTITY_KEYS.includes(key) && next.registryId != null ? { registryId: null } : {}),
+        };
+      }),
+    );
 
   const addApplicant = (nature: PartyNature = 'natural') =>
     setExecutionApplicants((xs) => [...xs, { ...emptyExecutionApplicant(), nature }]);
@@ -311,6 +324,14 @@ export default function DocumentForm() {
         xs.map((x, idx) =>
           idx === index
             ? { ...x, name: entry.canonicalName, branch: entry.branchName, governorate: entry.governorate, registryId: entry.id }
+            : x,
+        ),
+      );
+    } else if (side === 'execution-applicant') {
+      setExecutionApplicants((xs) =>
+        xs.map((x, idx) =>
+          idx === index
+            ? { ...x, name: entry.canonicalName, registryId: entry.id }
             : x,
         ),
       );
@@ -913,6 +934,7 @@ export default function DocumentForm() {
             onEntityAdd={addExecutedEntity}
             onEntityRemove={removeExecutedEntity}
             onPickRegistry={(i) => setRegistryPicker({ side: 'executed', index: i })}
+            onPickExecutionApplicantRegistry={(i) => setRegistryPicker({ side: 'execution-applicant', index: i })}
             executedNaturalPersons={executedNaturalPersons}
             onPersonSet={setExecutedPerson}
             onPersonAdd={addExecutedPerson}

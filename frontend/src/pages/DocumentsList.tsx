@@ -5,6 +5,7 @@ import { api } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
+import { useFloatingMenu } from '../hooks/useFloatingMenu';
 import { richToPlainText } from '../utils/richText';
 import { STATUS_BADGES, STATUS_OPTIONS, getDocumentStatus } from '../utils/documentStatus';
 import { applicantName, displayFileNumber, fullName, publicEntityBranch as entityBranchDisplay } from '../utils/documentDisplay';
@@ -76,67 +77,28 @@ type ColumnFilterProps = {
 };
 
 function ColumnFilter({ label, ariaLabel, value, onChange, allLabel, options }: ColumnFilterProps) {
-  const [open, setOpen] = useState(false);
+  const filterMenu = useFloatingMenu();
   const [search, setSearch] = useState('');
-  const [position, setPosition] = useState<{ top: number; right: number } | null>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
 
   const isActive = value !== '';
   const filtered = options.filter((o) => (search ? o.includes(search) : true));
 
-  useEffect(() => {
-    if (!open) return;
-    const updatePosition = () => {
-      const rect = buttonRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      setPosition({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
-    };
-    updatePosition();
-    window.addEventListener('scroll', updatePosition, true);
-    window.addEventListener('resize', updatePosition);
-    return () => {
-      window.removeEventListener('scroll', updatePosition, true);
-      window.removeEventListener('resize', updatePosition);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    const onPointerDown = (e: MouseEvent | TouchEvent) => {
-      if (buttonRef.current?.contains(e.target as Node)) return;
-      if (menuRef.current?.contains(e.target as Node)) return;
-      setOpen(false);
-    };
-    document.addEventListener('keydown', onKeyDown);
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('touchstart', onPointerDown);
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('touchstart', onPointerDown);
-    };
-  }, [open]);
-
   const select = (v: string) => {
     onChange(v);
-    setOpen(false);
+    filterMenu.setOpen(false);
     setSearch('');
   };
 
   return (
     <>
       <button
-        ref={buttonRef}
+        ref={filterMenu.refs.setReference}
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
+        {...filterMenu.getReferenceProps()}
+        aria-expanded={filterMenu.open}
         aria-haspopup="menu"
         aria-label={ariaLabel}
-        className="inline-flex items-start whitespace-nowrap min-h-11 text-sm font-bold text-emerald-900 hover:text-emerald-700 transition-colors"
+        className="inline-flex items-start whitespace-nowrap min-h-11 text-sm font-bold text-emerald-900 hover:text-emerald-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded-lg"
       >
         <span className="inline-flex items-center gap-1">
           <span>{label}</span>
@@ -154,15 +116,15 @@ function ColumnFilter({ label, ariaLabel, value, onChange, allLabel, options }: 
           </svg>
         </span>
       </button>
-      {open &&
-        position &&
+      {filterMenu.open &&
         createPortal(
           <div
-            ref={menuRef}
+            ref={filterMenu.refs.setFloating}
             role="menu"
             aria-label={ariaLabel}
+            style={filterMenu.floatingStyles}
+            {...filterMenu.getFloatingProps()}
             className="fixed z-50 w-64 max-h-96 overflow-hidden bg-white rounded-xl shadow-xl border border-gray-200"
-            style={{ top: position.top, right: position.right }}
           >
             <div className="p-2 border-b border-gray-100">
               <input
@@ -178,7 +140,7 @@ function ColumnFilter({ label, ariaLabel, value, onChange, allLabel, options }: 
                 type="button"
                 role="menuitem"
                 onClick={() => select('')}
-                className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50"
+                className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-inset"
               >
                 {allLabel}
               </button>
@@ -188,7 +150,7 @@ function ColumnFilter({ label, ariaLabel, value, onChange, allLabel, options }: 
                   type="button"
                   role="menuitem"
                   onClick={() => select(o)}
-                  className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50"
+                  className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-inset"
                 >
                   {o}
                 </button>
@@ -216,56 +178,16 @@ function MoreMenu({
   exporting: boolean;
   onExport: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [position, setPosition] = useState<{ top: number; right: number } | null>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const updatePosition = () => {
-      const rect = buttonRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      setPosition({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
-    };
-    updatePosition();
-    window.addEventListener('scroll', updatePosition, true);
-    window.addEventListener('resize', updatePosition);
-    return () => {
-      window.removeEventListener('scroll', updatePosition, true);
-      window.removeEventListener('resize', updatePosition);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    const onPointerDown = (e: MouseEvent | TouchEvent) => {
-      if (buttonRef.current?.contains(e.target as Node)) return;
-      if (menuRef.current?.contains(e.target as Node)) return;
-      setOpen(false);
-    };
-    document.addEventListener('keydown', onKeyDown);
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('touchstart', onPointerDown);
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('touchstart', onPointerDown);
-    };
-  }, [open]);
-
-  const close = () => setOpen(false);
+  const moreMenu = useFloatingMenu();
+  const close = () => moreMenu.setOpen(false);
 
   return (
     <>
       <button
-        ref={buttonRef}
+        ref={moreMenu.refs.setReference}
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
+        {...moreMenu.getReferenceProps()}
+        aria-expanded={moreMenu.open}
         aria-haspopup="menu"
         className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 rounded-lg px-4 py-2 text-sm font-medium min-h-11 inline-flex items-center gap-1"
       >
@@ -283,22 +205,22 @@ function MoreMenu({
           />
         </svg>
       </button>
-      {open &&
-        position &&
+      {moreMenu.open &&
         createPortal(
           <div
-            ref={menuRef}
+            ref={moreMenu.refs.setFloating}
             role="menu"
             aria-label="المزيد"
+            style={moreMenu.floatingStyles}
+            {...moreMenu.getFloatingProps()}
             className="fixed z-50 w-64 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden py-1"
-            style={{ top: position.top, right: position.right }}
           >
             {canViewDeleted && (
               <Link
                 to="/documents/deleted"
                 role="menuitem"
                 onClick={close}
-                className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50"
+                className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-inset"
               >
                 الملفات المحذوفة
               </Link>
@@ -308,7 +230,7 @@ function MoreMenu({
               to="/appeals"
               role="menuitem"
               onClick={close}
-              className="block w-full text-right px-4 py-2 min-h-11 text-sm font-medium text-red-700 hover:bg-red-50"
+              className="block w-full text-right px-4 py-2 min-h-11 text-sm font-medium text-red-700 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-inset"
             >
               الاستئنافات
             </Link>
@@ -317,7 +239,7 @@ function MoreMenu({
                 to="/documents/struck-off"
                 role="menuitem"
                 onClick={close}
-                className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50"
+                className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-inset"
               >
                 الملفات المشطوبة
               </Link>
@@ -326,7 +248,7 @@ function MoreMenu({
               to="/documents/executed"
               role="menuitem"
               onClick={close}
-              className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50"
+              className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-inset"
             >
               الملفات المنفذة
             </Link>
@@ -335,7 +257,7 @@ function MoreMenu({
                 to="/documents/rotate"
                 role="menuitem"
                 onClick={close}
-                className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50"
+                className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-inset"
               >
                 تدوير أرقام الأساس
               </Link>
@@ -348,7 +270,7 @@ function MoreMenu({
                 onExport();
               }}
               disabled={exporting}
-              className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50 disabled:opacity-50"
+              className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-inset"
             >
               {exporting ? 'جارِ التصدير...' : 'تصدير إكسل'}
             </button>

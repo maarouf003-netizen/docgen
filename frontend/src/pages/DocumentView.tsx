@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useParams } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
@@ -9,6 +10,7 @@ import { DELEGATION_STATUS_ASSIGNED, DELEGATION_STATUS_REGISTERED } from '../uti
 import { saveLastViewedDocumentId } from '../utils/listSession';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
+import { useFloatingMenu } from '../hooks/useFloatingMenu';
 import ExecutionActionsModal from '../components/ExecutionActionsModal';
 import ExecutedStatusModal from '../components/ExecutedStatusModal';
 import StatusChangeModal from '../components/StatusChangeModal';
@@ -59,7 +61,7 @@ export default function DocumentView() {
   const [deleting, setDeleting] = useState(false);
   // الاستئنافات: قائمة استئنافات الملف، وقائمة «استئناف» المنسدلة، ونموذج التسطير
   // باتجاهه (مستأنِفين/مستأنف علينا)، ونافذة تفاصيل الاستئناف المفتوحة.
-  const [appealMenuOpen, setAppealMenuOpen] = useState(false);
+  const appealMenu = useFloatingMenu();
   const [appealFormVariant, setAppealFormVariant] = useState<AppealDirection | null>(null);
   const [infoAppeal, setInfoAppeal] = useState<AppealDto | null>(null);
   // مسار الجوال: تبويبات أقسام الملف (نمط تفصيلي للشاشات الصغيرة) بدل الأعمدة المتوازية.
@@ -106,9 +108,12 @@ export default function DocumentView() {
     if (id) saveLastViewedDocumentId(Number(id));
     // الانتقال بين ملفين يعيد استخدام نفس الصفحة: تُغلق واجهات الاستئناف المعلّقة
     // حتى لا تبقى مفتوحة على محتوى ملف سابق.
-    setAppealMenuOpen(false);
+    // setOpen ثابت المرجع (مولّد من useState) فلا يستوجب إدخاله في الاعتماديات.
+    appealMenu.setOpen(false);
     setAppealFormVariant(null);
     setInfoAppeal(null);
+    // oxlint: لا يعيد هذا التأثير تشغيله عند تغيّر قائمة الاستئناف، بل عند تبديل الملف فقط (id).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   if (fetchError) return <div role="alert" className="text-red-600">{fetchError}</div>;
@@ -299,43 +304,35 @@ export default function DocumentView() {
             )}
             {/* زر «استئناف» بقائمة منسدلة (مستأنِفين / مستأنف علينا) — محامي الملف المالك. */}
             {canCreateAppeal && (
-              <div
-                className="relative"
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') setAppealMenuOpen(false);
-                }}
-              >
+              <>
                 <button
+                  ref={appealMenu.refs.setReference}
                   type="button"
+                  {...appealMenu.getReferenceProps()}
                   aria-haspopup="menu"
-                  aria-expanded={appealMenuOpen}
-                  onClick={() => setAppealMenuOpen((v) => !v)}
-                  className="bg-[#800000] hover:bg-[#9e0e0e] text-white rounded-lg px-4 py-2 text-sm min-h-11 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  aria-expanded={appealMenu.open}
+                  className="bg-[#800000] hover:bg-[#9e0e0e] text-white rounded-lg px-4 py-2 text-sm min-h-11 focus-visible:ring-2 focus-visible:ring-emerald-500"
                 >
                   استئناف ▾
                 </button>
-                {appealMenuOpen && (
-                  <>
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      aria-label="إغلاق قائمة الاستئناف"
-                      onClick={() => setAppealMenuOpen(false)}
-                      className="fixed inset-0 z-40 cursor-default"
-                    />
+                {appealMenu.open &&
+                  createPortal(
                     <div
+                      ref={appealMenu.refs.setFloating}
                       role="menu"
                       aria-label="نوع الاستئناف"
-                      className="absolute z-50 mt-1 w-44 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden"
+                      style={appealMenu.floatingStyles}
+                      {...appealMenu.getFloatingProps()}
+                      className="fixed z-50 w-44 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden"
                     >
                       <button
                         role="menuitem"
                         type="button"
                         onClick={() => {
-                          setAppealMenuOpen(false);
+                          appealMenu.setOpen(false);
                           setAppealFormVariant('appellants');
                         }}
-                        className="block w-full text-right px-4 py-3 text-sm text-gray-800 hover:bg-red-50 min-h-11 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500"
+                        className="block w-full text-right px-4 py-3 text-sm text-gray-800 hover:bg-red-50 min-h-11 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500"
                       >
                         مستأنِفين
                       </button>
@@ -343,17 +340,17 @@ export default function DocumentView() {
                         role="menuitem"
                         type="button"
                         onClick={() => {
-                          setAppealMenuOpen(false);
+                          appealMenu.setOpen(false);
                           setAppealFormVariant('against-us');
                         }}
-                        className="block w-full text-right px-4 py-3 text-sm text-gray-800 hover:bg-red-50 min-h-11 border-t border-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500"
+                        className="block w-full text-right px-4 py-3 text-sm text-gray-800 hover:bg-red-50 min-h-11 border-t border-gray-100 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500"
                       >
                         مستأنف علينا
                       </button>
-                    </div>
-                  </>
-                )}
-              </div>
+                    </div>,
+                    document.body,
+                  )}
+              </>
             )}
             {!isExecuted && !isDelegationExecuted && (
               <button

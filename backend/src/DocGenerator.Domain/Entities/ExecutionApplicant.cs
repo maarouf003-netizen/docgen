@@ -30,6 +30,12 @@ public class ExecutionApplicant
     /// <summary>عنوان الشخص الاعتباري أو وكيله القانوني حسب نوع العنوان.</summary>
     public string? ApplicantAddress { get; set; }
 
+    /// <summary>معرّف قيد طالب التنفيذ الاعتباري (الجهة العامة) في السجل المرجعي المركزي (اختياري — يُفكّ الارتباط بحذف القيد).</summary>
+    public int? RegistryId { get; set; }
+
+    /// <summary>القيد المرجعي المرتبط.</summary>
+    public PublicEntity? Registry { get; set; }
+
     /// <summary>طريقة التمثيل: أصالة / إضافة لتركة (Default أصالة).</summary>
     public string? RepresentationType { get; set; } = "أصالة";
 

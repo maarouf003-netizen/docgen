@@ -211,4 +211,53 @@ public class EntityRegistryLinkTests : IDisposable
         Assert.Equal(PartyNatureCatalog.Legal, row.Nature);
         Assert.Null(row.RegistryId);
     }
+
+    private static DocumentUpsertRequest ExecutionApplicantSample() => new()
+    {
+        GeneralEntitySide = GeneralEntitySideCatalog.Executed,
+        FileNumber = "779",
+        FileYear = "2024",
+        ContractTypeSelector = "عادي",
+        ExecutedRequiredAmount = 500m,
+    };
+
+    [Fact]
+    public async Task ExecutionApplicant_LegalWithRegistry_KeepsRegistryLink_AcceleratorStaysNull()
+    {
+        var req = ExecutionApplicantSample();
+        req.ExecutionApplicants = new()
+        {
+            new ExecutionApplicantDto(null, "وزارة التعليم", null, null, null, null,
+                null, null, null, null, null, null, null, null,
+                null, PartyNatureCatalog.Legal, null, null, null, null, _entryAId),
+        };
+
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var loaded = await _service.GetAsync(doc.Id);
+
+        var row = Assert.Single(loaded!.ExecutionApplicants);
+        Assert.Equal(PartyNatureCatalog.Legal, row.Nature);
+        Assert.Equal(_entryAId, row.RegistryId);
+        // نسخة التسريع خاصة بالجهة الطالبة الكلاسية (ApplicantPublicEntity) — لا تُمس.
+        Assert.Null(loaded.ApplicantRegistryId);
+    }
+
+    [Fact]
+    public async Task ExecutionApplicant_Natural_DropsRegistryLink()
+    {
+        var req = ExecutionApplicantSample();
+        req.ExecutionApplicants = new()
+        {
+            new ExecutionApplicantDto(null, "سليم", "حسن", "علي", null, "أصالة",
+                null, null, null, null, null, null, null, null,
+                null, PartyNatureCatalog.Natural, null, null, null, null, _entryAId),
+        };
+
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var loaded = await _service.GetAsync(doc.Id);
+
+        var row = Assert.Single(loaded!.ExecutionApplicants);
+        Assert.Equal(PartyNatureCatalog.Natural, row.Nature);
+        Assert.Null(row.RegistryId);
+    }
 }

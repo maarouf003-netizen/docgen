@@ -189,6 +189,8 @@ export interface ExecutionApplicantDto {
   addressType?: string;
   /** عنوان الشخص الاعتباري أو وكيله القانوني. */
   address?: string;
+  /** معرّف قيد طالب التنفيذ الاعتباري (الجهة العامة) في السجل المرجعي (اختياري). */
+  registryId?: number | null;
 }
 
 /** المنفذ عليه في وضع «منفذ عليه»: جهة عامة أو شخص اعتباري. */

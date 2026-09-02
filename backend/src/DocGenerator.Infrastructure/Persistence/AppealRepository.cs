@@ -17,7 +17,7 @@ public class AppealRepository : Repository<DocumentAppeal>, IAppealRepository
 
     public async Task<List<DocumentAppeal>> ListByDocumentAsync(int documentId, CancellationToken ct = default)
     {
-        var items = await WithIncludes(Db.DocumentAppeals)
+        var items = await WithIncludes(Db.DocumentAppeals.AsNoTracking())
             .Where(a => a.DocumentId == documentId)
             .OrderByDescending(a => a.CreatedAt)
             .ToListAsync(ct);
@@ -97,6 +97,17 @@ public class AppealRepository : Repository<DocumentAppeal>, IAppealRepository
             q = q.Where(a => a.Document.BranchId == branchId.Value);
         return await q
             .OrderByDescending(a => a.CreatedAt)
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<DocumentAppeal>> ListByDocumentIdsAsync(
+        IReadOnlyCollection<int> documentIds, CancellationToken ct = default)
+    {
+        if (documentIds.Count == 0)
+            return new List<DocumentAppeal>();
+
+        return await Db.DocumentAppeals
+            .Where(a => documentIds.Contains(a.DocumentId))
             .ToListAsync(ct);
     }
 

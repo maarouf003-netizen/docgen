@@ -112,6 +112,7 @@ public sealed class PublicEntityService : IPublicEntityService
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
     private readonly IUserRepository _users;
+    private readonly IAppealRepository _appeals;
 
     public PublicEntityService(
         IPublicEntityRepository entities,
@@ -122,7 +123,8 @@ public sealed class PublicEntityService : IPublicEntityService
         IUnitOfWork uow,
         ITransactionRunner tx,
         IAuditLogger audit,
-        IUserRepository users)
+        IUserRepository users,
+        IAppealRepository appeals)
     {
         _entities = entities;
         _branches = branches;
@@ -133,6 +135,7 @@ public sealed class PublicEntityService : IPublicEntityService
         _tx = tx;
         _audit = audit;
         _users = users;
+        _appeals = appeals;
     }
 
     // ── القراءة ──
@@ -576,12 +579,17 @@ public sealed class PublicEntityService : IPublicEntityService
 
         await _tx.RunAsync(async token =>
         {
-            var affected = renamed
+            var affectedDocs = renamed
                 ? await SyncTextsAfterRenameAsync(oldCanonical, newCanonical!, actor.Name, token)
-                : 0;
+                : new List<Document>();
+            var affected = affectedDocs.Count;
 
             if (renamed && wasNeedsReview && createdByLawyer)
                 await InsertRenameNoticeToCreatorAsync(entry, oldCanonical, group.CanonicalName, token);
+
+            // مزامنة لقطات الاستئنافات عند إعادة تسمية قيد معيّن
+            if (affectedDocs.Count > 0)
+                await SyncAppealsAfterEntityChangeAsync(affectedDocs, actor, token);
 
             await _uow.SaveChangesAsync(token);
 
@@ -955,16 +963,18 @@ public sealed class PublicEntityService : IPublicEntityService
     /// <summary>
     /// يُحدّث صفوف الطرفين المطابقة للاسم القديم (بعد التطبيع) إلى الاسم المعتمد الجديد،
     /// ويُعيد بناء نص طالب التنفيذ ونص البحث لكل ملف متأثر، ثم يُدوّن قبل/بعد كل ملف
-    /// في سجل تعديلات الحقول. تعمل داخل معاملة المتصل وتعيد عدد الملفات المتأثرة.
+    /// في سجل تعديلات الحقول. تعمل داخل معاملة المتصل وتعيد الملفات المتأثرة كأشياء كاملة
+    /// (لتمكين مزامنة لقطات الاستئنافات من نفس المجموعة بعد تحرير أسماء صفوفها).
     /// </summary>
-    private async Task<int> SyncTextsAfterRenameAsync(string oldCanonical, string newCanonical, string? actorName, CancellationToken token)
+    private async Task<List<Document>> SyncTextsAfterRenameAsync(string oldCanonical, string newCanonical, string? actorName, CancellationToken token)
     {
         var oldNorm = ArabicNameNormalizer.Normalize(oldCanonical);
         var newNorm = ArabicNameNormalizer.Normalize(newCanonical);
         if (oldNorm.Length == 0 || oldNorm == newNorm)
-            return 0;
+            return new List<Document>();
 
         var logs = new Dictionary<int, List<DocumentFieldChange>>();
+        var affectedDocs = new Dictionary<int, Document>();
         void AddLog(int documentId, string fieldKey, string fieldLabel, string? oldValue, string? newValue)
         {
             if (string.Equals(oldValue, newValue, StringComparison.Ordinal))
@@ -1001,6 +1011,7 @@ public sealed class PublicEntityService : IPublicEntityService
                     doc.Applicant = rebuilt;
                 doc.SearchText = DocumentSearchTextBuilder.Build(doc);
                 doc.FullData = DocumentSearchTextBuilder.BuildFullData(doc);
+                affectedDocs[doc.Id] = doc;
                 AddLog(doc.Id, nameof(Document.Applicant), "طالب التنفيذ",
                     oldTexts.GetValueOrDefault(doc.Id), doc.Applicant);
             }
@@ -1025,7 +1036,48 @@ public sealed class PublicEntityService : IPublicEntityService
             // إعادة بناء نص البحث مرة واحدة لكل ملف متأثر (لا لكل صف مطابق).
             var executedDocs = rows.Select(r => r.Document).GroupBy(d => d.Id).Select(g => g.First());
             foreach (var doc in executedDocs)
+            {
+                affectedDocs[doc.Id] = doc;
                 doc.SearchText = DocumentSearchTextBuilder.Build(doc);
+                doc.FullData = DocumentSearchTextBuilder.BuildFullData(doc);
+            }
+        }
+
+        // طالبو التنفيذ الاعتباريون المربوطون جهة عامة (RegistryId != null): يُعاد
+        // تسمية صفوفهم كبقية الجهات — لا يُلمس natural (بلا RegistryId) إطلاقًا.
+        var executionApplicantNames = (await _entities.ListDistinctExecutionApplicantTextsAsync(token))
+            .Select(t => t.Name)
+            .Where(n => ArabicNameNormalizer.Normalize(n) == oldNorm)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        if (executionApplicantNames.Count > 0)
+        {
+            var rows = await _entities.ListExecutionApplicantRowsByNamesAsync(executionApplicantNames, token);
+            foreach (var row in rows)
+            {
+                row.Name = newCanonical;
+                AddLog(row.DocumentId, "__Col_ExecutionApplicants", "طالبو التنفيذ",
+                    Clamp(oldCanonical), Clamp(newCanonical));
+            }
+
+            var applicantDocs = rows.Select(r => r.Document).GroupBy(d => d.Id).Select(g => g.First());
+            foreach (var doc in applicantDocs)
+            {
+                affectedDocs[doc.Id] = doc;
+                // ملف «منفذ عليه»/«عرض وايداع» بلا جهة طالبة كلاسية: اسم الطالب يُشتق من
+                // طلبات التنفيذ الاعتباريين المربوطين جهة عامة فيتطابق العنوان مع الاسم
+                // المعياري بعد إعادة التسمية (لا يبقى الاسم القديم في نص البحث).
+                if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide)
+                    && doc.ApplicantPublicEntities.Count == 0)
+                {
+                    var executedApplicantName = doc.ExecutionApplicants
+                        .Select(a => (a.Name ?? string.Empty).Trim())
+                        .FirstOrDefault(v => v.Length > 0);
+                    doc.Applicant = executedApplicantName ?? doc.Applicant;
+                }
+                doc.SearchText = DocumentSearchTextBuilder.Build(doc);
+                doc.FullData = DocumentSearchTextBuilder.BuildFullData(doc);
+            }
         }
 
         await _uow.SaveChangesAsync(token);
@@ -1033,7 +1085,7 @@ public sealed class PublicEntityService : IPublicEntityService
         foreach (var (documentId, changes) in logs)
             await _audit.LogDocumentChangeAsync(actorName, "rename_public_entity_sync",
                 documentId, documentType: null, details, changes, token);
-        return logs.Count;
+        return affectedDocs.Values.ToList();
     }
 
     // ── مساعدات خاصة ──
@@ -1245,6 +1297,8 @@ public sealed class PublicEntityService : IPublicEntityService
                         a.RegistryId = targetEntryId;
                     foreach (var e in doc.ExecutedPublicEntities.Where(e => e.RegistryId == entryId))
                         e.RegistryId = targetEntryId;
+                    foreach (var ea in doc.ExecutionApplicants.Where(ea => ea.RegistryId == entryId))
+                        ea.RegistryId = targetEntryId;
                     doc.ApplicantRegistryId = toGroupId;
                 }
                 affectedDocs = linkedDocs.Count;
@@ -1696,6 +1750,8 @@ public sealed class PublicEntityService : IPublicEntityService
                             a.RegistryId = targetEntry.Id;
                         foreach (var e in doc.ExecutedPublicEntities.Where(e => e.RegistryId == ae.Id))
                             e.RegistryId = targetEntry.Id;
+                        foreach (var ea in doc.ExecutionApplicants.Where(ea => ea.RegistryId == ae.Id))
+                            ea.RegistryId = targetEntry.Id;
                         doc.ApplicantRegistryId = targetEntry.GroupId;
                     }
 
@@ -1752,11 +1808,15 @@ public sealed class PublicEntityService : IPublicEntityService
             var namesToSync = absorbedNames
                 .Append(previousSurvivorName)
                 .Where(n => !string.IsNullOrWhiteSpace(n))
-                .Distinct(StringComparer.Ordinal)
+                .GroupBy(n => ArabicNameNormalizer.Normalize(n!))
+                .Select(g => g.First()!)
                 .ToList();
+            var nameMatchedDocs = new Dictionary<int, Document>();
             foreach (var oldName in namesToSync)
             {
-                await SyncTextsAfterRenameAsync(oldName!, mergeTargetName, actor.Name, token);
+                var matched = await SyncTextsAfterRenameAsync(oldName!, mergeTargetName, actor.Name, token);
+                foreach (var doc in matched)
+                    nameMatchedDocs[doc.Id] = doc;
             }
 
             // أعد بناء نصوص المستندات المتأثرة بالترحيل (RegistryId) التي لم تُلتقط بالمزامنة الاسمية.
@@ -1766,23 +1826,21 @@ public sealed class PublicEntityService : IPublicEntityService
                 await SyncTextsAfterFoldAsync(affectedDocs, actor.Name, token);
             }
 
+            // مزامنة لقطات أطراف الاستئنافات عبر اتحاد الملفات المتأثرة (الاسمية + المترحلة).
+            // تُطابق صور الجهة العامة داخل اللقطة عبر (Kind, PartyId) ومعرّف صف الوصلة بالملف،
+            // فتلتقط حتى الصور المسماة بخلاف الاسم المعياري. يبني الدالة خريطة أسماء الصفوف
+            // الحالية فيغدو التحديث مستقرًا (idempotent) مهما اختلف مسار التقاط الملف.
+            var allAffectedDocs = nameMatchedDocs.Values
+                .Concat(affectedDocsById.Values)
+                .GroupBy(d => d.Id)
+                .Select(g => g.First())
+                .ToList();
+            if (allAffectedDocs.Count > 0)
+                await SyncAppealsAfterEntityChangeAsync(allAffectedDocs, actor, token);
+
             // ترحيل مندوبي الجهات المُدمجة إلى الناجية (مواءمة 7-ز)
             var absorbedIdsSet = new HashSet<int>(request.AbsorbedGroupIds.Distinct());
-            var delegates = await _users.ListEntityManagersByGroupIdsAsync(absorbedIdsSet, token);
-            foreach (var delegateUser in delegates)
-            {
-                if (delegateUser.PortalGroupId.HasValue && absorbedIdsSet.Contains(delegateUser.PortalGroupId.Value))
-                    delegateUser.PortalGroupId = survivorGroup.Id;
-                if (delegateUser.PortalEntryId.HasValue
-                    && delegateUser.PortalEntry is not null
-                    && absorbedIdsSet.Contains(delegateUser.PortalEntry.GroupId))
-                {
-                    delegateUser.PortalGroupId = survivorGroup.Id;
-                    var survivorDefault = activeSurvivorEntries.FirstOrDefault();
-                    if (survivorDefault is not null)
-                        delegateUser.PortalEntryId = survivorDefault.Id;
-                }
-            }
+            await MigrateDelegatesAsync(absorbedIdsSet, survivorGroup.Id, activeSurvivorEntries.FirstOrDefault()?.Id, token);
 
             // حدث الدمج الأب
             var renamedSurvivor = previousSurvivorName is not null;
@@ -1817,9 +1875,9 @@ public sealed class PublicEntityService : IPublicEntityService
             await _changeEvents.AddAsync(changeEvent, token);
             await _uow.SaveChangesAsync(token);
 
-            // وقوعات آلية لكل ملف متأثر
+            // وقوعات آلية لكل ملف متأثر (اتحاد الاسمية + المترحلة عبر RegistryId)
             var absorbedNamesJoined = string.Join('،', absorbedNames);
-            foreach (var docId in affectedDocsById.Keys)
+            foreach (var docId in allAffectedDocs.Select(d => d.Id))
             {
                 var occurrence = new DocumentOccurrence
                 {
@@ -2025,10 +2083,107 @@ public sealed class PublicEntityService : IPublicEntityService
             var rebuilt = ApplicantTextBuilder.Build(doc.ApplicantPublicEntities);
             if (!string.IsNullOrWhiteSpace(rebuilt) || string.IsNullOrWhiteSpace(doc.Applicant))
                 doc.Applicant = rebuilt;
+            // ملف «منفذ عليه»/«عرض وايداع» بلا جهة طالبة كلاسية: اسم الطالب يُشتق من
+            // طلبات التنفيذ الاعتباريين المربوطين جهة عامة وأسماء طلبات العرض الطبيعية
+            // فيتطابق العنوان مع الاسم المعياري بعد الطيّ/الدمج/الحلول.
+            if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide)
+                && doc.ApplicantPublicEntities.Count == 0)
+            {
+                var executedApplicantName = doc.ExecutionApplicants
+                    .Select(a => (a.Name ?? string.Empty).Trim())
+                    .FirstOrDefault(v => v.Length > 0);
+                doc.Applicant = executedApplicantName ?? doc.Applicant;
+            }
             doc.SearchText = DocumentSearchTextBuilder.Build(doc);
             doc.FullData = DocumentSearchTextBuilder.BuildFullData(doc);
         }
         await _uow.SaveChangesAsync(token);
+    }
+
+    /// <summary>
+    /// مزامنة لقطات أطراف الاستئنافات (AppellantsJson / AppelleesJson) بعد تغيير جهة عامة
+    /// (إعادة تسمية / دمج / حلول) على مجموعة من الملفات المتأثرة. تُطابق صور الجهة العامة
+    /// (طالب أو منفذ عليه) داخل اللقطات عبر (Kind, PartyId) ومعرّف صف الوصلة بالملف — لا عبر
+    /// الاسم حصرًا — فتلتقط حتى الصور المخزَّنة بأسامٍ تختلف عن الاسم المعياري (الثغرة)،
+    /// وتُجدّد اسم الصورة من الاسم الحالي للصف المرتَّل. تعمل داخل معاملة المتصل وتُدوّن
+    /// التغيير عبر AuditLogger لكل استئناف.
+    /// </summary>
+    private async Task SyncAppealsAfterEntityChangeAsync(
+        IReadOnlyCollection<Document> affectedDocs,
+        EntityRegistryActor actor,
+        CancellationToken token)
+    {
+        if (affectedDocs.Count == 0)
+            return;
+
+        // خريطة (Kind, PartyId) → الاسم الحالي لصف الوصلة، من الملفات المتأثرة
+        // (حُرِّرت أسماءها قبلاً بمزامنة النصوص أو بالتحديث المباشر عند الحلول).
+        var newNames = new Dictionary<(string Kind, int PartyId), string>();
+        foreach (var doc in affectedDocs)
+        {
+            foreach (var a in doc.ApplicantPublicEntities)
+                if (!string.IsNullOrWhiteSpace(a.Name))
+                    newNames[("applicant-entity", a.Id)] = a.Name;
+            foreach (var e in doc.ExecutedPublicEntities)
+                if (!string.IsNullOrWhiteSpace(e.EntityName))
+                    newNames[("executed-public", e.Id)] = e.EntityName;
+            // طالب التنفيذ الاعتباري المربوط جهة عامة (RegistryId != null): الاسم الاعتباري
+            // يعادل TripleOr(Name, null, null, null) == Name — لا يُلمس natural (بلا RegistryId).
+            foreach (var ea in doc.ExecutionApplicants.Where(ea => ea.RegistryId.HasValue))
+                if (!string.IsNullOrWhiteSpace(ea.Name))
+                    newNames[("execution-applicant", ea.Id)] = ea.Name;
+        }
+        if (newNames.Count == 0)
+            return;
+
+        var documentIds = affectedDocs.Select(d => d.Id).Distinct().ToList();
+        var appeals = await _appeals.ListByDocumentIdsAsync(documentIds, token);
+        if (appeals.Count == 0)
+            return;
+
+        foreach (var appeal in appeals)
+        {
+            var newAppellants = AppealSnapshotSerializer.UpdateEntityParties(appeal.AppellantsJson, newNames);
+            var newAppellees = AppealSnapshotSerializer.UpdateEntityParties(appeal.AppelleesJson, newNames);
+            var changed = !string.Equals(newAppellants, appeal.AppellantsJson, StringComparison.Ordinal)
+                          || !string.Equals(newAppellees, appeal.AppelleesJson, StringComparison.Ordinal);
+            if (!changed)
+                continue;
+
+            appeal.AppellantsJson = newAppellants;
+            appeal.AppelleesJson = newAppellees;
+            appeal.UpdatedAt = DateTime.UtcNow;
+            await _audit.LogAsync(actor.Name, "appeal_entity_sync",
+                documentId: appeal.DocumentId, documentType: null,
+                details: $"مزامنة لقطات الاستئناف بعد تغيير جهة عامة في الملف #{appeal.DocumentId}",
+                ct: token);
+        }
+
+        await _uow.SaveChangesAsync(token);
+    }
+
+    /// <summary>ترحيل مندوبي الجهات المُمتصة/المُلغاة إلى الهوية الهدف (مواءمة 7-ز).</summary>
+    private async Task<int> MigrateDelegatesAsync(
+        HashSet<int> absorbedIds,
+        int targetGroupId,
+        int? targetEntryId,
+        CancellationToken token)
+    {
+        var delegates = await _users.ListEntityManagersByGroupIdsAsync(absorbedIds, token);
+        foreach (var delegateUser in delegates)
+        {
+            if (delegateUser.PortalGroupId.HasValue && absorbedIds.Contains(delegateUser.PortalGroupId.Value))
+                delegateUser.PortalGroupId = targetGroupId;
+            if (delegateUser.PortalEntryId.HasValue
+                && delegateUser.PortalEntry is not null
+                && absorbedIds.Contains(delegateUser.PortalEntry.GroupId))
+            {
+                delegateUser.PortalGroupId = targetGroupId;
+                if (targetEntryId.HasValue)
+                    delegateUser.PortalEntryId = targetEntryId.Value;
+            }
+        }
+        return delegates.Count;
     }
 
     private static string JoinNameBranch(string? name, string? branch)
@@ -2119,7 +2274,11 @@ public sealed class PublicEntityService : IPublicEntityService
             }
 
             // مزامنة النصوص على مستوى المجموعة (الاسم القديم ← الجديد عبر كل الملفات المرتبطة)
-            var affected = await SyncTextsAfterRenameAsync(oldCanonical, newCanonical, actor.Name, token);
+            var affectedDocs = await SyncTextsAfterRenameAsync(oldCanonical, newCanonical, actor.Name, token);
+            var affected = affectedDocs.Count;
+
+            // مزامنة لقطات أطراف الاستئنافات المرتبطة بنفس الملفات المتأثرة
+            await SyncAppealsAfterEntityChangeAsync(affectedDocs, actor, token);
 
             // سجل التغيير
             var payload = System.Text.Json.JsonSerializer.Serialize(new
@@ -2147,12 +2306,19 @@ public sealed class PublicEntityService : IPublicEntityService
 
             await _uow.SaveChangesAsync(token);
 
-            // وقوعات آلية لكل ملف متأثر
-            await WriteAffectedOccurrencesAsync(
-                group.Id,
-                actor.UserId,
-                EntityChangeMessages.RenameOccurrence(oldCanonical, group.CanonicalName, decreeKind, decreeNumber, decreeDate),
-                token);
+            // وقوعات آلية لكل ملف متأثر (المزامنة الاسمية الفعلية — لا إعادة استعلام عبر RegistryId)
+            foreach (var docId in affectedDocs.Select(d => d.Id))
+            {
+                var occurrence = new DocumentOccurrence
+                {
+                    DocumentId = docId,
+                    OccurrenceType = OccurrenceTypeCatalog.EntityChange,
+                    EventDate = DateTime.UtcNow,
+                    CreatedById = actor.UserId,
+                    Details = EntityChangeMessages.RenameOccurrence(oldCanonical, group.CanonicalName, decreeKind, decreeNumber, decreeDate),
+                };
+                await _occurrences.AddAsync(occurrence, token);
+            }
 
             // تنبيه عام لكل المحامين + تنبيه خاص لرؤساء الأقسام
             await BroadcastEntityChangeToAllLawyersAsync(
@@ -2295,9 +2461,22 @@ public sealed class PublicEntityService : IPublicEntityService
                     foreach (var doc in linkedDocs)
                     {
                         foreach (var a in doc.ApplicantPublicEntities.Where(a => a.RegistryId == entry.Id))
+                        {
                             a.RegistryId = newParentEntry.Id;
+                            // تحديث مباشر للاسم: يُحلّ الاسم الجديد محل القديم في نص الطالب
+                            // (ApplicantTextBuilder يقرأ e.Name)، فلا يبقى الاسم المُلغى في النصوص.
+                            a.Name = newCanonical;
+                        }
                         foreach (var e in doc.ExecutedPublicEntities.Where(e => e.RegistryId == entry.Id))
+                        {
                             e.RegistryId = newParentEntry.Id;
+                            e.EntityName = newCanonical;
+                        }
+                        foreach (var ea in doc.ExecutionApplicants.Where(ea => ea.RegistryId == entry.Id))
+                        {
+                            ea.RegistryId = newParentEntry.Id;
+                            ea.Name = newCanonical;
+                        }
                         doc.ApplicantRegistryId = newGroup.Id;
                         if (!affectedDocsById.ContainsKey(doc.Id))
                             affectedDocsById[doc.Id] = doc;
@@ -2311,18 +2490,18 @@ public sealed class PublicEntityService : IPublicEntityService
                         }, token);
                     }
 
-                    // حفظ أسماء الجهات المُلغاة أسماءً بديلة على القيد الجديد
-                    var norm = ArabicNameNormalizer.Normalize(group.CanonicalName);
-                    if (!newParentEntry.Aliases.Any(a => ArabicNameNormalizer.Normalize(a.AliasText) == norm))
-                        newParentEntry.Aliases.Add(new PublicEntityAlias
-                        {
-                            PublicEntityId = newParentEntry.Id,
-                            AliasText = group.CanonicalName,
-                        });
-
                     entry.IsActive = false;
                     entriesMoved++;
                 }
+
+                // حفظ أسماء الجهات المُلغاة أسماءً بديلة على القيد الجديد (مرة لكل مجموعة ملغاة)
+                var norm = ArabicNameNormalizer.Normalize(group.CanonicalName);
+                if (!newParentEntry.Aliases.Any(a => ArabicNameNormalizer.Normalize(a.AliasText) == norm))
+                    newParentEntry.Aliases.Add(new PublicEntityAlias
+                    {
+                        PublicEntityId = newParentEntry.Id,
+                        AliasText = group.CanonicalName,
+                    });
 
                 group.IsActive = false;
             }
@@ -2330,24 +2509,17 @@ public sealed class PublicEntityService : IPublicEntityService
             // 4) مزامنة النصوص للملفات المتأثرة (يحلّ الاسم الجديد محل القديم)
             if (affectedDocsById.Count > 0)
             {
-                await SyncTextsAfterFoldAsync(affectedDocsById.Values.ToList(), actor.Name, token);
+                var affectedDocsList = affectedDocsById.Values.ToList();
+                await SyncTextsAfterFoldAsync(affectedDocsList, actor.Name, token);
+
+                // مزامنة لقطات أطراف الاستئنافات للملفات المتأثرة (تُطابق صور الجهة العامة
+                // عبر (Kind, PartyId) فيلتقط حتى الصور المخزَّنة باسم مختلف عن الاسم المعياري).
+                await SyncAppealsAfterEntityChangeAsync(affectedDocsList, actor, token);
             }
             await _uow.SaveChangesAsync(token);
 
             // 5) ترحيل مندوبي الجهات المُلغاة إلى الهوية الجديدة (مواءمة 7-ز)
-            var delegates = await _users.ListEntityManagersByGroupIdsAsync(abolishedIdsSet, token);
-            foreach (var delegateUser in delegates)
-            {
-                if (delegateUser.PortalGroupId.HasValue && abolishedIdsSet.Contains(delegateUser.PortalGroupId.Value))
-                    delegateUser.PortalGroupId = newGroup.Id;
-                if (delegateUser.PortalEntryId.HasValue
-                    && delegateUser.PortalEntry is not null
-                    && abolishedIdsSet.Contains(delegateUser.PortalEntry.GroupId))
-                {
-                    delegateUser.PortalGroupId = newGroup.Id;
-                    delegateUser.PortalEntryId = newParentEntry.Id;
-                }
-            }
+            var delegatesCount = await MigrateDelegatesAsync(abolishedIdsSet, newGroup.Id, newParentEntry.Id, token);
 
             // 6) سجل التغيير
             var payload = System.Text.Json.JsonSerializer.Serialize(new
@@ -2360,7 +2532,7 @@ public sealed class PublicEntityService : IPublicEntityService
                 branchName = DefaultBranchName,
                 entriesMoved,
                 affectedDocuments = affectedDocsById.Count,
-                delegatesReassigned = delegates.Count,
+                delegatesReassigned = delegatesCount,
                 decreeKind,
                 decreeNumber,
                 decreeDate = decreeDate!.Value.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
@@ -2392,7 +2564,7 @@ public sealed class PublicEntityService : IPublicEntityService
 
             await _audit.LogAsync(actor.Name, "abolish_and_replace_entity",
                 documentId: null, documentType: null,
-                details: $"حلّت «{newGroup.CanonicalName}» محل {abolishedIds.Count} هويات، {entriesMoved} قيدًا، {affectedDocsById.Count} ملفًا متأثرًا، {delegates.Count} مندوبًا",
+                details: $"حلّت «{newGroup.CanonicalName}» محل {abolishedIds.Count} هويات، {entriesMoved} قيدًا، {affectedDocsById.Count} ملفًا متأثرًا، {delegatesCount} مندوبًا",
                 ct: token);
 
             return new AbolishAndReplaceResponse(
@@ -2456,31 +2628,6 @@ public sealed class PublicEntityService : IPublicEntityService
     /// <summary>سقف لاحقة المرجع — يفوّض إلى <see cref="EntityChangeMessages.DecreeSuffix"/> (المصدر الموحّد).</summary>
     private static string BuildDecreeSuffix(string decreeKind, string decreeNumber, DateTime? decreeDate)
         => EntityChangeMessages.DecreeSuffix(decreeKind, decreeNumber, decreeDate);
-
-    /// <summary>كتابة وقوعات entity-change على الملفات المتأثرة بهوية أم (عبر قيودها النشطة).</summary>
-    private async Task WriteAffectedOccurrencesAsync(int groupId, int actorUserId, string details, CancellationToken token)
-    {
-        var entries = await _entities.ListEntriesByGroupAsync(groupId, token);
-        var docIds = new HashSet<int>();
-        foreach (var entry in entries.Where(e => e.IsActive))
-        {
-            var linked = await _entities.ListDocumentsLinkedToEntryAsync(entry.Id, token);
-            foreach (var d in linked)
-                docIds.Add(d.Id);
-        }
-        foreach (var docId in docIds)
-        {
-            var occurrence = new DocumentOccurrence
-            {
-                DocumentId = docId,
-                OccurrenceType = OccurrenceTypeCatalog.EntityChange,
-                EventDate = DateTime.UtcNow,
-                CreatedById = actorUserId,
-                Details = details,
-            };
-            await _occurrences.AddAsync(occurrence, token);
-        }
-    }
 
     private async Task<int> CountDocumentsForGroupAsync(int groupId, CancellationToken token)
     {

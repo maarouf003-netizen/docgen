@@ -534,11 +534,19 @@ public class ExecutionApplicantConfiguration : IEntityTypeConfiguration<Executio
         builder.Property(a => a.ApplicantAddressType).HasMaxLength(50);
         builder.Property(a => a.ApplicantAddress).HasMaxLength(300);
         builder.HasIndex(a => a.DocumentId);
+        // ربط السجل المرجعي للجهات العامة فقط: SetNull بحذف القيد + فهرس.
+        builder.HasIndex(a => a.RegistryId);
+        builder.Property(a => a.RegistryId);
 
         builder.HasOne(a => a.Document)
             .WithMany(d => d.ExecutionApplicants)
             .HasForeignKey(a => a.DocumentId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(a => a.Registry)
+            .WithMany()
+            .HasForeignKey(a => a.RegistryId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }
 

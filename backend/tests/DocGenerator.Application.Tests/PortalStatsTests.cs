@@ -222,4 +222,44 @@ public class PortalStatsTests : IDisposable
         Assert.Equal(1, stats.PendingAppeals);  // استئناف الخارج عن النطاق غير محسوب
         Assert.Equal(1, stats.ClosedAppeals);
     }
+
+    [Fact]
+    public async Task Stats_ExecutionApplicantLegalLink_CountedPerEntry()
+    {
+        var executedLike = new Document
+        {
+            CreatedById = 1, BorrowerName = "ملف طالب تنفيذ اعتباري", IsDraft = false, ExecStatus = "",
+            AmountNumeric = 100, GeneralEntitySide = "executed",
+        };
+        // رابط طالب تنفيذ اعتباري على قيد دمشق من نطاق المندوب: يُحتسب ضمن توزيع القيد.
+        executedLike.ExecutionApplicants.Add(new ExecutionApplicant
+        {
+            Name = "وزارة التعليم",
+            ApplicantNature = PartyNatureCatalog.Legal,
+            RegistryId = _entryAId,
+        });
+        executedLike.SearchText = DocumentSearchTextBuilder.Build(executedLike);
+        _db.Documents.Add(executedLike);
+
+        // طالب تنفيذ طبيعي بلا رقم قيد: لا يدخل إحصاء أي قيد ضمن نطاق المندوب.
+        var naturalLike = new Document
+        {
+            CreatedById = 1, BorrowerName = "ملف طالب طبيعي", IsDraft = false, ExecStatus = "",
+            AmountNumeric = 100, GeneralEntitySide = "executed",
+        };
+        naturalLike.ExecutionApplicants.Add(new ExecutionApplicant
+        {
+            Name = "محمد", ApplicantNature = PartyNatureCatalog.Natural, RegistryId = null,
+        });
+        naturalLike.SearchText = DocumentSearchTextBuilder.Build(naturalLike);
+        _db.Documents.Add(naturalLike);
+        await _db.SaveChangesAsync();
+
+        var stats = await _portal.GetStatsAsync(_delegateGroupId);
+
+        // ملف الطالب الاعتباري المربوط يُحتسب؛ الطبيعي بلا رقم قيد لا يُحتسب إحصائيًا.
+        var damascus = stats.PerEntry.Single(e => e.EntryId == _entryAId);
+        Assert.Equal(1, damascus.Files);
+        Assert.Equal(1, stats.TotalFiles);
+    }
 }

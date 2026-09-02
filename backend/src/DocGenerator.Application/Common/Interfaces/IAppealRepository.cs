@@ -16,6 +16,13 @@ public interface IAppealRepository : IRepository<DocumentAppeal>
     Task<List<DocumentAppeal>> ListByDocumentAsync(int documentId, CancellationToken ct = default);
 
     /// <summary>
+    /// كل الاستئنافات المرتبطة بمجموعة ملفات (تُستخدم لمزامنة لقطات الأطراف عند تغيير
+    /// جهة عامة). استعلام خفيف (بلا روابط التحميل المسبق) ضمن التتبّع لتُحفظ تحديثاته.
+    /// </summary>
+    Task<List<DocumentAppeal>> ListByDocumentIdsAsync(
+        IReadOnlyCollection<int> documentIds, CancellationToken ct = default);
+
+    /// <summary>
     /// بحث/قائمة الاستئنافات لنطاق رؤية محدد: المحامي (استئنافاته المنشأة أو المسندة إليه)،
     /// رئيس القسم (فرعه)، الإدارة (الكل). البحث النصي يطابق أسماء المستأنف/المستأنف عليهم
     /// من اللقطات ورقم الأساس الاستئنافي والمحكمة.

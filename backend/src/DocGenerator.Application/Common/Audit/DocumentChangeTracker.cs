@@ -288,7 +288,7 @@ public static class DocumentChangeTracker
                 a => Join(a.AssetKind,
                     FirstNonEmpty(a.Property, a.PlateNumber, a.RegisterNumber, a.LicenseNumber, a.ShopDescription))),
             ["__Col_ExecutionApplicants"] = d => Signature(d.ExecutionApplicants,
-                e => Join(e.Name, e.Father, e.Family)),
+                e => Join(e.Name, e.Father, e.Family, e.RegistryId?.ToString())),
             ["__Col_ExecutedPublicEntities"] = d => Signature(d.ExecutedPublicEntities,
                 e => Join(e.EntityName, e.EntityBranch)),
             ["__Col_ExecutedNaturalPersons"] = d => Signature(d.ExecutedNaturalPersons,

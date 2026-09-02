@@ -200,3 +200,8 @@ npm test
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260829000221_AddHeadAlertPublicEntityLink.cs` — يضيف عمود `PublicEntityId` (nullable) وفهرسًا وFK (SetNull) إلى `HeadAlerts`، و**يحذف الفهرس الفريد `IX_PublicEntities_ReviewedById` ويُعيد إنشاءه غير فريد** (دمج لإصلاح `RemoveReviewedByIdUniqueIndex` التي أُزيلت). **مُطبَّق محليًا على `docgen.db`.**
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260829000252_AddHeadAlertPublicEntityLinkPg.cs` — نفسه (`integer` nullable).
   - بدون التطبيق سيفشل استعلام تنبيهات الاقتراح/المراجعة بـ`no such column: a.PublicEntityId`، ويبقى خطأ الحفظ `UNIQUE constraint failed: PublicEntities.ReviewedById` عند اعتماد رئيس القسم قيدًا ثانيًا رغم نجاح الاختبارات محليًا.
+- [ ] **2026-09-02 — `AddExecutionApplicantRegistryId`** (ربط طالب التنفيذ الاعتباري بالجهة العامة — المرحلة ب):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260902160533_AddExecutionApplicantRegistryId.cs` — يضيف عمود `RegistryId` (nullable) وفهرسًا وFK (SetNull) إلى `ExecutionApplicants` لربط طالب التنفيذ الاعتباري (`legal`) بقيد الجهة العامة في `PublicEntities`.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260902160613_AddExecutionApplicantRegistryId.cs` — نفسه (`integer` nullable).
+  - بدون التطبيق سيفشل فتح/حفظ ملفات «منفذ عليه» أو حلول/دمج/إعادة تسمية جهة عامة مربوطة بـ`no such column: a.RegistryId` رغم نجاح الاختبارات محليًا.
+

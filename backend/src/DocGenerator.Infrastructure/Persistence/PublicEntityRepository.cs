@@ -84,6 +84,16 @@ public class PublicEntityRepository : IPublicEntityRepository
         return rows.Select(r => (r.EntityName!, r.Governorate, r.DocumentCount)).ToList();
     }
 
+    public async Task<List<(string Name, int DocumentCount)>> ListDistinctExecutionApplicantTextsAsync(CancellationToken ct = default)
+    {
+        var rows = await _db.ExecutionApplicants.AsNoTracking()
+            .Where(a => a.Name != null && a.Name != "" && a.RegistryId != null)
+            .GroupBy(a => a.Name)
+            .Select(g => new { Name = g.Key, DocumentCount = g.Select(x => x.DocumentId).Distinct().Count() })
+            .ToListAsync(ct);
+        return rows.Select(r => (r.Name!, r.DocumentCount)).ToList();
+    }
+
     // ── مزامنة النصوص عند إعادة التسمية (د5) ──
     //
     // إعادة بناء SearchText تمرّ على كل مجموعات الملف (ورثة/كفلاء/طالبو تنفيذ/منفذ
@@ -117,6 +127,19 @@ public class PublicEntityRepository : IPublicEntityRepository
                 && names.Contains(e.EntityName))
             .ToListAsync(ct);
 
+    public Task<List<ExecutionApplicant>> ListExecutionApplicantRowsByNamesAsync(
+        IReadOnlyCollection<string> names, CancellationToken ct = default)
+        => _db.ExecutionApplicants
+            .Include(a => a.Document).ThenInclude(d => d.ApplicantPublicEntities)
+            .Include(a => a.Document).ThenInclude(d => d.Heirs)
+            .Include(a => a.Document).ThenInclude(d => d.Guarantors)
+            .Include(a => a.Document).ThenInclude(d => d.ExecutionApplicants)
+            .Include(a => a.Document).ThenInclude(d => d.ExecutedPublicEntities)
+            .Include(a => a.Document).ThenInclude(d => d.ExecutedNaturalPersons)
+            .Include(a => a.Document).ThenInclude(d => d.ExecutedHeirs)
+            .Where(a => a.Name != null && a.RegistryId != null && names.Contains(a.Name))
+            .ToListAsync(ct);
+
     // ── نقل القيد (د3) ──
 
     public async Task<List<Document>> ListDocumentsLinkedToEntryAsync(int entryId, CancellationToken ct = default)
@@ -130,6 +153,11 @@ public class PublicEntityRepository : IPublicEntityRepository
         ids.AddRange(await _db.ExecutedPublicEntities.AsNoTracking()
             .Where(e => e.RegistryId == entryId)
             .Select(e => e.DocumentId)
+            .Distinct()
+            .ToListAsync(ct));
+        ids.AddRange(await _db.ExecutionApplicants.AsNoTracking()
+            .Where(a => a.RegistryId == entryId)
+            .Select(a => a.DocumentId)
             .Distinct()
             .ToListAsync(ct));
         var uniqueIds = ids.Distinct().ToList();

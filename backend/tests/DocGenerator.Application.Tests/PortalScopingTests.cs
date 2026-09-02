@@ -81,7 +81,8 @@ public class PortalScopingTests : IDisposable
             new UnitOfWork(_db),
             new TransactionRunner(_db),
             _audit,
-            new UserRepository(_db));
+            new UserRepository(_db),
+            new AppealRepository(_db));
     }
 
     public void Dispose() => _db.Dispose();
@@ -90,7 +91,8 @@ public class PortalScopingTests : IDisposable
     private async Task<int> SeedDocumentAsync(
         string name,
         int? applicantRegistryId = null,
-        (int RegistryId, bool Legal)? executedLink = null)
+        (int RegistryId, bool Legal)? executedLink = null,
+        (int RegistryId, bool Legal)? executionApplicantLink = null)
     {
         var doc = new Document
         {
@@ -113,6 +115,16 @@ public class PortalScopingTests : IDisposable
             {
                 EntityName = name, EntityNature = executedLink.Value.Legal ? "legal" : "public",
                 RegistryId = executedLink.Value.RegistryId,
+            });
+        }
+        if (executionApplicantLink is not null)
+        {
+            doc.ExecutionApplicants.Add(new ExecutionApplicant
+            {
+                Name = name,
+                ApplicantNature = executionApplicantLink.Value.Legal ? PartyNatureCatalog.Legal : PartyNatureCatalog.Natural,
+                // الطبيعي لا يحمل رقم قيد (حسب NormalizeExecutionApplicants): يُصفّر.
+                RegistryId = executionApplicantLink.Value.Legal ? executionApplicantLink.Value.RegistryId : null,
             });
         }
         doc.SearchText = DocumentSearchTextBuilder.Build(doc);
@@ -147,6 +159,23 @@ public class PortalScopingTests : IDisposable
         var page = await _portal.ListFilesAsync(_delegateEntryAId, null, null, 1, 20);
 
         Assert.Equal(1, page.TotalCount);
+        Assert.DoesNotContain(page.Items, i => i.Id == docOther);
+    }
+
+    [Fact]
+    public async Task ExecutionApplicantLink_EntersDelegateScope_LegalRegistryIdOnly()
+    {
+        // ملف «منفذ عليه» برابط طالب تنفيذ اعتباري على قيد هوية «وزارة التعليم»:
+        // يدخل نطاق هوية المجموعة عبر رابط طلب التنفيذ (مثل أي طرف ربط آخر).
+        var docLinked = await SeedDocumentAsync("ملف طالب تنفيذ اعتباري", executionApplicantLink: (_entryAId, true));
+        // ربط طبيعي بلا رقم قيد (حسب NormalizeExecutionApplicants) لا يدخل نطاق الهوية.
+        var docNatural = await SeedDocumentAsync("ملف طالب طبيعي", executionApplicantLink: (default, false));
+        var docOther = await SeedDocumentAsync("ملف طالب هوية أخرى", executionApplicantLink: (_entryBId, true));
+
+        var page = await _portal.ListFilesAsync(_delegateGroupId, null, null, 1, 20);
+
+        Assert.Contains(page.Items, i => i.Id == docLinked);
+        Assert.DoesNotContain(page.Items, i => i.Id == docNatural);
         Assert.DoesNotContain(page.Items, i => i.Id == docOther);
     }
 

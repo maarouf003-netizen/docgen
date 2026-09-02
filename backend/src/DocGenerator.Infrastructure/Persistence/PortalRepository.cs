@@ -33,7 +33,12 @@ public class PortalRepository : IPortalRepository
             && e.Registry != null
             && e.Registry.Status == EntityStatusCatalog.Final
             && !e.Registry.NeedsReview
-            && ids.Contains(e.RegistryId.Value));
+            && ids.Contains(e.RegistryId.Value))
+        || d.ExecutionApplicants.Any(a => a.RegistryId != null
+            && a.Registry != null
+            && a.Registry.Status == EntityStatusCatalog.Final
+            && !a.Registry.NeedsReview
+            && ids.Contains(a.RegistryId.Value));
 
     public Task<bool> IsDocumentInScopeAsync(int documentId, IReadOnlyCollection<int> entryIds, CancellationToken ct = default)
     {
@@ -227,9 +232,19 @@ public class PortalRepository : IPortalRepository
                 .Select(e => new { DocId = e.DocumentId, EntryId = e.RegistryId!.Value }))
             .ToListAsync(ct);
 
+        // ارتباطات طالب التنفيذ الاعتباري (الجهة العامة المربوطة فقط).
+        var executionApplicantPairs = await StatsBase(ids)
+            .SelectMany(d => d.ExecutionApplicants
+                .Where(a => a.RegistryId != null && a.Registry != null
+                    && a.Registry.Status == EntityStatusCatalog.Final
+                    && !a.Registry.NeedsReview
+                    && ids.Contains(a.RegistryId.Value))
+                .Select(a => new { DocId = a.DocumentId, EntryId = a.RegistryId!.Value }))
+            .ToListAsync(ct);
+
         // تمييز أزواج (ملف×قيد): الملف نفسه بتكرار صفوف لنفس القيد يُعدّ مرة واحدة،
         // بينما يُحتسب تحت كل قيد مختلف ارتبط به فعليًا (توزيع ارتباط لا تجزئة حصرية).
-        var distinctPairs = applicantPairs.Concat(executedPairs).Distinct();
+        var distinctPairs = applicantPairs.Concat(executedPairs).Concat(executionApplicantPairs).Distinct();
         var counts = new Dictionary<int, int>();
         foreach (var pair in distinctPairs)
             counts[pair.EntryId] = counts.TryGetValue(pair.EntryId, out var n) ? n + 1 : 1;
