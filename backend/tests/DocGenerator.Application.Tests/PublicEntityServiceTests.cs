@@ -2243,4 +2243,141 @@ public class PublicEntityServiceTests : IDisposable
             && ch.OldValue!.Contains("المؤسسة السورية للتجارة")
             && ch.NewValue!.Contains("هيئة التجارة الموحدة"));
     }
+
+    // ── ApplicantRegistryId = EntryId (لا GroupId) — إصلاح المواضع الخمسة في PublicEntityService ──
+
+    [Fact]
+    public async Task MoveEntry_Fold_ApplicantRegistryId_IsEntryId_NotGroupId()
+    {
+        var (g1, e1, g2, e2) = await SeedTwoGroupsSameBranchForFoldAsync();
+        var doc = await SeedApplicantDocumentAsync("وزارة التعليم", "دمشق");
+        var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
+        row.RegistryId = e1;
+        await _db.SaveChangesAsync();
+
+        await _service.MoveEntryAsync(e1, new MoveEntryRequest(null, e2, null, null, null, null), ManagerActor());
+
+        var after = await _db.Documents.AsNoTracking().Include(d => d.ApplicantPublicEntities).SingleAsync(d => d.Id == doc.Id);
+        // نسخة التسريع تُشتق من أول RegistryId غير فارغ = القيد الهدف (EntryId).
+        Assert.Equal(e2, after.ApplicantRegistryId);
+        // الصفوف حُدّثت إلى القيد الهدف.
+        Assert.Contains(after.ApplicantPublicEntities, a => a.RegistryId == e2);
+    }
+
+    [Fact]
+    public async Task MoveEntry_ModeA_ApplicantRegistryId_IsEntryId_NotGroupId()
+    {
+        var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
+        var doc = await SeedApplicantDocumentAsync("وزارة التعليم", "دمشق");
+        var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
+        row.RegistryId = e1;
+        await _db.SaveChangesAsync();
+
+        await _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, null, null, null, null), ManagerActor());
+
+        var after = await _db.Documents.AsNoTracking().Include(d => d.ApplicantPublicEntities).SingleAsync(d => d.Id == doc.Id);
+        // القيد لم يتغير معرّفه، فالاشتقاق يعيد e1 (EntryId) ولا يضع g2 (GroupId) الجديد.
+        Assert.Equal(e1, after.ApplicantRegistryId);
+        // الصفوف لم تُمس نحو قيد جديد.
+        Assert.Contains(after.ApplicantPublicEntities, a => a.RegistryId == e1);
+    }
+
+    [Fact]
+    public async Task MoveAllEntries_ApplicantRegistryId_IsEntryId_NotGroupId()
+    {
+        var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
+        var doc = await SeedApplicantDocumentAsync("وزارة التعليم", "دمشق");
+        var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
+        row.RegistryId = e1;
+        await _db.SaveChangesAsync();
+
+        await _service.MoveAllEntriesAsync(
+            new MoveAllEntriesRequest(g1, g2, null, null, null, null), ManagerActor());
+
+        var movedEntry = await _db.PublicEntities.FindAsync(e1);
+        Assert.Equal(g2, movedEntry!.GroupId);
+
+        var after = await _db.Documents.AsNoTracking().Include(d => d.ApplicantPublicEntities).SingleAsync(d => d.Id == doc.Id);
+        // القيد نفسه — Id ثابت (e1)، فقط GroupId تغير؛ الاشتقاق يعيد e1 لا g2.
+        Assert.Equal(e1, after.ApplicantRegistryId);
+    }
+
+    [Fact]
+    public async Task CommitMerge_ApplicantRegistryId_RederivedAsEntryId()
+    {
+        var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
+        var doc = await SeedApplicantDocumentAsync("مديرية الصحة", "دمشق");
+        var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
+        var absorbedEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == ag1);
+        row.RegistryId = absorbedEntry.Id;
+        await _db.SaveChangesAsync();
+
+        await _service.CommitMergeAsync(
+            new MergeCommitRequest(sg, new[] { ag1 },
+                DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
+
+        var survivorEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == sg);
+        var after = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == doc.Id);
+        // بعد الدمج الصفوف حُدّثت إلى القيد الناجي؛ الاشتقاق يعيد EntryId الناجي.
+        Assert.Equal(survivorEntry.Id, after.ApplicantRegistryId);
+    }
+
+    [Fact]
+    public async Task AbolishAndReplace_ApplicantRegistryId_IsNewParentEntryId()
+    {
+        var absorbed1 = await _service.CreateAsync(new CreatePublicEntityRequest("المؤسسة القديمة أ", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var absorbed2 = await _service.CreateAsync(new CreatePublicEntityRequest("المؤسسة القديمة ب", "authority", "حلب", "فرع حلب"), ManagerActor());
+        var doc = await SeedApplicantDocumentAsync("المؤسسة القديمة أ", "دمشق");
+        var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
+        var absorbedEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == absorbed1.GroupId);
+        row.RegistryId = absorbedEntry.Id;
+        await _db.SaveChangesAsync();
+
+        var result = await _service.AbolishAndReplaceAsync(
+            new AbolishAndReplaceRequest(
+                new[] { absorbed1.GroupId, absorbed2.GroupId },
+                "المؤسسة الجديدة", "authority", "دمشق",
+                DecreeKind: "قرار", DecreeNumber: "200", DecreeDate: "20/6/2026"), ManagerActor());
+
+        var newEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == result.NewGroupId);
+        var after = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == doc.Id);
+        // بعد الحلّ الصفوف حُدّثت إلى القيد الأم الجديد؛ الاشتقاق يعيد EntryId الجديد.
+        Assert.Equal(newEntry.Id, after.ApplicantRegistryId);
+    }
+
+    [Fact]
+    public async Task MoveEntry_DocumentWithoutApplicantLink_ApplicantRegistryId_StaysNull()
+    {
+        var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
+        // ملف applicant مرتبط للتحقق من عدم كسر المسار (إسقاط مسار المقارنة).
+        var linked = await SeedApplicantDocumentAsync("وزارة التعليم", "دمشق");
+        var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == linked.Id);
+        row.RegistryId = e1;
+        await _db.SaveChangesAsync();
+
+        // ملف executed بلا أي ApplicantPublicEntities (لا ربط سجلي).
+        var unlinked = new Document
+        {
+            BranchId = _damascusId,
+            CreatedById = _lawyerId,
+            IsDraft = false,
+            BorrowerName = "شركة المباني",
+            AmountNumeric = 0,
+            ExecStatus = string.Empty,
+            GeneralEntitySide = "executed",
+        };
+        unlinked.Applicant = "جهة منفذ عليها";
+        _db.Documents.Add(unlinked);
+        await _db.SaveChangesAsync();
+
+        await _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, null, null, null, null), ManagerActor());
+
+        // الملف بلا ربط يبقى ApplicantRegistryId = null، ولا يُكتب GroupId.
+        var unlinkedAfter = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == unlinked.Id);
+        Assert.Null(unlinkedAfter.ApplicantRegistryId);
+
+        // الملف المرتبط يُصحَّح إلى EntryId (تكافؤ مع Apply).
+        var linkedAfter = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == linked.Id);
+        Assert.Equal(e1, linkedAfter.ApplicantRegistryId);
+    }
 }
