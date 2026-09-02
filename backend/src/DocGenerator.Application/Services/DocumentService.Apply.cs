@@ -853,11 +853,9 @@ public sealed partial class DocumentService
         if (!string.IsNullOrWhiteSpace(applicantText) || string.IsNullOrWhiteSpace(doc.Applicant))
             doc.Applicant = applicantText;
 
-        // نسخة تسريع لفلترة جهة الطالب في البوابة: أول ربط سجلي غير فارغ بين صفوف الجهات،
-        // وتُصفَّر تلقائيًا حين تفرغ القائمة أو يزول الربط.
-        doc.ApplicantRegistryId = doc.ApplicantPublicEntities
-            .Select(a => a.RegistryId)
-            .FirstOrDefault(id => id.HasValue);
+        // نسخة تسريع لفلترة جهة الطالب في البوابة: اشتقاق موحّد من صفوف الجهات نفسها
+        // (أول ربط سجلي غير فارغ)، وتُصفَّر تلقائيًا حين تفرغ القائمة أو يزول الربط.
+        doc.ApplicantRegistryId = ApplicantRegistryIdDeriver.Derive(doc);
 
         if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
         {

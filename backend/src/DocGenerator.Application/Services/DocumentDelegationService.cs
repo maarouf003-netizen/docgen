@@ -699,9 +699,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
                 Governorate = e.Governorate,
                 RegistryId = e.RegistryId,
             });
-        target.ApplicantRegistryId = target.ApplicantPublicEntities
-            .Select(a => a.RegistryId)
-            .FirstOrDefault(id => id.HasValue);
+        target.ApplicantRegistryId = ApplicantRegistryIdDeriver.Derive(target);
     }
 
     private static void CopyBorrower(Document source, Document target)

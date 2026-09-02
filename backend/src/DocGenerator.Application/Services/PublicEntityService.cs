@@ -1299,9 +1299,7 @@ public sealed class PublicEntityService : IPublicEntityService
                         e.RegistryId = targetEntryId;
                     foreach (var ea in doc.ExecutionApplicants.Where(ea => ea.RegistryId == entryId))
                         ea.RegistryId = targetEntryId;
-                    doc.ApplicantRegistryId = doc.ApplicantPublicEntities
-                        .Select(a => a.RegistryId)
-                        .FirstOrDefault(id => id.HasValue);
+                    doc.ApplicantRegistryId = ApplicantRegistryIdDeriver.Derive(doc);
                 }
                 affectedDocs = linkedDocs.Count;
 
@@ -1361,9 +1359,7 @@ public sealed class PublicEntityService : IPublicEntityService
                 affectedDocIds.AddRange(linkedDocs.Select(d => d.Id));
                 affectedDocs = linkedDocs.Count;
                 foreach (var doc in linkedDocs)
-                    doc.ApplicantRegistryId = doc.ApplicantPublicEntities
-                        .Select(a => a.RegistryId)
-                        .FirstOrDefault(id => id.HasValue);
+                    doc.ApplicantRegistryId = ApplicantRegistryIdDeriver.Derive(doc);
                 await SyncTextsAfterFoldAsync(linkedDocs, actor.Name, token);
             }
 
@@ -1488,9 +1484,7 @@ public sealed class PublicEntityService : IPublicEntityService
                 totalAffectedDocs += linkedDocs.Count;
                 affectedDocIds.AddRange(linkedDocs.Select(d => d.Id));
                 foreach (var doc in linkedDocs)
-                    doc.ApplicantRegistryId = doc.ApplicantPublicEntities
-                        .Select(a => a.RegistryId)
-                        .FirstOrDefault(id => id.HasValue);
+                    doc.ApplicantRegistryId = ApplicantRegistryIdDeriver.Derive(doc);
 
                 entriesMoved++;
             }
@@ -1758,9 +1752,7 @@ public sealed class PublicEntityService : IPublicEntityService
                             e.RegistryId = targetEntry.Id;
                         foreach (var ea in doc.ExecutionApplicants.Where(ea => ea.RegistryId == ae.Id))
                             ea.RegistryId = targetEntry.Id;
-                        doc.ApplicantRegistryId = doc.ApplicantPublicEntities
-                            .Select(a => a.RegistryId)
-                            .FirstOrDefault(id => id.HasValue);
+                        doc.ApplicantRegistryId = ApplicantRegistryIdDeriver.Derive(doc);
                     }
 
                     // إيقاف القيد المُدمَج
@@ -2485,9 +2477,7 @@ public sealed class PublicEntityService : IPublicEntityService
                             ea.RegistryId = newParentEntry.Id;
                             ea.Name = newCanonical;
                         }
-                        doc.ApplicantRegistryId = doc.ApplicantPublicEntities
-                            .Select(a => a.RegistryId)
-                            .FirstOrDefault(id => id.HasValue);
+                        doc.ApplicantRegistryId = ApplicantRegistryIdDeriver.Derive(doc);
                         if (!affectedDocsById.ContainsKey(doc.Id))
                             affectedDocsById[doc.Id] = doc;
                         await _occurrences.AddAsync(new DocumentOccurrence
