@@ -596,10 +596,30 @@ public class DatabaseInitializerTests
         }
     }
 
+    // قائمة بيضاء بالجداول المسموح فحصها في الاختبار؛ تُقيَّد بها أسماء الجداول قبل
+    // ضمّها نصيًا في استعلام pragma_table_info (الذي لا يقبل معامَلَين مرتبطين لاسم الجدول)
+    // لضمان عدم وجود أي حقن SQL عبر المتغير table.
+    private static readonly HashSet<string> AllowedTables =
+        new(StringComparer.Ordinal)
+        {
+            "DocumentDelegations",
+            "DelegationAssets",
+        };
+
+    // دالة مساعدة للاختبار تتحقق من وجود عمود Id في جدول SQLite عبر pragma_table_info.
+    // pragma_table_info لا يقبل معامَلَين مرتبطين لاسم الجدول في SQLite، ولذلك يُضمَّن
+    // الاسم نصيًا في الاستعلام، مع تقييده مسبقًا بقائمة بيضاء للجداول المعروفة
+    // (منعًا لأي حقن SQL عبر بناء السلسلة). ولذلك يُسكَت تحذيرا EF1002/EF1003 هنا بشكل موضعي
+    // ومبرَّر بعد ضمان أمن الاسم من القائمة البيضاء.
+#pragma warning disable EF1002, EF1003 // مبرَّر: اسم الجدول مُقيَّد بقائمة بيضاء ولا يُبنى من مدخل مستخدم
     private static async Task<bool> TableExistsAsync(DocGeneratorDbContext db, string table)
     {
+        if (!AllowedTables.Contains(table))
+            throw new ArgumentException($"اسم جدول غير مسموح في فحص الاختبار: {table}", nameof(table));
+
         var found = await db.Database.SqlQueryRaw<string>(
-            "SELECT name AS Value FROM pragma_table_info('" + table + "') WHERE name = 'Id'").AnyAsync();
+            $"SELECT name AS Value FROM pragma_table_info('{table}') WHERE name = 'Id'").AnyAsync();
         return found;
     }
+#pragma warning restore EF1002, EF1003
 }

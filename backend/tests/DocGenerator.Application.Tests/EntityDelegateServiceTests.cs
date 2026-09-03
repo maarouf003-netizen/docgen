@@ -83,7 +83,7 @@ public class EntityDelegateServiceTests : IDisposable
 
         // التطبيع يوحّد حالة الأحرف فيكشف التكرار.
         Assert.Contains("بنفس اسم الدخول", ex.Message);
-        Assert.Equal(1, (await _service.ListAsync()).Count);
+        Assert.Single(await _service.ListAsync());
     }
 
     [Fact]

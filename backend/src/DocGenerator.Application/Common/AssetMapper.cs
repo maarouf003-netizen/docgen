@@ -9,7 +9,7 @@ namespace DocGenerator.Application.Common;
 public static class AssetMapper
 {
 
-    public static List<AssetOwner> NormalizeOwners(IEnumerable<string>? owners)
+    public static List<AssetOwner> NormalizeOwners(IEnumerable<string?>? owners)
     {
         var result = new List<AssetOwner>();
         if (owners is null)

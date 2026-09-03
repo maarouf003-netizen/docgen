@@ -393,6 +393,7 @@ public class PublicEntityServiceTests : IDisposable
 
         var updated = await _service.UpdateAsync(entry.Id,
             new UpdatePublicEntityRequest("وزارة المواصلات", null, null, null, null, null, null), headDamascus);
+        Assert.NotNull(updated);
 
         Assert.Equal("وزارة المواصلات", updated.CanonicalName);
     }
@@ -417,6 +418,7 @@ public class PublicEntityServiceTests : IDisposable
             _service.AddAliasAsync(entry.Id, new AddPublicEntityAliasRequest("وزاره التعليم"), ManagerActor()));
 
         var updated = await _service.AddAliasAsync(entry.Id, new AddPublicEntityAliasRequest("التعليم العالي"), ManagerActor());
+        Assert.NotNull(updated);
 
         Assert.Contains("التعليم العالي", updated.Aliases);
     }
@@ -530,6 +532,7 @@ public class PublicEntityServiceTests : IDisposable
 
         var updated = await _service.UpdateAsync(dto.Id,
             new UpdatePublicEntityRequest("هيئة الري المحدثة", null, null, null, null, null, null), headDamascus);
+        Assert.NotNull(updated);
 
         Assert.Equal("هيئة الري المحدثة", updated.CanonicalName);
     }
@@ -545,6 +548,7 @@ public class PublicEntityServiceTests : IDisposable
 
         var edited = await _service.UpdateAsync(dto.Id,
             new UpdatePublicEntityRequest("هيئة السوق المركزية", null, null, null, null, null, null), headDamascus);
+        Assert.NotNull(edited);
 
         Assert.Equal("هيئة السوق المركزية", edited.CanonicalName);
         Assert.False(edited.NeedsReview);
@@ -990,7 +994,7 @@ public class PublicEntityServiceTests : IDisposable
         var preview = await _service.PreviewMergeAsync(new MergePreviewRequest(sg, new[] { ag1, ag2 }));
 
         Assert.Equal(2, preview.AbsorbedGroups.Count);
-        Assert.Equal(0, preview.Warnings.Count);
+        Assert.Empty(preview.Warnings);
         Assert.True(preview.TotalAffectedDocuments >= 0);
     }
 
