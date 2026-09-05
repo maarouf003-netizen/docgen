@@ -195,14 +195,16 @@ public record MergeCommitResponse(
 
 // ── قائمة المجموعات (الهويات الأم) — للعرض المستقل وتوحيد التسمية N←1 ──
 
-/// <summary>مجموعة (هوية أم) مع عدّادات قيودها ومحافظاتها — مصدرها PublicEntityGroup.</summary>
+/// <summary>مجموعة (هوية أم) مع عدّادات قيودها ومحافظاتها وملفاتها المرتبطة — مصدرها PublicEntityGroup.</summary>
 public record PublicEntityGroupDto(
     int GroupId,
     string CanonicalName,
     string EntityType,
     bool IsActive,
     int EntryCount,
-    IReadOnlyList<string> Governorates);
+    IReadOnlyList<string> Governorates,
+    /// <summary>عدد الملفات المرتبطة بقيود هذه المجموعة عبر RegistryId (ثلاثي: طالبة/منفذ عليها/طالب تنفيذ).</summary>
+    int LinkedDocumentCount);
 
 /// <summary>استعلام قائمة المجموعات مع بحث وترقيم.</summary>
 public record EntityGroupListQuery(
@@ -210,7 +212,51 @@ public record EntityGroupListQuery(
     string? Governorate,
     int Page = 1,
     int PerPage = 20,
-    IReadOnlyList<int>? ExcludeIds = null);
+    IReadOnlyList<int>? ExcludeIds = null,
+    /// <summary>معرّفات مجموعات يجب ضمان ظهورها في النتيجة مهما كانت أماميتها في الفرز/الترقيم
+    /// (تُستخدم لنافذة توحيد التسمية لضمان تواجد «الهوية الهدف» السابقة الاختيار في القائمة).</summary>
+    IReadOnlyList<int>? IncludeIds = null);
+
+// ── المجموعات المتشابهة ومشابهات جهة محددة (توحيد التسمية) ──
+
+/// <summary>جهة ضمن مجموعة متشابهة، مع عدّاد ملفاتها.</summary>
+public record SimilarGroupItemDto(
+    int GroupId,
+    string CanonicalName,
+    string EntityType,
+    int EntryCount,
+    int LinkedDocumentCount,
+    /// <summary>متوسط التشابه لهذه الجهة تجاه بقية أفراد مجموعتها.</summary>
+    double AvgSimilarityToCluster);
+
+/// <summary>مجموعة متشابهة (بيئة Union-Find) تضم جهات متقاربة في الاسم.</summary>
+public record SimilarGroupClusterDto(
+    int ClusterId,
+    double AvgSimilarity,
+    IReadOnlyList<SimilarGroupItemDto> Groups);
+
+/// <summary>نتيجة عرض المجموعات المتشابهة في تبويب «المجموعات المتشابهة».</summary>
+public record SimilarGroupsResponse(
+    IReadOnlyList<SimilarGroupClusterDto> Clusters,
+    int TotalGroupsAnalyzed,
+    double Threshold);
+
+/// <summary>اقتراح جهة مشابهة لجهة محددة (تبويب «كافة الجهات» عند تحديد جهة واحدة).</summary>
+public record SimilarToItemDto(
+    int GroupId,
+    string CanonicalName,
+    string EntityType,
+    int EntryCount,
+    int LinkedDocumentCount,
+    double Similarity);
+
+/// <summary>نتيجة البحث عن مشابهات لجهة محددة.</summary>
+public record SimilarToResponse(
+    int TargetGroupId,
+    string TargetCanonicalName,
+    IReadOnlyList<SimilarToItemDto> Items,
+    double Threshold);
+
 
 // ── توحيد التسمية N←1 (المدير/المشرف — بلا هجرة روابط ملفات) ──
 

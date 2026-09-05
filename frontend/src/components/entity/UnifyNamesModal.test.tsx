@@ -46,6 +46,16 @@ describe('UnifyNamesModal', () => {
     expect(select.value).toBe('2');
   });
 
+  it('يرسل includeIds للهوية الهدف السابقة الاختيار ليضمن حضورها مهما كان ترتيبها', async () => {
+    render(<UnifyNamesModal onClose={vi.fn()} onCommitted={vi.fn()} initialGroupId={99} />);
+
+    await screen.findByText('وزارة النقل');
+    expect(api.get).toHaveBeenCalledWith(
+      '/entity-registry/groups',
+      expect.objectContaining({ params: expect.objectContaining({ includeIds: '99' }) }),
+    );
+  });
+
   it('يعرض زر المعاينة بعد اختيار الهدف والممتصة', async () => {
     const user = userEvent.setup();
     render(<UnifyNamesModal onClose={vi.fn()} onCommitted={vi.fn()} />);
@@ -104,7 +114,7 @@ describe('UnifyNamesModal', () => {
     expect(onCommitted).toHaveBeenCalledWith(expect.stringContaining('تم توحيد'));
   });
 
-  it('يعرض تنبيه عدم حفظ الأسماء القديمة كبدائل', async () => {
+  it('يعرض إشعار حفظ الأسماء القديمة كأسماء بديلة للبحث فقط', async () => {
     const user = userEvent.setup();
     (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       data: { targetName: 'وزارة النقل', absorbedGroups: [{ groupId: 2, name: 'وزاره النقل', entryCount: 1, governorates: ['حمص'] }], totalEntriesToMove: 1, warnings: [] },
@@ -116,6 +126,68 @@ describe('UnifyNamesModal', () => {
     await user.click(screen.getAllByRole('checkbox')[0]);
     await user.click(screen.getByRole('button', { name: 'معاينة التوحيد' }));
 
-    expect(await screen.findByText(/لن تُحفظ كأسماء بديلة/)).toBeInTheDocument();
+    expect(await screen.findByText(/للبحث فقط/)).toBeInTheDocument();
+  });
+
+  it('يحدّد الممتصة مسبقًا عند تمرير initialAbsorbedIds ويستبعد الغائبة والهدف', async () => {
+    render(
+      <UnifyNamesModal
+        onClose={vi.fn()}
+        onCommitted={vi.fn()}
+        initialGroupId={1}
+        initialAbsorbedIds={[2, 99, 1]}
+      />,
+    );
+
+    await screen.findByText('وزارة التعليم');
+    // الممتصة المتاحة تستثني الهدف (1) فيبقى مربعا «وزاره النقل» و«وزارة التعليم»
+    const checkboxes = screen.getAllByRole('checkbox');
+    const label2 = screen
+      .getAllByText(/وزاره النقل/)
+      .map((el) => el.closest('label') as HTMLLabelElement | null)
+      .find((lb) => lb?.querySelector('input'))!;
+    const input2 = label2.querySelector('input') as HTMLInputElement;
+    await waitFor(() => expect(input2.checked).toBe(true));
+    // الغائب (99) والهدف (1) لا يُعلَّمان؛ والممتصة المتاحة اثنتان فقط
+    expect(checkboxes.length).toBe(2);
+  });
+
+  it('يرسل includeIds يشمل الممتصة المسبقة لضمان حضورها في القائمة', async () => {
+    render(
+      <UnifyNamesModal
+        onClose={vi.fn()}
+        onCommitted={vi.fn()}
+        initialGroupId={1}
+        initialAbsorbedIds={[2]}
+      />,
+    );
+
+    await screen.findByText('وزارة التعليم');
+    expect(api.get).toHaveBeenCalledWith(
+      '/entity-registry/groups',
+      expect.objectContaining({ params: expect.objectContaining({ includeIds: '1,2' }) }),
+    );
+  });
+
+  it('يستبعد المجموعات الممتصة من قائمة الهوية الهدف (يمنع توحيد هوية مع نفسها)', async () => {
+    const user = userEvent.setup();
+    render(<UnifyNamesModal onClose={vi.fn()} onCommitted={vi.fn()} />);
+
+    await screen.findByText('وزارة النقل');
+    let targetSelect = screen.getByLabelText('الهوية الهدف (يبقى اسمها)') as HTMLSelectElement;
+    expect([...targetSelect.options].some((o) => o.value === '3')).toBe(true);
+
+    // تمييز المجموعة 3 كممتصة
+    const label3 = screen
+      .getAllByText(/وزارة التعليم/)
+      .map((el) => el.closest('label') as HTMLLabelElement | null)
+      .find((lb) => lb?.querySelector('input'))!;
+    const input3 = label3.querySelector('input') as HTMLInputElement;
+    await user.click(input3);
+    expect(input3.checked).toBe(true);
+
+    // لم تعد «وزارة التعليم» (3) هدفًا ممكنًا لأنها أصبحت ممتصة
+    targetSelect = screen.getByLabelText('الهوية الهدف (يبقى اسمها)') as HTMLSelectElement;
+    expect([...targetSelect.options].some((o) => o.value === '3')).toBe(false);
   });
 });

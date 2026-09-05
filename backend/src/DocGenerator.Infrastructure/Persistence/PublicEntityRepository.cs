@@ -197,4 +197,40 @@ public class PublicEntityRepository : IPublicEntityRepository
             .Include(c => c.Group)
             .OrderByDescending(c => c.CreatedAtUtc)
             .ToListAsync(ct);
+
+    public async Task<Dictionary<int, int>> CountLinkedDocumentsByGroupIdsAsync(
+        IReadOnlyCollection<int> groupIds, CancellationToken ct = default)
+    {
+        var ids = groupIds.Distinct().ToList();
+        if (ids.Count == 0)
+            return new Dictionary<int, int>();
+
+        // كل صف ربط يحدد groupId عبر قيد الجهة (PublicEntities.GroupId) — نجمع عدّاد الملفات
+        // المميّزة لكل مجموعة من جداول الطرف الثلاثة دفعة واحدة. تُترجم شرط Contains إلى IN في SQL.
+        var applicantGroupDocs = await _db.ApplicantPublicEntities.AsNoTracking()
+            .Where(a => a.RegistryId != null && ids.Contains(a.Registry!.GroupId))
+            .Select(a => new { a.DocumentId, a.Registry!.GroupId })
+            .ToListAsync(ct);
+        var executedGroupDocs = await _db.ExecutedPublicEntities.AsNoTracking()
+            .Where(e => e.RegistryId != null && ids.Contains(e.Registry!.GroupId))
+            .Select(e => new { e.DocumentId, e.Registry!.GroupId })
+            .ToListAsync(ct);
+        var executionApplicantGroupDocs = await _db.ExecutionApplicants.AsNoTracking()
+            .Where(x => x.RegistryId != null && ids.Contains(x.Registry!.GroupId))
+            .Select(x => new { x.DocumentId, x.Registry!.GroupId })
+            .ToListAsync(ct);
+
+        var countsByGroup = ids.ToDictionary(id => id, _ => new HashSet<int>());
+        foreach (var row in applicantGroupDocs)
+            if (countsByGroup.TryGetValue(row.GroupId, out var set))
+                set.Add(row.DocumentId);
+        foreach (var row in executedGroupDocs)
+            if (countsByGroup.TryGetValue(row.GroupId, out var set))
+                set.Add(row.DocumentId);
+        foreach (var row in executionApplicantGroupDocs)
+            if (countsByGroup.TryGetValue(row.GroupId, out var set))
+                set.Add(row.DocumentId);
+
+        return countsByGroup.ToDictionary(kv => kv.Key, kv => kv.Value.Count);
+    }
 }

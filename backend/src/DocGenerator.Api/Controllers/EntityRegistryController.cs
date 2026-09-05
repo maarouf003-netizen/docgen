@@ -253,21 +253,26 @@ public class EntityRegistryController : ControllerBase
         [FromQuery] string? q,
         [FromQuery] string? governorate,
         [FromQuery] string? excludeIds,
+        [FromQuery] string? includeIds,
         [FromQuery] int page = 1,
         [FromQuery] int perPage = 20,
         CancellationToken ct = default)
     {
         if (!RolePermissions.CanManageEntityRegistry(Role))
             return Forbid();
-        var excl = string.IsNullOrWhiteSpace(excludeIds)
+        var excl = ParseIdList(excludeIds);
+        var incl = ParseIdList(includeIds);
+        return Ok(await _registry.ListGroupsAsync(new EntityGroupListQuery(q, governorate, page, perPage, excl, incl), Actor, ct));
+    }
+
+    private static List<int>? ParseIdList(string? raw)
+        => string.IsNullOrWhiteSpace(raw)
             ? null
-            : excludeIds.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            : raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Select(s => int.TryParse(s, out var v) ? v : (int?)null)
                 .Where(v => v.HasValue)
                 .Select(v => v!.Value)
                 .ToList();
-        return Ok(await _registry.ListGroupsAsync(new EntityGroupListQuery(q, governorate, page, perPage, excl), Actor, ct));
-    }
 
     /// <summary>قيود مجموعة واحدة — لرئيس القسم (محافظته فقط) وإدارة الفروع.</summary>
     [HttpGet("groups/{groupId:int}/entries")]
@@ -278,6 +283,31 @@ public class EntityRegistryController : ControllerBase
         try
         {
             return Ok(await _registry.ListEntriesByGroupAsync(groupId, Actor, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+    }
+
+    /// <summary>المجموعات المتشابهة (كشف Union-Find) لتبويب «المجموعات المتشابهة» — المدير/المشرف فقط.</summary>
+    [HttpGet("groups/similar-groups")]
+    public async Task<IActionResult> SimilarGroups([FromQuery] double? threshold, CancellationToken ct)
+    {
+        if (!RolePermissions.HasFullAccess(Role))
+            return Forbid();
+        return Ok(await _registry.GetSimilarGroupsAsync(threshold ?? 0, ct));
+    }
+
+    /// <summary>أقرب المشابهات لجهة محددة (تبويب «كافة الجهات» عند تحديد جهة واحدة) — المدير/المشرف فقط.</summary>
+    [HttpGet("groups/{groupId:int}/similar-to")]
+    public async Task<IActionResult> SimilarTo(int groupId, [FromQuery] double? threshold, [FromQuery] int? maxResults, CancellationToken ct)
+    {
+        if (!RolePermissions.HasFullAccess(Role))
+            return Forbid();
+        try
+        {
+            return Ok(await _registry.FindSimilarToGroupAsync(groupId, threshold ?? 0, maxResults ?? 0, ct));
         }
         catch (ArgumentException e)
         {

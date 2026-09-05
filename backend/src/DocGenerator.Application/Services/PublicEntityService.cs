@@ -65,6 +65,12 @@ public interface IPublicEntityService
     /// <summary>قائمة المجموعات (الهويات الأم) مع ترقيم وبحث — للعرض المستقل وتوحيد التسمية/إدارة الفروع.</summary>
     Task<PagedResult<PublicEntityGroupDto>> ListGroupsAsync(EntityGroupListQuery query, EntityRegistryActor actor, CancellationToken ct = default);
 
+    /// <summary>المجموعات المتشابهة (كشف Union-Find) لتبويب «المجموعات المتشابهة» في توحيد التسمية.</summary>
+    Task<SimilarGroupsResponse> GetSimilarGroupsAsync(double threshold, CancellationToken ct = default);
+
+    /// <summary>أقرب المشابهات لجهة محددة (تبويب «كافة الجهات» عند تحديد جهة واحدة).</summary>
+    Task<SimilarToResponse> FindSimilarToGroupAsync(int groupId, double threshold, int maxResults, CancellationToken ct = default);
+
     /// <summary>معاينة توحيد التسمية N←1 (المدير/المشرف — بلا هجرة ملفات).</summary>
     Task<UnifyNamesPreviewResponse> PreviewUnifyAsync(UnifyNamesPreviewRequest request, CancellationToken ct = default);
 
@@ -189,6 +195,11 @@ public sealed class PublicEntityService : IPublicEntityService
         var excludeIds = query.ExcludeIds is null
             ? new HashSet<int>()
             : new HashSet<int>(query.ExcludeIds.Distinct());
+        // معرّفات يجب ضمان ظهورها في النتيجة مهما كانت ترتيبها/صفحتها
+        // (تُستخدم لنافذة توحيد التسمية لضمان تواجد «الهوية الهدف» السابقة الاختيار).
+        var includeIds = query.IncludeIds is null
+            ? new HashSet<int>()
+            : new HashSet<int>(query.IncludeIds.Distinct());
 
         // نطاق رئيس القسم: محافظة فرعه فقط — بلا فرع/محافظة لا يُعرض شيء
         string? headGovernorate = null;
@@ -220,27 +231,47 @@ public sealed class PublicEntityService : IPublicEntityService
         var pageItems = filtered
             .Skip((page - 1) * perPage)
             .Take(perPage)
-            .Select(g =>
-            {
-                var scoped = g.Entries.Where(e => e.IsActive);
-                if (isHead) scoped = scoped.Where(e => e.Governorate == headGovernorate);
-                var scopedList = scoped.ToList();
-                return new PublicEntityGroupDto(
-                    g.Id,
-                    g.CanonicalName,
-                    g.EntityType,
-                    g.IsActive,
-                    scopedList.Count,
-                    scopedList.Select(e => e.Governorate).Distinct(StringComparer.Ordinal).OrderBy(x => x, StringComparer.Ordinal).ToList());
-            })
             .ToList();
+
+        // ضمان تواجد الهويات المطلوبة (IncludeIds) في النتيجة حتى لو كانت خارج نطاق الصفحة
+        // الحالية بسبب الفرز/الترقيم — بشرط أن تكون مرّت من نفس الفلاتر (نشطة، نطاق، بحث).
+        if (includeIds.Count > 0)
+        {
+            var included = filtered.Where(g => includeIds.Contains(g.Id)).ToList();
+            if (included.Count > 0)
+            {
+                var presentIds = new HashSet<int>(pageItems.Select(g => g.Id));
+                pageItems = pageItems
+                    .Concat(included.Where(g => !presentIds.Contains(g.Id)))
+                    .OrderBy(g => g.CanonicalName, StringComparer.Ordinal)
+                    .ToList();
+            }
+        }
+
+        var pageGroupIds = pageItems.Select(g => g.Id).ToList();
+        var linkedCounts = await _entities.CountLinkedDocumentsByGroupIdsAsync(pageGroupIds, ct);
+
+        var dtos = pageItems.Select(g =>
+        {
+            var scoped = g.Entries.Where(e => e.IsActive);
+            if (isHead) scoped = scoped.Where(e => e.Governorate == headGovernorate);
+            var scopedList = scoped.ToList();
+            return new PublicEntityGroupDto(
+                g.Id,
+                g.CanonicalName,
+                g.EntityType,
+                g.IsActive,
+                scopedList.Count,
+                scopedList.Select(e => e.Governorate).Distinct(StringComparer.Ordinal).OrderBy(x => x, StringComparer.Ordinal).ToList(),
+                linkedCounts.TryGetValue(g.Id, out var count) ? count : 0);
+        }).ToList();
 
         return new PagedResult<PublicEntityGroupDto>
         {
             Page = page,
             PerPage = perPage,
             TotalCount = totalCount,
-            Items = pageItems,
+            Items = dtos,
         };
     }
 
@@ -270,6 +301,104 @@ public sealed class PublicEntityService : IPublicEntityService
             .ThenBy(e => e.BranchName, StringComparer.Ordinal)
             .Select(e => ToEntryDto(group, e))
             .ToList();
+    }
+
+    /// <inheritdoc/>
+    public async Task<SimilarGroupsResponse> GetSimilarGroupsAsync(double threshold, CancellationToken ct = default)
+    {
+        var t = threshold <= 0 ? ArabicNameSimilarity.DefaultClusterThreshold : Math.Clamp(threshold, 0, 1);
+        var groups = await _entities.ListGroupsWithEntriesAsync(ct);
+        var active = groups.Where(g => g.IsActive).ToList();
+
+        var clusters = ArabicNameSimilarity.ClusterGroups(groups, t);
+        var allClusterIds = clusters.SelectMany(c => c.Select(g => g.Id)).Distinct().ToList();
+        var linkedCounts = await _entities.CountLinkedDocumentsByGroupIdsAsync(allClusterIds, ct);
+
+        var clusterDtos = new List<SimilarGroupClusterDto>();
+        int clusterIndex = 0;
+        foreach (var cluster in clusters)
+        {
+            var items = cluster.Select(g =>
+            {
+                var entryCount = g.Entries.Count(e => e.IsActive);
+                // متوسط التشابه لهذه الجهة تجاه باقي أفراد مجموعتها.
+                double itemAvg = 0;
+                if (cluster.Count >= 2)
+                {
+                    double sum = 0;
+                    int count = 0;
+                    foreach (var other in cluster)
+                    {
+                        if (other.Id == g.Id)
+                            continue;
+                        sum += ArabicNameSimilarity.Similarity(g.CanonicalName, other.CanonicalName);
+                        count++;
+                    }
+                    itemAvg = count == 0 ? 0 : sum / count;
+                }
+                return new SimilarGroupItemDto(
+                    g.Id,
+                    g.CanonicalName,
+                    g.EntityType,
+                    entryCount,
+                    linkedCounts.TryGetValue(g.Id, out var c) ? c : 0,
+                    Math.Round(itemAvg, 3));
+            }).ToList();
+
+            // متوسط التشابه لبيئة التجمع.
+            double clusterAvg = 0;
+            if (cluster.Count >= 2)
+            {
+                double sum = 0;
+                int pairCount = 0;
+                for (int i = 0; i < cluster.Count; i++)
+                    for (int j = i + 1; j < cluster.Count; j++)
+                    {
+                        sum += ArabicNameSimilarity.Similarity(cluster[i].CanonicalName, cluster[j].CanonicalName);
+                        pairCount++;
+                    }
+                clusterAvg = pairCount == 0 ? 0 : sum / pairCount;
+            }
+
+            clusterDtos.Add(new SimilarGroupClusterDto(++clusterIndex, Math.Round(clusterAvg, 3), items));
+        }
+
+        return new SimilarGroupsResponse(clusterDtos, active.Count, t);
+    }
+
+    /// <inheritdoc/>
+    public async Task<SimilarToResponse> FindSimilarToGroupAsync(int groupId, double threshold, int maxResults, CancellationToken ct = default)
+    {
+        var target = await _entities.GetGroupAsync(groupId, ct)
+            ?? throw new ArgumentException("المجموعة غير موجودة");
+        if (!target.IsActive)
+            throw new ArgumentException("المجموعة غير نشطة");
+
+        var t = threshold <= 0 ? ArabicNameSimilarity.DefaultSimilarToThreshold : Math.Clamp(threshold, 0, 1);
+        var max = maxResults <= 0 ? ArabicNameSimilarity.DefaultMaxSimilarResults : Math.Min(maxResults, 50);
+        var groups = await _entities.ListGroupsWithEntriesAsync(ct);
+
+        var ranked = groups
+            .Where(g => g.IsActive && g.Id != groupId)
+            .Select(g => (Group: g, Sim: ArabicNameSimilarity.Similarity(target.CanonicalName, g.CanonicalName)))
+            .Where(x => x.Sim >= t)
+            .OrderByDescending(x => x.Sim)
+            .ThenBy(x => x.Group.CanonicalName, StringComparer.Ordinal)
+            .Take(max)
+            .ToList();
+
+        var ids = ranked.Select(r => r.Group.Id).ToList();
+        var linkedCounts = await _entities.CountLinkedDocumentsByGroupIdsAsync(ids, ct);
+
+        var items = ranked.Select(r => new SimilarToItemDto(
+            r.Group.Id,
+            r.Group.CanonicalName,
+            r.Group.EntityType,
+            r.Group.Entries.Count(e => e.IsActive),
+            linkedCounts.TryGetValue(r.Group.Id, out var c) ? c : 0,
+            Math.Round(r.Sim, 3))).ToList();
+
+        return new SimilarToResponse(target.Id, target.CanonicalName, items, t);
     }
 
     /// <inheritdoc/>
@@ -1695,6 +1824,7 @@ public sealed class PublicEntityService : IPublicEntityService
             var totalAffectedDocs = 0;
             var affectedDocsById = new Dictionary<int, Document>();
             var branchMap = new List<object>();
+            var entryTargetByAbsorbed = new Dictionary<int, int>();
             var absorbedNames = new List<string>();
 
             // حفظ الاسم القديم للناجي اسمًا بديلًا (حجّة قانونية) على كل قيوده النشطة،
@@ -1735,6 +1865,9 @@ public sealed class PublicEntityService : IPublicEntityService
                         .FirstOrDefault(se => se.Governorate == ae.Governorate && se.BranchName == ae.BranchName);
 
                     var targetEntry = matchedSurvivor ?? activeSurvivorEntries.First();
+                    // خريطة طيّ القيد الممتصّ إلى قيد الناجي (فرعًا بفرع)، تُستخدم لاحقًا
+                    // لترحيل مندوبي القيود إلى نِسَبهم الفرعية الصحيحة بدل طيّهم على أول قيد.
+                    entryTargetByAbsorbed[ae.Id] = targetEntry.Id;
 
                     // ترحيل روابط RegistryId
                     var linkedDocs = await _entities.ListDocumentsLinkedToEntryAsync(ae.Id, token);
@@ -1781,6 +1914,28 @@ public sealed class PublicEntityService : IPublicEntityService
                         aliasesAdded++;
                     }
 
+                    // ترحيل الأسماء البديلة السابقة للقيد الممتصّ (المُلغى فعليًا) إلى القيد
+                    // الهدف كأسماء «للبحث فقط». إذ إن إلغاء القيد الممتصّ يسلبه أسماءه البديلة
+                    // الموجودة مسبقًا (التي أضافها المستخدمون سابقًا) فلا يعود البحث يجدها؛
+                    // بترحيلها إلى الهدف يظل البحث بالاسم القديم البديل يجد الجهة بعد الدمج
+                    // (مواءمة سلوك إعادة التسمية والوحدة 7-هـ/7-و). تُستثنى الأسماء المكررة
+                    // والاسم المعياري والاسم الكامل المُعالجان أعلاه.
+                    foreach (var priorAlias in ae.Aliases)
+                    {
+                        var priorNorm = ArabicNameNormalizer.Normalize(priorAlias.AliasText);
+                        if (priorNorm.Length == 0
+                            || priorNorm == normalizedEntry
+                            || priorNorm == normalizedFull
+                            || targetEntry.Aliases.Any(a => ArabicNameNormalizer.Normalize(a.AliasText) == priorNorm))
+                            continue;
+                        targetEntry.Aliases.Add(new PublicEntityAlias
+                        {
+                            PublicEntityId = targetEntry.Id,
+                            AliasText = priorAlias.AliasText,
+                        });
+                        aliasesAdded++;
+                    }
+
                     branchMap.Add(new
                     {
                         absorbedEntryId = ae.Id,
@@ -1799,8 +1954,6 @@ public sealed class PublicEntityService : IPublicEntityService
                 absorbedGroupsProcessed++;
             }
 
-            totalAffectedDocs = affectedDocsById.Count;
-
             // مزامنة النصوص على مستوى المجموعة (تعويض): يُستبدل كل اسم قديم — أسماء الجهات
             // المُدمجة واسم الناجي السابق إن تغيّر — بالاسم النهائي عبر كل الملفات المرتبطة،
             // بما فيها الملفات المربوطة بقيود الناجي نفسها (مواءمة 7-هـ و7-و).
@@ -1818,6 +1971,10 @@ public sealed class PublicEntityService : IPublicEntityService
                 foreach (var doc in matched)
                     nameMatchedDocs[doc.Id] = doc;
             }
+
+            // عدد الملفات المتأثرة = اتحاد المترحلة عبر RegistryId والمُلتقطة بالمزامنة الاسمية،
+            // ليوحّد العداد مع السلوك في UnifyNamesAsync بدل اقتِصاره على المترحلة فقط (اتساق 7-و).
+            totalAffectedDocs = CountUniqueDocuments(nameMatchedDocs, affectedDocsById);
 
             // أعد بناء نصوص المستندات المتأثرة بالترحيل (RegistryId) التي لم تُلتقط بالمزامنة الاسمية.
             var affectedDocs = affectedDocsById.Values.ToList();
@@ -1838,9 +1995,12 @@ public sealed class PublicEntityService : IPublicEntityService
             if (allAffectedDocs.Count > 0)
                 await SyncAppealsAfterEntityChangeAsync(allAffectedDocs, actor, token);
 
-            // ترحيل مندوبي الجهات المُدمجة إلى الناجية (مواءمة 7-ز)
+            // ترحيل مندوبي الجهات المُدمجة إلى الناجية (مواءمة 7-ز):
+            // المطابقة الفرعية عبر خريطة الطيّ، والارتكاز على أول قيد ناجٍ عند غياب المطابق.
             var absorbedIdsSet = new HashSet<int>(request.AbsorbedGroupIds.Distinct());
-            await MigrateDelegatesAsync(absorbedIdsSet, survivorGroup.Id, activeSurvivorEntries.FirstOrDefault()?.Id, token);
+            await MigrateDelegatesAsync(
+                absorbedIdsSet, survivorGroup.Id,
+                activeSurvivorEntries.FirstOrDefault()?.Id, entryTargetByAbsorbed, token);
 
             // حدث الدمج الأب
             var renamedSurvivor = previousSurvivorName is not null;
@@ -2001,7 +2161,11 @@ public sealed class PublicEntityService : IPublicEntityService
 
             int groupsUnified = 0;
             int entriesMoved = 0;
+            int aliasesAdded = 0;
+            int totalAffectedDocs = 0;
             var oldNames = new List<string>();
+            var movedEntryIds = new List<int>();
+            var affectedDocsById = new Dictionary<int, Document>();
             var absorbedIdsDistinct = request.AbsorbedGroupIds.Distinct().ToList();
 
             foreach (var absorbedId in absorbedIdsDistinct)
@@ -2028,15 +2192,68 @@ public sealed class PublicEntityService : IPublicEntityService
 
                 foreach (var ae in activeAbsorbed)
                 {
+                    // 1) نقل القيد إلى مجموعة الهدف
                     ae.GroupId = targetGroup.Id;
                     targetKeySet.Add($"{ae.Governorate}|{ae.BranchName}");
+                    movedEntryIds.Add(ae.Id);
                     entriesMoved++;
+
+                    // 3) حفظ الاسم الممتصّ اسمًا بديلًا «للبحث فقط» على القيد المنقول
+                    var normAbsorbed = ArabicNameNormalizer.Normalize(absorbedGroup.CanonicalName);
+                    if (!ae.Aliases.Any(a => ArabicNameNormalizer.Normalize(a.AliasText) == normAbsorbed))
+                    {
+                        ae.Aliases.Add(new PublicEntityAlias
+                        {
+                            PublicEntityId = ae.Id,
+                            AliasText = absorbedGroup.CanonicalName,
+                        });
+                        aliasesAdded++;
+                    }
                 }
 
                 absorbedGroup.IsActive = false;
                 groupsUnified++;
             }
 
+            // 4) مزامنة النصوص في الملفات المرتبطة بالقيود المنقولة (كل اسم ممتصّ ← الاسم الموحّد)
+            //    تُجدّد صور الأسماء القديمة لتصبح التسمية الموحدة فقط في كل الملفات والاستئنافات.
+            var nameMatchedDocs = new Dictionary<int, Document>();
+            foreach (var oldName in oldNames)
+            {
+                var matched = await SyncTextsAfterRenameAsync(oldName, targetGroup.CanonicalName, actor.Name, token);
+                foreach (var doc in matched)
+                    nameMatchedDocs[doc.Id] = doc;
+            }
+
+            // الملفات المربوطة عبر RegistryId بالقيود المنقولة — أعِد بناء نصوصها لتتقيد بالاسم الموحّد
+            // إن لم تلتقطها المزامنة الاسمية (مثل مسمّاة بخلاف الاسم المعياري).
+            foreach (var movedId in movedEntryIds)
+            {
+                var linkedDocs = await _entities.ListDocumentsLinkedToEntryAsync(movedId, token);
+                foreach (var doc in linkedDocs)
+                    affectedDocsById[doc.Id] = doc;
+            }
+
+            var affectedDocs = affectedDocsById.Values.ToList();
+            if (affectedDocs.Count > 0)
+                await SyncTextsAfterFoldAsync(affectedDocs, actor.Name, token);
+
+            totalAffectedDocs = CountUniqueDocuments(nameMatchedDocs, affectedDocsById);
+
+            // 5) مزامنة لقطات أطراف الاستئنافات عبر اتحاد الملفات المتأثرة (الاسمية + المترحلة)
+            var allAffectedDocs = nameMatchedDocs.Values
+                .Concat(affectedDocsById.Values)
+                .GroupBy(d => d.Id)
+                .Select(g => g.First())
+                .ToList();
+            if (allAffectedDocs.Count > 0)
+                await SyncAppealsAfterEntityChangeAsync(allAffectedDocs, actor, token);
+
+            // 6) ترحيل مندوبي الجهات الممتصة إلى الهدف (على مستوى المجموعة)
+            var absorbedIdsSet = new HashSet<int>(absorbedIdsDistinct);
+            await MigrateDelegatesAsync(absorbedIdsSet, targetGroup.Id, null, null, token);
+
+            // 7) سجل التغيير
             var payload = System.Text.Json.JsonSerializer.Serialize(new
             {
                 targetGroupId = targetGroup.Id,
@@ -2045,6 +2262,8 @@ public sealed class PublicEntityService : IPublicEntityService
                 oldCanonicalNames = oldNames,
                 entriesMoved,
                 groupsUnified,
+                aliasesAdded,
+                totalAffectedDocs,
                 decreeKind,
                 decreeNumber,
                 decreeDate = decreeDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
@@ -2062,15 +2281,47 @@ public sealed class PublicEntityService : IPublicEntityService
                 CreatedAtUtc = DateTime.UtcNow,
             };
             await _changeEvents.AddAsync(changeEvent, token);
+
+            // 8) وقوعات آلية لكل ملف متأثر (نوع entity-change)
+            var absorbedNamesJoined = string.Join('،', oldNames);
+            foreach (var docId in allAffectedDocs.Select(d => d.Id))
+            {
+                var occurrence = new DocumentOccurrence
+                {
+                    DocumentId = docId,
+                    OccurrenceType = OccurrenceTypeCatalog.EntityChange,
+                    EventDate = DateTime.UtcNow,
+                    CreatedById = actor.UserId,
+                    Details = EntityChangeMessages.UnifyOccurrence(absorbedNamesJoined, targetGroup.CanonicalName, decreeKind ?? "", decreeNumber ?? "", decreeDate),
+                };
+                await _occurrences.AddAsync(occurrence, token);
+            }
+
             await _uow.SaveChangesAsync(token);
 
             await _audit.LogAsync(actor.Name, "unify_entity_names",
                 documentId: null, documentType: null,
-                details: $"توحيد {groupsUnified} هويات في «{targetGroup.CanonicalName}» — {entriesMoved} قيدًا نُقل",
+                details: $"توحيد تسمية {groupsUnified} هويات في «{targetGroup.CanonicalName}» — {entriesMoved} قيدًا نُقل، {totalAffectedDocs} ملفًا متأثرًا",
                 ct: token);
+
+            // تنبيه عام لكل المحامين + تنبيه خاص لرؤساء الأقسام
+            await BroadcastEntityChangeToAllLawyersAsync(
+                EntityChangeMessages.UnifyLawyersAlert(absorbedNamesJoined, targetGroup.CanonicalName, decreeKind ?? "", decreeNumber ?? "", decreeDate),
+                actor.UserId, token);
+            await BroadcastToAllHeadsAsync(
+                EntityChangeMessages.UnifyHeadsAlert(absorbedNamesJoined, targetGroup.CanonicalName, decreeKind ?? "", decreeNumber ?? "", decreeDate),
+                actor.UserId, token);
 
             return new UnifyNamesResponse(targetGroup.Id, targetGroup.CanonicalName, groupsUnified, entriesMoved, changeEvent.Id);
         }, ct);
+    }
+
+    private static int CountUniqueDocuments(Dictionary<int, Document> a, Dictionary<int, Document> b)
+    {
+        var ids = new HashSet<int>();
+        foreach (var k in a.Keys) ids.Add(k);
+        foreach (var k in b.Keys) ids.Add(k);
+        return ids.Count;
     }
 
     /// <summary>مزامنة نصوص الملف بعد الطيّ ( Collector for applicant+executed).</summary>
@@ -2163,10 +2414,18 @@ public sealed class PublicEntityService : IPublicEntityService
     }
 
     /// <summary>ترحيل مندوبي الجهات المُمتصة/المُلغاة إلى الهوية الهدف (مواءمة 7-ز).</summary>
+    /// <remarks>
+    /// المندوب المجموعتي يُتوجَّه دائمًا إلى المجموعة الهدف. المندوب القيدي يُتوجَّه إلى
+    /// القيد المطابق لفرعه عبر <paramref name="entryTargetByAbsorbedEntry"/> (عند الدمج حيث
+    /// تُطوى القيود فرعًا بفرع)، ويسقط على <paramref name="defaultTargetEntryId"/> عند غياب
+    /// المطابق؛ وفي مسار التوحيد (لا طيّ فرعي — القيود انتقلت كاملة) يُترك قيده كما هو مع
+    /// تمرير قيمتي الفارق null.
+    /// </remarks>
     private async Task<int> MigrateDelegatesAsync(
         HashSet<int> absorbedIds,
         int targetGroupId,
-        int? targetEntryId,
+        int? defaultTargetEntryId,
+        IReadOnlyDictionary<int, int>? entryTargetByAbsorbedEntry,
         CancellationToken token)
     {
         var delegates = await _users.ListEntityManagersByGroupIdsAsync(absorbedIds, token);
@@ -2179,8 +2438,12 @@ public sealed class PublicEntityService : IPublicEntityService
                 && absorbedIds.Contains(delegateUser.PortalEntry.GroupId))
             {
                 delegateUser.PortalGroupId = targetGroupId;
-                if (targetEntryId.HasValue)
-                    delegateUser.PortalEntryId = targetEntryId.Value;
+                var branchTarget = entryTargetByAbsorbedEntry is not null
+                    && entryTargetByAbsorbedEntry.TryGetValue(delegateUser.PortalEntryId.Value, out var matched)
+                        ? matched
+                        : defaultTargetEntryId;
+                if (branchTarget.HasValue)
+                    delegateUser.PortalEntryId = branchTarget.Value;
             }
         }
         return delegates.Count;
@@ -2519,7 +2782,7 @@ public sealed class PublicEntityService : IPublicEntityService
             await _uow.SaveChangesAsync(token);
 
             // 5) ترحيل مندوبي الجهات المُلغاة إلى الهوية الجديدة (مواءمة 7-ز)
-            var delegatesCount = await MigrateDelegatesAsync(abolishedIdsSet, newGroup.Id, newParentEntry.Id, token);
+            var delegatesCount = await MigrateDelegatesAsync(abolishedIdsSet, newGroup.Id, newParentEntry.Id, null, token);
 
             // 6) سجل التغيير
             var payload = System.Text.Json.JsonSerializer.Serialize(new

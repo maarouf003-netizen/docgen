@@ -23,6 +23,7 @@ import type {
   RenameGroupPreviewResponse,
 } from '../types';
 import EntityChangeLog from './EntityChangeLog';
+import { SimilarGroupsUnifyTab } from '../components/entity/SimilarGroupsUnifyTab';
 
 type TabId = 'edit' | 'add' | 'unify' | 'log';
 
@@ -162,13 +163,13 @@ export default function EntityRegistryReviewManagement() {
       >
         <TabButton id="edit" label="تعديل جهة عامة" active={tab === 'edit'} onSelect={setTab} />
         <TabButton id="add" label="إضافة جهة" active={tab === 'add'} onSelect={setTab} />
-        <TabButton id="unify" label="توحيد تسميات" active={tab === 'unify'} onSelect={setTab} disabled />
+        <TabButton id="unify" label="توحيد تسميات" active={tab === 'unify'} onSelect={setTab} />
         <TabButton id="log" label="سجل تغييرات الجهة" active={tab === 'log'} onSelect={setTab} />
       </div>
 
       {tab === 'edit' && <EditEntityTab key="edit" />}
       {tab === 'add' && <AddEntityTab />}
-      {tab === 'unify' && <UnifyDisabledTab />}
+      {tab === 'unify' && <SimilarGroupsUnifyTab />}
       {tab === 'log' && <EntityChangeLog />}
     </div>
   );
@@ -1429,19 +1430,6 @@ function AddEntityTab() {
         </button>
       </div>
     </form>
-  );
-}
-
-/* ── تبويب «توحيد تسميات» (معطّل) ──────────────────────────────────── */
-
-function UnifyDisabledTab() {
-  return (
-    <div className="bg-white rounded-xl shadow p-8 text-center">
-      <p className="text-gray-700 text-base mb-2">
-        ميزة «توحيد تسميات الجهات العامة» مخصصة للمرحلة القادمة.
-      </p>
-      <p className="text-sm text-gray-500">هذا التبويب غير متاح حاليًا.</p>
-    </div>
   );
 }
 

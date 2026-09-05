@@ -1547,6 +1547,7 @@ export interface PublicEntityGroupDto {
   isActive: boolean;
   entryCount: number;
   governorates: string[];
+  linkedDocumentCount?: number;
 }
 
 export interface PublicEntityGroupListResponse {
@@ -1590,6 +1591,45 @@ export interface UnifyResponse {
   groupsUnified: number;
   entriesMoved: number;
   changeEventId: number;
+}
+
+/* ── المجموعات المتشابهة ومشابهات جهة محددة (توحيد التسمية) ───────────── */
+
+export interface SimilarGroupItemDto {
+  groupId: number;
+  canonicalName: string;
+  entityType: PublicEntityType;
+  entryCount: number;
+  linkedDocumentCount: number;
+  avgSimilarityToCluster: number;
+}
+
+export interface SimilarGroupClusterDto {
+  clusterId: number;
+  avgSimilarity: number;
+  groups: SimilarGroupItemDto[];
+}
+
+export interface SimilarGroupsResponse {
+  clusters: SimilarGroupClusterDto[];
+  totalGroupsAnalyzed: number;
+  threshold: number;
+}
+
+export interface SimilarToItemDto {
+  groupId: number;
+  canonicalName: string;
+  entityType: PublicEntityType;
+  entryCount: number;
+  linkedDocumentCount: number;
+  similarity: number;
+}
+
+export interface SimilarToResponse {
+  targetGroupId: number;
+  targetCanonicalName: string;
+  items: SimilarToItemDto[];
+  threshold: number;
 }
 
 /* ── سجل تغييرات الجهات (د5 §7) ───────────────────────────────────── */

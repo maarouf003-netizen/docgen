@@ -85,4 +85,13 @@ public interface IPublicEntityRepository
 
     /// <summary>سجل تغييرات الجهات مع الفاعل والقيد/الهوية — للمراقبة والتصدير.</summary>
     Task<List<PublicEntityChangeEvent>> ListChangeEventsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// عدّاد الملفات المرتبطة بقيود كل مجموعة (عبر RegistryId في جداول الطرف الثلاثة:
+    /// ApplicantPublicEntities / ExecutedPublicEntities / ExecutionApplicants).
+    /// يُرجع خريطة GroupId ← عدد الملفات المميّزة. عملية batch واحدة بدل N استعلامًا.
+    /// </summary>
+    Task<Dictionary<int, int>> CountLinkedDocumentsByGroupIdsAsync(
+        IReadOnlyCollection<int> groupIds,
+        CancellationToken ct = default);
 }

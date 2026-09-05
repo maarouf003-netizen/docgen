@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, getApiErrorMessage } from '../../api/client';
 import { normalizeArabicDigits } from '../../utils/arabicDigits';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import type {
   AbsorbedGroupUnifyPreviewDto,
   PublicEntityGroupDto,
@@ -12,18 +13,21 @@ interface UnifyNamesModalProps {
   onClose: () => void;
   onCommitted: (summary: string) => void;
   initialGroupId?: number;
+  initialAbsorbedIds?: number[];
 }
 
 /**
  * نافذة توحيد التسمية N←1 (المدير/المشرف — بلا هجرة ملفات):
- * تنقل قيود المجموعات الممتصة إلى الهوية الهدف وتعطّل المجموعات الممتصة.
- * لا تحفظ الأسماء القديمة كأسماء بديلة، لكنها تُسجّل في سجل التغييرات.
+ * تنقل قيود المجموعات الممتصة إلى الهوية الهدف، وتعطّل المجموعات الممتصة،
+ * وتُحفظ الأسماء القديمة أسماءً بديلة «للبحث فقط» كي يبقى البحث بالاسم القديم
+ * يجد الجهة، ويُزامَن النص الموحّد في كل الملفات.
  */
-export function UnifyNamesModal({ onClose, onCommitted, initialGroupId }: UnifyNamesModalProps) {
+export function UnifyNamesModal({ onClose, onCommitted, initialGroupId, initialAbsorbedIds }: UnifyNamesModalProps) {
   const [groups, setGroups] = useState<PublicEntityGroupDto[]>([]);
   const [targetId, setTargetId] = useState<number | ''>(initialGroupId ?? '');
   const [absorbedIds, setAbsorbedIds] = useState<Set<number>>(new Set());
   const [query, setQuery] = useState('');
+  const debouncedQuery = useDebouncedValue(query, 300);
   const [preview, setPreview] = useState<UnifyPreviewResponse | null>(null);
   const [loadingGroups, setLoadingGroups] = useState(true);
   const [loadingPreview, setLoadingPreview] = useState(false);
@@ -32,27 +36,38 @@ export function UnifyNamesModal({ onClose, onCommitted, initialGroupId }: UnifyN
   const [decreeKind, setDecreeKind] = useState('');
   const [decreeNumber, setDecreeNumber] = useState('');
   const [decreeDate, setDecreeDate] = useState('');
+  const initializedAbsorbed = useRef(false);
+  const requestSeq = useRef(0);
+
+  const absorbedKey = (initialAbsorbedIds ?? []).join(',');
 
   useEffect(() => {
     let active = true;
+    const seq = ++requestSeq.current;
     setLoadingGroups(true);
     api
       .get<PublicEntityGroupListResponse>('/entity-registry/groups', {
-        params: { perPage: 100, q: query.trim() || undefined },
+        params: {
+          perPage: 100,
+          q: debouncedQuery.trim() || undefined,
+          // ضمان تواجد الهوية الهدف والممتصة السابقة الاختيار في القائمة مهما كان ترتيبها/صفحتها
+          ...((initialGroupId != null || absorbedKey) ? { includeIds: [initialGroupId, ...(initialAbsorbedIds ?? [])].filter((x): x is number => x != null).join(',') } : {}),
+        },
       })
       .then((res) => {
-        if (active) setGroups(res.data.items ?? []);
+        if (active && seq === requestSeq.current) setGroups(res.data.items ?? []);
       })
       .catch((err) => {
-        if (active) setError(getApiErrorMessage(err));
+        if (active && seq === requestSeq.current) setError(getApiErrorMessage(err));
       })
       .finally(() => {
-        if (active) setLoadingGroups(false);
+        if (active && seq === requestSeq.current) setLoadingGroups(false);
       });
     return () => {
       active = false;
     };
-  }, [query]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedQuery, initialGroupId, absorbedKey]);
 
   // مزامنة initialGroupId عند تغيّره أو عند تحميل المجموعات
   useEffect(() => {
@@ -62,7 +77,19 @@ export function UnifyNamesModal({ onClose, onCommitted, initialGroupId }: UnifyN
     }
   }, [initialGroupId, groups]);
 
+  // تهيئة الممتصة من القيم السابقة الاختيار (تُستثنى الغائبة والهدف نفسه) مرة واحدة
+  useEffect(() => {
+    if (initializedAbsorbed.current || groups.length === 0) return;
+    initializedAbsorbed.current = true;
+    const candidates = (initialAbsorbedIds ?? []).filter(
+      (id) => id !== initialGroupId && groups.some((g) => g.groupId === id),
+    );
+    if (candidates.length > 0) setAbsorbedIds(new Set(candidates));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groups, initialAbsorbedIds, initialGroupId]);
+
   const toggleAbsorbed = (id: number) => {
+    if (targetId !== '' && id === targetId) return;
     setAbsorbedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -178,7 +205,17 @@ export function UnifyNamesModal({ onClose, onCommitted, initialGroupId }: UnifyN
                   id="unify-target"
                   value={targetId}
                   onChange={(e) => {
-                    setTargetId(e.target.value ? Number(e.target.value) : '');
+                    const next = e.target.value ? Number(e.target.value) : '';
+                    setTargetId(next);
+                    // إسقاط الهدف الجديد من الممتصة إن كان موجودًا (استحالة توحيد هوية مع نفسها)
+                    if (next !== '') {
+                      setAbsorbedIds((prev) => {
+                        if (!prev.has(next)) return prev;
+                        const copy = new Set(prev);
+                        copy.delete(next);
+                        return copy;
+                      });
+                    }
                     setPreview(null);
                     setError('');
                   }}
@@ -241,8 +278,8 @@ export function UnifyNamesModal({ onClose, onCommitted, initialGroupId }: UnifyN
                 <strong>«{preview.targetName}»</strong> —{' '}
                 <strong>{preview.totalEntriesToMove}</strong> قيدًا سيُنقل.
               </p>
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mb-3">
-                تنبيه: الأسماء القديمة للهويات الممتصة لن تُحفظ كأسماء بديلة، وسيُسجَّل التوحيد في سجل التغييرات فقط. لن تُهاجر روابط الملفات.
+              <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-2 mb-3">
+                ستُحفظ الأسماء القديمة للهويات الممتصة أسماءً بديلة «للبحث فقط» كي يبقى البحث بها يجد الجهة بعد التوحيد، وسيُزامَن النص الموحّد في كل الملفات.
               </p>
               {preview.warnings.length > 0 && (
                 <ul className="list-disc pr-5 text-amber-700 text-xs mb-2">

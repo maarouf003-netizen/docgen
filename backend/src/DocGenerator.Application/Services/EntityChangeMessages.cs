@@ -46,6 +46,20 @@ public static class EntityChangeMessages
     public static string MergeHeadsAlert(string absorbedNames, string survivorName, string decreeKind, string decreeNumber, DateTime? decreeDate)
         => $"تم دمج \"{absorbedNames}\" مع \"{survivorName}\" بموجب {DecreeSuffix(decreeKind, decreeNumber, decreeDate)}";
 
+    // ── توحيد التسمية (N←1) ──
+
+    /// <summary>وقعة توحيد التسمية على الملفات المتأثرة (تُوحَّد تسميات عدة لهوية واحدة معتمدة).</summary>
+    public static string UnifyOccurrence(string unifiedNames, string canonicalName, string decreeKind, string decreeNumber, DateTime? decreeDate)
+        => $"تم توحيد تسمية \"{unifiedNames}\" إلى «{canonicalName}» بموجب {DecreeSuffix(decreeKind, decreeNumber, decreeDate)}";
+
+    /// <summary>التنبيه العام لكل المحامين (توحيد تسمية).</summary>
+    public static string UnifyLawyersAlert(string unifiedNames, string canonicalName, string decreeKind, string decreeNumber, DateTime? decreeDate)
+        => $"يرجى ملاحظة أنه تم توحيد تسمية \"{unifiedNames}\" إلى «{canonicalName}» بموجب {DecreeSuffix(decreeKind, decreeNumber, decreeDate)}";
+
+    /// <summary>تنبيه رؤساء الأقسام (توحيد تسمية).</summary>
+    public static string UnifyHeadsAlert(string unifiedNames, string canonicalName, string decreeKind, string decreeNumber, DateTime? decreeDate)
+        => $"تم توحيد تسمية \"{unifiedNames}\" إلى «{canonicalName}» بموجب {DecreeSuffix(decreeKind, decreeNumber, decreeDate)}";
+
     // ── حلول (الإلغاء والاستبدال) ──
 
     /// <summary>وقعة الحلول على الملفات المتأثرة.</summary>
