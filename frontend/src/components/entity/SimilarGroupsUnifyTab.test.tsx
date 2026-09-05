@@ -51,6 +51,28 @@ const similarToResponse = {
   },
 };
 
+const staleSimilarForGroup1 = {
+  data: {
+    targetGroupId: 1,
+    targetCanonicalName: 'هيئة الاستثمار',
+    items: [
+      { groupId: 7, canonicalName: 'هيئة الاستثمار القديمة', entityType: 'authority', entryCount: 1, linkedDocumentCount: 0, similarity: 0.6 },
+    ],
+    threshold: 0.55,
+  },
+};
+
+const recentSimilarForGroup2 = {
+  data: {
+    targetGroupId: 2,
+    targetCanonicalName: 'هيئة الاستثمار والتجارة',
+    items: [
+      { groupId: 5, canonicalName: 'شركة الاستثمار السورية', entityType: 'company', entryCount: 1, linkedDocumentCount: 0, similarity: 0.7 },
+    ],
+    threshold: 0.55,
+  },
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(clustersResponse);
@@ -91,6 +113,45 @@ describe('SimilarGroupsUnifyTab', () => {
       expect(api.get).toHaveBeenCalledWith('/entity-registry/groups/1/similar-to', expect.objectContaining({ params: expect.objectContaining({ threshold: 0.55 }) }));
     });
     expect((await screen.findAllByText('هيئة الاستثمار والتجارة')).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('عند النقر على جهة ثم أخرى سريعًا يعرض اقتراحات آخر نقرة ويتجاهل نتيجة الأولى المتأخرة', async () => {
+    const user = userEvent.setup();
+    const get = api.get as unknown as ReturnType<typeof vi.fn>;
+    const deferred = () => {
+      let resolve!: (value: unknown) => void;
+      const promise = new Promise<unknown>((r) => { resolve = r; });
+      return { promise, resolve };
+    };
+    const firstSimilar = deferred();
+    const secondSimilar = deferred();
+    get
+      .mockResolvedValueOnce(clustersResponse)
+      .mockResolvedValueOnce(groupsResponse)
+      .mockImplementationOnce(() => firstSimilar.promise)
+      .mockImplementationOnce(() => secondSimilar.promise);
+
+    render(<SimilarGroupsUnifyTab />);
+
+    await user.click(screen.getByRole('tab', { name: 'كافة الجهات العامة' }));
+    await screen.findByText('هيئة الاستثمار');
+
+    await user.click(screen.getAllByRole('button', { name: /هيئة الاستثمار/ })[0]);
+    await user.click(screen.getAllByRole('button', { name: /هيئة الاستثمار والتجارة/ })[0]);
+    expect(get).toHaveBeenCalledTimes(4);
+    expect(get).toHaveBeenLastCalledWith(
+      '/entity-registry/groups/2/similar-to',
+      expect.objectContaining({ params: expect.objectContaining({ threshold: 0.55 }) }),
+    );
+
+    secondSimilar.resolve(recentSimilarForGroup2);
+    await waitFor(() => expect(screen.getByText('شركة الاستثمار السورية')).toBeInTheDocument());
+
+    firstSimilar.resolve(staleSimilarForGroup1);
+    await waitFor(() => {
+      expect(screen.getByText('شركة الاستثمار السورية')).toBeInTheDocument();
+      expect(screen.queryByText('هيئة الاستثمار القديمة')).not.toBeInTheDocument();
+    });
   });
 
   it('يختار الهدف الافتراضي الأعلى ارتباطًا بالملفات ويمرر الباقي كممتصة', async () => {

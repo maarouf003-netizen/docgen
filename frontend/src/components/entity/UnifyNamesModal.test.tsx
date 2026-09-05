@@ -8,6 +8,10 @@ vi.mock('../../api/client', () => ({
   getApiErrorMessage: () => 'خطأ من الخادم',
 }));
 
+vi.mock('../../hooks/useDebouncedValue', () => ({
+  useDebouncedValue: (value: string) => value,
+}));
+
 import { api } from '../../api/client';
 
 const groupsResponse = {
@@ -36,6 +40,49 @@ describe('UnifyNamesModal', () => {
 
     expect(await screen.findByText('وزارة النقل')).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith('/entity-registry/groups', expect.objectContaining({ params: expect.objectContaining({ perPage: 100 }) }));
+  });
+
+  it('يتجاهل نتيجة البحث المتأخرة ويعرض نتائج أحدث بحث فقط عند سباق الطلبات', async () => {
+    const user = userEvent.setup();
+    const get = api.get as unknown as ReturnType<typeof vi.fn>;
+    const deferred = () => {
+      let resolve!: (value: unknown) => void;
+      const promise = new Promise<unknown>((r) => { resolve = r; });
+      return { promise, resolve };
+    };
+    const initial = deferred();
+    const stale = deferred();
+    const latest = deferred();
+    get
+      .mockImplementationOnce(() => initial.promise)
+      .mockImplementationOnce(() => stale.promise)
+      .mockImplementationOnce(() => latest.promise);
+
+    render(<UnifyNamesModal onClose={vi.fn()} onCommitted={vi.fn()} />);
+    const input = screen.getByLabelText('بحث باسم الجهة');
+
+    await user.type(input, 'و');
+    await user.type(input, 'ز');
+    expect(get).toHaveBeenCalledTimes(3);
+    expect(get).toHaveBeenLastCalledWith(
+      '/entity-registry/groups',
+      expect.objectContaining({ params: expect.objectContaining({ q: 'وز' }) }),
+    );
+
+    latest.resolve({ data: { items: [{ groupId: 3, canonicalName: 'وزارة التعليم', entityType: 'ministry', isActive: true, entryCount: 1, governorates: ['دمشق'] }] } });
+    await waitFor(() => expect(screen.getByText('وزارة التعليم')).toBeInTheDocument());
+
+    stale.resolve({ data: { items: [{ groupId: 2, canonicalName: 'وزاره النقل', entityType: 'ministry', isActive: true, entryCount: 1, governorates: ['حمص'] }] } });
+    await waitFor(() => {
+      expect(screen.getByText('وزارة التعليم')).toBeInTheDocument();
+      expect(screen.queryByText('وزاره النقل')).not.toBeInTheDocument();
+    });
+
+    initial.resolve({ data: { items: [{ groupId: 1, canonicalName: 'وزارة النقل', entityType: 'ministry', isActive: true, entryCount: 2, governorates: ['دمشق', 'حلب'] }] } });
+    await waitFor(() => {
+      expect(screen.getByText('وزارة التعليم')).toBeInTheDocument();
+      expect(screen.queryByText('وزارة النقل')).not.toBeInTheDocument();
+    });
   });
 
   it('يحدّد الهوية الهدف مسبقًا عند تمرير initialGroupId', async () => {
