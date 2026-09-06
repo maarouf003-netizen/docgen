@@ -277,7 +277,21 @@ public record UnifyNamesPreviewResponse(
     string TargetName,
     IReadOnlyList<AbsorbedGroupUnifyPreviewDto> AbsorbedGroups,
     int TotalEntriesToMove,
+    int TotalEntriesFolded,
+    IReadOnlyList<EntryFoldPreviewDto> FoldsToApply,
     IReadOnlyList<string> Warnings);
+
+/// <summary>
+/// قيد سيُطوى: سلفه المطابق (نفس المحافظة/الفرع حرفيًا) موجود في الهوية الموحّدة،
+/// فسيُبطل ويُرحّل روابطه وأسماءه البديلة إلى الناجي. المعاينة تحاكي طريقة التنفيذ
+/// بالضبط (دورة بركة الناجين) فتتفق نتائجها مع الاعتماد.
+/// </summary>
+public record EntryFoldPreviewDto(
+    int AbsorbedGroupId,
+    string AbsorbedGroupName,
+    string Governorate,
+    string BranchName,
+    int LinkedDocumentCount);
 
 /// <summary>طلب اعتماد توحيد التسمية (ينقل القيود ويعطّل المجموعات الممتصة بلا هجرة ملفات) — مع مرسوم اختياري للتعديلات العامة.</summary>
 public record UnifyNamesRequest(
@@ -293,6 +307,7 @@ public record UnifyNamesResponse(
     string CanonicalName,
     int GroupsUnified,
     int EntriesMoved,
+    int EntriesFolded,
     int ChangeEventId);
 
 // ── سجل تغييرات الجهات (د5 §7) ──

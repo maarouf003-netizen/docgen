@@ -30,4 +30,10 @@ public interface IUserRepository : IRepository<User>
     /// مجموعة هويات أم معينة — لترحيل/إعادة توجيه نطاقهم عند دمج أو إلغاء جهات (متتبَّعة للتعديل).
     /// </summary>
     Task<List<User>> ListEntityManagersByGroupIdsAsync(IReadOnlyCollection<int> groupIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// مندوبو الجهات (EntityManager) الذين نطاقهم قيد معين عبر PortalEntryId — لترحيل نطاقهم
+    /// إلى القيد الناجي عند طيّ قيد في قيد (متتبَّعة للتعديل). لا يشمل مندوبي مستوى الهوية الأم.
+    /// </summary>
+    Task<List<User>> ListEntityManagersByEntryIdAsync(int entryId, CancellationToken ct = default);
 }

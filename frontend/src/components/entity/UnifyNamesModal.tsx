@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, getApiErrorMessage } from '../../api/client';
 import { normalizeArabicDigits } from '../../utils/arabicDigits';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import type {
   AbsorbedGroupUnifyPreviewDto,
+  EntryFoldPreviewDto,
   PublicEntityGroupDto,
   PublicEntityGroupListResponse,
   UnifyPreviewResponse,
+  UnifyResponse,
 } from '../../types';
 
 interface UnifyNamesModalProps {
@@ -125,16 +127,17 @@ export function UnifyNamesModal({ onClose, onCommitted, initialGroupId, initialA
     setCommitting(true);
     setError('');
     try {
-      const res = await api.post('/entity-registry/groups/unify', {
+      const res = await api.post<UnifyResponse>('/entity-registry/groups/unify', {
         targetGroupId: targetId,
         absorbedGroupIds: [...absorbedIds],
         decreeKind: decreeKind.trim() || null,
         decreeNumber: decreeNumber.trim() || null,
         decreeDate: normalizeArabicDigits(decreeDate).trim() || null,
       });
-      const r = res.data as { groupsUnified: number; entriesMoved: number; canonicalName: string };
+      const r = res.data;
+      const foldedNote = r.entriesFolded > 0 ? ` و${r.entriesFolded} قيدًا مطابقًا سابق الوجود طُوي على القيد الناجي` : '';
       onCommitted(
-        `تم توحيد ${r.groupsUnified} هويات في «${r.canonicalName}» — ${r.entriesMoved} قيدًا نُقل`,
+        `تم توحيد ${r.groupsUnified} هويات في «${r.canonicalName}» — ${r.entriesMoved} قيدًا نُقل${foldedNote}`,
       );
     } catch (err) {
       setError(getApiErrorMessage(err));
@@ -145,6 +148,14 @@ export function UnifyNamesModal({ onClose, onCommitted, initialGroupId, initialA
 
   const filteredForTarget = groups.filter((g) => !absorbedIds.has(g.groupId));
   const filteredForAbsorbed = groups.filter((g) => targetId === '' || g.groupId !== targetId);
+
+  const foldCountByGroup = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const f of preview?.foldsToApply ?? []) {
+      counts.set(f.absorbedGroupId, (counts.get(f.absorbedGroupId) ?? 0) + 1);
+    }
+    return counts;
+  }, [preview]);
 
   return (
     <div
@@ -276,7 +287,10 @@ export function UnifyNamesModal({ onClose, onCommitted, initialGroupId, initialA
               <p className="text-gray-600 mb-2">
                 سيتم توحيد <strong>{preview.absorbedGroups.length}</strong> هويات في{' '}
                 <strong>«{preview.targetName}»</strong> —{' '}
-                <strong>{preview.totalEntriesToMove}</strong> قيدًا سيُنقل.
+                <strong>{preview.totalEntriesToMove}</strong> قيدًا سيُنقل
+                {preview.totalEntriesFolded > 0 && (
+                  <> و<strong>{preview.totalEntriesFolded}</strong> قيدًا مطابقًا سابق الوجود سيُطوى على قيد الجهة الناجي</>
+                )}.
               </p>
               <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-2 mb-3">
                 ستُحفظ الأسماء القديمة للهويات الممتصة أسماءً بديلة «للبحث فقط» كي يبقى البحث بها يجد الجهة بعد التوحيد، وسيُزامَن النص الموحّد في كل الملفات.
@@ -286,12 +300,33 @@ export function UnifyNamesModal({ onClose, onCommitted, initialGroupId, initialA
                   {preview.warnings.map((w, i) => <li key={i}>{w}</li>)}
                 </ul>
               )}
+              {preview.foldsToApply.length > 0 && (
+                <div className="mb-2">
+                  <h5 className="text-xs font-bold text-emerald-900 mb-1">قيود ستُطوى (مطابقة سابقة الوجود)</h5>
+                  <ul className="divide-y divide-emerald-100 border border-emerald-200 rounded-lg bg-white/60">
+                    {preview.foldsToApply.map((f: EntryFoldPreviewDto, i) => (
+                      <li key={i} className="py-2 px-3 flex items-center justify-between gap-2">
+                        <span className="text-gray-700 truncate">
+                          <span className="tabular-nums">{f.governorate} / {f.branchName}</span>{' '}
+                          <span className="text-gray-400 text-xs">من «{f.absorbedGroupName}»</span>
+                        </span>
+                        <span className="text-xs text-gray-500 whitespace-nowrap tabular-nums">
+                          {f.linkedDocumentCount} ملف
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <ul className="divide-y divide-emerald-100">
                 {preview.absorbedGroups.map((ag: AbsorbedGroupUnifyPreviewDto) => (
                   <li key={ag.groupId} className="py-2 flex items-center justify-between gap-2">
                     <span className="font-medium text-gray-800 truncate">{ag.name}</span>
                     <span className="text-xs text-gray-500 whitespace-nowrap tabular-nums">
                       {ag.entryCount} قيد{ag.governorates.length > 0 ? ` · ${ag.governorates.join('، ')}` : ''}
+                      {foldCountByGroup.get(ag.groupId) != null && (
+                        <span className="text-amber-700"> (منها {foldCountByGroup.get(ag.groupId)} مطابق سيُطوى)</span>
+                      )}
                     </span>
                   </li>
                 ))}

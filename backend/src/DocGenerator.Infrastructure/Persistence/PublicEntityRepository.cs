@@ -233,4 +233,40 @@ public class PublicEntityRepository : IPublicEntityRepository
 
         return countsByGroup.ToDictionary(kv => kv.Key, kv => kv.Value.Count);
     }
+
+    public async Task<Dictionary<int, int>> CountLinkedDocumentsByEntryIdsAsync(
+        IReadOnlyCollection<int> entryIds, CancellationToken ct = default)
+    {
+        var ids = entryIds.Distinct().ToList();
+        if (ids.Count == 0)
+            return new Dictionary<int, int>();
+
+        // كل صف ربط يحدد القيد عبر RegistryId مباشرة — نجمع عدّاد الملفات المميّزة لكل قيد
+        // من جداول الطرف الثلاثة دفعة واحدة. تُترجم شرط Contains إلى IN في SQL.
+        var applicantEntryDocs = await _db.ApplicantPublicEntities.AsNoTracking()
+            .Where(a => a.RegistryId != null && ids.Contains(a.RegistryId.Value))
+            .Select(a => new { a.DocumentId, a.RegistryId })
+            .ToListAsync(ct);
+        var executedEntryDocs = await _db.ExecutedPublicEntities.AsNoTracking()
+            .Where(e => e.RegistryId != null && ids.Contains(e.RegistryId.Value))
+            .Select(e => new { e.DocumentId, e.RegistryId })
+            .ToListAsync(ct);
+        var executionApplicantEntryDocs = await _db.ExecutionApplicants.AsNoTracking()
+            .Where(x => x.RegistryId != null && ids.Contains(x.RegistryId.Value))
+            .Select(x => new { x.DocumentId, x.RegistryId })
+            .ToListAsync(ct);
+
+        var countsByEntry = ids.ToDictionary(id => id, _ => new HashSet<int>());
+        foreach (var row in applicantEntryDocs)
+            if (countsByEntry.TryGetValue(row.RegistryId!.Value, out var set))
+                set.Add(row.DocumentId);
+        foreach (var row in executedEntryDocs)
+            if (countsByEntry.TryGetValue(row.RegistryId!.Value, out var set))
+                set.Add(row.DocumentId);
+        foreach (var row in executionApplicantEntryDocs)
+            if (countsByEntry.TryGetValue(row.RegistryId!.Value, out var set))
+                set.Add(row.DocumentId);
+
+        return countsByEntry.ToDictionary(kv => kv.Key, kv => kv.Value.Count);
+    }
 }

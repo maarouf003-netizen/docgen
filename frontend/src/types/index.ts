@@ -1570,10 +1570,20 @@ export interface AbsorbedGroupUnifyPreviewDto {
   governorates: string[];
 }
 
+export interface EntryFoldPreviewDto {
+  absorbedGroupId: number;
+  absorbedGroupName: string;
+  governorate: string;
+  branchName: string;
+  linkedDocumentCount: number;
+}
+
 export interface UnifyPreviewResponse {
   targetName: string;
   absorbedGroups: AbsorbedGroupUnifyPreviewDto[];
   totalEntriesToMove: number;
+  totalEntriesFolded: number;
+  foldsToApply: EntryFoldPreviewDto[];
   warnings: string[];
 }
 
@@ -1590,6 +1600,7 @@ export interface UnifyResponse {
   canonicalName: string;
   groupsUnified: number;
   entriesMoved: number;
+  entriesFolded: number;
   changeEventId: number;
 }
 

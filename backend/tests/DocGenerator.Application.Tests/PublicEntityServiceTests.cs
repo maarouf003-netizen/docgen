@@ -933,6 +933,29 @@ public class PublicEntityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task MoveEntry_Fold_MigratesEntryDelegates()
+    {
+        var (g1, e1, g2, e2) = await SeedTwoGroupsSameBranchForFoldAsync();
+
+        _db.Users.AddRange(
+            new User { Username = "del.entry", FullName = "مندوب القيد", Role = UserRole.EntityManager, PortalEntryId = e1, PasswordHash = "x" },
+            new User { Username = "del.group", FullName = "مندوب المجموعة", Role = UserRole.EntityManager, PortalGroupId = g1, PasswordHash = "x" });
+        await _db.SaveChangesAsync();
+
+        await _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, e2, null, null, null, null), ManagerActor());
+
+        // مندوب القيد المطوي يرحل إلى (الهوية الهدف، القيد الهدف).
+        var entryDel = await _db.Users.AsNoTracking().SingleAsync(u => u.Username == "del.entry");
+        Assert.Equal(g2, entryDel.PortalGroupId);
+        Assert.Equal(e2, entryDel.PortalEntryId);
+
+        // مندوب مجموعة المصدر بلا مساس (لا يُطوى على قيد واحد).
+        var groupDel = await _db.Users.AsNoTracking().SingleAsync(u => u.Username == "del.group");
+        Assert.Equal(g1, groupDel.PortalGroupId);
+        Assert.Null(groupDel.PortalEntryId);
+    }
+
+    [Fact]
     public async Task MoveEntry_ModeA_CreatesDocumentOccurrence()
     {
         var doc = await SeedApplicantDocumentAsync("وزارة التعليم", "دمشق");
@@ -1642,12 +1665,42 @@ public class PublicEntityServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task PreviewUnify_WarnsOnGovernorateConflict()
+    public async Task PreviewUnify_ListsFoldsWithCounts()
     {
+        // قيد مطابق حرفيًا (المحافظة/الفرع) في الهدف ← يُعرض كطي لا تعارضًا.
         var target = await _service.CreateAsync(new CreatePublicEntityRequest("جهة تعارض", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest("جهة تعارض ممتصة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var absorbedEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == absorbed.GroupId);
+
+        var doc = await SeedApplicantDocumentAsync("جهة تعارض ممتصة", "دمشق");
+        var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
+        row.RegistryId = absorbedEntry.Id;
+        await _db.SaveChangesAsync();
+
         var preview = await _service.PreviewUnifyAsync(new UnifyNamesPreviewRequest(target.GroupId, new[] { absorbed.GroupId }));
-        Assert.Contains(preview.Warnings, w => w.Contains("تعارض"));
+        Assert.Equal(0, preview.TotalEntriesToMove);
+        Assert.Equal(1, preview.TotalEntriesFolded);
+        var fold = Assert.Single(preview.FoldsToApply);
+        Assert.Equal(absorbed.GroupId, fold.AbsorbedGroupId);
+        Assert.Equal("جهة تعارض ممتصة", fold.AbsorbedGroupName);
+        Assert.Equal("دمشق", fold.Governorate);
+        Assert.Equal("الفرع الرئيسي", fold.BranchName);
+        Assert.Equal(1, fold.LinkedDocumentCount);
+        Assert.DoesNotContain(preview.Warnings, w => w.Contains("تعارض"));
+
+        // الحالة الثانية: ممتصتان بنفس المفتاح والهدف يخلو منه ← محاكاة مطابقة للتنفيذ:
+        // الأولى تُنقل (تضيف مفتاحها للمجموعة التجميعية) والثانية تُطوى عليها.
+        var target2 = await _service.CreateAsync(new CreatePublicEntityRequest("جهة فارغة", "ministry", "دمشق", "فرع شاغر"), ManagerActor());
+        var target2Entry = await _db.PublicEntities.SingleAsync(e => e.GroupId == target2.GroupId);
+        await _service.UpdateAsync(target2Entry.Id, new UpdatePublicEntityRequest(null, null, null, null, null, null, IsActive: false), ManagerActor());
+        var first = await _service.CreateAsync(new CreatePublicEntityRequest("الهوية الأولى", "ministry", "حلب", "فرع حلب"), ManagerActor());
+        var second = await _service.CreateAsync(new CreatePublicEntityRequest("الهوية الثانية", "ministry", "حلب", "فرع حلب"), ManagerActor());
+
+        var preview2 = await _service.PreviewUnifyAsync(new UnifyNamesPreviewRequest(target2.GroupId, new[] { first.GroupId, second.GroupId }));
+        Assert.Equal(1, preview2.TotalEntriesToMove);
+        Assert.Equal(1, preview2.TotalEntriesFolded);
+        var fold2 = Assert.Single(preview2.FoldsToApply);
+        Assert.Equal(second.GroupId, fold2.AbsorbedGroupId);
     }
 
     [Fact]
@@ -1672,6 +1725,7 @@ public class PublicEntityServiceTests : IDisposable
 
         Assert.Equal(1, result.GroupsUnified);
         Assert.Equal(1, result.EntriesMoved);
+        Assert.Equal(0, result.EntriesFolded);
         Assert.Equal(target, result.TargetGroupId);
 
         var absorbedGroup = await _db.PublicEntityGroups.FindAsync(absorbed);
@@ -1701,12 +1755,189 @@ public class PublicEntityServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Unify_DuplicateEntryConflict_Throws()
+    public async Task Unify_MatchingBranch_FoldsOntoSurvivor()
     {
-        var target = await _service.CreateAsync(new CreatePublicEntityRequest("جهة مكررة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest("جهة مكررة ممتصة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.UnifyNamesAsync(new UnifyNamesRequest(target.GroupId, new[] { absorbed.GroupId }), ManagerActor()));
-        Assert.Contains("تعارض", ex.Message);
+        var target = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "الجهة الموحدة الهدف", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "الجهة الممتصة", "ministry", "دمشق", "الفرع الرئيسي",
+            Aliases: new[] { "المصلحة المؤقتة" }), ManagerActor());
+        _db.PublicEntities.Add(new PublicEntity
+        {
+            GroupId = absorbed.GroupId,
+            Governorate = "حلب",
+            BranchName = "فرع حلب",
+            Status = EntityStatusCatalog.Final,
+            CreatedById = _managerId,
+        });
+        await _db.SaveChangesAsync();
+
+        var result = await _service.UnifyNamesAsync(
+            new UnifyNamesRequest(target.GroupId, new[] { absorbed.GroupId }), ManagerActor());
+
+        Assert.Equal(1, result.GroupsUnified);
+        Assert.Equal(1, result.EntriesMoved);
+        Assert.Equal(1, result.EntriesFolded);
+
+        var foldedEntry = await _db.PublicEntities
+            .Include(e => e.Aliases)
+            .SingleAsync(e => e.Governorate == "دمشق" && e.BranchName == "الفرع الرئيسي" && e.GroupId == absorbed.GroupId);
+        Assert.False(foldedEntry.IsActive);
+
+        var survivor = await _db.PublicEntities
+            .Include(e => e.Aliases)
+            .SingleAsync(e => e.Governorate == "دمشق" && e.BranchName == "الفرع الرئيسي" && e.GroupId == target.GroupId);
+        Assert.True(survivor.IsActive);
+        Assert.Contains(survivor.Aliases, a => a.AliasText == "الجهة الممتصة");
+        Assert.Contains(survivor.Aliases, a => a.AliasText == "الجهة الممتصة — دمشق / الفرع الرئيسي");
+        Assert.Contains(survivor.Aliases, a => a.AliasText == "المصلحة المؤقتة");
+
+        var movedEntry = await _db.PublicEntities.SingleAsync(e => e.Governorate == "حلب" && e.BranchName == "فرع حلب");
+        Assert.Equal(target.GroupId, movedEntry.GroupId);
+
+        var absorbedGroup = await _db.PublicEntityGroups.FindAsync(absorbed.GroupId);
+        Assert.False(absorbedGroup!.IsActive);
+
+        var evt = await _db.PublicEntityChangeEvents.SingleAsync(e => e.GroupId == target.GroupId);
+        var payloadEl = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(evt.PayloadJson);
+        Assert.Equal(1, payloadEl.GetProperty("entriesFolded").GetInt32());
+        Assert.Single(payloadEl.GetProperty("folds").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Unify_Fold_RepointsDocumentsAndDelegates()
+    {
+        var target = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "الجهة الموحدة الهدف", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "الجهة الممتصة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var foldedEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == absorbed.GroupId);
+        _db.PublicEntities.Add(new PublicEntity
+        {
+            GroupId = absorbed.GroupId,
+            Governorate = "حلب",
+            BranchName = "فرع حلب",
+            Status = EntityStatusCatalog.Final,
+            CreatedById = _managerId,
+        });
+        await _db.SaveChangesAsync();
+        var movedEntry = await _db.PublicEntities.SingleAsync(e => e.Governorate == "حلب" && e.BranchName == "فرع حلب");
+
+        // ملف مرتبط بالمطوي عبر الأنواع الثلاثة (Applicant + Executed + ExecutionApplicant)
+        var doc = new Document
+        {
+            BranchId = _damascusId,
+            CreatedById = _lawyerId,
+            IsDraft = false,
+            BorrowerName = "شركة المباني",
+            AmountNumeric = 0,
+            ExecStatus = string.Empty,
+            GeneralEntitySide = "applicant",
+            ApplicantPublicEntities =
+            {
+                new ApplicantPublicEntity { Name = "الجهة الممتصة", Governorate = "دمشق", Branch = "فرع الجهة", RegistryId = foldedEntry.Id },
+            },
+            ExecutedPublicEntities =
+            {
+                new ExecutedPublicEntity { EntityName = "الجهة الممتصة", EntityBranch = "فرع الجهة", Governorate = "دمشق", RegistryId = foldedEntry.Id },
+            },
+            ExecutionApplicants =
+            {
+                new ExecutionApplicant { Name = "الجهة الممتصة", ApplicantNature = PartyNatureCatalog.Legal, RegistryId = foldedEntry.Id },
+            },
+        };
+        doc.Applicant = "الجهة الممتصة - محافظة دمشق";
+        _db.Documents.Add(doc);
+
+        // مندوب قيدي على المطوي + مندوب قيدي على المنقول
+        _db.Users.AddRange(
+            new User { Username = "del.folded", FullName = "مندوب المطوي", Role = UserRole.EntityManager, PortalEntryId = foldedEntry.Id, PasswordHash = "x" },
+            new User { Username = "del.moved", FullName = "مندوب المنقول", Role = UserRole.EntityManager, PortalEntryId = movedEntry.Id, PasswordHash = "x" });
+        await _db.SaveChangesAsync();
+
+        var result = await _service.UnifyNamesAsync(
+            new UnifyNamesRequest(target.GroupId, new[] { absorbed.GroupId }), ManagerActor());
+
+        Assert.Equal(1, result.EntriesFolded);
+        Assert.Equal(1, result.EntriesMoved);
+
+        var survivor = await _db.PublicEntities.SingleAsync(e => e.GroupId == target.GroupId && e.IsActive && e.Governorate == "دمشق" && e.BranchName == "الفرع الرئيسي");
+
+        var after = await _db.Documents.AsNoTracking()
+            .Include(d => d.ApplicantPublicEntities)
+            .Include(d => d.ExecutedPublicEntities)
+            .Include(d => d.ExecutionApplicants)
+            .SingleAsync(d => d.Id == doc.Id);
+        Assert.Contains(after.ApplicantPublicEntities, a => a.RegistryId == survivor.Id);
+        Assert.Contains(after.ExecutedPublicEntities, a => a.RegistryId == survivor.Id);
+        Assert.Contains(after.ExecutionApplicants, a => a.RegistryId == survivor.Id);
+        Assert.Equal(survivor.Id, after.ApplicantRegistryId);
+
+        // النص أُعيد بناؤه بالاسم الموحّد.
+        Assert.Contains("الجهة الموحدة الهدف", after.SearchText);
+        Assert.DoesNotContain("الجهة الممتصة", after.SearchText);
+
+        // مندوب المطوي يرحل لناجيه؛ مندوب المنقول يبقى على قيده (المنقول ما زال قيدًا صالحًا).
+        var foldedDelegate = await _db.Users.AsNoTracking().SingleAsync(u => u.Username == "del.folded");
+        Assert.Equal(target.GroupId, foldedDelegate.PortalGroupId);
+        Assert.Equal(survivor.Id, foldedDelegate.PortalEntryId);
+
+        var movedDelegate = await _db.Users.AsNoTracking().SingleAsync(u => u.Username == "del.moved");
+        Assert.Equal(movedEntry.Id, movedDelegate.PortalEntryId);
+
+        // وقوع entity-change للملف واحتسابه في العداد عبر الحمولة.
+        var occ = await _db.DocumentOccurrences.SingleAsync(o => o.DocumentId == doc.Id);
+        Assert.Equal(OccurrenceTypeCatalog.EntityChange, occ.OccurrenceType);
+        var evt = await _db.PublicEntityChangeEvents.SingleAsync(e => e.GroupId == target.GroupId);
+        var payloadEl = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(evt.PayloadJson);
+        Assert.Equal(1, payloadEl.GetProperty("totalAffectedDocs").GetInt32());
+        Assert.Contains("unify_entity_names", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task Unify_TwoAbsorbedSameKey_MovesFirstFoldsSecond()
+    {
+        // الهدف بلا قيود نشطة: بركة الناجين تبدأ فارغة، فأول ممتصة (حسب ترتيب Distinct) تُنقل
+        // وتُضاف للبركة، والثانية المطابقة تُطوى عليها — حتمية مرتبطة بترتيب الطلب.
+        var target = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "الجهة الموحدة", "ministry", "دمشق", "فرع شاغر"), ManagerActor());
+        var targetEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == target.GroupId);
+        await _service.UpdateAsync(targetEntry.Id, new UpdatePublicEntityRequest(null, null, null, null, null, null, IsActive: false), ManagerActor());
+        var first = await _service.CreateAsync(new CreatePublicEntityRequest("الهوية الأولى", "ministry", "حلب", "فرع حلب"), ManagerActor());
+        var second = await _service.CreateAsync(new CreatePublicEntityRequest("الهوية الثانية", "ministry", "حلب", "فرع حلب"), ManagerActor());
+
+        var result = await _service.UnifyNamesAsync(
+            new UnifyNamesRequest(target.GroupId, new[] { first.GroupId, second.GroupId }), ManagerActor());
+
+        Assert.Equal(1, result.EntriesMoved);
+        Assert.Equal(1, result.EntriesFolded);
+
+        var survivor = await _db.PublicEntities
+            .Include(e => e.Aliases)
+            .SingleAsync(e => e.GroupId == target.GroupId && e.IsActive);
+        // الأولى نُقلت (حملت اسمها بديلًا) والثانية طُويت عليها (حملت معياريها).
+        Assert.Contains(survivor.Aliases, a => a.AliasText == "الهوية الأولى");
+        Assert.Contains(survivor.Aliases, a => a.AliasText == "الهوية الثانية");
+
+        // معكوس الترتيب يعكس الحتمية: من يُنقل يتبدّل.
+        var target2 = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "الجهة الموحدة 2", "ministry", "دمشق", "فرع شاغر"), ManagerActor());
+        var target2Entry = await _db.PublicEntities.SingleAsync(e => e.GroupId == target2.GroupId);
+        await _service.UpdateAsync(target2Entry.Id, new UpdatePublicEntityRequest(null, null, null, null, null, null, IsActive: false), ManagerActor());
+        var third = await _service.CreateAsync(new CreatePublicEntityRequest("الهوية الثالثة", "ministry", "حلب", "فرع حلب"), ManagerActor());
+        var fourth = await _service.CreateAsync(new CreatePublicEntityRequest("الهوية الرابعة", "ministry", "حلب", "فرع حلب"), ManagerActor());
+
+        var result2 = await _service.UnifyNamesAsync(
+            new UnifyNamesRequest(target2.GroupId, new[] { fourth.GroupId, third.GroupId }), ManagerActor());
+
+        Assert.Equal(1, result2.EntriesMoved);
+        Assert.Equal(1, result2.EntriesFolded);
+
+        var survivor2 = await _db.PublicEntities
+            .Include(e => e.Aliases)
+            .SingleAsync(e => e.GroupId == target2.GroupId && e.IsActive);
+        Assert.Contains(survivor2.Aliases, a => a.AliasText == "الهوية الرابعة");
+        Assert.Contains(survivor2.Aliases, a => a.AliasText == "الهوية الثالثة");
     }
 
     [Fact]

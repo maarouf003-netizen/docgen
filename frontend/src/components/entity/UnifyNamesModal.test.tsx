@@ -119,7 +119,7 @@ describe('UnifyNamesModal', () => {
   it('يستدعي POST groups/unify-preview عند المعاينة ويعرض النتيجة', async () => {
     const user = userEvent.setup();
     (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      data: { targetName: 'وزارة النقل', absorbedGroups: [{ groupId: 2, name: 'وزاره النقل', entryCount: 1, governorates: ['حمص'] }], totalEntriesToMove: 1, warnings: [] },
+      data: { targetName: 'وزارة النقل', absorbedGroups: [{ groupId: 2, name: 'وزاره النقل', entryCount: 1, governorates: ['حمص'] }], totalEntriesToMove: 1, totalEntriesFolded: 0, foldsToApply: [], warnings: [] },
     });
     render(<UnifyNamesModal onClose={vi.fn()} onCommitted={vi.fn()} />);
 
@@ -140,10 +140,10 @@ describe('UnifyNamesModal', () => {
     const onCommitted = vi.fn();
     (api.post as unknown as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({
-        data: { targetName: 'وزارة النقل', absorbedGroups: [{ groupId: 2, name: 'وزاره النقل', entryCount: 1, governorates: ['حمص'] }], totalEntriesToMove: 1, warnings: [] },
+        data: { targetName: 'وزارة النقل', absorbedGroups: [{ groupId: 2, name: 'وزاره النقل', entryCount: 1, governorates: ['حمص'] }], totalEntriesToMove: 1, totalEntriesFolded: 0, foldsToApply: [], warnings: [] },
       })
       .mockResolvedValueOnce({
-        data: { targetGroupId: 1, canonicalName: 'وزارة النقل', groupsUnified: 1, entriesMoved: 1, changeEventId: 99 },
+        data: { targetGroupId: 1, canonicalName: 'وزارة النقل', groupsUnified: 1, entriesMoved: 1, entriesFolded: 0, changeEventId: 99 },
       });
 
     render(<UnifyNamesModal onClose={onCommitted} onCommitted={onCommitted} />);
@@ -164,7 +164,7 @@ describe('UnifyNamesModal', () => {
   it('يعرض إشعار حفظ الأسماء القديمة كأسماء بديلة للبحث فقط', async () => {
     const user = userEvent.setup();
     (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      data: { targetName: 'وزارة النقل', absorbedGroups: [{ groupId: 2, name: 'وزاره النقل', entryCount: 1, governorates: ['حمص'] }], totalEntriesToMove: 1, warnings: [] },
+      data: { targetName: 'وزارة النقل', absorbedGroups: [{ groupId: 2, name: 'وزاره النقل', entryCount: 1, governorates: ['حمص'] }], totalEntriesToMove: 1, totalEntriesFolded: 0, foldsToApply: [], warnings: [] },
     });
     render(<UnifyNamesModal onClose={vi.fn()} onCommitted={vi.fn()} />);
 
@@ -236,5 +236,42 @@ describe('UnifyNamesModal', () => {
     // لم تعد «وزارة التعليم» (3) هدفًا ممكنًا لأنها أصبحت ممتصة
     targetSelect = screen.getByLabelText('الهوية الهدف (يبقى اسمها)') as HTMLSelectElement;
     expect([...targetSelect.options].some((o) => o.value === '3')).toBe(false);
+  });
+
+  it('يعرض قائمة القيود التي ستُطوى ويذكرها في ملخص النجاح بعد التأكيد', async () => {
+    const user = userEvent.setup();
+    const onCommitted = vi.fn();
+    (api.post as unknown as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        data: {
+          targetName: 'وزارة النقل',
+          absorbedGroups: [{ groupId: 2, name: 'وزاره النقل', entryCount: 1, governorates: ['حمص'] }],
+          totalEntriesToMove: 0,
+          totalEntriesFolded: 1,
+          foldsToApply: [{ absorbedGroupId: 2, absorbedGroupName: 'وزاره النقل', governorate: 'حمص', branchName: 'الفرع الرئيسي', linkedDocumentCount: 3 }],
+          warnings: [],
+        },
+      })
+      .mockResolvedValueOnce({
+        data: { targetGroupId: 1, canonicalName: 'وزارة النقل', groupsUnified: 1, entriesMoved: 0, entriesFolded: 1, changeEventId: 99 },
+      });
+
+    render(<UnifyNamesModal onClose={vi.fn()} onCommitted={onCommitted} />);
+
+    await screen.findByText('وزارة النقل');
+    await user.selectOptions(screen.getByLabelText('الهوية الهدف (يبقى اسمها)'), '1');
+    await user.click(screen.getAllByRole('checkbox')[0]);
+    await user.click(screen.getByRole('button', { name: 'معاينة التوحيد' }));
+
+    expect(await screen.findByText('قيود ستُطوى (مطابقة سابقة الوجود)')).toBeInTheDocument();
+    expect(screen.getByText(/حمص \/ الفرع الرئيسي/)).toBeInTheDocument();
+    expect(screen.getByText('3 ملف')).toBeInTheDocument();
+    // تمييز المجموعة الممتصة بأن أحد قيودها المطابقة ستُطوى على الناجي
+    expect(screen.getByText(/\(منها 1 مطابق سيُطوى\)/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'تأكيد التوحيد' }));
+    await waitFor(() => {
+      expect(onCommitted).toHaveBeenCalledWith(expect.stringContaining('قيدًا مطابقًا سابق الوجود طُوي'));
+    });
   });
 });

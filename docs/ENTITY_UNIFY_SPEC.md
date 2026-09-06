@@ -105,14 +105,41 @@ frontend/src/components/entity/__tests__/AllEntitiesUnifyTab.test.tsx    ← NEW
 ## سلوك UnifyNamesAsync الجديد
 
 بعد تحقق التعرّضات (كما في PreviewUnifyAsync):
-1. نقل القيود النشطة إلى مجموعة الهدف (تغيير GroupId).
+1. نقل القيود النشطة إلى مجموعة الهدف (تغيير GroupId) — **إلا القيود المطابقة سابق الوجود (المحافظة/الفرع
+   حرفيًا Ordinal) المُعدّ منها طيًّا**، فتُبطل وتُرحّل روابطها (`ApplicantPublicEntities`/`ExecutedPublicEntities`/
+   `ExecutionApplicants` + `ApplicantRegistryId`) وأسماءها البديلة إلى القيد الناجي (سيمانتك دمج الفروع).
 2. تعطيل المجموعات الممتصة.
-3. إضافة أسماء المجموعات الممتصة كأسماء بديلة «للبحث فقط» على مجموعة الهدف.
+3. إضافة أسماء المجموعات الممتصة كأسماء بديلة «للبحث فقط» على القيد الناجي/المنقول.
 4. مزامنة النصوص في الملفات عبر `SyncTextsAfterRenameAsync` (يغيّر صور الأسماء القديمة في كل الملفات).
 5. مزامنة الاستئنافات عبر `SyncAppealsAfterEntityChangeAsync`.
-6. ترحيل المندوبين عبر `MigrateDelegatesAsync`.
+6. ترحيل المندوبين عبر `MigrateDelegatesAsync` — المطوي يرحل للقيد الناجي (عبر خريطة
+   `entryTargetByAbsorbed`)، والمنقول يبقى على قيده بلا مساس.
 7. إنشاء DocumentOccurrence (نوع `entity-change`) لكل ملف متأثر.
-8. إنشاء PublicEntityChangeEvent (ActionKindCatalog.Unify).
+8. إنشاء PublicEntityChangeEvent (ActionKindCatalog.Unify) مع حمولة تذكر `entriesFolded` و`folds`.
+
+### سياسة المفتاح وحتمية الترتيب
+- مطابقة خام `Ordinal` على `(Governorate, BranchName)` بلا تطبيع — فرق فراغ زائد يعني «نقلًا» لا «طيًّا».
+- تُبنى «بركة ناجين» تبدأ بنسخ القيود النشطة للهدف ويُلحق بها كل قيد يُنقل. لذا عند ممتصتين بنفس المفتاح
+  والهدف خالٍ منه: تُنقل الأولى (تُضاف للبركة) وتُطوى الثانية عليها — حتمية مرتبطة بترتيب الطلب.
+
+## معاينة التوحيد (PreviewUnifyAsync)
+
+- ترجع `UnifyNamesPreviewResponse(TargetName, AbsorbedGroups, TotalEntriesToMove, TotalEntriesFolded,
+  FoldsToApply, Warnings)`.
+- `EntryFoldPreviewDto(AbsorbedGroupId, AbsorbedGroupName, Governorate, BranchName, LinkedDocumentCount)`
+  بقيدٍ سيُطوى؛ العداد عبر `CountLinkedDocumentsByEntryIdsAsync` (batch واحدة).
+- المعاينة **تحاكي طريقة التنفيذ بالضبط** (دورة بركة الناجين نفسها) فتتفق نتائجها مع الاعتماد:
+  العدّاد يزاد داخل حلقة القيد للمنقول فقط، والطيّ لا يُعدّ نقلًا. لا سطر «تعارض» بعد الآن — التعارض
+  أصبح طيًّا؛ المحاكاة نُقلت كمصدر حقيقة (المراجعة F2/G2).
+
+## الواجهة (UnifyNamesModal)
+
+- سطر الملخص: `{TargetName} — {TotalEntriesToMove} قيدًا سيُنقل` + `{TotalEntriesFolded} قيدًا مطابقًا سابق
+  الوجود سيُطوى` عند وجود طي.
+- قسم «قيود ستُطوى» يعرض لكل طيٍّ: `Governorate / BranchName` (من `AbsorbedGroupName`) + عدد الملفات.
+- لكل مجموعة ممتصة تُعرض `EntryCount` (إجمالي القيود النشطة شاملة المطوي) مع تنويه «(منها N مطابق سيُطوى)»
+  عند وجود طي في المجموعة، ليميّز العدد الإجمالي عن صافي القيود المنقولة في سطر الملخص (`TotalEntriesToMove`).
+- رسالة النجاح بعد التأكيد تذكر `entriesMoved` وقيد الطي عند وجوده (`UnifyNamesResponse.EntriesFolded`).
 
 ## مراحل التنفيذ والتحقق
 

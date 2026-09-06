@@ -82,6 +82,15 @@ public class UserRepository : Repository<User>, IUserRepository
             .ToListAsync(ct);
     }
 
+    /// <summary>مندوبو الجهات المرتبطون بقيد محدد عبر PortalEntryId — متتبَّعة للتعديل (طيّ قيد).</summary>
+    public async Task<List<User>> ListEntityManagersByEntryIdAsync(int entryId, CancellationToken ct = default)
+    {
+        return await Db.Users
+            .Include(u => u.PortalEntry).ThenInclude(e => e!.Group)
+            .Where(u => u.Role == UserRole.EntityManager && u.PortalEntryId == entryId)
+            .ToListAsync(ct);
+    }
+
     public async Task<bool> UsernameExistsAsync(string username, int? branchId, int? excludeUserId, CancellationToken ct = default)
     {
         var normalized = ArabicNameNormalizer.Normalize(username);

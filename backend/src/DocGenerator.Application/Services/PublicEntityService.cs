@@ -1376,6 +1376,63 @@ public sealed class PublicEntityService : IPublicEntityService
     private static string? Clamp(string? value)
         => value is null ? null : DocumentSearchTextBuilder.Truncate(value);
 
+    // ── مساعدا الطيّ المشتركان (الدمج/النقل-طي/التوحيد) ──
+    // دلالة حرفية لمنطق الدمج (المرجع الأكمل): إعادة توجيه روابط القيد الثلاث وإعادة اشتقاق
+    // المركّب، ثم الأسماء البديلة (المعياري + الكامل + سوابق القيد الممتصّ) بشروط الاستثناء نفسها.
+
+    /// <summary>يعيد توجيه روابط قيد في مستند إلى قيد آخر ويعيد اشتقاق المركّب.</summary>
+    private static void RepointEntryLinks(Document doc, int fromEntryId, int toEntryId)
+    {
+        foreach (var a in doc.ApplicantPublicEntities.Where(a => a.RegistryId == fromEntryId))
+            a.RegistryId = toEntryId;
+        foreach (var e in doc.ExecutedPublicEntities.Where(e => e.RegistryId == fromEntryId))
+            e.RegistryId = toEntryId;
+        foreach (var ea in doc.ExecutionApplicants.Where(ea => ea.RegistryId == fromEntryId))
+            ea.RegistryId = toEntryId;
+        doc.ApplicantRegistryId = ApplicantRegistryIdDeriver.Derive(doc);
+    }
+
+    /// <summary>أسماء بديلة «للبحث فقط» على قيد الناجي: المعياري + الكامل + سوابق القيد الممتصّ.</summary>
+    private static void AddFoldAliases(PublicEntity targetEntry, string absorbedGroupName, PublicEntity absorbedEntry, ref int aliasesAdded)
+    {
+        var fullName = $"{absorbedGroupName} — {absorbedEntry.Governorate} / {absorbedEntry.BranchName}";
+        var normalizedEntry = ArabicNameNormalizer.Normalize(absorbedGroupName);
+        if (!targetEntry.Aliases.Any(a => ArabicNameNormalizer.Normalize(a.AliasText) == normalizedEntry))
+        {
+            targetEntry.Aliases.Add(new PublicEntityAlias
+            {
+                PublicEntityId = targetEntry.Id,
+                AliasText = absorbedGroupName,
+            });
+            aliasesAdded++;
+        }
+        var normalizedFull = ArabicNameNormalizer.Normalize(fullName);
+        if (!targetEntry.Aliases.Any(a => ArabicNameNormalizer.Normalize(a.AliasText) == normalizedFull))
+        {
+            targetEntry.Aliases.Add(new PublicEntityAlias
+            {
+                PublicEntityId = targetEntry.Id,
+                AliasText = fullName,
+            });
+            aliasesAdded++;
+        }
+        foreach (var priorAlias in absorbedEntry.Aliases)
+        {
+            var priorNorm = ArabicNameNormalizer.Normalize(priorAlias.AliasText);
+            if (priorNorm.Length == 0
+                || priorNorm == normalizedEntry
+                || priorNorm == normalizedFull
+                || targetEntry.Aliases.Any(a => ArabicNameNormalizer.Normalize(a.AliasText) == priorNorm))
+                continue;
+            targetEntry.Aliases.Add(new PublicEntityAlias
+            {
+                PublicEntityId = targetEntry.Id,
+                AliasText = priorAlias.AliasText,
+            });
+            aliasesAdded++;
+        }
+    }
+
     // ── نقل القيد (د3) ──
 
     /// <inheritdoc/>
@@ -1421,16 +1478,16 @@ public sealed class PublicEntityService : IPublicEntityService
                 var linkedDocs = await _entities.ListDocumentsLinkedToEntryAsync(entryId, token);
                 affectedDocIds.AddRange(linkedDocs.Select(d => d.Id));
                 foreach (var doc in linkedDocs)
-                {
-                    foreach (var a in doc.ApplicantPublicEntities.Where(a => a.RegistryId == entryId))
-                        a.RegistryId = targetEntryId;
-                    foreach (var e in doc.ExecutedPublicEntities.Where(e => e.RegistryId == entryId))
-                        e.RegistryId = targetEntryId;
-                    foreach (var ea in doc.ExecutionApplicants.Where(ea => ea.RegistryId == entryId))
-                        ea.RegistryId = targetEntryId;
-                    doc.ApplicantRegistryId = ApplicantRegistryIdDeriver.Derive(doc);
-                }
+                    RepointEntryLinks(doc, entryId, targetEntryId);
                 affectedDocs = linkedDocs.Count;
+
+                // ترحيل مندوبي مستوى القيد إلى القيد الناجي (نطاق بوابة المحاماة يتبدل مع القيد المطوي)
+                var entryDelegates = await _users.ListEntityManagersByEntryIdAsync(entryId, token);
+                foreach (var del in entryDelegates)
+                {
+                    del.PortalGroupId = targetEntry.GroupId;
+                    del.PortalEntryId = targetEntryId;
+                }
 
                 // إيقاف القيد المنقول
                 entry.IsActive = false;
@@ -1869,7 +1926,7 @@ public sealed class PublicEntityService : IPublicEntityService
                     // لترحيل مندوبي القيود إلى نِسَبهم الفرعية الصحيحة بدل طيّهم على أول قيد.
                     entryTargetByAbsorbed[ae.Id] = targetEntry.Id;
 
-                    // ترحيل روابط RegistryId
+                    // ترحيل روابط RegistryId + الأسماء البديلة (مساعدا الطيّ المشتركان)
                     var linkedDocs = await _entities.ListDocumentsLinkedToEntryAsync(ae.Id, token);
                     foreach (var doc in linkedDocs)
                     {
@@ -1878,63 +1935,12 @@ public sealed class PublicEntityService : IPublicEntityService
                     }
 
                     foreach (var doc in linkedDocs)
-                    {
-                        foreach (var a in doc.ApplicantPublicEntities.Where(a => a.RegistryId == ae.Id))
-                            a.RegistryId = targetEntry.Id;
-                        foreach (var e in doc.ExecutedPublicEntities.Where(e => e.RegistryId == ae.Id))
-                            e.RegistryId = targetEntry.Id;
-                        foreach (var ea in doc.ExecutionApplicants.Where(ea => ea.RegistryId == ae.Id))
-                            ea.RegistryId = targetEntry.Id;
-                        doc.ApplicantRegistryId = ApplicantRegistryIdDeriver.Derive(doc);
-                    }
+                        RepointEntryLinks(doc, ae.Id, targetEntry.Id);
 
                     // إيقاف القيد المُدمَج
                     ae.IsActive = false;
 
-                    // إضافة الأسماء البديلة
-                    var fullName = $"{absorbedGroup.CanonicalName} — {ae.Governorate} / {ae.BranchName}";
-                    var normalizedEntry = ArabicNameNormalizer.Normalize(absorbedGroup.CanonicalName);
-                    if (!targetEntry.Aliases.Any(a => ArabicNameNormalizer.Normalize(a.AliasText) == normalizedEntry))
-                    {
-                        targetEntry.Aliases.Add(new PublicEntityAlias
-                        {
-                            PublicEntityId = targetEntry.Id,
-                            AliasText = absorbedGroup.CanonicalName,
-                        });
-                        aliasesAdded++;
-                    }
-                    var normalizedFull = ArabicNameNormalizer.Normalize(fullName);
-                    if (!targetEntry.Aliases.Any(a => ArabicNameNormalizer.Normalize(a.AliasText) == normalizedFull))
-                    {
-                        targetEntry.Aliases.Add(new PublicEntityAlias
-                        {
-                            PublicEntityId = targetEntry.Id,
-                            AliasText = fullName,
-                        });
-                        aliasesAdded++;
-                    }
-
-                    // ترحيل الأسماء البديلة السابقة للقيد الممتصّ (المُلغى فعليًا) إلى القيد
-                    // الهدف كأسماء «للبحث فقط». إذ إن إلغاء القيد الممتصّ يسلبه أسماءه البديلة
-                    // الموجودة مسبقًا (التي أضافها المستخدمون سابقًا) فلا يعود البحث يجدها؛
-                    // بترحيلها إلى الهدف يظل البحث بالاسم القديم البديل يجد الجهة بعد الدمج
-                    // (مواءمة سلوك إعادة التسمية والوحدة 7-هـ/7-و). تُستثنى الأسماء المكررة
-                    // والاسم المعياري والاسم الكامل المُعالجان أعلاه.
-                    foreach (var priorAlias in ae.Aliases)
-                    {
-                        var priorNorm = ArabicNameNormalizer.Normalize(priorAlias.AliasText);
-                        if (priorNorm.Length == 0
-                            || priorNorm == normalizedEntry
-                            || priorNorm == normalizedFull
-                            || targetEntry.Aliases.Any(a => ArabicNameNormalizer.Normalize(a.AliasText) == priorNorm))
-                            continue;
-                        targetEntry.Aliases.Add(new PublicEntityAlias
-                        {
-                            PublicEntityId = targetEntry.Id,
-                            AliasText = priorAlias.AliasText,
-                        });
-                        aliasesAdded++;
-                    }
+                    AddFoldAliases(targetEntry, absorbedGroup.CanonicalName, ae, ref aliasesAdded);
 
                     branchMap.Add(new
                     {
@@ -2087,10 +2093,13 @@ public sealed class PublicEntityService : IPublicEntityService
 
         var targetEntries = await _entities.ListEntriesByGroupAsync(targetGroup.Id, ct);
         var activeTarget = targetEntries.Where(e => e.IsActive).ToList();
-        var targetKeySet = new HashSet<string>(activeTarget.Select(e => $"{e.Governorate}|{e.BranchName}"), StringComparer.Ordinal);
+        // بركة الناجين: محاكاة مطابقة لحلقة التنفيذ في UnifyNamesAsync — تبدأ بنسخ القيود
+        // النشطة للهدف ويُلحق بها كل قيد يُنقل؛ المطابقة خام (Ordinal) على (المحافظة/الفرع).
+        var survivorPool = new List<PublicEntity>(activeTarget);
 
         var warnings = new List<string>();
         var absorbedDtos = new List<AbsorbedGroupUnifyPreviewDto>();
+        var foldEntries = new List<(int GroupId, string GroupName, PublicEntity Entry)>();
         int totalToMove = 0;
 
         foreach (var ae in targetEntries.Where(e => e.NeedsReview))
@@ -2107,24 +2116,40 @@ public sealed class PublicEntityService : IPublicEntityService
             foreach (var ae in absorbedEntries.Where(e => e.NeedsReview))
                 warnings.Add($"القيد «{ae.Governorate}/{ae.BranchName}» في «{absorbedGroup.CanonicalName}» بانتظار المراجعة");
 
-            var activeAbsorbed = absorbedEntries.Where(e => e.IsActive).ToList();
-            totalToMove += activeAbsorbed.Count;
-
             if (!string.Equals(absorbedGroup.EntityType, targetGroup.EntityType, StringComparison.OrdinalIgnoreCase))
                 warnings.Add($"تنبيه: نوع الجهة مختلف — «{absorbedGroup.CanonicalName}» ({absorbedGroup.EntityType}) و«{targetGroup.CanonicalName}» ({targetGroup.EntityType})");
 
+            var activeAbsorbed = absorbedEntries.Where(e => e.IsActive).ToList();
+
             foreach (var ae in activeAbsorbed)
             {
-                var key = $"{ae.Governorate}|{ae.BranchName}";
-                if (targetKeySet.Contains(key))
-                    warnings.Add($"تعارض: القيد «{ae.Governorate}/{ae.BranchName}» من «{absorbedGroup.CanonicalName}» موجود مسبقًا في «{targetGroup.CanonicalName}»");
+                var survivor = survivorPool.FirstOrDefault(se => se.Governorate == ae.Governorate && se.BranchName == ae.BranchName);
+                if (survivor is not null)
+                {
+                    // الطي لا يُعدّ نقلًا: يُبطل القيد المطابق ويُرحّل روابطه إلى الناجي.
+                    foldEntries.Add((absorbedGroup.Id, absorbedGroup.CanonicalName, ae));
+                }
+                else
+                {
+                    totalToMove++;
+                    survivorPool.Add(ae);
+                }
             }
 
             var govs = activeAbsorbed.Select(e => e.Governorate).Distinct(StringComparer.Ordinal).OrderBy(x => x, StringComparer.Ordinal).ToList();
             absorbedDtos.Add(new AbsorbedGroupUnifyPreviewDto(absorbedGroup.Id, absorbedGroup.CanonicalName, activeAbsorbed.Count, govs));
         }
 
-        return new UnifyNamesPreviewResponse(targetGroup.CanonicalName, absorbedDtos, totalToMove, warnings);
+        // عدّ ملفات القيود المزمع طيّها دفعة واحدة ثم نبني تفاصيل الطي بالترتيب.
+        var linkedCounts = await _entities.CountLinkedDocumentsByEntryIdsAsync(foldEntries.Select(f => f.Entry.Id).ToList(), ct);
+        var folds = foldEntries.Select(f => new EntryFoldPreviewDto(
+            f.GroupId,
+            f.GroupName,
+            f.Entry.Governorate,
+            f.Entry.BranchName,
+            linkedCounts.TryGetValue(f.Entry.Id, out var count) ? count : 0)).ToList();
+
+        return new UnifyNamesPreviewResponse(targetGroup.CanonicalName, absorbedDtos, totalToMove, folds.Count, folds, warnings);
     }
 
     /// <inheritdoc/>
@@ -2148,7 +2173,10 @@ public sealed class PublicEntityService : IPublicEntityService
             if (targetEntries.Any(e => e.NeedsReview))
                 throw new ArgumentException("يجب إتمام مراجعة جميع قيود الهوية الهدف قبل التوحيد");
 
-            var targetKeySet = new HashSet<string>(activeTarget.Select(e => $"{e.Governorate}|{e.BranchName}"), StringComparer.Ordinal);
+            // بركة الناجين: تبدأ بنسخ القيود النشطة للهدف ويُلحق بها كل قيد يُنقل؛
+            // مطابقة خام (Ordinal) على (المحافظة/الفرع) كسيمانتك الدمج والحرّاس —
+            // فرق فراغ زائد يعني «نقلًا» لا «طيًّا» (سياسة المفتاح المعتمدة).
+            var survivorPool = new List<PublicEntity>(activeTarget);
 
             // مرسوم التوحيد العام (اختياري)
             var decreeKind = NormalizeOptional(request.DecreeKind);
@@ -2161,11 +2189,14 @@ public sealed class PublicEntityService : IPublicEntityService
 
             int groupsUnified = 0;
             int entriesMoved = 0;
+            int entriesFolded = 0;
             int aliasesAdded = 0;
             int totalAffectedDocs = 0;
             var oldNames = new List<string>();
             var movedEntryIds = new List<int>();
             var affectedDocsById = new Dictionary<int, Document>();
+            var entryTargetByAbsorbed = new Dictionary<int, int>();
+            var folds = new List<object>();
             var absorbedIdsDistinct = request.AbsorbedGroupIds.Distinct().ToList();
 
             foreach (var absorbedId in absorbedIdsDistinct)
@@ -2181,33 +2212,57 @@ public sealed class PublicEntityService : IPublicEntityService
 
                 var activeAbsorbed = absorbedEntries.Where(e => e.IsActive).ToList();
 
-                foreach (var ae in activeAbsorbed)
-                {
-                    var key = $"{ae.Governorate}|{ae.BranchName}";
-                    if (targetKeySet.Contains(key))
-                        throw new ArgumentException($"تعارض: القيد «{ae.Governorate}/{ae.BranchName}» من «{absorbedGroup.CanonicalName}» موجود مسبقًا في «{targetGroup.CanonicalName}»");
-                }
-
                 oldNames.Add(absorbedGroup.CanonicalName);
 
                 foreach (var ae in activeAbsorbed)
                 {
-                    // 1) نقل القيد إلى مجموعة الهدف
-                    ae.GroupId = targetGroup.Id;
-                    targetKeySet.Add($"{ae.Governorate}|{ae.BranchName}");
-                    movedEntryIds.Add(ae.Id);
-                    entriesMoved++;
+                    var survivor = survivorPool.FirstOrDefault(se => se.Governorate == ae.Governorate && se.BranchName == ae.BranchName);
 
-                    // 3) حفظ الاسم الممتصّ اسمًا بديلًا «للبحث فقط» على القيد المنقول
-                    var normAbsorbed = ArabicNameNormalizer.Normalize(absorbedGroup.CanonicalName);
-                    if (!ae.Aliases.Any(a => ArabicNameNormalizer.Normalize(a.AliasText) == normAbsorbed))
+                    if (survivor is not null)
                     {
-                        ae.Aliases.Add(new PublicEntityAlias
+                        // طيّ: قيد مطابق (محافظة/فرع) حرفيًا داخل الهوية الموحّدة — يُبطل ويُرحّل
+                        // روابطه وأسماءه البديلة إلى الناجي (سيمانتك دمج الفروع؛ بلا fallback من نوع «أول قيد»).
+                        var linkedFoldDocs = await _entities.ListDocumentsLinkedToEntryAsync(ae.Id, token);
+                        foreach (var doc in linkedFoldDocs)
                         {
-                            PublicEntityId = ae.Id,
-                            AliasText = absorbedGroup.CanonicalName,
+                            if (!affectedDocsById.ContainsKey(doc.Id))
+                                affectedDocsById[doc.Id] = doc;
+                        }
+                        foreach (var doc in linkedFoldDocs)
+                            RepointEntryLinks(doc, ae.Id, survivor.Id);
+
+                        ae.IsActive = false;
+                        entryTargetByAbsorbed[ae.Id] = survivor.Id;
+                        AddFoldAliases(survivor, absorbedGroup.CanonicalName, ae, ref aliasesAdded);
+                        entriesFolded++;
+                        folds.Add(new
+                        {
+                            absorbedEntryId = ae.Id,
+                            targetEntryId = survivor.Id,
+                            governorate = ae.Governorate,
+                            branchName = ae.BranchName,
+                            linkedDocs = linkedFoldDocs.Count,
                         });
-                        aliasesAdded++;
+                    }
+                    else
+                    {
+                        // نقل القيد إلى مجموعة الهدف (كما هو)
+                        ae.GroupId = targetGroup.Id;
+                        survivorPool.Add(ae);
+                        movedEntryIds.Add(ae.Id);
+                        entriesMoved++;
+
+                        // حفظ الاسم الممتصّ اسمًا بديلًا «للبحث فقط» على القيد المنقول
+                        var normAbsorbed = ArabicNameNormalizer.Normalize(absorbedGroup.CanonicalName);
+                        if (!ae.Aliases.Any(a => ArabicNameNormalizer.Normalize(a.AliasText) == normAbsorbed))
+                        {
+                            ae.Aliases.Add(new PublicEntityAlias
+                            {
+                                PublicEntityId = ae.Id,
+                                AliasText = absorbedGroup.CanonicalName,
+                            });
+                            aliasesAdded++;
+                        }
                     }
                 }
 
@@ -2249,9 +2304,10 @@ public sealed class PublicEntityService : IPublicEntityService
             if (allAffectedDocs.Count > 0)
                 await SyncAppealsAfterEntityChangeAsync(allAffectedDocs, actor, token);
 
-            // 6) ترحيل مندوبي الجهات الممتصة إلى الهدف (على مستوى المجموعة)
+            // 6) ترحيل مندوبي الجهات الممتصة إلى الهدف (على مستوى المجموعة)، مع خريطة الطيّ:
+            //    المطوي يرحل لناجيه، والمنقول (غير المُدرج) يبقى على قيده.
             var absorbedIdsSet = new HashSet<int>(absorbedIdsDistinct);
-            await MigrateDelegatesAsync(absorbedIdsSet, targetGroup.Id, null, null, token);
+            await MigrateDelegatesAsync(absorbedIdsSet, targetGroup.Id, null, entryTargetByAbsorbed, token);
 
             // 7) سجل التغيير
             var payload = System.Text.Json.JsonSerializer.Serialize(new
@@ -2261,6 +2317,8 @@ public sealed class PublicEntityService : IPublicEntityService
                 absorbedGroupIds = absorbedIdsDistinct,
                 oldCanonicalNames = oldNames,
                 entriesMoved,
+                entriesFolded,
+                folds,
                 groupsUnified,
                 aliasesAdded,
                 totalAffectedDocs,
@@ -2301,7 +2359,7 @@ public sealed class PublicEntityService : IPublicEntityService
 
             await _audit.LogAsync(actor.Name, "unify_entity_names",
                 documentId: null, documentType: null,
-                details: $"توحيد تسمية {groupsUnified} هويات في «{targetGroup.CanonicalName}» — {entriesMoved} قيدًا نُقل، {totalAffectedDocs} ملفًا متأثرًا",
+                details: $"توحيد تسمية {groupsUnified} هويات في «{targetGroup.CanonicalName}» — {entriesMoved} قيدًا نُقل، {entriesFolded} قيدًا طُوي، {totalAffectedDocs} ملفًا متأثرًا",
                 ct: token);
 
             // تنبيه عام لكل المحامين + تنبيه خاص لرؤساء الأقسام
@@ -2312,7 +2370,7 @@ public sealed class PublicEntityService : IPublicEntityService
                 EntityChangeMessages.UnifyHeadsAlert(absorbedNamesJoined, targetGroup.CanonicalName, decreeKind ?? "", decreeNumber ?? "", decreeDate),
                 actor.UserId, token);
 
-            return new UnifyNamesResponse(targetGroup.Id, targetGroup.CanonicalName, groupsUnified, entriesMoved, changeEvent.Id);
+            return new UnifyNamesResponse(targetGroup.Id, targetGroup.CanonicalName, groupsUnified, entriesMoved, entriesFolded, changeEvent.Id);
         }, ct);
     }
 
@@ -2416,10 +2474,12 @@ public sealed class PublicEntityService : IPublicEntityService
     /// <summary>ترحيل مندوبي الجهات المُمتصة/المُلغاة إلى الهوية الهدف (مواءمة 7-ز).</summary>
     /// <remarks>
     /// المندوب المجموعتي يُتوجَّه دائمًا إلى المجموعة الهدف. المندوب القيدي يُتوجَّه إلى
-    /// القيد المطابق لفرعه عبر <paramref name="entryTargetByAbsorbedEntry"/> (عند الدمج حيث
-    /// تُطوى القيود فرعًا بفرع)، ويسقط على <paramref name="defaultTargetEntryId"/> عند غياب
-    /// المطابق؛ وفي مسار التوحيد (لا طيّ فرعي — القيود انتقلت كاملة) يُترك قيده كما هو مع
-    /// تمرير قيمتي الفارق null.
+    /// القيد المطابق لفرعه عبر <paramref name="entryTargetByAbsorbedEntry"/>، ويسقط على
+    /// <paramref name="defaultTargetEntryId"/> عند غياب المطابق (حيث لا تُمرَّر الخريطة).
+    /// في مسار التوحيد تُمرَّر خريطة الطيّ <paramref name="entryTargetByAbsorbedEntry"/>
+    /// ليرحل المطوي إلى قرينه الناجي، بينما المُتَنقَّل (غير المُدرج في الخريطة) يبقى على
+    /// قيده دون تغيير، مع تمرير null لقيمة <paramref name="defaultTargetEntryId"/> كي لا
+    /// يُطوى المنقول على قيد عشوائي.
     /// </remarks>
     private async Task<int> MigrateDelegatesAsync(
         HashSet<int> absorbedIds,

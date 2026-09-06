@@ -94,4 +94,14 @@ public interface IPublicEntityRepository
     Task<Dictionary<int, int>> CountLinkedDocumentsByGroupIdsAsync(
         IReadOnlyCollection<int> groupIds,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// عدّاد الملفات المرتبطة بقيود محددة (عبر RegistryId في جداول الطرف الثلاثة:
+    /// ApplicantPublicEntities / ExecutedPublicEntities / ExecutionApplicants).
+    /// يُرجع خريطة EntryId ← عدد الملفات المميّزة. عملية batch واحدة بدل N استعلامًا —
+    /// مستخدَمة في معاينة التوحيد/الدمج لعدّ ملفات القيود المزمع طيّها.
+    /// </summary>
+    Task<Dictionary<int, int>> CountLinkedDocumentsByEntryIdsAsync(
+        IReadOnlyCollection<int> entryIds,
+        CancellationToken ct = default);
 }
