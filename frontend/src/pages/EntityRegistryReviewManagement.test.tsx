@@ -64,11 +64,13 @@ describe('EntityRegistryReviewManagement', () => {
     expect(screen.getByRole('tab', { name: 'سجل تغييرات الجهة' })).toBeInTheDocument();
   });
 
-  it('يعرض تبويب التوحيد مع تبويبيه الفرعيين عند اختياره', async () => {
+  it('يعرض تبويب التوحيد ببطاقتي كافة الجهات والمشابهات مباشرة دون تبويبات فرعية', async () => {
     renderPage('/entities/review-management?tab=unify');
     expect(screen.getByRole('tab', { name: 'تعديل جهة عامة' })).toBeInTheDocument();
-    expect(await screen.findByRole('tab', { name: 'المجموعات المتشابهة' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'كافة الجهات العامة' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'كافة الجهات العامة' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'أقرب المشابهات' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'المجموعات المتشابهة' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'كافة الجهات العامة' })).not.toBeInTheDocument();
   });
 
   it('يبحث ويضيف جهة للقائمة المختارة ثم يعرضها', async () => {

@@ -2057,43 +2057,11 @@ public class PublicEntityServiceTests : IDisposable
         Assert.NotNull(occ);
         Assert.Equal(OccurrenceTypeCatalog.EntityChange, occ!.OccurrenceType);
         Assert.Contains("توحيد تسمية", occ.Details);
+        // لا رابط مرسوم عائمًا «بموجب _ رقم _» — التوحيد بلا مرسوم (حقول اختيارية تُستقبل null)
+        Assert.DoesNotContain("بموجب", occ.Details);
 
         var after = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == doc.Id);
         Assert.Equal("الجهة الموحدة الهدف - محافظة حلب", after.Applicant);
-    }
-
-    [Fact]
-    public async Task SimilarGroups_ClustersFunctionalWordVariants()
-    {
-        // «المصرف التجاري السوري» ونسخته مع إضافة «- المدير العام» تتشابه فوق العتبة
-        // بفضل معالجة الكلمات الوظيفية، فتظهر ضمن مجموعة متشابهة واحدة.
-        await _service.CreateAsync(new CreatePublicEntityRequest("المصرف التجاري السوري", "company", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        await _service.CreateAsync(new CreatePublicEntityRequest("المصرف التجاري السوري - المدير العام", "company", "دمشق", "الفرع الرئيسي 2"), ManagerActor());
-
-        var resp = await _service.GetSimilarGroupsAsync(0.55);
-        var cluster = resp.Clusters.FirstOrDefault(c => c.Groups.Any(g => g.CanonicalName.Contains("المصرف التجاري السوري")));
-        Assert.NotNull(cluster);
-        Assert.Equal(2, cluster!.Groups.Count);
-        Assert.All(cluster.Groups, g => Assert.True(g.AvgSimilarityToCluster >= 0 || g.AvgSimilarityToCluster == 0));
-    }
-
-    [Fact]
-    public async Task GetSimilarGroups_AssignsUniqueSequentialClusterIds()
-    {
-        // بذر مجموعتين متشابهتين منفصلتين حتى لا تندمجا في عنقود واحد (عتبة 0.55).
-        // يجب أن تأخذ العناقيد معرّفات تسلسلية فريدة 1..N بدل القيمة الثابتة صفر،
-        // حتى تصح مفاتيح React في تبويب «توحيد تسميات».
-        await _service.CreateAsync(new CreatePublicEntityRequest("المصرف التجاري السوري", "company", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        await _service.CreateAsync(new CreatePublicEntityRequest("المصرف التجاري السوري - المدير العام", "company", "دمشق", "الفرع الرئيسي 2"), ManagerActor());
-        await _service.CreateAsync(new CreatePublicEntityRequest("هيئة الاستثمار", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        await _service.CreateAsync(new CreatePublicEntityRequest("هيئة الاستثمار والتجارة", "authority", "حلب", "فرع حلب"), ManagerActor());
-
-        var resp = await _service.GetSimilarGroupsAsync(0.55);
-        Assert.True(resp.Clusters.Count >= 2);
-
-        var ids = resp.Clusters.Select(c => c.ClusterId).Distinct().ToList();
-        Assert.Equal(resp.Clusters.Count, ids.Count);
-        Assert.Equal(Enumerable.Range(1, resp.Clusters.Count).ToList(), ids.OrderBy(x => x).ToList());
     }
 
     [Fact]

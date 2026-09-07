@@ -6,14 +6,11 @@ namespace DocGenerator.Application.Common;
 /// تشابه الأسماء العربية للجهات العامة — خوارزمية هجينة (Hybrid) تجمع:
 /// Jaccard على Bigrams + Normalized Levenshtein + Token-Jaccard، بمتوسط مرجّح،
 /// بعد التطبيع بـ <see cref="ArabicNameNormalizer"/>.
-/// تُستخدم لكشف «المجموعات المتشابهة» (Union-Find) ولاقتراح «مشابهات جهة محددة».
+/// تُستخدم لاقتراح «مشابهات جهة محددة» في توحيد التسمية.
 /// </summary>
 public static class ArabicNameSimilarity
 {
-    /// <summary>عتبة تجميع المجموعات المتشابهة في تبويب «المجموعات المتشابهة».</summary>
-    public const double DefaultClusterThreshold = 0.55;
-
-    /// <summary>عتبة اقتراح مشابهات لجهة محددة (أقل حساسية من عتبة التجميع).</summary>
+    /// <summary>عتبة اقتراح مشابهات لجهة محددة.</summary>
     public const double DefaultSimilarToThreshold = 0.55;
 
     /// <summary>أقصى عدد من المقترحات لجهة محددة.</summary>
@@ -147,71 +144,6 @@ public static class ArabicNameSimilarity
 
         var union = tokensA.Count + tokensB.Count - intersection;
         return union == 0 ? 0.0 : (double)intersection / union;
-    }
-
-    /// <summary>
-    /// تجميع مجموعات متشابهة (الهويات الأم النشطة) عبر Union-Find: كل زوج تجاوز
-    /// العتبة يُربط في بيئة واحدة. تُعاد قوائم القيود (بأرقام مجموعاتها).
-    /// لا تُتضمَّن إلا المجموعات النشطة، ويُستثنى أي زوج متطابق التطبيع أو المجموعة مع نفسها.
-    /// </summary>
-    public static List<List<PublicEntityGroup>> ClusterGroups(
-        IReadOnlyList<PublicEntityGroup> groups,
-        double threshold = DefaultClusterThreshold)
-    {
-        var active = groups.Where(g => g.IsActive).ToList();
-        if (active.Count < 2)
-            return new List<List<PublicEntityGroup>>();
-
-        var parent = new int[active.Count];
-        for (int i = 0; i < parent.Length; i++)
-            parent[i] = i;
-
-        int Find(int x)
-        {
-            while (parent[x] != x)
-            {
-                parent[x] = parent[parent[x]];
-                x = parent[x];
-            }
-            return x;
-        }
-
-        void Union(int x, int y)
-        {
-            var rx = Find(x);
-            var ry = Find(y);
-            if (rx != ry)
-                parent[ry] = rx;
-        }
-
-        for (int i = 0; i < active.Count; i++)
-        {
-            for (int j = i + 1; j < active.Count; j++)
-            {
-                var gi = active[i];
-                var gj = active[j];
-                if (gi.Id == gj.Id)
-                    continue;
-                var sim = Similarity(gi.CanonicalName, gj.CanonicalName);
-                if (sim >= threshold)
-                    Union(i, j);
-            }
-        }
-
-        var clusters = new Dictionary<int, List<PublicEntityGroup>>();
-        for (int i = 0; i < active.Count; i++)
-        {
-            var root = Find(i);
-            if (!clusters.TryGetValue(root, out var list))
-                clusters[root] = list = new List<PublicEntityGroup>();
-            list.Add(active[i]);
-        }
-
-        // نُبقي البيئات التي تحتوي على مجموعهتين على الأقل (مجموعة حقيقية).
-        return clusters.Values
-            .Where(c => c.Count >= 2)
-            .Select(c => c.OrderBy(g => g.CanonicalName, StringComparer.Ordinal).ToList())
-            .ToList();
     }
 
     /// <summary>أقرب المشابهات لمجموعة محددة (ضمن النشطة، دون المجموعة نفسها) فوق عتبة، مرتبة تنازليًا.</summary>

@@ -65,9 +65,6 @@ public interface IPublicEntityService
     /// <summary>قائمة المجموعات (الهويات الأم) مع ترقيم وبحث — للعرض المستقل وتوحيد التسمية/إدارة الفروع.</summary>
     Task<PagedResult<PublicEntityGroupDto>> ListGroupsAsync(EntityGroupListQuery query, EntityRegistryActor actor, CancellationToken ct = default);
 
-    /// <summary>المجموعات المتشابهة (كشف Union-Find) لتبويب «المجموعات المتشابهة» في توحيد التسمية.</summary>
-    Task<SimilarGroupsResponse> GetSimilarGroupsAsync(double threshold, CancellationToken ct = default);
-
     /// <summary>أقرب المشابهات لجهة محددة (تبويب «كافة الجهات» عند تحديد جهة واحدة).</summary>
     Task<SimilarToResponse> FindSimilarToGroupAsync(int groupId, double threshold, int maxResults, CancellationToken ct = default);
 
@@ -301,69 +298,6 @@ public sealed class PublicEntityService : IPublicEntityService
             .ThenBy(e => e.BranchName, StringComparer.Ordinal)
             .Select(e => ToEntryDto(group, e))
             .ToList();
-    }
-
-    /// <inheritdoc/>
-    public async Task<SimilarGroupsResponse> GetSimilarGroupsAsync(double threshold, CancellationToken ct = default)
-    {
-        var t = threshold <= 0 ? ArabicNameSimilarity.DefaultClusterThreshold : Math.Clamp(threshold, 0, 1);
-        var groups = await _entities.ListGroupsWithEntriesAsync(ct);
-        var active = groups.Where(g => g.IsActive).ToList();
-
-        var clusters = ArabicNameSimilarity.ClusterGroups(groups, t);
-        var allClusterIds = clusters.SelectMany(c => c.Select(g => g.Id)).Distinct().ToList();
-        var linkedCounts = await _entities.CountLinkedDocumentsByGroupIdsAsync(allClusterIds, ct);
-
-        var clusterDtos = new List<SimilarGroupClusterDto>();
-        int clusterIndex = 0;
-        foreach (var cluster in clusters)
-        {
-            var items = cluster.Select(g =>
-            {
-                var entryCount = g.Entries.Count(e => e.IsActive);
-                // متوسط التشابه لهذه الجهة تجاه باقي أفراد مجموعتها.
-                double itemAvg = 0;
-                if (cluster.Count >= 2)
-                {
-                    double sum = 0;
-                    int count = 0;
-                    foreach (var other in cluster)
-                    {
-                        if (other.Id == g.Id)
-                            continue;
-                        sum += ArabicNameSimilarity.Similarity(g.CanonicalName, other.CanonicalName);
-                        count++;
-                    }
-                    itemAvg = count == 0 ? 0 : sum / count;
-                }
-                return new SimilarGroupItemDto(
-                    g.Id,
-                    g.CanonicalName,
-                    g.EntityType,
-                    entryCount,
-                    linkedCounts.TryGetValue(g.Id, out var c) ? c : 0,
-                    Math.Round(itemAvg, 3));
-            }).ToList();
-
-            // متوسط التشابه لبيئة التجمع.
-            double clusterAvg = 0;
-            if (cluster.Count >= 2)
-            {
-                double sum = 0;
-                int pairCount = 0;
-                for (int i = 0; i < cluster.Count; i++)
-                    for (int j = i + 1; j < cluster.Count; j++)
-                    {
-                        sum += ArabicNameSimilarity.Similarity(cluster[i].CanonicalName, cluster[j].CanonicalName);
-                        pairCount++;
-                    }
-                clusterAvg = pairCount == 0 ? 0 : sum / pairCount;
-            }
-
-            clusterDtos.Add(new SimilarGroupClusterDto(++clusterIndex, Math.Round(clusterAvg, 3), items));
-        }
-
-        return new SimilarGroupsResponse(clusterDtos, active.Count, t);
     }
 
     /// <inheritdoc/>

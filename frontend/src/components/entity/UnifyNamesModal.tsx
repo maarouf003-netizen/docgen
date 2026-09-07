@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, getApiErrorMessage } from '../../api/client';
-import { normalizeArabicDigits } from '../../utils/arabicDigits';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import type {
   AbsorbedGroupUnifyPreviewDto,
@@ -35,9 +34,6 @@ export function UnifyNamesModal({ onClose, onCommitted, initialGroupId, initialA
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState('');
-  const [decreeKind, setDecreeKind] = useState('');
-  const [decreeNumber, setDecreeNumber] = useState('');
-  const [decreeDate, setDecreeDate] = useState('');
   const initializedAbsorbed = useRef(false);
   const requestSeq = useRef(0);
 
@@ -130,9 +126,6 @@ export function UnifyNamesModal({ onClose, onCommitted, initialGroupId, initialA
       const res = await api.post<UnifyResponse>('/entity-registry/groups/unify', {
         targetGroupId: targetId,
         absorbedGroupIds: [...absorbedIds],
-        decreeKind: decreeKind.trim() || null,
-        decreeNumber: decreeNumber.trim() || null,
-        decreeDate: normalizeArabicDigits(decreeDate).trim() || null,
       });
       const r = res.data;
       const foldedNote = r.entriesFolded > 0 ? ` و${r.entriesFolded} قيدًا مطابقًا سابق الوجود طُوي على القيد الناجي` : '';
@@ -331,48 +324,6 @@ export function UnifyNamesModal({ onClose, onCommitted, initialGroupId, initialA
                   </li>
                 ))}
               </ul>
-            </div>
-          )}
-
-          {preview && (
-            <div className="mt-4 border-t border-gray-100 pt-4">
-              <h4 className="text-sm font-bold text-gray-700 mb-2">المرسوم (اختياري — للتعديلات العامة)</h4>
-              <div className="grid sm:grid-cols-3 gap-3">
-                <div>
-                  <label htmlFor="unify-decree-kind" className="block text-xs font-medium text-gray-600 mb-1">نوع المرسوم</label>
-                  <input
-                    id="unify-decree-kind"
-                    value={decreeKind}
-                    onChange={(e) => setDecreeKind(e.target.value)}
-                    placeholder="مثال: مرسوم تشريعي…"
-                    autoComplete="off"
-                    className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="unify-decree-number" className="block text-xs font-medium text-gray-600 mb-1">رقم المرسوم</label>
-                  <input
-                    id="unify-decree-number"
-                    value={decreeNumber}
-                    onChange={(e) => setDecreeNumber(e.target.value)}
-                    placeholder="مثال: 123…"
-                    autoComplete="off"
-                    className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="unify-decree-date" className="block text-xs font-medium text-gray-600 mb-1">تاريخ المرسوم</label>
-                  <input
-                    id="unify-decree-date"
-                    type="text"
-                    value={decreeDate}
-                    onChange={(e) => setDecreeDate(e.target.value)}
-                    placeholder="مثال: 1/8/2026"
-                    autoComplete="off"
-                    className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-              </div>
             </div>
           )}
         </div>

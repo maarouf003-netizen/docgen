@@ -15,23 +15,21 @@
 
 ## الصفحة: «توحيد تسميات الجهات العامة»
 
-تحتوي الصفحة على تبويبين:
+تعرض الصفحة بطاقتين مباشرة دون تبويبات فرعية — تبويب «المجموعات المتشابهة» أُلغي نهائيًا
+(واجهةً وخلفيةً: نقطة `GET /groups/similar-groups` ودالة العنقدة `ClusterGroups` وأنواعها
+واختباراتها حُذفت، فلا كود ميت):
 
-### تبويب 1: «المجموعات المتشابهة»
-- تظهر الجهات العامة المتشابهة ضمن مجموعات (كشف تلقائي عبر خوارزمية تشابه).
-- ضمن كل مجموعة مربع اختيار لكل جهة + زر «توحيد التسمية».
-- عند الضغط تظهر الاقتراحات مع عدّاد الاستخدام (عدد الملفات المرتبطة) لاختيار الجهة المعتمدة كتسمية موحدة.
-- الهدف الافتراضي للمجموعة هو **الأعلى ارتباطًا بالملفات** ثم بالقيود، والأول أبجديًا عند التعادل —
-  ومجرّد اقتراح قابل للتغيير قبل التنفيذ.
-- عند التوحيد تتغير التسمية في كل مكان (الملفات التنفيذية المشطوبة والمنفذة والتريث... والاستئنافات والإحالات).
+### بطاقة «كافة الجهات العامة»
+- قائمة مسطّحة بكل الجهات العامة بعدّادات القيود والملفات، مع بحث خادمي وتقميم (100).
+- زر «تحديث» في الترويسة يُعيد جلب القائمة بالبحث الحالي دون تحديث صفحة المتصفح.
+- اختيار جهة واحدة يعرض مشابهاتها في البطاقة المجاورة.
+- الهدف: التقاط جهة عامة لتوحيد مشابهاتها عليها (تسميتها الصحيحة تبقى).
 
-### تبويب 2: «كافة الجهات العامة»
-- جدول مسطّح بكل الجهات العامة (بدون مجموعات)، بجانب كل جهة عدد الملفات المرتبطة بها ومربع اختيار.
-- زر عام «توحيد التسمية».
-- عند تحديد جهة واحدة: تفتح نافذة اختيار منفصلة تعرض المشابهات المقترحة (بالنسبة والتعداد) لاختيارها.
-- عند تحديد عدة جهات: توحيد مباشر.
-- الهدف: التقاط جهة عامة غير موجودة في المجموعات المتشابهة.
-- تظهر الاقتراحات نفسها في الصفحتين (لا منع ولا ازدواج منطقي — كلاهما طريق للتوحيد).
+### بطاقة «مشابهات الجهة المحددة»
+- تعرض الجهات المتقاربة في الاسم مع النسبة والعدادات (`GET /groups/{id}/similar-to` بعتبة 0.55).
+- زر «توحيد تسمية المتشابهات مع الجهة المحددة ذات التسمية الصحيحة» يفتح نافذة التوحيد
+  بالجهة المحددة هدفًا والمشابهات ممتصة.
+- بعد نجاح أي توحيد تُعاد جلب قائمة الجهات تلقائيًا (إضافة لزر التحديث اليدوي).
 
 ## القرارات المعتمدة
 
@@ -39,10 +37,8 @@
 |--------|-------------------|
 | مصدر التسمية الموحدة | من المختارين حصرًا (لا اسم جديد يدويًا) |
 | معالجة الأسماء القديمة (الخاطئة) | تُحفظ كأسماء بديلة «للبحث فقط» — تُستخدم للعثور ولا تظهر كاقتراح، والموحدة وحدها تظهر وتُخزَّن |
-| ازدواج الاقتراحات بين التبويبين | يُسمح (لا مشكلة منطقية) |
 | الصلاحيات | المدير/المشرف فقط (`HasFullAccess`) |
 | خوارزمية التشابه | هجينة: Jaccard-Bigram + Normalized Levenshtein + Token-Jaccard، بمتوسط مرجّح |
-| عتبة تجميع المجموعات | 0.55 (بعد ضبط الكلمات الوظيفية) |
 | معالجة الكلمات الوظيفية | نعم — «المدير العام»/«مدير عام»/«فرع» تُعد ثانوية وتُخفّف لرفع تشابه الجهة نفسها |
 | عتبة مشابهات جهة محددة | 0.55 |
 | هجرات EF | لا يوجد (لا تغيير في المخطط) |
@@ -53,37 +49,39 @@
 backend/src/
   DocGenerator.Application/
     Common/
-      ArabicNameSimilarity.cs            ← NEW: خوارزمية التشابه الهجينة + clustering + union-find
+      ArabicNameSimilarity.cs            ← EDIT: خوارزمية التشابه الهجينة لاقتراح مشابهات جهة
+                                                 محددة (دالة العنقدة ClusterGroups وثابت عتبتها محذوفان)
       Interfaces/
         IPublicEntityRepository.cs       ← EDIT: CountLinkedDocumentsAsync (batch)
     DTOs/
-      EntityRegistryDtos.cs              ← EDIT: +SimilarGroupClusterDto, SimilarGroupItemDto,
-                                                SimilarGroupsResponse, FindSimilarToResponse,
+      EntityRegistryDtos.cs              ← EDIT: +SimilarToItemDto, SimilarToResponse (وأنواع العناقيد
+                                                SimilarGroup* محذوفة)،
                                                 إضافة LinkedDocumentCount إلى PublicEntityGroupDto
     Services/
-      IPublicEntityService.cs            ← EDIT: +GetSimilarGroupsAsync, FindSimilarToGroupAsync
+      IPublicEntityService.cs            ← EDIT: +FindSimilarToGroupAsync (ودالة GetSimilarGroupsAsync محذوفة)
       PublicEntityService.cs             ← EDIT:
         UnifyNamesAsync الجديد (مزامنة + aliases للبحث + مندوبون + وقوعات + سجل)
         CountLinkedDocumentsAsync (batch)
-        GetSimilarGroupsAsync + FindSimilarToGroupAsync (clustering)
+        FindSimilarToGroupAsync (مشابهات جهة محددة)
 
   DocGenerator.Api/
     Controllers/
-      EntityRegistryController.cs        ← EDIT: +GET /groups/similar-groups, +GET /groups/similar-to
+      EntityRegistryController.cs        ← EDIT: +GET /groups/similar-to (ونقطة similar-groups محذوفة)
 
 frontend/src/
   types/index.ts                         ← EDIT: +أنواع جديدة + LinkedDocumentCount
   components/entity/
-    UnifyNamesModal.tsx                  ← EDIT: حذف التحذير "لن تُحفظ"، دعم الهدف من المختارين
-    SimilarGroupsUnifyTab.tsx            ← NEW: تبويب المجموعات المتشابهة
-    AllEntitiesUnifyTab.tsx              ← NEW: تبويب كافة الجهات + نافذة اقتراحات
+    UnifyNamesModal.tsx                  ← EDIT: حذف التحذير "لن تُحفظ"، دعم الهدف من المختارين،
+                                           حذف قسم المرسوم من مسار التوحيد فقط (الخلفية تقبل null)
+    UnifyNamesTab.tsx                    ← RESTRUCTURED (سابقًا SimilarGroupsUnifyTab): بطاقتا كافة
+                                           الجهات والمشابهات مباشرة بلا تبويبين فرعيين + زر تحديث
+                                           + إعادة جلب تلقائية بعد التوحيد (لوحة العناقيد محذوفة)
   pages/
-    EntityRegistryReviewManagement.tsx   ← EDIT: تفعيل تبويب "توحيد تسميات" + عرض التبويبين
+    EntityRegistryReviewManagement.tsx   ← EDIT: تفعيل تبويب "توحيد تسميات" (بطاقتان مباشرتان)
 
-backend/tests/.../ArabicNameSimilarityTests.cs   ← NEW
-backend/tests/.../PublicEntityServiceTests.cs    ← EDIT
-frontend/src/components/entity/__tests__/SimilarGroupsUnifyTab.test.tsx  ← NEW
-frontend/src/components/entity/__tests__/AllEntitiesUnifyTab.test.tsx    ← NEW
+backend/tests/.../ArabicNameSimilarityTests.cs   ← NEW (اختبارات العنقدة محذوفة مع الدالة)
+backend/tests/.../PublicEntityServiceTests.cs    ← EDIT (اختبارا similar-groups محذوفان)
+frontend/src/components/entity/UnifyNamesTab.test.tsx  ← RESTRUCTURED (سابقًا SimilarGroupsUnifyTab.test.tsx)
 ```
 
 ## خوارزمية التشابه الهجينة
@@ -95,9 +93,8 @@ frontend/src/components/entity/__tests__/AllEntitiesUnifyTab.test.tsx    ← NEW
    مؤقتًا من نص المقارنة، ونأخذ الأقصى من تشابه الجوهر وتشابه النص الكامل — فيرتفع تشابه الجهة
    نفسها مهما اختلفت صياغتها الوظيفية دون خلط جهات مختلفة فعليًا.
 
-الأوزان: `bigram=0.4`، `levenshtein=0.3`، `token=0.3`.
-
-التجميع: خوارزمية Union-Find تربط كل زوج يتجاوز درجة التشابه العتبة (0.55).
+الأوزان: `bigram=0.4`، `levenshtein=0.3`، `token=0.3` (تُستخدم حصرًا لاقتراح مشابهات جهة محددة؛
+تجميع Union-Find أُلغي مع تبويب المجموعات المتشابهة).
 
 ملاحظة: عُدّلت العتبة من 0.65 إلى 0.55 لأن الأمثلة الواقعية (مثل «المصرف التجاري السوري» مع إضافة
 «المدير العام») احتُسبت ~0.58 — أي دون العتبة الأصلية، فكانت ستُفوَّت من المجموعات المتشابهة.
@@ -139,7 +136,9 @@ frontend/src/components/entity/__tests__/AllEntitiesUnifyTab.test.tsx    ← NEW
 - قسم «قيود ستُطوى» يعرض لكل طيٍّ: `Governorate / BranchName` (من `AbsorbedGroupName`) + عدد الملفات.
 - لكل مجموعة ممتصة تُعرض `EntryCount` (إجمالي القيود النشطة شاملة المطوي) مع تنويه «(منها N مطابق سيُطوى)»
   عند وجود طي في المجموعة، ليميّز العدد الإجمالي عن صافي القيود المنقولة في سطر الملخص (`TotalEntriesToMove`).
-- رسالة النجاح بعد التأكيد تذكر `entriesMoved` وقيد الطي عند وجوده (`UnifyNamesResponse.EntriesFolded`).
+- رسالة النجاح بعد التأكيد تذكر `entriesMoved` وقيد الطي عند وجوده (`UnifyResponse.EntriesFolded`).
+- نافذة التوحيد لا تجمع مرسومًا (حُذف قسم «المرسوم (اختياري)» منها) — حقول `UnifyRequest` الاختيارية
+  باقية في الخلفية وتُستقبل `null`؛ مرسوم «تعديل جهة عامة» (تعديل تسمية/دمج/حلول) لم يُمسّ.
 
 ## مراحل التنفيذ والتحقق
 
@@ -149,10 +148,11 @@ frontend/src/components/entity/__tests__/AllEntitiesUnifyTab.test.tsx    ← NEW
 | 2 | DTOs جديدة + `LinkedDocumentCount` في `PublicEntityGroupDto` | `dotnet build` |
 | 3 | batch عدّاد الملفات في الـ repository/service | `dotnet test` |
 | 4 | `UnifyNamesAsync` الجديد (مزامنة + aliases للبحث + وقوعات + سجل + مندوبون) | `dotnet test` |
-| 5 | endpoints `similar-groups` + `similar-to` | `dotnet test` |
-| 6 | Frontend: `SimilarGroupsUnifyTab` + `AllEntitiesUnifyTab` + تعديل المودال | `npx vitest run` |
+| 5 | endpoint `similar-to` (مشابهات جهة محددة) | `dotnet test` |
+| 6 | Frontend: بطاقتا `UnifyNamesTab` (كافة الجهات + المشابهات) + المودال (بلا مرسوم) | `npx vitest run` |
 | 7 | تفعيل تبويب توحيد تسميات | `npx vitest run` |
-| 8 | التحقق الشامل النهائي | كل أدوات الفحص |
+| 8 | إلغاء تبويب/لوحة «المجموعات المتشابهة» نهائيًا بلا كود ميت (نقطة `similar-groups` + `ClusterGroups` + أنواعها + اختباراتها) + بطاقتان مباشرتان + زر تحديث يدوي/تلقائي + إعادة تسمية زر التوحيد | `dotnet test` + `npx vitest run` |
+| 9 | تنقية النصوص الإثباتية عند غياب المرسوم (`EntityChangeMessages.DecreeSuffix` بلا «بموجب» عائمة، ويحرس النقص الجزئي) + `aria-current` لحالة التحديد + بانر نجاح التوحيد + تنسيق أرقام إشعار القطع | `dotnet test` + `npx vitest run` |
 
 ## تنبيه النشر
 

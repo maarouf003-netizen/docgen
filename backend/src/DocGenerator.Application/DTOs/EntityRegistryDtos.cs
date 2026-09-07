@@ -217,29 +217,7 @@ public record EntityGroupListQuery(
     /// (تُستخدم لنافذة توحيد التسمية لضمان تواجد «الهوية الهدف» السابقة الاختيار في القائمة).</summary>
     IReadOnlyList<int>? IncludeIds = null);
 
-// ── المجموعات المتشابهة ومشابهات جهة محددة (توحيد التسمية) ──
-
-/// <summary>جهة ضمن مجموعة متشابهة، مع عدّاد ملفاتها.</summary>
-public record SimilarGroupItemDto(
-    int GroupId,
-    string CanonicalName,
-    string EntityType,
-    int EntryCount,
-    int LinkedDocumentCount,
-    /// <summary>متوسط التشابه لهذه الجهة تجاه بقية أفراد مجموعتها.</summary>
-    double AvgSimilarityToCluster);
-
-/// <summary>مجموعة متشابهة (بيئة Union-Find) تضم جهات متقاربة في الاسم.</summary>
-public record SimilarGroupClusterDto(
-    int ClusterId,
-    double AvgSimilarity,
-    IReadOnlyList<SimilarGroupItemDto> Groups);
-
-/// <summary>نتيجة عرض المجموعات المتشابهة في تبويب «المجموعات المتشابهة».</summary>
-public record SimilarGroupsResponse(
-    IReadOnlyList<SimilarGroupClusterDto> Clusters,
-    int TotalGroupsAnalyzed,
-    double Threshold);
+// ── مشابهات جهة محددة (توحيد التسمية) ──
 
 /// <summary>اقتراح جهة مشابهة لجهة محددة (تبويب «كافة الجهات» عند تحديد جهة واحدة).</summary>
 public record SimilarToItemDto(

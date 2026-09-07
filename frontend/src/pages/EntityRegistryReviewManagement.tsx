@@ -23,7 +23,7 @@ import type {
   RenameGroupPreviewResponse,
 } from '../types';
 import EntityChangeLog from './EntityChangeLog';
-import { SimilarGroupsUnifyTab } from '../components/entity/SimilarGroupsUnifyTab';
+import { UnifyNamesTab } from '../components/entity/UnifyNamesTab';
 
 type TabId = 'edit' | 'add' | 'unify' | 'log';
 
@@ -169,7 +169,7 @@ export default function EntityRegistryReviewManagement() {
 
       {tab === 'edit' && <EditEntityTab key="edit" />}
       {tab === 'add' && <AddEntityTab />}
-      {tab === 'unify' && <SimilarGroupsUnifyTab />}
+      {tab === 'unify' && <UnifyNamesTab />}
       {tab === 'log' && <EntityChangeLog />}
     </div>
   );

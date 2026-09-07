@@ -1604,28 +1604,7 @@ export interface UnifyResponse {
   changeEventId: number;
 }
 
-/* ── المجموعات المتشابهة ومشابهات جهة محددة (توحيد التسمية) ───────────── */
-
-export interface SimilarGroupItemDto {
-  groupId: number;
-  canonicalName: string;
-  entityType: PublicEntityType;
-  entryCount: number;
-  linkedDocumentCount: number;
-  avgSimilarityToCluster: number;
-}
-
-export interface SimilarGroupClusterDto {
-  clusterId: number;
-  avgSimilarity: number;
-  groups: SimilarGroupItemDto[];
-}
-
-export interface SimilarGroupsResponse {
-  clusters: SimilarGroupClusterDto[];
-  totalGroupsAnalyzed: number;
-  threshold: number;
-}
+/* ── مشابهات جهة محددة (توحيد التسمية) ───────────────────────────────── */
 
 export interface SimilarToItemDto {
   groupId: number;

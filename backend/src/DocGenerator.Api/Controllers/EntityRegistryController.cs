@@ -290,15 +290,6 @@ public class EntityRegistryController : ControllerBase
         }
     }
 
-    /// <summary>المجموعات المتشابهة (كشف Union-Find) لتبويب «المجموعات المتشابهة» — المدير/المشرف فقط.</summary>
-    [HttpGet("groups/similar-groups")]
-    public async Task<IActionResult> SimilarGroups([FromQuery] double? threshold, CancellationToken ct)
-    {
-        if (!RolePermissions.HasFullAccess(Role))
-            return Forbid();
-        return Ok(await _registry.GetSimilarGroupsAsync(threshold ?? 0, ct));
-    }
-
     /// <summary>أقرب المشابهات لجهة محددة (تبويب «كافة الجهات» عند تحديد جهة واحدة) — المدير/المشرف فقط.</summary>
     [HttpGet("groups/{groupId:int}/similar-to")]
     public async Task<IActionResult> SimilarTo(int groupId, [FromQuery] double? threshold, [FromQuery] int? maxResults, CancellationToken ct)

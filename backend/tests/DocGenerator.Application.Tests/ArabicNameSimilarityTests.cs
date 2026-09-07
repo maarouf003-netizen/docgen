@@ -50,7 +50,7 @@ public class ArabicNameSimilarityTests
     {
         // المثال الأهم: «المدير العام» إضافة وظيفية لا تغيّر جوهر الجهة.
         var sim = ArabicNameSimilarity.Similarity("المصرف التجاري السوري", "المصرف التجاري السوري - المدير العام");
-        Assert.True(sim >= ArabicNameSimilarity.DefaultClusterThreshold, $"got {sim}");
+        Assert.True(sim >= ArabicNameSimilarity.DefaultSimilarToThreshold, $"got {sim}");
     }
 
     [Fact]
@@ -87,47 +87,6 @@ public class ArabicNameSimilarityTests
     {
         var t = ArabicNameSimilarity.TokenJaccard("المصرف التجاري", "المصرف الزراعي");
         Assert.True(t > 0 && t < 1.0, $"got {t}");
-    }
-
-    // ── التجميع (Union-Find) ──
-
-    [Fact]
-    public void ClusterGroups_SimilarGroups_Grouped()
-    {
-        var groups = new List<PublicEntityGroup>
-        {
-            Group(1, "السورية للبناء والتشييد"),
-            Group(2, "سورية للبناء والتشييد"),
-            Group(3, "المصرف التجاري السوري"),
-            Group(4, "الشركة السورية للبناء والتشييد"),
-        };
-
-        var clusters = ArabicNameSimilarity.ClusterGroups(groups);
-
-        // نتوقع تجمع المجموعات المشابهة للبناء والتشييد في بيئة واحدة على الأقل.
-        Assert.Contains(clusters, c => c.Any(x => x.Id == 1) && c.Any(x => x.Id == 2));
-        // كل تجمع يضم 2 على الأقل.
-        Assert.All(clusters, c => Assert.True(c.Count >= 2));
-    }
-
-    [Fact]
-    public void ClusterGroups_SingleGroup_NoClusters()
-    {
-        var groups = new List<PublicEntityGroup> { Group(1, "وحيد") };
-        Assert.Empty(ArabicNameSimilarity.ClusterGroups(groups));
-    }
-
-    [Fact]
-    public void ClusterGroups_ExcludesInactive()
-    {
-        var inactive = Group(2, "المصرف التجاري السوري - المدير العام");
-        inactive.IsActive = false;
-        var groups = new List<PublicEntityGroup>
-        {
-            Group(1, "المصرف التجاري السوري"),
-            inactive,
-        };
-        Assert.Empty(ArabicNameSimilarity.ClusterGroups(groups));
     }
 
     // ── مشابهات جهة محددة ──
