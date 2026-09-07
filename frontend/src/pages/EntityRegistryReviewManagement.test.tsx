@@ -192,7 +192,7 @@ describe('EntityRegistryReviewManagement', () => {
     await user.click(screen.getByRole('button', { name: /تعديل ▾/ }));
     await user.click(screen.getByRole('menuitem', { name: 'دمج' }));
 
-    await user.type(screen.getByLabelText('الاسم النهائي للنتيجة (اختياري)'), 'الوزارة الموحدة');
+    await user.type(screen.getByLabelText('الاسم الجديد للجهة العامة (اختياري)'), 'الوزارة الموحدة');
     await user.selectOptions(screen.getByLabelText('نوع المرجع'), 'مرسوم');
     await user.type(screen.getByLabelText('رقم المرجع'), '7');
     await user.type(screen.getByLabelText('تاريخ المرجع'), '2/8/2026');

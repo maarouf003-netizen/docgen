@@ -119,7 +119,6 @@ function DecreeFields({
           id={`${baseId}-number`}
           value={number}
           onChange={(e) => onNumber(e.target.value)}
-          placeholder="مثال: 123…"
           autoComplete="off"
           disabled={disabled}
           className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-60"
@@ -792,7 +791,7 @@ function MergeActionModal({
   return (
     <ActionModal
       title="دمج جهات عامة"
-      subtitle="دمج الهويات المختارة في هوية أم ناجية"
+      subtitle="دمج جهة أو عدة جهات عامة في جهة عامة أخرى"
       onClose={onClose}
       footer={
         <>
@@ -811,7 +810,7 @@ function MergeActionModal({
       <div className="grid gap-4">
         <div>
           <label htmlFor="mg-target" className="block text-xs font-medium text-gray-600 mb-1">
-            الهوية الناجية (تبقى)
+            الجهة العامة التي سيتم الدمج معها (الباقية)
           </label>
           <select
             id="mg-target"
@@ -832,7 +831,7 @@ function MergeActionModal({
 
         <div>
           <span className="block text-xs font-medium text-gray-600 mb-1">
-            الهويات الممتصة ({f.format(absorbed.length)})
+            الجهات العامة الملغاة ({f.format(absorbed.length)})
           </span>
           <ul className="border border-gray-200 rounded-lg p-2 text-sm space-y-1">
             {absorbed.map((a) => (
@@ -849,13 +848,12 @@ function MergeActionModal({
 
         <div>
           <label htmlFor="mg-final" className="block text-xs font-medium text-gray-600 mb-1">
-            الاسم النهائي للنتيجة (اختياري)
+            الاسم الجديد للجهة العامة (اختياري)
           </label>
           <input
             id="mg-final"
             value={finalName}
             onChange={(e) => setFinalName(e.target.value)}
-            placeholder="مثال: الهيئة العامة الموحدة…"
             autoComplete="off"
             className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
@@ -1011,7 +1009,7 @@ function AbolishModal({
   return (
     <ActionModal
       title="حلول جهة عامة"
-      subtitle="إلغاء الهويات المختارة واستبدالها بهوية أم جديدة"
+      subtitle="الغاء جهات عامة واستبدالها بجهة عامة جديدة"
       onClose={onClose}
       footer={
         <>
@@ -1030,7 +1028,7 @@ function AbolishModal({
       <div className="grid gap-4">
         <div>
           <span className="block text-xs font-medium text-gray-600 mb-1">
-            الهويات المُلغاة ({f.format(selected.length)})
+            الجهات العامة الملغاة ({f.format(selected.length)})
           </span>
           <ul className="border border-gray-200 rounded-lg p-2 text-sm space-y-1">
             {selected.map((s) => (
@@ -1074,7 +1072,6 @@ function AbolishModal({
                 id="ab-new"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="مثال: المديرية العامة الموحدة…"
                 autoComplete="off"
                 className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
