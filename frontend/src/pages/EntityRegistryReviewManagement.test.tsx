@@ -232,7 +232,7 @@ describe('EntityRegistryReviewManagement', () => {
     renderPage();
 
     await user.type(screen.getByLabelText('بحث باسم الجهة'), 'وزارة');
-    await user.click(await screen.findByRole('button', { name: /وزارة التعليم/ }));
+    await user.click(await screen.findByRole('button', { name: /وزارة التعليم/ }, { timeout: 3000 }));
 
     await user.click(screen.getByRole('button', { name: /تعديل ▾/ }));
     const dmerge = screen.getByRole('menuitem', { name: 'دمج' });

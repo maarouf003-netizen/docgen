@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ExecutedStatusModal from './ExecutedStatusModal';
 import { makeDocument } from '../test/factories';
@@ -46,6 +46,12 @@ describe('ExecutedStatusModal', () => {
     await user.type(screen.getByLabelText('المبلغ الذي دفعته الجهة العامة'), '2000');
     await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
 
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
+      status: 'منفذ',
+      executedDescription: 'تم التحصيل',
+      executedPaidAmount: 2000,
+      executedPaidCurrency: 'ليرة سورية',
+    }));
     expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
       status: 'منفذ',
       executedDescription: 'تم التحصيل',
@@ -63,6 +69,10 @@ describe('ExecutedStatusModal', () => {
     await user.type(screen.getByLabelText('تاريخ التنفيذ'), '15/8/2026');
     await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
 
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
+      status: 'منفذ',
+      executedExecutionDate: '15/8/2026',
+    }));
     expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
       status: 'منفذ',
       executedExecutionDate: '15/8/2026',
@@ -82,6 +92,13 @@ describe('ExecutedStatusModal', () => {
     await user.selectOptions(screen.getAllByLabelText('العملة')[1], 'يورو');
     await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
 
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
+      status: 'منفذ',
+      executedPaidAmount: 2000,
+      executedPaidCurrency: 'دولار أمريكي',
+      executedPaidAmount2: 3000,
+      executedPaidCurrency2: 'يورو',
+    }));
     expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
       status: 'منفذ',
       executedPaidAmount: 2000,
@@ -101,6 +118,12 @@ describe('ExecutedStatusModal', () => {
     await user.type(screen.getByLabelText('تاريخ ايداعه حساب الجهة العامة'), '10/6/2024');
     await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
 
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
+      status: 'منفذ',
+      executedPaidAmount: 1250,
+      executedPaidCurrency: 'ليرة سورية',
+      executedDepositDate: '10/6/2024',
+    }));
     expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
       status: 'منفذ',
       executedPaidAmount: 1250,
@@ -119,6 +142,10 @@ describe('ExecutedStatusModal', () => {
     await user.type(screen.getByLabelText('تاريخ الشطب'), '٥/٨/٢٠٢٦');
     await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
 
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
+      status: 'مشطوب',
+      struckOffDate: '5/8/2026',
+    }));
     expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
       status: 'مشطوب',
       struckOffDate: '5/8/2026',
@@ -149,6 +176,14 @@ describe('ExecutedStatusModal', () => {
     await user.type(screen.getByLabelText('نوع الملف الجديد'), 'قضية تنفيذ');
     await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
 
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
+      status: '',
+      renewalFileNumber: '2026/55',
+      renewalFileType: 'قضية تنفيذ',
+      renewalFileReceiptNumber: null,
+      renewalFileReceiptDate: null,
+      renewalDate: null,
+    }));
     expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
       status: '',
       renewalFileNumber: '2026/55',
@@ -157,7 +192,9 @@ describe('ExecutedStatusModal', () => {
       renewalFileReceiptDate: null,
       renewalDate: null,
     });
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
     expect(onChanged).toHaveBeenCalled();
+    await waitFor(() => expect(apiPost).toHaveBeenCalledTimes(1));
     expect(apiPost).toHaveBeenCalledTimes(1);
   });
 
@@ -212,6 +249,13 @@ describe('ExecutedStatusModal', () => {
     await user.type(screen.getByLabelText('تاريخ ورود كتاب بالسير بالملف'), '2/8/2026');
     await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
 
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
+      status: '',
+      sayerNumber: '44',
+      sayerDate: '1/8/2026',
+      sayerRegNumber: '55',
+      sayerRegDate: '2/8/2026',
+    }));
     expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
       status: '',
       sayerNumber: '44',
@@ -219,6 +263,7 @@ describe('ExecutedStatusModal', () => {
       sayerRegNumber: '55',
       sayerRegDate: '2/8/2026',
     });
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
     expect(onChanged).toHaveBeenCalled();
   });
 
@@ -234,7 +279,9 @@ describe('ExecutedStatusModal', () => {
 
     await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
 
+    await waitFor(() => expect(apiPost).toHaveBeenCalledTimes(1));
     expect(apiPost).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
     expect(onChanged).toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
   });

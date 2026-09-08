@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "test": "vitest run",
+    "test:ci": "vitest run --maxWorkers=4 --pool=forks",
     "preview": "vite preview"
   },
   "dependencies": {
