@@ -1589,7 +1589,7 @@ describe('DocumentView', () => {
     const dialog = screen.getByRole('dialog', { name: 'وقوعات الملف' });
     expect(within(dialog).getByText('شطب')).toBeInTheDocument();
     expect(within(dialog).getByText('تجديد')).toBeInTheDocument();
-    expect(within(dialog).getByText('الرقم المشطوب')).toBeInTheDocument();
+    expect(within(dialog).getByText('رقم الملف المشطوب')).toBeInTheDocument();
     expect(within(dialog).getByText('99')).toBeInTheDocument();
     expect(within(dialog).getByText('رقم الملف الجديد')).toBeInTheDocument();
     expect(within(dialog).getByText('150')).toBeInTheDocument();

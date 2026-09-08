@@ -91,7 +91,13 @@ export function OccurrencesModal({
                   ) : occurrence.occurrenceType === 'struck-off' ? (
                     <>
                       {occurrence.fileNumber && (
-                        <Detail label="الرقم المشطوب" value={occurrence.fileNumber} />
+                        <Detail label="رقم الملف المشطوب" value={occurrence.fileNumber} />
+                      )}
+                      {occurrence.fileType && (
+                        <Detail label="نوع الملف المشطوب" value={occurrence.fileType} />
+                      )}
+                      {occurrence.eventDate && (
+                        <Detail label="تاريخ الشطب" value={formatDate(occurrence.eventDate)} />
                       )}
                       {occurrence.year && <Detail label="سنة الشطب" value={String(occurrence.year)} />}
                     </>

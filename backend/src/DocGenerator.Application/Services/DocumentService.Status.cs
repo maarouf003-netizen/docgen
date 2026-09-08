@@ -155,11 +155,19 @@ public sealed partial class DocumentService
             await _uow.SaveChangesAsync(token);
             // تسجيل وقعة تغيير الحالة بحقولها الكاملة ضمن المعاملة نفسها — سجل زمني مستقل
             // يبقى ظاهرًا في «وقوعات الملف» بعد أي تراجع أو تعديل لاحق للحالة.
+            // وقعة الشطب تحمل رقم الملف المشطوب ونوعه وسنة شطبه كما في مسار «منفذ عليه».
             await _occurrences.AddAsync(new DocumentOccurrence
             {
                 DocumentId = doc.Id,
                 OccurrenceType = occurrenceType,
                 EventDate = status == ExecutionStatusCatalog.StateStruckOff ? doc.StruckOffDate : DateTime.UtcNow,
+                FileNumber = status == ExecutionStatusCatalog.StateStruckOff
+                    ? string.IsNullOrWhiteSpace(doc.FileNumber) ? null : doc.FileNumber.Trim()
+                    : null,
+                FileType = status == ExecutionStatusCatalog.StateStruckOff
+                    ? string.IsNullOrWhiteSpace(doc.FileType) ? null : doc.FileType.Trim()
+                    : null,
+                Year = status == ExecutionStatusCatalog.StateStruckOff ? doc.StruckOffDate?.Year : null,
                 Details = details.Count > 0 ? SerializeDetails(details) : null,
                 CreatedById = doc.CreatedById,
                 CreatedAt = DateTime.UtcNow,
@@ -592,17 +600,20 @@ public sealed partial class DocumentService
     /// <summary>
     /// تسجيل وقعة الشطب في «وقوعات الملف» عند انتقال ملف «منفذ عليه»/«عرض وايداع»
     /// إلى الحالة «مشطوب»: تاريخ الشطب المحفوظ في المستند والرقم الأصلي للملف (الرقم
-    /// الذي حُمّل عليه) وسنة الشطب — ضمن المعاملة نفسها فلا يضيع السجل عند فشل الحفظ.
+    /// الذي حُمّل عليه) ونوع الملف وسنة الشطب — ضمن المعاملة نفسها فلا يضيع السجل عند
+    /// فشل الحفظ.
     /// </summary>
     private async Task AddStruckOffOccurrenceAsync(Document doc, int? userId, CancellationToken ct)
     {
         string? oldNumber = (doc.FileNumber ?? string.Empty).Trim();
+        string? fileType = (doc.FileType ?? string.Empty).Trim();
         await _occurrences.AddAsync(new DocumentOccurrence
         {
             DocumentId = doc.Id,
             OccurrenceType = OccurrenceTypeCatalog.StruckOff,
             EventDate = doc.StruckOffDate,
             FileNumber = string.IsNullOrEmpty(oldNumber) ? null : oldNumber,
+            FileType = string.IsNullOrEmpty(fileType) ? null : fileType,
             Year = doc.StruckOffDate?.Year,
             CreatedById = userId ?? doc.CreatedById,
             CreatedAt = DateTime.UtcNow,

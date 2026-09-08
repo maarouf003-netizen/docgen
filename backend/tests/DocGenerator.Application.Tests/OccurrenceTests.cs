@@ -103,9 +103,54 @@ public class OccurrenceTests : IDisposable
         Assert.Equal(OccurrenceTypeCatalog.StruckOff, occurrence.OccurrenceType);
         Assert.Equal(loaded.StruckOffDate, occurrence.EventDate);
         Assert.Equal("777", occurrence.FileNumber);
+        Assert.Null(occurrence.FileType);
         Assert.Equal(loaded.StruckOffDate!.Value.Year, occurrence.Year);
         // التسجيل التلقائي تبعية لعملية الشطب المدفوعة بالفعل بـ «executed-status» — لا تدقيق مستقل.
         Assert.Contains("executed-status", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task UpdateExecutedStatus_ToStruckOff_CarriesFileTypeIntoOccurrence()
+    {
+        var req = ExecutedSample();
+        req.FileType = "قضية تنفيذ";
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        var ok = await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        Assert.True(ok);
+
+        var loaded = await _service.GetAsync(doc.Id);
+        var occurrence = Assert.Single(loaded!.Occurrences);
+        Assert.Equal(OccurrenceTypeCatalog.StruckOff, occurrence.OccurrenceType);
+        Assert.Equal("777", occurrence.FileNumber);
+        Assert.Equal("قضية تنفيذ", occurrence.FileType);
+    }
+
+    [Fact]
+    public async Task UpdateStatus_ApplicantSideStruckOff_RecordsFileNumberTypeAndYear()
+    {
+        // نظام «الجهة العامة طالبة تنفيذ»: وقعة الشطب تحمل رقم الملف المشطوب ونوعه وسنة شطبه
+        // كما في مسار «منفذ عليه»/«عرض وايداع» لتظهر في نافذة تفاصيل الوقوعات كلها.
+        var req = ExecutedSample();
+        req.GeneralEntitySide = GeneralEntitySideCatalog.Applicant;
+        req.BorrowerName = "أحمد";
+        req.BorrowerFather = "خالد";
+        req.BorrowerFamily = "الخطيب";
+        req.FileRegistrationDate = "1/1/2026";
+        req.FileType = "قضية تنفيذ";
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        var ok = await _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.StateStruckOff,
+            new Dictionary<string, string?> { ["struckOffDate"] = "1/8/2026" }, "lawyer1");
+        Assert.True(ok);
+
+        var loaded = await _service.GetAsync(doc.Id);
+        var occurrence = Assert.Single(loaded!.Occurrences);
+        Assert.Equal(OccurrenceTypeCatalog.StruckOff, occurrence.OccurrenceType);
+        Assert.Equal("777", occurrence.FileNumber);
+        Assert.Equal("قضية تنفيذ", occurrence.FileType);
+        Assert.Equal(2026, occurrence.Year);
+        Assert.Equal(new DateTime(2026, 8, 1), occurrence.EventDate);
     }
 
     [Fact]
