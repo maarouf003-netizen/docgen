@@ -71,6 +71,9 @@ describe('DelegationFormModal', () => {
       />,
     );
 
+    // حدّ act للجلب التركيبي: يُفرغ setBranches داخل نطاق مُنتظَر قبل التأكيدات المتزامنة.
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/branches'));
+
     expect(screen.getByRole('dialog', { name: 'تسطير إنابة' })).toBeInTheDocument();
     expect(screen.getByText('أحمد محمد خالد')).toBeInTheDocument();
     expect(screen.getByLabelText('الدائرة المنابة')).toBeInTheDocument();
@@ -207,6 +210,9 @@ describe('DelegationFormModal', () => {
         onSaved={noop}
       />,
     );
+
+    // حدّ act للجلب التركيبي: يُفرغ setBranches داخل نطاق مُنتظَر قبل التأكيدات المتزامنة.
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/branches'));
 
     expect(screen.getByRole('dialog', { name: 'تعديل إنابة' })).toBeInTheDocument();
     expect(screen.getByLabelText('الدائرة المنابة')).toHaveValue('محكمة التنفيذ الأولى');

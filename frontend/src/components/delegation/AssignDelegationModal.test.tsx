@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AssignDelegationModal from './AssignDelegationModal';
 import type { DelegationDto, LawyerListItem } from '../../types';
@@ -79,6 +79,9 @@ describe('AssignDelegationModal', () => {
         onAssigned={noop}
       />,
     );
+
+    // حدّ act للجلب التركيبي: يُفرغ setLawyers داخل نطاق مُنتظَر قبل التأكيدات المتزامنة.
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/users/lawyers'));
 
     expect(
       screen.getByText(/إنابة خارجية — سيُنشأ الملف المناب في فرع اللاذقية/),
