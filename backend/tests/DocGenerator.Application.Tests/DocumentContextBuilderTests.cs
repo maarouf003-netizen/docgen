@@ -580,6 +580,7 @@ public class DocumentContextBuilderTests : IDisposable
                     PropertyDistrict = "المزة",
                     LandRegistry = "سجل 3",
                     ShareType = "كامل",
+                    SeizureDate = new DateTime(2025, 3, 15),
                 },
             },
         });
@@ -592,6 +593,40 @@ public class DocumentContextBuilderTests : IDisposable
         Assert.Equal("12", ctx["property_number"]);
         Assert.Equal("المزة", ctx["property_district"]);
         Assert.Equal("مليون ليرة", ctx["amount_words"]);
+        Assert.Equal("2025-03-15", ctx["estate_seizure_date"]);
+    }
+
+    [Fact]
+    public async Task BuildContext_PropertySeizure_WithoutEstateSeizureDate_RendersFillLine()
+    {
+        var id = await AddAsync(new Document
+        {
+            Court = "دمشق",
+            BorrowerName = "أحمد",
+            BorrowerFather = "محمد",
+            BorrowerFamily = "خالد",
+            AmountWords = "مليون ليرة",
+            ContractTypeSelector = "مصرفي",
+            ContractType = "تعهد",
+            Assets = new List<Asset>
+            {
+                new()
+                {
+                    AssetKind = AssetKindCatalog.RealEstate,
+                    Owners = new List<AssetOwner> { new() { Name = "أحمد محمد خالد", Order = 0 } },
+                    Property = "منزل",
+                    PropertyNumber = "12",
+                    PropertyDistrict = "المزة",
+                    LandRegistry = "سجل 3",
+                    ShareType = "كامل",
+                },
+            },
+        });
+
+        var estateId = _db.Assets.Single().Id;
+        var ctx = await _builder.BuildContextAsync(id, "PS", estateIds: new[] { estateId });
+
+        Assert.Equal("…………………………………………", ctx["estate_seizure_date"]);
     }
 
     [Fact]

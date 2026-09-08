@@ -10,6 +10,9 @@ namespace DocGenerator.Application.Services;
 /// </summary>
 public class DocumentContextBuilder : IDocumentContextBuilder
 {
+    // خط تعبئة يدوي يُستخدم عند غياب قيمة حقل مؤرّخ يُضمَن خطيًا (كتاريخ الحجز) ليبقى موضع الكتابة ظاهرًا.
+    private const string HandwritingFillLine = "…………………………………………";
+
     private readonly IRepository<Document> _documents;
 
     public DocumentContextBuilder(IRepository<Document> documents) => _documents = documents;
@@ -691,6 +694,9 @@ public class DocumentContextBuilder : IDocumentContextBuilder
         context["property_district"] = estate.PropertyDistrict ?? string.Empty;
         context["execution_debtors"] = BuildExecutionDebtorsPlain(borrowerFull, guarantors);
         context["amount_words"] = amountWords;
+        context["estate_seizure_date"] = estate.SeizureDate is null
+            ? HandwritingFillLine
+            : estate.SeizureDate.Value.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private static (string Name, string Father, string Family) SplitOwnerName(string owner)

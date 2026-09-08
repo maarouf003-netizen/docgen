@@ -11,5 +11,8 @@ public class WordTemplatesOptions
         ["003"] = "notice.docx",
         ["004"] = "Seizure.docx",
         ["005"] = "property.docx",
+        ["006"] = "property notice via paper.docx",
+        ["007"] = "notice via paper.docx",
+        ["PS"] = "property seizure.docx",
     };
 }
