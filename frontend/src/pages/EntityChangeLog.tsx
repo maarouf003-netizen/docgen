@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { api } from '../api/client';
 import { formatDateTime } from '../utils/dates';
+import { downloadBlob } from '../utils/download';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import type { EntityChangeEventDto } from '../types';
@@ -62,12 +63,7 @@ export default function EntityChangeLog() {
     if (from) params.set('from', from);
     if (to) params.set('to', to);
     api.get(`/entity-registry/change-events/export?${params.toString()}`, { responseType: 'blob' }).then((res) => {
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'change-events.xlsx';
-      a.click();
-      window.URL.revokeObjectURL(url);
+      downloadBlob(new Blob([res.data]), 'change-events.xlsx');
     }).catch(() => setExportError('فشل التصدير — حاول مرة أخرى'));
   };
 

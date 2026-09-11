@@ -6,6 +6,7 @@ import { useAuth } from '../auth/useAuth';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { useFloatingMenu } from '../hooks/useFloatingMenu';
+import { downloadBlob } from '../utils/download';
 import { richToPlainText } from '../utils/richText';
 import { STATUS_BADGES, STATUS_OPTIONS, getDocumentStatus } from '../utils/documentStatus';
 import { applicantName, displayFileNumber, fullName, publicEntityBranch as entityBranchDisplay } from '../utils/documentDisplay';
@@ -440,14 +441,7 @@ export default function DocumentsList() {
         responseType: 'blob',
       })
       .then((res) => {
-        const blob = res.data as Blob;
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `الملفات التنفيذية ${new Date().toISOString().slice(0, 10)}.xlsx`;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(link.href);
+        downloadBlob(res.data as Blob, `الملفات التنفيذية ${new Date().toISOString().slice(0, 10)}.xlsx`);
       })
       .catch(() => {
         setExportMsg('تعذر تصدير الملف. حاول مرة أخرى');

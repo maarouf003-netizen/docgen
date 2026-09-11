@@ -10,6 +10,13 @@ namespace DocGenerator.Infrastructure.Persistence;
 /// </summary>
 public static class DbSeeder
 {
+    /// <summary>
+    /// كلمة مرور حسابات بيئة التطوير حصرًا (نفس بيانات تطبيق Flask المرجعي).
+    /// لا تُستخدم في الإنتاج أبدًا: مسار الإنتاج <see cref="BootstrapAsync"/> يحقن
+    /// كلمة المرور من الإعدادات (Bootstrap__AdminPassword) ويرفض أي بذر افتراضي.
+    /// </summary>
+    private const string DevSeedPassword = "123456";
+
     public static async Task SeedAsync(DocGeneratorDbContext db, IPasswordHasher hasher, CancellationToken ct = default)
     {
         if (!db.Branches.Any())
@@ -27,10 +34,10 @@ public static class DbSeeder
         {
             var damascus = db.Branches.FirstOrDefault(b => b.Code == "DAM");
             db.Users.AddRange(
-                new User { Username = "admin", FullName = "مشرف النظام", Role = UserRole.Admin, PasswordHash = hasher.Hash("123456") },
-                new User { Username = "manager", FullName = "مدير النظام", Role = UserRole.Manager, PasswordHash = hasher.Hash("123456") },
-                new User { Username = "head1", FullName = "رئيس قسم دمشق", Role = UserRole.Head, BranchId = damascus?.Id, PasswordHash = hasher.Hash("123456") },
-                new User { Username = "lawyer1", FullName = "محامي دمشق", Role = UserRole.Lawyer, BranchId = damascus?.Id, PasswordHash = hasher.Hash("123456") });
+                new User { Username = "admin", FullName = "مشرف النظام", Role = UserRole.Admin, PasswordHash = hasher.Hash(DevSeedPassword) },
+                new User { Username = "manager", FullName = "مدير النظام", Role = UserRole.Manager, PasswordHash = hasher.Hash(DevSeedPassword) },
+                new User { Username = "head1", FullName = "رئيس قسم دمشق", Role = UserRole.Head, BranchId = damascus?.Id, PasswordHash = hasher.Hash(DevSeedPassword) },
+                new User { Username = "lawyer1", FullName = "محامي دمشق", Role = UserRole.Lawyer, BranchId = damascus?.Id, PasswordHash = hasher.Hash(DevSeedPassword) });
             await db.SaveChangesAsync(ct);
         }
     }

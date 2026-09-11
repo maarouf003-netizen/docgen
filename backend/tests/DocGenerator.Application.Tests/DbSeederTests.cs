@@ -56,4 +56,37 @@ public class DbSeederTests
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             DbSeeder.BootstrapAsync(db, hasher, password));
     }
+
+    [Fact]
+    public async Task SeedAsync_WhenEmpty_CreatesBranchesAndDevUsers()
+    {
+        using var db = TestDb.Create();
+        var hasher = new PasswordHasher();
+
+        await DbSeeder.SeedAsync(db, hasher);
+
+        Assert.Equal(5, db.Branches.Count());
+        Assert.Equal(
+            new[] { "admin", "head1", "lawyer1", "manager" },
+            db.Users.Select(u => u.Username).OrderBy(x => x).ToArray());
+        Assert.All(db.Users, u => Assert.True(hasher.Verify("123456", u.PasswordHash)));
+        // الفروع الخمسة تُربط بلا مبالغة: مسار التطوير وحسب (لا يُستخدم في الإنتاج).
+        Assert.Equal(2, db.Users.Count(u => u.BranchId != null));
+    }
+
+    [Fact]
+    public async Task SeedAsync_WhenUsersExist_DoesNotDuplicateBranchesOrUsers()
+    {
+        using var db = TestDb.Create();
+        var hasher = new PasswordHasher();
+        db.Users.Add(new User { Username = "custom", Role = UserRole.Manager, PasswordHash = hasher.Hash("x") });
+        await db.SaveChangesAsync();
+
+        await DbSeeder.SeedAsync(db, hasher);
+        await DbSeeder.SeedAsync(db, hasher);
+
+        Assert.Equal(5, db.Branches.Count());
+        var user = Assert.Single(db.Users);
+        Assert.Equal("custom", user.Username);
+    }
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
+import { downloadBlob } from '../utils/download';
 import type {
   PortalFileListItemDto,
   PortalFilesResponse,
@@ -79,14 +80,7 @@ export default function PortalFiles() {
     api
       .get('/portal/export', { params: { q: query.trim() || undefined, status: status || undefined }, responseType: 'blob' })
       .then((res) => {
-        const blob = res.data as Blob;
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `ملفات الجهة ${new Date().toISOString().slice(0, 10)}.xlsx`;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(link.href);
+        downloadBlob(res.data as Blob, `ملفات الجهة ${new Date().toISOString().slice(0, 10)}.xlsx`);
       })
       .catch(() => setExportMsg('تعذر تصدير الملف. حاول مرة أخرى'))
       .finally(() => setExporting(false));

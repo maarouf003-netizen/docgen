@@ -1,0 +1,16 @@
+# Snyk (https://snyk.io) policy file — يُدار يدويًا وفق توثيق Snyk الرسمي.
+#
+# استثناءات Snyk Code (الفحص الثابت): تُستبعد ملفات الاختبارات فقط لأنها عينات معزولة
+# لا تُشحن للإنتاج، وهي مصدر ضجيج أسماء المستخدمين وكلمات المرور المنتجة تلقائيًا.
+# لا يُستبعد أي ملف إنتاجي (لا CsrfMiddleware ولا DbSeeder ولا utils/download) —
+# فاستبعاده يخفي نتائج حقيقية.
+version: v1.25.0
+ignore: {}
+patch: {}
+exclude:
+  global:
+    - backend/tests/**
+    - '**/*.test.ts'
+    - '**/*.test.tsx'
+    - '**/*.test.js'
+    - '**/*.test.jsx'

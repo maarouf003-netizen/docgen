@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../../api/client';
+import { downloadBlob } from '../../utils/download';
 import { ASSET_KINDS } from '../form/documentFormConstants';
 import type { AssetDto, DocumentResponse, HeirDto } from '../../types';
 import { Toast } from '../Toast';
@@ -59,16 +60,9 @@ export function DocumentGenerationSection({ doc, id }: { doc: DocumentResponse; 
     });
     const disposition = (res.headers['content-disposition'] as string | undefined) ?? '';
     const match = disposition.match(/filename="?([^";]+)"?/i);
-    const filename = match?.[1] ?? `مستند_${code}.docx`;
+    const filename = match?.[1]?.trim() || `مستند_${code}.docx`;
 
-    const url = URL.createObjectURL(res.data as Blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = filename;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
+    downloadBlob(res.data as Blob, filename);
   };
 
   const runGeneration = async (
