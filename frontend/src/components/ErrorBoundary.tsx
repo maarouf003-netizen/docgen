@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { reportClientError } from '../utils/errorReporting';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -17,6 +18,12 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('ErrorBoundary caught an error', error, info);
+    // نارٍ-وانسَ: لا انتظار ولا رمي — reportClientError صامت دائمًا.
+    reportClientError({
+      message: `ErrorBoundary: ${error.message || 'unknown render error'}`,
+      stack: [error.stack, info.componentStack].filter(Boolean).join('\n'),
+      component: 'ErrorBoundary',
+    });
   }
 
   render() {

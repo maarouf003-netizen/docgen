@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using DocGenerator.Application.Common;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
@@ -37,11 +38,16 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
             _ => StatusCodes.Status500InternalServerError,
         };
 
+        // الترابط: المعرّف والهوية يُسجَّلان صراحة من HttpContext لأن وسيط الإثراء
+        // أسفل معالج الاستثناءات في السلسلة (نطاق LogContext يُغلق أثناء تفكيك الاستثناء).
+        var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous";
         _logger.LogError(exception,
-            "استثناء غير معالج ({Type}) أثناء {Method} {Path}",
+            "استثناء غير معالج ({Type}) أثناء {Method} {Path} [TraceId={TraceId}, UserId={UserId}]",
             exception.GetType().Name,
             httpContext.Request.Method,
-            httpContext.Request.Path);
+            httpContext.Request.Path,
+            httpContext.TraceIdentifier,
+            userId);
 
         var message = exception switch
         {

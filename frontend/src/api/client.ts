@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { reportClientError } from '../utils/errorReporting';
 
 const CSRF_COOKIE = 'docgen_csrf';
 const CSRF_HEADER = 'X-CSRF-Token';
@@ -59,6 +60,13 @@ api.interceptors.response.use(
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';
       }
+    }
+    // إبلاغ أخطاء 5xx فقط — بلا مساس بمنطق 401 أعلاه. حارس منع الحلقة: لا إبلاغ عن
+    // فشل نقطة الإبلاغ نفسها (reportClientError صامت أصلًا، وهذا حزام ثانٍ).
+    const status = error.response?.status as number | undefined;
+    const failedUrl = (error.config?.url as string | undefined) ?? '';
+    if (status && status >= 500 && !failedUrl.endsWith('/client-errors')) {
+      reportClientError({ message: getApiErrorMessage(error), component: 'api-client', url: failedUrl });
     }
     return Promise.reject(error);
   },

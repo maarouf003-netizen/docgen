@@ -25,7 +25,9 @@ public sealed class EntityManagerPortalGuard
             var allowed =
                 path.StartsWithSegments("/api/portal")
                 || path.StartsWithSegments("/api/auth/me")
-                || path.StartsWithSegments("/api/auth/logout");
+                || path.StartsWithSegments("/api/auth/logout")
+                // الدور القرائي يجب أن يُبلغ عن الأعطال: نقطة client-errors موثقة ومخنوقة لكل مستخدم.
+                || path.StartsWithSegments("/api/client-errors");
 
             if (!allowed)
             {

@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Security.Claims;
 using System.Text;
 using DocGenerator.Api.Auth;
@@ -13,6 +13,16 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Npgsql;
+using Serilog;
+using Serilog.Events;
+using Serilog.Formatting.Compact;
+
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.Console()
+    .CreateBootstrapLogger();
+
+try
+{
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -79,11 +89,38 @@ var wordTemplates = builder.Configuration.GetSection("WordTemplates").Get<WordTe
 if (!Path.IsPathRooted(wordTemplates.Path))
     wordTemplates.Path = Path.Combine(builder.Environment.ContentRootPath, wordTemplates.Path);
 
+// Serilog: المدد كلها من الإعدادات لا مثبتة بالكود (Logging:LogLevel للمستويات + Logging:File للملف الدوار).
+var fileLogging = builder.Configuration.GetSection("Logging:File").Get<LoggingOptions>() ?? new LoggingOptions();
+if (!Enum.TryParse<LogEventLevel>(builder.Configuration["Logging:LogLevel:Default"], out var serilogMinimum))
+    serilogMinimum = LogEventLevel.Information;
+var isDevelopmentHost = builder.Environment.IsDevelopment();
+// ملاحظة معمارية: Services.AddSerilog (لا Host.UseSerilog) عمدًا — الأخير يجمّد مسجلًا
+// ثابتًا مشتركًا (ReloadableLogger.Freeze) فينفجر إقلاع المضيف الثاني في نفس العملية
+// (مصانع WebApplicationFactory المتوازية في الاختبارات). هنا كل مضيف يملك مسجلّه الخاص.
+var serilogConfig = new LoggerConfiguration()
+    .MinimumLevel.Is(serilogMinimum)
+    .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .Enrich.WithMachineName();
+if (isDevelopmentHost)
+    serilogConfig.WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}");
+else
+    serilogConfig.WriteTo.Console(new CompactJsonFormatter());
+serilogConfig.WriteTo.File(
+    fileLogging.Path,
+    rollingInterval: RollingInterval.Day,
+    retainedFileCountLimit: fileLogging.RetainedDays,
+    fileSizeLimitBytes: fileLogging.FileSizeLimitBytes,
+    rollOnFileSizeLimit: true,
+    outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}");
+builder.Services.AddSerilog(serilogConfig.CreateLogger(), dispose: true);
+
 builder.Services
     .AddSingleton(jwt)
     .Configure<DocGenerator.Application.Common.ExportOptions>(builder.Configuration.GetSection("Export"))
     .Configure<RateLimitOptions>(builder.Configuration.GetSection("RateLimiting"))
     .Configure<LockoutOptions>(builder.Configuration.GetSection("Lockout"))
+    .Configure<LoggingOptions>(builder.Configuration.GetSection("Logging:File"))
     .Configure<WordTemplatesOptions>(o =>
     {
         o.Path = wordTemplates.Path;
@@ -96,6 +133,7 @@ builder.Services
         .AllowAnyHeader().AllowAnyMethod().AllowCredentials()))
     .AddControllers();
 
+builder.Services.AddMemoryCache();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
     {
@@ -234,6 +272,10 @@ if (swaggerEnabled)
 app.UseCors("Vite");
 app.UseAuthentication();
 app.UseAuthorization();
+// إثراء LogContext بالهوية بعد المصادقة (قبل المتحكمات) — Anonymous لغير المعتمد.
+// ملاحظة الترتيب: معالج الاستثناءات أعلى السلسلة، لذا يسجل GlobalExceptionHandler
+// المعرّف والهوية صراحة من HttpContext ولا يعتمد على نطاق LogContext هنا.
+app.UseMiddleware<RequestLoggingEnricherMiddleware>();
 // عزل بنيوي لدور مندوب الجهة: يُمنع من كل مسارات API عدا بوابته القرائية (المرحلة 3).
 app.UseMiddleware<EntityManagerPortalGuard>();
 
@@ -245,6 +287,18 @@ if (!builder.Environment.IsDevelopment())
     app.MapFallbackToFile("index.html");
 }
 
-app.Run();
+    app.Run();
+}
+catch (Exception ex)
+{
+    // إعادة الرمي إلزامية: ابتلاع استثناء الإقلاع يخفي الفشل عن المنسّق (خروج 0 بلا مستمع)
+    // ويكسر WebApplicationFactory («exited without ever building an IHost»).
+    Log.Fatal(ex, "Host terminated unexpectedly");
+    throw;
+}
+finally
+{
+    Log.CloseAndFlush();
+}
 
 public partial class Program { }

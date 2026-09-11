@@ -22,11 +22,15 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 {
     private readonly string _dbPath = Path.Combine(
         Path.GetTempPath(), $"docgen_it_{Guid.NewGuid():N}.db");
+    private readonly string _logDir = Path.Combine(
+        Path.GetTempPath(), $"docgen_it_logs_{Guid.NewGuid():N}");
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
         builder.UseSetting("ConnectionStrings:DefaultConnection", $"Data Source={_dbPath}");
+        // عزل ملف سجل Serilog عن المستودع: كل مصنع يكتب في مجلد مؤقت خاص به.
+        builder.UseSetting("Logging:File:Path", Path.Combine(_logDir, "logs-.txt"));
         builder.UseSetting("Database:UsePostgres", "false");
         builder.UseSetting("Swagger:Enabled", "false");
         builder.UseSetting("Jwt:Secret", "integration-test-secret-0123456789-0123456789-0123456789");
@@ -49,6 +53,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         {
             try { File.Delete(_dbPath + suffix); } catch { /* ignore */ }
         }
+        try { if (Directory.Exists(_logDir)) Directory.Delete(_logDir, recursive: true); } catch { /* ignore */ }
     }
 
     /// <summary>
