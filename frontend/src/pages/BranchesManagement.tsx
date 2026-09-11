@@ -50,15 +50,16 @@ export default function BranchesManagement() {
     setShowForm(false);
   };
 
-  const validate = (nameValue: string, codeValue: string): string => {
+  const validate = (nameValue: string, codeValue: string, governorateValue: string): string => {
     if (!nameValue.trim()) return 'اسم الفرع مطلوب';
     if (!codeValue.trim()) return 'كود الفرع مطلوب';
+    if (!governorateValue) return 'المحافظة مطلوبة — اختر محافظة الفرع من القائمة';
     return '';
   };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const problem = validate(name, code);
+    const problem = validate(name, code, governorate);
     if (problem) {
       setFormError(problem);
       return;
@@ -72,7 +73,7 @@ export default function BranchesManagement() {
         code: code.trim(),
         address: address.trim() || null,
         phone: phone.trim() || null,
-        governorate: governorate || null,
+        governorate: governorate.trim(),
       });
       resetForm();
       load();
@@ -103,7 +104,7 @@ export default function BranchesManagement() {
 
   const saveEdit = async () => {
     if (!editing) return;
-    const problem = validate(editName, editCode);
+    const problem = validate(editName, editCode, editGovernorate);
     if (problem) {
       setEditError(problem);
       return;
@@ -117,7 +118,7 @@ export default function BranchesManagement() {
         code: editCode.trim(),
         address: editAddress.trim() || null,
         phone: editPhone.trim() || null,
-        governorate: editGovernorate || null,
+        governorate: editGovernorate.trim(),
         isActive: editActive,
       });
       closeEdit();
@@ -177,6 +178,7 @@ export default function BranchesManagement() {
       {showForm && (
         <form
           onSubmit={submit}
+          noValidate
           className="bg-white rounded-xl shadow p-4 mb-4 grid sm:grid-cols-2 gap-4"
         >
           <div>
@@ -220,14 +222,16 @@ export default function BranchesManagement() {
             />
           </div>
           <div>
-            <label htmlFor="branch-governorate" className="block text-xs font-medium text-gray-600 mb-1">المحافظة</label>
+            <label htmlFor="branch-governorate" className="block text-xs font-medium text-gray-600 mb-1">المحافظة <span aria-hidden="true" className="text-red-500">*</span></label>
             <select
               id="branch-governorate"
+              name="governorate"
+              required
               value={governorate}
               onChange={(e) => setGovernorate(e.target.value)}
               className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
-              <option value="">اختياري…</option>
+              <option value="">اختر المحافظة…</option>
               {GOVERNORATES.map((g) => <option key={g} value={g}>{g}</option>)}
             </select>
           </div>
@@ -374,17 +378,19 @@ export default function BranchesManagement() {
                 />
               </div>
               <div className="sm:col-span-2">
-                <label htmlFor="edit-branch-governorate" className="block text-xs font-medium text-gray-600 mb-1">المحافظة</label>
+                <label htmlFor="edit-branch-governorate" className="block text-xs font-medium text-gray-600 mb-1">المحافظة <span aria-hidden="true" className="text-red-500">*</span></label>
                 <select
                   id="edit-branch-governorate"
+                  name="governorate"
+                  required
                   value={editGovernorate}
                   onChange={(e) => setEditGovernorate(e.target.value)}
                   className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 >
-                  <option value="">غير محددة…</option>
+                  <option value="">اختر المحافظة…</option>
                   {GOVERNORATES.map((g) => <option key={g} value={g}>{g}</option>)}
                 </select>
-                <p className="text-xs text-gray-400 mt-1">تحدد نطاق رئيس القسم في سجل الجهات العامة.</p>
+                <p className="text-xs text-gray-400 mt-1">إجبارية — تحدد نطاق رئيس القسم في سجل الجهات العامة.</p>
               </div>
             </div>
 

@@ -54,6 +54,7 @@ public class PublicEntityServiceTests : IDisposable
             new HeadAlertRepository(_db),
             new Repository<PublicEntityChangeEvent>(_db),
             new Repository<DocumentOccurrence>(_db),
+            new Repository<ParentEditSuggestion>(_db),
             new UnitOfWork(_db),
             new TransactionRunner(_db),
             _audit,
@@ -154,6 +155,52 @@ public class PublicEntityServiceTests : IDisposable
 
         Assert.Equal("الجهة الأم", dto.BranchName);
         Assert.True(dto.IsParentEntity);
+    }
+
+    [Fact]
+    public async Task Create_LawyerExplicitIsParentEntity_ThrowsUnauthorized()
+    {
+        var beforeGroups = await _db.PublicEntityGroups.CountAsync();
+        var beforeEntries = await _db.PublicEntities.CountAsync();
+
+        var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.CreateAsync(new CreatePublicEntityRequest(
+                "هيئة أم مقترحة", "authority", "دمشق", "الجهة الأم", IsParentEntity: true), LawyerActor()));
+        Assert.Contains("الإدارة", ex.Message);
+
+        // الحارس قبل أي إنشاء — لا مجموعة ولا قيد يتركان أثرًا.
+        Assert.Equal(beforeGroups, await _db.PublicEntityGroups.CountAsync());
+        Assert.Equal(beforeEntries, await _db.PublicEntities.CountAsync());
+    }
+
+    [Fact]
+    public async Task Create_LawyerDefaultBranchName_DerivesBranch_AndKeepsNeedsReview()
+    {
+        // حوكمة S1: إنشاء المحامي بالاسم الافتراضي لا يولِّد «جهة أم» — يبقى فرعًا،
+        // وتبقى مراجعة رئيس القسم مطلوبة (NeedsReview) كما هو النموذج.
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "هيئة جديدة للمحامي", "authority", "دمشق", ""), LawyerActor());
+
+        Assert.Equal("الجهة الأم", dto.BranchName);
+        Assert.False(dto.IsParentEntity);
+        Assert.True(dto.NeedsReview);
+
+        var stored = await _db.PublicEntities.SingleAsync(e => e.Id == dto.Id);
+        Assert.False(stored.IsParentEntity);
+        Assert.True(stored.NeedsReview);
+    }
+
+    [Fact]
+    public async Task Create_LawyerExplicitFalse_Accepted_AsRegularBranch()
+    {
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "هيئة محامٍ بفرع صريح", "authority", "دمشق", "فرع المزة", IsParentEntity: false), LawyerActor());
+
+        Assert.Equal("فرع المزة", dto.BranchName);
+        Assert.False(dto.IsParentEntity);
+
+        var stored = await _db.PublicEntities.SingleAsync(e => e.Id == dto.Id);
+        Assert.False(stored.IsParentEntity);
     }
 
     [Fact]
@@ -853,6 +900,61 @@ public class PublicEntityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task MoveEntry_FoldParentEntry_Throws_AndLeavesParentUntouched()
+    {
+        // مصدر «جهة أم» يُطوى إلى قيد مطابق — الحارس يمنع قبل أي أثر.
+        var sourceParent = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "وزارة النقل الأم", "ministry", "دمشق", "الجهة الأم", IsParentEntity: true), ManagerActor());
+        var foldedTarget = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "الإدارة العامة للنقل", "administration", "دمشق", "الجهة الأم"), ManagerActor());
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.MoveEntryAsync(sourceParent.Id, new MoveEntryRequest(null, foldedTarget.Id, null, null, null, null), ManagerActor()));
+        Assert.Contains("لا يُنقَل ولا يُطوى", ex.Message);
+
+        var stored = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == sourceParent.Id);
+        Assert.True(stored.IsActive);
+        Assert.Equal(sourceParent.GroupId, stored.GroupId);
+        Assert.Equal(0, await _db.PublicEntityChangeEvents.CountAsync(e => e.ActionKind == ActionKindCatalog.Move));
+    }
+
+    [Fact]
+    public async Task MoveEntry_ReassignParentEntry_Throws_AndKeepsGroupId()
+    {
+        // نقل أمّ إلى هوية أخرى (وضع أ) — الحارس يمنع؛ لا «أمّين» في مجموعة ولا مجموعة بلا أمّ.
+        var entry = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "المديرية الأم", "administration", "دمشق", "الجهة الأم", IsParentEntity: true), ManagerActor());
+        var target = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "المديرية الهدف", "administration", "حمص", "فرع حمص"), ManagerActor());
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.MoveEntryAsync(entry.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor()));
+
+        var stored = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == entry.Id);
+        Assert.True(stored.IsActive);
+        Assert.Equal(entry.GroupId, stored.GroupId);
+    }
+
+    [Fact]
+    public async Task MoveEntry_FoldBranchIntoParentTarget_StillAllowed()
+    {
+        // حدّية الحارس على المصدر فقط: طيّ فرع عادي إلى قيد «جهة أم» هدف يبقى مباحًا.
+        var branch = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "وزارة التعليم", "ministry", "دمشق", "فرع المزة"), ManagerActor());
+        var parentTarget = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "وزارة التعليم المطوِّرة", "ministry", "دمشق", "فرع المزة", IsParentEntity: true), ManagerActor());
+
+        var result = await _service.MoveEntryAsync(
+            branch.Id, new MoveEntryRequest(null, parentTarget.Id, null, null, null, null), ManagerActor());
+
+        Assert.Equal(parentTarget.GroupId, result.ToGroupId);
+
+        var source = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == branch.Id);
+        Assert.False(source.IsActive);
+        Assert.Contains("move_entity_registry", _audit.Actions);
+    }
+
+    [Fact]
     public async Task Create_WithCoverageLabel_StoresLabel()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
@@ -1512,7 +1614,7 @@ public class PublicEntityServiceTests : IDisposable
         var g1 = await _service.CreateAsync(new CreatePublicEntityRequest("جهة أ1", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var g2 = await _service.CreateAsync(new CreatePublicEntityRequest("جهة أ2", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
         await _service.MoveEntryAsync(g1.Id, new MoveEntryRequest(g2.GroupId, null, null, null, null, null), ManagerActor());
-        var paged = await _service.ListChangeEventsAsync(new EntityChangeEventQuery("دمشق", "move", null, null, null, 1, 20));
+        var paged = await _service.ListChangeEventsAsync(new EntityChangeEventQuery("دمشق", "move", null, null, null, 1, 20), ManagerActor());
         Assert.True(paged.TotalCount >= 1);
         Assert.All(paged.Items, i => Assert.Equal("move", i.ActionKind));
     }
@@ -1526,8 +1628,8 @@ public class PublicEntityServiceTests : IDisposable
         var b2 = await _service.CreateAsync(new CreatePublicEntityRequest("جهة ب2-ت", "ministry", "حلب", "فرع التجهيز 2"), ManagerActor());
         await _service.MoveEntryAsync(a1.Id, new MoveEntryRequest(b1.GroupId, null, null, null, null, null), ManagerActor());
         await _service.MoveEntryAsync(a2.Id, new MoveEntryRequest(b2.GroupId, null, null, null, null, null), ManagerActor());
-        var p1 = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, null, null, null, 1, 1));
-        var p2 = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, null, null, null, 2, 1));
+        var p1 = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, null, null, null, 1, 1), ManagerActor());
+        var p2 = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, null, null, null, 2, 1), ManagerActor());
         Assert.Single(p1.Items);
         Assert.Single(p2.Items);
         Assert.NotEqual(p1.Items[0].Id, p2.Items[0].Id);
@@ -1541,9 +1643,9 @@ public class PublicEntityServiceTests : IDisposable
         await _service.MoveEntryAsync(a.Id, new MoveEntryRequest(b.GroupId, null, null, null, null, null), ManagerActor());
         var from = DateTime.UtcNow.AddDays(-1).ToString("yyyy-MM-dd");
         var to = DateTime.UtcNow.AddDays(1).ToString("yyyy-MM-dd");
-        var paged = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, _managerId, from, to, 1, 20));
+        var paged = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, _managerId, from, to, 1, 20), ManagerActor());
         Assert.True(paged.TotalCount >= 1);
-        var byOther = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, 999999, from, to, 1, 20));
+        var byOther = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, 999999, from, to, 1, 20), ManagerActor());
         Assert.Equal(0, byOther.TotalCount);
     }
 
@@ -1551,7 +1653,7 @@ public class PublicEntityServiceTests : IDisposable
     public async Task ChangeLog_ExportProducesWorkbook()
     {
         await _service.CreateAsync(new CreatePublicEntityRequest("جهة د", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var bytes = await _service.ExportChangeEventsAsync(new EntityChangeEventQuery(null, null, null, null, null, 1, 20));
+        var bytes = await _service.ExportChangeEventsAsync(new EntityChangeEventQuery(null, null, null, null, null, 1, 20), ManagerActor());
         Assert.True(bytes.Length > 100);
         Assert.Equal((byte)'P', bytes[0]); // PK zip header
         Assert.Equal((byte)'K', bytes[1]);
@@ -2181,6 +2283,61 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(2, alerts.Count);
         var latest = alerts.OrderByDescending(a => a.Id).First();
         Assert.Contains("جهة القراءة (ثانٍ)", latest.Message);
+    }
+
+    [Fact]
+    public async Task ProposeEdit_LawyerExplicitIsParentEntity_Throws_AndLeavesEntryUntouched()
+    {
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة ثابتة", "ministry", "دمشق", "فرع المزة"), ManagerActor());
+
+        var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.ProposeEditAsync(dto.Id, new ProposeEditRequest(CanonicalName: "جهة ترقية", IsParentEntity: true), LawyerActor()));
+        Assert.Equal("لا يُغيَّر وضع «الجهة الأم» عبر الاقتراحات — للإدارة فقط", ex.Message);
+
+        // الحارس قبل أي كتابة: لا ترقية ولا اقتراح ولا حدث.
+        var stored = await _db.PublicEntities.Include(e => e.Group).AsNoTracking().SingleAsync(e => e.Id == dto.Id);
+        Assert.False(stored.IsParentEntity);
+        Assert.False(stored.NeedsReview);
+        Assert.Equal("جهة ثابتة", stored.Group.CanonicalName);
+        Assert.Equal(0, await _db.PublicEntityChangeEvents.CountAsync(e => e.ActionKind == ActionKindCatalog.Propose));
+    }
+
+    [Fact]
+    public async Task ProposeEdit_LawyerRenameToDefaultBranchName_KeepsParentFlagFalse()
+    {
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة تغيير فرع", "ministry", "دمشق", "فرع المزة"), ManagerActor());
+
+        var proposed = await _service.ProposeEditAsync(
+            dto.Id, new ProposeEditRequest(BranchName: "الجهة الأم"), LawyerActor());
+
+        Assert.NotNull(proposed);
+        Assert.Equal("الجهة الأم", proposed!.BranchName);
+        Assert.True(proposed.NeedsReview);
+
+        var stored = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == dto.Id);
+        // تجميد العلم: طلب فرع افتراضي لا يرقّي القيد.
+        Assert.False(stored.IsParentEntity);
+
+        var evt = await _db.PublicEntityChangeEvents.SingleAsync(e => e.ActionKind == ActionKindCatalog.Propose);
+        Assert.Equal(dto.Id, evt.EntryId);
+    }
+
+    [Fact]
+    public async Task ProposeEdit_OnParentEntry_WithoutFlag_Succeeds_AndKeepsParent()
+    {
+        // حدّية: اقتراح على قيد أمّ (دون طلب تغيير الوضع) مقبول، ويبقى قيدًا أمًّا
+        // — التجميد يحفظ الاتجاهين (لا ترقية ولا تخفيض) عبر الاقتراحات.
+        var entryId = await SeedParentEntityAsync("وزارة الأم المقترح عليها", "دمشق", "الفرع الرئيسي");
+
+        var proposed = await _service.ProposeEditAsync(
+            entryId, new ProposeEditRequest(CanonicalName: "وزارة الأم (تعديل مقترح)"), LawyerActor());
+
+        Assert.NotNull(proposed);
+        Assert.Equal("وزارة الأم (تعديل مقترح)", proposed!.CanonicalName);
+
+        var stored = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == entryId);
+        Assert.True(stored.IsParentEntity);
+        Assert.True(stored.NeedsReview);
     }
 
     // ── إعادة تسمية هوية أم (أ2) ──
@@ -2883,5 +3040,677 @@ public class PublicEntityServiceTests : IDisposable
         // الملف المرتبط يُصحَّح إلى EntryId (تكافؤ مع Apply).
         var linkedAfter = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == linked.Id);
         Assert.Equal(e1, linkedAfter.ApplicantRegistryId);
+    }
+
+    // ── عمليات فروع رئيس القسم (تعديل التسمية/دمج/إلغاء/توحيد — ضمن محافظته) ──
+
+    private async Task<Document> LinkDocumentToEntryAsync(string entityName, string governorate, string branch, int entryId)
+    {
+        var doc = await SeedApplicantDocumentAsync(entityName, governorate);
+        var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
+        row.RegistryId = entryId;
+        row.Branch = branch;
+        await _db.SaveChangesAsync();
+        return doc;
+    }
+
+    [Fact]
+    public async Task RenameBranch_HeadInScope_SyncsBranchLabelsAndWritesEvent()
+    {
+        var a = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var doc = await LinkDocumentToEntryAsync("وزارة النقل", "دمشق", "الفرع الرئيسي", a.Id);
+
+        var result = await _service.RenameBranchAsync(
+            a.GroupId, a.Id, new RenameBranchRequest("الفرع الرئيسي الجديد"), HeadDamascusActor());
+
+        Assert.Equal("الفرع الرئيسي", result.OldBranchName);
+        Assert.Equal("الفرع الرئيسي الجديد", result.NewBranchName);
+        Assert.Equal(1, result.AffectedDocuments);
+
+        var entry = await _db.PublicEntities.Include(e => e.Aliases).SingleAsync(e => e.Id == a.Id);
+        Assert.Equal("الفرع الرئيسي الجديد", entry.BranchName);
+
+        var row = await _db.ApplicantPublicEntities.AsNoTracking().SingleAsync(r => r.DocumentId == doc.Id);
+        Assert.Equal("الفرع الرئيسي الجديد", row.Branch);
+
+        // الاسم الكامل القديم أُضيف كاسم بديل للبحث.
+        Assert.Contains(entry.Aliases, al => al.AliasText.Contains("الفرع الرئيسي"));
+
+        var evt = await _db.PublicEntityChangeEvents.SingleAsync(e => e.GroupId == a.GroupId);
+        Assert.Equal(ActionKindCatalog.Rename, evt.ActionKind);
+        Assert.Contains("rename_branch", _audit.Actions);
+
+        var occ = await _db.DocumentOccurrences.SingleAsync(o => o.DocumentId == doc.Id);
+        Assert.Equal(OccurrenceTypeCatalog.EntityChange, occ.OccurrenceType);
+    }
+
+    [Fact]
+    public async Task RenameBranch_HeadOutOfScope_Throws()
+    {
+        var a = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.RenameBranchAsync(a.GroupId, a.Id, new RenameBranchRequest("اسم آخر"), HeadAleppoActor()));
+    }
+
+    [Fact]
+    public async Task RenameBranch_SameName_Throws()
+    {
+        var a = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.RenameBranchAsync(a.GroupId, a.Id, new RenameBranchRequest("الفرع الرئيسي"), HeadDamascusActor()));
+    }
+
+    [Fact]
+    public async Task RenameBranch_DuplicateBranchName_Throws()
+    {
+        var a1 = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var a2 = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.RenameBranchAsync(a1.GroupId, a2.Id, new RenameBranchRequest("الفرع الرئيسي"), HeadDamascusActor()));
+    }
+
+    [Fact]
+    public async Task MergeBranches_HeadInScope_MergesAndFolds()
+    {
+        var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var target = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        var docSource = await LinkDocumentToEntryAsync("وزارة النقل", "دمشق", "الفرع الرئيسي", source.Id);
+
+        var result = await _service.MergeBranchesAsync(
+            source.GroupId, new MergeBranchesRequest(source.Id, target.Id), HeadDamascusActor());
+
+        Assert.Equal(source.Id, result.SourceEntryId);
+        Assert.Equal(target.Id, result.TargetEntryId);
+        Assert.Single(await _db.DocumentOccurrences.Where(o => o.DocumentId == docSource.Id).ToListAsync());
+
+        var src = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == source.Id);
+        var tgt = await _db.PublicEntities.Include(e => e.Aliases).SingleAsync(e => e.Id == target.Id);
+        Assert.False(src.IsActive);
+        Assert.True(tgt.IsActive);
+        Assert.Contains(tgt.Aliases, al => al.AliasText.Contains("وزارة النقل"));
+
+        var srcRows = await _db.ApplicantPublicEntities.Where(r => r.DocumentId == docSource.Id).ToListAsync();
+        Assert.All(srcRows, r => Assert.Equal(target.Id, r.RegistryId));
+        Assert.All(srcRows, r => Assert.Equal(target.BranchName, r.Branch));
+
+        var evt = await _db.PublicEntityChangeEvents.SingleAsync(e => e.GroupId == source.GroupId);
+        Assert.Equal(ActionKindCatalog.Merge, evt.ActionKind);
+        // الوقوعات تُسجَّل للملفات المعاد توجيهها (المصدر) فقط — ملف الهدف لم يتغير.
+        Assert.Single(await _db.DocumentOccurrences.Where(o => o.DocumentId == docSource.Id).ToListAsync());
+        Assert.Contains("merge_branches", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task MergeBranches_DifferentGovernorate_Throws()
+    {
+        var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var target = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "حلب", "فرع حلب"), ManagerActor());
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.MergeBranchesAsync(source.GroupId, new MergeBranchesRequest(source.Id, target.Id), ManagerActor()));
+    }
+
+    [Fact]
+    public async Task MergeBranches_NeedsReview_Throws()
+    {
+        var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var target = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        var tgtEntry = await _db.PublicEntities.SingleAsync(e => e.Id == target.Id);
+        tgtEntry.NeedsReview = true;
+        await _db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.MergeBranchesAsync(source.GroupId, new MergeBranchesRequest(source.Id, target.Id), HeadDamascusActor()));
+        Assert.Contains("مراجعة", ex.Message);
+    }
+
+    [Fact]
+    public async Task MergeBranches_HeadOutOfScope_Throws()
+    {
+        var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var target = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.MergeBranchesAsync(source.GroupId, new MergeBranchesRequest(source.Id, target.Id), HeadAleppoActor()));
+    }
+
+    [Fact]
+    public async Task AbolishBranch_LinkedDocs_NoTarget_Throws()
+    {
+        var a = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var other = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        await LinkDocumentToEntryAsync("وزارة النقل", "دمشق", "الفرع الرئيسي", a.Id);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.AbolishBranchAsync(a.GroupId, a.Id, new AbolishBranchRequest(), HeadDamascusActor()));
+        Assert.Contains("فرع هدف بديل", ex.Message);
+    }
+
+    [Fact]
+    public async Task AbolishBranch_NoLinks_DirectDeactivate()
+    {
+        var a = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var other = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+
+        var result = await _service.AbolishBranchAsync(a.GroupId, a.Id, new AbolishBranchRequest(), HeadDamascusActor());
+
+        Assert.False(result.TargetEntryId.HasValue);
+        Assert.Equal(0, result.AffectedDocuments);
+        var entry = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == a.Id);
+        Assert.False(entry.IsActive);
+        var evt = await _db.PublicEntityChangeEvents.SingleAsync(e => e.GroupId == a.GroupId);
+        Assert.Equal(ActionKindCatalog.Abolish, evt.ActionKind);
+        Assert.Contains("abolish_branch", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task AbolishBranch_WithTarget_ImplicitMerge()
+    {
+        var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var target = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        var doc = await LinkDocumentToEntryAsync("وزارة النقل", "دمشق", "الفرع الرئيسي", source.Id);
+
+        var result = await _service.AbolishBranchAsync(
+            source.GroupId, source.Id, new AbolishBranchRequest(target.Id), HeadDamascusActor());
+
+        Assert.Equal(target.Id, result.TargetEntryId);
+        Assert.Equal(1, result.AffectedDocuments);
+        var src = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == source.Id);
+        var tgt = await _db.PublicEntities.Include(e => e.Aliases).SingleAsync(e => e.Id == target.Id);
+        Assert.False(src.IsActive);
+        Assert.Contains(tgt.Aliases, al => al.AliasText.Contains("وزارة النقل"));
+
+        var row = await _db.ApplicantPublicEntities.AsNoTracking().SingleAsync(r => r.DocumentId == doc.Id);
+        Assert.Equal(target.Id, row.RegistryId);
+
+        var evt = await _db.PublicEntityChangeEvents.SingleAsync(e => e.GroupId == source.GroupId);
+        Assert.Equal(ActionKindCatalog.Merge, evt.ActionKind);
+    }
+
+    [Fact]
+    public async Task AbolishBranch_LastActiveEntry_Throws()
+    {
+        var a = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.AbolishBranchAsync(a.GroupId, a.Id, new AbolishBranchRequest(), HeadDamascusActor()));
+        Assert.Contains("آخر فرع نشط", ex.Message);
+    }
+
+    [Fact]
+    public async Task UnifyBranches_UnifiesIntoSurvivorWithCorrectedName()
+    {
+        var target = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var absorbed1 = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        var absorbed2 = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع المعارض"), ManagerActor());
+        var doc1 = await LinkDocumentToEntryAsync("وزارة النقل", "دمشق", "فرع التجهيز", absorbed1.Id);
+        var doc2 = await LinkDocumentToEntryAsync("وزارة النقل", "دمشق", "فرع المعارض", absorbed2.Id);
+
+        var result = await _service.UnifyBranchesAsync(
+            target.GroupId,
+            new UnifyBranchesRequest(target.Id, new[] { absorbed1.Id, absorbed2.Id }, CorrectedName: "الفرع الإداري"),
+            HeadDamascusActor());
+
+        Assert.Equal(target.Id, result.TargetEntryId);
+        Assert.Equal(2, result.EntriesUnified);
+        Assert.Equal(2, result.AffectedDocuments);
+
+        var tgt = await _db.PublicEntities.Include(e => e.Aliases).SingleAsync(e => e.Id == target.Id);
+        Assert.Equal("الفرع الإداري", tgt.BranchName);
+        Assert.False((await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == absorbed1.Id)).IsActive);
+        Assert.False((await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == absorbed2.Id)).IsActive);
+        Assert.Contains(tgt.Aliases, al => al.AliasText.Contains("فرع التجهيز"));
+
+        foreach (var docId in new[] { doc1.Id, doc2.Id })
+        {
+            var row = await _db.ApplicantPublicEntities.AsNoTracking().SingleAsync(r => r.DocumentId == docId);
+            Assert.Equal(target.Id, row.RegistryId);
+            Assert.Equal("الفرع الإداري", row.Branch);
+        }
+
+        var evt = await _db.PublicEntityChangeEvents.SingleAsync(e => e.GroupId == target.GroupId);
+        Assert.Equal(ActionKindCatalog.Unify, evt.ActionKind);
+        Assert.Contains("unify_branches", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task PreviewBranchAction_Rename_ReportsAffectedWithoutWriting()
+    {
+        var a = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await LinkDocumentToEntryAsync("وزارة النقل", "دمشق", "الفرع الرئيسي", a.Id);
+
+        var preview = await _service.PreviewBranchActionAsync(
+            a.GroupId,
+            new PreviewBranchActionRequest(ActionKindCatalog.Rename, a.Id, NewBranchName: "فرع مقترح"),
+            HeadDamascusActor());
+
+        Assert.Empty(preview.Errors);
+        Assert.Equal(1, preview.TotalAffectedDocuments);
+        Assert.Contains("فرع مقترح", preview.Summary);
+        Assert.Equal(0, await _db.PublicEntityChangeEvents.CountAsync());
+        var entry = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == a.Id);
+        Assert.Equal("الفرع الرئيسي", entry.BranchName);
+    }
+
+    [Fact]
+    public async Task PreviewBranchAction_Merge_OutOfGovernorateScope_Forbidden()
+    {
+        var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var target = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.PreviewBranchActionAsync(
+                source.GroupId,
+                new PreviewBranchActionRequest(ActionKindCatalog.Merge, source.Id, TargetId: target.Id),
+                HeadAleppoActor()));
+    }
+
+    [Fact]
+    public async Task PreviewBranchAction_Merge_NeedsReview_ReportsError()
+    {
+        var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var target = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        var tgtEntry = await _db.PublicEntities.SingleAsync(e => e.Id == target.Id);
+        tgtEntry.NeedsReview = true;
+        await _db.SaveChangesAsync();
+
+        var preview = await _service.PreviewBranchActionAsync(
+            source.GroupId,
+            new PreviewBranchActionRequest(ActionKindCatalog.Merge, source.Id, TargetId: target.Id),
+            HeadDamascusActor());
+
+        Assert.Contains(preview.Errors, e => e.Contains("مراجعة"));
+    }
+
+    // ── اقتراح تعديل الجهة الأم (رئيس القسم → مدير/مشرف) ──
+
+    private async Task<int> SeedParentEntityAsync(string canonical, string governorate, string branch)
+    {
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(canonical, "ministry", governorate, branch), ManagerActor());
+        var entry = await _db.PublicEntities.SingleAsync(e => e.Id == dto.Id);
+        entry.IsParentEntity = true;
+        await _db.SaveChangesAsync();
+        return dto.Id;
+    }
+
+    [Fact]
+    public async Task SuggestParentEdit_Head_CreatesPendingSuggestionAndEvent()
+    {
+        var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+
+        var suggestion = await _service.SuggestParentEditAsync(
+            entryId,
+            new SuggestParentEditRequest("وزارة التعليم المقترحة", "authority", null, "توحيد المسميات"),
+            HeadDamascusActor());
+
+        Assert.Equal(ParentEditSuggestionStatusCatalog.Pending, suggestion.Status);
+        Assert.Equal("وزارة التعليم المقترحة", suggestion.ProposedCanonicalName);
+        Assert.Equal("وزارة التعليم", suggestion.CanonicalName);
+        Assert.Equal(_headDamascusId, suggestion.CreatedById);
+        Assert.Equal(_damascusId, suggestion.CreatedBranchId);
+
+        var stored = await _db.ParentEditSuggestions.SingleAsync(s => s.Id == suggestion.Id);
+        Assert.Equal(ParentEditSuggestionStatusCatalog.Pending, stored.Status);
+        Assert.Equal(entryId, stored.EntryId);
+
+        var evt = await _db.PublicEntityChangeEvents.SingleAsync(e => e.ActionKind == ActionKindCatalog.Propose);
+        Assert.Equal(entryId, evt.EntryId);
+        Assert.Contains("suggest_parent_edit", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task SuggestParentEdit_NonHead_Throws()
+    {
+        var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), ManagerActor()));
+    }
+
+    [Fact]
+    public async Task SuggestParentEdit_DuplicatePendingPerBranch_Throws()
+    {
+        var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+        await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest("الاسم الأول", Reason: "سبب"), HeadDamascusActor());
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest("الاسم الثاني", Reason: "سبب"), HeadDamascusActor()));
+    }
+
+    [Fact]
+    public async Task SuggestParentEdit_NoActiveBranchInHeadGovernorate_Throws()
+    {
+        var entryId = await SeedParentEntityAsync("وزارة التعليم", "حلب", "فرع حلب");
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), HeadDamascusActor()));
+    }
+
+    [Fact]
+    public async Task ListSuggestions_ManagerSeesAll_HeadSeesOwn()
+    {
+        var damEntry = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+        var alpEntry = await SeedParentEntityAsync("وزارة الصحة", "حلب", "فرع حلب");
+        await _service.SuggestParentEditAsync(damEntry, new SuggestParentEditRequest("اقتراح دمشق", Reason: "سبب"), HeadDamascusActor());
+        await _service.SuggestParentEditAsync(alpEntry, new SuggestParentEditRequest("اقتراح حلب", Reason: "سبب"), HeadAleppoActor());
+
+        var managerView = await _service.ListParentEditSuggestionsAsync(new ParentEditSuggestionListQuery(), ManagerActor());
+        Assert.Equal(2, managerView.TotalCount);
+
+        var damView = await _service.ListParentEditSuggestionsAsync(new ParentEditSuggestionListQuery(), HeadDamascusActor());
+        Assert.Equal(1, damView.TotalCount);
+        Assert.Equal("اقتراح دمشق", damView.Items[0].ProposedCanonicalName);
+
+        var pendingFilter = await _service.ListParentEditSuggestionsAsync(
+            new ParentEditSuggestionListQuery(Status: ParentEditSuggestionStatusCatalog.Pending), ManagerActor());
+        Assert.Equal(2, pendingFilter.TotalCount);
+    }
+
+    [Fact]
+    public async Task ReviewSuggestion_Head_Throws()
+    {
+        var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+        var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), HeadDamascusActor());
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.ReviewParentEditSuggestionAsync(
+                suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Approved), HeadDamascusActor()));
+    }
+
+    [Fact]
+    public async Task ReviewSuggestion_ManagerApprove_FlipsStatus()
+    {
+        var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+        var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), HeadDamascusActor());
+
+        var reviewed = await _service.ReviewParentEditSuggestionAsync(
+            suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Approved), ManagerActor());
+
+        Assert.NotNull(reviewed);
+        Assert.Equal(ParentEditSuggestionStatusCatalog.Approved, reviewed.Status);
+        Assert.Equal(_managerId, reviewed.ReviewedById);
+        var stored = await _db.ParentEditSuggestions.SingleAsync(s => s.Id == suggestion.Id);
+        Assert.Equal(ParentEditSuggestionStatusCatalog.Approved, stored.Status);
+        Assert.NotNull(stored.ReviewedAtUtc);
+        Assert.Contains("review_parent_edit_suggestion", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task ReviewSuggestion_ManagerReject_WithoutReason_Throws()
+    {
+        var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+        var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), HeadDamascusActor());
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.ReviewParentEditSuggestionAsync(
+                suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Rejected), ManagerActor()));
+    }
+
+    [Fact]
+    public async Task ReviewSuggestion_Twice_Throws()
+    {
+        var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+        var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), HeadDamascusActor());
+        await _service.ReviewParentEditSuggestionAsync(
+            suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Rejected, "اسم مقترح غير دقيق"), ManagerActor());
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.ReviewParentEditSuggestionAsync(
+                suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Approved), ManagerActor()));
+    }
+
+    [Fact]
+    public async Task WithdrawSuggestion_HeadCreator_FlipsWithdrawn()
+    {
+        var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+        var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest("اسم مقترح", Reason: "سبب"), HeadDamascusActor());
+
+        var withdrawn = await _service.WithdrawParentEditSuggestionAsync(suggestion.Id, HeadDamascusActor());
+
+        Assert.NotNull(withdrawn);
+        Assert.Equal(ParentEditSuggestionStatusCatalog.Withdrawn, withdrawn.Status);
+        var stored = await _db.ParentEditSuggestions.SingleAsync(s => s.Id == suggestion.Id);
+        Assert.Equal(ParentEditSuggestionStatusCatalog.Withdrawn, stored.Status);
+        Assert.Contains("withdraw_parent_edit_suggestion", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task WithdrawSuggestion_NotOwner_Throws()
+    {
+        var damEntry = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+        var alpEntry = await SeedParentEntityAsync("وزارة الصحة", "حلب", "فرع حلب");
+        await _service.SuggestParentEditAsync(alpEntry, new SuggestParentEditRequest("اقتراح حلب", Reason: "سبب"), HeadAleppoActor());
+        var damSuggestion = await _service.SuggestParentEditAsync(damEntry, new SuggestParentEditRequest("اقتراح دمشق", Reason: "سبب"), HeadDamascusActor());
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.WithdrawParentEditSuggestionAsync(damSuggestion.Id, HeadAleppoActor()));
+    }
+
+    [Fact]
+    public async Task WithdrawSuggestion_AfterReview_Throws()
+    {
+        var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+        var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), HeadDamascusActor());
+        await _service.ReviewParentEditSuggestionAsync(
+            suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Approved), ManagerActor());
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.WithdrawParentEditSuggestionAsync(suggestion.Id, HeadDamascusActor()));
+    }
+
+    // ── إصلاحات حوكمة الجهة الأم (PARENT_GOVERNANCE_FIX_PLAN.md) ──
+    // البند 1: ظهور أحداث مستوى المجموعة (بلا EntryId) في سجل محافظة الرئيس.
+
+    private async Task<PublicEntityChangeEvent> SeedGroupLevelChangeEventAsync(int groupId)
+    {
+        // حدث مستوى مجموعة حقيقي (بلا EntryId) كما تكتبه العمليات المركزية بمرسوم (Rename/Unify/Abolish).
+        var e = new PublicEntityChangeEvent
+        {
+            EntryId = null,
+            GroupId = groupId,
+            ActionKind = ActionKindCatalog.Rename,
+            DecreeKind = "مرسوم",
+            DecreeNumber = "123",
+            DecreeDate = new DateTime(2026, 8, 1),
+            PayloadJson = "{}",
+            ActorUserId = _managerId,
+            CreatedAtUtc = DateTime.UtcNow,
+        };
+        _db.PublicEntityChangeEvents.Add(e);
+        await _db.SaveChangesAsync();
+        return e;
+    }
+
+    [Fact]
+    public async Task ChangeEvents_GroupLevelEvent_VisibleToHeadOfMemberGovernorate()
+    {
+        // مجموعة تضم فرعًا في محافظة الرئيس (دمشق) — حدث المجموعة يُعرض لرئيس عضو بمحافظته.
+        // قبل إصلاح ThenInclude(g => g.Entries) كان Group.Entries فارغًا فلا يظهر الحدث،
+        // وGovernorate/CanonicalName يبقيان null في DTO.
+        var dam = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "حلب", "فرع حلب"), ManagerActor());
+
+        var evt = await SeedGroupLevelChangeEventAsync(dam.GroupId);
+
+        var result = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(Governorate: null, ActionKind: null, ActorUserId: null, From: null, To: null), HeadDamascusActor());
+
+        var shown = Assert.Single(result.Items, e => e.Id == evt.Id);
+        Assert.NotNull(shown.Governorate);
+        Assert.Equal("وزارة النقل", shown.CanonicalName);
+    }
+
+    [Fact]
+    public async Task ChangeEvents_GroupLevelEvent_HiddenFromGovernorateWithoutMembers()
+    {
+        // مجموعة بفروع دمشق فقط — حدث المجموعة لا يظهر لرئيس محافظة بلا عضو في المجموعة.
+        var dam = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+
+        var evt = await SeedGroupLevelChangeEventAsync(dam.GroupId);
+
+        var result = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(Governorate: null, ActionKind: null, ActorUserId: null, From: null, To: null), HeadAleppoActor());
+
+        Assert.DoesNotContain(result.Items, e => e.Id == evt.Id);
+    }
+
+    [Fact]
+    public async Task ChangeEvents_EntryLevelEvent_HiddenFromOtherMemberGovernorate()
+    {
+        // أحداث مستوى القيد (بها EntryId) تُنطاق بمحافظة القيد وحدها: حدث إعادة تسمية فرع دمشق
+        // لا يتسرب لرئيس حلب رغم أن المجموعة تضم فرعًا في حلب (ثغرة Scope بعد ThenInclude).
+        var dam = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "حلب", "فرع حلب"), ManagerActor());
+
+        await _service.RenameBranchAsync(dam.GroupId, dam.Id, new RenameBranchRequest("فرع دمشق المحدث"), HeadDamascusActor());
+
+        var aleppo = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(Governorate: null, ActionKind: null, ActorUserId: null, From: null, To: null), HeadAleppoActor());
+        Assert.DoesNotContain(aleppo.Items, e => e.ActionKind == ActionKindCatalog.Rename && e.GroupId == dam.GroupId);
+
+        var damascus = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(Governorate: null, ActionKind: null, ActorUserId: null, From: null, To: null), HeadDamascusActor());
+        Assert.Contains(damascus.Items, e => e.ActionKind == ActionKindCatalog.Rename && e.GroupId == dam.GroupId);
+    }
+
+    // البند 2: إغلاق ترقية فرع→أم على رئيس القسم (صراحةً + الاشتقاق الضمني).
+
+    [Fact]
+    public async Task Update_HeadExplicitIsParentEntity_ThrowsUnauthorized()
+    {
+        var created = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.UpdateAsync(created.Id, new UpdatePublicEntityRequest(IsParentEntity: true), HeadDamascusActor()));
+    }
+
+    [Fact]
+    public async Task Update_HeadRenameToDefaultBranchName_KeepsIsParentEntityFalse()
+    {
+        var created = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _service.UpdateAsync(created.Id, new UpdatePublicEntityRequest(BranchName: "الجهة الأم"), HeadDamascusActor());
+
+        var stored = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == created.Id);
+        Assert.Equal("الجهة الأم", stored.BranchName);
+        Assert.False(stored.IsParentEntity);
+    }
+
+    [Fact]
+    public async Task Create_HeadExplicitIsParentEntity_ThrowsUnauthorized()
+    {
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "عشوائي", IsParentEntity: true), HeadDamascusActor()));
+    }
+
+    [Fact]
+    public async Task Create_HeadDefaultBranchName_DerivesIsParentEntityFalse()
+    {
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الجهة الأم"), HeadDamascusActor());
+        var stored = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == dto.Id);
+        Assert.False(stored.IsParentEntity);
+    }
+
+    [Fact]
+    public async Task Create_ManagerIsParentEntity_StillAllowed()
+    {
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الجهة الأم"), ManagerActor());
+        var stored = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == dto.Id);
+        Assert.True(stored.IsParentEntity);
+    }
+
+    // البند 3: منع استهداف قيد «الجهة الأم» في عمليات الفروع (منع صريح للجميع).
+
+    [Fact]
+    public async Task BranchOp_OnParentEntry_Throws_ForManager()
+    {
+        var parentId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+        var parent = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == parentId);
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.AbolishBranchAsync(parent.GroupId, parentId, new AbolishBranchRequest(), ManagerActor()));
+        Assert.Contains("للفروع فقط", ex.Message);
+    }
+
+    [Fact]
+    public async Task Preview_BranchOp_OnParentEntry_ReportsError()
+    {
+        var parentId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+        var parent = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == parentId);
+
+        var preview = await _service.PreviewBranchActionAsync(
+            parent.GroupId,
+            new PreviewBranchActionRequest(ActionKindCatalog.Rename, parentId, NewBranchName: "فرع مقترح"),
+            ManagerActor());
+
+        Assert.Contains(preview.Errors, e => e.Contains("للفروع فقط"));
+        Assert.Empty(preview.Entries);
+    }
+
+    [Fact]
+    public async Task PreviewMerge_OnParentEntry_ReportsError()
+    {
+        // معاينة الدمج على قيد أم: خطأ ضمن Errors (200) لا استثناء مرمي (400) — تناسق مع باقي العمليات.
+        var parentId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+        var parent = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == parentId);
+        var other = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "فرع آخر"), ManagerActor());
+
+        var preview = await _service.PreviewBranchActionAsync(
+            parent.GroupId,
+            new PreviewBranchActionRequest(ActionKindCatalog.Merge, parentId, TargetId: other.Id),
+            ManagerActor());
+
+        Assert.Contains(preview.Errors, e => e.Contains("للفروع فقط"));
+        Assert.Empty(preview.Entries);
+    }
+
+    // البند 4: لا اعتماد اسم مقترح لم يُطبَّق بعد؛ اقتراح بلا اسم غير متأثر.
+
+    [Fact]
+    public async Task ReviewApprove_WithoutAppliedRename_Throws()
+    {
+        var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+        var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest("الاسم الصحيح الجديد", Reason: "سبب"), HeadDamascusActor());
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.ReviewParentEditSuggestionAsync(
+                suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Approved), ManagerActor()));
+        Assert.Contains("طبّق إعادة التسمية", ex.Message);
+
+        var stored = await _db.ParentEditSuggestions.SingleAsync(s => s.Id == suggestion.Id);
+        Assert.Equal(ParentEditSuggestionStatusCatalog.Pending, stored.Status);
+    }
+
+    [Fact]
+    public async Task ReviewApprove_AfterAppliedRename_Accepts()
+    {
+        var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+        var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest("الاسم الصحيح الجديد", Reason: "سبب"), HeadDamascusActor());
+        var entry = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == entryId);
+
+        // تطبيق التسمية فعليًا ثم المراجعة تُقبل (إعادة التسمية أصبحت منفذة قبل القرار).
+        var group = await _db.PublicEntityGroups.SingleAsync(g => g.Id == entry.GroupId);
+        group.CanonicalName = "الاسم الصحيح الجديد";
+        await _db.SaveChangesAsync();
+
+        var reviewed = await _service.ReviewParentEditSuggestionAsync(
+            suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Approved), ManagerActor());
+
+        Assert.NotNull(reviewed);
+        Assert.Equal(ParentEditSuggestionStatusCatalog.Approved, reviewed.Status);
+    }
+
+    [Fact]
+    public async Task ReviewApprove_WithoutProposedName_Accepts()
+    {
+        var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+        var suggestion = await _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(ProposedEntityType: "authority", Reason: "سبب"), HeadDamascusActor());
+
+        var reviewed = await _service.ReviewParentEditSuggestionAsync(
+            suggestion.Id, new ReviewParentEditSuggestionRequest(ParentEditSuggestionStatusCatalog.Approved), ManagerActor());
+
+        Assert.NotNull(reviewed);
+        Assert.Equal(ParentEditSuggestionStatusCatalog.Approved, reviewed.Status);
+    }
+
+    // البند 5: معاينة الإلغاء بهدف تعرض اسم الهدف الحقيقي في الملخص والحقل.
+
+    [Fact]
+    public async Task PreviewAbolish_WithTarget_ShowsTargetBranchName()
+    {
+        var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var target = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        await LinkDocumentToEntryAsync("وزارة النقل", "دمشق", "الفرع الرئيسي", source.Id);
+
+        var preview = await _service.PreviewBranchActionAsync(
+            source.GroupId,
+            new PreviewBranchActionRequest(ActionKindCatalog.Abolish, source.Id, TargetId: target.Id),
+            HeadDamascusActor());
+
+        Assert.Equal("فرع التجهيز", preview.TargetBranchName);
+        Assert.Contains("فرع التجهيز", preview.Summary);
+        Assert.DoesNotContain(preview.Errors, e => e.Contains("للفروع فقط"));
     }
 }

@@ -4,6 +4,7 @@ using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 namespace DocGenerator.Application.Tests;
 
@@ -19,8 +20,8 @@ public class BranchManagementServiceTests : IDisposable
     {
         _db = TestDb.Create();
         _db.Branches.AddRange(
-            new Branch { Name = "دمشق", Code = "DAM" },
-            new Branch { Name = "حلب", Code = "ALP" });
+            new Branch { Name = "دمشق", Code = "DAM", Governorate = "دمشق" },
+            new Branch { Name = "حلب", Code = "ALP", Governorate = "حلب" });
         _db.SaveChanges();
 
         _damascusId = _db.Branches.Single(b => b.Code == "DAM").Id;
@@ -41,15 +42,26 @@ public class BranchManagementServiceTests : IDisposable
     public async Task Create_AddsActiveBranch_WithCounts()
     {
         var branch = await _service.CreateBranchAsync(
-            new CreateBranchRequest("حمص", "HMS", "شارع الساعة", "031111111"), "admin");
+            new CreateBranchRequest("حمص", "HMS", "شارع الساعة", "031111111", "حمص"), "admin");
 
         Assert.True(branch.Id > 0);
         Assert.Equal("حمص", branch.Name);
         Assert.Equal("HMS", branch.Code);
+        Assert.Equal("حمص", branch.Governorate);
         Assert.True(branch.IsActive);
         Assert.Equal(0, branch.UserCount);
         Assert.Equal(0, branch.DocumentCount);
         Assert.Contains("create_branch", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task Create_EmptyGovernorate_Throws()
+    {
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateBranchAsync(new CreateBranchRequest("فرع جديد", "BXX", null, null, "  "), "admin"));
+
+        Assert.Contains("المحافظة مطلوبة", ex.Message);
+        Assert.Null(await _db.Branches.FirstOrDefaultAsync(b => b.Code == "BXX"));
     }
 
     [Fact]
@@ -70,14 +82,14 @@ public class BranchManagementServiceTests : IDisposable
     public async Task Create_DuplicateName_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateBranchAsync(new CreateBranchRequest("دمشق", "NEW", null, null), "admin"));
+            _service.CreateBranchAsync(new CreateBranchRequest("دمشق", "NEW", null, null, "دمشق"), "admin"));
     }
 
     [Fact]
     public async Task Create_DuplicateCode_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateBranchAsync(new CreateBranchRequest("فرع جديد", "DAM", null, null), "admin"));
+            _service.CreateBranchAsync(new CreateBranchRequest("فرع جديد", "DAM", null, null, "حلب"), "admin"));
     }
 
     [Fact]
@@ -85,15 +97,26 @@ public class BranchManagementServiceTests : IDisposable
     {
         var updated = await _service.UpdateBranchAsync(
             DamascusId,
-            new UpdateBranchRequest("دمشق المركز", "DAMC", "شارع البريد", "011123456", false),
+            new UpdateBranchRequest("دمشق المركز", "DAMC", "شارع البريد", "011123456", false, "دمشق"),
             "admin");
 
         Assert.NotNull(updated);
         Assert.Equal("دمشق المركز", updated.Name);
         Assert.Equal("DAMC", updated.Code);
+        Assert.Equal("دمشق", updated.Governorate);
         Assert.False(updated.IsActive);
         Assert.Equal("011123456", updated.Phone);
         Assert.Contains("update_branch", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task Update_EmptyGovernorate_Throws()
+    {
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateBranchAsync(DamascusId, new UpdateBranchRequest("دمشق", "DAM", null, null, true, "  "), "admin"));
+
+        Assert.Contains("المحافظة مطلوبة", ex.Message);
+        Assert.Equal("دمشق", (await _db.Branches.FindAsync(DamascusId))!.Governorate);
     }
 
     [Fact]
@@ -101,7 +124,7 @@ public class BranchManagementServiceTests : IDisposable
     {
         // حلب تأخذ اسم "دمشق" — ممنوع (فرع آخر بنفس الاسم).
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateBranchAsync(AleppoId, new UpdateBranchRequest("دمشق", "ALP", null, null, true), "admin"));
+            _service.UpdateBranchAsync(AleppoId, new UpdateBranchRequest("دمشق", "ALP", null, null, true, "حلب"), "admin"));
     }
 
     [Fact]
@@ -110,7 +133,7 @@ public class BranchManagementServiceTests : IDisposable
         // الإبقاء على نفس الاسم والكود عند التحديث لا يعد تكراراً.
         var updated = await _service.UpdateBranchAsync(
             DamascusId,
-            new UpdateBranchRequest("دمشق", "DAM", null, null, true),
+            new UpdateBranchRequest("دمشق", "DAM", null, null, true, "دمشق"),
             "admin");
 
         Assert.NotNull(updated);

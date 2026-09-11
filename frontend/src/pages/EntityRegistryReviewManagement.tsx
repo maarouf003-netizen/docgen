@@ -24,8 +24,9 @@ import type {
 } from '../types';
 import EntityChangeLog from './EntityChangeLog';
 import { UnifyNamesTab } from '../components/entity/UnifyNamesTab';
+import ParentSuggestionsTab from '../components/entity/ParentSuggestionsTab';
 
-type TabId = 'edit' | 'add' | 'unify' | 'log';
+type TabId = 'edit' | 'add' | 'unify' | 'log' | 'suggestions';
 
 const f = new Intl.NumberFormat('ar-EG');
 
@@ -143,7 +144,9 @@ export default function EntityRegistryReviewManagement() {
         ? 'log'
         : searchParams.get('tab') === 'unify'
           ? 'unify'
-          : 'edit';
+          : searchParams.get('tab') === 'suggestions'
+            ? 'suggestions'
+            : 'edit';
   const [tab, setTab] = useState<TabId>(initialTab);
 
   return (
@@ -164,12 +167,14 @@ export default function EntityRegistryReviewManagement() {
         <TabButton id="add" label="إضافة جهة" active={tab === 'add'} onSelect={setTab} />
         <TabButton id="unify" label="توحيد تسميات" active={tab === 'unify'} onSelect={setTab} />
         <TabButton id="log" label="سجل تغييرات الجهة" active={tab === 'log'} onSelect={setTab} />
+        <TabButton id="suggestions" label="اقتراحات الأم" active={tab === 'suggestions'} onSelect={setTab} />
       </div>
 
       {tab === 'edit' && <EditEntityTab key="edit" />}
       {tab === 'add' && <AddEntityTab />}
       {tab === 'unify' && <UnifyNamesTab />}
       {tab === 'log' && <EntityChangeLog />}
+      {tab === 'suggestions' && <ParentSuggestionsTab />}
     </div>
   );
 }

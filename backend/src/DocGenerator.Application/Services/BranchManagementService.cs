@@ -15,6 +15,7 @@ public interface IBranchManagementService
 /// <summary>
 /// إدارة الفروع (إضافة/تعديل/حذف) — مشرف النظام فقط.
 /// التحقق من الصلاحية في المتحكم، والتحقق المنطقي والكتابة هنا ضمن معاملة مع سجل التدقيق.
+/// المحافظة إجبارية في الإنشاء والتعديل (تحدد نطاق رئيس القسم في سجل الجهات العامة).
 /// الحذف النهائي محصور بالفروع غير المستخدمة؛ الفرع المستخدم يُعطَّل (IsActive) بدلاً من الحذف.
 /// </summary>
 public sealed class BranchManagementService : IBranchManagementService
@@ -55,6 +56,8 @@ public sealed class BranchManagementService : IBranchManagementService
     {
         var name = NormalizeRequired(request.Name, "اسم الفرع مطلوب");
         var code = NormalizeRequired(request.Code, "كود الفرع مطلوب");
+        // المحافظة إجبارية لأنها تحدد نطاق رئيس القسم في سجل الجهات العامة (Branches.Governorate).
+        var governorate = NormalizeRequired(request.Governorate, "المحافظة مطلوبة — اختر محافظة الفرع من القائمة");
 
         if (await _branches.NameExistsAsync(name, null, ct))
             throw new ArgumentException("اسم الفرع مستخدم مسبقاً");
@@ -67,7 +70,7 @@ public sealed class BranchManagementService : IBranchManagementService
             Code = code,
             Address = NormalizeOptional(request.Address),
             Phone = NormalizeOptional(request.Phone),
-            Governorate = NormalizeOptional(request.Governorate),
+            Governorate = governorate,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
         };
@@ -91,6 +94,9 @@ public sealed class BranchManagementService : IBranchManagementService
 
         var name = NormalizeRequired(request.Name, "اسم الفرع مطلوب");
         var code = NormalizeRequired(request.Code, "كود الفرع مطلوب");
+        // المحافظة إجبارية حتى في التعديل — إن كانت فرعًا قديمًا بلا محافظة فالتعديل يفرض اختيارها
+        // (تُشفى البيانات القديمة تدريجيًا عبر نفس الشاشة بلا هجرة بيانات).
+        var governorate = NormalizeRequired(request.Governorate, "المحافظة مطلوبة — اختر محافظة الفرع من القائمة");
 
         if (await _branches.NameExistsAsync(name, branch.Id, ct))
             throw new ArgumentException("اسم الفرع مستخدم مسبقاً");
@@ -101,7 +107,7 @@ public sealed class BranchManagementService : IBranchManagementService
         branch.Code = code;
         branch.Address = NormalizeOptional(request.Address);
         branch.Phone = NormalizeOptional(request.Phone);
-        branch.Governorate = NormalizeOptional(request.Governorate);
+        branch.Governorate = governorate;
         branch.IsActive = request.IsActive;
 
         var userCounts = await _branches.CountUsersByBranchAsync(ct);

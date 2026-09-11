@@ -58,3 +58,22 @@ public static class CitationFormulaCatalog
     public static bool IsValid(string? value)
         => value is AddToJob or AddToPosition;
 }
+
+/// <summary>
+/// حالة اقتراح تعديل الجهة الأم: معلّق / مقبول / مرفوض / مسحوب.
+/// </summary>
+public static class ParentEditSuggestionStatusCatalog
+{
+    public const string Pending = "pending";
+    public const string Approved = "approved";
+    public const string Rejected = "rejected";
+    public const string Withdrawn = "withdrawn";
+
+    public static readonly IReadOnlyList<string> All = new[]
+    {
+        Pending, Approved, Rejected, Withdrawn,
+    };
+
+    public static bool IsValid(string? value)
+        => value is Pending or Approved or Rejected or Withdrawn;
+}

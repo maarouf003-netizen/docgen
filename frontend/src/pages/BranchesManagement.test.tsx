@@ -35,6 +35,7 @@ function branchItem(overrides: Partial<BranchDto> = {}): BranchDto {
     name: 'الفرع الرئيسي - دمشق',
     code: 'DAM',
     address: 'دمشق',
+    governorate: 'دمشق',
     isActive: true,
     userCount: 2,
     documentCount: 5,
@@ -69,6 +70,7 @@ describe('BranchesManagement', () => {
     await user.type(screen.getByLabelText('كود الفرع'), 'HMS');
     await user.type(screen.getByLabelText('العنوان'), 'حمص');
     await user.type(screen.getByLabelText('الهاتف'), '031222333');
+    await user.selectOptions(screen.getByLabelText(/المحافظة/), 'حمص');
     await user.click(screen.getByRole('button', { name: 'إنشاء الفرع' }));
 
     await waitFor(() => {
@@ -77,9 +79,22 @@ describe('BranchesManagement', () => {
         code: 'HMS',
         address: 'حمص',
         phone: '031222333',
-        governorate: null,
+        governorate: 'حمص',
       });
     });
+  });
+
+  it('يمنع إنشاء فرع دون اختيار المحافظة', async () => {
+    const user = userEvent.setup();
+    render(<BranchesManagement />);
+
+    await user.click(await screen.findByRole('button', { name: '+ إضافة فرع' }));
+    await user.type(screen.getByLabelText('اسم الفرع'), 'فرع بلا محافظة');
+    await user.type(screen.getByLabelText('كود الفرع'), 'NGO');
+    await user.click(screen.getByRole('button', { name: 'إنشاء الفرع' }));
+
+    expect(await screen.findByText(/المحافظة مطلوبة/)).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
   });
 
   it('ينشئ فرعاً مع محافظة محددة لنطاق رئيس القسم', async () => {
@@ -89,7 +104,7 @@ describe('BranchesManagement', () => {
     await user.click(await screen.findByRole('button', { name: '+ إضافة فرع' }));
     await user.type(screen.getByLabelText('اسم الفرع'), 'فرع درعا');
     await user.type(screen.getByLabelText('كود الفرع'), 'DRA');
-    await user.selectOptions(screen.getByLabelText('المحافظة'), 'درعا');
+    await user.selectOptions(screen.getByLabelText(/المحافظة/), 'درعا');
     await user.click(screen.getByRole('button', { name: 'إنشاء الفرع' }));
 
     await waitFor(() => {
@@ -130,10 +145,24 @@ describe('BranchesManagement', () => {
         code: 'DAM',
         address: 'دمشق',
         phone: null,
-        governorate: null,
+        governorate: 'دمشق',
         isActive: false,
       });
     });
+  });
+
+  it('يمنع حفظ التعديل إذا تُركت المحافظة فارغة', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: [branchItem({ governorate: null })],
+    });
+    const user = userEvent.setup();
+    render(<BranchesManagement />);
+
+    await user.click(await screen.findByRole('button', { name: 'تعديل' }));
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديل' }));
+
+    expect(await screen.findByText(/المحافظة مطلوبة/)).toBeInTheDocument();
+    expect(api.put).not.toHaveBeenCalled();
   });
 
   it('يحذف فرعاً بعد التأكيد', async () => {

@@ -49,6 +49,7 @@ public class DocGeneratorDbContext : DbContext
     public DbSet<PublicEntity> PublicEntities => Set<PublicEntity>();
     public DbSet<PublicEntityAlias> PublicEntityAliases => Set<PublicEntityAlias>();
     public DbSet<PublicEntityChangeEvent> PublicEntityChangeEvents => Set<PublicEntityChangeEvent>();
+    public DbSet<ParentEditSuggestion> ParentEditSuggestions => Set<ParentEditSuggestion>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

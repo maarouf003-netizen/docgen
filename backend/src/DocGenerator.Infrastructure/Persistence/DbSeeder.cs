@@ -15,11 +15,11 @@ public static class DbSeeder
         if (!db.Branches.Any())
         {
             db.Branches.AddRange(
-                new Branch { Name = "الفرع الرئيسي - دمشق", Code = "DAM", Address = "دمشق" },
-                new Branch { Name = "فرع حلب", Code = "ALP", Address = "حلب" },
-                new Branch { Name = "فرع حمص", Code = "HMS", Address = "حمص" },
-                new Branch { Name = "فرع اللاذقية", Code = "LAT", Address = "اللاذقية" },
-                new Branch { Name = "فرع طرطوس", Code = "TAR", Address = "طرطوس" });
+                new Branch { Name = "الفرع الرئيسي - دمشق", Code = "DAM", Address = "دمشق", Governorate = "دمشق" },
+                new Branch { Name = "فرع حلب", Code = "ALP", Address = "حلب", Governorate = "حلب" },
+                new Branch { Name = "فرع حمص", Code = "HMS", Address = "حمص", Governorate = "حمص" },
+                new Branch { Name = "فرع اللاذقية", Code = "LAT", Address = "اللاذقية", Governorate = "اللاذقية" },
+                new Branch { Name = "فرع طرطوس", Code = "TAR", Address = "طرطوس", Governorate = "طرطوس" });
             await db.SaveChangesAsync(ct);
         }
 

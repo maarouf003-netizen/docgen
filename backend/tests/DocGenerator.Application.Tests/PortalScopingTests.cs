@@ -78,6 +78,7 @@ public class PortalScopingTests : IDisposable
             new HeadAlertRepository(_db),
             new Repository<PublicEntityChangeEvent>(_db),
             new Repository<DocumentOccurrence>(_db),
+            new Repository<ParentEditSuggestion>(_db),
             new UnitOfWork(_db),
             new TransactionRunner(_db),
             _audit,

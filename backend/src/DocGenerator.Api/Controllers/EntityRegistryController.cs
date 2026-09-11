@@ -460,7 +460,7 @@ public class EntityRegistryController : ControllerBase
         }
     }
 
-    /// <summary>سجل تغييرات الجهات — مصدره PublicEntityChangeEvent فقط (د5 §7).</summary>
+    /// <summary>سجل تغييرات الجهات — مصدره PublicEntityChangeEvent فقط (د5 §7)؛ رئيس القسم يرى محافظته (جبر خادمي).</summary>
     [HttpGet("change-events")]
     public async Task<IActionResult> ListChangeEvents(
         [FromQuery] string? governorate,
@@ -472,13 +472,13 @@ public class EntityRegistryController : ControllerBase
         [FromQuery] int perPage = 20,
         CancellationToken ct = default)
     {
-        if (!RolePermissions.HasFullAccess(Role))
+        if (!RolePermissions.CanManageEntityRegistry(Role))
             return Forbid();
         return Ok(await _registry.ListChangeEventsAsync(
-            new EntityChangeEventQuery(governorate, actionKind, actorUserId, from, to, page, perPage), ct));
+            new EntityChangeEventQuery(governorate, actionKind, actorUserId, from, to, page, perPage), Actor, ct));
     }
 
-    /// <summary>تصدير سجل التغييرات إلى Excel (نفس فلاتر القائمة).</summary>
+    /// <summary>تصدير سجل التغييرات إلى Excel (نفس فلاتر القائمة — رئيس القسم يرى محافظته).</summary>
     [HttpGet("change-events/export")]
     public async Task<IActionResult> ExportChangeEvents(
         [FromQuery] string? governorate,
@@ -488,10 +488,192 @@ public class EntityRegistryController : ControllerBase
         [FromQuery] string? to,
         CancellationToken ct = default)
     {
-        if (!RolePermissions.HasFullAccess(Role))
+        if (!RolePermissions.CanManageEntityRegistry(Role))
             return Forbid();
         var bytes = await _registry.ExportChangeEventsAsync(
-            new EntityChangeEventQuery(governorate, actionKind, actorUserId, from, to, 1, 5000), ct);
+            new EntityChangeEventQuery(governorate, actionKind, actorUserId, from, to, 1, 5000), Actor, ct);
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "change-events.xlsx");
+    }
+
+    // ── عمليات فروع رئيس القسم (تعديل التسمية/دمج/إلغاء/توحيد — ضمن محافظته) ──
+
+    /// <summary>معاينة موحدة لأي عملية فرع قبل الاعتماد (rename/merge/abolish/unify) — بلا كتابة.</summary>
+    [HttpPost("groups/{groupId:int}/branches/preview")]
+    public async Task<IActionResult> PreviewBranchAction(int groupId, [FromBody] PreviewBranchActionRequest request, CancellationToken ct)
+    {
+        if (!RolePermissions.CanManageEntityRegistry(Role))
+            return Forbid();
+        try
+        {
+            return Ok(await _registry.PreviewBranchActionAsync(groupId, request, Actor, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    /// <summary>تعديل تسمية فرع ضمن محافظة رئيس القسم (بلا مرسوم) — يزامن لقطات الفروع (S7).</summary>
+    [HttpPost("groups/{groupId:int}/branches/{entryId:int}/rename-branch")]
+    public async Task<IActionResult> RenameBranch(int groupId, int entryId, [FromBody] RenameBranchRequest request, CancellationToken ct)
+    {
+        if (!RolePermissions.CanManageEntityRegistry(Role))
+            return Forbid();
+        try
+        {
+            return Ok(await _registry.RenameBranchAsync(groupId, entryId, request, Actor, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    /// <summary>دمج فرعين نشطين في نفس الهوية الأم والمحافظة (ضمن نطاق رئيس القسم).</summary>
+    [HttpPost("groups/{groupId:int}/branches/merge")]
+    public async Task<IActionResult> MergeBranches(int groupId, [FromBody] MergeBranchesRequest request, CancellationToken ct)
+    {
+        if (!RolePermissions.CanManageEntityRegistry(Role))
+            return Forbid();
+        try
+        {
+            return Ok(await _registry.MergeBranchesAsync(groupId, request, Actor, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    /// <summary>إلغاء فرع: تعطيل مباشر لصفر روابط أو دمج ضمني مع فرع هدف (S4) — ضمن نطاق رئيس القسم.</summary>
+    [HttpPost("groups/{groupId:int}/branches/{entryId:int}/abolish")]
+    public async Task<IActionResult> AbolishBranch(int groupId, int entryId, [FromBody] AbolishBranchRequest request, CancellationToken ct)
+    {
+        if (!RolePermissions.CanManageEntityRegistry(Role))
+            return Forbid();
+        try
+        {
+            return Ok(await _registry.AbolishBranchAsync(groupId, entryId, request, Actor, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    /// <summary>توحيد تسميات عدة فروع في فرع ناجٍ (اختياريًا مع تصحيح كتابة اسمه) — ضمن نطاق رئيس القسم.</summary>
+    [HttpPost("groups/{groupId:int}/branches/unify")]
+    public async Task<IActionResult> UnifyBranches(int groupId, [FromBody] UnifyBranchesRequest request, CancellationToken ct)
+    {
+        if (!RolePermissions.CanManageEntityRegistry(Role))
+            return Forbid();
+        try
+        {
+            return Ok(await _registry.UnifyBranchesAsync(groupId, request, Actor, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    // ── اقتراح تعديل الجهة الأم (رئيس القسم → مدير/مشرف) ──
+
+    /// <summary>اقتراح تعديل بيانات قيد «الجهة الأم» من رئيس القسم (بلا أي كتابة على القيد).</summary>
+    [HttpPost("entries/{entryId:int}/suggest-parent-edit")]
+    public async Task<IActionResult> SuggestParentEdit(int entryId, [FromBody] SuggestParentEditRequest request, CancellationToken ct)
+    {
+        if (Role != UserRole.Head)
+            return Forbid();
+        try
+        {
+            return Ok(await _registry.SuggestParentEditAsync(entryId, request, Actor, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    /// <summary>قائمة اقتراحات تعديل الجهة الأم — المدير/المشرف (الكل) ورئيس القسم (اقتراحاته فقط).</summary>
+    [HttpGet("parent-edit-suggestions")]
+    public async Task<IActionResult> ListParentEditSuggestions(
+        [FromQuery] string? status,
+        [FromQuery] int? groupId,
+        [FromQuery] int page = 1,
+        [FromQuery] int perPage = 20,
+        CancellationToken ct = default)
+    {
+        if (!RolePermissions.CanManageEntityRegistry(Role))
+            return Forbid();
+        var result = await _registry.ListParentEditSuggestionsAsync(
+            new ParentEditSuggestionListQuery(status, groupId, page, perPage), Actor, ct);
+        return Ok(new ParentEditSuggestionListResponse(result.Items, result.TotalCount));
+    }
+
+    /// <summary>قبول/رفض اقتراح تعديل الجهة الأم (المدير/المشرف فقط — سبب إلزامي عند الرفض).</summary>
+    [HttpPost("parent-edit-suggestions/{suggestionId:int}/review")]
+    public async Task<IActionResult> ReviewParentEditSuggestion(int suggestionId, [FromBody] ReviewParentEditSuggestionRequest request, CancellationToken ct)
+    {
+        if (!RolePermissions.HasFullAccess(Role))
+            return Forbid();
+        try
+        {
+            var dto = await _registry.ReviewParentEditSuggestionAsync(suggestionId, request, Actor, ct);
+            return dto is null ? NotFound() : Ok(dto);
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    /// <summary>سحب ذاتي لاقتراح معلّق (رئيس القسم المنشئ نفسه فقط).</summary>
+    [HttpPost("parent-edit-suggestions/{suggestionId:int}/withdraw")]
+    public async Task<IActionResult> WithdrawParentEditSuggestion(int suggestionId, CancellationToken ct)
+    {
+        if (Role != UserRole.Head)
+            return Forbid();
+        try
+        {
+            var dto = await _registry.WithdrawParentEditSuggestionAsync(suggestionId, Actor, ct);
+            return dto is null ? NotFound() : Ok(dto);
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
     }
 }

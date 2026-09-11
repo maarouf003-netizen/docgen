@@ -1,6 +1,7 @@
 ﻿import { useCallback, useEffect, useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { GOVERNORATES } from '../utils/governorate';
 import {
   CITATION_FORMULA_OPTIONS,
@@ -8,7 +9,9 @@ import {
   entityTypeLabel,
   formatEntityCoverage,
 } from '../utils/entityRegistry';
-import type { PublicEntityEntryDto } from '../types';
+import { BranchManagementModal } from '../components/entity/BranchManagementModal';
+import EntityChangeLog from './EntityChangeLog';
+import type { PublicEntityEntryDto, PublicEntityGroupDto, PublicEntityGroupListResponse } from '../types';
 
 /**
  * «مراجعة سجل الجهات العامة الممثلة» — نموذج الحوكمة الجديد:
@@ -44,6 +47,44 @@ export default function EntityRegistryReview() {
   const [newBranch, setNewBranch] = useState('الجهة الأم');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
+
+  // إدارة فروع جهة عامة (رئيس القسم: محافظته فقط) + سجل تغييرات محافظتي.
+  const [branchManagerOpen, setBranchManagerOpen] = useState(false);
+  const [groupQuery, setGroupQuery] = useState('');
+  const [groupResults, setGroupResults] = useState<PublicEntityGroupDto[]>([]);
+  const [groupSearching, setGroupSearching] = useState(false);
+  const [branchGroup, setBranchGroup] = useState<PublicEntityGroupDto | null>(null);
+  const [logOpen, setLogOpen] = useState(false);
+  const [manualSuccess, setManualSuccess] = useState('');
+
+  const debouncedGroupQuery = useDebouncedValue(groupQuery.trim(), 300);
+
+  useEffect(() => {
+    if (!branchManagerOpen) return;
+    if (!debouncedGroupQuery) {
+      setGroupResults([]);
+      setGroupSearching(false);
+      return;
+    }
+    let cancelled = false;
+    setGroupSearching(true);
+    api
+      .get<PublicEntityGroupListResponse>('/entity-registry/groups', {
+        params: { q: debouncedGroupQuery, perPage: 20 },
+      })
+      .then((res) => {
+        if (!cancelled) setGroupResults(res.data?.items ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setGroupResults([]);
+      })
+      .finally(() => {
+        if (!cancelled) setGroupSearching(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [branchManagerOpen, debouncedGroupQuery]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -157,6 +198,95 @@ export default function EntityRegistryReview() {
           ? 'تراجع هنا الجهات التي أدخلها المحامون في محافظة فرعك. اعتمادها لا يبلّغ أحدًا، وتعديل تسميتها يوجّه تنبيهًا للمُدخِل بالاسمين.'
           : 'تشمل مراجعتك كل المحافظات، ويمكنك إدخال جهات مسبقة لأي محافظة.'}
       </p>
+
+      {isHead && (
+        <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="أدوات رئيس القسم">
+          <button
+            onClick={() => { setBranchManagerOpen((v) => !v); setLogOpen(false); }}
+            aria-expanded={branchManagerOpen}
+            className="bg-sky-800 hover:bg-sky-700 text-white rounded-lg px-4 py-2 text-sm min-h-11 focus-visible:ring-2 focus-visible:ring-sky-500"
+          >
+            إدارة فروع جهة في محافظتي
+          </button>
+          <button
+            onClick={() => { setLogOpen((v) => !v); setBranchManagerOpen(false); }}
+            aria-expanded={logOpen}
+            className="border border-sky-300 text-sky-800 hover:bg-sky-50 rounded-lg px-4 py-2 text-sm min-h-11 focus-visible:ring-2 focus-visible:ring-sky-500"
+          >
+            سجل تغييرات محافظتي
+          </button>
+        </div>
+      )}
+
+      {manualSuccess && (
+        <p role="status" className="mb-4 bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-lg p-3 text-sm">
+          {manualSuccess}
+        </p>
+      )}
+
+      {/* اختيار جهة لإدارة فروعها */}
+      {isHead && branchManagerOpen && (
+        <div className="mb-4 bg-white rounded-xl shadow p-4" role="search">
+          <h3 className="text-sm font-bold text-gray-800 mb-2">إدارة فروع جهة عامة</h3>
+          <p className="text-xs text-gray-500 mb-3">
+            ابحث باسم الجهة ثم اخترها لفتح إدارة الفروع — ترى فروع محافظتك فقط.
+          </p>
+          <label htmlFor="revm-group-search" className="sr-only">
+            بحث باسم الجهة
+          </label>
+          <input
+            id="revm-group-search"
+            value={groupQuery}
+            onChange={(e) => setGroupQuery(e.target.value)}
+            placeholder="بحث باسم الجهة أو الهوية الأم…"
+            autoComplete="off"
+            className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+          />
+          {groupSearching && <p className="text-xs text-gray-500 mt-1">جارِ البحث…</p>}
+          {!groupSearching && debouncedGroupQuery && groupResults.length === 0 && (
+            <p className="text-xs text-gray-400 mt-2">لا توجد جهات مطابقة</p>
+          )}
+          {groupResults.length > 0 && (
+            <ul className="mt-2 divide-y divide-gray-100 border border-gray-200 rounded-lg overflow-hidden">
+              {groupResults.map((g) => (
+                <li key={g.groupId}>
+                  <button
+                    onClick={() => {
+                      setBranchGroup(g);
+                      setBranchManagerOpen(false);
+                    }}
+                    className="w-full text-right px-4 py-2.5 hover:bg-sky-50 flex items-center justify-between gap-2 min-h-11 focus-visible:ring-2 focus-visible:ring-sky-500"
+                  >
+                    <span className="truncate">{g.canonicalName}</span>
+                    <span className="text-xs text-gray-500 whitespace-nowrap">#{g.groupId}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {branchGroup && (
+        <BranchManagementModal
+          groupId={branchGroup.groupId}
+          groupName={branchGroup.canonicalName}
+          onClose={() => setBranchGroup(null)}
+          onCommitted={(summary) => {
+            setManualSuccess(summary);
+          }}
+        />
+      )}
+
+      {isHead && logOpen && (
+        <div className="mb-4 bg-white rounded-xl shadow p-4">
+          <h3 className="text-sm font-bold text-gray-800 mb-2">سجل تغييرات محافظتي</h3>
+          <p className="text-xs text-gray-500 mb-3">
+            أحداث الجهات العامة المسجلة ضمن محافظة فرعك — قراءة فقط.
+          </p>
+          <EntityChangeLog />
+        </div>
+      )}
 
       {successMsg && (
         <p role="status" className="mb-4 bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-lg p-3 text-sm">

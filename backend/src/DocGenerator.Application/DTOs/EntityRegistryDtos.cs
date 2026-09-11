@@ -379,3 +379,129 @@ public record AbolishReplacePreviewResponse(
     int AffectedDocuments,
     int DelegatesToReassign,
     IReadOnlyList<string> Branches);
+
+// ── عمليات فروع رئيس القسم (ضمن محافظته — بلا مرسوم) ──
+
+/// <summary>طلب إعادة تسمية فرع قيدٍ ضمن هوية أم (بدل القيد ذو IsParentEntity=true).</summary>
+public record RenameBranchRequest(
+    string NewBranchName,
+    string? CoverageLabel = null);
+
+/// <summary>طلب دمج فرعين نشطين ضمن الهوية الأم نفسها والمحافظة نفسها.</summary>
+public record MergeBranchesRequest(
+    int SourceEntryId,
+    int TargetEntryId);
+
+/// <summary>طلب إلغاء فرع: بلا هدف (تعطيل مباشر لصفر روابط) أو بهدف (دمج ضمني).</summary>
+public record AbolishBranchRequest(
+    int? TargetEntryId = null);
+
+/// <summary>طلب توحيد تسميات عدة فروع في فرع ناجٍ محدد (اختياريًا مع تصحيح كتابة الاسم).</summary>
+public record UnifyBranchesRequest(
+    int TargetEntryId,
+    IReadOnlyList<int> AbsorbedEntryIds,
+    string? CorrectedName = null);
+
+/// <summary>
+/// معاينة موحدة لأي عملية فرع قبل الاعتماد: تُحاكي شروط التنفيذ والملفات المتأثرة
+/// وتُظهر النتائج/التحذيرات بلا أي كتابة على القاعدة. Action ∈ rename/merge/abolish/unify.
+/// </summary>
+public record PreviewBranchActionRequest(
+    string Action,
+    int EntryId,
+    int? TargetId = null,
+    IReadOnlyList<int>? AbsorbedIds = null,
+    string? NewBranchName = null,
+    string? CorrectedName = null);
+
+/// <summary>فرع متأثر في معاينة عملية: الاسم قبل التنفيذ وعدّاد ملفاته المرتبطة.</summary>
+public record BranchPreviewEntryDto(
+    int EntryId,
+    string BranchName,
+    string Governorate,
+    int DocumentCount);
+
+/// <summary>نتيجة المعاينة الموحدة: الهدف/الاسم بعد التنفيذ والفروع المتأثرة والتحذيرات/الأخطاء.</summary>
+public record BranchActionPreviewResponse(
+    string Action,
+    string Summary,
+    string TargetBranchName,
+    IReadOnlyList<BranchPreviewEntryDto> Entries,
+    int TotalAffectedDocuments,
+    IReadOnlyList<string> Warnings,
+    IReadOnlyList<string> Errors);
+
+/// <summary>نتيجة إعادة تسمية فرع.</summary>
+public record RenameBranchResponse(
+    int EntryId,
+    string OldBranchName,
+    string NewBranchName,
+    int AffectedDocuments,
+    int ChangeEventId);
+
+/// <summary>نتيجة دمج فرعين.</summary>
+public record MergeBranchesResponse(
+    int SourceEntryId,
+    int TargetEntryId,
+    int AffectedDocuments,
+    int ChangeEventId);
+
+/// <summary>نتيجة إلغاء فرع (بتعطيل مباشر أو دمج ضمني مع هدف).</summary>
+public record AbolishBranchResponse(
+    int EntryId,
+    int? TargetEntryId,
+    int AffectedDocuments,
+    int ChangeEventId);
+
+/// <summary>نتيجة توحيد تسميات عدة فروع في فرع ناجٍ.</summary>
+public record UnifyBranchesResponse(
+    int TargetEntryId,
+    int EntriesUnified,
+    int AffectedDocuments,
+    int ChangeEventId);
+
+// ── اقتراح تعديل الجهة الأم (رئيس القسم → مدير/مشرف) ──
+
+/// <summary>طلب اقتراح تعديل بيانات الجهة الأم (الاسم المعتمد/النوع/صيغة المناداة) من رئيس القسم.</summary>
+public record SuggestParentEditRequest(
+    string? ProposedCanonicalName = null,
+    string? ProposedEntityType = null,
+    string? ProposedCitationFormula = null,
+    string? Reason = null);
+
+/// <summary>قرار المدير/المشرف على اقتراح معلّق: approved / rejected (مع سبب إلزامي عند الرفض).</summary>
+public record ReviewParentEditSuggestionRequest(
+    string Status,
+    string? ReviewReason = null);
+
+/// <summary>سطر اقتراح تعديل الجهة الأم — مصدره ParentEditSuggestion فقط.</summary>
+public record ParentEditSuggestionDto(
+    int Id,
+    int GroupId,
+    int EntryId,
+    string CanonicalName,
+    string EntityType,
+    string? ProposedCanonicalName,
+    string? ProposedEntityType,
+    string? ProposedCitationFormula,
+    string Reason,
+    string Status,
+    int CreatedById,
+    string CreatedByName,
+    int CreatedBranchId,
+    int? ReviewedById,
+    string? ReviewReason,
+    string CreatedAtUtc,
+    string? ReviewedAtUtc);
+
+/// <summary>استعلام قائمة الاقتراحات (تبويب الإدارة / حالة المعلّق في نافذة الفروع).</summary>
+public record ParentEditSuggestionListQuery(
+    string? Status = null,
+    int? GroupId = null,
+    int Page = 1,
+    int PerPage = 20);
+
+/// <summary>نتيجة قائمة الاقتراحات.</summary>
+public record ParentEditSuggestionListResponse(
+    IReadOnlyList<ParentEditSuggestionDto> Items,
+    int Total);

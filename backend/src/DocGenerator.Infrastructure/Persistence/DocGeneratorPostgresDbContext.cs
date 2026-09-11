@@ -105,5 +105,11 @@ public class DocGeneratorPostgresDbContext : DocGeneratorDbContext
         modelBuilder.Entity<PublicEntityChangeEvent>()
             .Property(e => e.CreatedAtUtc)
             .HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<ParentEditSuggestion>()
+            .Property(s => s.CreatedAtUtc)
+            .HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<ParentEditSuggestion>()
+            .Property(s => s.ReviewedAtUtc)
+            .HasColumnType("timestamp with time zone");
     }
 }

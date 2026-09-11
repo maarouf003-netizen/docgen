@@ -71,6 +71,15 @@ public class Repository<T> : IRepository<T> where T : class
         {
             query = query.Include(u => ((User)(object)u).Branch);
         }
+        else if (typeof(T) == typeof(ParentEditSuggestion))
+        {
+            query = query
+                .Include(s => ((ParentEditSuggestion)(object)s).Group)
+                .Include(s => ((ParentEditSuggestion)(object)s).Entry)
+                .ThenInclude(e => e!.Group)
+                .Include(s => ((ParentEditSuggestion)(object)s).CreatedBy)
+                .Include(s => ((ParentEditSuggestion)(object)s).ReviewedBy);
+        }
 
         return query;
     }

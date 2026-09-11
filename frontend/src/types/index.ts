@@ -1762,5 +1762,133 @@ export interface PortalStatsDto {
   topCurrencies: PortalCurrencyStatDto[];
 }
 
+/* ── إدارة فروع رئيس القسم (ضمن محافظته — بلا مرسوم) ─────────────────── */
+
+export interface RenameBranchRequest {
+  newBranchName: string;
+  coverageLabel?: string | null;
+}
+
+export interface MergeBranchesRequest {
+  sourceEntryId: number;
+  targetEntryId: number;
+}
+
+export interface AbolishBranchRequest {
+  targetEntryId?: number | null;
+}
+
+export interface UnifyBranchesRequest {
+  targetEntryId: number;
+  absorbedEntryIds: number[];
+  correctedName?: string | null;
+}
+
+export type BranchActionKind = 'rename' | 'merge' | 'abolish' | 'unify';
+
+export interface PreviewBranchActionRequest {
+  action: BranchActionKind;
+  /** الفرع المعالَج (المعاد تسميته / المصدر في الدمج / المُلغى / الناجي في التوحيد). */
+  entryId: number;
+  targetId?: number | null;
+  absorbedIds?: number[] | null;
+  newBranchName?: string | null;
+  correctedName?: string | null;
+}
+
+export interface BranchPreviewEntryDto {
+  entryId: number;
+  branchName: string;
+  governorate: string;
+  documentCount: number;
+}
+
+export interface BranchActionPreviewResponse {
+  action: BranchActionKind;
+  summary: string;
+  targetBranchName: string;
+  entries: BranchPreviewEntryDto[];
+  totalAffectedDocuments: number;
+  warnings: string[];
+  errors: string[];
+}
+
+export interface RenameBranchResponse {
+  entryId: number;
+  oldBranchName: string;
+  newBranchName: string;
+  affectedDocuments: number;
+  changeEventId: number;
+}
+
+export interface MergeBranchesResponse {
+  sourceEntryId: number;
+  targetEntryId: number;
+  affectedDocuments: number;
+  changeEventId: number;
+}
+
+export interface AbolishBranchResponse {
+  entryId: number;
+  targetEntryId?: number | null;
+  affectedDocuments: number;
+  changeEventId: number;
+}
+
+export interface UnifyBranchesResponse {
+  targetEntryId: number;
+  entriesUnified: number;
+  affectedDocuments: number;
+  changeEventId: number;
+}
+
+/* ── اقتراح تعديل الجهة الأم (رئيس القسم → مدير/مشرف) ────────────────── */
+
+export type ParentEditSuggestionStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn';
+
+export interface SuggestParentEditRequest {
+  proposedCanonicalName?: string | null;
+  proposedEntityType?: PublicEntityType | null;
+  proposedCitationFormula?: string | null;
+  reason?: string | null;
+}
+
+export interface ReviewParentEditSuggestionRequest {
+  status: 'approved' | 'rejected';
+  reviewReason?: string | null;
+}
+
+export interface ParentEditSuggestionDto {
+  id: number;
+  groupId: number;
+  entryId: number;
+  canonicalName: string;
+  entityType: PublicEntityType;
+  proposedCanonicalName?: string | null;
+  proposedEntityType?: PublicEntityType | null;
+  proposedCitationFormula?: string | null;
+  reason: string;
+  status: ParentEditSuggestionStatus;
+  createdById: number;
+  createdByName: string;
+  createdBranchId: number;
+  reviewedById?: number | null;
+  reviewReason?: string | null;
+  createdAtUtc: string;
+  reviewedAtUtc?: string | null;
+}
+
+export interface ParentEditSuggestionListQuery {
+  status?: string | null;
+  groupId?: number | null;
+  page?: number;
+  perPage?: number;
+}
+
+export interface ParentEditSuggestionListResponse {
+  items: ParentEditSuggestionDto[];
+  total: number;
+}
+
 
 

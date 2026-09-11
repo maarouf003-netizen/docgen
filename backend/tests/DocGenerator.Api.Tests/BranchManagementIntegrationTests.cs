@@ -75,6 +75,7 @@ public class BranchManagementIntegrationTests
             code = "DAR",
             address = "درعا",
             phone = "015123456",
+            governorate = "درعا",
         });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
@@ -82,6 +83,7 @@ public class BranchManagementIntegrationTests
         Assert.NotNull(branch);
         Assert.Equal("فرع درعا", branch.Name);
         Assert.Equal("DAR", branch.Code);
+        Assert.Equal("درعا", branch.Governorate);
         Assert.True(branch.IsActive);
         Assert.Equal(0, branch.UserCount);
         Assert.Equal(0, branch.DocumentCount);
@@ -101,8 +103,27 @@ public class BranchManagementIntegrationTests
             code = "DAM",
             address = (string?)null,
             phone = (string?)null,
+            governorate = "حمص",
         });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_CreatesBranch_WithoutGovernorate_BadRequest()
+    {
+        var admin = _factory.AuthorizedClient("admin");
+        var response = await admin.PostAsJsonAsync("/api/branches", new
+        {
+            name = "فرع بلا محافظة",
+            code = "NGO",
+            address = (string?)null,
+            phone = (string?)null,
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+        Assert.Null(db.Branches.FirstOrDefault(b => b.Code == "NGO"));
     }
 
     [Fact]
@@ -117,6 +138,7 @@ public class BranchManagementIntegrationTests
             code = "HMSX",
             address = "حمص الجديدة",
             phone = (string?)null,
+            governorate = "حمص",
             isActive = false,
         });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -125,6 +147,7 @@ public class BranchManagementIntegrationTests
         Assert.NotNull(branch);
         Assert.Equal("فرع حمص الجديد", branch.Name);
         Assert.Equal("HMSX", branch.Code);
+        Assert.Equal("حمص", branch.Governorate);
         Assert.False(branch.IsActive);
     }
 
@@ -153,6 +176,7 @@ public class BranchManagementIntegrationTests
             code = "QNT",
             address = (string?)null,
             phone = (string?)null,
+            governorate = "القنيطرة",
         });
         var branch = await created.Content.ReadFromJsonAsync<BranchDto>();
 

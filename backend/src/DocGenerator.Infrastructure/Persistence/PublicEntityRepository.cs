@@ -195,6 +195,7 @@ public class PublicEntityRepository : IPublicEntityRepository
             .Include(c => c.ActorUser)
             .Include(c => c.Entry)
             .Include(c => c.Group)
+            .ThenInclude(g => g!.Entries)
             .OrderByDescending(c => c.CreatedAtUtc)
             .ToListAsync(ct);
 
