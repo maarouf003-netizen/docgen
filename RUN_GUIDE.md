@@ -113,6 +113,11 @@ npm test
 - `Swagger:Enabled` مغلق افتراضياً خارج التطوير؛ فعّله صراحةً عند الحاجة.
 - `RateLimiting:MaxLoginAttempts` / `RateLimiting:WindowMinutes` — إعدادات تحديد محاولات الدخول
   (مخزّنة في جدول `LoginAttempts` لتكون مشتركة بين عقد النشر).
+- `Logging:File` — مجلد `logs/` (تحت جذر الخلفية `backend/src/DocGenerator.Api/`) **يجب أن يكون قابلًا للكتابة
+  على المضيف**، وإلا تعذّر إنشاء ملف السجل اليومي (`logs/logs-YYYYMMDD.txt`) وبقيت الأخطاء على `stdout`
+  فقط. في الحاويات ثبّت المجلد عبر `mount`/`volume`، أو غيّر `Logging:File:Path` إلى مسار قابل للكتابة
+  (الاحتفاظ 31 يومًا بحد 50MB للملف عبر `RetainedDays` / `FileSizeLimitBytes`). المجلد مُتجاهَل في `git`
+  (`backend/src/DocGenerator.Api/.gitignore`) فلا يُرفع مع الكود — أنشئه بأذونات كتابة عند النشر.
 
 ### تطبيق هجرات قاعدة البيانات عند النشر (إلزامي)
 
