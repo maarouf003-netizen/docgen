@@ -43,7 +43,10 @@ public class ClientErrorsController : ControllerBase
 
         // قيود الحجم قابلة للضبط من الإعدادات (Logging:File) — ترصّ هنا قبل النقر، لا القطع التلقائي فقط.
         // المسار بلا استعلام/مقتطف (قد يحمل الاستعلام توكنات أو بيانات شخصية) ثم قصّ.
-        report.Message = Clip(report.Message, _options.ClientErrorPayloadSizeLimit);
+        // أسطر الرسالة تُسطَّح لمسافة: سطر السجل النصي أحادي السطر، والمحارف السطرية فيه
+        // تتيح تزوير السطور (log forging) وتكسر قابلية القراءة الآلية — المكدس يبقى متعدد الأسطر قصدًا.
+        var flatMessage = report.Message.Replace('\r', ' ').Replace('\n', ' ');
+        report.Message = Clip(flatMessage, _options.ClientErrorPayloadSizeLimit);
         report.Stack = report.Stack is null ? null : Clip(report.Stack, _options.ClientErrorStackLimit);
         report.Url = Clip(StripQuery(report.Url ?? ""), 500);
         report.Component = Clip(report.Component ?? "", 100);
@@ -57,13 +60,15 @@ public class ClientErrorsController : ControllerBase
 
         _cache.Set(countKey, current + 1, TimeSpan.FromMinutes(1));
 
-        // رسالة المستخدم محتملة أن تحوي نصًا حرًا، لذا تُسجَّل كخاصية منظمة (Message) إن لم تكن
-        // مطابقة لقالب واحد معروف، ويُسجَّل المسار (بلا استعلام) والمكوّن معرّفيًا فقط.
+        // رسالة المستخدم نص حرّ مسطّح أعلاه، لذا تُسجَّل كخاصية منظمة (Message) لا كقالب —
+        // آمنة من حقن القوالب. المكدس يُسجَّل خاصية منظمة أيضًا (كان يُقبل ويُقصّ ثم يُسقَط
+        // سهوًا — وهو أثمن حقل تشخيصيًا)؛ المسار بلا استعلام والمكوّن معرّفيًا فقط.
         _logger.LogWarning(
-            "Client error: {Message}, Component: {Component}, Path: {Url}",
+            "Client error: {Message}, Component: {Component}, Path: {Url}, Stack: {Stack}",
             report.Message,
             report.Component ?? "",
-            report.Url ?? "");
+            report.Url ?? "",
+            report.Stack ?? "");
 
         return Accepted(new { ok = true });
     }

@@ -64,6 +64,26 @@ public class ClientErrorsIntegrationTests
     }
 
     [Fact]
+    public async Task MultilineMessageWithStack_Returns202WithoutEcho()
+    {
+        var client = await FreshUserClientAsync();
+
+        var response = await client.PostAsync("/api/client-errors",
+            JsonBody(new
+            {
+                message = "سطر أول\nسطر ثانٍ\r\nسطر ثالث",
+                stack = "Error: boom\n    at render (/app/x.js:1:2)",
+                component = "Probe",
+                url = "/docs?token=secret#frag",
+            }));
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.DoesNotContain("سطر أول", body);
+        Assert.DoesNotContain("secret", body);
+    }
+
+    [Fact]
     public async Task OversizedMessage_Returns400()
     {
         var client = await FreshUserClientAsync();
