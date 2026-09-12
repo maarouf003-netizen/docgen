@@ -75,7 +75,7 @@ export default function DocumentForm() {
   // نافذة اختيار الجهة العامة من السجل المرجعي (المرحلة 2): الجهة المستهدفة
   // من الطرفين ورقم صفها، وتُملأ حقولها النصية من القيد المختار مع ربطه.
   const [registryPicker, setRegistryPicker] = useState<
-    { side: 'applicant' | 'executed' | 'execution-applicant'; index: number } | null
+    { side: 'applicant' | 'executed' | 'execution-applicant' | 'salary'; index: number } | null
   >(null);
   const [guarantors, setGuarantors] = useState<GuarantorDto[]>([emptyGuarantor()]);
   const [borrowerHeirs, setBorrowerHeirs] = useState<HeirDto[]>([]);
@@ -270,9 +270,8 @@ export default function DocumentForm() {
       ),
     );
 
-  // حقول الهوية النصية للجهة: أي تحرير يدوي لها يفكّ ربط السجل المرجعي تلقائيًا
-  // حتى لا يبقى الملف مربوطًا بقيد لم يعد يطابق نصَّه.
-  const APPLICANT_IDENTITY_KEYS: ReadonlyArray<keyof ApplicantPublicEntityDto> = ['name', 'branch', 'governorate'];
+  // حقول الهوية النصية للجهة العامة المنفذ عليها: أي تحرير يدوي يطالها يفكّ ربط السجل المرجعي
+  // تلقائيًا حتى لا يبقى الملف مربوطًا بقيد لم يعد يطابق نصَّه (حقول «الطالب» أصبحت مقفلة فلا تحتاج حارسًا).
   const EXECUTED_IDENTITY_KEYS: ReadonlyArray<keyof ExecutedPublicEntityDto> = [
     'entityName', 'entityBranch', 'governorate',
   ];
@@ -296,23 +295,38 @@ export default function DocumentForm() {
   const removeExecutedEntity = (i: number) =>
     setExecutedPublicEntities((xs) => xs.filter((_, idx) => idx !== i));
 
-  const setApplicantPublicEntity = (i: number, key: keyof ApplicantPublicEntityDto, value: string) =>
-    setApplicantPublicEntities((xs) =>
-      xs.map((x, idx) =>
-        idx === i
-          ? {
-              ...x,
-              [key]: value,
-              ...(APPLICANT_IDENTITY_KEYS.includes(key) && x.registryId != null ? { registryId: null } : {}),
-            }
-          : x,
-      ),
-    );
-
   const addApplicantPublicEntity = () => setApplicantPublicEntities((xs) => [...xs, freshApplicantEntity()]);
 
   const removeApplicantPublicEntity = (i: number) =>
     setApplicantPublicEntities((xs) => xs.filter((_, idx) => idx !== i));
+
+  // «فك الربط»: يُفرّغ صف الجهة بالكامل (هوية + رابط) لأن الحقول النصية مقفلة فلا يمكن
+  // ترك نص بلا رابط — الصف المفرَّغ يُتجاهل تلقائيًا عند البناء الذي يفلتر الأسماء الفارغة.
+  const unlinkApplicantPublicEntity = (i: number) =>
+    setApplicantPublicEntities((xs) =>
+      xs.map((x, idx) =>
+        idx === i ? { ...x, name: '', branch: '', governorate: defaultGovernorateRef.current, registryId: null } : x,
+      ),
+    );
+
+  const unlinkExecutedEntity = (i: number) =>
+    setExecutedPublicEntities((xs) =>
+      xs.map((x, idx) =>
+        idx === i
+          ? { ...x, entityName: '', entityBranch: '', governorate: defaultGovernorateRef.current, registryId: null }
+          : x,
+      ),
+    );
+
+  const unlinkExecutionApplicant = (i: number) =>
+    setExecutionApplicants((xs) =>
+      xs.map((x, idx) => (idx === i ? { ...x, name: '', registryId: null } : x)),
+    );
+
+  const unlinkSalaryPublicEntity = (i: number) =>
+    setAssets((as) =>
+      as.map((a, idx) => (idx === i ? { ...a, publicEntity: '', publicEntityRegistryId: null } : a)),
+    );
 
   // ربط صف جهة بالقيد المختار من نافذة السجل: تُملأ حقول الهوية النصية من القيد
   // المعتمد نفسه فتظل الأعمدة النصية متسقة مع السجل، ويُحفظ معرّف الربط.
@@ -332,6 +346,14 @@ export default function DocumentForm() {
         xs.map((x, idx) =>
           idx === index
             ? { ...x, name: entry.canonicalName, registryId: entry.id }
+            : x,
+        ),
+      );
+    } else if (side === 'salary') {
+      setAssets((xs) =>
+        xs.map((x, idx) =>
+          idx === index
+            ? { ...x, publicEntity: entry.canonicalName, publicEntityRegistryId: entry.id }
             : x,
         ),
       );
@@ -595,6 +617,35 @@ export default function DocumentForm() {
       return;
     }
 
+    // حقول الجهات العامة نصّية مقفلة تُملأ حصرًا من السجل المرجعي: أي صفٍ مُعبأ بلا
+    // رابطٍ للسجل يُمنع الحفظ (وهذا يغطي أيضًا المستندات القديمة غير المرتبطة فتتطلب
+    // إعادة الاختيار قبل الحفظ). التحرير اليدوي مستحيل بعد القفل، فلم يبقَ مسار آخر.
+    if (!isExecutedSubmit && applicantPublicEntities.some((a) => (a.name ?? '').trim() && a.registryId == null)) {
+      setError('يجب اختيار جميع الجهات العامة الطالبة للتنفيذ من السجل المرجعي قبل الحفظ');
+      return;
+    }
+    if (isExecutedSubmit && executedPublicEntities.some(
+      (e) => (e.nature ?? 'public') === 'public' && (e.entityName ?? '').trim() && e.registryId == null,
+    )) {
+      setError('يجب اختيار جميع الجهات العامة المنفذ عليها من السجل المرجعي قبل الحفظ');
+      return;
+    }
+    if (isExecutedSubmit && executionApplicants.some(
+      (a) => a.nature === 'legal' && (a.name ?? '').trim() && a.registryId == null,
+    )) {
+      setError('يجب اختيار طالب التنفيذ الاعتباري من السجل المرجعي قبل الحفظ');
+      return;
+    }
+    if (!isExecutedSubmit && assets.some(
+      (a) => a.assetKind === ASSET_KINDS.salaryGuarantee
+        && (a.owners ?? []).some((o) => (o ?? '').trim())
+        && (a.publicEntity ?? '').trim()
+        && a.publicEntityRegistryId == null,
+    )) {
+      setError('يجب اختيار جهة العمل من السجل المرجعي لكافلات الرواتب قبل الحفظ');
+      return;
+    }
+
     setBusy(true);
     try {
       const initialActions = [
@@ -686,14 +737,19 @@ export default function DocumentForm() {
             if (kind === ASSET_KINDS.unregisteredShop) return a.licenseNumber?.trim() || (a.owners ?? []).some((o) => (o ?? '').trim());
             return (a.owners ?? []).some((o) => (o ?? '').trim());
           })
-          .map((a) => ({
-            ...a,
-            property: `${a.propertyNumber ?? ''} ${a.propertyDistrict ?? ''}`.trim(),
-            // تطبيع الأرقام العربية/الفارسية في تاريخَي المتجر قبل الإرسال (تتقبلها الخلفية كتواريخ حرة).
-            registrationDate: normalizeArabicDigits(a.registrationDate ?? '').trim(),
-            licenseDate: normalizeArabicDigits(a.licenseDate ?? '').trim(),
-            seizureDate: normalizeArabicDigits(a.seizureDate ?? '').trim(),
-          })),
+          .map((a) => {
+            // «publicEntityRegistryId» حقل واجهة محلي لفرض الاختيار من السجل — لا يصل الخادم أبدًا.
+            const clean = { ...a };
+            delete clean.publicEntityRegistryId;
+            return {
+              ...clean,
+              property: `${a.propertyNumber ?? ''} ${a.propertyDistrict ?? ''}`.trim(),
+              // تطبيع الأرقام العربية/الفارسية في تاريخَي المتجر قبل الإرسال (تتقبلها الخلفية كتواريخ حرة).
+              registrationDate: normalizeArabicDigits(a.registrationDate ?? '').trim(),
+              licenseDate: normalizeArabicDigits(a.licenseDate ?? '').trim(),
+              seizureDate: normalizeArabicDigits(a.seizureDate ?? '').trim(),
+            };
+          }),
         executionApplicants: isExecutedSubmit
           ? executionApplicants
               .filter((a) => (a.name ?? '').trim())
@@ -850,24 +906,27 @@ export default function DocumentForm() {
                     <input
                       aria-label={`اسم الجهة ${i + 1}`}
                       value={a.name ?? ''}
-                      onChange={(e) => setApplicantPublicEntity(i, 'name', e.target.value)}
-                      placeholder="اسم الجهة"
-                      className="w-full sm:w-64 min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      readOnly
+                      placeholder="اختر من السجل المرجعي…"
+                      className="w-full sm:w-64 min-h-11 border border-gray-300 bg-gray-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-not-allowed"
                     />
                     <input
                       aria-label={`فرع الجهة ${i + 1}`}
                       value={a.branch ?? ''}
-                      onChange={(e) => setApplicantPublicEntity(i, 'branch', e.target.value)}
-                      placeholder="فرع الجهة"
-                      className="w-full sm:w-40 min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      readOnly
+                      placeholder="الفرع"
+                      className="w-full sm:w-40 min-h-11 border border-gray-300 bg-gray-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-not-allowed"
                     />
                     <input
                       aria-label={`المحافظة ${i + 1}`}
                       value={a.governorate ?? ''}
-                      onChange={(e) => setApplicantPublicEntity(i, 'governorate', e.target.value)}
+                      readOnly
                       placeholder="المحافظة"
-                      className="w-full sm:w-40 min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      className="w-full sm:w-40 min-h-11 border border-gray-300 bg-gray-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-not-allowed"
                     />
+                    {(a.name ?? '').trim() && a.registryId == null && (
+                      <p className="w-full text-xs text-red-600">يجب اختيار هذه الجهة من السجل المرجعي</p>
+                    )}
                     {applicantPublicEntities.length > 1 && (
                       <button
                         type="button"
@@ -882,12 +941,30 @@ export default function DocumentForm() {
                       onClick={() => setRegistryPicker({ side: 'applicant', index: i })}
                       className="border border-emerald-200 text-emerald-800 hover:bg-emerald-50 rounded-lg px-3 py-2 text-xs min-h-11"
                     >
-                      اختيار من السجل…
+                      {a.registryId != null ? 'تغيير من السجل…' : 'اختيار من السجل…'}
                     </button>
+                    {(a.name ?? '').trim() && a.registryId == null && (
+                      <button
+                        type="button"
+                        onClick={() => unlinkApplicantPublicEntity(i)}
+                        className="self-center border border-gray-200 text-gray-500 hover:bg-gray-50 rounded-lg px-3 py-2 text-xs min-h-11"
+                      >
+                        مسح
+                      </button>
+                    )}
                     {a.registryId != null && (
-                      <span className="self-center rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 px-2 py-0.5 text-[11px] whitespace-nowrap">
-                        مرتبطة بالسجل ✓
-                      </span>
+                      <>
+                        <span className="self-center rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 px-2 py-0.5 text-[11px] whitespace-nowrap">
+                          مرتبطة بالسجل ✓
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => unlinkApplicantPublicEntity(i)}
+                          className="self-center border border-gray-200 text-gray-500 hover:bg-gray-50 rounded-lg px-3 py-2 text-xs min-h-11"
+                        >
+                          فك الربط
+                        </button>
+                      </>
                     )}
                   </div>
                 ))}
@@ -935,6 +1012,8 @@ export default function DocumentForm() {
             onEntityRemove={removeExecutedEntity}
             onPickRegistry={(i) => setRegistryPicker({ side: 'executed', index: i })}
             onPickExecutionApplicantRegistry={(i) => setRegistryPicker({ side: 'execution-applicant', index: i })}
+            onEntityUnlink={unlinkExecutedEntity}
+            onApplicantUnlink={unlinkExecutionApplicant}
             executedNaturalPersons={executedNaturalPersons}
             onPersonSet={setExecutedPerson}
             onPersonAdd={addExecutedPerson}
@@ -983,6 +1062,8 @@ export default function DocumentForm() {
             onSingleOwnerSet={setSingleOwner}
             onEstateAdd={addEstate}
             ownerOptions={ownerOptions}
+            onPickSalaryRegistry={(i) => setRegistryPicker({ side: 'salary', index: i })}
+            onSalaryRegistryUnlink={unlinkSalaryPublicEntity}
           />
         )}
 

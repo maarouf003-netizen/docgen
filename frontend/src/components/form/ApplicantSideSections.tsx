@@ -66,6 +66,10 @@ export interface ApplicantSideSectionsProps {
   onSingleOwnerSet: (i: number, name: string) => void;
   onEstateAdd: (kind: string) => void;
   ownerOptions: () => string[];
+  /** فتح نافذة اختيار جهة عمل صاحب الراتب من السجل المرجعي لكفالة رواتب رقم i (اختياري). */
+  onPickSalaryRegistry?: (i: number) => void;
+  /** فك ربط جهة عمل صاحب الراتب: يُفرّغ نصها ورقم ربطها (الحقل مقفل لا يقبل تحريرًا يدويًا). */
+  onSalaryRegistryUnlink?: (i: number) => void;
 }
 
 /** أقسام وضع «الجهة العامة طالبة التنفيذ» (المصرفي/العادي) في نموذج الملف. */
@@ -103,6 +107,8 @@ export function ApplicantSideSections({
   onSingleOwnerSet,
   onEstateAdd,
   ownerOptions,
+  onPickSalaryRegistry,
+  onSalaryRegistryUnlink,
 }: ApplicantSideSectionsProps) {
   const isBanking = !isOrdinary;
   const { field, selectField, optionSelectField } = makeFieldHelpers(form, set);
@@ -543,7 +549,41 @@ export function ApplicantSideSections({
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-600 mb-1">الجهة العامة التي يعمل لديها</label>
-                  <input value={a.publicEntity ?? ''} onChange={(ev) => onEstateSet(i, 'publicEntity', ev.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  <input
+                    aria-label="الجهة العامة التي يعمل لديها"
+                    value={a.publicEntity ?? ''}
+                    readOnly
+                    placeholder="اختر من السجل المرجعي…"
+                    className="w-full min-h-11 border border-gray-300 bg-gray-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-not-allowed"
+                  />
+                  {(a.publicEntity ?? '').trim() && a.publicEntityRegistryId == null && (
+                    <p className="text-xs text-red-600 mt-1">يجب اختيار جهة العمل من السجل المرجعي</p>
+                  )}
+                  <div className="flex items-center gap-2 mt-1.5">
+                    {onPickSalaryRegistry && (
+                      <button
+                        type="button"
+                        onClick={() => onPickSalaryRegistry(i)}
+                        className="border border-emerald-200 text-emerald-800 hover:bg-emerald-50 rounded-lg px-3 py-2 text-xs min-h-11"
+                      >
+                        {a.publicEntityRegistryId != null ? 'تغيير من السجل…' : 'اختيار من السجل…'}
+                      </button>
+                    )}
+                    {a.publicEntityRegistryId != null && onSalaryRegistryUnlink && (
+                      <button
+                        type="button"
+                        onClick={() => onSalaryRegistryUnlink(i)}
+                        className="border border-gray-200 text-gray-500 hover:bg-gray-50 rounded-lg px-3 py-2 text-xs min-h-11"
+                      >
+                        فك الربط
+                      </button>
+                    )}
+                    {a.publicEntityRegistryId != null && (
+                      <span className="rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 px-2 py-0.5 text-[11px] whitespace-nowrap">
+                        مرتبطة بالسجل ✓
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="md:col-span-2">
                   <label className="block text-xs font-bold text-gray-600 mb-1">ملاحظات</label>

@@ -2,7 +2,7 @@
 // vi.hoisted/vi.mock تُكرَّر عمدًا في كل ملف موزَّع — vitest يعزل الملفات وكذا تقلبات المحاكاة.
 // كتلة الاستيراد كاملة إلزامية (لا تختصرها — أي نقص يكسر tsc/oxlint):
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import DocumentForm from './DocumentForm';
@@ -83,7 +83,7 @@ describe('DocumentForm · ربط الأطراف بالسجل', () => {
   });
 
 
-  it('يفكّ ربط السجل تلقائيًا عند التحرير اليدوي لنص الجهة', async () => {
+  it('يقفل حقول الجهة الطالبة (التحرير اليدوي مستحيل) ويفك ربطها حصرًا عبر الزر', async () => {
     const user = userEvent.setup();
     await renderEdit({
       ...mockDoc,
@@ -93,10 +93,16 @@ describe('DocumentForm · ربط الأطراف بالسجل', () => {
     } as DocumentResponse);
 
     expect(screen.getByText('مرتبطة بالسجل ✓')).toBeInTheDocument();
-    await user.clear(screen.getByLabelText('اسم الجهة 1'));
-    await user.type(screen.getByLabelText('اسم الجهة 1'), 'وزارة التعليم العالي');
+    expect(screen.getByLabelText('اسم الجهة 1')).toHaveAttribute('readonly');
+    expect(screen.getByLabelText('فرع الجهة 1')).toHaveAttribute('readonly');
+    expect(screen.getByLabelText('المحافظة 1')).toHaveAttribute('readonly');
+
+    await user.click(screen.getByRole('button', { name: 'فك الربط' }));
 
     expect(screen.queryByText('مرتبطة بالسجل ✓')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('اسم الجهة 1')).toHaveValue('');
+    expect(screen.getByLabelText('فرع الجهة 1')).toHaveValue('');
+    expect(screen.getByLabelText('المحافظة 1')).toHaveValue('');
   });
 
 
@@ -131,7 +137,7 @@ describe('DocumentForm · ربط الأطراف بالسجل', () => {
   });
 
 
-  it('يفكّ ربط طالب التنفيذ الاعتباري عند التحرير اليدوي لاسمه', async () => {
+  it('يقفل اسم طالب التنفيذ الاعتباري ويفك ربطه عبر الزر لا بالتحرير اليدوي', async () => {
     const user = userEvent.setup();
     await renderExecutedEdit({
       generalEntitySide: 'executed',
@@ -139,10 +145,30 @@ describe('DocumentForm · ربط الأطراف بالسجل', () => {
     });
 
     expect(screen.getByText('مرتبطة بالسجل ✓')).toBeInTheDocument();
-    await user.clear(screen.getByLabelText('الشخص الاعتباري'));
-    await user.type(screen.getByLabelText('الشخص الاعتباري'), 'المؤسسة السورية للتجارة');
+    expect(screen.getByLabelText('الشخص الاعتباري')).toHaveAttribute('readonly');
+
+    const applicantCard = screen.getByText('طالب التنفيذ 1').closest('.rounded-xl') as HTMLElement;
+    await user.click(within(applicantCard).getByRole('button', { name: 'فك الربط' }));
 
     expect(screen.queryByText('مرتبطة بالسجل ✓')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('الشخص الاعتباري')).toHaveValue('');
+  });
+
+
+  it('يمنع الحفظ عند بقاء جهة طالبة نصّية بلا ارتباط بالسجل (مستند قديم)', async () => {
+    const user = userEvent.setup();
+    await renderEdit({
+      ...mockDoc,
+      applicantPublicEntities: [
+        { id: 4, name: 'وزارة التعليم', branch: '', governorate: 'دمشق' },
+      ],
+    } as DocumentResponse);
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    expect(screen.getByText('يجب اختيار جميع الجهات العامة الطالبة للتنفيذ من السجل المرجعي قبل الحفظ')).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+    expect(api.put).not.toHaveBeenCalled();
   });
 
 
@@ -183,6 +209,29 @@ describe('DocumentForm · ربط الأطراف بالسجل', () => {
     expect(within(card).getByText('الشخص الاعتباري')).toBeInTheDocument();
     expect(within(card).getByText('رقم تسجيله')).toBeInTheDocument();
     expect(within(card).getByText('يمثلها')).toBeInTheDocument();
+  });
+
+
+  it('زر «مسح» يفرّغ صف الجهة الطالبة اليتيم ويسمح بالحفظ', async () => {
+    const user = userEvent.setup();
+    await renderEdit({
+      ...mockDoc,
+      applicantPublicEntities: [
+        { id: 4, name: 'وزارة التعليم', branch: '', governorate: 'دمشق' },
+      ],
+    } as DocumentResponse);
+
+    expect(screen.getByText('يجب اختيار هذه الجهة من السجل المرجعي')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'مسح' }));
+
+    expect(screen.getByLabelText('اسم الجهة 1')).toHaveValue('');
+    expect(screen.queryByText('يجب اختيار هذه الجهة من السجل المرجعي')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'مسح' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    const [, payload] = vi.mocked(api.put).mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.applicantPublicEntities).toEqual([]);
   });
 
 });

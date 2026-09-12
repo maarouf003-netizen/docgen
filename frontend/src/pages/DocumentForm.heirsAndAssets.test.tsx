@@ -422,4 +422,68 @@ describe('DocumentForm · الورثة والأصول', () => {
     expect(guarantors[0].address).toBe('');
   });
 
+
+  it('يربط جهة عمل كفالة الرواتب بالسجل (حقل مقفل) ويُرسلها دون المفتاح المحلي', async () => {
+    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    await user.type(screen.getByLabelText('الاسم'), 'أحمد');
+    await user.type(screen.getByLabelText('النسبة'), 'الخطيب');
+    await user.click(screen.getByRole('button', { name: /💼 إضافة كفالة رواتب/ }));
+
+    const salaryCard = screen.getByText(/كفالة رواتب 1/).closest('.rounded-xl') as HTMLElement;
+    const ownerSelect = Array.from(salaryCard.querySelectorAll('select')).find(
+      (el) => el.previousElementSibling?.textContent === 'صاحب الراتب',
+    ) as HTMLSelectElement;
+    await user.selectOptions(ownerSelect, 'أحمد الخطيب');
+
+    const employer = screen.getByLabelText('الجهة العامة التي يعمل لديها');
+    expect(employer).toHaveAttribute('readonly');
+
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        items: [
+          {
+            id: 33, groupId: 7, canonicalName: 'وزارة الصحة', entityType: 'ministry',
+            governorate: 'دمشق', branchName: 'الفرع الرئيسي', citationFormula: 'add-to-job',
+            status: 'final', isActive: true, createdAt: '2026-08-24', aliases: [],
+          },
+        ],
+        page: 1, perPage: 50, totalCount: 1, totalPages: 1,
+      },
+    });
+
+    await user.click(within(salaryCard).getByRole('button', { name: 'اختيار من السجل…' }));
+    const dialog = screen.getByRole('dialog', { name: 'اختيار الجهة العامة' });
+    await user.click(within(dialog).getByRole('button', { name: /^وزارة الصحة/ }));
+
+    expect(employer).toHaveValue('وزارة الصحة');
+    expect(screen.getByText('مرتبطة بالسجل ✓')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
+    const assets = payload.assets as Record<string, unknown>[];
+    expect(assets[0]).toEqual(expect.objectContaining({ assetKind: 'كفالة رواتب', publicEntity: 'وزارة الصحة' }));
+    expect(assets[0]).not.toHaveProperty('publicEntityRegistryId');
+  });
+
+
+  it('يمنع الحفظ لكفالة رواتب بجهة عمل محفوظة بلا ارتباط بالسجل (مستند قديم)', async () => {
+    const user = userEvent.setup();
+    await renderEdit({
+      ...mockDoc,
+      assets: [
+        { id: 6, assetKind: 'كفالة رواتب', owners: ['أحمد محمد الخطيب'], publicEntity: 'وزارة الصحة' },
+      ],
+    } as DocumentResponse);
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    expect(screen.getByText('يجب اختيار جهة العمل من السجل المرجعي لكافلات الرواتب قبل الحفظ')).toBeInTheDocument();
+    expect(api.put).not.toHaveBeenCalled();
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
 });

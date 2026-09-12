@@ -78,6 +78,171 @@ describe('DocumentForm · التنفيذ', () => {
   });
 
 
+  it('يقفل حقول الجهة العامة المنفذ عليها (public) ويفك ربطها حصرًا عبر الزر', async () => {
+    const user = userEvent.setup();
+    await renderExecutedEdit({
+      generalEntitySide: 'executed',
+      executedPublicEntities: [
+        { id: 7, entityName: 'المؤسسة العامة للكهرباء', entityBranch: 'الفرع الرئيسي', governorate: 'دمشق', nature: 'public', registryId: 21 },
+      ],
+    });
+
+    const card = screen.getByText('جهة عامة 1').closest('.rounded-xl') as HTMLElement;
+    expect(within(card).getByText('مرتبطة بالسجل ✓')).toBeInTheDocument();
+    expect(within(card).getByPlaceholderText('اختر من السجل المرجعي…')).toHaveAttribute('readonly');
+    expect(within(card).getByPlaceholderText('الفرع')).toHaveAttribute('readonly');
+    expect(within(card).getByDisplayValue('دمشق')).toHaveAttribute('readonly');
+
+    await user.click(within(card).getByRole('button', { name: 'فك الربط' }));
+
+    expect(within(card).queryByText('مرتبطة بالسجل ✓')).not.toBeInTheDocument();
+    expect(within(card).getByPlaceholderText('اختر من السجل المرجعي…')).toHaveValue('');
+    expect(within(card).getByPlaceholderText('الفرع')).toHaveValue('');
+    expect(within(card).getByPlaceholderText('المحافظة')).toHaveValue('');
+  });
+
+
+  it('يمنع الحفظ عند بقاء جهة عامة منفذ عليها نصّية بلا ارتباط بالسجل (مستند قديم)', async () => {
+    const user = userEvent.setup();
+    await renderExecutedEdit({
+      generalEntitySide: 'executed',
+      fileNumber: '55',
+      fileYear: '2026',
+      executedPublicEntities: [
+        { id: 8, entityName: 'المؤسسة العامة للكهرباء', entityBranch: 'الفرع الرئيسي', governorate: 'دمشق', nature: 'public' },
+      ],
+    });
+
+    expect(screen.getByText('يجب اختيار هذه الجهة من السجل المرجعي')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    expect(screen.getByText('يجب اختيار جميع الجهات العامة المنفذ عليها من السجل المرجعي قبل الحفظ')).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+    expect(api.put).not.toHaveBeenCalled();
+  });
+
+
+  it('يمنع الحفظ عند بقاء طالب تنفيذ اعتباري نصّي بلا ارتباط بالسجل (مستند قديم)', async () => {
+    const user = userEvent.setup();
+    await renderExecutedEdit({
+      generalEntitySide: 'executed',
+      fileNumber: '55',
+      fileYear: '2026',
+      executionApplicants: [{ name: 'المؤسسة السورية للتجارة', nature: 'legal' }],
+      executedNaturalPersons: [],
+      executedPublicEntities: [],
+    });
+
+    expect(screen.getByText('يجب اختيار هذا الطلب من السجل المرجعي')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    expect(screen.getByText('يجب اختيار طالب التنفيذ الاعتباري من السجل المرجعي قبل الحفظ')).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+    expect(api.put).not.toHaveBeenCalled();
+  });
+
+
+  it('زر «مسح» يفرّغ الجهة المنفذ عليها اليتيمة ويسمح بالحفظ', async () => {
+    const user = userEvent.setup();
+    await renderExecutedEdit({
+      generalEntitySide: 'executed',
+      fileNumber: '55',
+      fileYear: '2026',
+      executedPublicEntities: [
+        { id: 8, entityName: 'المؤسسة العامة للكهرباء', entityBranch: 'الفرع الرئيسي', governorate: 'دمشق', nature: 'public' },
+      ],
+    });
+
+    const card = screen.getByText('جهة عامة 1').closest('.rounded-xl') as HTMLElement;
+    await user.click(within(card).getByRole('button', { name: 'مسح' }));
+    expect(within(card).getByPlaceholderText('اختر من السجل المرجعي…')).toHaveValue('');
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    const [, payload] = vi.mocked(api.put).mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.executedPublicEntities).toEqual([]);
+  });
+
+
+  it('زر «مسح» يفرّغ طالب التنفيذ الاعتباري اليتيم ويسمح بالحفظ', async () => {
+    const user = userEvent.setup();
+    await renderExecutedEdit({
+      generalEntitySide: 'executed',
+      fileNumber: '55',
+      fileYear: '2026',
+      executionApplicants: [{ name: 'المؤسسة السورية للتجارة', nature: 'legal' }],
+      executedNaturalPersons: [],
+      executedPublicEntities: [],
+    });
+
+    const applicantCard = screen.getByText('طالب التنفيذ 1').closest('.rounded-xl') as HTMLElement;
+    await user.click(within(applicantCard).getByRole('button', { name: 'مسح' }));
+    expect(screen.getByLabelText('الشخص الاعتباري')).toHaveValue('');
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    const [, payload] = vi.mocked(api.put).mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.executionApplicants).toEqual([]);
+  });
+
+
+  it('يعطّل منتقي الطبيعة للجهة المنفذ عليها المرتبطة بالسجل', async () => {
+    await renderExecutedEdit({
+      generalEntitySide: 'executed',
+      executedPublicEntities: [
+        { id: 7, entityName: 'المؤسسة العامة للكهرباء', entityBranch: 'الفرع الرئيسي', governorate: 'دمشق', nature: 'public', registryId: 21 },
+      ],
+    });
+
+    const card = screen.getByText('جهة عامة 1').closest('.rounded-xl') as HTMLElement;
+    expect(within(card).getByLabelText('نوع الطرف')).toBeDisabled();
+  });
+
+
+  it('يعطّل منتقي الطبيعة لطالب التنفيذ المرتبط بالسجل', async () => {
+    await renderExecutedEdit({
+      generalEntitySide: 'executed',
+      executionApplicants: [{ id: 1, name: 'هيئة التجارة الموحدة', nature: 'legal', registryId: 22 }],
+    });
+
+    const applicantCard = screen.getByText('طالب التنفيذ 1').closest('.rounded-xl') as HTMLElement;
+    expect(within(applicantCard).getByLabelText('نوع الطرف')).toBeDisabled();
+  });
+
+
+  it('يبقي منتقي الطبيعة مفعّلًا للصف اليتيم غير المرتبط', async () => {
+    await renderExecutedEdit({
+      generalEntitySide: 'executed',
+      executedPublicEntities: [
+        { id: 8, entityName: 'المؤسسة العامة للكهرباء', entityBranch: 'الفرع الرئيسي', governorate: 'دمشق', nature: 'public' },
+      ],
+    });
+
+    const card = screen.getByText('جهة عامة 1').closest('.rounded-xl') as HTMLElement;
+    expect(within(card).getByLabelText('نوع الطرف')).toBeEnabled();
+  });
+
+
+  it('فك الربط يعيد تفعيل منتقي الطبيعة', async () => {
+    const user = userEvent.setup();
+    await renderExecutedEdit({
+      generalEntitySide: 'executed',
+      executedPublicEntities: [
+        { id: 7, entityName: 'المؤسسة العامة للكهرباء', entityBranch: 'الفرع الرئيسي', governorate: 'دمشق', nature: 'public', registryId: 21 },
+      ],
+    });
+
+    const card = screen.getByText('جهة عامة 1').closest('.rounded-xl') as HTMLElement;
+    expect(within(card).getByLabelText('نوع الطرف')).toBeDisabled();
+
+    await user.click(within(card).getByRole('button', { name: 'فك الربط' }));
+
+    expect(within(card).getByLabelText('نوع الطرف')).toBeEnabled();
+  });
+
+
   it('يعرض حقول وضع «الجهة العامة منفذ عليها» عند اختيار صفته', async () => {
     const user = userEvent.setup();
     await selectExecutedSide(user);

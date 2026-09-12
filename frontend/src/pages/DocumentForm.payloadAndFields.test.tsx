@@ -58,24 +58,15 @@ describe('DocumentForm · الحقول والحمولات', () => {
   });
 
 
-  it('يملأ «المحافظة» للجهة الطالبة تلقائيًا من فرع المحامي ويبقى قابلاً للتعديل ويُرسل عند الحفظ', async () => {
-    const user = userEvent.setup();
+  it('يملأ «المحافظة» للجهة الطالبة تلقائيًا من فرع المحامي كحقل مقفل لا يقبل تحريرًا يدويًا', async () => {
     useAuthMock.mockReturnValue({ user: { role: 'lawyer', branchName: 'الفرع الرئيسي - دمشق' } });
     render(<DocumentForm />);
 
     const governorate = screen.getByLabelText('المحافظة 1');
     expect(governorate).toHaveValue('دمشق');
-
-    await user.clear(governorate);
-    await user.type(governorate, 'حلب');
-    await user.type(screen.getByLabelText('اسم الجهة 1'), 'المصرف التجاري السوري');
-
-    await user.click(screen.getByRole('button', { name: /حفظ/ }));
-    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
-    const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
-    expect(payload.applicantPublicEntities).toEqual([
-      expect.objectContaining({ name: 'المصرف التجاري السوري', branch: '', governorate: 'حلب' }),
-    ]);
+    expect(governorate).toHaveAttribute('readonly');
+    expect(screen.getByLabelText('اسم الجهة 1')).toHaveAttribute('readonly');
+    expect(screen.getByLabelText('فرع الجهة 1')).toHaveAttribute('readonly');
   });
 
 

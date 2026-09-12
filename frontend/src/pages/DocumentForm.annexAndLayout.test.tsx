@@ -205,7 +205,7 @@ describe('DocumentForm · ملحق العقد والتخطيط', () => {
 
     expect(screen.queryByLabelText('فرع الملف')).not.toBeInTheDocument();
     expect(screen.getByLabelText('فرع الجهة 1')).toBeInTheDocument();
-    expect(screen.getByLabelText('فرع الجهة 1')).toHaveAttribute('placeholder', 'فرع الجهة');
+    expect(screen.getByLabelText('فرع الجهة 1')).toHaveAttribute('placeholder', 'الفرع');
     expect(screen.getByLabelText('رقم كتاب الجهة العامة')).toBeInTheDocument();
     expect(screen.getByLabelText('تاريخ كتاب الجهة العامة')).toBeInTheDocument();
     expect(screen.getByLabelText('رقم تحت رفع')).toBeInTheDocument();
