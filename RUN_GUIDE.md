@@ -130,6 +130,17 @@ npm test
 - تتصل الأوامر بسلسلة الاتصال الموجودة في `appsettings.json` لبيئة الخادم (مع `Database:UsePostgres = true` لقاعدة الإنتاج). إن لم يكن `dotnet-ef` مثبتًا عالميًا: `dotnet tool install --global dotnet-ef`.
 - **تذكير للجلسات القادمة**: بعد كل تعديل يضيف هجرات جديدة، يجب ذكرها بالاسم وعددها في تقرير الإنجاز وتنبيه النشر — انظر `AGENTS.md`.
 
+### فحص Postgres قبل النشر (إلزامي عند تغيّر المخطط)
+
+- الاختبارات اليومية تعمل على SQLite المتسامح (`datetime2` كنص، بلا فرض `Utc`، بلا فرض دقة عشرية) ولا تُغني عن فحص Postgres الصارم (`timestamptz` يرفض أي `DateTime` بلا `Kind=Utc`) — «أخضر محليًا ≠ أخضر إنتاجًا».
+- قبل أي نشر يمسّ المخطط: ارفع Postgres مؤقتًا (حاوية `Docker` تُحذف بعد الفحص، أو ثنائي محمول، أو قاعدة مرحلية على الاستضافة — لا شيء دائم على جهازك ولا مساس بـ `docgen.db`)، طبّق هجرات Postgres، ثم شغّل:
+  ```powershell
+  $env:DOCGEN_TEST_POSTGRES="Host=...;Port=5432;Database=...;Username=...;Password=..."
+  dotnet test backend/tests/DocGenerator.Api.Tests --filter "FullyQualifiedName~DatabaseInitializerTests"
+  ```
+  (يُفعّل هذا اختبار Postgres الاختياري في `DatabaseInitializerTests` الذي يُتجاهل بدونه).
+- لا تنشر إن فشل الفحص — أصلح الانجراف أولًا (سابقة: `AlignPostgresTimestampTypes`).
+
 ### هجرات بانتظار التطبيق (قائمة تراكمية — تُشطب بعد التطبيق)
 
 > ضع هنا أي هجرة جديدة لم تُطبَّق على قواعد البيانات بعد، واشطب السطر بعد `dotnet ef database update` الناجح في النشر.

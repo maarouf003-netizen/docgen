@@ -263,6 +263,10 @@ using (var scope = app.Services.CreateScope())
         .GetAwaiter().GetResult();
 }
 
+// سطر إقلاع واحد يثبت في السجلات أي محرك قاعدة اشتغل فعلًا (مفيد في الاستضافة حيث لا فحص للآلة).
+// يُطبع اسم المحرك فقط عمدًا — سلسلة الاتصال تحوي كلمة سر ولا تُسجَّل أبدًا.
+Log.Information("Database provider active: {DbProvider} (migrations applied at startup)", usePostgres ? "postgres" : "sqlite");
+
 if (swaggerEnabled)
 {
     app.UseSwagger();
