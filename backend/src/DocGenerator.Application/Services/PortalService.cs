@@ -66,7 +66,7 @@ public sealed class PortalService : IPortalService
     {
         var scope = await _portal.ResolveForUserAsync(userId, ct);
         if (scope is null || scope.GroupId == 0)
-            return scope is null ? null : new PortalScopeDto("group", 0, string.Empty, "ministry",
+            return scope is null ? null : new PortalScopeDto("group", 0, string.Empty, PublicEntityTypeCatalog.Ministry,
                 Array.Empty<PortalScopeEntryDto>());
 
         return new PortalScopeDto(scope.ScopeType, scope.GroupId, scope.CanonicalName, scope.EntityType,

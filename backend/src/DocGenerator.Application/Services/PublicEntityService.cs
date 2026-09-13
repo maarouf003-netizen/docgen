@@ -2316,7 +2316,7 @@ public sealed class PublicEntityService : IPublicEntityService
     {
         var trimmed = (value ?? string.Empty).Trim().ToLowerInvariant();
         if (!PublicEntityTypeCatalog.IsValid(trimmed))
-            throw new ArgumentException("نوع الجهة غير صالح (ministry/administration/authority/foundation/company)");
+            throw new ArgumentException($"نوع الجهة غير صالح ({string.Join("/", PublicEntityTypeCatalog.All)})");
         return trimmed;
     }
 

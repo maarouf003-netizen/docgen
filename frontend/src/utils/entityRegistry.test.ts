@@ -1,18 +1,42 @@
 import { describe, it, expect } from 'vitest';
 import {
   entityTypeLabel,
+  ENTITY_TYPE_OPTIONS,
   citationFormulaLabel,
   isEntryPendingReview,
   publicEntityStatusLabel,
 } from './entityRegistry';
 
 describe('entityRegistry catalogs', () => {
-  it('يعرض تسميات أنواع الجهات الخمسة', () => {
+  it('يعرض تسميات أنواع الجهات الأحد عشر', () => {
     expect(entityTypeLabel('ministry')).toBe('وزارة');
-    expect(entityTypeLabel('administration')).toBe('إدارة');
-    expect(entityTypeLabel('authority')).toBe('هيئة');
-    expect(entityTypeLabel('foundation')).toBe('مؤسسة');
-    expect(entityTypeLabel('company')).toBe('شركة');
+    expect(entityTypeLabel('administration')).toBe('إدارة عامة');
+    expect(entityTypeLabel('authority')).toBe('هيئة عامة');
+    expect(entityTypeLabel('foundation')).toBe('مؤسسة عامة');
+    expect(entityTypeLabel('company')).toBe('شركة عامة');
+    expect(entityTypeLabel('directorate')).toBe('مديرية');
+    expect(entityTypeLabel('sub-administration')).toBe('إدارة فرعية');
+    expect(entityTypeLabel('general-secretariat')).toBe('أمانة عامة');
+    expect(entityTypeLabel('governorate-body')).toBe('محافظة');
+    expect(entityTypeLabel('city-council')).toBe('مجلس مدينة');
+    expect(entityTypeLabel('town-council')).toBe('مجلس بلدة');
+  });
+
+  it('يوفر خيارات نوع الجهة الـ11 بالترتيب المعتمد للعرض', () => {
+    expect(ENTITY_TYPE_OPTIONS).toHaveLength(11);
+    expect(ENTITY_TYPE_OPTIONS.map((o) => o.value)).toEqual([
+      'foundation',
+      'company',
+      'directorate',
+      'administration',
+      'sub-administration',
+      'authority',
+      'general-secretariat',
+      'governorate-body',
+      'city-council',
+      'town-council',
+      'ministry',
+    ]);
   });
 
   it('يرجع القيمة نفسها للنوع غير المعروف أو الفارغ', () => {

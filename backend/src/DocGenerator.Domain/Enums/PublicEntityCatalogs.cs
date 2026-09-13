@@ -1,7 +1,9 @@
 namespace DocGenerator.Domain.Enums;
 
 /// <summary>
-/// كتالوج نوع الجهة العامة (الهوية الأم): وزارة/إدارة/هيئة/مؤسسة/شركة.
+/// كتالوج نوع الجهة العامة (الهوية الأم): 11 نوعًا بالترتيب المعتمد للعرض —
+/// مؤسسة عامة/شركة عامة/مديرية/إدارة عامة/إدارة فرعية/هيئة عامة/أمانة عامة/
+/// محافظة/مجلس مدينة/مجلس بلدة/وزارة.
 /// يُخزَّن نصيًا (قيم إنكليزية صغيرة) اتساقًا مع نمط PartyNatureCatalog.
 /// </summary>
 public static class PublicEntityTypeCatalog
@@ -11,11 +13,19 @@ public static class PublicEntityTypeCatalog
     public const string Authority = "authority";
     public const string Foundation = "foundation";
     public const string Company = "company";
+    public const string Directorate = "directorate";
+    public const string SubAdministration = "sub-administration";
+    public const string GeneralSecretariat = "general-secretariat";
+    public const string GovernorateBody = "governorate-body";
+    public const string CityCouncil = "city-council";
+    public const string TownCouncil = "town-council";
 
     /// <summary>كل القيم المسموحة بالترتيب المعتمد للعرض.</summary>
     public static readonly IReadOnlyList<string> All = new[]
     {
-        Ministry, Administration, Authority, Foundation, Company,
+        Foundation, Company, Directorate, Administration, SubAdministration,
+        Authority, GeneralSecretariat, GovernorateBody, CityCouncil, TownCouncil,
+        Ministry,
     };
 
     public static bool IsValid(string? value)

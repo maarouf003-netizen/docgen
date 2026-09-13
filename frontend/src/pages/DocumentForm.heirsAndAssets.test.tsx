@@ -455,7 +455,8 @@ describe('DocumentForm · الورثة والأصول', () => {
 
     await user.click(within(salaryCard).getByRole('button', { name: 'اختيار من السجل…' }));
     const dialog = screen.getByRole('dialog', { name: 'اختيار الجهة العامة' });
-    await user.click(within(dialog).getByRole('button', { name: /^وزارة الصحة/ }));
+    await user.type(within(dialog).getByLabelText('بحث باسم الجهة'), 'وزارة');
+    await user.click(await within(dialog).findByRole('button', { name: /^وزارة الصحة/ }));
 
     expect(employer).toHaveValue('وزارة الصحة');
     expect(screen.getByText('مرتبطة بالسجل ✓')).toBeInTheDocument();

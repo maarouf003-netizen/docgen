@@ -31,7 +31,7 @@
 | # | القرار |
 |---|---|
 | د1 | الرؤية تشمل الجهات **طالبة التنفيذ ومنفذ عليها** معًا، بقاعدة «أي تطابق طرفي». |
-| د2 | بنية الهوية بمستويين: **Group** (الهوية الأم: وزارة/إدارة/هيئة/مؤسسة/شركة) ثم **Entry** (المحافظة + الفرع). لا شجرة عامة أعمق من ذلك. |
+| د2 | بنية الهوية بمستويين: **Group** (الهوية الأم: مؤسسة عامة/شركة عامة/مديرية/إدارة عامة/إدارة فرعية/هيئة عامة/أمانة عامة/محافظة/مجلس مدينة/مجلس بلدة/وزارة) ثم **Entry** (المحافظة + الفرع). لا شجرة عامة أعمق من ذلك. |
 | د3 | إدارة السجل والاعتماد: **المدير ورؤساء الأقسام**. المشرف يملك صلاحيات المدير (وفق نمط `RolePermissions.HasFullAccess`). |
 | د4 | اقتراح جهة جديدة من محامٍ يدخل بحالة `Pending` ولا يظهر لبوات المندوبين ولا يُربط نهائيًا حتى اعتماد رئيس قسم. |
 | د5 | **إعادة تسمية جماعية فورية**: المدير/المشرف على كل السجل؛ رئيس القسم مقصورًا على قيود محافظة فرعه (يتطلب عمود `Governorate` على `Branch`). إعادة التسمية تُزامن الأعمدة النصية في كل الصفوف المرتبطة ضمن معاملة واحدة، وتُدوَّن في سجل تعديلات الحقول (قبل/بعد) للملفات المتأثرة. |
@@ -53,7 +53,7 @@ public class PublicEntityGroup
 {
     public int Id { get; set; }
     public string CanonicalName { get; set; }        // مطلوب، max 200، فهرس فريد
-    public string EntityType { get; set; }           // كتالوج نصي: ministry/administration/authority/foundation/company
+    public string EntityType { get; set; }           // كتالوج نصي: foundation/company/directorate/administration/sub-administration/authority/general-secretariat/governorate-body/city-council/town-council/ministry
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; }
     public ICollection<PublicEntity> Entries { get; set; }
@@ -151,7 +151,7 @@ CanUseDelegatePortal(role)     => EntityManager               // د10/د11
    - تحذير أحمر/عنابي بنص د7 (فوق الاسم).
    - اسم الجهة (placeholder د7).
    - **Dropdown الصيغة** (د8): `إضافة لوظيفته` / `إضافة لمنصبه`.
-   - نوع الجهة (الكتالوج الخمسة) · المحافظة · الفرع.
+   - نوع الجهة (الكتالوج الأحد عشر نوعًا) · المحافظة · الفرع.
    - حفظ ⇒ `POST /api/entity-registry/proposals` (Pending) + رسالة نجاح توضح أنها بانتظار الاعتماد.
 3. اختيار قيد `Pending` من نتائج البحث **ممكن للمحامي على ملفه** لكن يُعلَّم بصريًا «بانتظار الاعتماد»،
    ولا يظهر لأي مندوب حتى الاعتماد (تطابق د4).

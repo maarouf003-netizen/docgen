@@ -1240,13 +1240,19 @@ export interface DocumentChangeGroupDto {
 
 /* ── السجل المرجعي للجهات العامة (بوابة الجهات — المرحلة 1) ───────────── */
 
-/** نوع الجهة (كتالوج الخمسة المعتمد). */
+/** نوع الجهة (كتالوج الأحد عشر نوعًا المعتمد). */
 export type PublicEntityType =
   | 'ministry'
   | 'administration'
   | 'authority'
   | 'foundation'
-  | 'company';
+  | 'company'
+  | 'directorate'
+  | 'sub-administration'
+  | 'general-secretariat'
+  | 'governorate-body'
+  | 'city-council'
+  | 'town-council';
 
 /** حالة قيد الجهة: نهائي (يظهر للمندوبين) أو بانتظار المراجعة. */
 export type PublicEntityStatus = 'final' | 'pending';

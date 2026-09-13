@@ -128,7 +128,7 @@ public class PortalRepository : IPortalRepository
         }
 
         // بلا نطاق مضبوط: نطاق فارغ صريح — لا يرى المندوب شيئًا.
-        return new PortalScopeResolution("group", 0, string.Empty, "ministry",
+        return new PortalScopeResolution("group", 0, string.Empty, PublicEntityTypeCatalog.Ministry,
             Array.Empty<(int, string, string, bool)>());
     }
 

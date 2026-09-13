@@ -1,12 +1,18 @@
 import type { CitationFormula, PublicEntityType } from '../types';
 
-/** خيارات نوع الجهة (كتالوج الخمسة المعتمد) بتسمياتها العربية. */
+/** خيارات نوع الجهة (كتالوج الأحد عشر المعتمد) بتسمياتها العربية. */
 export const ENTITY_TYPE_OPTIONS: ReadonlyArray<{ value: PublicEntityType; label: string }> = [
+  { value: 'foundation', label: 'مؤسسة عامة' },
+  { value: 'company', label: 'شركة عامة' },
+  { value: 'directorate', label: 'مديرية' },
+  { value: 'administration', label: 'إدارة عامة' },
+  { value: 'sub-administration', label: 'إدارة فرعية' },
+  { value: 'authority', label: 'هيئة عامة' },
+  { value: 'general-secretariat', label: 'أمانة عامة' },
+  { value: 'governorate-body', label: 'محافظة' },
+  { value: 'city-council', label: 'مجلس مدينة' },
+  { value: 'town-council', label: 'مجلس بلدة' },
   { value: 'ministry', label: 'وزارة' },
-  { value: 'administration', label: 'إدارة' },
-  { value: 'authority', label: 'هيئة' },
-  { value: 'foundation', label: 'مؤسسة' },
-  { value: 'company', label: 'شركة' },
 ];
 
 /** صيغ مناداة ممثل الجهة القانونية (د8). */

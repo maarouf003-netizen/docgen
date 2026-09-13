@@ -130,6 +130,32 @@ public class PublicEntityServiceTests : IDisposable
             _service.CreateAsync(new CreatePublicEntityRequest("هيئة جديدة", "union", "دمشق", "الفرع الرئيسي"), ManagerActor()));
     }
 
+    [Theory]
+    [InlineData("foundation")]
+    [InlineData("company")]
+    [InlineData("directorate")]
+    [InlineData("sub-administration")]
+    [InlineData("general-secretariat")]
+    [InlineData("governorate-body")]
+    [InlineData("city-council")]
+    [InlineData("town-council")]
+    public async Task Create_AcceptsNewCatalogEntityTypes(string entityType)
+    {
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+            $"جهة تجريبية {entityType}", entityType, "دمشق", ""), ManagerActor());
+
+        Assert.True(dto.Id > 0);
+        Assert.Equal(entityType, dto.EntityType);
+    }
+
+    [Fact]
+    public async Task Create_RejectsNearMissEntityType_NotInCatalog()
+    {
+        // رمز شبيه بالأسماء الجديدة لكنه خارج الكتالوج النهائي — يُرفض (حماية من كتالوج ناقص).
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(new CreatePublicEntityRequest("جهة تجريبية", "secretariat", "دمشق", ""), ManagerActor()));
+    }
+
     [Fact]
     public async Task Create_DuplicateSameGovernorateAndBranch_Throws()
     {

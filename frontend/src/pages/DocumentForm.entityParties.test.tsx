@@ -54,7 +54,7 @@ describe('DocumentForm · ربط الأطراف بالسجل', () => {
     const user = userEvent.setup();
     await renderEdit();
 
-    // نافذة الاختيار تجلب نتائج البحث عند الفتح.
+    // نافذة الاختيار تجلب النتائج بعد كتابة كلمة البحث (لا نتائج قبلها).
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: {
         items: [
@@ -70,8 +70,9 @@ describe('DocumentForm · ربط الأطراف بالسجل', () => {
 
     await user.click(await screen.findByRole('button', { name: 'اختيار من السجل…' }));
     const dialog = screen.getByRole('dialog', { name: 'اختيار الجهة العامة' });
+    await user.type(within(dialog).getByLabelText('بحث باسم الجهة'), 'وزارة');
     await user.click(
-      within(dialog).getByRole('button', { name: /^وزارة التعليم/ }),
+      await within(dialog).findByRole('button', { name: /^وزارة التعليم/ }),
     );
 
     const nameInput = screen.getByLabelText('اسم الجهة 1') as HTMLInputElement;
@@ -129,7 +130,8 @@ describe('DocumentForm · ربط الأطراف بالسجل', () => {
     const applicantCard = screen.getByText('طالب التنفيذ 1').closest('.rounded-xl') as HTMLElement;
     await user.click(within(applicantCard).getByRole('button', { name: 'اختيار من السجل…' }));
     const dialog = screen.getByRole('dialog', { name: 'اختيار الجهة العامة' });
-    await user.click(within(dialog).getByRole('button', { name: /^هيئة التجارة الموحدة/ }));
+    await user.type(within(dialog).getByLabelText('بحث باسم الجهة'), 'هيئة');
+    await user.click(await within(dialog).findByRole('button', { name: /^هيئة التجارة الموحدة/ }));
 
     expect(screen.getByText('مرتبطة بالسجل ✓')).toBeInTheDocument();
     expect(screen.getByLabelText('الشخص الاعتباري')).toHaveValue('هيئة التجارة الموحدة');

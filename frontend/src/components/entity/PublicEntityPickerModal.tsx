@@ -38,6 +38,8 @@ interface PublicEntityPickerModalProps {
  * وبلا عدّاد ملفات إطلاقًا (د9)، وتحويل مباشر إلى نموذج إدخال جهة جديدة
  * تُخزَّن نهائيًا لكنها تبقى بانتظار مراجعة رئيس القسم فلا تظهر لبوات المندوبين
  * قبل الاعتماد (§6bis). قيود المراجعة تُعلَّم بصريًا (د4/§5.3).
+ * لا تُعرض أي نتائج قبل إدخال كلمة بحث (§5.6)، والقيد المضاف عبر الاقتراح
+ * يُثبَّت أعلى القائمة ليُختار فورًا دون إغلاق النافذة وإعادة فتحها.
  */
 export function PublicEntityPickerModal({ onClose, onPick }: PublicEntityPickerModalProps) {
   const { user } = useAuth();
@@ -50,7 +52,11 @@ export function PublicEntityPickerModal({ onClose, onPick }: PublicEntityPickerM
   const [items, setItems] = useState<PublicEntityEntryDto[] | null>(null);
   // نتيجة المحافظة الأساسية (غير مضيّقة بالفرع) للمحافظة المختارة — تُبقي خيارات الفرع ثابتة.
   const [governorateItems, setGovernorateItems] = useState<PublicEntityEntryDto[] | null>(null);
-  const [loading, setLoading] = useState(true);
+  // لا يُبدأ بحث تلقائيًا عند الفتح: بلا كلمة بحث لا نتائج إطلاقًا (حراسة query.trim() أدناه).
+  const [loading, setLoading] = useState<boolean>(() => query.trim().length > 0);
+  // القيد الذي أضافه المستخدم للتو عبر «اقترح إضافة…»: يُثبَّت أعلى القائمة ليُختار مباشرة.
+  const [newlyAddedEntry, setNewlyAddedEntry] = useState<PublicEntityEntryDto | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
   const [error, setError] = useState('');
   const [proposeEditEntry, setProposeEditEntry] = useState<PublicEntityEntryDto | null>(null);
   const [proposeSuccess, setProposeSuccess] = useState('');
@@ -82,6 +88,14 @@ export function PublicEntityPickerModal({ onClose, onPick }: PublicEntityPickerM
   }, [governorateFilter, query, branchFilter]);
 
   useEffect(() => {
+    // حراسة البحث الفارغ: بلا كلمة بحث لا استدعاء للخادم ولا نتائج إطلاقًا قبل كتابة المستخدم.
+    if (!query.trim()) {
+      setItems(null);
+      setGovernorateItems(null);
+      setLoading(false);
+      setError('');
+      return;
+    }
     let active = true;
     setLoading(true);
     // فلترة الخادم: المحافظة إلزامية (تُفلتر الفروع)، والفرع المختار (عند توضيحه) يُفلتر برمز
@@ -89,7 +103,7 @@ export function PublicEntityPickerModal({ onClose, onPick }: PublicEntityPickerM
     api
       .get<PublicEntityListResponse>('/entity-registry/search', {
         params: {
-          q: query.trim() || undefined,
+          q: query.trim(),
           governorate: governorateFilter || undefined,
           branchName: branchFilter || undefined,
         },
@@ -125,7 +139,9 @@ export function PublicEntityPickerModal({ onClose, onPick }: PublicEntityPickerM
 
   // نتيجة مُرتَّبة: الجهة الأم (بلا فرع — تغطي كل المحافظات) ثابتة أعلى نتائج كل هوية، ثم فروعها.
   const visibleItems = useMemo(() => {
-    const list = items ?? [];
+    const newId = newlyAddedEntry?.id;
+    // يُستبعد القيد المثبّت (المضاف للتو) من النتائج المرتّبة لئلا يظهر مرتين.
+    const list = (items ?? []).filter((e) => newId == null || e.id !== newId);
     const sorted = [...list].sort((a, b) => {
       const ag = a.isParentEntity ? 0 : 1;
       const bg = b.isParentEntity ? 0 : 1;
@@ -133,7 +149,7 @@ export function PublicEntityPickerModal({ onClose, onPick }: PublicEntityPickerM
       return a.canonicalName.localeCompare(b.canonicalName, 'ar');
     });
     return sorted;
-  }, [items]);
+  }, [items, newlyAddedEntry]);
 
   // اقتراحات الفرع مستخلصة من القيود المطابقة نفسها (§5.1).
   const branchSuggestions = useMemo(() => {
@@ -164,19 +180,76 @@ export function PublicEntityPickerModal({ onClose, onPick }: PublicEntityPickerM
         branchName: proposeBranch.trim(),
         citationFormula: proposeCitation,
       };
-      await api.post('/entity-registry', payload);
+      const created = (await api.post<PublicEntityEntryDto>('/entity-registry', payload)).data;
+      // القيد الجديد يُثبَّت فورًا أعلى القائمة — وإن لم يطابق نص البحث — حتى يختاره المستخدم
+      // بربطة واحدة دون الحاجة لإغلاق النافذة وإعادة فتحها (§5.6).
+      setNewlyAddedEntry(created);
       setSuccessMsg(
-        'أُضيفت الجهة إلى السجل وسيقوم رئيس قسمك بمراجعتها قبل ظهورها نهائيًا في بوابات المندوبين.',
+        'أُضيفت الجهة إلى السجل وستظهر أعلى القائمة لربطها؛ وسيقوم رئيس قسمك بمراجعتها قبل ظهورها نهائيًا في بوابات المندوبين.',
       );
-      // إعادة تحميل نتائج البحث كي تظهر الجهة المضافة فورًا في الاقتراحات
-      // (وإن لم تكن مطابقة للنص الحالي تُرجِع الخادم قائمة متأثرة مقابلة للفلاتر).
+      setShowPropose(false);
+      // إعادة تحميل نتائج البحث (إن وُجد نص) لتحديث خيارات الفروع — يتخطاه الحراسة عند بحث فارغ.
       reload();
+      requestAnimationFrame(() => {
+        const list = listRef.current;
+        if (!list) return;
+        try {
+          list.scrollTo({ top: 0 });
+        } catch {
+          // بيئات الاختبار (jsdom) لا تنفّذ التمرير — تجاهل آمن.
+        }
+      });
     } catch (err) {
       setProposeError(getApiErrorMessage(err));
     } finally {
       setProposeSaving(false);
     }
   };
+
+  // صف قيد واحد في قائمة النتائج (مشترك بين نتائج البحث والصورة المثبّتة للقيد المضاف للتو).
+  const renderEntryRow = (entry: PublicEntityEntryDto, pinned = false) => (
+    <li
+      key={entry.id}
+      className={`flex items-center gap-2 py-1 ${pinned ? 'mt-2 rounded-lg border border-emerald-200 bg-emerald-50/40 px-1' : ''}`}
+    >
+      <button
+        type="button"
+        onClick={() => onPick(entry)}
+        className="grow text-right py-3 flex flex-wrap items-start justify-between gap-2 hover:bg-emerald-50/60 rounded-lg px-2 min-h-11"
+      >
+        <span className="min-w-0">
+          <span className="block font-medium text-gray-800 break-words">
+            {entry.canonicalName}
+          </span>
+          <span className="block text-xs text-gray-500 mt-0.5">
+            {entityTypeLabel(entry.entityType)} · {formatEntityCoverage(entry)}
+            {entry.isParentEntity
+              ? <span className="font-medium text-emerald-700"> · الجهة الأم</span>
+              : ` / ${entry.branchName}`}
+          </span>
+        </span>
+        {isEntryPendingReview(entry) ? (
+          <span className="shrink-0 rounded-full bg-amber-100 text-amber-800 px-2 py-0.5 text-xs whitespace-nowrap">
+            بانتظار المراجعة
+          </span>
+        ) : (
+          <span className="shrink-0 rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.5 text-xs whitespace-nowrap">
+            {publicEntityStatusLabel(entry.status)}
+          </span>
+        )}
+      </button>
+      {isLawyer && (
+        <button
+          type="button"
+          onClick={() => setProposeEditEntry(entry)}
+          className="shrink-0 border border-amber-200 text-amber-800 hover:bg-amber-50 rounded-lg px-3 py-1.5 text-xs min-h-11 focus-visible:ring-2 focus-visible:ring-amber-500"
+          aria-label={`اقتراح تعديل ${entry.canonicalName}`}
+        >
+          اقتراح تعديل
+        </button>
+      )}
+    </li>
+  );
 
   return (
     <div
@@ -199,7 +272,7 @@ export function PublicEntityPickerModal({ onClose, onPick }: PublicEntityPickerM
           </button>
         </div>
 
-        <div className="overflow-y-auto p-5 grow overscroll-contain">
+        <div className="overflow-y-auto p-5 grow overscroll-contain" ref={listRef}>
           {/* حقل البحث الواحد (§5.1) */}
           <label htmlFor="pep-search" className="sr-only">بحث باسم الجهة</label>
           <input
@@ -265,55 +338,25 @@ export function PublicEntityPickerModal({ onClose, onPick }: PublicEntityPickerM
           )}
 
           <ul className="mt-3 divide-y divide-gray-100">
+            {newlyAddedEntry && renderEntryRow(newlyAddedEntry, true)}
             {loading && <li className="py-6 text-center text-sm text-gray-400">جارِ البحث…</li>}
             {!loading && error && (
               <li role="alert" className="py-4 text-sm text-red-600">{error}</li>
             )}
             {!loading && !error && visibleItems.length === 0 && (
-              <li className="py-6 text-center text-sm text-gray-400">
-                لا توجد جهات مطابقة في السجل
-              </li>
+              query.trim() ? (
+                <li className="py-6 text-center text-sm text-gray-400">
+                  لا توجد جهات مطابقة في السجل
+                </li>
+              ) : (
+                !newlyAddedEntry && (
+                  <li className="py-6 text-center text-sm text-gray-400">
+                    ابدأ بكتابة اسم الجهة للبحث…
+                  </li>
+                )
+              )
             )}
-            {visibleItems.map((entry) => (
-              <li key={entry.id} className="flex items-center gap-2 py-1">
-                <button
-                  type="button"
-                  onClick={() => onPick(entry)}
-                  className="grow text-right py-3 flex flex-wrap items-start justify-between gap-2 hover:bg-emerald-50/60 rounded-lg px-2 min-h-11"
-                >
-                  <span className="min-w-0">
-                    <span className="block font-medium text-gray-800 break-words">
-                      {entry.canonicalName}
-                    </span>
-                    <span className="block text-xs text-gray-500 mt-0.5">
-                      {entityTypeLabel(entry.entityType)} · {formatEntityCoverage(entry)}
-                      {entry.isParentEntity
-                        ? <span className="font-medium text-emerald-700"> · الجهة الأم</span>
-                        : ` / ${entry.branchName}`}
-                    </span>
-                  </span>
-                  {isEntryPendingReview(entry) ? (
-                    <span className="shrink-0 rounded-full bg-amber-100 text-amber-800 px-2 py-0.5 text-xs whitespace-nowrap">
-                      بانتظار المراجعة
-                    </span>
-                  ) : (
-                    <span className="shrink-0 rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.5 text-xs whitespace-nowrap">
-                      {publicEntityStatusLabel(entry.status)}
-                    </span>
-                  )}
-                </button>
-                {isLawyer && (
-                  <button
-                    type="button"
-                    onClick={() => setProposeEditEntry(entry)}
-                    className="shrink-0 border border-amber-200 text-amber-800 hover:bg-amber-50 rounded-lg px-3 py-1.5 text-xs min-h-11 focus-visible:ring-2 focus-visible:ring-amber-500"
-                    aria-label={`اقتراح تعديل ${entry.canonicalName}`}
-                  >
-                    اقتراح تعديل
-                  </button>
-                )}
-              </li>
-            ))}
+            {visibleItems.map((entry) => renderEntryRow(entry))}
           </ul>
 
           {/* تحويل إلى نموذج الاقتراح (د7/د8) */}
