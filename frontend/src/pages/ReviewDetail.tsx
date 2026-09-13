@@ -172,6 +172,12 @@ export default function ReviewDetail() {
               <dd>{letter.lawyerName}</dd>
             </div>
           )}
+          {hasFullAccess && (
+            <div className="flex items-center gap-1.5">
+              <dt className="text-gray-400">فرع الإدارة:</dt>
+              <dd>{letter.administrativeBranchName || '—'}</dd>
+            </div>
+          )}
         </dl>
 
         <div className="flex gap-2 flex-wrap mt-4 pt-3 border-t border-gray-100">

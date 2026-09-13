@@ -1188,6 +1188,8 @@ export interface ReviewLetterListItemDto {
   /** فيه ردّ رئيس قسم لم يطّلع عليه محامي الكتاب بعد. */
   hasUnseenReply: boolean;
   messagesCount: number;
+  /** اسم فرع الإدارة — يُعرض للمدير/المشرف فقط. */
+  administrativeBranchName?: string | null;
   updatedAt: string;
 }
 
@@ -1199,6 +1201,8 @@ export interface ReviewLetterDto {
   documentId?: number | null;
   fileContext?: ReviewLetterFileContext | null;
   branchId: number;
+  /** اسم فرع الإدارة — يُعرض للمدير/المشرف فقط. */
+  administrativeBranchName?: string | null;
   lawyerName: string;
   /** فيه ردّ لم يُطَّلع بعد — يُعلَّم مقروءًا تلقائيًا عند فتح المحامي للصفحة. */
   hasUnseenReply?: boolean;

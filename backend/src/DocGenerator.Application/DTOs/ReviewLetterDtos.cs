@@ -37,6 +37,7 @@ public record ReviewLetterDto(
     int? DocumentId,
     ReviewLetterFileContextDto? FileContext,
     int BranchId,
+    string? AdministrativeBranchName,
     string LawyerName,
     /// <summary>هل فيه ردّ رئيس قسم لم يطّلع عليه محامي الكتاب؟ (لأتمتة تعليم الإطلاع عند الفتح).</summary>
     bool HasUnseenReply,
@@ -60,4 +61,5 @@ public record ReviewLetterListItemDto(
     string LastKind,
     bool HasUnseenReply,
     int MessagesCount,
+    string? AdministrativeBranchName,
     DateTime UpdatedAt);

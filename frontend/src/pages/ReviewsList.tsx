@@ -21,16 +21,48 @@ export default function ReviewsList() {
   const [error, setError] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
 
+  const canSeeAdministrativeBranch = hasFullAccess;
+  const [administrativeBranch, setAdministrativeBranch] = useState('');
+  const [administrativeBranches, setAdministrativeBranches] = useState<string[]>([]);
+
   const isLawyer = user?.role === 'lawyer';
 
-  // الجلب مرتبط بالبحث والصفحة ومفتاح تحديث (بعد تسطير كتاب جديد)؛
-  // الإلغاء عبر AbortController يمنع سباقات الاستجابات القديمة.
+  // جلب خيارات فلتر الفرع — مرة واحدة فقط للمدير/المشرف.
+  useEffect(() => {
+    if (!canSeeAdministrativeBranch) return;
+    const controller = new AbortController();
+    api
+      .get<{ administrativeBranches: string[] }>('/review-letters/filter-options', {
+        signal: controller.signal,
+      })
+      .then((r) => r.data)
+      .then((data) => {
+        setAdministrativeBranches(
+          Array.isArray(data.administrativeBranches) ? data.administrativeBranches : [],
+        );
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [canSeeAdministrativeBranch]);
+
+  // جلب القائمة — لا يُستدعى قبل اختيار الفرع للمدير/المشرف.
   useEffect(() => {
     const controller = new AbortController();
+
+    if (canSeeAdministrativeBranch && !administrativeBranch.trim()) {
+      setItems([]);
+      setTotalCount(0);
+      setLoading(false);
+      setError('');
+      return () => controller.abort();
+    }
+
     setLoading(true);
     setError('');
     const params = new URLSearchParams();
     if (q.trim()) params.set('q', q.trim());
+    if (administrativeBranch.trim())
+      params.set('administrativeBranch', administrativeBranch.trim());
     params.set('page', String(page));
     params.set('perPage', String(PER_PAGE));
     api
@@ -50,7 +82,7 @@ export default function ReviewsList() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [page, q, refreshKey]);
+  }, [page, q, refreshKey, administrativeBranch, canSeeAdministrativeBranch]);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PER_PAGE));
 
@@ -71,6 +103,34 @@ export default function ReviewsList() {
       </div>
 
       <div className="bg-white rounded-xl shadow p-4 mb-6">
+        {canSeeAdministrativeBranch && (
+          <div className="mb-3">
+            <label
+              htmlFor="reviews-branch-filter"
+              className="block text-xs font-medium text-gray-500 mb-1"
+            >
+              فرع الإدارة
+            </label>
+            <select
+              id="reviews-branch-filter"
+              name="reviews-branch-filter"
+              aria-label="فلتر فرع الإدارة"
+              value={administrativeBranch}
+              onChange={(e) => {
+                setAdministrativeBranch(e.target.value);
+                setPage(1);
+              }}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-11 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="">اختر فرع الإدارة…</option>
+              {administrativeBranches.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <label htmlFor="reviews-search" className="sr-only">
           بحث في كتب المطالعة
         </label>
@@ -91,7 +151,13 @@ export default function ReviewsList() {
 
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 
-      {loading ? (
+      {canSeeAdministrativeBranch && !administrativeBranch.trim() ? (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center">
+          <p className="text-gray-500 text-sm">
+            اختر فرع الإدارة لعرض كتب المطالعات…
+          </p>
+        </div>
+      ) : loading ? (
         <div className="text-gray-500 text-sm">جارِ التحميل…</div>
       ) : items.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center">
@@ -138,6 +204,11 @@ export default function ReviewsList() {
                     سطّره: <span className="font-medium text-gray-700">{item.lawyerName}</span>
                     {' · '}
                     {item.messagesCount} رسالة
+                  </p>
+                )}
+                {hasFullAccess && (
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    فرع الإدارة: <span className="font-medium text-gray-700">{item.administrativeBranchName || '—'}</span>
                   </p>
                 )}
               </Link>

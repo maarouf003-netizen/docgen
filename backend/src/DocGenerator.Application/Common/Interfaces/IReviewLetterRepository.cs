@@ -17,9 +17,15 @@ public interface IReviewLetterRepository : IRepository<ReviewLetter>
     Task<(List<ReviewLetter> Items, int TotalCount)> SearchForBranchAsync(
         int branchId, string? q, int page, int perPage, CancellationToken ct = default);
 
-    /// <summary>كل الكتب بلا قيد فرع (مدير/مشرف)، مع البحث والترقيم.</summary>
+    /// <summary>
+    /// كتب المطالعة لفرع إدارة منتقى (مدير/مشرف) مع البحث والترقيم؛
+    /// فراغ administrativeBranch يُنفَّذ بلا عناصر (الحجب قبل اختيار الفرع).
+    /// </summary>
     Task<(List<ReviewLetter> Items, int TotalCount)> SearchAllAsync(
-        string? q, int page, int perPage, CancellationToken ct = default);
+        string? administrativeBranch, string? q, int page, int perPage, CancellationToken ct = default);
+
+    /// <summary>أسماء فروع الإدارة المميزة (خيارات فلتر المدير/المشرف بالفرع).</summary>
+    Task<List<string>> GetAdministrativeBranchesAsync(CancellationToken ct = default);
 
     /// <summary>عدد كتب الفرع التي لم يُرد عليها بعد (جرس رئيس القسم).</summary>
     Task<int> CountPendingForBranchAsync(int branchId, CancellationToken ct = default);

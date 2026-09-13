@@ -23,6 +23,11 @@ vi.mock('../api/client', async (importOriginal) => {
 
 import { api } from '../api/client';
 
+const listCalls = () =>
+  (api.get as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(
+    ([url]) => typeof url === 'string' && url.startsWith('/review-letters?'),
+  );
+
 const linkedLetter = (): ReviewLetterListItemDto => ({
   id: 1,
   letterNumber: 'DAM-2026-1234',
@@ -41,6 +46,7 @@ const linkedLetter = (): ReviewLetterListItemDto => ({
   lastKind: 'letter',
   hasUnseenReply: false,
   messagesCount: 1,
+  administrativeBranchName: 'دمشق',
   updatedAt: '2026-08-01T09:00:00Z',
 });
 
@@ -117,15 +123,49 @@ describe('ReviewsList', () => {
     });
   });
 
-  it('يخفي زر التسطير عن رئيس القسم والمدير', async () => {
+  it('لا يعرض أي كتاب للمدير قبل اختيار فرع الإدارة ولا يطلب القائمة', async () => {
     useAuthMock.mockReturnValue({ user: { role: 'manager', id: 9 }, hasFullAccess: true, isHead: false });
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: { items: [], page: 1, perPage: 20, totalCount: 0 },
+      data: { administrativeBranches: ['دمشق', 'حلب'] },
     });
     renderList();
 
-    await screen.findByText(/لا توجد كتب مطالعة/);
-    expect(screen.queryByRole('button', { name: '+ تسطير مطالعة' })).not.toBeInTheDocument();
+    expect(await screen.findByText(/اختر فرع الإدارة لعرض كتب المطالعات/)).toBeInTheDocument();
+    expect(screen.queryByText(/لا توجد كتب مطالعة/)).not.toBeInTheDocument();
+    expect(listCalls().length).toBe(0);
+  });
+
+  it('يطلب القائمة بفرع الإدارة بعد الاختيار ويعرض اسم الفرع (مدير)', async () => {
+    const { userEvent } = await import('@testing-library/user-event');
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({ user: { role: 'manager', id: 9 }, hasFullAccess: true, isHead: false });
+    const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
+    getMock.mockImplementation((url: string) => {
+      if (url.includes('filter-options')) {
+        return Promise.resolve({ data: { administrativeBranches: ['دمشق', 'حلب'] } });
+      }
+      return Promise.resolve({
+        data: {
+          items: [{ ...linkedLetter(), administrativeBranchName: 'دمشق' }],
+          page: 1,
+          perPage: 20,
+          totalCount: 1,
+        },
+      });
+    });
+    renderList();
+
+    const select = await screen.findByLabelText('فلتر فرع الإدارة');
+    await user.selectOptions(select, 'دمشق');
+
+    await waitFor(() => {
+      const calls = listCalls();
+      expect(calls.length).toBeGreaterThanOrEqual(1);
+      expect(calls.at(-1)?.[0]).toContain(`administrativeBranch=${encodeURIComponent('دمشق')}`);
+    });
+    const branchParas = screen.getAllByText(/فرع الإدارة:/);
+    expect(branchParas.length).toBeGreaterThan(0);
+    expect(branchParas[0]).toHaveTextContent('دمشق');
   });
 
   it('يعرض شارة «رد جديد» للمحامي على الكتب فيها ردّ لم يُطَّلع', async () => {

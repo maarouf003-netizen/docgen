@@ -9,10 +9,13 @@ namespace DocGenerator.Application.Services;
 
 public interface IReviewLetterService
 {
-    /// <summary>قائمة كتب المطالعة بحسب الدور: المحامي كتبه، ورئيس القسم كتب فرعه، والمدير/المشرف الجميع.</summary>
+    /// <summary>
+    /// قائمة كتب المطالعة بحسب الدور: المحامي كتبه، ورئيس القسم كتب فرعه،
+    /// والمدير/المشرف كتب فرع الإدارة المنتقى (لا عرض قبل اختيار الفرع).
+    /// </summary>
     Task<PagedResult<ReviewLetterListItemDto>> SearchAsync(
         int actorUserId, UserRole role, int? actorBranchId, string? q, int page, int perPage,
-        CancellationToken ct = default);
+        string? administrativeBranch, CancellationToken ct = default);
 
     /// <summary>كتاب مطالعة برسائله — بعد التحقق من حق الوصول.</summary>
     Task<ReviewLetterDto> GetByIdAsync(int id, int actorUserId, UserRole role, int? actorBranchId,
@@ -49,6 +52,9 @@ public interface IReviewLetterService
     /// </summary>
     Task<List<ReviewLetterListItemDto>> ListByDocumentAsync(int documentId, int actorUserId,
         UserRole role, int? actorBranchId, CancellationToken ct = default);
+
+    /// <summary>أسماء فروع الإدارة المميزة لفلتر المدير/المشرف.</summary>
+    Task<List<string>> GetAdministrativeBranchesAsync(CancellationToken ct = default);
 }
 
 /// <summary>
@@ -94,10 +100,21 @@ public sealed class ReviewLetterService : IReviewLetterService
 
     public async Task<PagedResult<ReviewLetterListItemDto>> SearchAsync(
         int actorUserId, UserRole role, int? actorBranchId, string? q, int page, int perPage,
-        CancellationToken ct = default)
+        string? administrativeBranch, CancellationToken ct = default)
     {
         page = Math.Max(1, page);
         perPage = Math.Clamp(perPage, 1, 100);
+
+        // المدير/المشرف لا يرى أي كتاب قبل اختيار فرع الإدارة (حجب تام على مستوى الخدمة).
+        if (role is UserRole.Manager or UserRole.Admin
+            && string.IsNullOrWhiteSpace(administrativeBranch))
+        {
+            return new PagedResult<ReviewLetterListItemDto>
+            {
+                Page = page,
+                PerPage = perPage,
+            };
+        }
 
         var (items, totalCount) = role switch
         {
@@ -107,7 +124,7 @@ public sealed class ReviewLetterService : IReviewLetterService
             UserRole.Head
                 => throw new ArgumentException("رئيس القسم دون فرع لا يمكنه عرض كتب المطالعة"),
             UserRole.Manager or UserRole.Admin
-                => await _letters.SearchAllAsync(q, page, perPage, ct),
+                => await _letters.SearchAllAsync(administrativeBranch, q, page, perPage, ct),
             _ => throw new ArgumentException("الدور غير مخوّل لعرض كتب المطالعة"),
         };
 
@@ -361,6 +378,9 @@ public sealed class ReviewLetterService : IReviewLetterService
     public Task<int> CountPendingForHeadAsync(int branchId, CancellationToken ct = default)
         => _letters.CountPendingForBranchAsync(branchId, ct);
 
+    public Task<List<string>> GetAdministrativeBranchesAsync(CancellationToken ct = default)
+        => _letters.GetAdministrativeBranchesAsync(ct);
+
     public async Task<List<ReviewLetterListItemDto>> ListByDocumentAsync(int documentId,
         int actorUserId, UserRole role, int? actorBranchId, CancellationToken ct = default)
     {
@@ -501,6 +521,7 @@ public sealed class ReviewLetterService : IReviewLetterService
             letter.DocumentId,
             FileContextOf(letter),
             letter.BranchId,
+            letter.Branch?.Name,
             letter.CreatedBy?.FullName ?? string.Empty,
             messages.Any(m => m.Kind == ReviewLetterMessage.KindReply && !m.IsSeenByLawyer),
             messages.Select(ToMessageDto).ToList(),
@@ -529,6 +550,7 @@ public sealed class ReviewLetterService : IReviewLetterService
             lastKind,
             hasUnseenReply,
             messages.Count,
+            letter.Branch?.Name,
             letter.UpdatedAt);
     }
 }

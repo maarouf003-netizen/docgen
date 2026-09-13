@@ -211,15 +211,22 @@ public class ReviewLetterServiceTests : IDisposable
         await _service.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب فرع آخر</p>"),
             _otherBranchHead.Id is not 0 ? _otherBranchHead.Id : 1, "رئيس حلب", _otherBranchId);
 
-        var lawyerView = await _service.SearchAsync(_lawyer1.Id, UserRole.Lawyer, _branchId, null, 1, 20);
+        var lawyerView = await _service.SearchAsync(_lawyer1.Id, UserRole.Lawyer, _branchId, null, 1, 20, null);
         Assert.Equal(1, lawyerView.TotalCount);
         Assert.All(lawyerView.Items, i => Assert.Equal("المحامي الأول", i.LawyerName));
 
-        var headView = await _service.SearchAsync(_head.Id, UserRole.Head, _branchId, null, 1, 20);
+        var headView = await _service.SearchAsync(_head.Id, UserRole.Head, _branchId, null, 1, 20, null);
         Assert.Equal(2, headView.TotalCount);
 
-        var managerView = await _service.SearchAsync(1, UserRole.Admin, null, null, 1, 20);
-        Assert.Equal(3, managerView.TotalCount);
+        // المدير/المشرف: مقيّد بفرع الإدارة المنتقى — بلا فرع لا يرى شيئًا
+        var unselected = await _service.SearchAsync(1, UserRole.Admin, null, null, 1, 20, null);
+        Assert.Equal(0, unselected.TotalCount);
+
+        var managerView = await _service.SearchAsync(1, UserRole.Admin, null, null, 1, 20, "دمشق");
+        Assert.Equal(2, managerView.TotalCount);
+        var managerViewAleppo = await _service.SearchAsync(1, UserRole.Admin, null, null, 1, 20, "حلب");
+        Assert.Equal(1, managerViewAleppo.TotalCount);
+        Assert.All(managerView.Items, i => Assert.Equal("دمشق", i.AdministrativeBranchName));
     }
 
     [Fact]
@@ -231,7 +238,7 @@ public class ReviewLetterServiceTests : IDisposable
         await _service.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب عام</p>"),
             _lawyer1.Id, "المحامي الأول", _branchId);
 
-        var hit = await _service.SearchAsync(_lawyer1.Id, UserRole.Lawyer, _branchId, "أحمد", 1, 20);
+        var hit = await _service.SearchAsync(_lawyer1.Id, UserRole.Lawyer, _branchId, "أحمد", 1, 20, null);
         Assert.Equal(1, hit.TotalCount);
         Assert.NotNull(hit.Items[0].FileContext);
     }
@@ -317,14 +324,14 @@ public class ReviewLetterServiceTests : IDisposable
             _head.Id, "رئيس القسم", _branchId);
 
         // قائمة المحامي تعرض الكتاب مع علم «رد غير مطّلع عليه»
-        var list = await _service.SearchAsync(_lawyer1.Id, UserRole.Lawyer, _branchId, null, 1, 20);
+        var list = await _service.SearchAsync(_lawyer1.Id, UserRole.Lawyer, _branchId, null, 1, 20, null);
         Assert.True(list.Items[0].HasUnseenReply);
         Assert.Equal(1, await _service.CountUnseenRepliesForLawyerAsync(_lawyer1.Id));
 
         // حالة الإطلاق خاصة بمحامي الكتاب: تُحجب عن رئيس القسم والمدير
-        var headView = await _service.SearchAsync(_head.Id, UserRole.Head, _branchId, null, 1, 20);
+        var headView = await _service.SearchAsync(_head.Id, UserRole.Head, _branchId, null, 1, 20, null);
         Assert.False(headView.Items[0].HasUnseenReply);
-        var managerView = await _service.SearchAsync(1, UserRole.Admin, null, null, 1, 20);
+        var managerView = await _service.SearchAsync(1, UserRole.Admin, null, null, 1, 20, "دمشق");
         Assert.All(managerView.Items, i => Assert.False(i.HasUnseenReply));
 
         // رئيس قسم آخر لا يتأثر بعدّاد محامٍ غير صاحب الكتاب
@@ -347,7 +354,7 @@ public class ReviewLetterServiceTests : IDisposable
         await _service.MarkRepliesSeenAsync(letter.Id, _lawyer1.Id);
 
         Assert.Equal(0, await _service.CountUnseenRepliesForLawyerAsync(_lawyer1.Id));
-        var list = await _service.SearchAsync(_lawyer1.Id, UserRole.Lawyer, _branchId, null, 1, 20);
+        var list = await _service.SearchAsync(_lawyer1.Id, UserRole.Lawyer, _branchId, null, 1, 20, null);
         Assert.False(list.Items[0].HasUnseenReply);
 
         // الإطلاع لا يزيل حالة «تم الرد» ولا يغيّر عدد الرسائل
@@ -371,5 +378,75 @@ public class ReviewLetterServiceTests : IDisposable
             _head.Id, "رئيس القسم", _branchId);
 
         Assert.Equal(1, await _service.CountUnseenRepliesForLawyerAsync(_lawyer1.Id));
+    }
+
+    [Fact]
+    public async Task Search_AdminUnknownOrBlankBranch_ReturnsEmpty()
+    {
+        await _service.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب</p>"),
+            _lawyer1.Id, "المحامي الأول", _branchId);
+
+        var unknown = await _service.SearchAsync(1, UserRole.Admin, null, null, 1, 20, "فرع وهمي");
+        Assert.Equal(0, unknown.TotalCount);
+        Assert.Empty(unknown.Items);
+
+        // الفراغ/البياض يعامل كعدم اختيار → حجب تام
+        var blank = await _service.SearchAsync(1, UserRole.Manager, null, null, 1, 20, "   ");
+        Assert.Equal(0, blank.TotalCount);
+        Assert.Empty(blank.Items);
+    }
+
+    [Fact]
+    public async Task SearchAll_BlankBranch_ReturnsEmptyWithoutQuerying()
+    {
+        await _service.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب</p>"),
+            _lawyer1.Id, "المحامي الأول", _branchId);
+
+        // العقد ذاتي الحماية على مستوى المستودع: الفراغ/البياض/العدم تُعيد فارغًا
+        // حتى لو استُدعي المستودع مباشرة دون حارس الخدمة.
+        var repository = new ReviewLetterRepository(_db);
+        foreach (var blank in new string?[] { null, "", "   " })
+        {
+            var (items, totalCount) = await repository.SearchAllAsync(blank, null, 1, 20);
+            Assert.Equal(0, totalCount);
+            Assert.Empty(items);
+        }
+
+        // والفرع المنتقى يمرّر طبيعيًا.
+        var (selectedItems, selectedCount) = await repository.SearchAllAsync("دمشق", null, 1, 20);
+        Assert.Equal(1, selectedCount);
+        Assert.Single(selectedItems);
+    }
+
+    [Fact]
+    public async Task Search_AdminBranchCombinedWithQuery()
+    {
+        var doc = await AddDocumentAsync(_lawyer1);
+        await _service.CreateAsync(new CreateReviewLetterRequest(doc.Id, "<p>مطالعة ملف أحمد</p>"),
+            _lawyer1.Id, "المحامي الأول", _branchId);
+        await _service.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب عام أحمد</p>"),
+            _lawyer1.Id, "المحامي الأول", _branchId);
+        await _service.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب عام حلب</p>"),
+            _otherBranchHead.Id, "رئيس حلب", _otherBranchId);
+
+        // "أحمد" يطابق كتابين فرع دمشق — فلتر الفرع يقصرهما عليه ولا يُمرّر كتاب حلب.
+        var inDamascus = await _service.SearchAsync(1, UserRole.Admin, null, "أحمد", 1, 20, "دمشق");
+        Assert.Equal(2, inDamascus.TotalCount);
+        var inAleppo = await _service.SearchAsync(1, UserRole.Admin, null, "أحمد", 1, 20, "حلب");
+        Assert.Equal(0, inAleppo.TotalCount);
+    }
+
+    [Fact]
+    public async Task GetAdministrativeBranches_ReturnsDistinctSortedNames()
+    {
+        await _service.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب دمشق ١</p>"),
+            _lawyer1.Id, "المحامي الأول", _branchId);
+        await _service.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب دمشق ٢</p>"),
+            _lawyer2.Id, "المحامي الثاني", _branchId);
+        await _service.CreateAsync(new CreateReviewLetterRequest(null, "<p>كتاب حلب</p>"),
+            _otherBranchHead.Id, "رئيس حلب", _otherBranchId);
+
+        var branches = await _service.GetAdministrativeBranchesAsync();
+        Assert.Equal(new[] { "حلب", "دمشق" }, branches);
     }
 }

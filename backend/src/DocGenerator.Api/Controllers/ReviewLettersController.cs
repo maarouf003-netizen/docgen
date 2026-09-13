@@ -10,7 +10,7 @@ namespace DocGenerator.Api.Controllers;
 
 /// <summary>
 /// كتب المطالعة: المحامي يسطّر ويردّ رئيس القسم، والاطلاع موسّع لمالك الملف
-/// ومتابعيه (إحالة/إنابة/استئناف) وللمدير والمشرف (قراءة فقط).
+/// ومتابعيه (إحالة/إنابة/استئناف) وللمدير والمشرف (قراءة فقط بفرع إدارة منتقى).
 /// </summary>
 [ApiController]
 [Route("api/review-letters")]
@@ -32,21 +32,34 @@ public class ReviewLettersController : ControllerBase
     private int? BranchId => User.GetBranchId();
     private int UserId => User.GetUserId();
 
-    /// <summary>قائمة كتب المطالعة بحسب الدور، مع بحث نصي وترقيم.</summary>
+    /// <summary>قائمة كتب المطالعة بحسب الدور، مع بحث نصي وترقيم؛ المدير/المشرف بفرع إدارة إجباري.</summary>
     [HttpGet]
     public async Task<IActionResult> Search(
-        [FromQuery] string? q, [FromQuery] int page = 1, [FromQuery] int perPage = 20,
+        [FromQuery] string? q, [FromQuery] string? administrativeBranch,
+        [FromQuery] int page = 1, [FromQuery] int perPage = 20,
         CancellationToken ct = default)
     {
         try
         {
-            var result = await _letters.SearchAsync(UserId, Role, BranchId, q, page, perPage, ct);
+            var result = await _letters.SearchAsync(UserId, Role, BranchId, q, page, perPage,
+                administrativeBranch, ct);
             return Ok(result);
         }
         catch (ArgumentException e)
         {
             return BadRequest(new { message = e.Message });
         }
+    }
+
+    /// <summary>خيارات فلتر «فرع الإدارة» المميزة — مدير/مشرف فقط.</summary>
+    [HttpGet("filter-options")]
+    public async Task<IActionResult> GetFilterOptions(CancellationToken ct)
+    {
+        if (!RolePermissions.CanSeeAdministrativeBranch(Role))
+            return Ok(new { administrativeBranches = new List<string>() });
+
+        var branches = await _letters.GetAdministrativeBranchesAsync(ct);
+        return Ok(new { administrativeBranches = branches });
     }
 
     /// <summary>عدد كتب الفرع بانتظار الرد — جرس رئيس القسم الأحمر.</summary>
