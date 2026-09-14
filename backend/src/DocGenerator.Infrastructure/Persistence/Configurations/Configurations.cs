@@ -388,7 +388,7 @@ public class DocumentBaseNumberConfiguration : IEntityTypeConfiguration<Document
 {
     public void Configure(EntityTypeBuilder<DocumentBaseNumber> builder)
     {
-builder.ToTable("DocumentBaseNumbers");
+        builder.ToTable("DocumentBaseNumbers");
         builder.HasKey(b => b.Id);
         // سجلات متعددة لكل (ملف، سنة): كل تدوير/تجديد يُنشئ سجلًا جديدًا — الأحدث (Year ثم CreatedAt) هو المعتبر.
         builder.HasIndex(b => new { b.DocumentId, b.Year });

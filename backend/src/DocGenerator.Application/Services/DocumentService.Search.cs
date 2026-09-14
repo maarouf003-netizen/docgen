@@ -252,7 +252,7 @@ public sealed partial class DocumentService
                 if (!eligible)
                     throw new ArgumentException($"الملف (رقم {doc.Id}) غير مؤهل للتدوير");
 
-var normalized = entry.BaseNumber?.Trim();
+                var normalized = entry.BaseNumber?.Trim();
                 if (string.IsNullOrEmpty(normalized))
                 {
                     // إلغاء رقم أساس السنة الحالية: حذف كل سجلاتها مع الاحتفاظ بأرقام السنوات السابقة.
