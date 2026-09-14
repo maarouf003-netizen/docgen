@@ -2174,6 +2174,7 @@ public sealed class PublicEntityService : IPublicEntityService
             await _occurrences.AddAsync(new DocumentOccurrence
             {
                 DocumentId = doc.Id,
+                Source = OccurrenceSourceCatalog.System,
                 OccurrenceType = OccurrenceTypeCatalog.EntityChange,
                 EventDate = DateTime.UtcNow,
                 CreatedById = actor.UserId,
@@ -2568,6 +2569,7 @@ public sealed class PublicEntityService : IPublicEntityService
                     var occurrence = new DocumentOccurrence
                     {
                         DocumentId = docId,
+                        Source = OccurrenceSourceCatalog.System,
                         OccurrenceType = OccurrenceTypeCatalog.EntityChange,
                         EventDate = DateTime.UtcNow,
                         CreatedById = actor.UserId,
@@ -2690,6 +2692,7 @@ public sealed class PublicEntityService : IPublicEntityService
                     var occurrence = new DocumentOccurrence
                     {
                         DocumentId = docId,
+                        Source = OccurrenceSourceCatalog.System,
                         OccurrenceType = OccurrenceTypeCatalog.EntityChange,
                         EventDate = DateTime.UtcNow,
                         CreatedById = actor.UserId,
@@ -3024,6 +3027,7 @@ public sealed class PublicEntityService : IPublicEntityService
                 var occurrence = new DocumentOccurrence
                 {
                     DocumentId = docId,
+                    Source = OccurrenceSourceCatalog.System,
                     OccurrenceType = OccurrenceTypeCatalog.EntityChange,
                     EventDate = DateTime.UtcNow,
                     CreatedById = actor.UserId,
@@ -3323,6 +3327,7 @@ public sealed class PublicEntityService : IPublicEntityService
                 var occurrence = new DocumentOccurrence
                 {
                     DocumentId = docId,
+                    Source = OccurrenceSourceCatalog.System,
                     OccurrenceType = OccurrenceTypeCatalog.EntityChange,
                     EventDate = DateTime.UtcNow,
                     CreatedById = actor.UserId,
@@ -3611,6 +3616,7 @@ public sealed class PublicEntityService : IPublicEntityService
                 var occurrence = new DocumentOccurrence
                 {
                     DocumentId = docId,
+                    Source = OccurrenceSourceCatalog.System,
                     OccurrenceType = OccurrenceTypeCatalog.EntityChange,
                     EventDate = DateTime.UtcNow,
                     CreatedById = actor.UserId,
@@ -3782,6 +3788,7 @@ public sealed class PublicEntityService : IPublicEntityService
                         await _occurrences.AddAsync(new DocumentOccurrence
                         {
                             DocumentId = doc.Id,
+                            Source = OccurrenceSourceCatalog.System,
                             OccurrenceType = OccurrenceTypeCatalog.EntityChange,
                             EventDate = DateTime.UtcNow,
                             CreatedById = actor.UserId,

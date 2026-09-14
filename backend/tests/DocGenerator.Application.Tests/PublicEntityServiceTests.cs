@@ -1057,6 +1057,7 @@ public class PublicEntityServiceTests : IDisposable
 
         var occ = await _db.DocumentOccurrences.SingleAsync(o => o.DocumentId == doc.Id);
         Assert.Equal(OccurrenceTypeCatalog.EntityChange, occ.OccurrenceType);
+        Assert.Equal(OccurrenceSourceCatalog.System, occ.Source);
         Assert.Contains("نقل", occ.Details!);
     }
 
@@ -1095,6 +1096,7 @@ public class PublicEntityServiceTests : IDisposable
 
         var occ = await _db.DocumentOccurrences.SingleAsync(o => o.DocumentId == doc.Id);
         Assert.Equal(OccurrenceTypeCatalog.EntityChange, occ.OccurrenceType);
+        Assert.Equal(OccurrenceSourceCatalog.System, occ.Source);
         Assert.Contains("نقل", occ.Details!);
     }
 
@@ -2016,6 +2018,7 @@ public class PublicEntityServiceTests : IDisposable
         // وقوع entity-change للملف واحتسابه في العداد عبر الحمولة.
         var occ = await _db.DocumentOccurrences.SingleAsync(o => o.DocumentId == doc.Id);
         Assert.Equal(OccurrenceTypeCatalog.EntityChange, occ.OccurrenceType);
+        Assert.Equal(OccurrenceSourceCatalog.System, occ.Source);
         var evt = await _db.PublicEntityChangeEvents.SingleAsync(e => e.GroupId == target.GroupId);
         var payloadEl = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(evt.PayloadJson);
         Assert.Equal(1, payloadEl.GetProperty("totalAffectedDocs").GetInt32());
@@ -2184,6 +2187,7 @@ public class PublicEntityServiceTests : IDisposable
         var occ = await _db.DocumentOccurrences.SingleOrDefaultAsync(o => o.DocumentId == doc.Id);
         Assert.NotNull(occ);
         Assert.Equal(OccurrenceTypeCatalog.EntityChange, occ!.OccurrenceType);
+        Assert.Equal(OccurrenceSourceCatalog.System, occ.Source);
         Assert.Contains("توحيد تسمية", occ.Details);
         // لا رابط مرسوم عائمًا «بموجب _ رقم _» — التوحيد بلا مرسوم (حقول اختيارية تُستقبل null)
         Assert.DoesNotContain("بموجب", occ.Details);
@@ -3108,6 +3112,7 @@ public class PublicEntityServiceTests : IDisposable
 
         var occ = await _db.DocumentOccurrences.SingleAsync(o => o.DocumentId == doc.Id);
         Assert.Equal(OccurrenceTypeCatalog.EntityChange, occ.OccurrenceType);
+        Assert.Equal(OccurrenceSourceCatalog.System, occ.Source);
     }
 
     [Fact]

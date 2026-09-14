@@ -658,8 +658,9 @@ public class DocumentOccurrenceConfiguration : IEntityTypeConfiguration<Document
         builder.HasKey(o => o.Id);
         // عامل مطابق لقفل الحذف المنطقي للمستند الأب
         builder.HasQueryFilter(o => o.Document == null || !o.Document.IsDeleted);
-        builder.Property(o => o.OccurrenceType).HasMaxLength(20).IsRequired();
+builder.Property(o => o.OccurrenceType).HasMaxLength(20).IsRequired();
         builder.HasIndex(o => o.OccurrenceType);
+        builder.Property(o => o.Source).HasMaxLength(10).IsRequired().HasDefaultValue("manual");
         builder.Property(o => o.EventDate).HasColumnType("datetime2");
         builder.HasIndex(o => o.EventDate);
         builder.Property(o => o.FileNumber).HasMaxLength(100);

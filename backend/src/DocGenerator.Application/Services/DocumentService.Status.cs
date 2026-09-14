@@ -160,6 +160,7 @@ public sealed partial class DocumentService
             await _occurrences.AddAsync(new DocumentOccurrence
             {
                 DocumentId = doc.Id,
+                Source = OccurrenceSourceCatalog.System,
                 OccurrenceType = occurrenceType,
                 EventDate = status == ExecutionStatusCatalog.StateStruckOff ? doc.StruckOffDate : DateTime.UtcNow,
                 FileNumber = status == ExecutionStatusCatalog.StateStruckOff
@@ -234,6 +235,7 @@ public sealed partial class DocumentService
             await _occurrences.AddAsync(new DocumentOccurrence
             {
                 DocumentId = doc.Id,
+                Source = OccurrenceSourceCatalog.System,
                 OccurrenceType = OccurrenceTypeCatalog.Revert,
                 EventDate = DateTime.UtcNow,
                 Details = details.Count > 0 ? SerializeDetails(details) : null,
@@ -303,6 +305,7 @@ public sealed partial class DocumentService
             await _occurrences.AddAsync(new DocumentOccurrence
             {
                 DocumentId = doc.Id,
+                Source = OccurrenceSourceCatalog.System,
                 OccurrenceType = OccurrenceTypeCatalog.Forcible,
                 EventDate = DateTime.UtcNow,
                 Details = SerializeDetails(details),
@@ -454,6 +457,7 @@ public sealed partial class DocumentService
                 await _occurrences.AddAsync(new DocumentOccurrence
                 {
                     DocumentId = doc.Id,
+                    Source = OccurrenceSourceCatalog.System,
                     OccurrenceType = OccurrenceTypeCatalog.Revert,
                     EventDate = DateTime.UtcNow,
                     Details = revertDetails?.Count > 0 ? SerializeDetails(revertDetails) : null,
@@ -589,6 +593,7 @@ public sealed partial class DocumentService
         await _occurrences.AddAsync(new DocumentOccurrence
         {
             DocumentId = doc.Id,
+            Source = OccurrenceSourceCatalog.System,
             OccurrenceType = OccurrenceTypeCatalog.Renewal,
             EventDate = doc.RenewalDate,
             FileNumber = number,
@@ -616,6 +621,7 @@ public sealed partial class DocumentService
         await _occurrences.AddAsync(new DocumentOccurrence
         {
             DocumentId = doc.Id,
+            Source = OccurrenceSourceCatalog.System,
             OccurrenceType = OccurrenceTypeCatalog.StruckOff,
             EventDate = doc.StruckOffDate,
             FileNumber = string.IsNullOrEmpty(effectiveNumber) ? null : effectiveNumber.Trim(),

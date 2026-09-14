@@ -161,6 +161,11 @@ public sealed partial class DocumentService
         if (occurrence is null || occurrence.DocumentId != documentId)
             return null;
 
+        // تقسية المرحلة 3: الوقعة النظامية حدثٌ حقيقي سجّله النظام (شطب/تجديد آلي/تغيير جهة/إنابة)
+        // — لا تُعدَّل من الواجهة ولا يُحوَّل نوعها إلى «تغيير جهة» (نظامي) يدويًا.
+        if (OccurrenceSourceCatalog.IsSystem(occurrence.Source))
+            throw new ArgumentException("لا يمكن تعديل وقعة نظامية");
+
         var doc = await _documents.GetByIdAsync(documentId, ct);
         if (doc is null)
             return null;
@@ -172,7 +177,7 @@ public sealed partial class DocumentService
             && !OccurrenceTypeCatalog.IsRenewal(occurrence.OccurrenceType))
             throw new ArgumentException("لا يمكن تحويل وقعة إلى تجديد بينما الملف مشطوب — التجديد يتم بإعادة الملف إلى المتداول");
 
-        ApplyOccurrence(occurrence, request);
+        ApplyOccurrence(occurrence, request, isUpdate: true);
         occurrence.UpdatedAt = DateTime.UtcNow;
 
         await _tx.RunAsync(async token =>
@@ -190,6 +195,10 @@ public sealed partial class DocumentService
         var occurrence = await _occurrences.GetByIdAsync(occurrenceId, ct);
         if (occurrence is null || occurrence.DocumentId != documentId)
             return false;
+
+        // تقسية المرحلة 3: لا يُحذف وقعة نظامية يدويًا.
+        if (OccurrenceSourceCatalog.IsSystem(occurrence.Source))
+            throw new ArgumentException("لا يمكن حذف وقعة نظامية");
 
         var doc = await _documents.GetByIdAsync(documentId, ct);
         if (doc is null)
@@ -215,23 +224,33 @@ public sealed partial class DocumentService
         var occurrence = new DocumentOccurrence
         {
             DocumentId = documentId,
+            Source = OccurrenceSourceCatalog.Manual,
             CreatedById = userId,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };
-        ApplyOccurrence(occurrence, request);
+        ApplyOccurrence(occurrence, request, isUpdate: false);
         return occurrence;
     }
 
     /// <summary>
     /// تطبيق حقول الطلب على كيان الوقعة مع التحقق (يُعارض ApplyOccurrence لكل من
-    /// الإضافة والتعديل فيتوحد سلوك التحقق ويمنع التكرار).
+    /// الإضافة والتعديل فيتوحد سلوك التحقق ويمنع التكرار)؛ يميّز isUpdate بين مسار
+    /// الإنشاء ومسار التحويل لاختيار رسالة الرفض المناسبة لكل منهما.
     /// </summary>
-    private static void ApplyOccurrence(DocumentOccurrence occurrence, UpsertOccurrenceRequest request)
+    private static void ApplyOccurrence(DocumentOccurrence occurrence, UpsertOccurrenceRequest request, bool isUpdate)
     {
         var type = (request.OccurrenceType ?? string.Empty).Trim();
         if (!OccurrenceTypeCatalog.ValidTypes.Contains(type))
             throw new ArgumentException("نوع وقعة غير صالح");
+
+        // تقسية المرحلة 3: نوع «تغيير جهة» نظامي يُسجَّل آليًا فقط (PublicEntityService) —
+        // لا يُنشأ ولا يُحوَّل إليه يدويًا من محرر الوقوعات؛ الرسالة تميز مسار الإنشاء عن مسار
+        // التحويل (تعديل وقعة قائمة إلى «تغيير جهة») لتعكس الفعل الفعلي.
+        if (type == OccurrenceTypeCatalog.EntityChange)
+            throw new ArgumentException(isUpdate
+                ? "لا يمكن تحويل وقعة إلى 'تغيير جهة' — نوع الوقعة نظامي"
+                : "نوع الوقعة 'تغيير جهة' نظامي ولا يُنشأ يدوياً");
 
         // وقوعات تغيير الحالة (نظام «طالبة تنفيذ»): تُحفظ حقولها التفصيلية كما وردت مع
         // التحقق من الحقول الإلزامية لكل نوع (تريث/منفذ بالتسوية/منفذ جبريا/تراجع).
@@ -341,7 +360,7 @@ public sealed partial class DocumentService
     private static DocumentOccurrenceDto ToDto(DocumentOccurrence o, string? createdByName = null) =>
         new(o.Id, o.OccurrenceType, OccurrenceTypeCatalog.ToLabel(o.OccurrenceType), o.EventDate,
             o.FileNumber, o.FileType, o.Year, o.ReceiptNumber, o.ReceiptDate,
-            ParseOccurrenceDetails(o.Details), createdByName);
+            ParseOccurrenceDetails(o.Details), createdByName, o.Source);
 
     /// <summary>فكّ حقول الوقعة التفصيلية من JSON المخزن (أو null عند غيابها/عطبها).</summary>
     private static IReadOnlyDictionary<string, string>? ParseOccurrenceDetails(string? json)

@@ -232,4 +232,8 @@ npm test
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260914161054_AllowMultipleBaseNumbersPerYear.cs` — يحذف القيد الفريد `IX_DocumentBaseNumbers_DocumentId_Year` و`IX_AppealBaseNumbers_AppealId_Year` ويُعيد إنشاءهما غير فريدين (كل تدوير/تجديد يُنشئ سجلًا جديدًا؛ الأحدث `CreatedAt` هو المعتبر).
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260914161205_AllowMultipleBaseNumbersPerYearPg.cs` — نفسه.
   - بدون التطبيق سيفشل حفظ تدوير/تجديد ثانٍ لنفس السنة برسالة `UNIQUE constraint failed: DocumentBaseNumbers.DocumentId, DocumentBaseNumbers.Year` رغم نجاح الاختبارات محليًا.
+- [ ] **2026-09-14 — `AddOccurrenceSource` (SQLite + Postgres)** (المرحلة 3 من خطة هوية رقم الملف: تقسية سجل الوقوعات):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260914184446_AddOccurrenceSource.cs` — يضيف عمود `Source` (`text`, NOT NULL, default `manual`) ويوسم كل الوقوعات القائمة بـ`system` (`UPDATE DocumentOccurrences SET Source = 'system'`).
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260914184530_AddOccurrenceSourcePg.cs` — نفسه (`character varying(10)` + UPDATE).
+  - بدون التطبيق سيفشل تشغيل فعلي: محاولة إنقاذ قيد/إدخال وقعة تصطدم بـ`no such column: o.Source` رغم نجاح الاختبارات محليًا.
 

@@ -289,6 +289,7 @@ public class DelegationsIntegrationTests
         var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
         var occurrence = db.DocumentOccurrences.OrderByDescending(o => o.Id)
             .First(o => o.DocumentId == docId && o.OccurrenceType == OccurrenceTypeCatalog.Forcible);
+        Assert.Equal(OccurrenceSourceCatalog.System, occurrence.Source);
         Assert.Contains("15/8/2026", occurrence.Details);
         Assert.Contains("77/2026", occurrence.Details);
     }

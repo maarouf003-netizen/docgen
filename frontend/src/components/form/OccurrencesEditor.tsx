@@ -267,8 +267,8 @@ export function OccurrencesEditor({
 
       <div className="rounded-lg bg-gray-50 border border-gray-200 p-4">
         <p className="text-xs text-gray-500 mb-3">
-          سجل زمني لكل شطب وتجديد في الملف. الوقوعات تُسجَّل تلقائيًا عند الشطب والتجديد،
-          ويمكنك إضافتها أو تعديلها هنا يدويًا.
+          سجل زمني لكل شطب وتجديد في الملف. الوقوعات النظامية (وسم «نظامي») سجّلها النظام
+          تلقائيًا ولا يمكن تعديلها أو حذفها؛ أما «+ إضافة وقعة» فيُسجّل وقعة يدوية.
         </p>
 
         {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
@@ -293,16 +293,23 @@ export function OccurrencesEditor({
                 className="flex items-start justify-between gap-3 flex-wrap bg-white rounded-lg border border-gray-200 px-3 py-2"
               >
                 <div className="min-w-0 flex-1">
-                  <span
-                    className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium mb-1 ${
-                      occurrence.occurrenceType === 'renewal'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : occurrence.occurrenceType === 'struck-off'
-                          ? 'bg-red-100 text-red-800'
-                          : 'bg-blue-100 text-blue-800'
-                    }`}
-                  >
-                    {occurrence.occurrenceTypeLabel}
+                  <span className="inline-flex items-center gap-2 mb-1 flex-wrap">
+                    <span
+                      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                        occurrence.occurrenceType === 'renewal'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : occurrence.occurrenceType === 'struck-off'
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-blue-100 text-blue-800'
+                      }`}
+                    >
+                      {occurrence.occurrenceTypeLabel}
+                    </span>
+                    {occurrence.source === 'system' && (
+                      <span className="inline-block rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-700">
+                        نظامي
+                      </span>
+                    )}
                   </span>
                   <p className="text-gray-800 text-sm">{occurrenceLine(occurrence)}</p>
                   {occurrence.receiptNumber && (
@@ -313,20 +320,24 @@ export function OccurrencesEditor({
                   )}
                 </div>
                 <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => openEdit(occurrence)}
-                    className="text-emerald-800 text-sm font-medium hover:underline min-h-11 px-2"
-                  >
-                    تعديل
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => remove(occurrence)}
-                    className="text-red-600 text-sm font-medium hover:underline min-h-11 px-2"
-                  >
-                    حذف
-                  </button>
+                  {occurrence.source !== 'system' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => openEdit(occurrence)}
+                        className="text-emerald-800 text-sm font-medium hover:underline min-h-11 px-2"
+                      >
+                        تعديل
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => remove(occurrence)}
+                        className="text-red-600 text-sm font-medium hover:underline min-h-11 px-2"
+                      >
+                        حذف
+                      </button>
+                    </>
+                  )}
                 </div>
               </li>
             ))}

@@ -64,4 +64,19 @@ describe('OccurrencesModal', () => {
     await user.click(closeButtons[1]);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it('يوسم الوقعة النظامية بشارة «نظامي» ولا يعرضها للوقعة اليدوية', () => {
+    render(
+      <OccurrencesModal
+        documentTitle="الملف 77"
+        occurrences={[
+          makeOccurrence({ id: 1, source: 'system' }),
+          makeOccurrence({ id: 2, source: 'manual' }),
+        ]}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText('نظامي')).toHaveLength(1);
+  });
 });

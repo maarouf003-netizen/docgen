@@ -101,6 +101,7 @@ public class OccurrenceTests : IDisposable
         var loaded = await _service.GetAsync(doc.Id);
         var occurrence = Assert.Single(loaded!.Occurrences);
         Assert.Equal(OccurrenceTypeCatalog.StruckOff, occurrence.OccurrenceType);
+        Assert.Equal(OccurrenceSourceCatalog.System, occurrence.Source);
         Assert.Equal(loaded.StruckOffDate, occurrence.EventDate);
         Assert.Equal("777", occurrence.FileNumber);
         Assert.Null(occurrence.FileType);
@@ -122,6 +123,7 @@ public class OccurrenceTests : IDisposable
         var loaded = await _service.GetAsync(doc.Id);
         var occurrence = Assert.Single(loaded!.Occurrences);
         Assert.Equal(OccurrenceTypeCatalog.StruckOff, occurrence.OccurrenceType);
+        Assert.Equal(OccurrenceSourceCatalog.System, occurrence.Source);
         Assert.Equal("777", occurrence.FileNumber);
         Assert.Equal("قضية تنفيذ", occurrence.FileType);
     }
@@ -210,6 +212,7 @@ public class OccurrenceTests : IDisposable
         var loaded = await _service.GetAsync(doc.Id);
         var occurrence = Assert.Single(loaded!.Occurrences);
         Assert.Equal(OccurrenceTypeCatalog.StruckOff, occurrence.OccurrenceType);
+        Assert.Equal(OccurrenceSourceCatalog.System, occurrence.Source);
         Assert.Equal("900", occurrence.FileNumber);
         Assert.Equal("قضية تنفيذ", occurrence.FileType);
         Assert.Equal(2026, occurrence.Year);
@@ -235,6 +238,7 @@ public class OccurrenceTests : IDisposable
         Assert.Equal(2, loaded!.Occurrences.Count);
 
         var renewal = loaded.Occurrences.Single(o => o.OccurrenceType == OccurrenceTypeCatalog.Renewal);
+        Assert.Equal(OccurrenceSourceCatalog.System, renewal.Source);
         Assert.Equal("2026/55", renewal.FileNumber);
         Assert.Equal("قضية تنفيذ", renewal.FileType);
         Assert.Equal(2026, renewal.Year);
@@ -242,6 +246,7 @@ public class OccurrenceTests : IDisposable
         Assert.Equal(new DateTime(2026, 9, 5), renewal.EventDate);
 
         var struck = loaded.Occurrences.Single(o => o.OccurrenceType == OccurrenceTypeCatalog.StruckOff);
+        Assert.Equal(OccurrenceSourceCatalog.System, struck.Source);
         Assert.Equal("777", struck.FileNumber);
     }
 
@@ -258,6 +263,8 @@ public class OccurrenceTests : IDisposable
         var loaded = await _service.GetAsync(doc.Id);
         var occurrence = Assert.Single(loaded!.Occurrences);
         Assert.Equal(OccurrenceTypeCatalog.StruckOff, occurrence.OccurrenceType);
+        // وقعة الشطب في مسار التعديل (UpdateAsync) نظامية التوسيم كمسار الحالة المنفذة.
+        Assert.Equal(OccurrenceSourceCatalog.System, occurrence.Source);
         Assert.Equal(new DateTime(2026, 6, 10), occurrence.EventDate);
     }
 
@@ -281,6 +288,8 @@ public class OccurrenceTests : IDisposable
         // مرتبة تصاعديًا زمنيًا.
         var dates = loaded.Occurrences.Select(o => o.EventDate).ToList();
         Assert.Equal(dates.OrderBy(d => d), dates);
+        // كل وقوعات هذا المسار (شطب آلي/تجديد استعادة/شطب آلي ثانٍ) نظامية التوسيم.
+        Assert.All(loaded.Occurrences, o => Assert.Equal(OccurrenceSourceCatalog.System, o.Source));
     }
 
     [Fact]
@@ -292,6 +301,7 @@ public class OccurrenceTests : IDisposable
 
         Assert.True(occurrence.Id > 0);
         Assert.Equal(OccurrenceTypeCatalog.StruckOff, occurrence.OccurrenceType);
+        Assert.Equal(OccurrenceSourceCatalog.Manual, occurrence.Source);
         Assert.Equal(new DateTime(2026, 8, 1), occurrence.EventDate);
         Assert.Equal("777", occurrence.FileNumber);
         Assert.Contains("occurrence", _audit.Actions);
@@ -310,6 +320,8 @@ public class OccurrenceTests : IDisposable
         Assert.Equal(OccurrenceTypeCatalog.Renewal, updated!.OccurrenceType);
         Assert.Equal("2026/55", updated.FileNumber);
         Assert.Equal("45", updated.ReceiptNumber);
+        // التوسيم اليدوي يبقى يدويًا عبر التعديل (لا ينقلب نظاميًا في مسار التعديل).
+        Assert.Equal(OccurrenceSourceCatalog.Manual, updated.Source);
         Assert.Contains("occurrence", _audit.Actions);
     }
 
@@ -492,9 +504,10 @@ public class OccurrenceTests : IDisposable
     }
 
     [Fact]
-    public async Task UpdateOccurrence_EditExistingRenewalOnStruckOffFile_Allowed()
+    public async Task UpdateOccurrence_EditSystemRenewalOnStruckOffFile_Throws()
     {
-        // §4.3: تعديل وقعة تجديد قائمة (نشأت من استعادة نظامية) بينما الملف مشطوب لاحقًا يبقى مسموحًا.
+        // تقسية المرحلة 3: وقعة التجديد النظامية (نشأت من الاستعادة) لا تُعدَّل — حتى على ملف
+        // مشطوب. هذا يلغي السماح الموروث من §4.3 (`UpdateOccurrence_EditExistingRenewalOnStruckOffFile_Allowed`).
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
         await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
         await _service.RestoreStruckOffAsync(doc.Id, new RenewalRequest { RenewalFileNumber = "2026/55" }, "lawyer1");
@@ -502,6 +515,28 @@ public class OccurrenceTests : IDisposable
 
         var loaded = await _service.GetAsync(doc.Id);
         var renewal = loaded!.Occurrences.Single(o => o.OccurrenceType == OccurrenceTypeCatalog.Renewal);
+        Assert.Equal(OccurrenceSourceCatalog.System, renewal.Source);
+
+        var request = RenewalRequest();
+        request.ReceiptNumber = "99";
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.UpdateOccurrenceAsync(doc.Id, renewal.Id, request, "lawyer1"));
+        Assert.Contains("لا يمكن تعديل وقعة نظامية", ex.Message);
+
+        var reloaded = await _service.GetAsync(doc.Id);
+        var kept = reloaded!.Occurrences.Single(o => o.Id == renewal.Id);
+        Assert.NotEqual("99", kept.ReceiptNumber);
+    }
+
+    [Fact]
+    public async Task UpdateOccurrence_EditManualRenewalOnStruckOffFile_Allowed()
+    {
+        // §4.3 يبقى ساريًا على اليدوية: تعديل وقعة تجديد يدوية قائمة (دون تغيير نوعها) بينما
+        // الملف مشطوب لاحقًا مسموح — التقسية تخص النظامية وحدها.
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        var renewal = await _service.AddOccurrenceAsync(doc.Id, RenewalRequest(), 1, "lawyer1");
+        Assert.Equal(OccurrenceSourceCatalog.Manual, renewal.Source);
+        await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
 
         var request = RenewalRequest();
         request.ReceiptNumber = "99";
@@ -509,6 +544,7 @@ public class OccurrenceTests : IDisposable
 
         Assert.NotNull(updated);
         Assert.Equal("99", updated!.ReceiptNumber);
+        Assert.Equal(OccurrenceSourceCatalog.Manual, updated.Source);
     }
 
     [Fact]
@@ -590,5 +626,90 @@ public class OccurrenceTests : IDisposable
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.UpdateAsync(doc.Id, edit, "lawyer1", 1));
         Assert.Contains("كتاب السير بالملف", ex.Message);
+    }
+
+    [Fact]
+    public async Task UpdateOccurrence_EditSystemOccurrence_Throws()
+    {
+        // تقسية المرحلة 3: أي وقعة نظامية (شطب آلي) لا تُعدَّل من الواجهة مع بقائها في القاعدة.
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+
+        var loaded = await _service.GetAsync(doc.Id);
+        var occ = loaded!.Occurrences.Single();
+        Assert.Equal(OccurrenceSourceCatalog.System, occ.Source);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.UpdateOccurrenceAsync(doc.Id, occ.Id, StruckOffRequest(), "lawyer1"));
+        Assert.Contains("لا يمكن تعديل وقعة نظامية", ex.Message);
+
+        var reloaded = await _service.GetAsync(doc.Id);
+        Assert.NotNull(reloaded!.Occurrences.Single(o => o.Id == occ.Id));
+    }
+
+    [Fact]
+    public async Task DeleteOccurrence_DeleteSystemOccurrence_Throws()
+    {
+        // تقسية المرحلة 3: لا يُحذف وقعة نظامية يدويًا وتبقى في القاعدة.
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+
+        var loaded = await _service.GetAsync(doc.Id);
+        var occ = loaded!.Occurrences.Single();
+        Assert.Equal(OccurrenceSourceCatalog.System, occ.Source);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.DeleteOccurrenceAsync(doc.Id, occ.Id, "lawyer1"));
+        Assert.Contains("لا يمكن حذف وقعة نظامية", ex.Message);
+
+        var reloaded = await _service.GetAsync(doc.Id);
+        Assert.NotNull(reloaded!.Occurrences.Single(o => o.Id == occ.Id));
+    }
+
+    [Fact]
+    public async Task DeleteOccurrence_DeletesManualOccurrence_ThatKeepsNothing()
+    {
+        // اليدوية وحدها قابلة للحذف (لا تغيير في توسيم اليدوية أثناء التعديل/الحذف).
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        var occurrence = await _service.AddOccurrenceAsync(doc.Id, StruckOffRequest(), 1, "lawyer1");
+
+        var deleted = await _service.DeleteOccurrenceAsync(doc.Id, occurrence.Id, "lawyer1");
+        Assert.True(deleted);
+
+        var loaded = await _service.GetAsync(doc.Id);
+        Assert.Empty(loaded!.Occurrences);
+    }
+
+    [Fact]
+    public async Task AddOccurrence_EntityChange_Manual_Throws()
+    {
+        // تقسية المرحلة 3: نوع «تغيير جهة» نظامي يُسجَّل آليًا فقط — لا يُنشأ يدويًا.
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        var request = StruckOffRequest();
+        request.OccurrenceType = OccurrenceTypeCatalog.EntityChange;
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.AddOccurrenceAsync(doc.Id, request, 1, "lawyer1"));
+        Assert.Contains("نظامي ولا يُنشأ يدوياً", ex.Message);
+        Assert.Empty(_db.DocumentOccurrences.Where(o => o.DocumentId == doc.Id));
+    }
+
+    [Fact]
+    public async Task UpdateOccurrence_ConvertToEntityChange_Throws()
+    {
+        // تقسية المرحلة 3: تحويل وقعة قائمة إلى «تغيير جهة» (نظامي) من المحرر مرفوض.
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        var occurrence = await _service.AddOccurrenceAsync(doc.Id, StruckOffRequest(), 1, "lawyer1");
+
+        var request = StruckOffRequest();
+        request.OccurrenceType = OccurrenceTypeCatalog.EntityChange;
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.UpdateOccurrenceAsync(doc.Id, occurrence.Id, request, "lawyer1"));
+        Assert.Contains("لا يمكن تحويل وقعة إلى 'تغيير جهة'", ex.Message);
+
+        var loaded = await _service.GetAsync(doc.Id);
+        var kept = loaded!.Occurrences.Single(o => o.Id == occurrence.Id);
+        Assert.Equal(OccurrenceTypeCatalog.StruckOff, kept.OccurrenceType);
     }
 }

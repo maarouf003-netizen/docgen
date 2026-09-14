@@ -522,13 +522,15 @@ public record DocumentOccurrenceDto(
     string? ReceiptNumber,
     DateTime? ReceiptDate,
     IReadOnlyDictionary<string, string>? Details,
-    string? CreatedByName);
+    string? CreatedByName,
+    string? Source = null);
 
 /// <summary>
 /// إضافة/تعديل وقعة ملف يدويًا عبر محرر الوقوعات. التواريخ تُرسَل نصوصًا حرة (مثال: 1/8/2026)
 /// وتُفسَّر وتُخزَّن زمنيًا كباقي تواريخ الملف.
 /// الأنواع الفعلية المدعومة: struck-off, renewal, deferred, settled, forcible, revert
-/// (يُستخدم ل_update وقعة عبر PUT، لا يُستخدم لإنشاء entity-change الآلي).
+/// (يُستخدم لإنشاء وتعديل الوقوعات عبر POST/PUT؛ لا يُستخدم لإنشاء entity-change الآلي —
+/// نوع «تغيير جهة» يُسجَّل آليًا فقط ويُرفض يدويًا، والمصدر يُحسم دائمًا في الخدمة لا في الطلب).
 /// </summary>
 public class UpsertOccurrenceRequest
 {
@@ -950,7 +952,7 @@ public class UpsertOccurrenceRequest
             .Select(o => new DocumentOccurrenceDto(o.Id, o.OccurrenceType,
                 OccurrenceTypeCatalog.ToLabel(o.OccurrenceType), o.EventDate,
                 o.FileNumber, o.FileType, o.Year, o.ReceiptNumber, o.ReceiptDate,
-                ParseOccurrenceDetails(o.Details), o.CreatedBy?.FullName))
+                ParseOccurrenceDetails(o.Details), o.CreatedBy?.FullName, o.Source))
             .ToList(),
     };
 

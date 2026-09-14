@@ -1,3 +1,5 @@
+using DocGenerator.Domain.Enums;
+
 namespace DocGenerator.Domain.Entities;
 
 /// <summary>
@@ -12,6 +14,13 @@ public class DocumentOccurrence
 
     /// <summary>نوع الوقعة: "struck-off" (شطب) أو "renewal" (تجديد).</summary>
     public string OccurrenceType { get; set; } = string.Empty;
+
+    /// <summary>
+    /// مصدر الوقعة: "system" (سجَّلها النظام آليًا أثناء إجراء حقيقي — لا تُعدَّل ولا تُحذف من
+    /// الواجهة) أو "manual" (أدخلها المحرر). يميّز «حدث النظام» عن «إدخال المستخدم»؛ ففي معظم
+    /// الوقوعات الآلية يساوي CreatedById مالك الملف لا الفاعل.
+    /// </summary>
+    public string Source { get; set; } = OccurrenceSourceCatalog.Manual;
 
     /// <summary>تاريخ الوقعة: تاريخ الشطب أو تاريخ التجديد (نص حر يُفسَّر ويُخزَّن زمنيًا).</summary>
     public DateTime? EventDate { get; set; }

@@ -53,16 +53,23 @@ export function OccurrencesModal({
                 className="rounded-lg border border-gray-200 p-4"
               >
                 <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-medium ${
-                      occurrence.occurrenceType === 'renewal'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : occurrence.occurrenceType === 'struck-off'
-                          ? 'bg-red-100 text-red-800'
-                          : 'bg-blue-100 text-blue-800'
-                    }`}
-                  >
-                    {occurrence.occurrenceTypeLabel}
+                  <span className="inline-flex items-center gap-2 flex-wrap">
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-medium ${
+                        occurrence.occurrenceType === 'renewal'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : occurrence.occurrenceType === 'struck-off'
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-blue-100 text-blue-800'
+                      }`}
+                    >
+                      {occurrence.occurrenceTypeLabel}
+                    </span>
+                    {occurrence.source === 'system' && (
+                      <span className="rounded-full px-3 py-1 text-xs font-medium bg-gray-100 text-gray-700">
+                        نظامي
+                      </span>
+                    )}
                   </span>
                   {occurrence.createdByName && (
                     <span className="text-xs text-gray-400">أدخلها: {occurrence.createdByName}</span>

@@ -285,6 +285,77 @@ FileType = FileType الحالي
 
 **8) معايير القبول:** كل بنود §9.1 منفذة ومختبرة؛ صفر عمليات هجرة زائدة؛ صفر كسر عقود؛ التقريران (الإنجاز + الهجرتان وتنبيه السياقين) مكتملان؛ `docs/STRUCK_OFF_AUDIT_QUERY.sql` لا يُمس (يخص §7/المرحلة 5)؛ لا إشعار مستخدمين §11 (قاعدة تجريبية بلا بيانات حقيقية).
 
+### 9.2 — خطة تنفيذ المرحلة 3 التفصيلية (2026-09-14)
+
+> تُقرأ مع بند «المرحلة 3» أعلاه (المثبّت — لا يُعدَّل). هذا التفصيل مبني على جرد كامل لمواضع إنشاء
+> الوقوعات في الكود الحالي (14 موضعًا آليًا + 3 نقاط يدوية)، ومطابق لمنهجية §9.1.
+
+**0) المبادئ والحدود (مثبتة لهذه المرحلة):**
+- الهدف: «تقسية» سجل الوقوعات — الوقعة الآلية حدث حقيقي سُجّل تلقائيًا، لا يجوز للمحرر اليدوي تغييره أو حذفه بصمت.
+- **لا كسر عقود — توسعة إضافية آمنة**: نقاط النهاية الثلاث قائمة (`POST/PUT/DELETE /documents/{id}/occurrences`).
+  التوسعة الوحيدة إضافية: حقل `Source` في آخر وسائط `DocumentOccurrenceDto` بقيمة افتراضية (`string? Source = null`) تُبقي المتصلين القدامى (واختبارات السيناريوهات الحالية) تُصرَّف كما هي.
+- حماية دفاعية بطبقتين: رفض **خدمي** في مساري التعديل/الحذف + إخفاء أدوات التعديل في المحرر.
+- **تغيير سلوكي واعٍ يُوثَّق في التقرير**: السماح الموروث من §4.3 بتعديل وقعة تجديد نظامية قائمة على ملف
+  مشطوب (`OccurrenceTests.cs:494` — `UpdateOccurrence_EditExistingRenewalOnStruckOffFile_Allowed`) يُلغى؛
+  الوقعة النظامية تصبح غير قابلة للتعديل/الحذف. (هذا تعليق مباشر بين §4.3 والمرحلة 3 — يُحسم تحت القرار 2.)
+
+**1) جرد مواضع الإنشاء (المرجع المعتمد — يُوسَم الآلي بالكامل):**
+- **آلي (`system`) — `DocumentService.Status.cs`**: `:160` (شطب/جبري/تسوية/تريث)، `:234` (تراجع عن الحالة)،
+  `:303` (اعتبار «منفذ جبريا» كاملًا)، `:454` (إعادة «عرض وايداع» إلى المتداول)، `:589` (وقعة التجديد في
+  `ApplyRenewalAsync`)، `:616` (`AddStruckOffOccurrenceAsync`).
+- **آلي (`system`) — `DocumentDelegationService.cs:500`**: تفعيل «منفذ جبريا — منفذ جزئيا» تلقائيًا مع الإنابة.
+- **آلي (`system`) — `PublicEntityService.cs`**: `:2174` و`:2568` و`:2690` و`:3024` و`:3323` و`:3611` و`:3782`
+  (وقوعات «تغيير جهة» `entity-change` عند دمج/حل/نقل قيد).
+- **يدوي (`manual`) — `DocumentService.Actions.cs`**: `:135` (إضافة)، `:158` (تعديل)، `:188` (حذف) — المسار
+  الوحيد عبر `OccurrencesEditor`؛ الإضافة اليدوية تُنتج `manual` دائمًا، والتعديل/الحذف على `manual` يُبقيان الوسط كما هو.
+- ملاحظة من الجرد: الوقوعات الآلية تضع `CreatedById = doc.CreatedById` (مالك الملف لا الفاعل) في معظم
+  المواضع، فالمصدر الجديد هو وحده ما يميّز «حدث النظام» عن «إدخال المستخدم» — يوثَّق في تعليق الكيان.
+
+**2) الكيان والكشط (Schema):**
+- `DocumentOccurrence` (`backend/src/DocGenerator.Domain/Entities/DocumentOccurrence.cs`): إضافة
+  `public string Source { get; set; } = OccurrenceSourceCatalog.Manual;`.
+- كتالوج جديد `OccurrenceSourceCatalog` في `backend/src/DocGenerator.Domain/Enums/` (بجوار `OccurrenceTypeCatalog`
+  تطابقًا لاصطلاحه): `System = "system"`، `Manual = "manual"`، `IsSystem(string?)`.
+- `Configurations.cs:653` (`DocumentOccurrenceConfiguration`): `Property(o => o.Source).HasMaxLength(10)
+  .IsRequired().HasDefaultValue("manual")` — بلا فهرس جديد (لا استعلامات تصفية بالمصدر).
+- `Backfill`: داخل الهجرة (يُحسم تحت القرار 1)؛ `Down` = `DropColumn` فقط.
+
+**3) الخدمة — الحماية الدفاعية (حظر مطلق — القرار 2-أ):**
+- `CreateOccurrence` (`Actions.cs:213`): `Source = OccurrenceSourceCatalog.Manual` (يَسْري على `AddOccurrenceAsync`)؛ وإن `request.OccurrenceType == OccurrenceTypeCatalog.EntityChange` → `throw new ArgumentException("نوع الوقعة 'تغيير جهة' نظامي ولا يُنشأ يدوياً")`.
+- `UpdateOccurrenceAsync` (`DocumentService.Actions.cs:158`): بعد جلب الوقعة، إن `OccurrenceSourceCatalog.IsSystem(occurrence.Source)` → `throw new ArgumentException("لا يمكن تعديل وقعة نظامية")`؛ وكذلك إن `request.OccurrenceType == OccurrenceTypeCatalog.EntityChange` → `throw` (لا تحويل يدوي إلى نظامي)؛ ثم حارس `§4.3` القائم (تحويل إلى `renewal` على مشطوب).
+- `DeleteOccurrenceAsync` (`DocumentService.Actions.cs:188`): إن `IsSystem` → `throw new ArgumentException("لا يمكن حذف وقعة نظامية")`.
+- تحويل الـDTO: تمرير `o.Source` في آخر وسيطة في الموضعين — `Actions.cs:341` (ToDto) و`DocumentDtos.cs:950-953` (الموضع الثاني هو إسقاط `DocumentResponse.Occurrences`).
+- `DocumentsController.cs:656-712`: إضافة `try/catch (ArgumentException)` في مسار `DELETE` (`:699`) مطابق لمسار `PUT:677` ليُترجم الرفض إلى `400` برسالة عربية؛ لا تغيير آخر في الفرع الأساسي (حظر مطلق — البديل 2-ب مؤجل إلى سطح مشرف لاحق إن لزم).
+
+**4) الهجرتان (بوابة صارمة):**
+- من `backend/`: `dotnet tool restore` أولًا، ثم
+  `dotnet ef migrations add AddOccurrenceSource --context DocGeneratorDbContext` (مجلد `Migrations`) و
+  `dotnet ef migrations add AddOccurrenceSourcePg --context DocGeneratorPostgresDbContext` (مجلد
+  `MigrationsPostgres` — لاحقة `Pg` مطابقة للاصطلاح).
+- بوابة `Up()`: `AddColumn("Source", "DocumentOccurrences", nullable:false, defaultValue:"manual")` ثم `Sql("UPDATE DocumentOccurrences SET Source = 'system'")` — **فقط**؛ أي عملية إضافية → إيقاف فوري وتحقيق.
+- `Down()`: `DropColumn` فقط (بلا رسائل).
+- قبل الهجرة (للتوثيق): تشغيل استعلام تدقيق `SELECT OccurrenceType, COUNT(*) FROM DocumentOccurrences GROUP BY OccurrenceType` وإرفاق النتيجة بالتقرير كدليل أن التقسية شملت الكل.
+- التطبيق على القاعدة التجريبية: `dotnet ef database update` للسياقين؛ تحديث `RUN_GUIDE.md §9` بسطري الهجرتين في المعلَّق؛ والتقرير النهائي يحمل اسمي الهجرتين وتنبيه تطبيق السياقين (Deploy Reminder — للسجل).
+
+**5) الواجهة:**
+- `frontend/src/types/index.ts`: `DocumentOccurrenceDto` يُضاف `source?: 'system' | 'manual'` (اختياريًا فلا تُكسر تجهيزات الاختبارات القائمة).
+- `frontend/src/components/form/OccurrencesEditor.tsx` + `frontend/src/components/view/OccurrencesModal.tsx`: شارة «نظامي» محايدة (`bg-gray-100 text-gray-700`) بجانب تسمية النوع لكل سجلّ `system`؛ إخفاء زرّي «تعديل/حذف» لها (حظر مطلق).
+- `frontend/src/components/view/viewFormat.ts:311-313`: **مراجعة سطر الشطب المختصر** بعد §4.2 — الفرع قائم ومتحقق؛ المتوقع «تم شطب الملف رقم {n} لعام {y} بتاريخ {d}». لا تعديل إلا عند ثبوت خلل عبر اختبار المتغير الموسّع (شطب ثانٍ بعد تدوير: يعرض الرقم الفعّال).
+- اختبار واجهة: سطر الشطب بالرقم الفعّال (regression)؛ المحرر والنافذة يخفيان أزرار النظامي ويعرضان الشارة.
+
+**6) القرارات المثبتة (النهائية — بانتظار اعتمادك الصريح قبل التنفيذ وتُسجَّل في التقرير):**
+- **القرار 1 — Backfill الصفوف القائمة**: `system` — **معتمد** (قاعدة تجريبية + الهدف تقسية الكل؛ أي `manual`-تاريخي غير قابل للتمييز يُحصّن معها). البديل `manual` الأنعم مرفوض لهذه المرحلة؛ يُعاد النظر فيه فقط بسطح تصحيح أرشيفي إن طُلب لاحقاً.
+- **القرار 2 — الحماية**: (أ) **حظر مطلق** في الخدمة لكل الأدوار — **معتمد** (أبسط وأقوى، والتصحيح اليدوي لنظامية لاحقًا عبر قاعدة بيانات أو سطح مشرف مستقبلي). البديل (ب) صلاحية أعلى `Manager/Admin` **مؤجل** إلى سطح مشرف لاحق ولا يُنفذ في هذه المرحلة. قرار الحظر **يلغي** السماح الموروث في §4.3 بتعديل وقعة تجديد نظامية على ملف مشطوب — يُدوَّن صراحةً في تقرير الإنجاز.
+- **القرار 3 — ظهور الوسم**: شارة «نظامي» **في المحرر والنافذة التفصيلية** (`OccurrencesEditor.tsx` + `OccurrencesModal.tsx`) لكل سجلّ `system` — **معتمد** لشفافية تدقيقية بلا كلفة (لون محايد `bg-gray-100 text-gray-700`).
+
+**7) الاختبارات (لا سلوك بلا اختبار — تُكتب مع التنفيذ):**
+- خلفية (`OccurrenceTests.cs`): كل موضع آلي من الجرد §1 يُنتج `Source == System` (شطب/تجديد/تغيير حالة/تراجع/إعادة ودائع/جبري كامل/إنابة/تغيير جهة)؛ الإضافة اليدوية → `Manual`؛ تعديل/حذف `manual` مسموح ويُبقي المصدر؛ تعديل/حذف `system` مرفوض برسالة صريحة وتبقى الوقعة في القاعدة؛ **إنشاء/تحويل يدوي إلى `entity-change` مرفوض** (`AddOccurrence_EntityChange_Manual_Throws`).
+- تحويل سلوكي: `UpdateOccurrence_EditExistingRenewalOnStruckOffFile_Allowed` → تُستبدل باختبار الرفض (`..._SystemRenewal_Throws`) أو يُعاد بناؤها بمتغير `manual`؛ وأي اختبار يؤلف `DocumentOccurrenceDto` بلا `source` يحتاج التحديث إلى `Manual` صريحًا (لا ينكسر الجمع لوجود القيمة الافتراضية).
+- واجهة (`vitest`): الشارة في المحرر والنافذة + إخفاء أزرار `system` + سطر الشطب الفعّال.
+- حدّيات محفوظة: إضافة يدوية `renewal` على ملف مشطوب (رفض §4.3 قائم لا يُمس)، تعديل `manual` على ملف مشطوب، حذف معرّف وقعة من غيرك (`ReturnsNull`)، إدخالات ما قبل الهجرة بلا `source` (تأخذ الافتراضي عبر الهجرة).
+
+**8) معايير القبول:** كل بنود هذه الخطة منفذة ومختبرة؛ القرارات الثلاثة مُثبتة بموافقتك في التقرير؛ هجرتان فقط باسميهما ومفصّلتان في `RUN_GUIDE.md §9`؛ صفر كسر في نقاط النهاية؛ **جرد §1 مطابق** عبر `rg "new DocumentOccurrence" --glob "*.cs" | rg -v "Source"` (يجب أن يعطي صفراً خارج مواضع الجرد)؛ سطر الشطب المختصر سليم بعد §4.2؛ `docs/STRUCK_OFF_AUDIT_QUERY.sql` لا يُمس؛ نتيجة استعلام التدقيق قبل الهجرة مرفقة بالتقرير.
+
 ### المرحلة 3 — تقسية سجل الوقوعات
 - إضافة عمود `Source` (`system/manual`) لتمييز الوقوعات النظامية عن اليدوية
 - منع تعديل/حذف الوقوعات النظامية من `OccurrencesEditor` أو تقييدها بصلاحية أعلى
@@ -295,6 +366,199 @@ FileType = FileType الحالي
 - طبقة زمنية موحدة (`IClock`/`IDateProvider`) بدل `Today/Now/UtcNow` المبعثرة
 - حقن السنة الحالية من نفس المصدر في الخلفية والواجهة لتجنب اختلاف `getFullYear()` للعميل عن `Today.Year` للخادم
 - معالجة `FILE_YEARS` الثابتة في `documentFormConstants.ts:14` لتكون ديناميكية
+
+### 9.3 — خطة تنفيذ المرحلة 4 التفصيلية (2026-09-14 — القاعدة الحالية تجريبية)
+
+> تُقرأ مع بند «المرحلة 4» أعلاه (المثبّت — لا يُعدَّل). هذا التفصيل مبني على جرد سطرًا بسطر لمصادر الزمن
+> في الخلفية والواجهة، ومطابق لمنهجية §9.1/§9.2. **نُقّحت (2026-09-14) بمراجعة تحليلية شاملة:**
+> ثلاث تصحيحات حاجبة (تسجيل الساعة، حسم المعاملات الثابتة، أفق السنوات) + تلميع نطاق «د3» والواجهة.
+
+**‏0‎) الغاية والهدف (لماذا هذه المرحلة بالضبط):**
+رأس السنة ممنطقة حدّية تتقاطع فيها ثلاثة عيوب متراكمة:
+1. **اختلاف مصدر «السنة الحالية» بين العميل والخادم**: الواجهة ترسل `renewalYear` محسوبًا من ساعة العميل
+   (`new Date().getFullYear()`) بينما يتحقق الخادم منه ضد `DateTime.Today.Year` (ساعته الخاصة) —
+   فعند منتصف الليل عبر السنوات (أو فرق منطقة زمنية/انحراف ساعة) يتعرض الملف المشطوب لرفض تجديد
+   مشروع أو حفظِ سنة خاطئة بصمت.
+2. **مبعثرات زمنية غير موحدة في الخادم نفسه**: `DateTime.Now` (محلي) بجانب `DateTime.UtcNow` و
+   `DateTime.Today` — ثلاثة مصادر مختلفة في رسالة تدقيق نقل الملفات وإحصاءات الفترة، يعني ضمنيًا
+   نطاقات زمنية مختلفة لنفس المنطق.
+3. **`FILE_YEARS` ثابتة مكتوبة يدويًا** (2026..2030): تنتهي صلاحيتها ذاتيًا ولا تعكس السنة الجديدة عند
+   رأس السنة — وسنة الملف في النموذج سنة قيدٍ يدخلها المستخدم فيستحيل أن تكفّ عن النمو أو تتبع اليد.
+
+الهدف: **مصدر وحيد قابل للحقن والاختبار لـ«الآن» في الخادم، والسنة الحالية للواجهة تُؤخذ من الخادم نفسه**
+لا من ساعة العميل — فيُقضى على اختلاف رأس السنة وعلى الإبقاء اليدوي لقائمة السنوات.
+
+‏**1‎) قرارات هذه المرحلة (تُثبَّت بموافقتك في التقرير):**
+- **‏د1 — الأداة**: استخدام **`System.TimeProvider`** (مدمج في .NET، لا طبقة مصطنعة) عبر الحقن في
+  الخدمات، بحيث تُشتق «السنة الحالية» من الساعة عبر تحويل منطقة صريح (انظر د5 — لا `GetLocalNow()` مباشر
+  لأنه يعتمد على بيئة الحاوية) — بلا تغيير لسلوك الإنتاج القائم. الاختبارات تستعمل `FakeTimeProvider` من
+  `Microsoft.Extensions.TimeProvider.Testing` (حزمة اختبارية فقط — تُضاف لمشروع اختبارات التطبيق).
+  البديل `IClock` مرفوض لتجنب تكرار ما يقدمه `TimeProvider` أصلًا.
+  **التسجيل**: في `Program.cs` (أو `AddApplication`) عبر `services.AddSingleton(TimeProvider.System)`
+  — **لا في `AddInfrastructure`**، لأن المستهلكين (الخدمات/المستودعات) في طبقة `Application` التي لا
+  تعتمد على `Infrastructure`، والتسجيل هناك يخل بحدود الطبقات.
+- **‏د2 — المحلل المركزي**: يبقى `EffectiveFileIdentity` ثابتًا **صافيًا على المدخلات**؛ كل موضع قرار
+  سنة يمرر `asOfYear` مستنتجًا من الساعة المحقونة. يُحوَّل `asOfYear` إلى معامل **مطلوب**
+  (`int asOfYear` بلا افتراض) في `Latest/LatestFrom/Number/Year/Pick` — فلا يبقى أي استدعاء مباشر لـ
+  `DateTime.Today` في الخادم، ويفكك البناء عند أي نداء منسي، وكل مواضع الجرد تمرر السنة المحقونة صراحة
+  (المصدر: `TimeZoneInfo.ConvertTime(clock.GetUtcNow(), tz).Year` — د5، لا ساعة النظام الصامتة).
+  **يُحذف استثناء `EffectiveFileIdentity.cs`** من معيار القبول §7: `rg "DateTime\.(Today|Now)" backend/src`
+  يجب أن يساوي `0` **بلا استثناء** — فلا احتياط صامت خارج الساعة المحقونة.
+  **الحسم في `NeedsRotationOf`** (`DocumentDtos.cs:993` — صنف تحويل ثابت لا يُحقن): يُمرَّر `currentYear`
+  كمعامل صريح إلى `FromEntity` / `NeedsRotationOf` إلزاميًا (لا افتراض `Today` داخليًا) من الخدمة الحية
+  التي تملك الساعة — لا تحويل المنطق لخدمة مستقلة لأنه مبالغة في هذه المرحلة.
+- **‏د3 — نطاق جرف `DateTime.UtcNow`**: يُنفَّذ في هذه المرحلة **ضمن مسارات قرار السنة/التدوير/رسالة
+  التدقيق فقط** (المواضع الـ16 في الجرد + نقاط `Status.cs` حيث يسقط الطابع على سنة الشطب، مثل
+  `EventDate = UtcNow` عند وقعة) — يُحوَّل إلى `clock.GetUtcNow()`. **باقي طوابع الإنشاء** العامة
+  (`CreatedAt`/`UpdatedAt` لعموم الكيانات) **تُؤجَّل موثقة** لحزمة نظافة لاحقة: توحيدها يحسّن قابلية
+  الاختبار لكنه يضاعف حجم التغيير وخطر الانحدار بلا فائدة على هدف المرحلة (اختلاف سنة العميل/الخادم).
+  **استثناء موثق وحيد**: دوال التهيئة على خصائص كيانات `Domain` (`User.CreatedAt`…) تبقى افتراضية وقت
+  البناء — لا حقن فيها دون تغيير تصميم الكيان، وقيمة الافتراض مطابقة لمنطق «لحظة الإنشاء».
+  مفاتيح السياق `TokenService`/`DbLoginRateLimiter` تُحوَّل أيضًا لأنها في نطاق «الآن» الموحد.
+- **‏د4 — سنة الواجهة من الخادم**: نقطة نهاية عامة حيادية مصدرُها الساعة المحقونة:
+  `GET /api/meta/current-year` ← `{ "currentYear": 2026 }` (بلا مصادقة — قيمة غير حساسة، لكن تبقى
+  صادرة من الساعة الموحدة للخادم). تستجلبها الواجهة مرة واحدة (كاش/هوك `useCurrentYear()`)؛ **احتياط
+  فشل** موثق واختباري: عند تعذر الجلب تُستعمل `new Date().getFullYear()` — الانحراف الوحيد الباقي
+  مقصور على حالة عدم التمكن من الاتصال، ويوثَّق تحته في التقرير.
+  **يُصرَّح** بـ `[AllowAnonymous]` وتجاوز `EntityManagerPortalGuard` (الـ middleware يعزل مندوب الجهة)،
+  و**لا يتطلب CSRF** (وإلا فشل الجلب قبل المصادقة — `client.ts` يضيف `X-CSRF` تلقائيًا).
+  **الكاش**: على مستوى التطبيق عبر `CurrentYearContext` (يُسلَّم في `Layout.tsx`/`App.tsx` — طلب واحد،
+  حالة تحميل واحدة) بدل كاش وحدة يُطلق 7 طلبات متوازية؛ **يُعطَّل حفظ/إرسال النموذج أثناء التحميل** حتى
+  ينجح الجلب (وإلا يُرسل `renewalYear` منحرفًا فيرفضه الخادم عند `Status.cs:542`).
+  **أفق السنوات**: بدل `yearOptions()` بـ `[current..current+4]` (يحذف السنوات الماضية من قائمة سنة قيد
+  الملف ويكسر تحرير الملفات القديمة)، الأفق **يشمل الماضي**: `[currentYear-5 .. currentYear+4]` مع
+  **إبقاء القيمة المحمَّلة الحالية حتى لو خرجت عن الأفق** (لا تُحذف من `select`).
+- **‏د5 — دلالة السنة**: «السنة الحالية» هي **سنة التاريخ المحلي للخادم** (لا UTC) — مطابقة الدلالة
+  القائمة؛ الفارق الجوهري هو توحيد المصدر وشهادة الزمن وصيرورة الساعة قابلة للحقن والاختبار.
+  **لكن `GetLocalNow()` يعتمد على `TimeZone` الحاوية** (غالبًا UTC في الإنتاج = انحراف ساعتين حول رأس
+  السنة عن دمشق). **تُثبَّت المنطقة صراحة**: `TimeZone:Id` في `appsettings.json` (افتراضي
+  `Asia/Damascus` / `Syria Standard Time`) ويُشتق القرار عبر
+  `TimeZoneInfo.ConvertTime(clock.GetUtcNow(), tz).Year` — حتمي عبر البيئات.
+
+‏**2‎) جرد مصادر الزمن المعنية (خلفية — year-decisions):**
+| الموضع | الاستخدام الحالي | المسار بعد التطبيق |
+|---|---|---|
+| `EffectiveFileIdentity.cs:53` | افتراض `asOfYear` عبر `DateTime.Today.Year` | `asOfYear` معامل مطلوب (د2) — لا افتراض صامت |
+| `DocumentService.Status.cs:167` | رقم فعّال لوقعة شطب `..?? DateTime.Today.Year` | `_clock` محقون |
+| `DocumentService.Status.cs:542/544` | التحقق من سنة إعادة `executedLike` وحسمها | `_clock` محقون |
+| `DocumentService.Status.cs:618` | سنة شطب افتراضية | `_clock` محقون |
+| `DocumentService.Search.cs:137` | `currentYear` قائمة التدوير | `_clock` محقون |
+| `DocumentService.Search.cs:214` | سنة حفظ أرقام الأساس | `_clock` محقون |
+| `DocumentService.cs:413` | `DateTime.Now` (محلي!) في تدقيق نقل الملفات | `clock.GetLocalNow()` — توحيد مع `:418` |
+| `DocumentService.Actions.cs:452` | تاريخ افتراضي لملاحظة | `clock` |
+| `DocumentContextBuilder.cs:65-66` | `current_date` / `current_date_arabic` | `clock` |
+| `DocumentAppealService.cs:473` | سنة تدوير رقم أساس الاستئناف | `_clock` محقون |
+| `DocumentAppealService.cs:994-1006` | أهلية تدوير الاستئناف | `_clock` محقون |
+| `DocumentDtos.cs:995` | `NeedsRotationOf` | `currentYear` معامل صريح من الخدمة الحية (د2) |
+| `DocumentRepository.cs:507` | مؤهلو تدوير الملفات | `TimeProvider` محقون في المستودع |
+| `StatisticsRepository.cs:699` | `DateTime.Now` نافذة الإحصاءات | `clock` محقون |
+| `DocumentsController.cs:149` / `PortalController.cs:75` | اسم ملف إكسل `DateTime.Now:yyyy-MM-dd` | `clock` |
+
+‏**3‎) جرد مصادر الزمن (واجهة — year-decision / انحراف الساعة):**
+| الموضع | الاستخدام الحالي | المسار بعد التطبيق |
+|---|---|---|
+| `documentFormConstants.ts:14` | `FILE_YEARS` ثابتة | تُزال؛ خيارات السنوات مولّدة من `useCurrentYear()` |
+| `DocumentForm.tsx:687` | `renewalYear: new Date().getFullYear()` | سنة الهوك (المصدر الخادم) |
+| `DocumentForm.tsx:908` | قائمة `سنة الملف` من `FILE_YEARS` | خيارات الهوك |
+| `OccurrencesEditor.tsx:11` | `pinnedRenewalYear() = new Date().getFullYear()` | سنة الهوك |
+| `RenewalModal.tsx:72` / `ExecutedStatusModal.tsx:146` | `renewalYear` للعميل | سنة الهوك |
+| `AppealRotationModal.tsx:19` (و`:112/:127`) | `currentYear` الترحيل/التسمية | سنة الهوك |
+| `Rotation.tsx:29` (و`:102/:141/:165`) | سنــة التدوير للعرض | سنة الهوك |
+
+‏**4‎) خطوات التنفيذ المقترحة (بعد الموافقة — تُنفَّذ ضمن مراجعة المسار الكامل):**
+1. **الخلفية**: تسجيل `TimeProvider.System` (Singleton) في `Program.cs` (أو `AddApplication`); حقنه في
+   الخدمات/المستودعات المعنية بالجرد أعلاه؛ استبدال المواضع 16 بقرار سنة من `_clock`؛ تحويل
+   `DateTime.Now/UtcNow` في مسارات السنة/التدقيق وفق «د3»؛ تحويل `asOfYear` في المحلل إلى معامل مطلوب
+   (`EffectiveFileIdentity`) — لا افتراض صامت؛ تثبيت `TimeZone:Id`.
+2. **نقطة النهاية**: `MetaController` (Route `api/meta`) يعرّض `GET current-year`: جلب السنة الحالية من
+   الساعة المحقونة عبر تحويل المنطقة (`TimeZone:Id`) — استجابة مستقرة `{ currentYear }` (أيضًا تفيد
+   مراقبة خطأ أوقات الزحام دون عناء).
+3. **الواجهة**: `hooks/useCurrentYear.ts` (جلب + كاش + احتياط موثق)؛ `yearOptions()` خالص للخيارات؛
+   حذف `FILE_YEARS` وربط مواضع الجرد السبعة بالهوك.
+4. **الاختبارات**: راجع §5 أدناه.
+5. **التحقق الإلزامي الكامل** + تقرير الإنجاز بقرارات «د1..د5» مثبتة بموافقتك.
+
+‏**5‎) الاختبارات الإلزامية (تُضاف مع كل تغيير سلوكي — حدّيات رأس السنة):**
+- **خلفية** — `FakeTimeProvider` ثابت لحظات حدّية:
+  - عند `31/12/2026 23:59` مقابل `01/01/2027 00:01` (بتوقيت الخادم) لمسارين:
+    (أ) أهلية التدوير (`NeedsRotationOf` + `GetRotationCandidatesAsync`)، (ب) سنة إعادة
+    `executedLike` (رفض/حسم في `Status.cs:542-544`) — يقضي على التعارض العرضي للساعة.
+  - وقعة شطب بلا `StruckOffDate` تستنتج سنة شطبها من الساعة؛ ورقم فعّال من ذات المصدر.
+  - تدوير رقم أساس استئناف يسجل سنة الساعة لا ساعة النظام الأساسية.
+  - رسالة تدقيق نقل الملفات تستعمل تاريخًا واحدًا موحدًا (لا مزيج `Now/UtcNow`).
+  - `EffectiveFileIdentityTests`: حالات افتراض `asOfYear` بتقدم/تأخر سياق صريح (صفر اعتماد على `Today`).
+  - تعارض سنّي ما زال مرفوضًا حتى لو مرّت لثانية بعد رأس السنة (عبور `DocumentAppealService:473`).
+  - نافذة الفترة في `StatisticsRepository:699` عند الحدود (بداية/نهاية فترة رأس السنة).
+- **واجهة**:
+  - `useCurrentYear` (نجاح/فشل/احتياط؛ والسنة المولّدة مستخدمة حيث خيارات `FILE_YEARS` سابقًا).
+  - ربط «منفذ عليها»: النموذج يثبّت `renewalYear` من سنة الهوك حتى لو خالفت سنة العميل.
+  - صفارة/تدوير/استئناف: التسميات والترشيح بسنة الهوك (اختبار تجاوب مقاس جوال عبر القوالب القائمة).
+- **تكامل API**: `GET /api/meta/current-year` يعيد السنة الحالية بنجاح (200).
+
+‏**6‎) حدّيات محفوظة وحدود النطاق:**
+- **لا هجرات** في هذه المرحلة (استبدال كود خالص) — تغيير مستودع/عمود صفري؛ Deploy Reminder = نقطة
+  النهاية الجديدة فقط (تُنشر الخلفية والواجهة معًا).
+- لا تغيير في العقود القائمة ولا في دلالة «السنة الحالية = سنة تاريخ الخادم المحلي» (د5) —
+  التغيير في المصدر والشهادة فقط (مع تثبيت المنطقة `TimeZone:Id` بدل الاعتماد على بيئة الحاوية).
+- نطاق «د3» في هذه المرحلة **مقصور على مسارات قرار السنة/التدوير/رسالة التدقيق**؛ طوابع الإنشاء
+  العامة تُؤجَّل موثقة لحزمة نظافة لاحقة (حتى لا يتضخم التغيير ويبقى الهدف محددًا).
+- `FILE_YEARS` ثابتة سابقة: تاريخيًا لا يمس سوى العرض؛ لا «إعادة بناء نصوص». لا إشعار مستخدمين
+  (§11 قائم: القاعدة تجريبية بلا بيانات حقيقية) — لأن العرض يبقى مطابقًا للسنة الحالية الفعلية.
+- استثناء الـ`Domain` (د3) موثق فوقه؛ أي نفاذ خارج الجرد يُحتسب خطأ في مراجعة المسار (معيار §7).
+
+‏**7‎) معايير القبول:**
+- **جرد §2/§3 مطابق**: `rg "DateTime\.(Today|Now)" backend/src --glob "*.cs"` = **0 بلا استثناء**
+  (بعد تحويل افتراض المحلل إلى `asOfYear` مطلوب)، و
+  `rg "DateTime\.UtcNow" backend/src --glob "*.cs"` بلا وقوع خارج كيانات `Domain` ودوالها
+  (كل موضع في الجرد أو مستثنى موثق)، و`rg "getFullYear" frontend/src --glob "*.{ts,tsx}"` = 0 خارج
+  ملف `useCurrentYear.ts` (الاحتياط الموثق) وملفات الاختبارات.
+- الاختبارات الحدّية §5 كلها خضراء (خلفية + واجهة + API).
+- التحقق الإلزامي كاملًا: `dotnet build` ‏0/0‏، `dotnet test` (Application كامل + Api كامل)،
+  `oxlint` ‏0/0‏، `tsc -b`، `vitest` كامل، `npm run build` — كلها خضراء.
+- صفر كسر في نقاط النهاية القائمة؛ نقطة النهاية الجديدة **موثقة في `RUN_GUIDE.md`** حيث تُستقى سنة
+  الواجهة، ومصرَّح عنها `[AllowAnonymous]` واستثناء CSRF.
+- تقرير الإنجاز يثبت قرارات «د1..د5» بموافقتك + جدول الجرد قبل/بعد + نتيجة جرد الاستبدالات
+  (المعيار أعلاه) + حدّية رأس السنة موثقة باختبار.
+
+### 9.4 — إضافات قسم «10) الملفات المتأثرة» للمرحلة 4 (الملفات المعنية بالزمن فقط)
+> قسم «10)» العام في الخطة يشمل ملفات المراحل 1-3؛ قائمة المرحلة 4 أدناه تُكمّله ولا تُغيّره.
+
+**خلفية (المرحلة 4):**
+- `backend/src/DocGenerator.Api/Program.cs` — تسجيل `TimeProvider.System` و`TimeZone:Id`
+- `backend/src/DocGenerator.Api/Controllers/MetaController.cs` — `GET /api/meta/current-year`
+- `backend/src/DocGenerator.Application/DependencyInjection.cs` — تسجيل الساعة في `AddApplication`
+- `backend/src/DocGenerator.Application/Common/EffectiveFileIdentity.cs` — `asOfYear` مطلوب
+- `backend/src/DocGenerator.Application/Services/DocumentService.Status.cs` — مواضع 153/165/167/175/397/462/542/544/618
+- `backend/src/DocGenerator.Application/Services/DocumentService.Search.cs` — 137/214
+- `backend/src/DocGenerator.Application/Services/DocumentService.cs` — 413/418 (رسالة التدقيق)
+- `backend/src/DocGenerator.Application/Services/DocumentService.Actions.cs` — 452
+- `backend/src/DocGenerator.Application/Services/DocumentContextBuilder.cs` — 65-66
+- `backend/src/DocGenerator.Application/Services/DocumentAppealService.cs` — 473/994-1006
+- `backend/src/DocGenerator.Application/Services/DocumentDelegationService.cs` — (راجع 292/489/505: تدوينات التدقيق — تُوحَّد)
+- `backend/src/DocGenerator.Application/DTOs/DocumentDtos.cs` — 993-1006 (`NeedsRotationOf` ← `currentYear` معامل)
+- `backend/src/DocGenerator.Infrastructure/Persistence/DocumentRepository.cs` — 507
+- `backend/src/DocGenerator.Infrastructure/Persistence/StatisticsRepository.cs` — 699
+- `backend/src/DocGenerator.Api/Controllers/DocumentsController.cs` — 149
+- `backend/src/DocGenerator.Api/Controllers/PortalController.cs` — 75
+- `backend/src/DocGenerator.Infrastructure/Security/TokenService.cs` — 41-42
+- `backend/src/DocGenerator.Infrastructure/Security/DbLoginRateLimiter.cs` — 48/55/73
+- `backend/tests/DocGenerator.Application.Tests/ServiceTests.cs` — تحديث مصانع الخدمات (حقن الساعة)
+- `backend/tests/DocGenerator.Application.Tests/EffectiveFileIdentityTests.cs` — حالات `asOfYear` صريح
+- `backend/tests/DocGenerator.Application.Tests/TimeProviderBoundaryTests.cs` — حدّيات رأس السنة (جديد)
+
+**واجهة (المرحلة 4):**
+- `frontend/src/hooks/useCurrentYear.ts` — هوك (جديد)
+- `frontend/src/hooks/useCurrentYear.test.ts` — نجاح/فشل/احتياط
+- `frontend/src/context/CurrentYearContext.tsx` — كاش التطبيق (جديد)
+- `frontend/src/components/Layout.tsx` — تسليم كاش السنة
+- `frontend/src/components/form/documentFormConstants.ts` — حذف `FILE_YEARS`
+- `frontend/src/utils/yearOptions.ts` — أفق `[currentYear-5 .. currentYear+4]` (جديد)
+- `frontend/src/components/form/DocumentForm.tsx` — 687/908
+- `frontend/src/components/form/OccurrencesEditor.tsx` — 11
+- `frontend/src/components/RenewalModal.tsx` — 72
+- `frontend/src/components/ExecutedStatusModal.tsx` — 146
+- `frontend/src/components/appeal/AppealRotationModal.tsx` — 19/112/127
+- `frontend/src/pages/Rotation.tsx` — 29/102/141/165
 
 ### المرحلة 5 — تدقيق قانوني وتصدير
 - تشغيل استعلامات التدقيق على البيانات التاريخية وتصدير الحالات المشتبه بها

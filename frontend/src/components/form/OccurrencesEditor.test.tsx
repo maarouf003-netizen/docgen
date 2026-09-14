@@ -96,4 +96,57 @@ describe('OccurrencesEditor', () => {
       }),
     );
   });
+
+  it('يوسم الوقعة النظامية بشارة «نظامي» ويخفي زرّي التعديل والحذف لها', () => {
+    render(
+      <OccurrencesEditor
+        documentId={7}
+        initial={[
+          // تأكيد اكتمال الحقول الأساسية لرسم الوقعة بلا كسر.
+          {
+            id: 11,
+            occurrenceType: 'struck-off',
+            occurrenceTypeLabel: 'شطب',
+            eventDate: '2026-08-04',
+            fileNumber: '77',
+            fileType: 'حقوق',
+            year: 2026,
+            source: 'system',
+          },
+        ]}
+        isFileStruckOff={false}
+        generalEntitySide="executed"
+        onRenewalRestored={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('نظامي')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'تعديل' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'حذف' })).not.toBeInTheDocument();
+  });
+
+  it('يعرض زرّي التعديل والحذف للوقعة اليدوية بلا شارة «نظامي»', () => {
+    render(
+      <OccurrencesEditor
+        documentId={7}
+        initial={[
+          {
+            id: 12,
+            occurrenceType: 'renewal',
+            occurrenceTypeLabel: 'تجديد',
+            eventDate: '2026-08-04',
+            fileNumber: '2026/55',
+            source: 'manual',
+          },
+        ]}
+        isFileStruckOff={false}
+        generalEntitySide="executed"
+        onRenewalRestored={() => {}}
+      />,
+    );
+
+    expect(screen.queryByText('نظامي')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'تعديل' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'حذف' })).toBeInTheDocument();
+  });
 });

@@ -500,6 +500,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
                 await _occurrences.AddAsync(new DocumentOccurrence
                 {
                     DocumentId = source.Id,
+                    Source = OccurrenceSourceCatalog.System,
                     OccurrenceType = OccurrenceTypeCatalog.Forcible,
                     EventDate = DateTime.UtcNow,
                     Details = SerializeDetails(new Dictionary<string, string>

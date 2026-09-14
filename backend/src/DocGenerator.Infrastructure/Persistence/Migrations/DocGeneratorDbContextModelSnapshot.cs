@@ -1235,6 +1235,13 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("manual");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
 

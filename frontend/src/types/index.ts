@@ -970,8 +970,10 @@ export interface DocumentOccurrenceDto {
   receiptDate?: string;
   /** حقول إجراءات تغيير الحالة (مفاتيح الخدمة: tarith*، baraet*، sayer*، collectedAmount*، execSubStatus، soldAssetIds). */
   details?: Record<string, string>;
-  /** اسم من أدخل الوقعة. */
+/** اسم من أدخل الوقعة. */
   createdByName?: string;
+  /** مصدر الوقعة: "system" (سجّلها النظام آليًا — لا تُعدَّل/تُحذف من الواجهة) أو "manual" (إدخال يدوي). */
+  source?: 'system' | 'manual';
 }
 
 /** إضافة/تعديل وقعة يدويًا (التواريخ نصوص حرة بصيغة «1/8/2026»). */

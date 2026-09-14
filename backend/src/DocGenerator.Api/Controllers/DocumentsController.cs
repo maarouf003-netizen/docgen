@@ -706,9 +706,17 @@ public class DocumentsController : ControllerBase
         if (doc is null) return NotFound();
         if (!CanAccess(doc)) return Forbid();
 
-        return await _documents.DeleteOccurrenceAsync(id, occurrenceId, ActorName, ct)
-            ? NoContent()
-            : NotFound();
+        // تقسية المرحلة 3: رفض حذف وقعة نظامية يُترجم إلى 400 برسالة عربية (كمسار PUT).
+        try
+        {
+            return await _documents.DeleteOccurrenceAsync(id, occurrenceId, ActorName, ct)
+                ? NoContent()
+                : NotFound();
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
     }
 
     public class StatusRequest
