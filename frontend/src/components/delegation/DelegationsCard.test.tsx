@@ -51,6 +51,35 @@ describe('DelegationsCard', () => {
     expect(screen.getByText(/كتاب الإيداع رقم K-1 بتاريخ/)).toBeInTheDocument();
   });
 
+  it('يعرض «الملف المناب» برقمه وسنته الفعّالين عند توافرهما', () => {
+    render(
+      <DelegationsCard
+        delegations={[delegation({ targetFileNumber: '1500', targetFileYear: '2026' })]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    expect(screen.getByText('الملف المناب')).toBeInTheDocument();
+    expect(screen.getByText('1500/2026')).toBeInTheDocument();
+  });
+
+  it('لا يعرض «الملف المناب» عندما لا يكون رقم المناب معروفًا بعد', () => {
+    render(
+      <DelegationsCard
+        delegations={[delegation()]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    expect(screen.queryByText('الملف المناب')).not.toBeInTheDocument();
+  });
+
   it('يعرض «إنابة خارجية» مع اسم الفرع المناب', () => {
     render(
       <DelegationsCard

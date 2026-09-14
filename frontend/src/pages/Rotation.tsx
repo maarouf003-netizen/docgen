@@ -8,7 +8,11 @@ import type { PagedResult, RotationDocumentDto } from '../types';
 
 const fullName = (r: RotationDocumentDto) =>
   r.displayName || tripleName(r.borrowerName, r.borrowerFather, r.borrowerFamily);
-const displayFileNumber = (r: RotationDocumentDto) => fileNumberLabel(r.fileNumber, r.fileType);
+// الرقم الفعّال مرجعًا مع سنته المرافقة — رقم بلا سنة غامض قانونيًا (§4.7).
+const displayFileNumber = (r: RotationDocumentDto) => {
+  const labeled = fileNumberLabel(r.effectiveFileNumber ?? r.fileNumber, r.fileType);
+  return r.effectiveFileYear ? `${labeled} لعام ${r.effectiveFileYear}` : labeled;
+};
 
 const PER_PAGE = 20;
 

@@ -25,6 +25,8 @@ public class DelegationRepository : Repository<DocumentDelegation>, IDelegationR
                 .ThenInclude(s => s!.Heirs)
             .Include(d => d.TargetDocument)
                 .ThenInclude(t => t!.RegistrationDate)
+            .Include(d => d.TargetDocument)
+                .ThenInclude(t => t!.BaseNumbers)
             .Include(d => d.ExternalBranch)
             .Include(d => d.AssignedLawyer)
             .Include(d => d.CreatedBy)
@@ -43,6 +45,7 @@ public class DelegationRepository : Repository<DocumentDelegation>, IDelegationR
             .Include(d => d.AssignedLawyer)
             .Include(d => d.CreatedBy)
             .Include(d => d.TargetDocument)
+                .ThenInclude(t => t!.BaseNumbers)
             .Include(d => d.Assets)
             .ToListAsync(ct);
     }
@@ -61,6 +64,11 @@ public class DelegationRepository : Repository<DocumentDelegation>, IDelegationR
                 .ThenInclude(dl => dl!.CreatedBy)
             .Include(d => d.SourceDelegation)
                 .ThenInclude(dl => dl!.Assets)
+            // المناب نفسه: رقمه الفعّال يُعرض في بطاقته عبر المحلل المركزي —
+            // بدون هذا الجلب يسقط العرض بصمت إلى رقم الملف الأصلي.
+            .Include(d => d.SourceDelegation)
+                .ThenInclude(dl => dl!.TargetDocument)
+                .ThenInclude(t => t!.BaseNumbers)
             .Where(d => d.Id == targetDocumentId && d.SourceDelegation != null)
             .Select(d => d.SourceDelegation!)
             .FirstOrDefaultAsync(ct);

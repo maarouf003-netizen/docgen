@@ -20,7 +20,11 @@ export default function PortalFileDetail() {
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
-    if (!Number.isFinite(documentId)) return;
+    if (!Number.isFinite(documentId)) {
+      setError('معرف الملف غير صالح');
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -73,8 +77,8 @@ export default function PortalFileDetail() {
         <dl className="grid sm:grid-cols-2 gap-y-2 gap-x-6 text-sm">
           <div><dt className="inline text-gray-500">الحالة: </dt><dd className="inline font-medium text-gray-800">{file.execStatus || (file.isDraft ? 'تحت رفع' : 'متداول')}</dd></div>
           <div><dt className="inline text-gray-500">دائرة التنفيذ: </dt><dd className="inline font-medium text-gray-800">{file.court || '—'}</dd></div>
-          <div><dt className="inline text-gray-500">رقم الملف: </dt><dd className="inline font-medium text-gray-800 tabular-nums">{file.fileNumber || '—'}</dd></div>
-          <div><dt className="inline text-gray-500">سنة الملف: </dt><dd className="inline font-medium text-gray-800 tabular-nums">{file.fileYear || '—'}</dd></div>
+          <div><dt className="inline text-gray-500">رقم الملف: </dt><dd className="inline font-medium text-gray-800 tabular-nums">{file.displayFileNumber || file.fileNumber || '—'}</dd></div>
+          <div><dt className="inline text-gray-500">سنة الملف: </dt><dd className="inline font-medium text-gray-800 tabular-nums">{file.displayFileYear || file.fileYear || '—'}</dd></div>
           <div><dt className="inline text-gray-500">المبلغ: </dt><dd className="inline font-medium text-gray-800 tabular-nums">{amountLine}</dd></div>
           <div><dt className="inline text-gray-500">رقم العقد: </dt><dd className="inline font-medium text-gray-800 tabular-nums">{file.contractNumber || '—'}</dd></div>
           <div><dt className="inline text-gray-500">تاريخ العقد: </dt><dd className="inline font-medium text-gray-800">{file.contractDate || '—'}</dd></div>

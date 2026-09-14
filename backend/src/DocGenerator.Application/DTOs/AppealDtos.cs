@@ -163,4 +163,8 @@ public record AppealDto(
     string? AssignedLawyerName,
     DateTime CreatedAt,
     string? CreatedByName,
-    int CreatedById);
+    int CreatedById,
+    /// <summary>رقم الملف الفعّال — يُحسب مع DocumentEffectiveYear من السجل نفسه، فلا يُعرض أحدهما مع سنة/رقم الزوج الآخر.</summary>
+    string? DocumentEffectiveNumber = null,
+    /// <summary>سنة رقم الملف الفعّال المرافقة لـ DocumentEffectiveNumber.</summary>
+    string? DocumentEffectiveYear = null);

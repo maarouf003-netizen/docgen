@@ -398,7 +398,7 @@ export default function DocumentView() {
           </div>
           <div className="inline-flex items-baseline gap-1.5 rounded-lg bg-gray-50 border border-gray-200 px-3 py-1.5">
             <dt className="text-xs text-gray-500 font-medium">السنة</dt>
-            <dd className="text-gray-800 font-semibold tabular-nums">{doc.fileYear || '—'}</dd>
+            <dd className="text-gray-800 font-semibold tabular-nums">{doc.displayFileYear ?? doc.fileYear ?? '—'}</dd>
           </div>
           <div className="inline-flex items-baseline gap-1.5 rounded-lg bg-gray-50 border border-gray-200 px-3 py-1.5">
             <dt className="text-xs text-gray-500 font-medium">الدائرة</dt>

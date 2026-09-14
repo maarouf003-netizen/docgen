@@ -493,6 +493,17 @@ describe('DocumentView', () => {
     expect(screen.queryByText('99 سند مصارف لعام 2026')).not.toBeInTheDocument();
   });
 
+  it('يعرض سنة الرقم الفعّال (displayFileYear) في شريط الهوية والصيغة عندما تختلف عن سنة القيد الأصلية', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { ...mockDoc, fileType: 'سند مصارف', displayFileNumber: '1500', displayFileYear: '2025' },
+    });
+    renderView();
+
+    expect(await screen.findByText('بيانات الملف')).toBeInTheDocument();
+    expect(screen.getByText('1500 سند مصارف لعام 2025')).toBeInTheDocument();
+    expect(screen.getByText('2025')).toBeInTheDocument();
+  });
+
   it('يعرض شريط خطأ محصورًا عند فشل جلب الإنابات مع إعادة محاولة ناجحة', async () => {
     const user = userEvent.setup();
     const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
@@ -1580,7 +1591,9 @@ describe('DocumentView', () => {
 
     const occHeading = await screen.findByText('وقوعات الملف');
     const occCard = occHeading.closest('div') as HTMLElement;
-    expect(within(occCard).getByText(/تم شطب الملف بتاريخ/)).toBeInTheDocument();
+    expect(within(occCard).getByText(/تم شطب الملف.*بتاريخ/)).toBeInTheDocument();
+    // وقعة الشطب تعرض الهوية الفعّالة المخزنة وقت الشطب وسنة الشطب المخزنة.
+    expect(within(occCard).getByText(/تم شطب الملف رقم 99 لعام 2026 بتاريخ/)).toBeInTheDocument();
     expect(within(occCard).getByText(/وجُدِّد الملف برقم 150/)).toBeInTheDocument();
     expect(within(occCard).getByRole('button', { name: 'عرض تفاصيل وقوعات الملف' })).toBeInTheDocument();
 

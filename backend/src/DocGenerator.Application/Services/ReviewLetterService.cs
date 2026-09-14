@@ -507,7 +507,12 @@ public sealed class ReviewLetterService : IReviewLetterService
         if (string.IsNullOrWhiteSpace(name))
             name = doc.DocumentType ?? string.Empty;
 
-        return new ReviewLetterFileContextDto(name, doc.FileNumber, doc.FileType, doc.FileYear, doc.Court);
+        return new ReviewLetterFileContextDto(
+            name,
+            EffectiveFileIdentity.Number(doc),
+            doc.FileType,
+            EffectiveFileIdentity.Year(doc),
+            doc.Court);
     }
 
     private static ReviewLetterDto ToDto(ReviewLetter letter)

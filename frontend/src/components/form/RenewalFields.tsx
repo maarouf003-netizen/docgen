@@ -20,13 +20,18 @@ interface RenewalFieldsProps {
   stacked?: boolean;
   /** بادئة فريدة لمعرّفات الحقول (لتجنّب تعارض id عند تكرّر المكوّن في شاشة واحدة). */
   idPrefix?: string;
+  /** إخفاء حقل «سنة الإعادة» لعائلة «منفذ عليها/عرض وايداع»: سنتها مقررة كسنة اليوم
+   *  الحالية فقط ولا يقبل المستخدم لها سنة مخالفة (سنة الإعادة المتغيرة حقٌّ حصر»
+   *  لنظام «طالبة تنفيذ»). */
+  hideYear?: boolean;
 }
 
 /**
  * حقول تجديد الملف المشطوب عند إعادته إلى المتداول: رقم الملف الجديد إلزامي والبقية اختيارية.
  * تُستعمل في صفحة التعديل (عند مشطوب ← متداول) وفي تأكيد الاستعادة من قائمة المشطوبة.
+ * في عائلة «منفذ عليها/عرض وايداع» يُخفى حقل «سنة الإعادة» (hideYear) لأنها مقررة كسنة اليوم.
  */
-export function RenewalFields({ value, onSet, stacked, idPrefix = '' }: RenewalFieldsProps) {
+export function RenewalFields({ value, onSet, stacked, idPrefix = '', hideYear = false }: RenewalFieldsProps) {
   const id = (key: string) => `${idPrefix}${key}`;
   return (
     <div className="rounded-lg bg-white border border-emerald-200 p-4">
@@ -78,19 +83,21 @@ export function RenewalFields({ value, onSet, stacked, idPrefix = '' }: RenewalF
             className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
-        <div>
-          <label htmlFor={id('renewalYear')} className="block text-xs font-bold text-gray-600 mb-1">
-            سنة الإعادة
-          </label>
-          <input
-            id={id('renewalYear')}
-            value={value.renewalYear != null ? String(value.renewalYear) : ''}
-            onChange={(e) => onSet('renewalYear', e.target.value)}
-            placeholder="مثال: 2026"
-            inputMode="numeric"
-            className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-        </div>
+        {!hideYear && (
+          <div>
+            <label htmlFor={id('renewalYear')} className="block text-xs font-bold text-gray-600 mb-1">
+              سنة الإعادة
+            </label>
+            <input
+              id={id('renewalYear')}
+              value={value.renewalYear != null ? String(value.renewalYear) : ''}
+              onChange={(e) => onSet('renewalYear', e.target.value)}
+              placeholder="مثال: 2026"
+              inputMode="numeric"
+              className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+          </div>
+        )}
         <div>
           <label htmlFor={id('renewalDate')} className="block text-xs font-bold text-gray-600 mb-1">
             تاريخ التجديد

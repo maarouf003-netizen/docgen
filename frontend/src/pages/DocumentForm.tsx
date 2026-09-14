@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { normalizeDocumentResponse } from '../utils/apiNormalization';
@@ -89,6 +89,8 @@ export default function DocumentForm() {
   const [showRequiredAmount, setShowRequiredAmount] = useState(false);
   const [requiredAmountSlots, setRequiredAmountSlots] = useState(1);
   const [wasOriginallyStruckOff, setWasOriginallyStruckOff] = useState(false);
+  const [originalExecutedStatus, setOriginalExecutedStatus] = useState('');
+  const [originalExecStatus, setOriginalExecStatus] = useState('');
   const [occurrences, setOccurrences] = useState<DocumentOccurrenceDto[]>([]);
   const [bankingAmountSlots, setBankingAmountSlots] = useState(1);
   const [ordinaryAmountSlots, setOrdinaryAmountSlots] = useState(1);
@@ -109,8 +111,10 @@ export default function DocumentForm() {
     executedPublicEntities: [],
     executedNaturalPersons: [],
   });
-  useEffect(() => {
-    if (!isEdit) return;
+// تحميل كامل للمستند عند دخول وضع التعديل، ويُعاد بعد إعادة ملف مشطوب من محرر
+  // الوقوعات (استعادة تعيد تكوين حالة المستند والوقوعات معًا).
+  const loadDocument = useCallback(() => {
+    if (id === undefined) return;
     api
       .get<DocumentResponse>(`/documents/${id}`)
       .then((r) => {
@@ -165,10 +169,17 @@ export default function DocumentForm() {
         setApplicantPublicEntities(d.applicantPublicEntities.length ? d.applicantPublicEntities : [{ ...emptyApplicantPublicEntity(), governorate: defaultGovernorateRef.current }]);
         setExecutedNaturalPersons(d.executedNaturalPersons);
         setWasOriginallyStruckOff(d.executedStatus === 'مشطوب');
+        setOriginalExecutedStatus(d.executedStatus ?? '');
+        setOriginalExecStatus(d.execStatus ?? '');
         setOccurrences(d.occurrences);
       })
       .catch((err) => setError(getApiErrorMessage(err)));
-  }, [id, isEdit]);
+  }, [id]);
+
+  useEffect(() => {
+    if (!isEdit) return;
+    loadDocument();
+  }, [id, isEdit, loadDocument]);
 
   const set = (key: keyof DocumentUpsertRequest, value: unknown) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -671,14 +682,18 @@ export default function DocumentForm() {
       });
       const payload: DocumentUpsertRequest = {
         ...form,
+        // سنة الإعادة لعائلة «منفذ عليها/عرض وايداع» مقررة كسنة اليوم الحالية فقط (حقلها مخفي):
+        // تُرسل سنة اليوم صراحةً بدل أي سنةٍ مخزنة مع المستند ليتسق مع رفض الخلفية الدفاعي.
+        ...(isExecutedSubmit ? { renewalYear: new Date().getFullYear() } : {}),
         // تطبيع الأرقام العربية/الفارسية إلى ASCII في حقول التواريخ قبل الإرسال،
         // ليتسق المخزَّن مع ما يُعرض ولتقبله الخلفية في تحليلها (تحافظ على الحقول الأخرى كما هي).
-        borrowerBirth: normalizeArabicDigits(form.borrowerBirth ?? ''),
-        contractDate: normalizeArabicDigits(form.contractDate ?? ''),
-        annexDate: normalizeArabicDigits(form.annexDate ?? ''),
-        fileIncomingDate: normalizeArabicDigits(form.fileIncomingDate ?? ''),
-        fileRegistrationDate: normalizeArabicDigits(form.fileRegistrationDate ?? ''),
-        seizureDate: normalizeArabicDigits(form.seizureDate ?? ''),
+        borrowerBirth: normalizeArabicDigits(form.borrowerBirth ?? '').trim(),
+        contractDate: normalizeArabicDigits(form.contractDate ?? '').trim(),
+        annexDate: normalizeArabicDigits(form.annexDate ?? '').trim(),
+        fileIncomingDate: normalizeArabicDigits(form.fileIncomingDate ?? '').trim(),
+        fileArrivalDate: normalizeArabicDigits(form.fileArrivalDate ?? '').trim(),
+        fileRegistrationDate: normalizeArabicDigits(form.fileRegistrationDate ?? '').trim(),
+        seizureDate: normalizeArabicDigits(form.seizureDate ?? '').trim(),
         // تاريخان من نوع DateTime? في الخلفية: السلسلة الفارغة تُعطّل فك JSON،
         // فلا تُرسل إلا القيمة غير الفارغة (وإلا يُحذف المفتاح فيؤول null على الخادم).
         ...((form.fileReceiptDate ?? '').trim() ? { fileReceiptDate: normalizeArabicDigits(form.fileReceiptDate ?? '').trim() } : {}),
@@ -1026,6 +1041,7 @@ export default function DocumentForm() {
             paidAmountSlots={paidAmountSlots}
             setPaidAmountSlots={setPaidAmountSlots}
             wasOriginallyStruckOff={wasOriginallyStruckOff}
+            currentExecutedStatus={isEdit ? originalExecutedStatus : undefined}
           />
         ) : (
           <ApplicantSideSections
@@ -1068,7 +1084,13 @@ export default function DocumentForm() {
         )}
 
         {isEdit && id !== undefined && (
-          <OccurrencesEditor documentId={Number(id)} initial={occurrences} />
+          <OccurrencesEditor
+            documentId={Number(id)}
+            initial={occurrences}
+            isFileStruckOff={originalExecutedStatus === 'مشطوب' || originalExecStatus === 'مشطوب'}
+            generalEntitySide={form.generalEntitySide}
+            onRenewalRestored={loadDocument}
+          />
         )}
 
         {!isExecuted && (

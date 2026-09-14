@@ -80,7 +80,7 @@ export function FileDataCard({
         >
           <span className="min-w-0">
             <span className="block text-xs text-gray-500">
-              رقم الملف ونوعه لعام {doc.fileYear}
+              رقم الملف ونوعه لعام {doc.displayFileYear ?? doc.fileYear}
             </span>
             <span
               className={`block text-sm truncate ${

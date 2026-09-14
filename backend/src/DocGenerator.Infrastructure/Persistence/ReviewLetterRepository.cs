@@ -16,6 +16,7 @@ public class ReviewLetterRepository : Repository<ReviewLetter>, IReviewLetterRep
         .AsNoTracking()
         .Include(l => l.CreatedBy)
         .Include(l => l.Document)
+        .ThenInclude(d => d!.BaseNumbers)
         .Include(l => l.Branch)
         .Include(l => l.Messages.OrderBy(m => m.Id));
 
@@ -134,6 +135,17 @@ public class ReviewLetterRepository : Repository<ReviewLetter>, IReviewLetterRep
                     FileType = l.Document.FileType,
                     FileYear = l.Document.FileYear,
                     Court = l.Document.Court,
+                    // أرقام الأساس لازمة للمحلل المركزي (EffectiveFileIdentity) في سياق
+                    // كتاب المراجعة — بدونها يتدهور العرض بصمت إلى رقم الملف الأصلي.
+                    BaseNumbers = l.Document.BaseNumbers
+                        .Select(b => new DocumentBaseNumber
+                        {
+                            Id = b.Id,
+                            DocumentId = b.DocumentId,
+                            Year = b.Year,
+                            BaseNumber = b.BaseNumber,
+                            CreatedAt = b.CreatedAt,
+                        }).ToList(),
                 },
                 Messages = l.Messages
                     .OrderBy(m => m.Id)

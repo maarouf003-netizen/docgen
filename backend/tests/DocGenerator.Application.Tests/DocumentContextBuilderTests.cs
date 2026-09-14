@@ -204,8 +204,11 @@ public class DocumentContextBuilderTests : IDisposable
     }
 
     [Fact]
-    public async Task BuildContext_NoCurrentYearBaseNumber_FallsBackToFileNumber()
+    public async Task BuildContext_PreviousYearBaseNumber_IsEffective()
     {
+        // القاعدة الجديدة «الأحدث هو المعتبر»: رقمُ سنةٍ سابقة (أصغر من أو يساوي سنة قيد الملف)
+        // يحل محل رقم الملف — فخلافًا للقاعدة القديمة (سنة الحالية فقط) تُعتبر أرقام السنوات السابقة.
+        var previousYear = DateTime.Today.Year - 1;
         var id = await AddAsync(new Document
         {
             Court = "دمشق",
@@ -217,7 +220,39 @@ public class DocumentContextBuilderTests : IDisposable
         _db.BaseNumbers.Add(new DocumentBaseNumber
         {
             DocumentId = id,
-            Year = DateTime.Today.Year - 1,
+            Year = previousYear,
+            BaseNumber = "900",
+            CreatedById = 1,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        });
+        await _db.SaveChangesAsync();
+
+        var ctx = await _builder.BuildContextAsync(id, "001");
+
+        Assert.Equal("900", ctx["file_number"]);
+        Assert.Equal($"900/{previousYear}", ctx["file_number_full"]);
+        // سنة الرقم المرافقة من السجل نفسه — لا سنة القيد الأصلية «2026».
+        Assert.Equal(previousYear.ToString(), ctx["file_year"]);
+    }
+
+    [Fact]
+    public async Task BuildContext_NoEligibleBaseNumber_FallsBackToFileNumber()
+    {
+        // لا رقم أساس مسموح (رقم مستقبلي أعلى من سنة الفحص فقط): يعود رقم الملف وسنته الأصلية —
+        // ولا يُستعمل رقم مستقبلي قبل حلول سنته.
+        var id = await AddAsync(new Document
+        {
+            Court = "دمشق",
+            BorrowerName = "أحمد",
+            FileNumber = "520",
+            FileYear = "2026",
+            FileType = "حقوق",
+        });
+        _db.BaseNumbers.Add(new DocumentBaseNumber
+        {
+            DocumentId = id,
+            Year = DateTime.Today.Year + 1,
             BaseNumber = "900",
             CreatedById = 1,
             CreatedAt = DateTime.UtcNow,

@@ -155,14 +155,15 @@ public sealed partial class DocumentService
             await _uow.SaveChangesAsync(token);
             // تسجيل وقعة تغيير الحالة بحقولها الكاملة ضمن المعاملة نفسها — سجل زمني مستقل
             // يبقى ظاهرًا في «وقوعات الملف» بعد أي تراجع أو تعديل لاحق للحالة.
-            // وقعة الشطب تحمل رقم الملف المشطوب ونوعه وسنة شطبه كما في مسار «منفذ عليه».
+            // وقعة الشطب تحمل الرقم الفعّال وقت الشطب (آخر رقم أساس ≤ سنة الشطب عبر المحلل
+            // المركزي) ونوعه وسنة شطبه كما في مسار «منفذ عليه».
             await _occurrences.AddAsync(new DocumentOccurrence
             {
                 DocumentId = doc.Id,
                 OccurrenceType = occurrenceType,
                 EventDate = status == ExecutionStatusCatalog.StateStruckOff ? doc.StruckOffDate : DateTime.UtcNow,
                 FileNumber = status == ExecutionStatusCatalog.StateStruckOff
-                    ? string.IsNullOrWhiteSpace(doc.FileNumber) ? null : doc.FileNumber.Trim()
+                    ? EffectiveFileIdentity.Number(doc, doc.StruckOffDate?.Year ?? DateTime.Today.Year)
                     : null,
                 FileType = status == ExecutionStatusCatalog.StateStruckOff
                     ? string.IsNullOrWhiteSpace(doc.FileType) ? null : doc.FileType.Trim()
@@ -346,6 +347,10 @@ public sealed partial class DocumentService
             && current == ExecutedStatusCatalog.Executed
             && status == ExecutedStatusCatalog.StruckOff)
             throw new ArgumentException("«عرض وايداع» المنفذ لا يُشطب؛ يمكن إرجاعه إلى متداول بكتاب الجهة العامة بالسير بالملف");
+        // «مشطوب → منفذ» مباشرة ممنوع في النافذة كما في التحرير: يجب المرور بالتجديد
+        // إلى «متداول» أولًا (المبدأ 5) — وإلا حُفظت حالة «منفذ» بلا تجديد وبلا رقم أساس وبلا وقعة.
+        if (ExecutedStatusCatalog.IsStruckOff(current) && status == ExecutedStatusCatalog.Executed)
+            throw new ArgumentException("لا يمكن نقل ملف مشطوب إلى «منفذ» مباشرة — يجب إعادته أولًا إلى المتداول (تجديد)");
 
         // الإرجاع من «منفذ» إلى «متداول» في «عرض وايداع»: كتاب الجهة العامة بالسير بالملف إلزامي
         // (رقم وتاريخ الكتاب وورودهما)، ويُحفظ مع بقاء المبالغ المودعة، ويُسجَّل وقعة تراجع.
@@ -525,10 +530,13 @@ public sealed partial class DocumentService
             throw new ArgumentException("رقم الملف الجديد يتجاوز الطول المسموح");
 
         // سنة الإعادة: يحددها المستخدم في نظام «طالبة تنفيذ» (إلزامية)، وافتراضية للعام
-        // الحالي في صفة «منفذ عليها» للاتساق مع السلوك القائم.
+        // الحالي في صفة «منفذ عليها» للاتساق مع السلوك القائم — مع رفض دفاعي للسنة المخالفة
+        // بدل تجاهلها بصمت (لا اشتقاق من تاريخ التجديد — سلوك جديد غير مقرر).
         int year;
         if (executedLike)
         {
+            if (renewal?.RenewalYear is { } hiddenYear && hiddenYear != DateTime.Today.Year)
+                throw new ArgumentException("سنة الإعادة لعائلة «منفذ عليها/عرض وايداع» هي سنة اليوم الحالية فقط");
             year = DateTime.Today.Year;
         }
         else
@@ -553,6 +561,10 @@ public sealed partial class DocumentService
         doc.RenewalFileReceiptDate = DocumentValidator.ParseDateTime(renewal?.RenewalFileReceiptDate, "تاريخ ورود اخطار التجديد");
         doc.RenewalDate = DocumentValidator.ParseDateTime(renewal?.RenewalDate, "تاريخ التجديد");
         doc.RenewalFileType = string.IsNullOrEmpty(type) ? doc.FileType : type;
+        // تطابق سنة الإعادة المصرّحة مع سنة تاريخ التجديد عندما يُقدَّمان معًا في نظام
+        // «طالبة تنفيذ» — قبول تاريخٍ بسنة مخالفةٍ للسنة المصرّحة خطأٌ صامت.
+        if (!executedLike && doc.RenewalDate is { } renewalDate && renewalDate.Year != year)
+            throw new ArgumentException("سنة الإعادة لا تطابق سنة تاريخ التجديد");
         // النوع الجديد إن وُجد يُطبَّق على نوع الملف الظاهر.
         if (!string.IsNullOrEmpty(type))
             doc.FileType = type;
@@ -579,6 +591,9 @@ public sealed partial class DocumentService
             _baseNumbers.Update(existing);
         }
 
+        // إلحاق الرقم الجديد لنص البحث القائم (إلحاق لا إعادة بناء) ليُلتقط البحث.
+        doc.SearchText = DocumentSearchTextBuilder.Append(doc.SearchText, number);
+
         // سجل وقعة التجديد في «وقوعات الملف»: الرقم الجديد والنوع وسنة الإعادة
         // وورود اخطار التجديد — ضمن المعاملة نفسها فلا يضيع السجل عند فشل الحفظ.
         await _occurrences.AddAsync(new DocumentOccurrence
@@ -599,20 +614,21 @@ public sealed partial class DocumentService
 
     /// <summary>
     /// تسجيل وقعة الشطب في «وقوعات الملف» عند انتقال ملف «منفذ عليه»/«عرض وايداع»
-    /// إلى الحالة «مشطوب»: تاريخ الشطب المحفوظ في المستند والرقم الأصلي للملف (الرقم
-    /// الذي حُمّل عليه) ونوع الملف وسنة الشطب — ضمن المعاملة نفسها فلا يضيع السجل عند
-    /// فشل الحفظ.
+    /// إلى الحالة «مشطوب»: تاريخ الشطب المحفوظ في المستند والرقم الفعّال وقت الشطب
+    /// (آخر رقم أساس ≤ سنة الشطب — المحلل المركزي — وإلا رقم الملف الأصلي) ونوع الملف
+    /// وسنة الشطب — ضمن المعاملة نفسها فلا يضيع السجل عند فشل الحفظ.
     /// </summary>
     private async Task AddStruckOffOccurrenceAsync(Document doc, int? userId, CancellationToken ct)
     {
-        string? oldNumber = (doc.FileNumber ?? string.Empty).Trim();
+        var struckOffYear = doc.StruckOffDate?.Year ?? DateTime.Today.Year;
+        string? effectiveNumber = EffectiveFileIdentity.Number(doc, struckOffYear) ?? string.Empty;
         string? fileType = (doc.FileType ?? string.Empty).Trim();
         await _occurrences.AddAsync(new DocumentOccurrence
         {
             DocumentId = doc.Id,
             OccurrenceType = OccurrenceTypeCatalog.StruckOff,
             EventDate = doc.StruckOffDate,
-            FileNumber = string.IsNullOrEmpty(oldNumber) ? null : oldNumber,
+            FileNumber = string.IsNullOrEmpty(effectiveNumber) ? null : effectiveNumber.Trim(),
             FileType = string.IsNullOrEmpty(fileType) ? null : fileType,
             Year = doc.StruckOffDate?.Year,
             CreatedById = userId ?? doc.CreatedById,

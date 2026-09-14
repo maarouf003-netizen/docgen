@@ -314,11 +314,18 @@ public sealed partial class DocumentService
             if (!ExecutedStatusCatalog.ValidStatuses.Contains(executedStatus))
                 throw new ArgumentException("حالة وضع (متداول/منفذ/مشطوب) غير صالحة");
 
+            // شطبٌ جديد بتاريخ مصرّح يُحفظ كما هو؛ شطبٌ جديد بتاريـخ فارغ يحمل تاريخ الآن؛
+            // وإعادة شطب (كان مشطوبًا قبل التعديل) بلا تاريخ صريح تُبقي تاريخها السابق —
+            // فلا يُعاد استخدام تاريخ شطب قديمٍ كحدثٍ جديد (يوحّد مع قاعدة Status.cs).
+            var wasStruckOff = ExecutedStatusCatalog.IsStruckOff(doc.ExecutedStatus);
             doc.ExecutedStatus = ExecutedStatusCatalog.IsStored(executedStatus) ? executedStatus : ExecutedStatusCatalog.None;
             if (doc.ExecutedStatus == ExecutedStatusCatalog.StruckOff)
             {
                 var submitted = DocumentValidator.ParseDateTime(r.StruckOffDate, "تاريخ الشطب");
-                doc.StruckOffDate = submitted ?? doc.StruckOffDate ?? DateTime.UtcNow;
+                if (submitted is not null)
+                    doc.StruckOffDate = submitted;
+                else if (!wasStruckOff)
+                    doc.StruckOffDate = DateTime.UtcNow;
             }
             doc.ExecutedDescription = doc.GeneralEntitySide == GeneralEntitySideCatalog.Executed
                 ? (r.ExecutedDescription ?? string.Empty).Trim()

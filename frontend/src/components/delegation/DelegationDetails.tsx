@@ -23,6 +23,7 @@ export function DelegationDetails({ d }: { d: DelegationDto }) {
   ].filter(Boolean);
   const assetsLine = delegationAssetsLine(d);
   const snapshotsAdjusted = d.assets.some((a) => a.snapshotAdjusted);
+  const targetNumber = [d.targetFileNumber, d.targetFileYear].filter(Boolean).join('/');
 
   return (
     <div className="space-y-2 min-w-0">
@@ -38,6 +39,13 @@ export function DelegationDetails({ d }: { d: DelegationDto }) {
           ? `إنابة خارجية — الفرع المناب: ${d.externalBranchName ?? '—'}`
           : 'إنابة داخلية'}
       </p>
+
+      {targetNumber && (
+        <p className="text-sm text-gray-700">
+          <span className="text-gray-500 text-xs block">الملف المناب</span>
+          {targetNumber}
+        </p>
+      )}
 
       {d.delegationDate && (
         <p className="text-sm text-gray-700">

@@ -301,6 +301,84 @@ public class DocumentDelegationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ListForSource_AfterTargetRotation_ReturnsEffectiveTargetFileNumber()
+    {
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+
+        var targetId = dto!.TargetDocumentId!.Value;
+        _db.BaseNumbers.Add(new DocumentBaseNumber
+        {
+            DocumentId = targetId,
+            Year = DateTime.Today.Year,
+            BaseNumber = "1500",
+            CreatedById = _lawyer2.Id,
+        });
+        await _db.SaveChangesAsync();
+
+        var listed = await _service.ListForDocumentAsync(source.Id);
+
+        var assigned = Assert.Single(listed);
+        Assert.Equal("1500", assigned.TargetFileNumber);
+        Assert.Equal(DateTime.Today.Year.ToString(), assigned.TargetFileYear);
+    }
+
+    [Fact]
+    public async Task ListForSource_WithoutTargetRotation_FallsBackToTargetOriginalFileNumber()
+    {
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var target = await _db.Documents.FirstAsync(d => d.Id == dto!.TargetDocumentId!.Value);
+        target.FileNumber = "300";
+        target.FileYear = "2025";
+        await _db.SaveChangesAsync();
+
+        var listed = await _service.ListForDocumentAsync(source.Id);
+
+        var assigned = Assert.Single(listed);
+        Assert.Equal("300", assigned.TargetFileNumber);
+        Assert.Equal("2025", assigned.TargetFileYear);
+    }
+
+    [Fact]
+    public async Task ListForTarget_AfterTargetRotation_ReturnsEffectiveTargetFileNumber()
+    {
+        // مسار المناب (FindByTargetAsync): رقم المناب الفعّال يُعرض في بطاقته —
+        // يتطلب جلب TargetDocument.BaseNumbers وإلا سقط العرض إلى الرقم الأصلي.
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+
+        var targetId = dto!.TargetDocumentId!.Value;
+        var rotatedYear = DateTime.Today.Year - 1;
+        var target = await _db.Documents.FirstAsync(d => d.Id == targetId);
+        target.FileNumber = "300";
+        target.FileYear = "2025";
+        _db.BaseNumbers.Add(new DocumentBaseNumber
+        {
+            DocumentId = targetId,
+            Year = rotatedYear,
+            BaseNumber = "1500",
+            CreatedById = _lawyer2.Id,
+        });
+        await _db.SaveChangesAsync();
+
+        var listed = await _service.ListForDocumentAsync(targetId);
+
+        var assigned = Assert.Single(listed);
+        Assert.Equal("1500", assigned.TargetFileNumber);
+        Assert.Equal(rotatedYear.ToString(), assigned.TargetFileYear);
+    }
+
+    [Fact]
     public async Task Assign_CopiesAllSourcePartiesAndBooksToTarget()
     {
         var source = await CreateSourceAsync();
@@ -903,5 +981,58 @@ public class DocumentDelegationServiceTests : IDisposable
         // الملف المناب النشط لا يرى إنابة مصدرها محذوف (بطاقة «تشعبات الملف» فارغة دون انهيار).
         var delegations = await _service.ListForDocumentAsync(targetId);
         Assert.Empty(delegations);
+    }
+
+    [Fact]
+    public async Task Create_SourceWithOlderBaseNumber_SourceFileNumberShowsEffectiveNotOriginal()
+    {
+        var source = await CreateSourceAsync();
+        source.FileNumber = "520";
+        _db.Documents.Update(source);
+        _db.BaseNumbers.Add(new DocumentBaseNumber
+        {
+            DocumentId = source.Id,
+            Year = 2024,
+            BaseNumber = "520",
+            CreatedById = _lawyer1.Id,
+        });
+        _db.BaseNumbers.Add(new DocumentBaseNumber
+        {
+            DocumentId = source.Id,
+            Year = DateTime.Today.Year,
+            BaseNumber = "1500",
+            CreatedById = _lawyer1.Id,
+        });
+        await _db.SaveChangesAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+
+        var dto = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+
+        Assert.Equal("1500", dto.SourceFileNumber);
+        Assert.Equal(DateTime.Today.Year.ToString(), dto.SourceFileYear);
+    }
+
+    [Fact]
+    public async Task ListForSource_SourceRotatedAfterDelegation_SourceFileNumberUpdates()
+    {
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+
+        var listed1 = await _service.ListForDocumentAsync(source.Id);
+        Assert.Equal("520", Assert.Single(listed1).SourceFileNumber);
+
+        _db.BaseNumbers.Add(new DocumentBaseNumber
+        {
+            DocumentId = source.Id,
+            Year = DateTime.Today.Year,
+            BaseNumber = "1500",
+            CreatedById = _lawyer1.Id,
+        });
+        await _db.SaveChangesAsync();
+
+        var listed2 = await _service.ListForDocumentAsync(source.Id);
+        Assert.Equal("1500", Assert.Single(listed2).SourceFileNumber);
+        Assert.Equal(DateTime.Today.Year.ToString(), Assert.Single(listed2).SourceFileYear);
     }
 }

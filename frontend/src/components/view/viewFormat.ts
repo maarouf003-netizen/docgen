@@ -51,7 +51,7 @@ export function formatFileNumber(doc: DocumentResponse): string {
   const number = doc.displayFileNumber ?? doc.fileNumber ?? '';
   const parts = [number];
   if (doc.fileType) parts.push(doc.fileType);
-  if (doc.fileYear) parts.push(`لعام ${doc.fileYear}`);
+  if (doc.displayFileYear ?? doc.fileYear) parts.push(`لعام ${doc.displayFileYear ?? doc.fileYear}`);
   return parts.filter(Boolean).join(' ');
 }
 
@@ -218,7 +218,7 @@ export function applicantNaturalRows(a: {
 
 /** عنوان ملف عائلة وضع «منفذ عليه»: أول منفذ عليه (طبيعي/جهة)، ثم طالب التنفيذ/العرض، ثم الصفة. */
 export function executedTitle(doc: DocumentResponse): string {
-  const person = doc.executedNaturalPersons[0];
+  const person = doc.executedNaturalPersons?.[0];
   const personName = person ? fullName(person) : '';
   const entity = doc.executedPublicEntities[0]?.entityName ?? '';
   const applicantName = doc.executionApplicants[0] ? fullName(doc.executionApplicants[0]) : '';
@@ -309,7 +309,14 @@ export function occurrenceLine(occurrence: DocumentOccurrenceDto): string {
     return parts.join(' ');
   }
   if (occurrence.occurrenceType === 'struck-off') {
-    return `تم شطب الملف بتاريخ ${formatDate(occurrence.eventDate)}`;
+    const parts = ['تم شطب الملف'];
+    // الرقم المخزون هو هوية الملف الفعّالة وقت الشطب (المحلل المركزي): آخر رقم أساس ≤ سنة
+    // الشطب وإلا رقم الملف الأصلي — فيظهر بعد الإصلاح، وفي سنة الشطب لا السنة الأصلية.
+    const struckNumber = occurrence.fileNumber?.trim();
+    if (struckNumber) parts.push(`رقم ${struckNumber}`);
+    if (occurrence.year) parts.push(`لعام ${occurrence.year}`);
+    if (occurrence.eventDate) parts.push(`بتاريخ ${formatDate(occurrence.eventDate)}`);
+    return parts.join(' ');
   }
 
   // وقوعات تغيير الحالة (نظام «طالبة تنفيذ»): سرد مختصر بحقولها المسجّلة.

@@ -873,7 +873,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
                 TargetType: "head",
                 DocumentId: source.Id,
                 TargetLawyerId: null,
-                Message: $"وقع استئناف بملف {DocumentTitle(source)} رقم {source.FileNumber ?? "—"} نوع {source.FileType ?? "—"} دائرة تنفيذ {source.Court ?? "—"}، يرجى اختيار محامي لمتابعة الاستئناف",
+                Message: $"وقع استئناف بملف {DocumentTitle(source)} رقم {EffectiveFileIdentity.Number(source) ?? "—"} نوع {source.FileType ?? "—"} دائرة تنفيذ {source.Court ?? "—"}، يرجى اختيار محامي لمتابعة الاستئناف",
                 AppealId: appealId),
                 userId, source.BranchId.Value, actorName, ct);
         }
@@ -997,14 +997,18 @@ public sealed class DocumentAppealService : IDocumentAppealService
     {
         var d = a.Document;
         var currentYear = DateTime.Today.Year;
-        var currentRow = a.BaseNumbers.FirstOrDefault(b => b.Year == currentYear)?.BaseNumber;
+        var currentRow = EffectiveFileIdentity.LatestFrom(a.BaseNumbers)?.BaseNumber;
         var latestRecorded = a.BaseNumbers.Count > 0
             ? a.BaseNumbers.Max(b => b.Year)
             : int.TryParse(a.AppealYear, out var year) ? year : 0;
+        // الأهلية للتدوير: وجود سجل من سنة سابقة ولا يوجد سجل لسنة اليوم.
+        // (لا يُستخدم «الصف الفعّال» currentRow هنا: فهو غير فارغ عند أي تاريخ سابق
+        // فيجعل الشرط ميتًا — الصحيح فحص صف السنة الحالية صراحةً كما في الملفات.)
+        var hasCurrentYearRow = a.BaseNumbers.Any(b => b.Year == currentYear);
         var needsRotation = a.Status == AppealStatusCatalog.Pending
             && latestRecorded > 0
             && latestRecorded < currentYear
-            && currentRow is null;
+            && !hasCurrentYearRow;
 
         return new AppealDto(
             a.Id,
@@ -1050,7 +1054,9 @@ public sealed class DocumentAppealService : IDocumentAppealService
             a.AssignedLawyer?.FullName,
             a.CreatedAt,
             a.CreatedBy?.FullName,
-            a.CreatedById);
+            a.CreatedById,
+            EffectiveFileIdentity.Number(d),
+            EffectiveFileIdentity.Year(d));
     }
 
     /// <summary>خيار طرف داخل لقطات الاستئناف (بناء داخلي قبل التسلسل).</summary>

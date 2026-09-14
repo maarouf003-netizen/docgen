@@ -480,7 +480,9 @@ public record RotationDocumentDto(
     string? FileNumber,
     string? FileType,
     string? BaseNumber,
-    string? DisplayName);
+    string? DisplayName,
+    string? EffectiveFileNumber = null,
+    string? EffectiveFileYear = null);
 
 /// <summary>
 /// رقم أساس مُدخل لملف واحد في سنة التدوير الحالية. القيمة الفارغة تعني
@@ -522,8 +524,10 @@ public record DocumentOccurrenceDto(
     string? CreatedByName);
 
 /// <summary>
-/// إضافة/تعديل وقعة «منفذ عليه» يدويًا. التواريخ تُرسَل نصوصًا حرة (مثال: 1/8/2026)
-/// وتُفسَّر وتُخزَّن زمنيًا كباقي تواريخ وضع «منفذ عليه» (نفس صيغ RenewalRequest).
+/// إضافة/تعديل وقعة ملف يدويًا عبر محرر الوقوعات. التواريخ تُرسَل نصوصًا حرة (مثال: 1/8/2026)
+/// وتُفسَّر وتُخزَّن زمنيًا كباقي تواريخ الملف.
+/// الأنواع الفعلية المدعومة: struck-off, renewal, deferred, settled, forcible, revert
+/// (يُستخدم ل_update وقعة عبر PUT، لا يُستخدم لإنشاء entity-change الآلي).
 /// </summary>
 public class UpsertOccurrenceRequest
 {
@@ -621,10 +625,12 @@ public class UpsertOccurrenceRequest
     public DateTime? ReferredAt { get; set; }
     public string? FileNumber { get; set; }
     /// <summary>
-    /// الرقم الظاهر للمستخدم: رقم أساس السنة الحالية إن وُجد، وإلا رقم الملف الأصلي.
+    /// الرقم الظاهر للمستخدم: آخر رقم أساس ≤ سنة اليوم (إن وُجد)، وإلا رقم الملف الأصلي.
     /// (رقم الملف الأصلي يبقى في FileNumber للتحرير والسجل التاريخي.)
     /// </summary>
     public string? DisplayFileNumber { get; set; }
+    /// <summary>سنة الرقم الفعّال المرافقة لـ DisplayFileNumber — يُحسبان معًا من السجل نفسه، فلا يُعرض أحدهما مع سنة/رقم الزوج الآخر.</summary>
+    public string? DisplayFileYear { get; set; }
     public string? FileType { get; set; }
     public string? FileYear { get; set; }
     public string? FileIncoming { get; set; }
@@ -808,7 +814,8 @@ public class UpsertOccurrenceRequest
         ReferredFromLawyer = d.ReferredFromLawyer,
         ReferredAt = d.ReferredAt,
         FileNumber = d.FileNumber,
-        DisplayFileNumber = CurrentBaseNumberOf(d) ?? d.FileNumber,
+        DisplayFileNumber = EffectiveFileIdentity.Number(d),
+        DisplayFileYear = EffectiveFileIdentity.Year(d),
         FileType = d.FileType,
         FileYear = d.FileYear,
         FileIncoming = d.FileIncoming,
@@ -972,15 +979,6 @@ public class UpsertOccurrenceRequest
         {
             return null;
         }
-    }
-
-    /// <summary>
-    /// رقم أساس السنة الحالية (سنة التدوير) إن وُجد للملف — وإلا null.
-    /// </summary>
-    private static string? CurrentBaseNumberOf(Document d)
-    {
-        var currentYear = DateTime.Today.Year;
-        return d.BaseNumbers.FirstOrDefault(b => b.Year == currentYear)?.BaseNumber;
     }
 
     /// <summary>

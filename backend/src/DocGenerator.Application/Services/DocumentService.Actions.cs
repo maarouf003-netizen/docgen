@@ -138,6 +138,12 @@ public sealed partial class DocumentService
         if (doc is null)
             throw new KeyNotFoundException();
 
+        // حارس التجديد اليدوي (§4.3): لا يُنشأ وقعة تجديد لملف مشطوب — التجديد لإعادة
+        // الملف المشطوب إلى متداول تمرّ عبر نقطة الاستعادة (restore-struck-off) حصرًا
+        // (sجل الوقوعات لا يغيّر الحالة بصمت).
+        if (OccurrenceTypeCatalog.IsRenewal(request.OccurrenceType) && IsCurrentlyStruckOff(doc))
+            throw new ArgumentException("لا يمكن إنشاء وقعة تجديد يدوية لملف مشطوب — التجديد يتم بإعادة الملف إلى المتداول");
+
         var occurrence = CreateOccurrence(documentId, request, userId);
         await _tx.RunAsync(async token =>
         {
@@ -158,6 +164,13 @@ public sealed partial class DocumentService
         var doc = await _documents.GetByIdAsync(documentId, ct);
         if (doc is null)
             return null;
+
+        // حارس التّحويل (§4.3): تحويل وقعة قائمة إلى «تجديد» بينما الملف مشطوب ممنوع —
+        // عدا تعديل وقعة تجديد قائمة (نظامية كانت من الاستعادة أو تاريخية) دون تغيير نوعها.
+        if (IsCurrentlyStruckOff(doc)
+            && OccurrenceTypeCatalog.IsRenewal(request.OccurrenceType)
+            && !OccurrenceTypeCatalog.IsRenewal(occurrence.OccurrenceType))
+            throw new ArgumentException("لا يمكن تحويل وقعة إلى تجديد بينما الملف مشطوب — التجديد يتم بإعادة الملف إلى المتداول");
 
         ApplyOccurrence(occurrence, request);
         occurrence.UpdatedAt = DateTime.UtcNow;
@@ -276,6 +289,9 @@ public sealed partial class DocumentService
         occurrence.OccurrenceType = type;
         occurrence.EventDate = DocumentValidator.ParseDateTime(request.EventDate,
             type == OccurrenceTypeCatalog.Renewal ? "تاريخ التجديد" : "تاريخ الشطب");
+        // تطابق سنة التجديد المصرّحة مع سنة تاريخه عند تقديمهما معًا (لا قبولٌ صامت لمخالفة).
+        if (OccurrenceTypeCatalog.IsRenewal(type) && request.Year is { } occYear && occurrence.EventDate is { } occDate && occDate.Year != occYear)
+            throw new ArgumentException("سنة التجديد لا تطابق سنة تاريخ التجديد");
         occurrence.FileNumber = string.IsNullOrEmpty(number) ? null : number;
         occurrence.FileType = string.IsNullOrEmpty(fileType) ? null : fileType;
         occurrence.Year = request.Year;
@@ -307,6 +323,11 @@ public sealed partial class DocumentService
 
     private static string ToOccurrenceLabel(DocumentOccurrence occurrence) =>
         OccurrenceTypeCatalog.ToLabel(occurrence.OccurrenceType);
+
+    /// <summary>هل الملف مشطوب حاليًا؟ (وضع «منفذ عليه» أو حالة نظام «طالبة تنفيذ»).</summary>
+    private static bool IsCurrentlyStruckOff(Document doc) =>
+        doc.ExecutedStatus == ExecutedStatusCatalog.StruckOff
+        || doc.ExecStatus == ExecutionStatusCatalog.StateStruckOff;
 
     /// <summary>
     /// ملخص مختصر للوقعة في سجل التدقيق: تاريخ الشطب/التجديد والرقم المعني بها.

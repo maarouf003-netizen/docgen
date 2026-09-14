@@ -113,6 +113,20 @@ describe('StruckOffDocuments', () => {
     expect(url).toContain('page=1');
   });
 
+  it('يفتح نافذة مستقلة للإعادة تعرض اسم الملف ورقمه وحقول التجديد', async () => {
+    mockPage([makeStruckOffDocument({ id: 7 })]);
+
+    render(<StruckOffDocuments />);
+    const table = await screen.findByRole('table');
+
+    await userEvent.setup().click(within(table).getByRole('button', { name: 'إعادة الملف' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'إعادة الملف إلى المتداول' });
+    expect(within(dialog).getByText('محمود علي حسن')).toBeInTheDocument();
+    expect(within(dialog).getByText('رقم الملف: 99 حقوق')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/رقم الملف الجديد/)).toBeInTheDocument();
+  });
+
   it('يعيد الملف إلى المتداول بعد التأكيد ويعرض رسالة النجاح ويعيد تحميل القائمة', async () => {
     const user = userEvent.setup();
     mockPage([makeStruckOffDocument({ id: 7 })]);
@@ -122,8 +136,9 @@ describe('StruckOffDocuments', () => {
     const table = await screen.findByRole('table');
 
     await user.click(within(table).getByRole('button', { name: 'إعادة الملف' }));
-    await user.type(screen.getByLabelText(/رقم الملف الجديد/), '100');
-    await user.click(within(table).getByRole('button', { name: 'تأكيد الإعادة' }));
+    const dialog = screen.getByRole('dialog');
+    await user.type(within(dialog).getByLabelText(/رقم الملف الجديد/), '100');
+    await user.click(within(dialog).getByRole('button', { name: 'تأكيد الإعادة' }));
 
     expect(api.post).toHaveBeenCalledWith('/documents/7/restore-struck-off', expect.objectContaining({ renewalFileNumber: '100' }));
     expect(await screen.findByText(/أعيد الملف "محمود علي حسن" إلى المتداول/)).toBeInTheDocument();
@@ -141,9 +156,10 @@ describe('StruckOffDocuments', () => {
     const table = await screen.findByRole('table');
 
     await user.click(within(table).getByRole('button', { name: 'إعادة الملف' }));
-    await user.click(within(table).getByRole('button', { name: 'تأكيد الإعادة' }));
+    const dialog = screen.getByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'تأكيد الإعادة' }));
 
-    expect(screen.getByText('رقم الملف الجديد مطلوب عند إعادة الملف المشطوب')).toBeInTheDocument();
+    expect(within(dialog).getByText('رقم الملف الجديد مطلوب عند إعادة الملف المشطوب')).toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
   });
 
@@ -156,12 +172,13 @@ describe('StruckOffDocuments', () => {
     const table = await screen.findByRole('table');
 
     await user.click(within(table).getByRole('button', { name: 'إعادة الملف' }));
-    await user.type(screen.getByLabelText(/رقم الملف الجديد/), '100');
-    await user.type(screen.getByLabelText(/رقم ورود اخطار التجديد/), 'A-5');
-    await user.type(screen.getByLabelText(/تاريخ ورود اخطار التجديد/), '1/8/2026');
-    await user.type(screen.getByLabelText(/نوع الملف الجديد/), 'حقوقي');
-    await user.type(screen.getByLabelText(/تاريخ التجديد/), '1/8/2026');
-    await user.click(within(table).getByRole('button', { name: 'تأكيد الإعادة' }));
+    const dialog = screen.getByRole('dialog');
+    await user.type(within(dialog).getByLabelText(/رقم الملف الجديد/), '100');
+    await user.type(within(dialog).getByLabelText(/رقم ورود اخطار التجديد/), 'A-5');
+    await user.type(within(dialog).getByLabelText(/تاريخ ورود اخطار التجديد/), '1/8/2026');
+    await user.type(within(dialog).getByLabelText(/نوع الملف الجديد/), 'حقوقي');
+    await user.type(within(dialog).getByLabelText(/تاريخ التجديد/), '1/8/2026');
+    await user.click(within(dialog).getByRole('button', { name: 'تأكيد الإعادة' }));
 
     expect(api.post).toHaveBeenCalledWith('/documents/7/restore-struck-off', {
       renewalFileReceiptNumber: 'A-5',
@@ -169,10 +186,12 @@ describe('StruckOffDocuments', () => {
       renewalFileNumber: '100',
       renewalFileType: 'حقوقي',
       renewalDate: '1/8/2026',
+      // سنة الإعادة لعائلة «منفذ عليها» مقررة كسنة اليوم الحالية (حقلها مخفي).
+      renewalYear: new Date().getFullYear(),
     });
   });
 
-  it('يعرض حقول التجديد على الجوال عند تأكيد الإعادة ويرسل رقم الملف الجديد', async () => {
+  it('يعرض حقول التجديد على الجوال عند فتح النافذة ويرسل رقم الملف الجديد', async () => {
     isMobileMock.mockReturnValue(true);
     const user = userEvent.setup();
     mockPage([makeStruckOffDocument({ id: 7 })]);
@@ -182,16 +201,17 @@ describe('StruckOffDocuments', () => {
     expect(await screen.findByText('محمود علي حسن')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'إعادة الملف' }));
-    expect(screen.getByLabelText(/رقم الملف الجديد/)).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByLabelText(/رقم الملف الجديد/)).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText(/رقم الملف الجديد/), '100');
-    await user.click(screen.getByRole('button', { name: 'تأكيد الإعادة' }));
+    await user.type(within(dialog).getByLabelText(/رقم الملف الجديد/), '100');
+    await user.click(within(dialog).getByRole('button', { name: 'تأكيد الإعادة' }));
 
     expect(api.post).toHaveBeenCalledWith('/documents/7/restore-struck-off', expect.objectContaining({ renewalFileNumber: '100' }));
     expect(await screen.findByText(/أعيد الملف "محمود علي حسن" إلى المتداول/)).toBeInTheDocument();
   });
 
-  it('يلغي التأكيد دون إرسال طلب الإعادة', async () => {
+  it('يلغي الإعادة دون إرسال طلب ويغلق النافذة', async () => {
     const user = userEvent.setup();
     mockPage([makeStruckOffDocument({ id: 7 })]);
 
@@ -199,9 +219,11 @@ describe('StruckOffDocuments', () => {
     const table = await screen.findByRole('table');
 
     await user.click(within(table).getByRole('button', { name: 'إعادة الملف' }));
-    await user.click(within(table).getByRole('button', { name: 'إلغاء' }));
+    const dialog = screen.getByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'إلغاء' }));
 
     expect(api.post).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(within(table).getByRole('button', { name: 'إعادة الملف' })).toBeInTheDocument();
   });
 
@@ -217,10 +239,11 @@ describe('StruckOffDocuments', () => {
     const table = await screen.findByRole('table');
 
     await user.click(within(table).getByRole('button', { name: 'إعادة الملف' }));
-    await user.type(screen.getByLabelText(/رقم الملف الجديد/), '100');
-    await user.click(within(table).getByRole('button', { name: 'تأكيد الإعادة' }));
+    const dialog = screen.getByRole('dialog');
+    await user.type(within(dialog).getByLabelText(/رقم الملف الجديد/), '100');
+    await user.click(within(dialog).getByRole('button', { name: 'تأكيد الإعادة' }));
 
-    expect(await screen.findByText('حدث خطأ في الخادم. حاول مرة أخرى لاحقاً')).toBeInTheDocument();
+    expect(await within(dialog).findByText('حدث خطأ في الخادم. حاول مرة أخرى لاحقاً')).toBeInTheDocument();
   });
 
   it('يعرض «لا توجد ملفات مشطوبة» عند قائمة فارغة', async () => {

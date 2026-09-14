@@ -59,3 +59,13 @@ export function getDocumentStatus(doc: StatusSource): DocumentStatus {
 export function getDocumentBadge(doc: StatusSource) {
   return STATUS_BADGES[getDocumentStatus(doc)];
 }
+
+/** الحالات المتاحة من «حالة منفذ عليه/عرض وايداع» الحالية (كخيارات نموذج/نافذة التعديل، بلا الحالة
+ * الحالية نفسها). «منفذ عليها»: حالة «منفذ» نهائية لا تُغيَّر. «عرض وايداع»: من منفذه يُعاد إلى
+ * متداول فقط (لا يُشطب)، بكتاب الجهة العامة بالسير بالملف. «مشطوب» يُعاد إلى متداول (تجديد) فقط —
+ * لا انتقال مباشر إلى «منفذ» (يجب المرور بالتجديد أولًا). */
+export function targetsOf(current: string, isDeposit: boolean): string[] {
+  if (current === EXEC_STATUS_STRUCK_OFF) return ['متداول'];
+  if (current === 'منفذ') return isDeposit ? ['متداول'] : [];
+  return ['منفذ', EXEC_STATUS_STRUCK_OFF];
+}

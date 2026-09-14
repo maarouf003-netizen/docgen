@@ -145,7 +145,9 @@ public sealed partial class DocumentService
                 d.FileNumber,
                 d.FileType,
                 d.BaseNumbers.FirstOrDefault(b => b.Year == currentYear)?.BaseNumber,
-                RotationDisplayName(d)))
+                RotationDisplayName(d),
+                EffectiveFileIdentity.Number(d),
+                EffectiveFileIdentity.Year(d)))
             .ToList();
 
         return new PagedResult<RotationDocumentDto>
@@ -290,6 +292,9 @@ public sealed partial class DocumentService
                         AuditWithActor($"حدّث رقم أساس {year}: {normalized}", doc)));
                     _baseNumbers.Update(record);
                 }
+
+                // إلحاق رقم الأساس الجديد لنص البحث القائم (إلحاق لا إعادة بناء) ليُلتقط البحث.
+                doc.SearchText = DocumentSearchTextBuilder.Append(doc.SearchText, normalized);
             }
 
             // حفظ ذرّي واحد لكل تغييرات الأرقام ثم دفعة تدقيق واحدة — بدل حفظٍ لكل ملف

@@ -141,7 +141,7 @@ describe('ArchivedDocumentsList', () => {
     expect(screen.getByText('سطر: دمشق')).toBeInTheDocument();
   });
 
-  it('يعرض حقول التجديد عند تأكيد الإعادة حين requiresRenewal ويرسل رقم الملف الجديد', async () => {
+  it('يعرض حقول التجديد في نافذة مستقلة عند requiresRenewal ويمنع الإرسال دون رقم الملف الجديد', async () => {
     const user = userEvent.setup();
     mockPage([makeDocument({ id: 3, borrowerName: 'أحمد' })]);
     (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });
@@ -151,14 +151,15 @@ describe('ArchivedDocumentsList', () => {
 
     await user.click(within(table).getByRole('button', { name: 'استعادة' }));
 
-    expect(screen.getByLabelText(/رقم الملف الجديد/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/تاريخ التجديد/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/رقم الملف الجديد/)).toHaveAttribute('id', 'restore-renewalFileNumber');
+    const dialog = screen.getByRole('dialog', { name: 'إعادة الملف إلى المتداول' });
+    expect(within(dialog).getByLabelText(/رقم الملف الجديد/)).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/تاريخ التجديد/)).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/رقم الملف الجديد/)).toHaveAttribute('id', 'renewal-renewalFileNumber');
 
-    await user.click(within(table).getByRole('button', { name: 'تأكيد' }));
+    await user.click(within(dialog).getByRole('button', { name: 'تأكيد' }));
 
     expect(api.post).not.toHaveBeenCalled();
-    expect(screen.getByText('رقم الملف الجديد مطلوب عند إعادة الملف المشطوب')).toBeInTheDocument();
+    expect(within(dialog).getByText('رقم الملف الجديد مطلوب عند إعادة الملف المشطوب')).toBeInTheDocument();
   });
 
   it('يتطلب سنة الإعادة عند إعادة ملف «طالبة تنفيذ» المشطوب', async () => {
@@ -170,11 +171,12 @@ describe('ArchivedDocumentsList', () => {
     const table = await screen.findByRole('table');
 
     await user.click(within(table).getByRole('button', { name: 'استعادة' }));
-    await user.type(screen.getByLabelText(/رقم الملف الجديد/), '999');
-    await user.click(within(table).getByRole('button', { name: 'تأكيد' }));
+    const dialog = screen.getByRole('dialog', { name: 'إعادة الملف إلى المتداول' });
+    await user.type(within(dialog).getByLabelText(/رقم الملف الجديد/), '999');
+    await user.click(within(dialog).getByRole('button', { name: 'تأكيد' }));
 
     expect(api.post).not.toHaveBeenCalled();
-    expect(screen.getByText('سنة الإعادة مطلوبة عند إعادة ملف «طالبة تنفيذ» المشطوب')).toBeInTheDocument();
+    expect(within(dialog).getByText('سنة الإعادة مطلوبة عند إعادة ملف «طالبة تنفيذ» المشطوب')).toBeInTheDocument();
   });
 
   it('يرسل رقم وسنة الإعادة عند إكمال إعادة ملف طالبة تنفيذ', async () => {
@@ -186,9 +188,10 @@ describe('ArchivedDocumentsList', () => {
     const table = await screen.findByRole('table');
 
     await user.click(within(table).getByRole('button', { name: 'استعادة' }));
-    await user.type(screen.getByLabelText(/رقم الملف الجديد/), '999');
-    await user.type(screen.getByLabelText(/سنة الإعادة/), '2024');
-    await user.click(within(table).getByRole('button', { name: 'تأكيد' }));
+    const dialog = screen.getByRole('dialog', { name: 'إعادة الملف إلى المتداول' });
+    await user.type(within(dialog).getByLabelText(/رقم الملف الجديد/), '999');
+    await user.type(within(dialog).getByLabelText(/سنة الإعادة/), '2024');
+    await user.click(within(dialog).getByRole('button', { name: 'تأكيد' }));
 
     expect(api.post).toHaveBeenCalledWith('/documents/3/restore', {
       renewalFileReceiptNumber: null,

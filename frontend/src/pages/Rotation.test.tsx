@@ -103,6 +103,31 @@ describe('Rotation', () => {
     expect(screen.getByText(/نوعه: حقوق/)).toBeInTheDocument();
   });
 
+  it('يعرض الرقم الفعّال (effectiveFileNumber) بدل رقم الملف الأصلي عند وجوده', async () => {
+    (api.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: page([
+        row({ fileNumber: '99', effectiveFileNumber: '1500', fileType: 'حقوق' }),
+      ]),
+    });
+    render(<Rotation />);
+
+    const table = await screen.findByRole('table');
+    expect(within(table).getByText('1500 حقوق')).toBeInTheDocument();
+    expect(within(table).queryByText('99 حقوق')).not.toBeInTheDocument();
+  });
+
+  it('يعرض سنة الرقم الفعّال (effectiveFileYear) مرجعًا بجانب الرقم', async () => {
+    (api.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: page([
+        row({ fileNumber: '99', effectiveFileNumber: '1500', effectiveFileYear: '2025', fileType: 'حقوق' }),
+      ]),
+    });
+    render(<Rotation />);
+
+    const table = await screen.findByRole('table');
+    expect(within(table).getByText('1500 حقوق لعام 2025')).toBeInTheDocument();
+  });
+
   it('يعرض displayName باسم العرض لملفات العائلتين Executed + Deposit', async () => {
     (api.get as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: page([

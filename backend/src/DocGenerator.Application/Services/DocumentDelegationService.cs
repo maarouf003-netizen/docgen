@@ -877,7 +877,9 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         d.CreatedBy?.FullName,
         d.Assets.Select(a => new DelegationAssetDto(a.Id, a.AssetKind, a.AssetLabel, a.SalePrice, a.SnapshotAdjusted)).ToList(),
         d.CreatedById,
-        d.SaleCoversFullDebt);
+        d.SaleCoversFullDebt,
+        TargetFileNumber(d.TargetDocument),
+        TargetFileYear(d.TargetDocument));
 
     private static string SourceLabel(Document source)
     {
@@ -891,22 +893,17 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
     private static string PendingApprovalMessage(Document source, string court)
         => $"بانتظار اعتماد الإنابة — سطّر المحامي {source.CreatedBy?.FullName} إنابة على الملف ({SourceLabel(source)}) إلى دائرة {court}";
 
-    /// <summary>
-    /// رقم أساس الملف المنيب الحالي كما يظهر في صفحته: رقم أساس سنة التدوير الحالية إن وُجد
-    /// (سجل DocumentBaseNumber) وإلا رقم ملفه الأصلي — نفس قاعدة DisplayFileNumber للملف المنيب.
-    /// </summary>
-    private static string? SourceFileNumber(Document source)
-    {
-        var currentYear = DateTime.Today.Year;
-        var baseNumber = source.BaseNumbers.FirstOrDefault(b => b.Year == currentYear)?.BaseNumber;
-        return string.IsNullOrWhiteSpace(baseNumber) ? Normalize(source.FileNumber) : baseNumber.Trim();
-    }
+    /// <summary>رقم المنيب المعروض وفق المحلل المركزي: آخر رقم أساس ≤ سنة اليوم، وإلا رقم ملفه الأصلي.</summary>
+    private static string? SourceFileNumber(Document source) => Normalize(EffectiveFileIdentity.Number(source));
 
-    /// <summary>سنة رقم الأساس المعروض للمنيب: سنة التدوير إن وُجدت وإلا سنة رقم ملفه الأصلي.</summary>
-    private static string? SourceFileYear(Document source)
-    {
-        var currentYear = DateTime.Today.Year;
-        var baseYear = source.BaseNumbers.FirstOrDefault(b => b.Year == currentYear)?.Year;
-        return baseYear?.ToString() ?? Normalize(source.FileYear);
-    }
+    /// <summary>سنة الرقم الفعّال المعروض للمنيب وفق المحلل المركزي.</summary>
+    private static string? SourceFileYear(Document source) => Normalize(EffectiveFileIdentity.Year(source));
+
+    /// <summary>رقم المناب المعروض في «تشعبات الملف»: آخر رقم أساس ≤ سنته عبر المحلل المركزي، وإلا رقم ملفه الأصلي.</summary>
+    private static string? TargetFileNumber(Document? target) =>
+        target is null ? null : Normalize(EffectiveFileIdentity.Number(target));
+
+    /// <summary>سنة الرقم الفعّال المعروض للمناب وفق المحلل المركزي.</summary>
+    private static string? TargetFileYear(Document? target) =>
+        target is null ? null : Normalize(EffectiveFileIdentity.Year(target));
 }

@@ -14,7 +14,6 @@ import {
   ADDRESS_TYPE_OPTIONS,
   ENTITY_NATURE_OPTIONS,
   EXECUTED_HEIR_ADDRESS_TYPE_OPTIONS,
-  EXECUTED_STATUS_OPTIONS,
   PARTY_NATURE_OPTIONS,
   REPRESENTATION_TYPES,
   addressLabelOf,
@@ -25,6 +24,7 @@ import {
   requiredAmountKeys,
   requiredCurrencyKeys,
 } from './documentFormConstants';
+import { targetsOf } from '../../utils/documentStatus';
 import { ExecutedHeirsEditor } from './HeirsEditors';
 import { RepresentativeEditor } from './RepresentativeEditor';
 import { FormSectionTitle } from './FormSectionTitle';
@@ -76,6 +76,9 @@ export interface ExecutedSideSectionsProps {
   setPaidAmountSlots: (n: number) => void;
   /** هل كان الملف مشطوبًا قبل التعديل؟ (يكشف انتقال مشطوب ← متداول يُظهر حقول التجديد). */
   wasOriginallyStruckOff?: boolean;
+  /** حالة وضع الملف قبل التعديل (لترشيح خيارات «الحالة» بمنطق نافذة تغيير الحالة نفسها —
+   * تُقفل الحالات الممنوعة ولا تُعرض كخيارات قابلة للاختيار). */
+  currentExecutedStatus?: string;
 }
 
 /** أقسام عائلة وضع «منفذ عليه» في نموذج الملف (الجهة العامة منفذ عليها / عرض وايداع). */
@@ -117,11 +120,20 @@ export function ExecutedSideSections({
   paidAmountSlots,
   setPaidAmountSlots,
   wasOriginallyStruckOff,
+  currentExecutedStatus,
 }: ExecutedSideSectionsProps) {
   const { field } = makeFieldHelpers(form, set);
   const isDeposit = side === 'deposit';
   const applicantLabel = isDeposit ? 'طالب العرض' : 'طالب التنفيذ';
   const applicantButtonLabel = isDeposit ? 'طالب عرض' : 'طالب التنفيذ';
+
+  // خيارات «الحالة» في نموذج التعديل تُرشَّح بمنطق نافذة تغيير الحالة (§4.6): الحالة الحالية
+  // تبقى قابلة للإبقاء عليها، ولا تُعرض الحالات المحظورة. الإرجاع المباشر من «منفذ» في
+  // «عرض وايداع» يبقى خاصًا بالنافذة (كتاب السير بالملف) فيُستثنى خيار «متداول» من النموذج.
+  const statusCurrent = currentExecutedStatus || 'متداول';
+  const statusTargets = targetsOf(statusCurrent, isDeposit)
+    .filter((t) => !(statusCurrent === 'منفذ' && isDeposit && t === 'متداول'));
+  const statusOptions = [statusCurrent, ...statusTargets];
 
   return (
     <>
@@ -286,7 +298,7 @@ export function ExecutedSideSections({
                   <div className={aHasRep ? 'md:col-span-3' : undefined}>
                     <label className="block text-xs font-bold text-gray-600 mb-1">نوع التمثيل</label>
                     <div className="flex items-center gap-2">
-                      <select value={a.representationType ?? 'أصالة'} onChange={(e) => onApplicantSet(i, 'representationType', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none">
+                      <select value={a.representationType ?? 'أصالة'} onChange={(e) => onApplicantSet(i, 'representationType', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
                         {REPRESENTATION_TYPES.map((o) => (
                           <option key={o}>{o}</option>
                         ))}
@@ -519,7 +531,7 @@ export function ExecutedSideSections({
             <div className="grid md:grid-cols-3 gap-3 mt-3">
               <div>
                 <label className="block text-xs font-bold text-gray-600 mb-1">نوع العنوان</label>
-                <select value={p.addressType ?? 'عنوان'} onChange={(e) => onPersonSet(i, 'addressType', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none">
+                <select value={p.addressType ?? 'عنوان'} onChange={(e) => onPersonSet(i, 'addressType', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
                   {EXECUTED_HEIR_ADDRESS_TYPE_OPTIONS.map((o) => (
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
@@ -534,7 +546,7 @@ export function ExecutedSideSections({
               <div>
                 <label className="block text-xs font-bold text-gray-600 mb-1">نوع التمثيل</label>
                 <div className="flex items-center gap-2">
-                  <select value={p.representationType ?? 'أصالة'} onChange={(e) => onPersonSet(i, 'representationType', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none">
+                  <select value={p.representationType ?? 'أصالة'} onChange={(e) => onPersonSet(i, 'representationType', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
                     {REPRESENTATION_TYPES.map((o) => (
                       <option key={o}>{o}</option>
                     ))}
@@ -597,9 +609,9 @@ export function ExecutedSideSections({
               onChange={(e) => set('executedStatus', e.target.value)}
               className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
-              {EXECUTED_STATUS_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
+              {statusOptions.map((s) => (
+                <option key={s} value={s === 'متداول' ? '' : s}>
+                  {s}
                 </option>
               ))}
             </select>
@@ -660,7 +672,7 @@ export function ExecutedSideSections({
         )}
         {wasOriginallyStruckOff && !(form.executedStatus ?? '') && (
           <div className="mt-4">
-            <RenewalFields value={form} onSet={(key, value) => set(key, value)} />
+            <RenewalFields value={form} onSet={(key, value) => set(key, value)} hideYear />
           </div>
         )}
       </div>

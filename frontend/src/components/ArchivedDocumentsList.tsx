@@ -3,10 +3,9 @@ import { Link } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { useIsMobile } from '../hooks/useMediaQuery';
-import { applicantName, displayFileNumber, isExecutedLike } from '../utils/documentDisplay';
-import { RenewalFields, type RenewalFieldsValue } from './form/RenewalFields';
-import { trimNull } from '../utils/serialization';
+import { applicantName, displayFileNumber } from '../utils/documentDisplay';
 import type { DocumentResponse, PagedResult } from '../types';
+import RenewalModal from './RenewalModal';
 
 /** إعدادات القائمة الأرشيفية (محذوفة/مشطوبة)؛ كل اختلاف بين الصفحتين يمر عبر هذه الخيارات. */
 export interface ArchivedDocumentsListConfig {
@@ -55,20 +54,17 @@ export default function ArchivedDocumentsList({ config }: { config: ArchivedDocu
   const [message, setMessage] = useState('');
   const [confirmId, setConfirmId] = useState<number | null>(null);
   const [restoringId, setRestoringId] = useState<number | null>(null);
-  const [renewal, setRenewal] = useState<RenewalFieldsValue>({});
-  const [renewalError, setRenewalError] = useState('');
+  const [renewalDoc, setRenewalDoc] = useState<DocumentResponse | null>(null);
   const [actionError, setActionError] = useState('');
 
-  const onRenewalSet = (key: keyof RenewalFieldsValue, value: string) => {
-    setRenewal((r) => ({ ...r, [key]: key === 'renewalYear' ? (value.trim() ? Number(value.trim()) : undefined) : value }));
-    if (key === 'renewalFileNumber' || key === 'renewalYear') setRenewalError('');
-  };
-
   const beginRestore = (d: DocumentResponse) => {
-    setRenewal({});
-    setRenewalError('');
     setActionError('');
     setConfirmId(d.id);
+  };
+
+  const beginRenew = (d: DocumentResponse) => {
+    setActionError('');
+    setRenewalDoc(d);
   };
 
   const listQuery = useCancellableRequest<PagedResult<DocumentResponse>>(
@@ -85,35 +81,12 @@ export default function ArchivedDocumentsList({ config }: { config: ArchivedDocu
   const data = listQuery.data;
   const loading = listQuery.isLoading;
 
-
   const handleRestore = async (d: DocumentResponse) => {
     if (!config.canRestore || !config.restoreEndpoint) return;
-    if (config.requiresRenewal) {
-      if (!(renewal.renewalFileNumber ?? '').trim()) {
-        setRenewalError('رقم الملف الجديد مطلوب عند إعادة الملف المشطوب');
-        return;
-      }
-      // نظام «طالبة تنفيذ»: سنة الإعادة إلزامية أيضًا عند إعادة الملف المشطوب.
-      if (!isExecutedLike(d.generalEntitySide) && renewal.renewalYear == null) {
-        setRenewalError('سنة الإعادة مطلوبة عند إعادة ملف «طالبة تنفيذ» المشطوب');
-        return;
-      }
-    }
     setRestoringId(d.id);
     setActionError('');
     try {
-      if (config.requiresRenewal) {
-        await api.post(config.restoreEndpoint(d.id), {
-          renewalFileReceiptNumber: trimNull(renewal.renewalFileReceiptNumber),
-          renewalFileReceiptDate: trimNull(renewal.renewalFileReceiptDate),
-          renewalFileNumber: trimNull(renewal.renewalFileNumber),
-          renewalFileType: trimNull(renewal.renewalFileType),
-          renewalYear: renewal.renewalYear ?? undefined,
-          renewalDate: trimNull(renewal.renewalDate),
-        });
-      } else {
-        await api.post(config.restoreEndpoint(d.id));
-      }
+      await api.post(config.restoreEndpoint(d.id));
       setMessage(config.successMessage?.(config.displayName(d) || String(d.id)) ?? '');
       setConfirmId(null);
       listQuery.refetch();
@@ -124,33 +97,38 @@ export default function ArchivedDocumentsList({ config }: { config: ArchivedDocu
     }
   };
 
+  const handleRenewed = (d: DocumentResponse) => {
+    setMessage(config.successMessage?.(config.displayName(d) || String(d.id)) ?? '');
+    listQuery.refetch();
+  };
+
   const restoreButton = (d: DocumentResponse) =>
-    confirmId === d.id ? (
-      <div className="flex flex-col gap-3">
-        {config.requiresRenewal && (
-          <div className="w-full">
-            <RenewalFields value={renewal} onSet={onRenewalSet} stacked idPrefix="restore-" />
-            {renewalError && <p className="text-sm text-red-600 mt-2">{renewalError}</p>}
-          </div>
-        )}
-        <div className="flex gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => handleRestore(d)}
-            disabled={restoringId === d.id}
-            className="bg-emerald-800 hover:bg-emerald-700 text-white rounded-lg px-3 py-1.5 text-sm font-medium min-h-11"
-          >
-            {restoringId === d.id ? config.restoringLabel : config.confirmRestoreLabel}
-          </button>
-          <button
-            type="button"
-            onClick={() => setConfirmId(null)}
-            disabled={restoringId === d.id}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-700 min-h-11"
-          >
-            إلغاء
-          </button>
-        </div>
+    config.requiresRenewal ? (
+      <button
+        type="button"
+        onClick={() => beginRenew(d)}
+        className="border border-emerald-700 text-emerald-800 hover:bg-emerald-50 rounded-lg px-3 py-1.5 text-sm font-medium min-h-11"
+      >
+        {config.restoreButtonLabel}
+      </button>
+    ) : confirmId === d.id ? (
+      <div className="flex gap-2 flex-wrap">
+        <button
+          type="button"
+          onClick={() => handleRestore(d)}
+          disabled={restoringId === d.id}
+          className="bg-emerald-800 hover:bg-emerald-700 text-white rounded-lg px-3 py-1.5 text-sm font-medium min-h-11"
+        >
+          {restoringId === d.id ? config.restoringLabel : config.confirmRestoreLabel}
+        </button>
+        <button
+          type="button"
+          onClick={() => setConfirmId(null)}
+          disabled={restoringId === d.id}
+          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-700 min-h-11"
+        >
+          إلغاء
+        </button>
       </div>
     ) : (
       <button
@@ -302,6 +280,18 @@ export default function ArchivedDocumentsList({ config }: { config: ArchivedDocu
             </div>
           </div>
         </>
+      )}
+
+      {renewalDoc && config.requiresRenewal && config.restoreEndpoint && (
+        <RenewalModal
+          doc={renewalDoc}
+          name={config.displayName(renewalDoc) || `مستند ${renewalDoc.id}`}
+          endpoint={config.restoreEndpoint(renewalDoc.id)}
+          confirmLabel={config.confirmRestoreLabel ?? 'تأكيد الإعادة'}
+          busyLabel={config.restoringLabel ?? 'جارِ الإعادة...'}
+          onClose={() => setRenewalDoc(null)}
+          onChanged={() => handleRenewed(renewalDoc)}
+        />
       )}
     </div>
   );

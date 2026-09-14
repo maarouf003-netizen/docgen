@@ -1,4 +1,5 @@
 using System.Text;
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -65,18 +66,17 @@ public class DocumentContextBuilder : IDocumentContextBuilder
         context["current_date_arabic"] = ToArabicIndicDigits(DateTime.Today.ToString("dd/MM/yyyy"));
         context["currency"] = doc.Currency ?? "ليرة سورية";
         context["contract_type_selector"] = contractTypeSelector;
-        // الرقم الظاهر في المستندات: رقم أساس السنة الحالية إن وُجد، وإلا رقم الملف الأصلي
-        // (القرار: رقم الأساس للسنة الحالية يحل محل رقم الملف في المستندات المولدة).
-        var effectiveFileNumber = doc.BaseNumbers
-            .Where(b => b.Year == DateTime.Today.Year)
-            .Select(b => b.BaseNumber)
-            .FirstOrDefault() ?? doc.FileNumber ?? string.Empty;
+        // الرقم الظاهر في المستندات: آخر رقم أساس ≤ سنة اليوم (إن وُجد)، وإلا رقم الملف الأصلي.
+        // سنة الرقم المرافقة له من السجل نفسه — لا سنة القيد الأصلية: القوالب تعرض
+        // (file_number + file_year) معًا فيجب أن ينتميا للسجل نفسه (المبدأ 3).
+        var effectiveFileNumber = EffectiveFileIdentity.Number(doc) ?? string.Empty;
+        var effectiveFileYear = EffectiveFileIdentity.Year(doc) ?? string.Empty;
         context["file_number"] = effectiveFileNumber;
         context["file_type"] = doc.FileType ?? string.Empty;
-        context["file_year"] = doc.FileYear ?? string.Empty;
-        context["file_number_full"] = string.IsNullOrWhiteSpace(doc.FileYear)
+        context["file_year"] = effectiveFileYear;
+        context["file_number_full"] = string.IsNullOrWhiteSpace(effectiveFileYear)
             ? effectiveFileNumber
-            : $"{effectiveFileNumber}/{doc.FileYear}";
+            : $"{effectiveFileNumber}/{effectiveFileYear}";
         context["immediate_actions"] = doc.ImmediateActions ?? string.Empty;
         context["immediate_actions_prefix"] = string.IsNullOrWhiteSpace(doc.ImmediateActions)
             ? string.Empty
@@ -295,7 +295,7 @@ public class DocumentContextBuilder : IDocumentContextBuilder
             {
                 var filePrefix = string.Join(' ', new[]
                 {
-                    (doc.FileNumber ?? string.Empty).Trim(),
+                    effectiveFileNumber,
                     (doc.FileType ?? string.Empty).Trim()
                 }.Where(p => p.Length > 0));
                 context["seizure_date"] = $"{filePrefix}\nتاريخ القرار: {seizureDate}";
@@ -304,7 +304,7 @@ public class DocumentContextBuilder : IDocumentContextBuilder
             var totalDebtors = 1 + totalGuarantors;
             var szPrefix = string.Join(' ', new[]
             {
-                (doc.FileNumber ?? string.Empty).Trim(),
+                effectiveFileNumber,
                 (doc.FileType ?? string.Empty).Trim()
             }.Where(p => p.Length > 0));
             var szValue = string.IsNullOrEmpty(seizureDate)

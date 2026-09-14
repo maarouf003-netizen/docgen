@@ -2,9 +2,16 @@ import { useEffect, useState } from 'react';
 import { api, getApiErrorMessage } from '../../api/client';
 import { normalizeArabicDigits } from '../../utils/arabicDigits';
 import { formatDate } from '../../utils/dates';
+import { isExecutedLike } from '../../utils/documentDisplay';
 import type { DocumentOccurrenceDto, OccurrenceType, UpsertOccurrenceRequest } from '../../types';
 import { occurrenceLine } from '../view/viewFormat';
 import { FormSectionTitle } from './FormSectionTitle';
+
+/** سنة اليوم المثبتة لاستعادة المشطوب في عائلة «منفذ عليها»/«عرض وايداع» (§4.4). */
+const pinnedRenewalYear = () => new Date().getFullYear();
+
+/** تحليل سنة مدخلة بأرقام عربية أو لاتينية (تُرفض العربية الخام من Number مباشرة). */
+const parseYearInput = (raw: string): number => Number(normalizeArabicDigits(raw).trim());
 
 /** حقول نموذج إضافة/تعديل وقعة (نصوص يُطبَّع الرقم وتُحلَّل التواريخ عند الإرسال). */
 interface OccurrenceFormState {
@@ -73,19 +80,33 @@ function isStatusChange(type: OccurrenceType): boolean {
  * محرر «وقوعات الملف» اليدوي في صفحة تعديل ملف «منفذ عليه»/«عرض وايداع»:
  * إضافة وتعديل وحذف الوقوعات (شطب/تجديد) عبر نقاط نهاية مستقلة تُحفظ فورًا،
  * فتبقى الوقوعات سجلًا مستقلًا عن حقول المستند الرئيسية.
+ *
+ * للملف المشطوب حاليًا، تسجيل وقعة تجديد يعني إعادته إلى المتداول، ويُوجَّه
+ * تلقائيًا إلى إعادة «restore-struck-off» (لا نقطة الوقوعات)، ثم يطلَب من
+ * الأب إعادة تحميل المستند ليُعكس أثر الإعادة على الحالة والوقوعات معًا.
  */
 export function OccurrencesEditor({
   documentId,
   initial,
+  isFileStruckOff,
+  generalEntitySide,
+  onRenewalRestored,
 }: {
   documentId: number;
   initial: DocumentOccurrenceDto[];
+  /** هل الملف مشطوب حاليًا (حسب الحالة الأصلية المحفوظة قبل التعديل). */
+  isFileStruckOff: boolean;
+  /** عائلة الملف («applicant»/«executed»/«deposit») — لسنة الإعادة المثبتة (§4.4). */
+  generalEntitySide?: string;
+  /** يُستدعى بعد نجاح إعادة ملف مشطوب إلى المتداول لإعادة تحميل المستند. */
+  onRenewalRestored?: () => void;
 }) {
   const [occurrences, setOccurrences] = useState<DocumentOccurrenceDto[]>(initial);
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<OccurrenceFormState>(emptyForm());
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [busy, setBusy] = useState(false);
 
   // يتزامن مع الوقوعات القادمة من تحميل الملف (تُحمَّل بعد التركيب الأول للمكوّن)،
@@ -105,6 +126,7 @@ export function OccurrencesEditor({
     setForm(emptyForm());
     setEditingId(null);
     setError('');
+    setSuccess('');
     setFormOpen(true);
   };
 
@@ -112,6 +134,7 @@ export function OccurrencesEditor({
     setForm(fromDto(occurrence));
     setEditingId(occurrence.id);
     setError('');
+    setSuccess('');
     setFormOpen(true);
   };
 
@@ -121,13 +144,18 @@ export function OccurrencesEditor({
     setError('');
   };
 
+  // عائلة «منفذ عليها»/«عرض وايداع»: سنة الإعادة مخفية ومثبتة على سنة اليوم (§4.4) —
+  // تُطبَّق فقط على مسار استعادة المشطوب (تجديد جديد)، لا على تحرير الوقوعات القائمة.
+  const pinRenewalYear = isExecutedLike(generalEntitySide);
+  const restoringStruckOff = editingId === null && isFileStruckOff && form.occurrenceType === 'renewal';
+
   const toRequest = (): UpsertOccurrenceRequest => {
     const request: UpsertOccurrenceRequest = {
       occurrenceType: form.occurrenceType,
       eventDate: normalizeArabicDigits(form.eventDate).trim() || undefined,
       fileNumber: form.fileNumber.trim() || undefined,
       fileType: form.fileType.trim() || undefined,
-      year: form.year.trim() ? Number(form.year.trim()) : undefined,
+      year: form.year.trim() ? parseYearInput(form.year) : undefined,
       receiptNumber: form.receiptNumber.trim() || undefined,
       receiptDate: normalizeArabicDigits(form.receiptDate).trim() || undefined,
     };
@@ -165,7 +193,7 @@ export function OccurrencesEditor({
       }
     }
     if (form.year.trim()) {
-      const year = Number(form.year.trim());
+      const year = parseYearInput(form.year);
       if (!Number.isInteger(year) || year < 1900 || year > 2100) {
         return 'سنة الوقعة غير صالحة';
       }
@@ -181,7 +209,25 @@ export function OccurrencesEditor({
     }
     setBusy(true);
     setError('');
+    setSuccess('');
     try {
+      // ملف مشطوب حاليًا + وقعة تجديد جديدة = إعادة الملف إلى المتداول: تُرسل عبر
+      // نقطة الإعادة المخصصة (التي تحفظ وقعة التجديد وتعيد بناء رقم الأساس)،
+      // لا عبر نقطة الوقوعات اليدوية التي ترفضها الخلفية لهذه الحالة.
+      if (restoringStruckOff) {
+        await api.post(`/documents/${documentId}/restore-struck-off`, {
+          renewalFileNumber: form.fileNumber.trim() || undefined,
+          renewalFileType: form.fileType.trim() || undefined,
+          renewalYear: pinRenewalYear ? pinnedRenewalYear() : (form.year.trim() ? parseYearInput(form.year) : undefined),
+          renewalFileReceiptNumber: form.receiptNumber.trim() || undefined,
+          renewalFileReceiptDate: normalizeArabicDigits(form.receiptDate).trim() || undefined,
+          renewalDate: normalizeArabicDigits(form.eventDate).trim() || undefined,
+        });
+        onRenewalRestored?.();
+        setSuccess('أعيد الملف إلى المتداول بنجاح وسُجِّلت وقعة التجديد.');
+        closeForm();
+        return;
+      }
       const payload = toRequest();
       if (editingId === null) {
         const res = await api.post<DocumentOccurrenceDto>(`/documents/${documentId}/occurrences`, payload);
@@ -226,6 +272,14 @@ export function OccurrencesEditor({
         </p>
 
         {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
+        {success && <p className="text-emerald-700 text-sm mb-3">{success}</p>}
+
+        {isFileStruckOff && (
+          <p className="text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs mb-3">
+            هذا الملف مشطوب حاليًا — تسجيل وقعة «تجديد» هنا يُعيده إلى المتداول دفعة واحدة ويسجّل
+            وقعة التجديد تلقائيًا.
+          </p>
+        )}
 
         {occurrences.length === 0 && !formOpen && (
           <p className="text-gray-400 text-sm mb-3">لا توجد وقوعات مسجلة لهذا الملف</p>
@@ -351,16 +405,25 @@ export function OccurrencesEditor({
                       className={inputCls}
                     />
                   </label>
-                  <label className="block">
-                    <span className="text-xs text-gray-500 block mb-1">سنة الإعادة</span>
-                    <input
-                      value={form.year}
-                      onChange={(e) => set('year', e.target.value)}
-                      placeholder="مثال: 2026"
-                      inputMode="numeric"
-                      className={inputCls}
-                    />
-                  </label>
+                  {pinRenewalYear && restoringStruckOff ? (
+                    <div className="block">
+                      <span className="text-xs text-gray-500 block mb-1">سنة الإعادة</span>
+                      <div className="text-sm font-medium text-gray-800 min-h-11 flex items-center">
+                        {pinnedRenewalYear()} (سنة اليوم — ثابتة لعائلة «منفذ عليها»)
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="block">
+                      <span className="text-xs text-gray-500 block mb-1">سنة الإعادة</span>
+                      <input
+                        value={form.year}
+                        onChange={(e) => set('year', e.target.value)}
+                        placeholder="مثال: 2026"
+                        inputMode="numeric"
+                        className={inputCls}
+                      />
+                    </label>
+                  )}
                   <label className="block">
                     <span className="text-xs text-gray-500 block mb-1">رقم ورود اخطار التجديد</span>
                     <input

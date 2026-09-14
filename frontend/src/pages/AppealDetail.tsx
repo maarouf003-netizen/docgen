@@ -118,7 +118,11 @@ export default function AppealDetail() {
         <dl className="mt-3 flex flex-wrap gap-2 text-sm">
           <div className="inline-flex items-baseline gap-1.5 rounded-lg bg-gray-50 border border-gray-200 px-3 py-1.5">
             <dt className="text-xs text-gray-500 font-medium">رقم الملف</dt>
-            <dd className="text-gray-800 font-semibold tabular-nums">{appeal.fileNumber || '—'}</dd>
+            <dd className="text-gray-800 font-semibold tabular-nums">
+              {[appeal.documentEffectiveNumber ?? appeal.fileNumber, appeal.documentEffectiveYear ?? appeal.fileYear]
+                .filter(Boolean)
+                .join(' / ') || '—'}
+            </dd>
           </div>
           <div className="inline-flex items-baseline gap-1.5 rounded-lg bg-gray-50 border border-gray-200 px-3 py-1.5">
             <dt className="text-xs text-gray-500 font-medium">الدائرة</dt>

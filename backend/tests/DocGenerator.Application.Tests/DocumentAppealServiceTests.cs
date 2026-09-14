@@ -443,6 +443,44 @@ public class DocumentAppealServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Rotation_PastYearRowNeedsRotation_UntilCurrentYearRowExists()
+    {
+        // سجل رقم أساس فعلي لسنة سابقة (لا مجرد عمودي القيد) ولا سجل لسنة اليوم
+        // ← يحتاج تدويرًا، ويبقى الرقم الفعّال المعروض هو رقم السنة السابقة.
+        var doc = await CreateApplicantDocAsync();
+        var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
+        var created = await _service.CreateAsync(doc.Id,
+            Request(AppealDirectionCatalog.Appellants,
+                new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
+            _lawyer1.Id, "lawyer1");
+        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+
+        _db.AppealBaseNumbers.Add(new AppealBaseNumber
+        {
+            AppealId = created.Id,
+            Year = DateTime.Today.Year - 1,
+            BaseNumber = "777",
+            CreatedById = _lawyer2.Id,
+        });
+        await _db.SaveChangesAsync();
+
+        var before = await _service.GetAsync(created.Id);
+        Assert.NotNull(before);
+        Assert.True(before!.NeedsRotation);
+        Assert.Equal("777", before.CurrentBaseNumber);
+
+        await _service.SaveBaseNumbersAsync(created.Id,
+            new SaveAppealBaseNumbersRequest(new List<AppealBaseNumberEntry>
+            {
+                new(DateTime.Today.Year.ToString()),
+            }), _lawyer2.Id, "lawyer2");
+
+        var after = await _service.GetAsync(created.Id);
+        Assert.NotNull(after);
+        Assert.False(after!.NeedsRotation);
+    }
+
+    [Fact]
     public async Task Actions_CrudAndReminders_WorkForAssignedLawyer()
     {
         var doc = await CreateApplicantDocAsync();
@@ -573,5 +611,62 @@ public class DocumentAppealServiceTests : IDisposable
         // فلتر الحالة.
         var pendingOnly = await _service.SearchAsync(null, AppealStatusCatalog.Pending, null, null, 1, 20);
         Assert.Single(pendingOnly.Items);
+    }
+
+    [Fact]
+    public async Task AppealDto_DocumentEffectiveNumber_FollowsFileRotation()
+    {
+        var doc = await CreateApplicantDocAsync();
+        var entities = await _db.ApplicantPublicEntities
+            .Where(e => e.DocumentId == doc.Id).OrderBy(e => e.Id).ToListAsync();
+
+        var dto = await _service.CreateAsync(doc.Id,
+            Request(AppealDirectionCatalog.Appellants,
+                new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
+            _lawyer1.Id, "lawyer1");
+
+        // بدون تدوير: الرقم الفعّال = رقم الملف الأصلي وسنته.
+        Assert.Equal("520", dto.DocumentEffectiveNumber);
+        Assert.Equal("2024", dto.DocumentEffectiveYear);
+
+        _db.BaseNumbers.Add(new DocumentBaseNumber
+        {
+            DocumentId = doc.Id,
+            Year = DateTime.Today.Year,
+            BaseNumber = "1500",
+            CreatedById = _lawyer1.Id,
+        });
+        await _db.SaveChangesAsync();
+
+        var rotated = await _service.GetAsync(dto.Id);
+        Assert.Equal("1500", rotated!.DocumentEffectiveNumber);
+        Assert.Equal(DateTime.Today.Year.ToString(), rotated.DocumentEffectiveYear);
+    }
+
+    [Fact]
+    public async Task AppealDto_CurrentBaseNumber_IgnoresFutureYears()
+    {
+        var doc = await CreateApplicantDocAsync();
+        var entities = await _db.ApplicantPublicEntities
+            .Where(e => e.DocumentId == doc.Id).OrderBy(e => e.Id).ToListAsync();
+
+        var dto = await _service.CreateAsync(doc.Id,
+            Request(AppealDirectionCatalog.Appellants,
+                new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
+            _lawyer1.Id, "lawyer1");
+
+        _db.AppealBaseNumbers.Add(new AppealBaseNumber
+        {
+            AppealId = dto.Id,
+            Year = DateTime.Today.Year + 1,
+            BaseNumber = "9999",
+            CreatedById = _lawyer1.Id,
+        });
+        await _db.SaveChangesAsync();
+
+        var list = await _service.GetAsync(dto.Id);
+
+        // لا يوجد رقم أساس فعّال حتى الآن (المستقبلي لا يُحتسب) → لا يُعرض رقم مستقبلي أبدًا.
+        Assert.Null(list!.CurrentBaseNumber);
     }
 }

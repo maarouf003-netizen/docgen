@@ -15,11 +15,19 @@ public static class DocumentSearchTextBuilder
 
     public static string Build(Document doc)
     {
-        var parts = new[] { doc.BorrowerName, doc.BorrowerFamily, doc.Applicant, doc.Lawyer,
+        // أرقام الأساس (التدوير) في مقدمة نص البحث مرتبة بالأحدث أولًا
+        // (سنة ثم CreatedAt تنازليًا) لتنجو من قَصّ حد الـ 1000 — محددات تطابق حاسمة بالرقم القابل للعرض.
+        var baseNumberParts = doc.BaseNumbers
+            .Where(b => !string.IsNullOrWhiteSpace(b.BaseNumber))
+            .OrderByDescending(b => b.Year)
+            .ThenByDescending(b => b.CreatedAt)
+            .Select(b => b.BaseNumber!.Trim())
+            .Where(v => !string.IsNullOrWhiteSpace(v));
+        var parts = baseNumberParts.Concat(new[] { doc.BorrowerName, doc.BorrowerFamily, doc.Applicant, doc.Lawyer,
             doc.Court, doc.FileNumber, doc.ContractNumber, doc.AnnexNumber, doc.BorrowerNationalId,
             doc.BorrowerRegistrationNumber, doc.BorrowerRepresentedBy,
             doc.FileArrivalNumber, doc.FileArrivalDate }
-            .Where(v => !string.IsNullOrWhiteSpace(v));
+            .Where(v => !string.IsNullOrWhiteSpace(v)));
         // أسماء ورثة المتوفين (المقترض/الكفلاء) تنضم إلى نص البحث ليكون البحث بأسماء الورثة
         // متسقًا عبر SearchText وفلتر الورثة المباشر في المستودع.
         var applicantHeirNames = doc.Heirs
@@ -84,4 +92,21 @@ public static class DocumentSearchTextBuilder
             doc.BorrowerName, doc.BorrowerFamily, doc.AmountNumeric, doc.Currency,
             doc.ContractNumber, doc.Court, doc.Applicant, doc.Lawyer
         });
+
+    /// <summary>
+    /// إلحاق مصطلح رقم جديد لنص البحث القائم (إلحاق لا إعادة بناء): يُضاف الرقم إذا لم يكن موجودًا
+    /// ثم يُقتطع إلى الحد الأقصى. لا يُحذف مصطلح قديم عند إلغاء/تصحيح رقم أساس سابق — مقايضة مقبولة:
+    /// يبقى البحث شاملًا بمصطلح زائد غير مؤذٍ بدل تعقيد تتبع تاريخ النص.
+    /// </summary>
+    public static string Append(string? current, string term)
+    {
+        if (string.IsNullOrWhiteSpace(term))
+            return current ?? string.Empty;
+
+        var text = current ?? string.Empty;
+        if (text.Contains(term.Trim(), StringComparison.Ordinal))
+            return text;
+
+        return Truncate(string.Join(' ', new[] { text, term.Trim() }.Where(v => !string.IsNullOrWhiteSpace(v))));
+    }
 }

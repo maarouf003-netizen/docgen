@@ -26,7 +26,13 @@ export default function AppealDetailsBody({ appeal }: { appeal: AppealDto }) {
         <FieldCell label="الملف المستأنف" value={appeal.documentLabel} showEmpty />
         <FieldCell
           label="رقم الملف"
-          value={[appeal.fileNumber, appeal.fileType, appeal.fileYear].filter(Boolean).join(' / ')}
+          value={[
+            appeal.documentEffectiveNumber ?? appeal.fileNumber,
+            appeal.fileType,
+            appeal.documentEffectiveYear ?? appeal.fileYear,
+          ]
+            .filter(Boolean)
+            .join(' / ')}
           showEmpty
         />
         <FieldCell label="دائرة التنفيذ" value={appeal.court} showEmpty />

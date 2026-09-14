@@ -3345,6 +3345,72 @@ public class DocumentServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task RestoreStruckOff_ExecutedLike_WithMismatchedRenewalYear_Throws()
+    {
+        // سنة الإعادة لعائلة «منفذ عليها/عرض وايداع» مقررة كسنة اليوم الحالية فقط: أي سنة
+        // مخالفة تُرفض دفاعيًا بدل تجاهلها بصمت (لا اشتقاق من تاريخ التجديد).
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.RestoreStruckOffAsync(doc.Id,
+            new RenewalRequest { RenewalFileNumber = "2026/55", RenewalYear = DateTime.Today.Year - 1 }, "lawyer1"));
+        Assert.Contains("سنة اليوم", ex.Message);
+    }
+
+    [Fact]
+    public async Task RestoreStruckOff_ExecutedLike_WithoutRenewalYear_StoresCurrentYear()
+    {
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+
+        var ok = await _service.RestoreStruckOffAsync(doc.Id,
+            new RenewalRequest { RenewalFileNumber = "2026/55", RenewalDate = "15/3/2026" }, "lawyer1");
+        Assert.True(ok);
+
+        var restored = await _service.GetAsync(doc.Id);
+        Assert.Equal(ExecutedStatusCatalog.None, restored!.ExecutedStatus);
+        Assert.Equal("2026/55", restored.RenewalFileNumber);
+        // سنة الإعادة تُخزَّن كرقم أساس للعام الحالي (لا حقلاً على المستند ذاته).
+        Assert.Contains(_db.BaseNumbers, b => b.DocumentId == doc.Id
+            && b.Year == DateTime.Today.Year && b.BaseNumber == "2026/55");
+    }
+
+    [Fact]
+    public async Task RestoreStruckOff_ApplicantSide_WithRenewalDateYearMismatch_Throws()
+    {
+        // نظام «طالبة تنفيذ»: سنة الإعادة المصرّحة يجب أن تطابق سنة تاريخ التجديد إذا أُرسلا معًا.
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        await _service.UpdateStatusAsync(doc.Id, "مشطوب",
+            new Dictionary<string, string?> { ["struckOffDate"] = "1/2/2024" }, "lawyer1");
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.RestoreStruckOffAsync(doc.Id,
+            new RenewalRequest { RenewalFileNumber = "999", RenewalYear = 2024, RenewalDate = "1/8/2025" }, "lawyer1"));
+        Assert.Contains("سنة الإعادة لا تطابق", ex.Message);
+    }
+
+    [Fact]
+    public async Task Update_EditFormReStrike_WithoutDate_RefreshesStruckOffDate()
+    {
+        // شطبٌ ثم فكّ شطب (تُبقي الخلفية تاريخ الشطب السابق للعرض) ثم شطبٌ جديد من نموذج
+        // التعديل بلا تاريخ صريح: يجب أن يُحسب تاريخُ الآن لا إعادةُ استخدام تاريخِ الشطب
+        // الأول (كانت قاعدة المسار السابق تُعيد استخدامه خلافًا لمسار أمر الحالة).
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        var firstStruckOffDate = (await _service.GetAsync(doc.Id))!.StruckOffDate!.Value;
+        await _service.RestoreStruckOffAsync(doc.Id, new RenewalRequest { RenewalFileNumber = "2026/55" }, "lawyer1");
+
+        var req = ExecutedSample();
+        req.ExecutedStatus = ExecutedStatusCatalog.StruckOff;
+        req.StruckOffDate = "";
+        var updated = await _service.UpdateAsync(doc.Id, req, "lawyer1", 1);
+
+        Assert.Equal(ExecutedStatusCatalog.StruckOff, updated!.ExecutedStatus);
+        Assert.NotNull(updated.StruckOffDate);
+        Assert.True(updated.StruckOffDate!.Value > firstStruckOffDate.AddSeconds(-2),
+            "الشطب الجديد من نموذج التعديل يجب أن يحمل تاريخًا أحدث لا تاريخ الشطب الأول");
+    }
+
+    [Fact]
     public async Task RestoreStruckOff_WithoutRenewalFileNumber_Throws()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
@@ -3595,6 +3661,24 @@ public class DocumentServiceTests : IDisposable
 
         await Assert.ThrowsAsync<ArgumentException>(
             () => _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1"));
+    }
+
+    [Fact]
+    public async Task UpdateExecutedStatus_FromStruckOffToExecuted_Throws()
+    {
+        // «مشطوب → منفذ» مباشرة عبر النافذة ممنوع في العائلتين: يجب المرور بالتجديد
+        // إلى «متداول» أولًا (المبدأ 5) — وإلا حُفظت «منفذ» بلا تجديد وبلا رقم أساس وبلا وقعة.
+        var executed = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        await _service.UpdateExecutedStatusAsync(executed.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.UpdateExecutedStatusAsync(executed.Id, ExecutedStatusCatalog.Executed,
+                new ExecutedStatusRequest { Status = ExecutedStatusCatalog.Executed }, "lawyer1"));
+
+        var deposit = await _service.CreateAsync(DepositSample(), 1, "lawyer1", 1);
+        await _service.UpdateExecutedStatusAsync(deposit.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.UpdateExecutedStatusAsync(deposit.Id, ExecutedStatusCatalog.Executed,
+                new ExecutedStatusRequest { Status = ExecutedStatusCatalog.Executed }, "lawyer1"));
     }
 
     [Fact]

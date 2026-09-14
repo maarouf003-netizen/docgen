@@ -62,7 +62,8 @@ public class AppealRepository : Repository<DocumentAppeal>, IAppealRepository
                 (a.AppellantsJson != null && a.AppellantsJson.Contains(term)) ||
                 (a.AppelleesJson != null && a.AppelleesJson.Contains(term)) ||
                 (a.AppealBaseNumber != null && a.AppealBaseNumber.Contains(term)) ||
-                (a.AppellateCourt != null && a.AppellateCourt.Contains(term)));
+                (a.AppellateCourt != null && a.AppellateCourt.Contains(term)) ||
+                a.BaseNumbers.Any(b => b.BaseNumber != null && b.BaseNumber.Contains(term)));
         }
 
         var total = await q.CountAsync(ct);
@@ -134,6 +135,7 @@ public class AppealRepository : Repository<DocumentAppeal>, IAppealRepository
 
     private static IQueryable<DocumentAppeal> WithIncludes(IQueryable<DocumentAppeal> q) =>
         q.Include(a => a.Document)
+            .ThenInclude(d => d!.BaseNumbers)
             .Include(a => a.AssignedLawyer)
             .Include(a => a.CreatedBy)
             .Include(a => a.BaseNumbers)

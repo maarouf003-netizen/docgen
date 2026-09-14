@@ -236,6 +236,10 @@ public sealed partial class DocumentService : IDocumentService
         // فيعود الملف برقمه ونوعه الجديدين لسنة الإعادة. التعديل دون تغيير الحالة لا يُجدَّد.
         var wasStruckOff = ExecutedStatusCatalog.IsStruckOff(doc.ExecutedStatus);
 
+        // حارس انتقالات وضع «منفذ عليه» (§4.6): يطابق قواعد نافذة تغيير الحالة، فلا تنتقل
+        // الحالة عبر نموذج التعديل إلا بما تسمح به النافذة (رحّلات الشطب والتجديد الشرعية).
+        ValidateExecutedTransitionOnEdit(doc, request);
+
         ApplyRequest(doc, request);
         FillDerivedFields(doc);
         ApplyRegistrationDate(doc, request.FileRegistrationDate);
@@ -255,6 +259,37 @@ public sealed partial class DocumentService : IDocumentService
             await SeedInitialActionsAsync(doc, request.InitialActions, userId, actorName, token);
             return DocumentResponse.FromEntity(doc);
         }, ct);
+    }
+
+    /// <summary>
+    /// حارس انتقالات وضع «منفذ عليه/عرض وايداع» في نموذج التعديل (§4.6): لا تمر التغييرات
+    /// المباشرة عبر التحرير إلا ما تسمح به نافذة تغيير الحالة — الشطبَ والتجديدَ الشرعيين.
+    /// (مشطوب → منفذ مباشر ممنوع؛ «منفذ» في «منفذ عليها» نهائية؛ «عرض وايداع» من منفذ
+    /// لا تُشطب ولا تُعاد مباشرة بل عبر نافذة الحالة بكتاب السير.) — معزول عن نظام «طالبة
+    /// تنفيذ» الذي تحكمه آلة حالات مغلقة منفصلة (لا يسند UpdateAsync الحالةَ إطلاقًا).
+    /// </summary>
+    private static void ValidateExecutedTransitionOnEdit(Document doc, DocumentUpsertRequest request)
+    {
+        if (!GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
+            return;
+
+        var currentStatus = doc.ExecutedStatus;
+        var current = currentStatus is not null && ExecutedStatusCatalog.IsStored(currentStatus)
+            ? currentStatus
+            : ExecutedStatusCatalog.None;
+        var normalized = request.ExecutedStatus?.Trim();
+        var requested = string.IsNullOrEmpty(normalized) ? ExecutedStatusCatalog.None : normalized;
+
+        if (current == ExecutedStatusCatalog.StruckOff && requested == ExecutedStatusCatalog.Executed)
+            throw new ArgumentException("لا يمكن نقل ملف مشطوب إلى «منفذ» مباشرة — يجب إعادته أولًا إلى المتداول (تجديد)");
+        if (current != ExecutedStatusCatalog.Executed || requested == ExecutedStatusCatalog.Executed)
+            return;
+
+        if (doc.GeneralEntitySide == GeneralEntitySideCatalog.Executed)
+            throw new ArgumentException("وضع «منفذ» في صفة «الجهة العامة منفذ عليها» نهائي لا يُغيَّر بالتحرير");
+        if (requested == ExecutedStatusCatalog.StruckOff)
+            throw new ArgumentException("لا يمكن شطب «عرض وايداع» من وضع «منفذ»");
+        throw new ArgumentException("إرجاع «عرض وايداع» من وضع «منفذ» إلى المتداول يتم عبر نافذة تغيير الحالة بكتاب السير بالملف لا عبر التحرير");
     }
 
     public async Task<bool> DeleteAsync(int documentId, string? actorName, CancellationToken ct = default)

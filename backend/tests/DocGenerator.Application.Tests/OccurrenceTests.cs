@@ -154,6 +154,68 @@ public class OccurrenceTests : IDisposable
     }
 
     [Fact]
+    public async Task UpdateExecutedStatus_ToStruckOff_WithEligibleRotation_StoresEffectiveNumberAtStrike()
+    {
+        // وقعة الشطب يجب أن تحمل الهوية الفعّالة وقت الشطب (آخر رقم أساس ≤ سنة الشطب عبر
+        // المحلل المركزي) لا رقم الملف الأصلي — فيظهر رقم التدوير الأحدث عند عرض الوقعة.
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        _db.BaseNumbers.Add(new DocumentBaseNumber
+        {
+            DocumentId = doc.Id,
+            Year = DateTime.Today.Year - 1,
+            BaseNumber = "900",
+            CreatedById = 1,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        });
+        await _db.SaveChangesAsync();
+
+        var ok = await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        Assert.True(ok);
+
+        var loaded = await _service.GetAsync(doc.Id);
+        var occurrence = Assert.Single(loaded!.Occurrences);
+        Assert.Equal(OccurrenceTypeCatalog.StruckOff, occurrence.OccurrenceType);
+        Assert.Equal("900", occurrence.FileNumber);
+        Assert.Equal(loaded.StruckOffDate!.Value.Year, occurrence.Year);
+    }
+
+    [Fact]
+    public async Task UpdateStatus_ApplicantSideStruckOff_WithEligibleRotation_StoresEffectiveNumber()
+    {
+        // نفس قاعدة الهوية الفعّالة تنطبق على وقعة الشطب في نظام «طالبة تنفيذ».
+        var req = ExecutedSample();
+        req.GeneralEntitySide = GeneralEntitySideCatalog.Applicant;
+        req.BorrowerName = "أحمد";
+        req.BorrowerFather = "خالد";
+        req.BorrowerFamily = "الخطيب";
+        req.FileRegistrationDate = "1/1/2026";
+        req.FileType = "قضية تنفيذ";
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        _db.BaseNumbers.Add(new DocumentBaseNumber
+        {
+            DocumentId = doc.Id,
+            Year = DateTime.Today.Year - 1,
+            BaseNumber = "900",
+            CreatedById = 1,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        });
+        await _db.SaveChangesAsync();
+
+        var ok = await _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.StateStruckOff,
+            new Dictionary<string, string?> { ["struckOffDate"] = "1/8/2026" }, "lawyer1");
+        Assert.True(ok);
+
+        var loaded = await _service.GetAsync(doc.Id);
+        var occurrence = Assert.Single(loaded!.Occurrences);
+        Assert.Equal(OccurrenceTypeCatalog.StruckOff, occurrence.OccurrenceType);
+        Assert.Equal("900", occurrence.FileNumber);
+        Assert.Equal("قضية تنفيذ", occurrence.FileType);
+        Assert.Equal(2026, occurrence.Year);
+    }
+
+    [Fact]
     public async Task RestoreStruckOff_RecordsRenewalOccurrence_AndKeepsStruckOffOccurrence()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
@@ -368,5 +430,165 @@ public class OccurrenceTests : IDisposable
         var occurrence = Assert.Single(loaded!.Occurrences);
         Assert.Equal(OccurrenceTypeCatalog.StruckOff, occurrence.OccurrenceType);
         Assert.Equal(new DateTime(2024, 6, 10), occurrence.EventDate);
+    }
+
+    private static DocumentUpsertRequest DepositSample() => new()
+    {
+        GeneralEntitySide = GeneralEntitySideCatalog.Deposit,
+        DocumentType = "عرض وايداع",
+        FileNumber = "888",
+        FileYear = "2024",
+        ContractTypeSelector = "عادي",
+        Court = "دمشق",
+        Applicant = "معروض",
+        FileReceiptDate = "5/1/2024",
+        ExecutedRequiredAmount = 1500m,
+        ExecutionApplicants = new()
+        {
+            new ExecutionApplicantDto(null, "هاني", "سامر", "النجار", null, "أصالة", null, null, null, null, null, null, null, null, new()),
+        },
+        ExecutedPublicEntities = new()
+        {
+            new ExecutedPublicEntityDto(null, "المصرف التجاري", "فرع دمشق"),
+        },
+        ExecutedNaturalPersons = new()
+        {
+            new ExecutedNaturalPersonDto(null, "رامي", "سالم", "عبد", "عنوان", "دمشق - المدينة", "أصالة", null, null, null, null, null, null, null, null, null, new()),
+        },
+    };
+
+    [Fact]
+    public async Task AddOccurrence_ManualRenewalOnStruckOffFile_Throws()
+    {
+        // §4.3 حارس: لا يُنشأ وقعة تجديد يدوية لملف مشطوب — التجديد يمر عبر الاستعادة حصرًا.
+        var req = ExecutedSample();
+        req.ExecutedStatus = ExecutedStatusCatalog.StruckOff;
+        req.StruckOffDate = "1/8/2026";
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.AddOccurrenceAsync(doc.Id, RenewalRequest(), 1, "lawyer1"));
+        Assert.Contains("لا يمكن إنشاء وقعة تجديد يدوية لملف مشطوب", ex.Message);
+        Assert.Empty(_db.DocumentOccurrences.Where(o => o.DocumentId == doc.Id && o.OccurrenceType == OccurrenceTypeCatalog.Renewal));
+    }
+
+    [Fact]
+    public async Task UpdateOccurrence_ConvertToRenewalOnStruckOffFile_Throws()
+    {
+        // §4.3 حارس: تحويل وقعة شطب قائمة إلى تجديد بينما الملف مشطوب ممنوع.
+        var req = ExecutedSample();
+        req.ExecutedStatus = ExecutedStatusCatalog.StruckOff;
+        req.StruckOffDate = "1/8/2026";
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var occurrence = await _service.AddOccurrenceAsync(doc.Id, StruckOffRequest(), 1, "lawyer1");
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.UpdateOccurrenceAsync(doc.Id, occurrence.Id, RenewalRequest(), "lawyer1"));
+        Assert.Contains("لا يمكن تحويل وقعة إلى تجديد بينما الملف مشطوب", ex.Message);
+
+        var loaded = await _service.GetAsync(doc.Id);
+        var kept = loaded!.Occurrences.Single(o => o.Id == occurrence.Id);
+        Assert.Equal(OccurrenceTypeCatalog.StruckOff, kept.OccurrenceType);
+    }
+
+    [Fact]
+    public async Task UpdateOccurrence_EditExistingRenewalOnStruckOffFile_Allowed()
+    {
+        // §4.3: تعديل وقعة تجديد قائمة (نشأت من استعادة نظامية) بينما الملف مشطوب لاحقًا يبقى مسموحًا.
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _service.RestoreStruckOffAsync(doc.Id, new RenewalRequest { RenewalFileNumber = "2026/55" }, "lawyer1");
+        await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+
+        var loaded = await _service.GetAsync(doc.Id);
+        var renewal = loaded!.Occurrences.Single(o => o.OccurrenceType == OccurrenceTypeCatalog.Renewal);
+
+        var request = RenewalRequest();
+        request.ReceiptNumber = "99";
+        var updated = await _service.UpdateOccurrenceAsync(doc.Id, renewal.Id, request, "lawyer1");
+
+        Assert.NotNull(updated);
+        Assert.Equal("99", updated!.ReceiptNumber);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_EditStruckOffToExecuted_Direct_Throws()
+    {
+        // §4.6 حارس: مشطوب → منفذ مباشر عبر نموذج التعديل ممنوع — يجب الإعادة إلى المتداول أولًا.
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+
+        var req = ExecutedSample();
+        req.ExecutedStatus = ExecutedStatusCatalog.Executed;
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.UpdateAsync(doc.Id, req, "lawyer1", 1));
+        Assert.Contains("لا يمكن نقل ملف مشطوب إلى «منفذ» مباشرة", ex.Message);
+
+        // الحالة لم تتغير في قاعدة البيانات.
+        var loaded = await _service.GetAsync(doc.Id);
+        Assert.Equal(ExecutedStatusCatalog.StruckOff, loaded!.ExecutedStatus);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_EditExecutedStatus_SameStatus_StaysAllowed()
+    {
+        // §4.6: الإبقاء على «منفذ» دون تغيير يبقى مقبولًا في نموذج التعديل (حواري مستقر).
+        var req = ExecutedSample();
+        req.ExecutedStatus = ExecutedStatusCatalog.Executed;
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        var updated = await _service.UpdateAsync(doc.Id, req, "lawyer1", 1);
+        Assert.Equal(ExecutedStatusCatalog.Executed, updated!.ExecutedStatus);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_EditExecutedLikeFromExecuted_ToStruck_Throws()
+    {
+        // §4.6: وضع «منفذ» في صفة «الجهة العامة منفذ عليها» نهائي — لا يُشطب بالتحرير.
+        var req = ExecutedSample();
+        req.ExecutedStatus = ExecutedStatusCatalog.Executed;
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        var edit = ExecutedSample();
+        edit.ExecutedStatus = ExecutedStatusCatalog.StruckOff;
+        edit.StruckOffDate = "10/8/2026";
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.UpdateAsync(doc.Id, edit, "lawyer1", 1));
+        Assert.Contains("الجهة العامة منفذ عليها» نهائي", ex.Message);
+
+        var loaded = await _service.GetAsync(doc.Id);
+        Assert.Equal(ExecutedStatusCatalog.Executed, loaded!.ExecutedStatus);
+        Assert.Empty(loaded.Occurrences);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_EditDepositFromExecuted_ToStruck_Throws()
+    {
+        // §4.6: «عرض وايداع» من وضع «منفذ» لا يُشطب في نموذج التعديل.
+        var req = DepositSample();
+        req.ExecutedStatus = ExecutedStatusCatalog.Executed;
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        var edit = DepositSample();
+        edit.ExecutedStatus = ExecutedStatusCatalog.StruckOff;
+        edit.StruckOffDate = "10/8/2026";
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.UpdateAsync(doc.Id, edit, "lawyer1", 1));
+        Assert.Contains("لا يمكن شطب «عرض وايداع» من وضع «منفذ»", ex.Message);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_EditDepositFromExecuted_ToTraded_Direct_Throws()
+    {
+        // §4.6: إرجاع «عرض وايداع» من «منفذ» إلى المتداول عبر التحرير ممنوع (كتاب السير بالنافذة حصرًا).
+        var req = DepositSample();
+        req.ExecutedStatus = ExecutedStatusCatalog.Executed;
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        var edit = DepositSample();
+        edit.ExecutedStatus = null;
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _service.UpdateAsync(doc.Id, edit, "lawyer1", 1));
+        Assert.Contains("كتاب السير بالملف", ex.Message);
     }
 }

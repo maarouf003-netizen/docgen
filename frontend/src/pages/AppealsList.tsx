@@ -277,7 +277,7 @@ export default function AppealsList() {
                   <td className="px-3 py-3 text-gray-800 max-w-[180px] break-words">{appellantsText(a)}</td>
                   <td className="px-3 py-3 text-gray-800 max-w-[160px] break-words">{firstAppellee(a)}</td>
                   <td className="px-3 py-3 text-gray-800 whitespace-nowrap">
-                    {[a.fileNumber, a.fileType, a.fileYear].filter(Boolean).join(' / ') || '—'}
+                    {[a.documentEffectiveNumber ?? a.fileNumber, a.fileType, a.documentEffectiveYear ?? a.fileYear].filter(Boolean).join(' / ') || '—'}
                     {a.court && <span className="block text-xs text-gray-500 mt-0.5">{a.court}</span>}
                   </td>
                   <td className="px-3 py-3 text-gray-600 max-w-[200px]">{truncate(a.appealedDecisionSummary || a.appealedDecisionText)}</td>
@@ -319,7 +319,7 @@ export default function AppealsList() {
                 <p className="text-gray-900 font-medium break-words">{appellantsText(a)}</p>
                 <p className="text-xs text-gray-600">ضد: {firstAppellee(a)}</p>
                 <p className="text-xs text-gray-600">
-                  {[a.fileNumber, a.fileType, a.fileYear].filter(Boolean).join(' / ') || '—'}
+                  {[a.documentEffectiveNumber ?? a.fileNumber, a.fileType, a.documentEffectiveYear ?? a.fileYear].filter(Boolean).join(' / ') || '—'}
                   {a.court ? ` · ${a.court}` : ''}
                 </p>
                 {a.appellateCourt && <p className="text-xs text-gray-600">المحكمة الناظرة: {a.appellateCourt}</p>}

@@ -8,21 +8,13 @@ import { FieldInput, SelectInput } from './form/FormInputs';
 import { RenewalFields, type RenewalFieldsValue } from './form/RenewalFields';
 import { paidAmountKeys, paidCurrencyKeys } from './form/documentFormConstants';
 import { trimNull } from '../utils/serialization';
+import { targetsOf } from '../utils/documentStatus';
 
 /** تسمية حالة وضع «الجهة العامة منفذ عليها» الحالية (الفارغ «متداول» لا يُخزَّن كقيمة). */
 function currentLabelOf(doc: DocumentResponse): string {
   if (doc.executedStatus === 'منفذ') return 'منفذ';
   if (doc.executedStatus === 'مشطوب') return 'مشطوب';
   return 'متداول';
-}
-
-/** الحالات المتاحة من الحالة الحالية (كخيارات نموذج التعديل، بلا الحالة الحالية نفسها).
- * «منفذ عليها»: حالة «منفذ» نهائية لا تُغيَّر. «عرض وايداع»: من منفذه يُعاد إلى متداول فقط
- * (لا يُشطب)، بكتاب الجهة العامة بالسير بالملف. */
-function targetsOf(current: string, isDeposit: boolean): string[] {
-  if (current === 'مشطوب') return ['متداول', 'منفذ'];
-  if (current === 'منفذ') return isDeposit ? ['متداول'] : [];
-  return ['منفذ', 'مشطوب'];
 }
 
 /** قيمة الحالة المُرسَلة: «متداول» سلسلة فارغة لأنها لا تُخزَّن كقيمة في الخلفية. */
@@ -149,7 +141,9 @@ export default function ExecutedStatusModal({
         throw new Error('رقم الملف الجديد مطلوب عند إعادة الملف المشطوب');
       }
       body.renewalFileNumber = renewal.renewalFileNumber?.trim();
-      if (renewal.renewalYear != null) body.renewalYear = renewal.renewalYear;
+      // سنة الإعادة لعائلة «منفذ عليها/عرض وايداع» مقررة كسنة اليوم الحالية فقط: لا تُرسل
+      // سنةٌ مدخلة من المستخدم (حقلها مخفي) ويتسق هذا مع رفض الخلفية الدفاعي لأي سنة مخالفة.
+      body.renewalYear = new Date().getFullYear();
       body.renewalFileType = trimNull(renewal.renewalFileType);
       body.renewalFileReceiptNumber = trimNull(renewal.renewalFileReceiptNumber);
       body.renewalFileReceiptDate = trimNull(renewal.renewalFileReceiptDate);
@@ -299,7 +293,7 @@ export default function ExecutedStatusModal({
               )}
 
               {target === 'متداول' && isStruckOffNow && (
-                <RenewalFields value={renewal} onSet={onRenewalSet} idPrefix="executed-status-" />
+                <RenewalFields value={renewal} onSet={onRenewalSet} idPrefix="executed-status-" hideYear />
               )}
 
               <div className="mt-5 flex justify-end gap-2">

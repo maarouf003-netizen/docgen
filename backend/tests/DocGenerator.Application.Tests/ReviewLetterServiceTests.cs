@@ -133,6 +133,42 @@ public class ReviewLetterServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task LinkedLetter_OnRotatedFile_ShowsEffectiveNumber_NotOriginal()
+    {
+        // ملف مدوَّر لسنة سابقة: سياق المطالعة (إنشاءً وقراءةً) يعرض الرقم الفعّال
+        // لا الرقم الأصلي — يتطلب جلب BaseNumbers في مساري التفاصيل والبحث.
+        var doc = await AddDocumentAsync(_lawyer1);
+        var rotatedYear = DateTime.Today.Year - 1;
+        _db.BaseNumbers.Add(new DocumentBaseNumber
+        {
+            DocumentId = doc.Id,
+            Year = rotatedYear,
+            BaseNumber = "60",
+            CreatedById = _lawyer1.Id,
+        });
+        await _db.SaveChangesAsync();
+
+        var letter = await _service.CreateAsync(
+            new CreateReviewLetterRequest(doc.Id, "<p>مطالعة بملف مدوَّر</p>"),
+            _lawyer1.Id, "المحامي الأول", _branchId);
+        Assert.NotNull(letter.FileContext);
+        Assert.Equal("60", letter.FileContext.FileNumber);
+        Assert.Equal(rotatedYear.ToString(), letter.FileContext.FileYear);
+
+        var stored = await _service.GetByIdAsync(letter.Id, _head.Id, UserRole.Head, _branchId);
+        Assert.NotNull(stored.FileContext);
+        Assert.Equal("60", stored.FileContext.FileNumber);
+        Assert.Equal(rotatedYear.ToString(), stored.FileContext.FileYear);
+
+        // مسار البحث (إسقاط SearchAsync): نفس الرقم الفعّال لا الأصلي.
+        var search = await _service.SearchAsync(_lawyer1.Id, UserRole.Lawyer, _branchId, "مطالعة بملف مدوَّر", 1, 20, null);
+        var hit = Assert.Single(search.Items);
+        Assert.NotNull(hit.FileContext);
+        Assert.Equal("60", hit.FileContext.FileNumber);
+        Assert.Equal(rotatedYear.ToString(), hit.FileContext.FileYear);
+    }
+
+    [Fact]
     public async Task Create_OnForeignFile_IsDenied()
     {
         var doc = await AddDocumentAsync(_lawyer2);

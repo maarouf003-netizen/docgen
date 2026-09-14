@@ -183,6 +183,8 @@ describe('ExecutedStatusModal', () => {
       renewalFileReceiptNumber: null,
       renewalFileReceiptDate: null,
       renewalDate: null,
+      // سنة الإعادة لعائلة «منفذ عليها» مقررة كسنة اليوم الحالية (حقلها مخفي).
+      renewalYear: new Date().getFullYear(),
     }));
     expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
       status: '',
@@ -191,6 +193,7 @@ describe('ExecutedStatusModal', () => {
       renewalFileReceiptNumber: null,
       renewalFileReceiptDate: null,
       renewalDate: null,
+      renewalYear: new Date().getFullYear(),
     });
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
     expect(onChanged).toHaveBeenCalled();

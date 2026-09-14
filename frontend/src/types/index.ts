@@ -328,9 +328,11 @@ export interface DocumentResponse {
   referredFromLawyer?: string;
   /** لحظة إحالة الملف إلى المحامي الحالي. */
   referredAt?: string;
-  fileNumber?: string;
-  /** الرقم الظاهر: رقم أساس السنة الحالية إن وُجد، وإلا رقم الملف الأصلي. */
+fileNumber?: string;
+  /** الرقم الظاهر: آخر رقم أساس ≤ سنة قيد الملف إن وُجد، وإلا رقم الملف الأصلي. */
   displayFileNumber?: string;
+  /** سنة الرقم الفعّال المرافقة لـ displayFileNumber. */
+  displayFileYear?: string;
   fileType?: string;
   fileYear?: string;
   fileIncoming?: string;
@@ -496,6 +498,10 @@ export interface DelegationDto {
   assets: DelegationAssetDto[];
   /** هل غطى بدل المبيع كامل المديونية؟ يحدده محامي المناب عند الإتمام — null قبل الإتمام. */
   saleCoversFullDebt?: boolean | null;
+  /** رقم أساس الملف المناب الحالي. */
+  targetFileNumber?: string | null;
+  /** سنة الرقم المعروض للملف المناب. */
+  targetFileYear?: string | null;
 }
 
 /** تسطير/تعديل إنابة: التواريخ نصوص حرة تُفسَّر في الخلفية؛ الخارجية تتطلب الفرع المناب. */
@@ -918,8 +924,12 @@ export interface RotationDocumentDto {
   fileNumber?: string;
   fileType?: string;
   baseNumber?: string;
-  /** اسم العرض الموحد — اسم المقترض، أو اسم طالب العرض لملفات العائلتين Executed + Deposit. */
+/** اسم العرض الموحد — اسم المقترض، أو اسم طالب العرض لملفات العائلتين Executed + Deposit. */
   displayName?: string;
+  /** الرقم الفعّال المعروض في صفحة التدوير (المحلل المركزي: آخر رقم أساس ≤ سنة قيد الملف، وإلا رقم الملف). */
+  effectiveFileNumber?: string;
+  /** سنة الرقم الفعّال المعروض في صفحة التدوير. */
+  effectiveFileYear?: string;
 }
 
 export interface BaseNumberEntry {
@@ -1049,6 +1059,10 @@ export interface AppealDto {
   createdAt: string;
   createdByName?: string;
   createdById: number;
+  /** رقم الملف الفعّال (من أرقام أساس الملف نفسه) المعروض في الاستئناف. */
+  documentEffectiveNumber?: string | null;
+  /** سنة الرقم الفعّال المعروض للملف في الاستئناف. */
+  documentEffectiveYear?: string | null;
 }
 
 /** تسطير/تعديل استئناف قبل الإسناد (التواريخ نصوص حرة بصيغة «1/8/2026»). */

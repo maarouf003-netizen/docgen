@@ -87,4 +87,8 @@ public record DelegationDto(
     List<DelegationAssetDto> Assets,
     int CreatedById,
     /// <summary>هل غطى بدل المبيع كامل المديونية؟ يحدده محامي المناب عند الإتمام — null قبل الإتمام.</summary>
-    bool? SaleCoversFullDebt = null);
+    bool? SaleCoversFullDebt = null,
+    /// <summary>رقم أساس الملف المناب الحالي (رقم أساس سنة التدوير إن وُجد وإلا رقم ملفه الأصلي) — يُحسب مع TargetFileYear من السجل نفسه.</summary>
+    string? TargetFileNumber = null,
+    /// <summary>سنة الرقم المعروض للملف المناب (سنة التدوير إن وُجدت وإلا سنة ملفه الأصلي) — مرافقة لـ TargetFileNumber.</summary>
+    string? TargetFileYear = null);
