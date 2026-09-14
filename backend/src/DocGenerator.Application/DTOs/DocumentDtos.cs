@@ -498,7 +498,8 @@ public class SaveBaseNumbersRequest
 }
 
 /// <summary>
-/// رقم أساس لسنة واحدة في تاريخ تدوير أرقام الأساس للملف (مرتب تنازليًا بالسنوات).
+/// سجل رقم أساس لسنة واحدة من تاريخ تدوير أرقام الأساس للملف — تُعرض كل السجلات
+/// (سنة واحدة قد تملك أكثر من رقم — الأحدث CreatedAt هو المعتبر)، مرتبة بالسنة ثم CreatedAt تنازليًا.
 /// </summary>
 public record BaseNumberHistoryDto(
     int Year,

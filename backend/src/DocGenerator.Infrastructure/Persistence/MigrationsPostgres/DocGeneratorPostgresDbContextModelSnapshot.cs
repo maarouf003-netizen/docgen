@@ -105,8 +105,7 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.HasIndex("CreatedById");
 
-                    b.HasIndex("AppealId", "Year")
-                        .IsUnique();
+                    b.HasIndex("AppealId", "Year");
 
                     b.ToTable("AppealBaseNumbers", (string)null);
                 });
@@ -1109,8 +1108,7 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.HasIndex("DocumentId");
 
-                    b.HasIndex("DocumentId", "Year")
-                        .IsUnique();
+                    b.HasIndex("DocumentId", "Year");
 
                     b.ToTable("DocumentBaseNumbers", (string)null);
                 });

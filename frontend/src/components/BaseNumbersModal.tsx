@@ -77,8 +77,8 @@ export default function BaseNumbersModal({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {entries.map((entry) => (
-                  <tr key={entry.year}>
+                {entries.map((entry, i) => (
+                  <tr key={`${entry.year}-${i}`}>
                     <td className="py-2 pr-2 text-gray-700">{entry.year}</td>
                     <td className="py-2 pr-2 font-medium text-gray-800">{entry.baseNumber}</td>
                     <td className="py-2 text-gray-700">{fileType || '—'}</td>

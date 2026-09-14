@@ -440,6 +440,25 @@ public class DocumentAppealServiceTests : IDisposable
         var history = await _service.GetBaseNumberHistoryAsync(created.Id);
         Assert.Equal(2, history.Count);
         Assert.Contains(history, h => h.BaseNumber == "900");
+
+        // حفظ ثانٍ لنفس السنة يُنشئ سجلًا جديدًا (لا يحدّث) والمعتبر هو الأحدث CreatedAt.
+        await _service.SaveBaseNumbersAsync(created.Id,
+            new SaveAppealBaseNumbersRequest(new List<AppealBaseNumberEntry>
+            {
+                new("1450"),
+            }), _lawyer2.Id, "lawyer2");
+
+        var after2 = await _service.GetAsync(created.Id);
+        Assert.NotNull(after2);
+        Assert.False(after2!.NeedsRotation);
+        Assert.Equal("1450", after2.CurrentBaseNumber);
+        var history2 = await _service.GetBaseNumberHistoryAsync(created.Id);
+        Assert.Equal(3, history2.Count);
+        // ترتيب تصاعدي بالسنوات، وداخل السنة نفسها الأحدث CreatedAt أولًا: القديمة ثم الرقمان الحاليان.
+        Assert.Equal("900", history2[0].BaseNumber);
+        Assert.Equal("1450", history2[1].BaseNumber);
+        Assert.Equal(DateTime.Today.Year.ToString(), history2[2].BaseNumber);
+        Assert.Contains(history2, h => h.BaseNumber == "900");
     }
 
     [Fact]

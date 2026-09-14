@@ -388,10 +388,10 @@ public class DocumentBaseNumberConfiguration : IEntityTypeConfiguration<Document
 {
     public void Configure(EntityTypeBuilder<DocumentBaseNumber> builder)
     {
-        builder.ToTable("DocumentBaseNumbers");
+builder.ToTable("DocumentBaseNumbers");
         builder.HasKey(b => b.Id);
-        // سجل واحد لكل (ملف، سنة): يمنع تكرار رقم أساس لنفس السنة، ويحفظ أرقام السنوات السابقة.
-        builder.HasIndex(b => new { b.DocumentId, b.Year }).IsUnique();
+        // سجلات متعددة لكل (ملف، سنة): كل تدوير/تجديد يُنشئ سجلًا جديدًا — الأحدث (Year ثم CreatedAt) هو المعتبر.
+        builder.HasIndex(b => new { b.DocumentId, b.Year });
         builder.HasIndex(b => b.DocumentId);
         builder.Property(b => b.BaseNumber).HasMaxLength(50).IsRequired();
         // عامل مطابق لقفل الحذف المنطقي للمستند الأب.
@@ -890,8 +890,8 @@ public class AppealActionConfiguration : IEntityTypeConfiguration<AppealAction>
 }
 
 /// <summary>
-/// تاريخ أرقام الأساس الاستئنافية لكل سنة (التدوير السنوي): سجل واحد لكل
-/// (استئناف، سنة) بفهرس فريد يحفظ أرقام السنوات السابقة دون فقدانها.
+/// تاريخ أرقام الأساس الاستئنافية لكل سنة (التدوير السنوي): سجلات متعددة لكل
+/// (استئناف، سنة) بفهرس غير فريد يحفظ أرقام السنوات السابقة دون فقدانها.
 /// </summary>
 public class AppealBaseNumberConfiguration : IEntityTypeConfiguration<AppealBaseNumber>
 {
@@ -899,8 +899,8 @@ public class AppealBaseNumberConfiguration : IEntityTypeConfiguration<AppealBase
     {
         builder.ToTable("AppealBaseNumbers");
         builder.HasKey(b => b.Id);
-        // سجل واحد لكل (استئناف، سنة): يمنع تكرار رقم أساس لنفس السنة.
-        builder.HasIndex(b => new { b.AppealId, b.Year }).IsUnique();
+        // سجلات متعددة لكل (استئناف، سنة): كل تدوير يُنشئ سجلًا جديدًا — الأحدث (Year ثم CreatedAt) هو المعتبر.
+        builder.HasIndex(b => new { b.AppealId, b.Year });
         builder.HasIndex(b => b.AppealId);
         builder.Property(b => b.BaseNumber).HasMaxLength(50).IsRequired();
         // عامل مطابق لقفل الحذف المنطقي للملف عبر سلسلة الاستئناف.

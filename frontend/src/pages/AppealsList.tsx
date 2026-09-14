@@ -391,7 +391,7 @@ export default function AppealsList() {
         <AppealRotationModal
           appeal={rotationTarget}
           onClose={() => setRotationTarget(null)}
-          onSaved={() => { setRotationTarget(null); setNotice('تم تحديث رقم الأساس الاستئنافي.'); refresh(); }}
+          onSaved={() => { setRotationTarget(null); setNotice('أُضيف سجل رقم أساس استئنافي جديد (تُحفظ السجلات السابقة).'); refresh(); }}
         />
       )}
       {assignTarget && (

@@ -441,6 +441,8 @@ public sealed class DocumentAppealService : IDocumentAppealService
     private static List<AppealBaseNumberHistoryDto> BuildBaseNumberHistory(DocumentAppeal appeal)
     {
         var history = appeal.BaseNumbers
+            .OrderByDescending(b => b.Year)
+            .ThenByDescending(b => b.CreatedAt)
             .Select(b => new AppealBaseNumberHistoryDto(b.Year, b.BaseNumber))
             .ToList();
         if (!string.IsNullOrWhiteSpace(appeal.AppealBaseNumber)
@@ -475,26 +477,19 @@ public sealed class DocumentAppealService : IDocumentAppealService
 
         await _tx.RunAsync(async token =>
         {
-            var existing = appeal.BaseNumbers.FirstOrDefault(b => b.Year == year);
-            if (existing is not null)
+            // سجل جديد دائمًا: كل تدوير يلحق سجلًا بسنة التدوير، والأحدث (Year ثم CreatedAt) هو المعتبر.
+            appeal.BaseNumbers.Add(new AppealBaseNumber
             {
-                existing.BaseNumber = value;
-                existing.UpdatedAt = DateTime.UtcNow;
-            }
-            else
-            {
-                appeal.BaseNumbers.Add(new AppealBaseNumber
-                {
-                    AppealId = appeal.Id,
-                    Year = year,
-                    BaseNumber = value,
-                    CreatedById = userId,
-                });
-            }
+                AppealId = appeal.Id,
+                Year = year,
+                BaseNumber = value,
+                CreatedById = userId,
+                CreatedAt = DateTime.UtcNow,
+            });
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "rotate_appeal_base_number",
                 appeal.DocumentId, appeal.Document.DocumentType,
-                $"حدّث رقم الأساس الاستئنافي (رقم {appeal.Id}) لسنة {year} بالقيمة {value}", token);
+                $"أضاف سجل رقم أساس استئنافي (رقم {appeal.Id}) لسنة {year} بالقيمة {value} — تُحفظ السجلات السابقة", token);
         }, ct);
     }
 

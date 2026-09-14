@@ -569,27 +569,17 @@ public sealed partial class DocumentService
         if (!string.IsNullOrEmpty(type))
             doc.FileType = type;
 
-        // يعود الملف برقم سنة الإعادة: سجل رقم أساس لسنة الإعادة بالرقم الجديد فيظهر عبر
-        // DisplayFileNumber (رقم أساس السنة الحالية ?? رقم الملف الأصلي).
-        var existing = doc.BaseNumbers.FirstOrDefault(b => b.Year == year);
-        if (existing is null)
+        // يعود الملف برقم سنة الإعادة: سجل جديد دائمًا يُلحق بسجلات السنوات السابقة فيظهر عبر
+        // EffectiveFileIdentity (الأحدث Year ثم CreatedAt) — والمعتبر هو الأحدث CreatedAt لنفس السنة.
+        await _baseNumbers.AddAsync(new DocumentBaseNumber
         {
-            await _baseNumbers.AddAsync(new DocumentBaseNumber
-            {
-                DocumentId = doc.Id,
-                Year = year,
-                BaseNumber = number,
-                CreatedById = userId ?? doc.CreatedById,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow,
-            }, ct);
-        }
-        else
-        {
-            existing.BaseNumber = number;
-            existing.UpdatedAt = DateTime.UtcNow;
-            _baseNumbers.Update(existing);
-        }
+            DocumentId = doc.Id,
+            Year = year,
+            BaseNumber = number,
+            CreatedById = userId ?? doc.CreatedById,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        }, ct);
 
         // إلحاق الرقم الجديد لنص البحث القائم (إلحاق لا إعادة بناء) ليُلتقط البحث.
         doc.SearchText = DocumentSearchTextBuilder.Append(doc.SearchText, number);

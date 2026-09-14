@@ -102,4 +102,17 @@ describe('AppealRotationModal', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('أدخل رقم الأساس الاستئنافي للسنة الحالية');
     expect(apiMock.put).not.toHaveBeenCalled();
   });
+
+  it('يعرض سجلات متعددة لنفس السنة بلا تضارب مفاتيح (توثيق التعدد)', async () => {
+    apiMock.get.mockResolvedValueOnce({
+      data: [
+        { year: new Date().getFullYear(), baseNumber: '1500' },
+        { year: new Date().getFullYear(), baseNumber: '1501' },
+      ],
+    });
+    render(<AppealRotationModal appeal={makeAppeal()} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    expect(await screen.findByText('1500')).toBeInTheDocument();
+    expect(screen.getByText('1501')).toBeInTheDocument();
+  });
 });

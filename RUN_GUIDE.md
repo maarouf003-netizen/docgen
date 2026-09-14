@@ -228,4 +228,8 @@ npm test
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260902160533_AddExecutionApplicantRegistryId.cs` — يضيف عمود `RegistryId` (nullable) وفهرسًا وFK (SetNull) إلى `ExecutionApplicants` لربط طالب التنفيذ الاعتباري (`legal`) بقيد الجهة العامة في `PublicEntities`.
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260902160613_AddExecutionApplicantRegistryId.cs` — نفسه (`integer` nullable).
   - بدون التطبيق سيفشل فتح/حفظ ملفات «منفذ عليه» أو حلول/دمج/إعادة تسمية جهة عامة مربوطة بـ`no such column: a.RegistryId` رغم نجاح الاختبارات محليًا.
+- [ ] **2026-09-14 — `AllowMultipleBaseNumbersPerYear` (SQLite + Postgres)** (المرحلة 2 من خطة هوية رقم الملف: توثيق الأرقام الكامل لنفس السنة):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260914161054_AllowMultipleBaseNumbersPerYear.cs` — يحذف القيد الفريد `IX_DocumentBaseNumbers_DocumentId_Year` و`IX_AppealBaseNumbers_AppealId_Year` ويُعيد إنشاءهما غير فريدين (كل تدوير/تجديد يُنشئ سجلًا جديدًا؛ الأحدث `CreatedAt` هو المعتبر).
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260914161205_AllowMultipleBaseNumbersPerYearPg.cs` — نفسه.
+  - بدون التطبيق سيفشل حفظ تدوير/تجديد ثانٍ لنفس السنة برسالة `UNIQUE constraint failed: DocumentBaseNumbers.DocumentId, DocumentBaseNumbers.Year` رغم نجاح الاختبارات محليًا.
 

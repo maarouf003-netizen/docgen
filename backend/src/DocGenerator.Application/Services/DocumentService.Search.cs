@@ -144,7 +144,7 @@ public sealed partial class DocumentService
                 d.BorrowerFamily,
                 d.FileNumber,
                 d.FileType,
-                d.BaseNumbers.FirstOrDefault(b => b.Year == currentYear)?.BaseNumber,
+                d.BaseNumbers.Where(b => b.Year == currentYear).OrderByDescending(b => b.CreatedAt).FirstOrDefault()?.BaseNumber,
                 RotationDisplayName(d),
                 EffectiveFileIdentity.Number(d),
                 EffectiveFileIdentity.Year(d)))
@@ -197,6 +197,7 @@ public sealed partial class DocumentService
 
         return doc.BaseNumbers
             .OrderByDescending(b => b.Year)
+            .ThenByDescending(b => b.CreatedAt)
             .Select(b => new BaseNumberHistoryDto(b.Year, b.BaseNumber))
             .ToList();
     }
@@ -251,47 +252,37 @@ public sealed partial class DocumentService
                 if (!eligible)
                     throw new ArgumentException($"الملف (رقم {doc.Id}) غير مؤهل للتدوير");
 
-                var normalized = entry.BaseNumber?.Trim();
+var normalized = entry.BaseNumber?.Trim();
                 if (string.IsNullOrEmpty(normalized))
                 {
-                    // إلغاء رقم أساس السنة الحالية: حذف السجل فقط مع الاحتفاظ بأرقام السنوات السابقة.
-                    var existing = doc.BaseNumbers.FirstOrDefault(b => b.Year == year);
-                    if (existing is null)
+                    // إلغاء رقم أساس السنة الحالية: حذف كل سجلاتها مع الاحتفاظ بأرقام السنوات السابقة.
+                    var currentYearRows = doc.BaseNumbers.Where(b => b.Year == year).ToList();
+                    if (currentYearRows.Count == 0)
                         continue;
 
                     auditEntries.Add(new AuditLogEntry(actorName, "rotate", doc.Id, doc.DocumentType,
-                        AuditWithActor($"ألغى رقم أساس {year}: {existing.BaseNumber}", doc)));
-                    _baseNumbers.Remove(existing);
+                        AuditWithActor($"ألغى رقم أساس {year}: {string.Join("، ", currentYearRows.Select(r => r.BaseNumber))}", doc)));
+                    foreach (var row in currentYearRows)
+                        _baseNumbers.Remove(row);
                     continue;
                 }
 
                 if (normalized.Length > 50)
                     throw new ArgumentException("رقم الأساس يتجاوز الطول المسموح");
 
-                var record = doc.BaseNumbers.FirstOrDefault(b => b.Year == year);
-                if (record is null)
+                // سجل جديد دائمًا: كل تدوير يلحق سجلًا بسنة التدوير، والأحدث (Year ثم CreatedAt) هو المعتبر.
+                var record = new DocumentBaseNumber
                 {
-                    record = new DocumentBaseNumber
-                    {
-                        DocumentId = doc.Id,
-                        Year = year,
-                        BaseNumber = normalized,
-                        CreatedById = userId,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow,
-                    };
-                    auditEntries.Add(new AuditLogEntry(actorName, "rotate", doc.Id, doc.DocumentType,
-                        AuditWithActor($"دوّر الملف برقم أساس {year}: {normalized}", doc)));
-                    await _baseNumbers.AddAsync(record, token);
-                }
-                else
-                {
-                    record.BaseNumber = normalized;
-                    record.UpdatedAt = DateTime.UtcNow;
-                    auditEntries.Add(new AuditLogEntry(actorName, "rotate", doc.Id, doc.DocumentType,
-                        AuditWithActor($"حدّث رقم أساس {year}: {normalized}", doc)));
-                    _baseNumbers.Update(record);
-                }
+                    DocumentId = doc.Id,
+                    Year = year,
+                    BaseNumber = normalized,
+                    CreatedById = userId,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                };
+                auditEntries.Add(new AuditLogEntry(actorName, "rotate", doc.Id, doc.DocumentType,
+                    AuditWithActor($"دوّر الملف برقم أساس {year}: {normalized}", doc)));
+                await _baseNumbers.AddAsync(record, ct);
 
                 // إلحاق رقم الأساس الجديد لنص البحث القائم (إلحاق لا إعادة بناء) ليُلتقط البحث.
                 doc.SearchText = DocumentSearchTextBuilder.Append(doc.SearchText, normalized);

@@ -2479,6 +2479,26 @@ public class DocumentServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetBaseNumberHistory_SameYearRowsOrderedByNewestCreatedAtFirst()
+    {
+        // السجلات المتعددة لنفس السنة تُعرض كلها، مرتبة بالأحدث CreatedAt أولًا (المعتبر هو الأحدث).
+        var doc = await CreateDocForRotation(1);
+        var current = DateTime.Today.Year;
+        _db.BaseNumbers.AddRange(
+            new DocumentBaseNumber { DocumentId = doc.Id, Year = current, BaseNumber = "1500", CreatedById = 1, CreatedAt = new DateTime(2026, 1, 5), UpdatedAt = DateTime.UtcNow },
+            new DocumentBaseNumber { DocumentId = doc.Id, Year = current, BaseNumber = "1501", CreatedById = 1, CreatedAt = new DateTime(2026, 1, 10), UpdatedAt = DateTime.UtcNow },
+            new DocumentBaseNumber { DocumentId = doc.Id, Year = current - 1, BaseNumber = "900", CreatedById = 1, CreatedAt = new DateTime(2025, 1, 1), UpdatedAt = DateTime.UtcNow });
+        await _db.SaveChangesAsync();
+
+        var history = await _service.GetBaseNumberHistoryAsync(doc.Id);
+
+        Assert.Equal(3, history.Count);
+        Assert.Equal("1501", history[0].BaseNumber);
+        Assert.Equal("1500", history[1].BaseNumber);
+        Assert.Equal("900", history[2].BaseNumber);
+    }
+
+    [Fact]
     public async Task GetBaseNumberHistory_UnknownDocument_ReturnsEmpty()
     {
         var history = await _service.GetBaseNumberHistoryAsync(999999);
@@ -2551,39 +2571,45 @@ public class DocumentServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task SaveBaseNumbers_CreatesThenUpdatesSameYear()
+    public async Task SaveBaseNumbers_SecondSaveSameYearAppendsAndNewestWins()
     {
         var doc = await CreateDocForRotation(1);
         var year = DateTime.Today.Year;
 
         await _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, " 1500 ") }, "lawyer1");
-        var row = await _db.BaseNumbers.AsNoTracking().SingleAsync(b => b.DocumentId == doc.Id);
-        Assert.Equal(year, row.Year);
-        Assert.Equal("1500", row.BaseNumber);
+        var first = await _db.BaseNumbers.AsNoTracking().SingleAsync(b => b.DocumentId == doc.Id);
+        Assert.Equal(year, first.Year);
+        Assert.Equal("1500", first.BaseNumber);
         Assert.Contains("rotate", _audit.Actions);
 
-        // تحديث نفس السنة لا يُنشئ سجلًا مكررًا.
+        // حفظ ثانٍ لنفس السنة يُنشئ سجلًا جديدًا بدل تحديث السجل — والمعتبر هو الأحدث CreatedAt.
         _db.ChangeTracker.Clear();
         await _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, "1501") }, "lawyer1");
-        var rows = await _db.BaseNumbers.AsNoTracking().Where(b => b.DocumentId == doc.Id).ToListAsync();
-        Assert.Single(rows);
-        Assert.Equal("1501", rows[0].BaseNumber);
-        Assert.Equal(doc.Id, rows[0].DocumentId);
+        var rows = await _db.BaseNumbers.AsNoTracking().Where(b => b.DocumentId == doc.Id).OrderBy(b => b.Id).ToListAsync();
+        Assert.Equal(2, rows.Count);
+        Assert.Equal("1500", rows[0].BaseNumber);
+        Assert.Equal("1501", rows[1].BaseNumber);
+
+        // الرقم الفعّال المعروض بعد التدوير الثاني هو الأحدث.
+        var after = await _service.GetAsync(doc.Id);
+        Assert.Equal("1501", after!.DisplayFileNumber);
     }
 
     [Fact]
-    public async Task SaveBaseNumbers_EmptyClearsCurrentYearPreservingPrevious()
+    public async Task SaveBaseNumbers_EmptyClearsAllCurrentYearRecordsPreservingPrevious()
     {
         var doc = await CreateDocForRotation(1);
         var year = DateTime.Today.Year;
         _db.BaseNumbers.AddRange(
             new DocumentBaseNumber { DocumentId = doc.Id, Year = year - 1, BaseNumber = "999", CreatedById = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow },
-            new DocumentBaseNumber { DocumentId = doc.Id, Year = year, BaseNumber = "1500", CreatedById = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+            new DocumentBaseNumber { DocumentId = doc.Id, Year = year, BaseNumber = "1500", CreatedById = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow },
+            new DocumentBaseNumber { DocumentId = doc.Id, Year = year, BaseNumber = "1501", CreatedById = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         await _db.SaveChangesAsync();
 
         _db.ChangeTracker.Clear();
         await _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, "   ") }, "lawyer1");
 
+        // إلغاء رقم سنة اليوم يحذف كل سجلاتها (لا واحدة فقط) مع الإبقاء على أرقام السنوات السابقة.
         var rows = await _db.BaseNumbers.AsNoTracking().Where(b => b.DocumentId == doc.Id).OrderBy(b => b.Year).ToListAsync();
         var single = Assert.Single(rows);
         Assert.Equal(year - 1, single.Year);
@@ -3373,6 +3399,35 @@ public class DocumentServiceTests : IDisposable
         // سنة الإعادة تُخزَّن كرقم أساس للعام الحالي (لا حقلاً على المستند ذاته).
         Assert.Contains(_db.BaseNumbers, b => b.DocumentId == doc.Id
             && b.Year == DateTime.Today.Year && b.BaseNumber == "2026/55");
+    }
+
+    [Fact]
+    public async Task RestoreStruckOff_TwiceSameYear_AppendsTwoRecordsAndLatestWins()
+    {
+        var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
+        var year = DateTime.Today.Year;
+
+        // شطب ثم إعادة → سجل رقم أساس أول.
+        await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _service.RestoreStruckOffAsync(doc.Id, new RenewalRequest { RenewalFileNumber = "2026/55" }, "lawyer1");
+
+        // شطب مرة أخرى ثم إعادة ثانية بنفس السنة برقم مختلف → سجلان لنفس السنة.
+        await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _service.RestoreStruckOffAsync(doc.Id, new RenewalRequest { RenewalFileNumber = "2026/60" }, "lawyer1");
+
+        var rows = await _db.BaseNumbers.Where(b => b.DocumentId == doc.Id && b.Year == year).OrderBy(b => b.Id).ToListAsync();
+        Assert.Equal(2, rows.Count);
+        Assert.Equal("2026/55", rows[0].BaseNumber);
+        Assert.Equal("2026/60", rows[1].BaseNumber);
+
+        // الرقم الفعّال المعروض هو الأحدث (2026/60).
+        var after = await _service.GetAsync(doc.Id);
+        Assert.Equal("2026/60", after!.DisplayFileNumber);
+
+        // وقعتا تجديد مسجلتان.
+        var occurrences = await _db.DocumentOccurrences.Where(o => o.DocumentId == doc.Id
+            && o.OccurrenceType == OccurrenceTypeCatalog.Renewal).ToListAsync();
+        Assert.Equal(2, occurrences.Count);
     }
 
     [Fact]

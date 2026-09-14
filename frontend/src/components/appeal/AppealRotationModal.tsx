@@ -104,8 +104,8 @@ export default function AppealRotationModal({
               <p className="text-gray-400 text-sm">لا توجد أرقام مسجلة بعد.</p>
             ) : (
               <ul className="rounded-lg border border-gray-200 divide-y divide-gray-100">
-                {history.map((h) => (
-                  <li key={h.year} className="flex items-center justify-between px-3 py-2 text-sm">
+                {history.map((h, i) => (
+                  <li key={`${h.year}-${i}`} className="flex items-center justify-between px-3 py-2 text-sm">
                     <span className="text-gray-500 tabular-nums">{h.year}</span>
                     <span
                       className={`tabular-nums font-medium ${

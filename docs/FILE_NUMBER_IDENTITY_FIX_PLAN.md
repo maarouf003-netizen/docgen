@@ -228,6 +228,63 @@ FileType = FileType الحالي
 - تحديث `BuildBaseNumberHistory` و `BaseNumbersModal` لعرض كل الأرقام لنفس السنة
 - هجرات: `SQLite` + `Postgres` تشمل `DocumentBaseNumbers` و`AppealBaseNumbers` + تحديث `Migrations` + تطبيق `dotnet ef database update` للسياقين عند النشر
 
+### 9.1 — خطة تنفيذ المرحلة 2 التفصيلية (2026-09-14 — القاعدة الحالية تجريبية)
+
+> تُقرأ مع بند المرحلة 2 أعلاه (المثبّت — لا يُعدَّل). هذا التفصيل مبني على فحص الكود الحالي سطرًا بسطر.
+
+**0) المبادئ والحدود (مثبتة لهذه المرحلة):**
+- القاعدة الحالية **تجريبية فقط** → لا Backfill ولا تدقيق تاريخي حاجب؛ الهجرتان تُطبَّقان مباشرة على القاعدة التجريبية.
+- **لا تغيير في العقود**: نفس الـ`DTOs` ونفس نقاط النهاية ونفس الحقول — التغيير سلوك تخزيني (`append` بدل `upsert`) + جعل قراءتين حتميتين.
+- القاعدة الذهبية: سجل رقم الأساس `append-only`؛ المعتبر هو الأحدث (`Year` تنازليًا ثم `CreatedAt` تنازليًا) — المحلل المركزي `EffectiveFileIdentity.Pick` يدعم التعدد أصلًا **دون تعديل**.
+
+**1) تغييرات الخلفية — مسارات الكتابة الأربعة (تحويل `upsert` → إنشاء دائم):**
+- أ. `Configurations.cs:394`: حذف `.IsUnique()` من فهرس `(DocumentId, Year)` مع **إبقاء الفهرس غير الفريد** (يلزم الاستعلامات)، وتحديث التعليق `:393` («سجلات متعددة لكل (ملف، سنة): الأحدث `CreatedAt` هو المعتبر»).
+- ب. `Configurations.cs:903`: نفس التحويل لفهرس `(AppealId, Year)`، وتحديث التعليق `:902` والتوثيق `XML` في `:892-895`.
+- ج. `DocumentService.Status.cs:574-592` (`ApplyRenewalAsync`): حذف فرع `existing` (تحديث رقم سنة الإعادة) — **إنشاء سجل جديد دائمًا**؛ كل تجديد حدث مستقل ووقعة التجديد تُلحق أصلًا (`:599-612` لا تُمس).
+- د. `DocumentService.Search.cs:271-294` (حفظ التدوير): إنشاء دائمًا؛ حذف فرع التحديث ورسالة التدقيق «حدّث رقم أساس {year}» (تبقى رسالة «دوّر الملف برقم أساس …»).
+- هـ. `DocumentService.Search.cs:256-266` (إلغاء رقم سنة اليوم بتفريغ الحقل): `FirstOrDefault` → حذف **كل** سجلات السنة الحالية — كلها من آثار تدوير هذه السنة — فتعود الهوية الفعّالة للسنة السابقة؛ ورسالة التدقيق تذكر العدد والقيم لا قيمة واحدة. (تنفيذيًا: `Where(...).ToList()` ثم حلقة `Remove` لكل سجل — واجهة `IRepository<T>` لا تملك `RemoveRange` (`IRepository.cs:11`) فلا يُوسَّع العقد، وتُجمَّد القائمة قبل التعديل أثناء التكرار.)
+- و. `DocumentAppealService.cs:476-493` (حفظ رقم الأساس الاستئنافي): إنشاء دائمًا؛ رسالة التدقيق `:495-497` تصبح «أضاف سجل رقم أساس استئنافي … (تُحفظ السجلات السابقة)».
+
+**2) تغييرات الخلفية — قراءات تصبح غير حتمية مع التعدد (إصلاح إلزامي):**
+- ز. `DocumentService.Search.cs:147` (إسقاط قائمة التدوير): `FirstOrDefault(b => b.Year == currentYear)` ترتيبه غير معرّف مع التعدد → **الأحدث `CreatedAt` لسنة اليوم** (`Where + OrderByDescending(CreatedAt) + FirstOrDefault`).
+- ح. `GetBaseNumberHistoryAsync` (`DocumentService.Search.cs:198-201`): إضافة `ThenByDescending(CreatedAt)` — السجل يعرض **كل** الصفوف (التعدد هو التوثيق المطلوب).
+- ط. `BuildBaseNumberHistory` (`DocumentAppealService.cs:443-453`): إضافة `ThenByDescending(CreatedAt)` داخل السنة الواحدة.
+- **ما لا يُمس — مُتحقق سطرًا بسطر**: `NeedsRotationOf` (`DocumentDtos.cs:990-1003` — `Any`)، `DocumentRepository.cs:521` (`Any`)، `DocumentAppealService.cs:1007` (`Any`)، شروط أهلية الحفظ (`Any(b.Year < year)`)، `EffectiveFileIdentity.Pick` (سنة ثم `CreatedAt` تنازليًا — جاهز)، `DocumentSearchTextBuilder.Build` (مرتب سنة ثم `CreatedAt` تنازليًا — `:20-25`) و`Append` (يمنع التكرار ذاتيًا — `:101-111`)، `UpdateRegistrationAsync` (`:214`/`850` — تمس أعمدة القيد لا جدول السجل).
+
+**3) قرارات سلوكية مثبتة (تمنع الغموض لاحقًا):**
+- إعادة حفظ **القيمة نفسها** لنفس السنة تُنشئ سجلًا ثانيًا — قاعدة موحدة بلا استثناءات صامتة (اكتمال أثر التدقيق؛ `Append` يمنع تضخم `SearchText`).
+- الإلغاء يحذف كل سجلات السنة الحالية فقط؛ سجلات السنوات السابقة محفوظة دائمًا.
+- تعادل `CreatedAt` (حفظان متزامنان) → أيهما يُنتخب مقبول وموثّق؛ لا قفل إضافي (القاعدة تجريبية والتكلفة لا تبرر).
+- `Down` للهجرتين يعيد القيد الفريد و**يفشل** بوجود صفوف مكررة — صالح فقط على قاعدة تجريبية بلا تكرار؛ يُوثَّق في ملف الهجرة تعليقًا.
+
+**4) الهجرتان (بوابة صارمة):**
+- من `backend/`: `dotnet tool restore` أولًا (أداة `dotnet-ef 10.0.10` في `dotnet-tools.json` — مثبّت `SDK 10.0.302`)، ثم `dotnet ef migrations add AllowMultipleBaseNumbersPerYear --context DocGeneratorDbContext` (مجلد `Migrations`) ثم `dotnet ef migrations add AllowMultipleBaseNumbersPerYearPg --context DocGeneratorPostgresDbContext` (مجلد `MigrationsPostgres` — لاحقة `Pg` مطابقة للاصطلاح القائم)، مع `--project`/`--startup-project` كما في آخر زوج هجرات.
+- **البوابة**: ملف `Up()` في كل هجرة يحوي **فقط** `DropIndex` + `CreateIndex` (غير فريد) على `DocumentBaseNumbers` و`AppealBaseNumbers` — أي عملية إضافية (عمود/جدول/بيانات) → **إيقاف فوري وتحقيق** قبل المتابعة.
+- التطبيق على القاعدة التجريبية: `dotnet ef database update --context DocGeneratorDbContext` ثم `--context DocGeneratorPostgresDbContext`.
+- تحديث `RUN_GUIDE.md §9`: إضافة سطري الهجرتين لقائمة المعلَّق ثم شطبهما بعد التطبيق الناجح (اصطلاح المستودع).
+- التقرير النهائي يتضمن اسمي الهجرتين وتنبيه التطبيق للسياقين (Deploy Reminder — ولو على قاعدة تجريبية، للسجل).
+
+**5) الواجهة (لا تغيير عقود — نسخ ومفاتيح فقط):**
+- `frontend/src/components/BaseNumbersModal.tsx:81`: `key={entry.year}` → `` key={`${entry.year}-${i}`} `` (تصادم حتمي مع التعدد).
+- `frontend/src/components/appeal/AppealRotationModal.tsx:108`: `key={h.year}` → `` key={`${h.year}-${i}`} `` (نفس السبب).
+- `frontend/src/pages/AppealsList.tsx:394`: «تم تحديث رقم الأساس الاستئنافي.» → «أُضيف سجل رقم أساس استئنافي جديد (تُحفظ السجلات السابقة).».
+- مسح `Rotation.tsx` وأي `notice` بصيغة استبدال عبر `rg` (النمط: `تم (تحديث|تدوير|حفظ).*أساس`) وإعادة صياغته لدلالة الإلحاق.
+- تحقق قراءة فقط: مسار التجديد في `OccurrencesEditor.tsx:215` يمر عبر نقطة النهاية النظامية (لا كتابة مباشرة لأرقام الأساس) — لا مسار خامس.
+
+**6) الاختبارات (لا سلوك بلا اختبار — تُكتب مع التنفيذ):**
+- إعادة كتابة `ServiceTests.cs:2554` (`SaveBaseNumbers_CreatesThenUpdatesSameYear` — يؤكد سلوكًا يُلغى) → `SaveBaseNumbers_SecondSaveSameYearAppendsAndNewestWins` (سجلان + الفعّال هو الثاني).
+- توسيع `ServiceTests.cs:2575` (`SaveBaseNumbers_EmptyClearsCurrentYearPreservingPrevious`): بذر سجلين لنفس السنة → يُحذفان معًا وتُحفظ السنة السابقة.
+- جديد: تجديدان لنفس السنة برقمين مختلفين → سجلان + الفعّال هو الثاني + وقعتا تجديد (الوقوعات لا تُمس).
+- جديد: قائمة التدوير مع سجلين لسنة اليوم → تعرض الأحدث.
+- توسيع `DocumentAppealServiceTests.cs:408` (`Rotation_OldYearNeedsRotation_ThenCurrentYearClearsIt` — يؤكد `history.Count == 2`): حفظ ثانٍ لنفس السنة → العدد 3 والفعّال هو الأحدث.
+- جديد: `EffectiveFileIdentity.LatestFrom` مع سجلين لنفس السنة → الأحدث `CreatedAt` (تثبيت العقد).
+- واجهة (`vitest`): `BaseNumbersModal` و`AppealRotationModal` يعرضان صفين لسنة واحدة؛ تحديث أي توقع نسخي متأثر.
+- حدّيات محفوظة: إلغاء بلا سجل سنة حالية (no-op)، حفظ قيمة مطابقة (سجل ثانٍ)، ملف بلا أي سجل (الاحتياطي الأصلي)، تكامل التصدير (`DocumentsExportIntegrationTests`) — مسح أي توقع لرقم سنة وحيدة.
+
+**7) التحقق الكامل الإلزامي (قبل إعلان الإنجاز):** `dotnet build` (0/0) → `dotnet test` (السياقان) أخضر → `npx oxlint src` (0/0) → `npx tsc -b` → `npx vitest run` → `npm run build` → مراجعة المسار الكامل (واجهة → `DTO` → خدمة → قاعدة → عرض/`SearchText`/إكسل) → `rg` لبقايا («سجل واحد لكل»، «حدّث رقم أساس»، `key={...year}`، `.IsUnique()`) → مطابقة بنود هذه الخطة بندًا بندًا.
+
+**8) معايير القبول:** كل بنود §9.1 منفذة ومختبرة؛ صفر عمليات هجرة زائدة؛ صفر كسر عقود؛ التقريران (الإنجاز + الهجرتان وتنبيه السياقين) مكتملان؛ `docs/STRUCK_OFF_AUDIT_QUERY.sql` لا يُمس (يخص §7/المرحلة 5)؛ لا إشعار مستخدمين §11 (قاعدة تجريبية بلا بيانات حقيقية).
+
 ### المرحلة 3 — تقسية سجل الوقوعات
 - إضافة عمود `Source` (`system/manual`) لتمييز الوقوعات النظامية عن اليدوية
 - منع تعديل/حذف الوقوعات النظامية من `OccurrencesEditor` أو تقييدها بصلاحية أعلى
