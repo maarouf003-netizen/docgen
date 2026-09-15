@@ -78,4 +78,22 @@ describe('OccurrencesCard', () => {
     expect(screen.getByRole('heading', { name: 'الاستئنافات' })).toBeInTheDocument();
     expect(screen.queryByText('لا توجد استئنافات.')).not.toBeInTheDocument();
   });
+
+  it('يعرض السرد النصي لوقعة «تغيير جهة» في سطور الوقوعات', () => {
+    const narrative = 'تم نقل قيد «وزارة التعليم» (دمشق/الفرع الرئيسي) بموجب قرار إداري رقم 123 بتاريخ 2026-08-01';
+    const doc = makeDocument({
+      occurrences: [
+        {
+          id: 9,
+          occurrenceType: 'entity-change',
+          occurrenceTypeLabel: 'تغيير جهة',
+          source: 'system',
+          detailsText: narrative,
+        },
+      ],
+    });
+    render(<OccurrencesCard doc={doc} onOpen={vi.fn()} onOpenAppeal={vi.fn()} />);
+
+    expect(screen.getByText(narrative)).toBeInTheDocument();
+  });
 });

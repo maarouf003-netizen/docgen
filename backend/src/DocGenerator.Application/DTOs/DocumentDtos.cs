@@ -509,7 +509,9 @@ public record BaseNumberHistoryDto(
 /// وقعة واحدة من «وقوعات الملف»: شطب/تجديد (وضع «منفذ عليه») أو إجراء تغيير حالة
 /// (نظام «طالبة تنفيذ»: تريث/منفذ بالتسوية/منفذ جبريا/تراجع). EventDate/ReceiptDate
 /// زمنيّان (تُفسَّر النصوص الحرة في الخدمة وتحوَّل إلى DateTime)، وDetails تحمل حقول
-/// إجراءات تغيير الحالة الكاملة (المفاتيح الإنكليزية المعتمدة في الخدمة).
+/// إجراءات تغيير الحالة الكاملة (المفاتيح الإنكليزية المعتمدة في الخدمة)، بينما
+/// DetailsText تحمل السرد النصي الحر للوقوعات الآلية (كنوع «تغيير جهة») — أحدهما
+/// فقط غير null، فلا يُلوَّث القاموس بالنص الخام.
 /// </summary>
 public record DocumentOccurrenceDto(
     int Id,
@@ -523,7 +525,8 @@ public record DocumentOccurrenceDto(
     DateTime? ReceiptDate,
     IReadOnlyDictionary<string, string>? Details,
     string? CreatedByName,
-    string? Source = null);
+    string? Source = null,
+    string? DetailsText = null);
 
 /// <summary>
 /// إضافة/تعديل وقعة ملف يدويًا عبر محرر الوقوعات. التواريخ تُرسَل نصوصًا حرة (مثال: 1/8/2026)
@@ -949,12 +952,18 @@ public class UpsertOccurrenceRequest
         Occurrences = d.Occurrences
             .OrderBy(o => o.EventDate)
             .ThenBy(o => o.Id)
-            .Select(o => new DocumentOccurrenceDto(o.Id, o.OccurrenceType,
-                OccurrenceTypeCatalog.ToLabel(o.OccurrenceType), o.EventDate,
-                o.FileNumber, o.FileType, o.Year, o.ReceiptNumber, o.ReceiptDate,
-                ParseOccurrenceDetails(o.Details), o.CreatedBy?.FullName, o.Source))
+            .Select(ToOccurrenceDto)
             .ToList(),
     };
+
+    private static DocumentOccurrenceDto ToOccurrenceDto(DocGenerator.Domain.Entities.DocumentOccurrence o)
+    {
+        var (details, detailsText) = OccurrenceDetails.Split(o.Details);
+        return new DocumentOccurrenceDto(o.Id, o.OccurrenceType,
+            OccurrenceTypeCatalog.ToLabel(o.OccurrenceType), o.EventDate,
+            o.FileNumber, o.FileType, o.Year, o.ReceiptNumber, o.ReceiptDate,
+            details, o.CreatedBy?.FullName, o.Source, detailsText);
+    }
 
     /// <summary>فكّ قائمة معرّفات الأموال المباعة من JSON المخزن (أو قائمة فارغة عند العطب).</summary>
     private static List<int> ParseSoldAssetIds(string? json)
@@ -967,20 +976,6 @@ public class UpsertOccurrenceRequest
         catch (JsonException)
         {
             return new();
-        }
-    }
-
-    /// <summary>فكّ حقول الوقعة التفصيلية من JSON المخزن (أو null عند غيابها/عطبها).</summary>
-    private static IReadOnlyDictionary<string, string>? ParseOccurrenceDetails(string? json)
-    {
-        if (string.IsNullOrWhiteSpace(json)) return null;
-        try
-        {
-            return JsonSerializer.Deserialize<Dictionary<string, string>>(json);
-        }
-        catch (JsonException)
-        {
-            return null;
         }
     }
 

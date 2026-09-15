@@ -2543,6 +2543,7 @@ public sealed class PublicEntityService : IPublicEntityService
                 decreeDate = request.DecreeDate,
                 note = request.Note,
             });
+            var decreeDate = FreeDateParser.Parse(request.DecreeDate, "تاريخ المرسوم");
             var changeEvent = new PublicEntityChangeEvent
             {
                 EntryId = entryId,
@@ -2550,9 +2551,7 @@ public sealed class PublicEntityService : IPublicEntityService
                 ActionKind = ActionKindCatalog.Move,
                 DecreeKind = request.DecreeKind,
                 DecreeNumber = request.DecreeNumber,
-                DecreeDate = !string.IsNullOrEmpty(request.DecreeDate)
-                    && DateTime.TryParse(request.DecreeDate, System.Globalization.CultureInfo.InvariantCulture,
-                        System.Globalization.DateTimeStyles.None, out var dd) ? dd : (DateTime?)null,
+                DecreeDate = decreeDate,
                 PayloadJson = payload,
                 ActorUserId = actor.UserId,
                 CreatedAtUtc = DateTime.UtcNow,
@@ -2573,7 +2572,7 @@ public sealed class PublicEntityService : IPublicEntityService
                         OccurrenceType = OccurrenceTypeCatalog.EntityChange,
                         EventDate = DateTime.UtcNow,
                         CreatedById = actor.UserId,
-                        Details = $"تم نقل قيد «{entry.Group.CanonicalName}» ({entry.Governorate}/{entry.BranchName})",
+                        Details = EntityChangeMessages.MoveOccurrence(entry.Group.CanonicalName, entry.Governorate, entry.BranchName, request.DecreeKind ?? "", request.DecreeNumber ?? "", decreeDate),
                     };
                     await _occurrences.AddAsync(occurrence, token);
                 }
@@ -2667,15 +2666,14 @@ public sealed class PublicEntityService : IPublicEntityService
                 decreeDate = request.DecreeDate,
                 note = request.Note,
             });
+            var decreeDate = FreeDateParser.Parse(request.DecreeDate, "تاريخ المرسوم");
             var changeEvent = new PublicEntityChangeEvent
             {
                 GroupId = sourceGroup.Id,
                 ActionKind = ActionKindCatalog.Move,
                 DecreeKind = request.DecreeKind,
                 DecreeNumber = request.DecreeNumber,
-                DecreeDate = !string.IsNullOrEmpty(request.DecreeDate)
-                    && DateTime.TryParse(request.DecreeDate, System.Globalization.CultureInfo.InvariantCulture,
-                        System.Globalization.DateTimeStyles.None, out var dd) ? dd : (DateTime?)null,
+                DecreeDate = decreeDate,
                 PayloadJson = payload,
                 ActorUserId = actor.UserId,
                 CreatedAtUtc = DateTime.UtcNow,
@@ -2696,7 +2694,7 @@ public sealed class PublicEntityService : IPublicEntityService
                         OccurrenceType = OccurrenceTypeCatalog.EntityChange,
                         EventDate = DateTime.UtcNow,
                         CreatedById = actor.UserId,
-                        Details = $"تم نقل قيد من «{sourceGroup.CanonicalName}» إلى «{targetGroup.CanonicalName}»",
+                        Details = EntityChangeMessages.MoveAllOccurrence(sourceGroup.CanonicalName, targetGroup.CanonicalName, request.DecreeKind ?? "", request.DecreeNumber ?? "", decreeDate),
                     };
                     await _occurrences.AddAsync(occurrence, token);
                 }

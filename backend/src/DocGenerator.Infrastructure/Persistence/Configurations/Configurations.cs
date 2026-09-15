@@ -1112,7 +1112,7 @@ public class PublicEntityAliasConfiguration : IEntityTypeConfiguration<PublicEnt
 }
 
 /// <summary>
-/// حدث تغيير على قيد أو هوية أم في سجل الجهات: يُفهرس حسب القيد والهوية وال风机 والزمن.
+/// حدث تغيير على قيد أو هوية أم في سجل الجهات: يُفهرس حسب القيد والهوية والنوع والزمن.
 /// </summary>
 public class PublicEntityChangeEventConfiguration : IEntityTypeConfiguration<PublicEntityChangeEvent>
 {

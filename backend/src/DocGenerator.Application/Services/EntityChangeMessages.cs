@@ -1,7 +1,7 @@
 namespace DocGenerator.Application.Services;
 
 /// <summary>
-/// النصوص المعيارية لعمليات تغيير سجل الجهات العامة (إعادة تسمية / دمج / توحيد تسمية / حلول):
+/// النصوص المعيارية لعمليات تغيير سجل الجهات العامة (نقل / إعادة تسمية / دمج / توحيد تسمية / حلول):
 /// تُركَّز هنا لتُستخدم حرفيًا في قنوات الإشعار الثلاث — وقوعات الملفات
 /// (<see cref="DocumentOccurrence.Details"/>) وتنبيه المحامين وتنبيه رؤساء الأقسام —
 /// ضمانًا لتطابق النصوص إثباتيًا (حسب `AGENTS.md` و`8.9` من
@@ -52,6 +52,16 @@ public static class EntityChangeMessages
     /// <summary>تنبيه رؤساء الأقسام (إعادة تسمية).</summary>
     public static string RenameHeadsAlert(string oldCanonical, string newCanonical, string decreeKind, string decreeNumber, DateTime? decreeDate)
         => Compose($"تم تعديل اسم الجهة \"{oldCanonical}\" الى \"{newCanonical}\"", decreeKind, decreeNumber, decreeDate);
+
+    // ── النقل ──
+
+    /// <summary>وقعة نقل قيد واحد على الملفات المتأثرة (يُلحَق المرجع «بموجب…» عند وجوده).</summary>
+    public static string MoveOccurrence(string canonicalName, string governorate, string branchName, string decreeKind, string decreeNumber, DateTime? decreeDate)
+        => Compose($"تم نقل قيد «{canonicalName}» ({governorate}/{branchName})", decreeKind, decreeNumber, decreeDate);
+
+    /// <summary>وقعة النقل الجماعي لجميع القيود على الملفات المتأثرة (يُلحَق المرجع «بموجب…» عند وجوده).</summary>
+    public static string MoveAllOccurrence(string sourceCanonical, string targetCanonical, string decreeKind, string decreeNumber, DateTime? decreeDate)
+        => Compose($"تم نقل قيد من «{sourceCanonical}» إلى «{targetCanonical}»", decreeKind, decreeNumber, decreeDate);
 
     // ── دمج ──
 

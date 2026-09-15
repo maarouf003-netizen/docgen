@@ -947,14 +947,14 @@ export interface BaseNumberHistoryDto {
   baseNumber: string;
 }
 
-/** نوع وقعة الملف: شطب/تجديد (وضع «منفذ عليه») أو إجراء تغيير حالة (نظام «طالبة تنفيذ»). */
+/** نوع وقعة الملف: شطب/تجديد (وضع «منفذ عليه») أو إجراء تغيير حالة (نظام «طالبة تنفيذ») أو تغيير جهة آلي. */
 export type OccurrenceType = 'struck-off' | 'renewal' | 'deferred' | 'settled' | 'forcible' | 'revert' | 'entity-change';
 
-/** وقعة واحدة من «وقوعات الملف»: شطب/تجديد أو إجراء تغيير حالة (تريث/منفذ/تراجع). */
+/** وقعة واحدة من «وقوعات الملف»: شطب/تجديد أو إجراء تغيير حالة (تريث/منفذ/تراجع) أو تغيير جهة آلي. */
 export interface DocumentOccurrenceDto {
   id: number;
   occurrenceType: OccurrenceType;
-  /** التسمية العربية للوقعة (شطب / تجديد / تريث / منفذ بالتسوية / منفذ جبريا / تراجع). */
+  /** التسمية العربية للوقعة (شطب / تجديد / تريث / منفذ بالتسوية / منفذ جبريا / تراجع / تغيير جهة). */
   occurrenceTypeLabel: string;
   /** تاريخ الوقعة: تاريخ الشطب أو التجديد أو الإجراء. */
   eventDate?: string;
@@ -970,6 +970,8 @@ export interface DocumentOccurrenceDto {
   receiptDate?: string;
   /** حقول إجراءات تغيير الحالة (مفاتيح الخدمة: tarith*، baraet*، sayer*، collectedAmount*، execSubStatus، soldAssetIds). */
   details?: Record<string, string>;
+  /** السرد النصي الحر للوقعة الآلية (نوع «تغيير جهة»): نص الحدث مع مرجعه — يُعرض بدل القاموس. */
+  detailsText?: string | null;
 /** اسم من أدخل الوقعة. */
   createdByName?: string;
   /** مصدر الوقعة: "system" (سجّلها النظام آليًا — لا تُعدَّل/تُحذف من الواجهة) أو "manual" (إدخال يدوي). */

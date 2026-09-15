@@ -294,7 +294,8 @@ export function buildStatusSummary(doc: DocumentResponse): string {
 
 /**
  * السرد المختصر للوقعة داخل «بيانات الملف»/«وقوعات الملف»:
- * شطب/تجديد (وضع «منفذ عليه») أو إجراء تغيير حالة (نظام «طالبة تنفيذ»).
+ * شطب/تجديد (وضع «منفذ عليه») أو إجراء تغيير حالة (نظام «طالبة تنفيذ»)
+ * أو السرد النصي الحر لوقعة «تغيير جهة» الآلية (عبر DetailsText مع مرجع المرسوم).
  */
 export function occurrenceLine(occurrence: DocumentOccurrenceDto): string {
   if (occurrence.occurrenceType === 'renewal') {
@@ -335,6 +336,11 @@ export function occurrenceLine(occurrence: DocumentOccurrenceDto): string {
     }
     case 'revert':
       return ['تراجع عن الحالة بموجب كتاب السير بالملف', d.sayerNumber ? `رقم ${d.sayerNumber}` : '', d.sayerDate ? `بتاريخ ${d.sayerDate}` : ''].filter(Boolean).join(' ');
+    case 'entity-change': {
+      // الوقعة الآلية لتغيير الجهة: سرد نصي حر جاهز (مع مرجع المرسوم) يصل عبر DetailsText.
+      const narrative = occurrence.detailsText?.trim();
+      return narrative ? narrative : occurrence.occurrenceTypeLabel;
+    }
     default:
       return occurrence.occurrenceTypeLabel;
   }

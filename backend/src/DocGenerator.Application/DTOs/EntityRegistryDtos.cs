@@ -109,7 +109,9 @@ public record ImportCommitResultDto(
 
 // ── النقل (MoveEntry) ──
 
-/// <summary>طلب نقل قيد جهة من هوية إلى أخرى أو طيّه في قيد قائم.</summary>
+/// <summary>طلب نقل قيد جهة من هوية إلى أخرى أو طيّه في قيد قائم.
+/// تاريخ المرسوم نص حر (يوم/شهر/سنة — مثال: 1/8/2026): عند بناء شاشة النقل يُمرَّر عبر
+/// normalizeArabicDigits(...).trim()، والخادم يرفض القيمة غير الصالحة غير الفارغة (الفارغ = بلا مرسوم).</summary>
 public record MoveEntryRequest(
     int? TargetGroupId,
     int? TargetEntryId,
@@ -118,7 +120,9 @@ public record MoveEntryRequest(
     string? DecreeDate,
     string? Note);
 
-/// <summary>طلب نقل جميع قيود مجموعة إلى مجموعة أخرى (تبعية كاملة).</summary>
+/// <summary>طلب نقل جميع قيود مجموعة إلى مجموعة أخرى (تبعية كاملة).
+/// تاريخ المرسوم نص حر (يوم/شهر/سنة — مثال: 1/8/2026): عند بناء شاشة النقل يُمرَّر عبر
+/// normalizeArabicDigits(...).trim()، والخادم يرفض القيمة غير الصالحة غير الفارغة (الفارغ = بلا مرسوم).</summary>
 public record MoveAllEntriesRequest(
     int SourceGroupId,
     int TargetGroupId,

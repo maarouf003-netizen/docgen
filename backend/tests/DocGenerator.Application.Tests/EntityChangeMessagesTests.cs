@@ -97,4 +97,36 @@ public class EntityChangeMessagesTests
         var text = EntityChangeMessages.AbolishOccurrence("الجهة الجديدة", "الجهة الملغاة", "", "", null);
         Assert.Equal("حلّت الجهة «الجهة الجديدة» محل «الجهة الملغاة»", text);
     }
+
+    // ── النقل (د5 §3: المرجع اختياري — يُلحَق «بموجب…» عند وجوده فقط) ──
+
+    [Fact]
+    public void MoveOccurrence_WithDecree_AppendsSuffix()
+    {
+        var date = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Unspecified);
+        var text = EntityChangeMessages.MoveOccurrence("وزارة التعليم", "دمشق", "الفرع الرئيسي", "قرار إداري", "123", date);
+        Assert.Equal("تم نقل قيد «وزارة التعليم» (دمشق/الفرع الرئيسي) بموجب قرار إداري رقم 123 بتاريخ 2026-08-01", text);
+    }
+
+    [Fact]
+    public void MoveOccurrence_WithoutDecree_OmitsSuffix()
+    {
+        var text = EntityChangeMessages.MoveOccurrence("وزارة التعليم", "دمشق", "الفرع الرئيسي", "", "", null);
+        Assert.Equal("تم نقل قيد «وزارة التعليم» (دمشق/الفرع الرئيسي)", text);
+    }
+
+    [Fact]
+    public void MoveAllOccurrence_WithDecree_AppendsSuffix()
+    {
+        var date = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Unspecified);
+        var text = EntityChangeMessages.MoveAllOccurrence("الهيئة أ", "الهيئة ب", "قرار إداري", "7", date);
+        Assert.Equal("تم نقل قيد من «الهيئة أ» إلى «الهيئة ب» بموجب قرار إداري رقم 7 بتاريخ 2026-08-01", text);
+    }
+
+    [Fact]
+    public void MoveAllOccurrence_WithoutDecree_OmitsSuffix()
+    {
+        var text = EntityChangeMessages.MoveAllOccurrence("الهيئة أ", "الهيئة ب", "", "", null);
+        Assert.Equal("تم نقل قيد من «الهيئة أ» إلى «الهيئة ب»", text);
+    }
 }

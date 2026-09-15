@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { OccurrencesModal } from './OccurrencesModal';
 import { formatDate } from '../../utils/dates';
@@ -78,5 +78,64 @@ describe('OccurrencesModal', () => {
     );
 
     expect(screen.getAllByText('نظامي')).toHaveLength(1);
+  });
+
+  it('يجمع وقعة «تغيير جهة» في قسم خاص بسردها النصي وتاريخ التغيير', () => {
+    const narrative = 'تم نقل قيد «وزارة التعليم» (دمشق/الفرع الرئيسي) بموجب قرار إداري رقم 123 بتاريخ 2026-08-01';
+    render(
+      <OccurrencesModal
+        documentTitle="الملف 77"
+        occurrences={[
+          makeOccurrence({ id: 1 }),
+          makeOccurrence({
+            id: 2,
+            occurrenceType: 'entity-change',
+            occurrenceTypeLabel: 'تغيير جهة',
+            source: 'system',
+            fileNumber: undefined,
+            fileType: undefined,
+            year: undefined,
+            eventDate: '2026-08-05',
+            detailsText: narrative,
+          }),
+        ]}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const section = screen.getByRole('region', { name: 'التغييرات التي وقعت على الجهة العامة' });
+    expect(screen.getByRole('heading', { name: 'التغييرات التي وقعت على الجهة العامة' })).toBeInTheDocument();
+    expect(screen.getByText(narrative)).toBeInTheDocument();
+    expect(screen.getByText('تاريخ التغيير')).toBeInTheDocument();
+    expect(screen.getByText(formatDate('2026-08-05'))).toBeInTheDocument();
+    // الوقعة العادية تبقى خارج القسم الخاص
+    expect(within(section).queryByText('شطب')).not.toBeInTheDocument();
+  });
+
+  it('يعرض تسمية وقعة «تغيير جهة» عند غياب السرد النصي بدل كسر العرض', () => {
+    render(
+      <OccurrencesModal
+        documentTitle="الملف 77"
+        occurrences={[
+          makeOccurrence({
+            id: 2,
+            occurrenceType: 'entity-change',
+            occurrenceTypeLabel: 'تغيير جهة',
+            source: 'system',
+            fileNumber: undefined,
+            fileType: undefined,
+            year: undefined,
+            eventDate: undefined,
+            detailsText: undefined,
+          }),
+        ]}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'التغييرات التي وقعت على الجهة العامة' })).toBeInTheDocument();
+    // التسمية في الشارة وسطر الملخص معًا (احتياطي غياب السرد)
+    expect(screen.getAllByText('تغيير جهة')).toHaveLength(2);
+    expect(screen.getByText('لا توجد تفاصيل مسجلة')).toBeInTheDocument();
   });
 });

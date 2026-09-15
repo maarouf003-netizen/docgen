@@ -357,24 +357,12 @@ public sealed partial class DocumentService
         return string.Concat(date, string.IsNullOrWhiteSpace(occurrence.FileNumber) ? string.Empty : $" — رقم: {occurrence.FileNumber}");
     }
 
-    private static DocumentOccurrenceDto ToDto(DocumentOccurrence o, string? createdByName = null) =>
-        new(o.Id, o.OccurrenceType, OccurrenceTypeCatalog.ToLabel(o.OccurrenceType), o.EventDate,
-            o.FileNumber, o.FileType, o.Year, o.ReceiptNumber, o.ReceiptDate,
-            ParseOccurrenceDetails(o.Details), createdByName, o.Source);
-
-    /// <summary>فكّ حقول الوقعة التفصيلية من JSON المخزن (أو null عند غيابها/عطبها).</summary>
-    private static IReadOnlyDictionary<string, string>? ParseOccurrenceDetails(string? json)
+    private static DocumentOccurrenceDto ToDto(DocumentOccurrence o, string? createdByName = null)
     {
-        if (string.IsNullOrWhiteSpace(json))
-            return null;
-        try
-        {
-            return JsonSerializer.Deserialize<Dictionary<string, string>>(json);
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
+        var (details, detailsText) = OccurrenceDetails.Split(o.Details);
+        return new(o.Id, o.OccurrenceType, OccurrenceTypeCatalog.ToLabel(o.OccurrenceType), o.EventDate,
+            o.FileNumber, o.FileType, o.Year, o.ReceiptNumber, o.ReceiptDate,
+            details, createdByName, o.Source, detailsText);
     }
 
     /// <summary>

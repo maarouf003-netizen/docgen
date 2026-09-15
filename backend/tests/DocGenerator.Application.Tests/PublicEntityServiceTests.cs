@@ -1101,6 +1101,28 @@ public class PublicEntityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task MoveEntry_OccurrenceDto_ExposesNarrativeAsDetailsText()
+    {
+        // انحدار الفجوة ب: السرد العربي المخزون نصًا حرًا يجب أن يصل الواجهة عبر
+        // DetailsText (لا قاموس Details) — مع لاحقة المرجع «بموجب…».
+        var doc = await SeedApplicantDocumentAsync("وزارة التعليم", "دمشق");
+        var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
+        doc.ApplicantPublicEntities.First().RegistryId = e1;
+        await _db.SaveChangesAsync();
+
+        await _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, "قرار إداري", "123", "1/8/2026", null), ManagerActor());
+
+        var loaded = await _db.Documents.Include(d => d.Occurrences).SingleAsync(d => d.Id == doc.Id);
+        var dto = DocumentResponse.FromEntity(loaded, 2026);
+        var occ = Assert.Single(dto.Occurrences);
+        Assert.Equal(OccurrenceTypeCatalog.EntityChange, occ.OccurrenceType);
+        Assert.Null(occ.Details);
+        Assert.Contains("نقل", occ.DetailsText);
+        Assert.Contains("بموجب", occ.DetailsText);
+        Assert.Contains("123", occ.DetailsText);
+    }
+
+    [Fact]
     public async Task MoveEntry_CreatesChangeEvent()
     {
         var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
@@ -1125,6 +1147,28 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(ActionKindCatalog.Move, evt.ActionKind);
         var payload = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(evt.PayloadJson);
         Assert.Equal("نقل جماعي", payload.GetProperty("note").GetString());
+    }
+
+    [Fact]
+    public async Task MoveEntry_DecreeDate_ParsesDayFirst_FreeText()
+    {
+        // انحدار: «1/8/2026» يجب أن تُفسَّر 1 آب (يوم/شهر) لا 8 كانون الثاني —
+        // الصيغة ISO السابقة («2026/1/1») متناظرة وعمياء عن هذا الصنف.
+        var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
+        await _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, "admin_decision", "123", "1/8/2026", null), ManagerActor());
+
+        var evt = await _db.PublicEntityChangeEvents.SingleAsync();
+        Assert.Equal(new DateTime(2026, 8, 1), evt.DecreeDate);
+    }
+
+    [Fact]
+    public async Task MoveAllEntries_DecreeDate_ParsesDayFirst_FreeText()
+    {
+        var (g1, _, g2, _) = await SeedTwoGroupsForMoveAsync();
+        await _service.MoveAllEntriesAsync(new MoveAllEntriesRequest(g1, g2, "admin_decision", "7", "1/8/2026", null), ManagerActor());
+
+        var evt = await _db.PublicEntityChangeEvents.SingleAsync();
+        Assert.Equal(new DateTime(2026, 8, 1), evt.DecreeDate);
     }
 
     // ── الدمج N←1 (د5 §4) ──

@@ -4,7 +4,9 @@ import { occurrenceLine } from './viewFormat';
 
 /**
  * نافذة «وقوعات الملف» (عرض فقط): سرد زمني لكل شطب وتجديد في وضع «منفذ عليه»/«عرض وايداع»
- * مع تفاصيل كل وقعة (الرقم القديم المشطوب، رقم/نوع/سنة التجديد، وورود اخطار التجديد).
+ * مع تفاصيل كل وقعة (الرقم القديم المشطوب، رقم/نوع/سنة التجديد، وورود اخطار التجديد)،
+ * وقسم خاص «التغييرات التي وقعت على الجهة العامة» يجمع وقوعات «تغيير جهة» الآلية بسردها
+ * النصي الحر (مع مرجع المرسوم) وتاريخ كل تغيير.
  * الإضافة والتعديل اليدويان من صفحة «تعديل» الملف حصرًا.
  */
 export function OccurrencesModal({
@@ -16,6 +18,8 @@ export function OccurrencesModal({
   occurrences: DocumentOccurrenceDto[];
   onClose: () => void;
 }) {
+  const regularOccurrences = occurrences.filter((o) => o.occurrenceType !== 'entity-change');
+  const entityChangeOccurrences = occurrences.filter((o) => o.occurrenceType === 'entity-change');
   return (
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
@@ -47,74 +51,23 @@ export function OccurrencesModal({
           )}
 
           <div className="space-y-3">
-            {occurrences.map((occurrence) => (
-              <div
-                key={occurrence.id}
-                className="rounded-lg border border-gray-200 p-4"
-              >
-                <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-                  <span className="inline-flex items-center gap-2 flex-wrap">
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs font-medium ${
-                        occurrence.occurrenceType === 'renewal'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : occurrence.occurrenceType === 'struck-off'
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-blue-100 text-blue-800'
-                      }`}
-                    >
-                      {occurrence.occurrenceTypeLabel}
-                    </span>
-                    {occurrence.source === 'system' && (
-                      <span className="rounded-full px-3 py-1 text-xs font-medium bg-gray-100 text-gray-700">
-                        نظامي
-                      </span>
-                    )}
-                  </span>
-                  {occurrence.createdByName && (
-                    <span className="text-xs text-gray-400">أدخلها: {occurrence.createdByName}</span>
-                  )}
-                </div>
-
-                <p className="text-gray-800 font-medium">{occurrenceLine(occurrence)}</p>
-
-                <dl className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-                  {occurrence.occurrenceType === 'renewal' ? (
-                    <>
-                      {occurrence.fileNumber && (
-                        <Detail label="رقم الملف الجديد" value={occurrence.fileNumber} />
-                      )}
-                      {occurrence.fileType && (
-                        <Detail label="نوع الملف الجديد" value={occurrence.fileType} />
-                      )}
-                      {occurrence.year && <Detail label="سنة الإعادة" value={String(occurrence.year)} />}
-                      {occurrence.receiptNumber && (
-                        <Detail label="رقم ورود اخطار التجديد" value={occurrence.receiptNumber} />
-                      )}
-                      {occurrence.receiptDate && (
-                        <Detail label="تاريخ ورود اخطار التجديد" value={formatDate(occurrence.receiptDate)} />
-                      )}
-                    </>
-                  ) : occurrence.occurrenceType === 'struck-off' ? (
-                    <>
-                      {occurrence.fileNumber && (
-                        <Detail label="رقم الملف المشطوب" value={occurrence.fileNumber} />
-                      )}
-                      {occurrence.fileType && (
-                        <Detail label="نوع الملف المشطوب" value={occurrence.fileType} />
-                      )}
-                      {occurrence.eventDate && (
-                        <Detail label="تاريخ الشطب" value={formatDate(occurrence.eventDate)} />
-                      )}
-                      {occurrence.year && <Detail label="سنة الشطب" value={String(occurrence.year)} />}
-                    </>
-                  ) : (
-                    <StatusChangeOccurrenceDetails occurrence={occurrence} />
-                  )}
-                </dl>
-              </div>
+            {regularOccurrences.map((occurrence) => (
+              <OccurrenceCard key={occurrence.id} occurrence={occurrence} />
             ))}
           </div>
+
+          {entityChangeOccurrences.length > 0 && (
+            <section aria-label="التغييرات التي وقعت على الجهة العامة" className="mt-5">
+              <h4 className="text-sm font-bold text-gray-600 mb-2">
+                التغييرات التي وقعت على الجهة العامة
+              </h4>
+              <div className="space-y-3">
+                {entityChangeOccurrences.map((occurrence) => (
+                  <OccurrenceCard key={occurrence.id} occurrence={occurrence} />
+                ))}
+              </div>
+            </section>
+          )}
 
           <div className="mt-5 flex justify-end">
             <button
@@ -126,6 +79,74 @@ export function OccurrencesModal({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** بطاقة وقعة واحدة: الشارة والنوع والسرد المختصر وشبكة التفاصيل حسب النوع. */
+function OccurrenceCard({ occurrence }: { occurrence: DocumentOccurrenceDto }) {
+  return (
+    <div className="rounded-lg border border-gray-200 p-4">
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+        <span className="inline-flex items-center gap-2 flex-wrap">
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-medium ${
+              occurrence.occurrenceType === 'renewal'
+                ? 'bg-emerald-100 text-emerald-800'
+                : occurrence.occurrenceType === 'struck-off'
+                  ? 'bg-red-100 text-red-800'
+                  : 'bg-blue-100 text-blue-800'
+            }`}
+          >
+            {occurrence.occurrenceTypeLabel}
+          </span>
+          {occurrence.source === 'system' && (
+            <span className="rounded-full px-3 py-1 text-xs font-medium bg-gray-100 text-gray-700">
+              نظامي
+            </span>
+          )}
+        </span>
+        {occurrence.createdByName && (
+          <span className="text-xs text-gray-400">أدخلها: {occurrence.createdByName}</span>
+        )}
+      </div>
+
+      <p className="text-gray-800 font-medium">{occurrenceLine(occurrence)}</p>
+
+      <dl className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+        {occurrence.occurrenceType === 'renewal' ? (
+          <>
+            {occurrence.fileNumber && (
+              <Detail label="رقم الملف الجديد" value={occurrence.fileNumber} />
+            )}
+            {occurrence.fileType && (
+              <Detail label="نوع الملف الجديد" value={occurrence.fileType} />
+            )}
+            {occurrence.year && <Detail label="سنة الإعادة" value={String(occurrence.year)} />}
+            {occurrence.receiptNumber && (
+              <Detail label="رقم ورود اخطار التجديد" value={occurrence.receiptNumber} />
+            )}
+            {occurrence.receiptDate && (
+              <Detail label="تاريخ ورود اخطار التجديد" value={formatDate(occurrence.receiptDate)} />
+            )}
+          </>
+        ) : occurrence.occurrenceType === 'struck-off' ? (
+          <>
+            {occurrence.fileNumber && (
+              <Detail label="رقم الملف المشطوب" value={occurrence.fileNumber} />
+            )}
+            {occurrence.fileType && (
+              <Detail label="نوع الملف المشطوب" value={occurrence.fileType} />
+            )}
+            {occurrence.eventDate && (
+              <Detail label="تاريخ الشطب" value={formatDate(occurrence.eventDate)} />
+            )}
+            {occurrence.year && <Detail label="سنة الشطب" value={String(occurrence.year)} />}
+          </>
+        ) : (
+          <StatusChangeOccurrenceDetails occurrence={occurrence} />
+        )}
+      </dl>
     </div>
   );
 }
@@ -160,6 +181,11 @@ function StatusChangeOccurrenceDetails({ occurrence }: { occurrence: DocumentOcc
       pushIf(pairs, 'تاريخ كتاب الجهة العامة بالسير بالملف', d.sayerDate);
       pushIf(pairs, 'رقم ورود كتاب بالسير بالملف', d.sayerRegNumber);
       pushIf(pairs, 'تاريخ ورود كتاب بالسير بالملف', d.sayerRegDate);
+      break;
+    case 'entity-change':
+      // الوقعة الآلية لتغيير الجهة: سردها النصي الحر في سطر البطاقة (occurrenceLine)،
+      // وهنا تاريخ التغيير التشغيلي فقط — بمرآة «تاريخ الشطب» لوقعة الشطب.
+      pushIf(pairs, 'تاريخ التغيير', formatDate(occurrence.eventDate));
       break;
   }
   if (pairs.length === 0) return <p className="text-gray-400 text-sm">لا توجد تفاصيل مسجلة</p>;
