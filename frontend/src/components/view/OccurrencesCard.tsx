@@ -6,10 +6,12 @@ import { SectionCard } from './SectionCard';
 import { buildOccurrenceLines } from './viewFormat';
 
 /**
- * بطاقة «وقوعات الملف» مجزأة إلى جزئين:
+ * بطاقة «وقوعات الملف» مجزأة إلى ثلاثة أجزاء:
  * 1) «الشطوبات»: السجل الزمني لوقوعات الملف وعلى رأسه الشطب (والتجديد وإجراءات
  *    الحالة الأخرى)، مع نافذة تفاصيلها الكاملة.
- * 2) «الاستئنافات»: كل استئناف وقع على الملف بسطر «استئناف قرار رئيس التنفيذ…»
+ * 2) «التغييرات التي وقعت على الجهة العامة»: سرد وقوعات «تغيير جهة» الآلية
+ *    بسردها النصي الحر (مرآة القسم الخاص في نافذة الوقوعات).
+ * 3) «الاستئنافات»: كل استئناف وقع على الملف بسطر «استئناف قرار رئيس التنفيذ…»
  *    وبجانبه شارة حالته (منظور حمراء / محسوم خضراء / مشطوب رمادية)، والضغط عليه يفتح
  *    نافذة كافة تفاصيل الاستئناف بما فيها قرار الحسم.
  */
@@ -25,11 +27,14 @@ export function OccurrencesCard({
   onOpenAppeal: (appeal: AppealDto) => void;
 }) {
   const occurrences = doc.occurrences ?? [];
-  const occurrenceLines = buildOccurrenceLines(occurrences);
+  const regularOccurrences = occurrences.filter((o) => o.occurrenceType !== 'entity-change');
+  const entityChangeOccurrences = occurrences.filter((o) => o.occurrenceType === 'entity-change');
+  const occurrenceLines = buildOccurrenceLines(regularOccurrences);
+  const entityChangeLines = buildOccurrenceLines(entityChangeOccurrences);
   const legacyStruckOffDate = occurrences.length === 0 ? doc.struckOffDate : undefined;
-  const hasStruckPart = occurrences.length > 0 || Boolean(legacyStruckOffDate);
+  const hasStruckPart = regularOccurrences.length > 0 || Boolean(legacyStruckOffDate);
 
-  if (!hasStruckPart && appeals.length === 0) return null;
+  if (!hasStruckPart && entityChangeOccurrences.length === 0 && appeals.length === 0) return null;
 
   return (
     <SectionCard title="وقوعات الملف">
@@ -64,7 +69,19 @@ export function OccurrencesCard({
           )}
         </section>
 
-        {/* الجزء الثاني: الاستئنافات */}
+        {/* الجزء الثاني: التغييرات التي وقعت على الجهة العامة (مرآة النافذة) */}
+        {entityChangeOccurrences.length > 0 && (
+          <section aria-label="التغييرات التي وقعت على الجهة العامة" className="space-y-2">
+            <h4 className="text-sm font-bold text-gray-600">التغييرات التي وقعت على الجهة العامة</h4>
+            <ul className="text-gray-800 text-sm space-y-1.5">
+              {entityChangeLines.map((line, i) => (
+                <li key={i}>{line}</li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {/* الجزء الثالث: الاستئنافات */}
         <section aria-label="الاستئنافات" className="space-y-2">
           <h4 className="text-sm font-bold text-gray-600">الاستئنافات</h4>
           {appeals.length > 0 ? (

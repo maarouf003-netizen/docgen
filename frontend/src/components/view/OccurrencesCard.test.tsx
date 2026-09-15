@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { OccurrencesCard } from './OccurrencesCard';
 import { makeDocument, makeStruckOffDocument } from '../../test/factories';
@@ -95,5 +95,27 @@ describe('OccurrencesCard', () => {
     render(<OccurrencesCard doc={doc} onOpen={vi.fn()} onOpenAppeal={vi.fn()} />);
 
     expect(screen.getByText(narrative)).toBeInTheDocument();
+  });
+
+  it('يجمع سطور «تغيير جهة» في قسم خاص منفصل عن «الشطوبات»', () => {
+    const narrative = 'تم نقل قيد «وزارة التعليم» (دمشق/الفرع الرئيسي)';
+    const doc = makeDocument({
+      occurrences: [
+        {
+          id: 9,
+          occurrenceType: 'entity-change',
+          occurrenceTypeLabel: 'تغيير جهة',
+          source: 'system',
+          detailsText: narrative,
+        },
+      ],
+    });
+    render(<OccurrencesCard doc={doc} onOpen={vi.fn()} onOpenAppeal={vi.fn()} />);
+
+    expect(screen.getByRole('heading', { name: 'التغييرات التي وقعت على الجهة العامة' })).toBeInTheDocument();
+    const section = screen.getByRole('region', { name: 'التغييرات التي وقعت على الجهة العامة' });
+    expect(within(section).getByText(narrative)).toBeInTheDocument();
+    // قسم الشطوبات يبقى فارغًا (لا سطور شطب) مع بقاء البطاقة ظاهرة
+    expect(screen.getByText('لا توجد شطوبات.')).toBeInTheDocument();
   });
 });
