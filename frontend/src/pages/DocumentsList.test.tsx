@@ -1272,6 +1272,64 @@ describe('DocumentsList', () => {
     expect(screen.getByRole('link', { name: 'فتح الملف' })).toHaveAttribute('href', '/documents/99');
   });
 
+  it('يعرض اسم طالب التنفيذ في شريط الاحتياط لملف «منفذ عليها» (الجهة العامة منفذ عليها)', async () => {
+    sessionStorage.setItem('lastViewedDocumentId', '88');
+    mockPage([makeDocument({ id: 1, borrowerName: 'أحمد', borrowerFamily: 'الخطيب' })]);
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/documents/88') {
+        return Promise.resolve({
+          data: makeDocument({
+            id: 88,
+            generalEntitySide: 'executed',
+            applicant: '',
+            executionApplicants: [{ id: 1, name: 'وسام', father: 'حسن', family: 'علي' }],
+            executedNaturalPersons: [{ name: 'محمود', father: 'علي', family: 'حسن' }],
+          }),
+        });
+      }
+      if (url.startsWith('/documents/filter-options')) {
+        return Promise.resolve({ data: { applicants: [], courts: [], lawyers: [], administrativeBranches: [], branches: [], publicEntityBranches: [] } });
+      }
+      return Promise.resolve({ data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [makeDocument({ id: 1, borrowerName: 'أحمد', borrowerFamily: 'الخطيب' })] } });
+    });
+
+    renderList();
+
+    expect(await screen.findByText(/كنت تعمل على ملف «وسام حسن علي»/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'فتح الملف' })).toHaveAttribute('href', '/documents/88');
+  });
+
+  it('يعرض رقم الملف في شريط الاحتياط لملف بلا أسماء أطراف', async () => {
+    sessionStorage.setItem('lastViewedDocumentId', '77');
+    mockPage([makeDocument({ id: 1, borrowerName: 'أحمد', borrowerFamily: 'الخطيب' })]);
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/documents/77') {
+        return Promise.resolve({
+          data: makeDocument({
+            id: 77,
+            borrowerName: '',
+            borrowerFather: '',
+            borrowerFamily: '',
+            applicant: '',
+            fileNumber: '125',
+            fileType: 'ج',
+            executedNaturalPersons: [],
+            executionApplicants: [],
+          }),
+        });
+      }
+      if (url.startsWith('/documents/filter-options')) {
+        return Promise.resolve({ data: { applicants: [], courts: [], lawyers: [], administrativeBranches: [], branches: [], publicEntityBranches: [] } });
+      }
+      return Promise.resolve({ data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [makeDocument({ id: 1, borrowerName: 'أحمد', borrowerFamily: 'الخطيب' })] } });
+    });
+
+    renderList();
+
+    expect(await screen.findByText(/كنت تعمل على ملف «125 ج»/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'فتح الملف' })).toHaveAttribute('href', '/documents/77');
+  });
+
   it('يحفظ موضع القائمة وآخر ملف مفتوح عند النقر على ملف', async () => {
     const user = userEvent.setup();
     mockPage([makeDocument({ id: 5, borrowerName: 'محمود', borrowerFather: 'علي', borrowerFamily: 'حسن' })]);

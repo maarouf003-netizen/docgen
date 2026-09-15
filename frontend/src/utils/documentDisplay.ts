@@ -63,3 +63,9 @@ export function displayFileNumber(d: DocumentResponse) {
   if (d.isDraft) return '';
   return fileNumberLabel(d.displayFileNumber ?? d.fileNumber, d.fileType);
 }
+
+/** اسم تعريف الملف: الطرف المقابل للجهة العامة أولًا، ثم الطرف الآخر — فلا يضيع أي اسم متاح. */
+export function identityName(d: DocumentResponse): string {
+  if (isExecutedLike(d.generalEntitySide)) return applicantName(d) || fullName(d);
+  return fullName(d) || applicantName(d);
+}

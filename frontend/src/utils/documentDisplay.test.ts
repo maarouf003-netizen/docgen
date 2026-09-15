@@ -6,6 +6,7 @@ import {
   executedFullName,
   fileNumberLabel,
   fullName,
+  identityName,
   publicEntityBranch,
   tripleName,
 } from './documentDisplay';
@@ -121,6 +122,54 @@ describe('documentDisplay', () => {
 
     it('يعيد الرقم وحده عند غياب النوع', () => {
       expect(displayFileNumber(makeDocument({ fileType: '' }))).toBe('99');
+    });
+  });
+
+  describe('identityName', () => {
+    it('يعيد اسم المقترض (المنفذ عليه) في الملفات العادية (الجهة العامة طالبة تنفيذ)', () => {
+      expect(identityName(makeDocument())).toBe('أحمد خالد الخطيب');
+    });
+
+    it('يعيد اسم طالب التنفيذ في ملفات «منفذ عليها» عند وجوده', () => {
+      const d = makeDocument({
+        generalEntitySide: 'executed',
+        executionApplicants: [{ id: 1, name: 'سليم', father: 'حسن', family: 'علي' }],
+        executedNaturalPersons: [{ name: 'محمود', father: 'علي', family: 'حسن' }],
+      });
+      expect(identityName(d)).toBe('سليم حسن علي');
+    });
+
+    it('يعيد اسم المنفذ عليه كبديل في ملفات «منفذ عليها» عند غياب طالب التنفيذ', () => {
+      const d = makeDocument({
+        generalEntitySide: 'executed',
+        applicant: '',
+        executionApplicants: [],
+        executedNaturalPersons: [{ name: 'محمود', father: 'علي', family: 'حسن' }],
+      });
+      expect(identityName(d)).toBe('محمود علي حسن');
+    });
+
+    it('يعيد اسم طالب التنفيذ البديل (applicant) عند غياب المنفذ عليهم جميعًا في وضع «منفذ عليها»', () => {
+      const d = makeDocument({ generalEntitySide: 'executed', executedNaturalPersons: [] });
+      expect(identityName(d)).toBe('المدعي');
+    });
+
+    it('يعامل صفة «عرض وايداع» مثل «منفذ عليها» ويُفضّل طالب العرض', () => {
+      const d = makeDocument({
+        generalEntitySide: 'deposit',
+        executionApplicants: [{ id: 1, name: 'هاني', father: 'سامر', family: 'النجار' }],
+        executedNaturalPersons: [{ name: 'محمود', father: 'علي', family: 'حسن' }],
+      });
+      expect(identityName(d)).toBe('هاني سامر النجار');
+    });
+
+    it('يعيد اسم طالب التنفيذ البديل في وضع «عرض وايداع» عند غياب المنفذ عليهم', () => {
+      const d = makeDocument({
+        generalEntitySide: 'deposit',
+        executionApplicants: [],
+        executedNaturalPersons: [],
+      });
+      expect(identityName(d)).toBe('المدعي');
     });
   });
 

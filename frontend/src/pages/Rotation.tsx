@@ -131,7 +131,7 @@ export default function Rotation() {
               {rows.map((row) => (
                 <article key={row.documentId} className="bg-white rounded-xl shadow p-4">
                   <div className="text-emerald-800 font-bold text-lg mb-1">
-                    {fullName(row) || `مستند ${row.documentId}`}
+                    {fullName(row) || displayFileNumber(row) || row.court || `مستند ${row.documentId}`}
                   </div>
                   <div className="text-sm text-gray-600">
                     الدائرة: {row.court || '—'}
@@ -172,7 +172,7 @@ export default function Rotation() {
                     <tr key={row.documentId} className="hover:bg-gray-50">
                       <td className="px-4 py-3">{row.court || '—'}</td>
                       <td className="px-4 py-3 font-medium text-gray-800">
-                        {fullName(row) || `مستند ${row.documentId}`}
+                        {fullName(row) || displayFileNumber(row) || row.court || `مستند ${row.documentId}`}
                       </td>
                       <td className="px-4 py-3">{displayFileNumber(row)}</td>
                       <td className="px-4 py-3">{row.fileType || '—'}</td>

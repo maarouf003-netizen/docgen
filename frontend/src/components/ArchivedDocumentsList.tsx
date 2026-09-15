@@ -146,10 +146,10 @@ export default function ArchivedDocumentsList({ config }: { config: ArchivedDocu
         to={`/documents/${d.id}`}
         className="text-emerald-800 font-bold text-lg hover:underline min-h-11"
       >
-        {config.displayName(d) || `مستند ${d.id}`}
+        {config.displayName(d) || displayFileNumber(d) || `مستند ${d.id}`}
       </Link>
     ) : (
-      <div className="text-emerald-800 font-bold text-lg">{config.displayName(d) || `مستند ${d.id}`}</div>
+      <div className="text-emerald-800 font-bold text-lg">{config.displayName(d) || displayFileNumber(d) || `مستند ${d.id}`}</div>
     );
 
   const nameOnTable = (d: DocumentResponse) =>
@@ -158,10 +158,10 @@ export default function ArchivedDocumentsList({ config }: { config: ArchivedDocu
         to={`/documents/${d.id}`}
         className="hover:text-emerald-700 hover:underline inline-flex items-center min-h-11"
       >
-        {config.displayName(d) || `مستند ${d.id}`}
+        {config.displayName(d) || displayFileNumber(d) || `مستند ${d.id}`}
       </Link>
     ) : (
-      config.displayName(d) || `مستند ${d.id}`
+      config.displayName(d) || displayFileNumber(d) || `مستند ${d.id}`
     );
 
   return (
@@ -285,7 +285,7 @@ export default function ArchivedDocumentsList({ config }: { config: ArchivedDocu
       {renewalDoc && config.requiresRenewal && config.restoreEndpoint && (
         <RenewalModal
           doc={renewalDoc}
-          name={config.displayName(renewalDoc) || `مستند ${renewalDoc.id}`}
+          name={config.displayName(renewalDoc) || displayFileNumber(renewalDoc) || `مستند ${renewalDoc.id}`}
           endpoint={config.restoreEndpoint(renewalDoc.id)}
           confirmLabel={config.confirmRestoreLabel ?? 'تأكيد الإعادة'}
           busyLabel={config.restoringLabel ?? 'جارِ الإعادة...'}

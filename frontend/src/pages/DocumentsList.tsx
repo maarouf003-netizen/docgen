@@ -9,7 +9,7 @@ import { useFloatingMenu } from '../hooks/useFloatingMenu';
 import { downloadBlob } from '../utils/download';
 import { richToPlainText } from '../utils/richText';
 import { STATUS_BADGES, STATUS_OPTIONS, getDocumentStatus } from '../utils/documentStatus';
-import { applicantName, displayFileNumber, fullName, publicEntityBranch as entityBranchDisplay } from '../utils/documentDisplay';
+import { applicantName, displayFileNumber, fullName, identityName, publicEntityBranch as entityBranchDisplay } from '../utils/documentDisplay';
 import { loadDocumentsListPosition, loadLastViewedDocumentId, saveDocumentsListPosition, saveLastViewedDocumentId } from '../utils/listSession';
 import ExecutionActionsModal from '../components/ExecutionActionsModal';
 import type { DocumentResponse, PagedResult } from '../types';
@@ -392,7 +392,7 @@ export default function DocumentsList() {
     } else if (focusName == null) {
       api
         .get<DocumentResponse>(`/documents/${focusId}`)
-        .then((r) => setFocusName(fullName(r.data) || `مستند ${focusId}`))
+        .then((r) => setFocusName(identityName(r.data) || displayFileNumber(r.data) || `مستند ${focusId}`))
         .catch(() => setFocusName(`مستند ${focusId}`));
     }
   }, [focusId, focusVisible, focusName, data]);
@@ -633,7 +633,7 @@ export default function DocumentsList() {
                     onClick={() => openDocument(d.id)}
                     className="text-emerald-800 font-bold text-lg hover:underline flex items-center min-h-11 mb-1 gap-2"
                   >
-                    {fullName(d) || `مستند ${d.id}`}
+                    {fullName(d) || displayFileNumber(d) || `مستند ${d.id}`}
                     {d.id === focusId && (
                       <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 whitespace-nowrap">
                         آخر ملف تم فتحه
@@ -767,7 +767,7 @@ export default function DocumentsList() {
                           onClick={() => openDocument(d.id)}
                           className="inline-flex items-center gap-2 min-h-11 text-emerald-800 font-bold hover:underline"
                         >
-                          {fullName(d) || `مستند ${d.id}`}
+                          {fullName(d) || displayFileNumber(d) || `مستند ${d.id}`}
                           {d.id === focusId && (
                             <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 whitespace-nowrap">
                               آخر ملف تم فتحه
