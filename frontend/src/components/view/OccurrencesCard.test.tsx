@@ -117,5 +117,63 @@ describe('OccurrencesCard', () => {
     expect(within(section).getByText(narrative)).toBeInTheDocument();
     // قسم الشطوبات يبقى فارغًا (لا سطور شطب) مع بقاء البطاقة ظاهرة
     expect(screen.getByText('لا توجد شطوبات.')).toBeInTheDocument();
+    // نافذة التفاصيل تبقى متاحة لأن البطاقة تحمل وقعات مسجلة
+    expect(screen.getByRole('button', { name: 'عرض تفاصيل وقوعات الملف' })).toBeInTheDocument();
+  });
+
+  it('يعرض وقعة تغيير الحالة في قسم مستقل ويُبقي زر التفاصيل متاحًا', () => {
+    const statusLine = 'تريث بموجب كتاب التريث رقم 33 بتاريخ 3/3/2024';
+    const doc = makeDocument({
+      occurrences: [
+        {
+          id: 2,
+          occurrenceType: 'deferred',
+          occurrenceTypeLabel: 'تريث',
+          eventDate: '2026-08-01',
+          source: 'system',
+          details: { tarithNumber: '33', tarithDate: '3/3/2024' },
+        },
+      ],
+    });
+    render(<OccurrencesCard doc={doc} onOpen={vi.fn()} onOpenAppeal={vi.fn()} />);
+
+    expect(screen.getByRole('heading', { name: 'تغييرات الحالة' })).toBeInTheDocument();
+    const section = screen.getByRole('region', { name: 'تغييرات الحالة' });
+    expect(within(section).getByText(statusLine)).toBeInTheDocument();
+    expect(screen.getByText('لا توجد شطوبات.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'عرض تفاصيل وقوعات الملف' })).toBeInTheDocument();
+  });
+
+  it('يفصل سطر الشطب عن سطر تغيير الحالة في قسميهما', () => {
+    const statusLine = 'تريث بموجب كتاب التريث رقم 33 بتاريخ 3/3/2024';
+    const doc = makeDocument({
+      occurrences: [
+        {
+          id: 1,
+          occurrenceType: 'struck-off',
+          occurrenceTypeLabel: 'شطب',
+          eventDate: '2026-07-01',
+          fileNumber: '99',
+          year: 2026,
+          source: 'system',
+        },
+        {
+          id: 2,
+          occurrenceType: 'deferred',
+          occurrenceTypeLabel: 'تريث',
+          eventDate: '2026-08-01',
+          source: 'system',
+          details: { tarithNumber: '33', tarithDate: '3/3/2024' },
+        },
+      ],
+    });
+    render(<OccurrencesCard doc={doc} onOpen={vi.fn()} onOpenAppeal={vi.fn()} />);
+
+    const struckSection = screen.getByRole('region', { name: 'الشطوبات' });
+    const statusSection = screen.getByRole('region', { name: 'تغييرات الحالة' });
+    expect(within(struckSection).getByText(/تم شطب الملف رقم 99 لعام 2026/)).toBeInTheDocument();
+    expect(within(struckSection).queryByText(statusLine)).not.toBeInTheDocument();
+    expect(within(statusSection).getByText(statusLine)).toBeInTheDocument();
+    expect(within(statusSection).queryByText(/تم شطب الملف/)).not.toBeInTheDocument();
   });
 });

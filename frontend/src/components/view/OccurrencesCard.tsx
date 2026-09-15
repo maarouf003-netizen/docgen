@@ -6,12 +6,12 @@ import { SectionCard } from './SectionCard';
 import { buildOccurrenceLines } from './viewFormat';
 
 /**
- * بطاقة «وقوعات الملف» مجزأة إلى ثلاثة أجزاء:
- * 1) «الشطوبات»: السجل الزمني لوقوعات الملف وعلى رأسه الشطب (والتجديد وإجراءات
- *    الحالة الأخرى)، مع نافذة تفاصيلها الكاملة.
- * 2) «التغييرات التي وقعت على الجهة العامة»: سرد وقوعات «تغيير جهة» الآلية
+ * بطاقة «وقوعات الملف» مجزأة إلى أربعة أجزاء:
+ * 1) «الشطوبات»: شطب الملف وتجديده فقط، مع تاريخ الشطب التراثي عند غياب الوقوعات.
+ * 2) «تغييرات الحالة»: وقوعات إجراءات الحالة (تريث/تسوية/تنفيذ جبري/تراجع).
+ * 3) «التغييرات التي وقعت على الجهة العامة»: سرد وقوعات «تغيير جهة» الآلية
  *    بسردها النصي الحر (مرآة القسم الخاص في نافذة الوقوعات).
- * 3) «الاستئنافات»: كل استئناف وقع على الملف بسطر «استئناف قرار رئيس التنفيذ…»
+ * 4) «الاستئنافات»: كل استئناف وقع على الملف بسطر «استئناف قرار رئيس التنفيذ…»
  *    وبجانبه شارة حالته (منظور حمراء / محسوم خضراء / مشطوب رمادية)، والضغط عليه يفتح
  *    نافذة كافة تفاصيل الاستئناف بما فيها قرار الحسم.
  */
@@ -27,49 +27,61 @@ export function OccurrencesCard({
   onOpenAppeal: (appeal: AppealDto) => void;
 }) {
   const occurrences = doc.occurrences ?? [];
-  const regularOccurrences = occurrences.filter((o) => o.occurrenceType !== 'entity-change');
+  const nonEntityOccurrences = occurrences.filter((o) => o.occurrenceType !== 'entity-change');
+  const struckRenewalOccurrences = nonEntityOccurrences.filter(
+    (o) => o.occurrenceType === 'struck-off' || o.occurrenceType === 'renewal',
+  );
+  const statusChangeOccurrences = nonEntityOccurrences.filter(
+    (o) => !struckRenewalOccurrences.includes(o),
+  );
   const entityChangeOccurrences = occurrences.filter((o) => o.occurrenceType === 'entity-change');
-  const occurrenceLines = buildOccurrenceLines(regularOccurrences);
+  const struckRenewalLines = buildOccurrenceLines(struckRenewalOccurrences);
+  const statusChangeLines = buildOccurrenceLines(statusChangeOccurrences);
   const entityChangeLines = buildOccurrenceLines(entityChangeOccurrences);
   const legacyStruckOffDate = occurrences.length === 0 ? doc.struckOffDate : undefined;
-  const hasStruckPart = regularOccurrences.length > 0 || Boolean(legacyStruckOffDate);
+  const hasStruckPart = struckRenewalOccurrences.length > 0 || Boolean(legacyStruckOffDate);
+  const hasStatusPart = statusChangeOccurrences.length > 0;
 
-  if (!hasStruckPart && entityChangeOccurrences.length === 0 && appeals.length === 0) return null;
+  if (
+    !hasStruckPart &&
+    !hasStatusPart &&
+    entityChangeOccurrences.length === 0 &&
+    appeals.length === 0
+  )
+    return null;
 
   return (
     <SectionCard title="وقوعات الملف">
       <div className="space-y-4">
-        {/* الجزء الأول: الشطوبات (سجل وقوعات الملف التاريخي) */}
+        {/* الجزء الأول: الشطوبات (الشطب والتجديد فقط) */}
         <section aria-label="الشطوبات" className="space-y-2">
           <h4 className="text-sm font-bold text-gray-600">الشطوبات</h4>
-          {hasStruckPart ? (
-            occurrences.length > 0 ? (
-              <>
-                <ul className="text-gray-800 text-sm space-y-1.5">
-                  {occurrenceLines.map((line, i) => (
-                    <li key={i}>{line}</li>
-                  ))}
-                </ul>
-                <button
-                  type="button"
-                  onClick={onOpen}
-                  aria-label="عرض تفاصيل وقوعات الملف"
-                  className="block w-full text-right min-h-11"
-                >
-                  <span className="text-emerald-800 text-xs font-medium hover:underline">
-                    عرض التفاصيل ({occurrences.length})
-                  </span>
-                </button>
-              </>
-            ) : (
-              <FieldCell label="تاريخ الشطب" value={formatDate(legacyStruckOffDate)} showEmpty />
-            )
+          {struckRenewalOccurrences.length > 0 ? (
+            <ul className="text-gray-800 text-sm space-y-1.5">
+              {struckRenewalLines.map((line, i) => (
+                <li key={i}>{line}</li>
+              ))}
+            </ul>
+          ) : legacyStruckOffDate ? (
+            <FieldCell label="تاريخ الشطب" value={formatDate(legacyStruckOffDate)} showEmpty />
           ) : (
             <p className="text-gray-400 text-sm">لا توجد شطوبات.</p>
           )}
         </section>
 
-        {/* الجزء الثاني: التغييرات التي وقعت على الجهة العامة (مرآة النافذة) */}
+        {/* الجزء الثاني: تغييرات الحالة */}
+        {hasStatusPart && (
+          <section aria-label="تغييرات الحالة" className="space-y-2">
+            <h4 className="text-sm font-bold text-gray-600">تغييرات الحالة</h4>
+            <ul className="text-gray-800 text-sm space-y-1.5">
+              {statusChangeLines.map((line, i) => (
+                <li key={i}>{line}</li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {/* الجزء الثالث: التغييرات التي وقعت على الجهة العامة (مرآة النافذة) */}
         {entityChangeOccurrences.length > 0 && (
           <section aria-label="التغييرات التي وقعت على الجهة العامة" className="space-y-2">
             <h4 className="text-sm font-bold text-gray-600">التغييرات التي وقعت على الجهة العامة</h4>
@@ -81,7 +93,7 @@ export function OccurrencesCard({
           </section>
         )}
 
-        {/* الجزء الثالث: الاستئنافات */}
+        {/* الجزء الرابع: الاستئنافات */}
         <section aria-label="الاستئنافات" className="space-y-2">
           <h4 className="text-sm font-bold text-gray-600">الاستئنافات</h4>
           {appeals.length > 0 ? (
@@ -112,6 +124,19 @@ export function OccurrencesCard({
             <p className="text-gray-400 text-sm">لا توجد استئنافات.</p>
           )}
         </section>
+
+        {occurrences.length > 0 && (
+          <button
+            type="button"
+            onClick={onOpen}
+            aria-label="عرض تفاصيل وقوعات الملف"
+            className="block w-full rounded text-right min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+          >
+            <span className="text-emerald-800 text-xs font-medium hover:underline">
+              عرض التفاصيل ({occurrences.length})
+            </span>
+          </button>
+        )}
       </div>
     </SectionCard>
   );

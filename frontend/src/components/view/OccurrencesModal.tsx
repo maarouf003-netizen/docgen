@@ -3,10 +3,10 @@ import { formatDate } from '../../utils/dates';
 import { occurrenceLine } from './viewFormat';
 
 /**
- * نافذة «وقوعات الملف» (عرض فقط): سرد زمني لكل شطب وتجديد في وضع «منفذ عليه»/«عرض وايداع»
- * مع تفاصيل كل وقعة (الرقم القديم المشطوب، رقم/نوع/سنة التجديد، وورود اخطار التجديد)،
- * وقسم خاص «التغييرات التي وقعت على الجهة العامة» يجمع وقوعات «تغيير جهة» الآلية بسردها
- * النصي الحر (مع مرجع المرسوم) وتاريخ كل تغيير.
+ * نافذة «وقوعات الملف» (عرض فقط): قسم «الشطوبات» للشطب والتجديد، وقسم «تغييرات الحالة»
+ * لإجراءات الحالة (تريث/منفذ بالتسوية/منفذ جبريا/تراجع)، وقسم خاص «التغييرات التي وقعت
+ * على الجهة العامة» يجمع وقوعات «تغيير جهة» الآلية بسردها النصي الحر (مع مرجع المرسوم)
+ * وتاريخ كل تغيير.
  * الإضافة والتعديل اليدويان من صفحة «تعديل» الملف حصرًا.
  */
 export function OccurrencesModal({
@@ -18,7 +18,13 @@ export function OccurrencesModal({
   occurrences: DocumentOccurrenceDto[];
   onClose: () => void;
 }) {
-  const regularOccurrences = occurrences.filter((o) => o.occurrenceType !== 'entity-change');
+  const nonEntityOccurrences = occurrences.filter((o) => o.occurrenceType !== 'entity-change');
+  const struckRenewalOccurrences = nonEntityOccurrences.filter(
+    (o) => o.occurrenceType === 'struck-off' || o.occurrenceType === 'renewal',
+  );
+  const statusChangeOccurrences = nonEntityOccurrences.filter(
+    (o) => !struckRenewalOccurrences.includes(o),
+  );
   const entityChangeOccurrences = occurrences.filter((o) => o.occurrenceType === 'entity-change');
   return (
     <div
@@ -50,11 +56,27 @@ export function OccurrencesModal({
             <p className="text-gray-400 text-sm">لا توجد وقوعات مسجلة لهذا الملف</p>
           )}
 
-          <div className="space-y-3">
-            {regularOccurrences.map((occurrence) => (
-              <OccurrenceCard key={occurrence.id} occurrence={occurrence} />
-            ))}
-          </div>
+          {struckRenewalOccurrences.length > 0 && (
+            <section aria-label="الشطوبات">
+              <h4 className="text-sm font-bold text-gray-600 mb-2">الشطوبات</h4>
+              <div className="space-y-3">
+                {struckRenewalOccurrences.map((occurrence) => (
+                  <OccurrenceCard key={occurrence.id} occurrence={occurrence} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {statusChangeOccurrences.length > 0 && (
+            <section aria-label="تغييرات الحالة" className="mt-5">
+              <h4 className="text-sm font-bold text-gray-600 mb-2">تغييرات الحالة</h4>
+              <div className="space-y-3">
+                {statusChangeOccurrences.map((occurrence) => (
+                  <OccurrenceCard key={occurrence.id} occurrence={occurrence} />
+                ))}
+              </div>
+            </section>
+          )}
 
           {entityChangeOccurrences.length > 0 && (
             <section aria-label="التغييرات التي وقعت على الجهة العامة" className="mt-5">

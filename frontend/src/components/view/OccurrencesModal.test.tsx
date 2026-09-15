@@ -138,4 +138,63 @@ describe('OccurrencesModal', () => {
     expect(screen.getAllByText('تغيير جهة')).toHaveLength(2);
     expect(screen.getByText('لا توجد تفاصيل مسجلة')).toBeInTheDocument();
   });
+
+  it('يفصل وقعة تغيير الحالة عن الشطب في قسم مستقل مع تفاصيلها', () => {
+    const statusLine = 'تريث بموجب كتاب التريث رقم 33 بتاريخ 3/3/2024';
+    render(
+      <OccurrencesModal
+        documentTitle="الملف 77"
+        occurrences={[
+          makeOccurrence({ id: 1 }),
+          makeOccurrence({
+            id: 2,
+            occurrenceType: 'deferred',
+            occurrenceTypeLabel: 'تريث',
+            source: 'system',
+            fileNumber: undefined,
+            fileType: undefined,
+            year: undefined,
+            eventDate: '2026-08-01',
+            details: { tarithNumber: '33', tarithDate: '3/3/2024' },
+          }),
+        ]}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'الشطوبات' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'تغييرات الحالة' })).toBeInTheDocument();
+    const struckSection = screen.getByRole('region', { name: 'الشطوبات' });
+    const statusSection = screen.getByRole('region', { name: 'تغييرات الحالة' });
+    expect(within(struckSection).getByText(/تم شطب الملف رقم 77/)).toBeInTheDocument();
+    expect(within(struckSection).queryByText(statusLine)).not.toBeInTheDocument();
+    expect(within(statusSection).getByText(statusLine)).toBeInTheDocument();
+    expect(within(statusSection).getByText('رقم كتاب التريث')).toBeInTheDocument();
+    expect(within(statusSection).queryByText(/تم شطب الملف/)).not.toBeInTheDocument();
+  });
+
+  it('لا يعرض قسم «الشطوبات» عند وجود وقعة تغيير حالة فقط', () => {
+    render(
+      <OccurrencesModal
+        documentTitle="الملف 77"
+        occurrences={[
+          makeOccurrence({
+            id: 2,
+            occurrenceType: 'deferred',
+            occurrenceTypeLabel: 'تريث',
+            source: 'system',
+            fileNumber: undefined,
+            fileType: undefined,
+            year: undefined,
+            eventDate: '2026-08-01',
+            details: { tarithNumber: '33', tarithDate: '3/3/2024' },
+          }),
+        ]}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'تغييرات الحالة' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'الشطوبات' })).not.toBeInTheDocument();
+  });
 });
