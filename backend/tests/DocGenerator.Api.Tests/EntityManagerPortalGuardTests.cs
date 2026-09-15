@@ -49,6 +49,7 @@ public class EntityManagerPortalGuardTests
     [InlineData("/api/portal/files")]
     [InlineData("/api/portal/my-scope")]
     [InlineData("/api/auth/me")]
+    [InlineData("/api/meta/current-year")]
     public async Task EntityManager_OnPortalAndAuthPaths_PassesThrough(string path)
     {
         var context = BuildContext(path, authenticated: true, role: "entitymanager");

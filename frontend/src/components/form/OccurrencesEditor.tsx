@@ -1,14 +1,12 @@
 import { useEffect, useState } from 'react';
 import { api, getApiErrorMessage } from '../../api/client';
+import { useCurrentYear } from '../../hooks/useCurrentYear';
 import { normalizeArabicDigits } from '../../utils/arabicDigits';
 import { formatDate } from '../../utils/dates';
 import { isExecutedLike } from '../../utils/documentDisplay';
 import type { DocumentOccurrenceDto, OccurrenceType, UpsertOccurrenceRequest } from '../../types';
 import { occurrenceLine } from '../view/viewFormat';
 import { FormSectionTitle } from './FormSectionTitle';
-
-/** سنة اليوم المثبتة لاستعادة المشطوب في عائلة «منفذ عليها»/«عرض وايداع» (§4.4). */
-const pinnedRenewalYear = () => new Date().getFullYear();
 
 /** تحليل سنة مدخلة بأرقام عربية أو لاتينية (تُرفض العربية الخام من Number مباشرة). */
 const parseYearInput = (raw: string): number => Number(normalizeArabicDigits(raw).trim());
@@ -108,6 +106,9 @@ export function OccurrencesEditor({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [busy, setBusy] = useState(false);
+  // سنة الإعادة المثبتة لاستعادة المشطوب في عائلة «منفذ عليها»/«عرض وايداع» (§4.4) —
+  // معتمدة من الخادم (سنة «قرار السنة») لا من عداد المتصفح.
+  const { currentYear } = useCurrentYear();
 
   // يتزامن مع الوقوعات القادمة من تحميل الملف (تُحمَّل بعد التركيب الأول للمكوّن)،
   // ويبقى على أي تعديل داخلي لاحق لأن مرجع initial ثابت ما لم يُعاد تحميل الملف.
@@ -218,7 +219,7 @@ export function OccurrencesEditor({
         await api.post(`/documents/${documentId}/restore-struck-off`, {
           renewalFileNumber: form.fileNumber.trim() || undefined,
           renewalFileType: form.fileType.trim() || undefined,
-          renewalYear: pinRenewalYear ? pinnedRenewalYear() : (form.year.trim() ? parseYearInput(form.year) : undefined),
+          renewalYear: pinRenewalYear ? currentYear : (form.year.trim() ? parseYearInput(form.year) : undefined),
           renewalFileReceiptNumber: form.receiptNumber.trim() || undefined,
           renewalFileReceiptDate: normalizeArabicDigits(form.receiptDate).trim() || undefined,
           renewalDate: normalizeArabicDigits(form.eventDate).trim() || undefined,
@@ -420,7 +421,7 @@ export function OccurrencesEditor({
                     <div className="block">
                       <span className="text-xs text-gray-500 block mb-1">سنة الإعادة</span>
                       <div className="text-sm font-medium text-gray-800 min-h-11 flex items-center">
-                        {pinnedRenewalYear()} (سنة اليوم — ثابتة لعائلة «منفذ عليها»)
+                        {currentYear} (سنة النظام — ثابتة لعائلة «منفذ عليها»)
                       </div>
                     </div>
                   ) : (

@@ -35,24 +35,26 @@ public sealed class DbLoginRateLimiter : ILoginRateLimiter
     private readonly DocGeneratorDbContext _db;
     private readonly int _maxAttempts;
     private readonly TimeSpan _window;
+    private readonly TimeProvider _clock;
 
-    public DbLoginRateLimiter(DocGeneratorDbContext db, IOptions<RateLimitOptions> options)
+    public DbLoginRateLimiter(DocGeneratorDbContext db, IOptions<RateLimitOptions> options, TimeProvider? clock = null)
     {
         _db = db;
         _maxAttempts = Math.Max(1, options.Value.MaxLoginAttempts);
         _window = TimeSpan.FromMinutes(Math.Max(1, options.Value.WindowMinutes));
+        _clock = clock ?? TimeProvider.System;
     }
 
     public async Task<bool> IsAllowedAsync(string key, CancellationToken ct = default)
     {
-        var cutoff = DateTime.UtcNow - _window;
+        var cutoff = _clock.GetUtcNow().UtcDateTime - _window;
         var count = await _db.LoginAttempts.CountAsync(a => a.Key == key && a.AttemptedAtUtc >= cutoff, ct);
         return count < _maxAttempts;
     }
 
     public async Task<bool> TryRecordFailureAsync(string key, CancellationToken ct = default)
     {
-        var now = DateTime.UtcNow;
+        var now = _clock.GetUtcNow().UtcDateTime;
         var cutoff = now - _window;
         var inserted = await _db.Database.ExecuteSqlRawAsync(
             InsertIfUnderLimitSql,
@@ -70,7 +72,7 @@ public sealed class DbLoginRateLimiter : ILoginRateLimiter
 
     private async Task PruneOldAsync(CancellationToken ct = default)
     {
-        var now = DateTime.UtcNow;
+        var now = _clock.GetUtcNow().UtcDateTime;
         if (now.Ticks - Interlocked.Read(ref _lastPruneTicks) < PruneEvery.Ticks)
             return;
 

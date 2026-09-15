@@ -53,7 +53,8 @@ public class ReviewLetterServiceTests : IDisposable
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
         return new ReviewLetterService(
-            letters, documents, branches, appeals, delegations, headAlerts, uow, tx, _audit);
+            letters, documents, branches, appeals, delegations, headAlerts, uow, tx, _audit,
+            TimeProvider.System, TestClock.TimeZone);
     }
 
     private static User NewUser(string username, string fullName, UserRole role, int? branchId)

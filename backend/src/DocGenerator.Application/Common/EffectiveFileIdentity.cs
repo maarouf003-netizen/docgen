@@ -11,29 +11,33 @@ namespace DocGenerator.Application.Common;
 /// </summary>
 public static class EffectiveFileIdentity
 {
-    /// <summary>أحدث سجل رقم أساس لملف بسنة ≤ سنة الفحص، وإلا null.</summary>
-    public static DocumentBaseNumber? Latest(Document? doc, int? asOfYear = null)
+    /// <summary>
+    /// أحدث سجل رقم أساس لملف بسنة ≤ سنة الفحص، وإلا null. سنة الفحص إلزامية:
+    /// القرارات تُمرَّرها صراحة (سنة اليوم من ServerClock، أو سنة شطب في وقعة الشطب) —
+    /// يُمرَّر int.MaxValue للانتقاء غير المقيد بحلول سنة السجلات.
+    /// </summary>
+    public static DocumentBaseNumber? Latest(Document? doc, int asOfYear)
         => Pick(doc?.BaseNumbers, b => b.Year, b => b.CreatedAt, asOfYear);
 
     /// <summary>
     /// المحلل المشترك على أرقام أساس ملف: أحدث سجل بسنة ≤ سنة الفحص
     /// مرتبًا بالسنة ثم CreatedAt تنازليًا، وإلا null. لا تُستعمل الأرقام المستقبلية قبل حلول سنتها.
     /// </summary>
-    public static DocumentBaseNumber? LatestFrom(ICollection<DocumentBaseNumber>? numbers, int? asOfYear = null)
+    public static DocumentBaseNumber? LatestFrom(ICollection<DocumentBaseNumber>? numbers, int asOfYear)
         => Pick(numbers, b => b.Year, b => b.CreatedAt, asOfYear);
 
     /// <summary>
     /// المحلل المشترك على أرقام أساس استئناف (نفس قاعدة الرقم الفعّال للملفات).
     /// </summary>
-    public static AppealBaseNumber? LatestFrom(ICollection<AppealBaseNumber>? numbers, int? asOfYear = null)
+    public static AppealBaseNumber? LatestFrom(ICollection<AppealBaseNumber>? numbers, int asOfYear)
         => Pick(numbers, b => b.Year, b => b.CreatedAt, asOfYear);
 
     /// <summary>الرقم الفعّال لملف: رقم أحدث رقم أساس ≤ سنة الفحص، وإلا رقم الملف الأصلي.</summary>
-    public static string? Number(Document? doc, int? asOfYear = null)
+    public static string? Number(Document? doc, int asOfYear)
         => Latest(doc, asOfYear)?.BaseNumber ?? doc?.FileNumber;
 
     /// <summary>سنة الرقم الفعّال لملف: سنة سجل الأساس المختار، وإلا سنة قيد الملف الأصلية.</summary>
-    public static string? Year(Document? doc, int? asOfYear = null)
+    public static string? Year(Document? doc, int asOfYear)
         => Latest(doc, asOfYear)?.Year.ToString() ?? doc?.FileYear;
 
     /// <summary>
@@ -45,14 +49,13 @@ public static class EffectiveFileIdentity
         ICollection<T>? items,
         Func<T, int> getYear,
         Func<T, DateTime> getCreated,
-        int? asOfYear)
+        int asOfYear)
     {
         if (items is null || items.Count == 0)
             return default;
 
-        var asOf = asOfYear ?? DateTime.Today.Year;
         var match = items
-            .Where(b => getYear(b) <= asOf)
+            .Where(b => getYear(b) <= asOfYear)
             .OrderByDescending(getYear)
             .ThenByDescending(getCreated)
             .FirstOrDefault();
@@ -60,7 +63,7 @@ public static class EffectiveFileIdentity
             return match;
 
         // مؤشر على Include ناقص أو بيانات مستقبلية فقط؛ الاحتياطي يعود FileNumber.
-        Debug.WriteLine($"EffectiveFileIdentity: عند ({asOf}) أرقام محمّلة دون موافِق قطَعي — رجع الاحتياطي.");
+        Debug.WriteLine($"EffectiveFileIdentity: عند ({asOfYear}) أرقام محمّلة دون موافِق قطَعي — رجع الاحتياطي.");
         return default;
     }
 }

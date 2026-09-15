@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import NetworkStatusBanner from './NetworkStatusBanner';
+import CurrentYearBanner from './CurrentYearBanner';
 import ReviewPendingBell from './review/ReviewPendingBell';
 import { REVIEWS_UNSEEN_EVENT } from './review/reviewDisplay';
 import nationalEmblem from '../assets/national.png';
@@ -246,6 +247,7 @@ export default function Layout() {
           </aside>
         )}
         <main className="flex-1 min-h-0 bg-gray-100 p-4 lg:p-6 overflow-y-auto pb-20 lg:pb-6">
+          <CurrentYearBanner />
           {isMobile && (
             <div className="mb-4 flex items-center gap-2">
               <button

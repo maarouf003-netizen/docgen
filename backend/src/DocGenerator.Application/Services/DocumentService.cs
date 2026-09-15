@@ -125,6 +125,8 @@ public sealed partial class DocumentService : IDocumentService
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
     private readonly int _maxExportRows;
+    private readonly TimeProvider _clock;
+    private readonly TimeZoneInfo _timeZone;
 
     public DocumentService(
         IDocumentRepository documents,
@@ -140,7 +142,9 @@ public sealed partial class DocumentService : IDocumentService
         IUnitOfWork uow,
         ITransactionRunner tx,
         IAuditLogger audit,
-        Microsoft.Extensions.Options.IOptions<Common.ExportOptions> exportOptions)
+        Microsoft.Extensions.Options.IOptions<Common.ExportOptions> exportOptions,
+        TimeProvider clock,
+        TimeZoneInfo timeZone)
     {
         _documents = documents;
         _users = users;
@@ -156,18 +160,20 @@ public sealed partial class DocumentService : IDocumentService
         _tx = tx;
         _audit = audit;
         _maxExportRows = Math.Max(1, exportOptions.Value.MaxRows);
+        _clock = clock;
+        _timeZone = timeZone;
     }
 
     public async Task<DocumentResponse?> GetAsync(int documentId, CancellationToken ct = default)
     {
         var doc = await _documents.GetByIdAsync(documentId, ct);
-        return doc is null ? null : DocumentResponse.FromEntity(doc);
+        return doc is null ? null : DocumentResponse.FromEntity(doc, ServerClock.CurrentYear(_clock, _timeZone));
     }
 
     public async Task<DocumentResponse?> GetDeletedAsync(int documentId, CancellationToken ct = default)
     {
         var doc = await _documents.GetDeletedByIdAsync(documentId, ct);
-        return doc is null || !doc.IsDeleted ? null : DocumentResponse.FromEntity(doc);
+        return doc is null || !doc.IsDeleted ? null : DocumentResponse.FromEntity(doc, ServerClock.CurrentYear(_clock, _timeZone));
     }
 
     public async Task<DocumentResponse> CreateAsync(DocumentUpsertRequest request, int userId, string? actorName, int? branchId, CancellationToken ct = default)
@@ -215,7 +221,7 @@ public sealed partial class DocumentService : IDocumentService
                 await AddStruckOffOccurrenceAsync(doc, userId, token);
             await _uow.SaveChangesAsync(token);
             await SeedInitialActionsAsync(doc, request.InitialActions, userId, actorName, token);
-            return DocumentResponse.FromEntity(doc);
+            return DocumentResponse.FromEntity(doc, CurrentYear());
         }, ct);
     }
 
@@ -257,7 +263,7 @@ public sealed partial class DocumentService : IDocumentService
             await LogDocumentChangesAsync(before, doc, actorName, "update",
                 $"عدّل المستند (رقم {doc.Id})", token);
             await SeedInitialActionsAsync(doc, request.InitialActions, userId, actorName, token);
-            return DocumentResponse.FromEntity(doc);
+            return DocumentResponse.FromEntity(doc, CurrentYear());
         }, ct);
     }
 
@@ -365,7 +371,7 @@ public sealed partial class DocumentService : IDocumentService
             await _audit.LogAsync(actorName, "transfer", documentId, doc.DocumentType,
                 AuditWithActor($"نقل الملف إلى المحامي: {target.FullName}", doc), token);
 
-            return DocumentResponse.FromEntity(transferred);
+            return DocumentResponse.FromEntity(transferred, CurrentYear());
         }, ct);
     }
 
@@ -410,7 +416,7 @@ public sealed partial class DocumentService : IDocumentService
             if (transferred != files.Count)
                 throw new DocumentConflictException("تغيّرت بيانات الملفات أثناء النقل الجماعي — أعد المحاولة");
 
-            var now = DateTime.Now;
+            var now = ServerClock.Now(_clock, _timeZone);
             foreach (var file in files)
             {
                 // سجل تعاقب لكل ملف أُحيل إلى المحامي المستهدف.
@@ -441,5 +447,8 @@ public sealed partial class DocumentService : IDocumentService
         string.IsNullOrWhiteSpace(ActorFullName(doc))
             ? action
             : $"{action} — المنفذ عليه: {ActorFullName(doc)}";
+
+    /// <summary>سنة «قرار السنة» الحالية من ساعة النظام ومنطقته — مصدر واحد لا تكرار قرار.</summary>
+    private int CurrentYear() => ServerClock.CurrentYear(_clock, _timeZone);
 
 }

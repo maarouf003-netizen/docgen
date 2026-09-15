@@ -3,6 +3,7 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { normalizeDocumentResponse } from '../utils/apiNormalization';
 import { useAuth } from '../auth/useAuth';
+import { useCurrentYear } from '../hooks/useCurrentYear';
 import { ApplicantSideSections } from '../components/form/ApplicantSideSections';
 import {
   ASSET_KINDS,
@@ -57,6 +58,8 @@ export default function DocumentForm() {
   const isEdit = Boolean(id);
   const navigate = useNavigate();
   const { user } = useAuth();
+  // سنة «قرار السنة» المعتمدة من الخادم — لا من عداد المتصفح.
+  const { currentYear } = useCurrentYear();
   // «المحافظة» للجهات العامة تُملأ تلقائيًا من فرع المحامي (دمشق/حلب...) وقابلة للتعديل،
   // فقد تكون الجهة تابعة لمحافظة أخرى. تُحفظ كمرجع ثابت لاستخدامها في معالجات الأحداث.
   const defaultGovernorateRef = useRef(governorateFromBranch(user?.branchName));
@@ -682,9 +685,9 @@ export default function DocumentForm() {
       });
       const payload: DocumentUpsertRequest = {
         ...form,
-        // سنة الإعادة لعائلة «منفذ عليها/عرض وايداع» مقررة كسنة اليوم الحالية فقط (حقلها مخفي):
-        // تُرسل سنة اليوم صراحةً بدل أي سنةٍ مخزنة مع المستند ليتسق مع رفض الخلفية الدفاعي.
-        ...(isExecutedSubmit ? { renewalYear: new Date().getFullYear() } : {}),
+        // سنة الإعادة لعائلة «منفذ عليها/عرض وايداع» مقررة كسنة الخادم الحالية فقط (حقلها مخفي):
+        // تُرسل سنة الخادم صراحةً بدل أي سنةٍ مخزنة مع المستند ليتسق مع رفض الخلفية الدفاعي.
+        ...(isExecutedSubmit ? { renewalYear: currentYear } : {}),
         // تطبيع الأرقام العربية/الفارسية إلى ASCII في حقول التواريخ قبل الإرسال،
         // ليتسق المخزَّن مع ما يُعرض ولتقبله الخلفية في تحليلها (تحافظ على الحقول الأخرى كما هي).
         borrowerBirth: normalizeArabicDigits(form.borrowerBirth ?? '').trim(),

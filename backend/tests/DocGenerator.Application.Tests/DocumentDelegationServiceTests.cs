@@ -56,7 +56,9 @@ public class DocumentDelegationServiceTests : IDisposable
                 new Repository<Branch>(_db),
                 new UnitOfWork(_db),
                 new TransactionRunner(_db),
-                _audit));
+                _audit),
+            TimeProvider.System,
+            TestClock.TimeZone);
     }
 
     public void Dispose() => _db.Dispose();

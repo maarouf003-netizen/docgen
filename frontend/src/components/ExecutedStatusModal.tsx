@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
+import { useCurrentYear } from '../hooks/useCurrentYear';
 import { normalizeArabicDigits } from '../utils/arabicDigits';
 import type { DocumentResponse } from '../types';
 import AutoResizeTextarea from './AutoResizeTextarea';
@@ -77,6 +78,8 @@ export default function ExecutedStatusModal({
   const current = currentLabelOf(doc);
   const targets = targetsOf(current, isDeposit);
   const isStruckOffNow = doc.executedStatus === 'مشطوب';
+  // سنة الإعادة لعائلة «منفذ عليها/عرض وايداع» مقررة كسنة الخادم الحالية (§4.4).
+  const { currentYear } = useCurrentYear();
   const [target, setTarget] = useState<string>(targets[0] ?? '');
   const isDepositRevert = target === 'متداول' && isDeposit && current === 'منفذ';
   const [fields, setFields] = useState<ExecutedFields>(emptyExecutedFields());
@@ -141,9 +144,9 @@ export default function ExecutedStatusModal({
         throw new Error('رقم الملف الجديد مطلوب عند إعادة الملف المشطوب');
       }
       body.renewalFileNumber = renewal.renewalFileNumber?.trim();
-      // سنة الإعادة لعائلة «منفذ عليها/عرض وايداع» مقررة كسنة اليوم الحالية فقط: لا تُرسل
+      // سنة الإعادة لعائلة «منفذ عليها/عرض وايداع» مقررة كسنة الخادم الحالية: لا تُرسل
       // سنةٌ مدخلة من المستخدم (حقلها مخفي) ويتسق هذا مع رفض الخلفية الدفاعي لأي سنة مخالفة.
-      body.renewalYear = new Date().getFullYear();
+      body.renewalYear = currentYear;
       body.renewalFileType = trimNull(renewal.renewalFileType);
       body.renewalFileReceiptNumber = trimNull(renewal.renewalFileReceiptNumber);
       body.renewalFileReceiptDate = trimNull(renewal.renewalFileReceiptDate);

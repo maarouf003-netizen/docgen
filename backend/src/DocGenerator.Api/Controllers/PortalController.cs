@@ -1,4 +1,5 @@
 using DocGenerator.Api.Authorization;
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -18,8 +19,15 @@ namespace DocGenerator.Api.Controllers;
 public class PortalController : ControllerBase
 {
     private readonly IPortalService _portal;
+    private readonly TimeProvider _clock;
+    private readonly TimeZoneInfo _timeZone;
 
-    public PortalController(IPortalService portal) => _portal = portal;
+    public PortalController(IPortalService portal, TimeProvider clock, TimeZoneInfo timeZone)
+    {
+        _portal = portal;
+        _clock = clock;
+        _timeZone = timeZone;
+    }
 
     private string? ViewerName => User.Identity?.Name;
     private int UserId => User.GetUserId();
@@ -72,7 +80,7 @@ public class PortalController : ControllerBase
             var bytes = await _portal.ExportWorkbookAsync(UserId, q, status, ViewerName, ct);
             return File(bytes,
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                $"ملفات الجهة {DateTime.Now:yyyy-MM-dd}.xlsx");
+                $"ملفات الجهة {ServerClock.TodayString(_clock, _timeZone, "yyyy-MM-dd")}.xlsx");
         }
         catch (ArgumentException e)
         {

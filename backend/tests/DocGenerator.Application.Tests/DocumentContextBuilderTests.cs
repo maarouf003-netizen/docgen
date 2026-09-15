@@ -13,7 +13,7 @@ public class DocumentContextBuilderTests : IDisposable
     public DocumentContextBuilderTests()
     {
         _db = TestDb.Create();
-        _builder = new DocumentContextBuilder(new DocumentRepository(_db));
+        _builder = new DocumentContextBuilder(new DocumentRepository(_db), TimeProvider.System, TestClock.TimeZone);
     }
 
     public void Dispose() => _db.Dispose();

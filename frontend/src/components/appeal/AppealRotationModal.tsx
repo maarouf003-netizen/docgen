@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, getApiErrorMessage } from '../../api/client';
+import { useCurrentYear } from '../../hooks/useCurrentYear';
 import { normalizeArabicDigits } from '../../utils/arabicDigits';
 import type { AppealBaseNumberHistoryDto, AppealDto } from '../../types';
 
@@ -16,7 +17,8 @@ export default function AppealRotationModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const currentYear = new Date().getFullYear();
+  // سنة التدوير الاستئنافية المعتمدة من الخادم — لا من عداد المتصفح.
+  const currentYear = useCurrentYear().currentYear;
   const [history, setHistory] = useState<AppealBaseNumberHistoryDto[]>([]);
   const [value, setValue] = useState('');
   const [loading, setLoading] = useState(true);

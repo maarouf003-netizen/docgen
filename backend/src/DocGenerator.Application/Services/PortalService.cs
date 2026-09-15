@@ -45,6 +45,8 @@ public sealed class PortalService : IPortalService
     private readonly IExcelExportService _excel;
     private readonly IAuditLogger _audit;
     private readonly int _maxExportRows;
+    private readonly TimeProvider _clock;
+    private readonly TimeZoneInfo _timeZone;
 
     public PortalService(
         IPortalRepository portal,
@@ -52,7 +54,9 @@ public sealed class PortalService : IPortalService
         IAppealRepository appeals,
         IExcelExportService excel,
         IAuditLogger audit,
-        IOptions<ExportOptions> exportOptions)
+        IOptions<ExportOptions> exportOptions,
+        TimeProvider clock,
+        TimeZoneInfo timeZone)
     {
         _portal = portal;
         _documents = documents;
@@ -60,6 +64,8 @@ public sealed class PortalService : IPortalService
         _excel = excel;
         _audit = audit;
         _maxExportRows = Math.Max(1, exportOptions.Value.MaxRows);
+        _clock = clock;
+        _timeZone = timeZone;
     }
 
     public async Task<PortalScopeDto?> GetMyScopeAsync(int userId, CancellationToken ct = default)
@@ -99,7 +105,7 @@ public sealed class PortalService : IPortalService
         await _audit.LogAsync(viewerName, "view_entity_portal_files", documentId,
             details: "عرض ملف في بوابة الجهة العامة", ct: ct);
 
-        return DocumentResponse.FromEntity(doc);
+        return DocumentResponse.FromEntity(doc, ServerClock.CurrentYear(_clock, _timeZone));
     }
 
     public async Task<IReadOnlyList<PortalAppealDto>?> ListAppealsAsync(int userId, int documentId, CancellationToken ct = default)
@@ -130,7 +136,9 @@ public sealed class PortalService : IPortalService
             throw new ArgumentException($"عدد النتائج يتجاوز الحد الأقصى للتصدير ({_maxExportRows:N0}) — طبّق فلترًا أضيق");
 
         var docs = await _portal.ExportScopedAsync(entryIds, query, status, ct);
-        var responses = docs.Select(DocumentResponse.FromEntity).ToList();
+        var responses = docs
+            .Select(d => DocumentResponse.FromEntity(d, ServerClock.CurrentYear(_clock, _timeZone)))
+            .ToList();
 
         await _audit.LogAsync(viewerName, "export_entity_portal_excel",
             details: $"صدّر {responses.Count} ملفًا من بوابة الجهة إلى Excel", ct: ct);

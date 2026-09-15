@@ -27,7 +27,9 @@ public sealed class EntityManagerPortalGuard
                 || path.StartsWithSegments("/api/auth/me")
                 || path.StartsWithSegments("/api/auth/logout")
                 // الدور القرائي يجب أن يُبلغ عن الأعطال: نقطة client-errors موثقة ومخنوقة لكل مستخدم.
-                || path.StartsWithSegments("/api/client-errors");
+                || path.StartsWithSegments("/api/client-errors")
+                // «سنة النظام» قرائية عامة للواجهة (سنة التدوير/الإعادة تظهر منها لجميع الأدوار).
+                || path.StartsWithSegments("/api/meta");
 
             if (!allowed)
             {

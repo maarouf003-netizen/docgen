@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { useIsMobile } from '../hooks/useMediaQuery';
+import { useCurrentYear } from '../hooks/useCurrentYear';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { fileNumberLabel, tripleName } from '../utils/documentDisplay';
 import type { PagedResult, RotationDocumentDto } from '../types';
@@ -26,7 +27,8 @@ export default function Rotation() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
-  const year = new Date().getFullYear();
+  // سنة التدوير المعتمدة من الخادم (سنة «قرار السنة») — لا من عداد المتصفح.
+  const year = useCurrentYear().currentYear;
   const canRotate = user?.role === 'lawyer';
 
   const rotationQuery = useCancellableRequest<PagedResult<RotationDocumentDto>>(

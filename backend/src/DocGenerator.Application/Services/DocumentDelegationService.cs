@@ -23,6 +23,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
     private readonly IHeadAlertService _alerts;
+    private readonly TimeProvider _clock;
+    private readonly TimeZoneInfo _timeZone;
 
     public DocumentDelegationService(
         IDelegationRepository delegations,
@@ -34,7 +36,9 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         IUnitOfWork uow,
         ITransactionRunner tx,
         IAuditLogger audit,
-        IHeadAlertService alerts)
+        IHeadAlertService alerts,
+        TimeProvider clock,
+        TimeZoneInfo timeZone)
     {
         _delegations = delegations;
         _documents = documents;
@@ -46,6 +50,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         _tx = tx;
         _audit = audit;
         _alerts = alerts;
+        _clock = clock;
+        _timeZone = timeZone;
     }
 
     public async Task<DelegationDto> CreateAsync(
@@ -120,7 +126,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
             }
         }
 
-        return ToDto(delegation, source);
+        var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
+        return ToDto(delegation, source, currentYear);
     }
 
     public async Task<DelegationDto?> UpdateAsync(
@@ -171,7 +178,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
                 $"تعذّر تحديث تنبيه الإنابة المعلّقة (رقم {delegation.Id}) بعد تعديلها: {ex.Message}", ct);
         }
 
-        return ToDto(delegation, source);
+        var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
+        return ToDto(delegation, source, currentYear);
     }
 
     public async Task<bool> DeleteAsync(int delegationId, int userId, string? actorName, CancellationToken ct = default)
@@ -217,13 +225,13 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
             ? await ListOfTargetAsync(doc.Id, ct)
             : await _delegations.ListBySourceAsync(doc.Id, ct);
 
-        return delegations.Select(d => ToDto(d, d.SourceDocument)).ToList();
+        return delegations.Select(d => ToDto(d, d.SourceDocument, ServerClock.CurrentYear(_clock, _timeZone))).ToList();
     }
 
     public async Task<List<DelegationDto>> ListPendingForHeadAsync(int branchId, CancellationToken ct = default)
     {
         var delegations = await _delegations.ListPendingByBranchAsync(branchId, ct);
-        return delegations.Select(d => ToDto(d, d.SourceDocument)).ToList();
+        return delegations.Select(d => ToDto(d, d.SourceDocument, ServerClock.CurrentYear(_clock, _timeZone))).ToList();
     }
 
     public async Task<DelegationDto?> AssignAsync(
@@ -331,7 +339,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         }
 
         return await _delegations.GetByIdWithDetailsAsync(delegation.Id, ct) is { } reloaded
-            ? ToDto(reloaded, reloaded.SourceDocument)
+            ? ToDto(reloaded, reloaded.SourceDocument, ServerClock.CurrentYear(_clock, _timeZone))
             : null;
     }
 
@@ -411,7 +419,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         }
 
         return await _delegations.GetByIdWithDetailsAsync(delegation.Id, ct) is { } reloaded
-            ? ToDto(reloaded, reloaded.SourceDocument)
+            ? ToDto(reloaded, reloaded.SourceDocument, ServerClock.CurrentYear(_clock, _timeZone))
             : null;
     }
 
@@ -547,7 +555,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         {
             try
             {
-                var targetLabel = TargetFileLabel(target);
+                var targetLabel = TargetFileLabel(target, ServerClock.CurrentYear(_clock, _timeZone));
                 var assetsLine = string.Join(" و", delegation.Assets.Select(a => a.AssetLabel));
                 var coverageText = delegation.SaleCoversFullDebt == true
                     ? "غطى كامل المديونية"
@@ -571,18 +579,18 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         }
 
         return await _delegations.GetByIdWithDetailsAsync(delegation.Id, ct) is { } reloaded
-            ? ToDto(reloaded, reloaded.SourceDocument)
+            ? ToDto(reloaded, reloaded.SourceDocument, ServerClock.CurrentYear(_clock, _timeZone))
             : null;
     }
 
     /// <summary>التسمية المعروضة للملف المناب في إشعار الإتمام: «ملف الرقم/السنة» عبر قاعدة
     /// DisplayFileNumber نفسها (رقم أساس سنة التدوير الحالية إن وُجد، وإلا رقم ملفه الأصلي)،
     /// وإلا رقمه الداخلي.</summary>
-    private static string TargetFileLabel(Document? target)
+    private static string TargetFileLabel(Document? target, int currentYear)
     {
         if (target is null) return "الملف المناب";
-        var number = SourceFileNumber(target);
-        var year = SourceFileYear(target);
+        var number = TargetFileNumber(target, currentYear);
+        var year = TargetFileYear(target, currentYear);
         if (!string.IsNullOrWhiteSpace(number))
             return string.IsNullOrWhiteSpace(year) ? $"ملف {number}" : $"ملف {number}/{year}";
         return $"ملف {target.Id}";
@@ -855,12 +863,12 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
     private static string SerializeDetails(Dictionary<string, string> details) =>
         JsonSerializer.Serialize(details);
 
-    private static DelegationDto ToDto(DocumentDelegation d, Document source) => new(
+    private static DelegationDto ToDto(DocumentDelegation d, Document source, int currentYear) => new(
         d.Id,
         d.SourceDocumentId,
         SourceLabel(source),
-        SourceFileNumber(source),
-        SourceFileYear(source),
+        SourceFileNumber(source, currentYear),
+        SourceFileYear(source, currentYear),
         d.TargetDocument?.Id,
         d.DelegatedCourt,
         d.IsExternal,
@@ -879,8 +887,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         d.Assets.Select(a => new DelegationAssetDto(a.Id, a.AssetKind, a.AssetLabel, a.SalePrice, a.SnapshotAdjusted)).ToList(),
         d.CreatedById,
         d.SaleCoversFullDebt,
-        TargetFileNumber(d.TargetDocument),
-        TargetFileYear(d.TargetDocument));
+        TargetFileNumber(d.TargetDocument, currentYear),
+        TargetFileYear(d.TargetDocument, currentYear));
 
     private static string SourceLabel(Document source)
     {
@@ -895,16 +903,16 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         => $"بانتظار اعتماد الإنابة — سطّر المحامي {source.CreatedBy?.FullName} إنابة على الملف ({SourceLabel(source)}) إلى دائرة {court}";
 
     /// <summary>رقم المنيب المعروض وفق المحلل المركزي: آخر رقم أساس ≤ سنة اليوم، وإلا رقم ملفه الأصلي.</summary>
-    private static string? SourceFileNumber(Document source) => Normalize(EffectiveFileIdentity.Number(source));
+    private static string? SourceFileNumber(Document source, int currentYear) => Normalize(EffectiveFileIdentity.Number(source, currentYear));
 
     /// <summary>سنة الرقم الفعّال المعروض للمنيب وفق المحلل المركزي.</summary>
-    private static string? SourceFileYear(Document source) => Normalize(EffectiveFileIdentity.Year(source));
+    private static string? SourceFileYear(Document source, int currentYear) => Normalize(EffectiveFileIdentity.Year(source, currentYear));
 
     /// <summary>رقم المناب المعروض في «تشعبات الملف»: آخر رقم أساس ≤ سنته عبر المحلل المركزي، وإلا رقم ملفه الأصلي.</summary>
-    private static string? TargetFileNumber(Document? target) =>
-        target is null ? null : Normalize(EffectiveFileIdentity.Number(target));
+    private static string? TargetFileNumber(Document? target, int currentYear) =>
+        target is null ? null : Normalize(EffectiveFileIdentity.Number(target, currentYear));
 
     /// <summary>سنة الرقم الفعّال المعروض للمناب وفق المحلل المركزي.</summary>
-    private static string? TargetFileYear(Document? target) =>
-        target is null ? null : Normalize(EffectiveFileIdentity.Year(target));
+    private static string? TargetFileYear(Document? target, int currentYear) =>
+        target is null ? null : Normalize(EffectiveFileIdentity.Year(target, currentYear));
 }

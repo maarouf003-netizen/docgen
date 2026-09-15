@@ -70,7 +70,9 @@ public class PortalScopingTests : IDisposable
             new AppealRepository(_db),
             new ExcelExportService(),
             _audit,
-            Options.Create(new ExportOptions { MaxRows = 10_000 }));
+            Options.Create(new ExportOptions { MaxRows = 10_000 }),
+            TimeProvider.System,
+            TestClock.TimeZone);
 
         _entities = new PublicEntityService(
             new PublicEntityRepository(_db),
@@ -266,7 +268,9 @@ public class PortalScopingTests : IDisposable
             new AppealRepository(_db),
             new ExcelExportService(),
             _audit,
-            Options.Create(new ExportOptions { MaxRows = 1 }));
+            Options.Create(new ExportOptions { MaxRows = 1 }),
+            TimeProvider.System,
+            TestClock.TimeZone);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             cappedPortal.ExportWorkbookAsync(_delegateGroupId, null, null, "مندوب"));

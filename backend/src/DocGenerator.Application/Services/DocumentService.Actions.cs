@@ -430,7 +430,7 @@ public sealed partial class DocumentService
         }
     }
 
-    private static (string Type, string Text, string? ActionDate) NormalizeAction(string type, string text, string? actionDate)
+    private (string Type, string Text, string? ActionDate) NormalizeAction(string type, string text, string? actionDate)
     {
         var sanitizedText = HtmlInputSanitizer.Sanitize(text);
         if (string.IsNullOrWhiteSpace(HtmlInputSanitizer.ToPlainText(sanitizedText)))
@@ -449,7 +449,7 @@ public sealed partial class DocumentService
         }
         else if (string.IsNullOrWhiteSpace(trimmedDate))
         {
-            trimmedDate = DateTime.Today.ToString("yyyy-MM-dd");
+            trimmedDate = ServerClock.TodayString(_clock, _timeZone, "yyyy-MM-dd");
         }
 
         return (type, sanitizedText, trimmedDate);

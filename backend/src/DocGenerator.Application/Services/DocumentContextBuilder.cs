@@ -15,8 +15,15 @@ public class DocumentContextBuilder : IDocumentContextBuilder
     private const string HandwritingFillLine = "…………………………………………";
 
     private readonly IRepository<Document> _documents;
+    private readonly TimeProvider _clock;
+    private readonly TimeZoneInfo _timeZone;
 
-    public DocumentContextBuilder(IRepository<Document> documents) => _documents = documents;
+    public DocumentContextBuilder(IRepository<Document> documents, TimeProvider clock, TimeZoneInfo timeZone)
+    {
+        _documents = documents;
+        _clock = clock;
+        _timeZone = timeZone;
+    }
 
     public async Task<Dictionary<string, object>> BuildContextAsync(
         int documentId,
@@ -62,15 +69,16 @@ public class DocumentContextBuilder : IDocumentContextBuilder
         context["annex_date"] = doc.AnnexDate ?? string.Empty;
         context["amount_numeric"] = doc.AmountNumeric;
         context["amount_words"] = doc.AmountWords ?? string.Empty;
-        context["current_date"] = DateTime.Today.ToString("dd/MM/yyyy");
-        context["current_date_arabic"] = ToArabicIndicDigits(DateTime.Today.ToString("dd/MM/yyyy"));
+        context["current_date"] = ServerClock.TodayString(_clock, _timeZone, "dd/MM/yyyy");
+        context["current_date_arabic"] = ToArabicIndicDigits(ServerClock.TodayString(_clock, _timeZone, "dd/MM/yyyy"));
         context["currency"] = doc.Currency ?? "ليرة سورية";
         context["contract_type_selector"] = contractTypeSelector;
         // الرقم الظاهر في المستندات: آخر رقم أساس ≤ سنة اليوم (إن وُجد)، وإلا رقم الملف الأصلي.
         // سنة الرقم المرافقة له من السجل نفسه — لا سنة القيد الأصلية: القوالب تعرض
         // (file_number + file_year) معًا فيجب أن ينتميا للسجل نفسه (المبدأ 3).
-        var effectiveFileNumber = EffectiveFileIdentity.Number(doc) ?? string.Empty;
-        var effectiveFileYear = EffectiveFileIdentity.Year(doc) ?? string.Empty;
+        var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
+        var effectiveFileNumber = EffectiveFileIdentity.Number(doc, currentYear) ?? string.Empty;
+        var effectiveFileYear = EffectiveFileIdentity.Year(doc, currentYear) ?? string.Empty;
         context["file_number"] = effectiveFileNumber;
         context["file_type"] = doc.FileType ?? string.Empty;
         context["file_year"] = effectiveFileYear;

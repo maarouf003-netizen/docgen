@@ -158,9 +158,10 @@ public interface IDocumentRepository : IRepository<Document>
     /// <summary>
     /// ملفات المحامي المؤهلة لتدوير أرقام الأساس (بحث ترحّلي): غير محذوفة (Query Filter)،
     /// مقيدة برقم ملف (ليست تحت رفع)، وغير منفَّذة — مع أرقام الأساس الخاصة بها.
+    /// سنة التدوير تُمرَّر صراحة من الخدمة (سنة قرار السنة من ساعة النظام ومنطقته).
     /// </summary>
     Task<(int TotalCount, List<Document> Items)> GetRotationCandidatesAsync(
-        int userId, int page, int perPage, CancellationToken ct = default);
+        int userId, int currentYear, int page, int perPage, CancellationToken ct = default);
 
     /// <summary>
     /// بحث ترحّلي عن ملفات وضع «منفذ عليه» المشطوبة فقط (متجاوزاً Query Filter

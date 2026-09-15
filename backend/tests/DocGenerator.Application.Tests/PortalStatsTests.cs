@@ -48,7 +48,9 @@ public class PortalStatsTests : IDisposable
             new AppealRepository(_db),
             new ExcelExportService(),
             _audit,
-            Options.Create(new ExportOptions { MaxRows = 10_000 }));
+            Options.Create(new ExportOptions { MaxRows = 10_000 }),
+            TimeProvider.System,
+            TestClock.TimeZone);
     }
 
     public void Dispose() => _db.Dispose();

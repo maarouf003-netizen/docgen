@@ -51,7 +51,9 @@ public class DocumentUpdateChangeLogTests : IDisposable
             new UnitOfWork(_db),
             new TransactionRunner(_db),
             _audit,
-            Microsoft.Extensions.Options.Options.Create(new DocGenerator.Application.Common.ExportOptions()));
+            Microsoft.Extensions.Options.Options.Create(new DocGenerator.Application.Common.ExportOptions()),
+            TimeProvider.System,
+            TestClock.TimeZone);
     }
 
     public void Dispose() => _db.Dispose();

@@ -20,6 +20,8 @@ public sealed class DocumentAppealService : IDocumentAppealService
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
     private readonly IHeadAlertService _alerts;
+    private readonly TimeProvider _clock;
+    private readonly TimeZoneInfo _timeZone;
 
     public DocumentAppealService(
         IAppealRepository appeals,
@@ -28,7 +30,9 @@ public sealed class DocumentAppealService : IDocumentAppealService
         IUnitOfWork uow,
         ITransactionRunner tx,
         IAuditLogger audit,
-        IHeadAlertService alerts)
+        IHeadAlertService alerts,
+        TimeProvider clock,
+        TimeZoneInfo timeZone)
     {
         _appeals = appeals;
         _documents = documents;
@@ -37,6 +41,8 @@ public sealed class DocumentAppealService : IDocumentAppealService
         _tx = tx;
         _audit = audit;
         _alerts = alerts;
+        _clock = clock;
+        _timeZone = timeZone;
     }
 
     // ── التسطير والتعديل قبل الإسناد ───────────────────────────────────────
@@ -81,7 +87,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
         }, ct);
 
         await NotifyHeadPendingAsync(appeal.Id, source, userId, actorName, ct);
-        return ToDto(appeal);
+        return ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
     }
 
     public async Task<AppealDto?> UpdateAsync(
@@ -115,7 +121,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
                 $"عدّل الاستئناف (رقم {appeal.Id}) على الملف (رقم {source.Id})", token);
         }, ct);
 
-        return ToDto(appeal);
+        return ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
     }
 
     public async Task<bool> DeleteAsync(int appealId, int userId, string? actorName, CancellationToken ct = default)
@@ -157,7 +163,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
         if (!await _documents.ExistsAsync(documentId, ct))
             throw new ArgumentException("الملف غير موجود");
         var items = await _appeals.ListByDocumentAsync(documentId, ct);
-        return items.Select(ToDto).ToList();
+        return items.Select(a => ToDto(a, ServerClock.CurrentYear(_clock, _timeZone))).ToList();
     }
 
     public Task<PagedResult<AppealDto>> SearchAsync(
@@ -178,7 +184,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
 
         return new PagedResult<AppealDto>
         {
-            Items = items.Select(ToDto).ToList(),
+            Items = items.Select(a => ToDto(a, ServerClock.CurrentYear(_clock, _timeZone))).ToList(),
             Page = page,
             PerPage = perPage,
             TotalCount = total,
@@ -188,7 +194,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
     public async Task<AppealDto?> GetAsync(int appealId, CancellationToken ct = default)
     {
         var appeal = await _appeals.GetByIdWithDetailsAsync(appealId, ct);
-        return appeal is null ? null : ToDto(appeal);
+        return appeal is null ? null : ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
     }
 
     /// <summary>كيان الاستئناف بروابطه — يُستخدم داخليًا للتحقق من الصلاحيات في المتحكم.</summary>
@@ -225,7 +231,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
                 $"حدّث قيد الاستئناف (رقم {appeal.Id}) برقم أساس {appeal.AppealBaseNumber ?? "—"}", token);
         }, ct);
 
-        return ToDto(appeal);
+        return ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
     }
 
     public async Task<AppealDto?> DecideAsync(
@@ -268,7 +274,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
         }, ct);
 
         await NotifyBaseLawyerFinalAsync(appeal, decided: true, actorName, ct);
-        return ToDto(appeal);
+        return ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
     }
 
     public async Task<AppealDto?> StrikeAsync(
@@ -304,7 +310,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
         }, ct);
 
         await NotifyBaseLawyerFinalAsync(appeal, decided: false, actorName, ct);
-        return ToDto(appeal);
+        return ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
     }
 
     // ── الإسناد والنقل (رئيس القسم) ───────────────────────────────────────
@@ -349,7 +355,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
         }
 
         await NotifyFollowLawyerAssignedAsync(appeal, lawyer, userId, actorName, ct);
-        return ToDto(appeal);
+        return ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
     }
 
     public async Task<AppealDto?> TransferAsync(
@@ -380,7 +386,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
         }, ct);
 
         await NotifyFollowLawyerAssignedAsync(appeal, lawyer, userId, actorName, ct);
-        return ToDto(appeal);
+        return ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
     }
 
     public async Task<int> TransferAllAsync(
@@ -470,7 +476,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
         if (request.Entries.Count > 1)
             throw new ArgumentException("يُدخل رقم أساس واحد لسنة التدوير الحالية");
 
-        var year = DateTime.Today.Year;
+        var year = ServerClock.CurrentYear(_clock, _timeZone);
         var entry = request.Entries[0];
         var value = Normalize(entry.BaseNumber)
             ?? throw new ArgumentException("أدخل رقم الأساس الاستئنافي للسنة الحالية");
@@ -868,7 +874,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
                 TargetType: "head",
                 DocumentId: source.Id,
                 TargetLawyerId: null,
-                Message: $"وقع استئناف بملف {DocumentTitle(source)} رقم {EffectiveFileIdentity.Number(source) ?? "—"} نوع {source.FileType ?? "—"} دائرة تنفيذ {source.Court ?? "—"}، يرجى اختيار محامي لمتابعة الاستئناف",
+                Message: $"وقع استئناف بملف {DocumentTitle(source)} رقم {EffectiveFileIdentity.Number(source, ServerClock.CurrentYear(_clock, _timeZone)) ?? "—"} نوع {source.FileType ?? "—"} دائرة تنفيذ {source.Court ?? "—"}، يرجى اختيار محامي لمتابعة الاستئناف",
                 AppealId: appealId),
                 userId, source.BranchId.Value, actorName, ct);
         }
@@ -988,14 +994,14 @@ public sealed class DocumentAppealService : IDocumentAppealService
         action.CreatedBy?.FullName,
         action.CreatedAt);
 
-    private static AppealDto ToDto(DocumentAppeal a)
+    private static AppealDto ToDto(DocumentAppeal a, int asOfYear)
     {
         var d = a.Document;
-        var currentYear = DateTime.Today.Year;
-        var currentRow = EffectiveFileIdentity.LatestFrom(a.BaseNumbers)?.BaseNumber;
+        var currentYear = asOfYear;
+        var currentRow = EffectiveFileIdentity.LatestFrom(a.BaseNumbers, asOfYear)?.BaseNumber;
         var latestRecorded = a.BaseNumbers.Count > 0
             ? a.BaseNumbers.Max(b => b.Year)
-            : int.TryParse(a.AppealYear, out var year) ? year : 0;
+            : int.TryParse(a.AppealYear, out var recordedYear) ? recordedYear : 0;
         // الأهلية للتدوير: وجود سجل من سنة سابقة ولا يوجد سجل لسنة اليوم.
         // (لا يُستخدم «الصف الفعّال» currentRow هنا: فهو غير فارغ عند أي تاريخ سابق
         // فيجعل الشرط ميتًا — الصحيح فحص صف السنة الحالية صراحةً كما في الملفات.)
@@ -1050,8 +1056,8 @@ public sealed class DocumentAppealService : IDocumentAppealService
             a.CreatedAt,
             a.CreatedBy?.FullName,
             a.CreatedById,
-            EffectiveFileIdentity.Number(d),
-            EffectiveFileIdentity.Year(d));
+            EffectiveFileIdentity.Number(d, asOfYear),
+            EffectiveFileIdentity.Year(d, asOfYear));
     }
 
     /// <summary>خيار طرف داخل لقطات الاستئناف (بناء داخلي قبل التسلسل).</summary>

@@ -11,8 +11,13 @@ namespace DocGenerator.Infrastructure.Security;
 public class TokenService : ITokenService
 {
     private readonly JwtOptions _options;
+    private readonly TimeProvider _clock;
 
-    public TokenService(JwtOptions options) => _options = options;
+    public TokenService(JwtOptions options, TimeProvider? clock = null)
+    {
+        _options = options;
+        _clock = clock ?? TimeProvider.System;
+    }
 
     public string CreateToken(User user)
     {
@@ -38,8 +43,8 @@ public class TokenService : ITokenService
             issuer: _options.Issuer,
             audience: _options.Audience,
             claims: claims,
-            notBefore: DateTime.UtcNow,
-            expires: DateTime.UtcNow.AddMinutes(_options.ExpiryMinutes),
+            notBefore: _clock.GetUtcNow().UtcDateTime,
+            expires: _clock.GetUtcNow().UtcDateTime.AddMinutes(_options.ExpiryMinutes),
             signingCredentials: creds);
 
         return new JwtSecurityTokenHandler().WriteToken(token);

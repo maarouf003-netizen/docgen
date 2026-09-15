@@ -22,19 +22,25 @@ public class DocumentsController : ControllerBase
     private readonly IExcelExportService _excel;
     private readonly IDocumentAppealService _appeals;
     private readonly IAuditLogService _auditLogs;
+    private readonly TimeProvider _clock;
+    private readonly TimeZoneInfo _timeZone;
 
     public DocumentsController(
         IDocumentService documents,
         IWordDocumentGenerator generator,
         IExcelExportService excel,
         IDocumentAppealService appeals,
-        IAuditLogService auditLogs)
+        IAuditLogService auditLogs,
+        TimeProvider clock,
+        TimeZoneInfo timeZone)
     {
         _documents = documents;
         _generator = generator;
         _excel = excel;
         _appeals = appeals;
         _auditLogs = auditLogs;
+        _clock = clock;
+        _timeZone = timeZone;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -146,7 +152,7 @@ public class DocumentsController : ControllerBase
             includeViewCount: CanViewCounters);
 
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            $"الملفات التنفيذية {DateTime.Now:yyyy-MM-dd}.xlsx");
+            $"الملفات التنفيذية {ServerClock.TodayString(_clock, _timeZone, "yyyy-MM-dd")}.xlsx");
     }
 
     [HttpGet("deleted")]

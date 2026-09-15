@@ -494,7 +494,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
     }
 
     public async Task<(int TotalCount, List<Document> Items)> GetRotationCandidatesAsync(
-        int userId, int page, int perPage, CancellationToken ct = default)
+        int userId, int currentYear, int page, int perPage, CancellationToken ct = default)
     {
         // المؤهل للتدوير: مقيد برقم ملف (ليس تحت رفع) وغير منفَّذ وغير محذوف
         // (Query Filter مطبق تلقائيًا)، ولم يُدوَّر في السنة الحالية (لا يملك رقم أساس لها).
@@ -504,7 +504,6 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         // عائلتا وضع «منفذ عليه» (Executed + Deposit) مؤهلتان متداولتين فقط (لا منفذ ولا مشطوب)
         // وبشرط وجود رقم أساس من سنة سابقة — التدوير فيهما استمرار لدوران سبق أن بدأ.
         // عدد الصفحات يُحسب على مستوى قاعدة البيانات لتجنب جلب آلاف الصفوف دفعة واحدة.
-        var currentYear = DateTime.Today.Year;
         IQueryable<Document> q = Db.Documents
             .AsNoTracking()
             .Where(d => d.CreatedById == userId)

@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthContext';
 import { useAuth } from './auth/useAuth';
+import CurrentYearProvider from './components/CurrentYearProvider';
 import ErrorBoundary from './components/ErrorBoundary';
 import Layout from './components/Layout';
 import LegacyRouteBanner from './components/LegacyRouteBanner';
@@ -65,6 +66,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
+        <CurrentYearProvider>
         <Suspense fallback={<PageLoader />}>
           <Routes>
           <Route path="/login" element={<Login />} />
@@ -210,6 +212,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
+        </CurrentYearProvider>
       </AuthProvider>
     </ErrorBoundary>
   );

@@ -54,7 +54,9 @@ public class DocumentAppealServiceTests : IDisposable
             new UnitOfWork(_db),
             new TransactionRunner(_db),
             _audit,
-            _alertService);
+            _alertService,
+            TimeProvider.System,
+            TestClock.TimeZone);
     }
 
     public void Dispose() => _db.Dispose();

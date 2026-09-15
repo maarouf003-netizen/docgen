@@ -164,7 +164,7 @@ public sealed partial class DocumentService
                 OccurrenceType = occurrenceType,
                 EventDate = status == ExecutionStatusCatalog.StateStruckOff ? doc.StruckOffDate : DateTime.UtcNow,
                 FileNumber = status == ExecutionStatusCatalog.StateStruckOff
-                    ? EffectiveFileIdentity.Number(doc, doc.StruckOffDate?.Year ?? DateTime.Today.Year)
+                    ? EffectiveFileIdentity.Number(doc, doc.StruckOffDate?.Year ?? CurrentYear())
                     : null,
                 FileType = status == ExecutionStatusCatalog.StateStruckOff
                     ? string.IsNullOrWhiteSpace(doc.FileType) ? null : doc.FileType.Trim()
@@ -539,9 +539,9 @@ public sealed partial class DocumentService
         int year;
         if (executedLike)
         {
-            if (renewal?.RenewalYear is { } hiddenYear && hiddenYear != DateTime.Today.Year)
+            if (renewal?.RenewalYear is { } hiddenYear && hiddenYear != CurrentYear())
                 throw new ArgumentException("سنة الإعادة لعائلة «منفذ عليها/عرض وايداع» هي سنة اليوم الحالية فقط");
-            year = DateTime.Today.Year;
+            year = CurrentYear();
         }
         else
         {
@@ -615,7 +615,7 @@ public sealed partial class DocumentService
     /// </summary>
     private async Task AddStruckOffOccurrenceAsync(Document doc, int? userId, CancellationToken ct)
     {
-        var struckOffYear = doc.StruckOffDate?.Year ?? DateTime.Today.Year;
+        var struckOffYear = doc.StruckOffDate?.Year ?? CurrentYear();
         string? effectiveNumber = EffectiveFileIdentity.Number(doc, struckOffYear) ?? string.Empty;
         string? fileType = (doc.FileType ?? string.Empty).Trim();
         await _occurrences.AddAsync(new DocumentOccurrence

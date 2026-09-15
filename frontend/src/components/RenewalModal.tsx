@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
+import { useCurrentYear } from '../hooks/useCurrentYear';
 import { displayFileNumber, isExecutedLike } from '../utils/documentDisplay';
 import { trimNull } from '../utils/serialization';
 import type { DocumentResponse } from '../types';
@@ -47,8 +48,9 @@ export default function RenewalModal({
     if (key === 'renewalFileNumber' || key === 'renewalYear') setError('');
   };
 
-  // سنة الإعادة لعائلة «منفذ عليها/عرض وايداع» مقررة كسنة اليوم الحالية فقط (يُخفى حقلها).
+  // سنة الإعادة لعائلة «منفذ عليها/عرض وايداع» مقررة كسنة الخادم الحالية فقط (يُخفى حقلها).
   const hideRenewalYear = isExecutedLike(doc.generalEntitySide);
+  const { currentYear } = useCurrentYear();
 
   const submit = async () => {
     if (!(renewal.renewalFileNumber ?? '').trim()) {
@@ -68,8 +70,8 @@ export default function RenewalModal({
         renewalFileReceiptDate: trimNull(renewal.renewalFileReceiptDate),
         renewalFileNumber: trimNull(renewal.renewalFileNumber),
         renewalFileType: trimNull(renewal.renewalFileType),
-        // عائلة «منفذ عليها» لا ترسل سنة مدخلة بل سنة اليوم ليتسق مع رفض الخلفية الدفاعي.
-        renewalYear: hideRenewalYear ? new Date().getFullYear() : renewal.renewalYear ?? undefined,
+        // عائلة «منفذ عليها» لا ترسل سنة مدخلة بل سنة الخادم الحالية ليتسق مع رفض الخلفية الدفاعي.
+        renewalYear: hideRenewalYear ? currentYear : renewal.renewalYear ?? undefined,
         renewalDate: trimNull(renewal.renewalDate),
       });
       onChanged();

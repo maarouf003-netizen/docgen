@@ -30,7 +30,7 @@ public class StatisticsRepositoryTests : IDisposable
             new Document { BranchId = branch.Id, CreatedById = 1, IsDraft = false, BorrowerName = "سامر", BorrowerFamily = "حسن", AmountNumeric = 700, ExecStatus = "تريث", CreatedAt = LegacyDate },
             new Document { BranchId = null, CreatedById = 1, IsDraft = false, BorrowerName = "بلا فرع", BorrowerFamily = "س", AmountNumeric = 100, ExecStatus = "منفذ جبريا", CollectedAmount = 100, CreatedAt = LegacyDate });
         _db.SaveChanges();
-        _stats = new StatisticsRepository(_db);
+        _stats = new StatisticsRepository(_db, TimeProvider.System, TestClock.TimeZone);
     }
 
     public void Dispose() => _db.Dispose();
@@ -155,7 +155,7 @@ public class StatisticsRepositoryTests : IDisposable
             new Document { BranchId = branch.Id, CreatedById = 1, IsDraft = false, BorrowerName = "ج", BorrowerFamily = "ج", AmountNumeric = 0.3m, ExecStatus = string.Empty, CollectedAmount = 0.3m });
         db.SaveChanges();
 
-        var s = await new StatisticsRepository(db).GetDashboardStatsAsync(branch.Id);
+        var s = await new StatisticsRepository(db, TimeProvider.System, TestClock.TimeZone).GetDashboardStatsAsync(branch.Id);
 
         Assert.Equal(0.6m, s.TotalAmount);
         Assert.Equal(0.6m, s.TotalCollectedAmount);

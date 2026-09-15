@@ -17,6 +17,19 @@ public static class TestDb
     }
 }
 
+/// <summary>
+/// منطقة زمن ثابتة للاختبارات تُمثّل منطقة النظام الإنتاجية (آسيا/دمشق) بفارق +03،
+/// بلا اعتماد على tzdata على آلة التطوير: سنة القرار في الاختبارات = UTC + 3 ساعات.
+/// </summary>
+public static class TestClock
+{
+    public static TimeZoneInfo TimeZone { get; } = TimeZoneInfo.CreateCustomTimeZone(
+        "Asia/Damascus",
+        TimeSpan.FromHours(3),
+        "سوريا (توقيت ثابت)",
+        "سوريا (توقيت ثابت)");
+}
+
 public class PasswordHasherTests
 {
     [Fact]

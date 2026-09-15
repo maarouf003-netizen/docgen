@@ -59,7 +59,9 @@ public class EntityRegistryLinkTests : IDisposable
             new Repository<DocumentOccurrence>(_db),
             new DelegationRepository(_db), new AppealRepository(_db),
             uow, tx, _audit,
-            Microsoft.Extensions.Options.Options.Create(new DocGenerator.Application.Common.ExportOptions()));
+            Microsoft.Extensions.Options.Options.Create(new DocGenerator.Application.Common.ExportOptions()),
+            TimeProvider.System,
+            TestClock.TimeZone);
     }
 
     public void Dispose() => _db.Dispose();

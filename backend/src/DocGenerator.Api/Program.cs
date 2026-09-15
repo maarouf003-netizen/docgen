@@ -126,7 +126,7 @@ builder.Services
         o.Path = wordTemplates.Path;
         o.Templates = new Dictionary<string, string>(wordTemplates.Templates);
     })
-    .AddApplication()
+    .AddApplication(builder.Configuration)
     .AddInfrastructure(conn, usePostgres)
     .AddCors(o => o.AddPolicy("Vite", p => p
         .WithOrigins("http://localhost:5173", "http://127.0.0.1:5173")

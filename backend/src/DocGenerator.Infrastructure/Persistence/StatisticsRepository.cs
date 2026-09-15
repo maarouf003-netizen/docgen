@@ -14,8 +14,15 @@ namespace DocGenerator.Infrastructure.Persistence;
 public class StatisticsRepository : IStatisticsRepository
 {
     private readonly DocGeneratorDbContext _db;
+    private readonly TimeProvider _clock;
+    private readonly TimeZoneInfo _timeZone;
 
-    public StatisticsRepository(DocGeneratorDbContext db) => _db = db;
+    public StatisticsRepository(DocGeneratorDbContext db, TimeProvider clock, TimeZoneInfo timeZone)
+    {
+        _db = db;
+        _clock = clock;
+        _timeZone = timeZone;
+    }
 
     public async Task<DashboardStatsDto> GetDashboardStatsAsync(int? branchId, CancellationToken ct = default)
     {
@@ -693,10 +700,10 @@ public class StatisticsRepository : IStatisticsRepository
     /// عام = سنة محددة (افتراضيًا الحالية). النطاق نصف مفتوح [Start, End).
     /// year/month/quarter تُتحقق من صحة قيمها في المتحكم قبل الوصول إلى هنا.
     /// </summary>
-    private static (DateTime Start, DateTime End) GetPeriodWindow(StatsPeriod period,
+    private (DateTime Start, DateTime End) GetPeriodWindow(StatsPeriod period,
         int? year = null, int? month = null, int? quarter = null)
     {
-        var now = DateTime.Now;
+        var now = ServerClock.Now(_clock, _timeZone);
         var months = period switch
         {
             StatsPeriod.Monthly => 1,

@@ -75,6 +75,8 @@ public sealed class ReviewLetterService : IReviewLetterService
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
+    private readonly TimeProvider _clock;
+    private readonly TimeZoneInfo _timeZone;
 
     public ReviewLetterService(
         IReviewLetterRepository letters,
@@ -85,7 +87,9 @@ public sealed class ReviewLetterService : IReviewLetterService
         IHeadAlertRepository headAlerts,
         IUnitOfWork uow,
         ITransactionRunner tx,
-        IAuditLogger audit)
+        IAuditLogger audit,
+        TimeProvider clock,
+        TimeZoneInfo timeZone)
     {
         _letters = letters;
         _documents = documents;
@@ -96,6 +100,8 @@ public sealed class ReviewLetterService : IReviewLetterService
         _uow = uow;
         _tx = tx;
         _audit = audit;
+        _clock = clock;
+        _timeZone = timeZone;
     }
 
     public async Task<PagedResult<ReviewLetterListItemDto>> SearchAsync(
@@ -496,7 +502,7 @@ public sealed class ReviewLetterService : IReviewLetterService
         m.AuthorName,
         m.AuthorRole);
 
-    private static ReviewLetterFileContextDto? FileContextOf(ReviewLetter letter)
+    private ReviewLetterFileContextDto? FileContextOf(ReviewLetter letter)
     {
         var doc = letter.Document;
         if (doc is null)
@@ -507,15 +513,16 @@ public sealed class ReviewLetterService : IReviewLetterService
         if (string.IsNullOrWhiteSpace(name))
             name = doc.DocumentType ?? string.Empty;
 
+        var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
         return new ReviewLetterFileContextDto(
             name,
-            EffectiveFileIdentity.Number(doc),
+            EffectiveFileIdentity.Number(doc, currentYear),
             doc.FileType,
-            EffectiveFileIdentity.Year(doc),
+            EffectiveFileIdentity.Year(doc, currentYear),
             doc.Court);
     }
 
-    private static ReviewLetterDto ToDto(ReviewLetter letter)
+    private ReviewLetterDto ToDto(ReviewLetter letter)
     {
         var messages = letter.Messages.OrderBy(m => m.Id).ToList();
         return new ReviewLetterDto(
@@ -533,7 +540,7 @@ public sealed class ReviewLetterService : IReviewLetterService
             letter.CreatedAt);
     }
 
-    private static ReviewLetterListItemDto ToListItem(ReviewLetter letter, bool revealUnseen)
+    private ReviewLetterListItemDto ToListItem(ReviewLetter letter, bool revealUnseen)
     {
         var messages = letter.Messages.OrderBy(m => m.Id).ToList();
         var snippet = messages.FirstOrDefault(m => m.Kind == ReviewLetterMessage.KindLetter)?.BodyPlainText

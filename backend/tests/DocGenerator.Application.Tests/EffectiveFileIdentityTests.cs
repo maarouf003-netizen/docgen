@@ -19,10 +19,10 @@ public class EffectiveFileIdentityTests
         doc.BaseNumbers.Add(Row(2026, "1501", new DateTime(2026, 1, 10)));
         doc.BaseNumbers.Add(Row(2025, "900", new DateTime(2025, 1, 1)));
 
-        var latest = EffectiveFileIdentity.Latest(doc)!;
+        var latest = EffectiveFileIdentity.Latest(doc, 2026)!;
         Assert.Equal("1501", latest.BaseNumber);
         Assert.Equal(2026, latest.Year);
-        Assert.Equal("2026", EffectiveFileIdentity.Year(doc));
+        Assert.Equal("2026", EffectiveFileIdentity.Year(doc, 2026));
     }
 
     [Fact]
@@ -60,7 +60,7 @@ public class EffectiveFileIdentityTests
             CreatedById = 1,
         };
 
-        var latest = EffectiveFileIdentity.LatestFrom(new[] { a, b })!;
+        var latest = EffectiveFileIdentity.LatestFrom(new[] { a, b }, 2026)!;
         Assert.Equal("1501", latest.BaseNumber);
         Assert.Equal(2026, latest.Year);
     }
@@ -69,14 +69,14 @@ public class EffectiveFileIdentityTests
     public void Number_FallsBackToFileNumberWhenNoBaseNumbers()
     {
         var doc = NumberDoc("520", "2024");
-        Assert.Equal("520", EffectiveFileIdentity.Number(doc));
-        Assert.Equal("2024", EffectiveFileIdentity.Year(doc));
+        Assert.Equal("520", EffectiveFileIdentity.Number(doc, 2026));
+        Assert.Equal("2024", EffectiveFileIdentity.Year(doc, 2026));
     }
 
     [Fact]
     public void Number_NullDoc_ReturnsNull()
     {
-        Assert.Null(EffectiveFileIdentity.Number(null));
-        Assert.Null(EffectiveFileIdentity.Year(null));
+        Assert.Null(EffectiveFileIdentity.Number(null, 2026));
+        Assert.Null(EffectiveFileIdentity.Year(null, 2026));
     }
 }

@@ -21,7 +21,7 @@ public sealed partial class DocumentService
 
         return new PagedResult<DocumentResponse>
         {
-            Items = items.Select(DocumentResponse.FromEntity).ToList(),
+            Items = items.Select(d => DocumentResponse.FromEntity(d, CurrentYear())).ToList(),
             Page = page,
             PerPage = perPage,
             TotalCount = total,
@@ -38,7 +38,7 @@ public sealed partial class DocumentService
 
         return new PagedResult<DocumentResponse>
         {
-            Items = items.Select(DocumentResponse.FromEntity).ToList(),
+            Items = items.Select(d => DocumentResponse.FromEntity(d, CurrentYear())).ToList(),
             Page = page,
             PerPage = perPage,
             TotalCount = total,
@@ -55,7 +55,7 @@ public sealed partial class DocumentService
 
         return new PagedResult<DocumentResponse>
         {
-            Items = items.Select(DocumentResponse.FromEntity).ToList(),
+            Items = items.Select(d => DocumentResponse.FromEntity(d, CurrentYear())).ToList(),
             Page = page,
             PerPage = perPage,
             TotalCount = total,
@@ -74,7 +74,7 @@ public sealed partial class DocumentService
 
         var result = new PagedResult<DocumentResponse>
         {
-            Items = items.Select(DocumentResponse.FromEntity).ToList(),
+            Items = items.Select(d => DocumentResponse.FromEntity(d, CurrentYear())).ToList(),
             Page = page,
             PerPage = perPage,
             TotalCount = total,
@@ -124,7 +124,7 @@ public sealed partial class DocumentService
 
         var items = await _documents.ExportAsync(
             query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, ct);
-        return items.Select(DocumentResponse.FromEntity).ToList();
+        return items.Select(d => DocumentResponse.FromEntity(d, CurrentYear())).ToList();
     }
 
 
@@ -133,8 +133,8 @@ public sealed partial class DocumentService
         page = Math.Max(1, page);
         perPage = Math.Clamp(perPage, 1, 100);
 
-        var (total, docs) = await _documents.GetRotationCandidatesAsync(userId, page, perPage, ct);
-        var currentYear = DateTime.Today.Year;
+        var currentYear = CurrentYear();
+        var (total, docs) = await _documents.GetRotationCandidatesAsync(userId, currentYear, page, perPage, ct);
         var items = docs
             .Select(d => new RotationDocumentDto(
                 d.Id,
@@ -146,8 +146,8 @@ public sealed partial class DocumentService
                 d.FileType,
                 d.BaseNumbers.Where(b => b.Year == currentYear).OrderByDescending(b => b.CreatedAt).FirstOrDefault()?.BaseNumber,
                 RotationDisplayName(d),
-                EffectiveFileIdentity.Number(d),
-                EffectiveFileIdentity.Year(d)))
+                EffectiveFileIdentity.Number(d, currentYear),
+                EffectiveFileIdentity.Year(d, currentYear)))
             .ToList();
 
         return new PagedResult<RotationDocumentDto>
@@ -211,7 +211,7 @@ public sealed partial class DocumentService
         if (entries.Any(e => e is null))
             throw new ArgumentException("طلب تدوير غير صالح");
 
-        var year = DateTime.Today.Year;
+        var year = CurrentYear();
 
         // منع تكرار نفس الملف داخل الطلب (سلوك غامض) — يُرفض الطلب كاملًا.
         var unique = entries

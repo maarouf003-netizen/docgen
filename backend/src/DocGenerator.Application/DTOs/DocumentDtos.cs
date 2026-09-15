@@ -755,7 +755,7 @@ public class UpsertOccurrenceRequest
     /// </summary>
     public List<DocumentOccurrenceDto> Occurrences { get; set; } = new();
 
-    public static DocumentResponse FromEntity(Document d) => new()
+    public static DocumentResponse FromEntity(Document d, int currentYear) => new()
     {
 
             DisplayStatus = DocumentStatusResolver.Resolve(d),
@@ -817,8 +817,8 @@ public class UpsertOccurrenceRequest
         ReferredFromLawyer = d.ReferredFromLawyer,
         ReferredAt = d.ReferredAt,
         FileNumber = d.FileNumber,
-        DisplayFileNumber = EffectiveFileIdentity.Number(d),
-        DisplayFileYear = EffectiveFileIdentity.Year(d),
+        DisplayFileNumber = EffectiveFileIdentity.Number(d, currentYear),
+        DisplayFileYear = EffectiveFileIdentity.Year(d, currentYear),
         FileType = d.FileType,
         FileYear = d.FileYear,
         FileIncoming = d.FileIncoming,
@@ -886,7 +886,7 @@ public class UpsertOccurrenceRequest
         PrintCount = d.PrintCount,
         CreatedByName = d.CreatedBy?.FullName,
         DeletedAt = d.DeletedAt,
-        NeedsRotation = NeedsRotationOf(d),
+        NeedsRotation = NeedsRotationOf(d, currentYear),
         Guarantors = d.Guarantors
             .OrderBy(g => g.GuarantorNumber)
             .Select(g => new GuarantorDto(g.Id, g.GuarantorNumber, g.GuarantorName, g.GuarantorFather,
@@ -990,9 +990,8 @@ public class UpsertOccurrenceRequest
     /// ولعائلتي وضع «منفذ عليه» (Executed + Deposit) يُؤخذ «غير منفَّذ» بمعناه العائلي:
     /// متداولة فقط (لا منفذ ولا مشطوب) — مطابقًا لشرط أهليتهما في قائمة التدوير والحفظ.
     /// </summary>
-    private static bool NeedsRotationOf(Document d)
+    private static bool NeedsRotationOf(Document d, int currentYear)
     {
-        var currentYear = DateTime.Today.Year;
         if (GeneralEntitySideCatalog.IsExecutedLike(d.GeneralEntitySide))
             return !d.IsDraft
                 && d.ExecutedStatus == ExecutedStatusCatalog.None
