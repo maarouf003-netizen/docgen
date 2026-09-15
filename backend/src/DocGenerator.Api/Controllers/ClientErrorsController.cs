@@ -35,6 +35,7 @@ public class ClientErrorsController : ControllerBase
 
     [HttpPost]
     [Authorize]
+    [Consumes("application/json")]
     [ResponseCache(NoStore = true)]
     public IActionResult Report([FromBody] ClientErrorReport report)
     {
