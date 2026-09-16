@@ -115,7 +115,7 @@ POST /api/entity-registry/groups/abolish-and-replace
 ## 9) أنماط مرجعية إلزامية (من الكود القائم)
 - مسند الرؤية الموحد: `PortalRepository.ScopePredicate/StatsBase`.
 - مزامنة النصوص والتدقيق: `PublicEntityService.SyncTextsAfterRenameAsync` + `LogDocumentChangeAsync`.
-- الوقوعات: `DocumentOccurrenceConfiguration` + `OccurrencesEditor` FE.
+- الوقوعات الآلية: مواقع التوليد في `DocumentService.Status.cs`/`PublicEntityService`/`DocumentDelegationService` + إعداد `DocumentOccurrenceConfiguration` (المحرر اليدوي أُلغي).
 - تنبيهات: `HeadAlert/HeadAlertRecipient` + نمط الإنشاء في `HeadAlertService.CreateAsync`.
 - معاينة/تنفيذ بنمط import-preview/commit + تأكيد كتابة اسم الناجي.
 - اختبارات DB: `TestDb.Create()` + `FakeAuditLogger` + بذر مستخدم مرجعي Id=1 قبل القيود (FK).

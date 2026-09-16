@@ -39,8 +39,8 @@ describe('DocumentForm · التنفيذ', () => {
   async function renderEdit(doc: DocumentResponse = mockDoc) {
     paramsMock.id = '1';
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: doc });
-    render(<DocumentForm />);
-    return screen.findByText('📂 وقوعات الملف', {}, { timeout: 5000 });
+render(<DocumentForm />);
+    return screen.findByRole('button', { name: 'حفظ التعديلات' }, { timeout: 5000 });
   }
 
   async function renderExecutedEdit(doc: Partial<DocumentResponse>) {
@@ -612,150 +612,6 @@ describe('DocumentForm · التنفيذ', () => {
   });
 
 
-  it('يعرض محرر وقوعات الملف مع الوقوعات القائمة في تعديل ملف «منفذ عليه»', async () => {
-    await renderExecutedEdit({
-      generalEntitySide: 'executed',
-      fileNumber: '55',
-      fileYear: '2026',
-      occurrences: [
-        {
-          id: 1,
-          occurrenceType: 'struck-off',
-          occurrenceTypeLabel: 'شطب',
-          eventDate: '2026-08-01',
-          fileNumber: '55',
-          year: 2026,
-        },
-        {
-          id: 2,
-          occurrenceType: 'renewal',
-          occurrenceTypeLabel: 'تجديد',
-          eventDate: '2026-09-01',
-          fileNumber: '100',
-          fileType: 'حقوقي',
-          year: 2026,
-          receiptNumber: 'و-9',
-        },
-      ],
-    });
-
-    expect(await screen.findByText('📂 وقوعات الملف')).toBeInTheDocument();
-    expect(await screen.findByText(/تم شطب الملف.*بتاريخ/)).toBeInTheDocument();
-    expect(await screen.findByText(/وجُدِّد الملف برقم 100/)).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: '+ إضافة وقعة' })).toBeInTheDocument();
-  });
-
-
-  it('يضيف وقعة شطب يدويًا عبر محرر وقوعات الملف ويحفظها فورًا', async () => {
-    const user = userEvent.setup();
-    await renderExecutedEdit({
-      generalEntitySide: 'executed',
-      fileNumber: '55',
-      fileYear: '2026',
-      occurrences: [],
-    });
-
-    (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: {
-        id: 5,
-        occurrenceType: 'struck-off',
-        occurrenceTypeLabel: 'شطب',
-        eventDate: '5/8/2026',
-        fileNumber: '55',
-        year: 2026,
-      },
-    });
-
-    await user.click(screen.getByRole('button', { name: '+ إضافة وقعة' }));
-    await user.type(screen.getByLabelText('تاريخ الشطب'), '5/8/2026');
-    await user.type(screen.getByLabelText('الرقم المشطوب'), '55');
-    await user.click(screen.getByRole('button', { name: 'حفظ الوقعة' }));
-
-    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
-    const [url, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
-    expect(url).toBe('/documents/1/occurrences');
-    expect(payload.occurrenceType).toBe('struck-off');
-    expect(payload.eventDate).toBe('5/8/2026');
-    expect(payload.fileNumber).toBe('55');
-
-    expect(await screen.findByText(/تم شطب الملف.*بتاريخ/)).toBeInTheDocument();
-  });
-
-
-  it('يمنع إضافة وقعة تجديد دون رقم الملف الجديد', async () => {
-    const user = userEvent.setup();
-    await renderExecutedEdit({
-      generalEntitySide: 'executed',
-      fileNumber: '55',
-      fileYear: '2026',
-      occurrences: [],
-    });
-
-    await user.click(screen.getByRole('button', { name: '+ إضافة وقعة' }));
-    await user.selectOptions(screen.getByLabelText('نوع الوقعة'), 'renewal');
-    await user.click(screen.getByRole('button', { name: 'حفظ الوقعة' }));
-
-    expect(screen.getByText('رقم الملف الجديد مطلوب لوقعة التجديد')).toBeInTheDocument();
-    expect(api.post).not.toHaveBeenCalled();
-  });
-
-
-  it('يضيف وقعة «تريث» يدويًا لملف طالبة تنفيذ بحقولها في محرر الوقوعات', async () => {
-    const user = userEvent.setup();
-    await renderEdit();
-
-    (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: {
-        id: 6,
-        occurrenceType: 'deferred',
-        occurrenceTypeLabel: 'تريث',
-        eventDate: '1/1/2024',
-        details: { tarithNumber: '33', tarithDate: '1/1/2024' },
-      },
-    });
-
-    await user.click(screen.getByRole('button', { name: '+ إضافة وقعة' }));
-    await user.selectOptions(screen.getByLabelText('نوع الوقعة'), 'deferred');
-    await user.type(screen.getByLabelText('رقم كتاب التريث'), '33');
-    await user.type(screen.getByLabelText('تاريخ كتاب التريث'), '1/1/2024');
-    await user.click(screen.getByRole('button', { name: 'حفظ الوقعة' }));
-
-    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
-    const [url, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
-    expect(url).toBe('/documents/1/occurrences');
-    expect(payload.occurrenceType).toBe('deferred');
-    expect(payload.details).toEqual({ tarithNumber: '33', tarithDate: '1/1/2024' });
-
-    expect(await screen.findByText(/تريث بموجب كتاب التريث رقم 33/)).toBeInTheDocument();
-  });
-
-
-  it('يحذف وقعة من سجل وقوعات الملف بعد التأكيد', async () => {
-    const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    await renderExecutedEdit({
-      generalEntitySide: 'executed',
-      fileNumber: '55',
-      fileYear: '2026',
-      occurrences: [
-        {
-          id: 9,
-          occurrenceType: 'struck-off',
-          occurrenceTypeLabel: 'شطب',
-          eventDate: '2026-08-01',
-          fileNumber: '55',
-        },
-      ],
-    });
-
-    (api.delete as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    await user.click(await screen.findByRole('button', { name: 'حذف' }));
-    expect(api.delete).toHaveBeenCalledWith('/documents/1/occurrences/9');
-    expect(await screen.findByText('لا توجد وقوعات مسجلة لهذا الملف')).toBeInTheDocument();
-    confirmSpy.mockRestore();
-  });
-
-
   it('يعرض في تعديل ملف مشطوب خيار «متداول» فقط دون «منفذ» للانتقال المباشر (§4.6)', async () => {
     await renderExecutedEdit({
       generalEntitySide: 'executed',
@@ -770,6 +626,9 @@ describe('DocumentForm · التنفيذ', () => {
     expect(Array.from(select.options).map((o) => o.textContent)).toEqual(['مشطوب', 'متداول']);
     // لا يُعرض «منفذ» — إعادة الشطب تمر بالتجديد أولًا.
     expect(Array.from(select.options).map((o) => o.textContent)).not.toContain('منفذ');
+    // لا يعرض محرر الوقوعات (أُلغي).
+    expect(screen.queryByText('📂 وقوعات الملف')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '+ إضافة وقعة' })).not.toBeInTheDocument();
   });
 
 
@@ -798,52 +657,6 @@ describe('DocumentForm · التنفيذ', () => {
 
     const select = screen.getByLabelText('الحالة') as HTMLSelectElement;
     expect(Array.from(select.options).map((o) => o.textContent)).toEqual(['منفذ']);
-  });
-
-
-  it('يوجّه وقعة تجديد لملف مشطوب إلى إعادة الملف إلى المتداول ويُحمّل المستند من جديد (§4.3)', async () => {
-    const user = userEvent.setup();
-    await renderExecutedEdit({
-      generalEntitySide: 'executed',
-      fileNumber: '55',
-      fileYear: '2026',
-      executedStatus: 'مشطوب',
-      struckOffDate: '2026-08-05',
-      occurrences: [],
-    });
-
-    // تنبيه صريح بأن تجديد المشطوب يعني إعادته إلى المتداول.
-    expect(screen.getByText(/هذا الملف مشطوب حاليًا/)).toBeInTheDocument();
-
-    (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });
-    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: { ...mockDoc, generalEntitySide: 'executed', executedStatus: 'مشطوب', struckOffDate: '2026-08-05' },
-    });
-
-    await user.click(screen.getByRole('button', { name: '+ إضافة وقعة' }));
-    await user.selectOptions(screen.getByLabelText('نوع الوقعة'), 'renewal');
-    // سنة الإعادة مخفية ومثبتة على سنة اليوم لعائلة «منفذ عليها» (§4.4) — لا حقل إدخال.
-    expect(screen.queryByRole('textbox', { name: 'سنة الإعادة' })).not.toBeInTheDocument();
-    await user.type(screen.getByLabelText('رقم الملف الجديد'), '101');
-    await user.type(screen.getByLabelText('تاريخ التجديد'), '1/8/2026');
-    await user.type(screen.getByLabelText('رقم ورود اخطار التجديد'), '77');
-    await user.click(screen.getByRole('button', { name: 'حفظ الوقعة' }));
-
-    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
-    const [url, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
-    expect(url).toBe('/documents/1/restore-struck-off');
-    expect(payload).toMatchObject({
-      renewalFileNumber: '101',
-      renewalYear: new Date().getFullYear(),
-      renewalDate: '1/8/2026',
-      renewalFileReceiptNumber: '77',
-    });
-    // لا تُرسَل الوقعة اليدوية إلى نقطة الوقوعات لهذه الحالة.
-    expect(Array.from(vi.mocked(api.post).mock.calls, (c) => c[0])).not.toContain('/documents/1/occurrences');
-    // يُعاد تحميل المستند بعد الإعادة.
-    await waitFor(() => expect(vi.mocked(api.get).mock.calls.length).toBeGreaterThan(1));
-    // رسالة نجاح صريحة بعد الإعادة.
-    expect(await screen.findByText('أعيد الملف إلى المتداول بنجاح وسُجِّلت وقعة التجديد.')).toBeInTheDocument();
   });
 
 

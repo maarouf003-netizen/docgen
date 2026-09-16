@@ -95,18 +95,6 @@ public interface IDocumentService
     /// السنة الحالية. يتحقق من ملكية المحامي وأهلية الملف (مقيد وغير منفَّذ وغير محذوف).
     /// </summary>
     Task SaveBaseNumbersAsync(int userId, List<BaseNumberEntry> entries, string? actorName, CancellationToken ct = default);
-    /// <summary>
-    /// إضافة وقعة «منفذ عليه» (شطب أو تجديد) يدويًا إلى سجل وقوعات الملف.
-    /// </summary>
-    Task<DocumentOccurrenceDto> AddOccurrenceAsync(int documentId, UpsertOccurrenceRequest request, int userId, string? actorName, CancellationToken ct = default);
-    /// <summary>
-    /// تعديل وقعة «منفذ عليه» قائمة (شطب أو تجديد) في سجل وقوعات الملف.
-    /// </summary>
-    Task<DocumentOccurrenceDto?> UpdateOccurrenceAsync(int documentId, int occurrenceId, UpsertOccurrenceRequest request, string? actorName, CancellationToken ct = default);
-    /// <summary>
-    /// حذف وقعة «منفذ عليه» (شطب أو تجديد) من سجل وقوعات الملف.
-    /// </summary>
-    Task<bool> DeleteOccurrenceAsync(int documentId, int occurrenceId, string? actorName, CancellationToken ct = default);
 }
 
 public sealed partial class DocumentService : IDocumentService

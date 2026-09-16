@@ -39,8 +39,8 @@ describe('DocumentForm · الحقول والحمولات', () => {
   async function renderEdit(doc: DocumentResponse = mockDoc) {
     paramsMock.id = '1';
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: doc });
-    render(<DocumentForm />);
-    return screen.findByText('📂 وقوعات الملف', {}, { timeout: 5000 });
+render(<DocumentForm />);
+    return screen.findByRole('button', { name: 'حفظ التعديلات' }, { timeout: 5000 });
   }
 
   it('يتحمل استجابة تعديل ناقصة المصفوفات دون انهيار (تطبيع حد الثقة)', async () => {
@@ -54,7 +54,9 @@ describe('DocumentForm · الحقول والحمولات', () => {
     await renderEdit(stripped);
 
     expect(screen.getByDisplayValue('أحمد')).toBeInTheDocument();
-    expect(screen.getByText('📂 وقوعات الملف')).toBeInTheDocument();
+    // المحرر اليدوي للوقوعات أُلغي — النموذج نفسه يبقى سليمًا.
+    expect(screen.queryByText('📂 وقوعات الملف')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'حفظ التعديلات' })).toBeInTheDocument();
   });
 
 

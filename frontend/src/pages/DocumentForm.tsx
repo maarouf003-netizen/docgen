@@ -27,7 +27,6 @@ import {
   toUpsert,
 } from '../components/form/documentFormConstants';
 import { ExecutedSideSections } from '../components/form/ExecutedSideSections';
-import { OccurrencesEditor } from '../components/form/OccurrencesEditor';
 import { makeFieldHelpers } from '../components/form/formFields';
 import { FormSectionTitle } from '../components/form/FormSectionTitle';
 import { PublicEntityPickerModal } from '../components/entity/PublicEntityPickerModal';
@@ -38,7 +37,6 @@ import { governorateFromBranch } from '../utils/governorate';
 import type {
   ApplicantPublicEntityDto,
   AssetDto,
-  DocumentOccurrenceDto,
   DocumentResponse,
   DocumentUpsertRequest,
   ExecutedHeirDto,
@@ -93,8 +91,6 @@ export default function DocumentForm() {
   const [requiredAmountSlots, setRequiredAmountSlots] = useState(1);
   const [wasOriginallyStruckOff, setWasOriginallyStruckOff] = useState(false);
   const [originalExecutedStatus, setOriginalExecutedStatus] = useState('');
-  const [originalExecStatus, setOriginalExecStatus] = useState('');
-  const [occurrences, setOccurrences] = useState<DocumentOccurrenceDto[]>([]);
   const [bankingAmountSlots, setBankingAmountSlots] = useState(1);
   const [ordinaryAmountSlots, setOrdinaryAmountSlots] = useState(1);
   const [form, setForm] = useState<DocumentUpsertRequest>({
@@ -114,8 +110,7 @@ export default function DocumentForm() {
     executedPublicEntities: [],
     executedNaturalPersons: [],
   });
-// تحميل كامل للمستند عند دخول وضع التعديل، ويُعاد بعد إعادة ملف مشطوب من محرر
-  // الوقوعات (استعادة تعيد تكوين حالة المستند والوقوعات معًا).
+// تحميل كامل للمستند عند دخول وضع التعديل.
   const loadDocument = useCallback(() => {
     if (id === undefined) return;
     api
@@ -173,8 +168,6 @@ export default function DocumentForm() {
         setExecutedNaturalPersons(d.executedNaturalPersons);
         setWasOriginallyStruckOff(d.executedStatus === 'مشطوب');
         setOriginalExecutedStatus(d.executedStatus ?? '');
-        setOriginalExecStatus(d.execStatus ?? '');
-        setOccurrences(d.occurrences);
       })
       .catch((err) => setError(getApiErrorMessage(err)));
   }, [id]);
@@ -1083,16 +1076,6 @@ export default function DocumentForm() {
             ownerOptions={ownerOptions}
             onPickSalaryRegistry={(i) => setRegistryPicker({ side: 'salary', index: i })}
             onSalaryRegistryUnlink={unlinkSalaryPublicEntity}
-          />
-        )}
-
-        {isEdit && id !== undefined && (
-          <OccurrencesEditor
-            documentId={Number(id)}
-            initial={occurrences}
-            isFileStruckOff={originalExecutedStatus === 'مشطوب' || originalExecStatus === 'مشطوب'}
-            generalEntitySide={form.generalEntitySide}
-            onRenewalRestored={loadDocument}
           />
         )}
 

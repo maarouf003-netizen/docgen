@@ -978,19 +978,6 @@ export interface DocumentOccurrenceDto {
   source?: 'system' | 'manual';
 }
 
-/** إضافة/تعديل وقعة يدويًا (التواريخ نصوص حرة بصيغة «1/8/2026»). */
-export interface UpsertOccurrenceRequest {
-  occurrenceType: OccurrenceType;
-  eventDate?: string;
-  fileNumber?: string;
-  fileType?: string;
-  year?: number;
-  receiptNumber?: string;
-  receiptDate?: string;
-  /** حقول إجراءات تغيير الحالة (نظام «طالبة تنفيذ»). */
-  details?: Record<string, string>;
-}
-
 /* ── الاستئنافات على الملف التنفيذي ──────────────────────────────────── */
 
 /** اتجاه الاستئناف: مستأنِفين (نحن) أو مستأنف علينا. */

@@ -528,44 +528,7 @@ public record DocumentOccurrenceDto(
     string? Source = null,
     string? DetailsText = null);
 
-/// <summary>
-/// إضافة/تعديل وقعة ملف يدويًا عبر محرر الوقوعات. التواريخ تُرسَل نصوصًا حرة (مثال: 1/8/2026)
-/// وتُفسَّر وتُخزَّن زمنيًا كباقي تواريخ الملف.
-/// الأنواع الفعلية المدعومة: struck-off, renewal, deferred, settled, forcible, revert
-/// (يُستخدم لإنشاء وتعديل الوقوعات عبر POST/PUT؛ لا يُستخدم لإنشاء entity-change الآلي —
-/// نوع «تغيير جهة» يُسجَّل آليًا فقط ويُرفض يدويًا، والمصدر يُحسم دائمًا في الخدمة لا في الطلب).
-/// </summary>
-public class UpsertOccurrenceRequest
-{
-    /// <summary>نوع الوقعة (OccurrenceTypeCatalog): "struck-off" أو "renewal".</summary>
-    public string OccurrenceType { get; set; } = OccurrenceTypeCatalog.StruckOff;
-
-    /// <summary>تاريخ الوقعة: تاريخ الشطب أو تاريخ التجديد (نص حر).</summary>
-    public string? EventDate { get; set; }
-
-    /// <summary>الرقم المعني بالوقعة: الرقم القديم المُشطوب أو الرقم الجديد للتجديد.</summary>
-    public string? FileNumber { get; set; }
-
-    /// <summary>نوع الملف الجديد عند التجديد (اختياري).</summary>
-    public string? FileType { get; set; }
-
-    /// <summary>سنة الوقعة: سنة الشطب أو سنة الإعادة للتجديد.</summary>
-    public int? Year { get; set; }
-
-    /// <summary>رقم ورود اخطار التجديد عند التجديد (اختياري).</summary>
-    public string? ReceiptNumber { get; set; }
-
-    /// <summary>تاريخ ورود اخطار التجديد عند التجديد (اختياري، نص حر).</summary>
-    public string? ReceiptDate { get; set; }
-
-    /// <summary>
-    /// حقول إجراءات تغيير الحالة (نظام «طالبة تنفيذ»): المفاتيح المعتمدة في الخدمة
-    /// (execSubStatus، collectedAmount/2/3 + العملات، baraet*، tarith*، sayer*، soldAssetIds).
-    /// </summary>
-    public Dictionary<string, string?>? Details { get; set; }
-}
-
-    public class DocumentResponse : DocGenerator.Domain.Entities.IDocumentExecutionState
+public class DocumentResponse : DocGenerator.Domain.Entities.IDocumentExecutionState
 {
     public int Id { get; set; }
     public DateTime CreatedAt { get; set; }

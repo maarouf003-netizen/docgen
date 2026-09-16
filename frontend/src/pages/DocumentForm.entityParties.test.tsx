@@ -39,8 +39,8 @@ describe('DocumentForm · ربط الأطراف بالسجل', () => {
   async function renderEdit(doc: DocumentResponse = mockDoc) {
     paramsMock.id = '1';
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: doc });
-    render(<DocumentForm />);
-    return screen.findByText('📂 وقوعات الملف', {}, { timeout: 5000 });
+render(<DocumentForm />);
+    return screen.findByRole('button', { name: 'حفظ التعديلات' }, { timeout: 5000 });
   }
 
   async function renderExecutedEdit(doc: Partial<DocumentResponse>) {

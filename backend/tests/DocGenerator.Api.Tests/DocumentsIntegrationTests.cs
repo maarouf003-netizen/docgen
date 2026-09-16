@@ -1740,76 +1740,30 @@ public class DocumentsIntegrationTests
     }
 
     [Fact]
-    public async Task Occurrences_ManualAddUpdateDelete_RoundTrip()
+    public async Task Occurrences_ManualEndpoints_Removed_Return404()
     {
+        // إلغاء محرر الوقوعات اليدوي: نقاط (POST/PUT/DELETE /occurrences) لم تعد موجودة — عقد
+        // الإدارة اليدوية أُلغي نهائيًا، فلا تُستجيب إلا بـ 404 (لا 403 ولا 400) لأي دور كان.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var client = _factory.WithToken(token);
         var id = await CreateExecutedDocumentAsync(token);
 
-        // إضافة وقعة شطب يدويًا.
         var add = await client.PostAsJsonAsync($"/api/documents/{id}/occurrences", new
         {
             occurrenceType = "struck-off",
             eventDate = "1/8/2026",
-            fileNumber = "999",
-            year = 2026,
         });
-        Assert.Equal(HttpStatusCode.OK, add.StatusCode);
-        using var addBody = await add.Content.ReadFromJsonAsync<JsonDocument>();
-        var occurrenceId = addBody!.RootElement.GetProperty("id").GetInt32();
+        Assert.Equal(HttpStatusCode.NotFound, add.StatusCode);
 
-        var afterAdd = await client.GetAsync($"/api/documents/{id}");
-        using var afterAddBody = await afterAdd.Content.ReadFromJsonAsync<JsonDocument>();
-        Assert.Equal("struck-off", afterAddBody!.RootElement.GetProperty("occurrences")[0]
-            .GetProperty("occurrenceType").GetString());
-        Assert.Equal("999", afterAddBody.RootElement.GetProperty("occurrences")[0]
-            .GetProperty("fileNumber").GetString());
-
-        // تعديلها إلى تجديد ببيانات وورود اخطار.
-        var update = await client.PutAsJsonAsync($"/api/documents/{id}/occurrences/{occurrenceId}", new
-        {
-            occurrenceType = "renewal",
-            eventDate = "5/9/2026",
-            fileNumber = "2026/555",
-            fileType = "قضية تنفيذ",
-            year = 2026,
-            receiptNumber = "45",
-            receiptDate = "2/9/2026",
-        });
-        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
-
-        var afterUpdate = await client.GetAsync($"/api/documents/{id}");
-        using var afterUpdateBody = await afterUpdate.Content.ReadFromJsonAsync<JsonDocument>();
-        Assert.Equal("renewal", afterUpdateBody!.RootElement.GetProperty("occurrences")[0]
-            .GetProperty("occurrenceType").GetString());
-        Assert.Equal("2026/555", afterUpdateBody.RootElement.GetProperty("occurrences")[0]
-            .GetProperty("fileNumber").GetString());
-        Assert.Equal("45", afterUpdateBody.RootElement.GetProperty("occurrences")[0]
-            .GetProperty("receiptNumber").GetString());
-
-        // الحذف → تخلو الوقوعات.
-        var delete = await client.DeleteAsync($"/api/documents/{id}/occurrences/{occurrenceId}");
-        Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
-
-        var afterDelete = await client.GetAsync($"/api/documents/{id}");
-        using var afterDeleteBody = await afterDelete.Content.ReadFromJsonAsync<JsonDocument>();
-        Assert.Equal(0, afterDeleteBody!.RootElement.GetProperty("occurrences").GetArrayLength());
-    }
-
-    [Fact]
-    public async Task Occurrences_Add_AsNonEditableRole_Forbidden()
-    {
-        // إدارة الوقوعات للمحامي صاحب الملف فقط — المدير يقرأ ولا يعدّل.
-        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var id = await CreateExecutedDocumentAsync(token);
-
-        var managerClient = _factory.AuthorizedClient("manager");
-        var response = await managerClient.PostAsJsonAsync($"/api/documents/{id}/occurrences", new
+        var update = await client.PutAsJsonAsync($"/api/documents/{id}/occurrences/1", new
         {
             occurrenceType = "struck-off",
             eventDate = "1/8/2026",
         });
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, update.StatusCode);
+
+        var delete = await client.DeleteAsync($"/api/documents/{id}/occurrences/1");
+        Assert.Equal(HttpStatusCode.NotFound, delete.StatusCode);
     }
 
     private sealed class BaseNumberYearDto
