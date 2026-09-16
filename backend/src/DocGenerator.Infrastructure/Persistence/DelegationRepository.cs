@@ -23,6 +23,10 @@ public class DelegationRepository : Repository<DocumentDelegation>, IDelegationR
                 .ThenInclude(s => s!.Guarantors)
             .Include(d => d.SourceDocument)
                 .ThenInclude(s => s!.Heirs)
+            // أصول الملف المنيب: يبني منها تعديل الإنابة لقطته ويتحقق من تبعيتها (ApplyDelegationAssets)
+            // — إسقاط هذا السطر يُفشل أي تعديل في الإنتاج برسالة «لا يتبع الملف المنيب».
+            .Include(d => d.SourceDocument)
+                .ThenInclude(s => s!.Assets)
             .Include(d => d.TargetDocument)
                 .ThenInclude(t => t!.RegistrationDate)
             .Include(d => d.TargetDocument)

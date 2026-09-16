@@ -252,6 +252,45 @@ public class DocumentDelegationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Update_Pending_ByOwner_SwitchAsset_Succeeds()
+    {
+        // سيناريو المستخدم حرفيًا: تسطير إنابة على عقار ثم تصحيح فوري بتبديله
+        // بعقار آخر من الملف المنيب نفسه.
+        var source = await CreateSourceAsync();
+        _db.Assets.Add(new Asset
+        {
+            DocumentId = source.Id,
+            AssetKind = AssetKindCatalog.RealEstate,
+            PropertyNumber = "78",
+            PropertyDistrict = "المزة",
+        });
+        await _db.SaveChangesAsync();
+        var firstId = await _db.Assets
+            .Where(a => a.DocumentId == source.Id && a.PropertyNumber == "77")
+            .Select(a => a.Id).SingleAsync();
+        var secondId = await _db.Assets
+            .Where(a => a.DocumentId == source.Id && a.PropertyNumber == "78")
+            .Select(a => a.Id).SingleAsync();
+
+        var created = await _service.CreateAsync(source.Id, SampleRequest(firstId), _lawyer1.Id, "lawyer1");
+
+        // محاكاة طلب HTTP جديد: تفريغ متعقب الكيانات فيُعاد التحميل طازجًا من القاعدة
+        // (في الإنتاج سياق جديد لكل طلب — السياق المشترك وحده يخفي غياب الـ Include
+        // عبر خريطة الهوية، فيبقى التعديل أخضر في الاختبار ومكسورًا في الإنتاج).
+        _db.ChangeTracker.Clear();
+
+        var updated = await _service.UpdateAsync(created.Id,
+            SampleRequest(secondId) with { DelegationText = "تصحيح العقار" },
+            _lawyer1.Id, "lawyer1");
+
+        Assert.NotNull(updated);
+        Assert.Equal("تصحيح العقار", updated!.DelegationText);
+        var asset = Assert.Single(updated.Assets);
+        Assert.Equal(AssetKindCatalog.RealEstate, asset.AssetKind);
+        Assert.Equal("عقار رقم 78", asset.AssetLabel);
+    }
+
+    [Fact]
     public async Task Update_NotOwner_Throws()
     {
         var source = await CreateSourceAsync();
