@@ -12,7 +12,16 @@ export interface DocumentsListPosition {
 }
 
 const POSITION_KEY = 'documentsListPosition';
-const FOCUS_KEY = 'lastViewedDocumentId';
+const FOCUS_KEY = 'lastViewedDocument';
+const LEGACY_FOCUS_KEY = 'lastViewedDocumentId';
+const FOCUS_RECORD_VERSION = 2;
+
+/** سجل «آخر ملف فُتح» موقّع بالمستخدم؛ لا يُقرأ سجل مستخدم آخر. */
+interface LastViewedDocumentRecord {
+  version: number;
+  userId: number;
+  documentId: number;
+}
 
 /** قراءة موضع القائمة المحفوظ (آمنة؛ تُعيد null عند غيابه أو تلفه أو حظر الجلسة). */
 export function loadDocumentsListPosition(): DocumentsListPosition | null {
@@ -45,22 +54,49 @@ export function saveDocumentsListPosition(position: DocumentsListPosition) {
   }
 }
 
-/** آخر ملف فُتح في هذه الجلسة (لتسليط الضوء عليه عند العودة إلى القائمة). */
-export function loadLastViewedDocumentId(): number | null {
+/**
+ * آخر ملف فُتح في هذه الجلسة (لتسليط الضوء عليه عند العودة إلى القائمة).
+ * سجل موقّع بالمستخدم: سجل مستخدم آخر يُتجاهل ويُعيد null بلا حذف (القراءة بلا أثر جانبي)،
+ * والقيم التالفة تُعيد null كما يفعل loadDocumentsListPosition. المفتاح القديم الرقمي
+ * (lastViewedDocumentId) لم يعد يُقرأ بعد التحول إلى السجل.
+ */
+export function loadLastViewedDocumentId(userId: number | null): number | null {
+  if (userId == null) return null;
   try {
     const raw = sessionStorage.getItem(FOCUS_KEY);
-    const id = raw ? Number(raw) : NaN;
-    return Number.isFinite(id) && id > 0 ? id : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<LastViewedDocumentRecord>;
+    const shapeValid =
+      parsed != null &&
+      typeof parsed === 'object' &&
+      parsed.version === FOCUS_RECORD_VERSION &&
+      typeof parsed.userId === 'number' &&
+      Number.isInteger(parsed.userId) &&
+      parsed.userId > 0 &&
+      typeof parsed.documentId === 'number' &&
+      Number.isInteger(parsed.documentId) &&
+      parsed.documentId > 0;
+    if (!shapeValid) return null;
+    const record = parsed as LastViewedDocumentRecord;
+    if (record.userId !== userId) return null; // سجل مستخدم آخر: تجاهل بلا حذف
+    return record.documentId;
   } catch {
     return null;
   }
 }
 
-export function saveLastViewedDocumentId(id: number | null) {
+export function saveLastViewedDocumentId(id: number | null, userId: number | null) {
   try {
-    // القيم غير الصالحة (null أو NaN من معرف غير رقمي) تُمسح من الجلسة بدل تخزين قمامة.
-    if (id == null || !Number.isFinite(id)) sessionStorage.removeItem(FOCUS_KEY);
-    else sessionStorage.setItem(FOCUS_KEY, String(id));
+    // القيم غير الصالحة (null أو NaN من معرف غير رقمي) أو غياب هوية المالك تُمسح من الجلسة
+    // بدل تخزين سجل بلا مالك؛ وعند الكتابة الناجحة يُنظَّف المفتاح القديم الرقمي لمرة واحدة.
+    if (id == null || typeof id !== 'number' || !Number.isFinite(id) || userId == null) sessionStorage.removeItem(FOCUS_KEY);
+    else {
+      sessionStorage.setItem(
+        FOCUS_KEY,
+        JSON.stringify({ version: FOCUS_RECORD_VERSION, userId, documentId: id } satisfies LastViewedDocumentRecord),
+      );
+      sessionStorage.removeItem(LEGACY_FOCUS_KEY);
+    }
   } catch {
     // تجاهل فشل الجلسة.
   }

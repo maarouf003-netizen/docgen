@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
+import { isAxiosError } from 'axios';
 import { api } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { useIsMobile } from '../hooks/useMediaQuery';
@@ -317,8 +318,16 @@ export default function DocumentsList() {
   const [executedEntity, setExecutedEntity] = useState(saved?.executedEntity ?? '');
   const [publicEntityBranch, setPublicEntityBranch] = useState(saved?.publicEntityBranch ?? '');
   const [page, setPage] = useState(saved?.page ?? 1);
-  const [focusId] = useState(() => loadLastViewedDocumentId());
+  const [focusId, setFocusId] = useState<number | null>(null);
   const [focusName, setFocusName] = useState<string | null>(null);
+  // «آخر ملف فُتح» يُقرأ بعد تحميل هوية المستخدم (AuthContext بلا هوية أصلًا ثم يملؤها من /auth/me)،
+  // فيظهر الشريط/التمييز للمالك الحالي فقط ولا يسرّب سجل مستخدم آخر. وحارس المحاولة يمنع إعادة
+  // جلب اسم الملف عند كل تغيّر بيانات القائمة بعد فشل غير 403/404 (انقطاع شبكة أو خطأ خادم).
+  const focusFetchAttempted = useRef(false);
+  useEffect(() => {
+    focusFetchAttempted.current = false;
+    setFocusId(loadLastViewedDocumentId(user?.id ?? null));
+  }, [user?.id]);
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState('');
   const [actionsDocId, setActionsDocId] = useState<number | null>(null);
@@ -375,7 +384,7 @@ export default function DocumentsList() {
   // عند فتح ملف من القائمة: يُحفظ الموضع الحالي ويُسجَّل الملف كآخر ما فُتح ليميّز عند العودة.
   const openDocument = (id: number) => {
     saveDocumentsListPosition({ query, status, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, page });
-    saveLastViewedDocumentId(id);
+    saveLastViewedDocumentId(id, user?.id ?? null);
   };
 
   const focusVisible = focusId != null && data != null && data.items.some((x) => x.id === focusId);
@@ -389,13 +398,23 @@ export default function DocumentsList() {
         scrolledToFocus.current = true;
         document.getElementById(`doc-row-${focusId}`)?.scrollIntoView({ block: 'center' });
       }
-    } else if (focusName == null) {
+    } else if (focusName == null && !focusFetchAttempted.current) {
+      // محاولة واحدة لكل focusId في هذا التركيب تُمنع إعادة الجلب عند تغيّر بيانات القائمة (data).
+      focusFetchAttempted.current = true;
       api
         .get<DocumentResponse>(`/documents/${focusId}`)
         .then((r) => setFocusName(identityName(r.data) || displayFileNumber(r.data) || `مستند ${focusId}`))
-        .catch(() => setFocusName(`مستند ${focusId}`));
+        .catch((err: unknown) => {
+          // رفض الصلاحية أو غياب الملف: الملف ليس مقروءًا للمستخدم الحالي — يُمسح التركيز
+          // ويُخفى الشريط (لا بديل مجهول برابط ميت). غيره (انقطاع شبكة/5xx) لا يمسح شيئًا.
+          if (isAxiosError(err) && (err.response?.status === 403 || err.response?.status === 404)) {
+            saveLastViewedDocumentId(null, user?.id ?? null);
+            setFocusId(null);
+          }
+        });
     }
-  }, [focusId, focusVisible, focusName, data]);
+    // user?.id في الاعتماديات: يعيد الفحص عند تبديل الهوية وتعطيل سجلات المستخدمين الآخرين.
+  }, [focusId, focusVisible, focusName, data, user?.id]);
 
   useEffect(() => {
     const params = new URLSearchParams();

@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import DocumentsList from './DocumentsList';
 import type { DocumentResponse, PagedResult } from '../types';
 import { makeDocument } from '../test/factories';
+import { saveLastViewedDocumentId } from '../utils/listSession';
 
 vi.mock('react-router-dom', () => ({
   Link: ({ children, to, ...rest }: { children: ReactNode; to: string } & Record<string, unknown>) => (
@@ -111,7 +112,7 @@ beforeEach(() => {
   useAuthMock.mockReturnValue({
     hasFullAccess: true,
     isHead: false,
-    user: { role: 'manager' },
+    user: { role: 'manager', id: 1 },
   });
 });
 
@@ -1226,7 +1227,7 @@ describe('DocumentsList', () => {
   });
 
   it('يميّز الملف الذي كان مفتوحًا في الجدول بشارة وخلفية ويمرر إليه', async () => {
-    sessionStorage.setItem('lastViewedDocumentId', '5');
+    saveLastViewedDocumentId(5, 1);
     mockPage([makeDocument({ id: 5, borrowerName: 'محمود', borrowerFather: 'علي', borrowerFamily: 'حسن' })]);
 
     renderList();
@@ -1241,7 +1242,7 @@ describe('DocumentsList', () => {
 
   it('يميّز بطاقة الجوال للملف الذي كان مفتوحًا', async () => {
     stubMobile(true);
-    sessionStorage.setItem('lastViewedDocumentId', '5');
+    saveLastViewedDocumentId(5, 1);
     mockPage([makeDocument({ id: 5, borrowerName: 'محمود', borrowerFather: 'علي', borrowerFamily: 'حسن' })]);
 
     renderList();
@@ -1254,7 +1255,7 @@ describe('DocumentsList', () => {
   });
 
   it('يعرض شريطًا احتياطيًا يربط بالملف عندما لا يكون الملف المفتوح ظاهرًا في الصفحة', async () => {
-    sessionStorage.setItem('lastViewedDocumentId', '99');
+    saveLastViewedDocumentId(99, 1);
     mockPage([makeDocument({ id: 1, borrowerName: 'أحمد', borrowerFamily: 'الخطيب' })]);
     (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
       if (url === '/documents/99') {
@@ -1273,7 +1274,7 @@ describe('DocumentsList', () => {
   });
 
   it('يعرض اسم طالب التنفيذ في شريط الاحتياط لملف «منفذ عليها» (الجهة العامة منفذ عليها)', async () => {
-    sessionStorage.setItem('lastViewedDocumentId', '88');
+    saveLastViewedDocumentId(88, 1);
     mockPage([makeDocument({ id: 1, borrowerName: 'أحمد', borrowerFamily: 'الخطيب' })]);
     (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
       if (url === '/documents/88') {
@@ -1300,7 +1301,7 @@ describe('DocumentsList', () => {
   });
 
   it('يعرض رقم الملف في شريط الاحتياط لملف بلا أسماء أطراف', async () => {
-    sessionStorage.setItem('lastViewedDocumentId', '77');
+    saveLastViewedDocumentId(77, 1);
     mockPage([makeDocument({ id: 1, borrowerName: 'أحمد', borrowerFamily: 'الخطيب' })]);
     (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
       if (url === '/documents/77') {
@@ -1330,6 +1331,85 @@ describe('DocumentsList', () => {
     expect(screen.getByRole('link', { name: 'فتح الملف' })).toHaveAttribute('href', '/documents/77');
   });
 
+  it('لا يعرض الشريط ويمسح الملف من الجلسة عندما يُرفض جلب اسمه بـ 403 (لا صلاحية)', async () => {
+    saveLastViewedDocumentId(99, 1);
+    mockPage([makeDocument({ id: 1, borrowerName: 'أحمد', borrowerFamily: 'الخطيب' })]);
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/documents/99') {
+        return Promise.reject({ isAxiosError: true, response: { status: 403 } });
+      }
+      if (url.startsWith('/documents/filter-options')) {
+        return Promise.resolve({ data: { applicants: [], courts: [], lawyers: [], administrativeBranches: [], branches: [], publicEntityBranches: [] } });
+      }
+      return Promise.resolve({ data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [makeDocument({ id: 1, borrowerName: 'أحمد', borrowerFamily: 'الخطيب' })] } });
+    });
+
+    renderList();
+
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+    await waitFor(() => expect(sessionStorage.getItem('lastViewedDocument')).toBeNull());
+    expect(screen.queryByText(/كنت تعمل على ملف/)).not.toBeInTheDocument();
+  });
+
+  it('لا يعرض الشريط ويمسح الملف من الجلسة عندما يغيب جلب اسمه بـ 404', async () => {
+    saveLastViewedDocumentId(99, 1);
+    mockPage([makeDocument({ id: 1, borrowerName: 'أحمد', borrowerFamily: 'الخطيب' })]);
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/documents/99') {
+        return Promise.reject({ isAxiosError: true, response: { status: 404 } });
+      }
+      if (url.startsWith('/documents/filter-options')) {
+        return Promise.resolve({ data: { applicants: [], courts: [], lawyers: [], administrativeBranches: [], branches: [], publicEntityBranches: [] } });
+      }
+      return Promise.resolve({ data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [makeDocument({ id: 1, borrowerName: 'أحمد', borrowerFamily: 'الخطيب' })] } });
+    });
+
+    renderList();
+
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+    await waitFor(() => expect(sessionStorage.getItem('lastViewedDocument')).toBeNull());
+    expect(screen.queryByText(/كنت تعمل على ملف/)).not.toBeInTheDocument();
+  });
+
+  it('لا يعرض الشريط لسجل مسجّل لمستخدم آخر ولا يحذفه (القراءة بلا أثر جانبي)', async () => {
+    saveLastViewedDocumentId(99, 999);
+    mockPage([makeDocument({ id: 1, borrowerName: 'أحمد', borrowerFamily: 'الخطيب' })]);
+
+    renderList();
+
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+    expect(screen.queryByText(/كنت تعمل على ملف/)).not.toBeInTheDocument();
+    expect(sessionStorage.getItem('lastViewedDocument')).not.toBeNull();
+  });
+
+  it('لا يمسح السجل ولا يعيد جلب اسم الملف عند انقطاع الشبكة (محاولة واحدة لكل تركيب)', async () => {
+    const user = userEvent.setup();
+    let nameCalls = 0;
+    saveLastViewedDocumentId(99, 1);
+    mockPage([makeDocument({ id: 1, borrowerName: 'أحمد', borrowerFamily: 'الخطيب' })]);
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/documents/99') {
+        nameCalls += 1;
+        return Promise.reject(new Error('انقطع الاتصال بالخادم'));
+      }
+      if (url.startsWith('/documents/filter-options')) {
+        return Promise.resolve({ data: { applicants: [], courts: [], lawyers: [], administrativeBranches: [], branches: [], publicEntityBranches: [] } });
+      }
+      return Promise.resolve({ data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [makeDocument({ id: 1, borrowerName: 'أحمد', borrowerFamily: 'الخطيب' })] } });
+    });
+
+    renderList();
+
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+    await waitFor(() => expect(nameCalls).toBe(1));
+    expect(screen.queryByText(/كنت تعمل على ملف/)).not.toBeInTheDocument();
+    expect(sessionStorage.getItem('lastViewedDocument')).not.toBeNull();
+
+    // تغيّر بيانات القائمة (فلتر) يعيد تشغيل التأثير، ومع ذلك يبقى الجلب محاولة واحدة (الحارس).
+    await user.type(screen.getByPlaceholderText('بحث بالاسم الثنائي أو الثلاثي لأحد المنفذ عليهم أو ورثة المتوفى، رقم العقد، دائرة التنفيذ...'), 'س');
+    await waitFor(() => expect(nameCalls).toBe(1));
+  });
+
   it('يحفظ موضع القائمة وآخر ملف مفتوح عند النقر على ملف', async () => {
     const user = userEvent.setup();
     mockPage([makeDocument({ id: 5, borrowerName: 'محمود', borrowerFather: 'علي', borrowerFamily: 'حسن' })]);
@@ -1339,7 +1419,11 @@ describe('DocumentsList', () => {
     const link = await screen.findByRole('link', { name: 'محمود علي حسن' });
     await user.click(link);
 
-    expect(sessionStorage.getItem('lastViewedDocumentId')).toBe('5');
+    expect(JSON.parse(sessionStorage.getItem('lastViewedDocument') ?? '{}')).toEqual({
+      version: 2,
+      userId: 1,
+      documentId: 5,
+    });
     expect(JSON.parse(sessionStorage.getItem('documentsListPosition') ?? '{}')).toMatchObject({ page: 1, query: '' });
   });
 

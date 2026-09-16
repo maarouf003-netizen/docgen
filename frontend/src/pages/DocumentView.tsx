@@ -103,12 +103,16 @@ export default function DocumentView() {
   const loadDelegations = delegationsQuery.refetch;
   const loadAppeals = appealsQuery.refetch;
 
-  // يُسجَّل الملف كآخر ما فُتح في الجلسة ليُميَّز في القائمة عند العودة (حتى لو فُتح من غير القائمة).
+  // يُسجَّل الملف كآخر ما فُتح في الجلسة ليُميَّز في القائمة عند العودة — فقط بعد تحميل مضمون
+  // للملف فعليًا (doc)، فملف غير مصرّح به (403) لا يُسجَّل ولا يتولّد شريط «مستند N» برابط ميت.
   useEffect(() => {
-    if (id) saveLastViewedDocumentId(Number(id));
-    // الانتقال بين ملفين يعيد استخدام نفس الصفحة: تُغلق واجهات الاستئناف المعلّقة
-    // حتى لا تبقى مفتوحة على محتوى ملف سابق.
-    // setOpen ثابت المرجع (مولّد من useState) فلا يستوجب إدخاله في الاعتماديات.
+    if (id && doc) saveLastViewedDocumentId(Number(id), user?.id ?? null);
+  }, [id, doc, user?.id]);
+
+  // الانتقال بين ملفين يعيد استخدام نفس الصفحة: تُغلق واجهات الاستئناف المعلّقة
+  // حتى لا تبقى مفتوحة على محتوى ملف سابق.
+  // setOpen ثابت المرجع (مولّد من useState) فلا يستوجب إدخاله في الاعتماديات.
+  useEffect(() => {
     appealMenu.setOpen(false);
     setAppealFormVariant(null);
     setInfoAppeal(null);

@@ -157,7 +157,7 @@ function renderView() {
 beforeEach(() => {
   vi.clearAllMocks();
   sessionStorage.clear();
-  useAuthMock.mockReturnValue({ isHead: false, user: { role: 'lawyer' } });
+  useAuthMock.mockReturnValue({ isHead: false, user: { role: 'lawyer', id: 7 } });
   (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: mockDoc });
 });
 
@@ -1849,11 +1849,26 @@ describe('DocumentView', () => {
     expect(within(dialog).queryByText('المحافظة')).not.toBeInTheDocument();
   });
 
-  it('يُسجّل الملف كآخر ما فُتح في الجلسة ليُميَّز في القائمة عند العودة', async () => {
+it('يُسجّل الملف كآخر ما فُتح في الجلسة ليُميَّز في القائمة عند العودة', async () => {
     renderView();
 
     await screen.findByText('أطراف الملف التنفيذي');
-    expect(sessionStorage.getItem('lastViewedDocumentId')).toBe('1');
+    expect(JSON.parse(sessionStorage.getItem('lastViewedDocument') ?? '{}')).toEqual({
+      version: 2,
+      userId: 7,
+      documentId: 1,
+    });
+  });
+
+  it('لا يُسجّل آخر ما فُتح في الجلسة عند منع الوصول إلى الملف (403)', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 403 },
+    });
+    renderView();
+
+    await screen.findByRole('alert');
+    expect(sessionStorage.getItem('lastViewedDocument')).toBeNull();
   });
 
   it('يعرض زر «تسطير إنابة» لمحامي المالك على ملف متداول ويفتح نموذج الإنابة', async () => {
