@@ -491,4 +491,102 @@ render(<DocumentForm />);
     expect(screen.queryByText('الإجراءات التي تمت بنتيجة التنفيذ الفوري')).not.toBeInTheDocument();
   });
 
+  it('يحافظ على رقم كل كفيل كما هو مخزّن بلا إعادة ترقيم موضعي (قرار 10/F1)', async () => {
+    const user = userEvent.setup();
+    await renderEdit({
+      ...mockDoc,
+      guarantors: [
+        { id: 1, guarantorNumber: 1, name: 'أول', father: 'أ', family: 'ب' },
+        { id: 2, guarantorNumber: 2, name: 'ثانٍ', father: 'أ', family: 'ب' },
+        { id: 3, guarantorNumber: 3, name: 'ثالث', father: 'أ', family: 'ب' },
+      ],
+    });
+
+    // الحذف الأوسط (الكفيل 2) يترك فجوة بلا إزاحة أرقام
+    const second = screen.getByText('كفيل 2').closest('.rounded-xl') as HTMLElement;
+    await user.click(within(second).getByRole('button', { name: '✖ حذف' }));
+    expect(screen.queryByText('كفيل 2')).not.toBeInTheDocument();
+    expect(screen.getByText('كفيل 3')).toBeInTheDocument();
+
+    // إضافة كفيل جديد: الرقم = max + 1 (4) برغم الفجوة عند 2
+    await user.click(screen.getAllByRole('button', { name: /إضافة كفيل/ })[0]);
+    const addedCard = screen.getByText('كفيل 4').closest('.rounded-xl') as HTMLElement;
+    await user.type(within(addedCard).getAllByRole('textbox')[0], 'رابع');
+
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديلات' }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    const [, payload] = vi.mocked(api.put).mock.calls[0] as [string, Record<string, unknown>];
+    const numbers = (payload.guarantors as { guarantorNumber: number }[]).map((g) => g.guarantorNumber);
+    expect(numbers).toEqual([1, 3, 4]);
+  });
+
+  it('يخفي حذف الورثة والممثل ويثبّت حقول الممثل للقراءة فقط في الملف المناب (F2)', async () => {
+    await renderEdit({
+      ...mockDoc,
+      sourceDelegationId: 3,
+      borrowerHeirs: [{ id: 10, name: 'محمود الحلبي', addressType: 'عنوان', address: 'المزة' }],
+      borrowerRepresentativeName: 'ممثل',
+      borrowerRepresentativeFather: 'على',
+      borrowerRepresentativeFamily: 'المقترض',
+      guarantors: [
+        {
+          id: 5,
+          guarantorNumber: 1,
+          name: 'سمير',
+          father: 'حسن',
+          family: 'علي',
+          address: 'حلب',
+          addressType: 'موطن مختار',
+          heirs: [{ id: 11, name: 'فارس الخالد', addressType: 'وكيل', address: 'المحامي سامر' }],
+          representativeName: 'وصي',
+          representativeFather: 'علي',
+          representativeFamily: 'السليم',
+          representativeAddress: 'دمشق',
+          representativeAddressType: 'موطن مختار',
+        },
+      ],
+    });
+
+    // لا أي زر حذف: صفوف الكفيل ولا صفوف الورثة ولا أزرار «حذف الممثل»
+    expect(screen.queryByText('✖ حذف')).not.toBeInTheDocument();
+    expect(screen.queryByText('✖ حذف الممثل')).not.toBeInTheDocument();
+
+    // حقول الممثلين (المقترض والكفيل) للقراءة فقط، والاختيارات معطلة
+    for (const repName of screen.getAllByLabelText('اسم الممثل الشرعي')) {
+      expect(repName).toHaveAttribute('readonly');
+    }
+    for (const capacity of screen.getAllByLabelText('صفة الممثل الشرعي')) {
+      expect(capacity).toBeDisabled();
+    }
+    for (const addressType of screen.getAllByLabelText('نوع العنوان')) {
+      expect(addressType).toBeDisabled();
+    }
+
+    // ورثة محليون قابلون للتحرير (إضافة/تعديل مسموحة — الحذف فقط مخفي)
+    expect(screen.getAllByLabelText(/اسم الوريث/)[0]).not.toHaveAttribute('readonly');
+  });
+
+  it('يقفل دائرة التنفيذ وكُتب الملف في الملف المناب ويُبقي الهوية ثلاثية قابلة للتحرير (F3)', async () => {
+    await renderEdit({
+      ...mockDoc,
+      sourceDelegationId: 3,
+      court: 'محكمة دمشق',
+      fileArrivalNumber: 'و1',
+      fileIncoming: 'ك1',
+      underFilingNumber: 'ر1',
+      seizureDate: '5/8/2026',
+    });
+
+    for (const label of ['دائرة التنفيذ', 'رقم ورود الملف', 'رقم كتاب الجهة العامة', 'رقم تحت رفع', 'تاريخ إلقاء حجز المنظومة']) {
+      expect(screen.getByLabelText(label)).toHaveAttribute('readonly');
+    }
+
+    // الهوية الثلاثية تبقى قابلة للتحرير (قرار 5)
+    expect(screen.getByLabelText('رقم الملف')).not.toHaveAttribute('readonly');
+    expect(screen.getByLabelText('نوع الملف')).not.toHaveAttribute('readonly');
+
+    // زر «إضافة/إزالة الملحق» مخفي في المرآة (يمس حقولًا مقفولة)
+    expect(screen.queryByRole('button', { name: /إضافة ملحق|إزالة الملحق/ })).not.toBeInTheDocument();
+  });
+
 });

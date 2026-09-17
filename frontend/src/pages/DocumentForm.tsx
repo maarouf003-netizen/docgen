@@ -530,7 +530,10 @@ export default function DocumentForm() {
 
   const addGuarantor = (nature: PartyNature = 'natural') => {
     if (guarantors.length >= MAX_GUARANTORS) return;
-    setGuarantors((gs) => [...gs, { ...emptyGuarantor(), nature }]);
+    // رقم الكفيل هوية مستقرة تُحفظ في الصف (قرار 10/F1): الجديد = max + 1، والحذف
+    // الأوسط يترك فجوة دون إزاحة — لا ترقيم موضعي عند الحفظ ولا إعادة أرقام.
+    const nextNumber = guarantors.reduce((max, g) => Math.max(max, g.guarantorNumber ?? 1), 0) + 1;
+    setGuarantors((gs) => [...gs, { ...emptyGuarantor(), nature, guarantorNumber: nextNumber }]);
   };
 
   const removeGuarantor = (i: number) => {
@@ -726,7 +729,9 @@ export default function DocumentForm() {
             const gHasHeirs = (g.heirs ?? []).length > 0;
             return {
               ...g,
-              guarantorNumber: i + 1,
+              // رقم الكفيل من الصف نفسه (القيم المخزنة المستقرة — قرار 10) لا من الموضع؛
+              // الوضع العادي «المنفذ عليهم الآخرون» يواصل ترقيما متصلًا بعد المقترض كالسابق.
+              guarantorNumber: isOrdinary ? i + 1 : (g.guarantorNumber ?? i + 1),
               addressType: (gHasHeirs || gHasRep) ? '' : g.addressType,
               address: (gHasHeirs || gHasRep) ? '' : g.address,
               heirs: (g.heirs ?? []).filter(hasHeirName).map((h) => ({
@@ -803,6 +808,10 @@ export default function DocumentForm() {
   };
 
   const { field, selectField } = makeFieldHelpers(form, set);
+  // حقول «المعلومات الأساسية» الذاتية (الدائرة + كُتب ورود الملف/كتاب الجهة/تحت رفع/الحجز)
+  // مقفلة في الملف المناب حيث تجيء من المنيب (قرار 7/§5.7 — F3) عبر مساعدٍ للقراءة فقط؛
+  // الهوية الثلاثية (رقم/سنة/نوع الملف وتاريخ قيده) تبقى قابلة للتحرير (قرار 5).
+  const { field: lockField } = makeFieldHelpers(form, set, isMirror);
 
   const isOrdinary = form.contractTypeSelector === 'عادي';
   const isExecuted = isExecutedLike(form.generalEntitySide);
@@ -904,7 +913,7 @@ export default function DocumentForm() {
 
         <FormSectionTitle title="🏛️ المعلومات الأساسية" />
         <div className="grid md:grid-cols-5 gap-4 items-end">
-          {field('دائرة التنفيذ', 'court')}
+          {lockField('دائرة التنفيذ', 'court')}
           {field('رقم الملف', 'fileNumber', 'رقم الملف...')}
           {selectField('سنة الملف', 'fileYear', ['', ...FILE_YEARS], form.fileYear ?? '', (v) => set('fileYear', v))}
           {field('نوع الملف', 'fileType', 'نوع الملف...')}
@@ -998,13 +1007,13 @@ export default function DocumentForm() {
                   </button>
                 )}
               </div>
-              {field('رقم ورود الملف', 'fileArrivalNumber')}
-              {field('تاريخ ورود الملف', 'fileArrivalDate', 'مثال: 1/8/2026')}
-              {field('رقم كتاب الجهة العامة', 'fileIncoming')}
-              {field('تاريخ كتاب الجهة العامة', 'fileIncomingDate')}
-              {field('رقم تحت رفع', 'underFilingNumber')}
+              {lockField('رقم ورود الملف', 'fileArrivalNumber')}
+              {lockField('تاريخ ورود الملف', 'fileArrivalDate', 'مثال: 1/8/2026')}
+              {lockField('رقم كتاب الجهة العامة', 'fileIncoming')}
+              {lockField('تاريخ كتاب الجهة العامة', 'fileIncomingDate')}
+              {lockField('رقم تحت رفع', 'underFilingNumber')}
               {field('تاريخ قيد الملف', 'fileRegistrationDate', 'مثال: 1/8/2026')}
-              {field('تاريخ إلقاء حجز المنظومة', 'seizureDate', 'مثال: 1/8/2026')}
+              {lockField('تاريخ إلقاء حجز المنظومة', 'seizureDate', 'مثال: 1/8/2026')}
             </>
           )}
         </div>

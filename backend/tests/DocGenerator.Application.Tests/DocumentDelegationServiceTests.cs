@@ -225,6 +225,36 @@ public class DocumentDelegationServiceTests : IDisposable
         Assets = new List<AssetDto>(),
     };
 
+    /// <summary>صفّ كفلاء المستند كامِلًا (مع ورثتهم) كـ DTO — للطلبات التي تلامس الكفلاء.</summary>
+    private static List<GuarantorDto> MirrorGuarantors(Document doc) =>
+        doc.Guarantors.OrderBy(g => g.GuarantorNumber)
+            .Select(g => new GuarantorDto(
+                g.Id, g.GuarantorNumber, g.GuarantorName, g.GuarantorFather, g.GuarantorFamily,
+                g.GuarantorMother, g.GuarantorBirth, g.GuarantorRegister, g.GuarantorNationalId,
+                g.GuarantorAddress, g.AddressType,
+                g.RepresentativeName, g.RepresentativeFather, g.RepresentativeFamily,
+                g.RepresentativeCapacity, g.RepresentativeAddressType, g.RepresentativeAddress,
+                doc.Heirs.Where(h => h.GuarantorNumber == g.GuarantorNumber)
+                    .Select(h => new HeirDto(h.Id, h.HeirName, h.HeirFather, h.HeirFamily,
+                        h.HeirCapacity, h.AddressType, h.HeirAddress)).ToList(),
+                g.GuarantorNature, g.GuarantorRegistrationNumber, g.GuarantorRepresentedBy))
+            .ToList();
+
+    /// <summary>ورثة المقترض (بلا رقم كفيل) كـ DTO.</summary>
+    private static List<HeirDto> MirrorBorrowerHeirs(Document doc) =>
+        doc.Heirs.Where(h => h.GuarantorNumber is null)
+            .Select(h => new HeirDto(h.Id, h.HeirName, h.HeirFather, h.HeirFamily,
+                h.HeirCapacity, h.AddressType, h.HeirAddress)).ToList();
+
+    /// <summary>طلب تعديل يعيد بناء كل حقول المستند بما فيها الأطراف (الكفلاء وورثتهم وورثة المقترض).</summary>
+    private static DocumentUpsertRequest MirrorRequestWithParties(Document doc)
+    {
+        var request = MirrorRequest(doc);
+        request.Guarantors = MirrorGuarantors(doc);
+        request.BorrowerHeirs = MirrorBorrowerHeirs(doc);
+        return request;
+    }
+
     [Fact]
     public async Task Create_SourceFile_ReturnsPendingDelegationWithAssetSnapshot()
     {
@@ -594,7 +624,7 @@ public class DocumentDelegationServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Assign_TargetIsFrozenSnapshot_IndependentFromSourceEdits()
+    public async Task Update_SourceAfterAssignment_MirrorsChangesToPendingTarget()
     {
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
@@ -603,14 +633,19 @@ public class DocumentDelegationServiceTests : IDisposable
             _head1.Id, _branch.Id, "head1");
         var targetId = dto!.TargetDocumentId!.Value;
 
-        // تعديل الملف المنيب بعد الاعتماد لا يمس الملف المناب (لقطة مجمدة منفصلة).
-        source.BorrowerName = "غيّر-حالياً";
-        source.AmountNumeric = 2_000_000;
-        await _db.SaveChangesAsync();
+        // الملف المناب «مرآة» لا لقطة مجمدة: تعديل المنيب عبر مسار UpdateAsync الفعلي
+        // يُحدَّث المناب المعلّق أصولًا (الاختبار القديم عدّل الكيان مباشرةً فتجاوز المرآة).
+        var sourceRequest = MirrorRequest(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == source.Id));
+        sourceRequest.BorrowerName = "غيّر-بعد-الاعتماد";
+        sourceRequest.AmountNumeric = 2_000_000;
 
-        var target = await _db.Documents.FindAsync(targetId);
-        Assert.Equal("أحمد", target!.BorrowerName);
-        Assert.Equal(1_000_000, target.AmountNumeric);
+        await _documentService.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
+
+        var target = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == targetId);
+        Assert.Equal("غيّر-بعد-الاعتماد", target.BorrowerName);
+        Assert.Equal(2_000_000m, target.AmountNumeric);
     }
 
     [Fact]
@@ -1328,5 +1363,792 @@ public class DocumentDelegationServiceTests : IDisposable
         var listed2 = await _service.ListForDocumentAsync(source.Id);
         Assert.Equal("1500", Assert.Single(listed2).SourceFileNumber);
         Assert.Equal(DateTime.Today.Year.ToString(), Assert.Single(listed2).SourceFileYear);
+    }
+
+    // ── حزمة §10: حارس المرآة (B1-B7) + قواعد النظافة (T1-T4) ────────────────
+
+    [Fact]
+    public async Task Create_AfterSeizure_TargetCarriesSeizureDate()
+    {
+        // B5: تاريخ إلقاء الحجز المستندي ينتقل مع الكتب عند إنشاء الإنابة (سطر CopyBooks).
+        var source = await CreateSourceAsync();
+        source.SeizureDate = "10/8/2026";
+        await _db.SaveChangesAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+
+        var target = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == assigned!.TargetDocumentId);
+        Assert.Equal("10/8/2026", target.SeizureDate);
+    }
+
+    [Fact]
+    public async Task Create_DraftSource_RejectsDelegation()
+    {
+        // T2: رفض التسطير على ملف تحت رفع (بلا رقم قيد) — الرقم ضروري لرابطة المصدر/الهدف.
+        var source = await CreateSourceAsync();
+        source.IsDraft = true;
+        _db.Documents.Update(source);
+        await _db.SaveChangesAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1"));
+        Assert.Contains("تحت رفع", ex.Message);
+    }
+
+    [Fact]
+    public async Task Create_PartiallyExecutedSource_AllowsDelegation()
+    {
+        // T2: «منفذ جبريا/منفذ جزئيا» ما زال متداولًا — الإنابة ترخّص لها (IsExecuted خاطئة).
+        var source = await CreateSourceAsync();
+        source.ExecStatus = ExecutionStatusCatalog.ExecutedForcibly;
+        source.ExecSubStatus = ExecutionStatusCatalog.SubPartiallyExecuted;
+        _db.Documents.Update(source);
+        await _db.SaveChangesAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+
+        var dto = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+
+        Assert.True(dto.Id > 0);
+        Assert.Equal(DelegationStatusCatalog.PendingHead, dto.Status);
+    }
+
+    [Fact]
+    public async Task Update_SourceDeletesMiddleGuarantor_MirrorRemovesItAndNamesDeletedHeirs()
+    {
+        // T3 + B7 + قرار 8: حذف كفيل أوسط من المنيب يمرر إلى المناب مع ورثته المرتبطين برقمه،
+        // ويُسمَّى الورثة المحذوفون مع الكفيل المحذوف في التنبيه الموحّد.
+        var source = await CreateSourceAsync();
+        _db.Guarantors.AddRange(
+            new Guarantor
+            {
+                DocumentId = source.Id, GuarantorNumber = 2,
+                GuarantorName = "محمود", GuarantorFather = "سامي", GuarantorFamily = "الحلبي",
+                GuarantorNature = PartyNatureCatalog.Natural,
+            },
+            new Guarantor
+            {
+                DocumentId = source.Id, GuarantorNumber = 3,
+                GuarantorName = "علي", GuarantorFather = "حسن", GuarantorFamily = "الأمين",
+                GuarantorNature = PartyNatureCatalog.Natural,
+            });
+        _db.Heirs.Add(new Heir
+        {
+            DocumentId = source.Id, GuarantorNumber = 2,
+            HeirName = "حسن", HeirFather = "محمود", HeirFamily = "الحلبي",
+        });
+        await _db.SaveChangesAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+
+        // مصدر يحذف الكفيل رقم 2 (مارت بين 2 و3) مع ورثته — يبقى رقم 3 فقط.
+        var sourceRequest = MirrorRequestWithParties(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .Include(d => d.Guarantors)
+            .Include(d => d.Heirs)
+            .SingleAsync(d => d.Id == source.Id));
+        sourceRequest.Guarantors = sourceRequest.Guarantors.Where(g => g.GuarantorNumber != 2).ToList();
+
+        await _documentService.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
+
+        var target = await _db.Documents
+            .Include(d => d.Guarantors).Include(d => d.Heirs)
+            .AsNoTracking().SingleAsync(d => d.Id == targetId);
+        var remaining = Assert.Single(target.Guarantors);
+        Assert.Equal(3, remaining.GuarantorNumber);
+        Assert.Empty(target.Heirs);
+
+        var alert = await _db.HeadAlerts
+            .SingleAsync(a => a.DelegationId == created.Id && a.TargetLawyerId == _lawyer2.Id);
+        Assert.Contains("حُذف من المنيب", alert.Message);
+        Assert.Contains("محمود سامي الحلبي", alert.Message);
+        Assert.Contains("وورثته (حسن محمود الحلبي)", alert.Message);
+    }
+
+    [Fact]
+    public async Task Update_Source_WithLocalRepresentativeOnTarget_MirrorSkipsAddressWithoutNoise()
+    {
+        // B7/قرار 17: عند وجود ممثل محلي على المناب تترك المرآة عنوانه/نوعه كما هو (المتفرغ محليًا)
+        // ولا تطلق تنبيه «بيانات المقترض» ضجيجًا.
+        var source = await CreateSourceAsync();
+        source.BorrowerAddress = "عنوان-المصدر";
+        await _db.SaveChangesAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        // ممثل محلي على المناب مع عنوان مخزَّن قبله (الممثل إضافة محلية مسموحة).
+        var addRep = MirrorRequest(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == targetId));
+        addRep.BorrowerRepresentativeName = "ممثل";
+        addRep.BorrowerRepresentativeFather = "المقترض";
+        addRep.BorrowerRepresentativeFamily = "المحلي";
+        addRep.BorrowerRepresentativeCapacity = "ولي";
+        addRep.BorrowerRepresentativeAddressType = "عنوان";
+        addRep.BorrowerRepresentativeAddress = "عنوان-الممثل";
+        await _documentService.UpdateAsync(targetId, addRep, _lawyer2.FullName, _lawyer2.Id);
+
+        var before = await _db.HeadAlerts.CountAsync(a => a.DelegationId == created.Id);
+
+        // تغيير عنوان المنيب: المرآة تتجاوز الكتابة فوق عنوان المناب (بلا تنبيه ضجيج).
+        var sourceRequest = MirrorRequest(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == source.Id));
+        sourceRequest.BorrowerAddress = "عنوان-المصدر-الجديد";
+        await _documentService.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
+
+        var target = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == targetId);
+        Assert.Equal("عنوان-المصدر", target.BorrowerAddress);
+        Assert.Equal(before, await _db.HeadAlerts.CountAsync(a => a.DelegationId == created.Id));
+    }
+
+    [Fact]
+    public async Task Update_TargetMirror_RejectsGuarantorHeirRemoveOrEdit()
+    {
+        // B2/قرار 12: ورثة الكفيل إضافة-فقط بالمفتاح الهوياتي — حذف أو تعديل قائم مرفوض.
+        var source = await CreateSourceAsync();
+        _db.Guarantors.Add(new Guarantor
+        {
+            DocumentId = source.Id, GuarantorNumber = 2,
+            GuarantorName = "محمود", GuarantorFather = "سامي", GuarantorFamily = "الحلبي",
+            GuarantorNature = PartyNatureCatalog.Natural,
+        });
+        _db.Heirs.Add(new Heir
+        {
+            DocumentId = source.Id, GuarantorNumber = 2,
+            HeirName = "حسن", HeirFather = "محمود", HeirFamily = "الحلبي",
+            AddressType = "عنوان", HeirAddress = "عنوان-كفيل",
+        });
+        await _db.SaveChangesAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        var baseRequest = MirrorRequestWithParties(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .Include(d => d.Guarantors)
+            .Include(d => d.Heirs)
+            .SingleAsync(d => d.Id == targetId));
+        var guarantor = baseRequest.Guarantors.Single();
+
+        // حذف الوريث القائم: مرفوض.
+        var removeHeir = MirrorRequestWithParties(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .Include(d => d.Guarantors)
+            .Include(d => d.Heirs)
+            .SingleAsync(d => d.Id == targetId));
+        removeHeir.Guarantors = new List<GuarantorDto> { guarantor with { Heirs = new List<HeirDto>() } };
+        var exRemove = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.UpdateAsync(targetId, removeHeir, _lawyer2.FullName, _lawyer2.Id));
+        Assert.Contains("لا يمكن حذف ورثة الكفيل", exRemove.Message);
+        Assert.Contains("محمود سامي الحلبي", exRemove.Message);
+
+        // تعديل عنوان وريث قائم (نفس الهوية بقيمة مختلفة): مرفوض.
+        var editHeir = MirrorRequestWithParties(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .Include(d => d.Guarantors)
+            .Include(d => d.Heirs)
+            .SingleAsync(d => d.Id == targetId));
+        editHeir.Guarantors = new List<GuarantorDto>
+        {
+            guarantor with
+            {
+                Heirs = new List<HeirDto> { new(null, "حسن", "محمود", "الحلبي", "أصالة", "عنوان", "عنوان-معدل") },
+            },
+        };
+        var exEdit = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.UpdateAsync(targetId, editHeir, _lawyer2.FullName, _lawyer2.Id));
+        Assert.Contains("لا يمكن تعديل ورثة الكفيل", exEdit.Message);
+    }
+
+    [Fact]
+    public async Task Update_TargetMirror_RejectsHeirsOrRepresentativeOnLegalEntity()
+    {
+        // B3/قرار 12 و16: لا ورثة ولا ممثل على طرف اعتباري (ApplyRequest يُسقطها بصمت فتُرفض صراحةً).
+        var source = await CreateSourceAsync();
+        source.BorrowerNature = PartyNatureCatalog.Legal;
+        source.BorrowerRegistrationNumber = "1234";
+        source.BorrowerRepresentedBy = "مديرها";
+        // كفيل اعتباري قائم على المنيب: تُنسَخ منه نسخة اعتبارية إلى المناب، ولا يصح عليها
+        // لا ورثة ولا ممثل (الحارس يفحص الكفلاء القائمين لا الجدد — يُمنع إضافة كفيل أصلًا).
+        _db.Guarantors.Add(new Guarantor
+        {
+            DocumentId = source.Id, GuarantorNumber = 2,
+            GuarantorName = "شركة الكفل",
+            GuarantorNature = PartyNatureCatalog.Legal,
+            GuarantorRegistrationNumber = "99",
+            GuarantorRepresentedBy = "مديرها",
+        });
+        _db.Documents.Update(source);
+        await _db.SaveChangesAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        var withBorrowerHeir = MirrorRequest(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == targetId));
+        withBorrowerHeir.BorrowerHeirs.Add(new HeirDto(null, "غريب", "عن", "المقترض", null, null, null));
+        var exHeir = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.UpdateAsync(targetId, withBorrowerHeir, _lawyer2.FullName, _lawyer2.Id));
+        Assert.Contains("لا يمكن إضافة ورثة أو ممثل شرعي على المقترض الاعتباري", exHeir.Message);
+
+        var withBorrowerRep = MirrorRequest(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == targetId));
+        withBorrowerRep.BorrowerRepresentativeName = "ممثل";
+        withBorrowerRep.BorrowerRepresentativeFather = "على";
+        withBorrowerRep.BorrowerRepresentativeFamily = "المقترض";
+        var exRep = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.UpdateAsync(targetId, withBorrowerRep, _lawyer2.FullName, _lawyer2.Id));
+        Assert.Contains("لا يمكن إضافة ورثة أو ممثل شرعي على المقترض الاعتباري", exRep.Message);
+
+        // كفيل اعتباري قائم بممثل مرسَل معه: مرفوض صراحةً (رقمه القائم + حقول تمثيل).
+        var withGuarantorRep = MirrorRequestWithParties(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .Include(d => d.Guarantors)
+            .Include(d => d.Heirs)
+            .SingleAsync(d => d.Id == targetId));
+        var legal = withGuarantorRep.Guarantors.Single(g => g.GuarantorNumber == 2);
+        withGuarantorRep.Guarantors = new List<GuarantorDto>
+        {
+            legal with
+            {
+                RepresentativeName = "ممثل",
+                RepresentativeFather = "الشركة",
+                RepresentativeFamily = "المحلي",
+                RepresentativeCapacity = "ولي",
+                RepresentativeAddressType = "عنوان",
+                RepresentativeAddress = "عنوان-الممثل",
+            },
+        };
+        var exGuarantor = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.UpdateAsync(targetId, withGuarantorRep, _lawyer2.FullName, _lawyer2.Id));
+        Assert.Contains("على الكفيل الاعتباري", exGuarantor.Message);
+        Assert.Contains("شركة الكفل", exGuarantor.Message);
+    }
+
+    [Fact]
+    public async Task Update_TargetMirror_RejectsExistingRepresentativeEditOrRemoval()
+    {
+        // B3/قرار 16: تعديل ممثل قائم كإزالته مرفوض — لا صمت.
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        var addRep = MirrorRequest(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == targetId));
+        addRep.BorrowerRepresentativeName = "ممثل";
+        addRep.BorrowerRepresentativeFather = "المقترض";
+        addRep.BorrowerRepresentativeFamily = "المحلي";
+        addRep.BorrowerRepresentativeCapacity = "ولي";
+        addRep.BorrowerRepresentativeAddressType = "عنوان";
+        addRep.BorrowerRepresentativeAddress = "عنوان-الممثل";
+        await _documentService.UpdateAsync(targetId, addRep, _lawyer2.FullName, _lawyer2.Id);
+
+        // إزالة الممثل القائم (الطلب بلا ممثل): مرفوض.
+        var removeRep = MirrorRequest(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == targetId));
+        removeRep.BorrowerRepresentativeName = null;
+        removeRep.BorrowerRepresentativeFather = null;
+        removeRep.BorrowerRepresentativeFamily = null;
+        removeRep.BorrowerRepresentativeCapacity = null;
+        removeRep.BorrowerRepresentativeAddressType = null;
+        removeRep.BorrowerRepresentativeAddress = null;
+        var exRemove = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.UpdateAsync(targetId, removeRep, _lawyer2.FullName, _lawyer2.Id));
+        Assert.Contains("لا يمكن إزالة الممثل الشرعي للمقترض", exRemove.Message);
+
+        // تعديل اسم الممثل القائم: مرفوض.
+        var editRep = MirrorRequest(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == targetId));
+        editRep.BorrowerRepresentativeName = "اسم-معدل";
+        var exEdit = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.UpdateAsync(targetId, editRep, _lawyer2.FullName, _lawyer2.Id));
+        Assert.Contains("لا يمكن تعديل الممثل الشرعي للمقترض", exEdit.Message);
+    }
+
+    [Fact]
+    public async Task Update_TargetMirror_RejectsExistingGuarantorRepresentativeEditOrRemoval()
+    {
+        // B3/قرار 16: ممثل الكفيل القائم كممثل المقترض — تعديله أو إزالته مرفوض.
+        var source = await CreateSourceAsync();
+        _db.Guarantors.Add(new Guarantor
+        {
+            DocumentId = source.Id, GuarantorNumber = 2,
+            GuarantorName = "محمود", GuarantorFather = "سامي", GuarantorFamily = "الحلبي",
+            GuarantorNature = PartyNatureCatalog.Natural,
+        });
+        await _db.SaveChangesAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        var addRep = MirrorRequestWithParties(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .Include(d => d.Guarantors)
+            .Include(d => d.Heirs)
+            .SingleAsync(d => d.Id == targetId));
+        var existing = addRep.Guarantors.Single();
+        addRep.Guarantors = new List<GuarantorDto>
+        {
+            existing with
+            {
+                RepresentativeName = "ولي",
+                RepresentativeFather = "الكفيل",
+                RepresentativeFamily = "المحلي",
+                RepresentativeCapacity = "ولي",
+                RepresentativeAddressType = "عنوان",
+                RepresentativeAddress = "عنوان-الممثل",
+            },
+        };
+        await _documentService.UpdateAsync(targetId, addRep, _lawyer2.FullName, _lawyer2.Id);
+
+        var removeRep = MirrorRequestWithParties(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .Include(d => d.Guarantors)
+            .Include(d => d.Heirs)
+            .SingleAsync(d => d.Id == targetId));
+        var stored = removeRep.Guarantors.Single();
+        removeRep.Guarantors = new List<GuarantorDto>
+        {
+            stored with
+            {
+                RepresentativeName = null, RepresentativeFather = null, RepresentativeFamily = null,
+                RepresentativeCapacity = null, RepresentativeAddressType = null, RepresentativeAddress = null,
+            },
+        };
+        var exRemove = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.UpdateAsync(targetId, removeRep, _lawyer2.FullName, _lawyer2.Id));
+        Assert.Contains("لا يمكن إزالة الممثل الشرعي للكفيل", exRemove.Message);
+
+        var editRep = MirrorRequestWithParties(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .Include(d => d.Guarantors)
+            .Include(d => d.Heirs)
+            .SingleAsync(d => d.Id == targetId));
+        var withRep = editRep.Guarantors.Single();
+        editRep.Guarantors = new List<GuarantorDto> { withRep with { RepresentativeName = "اسم-معدل" } };
+        var exEdit = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.UpdateAsync(targetId, editRep, _lawyer2.FullName, _lawyer2.Id));
+        Assert.Contains("لا يمكن تعديل الممثل الشرعي للكفيل", exEdit.Message);
+    }
+
+    [Fact]
+    public async Task Update_TargetMirror_ReverseAlertNamesTheGuarantorOfAddedHeir()
+    {
+        // B2/قرار 12: التنبيه العكسي للمنيب يُسمّي الكفيل عند إضافة وريث له («لكفيل-N»).
+        var source = await CreateSourceAsync();
+        _db.Guarantors.Add(new Guarantor
+        {
+            DocumentId = source.Id, GuarantorNumber = 2,
+            GuarantorName = "محمود", GuarantorFather = "سامي", GuarantorFamily = "الحلبي",
+            GuarantorNature = PartyNatureCatalog.Natural,
+        });
+        _db.Heirs.Add(new Heir
+        {
+            DocumentId = source.Id, GuarantorNumber = 2,
+            HeirName = "حسن", HeirFather = "محمود", HeirFamily = "الحلبي",
+        });
+        await _db.SaveChangesAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        var request = MirrorRequestWithParties(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .Include(d => d.Guarantors)
+            .Include(d => d.Heirs)
+            .SingleAsync(d => d.Id == targetId));
+        var existing = request.Guarantors.Single();
+        request.Guarantors = new List<GuarantorDto>
+        {
+            existing with
+            {
+                Heirs = new List<HeirDto>
+                {
+                    new(null, "حسن", "محمود", "الحلبي", "أصالة", "عنوان", null),
+                    new(null, "قاسم", "محمود", "الحلبي", "أصالة", "عنوان", null),
+                },
+            },
+        };
+
+        await _documentService.UpdateAsync(targetId, request, _lawyer2.FullName, _lawyer2.Id);
+
+        var target = await _db.Documents.Include(d => d.Heirs).AsNoTracking().SingleAsync(d => d.Id == targetId);
+        Assert.Equal(2, target.Heirs.Count);
+
+        var alert = await _db.HeadAlerts
+            .SingleAsync(a => a.DelegationId == created.Id && a.TargetLawyerId == _lawyer1.Id);
+        Assert.Contains("أُضيف الوريث قاسم محمود الحلبي", alert.Message);
+        Assert.Contains("لكفيل-2", alert.Message);
+    }
+
+    [Fact]
+    public async Task RestoreStruckOff_NotifiesPendingTargetsWithStatusChangeAlert()
+    {
+        // B4: التراجع عن الشطب يُنبه المنابات المعلقة بالنص الموحد كالشطب ذاته.
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+
+        source.ExecStatus = ExecutionStatusCatalog.StateStruckOff;
+        _db.Documents.Update(source);
+        await _db.SaveChangesAsync();
+
+        var restored = await _documentService.RestoreStruckOffAsync(source.Id,
+            new RenewalRequest { RenewalFileNumber = "899", RenewalYear = 2026 }, "lawyer1");
+        Assert.True(restored);
+
+        var alert = await _db.HeadAlerts
+            .SingleAsync(a => a.DelegationId == created.Id && a.TargetLawyerId == _lawyer2.Id);
+        Assert.Equal(_branch.Id, alert.BranchId);
+        Assert.Contains("تغيّرت حالة الملف المنيب", alert.Message);
+    }
+
+    [Fact]
+    public async Task Update_TargetMirror_RepeatSaveWithHeirs_AcceptedWithEmptyAddress()
+    {
+        // T4/قرار 13: حفظ متكرر بلا إضافة (مع ورثة) لا يُرفض ويُخزَّن العنوان فارغًا باطراد.
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        var addHeir = MirrorRequest(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == targetId));
+        addHeir.BorrowerHeirs.Add(new HeirDto(null, "مرسى", "أحمد", "الخطيب", "أصالة", "عنوان", null));
+        await _documentService.UpdateAsync(targetId, addHeir, _lawyer2.FullName, _lawyer2.Id);
+
+        var repeated = MirrorRequestWithParties(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .Include(d => d.Heirs)
+            .SingleAsync(d => d.Id == targetId));
+
+        var updated = await _documentService.UpdateAsync(targetId, repeated, _lawyer2.FullName, _lawyer2.Id);
+        Assert.NotNull(updated);
+
+        var stored = await _db.Documents.Include(d => d.Heirs).AsNoTracking().SingleAsync(d => d.Id == targetId);
+        Assert.Single(stored.Heirs);
+        // العنوان فارغ (ثابت «ورثة/ممثل ⟺ عنوان فارغ» — قرار 13-ب)؛ نوع العنوان يبقى قيمةً
+        // تزيينية منسوخة لا تُعرض بلا عنوان (الواجهة تحتفظ به أيضًا — لا يُفحص هنا).
+        Assert.Null(stored.BorrowerAddress);
+    }
+
+    [Fact]
+    public async Task Update_TargetMirror_AddRepresentativeOverHeirs_AllEmptiedAddressesAccepted()
+    {
+        // T4/قرار 14: ممثل مع ورثة (ورثة قائمة بعناوين مخزَّنة من قبل) — يحميه إعفاء حضور
+        // فيُقبل التفريغ الجماعي للعناوين بلا رفض كاذب.
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        var addHeirs = MirrorRequest(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == targetId));
+        addHeirs.BorrowerHeirs.AddRange(new List<HeirDto>
+        {
+            new(null, "مرسى", "أحمد", "الخطيب", "أصالة", "عنوان", "عنوان-وريث-1"),
+            new(null, "سلمى", "أحمد", "الخطيب", "أصالة", "عنوان", "عنوان-وريث-2"),
+        });
+        await _documentService.UpdateAsync(targetId, addHeirs, _lawyer2.FullName, _lawyer2.Id);
+
+        // إضافة ممثل: النموذج يفرّغ عناوين كل الورثة — يُقبل (إعفاء حضور للجميع).
+        var addRep = MirrorRequestWithParties(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .Include(d => d.Heirs)
+            .SingleAsync(d => d.Id == targetId));
+        addRep.BorrowerRepresentativeName = "ممثل";
+        addRep.BorrowerRepresentativeFather = "لها";
+        addRep.BorrowerRepresentativeFamily = "المحلي";
+        addRep.BorrowerRepresentativeCapacity = "ولي";
+        addRep.BorrowerRepresentativeAddressType = "عنوان";
+        addRep.BorrowerRepresentativeAddress = "عنوان-الممثل";
+        addRep.BorrowerHeirs = addRep.BorrowerHeirs.Select(h => h with { Address = null }).ToList();
+
+        var updated = await _documentService.UpdateAsync(targetId, addRep, _lawyer2.FullName, _lawyer2.Id);
+        Assert.NotNull(updated);
+
+        var stored = await _db.Documents.Include(d => d.Heirs).AsNoTracking().SingleAsync(d => d.Id == targetId);
+        Assert.Equal(2, stored.Heirs.Count);
+        Assert.All(stored.Heirs, h => Assert.Equal(string.Empty, h.HeirAddress));
+        Assert.Equal("ممثل", stored.BorrowerRepresentativeName);
+
+        var alert = await _db.HeadAlerts
+            .SingleAsync(a => a.DelegationId == created.Id && a.TargetLawyerId == _lawyer1.Id);
+        Assert.Contains("الممثل الشرعي للمقترض", alert.Message);
+    }
+
+    [Fact]
+    public async Task Update_TargetMirror_GuarantorRepresentativeOverStoredAddressAndHeirs_AcceptedAndEmptied()
+    {
+        // T4/قرار 15: ممثل الكفيل مع عنوانه وورثته المخزَّنين — مقبول ويُصفَّر (إعفاء حضور).
+        var source = await CreateSourceAsync();
+        _db.Guarantors.Add(new Guarantor
+        {
+            DocumentId = source.Id, GuarantorNumber = 2,
+            GuarantorName = "محمود", GuarantorFather = "سامي", GuarantorFamily = "الحلبي",
+            GuarantorAddress = "عنوان-كفيل", AddressType = "عنوان", GuarantorNature = PartyNatureCatalog.Natural,
+        });
+        _db.Heirs.Add(new Heir
+        {
+            DocumentId = source.Id, GuarantorNumber = 2,
+            HeirName = "حسن", HeirFather = "محمود", HeirFamily = "الحلبي",
+            AddressType = "عنوان", HeirAddress = "عنوان-وريث",
+        });
+        await _db.SaveChangesAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        var request = MirrorRequestWithParties(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .Include(d => d.Guarantors)
+            .Include(d => d.Heirs)
+            .SingleAsync(d => d.Id == targetId));
+        var existing = request.Guarantors.Single();
+        request.Guarantors = new List<GuarantorDto>
+        {
+            existing with
+            {
+                Address = null, AddressType = "عنوان",
+                RepresentativeName = "ولي", RepresentativeFather = "الكفيل", RepresentativeFamily = "المحلي",
+                RepresentativeCapacity = "ولي", RepresentativeAddressType = "عنوان", RepresentativeAddress = "عنوان-الممثل",
+                Heirs = new List<HeirDto> { existing.Heirs!.Single() with { Address = null } },
+            },
+        };
+
+        var updated = await _documentService.UpdateAsync(targetId, request, _lawyer2.FullName, _lawyer2.Id);
+        Assert.NotNull(updated);
+
+        var stored = await _db.Documents
+            .Include(d => d.Guarantors).Include(d => d.Heirs)
+            .AsNoTracking().SingleAsync(d => d.Id == targetId);
+        var guarantor = Assert.Single(stored.Guarantors);
+        Assert.Null(guarantor.GuarantorAddress);
+        Assert.Equal("ولي", guarantor.RepresentativeName);
+        var heir = Assert.Single(stored.Heirs);
+        Assert.Equal(string.Empty, heir.HeirAddress);
+    }
+
+    [Fact]
+    public async Task Update_TargetMirror_EmptyingAddressWithoutFamily_StillRejected()
+    {
+        // T4/قرار 13: تفريغ العنوان بلا ورثة/ممثل في الطلب يبقى فرقًا مقفولًا (لا إعفاء حضور).
+        var source = await CreateSourceAsync();
+        source.BorrowerAddress = "عنوان-محفوظ";
+        source.BorrowerAddressType = "عنوان";
+        await _db.SaveChangesAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        var request = MirrorRequest(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == targetId));
+        request.BorrowerAddress = null;
+        request.BorrowerAddressType = null;
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.UpdateAsync(targetId, request, _lawyer2.FullName, _lawyer2.Id));
+        Assert.Contains("لا يمكن تعديل الحقول المقفولة على الملف المناب", ex.Message);
+        Assert.Contains("عنوان المقترض", ex.Message);
+
+        var stored = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == targetId);
+        Assert.Equal("عنوان-محفوظ", stored.BorrowerAddress);
+    }
+
+    /// <summary>حالة اختبار تكافؤ قوائم الحقول: نسخ الإنشاء ↔ دمج المرآة ↔ فحوص الحارس.</summary>
+    private sealed record FieldEquivalenceCase(
+        string Label,
+        Func<Document, object?> EntityGet,
+        Action<Document, object?> EntitySet,
+        Action<DocumentUpsertRequest, object?> RequestSet,
+        object? V1,
+        object? V2,
+        object? Flip);
+
+    private async Task AssertFieldEquivalenceAsync(FieldEquivalenceCase c)
+    {
+        // 1) نسخ الإنشاء: الهدف يحمل قيمة المصدر عند الاعتماد.
+        var source = await CreateSourceAsync();
+        c.EntitySet(source, c.V1);
+        await _db.SaveChangesAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        var copied = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == targetId);
+        Assert.Equal(c.V1, c.EntityGet(copied));
+
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        // 2) دمج المرآة: تعديل المنيب يُحدث المناب بنفس الحقل.
+        var sourceRequest = MirrorRequest(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == source.Id));
+        c.RequestSet(sourceRequest, c.V2);
+        await _documentService.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
+        var mirrored = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == targetId);
+        Assert.Equal(c.V2, c.EntityGet(mirrored));
+
+        // 3) فحص الحارس: إعادة إرسال ما يُخزَّن بعد المرآة مقبولة (ائتلاف بدل انحراف القوائم).
+        var roundTrip = MirrorRequest(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == targetId));
+        await _documentService.UpdateAsync(targetId, roundTrip, _lawyer2.FullName, _lawyer2.Id);
+
+        // 4) فحص الحارس: قلب نفس الحقل يبقى مرفوضًا (مقفولًا ومُزامنًا).
+        var flipRequest = MirrorRequest(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == targetId));
+        c.RequestSet(flipRequest, c.Flip);
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.UpdateAsync(targetId, flipRequest, _lawyer2.FullName, _lawyer2.Id));
+        Assert.Contains("لا يمكن تعديل الحقول المقفولة على الملف المناب", ex.Message);
+    }
+
+    [Fact]
+    public async Task MirrorAndGuard_FieldLists_AreEquivalentAcrossCreateMirrorGuard()
+    {
+        // B6: قائمة الحقول المشتركة بين (نسخ الإنشاء ↔ دمج المرآة ↔ فحوص الحارس)
+        // للسند/الكتب/المقترض — أي انحرافٍ بين المسارات يوقف الاختبار على الحقل المشتبه.
+        var textCase = (string label, Func<Document, string?> get, Action<Document, string?> set,
+            Action<DocumentUpsertRequest, string?> requestSet) => new FieldEquivalenceCase(
+            label, d => get(d), (d, v) => set(d, (string?)v), (r, v) => requestSet(r, (string?)v),
+            $"{label}-ق1", $"{label}-ق2", $"{label}-مخالف");
+
+        var cases = new List<FieldEquivalenceCase>();
+
+        // السند التنفيذي (النصوص).
+        cases.AddRange(new[]
+        {
+            textCase("نوع العقد", d => d.ContractType, (d, v) => d.ContractType = v, (r, v) => r.ContractType = v),
+            textCase("نوع العقد (المفصل)", d => d.ContractTypeSelector, (d, v) => d.ContractTypeSelector = v, (r, v) => r.ContractTypeSelector = v),
+            textCase("رقم العقد", d => d.ContractNumber, (d, v) => d.ContractNumber = v, (r, v) => r.ContractNumber = v),
+            textCase("تاريخ العقد", d => d.ContractDate, (d, v) => d.ContractDate = v, (r, v) => r.ContractDate = v),
+            textCase("نوع الإلحاق", d => d.AnnexType, (d, v) => d.AnnexType = v, (r, v) => r.AnnexType = v),
+            textCase("رقم الإلحاق", d => d.AnnexNumber, (d, v) => d.AnnexNumber = v, (r, v) => r.AnnexNumber = v),
+            textCase("تاريخ الإلحاق", d => d.AnnexDate, (d, v) => d.AnnexDate = v, (r, v) => r.AnnexDate = v),
+            textCase("نص الإدراج", d => d.InclusionText, (d, v) => d.InclusionText = v, (r, v) => r.InclusionText = v),
+            textCase("مبلغ العقد كتابة", d => d.AmountWords, (d, v) => d.AmountWords = v, (r, v) => r.AmountWords = v),
+            textCase("عملة المبلغ الأول", d => d.Currency, (d, v) => d.Currency = v, (r, v) => r.Currency = v),
+            textCase("المبلغ الثاني كتابة", d => d.Amount2Words, (d, v) => d.Amount2Words = v, (r, v) => r.Amount2Words = v),
+            textCase("عملة المبلغ الثاني", d => d.Currency2, (d, v) => d.Currency2 = v, (r, v) => r.Currency2 = v),
+            textCase("المبلغ الثالث كتابة", d => d.Amount3Words, (d, v) => d.Amount3Words = v, (r, v) => r.Amount3Words = v),
+            textCase("عملة المبلغ الثالث", d => d.Currency3, (d, v) => d.Currency3 = v, (r, v) => r.Currency3 = v),
+            textCase("المبلغ المدرج كتابة", d => d.InclusionAmountWords, (d, v) => d.InclusionAmountWords = v, (r, v) => r.InclusionAmountWords = v),
+            textCase("عملة المبلغ المدرج", d => d.InclusionCurrency, (d, v) => d.InclusionCurrency = v, (r, v) => r.InclusionCurrency = v),
+            textCase("المبلغ المدرج الثاني كتابة", d => d.InclusionAmount2Words, (d, v) => d.InclusionAmount2Words = v, (r, v) => r.InclusionAmount2Words = v),
+            textCase("عملة المبلغ المدرج الثاني", d => d.InclusionCurrency2, (d, v) => d.InclusionCurrency2 = v, (r, v) => r.InclusionCurrency2 = v),
+            textCase("المبلغ المدرج الثالث كتابة", d => d.InclusionAmount3Words, (d, v) => d.InclusionAmount3Words = v, (r, v) => r.InclusionAmount3Words = v),
+            textCase("عملة المبلغ المدرج الثالث", d => d.InclusionCurrency3, (d, v) => d.InclusionCurrency3 = v, (r, v) => r.InclusionCurrency3 = v),
+            textCase("الدائرة", d => d.Court, (d, v) => d.Court = v, (r, v) => r.Court = v),
+        });
+
+        // السند التنفيذي (المبالغ).
+        var numericCase = (string label, Func<Document, decimal> get, Action<Document, decimal> set,
+            Action<DocumentUpsertRequest, decimal> requestSet) => new FieldEquivalenceCase(
+            label, d => get(d), (d, v) => set(d, (decimal)v!), (r, v) => requestSet(r, (decimal)v!),
+            1000.25m, 2000.25m, 3333m);
+        cases.AddRange(new[]
+        {
+            numericCase("المبلغ (الأول)", d => d.AmountNumeric, (d, v) => d.AmountNumeric = v, (r, v) => r.AmountNumeric = v),
+            numericCase("المبلغ (الثاني)", d => d.Amount2Numeric, (d, v) => d.Amount2Numeric = v, (r, v) => r.Amount2Numeric = v),
+            numericCase("المبلغ (الثالث)", d => d.Amount3Numeric, (d, v) => d.Amount3Numeric = v, (r, v) => r.Amount3Numeric = v),
+            numericCase("المبلغ المدرج (الأول)", d => d.InclusionAmountNumeric, (d, v) => d.InclusionAmountNumeric = v, (r, v) => r.InclusionAmountNumeric = v),
+            numericCase("المبلغ المدرج (الثاني)", d => d.InclusionAmount2Numeric, (d, v) => d.InclusionAmount2Numeric = v, (r, v) => r.InclusionAmount2Numeric = v),
+            numericCase("المبلغ المدرج (الثالث)", d => d.InclusionAmount3Numeric, (d, v) => d.InclusionAmount3Numeric = v, (r, v) => r.InclusionAmount3Numeric = v),
+        });
+
+        // الكتب (النصوص) + تاريخ القاء الحجز. حقلّا «ورود الإخطار التنفيذي» (FileReceiptNumber/
+        // FileReceiptDate) خاصان بوضع «منفذ عليه» ويُصفَّران على طالبة تنفيذ — خارج عقد المرآة.
+        cases.AddRange(new[]
+        {
+            textCase("رقم ورود الملف", d => d.FileArrivalNumber, (d, v) => d.FileArrivalNumber = v, (r, v) => r.FileArrivalNumber = v),
+            textCase("تاريخ ورود الملف", d => d.FileArrivalDate, (d, v) => d.FileArrivalDate = v, (r, v) => r.FileArrivalDate = v),
+            textCase("رقم كتاب الجهة العامة", d => d.FileIncoming, (d, v) => d.FileIncoming = v, (r, v) => r.FileIncoming = v),
+            textCase("تاريخ كتاب الجهة العامة", d => d.FileIncomingDate, (d, v) => d.FileIncomingDate = v, (r, v) => r.FileIncomingDate = v),
+            textCase("رقم تحت رفع", d => d.UnderFilingNumber, (d, v) => d.UnderFilingNumber = v, (r, v) => r.UnderFilingNumber = v),
+            textCase("تاريخ القاء الحجز", d => d.SeizureDate, (d, v) => d.SeizureDate = v, (r, v) => r.SeizureDate = v),
+        });
+
+        // نواة المقترض (عدا حقول الممثل المحلية وقيم طبيعة/رقم تسجيل الاعتباري التي تُصهر في الحفظ).
+        cases.AddRange(new[]
+        {
+            textCase("اسم المقترض", d => d.BorrowerName, (d, v) => d.BorrowerName = v, (r, v) => r.BorrowerName = v),
+            textCase("اسم والد المقترض", d => d.BorrowerFather, (d, v) => d.BorrowerFather = v, (r, v) => r.BorrowerFather = v),
+            textCase("اسم عائلة المقترض", d => d.BorrowerFamily, (d, v) => d.BorrowerFamily = v, (r, v) => r.BorrowerFamily = v),
+            textCase("اسم أم المقترض", d => d.BorrowerMother, (d, v) => d.BorrowerMother = v, (r, v) => r.BorrowerMother = v),
+            textCase("تاريخ ولادة المقترض", d => d.BorrowerBirth, (d, v) => d.BorrowerBirth = v, (r, v) => r.BorrowerBirth = v),
+            textCase("سجل المقترض", d => d.BorrowerRegister, (d, v) => d.BorrowerRegister = v, (r, v) => r.BorrowerRegister = v),
+            textCase("الرقم الوطني للمقترض", d => d.BorrowerNationalId, (d, v) => d.BorrowerNationalId = v, (r, v) => r.BorrowerNationalId = v),
+            textCase("عنوان المقترض", d => d.BorrowerAddress, (d, v) => d.BorrowerAddress = v, (r, v) => r.BorrowerAddress = v),
+            textCase("نوع عنوان المقترض", d => d.BorrowerAddressType, (d, v) => d.BorrowerAddressType = v, (r, v) => r.BorrowerAddressType = v),
+            new FieldEquivalenceCase("طبيعة المقترض",
+                d => d.BorrowerNature, (d, v) => d.BorrowerNature = (string)v!, (r, v) => r.BorrowerNature = (string)v!,
+                PartyNatureCatalog.Natural, PartyNatureCatalog.Legal, PartyNatureCatalog.Natural),
+        });
+
+        foreach (var c in cases)
+            await AssertFieldEquivalenceAsync(c);
     }
 }

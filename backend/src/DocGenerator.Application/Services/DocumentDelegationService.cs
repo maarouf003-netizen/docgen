@@ -796,6 +796,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         target.UnderFilingNumber = source.UnderFilingNumber;
         target.FileReceiptNumber = source.FileReceiptNumber;
         target.FileReceiptDate = source.FileReceiptDate;
+        target.SeizureDate = source.SeizureDate;
     }
 
     /// <summary>نسخ كامِل للكفيل (تُستخدمه المرآة لنسخ الكفيل الجديد على المنيب، وللإنشاء بنفس البنية).</summary>

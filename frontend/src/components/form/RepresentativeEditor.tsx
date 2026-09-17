@@ -22,12 +22,16 @@ export function RepresentativeEditor({
   onRemove,
   mode,
   idPrefix,
+  locked = false,
 }: {
   representative: RepresentativeFields;
   onSet: (key: string, value: string) => void;
   onRemove: () => void;
   mode: 'address' | 'legalRep';
   idPrefix: string;
+  /** الملف المناب (F2): ممثل قائم من المنيب يُعرض للقراءة فقط بلا حذف — الحارس يرفض
+   * تعديله أو إزالته (B3) فتشغل القراءةَ فقط دفاعًا أماميًا. */
+  locked?: boolean;
 }) {
   const inputCls =
     'w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500';
@@ -37,9 +41,11 @@ export function RepresentativeEditor({
     <div className="mt-4 rounded-lg bg-white border border-emerald-200 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <span className="text-sm font-bold text-emerald-800">الممثل الشرعي</span>
-        <button type="button" onClick={onRemove} className="text-red-500 text-xs hover:underline min-h-11">
-          ✖ حذف الممثل
-        </button>
+        {!locked && (
+          <button type="button" onClick={onRemove} className="text-red-500 text-xs hover:underline min-h-11">
+            ✖ حذف الممثل
+          </button>
+        )}
       </div>
       <div className="grid md:grid-cols-3 gap-3">
         <div>
@@ -48,6 +54,8 @@ export function RepresentativeEditor({
             id={`${idPrefix}-rep-name`}
             value={representative.representativeName ?? ''}
             onChange={(e) => onSet('representativeName', e.target.value)}
+            readOnly={locked}
+            aria-readonly={locked || undefined}
             className={inputCls}
           />
         </div>
@@ -57,6 +65,8 @@ export function RepresentativeEditor({
             id={`${idPrefix}-rep-father`}
             value={representative.representativeFather ?? ''}
             onChange={(e) => onSet('representativeFather', e.target.value)}
+            readOnly={locked}
+            aria-readonly={locked || undefined}
             className={inputCls}
           />
         </div>
@@ -66,6 +76,8 @@ export function RepresentativeEditor({
             id={`${idPrefix}-rep-family`}
             value={representative.representativeFamily ?? ''}
             onChange={(e) => onSet('representativeFamily', e.target.value)}
+            readOnly={locked}
+            aria-readonly={locked || undefined}
             className={inputCls}
           />
         </div>
@@ -77,7 +89,9 @@ export function RepresentativeEditor({
             id={`${idPrefix}-rep-capacity`}
             value={representative.representativeCapacity ?? ''}
             onChange={(e) => onSet('representativeCapacity', e.target.value)}
-            className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            disabled={locked}
+            aria-readonly={locked || undefined}
+            className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50 disabled:cursor-not-allowed"
           >
             {REPRESENTATIVE_CAPACITIES.map((o) => (
               <option key={o} value={o}>{o}</option>
@@ -92,7 +106,9 @@ export function RepresentativeEditor({
                 id={`${idPrefix}-rep-type`}
                 value={representative.representativeAddressType ?? 'عنوان'}
                 onChange={(e) => onSet('representativeAddressType', e.target.value)}
-                className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                disabled={locked}
+                aria-readonly={locked || undefined}
+                className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50 disabled:cursor-not-allowed"
               >
                 {REPRESENTATIVE_ADDRESS_TYPE_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
@@ -107,6 +123,8 @@ export function RepresentativeEditor({
                 id={`${idPrefix}-rep-address`}
                 value={representative.representativeAddress ?? ''}
                 onChange={(e) => onSet('representativeAddress', e.target.value)}
+                readOnly={locked}
+                aria-readonly={locked || undefined}
                 className={inputCls}
               />
             </div>
@@ -118,6 +136,8 @@ export function RepresentativeEditor({
               id={`${idPrefix}-rep-legal`}
               value={representative.representativeLegalRepresentative ?? ''}
               onChange={(e) => onSet('representativeLegalRepresentative', e.target.value)}
+              readOnly={locked}
+              aria-readonly={locked || undefined}
               className={inputCls}
             />
           </div>

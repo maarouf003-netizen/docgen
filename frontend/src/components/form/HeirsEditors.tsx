@@ -8,6 +8,7 @@ export function HeirsEditor({
   onRemove,
   idPrefix,
   hideAddress = false,
+  locked = false,
 }: {
   heirs: HeirDto[];
   onSet: (i: number, key: keyof HeirDto, value: string) => void;
@@ -16,6 +17,8 @@ export function HeirsEditor({
   idPrefix: string;
   /** عند وجود ممثل شرعي يُخفى نوع العنوان وحقله (عنوان الممثل هو المعتبر). */
   hideAddress?: boolean;
+  /** الملف المناب (F2): يخفي حذف الورثة — المرآة تضيف ورثة ولا تحذف (الحارس خلفيًا يرفض). */
+  locked?: boolean;
 }) {
   const inputCls =
     'w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500';
@@ -107,9 +110,11 @@ export function HeirsEditor({
             </>
           )}
           <div className="flex items-end">
-            <button type="button" onClick={() => onRemove(i)} className="text-red-500 text-xs hover:underline min-h-11">
-              ✖ حذف
-            </button>
+            {!locked && (
+              <button type="button" onClick={() => onRemove(i)} className="text-red-500 text-xs hover:underline min-h-11">
+                ✖ حذف
+              </button>
+            )}
           </div>
         </div>
       ))}

@@ -153,7 +153,7 @@ export function ApplicantSideSections({
           <div className="flex-1">
             {field(isOrdinary ? 'تاريخ القرار' : 'تاريخ العقد', 'contractDate')}
           </div>
-          {isBanking && (
+          {!lock && isBanking && (
             <button
               type="button"
               onClick={toggleAnnex}
@@ -282,6 +282,7 @@ export function ApplicantSideSections({
             onAdd={onBorrowerHeirAdd}
             onRemove={onBorrowerHeirRemove}
             hideAddress={borrowerHasRep}
+            locked={lock}
           />
           {!borrowerHasRep ? (
             <div className="mt-3 flex justify-end">
@@ -307,6 +308,7 @@ export function ApplicantSideSections({
               }}
               onSet={(key, value) => set(BORROWER_REP_KEYS[key] ?? 'borrowerRepresentativeName', value)}
               onRemove={onBorrowerRepRemove}
+              locked={lock}
             />
           )}
         </>
@@ -318,10 +320,10 @@ export function ApplicantSideSections({
         const gHasRep = hasRepresentative(g);
         const gIsLegal = g.nature === 'legal';
         return (
-          <div key={i} className="border border-gray-200 rounded-xl p-4 mb-4">
+          <div key={isOrdinary ? i : g.guarantorNumber ?? i + 1} className="border border-gray-200 rounded-xl p-4 mb-4">
             <div className="flex justify-between items-center mb-3">
               <span className="font-medium text-gray-700 text-sm">
-                {guarantorLabel} {isOrdinary ? i + 2 : i + 1}
+                {guarantorLabel} {isOrdinary ? i + 2 : g.guarantorNumber ?? i + 1}
               </span>
               {!lock && guarantors.length > 1 && (
                 <button type="button" onClick={() => onGuarantorRemove(i)} className="text-red-500 text-xs hover:underline min-h-11">
@@ -410,6 +412,7 @@ export function ApplicantSideSections({
                   onAdd={() => onGuarantorHeirAdd(i)}
                   onRemove={(hi) => onGuarantorHeirRemove(i, hi)}
                   hideAddress={gHasRep}
+                  locked={lock}
                 />
                 {!gHasRep ? (
                   <div className="mt-3 flex justify-end">
@@ -428,6 +431,7 @@ export function ApplicantSideSections({
                     representative={g}
                     onSet={(key, value) => onGuarantorSet(i, key as keyof GuarantorDto, value)}
                     onRemove={() => onGuarantorRepRemove(i)}
+                    locked={lock}
                   />
                 )}
               </>

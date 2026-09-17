@@ -517,7 +517,7 @@ public sealed partial class DocumentService
         else
             doc.ExecStatus = ExecutionStatusCatalog.None;
 
-        return await _tx.RunAsync(async token =>
+        var restored = await _tx.RunAsync(async token =>
         {
             // إعادة الملف المشطوب من صفحة «الملفات المشطوبة» تُعد تجديدًا: رقم الملف الجديد
             // إلزامي (ومعه سنة الإعادة في نظام «طالبة تنفيذ»)، ويُسجَّل رقم أساس لسنة الإعادة
@@ -530,6 +530,10 @@ public sealed partial class DocumentService
                 "أعاد ملفًا مشطوبًا إلى المتداول مع تجديد رقم الملف", token);
             return true;
         }, ct);
+
+        // مرآة: فك الشطب «تغيّر حالة المنيب» يُنبه مناباته المعلقة (بعد نجاح المعاملة — عزل فشل التنبيه).
+        await FireDelegationStatusChangeAlertsAsync(doc, ct);
+        return restored;
     }
 
     /// <summary>
