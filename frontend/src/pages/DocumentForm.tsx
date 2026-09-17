@@ -91,6 +91,9 @@ export default function DocumentForm() {
   const [requiredAmountSlots, setRequiredAmountSlots] = useState(1);
   const [wasOriginallyStruckOff, setWasOriginallyStruckOff] = useState(false);
   const [originalExecutedStatus, setOriginalExecutedStatus] = useState('');
+  // الملف المناب (له إنابة مصدر SourceDelegationId): الحقول الجوهرية مقفلة ومُزامنة من
+  // المنيب، والهوية والورثة/الممثلون الجدد والملاحظات تبقى قابلة للتحرير (قرار 5/7).
+  const [isMirror, setIsMirror] = useState(false);
   const [bankingAmountSlots, setBankingAmountSlots] = useState(1);
   const [ordinaryAmountSlots, setOrdinaryAmountSlots] = useState(1);
   const [form, setForm] = useState<DocumentUpsertRequest>({
@@ -113,11 +116,13 @@ export default function DocumentForm() {
 // تحميل كامل للمستند عند دخول وضع التعديل.
   const loadDocument = useCallback(() => {
     if (id === undefined) return;
+    setIsMirror(false);
     api
       .get<DocumentResponse>(`/documents/${id}`)
       .then((r) => {
         const d = normalizeDocumentResponse(r.data);
         setForm(toUpsert(d));
+        setIsMirror(d.sourceDelegationId != null);
         setGuarantors(d.guarantors.length ? d.guarantors : [emptyGuarantor()]);
         setBorrowerHeirs(d.borrowerHeirs);
         // تصحيح أي بيانات قديمة متناقضة عند التحميل: تمام الأصل لا يكون إلا لمالك واحد،
@@ -938,54 +943,60 @@ export default function DocumentForm() {
                     {(a.name ?? '').trim() && a.registryId == null && (
                       <p className="w-full text-xs text-red-600">يجب اختيار هذه الجهة من السجل المرجعي</p>
                     )}
-                    {applicantPublicEntities.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeApplicantPublicEntity(i)}
-                        className="text-red-500 text-xs hover:underline min-h-11 px-2"
-                      >
-                        ✖ حذف
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setRegistryPicker({ side: 'applicant', index: i })}
-                      className="border border-emerald-200 text-emerald-800 hover:bg-emerald-50 rounded-lg px-3 py-2 text-xs min-h-11"
-                    >
-                      {a.registryId != null ? 'تغيير من السجل…' : 'اختيار من السجل…'}
-                    </button>
-                    {(a.name ?? '').trim() && a.registryId == null && (
-                      <button
-                        type="button"
-                        onClick={() => unlinkApplicantPublicEntity(i)}
-                        className="self-center border border-gray-200 text-gray-500 hover:bg-gray-50 rounded-lg px-3 py-2 text-xs min-h-11"
-                      >
-                        مسح
-                      </button>
-                    )}
-                    {a.registryId != null && (
+                    {!isMirror && (
                       <>
-                        <span className="self-center rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 px-2 py-0.5 text-[11px] whitespace-nowrap">
-                          مرتبطة بالسجل ✓
-                        </span>
+                        {applicantPublicEntities.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeApplicantPublicEntity(i)}
+                            className="text-red-500 text-xs hover:underline min-h-11 px-2"
+                          >
+                            ✖ حذف
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={() => unlinkApplicantPublicEntity(i)}
-                          className="self-center border border-gray-200 text-gray-500 hover:bg-gray-50 rounded-lg px-3 py-2 text-xs min-h-11"
+                          onClick={() => setRegistryPicker({ side: 'applicant', index: i })}
+                          className="border border-emerald-200 text-emerald-800 hover:bg-emerald-50 rounded-lg px-3 py-2 text-xs min-h-11"
                         >
-                          فك الربط
+                          {a.registryId != null ? 'تغيير من السجل…' : 'اختيار من السجل…'}
                         </button>
+                        {(a.name ?? '').trim() && a.registryId == null && (
+                          <button
+                            type="button"
+                            onClick={() => unlinkApplicantPublicEntity(i)}
+                            className="self-center border border-gray-200 text-gray-500 hover:bg-gray-50 rounded-lg px-3 py-2 text-xs min-h-11"
+                          >
+                            مسح
+                          </button>
+                        )}
+                        {a.registryId != null && (
+                          <>
+                            <span className="self-center rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 px-2 py-0.5 text-[11px] whitespace-nowrap">
+                              مرتبطة بالسجل ✓
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => unlinkApplicantPublicEntity(i)}
+                              className="self-center border border-gray-200 text-gray-500 hover:bg-gray-50 rounded-lg px-3 py-2 text-xs min-h-11"
+                            >
+                              فك الربط
+                            </button>
+                          </>
+                        )}
                       </>
                     )}
                   </div>
                 ))}
-                <button
-                  type="button"
-                  onClick={addApplicantPublicEntity}
-                  className="bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
-                >
-                  ➕ إضافة جهة
-                </button>
+                {!isMirror && (
+                  <button
+                    type="button"
+                    onClick={addApplicantPublicEntity}
+                    className="bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
+                  >
+                    ➕ إضافة جهة
+                  </button>
+                )}
               </div>
               {field('رقم ورود الملف', 'fileArrivalNumber')}
               {field('تاريخ ورود الملف', 'fileArrivalDate', 'مثال: 1/8/2026')}
@@ -1004,6 +1015,7 @@ export default function DocumentForm() {
             form={form}
             set={set}
             isEdit={isEdit}
+            isMirror={isMirror}
             showRequiredAmount={showRequiredAmount}
             setShowRequiredAmount={setShowRequiredAmount}
             requiredAmountSlots={requiredAmountSlots}
@@ -1044,6 +1056,7 @@ export default function DocumentForm() {
             form={form}
             set={set}
             isOrdinary={isOrdinary}
+            isMirror={isMirror}
             guarantorLabel={guarantorLabel}
             remainingGuarantors={remainingGuarantors}
             showInclusionAmount={showInclusionAmount}
@@ -1079,7 +1092,7 @@ export default function DocumentForm() {
           />
         )}
 
-        {!isExecuted && (
+        {!isExecuted && !isMirror && (
           <>
             <FormSectionTitle title="الإجراءات التي تمت بنتيجة التنفيذ الفوري" />
             <textarea

@@ -20,7 +20,7 @@ public class DelegationsIntegrationTests
     {
         var login = await _factory.LoginAsync("lawyer1", "123456");
         var docId = await _factory.CreateDocumentAsync(login!.Token!, borrowerName: "مقترض",
-            borrowerFather: "أب", borrowerFamily: "العائلة", withEstate: true);
+            borrowerFather: "أب", borrowerFamily: "العائلة", withEstate: true, registered: true);
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
         var assetId = db.Assets.Single(a => a.DocumentId == docId).Id;

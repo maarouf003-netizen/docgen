@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { getDocumentStatus, getDocumentBadge, getExecutedStatus } from './documentStatus';
+import { getDocumentStatus, getDocumentBadge, getExecutedStatus, canDelegateSource } from './documentStatus';
 import type { DocumentResponse } from '../types';
 
-function doc(overrides: Partial<Pick<DocumentResponse, 'execStatus' | 'execSubStatus' | 'isDraft'>>) {
-  return { execStatus: '', execSubStatus: '', isDraft: false, ...overrides };
+function doc(overrides: Partial<Pick<DocumentResponse, 'execStatus' | 'execSubStatus' | 'isDraft' | 'generalEntitySide'>>) {
+  return { execStatus: '', execSubStatus: '', isDraft: false, generalEntitySide: 'applicant' as const, ...overrides };
 }
 
 describe('getDocumentStatus', () => {
@@ -94,5 +94,29 @@ describe('getExecutedStatus', () => {
       text: 'مشطوب',
       cls: 'bg-gray-200 text-gray-700',
     });
+  });
+});
+
+describe('canDelegateSource', () => {
+  it('«منفذ جبريا (منفذ جزئيا)» يبقى قابلًا للتسطير (قرار 9)', () => {
+    expect(canDelegateSource(doc({ execStatus: 'منفذ جبريا', execSubStatus: 'منفذ جزئيا' }))).toBe(true);
+  });
+
+  it('يمنع التسطير على المسودة وصفة المنفذين والشطب', () => {
+    expect(canDelegateSource(doc({ isDraft: true }))).toBe(false);
+    expect(canDelegateSource(doc({ execStatus: 'منفذ جبريا', execSubStatus: 'منفذ كاملا' }))).toBe(false);
+    expect(canDelegateSource(doc({ execStatus: 'منفذ بالتسوية' }))).toBe(false);
+    expect(canDelegateSource(doc({ execStatus: 'منفذ إنابة' }))).toBe(false);
+    expect(canDelegateSource(doc({ execStatus: 'مشطوب' }))).toBe(false);
+  });
+
+  it('يمنع التسطير على ملفات صفة «منفذ عليه»/«عرض وايداع» ولو كانت متداولة', () => {
+    expect(canDelegateSource(doc({ generalEntitySide: 'executed' as const }))).toBe(false);
+    expect(canDelegateSource(doc({ generalEntitySide: 'deposit' as const }))).toBe(false);
+  });
+
+  it('يسمح بالتسطير للمتداول والتريث', () => {
+    expect(canDelegateSource(doc({}))).toBe(true);
+    expect(canDelegateSource(doc({ execStatus: 'تريث' }))).toBe(true);
   });
 });

@@ -2174,9 +2174,85 @@ it('يُسجّل الملف كآخر ما فُتح في الجلسة ليُمي�
     stubMobile(false);
     renderView();
 
-    await screen.findByText('بيانات الملف');
+await screen.findByText('بيانات الملف');
     expect(screen.queryByRole('tab', { name: 'المعلومات' })).not.toBeInTheDocument();
     expect(screen.getAllByText('بيانات السند التنفيذي')).toHaveLength(1);
     expect(screen.getAllByText('بيانات الملف')).toHaveLength(1);
+  });
+
+  it('يعرض زر «تسطير إنابة» لمحامي المالك على ملف «منفذ جبريا (منفذ جزئيا)» (قرار 9)', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({ isHead: false, user: { role: 'lawyer', id: 7 } });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { ...mockDoc, createdById: 7, execStatus: 'منفذ جبريا', execSubStatus: 'منفذ جزئيا' },
+    });
+    renderView();
+
+    await screen.findByText('بيانات الملف');
+    await user.click(screen.getByRole('button', { name: 'تسطير إنابة' }));
+    expect(screen.getByRole('dialog', { name: 'تسطير إنابة' })).toBeInTheDocument();
+  });
+
+  it('لا يعرض زر «تسطير إنابة» لملف تحت الرفع حتى للمالك', async () => {
+    useAuthMock.mockReturnValue({ isHead: false, user: { role: 'lawyer', id: 7 } });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { ...mockDoc, createdById: 7, isDraft: true },
+    });
+    renderView();
+
+    await screen.findByText('بيانات الملف');
+    expect(screen.queryByRole('button', { name: 'تسطير إنابة' })).not.toBeInTheDocument();
+    expect(screen.queryByText('تشعبات الملف')).not.toBeInTheDocument();
+  });
+
+  it('يعرض «نوع الملف المنيب» و«نشاط الإنابة» للملف المناب ويخفي أموال المناب (قرار 8)', async () => {
+    const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
+    getMock.mockImplementation((url: string) => {
+      if (url === '/documents/1/delegations') {
+        return Promise.resolve({
+          data: [
+            {
+              id: 9,
+              sourceDocumentId: 10,
+              sourceDocumentLabel: 'أحمد محمد خالد',
+              sourceFileType: 'سند مصارف',
+              targetDocumentId: 1,
+              delegatedCourt: 'محكمة التنفيذ الأولى',
+              isExternal: false,
+              externalBranchId: null,
+              externalBranchName: null,
+              delegationDate: '2026-08-01',
+              delegationText: '',
+              depositBookNumber: '',
+              depositBookDate: '',
+              assignedLawyerId: 4,
+              assignedLawyerName: 'المحامي هشام',
+              returnDate: '',
+              status: 'محالة',
+              createdAt: '2026-08-01',
+              createdByName: 'سامر',
+              createdById: 7,
+              assets: [],
+            },
+          ],
+        });
+      }
+      if (url === '/alerts/by-delegation/9') {
+        return Promise.resolve({
+          data: [
+            { id: 1, message: 'حدّث المنيب بيانات السند', createdAt: '2026-08-02T10:00:00Z', delegationId: 9 },
+          ],
+        });
+      }
+      return Promise.resolve({ data: { ...mockDoc, createdById: 7 } });
+    });
+    renderView();
+
+    expect(await screen.findByText('معلومات الملف المنيب')).toBeInTheDocument();
+    expect(screen.getByText('نوع الملف المنيب')).toBeInTheDocument();
+    expect(screen.getByText('سند مصارف')).toBeInTheDocument();
+    expect(screen.getByText('نشاط الإنابة')).toBeInTheDocument();
+    expect(screen.getByText('حدّث المنيب بيانات السند')).toBeInTheDocument();
+    expect(screen.queryByText('الأموال المنقولة وغير المنقولة')).not.toBeInTheDocument();
   });
 });

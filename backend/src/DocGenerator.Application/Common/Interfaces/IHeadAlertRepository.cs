@@ -44,6 +44,17 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
     /// <summary>أحدث تنبيه للإنابة (لتحديث رسالته عند تعديل الإنابة).</summary>
     Task<HeadAlert?> FindLatestByDelegationAsync(int delegationId, CancellationToken ct = default);
 
+    /// <summary>
+    /// أحدث تنبيه مرآة (منيب ↔ مناب) لمستلمٍ بعينه على إنابةٍ بعينها — تدمج التنبيهات
+    /// المتعاقبة لنفس المستلم في تنبيه واحد بآخر تغيّر (لا يُستخدم تحديث الإنابة العام
+    /// الذي يلتقط أحدث تنبيهٍ للإنابة أيًّا كان جمهوره).
+    /// </summary>
+    Task<HeadAlert?> FindLatestByDelegationAndRecipientAsync(
+        int delegationId, int recipientLawyerId, CancellationToken ct = default);
+
+    /// <summary>تنبيهات الإنابة مع مستلميها ومنشئيها (لعرض «معلومات الملف المنيب»/«تشعبات الملف»).</summary>
+    Task<List<HeadAlert>> ListByDelegationWithRecipientsAsync(int delegationId, CancellationToken ct = default);
+
     /// <summary>كل تنبيهات الاستئناف المحدد (لتصفية تنبيه «اختيار المحامي» عند الإسناد).</summary>
     Task<List<HeadAlert>> ListByAppealAsync(int appealId, CancellationToken ct = default);
 

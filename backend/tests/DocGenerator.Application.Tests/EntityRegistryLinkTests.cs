@@ -58,6 +58,7 @@ public class EntityRegistryLinkTests : IDisposable
             new Repository<DocumentRegistrationDate>(_db),
             new Repository<DocumentOccurrence>(_db),
             new DelegationRepository(_db), new AppealRepository(_db),
+            new HeadAlertService(new HeadAlertRepository(_db), new DocumentRepository(_db), new UserRepository(_db), new Repository<Branch>(_db), uow, tx, _audit),
             uow, tx, _audit,
             Microsoft.Extensions.Options.Options.Create(new DocGenerator.Application.Common.ExportOptions()),
             TimeProvider.System,

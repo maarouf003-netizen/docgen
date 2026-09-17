@@ -13,10 +13,12 @@ namespace DocGenerator.Api.Controllers;
 public class AlertsController : ControllerBase
 {
     private readonly IHeadAlertService _alerts;
+    private readonly IDocumentDelegationService _delegationParties;
 
-    public AlertsController(IHeadAlertService alerts)
+    public AlertsController(IHeadAlertService alerts, IDocumentDelegationService delegationParties)
     {
         _alerts = alerts;
+        _delegationParties = delegationParties;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -100,6 +102,21 @@ public class AlertsController : ControllerBase
         }
 
         return Forbid();
+    }
+
+    /// <summary>
+    /// تنبيهات الإنابة المدموجة (مرآة منيب ↔ مناب): تُعرض في بطاقتي «معلومات الملف المنيب»
+    /// و«تشعبات الملف» بعلامة قراءةٍ بحسب المستخدم. محامي طرفٌ في الإنابة فقط.
+    /// </summary>
+    [HttpGet("by-delegation/{delegationId:int}")]
+    public async Task<IActionResult> ByDelegation(int delegationId, CancellationToken ct)
+    {
+        if (!IsLawyer)
+            return Forbid();
+        var userId = User.GetUserId();
+        if (!await _delegationParties.IsPartyAsync(delegationId, userId, ct))
+            return Forbid();
+        return Ok(await _alerts.ListByDelegationAsync(delegationId, userId, ct));
     }
 
     /// <summary>تعليم التنبيه كمقروء — المحامي المستلم فقط.</summary>

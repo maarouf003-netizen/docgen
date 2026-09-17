@@ -2,7 +2,7 @@
 // vi.hoisted/vi.mock تُكرَّر عمدًا في كل ملف موزَّع — vitest يعزل الملفات وكذا تقلبات المحاكاة.
 // كتلة الاستيراد كاملة إلزامية (لا تختصرها — أي نقص يكسر tsc/oxlint):
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import DocumentForm from './DocumentForm';
@@ -462,6 +462,33 @@ render(<DocumentForm />);
     expect(screen.getAllByLabelText('العملة')[1]).toHaveValue('يورو');
     expect(screen.getByLabelText('المبلغ 3')).toHaveValue(700);
     expect(screen.getAllByLabelText('العملة')[2]).toHaveValue('دولار أمريكي');
+  });
+
+
+  it('يقفل الملف المناب (قرار 7): حقول المقترض/الكفيل readOnly، وإخفاء أزرار الإضافة والأموال والإجراءات الفورية', async () => {
+    await renderEdit({
+      ...mockDoc,
+      sourceDelegationId: 3,
+      guarantors: [
+        { id: 5, guarantorNumber: 1, name: 'سمير', father: 'حسن', family: 'علي', address: 'حلب', addressType: 'موطن مختار' },
+      ],
+    });
+
+    // المقترض: الحقول تمر عبر makeFieldHelpers(form, set, readOnly = true)
+    expect(screen.getByLabelText('اسم الأب')).toHaveAttribute('readonly');
+    expect(screen.getByLabelText('الرقم الوطني')).toHaveAttribute('readonly');
+    expect(screen.getAllByLabelText('نوع الطرف')[0]).toBeDisabled();
+
+    // الكفيل: الحقول مقفلة ونوع الطرف معطّل وزر الحذف/الإضافة مخفيان
+    const guarantorCard = screen.getByText('كفيل 1').closest('.rounded-xl') as HTMLElement;
+    expect(within(guarantorCard).getByDisplayValue('سمير')).toHaveAttribute('readonly');
+    expect(within(guarantorCard).getByLabelText('نوع الطرف')).toBeDisabled();
+    expect(screen.queryByText('✖ حذف')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /إضافة كفيل/ })).not.toBeInTheDocument();
+
+    // الأموال والإجراءات الفورية مخفيتان عن المناب
+    expect(screen.queryByText('الأموال المنقولة وغير المنقولة')).not.toBeInTheDocument();
+    expect(screen.queryByText('الإجراءات التي تمت بنتيجة التنفيذ الفوري')).not.toBeInTheDocument();
   });
 
 });

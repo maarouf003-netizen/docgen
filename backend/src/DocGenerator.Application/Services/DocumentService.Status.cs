@@ -148,7 +148,7 @@ public sealed partial class DocumentService
                 _ => throw new ArgumentException("حالة غير صالحة"),
             };
 
-        return await _tx.RunAsync(async token =>
+        var statusUpdated = await _tx.RunAsync(async token =>
         {
             doc.UpdatedAt = DateTime.UtcNow;
             _documents.Update(doc);
@@ -182,6 +182,10 @@ public sealed partial class DocumentService
             await LogDocumentChangesAsync(statusBefore, doc, actorName, "status", auditDetail, token);
             return true;
         }, ct);
+
+        // مرآة: تغيّر حالة المنيب يُنبه مناباته المعلقة (بعد نجاح المعاملة — عزل فشل التنبيه).
+        await FireDelegationStatusChangeAlertsAsync(doc, ct);
+        return statusUpdated;
     }
 
     public async Task<bool> RevertStatusAsync(int documentId, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default)
@@ -227,7 +231,7 @@ public sealed partial class DocumentService
         ClearForcibleTransferFields(doc);
         doc.SoldAssetIds = null;
 
-        return await _tx.RunAsync(async token =>
+        var reverted = await _tx.RunAsync(async token =>
         {
             doc.UpdatedAt = DateTime.UtcNow;
             _documents.Update(doc);
@@ -248,6 +252,10 @@ public sealed partial class DocumentService
                 "تراجع عن الحالة وعاد الملف إلى المتداول", token);
             return true;
         }, ct);
+
+        // مرآة: تراجع المنيب عن الحالة يُنبه مناباته المعلقة (بعد نجاح المعاملة — عزل فشل التنبيه).
+        await FireDelegationStatusChangeAlertsAsync(doc, ct);
+        return reverted;
     }
 
     public async Task<bool> ConsiderExecutedByDelegationAsync(int documentId, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default)
@@ -297,7 +305,7 @@ public sealed partial class DocumentService
         doc.ExecSubStatus = ExecutionStatusCatalog.SubFullyExecuted;
         doc.UpdatedAt = DateTime.UtcNow;
 
-        return await _tx.RunAsync(async token =>
+        var considered = await _tx.RunAsync(async token =>
         {
             _documents.Update(doc);
             await _uow.SaveChangesAsync(token);
@@ -318,6 +326,10 @@ public sealed partial class DocumentService
                 "اعتُبر الملف منفذًا كاملًا بهذا البيع (منفذ جبريا — منفذ كاملا)", token);
             return true;
         }, ct);
+
+        // مرآة: اكتمال تنفيذ المنيب يُنبه مناباته المعلقة (بعد نجاح المعاملة — عزل فشل التنبيه).
+        await FireDelegationStatusChangeAlertsAsync(doc, ct);
+        return considered;
     }
 
     public async Task<bool> UpdateExecutedStatusAsync(int documentId, string status, string? actorName, CancellationToken ct = default)

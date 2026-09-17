@@ -36,6 +36,9 @@ export interface ApplicantSideSectionsProps {
   form: DocumentUpsertRequest;
   set: FormSet;
   isOrdinary: boolean;
+  /** الملف المناب (قرار 7): تُقفل السند/المقترض/الكفلاء/الجهات وتُخفى أزرارها وأقسام الأصول،
+   * مع بقاء ورثة/ممثل الملف المحليين (والممثل/الورثة الجدد) قابلين للتحرير. */
+  isMirror?: boolean;
   guarantorLabel: string;
   remainingGuarantors: number;
   showInclusionAmount: boolean;
@@ -77,6 +80,7 @@ export function ApplicantSideSections({
   form,
   set,
   isOrdinary,
+  isMirror = false,
   guarantorLabel,
   remainingGuarantors,
   showInclusionAmount,
@@ -111,7 +115,8 @@ export function ApplicantSideSections({
   onSalaryRegistryUnlink,
 }: ApplicantSideSectionsProps) {
   const isBanking = !isOrdinary;
-  const { field, selectField, optionSelectField } = makeFieldHelpers(form, set);
+  const lock = isMirror;
+  const { field, selectField, optionSelectField } = makeFieldHelpers(form, set, lock);
 
   // «إضافة ملحق» للعقد المصرفي فقط: يُوسّع ثلاثة حقول (نوع/رقم/تاريخ الملحق). إن كانت
   // بيانات الملحق موجودة (عند التعديل) تُعرض مباشرة، ويصبح الزر «إزالة الملحق».
@@ -237,7 +242,8 @@ export function ApplicantSideSections({
           aria-label="نوع الطرف"
           value={form.borrowerNature ?? 'natural'}
           onChange={(e) => set('borrowerNature', e.target.value)}
-          className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          disabled={lock}
+          className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50 disabled:cursor-not-allowed"
         >
           {PARTY_NATURE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
@@ -317,7 +323,7 @@ export function ApplicantSideSections({
               <span className="font-medium text-gray-700 text-sm">
                 {guarantorLabel} {isOrdinary ? i + 2 : i + 1}
               </span>
-              {guarantors.length > 1 && (
+              {!lock && guarantors.length > 1 && (
                 <button type="button" onClick={() => onGuarantorRemove(i)} className="text-red-500 text-xs hover:underline min-h-11">
                   ✖ حذف
                 </button>
@@ -328,7 +334,8 @@ export function ApplicantSideSections({
                 aria-label="نوع الطرف"
                 value={g.nature ?? 'natural'}
                 onChange={(e) => onGuarantorSet(i, 'nature', e.target.value)}
-                className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                disabled={lock}
+                className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50 disabled:cursor-not-allowed"
               >
                 {PARTY_NATURE_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
@@ -339,19 +346,19 @@ export function ApplicantSideSections({
               <div className="grid md:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-gray-600 mb-1">الشخص الاعتباري</label>
-                  <input value={g.name ?? ''} onChange={(e) => onGuarantorSet(i, 'name', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  <input value={g.name ?? ''} readOnly={lock} aria-readonly={lock || undefined} onChange={(e) => onGuarantorSet(i, 'name', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50 disabled:cursor-not-allowed" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-600 mb-1">رقم تسجيله</label>
-                  <input value={g.registrationNumber ?? ''} onChange={(e) => onGuarantorSet(i, 'registrationNumber', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  <input value={g.registrationNumber ?? ''} readOnly={lock} aria-readonly={lock || undefined} onChange={(e) => onGuarantorSet(i, 'registrationNumber', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-600 mb-1">يمثلها</label>
-                  <input value={g.representedBy ?? ''} onChange={(e) => onGuarantorSet(i, 'representedBy', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  <input value={g.representedBy ?? ''} readOnly={lock} aria-readonly={lock || undefined} onChange={(e) => onGuarantorSet(i, 'representedBy', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-600 mb-1">نوع العنوان</label>
-                  <select value={g.addressType ?? 'موطن مختار'} onChange={(e) => onGuarantorSet(i, 'addressType', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                  <select value={g.addressType ?? 'موطن مختار'} onChange={(e) => onGuarantorSet(i, 'addressType', e.target.value)} disabled={lock} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50 disabled:cursor-not-allowed">
                     {ADDRESS_TYPE_OPTIONS.map((o) => (
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
@@ -359,7 +366,7 @@ export function ApplicantSideSections({
                 </div>
                 <div className="md:col-span-2">
                   <label className="block text-xs font-bold text-gray-600 mb-1">{addressLabelOf(g.addressType)}</label>
-                  <input value={g.address ?? ''} onChange={(e) => onGuarantorSet(i, 'address', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  <input value={g.address ?? ''} readOnly={lock} aria-readonly={lock || undefined} onChange={(e) => onGuarantorSet(i, 'address', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                 </div>
               </div>
             ) : (
@@ -376,14 +383,14 @@ export function ApplicantSideSections({
                   ] as const).map(([k, label]) => (
                     <div key={k}>
                       <label className="block text-xs font-bold text-gray-600 mb-1">{label}</label>
-                      <input value={g[k] ?? ''} onChange={(e) => onGuarantorSet(i, k, e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                      <input value={g[k] ?? ''} readOnly={lock} aria-readonly={lock || undefined} onChange={(e) => onGuarantorSet(i, k, e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                     </div>
                   ))}
                   {!gHasHeirs && !gHasRep && (
                     <>
                       <div>
                         <label className="block text-xs font-bold text-gray-600 mb-1">نوع العنوان</label>
-                        <select value={g.addressType ?? 'موطن مختار'} onChange={(e) => onGuarantorSet(i, 'addressType', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none">
+                        <select value={g.addressType ?? 'موطن مختار'} onChange={(e) => onGuarantorSet(i, 'addressType', e.target.value)} disabled={lock} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none disabled:bg-gray-50 disabled:cursor-not-allowed">
                           {ADDRESS_TYPE_OPTIONS.map((o) => (
                             <option key={o.value} value={o.value}>{o.label}</option>
                           ))}
@@ -391,7 +398,7 @@ export function ApplicantSideSections({
                       </div>
                       <div className="md:col-span-2">
                         <label className="block text-xs font-bold text-gray-600 mb-1">{addressLabelOf(g.addressType)}</label>
-                        <input value={g.address ?? ''} onChange={(e) => onGuarantorSet(i, 'address', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                        <input value={g.address ?? ''} readOnly={lock} aria-readonly={lock || undefined} onChange={(e) => onGuarantorSet(i, 'address', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                       </div>
                     </>
                   )}
@@ -428,30 +435,34 @@ export function ApplicantSideSections({
           </div>
         );
       })}
-      <div className="flex gap-4 items-center flex-wrap">
-        <button
-          type="button"
-          onClick={() => onGuarantorAdd('natural')}
-          disabled={guarantors.length >= MAX_GUARANTORS}
-          className="bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
-        >
-          {guarantors.length >= MAX_GUARANTORS ? '🛑 الحد الأقصى' : `➕ إضافة ${guarantorLabel} (شخص طبيعي)`}
-        </button>
-        <button
-          type="button"
-          onClick={() => onGuarantorAdd('legal')}
-          disabled={guarantors.length >= MAX_GUARANTORS}
-          className="bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
-        >
-          {guarantors.length >= MAX_GUARANTORS ? '🛑 الحد الأقصى' : `➕ إضافة ${guarantorLabel} (شخص اعتباري)`}
-        </button>
-        <span className="text-xs text-gray-500">
-          {remainingGuarantors > 0 ? `متبقي: ${remainingGuarantors} من ${MAX_GUARANTORS}` : 'وصلت الحد الأقصى'}
-        </span>
-      </div>
+      {!lock && (
+        <div className="flex gap-4 items-center flex-wrap">
+          <button
+            type="button"
+            onClick={() => onGuarantorAdd('natural')}
+            disabled={guarantors.length >= MAX_GUARANTORS}
+            className="bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
+          >
+            {guarantors.length >= MAX_GUARANTORS ? '🛑 الحد الأقصى' : `➕ إضافة ${guarantorLabel} (شخص طبيعي)`}
+          </button>
+          <button
+            type="button"
+            onClick={() => onGuarantorAdd('legal')}
+            disabled={guarantors.length >= MAX_GUARANTORS}
+            className="bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
+          >
+            {guarantors.length >= MAX_GUARANTORS ? '🛑 الحد الأقصى' : `➕ إضافة ${guarantorLabel} (شخص اعتباري)`}
+          </button>
+          <span className="text-xs text-gray-500">
+            {remainingGuarantors > 0 ? `متبقي: ${remainingGuarantors} من ${MAX_GUARANTORS}` : 'وصلت الحد الأقصى'}
+          </span>
+        </div>
+      )}
 
-      <FormSectionTitle title="الأموال المنقولة وغير المنقولة" />
-      {assets.map((a, i) => {
+      {!lock && (
+        <>
+          <FormSectionTitle title="الأموال المنقولة وغير المنقولة" />
+          {assets.map((a, i) => {
         const kind = a.assetKind ?? ASSET_KINDS.realEstate;
         const kindLabel = assetKindLabel(kind);
         const shareable = shareTypesFor(kind).length > 0;
@@ -681,7 +692,9 @@ export function ApplicantSideSections({
             </button>
           );
         })}
-      </div>
+          </div>
+        </>
+      )}
     </>
   );
 }

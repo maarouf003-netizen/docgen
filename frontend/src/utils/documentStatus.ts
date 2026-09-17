@@ -60,6 +60,19 @@ export function getDocumentBadge(doc: StatusSource) {
   return STATUS_BADGES[getDocumentStatus(doc)];
 }
 
+/** هل يصح تسطير إنابة على هذا الملف؟ — مطابقة `ValidateSourceForDelegation` في الخلفية:
+ * ليس تحت رفع، صفة «طالبة تنفيذ»، غير منفذ (منفذ جبريا كاملًا/بالتسوية/إنابة) وغير مشطوب.
+ * «منفذ جبريا (منفذ جزئيا)» يبقى قابلًا للتسطير (قرار 9). */
+export function canDelegateSource(doc: StatusSource): boolean {
+  if (doc.isDraft) return false;
+  if (isExecutedLike(doc.generalEntitySide)) return false;
+  if (doc.execStatus === EXEC_STATUS_STRUCK_OFF) return false;
+  if (doc.execStatus === EXEC_STATUS_SETTLED) return false;
+  if (doc.execStatus === EXEC_STATUS_DELEGATION_EXECUTED) return false;
+  if (doc.execStatus === EXEC_STATUS_FORCIBLY && doc.execSubStatus !== SUB_STATUS_PARTIAL) return false;
+  return true;
+}
+
 /** الحالات المتاحة من «حالة منفذ عليه/عرض وايداع» الحالية (كخيارات نموذج/نافذة التعديل، بلا الحالة
  * الحالية نفسها). «منفذ عليها»: حالة «منفذ» نهائية لا تُغيَّر. «عرض وايداع»: من منفذه يُعاد إلى
  * متداول فقط (لا يُشطب)، بكتاب الجهة العامة بالسير بالملف. «مشطوب» يُعاد إلى متداول (تجديد) فقط —

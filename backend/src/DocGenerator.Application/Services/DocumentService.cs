@@ -109,6 +109,7 @@ public sealed partial class DocumentService : IDocumentService
     private readonly IRepository<DocumentOccurrence> _occurrences;
     private readonly IDelegationRepository _delegations;
     private readonly IAppealRepository _appeals;
+    private readonly IHeadAlertService _alertService;
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
@@ -127,6 +128,7 @@ public sealed partial class DocumentService : IDocumentService
         IRepository<DocumentOccurrence> occurrences,
         IDelegationRepository delegations,
         IAppealRepository appeals,
+        IHeadAlertService alertService,
         IUnitOfWork uow,
         ITransactionRunner tx,
         IAuditLogger audit,
@@ -144,6 +146,7 @@ public sealed partial class DocumentService : IDocumentService
         _occurrences = occurrences;
         _delegations = delegations;
         _appeals = appeals;
+        _alertService = alertService;
         _uow = uow;
         _tx = tx;
         _audit = audit;
@@ -234,12 +237,18 @@ public sealed partial class DocumentService : IDocumentService
         // الحالة عبر نموذج التعديل إلا بما تسمح به النافذة (رحّلات الشطب والتجديد الشرعية).
         ValidateExecutedTransitionOnEdit(doc, request);
 
+        // حارس تعديل الملف المناب (قرار 2: «الملف المناب مرآةً للمنيب»): يرفض الفروق القيمية
+        // في الحقول المقفولة، ويرصد الإضافات المحلية المسموحة (وريث جديد/ممثل جديد) لتنبيه
+        // منيب الملف بها بعد نجاح الحفظ.
+        var targetEditResult = ValidateDelegationTargetEdit(doc, request);
+
         ApplyRequest(doc, request);
         FillDerivedFields(doc);
         ApplyRegistrationDate(doc, request.FileRegistrationDate);
         doc.UpdatedAt = DateTime.UtcNow;
 
-        return await _tx.RunAsync(async token =>
+        List<MirrorAlertIntent> mirrorIntents = [];
+        var result = await _tx.RunAsync(async token =>
         {
             if (wasStruckOff && doc.ExecutedStatus == ExecutedStatusCatalog.None)
                 await ApplyRenewalAsync(doc, request, true, userId, token);
@@ -248,11 +257,23 @@ public sealed partial class DocumentService : IDocumentService
             _documents.Update(doc);
             await _uow.SaveChangesAsync(token);
             await SyncDelegationSnapshotsForDocumentAsync(doc, token);
+            // المرآة: نسخ تغييرات المنيب إلى مناباته المعلقة (داخل المعاملة نفسها) وإعادة اشتقاق
+            // الحقول المحسوبة فيها — تعيد نوايا تنبيه تُطلق بعد نجاح المعاملة.
+            mirrorIntents = await MirrorSourceEditsToTargetsAsync(doc, token);
             await LogDocumentChangesAsync(before, doc, actorName, "update",
                 $"عدّل المستند (رقم {doc.Id})", token);
             await SeedInitialActionsAsync(doc, request.InitialActions, userId, actorName, token);
             return DocumentResponse.FromEntity(doc, CurrentYear());
         }, ct);
+
+        // تُطلق التنبيهات بعد نجاح المعاملة ولا تفشل الحفظ أبدًا:
+        // (1) تنبيهات المرآة إلى المحامين المنابين بتحديث نسخة الملف،
+        // (2) تنبيه المنيب بالإضافات المحلية المضافة على الملف المناب (ورثة/ممثل شرعي).
+        await FireDelegationAlertsAsync(mirrorIntents, ct);
+        if (targetEditResult.HasAdditions)
+            await FireDelegationReverseAlertAsync(documentId, doc, targetEditResult, ct);
+
+        return result;
     }
 
     /// <summary>

@@ -1,10 +1,12 @@
-﻿using DocGenerator.Application.Common.Interfaces;
+﻿using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace DocGenerator.Application.Tests;
 
@@ -12,6 +14,7 @@ public class DocumentDelegationServiceTests : IDisposable
 {
     private readonly DocGeneratorDbContext _db;
     private readonly IDocumentDelegationService _service;
+    private readonly IDocumentService _documentService;
     private readonly FakeAuditLogger _audit = new();
 
     private readonly Branch _branch;
@@ -39,24 +42,52 @@ public class DocumentDelegationServiceTests : IDisposable
         _db.Users.AddRange(_lawyer1, _lawyer2, _head1, _head2, _externalLawyer);
         _db.SaveChanges();
 
+        var documents = new DocumentRepository(_db);
+        var users = new UserRepository(_db);
+        var branches = new Repository<Branch>(_db);
+        var registrationDates = new Repository<DocumentRegistrationDate>(_db);
+        var occurrences = new Repository<DocumentOccurrence>(_db);
+        var uow = new UnitOfWork(_db);
+        var tx = new TransactionRunner(_db);
+        var headAlerts = new HeadAlertService(
+            new HeadAlertRepository(_db),
+            documents,
+            users,
+            branches,
+            uow,
+            tx,
+            _audit);
+
         _service = new DocumentDelegationService(
             new DelegationRepository(_db),
-            new DocumentRepository(_db),
-            new UserRepository(_db),
-            new Repository<Branch>(_db),
-            new Repository<DocumentRegistrationDate>(_db),
-            new Repository<DocumentOccurrence>(_db),
-            new UnitOfWork(_db),
-            new TransactionRunner(_db),
+            documents,
+            users,
+            branches,
+            registrationDates,
+            occurrences,
+            uow,
+            tx,
             _audit,
-            new HeadAlertService(
-                new HeadAlertRepository(_db),
-                new DocumentRepository(_db),
-                new UserRepository(_db),
-                new Repository<Branch>(_db),
-                new UnitOfWork(_db),
-                new TransactionRunner(_db),
-                _audit),
+            headAlerts,
+            TimeProvider.System,
+            TestClock.TimeZone);
+
+        _documentService = new DocumentService(
+            documents,
+            users,
+            new Repository<Guarantor>(_db),
+            new Repository<Asset>(_db),
+            new Repository<ExecutionAction>(_db),
+            new Repository<DocumentBaseNumber>(_db),
+            registrationDates,
+            occurrences,
+            new DelegationRepository(_db),
+            new AppealRepository(_db),
+            headAlerts,
+            uow,
+            tx,
+            _audit,
+            Options.Create(new ExportOptions()),
             TimeProvider.System,
             TestClock.TimeZone);
     }
@@ -118,6 +149,81 @@ public class DocumentDelegationServiceTests : IDisposable
         DepositBookNumber: "كتاب-1",
         DepositBookDate: "2/8/2026",
         AssetIds: assetIds.ToList());
+
+    /// <summary>طلب تعديل يعيد بناء جميع حقول المستند بدقة من الكيان — للمرآة/الحارس بلا تشويه.</summary>
+    private static DocumentUpsertRequest MirrorRequest(Document doc) => new()
+    {
+        GeneralEntitySide = doc.GeneralEntitySide,
+        DocumentType = doc.DocumentType,
+        BorrowerName = doc.BorrowerName,
+        BorrowerFather = doc.BorrowerFather,
+        BorrowerFamily = doc.BorrowerFamily,
+        BorrowerMother = doc.BorrowerMother,
+        BorrowerBirth = doc.BorrowerBirth,
+        BorrowerRegister = doc.BorrowerRegister,
+        BorrowerNationalId = doc.BorrowerNationalId,
+        BorrowerAddress = doc.BorrowerAddress,
+        BorrowerAddressType = doc.BorrowerAddressType,
+        BorrowerNature = doc.BorrowerNature,
+        BorrowerRegistrationNumber = doc.BorrowerRegistrationNumber,
+        BorrowerRepresentedBy = doc.BorrowerRepresentedBy,
+        BorrowerRepresentativeName = doc.BorrowerRepresentativeName,
+        BorrowerRepresentativeFather = doc.BorrowerRepresentativeFather,
+        BorrowerRepresentativeFamily = doc.BorrowerRepresentativeFamily,
+        BorrowerRepresentativeCapacity = doc.BorrowerRepresentativeCapacity,
+        BorrowerRepresentativeAddressType = doc.BorrowerRepresentativeAddressType,
+        BorrowerRepresentativeAddress = doc.BorrowerRepresentativeAddress,
+        ContractType = doc.ContractType,
+        ContractTypeSelector = doc.ContractTypeSelector,
+        ContractNumber = doc.ContractNumber,
+        ContractDate = doc.ContractDate,
+        AnnexType = doc.AnnexType,
+        AnnexNumber = doc.AnnexNumber,
+        AnnexDate = doc.AnnexDate,
+        InclusionText = doc.InclusionText,
+        AmountNumeric = doc.AmountNumeric,
+        AmountWords = doc.AmountWords,
+        Currency = doc.Currency,
+        Amount2Numeric = doc.Amount2Numeric,
+        Amount2Words = doc.Amount2Words,
+        Currency2 = doc.Currency2,
+        Amount3Numeric = doc.Amount3Numeric,
+        Amount3Words = doc.Amount3Words,
+        Currency3 = doc.Currency3,
+        InclusionAmountNumeric = doc.InclusionAmountNumeric,
+        InclusionAmountWords = doc.InclusionAmountWords,
+        InclusionCurrency = doc.InclusionCurrency,
+        InclusionAmount2Numeric = doc.InclusionAmount2Numeric,
+        InclusionAmount2Words = doc.InclusionAmount2Words,
+        InclusionCurrency2 = doc.InclusionCurrency2,
+        InclusionAmount3Numeric = doc.InclusionAmount3Numeric,
+        InclusionAmount3Words = doc.InclusionAmount3Words,
+        InclusionCurrency3 = doc.InclusionCurrency3,
+        Court = doc.Court,
+        Applicant = doc.Applicant,
+        FileNumber = doc.FileNumber,
+        FileType = doc.FileType,
+        FileYear = doc.FileYear,
+        FileRegistrationDate = doc.RegistrationDate?.Date ?? "1/1/2024",
+        FileIncoming = doc.FileIncoming,
+        FileIncomingDate = doc.FileIncomingDate,
+        UnderFilingNumber = doc.UnderFilingNumber,
+        BranchName = doc.BranchName,
+        SeizureDate = doc.SeizureDate,
+        ImmediateActions = doc.ImmediateActions,
+        Notes = doc.Notes,
+        FileArrivalNumber = doc.FileArrivalNumber,
+        FileArrivalDate = doc.FileArrivalDate,
+        FileReceiptNumber = doc.FileReceiptNumber,
+        FileReceiptDate = doc.FileReceiptDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+        ApplicantPublicEntities = new List<ApplicantPublicEntityDto>(),
+        ExecutionApplicants = new List<ExecutionApplicantDto>(),
+        ExecutedPublicEntities = new List<ExecutedPublicEntityDto>(),
+        ExecutedNaturalPersons = new List<ExecutedNaturalPersonDto>(),
+        Guarantors = new List<GuarantorDto>(),
+        BorrowerHeirs = new List<HeirDto>(),
+        Assets = new List<AssetDto>(),
+    };
 
     [Fact]
     public async Task Create_SourceFile_ReturnsPendingDelegationWithAssetSnapshot()
@@ -508,6 +614,119 @@ public class DocumentDelegationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Update_SourceAfterAssignment_MirrorsLockedFieldsToPendingTargetAndAlertsTargetLawyer()
+    {
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+
+        var sourceRequest = MirrorRequest(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == source.Id));
+        sourceRequest.BorrowerName = "أحمد مُحدَّث من المنيب";
+
+        await _documentService.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
+
+        var target = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == targetId);
+        Assert.Equal("أحمد مُحدَّث من المنيب", target.BorrowerName);
+
+        var alert = await _db.HeadAlerts
+            .Include(a => a.Recipients)
+            .SingleAsync(a => a.DelegationId == created.Id && a.TargetLawyerId == _lawyer2.Id);
+        Assert.Equal(HeadAlertTargetType.Lawyer, alert.TargetType);
+        Assert.Equal(_branch.Id, alert.BranchId);
+        Assert.Contains(_lawyer2.Id, alert.Recipients.Select(r => r.UserId));
+        Assert.Contains("تم تحديث نسخة الملف المناب", alert.Message);
+        Assert.Contains("بيانات المقترض", alert.Message);
+    }
+
+    [Fact]
+    public async Task Update_TargetMirror_RejectsLockedFieldChange()
+    {
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        var targetRequest = MirrorRequest(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == targetId));
+        targetRequest.BorrowerName = "تغيير مقفول";
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.UpdateAsync(targetId, targetRequest, _lawyer2.FullName, _lawyer2.Id));
+        Assert.Contains("لا يمكن تعديل الحقول المقفولة على الملف المناب", ex.Message);
+        Assert.Contains("اسم المقترض", ex.Message);
+
+        var target = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == targetId);
+        Assert.Equal("أحمد", target.BorrowerName);
+    }
+
+    [Fact]
+    public async Task Update_TargetMirror_AllowsLocalHeirAddition_AndNotifiesSourceLawyer()
+    {
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        var targetRequest = MirrorRequest(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == targetId));
+        targetRequest.BorrowerHeirs.Add(new HeirDto(null, "مرسى", "أحمد", "الخطيب", null, null, null));
+
+        var updated = await _documentService.UpdateAsync(targetId, targetRequest, _lawyer2.FullName, _lawyer2.Id);
+        Assert.NotNull(updated);
+
+        var target = await _db.Documents.Include(d => d.Heirs).AsNoTracking().SingleAsync(d => d.Id == targetId);
+        var heir = Assert.Single(target.Heirs);
+        Assert.Equal("مرسى", heir.HeirName);
+        Assert.Equal("أحمد", heir.HeirFather);
+
+        var alert = await _db.HeadAlerts
+            .Include(a => a.Recipients)
+            .SingleAsync(a => a.DelegationId == created.Id && a.TargetLawyerId == _lawyer1.Id);
+        Assert.Equal(_branch.Id, alert.BranchId);
+        Assert.Contains(_lawyer1.Id, alert.Recipients.Select(r => r.UserId));
+        Assert.Contains("أُضيف الوريث", alert.Message);
+        Assert.Contains("مرسى", alert.Message);
+    }
+
+    [Fact]
+    public async Task Register_TargetCarriesSourceFileType_AndDocumentResponseLinksSourceDelegation()
+    {
+        var source = await CreateSourceAsync();
+        source.FileType = "متداول";
+        _db.Documents.Update(source);
+        await _db.SaveChangesAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        var delegationDto = (await _service.ListForDocumentAsync(source.Id)).Single();
+        Assert.Equal("متداول", delegationDto.SourceFileType);
+
+        var response = await _documentService.GetAsync(targetId);
+        Assert.NotNull(response);
+        Assert.Equal(created.Id, response!.SourceDelegationId);
+    }
+
+    [Fact]
     public async Task Assign_NotifiesAssignedLawyerViaHeadAlert()
     {
         var source = await CreateSourceAsync();
@@ -612,6 +831,40 @@ public class DocumentDelegationServiceTests : IDisposable
             _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
                 _lawyer1.Id, "lawyer1"));
         Assert.Contains("لا يمكنك تسجيل", ex.Message);
+    }
+
+    [Fact]
+    public async Task Register_RaisesDelegation_AroundRegisteredTarget_AndEditPageShowsSameIdentity()
+    {
+        // عقد «نافذة تسجيل الإنابة أصولًا»: رقم أساس الإنابة وسنة قيدها وتاريخ قيدها تُكتب
+        // على اللوحة نفسها لحقول الملف المناب (FileNumber/FileYear/DocumentRegistrationDate)
+        // التي تعرضها «صفحة تعديل الملف» — هي عينُها لا نسخٌ متوازية.
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+
+        // محاكاة طلب جديد تمامًا: تفريغ متعقب الكيانات — خريطة هوية السياق الواحد تُخفي
+        // انفصال النافذتين بجعل القراءة اللاحقة تلتقط المثيل المتتبع نفسه دون الرجوع للقاعدة،
+        // فتبقى الاختبارات خضراء بينما يتكسر الربط في الإنتاج (سياق جديد لكل طلب).
+        _db.ChangeTracker.Clear();
+
+        await _service.RegisterAsync(created.Id,
+            new RegisterDelegationRequest("890", "2026", "5/8/2026"), _lawyer2.Id, "lawyer2");
+
+        // إعادة تحميل الملف المناب من قاعدة البيانات فعليًا (بلا تتبع) مع قناة تاريخ القيد (1:1).
+        var target = await _db.Documents
+            .AsNoTracking()
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == targetId);
+
+        Assert.Equal("890", target.FileNumber);
+        Assert.Equal("2026", target.FileYear);
+        Assert.False(target.IsDraft);
+        Assert.Equal("2026-08-05", target.RegistrationDate!.Date);
+        Assert.Equal(new DateTime(2026, 8, 5), target.RegistrationDate.DateParsed);
     }
 
     [Fact]

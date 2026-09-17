@@ -234,6 +234,21 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         return delegations.Select(d => ToDto(d, d.SourceDocument, ServerClock.CurrentYear(_clock, _timeZone))).ToList();
     }
 
+    public async Task<bool> IsPartyAsync(int delegationId, int userId, CancellationToken ct = default)
+    {
+        var delegation = await _delegations.GetByIdWithDetailsAsync(delegationId, ct);
+        if (delegation is null)
+            return false;
+
+        // أطراف الإنابة: محامي المنيب (مالك المصدر)، محامي المناب (مالك الهدف)،
+        // أو المحامي المختص الحالي — وأي محتلفٍ بعده لا يملك أحد الملفين.
+        if (delegation.SourceDocument?.CreatedById == userId)
+            return true;
+        if (delegation.TargetDocument?.CreatedById == userId)
+            return true;
+        return delegation.AssignedLawyerId == userId;
+    }
+
     public async Task<DelegationDto?> AssignAsync(
         int delegationId,
         AssignDelegationRequest request,
@@ -600,6 +615,9 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
 
     private static void ValidateSourceForDelegation(Document source)
     {
+        // الملف تحت رفع (بلا رقم قيد) لا يُسطَّر عليه إنابة — الرقم ضروري لرابطة المصدر/الهدف.
+        if (source.IsDraft)
+            throw new ArgumentException("لا يمكن تسطير إنابة على ملف تحت رفع");
         // الإنابة على ملفات «طالبة تنفيذ» فقط (البيع بالمزاد والأموال المرهونة موجودة فيها حصرًا).
         if (GeneralEntitySideCatalog.IsExecutedLike(source.GeneralEntitySide))
             throw new ArgumentException("الإنابة تخص ملفات «الجهة العامة طالبة التنفيذ» فقط");
@@ -780,7 +798,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         target.FileReceiptDate = source.FileReceiptDate;
     }
 
-    private static Guarantor CopyGuarantor(Guarantor g) => new()
+    /// <summary>نسخ كامِل للكفيل (تُستخدمه المرآة لنسخ الكفيل الجديد على المنيب، وللإنشاء بنفس البنية).</summary>
+    internal static Guarantor CopyGuarantor(Guarantor g) => new()
     {
         GuarantorNumber = g.GuarantorNumber,
         GuarantorName = g.GuarantorName,
@@ -803,7 +822,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         RepresentativeAddress = g.RepresentativeAddress,
     };
 
-    private static Heir CopyHeir(Heir h) => new()
+    /// <summary>نسخ كامِل للوريث (تُستخدمه المرآة لإضافة الوريث الناقص، وللإنشاء بنفس البنية).</summary>
+    internal static Heir CopyHeir(Heir h) => new()
     {
         GuarantorNumber = h.GuarantorNumber,
         HeirName = h.HeirName,
@@ -888,7 +908,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         d.CreatedById,
         d.SaleCoversFullDebt,
         TargetFileNumber(d.TargetDocument, currentYear),
-        TargetFileYear(d.TargetDocument, currentYear));
+        TargetFileYear(d.TargetDocument, currentYear),
+        SourceFileType(source));
 
     private static string SourceLabel(Document source)
     {
@@ -907,6 +928,9 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
 
     /// <summary>سنة الرقم الفعّال المعروض للمنيب وفق المحلل المركزي.</summary>
     private static string? SourceFileYear(Document source, int currentYear) => Normalize(EffectiveFileIdentity.Year(source, currentYear));
+
+    /// <summary>نوع الملف المنيب المعروض في «معلومات الملف المنيب» (الفارغ يُخفى في الواجهة).</summary>
+    private static string? SourceFileType(Document source) => Normalize(source.FileType);
 
     /// <summary>رقم المناب المعروض في «تشعبات الملف»: آخر رقم أساس ≤ سنته عبر المحلل المركزي، وإلا رقم ملفه الأصلي.</summary>
     private static string? TargetFileNumber(Document? target, int currentYear) =>

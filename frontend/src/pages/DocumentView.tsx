@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { normalizeDocumentResponse } from '../utils/apiNormalization';
-import { getDocumentBadge, EXEC_STATUS_FORCIBLY, EXEC_STATUS_SETTLED, EXEC_STATUS_STRUCK_OFF, EXEC_STATUS_DELEGATION_EXECUTED } from '../utils/documentStatus';
+import { getDocumentBadge, canDelegateSource, EXEC_STATUS_DELEGATION_EXECUTED } from '../utils/documentStatus';
 import { isExecutedLike } from '../utils/documentDisplay';
 import { DELEGATION_STATUS_ASSIGNED, DELEGATION_STATUS_REGISTERED } from '../utils/delegationStatus';
 import { saveLastViewedDocumentId } from '../utils/listSession';
@@ -160,10 +160,9 @@ export default function DocumentView() {
   const canCreateDelegation =
     canEdit &&
     isOwner &&
-    !isExecuted &&
-    doc.execStatus !== EXEC_STATUS_FORCIBLY &&
-    doc.execStatus !== EXEC_STATUS_SETTLED &&
-    doc.execStatus !== EXEC_STATUS_STRUCK_OFF;
+    // مطابقة تامة للخلفية (ValidateSourceForDelegation): ليس تحت رفع، صفة «طالبة تنفيذ»،
+    // غير منفذ/مشطوب — و«منفذ جبريا (منفذ جزئيا)» يبقى قابلًا للتسطير (قرار 9).
+    canDelegateSource(doc);
   const showDelegationsCard = delegations.length > 0 || canCreateDelegation;
   // متابعة الإنابة من محامي الملف المناب: «تسجيل أصولًا» بعد الاعتماد، ثم «إتمام الإنابة»
   // بعد التسجيل أصولًا (نفس شروط الخلفية: RegisterAsync/CompleteAsync).
@@ -208,7 +207,7 @@ export default function DocumentView() {
   const securityPanel = (
     <>
       <ExecutoryDocumentCard doc={doc} />
-      {!isExecuted && <AssetsSection doc={doc} />}
+      {!isExecuted && !delegationOfThisFile && <AssetsSection doc={doc} />}
     </>
   );
   const delegationsPanel = (

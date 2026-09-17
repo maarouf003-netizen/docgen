@@ -25,6 +25,12 @@ public interface IDocumentDelegationService
     Task<List<DelegationDto>> ListPendingForHeadAsync(int branchId, CancellationToken ct = default);
 
     /// <summary>
+    /// هل المستخدم طرفٌ في الإنابة؟ (محامي الملف المنيب، محامي الملف المناب، المحامي المختص،
+    /// أو أحد محتلفيها بالنقل) — لترخيص قراءة تنبيهات الإنابة المدموجة عبر by-delegation.
+    /// </summary>
+    Task<bool> IsPartyAsync(int delegationId, int userId, CancellationToken ct = default);
+
+    /// <summary>
     /// اعتماد الإنابة: يختار رئيس القسم المحامي المختص (وفي الإنابة الخارجية الفرع وكتاب الإرسال)،
     /// ويُحدَّث بيانات الإرسال إن وُجدت، ويُنشأ الملف المناب تلقائيًا، ويُشعر المحامي المختص
     /// بتنبييه. رئيس القسم (فرعه) فقط (يُقيد الدور في المتحكم، وهنا يُتحقق الفرع والمحامي).

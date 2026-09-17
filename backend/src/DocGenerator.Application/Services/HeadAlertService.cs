@@ -13,6 +13,15 @@ public interface IHeadAlertService
     Task<HeadAlertDto> CreateAsync(CreateHeadAlertRequest request, int actorUserId, int actorBranchId, string? actorName, CancellationToken ct = default);
     Task<bool> MarkReadAsync(int alertId, int userId, CancellationToken ct = default);
     Task<HeadAlertDto?> UpdateDelegationAlertAsync(int delegationId, string message, CancellationToken ct = default);
+    /// <summary>
+    /// دمج تنبيه المرآة (منيب ↔ مناب) لمستلمٍ بعينه: يحدّث أحدث تنبيهٍ بنفس
+    /// (DelegationId + المستلم) ورسالته، أو يُنشئ تنبيهًا من نوع lawyer للمستلم الصريح —
+    /// بلا قيد تطابق الفرع (يناسب الإنابات الخارجية). يُرجِعه لغرض العرض بعد التحديث/الإنشاء.
+    /// </summary>
+    Task<HeadAlertDto?> UpsertDelegationMessageAsync(
+        int delegationId, int recipientLawyerId, int actorUserId, int actorBranchId, string message, CancellationToken ct = default);
+    /// <summary>تنبيهات إنابةٍ معيّنة («معلومات الملف المنيب»/«تشعبات الملف») بعلامة قراءة بحسب المستخدم.</summary>
+    Task<List<HeadAlertDto>> ListByDelegationAsync(int delegationId, int userId, CancellationToken ct = default);
     Task<bool> DeleteByDelegationAsync(int delegationId, CancellationToken ct = default);
     /// <summary>حذف كل تنبيهات الاستئناف (تصفية تنبيه «اختيار المحامي» بعد الإسناد).</summary>
     Task<bool> DeleteByAppealAsync(int appealId, CancellationToken ct = default);
@@ -158,6 +167,67 @@ public sealed class HeadAlertService : IHeadAlertService
         return ToHeadDto(alert);
     }
 
+    /// <summary>
+    /// دمج تنبيه المرآة (منيب ↔ مناب) لمستلمٍ بعينه: يحدّث أحدث تنبيهٍ بنفس
+    /// (DelegationId + المستلم) ورسالته (ويُحدَّث زمنه ليقفز للصدارة)، أو يُنشئ تنبيهًا
+    /// من نوع lawyer للمستلم الصريح بلا قيد تطابق الفرع (يناسب الإنابات الخارجية).
+    /// سجل التعديلات يحمل التاريخ الكامل — التنبيه ملخص آخر تغيّر فقط.
+    /// </summary>
+    public async Task<HeadAlertDto?> UpsertDelegationMessageAsync(
+        int delegationId, int recipientLawyerId, int actorUserId, int actorBranchId, string message, CancellationToken ct = default)
+    {
+        var trimmed = message?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(trimmed))
+            throw new ArgumentException("نص التنبيه مطلوب");
+
+        var existing = await _alerts.FindLatestByDelegationAndRecipientAsync(delegationId, recipientLawyerId, ct);
+        if (existing is not null)
+        {
+            if (existing.Message == trimmed)
+                return ToLawyerDto(existing, recipientLawyerId);
+
+            existing.Message = trimmed;
+            existing.CreatedAt = DateTime.UtcNow;
+            await _tx.RunAsync(async token =>
+            {
+                _alerts.Update(existing);
+                await _uow.SaveChangesAsync(token);
+            }, ct);
+            return ToLawyerDto(existing, recipientLawyerId);
+        }
+
+        var lawyer = await _users.GetByIdAsync(recipientLawyerId, ct);
+        if (lawyer is null || lawyer.Role != UserRole.Lawyer)
+            throw new ArgumentException("المحامي المستلم غير موجود");
+
+        var alert = new HeadAlert
+        {
+            BranchId = actorBranchId,
+            CreatedById = actorUserId,
+            TargetType = HeadAlertTargetType.Lawyer,
+            DocumentId = null,
+            TargetLawyerId = recipientLawyerId,
+            DelegationId = delegationId,
+            Message = trimmed,
+            CreatedAt = DateTime.UtcNow,
+            Recipients = new List<HeadAlertRecipient> { new() { UserId = recipientLawyerId } },
+        };
+
+        await _tx.RunAsync(async token =>
+        {
+            await _alerts.AddAsync(alert, token);
+            await _uow.SaveChangesAsync(token);
+        }, ct);
+        return ToLawyerDto(alert, recipientLawyerId);
+    }
+
+    /// <summary>تنبيهات إنابةٍ معيّنة («معلومات الملف المنيب»/«تشعبات الملف») بعلامة قراءة بحسب المستخدم.</summary>
+    public async Task<List<HeadAlertDto>> ListByDelegationAsync(int delegationId, int userId, CancellationToken ct = default)
+    {
+        var alerts = await _alerts.ListByDelegationWithRecipientsAsync(delegationId, ct);
+        return alerts.Select(a => ToLawyerDto(a, userId)).ToList();
+    }
+
     /// <summary>حذف كل تنبيهات الإنابة (تصفية المرحلية منها عند الاعتماد أو الإتمام أو حذف الإنابة).</summary>
     public async Task<bool> DeleteByDelegationAsync(int delegationId, CancellationToken ct = default)
     {
@@ -268,7 +338,8 @@ public sealed class HeadAlertService : IHeadAlertService
         a.CreatedAt,
         a.CreatedBy?.FullName,
         a.AppealId,
-        a.ReviewLetterId);
+        a.ReviewLetterId,
+        a.DelegationId);
 
     private static HeadAlertDto ToHeadDto(HeadAlert a) => new(
         a.Id,
@@ -284,5 +355,6 @@ public sealed class HeadAlertService : IHeadAlertService
         a.CreatedAt,
         a.CreatedBy?.FullName,
         a.AppealId,
-        a.ReviewLetterId);
+        a.ReviewLetterId,
+        a.DelegationId);
 }

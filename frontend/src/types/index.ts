@@ -271,8 +271,10 @@ export interface DocumentResponse {
   updatedAt: string;
   createdById?: number;
   branchId?: number;
-  documentType?: string;
+documentType?: string;
   isDraft: boolean;
+  /** الملف منابٌ من ملف آخر (إنابة سطرها محامي الملف المنيب): الحقول الجوهرية مقفلة ومُزامنة. */
+  sourceDelegationId?: number | null;
   borrowerName?: string;
   borrowerFather?: string;
   borrowerFamily?: string;
@@ -502,6 +504,8 @@ export interface DelegationDto {
   targetFileNumber?: string | null;
   /** سنة الرقم المعروض للملف المناب. */
   targetFileYear?: string | null;
+  /** نوع الملف المنيب (متداول/حقوق...) — يُعرض بجانب رقم أساسه في بطاقة «معلومات الملف المنيب». */
+  sourceFileType?: string | null;
 }
 
 /** تسطير/تعديل إنابة: التواريخ نصوص حرة تُفسَّر في الخلفية؛ الخارجية تتطلب الفرع المناب. */
@@ -889,6 +893,8 @@ export interface HeadAlertDto {
   unreadCount?: number;
   /** الاستئناف المرتبط بالتنبيه — للانتقال المباشر إلى تفاصيله. */
   appealId?: number;
+  /** الإنابة المرتبطة بالتنبيه (تنبيهات المرآة/المتابعة) — لشريطي نشاط بطاقتي الإنابة. */
+  delegationId?: number | null;
   /** كتاب المطالعة المرتبط (تنبيه الرد) — للانتقال المباشر إلى صفحة الكتاب. */
   reviewLetterId?: number | null;
   createdAt: string;

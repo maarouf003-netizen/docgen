@@ -2,6 +2,7 @@ import type { DelegationDto } from '../../types';
 import { isDelegationPending } from '../../utils/delegationStatus';
 import { SectionCard } from '../view/SectionCard';
 import { DelegationDetails } from './DelegationDetails';
+import { DelegationActivityStrip } from './DelegationActivityStrip';
 
 /**
  * بطاقة «تشعبات الملف» (في الملف المنيب): كل إناباته الصادرة، مع إمكانية تسطير إنابة
@@ -49,6 +50,7 @@ export function DelegationsCard({
             return (
               <li key={d.id} className="py-3 first:pt-0 last:pb-0">
                 <DelegationDetails d={d} />
+                <DelegationActivityStrip delegationId={d.id} />
                 {manageable && (
                   <div className="flex gap-2 mt-3">
                     <button

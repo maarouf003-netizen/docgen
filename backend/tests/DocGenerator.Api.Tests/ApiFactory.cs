@@ -133,7 +133,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     public async Task<int> CreateDocumentAsync(string token, string borrowerName = "مقترض",
         string? applicant = "المدعي", string? court = "دمشق",
         string? borrowerFather = null, string? borrowerFamily = null,
-        bool withEstate = false)
+        bool withEstate = false, bool registered = false)
     {
         var client = CreateClient();
         client.SetAuthCookie(token);
@@ -148,6 +148,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             contractType = "تعهد",
             amountNumeric = 500,
             branchName = "الفرع الرئيسي - دمشق",
+            fileNumber = registered ? "900" : null,
+            fileYear = registered ? "2026" : null,
+            fileRegistrationDate = registered ? "1/8/2026" : null,
             assets = withEstate
                 ? new[] { new { assetKind = "عقار", property = "بيت", propertyNumber = "12345", propertyDistrict = "المزة", landRegistry = "الصالحية", shareType = "تمام العقار", owners = new[] { "المدعى عليه" } } }
                 : Array.Empty<object>(),
@@ -155,6 +158,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         var response = await client.PostAsync("/api/documents",
             new StringContent(body, Encoding.UTF8, "application/json"));
         var content = await response.Content.ReadAsStringAsync();
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"create doc {(int)response.StatusCode}: {content}");
         using var doc = JsonDocument.Parse(content);
         return doc.RootElement.GetProperty("id").GetInt32();
     }

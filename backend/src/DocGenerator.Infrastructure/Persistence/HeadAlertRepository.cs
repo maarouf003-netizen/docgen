@@ -143,6 +143,29 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<HeadAlert?> FindLatestByDelegationAndRecipientAsync(
+        int delegationId, int recipientLawyerId, CancellationToken ct = default)
+    {
+        // متتبَّعة عمدًا: يُحدَّث نُصّها وزمنها لدمج تغييرات المرآة المتعاقبة في تنبيه واحد
+        // للمستلم نفسه (نمط FindLatestUnseenByReviewLetterAsync).
+        return await Db.HeadAlerts
+            .Where(a => a.DelegationId == delegationId && a.TargetLawyerId == recipientLawyerId)
+            .OrderByDescending(a => a.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<List<HeadAlert>> ListByDelegationWithRecipientsAsync(int delegationId, CancellationToken ct = default)
+    {
+        return await Db.HeadAlerts
+            .AsNoTracking()
+            .Where(a => a.DelegationId == delegationId)
+            .OrderByDescending(a => a.CreatedAt)
+            .Include(a => a.CreatedBy)
+            .Include(a => a.TargetLawyer)
+            .Include(a => a.Recipients)
+            .ToListAsync(ct);
+    }
+
     public async Task<List<HeadAlert>> ListByAppealAsync(int appealId, CancellationToken ct = default)
     {
         // تتبُّع مفعّل: تُحذف هذه الكيانات عبر Remove فتُعاد للمُغيّر ذاتها (نمط ListByDelegationAsync).

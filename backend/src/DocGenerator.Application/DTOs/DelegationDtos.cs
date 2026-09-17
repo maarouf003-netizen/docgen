@@ -91,4 +91,6 @@ public record DelegationDto(
     /// <summary>رقم أساس الملف المناب الحالي (رقم أساس سنة التدوير إن وُجد وإلا رقم ملفه الأصلي) — يُحسب مع TargetFileYear من السجل نفسه.</summary>
     string? TargetFileNumber = null,
     /// <summary>سنة الرقم المعروض للملف المناب (سنة التدوير إن وُجدت وإلا سنة ملفه الأصلي) — مرافقة لـ TargetFileNumber.</summary>
-    string? TargetFileYear = null);
+    string? TargetFileYear = null,
+    /// <summary>نوع الملف المنيب (FileType) كما هو — يُعرض بجانب رقم أساس المنيب، والفارغ يُخفى.</summary>
+    string? SourceFileType = null);

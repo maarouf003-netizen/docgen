@@ -33,4 +33,6 @@ public record HeadAlertDto(
     /// <summary>الاستئناف المرتبط بالتنبيه — للانتقال المباشر إلى تفاصيله من الواجهة.</summary>
     int? AppealId = null,
     /// <summary>كتاب المطالعة المرتبط (تنبيه الرد) — للانتقال المباشر إلى صفحة الكتاب.</summary>
-    int? ReviewLetterId = null);
+    int? ReviewLetterId = null,
+    /// <summary>الإنابة المرتبطة بالتنبيه (تنبيهات المرآة/المتابعة) — لشريطي نشاط بطاقتي الإنابة.</summary>
+    int? DelegationId = null);

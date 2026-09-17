@@ -2,6 +2,7 @@ import type { DelegationDto } from '../../types';
 import { FieldCell } from '../view/FieldCell';
 import { SectionCard } from '../view/SectionCard';
 import { DelegationDetails } from './DelegationDetails';
+import { DelegationActivityStrip } from './DelegationActivityStrip';
 
 /**
  * بطاقة «معلومات الملف المنيب» (في الملف المناب): تعرض إنابة هذا الملف كما سطّرها
@@ -35,10 +36,12 @@ export function SourceFileInfoCard({
           value={delegation.sourceDocumentLabel || `ملف رقم ${delegation.sourceDocumentId}`}
         />
         {sourceNumber && <FieldCell label="رقم أساس الملف المنيب" value={sourceNumber} />}
+        {delegation.sourceFileType && <FieldCell label="نوع الملف المنيب" value={delegation.sourceFileType} />}
       </div>
 
       <div className="mt-3 pt-3 border-t border-gray-100">
         <DelegationDetails d={delegation} />
+        <DelegationActivityStrip delegationId={delegation.id} />
       </div>
 
       {(canRegister || canComplete) && (

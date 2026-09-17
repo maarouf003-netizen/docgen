@@ -698,6 +698,11 @@ public class DocumentResponse : DocGenerator.Domain.Entities.IDocumentExecutionS
     public bool HasAppeals { get; set; }
     /// <summary>معرف أول استئناف على الملف عند وجوده (للانتقال إلى تفاصيل الاستئناف).</summary>
     public int? MatchedAppealId { get; set; }
+    /// <summary>
+    /// معرف الإنابة التي صدر عنها هذا الملف كمناب (غير فارغ ⇒ الملف «مرآة» للمنيب):
+    /// تُقفَل حقول المزامنة أماميًا وخلفيًا، وتُحفظ الإضافات المحلية (وريث/ممثل) مع تنبيه للمنيب.
+    /// </summary>
+    public int? SourceDelegationId { get; set; }
     public List<GuarantorDto> Guarantors { get; set; } = new();
     public List<AssetDto> Assets { get; set; } = new();
     /// <summary>ورثة المقترض المتوفى (إن وُجدوا).</summary>
@@ -852,6 +857,7 @@ public class DocumentResponse : DocGenerator.Domain.Entities.IDocumentExecutionS
         PrintCount = d.PrintCount,
         CreatedByName = d.CreatedBy?.FullName,
         DeletedAt = d.DeletedAt,
+        SourceDelegationId = d.SourceDelegationId,
         NeedsRotation = NeedsRotationOf(d, currentYear),
         Guarantors = d.Guarantors
             .OrderBy(g => g.GuarantorNumber)

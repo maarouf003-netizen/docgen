@@ -410,34 +410,7 @@ public sealed partial class DocumentService
 
         doc.Guarantors.Clear();
         foreach (var g in r.Guarantors.OrderBy(g => g.GuarantorNumber))
-        {
-            var nature = NormalizePartyNature(g.Nature);
-            var isLegalGuarantor = PartyNatureCatalog.IsLegal(nature);
-            var hasRep = !isLegalGuarantor
-                && !IsEmptyRepresentative(g.RepresentativeName, g.RepresentativeFather, g.RepresentativeFamily);
-            doc.Guarantors.Add(new Guarantor
-            {
-                GuarantorNumber = g.GuarantorNumber,
-                GuarantorName = g.Name,
-                GuarantorFather = isLegalGuarantor ? null : g.Father,
-                GuarantorFamily = isLegalGuarantor ? null : g.Family,
-                GuarantorMother = isLegalGuarantor ? null : g.Mother,
-                GuarantorBirth = isLegalGuarantor ? null : g.Birth,
-                GuarantorRegister = isLegalGuarantor ? null : g.Register,
-                GuarantorNationalId = isLegalGuarantor ? null : g.NationalId,
-                GuarantorAddress = g.Address,
-                AddressType = g.AddressType,
-                GuarantorNature = nature,
-                GuarantorRegistrationNumber = isLegalGuarantor ? (g.RegistrationNumber ?? string.Empty).Trim() : null,
-                GuarantorRepresentedBy = isLegalGuarantor ? (g.RepresentedBy ?? string.Empty).Trim() : null,
-                RepresentativeName = hasRep ? (g.RepresentativeName ?? string.Empty).Trim() : null,
-                RepresentativeFather = hasRep ? (g.RepresentativeFather ?? string.Empty).Trim() : null,
-                RepresentativeFamily = hasRep ? (g.RepresentativeFamily ?? string.Empty).Trim() : null,
-                RepresentativeCapacity = hasRep ? NormalizeRepresentativeCapacity(g.RepresentativeCapacity) : null,
-                RepresentativeAddressType = hasRep ? NormalizeRepresentativeAddressType(g.RepresentativeAddressType) : null,
-                RepresentativeAddress = hasRep ? (g.RepresentativeAddress ?? string.Empty).Trim() : null,
-            });
-        }
+            doc.Guarantors.Add(BuildGuarantor(g));
 
         // الورثة: صفوف بلا اسم ثلاثي تُتجاهل، ونوع العنوان غير الصالح يُعيَّر إلى «عنوان».
         // لا ورثة لشخص اعتباري (ورثة تخص الشخص الطبيعي المتوفى فقط).
@@ -452,52 +425,94 @@ public sealed partial class DocumentService
 
         doc.Assets.Clear();
         foreach (var re in r.Assets)
-        {
-            var kind = (re.AssetKind ?? string.Empty).Trim();
-            if (!AssetKindCatalog.IsValid(kind))
-                throw new ArgumentException($"نوع الأصل غير صالح: {kind}");
+            doc.Assets.Add(BuildAsset(re));
+    }
 
-            var asset = new Asset
-            {
-                AssetKind = kind,
-                ShareType = re.ShareType,
-                Property = re.Property,
-                PropertyNumber = re.PropertyNumber,
-                PropertyDistrict = re.PropertyDistrict,
-                LandRegistry = re.LandRegistry,
-                VehicleType = re.VehicleType,
-                VehicleClass = re.VehicleClass,
-                PlateNumber = re.PlateNumber,
-                VehicleGovernorate = re.VehicleGovernorate,
-                RegisterNumber = re.RegisterNumber,
-                RegistrationDate = DocumentValidator.ParseDateTime(re.RegistrationDate, "تاريخ تسجيل المتجر"),
-                ShopGovernorate = re.ShopGovernorate,
-                ShopDescription = re.ShopDescription,
-                ShopLocation = re.ShopLocation,
-                PublicEntity = re.PublicEntity,
-                LicenseNumber = re.LicenseNumber,
-                LicenseDate = DocumentValidator.ParseDateTime(re.LicenseDate, "تاريخ الترخيص"),
-                LicenseIssuer = re.LicenseIssuer,
-                Notes = re.Notes,
-                SeizureDate = DocumentValidator.ParseDateTime(re.SeizureDate, "تاريخ القاء الحجز"),
-            };
-            asset.Owners = AssetMapper.NormalizeOwners(re.Owners);
-            // تمام الأصل لا يكون إلا لمالك واحد؛ عند تعدد الملاك تُفرض الحصة السهمية
-            // حتى لو أُرسل نوع حصة آخر (حماية البيانات على مستوى الخدمة).
-            // الأنواع غير الحصصية (كفالة الرواتب والمتجر غير المسجل) لا تحمل مقدار حصة.
-            if (AssetKindCatalog.HasShare(kind))
-            {
-                if (asset.Owners.Count > 1)
-                    asset.ShareType = "حصة سهمية";
-                else if (string.IsNullOrWhiteSpace(asset.ShareType))
-                    asset.ShareType = AssetKindCatalog.FullShareLabel(kind);
-            }
-            else
-            {
-                asset.ShareType = null;
-            }
-            doc.Assets.Add(asset);
+    /// <summary>
+    /// بناء كفيل من صفّ الطلب بتطبيع الحالة: تُصفَّر حقول الهوية الطبيعية للشخص الاعتباري
+    /// ويُحتفظ برقم التسجيل ومن يمثلها، والممثل الشرعي يُخزَّن للحقوق الطبيعية فقط (بصفته
+    /// وعنوانه المضبوطين) ويُصفَّر عند الغياب — مشترك بين الحفظ والحارس (مقارنات المرآة).
+    /// </summary>
+    private static Guarantor BuildGuarantor(GuarantorDto g)
+    {
+        var nature = NormalizePartyNature(g.Nature);
+        var isLegalGuarantor = PartyNatureCatalog.IsLegal(nature);
+        var hasRep = !isLegalGuarantor
+            && !IsEmptyRepresentative(g.RepresentativeName, g.RepresentativeFather, g.RepresentativeFamily);
+        return new Guarantor
+        {
+            GuarantorNumber = g.GuarantorNumber,
+            GuarantorName = g.Name,
+            GuarantorFather = isLegalGuarantor ? null : g.Father,
+            GuarantorFamily = isLegalGuarantor ? null : g.Family,
+            GuarantorMother = isLegalGuarantor ? null : g.Mother,
+            GuarantorBirth = isLegalGuarantor ? null : g.Birth,
+            GuarantorRegister = isLegalGuarantor ? null : g.Register,
+            GuarantorNationalId = isLegalGuarantor ? null : g.NationalId,
+            GuarantorAddress = g.Address,
+            AddressType = g.AddressType,
+            GuarantorNature = nature,
+            GuarantorRegistrationNumber = isLegalGuarantor ? (g.RegistrationNumber ?? string.Empty).Trim() : null,
+            GuarantorRepresentedBy = isLegalGuarantor ? (g.RepresentedBy ?? string.Empty).Trim() : null,
+            RepresentativeName = hasRep ? (g.RepresentativeName ?? string.Empty).Trim() : null,
+            RepresentativeFather = hasRep ? (g.RepresentativeFather ?? string.Empty).Trim() : null,
+            RepresentativeFamily = hasRep ? (g.RepresentativeFamily ?? string.Empty).Trim() : null,
+            RepresentativeCapacity = hasRep ? NormalizeRepresentativeCapacity(g.RepresentativeCapacity) : null,
+            RepresentativeAddressType = hasRep ? NormalizeRepresentativeAddressType(g.RepresentativeAddressType) : null,
+            RepresentativeAddress = hasRep ? (g.RepresentativeAddress ?? string.Empty).Trim() : null,
+        };
+    }
+
+    /// <summary>
+    /// بناء أصل من صفّ الطلب بتطبيق قواعد النوع والحصص والتواريخ الحرة
+    /// (مثل ApplyRequest تمامًا) — مشترك بين الحفظ والحارس (الفرق القيمي للأصول).
+    /// </summary>
+    private static Asset BuildAsset(AssetDto re)
+    {
+        var kind = (re.AssetKind ?? string.Empty).Trim();
+        if (!AssetKindCatalog.IsValid(kind))
+            throw new ArgumentException($"نوع الأصل غير صالح: {kind}");
+
+        var asset = new Asset
+        {
+            AssetKind = kind,
+            ShareType = re.ShareType,
+            Property = re.Property,
+            PropertyNumber = re.PropertyNumber,
+            PropertyDistrict = re.PropertyDistrict,
+            LandRegistry = re.LandRegistry,
+            VehicleType = re.VehicleType,
+            VehicleClass = re.VehicleClass,
+            PlateNumber = re.PlateNumber,
+            VehicleGovernorate = re.VehicleGovernorate,
+            RegisterNumber = re.RegisterNumber,
+            RegistrationDate = DocumentValidator.ParseDateTime(re.RegistrationDate, "تاريخ تسجيل المتجر"),
+            ShopGovernorate = re.ShopGovernorate,
+            ShopDescription = re.ShopDescription,
+            ShopLocation = re.ShopLocation,
+            PublicEntity = re.PublicEntity,
+            LicenseNumber = re.LicenseNumber,
+            LicenseDate = DocumentValidator.ParseDateTime(re.LicenseDate, "تاريخ الترخيص"),
+            LicenseIssuer = re.LicenseIssuer,
+            Notes = re.Notes,
+            SeizureDate = DocumentValidator.ParseDateTime(re.SeizureDate, "تاريخ القاء الحجز"),
+        };
+        asset.Owners = AssetMapper.NormalizeOwners(re.Owners);
+        // تمام الأصل لا يكون إلا لمالك واحد؛ عند تعدد الملاك تُفرض الحصة السهمية
+        // حتى لو أُرسل نوع حصة آخر (حماية البيانات على مستوى الخدمة).
+        // الأنواع غير الحصصية (كفالة الرواتب والمتجر غير المسجل) لا تحمل مقدار حصة.
+        if (AssetKindCatalog.HasShare(kind))
+        {
+            if (asset.Owners.Count > 1)
+                asset.ShareType = "حصة سهمية";
+            else if (string.IsNullOrWhiteSpace(asset.ShareType))
+                asset.ShareType = AssetKindCatalog.FullShareLabel(kind);
         }
+        else
+        {
+            asset.ShareType = null;
+        }
+        return asset;
     }
 
     /// <summary>

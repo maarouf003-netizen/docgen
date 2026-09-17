@@ -25,4 +25,11 @@ public interface IDelegationRepository : IRepository<DocumentDelegation>
     /// مع بيانات المصدر والمنشئ — لنافذة «طلبات الإنابة والاستئنافات والمطالعات».
     /// </summary>
     Task<List<DocumentDelegation>> ListPendingByBranchAsync(int branchId, CancellationToken ct = default);
+
+    /// <summary>
+    /// الإنابات غير المنفذة لملفٍ منيبٍ معيّن مع جميع مجموعات الملف المناب المحلية
+    /// (الكفلاء/الورثة/الجهات طالبة التنفيذ/تاريخ القيد) — تُغذّي مزامنة «الملف المناب مرآةً
+    /// للمنيب» دون N+1. الإنابات المنفذة سجل نهائي فلا تُمسّ نسخها.
+    /// </summary>
+    Task<List<DocumentDelegation>> ListPendingBySourceWithTargetsAsync(int sourceDocumentId, CancellationToken ct = default);
 }

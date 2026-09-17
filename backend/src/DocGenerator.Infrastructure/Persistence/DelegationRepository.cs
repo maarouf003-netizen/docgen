@@ -93,4 +93,25 @@ public class DelegationRepository : Repository<DocumentDelegation>, IDelegationR
             .Include(d => d.Assets)
             .ToListAsync(ct);
     }
+
+    public async Task<List<DocumentDelegation>> ListPendingBySourceWithTargetsAsync(int sourceDocumentId, CancellationToken ct = default)
+    {
+        // المرآة تلامس مجموعات الملف المناب المحلية (الكفلاء/الورثة/الجهات) فتُحمَّل
+        // مسبقًا — دونها تتفكك المجموعات بلا قيد (N+1) ويُفشل الدمج بالكيان المتتبع.
+        return await Db.DocumentDelegations
+            .Where(d => d.SourceDocumentId == sourceDocumentId
+                && d.Status != DelegationStatusCatalog.Executed
+                && d.TargetDocument != null)
+            .Include(d => d.TargetDocument)
+                .ThenInclude(t => t!.RegistrationDate)
+            .Include(d => d.TargetDocument)
+                .ThenInclude(t => t!.BaseNumbers)
+            .Include(d => d.TargetDocument)
+                .ThenInclude(t => t!.Guarantors)
+            .Include(d => d.TargetDocument)
+                .ThenInclude(t => t!.Heirs)
+            .Include(d => d.TargetDocument)
+                .ThenInclude(t => t!.ApplicantPublicEntities)
+            .ToListAsync(ct);
+    }
 }
