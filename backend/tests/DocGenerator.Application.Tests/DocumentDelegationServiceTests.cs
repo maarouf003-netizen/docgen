@@ -1577,6 +1577,44 @@ public class DocumentDelegationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Update_TargetMirror_RejectsDuplicateGuarantorNumbersWithValidationError()
+    {
+        // متانة: رقم الكفيل مفتاح هوية للدمج والمقارنة (لا قيد فريد على (DocumentId, GuarantorNumber)
+        // في القاعدة). تكراره يجب أن يُرفض برسالة تحقق صريحة، لا بانهيار ToDictionary الداخلي (500).
+        var source = await CreateSourceAsync();
+        _db.Guarantors.Add(new Guarantor
+        {
+            DocumentId = source.Id, GuarantorNumber = 2,
+            GuarantorName = "محمود", GuarantorFather = "سامي", GuarantorFamily = "الحلبي",
+            GuarantorNature = PartyNatureCatalog.Natural,
+        });
+        await _db.SaveChangesAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        var duplicated = MirrorRequestWithParties(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .Include(d => d.Guarantors)
+            .Include(d => d.Heirs)
+            .SingleAsync(d => d.Id == targetId));
+        var guarantor = duplicated.Guarantors.Single();
+        duplicated.Guarantors = new List<GuarantorDto> { guarantor, guarantor with { Id = null } };
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.UpdateAsync(targetId, duplicated, _lawyer2.FullName, _lawyer2.Id));
+        Assert.Contains("أرقام الكفلاء مكررة", ex.Message);
+
+        // الحالة المخزَّنة لم تُمسّ (الرفض قبل أي كتابة).
+        var stored = await _db.Documents.AsNoTracking().Include(d => d.Guarantors).SingleAsync(d => d.Id == targetId);
+        Assert.Equal(2, stored.Guarantors.Single().GuarantorNumber);
+    }
+
+    [Fact]
     public async Task Update_TargetMirror_RejectsHeirsOrRepresentativeOnLegalEntity()
     {
         // B3/قرار 12 و16: لا ورثة ولا ممثل على طرف اعتباري (ApplyRequest يُسقطها بصمت فتُرفض صراحةً).

@@ -175,6 +175,21 @@ public sealed partial class DocumentService
         var stored = doc.Guarantors.OrderBy(g => g.GuarantorNumber).ToList();
         var requestedNumbers = requested.Select(g => g.GuarantorNumber).ToList();
         var storedNumbers = stored.Select(g => g.GuarantorNumber).ToList();
+
+        // رقم الكفيل مفتاح هوية للدمج والمقارنة (لا قيد فريد على (DocumentId, GuarantorNumber)
+        // في القاعدة): تكراره يجعل المقارنة والدمج غير معرَّفين ويُفشل ToDictionary بانهيار داخلي
+        // (500) بدل رسالة الرفض — فيُرفض الطلب برسالة تحقق صريحة قبل بناء المطابقات.
+        if (requestedNumbers.Count != requestedNumbers.Distinct().Count())
+        {
+            errors.Add("أرقام الكفلاء مكررة — يجب أن يكون رقم كل كفيل فريدًا على الملف المناب");
+            return;
+        }
+        if (storedNumbers.Count != storedNumbers.Distinct().Count())
+        {
+            errors.Add("أرقام الكفلاء المخزَّنة مكررة على الملف المناب — يلزم تصحيح البيانات قبل التعديل");
+            return;
+        }
+
         if (!requestedNumbers.SequenceEqual(storedNumbers))
         {
             var added = requestedNumbers.Except(storedNumbers).ToList();
@@ -645,8 +660,9 @@ public sealed partial class DocumentService
         changed |= CopyField(source.FileIncoming, target.FileIncoming, v => target.FileIncoming = v);
         changed |= CopyField(source.FileIncomingDate, target.FileIncomingDate, v => target.FileIncomingDate = v);
         changed |= CopyField(source.UnderFilingNumber, target.UnderFilingNumber, v => target.UnderFilingNumber = v);
-        changed |= CopyField(source.FileReceiptNumber, target.FileReceiptNumber, v => target.FileReceiptNumber = v);
-        changed |= CopyNullableDate(source.FileReceiptDate, target.FileReceiptDate, v => target.FileReceiptDate = v);
+        // حقلّا «ورود الإخطار التنفيذي» (FileReceiptNumber/FileReceiptDate) خارج عقد المرآة (B6):
+        // خاصان بوضع «منفذ عليه» ويُصفَّران على طالبة تنفيذ (DocumentService.Apply.cs)، فلا
+        // يُنسخان هنا كما لا يُفحصان في الحارس.
         changed |= CopyField(source.SeizureDate, target.SeizureDate, v => target.SeizureDate = v);
         if (changed)
             labels.Add("الكتب");
@@ -854,14 +870,6 @@ public sealed partial class DocumentService
     }
 
     private static bool CopyNumeric(decimal source, decimal current, Action<decimal> assign)
-    {
-        if (source == current)
-            return false;
-        assign(source);
-        return true;
-    }
-
-    private static bool CopyNullableDate(DateTime? source, DateTime? current, Action<DateTime?> assign)
     {
         if (source == current)
             return false;
