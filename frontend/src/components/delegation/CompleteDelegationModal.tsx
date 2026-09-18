@@ -157,9 +157,6 @@ export default function CompleteDelegationModal({
               className={inputCls}
               autoComplete="off"
             />
-            <p className="mt-1 text-xs text-gray-400">
-              يُحفظ على الملف المنيب عند تفعيله «منفذ جبريا» مع رقم الإشعار لاحقًا.
-            </p>
           </div>
 
           <div>
@@ -177,9 +174,6 @@ export default function CompleteDelegationModal({
               <option value="true">غطى كامل المديونية</option>
               <option value="false">لم يغطِ كامل المديونية</option>
             </select>
-            <p className="mt-1 text-xs text-gray-400">
-              يحدد محامي المناب — يُظهر للمنيب في التنبيه لتسريع تغيير الحالة.
-            </p>
           </div>
 
           <fieldset>
