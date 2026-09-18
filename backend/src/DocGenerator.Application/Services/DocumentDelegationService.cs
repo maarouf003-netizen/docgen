@@ -786,7 +786,12 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         target.Applicant = source.Applicant;
     }
 
-    /// <summary>كتب الملف المنيب التي تنتقل معه إلى الملف المناب: ورود الملف وكتاب الجهة العامة ورقم تحت رفع.</summary>
+    /// <summary>
+    /// كتب الملف المنيب التي تنتقل معه إلى الملف المناب: ورود الملف وكتاب الجهة العامة
+    /// ورقم تحت رفع وتاريخ إلقاء الحجز. حقلّا «ورود الإخطار التنفيذي»
+    /// (FileReceiptNumber/FileReceiptDate) خاصان بوضع «منفذ عليه» ويُصفَّران على طالبة
+    /// تنفيذ (DocumentService.Apply.cs)، فهما خارج عقد المرآة (B6) ولا يُنسخان هنا.
+    /// </summary>
     private static void CopyBooks(Document source, Document target)
     {
         target.FileArrivalNumber = source.FileArrivalNumber;
@@ -794,8 +799,6 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         target.FileIncoming = source.FileIncoming;
         target.FileIncomingDate = source.FileIncomingDate;
         target.UnderFilingNumber = source.UnderFilingNumber;
-        target.FileReceiptNumber = source.FileReceiptNumber;
-        target.FileReceiptDate = source.FileReceiptDate;
         target.SeizureDate = source.SeizureDate;
     }
 

@@ -564,8 +564,6 @@ public class DocumentDelegationServiceTests : IDisposable
         source.FileIncoming = "كتاب-الجهة-44";
         source.FileIncomingDate = "6/8/2026";
         source.UnderFilingNumber = "تحت-3";
-        source.FileReceiptNumber = "قيد-9";
-        source.FileReceiptDate = new DateTime(2026, 8, 7);
         _db.ApplicantPublicEntities.Add(new ApplicantPublicEntity
         {
             DocumentId = source.Id,
@@ -613,14 +611,37 @@ public class DocumentDelegationServiceTests : IDisposable
         var heir = Assert.Single(target.Heirs);
         Assert.Equal("حسن", heir.HeirName);
 
-        // كتب الملف المنيب تنتقل كلها.
+        // كتب الملف المنيب الخمسة تنتقل (ورود الملف/كتاب الجهة/تحت رفع).
+        // (تاريخ إلقاء الحجز — السادس في عقد المرآة — مغطّى باختبار التكافؤ.)
         Assert.Equal("ورود-7", target.FileArrivalNumber);
         Assert.Equal("5/8/2026", target.FileArrivalDate);
         Assert.Equal("كتاب-الجهة-44", target.FileIncoming);
         Assert.Equal("6/8/2026", target.FileIncomingDate);
         Assert.Equal("تحت-3", target.UnderFilingNumber);
-        Assert.Equal("قيد-9", target.FileReceiptNumber);
-        Assert.Equal(new DateTime(2026, 8, 7), target.FileReceiptDate);
+    }
+
+    [Fact]
+    public async Task Assign_DoesNotCopyFileReceiptFieldsToTarget()
+    {
+        // B6: حقلا «ورود الإخطار التنفيذي» (FileReceiptNumber/FileReceiptDate) خارج عقد
+        // المرآة. الزرع أدناه حالة متسخة مستحيلة إنتاجيًا (ApplyRequest يصفّرهما على
+        // طالبة تنفيذ) والغرض تثبيت العقد على مستوى الخدمة — CopyBooks هو الكاتب
+        // الوحيد المحتمل على الهدف (يُبنى بـ new Document بقيم null افتراضيًا)، فأي
+        // فشل في هذا الاختبار يشير إليه بدقة.
+        var source = await CreateSourceAsync();
+        source.FileReceiptNumber = "قيد-قديم";
+        source.FileReceiptDate = new DateTime(2026, 8, 7);
+        await _db.SaveChangesAsync();
+
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+
+        var target = await _db.Documents.AsNoTracking()
+            .FirstAsync(d => d.Id == dto!.TargetDocumentId!.Value);
+        Assert.Null(target.FileReceiptNumber);
+        Assert.Null(target.FileReceiptDate);
     }
 
     [Fact]

@@ -516,8 +516,8 @@ public sealed partial class DocumentService
     }
 
     /// <summary>
-    /// تطبيع قائمة ملاك الأصل: يُتجاهل الاسم الفارغ، ويُقصّ الاسم من الطرفين،
-    /// وتُلغى التكرارات مع الحفاظ على ترتيب الاختيار الأصلي.
+    /// تطبيع قائمة الورثة: يُتجاهل من فرغ اسمه الثلاثي، وتُقصّ الحقول من الطرفين،
+    /// ويُقيَّد نوع العنوان والصفة بالقيم المسموح بها.
     /// </summary>
     private static List<Heir> NormalizeHeirs(IEnumerable<HeirDto>? heirs, int? guarantorNumber)
     {
