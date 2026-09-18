@@ -177,8 +177,9 @@ public sealed partial class DocumentService
         var storedNumbers = stored.Select(g => g.GuarantorNumber).ToList();
 
         // رقم الكفيل مفتاح هوية للدمج والمقارنة (لا قيد فريد على (DocumentId, GuarantorNumber)
-        // في القاعدة): تكراره يجعل المقارنة والدمج غير معرَّفين ويُفشل ToDictionary بانهيار داخلي
-        // (500) بدل رسالة الرفض — فيُرفض الطلب برسالة تحقق صريحة قبل بناء المطابقات.
+        // في القاعدة): تكراره يجعل المقارنة والدمج غير معرَّفين ويُفشل ToDictionary برسالة تقنية
+        // إنكليزية مسرَّبة بدل رسالة الرفض العربية المتعاقد عليها — فيُرفض الطلب برسالة تحقق
+        // صريحة قبل بناء المطابقات.
         if (requestedNumbers.Count != requestedNumbers.Distinct().Count())
         {
             errors.Add("أرقام الكفلاء مكررة — يجب أن يكون رقم كل كفيل فريدًا على الملف المناب");
