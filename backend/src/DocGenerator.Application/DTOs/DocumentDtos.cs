@@ -692,11 +692,12 @@ public class DocumentResponse : DocGenerator.Domain.Entities.IDocumentExecutionS
     /// </summary>
     public bool NeedsRotation { get; set; }
     /// <summary>
-    /// صحيح إذا كان على الملف استئناف واحد على الأقل — تُعرض بجانب نتيجة البحث
+    /// صحيح إذا كان على الملف استئناف منظور واحد على الأقل — تُعرض بجانب نتيجة البحث
     /// شارة «استئناف»، ويفتح النقر عليها تفاصيل الاستئناف (MatchedAppealId).
+    /// المحسوم والمشطوب لا يُظهران الشارة.
     /// </summary>
     public bool HasAppeals { get; set; }
-    /// <summary>معرف أول استئناف على الملف عند وجوده (للانتقال إلى تفاصيل الاستئناف).</summary>
+    /// <summary>معرف أول استئناف منظور على الملف عند وجوده (للانتقال إلى تفاصيل الاستئناف).</summary>
     public int? MatchedAppealId { get; set; }
     /// <summary>
     /// معرف الإنابة التي صدر عنها هذا الملف كمناب (غير فارغ ⇒ الملف «مرآة» للمنيب):

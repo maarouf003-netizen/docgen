@@ -1,5 +1,6 @@
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Domain.Entities;
+using DocGenerator.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace DocGenerator.Infrastructure.Persistence;
@@ -118,8 +119,11 @@ public class AppealRepository : Repository<DocumentAppeal>, IAppealRepository
         if (documentIds.Count == 0)
             return new Dictionary<int, int>();
 
+        // شارة «استئناف» في قائمة الملفات التنفيذية تعني وجود استئناف منظور فقط:
+        // المحسوم والمشطوب حالتان نهائيتان لا تتطلبان متابعة في القائمة (سجلهما يبقى
+        // في صفحة الاستئنافات ووقوعات الملف)، فيُستبعدان هنا لتختفي الشارة بعد الحسم/الشطب.
         var rows = await Db.DocumentAppeals.AsNoTracking()
-            .Where(a => documentIds.Contains(a.DocumentId))
+            .Where(a => documentIds.Contains(a.DocumentId) && a.Status == AppealStatusCatalog.Pending)
             .OrderBy(a => a.Id)
             .Select(a => new { a.Id, a.DocumentId })
             .ToListAsync(ct);

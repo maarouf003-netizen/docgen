@@ -6,9 +6,10 @@ import { SectionCard } from '../view/SectionCard';
 
 /**
  * بطاقة «معلومات الملف المنيب» (في الملف المناب): ثمانية حقول (D2/L7) — المنيب ورقمه الأساس
- * ونوعه، والدائرة المنابة وداخليتها/خارجيتها، وتاريخ الإنابة ونصها وأموالها. «مسجلة أصولًا»
- * وحالة الإنابة تُعرض كشارة في بطاقة «حالة الإنابة» الجديدة (و3) لا في هذه البطاقة،
- * وزر «إتمام الإنابة» انتقل إلى بطاقة الحالة (و4). يبقى هنا زر «تسجيل أصولًا» وحده.
+ * ونوعه، ودائرة التنفيذ المنيبة (دائرة المنيب لا فرعه) وداخليتها/خارجيتها، وتاريخ الإنابة
+ * ونصها وأموالها. القيمة كما هي مخزنة بلا بادئات.
+ * «مسجلة أصولًا» وحالة الإنابة تُعرض كشارة في بطاقة «حالة الإنابة» الجديدة (و3) لا في هذه
+ * البطاقة، وزر «إتمام الإنابة» انتقل إلى بطاقة الحالة (و4). يبقى هنا زر «تسجيل أصولًا» وحده.
  */
 export function SourceFileInfoCard({
   delegation,
@@ -34,8 +35,8 @@ export function SourceFileInfoCard({
         />
         {sourceNumber && <FieldCell label="رقم أساس الملف المنيب" value={sourceNumber} />}
         {delegation.sourceFileType && <FieldCell label="نوع الملف المنيب" value={delegation.sourceFileType} />}
-        {delegation.delegatedCourt && (
-          <FieldCell label="الدائرة المنابة" value={delegation.delegatedCourt} />
+        {delegation.sourceCourt && (
+          <FieldCell label="الدائرة المنيبة" value={delegation.sourceCourt} />
         )}
         <FieldCell
           label="داخلية أم خارجية"

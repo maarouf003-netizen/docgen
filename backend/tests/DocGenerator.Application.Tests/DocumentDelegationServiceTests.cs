@@ -776,6 +776,11 @@ public class DocumentDelegationServiceTests : IDisposable
 
         var delegationDto = (await _service.ListForDocumentAsync(source.Id)).Single();
         Assert.Equal("متداول", delegationDto.SourceFileType);
+        Assert.Equal("دمشق", delegationDto.SourceCourt);
+
+        // مسار الملف المناب (FindByTargetAsync): الدائرة المنيبة حاضرة أيضًا في بطاقته.
+        var targetDelegationDto = (await _service.ListForDocumentAsync(targetId)).Single();
+        Assert.Equal("دمشق", targetDelegationDto.SourceCourt);
 
         var response = await _documentService.GetAsync(targetId);
         Assert.NotNull(response);

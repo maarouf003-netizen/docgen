@@ -25,7 +25,7 @@ export function FileNumber({ d, fallback }: { d: DocumentResponse; fallback?: st
   return (
     <div className="flex flex-col items-start gap-1">
       <span className={d.needsRotation ? 'text-red-600 font-bold' : 'text-gray-800'}>{text}</span>
-      {/* شارة «استئناف»: للملفات التي عليها استئناف — تفتح تفاصيل الاستئناف. */}
+      {/* شارة «استئناف»: للملفات التي عليها استئناف منظور — تفتح تفاصيل الاستئناف. المحسوم والمشطوب لا يُظهران الشارة. */}
       {hasAppealBadge && (
         <Link
           to={`/appeals/${d.matchedAppealId}`}

@@ -1959,6 +1959,7 @@ it('يُسجّل الملف كآخر ما فُتح في الجلسة ليُمي�
               sourceDocumentLabel: 'أحمد محمد خالد',
               targetDocumentId: 1,
               delegatedCourt: 'محكمة التنفيذ الأولى',
+              sourceCourt: 'دائرة تنفيذ دمشق',
               isExternal: true,
               externalBranchId: 2,
               externalBranchName: 'فرع حمص',
@@ -1984,7 +1985,9 @@ it('يُسجّل الملف كآخر ما فُتح في الجلسة ليُمي�
 
     expect(await screen.findByText('معلومات الملف المنيب')).toBeInTheDocument();
     expect(screen.getAllByText('أحمد محمد خالد').length).toBeGreaterThan(0);
-    expect(screen.getByText('الدائرة المنابة')).toBeInTheDocument();
+    expect(screen.getByText('الدائرة المنيبة')).toBeInTheDocument();
+    expect(screen.getByText('دائرة تنفيذ دمشق')).toBeInTheDocument();
+    expect(screen.queryByText('الدائرة المنابة')).not.toBeInTheDocument();
     expect(screen.getByText('داخلية أم خارجية')).toBeInTheDocument();
     expect(screen.getByText('تاريخ الإنابة')).toBeInTheDocument();
     expect(screen.queryByText('تشعبات الملف')).not.toBeInTheDocument();
@@ -2167,6 +2170,12 @@ it('يُسجّل الملف كآخر ما فُتح في الجلسة ليُمي�
     const securityPanel = screen.getByRole('tabpanel');
     expect(within(securityPanel).getByText('بيانات السند التنفيذي')).toBeInTheDocument();
     expect(within(securityPanel).queryByText('بيانات الملف')).not.toBeInTheDocument();
+    // كتب المطالعة انتقلت إلى تبويب السند (تحت حالة الإنابة للمناب).
+    expect(within(securityPanel).getByRole('heading', { name: 'كتب المطالعة' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: 'الإنابات والوقوعات' }));
+    const delegationsPanel = screen.getByRole('tabpanel');
+    expect(within(delegationsPanel).queryByRole('heading', { name: 'كتب المطالعة' })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('tab', { name: 'الحالة' }));
     const statusPanel = screen.getByRole('tabpanel');
@@ -2257,5 +2266,10 @@ await screen.findByText('بيانات الملف');
     expect(screen.getByRole('heading', { name: 'حالة الإنابة' })).toBeInTheDocument();
     expect(screen.getByText('حدّث المنيب بيانات السند')).toBeInTheDocument();
     expect(screen.queryByText('الأموال المنقولة وغير المنقولة')).not.toBeInTheDocument();
+
+    // كتب المطالعة تحت بطاقة «حالة الإنابة» في عمود السند (مكتبي).
+    const statusHeading = screen.getByRole('heading', { name: 'حالة الإنابة' });
+    const reviewsHeading = screen.getByRole('heading', { name: 'كتب المطالعة' });
+    expect(statusHeading.compareDocumentPosition(reviewsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

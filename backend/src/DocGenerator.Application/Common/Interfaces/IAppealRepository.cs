@@ -39,7 +39,7 @@ public interface IAppealRepository : IRepository<DocumentAppeal>
     /// <summary>هل المستخدم هو المحامي المسند إليه متابعة استئناف على الملف المحدد؟</summary>
     Task<bool> IsAssignedFollowerAsync(int documentId, int userId, CancellationToken ct = default);
 
-    /// <summary>خريطة معرفات الملفات التي لديها استئناف واحد على الأقل ← معرف أول استئناف لها.</summary>
+    /// <summary>خريطة معرفات الملفات التي لديها استئناف منظور واحد على الأقل ← معرف أول استئناف منظور لها (الأقدم). المحسوم والمشطوب لا يُظهران شارة القائمة.</summary>
     Task<Dictionary<int, int>> MapFirstAppealIdByDocumentIdsAsync(
         IReadOnlyCollection<int> documentIds, CancellationToken ct = default);
 

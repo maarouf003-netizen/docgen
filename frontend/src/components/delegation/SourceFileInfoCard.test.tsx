@@ -13,6 +13,7 @@ const delegation: DelegationDto = {
   sourceFileYear: '2026',
   targetDocumentId: 5,
   delegatedCourt: 'محكمة التنفيذ الأولى',
+  sourceCourt: 'دائرة تنفيذ دمشق',
   isExternal: true,
   externalBranchId: 2,
   externalBranchName: 'فرع حمص',
@@ -39,8 +40,11 @@ describe('SourceFileInfoCard', () => {
     expect(screen.getByText('أحمد محمد خالد')).toBeInTheDocument();
     expect(screen.getByText('رقم أساس الملف المنيب')).toBeInTheDocument();
     expect(screen.getByText('1500/2026')).toBeInTheDocument();
-    expect(screen.getByText('الدائرة المنابة')).toBeInTheDocument();
-    expect(screen.getByText('محكمة التنفيذ الأولى')).toBeInTheDocument();
+    expect(screen.getByText('الدائرة المنيبة')).toBeInTheDocument();
+    expect(screen.getByText('دائرة تنفيذ دمشق')).toBeInTheDocument();
+    // الدائرة المنابة استُبدلت بالمنيبة: لا تظهر قيمتها في البطاقة.
+    expect(screen.queryByText('الدائرة المنابة')).not.toBeInTheDocument();
+    expect(screen.queryByText('محكمة التنفيذ الأولى')).not.toBeInTheDocument();
     expect(screen.getByText('داخلية أم خارجية')).toBeInTheDocument();
     expect(screen.getByText('إنابة خارجية — الفرع المناب: فرع حمص')).toBeInTheDocument();
     expect(screen.getByText('تاريخ الإنابة')).toBeInTheDocument();
@@ -70,6 +74,14 @@ describe('SourceFileInfoCard', () => {
     );
 
     expect(screen.getByText('ملف رقم 10')).toBeInTheDocument();
+  });
+
+  it('لا يعرض الدائرة المنيبة عندما تكون غائبة', () => {
+    render(
+      <SourceFileInfoCard delegation={{ ...delegation, sourceCourt: null }} />,
+    );
+
+    expect(screen.queryByText('الدائرة المنيبة')).not.toBeInTheDocument();
   });
 
   it('لا يعرض رقم أساس المنيب عندما يكون غائبًا', () => {

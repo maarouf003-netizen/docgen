@@ -214,6 +214,13 @@ export default function DocumentView() {
         <DelegationStatusCard doc={doc} delegationId={delegationOfThisFile.id} />
       )}
       {!isExecuted && !delegationOfThisFile && <AssetsSection doc={doc} />}
+      {id !== undefined && (
+        <DocumentReviewLettersCard
+          documentId={Number(id)}
+          documentTitle={debtorFullName || doc.documentType || undefined}
+          canCreate={canEdit && isOwner}
+        />
+      )}
     </>
   );
   const delegationsPanel = (
@@ -256,13 +263,6 @@ export default function DocumentView() {
         onOpen={() => setOccurrencesOpen(true)}
         onOpenAppeal={setInfoAppeal}
       />
-      {id !== undefined && (
-        <DocumentReviewLettersCard
-          documentId={Number(id)}
-          documentTitle={debtorFullName || doc.documentType || undefined}
-          canCreate={canEdit && isOwner}
-        />
-      )}
     </>
   );
   const statusPanel = (

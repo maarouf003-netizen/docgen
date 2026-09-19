@@ -943,7 +943,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         TargetFileNumber(d.TargetDocument, currentYear),
         TargetFileYear(d.TargetDocument, currentYear),
         SourceFileType(source),
-        d.TargetDocument?.ExecStatus);
+        d.TargetDocument?.ExecStatus,
+        Normalize(source.Court));
 
     private static string SourceLabel(Document source)
     {
