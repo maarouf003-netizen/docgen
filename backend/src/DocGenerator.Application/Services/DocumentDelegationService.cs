@@ -288,9 +288,12 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         {
             // إنشاء الملف المناب تلقائيًا: نفس السند التنفيذي والأطراف، بنوع «انابة»،
             // موكولاً للمحامي المختص في الفرع المناب، مرتبطًا بإنابته (SourceDelegationId).
+            // المحامي المختص (Lawyer) يُضبط باسم المحامي الموكول — كمصدر العرض والفلترة
+            // في «الملفات التنفيذية» — بنفس صيغة الإنشاء العادي (الاسم الكامل وإلا الدخول).
             target = new Document
             {
                 CreatedById = lawyer.Id,
+                Lawyer = string.IsNullOrWhiteSpace(lawyer.FullName) ? lawyer.Username : lawyer.FullName,
                 BranchId = targetBranch,
                 BranchName = isExternal ? delegation.ExternalBranch?.Name ?? source.BranchName : source.BranchName,
                 GeneralEntitySide = source.GeneralEntitySide,

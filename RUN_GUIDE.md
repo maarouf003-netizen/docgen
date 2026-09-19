@@ -236,4 +236,8 @@ npm test
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260914184446_AddOccurrenceSource.cs` — يضيف عمود `Source` (`text`, NOT NULL, default `manual`) ويوسم كل الوقوعات القائمة بـ`system` (`UPDATE DocumentOccurrences SET Source = 'system'`).
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260914184530_AddOccurrenceSourcePg.cs` — نفسه (`character varying(10)` + UPDATE).
   - بدون التطبيق سيفشل تشغيل فعلي: محاولة إنقاذ قيد/إدخال وقعة تصطدم بـ`no such column: o.Source` رغم نجاح الاختبارات محليًا.
+- [ ] **2026-09-19 — `BackfillMirrorLawyer` / `BackfillMirrorLawyerPg`** (تعبئة «المحامي المختص» للملفات المنابة القائمة — إصلاح ظهور الاسم في جدول الملفات لرئيس القسم/المدير/المشرف):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260919211650_BackfillMirrorLawyer.cs` — تعبئة `Lawyer` للصفوف ذات `SourceDelegationId IS NOT NULL` والاسم المفقود من اسم مالكها (الموكول) وإلا اسم الدخول؛ بلا تغيير مخطط.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260919211723_BackfillMirrorLawyerPg.cs` — نفسه.
+  - بدون التطبيق تبقى المنابة القائمة بلا اسم في عمود «المحامي المختص» وفلتره (الجديدة تُضبط عند الاعتماد تلقائيًا).
 

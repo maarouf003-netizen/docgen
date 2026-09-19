@@ -478,6 +478,52 @@ public class DocumentDelegationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Assign_SetsTargetLawyerName_ForListColumnAndFilter()
+    {
+        // انحدار: اسم المحامي الموكول بالملف المناب هو مصدر عمود «المحامي المختص»
+        // في «الملفات التنفيذية» وفلتر المحامي وقائمته — كان يُترك فارغًا فيُعرض «—».
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+
+        var targetId = dto!.TargetDocumentId!.Value;
+        _db.ChangeTracker.Clear();
+        var target = await _db.Documents.FirstAsync(d => d.Id == targetId);
+        Assert.Equal(_lawyer2.FullName, target.Lawyer);
+
+        // مستوى العقد: القائمة تعرض الاسم كما سيراه رئيس القسم/المدير/المشرف.
+        var page = await _documentService.SearchAsync(null, null, null, null, null, null, null, null, null,
+            1, 20, _branch.Id);
+        Assert.Equal(_lawyer2.FullName, Assert.Single(page.Items, d => d.Id == targetId).Lawyer);
+
+        // فلتر المحامي يلتقط الملف المناب باسمه.
+        var filtered = await _documentService.SearchAsync(null, null, null, null, _lawyer2.FullName, null, null, null, null,
+            1, 20, _branch.Id);
+        Assert.Contains(filtered.Items, d => d.Id == targetId);
+    }
+
+    [Fact]
+    public async Task Assign_WithBlankLawyerFullName_FallsBackToUsername()
+    {
+        // حدّية: محامٍ بلا اسم كامل يُسجَّل المناب باسم دخوله — بنفس صيغة الإنشاء العادي.
+        var nameless = User(_branch.Id, "lawyer_noname", "   ");
+        _db.Users.Add(nameless);
+        await _db.SaveChangesAsync();
+
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(nameless.Id),
+            _head1.Id, _branch.Id, "head1");
+
+        _db.ChangeTracker.Clear();
+        var target = await _db.Documents.FirstAsync(d => d.Id == dto!.TargetDocumentId!.Value);
+        Assert.Equal("lawyer_noname", target.Lawyer);
+    }
+
+    [Fact]
     public async Task ListForSource_AfterTargetRotation_ReturnsEffectiveTargetFileNumber()
     {
         var source = await CreateSourceAsync();
