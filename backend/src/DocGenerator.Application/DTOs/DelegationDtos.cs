@@ -93,4 +93,9 @@ public record DelegationDto(
     /// <summary>سنة الرقم المعروض للملف المناب (سنة التدوير إن وُجدت وإلا سنة ملفه الأصلي) — مرافقة لـ TargetFileNumber.</summary>
     string? TargetFileYear = null,
     /// <summary>نوع الملف المنيب (FileType) كما هو — يُعرض بجانب رقم أساس المنيب، والفارغ يُخفى.</summary>
-    string? SourceFileType = null);
+    string? SourceFileType = null,
+    /// <summary>
+    /// حالة الملف المناب (ExecStatus) في سطر «تشعبات الملف» — تحمل «مسترد»/«تريث»/«منفذ إنابة»
+    /// وغيرها لشارة حالة المناب في المنيب (L11/F1)، وفارغٌ قبل اعتماد الإنابة (بلا ملف مناب).
+    /// </summary>
+    string? TargetExecStatus = null);

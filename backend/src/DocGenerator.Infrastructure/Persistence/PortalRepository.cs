@@ -154,7 +154,8 @@ public class PortalRepository : IPortalRepository
             if (status == ExecutionStatusCatalog.ExecutedFilter)
                 q = q.Where(d => d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
                     || d.ExecStatus == ExecutionStatusCatalog.ExecutedBySettlement
-                    || d.ExecStatus == ExecutionStatusCatalog.DelegationExecuted);
+                    || d.ExecStatus == ExecutionStatusCatalog.DelegationExecuted
+                    || d.ExecStatus == ExecutionStatusCatalog.Recovered);
             else if (status == ExecutionStatusCatalog.Deferred)
                 q = q.Where(d => d.ExecStatus == ExecutionStatusCatalog.Deferred);
             else if (status == ExecutionStatusCatalog.DraftFilter)

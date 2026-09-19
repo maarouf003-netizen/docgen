@@ -506,6 +506,8 @@ export interface DelegationDto {
   targetFileYear?: string | null;
   /** نوع الملف المنيب (متداول/حقوق...) — يُعرض بجانب رقم أساسه في بطاقة «معلومات الملف المنيب». */
   sourceFileType?: string | null;
+  /** حالة الملف المناب (ExecStatus) لشارة حالة المناب في «تشعبات الملف» — مسترد/تريث/منفذ إنابة. */
+  targetExecStatus?: string | null;
 }
 
 /** تسطير/تعديل إنابة: التواريخ نصوص حرة تُفسَّر في الخلفية؛ الخارجية تتطلب الفرع المناب. */
@@ -954,7 +956,7 @@ export interface BaseNumberHistoryDto {
 }
 
 /** نوع وقعة الملف: شطب/تجديد (وضع «منفذ عليه») أو إجراء تغيير حالة (نظام «طالبة تنفيذ») أو تغيير جهة آلي. */
-export type OccurrenceType = 'struck-off' | 'renewal' | 'deferred' | 'settled' | 'forcible' | 'revert' | 'entity-change';
+export type OccurrenceType = 'struck-off' | 'renewal' | 'deferred' | 'settled' | 'forcible' | 'revert' | 'recovered' | 'entity-change';
 
 /** وقعة واحدة من «وقوعات الملف»: شطب/تجديد أو إجراء تغيير حالة (تريث/منفذ/تراجع) أو تغيير جهة آلي. */
 export interface DocumentOccurrenceDto {

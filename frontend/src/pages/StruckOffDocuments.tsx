@@ -34,6 +34,9 @@ export default function StruckOffDocuments() {
     displayName: fullName,
     linkToDocument: true,
     canRestore,
+    // F9/و7: فك شطب ملف الإنابة يعيده إلى الدائرة المنيبة بتسطير إنابة جديدة (E2) — فلا يُعرض
+    // زر «إعادة الملف» لصفوف المناب (الخلفية ب3 تبقى الحماية الحقيقية).
+    canRestoreRow: (d) => d.sourceDelegationId == null,
     requiresRenewal: true,
   };
 

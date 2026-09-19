@@ -172,6 +172,33 @@ describe('StatusChangeModal', () => {
     renderModal({ isDraft: false, execStatus: 'مشطوب' });
 
     expect(screen.getByText(/الملفات المشطوبة/)).toBeInTheDocument();
+    expect(screen.getByText(/الملف في حالة «مشطوب»/)).toBeInTheDocument();
     expect(screen.queryByLabelText('الإجراء')).not.toBeInTheDocument();
+  });
+
+  it('للملف المناب المتداول لا يتيح إلا «مشطوب» (C1)', () => {
+    renderModal({ isDraft: false, execStatus: '', sourceDelegationId: 9 });
+
+    const select = screen.getByLabelText('الإجراء') as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual(['مشطوب']);
+  });
+
+  it('للملف المناب المتريث لا توجد انتقالات مع رسالة اللحوق بالمنيب (L6)', () => {
+    renderModal({ isDraft: false, execStatus: 'تريث', sourceDelegationId: 9 });
+
+    expect(screen.queryByLabelText('الإجراء')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('لا توجد حالات متاحة — حالة الملف المناب تلحق حالة الملف المنيب في اعتباره منفذ أو تريث'),
+    ).toBeInTheDocument();
+  });
+
+  it('للملف المناب «مسترد» يعرض الحالة الحالية مستردًا بلا انتقالات', () => {
+    renderModal({ isDraft: false, execStatus: 'مسترد', sourceDelegationId: 9 });
+
+    expect(screen.getByText('مسترد')).toBeInTheDocument();
+    expect(screen.queryByLabelText('الإجراء')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('لا توجد حالات متاحة — حالة الملف المناب تلحق حالة الملف المنيب في اعتباره منفذ أو تريث'),
+    ).toBeInTheDocument();
   });
 });

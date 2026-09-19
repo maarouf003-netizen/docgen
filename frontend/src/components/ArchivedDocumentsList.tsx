@@ -43,6 +43,8 @@ export interface ArchivedDocumentsListConfig {
   linkToDocument: boolean;
   /** هل يستطيع المستخدم الحالي الإعادة (المحامي صاحب الملف فقط)؟ */
   canRestore: boolean;
+  /** قيد الصفوف: هل يُعرض زر الإعادة لهذا الصف؟ مُجرَّد من صفحة المشطوبة لمناب (sourceDelegationId بلا). */
+  canRestoreRow?: (d: DocumentResponse) => boolean;
   /** هل تستلزم الإعادة إدخال بيان تجديد (رقم ملف جديد)؟ (الملفات المشطوبة فقط). */
   requiresRenewal?: boolean;
 }
@@ -209,7 +211,7 @@ export default function ArchivedDocumentsList({ config }: { config: ArchivedDocu
                     رقم الملف: {displayFileNumber(d) || '—'}
                   </div>
                   {config.cardBottomExtra?.(d)}
-                  {config.canRestore && (
+                  {config.canRestore && (config.canRestoreRow?.(d) ?? true) && (
                     <div className="mt-3 pt-3 border-t border-gray-100">{restoreButton(d)}</div>
                   )}
                 </article>
@@ -243,7 +245,7 @@ export default function ArchivedDocumentsList({ config }: { config: ArchivedDocu
                       <td className="px-4 py-3">{d.branchName || '—'}</td>
                       <td className="px-4 py-3">{d.court || '—'}</td>
                       <td className="px-4 py-3">{displayFileNumber(d)}</td>
-                      <td className="px-4 py-3">{config.canRestore ? restoreButton(d) : '—'}</td>
+                      <td className="px-4 py-3">{config.canRestore && (config.canRestoreRow?.(d) ?? true) ? restoreButton(d) : '—'}</td>
                     </tr>
                   ))}
                   {data.items.length === 0 && (

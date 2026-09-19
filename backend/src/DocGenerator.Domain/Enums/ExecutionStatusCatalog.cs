@@ -28,6 +28,15 @@ public static class ExecutionStatusCatalog
     /// <summary>الحالة «متداول» في آلة الحالات (حالة ملف مقيد بلا حالة تغيير).</summary>
     public const string StateCirculating = "متداول";
 
+    /// <summary>
+    /// حالة «مسترد» للملف المناب عند إعادة الملف إلى الدائرة المنيبة: سجّل الفرع المسترد
+    /// الوقعة بحقولها كاملة في سجله، وأصبح ملف الإنابة منتهيًا ولا يُعاد تسطير حالته
+    /// عليه بعد الآن. حالة نهائية تُعامل «منفذًا» في القوائم والإحصاءات، ولا تُختار عبر
+    /// آلة الحالات العادية ولا عبر «الاسترداد» (يضبطها مسار استرداد الإنابة حصرًا، ولا
+    /// يُسمح بالانتقال منها إلى أي حالة).
+    /// </summary>
+    public const string Recovered = "مسترد";
+
     /// <summary>قيمة فلتر "منفذ" في البحث — تغطي التنفيذ الجبري والتنفيذ بالتسوية.</summary>
     public const string ExecutedFilter = "منفذ";
 
@@ -36,7 +45,7 @@ public static class ExecutionStatusCatalog
 
     public static readonly IReadOnlySet<string> ValidStatuses = new HashSet<string>
     {
-        None, ExecutedForcibly, ExecutedBySettlement, Deferred, DelegationExecuted,
+        None, ExecutedForcibly, ExecutedBySettlement, Deferred, DelegationExecuted, Recovered,
     };
 
     public static readonly IReadOnlySet<string> ValidSubStatuses = new HashSet<string>
@@ -50,17 +59,20 @@ public static class ExecutionStatusCatalog
         ExecutedBySettlement => ExecutionStatus.ExecutedBySettlement,
         Deferred => ExecutionStatus.Deferred,
         DelegationExecuted => ExecutionStatus.DelegationExecuted,
+        Recovered => ExecutionStatus.Recovered,
         _ => ExecutionStatus.None,
     };
 
     /// <summary>
     /// هل الملف منفَّذ وانتهى (لا يدور بعده ولا يُدوَّر)؟ يشمل التسوية والتنفيذ الجبري
     /// الكامل، وحالة «منفذ إنابة» للملف المناب. أما «منفذ جبريا / منفذ جزئيا» فما زال
-    /// متداولًا ويخضع لمنطق المتداول.
+    /// متداولًا ويخضع لمنطق المتداول. تُضاف حالة «مسترد» (المناب المسترد إلى دائرة المنيب)
+    /// إلى «منفذ» لكونها حالة نهائية لا تتأثر بمسارات النقل والمعالجات بل تظهر منفذةً.
     /// </summary>
     public static bool IsExecuted(string? status, string? subStatus) =>
         status == ExecutedBySettlement
         || status == DelegationExecuted
+        || status == Recovered
         || (status == ExecutedForcibly && subStatus != SubPartiallyExecuted);
 
     public static string ToLabel(ExecutionStatus status) => status switch
@@ -69,6 +81,7 @@ public static class ExecutionStatusCatalog
         ExecutionStatus.ExecutedBySettlement => ExecutedBySettlement,
         ExecutionStatus.Deferred => Deferred,
         ExecutionStatus.DelegationExecuted => DelegationExecuted,
+        ExecutionStatus.Recovered => Recovered,
         _ => None,
     };
 
@@ -78,6 +91,7 @@ public static class ExecutionStatusCatalog
         if (executedStatus == ExecutedStatusCatalog.StruckOff || status == StateStruckOff)
             return StateStruckOff;
         if (status == DelegationExecuted) return DelegationExecuted;
+        if (status == Recovered) return Recovered;
         if (status == Deferred) return Deferred;
         if (status == ExecutedBySettlement) return ExecutedBySettlement;
         if (status == ExecutedForcibly) return ExecutedForcibly;
@@ -97,6 +111,7 @@ public static class ExecutionStatusCatalog
         ExecutedBySettlement => new HashSet<string>(),
         ExecutedForcibly => new HashSet<string>(),
         StateStruckOff => new HashSet<string>(),
+        Recovered => new HashSet<string>(),
         _ => new HashSet<string>(),
     };
 
@@ -116,6 +131,7 @@ public static class ExecutionStatusCatalog
         ExecutedBySettlement => ExecutedBySettlement,
         ExecutedForcibly => ExecutedForcibly,
         DelegationExecuted => DelegationExecuted,
+        Recovered => Recovered,
         StateStruckOff => StateStruckOff,
         _ => StateCirculating,
     };
@@ -127,6 +143,7 @@ public static class ExecutionStatusCatalog
         ExecutedBySettlement => ExecutedBySettlement,
         Deferred => Deferred,
         DelegationExecuted => DelegationExecuted,
+        Recovered => Recovered,
         StateStruckOff => StateStruckOff,
         _ => StateCirculating,
     };

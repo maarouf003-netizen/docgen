@@ -1056,6 +1056,145 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Contains("غطى كامل المديونية", noCoverage.Message);
     }
 
+    /// <summary>إنابة مسجلة أصولًا على منيب متداول (الملف المناب في ملكية lawyer2).</summary>
+    private async Task<(int Id, Document Source, Document Target)> CreateRegisteredDelegationAsync()
+    {
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var target = await _db.Documents.SingleAsync(d => d.Id == assigned!.TargetDocumentId!.Value);
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+        return (created.Id, source, target);
+    }
+
+    [Theory]
+    [InlineData(ExecutionStatusCatalog.Deferred)]
+    [InlineData(ExecutionStatusCatalog.DelegationExecuted)]
+    [InlineData(ExecutionStatusCatalog.StateStruckOff)]
+    [InlineData(ExecutionStatusCatalog.Recovered)]
+    [InlineData(ExecutionStatusCatalog.ExecutedBySettlement)]
+    public async Task Complete_OnNonTradingTarget_RejectsWithE3(string targetStatus)
+    {
+        // C2 (E3): إتمام الإنابة «لمتداول فقط» — المناب الموروث (تريث)/المنفذ-إنابة/المشطوب/
+        // المسترد/المنفذ (تسوية/جبريا) لا يُتمَّم، والرفض قبل أي تحقق آخر من بيانات الطلب.
+        var (id, _, target) = await CreateRegisteredDelegationAsync();
+        target.ExecStatus = targetStatus;
+        if (targetStatus == ExecutionStatusCatalog.ExecutedBySettlement)
+            target.ExecSubStatus = null;
+        await _db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CompleteAsync(id, new CompleteDelegationRequest(null, null), _lawyer2.Id, "lawyer2"));
+
+        Assert.Contains("لا يمكن تنفيذ انابة في ملف غير متداول", ex.Message);
+    }
+
+    [Theory]
+    [InlineData(ExecutionStatusCatalog.Deferred, null)]
+    [InlineData(ExecutionStatusCatalog.ExecutedBySettlement, null)]
+    [InlineData(ExecutionStatusCatalog.ExecutedForcibly, ExecutionStatusCatalog.SubFullyExecuted)]
+    [InlineData(ExecutionStatusCatalog.Recovered, null)]
+    [InlineData(ExecutionStatusCatalog.StateStruckOff, null)]
+    [InlineData(ExecutionStatusCatalog.DelegationExecuted, null)]
+    public async Task Complete_OnNonTradingSource_RejectsWithE3(string sourceStatus, string? sourceSubStatus)
+    {
+        // توسيع B (F10): إنابة متداخلة على مناب منتهٍ لا تُتمَّم — المصدر يجب أن يكون
+        // «متداولًا أو منفذًا جزئيًا» وإلا رُفض الإتمام بإعادة E3 ذاتها.
+        var (id, source, _) = await CreateRegisteredDelegationAsync();
+        source.ExecStatus = sourceStatus;
+        source.ExecSubStatus = sourceSubStatus;
+        await _db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CompleteAsync(id, new CompleteDelegationRequest(null, null), _lawyer2.Id, "lawyer2"));
+
+        Assert.Contains("لا يمكن تنفيذ انابة في ملف غير متداول", ex.Message);
+    }
+
+    [Fact]
+    public async Task Complete_OnTradingTarget_WithPartiallyExecutedSource_Succeeds()
+    {
+        // المنيب «منفذ جبريا / منفذ جزئيا» (N1) والمناب ما زال متداولًا — الإتمام جائز.
+        var (id, source, target) = await CreateRegisteredDelegationAsync();
+        source.ExecStatus = ExecutionStatusCatalog.ExecutedForcibly;
+        source.ExecSubStatus = ExecutionStatusCatalog.SubPartiallyExecuted;
+        await _db.SaveChangesAsync();
+
+        var assetDto = (await _service.ListForDocumentAsync(source.Id)).Single().Assets.Single();
+        var dto = await _service.CompleteAsync(id,
+            new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }, "12/8/2026", true),
+            _lawyer2.Id, "lawyer2");
+
+        Assert.Equal(DelegationStatusCatalog.Executed, dto!.Status);
+        Assert.Equal(ExecutionStatusCatalog.DelegationExecuted, target.ExecStatus);
+    }
+
+    [Fact]
+    public async Task Create_OnDeferredSource_RejectsWithE4()
+    {
+        // C3 (E4): لا تُسطَّر إنابة على ملف تريث.
+        var source = await CreateSourceAsync();
+        source.ExecStatus = ExecutionStatusCatalog.Deferred;
+        source.TarithNumber = "كتاب-تريث";
+        source.TarithDate = "1/9/2026";
+        await _db.SaveChangesAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1"));
+
+        Assert.Contains("لا يمكن تسطير انابة في ملف تريث", ex.Message);
+    }
+
+    [Fact]
+    public async Task Register_OnDeferredSource_RejectsWithE5()
+    {
+        // N5 (E5): لا تُسجَّل إنابة بعد وصول كتاب تريث في الملف المنيب — الحالة تُفحص لحظة التسجيل.
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+
+        source.ExecStatus = ExecutionStatusCatalog.Deferred;
+        source.TarithNumber = "كتاب-تريث";
+        source.TarithDate = "1/9/2026";
+        await _db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+                _lawyer2.Id, "lawyer2"));
+
+        Assert.Contains("لا يمكن تسجيل الانابة لورود كتاب تريث في الملف المنيب", ex.Message);
+    }
+
+    [Fact]
+    public async Task Register_OnSettledSource_RejectsWithValidateSourceMessage()
+    {
+        // N5: لو أصبح المنيب منفَّذًا (تسوية) بعد الاعتماد تُرفض التسجيل برسالة ValidateSource القائمة.
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+
+        source.ExecStatus = ExecutionStatusCatalog.ExecutedBySettlement;
+        source.CollectedAmount = 500;
+        await _db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+                _lawyer2.Id, "lawyer2"));
+
+        Assert.Contains("لا يمكن تسطير إنابة على ملف منفَّذ أو مشطوب", ex.Message);
+        // التسجيل لم يقع: إنابة لم تُنقل إلى «مسجلة أصولًا».
+        Assert.Equal(DelegationStatusCatalog.Assigned,
+            (await _db.DocumentDelegations.SingleAsync(d => d.Id == created.Id)).Status);
+    }
+
     [Fact]
     public async Task Create_External_PersistsBranchAndDepositBook()
     {
@@ -1265,8 +1404,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(_branch.Id, alert.BranchId);
         Assert.Equal(targetId, alert.DocumentId);
         Assert.Contains(_head1.Id, alert.Recipients.Select(r => r.UserId));
-        Assert.Contains("بانتظار الإتمام", alert.Message);
-        Assert.Contains("890", alert.Message);
+        Assert.Equal("بانتظار الإتمام", alert.Message);
     }
 
     [Fact]

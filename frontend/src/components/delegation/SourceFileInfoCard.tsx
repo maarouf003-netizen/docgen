@@ -1,32 +1,29 @@
 import type { DelegationDto } from '../../types';
+import { formatDate } from '../../utils/dates';
+import { delegationAssetsLine } from '../../utils/delegationAssets';
 import { FieldCell } from '../view/FieldCell';
 import { SectionCard } from '../view/SectionCard';
-import { DelegationDetails } from './DelegationDetails';
-import { DelegationActivityStrip } from './DelegationActivityStrip';
 
 /**
- * بطاقة «معلومات الملف المنيب» (في الملف المناب): تعرض إنابة هذا الملف كما سطّرها
- * محامي الملف المنيب — مصدره وأطرافه وبيانات سنده (لقطة مجمّدة تُحدَّث من المنيب).
- * يجد محامي الملف المناب هنا أزرار متابعة الإنابة: «تسجيل أصولًا» ثم «إتمام الإنابة».
+ * بطاقة «معلومات الملف المنيب» (في الملف المناب): ثمانية حقول (D2/L7) — المنيب ورقمه الأساس
+ * ونوعه، والدائرة المنابة وداخليتها/خارجيتها، وتاريخ الإنابة ونصها وأموالها. «مسجلة أصولًا»
+ * وحالة الإنابة تُعرض كشارة في بطاقة «حالة الإنابة» الجديدة (و3) لا في هذه البطاقة،
+ * وزر «إتمام الإنابة» انتقل إلى بطاقة الحالة (و4). يبقى هنا زر «تسجيل أصولًا» وحده.
  */
 export function SourceFileInfoCard({
   delegation,
   canRegister,
-  canComplete,
   onRegister,
-  onComplete,
 }: {
   delegation: DelegationDto;
   /** هل يعرض زر «تسجيل أصولًا»؟ (إنابة محالة لمحامي الملف المناب نفسه). */
   canRegister?: boolean;
-  /** هل يعرض زر «إتمام الإنابة»؟ (إنابة مسجلة أصولًا لمحامي الملف المناب نفسه). */
-  canComplete?: boolean;
   onRegister?: () => void;
-  onComplete?: () => void;
 }) {
   const sourceNumber = [delegation.sourceFileNumber, delegation.sourceFileYear]
     .filter(Boolean)
     .join('/');
+  const assetsLine = delegationAssetsLine(delegation);
 
   return (
     <SectionCard title="معلومات الملف المنيب">
@@ -37,33 +34,45 @@ export function SourceFileInfoCard({
         />
         {sourceNumber && <FieldCell label="رقم أساس الملف المنيب" value={sourceNumber} />}
         {delegation.sourceFileType && <FieldCell label="نوع الملف المنيب" value={delegation.sourceFileType} />}
+        {delegation.delegatedCourt && (
+          <FieldCell label="الدائرة المنابة" value={delegation.delegatedCourt} />
+        )}
+        <FieldCell
+          label="داخلية أم خارجية"
+          value={
+            delegation.isExternal
+              ? `إنابة خارجية — الفرع المناب: ${delegation.externalBranchName ?? '—'}`
+              : 'إنابة داخلية'
+          }
+        />
+        {delegation.delegationDate && (
+          <FieldCell label="تاريخ الإنابة" value={formatDate(delegation.delegationDate)} />
+        )}
       </div>
 
-      <div className="mt-3 pt-3 border-t border-gray-100">
-        <DelegationDetails d={delegation} />
-        <DelegationActivityStrip delegationId={delegation.id} />
-      </div>
+      {delegation.delegationText && (
+        <div className="mt-2.5">
+          <span className="block text-xs text-gray-500 mb-1">نص قرار الإنابة</span>
+          <p className="text-sm text-gray-700 whitespace-pre-line break-words">{delegation.delegationText}</p>
+        </div>
+      )}
 
-      {(canRegister || canComplete) && (
-        <div className="mt-4 pt-3 border-t border-gray-100 flex gap-2 flex-wrap">
-          {canRegister && (
-            <button
-              type="button"
-              onClick={onRegister}
-              className="bg-emerald-800 hover:bg-emerald-700 text-white rounded-lg px-4 py-2 text-sm min-h-11"
-            >
-              تسجيل أصولًا
-            </button>
-          )}
-          {canComplete && (
-            <button
-              type="button"
-              onClick={onComplete}
-              className="bg-emerald-800 hover:bg-emerald-700 text-white rounded-lg px-4 py-2 text-sm min-h-11"
-            >
-              إتمام الإنابة
-            </button>
-          )}
+      {assetsLine && (
+        <div className="mt-2.5">
+          <span className="block text-xs text-gray-500 mb-1">الأموال موضوع الإنابة</span>
+          <p className="text-sm text-gray-700 break-words">{assetsLine}</p>
+        </div>
+      )}
+
+      {canRegister && (
+        <div className="mt-4 pt-3 border-t border-gray-100">
+          <button
+            type="button"
+            onClick={onRegister}
+            className="bg-emerald-800 hover:bg-emerald-700 text-white rounded-lg px-4 py-2 text-sm min-h-11"
+          >
+            تسجيل أصولًا
+          </button>
         </div>
       )}
     </SectionCard>

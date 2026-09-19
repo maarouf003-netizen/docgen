@@ -5,8 +5,8 @@ namespace DocGenerator.Application.Common;
 
 /// <summary>
 /// المصدر الوحيد لاشتقاق حالة العرض الموحدة للملف (منفذ/تريث/تحت رفع/متداول/
-/// متداول / منفذ جزئيا/مشطوب) من حقول الحالة الخام — تستهلكه الاستجابة للواجهة
-/// وخدمة تصدير Excel معًا، فلا تتكرر القواعد في طرفين.
+/// متداول / منفذ جزئيا/مسترد/مشطوب) من حقول الحالة الخام — تستهلكه الاستجابة
+/// للواجهة وخدمة تصدير Excel معًا، فلا تتكرر القواعد في طرفين.
 /// </summary>
 public static class DocumentStatusResolver
 {
@@ -21,6 +21,9 @@ public static class DocumentStatusResolver
         }
 
         if (doc.ExecStatus == ExecutionStatusCatalog.StateStruckOff) return "مشطوب";
+        // «مسترد» (المناب الذي استُرد إلى الدائرة المنيبة) حالة عرض مستقلة (الخطة R1/L3) —
+        // لا تُطوى في «منفذ» كي تظهر شارتُها في البطاقة والمنفذة والتصدير.
+        if (doc.ExecStatus == ExecutionStatusCatalog.Recovered) return "مسترد";
         if (doc.ExecStatus == ExecutionStatusCatalog.Deferred) return "تريث";
         if (doc.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
             && doc.ExecSubStatus == "منفذ جزئيا") return "متداول / منفذ جزئيا";

@@ -80,6 +80,50 @@ describe('DelegationsCard', () => {
     expect(screen.queryByText('الملف المناب')).not.toBeInTheDocument();
   });
 
+  it('يعرض شارة «حالة الملف المناب» (مسترد) عند توافر targetExecStatus', () => {
+    render(
+      <DelegationsCard
+        delegations={[delegation({ targetDocumentId: 5, targetExecStatus: 'مسترد' })]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    expect(screen.getByText('حالة الملف المناب')).toBeInTheDocument();
+    expect(screen.getByText('مسترد')).toBeInTheDocument();
+  });
+
+  it('يعرض شارة «حالة الملف المناب» (تريث) للمناب المتريث', () => {
+    render(
+      <DelegationsCard
+        delegations={[delegation({ targetDocumentId: 5, targetExecStatus: 'تريث' })]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    expect(screen.getByText('حالة الملف المناب')).toBeInTheDocument();
+    expect(screen.getByText('تريث')).toBeInTheDocument();
+  });
+
+  it('لا يعرض «حالة الملف المناب» قبل إنشاء ملف المناب', () => {
+    render(
+      <DelegationsCard
+        delegations={[delegation({ targetDocumentId: null, targetExecStatus: null })]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    expect(screen.queryByText('حالة الملف المناب')).not.toBeInTheDocument();
+  });
+
   it('يعرض «إنابة خارجية» مع اسم الفرع المناب', () => {
     render(
       <DelegationsCard

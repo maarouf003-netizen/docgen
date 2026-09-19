@@ -123,6 +123,27 @@ describe('ArchivedDocumentsList', () => {
     expect(await screen.findByText(/أعيد "أحمد" إلى المتداول/)).toBeInTheDocument();
   });
 
+  it('يخفي زر الإعادة لصفوف المناب عبر canRestoreRow في الجدول والبطاقة (و7)', async () => {
+    mockPage([
+      makeDocument({ id: 3, borrowerName: 'منيب', sourceDelegationId: null }),
+      makeDocument({ id: 4, borrowerName: 'مناب', sourceDelegationId: 9 }),
+    ]);
+    const cfg = baseConfig({
+      restoreButtonLabel: 'إعادة الملف',
+      canRestoreRow: (d) => d.sourceDelegationId == null,
+    });
+
+    const { unmount } = render(<ArchivedDocumentsList config={cfg} />);
+    const table = await screen.findByRole('table');
+    expect(within(table).getAllByRole('button', { name: 'إعادة الملف' })).toHaveLength(1);
+    unmount();
+
+    isMobileMock.mockReturnValue(true);
+    render(<ArchivedDocumentsList config={cfg} />);
+    expect(await screen.findByRole('button', { name: 'إعادة الملف' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'إعادة الملف' })).toHaveLength(1);
+  });
+
   it('يعرض عنصري البطاقة العلوي والسفلي المخصصين على الجوال', async () => {
     isMobileMock.mockReturnValue(true);
     mockPage([makeDocument({ borrowerName: 'أحمد' })]);

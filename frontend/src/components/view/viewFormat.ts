@@ -235,7 +235,59 @@ export function formatCollectedAmounts(doc: DocumentResponse): string {
   ]);
 }
 
-export function buildStatusSummary(doc: DocumentResponse): string {
+/** أحدث وقعة «استرداد» على الملف (تفاصيل F2): سبب الاسترداد + كتاب براءة الذمة أو تحويل البدل + رقم أساس المنيب. */
+function latestRecovery(doc: DocumentResponse): {
+  recoveryReason?: string;
+  baraetNumber?: string;
+  baraetDate?: string;
+  forcibleTransferDate?: string;
+  forcibleTransferNoticeNumber?: string;
+  sourceFileNumber?: string;
+} | undefined {
+  const recovered = (doc.occurrences ?? []).filter((o) => o.occurrenceType === 'recovered');
+  const last = recovered[recovered.length - 1];
+  return last ? (last.details ?? {}) : undefined;
+}
+
+export function buildStatusSummary(doc: DocumentResponse, context?: { sourceLabel?: string | null }): string {
+  // بند و6 (L5): ملخص حالة الملف المناب (عند وجود الإنابة) يقدّم على بقية الفروع؛ «تريث» يُقرأ من
+  // كتب المناب الموروثة من المنيب، و«مسترد» يُقرأ سببُه من وقعة «استرداد» الأخيرة (تفاصيل F2).
+  // أية حالة أخرى (كصفوف التسوية/الجبريا القديمة المسجلة يدويًا قبل الخطة) تسقط على القديم دفاعًا.
+  const sourceLabel = context?.sourceLabel?.trim();
+  if (doc.sourceDelegationId != null) {
+    if (doc.execStatus === 'تريث') {
+      return [
+        'تريث تبعًا للملف المنيب',
+        sourceLabel ? `(${sourceLabel})` : '',
+        'بموجب كتاب التريث رقم',
+        doc.tarithNumber?.trim(),
+        'بتاريخ',
+        doc.tarithDate?.trim(),
+      ]
+        .filter(Boolean)
+        .join(' ');
+    }
+    if (doc.execStatus === 'مسترد') {
+      const recovery = latestRecovery(doc);
+      if (recovery?.recoveryReason === 'منفذ بالتسوية') {
+        return [
+          'مسترد لاعتبار الملف المنيب',
+          sourceLabel ? `(${sourceLabel})` : '',
+          'منفذًا بالتسوية بكتاب براءة الذمة رقم',
+          recovery.baraetNumber || recovery.baraetDate,
+        ]
+          .filter(Boolean)
+          .join(' ');
+      }
+      return [
+        'مسترد لاعتبار الملف المنيب',
+        sourceLabel ? `(${sourceLabel})` : '',
+        'منفذًا جبريًا كاملًا — بتحصيل المبلغ المطالب به جبريًا في الملف المنيب',
+      ]
+        .filter(Boolean)
+        .join(' ');
+    }
+  }
   if (doc.execStatus === 'منفذ بالتسوية') {
     const parts = ['منفذ بموجب كتاب براءة الذمة'];
     if (doc.baraetNumber) parts.push(`رقم ${doc.baraetNumber}`);
@@ -336,6 +388,12 @@ export function occurrenceLine(occurrence: DocumentOccurrenceDto): string {
     }
     case 'revert':
       return ['تراجع عن الحالة بموجب كتاب السير بالملف', d.sayerNumber ? `رقم ${d.sayerNumber}` : '', d.sayerDate ? `بتاريخ ${d.sayerDate}` : ''].filter(Boolean).join(' ');
+    case 'recovered':
+      // وقعة استرداد المناب (L4): التسوية تُلحق بكتاب براءة الذمة، والاكتمال الجبري بسبب «تحصيل
+      // المبلغ المطالب به جبريًا» في المنيب — بمصطلح المعتمَد (T5/L4).
+      return d.recoveryReason === 'منفذ بالتسوية'
+        ? ['استرداد الملف المناب لاعتبار الملف المنيب منفذًا', d.baraetNumber ? `ببراءة الذمة رقم ${d.baraetNumber}` : '', d.baraetDate ? `تاريخ ${d.baraetDate}` : ''].filter(Boolean).join(' ')
+        : 'استرداد الملف المناب لاعتبار الملف المنيب منفذًا — بتحصيل المبلغ المطالب به جبريًا في الملف المنيب';
     case 'entity-change': {
       // الوقعة الآلية لتغيير الجهة: سرد نصي حر جاهز (مع مرجع المرسوم) يصل عبر DetailsText.
       const narrative = occurrence.detailsText?.trim();

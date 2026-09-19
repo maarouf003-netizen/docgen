@@ -56,4 +56,11 @@ public class DocumentStatusResolverTests
     {
         Assert.Equal("مشطوب", DocumentStatusResolver.Resolve(Doc(execStatus: "مشطوب")));
     }
+
+    [Fact]
+    public void Recovered_ApplicantSide_IsRecovered()
+    {
+        // «مسترد» حالة عرض مستقلة (الخطة R1/L3) — لا تُطوى في «منفذ».
+        Assert.Equal("مسترد", DocumentStatusResolver.Resolve(Doc(execStatus: "مسترد")));
+    }
 }

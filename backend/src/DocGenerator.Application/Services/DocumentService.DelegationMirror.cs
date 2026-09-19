@@ -21,6 +21,38 @@ public sealed partial class DocumentService
         int ActorUserId,
         string Message);
 
+    /// <summary>نوع تنبيه تغيّر حالة المنيب إلى مناباته المعلقة (T2-T5) — يُحدَّد صراحةً عند كل
+    /// استدعاء بحسب الانتقال، ولا يُشترط بعد في رسالة النقل التلقائي من الحالة نفسها.</summary>
+    private enum DelegationStatusAlertKind
+    {
+        /// <summary>الرسالة العامة القديمة («تغيّرت حالة الملف المنيب») — مسار فك الشطب فقط.</summary>
+        Generic,
+
+        /// <summary>T2: المنيب تريث — المناب يوقف إجراءات الإنابة.</summary>
+        Deferred,
+
+        /// <summary>T3: عودة المنيب إلى المتداول (تراجع من تريث) — متابعة السير.</summary>
+        Returned,
+
+        /// <summary>T4: المنيب منفذ بالتسوية — المناب مسترد يوقف إجراءاته ويعود لمرجعه.</summary>
+        Settled,
+
+        /// <summary>T5: المنيب منفذ جبريًا كاملًا — المناب مسترد بتحصيل المبلغ جبريًا.</summary>
+        FullyForcibly,
+    }
+
+    /// <summary>نوع تنبيه حالة المنيب بعد تغيير حالته عبر UpdateStatusAsync: تريث/تسوية/اكتمال جبري
+    /// فحسب؛ «جزئيا» (N1) و«مشطوب» (N7) وسواها كبت بلا تنبيه.</summary>
+    private static DelegationStatusAlertKind? DelegationStatusAlertKindFor(Document doc) =>
+        doc.ExecStatus switch
+        {
+            ExecutionStatusCatalog.Deferred => DelegationStatusAlertKind.Deferred,
+            ExecutionStatusCatalog.ExecutedBySettlement => DelegationStatusAlertKind.Settled,
+            ExecutionStatusCatalog.ExecutedForcibly when doc.ExecSubStatus == ExecutionStatusCatalog.SubFullyExecuted
+                => DelegationStatusAlertKind.FullyForcibly,
+            _ => null,
+        };
+
     /// <summary>حاصل فحص تعديل المناب: الإضافات المحلية المسموحة (ورثة/ممثل) للتنبيه العكسي.</summary>
     private sealed class TargetEditResult
     {
@@ -903,8 +935,10 @@ public sealed partial class DocumentService
         }
     }
 
-    /// <summary>تنبيه تغيّر حالة المنيب إلى مناباته المعلقة (مسار StatusChangeModal المنفصل عن UpdateAsync).</summary>
-    private async Task FireDelegationStatusChangeAlertsAsync(Document doc, CancellationToken ct)
+    /// <summary>تنبيه تغيّر حالة المنيب إلى مناباته المعلقة (مسار StatusChangeModal المنفصل عن UpdateAsync).
+    /// الصيغ T2-T5 بصياغات المستخدم المقفلة؛ المشطوب (N7) والجزئيا (N1) لا يصلان هنا أصلًا
+    /// (نوع فارغ في UpdateStatusAsync) — ومسار فك الشطب يبقي الصيغة العامة القديمة.</summary>
+    private async Task FireDelegationStatusChangeAlertsAsync(Document doc, DelegationStatusAlertKind kind, CancellationToken ct)
     {
         List<DocumentDelegation> delegations;
         try
@@ -928,9 +962,40 @@ public sealed partial class DocumentService
                 target.CreatedById,
                 target.BranchId ?? recipientBranch ?? delegation.ExternalBranchId ?? 0,
                 doc.CreatedById,
-                $"تغيّرت حالة الملف المنيب إلى «{DocumentStatusResolver.Resolve(doc)}»");
+                BuildDelegationStatusChangeMessage(kind, doc, target));
             await FireDelegationAlertAsync(intent, ct);
         }
+    }
+
+    /// <summary>بناء رسالة تنبيه حالة المنيب: الصيغ T2-T5 (بصياغة المستخدم حرفيًا) بحقول المناب
+    /// (اسم المنفذ عليه/رقم أساسه/دائرته) والمنيب (الكتب/رقمه) — تُعبَّأ runtime من الوثيقتين.</summary>
+    private string BuildDelegationStatusChangeMessage(DelegationStatusAlertKind kind, Document doc, Document target)
+    {
+        var executedOn = ActorFullName(target);
+        var baseNumber = EffectiveFileIdentity.Number(target, CurrentYear());
+        var court = target.Court;
+
+        return kind switch
+        {
+            // T2 (تريث): ورد كتاب تريث بملف الإنابة — يرجى وقف إجراءات الإنابة.
+            DelegationStatusAlertKind.Deferred =>
+                $"ورد كتاب تريث بملف الانابة للمنفذ عليه {executedOn} رقم اساس {baseNumber} " +
+                $"دائرة تنفيذ {court}، يرجى وقف اجراءات الانابة",
+            // T3 (عودة): متابعة السير بملف المنفذ عليه بانتهاء حالة التريث.
+            DelegationStatusAlertKind.Returned =>
+                $"يرجى متابعة السير بملف المنفذ عليه {executedOn} رقم اساس {baseNumber} " +
+                $"دائرة تنفيذ {court} تبعا لكتاب الجهة العامة للسير بالملف وانتهاء حالة التريث",
+            // T4 (استرداد-تسوية): وقف إجراءات الإنابة وعودة المناب لمرجعه الأصلي.
+            DelegationStatusAlertKind.Settled =>
+                $"يرجى وقف اجراءات الانابة في ملف المنفذ عليه {executedOn} رقم اساس {baseNumber} " +
+                $"دائرة تنفيذ {court}، تبعا لاعتبار الملف المنيب منفذ بالتسوية، واعادته لمرجعه الأصلي",
+            // T5 (استرداد-جبري): استُرد ملفك المناب بتحصيل المبلغ المطالب به جبريًا في الملف المنيب.
+            DelegationStatusAlertKind.FullyForcibly =>
+                $"استُرد ملفك المناب رقم أساس {baseNumber} لاعتبار الملف المنيب " +
+                $"{EffectiveFileIdentity.Number(doc, CurrentYear())} منفذًا — بتحصيل المبلغ المطالب به جبريًا في الملف المنيب",
+            // المسار العام (فك الشطب): الصيغة القديمة بلا تغيير — محفوظة للتسلسل التاريخي.
+            _ => $"تغيّرت حالة الملف المنيب إلى «{DocumentStatusResolver.Resolve(doc)}»",
+        };
     }
 
     /// <summary>إطلاق تنبيه المنيب عند الإضافات المحلية (وريث/ممثل) على الملف المناب معزولًا.</summary>

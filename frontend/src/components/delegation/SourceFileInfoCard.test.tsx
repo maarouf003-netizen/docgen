@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SourceFileInfoCard } from './SourceFileInfoCard';
+import { formatDate } from '../../utils/dates';
 import type { DelegationDto } from '../../types';
 
 const delegation: DelegationDto = {
@@ -30,7 +31,7 @@ const delegation: DelegationDto = {
 };
 
 describe('SourceFileInfoCard', () => {
-  it('يعرض «معلومات الملف المنيب» مع اسمه وتفاصيل الإنابة', () => {
+  it('يعرض «معلومات الملف المنيب» بحقولها الثمانية (D2/L7) بلا «مسجلة أصولًا» ولا المحامي ولا الشريط', () => {
     render(<SourceFileInfoCard delegation={delegation} />);
 
     expect(screen.getByText('معلومات الملف المنيب')).toBeInTheDocument();
@@ -38,12 +39,27 @@ describe('SourceFileInfoCard', () => {
     expect(screen.getByText('أحمد محمد خالد')).toBeInTheDocument();
     expect(screen.getByText('رقم أساس الملف المنيب')).toBeInTheDocument();
     expect(screen.getByText('1500/2026')).toBeInTheDocument();
+    expect(screen.getByText('الدائرة المنابة')).toBeInTheDocument();
     expect(screen.getByText('محكمة التنفيذ الأولى')).toBeInTheDocument();
-    expect(screen.getByText('مسجلة أصولًا')).toBeInTheDocument();
+    expect(screen.getByText('داخلية أم خارجية')).toBeInTheDocument();
     expect(screen.getByText('إنابة خارجية — الفرع المناب: فرع حمص')).toBeInTheDocument();
+    expect(screen.getByText('تاريخ الإنابة')).toBeInTheDocument();
+    expect(screen.getByText(formatDate('2026-08-01'))).toBeInTheDocument();
+    expect(screen.getByText('نص قرار الإنابة')).toBeInTheDocument();
     expect(screen.getByText('لبيع الأموال المرهونة بالمزاد العلني')).toBeInTheDocument();
-    expect(screen.getByText('المحامي هشام')).toBeInTheDocument();
+    expect(screen.getByText('الأموال موضوع الإنابة')).toBeInTheDocument();
     expect(screen.getByText('مركبة سيارة — لوحة 123')).toBeInTheDocument();
+
+    // D2: «مسجلة أصولًا» وحالة الإنابة في البطاقة الجديدة لا في بطاقة المنيب.
+    expect(screen.queryByText('مسجلة أصولًا')).not.toBeInTheDocument();
+    expect(screen.queryByText('المحامي هشام')).not.toBeInTheDocument();
+    expect(screen.queryByText('حالة الإنابة')).not.toBeInTheDocument();
+  });
+
+  it('يعرض نوع الملف المنيب عند وجوده فقط', () => {
+    render(<SourceFileInfoCard delegation={{ ...delegation, sourceFileType: 'حقوق' }} />);
+    expect(screen.getByText('نوع الملف المنيب')).toBeInTheDocument();
+    expect(screen.getByText('حقوق')).toBeInTheDocument();
   });
 
   it('يستبدل اسم المنيب الغائب برقم ملفه', () => {
@@ -73,7 +89,7 @@ describe('SourceFileInfoCard', () => {
     expect(screen.queryByRole('button', { name: 'إتمام الإنابة' })).not.toBeInTheDocument();
   });
 
-  it('يعرض زر «تسجيل أصولًا» فقط عند التفويض وعلى نقرته يُطلَب', async () => {
+  it('يعرض زر «تسجيل أصولًا» فقط عند التفويض وعلى نقرته يُطلَب — والإتمام انتقل لبطاقة الحالة (و4)', async () => {
     const user = userEvent.setup();
     const onRegister = vi.fn();
     render(
@@ -88,22 +104,5 @@ describe('SourceFileInfoCard', () => {
     expect(screen.queryByRole('button', { name: 'إتمام الإنابة' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'تسجيل أصولًا' }));
     expect(onRegister).toHaveBeenCalled();
-  });
-
-  it('يعرض زر «إتمام الإنابة» فقط عند التفويض وعلى نقرته يُطلَب', async () => {
-    const user = userEvent.setup();
-    const onComplete = vi.fn();
-    render(
-      <SourceFileInfoCard
-        delegation={delegation}
-        canComplete
-        onComplete={onComplete}
-      />,
-    );
-
-    expect(screen.getByRole('button', { name: 'إتمام الإنابة' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'تسجيل أصولًا' })).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'إتمام الإنابة' }));
-    expect(onComplete).toHaveBeenCalled();
   });
 });

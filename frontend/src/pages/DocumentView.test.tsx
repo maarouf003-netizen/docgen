@@ -1983,7 +1983,10 @@ it('يُسجّل الملف كآخر ما فُتح في الجلسة ليُمي�
     renderView();
 
     expect(await screen.findByText('معلومات الملف المنيب')).toBeInTheDocument();
-    expect(screen.getByText('المحامي هشام')).toBeInTheDocument();
+    expect(screen.getAllByText('أحمد محمد خالد').length).toBeGreaterThan(0);
+    expect(screen.getByText('الدائرة المنابة')).toBeInTheDocument();
+    expect(screen.getByText('داخلية أم خارجية')).toBeInTheDocument();
+    expect(screen.getByText('تاريخ الإنابة')).toBeInTheDocument();
     expect(screen.queryByText('تشعبات الملف')).not.toBeInTheDocument();
   });
 
@@ -2205,7 +2208,7 @@ await screen.findByText('بيانات الملف');
     expect(screen.queryByText('تشعبات الملف')).not.toBeInTheDocument();
   });
 
-  it('يعرض «نوع الملف المنيب» و«نشاط الإنابة» للملف المناب ويخفي أموال المناب (قرار 8)', async () => {
+  it('يعرض «نوع الملف المنيب» و«حالة الإنابة» للملف المناب ويخفي أموال المناب (قرار 8)', async () => {
     const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
     getMock.mockImplementation((url: string) => {
       if (url === '/documents/1/delegations') {
@@ -2251,7 +2254,7 @@ await screen.findByText('بيانات الملف');
     expect(await screen.findByText('معلومات الملف المنيب')).toBeInTheDocument();
     expect(screen.getByText('نوع الملف المنيب')).toBeInTheDocument();
     expect(screen.getByText('سند مصارف')).toBeInTheDocument();
-    expect(screen.getByText('نشاط الإنابة')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'حالة الإنابة' })).toBeInTheDocument();
     expect(screen.getByText('حدّث المنيب بيانات السند')).toBeInTheDocument();
     expect(screen.queryByText('الأموال المنقولة وغير المنقولة')).not.toBeInTheDocument();
   });

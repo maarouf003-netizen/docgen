@@ -204,6 +204,19 @@ function StatusChangeOccurrenceDetails({ occurrence }: { occurrence: DocumentOcc
       pushIf(pairs, 'رقم ورود كتاب بالسير بالملف', d.sayerRegNumber);
       pushIf(pairs, 'تاريخ ورود كتاب بالسير بالملف', d.sayerRegDate);
       break;
+    case 'recovered':
+      // وقعة استرداد المناب (F2/L4): سبب الاسترداد + كتاب براءة الذمة (تسوية) أو تحويل البدل
+      // (اكتمال جبري) + رقم أساس المنيب — بمفاتيح معاودة من وقعةِ الاسترداد.
+      if (d.recoveryReason) pushIf(pairs, 'سبب الاسترداد', d.recoveryReason);
+      if (d.recoveryReason === 'منفذ بالتسوية') {
+        pushIf(pairs, 'رقم كتاب براءة الذمة', d.baraetNumber);
+        pushIf(pairs, 'تاريخ كتاب براءة الذمة', d.baraetDate);
+      } else {
+        pushIf(pairs, 'تاريخ تحويل البدل', d.forcibleTransferDate);
+        pushIf(pairs, 'رقم إشعار التحويل', d.forcibleTransferNoticeNumber);
+      }
+      pushIf(pairs, 'رقم أساس المنيب', d.sourceFileNumber);
+      break;
     case 'entity-change':
       // الوقعة الآلية لتغيير الجهة: سردها النصي الحر في سطر البطاقة (occurrenceLine)،
       // وهنا تاريخ التغيير التشغيلي فقط — بمرآة «تاريخ الشطب» لوقعة الشطب.

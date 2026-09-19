@@ -14,13 +14,19 @@ const DATE_PLACEHOLDER = 'مثال: 1/8/2026';
 function currentStateOf(doc: DocumentResponse): string {
   if (doc.execStatus === 'مشطوب' || doc.executedStatus === 'مشطوب') return 'مشطوب';
   if (doc.execStatus === 'تريث') return 'تريث';
+  if (doc.execStatus === 'مسترد') return 'مسترد';
   if (doc.execStatus === 'منفذ بالتسوية') return 'منفذ بالتسوية';
   if (doc.execStatus === 'منفذ جبريا') return 'منفذ جبريا';
   return doc.isDraft ? 'تحت رفع' : 'متداول';
 }
 
-/** الانتقالات المسموحة من الحالة الحالية عبر نافذة «تغيير الحالة» (المتداول يُسجَّل من التعديل). */
-function allowedTargetsOf(state: string): string[] {
+/** الانتقالات المسموحة عبر نافذة «تغيير الحالة» — للملف المنيب (والمتداول يُسجَّل من التعديل).
+ * الملف المناب (و5/ب2) مختلف: مناب متداول لا يخرج إلا إلى «مشطوب» (C1)، ومناب موروث-تريث
+ * أو «مسترد» بلا حالات إطلاقًا (تلحق حالة المنيب اعتبارًا منفذًا أو تريثًا — رسالة L6)،
+ * و«تراجع»/«منفذ كاملا بهذا البيع» محجوبان عنه نهائيًا (الخلفية تحمي أيضًا بب2/F6). */
+function allowedTargetsOf(state: string, isTarget: boolean): string[] {
+  if (isTarget && state === 'متداول') return ['مشطوب'];
+  if (isTarget) return [];
   switch (state) {
     case 'تحت رفع':
       return ['تريث', 'منفذ بالتسوية'];
@@ -103,9 +109,12 @@ export default function StatusChangeModal({
   onChanged: () => void;
 }) {
   const state = currentStateOf(doc);
+  // «الملف المناب» (حالة الإنابة): لا يغيّر حالته بنفسه — مناب متداول يُشطب فحسب (C1)،
+  // والموروث-تريث والمسترد بلا خيارات ورسالة L6 المفصلة، والحالة النهائية بلا مخرج.
+  const isTarget = Boolean(doc.sourceDelegationId);
   // «اعتبار الملف منفذًا كاملًا بهذا البيع» يخص فقط «منفذ جبريا — منفذ جزئيا» (المنيِّب
   // الذي فُعّل تلقائيًا بإتمام إنابته)؛ أما «منفذ كاملا» فلا يُعرض له هذا الإجراء.
-  const targets = allowedTargetsOf(state).filter(
+  const targets = allowedTargetsOf(state, isTarget).filter(
     (t) => t !== 'منفذ كاملا بهذا البيع' || doc.execSubStatus === 'منفذ جزئيا',
   );
   const [target, setTarget] = useState<string>(targets[0] ?? '');
@@ -256,7 +265,9 @@ export default function StatusChangeModal({
 
           {targets.length === 0 ? (
             <p className="text-gray-600 text-sm">
-              الملف في حالة «{state}»؛ الإعادة من المشطوب تتم من صفحة «الملفات المشطوبة».
+              {isTarget
+                ? 'لا توجد حالات متاحة — حالة الملف المناب تلحق حالة الملف المنيب في اعتباره منفذ أو تريث'
+                : `الملف في حالة «${state}»؛ الإعادة من المشطوب تتم من صفحة «الملفات المشطوبة».`}
             </p>
           ) : (
             <>

@@ -4515,6 +4515,545 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.Equal(originalLabel, executedSnapshot.AssetLabel);
         Assert.False(executedSnapshot.SnapshotAdjusted);
     }
+
+    /// <summary>مناب تابع لملف منيب معيّن (إنابة مسجلة مرتبطة عبر SourceDelegationId).</summary>
+    private async Task<Document> AddDelegatedTargetForAsync(int sourceId, bool isDraft = false)
+    {
+        var delegation = new DocumentDelegation
+        {
+            SourceDocumentId = sourceId,
+            CreatedById = 1,
+            DelegatedCourt = "دائرة تنفيذ حلب",
+            Status = DelegationStatusCatalog.Registered,
+            Assets = new List<DelegationAsset>
+            {
+                new() { AssetKind = AssetKindCatalog.RealEstate, AssetLabel = "بيت" },
+            },
+        };
+        _db.DocumentDelegations.Add(delegation);
+        await _db.SaveChangesAsync();
+
+        var target = new Document
+        {
+            CreatedById = 1,
+            BranchId = 1,
+            BranchName = "دمشق",
+            GeneralEntitySide = GeneralEntitySideCatalog.Applicant,
+            IsDraft = isDraft,
+            FileType = FileTypeCatalog.Delegation,
+            SourceDelegationId = delegation.Id,
+            BorrowerName = "أحمد",
+            BorrowerFather = "خالد",
+            BorrowerFamily = "الخطيب",
+            AmountNumeric = 1000,
+            Currency = "ليرة سورية",
+            Court = "دمشق",
+            Applicant = "المدعي",
+            FileNumber = "890",
+            FileYear = "2026",
+        };
+        _db.Documents.Add(target);
+        await _db.SaveChangesAsync();
+        return target;
+    }
+
+    private static Dictionary<string, string?> DeferredFields() => new()
+    {
+        ["tarithNumber"] = "5",
+        ["tarithDate"] = "1/6/2026",
+        ["tarithRegNumber"] = "6",
+        ["tarithRegDate"] = "2/6/2026",
+    };
+
+    private static Dictionary<string, string?> SettlementFields() => new()
+    {
+        ["baraetNumber"] = "7",
+        ["baraetDate"] = "3/7/2026",
+    };
+
+    private static Dictionary<string, string?> SayerFields() => new()
+    {
+        ["sayerNumber"] = "8",
+        ["sayerDate"] = "2/6/2026",
+        ["sayerRegNumber"] = "9",
+        ["sayerRegDate"] = "3/6/2026",
+    };
+
+    [Fact]
+    public async Task UpdateStatus_ToDeferred_InheritsDeferredToPendingTargets()
+    {
+        var source = await CreateSourceAsync();
+        var target = await AddDelegatedTargetForAsync(source.Id);
+
+        Assert.True(await _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1"));
+
+        var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == target.Id);
+        Assert.Equal(ExecutionStatusCatalog.Deferred, loaded.ExecStatus);
+        Assert.Equal("5", loaded.TarithNumber);
+        Assert.Equal("1/6/2026", loaded.TarithDate);
+        Assert.Equal("6", loaded.TarithRegNumber);
+
+        var occ = await _db.DocumentOccurrences.SingleAsync(o => o.DocumentId == target.Id);
+        Assert.Equal(OccurrenceTypeCatalog.Deferred, occ.OccurrenceType);
+        Assert.Contains("tarithNumber", occ.Details);
+        Assert.Contains("1/6/2026", occ.Details);
+    }
+
+    [Fact]
+    public async Task UpdateStatus_ToDeferred_SkipsDraftStruckOffRecoveredAndFinalTargets()
+    {
+        var source = await CreateSourceAsync();
+        var eligible = await AddDelegatedTargetForAsync(source.Id);
+        var draft = await AddDelegatedTargetForAsync(source.Id, isDraft: true);
+        var struckOff = await AddDelegatedTargetForAsync(source.Id);
+        struckOff.ExecStatus = ExecutionStatusCatalog.StateStruckOff;
+        var recovered = await AddDelegatedTargetForAsync(source.Id);
+        recovered.ExecStatus = ExecutionStatusCatalog.Recovered;
+        var final = await AddDelegatedTargetForAsync(source.Id);
+        final.ExecStatus = ExecutionStatusCatalog.DelegationExecuted;
+        _db.Documents.UpdateRange(struckOff, recovered, final);
+        await _db.SaveChangesAsync();
+
+        Assert.True(await _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1"));
+
+        var eligibleLoaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == eligible.Id);
+        Assert.Equal(ExecutionStatusCatalog.Deferred, eligibleLoaded.ExecStatus);
+
+        var draftLoaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == draft.Id);
+        Assert.Equal(string.Empty, draftLoaded.ExecStatus);
+        var struckOffLoaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == struckOff.Id);
+        Assert.Equal(ExecutionStatusCatalog.StateStruckOff, struckOffLoaded.ExecStatus);
+        var recoveredLoaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == recovered.Id);
+        Assert.Equal(ExecutionStatusCatalog.Recovered, recoveredLoaded.ExecStatus);
+        var finalLoaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == final.Id);
+        Assert.Equal(ExecutionStatusCatalog.DelegationExecuted, finalLoaded.ExecStatus);
+
+        Assert.False(await _db.DocumentOccurrences.AnyAsync(o => o.DocumentId == draft.Id));
+        Assert.False(await _db.DocumentOccurrences.AnyAsync(o => o.DocumentId == struckOff.Id));
+        Assert.False(await _db.DocumentOccurrences.AnyAsync(o => o.DocumentId == recovered.Id));
+        Assert.False(await _db.DocumentOccurrences.AnyAsync(o => o.DocumentId == final.Id));
+    }
+
+    [Fact]
+    public async Task UpdateStatus_ToDeferred_ReplacesFamilyFields_WithoutCollectedAmountsOrSoldAssets()
+    {
+        var source = await CreateSourceAsync();
+        var target = await AddDelegatedTargetForAsync(source.Id);
+        target.CollectedAmount = 500;
+        target.CollectedCurrency = "ليرة سورية";
+        target.SoldAssetIds = "[1]";
+        target.BaraetNumber = "99";
+        _db.Documents.Update(target);
+        await _db.SaveChangesAsync();
+
+        await _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1");
+
+        var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == target.Id);
+        Assert.Equal(ExecutionStatusCatalog.Deferred, loaded.ExecStatus);
+        Assert.Null(loaded.CollectedAmount);
+        Assert.Null(loaded.CollectedAmount2);
+        Assert.Null(loaded.CollectedAmount3);
+        Assert.Null(loaded.SoldAssetIds);
+        Assert.Null(loaded.BaraetNumber);
+        Assert.Null(loaded.ExecSubStatus);
+    }
+
+    [Fact]
+    public async Task UpdateStatus_ToDeferred_AlreadyInheritedTarget_NoDuplicateOccurrence()
+    {
+        var source = await CreateSourceAsync();
+        var target = await AddDelegatedTargetForAsync(source.Id);
+        target.ExecStatus = ExecutionStatusCatalog.Deferred;
+        target.TarithNumber = "old";
+        _db.Documents.Update(target);
+        await _db.SaveChangesAsync();
+
+        Assert.True(await _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1"));
+
+        var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == target.Id);
+        Assert.Equal("5", loaded.TarithNumber);
+        Assert.False(await _db.DocumentOccurrences.AnyAsync(o => o.DocumentId == target.Id));
+    }
+
+    [Fact]
+    public async Task UpdateStatus_ToSettlement_RecoversPendingTargets_WithRecoveredOccurrence()
+    {
+        var source = await CreateSourceAsync();
+        var target = await AddDelegatedTargetForAsync(source.Id);
+
+        Assert.True(await _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement, SettlementFields(), "lawyer1"));
+
+        var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == target.Id);
+        Assert.Equal(ExecutionStatusCatalog.Recovered, loaded.ExecStatus);
+        Assert.Null(loaded.TarithNumber);
+
+        var occ = await _db.DocumentOccurrences.SingleAsync(o => o.DocumentId == target.Id);
+        Assert.Equal(OccurrenceTypeCatalog.Recovered, occ.OccurrenceType);
+        Assert.Contains("recoveryReason", occ.Details);
+        Assert.Contains("baraetNumber", occ.Details);
+        Assert.Contains("sourceFileNumber", occ.Details);
+        using (var details = System.Text.Json.JsonDocument.Parse(occ.Details!))
+        {
+            Assert.Equal(ExecutionStatusCatalog.ExecutedBySettlement, details.RootElement.GetProperty("recoveryReason").GetString());
+        }
+    }
+
+    [Fact]
+    public async Task UpdateStatus_ToSettlement_RecoversInheritedDeferredTargets()
+    {
+        var source = await CreateSourceAsync();
+        var target = await AddDelegatedTargetForAsync(source.Id);
+
+        await _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1");
+        Assert.True(await _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement, SettlementFields(), "lawyer1"));
+
+        var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == target.Id);
+        Assert.Equal(ExecutionStatusCatalog.Recovered, loaded.ExecStatus);
+
+        var recovered = await _db.DocumentOccurrences.SingleAsync(o => o.DocumentId == target.Id && o.OccurrenceType == OccurrenceTypeCatalog.Recovered);
+        Assert.Contains("recoveryReason", recovered.Details);
+    }
+
+    [Fact]
+    public async Task RevertStatus_FromDeferred_ReturnsInheritedTarget_WithRevertOccurrence()
+    {
+        var source = await CreateSourceAsync();
+        var target = await AddDelegatedTargetForAsync(source.Id);
+        await _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1");
+
+        Assert.True(await _service.RevertStatusAsync(source.Id, SayerFields(), "lawyer1"));
+
+        var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == target.Id);
+        Assert.Equal(ExecutionStatusCatalog.None, loaded.ExecStatus);
+        Assert.Null(loaded.TarithNumber);
+
+        var occ = await _db.DocumentOccurrences.SingleAsync(o => o.DocumentId == target.Id && o.OccurrenceType == OccurrenceTypeCatalog.Revert);
+        Assert.Contains("sayerNumber", occ.Details);
+        Assert.Contains("8", occ.Details);
+        Assert.Contains("sayerRegDate", occ.Details);
+    }
+
+    [Fact]
+    public async Task RevertStatus_AfterSettlement_DoesNotRestoreRecoveredTargets()
+    {
+        var source = await CreateSourceAsync();
+        var target = await AddDelegatedTargetForAsync(source.Id);
+        await _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement, SettlementFields(), "lawyer1");
+
+        Assert.True(await _service.RevertStatusAsync(source.Id, SayerFields(), "lawyer1"));
+
+        var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == target.Id);
+        Assert.Equal(ExecutionStatusCatalog.Recovered, loaded.ExecStatus);
+        Assert.False(await _db.DocumentOccurrences.AnyAsync(o => o.DocumentId == target.Id && o.OccurrenceType == OccurrenceTypeCatalog.Revert));
+    }
+
+    [Fact]
+    public async Task UpdateStatus_ToPartialForcibly_HasNoEffectOnTargets()
+    {
+        var source = await CreateSourceAsync();
+        var target = await AddDelegatedTargetForAsync(source.Id);
+        var asset = await _db.Assets.SingleAsync(a => a.DocumentId == source.Id);
+
+        Assert.True(await _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedForcibly,
+            new Dictionary<string, string?>
+            {
+                ["execSubStatus"] = ExecutionStatusCatalog.SubPartiallyExecuted,
+                ["forcedExecutionDate"] = "1/8/2026",
+                ["soldAssetIds"] = asset.Id.ToString(),
+            }, "lawyer1"));
+
+        var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == target.Id);
+        Assert.Equal(string.Empty, loaded.ExecStatus);
+        Assert.Null(loaded.TarithNumber);
+        Assert.False(await _db.DocumentOccurrences.AnyAsync(o => o.DocumentId == target.Id));
+    }
+
+    [Fact]
+    public async Task ConsiderExecuted_RecoversPendingTargets_WithRecoveredOccurrence()
+    {
+        var source = await SourceInPartialForciblyAsync();
+        await AddExecutedDelegationAsync(source.Id);
+        var target = await AddDelegatedTargetForAsync(source.Id);
+
+        Assert.True(await _service.ConsiderExecutedByDelegationAsync(source.Id,
+            new Dictionary<string, string?>
+            {
+                ["forcedTransferDate"] = "15/8/2026",
+                ["forcedTransferNoticeNumber"] = "77/2026",
+            }, "lawyer1"));
+
+        var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == target.Id);
+        Assert.Equal(ExecutionStatusCatalog.Recovered, loaded.ExecStatus);
+
+        var occ = await _db.DocumentOccurrences.SingleAsync(o => o.DocumentId == target.Id);
+        Assert.Equal(OccurrenceTypeCatalog.Recovered, occ.OccurrenceType);
+        Assert.Contains("forcibleTransferDate", occ.Details);
+        Assert.Contains("77/2026", occ.Details);
+        using (var details = System.Text.Json.JsonDocument.Parse(occ.Details!))
+        {
+            Assert.Equal(ExecutionStatusCatalog.ExecutedForcibly, details.RootElement.GetProperty("recoveryReason").GetString());
+        }
+    }
+
+    // ── ب2: حارس المناب (E1) — حالة المناب تلحق حالة المنيب ─────────────────────────────
+
+    [Fact]
+    public async Task UpdateStatus_OnDelegationTarget_RejectsStatusChange()
+    {
+        var source = await CreateSourceAsync();
+        var target = await AddDelegatedTargetForAsync(source.Id);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateStatusAsync(target.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1"));
+        Assert.Equal("حالة الملف المناب تلحق حالة الملف المنيب في اعتباره منفذ أو تريث", ex.Message);
+    }
+
+    [Fact]
+    public async Task RevertStatus_OnDelegationTarget_RejectsRevert()
+    {
+        var source = await CreateSourceAsync();
+        var target = await AddDelegatedTargetForAsync(source.Id);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.RevertStatusAsync(target.Id, SayerFields(), "lawyer1"));
+        Assert.Equal("حالة الملف المناب تلحق حالة الملف المنيب في اعتباره منفذ أو تريث", ex.Message);
+    }
+
+    [Fact]
+    public async Task UpdateStatus_OnDelegationTarget_ToStruckOff_AllowedByGuardException()
+    {
+        var source = await CreateSourceAsync();
+        var target = await AddDelegatedTargetForAsync(source.Id);
+
+        Assert.True(await _service.UpdateStatusAsync(target.Id, ExecutionStatusCatalog.StateStruckOff,
+            new Dictionary<string, string?> { ["struckOffDate"] = "1/9/2026" }, "lawyer1"));
+
+        var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == target.Id);
+        Assert.Equal(ExecutionStatusCatalog.StateStruckOff, loaded.ExecStatus);
+    }
+
+    // ── S1: حارس الشطب (E7) — لا شطب لملف عليه إنابة سارية ───────────────────────────────
+
+    [Fact]
+    public async Task UpdateStatus_ToStruckOff_PendingHeadDelegation_Rejected()
+    {
+        var source = await CreateSourceAsync();
+        _db.DocumentDelegations.Add(new DocumentDelegation
+        {
+            SourceDocumentId = source.Id,
+            CreatedById = 1,
+            DelegatedCourt = "دائرة تنفيذ حلب",
+            Status = DelegationStatusCatalog.PendingHead,
+        });
+        await _db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.StateStruckOff,
+                new Dictionary<string, string?> { ["struckOffDate"] = "1/9/2026" }, "lawyer1"));
+        Assert.Equal("لا يجوز شطب ملف فيه انابة سارية", ex.Message);
+    }
+
+    [Fact]
+    public async Task UpdateStatus_ToStruckOff_RegisteredDelegation_Rejected()
+    {
+        var source = await CreateSourceAsync();
+        var target = await AddDelegatedTargetForAsync(source.Id);
+        Assert.NotNull(target);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.StateStruckOff,
+                new Dictionary<string, string?> { ["struckOffDate"] = "1/9/2026" }, "lawyer1"));
+        Assert.Equal("لا يجوز شطب ملف فيه انابة سارية", ex.Message);
+    }
+
+    [Fact]
+    public async Task UpdateStatus_ToStruckOff_OnlyExecutedDelegations_Allowed()
+    {
+        var source = await CreateSourceAsync();
+        _db.DocumentDelegations.Add(new DocumentDelegation
+        {
+            SourceDocumentId = source.Id,
+            CreatedById = 1,
+            DelegatedCourt = "دائرة تنفيذ حلب",
+            Status = DelegationStatusCatalog.Executed,
+        });
+        await _db.SaveChangesAsync();
+
+        Assert.True(await _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.StateStruckOff,
+            new Dictionary<string, string?> { ["struckOffDate"] = "1/9/2026" }, "lawyer1"));
+
+        var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == source.Id);
+        Assert.Equal(ExecutionStatusCatalog.StateStruckOff, loaded.ExecStatus);
+    }
+
+    // ── ب3: حارس فك شطب المناب (E2) — فك الشطب يعيد للدائرة المنيبة ──────────────────────
+
+    [Fact]
+    public async Task RestoreStruckOff_OnDelegationTarget_Rejected()
+    {
+        var source = await CreateSourceAsync();
+        var target = await AddDelegatedTargetForAsync(source.Id);
+        target.ExecStatus = ExecutionStatusCatalog.StateStruckOff;
+        _db.Documents.Update(target);
+        await _db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.RestoreStruckOffAsync(target.Id, new RenewalRequest { RenewalFileNumber = "899", RenewalYear = 2026 }, "lawyer1"));
+        Assert.Equal("ملفات الانابة في حال شطبت تعاد الى الدائرة المنيبة ويتوجب تسطير انابة جديدة", ex.Message);
+    }
+
+    [Fact]
+    public async Task RestoreStruckOff_OnRegularStruckOffFile_StillRestores()
+    {
+        var source = await CreateSourceAsync();
+        source.ExecStatus = ExecutionStatusCatalog.StateStruckOff;
+        _db.Documents.Update(source);
+        await _db.SaveChangesAsync();
+
+        Assert.True(await _service.RestoreStruckOffAsync(source.Id,
+            new RenewalRequest { RenewalFileNumber = "899", RenewalYear = 2026 }, "lawyer1"));
+
+        var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == source.Id);
+        Assert.Equal(ExecutionStatusCatalog.None, loaded.ExecStatus);
+    }
+
+    // ── F6/E6: اعتبار الكامل إجراء خاص بالملف المنيب — يرفض المناب دفاعيًا ───────────────
+
+    [Fact]
+    public async Task ConsiderExecuted_OnDelegationTarget_RejectsWithE6()
+    {
+        // دفاع في العمق للصفوف القديمة/الطلب المباشر (النافذة تخفي الخيار أصلًا).
+        var source = await CreateSourceAsync();
+        var target = await AddDelegatedTargetForAsync(source.Id);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.ConsiderExecutedByDelegationAsync(target.Id,
+                new Dictionary<string, string?> { ["forcedTransferDate"] = "15/8/2026" }, "lawyer1"));
+        Assert.Equal("اعتبار الملف منفذًا كاملًا بهذا البيع إجراء خاص بالملف المنيب، ولا يُطبَّق على ملف الإنابة", ex.Message);
+    }
+
+    // ── T6/N7: شطب المنيب مكتوم — لا تنبيه لمناباته ───────────────────────────────────────
+
+    [Fact]
+    public async Task UpdateStatus_ToStruckOff_WithOnlyExecutedDelegations_DoesNotNotify()
+    {
+        // S1 يسمح بالشطب متى كانت كل الإنابات منفذة؛ وحينها يُكتم تنبيهُ الشطب (N7/T6).
+        var source = await CreateSourceAsync();
+        await AddExecutedDelegationAsync(source.Id);
+
+        Assert.True(await _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.StateStruckOff,
+            new Dictionary<string, string?> { ["struckOffDate"] = "1/9/2026" }, "lawyer1"));
+
+        Assert.False(await _db.HeadAlerts.AnyAsync());
+    }
+
+    // ── T3 قاصرة على العودة الفعلية: تراجع المنيب من تسوية لا يُنبه «انتهاء حالة التريث» ──
+
+    [Fact]
+    public async Task RevertStatus_AfterSettlement_DoesNotSendReturnedAlert()
+    {
+        // C1: المسترد نهائي بلا رجوع — التراجع من تسوية لا يُرجع منابًا فلا تنبيه T3 (ضلال).
+        var source = await CreateSourceAsync();
+        var target = await AddDelegatedTargetForAsync(source.Id);
+        var delegationId = (await _db.DocumentDelegations.SingleAsync(d => d.Id == target.SourceDelegationId)).Id;
+
+        await _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement, SettlementFields(), "lawyer1");
+        var before = await _db.HeadAlerts.SingleAsync(a => a.DelegationId == delegationId);
+        Assert.Contains("منفذ بالتسوية", before.Message);
+
+        Assert.True(await _service.RevertStatusAsync(source.Id, SayerFields(), "lawyer1"));
+
+        var alert = await _db.HeadAlerts.SingleAsync(a => a.DelegationId == delegationId);
+        Assert.DoesNotContain("انتهاء حالة التريث", alert.Message);
+        Assert.Contains("منفذ بالتسوية", alert.Message);
+    }
+
+    // ── ب5: تنبيهات الحالة المخصصة T2-T5 (المنفذ عليه/رقم أساسه/دائرته من وثيقة المناب) ──
+
+    [Fact]
+    public async Task StatusChange_ToDeferred_NotifiesTarget_WithDeferredFormula()
+    {
+        var source = await CreateSourceAsync();
+        var target = await AddDelegatedTargetForAsync(source.Id);
+        var delegationId = (await _db.DocumentDelegations.SingleAsync(d => d.Id == target.SourceDelegationId)).Id;
+
+        Assert.True(await _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1"));
+
+        var alert = await _db.HeadAlerts.SingleAsync(a => a.DelegationId == delegationId);
+        Assert.Equal(target.CreatedById, alert.TargetLawyerId);
+        Assert.Contains("ورد كتاب تريث بملف الانابة للمنفذ عليه أحمد خالد الخطيب رقم اساس 890 دائرة تنفيذ دمشق", alert.Message);
+        Assert.Contains("يرجى وقف اجراءات الانابة", alert.Message);
+    }
+
+    [Fact]
+    public async Task StatusChange_ToSettlement_NotifiesTarget_WithSettlementFormula()
+    {
+        var source = await CreateSourceAsync();
+        var target = await AddDelegatedTargetForAsync(source.Id);
+        var delegationId = (await _db.DocumentDelegations.SingleAsync(d => d.Id == target.SourceDelegationId)).Id;
+
+        Assert.True(await _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement, SettlementFields(), "lawyer1"));
+
+        var alert = await _db.HeadAlerts.SingleAsync(a => a.DelegationId == delegationId);
+        Assert.Contains("يرجى وقف اجراءات الانابة في ملف المنفذ عليه أحمد خالد الخطيب رقم اساس 890 دائرة تنفيذ دمشق", alert.Message);
+        Assert.Contains("تبعا لاعتبار الملف المنيب منفذ بالتسوية، واعادته لمرجعه الأصلي", alert.Message);
+    }
+
+    [Fact]
+    public async Task RevertStatus_NotifiesTarget_WithReturnedFormula()
+    {
+        var source = await CreateSourceAsync();
+        var target = await AddDelegatedTargetForAsync(source.Id);
+        var delegationId = (await _db.DocumentDelegations.SingleAsync(d => d.Id == target.SourceDelegationId)).Id;
+        await _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1");
+
+        Assert.True(await _service.RevertStatusAsync(source.Id, SayerFields(), "lawyer1"));
+
+        // الاستبدال (upsert) يُبدّل آخر رسالة للإنابة والمستلم ذاته — فتعود T3 محل T2.
+        var alert = await _db.HeadAlerts.SingleAsync(a => a.DelegationId == delegationId);
+        Assert.Contains("يرجى متابعة السير بملف المنفذ عليه أحمد خالد الخطيب رقم اساس 890 دائرة تنفيذ دمشق", alert.Message);
+        Assert.Contains("تبعا لكتاب الجهة العامة للسير بالملف وانتهاء حالة التريث", alert.Message);
+    }
+
+    [Fact]
+    public async Task StatusChange_ToPartiallyExecuted_DoesNotNotifyTargets()
+    {
+        // N1: «جزئيا» حكمه متداول — بلا تنبيه.
+        var source = await CreateSourceAsync();
+        var target = await AddDelegatedTargetForAsync(source.Id);
+        var delegationId = (await _db.DocumentDelegations.SingleAsync(d => d.Id == target.SourceDelegationId)).Id;
+        var asset = await _db.Assets.SingleAsync(a => a.DocumentId == source.Id);
+
+        await _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedForcibly,
+            new Dictionary<string, string?>
+            {
+                ["execSubStatus"] = ExecutionStatusCatalog.SubPartiallyExecuted,
+                ["forcedExecutionDate"] = "1/8/2026",
+                ["soldAssetIds"] = asset.Id.ToString(),
+            }, "lawyer1");
+
+        Assert.False(await _db.HeadAlerts.AnyAsync(a => a.DelegationId == delegationId));
+    }
+
+    [Fact]
+    public async Task ConsiderExecuted_NotifiesTarget_WithForcibleRecoveryFormula()
+    {
+        var source = await SourceInPartialForciblyAsync();
+        await AddExecutedDelegationAsync(source.Id);
+        var target = await AddDelegatedTargetForAsync(source.Id);
+        var delegationId = (await _db.DocumentDelegations.SingleAsync(d => d.Id == target.SourceDelegationId)).Id;
+
+        Assert.True(await _service.ConsiderExecutedByDelegationAsync(source.Id,
+            new Dictionary<string, string?>
+            {
+                ["forcedTransferDate"] = "15/8/2026",
+                ["forcedTransferNoticeNumber"] = "77/2026",
+            }, "lawyer1"));
+
+        var alert = await _db.HeadAlerts.SingleAsync(a => a.DelegationId == delegationId);
+        Assert.Contains("استُرد ملفك المناب رقم أساس 890 لاعتبار الملف المنيب 900 منفذًا", alert.Message);
+        Assert.Contains("بتحصيل المبلغ المطالب به جبريًا في الملف المنيب", alert.Message);
+    }
 }
 
 public class FakeTokenService : ITokenService

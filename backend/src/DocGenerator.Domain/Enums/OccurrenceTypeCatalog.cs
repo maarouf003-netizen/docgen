@@ -4,8 +4,8 @@ namespace DocGenerator.Domain.Enums;
 /// المصدر الوحيد لأنواع «وقوعات الملف» وتسمياتها العربية.
 /// الوقعة سجل زمني مستقل في وضع «منفذ عليه»/«عرض وايداع»: شطب (struck-off) أو تجديد (renewal)،
 /// وتمتد لتسجّل إجراءات تغيير الحالة في نظام «طالبة تنفيذ» (تريث، منفذ بالتسوية، منفذ جبريا،
-/// تراجع/إلغاء) بحقولها الكاملة في Details. يُخزَّن النوع بالإنكليزية في القاعدة لتجنب اعتماد
-/// البحث والتصفية على النصوص العربية.
+/// تراجع/إلغاء) واسترداد ملف الإنابة (recovered) بحقولها الكاملة في Details. يُخزَّن النوع
+/// بالإنكليزية في القاعدة لتجنب اعتماد البحث والتصفية على النصوص العربية.
 /// </summary>
 public static class OccurrenceTypeCatalog
 {
@@ -33,9 +33,16 @@ public static class OccurrenceTypeCatalog
     /// <summary>حدث تغيير على قيد أو هوية أم في سجل الجهات (يُسجَّل آليًا فقط).</summary>
     public const string EntityChange = "entity-change";
 
+    /// <summary>
+    /// إجراء «استرداد» الملف المناب: يُسجَّل على المناب (آليًا، مصدر نظامي) عند اعتبار
+    /// الملف المنيب منفذًا (تسوية/جبريا-كاملا)، وتوثّق تفاصيله سبب الاسترداد وكتاب براءة
+    /// الذمة (تسوية) أو تحويل البدل (اكتمال جبري) ورقم أساس المنيب (F2).
+    /// </summary>
+    public const string Recovered = "recovered";
+
     public static readonly IReadOnlySet<string> ValidTypes = new HashSet<string>
     {
-        StruckOff, Renewal, Deferred, Settled, Forcible, Revert, EntityChange,
+        StruckOff, Renewal, Deferred, Settled, Forcible, Revert, EntityChange, Recovered,
     };
 
     public static string ToLabel(string type) => type switch
@@ -47,11 +54,13 @@ public static class OccurrenceTypeCatalog
         Forcible => "منفذ جبريا",
         Revert => "تراجع / إلغاء",
         EntityChange => "تغيير جهة",
+        Recovered => "استرداد",
         _ => StruckOff,
     };
 
     public static bool IsStruckOff(string? type) => type == StruckOff;
     public static bool IsRenewal(string? type) => type == Renewal;
+    public static bool IsRecovered(string? type) => type == Recovered;
     public static bool IsStatusChange(string? type) =>
         type == Deferred || type == Settled || type == Forcible || type == Revert;
 }

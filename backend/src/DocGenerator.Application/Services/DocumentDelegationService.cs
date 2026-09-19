@@ -375,6 +375,16 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         if (target.CreatedById != userId)
             throw new ArgumentException("لا يمكنك تسجيل هذا الملف المناب");
 
+        // N5: إعادة التحقق من حالة المنيب لحظة التسجيل — لو أصابه كتاب تريث فتُرفض التسجيل برسالة E5
+        // الخاصة (تريثُ المنيب يحرم تسجيل إنابته لوجوب وقف إجراءاتها)، ولو أصبح منفَّذًا/مشطوبًا
+        // بعد التسطير فبرسائل ValidateSource القائمة.
+        if (delegation.SourceDocument is { } source)
+        {
+            if (source.ExecStatus == ExecutionStatusCatalog.Deferred)
+                throw new ArgumentException("لا يمكن تسجيل الانابة لورود كتاب تريث في الملف المنيب");
+            ValidateSourceForDelegation(source);
+        }
+
         var fileNumber = Normalize(request.FileNumber);
         if (string.IsNullOrWhiteSpace(fileNumber))
             throw new ArgumentException("رقم أساس الإنابة مطلوب");
@@ -421,7 +431,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
                     TargetType: "head",
                     DocumentId: target.Id,
                     TargetLawyerId: null,
-                    Message: $"بانتظار الإتمام — سُجّل الملف المناب أصولًا برقم أساس {fileNumber} عن الإنابة على الملف ({SourceLabel(delegation.SourceDocument)}) إلى دائرة {delegation.DelegatedCourt}",
+                    Message: "بانتظار الإتمام",
                     DelegationId: delegation.Id),
                     userId, target.BranchId.Value, actorName, ct);
             }
@@ -454,6 +464,23 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
             ?? throw new ArgumentException("الملف المناب غير موجود");
         if (target.CreatedById != userId)
             throw new ArgumentException("لا يمكنك إتمام هذا الملف المناب");
+
+        // C2/E3: الإتمام «لمتداول فقط» — الملف المناب نفسه يجب أن يكون متداولًا
+        // (ExecStatus فارغًا). أي حالة منقولة (تريث/منفذ إنابة/مشطوب/مسترد/…) تمنع الإتمام.
+        if (!string.IsNullOrEmpty(target.ExecStatus))
+            throw new ArgumentException("لا يمكن تنفيذ انابة في ملف غير متداول");
+
+        // توسيع B (F10): الإتمام لا يقع إلا إذا كان الملف المنيب «متداولًا أو منفذًا جزئيًا»
+        // (يحفظ N1 وتعدد الإنابات). المصدر المتريث/المنفذ/المسترد/المشطوب/المنفذ-إنابة يمنع
+        // الإتمام بإعادة E3 نفسها — لا يُتمّ إنابة متداخلة على مناب منتهٍ.
+        if (delegation.SourceDocument is { } sourceDoc)
+        {
+            var sourceTrading = string.IsNullOrEmpty(sourceDoc.ExecStatus)
+                || (sourceDoc.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
+                    && sourceDoc.ExecSubStatus == ExecutionStatusCatalog.SubPartiallyExecuted);
+            if (!sourceTrading)
+                throw new ArgumentException("لا يمكن تنفيذ انابة في ملف غير متداول");
+        }
 
         var returnDate = FreeDateParser.Parse(request.ReturnDate, "تاريخ إعادة الملف للدائرة المنيبة");
         if (returnDate is null)
@@ -621,6 +648,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         // الإنابة على ملفات «طالبة تنفيذ» فقط (البيع بالمزاد والأموال المرهونة موجودة فيها حصرًا).
         if (GeneralEntitySideCatalog.IsExecutedLike(source.GeneralEntitySide))
             throw new ArgumentException("الإنابة تخص ملفات «الجهة العامة طالبة التنفيذ» فقط");
+        if (source.ExecStatus == ExecutionStatusCatalog.Deferred)
+            throw new ArgumentException("لا يمكن تسطير انابة في ملف تريث");
         if (ExecutionStatusCatalog.IsExecuted(source.ExecStatus, source.ExecSubStatus)
             || source.ExecStatus == ExecutionStatusCatalog.StateStruckOff)
             throw new ArgumentException("لا يمكن تسطير إنابة على ملف منفَّذ أو مشطوب");
@@ -913,7 +942,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         d.SaleCoversFullDebt,
         TargetFileNumber(d.TargetDocument, currentYear),
         TargetFileYear(d.TargetDocument, currentYear),
-        SourceFileType(source));
+        SourceFileType(source),
+        d.TargetDocument?.ExecStatus);
 
     private static string SourceLabel(Document source)
     {

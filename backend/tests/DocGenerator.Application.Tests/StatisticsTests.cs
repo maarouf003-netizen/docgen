@@ -1123,4 +1123,185 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(1, july.Drafts);
         Assert.Equal(0, august.TotalFiles);
     }
+
+    /// <summary>مناب مرتبط بإنابة حقيقية على ملف منيب (SourceDelegationId مفتاح أجنبي لزامٍ).</summary>
+    private async Task<Document> AddDelegatedTargetAsync(Document source, decimal amount,
+        string? execStatus = null, string? registerDate = null)
+    {
+        var delegation = new DocumentDelegation
+        {
+            SourceDocumentId = source.Id,
+            CreatedById = 1,
+            DelegatedCourt = "دائرة تنفيذ حلب",
+            Status = DelegationStatusCatalog.Registered,
+            Assets = new List<DelegationAsset>
+            {
+                new() { AssetKind = AssetKindCatalog.RealEstate, AssetLabel = "بيت" },
+            },
+        };
+        _db.DocumentDelegations.Add(delegation);
+        _db.SaveChanges();
+
+        var target = new Document
+        {
+            BranchId = source.BranchId,
+            CreatedById = 1,
+            IsDraft = false,
+            BorrowerName = "مناب",
+            BorrowerFamily = "س",
+            AmountNumeric = amount,
+            Currency = "ليرة سورية",
+            ExecStatus = execStatus ?? string.Empty,
+            SourceDelegationId = delegation.Id,
+            RegistrationDate = registerDate != null
+                ? new DocumentRegistrationDate { Date = registerDate, DateParsed = ActionDateParser.TryParse(registerDate) }
+                : null,
+        };
+        _db.Documents.Add(target);
+        _db.SaveChanges();
+        return target;
+    }
+
+    [Fact]
+    public async Task Dashboard_ExcludesDelegationTargetAmountsFromTotal()
+    {
+        var branch = await _db.Branches.FirstAsync();
+        var source = new Document { BranchId = branch.Id, CreatedById = 1, IsDraft = false, BorrowerName = "منيب", BorrowerFamily = "س", AmountNumeric = 900, ExecStatus = string.Empty };
+        _db.Documents.Add(source);
+        _db.SaveChanges();
+        await AddDelegatedTargetAsync(source, 400);
+
+        var s = await _stats.GetDashboardStatsAsync(branch.Id);
+
+        // أساس 1200 + مبلغ المنيب 900 فقط = 2100؛ مبلغ المناب (400) نسخة مستثناة، وعدده محتسب.
+        Assert.Equal(2100m, s.TotalAmount);
+        Assert.Equal(5, s.TotalDocuments);
+        Assert.Equal(2, s.TotalActive);
+    }
+
+    [Fact]
+    public async Task Dashboard_ExcludesDelegationTargetCollectedAmounts()
+    {
+        var branch = await _db.Branches.FirstAsync();
+        var source = new Document { BranchId = branch.Id, CreatedById = 1, IsDraft = false, BorrowerName = "منيب", BorrowerFamily = "س", AmountNumeric = 0, ExecStatus = string.Empty };
+        _db.Documents.Add(source);
+        _db.SaveChanges();
+        var target = await AddDelegatedTargetAsync(source, 0);
+        target.CollectedAmount = 250;
+        target.CollectedCurrency = "ليرة سورية";
+        _db.SaveChanges();
+
+        var s = await _stats.GetDashboardStatsAsync(branch.Id);
+
+        // محصّلات المناب نسخةٌ للمنيب: تبقى 200 (البذرة) ولا تُضاف 250.
+        Assert.Equal(200m, s.TotalCollectedAmount);
+    }
+
+    [Fact]
+    public async Task Dashboard_CountsRecoveredDelegationAsExecutedWithoutAmount()
+    {
+        var branch = await _db.Branches.FirstAsync();
+        var source = new Document { BranchId = branch.Id, CreatedById = 1, IsDraft = false, BorrowerName = "منيب", BorrowerFamily = "س", AmountNumeric = 0, ExecStatus = string.Empty };
+        _db.Documents.Add(source);
+        _db.SaveChanges();
+        await AddDelegatedTargetAsync(source, 300, execStatus: ExecutionStatusCatalog.Recovered);
+
+        var s = await _stats.GetDashboardStatsAsync(branch.Id);
+
+        // المسترد مناب: يُطوى منفذًا بعدد فقط (المنفذ الأصلي + المسترد = 2)،
+        // ومبلغه (300) لا يدخل إجمالي اللوحة (المسترد مناب مستثنى، يبقى 1200).
+        Assert.Equal(2, s.TotalExecuted);
+        Assert.Equal(1200m, s.TotalAmount);
+    }
+
+    [Fact]
+    public async Task BranchesSummary_ExcludesDelegationTargetAmounts()
+    {
+        var branch = await _db.Branches.FirstAsync();
+        var source = new Document { BranchId = branch.Id, CreatedById = 1, IsDraft = false, BorrowerName = "منيب", BorrowerFamily = "س", AmountNumeric = 900, ExecStatus = string.Empty };
+        _db.Documents.Add(source);
+        _db.SaveChanges();
+        await AddDelegatedTargetAsync(source, 400);
+
+        var summary = await _stats.GetBranchesSummaryAsync();
+
+        var dam = summary.Single();
+        Assert.Equal(5, dam.TotalDocuments);
+        Assert.Equal(2100m, dam.TotalAmount);
+    }
+
+    [Fact]
+    public async Task ManagerStats_DelegationTarget_CountsAsActiveWithoutAmounts()
+    {
+        var today = DateTime.Today;
+        var source = RegisteredDoc(1, false, null, D(today.Year, today.Month, 5), amount: 100);
+        _db.Documents.Add(source);
+        _db.SaveChanges();
+        await AddDelegatedTargetAsync(source, 200);
+
+        var s = await _stats.GetManagerStatsAsync(StatsPeriod.Monthly, 1);
+
+        // الملفان (منيب + مناب) يُعدان في المتداول بمصرفيين،
+        // لكن مبلغ المناب (200) لا يدخل سلال المبالغ (يبقى 100 للمنيب فقط).
+        Assert.Equal(2, s.Active);
+        Assert.Equal(2, s.ActiveSplit.BankingCount);
+        Assert.Equal(100m, AmountOf(s.ActiveSplit.BankingAmounts, "ليرة سورية"));
+        Assert.Equal(100m, AmountOf(s.TotalAmounts, "ليرة سورية"));
+    }
+
+    [Fact]
+    public async Task ManagerStats_RecoveredFoldsIntoSettledCount_AsCountOnly()
+    {
+        var today = DateTime.Today;
+        var source = RegisteredDoc(1, false, "منفذ بالتسوية", D(today.Year, today.Month, 3), collected: 150);
+        _db.Documents.Add(source);
+        _db.SaveChanges();
+        await AddDelegatedTargetAsync(source, 0, execStatus: ExecutionStatusCatalog.Recovered,
+            registerDate: D(today.Year, today.Month, 4));
+
+        var s = await _stats.GetManagerStatsAsync(StatsPeriod.Monthly, 1);
+
+        // المسترد (مناب) يُطوى عددًا في بطاقة «منفذ بالتسوية» بلا مبالغ:
+        // العدد 2 (منيب محصّل 150 + مسترد عدد فقط) والمبلغ 150 للمنيب ذاته.
+        Assert.Equal(2, s.SettledCount);
+        Assert.Equal(150m, s.SettledCollected);
+        Assert.Equal(150m, AmountOf(s.SettledCollectedAmounts, "ليرة سورية"));
+    }
+
+    [Fact]
+    public async Task ManagerStats_SettledTargetCollectedAmountsExcluded()
+    {
+        var today = DateTime.Today;
+        var source = RegisteredDoc(1, false, "منفذ بالتسوية", D(today.Year, today.Month, 3), collected: 150);
+        _db.Documents.Add(source);
+        _db.SaveChanges();
+        var target = await AddDelegatedTargetAsync(source, 0, execStatus: ExecutionStatusCatalog.ExecutedBySettlement,
+            registerDate: D(today.Year, today.Month, 4));
+        target.CollectedAmount = 400;
+        _db.SaveChanges();
+
+        var s = await _stats.GetManagerStatsAsync(StatsPeriod.Monthly, 1);
+
+        // المناب المسوّى (صف قديم) يُعدّ في settledCount، ومحصّلاته (400) لا تدخل السلة (تبقى 150).
+        Assert.Equal(2, s.SettledCount);
+        Assert.Equal(150m, s.SettledCollected);
+        Assert.Equal(150m, AmountOf(s.SettledCollectedAmounts, "ليرة سورية"));
+    }
+
+    [Fact]
+    public async Task PersonalStats_DelegationTarget_CountsWithoutAmounts()
+    {
+        var branch = await _db.Branches.FirstAsync();
+        var source = RegisteredDoc(branch.Id, false, null, "5/5/2026", amount: 100);
+        _db.Documents.Add(source);
+        _db.SaveChanges();
+        await AddDelegatedTargetAsync(source, 200, registerDate: "6/5/2026");
+
+        var s = await _stats.GetPersonalStatsAsync(StatsPeriod.Monthly, 1, year: 2026, month: 5);
+
+        Assert.Equal(2, s.Active);
+        Assert.Equal(100m, AmountOf(s.ActiveSplit.BankingAmounts, "ليرة سورية"));
+        Assert.Equal(100m, AmountOf(s.TotalAmounts, "ليرة سورية"));
+        Assert.Equal(0m, AmountOf(s.ActiveSplit.OrdinaryAmounts, "ليرة سورية"));
+    }
 }

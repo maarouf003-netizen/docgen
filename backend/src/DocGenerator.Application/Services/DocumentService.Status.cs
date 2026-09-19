@@ -55,6 +55,22 @@ public sealed partial class DocumentService
         if (!valid)
             throw new ArgumentException("حالة غير صالحة");
 
+        // حارس المناب (ب2 — E1): حالة الملف المناب تلحق حالة الملف المنيب في اعتباره منفذ أو
+        // تريث؛ يُحظر تغيير حالته بأي حال، عدا الانتقال إلى «مشطوب» الذي يحسمه تطبيق المنيب
+        // (يُستثنى هذا الفرع ليظل الشطب مقدورًا عليه من إدارة المناب المشطوبة).
+        if (doc.SourceDelegationId != null && status != ExecutionStatusCatalog.StateStruckOff)
+            throw new ArgumentException("حالة الملف المناب تلحق حالة الملف المنيب في اعتباره منفذ أو تريث");
+
+        // حارس الشطب (S1 — E7): لا يجوز شطب ملف عليه إنابة سارية (بأي حال سوى المنفذة).
+        // «سارية» تشمل «بانتظار رئيس القسم» عمدًا: اعتماد الإنابة لا يعيد فحص المنيب،
+        // فيُقفل الشطب قبل تسطير إنابة من ملف مشطوب.
+        if (status == ExecutionStatusCatalog.StateStruckOff)
+        {
+            var delegations = await _delegations.ListBySourceAsync(documentId, ct);
+            if (delegations.Any(d => d.Status != DelegationStatusCatalog.Executed))
+                throw new ArgumentException("لا يجوز شطب ملف فيه انابة سارية");
+        }
+
         // آلة الحالات: تُمنع الانتقالات غير المسموحة من الحالة الحالية صراحةً.
         var current = ExecutionStatusCatalog.CurrentState(doc.IsDraft, doc.ExecStatus, doc.ExecutedStatus);
         if (!ExecutionStatusCatalog.IsAllowedStatusChange(current, status))
@@ -180,11 +196,16 @@ public sealed partial class DocumentService
                 ? $"حالة {ExecutionStatusCatalog.StateStruckOff}"
                 : $"حالة {ExecutionStatusCatalog.ToLabel(ExecutionStatusCatalog.Classify(status))}";
             await LogDocumentChangesAsync(statusBefore, doc, actorName, "status", auditDetail, token);
+            // ب4: توريث «تريث»/استرداد المناب يتبَع حالة المنيب الجديدة — داخل معاملة الحالة نفسها.
+            await ApplyDelegationInheritanceOrRecoveryAsync(doc, token);
             return true;
         }, ct);
 
         // مرآة: تغيّر حالة المنيب يُنبه مناباته المعلقة (بعد نجاح المعاملة — عزل فشل التنبيه).
-        await FireDelegationStatusChangeAlertsAsync(doc, ct);
+        // الصيغ T2/T4/T5 فقط؛ جزئيا (N1) ومشطوب (N7) وسواها كبت بلا تنبيه.
+        var statusAlertKind = DelegationStatusAlertKindFor(doc);
+        if (statusAlertKind is not null)
+            await FireDelegationStatusChangeAlertsAsync(doc, statusAlertKind.Value, ct);
         return statusUpdated;
     }
 
@@ -195,6 +216,10 @@ public sealed partial class DocumentService
             return false;
         if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
             throw new ArgumentException("التراجع عن الحالة يخص ملفات «الجهة العامة طالبة التنفيذ» فقط");
+
+        // حارس المناب (ب2 — E1): حالة الملف المناب تلحق حالة الملف المنيب — لا يُراجع عن حالته.
+        if (doc.SourceDelegationId != null)
+            throw new ArgumentException("حالة الملف المناب تلحق حالة الملف المنيب في اعتباره منفذ أو تريث");
 
         var current = ExecutionStatusCatalog.CurrentState(doc.IsDraft, doc.ExecStatus, doc.ExecutedStatus);
         if (!ExecutionStatusCatalog.CanRevert(current))
@@ -231,6 +256,7 @@ public sealed partial class DocumentService
         ClearForcibleTransferFields(doc);
         doc.SoldAssetIds = null;
 
+        var targetsReverted = false;
         var reverted = await _tx.RunAsync(async token =>
         {
             doc.UpdatedAt = DateTime.UtcNow;
@@ -250,11 +276,16 @@ public sealed partial class DocumentService
             await _uow.SaveChangesAsync(token);
             await LogDocumentChangesAsync(revertBefore, doc, actorName, "status",
                 "تراجع عن الحالة وعاد الملف إلى المتداول", token);
+            // ب4: عودة المناب الموروث-تريث تلقائيًا عند تراجع المنيب من «تريث» (D3).
+            targetsReverted = await ApplyDelegationInheritanceOrRecoveryAsync(doc, token);
             return true;
         }, ct);
 
-        // مرآة: تراجع المنيب عن الحالة يُنبه مناباته المعلقة (بعد نجاح المعاملة — عزل فشل التنبيه).
-        await FireDelegationStatusChangeAlertsAsync(doc, ct);
+        // مرآة: عودة المناب الفعلية تُنبه (T3 — متابعة السير بالملف). أما التراجع من
+        // تسوية/جبريا فلا يُرجع منابًا (المسترد لا يُرجع — C1)، فلا يُطلق تنبيه
+        // «انتهاء حالة التريث» على مناب مسترد (ضلال).
+        if (targetsReverted)
+            await FireDelegationStatusChangeAlertsAsync(doc, DelegationStatusAlertKind.Returned, ct);
         return reverted;
     }
 
@@ -265,6 +296,12 @@ public sealed partial class DocumentService
             return false;
         if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
             throw new ArgumentException("حالة نظام «طالبة تنفيذ» تخص ملفات «الجهة العامة طالبة التنفيذ» فقط");
+
+        // حارس دفاعي (ب2 — F6): اعتبار ملف منفذًا كاملًا بهذا البيع إجراء خاص بالملف المنيب،
+        // ولا يُطبَّق على ملف الإنابة. يقي الصفوف القديمة والطلبات المباشرة (النافذة تُخفي
+        // الخيار عن المناب أصلًا).
+        if (doc.SourceDelegationId != null)
+            throw new ArgumentException("اعتبار الملف منفذًا كاملًا بهذا البيع إجراء خاص بالملف المنيب، ولا يُطبَّق على ملف الإنابة");
 
         // «اعتبار الملف منفذًا كاملًا بهذا البيع»: إغلاق «منفذ جبريا (منفذ جزئيا)» فحسب —
         // الحالة التي يُفعَّل بها المنيب تلقائيًا عند إتمام إنابته (أو ما يوازيها من ملفات
@@ -324,11 +361,13 @@ public sealed partial class DocumentService
             await _uow.SaveChangesAsync(token);
             await LogDocumentChangesAsync(considerBefore, doc, actorName, "status",
                 "اعتُبر الملف منفذًا كاملًا بهذا البيع (منفذ جبريا — منفذ كاملا)", token);
+            // ب4: استرداد المناب لاعتبار المنيب منفذًا كاملًا (وقف إجراءات الإنابة).
+            await ApplyDelegationInheritanceOrRecoveryAsync(doc, token);
             return true;
         }, ct);
 
-        // مرآة: اكتمال تنفيذ المنيب يُنبه مناباته المعلقة (بعد نجاح المعاملة — عزل فشل التنبيه).
-        await FireDelegationStatusChangeAlertsAsync(doc, ct);
+        // مرآة: اكتمال تنفيذ المنيب يُنبه مناباته المعلقة (T5 — استرداد جبري).
+        await FireDelegationStatusChangeAlertsAsync(doc, DelegationStatusAlertKind.FullyForcibly, ct);
         return considered;
     }
 
@@ -508,6 +547,11 @@ public sealed partial class DocumentService
         if (!executedLike && !struckOff)
             throw new ArgumentException("فك الشطب يخص ملفًا مشطوبًا");
 
+        // حارس المناب (ب3 — E2): ملفات الإنابة إذا شُطبت تعود إلى الدائرة المنيبة ويتوجب
+        // تسطير إنابة جديدة — لا فك شطب للمناب (الاسترداد يصنع وقعة «استرداد» بدل الإعادة).
+        if (doc.SourceDelegationId != null)
+            throw new ArgumentException("ملفات الانابة في حال شطبت تعاد الى الدائرة المنيبة ويتوجب تسطير انابة جديدة");
+
         // لقطة ما قبل التغيير — لتوليد صفوف «حقل/قبل/بعد» في سجل التعديلات.
         var restoreBefore = DocumentChangeTracker.Capture(doc);
 
@@ -531,8 +575,9 @@ public sealed partial class DocumentService
             return true;
         }, ct);
 
-        // مرآة: فك الشطب «تغيّر حالة المنيب» يُنبه مناباته المعلقة (بعد نجاح المعاملة — عزل فشل التنبيه).
-        await FireDelegationStatusChangeAlertsAsync(doc, ct);
+        // مرآة: فك الشطب «تغيّر حالة المنيب» يُنبه مناباته المعلقة بالصيغة العامة (بعد نجاح المعاملة —
+        // عزل فشل التنبيه). S1 يجعل وجود إنابات معلقة على مصدر مشطوب شبه معدوم — الاحتفاظ عام.
+        await FireDelegationStatusChangeAlertsAsync(doc, DelegationStatusAlertKind.Generic, ct);
         return restored;
     }
 
@@ -649,4 +694,194 @@ public sealed partial class DocumentService
         }, ct);
     }
 
+    // ── ب4: توريث/استرداد المناب عند تغيير حالة المنيب ─────────────────────────────
+
+    /// <summary>
+    /// ب4 — «الملف المناب يلحق المنيب» في تغيير الحالة (التوريث/الاسترداد)، يُستدعى داخل
+    /// معاملة تغيير حالة المنيب نفسها (UpdateStatusAsync وRevertStatusAsync
+    /// وConsiderExecutedByDelegationAsync) بعد أن حمل doc حالته الجديدة:
+    ///  - منيب → «تريث»: المناب غير النهائي (عدا الدرافت C5) يرث كتاب التريث (Tarith*)
+    ///    مع وقعة «تريث» (بلا تكرار C6)، ويُصفَّر سائر حقول عائلة الحالات الأخرى وبلا مبالغ (ب6).
+    ///  - منيب → «منفذ بالتسوية»: كل مناب غير نهائي → «مسترد» (وقعة «استرداد» بتفاصيل F2).
+    ///  - منيب → «منفذ جبريا/كاملا» (يدوي أو عبر ConsiderExecutedByDelegationAsync):
+    ///    كل مناب غير نهائي → «مسترد» بوقعة «استرداد» (فرع تفاصيل جبرية).
+    ///  - منيب → «منفذ جبريا/جزئيا» أو «مشطوب»: بلا أثر (N1/N7).
+    ///  - منيب يتراجع إلى «متداول»: المناب الموروث-تريث وحده يعود تلقائيًا (D3) بوقعة
+    ///    «تراجع» تُنسخ فيها حقول كتاب السير إلى التفاصيل فقط، وسائر المناب (مسترد/نهائي)
+    ///    يُتخطى بلا مخرج (C1).
+    /// يُتخطى دائمًا: النهائي (منفذ إنابة)، المشطوب، المسترد، والدرافت.
+    /// تُرجع «true» إن غُيّر منابٌ واحدٌ على الأقل (لتنبيه التراجع T3: لا يُطلق إلا عند عودة فعلية).
+    /// </summary>
+    private async Task<bool> ApplyDelegationInheritanceOrRecoveryAsync(Document source, CancellationToken token)
+    {
+        var state = source.ExecStatus;
+        var subStatus = source.ExecSubStatus;
+        var actionable = state == ExecutionStatusCatalog.Deferred
+            || state == ExecutionStatusCatalog.ExecutedBySettlement
+            || (state == ExecutionStatusCatalog.ExecutedForcibly && subStatus == ExecutionStatusCatalog.SubFullyExecuted)
+            || state == ExecutionStatusCatalog.None;
+        if (!actionable)
+            return false;
+
+        var delegations = await _delegations.ListPendingBySourceWithTargetsAsync(source.Id, token);
+        if (delegations.Count == 0)
+            return false;
+
+        // «رقم أساس المنيب» لتفاصيل وقعة الاسترداد (F2) — الرقم الفعّال الحالي أو الأصلي.
+        var sourceFileNumber = EffectiveFileIdentity.Number(source, CurrentYear());
+
+        var changed = false;
+        foreach (var delegation in delegations)
+        {
+            var target = delegation.TargetDocument;
+            if (target is null || ExcludedFromDelegationInheritance(target))
+                continue;
+
+            DocumentOccurrence? occurrence = null;
+            switch (state)
+            {
+                case ExecutionStatusCatalog.Deferred:
+                    // idempotency (C6): نسخ كتاب التريث دائمًا مع منع الوقعة المكررة فقط.
+                    if (target.ExecStatus != ExecutionStatusCatalog.Deferred)
+                        occurrence = DelegationTargetOccurrence(target, OccurrenceTypeCatalog.Deferred, DeferredInheritanceDetails(source));
+                    InheritDeferredInto(source, target);
+                    break;
+                case ExecutionStatusCatalog.ExecutedBySettlement:
+                    RecoverTarget(target);
+                    occurrence = DelegationTargetOccurrence(target, OccurrenceTypeCatalog.Recovered, RecoveryDetails(source, forcibly: false, sourceFileNumber));
+                    break;
+                case ExecutionStatusCatalog.ExecutedForcibly when subStatus == ExecutionStatusCatalog.SubFullyExecuted:
+                    RecoverTarget(target);
+                    occurrence = DelegationTargetOccurrence(target, OccurrenceTypeCatalog.Recovered, RecoveryDetails(source, forcibly: true, sourceFileNumber));
+                    break;
+                case ExecutionStatusCatalog.None:
+                    // التراجع: المناب الموروث-تريث وحده يعود تلقائيًا (D3) بوقعة «تراجع».
+                    if (target.ExecStatus != ExecutionStatusCatalog.Deferred)
+                        continue;
+                    RevertTargetStatus(target);
+                    occurrence = DelegationTargetOccurrence(target, OccurrenceTypeCatalog.Revert, SerializeDetails(RevertBookDetails(source)));
+                    break;
+                default:
+                    continue;
+            }
+
+            changed = true;
+            _documents.Update(target);
+            if (occurrence is not null)
+                await _occurrences.AddAsync(occurrence, token);
+            await _uow.SaveChangesAsync(token);
+        }
+
+        return changed;
+    }
+
+    /// <summary>هل يُتخطى الملف المناب في التوريث/الاسترداد؟ — النهائي (منفذ إنابة)، المشطوب، المسترد، الدرافت.</summary>
+    private static bool ExcludedFromDelegationInheritance(Document target) =>
+        target.IsDraft
+        || target.ExecStatus == ExecutionStatusCatalog.DelegationExecuted
+        || target.ExecStatus == ExecutionStatusCatalog.StateStruckOff
+        || target.ExecStatus == ExecutionStatusCatalog.Recovered
+        || ExecutedStatusCatalog.IsStruckOff(target.ExecutedStatus);
+
+    /// <summary>وقعة تغيير حالة على الملف المناب (تُسجَّل ضمن معاملة المنيب نفسها).</summary>
+    private static DocumentOccurrence DelegationTargetOccurrence(Document target, string occurrenceType, string? details) => new()
+    {
+        DocumentId = target.Id,
+        Source = OccurrenceSourceCatalog.System,
+        OccurrenceType = occurrenceType,
+        EventDate = DateTime.UtcNow,
+        Details = details,
+        CreatedById = target.CreatedById,
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow,
+    };
+
+    /// <summary>نسخ كتاب التريث من المنيب إلى المناب + تعليق الحالة + مسح حقول العائلة الأخرى (بلا مبالغ ب6).</summary>
+    private static void InheritDeferredInto(Document source, Document target)
+    {
+        target.TarithNumber = source.TarithNumber;
+        target.TarithDate = source.TarithDate;
+        target.TarithRegNumber = source.TarithRegNumber;
+        target.TarithRegDate = source.TarithRegDate;
+        ClearBaraetFields(target);
+        ClearSayerFields(target);
+        ClearForcedExecutionField(target);
+        ClearForcibleTransferFields(target);
+        target.ExecSubStatus = null;
+        ClearCollectedFields(target);
+        target.SoldAssetIds = null;
+        target.ExecStatus = ExecutionStatusCatalog.Deferred;
+    }
+
+    /// <summary>إحالة المناب إلى «مسترد» (حالة نهائية): تصفير حقول عائلة الحالات بلا مبالغ.</summary>
+    private static void RecoverTarget(Document target)
+    {
+        ClearBaraetFields(target);
+        ClearTarithFields(target);
+        ClearSayerFields(target);
+        ClearForcedExecutionField(target);
+        ClearForcibleTransferFields(target);
+        target.ExecSubStatus = null;
+        ClearCollectedFields(target);
+        target.SoldAssetIds = null;
+        target.ExecStatus = ExecutionStatusCatalog.Recovered;
+    }
+
+    /// <summary>عود الملف المناب إلى المتداول (D3): مسح الحالة وحقول عائلة الحالات كما يراجع المنيب نفسه.</summary>
+    private static void RevertTargetStatus(Document target)
+    {
+        target.ExecStatus = ExecutionStatusCatalog.None;
+        target.ExecSubStatus = null;
+        ClearCollectedFields(target);
+        ClearBaraetFields(target);
+        ClearTarithFields(target);
+        ClearForcedExecutionField(target);
+        ClearForcibleTransferFields(target);
+        target.SoldAssetIds = null;
+    }
+
+    /// <summary>تفاصيل وقعة «تريث» الموروثة للمناب: حقول كتاب التريث المنقولة من المنيب.</summary>
+    private static string? DeferredInheritanceDetails(Document source)
+    {
+        var details = new Dictionary<string, string>();
+        CopyDetail(details, "tarithNumber", source.TarithNumber);
+        CopyDetail(details, "tarithDate", source.TarithDate);
+        CopyDetail(details, "tarithRegNumber", source.TarithRegNumber);
+        CopyDetail(details, "tarithRegDate", source.TarithRegDate);
+        return details.Count > 0 ? SerializeDetails(details) : null;
+    }
+
+    /// <summary>تفاصيل وقعة «استرداد» (F2): سبب الاسترداد + كتاب براءة الذمة (تسوية) أو تحويل
+    /// البدل/رقم الإشعار (اكتمال جبري) + رقم أساس المنيب — بمفاتيح معاودة في نافذة الوقوعات.</summary>
+    private static string RecoveryDetails(Document source, bool forcibly, string? sourceFileNumber)
+    {
+        var details = new Dictionary<string, string>
+        {
+            ["recoveryReason"] = forcibly ? ExecutionStatusCatalog.ExecutedForcibly : ExecutionStatusCatalog.ExecutedBySettlement,
+        };
+        if (forcibly)
+        {
+            CopyDetail(details, "forcibleTransferDate", source.ForcibleTransferDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture));
+            CopyDetail(details, "forcibleTransferNoticeNumber", source.ForcibleTransferNoticeNumber);
+        }
+        else
+        {
+            CopyDetail(details, "baraetNumber", source.BaraetNumber);
+            CopyDetail(details, "baraetDate", source.BaraetDate);
+        }
+        CopyDetail(details, "sourceFileNumber", sourceFileNumber);
+        return SerializeDetails(details);
+    }
+
+    /// <summary>تفاصيل وقعة «تراجع» للمناب: حقول كتاب الجهة العامة بالسير بالملف من المنيب —
+    /// تُنسخ إلى التفاصيل فقط (تلميع) ولا تُحفظ على المناب.</summary>
+    private static Dictionary<string, string> RevertBookDetails(Document source)
+    {
+        var details = new Dictionary<string, string>();
+        CopyDetail(details, "sayerNumber", source.SayerNumber);
+        CopyDetail(details, "sayerDate", source.SayerDate);
+        CopyDetail(details, "sayerRegNumber", source.SayerRegNumber);
+        CopyDetail(details, "sayerRegDate", source.SayerRegDate);
+        return details;
+    }
 }

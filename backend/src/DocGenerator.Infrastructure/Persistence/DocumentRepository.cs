@@ -123,6 +123,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
                 && !(d.GeneralEntitySide == GeneralEntitySideCatalog.Applicant
                     && (d.ExecStatus == ExecutionStatusCatalog.ExecutedBySettlement
                         || d.ExecStatus == ExecutionStatusCatalog.DelegationExecuted
+                        || d.ExecStatus == ExecutionStatusCatalog.Recovered
                         || (d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
                             && d.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted))));
         }
@@ -131,7 +132,8 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             if (status == ExecutionStatusCatalog.ExecutedFilter)
                 q = q.Where(d => d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
                     || d.ExecStatus == ExecutionStatusCatalog.ExecutedBySettlement
-                    || d.ExecStatus == ExecutionStatusCatalog.DelegationExecuted);
+                    || d.ExecStatus == ExecutionStatusCatalog.DelegationExecuted
+                    || d.ExecStatus == ExecutionStatusCatalog.Recovered);
             else if (status == ExecutionStatusCatalog.Deferred)
                 q = q.Where(d => d.ExecStatus == ExecutionStatusCatalog.Deferred);
             else
@@ -514,6 +516,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
                     && d.BaseNumbers.Any(b => b.Year < currentYear)
                 : d.ExecStatus != ExecutionStatusCatalog.ExecutedBySettlement
                     && d.ExecStatus != ExecutionStatusCatalog.DelegationExecuted
+                    && d.ExecStatus != ExecutionStatusCatalog.Recovered
                     && !(d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
                         && d.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted)
                     && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff)
@@ -654,6 +657,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
                 || (d.GeneralEntitySide == GeneralEntitySideCatalog.Applicant
                     && (d.ExecStatus == ExecutionStatusCatalog.ExecutedBySettlement
                         || d.ExecStatus == ExecutionStatusCatalog.DelegationExecuted
+                        || d.ExecStatus == ExecutionStatusCatalog.Recovered
                         || (d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
                             && d.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted))));
 

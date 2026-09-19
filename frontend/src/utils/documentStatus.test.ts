@@ -14,6 +14,15 @@ describe('getDocumentStatus', () => {
     expect(getDocumentStatus(doc({ execStatus: 'تريث', isDraft: false }))).toBe('تريث');
   });
 
+  it('يرجّع «مسترد» كحالة عرض مستقلة للمناب المسترد (ويعطيه شارة فوشيا)', () => {
+    expect(getDocumentStatus(doc({ execStatus: 'مسترد' }))).toBe('مسترد');
+    expect(getDocumentStatus(doc({ execStatus: 'مسترد', isDraft: true }))).toBe('مسترد');
+    expect(getDocumentBadge(doc({ execStatus: 'مسترد' }))).toEqual({
+      text: 'مسترد',
+      cls: 'bg-fuchsia-100 text-fuchsia-800',
+    });
+  });
+
   it('يرجّع «تحت رفع» للمسودة و«متداول» للمتداول دون حالة تنفيذية', () => {
     expect(getDocumentStatus(doc({ isDraft: true }))).toBe('تحت رفع');
     expect(getDocumentStatus(doc({ isDraft: false }))).toBe('متداول');
@@ -102,12 +111,14 @@ describe('canDelegateSource', () => {
     expect(canDelegateSource(doc({ execStatus: 'منفذ جبريا', execSubStatus: 'منفذ جزئيا' }))).toBe(true);
   });
 
-  it('يمنع التسطير على المسودة وصفة المنفذين والشطب', () => {
+  it('يمنع التسطير على المسودة وصفة المنفذين والشطب والتريث والمسترد', () => {
     expect(canDelegateSource(doc({ isDraft: true }))).toBe(false);
     expect(canDelegateSource(doc({ execStatus: 'منفذ جبريا', execSubStatus: 'منفذ كاملا' }))).toBe(false);
     expect(canDelegateSource(doc({ execStatus: 'منفذ بالتسوية' }))).toBe(false);
     expect(canDelegateSource(doc({ execStatus: 'منفذ إنابة' }))).toBe(false);
     expect(canDelegateSource(doc({ execStatus: 'مشطوب' }))).toBe(false);
+    expect(canDelegateSource(doc({ execStatus: 'تريث' }))).toBe(false);
+    expect(canDelegateSource(doc({ execStatus: 'مسترد' }))).toBe(false);
   });
 
   it('يمنع التسطير على ملفات صفة «منفذ عليه»/«عرض وايداع» ولو كانت متداولة', () => {
@@ -115,8 +126,7 @@ describe('canDelegateSource', () => {
     expect(canDelegateSource(doc({ generalEntitySide: 'deposit' as const }))).toBe(false);
   });
 
-  it('يسمح بالتسطير للمتداول والتريث', () => {
+  it('يسمح بالتسطير للمتداول فقط (وليس التريث/المسترد)', () => {
     expect(canDelegateSource(doc({}))).toBe(true);
-    expect(canDelegateSource(doc({ execStatus: 'تريث' }))).toBe(true);
   });
 });

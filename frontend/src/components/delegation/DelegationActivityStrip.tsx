@@ -4,9 +4,9 @@ import type { HeadAlertDto } from '../../types';
 import { formatDateTime } from '../../utils/dates';
 
 /**
- * شريط نشاط الإنابة (تنبيهات المرآة/المتابعة): يُعرض في بطاقتي «معلومات الملف المنيب»
- * و«تشعبات الملف» ويُغذّى من GET /alerts/by-delegation/{id} المتاح لأطراف الإنابة فقط.
- * الأحدث في الصدارة (بحد أقصى ثلاثة)، والخطأ/الفراغ لا يظهر شيئًا.
+ * شريط حالة الإنابة (تنبيهات المرآة/المتابعة): يُعرض في بطاقة «حالة الإنابة» للمناب
+ * وبطاقة «تشعبات الملف» للمنيب ويُغذّى من GET /alerts/by-delegation/{id} المتاح لأطراف
+ * الإنابة فقط. الأحدث في الصدارة (بحد أقصى ثلاثة)، والخطأ/الفراغ لا يظهر شيئًا.
  */
 export function DelegationActivityStrip({ delegationId }: { delegationId: number }) {
   const query = useCancellableRequest<HeadAlertDto[]>(
@@ -22,7 +22,7 @@ export function DelegationActivityStrip({ delegationId }: { delegationId: number
 
   return (
     <div className="mt-3 rounded-lg bg-amber-50/70 border border-amber-200 px-3 py-2">
-      <span className="block text-[11px] font-bold text-amber-800 mb-1">نشاط الإنابة</span>
+      <span className="block text-[11px] font-bold text-amber-800 mb-1">حالة الإنابة</span>
       <ul className="space-y-1">
         {alerts.map((a) => (
           <li key={a.id} className="flex items-start justify-between gap-2 text-xs text-amber-900">

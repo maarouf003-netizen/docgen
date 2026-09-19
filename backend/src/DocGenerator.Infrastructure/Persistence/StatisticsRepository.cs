@@ -45,6 +45,7 @@ public class StatisticsRepository : IStatisticsRepository
                 Drafts = g.Count(d => d.IsDraft && string.IsNullOrEmpty(d.ExecStatus)),
                 Executed = g.Count(d => d.ExecStatus == ExecutionStatusCatalog.ExecutedBySettlement
                     || d.ExecStatus == ExecutionStatusCatalog.DelegationExecuted
+                    || d.ExecStatus == ExecutionStatusCatalog.Recovered
                     || (d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
                         && d.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted)),
                 Deferred = g.Count(d => d.ExecStatus == ExecutionStatusCatalog.Deferred),
@@ -57,13 +58,15 @@ public class StatisticsRepository : IStatisticsRepository
         // جمع المبالغ عميل-side بالنوع decimal بدل Sum(double) الذي يفقد الدقة؛
         // يعمل على SQLite وPostgreSQL معًا دون أي تعديل عند الترحيل.
         // الملف المصرفي يضع مبلغه في AmountNumeric والعادي في InclusionAmountNumeric.
+        // ب6: الملفات المنابة مستثناة من مبالغ اللوحة — مبالغها نسخ للمنيب ولا تُحسب مرتين.
         var amounts = await q
-            .Select(d => new { d.IsDraft, d.AmountNumeric, d.InclusionAmountNumeric, d.CollectedAmount })
+            .Select(d => new { d.IsDraft, d.AmountNumeric, d.InclusionAmountNumeric, d.CollectedAmount, d.SourceDelegationId })
             .ToListAsync(ct);
 
-        var totalAmount = amounts.Where(d => !d.IsDraft)
+        var totalAmount = amounts.Where(d => !d.IsDraft && d.SourceDelegationId == null)
             .Sum(d => d.AmountNumeric + d.InclusionAmountNumeric);
-        var totalCollectedAmount = amounts.Sum(d => d.CollectedAmount) ?? 0;
+        // ب6: محصّلات المناب نسخةٌ للمنيب — تُستثنى من إجمالي المحصّل كما مبالغ الأساس.
+        var totalCollectedAmount = amounts.Where(d => d.SourceDelegationId == null).Sum(d => d.CollectedAmount) ?? 0;
 
         var borrowers = await q
             .Where(d => d.BorrowerName != null && d.BorrowerName != string.Empty)
@@ -104,7 +107,7 @@ public class StatisticsRepository : IStatisticsRepository
         var rows = await _db.Documents.AsNoTracking()
             .Where(d => d.BranchId != null)
             .Where(d => d.ExecutedStatus != ExecutedStatusCatalog.StruckOff && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff)
-            .Select(d => new { d.BranchId, d.IsDraft, d.AmountNumeric, d.InclusionAmountNumeric })
+            .Select(d => new { d.BranchId, d.IsDraft, d.AmountNumeric, d.InclusionAmountNumeric, d.SourceDelegationId })
             .ToListAsync(ct);
 
         var grouped = rows
@@ -115,7 +118,9 @@ public class StatisticsRepository : IStatisticsRepository
                 BranchId = g.Key,
                 Total = g.Count(),
                 Drafts = g.Count(d => d.IsDraft),
-                Amount = g.Where(d => !d.IsDraft).Sum(d => d.AmountNumeric + d.InclusionAmountNumeric),
+                // ب6: المبالغ الحقيقية للمنيب فقط؛ المناب عدد بلا مبالغ (لا تُحسب نسخه مرتين).
+                Amount = g.Where(d => !d.IsDraft && d.SourceDelegationId == null)
+                    .Sum(d => d.AmountNumeric + d.InclusionAmountNumeric),
             })
             .ToList();
 
@@ -205,6 +210,8 @@ public class StatisticsRepository : IStatisticsRepository
         public decimal? ExecutedPaidAmount { get; set; }
         public decimal? ExecutedPaidAmount2 { get; set; }
         public decimal? ExecutedPaidAmount3 { get; set; }
+        /// <summary>المناب: يُعدّ في العدادات بلا مبالغ (نسخة من المنيب لا تُحسب مرتين).</summary>
+        public int? SourceDelegationId { get; set; }
         /// <summary>مجموع بدل المبيع لإنابات الملف المنفذة (تُضاف لسلة «منفذ جبريا» عند اعتباره منفذًا).</summary>
         public decimal? DelegationSalesAmount { get; set; }
         public DateTime PeriodDate { get; set; }
@@ -220,6 +227,7 @@ public class StatisticsRepository : IStatisticsRepository
             .Select(d => new ManagerStatRow
             {
                 IsDraft = d.IsDraft,
+                SourceDelegationId = d.SourceDelegationId,
                 ExecStatus = d.ExecStatus,
                 ExecSubStatus = d.ExecSubStatus,
                 GeneralEntitySide = d.GeneralEntitySide,
@@ -278,6 +286,7 @@ public class StatisticsRepository : IStatisticsRepository
             .Select(d => new ManagerStatRow
             {
                 IsDraft = d.IsDraft,
+                SourceDelegationId = d.SourceDelegationId,
                 ExecStatus = d.ExecStatus,
                 ExecSubStatus = d.ExecSubStatus,
                 GeneralEntitySide = d.GeneralEntitySide,
@@ -475,16 +484,24 @@ public class StatisticsRepository : IStatisticsRepository
                 continue;
             }
 
-            // «منفذ إنابة» (الملف المناب عند إتمام إنابته): الملف منفَّذ فعليًا فيُحتسب ضمن
-            // المنفذين (التسوية) بعددها فقط — بلا مبالغ بيع الأموال (المبالغ المحصّلة من بيع
-            // الأموال موضوع الإنابة تُضاف في بطاقة المنيب عند اعتباره منفذًا جبريًا).
-            if (r.ExecStatus == ExecutionStatusCatalog.ExecutedBySettlement
-                || r.ExecStatus == ExecutionStatusCatalog.DelegationExecuted)
+            // «منفذ بالتسوية» (الملف المنيب): يُحتسب عددًا ومبالغ محصّلة. ب6: المنفذ-الإنابة
+            // «DelegationExecuted» والمسترد «Recovered» (منابان دائمًا) يُطويان عددًا فقط
+            // في settledCount دون مبالغ — مبالغ البيع تُعرض في بطاقة المنيب.
+            if (r.ExecStatus == ExecutionStatusCatalog.ExecutedBySettlement)
             {
                 settledCount++;
-                AddAmount(settledCollectedBuckets, r.CollectedCurrency, r.CollectedAmount);
-                AddAmount(settledCollectedBuckets, r.CollectedCurrency2, r.CollectedAmount2);
-                AddAmount(settledCollectedBuckets, r.CollectedCurrency3, r.CollectedAmount3);
+                // ب6: المناب يُعدّ بلا مبالغ — محصّلات مناب مسوّى (صفوف قديمة) لا تدخل السلة.
+                if (r.SourceDelegationId == null)
+                {
+                    AddAmount(settledCollectedBuckets, r.CollectedCurrency, r.CollectedAmount);
+                    AddAmount(settledCollectedBuckets, r.CollectedCurrency2, r.CollectedAmount2);
+                    AddAmount(settledCollectedBuckets, r.CollectedCurrency3, r.CollectedAmount3);
+                }
+            }
+            else if (r.ExecStatus == ExecutionStatusCatalog.DelegationExecuted
+                || r.ExecStatus == ExecutionStatusCatalog.Recovered)
+            {
+                settledCount++;
             }
             else if (r.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
                 && r.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted)
@@ -566,6 +583,7 @@ public class StatisticsRepository : IStatisticsRepository
     /// يوزّع المبالغ الثلاثة على سلة نوع العقد (مصرفي/عادي) بعملاتهما،
     /// مع تحديث عداد النوع وسلة الإجمالي (دون المنفذ).
     /// الملف المصرفي يحفظ مبالغه في Amount/Amount2/Amount3، والعادي في Inclusion*.
+    /// ب6: الملف المناب يُعدّ في عدادي النوع فقط بلا أي مبالغ — نسخته للمنيب لا تُحسب مرتين.
     /// </summary>
     private static void AccumulateContract(
         ManagerStatRow r,
@@ -576,6 +594,9 @@ public class StatisticsRepository : IStatisticsRepository
         var banking = IsBanking(r.ContractTypeSelector);
         if (banking) bankingCount++;
         else ordinaryCount++;
+
+        if (r.SourceDelegationId != null)
+            return;
 
         if (banking)
         {

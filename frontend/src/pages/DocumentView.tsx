@@ -22,6 +22,7 @@ import RegisterDelegationModal from '../components/delegation/RegisterDelegation
 import CompleteDelegationModal from '../components/delegation/CompleteDelegationModal';
 import { DelegationsCard } from '../components/delegation/DelegationsCard';
 import { SourceFileInfoCard } from '../components/delegation/SourceFileInfoCard';
+import { DelegationStatusCard } from '../components/delegation/DelegationStatusCard';
 import DocumentReviewLettersCard from '../components/review/DocumentReviewLettersCard';
 import AppealFormModal from '../components/appeal/AppealFormModal';
 import AppealInfoModal from '../components/appeal/AppealInfoModal';
@@ -175,7 +176,9 @@ export default function DocumentView() {
     canEdit &&
     isOwner &&
     delegationOfThisFile != null &&
-    delegationOfThisFile.status === DELEGATION_STATUS_REGISTERED;
+    delegationOfThisFile.status === DELEGATION_STATUS_REGISTERED &&
+    // N11: زر «إتمام الإنابة» يخص الملف المناب المتداول فقط — وإلا وعد ثم فشل خلفيةً (E3).
+    (doc.execStatus == null || doc.execStatus === '');
 
   const openCreateDelegation = () => {
     setEditingDelegation(null);
@@ -207,6 +210,9 @@ export default function DocumentView() {
   const securityPanel = (
     <>
       <ExecutoryDocumentCard doc={doc} />
+      {delegationOfThisFile && (
+        <DelegationStatusCard doc={doc} delegationId={delegationOfThisFile.id} />
+      )}
       {!isExecuted && !delegationOfThisFile && <AssetsSection doc={doc} />}
     </>
   );
@@ -216,9 +222,7 @@ export default function DocumentView() {
         <SourceFileInfoCard
           delegation={delegationOfThisFile}
           canRegister={canRegisterDelegation}
-          canComplete={canCompleteDelegation}
           onRegister={() => setRegisterOpen(true)}
-          onComplete={() => setCompleteOpen(true)}
         />
       ) : delegationsQuery.error ? (
         <div
@@ -262,7 +266,14 @@ export default function DocumentView() {
     </>
   );
   const statusPanel = (
-    <StatusCard doc={doc} canChangeStatus={canEdit && !isDelegationExecuted} onOpenStatus={() => setStatusOpen(true)} />
+    <StatusCard
+      doc={doc}
+      canChangeStatus={canEdit && !isDelegationExecuted}
+      onOpenStatus={() => setStatusOpen(true)}
+      canCompleteDelegation={canCompleteDelegation}
+      onCompleteDelegation={() => setCompleteOpen(true)}
+      delegationSourceLabel={delegationOfThisFile?.sourceDocumentLabel ?? null}
+    />
   );
 
   const tabs = [
