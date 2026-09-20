@@ -16,7 +16,10 @@ public static class AssetDisplay
         {
             var property = (a.Property ?? string.Empty).Trim();
             if (property.Length > 0) return property;
-            return string.IsNullOrWhiteSpace(a.PropertyNumber) ? $"عقار {a.Id}" : $"عقار رقم {a.PropertyNumber}";
+            // E2: التقليم قبل الفحص والإخراج معًا — فيطابق المرآة الأمامية حرفيًا
+            // حتى مع أرقام عقارية مدخلة بمسافات محيطة.
+            var propertyNumber = (a.PropertyNumber ?? string.Empty).Trim();
+            return propertyNumber.Length == 0 ? $"عقار {a.Id}" : $"عقار رقم {propertyNumber}";
         }
         if (kind == AssetKindCatalog.Vehicle)
         {

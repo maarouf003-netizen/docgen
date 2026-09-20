@@ -17,6 +17,22 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
     public Task<bool> ExistsAsync(int id, CancellationToken ct = default)
         => Db.Documents.AnyAsync(d => d.Id == id, ct);
 
+    /// <summary>
+    /// قراءة طازجة بلا تتبع (B2): الأصول + الإنابات مع لقطاتها + المنابات (لحالاتها فقط).
+    /// الكيانات المعادة منفصلة — أي تعديل عليها لا يُحفظ؛ تُمرَّر للفحص وبناء اللقطات قراءةً فقط.
+    /// </summary>
+    public async Task<Document?> GetByIdWithDelegationsNoTrackingAsync(int id, CancellationToken ct = default)
+    {
+        return await Db.Documents
+            .AsNoTracking()
+            .Include(d => d.Assets)
+            .Include(d => d.Delegations)
+                .ThenInclude(dl => dl.Assets)
+            .Include(d => d.Delegations)
+                .ThenInclude(dl => dl.TargetDocument)
+            .FirstOrDefaultAsync(d => d.Id == id, ct);
+    }
+
     public async Task<(int TotalCount, List<Document> Items)> SearchAsync(
         string? query,
         string? status,

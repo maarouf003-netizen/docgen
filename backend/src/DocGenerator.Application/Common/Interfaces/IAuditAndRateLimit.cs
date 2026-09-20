@@ -11,6 +11,13 @@ public interface IDocumentRepository : IRepository<Document>
     /// <summary>هل يوجد ملف (غير محذوف منطقيًا) بمعرف معين؟ — فحص وجود رخيص.</summary>
     Task<bool> ExistsAsync(int id, CancellationToken ct = default);
 
+    /// <summary>
+    /// قراءة طازجة للمنيب مع أصوله وإناباته ولقطاتها ومناباتها — بلا تتبع (B2):
+    /// تُستخدم داخل معاملة فحص الحجب لتجاوز تجمّد الهوية في السياق المتتبَّع،
+    /// فترى الملتزَم حديثًا من معاملة منافسة. لا تُعدَّل الكيانات المعادة أبدًا.
+    /// </summary>
+    Task<Document?> GetByIdWithDelegationsNoTrackingAsync(int id, CancellationToken ct = default);
+
     Task<(int TotalCount, List<Document> Items)> SearchAsync(
         string? query,
         string? status,

@@ -41,6 +41,45 @@ public sealed partial class DocumentService
     // ملاحظة إعادة هيكلة (المرحلة 3 — مؤجلة): عند أول تعديل يمس منطق انتقالات الحالة
     // أو الشطب/التجديد في هذا الملف، تُستخرج هذه التدفقات إلى خدمة مستقلة خلف واجهة
     // (StatusTransitionService) بدل إضافة المزيد هنا. المرجع: FIXES_LOG.md بند المعلقات #4.
+    /// <summary>
+    /// D3: تنظيف تنبيه «بانتظار الإتمام» لكل مسار يجعل مناب مسجلة أصولًا نهائيًا —
+    /// استرداد (تسوية/جبرية كاملة → «مسترد») أو شطب يدوي للمناب. لاحق الالتزام
+    /// best-effort بنفس محمول CompleteAsync (الحذف بالإنابة)، وidempotent (إعادة
+    /// التنظيف آمنة). البوابة Registered حصرًا: DeleteByDelegationAsync يحذف كل
+    /// تنبيهات الإنابة، والمعلّقة/المحالة لها تنبيهات اعتماد لا تُمس.
+    /// </summary>
+    private async Task CleanupPendingCompletionAlertsAsync(int documentId, string? actorName, CancellationToken ct)
+    {
+        try
+        {
+            // (1) المنيب: إناباته المسجلة التي صار منابها نهائيًا (أي فرع من IsTargetTerminal —
+            // مشطوب بجهتيه/مسترد/منفذ إنابة — لا إعادة تعريف جزئية هنا).
+            var recovered = (await _delegations.ListBySourceAsync(documentId, ct))
+                .Where(d => d.Status == DelegationStatusCatalog.Registered
+                    && d.TargetDocument is not null
+                    && DelegationActivityPolicy.IsTargetTerminal(d.TargetDocument))
+                .Select(d => d.Id)
+                .ToList();
+            foreach (var id in recovered)
+                await _alertService.DeleteByDelegationAsync(id, ct);
+            // (2) الملف نفسه مناب صار نهائيًا يدويًا: إنابته المسجلة تحررت.
+            var own = await _delegations.FindByTargetAsync(documentId, ct);
+            if (own is not null && own.Status == DelegationStatusCatalog.Registered)
+            {
+                var targetDoc = await _documents.GetByIdAsync(documentId, ct);
+                if (targetDoc is not null && DelegationActivityPolicy.IsTargetTerminal(targetDoc))
+                    await _alertService.DeleteByDelegationAsync(own.Id, ct);
+            }
+        }
+        catch (Exception ex)
+        {
+            var doc = await _documents.GetByIdAsync(documentId, ct);
+            await _audit.LogAsync(actorName, "head_alert_failed",
+                documentId, doc?.DocumentType,
+                $"تعذّر تنظيف تنبيه الإنابة بانتظار الإتمام بعد نهائية المناب: {ex.Message}", ct);
+        }
+    }
+
     public async Task<bool> UpdateStatusAsync(int documentId, string status, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default)
     {
         var doc = await _documents.GetByIdAsync(documentId, ct);
@@ -63,11 +102,11 @@ public sealed partial class DocumentService
 
         // حارس الشطب (S1 — E7): لا يجوز شطب ملف عليه إنابة سارية (بأي حال سوى المنفذة).
         // «سارية» تشمل «بانتظار رئيس القسم» عمدًا: اعتماد الإنابة لا يعيد فحص المنيب،
-        // فيُقفل الشطب قبل تسطير إنابة من ملف مشطوب.
+        // فيُقفل الشطب قبل تسطير إنابة من ملف مشطوب. التعريف من DelegationActivityPolicy (D2).
         if (status == ExecutionStatusCatalog.StateStruckOff)
         {
             var delegations = await _delegations.ListBySourceAsync(documentId, ct);
-            if (delegations.Any(d => d.Status != DelegationStatusCatalog.Executed))
+            if (delegations.Any(DelegationActivityPolicy.IsLifecycleActive))
                 throw new ArgumentException("لا يجوز شطب ملف فيه انابة سارية");
         }
 
@@ -201,6 +240,9 @@ public sealed partial class DocumentService
             return true;
         }, ct);
 
+        // D3: نهائية مناب (استرداد/شطب يدوي) تُنظّف تنبيه «بانتظار الإتمام» العالق —
+        // قبل إطلاق تنبيهات الحالة الجديدة (الحذف شامل بالإنابة فيمحو ما أُطلق للتو).
+        await CleanupPendingCompletionAlertsAsync(documentId, actorName, ct);
         // مرآة: تغيّر حالة المنيب يُنبه مناباته المعلقة (بعد نجاح المعاملة — عزل فشل التنبيه).
         // الصيغ T2/T4/T5 فقط؛ جزئيا (N1) ومشطوب (N7) وسواها كبت بلا تنبيه.
         var statusAlertKind = DelegationStatusAlertKindFor(doc);
@@ -366,6 +408,9 @@ public sealed partial class DocumentService
             return true;
         }, ct);
 
+        // D3: المنابات المستردة هنا تحررت — نظّف تنبيه «بانتظار الإتمام» العالق
+        // قبل إطلاق تنبيه الاسترداد (الحذف شامل بالإنابة).
+        await CleanupPendingCompletionAlertsAsync(documentId, actorName, ct);
         // مرآة: اكتمال تنفيذ المنيب يُنبه مناباته المعلقة (T5 — استرداد جبري).
         await FireDelegationStatusChangeAlertsAsync(doc, DelegationStatusAlertKind.FullyForcibly, ct);
         return considered;

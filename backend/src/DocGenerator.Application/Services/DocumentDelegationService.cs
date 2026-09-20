@@ -14,6 +14,8 @@ namespace DocGenerator.Application.Services;
 public sealed class DocumentDelegationService : IDocumentDelegationService
 {
     private readonly IDelegationRepository _delegations;
+    private readonly IDelegationReservationRepository _reservations;
+    private readonly IDbExceptionClassifier _dbErrors;
     private readonly IDocumentRepository _documents;
     private readonly IUserRepository _users;
     private readonly IRepository<Branch> _branches;
@@ -28,6 +30,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
 
     public DocumentDelegationService(
         IDelegationRepository delegations,
+        IDelegationReservationRepository reservations,
+        IDbExceptionClassifier dbErrors,
         IDocumentRepository documents,
         IUserRepository users,
         IRepository<Branch> branches,
@@ -41,6 +45,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         TimeZoneInfo timeZone)
     {
         _delegations = delegations;
+        _reservations = reservations;
+        _dbErrors = dbErrors;
         _documents = documents;
         _users = users;
         _branches = branches;
@@ -70,27 +76,60 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
 
         var (court, fields) = await ValidateAndBuildAsync(request, ct);
 
-        var delegation = new DocumentDelegation
-        {
-            SourceDocumentId = source.Id,
-            DelegatedCourt = court,
-            IsExternal = fields.IsExternal,
-            ExternalBranchId = fields.ExternalBranchId,
-            DelegationDate = fields.DelegationDate,
-            DelegationText = Normalize(request.DelegationText),
-            DepositBookNumber = Normalize(request.DepositBookNumber),
-            DepositBookDate = fields.DepositBookDate,
-            Status = DelegationStatusCatalog.PendingHead,
-            CreatedById = userId,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
-        };
-        ApplyDelegationAssets(delegation, source, request.AssetIds);
-
+        DocumentDelegation delegation = null!;
         await _tx.RunAsync(async token =>
         {
+            // B2: الفحص وبناء اللقطة والحفظ داخل المعاملة نفسها — لا فحص حجب خارجها.
+            // إعادة قراءة طازجة بلا تتبع: قراءات السياق المتتبَّع تُرجع المثيلات نفسها
+            // (identity resolution) ولا ترى ما التزمته معاملة منافسة بعد القراءة الأولى.
+            var fresh = await _documents.GetByIdWithDelegationsNoTrackingAsync(source.Id, token)
+                ?? throw new ArgumentException("الملف المنيب غير موجود");
+            await PruneStaleReservationsAsync(fresh, token);
+            await ValidateAssetsNotBlockedAsync(fresh, request.AssetIds, excludeDelegationId: null, token);
+
+            delegation = new DocumentDelegation
+            {
+                SourceDocumentId = source.Id,
+                DelegatedCourt = court,
+                IsExternal = fields.IsExternal,
+                ExternalBranchId = fields.ExternalBranchId,
+                DelegationDate = fields.DelegationDate,
+                DelegationText = Normalize(request.DelegationText),
+                DepositBookNumber = Normalize(request.DepositBookNumber),
+                DepositBookDate = fields.DepositBookDate,
+                Status = DelegationStatusCatalog.PendingHead,
+                CreatedById = userId,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            };
+            ApplyDelegationAssets(delegation, fresh, request.AssetIds);
+
             await _delegations.AddAsync(delegation, token);
             await _uow.SaveChangesAsync(token);
+
+            // B3: حجز ما استهلكته لقطات الإنابة الجديدة من المسبح بعد الحواجب — اللغة
+            // المشتركة مع المسح (التوائم قابلة للتبادل ولا تحمل اللقطات معرفاتها):
+            // يُحجز المستهلَك لا المطلوب حرفيًا، وإلا اختلف المرجعان على التوأم المحجوب.
+            var blocked = ComputeBlockedIds(fresh, excludeDelegationId: null);
+            var pool = fresh.Assets.OrderBy(a => a.Id).Where(a => !blocked.Contains(a.Id)).ToList();
+            var ownConsumed = ConsumeSnapshots(pool, delegation.Assets.OrderBy(s => s.Id), new HashSet<int>(blocked));
+            foreach (var assetId in ownConsumed)
+                await _reservations.AddAsync(new DelegationAssetReservation
+                {
+                    DelegationId = delegation.Id,
+                    SourceDocumentId = source.Id,
+                    AssetId = assetId,
+                }, token);
+            try
+            {
+                await _uow.SaveChangesAsync(token);
+            }
+            catch (Exception ex) when (_dbErrors.IsUniqueViolation(ex))
+            {
+                // الخاسر في السباق: نفس رسالة الحارس (400 بالمجال) لا 500.
+                throw new ArgumentException(BlockedAssetsMessage(fresh, request.AssetIds), ex);
+            }
+
             await _audit.LogAsync(actorName, "create_delegation",
                 source.Id, source.DocumentType,
                 $"سطّر إنابة على الملف (رقم {source.Id}) إلى {court}", token);
@@ -145,20 +184,48 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
 
         var (court, fields) = await ValidateAndBuildAsync(request, ct);
 
-        delegation.DelegatedCourt = court;
-        delegation.IsExternal = fields.IsExternal;
-        delegation.ExternalBranchId = fields.ExternalBranchId;
-        delegation.DelegationDate = fields.DelegationDate;
-        delegation.DelegationText = Normalize(request.DelegationText);
-        delegation.DepositBookNumber = Normalize(request.DepositBookNumber);
-        delegation.DepositBookDate = fields.DepositBookDate;
-        delegation.UpdatedAt = DateTime.UtcNow;
-        ApplyDelegationAssets(delegation, source, request.AssetIds);
-
         await _tx.RunAsync(async token =>
         {
+            // B2+D1: الفحص أولًا على قراءة طازجة بلا تتبع، ثم أي إسناد على الكيان —
+            // داخل المعاملة نفسها. الرفض لا يترك حالة Modified عالقة.
+            var fresh = await _documents.GetByIdWithDelegationsNoTrackingAsync(source.Id, token)
+                ?? throw new ArgumentException("الملف المنيب غير موجود");
+            await PruneStaleReservationsAsync(fresh, token);
+            await ValidateAssetsNotBlockedAsync(fresh, request.AssetIds, excludeDelegationId: delegation.Id, token);
+
+            delegation.DelegatedCourt = court;
+            delegation.IsExternal = fields.IsExternal;
+            delegation.ExternalBranchId = fields.ExternalBranchId;
+            delegation.DelegationDate = fields.DelegationDate;
+            delegation.DelegationText = Normalize(request.DelegationText);
+            delegation.DepositBookNumber = Normalize(request.DepositBookNumber);
+            delegation.DepositBookDate = fields.DepositBookDate;
+            delegation.UpdatedAt = DateTime.UtcNow;
+            ApplyDelegationAssets(delegation, fresh, request.AssetIds);
+
+            // B3: مواءمة الحجوزات مع اللقطات الجديدة (حذف المباشر أولًا فلا تعارض ذاتي) —
+            // تُحجز المستهلَكة من المسبح بعد الحواجب (لغة المسح المشتركة)، لا المطلوبة حرفيًا.
+            await _reservations.DeleteByDelegationAsync(delegation.Id, token);
+            var blocked = ComputeBlockedIds(fresh, excludeDelegationId: delegation.Id);
+            var pool = fresh.Assets.OrderBy(a => a.Id).Where(a => !blocked.Contains(a.Id)).ToList();
+            var ownConsumed = ConsumeSnapshots(pool, delegation.Assets.OrderBy(s => s.Id), new HashSet<int>(blocked));
+            foreach (var assetId in ownConsumed)
+                await _reservations.AddAsync(new DelegationAssetReservation
+                {
+                    DelegationId = delegation.Id,
+                    SourceDocumentId = source.Id,
+                    AssetId = assetId,
+                }, token);
+
             _delegations.Update(delegation);
-            await _uow.SaveChangesAsync(token);
+            try
+            {
+                await _uow.SaveChangesAsync(token);
+            }
+            catch (Exception ex) when (_dbErrors.IsUniqueViolation(ex))
+            {
+                throw new ArgumentException(BlockedAssetsMessage(fresh, request.AssetIds), ex);
+            }
             await _audit.LogAsync(actorName, "update_delegation",
                 source.Id, source.DocumentType,
                 $"عدّل إنابة (رقم {delegation.Id}) إلى {court}", token);
@@ -951,7 +1018,9 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         TargetFileYear(d.TargetDocument, currentYear),
         SourceFileType(source),
         d.TargetDocument?.ExecStatus,
-        Normalize(source.Court));
+        Normalize(source.Court),
+        DelegationActivityPolicy.IsAssetBlocking(d),
+        d.TargetDocument is not null && DelegationActivityPolicy.IsTargetTerminal(d.TargetDocument));
 
     private static string SourceLabel(Document source)
     {
@@ -986,4 +1055,104 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
     /// والقابلة للتعديل)، وإلا نيّة التسطير المحفوظة على السجل (قبل الاعتماد).</summary>
     private static string? TargetCourt(Document? target, string? recorded) =>
         Normalize(target?.Court) ?? Normalize(recorded);
+
+    /// <summary>
+    /// مواءمة الحجوزات اليتيمة (B3 — شفاء ذاتي في نقطة واحدة): تحذف صفوف الحجوزات التي
+    /// لم تعد لإنابة حاجبة (منفذة/مناب نهائي/محذوفة) قبل الفحص — فلا يحتاج أي مسار تحرر
+    /// (إتمام/استرداد/شطب-مناب/حذف) خطافًا خاصًا قد يُنسى (عين علة التنبيهات D3)، وأي
+    /// انحراف (طفر مباشر، فشل لاحق الالتزام) يُشفى عند أول فحص لاحق. الحذف والفحص
+    /// والإدراج اللاحق في معاملة واحدة فلا تسمم متقاطع.
+    /// </summary>
+    private async Task PruneStaleReservationsAsync(
+        Document source, CancellationToken ct)
+    {
+        var reservations = await _reservations.ListBySourceAsync(source.Id, ct);
+        if (reservations.Count == 0)
+            return;
+        var blockingIds = source.Delegations
+            .Where(DelegationActivityPolicy.IsAssetBlocking)
+            .Select(d => d.Id)
+            .ToList();
+        var staleCount = reservations.Count(r => !blockingIds.Contains(r.DelegationId));
+        if (staleCount > 0)
+            await _reservations.DeleteExceptAsync(source.Id, blockingIds, ct);
+    }
+
+    /// <summary>حارس الحجب عند التسطير/التعديل: يرفض الكفالة (لا إنابة عليها أبدًا) ويرفض الأموال
+    /// المحجوبة بإنابة سارية أخرى — مسح اللقطات حصرًا (مطابقة واحد-لواحد بالنوع والوصف —
+    /// مرآة matchDelegationAssets الأمامية — فالتوأم السليم لا يُحجب). صفوف الحجوزات (B3)
+    /// عمدًا خارج الحارس: مرجعها فيزيائي والمسح وصفي، واتحادهما يختلف على أي توأم
+    /// محجوب فيحجب التوأمين معًا — القيد الفريد وحده يحسم السباق عند الكتابة.
+    /// تُستثنى الإنابة ذاتها عند التعديل. يعمل على قراءة طازجة بلا تتبع
+    /// (B2) — لا يُمرَّر له كيان متتبع هنا أبدًا.</summary>
+    private static Task ValidateAssetsNotBlockedAsync(
+        Document source, List<int>? assetIds, int? excludeDelegationId, CancellationToken ct)
+    {
+        var ids = (assetIds ?? new List<int>()).Distinct().ToList();
+        if (ids.Count == 0)
+            return Task.CompletedTask; // الفراغ يرفضه ApplyDelegationAssets برسالتها («يجب اختيار الأموال موضوع الإنابة»).
+        var selected = source.Assets.Where(a => ids.Contains(a.Id)).ToList();
+        if (selected.Any(a => a.AssetKind == AssetKindCatalog.SalaryGuarantee))
+            throw new ArgumentException("كفالة الرواتب لا يجري عليها إنابة — أزلها من الأموال موضوع الإنابة");
+        var blockedIds = ComputeBlockedIds(source, excludeDelegationId);
+        if (blockedIds.Count == 0)
+            return Task.CompletedTask;
+        var hit = selected.Where(a => blockedIds.Contains(a.Id)).ToList();
+        if (hit.Count > 0)
+            throw new ArgumentException(BlockedAssetsMessage(hit));
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// ربط اللقطات بالأصول الفيزيائية (B3/C1): مطابقة واحد-لواحد جشعة على مسبح مرتب
+    /// بالمفتاح — اللقطة تستهلك أول أصل حر مطابق. حتمية تامة لمدخل ثابت (بما فيه التوائم).
+    /// تُستخدم للحارس (لقطات الحواجب) ولاشتقاق صفوف الحجز للقطات الجديدة — اللغة
+    /// المشتركة الوحيدة بين المرجع الوصفي والمرجع الفيزيائي (التوائم قابلة للتبادل
+    /// ولا تحمل اللقطات معرفاتها، فأي اختلاف بينهما يحجب توأمًا سليمًا).
+    /// </summary>
+    private static HashSet<int> ComputeBlockedIds(Document source, int? excludeDelegationId)
+    {
+        // مطابقة واحد-لواحد على كامل أموال المنيب (لا على المحدد فقط): لقطة الحاجب تستهلك
+        // توأمًا واحدًا من المسبح فيبقى التوأم السليم حرًا.
+        // C1: الفرز بالمفتاح قبل الجشع — بدونه يعتمد أي توأم يُستهلك على ترتيب التحميل.
+        var remaining = source.Assets.OrderBy(a => a.Id).ToList();
+        var blockedIds = new HashSet<int>();
+        var blockers = source.Delegations
+            .Where(d => (excludeDelegationId is null || d.Id != excludeDelegationId) && DelegationActivityPolicy.IsAssetBlocking(d))
+            .OrderBy(d => d.Id)
+            .ToList();
+        foreach (var blocker in blockers)
+            ConsumeSnapshots(remaining, blocker.Assets.OrderBy(s => s.Id), blockedIds);
+        return blockedIds;
+    }
+
+    /// <summary>استهلاك لقطات من المسبح (تزيل المستهلك وتسجله) — يُرجع المعرفات المستهلكة.</summary>
+    private static List<int> ConsumeSnapshots(
+        List<Asset> remaining, IEnumerable<DelegationAsset> snapshots, HashSet<int> blockedIds)
+    {
+        var consumed = new List<int>();
+        foreach (var snap in snapshots)
+        {
+            var match = remaining.FirstOrDefault(a =>
+                !blockedIds.Contains(a.Id)
+                && a.AssetKind == snap.AssetKind
+                && AssetDisplay.Label(a) == snap.AssetLabel);
+            if (match is null)
+                continue;
+            blockedIds.Add(match.Id);
+            remaining.Remove(match);
+            consumed.Add(match.Id);
+        }
+        return consumed;
+    }
+
+    /// <summary>رسالة الحجب الموحدة (الحارس وترجمة تعارض القيد في B3).</summary>
+    private static string BlockedAssetsMessage(Document source, List<int>? assetIds)
+    {
+        var ids = (assetIds ?? new List<int>()).Distinct().ToList();
+        return BlockedAssetsMessage(source.Assets.Where(a => ids.Contains(a.Id)).ToList());
+    }
+
+    private static string BlockedAssetsMessage(List<Asset> hit) =>
+        $"الأموال التالية عليها إنابة سارية: {string.Join("، ", hit.Select(AssetDisplay.Label))}";
 }

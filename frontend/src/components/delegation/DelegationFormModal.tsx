@@ -11,14 +11,17 @@ export default function DelegationFormModal({
   documentId,
   documentTitle,
   assets,
+  noAvailableAssets = false,
   initial,
   onClose,
   onSaved,
 }: {
   documentId: number;
   documentTitle?: string;
-  /** أصول الملف المنيب المتاحة للاختيار. */
+  /** أصول الملف المنيب المتاحة للاختيار (مفلترة مسبقًا: بلا كفالة وبلا محجوب بإنابة سارية). */
   assets: AssetDto[];
+  /** للملف أموال لكن لا متاح منها للإنابة — رسالة صادقة بدل «لا توجد أموال مسجلة». */
+  noAvailableAssets?: boolean;
   /** إنابة قائمة عند التعديل، وnull عند تسطير إنابة جديدة. */
   initial?: DelegationDto | null;
   onClose: () => void;
@@ -271,7 +274,11 @@ export default function DelegationFormModal({
               الأموال موضوع الإنابة
             </legend>
             {assets.length === 0 && unmatchedAssets.length === 0 ? (
-              <p className="text-sm text-gray-400">لا توجد أموال مسجلة على هذا الملف</p>
+              <p className="text-sm text-gray-400">
+                {noAvailableAssets
+                  ? 'لا توجد أموال متاحة للإنابة — جميعها محجوبة بإنابة سارية أو غير قابلة لها'
+                  : 'لا توجد أموال مسجلة على هذا الملف'}
+              </p>
             ) : (
               <div className="space-y-2">
                 {assets.length > 0 && (

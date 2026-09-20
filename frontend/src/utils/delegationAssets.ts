@@ -1,5 +1,6 @@
-import type { AssetDto, DelegationAssetDto } from '../types';
+import type { AssetDto, DelegationAssetDto, DelegationDto } from '../types';
 import { assetDisplayName } from './assetDisplay';
+import { ASSET_KINDS } from '../components/form/documentFormConstants';
 
 /** وصف قراءة لأصلٍ في لقطة الإنابة (يعتمد AssetLabel من الخلفية أساسًا). */
 export function delegationAssetLabel(snapshot: DelegationAssetDto): string {
@@ -15,10 +16,11 @@ export function matchDelegationAssets(
   snapshots: DelegationAssetDto[],
   currentAssets: AssetDto[],
 ): { matchedIds: number[]; unmatched: DelegationAssetDto[] } {
-  const remaining = [...currentAssets];
+  // C1: الفرز بالمفتاح قبل الجشع — مرآة الفرز الخلفي، فأي توأم يُطابَق حتمي.
+  const remaining = [...currentAssets].sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
   const matchedIds: number[] = [];
   const unmatched: DelegationAssetDto[] = [];
-  for (const snapshot of snapshots) {
+  for (const snapshot of [...snapshots].sort((a, b) => a.id - b.id)) {
     const index = remaining.findIndex(
       (a) => a.assetKind === snapshot.assetKind && assetDisplayName(a) === delegationAssetLabel(snapshot),
     );
@@ -40,4 +42,48 @@ export function delegationAssetsLine(delegation: { assets: DelegationAssetDto[] 
   const rest = labels.length - shown.length;
   const base = shown.join('، ');
   return rest > 0 ? `${base} — و${rest} أخرى` : base;
+}
+
+/**
+ * معرفات الأموال المحجوبة بإنابات سارية (حقل `blocksAssets` المحسوب خلفيًا):
+ * مطابقة واحد-لواحد على كامل المسبح — مرآة `ValidateAssetsNotBlockedAsync` الخلفية —
+ * فالتوأم السليم لا يُحجب. تُستثنى الإنابة ذاتها عند التعديل (تعديل المعلّقة على أموالها مسموح).
+ */
+export function blockedAssetIds(
+  delegations: DelegationDto[],
+  assets: AssetDto[],
+  excludeId?: number | null,
+): Set<number> {
+  const remaining = [...assets].sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
+  const blocked = new Set<number>();
+  for (const d of delegations) {
+    if (!d.blocksAssets) continue;
+    if (excludeId != null && d.id === excludeId) continue;
+    // C1: فرز اللقطات بالمفتاح — مرآة الفرز الخلفي.
+    for (const snap of [...(d.assets ?? [])].sort((a, b) => a.id - b.id)) {
+      const index = remaining.findIndex(
+        (a) =>
+          !blocked.has(a.id ?? 0) &&
+          a.assetKind === snap.assetKind &&
+          assetDisplayName(a) === delegationAssetLabel(snap),
+      );
+      if (index >= 0) blocked.add(remaining[index].id ?? 0);
+    }
+  }
+  return blocked;
+}
+
+/**
+ * الأموال المتاحة للاختيار في نافذة التسطير: بلا «كفالة رواتب» أبدًا (لا إنابة عليها)
+ * وبلا المحجوب بإنابة سارية — إخفاء تام.
+ */
+export function availableDelegationAssets(
+  delegations: DelegationDto[],
+  assets: AssetDto[],
+  excludeId?: number | null,
+): AssetDto[] {
+  const blocked = blockedAssetIds(delegations, assets, excludeId);
+  return assets.filter(
+    (a) => a.assetKind !== ASSET_KINDS.salaryGuarantee && !blocked.has(a.id ?? 0),
+  );
 }

@@ -39,18 +39,34 @@ public sealed partial class DocumentService
     /// تُعاد بناؤها بمعرفات جديدة عند كل تعديل، فتُطابَق اللقطات مع الأصول الحالية بالنوع
     /// ثم الوصف — الأصل المطابق تمامًا (نوع + وصف) يبقى بلا تغيير، والأصل الذي تغيّر وصفه
     /// من النوع نفسه تُحدَّث لقطته وتُعلَّم بأن بياناته عُدّلت بعد التسطير (يظهر تنبيه في
-    /// بطاقة «تشعبات الملف»). الإنابات المنفذة سجل نهائي بالبدل فلا تُمسّ لقطاتها.
+    /// بطاقة «تشعبات الملف») — إلا إذا تغيّر عدد النوع (C2: تجميد — اللقطة اليتيمة تبقى
+    /// كما سُطّرت سجلًا تاريخيًا مع تحذيرها في الواجهة). الإنابات المنفذة سجل نهائي
+    /// بالبدل فلا تُمسّ لقطاتها.
     /// </summary>
     private async Task SyncDelegationSnapshotsForDocumentAsync(Document doc, CancellationToken token)
     {
         var delegations = await _delegations.ListBySourceAsync(doc.Id, token);
-        var pending = delegations.Where(d => d.Status != DelegationStatusCatalog.Executed).ToList();
+        var pending = delegations.Where(DelegationActivityPolicy.IsLifecycleActive).ToList();
         if (pending.Count == 0)
             return;
 
-        var remaining = doc.Assets.ToList();
+        // C2: تجميد النقل التلقائي عند تغيّر عدد النوع — لقطة يتيمة (حُذف أصلها) لا تُعاد
+        // تسميتها إلى أصل آخر من النوع نفسه عند اختلاف العدد (إضافة/حذف)، بل تبقى سجلًا
+        // تاريخيًا كما سُطّرت. يُسمح بالنقل فقط عند تساوي العدد (تعديل وصف بحت — آمن).
+        var snapshots = pending.SelectMany(d => d.Assets).OrderBy(s => s.Id).ToList();
+        var currentByKind = doc.Assets
+            .GroupBy(a => a.AssetKind)
+            .ToDictionary(g => g.Key, g => g.Count());
+        var frozenKinds = snapshots
+            .GroupBy(s => s.AssetKind)
+            .Where(g => !currentByKind.TryGetValue(g.Key, out var currentCount) || currentCount != g.Count())
+            .Select(g => g.Key)
+            .ToHashSet();
+
+        // C1: الفرز بالمفتاح قبل الجشع في المرحلتين — حتمية أي لقطة تُطابَق/تُعاد تسميتها.
+        var remaining = doc.Assets.OrderBy(a => a.Id).ToList();
         var changed = false;
-        foreach (var snapshot in pending.SelectMany(d => d.Assets))
+        foreach (var snapshot in snapshots)
         {
             // تطابق تام (نوع + وصف): لم تتغير بيانات الأصل — تُستهلك وتُترك بلا تغيير.
             var exact = remaining.FindIndex(a => a.AssetKind == snapshot.AssetKind && AssetDisplay.Label(a) == snapshot.AssetLabel);
@@ -59,6 +75,9 @@ public sealed partial class DocumentService
                 remaining.RemoveAt(exact);
                 continue;
             }
+            // C2: النوع المجمّد لا يُنقَل تلقائيًا — اللقطة اليتيمة تبقى كما سُطّرت.
+            if (frozenKinds.Contains(snapshot.AssetKind))
+                continue;
             // تعديل وصف أصل من النوع نفسه بعد التسطير: تُحدَّث اللقطة ويُعلَّم التعديل.
             var sameKind = remaining.FindIndex(a => a.AssetKind == snapshot.AssetKind);
             if (sameKind >= 0)

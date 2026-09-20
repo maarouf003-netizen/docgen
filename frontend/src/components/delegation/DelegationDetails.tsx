@@ -1,7 +1,8 @@
-import type { DelegationDto } from '../../types';
+import type { AssetDto, DelegationDto } from '../../types';
 import { formatDate } from '../../utils/dates';
-import { delegationAssetsLine } from '../../utils/delegationAssets';
-import { delegationStatusBadge } from '../../utils/delegationStatus';
+import { assetDisplayName } from '../../utils/assetDisplay';
+import { delegationAssetLabel, delegationAssetsLine } from '../../utils/delegationAssets';
+import { DELEGATION_STATUS_EXECUTED, delegationStatusBadge } from '../../utils/delegationStatus';
 
 /** صف «كتب» اختياري: «كتاب الإيداع رقم X بتاريخ Y» (يظهر متى وُجد أحد حقلَيه). */
 function bookRow(label: string, number?: string | null, date?: string | null): string {
@@ -15,14 +16,30 @@ function bookRow(label: string, number?: string | null, date?: string | null): s
 /**
  * تفاصيل إنابة واحدة (مشتركة بين «تشعبات الملف» و«معلومات الملف المنيب» و«طلبات الإنابة»):
  * الدائرة المنابة وحالتها، داخليتها/خارجيتها، تاريخها ونصها، كتبها، محاميها وأموالها.
+ * sourceAssets (اختياري — تُمرَّر في سياق المنيب فقط): تُكشف بها اللقطات اليتيمة
+ * (C2 — لا تطابق أي أصل حالي) بتحذير مميز عن تحذير «عُدِّلت البيانات».
  */
-export function DelegationDetails({ d }: { d: DelegationDto }) {
+export function DelegationDetails({ d, sourceAssets }: { d: DelegationDto; sourceAssets?: AssetDto[] }) {
   const badge = delegationStatusBadge(d.status);
   const books: string[] = [
     bookRow('كتاب الإيداع', d.depositBookNumber, d.depositBookDate),
   ].filter(Boolean);
   const assetsLine = delegationAssetsLine(d);
   const snapshotsAdjusted = d.assets.some((a) => a.snapshotAdjusted);
+  // اليتيمة: لقطة إنابة غير منفذة لا تطابق أي أصل حالي (نوع + وصف) — حُذف أصلها أو
+  // تغيّر جذريًا مع تجميد النقل التلقائي (C2)؛ الأصل الجديد حرّ فعليًا — راجع التسطير.
+  const orphanLabels =
+    sourceAssets == null || d.status === DELEGATION_STATUS_EXECUTED
+      ? []
+      : d.assets
+          .filter(
+            (s) =>
+              !s.snapshotAdjusted &&
+              !sourceAssets.some(
+                (a) => a.assetKind === s.assetKind && assetDisplayName(a) === delegationAssetLabel(s),
+              ),
+          )
+          .map(delegationAssetLabel);
   const targetNumber = [d.targetFileNumber, d.targetFileYear].filter(Boolean).join('/');
 
   return (
@@ -78,6 +95,12 @@ export function DelegationDetails({ d }: { d: DelegationDto }) {
       {snapshotsAdjusted && (
         <p className="text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
           عُدِّلت بيانات بعض الأموال في الملف المنيب بعد التسطير — حُدِّثت لقطة الإنابة تلقائيًا.
+        </p>
+      )}
+
+      {orphanLabels.length > 0 && (
+        <p className="text-xs font-medium text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2 break-words">
+          {`أصل موضوع الإنابة لم يعد في الملف المنيب (حُذف أو تغيّر جذريًا): ${orphanLabels.join('، ')} — راجع التسطير.`}
         </p>
       )}
 

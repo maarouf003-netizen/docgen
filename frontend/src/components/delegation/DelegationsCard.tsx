@@ -1,6 +1,10 @@
-import type { DelegationDto } from '../../types';
+import type { AssetDto, DelegationDto } from '../../types';
 import { getDocumentBadge } from '../../utils/documentStatus';
-import { isDelegationPending } from '../../utils/delegationStatus';
+import {
+  DELEGATION_STATUS_REGISTERED,
+  isDelegationPending,
+  withCourtPrefix,
+} from '../../utils/delegationStatus';
 import { SectionCard } from '../view/SectionCard';
 import { DelegationDetails } from './DelegationDetails';
 import { DelegationActivityStrip } from './DelegationActivityStrip';
@@ -17,6 +21,23 @@ function targetStatusBadge(d: DelegationDto): { text: string; cls: string } | nu
 }
 
 /**
+ * شرح «بانتظار الإتمام» في المنيب (المصدر فقط — هذه البطاقة لا تظهر في المناب):
+ * «بانتظار الإتمام — سُجّل الملف المناب أصولًا برقم أساس {N} دائرة تنفيذ {C}».
+ * يظهر للمسجلة أصولًا ذات رقم مناب معروف (رقم وسنة معًا) ومناب غير نهائي فقط؛
+ * المعلّقة/المحالة بلا مناب بعد، والمسجلة بمناب نهائي (مسترد/مشطوب/منفذ إنابة —
+ * targetTerminal) بلا شرح لأن «الانتظار» انتهى (A2).
+ */
+function registrationExplanation(d: DelegationDto): string | null {
+  if (d.status !== DELEGATION_STATUS_REGISTERED) return null;
+  if (d.targetTerminal) return null;
+  if (!d.targetFileNumber || !d.targetFileYear) return null;
+  const targetNumber = `${d.targetFileNumber}/${d.targetFileYear}`;
+  const court = withCourtPrefix(d.delegatedCourt);
+  if (!court) return null;
+  return `بانتظار الإتمام — سُجّل الملف المناب أصولًا برقم أساس ${targetNumber} ${court}`;
+}
+
+/**
  * بطاقة «تشعبات الملف» (في الملف المنيب): كل إناباته الصادرة، مع إمكانية تسطير إنابة
  * جديدة (للمحامي المالك على ملف متداول) وتعديل/حذف المعلّقة من محامي المنيب.
  */
@@ -27,6 +48,8 @@ export function DelegationsCard({
   onCreate,
   onEdit,
   onDelete,
+  sourceAssets,
+  delegationsLoading,
 }: {
   delegations: DelegationDto[];
   canCreate: boolean;
@@ -35,6 +58,13 @@ export function DelegationsCard({
   onCreate: () => void;
   onEdit: (d: DelegationDto) => void;
   onDelete: (d: DelegationDto) => void;
+  /** أصول الملف المنيب الحالية (سياق المنيب فقط) — تُكشف بها اللقطات اليتيمة (C2). */
+  sourceAssets?: AssetDto[];
+  /**
+   * تحميل الإنابات الأولى جارٍ (بلا بيانات بعد) — يُعطَّل زر التسطير ويُعرض هيكل
+   * تحميل بدل نص الفراغ الكاذب (E1). إعادة الجلب ببيانات حاضرة لا تعطّل.
+   */
+  delegationsLoading?: boolean;
 }) {
   return (
     <SectionCard
@@ -45,15 +75,19 @@ export function DelegationsCard({
           <button
             type="button"
             onClick={onCreate}
-            className="bg-emerald-800 hover:bg-emerald-700 text-white rounded-lg px-4 py-2 text-sm min-h-11"
+            disabled={delegationsLoading}
+            aria-disabled={delegationsLoading}
+            className="bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg px-4 py-2 text-sm min-h-11"
           >
-            تسطير إنابة
+            {delegationsLoading ? 'جارٍ التحميل…' : 'تسطير إنابة'}
           </button>
         )
       }
     >
 
-      {delegations.length === 0 ? (
+      {delegationsLoading ? (
+        <p className="text-gray-400 text-sm motion-safe:animate-pulse">جارٍ تحميل الإنابات…</p>
+      ) : delegations.length === 0 ? (
         <p className="text-gray-400 text-sm">لا توجد إنابات مسجلة لهذا الملف</p>
       ) : (
         <ul className="divide-y divide-gray-100">
@@ -61,7 +95,15 @@ export function DelegationsCard({
             const manageable = isDelegationPending(d.status) && d.createdById === currentUserId;
             return (
               <li key={d.id} className="py-3 first:pt-0 last:pb-0">
-                <DelegationDetails d={d} />
+                <DelegationDetails d={d} sourceAssets={sourceAssets} />
+                {(() => {
+                  const explanation = registrationExplanation(d);
+                  return explanation == null ? null : (
+                    <p className="mt-2 text-xs font-medium text-violet-900 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2 break-words">
+                      {explanation}
+                    </p>
+                  );
+                })()}
                 {(() => {
                   const badge = targetStatusBadge(d);
                   return badge == null ? null : (

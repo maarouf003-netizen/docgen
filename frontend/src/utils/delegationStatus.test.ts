@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { delegationStatusBadge, isDelegationPending } from './delegationStatus';
+import { delegationStatusBadge, isDelegationPending, withCourtPrefix } from './delegationStatus';
 
 describe('delegationStatusBadge', () => {
   it('يعطي شارة الحالة العربية المعتمدة لكل حالة', () => {
@@ -44,5 +44,26 @@ describe('isDelegationPending', () => {
     expect(isDelegationPending('مسجلة أصولًا')).toBe(false);
     expect(isDelegationPending('منفذ إنابة')).toBe(false);
     expect(isDelegationPending(undefined)).toBe(false);
+  });
+});
+
+describe('withCourtPrefix', () => {
+  it('يُسبق القيمة العارية بـ«دائرة تنفيذ» مرة واحدة', () => {
+    expect(withCourtPrefix('حلب')).toBe('دائرة تنفيذ حلب');
+    expect(withCourtPrefix('  القرداحة  ')).toBe('دائرة تنفيذ القرداحة');
+  });
+
+  it('لا يضاعف البادئة للقيم الجاهزة (دائرة/محكمة/تنفيذ)', () => {
+    expect(withCourtPrefix('دائرة تنفيذ حلب')).toBe('دائرة تنفيذ حلب');
+    expect(withCourtPrefix('دائرة حلب')).toBe('دائرة حلب');
+    expect(withCourtPrefix('محكمة التنفيذ الأولى')).toBe('محكمة التنفيذ الأولى');
+    expect(withCourtPrefix('تنفيذ دمشق')).toBe('تنفيذ دمشق');
+  });
+
+  it('يرجّع فراغًا للفارغ والمعدوم', () => {
+    expect(withCourtPrefix('')).toBe('');
+    expect(withCourtPrefix('   ')).toBe('');
+    expect(withCourtPrefix(null)).toBe('');
+    expect(withCourtPrefix(undefined)).toBe('');
   });
 });

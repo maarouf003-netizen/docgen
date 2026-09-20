@@ -388,6 +388,33 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.ToTable("DelegationAssets", (string)null);
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DelegationAssetReservation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AssetId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DelegationId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SourceDocumentId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DelegationId");
+
+                    b.HasIndex("SourceDocumentId", "AssetId")
+                        .IsUnique();
+
+                    b.ToTable("DelegationAssetReservations", (string)null);
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.Document", b =>
                 {
                     b.Property<int>("Id")
@@ -2447,6 +2474,17 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                 {
                     b.HasOne("DocGenerator.Domain.Entities.DocumentDelegation", "Delegation")
                         .WithMany("Assets")
+                        .HasForeignKey("DelegationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Delegation");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DelegationAssetReservation", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.DocumentDelegation", "Delegation")
+                        .WithMany()
                         .HasForeignKey("DelegationId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();

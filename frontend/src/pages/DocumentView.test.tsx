@@ -1884,6 +1884,63 @@ it('يُسجّل الملف كآخر ما فُتح في الجلسة ليُمي�
     expect(screen.getByRole('dialog', { name: 'تسطير إنابة' })).toBeInTheDocument();
   });
 
+  it('يخفي في نافذة التسطير الأموال المحجوبة بإنابة سارية والكفالة — إخفاء تام', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({ isHead: false, user: { role: 'lawyer', id: 7 } });
+    const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
+    getMock.mockImplementation((url: string) => {
+      if (url === '/documents/1/delegations') {
+        return Promise.resolve({
+          data: [
+            {
+              id: 9,
+              sourceDocumentId: 1,
+              sourceDocumentLabel: 'أحمد محمد خالد',
+              targetDocumentId: null,
+              delegatedCourt: 'محكمة التنفيذ الأولى',
+              isExternal: false,
+              externalBranchId: null,
+              externalBranchName: null,
+              delegationDate: '2026-08-01',
+              delegationText: '',
+              depositBookNumber: '',
+              depositBookDate: '',
+              assignedLawyerId: null,
+              assignedLawyerName: null,
+              returnDate: '',
+              status: 'بانتظار رئيس القسم',
+              createdAt: '2026-08-01',
+              createdByName: 'سامر',
+              createdById: 7,
+              blocksAssets: true,
+              assets: [{ id: 100, assetKind: 'عقار', assetLabel: 'منزل', snapshotAdjusted: false }],
+            },
+          ],
+        });
+      }
+      return Promise.resolve({
+        data: {
+          ...mockDoc,
+          createdById: 7,
+          assets: [
+            ...mockDoc.assets,
+            { id: 3, assetKind: 'كفالة رواتب', publicEntity: 'مؤسسة المياه' },
+          ],
+        },
+      });
+    });
+    renderView();
+
+    await screen.findByText('تشعبات الملف');
+    await user.click(screen.getByRole('button', { name: 'تسطير إنابة' }));
+    const dialog = screen.getByRole('dialog', { name: 'تسطير إنابة' });
+
+    // المحجوب («منزل») والكفالة لا يظهران في النافذة، والحر («أرض») يبقى.
+    expect(within(dialog).queryByText('منزل')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/كفالة رواتب/)).not.toBeInTheDocument();
+    expect(within(dialog).getByText('أرض')).toBeInTheDocument();
+  });
+
   it('لا يعرض زر «تسطير إنابة» لغير المالك ولا لملف منفذ', async () => {
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: { ...mockDoc, createdById: 7, execStatus: 'منفذ جبريا', execSubStatus: 'منفذ كاملا' },

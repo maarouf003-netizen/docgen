@@ -244,4 +244,8 @@ npm test
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260920070522_BackfillDelegationTargetCourt.cs` — تعبئة `Court` للصفوف ذات `SourceDelegationId IS NOT NULL` من `DelegatedCourt` لإنابتها (غير الفارغة)؛ بلا تغيير مخطط.
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260920070620_BackfillDelegationTargetCourtPg.cs` — نفسه.
   - بدون التطبيق تبقى المنابات القائمة ظاهرة بدائرة المنيب في الشريط والجداول والمستندات والتنبيهات (الجديدة تُضبط عند الاعتماد تلقائيًا).
+- [ ] **2026-09-20 — `AddDelegationAssetReservations` (SQLite + Postgres)** (جدول حجوزات الأصول الصريح للإنابات الحاجبة — نقطة التسلسل لسباق التسطير المتزامن، خطة المعالجة `v2`):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260920121618_AddDelegationAssetReservations.cs` — ينشئ جدول `DelegationAssetReservations` (`Id` + `DelegationId` بFK تتالٍ إلى `DocumentDelegations` + `SourceDocumentId` + `AssetId`) مع قيد فريد `IX_DelegationAssetReservations_SourceDocumentId_AssetId` وفهرس `IX_DelegationAssetReservations_DelegationId`.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260920121644_AddDelegationAssetReservations.cs` — نفسه (`integer` + `IdentityByDefaultColumn`).
+  - بدون التطبيق يفشل أي تسطير/تعديل إنابة فعليًا برسالة `no such table: DelegationAssetReservations` رغم نجاح الاختبارات محليًا.
 

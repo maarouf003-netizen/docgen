@@ -152,8 +152,7 @@ describe('DelegationsCard', () => {
     expect(screen.getByText('المحامي هشام')).toBeInTheDocument();
   });
 
-  it('يعرض زر «تسطير إنابة» عند الإذن ويستدعي onCreate', () => {
-    const onCreate = vi.fn();
+  it('يعرض زر «تسطير إنابة» عند الإذن ويستدعي onCreate', () => {    const onCreate = vi.fn();
     render(
       <DelegationsCard delegations={[]} canCreate onCreate={onCreate} onEdit={noop} onDelete={noop} />,
     );
@@ -220,5 +219,303 @@ describe('DelegationsCard', () => {
 
     expect(screen.queryByRole('button', { name: 'تعديل' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'حذف' })).not.toBeInTheDocument();
+  });
+
+  it('يعرض شرح «بانتظار الإتمام» برقم المناب ودائرته للمسجلة أصولًا', () => {
+    render(
+      <DelegationsCard
+        delegations={[
+          delegation({
+            status: 'مسجلة أصولًا',
+            targetFileNumber: '77',
+            targetFileYear: '2026',
+            delegatedCourt: 'القرداحة',
+          }),
+        ]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    expect(
+      screen.getByText('بانتظار الإتمام — سُجّل الملف المناب أصولًا برقم أساس 77/2026 دائرة تنفيذ القرداحة'),
+    ).toBeInTheDocument();
+  });
+
+  it('لا يضاعف بادئة الدائرة في شرح الإتمام عندما تحمل القيمة البادئة', () => {
+    render(
+      <DelegationsCard
+        delegations={[
+          delegation({
+            status: 'مسجلة أصولًا',
+            targetFileNumber: '77',
+            targetFileYear: '2026',
+            delegatedCourt: 'دائرة تنفيذ القرداحة',
+          }),
+        ]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    expect(
+      screen.getByText('بانتظار الإتمام — سُجّل الملف المناب أصولًا برقم أساس 77/2026 دائرة تنفيذ القرداحة'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/دائرة دائرة/)).not.toBeInTheDocument();
+  });
+
+  it('لا يعرض شرح الإتمام للمعلّقة والمحالة والمنفذة', () => {
+    for (const status of ['بانتظار رئيس القسم', 'محالة', 'منفذ إنابة']) {
+      const { unmount } = render(
+        <DelegationsCard
+          delegations={[
+            delegation({
+              status,
+              targetFileNumber: '77',
+              targetFileYear: '2026',
+              delegatedCourt: 'القرداحة',
+            }),
+          ]}
+          canCreate={false}
+          onCreate={noop}
+          onEdit={noop}
+          onDelete={noop}
+        />,
+      );
+
+      expect(screen.queryByText(/بانتظار الإتمام — سُجّل/)).not.toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it('لا يعرض شرح الإتمام للمسجلة بلا رقم مناب معروف', () => {
+    render(
+      <DelegationsCard
+        delegations={[
+          delegation({ status: 'مسجلة أصولًا', delegatedCourt: 'القرداحة' }),
+        ]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    expect(screen.queryByText(/بانتظار الإتمام — سُجّل/)).not.toBeInTheDocument();
+  });
+
+  it('لا يعرض شرح الإتمام للمسجلة برقم دون سنة (الرقم والسنة معًا شرط)', () => {
+    render(
+      <DelegationsCard
+        delegations={[
+          delegation({
+            status: 'مسجلة أصولًا',
+            targetFileNumber: '77',
+            targetFileYear: null,
+            delegatedCourt: 'القرداحة',
+          }),
+        ]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    expect(screen.queryByText(/بانتظار الإتمام — سُجّل/)).not.toBeInTheDocument();
+  });
+
+  it('لا يعرض شرح الإتمام للمسجلة بمناب نهائي مع بقاء شارة حالته', () => {
+    // [الحالة, نص الشارة المعروضة]: «منفذ إنابة» تُعامل منفذًا فشارتها «منفذ».
+    const cases: Array<[string, string]> = [
+      ['مسترد', 'مسترد'],
+      ['مشطوب', 'مشطوب'],
+      ['منفذ إنابة', 'منفذ'],
+    ];
+    for (const [targetExecStatus, badgeText] of cases) {
+      const { unmount } = render(
+        <DelegationsCard
+          delegations={[
+            delegation({
+              status: 'مسجلة أصولًا',
+              targetDocumentId: 5,
+              targetFileNumber: '77',
+              targetFileYear: '2026',
+              targetExecStatus,
+              targetTerminal: true,
+              delegatedCourt: 'القرداحة',
+            }),
+          ]}
+          canCreate={false}
+          onCreate={noop}
+          onEdit={noop}
+          onDelete={noop}
+        />,
+      );
+
+      expect(screen.queryByText(/بانتظار الإتمام — سُجّل/)).not.toBeInTheDocument();
+      expect(screen.getByText('حالة الملف المناب')).toBeInTheDocument();
+      expect(screen.getByText(badgeText)).toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it('يعرض تحذير اليتيمة للقطة لا تطابق أي أصل حالي (C2)', () => {
+    render(
+      <DelegationsCard
+        delegations={[
+          delegation({
+            status: 'مسجلة أصولًا',
+            assets: [{ id: 100, assetKind: 'عقار', assetLabel: 'عقار رقم 77', snapshotAdjusted: false }],
+          }),
+        ]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+        sourceAssets={[{ id: 5, assetKind: 'عقار', property: 'عقار رقم 99' } as never]}
+      />,
+    );
+
+    expect(screen.getByText(/لم يعد في الملف المنيب/)).toBeInTheDocument();
+    expect(screen.getByText(/لم يعد في الملف المنيب/).textContent).toContain('عقار رقم 77');
+  });
+
+  it('لا يعرض تحذير اليتيمة عند مطابقة اللقطة لأصل حالي', () => {
+    render(
+      <DelegationsCard
+        delegations={[
+          delegation({
+            status: 'مسجلة أصولًا',
+            assets: [{ id: 100, assetKind: 'عقار', assetLabel: 'عقار رقم 77', snapshotAdjusted: false }],
+          }),
+        ]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+        sourceAssets={[{ id: 5, assetKind: 'عقار', property: 'عقار رقم 77' } as never]}
+      />,
+    );
+
+    expect(screen.queryByText(/لم يعد في الملف المنيب/)).not.toBeInTheDocument();
+  });
+
+  it('لا يعرض تحذير اليتيمة بلا أصول مصدر (توافق خلفي) ولا للمنفذة', () => {
+    const orphan = delegation({
+      status: 'مسجلة أصولًا',
+      assets: [{ id: 100, assetKind: 'عقار', assetLabel: 'عقار رقم 77', snapshotAdjusted: false }],
+    });
+    const { unmount } = render(
+      <DelegationsCard
+        delegations={[orphan]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+    expect(screen.queryByText(/لم يعد في الملف المنيب/)).not.toBeInTheDocument();
+    unmount();
+
+    render(
+      <DelegationsCard
+        delegations={[{ ...orphan, status: 'منفذ إنابة' }]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+        sourceAssets={[{ id: 5, assetKind: 'عقار', property: 'عقار رقم 99' } as never]}
+      />,
+    );
+    expect(screen.queryByText(/لم يعد في الملف المنيب/)).not.toBeInTheDocument();
+  });
+
+  it('المعدّلة تلقائيًا لا تُحسب يتيمة (تحذيرها الخاص يبقى)', () => {
+    render(
+      <DelegationsCard
+        delegations={[
+          delegation({
+            status: 'مسجلة أصولًا',
+            assets: [{ id: 100, assetKind: 'عقار', assetLabel: 'عقار رقم 771', snapshotAdjusted: true }],
+          }),
+        ]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+        sourceAssets={[{ id: 5, assetKind: 'عقار', property: 'عقار رقم 99' } as never]}
+      />,
+    );
+
+    expect(screen.queryByText(/لم يعد في الملف المنيب/)).not.toBeInTheDocument();
+    expect(screen.getByText(/حُدِّثت لقطة الإنابة تلقائيًا/)).toBeInTheDocument();
+  });
+
+  it('يعرض شرح الإتمام للمسجلة بمناب حي (targetTerminal=false صراحة)', () => {
+    render(
+      <DelegationsCard
+        delegations={[
+          delegation({
+            status: 'مسجلة أصولًا',
+            targetFileNumber: '77',
+            targetFileYear: '2026',
+            targetTerminal: false,
+            delegatedCourt: 'القرداحة',
+          }),
+        ]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    expect(
+      screen.getByText('بانتظار الإتمام — سُجّل الملف المناب أصولًا برقم أساس 77/2026 دائرة تنفيذ القرداحة'),
+    ).toBeInTheDocument();
+  });
+
+  it('E1: التحميل الأول يعطّل الزر ويعرض هيكل تحميل بدل نص الفراغ', () => {
+    const onCreate = vi.fn();
+    render(
+      <DelegationsCard
+        delegations={[]}
+        canCreate
+        onCreate={onCreate}
+        onEdit={noop}
+        onDelete={noop}
+        delegationsLoading
+      />,
+    );
+
+    const button = screen.getByRole('button', { name: 'جارٍ التحميل…' });
+    expect(button).toBeDisabled();
+    expect(screen.getByText('جارٍ تحميل الإنابات…')).toBeInTheDocument();
+    expect(screen.queryByText('لا توجد إنابات مسجلة لهذا الملف')).not.toBeInTheDocument();
+  });
+
+  it('E1: بيانات حاضرة (ولو أثناء إعادة جلب) تبقي الزر مفعّلًا والقائمة ظاهرة', () => {
+    const onCreate = vi.fn();
+    render(
+      <DelegationsCard
+        delegations={[delegation({ status: 'مسجلة أصولًا' })]}
+        canCreate
+        onCreate={onCreate}
+        onEdit={noop}
+        onDelete={noop}
+        delegationsLoading={false}
+      />,
+    );
+
+    const button = screen.getByRole('button', { name: 'تسطير إنابة' });
+    expect(button).not.toBeDisabled();
+    fireEvent.click(button);
+    expect(onCreate).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('جارٍ تحميل الإنابات…')).not.toBeInTheDocument();
   });
 });

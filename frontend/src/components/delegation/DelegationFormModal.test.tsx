@@ -254,4 +254,27 @@ describe('DelegationFormModal', () => {
       }),
     );
   });
+
+  it('يعرض رسالة الفراغ الأصلية عند غياب الأموال كليًا', () => {
+    render(
+      <DelegationFormModal documentId={10} assets={[]} onClose={noop} onSaved={noop} />,
+    );
+
+    expect(screen.getByText('لا توجد أموال مسجلة على هذا الملف')).toBeInTheDocument();
+  });
+
+  it('يعرض رسالة صادقة عند حجب كل الأموال — بلا كشف أسماء', () => {
+    render(
+      <DelegationFormModal
+        documentId={10}
+        assets={[]}
+        noAvailableAssets
+        onClose={noop}
+        onSaved={noop}
+      />,
+    );
+
+    expect(screen.getByText(/لا توجد أموال متاحة للإنابة/)).toBeInTheDocument();
+    expect(screen.queryByText('لا توجد أموال مسجلة على هذا الملف')).not.toBeInTheDocument();
+  });
 });

@@ -60,6 +60,8 @@ public class DocumentDelegationServiceTests : IDisposable
 
         _service = new DocumentDelegationService(
             new DelegationRepository(_db),
+            new DelegationReservationRepository(_db),
+            new DbExceptionClassifier(),
             documents,
             users,
             branches,
@@ -515,6 +517,403 @@ public class DocumentDelegationServiceTests : IDisposable
         // 3) بطاقة الإنابة (جهة المناب) تعرض الدائرة الحيّة.
         var card = await _service.ListForDocumentAsync(targetId);
         Assert.Equal("دائرة تنفيذ حماة", card.Single(d => d.Id == created.Id).DelegatedCourt);
+    }
+
+    [Fact]
+    public async Task Create_OnAssetWithPendingDelegation_ThrowsActiveDelegation()
+    {
+        // لا إنابتان على مال واحد: المعلّقة («بانتظار رئيس القسم») تحجب مالها عن أي تسطير جديد،
+        // وتُسمّى الأموال المحجوبة في رسالة الرفض.
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var first = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        Assert.True(first.BlocksAssets);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1"));
+        Assert.Contains("إنابة سارية", ex.Message);
+        Assert.Contains("عقار رقم 77", ex.Message);
+    }
+
+    [Fact]
+    public async Task Create_OnSalaryGuarantee_ThrowsNeverDelegated()
+    {
+        // كفالة الرواتب خارج الإنابة كليًا: لا تُحجب بل تُرفض صراحة إنشاءً وتعديلًا.
+        var source = await CreateSourceAsync();
+        var salary = new Asset { DocumentId = source.Id, AssetKind = AssetKindCatalog.SalaryGuarantee };
+        _db.Assets.Add(salary);
+        await _db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(source.Id, SampleRequest(salary.Id), _lawyer1.Id, "lawyer1"));
+        Assert.Contains("كفالة الرواتب", ex.Message);
+    }
+
+    [Fact]
+    public async Task Update_OwnPendingDelegation_KeepsOwnAssets()
+    {
+        // تعديل المعلّقة على أموالها مسموح (تُستثنى ذاتها من الحجب).
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+
+        var updated = await _service.UpdateAsync(created.Id,
+            SampleRequest(assetId) with { DelegationText = "عدّلت المنطوق" },
+            _lawyer1.Id, "lawyer1");
+
+        Assert.NotNull(updated);
+        Assert.Single(updated!.Assets);
+    }
+
+    [Fact]
+    public async Task Update_TakingAssetBlockedByAnother_Throws()
+    {
+        // D1 معلّقة على المال الأول، D2 معلّقة على الثاني؛ مدّ D2 إلى الأول مرفوض.
+        var source = await CreateSourceAsync();
+        _db.Assets.Add(new Asset
+        {
+            DocumentId = source.Id,
+            AssetKind = AssetKindCatalog.RealEstate,
+            PropertyNumber = "78",
+        });
+        await _db.SaveChangesAsync();
+        var ids = await _db.Assets.Where(a => a.DocumentId == source.Id).OrderBy(a => a.Id).Select(a => a.Id).ToListAsync();
+        await _service.CreateAsync(source.Id, SampleRequest(ids[0]), _lawyer1.Id, "lawyer1");
+        var second = await _service.CreateAsync(source.Id, SampleRequest(ids[1]), _lawyer1.Id, "lawyer1");
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateAsync(second.Id, SampleRequest(ids[0], ids[1]), _lawyer1.Id, "lawyer1"));
+        Assert.Contains("إنابة سارية", ex.Message);
+    }
+
+    [Fact]
+    public async Task Update_RejectedByGuard_LeavesNoTrackedMutation()
+    {
+        // D1: الفحص قبل أي إسناد — الرفض لا يترك حالة Modified عالقة ولا يمس الحقول المخزنة.
+        var source = await CreateSourceAsync();
+        _db.Assets.Add(new Asset
+        {
+            DocumentId = source.Id,
+            AssetKind = AssetKindCatalog.RealEstate,
+            PropertyNumber = "78",
+        });
+        await _db.SaveChangesAsync();
+        var ids = await _db.Assets.Where(a => a.DocumentId == source.Id).OrderBy(a => a.Id).Select(a => a.Id).ToListAsync();
+        await _service.CreateAsync(source.Id, SampleRequest(ids[0]), _lawyer1.Id, "lawyer1");
+        var second = await _service.CreateAsync(source.Id, SampleRequest(ids[1]), _lawyer1.Id, "lawyer1");
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateAsync(second.Id,
+                SampleRequest(ids[0]) with { DelegatedCourt = "دائرة تنفيذ حمص" },
+                _lawyer1.Id, "lawyer1"));
+        Assert.Contains("إنابة سارية", ex.Message);
+
+        Assert.Empty(_db.ChangeTracker.Entries().Where(e => e.State == EntityState.Modified));
+        var stored = await _db.DocumentDelegations.AsNoTracking().SingleAsync(d => d.Id == second.Id);
+        Assert.Equal("دائرة تنفيذ حلب", stored.DelegatedCourt);
+    }
+
+    [Fact]
+    public async Task Reservations_FollowDelegationLifecycle()
+    {
+        // B3: صف حجز لكل أصل مختار؛ التعديل يوائم الصفوف؛ الحذف يحرر بالتتالي بلا تسمم.
+        var source = await CreateSourceAsync();
+        _db.Assets.Add(new Asset
+        {
+            DocumentId = source.Id,
+            AssetKind = AssetKindCatalog.RealEstate,
+            PropertyNumber = "78",
+        });
+        await _db.SaveChangesAsync();
+        var ids = await _db.Assets.Where(a => a.DocumentId == source.Id).OrderBy(a => a.Id).Select(a => a.Id).ToListAsync();
+
+        async Task<List<DelegationAssetReservation>> RowsAsync() => await _db.DelegationAssetReservations
+            .AsNoTracking().Where(r => r.SourceDocumentId == source.Id).ToListAsync();
+
+        var first = await _service.CreateAsync(source.Id, SampleRequest(ids[0]), _lawyer1.Id, "lawyer1");
+        var row = Assert.Single(await RowsAsync());
+        Assert.Equal(first.Id, row.DelegationId);
+        Assert.Equal(ids[0], row.AssetId);
+
+        await _service.UpdateAsync(first.Id, SampleRequest(ids[1]), _lawyer1.Id, "lawyer1");
+        row = Assert.Single(await RowsAsync());
+        Assert.Equal(first.Id, row.DelegationId);
+        Assert.Equal(ids[1], row.AssetId);
+
+        Assert.True(await _service.DeleteAsync(first.Id, _lawyer1.Id, "lawyer1"));
+        Assert.Empty(await RowsAsync());
+
+        var again = await _service.CreateAsync(source.Id, SampleRequest(ids[0]), _lawyer1.Id, "lawyer1");
+        Assert.NotNull(again);
+    }
+
+    [Fact]
+    public async Task DuplicateLabels_OneToOneBlocking_KeepsHealthyTwin()
+    {
+        // توأمان متطابقا التسمية («عقار رقم 77» مرتين): حجب أحدهما لا يحجب الآخر.
+        var source = await CreateSourceAsync();
+        _db.Assets.Add(new Asset
+        {
+            DocumentId = source.Id,
+            AssetKind = AssetKindCatalog.RealEstate,
+            PropertyNumber = "77",
+        });
+        await _db.SaveChangesAsync();
+        var ids = await _db.Assets.Where(a => a.DocumentId == source.Id).OrderBy(a => a.Id).Select(a => a.Id).ToListAsync();
+        Assert.Equal(2, ids.Count);
+        await _service.CreateAsync(source.Id, SampleRequest(ids[0]), _lawyer1.Id, "lawyer1");
+
+        // التوأم الثاني متاح.
+        var twin = await _service.CreateAsync(source.Id, SampleRequest(ids[1]), _lawyer1.Id, "lawyer1");
+        Assert.NotNull(twin);
+
+        // وبعد حجبه أيضًا: أي تسطير ثالث على أي منهما مرفوض.
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(source.Id, SampleRequest(ids[0]), _lawyer1.Id, "lawyer1"));
+        Assert.Contains("إنابة سارية", ex.Message);
+    }
+
+    [Fact]
+    public async Task DuplicateLabels_AvailabilityDriven_SymmetricBlocking()
+    {
+        // C1/B3: التوأم المتاح دائمًا قابل للتسطير أيًا كان ترتيب الاختيار الأول —
+        // واحد ينجح وواحد يُرفض، وبعد استهلاك التوأمين يُرفض كلاهما. متماثل تمامًا.
+        async Task SecondSucceedsOnExactlyOneTwinAsync(int firstPick)
+        {
+            var source = await CreateSourceAsync();
+            _db.Assets.Add(new Asset
+            {
+                DocumentId = source.Id,
+                AssetKind = AssetKindCatalog.RealEstate,
+                PropertyNumber = "77",
+            });
+            await _db.SaveChangesAsync();
+            var ids = await _db.Assets.Where(a => a.DocumentId == source.Id).OrderBy(a => a.Id).Select(a => a.Id).ToListAsync();
+            Assert.Equal(2, ids.Count);
+
+            await _service.CreateAsync(source.Id,
+                SampleRequest(firstPick == 0 ? ids[0] : ids[1]), _lawyer1.Id, "lawyer1");
+
+            DelegationDto? second = null;
+            Exception? failure = null;
+            foreach (var id in ids)
+            {
+                try
+                {
+                    second = await _service.CreateAsync(source.Id, SampleRequest(id), _lawyer1.Id, "lawyer1");
+                    break;
+                }
+                catch (ArgumentException ex)
+                {
+                    failure = ex;
+                }
+            }
+            Assert.NotNull(second);
+            Assert.NotNull(failure);
+            Assert.Contains("إنابة سارية", failure!.Message);
+
+            foreach (var id in ids)
+            {
+                var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+                    _service.CreateAsync(source.Id, SampleRequest(id), _lawyer1.Id, "lawyer1"));
+                Assert.Contains("إنابة سارية", ex.Message);
+            }
+        }
+
+        await SecondSucceedsOnExactlyOneTwinAsync(0);
+        await SecondSucceedsOnExactlyOneTwinAsync(1);
+    }
+
+    [Fact]
+    public async Task SpacedPropertyNumber_NormalizedLabel_EndToEnd()
+    {
+        // E2: رقم عقاري بمسافات محيطة يُطبَّع في اللقطة والحارس معًا —
+        // فالمرآة الأمامية (المقصوصة) تطابق الحارس حرفيًا، والحجب يعمل.
+        // (رقم مميز «78» لتفادي توأمة «77» المزروعة في CreateSourceAsync).
+        var source = await CreateSourceAsync();
+        _db.Assets.Add(new Asset
+        {
+            DocumentId = source.Id,
+            AssetKind = AssetKindCatalog.RealEstate,
+            PropertyNumber = " 78 ",
+        });
+        await _db.SaveChangesAsync();
+        var spacedId = await _db.Assets
+            .Where(a => a.DocumentId == source.Id && a.PropertyNumber == " 78 ")
+            .Select(a => a.Id).SingleAsync();
+
+        var first = await _service.CreateAsync(source.Id, SampleRequest(spacedId), _lawyer1.Id, "lawyer1");
+        Assert.Equal("عقار رقم 78", Assert.Single(first.Assets).AssetLabel);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(source.Id, SampleRequest(spacedId), _lawyer1.Id, "lawyer1"));
+        Assert.Contains("إنابة سارية", ex.Message);
+    }
+
+    [Fact]
+    public async Task Create_AfterCompletion_AllowedAndUnblocked()
+    {
+        // الإتمام يُحرر الأموال: تسطير جديد على المال نفسه مسموح، وعلم الحجب ساقط عن المنفذة.
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+        var assetDto = (await _service.ListForDocumentAsync(source.Id)).Single().Assets.Single();
+        await _service.CompleteAsync(created.Id,
+            new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }, "12/8/2026", false),
+            _lawyer2.Id, "lawyer2");
+
+        var second = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        Assert.NotNull(second);
+        Assert.True(second.BlocksAssets);
+
+        var card = await _service.ListForDocumentAsync(source.Id);
+        Assert.False(card.Single(d => d.Id == created.Id).BlocksAssets);
+        Assert.Equal(assigned!.TargetDocumentId, card.Single(d => d.Id == created.Id).TargetDocumentId);
+    }
+
+    [Fact]
+    public async Task Create_AfterTargetStruckOff_Allowed()
+    {
+        // شطب المناب يُحرر الأموال (الحالة «مسجلة أصولًا» لا تتغير — يُفحص المناب نفسه).
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        var target = await _db.Documents.SingleAsync(d => d.Id == assigned!.TargetDocumentId!.Value);
+        target.ExecStatus = ExecutionStatusCatalog.StateStruckOff;
+        await _db.SaveChangesAsync();
+
+        var card = await _service.ListForDocumentAsync(source.Id);
+        Assert.False(card.Single(d => d.Id == created.Id).BlocksAssets);
+
+        var second = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        Assert.NotNull(second);
+    }
+
+    [Theory]
+    [InlineData(ExecutionStatusCatalog.Recovered)]
+    [InlineData(ExecutionStatusCatalog.DelegationExecuted)]
+    public async Task Create_AfterTargetTerminalState_Allowed(string terminalStatus)
+    {
+        // كل حالة مناب نهائية (مسترد/منفذ إنابة) تُحرر الأموال رغم بقاء الإنابة «مسجلة أصولًا».
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        var target = await _db.Documents.SingleAsync(d => d.Id == assigned!.TargetDocumentId!.Value);
+        target.ExecStatus = terminalStatus;
+        await _db.SaveChangesAsync();
+
+        var card = await _service.ListForDocumentAsync(source.Id);
+        Assert.False(card.Single(d => d.Id == created.Id).BlocksAssets);
+
+        var second = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        Assert.NotNull(second);
+    }
+
+    [Theory]
+    [InlineData(ExecutionStatusCatalog.StateStruckOff)]
+    [InlineData(ExecutionStatusCatalog.Recovered)]
+    [InlineData(ExecutionStatusCatalog.DelegationExecuted)]
+    public async Task TargetTerminal_ReflectsTargetFinalState(string terminalStatus)
+    {
+        // A1: الحقل المحسوب مرآة IsTargetTerminal — مسجلة بمناب نهائي تُعلَّم نهائية وغير حاجبة.
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        var target = await _db.Documents.SingleAsync(d => d.Id == assigned!.TargetDocumentId!.Value);
+        target.ExecStatus = terminalStatus;
+        await _db.SaveChangesAsync();
+
+        var dto = (await _service.ListForDocumentAsync(source.Id)).Single(d => d.Id == created.Id);
+        Assert.True(dto.TargetTerminal);
+        Assert.False(dto.BlocksAssets);
+    }
+
+    [Fact]
+    public async Task LifecycleVsBlocking_RegisteredWithTerminalTarget_StrikeOffRejectedButNewDelegationAllowed()
+    {
+        // D2: الفرق المقصود بين «سارية» الواسعة (S1) و«الحاجبة» الضيقة (C) في اختبار واحد —
+        // مسجلة بمناب مشطوب: تسطير جديد على الأصل نفسه مسموح، وشطب المنيب مرفوض.
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        var target = await _db.Documents.SingleAsync(d => d.Id == assigned!.TargetDocumentId!.Value);
+        target.ExecStatus = ExecutionStatusCatalog.StateStruckOff;
+        await _db.SaveChangesAsync();
+
+        var second = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        Assert.NotNull(second);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.StateStruckOff,
+                new Dictionary<string, string?> { ["struckOffDate"] = "1/9/2026" }, "lawyer1"));
+        Assert.Equal("لا يجوز شطب ملف فيه انابة سارية", ex.Message);
+    }
+
+    [Fact]
+    public async Task TargetTerminal_TrueForExecutedSideStruckOff()
+    {
+        // A1: الفرع الرابع من النهائية — شطب جهة «طالبة منفذة» (ExecutedStatus) يُنهي المناب أيضًا.
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        var target = await _db.Documents.SingleAsync(d => d.Id == assigned!.TargetDocumentId!.Value);
+        target.ExecutedStatus = ExecutedStatusCatalog.StruckOff;
+        await _db.SaveChangesAsync();
+
+        var dto = (await _service.ListForDocumentAsync(source.Id)).Single(d => d.Id == created.Id);
+        Assert.True(dto.TargetTerminal);
+        Assert.False(dto.BlocksAssets);
+    }
+
+    [Fact]
+    public async Task TargetTerminal_FalseForTradingTargetAndPendingDelegation()
+    {
+        // A1: مناب حي أو غائب (معلّقة قبل الاعتماد) → غير نهائي.
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+
+        var pending = (await _service.ListForDocumentAsync(source.Id)).Single(d => d.Id == created.Id);
+        Assert.False(pending.TargetTerminal);
+        Assert.True(pending.BlocksAssets);
+
+        await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        var registered = (await _service.ListForDocumentAsync(source.Id)).Single(d => d.Id == created.Id);
+        Assert.False(registered.TargetTerminal);
+        Assert.True(registered.BlocksAssets);
     }
 
     [Fact]
@@ -1287,6 +1686,165 @@ public class DocumentDelegationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Settlement_RecoversTarget_KeepsDelegationRegisteredAndUnblocked()
+    {
+        // A3: تسوية المنيب بدورة واقعية (لا ضبط مباشر) — المناب «مسترد»، والإنابة تبقى
+        // «مسجلة أصولًا» غير حاجبة (TargetTerminal=true) — بدل الطفرة المباشرة السابقة.
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        Assert.True(await _documentService.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement,
+            new Dictionary<string, string?> { ["baraetNumber"] = "7", ["baraetDate"] = "3/7/2026" }, "lawyer1"));
+
+        var target = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == assigned!.TargetDocumentId!.Value);
+        Assert.Equal(ExecutionStatusCatalog.Recovered, target.ExecStatus);
+
+        var dto = (await _service.ListForDocumentAsync(source.Id)).Single(d => d.Id == created.Id);
+        Assert.Equal(DelegationStatusCatalog.Registered, dto.Status);
+        Assert.True(dto.TargetTerminal);
+        Assert.False(dto.BlocksAssets);
+    }
+
+    private Task<List<HeadAlert>> PendingCompletionAlertsAsync(int delegationId) =>
+        _db.HeadAlerts.Where(a => a.DelegationId == delegationId && a.Message == "بانتظار الإتمام").ToListAsync();
+
+    private async Task<(Document Source, DelegationDto Created, int TargetId)> RegisteredDelegationAsync()
+    {
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+        return (source, created, assigned!.TargetDocumentId!.Value);
+    }
+
+    [Fact]
+    public async Task AlertCleaned_AfterSettlementRecovery()
+    {
+        // D3: تسوية المنيب تسترد المناب (نهائي) — تنبيه «بانتظار الإتمام» يُنظَّف (كان عالقًا).
+        var (source, created, _) = await RegisteredDelegationAsync();
+        Assert.Single(await PendingCompletionAlertsAsync(created.Id));
+
+        Assert.True(await _documentService.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement,
+            new Dictionary<string, string?> { ["baraetNumber"] = "7", ["baraetDate"] = "3/7/2026" }, "lawyer1"));
+
+        Assert.Empty(await PendingCompletionAlertsAsync(created.Id));
+    }
+
+    [Fact]
+    public async Task AlertCleaned_AfterFullForcibleRecovery()
+    {
+        // D3: الجبرية الكاملة تسترد المناب — التنبيه يُنظَّف.
+        var (source, created, _) = await RegisteredDelegationAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        Assert.Single(await PendingCompletionAlertsAsync(created.Id));
+
+        Assert.True(await _documentService.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedForcibly,
+            new Dictionary<string, string?>
+            {
+                ["execSubStatus"] = ExecutionStatusCatalog.SubFullyExecuted,
+                ["forcedExecutionDate"] = "1/8/2026",
+                ["soldAssetIds"] = assetId.ToString(),
+            }, "lawyer1"));
+
+        Assert.Empty(await PendingCompletionAlertsAsync(created.Id));
+    }
+
+    [Fact]
+    public async Task AlertCleaned_AfterManualTargetStrikeOff()
+    {
+        // D3: الشطب اليدوي للمناب (نهائي) — التنبيه يُنظَّف.
+        var (_, created, targetId) = await RegisteredDelegationAsync();
+        Assert.Single(await PendingCompletionAlertsAsync(created.Id));
+
+        Assert.True(await _documentService.UpdateStatusAsync(targetId, ExecutionStatusCatalog.StateStruckOff,
+            new Dictionary<string, string?> { ["struckOffDate"] = "1/9/2026" }, "lawyer2"));
+
+        Assert.Empty(await PendingCompletionAlertsAsync(created.Id));
+    }
+
+    [Fact]
+    public async Task AlertCleaned_WhenTargetTerminalViaExecutedSide()
+    {
+        // D3: النهائية بكل فروع IsTargetTerminal (هنا شطب جهة المنفذ عليها) — التنبيه يُنظَّف
+        // عند أول تغيير حالة لاحق للمنيب (الخطاف لا يعيد تعريف النهائية جزئيًا).
+        var (source, created, targetId) = await RegisteredDelegationAsync();
+        var target = await _db.Documents.SingleAsync(d => d.Id == targetId);
+        target.ExecutedStatus = ExecutedStatusCatalog.StruckOff;
+        await _db.SaveChangesAsync();
+        Assert.Single(await PendingCompletionAlertsAsync(created.Id));
+
+        Assert.True(await _documentService.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement,
+            new Dictionary<string, string?> { ["baraetNumber"] = "7", ["baraetDate"] = "3/7/2026" }, "lawyer1"));
+
+        Assert.Empty(await PendingCompletionAlertsAsync(created.Id));
+    }
+
+    [Fact]
+    public async Task SyncSnapshots_CountChanged_FrozenAsOrphan()
+    {
+        // C2: حذف الأصل + إضافة أصلين من النوع نفسه (1 لقطة مقابل 2) — اللقطة تُجمَّد
+        // يتيمة كما سُطّرت (لا نقل تلقائي)، فيتحرر الجديد فعليًا مع بقاء السجل التاريخي.
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+
+        var template = (await _documentService.GetAsync(source.Id))!.Assets.Single();
+        var request = MirrorRequest(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == source.Id));
+        request.Assets = new List<AssetDto>
+        {
+            template with { PropertyNumber = "99" },
+            template with { PropertyNumber = "100" },
+        };
+        await _documentService.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id);
+
+        var snap = (await _service.ListForDocumentAsync(source.Id)).Single(d => d.Id == created.Id).Assets.Single();
+        Assert.Equal("عقار رقم 77", snap.AssetLabel);
+        Assert.False(snap.SnapshotAdjusted);
+
+        // الأثر الوظيفي المقرّ: الأصل الجديد حرّ فعليًا (لا يطابقه شيء).
+        var newAssetId = await _db.Assets
+            .Where(a => a.DocumentId == source.Id && a.PropertyNumber == "99")
+            .Select(a => a.Id).SingleAsync();
+        var fresh = await _service.CreateAsync(source.Id, SampleRequest(newAssetId), _lawyer1.Id, "lawyer1");
+        Assert.NotNull(fresh);
+    }
+
+    [Fact]
+    public async Task SyncSnapshots_SameCount_RelabelsEditedAsset()
+    {
+        // C2: تعديل وصف بحت مع ثبات العدد (1 مقابل 1) — يُعاد التسمية ويُعلَّم التعديل
+        // (يحفظ حجب الأصل المعدّل من التحرر الصامت).
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+
+        var template = (await _documentService.GetAsync(source.Id))!.Assets.Single();
+        var request = MirrorRequest(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == source.Id));
+        request.Assets = new List<AssetDto> { template with { PropertyNumber = "771" } };
+        await _documentService.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id);
+
+        var snap = (await _service.ListForDocumentAsync(source.Id)).Single(d => d.Id == created.Id).Assets.Single();
+        Assert.Equal("عقار رقم 771", snap.AssetLabel);
+        Assert.True(snap.SnapshotAdjusted);
+    }
+
+    [Fact]
     public async Task Create_External_PersistsBranchAndDepositBook()
     {
         var source = await CreateSourceAsync();
@@ -1375,11 +1933,19 @@ public class DocumentDelegationServiceTests : IDisposable
     public async Task ListPendingForHead_ShowsInternalAndExternalOfHisBranchOnly()
     {
         var source = await CreateSourceAsync();
-        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        // أصلان منفصلان: لا إنابتان على مال واحد (حارس الحجب) — نيّة الاختبار ترشيح الفروع فقط.
+        _db.Assets.Add(new Asset
+        {
+            DocumentId = source.Id,
+            AssetKind = AssetKindCatalog.RealEstate,
+            PropertyNumber = "78",
+        });
+        await _db.SaveChangesAsync();
+        var ids = await _db.Assets.Where(a => a.DocumentId == source.Id).OrderBy(a => a.Id).Select(a => a.Id).ToListAsync();
 
-        var internalDelegation = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var internalDelegation = await _service.CreateAsync(source.Id, SampleRequest(ids[0]), _lawyer1.Id, "lawyer1");
         var externalDelegation = await _service.CreateAsync(source.Id,
-            SampleRequest(assetId) with { IsExternal = true, ExternalBranchId = _otherBranch.Id },
+            SampleRequest(ids[1]) with { IsExternal = true, ExternalBranchId = _otherBranch.Id },
             _lawyer1.Id, "lawyer1");
 
         var damPending = await _service.ListPendingForHeadAsync(_branch.Id);

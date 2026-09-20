@@ -7,6 +7,7 @@ import { normalizeDocumentResponse } from '../utils/apiNormalization';
 import { getDocumentBadge, canDelegateSource, EXEC_STATUS_DELEGATION_EXECUTED } from '../utils/documentStatus';
 import { isExecutedLike } from '../utils/documentDisplay';
 import { DELEGATION_STATUS_ASSIGNED, DELEGATION_STATUS_REGISTERED } from '../utils/delegationStatus';
+import { availableDelegationAssets } from '../utils/delegationAssets';
 import { saveLastViewedDocumentId } from '../utils/listSession';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
@@ -99,6 +100,9 @@ export default function DocumentView() {
   const doc = docQuery.data ?? null;
   const delegations = delegationsQuery.data ?? [];
   const appeals = appealsQuery.data ?? [];
+  // E1: بوابة التحميل الأولى — أول تحميل (بلا بيانات) لا إعادة جلب خلفية ببيانات حاضرة
+  // (isLoading يشتعل عند كل attempt) — حتى لا تُفتح نافذة التسطير والمحجوب مجهول.
+  const delegationsLoading = delegationsQuery.isLoading && delegations.length === 0;
   const fetchError = docQuery.error;
   const load = docQuery.refetch;
   const loadDelegations = delegationsQuery.refetch;
@@ -190,6 +194,16 @@ export default function DocumentView() {
     setDelegationFormOpen(true);
   };
 
+  // أموال نافذة التسطير: بلا «كفالة رواتب» أبدًا (لا إنابة عليها) وبلا المحجوب بإنابة سارية —
+  // إخفاء تام؛ وعند التعديل تُستثنى الإنابة ذاتها (تعديل المعلّقة على أموالها مسموح).
+  const sourceAssets = doc.assets ?? [];
+  const formAvailableAssets = availableDelegationAssets(
+    delegations,
+    sourceAssets,
+    editingDelegation?.id ?? null,
+  );
+  const formNoAvailableAssets = sourceAssets.length > 0 && formAvailableAssets.length === 0;
+
   // أعمدة (Facets) صفحة التفاصيل: العمود الأول «المعلومات»، الثاني «السند والأموال»،
   // والثالث «الإنابات والوقوعات» — وتتحول على الجوال إلى تبويبات يختارها المستخدم.
   const infoPanel = (
@@ -254,6 +268,8 @@ export default function DocumentView() {
             onCreate={openCreateDelegation}
             onEdit={openEditDelegation}
             onDelete={setDeleteTarget}
+            sourceAssets={sourceAssets}
+            delegationsLoading={delegationsLoading}
           />
         )
       )}
@@ -558,7 +574,8 @@ export default function DocumentView() {
         <DelegationFormModal
           documentId={Number(id)}
           documentTitle={debtorFullName || doc.documentType || `مستند #${doc.id}`}
-          assets={doc.assets ?? []}
+          assets={formAvailableAssets}
+          noAvailableAssets={formNoAvailableAssets}
           initial={editingDelegation}
           onClose={() => {
             setDelegationFormOpen(false);

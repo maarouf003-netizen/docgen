@@ -44,5 +44,7 @@ export function assetDisplayName(a: AssetDto & { id?: number }): string {
   }
   const property = (a.property ?? '').trim();
   if (property) return property;
-  return a.propertyNumber ? `عقار رقم ${a.propertyNumber}` : `عقار ${a.id ?? ''}`.trim();
+  // E2: مطابقة حرفية للخلفية (AssetDisplay.Label): التقليم قبل الفحص والإخراج معًا.
+  const propertyNumber = (a.propertyNumber ?? '').trim();
+  return propertyNumber ? `عقار رقم ${propertyNumber}` : `عقار ${a.id ?? ''}`.trim();
 }

@@ -34,3 +34,18 @@ export function delegationStatusBadge(status: string | undefined): { text: strin
 export function isDelegationPending(status: string | undefined): boolean {
   return status === DELEGATION_STATUS_PENDING;
 }
+
+/**
+ * تطبيع الدائرة المنابة للعرض ببادئة واحدة: القيم المخزنة نص حر وقد تحمل «دائرة تنفيذ»
+ * أصلًا (فيُنتج التركيب الأعمى «دائرة دائرة تنفيذ…»). القاعدة: ما يبدأ بـ«دائرة» أو «محكمة»
+ * أو «تنفيذ» (ككلمة كاملة تليها مسافة أو نهاية) يُترك كما هو، وما عداه تُسبقه «دائرة تنفيذ».
+ * ملاحظة: لا يُستعمل `\b` هنا لأنه لا يميّز حدود الكلمات العربية في JS.
+ */
+const COURT_PREFIX_WORDS = ['دائرة', 'محكمة', 'تنفيذ'];
+
+export function withCourtPrefix(court: string | null | undefined): string {
+  const value = (court ?? '').trim();
+  if (!value) return '';
+  if (COURT_PREFIX_WORDS.some((p) => value === p || value.startsWith(`${p} `))) return value;
+  return `دائرة تنفيذ ${value}`;
+}
