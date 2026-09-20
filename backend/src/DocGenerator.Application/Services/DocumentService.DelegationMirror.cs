@@ -116,7 +116,8 @@ public sealed partial class DocumentService
         RequireSameNumeric(errors, "المبلغ المدرج (الثالث)", r.InclusionAmount3Numeric, doc.InclusionAmount3Numeric);
         RequireSame(errors, "المبلغ المدرج الثالث كتابة", r.InclusionAmount3Words, doc.InclusionAmount3Words);
         RequireSame(errors, "عملة المبلغ المدرج الثالث", r.InclusionCurrency3, doc.InclusionCurrency3);
-        RequireSame(errors, "الدائرة", r.Court, doc.Court);
+        // الدائرة خارج عقد المرآة: حقيقة خاصة بالمناب (الدائرة المنابة المسجَّل فيها)،
+        // تُضبط عند الاعتماد وقابلة للتعديل كحقل أصيل — لا يُفحص تكافؤها مع المنيب.
         RequireSame(errors, "المدعي", r.Applicant, doc.Applicant);
 
         // نواة المقترض (عدا حقول الممثل — مقفلة ومُزامَنة، والممثل إضافة محلية).
@@ -679,7 +680,7 @@ public sealed partial class DocumentService
         changed |= CopyNumeric(source.InclusionAmount3Numeric, target.InclusionAmount3Numeric, v => target.InclusionAmount3Numeric = v);
         changed |= CopyField(source.InclusionAmount3Words, target.InclusionAmount3Words, v => target.InclusionAmount3Words = v);
         changed |= CopyField(source.InclusionCurrency3, target.InclusionCurrency3, v => target.InclusionCurrency3 = v);
-        changed |= CopyField(source.Court, target.Court, v => target.Court = v);
+        // الدائرة لا تُزامَن من المنيب: هوية مستقلة للمناب (الدائرة المنابة).
         changed |= CopyField(source.Applicant, target.Applicant, v => target.Applicant = v);
         if (changed)
             labels.Add("السند التنفيذي");

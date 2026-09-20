@@ -474,7 +474,47 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(source.BorrowerName, target.BorrowerName);
         Assert.Equal(source.BorrowerFamily, target.BorrowerFamily);
         Assert.Equal(source.AmountNumeric, target.AmountNumeric);
-        Assert.Equal(source.Court, target.Court);
+        // هوية مستقلة: دائرة المناب هي المنابة المسجَّل فيها لا دائرة المنيب.
+        Assert.Equal("دائرة تنفيذ حلب", target.Court);
+        Assert.NotEqual(source.Court, target.Court);
+        Assert.Equal("دائرة تنفيذ حلب", dto!.DelegatedCourt);
+    }
+
+    [Fact]
+    public async Task TargetCourt_IsIndependent_EditableAndNotMirrored()
+    {
+        // الدائرة حقيقة خاصة بالمناب: قابلة للتعديل كحقل أصيل، وتعديل المنيب لا يسري عليها،
+        // وبطاقة الإنابة تعرض الحيّة منها.
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        // 1) تعديل دائرة المناب مقبول (لا حارس «الدائرة» بعد اليوم).
+        var edit = MirrorRequest(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == targetId));
+        edit.Court = "دائرة تنفيذ حماة";
+        await _documentService.UpdateAsync(targetId, edit, _lawyer2.FullName, _lawyer2.Id);
+        Assert.Equal("دائرة تنفيذ حماة",
+            (await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == targetId)).Court);
+
+        // 2) تعديل دائرة المنيب لا يُزامَن إلى المناب.
+        var sourceEdit = MirrorRequest(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == source.Id));
+        sourceEdit.Court = "دائرة تنفيذ دمشق الجديدة";
+        await _documentService.UpdateAsync(source.Id, sourceEdit, _lawyer1.FullName, _lawyer1.Id);
+        Assert.Equal("دائرة تنفيذ حماة",
+            (await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == targetId)).Court);
+
+        // 3) بطاقة الإنابة (جهة المناب) تعرض الدائرة الحيّة.
+        var card = await _service.ListForDocumentAsync(targetId);
+        Assert.Equal("دائرة تنفيذ حماة", card.Single(d => d.Id == created.Id).DelegatedCourt);
     }
 
     [Fact]
@@ -2349,7 +2389,8 @@ public class DocumentDelegationServiceTests : IDisposable
             textCase("عملة المبلغ المدرج الثاني", d => d.InclusionCurrency2, (d, v) => d.InclusionCurrency2 = v, (r, v) => r.InclusionCurrency2 = v),
             textCase("المبلغ المدرج الثالث كتابة", d => d.InclusionAmount3Words, (d, v) => d.InclusionAmount3Words = v, (r, v) => r.InclusionAmount3Words = v),
             textCase("عملة المبلغ المدرج الثالث", d => d.InclusionCurrency3, (d, v) => d.InclusionCurrency3 = v, (r, v) => r.InclusionCurrency3 = v),
-            textCase("الدائرة", d => d.Court, (d, v) => d.Court = v, (r, v) => r.Court = v),
+            // الدائرة خارج عقد المرآة: حقيقة مستقلة للمناب (المنابة المسجَّل فيها) —
+            // لا تُنسخ عند الاعتماد ولا تُزامَن ولا يُفحص تكافؤها (يغطيها TargetCourt_IsIndependent).
         });
 
         // السند التنفيذي (المبالغ).

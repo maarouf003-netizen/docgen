@@ -913,7 +913,7 @@ export default function DocumentForm() {
 
         <FormSectionTitle title="🏛️ المعلومات الأساسية" />
         <div className="grid md:grid-cols-5 gap-4 items-end">
-          {lockField('دائرة التنفيذ', 'court')}
+          {field('دائرة التنفيذ', 'court')}
           {field('رقم الملف', 'fileNumber', 'رقم الملف...')}
           {selectField('سنة الملف', 'fileYear', ['', ...FILE_YEARS], form.fileYear ?? '', (v) => set('fileYear', v))}
           {field('نوع الملف', 'fileType', 'نوع الملف...')}

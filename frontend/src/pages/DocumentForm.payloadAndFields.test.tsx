@@ -566,20 +566,24 @@ render(<DocumentForm />);
     expect(screen.getAllByLabelText(/اسم الوريث/)[0]).not.toHaveAttribute('readonly');
   });
 
-  it('يقفل دائرة التنفيذ وكُتب الملف في الملف المناب ويُبقي الهوية ثلاثية قابلة للتحرير (F3)', async () => {
+  it('يقفل كُتب الملف في الملف المناب ويُبقي الدائرة والهوية ثلاثية قابلة للتحرير (F3)', async () => {
     await renderEdit({
       ...mockDoc,
       sourceDelegationId: 3,
-      court: 'محكمة دمشق',
+      court: 'محكمة حلب',
       fileArrivalNumber: 'و1',
       fileIncoming: 'ك1',
       underFilingNumber: 'ر1',
       seizureDate: '5/8/2026',
     });
 
-    for (const label of ['دائرة التنفيذ', 'رقم ورود الملف', 'رقم كتاب الجهة العامة', 'رقم تحت رفع', 'تاريخ إلقاء حجز المنظومة']) {
+    for (const label of ['رقم ورود الملف', 'رقم كتاب الجهة العامة', 'رقم تحت رفع', 'تاريخ إلقاء حجز المنظومة']) {
       expect(screen.getByLabelText(label)).toHaveAttribute('readonly');
     }
+
+    // الدائرة حقيقة خاصة بالمناب (المنابة المسجَّل فيها): قابلة للتحرير وتعرض قيمته لا المنيب.
+    expect(screen.getByLabelText('دائرة التنفيذ')).not.toHaveAttribute('readonly');
+    expect(screen.getByLabelText('دائرة التنفيذ')).toHaveValue('محكمة حلب');
 
     // الهوية الثلاثية تبقى قابلة للتحرير (قرار 5)
     expect(screen.getByLabelText('رقم الملف')).not.toHaveAttribute('readonly');

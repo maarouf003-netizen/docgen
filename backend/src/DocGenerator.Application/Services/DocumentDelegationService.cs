@@ -288,6 +288,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         {
             // إنشاء الملف المناب تلقائيًا: نفس السند التنفيذي والأطراف، بنوع «انابة»،
             // موكولاً للمحامي المختص في الفرع المناب، مرتبطًا بإنابته (SourceDelegationId).
+            // هوية المناب مستقلة: دائرته هي الدائرة المنابة المسجَّل فيها (موطن المال مكانيًا)،
+            // ورقم أساسه مستقل (تسجيل أصولًا)، ونوعه «إنابة» دائمًا — لا دائرة المنيب.
             // المحامي المختص (Lawyer) يُضبط باسم المحامي الموكول — كمصدر العرض والفلترة
             // في «الملفات التنفيذية» — بنفس صيغة الإنشاء العادي (الاسم الكامل وإلا الدخول).
             target = new Document
@@ -296,6 +298,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
                 Lawyer = string.IsNullOrWhiteSpace(lawyer.FullName) ? lawyer.Username : lawyer.FullName,
                 BranchId = targetBranch,
                 BranchName = isExternal ? delegation.ExternalBranch?.Name ?? source.BranchName : source.BranchName,
+                Court = Normalize(delegation.DelegatedCourt) ?? source.Court,
                 GeneralEntitySide = source.GeneralEntitySide,
                 IsDraft = true,
                 FileType = FileTypeCatalog.Delegation,
@@ -607,7 +610,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
                     : delegation.SaleCoversFullDebt == false
                         ? "لم يغطِ كامل المديونية"
                         : "—";
-                var court = delegation.DelegatedCourt ?? "الدائرة المنابة";
+                var court = TargetCourt(target, delegation.DelegatedCourt) ?? "الدائرة المنابة";
                 await _alerts.CreateAsync(new CreateHeadAlertRequest(
                     TargetType: "document",
                     DocumentId: delegation.SourceDocumentId,
@@ -814,7 +817,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         target.InclusionAmount3Words = source.InclusionAmount3Words;
         target.InclusionCurrency3 = source.InclusionCurrency3;
 
-        target.Court = source.Court;
+        // الدائرة خارج النسخ: دائرة المناب هي الدائرة المنابة المسجَّل فيها (تُضبط عند
+        // الاعتماد)، لا دائرة المنيب — هوية مستقلة كباقي حقول الملف (النوع/الرقم).
         target.Applicant = source.Applicant;
     }
 
@@ -926,7 +930,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         SourceFileNumber(source, currentYear),
         SourceFileYear(source, currentYear),
         d.TargetDocument?.Id,
-        d.DelegatedCourt,
+        TargetCourt(d.TargetDocument, d.DelegatedCourt),
         d.IsExternal,
         d.ExternalBranchId,
         d.ExternalBranch?.Name,
@@ -977,4 +981,9 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
     /// <summary>سنة الرقم الفعّال المعروض للمناب وفق المحلل المركزي.</summary>
     private static string? TargetFileYear(Document? target, int currentYear) =>
         target is null ? null : Normalize(EffectiveFileIdentity.Year(target, currentYear));
+
+    /// <summary>الدائرة المنابة المعروضة: دائرة المناب الحيّة عند وجوده (حقيقته المسجَّلة
+    /// والقابلة للتعديل)، وإلا نيّة التسطير المحفوظة على السجل (قبل الاعتماد).</summary>
+    private static string? TargetCourt(Document? target, string? recorded) =>
+        Normalize(target?.Court) ?? Normalize(recorded);
 }

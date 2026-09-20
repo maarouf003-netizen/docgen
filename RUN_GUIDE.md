@@ -240,4 +240,8 @@ npm test
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260919211650_BackfillMirrorLawyer.cs` — تعبئة `Lawyer` للصفوف ذات `SourceDelegationId IS NOT NULL` والاسم المفقود من اسم مالكها (الموكول) وإلا اسم الدخول؛ بلا تغيير مخطط.
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260919211723_BackfillMirrorLawyerPg.cs` — نفسه.
   - بدون التطبيق تبقى المنابة القائمة بلا اسم في عمود «المحامي المختص» وفلتره (الجديدة تُضبط عند الاعتماد تلقائيًا).
+- [ ] **2026-09-20 — `BackfillDelegationTargetCourt` / `BackfillDelegationTargetCourtPg`** (تعبئة دائرة الملفات المنابة القائمة بالدائرة المنابة — هوية المناب المستقلة: دائرته المسجَّل فيها لا دائرة المنيب):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260920070522_BackfillDelegationTargetCourt.cs` — تعبئة `Court` للصفوف ذات `SourceDelegationId IS NOT NULL` من `DelegatedCourt` لإنابتها (غير الفارغة)؛ بلا تغيير مخطط.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260920070620_BackfillDelegationTargetCourtPg.cs` — نفسه.
+  - بدون التطبيق تبقى المنابات القائمة ظاهرة بدائرة المنيب في الشريط والجداول والمستندات والتنبيهات (الجديدة تُضبط عند الاعتماد تلقائيًا).
 
