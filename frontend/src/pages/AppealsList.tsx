@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../auth/useAuth';
@@ -28,6 +28,23 @@ const STATUS_FILTERS: Array<{ value: string; label: string }> = [
   { value: APPEAL_STATUS_STRUCK_OFF, label: 'مشطوب' },
 ];
 
+/**
+ * رؤوس الجدول المكتبي بعد الدمج (C2/C17): مصدر واحد للحقيقة —
+ * يُبنى منه الـ thead ويُشتق منه colSpan صف الإجراءات (لا قيمة جامدة).
+ * عمود «المحامي المختص» مشروط خارج المصفوفة ويُحتسب في colCount.
+ */
+const HEAD_CELLS = [
+  'الأساس والنوع',
+  'المحكمة الناظرة',
+  'المستأنف',
+  'المستأنف عليهم',
+  'رقم الملف التنفيذي',
+  'ملخص قرار رئيس التنفيذ',
+  'الحسم',
+  'ملخص منطوق القرار',
+  'نتيجة الاستئناف',
+] as const;
+
 function truncate(text: string | undefined | null, max = 70): string {
   const t = (text ?? '').trim();
   if (!t) return '—';
@@ -50,9 +67,11 @@ export default function AppealsList() {
   const hasFullAccess = role === 'manager' || role === 'admin';
   const isHead = role === 'head';
   const canSeeAssigned = hasFullAccess || isHead;
+  /** عدد أعمدة الجدول المعروضة فعلًا — يُشتق من HEAD_CELLS (+ المشروط) لصف الإجراءات (C17). */
+  const colCount = HEAD_CELLS.length + (canSeeAssigned ? 1 : 0);
 
   const [query, setQuery] = useState('');
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState<string>(APPEAL_STATUS_PENDING); // الافتراضي: المنظورة فقط (R6)
   const [page, setPage] = useState(1);
 
   const listQuery = useCancellableRequest<{ items: AppealDto[]; totalCount: number; totalPages: number }>(
@@ -79,8 +98,8 @@ export default function AppealsList() {
   const refresh = () => listQuery.refetch();
 
   const isFollower = (a: AppealDto) => role === 'lawyer' && a.assignedLawyerId === user?.id;
-  const isCreator = (a: AppealDto) => role === 'lawyer' && a.createdById === user?.id;
-  const canRotateAppeal = (a: AppealDto) => isFollower(a) || isCreator(a);
+  // (R3 + الخيار ب): التدوير للمسند المنظور دائمًا — needsRotation للتمييز الأحمر فقط، لا بوابة.
+  const canRotateAppeal = (a: AppealDto) => isFollower(a) && a.status === APPEAL_STATUS_PENDING;
   const canAssign = (a: AppealDto) => isHead && a.status === APPEAL_STATUS_PENDING;
 
   const openAssign = (a: AppealDto) =>
@@ -131,20 +150,22 @@ export default function AppealsList() {
           <button
             type="button"
             onClick={() => setRotationTarget(a)}
-            className="border border-gray-300 hover:bg-gray-50 rounded-lg px-3 py-2 min-h-11 inline-flex items-center text-xs text-gray-700"
+            className={`rounded-lg px-3 py-2 min-h-11 inline-flex items-center text-xs border ${
+              a.needsRotation
+                ? 'text-red-700 border-red-300 hover:bg-red-50'
+                : 'text-gray-700 border-gray-300 hover:bg-gray-50'
+            }`}
             aria-label={`تدوير رقم الأساس الاستئنافي للاستئناف رقم ${a.id}`}
           >
             تدوير
           </button>
         )}
-        {/* الإسناد/النقل لرئيس القسم حصرًا — الخلفية ترفض غيره. */}
-        {isHead && (
+        {/* الإسناد/النقل لرئيس القسم حصرًا على المنظور — يُخفى (لا يُعطَّل) لغيره. */}
+        {canAssign(a) && (
           <button
             type="button"
             onClick={() => openAssign(a)}
-            disabled={!canAssign(a)}
-            title={a.status !== APPEAL_STATUS_PENDING ? 'متاح للاستئنافات المنظورة فقط' : undefined}
-            className="bg-sky-800 hover:bg-sky-700 disabled:opacity-40 text-white rounded-lg px-3 py-2 min-h-11 inline-flex items-center text-xs"
+            className="bg-sky-800 hover:bg-sky-700 text-white rounded-lg px-3 py-2 min-h-11 inline-flex items-center text-xs"
           >
             {a.assignedLawyerId ? 'نقل المحامي' : 'إسناد لمحامٍ'}
           </button>
@@ -153,6 +174,7 @@ export default function AppealsList() {
     );
   }
 
+  /** خلية «الأساس والنوع» المدمجة: الرقم (رابط تدوير للمسند المنظور) وتحته النوع ثم الشارة. */
   function BaseNumberCell({ a }: { a: AppealDto }) {
     const badge = appealStatusBadge(a.status);
     const number = a.currentBaseNumber ?? a.appealBaseNumber;
@@ -178,6 +200,7 @@ export default function AppealsList() {
         ) : (
           <span className="text-gray-400">—</span>
         )}
+        <span className="text-xs text-gray-500">{a.appealTypeLabel || '—'}</span>
         <span className={`rounded-full px-2 py-0.5 text-[11px] ${badge.cls}`}>{badge.text}</span>
       </div>
     );
@@ -252,46 +275,48 @@ export default function AppealsList() {
           <table className="w-full text-right text-sm">
             <caption className="sr-only">قائمة الاستئنافات</caption>
             <thead>
+              {/* (C2) لا عمود «إجراءات» — الأزرار في صف colSpan كامل العرض تحت كل عنصر. */}
               <tr className="border-b border-gray-200 text-gray-600">
-                <th scope="col" className="px-3 py-3 font-medium whitespace-nowrap">رقم الأساس الاستئنافي</th>
-                <th scope="col" className="px-3 py-3 font-medium whitespace-nowrap">نوع الاستئناف</th>
-                <th scope="col" className="px-3 py-3 font-medium whitespace-nowrap">المحكمة الناظرة</th>
-                <th scope="col" className="px-3 py-3 font-medium whitespace-nowrap">المستأنف</th>
-                <th scope="col" className="px-3 py-3 font-medium whitespace-nowrap">المستأنف عليهم</th>
-                <th scope="col" className="px-3 py-3 font-medium whitespace-nowrap">رقم الملف التنفيذي</th>
-                <th scope="col" className="px-3 py-3 font-medium whitespace-nowrap">ملخص قرار رئيس التنفيذ</th>
-                <th scope="col" className="px-3 py-3 font-medium whitespace-nowrap">رقم قرار الحسم</th>
-                <th scope="col" className="px-3 py-3 font-medium whitespace-nowrap">تاريخ قرار الحسم</th>
-                <th scope="col" className="px-3 py-3 font-medium whitespace-nowrap">ملخص منطوق القرار</th>
-                <th scope="col" className="px-3 py-3 font-medium whitespace-nowrap">نتيجة الاستئناف</th>
-                {canSeeAssigned && <th scope="col" className="px-3 py-3 font-medium whitespace-nowrap">المحامي المختص</th>}
-                <th scope="col" className="px-3 py-3 font-medium whitespace-nowrap">إجراءات</th>
+                {HEAD_CELLS.map((h) => (
+                  <th key={h} scope="col" className="px-2 py-3 font-medium">{h}</th>
+                ))}
+                {canSeeAssigned && <th scope="col" className="px-2 py-3 font-medium">المحامي المختص</th>}
               </tr>
             </thead>
             <tbody>
               {items.map((a) => (
-                <tr key={a.id} className="border-b border-gray-50 align-top hover:bg-gray-50/60">
-                  <td className="px-3 py-3"><BaseNumberCell a={a} /></td>
-                  <td className="px-3 py-3 text-gray-800">{a.appealTypeLabel || '—'}</td>
-                  <td className="px-3 py-3 text-gray-800">{a.appellateCourt || '—'}</td>
-                  <td className="px-3 py-3 text-gray-800 max-w-[180px] break-words">{appellantsText(a)}</td>
-                  <td className="px-3 py-3 text-gray-800 max-w-[160px] break-words">{firstAppellee(a)}</td>
-                  <td className="px-3 py-3 text-gray-800 whitespace-nowrap">
-                    {[a.documentEffectiveNumber ?? a.fileNumber, a.fileType, a.documentEffectiveYear ?? a.fileYear].filter(Boolean).join(' / ') || '—'}
-                    {a.court && <span className="block text-xs text-gray-500 mt-0.5">{a.court}</span>}
-                  </td>
-                  <td className="px-3 py-3 text-gray-600 max-w-[200px]">{truncate(a.appealedDecisionSummary || a.appealedDecisionText)}</td>
-                  <td className="px-3 py-3 text-gray-800 tabular-nums">{a.decisionNumber || '—'}</td>
-                  <td className="px-3 py-3 text-gray-800 whitespace-nowrap tabular-nums">{formatDate(a.decisionDate, '—')}</td>
-                  <td className="px-3 py-3 text-gray-600 max-w-[200px]" dir="auto">{truncate(a.decisionRuling)}</td>
-                  <td className="px-3 py-3">
-                    <span className={appealOutcomeCls(a.outcome)}>{appealOutcomeLabel(a.outcome)}</span>
-                  </td>
-                  {canSeeAssigned && (
-                    <td className="px-3 py-3 text-gray-800">{a.assignedLawyerName || <span className="text-gray-400">—</span>}</td>
-                  )}
-                  <td className="px-3 py-3"><Actions a={a} /></td>
-                </tr>
+                <Fragment key={a.id}>
+                  <tr className="align-top hover:bg-gray-50/60">
+                    <td className="px-2 py-3"><BaseNumberCell a={a} /></td>
+                    <td className="px-2 py-3 text-gray-800 max-w-[150px] break-words">{a.appellateCourt || '—'}</td>
+                    <td className="px-2 py-3 text-gray-800 max-w-[180px] break-words">{appellantsText(a)}</td>
+                    <td className="px-2 py-3 text-gray-800 max-w-[160px] break-words">{firstAppellee(a)}</td>
+                    <td className="px-2 py-3 text-gray-800 whitespace-nowrap tabular-nums">
+                      {[a.documentEffectiveNumber ?? a.fileNumber, a.fileType, a.documentEffectiveYear ?? a.fileYear].filter(Boolean).join(' / ') || '—'}
+                      {a.court && <span className="block text-xs text-gray-500 mt-0.5">{a.court}</span>}
+                    </td>
+                    <td className="px-2 py-3 text-gray-600 max-w-[200px] break-words">{truncate(a.appealedDecisionSummary || a.appealedDecisionText)}</td>
+                    <td className="px-2 py-3">
+                      <div className="flex flex-col gap-0.5 items-start">
+                        <span className="tabular-nums text-gray-800">{a.decisionNumber || '—'}</span>
+                        <span className="text-xs text-gray-500 whitespace-nowrap tabular-nums">{formatDate(a.decisionDate, '—')}</span>
+                      </div>
+                    </td>
+                    <td className="px-2 py-3 text-gray-600 max-w-[200px] break-words" dir="auto">{truncate(a.decisionRuling)}</td>
+                    <td className="px-2 py-3 whitespace-nowrap">
+                      <span className={appealOutcomeCls(a.outcome)}>{appealOutcomeLabel(a.outcome)}</span>
+                    </td>
+                    {canSeeAssigned && (
+                      <td className="px-2 py-3 text-gray-800 max-w-[140px] break-words">{a.assignedLawyerName || <span className="text-gray-400">—</span>}</td>
+                    )}
+                  </tr>
+                  {/* صف الإجراءات الأفقي: فاصل علوي خفيف وفاصل سفلي قوي يفصل الكتل (R2). */}
+                  <tr className="border-b-2 border-gray-200 bg-gray-50/50">
+                    <td colSpan={colCount} className="px-2 py-2">
+                      <Actions a={a} />
+                    </td>
+                  </tr>
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -312,9 +337,12 @@ export default function AppealsList() {
                       {appealOutcomeLabel(a.outcome) !== '—' ? appealOutcomeLabel(a.outcome) : ''}
                     </span>
                   </div>
-                  <span className={`tabular-nums text-sm ${a.needsRotation ? 'text-red-600 font-bold' : 'text-gray-800'}`}>
-                    {a.currentBaseNumber ?? a.appealBaseNumber ?? '—'}
-                  </span>
+                  <div className="flex flex-col items-end gap-0.5 min-w-0">
+                    <span className={`tabular-nums text-sm ${a.needsRotation ? 'text-red-600 font-bold' : 'text-gray-800'}`}>
+                      {a.currentBaseNumber ?? a.appealBaseNumber ?? '—'}
+                    </span>
+                    <span className="text-[11px] text-gray-500">{a.appealTypeLabel || '—'}</span>
+                  </div>
                 </div>
                 <p className="text-gray-900 font-medium break-words">{appellantsText(a)}</p>
                 <p className="text-xs text-gray-600">ضد: {firstAppellee(a)}</p>

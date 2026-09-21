@@ -146,6 +146,7 @@ public class SearchServerYearTests : IDisposable
         {
             DocumentId = doc.Id,
             CreatedById = userId,
+            AssignedLawyerId = userId,
             Status = AppealStatusCatalog.Pending,
             Direction = AppealDirectionCatalog.Appellants,
         };
@@ -153,6 +154,7 @@ public class SearchServerYearTests : IDisposable
         {
             DocumentId = doc.Id,
             CreatedById = userId,
+            AssignedLawyerId = userId,
             Status = AppealStatusCatalog.Pending,
             Direction = AppealDirectionCatalog.Appellants,
         };

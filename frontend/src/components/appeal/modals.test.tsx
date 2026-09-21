@@ -65,7 +65,7 @@ describe('DecideAppealModal', () => {
 });
 
 describe('AppealRotationModal', () => {
-  it('يعرض أرقام الأساس السابقة ويُدوّر لسنة السنة الحالية', async () => {
+  it('يعرض أرقام الأساس السابقة ويُدوّر لسنة السنة الحالية عبر خطوة تأكيد', async () => {
     apiMock.get.mockResolvedValueOnce({
       data: [
         { year: new Date().getFullYear() - 1, baseNumber: '900' },
@@ -86,10 +86,48 @@ describe('AppealRotationModal', () => {
     );
     await user.click(screen.getByRole('button', { name: 'حفظ التدوير' }));
 
+    // خطوة التأكيد تعرض القيمة والسنة قبل الحفظ، ولا إرسال بعد.
+    expect(await screen.findByRole('button', { name: 'تأكيد الحفظ' })).toBeInTheDocument();
+    expect(screen.getByText('1450')).toBeInTheDocument();
+    expect(apiMock.put).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'تأكيد الحفظ' }));
+
     await vi.waitFor(() => expect(onSaved).toHaveBeenCalled());
     expect(apiMock.put).toHaveBeenCalledWith(`/appeals/5/base-numbers`, {
       entries: [{ baseNumber: '1450' }],
     });
+  });
+
+  it('زر الرجوع يعيد الإدخال مع بقاء القيمة', async () => {
+    apiMock.get.mockResolvedValueOnce({ data: [] });
+    const user = userEvent.setup();
+    render(<AppealRotationModal appeal={makeAppeal()} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    await screen.findByText('لا توجد أرقام مسجلة بعد.');
+    await user.type(
+      screen.getByLabelText(`رقم الأساس الاستئنافي لسنة ${new Date().getFullYear()}`),
+      '1450',
+    );
+    await user.click(screen.getByRole('button', { name: 'حفظ التدوير' }));
+    await user.click(await screen.findByRole('button', { name: 'رجوع للتعديل' }));
+
+    expect(screen.getByLabelText(`رقم الأساس الاستئنافي لسنة ${new Date().getFullYear()}`)).toHaveValue('1450');
+    expect(apiMock.put).not.toHaveBeenCalled();
+  });
+
+  it('يعرض تنبيهًا كهرمانيًا عند إعادة تدوير رقم سنة اليوم (تصحيح)', async () => {
+    apiMock.get.mockResolvedValueOnce({ data: [] });
+    render(
+      <AppealRotationModal
+        appeal={{ ...makeAppeal(), needsRotation: false, currentBaseNumber: '200/2026' }}
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    await screen.findByText('لا توجد أرقام مسجلة بعد.');
+    expect(screen.getByText(/يوجد رقم مسجل لسنة اليوم/)).toBeInTheDocument();
   });
 
   it('يمنع الحفظ دون إدخال رقم', async () => {

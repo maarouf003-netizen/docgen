@@ -74,9 +74,17 @@ describe('AppealsList', () => {
     render(<AppealsList />);
 
     expect(await screen.findByRole('table')).toBeInTheDocument();
-    for (const header of ['رقم الأساس الاستئنافي', 'المستأنف', 'المستأنف عليهم', 'نتيجة الاستئناف', 'المحامي المختص']) {
+    for (const header of ['الأساس والنوع', 'المستأنف', 'المستأنف عليهم', 'الحسم', 'نتيجة الاستئناف', 'المحامي المختص']) {
       expect(screen.getByRole('columnheader', { name: header })).toBeInTheDocument();
     }
+    // الأعمدة المحذوفة بالدمج (C2): لا «نوع الاستئناف» ولا «تاريخ قرار الحسم» ولا «إجراءات» مستقلة.
+    for (const gone of ['نوع الاستئناف', 'تاريخ قرار الحسم', 'إجراءات']) {
+      expect(screen.queryByRole('columnheader', { name: gone })).not.toBeInTheDocument();
+    }
+    // صف الإجراءات: خلية واحدة بعرض الجدول (9 + عمود المحامي المختص للمدير).
+    const spanned = document.querySelectorAll('td[colspan]');
+    expect(spanned).toHaveLength(2);
+    expect(spanned[0].getAttribute('colspan')).toBe('10');
     expect(screen.getAllByText('منظور').length).toBeGreaterThan(0);
     expect(screen.getByText('للضد')).toHaveClass('text-red-700');
     expect(screen.getByText('قرار-9')).toBeInTheDocument();
@@ -104,6 +112,13 @@ describe('AppealsList', () => {
     setup('lawyer');
     const user = userEvent.setup();
     render(<AppealsList />);
+
+    // الفلتر الابتدائي منظور: أول طلب يحمل status=pending دون تدخل المستخدم.
+    await vi.waitFor(() => {
+      expect(apiMock.get).toHaveBeenCalled();
+    });
+    expect(apiMock.get.mock.calls[0]?.[0]).toBe('/appeals');
+    expect(apiMock.get.mock.calls[0]?.[1]?.params).toMatchObject({ status: 'pending' });
 
     await user.type(await screen.findByLabelText(/بحث في الاستئنافات/), 'المؤسسة');
     await user.selectOptions(await screen.findByLabelText(/فلتر الحالة/), 'pending');
@@ -137,5 +152,43 @@ describe('AppealsList', () => {
     await vi.waitFor(() => {
       expect(apiMock.post).toHaveBeenCalledWith('/appeals/1/assign', { assignedLawyerId: 3 });
     });
+  });
+
+  it('زر التدوير للمسند المنظور فقط: أحمر عند الحاجة ومحايد otherwise', async () => {
+    setup('lawyer', 7);
+    apiMock.get.mockResolvedValueOnce({
+      data: {
+        items: [
+          makeAppeal({ id: 1, assignedLawyerId: 7, needsRotation: true, currentBaseNumber: '100/2025' }),
+          makeAppeal({ id: 2, assignedLawyerId: 7, needsRotation: false, currentBaseNumber: '200/2026' }),
+          // المنشئ غير المسند: لا زر تدوير.
+          makeAppeal({ id: 3, assignedLawyerId: 9, createdById: 7 }),
+          // المحسوم المسند: لا زر تدوير.
+          makeAppeal({ id: 4, assignedLawyerId: 7, status: 'decided' }),
+        ],
+        totalCount: 4,
+        totalPages: 1,
+      },
+    });
+    render(<AppealsList />);
+
+    await screen.findByRole('table');
+    // زرّا التدوير في صفّي الإجراءات (اسمهما المُعلن من aria-label) — للمسندين المنظورين فقط.
+    const rotationButtons = screen.getAllByRole('button', { name: /تدوير رقم الأساس الاستئنافي/ });
+    expect(rotationButtons).toHaveLength(2);
+    expect(rotationButtons[0]).toHaveClass('text-red-700');
+    expect(rotationButtons[1]).not.toHaveClass('text-red-700');
+  });
+
+  it('يخفي زر النقل لرئيس القسم عن الاستئناف المحسوم بدل تعطيله', async () => {
+    setup('head', 99);
+    apiMock.get.mockResolvedValueOnce({
+      data: { items: [makeAppeal({ status: 'decided', assignedLawyerId: 7 })], totalCount: 1, totalPages: 1 },
+    });
+    render(<AppealsList />);
+
+    await screen.findByRole('table');
+    expect(screen.queryByRole('button', { name: 'نقل المحامي' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'إسناد لمحامٍ' })).not.toBeInTheDocument();
   });
 });

@@ -74,6 +74,9 @@ export default function AppealDetailsBody({ appeal }: { appeal: AppealDto }) {
             {appeal.defenseOpinion && (
               <FieldCell label="رأي المحامي المتابع بأسباب الاستئناف" value={appeal.defenseOpinion} showEmpty />
             )}
+            {/* كتاب إيداع الملف رئيس القسم: مسار «مستأنف علينا» فقط. */}
+            <FieldCell label="رقم كتاب إيداع الملف رئيس القسم" value={appeal.depositBookNumber} showEmpty />
+            <FieldCell label="تاريخ كتاب إيداع الملف رئيس القسم" value={formatDate(appeal.depositBookDate)} showEmpty />
           </>
         )}
       </section>
@@ -86,8 +89,6 @@ export default function AppealDetailsBody({ appeal }: { appeal: AppealDto }) {
           <FieldCell label="رقم الأساس الاستئنافي" value={appeal.currentBaseNumber ?? appeal.appealBaseNumber} showEmpty />
           <FieldCell label="لعام" value={appeal.appealYear} showEmpty />
           <FieldCell label="تاريخ إقرار الاستئناف" value={formatDate(appeal.registrationDate)} showEmpty />
-          <FieldCell label="رقم كتاب إيداع الملف رئيس القسم" value={appeal.depositBookNumber} showEmpty />
-          <FieldCell label="تاريخ كتاب إيداع الملف رئيس القسم" value={formatDate(appeal.depositBookDate)} showEmpty />
         </dl>
       </section>
 

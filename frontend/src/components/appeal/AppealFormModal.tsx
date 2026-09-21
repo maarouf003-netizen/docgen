@@ -219,8 +219,8 @@ export default function AppealFormModal({
         appellateCourt: appellantsVariant ? undefined : clean(court),
         appealBaseNumber: appellantsVariant ? undefined : clean(baseNumber),
         appealYear: appellantsVariant ? undefined : clean(normalizeArabicDigits(baseYear)),
-        depositBookNumber: clean(depositBookNumber),
-        depositBookDate: cleanDate(depositBookDate),
+        depositBookNumber: appellantsVariant ? undefined : clean(depositBookNumber),
+        depositBookDate: appellantsVariant ? undefined : cleanDate(depositBookDate),
         defenseOpinion: appellantsVariant ? undefined : clean(defenseOpinion),
         notes: clean(notes),
       });
@@ -399,22 +399,21 @@ export default function AppealFormModal({
                 onChange={setDefenseOpinion}
                 placeholder="رأي المحامي في أسباب الاستئناف"
               />
+              {/* كتاب إيداع الملف رئيس القسم: مسار «مستأنف علينا» فقط — لا يُجمع في مسار «مستأنِفين». */}
+              <TextField
+                id="appeal-deposit-book-number"
+                label="رقم كتاب إيداع الملف رئيس القسم"
+                value={depositBookNumber}
+                onChange={setDepositBookNumber}
+              />
+              <FreeDateField
+                id="appeal-deposit-book-date"
+                label="تاريخ كتاب إيداع الملف رئيس القسم"
+                value={depositBookDate}
+                onChange={setDepositBookDate}
+              />
             </>
           )}
-
-          {/* كتاب إيداع الملف رئيس القسم: يملؤه محامي الملف الأساس (المنشئ) في الاتجاهين. */}
-          <TextField
-            id="appeal-deposit-book-number"
-            label="رقم كتاب إيداع الملف رئيس القسم"
-            value={depositBookNumber}
-            onChange={setDepositBookNumber}
-          />
-          <FreeDateField
-            id="appeal-deposit-book-date"
-            label="تاريخ كتاب إيداع الملف رئيس القسم"
-            value={depositBookDate}
-            onChange={setDepositBookDate}
-          />
 
           {/* نوع الاستئناف: يُدخله محامي القيد لاحقًا في «تعديل القيد» — لا يظهر في تسطير «مستأنِفين». */}
           {!appellantsVariant && (

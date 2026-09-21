@@ -268,7 +268,7 @@ public class AppealsController : ControllerBase
         }
     }
 
-    /// <summary>عدد استئنافات محامٍ ضمن فرع رئيس القسم — لمعاينة النقل الجملة.</summary>
+    /// <summary>عدد الاستئنافات المنظورة لمحامٍ ضمن فرع رئيس القسم — لمعاينة النقل الجملة.</summary>
     [HttpGet("appeals/owner/{lawyerId:int}/count")]
     public async Task<IActionResult> CountForOwner(int lawyerId, CancellationToken ct)
     {
@@ -302,7 +302,7 @@ public class AppealsController : ControllerBase
         }
     }
 
-    /// <summary>إدخال/تدوير رقم الأساس الاستئنافي لسنة التدوير الحالية — المحامي المتابع أو المنشئ.</summary>
+    /// <summary>إدخال/تدوير رقم الأساس الاستئنافي لسنة التدوير الحالية — المحامي المتابع المسند له (للمنظور فقط).</summary>
     [HttpPut("appeals/{id:int}/base-numbers")]
     public async Task<IActionResult> SaveBaseNumbers(int id, [FromBody] SaveAppealBaseNumbersRequest request, CancellationToken ct)
     {

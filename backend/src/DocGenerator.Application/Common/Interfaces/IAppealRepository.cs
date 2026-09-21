@@ -4,7 +4,7 @@ namespace DocGenerator.Application.Common.Interfaces;
 
 /// <summary>
 /// استعلامات الاستئنافات (DocumentAppeal) على مستوى قاعدة البيانات: جلب سجلٍ مع روابطه،
-/// وقوائمه بحسب صاحب الرؤية (المنشئ / المحامي المسند إليه / فرع رئيس القسم)،
+/// وقوائمه بحسب صاحب الرؤية (المحامي المسند إليه / فرع رئيس القسم)،
 /// وبحث نصي في لقطات الأطراف وأرقام الأساس الاستئنافية.
 /// </summary>
 public interface IAppealRepository : IRepository<DocumentAppeal>
@@ -23,7 +23,7 @@ public interface IAppealRepository : IRepository<DocumentAppeal>
         IReadOnlyCollection<int> documentIds, CancellationToken ct = default);
 
     /// <summary>
-    /// بحث/قائمة الاستئنافات لنطاق رؤية محدد: المحامي (استئنافاته المنشأة أو المسندة إليه)،
+    /// بحث/قائمة الاستئنافات لنطاق رؤية محدد: المحامي (استئنافاته المسندة إليه للمتابعة فقط)،
     /// رئيس القسم (فرعه)، الإدارة (الكل). البحث النصي يطابق أسماء المستأنف/المستأنف عليهم
     /// من اللقطات ورقم الأساس الاستئنافي والمحكمة.
     /// </summary>
@@ -51,6 +51,6 @@ public interface IAppealRepository : IRepository<DocumentAppeal>
     Task<List<DocumentAppeal>> ListByAssigneeAsync(
         int assigneeId, int? branchId = null, bool asNoTracking = true, CancellationToken ct = default);
 
-    /// <summary>عدد استئنافات محامٍ المسندة إليه (واختياريًا ضمن فرع محدد) — لمعاينة النقل الجملة.</summary>
-    Task<int> CountByAssigneeAsync(int assigneeId, int? branchId = null, CancellationToken ct = default);
+    /// <summary>عدد استئنافات محامٍ المسندة إليه (واختياريًا ضمن فرع محدد وحالة محددة) — لمعاينة النقل الجملة (المنظورة فقط).</summary>
+    Task<int> CountByAssigneeAsync(int assigneeId, int? branchId = null, string? status = null, CancellationToken ct = default);
 }

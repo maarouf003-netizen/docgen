@@ -145,6 +145,7 @@ export default function TransferAllAppealsModal({
                   سيتم نقل <span className="font-bold tabular-nums">{count}</span> استئنافًا من{' '}
                   <span className="font-semibold">{sourceName}</span> إلى{' '}
                   <span className="font-semibold">{targetName}</span>.
+                  <span className="block text-xs mt-1">تُنقل الاستئنافات المنظورة فقط.</span>
                 </div>
               )}
 

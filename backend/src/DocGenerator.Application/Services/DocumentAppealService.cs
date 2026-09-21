@@ -405,9 +405,12 @@ public sealed class DocumentAppealService : IDocumentAppealService
         var movable = await _appeals.ListByAssigneeAsync(
             request.SourceLawyerId, headBranchId.Value, asNoTracking: false, ct);
 
+        // النقل الجملة للمنظورة فقط — المحسوم والمشطوب يُتخطَّيان (R5).
+        var pendingOnly = movable.Where(a => a.Status == AppealStatusCatalog.Pending).ToList();
+
         await _tx.RunAsync(async token =>
         {
-            foreach (var appeal in movable)
+            foreach (var appeal in pendingOnly)
             {
                 appeal.AssignedLawyerId = target.Id;
                 appeal.AssignedAt = DateTime.UtcNow;
@@ -416,17 +419,17 @@ public sealed class DocumentAppealService : IDocumentAppealService
             }
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "transfer_all_appeals",
-                details: $"نقل {movable.Count} استئنافًا من المحامي (رقم {request.SourceLawyerId}) إلى المحامي {target.FullName}", ct: token);
+                details: $"نقل {pendingOnly.Count} استئنافًا منظورًا من المحامي (رقم {request.SourceLawyerId}) إلى المحامي {target.FullName}", ct: token);
         }, ct);
 
-        return movable.Count;
+        return pendingOnly.Count;
     }
 
     public Task<int> CountByAssigneeForHeadAsync(int assigneeId, int? headBranchId, CancellationToken ct = default)
     {
         if (headBranchId is null)
             throw new ArgumentException("رئيس القسم دون فرع لا يمكنه الاطلاع على الاستئنافات");
-        return _appeals.CountByAssigneeAsync(assigneeId, headBranchId.Value, ct);
+        return _appeals.CountByAssigneeAsync(assigneeId, headBranchId.Value, AppealStatusCatalog.Pending, ct);
     }
 
     // ── تدوير رقم الأساس الاستئنافي ───────────────────────────────────────
@@ -469,8 +472,11 @@ public sealed class DocumentAppealService : IDocumentAppealService
     {
         var appeal = await _appeals.GetByIdWithDetailsAsync(appealId, ct)
             ?? throw new ArgumentException("الاستئناف غير موجود");
-        if (appeal.AssignedLawyerId != userId && appeal.CreatedById != userId)
+        // التدوير للمسند له فقط، وللمنظور فقط — المنشئ غير المسند والمحسوم/المشطوب مرفوضان.
+        if (appeal.AssignedLawyerId != userId)
             throw new ArgumentException("لا يمكنك تدوير رقم أساس استئناف لا تتابعه");
+        if (appeal.Status != AppealStatusCatalog.Pending)
+            throw new ArgumentException("لا يمكن تدوير رقم أساس استئناف لم يبق منظورًا");
         if (request.Entries is null || request.Entries.Count == 0)
             throw new ArgumentException("أدخل رقم الأساس الاستئنافي للسنة الحالية");
         if (request.Entries.Count > 1)
@@ -850,8 +856,18 @@ public sealed class DocumentAppealService : IDocumentAppealService
         appeal.AppellateCourt = Bounded(request.AppellateCourt, 300, "محكمة الاستئناف التنفيذية المختصة");
         appeal.AppealBaseNumber = Bounded(request.AppealBaseNumber, 100, "رقم الأساس الاستئنافي");
         appeal.AppealYear = Bounded(request.AppealYear, 50, "لعام");
-        appeal.DepositBookNumber = Bounded(request.DepositBookNumber, 200, "رقم كتاب إيداع الملف رئيس القسم");
-        appeal.DepositBookDate = DocumentValidator.ParseDateTime(request.DepositBookDate, "تاريخ كتاب إيداع الملف رئيس القسم");
+        // كتاب إيداع الملف رئيس القسم: مسار «مستأنف علينا» فقط — يُصفَّر لمسار «مستأنِفين»
+        // (appeal.Direction مضبوط قبل الاستدعاء في CreateAsync وUpdateAsync).
+        if (appeal.Direction == AppealDirectionCatalog.Appellants)
+        {
+            appeal.DepositBookNumber = null;
+            appeal.DepositBookDate = null;
+        }
+        else
+        {
+            appeal.DepositBookNumber = Bounded(request.DepositBookNumber, 200, "رقم كتاب إيداع الملف رئيس القسم");
+            appeal.DepositBookDate = DocumentValidator.ParseDateTime(request.DepositBookDate, "تاريخ كتاب إيداع الملف رئيس القسم");
+        }
         appeal.DefenseOpinion = Bounded(request.DefenseOpinion, 2000, "رأي المحامي المتابع للملف بأسباب الاستئناف");
         appeal.Notes = Bounded(request.Notes, 2000, "الملاحظات");
         appeal.UpdatedAt = DateTime.UtcNow;
@@ -1002,12 +1018,12 @@ public sealed class DocumentAppealService : IDocumentAppealService
         var latestRecorded = a.BaseNumbers.Count > 0
             ? a.BaseNumbers.Max(b => b.Year)
             : int.TryParse(a.AppealYear, out var recordedYear) ? recordedYear : 0;
-        // الأهلية للتدوير: وجود سجل من سنة سابقة ولا يوجد سجل لسنة اليوم.
+        // الأهلية للتدوير: منظور بلا رقم لسنة اليوم — بمن فيه من لا رقم له إطلاقًا
+        // (للتمييز والتحذير فقط، لا بوابةً للزر).
         // (لا يُستخدم «الصف الفعّال» currentRow هنا: فهو غير فارغ عند أي تاريخ سابق
         // فيجعل الشرط ميتًا — الصحيح فحص صف السنة الحالية صراحةً كما في الملفات.)
         var hasCurrentYearRow = a.BaseNumbers.Any(b => b.Year == currentYear);
         var needsRotation = a.Status == AppealStatusCatalog.Pending
-            && latestRecorded > 0
             && latestRecorded < currentYear
             && !hasCurrentYearRow;
 

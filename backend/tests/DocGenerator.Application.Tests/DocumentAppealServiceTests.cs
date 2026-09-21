@@ -167,6 +167,32 @@ public class DocumentAppealServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Create_DepositFields_NulledForAppellants_KeptForAgainstUs()
+    {
+        var doc = await CreateApplicantDocAsync();
+        var entities = await _db.ApplicantPublicEntities
+            .Where(e => e.DocumentId == doc.Id).OrderBy(e => e.Id).ToListAsync();
+
+        // مسار «مستأنِفين»: قيم الإيداع المرسلة تُصفَّر (R1).
+        var appellants = await _service.CreateAsync(doc.Id,
+            Request(AppealDirectionCatalog.Appellants,
+                new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) })
+            with { DepositBookNumber = "K-1", DepositBookDate = "3/8/2026" },
+            _lawyer1.Id, "lawyer1");
+        Assert.Null(appellants.DepositBookNumber);
+        Assert.Null(appellants.DepositBookDate);
+
+        // مسار «مستأنف علينا»: القيم تُحفظ كما هي.
+        var againstUs = await _service.CreateAsync(doc.Id,
+            Request(AppealDirectionCatalog.AgainstUs,
+                new List<AppealPartySelectionDto> { new("borrower", doc.Id) })
+            with { DepositBookNumber = "K-2", DepositBookDate = "4/8/2026" },
+            _lawyer1.Id, "lawyer1");
+        Assert.Equal("K-2", againstUs.DepositBookNumber);
+        Assert.Equal("2026-08-04", againstUs.DepositBookDate);
+    }
+
+    [Fact]
     public async Task Create_ByNonOwner_Throws()
     {
         var doc = await CreateApplicantDocAsync();
@@ -501,6 +527,76 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.False(after!.NeedsRotation);
     }
 
+    private static SaveAppealBaseNumbersRequest SaveAs(string number) =>
+        new(new List<AppealBaseNumberEntry> { new(number) });
+
+    [Fact]
+    public async Task Rotation_RequiresAssigneeAndPending()
+    {
+        var doc = await CreateApplicantDocAsync();
+        var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
+        var created = await _service.CreateAsync(doc.Id,
+            Request(AppealDirectionCatalog.Appellants,
+                new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
+            _lawyer1.Id, "lawyer1");
+
+        // بلا إسناد: المنشئ نفسه مرفوض (R3).
+        var exUnassigned = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.SaveBaseNumbersAsync(created.Id, SaveAs("100"), _lawyer1.Id, "lawyer1"));
+        Assert.Contains("لا تتابعه", exUnassigned.Message);
+
+        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+
+        // المنشئ غير المسند مرفوض بعد الإسناد.
+        var exCreator = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.SaveBaseNumbersAsync(created.Id, SaveAs("100"), _lawyer1.Id, "lawyer1"));
+        Assert.Contains("لا تتابعه", exCreator.Message);
+
+        // المحسوم: المسند نفسه مرفوض بعد الحسم.
+        await _service.DecideAsync(created.Id,
+            new DecideAppealRequest("قرار-1", "15/9/2026", "نص", AppealOutcomeCatalog.InFavor),
+            _lawyer2.Id, "lawyer2");
+        var exDecided = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.SaveBaseNumbersAsync(created.Id, SaveAs("100"), _lawyer2.Id, "lawyer2"));
+        Assert.Contains("لم يبق منظورًا", exDecided.Message);
+
+        // المشطوب: مرفوض أيضًا.
+        var second = await _service.CreateAsync(doc.Id,
+            Request(AppealDirectionCatalog.Appellants,
+                new List<AppealPartySelectionDto> { new("applicant-entity", entities[1].Id) }),
+            _lawyer1.Id, "lawyer1");
+        await _service.AssignAsync(second.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        await _service.StrikeAsync(second.Id,
+            new StrikeAppealRequest("شطب-1", "1/10/2026"), _lawyer2.Id, "lawyer2");
+        var exStruck = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.SaveBaseNumbersAsync(second.Id, SaveAs("100"), _lawyer2.Id, "lawyer2"));
+        Assert.Contains("لم يبق منظورًا", exStruck.Message);
+    }
+
+    [Fact]
+    public async Task Rotation_WithoutAnyNumber_IsAllowedForAssignee()
+    {
+        // Request() بلا AppealBaseNumber/AppealYear — المسند المنظور بلا أي رقم يحتاج تدويرًا (R3).
+        var doc = await CreateApplicantDocAsync();
+        var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
+        var created = await _service.CreateAsync(doc.Id,
+            Request(AppealDirectionCatalog.Appellants,
+                new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
+            _lawyer1.Id, "lawyer1");
+        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+
+        var before = await _service.GetAsync(created.Id);
+        Assert.NotNull(before);
+        Assert.True(before!.NeedsRotation);
+
+        await _service.SaveBaseNumbersAsync(created.Id, SaveAs("100"), _lawyer2.Id, "lawyer2");
+
+        var after = await _service.GetAsync(created.Id);
+        Assert.NotNull(after);
+        Assert.Equal("100", after!.CurrentBaseNumber);
+        Assert.False(after.NeedsRotation);
+    }
+
     [Fact]
     public async Task Actions_CrudAndReminders_WorkForAssignedLawyer()
     {
@@ -570,6 +666,36 @@ public class DocumentAppealServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task TransferAll_SkipsDecidedAndStruckOff()
+    {
+        var doc = await CreateApplicantDocAsync();
+        var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
+        var first = await _service.CreateAsync(doc.Id,
+            Request(AppealDirectionCatalog.Appellants,
+                new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
+            _lawyer1.Id, "lawyer1");
+        await _service.AssignAsync(first.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        var second = await _service.CreateAsync(doc.Id,
+            Request(AppealDirectionCatalog.Appellants,
+                new List<AppealPartySelectionDto> { new("applicant-entity", entities[1].Id) }),
+            _lawyer1.Id, "lawyer1");
+        await _service.AssignAsync(second.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+
+        await _service.DecideAsync(first.Id,
+            new DecideAppealRequest("قرار-1", "15/9/2026", "نص", AppealOutcomeCatalog.InFavor),
+            _lawyer2.Id, "lawyer2");
+        await _service.StrikeAsync(second.Id,
+            new StrikeAppealRequest("شطب-1", "1/10/2026"), _lawyer2.Id, "lawyer2");
+
+        // لا منظور قابل للنقل ← صفر، والمحسوم والمشطوب يبقيان عند المسند الأصلي (R5).
+        var count = await _service.TransferAllAsync(
+            new TransferAllAppealsRequest(_lawyer2.Id, _lawyer1.Id), _branch.Id, "head1");
+        Assert.Equal(0, count);
+        Assert.Equal(_lawyer2.Id, (await _service.GetAsync(first.Id))!.AssignedLawyerId);
+        Assert.Equal(_lawyer2.Id, (await _service.GetAsync(second.Id))!.AssignedLawyerId);
+    }
+
+    [Fact]
     public async Task Create_WithOverlongText_ThrowsFriendlyError()
     {
         var doc = await CreateApplicantDocAsync();
@@ -601,6 +727,13 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Equal(1, await _service.CountByAssigneeForHeadAsync(_lawyer2.Id, _branch.Id));
         Assert.Equal(0, await _service.CountByAssigneeForHeadAsync(_lawyer1.Id, _branch.Id));
 
+        // استئناف محسوم مسند لنفس المحامي لا يدخل العدّاد (المنظورة فقط — R5/C3).
+        await _service.AssignAsync(second.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        await _service.DecideAsync(second.Id,
+            new DecideAppealRequest("قرار-2", "15/9/2026", "نص", AppealOutcomeCatalog.InFavor),
+            _lawyer2.Id, "lawyer2");
+        Assert.Equal(1, await _service.CountByAssigneeForHeadAsync(_lawyer2.Id, _branch.Id));
+
         // رئيس قسم بلا فرع يُرفض بدل تسريب العدّادات.
         await Assert.ThrowsAsync<ArgumentException>(
             () => _service.CountByAssigneeForHeadAsync(_lawyer2.Id, null));
@@ -623,11 +756,11 @@ public class DocumentAppealServiceTests : IDisposable
         var byName = await _service.SearchAsync("المؤسسة العامة للكهرباء", null, null, null, 1, 20);
         Assert.Single(byName.Items);
 
-        // نطاق المحامي المسند إليه يرى الاستئناف، والمنشئ أيضًا.
+        // نطاق المحامي المسند إليه يرى الاستئناف؛ والمنشئ غير المسند لا يراه (R6).
         var followerScope = await _service.SearchAsync(null, null, null, _lawyer2.Id, 1, 20);
         Assert.Single(followerScope.Items);
         var creatorScope = await _service.SearchAsync(null, null, null, _lawyer1.Id, 1, 20);
-        Assert.Single(creatorScope.Items);
+        Assert.Empty(creatorScope.Items);
 
         // فلتر الحالة.
         var pendingOnly = await _service.SearchAsync(null, AppealStatusCatalog.Pending, null, null, 1, 20);

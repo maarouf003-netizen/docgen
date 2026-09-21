@@ -52,6 +52,9 @@ describe('AppealFormModal', () => {
     expect(preview?.textContent).toContain('مديرية الموارد المائية');
     // حقول المسار الآخر مخفية.
     expect(screen.queryByLabelText('رقم ورود سند تبليغ الاستئناف')).not.toBeInTheDocument();
+    // حقْلا كتاب إيداع الملف رئيس القسم لا يظهران في مسار «مستأنِفين».
+    expect(screen.queryByLabelText('رقم كتاب إيداع الملف رئيس القسم')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('تاريخ كتاب إيداع الملف رئيس القسم')).not.toBeInTheDocument();
   });
 
   it('يرفض الحفظ دون اختيار مستأنف أو نص قرار', async () => {
@@ -103,6 +106,9 @@ describe('AppealFormModal', () => {
     expect(payload.direction).toBe('appellants');
     expect(payload.appellants).toEqual([{ kind: 'applicant-entity', partyId: 11 }]);
     expect(payload.appealedDecisionDate).toBe('1/8/2026');
+    // مسار «مستأنِفين» لا يرسل حقلي كتاب الإيداع إطلاقًا.
+    expect(payload.depositBookNumber).toBeUndefined();
+    expect(payload.depositBookDate).toBeUndefined();
   });
 
   it('مسار «مستأنف علينا» يعرض حقوله الخاصة (سند التبليغ والمحكمة ورأي المحامي)', () => {
@@ -122,5 +128,37 @@ describe('AppealFormModal', () => {
       screen.getByLabelText('رأي المحامي المتابع للملف بأسباب الاستئناف'),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText('رقم كتاب المطالعة وإيداع الملف رئيس القسم')).not.toBeInTheDocument();
+    // حقْلا كتاب إيداع الملف رئيس القسم يظهران في مسار «مستأنف علينا» فقط.
+    expect(screen.getByLabelText('رقم كتاب إيداع الملف رئيس القسم')).toBeInTheDocument();
+    expect(screen.getByLabelText('تاريخ كتاب إيداع الملف رئيس القسم')).toBeInTheDocument();
+  });
+
+  it('مسار «مستأنف علينا» يرسل حقلي كتاب الإيداع مع تطبيع الأرقام العربية', async () => {
+    const onSaved = vi.fn();
+    const savedAppeal = { id: 78, status: 'pending' };
+    apiMock.post.mockResolvedValueOnce({ data: savedAppeal });
+    const user = userEvent.setup();
+    const doc = {
+      ...makeDocument(),
+      generalEntitySide: 'executed',
+      executedNaturalPersons: [{ id: 21, name: 'سامر', father: 'نبيل', family: 'الحلبي' }],
+    } as unknown as DocumentResponse;
+
+    render(<AppealFormModal doc={doc} variant="against-us" onClose={vi.fn()} onSaved={onSaved} />);
+
+    await user.click(screen.getAllByRole('checkbox')[0]);
+    await user.type(screen.getByLabelText('القرار المستأنف'), 'نص القرار');
+    await user.type(screen.getByLabelText('رقم كتاب إيداع الملف رئيس القسم'), 'K-9');
+    await user.type(screen.getByLabelText('تاريخ كتاب إيداع الملف رئيس القسم'), '١/٨/٢٠٢٦');
+    await user.click(screen.getByRole('button', { name: 'حفظ' }));
+
+    await vi.waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(savedAppeal);
+    });
+    expect(apiMock.post).toHaveBeenCalledTimes(1);
+    const [, payload] = apiMock.post.mock.calls[0];
+    expect(payload.direction).toBe('against-us');
+    expect(payload.depositBookNumber).toBe('K-9');
+    expect(payload.depositBookDate).toBe('1/8/2026');
   });
 });

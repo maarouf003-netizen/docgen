@@ -41,8 +41,8 @@ public class AppealRepository : Repository<DocumentAppeal>, IAppealRepository
 
         if (visibleUserId is not null)
         {
-            // محامٍ: الاستئنافات التي أنشأها أو أُسندت إليه للمتابعة.
-            q = q.Where(a => a.CreatedById == visibleUserId.Value || a.AssignedLawyerId == visibleUserId.Value);
+            // محامٍ: الاستئنافات المسندة إليه للمتابعة فقط (R6) — المنشئ غير المسند لا يراها هنا.
+            q = q.Where(a => a.AssignedLawyerId == visibleUserId.Value);
         }
         else if (visibleBranchId is not null)
         {
@@ -80,12 +80,14 @@ public class AppealRepository : Repository<DocumentAppeal>, IAppealRepository
     public Task<bool> IsAssignedFollowerAsync(int documentId, int userId, CancellationToken ct = default)
         => Db.DocumentAppeals.AnyAsync(a => a.DocumentId == documentId && a.AssignedLawyerId == userId, ct);
 
-    public Task<int> CountByAssigneeAsync(int assigneeId, int? branchId = null, CancellationToken ct = default)
+    public Task<int> CountByAssigneeAsync(int assigneeId, int? branchId = null, string? status = null, CancellationToken ct = default)
     {
         var q = Db.DocumentAppeals.AsNoTracking()
             .Where(a => a.AssignedLawyerId == assigneeId);
         if (branchId is not null)
             q = q.Where(a => a.Document.BranchId == branchId.Value);
+        if (!string.IsNullOrWhiteSpace(status))
+            q = q.Where(a => a.Status == status.Trim());
         return q.CountAsync(ct);
     }
 
