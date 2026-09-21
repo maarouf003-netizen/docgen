@@ -123,6 +123,8 @@ public class DelegationConcurrencyTests : IDisposable
                 DocumentId = source.Id,
                 AssetKind = AssetKindCatalog.RealEstate,
                 PropertyNumber = (77 + i).ToString(),
+                // بذور محجوزة ليتجاوز السباق حارس «لا إنابة على مالٍ بلا حجز».
+                SeizureDate = new DateTime(2026, 8, 1),
             };
             db.Assets.Add(asset);
             await db.SaveChangesAsync();

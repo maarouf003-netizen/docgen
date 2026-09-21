@@ -227,7 +227,7 @@ export default function DocumentView() {
       {delegationOfThisFile && (
         <DelegationStatusCard doc={doc} delegationId={delegationOfThisFile.id} />
       )}
-      {!isExecuted && !delegationOfThisFile && <AssetsSection doc={doc} />}
+      {!isExecuted && !delegationOfThisFile && <AssetsSection doc={doc} delegations={delegations} />}
       {id !== undefined && (
         <DocumentReviewLettersCard
           documentId={Number(id)}

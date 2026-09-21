@@ -274,7 +274,7 @@ describe('DelegationFormModal', () => {
       />,
     );
 
-    expect(screen.getByText(/لا توجد أموال متاحة للإنابة/)).toBeInTheDocument();
+    expect(screen.getByText(/لا توجد أموال مؤهلة للإنابة/)).toBeInTheDocument();
     expect(screen.queryByText('لا توجد أموال مسجلة على هذا الملف')).not.toBeInTheDocument();
   });
 });

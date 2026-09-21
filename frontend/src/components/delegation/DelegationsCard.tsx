@@ -7,7 +7,6 @@ import {
 } from '../../utils/delegationStatus';
 import { SectionCard } from '../view/SectionCard';
 import { DelegationDetails } from './DelegationDetails';
-import { DelegationActivityStrip } from './DelegationActivityStrip';
 
 /** شارة حالة الملف المناب في سطر التشعبات (L11 — تحمل «مسترد»/«تريث»/«منفذ»...) عبر targetExecStatus. */
 function targetStatusBadge(d: DelegationDto): { text: string; cls: string } | null {
@@ -115,7 +114,6 @@ export function DelegationsCard({
                     </p>
                   );
                 })()}
-                <DelegationActivityStrip delegationId={d.id} />
                 {manageable && (
                   <div className="flex gap-2 mt-3">
                     <button

@@ -1078,9 +1078,11 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
             await _reservations.DeleteExceptAsync(source.Id, blockingIds, ct);
     }
 
-    /// <summary>حارس الحجب عند التسطير/التعديل: يرفض الكفالة (لا إنابة عليها أبدًا) ويرفض الأموال
+    /// <summary>حارس التسطير عند الإنشاء/التعديل: يرفض الكفالة (لا إنابة عليها أبدًا)
+    /// ويرفض الأموال بلا تاريخ القاء حجز (لا إنابة عليها قانونًا) ويرفض الأموال
     /// المحجوبة بإنابة سارية أخرى — مسح اللقطات حصرًا (مطابقة واحد-لواحد بالنوع والوصف —
-    /// مرآة matchDelegationAssets الأمامية — فالتوأم السليم لا يُحجب). صفوف الحجوزات (B3)
+    /// مرآة matchDelegationAssets الأمامية — فالتوأم السليم لا يُحجب). ترتيب الرسائل:
+    /// كفالة ← حجز ← حجب. صفوف الحجوزات (B3)
     /// عمدًا خارج الحارس: مرجعها فيزيائي والمسح وصفي، واتحادهما يختلف على أي توأم
     /// محجوب فيحجب التوأمين معًا — القيد الفريد وحده يحسم السباق عند الكتابة.
     /// تُستثنى الإنابة ذاتها عند التعديل. يعمل على قراءة طازجة بلا تتبع
@@ -1094,6 +1096,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         var selected = source.Assets.Where(a => ids.Contains(a.Id)).ToList();
         if (selected.Any(a => a.AssetKind == AssetKindCatalog.SalaryGuarantee))
             throw new ArgumentException("كفالة الرواتب لا يجري عليها إنابة — أزلها من الأموال موضوع الإنابة");
+        // قاعدة «لا إنابة على مالٍ بلا حجز»: تُفحص بعد الكفالة وقبل الحجب.
+        ValidateAssetsHaveSeizureDate(source, assetIds);
         var blockedIds = ComputeBlockedIds(source, excludeDelegationId);
         if (blockedIds.Count == 0)
             return Task.CompletedTask;
@@ -1103,6 +1107,21 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         return Task.CompletedTask;
     }
 
+    /// <summary>حارس «لا إنابة على مالٍ بلا حجز»: يرفض أي أصلٍ مختار بلا تاريخ القاء حجز
+    /// مخزَّن (الفارغ/الأبيض في الطلب يؤول إلى null في BuildAsset، فالمقياس هنا null حصريًا).
+    /// فاحص مستقل يُستدعى من حارس التسطير بعد فحص الكفالة وقبل فحص الحجب.</summary>
+    private static void ValidateAssetsHaveSeizureDate(Document source, List<int>? assetIds)
+    {
+        var ids = (assetIds ?? new List<int>()).Distinct().ToList();
+        if (ids.Count == 0)
+            return; // الفراغ يرفضه ApplyDelegationAssets برسالتها («يجب اختيار الأموال موضوع الإنابة»).
+        var missing = source.Assets
+            .Where(a => ids.Contains(a.Id) && a.SeizureDate is null)
+            .ToList();
+        if (missing.Count > 0)
+            throw new ArgumentException($"يرجى ادخال تاريخ القاء الحجز لتسطير الانابة: {string.Join("، ", missing.Select(AssetDisplay.Label))}");
+    }
+
     /// <summary>
     /// ربط اللقطات بالأصول الفيزيائية (B3/C1): مطابقة واحد-لواحد جشعة على مسبح مرتب
     /// بالمفتاح — اللقطة تستهلك أول أصل حر مطابق. حتمية تامة لمدخل ثابت (بما فيه التوائم).
@@ -1110,14 +1129,20 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
     /// المشتركة الوحيدة بين المرجع الوصفي والمرجع الفيزيائي (التوائم قابلة للتبادل
     /// ولا تحمل اللقطات معرفاتها، فأي اختلاف بينهما يحجب توأمًا سليمًا).
     /// </summary>
-    private static HashSet<int> ComputeBlockedIds(Document source, int? excludeDelegationId)
+    private static HashSet<int> ComputeBlockedIds(Document source, int? excludeDelegationId) =>
+        ComputeBlockedIds(source.Assets, source.Delegations, excludeDelegationId);
+
+    /// <summary>المطابقة نفسها على مجموعات مفكوكة — لقفل «الحجز بعد التسطير» في
+    /// DocumentService حيث تُجلب الإنابات مع مناباتها (لحالاتها فقط) بقراءة مستقلة.</summary>
+    internal static HashSet<int> ComputeBlockedIds(
+        IEnumerable<Asset> assets, IEnumerable<DocumentDelegation> delegations, int? excludeDelegationId)
     {
         // مطابقة واحد-لواحد على كامل أموال المنيب (لا على المحدد فقط): لقطة الحاجب تستهلك
         // توأمًا واحدًا من المسبح فيبقى التوأم السليم حرًا.
         // C1: الفرز بالمفتاح قبل الجشع — بدونه يعتمد أي توأم يُستهلك على ترتيب التحميل.
-        var remaining = source.Assets.OrderBy(a => a.Id).ToList();
+        var remaining = assets.OrderBy(a => a.Id).ToList();
         var blockedIds = new HashSet<int>();
-        var blockers = source.Delegations
+        var blockers = delegations
             .Where(d => (excludeDelegationId is null || d.Id != excludeDelegationId) && DelegationActivityPolicy.IsAssetBlocking(d))
             .OrderBy(d => d.Id)
             .ToList();

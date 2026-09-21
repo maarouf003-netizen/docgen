@@ -1,27 +1,47 @@
 import { ASSET_KINDS } from '../form/documentFormConstants';
 import { assetDisplayName } from '../../utils/assetDisplay';
-import type { AssetDto, DocumentResponse } from '../../types';
+import { blockedAssetIds } from '../../utils/delegationAssets';
+import type { AssetDto, DelegationDto, DocumentResponse } from '../../types';
 import { SectionCard } from './SectionCard';
 
-/** يعرض قائمة الأموال المرهونة (المنقولة وغير المنقولة) في بطاقات. */
-export function AssetsSection({ doc }: { doc: DocumentResponse }) {
+/**
+ * يعرض قائمة الأموال المرهونة (المنقولة وغير المنقولة) في بطاقات، مع شارة حالة
+ * الحجز لكل مال (من `seizureDate` الخاص به: خضراء «تم القاء الحجز» أو حمراء
+ * «لم يتم القاء الحجز») وشارة زرقاء «مناب» للمال المحجوب بإنابة سارية
+ * (مطابقة واحد-لواحد عبر `blockedAssetIds` — فالتوأم السليم لا يُوسم).
+ */
+export function AssetsSection({ doc, delegations = [] }: { doc: DocumentResponse; delegations?: DelegationDto[] }) {
   const assets = doc.assets ?? [];
+  const blocked = blockedAssetIds(delegations, assets);
   return (
     <SectionCard title="الأموال المنقولة وغير المنقولة">
       {assets.length === 0 && <p className="text-gray-400 text-sm">لا توجد أموال مرهونة</p>}
       {assets.map((r, i) => (
-        <AssetRow key={r.id ?? i} asset={r} />
+        <AssetRow key={r.id ?? i} asset={r} delegated={r.id != null && blocked.has(r.id)} />
       ))}
     </SectionCard>
   );
 }
 
-function AssetRow({ asset: r }: { asset: AssetDto }) {
+function AssetRow({ asset: r, delegated }: { asset: AssetDto; delegated: boolean }) {
   const kind = r.assetKind;
+  const seized = Boolean(r.seizureDate?.trim());
   return (
     <div className="rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2.5 mb-2 last:mb-0 text-sm">
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
         <span className="font-bold text-emerald-900">{assetDisplayName(r)}</span>
+        <span
+          className={`rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${
+            seized ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+          }`}
+        >
+          {seized ? 'تم القاء الحجز' : 'لم يتم القاء الحجز'}
+        </span>
+        {delegated && (
+          <span className="rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap bg-sky-100 text-sky-800">
+            مناب
+          </span>
+        )}
         <Rows kind={kind} asset={r} />
         <span className="inline-flex items-center gap-1">
           <span className="text-gray-500">الملاك</span>

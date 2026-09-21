@@ -488,3 +488,121 @@ render(<DocumentForm />);
   });
 
 });
+
+describe('DocumentForm · قفل تاريخ القاء الحجز بعد التسطير', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    paramsMock.id = undefined;
+    useAuthMock.mockReturnValue({ user: { role: 'lawyer' } });
+  });
+
+  const seizedAsset = {
+    id: 5, assetKind: 'عقار', owners: ['أحمد محمد الخطيب'],
+    propertyNumber: '77', propertyDistrict: 'المزة', seizureDate: '1/8/2026',
+  };
+  const freeAsset = {
+    id: 6, assetKind: 'عقار', owners: ['أحمد محمد الخطيب'],
+    propertyNumber: '88', propertyDistrict: 'المزة', seizureDate: '',
+  };
+  const docWithAssets = { ...mockDoc, assets: [seizedAsset, freeAsset] } as DocumentResponse;
+  // إنابة سارية على «عقار رقم 77» (مطابقة اللقطة بالنوع والوصف).
+  const blockingDelegation = {
+    id: 9,
+    sourceDocumentId: 1,
+    status: 'بانتظار رئيس القسم',
+    isExternal: false,
+    createdById: 7,
+    createdAt: '2026-08-01',
+    blocksAssets: true,
+    assets: [{ id: 90, assetKind: 'عقار', assetLabel: 'عقار رقم 77', snapshotAdjusted: false }],
+  };
+
+  function mockEditGets(doc: DocumentResponse, delegations: unknown, failDelegations = false) {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/documents/1/delegations') {
+        return failDelegations
+          ? Promise.reject(new Error('network'))
+          : Promise.resolve({ data: delegations });
+      }
+      return Promise.resolve({ data: doc });
+    });
+  }
+
+  async function renderEditWith(doc: DocumentResponse, delegations: unknown, failDelegations = false) {
+    paramsMock.id = '1';
+    mockEditGets(doc, delegations, failDelegations);
+    render(<DocumentForm />);
+    await screen.findByRole('button', { name: 'حفظ التعديلات' }, { timeout: 5000 });
+  }
+
+  async function submittedAssets() {
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    const [, payload] = vi.mocked(api.put).mock.calls[0] as [string, Record<string, unknown>];
+    return payload.assets as Record<string, unknown>[];
+  }
+
+  it('يمنع تفريغ تاريخ الحجز على الأصل المرجعي ويُبقي قيمته عند الحفظ', async () => {
+    const user = userEvent.setup();
+    await renderEditWith(docWithAssets, [blockingDelegation]);
+
+    // التلميح التوضيحي يظهر تحت حقل الأصل المرجعي فقط.
+    const notes = await screen.findAllByText('عليه إنابة سارية — التاريخ يُعدَّل ولا يُحذف');
+    expect(notes).toHaveLength(1);
+
+    const fields = screen.getAllByLabelText('تاريخ القاء الحجز');
+    expect(fields).toHaveLength(2);
+    // محاولة التفريغ تُتجاهل — تبقى القيمة السابقة.
+    await user.clear(fields[0]);
+    expect(fields[0]).toHaveValue('1/8/2026');
+
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديلات' }));
+    const assets = await submittedAssets();
+    expect(assets[0]).toEqual(expect.objectContaining({ seizureDate: '1/8/2026' }));
+  });
+
+  it('يسمح بتعديل تاريخ الحجز على الأصل المرجعي بقيمة جديدة', async () => {
+    const user = userEvent.setup();
+    await renderEditWith(docWithAssets, [blockingDelegation]);
+
+    const fields = await screen.findAllByLabelText('تاريخ القاء الحجز');
+    await user.tripleClick(fields[0]);
+    await user.keyboard('5/8/2026');
+    expect(fields[0]).toHaveValue('5/8/2026');
+
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديلات' }));
+    const assets = await submittedAssets();
+    expect(assets[0]).toEqual(expect.objectContaining({ seizureDate: '5/8/2026' }));
+  });
+
+  it('يسمح بتفريغ تاريخ الحجز على الأصل الحر', async () => {
+    const user = userEvent.setup();
+    await renderEditWith(
+      { ...mockDoc, assets: [{ ...freeAsset, seizureDate: '2/8/2026' }] } as DocumentResponse,
+      [blockingDelegation],
+    );
+
+    const fields = await screen.findAllByLabelText('تاريخ القاء الحجز');
+    expect(fields).toHaveLength(1);
+    await user.clear(fields[0]);
+    expect(fields[0]).toHaveValue('');
+
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديلات' }));
+    const assets = await submittedAssets();
+    expect(assets[0]).toEqual(expect.objectContaining({ seizureDate: '' }));
+  });
+
+  it('فشل جلب الإنابات لا يعطل التحرير (مفتوح) والخلفي هو الضامن', async () => {
+    const user = userEvent.setup();
+    await renderEditWith(docWithAssets, [], true);
+
+    // بلا تلميح قفل — والتحرير مسموح.
+    expect(screen.queryByText('عليه إنابة سارية — التاريخ يُعدَّل ولا يُحذف')).not.toBeInTheDocument();
+    const fields = screen.getAllByLabelText('تاريخ القاء الحجز');
+    await user.clear(fields[0]);
+    await waitFor(() => expect(fields[0]).toHaveValue(''));
+
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديلات' }));
+    const assets = await submittedAssets();
+    expect(assets[0]).toEqual(expect.objectContaining({ seizureDate: '' }));
+  });
+});

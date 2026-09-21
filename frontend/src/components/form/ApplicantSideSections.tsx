@@ -64,6 +64,9 @@ export interface ApplicantSideSectionsProps {
   onGuarantorRepRemove: (i: number) => void;
   assets: AssetDto[];
   onEstateSet: (i: number, key: keyof AssetDto, value: string) => void;
+  /** معرفات الأصول المرجعية بإنابة سارية (من نموذج الملف): تاريخ حجزها يُعدَّل ولا
+   * يُحذف — يُعرض تلميح توضيحي تحت الحقل، والمنع الفعلي في onEstateSet والخلفية. */
+  seizureLockedIds?: Set<number>;
   onEstateRemove: (i: number) => void;
   onOwnerToggle: (i: number, name: string) => void;
   onSingleOwnerSet: (i: number, name: string) => void;
@@ -106,6 +109,7 @@ export function ApplicantSideSections({
   onGuarantorRepRemove,
   assets,
   onEstateSet,
+  seizureLockedIds,
   onEstateRemove,
   onOwnerToggle,
   onSingleOwnerSet,
@@ -630,14 +634,20 @@ export function ApplicantSideSections({
 
             {/* تاريخ القاء الحجز: حقل موحّد لكل أنواع الأموال (منقولة وغير منقولة) — نص حر بقاعدة التواريخ */}
             <div className="mt-3 max-w-xs">
-              <label className="block text-xs font-bold text-gray-600 mb-1">تاريخ القاء الحجز</label>
+              <label htmlFor={`asset-seizure-${i}`} className="block text-xs font-bold text-gray-600 mb-1">تاريخ القاء الحجز</label>
               <input
+                id={`asset-seizure-${i}`}
                 value={a.seizureDate ?? ''}
                 onChange={(ev) => onEstateSet(i, 'seizureDate', ev.target.value)}
                 type="text"
                 placeholder="مثال: 1/8/2026"
                 className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
+              {a.id != null && (seizureLockedIds?.has(a.id) ?? false) && (
+                <p className="text-xs text-amber-700 mt-1" role="note">
+                  عليه إنابة سارية — التاريخ يُعدَّل ولا يُحذف
+                </p>
+              )}
             </div>
 
             {shareable && (

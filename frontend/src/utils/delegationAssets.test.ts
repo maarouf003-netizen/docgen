@@ -194,9 +194,9 @@ describe('blockedAssetIds', () => {
 describe('availableDelegationAssets', () => {
   it('يستبعد الكفالة دائمًا (لا إنابة عليها) والمحجوب — إخفاء تام', () => {
     const assets = [
-      asset(5, 'مركبة', { vehicleType: 'سيارة', plateNumber: '123' }),
+      asset(5, 'مركبة', { vehicleType: 'سيارة', plateNumber: '123', seizureDate: '1/8/2026' }),
       asset(6, 'كفالة رواتب', { publicEntity: 'مؤسسة المياه' }),
-      asset(7, 'عقار', { property: 'عقار رقم 77' }),
+      asset(7, 'عقار', { property: 'عقار رقم 77', seizureDate: '1/8/2026' }),
     ];
     const delegations = [
       blockingDelegation(1, [snapshot(10, 'مركبة', 'مركبة سيارة — لوحة 123')]),
@@ -207,9 +207,39 @@ describe('availableDelegationAssets', () => {
 
   it('يعيد الكل عند غياب الحاجب ما عدا الكفالة', () => {
     const assets = [
-      asset(5, 'مركبة', { vehicleType: 'سيارة', plateNumber: '123' }),
+      asset(5, 'مركبة', { vehicleType: 'سيارة', plateNumber: '123', seizureDate: '1/8/2026' }),
       asset(6, 'كفالة رواتب', { publicEntity: 'مؤسسة المياه' }),
     ];
     expect(availableDelegationAssets([], assets).map((a) => a.id)).toEqual([5]);
+  });
+
+  it('يستبعد الأموال بلا تاريخ حجز (seizureDate فارغ) — لا إنابة عليها قانونًا', () => {
+    const assets = [
+      asset(5, 'مركبة', { vehicleType: 'سيارة', plateNumber: '123', seizureDate: '1/8/2026' }),
+      asset(6, 'عقار', { property: 'عقار رقم 77', seizureDate: '' }),
+      asset(7, 'عقار', { property: 'عقار رقم 88', seizureDate: '' }),
+    ];
+    expect(availableDelegationAssets([], assets).map((a) => a.id)).toEqual([5]);
+  });
+
+  it('يقبل seizureDate بعد التقليم (مسافات محيطة)', () => {
+    const assets = [
+      asset(5, 'مركبة', { vehicleType: 'سيارة', plateNumber: '123', seizureDate: '  1/8/2026  ' }),
+    ];
+    expect(availableDelegationAssets([], assets).map((a) => a.id)).toEqual([5]);
+  });
+
+  it('يجمع الشروط الثلاثة: لا كفالة + لا محجوب + به حجز', () => {
+    const assets = [
+      asset(5, 'مركبة', { vehicleType: 'سيارة', plateNumber: '123', seizureDate: '1/8/2026' }),
+      asset(6, 'كفالة رواتب', { publicEntity: 'مؤسسة المياه', seizureDate: '1/8/2026' }),
+      asset(7, 'عقار', { property: 'عقار رقم 77', seizureDate: '' }),
+      asset(8, 'عقار', { property: 'عقار رقم 88', seizureDate: '1/8/2026' }),
+    ];
+    const delegations = [
+      blockingDelegation(1, [snapshot(10, 'مركبة', 'مركبة سيارة — لوحة 123')]),
+    ];
+    const available = availableDelegationAssets(delegations, assets);
+    expect(available.map((a) => a.id)).toEqual([8]);
   });
 });

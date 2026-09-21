@@ -276,7 +276,7 @@ export default function DelegationFormModal({
             {assets.length === 0 && unmatchedAssets.length === 0 ? (
               <p className="text-sm text-gray-400">
                 {noAvailableAssets
-                  ? 'لا توجد أموال متاحة للإنابة — جميعها محجوبة بإنابة سارية أو غير قابلة لها'
+                  ? 'لا توجد أموال مؤهلة للإنابة — يجب تسجيل تاريخ القاء الحجز على الأموال أولاً، أو أنها محجوبة بإنابة سارية'
                   : 'لا توجد أموال مسجلة على هذا الملف'}
               </p>
             ) : (

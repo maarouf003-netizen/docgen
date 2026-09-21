@@ -76,6 +76,7 @@ export function blockedAssetIds(
 /**
  * الأموال المتاحة للاختيار في نافذة التسطير: بلا «كفالة رواتب» أبدًا (لا إنابة عليها)
  * وبلا المحجوب بإنابة سارية — إخفاء تام.
+ * قانونًا لا يمكن تسطير إنابة على مال ما لم يتم القاء الحجز عليه (seizureDate فارغ = غير مؤهل).
  */
 export function availableDelegationAssets(
   delegations: DelegationDto[],
@@ -84,6 +85,9 @@ export function availableDelegationAssets(
 ): AssetDto[] {
   const blocked = blockedAssetIds(delegations, assets, excludeId);
   return assets.filter(
-    (a) => a.assetKind !== ASSET_KINDS.salaryGuarantee && !blocked.has(a.id ?? 0),
+    (a) =>
+      a.assetKind !== ASSET_KINDS.salaryGuarantee &&
+      !blocked.has(a.id ?? 0) &&
+      Boolean(a.seizureDate?.trim()),
   );
 }

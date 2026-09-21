@@ -133,7 +133,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     public async Task<int> CreateDocumentAsync(string token, string borrowerName = "مقترض",
         string? applicant = "المدعي", string? court = "دمشق",
         string? borrowerFather = null, string? borrowerFamily = null,
-        bool withEstate = false, bool registered = false)
+        bool withEstate = false, bool registered = false, bool withSeizureDate = true)
     {
         var client = CreateClient();
         client.SetAuthCookie(token);
@@ -152,7 +152,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             fileYear = registered ? "2026" : null,
             fileRegistrationDate = registered ? "1/8/2026" : null,
             assets = withEstate
-                ? new[] { new { assetKind = "عقار", property = "بيت", propertyNumber = "12345", propertyDistrict = "المزة", landRegistry = "الصالحية", shareType = "تمام العقار", owners = new[] { "المدعى عليه" } } }
+                ? new[] { new { assetKind = "عقار", property = "بيت", propertyNumber = "12345", propertyDistrict = "المزة", landRegistry = "الصالحية", shareType = "تمام العقار", owners = new[] { "المدعى عليه" }, seizureDate = withSeizureDate ? "1/8/2026" : null } }
                 : Array.Empty<object>(),
         });
         var response = await client.PostAsync("/api/documents",

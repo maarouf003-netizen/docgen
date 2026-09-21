@@ -242,6 +242,11 @@ public sealed partial class DocumentService : IDocumentService
         // منيب الملف بها بعد نجاح الحفظ.
         var targetEditResult = ValidateDelegationTargetEdit(doc, request);
 
+        // قفل «الحجز والأصل بعد التسطير» على الملف المنيب (قرار المستخدم): تاريخ القاء
+        // الحجز على أصلٍ تحجبه إنابة سارية يُعدَّل فقط ولا يُحذف، وحذف صف الأصل نفسه
+        // مرفوض — قبل أي تغيير (ApplyRequest يستبدل الأصول بالكامل).
+        await ValidateDelegationSeizureLockAsync(doc, request, ct);
+
         ApplyRequest(doc, request);
         FillDerivedFields(doc);
         ApplyRegistrationDate(doc, request.FileRegistrationDate);
@@ -312,6 +317,17 @@ public sealed partial class DocumentService : IDocumentService
         var doc = await _documents.GetByIdAsync(documentId, ct);
         if (doc is null)
             return false;
+
+        // منع حذف ملفٍ مرتبط بإنابة (صادرة عنه أو مناب عنها — بأي حالة) أو باستئناف
+        // (بأي حالة: منظور/محسوم/مشطوب): الحذف المنطقي يُخفي الملف عن القوائم بينما تبقى
+        // الإنابة/الاستئناف تشير إليه، فيُيتّم سجلات حية. تحقق قبل تغيير وخارج المعاملة كسائر الحراس.
+        // (doc.Delegations وSourceDelegationId محمّلتان في GetByIdAsync — صفر استعلامات إضافية.)
+        if (doc.Delegations.Count > 0)
+            throw new ArgumentException("لا يمكن حذف الملف المنيب لوجود إنابة صادرة عنه");
+        if (doc.SourceDelegationId is not null)
+            throw new ArgumentException("لا يمكن حذف الملف المناب لوجود إنابة مرتبطة به");
+        if ((await _appeals.ListByDocumentAsync(doc.Id, ct)).Count > 0)
+            throw new ArgumentException("لا يمكن حذف الملف لوجود استئناف مرتبط به");
 
         return await _tx.RunAsync(async token =>
         {

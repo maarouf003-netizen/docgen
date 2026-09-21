@@ -137,6 +137,9 @@ public class DocumentDelegationServiceTests : IDisposable
             AssetKind = AssetKindCatalog.RealEstate,
             PropertyNumber = "77",
             PropertyDistrict = "المزة",
+            // بذرة محجوزة: قاعدة «لا إنابة على مالٍ بلا حجز» ترفض التسطير بلا تاريخ حجز،
+            // فالبذرة الافتراضية محجوزة والاختبارات السلبية تنشئ أصلًا بلا حجز صراحةً.
+            SeizureDate = new DateTime(2026, 8, 1),
         });
         await _db.SaveChangesAsync();
         return doc;
@@ -247,6 +250,23 @@ public class DocumentDelegationServiceTests : IDisposable
         doc.Heirs.Where(h => h.GuarantorNumber is null)
             .Select(h => new HeirDto(h.Id, h.HeirName, h.HeirFather, h.HeirFamily,
                 h.HeirCapacity, h.AddressType, h.HeirAddress)).ToList();
+
+    /// <summary>صفّ أصول المستند كـ DTO بهوياتها وتواريخها — لطلبات تعديل المنيب ذات
+    /// الإنابات (قفل «الحجز بعد التسطير» يمنع إسقاط صف مرجعي أو تفريغ حجزه).</summary>
+    private static List<AssetDto> MirrorAssets(Document doc) =>
+        doc.Assets
+            .Select(a => new AssetDto(
+                a.Id, a.AssetKind,
+                a.Owners.OrderBy(o => o.Order).Select(o => o.Name).ToList(),
+                a.ShareType,
+                a.Property, a.PropertyNumber, a.PropertyDistrict, a.LandRegistry,
+                a.VehicleType, a.VehicleClass, a.PlateNumber, a.VehicleGovernorate,
+                a.RegisterNumber, a.RegistrationDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), a.ShopGovernorate, a.ShopDescription, a.ShopLocation,
+                a.PublicEntity,
+                a.LicenseNumber, a.LicenseDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), a.LicenseIssuer,
+                a.Notes,
+                a.SeizureDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)))
+            .ToList();
 
     /// <summary>طلب تعديل يعيد بناء كل حقول المستند بما فيها الأطراف (الكفلاء وورثتهم وورثة المقترض).</summary>
     private static DocumentUpsertRequest MirrorRequestWithParties(Document doc)
@@ -374,6 +394,187 @@ public class DocumentDelegationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Create_AssetWithoutSeizureDate_Throws()
+    {
+        var source = await CreateSourceAsync();
+        _db.Assets.Add(new Asset
+        {
+            DocumentId = source.Id,
+            AssetKind = AssetKindCatalog.Vehicle,
+            PlateNumber = "999",
+        });
+        await _db.SaveChangesAsync();
+        var bareId = await _db.Assets
+            .Where(a => a.DocumentId == source.Id && a.PlateNumber == "999")
+            .Select(a => a.Id).SingleAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(source.Id, SampleRequest(bareId), _lawyer1.Id, "lawyer1"));
+        Assert.Contains("يرجى ادخال تاريخ القاء الحجز لتسطير الانابة", ex.Message);
+        Assert.Contains("مركبة لوحة 999", ex.Message);
+    }
+
+    [Fact]
+    public async Task Create_SalaryWithoutSeizureDate_ThrowsSalaryMessageFirst()
+    {
+        // ترتيب الرسائل: الكفالة أولًا ثم الحجز ثم الحجب.
+        var source = await CreateSourceAsync();
+        _db.Assets.Add(new Asset
+        {
+            DocumentId = source.Id,
+            AssetKind = AssetKindCatalog.SalaryGuarantee,
+            PublicEntity = "مؤسسة المياه",
+        });
+        await _db.SaveChangesAsync();
+        var salaryId = await _db.Assets
+            .Where(a => a.DocumentId == source.Id && a.AssetKind == AssetKindCatalog.SalaryGuarantee)
+            .Select(a => a.Id).SingleAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(source.Id, SampleRequest(salaryId), _lawyer1.Id, "lawyer1"));
+        Assert.Contains("كفالة الرواتب لا يجري عليها إنابة", ex.Message);
+    }
+
+    [Fact]
+    public async Task Update_AddsAssetWithoutSeizureDate_Throws()
+    {
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        _db.Assets.Add(new Asset
+        {
+            DocumentId = source.Id,
+            AssetKind = AssetKindCatalog.Vehicle,
+            PlateNumber = "999",
+        });
+        await _db.SaveChangesAsync();
+        var bareId = await _db.Assets
+            .Where(a => a.DocumentId == source.Id && a.PlateNumber == "999")
+            .Select(a => a.Id).SingleAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateAsync(created.Id, SampleRequest(assetId, bareId), _lawyer1.Id, "lawyer1"));
+        Assert.Contains("يرجى ادخال تاريخ القاء الحجز لتسطير الانابة", ex.Message);
+    }
+
+    /// <summary>منيب بأصلين محجوزين: الأول عليه إنابة (مرجعي) والثاني حر — لاختبارات قفل «الحجز بعد التسطير».</summary>
+    private async Task<(Document Source, int SeizedId, int FreeId)> CreateSourceWithDelegatedAndFreeAssetsAsync()
+    {
+        var source = await CreateSourceAsync();
+        var seizedId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        _db.Assets.Add(new Asset
+        {
+            DocumentId = source.Id,
+            AssetKind = AssetKindCatalog.RealEstate,
+            PropertyNumber = "88",
+            SeizureDate = new DateTime(2026, 8, 2),
+        });
+        await _db.SaveChangesAsync();
+        var freeId = await _db.Assets
+            .Where(a => a.DocumentId == source.Id && a.PropertyNumber == "88")
+            .Select(a => a.Id).SingleAsync();
+        await _service.CreateAsync(source.Id, SampleRequest(seizedId), _lawyer1.Id, "lawyer1");
+        return (source, seizedId, freeId);
+    }
+
+    /// <summary>طلب تعديل منيب يعيد بناء الأصول بهوياتها — كما ترسلها الواجهة عند التحميل.</summary>
+    private async Task<DocumentUpsertRequest> SourceEditRequestAsync(int sourceId)
+    {
+        var doc = await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .Include(d => d.Assets).ThenInclude(a => a.Owners)
+            .SingleAsync(d => d.Id == sourceId);
+        var request = MirrorRequest(doc);
+        request.Assets = MirrorAssets(doc);
+        return request;
+    }
+
+    [Fact]
+    public async Task UpdateSource_ClearsSeizureDateOnDelegatedAsset_Throws()
+    {
+        var (source, seizedId, _) = await CreateSourceWithDelegatedAndFreeAssetsAsync();
+        var request = await SourceEditRequestAsync(source.Id);
+        request.Assets = request.Assets
+            .Select(a => a.Id == seizedId ? a with { SeizureDate = "" } : a)
+            .ToList();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id));
+        Assert.Contains("لا يمكن حذف تاريخ القاء الحجز على مال مسطر به انابة", ex.Message);
+        Assert.Contains("عقار رقم 77", ex.Message);
+    }
+
+    [Fact]
+    public async Task UpdateSource_WhitespaceSeizureDateOnDelegatedAsset_Throws()
+    {
+        var (source, seizedId, _) = await CreateSourceWithDelegatedAndFreeAssetsAsync();
+        var request = await SourceEditRequestAsync(source.Id);
+        request.Assets = request.Assets
+            .Select(a => a.Id == seizedId ? a with { SeizureDate = "   " } : a)
+            .ToList();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id));
+        Assert.Contains("لا يمكن حذف تاريخ القاء الحجز على مال مسطر به انابة", ex.Message);
+    }
+
+    [Fact]
+    public async Task UpdateSource_ChangesSeizureDateOnDelegatedAsset_Succeeds()
+    {
+        // التعديل بقيمة صالحة مسموح — القفل على الحذف فقط.
+        var (source, seizedId, _) = await CreateSourceWithDelegatedAndFreeAssetsAsync();
+        var request = await SourceEditRequestAsync(source.Id);
+        request.Assets = request.Assets
+            .Select(a => a.Id == seizedId ? a with { SeizureDate = "5/8/2026" } : a)
+            .ToList();
+
+        await _documentService.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id);
+
+        var stored = await _db.Assets.AsNoTracking().SingleAsync(a => a.PropertyNumber == "77");
+        Assert.Equal(new DateTime(2026, 8, 5), stored.SeizureDate);
+    }
+
+    [Fact]
+    public async Task UpdateSource_ClearsSeizureDateOnFreeAsset_Succeeds()
+    {
+        var (source, _, freeId) = await CreateSourceWithDelegatedAndFreeAssetsAsync();
+        var request = await SourceEditRequestAsync(source.Id);
+        request.Assets = request.Assets
+            .Select(a => a.Id == freeId ? a with { SeizureDate = "" } : a)
+            .ToList();
+
+        await _documentService.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id);
+
+        var stored = await _db.Assets.AsNoTracking().SingleAsync(a => a.PropertyNumber == "88");
+        Assert.Null(stored.SeizureDate);
+    }
+
+    [Fact]
+    public async Task UpdateSource_DeletesDelegatedAssetRow_Throws()
+    {
+        var (source, seizedId, _) = await CreateSourceWithDelegatedAndFreeAssetsAsync();
+        var request = await SourceEditRequestAsync(source.Id);
+        request.Assets = request.Assets.Where(a => a.Id != seizedId).ToList();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id));
+        Assert.Contains("لا يمكن حذف هذا المال لأن هناك انابة سارية", ex.Message);
+        Assert.Contains("عقار رقم 77", ex.Message);
+    }
+
+    [Fact]
+    public async Task UpdateSource_DeletesFreeAssetRow_Succeeds()
+    {
+        var (source, _, freeId) = await CreateSourceWithDelegatedAndFreeAssetsAsync();
+        var request = await SourceEditRequestAsync(source.Id);
+        request.Assets = request.Assets.Where(a => a.Id != freeId).ToList();
+
+        await _documentService.UpdateAsync(source.Id, request, _lawyer1.FullName, _lawyer1.Id);
+
+        Assert.Empty(await _db.Assets.Where(a => a.PropertyNumber == "88").ToListAsync());
+    }
+
+    [Fact]
     public async Task Update_Pending_ByOwner_ChangesFields()
     {
         var source = await CreateSourceAsync();
@@ -401,6 +602,8 @@ public class DocumentDelegationServiceTests : IDisposable
             AssetKind = AssetKindCatalog.RealEstate,
             PropertyNumber = "78",
             PropertyDistrict = "المزة",
+            // بذرة محجوزة ليتجاوز التبديل حارس «لا إنابة على مالٍ بلا حجز».
+            SeizureDate = new DateTime(2026, 8, 1),
         });
         await _db.SaveChangesAsync();
         var firstId = await _db.Assets
@@ -506,9 +709,7 @@ public class DocumentDelegationServiceTests : IDisposable
             (await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == targetId)).Court);
 
         // 2) تعديل دائرة المنيب لا يُزامَن إلى المناب.
-        var sourceEdit = MirrorRequest(await _db.Documents
-            .Include(d => d.RegistrationDate)
-            .SingleAsync(d => d.Id == source.Id));
+        var sourceEdit = await SourceEditRequestAsync(source.Id);
         sourceEdit.Court = "دائرة تنفيذ دمشق الجديدة";
         await _documentService.UpdateAsync(source.Id, sourceEdit, _lawyer1.FullName, _lawyer1.Id);
         Assert.Equal("دائرة تنفيذ حماة",
@@ -575,6 +776,8 @@ public class DocumentDelegationServiceTests : IDisposable
             DocumentId = source.Id,
             AssetKind = AssetKindCatalog.RealEstate,
             PropertyNumber = "78",
+            // بذرة محجوزة ليتجاوز التسطير حارس «لا إنابة على مالٍ بلا حجز».
+            SeizureDate = new DateTime(2026, 8, 1),
         });
         await _db.SaveChangesAsync();
         var ids = await _db.Assets.Where(a => a.DocumentId == source.Id).OrderBy(a => a.Id).Select(a => a.Id).ToListAsync();
@@ -596,6 +799,8 @@ public class DocumentDelegationServiceTests : IDisposable
             DocumentId = source.Id,
             AssetKind = AssetKindCatalog.RealEstate,
             PropertyNumber = "78",
+            // بذرة محجوزة ليتجاوز التسطير حارس «لا إنابة على مالٍ بلا حجز».
+            SeizureDate = new DateTime(2026, 8, 1),
         });
         await _db.SaveChangesAsync();
         var ids = await _db.Assets.Where(a => a.DocumentId == source.Id).OrderBy(a => a.Id).Select(a => a.Id).ToListAsync();
@@ -623,6 +828,8 @@ public class DocumentDelegationServiceTests : IDisposable
             DocumentId = source.Id,
             AssetKind = AssetKindCatalog.RealEstate,
             PropertyNumber = "78",
+            // بذرة محجوزة ليتجاوز التسطير حارس «لا إنابة على مالٍ بلا حجز».
+            SeizureDate = new DateTime(2026, 8, 1),
         });
         await _db.SaveChangesAsync();
         var ids = await _db.Assets.Where(a => a.DocumentId == source.Id).OrderBy(a => a.Id).Select(a => a.Id).ToListAsync();
@@ -657,6 +864,8 @@ public class DocumentDelegationServiceTests : IDisposable
             DocumentId = source.Id,
             AssetKind = AssetKindCatalog.RealEstate,
             PropertyNumber = "77",
+            // توأم محجوز ليتجاوز التسطير حارس «لا إنابة على مالٍ بلا حجز».
+            SeizureDate = new DateTime(2026, 8, 1),
         });
         await _db.SaveChangesAsync();
         var ids = await _db.Assets.Where(a => a.DocumentId == source.Id).OrderBy(a => a.Id).Select(a => a.Id).ToListAsync();
@@ -686,6 +895,8 @@ public class DocumentDelegationServiceTests : IDisposable
                 DocumentId = source.Id,
                 AssetKind = AssetKindCatalog.RealEstate,
                 PropertyNumber = "77",
+                // توأم محجوز ليتجاوز التسطير حارس «لا إنابة على مالٍ بلا حجز».
+                SeizureDate = new DateTime(2026, 8, 1),
             });
             await _db.SaveChangesAsync();
             var ids = await _db.Assets.Where(a => a.DocumentId == source.Id).OrderBy(a => a.Id).Select(a => a.Id).ToListAsync();
@@ -736,6 +947,8 @@ public class DocumentDelegationServiceTests : IDisposable
             DocumentId = source.Id,
             AssetKind = AssetKindCatalog.RealEstate,
             PropertyNumber = " 78 ",
+            // بذرة محجوزة ليتجاوز التسطير حارس «لا إنابة على مالٍ بلا حجز».
+            SeizureDate = new DateTime(2026, 8, 1),
         });
         await _db.SaveChangesAsync();
         var spacedId = await _db.Assets
@@ -1141,9 +1354,7 @@ public class DocumentDelegationServiceTests : IDisposable
 
         // الملف المناب «مرآة» لا لقطة مجمدة: تعديل المنيب عبر مسار UpdateAsync الفعلي
         // يُحدَّث المناب المعلّق أصولًا (الاختبار القديم عدّل الكيان مباشرةً فتجاوز المرآة).
-        var sourceRequest = MirrorRequest(await _db.Documents
-            .Include(d => d.RegistrationDate)
-            .SingleAsync(d => d.Id == source.Id));
+        var sourceRequest = await SourceEditRequestAsync(source.Id);
         sourceRequest.BorrowerName = "غيّر-بعد-الاعتماد";
         sourceRequest.AmountNumeric = 2_000_000;
 
@@ -1164,9 +1375,7 @@ public class DocumentDelegationServiceTests : IDisposable
             _head1.Id, _branch.Id, "head1");
         var targetId = assigned!.TargetDocumentId!.Value;
 
-        var sourceRequest = MirrorRequest(await _db.Documents
-            .Include(d => d.RegistrationDate)
-            .SingleAsync(d => d.Id == source.Id));
+        var sourceRequest = await SourceEditRequestAsync(source.Id);
         sourceRequest.BorrowerName = "أحمد مُحدَّث من المنيب";
 
         await _documentService.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
@@ -1939,6 +2148,8 @@ public class DocumentDelegationServiceTests : IDisposable
             DocumentId = source.Id,
             AssetKind = AssetKindCatalog.RealEstate,
             PropertyNumber = "78",
+            // بذرة محجوزة ليتجاوز التسطير حارس «لا إنابة على مالٍ بلا حجز».
+            SeizureDate = new DateTime(2026, 8, 1),
         });
         await _db.SaveChangesAsync();
         var ids = await _db.Assets.Where(a => a.DocumentId == source.Id).OrderBy(a => a.Id).Select(a => a.Id).ToListAsync();
@@ -2264,11 +2475,15 @@ public class DocumentDelegationServiceTests : IDisposable
         var targetId = assigned!.TargetDocumentId!.Value;
 
         // مصدر يحذف الكفيل رقم 2 (مارت بين 2 و3) مع ورثته — يبقى رقم 3 فقط.
-        var sourceRequest = MirrorRequestWithParties(await _db.Documents
+        // الأصول تُعاد بهوياتها (قفل «الحجز بعد التسطير» يمنع إسقاط صف مرجعي).
+        var sourceDoc = await _db.Documents
             .Include(d => d.RegistrationDate)
             .Include(d => d.Guarantors)
             .Include(d => d.Heirs)
-            .SingleAsync(d => d.Id == source.Id));
+            .Include(d => d.Assets).ThenInclude(a => a.Owners)
+            .SingleAsync(d => d.Id == source.Id);
+        var sourceRequest = MirrorRequestWithParties(sourceDoc);
+        sourceRequest.Assets = MirrorAssets(sourceDoc);
         sourceRequest.Guarantors = sourceRequest.Guarantors.Where(g => g.GuarantorNumber != 2).ToList();
 
         await _documentService.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
@@ -2318,9 +2533,7 @@ public class DocumentDelegationServiceTests : IDisposable
         var before = await _db.HeadAlerts.CountAsync(a => a.DelegationId == created.Id);
 
         // تغيير عنوان المنيب: المرآة تتجاوز الكتابة فوق عنوان المناب (بلا تنبيه ضجيج).
-        var sourceRequest = MirrorRequest(await _db.Documents
-            .Include(d => d.RegistrationDate)
-            .SingleAsync(d => d.Id == source.Id));
+        var sourceRequest = await SourceEditRequestAsync(source.Id);
         sourceRequest.BorrowerAddress = "عنوان-المصدر-الجديد";
         await _documentService.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
 
@@ -2896,9 +3109,7 @@ public class DocumentDelegationServiceTests : IDisposable
             _lawyer2.Id, "lawyer2");
 
         // 2) دمج المرآة: تعديل المنيب يُحدث المناب بنفس الحقل.
-        var sourceRequest = MirrorRequest(await _db.Documents
-            .Include(d => d.RegistrationDate)
-            .SingleAsync(d => d.Id == source.Id));
+        var sourceRequest = await SourceEditRequestAsync(source.Id);
         c.RequestSet(sourceRequest, c.V2);
         await _documentService.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
         var mirrored = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == targetId);
@@ -3005,5 +3216,127 @@ public class DocumentDelegationServiceTests : IDisposable
 
         foreach (var c in cases)
             await AssertFieldEquivalenceAsync(c);
+    }
+
+    // ── منع حذف ملفٍ فيه إنابة أو استئناف (أي حالة) ──────────────────────────
+    // الحارس في DocumentService.DeleteAsync: إنابة صادرة (أي حالة) ← الرسالة 1،
+    // ملف مناب ← الرسالة 2، أي استئناف (منظور/محسوم/مشطوب) ← الرسالة 3.
+
+    private async Task<Document> CreateSourceWithDelegationAsync()
+    {
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        return source;
+    }
+
+    private async Task SeedAppealAsync(int documentId, string status)
+    {
+        _db.DocumentAppeals.Add(new DocumentAppeal
+        {
+            DocumentId = documentId,
+            Direction = AppealDirectionCatalog.Appellants,
+            Status = status,
+            AppellantsJson = "[]",
+            AppelleesJson = "[]",
+            CreatedById = _lawyer1.Id,
+        });
+        await _db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Delete_SourceWithPendingDelegation_Throws()
+    {
+        var source = await CreateSourceWithDelegationAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.DeleteAsync(source.Id, "lawyer1"));
+        Assert.Contains("لا يمكن حذف الملف المنيب لوجود إنابة صادرة عنه", ex.Message);
+    }
+
+    [Fact]
+    public async Task Delete_SourceWithExecutedDelegation_Throws()
+    {
+        // «حتى لو لم تكن سارية»: إنابة منفذة تمنع الحذف أيضًا.
+        var source = await CreateSourceWithDelegationAsync();
+        var delegation = await _db.DocumentDelegations.SingleAsync(d => d.SourceDocumentId == source.Id);
+        delegation.Status = DelegationStatusCatalog.Executed;
+        await _db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.DeleteAsync(source.Id, "lawyer1"));
+        Assert.Contains("لا يمكن حذف الملف المنيب لوجود إنابة صادرة عنه", ex.Message);
+    }
+
+    [Fact]
+    public async Task Delete_MirrorFile_Throws()
+    {
+        var source = await CreateSourceWithDelegationAsync();
+        var delegation = await _db.DocumentDelegations
+            .AsNoTracking().SingleAsync(d => d.SourceDocumentId == source.Id);
+        var mirror = new Document
+        {
+            CreatedById = _lawyer2.Id,
+            BranchId = _branch.Id,
+            BranchName = _branch.Name,
+            GeneralEntitySide = GeneralEntitySideCatalog.Applicant,
+            IsDraft = false,
+            BorrowerName = "مناب",
+            BorrowerFather = "أب",
+            BorrowerFamily = "العائلة",
+            DocumentType = "متداول - مناب العائلة",
+            SearchText = "مناب العائلة",
+            SourceDelegationId = delegation.Id,
+        };
+        _db.Documents.Add(mirror);
+        await _db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.DeleteAsync(mirror.Id, "lawyer2"));
+        Assert.Contains("لا يمكن حذف الملف المناب لوجود إنابة مرتبطة به", ex.Message);
+    }
+
+    [Fact]
+    public async Task Delete_FileWithPendingAppeal_Throws()
+    {
+        var source = await CreateSourceAsync();
+        await SeedAppealAsync(source.Id, AppealStatusCatalog.Pending);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.DeleteAsync(source.Id, "lawyer1"));
+        Assert.Contains("لا يمكن حذف الملف لوجود استئناف مرتبط به", ex.Message);
+    }
+
+    [Fact]
+    public async Task Delete_FileWithDecidedAppeal_Throws()
+    {
+        // «حتى لو كان محسوم»: الاستئناف المحسوم يمنع الحذف أيضًا.
+        var source = await CreateSourceAsync();
+        await SeedAppealAsync(source.Id, AppealStatusCatalog.Decided);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.DeleteAsync(source.Id, "lawyer1"));
+        Assert.Contains("لا يمكن حذف الملف لوجود استئناف مرتبط به", ex.Message);
+    }
+
+    [Fact]
+    public async Task Delete_FileWithStruckOffAppeal_Throws()
+    {
+        var source = await CreateSourceAsync();
+        await SeedAppealAsync(source.Id, AppealStatusCatalog.StruckOff);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.DeleteAsync(source.Id, "lawyer1"));
+        Assert.Contains("لا يمكن حذف الملف لوجود استئناف مرتبط به", ex.Message);
+    }
+
+    [Fact]
+    public async Task Delete_CleanFile_SucceedsAndAudits()
+    {
+        var source = await CreateSourceAsync();
+
+        Assert.True(await _documentService.DeleteAsync(source.Id, "lawyer1"));
+        Assert.Contains("delete", _audit.Actions);
+        Assert.True((await _db.Documents.FindAsync(source.Id))!.IsDeleted);
     }
 }

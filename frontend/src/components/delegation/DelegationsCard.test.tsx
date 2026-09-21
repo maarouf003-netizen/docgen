@@ -244,6 +244,33 @@ describe('DelegationsCard', () => {
     ).toBeInTheDocument();
   });
 
+  it('توحيد ملاحظتي الإتمام: سطر بنفسجي واحد بلا شريط كهرماني في بطاقة المنيب', () => {
+    render(
+      <DelegationsCard
+        delegations={[
+          delegation({
+            status: 'مسجلة أصولًا',
+            targetFileNumber: '77',
+            targetFileYear: '2026',
+            delegatedCourt: 'القرداحة',
+          }),
+        ]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    // سطر «بانتظار الإتمام» البنفسجي وحده — وشريط تنبيهات المرآة محذوف من سياق المنيب
+    // (يبقى حيًا في بطاقة «حالة الإنابة» للمناب).
+    expect(screen.getAllByText(/بانتظار الإتمام/).length).toBe(1);
+    expect(
+      screen.getByText('بانتظار الإتمام — سُجّل الملف المناب أصولًا برقم أساس 77/2026 دائرة تنفيذ القرداحة'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('حالة الإنابة')).not.toBeInTheDocument();
+  });
+
   it('لا يضاعف بادئة الدائرة في شرح الإتمام عندما تحمل القيمة البادئة', () => {
     render(
       <DelegationsCard

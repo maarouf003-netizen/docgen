@@ -1923,7 +1923,8 @@ it('يُسجّل الملف كآخر ما فُتح في الجلسة ليُمي�
           ...mockDoc,
           createdById: 7,
           assets: [
-            ...mockDoc.assets,
+            { ...mockDoc.assets[0], seizureDate: '2026-07-29' },
+            { ...mockDoc.assets[1], seizureDate: '2026-07-29' },
             { id: 3, assetKind: 'كفالة رواتب', publicEntity: 'مؤسسة المياه' },
           ],
         },
@@ -1935,7 +1936,7 @@ it('يُسجّل الملف كآخر ما فُتح في الجلسة ليُمي�
     await user.click(screen.getByRole('button', { name: 'تسطير إنابة' }));
     const dialog = screen.getByRole('dialog', { name: 'تسطير إنابة' });
 
-    // المحجوب («منزل») والكفالة لا يظهران في النافذة، والحر («أرض») يبقى.
+    // المحجوب («منزل») والكفالة لا يظهران في النافذة، والحر («أرض») يبقى لأن له حجزًا.
     expect(within(dialog).queryByText('منزل')).not.toBeInTheDocument();
     expect(within(dialog).queryByText(/كفالة رواتب/)).not.toBeInTheDocument();
     expect(within(dialog).getByText('أرض')).toBeInTheDocument();

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { normalizeDocumentResponse } from '../utils/apiNormalization';
@@ -32,11 +32,14 @@ import { FormSectionTitle } from '../components/form/FormSectionTitle';
 import { PublicEntityPickerModal } from '../components/entity/PublicEntityPickerModal';
 import { slotDefaultCurrency } from '../utils/amountCurrencies';
 import { normalizeArabicDigits } from '../utils/arabicDigits';
+import { blockedAssetIds } from '../utils/delegationAssets';
 import { tripleName, isExecutedLike } from '../utils/documentDisplay';
 import { governorateFromBranch } from '../utils/governorate';
 import type {
+  AppealDto,
   ApplicantPublicEntityDto,
   AssetDto,
+  DelegationDto,
   DocumentResponse,
   DocumentUpsertRequest,
   ExecutedHeirDto,
@@ -182,6 +185,72 @@ export default function DocumentForm() {
     loadDocument();
   }, [id, isEdit, loadDocument]);
 
+  // إنابات الملف في وضع التعديل — لقفل «الحجز بعد التسطير» أماميًا (مرآة مريحة فقط؛
+  // الخلفية هي الضامن). الفشل مفتوح: التحرير يستمر بلا قفل والرفض النهائي خلفيًا.
+  const [delegations, setDelegations] = useState<DelegationDto[]>([]);
+  const [delegationsKnown, setDelegationsKnown] = useState(false);
+  useEffect(() => {
+    if (!isEdit || id === undefined) {
+      setDelegations([]);
+      setDelegationsKnown(true);
+      return;
+    }
+    let cancelled = false;
+    setDelegationsKnown(false);
+    api
+      .get<DelegationDto[]>(`/documents/${id}/delegations`)
+      .then((r) => {
+        if (cancelled) return;
+        setDelegations(Array.isArray(r.data) ? r.data : []);
+        setDelegationsKnown(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDelegations([]);
+        setDelegationsKnown(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, isEdit]);
+
+  // الأصول المرجعية بإنابة سارية (مطابقة اللقطات نفسها المستعملة في العرض) — لا قفل
+  // قبل العلم بها (مفتوح عند الجهل/الفشل)، ولا قفل على صفوف بلا معرف (جديدة).
+  const referencedAssetIds = useMemo(
+    () => (delegationsKnown ? blockedAssetIds(delegations, assets) : new Set<number>()),
+    [delegations, assets, delegationsKnown],
+  );
+
+  // استئنافات الملف في وضع التعديل — لمنع الحذف استباقيًا عند العلم المؤكد بارتباط
+  // (إنابة بأي حالة عبر قائمة الإنابات أعلاه، أو ملف مناب، أو أي استئناف بأي حالة).
+  // مرآة مريحة فقط والخلفية هي الضامن: الفشل مفتوح (زر مفعّل والرفض النهائي خلفيًا).
+  const [appeals, setAppeals] = useState<AppealDto[]>([]);
+  useEffect(() => {
+    if (!isEdit || id === undefined) {
+      setAppeals([]);
+      return;
+    }
+    let cancelled = false;
+    api
+      .get<AppealDto[]>(`/documents/${id}/appeals`)
+      .then((r) => {
+        if (cancelled) return;
+        setAppeals(Array.isArray(r.data) ? r.data : []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAppeals([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, isEdit]);
+
+  // ارتباط مؤكد يمنع الحذف: أي إنابة (القائمة تشمل إنابة المناب نفسه) أو ملف مناب
+  // أو أي استئناف — بلا اعتبار للحالة. المصفوفات الفارغة تعني «لا ارتباط معلوم»
+  // (جهل/فشل) فيبقى الزر مفعّلًا والخلفي يرفض — فشل مفتوح.
+  const hasLinkedMatter = delegations.length > 0 || isMirror || appeals.length > 0;
+
   const set = (key: keyof DocumentUpsertRequest, value: unknown) =>
     setForm((f) => ({ ...f, [key]: value }));
 
@@ -197,8 +266,21 @@ export default function DocumentForm() {
   const setG = (i: number, key: keyof GuarantorDto, value: string) =>
     setGuarantors((gs) => gs.map((g, idx) => (idx === i ? { ...g, [key]: value } : g)));
 
-  const setE = (i: number, key: keyof AssetDto, value: string) =>
+  const setE = (i: number, key: keyof AssetDto, value: string) => {
+    // قفل أمامي مريح لقاعدة «التاريخ يُعدَّل ولا يُحذف على مالٍ عليه إنابة سارية»:
+    // محاولة التفريغ تُتجاهل وتُبقى القيمة السابقة — وأي تجاوز يرفضه الخلفي.
+    if (key === 'seizureDate' && delegationsKnown) {
+      const current = assets[i];
+      if (
+        current?.id != null &&
+        referencedAssetIds.has(current.id) &&
+        !normalizeArabicDigits(value).trim()
+      ) {
+        return;
+      }
+    }
     setAssets((as) => as.map((a, idx) => (idx === i ? { ...a, [key]: value } : a)));
+  };
 
   const toggleOwner = (i: number, name: string) =>
     setAssets((as) =>
@@ -593,8 +675,9 @@ export default function DocumentForm() {
     try {
       await api.delete(`/documents/${id}`);
       navigate('/documents');
-    } catch {
-      setError('فشل الحذف');
+    } catch (err) {
+      // صدق الخطأ: تُعرض رسالة الخلفية (كمنع الحذف لوجود إنابة/استئناف) بدل إخفائها.
+      setError(getApiErrorMessage(err));
       setDeleteBusy(false);
     }
   };
@@ -1091,6 +1174,7 @@ export default function DocumentForm() {
             onGuarantorRepRemove={removeGuarantorRep}
             assets={assets}
             onEstateSet={setE}
+            seizureLockedIds={referencedAssetIds}
             onEstateRemove={removeEstate}
             onOwnerToggle={toggleOwner}
             onSingleOwnerSet={setSingleOwner}
@@ -1147,11 +1231,17 @@ export default function DocumentForm() {
             <button
               type="button"
               onClick={deleteDoc}
-              disabled={deleteBusy}
+              disabled={deleteBusy || hasLinkedMatter}
+              aria-describedby={hasLinkedMatter ? 'delete-blocked-note' : undefined}
               className="bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-lg px-4 py-2 text-sm min-h-11"
             >
               {deleteBusy ? 'جارِ الحذف...' : '🗑️ حذف الملف'}
             </button>
+            {hasLinkedMatter && (
+              <p id="delete-blocked-note" role="note" className="mt-2 text-sm text-gray-600">
+                الملف مرتبط بإنابة/استئناف — الحذف ممنوع
+              </p>
+            )}
           </div>
         )}
       </form>

@@ -350,16 +350,72 @@ render(<DocumentForm />);
   });
 
 
-  it('يعرض «فشل الحذف» ويعيد تفعيل الزر عند خطأ في الحذف', async () => {
+  it('يعرض رسالة الخلفية ويعيد تفعيل الزر عند رفض الحذف (صدق الخطأ)', async () => {
     const user = userEvent.setup();
     vi.spyOn(window, 'confirm').mockReturnValue(true);
-    (api.delete as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('server error'));
+    (api.delete as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce({
+      // خطأ axios حقيقي الشكل (isAxiosError) ليستخرج getApiErrorMessage رسالة الخلفية.
+      isAxiosError: true,
+      response: { status: 400, data: { message: 'لا يمكن حذف الملف المنيب لوجود إنابة صادرة عنه' } },
+    });
     await renderEdit();
 
     await user.click(screen.getByRole('button', { name: /حذف الملف/ }));
 
-    expect(await screen.findByText('فشل الحذف')).toBeInTheDocument();
+    expect(await screen.findByText('لا يمكن حذف الملف المنيب لوجود إنابة صادرة عنه')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /حذف الملف/ })).toBeEnabled();
+  });
+
+
+  it('يعطّل زر الحذف مع ملاحظة عند إنابة معلومة (أي حالة)', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url.endsWith('/delegations')) return Promise.resolve({ data: [{}] });
+      if (url.endsWith('/appeals')) return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: mockDoc });
+    });
+    paramsMock.id = '1';
+    render(<DocumentForm />);
+    await screen.findByRole('button', { name: 'حفظ التعديلات' });
+
+    expect(await screen.findByText('الملف مرتبط بإنابة/استئناف — الحذف ممنوع')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /حذف الملف/ })).toBeDisabled();
+  });
+
+
+  it('يعطّل زر الحذف مع ملاحظة عند استئناف معلوم (أي حالة)', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url.endsWith('/delegations')) return Promise.resolve({ data: [] });
+      if (url.endsWith('/appeals')) return Promise.resolve({ data: [{}] });
+      return Promise.resolve({ data: mockDoc });
+    });
+    paramsMock.id = '1';
+    render(<DocumentForm />);
+    await screen.findByRole('button', { name: 'حفظ التعديلات' });
+
+    expect(await screen.findByText('الملف مرتبط بإنابة/استئناف — الحذف ممنوع')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /حذف الملف/ })).toBeDisabled();
+  });
+
+
+  it('يعطّل زر الحذف مع ملاحظة للملف المناب', async () => {
+    await renderEdit({ ...mockDoc, sourceDelegationId: 9 });
+
+    expect(await screen.findByText('الملف مرتبط بإنابة/استئناف — الحذف ممنوع')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /حذف الملف/ })).toBeDisabled();
+  });
+
+
+  it('يبقي زر الحذف مفعّلًا عند فشل جلب الإنابات/الاستئنافات (مفتوح — الخلفي ضامن)', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url.endsWith('/delegations') || url.endsWith('/appeals')) return Promise.reject(new Error('net'));
+      return Promise.resolve({ data: mockDoc });
+    });
+    paramsMock.id = '1';
+    render(<DocumentForm />);
+    await screen.findByRole('button', { name: 'حفظ التعديلات' });
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /حذف الملف/ })).toBeEnabled());
+    expect(screen.queryByText('الملف مرتبط بإنابة/استئناف — الحذف ممنوع')).not.toBeInTheDocument();
   });
 
   it('يرسل حتى ثلاثة مبالغ مصرفية بعملاتها الافتراضية عند إضافة خانات جديدة', async () => {

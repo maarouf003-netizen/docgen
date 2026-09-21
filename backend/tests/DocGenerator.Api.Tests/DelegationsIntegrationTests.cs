@@ -122,6 +122,24 @@ public class DelegationsIntegrationTests
     }
 
     [Fact]
+    public async Task Create_AssetWithoutSeizureDate_BadRequest()
+    {
+        // قاعدة «لا إنابة على مالٍ بلا حجز» تُنفَّذ خلفيًا: الرفض 400 برسالة عربية صريحة.
+        var login = await _factory.LoginAsync("lawyer1", "123456");
+        var docId = await _factory.CreateDocumentAsync(login!.Token!, borrowerName: "مقترض",
+            borrowerFather: "أب", borrowerFamily: "العائلة", withEstate: true, registered: true, withSeizureDate: false);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+        var assetId = db.Assets.Single(a => a.DocumentId == docId).Id;
+
+        var lawyer1 = _factory.AuthorizedClient("lawyer1");
+        var response = await lawyer1.PostAsJsonAsync($"/api/documents/{docId}/delegations", SampleBody(assetId));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var content = await response.Content.ReadAsStringAsync();
+        Assert.Contains("يرجى ادخال تاريخ القاء الحجز لتسطير الانابة", content);
+    }
+
+    [Fact]
     public async Task Complete_WithoutSaleCoversFullDebt_BadRequest()
     {
         // حقل تغطية البدل إلزامي عند الإتمام: غيابه يُرفض برسالة واضحة رغم صحة باقي المدخلات.
@@ -344,5 +362,71 @@ public class DelegationsIntegrationTests
         var response = await client.GetAsync($"/api/documents/{docId}/delegations");
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Delete_SourceWithDelegation_BadRequestWithMessage()
+    {
+        // حذف ملفٍ عليه إنابة (أي حالة) مرفوض 400 بالرسالة المعتمدة، والملف يبقى سليمًا.
+        var (docId, assetId) = await CreateSourceWithAssetAsync();
+        var lawyer1 = _factory.AuthorizedClient("lawyer1");
+        var created = await lawyer1.PostAsJsonAsync($"/api/documents/{docId}/delegations", SampleBody(assetId));
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+
+        var delete = await lawyer1.DeleteAsync($"/api/documents/{docId}");
+        Assert.Equal(HttpStatusCode.BadRequest, delete.StatusCode);
+        var content = await delete.Content.ReadAsStringAsync();
+        Assert.Contains("لا يمكن حذف الملف المنيب لوجود إنابة صادرة عنه", content);
+
+        var stillThere = await lawyer1.GetAsync($"/api/documents/{docId}");
+        Assert.Equal(HttpStatusCode.OK, stillThere.StatusCode);
+    }
+
+    [Fact]
+    public async Task Delete_SourceWithDecidedAppeal_BadRequestWithMessage()
+    {
+        // التدفق الكامل: تسطير استئناف (مستأنف علينا — المقترض) ← إسناد ← حسم ←
+        // حذف الملف مرفوض 400 برسالة الاستئناف «حتى لو كان محسومًا»، والملف يبقى سليمًا.
+        var (docId, _) = await CreateSourceWithAssetAsync();
+        var lawyer1 = _factory.AuthorizedClient("lawyer1");
+
+        var createAppeal = await lawyer1.PostAsJsonAsync($"/api/documents/{docId}/appeals", new
+        {
+            direction = "against-us",
+            appellants = new[] { new { kind = "borrower", partyId = docId } },
+            appealedDecisionText = "قرار رئيس التنفيذ المطلوب استئنافه",
+        });
+        Assert.Equal(HttpStatusCode.Created, createAppeal.StatusCode);
+        var appeal = await createAppeal.Content.ReadFromJsonAsync<AppealDto>();
+        Assert.NotNull(appeal);
+
+        var head = _factory.AuthorizedClient("head1");
+        var assign = await head.PostAsJsonAsync($"/api/appeals/{appeal!.Id}/assign",
+            new { assignedLawyerId = await UserIdAsync("lawyer1") });
+        Assert.Equal(HttpStatusCode.OK, assign.StatusCode);
+
+        var decide = await lawyer1.PostAsJsonAsync($"/api/appeals/{appeal.Id}/decide", new
+        {
+            decisionNumber = "5",
+            decisionDate = "20/8/2026",
+            decisionRuling = "المنطوق",
+            outcome = "in-favor",
+        });
+        Assert.Equal(HttpStatusCode.OK, decide.StatusCode);
+
+        var delete = await lawyer1.DeleteAsync($"/api/documents/{docId}");
+        Assert.Equal(HttpStatusCode.BadRequest, delete.StatusCode);
+        var content = await delete.Content.ReadAsStringAsync();
+        Assert.Contains("لا يمكن حذف الملف لوجود استئناف مرتبط به", content);
+
+        var stillThere = await lawyer1.GetAsync($"/api/documents/{docId}");
+        Assert.Equal(HttpStatusCode.OK, stillThere.StatusCode);
+    }
+
+    private async Task<int> UserIdAsync(string username)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+        return db.Users.Single(u => u.Username == username).Id;
     }
 }
