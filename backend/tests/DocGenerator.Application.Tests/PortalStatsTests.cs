@@ -111,6 +111,26 @@ public class PortalStatsTests : IDisposable
     }
 
     [Fact]
+    public async Task Stats_RecoveredTargetFiles_CountedAsExecutedCount_NotInAmountBaskets()
+    {
+        // «المسترد» مناب عاد لمرجعه — يُحتسب عدًدا ضمن «منفذ» تمامًا كفلتر البوابة (PortalRepository
+        // يشمله) وكإحصاء المدير (طيّ عددي بلا مبالغ ب6): لا يُسقط من كل السلال ولا يُضخّم المبالغ.
+        var now = DateTime.UtcNow.AddMonths(-1);
+        await SeedApplicantDocAsync("مسترد أ", ExecutionStatusCatalog.Recovered, false, now, registryId: _entryAId);
+        await SeedApplicantDocAsync("مسترد ب", ExecutionStatusCatalog.Recovered, false, now, registryId: _entryAId);
+        await SeedApplicantDocAsync("منفذ جبريا", ExecutionStatusCatalog.ExecutedForcibly, false, now, registryId: _entryAId);
+        await SeedApplicantDocAsync("متداول د", null, false, now, registryId: _entryAId);
+
+        var stats = await _portal.GetStatsAsync(_delegateGroupId);
+
+        Assert.Equal(4, stats.TotalFiles);
+        Assert.Equal(3, stats.ExecutedFiles); // جبريا + المستردان
+        Assert.Equal(1, stats.CirculatingFiles);
+        Assert.Equal(0, stats.DeferredFiles);
+        Assert.Equal(0, stats.ReferredToStartFiles);
+    }
+
+    [Fact]
     public async Task Stats_Isolation_OnlyScopeEntriesCounted()
     {
         var now = DateTime.UtcNow.AddMonths(-2);

@@ -170,7 +170,8 @@ public sealed class PortalService : IPortalService
             {
                 if (execStatus == ExecutionStatusCatalog.ExecutedForcibly
                     || execStatus == ExecutionStatusCatalog.ExecutedBySettlement
-                    || execStatus == ExecutionStatusCatalog.DelegationExecuted)
+                    || execStatus == ExecutionStatusCatalog.DelegationExecuted
+                    || execStatus == ExecutionStatusCatalog.Recovered)
                     executed++;
                 else if (execStatus == ExecutionStatusCatalog.Deferred)
                     deferred++;
@@ -178,8 +179,8 @@ public sealed class PortalService : IPortalService
                 // التنفيذية تبتلع جبريا بأي فرع) — فتبقى بطاقتها وفلترها متطابقين حرفيًا.
                 else if (execStatus == ExecutionStatusCatalog.ReferredToStart)
                     referredToStart++;
-                // الإحصاء يطابق فلتر القائمة حرفيًا (الثلاثة منفذة + تريث + محال) ليتطابق
-                // رقم البطاقة مع نتيجة الفلتر نفسه دون أي انحراف.
+                // الإحصاء يطابق فلتر القائمة حرفيًا (المنفذة الأربعة بضمنها «المسترد» عدًدا
+                // دون مبالغ + تريث + محال) ليتطابق رقم البطاقة مع نتيجة الفلتر نفسه دون انحراف.
             }
             else if (isDraft) draft++;
             else circulating++;
