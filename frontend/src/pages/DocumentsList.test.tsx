@@ -439,7 +439,7 @@ describe('DocumentsList', () => {
     expect(url).toContain('status=' + encodeURIComponent('تريث'));
   });
 
-  it('يستبعد «منفذ» من فلتر الحالة في القائمة الرئيسية (صفحته مستقلة)', async () => {
+  it('يستبعد «منفذ» و«محال الى البداية» من فلتر الحالة (صفحتاهما مستقلتان)', async () => {
     const user = userEvent.setup();
     mockPage([makeDocument({ id: 1 })]);
 
@@ -450,9 +450,61 @@ describe('DocumentsList', () => {
 
     const menu = screen.getByRole('menu', { name: 'فلترة الحالة' });
     expect(within(menu).queryByRole('menuitem', { name: 'منفذ' })).not.toBeInTheDocument();
-    for (const option of ['تريث', 'تحت رفع', 'متداول', 'محال الى البداية']) {
+    expect(within(menu).queryByRole('menuitem', { name: 'محال الى البداية' })).not.toBeInTheDocument();
+    for (const option of ['تريث', 'تحت رفع', 'متداول']) {
       expect(within(menu).getByRole('menuitem', { name: option })).toBeInTheDocument();
     }
+  });
+
+  it('يعقم حالة الجلسة غير المعتمدة («محال الى البداية») ويعاملها كأنه لا فلتر، ويقرّ المعتمدة', async () => {
+    const mainListCall = () =>
+      (vi.mocked(api.get).mock.calls.map((c) => c[0] as string).find((u) => u.startsWith('/documents?')) ?? '');
+
+    // قيمة لم تعد خيارًا في الفلتر بعد نقل «محال الى البداية» لصفحتها: لا تُرسل للخلفية.
+    sessionStorage.setItem(
+      'documentsListPosition',
+      JSON.stringify({
+        query: '',
+        status: 'محال الى البداية',
+        applicant: '',
+        court: '',
+        lawyer: '',
+        administrativeBranch: '',
+        executedEntity: '',
+        publicEntityBranch: '',
+        page: 1,
+      }),
+    );
+    mockPage([makeDocument({ id: 1 })]);
+    useAuthMock.mockReturnValue({ hasFullAccess: false, isHead: false, user: { role: 'lawyer', id: 1 } });
+
+    const { unmount } = renderList();
+    await screen.findByRole('table');
+    expect(mainListCall()).not.toContain('status=');
+    unmount();
+
+    // وقيمة معتمدة («متداول») تُستعاد وتُرسل كما كانت.
+    vi.clearAllMocks();
+    sessionStorage.setItem(
+      'documentsListPosition',
+      JSON.stringify({
+        query: '',
+        status: 'متداول',
+        applicant: '',
+        court: '',
+        lawyer: '',
+        administrativeBranch: '',
+        executedEntity: '',
+        publicEntityBranch: '',
+        page: 1,
+      }),
+    );
+    mockPage([makeDocument({ id: 1 })]);
+    useAuthMock.mockReturnValue({ hasFullAccess: false, isHead: false, user: { role: 'lawyer', id: 1 } });
+
+    renderList();
+    await screen.findByRole('table');
+    expect(mainListCall()).toContain('status=' + encodeURIComponent('متداول'));
   });
 
   it('يُلغي «عرض الكل» الفلتر النشط ويغلق قائمة العمود ويميز السهم بلون الفلتر النشط', async () => {
@@ -1129,6 +1181,10 @@ describe('DocumentsList', () => {
     expect(within(menu).getByRole('menuitem', { name: 'الملفات المشطوبة' })).toHaveAttribute(
       'href',
       '/documents/struck-off',
+    );
+    expect(within(menu).getByRole('menuitem', { name: 'الملفات المحالة الى البداية' })).toHaveAttribute(
+      'href',
+      '/documents/referred-to-start',
     );
     expect(within(menu).getByRole('menuitem', { name: 'تدوير أرقام الأساس' })).toHaveAttribute(
       'href',

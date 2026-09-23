@@ -4332,6 +4332,134 @@ public class DocumentServiceTests : IDisposable
 
         Assert.DoesNotContain(result.Items, d => d.Id == struck.Id);
     }
+
+    [Fact]
+    public async Task SearchReferredToStartPage_ShowsAllReferredIncludingPartialFromForcible()
+    {
+        // «جميع المحالة» في صفحة «محال الى البداية»: من المتداول ومن «منفذ جبريا» المنفذ
+        // جزئيًا الذي يُحال بجزئيته (ExecStatus=ReferredToStart ويُبقي ExecSubStatus خاصته).
+        var fromCirculating = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        await _service.UpdateStatusAsync(fromCirculating.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+
+        var fromPartial = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        var partialCreated = await _service.GetAsync(fromPartial.Id);
+        await _service.UpdateStatusAsync(fromPartial.Id, "منفذ جبريا",
+            new Dictionary<string, string?>
+            {
+                ["execSubStatus"] = ExecutionStatusCatalog.SubPartiallyExecuted,
+                ["collectedAmount"] = "750",
+                ["soldAssetIds"] = partialCreated!.Assets[0].Id.ToString(),
+                ["forcedExecutionDate"] = "1/1/2024",
+            }, "lawyer1");
+        await _service.UpdateStatusAsync(fromPartial.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+
+        var page = await _service.SearchReferredToStartAsync(null, page: 1, perPage: 20);
+        Assert.Equal(2, page.TotalCount);
+        var rows = page.Items.ToDictionary(d => d.Id);
+        Assert.Contains(fromCirculating.Id, rows.Keys);
+        Assert.Contains(fromPartial.Id, rows.Keys);
+        Assert.Equal(ExecutionStatusCatalog.ReferredToStart, rows[fromPartial.Id].ExecStatus);
+        Assert.Equal(ExecutionStatusCatalog.SubPartiallyExecuted, rows[fromPartial.Id].ExecSubStatus);
+    }
+
+    [Fact]
+    public async Task SearchAsync_HidesReferredToStart_UnlessTextQuery()
+    {
+        var referred = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        await _service.UpdateStatusAsync(referred.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+
+        var plain = await _service.SearchAsync(null, null, null, null, null, null, null, null, null, 1, 20);
+        Assert.DoesNotContain(plain.Items, d => d.Id == referred.Id);
+
+        var searched = await _service.SearchAsync("أحمد", null, null, null, null, null, null, null, null, 1, 20);
+        Assert.Contains(searched.Items, d => d.Id == referred.Id);
+    }
+
+    [Fact]
+    public async Task SearchAsync_WithQuery_ShowsApplicantSideStruckOff()
+    {
+        var struck = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        await _service.UpdateStatusAsync(struck.Id, ExecutionStatusCatalog.StateStruckOff,
+            new Dictionary<string, string?> { ["struckOffDate"] = "1/2/2024" }, "lawyer1");
+
+        var searched = await _service.SearchAsync("أحمد", null, null, null, null, null, null, null, null, 1, 20);
+        Assert.Contains(searched.Items, d => d.Id == struck.Id);
+
+        var plain = await _service.SearchAsync(null, null, null, null, null, null, null, null, null, 1, 20);
+        Assert.DoesNotContain(plain.Items, d => d.Id == struck.Id);
+    }
+
+    [Fact]
+    public async Task SearchReferredToStart_ByGuarantorFamilyName_FindsReferred()
+    {
+        // كفيل العينة «سمير حسن علي»: SearchText يضم الاسم الأول فقط، فيثبت هذا الاختبار
+        // تكافؤ تغطية اسم عائلة الكفيل بين صفحة المحالين والقائمة الرئيسية.
+        var referred = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        await _service.UpdateStatusAsync(referred.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+
+        var page = await _service.SearchReferredToStartAsync("علي", page: 1, perPage: 20);
+        Assert.Contains(page.Items, d => d.Id == referred.Id);
+
+        var main = await _service.SearchAsync("علي", null, null, null, null, null, null, null, null, 1, 20);
+        Assert.Contains(main.Items, d => d.Id == referred.Id);
+    }
+
+    [Fact]
+    public async Task SearchReferredToStart_ByHeirNamePair_FindsReferred()
+    {
+        // «غريب المقترض» (اسم + عائلة بلا أب) لا يطابق SearchText حرفيًا («غريب عن المقترض»)،
+        // فيثبت تغطية فلتر الورثة المباشر في صفحة المحالين كما في القائمة الرئيسية.
+        var req = Sample();
+        req.BorrowerHeirs.Add(new HeirDto(null, "غريب", "عن", "المقترض", null, null, null));
+        var referred = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        await _service.UpdateStatusAsync(referred.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+
+        var page = await _service.SearchReferredToStartAsync("غريب المقترض", page: 1, perPage: 20);
+        Assert.Contains(page.Items, d => d.Id == referred.Id);
+    }
+
+    [Fact]
+    public async Task SearchReferredToStart_ByAppealSnapshotName_FindsReferred()
+    {
+        // لقطة الاستئناف ليست جزءًا من SearchText، فيثبت هذا الاختبار تغطيتها المباشرة
+        // في صفحة المحالين كما في القائمة الرئيسية.
+        var referred = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        await _service.UpdateStatusAsync(referred.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+        _db.DocumentAppeals.Add(new DocumentAppeal
+        {
+            DocumentId = referred.Id,
+            CreatedById = 1,
+            Status = AppealStatusCatalog.Pending,
+            Direction = AppealDirectionCatalog.Appellants,
+            AppellantsJson = "[{\"name\":\"مستأنف فريد\"}]",
+            AppelleesJson = "[]",
+        });
+        _db.SaveChanges();
+
+        var page = await _service.SearchReferredToStartAsync("فريد", page: 1, perPage: 20);
+        Assert.Contains(page.Items, d => d.Id == referred.Id);
+    }
+
+    [Fact]
+    public async Task SearchReferredToStart_NullReferralDate_SortsLast()
+    {
+        // تاريخ الإحالة اختياري: الغائب يُرتَّب آخرًا حتميًا في كل المزودات (بلا اعتماد
+        // على سلوك NULL الافتراضي المختلف بين SQLite وPostgreSQL).
+        var dated = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        await _service.UpdateStatusAsync(dated.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+
+        var undated = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        var fields = ReferredToStartFields();
+        fields["startReferralNumber"] = null;
+        fields["startReferralDate"] = null;
+        await _service.UpdateStatusAsync(undated.Id, ExecutionStatusCatalog.ReferredToStart, fields, "lawyer1");
+
+        var page = await _service.SearchReferredToStartAsync(null, page: 1, perPage: 20);
+        Assert.Equal(2, page.TotalCount);
+        Assert.Equal(dated.Id, page.Items[0].Id);
+        Assert.Equal(undated.Id, page.Items[1].Id);
+        Assert.Null(page.Items[1].StartReferralDate);
+    }
 }
 
 public class AuthServiceTests : IDisposable

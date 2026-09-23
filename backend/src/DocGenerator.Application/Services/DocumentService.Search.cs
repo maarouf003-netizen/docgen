@@ -62,6 +62,23 @@ public sealed partial class DocumentService
         };
     }
 
+    public async Task<PagedResult<DocumentResponse>> SearchReferredToStartAsync(
+        string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default)
+    {
+        page = Math.Max(1, page);
+        perPage = Math.Clamp(perPage, 1, 100);
+
+        var (total, items) = await _documents.SearchReferredToStartAsync(query, visibleBranchId, visibleUserId, page, perPage, ct);
+
+        return new PagedResult<DocumentResponse>
+        {
+            Items = items.Select(d => DocumentResponse.FromEntity(d, CurrentYear())).ToList(),
+            Page = page,
+            PerPage = perPage,
+            TotalCount = total,
+        };
+    }
+
     public async Task<PagedResult<DocumentResponse>> SearchAsync(
         string? query, string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch, int page, int perPage,
         int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default)

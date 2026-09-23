@@ -200,6 +200,19 @@ public interface IDocumentRepository : IRepository<Document>
         int page,
         int perPage,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// بحث ترحّلي عن ملفات «طالبة تنفيذ» بحالة «محال الى البداية» فقط (ومنها القادم من
+    /// «منفذ جبريا» المحال بجزئيته) — يُعرض سجلها في صفحة «محال الى البداية». غير المحذوفة
+    /// (Query Filter مطبق تلقائيًا) وتُستبعد المشطوبة (حالتها خارج شرط «محال»).
+    /// </summary>
+    Task<(int TotalCount, List<Document> Items)> SearchReferredToStartAsync(
+        string? query,
+        int? visibleBranchId,
+        int? visibleUserId,
+        int page,
+        int perPage,
+        CancellationToken ct = default);
 }
 
 /// <summary>

@@ -430,7 +430,7 @@ public class DocumentsIntegrationTests
     }
 
     [Fact]
-    public async Task Search_ReferredToStartFilter_IsIndependent()
+    public async Task MainList_HidesReferredToStart_UnlessTextSearch()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var client = _factory.WithToken(token);
@@ -440,9 +440,21 @@ public class DocumentsIntegrationTests
             new { status = "محال الى البداية", fields = new { noFundsDemandNumber = "5", noFundsDemandDate = "1/1/2024", startReferralNumber = "6", startReferralDate = "2/1/2024" } });
         Assert.Equal(HttpStatusCode.OK, referred.StatusCode);
 
-        var referredList = await client.GetAsync("/api/documents?status=محال الى البداية&perPage=50");
+        // القائمة الافتراضية تخفي الملف المحال، ويظهر سجله في صفحة «محال الى البداية».
+        var plain = await client.GetAsync("/api/documents?perPage=50");
+        using var plainBody = await plain.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.DoesNotContain(id, plainBody!.RootElement.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("id").GetInt32()));
+
+        var referredList = await client.GetAsync("/api/documents/referred-to-start?perPage=50");
         using var referredBody = await referredList.Content.ReadFromJsonAsync<JsonDocument>();
         Assert.Contains(id, referredBody!.RootElement.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("id").GetInt32()));
+
+        // البحث النصي شامل: المحال يظهر في القائمة الرئيسية عند البحث عنه.
+        var searched = await client.GetAsync("/api/documents?q=" + Uri.EscapeDataString("مقترض") + "&perPage=50");
+        using var searchedBody = await searched.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.Contains(id, searchedBody!.RootElement.GetProperty("items").EnumerateArray()
             .Select(i => i.GetProperty("id").GetInt32()));
         // فلتر «متداول» (ExecStatus فارغ) لا يشمل الملف المحال.
         var circulatingList = await client.GetAsync("/api/documents?status=متداول&perPage=50");
@@ -457,20 +469,80 @@ public class DocumentsIntegrationTests
     }
 
     [Fact]
+    public async Task ReferredToStartPage_ShowsReferred_AndExcludesOthers()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.WithToken(token);
+        var referredId = await CreateCirculatingDocumentAsync(token);
+        var plainId = await CreateCirculatingDocumentAsync(token);
+        var partialId = await CreateCirculatingDocumentAsync(token);
+        var estateId = await FirstEstateIdAsync(token, partialId);
+
+        var referred = await client.PostAsJsonAsync($"/api/documents/{referredId}/status",
+            new { status = "محال الى البداية", fields = new { noFundsDemandNumber = "5", noFundsDemandDate = "1/1/2024", startReferralNumber = "6", startReferralDate = "2/1/2024" } });
+        Assert.Equal(HttpStatusCode.OK, referred.StatusCode);
+
+        // القادم من «منفذ جبريا» المنفذ جزئيًا يُحال بجزئيته ويبقى في الصفحة.
+        var partial = await client.PostAsJsonAsync($"/api/documents/{partialId}/status",
+            new { status = "منفذ جبريا", fields = new { execSubStatus = "منفذ جزئيا", collectedAmount = "750", soldAssetIds = estateId.ToString(), forcedExecutionDate = "1/2/2024" } });
+        Assert.Equal(HttpStatusCode.OK, partial.StatusCode);
+        var partialReferred = await client.PostAsJsonAsync($"/api/documents/{partialId}/status",
+            new { status = "محال الى البداية", fields = new { noFundsDemandNumber = "5", noFundsDemandDate = "1/1/2024", startReferralNumber = "6", startReferralDate = "2/1/2024" } });
+        Assert.Equal(HttpStatusCode.OK, partialReferred.StatusCode);
+
+        var page = await client.GetAsync("/api/documents/referred-to-start?perPage=50");
+        Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+        using var pageBody = await page.Content.ReadFromJsonAsync<JsonDocument>();
+        var items = pageBody!.RootElement.GetProperty("items").EnumerateArray().ToList();
+        var ids = items.Select(i => i.GetProperty("id").GetInt32()).ToList();
+        Assert.Contains(referredId, ids);
+        Assert.Contains(partialId, ids);
+        Assert.DoesNotContain(plainId, ids);
+        var partialRow = items.Single(i => i.GetProperty("id").GetInt32() == partialId);
+        Assert.Equal("محال الى البداية", partialRow.GetProperty("execStatus").GetString());
+        Assert.Equal("منفذ جزئيا", partialRow.GetProperty("execSubStatus").GetString());
+    }
+
+    [Fact]
+    public async Task MainList_HidesApplicantSideStruckOff_UnlessTextSearch()
+    {
+        // «طالبة تنفيذ» مشطوبة تُخفى من القائمة الافتراضية، ويظهر سجلها عند البحث النصي
+        // الشامل وفي صفحة «الملفات المشطوبة».
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.WithToken(token);
+        var id = await CreateCirculatingDocumentAsync(token);
+
+        var strike = await client.PostAsJsonAsync($"/api/documents/{id}/status",
+            new { status = "مشطوب", fields = new { struckOffDate = "1/2/2024" } });
+        Assert.Equal(HttpStatusCode.OK, strike.StatusCode);
+
+        var plain = await client.GetAsync("/api/documents?perPage=50");
+        using var plainBody = await plain.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.DoesNotContain(id, plainBody!.RootElement.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("id").GetInt32()));
+
+        var searched = await client.GetAsync("/api/documents?q=" + Uri.EscapeDataString("مقترض") + "&perPage=50");
+        using var searchedBody = await searched.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.Contains(id, searchedBody!.RootElement.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("id").GetInt32()));
+    }
+
+    [Fact]
     public async Task SetStatus_ToStruckOff_ThenRestore_ApplicantSide()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var client = _factory.WithToken(token);
         var id = await CreateCirculatingDocumentAsync(token);
 
-        // متداول → مشطوب: يتطلب تاريخ الشطب، ويختفي الملف من القوائم العامة ويظهر في المشطوبة.
+        // متداول → مشطوب: يتطلب تاريخ الشطب، ويختفي الملف من القائمة العامة (بلا بحث) ويظهر
+        // في المشطوبة، ويبقى ظاهرًا في البحث النصي الشامل.
         var strike = await client.PostAsJsonAsync($"/api/documents/{id}/status",
             new { status = "مشطوب", fields = new { struckOffDate = "1/2/2024" } });
         Assert.Equal(HttpStatusCode.OK, strike.StatusCode);
 
         var after = await client.GetAsync("/api/documents?q=مقترض");
         using var afterBody = await after.Content.ReadFromJsonAsync<JsonDocument>();
-        Assert.DoesNotContain(id, afterBody!.RootElement.GetProperty("items").EnumerateArray()
+        Assert.Contains(id, afterBody!.RootElement.GetProperty("items").EnumerateArray()
             .Select(i => i.GetProperty("id").GetInt32()));
 
         var struckOff = await client.GetAsync("/api/documents/struck-off?q=مقترض");
@@ -1632,14 +1704,15 @@ public class DocumentsIntegrationTests
         Assert.Contains(id, beforeBody!.RootElement.GetProperty("items").EnumerateArray()
             .Select(i => i.GetProperty("id").GetInt32()));
 
-        // شطب الملف → يختفي من البحث العام ويظهر في صفحة المشطوبة.
+        // شطب الملف → يختفي من القائمة الافتراضية، ويبقى ظاهرًا في البحث النصي
+        // (بحث شامل لكل الملفات غير المحذوفة) ويظهر في صفحة المشطوبة.
         var strike = await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new { status = "مشطوب" });
         Assert.Equal(HttpStatusCode.OK, strike.StatusCode);
 
         var after = await client.GetAsync("/api/documents?q=المصرف العقاري");
         Assert.Equal(HttpStatusCode.OK, after.StatusCode);
         using var afterBody = await after.Content.ReadFromJsonAsync<JsonDocument>();
-        Assert.DoesNotContain(id, afterBody!.RootElement.GetProperty("items").EnumerateArray()
+        Assert.Contains(id, afterBody!.RootElement.GetProperty("items").EnumerateArray()
             .Select(i => i.GetProperty("id").GetInt32()));
 
         var struckOff = await client.GetAsync("/api/documents/struck-off?q=المصرف العقاري");

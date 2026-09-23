@@ -9,7 +9,7 @@ import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { useFloatingMenu } from '../hooks/useFloatingMenu';
 import { downloadBlob } from '../utils/download';
 import { richToPlainText } from '../utils/richText';
-import { STATUS_BADGES, STATUS_OPTIONS, getDocumentStatus } from '../utils/documentStatus';
+import { STATUS_BADGES, STATUS_OPTIONS, getDocumentStatus, isStatusOption } from '../utils/documentStatus';
 import { applicantName, displayFileNumber, fullName, identityName, publicEntityBranch as entityBranchDisplay } from '../utils/documentDisplay';
 import { loadDocumentsListPosition, loadLastViewedDocumentId, saveDocumentsListPosition, saveLastViewedDocumentId } from '../utils/listSession';
 import ExecutionActionsModal from '../components/ExecutionActionsModal';
@@ -254,6 +254,14 @@ function MoreMenu({
             >
               الملفات المنفذة
             </Link>
+            <Link
+              to="/documents/referred-to-start"
+              role="menuitem"
+              onClick={close}
+              className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-inset"
+            >
+              الملفات المحالة الى البداية
+            </Link>
             {canRotate && (
               <Link
                 to="/documents/rotate"
@@ -310,7 +318,9 @@ export default function DocumentsList() {
   // من صفحة ملف، فيعود المستخدم إلى مكانه ويُميَّز الملف الذي كان يعمل عليه.
   const [saved] = useState(() => loadDocumentsListPosition());
   const [query, setQuery] = useState(saved?.query ?? '');
-  const [status, setStatus] = useState(saved?.status ?? '');
+  // حالة الجلسة تُعقَّم: قيمة لم تعد خيارًا معتمدًا في فلتر «الحالة» (مثل «محال الى البداية»
+  // بعد نقله لصفحته) تُهمل وتُعامل كأنها «لا فلتر» — لا أن تُرسل للخلفية فتنطبق بفرع خاطئ.
+  const [status, setStatus] = useState(() => (saved?.status && isStatusOption(saved.status) ? saved.status : ''));
   const [applicant, setApplicant] = useState(saved?.applicant ?? '');
   const [court, setCourt] = useState(saved?.court ?? '');
   const [lawyer, setLawyer] = useState(saved?.lawyer ?? '');

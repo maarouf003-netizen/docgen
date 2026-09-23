@@ -7,7 +7,7 @@ import { applicantName, displayFileNumber } from '../utils/documentDisplay';
 import type { DocumentResponse, PagedResult } from '../types';
 import RenewalModal from './RenewalModal';
 
-/** إعدادات القائمة الأرشيفية (محذوفة/مشطوبة)؛ كل اختلاف بين الصفحتين يمر عبر هذه الخيارات. */
+/** إعدادات قوائم الصفحات الأرشيفية (محذوفة/مشطوبة/منفذة/محالة الى البداية)؛ كل اختلاف بين الصفحات يمر عبر هذه الخيارات. */
 export interface ArchivedDocumentsListConfig {
   /** عنوان الصفحة. */
   title: string;

@@ -202,6 +202,22 @@ public class DocumentsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("referred-to-start")]
+    public async Task<IActionResult> GetReferredToStart(
+        [FromQuery] string? q,
+        [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
+    {
+        // صفحة «محال الى البداية» ظاهرة لجميع الأدوار (كصفحة «الملفات المنفذة»):
+        // محامٍ (ملفاته) / رئيس قسم (فرعه) / ذو الوصول الكامل (الكل).
+        var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
+        var visibleUser = HasFullAccess || IsHead ? (int?)null : User.GetUserId();
+
+        var result = await _documents.SearchReferredToStartAsync(q, page, perPage, visibleBranch, visibleUser, ct);
+        if (!CanViewCounters)
+            result.Items = result.Items.Select(Sanitize).ToList();
+        return Ok(result);
+    }
+
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Get(int id, CancellationToken ct)
     {

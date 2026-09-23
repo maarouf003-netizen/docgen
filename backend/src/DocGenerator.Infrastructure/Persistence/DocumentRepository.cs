@@ -122,18 +122,20 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             q = q.Where(d => d.BranchId == visibleBranchId);
         if (visibleUserId.HasValue)
             q = q.Where(d => d.CreatedById == visibleUserId);
-        // ملفات وضع «منفذ عليه» المشطوبة وملفات «طالبة تنفيذ» المشطوبة تُخفى من القوائم
-        // والتصدير العام: تظهر فقط في صفحة «الملفات المشطوبة» عبر SearchStruckOffAsync.
-        q = q.Where(d => d.ExecutedStatus != ExecutedStatusCatalog.StruckOff
-            && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff);
         // الملفات «المنفذة» (عائلة «منفذ عليه»/«عرض وايداع» بحالة «منفذ»، وملفات «طالبة تنفيذ»
-        // المنفذة بالتسوية أو الجبري الكامل) تُخفى من القائمة والتصدير العام إلا عند البحث النصي
-        // عنها (query)، فتظهر للعثور عليها. التعريف مطابق تمامًا لصفحة «الملفات المنفذة»
-        // (SearchExecutedAsync) فلا يتسرب أي ملف منفذ إلى القائمة في غير ذلك.
+        // المنفذة بالتسوية أو الجبري الكامل)، وملفات «طالبة تنفيذ» المشطوبة («مشطوب») أو
+        // «محال الى البداية» تُخفى من القائمة والتصدير العام إلا عند البحث النصي عنها
+        // (query)، فتظهر للعثور عليها — بحث شامل لكل الملفات غير المحذوفة أيا كانت حالتها.
+        // التعريفات مطابقة تمامًا لصفحات «الملفات المنفذة» (SearchExecutedAsync) و«الملفات
+        // المشطوبة» (SearchStruckOffAsync) و«محال الى البداية» (SearchReferredToStartAsync)
+        // فلا يتسرب أي ملف منها إلى القائمة في غير ذلك.
         if (string.IsNullOrWhiteSpace(query))
         {
             q = q.Where(d =>
-                !((d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
+                d.ExecutedStatus != ExecutedStatusCatalog.StruckOff
+                && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff
+                && d.ExecStatus != ExecutionStatusCatalog.ReferredToStart
+                && !((d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
                     || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit)
                     && d.ExecutedStatus == ExecutedStatusCatalog.Executed)
                 && !(d.GeneralEntitySide == GeneralEntitySideCatalog.Applicant
@@ -152,8 +154,6 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
                     || d.ExecStatus == ExecutionStatusCatalog.Recovered);
             else if (status == ExecutionStatusCatalog.Deferred)
                 q = q.Where(d => d.ExecStatus == ExecutionStatusCatalog.Deferred);
-            else if (status == ExecutionStatusCatalog.ReferredToStart)
-                q = q.Where(d => d.ExecStatus == ExecutionStatusCatalog.ReferredToStart);
             else
                 q = q.Where(d =>
                     string.IsNullOrEmpty(d.ExecStatus) &&
@@ -215,36 +215,46 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
 
         if (!string.IsNullOrWhiteSpace(query))
         {
-            var term = query.Trim();
-            // البحث بأسماء المستأنف/المستأنف عليهم من لقطات الاستئنافات: ملفٌ يطابق
-            // إذا كان عليه استئناف تحوي الاسم في لقطته — تظهر نتائجه بشارة «استئناف».
-            var appeals = Db.DocumentAppeals;
-            q = q.Where(d =>
-                (d.SearchText != null && d.SearchText.Contains(term)) ||
-                (d.BorrowerName != null &&
-                    ((d.BorrowerName + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term) ||
-                     (d.BorrowerName + " " + (d.BorrowerFather ?? string.Empty) + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term))) ||
-                d.Guarantors.Any(g =>
-                    g.GuarantorName != null &&
-                    ((g.GuarantorName + " " + (g.GuarantorFamily ?? string.Empty)).Contains(term) ||
-                     (g.GuarantorName + " " + (g.GuarantorFather ?? string.Empty) + " " + (g.GuarantorFamily ?? string.Empty)).Contains(term))) ||
-                // البحث بأسماء الورثة: ورثة المقترض/الكفلاء في وضع «طالب تنفيذ» (اسم ثلاثي كالكفلاء)،
-                // وورثة المورثين المتوفين في وضع «منفذ عليه» (اسم ثلاثي).
-                d.Heirs.Any(h =>
-                    h.HeirName != null &&
-                    ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
-                     (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term))) ||
-                d.ExecutedHeirs.Any(h =>
-                    h.HeirName != null &&
-                    ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
-                     (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term))) ||
-                appeals.Any(a =>
-                    a.DocumentId == d.Id &&
-                    ((a.AppellantsJson != null && a.AppellantsJson.Contains(term)) ||
-                     (a.AppelleesJson != null && a.AppelleesJson.Contains(term)))));
+            q = ApplyPersonNameSearch(q, query.Trim());
         }
 
         return q;
+    }
+
+    /// <summary>
+    /// كتلة البحث النصي الشاملة الموحدة (أسماء الأطراف): المصدر الوحيد لمنطق مطابقة
+    /// الأسماء في القائمة الرئيسية (ApplySearchFilters) وفي صفحة «محال الى البداية»
+    /// (SearchReferredToStartAsync) — توحيدٌ يمنع تباعد التغطية بين المسارين (الكفيل/
+    /// الوريث/لقطات الاستئناف).
+    /// </summary>
+    private IQueryable<Document> ApplyPersonNameSearch(IQueryable<Document> q, string term)
+    {
+        // البحث بأسماء المستأنف/المستأنف عليهم من لقطات الاستئنافات: ملفٌ يطابق
+        // إذا كان عليه استئناف تحوي الاسم في لقطته — تظهر نتائجه بشارة «استئناف».
+        var appeals = Db.DocumentAppeals;
+        return q.Where(d =>
+            (d.SearchText != null && d.SearchText.Contains(term)) ||
+            (d.BorrowerName != null &&
+                ((d.BorrowerName + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term) ||
+                 (d.BorrowerName + " " + (d.BorrowerFather ?? string.Empty) + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term))) ||
+            d.Guarantors.Any(g =>
+                g.GuarantorName != null &&
+                ((g.GuarantorName + " " + (g.GuarantorFamily ?? string.Empty)).Contains(term) ||
+                 (g.GuarantorName + " " + (g.GuarantorFather ?? string.Empty) + " " + (g.GuarantorFamily ?? string.Empty)).Contains(term))) ||
+            // البحث بأسماء الورثة: ورثة المقترض/الكفلاء في وضع «طالب تنفيذ» (اسم ثلاثي كالكفلاء)،
+            // وورثة المورثين المتوفين في وضع «منفذ عليه» (اسم ثلاثي).
+            d.Heirs.Any(h =>
+                h.HeirName != null &&
+                ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
+                 (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term))) ||
+            d.ExecutedHeirs.Any(h =>
+                h.HeirName != null &&
+                ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
+                 (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term))) ||
+            appeals.Any(a =>
+                a.DocumentId == d.Id &&
+                ((a.AppellantsJson != null && a.AppellantsJson.Contains(term)) ||
+                 (a.AppelleesJson != null && a.AppelleesJson.Contains(term)))));
     }
 
     /// <summary>
@@ -713,6 +723,53 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
 
         var items = await WithStandardIncludes(
             q.OrderByDescending(d => d.UpdatedAt)
+                .ThenByDescending(d => d.Id)
+                .Skip((page - 1) * perPage)
+                .Take(perPage))
+            .ToListAsync(ct);
+
+        return (total, items);
+    }
+
+    public async Task<(int TotalCount, List<Document> Items)> SearchReferredToStartAsync(
+        string? query,
+        int? visibleBranchId,
+        int? visibleUserId,
+        int page,
+        int perPage,
+        CancellationToken ct = default)
+    {
+        // ملفات «طالبة تنفيذ» بحالة «محال الى البداية» فقط — ومنها القادم من «منفذ جبريا»
+        // المحال بجزئيته (يُحمل ExecStatus=ReferredToStart ويبقي ExecSubStatus خاصته فيضمّه
+        // هذا الشرط حرفيًا بلا استثناء). قيد الصفة صريح دفاعًا عن العقد رغم أن مسار تغيير
+        // الحالة يمنع أصلًا إحالة غير «طالبة تنفيذ». البحث النصي عبر الكتلة الموحدة نفسها
+        // المستخدمة في القائمة الرئيسية (ApplyPersonNameSearch) فتتكافأ التغطية (الكفيل/
+        // الوريث/لقطات الاستئناف). غير المحذوفة (Query Filter مطبق تلقائيًا) وتُستبعد
+        // المشطوبة لأن حالتها «مشطوب» تُبقيها خارج شرط «محال» (فهي في صفحة
+        // «الملفات المشطوبة»).
+        IQueryable<Document> q = Db.Documents.AsNoTracking()
+            .Where(d => d.GeneralEntitySide == GeneralEntitySideCatalog.Applicant
+                && d.ExecStatus == ExecutionStatusCatalog.ReferredToStart);
+
+        if (visibleBranchId.HasValue)
+            q = q.Where(d => d.BranchId == visibleBranchId);
+
+        if (visibleUserId.HasValue)
+            q = q.Where(d => d.CreatedById == visibleUserId);
+
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            q = ApplyPersonNameSearch(q, query.Trim());
+        }
+
+        var total = await q.CountAsync(ct);
+
+        var items = await WithStandardIncludes(
+            // معالجة صريحة لقيم تاريخ الإحالة الغائبة (الحقل اختياري): الأحدث أولًا ثم
+            // الغائبة آخرًا — ترتيب حتمي متطابق بين SQLite وPostgreSQL بدل الاعتماد
+            // على سلوك NULL الافتراضي المختلف بينهما.
+            q.OrderByDescending(d => d.StartReferralDate.HasValue)
+                .ThenByDescending(d => d.StartReferralDate)
                 .ThenByDescending(d => d.Id)
                 .Skip((page - 1) * perPage)
                 .Take(perPage))

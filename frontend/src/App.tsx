@@ -15,6 +15,7 @@ const AppealDetail = lazy(() => import('./pages/AppealDetail'));
 const DeletedDocuments = lazy(() => import('./pages/DeletedDocuments'));
 const StruckOffDocuments = lazy(() => import('./pages/StruckOffDocuments'));
 const ExecutedDocuments = lazy(() => import('./pages/ExecutedDocuments'));
+const ReferredToStartDocuments = lazy(() => import('./pages/ReferredToStartDocuments'));
 const Rotation = lazy(() => import('./pages/Rotation'));
 const DocumentForm = lazy(() => import('./pages/DocumentForm'));
 const DocumentView = lazy(() => import('./pages/DocumentView'));
@@ -86,6 +87,7 @@ export default function App() {
             <Route path="/documents/deleted" element={<DeletedDocuments />} />
             <Route path="/documents/struck-off" element={<StruckOffDocuments />} />
             <Route path="/documents/executed" element={<ExecutedDocuments />} />
+            <Route path="/documents/referred-to-start" element={<ReferredToStartDocuments />} />
             <Route
               path="/documents/rotate"
               element={

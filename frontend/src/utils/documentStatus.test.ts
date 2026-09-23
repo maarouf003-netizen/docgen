@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { STATUS_OPTIONS, getDocumentStatus, getDocumentBadge, getExecutedStatus, canDelegateSource } from './documentStatus';
+import { STATUS_OPTIONS, getDocumentStatus, getDocumentBadge, getExecutedStatus, canDelegateSource, isStatusOption } from './documentStatus';
 import type { DocumentResponse } from '../types';
 
 function doc(overrides: Partial<Pick<DocumentResponse, 'execStatus' | 'execSubStatus' | 'isDraft' | 'generalEntitySide'>>) {
@@ -144,11 +144,20 @@ describe('canDelegateSource', () => {
 });
 
 describe('STATUS_OPTIONS', () => {
-  it('يشمل «محال الى البداية» ملحقًا في نهاية الخيارات (بلا منفذ/مشطوب/الجزئية المركبة)', () => {
-    expect(STATUS_OPTIONS).toContain('محال الى البداية');
-    expect(STATUS_OPTIONS[STATUS_OPTIONS.length - 1]).toBe('محال الى البداية');
+  it('يستبعد «محال الى البداية» كسابقه «منفذ» (صفحته الخاصة): بلا منفذ/مشطوب/الجزئية المركبة', () => {
+    expect(STATUS_OPTIONS).not.toContain('محال الى البداية');
+    expect(STATUS_OPTIONS).toEqual(['تريث', 'تحت رفع', 'متداول']);
     expect(STATUS_OPTIONS).not.toContain('منفذ');
     expect(STATUS_OPTIONS).not.toContain('مشطوب');
     expect(STATUS_OPTIONS).not.toContain('متداول / منفذ جزئيا');
+  });
+
+  it('isStatusOption يقرّ الخيارات المعتمدة فقط ويعقم الباقي («محال الى البداية» وغيره)', () => {
+    expect(isStatusOption('تريث')).toBe(true);
+    expect(isStatusOption('متداول')).toBe(true);
+    expect(isStatusOption('')).toBe(false);
+    expect(isStatusOption('محال الى البداية')).toBe(false);
+    expect(isStatusOption('منفذ')).toBe(false);
+    expect(isStatusOption('قيمة عشوائية')).toBe(false);
   });
 });
