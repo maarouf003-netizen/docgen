@@ -152,6 +152,8 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
                     || d.ExecStatus == ExecutionStatusCatalog.Recovered);
             else if (status == ExecutionStatusCatalog.Deferred)
                 q = q.Where(d => d.ExecStatus == ExecutionStatusCatalog.Deferred);
+            else if (status == ExecutionStatusCatalog.ReferredToStart)
+                q = q.Where(d => d.ExecStatus == ExecutionStatusCatalog.ReferredToStart);
             else
                 q = q.Where(d =>
                     string.IsNullOrEmpty(d.ExecStatus) &&

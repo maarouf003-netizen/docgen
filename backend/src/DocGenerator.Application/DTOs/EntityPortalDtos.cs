@@ -77,7 +77,7 @@ public record DelegateDto(
 
 /// <summary>
 /// إحصاءات قرائية لنطاق مندوب الجهة: تصنيف الحالة يطابق فلاتر القائمة
-/// (منفذ/تريث/تحت رفع/متداول)، والمشطوب مستبعد دائمًا كما في القائمة.
+/// (منفذ/تريث/محال الى البداية/تحت رفع/متداول)، والمشطوب مستبعد دائمًا كما في القائمة.
 /// </summary>
 public record PortalStatsDto(
     int TotalFiles,
@@ -85,6 +85,8 @@ public record PortalStatsDto(
     int CirculatingFiles,
     int ExecutedFiles,
     int DeferredFiles,
+    /// <summary>عدد ملفات «محال الى البداية» في النطاق (فلتر مستقل، ولا يشملها فلتر «منفذ»).</summary>
+    int ReferredToStartFiles,
     int PendingAppeals,
     int ClosedAppeals,
     /// <summary>آخر 12 شهرًا متصلة حتى الشهر الحالي (UTC) شاملة الأشهر الصفرية.</summary>

@@ -233,6 +233,18 @@ describe('DocumentsList', () => {
     expect(within(tbody).queryByText('بدون حالة')).not.toBeInTheDocument();
   });
 
+  it('يعرض شارة «محال الى البداية» لملفها في القائمة (سلّة مستقلة عن «منفذ»)', async () => {
+    mockPage([
+      makeDocument({ id: 6, isDraft: false, execStatus: 'محال الى البداية', documentType: 'متداول - ح' }),
+    ]);
+
+    renderList();
+
+    const table = await screen.findByRole('table');
+    const tbody = within(table).getAllByRole('rowgroup').at(-1) as HTMLElement;
+    expect(within(tbody).getByText('محال الى البداية')).toBeInTheDocument();
+  });
+
   it('يرسل فلتر «متداول» إلى الخلفية', async () => {
     const user = userEvent.setup();
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -438,7 +450,7 @@ describe('DocumentsList', () => {
 
     const menu = screen.getByRole('menu', { name: 'فلترة الحالة' });
     expect(within(menu).queryByRole('menuitem', { name: 'منفذ' })).not.toBeInTheDocument();
-    for (const option of ['تريث', 'تحت رفع', 'متداول']) {
+    for (const option of ['تريث', 'تحت رفع', 'متداول', 'محال الى البداية']) {
       expect(within(menu).getByRole('menuitem', { name: option })).toBeInTheDocument();
     }
   });

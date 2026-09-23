@@ -85,6 +85,13 @@ const MANAGER_STATS: ManagerStatsDto = {
     ],
     ordinaryAmounts: [],
   },
+  referredToStartCount: 2,
+  referredSplit: {
+    bankingCount: 1,
+    ordinaryCount: 1,
+    bankingAmounts: [{ currency: 'ليرة سورية', amount: 800 }],
+    ordinaryAmounts: [{ currency: 'دولار أمريكي', amount: 1200 }],
+  },
   tradingAgainstAmounts: [],
   periodYear: 2026,
   periodQuarter: null,
@@ -529,6 +536,7 @@ describe('Dashboard للمدير/المشرف', () => {
     expect(screen.getByText('تحت رفع')).toBeInTheDocument();
     expect(screen.getByText('تريث')).toBeInTheDocument();
     expect(screen.getByText('منفذ')).toBeInTheDocument();
+    expect(screen.getByText('محال الى البداية')).toBeInTheDocument();
     expect(screen.getByText('منفذ للصالح')).toBeInTheDocument();
     expect(screen.getByText('منفذ بالتسوية')).toBeInTheDocument();
     expect(screen.getByText('منفذ جبريا')).toBeInTheDocument();
@@ -536,6 +544,8 @@ describe('Dashboard للمدير/المشرف', () => {
     expect(screen.getByText('2,000 ل.س')).toBeInTheDocument();
     expect(screen.getByText('1,600 ل.س')).toBeInTheDocument();
     expect(screen.getByText('1,000 ل.س')).toBeInTheDocument();
+    expect(screen.getByText('800 ل.س')).toBeInTheDocument();
+    expect(screen.getByText('1,200 دولار')).toBeInTheDocument();
     expect(screen.getByText('4,500 ل.س')).toBeInTheDocument();
     expect(screen.getByText('1,500 ل.س')).toBeInTheDocument();
     expect(screen.getByText('500 ل.س')).toBeInTheDocument();
@@ -601,14 +611,14 @@ describe('Dashboard للمدير/المشرف', () => {
     await screen.findByText('إجمالي الملفات');
 
     const counters = Array.from(document.querySelectorAll('.font-bold.tabular-nums'));
-    expect(counters).toHaveLength(5);
+    expect(counters).toHaveLength(6);
     counters.forEach((el) => {
       expect(el.getAttribute('dir')).toBe('ltr');
       expect(el.className).toContain('text-right');
     });
 
     const contentBlocks = Array.from(document.querySelectorAll('.bg-white.rounded-2xl .flex-1.min-w-0'));
-    expect(contentBlocks).toHaveLength(5);
+    expect(contentBlocks).toHaveLength(6);
   });
 
   it('يعرض ملفات «عرض وايداع» المتداولة كسطر فرعي داخل بطاقة متداول', async () => {

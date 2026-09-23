@@ -10,6 +10,7 @@ public class ExecutionStatusCatalogTests
     [InlineData("تريث", ExecutionStatus.Deferred)]
     [InlineData("منفذ إنابة", ExecutionStatus.DelegationExecuted)]
     [InlineData("مسترد", ExecutionStatus.Recovered)]
+    [InlineData("محال الى البداية", ExecutionStatus.ReferredToStart)]
     [InlineData("", ExecutionStatus.None)]
     [InlineData("غير معروف", ExecutionStatus.None)]
     public void Classify_MapsKnownAndUnknownStatuses(string status, ExecutionStatus expected)
@@ -23,6 +24,7 @@ public class ExecutionStatusCatalogTests
     [InlineData(ExecutionStatus.Deferred, "تريث")]
     [InlineData(ExecutionStatus.DelegationExecuted, "منفذ إنابة")]
     [InlineData(ExecutionStatus.Recovered, "مسترد")]
+    [InlineData(ExecutionStatus.ReferredToStart, "محال الى البداية")]
     [InlineData(ExecutionStatus.None, "")]
     public void ToLabel_MapsEnumToArabicLabel(ExecutionStatus status, string expected)
     {
@@ -33,7 +35,7 @@ public class ExecutionStatusCatalogTests
     public void ValidStatuses_IncludeEmptyAndAllExecutionStatuses()
     {
         Assert.Equal(
-            new[] { "", "تريث", "مسترد", "منفذ إنابة", "منفذ بالتسوية", "منفذ جبريا" },
+            new[] { "", "تريث", "محال الى البداية", "مسترد", "منفذ إنابة", "منفذ بالتسوية", "منفذ جبريا" },
             ExecutionStatusCatalog.ValidStatuses.OrderBy(s => s, StringComparer.Ordinal).ToArray());
     }
 
@@ -62,10 +64,11 @@ public class ExecutionStatusCatalogTests
     public static IEnumerable<object[]> TransitionTable() => new List<object[]>
     {
         new object[] { "تحت رفع", new[] { "تريث", "منفذ بالتسوية" } },
-        new object[] { "متداول", new[] { "تريث", "منفذ بالتسوية", "منفذ جبريا", "مشطوب" } },
-        new object[] { "تريث", new[] { "منفذ بالتسوية" } },
+        new object[] { "متداول", new[] { "تريث", "منفذ بالتسوية", "منفذ جبريا", "مشطوب", "محال الى البداية" } },
+        new object[] { "تريث", new[] { "منفذ بالتسوية", "محال الى البداية" } },
         new object[] { "منفذ بالتسوية", Array.Empty<string>() },
-        new object[] { "منفذ جبريا", Array.Empty<string>() },
+        new object[] { "منفذ جبريا", new[] { "محال الى البداية" } },
+        new object[] { "محال الى البداية", Array.Empty<string>() },
         new object[] { "مشطوب", Array.Empty<string>() },
         new object[] { "مسترد", Array.Empty<string>() },
         new object[] { "منفذ إنابة", Array.Empty<string>() },
@@ -117,5 +120,29 @@ public class ExecutionStatusCatalogTests
     public void CanRevert_PinsRevertMatrix(string currentState, bool expected)
     {
         Assert.Equal(expected, ExecutionStatusCatalog.CanRevert(currentState));
+    }
+
+    /// <summary>
+    /// اللازمة (القرار 10): المخرج الوحيد من «محال الى البداية» هو نقطة العودة المخصصة —
+    /// <see cref="ExecutionStatusCatalog.CanRevert"/> يستثنيها فيبقى التوجيه سليمًا بلا عمود
+    /// إضافي (ExecSubStatus == منفذ جزئيا ⟺ دخل من جزئيا).
+    /// </summary>
+    [Fact]
+    public void CanRevert_ReferredToStart_IsAlwaysFalse()
+    {
+        Assert.False(ExecutionStatusCatalog.CanRevert(ExecutionStatusCatalog.ReferredToStart));
+    }
+
+    /// <summary>
+    /// عقد العرض للازمة (القرار 10): «محال الى البداية» ليست حالة منفذة في الإحصاءات والتدوير
+    /// مهما حملّت جزئيتها (عودة إلى السير بمجرد موافرة أموال).
+    /// </summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("منفذ جزئيا")]
+    [InlineData("منفذ كاملا")]
+    public void IsExecuted_ReferredToStart_IsAlwaysFalse(string? subStatus)
+    {
+        Assert.False(ExecutionStatusCatalog.IsExecuted(ExecutionStatusCatalog.ReferredToStart, subStatus));
     }
 }

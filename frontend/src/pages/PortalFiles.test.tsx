@@ -34,6 +34,7 @@ const statsPayload = {
   circulatingFiles: 2,
   executedFiles: 1,
   deferredFiles: 1,
+  referredToStartFiles: 1,
   pendingAppeals: 2,
   closedAppeals: 3,
   monthly: Array.from({ length: 12 }, (_, i) => ({
@@ -92,6 +93,10 @@ describe('PortalFiles', () => {
     expect(screen.getByText('مصنع النور')).toBeInTheDocument();
     // «تحت رفع» تظهر كشارة للملف المسودة وكخيار في فلتر الحالة.
     expect(screen.getAllByText('تحت رفع').length).toBeGreaterThanOrEqual(1);
+
+    // فلتر الحالة يتضمن «محال الى البداية» كخيار.
+    const statusSelect = screen.getByLabelText('فلتر الحالة') as HTMLSelectElement;
+    expect(Array.from(statusSelect.options).map((o) => o.value)).toContain('محال الى البداية');
   });
 
   it('لا يعرض أي زر تعديل — البوابة قرائية (د10)', async () => {
@@ -137,10 +142,12 @@ describe('PortalFiles', () => {
 
     const section = await screen.findByRole('region', { name: 'إحصاءات نطاق جهتك' });
 
-    // عدادات الحالة الخمسة بقيم الـmock (محدودة ببطاقة الإحصاءات).
+    // عدادات الحالة الست بقيم الـmock (محدودة ببطاقة الإحصاءات).
     expect(screen.getByText('الإجمالي').nextElementSibling).toHaveTextContent('5');
     expect(within(section).getByText(/^متداول$/).nextElementSibling).toHaveTextContent('2');
     expect(within(section).getByText(/^منفذ$/).nextElementSibling).toHaveTextContent('1');
+    expect(within(section).getByText(/^تريث$/).nextElementSibling).toHaveTextContent('1');
+    expect(within(section).getByText(/^محال الى البداية$/).nextElementSibling).toHaveTextContent('1');
     expect(within(section).getByText(/^تحت رفع$/).nextElementSibling).toHaveTextContent('1');
     expect(screen.getByText(/الاستئنافات:/)).toHaveTextContent('2 معلّقًا · 3 مغلقًا');
 

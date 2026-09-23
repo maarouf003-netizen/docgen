@@ -736,6 +736,33 @@ public class StatisticsRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task ManagerStats_ReferredToStart_CountedWithSplitAndTotal()
+    {
+        // ب6 (خطة RTS): ملف «محال الى البداية» — ومنه من دخل من «منفذ جزئيا» (ExecSubStatus
+        // محفوظ) — يُعدّ في الفرع الجديد بعدّه ومبالغه، ولا يبقى في «المتداول» ولا في
+        // «منفذ جبريا»، ويدخل في TotalFiles (متداول + تحت رفع + تريث + محال).
+        var today = DateTime.Today;
+        _db.Documents.AddRange(
+            RegisteredDoc(1, false, "محال الى البداية", D(today.Year, today.Month, 5),
+                execSubStatus: "منفذ جزئيا", amount: 200, amount2: 2000),
+            RegisteredDoc(1, false, null, D(today.Year, today.Month, 6), amount: 100));
+        _db.SaveChanges();
+
+        var s = await _stats.GetManagerStatsAsync(StatsPeriod.Monthly, 1);
+
+        Assert.Equal(1, s.ReferredToStartCount);
+        Assert.NotNull(s.ReferredSplit);
+        Assert.Equal(1, s.ReferredSplit.BankingCount);
+        Assert.Equal(0, s.ReferredSplit.OrdinaryCount);
+        Assert.Equal(200m, AmountOf(s.ReferredSplit.BankingAmounts, "ليرة سورية"));
+        Assert.Equal(2000m, AmountOf(s.ReferredSplit.BankingAmounts, "دولار أمريكي"));
+        Assert.Equal(1, s.Active);
+        Assert.Equal(0, s.ForcibleCount);
+        Assert.Equal(2, s.TotalFiles);
+        Assert.Equal(300m, AmountOf(s.TotalAmounts, "ليرة سورية"));
+    }
+
+    [Fact]
     public async Task ManagerStats_ActiveAndDeferred_SplitByContractTypeWithCurrencies()
     {
         // مبالغ «متداول للصالح» و«التريث» تُفصَّل مصرفي/عادي ويُجمَّع كل مبلغ في سلة عملته الفعلية

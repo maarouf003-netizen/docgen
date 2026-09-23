@@ -319,6 +319,26 @@ export function buildStatusSummary(doc: DocumentResponse, context?: { sourceLabe
     if (doc.forcibleTransferNoticeNumber) parts.push(`بإشعار رقم ${doc.forcibleTransferNoticeNumber}`);
     return parts.join(' ');
   }
+  if (doc.execStatus === 'محال الى البداية') {
+    // ملخص «محال الى البداية»: كتاب المطالعة بعدم وجود أموال + كتاب الإحالة إن وُجد. من دخل من
+    // «منفذ جبريا - منفذ جزئيا» تحمل جزئيته مقطعًا مرآة لفرع الجبريا (المحصل + التحويل).
+    const parts = ['محال إلى قسم البداية لعدم وجود أموال للتنفيذ عليها'];
+    if (doc.noFundsDemandNumber) parts.push(`بموجب كتاب المطالعة رقم ${doc.noFundsDemandNumber}`);
+    if (doc.noFundsDemandDate) parts.push(`بتاريخ ${formatDate(doc.noFundsDemandDate)}`);
+    if (doc.startReferralNumber || doc.startReferralDate) {
+      parts.push('وبكتاب الإحالة');
+      if (doc.startReferralNumber) parts.push(`رقم ${doc.startReferralNumber}`);
+      if (doc.startReferralDate) parts.push(`بتاريخ ${formatDate(doc.startReferralDate)}`);
+    }
+    if (doc.execSubStatus === 'منفذ جزئيا') {
+      parts.push('(منفذ جزئيا)');
+      const collected = formatCollectedAmounts(doc);
+      if (collected) parts.push(`المبلغ المحصل: ${collected}`);
+      if (doc.forcibleTransferDate) parts.push(`تحويل البدل بتاريخ ${formatDate(doc.forcibleTransferDate)}`);
+      if (doc.forcibleTransferNoticeNumber) parts.push(`بإشعار رقم ${doc.forcibleTransferNoticeNumber}`);
+    }
+    return parts.join(' ');
+  }
   if (doc.execStatus === 'مشطوب') {
     const parts = ['مشطوب'];
     if (doc.struckOffDate) parts.push(`بتاريخ ${formatDate(doc.struckOffDate)}`);
@@ -386,7 +406,12 @@ export function occurrenceLine(occurrence: DocumentOccurrenceDto): string {
       if (d.forcedTransferNoticeNumber) parts.push(`بإشعار رقم ${d.forcedTransferNoticeNumber}`);
       return parts.join(' ');
     }
+    case 'referred-to-start':
+      return ['محال الى البداية بموجب كتاب المطالعة بعدم وجود أموال', d.noFundsDemandNumber ? `رقم ${d.noFundsDemandNumber}` : '', d.noFundsDemandDate ? `بتاريخ ${d.noFundsDemandDate}` : ''].filter(Boolean).join(' ');
     case 'revert':
+      // وقعة العودة من «محال الى البداية» (B4) تحمل سردًا نصيًا جاهزًا (revertNarration)؛
+      // أما «تراجع» الكلاسيكي فيُقرأ من مفاتيح كتاب السير بالملف.
+      if (d.revertNarration) return d.revertNarration;
       return ['تراجع عن الحالة بموجب كتاب السير بالملف', d.sayerNumber ? `رقم ${d.sayerNumber}` : '', d.sayerDate ? `بتاريخ ${d.sayerDate}` : ''].filter(Boolean).join(' ');
     case 'recovered':
       // وقعة استرداد المناب (L4): التسوية تُلحق بكتاب براءة الذمة، والاكتمال الجبري بسبب «تحصيل

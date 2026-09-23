@@ -101,6 +101,14 @@ public class DocumentServiceTests : IDisposable
         },
     };
 
+    private static Dictionary<string, string?> ReferredToStartFields() => new()
+    {
+        ["noFundsDemandNumber"] = "55",
+        ["noFundsDemandDate"] = "1/5/2026",
+        ["startReferralNumber"] = "66",
+        ["startReferralDate"] = "2/5/2026",
+    };
+
     [Fact]
     public async Task Create_FillsDerivedFields()
     {
@@ -1714,6 +1722,351 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal(OccurrenceTypeCatalog.Deferred, occurrence.OccurrenceType);
         Assert.Equal("5", occurrence.Details!["tarithNumber"]);
         Assert.Equal("2/1/2024", occurrence.Details["tarithRegDate"]);
+    }
+
+    // ── الإحالة إلى البداية: مسار الدخول «محال الى البداية» ──────────────────────────────
+
+    [Fact]
+    public async Task UpdateStatus_ReferredToStart_FromCirculating_SucceedsAndStoresFields()
+    {
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+
+        Assert.True(await _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
+            ReferredToStartFields(), "lawyer1"));
+
+        var loaded = await _db.Documents.SingleAsync(d => d.Id == doc.Id);
+        Assert.Equal(ExecutionStatusCatalog.ReferredToStart, loaded.ExecStatus);
+        Assert.Equal("55", loaded.NoFundsDemandNumber);
+        Assert.Equal(new DateTime(2026, 5, 1), loaded.NoFundsDemandDate);
+        Assert.Equal("66", loaded.StartReferralNumber);
+        Assert.Equal(new DateTime(2026, 5, 2), loaded.StartReferralDate);
+        Assert.Null(loaded.ExecSubStatus);
+    }
+
+    [Fact]
+    public async Task UpdateStatus_ReferredToStart_OptionalFields_BlankBecomesNull()
+    {
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+
+        Assert.True(await _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
+            new Dictionary<string, string?>
+            {
+                ["noFundsDemandNumber"] = "55",
+                ["noFundsDemandDate"] = "1/5/2026",
+                ["startReferralNumber"] = "   ",
+                ["startReferralDate"] = "",
+            }, "lawyer1"));
+
+        var loaded = await _db.Documents.SingleAsync(d => d.Id == doc.Id);
+        Assert.Null(loaded.StartReferralNumber);
+        Assert.Null(loaded.StartReferralDate);
+    }
+
+    [Fact]
+    public async Task UpdateStatus_ReferredToStart_ArabicDigitsDate_StoredParsed()
+    {
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+
+        Assert.True(await _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
+            new Dictionary<string, string?>
+            {
+                ["noFundsDemandNumber"] = "55",
+                ["noFundsDemandDate"] = "١٥/٨/٢٠٢٦",
+            }, "lawyer1"));
+
+        var loaded = await _db.Documents.SingleAsync(d => d.Id == doc.Id);
+        Assert.Equal(new DateTime(2026, 8, 15), loaded.NoFundsDemandDate);
+    }
+
+    [Fact]
+    public async Task UpdateStatus_ReferredToStart_FromDeferred_ClearsOtherFamilies()
+    {
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        await _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.Deferred,
+            new Dictionary<string, string?>
+            {
+                ["tarithNumber"] = "5",
+                ["tarithDate"] = "1/6/2026",
+            }, "lawyer1");
+
+        Assert.True(await _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
+            ReferredToStartFields(), "lawyer1"));
+
+        var loaded = await _db.Documents.SingleAsync(d => d.Id == doc.Id);
+        Assert.Equal(ExecutionStatusCatalog.ReferredToStart, loaded.ExecStatus);
+        Assert.Null(loaded.TarithNumber);
+        Assert.Null(loaded.TarithDate);
+        Assert.Null(loaded.ExecSubStatus);
+    }
+
+    [Fact]
+    public async Task UpdateStatus_ReferredToStart_FromPartialForcible_KeepsForceFamilyVisible()
+    {
+        var source = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        var persisted = await _db.Documents.SingleAsync(d => d.Id == source.Id);
+        persisted.ExecStatus = ExecutionStatusCatalog.ExecutedForcibly;
+        persisted.ExecSubStatus = ExecutionStatusCatalog.SubPartiallyExecuted;
+        persisted.CollectedAmount = 1000m;
+        persisted.CollectedCurrency = "ليرة سورية";
+        persisted.ForcedExecutionDate = "1/1/2024";
+        _db.Documents.Update(persisted);
+        await _db.SaveChangesAsync();
+
+        Assert.True(await _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ReferredToStart,
+            ReferredToStartFields(), "lawyer1"));
+
+        var loaded = await _db.Documents.SingleAsync(d => d.Id == source.Id);
+        Assert.Equal(ExecutionStatusCatalog.ReferredToStart, loaded.ExecStatus);
+        Assert.Equal(ExecutionStatusCatalog.SubPartiallyExecuted, loaded.ExecSubStatus);
+        Assert.Equal(1000m, loaded.CollectedAmount);
+        Assert.Equal("1/1/2024", loaded.ForcedExecutionDate);
+        Assert.Equal(new DateTime(2026, 5, 1), loaded.NoFundsDemandDate);
+    }
+
+    [Fact]
+    public async Task UpdateStatus_ReferredToStart_FromFullyForcible_Throws()
+    {
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        var created = await _service.GetAsync(doc.Id);
+        await _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ExecutedForcibly,
+            new Dictionary<string, string?>
+            {
+                ["execSubStatus"] = ExecutionStatusCatalog.SubFullyExecuted,
+                ["collectedAmount"] = "1000",
+                ["soldAssetIds"] = created!.Assets[0].Id.ToString(),
+                ["forcedExecutionDate"] = "1/1/2024",
+            }, "lawyer1");
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1"));
+        Assert.Equal("الإحالة إلى البداية من «منفذ جبريا» متاحة فقط للملف المنفذ جزئيًا", ex.Message);
+    }
+
+    [Fact]
+    public async Task UpdateStatus_ReferredToStart_MissingRequiredFields_Throws()
+    {
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+
+        var exNumber = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
+                new Dictionary<string, string?> { ["noFundsDemandDate"] = "1/5/2026" }, "lawyer1"));
+        Assert.Contains("رقم كتاب المطالعة بعدم وجود أموال للتنفيذ عليها", exNumber.Message);
+
+        var exDate = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
+                new Dictionary<string, string?> { ["noFundsDemandNumber"] = "55" }, "lawyer1"));
+        Assert.Contains("تاريخ كتاب المطالعة بعدم وجود أموال للتنفيذ عليها", exDate.Message);
+    }
+
+    [Fact]
+    public async Task UpdateStatus_ReferredToStart_InvalidDate_Throws()
+    {
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
+                new Dictionary<string, string?>
+                {
+                    ["noFundsDemandNumber"] = "55",
+                    ["noFundsDemandDate"] = "not-a-date",
+                }, "lawyer1"));
+        Assert.Contains("تاريخ كتاب المطالعة بعدم وجود أموال للتنفيذ عليها غير صالح", ex.Message);
+    }
+
+    [Fact]
+    public async Task UpdateStatus_ReferredToStart_FromDraft_Throws()
+    {
+        var req = Sample();
+        req.FileNumber = "";
+        req.FileYear = "";
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1"));
+    }
+
+    [Fact]
+    public async Task UpdateStatus_ReferredToStart_FromStruckOff_Throws()
+    {
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        await _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.StateStruckOff,
+            new Dictionary<string, string?> { ["struckOffDate"] = "1/2/2024" }, "lawyer1");
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1"));
+    }
+
+    [Fact]
+    public async Task UpdateStatus_ReferredToStart_RecordsOccurrenceWithDetails()
+    {
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+
+        Assert.True(await _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
+            ReferredToStartFields(), "lawyer1"));
+
+        var occ = await _db.DocumentOccurrences.SingleAsync(o => o.DocumentId == doc.Id);
+        Assert.Equal(OccurrenceTypeCatalog.ReferredToStart, occ.OccurrenceType);
+        Assert.Null(occ.FileNumber);
+        Assert.Null(occ.FileType);
+        Assert.Null(occ.Year);
+        Assert.Contains("noFundsDemandNumber", occ.Details);
+        Assert.Contains("55", occ.Details);
+        Assert.Contains("noFundsDemandDate", occ.Details);
+        Assert.Contains("2026-05-01", occ.Details);
+        Assert.Contains("startReferralNumber", occ.Details);
+        Assert.Contains("startReferralDate", occ.Details);
+        Assert.Contains("2026-05-02", occ.Details);
+        Assert.Contains("status", _audit.Actions);
+    }
+
+    // ── الإحالة إلى البداية: مسار العودة (نقطة return-referred-to-start) ────────────────
+
+    [Fact]
+    public async Task ReturnFromReferredToStart_FromCirculatingSourceReturnsToCirculating()
+    {
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        await _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+
+        Assert.True(await _service.ReturnFromReferredToStartAsync(doc.Id, new ReturnReferredToStartRequest(), "lawyer1"));
+
+        var loaded = await _db.Documents.SingleAsync(d => d.Id == doc.Id);
+        Assert.Equal(ExecutionStatusCatalog.None, loaded.ExecStatus);
+        Assert.Null(loaded.ExecSubStatus);
+        Assert.Null(loaded.NoFundsDemandNumber);
+        Assert.Null(loaded.NoFundsDemandDate);
+        Assert.Null(loaded.StartReferralNumber);
+        Assert.Null(loaded.StartReferralDate);
+
+        var occ = await _db.DocumentOccurrences.SingleAsync(o => o.DocumentId == doc.Id && o.OccurrenceType == OccurrenceTypeCatalog.Revert);
+        var details = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(occ.Details!)!;
+        Assert.Contains("أعيد السير به بعد موافاتنا بأموال للتنفيذ عليها", details["revertNarration"]);
+        Assert.False(details.ContainsKey("renewalFileNumber"));
+        Assert.Contains("status", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task ReturnFromReferredToStart_FromPartialSourceRestoresForceFamily()
+    {
+        var source = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        var persisted = await _db.Documents.SingleAsync(d => d.Id == source.Id);
+        persisted.ExecStatus = ExecutionStatusCatalog.ExecutedForcibly;
+        persisted.ExecSubStatus = ExecutionStatusCatalog.SubPartiallyExecuted;
+        persisted.CollectedAmount = 1000m;
+        persisted.CollectedCurrency = "ليرة سورية";
+        persisted.SoldAssetIds = null;
+        _db.Documents.Update(persisted);
+        await _db.SaveChangesAsync();
+        await _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+
+        Assert.True(await _service.ReturnFromReferredToStartAsync(source.Id, new ReturnReferredToStartRequest(), "lawyer1"));
+
+        var loaded = await _db.Documents.SingleAsync(d => d.Id == source.Id);
+        Assert.Equal(ExecutionStatusCatalog.ExecutedForcibly, loaded.ExecStatus);
+        Assert.Equal(ExecutionStatusCatalog.SubPartiallyExecuted, loaded.ExecSubStatus);
+        Assert.Equal(1000m, loaded.CollectedAmount);
+        Assert.Null(loaded.NoFundsDemandNumber);
+        Assert.Null(loaded.StartReferralDate);
+
+        var occ = await _db.DocumentOccurrences.SingleAsync(o => o.DocumentId == source.Id && o.OccurrenceType == OccurrenceTypeCatalog.Revert);
+        var details = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(occ.Details!)!;
+        Assert.Contains("وعاد منفذًا جزئيًا", details["revertNarration"]);
+    }
+
+    [Fact]
+    public async Task ReturnFromReferredToStart_WithRenewal_RecordsBaseNumberAndTwoOccurrences()
+    {
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        await _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+
+        Assert.True(await _service.ReturnFromReferredToStartAsync(doc.Id, new ReturnReferredToStartRequest
+        {
+            RenewalFileNumber = "999",
+            RenewalYear = 2026,
+            RenewalFileType = "س",
+            RenewalDate = "1/1/2026",
+        }, "lawyer1"));
+
+        var loaded = await _db.Documents.SingleAsync(d => d.Id == doc.Id);
+        Assert.Equal(ExecutionStatusCatalog.None, loaded.ExecStatus);
+        Assert.Equal("999", loaded.RenewalFileNumber);
+        Assert.Equal("س", loaded.RenewalFileType);
+        Assert.Equal(new DateTime(2026, 1, 1), loaded.RenewalDate);
+
+        var baseNumber = await _db.BaseNumbers.SingleAsync(b => b.DocumentId == doc.Id);
+        Assert.Equal(2026, baseNumber.Year);
+        Assert.Equal("999", baseNumber.BaseNumber);
+
+        Assert.Contains(await _db.DocumentOccurrences.Where(o => o.DocumentId == doc.Id).Select(o => o.OccurrenceType).ToListAsync(),
+            t => t == OccurrenceTypeCatalog.Revert);
+        Assert.Contains(await _db.DocumentOccurrences.Where(o => o.DocumentId == doc.Id).Select(o => o.OccurrenceType).ToListAsync(),
+            t => t == OccurrenceTypeCatalog.Renewal);
+
+        var revert = await _db.DocumentOccurrences.SingleAsync(o => o.DocumentId == doc.Id && o.OccurrenceType == OccurrenceTypeCatalog.Revert);
+        var details = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(revert.Details!)!;
+        Assert.Contains("وجدد الملف برقم 999", details["revertNarration"]);
+        Assert.True(details.ContainsKey("renewalFileNumber"));
+        Assert.True(details.ContainsKey("renewalYear"));
+    }
+
+    [Fact]
+    public async Task ReturnFromReferredToStart_InvalidRenewalYear_Throws()
+    {
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        await _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.ReturnFromReferredToStartAsync(doc.Id, new ReturnReferredToStartRequest
+            {
+                RenewalFileNumber = "999",
+                RenewalYear = 1800,
+            }, "lawyer1"));
+        Assert.Contains("سنة الإعادة غير صالحة", ex.Message);
+    }
+
+    [Fact]
+    public async Task ReturnFromReferredToStart_StruckOffDate_AppliedOnCirculatingResultOnly()
+    {
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        await _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+
+        Assert.True(await _service.ReturnFromReferredToStartAsync(doc.Id, new ReturnReferredToStartRequest
+        {
+            StruckOffDate = "5/5/2026",
+        }, "lawyer1"));
+
+        var loaded = await _db.Documents.SingleAsync(d => d.Id == doc.Id);
+        Assert.Equal(new DateTime(2026, 5, 5), loaded.StruckOffDate);
+    }
+
+    [Fact]
+    public async Task ReturnFromReferredToStart_StruckOffDate_IgnoredOnPartialResult()
+    {
+        var source = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        var persisted = await _db.Documents.SingleAsync(d => d.Id == source.Id);
+        persisted.ExecStatus = ExecutionStatusCatalog.ExecutedForcibly;
+        persisted.ExecSubStatus = ExecutionStatusCatalog.SubPartiallyExecuted;
+        _db.Documents.Update(persisted);
+        await _db.SaveChangesAsync();
+        await _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
+
+        Assert.True(await _service.ReturnFromReferredToStartAsync(source.Id, new ReturnReferredToStartRequest
+        {
+            StruckOffDate = "5/5/2026",
+        }, "lawyer1"));
+
+        var loaded = await _db.Documents.SingleAsync(d => d.Id == source.Id);
+        Assert.Equal(ExecutionStatusCatalog.ExecutedForcibly, loaded.ExecStatus);
+        Assert.Null(loaded.StruckOffDate);
+    }
+
+    [Fact]
+    public async Task ReturnFromReferredToStart_FromNonReferredState_Throws()
+    {
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.ReturnFromReferredToStartAsync(doc.Id, new ReturnReferredToStartRequest(), "lawyer1"));
+        Assert.Contains("لا يمكن العودة إلى السير بالملف من الحالة الحالية", ex.Message);
     }
 
     [Fact]
@@ -4579,6 +4932,14 @@ public class ConsiderDelegationExecutedTests : IDisposable
         ["sayerRegDate"] = "3/6/2026",
     };
 
+    private static Dictionary<string, string?> ReferredToStartFields() => new()
+    {
+        ["noFundsDemandNumber"] = "55",
+        ["noFundsDemandDate"] = "1/5/2026",
+        ["startReferralNumber"] = "66",
+        ["startReferralDate"] = "2/5/2026",
+    };
+
     [Fact]
     public async Task UpdateStatus_ToDeferred_InheritsDeferredToPendingTargets()
     {
@@ -4884,6 +5245,77 @@ public class ConsiderDelegationExecutedTests : IDisposable
 
         var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == source.Id);
         Assert.Equal(ExecutionStatusCatalog.StateStruckOff, loaded.ExecStatus);
+    }
+
+    // ── الإحالة إلى البداية (قرار 9): لا إحالة لملف عليه إنابة سارية ──────────────────────
+
+    [Fact]
+    public async Task UpdateStatus_ToReferredToStart_PendingHeadDelegation_Rejected()
+    {
+        var source = await CreateSourceAsync();
+        _db.DocumentDelegations.Add(new DocumentDelegation
+        {
+            SourceDocumentId = source.Id,
+            CreatedById = 1,
+            DelegatedCourt = "دائرة تنفيذ حلب",
+            Status = DelegationStatusCatalog.PendingHead,
+        });
+        await _db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ReferredToStart,
+                ReferredToStartFields(), "lawyer1"));
+        Assert.Equal("لا يجوز إحالة ملف فيه إنابة سارية إلى البداية", ex.Message);
+    }
+
+    [Fact]
+    public async Task UpdateStatus_ToReferredToStart_RegisteredDelegation_Rejected()
+    {
+        var source = await CreateSourceAsync();
+        var target = await AddDelegatedTargetForAsync(source.Id);
+        Assert.NotNull(target);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ReferredToStart,
+                ReferredToStartFields(), "lawyer1"));
+        Assert.Equal("لا يجوز إحالة ملف فيه إنابة سارية إلى البداية", ex.Message);
+    }
+
+    [Fact]
+    public async Task UpdateStatus_ToReferredToStart_OnDelegatedFile_Throws()
+    {
+        var source = await CreateSourceAsync();
+        var target = await AddDelegatedTargetForAsync(source.Id);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateStatusAsync(target.Id, ExecutionStatusCatalog.ReferredToStart,
+                ReferredToStartFields(), "lawyer1"));
+        Assert.Contains("حالة الملف المناب تلحق حالة الملف المنيب", ex.Message);
+    }
+
+    [Fact]
+    public async Task ReturnFromReferredToStart_OnDelegatedFile_Throws()
+    {
+        var source = await CreateSourceAsync();
+        var target = await AddDelegatedTargetForAsync(source.Id);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.ReturnFromReferredToStartAsync(target.Id, new ReturnReferredToStartRequest(), "lawyer1"));
+        Assert.Contains("حالة الملف المناب تلحق حالة الملف المنيب", ex.Message);
+    }
+
+    [Fact]
+    public async Task UpdateStatus_ToReferredToStart_OnlyExecutedDelegations_Allowed()
+    {
+        // إنابة مُتممة (كبيعٍ أدى لجزئيا) ليست سارية — لا تمنع الإحالة حتى من جزئيا.
+        var source = await SourceInPartialForciblyAsync();
+        await AddExecutedDelegationAsync(source.Id);
+
+        Assert.True(await _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ReferredToStart,
+            ReferredToStartFields(), "lawyer1"));
+
+        var loaded = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == source.Id);
+        Assert.Equal(ExecutionStatusCatalog.ReferredToStart, loaded.ExecStatus);
     }
 
     // ── ب3: حارس فك شطب المناب (E2) — فك الشطب يعيد للدائرة المنيبة ──────────────────────

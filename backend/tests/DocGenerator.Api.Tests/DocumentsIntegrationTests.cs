@@ -358,6 +358,105 @@ public class DocumentsIntegrationTests
     }
 
     [Fact]
+    public async Task ReturnReferredToStart_FromCirculatingAdmission_ReturnsToCirculating()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.WithToken(token);
+        var id = await CreateCirculatingDocumentAsync(token);
+
+        var referred = await client.PostAsJsonAsync($"/api/documents/{id}/status",
+            new { status = "محال الى البداية", fields = new { noFundsDemandNumber = "5", noFundsDemandDate = "1/1/2024", startReferralNumber = "6", startReferralDate = "2/1/2024" } });
+        Assert.Equal(HttpStatusCode.OK, referred.StatusCode);
+
+        var returned = await client.PostAsJsonAsync($"/api/documents/{id}/return-referred-to-start", new { });
+        Assert.Equal(HttpStatusCode.OK, returned.StatusCode);
+
+        using var doc = await (await client.GetAsync($"/api/documents/{id}")).Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.Equal(string.Empty, doc!.RootElement.GetProperty("execStatus").GetString());
+        Assert.True(doc.RootElement.GetProperty("execSubStatus").ValueKind == JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task ReturnReferredToStart_FromPartialAdmission_RestoresForceFamily()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.WithToken(token);
+        var id = await CreateCirculatingDocumentAsync(token);
+        var estateId = await FirstEstateIdAsync(token, id);
+
+        var partial = await client.PostAsJsonAsync($"/api/documents/{id}/status",
+            new { status = "منفذ جبريا", fields = new { execSubStatus = "منفذ جزئيا", collectedAmount = "750", soldAssetIds = estateId.ToString(), forcedExecutionDate = "1/2/2024" } });
+        Assert.Equal(HttpStatusCode.OK, partial.StatusCode);
+
+        var referred = await client.PostAsJsonAsync($"/api/documents/{id}/status",
+            new { status = "محال الى البداية", fields = new { noFundsDemandNumber = "5", noFundsDemandDate = "1/1/2024", startReferralNumber = "6", startReferralDate = "2/1/2024" } });
+        Assert.Equal(HttpStatusCode.OK, referred.StatusCode);
+
+        var returned = await client.PostAsJsonAsync($"/api/documents/{id}/return-referred-to-start", new { });
+        Assert.Equal(HttpStatusCode.OK, returned.StatusCode);
+
+        using var doc = await (await client.GetAsync($"/api/documents/{id}")).Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.Equal("منفذ جبريا", doc!.RootElement.GetProperty("execStatus").GetString());
+        Assert.Equal("منفذ جزئيا", doc.RootElement.GetProperty("execSubStatus").GetString());
+        Assert.Equal(750m, doc.RootElement.GetProperty("collectedAmount").GetDecimal());
+    }
+
+    [Fact]
+    public async Task ReturnReferredToStart_BindsFlatRenewalBody_WithRenewalAndStruckOffDate()
+    {
+        // يختبر عقد الربط عبر «السلك» تحديدًا: هذه النقطة تقبض جسمًا سطحيًا
+        // (ReturnReferredToStartRequest : RenewalRequest) لا ملفوفًا بـ { fields } —
+        // أي تغليف خاطئ يُسقِط التجديد وتاريخ الشطب صامتًا (خلل العقد الوصلي الذي
+        // كان بين الواجهة والخلفية). سنة الإعادة رقمية لأن System.Text.Json الصارم
+        // لا يحوّل نصًا إلى int؟.
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.WithToken(token);
+        var id = await CreateCirculatingDocumentAsync(token);
+
+        var referred = await client.PostAsJsonAsync($"/api/documents/{id}/status",
+            new { status = "محال الى البداية", fields = new { noFundsDemandNumber = "5", noFundsDemandDate = "1/1/2024", startReferralNumber = "6", startReferralDate = "2/1/2024" } });
+        Assert.Equal(HttpStatusCode.OK, referred.StatusCode);
+
+        var returned = await client.PostAsJsonAsync($"/api/documents/{id}/return-referred-to-start",
+            new { renewalFileNumber = "777", renewalFileType = "تجديد", renewalDate = "3/3/2026", renewalYear = 2026, struckOffDate = "5/1/2024" });
+        Assert.Equal(HttpStatusCode.OK, returned.StatusCode);
+
+        using var doc = await (await client.GetAsync($"/api/documents/{id}")).Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.Equal(string.Empty, doc!.RootElement.GetProperty("execStatus").GetString());
+        Assert.Equal("777", doc.RootElement.GetProperty("renewalFileNumber").GetString());
+        Assert.Equal("تجديد", doc.RootElement.GetProperty("renewalFileType").GetString());
+        Assert.StartsWith("2026-03-03", doc.RootElement.GetProperty("renewalDate").GetString());
+        Assert.StartsWith("2024-01-05", doc.RootElement.GetProperty("struckOffDate").GetString());
+    }
+
+    [Fact]
+    public async Task Search_ReferredToStartFilter_IsIndependent()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.WithToken(token);
+        var id = await CreateCirculatingDocumentAsync(token);
+
+        var referred = await client.PostAsJsonAsync($"/api/documents/{id}/status",
+            new { status = "محال الى البداية", fields = new { noFundsDemandNumber = "5", noFundsDemandDate = "1/1/2024", startReferralNumber = "6", startReferralDate = "2/1/2024" } });
+        Assert.Equal(HttpStatusCode.OK, referred.StatusCode);
+
+        var referredList = await client.GetAsync("/api/documents?status=محال الى البداية&perPage=50");
+        using var referredBody = await referredList.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.Contains(id, referredBody!.RootElement.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("id").GetInt32()));
+        // فلتر «متداول» (ExecStatus فارغ) لا يشمل الملف المحال.
+        var circulatingList = await client.GetAsync("/api/documents?status=متداول&perPage=50");
+        using var circulatingBody = await circulatingList.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.DoesNotContain(id, circulatingBody!.RootElement.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("id").GetInt32()));
+        // فلتر «منفذ» لا يبتلع المحال حتى لو حمل جزئيته السابقة.
+        var executedList = await client.GetAsync("/api/documents?status=منفذ&perPage=50");
+        using var executedBody = await executedList.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.DoesNotContain(id, executedBody!.RootElement.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("id").GetInt32()));
+    }
+
+    [Fact]
     public async Task SetStatus_ToStruckOff_ThenRestore_ApplicantSide()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;

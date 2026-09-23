@@ -248,4 +248,8 @@ npm test
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260920121618_AddDelegationAssetReservations.cs` — ينشئ جدول `DelegationAssetReservations` (`Id` + `DelegationId` بFK تتالٍ إلى `DocumentDelegations` + `SourceDocumentId` + `AssetId`) مع قيد فريد `IX_DelegationAssetReservations_SourceDocumentId_AssetId` وفهرس `IX_DelegationAssetReservations_DelegationId`.
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260920121644_AddDelegationAssetReservations.cs` — نفسه (`integer` + `IdentityByDefaultColumn`).
   - بدون التطبيق يفشل أي تسطير/تعديل إنابة فعليًا برسالة `no such table: DelegationAssetReservations` رغم نجاح الاختبارات محليًا.
+- [ ] **2026-09-22 — `AddReferredToStartStatus` (SQLite + Postgres)** (الحالة «محال الى البداية» — كتب المطالعة بعدم وجود الأموال والإحالة إلى قسم البداية):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260922184415_AddReferredToStartStatus.cs` — يضيف `NoFundsDemandNumber` (`TEXT` ≤100) و`NoFundsDemandDate` (`DateTime?`) و`StartReferralNumber` (`TEXT` ≤100) و`StartReferralDate` (`DateTime?`) إلى `Documents`. **مُطبَّق محليًا على `docgen.db` (MigrateAsync عند الإقلاع).**
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260922184420_AddReferredToStartStatus.cs` — نفسه (`character varying(100)` + `timestamp with time zone` nullable).
+  - بدون التطبيق يفشل الدخول/العودة إلى «محال الى البداية» فعليًا برسالة `no such column: NoFundsDemandNumber` رغم نجاح الاختبارات محليًا.
 

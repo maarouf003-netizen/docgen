@@ -15,6 +15,7 @@ function currentStateOf(doc: DocumentResponse): string {
   if (doc.execStatus === 'مشطوب' || doc.executedStatus === 'مشطوب') return 'مشطوب';
   if (doc.execStatus === 'تريث') return 'تريث';
   if (doc.execStatus === 'مسترد') return 'مسترد';
+  if (doc.execStatus === 'محال الى البداية') return 'محال الى البداية';
   if (doc.execStatus === 'منفذ بالتسوية') return 'منفذ بالتسوية';
   if (doc.execStatus === 'منفذ جبريا') return 'منفذ جبريا';
   return doc.isDraft ? 'تحت رفع' : 'متداول';
@@ -23,21 +24,27 @@ function currentStateOf(doc: DocumentResponse): string {
 /** الانتقالات المسموحة عبر نافذة «تغيير الحالة» — للملف المنيب (والمتداول يُسجَّل من التعديل).
  * الملف المناب (و5/ب2) مختلف: مناب متداول لا يخرج إلا إلى «مشطوب» (C1)، ومناب موروث-تريث
  * أو «مسترد» بلا حالات إطلاقًا (تلحق حالة المنيب اعتبارًا منفذًا أو تريثًا — رسالة L6)،
- * و«تراجع»/«منفذ كاملا بهذا البيع» محجوبان عنه نهائيًا (الخلفية تحمي أيضًا بب2/F6). */
-function allowedTargetsOf(state: string, isTarget: boolean): string[] {
+ * و«تراجع»/«منفذ كاملا بهذا البيع» محجوبان عنه نهائيًا (الخلفية تحمي أيضًا بب2/F6).
+ * «الإحالة إلى البداية» تدخل من متداول/تريث/منفذ-جبريا-جزئيا (فلتر الحمل الختامي بالأسفل)،
+ * والخروج من «محال الى البداية» عبر العودتين فقط (نقطة return-referred-to-start — الخلفية
+ * توجّه اللازمة: جزئيا ⇒ عودة منفذًا جزئيًا، وإلا عودة المتداول). */
+function allowedTargetsOf(state: string, isTarget: boolean, partial: boolean): string[] {
   if (isTarget && state === 'متداول') return ['مشطوب'];
   if (isTarget) return [];
   switch (state) {
     case 'تحت رفع':
       return ['تريث', 'منفذ بالتسوية'];
     case 'متداول':
-      return ['تريث', 'منفذ بالتسوية', 'منفذ جبريا', 'مشطوب'];
+      return ['تريث', 'منفذ بالتسوية', 'منفذ جبريا', 'مشطوب', 'محال الى البداية'];
     case 'تريث':
-      return ['منفذ بالتسوية', 'تراجع'];
+      return ['منفذ بالتسوية', 'تراجع', 'محال الى البداية'];
     case 'منفذ بالتسوية':
       return ['تراجع'];
     case 'منفذ جبريا':
-      return ['تراجع', 'منفذ كاملا بهذا البيع'];
+      return ['تراجع', 'محال الى البداية', 'منفذ كاملا بهذا البيع'];
+    case 'محال الى البداية':
+      // اللازمة (§2-10): من دخل من «منفذ جبريا — منفذ جزئيا» يعود منفذًا جزئيًا، وإلا يعود للمتداول.
+      return partial ? ['العودة إلى منفذ جزئيا'] : ['العودة إلى المتداول'];
     default:
       return [];
   }
@@ -71,6 +78,14 @@ type StatusFields = {
   collectedCurrency3: string;
   struckOffDate: string;
   soldAssetIds: number[];
+  noFundsDemandNumber: string;
+  noFundsDemandDate: string;
+  startReferralNumber: string;
+  startReferralDate: string;
+  renewalFileNumber: string;
+  renewalFileType: string;
+  renewalDate: string;
+  renewalYear: string;
 };
 
 function emptyFields(): StatusFields {
@@ -96,6 +111,14 @@ function emptyFields(): StatusFields {
     collectedCurrency3: 'يورو',
     struckOffDate: '',
     soldAssetIds: [],
+    noFundsDemandNumber: '',
+    noFundsDemandDate: '',
+    startReferralNumber: '',
+    startReferralDate: '',
+    renewalFileNumber: '',
+    renewalFileType: '',
+    renewalDate: '',
+    renewalYear: '',
   };
 }
 
@@ -112,11 +135,16 @@ export default function StatusChangeModal({
   // «الملف المناب» (حالة الإنابة): لا يغيّر حالته بنفسه — مناب متداول يُشطب فحسب (C1)،
   // والموروث-تريث والمسترد بلا خيارات ورسالة L6 المفصلة، والحالة النهائية بلا مخرج.
   const isTarget = Boolean(doc.sourceDelegationId);
-  // «اعتبار الملف منفذًا كاملًا بهذا البيع» يخص فقط «منفذ جبريا — منفذ جزئيا» (المنيِّب
-  // الذي فُعّل تلقائيًا بإتمام إنابته)؛ أما «منفذ كاملا» فلا يُعرض له هذا الإجراء.
-  const targets = allowedTargetsOf(state, isTarget).filter(
-    (t) => t !== 'منفذ كاملا بهذا البيع' || doc.execSubStatus === 'منفذ جزئيا',
-  );
+  // اللازمة (§2-10): «المنفذ جزئيا» على «محال» يحدد وجهة العودة (منفذ جزئيا)؛ والإحالة إلى
+  // البداية من «منفذ جبريا» تخص الجزئي فحسب، أما من متداول/تريث فهي مفتوحة لهما دائمًا.
+  const partial = doc.execSubStatus === 'منفذ جزئيا';
+  const targets = allowedTargetsOf(state, isTarget, partial).filter((t) => {
+    const partialOnly =
+      t === 'منفذ كاملا بهذا البيع' ||
+      (t === 'محال الى البداية' && state === 'منفذ جبريا') ||
+      t === 'العودة إلى منفذ جزئيا';
+    return !partialOnly || partial;
+  });
   const [target, setTarget] = useState<string>(targets[0] ?? '');
   const [fields, setFields] = useState<StatusFields>(emptyFields());
   const [collectedSlots, setCollectedSlots] = useState(1);
@@ -204,6 +232,32 @@ export default function StatusChangeModal({
       payload.sayerDate = normalize(fields.sayerDate);
       payload.sayerRegNumber = normalize(fields.sayerRegNumber);
       payload.sayerRegDate = normalize(fields.sayerRegDate);
+    } else if (target === 'محال الى البداية') {
+      // إلزاميّا الدخول: كتاب المطالعة بعدم وجود أموال (رقم + تاريخ)؛ كتاب الإحالة اختياري.
+      if (!fields.noFundsDemandNumber.trim() || !fields.noFundsDemandDate.trim()) {
+        throw new Error('يجب إدخال رقم وتاريخ كتاب المطالعة بعدم وجود أموال للتنفيذ عليها');
+      }
+      payload.noFundsDemandNumber = normalize(fields.noFundsDemandNumber);
+      payload.noFundsDemandDate = normalize(fields.noFundsDemandDate);
+      if (fields.startReferralNumber.trim()) payload.startReferralNumber = normalize(fields.startReferralNumber);
+      if (fields.startReferralDate.trim()) payload.startReferralDate = normalize(fields.startReferralDate);
+    } else if (target === 'العودة إلى المتداول' || target === 'العودة إلى منفذ جزئيا') {
+      // العودتان بنفس نقطة return-referred-to-start — التجديد موحّد (قرار 12): إن أُدخل
+      // رقم جديد وجب معه تاريخ التجديد وسنة الإعادة، ولو تُرك فارغًا لم يكن هناك تجديد.
+      const renewalNumber = fields.renewalFileNumber.trim();
+      if (renewalNumber) {
+        if (!fields.renewalDate.trim() || !fields.renewalYear.trim()) {
+          throw new Error('عند إدخال رقم ملف جديد يجب إدخال تاريخ التجديد وسنة الإعادة معًا');
+        }
+        payload.renewalFileNumber = normalize(renewalNumber);
+        payload.renewalDate = normalize(fields.renewalDate);
+        payload.renewalYear = normalize(fields.renewalYear);
+        if (fields.renewalFileType.trim()) payload.renewalFileType = normalize(fields.renewalFileType);
+      }
+      // شطب الملف السابق (اختياري) — لعودة-المتداول فقط (الخادم يتجاهله في عودة-جزئيا).
+      if (target === 'العودة إلى المتداول' && fields.struckOffDate.trim()) {
+        payload.struckOffDate = normalize(fields.struckOffDate);
+      }
     }
     return payload;
   };
@@ -225,6 +279,16 @@ export default function StatusChangeModal({
         await api.post(`/documents/${doc.id}/consider-executed-by-delegation`, {
           fields: payload,
         });
+      } else if (target === 'العودة إلى المتداول' || target === 'العودة إلى منفذ جزئيا') {
+        // العودتان من «محال الى البداية» تحملان نفس النقطة — الخادم يوجّه اللازمة بنفسه.
+        // تقبض النقطة جسمًا سطحيًا (ReturnReferredToStartRequest: RenewalRequest) لا
+        // { fields }، فعلى الحقول أن تأتي جذرية، وسنة الإعادة رقمًا (System.Text.Json
+        // الصارم لا يحوّل نصًا إلى int؟).
+        const returnBody =
+          payload.renewalYear !== undefined
+            ? { ...payload, renewalYear: Number(payload.renewalYear) }
+            : payload;
+        await api.post(`/documents/${doc.id}/return-referred-to-start`, returnBody);
       } else {
         await api.post(`/documents/${doc.id}/status`, { status: target, fields: payload });
       }
@@ -260,7 +324,10 @@ export default function StatusChangeModal({
         <div className="px-5 py-4">
           <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 mb-4">
             <p className="text-xs text-gray-500 mb-1">الحالة الحالية</p>
-            <p className="font-medium text-gray-800">{state}</p>
+            <p className="font-medium text-gray-800">
+              {state}
+              {state === 'محال الى البداية' && doc.execSubStatus === 'منفذ جزئيا' ? ' (منفذ جزئيا)' : ''}
+            </p>
           </div>
 
           {targets.length === 0 ? (
@@ -402,6 +469,103 @@ export default function StatusChangeModal({
                   <FieldInput id="sayerDate" label="تاريخ كتاب الجهة العامة بالسير بالملف" value={fields.sayerDate} onChange={(v) => set('sayerDate', v)} placeholder={DATE_PLACEHOLDER} />
                   <FieldInput id="sayerRegNumber" label="رقم ورود كتاب بالسير بالملف" value={fields.sayerRegNumber} onChange={(v) => set('sayerRegNumber', v)} />
                   <FieldInput id="sayerRegDate" label="تاريخ ورود كتاب بالسير بالملف" value={fields.sayerRegDate} onChange={(v) => set('sayerRegDate', v)} placeholder={DATE_PLACEHOLDER} />
+                </div>
+              )}
+
+              {target === 'محال الى البداية' && (
+                <div className="grid gap-4">
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <FieldInput
+                      id="noFundsDemandNumber"
+                      label="رقم كتاب المطالعة بعدم وجود أموال للتنفيذ عليها"
+                      value={fields.noFundsDemandNumber}
+                      onChange={(v) => set('noFundsDemandNumber', v)}
+                    />
+                    <FieldInput
+                      id="noFundsDemandDate"
+                      label="تاريخ كتاب المطالعة بعدم وجود أموال للتنفيذ عليها"
+                      value={fields.noFundsDemandDate}
+                      onChange={(v) => set('noFundsDemandDate', v)}
+                      placeholder={DATE_PLACEHOLDER}
+                    />
+                    <FieldInput
+                      id="startReferralNumber"
+                      label="رقم كتاب الإحالة (اختياري)"
+                      value={fields.startReferralNumber}
+                      onChange={(v) => set('startReferralNumber', v)}
+                    />
+                    <FieldInput
+                      id="startReferralDate"
+                      label="تاريخ كتاب الإحالة (اختياري)"
+                      value={fields.startReferralDate}
+                      onChange={(v) => set('startReferralDate', v)}
+                      placeholder={DATE_PLACEHOLDER}
+                    />
+                  </div>
+                  {(() => {
+                    const auctionable = (doc.assets ?? []).filter(
+                      (r): r is AssetDto & { id: number } => r.id != null && isAuctionableKind(r.assetKind),
+                    );
+                    return auctionable.length === 0 ? null : (
+                      <div
+                        role="note"
+                        className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800"
+                      >
+                        وجد في الملف أموال قابلة للبيع بالمزاد العلني — تأكد من عدم وجود أموال
+                        للتنفيذ عليها قبل الإحالة إلى البداية.
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {(target === 'العودة إلى المتداول' || target === 'العودة إلى منفذ جزئيا') && (
+                <div className="grid gap-4">
+                  <div
+                    role="note"
+                    className="rounded-lg bg-purple-50 border border-purple-200 px-3 py-2 text-sm text-purple-800"
+                  >
+                    {target === 'العودة إلى المتداول'
+                      ? 'أعيد السير بالملف إلى المتداول بعد موافاة قسم التنفيذ بأموال للتنفيذ عليها.'
+                      : 'يعود الملف إلى «منفذ جبريا» محافظًا على المبلغ المحصل العائد — أكمل بيانات التنفيذ الجبري عند الحاجة.'}
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <FieldInput
+                      id="renewalFileNumber"
+                      label="رقم الملف الجديد (اختياري)"
+                      value={fields.renewalFileNumber}
+                      onChange={(v) => set('renewalFileNumber', v)}
+                    />
+                    <FieldInput
+                      id="renewalYear"
+                      label="سنة الإعادة (اختياري)"
+                      value={fields.renewalYear}
+                      onChange={(v) => set('renewalYear', v)}
+                      placeholder="مثال: 2026"
+                    />
+                    <FieldInput
+                      id="renewalDate"
+                      label="تاريخ التجديد (اختياري)"
+                      value={fields.renewalDate}
+                      onChange={(v) => set('renewalDate', v)}
+                      placeholder={DATE_PLACEHOLDER}
+                    />
+                    <FieldInput
+                      id="renewalFileType"
+                      label="نوع الملف الجديد (اختياري)"
+                      value={fields.renewalFileType}
+                      onChange={(v) => set('renewalFileType', v)}
+                    />
+                    {target === 'العودة إلى المتداول' && (
+                      <FieldInput
+                        id="struckOffDate"
+                        label="تاريخ شطب الملف السابق (اختياري)"
+                        value={fields.struckOffDate}
+                        onChange={(v) => set('struckOffDate', v)}
+                        placeholder={DATE_PLACEHOLDER}
+                      />
+                    )}
+                  </div>
                 </div>
               )}
 

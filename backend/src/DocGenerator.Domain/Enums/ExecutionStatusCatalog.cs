@@ -22,6 +22,14 @@ public static class ExecutionStatusCatalog
     public const string SubPartiallyExecuted = "منفذ جزئيا";
     public const string SubFullyExecuted = "منفذ كاملا";
 
+    /// <summary>
+    /// حالة «محال الى البداية» في نظام «طالبة تنفيذ»: أُحيل الملف إلى قسم البداية لعدم وجود
+    /// أموال للتنفيذ عليها، بكتابَي المطالعة والإحالة، ويبقى ظاهرًا في القوائم والإحصاءات
+    /// وعدّاده مستقل، ولا يدخل بما يُسجّل عليه إنابة سارية، ويخرج عبر نقطة العودة المخصصة
+    /// (إلى متداول أو منفذ جزئيًا حسب مصدر دخوله).
+    /// </summary>
+    public const string ReferredToStart = "محال الى البداية";
+
     /// <summary>حالة «مشطوب» في نظام «طالبة تنفيذ» (موحّدة مع صفحة «الملفات المشطوبة»).</summary>
     public const string StateStruckOff = "مشطوب";
 
@@ -46,6 +54,7 @@ public static class ExecutionStatusCatalog
     public static readonly IReadOnlySet<string> ValidStatuses = new HashSet<string>
     {
         None, ExecutedForcibly, ExecutedBySettlement, Deferred, DelegationExecuted, Recovered,
+        ReferredToStart,
     };
 
     public static readonly IReadOnlySet<string> ValidSubStatuses = new HashSet<string>
@@ -60,14 +69,17 @@ public static class ExecutionStatusCatalog
         Deferred => ExecutionStatus.Deferred,
         DelegationExecuted => ExecutionStatus.DelegationExecuted,
         Recovered => ExecutionStatus.Recovered,
+        ReferredToStart => ExecutionStatus.ReferredToStart,
         _ => ExecutionStatus.None,
     };
 
     /// <summary>
     /// هل الملف منفَّذ وانتهى (لا يدور بعده ولا يُدوَّر)؟ يشمل التسوية والتنفيذ الجبري
     /// الكامل، وحالة «منفذ إنابة» للملف المناب. أما «منفذ جبريا / منفذ جزئيا» فما زال
-    /// متداولًا ويخضع لمنطق المتداول. تُضاف حالة «مسترد» (المناب المسترد إلى دائرة المنيب)
-    /// إلى «منفذ» لكونها حالة نهائية لا تتأثر بمسارات النقل والمعالجات بل تظهر منفذةً.
+    /// متداولًا ويخضع لمنطق المتداول، و«محال الى البداية» حالة محايدة تعود إلى السير
+    /// بمجرد موافرة أموال، فهي غير منفذة في القوائم والإحصاءات والتدوير مهما حملّت
+    /// جزئيته. تُضاف حالة «مسترد» (المناب المسترد إلى دائرة المنيب) إلى «منفذ» لكونها
+    /// حالة نهائية لا تتأثر بمسارات النقل والمعالجات بل تظهر منفذةً.
     /// </summary>
     public static bool IsExecuted(string? status, string? subStatus) =>
         status == ExecutedBySettlement
@@ -82,6 +94,7 @@ public static class ExecutionStatusCatalog
         ExecutionStatus.Deferred => Deferred,
         ExecutionStatus.DelegationExecuted => DelegationExecuted,
         ExecutionStatus.Recovered => Recovered,
+        ExecutionStatus.ReferredToStart => ReferredToStart,
         _ => None,
     };
 
@@ -95,21 +108,26 @@ public static class ExecutionStatusCatalog
         if (status == Deferred) return Deferred;
         if (status == ExecutedBySettlement) return ExecutedBySettlement;
         if (status == ExecutedForcibly) return ExecutedForcibly;
+        if (status == ReferredToStart) return ReferredToStart;
         return isDraft ? DraftFilter : StateCirculating;
     }
 
     /// <summary>
-    /// الانتقالات المسموحة من الحالة الحالية عبر «تغيير الحالة» (تريث/منفذ بالتسوية/منفذ جبريا/مشطوب).
-    /// «تحت رفع → متداول» يتم بتسجيل رقم الملف في التعديل (المنطق القائم) وليس عبر تغيير الحالة،
-    /// و«التراجع إلى متداول» من تريث/المنفذين إجراء مستقل (Revert) بحقوله الخاصة.
+    /// الانتقالات المسموحة من الحالة الحالية عبر «تغيير الحالة» (تريث/منفذ بالتسوية/منفذ جبريا/
+    /// مشطوب). تُلحق «محال الى البداية» كهدف من متداول وتريث ومنفذ جبريا — ومن منفذ جبريا
+    /// يُشترط أن يكون منفذًا جزئيًا (القرار 1: دون «منفذ كاملا»). «تحت رفع → متداول» يتم
+    /// بتسجيل رقم الملف في التعديل (المنطق القائم) وليس عبر تغيير الحالة، و«التراجع إلى
+    /// متداول» من تريث/المنفذين إجراء مستقل (Revert) بحقوله الخاصة، و«محال الى البداية»
+    /// بلا مخارج عبر هذه الآلة (خروجه عبر نقطة العودة المخصصة).
     /// </summary>
     public static IReadOnlySet<string> AllowedStatusChanges(string currentState) => currentState switch
     {
         DraftFilter => new HashSet<string> { Deferred, ExecutedBySettlement },
-        StateCirculating => new HashSet<string> { Deferred, ExecutedBySettlement, ExecutedForcibly, StateStruckOff },
-        Deferred => new HashSet<string> { ExecutedBySettlement },
+        StateCirculating => new HashSet<string> { Deferred, ExecutedBySettlement, ExecutedForcibly, StateStruckOff, ReferredToStart },
+        Deferred => new HashSet<string> { ExecutedBySettlement, ReferredToStart },
         ExecutedBySettlement => new HashSet<string>(),
-        ExecutedForcibly => new HashSet<string>(),
+        ExecutedForcibly => new HashSet<string> { ReferredToStart },
+        ReferredToStart => new HashSet<string>(),
         StateStruckOff => new HashSet<string>(),
         Recovered => new HashSet<string>(),
         _ => new HashSet<string>(),
@@ -130,6 +148,7 @@ public static class ExecutionStatusCatalog
         Deferred => Deferred,
         ExecutedBySettlement => ExecutedBySettlement,
         ExecutedForcibly => ExecutedForcibly,
+        ReferredToStart => ReferredToStart,
         DelegationExecuted => DelegationExecuted,
         Recovered => Recovered,
         StateStruckOff => StateStruckOff,
@@ -142,6 +161,7 @@ public static class ExecutionStatusCatalog
         ExecutedForcibly => ExecutedForcibly,
         ExecutedBySettlement => ExecutedBySettlement,
         Deferred => Deferred,
+        ReferredToStart => ReferredToStart,
         DelegationExecuted => DelegationExecuted,
         Recovered => Recovered,
         StateStruckOff => StateStruckOff,

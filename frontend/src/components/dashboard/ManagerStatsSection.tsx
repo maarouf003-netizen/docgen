@@ -121,7 +121,7 @@ export function ManagerStatsSection({
         عرض الفترة: <span className="font-medium text-gray-800">{periodLabel(stats)}</span>
       </p>
 
-      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6 ${appealsStats ? 'xl:grid-cols-6' : 'xl:grid-cols-5'}`}>
+      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6 ${appealsStats ? 'xl:grid-cols-7' : 'xl:grid-cols-6'}`}>
         <StatCard label="إجمالي الملفات" value={stats.totalFiles} accent="#059669" icon={ICONS.documents}>
           <CurrencyAmountList amounts={stats.totalAmounts} />
         </StatCard>
@@ -153,6 +153,13 @@ export function ManagerStatsSection({
         </StatCard>
         <StatCard label="تريث" value={stats.deferred} accent="#dc2626" icon={ICONS.deferred}>
           <ContractSplit split={stats.deferredSplit} />
+        </StatCard>
+        <StatCard label="محال الى البداية" value={stats.referredToStartCount ?? 0} accent="#9333ea" icon={ICONS.referred}>
+          {stats.referredSplit ? (
+            <ContractSplit split={stats.referredSplit} />
+          ) : (
+            <p className="text-gray-400 text-xs mt-1">لا توجد مبالغ مسجلة</p>
+          )}
         </StatCard>
         <StatCard
           label="منفذ"

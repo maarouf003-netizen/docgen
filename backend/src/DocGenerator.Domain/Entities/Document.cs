@@ -274,6 +274,25 @@ public class Document : IDocumentExecutionState
     public string? TarithRegDate { get; set; }
 
     /// <summary>
+    /// رقم كتاب المطالعة بعدم وجود أموال للتنفيذ عليها — إلزامي عند الإحالة إلى البداية
+    /// (حالة «محال الى البداية»): كتاب الجهة العامة الثابت بعده عدم وجود أموال في الملف.
+    /// يُخزَّن نصًا حرًا (بلا تحقق رقمي) على نمط أرقام الكتب القائمة.
+    /// </summary>
+    public string? NoFundsDemandNumber { get; set; }
+
+    /// <summary>
+    /// تاريخ كتاب المطالعة بعدم وجود أموال للتنفيذ عليها — إلزامي عند الإحالة إلى البداية.
+    /// تاريخ حر يُفسَّر بصيغ قاعدة التواريخ (يوم/شهر/سنة) ويُستجلب بصيغة ISO.
+    /// </summary>
+    public DateTime? NoFundsDemandDate { get; set; }
+
+    /// <summary>رقم كتاب الإحالة لقسم البداية (اختياري) عند حالة «محال الى البداية».</summary>
+    public string? StartReferralNumber { get; set; }
+
+    /// <summary>تاريخ كتاب الإحالة لقسم البداية (اختياري) عند حالة «محال الى البداية».</summary>
+    public DateTime? StartReferralDate { get; set; }
+
+    /// <summary>
     /// حقول «كتاب الجهة العامة بالسير بالملف» عند التراجع عن تريث أو عن التنفيذ
     /// (منفذ بالتسوية/جبريا): رقم وتاريخ الكتاب + رقم وتاريخ وروده.
     /// </summary>

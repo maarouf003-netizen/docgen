@@ -1895,6 +1895,43 @@ public class DocumentDelegationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Create_OnReferredToStartSource_Rejects()
+    {
+        // B5: لا تُسطَّر إنابة على ملف «محال الى البداية» (الحالة إحالة معلقة بلا تنفيذ).
+        var source = await CreateSourceAsync();
+        source.ExecStatus = ExecutionStatusCatalog.ReferredToStart;
+        await _db.SaveChangesAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1"));
+
+        Assert.Contains("لا يمكن تسطير انابة في ملف «محال الى البداية»", ex.Message);
+    }
+
+    [Fact]
+    public async Task Register_OnReferredToStartSource_Rejects()
+    {
+        // B5 (نمط E5): لو أصبح المنيب «محال الى البداية» بعد الاعتماد تُرفض التسجيل برسالة مخصصة.
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+
+        source.ExecStatus = ExecutionStatusCatalog.ReferredToStart;
+        await _db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+                _lawyer2.Id, "lawyer2"));
+
+        Assert.Contains("لا يمكن تسجيل الانابة لكون الملف المنيب «محال الى البداية»", ex.Message);
+        Assert.Equal(DelegationStatusCatalog.Assigned,
+            (await _db.DocumentDelegations.SingleAsync(d => d.Id == created.Id)).Status);
+    }
+
+    [Fact]
     public async Task Settlement_RecoversTarget_KeepsDelegationRegisteredAndUnblocked()
     {
         // A3: تسوية المنيب بدورة واقعية (لا ضبط مباشر) — المناب «مسترد»، والإنابة تبقى

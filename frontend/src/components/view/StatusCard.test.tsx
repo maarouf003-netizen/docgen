@@ -63,4 +63,25 @@ describe('StatusCard', () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'تغيير الحالة' })).not.toBeInTheDocument();
   });
+
+  it('يعرض ملخص «محال الى البداية» بكتب المطالعة والإحالة', () => {
+    render(
+      <StatusCard
+        doc={doc({
+          execStatus: 'محال الى البداية',
+          noFundsDemandNumber: '5',
+          noFundsDemandDate: '2026-01-08',
+          startReferralNumber: '6',
+          startReferralDate: '2026-02-01',
+        })}
+        canChangeStatus
+        onOpenStatus={noop}
+      />,
+    );
+
+    expect(
+      screen.getByText(/محال إلى قسم البداية لعدم وجود أموال للتنفيذ عليها بموجب كتاب المطالعة رقم 5/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'تغيير الحالة' })).toBeInTheDocument();
+  });
 });

@@ -368,6 +368,29 @@ public class DocumentsController : ControllerBase
         }
     }
 
+    [HttpPost("{id:int}/return-referred-to-start")]
+    public async Task<IActionResult> ReturnFromReferredToStart(int id, [FromBody] ReturnReferredToStartRequest request, CancellationToken ct)
+    {
+        // العودة من «محال الى البداية» (بنتيجتين: استعادة «منفذ جزئيًا» حسب اللازمة وإلا
+        // «متداول») محصورة بالمحامي (للملفات التي يملكها) — بصلاحية «تغيير الحالة» كنظيريها
+        // التراجع/الاعتبار، وبلا حقول إلزامية (رقم الملف الجديد الاختياري يفعّل التجديد).
+        if (!CanChangeStatus) return Forbid();
+
+        var doc = await _documents.GetAsync(id, ct);
+        if (doc is null) return NotFound();
+        if (!CanAccess(doc)) return Forbid();
+
+        try
+        {
+            var ok = await _documents.ReturnFromReferredToStartAsync(id, request ?? new(), ActorName, ct);
+            return ok ? Ok(new { message = "أعيد السير بالملف" }) : NotFound();
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+    }
+
     [HttpPost("{id:int}/consider-executed-by-delegation")]
     public async Task<IActionResult> ConsiderExecutedByDelegation(int id, [FromBody] StatusRequest request, CancellationToken ct)
     {

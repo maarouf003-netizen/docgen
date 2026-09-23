@@ -158,6 +158,8 @@ public class PortalRepository : IPortalRepository
                     || d.ExecStatus == ExecutionStatusCatalog.Recovered);
             else if (status == ExecutionStatusCatalog.Deferred)
                 q = q.Where(d => d.ExecStatus == ExecutionStatusCatalog.Deferred);
+            else if (status == ExecutionStatusCatalog.ReferredToStart)
+                q = q.Where(d => d.ExecStatus == ExecutionStatusCatalog.ReferredToStart);
             else if (status == ExecutionStatusCatalog.DraftFilter)
                 q = q.Where(d => d.IsDraft);
             else if (status == ExecutionStatusCatalog.StateCirculating)

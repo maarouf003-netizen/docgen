@@ -55,6 +55,15 @@ public interface IDocumentService
     /// </summary>
     Task<bool> RevertStatusAsync(int documentId, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default);
     /// <summary>
+    /// العودة من «محال الى البداية» (نقطة «return-referred-to-start») بنتيجتين حسب اللازمة
+    /// (§2-10 — بلا عمود جديد): إن حمل الملف «منفذ جزئيا» عاد «منفذ جبريا» مع بقاء عائلة
+    /// الجبريا كما هي، وإلا عاد «متداول» مع مسح بقية العائلات. حقول التجديد موحّدة في
+    /// المسارين (رقم الملف الجديد يفعّل التجديد)، و«تاريخ الشطب» الاختياري لنتيجة-متداول فقط.
+    /// تُسجَّل وقعة «تراجع» بسرد آلي + حقول الشطب/التجديد إن وُجدت، وبلا تنبيهات مرآة عمدًا
+    /// (قرار 9 يجعل الإنابة السارية على «محال» مستحيلة).
+    /// </summary>
+    Task<bool> ReturnFromReferredToStartAsync(int documentId, ReturnReferredToStartRequest request, string? actorName, CancellationToken ct = default);
+    /// <summary>
     /// تعيين حالة وضع «منفذ عليه» (ExecutedStatusCatalog): منفذ/مشطوب. عند الشطب يُثبَّت
     /// StruckOffDate (لحظة الشطب UTC) فيُخفى الملف من القوائم والتصدير ويظهر في صفحة المشطوبة.
     /// إعادة الحالة إلى متداول (سلسلة فارغة) تُبقي StruckOffDate محفوظًا لعرضه بعد الإعادة.

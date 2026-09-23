@@ -777,6 +777,13 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("NoFundsDemandDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("NoFundsDemandNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Notes")
                         .HasMaxLength(2000)
                         .HasColumnType("TEXT");
@@ -838,6 +845,13 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.Property<int?>("SourceDelegationId")
                         .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("StartReferralDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("StartReferralNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("StruckOffDate")
                         .HasColumnType("TEXT");

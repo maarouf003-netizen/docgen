@@ -182,10 +182,14 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.TarithDate).HasMaxLength(50);
         builder.Property(d => d.TarithRegNumber).HasMaxLength(100);
         builder.Property(d => d.TarithRegDate).HasMaxLength(50);
-        builder.Property(d => d.SayerNumber).HasMaxLength(100);
+builder.Property(d => d.SayerNumber).HasMaxLength(100);
         builder.Property(d => d.SayerDate).HasMaxLength(50);
         builder.Property(d => d.SayerRegNumber).HasMaxLength(100);
         builder.Property(d => d.SayerRegDate).HasMaxLength(50);
+        builder.Property(d => d.NoFundsDemandNumber).HasMaxLength(100);
+        builder.Property(d => d.NoFundsDemandDate).HasColumnType("datetime2");
+        builder.Property(d => d.StartReferralNumber).HasMaxLength(100);
+        builder.Property(d => d.StartReferralDate).HasColumnType("datetime2");
         builder.Property(d => d.SoldAssetIds).HasColumnType("text");
 
         builder.Property(d => d.SeizureDate).HasMaxLength(50);

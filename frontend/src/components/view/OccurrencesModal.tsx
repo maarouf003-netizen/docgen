@@ -198,11 +198,27 @@ function StatusChangeOccurrenceDetails({ occurrence }: { occurrence: DocumentOcc
       pushIf(pairs, 'تحويل بدل المبيع للجهة العامة', d.forcedTransferDate);
       pushIf(pairs, 'رقم إشعار التحويل', d.forcedTransferNoticeNumber);
       break;
+    case 'referred-to-start':
+      pushIf(pairs, 'رقم كتاب المطالعة بعدم وجود أموال للتنفيذ عليها', d.noFundsDemandNumber);
+      pushIf(pairs, 'تاريخ كتاب المطالعة بعدم وجود أموال للتنفيذ عليها', d.noFundsDemandDate);
+      pushIf(pairs, 'رقم كتاب الإحالة', d.startReferralNumber);
+      pushIf(pairs, 'تاريخ كتاب الإحالة', d.startReferralDate);
+      break;
     case 'revert':
-      pushIf(pairs, 'رقم كتاب الجهة العامة بالسير بالملف', d.sayerNumber);
-      pushIf(pairs, 'تاريخ كتاب الجهة العامة بالسير بالملف', d.sayerDate);
-      pushIf(pairs, 'رقم ورود كتاب بالسير بالملف', d.sayerRegNumber);
-      pushIf(pairs, 'تاريخ ورود كتاب بالسير بالملف', d.sayerRegDate);
+      // وقعة العودة من «محال الى البداية» (B4): السرد النصي في سطر البطاقة، وحقول الشطب/
+      // التجديد هنا — بلا حقول سير؛ «تراجع» الكلاسيكي يبقى بمفاتيح كتاب السير.
+      if (d.revertNarration) {
+        pushIf(pairs, 'تاريخ شطب الملف السابق', d.struckOffDate);
+        pushIf(pairs, 'رقم الملف الجديد', d.renewalFileNumber);
+        pushIf(pairs, 'نوع الملف الجديد', d.renewalFileType);
+        pushIf(pairs, 'تاريخ التجديد', d.renewalDate);
+        pushIf(pairs, 'سنة الإعادة', d.renewalYear);
+      } else {
+        pushIf(pairs, 'رقم كتاب الجهة العامة بالسير بالملف', d.sayerNumber);
+        pushIf(pairs, 'تاريخ كتاب الجهة العامة بالسير بالملف', d.sayerDate);
+        pushIf(pairs, 'رقم ورود كتاب بالسير بالملف', d.sayerRegNumber);
+        pushIf(pairs, 'تاريخ ورود كتاب بالسير بالملف', d.sayerRegDate);
+      }
       break;
     case 'recovered':
       // وقعة استرداد المناب (F2/L4): سبب الاسترداد + كتاب براءة الذمة (تسوية) أو تحويل البدل

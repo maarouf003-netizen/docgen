@@ -197,4 +197,76 @@ describe('OccurrencesModal', () => {
     expect(screen.getByRole('heading', { name: 'تغييرات الحالة' })).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'الشطوبات' })).not.toBeInTheDocument();
   });
+
+  it('يعرض وقعة «محال الى البداية» في قسم تغييرات الحالة مع كتب المطالعة والإحالة', () => {
+    const statusLine =
+      'محال الى البداية بموجب كتاب المطالعة بعدم وجود أموال رقم 5 بتاريخ 2026-01-08';
+    render(
+      <OccurrencesModal
+        documentTitle="الملف 77"
+        occurrences={[
+          makeOccurrence({
+            id: 2,
+            occurrenceType: 'referred-to-start',
+            occurrenceTypeLabel: 'محال الى البداية',
+            source: 'system',
+            fileNumber: undefined,
+            fileType: undefined,
+            year: undefined,
+            eventDate: '2026-01-10',
+            details: {
+              noFundsDemandNumber: '5',
+              noFundsDemandDate: '2026-01-08',
+              startReferralNumber: '6',
+              startReferralDate: '2026-02-01',
+            },
+          }),
+        ]}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'تغييرات الحالة' })).toBeInTheDocument();
+    expect(screen.getByText(statusLine)).toBeInTheDocument();
+    expect(screen.getByText('رقم كتاب المطالعة بعدم وجود أموال للتنفيذ عليها')).toBeInTheDocument();
+    expect(screen.getByText('تاريخ كتاب المطالعة بعدم وجود أموال للتنفيذ عليها')).toBeInTheDocument();
+    expect(screen.getByText('رقم كتاب الإحالة')).toBeInTheDocument();
+    expect(screen.getByText('تاريخ كتاب الإحالة')).toBeInTheDocument();
+  });
+
+  it('يعرض وقعة العودة من «محال» بالسرد النصي ومفاتيح التجديد/الشطب دون حقول سير', () => {
+    const narrative = 'أعيد السير به بعد موافاتنا بأموال للتنفيذ عليها وجدد الملف برقم 999';
+    render(
+      <OccurrencesModal
+        documentTitle="الملف 77"
+        occurrences={[
+          makeOccurrence({
+            id: 2,
+            occurrenceType: 'revert',
+            occurrenceTypeLabel: 'تراجع',
+            source: 'system',
+            fileNumber: undefined,
+            fileType: undefined,
+            year: undefined,
+            eventDate: '2026-03-01',
+            details: {
+              revertNarration: narrative,
+              struckOffDate: '2026-03-01',
+              renewalFileNumber: '999',
+              renewalFileType: 'حقوق',
+              renewalDate: '2026-03-01',
+              renewalYear: '2026',
+            },
+          }),
+        ]}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(narrative)).toBeInTheDocument();
+    expect(screen.getByText('رقم الملف الجديد')).toBeInTheDocument();
+    expect(screen.getByText('سنة الإعادة')).toBeInTheDocument();
+    expect(screen.getByText('تاريخ شطب الملف السابق')).toBeInTheDocument();
+    expect(screen.queryByText('رقم كتاب الجهة العامة بالسير بالملف')).not.toBeInTheDocument();
+  });
 });

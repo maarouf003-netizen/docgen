@@ -115,7 +115,14 @@ public record ManagerStatsDto(
     /// المنظورة قيد النظر، والمحسومة للصالح وللضد. null عند غياب أي استئناف
     /// لِيُخفى البطاقة من اللوحة.
     /// </summary>
-    AppealsStatsDto? Appeals = null);
+    AppealsStatsDto? Appeals = null,
+    /// <summary>
+    /// ملفات «محال الى البداية» (خطة RTS) في نطاق الفترة: عدد + توزيع مصرفي/عادي
+    /// (ReferredSplit) مرآة بطاقة التريث — ومنها من دخل من «منفذ جزئيا» فيُنقل عدّه
+    /// ومبالغه من المتداول هنا، وTotalFiles يشمله (متداول + تحت رفع + تريث + محال).
+    /// </summary>
+    int ReferredToStartCount = 0,
+    ManagerContractSplitDto? ReferredSplit = null);
 
 /// <summary>عدادات بطاقة «الاستئنافات» في لوحة المحامي وفق فلاتر الفترة.</summary>
 public record AppealsStatsDto(

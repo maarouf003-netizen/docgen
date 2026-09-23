@@ -241,6 +241,19 @@ public class RenewalRequest
 }
 
 /// <summary>
+/// بيان العودة من «محال الى البداية» (نقطة «return-referred-to-start») — بنتيجتين:
+/// استعادة «منفذ جبريا» (منفذ جزئيا) حسب اللازمة وإلا «متداول». حقول التجديد موحّدة في
+/// المسارين (رقم الملف الجديد يفعّل التجديد ويلزم السنة 1900–2100 وتطابقها مع سنة التاريخ)،
+/// و«تاريخ الشطب» خاص بنتيجة-متداول فقط ويُتجاهل في عودة-جزئيا. كلها نصوص حرة (مثال: 1/8/2026)
+/// تُفسَّر وتُخزَّن زمنيًا كباقي تواريخ النظام.
+/// </summary>
+public class ReturnReferredToStartRequest : RenewalRequest
+{
+    /// <summary>تاريخ شطب الملف (اختياري — لعودة-متداول فقط، ويُتجاهل في عودة-جزئيا).</summary>
+    public string? StruckOffDate { get; set; }
+}
+
+/// <summary>
 /// تعيين حالة وضع «الجهة العامة منفذ عليها» (متداول/منفذ/مشطوب) من صفحة التفاصيل.
 /// عند الانتقال إلى «منفذ» تُحفظ حقوله (المبلغ/كيفية التنفيذ/تاريخ الإيداع)، وعند الانتقال
 /// إلى «مشطوب» يُحفظ تاريخ الشطب (نص حر؛ إن غاب يُثبَّت توقيت الانتقال)، وعند الإعادة إلى
@@ -663,6 +676,14 @@ public class DocumentResponse : DocGenerator.Domain.Entities.IDocumentExecutionS
     public string? RenewalFileType { get; set; }
     /// <summary>تاريخ التجديد عند إعادة الملف المشطوب (اختياري).</summary>
     public DateTime? RenewalDate { get; set; }
+    /// <summary>رقم كتاب المطالعة بعدم وجود أموال للتنفيذ عليها في «محال الى البداية».</summary>
+    public string? NoFundsDemandNumber { get; set; }
+    /// <summary>تاريخ كتاب المطالعة بعدم وجود أموال للتنفيذ عليها — نص حر يُعرَض «yyyy-MM-dd» (مثل بقية حقول التخزين الزمني الحر).</summary>
+    public string? NoFundsDemandDate { get; set; }
+    /// <summary>رقم كتاب الإحالة في «محال الى البداية».</summary>
+    public string? StartReferralNumber { get; set; }
+    /// <summary>تاريخ كتاب الإحالة — نص حر يُعرَض «yyyy-MM-dd» (مثل بقية حقول التخزين الزمني الحر).</summary>
+    public string? StartReferralDate { get; set; }
     public string? BaraetNumber { get; set; }
     public string? BaraetDate { get; set; }
     public string? BaraetRegNumber { get; set; }
@@ -835,6 +856,10 @@ public class DocumentResponse : DocGenerator.Domain.Entities.IDocumentExecutionS
         RenewalFileNumber = d.RenewalFileNumber,
         RenewalFileType = d.RenewalFileType,
         RenewalDate = d.RenewalDate,
+        NoFundsDemandNumber = d.NoFundsDemandNumber,
+        NoFundsDemandDate = d.NoFundsDemandDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+        StartReferralNumber = d.StartReferralNumber,
+        StartReferralDate = d.StartReferralDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
         BaraetNumber = d.BaraetNumber,
         BaraetDate = d.BaraetDate,
         ForcedExecutionDate = d.ForcedExecutionDate,

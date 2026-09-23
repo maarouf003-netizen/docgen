@@ -4,7 +4,7 @@ namespace DocGenerator.Domain.Enums;
 /// المصدر الوحيد لأنواع «وقوعات الملف» وتسمياتها العربية.
 /// الوقعة سجل زمني مستقل في وضع «منفذ عليه»/«عرض وايداع»: شطب (struck-off) أو تجديد (renewal)،
 /// وتمتد لتسجّل إجراءات تغيير الحالة في نظام «طالبة تنفيذ» (تريث، منفذ بالتسوية، منفذ جبريا،
-/// تراجع/إلغاء) واسترداد ملف الإنابة (recovered) بحقولها الكاملة في Details. يُخزَّن النوع
+/// تراجع/إلغاء) وإحالة إلى البداية (referred-to-start) واسترداد ملف الإنابة (recovered) بحقولها الكاملة في Details. يُخزَّن النوع
 /// بالإنكليزية في القاعدة لتجنب اعتماد البحث والتصفية على النصوص العربية.
 /// </summary>
 public static class OccurrenceTypeCatalog
@@ -40,9 +40,18 @@ public static class OccurrenceTypeCatalog
     /// </summary>
     public const string Recovered = "recovered";
 
+    /// <summary>
+    /// إجراء «محال الى البداية» في نظام «طالبة تنفيذ»: إحالة الملف إلى قسم البداية لعدم
+    /// وجود أموال للتنفيذ عليها، بحقول كتاب المطالعة وكتاب الإحالة في Details. سجّل
+    /// «تغيير حالة» (يظهر في مرشح الحالات/تفاصيل البطاقة) ويُخرج منه عبر نقطة العودة
+    /// المخصصة ووقعة <see cref="Revert"/>.
+    /// </summary>
+    public const string ReferredToStart = "referred-to-start";
+
     public static readonly IReadOnlySet<string> ValidTypes = new HashSet<string>
     {
         StruckOff, Renewal, Deferred, Settled, Forcible, Revert, EntityChange, Recovered,
+        ReferredToStart,
     };
 
     public static string ToLabel(string type) => type switch
@@ -55,6 +64,7 @@ public static class OccurrenceTypeCatalog
         Revert => "تراجع / إلغاء",
         EntityChange => "تغيير جهة",
         Recovered => "استرداد",
+        ReferredToStart => "محال الى البداية",
         _ => StruckOff,
     };
 
@@ -62,5 +72,6 @@ public static class OccurrenceTypeCatalog
     public static bool IsRenewal(string? type) => type == Renewal;
     public static bool IsRecovered(string? type) => type == Recovered;
     public static bool IsStatusChange(string? type) =>
-        type == Deferred || type == Settled || type == Forcible || type == Revert;
+        type == Deferred || type == Settled || type == Forcible || type == Revert
+        || type == ReferredToStart;
 }

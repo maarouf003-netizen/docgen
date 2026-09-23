@@ -24,12 +24,12 @@ describe('StatusChangeModal', () => {
     vi.clearAllMocks();
   });
 
-  it('يعرض من المتداول كل الانتقالات المسموحة: تريث/منفذ بالتسوية/منفذ جبريا/مشطوب', () => {
+  it('يعرض من المتداول كل الانتقالات المسموحة: تريث/منفذ بالتسوية/منفذ جبريا/مشطوب/محال', () => {
     renderModal({ isDraft: false, execStatus: '' });
 
     const select = screen.getByLabelText('الإجراء') as HTMLSelectElement;
     const options = Array.from(select.options).map((o) => o.textContent);
-    expect(options).toEqual(['تريث', 'منفذ بالتسوية', 'منفذ جبريا', 'مشطوب']);
+    expect(options).toEqual(['تريث', 'منفذ بالتسوية', 'منفذ جبريا', 'مشطوب', 'محال الى البداية']);
   });
 
   it('لا يعرض «منفذ جبريا» من تحت الرفع (مقيد بآلة الحالات)', () => {
@@ -105,12 +105,12 @@ describe('StatusChangeModal', () => {
     });
   });
 
-  it('من تريث يعرض منفذ بالتسوية وتراجع فقط، والتراجع يستدعي revert-status بحقول السير بالملف', async () => {
+  it('من تريث يعرض منفذ بالتسوية وتراجع ومحال، والتراجع يستدعي revert-status بحقول السير بالملف', async () => {
     const user = userEvent.setup();
     renderModal({ isDraft: false, execStatus: 'تريث' });
 
     const select = screen.getByLabelText('الإجراء') as HTMLSelectElement;
-    expect(Array.from(select.options).map((o) => o.textContent)).toEqual(['منفذ بالتسوية', 'تراجع']);
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual(['منفذ بالتسوية', 'تراجع', 'محال الى البداية']);
 
     await user.selectOptions(select, 'تراجع');
     await user.type(screen.getByLabelText('رقم كتاب الجهة العامة بالسير بالملف'), '8');
@@ -124,17 +124,18 @@ describe('StatusChangeModal', () => {
     });
   });
 
-  it('من «منفذ جبريا — منفذ جزئيا» يعرض «منفذ كاملا بهذا البيع» مع التراجع', () => {
+  it('من «منفذ جبريا — منفذ جزئيا» يعرض «محال الى البداية» و«منفذ كاملا بهذا البيع» مع التراجع', () => {
     renderModal({ isDraft: false, execStatus: 'منفذ جبريا', execSubStatus: 'منفذ جزئيا' });
 
     const select = screen.getByLabelText('الإجراء') as HTMLSelectElement;
     expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
       'تراجع',
+      'محال الى البداية',
       'منفذ كاملا بهذا البيع',
     ]);
   });
 
-  it('من «منفذ جبريا — منفذ كاملا» لا يعرض «منفذ كاملا بهذا البيع»', () => {
+  it('من «منفذ جبريا — منفذ كاملا» لا يعرض «منفذ كاملا بهذا البيع» ولا «محال الى البداية»', () => {
     renderModal({ isDraft: false, execStatus: 'منفذ جبريا', execSubStatus: 'منفذ كاملا' });
 
     const select = screen.getByLabelText('الإجراء') as HTMLSelectElement;
@@ -200,5 +201,105 @@ describe('StatusChangeModal', () => {
     expect(
       screen.getByText('لا توجد حالات متاحة — حالة الملف المناب تلحق حالة الملف المنيب في اعتباره منفذ أو تريث'),
     ).toBeInTheDocument();
+  });
+
+  it('من «متداول» يرسل كتب المطالعة والإحالة للخلفية مع تطبيع الأرقام العربية (محال الى البداية)', async () => {
+    const user = userEvent.setup();
+    renderModal({ isDraft: false, execStatus: '' });
+
+    await user.selectOptions(screen.getByLabelText('الإجراء'), 'محال الى البداية');
+    await user.type(screen.getByLabelText('رقم كتاب المطالعة بعدم وجود أموال للتنفيذ عليها'), '٥');
+    await user.type(screen.getByLabelText('تاريخ كتاب المطالعة بعدم وجود أموال للتنفيذ عليها'), '٥/٦/٢٠٢٦');
+    await user.type(screen.getByLabelText('رقم كتاب الإحالة (اختياري)'), '٦');
+    await user.type(screen.getByLabelText('تاريخ كتاب الإحالة (اختياري)'), '٧/٦/٢٠٢٦');
+    await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
+
+    expect(api.post).toHaveBeenCalledWith('/documents/1/status', {
+      status: 'محال الى البداية',
+      fields: {
+        noFundsDemandNumber: '5',
+        noFundsDemandDate: '5/6/2026',
+        startReferralNumber: '6',
+        startReferralDate: '7/6/2026',
+      },
+    });
+  });
+
+  it('يرفض الإحالة إلى البداية دون كتاب المطالعة', async () => {
+    const user = userEvent.setup();
+    renderModal({ isDraft: false, execStatus: '' });
+
+    await user.selectOptions(screen.getByLabelText('الإجراء'), 'محال الى البداية');
+    await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
+
+    expect(
+      screen.getByText('يجب إدخال رقم وتاريخ كتاب المطالعة بعدم وجود أموال للتنفيذ عليها'),
+    ).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('يعرض ملاحظة التوجيه الكهرمانية عند الإحالة على ملف فيه أموال قابلة للبيع بالمزاد', async () => {
+    const user = userEvent.setup();
+    renderModal({
+      isDraft: false,
+      execStatus: '',
+      assets: [{ id: 1, assetKind: 'عقار', property: 'بيت' }],
+    });
+
+    await user.selectOptions(screen.getByLabelText('الإجراء'), 'محال الى البداية');
+
+    expect(
+      screen.getByText(/تأكد من عدم وجود أموال للتنفيذ عليها قبل الإحالة إلى البداية/),
+    ).toBeInTheDocument();
+  });
+
+  it('من «محال» غير الجزئية يعرض «العودة إلى المتداول» فقط ويستدعي return-referred-to-start', async () => {
+    const user = userEvent.setup();
+    renderModal({ isDraft: false, execStatus: 'محال الى البداية', execSubStatus: '' });
+
+    const select = screen.getByLabelText('الإجراء') as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual(['العودة إلى المتداول']);
+
+    await user.type(screen.getByLabelText('رقم الملف الجديد (اختياري)'), '777');
+    await user.type(screen.getByLabelText('سنة الإعادة (اختياري)'), '2026');
+    await user.type(screen.getByLabelText('تاريخ التجديد (اختياري)'), '3/3/2026');
+    await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
+
+    expect(api.post).toHaveBeenCalledWith('/documents/1/return-referred-to-start', {
+      renewalFileNumber: '777',
+      renewalDate: '3/3/2026',
+      renewalYear: 2026,
+    });
+  });
+
+  it('من «محال» الجزئية يُجبر على «العودة إلى منفذ جزئيا» على نفس النقطة', async () => {
+    const user = userEvent.setup();
+    renderModal({ isDraft: false, execStatus: 'محال الى البداية', execSubStatus: 'منفذ جزئيا' });
+
+    const select = screen.getByLabelText('الإجراء') as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual(['العودة إلى منفذ جزئيا']);
+
+    await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
+
+    expect(api.post).toHaveBeenCalledWith('/documents/1/return-referred-to-start', {});
+  });
+
+  it('يرفض العودة مع رقم جديد دون تاريخ التجديد وسنة الإعادة', async () => {
+    const user = userEvent.setup();
+    renderModal({ isDraft: false, execStatus: 'محال الى البداية', execSubStatus: '' });
+
+    await user.type(screen.getByLabelText('رقم الملف الجديد (اختياري)'), '777');
+    await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
+
+    expect(
+      screen.getByText('عند إدخال رقم ملف جديد يجب إدخال تاريخ التجديد وسنة الإعادة معًا'),
+    ).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('يعرض وضع «محال الى البداية» مع جزئيته في الحالة الحالية', () => {
+    renderModal({ isDraft: false, execStatus: 'محال الى البداية', execSubStatus: 'منفذ جزئيا' });
+
+    expect(screen.getByText('محال الى البداية (منفذ جزئيا)')).toBeInTheDocument();
   });
 });

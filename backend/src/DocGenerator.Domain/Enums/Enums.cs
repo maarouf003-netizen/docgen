@@ -27,7 +27,8 @@ public enum ExecutionStatus
     ExecutedBySettlement = 2,
     Deferred = 3,
     DelegationExecuted = 4,
-    Recovered = 5
+    Recovered = 5,
+    ReferredToStart = 6
 }
 
 /// <summary>

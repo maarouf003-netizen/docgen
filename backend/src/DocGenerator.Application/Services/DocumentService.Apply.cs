@@ -197,6 +197,19 @@ public sealed partial class DocumentService
         doc.SayerRegDate = null;
     }
 
+    /// <summary>
+    /// تطهير حقول «محال الى البداية» الأربعة (رقم/تاريخ كتاب المطالعة ورقم/تاريخ كتاب الإحالة)
+    /// عند الخروج من الحالة عبر نقطة العودة فقط — الدخول إليها لا يمسح (قرار 11) والتطهير
+    /// منشطّر حسب المصدر في UpdateStatusAsync.
+    /// </summary>
+    private static void ClearReferredToStartFields(Document doc)
+    {
+        doc.NoFundsDemandNumber = null;
+        doc.NoFundsDemandDate = null;
+        doc.StartReferralNumber = null;
+        doc.StartReferralDate = null;
+    }
+
     private static void ClearCollectedFields(Document doc)
     {
         doc.CollectedAmount = null;

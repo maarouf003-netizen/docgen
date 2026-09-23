@@ -408,6 +408,7 @@ public class StatisticsRepository : IStatisticsRepository
         var active = 0;
         var drafts = 0;
         var deferred = 0;
+        var referredToStart = 0;
         var settledCount = 0;
         var forcibleCount = 0;
         var tradingAgainstCount = 0;
@@ -423,6 +424,8 @@ public class StatisticsRepository : IStatisticsRepository
         var draftsOrdinary = 0;
         var deferredBanking = 0;
         var deferredOrdinary = 0;
+        var referredBanking = 0;
+        var referredOrdinary = 0;
 
         var activeBankingBuckets = new Dictionary<string, decimal>();
         var activeOrdinaryBuckets = new Dictionary<string, decimal>();
@@ -430,6 +433,8 @@ public class StatisticsRepository : IStatisticsRepository
         var draftsOrdinaryBuckets = new Dictionary<string, decimal>();
         var deferredBankingBuckets = new Dictionary<string, decimal>();
         var deferredOrdinaryBuckets = new Dictionary<string, decimal>();
+        var referredBankingBuckets = new Dictionary<string, decimal>();
+        var referredOrdinaryBuckets = new Dictionary<string, decimal>();
         var totalBuckets = new Dictionary<string, decimal>();
         var tradingAgainstBuckets = new Dictionary<string, decimal>();
         var settledCollectedBuckets = new Dictionary<string, decimal>();
@@ -529,6 +534,16 @@ public class StatisticsRepository : IStatisticsRepository
                     ref deferredBanking, ref deferredOrdinary,
                     deferredBankingBuckets, deferredOrdinaryBuckets, totalBuckets);
             }
+            else if (r.ExecStatus == ExecutionStatusCatalog.ReferredToStart)
+            {
+                // ب6 (خطة RTS): ملف «محال الى البداية» يُعدّ في الفرع الجديد بعدّه وعدّادَي
+                // نوع العقد ومالهما، ومبالغه في سلة الإجمالي — بما فيها من دخل من «منفذ جزئيا»
+                // (يُفصَل عن «متداول / منفذ جزئيا» بقسم bran الخاص في آلة الحالات بهذه الحالة).
+                referredToStart++;
+                AccumulateContract(r,
+                    ref referredBanking, ref referredOrdinary,
+                    referredBankingBuckets, referredOrdinaryBuckets, totalBuckets);
+            }
             else if (r.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
                 && r.ExecSubStatus == ExecutionStatusCatalog.SubPartiallyExecuted)
             {
@@ -547,7 +562,7 @@ public class StatisticsRepository : IStatisticsRepository
         }
 
         return new ManagerStatsDto(
-            TotalFiles: active + drafts + deferred,
+            TotalFiles: active + drafts + deferred + referredToStart,
             Active: active,
             Drafts: drafts,
             Deferred: deferred,
@@ -574,6 +589,10 @@ public class StatisticsRepository : IStatisticsRepository
             DepositTradingCount: depositTradingCount,
             DepositExecutedCount: depositExecutedCount,
             DepositExecutedAmount: depositExecutedAmount,
+            ReferredToStartCount: referredToStart,
+            ReferredSplit: new ManagerContractSplitDto(
+                referredBanking, referredOrdinary,
+                ToCurrencyAmounts(referredBankingBuckets), ToCurrencyAmounts(referredOrdinaryBuckets)),
             PeriodYear: window.Start.Year,
             PeriodQuarter: period == StatsPeriod.Quarterly ? (window.Start.Month - 1) / 3 + 1 : null,
             PeriodMonth: period == StatsPeriod.Monthly ? window.Start.Month : null);

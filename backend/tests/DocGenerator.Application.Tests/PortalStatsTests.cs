@@ -226,6 +226,26 @@ public class PortalStatsTests : IDisposable
     }
 
     [Fact]
+    public async Task Stats_ReferredToStartFiles_IndependentOfExecutedFilter()
+    {
+        // ب6 (خطة RTS): «محال الى البداية» سلّة مستقلة — لا تُبتلع في «منفذ» (لو حمل جزئية)
+        // ولا في «تريث»، وتطابق فلتر البوابة المستقل تمامًا.
+        var now = DateTime.UtcNow.AddMonths(-1);
+        await SeedApplicantDocAsync("محال أ", ExecutionStatusCatalog.ReferredToStart, false, now, registryId: _entryAId);
+        await SeedApplicantDocAsync("منفذ ب", ExecutionStatusCatalog.ExecutedBySettlement, false, now, registryId: _entryAId);
+        await SeedApplicantDocAsync("محال جزئي أد", ExecutionStatusCatalog.ReferredToStart, false, now,
+            registryId: _entryAId, amount: 50);
+
+        var stats = await _portal.GetStatsAsync(_delegateGroupId);
+
+        Assert.Equal(3, stats.TotalFiles);
+        Assert.Equal(2, stats.ReferredToStartFiles);
+        Assert.Equal(1, stats.ExecutedFiles);
+        Assert.Equal(0, stats.DeferredFiles);
+        Assert.Equal(0, stats.CirculatingFiles);
+    }
+
+    [Fact]
     public async Task Stats_ExecutionApplicantLegalLink_CountedPerEntry()
     {
         var executedLike = new Document

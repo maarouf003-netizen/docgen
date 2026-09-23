@@ -10,14 +10,17 @@ export const EXEC_STATUS_STRUCK_OFF = 'مشطوب';
 export const EXEC_STATUS_DELEGATION_EXECUTED = 'منفذ إنابة';
 /** حالة «مسترد» للملف المناب عند إعادة الملف إلى الدائرة المنيبة: حالة نهائية تُعامل منفذًا. */
 export const EXEC_STATUS_RECOVERED = 'مسترد';
+/** حالة «محال الى البداية»: أُحيل الملف لقسم البداية لعدم وجود أموال للتنفيذ عليها — حالة محايدة
+ * تُظهر عدّادًا وفلترًا مستقلين، ولا تُسجَّل عليها إنابة سارية، وتخرج عبر نقطة العودة المخصصة. */
+export const EXEC_STATUS_REFERRED_TO_START = 'محال الى البداية';
 export const SUB_STATUS_PARTIAL = 'منفذ جزئيا';
 
-export type DocumentStatus = 'منفذ' | 'تريث' | 'تحت رفع' | 'متداول' | 'متداول / منفذ جزئيا' | 'مسترد' | 'مشطوب';
+export type DocumentStatus = 'منفذ' | 'تريث' | 'تحت رفع' | 'متداول' | 'متداول / منفذ جزئيا' | 'مسترد' | 'مشطوب' | 'محال الى البداية';
 
 // الملفات «المنفذة» لها صفحتها الخاصة («الملفات المنفذة»)، فتُستبعد من فلتر الحالة في
 // القائمة الرئيسية — ولا تظهر فيها إلا عند البحث النصي. بقي الخيار «متداول» للعمل الحالي
 // و«تريث» و«تحت رفع»، أما «منفذ» فيُدار من صفحة الملفات المنفذة.
-export const STATUS_OPTIONS: Exclude<DocumentStatus, 'متداول / منفذ جزئيا' | 'مشطوب' | 'منفذ'>[] = [EXEC_STATUS_DEFERRED, 'تحت رفع', 'متداول'];
+export const STATUS_OPTIONS: Exclude<DocumentStatus, 'متداول / منفذ جزئيا' | 'مشطوب' | 'منفذ'>[] = [EXEC_STATUS_DEFERRED, 'تحت رفع', 'متداول', EXEC_STATUS_REFERRED_TO_START];
 
 export const STATUS_BADGES: Record<DocumentStatus, { text: string; cls: string }> = {
   منفذ: { text: 'منفذ', cls: 'bg-green-100 text-green-700' },
@@ -27,6 +30,7 @@ export const STATUS_BADGES: Record<DocumentStatus, { text: string; cls: string }
   'متداول / منفذ جزئيا': { text: 'متداول / منفذ جزئيا', cls: 'bg-cyan-100 text-cyan-700' },
   مسترد: { text: EXEC_STATUS_RECOVERED, cls: 'bg-fuchsia-100 text-fuchsia-800' },
   مشطوب: { text: EXEC_STATUS_STRUCK_OFF, cls: 'bg-gray-200 text-gray-700' },
+  'محال الى البداية': { text: EXEC_STATUS_REFERRED_TO_START, cls: 'bg-purple-100 text-purple-700' },
 };
 
 export type StatusSource = Pick<
@@ -52,6 +56,7 @@ export function getDocumentStatus(doc: StatusSource): DocumentStatus {
   if (doc.execStatus === EXEC_STATUS_STRUCK_OFF) return 'مشطوب';
   if (doc.execStatus === EXEC_STATUS_RECOVERED) return 'مسترد';
   if (doc.execStatus === EXEC_STATUS_DEFERRED) return 'تريث';
+  if (doc.execStatus === EXEC_STATUS_REFERRED_TO_START) return 'محال الى البداية';
   if (doc.execStatus === EXEC_STATUS_FORCIBLY && doc.execSubStatus === SUB_STATUS_PARTIAL) return 'متداول / منفذ جزئيا';
   if (doc.execStatus === EXEC_STATUS_FORCIBLY || doc.execStatus === EXEC_STATUS_SETTLED) return 'منفذ';
   // «منفذ إنابة» (الملف المناب عند إتمام الإنابة): حالة نهائية تُعامل منفذًا في القوائم
@@ -66,13 +71,15 @@ export function getDocumentBadge(doc: StatusSource) {
 
 /** هل يصح تسطير إنابة على هذا الملف؟ — مطابقة `ValidateSourceForDelegation` في الخلفية:
  * ليس تحت رفع، صفة «طالبة تنفيذ»، غير منفذ (منفذ جبريا كاملًا/بالتسوية/إنابة) وغير مشطوب
- * وغير متريث («لا يمكن تسطير انابة في ملف تريث» E4) وغير مسترد (حالة نهائية بلا تسطير).
+ * وغير متريث («لا يمكن تسطير انابة في ملف تريث» E4) وغير مسترد (حالة نهائية بلا تسطير) وغير
+ * «محال الى البداية» («لا يمكن تسطير انابة في ملف «محال الى البداية»»).
  * «منفذ جبريا (منفذ جزئيا)» يبقى قابلًا للتسطير (قرار 9). */
 export function canDelegateSource(doc: StatusSource): boolean {
   if (doc.isDraft) return false;
   if (isExecutedLike(doc.generalEntitySide)) return false;
   if (doc.execStatus === EXEC_STATUS_STRUCK_OFF) return false;
   if (doc.execStatus === EXEC_STATUS_DEFERRED) return false;
+  if (doc.execStatus === EXEC_STATUS_REFERRED_TO_START) return false;
   if (doc.execStatus === EXEC_STATUS_RECOVERED) return false;
   if (doc.execStatus === EXEC_STATUS_SETTLED) return false;
   if (doc.execStatus === EXEC_STATUS_DELEGATION_EXECUTED) return false;

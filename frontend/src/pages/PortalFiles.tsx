@@ -18,6 +18,7 @@ const STATUS_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
   { value: 'منفذ', label: 'منفذ' },
   { value: 'تريث', label: 'تريث' },
   { value: 'تحت رفع', label: 'تحت رفع' },
+  { value: 'محال الى البداية', label: 'محال الى البداية' },
 ];
 
 const AR_MONTHS = ['ك2', 'شباط', 'آذار', 'نيسان', 'أيار', 'حزيران', 'تموز', 'آب', 'أيلول', 'ت1', 'ت2', 'كانون الأول'];
@@ -151,12 +152,13 @@ export default function PortalFiles() {
         <section aria-labelledby="portal-stats-title" className="bg-white rounded-xl shadow p-4 sm:p-5 mb-4">
           <h3 id="portal-stats-title" className="font-bold text-gray-800 mb-3">إحصاءات نطاق جهتك</h3>
 
-          <dl className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
+          <dl className="grid grid-cols-2 sm:grid-cols-6 gap-2 text-center">
             {([
               ['الإجمالي', stats.totalFiles, 'bg-emerald-800 text-white'],
               ['متداول', stats.circulatingFiles, 'bg-emerald-50 text-emerald-900'],
               ['منفذ', stats.executedFiles, 'bg-sky-50 text-sky-900'],
               ['تريث', stats.deferredFiles, 'bg-amber-50 text-amber-900'],
+              ['محال الى البداية', stats.referredToStartFiles ?? 0, 'bg-purple-50 text-purple-900'],
               ['تحت رفع', stats.draftFiles, 'bg-gray-100 text-gray-700'],
             ] as const).map(([label, value, cls]) => (
               <div key={label} className={`rounded-lg px-2 py-3 ${cls}`}>

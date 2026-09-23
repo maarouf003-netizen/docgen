@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getDocumentStatus, getDocumentBadge, getExecutedStatus, canDelegateSource } from './documentStatus';
+import { STATUS_OPTIONS, getDocumentStatus, getDocumentBadge, getExecutedStatus, canDelegateSource } from './documentStatus';
 import type { DocumentResponse } from '../types';
 
 function doc(overrides: Partial<Pick<DocumentResponse, 'execStatus' | 'execSubStatus' | 'isDraft' | 'generalEntitySide'>>) {
@@ -20,6 +20,17 @@ describe('getDocumentStatus', () => {
     expect(getDocumentBadge(doc({ execStatus: 'مسترد' }))).toEqual({
       text: 'مسترد',
       cls: 'bg-fuchsia-100 text-fuchsia-800',
+    });
+  });
+
+  it('يرجّع «محال الى البداية» كحالة عرض مستقلة بشارة بنفسجية (بلا طيّ في «منفذ» حتى مع جزئيته)', () => {
+    expect(getDocumentStatus(doc({ execStatus: 'محال الى البداية' }))).toBe('محال الى البداية');
+    expect(
+      getDocumentStatus(doc({ execStatus: 'محال الى البداية', execSubStatus: 'منفذ جزئيا' })),
+    ).toBe('محال الى البداية');
+    expect(getDocumentBadge(doc({ execStatus: 'محال الى البداية' }))).toEqual({
+      text: 'محال الى البداية',
+      cls: 'bg-purple-100 text-purple-700',
     });
   });
 
@@ -119,6 +130,7 @@ describe('canDelegateSource', () => {
     expect(canDelegateSource(doc({ execStatus: 'مشطوب' }))).toBe(false);
     expect(canDelegateSource(doc({ execStatus: 'تريث' }))).toBe(false);
     expect(canDelegateSource(doc({ execStatus: 'مسترد' }))).toBe(false);
+    expect(canDelegateSource(doc({ execStatus: 'محال الى البداية' }))).toBe(false);
   });
 
   it('يمنع التسطير على ملفات صفة «منفذ عليه»/«عرض وايداع» ولو كانت متداولة', () => {
@@ -128,5 +140,15 @@ describe('canDelegateSource', () => {
 
   it('يسمح بالتسطير للمتداول فقط (وليس التريث/المسترد)', () => {
     expect(canDelegateSource(doc({}))).toBe(true);
+  });
+});
+
+describe('STATUS_OPTIONS', () => {
+  it('يشمل «محال الى البداية» ملحقًا في نهاية الخيارات (بلا منفذ/مشطوب/الجزئية المركبة)', () => {
+    expect(STATUS_OPTIONS).toContain('محال الى البداية');
+    expect(STATUS_OPTIONS[STATUS_OPTIONS.length - 1]).toBe('محال الى البداية');
+    expect(STATUS_OPTIONS).not.toContain('منفذ');
+    expect(STATUS_OPTIONS).not.toContain('مشطوب');
+    expect(STATUS_OPTIONS).not.toContain('متداول / منفذ جزئيا');
   });
 });

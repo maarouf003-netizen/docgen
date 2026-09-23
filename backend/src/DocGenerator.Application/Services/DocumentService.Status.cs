@@ -110,6 +110,17 @@ public sealed partial class DocumentService
                 throw new ArgumentException("لا يجوز شطب ملف فيه انابة سارية");
         }
 
+        // حارس الإحالة إلى البداية (قرار 9 — نمط حارس الشطب S1): لا يجوز إحالة ملف فيه
+        // إنابة سارية إلى البداية، بمن فيه القادم من «منفذ جبريا» (تسوية إنابة مُتممة
+        // كبيعٍ مكتمل ليست إنابة سارية). بعد العودة إلى المتداول يصبح قابلاً للتسطير طبيعيًا
+        // — الحظر على الدخول فقط ولا يُورَّث.
+        if (status == ExecutionStatusCatalog.ReferredToStart)
+        {
+            var delegations = await _delegations.ListBySourceAsync(documentId, ct);
+            if (delegations.Any(DelegationActivityPolicy.IsLifecycleActive))
+                throw new ArgumentException("لا يجوز إحالة ملف فيه إنابة سارية إلى البداية");
+        }
+
         // آلة الحالات: تُمنع الانتقالات غير المسموحة من الحالة الحالية صراحةً.
         var current = ExecutionStatusCatalog.CurrentState(doc.IsDraft, doc.ExecStatus, doc.ExecutedStatus);
         if (!ExecutionStatusCatalog.IsAllowedStatusChange(current, status))
@@ -175,6 +186,49 @@ public sealed partial class DocumentService
                 ClearCollectedFields(doc);
                 doc.SoldAssetIds = null;
                 break;
+            case ExecutionStatusCatalog.ReferredToStart:
+                // القرار 1: الدخول من «منفذ جبريا» متاح للمنفذ جزئيًا فقط دون «منفذ كاملا».
+                if (current == ExecutionStatusCatalog.ExecutedForcibly
+                    && doc.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted)
+                    throw new ArgumentException("الإحالة إلى البداية من «منفذ جبريا» متاحة فقط للملف المنفذ جزئيًا");
+                DocumentValidator.RequireField(fields, "noFundsDemandNumber", "رقم كتاب المطالعة بعدم وجود أموال للتنفيذ عليها");
+                DocumentValidator.RequireField(fields, "noFundsDemandDate", "تاريخ كتاب المطالعة بعدم وجود أموال للتنفيذ عليها");
+                doc.NoFundsDemandNumber = fields.GetValueOrDefault("noFundsDemandNumber")?.Trim();
+                doc.NoFundsDemandDate = DocumentValidator.ParseDateTime(fields.GetValueOrDefault("noFundsDemandDate"),
+                    "تاريخ كتاب المطالعة بعدم وجود أموال للتنفيذ عليها");
+                var startReferralNumber = (fields.GetValueOrDefault("startReferralNumber") ?? string.Empty).Trim();
+                doc.StartReferralNumber = string.IsNullOrWhiteSpace(startReferralNumber) ? null : startReferralNumber;
+                doc.StartReferralDate = DocumentValidator.ParseDateTime(fields.GetValueOrDefault("startReferralDate"),
+                    "تاريخ كتاب الإحالة لقسم البداية");
+                CopyDetail(details, "noFundsDemandNumber", doc.NoFundsDemandNumber);
+                CopyDetail(details, "noFundsDemandDate",
+                    doc.NoFundsDemandDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture));
+                CopyDetail(details, "startReferralNumber", doc.StartReferralNumber);
+                CopyDetail(details, "startReferralDate",
+                    doc.StartReferralDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture));
+                // تطهير منشطّر حسب المصدر (قرار 11): الدخول من جزئيا يُبقي عائلة الجبريا
+                // ظاهرة (ExecSubStatus/Collected*/SoldAssetIds/ForcedExecution* — يعود منها
+                // عبر نقطة العودة إلى «منفذ جزئيًا» بلا عمود جديد)، ودخولا متداول/تريث على
+                // مسح العائلات كاملاً. لا تُمس حقول Renewal*/StruckOffDate في الحالين،
+                // وأداة ClearReferredToStartFields خاصة بالعودة (B4) لا بالدخول.
+                if (current == ExecutionStatusCatalog.ExecutedForcibly)
+                {
+                    ClearBaraetFields(doc);
+                    ClearTarithFields(doc);
+                    ClearSayerFields(doc);
+                }
+                else
+                {
+                    ClearBaraetFields(doc);
+                    ClearTarithFields(doc);
+                    ClearSayerFields(doc);
+                    ClearForcedExecutionField(doc);
+                    ClearForcibleTransferFields(doc);
+                    ClearCollectedFields(doc);
+                    doc.ExecSubStatus = null;
+                    doc.SoldAssetIds = null;
+                }
+                break;
             default: // مشطوب (نظام «طالبة تنفيذ»): يُخفى من القوائم ويظهر في صفحة «الملفات المشطوبة».
                 var struckOffDateRaw = fields.GetValueOrDefault("struckOffDate");
                 if (string.IsNullOrWhiteSpace(struckOffDateRaw))
@@ -200,6 +254,7 @@ public sealed partial class DocumentService
                 ExecutionStatus.ExecutedForcibly => OccurrenceTypeCatalog.Forcible,
                 ExecutionStatus.ExecutedBySettlement => OccurrenceTypeCatalog.Settled,
                 ExecutionStatus.Deferred => OccurrenceTypeCatalog.Deferred,
+                ExecutionStatus.ReferredToStart => OccurrenceTypeCatalog.ReferredToStart,
                 _ => throw new ArgumentException("حالة غير صالحة"),
             };
 
@@ -329,6 +384,123 @@ public sealed partial class DocumentService
         if (targetsReverted)
             await FireDelegationStatusChangeAlertsAsync(doc, DelegationStatusAlertKind.Returned, ct);
         return reverted;
+    }
+
+    // ملاحظة دَين معتمدة: استخراج هذه الدالة (كبقية انتقالات الحالة) إلى
+    // StatusTransitionService مؤجل بقرار معتمد (§2-6) — تُكتب هنا بنفس بنية الملف القائمة.
+    /// <summary>
+    /// العودة من «محال الى البداية» بنتيجتين حسب اللازمة (§2-10 — بلا عمود جديد):
+    /// إن حمل الملف «منفذ جزئيا» (الكاتب الوحيد لها دخول جبريا) عاد «منفذ جبريا» مع بقاء
+    /// عائلة الجبريا كما دخلت إطلاقًا، وإلا عاد «متداول» بمسح بقية العائلات (عملية لا-عملية
+    /// إذ أُنجز المسح عند الدخول). حقول التجديد موحّدة في المسارين (قرار 12): رقم الملف
+    /// الجديد يفعّل ApplyRenewalAsync (خلفية غير-منفذة — يلزم السنة 1900–2100 وتطابقها مع
+    /// سنة تاريخ التجديد)، والعودة البسيطة سلوك جديد خاص بهذه النقطة (لا «نمط
+    /// RestoreStruckOffAsync» ذاك يُلزم الرقم دائمًا). «struckOffDate» الاختياري لنتيجة-متداول
+    /// فقط. وقعة «تراجع» بسرد آلي + حقول الشطب/التجديد؛ وبلا تنبيهات مرآة عمدًا (قرار 9
+    /// يجعل الإنابة السارية على «محال» مستحيلة — حتى لا يُقرأ غيابها ثغرة).
+    /// </summary>
+    public async Task<bool> ReturnFromReferredToStartAsync(int documentId, ReturnReferredToStartRequest request, string? actorName, CancellationToken ct = default)
+    {
+        var doc = await _documents.GetByIdAsync(documentId, ct);
+        if (doc is null)
+            return false;
+        if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
+            throw new ArgumentException("العودة من «محال الى البداية» تخص ملفات «الجهة العامة طالبة التنفيذ» فقط");
+
+        // حارس المناب (ب2 — E1): حالة الملف المناب تلحق حالة الملف المنيب — لا يُعاد سيره.
+        if (doc.SourceDelegationId != null)
+            throw new ArgumentException("حالة الملف المناب تلحق حالة الملف المنيب في اعتباره منفذ أو تريث");
+
+        var current = ExecutionStatusCatalog.CurrentState(doc.IsDraft, doc.ExecStatus, doc.ExecutedStatus);
+        if (current != ExecutionStatusCatalog.ReferredToStart)
+            throw new ArgumentException(
+                $"لا يمكن العودة إلى السير بالملف من الحالة الحالية «{ExecutionStatusCatalog.ToStateLabel(current)}»");
+
+        // لقطة ما قبل التغيير — لتوليد صفوف «حقل/قبل/بعد» في سجل التعديلات.
+        var returnBefore = DocumentChangeTracker.Capture(doc);
+
+        // التوجيه باللازمة (§2-10): «منفذ جزئيا» على ملف «محال» ⟺ دخل من جزئيا — تستعيد
+        // حالة جبريا والجزئية ومحفوظاتها كما هي (القرار 11)، والإلا عودة إلى متداول.
+        var returnsToPartiallyExecuted = doc.ExecSubStatus == ExecutionStatusCatalog.SubPartiallyExecuted;
+        if (returnsToPartiallyExecuted)
+        {
+            doc.ExecStatus = ExecutionStatusCatalog.ExecutedForcibly;
+        }
+        else
+        {
+            doc.ExecStatus = ExecutionStatusCatalog.None;
+            doc.ExecSubStatus = null;
+            ClearCollectedFields(doc);
+            ClearBaraetFields(doc);
+            ClearTarithFields(doc);
+            ClearForcedExecutionField(doc);
+            ClearForcibleTransferFields(doc);
+            doc.SoldAssetIds = null;
+        }
+
+        // حقول «محال الى البداية» الأربعة تُمسح في الحالين (أداة العودة فقط — الدخول لا يمسح).
+        ClearReferredToStartFields(doc);
+
+        // «تاريخ الشطب» الاختياري خاص بنتيجة-متداول فقط ويُتجاهل في نتيجة-جزئيا.
+        if (!returnsToPartiallyExecuted)
+            doc.StruckOffDate = DocumentValidator.ParseDateTime(request?.StruckOffDate, "تاريخ الشطب");
+
+        // حقول التجديد موحّدة في المسارين (قرار 12): رقم الملف الجديد يفعّل التجديد —
+        // رقم أساس ونوع لسنة جديدة + وقعة تجديد، بنفس شروط ApplyRenewalAsync القائمة.
+        bool renewed = false;
+        if (!string.IsNullOrWhiteSpace(request?.RenewalFileNumber))
+        {
+            renewed = true;
+            await ApplyRenewalAsync(doc, request, executedLike: false, doc.CreatedById, ct);
+        }
+
+        // وقعة «تراجع» بسرد آلي موحّد + حقول الشطب/التجديد إن وُجدت (بلا حقول سير — عودة
+        // خاصة لا تحمل كتبًا إلزامية).
+        var narration = returnsToPartiallyExecuted
+            ? "أعيد السير به بعد موافاتنا بأموال للتنفيذ عليها وعاد منفذًا جزئيًا"
+            : "أعيد السير به بعد موافاتنا بأموال للتنفيذ عليها";
+        if (renewed)
+            narration += $" وجدد الملف برقم {doc.RenewalFileNumber} نوع {doc.RenewalFileType} تاريخ {FreeDateParser.ToResponse(doc.RenewalDate)}";
+        var details = new Dictionary<string, string> { ["revertNarration"] = narration };
+        if (!returnsToPartiallyExecuted && doc.StruckOffDate is not null)
+            CopyDetail(details, "struckOffDate", FreeDateParser.ToResponse(doc.StruckOffDate));
+        if (renewed)
+        {
+            CopyDetail(details, "renewalFileNumber", doc.RenewalFileNumber);
+            CopyDetail(details, "renewalFileType", doc.RenewalFileType);
+            CopyDetail(details, "renewalDate", FreeDateParser.ToResponse(doc.RenewalDate));
+            CopyDetail(details, "renewalYear", request?.RenewalYear?.ToString());
+        }
+
+        var returned = await _tx.RunAsync(async token =>
+        {
+            doc.UpdatedAt = DateTime.UtcNow;
+            _documents.Update(doc);
+            await _uow.SaveChangesAsync(token);
+            await _occurrences.AddAsync(new DocumentOccurrence
+            {
+                DocumentId = doc.Id,
+                Source = OccurrenceSourceCatalog.System,
+                OccurrenceType = OccurrenceTypeCatalog.Revert,
+                EventDate = DateTime.UtcNow,
+                Details = SerializeDetails(details),
+                CreatedById = doc.CreatedById,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            }, token);
+            await _uow.SaveChangesAsync(token);
+            var auditDetail = returnsToPartiallyExecuted
+                ? "أعاد السير بالملف من «محال الى البداية» منفذًا جزئيًا"
+                : "أعاد السير بالملف من «محال الى البداية» إلى المتداول";
+            await LogDocumentChangesAsync(returnBefore, doc, actorName, "status", auditDetail, token);
+            // ب4: عودة المناب الموروث-تريث تلقائيًا (D3) — عمليًا لا-عملية هنا (قرار 9 يحول
+            // دون إنابات سارية على «محال»)، وتُستدعى للاتساق السلوكي مع التراجع.
+            await ApplyDelegationInheritanceOrRecoveryAsync(doc, token);
+            return true;
+        }, ct);
+
+        // بلا تنبيهات مرآة عمدًا — مبرَّر بقرار 9 (لا إنابات سارية على «محال» حتى تُنبَّه).
+        return returned;
     }
 
     public async Task<bool> ConsiderExecutedByDelegationAsync(int documentId, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default)

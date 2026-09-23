@@ -63,4 +63,14 @@ public class DocumentStatusResolverTests
         // «مسترد» حالة عرض مستقلة (الخطة R1/L3) — لا تُطوى في «منفذ».
         Assert.Equal("مسترد", DocumentStatusResolver.Resolve(Doc(execStatus: "مسترد")));
     }
+
+    [Fact]
+    public void ReferredToStart_ApplicantSide_IsReferredToStart()
+    {
+        // «محال الى البداية» حالة عرض مستقلة (الخطة RTS) — لا تُطوى في «متداول» ولا في «منفذ»
+        // وإن حمل جزئية (الحالة إحالة معلقة بلا تنفيذ فعلي).
+        Assert.Equal("محال الى البداية", DocumentStatusResolver.Resolve(Doc(execStatus: "محال الى البداية")));
+        Assert.Equal("محال الى البداية", DocumentStatusResolver.Resolve(
+            Doc(execStatus: "محال الى البداية", execSubStatus: "منفذ جزئيا")));
+    }
 }

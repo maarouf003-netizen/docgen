@@ -455,6 +455,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         {
             if (source.ExecStatus == ExecutionStatusCatalog.Deferred)
                 throw new ArgumentException("لا يمكن تسجيل الانابة لورود كتاب تريث في الملف المنيب");
+            if (source.ExecStatus == ExecutionStatusCatalog.ReferredToStart)
+                throw new ArgumentException("لا يمكن تسجيل الانابة لكون الملف المنيب «محال الى البداية»");
             ValidateSourceForDelegation(source);
         }
 
@@ -723,6 +725,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
             throw new ArgumentException("الإنابة تخص ملفات «الجهة العامة طالبة التنفيذ» فقط");
         if (source.ExecStatus == ExecutionStatusCatalog.Deferred)
             throw new ArgumentException("لا يمكن تسطير انابة في ملف تريث");
+        if (source.ExecStatus == ExecutionStatusCatalog.ReferredToStart)
+            throw new ArgumentException("لا يمكن تسطير انابة في ملف «محال الى البداية»");
         if (ExecutionStatusCatalog.IsExecuted(source.ExecStatus, source.ExecSubStatus)
             || source.ExecStatus == ExecutionStatusCatalog.StateStruckOff)
             throw new ArgumentException("لا يمكن تسطير إنابة على ملف منفَّذ أو مشطوب");

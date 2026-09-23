@@ -343,7 +343,7 @@ fileNumber?: string;
   fileRegistrationDate?: string;
   branchName?: string;
   administrativeBranchName?: string;
-  /** حالة العرض الموحدة المشتقة من الخلفية (منفذ/تريث/تحت رفع/متداول/متداول / منفذ جزئيا/مشطوب). */
+  /** حالة العرض الموحدة المشتقة من الخلفية (منفذ/تريث/تحت رفع/متداول/متداول / منفذ جزئيا/مشطوب/محال الى البداية). */
   displayStatus?: string;
   execStatus?: string;
   execSubStatus?: string;
@@ -433,8 +433,16 @@ fileNumber?: string;
   renewalFileNumber?: string;
   /** نوع الملف الجديد عند إعادة الملف المشطوب (اختياري). */
   renewalFileType?: string;
-  /** تاريخ التجديد عند إعادة الملف المشطوب (اختياري). */
+/** تاريخ التجديد عند إعادة الملف المشطوب (اختياري). */
   renewalDate?: string;
+  /** رقم كتاب المطالعة بعدم وجود أموال للتنفيذ عليها في «محال الى البداية». */
+  noFundsDemandNumber?: string;
+  /** تاريخ كتاب المطالعة بعدم وجود أموال للتنفيذ عليها (يُعرض بصيغة yyyy-MM-dd). */
+  noFundsDemandDate?: string;
+  /** رقم كتاب الإحالة في «محال الى البداية». */
+  startReferralNumber?: string;
+  /** تاريخ كتاب الإحالة (يُعرض بصيغة yyyy-MM-dd). */
+  startReferralDate?: string;
   guarantors: GuarantorDto[];
   assets: AssetDto[];
   borrowerHeirs?: HeirDto[];
@@ -766,8 +774,12 @@ export interface ManagerStatsDto {
   activeSplit: ManagerContractSplitDto;
   /** توزيع «تحت رفع» مصرفي/عادي مع مبالغه بالعملات. */
   draftsSplit: ManagerContractSplitDto;
-  /** توزيع «التريث» مصرفي/عادي مع مبالغه بالعملات. */
+/** توزيع «التريث» مصرفي/عادي مع مبالغه بالعملات. */
   deferredSplit: ManagerContractSplitDto;
+  /** عدد ملفات «محال الى البداية» في نطاق الفترة (عدّاد مستقل مرآة بطاقة التريث). */
+  referredToStartCount?: number;
+  /** توزيع «محال الى البداية» مصرفي/عادي مع مبالغه بالعملات (مرآة deferredSplit). */
+  referredSplit?: ManagerContractSplitDto;
   /** إجمالي مبالغ ملفات «طالبة التنفيذ» (دون المنفذ) مجمّعة حسب العملة. */
   totalAmounts: CurrencyAmountDto[];
   /** المبالغ المطلوب دفعها من الجهات العامة في «متداول للضد» كلٌّ بعملتها (حتى ثلاثة). */
@@ -968,7 +980,7 @@ export interface BaseNumberHistoryDto {
 }
 
 /** نوع وقعة الملف: شطب/تجديد (وضع «منفذ عليه») أو إجراء تغيير حالة (نظام «طالبة تنفيذ») أو تغيير جهة آلي. */
-export type OccurrenceType = 'struck-off' | 'renewal' | 'deferred' | 'settled' | 'forcible' | 'revert' | 'recovered' | 'entity-change';
+export type OccurrenceType = 'struck-off' | 'renewal' | 'deferred' | 'settled' | 'forcible' | 'revert' | 'recovered' | 'entity-change' | 'referred-to-start';
 
 /** وقعة واحدة من «وقوعات الملف»: شطب/تجديد أو إجراء تغيير حالة (تريث/منفذ/تراجع) أو تغيير جهة آلي. */
 export interface DocumentOccurrenceDto {
@@ -1791,6 +1803,8 @@ export interface PortalStatsDto {
   circulatingFiles: number;
   executedFiles: number;
   deferredFiles: number;
+  /** عدد ملفات «محال الى البداية» في النطاق (فلتر مستقل — لا يشملها فلتر «منفذ»). */
+  referredToStartFiles?: number;
   pendingAppeals: number;
   closedAppeals: number;
   /** آخر 12 شهرًا متصلة حتى الشهر الحالي شاملة الأشهر الصفرية. */

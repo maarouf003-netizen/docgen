@@ -163,7 +163,7 @@ public sealed class PortalService : IPortalService
         var ids = scope?.EntryIds ?? new List<int>();
 
         var statusPairs = await _portal.ListStatusPairsAsync(ids, ct);
-        int draft = 0, circulating = 0, executed = 0, deferred = 0;
+        int draft = 0, circulating = 0, executed = 0, deferred = 0, referredToStart = 0;
         foreach (var (isDraft, execStatus) in statusPairs)
         {
             if (!string.IsNullOrEmpty(execStatus))
@@ -174,7 +174,11 @@ public sealed class PortalService : IPortalService
                     executed++;
                 else if (execStatus == ExecutionStatusCatalog.Deferred)
                     deferred++;
-                // الإحصاء يطابق فلتر القائمة حرفيًا (الثلاثة منفذة + تريث) ليتطابق
+                // «محال الى البداية» سلّة مستقلة تحل محل عدّها المفترض ضمن «منفذ» (السلة
+                // التنفيذية تبتلع جبريا بأي فرع) — فتبقى بطاقتها وفلترها متطابقين حرفيًا.
+                else if (execStatus == ExecutionStatusCatalog.ReferredToStart)
+                    referredToStart++;
+                // الإحصاء يطابق فلتر القائمة حرفيًا (الثلاثة منفذة + تريث + محال) ليتطابق
                 // رقم البطاقة مع نتيجة الفلتر نفسه دون أي انحراف.
             }
             else if (isDraft) draft++;
@@ -213,6 +217,7 @@ public sealed class PortalService : IPortalService
             CirculatingFiles: circulating,
             ExecutedFiles: executed,
             DeferredFiles: deferred,
+            ReferredToStartFiles: referredToStart,
             PendingAppeals: pendingAppeals,
             ClosedAppeals: closedAppeals,
             Monthly: monthly,
