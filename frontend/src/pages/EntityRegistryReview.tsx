@@ -19,6 +19,10 @@ import type { PublicEntityEntryDto, PublicEntityGroupDto, PublicEntityGroupListR
  * رئيس القسم يرى محافظته حصرًا (اعتماد / تعديل تسمية يبلّغ المُدخِل)،
  * والمدير/المشرف يرىان كل السجل ويمكنهما إدخال جهات مسبقة لأي محافظة.
  */
+
+/** تنبيه الدقة لرئيس القسم: تعديل قيود الجهات مكلف ويتطلب موافقات — يُعرض عند الإدخال والاعتماد والتعديل. */
+const HEAD_ACCURACY_NOTE =
+  'يرجى التأكد من صحة البيانات وادخالها بدقة لأن تعديل قيود الجهات العامة مكلف ويتتطلب موافقات عدة';
 export default function EntityRegistryReview() {
   const { user } = useAuth();
   const isHead = user?.role === 'head';
@@ -317,6 +321,11 @@ export default function EntityRegistryReview() {
           onSubmit={(e) => { e.preventDefault(); void submitCreate(); }}
           className="bg-white rounded-xl shadow p-4 mb-4 grid sm:grid-cols-2 gap-4"
         >
+          {isHead && (
+            <p role="note" className="text-xs font-medium text-red-700 bg-red-50 border border-red-100 rounded-lg p-3 leading-relaxed sm:col-span-2">
+              {HEAD_ACCURACY_NOTE}
+            </p>
+          )}
           <div className="sm:col-span-2">
             <label htmlFor="rev-name" className="block text-xs font-bold text-gray-600 mb-1">اسم الجهة المعتمد</label>
             <input
@@ -370,6 +379,11 @@ export default function EntityRegistryReview() {
       )}
 
       {/* قائمة المراجعة */}
+      {isHead && (
+        <p role="note" className="mb-3 text-xs font-medium text-red-700 bg-red-50 border border-red-100 rounded-lg p-3 leading-relaxed">
+          {HEAD_ACCURACY_NOTE}
+        </p>
+      )}
       <ul className="space-y-3">
         {loading && <li className="bg-white rounded-xl shadow p-5 text-gray-500 text-sm">جارِ التحميل…</li>}
         {!loading && items !== null && items.length === 0 && (
@@ -429,10 +443,16 @@ export default function EntityRegistryReview() {
               <button onClick={() => setEditing(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none px-2 min-h-11" aria-label="إغلاق">×</button>
             </div>
 
-            <p className="text-xs font-medium text-red-700 bg-red-50 border border-red-100 rounded-lg p-3 leading-relaxed mb-4">
+            <p className="text-xs font-medium text-red-700 bg-red-50 border border-red-100 rounded-lg p-3 leading-relaxed mb-2">
               تعديل الاسم يعيد تسمية الجهة في كل الملفات المرتبطة فورًا، ويُرسل تنبيهًا للمحامي
               المُدخِل بالاسم القديم والجديد.
             </p>
+
+            {isHead && (
+              <p role="note" className="text-xs font-medium text-red-700 bg-red-50 border border-red-100 rounded-lg p-3 leading-relaxed mb-4">
+                {HEAD_ACCURACY_NOTE}
+              </p>
+            )}
 
             <div className="space-y-4">
               <div>
