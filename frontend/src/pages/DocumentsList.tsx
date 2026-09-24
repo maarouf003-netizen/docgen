@@ -347,7 +347,8 @@ export default function DocumentsList() {
   const [administrativeBranches, setAdministrativeBranches] = useState<string[]>([]);
   const [executedEntities, setExecutedEntities] = useState<string[]>([]);
   const [publicEntityBranches, setPublicEntityBranches] = useState<string[]>([]);
-  const canViewCounters = hasFullAccess || isHead;
+  // عدد المشاهدات للمدير/المشرف فقط — يُخفى عن رئيس القسم بقرار المنتج (لا داعي لعرضه له).
+  const canViewCounters = hasFullAccess;
   const canSeeAdministrativeBranch = hasFullAccess;
   const canSeeAssignedLawyer = hasFullAccess || isHead;
   const canSearchByLawyer = hasFullAccess || isHead;

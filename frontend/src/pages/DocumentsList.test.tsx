@@ -381,7 +381,7 @@ describe('DocumentsList', () => {
     expect(within(table).getByText('7')).toBeInTheDocument();
   });
 
-  it('يعرض عمود «عدد المشاهدات» لرئيس القسم', async () => {
+  it('يخفي عمود «عدد المشاهدات» عن رئيس القسم', async () => {
     useAuthMock.mockReturnValue({ hasFullAccess: false, isHead: true });
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [makeDocument({ viewCount: 3 })] },
@@ -390,8 +390,8 @@ describe('DocumentsList', () => {
     renderList();
 
     const table = await screen.findByRole('table');
-    expect(within(table).getByText('عدد المشاهدات')).toBeInTheDocument();
-    expect(within(table).getByText('3')).toBeInTheDocument();
+    expect(within(table).queryByText('عدد المشاهدات')).not.toBeInTheDocument();
+    expect(within(table).queryByText('3')).not.toBeInTheDocument();
   });
 
   it('يخفي عمود «عدد المشاهدات» عن المحامي', async () => {
