@@ -181,7 +181,7 @@ export default function StatusChangeModal({
         throw new Error('اختر الأموال التي جرى بيعها بالمزاد العلني على الأقل');
       }
       payload.soldAssetIds = fields.soldAssetIds.join(',');
-    } else if (target === 'منفذ كاملا بهذا البيع') {
+    } else if (target === STATUS_ACTION_COMPLETE_SALE) {
       if (!fields.forcedTransferDate.trim()) {
         throw new Error('يجب إدخال تاريخ تحويل بدل المبيع للجهة العامة');
       }
@@ -212,7 +212,10 @@ export default function StatusChangeModal({
       payload.noFundsDemandDate = normalize(fields.noFundsDemandDate);
       if (fields.startReferralNumber.trim()) payload.startReferralNumber = normalize(fields.startReferralNumber);
       if (fields.startReferralDate.trim()) payload.startReferralDate = normalize(fields.startReferralDate);
-    } else if (target === 'العودة إلى المتداول' || target === 'العودة إلى منفذ جزئيا') {
+    } else if (
+      target === STATUS_ACTION_RETURN_CIRCULATING ||
+      target === STATUS_ACTION_RETURN_PARTIAL
+    ) {
       // العودتان بنفس نقطة return-referred-to-start — التجديد موحّد (قرار 12): إن أُدخل
       // رقم جديد وجب معه تاريخ التجديد وسنة الإعادة، ولو تُرك فارغًا لم يكن هناك تجديد.
       const renewalNumber = fields.renewalFileNumber.trim();

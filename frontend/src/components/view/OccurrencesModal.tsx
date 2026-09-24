@@ -1,5 +1,6 @@
 import type { DocumentOccurrenceDto } from '../../types';
 import { formatDate } from '../../utils/dates';
+import { EXEC_STATUS_SETTLED } from '../../utils/documentStatus';
 import { occurrenceLine } from './viewFormat';
 
 /**
@@ -224,7 +225,7 @@ function StatusChangeOccurrenceDetails({ occurrence }: { occurrence: DocumentOcc
       // وقعة استرداد المناب (F2/L4): سبب الاسترداد + كتاب براءة الذمة (تسوية) أو تحويل البدل
       // (اكتمال جبري) + رقم أساس المنيب — بمفاتيح معاودة من وقعةِ الاسترداد.
       if (d.recoveryReason) pushIf(pairs, 'سبب الاسترداد', d.recoveryReason);
-      if (d.recoveryReason === 'منفذ بالتسوية') {
+      if (d.recoveryReason === EXEC_STATUS_SETTLED) {
         pushIf(pairs, 'رقم كتاب براءة الذمة', d.baraetNumber);
         pushIf(pairs, 'تاريخ كتاب براءة الذمة', d.baraetDate);
       } else {

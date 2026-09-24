@@ -9,19 +9,14 @@ import { FieldInput, SelectInput } from './form/FormInputs';
 import { RenewalFields, type RenewalFieldsValue } from './form/RenewalFields';
 import { paidAmountKeys, paidCurrencyKeys } from './form/documentFormConstants';
 import { trimNull } from '../utils/serialization';
-import { targetsOf } from '../utils/documentStatus';
-
-/** تسمية حالة وضع «الجهة العامة منفذ عليها» الحالية (الفارغ «متداول» لا يُخزَّن كقيمة). */
-function currentLabelOf(doc: DocumentResponse): string {
-  if (doc.executedStatus === 'منفذ') return 'منفذ';
-  if (doc.executedStatus === 'مشطوب') return 'مشطوب';
-  return 'متداول';
-}
-
-/** قيمة الحالة المُرسَلة: «متداول» سلسلة فارغة لأنها لا تُخزَّن كقيمة في الخلفية. */
-function statusValue(target: string): string {
-  return target === 'متداول' ? '' : target;
-}
+import {
+  EXECUTED_STATUS_EXECUTED,
+  EXEC_STATUS_STRUCK_OFF,
+  STATE_CIRCULATING,
+  currentExecutedLabelOf,
+  executedStatusValue,
+  targetsOf,
+} from '../utils/documentStatus';
 
 type ExecutedFields = {
   executedPaidAmount: string;
@@ -75,13 +70,14 @@ export default function ExecutedStatusModal({
   onChanged: () => void;
 }) {
   const isDeposit = doc.generalEntitySide === 'deposit';
-  const current = currentLabelOf(doc);
+  const current = currentExecutedLabelOf(doc);
   const targets = targetsOf(current, isDeposit);
-  const isStruckOffNow = doc.executedStatus === 'مشطوب';
+  const isStruckOffNow = doc.executedStatus === EXEC_STATUS_STRUCK_OFF;
   // سنة الإعادة لعائلة «منفذ عليها/عرض وايداع» مقررة كسنة الخادم الحالية (§4.4).
   const { currentYear } = useCurrentYear();
   const [target, setTarget] = useState<string>(targets[0] ?? '');
-  const isDepositRevert = target === 'متداول' && isDeposit && current === 'منفذ';
+  const isDepositRevert =
+    target === STATE_CIRCULATING && isDeposit && current === EXECUTED_STATUS_EXECUTED;
   const [fields, setFields] = useState<ExecutedFields>(emptyExecutedFields());
   const [paidSlots, setPaidSlots] = useState(1);
   const [renewal, setRenewal] = useState<RenewalFieldsValue>({});
@@ -106,8 +102,8 @@ export default function ExecutedStatusModal({
   const normalize = (s: string) => normalizeArabicDigits(s.trim());
 
   const buildBody = (): Record<string, unknown> => {
-    const body: Record<string, unknown> = { status: statusValue(target) };
-    if (target === 'منفذ') {
+    const body: Record<string, unknown> = { status: executedStatusValue(target) };
+    if (target === EXECUTED_STATUS_EXECUTED) {
       // المبلغ المدفوع يتبع القاعدة العامة «حتى ثلاثة مبالغ بعملات متمايزة» في الصفّين:
       // كل خانة معبأة تُرسل بمبلغها وعملتها المختارة، والخانات الفارغة تُتجاهل كليًا.
       const raw = fields as unknown as Record<string, string>;
@@ -127,7 +123,7 @@ export default function ExecutedStatusModal({
         if (fields.executedDescription.trim()) body.executedDescription = fields.executedDescription.trim();
         if (fields.executedExecutionDate.trim()) body.executedExecutionDate = normalize(fields.executedExecutionDate);
       }
-    } else if (target === 'مشطوب') {
+    } else if (target === EXEC_STATUS_STRUCK_OFF) {
       if (fields.struckOffDate.trim()) body.struckOffDate = normalize(fields.struckOffDate);
     } else if (isDepositRevert) {
       // الإرجاع من «منفذ» إلى «متداول» في «عرض وايداع»: كتاب الجهة العامة بالسير بالملف إلزامي.
@@ -139,7 +135,7 @@ export default function ExecutedStatusModal({
       body.sayerDate = normalize(fields.sayerDate);
       body.sayerRegNumber = normalize(fields.sayerRegNumber);
       body.sayerRegDate = normalize(fields.sayerRegDate);
-    } else if (target === 'متداول' && isStruckOffNow) {
+    } else if (target === STATE_CIRCULATING && isStruckOffNow) {
       if (!(renewal.renewalFileNumber ?? '').trim()) {
         throw new Error('رقم الملف الجديد مطلوب عند إعادة الملف المشطوب');
       }
@@ -220,7 +216,7 @@ export default function ExecutedStatusModal({
                 />
               </div>
 
-              {target === 'منفذ' &&
+              {target === EXECUTED_STATUS_EXECUTED &&
                 (isDeposit ? (
                   <div className="grid gap-3">
                     <MultiAmountEditor
@@ -277,7 +273,7 @@ export default function ExecutedStatusModal({
                   </div>
                 ))}
 
-              {target === 'مشطوب' && (
+              {target === EXEC_STATUS_STRUCK_OFF && (
                 <FieldInput
                   id="executedStruckOffDate"
                   label="تاريخ الشطب"
@@ -295,7 +291,7 @@ export default function ExecutedStatusModal({
                 </div>
               )}
 
-              {target === 'متداول' && isStruckOffNow && (
+              {target === STATE_CIRCULATING && isStruckOffNow && (
                 <RenewalFields value={renewal} onSet={onRenewalSet} idPrefix="executed-status-" hideYear />
               )}
 

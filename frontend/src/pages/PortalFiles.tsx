@@ -3,6 +3,13 @@ import { Link } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { downloadBlob } from '../utils/download';
+import {
+  EXECUTED_STATUS_EXECUTED,
+  EXEC_STATUS_DEFERRED,
+  EXEC_STATUS_REFERRED_TO_START,
+  STATE_CIRCULATING,
+  STATE_DRAFT,
+} from '../utils/documentStatus';
 import type {
   PortalFileListItemDto,
   PortalFilesResponse,
@@ -14,11 +21,11 @@ const PAGE_SIZE = 20;
 
 const STATUS_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
   { value: '', label: 'كل الحالات' },
-  { value: 'متداول', label: 'متداول' },
-  { value: 'منفذ', label: 'منفذ' },
-  { value: 'تريث', label: 'تريث' },
-  { value: 'تحت رفع', label: 'تحت رفع' },
-  { value: 'محال الى البداية', label: 'محال الى البداية' },
+  { value: STATE_CIRCULATING, label: STATE_CIRCULATING },
+  { value: EXECUTED_STATUS_EXECUTED, label: EXECUTED_STATUS_EXECUTED },
+  { value: EXEC_STATUS_DEFERRED, label: EXEC_STATUS_DEFERRED },
+  { value: STATE_DRAFT, label: STATE_DRAFT },
+  { value: EXEC_STATUS_REFERRED_TO_START, label: EXEC_STATUS_REFERRED_TO_START },
 ];
 
 const AR_MONTHS = ['ك2', 'شباط', 'آذار', 'نيسان', 'أيار', 'حزيران', 'تموز', 'آب', 'أيلول', 'ت1', 'ت2', 'كانون الأول'];
@@ -155,11 +162,11 @@ export default function PortalFiles() {
           <dl className="grid grid-cols-2 sm:grid-cols-6 gap-2 text-center">
             {([
               ['الإجمالي', stats.totalFiles, 'bg-emerald-800 text-white'],
-              ['متداول', stats.circulatingFiles, 'bg-emerald-50 text-emerald-900'],
-              ['منفذ', stats.executedFiles, 'bg-sky-50 text-sky-900'],
-              ['تريث', stats.deferredFiles, 'bg-amber-50 text-amber-900'],
-              ['محال الى البداية', stats.referredToStartFiles ?? 0, 'bg-purple-50 text-purple-900'],
-              ['تحت رفع', stats.draftFiles, 'bg-gray-100 text-gray-700'],
+              [STATE_CIRCULATING, stats.circulatingFiles, 'bg-emerald-50 text-emerald-900'],
+              [EXECUTED_STATUS_EXECUTED, stats.executedFiles, 'bg-sky-50 text-sky-900'],
+              [EXEC_STATUS_DEFERRED, stats.deferredFiles, 'bg-amber-50 text-amber-900'],
+              [EXEC_STATUS_REFERRED_TO_START, stats.referredToStartFiles ?? 0, 'bg-purple-50 text-purple-900'],
+              [STATE_DRAFT, stats.draftFiles, 'bg-gray-100 text-gray-700'],
             ] as const).map(([label, value, cls]) => (
               <div key={label} className={`rounded-lg px-2 py-3 ${cls}`}>
                 <dt className="text-[11px] opacity-80">{label}</dt>

@@ -1,5 +1,5 @@
 import ArchivedDocumentsList, { type ArchivedDocumentsListConfig } from '../components/ArchivedDocumentsList';
-import { getDocumentBadge } from '../utils/documentStatus';
+import { EXEC_STATUS_FORCIBLY, EXEC_STATUS_SETTLED, getDocumentBadge } from '../utils/documentStatus';
 import { fullName } from '../utils/documentDisplay';
 import { formatDate } from '../utils/dates';
 import type { DocumentResponse } from '../types';
@@ -8,8 +8,8 @@ import type { DocumentResponse } from '../types';
 function executedDateOf(d: DocumentResponse): string {
   if (d.generalEntitySide === 'executed') return formatDate(d.executedExecutionDate, '—');
   if (d.generalEntitySide === 'deposit') return formatDate(d.executedDepositDate, '—');
-  if (d.execStatus === 'منفذ بالتسوية') return d.baraetDate || '—';
-  if (d.execStatus === 'منفذ جبريا') return d.forcedExecutionDate || '—';
+  if (d.execStatus === EXEC_STATUS_SETTLED) return d.baraetDate || '—';
+  if (d.execStatus === EXEC_STATUS_FORCIBLY) return d.forcedExecutionDate || '—';
   return '—';
 }
 

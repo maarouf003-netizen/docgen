@@ -24,7 +24,12 @@ import {
   requiredAmountKeys,
   requiredCurrencyKeys,
 } from './documentFormConstants';
-import { targetsOf } from '../../utils/documentStatus';
+import {
+  EXECUTED_STATUS_EXECUTED,
+  EXEC_STATUS_STRUCK_OFF,
+  STATE_CIRCULATING,
+  targetsOf,
+} from '../../utils/documentStatus';
 import { ExecutedHeirsEditor } from './HeirsEditors';
 import { RepresentativeEditor } from './RepresentativeEditor';
 import { FormSectionTitle } from './FormSectionTitle';
@@ -134,9 +139,10 @@ export function ExecutedSideSections({
   // خيارات «الحالة» في نموذج التعديل تُرشَّح بمنطق نافذة تغيير الحالة (§4.6): الحالة الحالية
   // تبقى قابلة للإبقاء عليها، ولا تُعرض الحالات المحظورة. الإرجاع المباشر من «منفذ» في
   // «عرض وايداع» يبقى خاصًا بالنافذة (كتاب السير بالملف) فيُستثنى خيار «متداول» من النموذج.
-  const statusCurrent = currentExecutedStatus || 'متداول';
-  const statusTargets = targetsOf(statusCurrent, isDeposit)
-    .filter((t) => !(statusCurrent === 'منفذ' && isDeposit && t === 'متداول'));
+  const statusCurrent = currentExecutedStatus || STATE_CIRCULATING;
+  const statusTargets = targetsOf(statusCurrent, isDeposit).filter(
+    (t) => !(statusCurrent === EXECUTED_STATUS_EXECUTED && isDeposit && t === STATE_CIRCULATING),
+  );
   const statusOptions = [statusCurrent, ...statusTargets];
 
   return (
@@ -620,14 +626,14 @@ export function ExecutedSideSections({
               className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
               {statusOptions.map((s) => (
-                <option key={s} value={s === 'متداول' ? '' : s}>
+                <option key={s} value={s === STATE_CIRCULATING ? '' : s}>
                   {s}
                 </option>
               ))}
             </select>
           </div>
         </div>
-        {form.executedStatus === 'منفذ' && (
+        {form.executedStatus === EXECUTED_STATUS_EXECUTED && (
           <div className="mt-4 rounded-lg bg-white border border-gray-200 p-4">
             {isDeposit ? (
               <div className="grid gap-4">
@@ -675,7 +681,7 @@ export function ExecutedSideSections({
             )}
           </div>
         )}
-        {form.executedStatus === 'مشطوب' && (
+        {form.executedStatus === EXEC_STATUS_STRUCK_OFF && (
           <div className="mt-4 grid md:grid-cols-3 gap-4 items-end">
             {field('تاريخ الشطب', 'struckOffDate', 'مثال: 1/8/2026')}
           </div>

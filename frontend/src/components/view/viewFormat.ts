@@ -5,7 +5,17 @@ import type {
   ExecutedNaturalPersonDto,
   HeirDto,
 } from '../../types';
-import { getDocumentStatus } from '../../utils/documentStatus';
+import {
+  EXECUTED_STATUS_EXECUTED,
+  EXEC_STATUS_DEFERRED,
+  EXEC_STATUS_FORCIBLY,
+  EXEC_STATUS_RECOVERED,
+  EXEC_STATUS_REFERRED_TO_START,
+  EXEC_STATUS_SETTLED,
+  EXEC_STATUS_STRUCK_OFF,
+  SUB_STATUS_PARTIAL,
+  getDocumentStatus,
+} from '../../utils/documentStatus';
 import { isExecutedLike, tripleName } from '../../utils/documentDisplay';
 import { formatDate } from '../../utils/dates';
 import type { DetailsRow, HeirLine, PersonFields } from './viewTypes';
@@ -255,7 +265,7 @@ export function buildStatusSummary(doc: DocumentResponse, context?: { sourceLabe
   // أية حالة أخرى (كصفوف التسوية/الجبريا القديمة المسجلة يدويًا قبل الخطة) تسقط على القديم دفاعًا.
   const sourceLabel = context?.sourceLabel?.trim();
   if (doc.sourceDelegationId != null) {
-    if (doc.execStatus === 'تريث') {
+    if (doc.execStatus === EXEC_STATUS_DEFERRED) {
       return [
         'تريث تبعًا للملف المنيب',
         sourceLabel ? `(${sourceLabel})` : '',
@@ -267,9 +277,9 @@ export function buildStatusSummary(doc: DocumentResponse, context?: { sourceLabe
         .filter(Boolean)
         .join(' ');
     }
-    if (doc.execStatus === 'مسترد') {
+    if (doc.execStatus === EXEC_STATUS_RECOVERED) {
       const recovery = latestRecovery(doc);
-      if (recovery?.recoveryReason === 'منفذ بالتسوية') {
+      if (recovery?.recoveryReason === EXEC_STATUS_SETTLED) {
         return [
           'مسترد لاعتبار الملف المنيب',
           sourceLabel ? `(${sourceLabel})` : '',
@@ -288,7 +298,7 @@ export function buildStatusSummary(doc: DocumentResponse, context?: { sourceLabe
         .join(' ');
     }
   }
-  if (doc.execStatus === 'منفذ بالتسوية') {
+  if (doc.execStatus === EXEC_STATUS_SETTLED) {
     const parts = ['منفذ بموجب كتاب براءة الذمة'];
     if (doc.baraetNumber) parts.push(`رقم ${doc.baraetNumber}`);
     if (doc.baraetDate) parts.push(`تاريخ ${doc.baraetDate}`);
@@ -300,7 +310,7 @@ export function buildStatusSummary(doc: DocumentResponse, context?: { sourceLabe
     if (collected) parts.push(`المبلغ المحصل: ${collected}`);
     return parts.join(' ');
   }
-  if (doc.execStatus === 'تريث') {
+  if (doc.execStatus === EXEC_STATUS_DEFERRED) {
     const parts = ['تريث بموجب كتاب التريث'];
     if (doc.tarithNumber) parts.push(`رقم ${doc.tarithNumber}`);
     if (doc.tarithDate) parts.push(`تاريخ ${doc.tarithDate}`);
@@ -310,8 +320,8 @@ export function buildStatusSummary(doc: DocumentResponse, context?: { sourceLabe
     if (reg.length) parts.push(`والمسجل ${reg.join(' ')}`);
     return parts.join(' ');
   }
-  if (doc.execStatus === 'منفذ جبريا') {
-    const parts = ['منفذ جبريا'];
+  if (doc.execStatus === EXEC_STATUS_FORCIBLY) {
+    const parts = [EXEC_STATUS_FORCIBLY];
     if (doc.execSubStatus) parts.push(`(${doc.execSubStatus})`);
     const collected = formatCollectedAmounts(doc);
     if (collected) parts.push(`المبلغ المحصل: ${collected}`);
@@ -319,7 +329,7 @@ export function buildStatusSummary(doc: DocumentResponse, context?: { sourceLabe
     if (doc.forcibleTransferNoticeNumber) parts.push(`بإشعار رقم ${doc.forcibleTransferNoticeNumber}`);
     return parts.join(' ');
   }
-  if (doc.execStatus === 'محال الى البداية') {
+  if (doc.execStatus === EXEC_STATUS_REFERRED_TO_START) {
     // ملخص «محال الى البداية»: كتاب المطالعة بعدم وجود أموال + كتاب الإحالة إن وُجد. من دخل من
     // «منفذ جبريا - منفذ جزئيا» تحمل جزئيته مقطعًا مرآة لفرع الجبريا (المحصل + التحويل).
     const parts = ['محال إلى قسم البداية لعدم وجود أموال للتنفيذ عليها'];
@@ -330,7 +340,7 @@ export function buildStatusSummary(doc: DocumentResponse, context?: { sourceLabe
       if (doc.startReferralNumber) parts.push(`رقم ${doc.startReferralNumber}`);
       if (doc.startReferralDate) parts.push(`بتاريخ ${formatDate(doc.startReferralDate)}`);
     }
-    if (doc.execSubStatus === 'منفذ جزئيا') {
+    if (doc.execSubStatus === SUB_STATUS_PARTIAL) {
       parts.push('(منفذ جزئيا)');
       const collected = formatCollectedAmounts(doc);
       if (collected) parts.push(`المبلغ المحصل: ${collected}`);
@@ -339,7 +349,7 @@ export function buildStatusSummary(doc: DocumentResponse, context?: { sourceLabe
     }
     return parts.join(' ');
   }
-  if (doc.execStatus === 'مشطوب') {
+  if (doc.execStatus === EXEC_STATUS_STRUCK_OFF) {
     const parts = ['مشطوب'];
     if (doc.struckOffDate) parts.push(`بتاريخ ${formatDate(doc.struckOffDate)}`);
     return parts.join(' ');
@@ -347,12 +357,12 @@ export function buildStatusSummary(doc: DocumentResponse, context?: { sourceLabe
   // عائلة وضع «منفذ عليه»/«عرض وايداع»: ملخص وصفي (متداول/منفذ/مشطوب) مع التاريخ عند وجوده،
   // بدل التسمية المجردة التي تُعيدها الدالة المساندة.
   if (isExecutedLike(doc.generalEntitySide)) {
-    if (doc.executedStatus === 'مشطوب') {
+    if (doc.executedStatus === EXEC_STATUS_STRUCK_OFF) {
       const parts = ['مشطوب'];
       if (doc.struckOffDate) parts.push(`بتاريخ ${formatDate(doc.struckOffDate)}`);
       return parts.join(' ');
     }
-    if (doc.executedStatus === 'منفذ') {
+    if (doc.executedStatus === EXECUTED_STATUS_EXECUTED) {
       const parts = ['منفذ'];
       const executionDate =
         doc.generalEntitySide === 'deposit' ? doc.executedDepositDate : doc.executedExecutionDate;
@@ -400,7 +410,7 @@ export function occurrenceLine(occurrence: DocumentOccurrenceDto): string {
     case 'settled':
       return ['منفذ بالتسوية بموجب كتاب براءة الذمة', d.baraetNumber ? `رقم ${d.baraetNumber}` : '', d.baraetDate ? `بتاريخ ${d.baraetDate}` : ''].filter(Boolean).join(' ');
     case 'forcible': {
-      const parts = ['منفذ جبريا'];
+      const parts = [EXEC_STATUS_FORCIBLY];
       if (d.execSubStatus) parts.push(`(${d.execSubStatus})`);
       if (d.forcedTransferDate) parts.push(`تحويل البدل بتاريخ ${formatDate(d.forcedTransferDate)}`);
       if (d.forcedTransferNoticeNumber) parts.push(`بإشعار رقم ${d.forcedTransferNoticeNumber}`);
@@ -416,7 +426,7 @@ export function occurrenceLine(occurrence: DocumentOccurrenceDto): string {
     case 'recovered':
       // وقعة استرداد المناب (L4): التسوية تُلحق بكتاب براءة الذمة، والاكتمال الجبري بسبب «تحصيل
       // المبلغ المطالب به جبريًا» في المنيب — بمصطلح المعتمَد (T5/L4).
-      return d.recoveryReason === 'منفذ بالتسوية'
+      return d.recoveryReason === EXEC_STATUS_SETTLED
         ? ['استرداد الملف المناب لاعتبار الملف المنيب منفذًا', d.baraetNumber ? `ببراءة الذمة رقم ${d.baraetNumber}` : '', d.baraetDate ? `تاريخ ${d.baraetDate}` : ''].filter(Boolean).join(' ')
         : 'استرداد الملف المناب لاعتبار الملف المنيب منفذًا — بتحصيل المبلغ المطالب به جبريًا في الملف المنيب';
     case 'entity-change': {

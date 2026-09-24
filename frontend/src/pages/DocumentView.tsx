@@ -4,7 +4,12 @@ import { Link, useParams } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { normalizeDocumentResponse } from '../utils/apiNormalization';
-import { getDocumentBadge, canDelegateSource, EXEC_STATUS_DELEGATION_EXECUTED } from '../utils/documentStatus';
+import {
+  getDocumentBadge,
+  canDelegateSource,
+  isCirculatingTarget,
+  EXEC_STATUS_DELEGATION_EXECUTED,
+} from '../utils/documentStatus';
 import { isExecutedLike } from '../utils/documentDisplay';
 import { DELEGATION_STATUS_ASSIGNED, DELEGATION_STATUS_REGISTERED } from '../utils/delegationStatus';
 import { availableDelegationAssets } from '../utils/delegationAssets';
@@ -182,7 +187,7 @@ export default function DocumentView() {
     delegationOfThisFile != null &&
     delegationOfThisFile.status === DELEGATION_STATUS_REGISTERED &&
     // N11: زر «إتمام الإنابة» يخص الملف المناب المتداول فقط — وإلا وعد ثم فشل خلفيةً (E3).
-    (doc.execStatus == null || doc.execStatus === '');
+    isCirculatingTarget(doc);
 
   const openCreateDelegation = () => {
     setEditingDelegation(null);
