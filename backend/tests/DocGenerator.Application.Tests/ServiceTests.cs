@@ -1843,9 +1843,10 @@ public class DocumentServiceTests : IDisposable
     [Fact]
     public async Task ArchiveSearch_ReferredPage_IgnoresExecutedFamilyTables()
     {
-        // تثبيت التضييق: صف «منفذ عليه» دخيل على ملف محال (مستحيل عبر الدومين —
-        // حقن مباشر عبر _db) تجده القائمة ولا تجده صفحة المحالة، والصفحة ما زالت
-        // تجد الملف نفسه بفرع أصيل (الكفيل) — فالتضييق جراحي لا كسر.
+        // تثبيت التضييق: صف «منفذ عليه» دخيل على ملف محال (لا تُعبَّأ هذه الصفوف
+        // لملفات «طالبة تنفيذ» عبر الواجهة — حقن مباشر عبر _db كتجهيز صندوق-أبيض
+        // منضبط كما في لقطة المحذوفة) تجده القائمة ولا تجده صفحة المحالة، والصفحة
+        // ما زالت تجد الملف نفسه بفرع أصيل (الكفيل) — فالتضييق جراحي لا كسر.
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
         Assert.True(await _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
             ReferredToStartFields(), "lawyer1"));
