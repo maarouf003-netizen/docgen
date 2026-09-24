@@ -6,49 +6,26 @@ import { isAuctionableKind } from './form/documentFormConstants';
 import type { AssetDto, DocumentResponse } from '../types';
 import { FieldInput, SelectInput } from './form/FormInputs';
 import MultiAmountEditor from './MultiAmountEditor';
+import {
+  EXEC_STATUS_DEFERRED,
+  EXEC_STATUS_FORCIBLY,
+  EXEC_STATUS_REFERRED_TO_START,
+  EXEC_STATUS_SETTLED,
+  EXEC_STATUS_STRUCK_OFF,
+  STATUS_ACTION_COMPLETE_SALE,
+  STATUS_ACTION_RETURN_CIRCULATING,
+  STATUS_ACTION_RETURN_PARTIAL,
+  STATUS_ACTION_REVERT,
+  SUB_STATUS_FULL,
+  SUB_STATUS_PARTIAL,
+  allowedTargetsOf,
+  currentStateOf,
+  filterTargetsByPartial,
+  isPartialExecSubStatus,
+} from '../utils/documentStatus';
 
 /** نمط التاريخ الحر المعتمد: «مثال: 1/8/2026» (يوم/شهر/سنة) لكل حقول التواريخ. */
 const DATE_PLACEHOLDER = 'مثال: 1/8/2026';
-
-/** الحالة الحالية لنظام «طالبة تنفيذ» (مطابقة لآلة الحالات في الخلفية). */
-function currentStateOf(doc: DocumentResponse): string {
-  if (doc.execStatus === 'مشطوب' || doc.executedStatus === 'مشطوب') return 'مشطوب';
-  if (doc.execStatus === 'تريث') return 'تريث';
-  if (doc.execStatus === 'مسترد') return 'مسترد';
-  if (doc.execStatus === 'محال الى البداية') return 'محال الى البداية';
-  if (doc.execStatus === 'منفذ بالتسوية') return 'منفذ بالتسوية';
-  if (doc.execStatus === 'منفذ جبريا') return 'منفذ جبريا';
-  return doc.isDraft ? 'تحت رفع' : 'متداول';
-}
-
-/** الانتقالات المسموحة عبر نافذة «تغيير الحالة» — للملف المنيب (والمتداول يُسجَّل من التعديل).
- * الملف المناب (و5/ب2) مختلف: مناب متداول لا يخرج إلا إلى «مشطوب» (C1)، ومناب موروث-تريث
- * أو «مسترد» بلا حالات إطلاقًا (تلحق حالة المنيب اعتبارًا منفذًا أو تريثًا — رسالة L6)،
- * و«تراجع»/«منفذ كاملا بهذا البيع» محجوبان عنه نهائيًا (الخلفية تحمي أيضًا بب2/F6).
- * «الإحالة إلى البداية» تدخل من متداول/تريث/منفذ-جبريا-جزئيا (فلتر الحمل الختامي بالأسفل)،
- * والخروج من «محال الى البداية» عبر العودتين فقط (نقطة return-referred-to-start — الخلفية
- * توجّه اللازمة: جزئيا ⇒ عودة منفذًا جزئيًا، وإلا عودة المتداول). */
-function allowedTargetsOf(state: string, isTarget: boolean, partial: boolean): string[] {
-  if (isTarget && state === 'متداول') return ['مشطوب'];
-  if (isTarget) return [];
-  switch (state) {
-    case 'تحت رفع':
-      return ['تريث', 'منفذ بالتسوية'];
-    case 'متداول':
-      return ['تريث', 'منفذ بالتسوية', 'منفذ جبريا', 'مشطوب', 'محال الى البداية'];
-    case 'تريث':
-      return ['منفذ بالتسوية', 'تراجع', 'محال الى البداية'];
-    case 'منفذ بالتسوية':
-      return ['تراجع'];
-    case 'منفذ جبريا':
-      return ['تراجع', 'محال الى البداية', 'منفذ كاملا بهذا البيع'];
-    case 'محال الى البداية':
-      // اللازمة (§2-10): من دخل من «منفذ جبريا — منفذ جزئيا» يعود منفذًا جزئيًا، وإلا يعود للمتداول.
-      return partial ? ['العودة إلى منفذ جزئيا'] : ['العودة إلى المتداول'];
-    default:
-      return [];
-  }
-}
 
 const COLLECTED_AMOUNT_KEYS = ['collectedAmount', 'collectedAmount2', 'collectedAmount3'] as const;
 const COLLECTED_CURRENCY_KEYS = ['collectedCurrency', 'collectedCurrency2', 'collectedCurrency3'] as const;
@@ -102,7 +79,7 @@ function emptyFields(): StatusFields {
     sayerDate: '',
     sayerRegNumber: '',
     sayerRegDate: '',
-    execSubStatus: 'منفذ كاملا',
+    execSubStatus: SUB_STATUS_FULL,
     forcedExecutionDate: '',
     forcedTransferDate: '',
     forcedTransferNoticeNumber: '',
@@ -137,14 +114,8 @@ export default function StatusChangeModal({
   const isTarget = Boolean(doc.sourceDelegationId);
   // اللازمة (§2-10): «المنفذ جزئيا» على «محال» يحدد وجهة العودة (منفذ جزئيا)؛ والإحالة إلى
   // البداية من «منفذ جبريا» تخص الجزئي فحسب، أما من متداول/تريث فهي مفتوحة لهما دائمًا.
-  const partial = doc.execSubStatus === 'منفذ جزئيا';
-  const targets = allowedTargetsOf(state, isTarget, partial).filter((t) => {
-    const partialOnly =
-      t === 'منفذ كاملا بهذا البيع' ||
-      (t === 'محال الى البداية' && state === 'منفذ جبريا') ||
-      t === 'العودة إلى منفذ جزئيا';
-    return !partialOnly || partial;
-  });
+  const partial = isPartialExecSubStatus(doc.execSubStatus);
+  const targets = filterTargetsByPartial(allowedTargetsOf(state, isTarget, partial), state, partial);
   const [target, setTarget] = useState<string>(targets[0] ?? '');
   const [fields, setFields] = useState<StatusFields>(emptyFields());
   const [collectedSlots, setCollectedSlots] = useState(1);
@@ -170,7 +141,7 @@ export default function StatusChangeModal({
 
   const buildPayload = (): Record<string, string> => {
     const payload: Record<string, string> = {};
-    if (target === 'تريث') {
+    if (target === EXEC_STATUS_DEFERRED) {
       if (!fields.tarithNumber.trim() || !fields.tarithDate.trim()) {
         throw new Error('يجب إدخال رقم وتاريخ كتاب التريث على الأقل');
       }
@@ -178,7 +149,7 @@ export default function StatusChangeModal({
       payload.tarithDate = normalize(fields.tarithDate);
       if (fields.tarithRegNumber) payload.tarithRegNumber = normalize(fields.tarithRegNumber);
       if (fields.tarithRegDate) payload.tarithRegDate = normalize(fields.tarithRegDate);
-    } else if (target === 'منفذ بالتسوية') {
+    } else if (target === EXEC_STATUS_SETTLED) {
       if (!fields.baraetNumber.trim() || !fields.baraetDate.trim()) {
         throw new Error('يجب إدخال رقم وتاريخ كتاب براءة الذمة على الأقل');
       }
@@ -193,7 +164,7 @@ export default function StatusChangeModal({
           payload[COLLECTED_CURRENCY_KEYS[i]] = fields[COLLECTED_CURRENCY_KEYS[i]];
         }
       }
-    } else if (target === 'منفذ جبريا') {
+    } else if (target === EXEC_STATUS_FORCIBLY) {
       payload.execSubStatus = fields.execSubStatus;
       if (!fields.forcedExecutionDate.trim()) {
         throw new Error('يجب إدخال تاريخ قرار الإحالة القطعية');
@@ -218,12 +189,12 @@ export default function StatusChangeModal({
       if (fields.forcedTransferNoticeNumber.trim()) {
         payload.forcedTransferNoticeNumber = normalize(fields.forcedTransferNoticeNumber);
       }
-    } else if (target === 'مشطوب') {
+    } else if (target === EXEC_STATUS_STRUCK_OFF) {
       if (!fields.struckOffDate.trim()) {
         throw new Error('يجب إدخال تاريخ الشطب');
       }
       payload.struckOffDate = normalize(fields.struckOffDate);
-    } else if (target === 'تراجع') {
+    } else if (target === STATUS_ACTION_REVERT) {
       if (!fields.sayerNumber.trim() || !fields.sayerDate.trim()
         || !fields.sayerRegNumber.trim() || !fields.sayerRegDate.trim()) {
         throw new Error('يجب إدخال رقم وتاريخ كتاب الجهة العامة بالسير بالملف وورودهما');
@@ -232,7 +203,7 @@ export default function StatusChangeModal({
       payload.sayerDate = normalize(fields.sayerDate);
       payload.sayerRegNumber = normalize(fields.sayerRegNumber);
       payload.sayerRegDate = normalize(fields.sayerRegDate);
-    } else if (target === 'محال الى البداية') {
+    } else if (target === EXEC_STATUS_REFERRED_TO_START) {
       // إلزاميّا الدخول: كتاب المطالعة بعدم وجود أموال (رقم + تاريخ)؛ كتاب الإحالة اختياري.
       if (!fields.noFundsDemandNumber.trim() || !fields.noFundsDemandDate.trim()) {
         throw new Error('يجب إدخال رقم وتاريخ كتاب المطالعة بعدم وجود أموال للتنفيذ عليها');
@@ -255,7 +226,7 @@ export default function StatusChangeModal({
         if (fields.renewalFileType.trim()) payload.renewalFileType = normalize(fields.renewalFileType);
       }
       // شطب الملف السابق (اختياري) — لعودة-المتداول فقط (الخادم يتجاهله في عودة-جزئيا).
-      if (target === 'العودة إلى المتداول' && fields.struckOffDate.trim()) {
+      if (target === STATUS_ACTION_RETURN_CIRCULATING && fields.struckOffDate.trim()) {
         payload.struckOffDate = normalize(fields.struckOffDate);
       }
     }
@@ -273,13 +244,16 @@ export default function StatusChangeModal({
     }
     setBusy(true);
     try {
-      if (target === 'تراجع') {
+      if (target === STATUS_ACTION_REVERT) {
         await api.post(`/documents/${doc.id}/revert-status`, { fields: payload });
-      } else if (target === 'منفذ كاملا بهذا البيع') {
+      } else if (target === STATUS_ACTION_COMPLETE_SALE) {
         await api.post(`/documents/${doc.id}/consider-executed-by-delegation`, {
           fields: payload,
         });
-      } else if (target === 'العودة إلى المتداول' || target === 'العودة إلى منفذ جزئيا') {
+      } else if (
+        target === STATUS_ACTION_RETURN_CIRCULATING ||
+        target === STATUS_ACTION_RETURN_PARTIAL
+      ) {
         // العودتان من «محال الى البداية» تحملان نفس النقطة — الخادم يوجّه اللازمة بنفسه.
         // تقبض النقطة جسمًا سطحيًا (ReturnReferredToStartRequest: RenewalRequest) لا
         // { fields }، فعلى الحقول أن تأتي جذرية، وسنة الإعادة رقمًا (System.Text.Json
@@ -326,7 +300,9 @@ export default function StatusChangeModal({
             <p className="text-xs text-gray-500 mb-1">الحالة الحالية</p>
             <p className="font-medium text-gray-800">
               {state}
-              {state === 'محال الى البداية' && doc.execSubStatus === 'منفذ جزئيا' ? ' (منفذ جزئيا)' : ''}
+              {state === EXEC_STATUS_REFERRED_TO_START && isPartialExecSubStatus(doc.execSubStatus)
+                ? ` (${SUB_STATUS_PARTIAL})`
+                : ''}
             </p>
           </div>
 
@@ -350,7 +326,7 @@ export default function StatusChangeModal({
                 />
               </div>
 
-              {target === 'تريث' && (
+              {target === EXEC_STATUS_DEFERRED && (
                 <div className="grid sm:grid-cols-2 gap-3">
                   <FieldInput id="tarithNumber" label="رقم كتاب التريث" value={fields.tarithNumber} onChange={(v) => set('tarithNumber', v)} />
                   <FieldInput id="tarithDate" label="تاريخ كتاب التريث" value={fields.tarithDate} onChange={(v) => set('tarithDate', v)} placeholder={DATE_PLACEHOLDER} />
@@ -359,7 +335,7 @@ export default function StatusChangeModal({
                 </div>
               )}
 
-              {target === 'منفذ بالتسوية' && (
+              {target === EXEC_STATUS_SETTLED && (
                 <div className="grid gap-4">
                   <div className="grid sm:grid-cols-2 gap-3">
                     <FieldInput id="baraetNumber" label="رقم كتاب براءة الذمة" value={fields.baraetNumber} onChange={(v) => set('baraetNumber', v)} />
@@ -381,14 +357,14 @@ export default function StatusChangeModal({
                 </div>
               )}
 
-              {target === 'منفذ جبريا' && (
+              {target === EXEC_STATUS_FORCIBLY && (
                 <div className="grid gap-4">
                   <SelectInput
                     id="execSubStatus"
                     label="نوع التنفيذ"
                     value={fields.execSubStatus}
                     onChange={(v) => set('execSubStatus', v)}
-                    options={['منفذ جزئيا', 'منفذ كاملا']}
+                    options={[SUB_STATUS_PARTIAL, SUB_STATUS_FULL]}
                   />
                   <FieldInput
                     id="forcedExecutionDate"
@@ -441,7 +417,7 @@ export default function StatusChangeModal({
                 </div>
               )}
 
-              {target === 'منفذ كاملا بهذا البيع' && (
+              {target === STATUS_ACTION_COMPLETE_SALE && (
                 <div className="grid sm:grid-cols-2 gap-3">
                   <FieldInput
                     id="forcedTransferDate"
@@ -459,11 +435,11 @@ export default function StatusChangeModal({
                 </div>
               )}
 
-              {target === 'مشطوب' && (
+              {target === EXEC_STATUS_STRUCK_OFF && (
                 <FieldInput id="struckOffDate" label="تاريخ الشطب" value={fields.struckOffDate} onChange={(v) => set('struckOffDate', v)} placeholder={DATE_PLACEHOLDER} />
               )}
 
-              {target === 'تراجع' && (
+              {target === STATUS_ACTION_REVERT && (
                 <div className="grid sm:grid-cols-2 gap-3">
                   <FieldInput id="sayerNumber" label="رقم كتاب الجهة العامة بالسير بالملف" value={fields.sayerNumber} onChange={(v) => set('sayerNumber', v)} />
                   <FieldInput id="sayerDate" label="تاريخ كتاب الجهة العامة بالسير بالملف" value={fields.sayerDate} onChange={(v) => set('sayerDate', v)} placeholder={DATE_PLACEHOLDER} />
@@ -472,7 +448,7 @@ export default function StatusChangeModal({
                 </div>
               )}
 
-              {target === 'محال الى البداية' && (
+              {target === EXEC_STATUS_REFERRED_TO_START && (
                 <div className="grid gap-4">
                   <div className="grid sm:grid-cols-2 gap-3">
                     <FieldInput
@@ -519,13 +495,14 @@ export default function StatusChangeModal({
                 </div>
               )}
 
-              {(target === 'العودة إلى المتداول' || target === 'العودة إلى منفذ جزئيا') && (
+              {(target === STATUS_ACTION_RETURN_CIRCULATING ||
+                target === STATUS_ACTION_RETURN_PARTIAL) && (
                 <div className="grid gap-4">
                   <div
                     role="note"
                     className="rounded-lg bg-purple-50 border border-purple-200 px-3 py-2 text-sm text-purple-800"
                   >
-                    {target === 'العودة إلى المتداول'
+                    {target === STATUS_ACTION_RETURN_CIRCULATING
                       ? 'أعيد السير بالملف إلى المتداول بعد موافاة قسم التنفيذ بأموال للتنفيذ عليها.'
                       : 'يعود الملف إلى «منفذ جبريا» محافظًا على المبلغ المحصل العائد — أكمل بيانات التنفيذ الجبري عند الحاجة.'}
                   </div>
@@ -556,7 +533,7 @@ export default function StatusChangeModal({
                       value={fields.renewalFileType}
                       onChange={(v) => set('renewalFileType', v)}
                     />
-                    {target === 'العودة إلى المتداول' && (
+                    {target === STATUS_ACTION_RETURN_CIRCULATING && (
                       <FieldInput
                         id="struckOffDate"
                         label="تاريخ شطب الملف السابق (اختياري)"
