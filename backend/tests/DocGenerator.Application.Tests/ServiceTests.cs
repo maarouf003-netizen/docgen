@@ -1639,6 +1639,186 @@ public class DocumentServiceTests : IDisposable
         Assert.Contains(doc.Id, struckOff.Items.Select(d => d.Id));
     }
 
+    /// <summary>
+    /// عينة «منفذ عليه» للأرشيف: طالب تنفيذ + جهة عامة + شخص طبيعي (نفس أشكال
+    /// OccurrenceTests المثبتة) — تُخصَّب حقول المتوفى عبر _db مباشرة لتغطية فرع السلسلة.
+    /// </summary>
+    private static DocumentUpsertRequest ExecutedArchiveSample() => new()
+    {
+        GeneralEntitySide = GeneralEntitySideCatalog.Executed,
+        FileNumber = "777",
+        FileYear = "2024",
+        ContractTypeSelector = "عادي",
+        Court = "دمشق",
+        FileReceiptDate = "5/1/2024",
+        ExecutedRequiredAmount = 1000m,
+        ExecutionApplicants = new()
+        {
+            new ExecutionApplicantDto(null, "أحمد", "خالد", "الخطيب", null, "أصالة", null, null, null, null, null, null, null, null, new()),
+        },
+        ExecutedPublicEntities = new()
+        {
+            new ExecutedPublicEntityDto(null, "المصرف العقاري", "فرع المزة"),
+        },
+        ExecutedNaturalPersons = new()
+        {
+            new ExecutedNaturalPersonDto(null, "سامر", "حسن", "علي", "عنوان", "دمشق - المزة", "أصالة", null, null, null, null, null, null, null, null, null, new()),
+        },
+    };
+
+    private async Task AddAppealSnapshotAsync(int documentId, string appellantsJson, string appelleesJson)
+    {
+        _db.DocumentAppeals.Add(new DocumentAppeal
+        {
+            DocumentId = documentId,
+            Direction = AppealDirectionCatalog.Appellants,
+            Status = AppealStatusCatalog.Pending,
+            AppellantsJson = appellantsJson,
+            AppelleesJson = appelleesJson,
+            CreatedById = 1,
+        });
+        await _db.SaveChangesAsync();
+    }
+
+    private static HashSet<int> PageIds(PagedResult<DocumentResponse> page) =>
+        page.Items.Select(d => d.Id).ToHashSet();
+
+    [Fact]
+    public async Task ArchiveSearch_StruckOffPage_MatchesGuarantorHeirAndAppeal()
+    {
+        // طالبة تنفيذ مشطوبة: الكفيل/الوريث/لقطة الاستئناف — وتكافؤ المجموعات مع القائمة.
+        var req = Sample();
+        req.BorrowerHeirs = new() { new HeirDto(null, "غريب", "عن", "المقترض", null, null, null) };
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        await AddAppealSnapshotAsync(doc.Id, "مستأنف مشطوب فريد", "مستأنف عليه مشطوب");
+        Assert.True(await _service.UpdateStatusAsync(doc.Id, "مشطوب",
+            new Dictionary<string, string?> { ["struckOffDate"] = "1/2/2024" }, "lawyer1"));
+
+        foreach (var term in new[] { "سمير حسن علي", "غريب عن المقترض", "مستأنف مشطوب فريد" })
+        {
+            var pageIds = PageIds(await _service.SearchStruckOffAsync(term, 1, 20));
+            Assert.Contains(doc.Id, pageIds);
+            var mainIds = PageIds(await _service.SearchAsync(term, null, null, null, null, null, null, null, null, 1, 20));
+            Assert.True(pageIds.SetEquals(mainIds), $"تكافؤ المجموعات مكسور للعبارة: {term}");
+        }
+    }
+
+    [Fact]
+    public async Task ArchiveSearch_StruckOffPage_MatchesExecutedFamilyTables()
+    {
+        // عائلة «منفذ عليه» المشطوبة: الجهة/الطبيعي/طالب التنفيذ/سلسلة المتوفى/اللقطة.
+        var doc = await _service.CreateAsync(ExecutedArchiveSample(), 1, "lawyer1", 1);
+        var applicantRow = _db.ExecutionApplicants.Single(a => a.DocumentId == doc.Id);
+        applicantRow.DeceasedName = "سالم";
+        applicantRow.DeceasedFamily = "الغائب";
+        await _db.SaveChangesAsync();
+        await AddAppealSnapshotAsync(doc.Id, "مستأنف منفذ مشطوب", "ضد مشطوب");
+        Assert.True(await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1"));
+
+        foreach (var term in new[] { "المصرف العقاري", "سامر حسن علي", "أحمد خالد الخطيب", "سالم الغائب", "مستأنف منفذ مشطوب" })
+        {
+            var pageIds = PageIds(await _service.SearchStruckOffAsync(term, 1, 20));
+            Assert.Contains(doc.Id, pageIds);
+            var mainIds = PageIds(await _service.SearchAsync(term, null, null, null, null, null, null, null, null, 1, 20));
+            Assert.True(pageIds.SetEquals(mainIds), $"تكافؤ المجموعات مكسور للعبارة: {term}");
+        }
+    }
+
+    [Fact]
+    public async Task ArchiveSearch_ExecutedPage_MatchesExecutedFamilyTables()
+    {
+        // عائلة «منفذ عليه» المنفذة: نفس الجداول الخمسة على صفحة المنفذة + التكافؤ.
+        var doc = await _service.CreateAsync(ExecutedArchiveSample(), 1, "lawyer1", 1);
+        var applicantRow = _db.ExecutionApplicants.Single(a => a.DocumentId == doc.Id);
+        applicantRow.DeceasedName = "سالم";
+        applicantRow.DeceasedFamily = "الغائب";
+        await _db.SaveChangesAsync();
+        await AddAppealSnapshotAsync(doc.Id, "مستأنف منفذ فريد", "ضد منفذ");
+        Assert.True(await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.Executed, "lawyer1"));
+
+        foreach (var term in new[] { "المصرف العقاري", "سامر حسن علي", "أحمد خالد الخطيب", "سالم الغائب", "مستأنف منفذ فريد" })
+        {
+            var pageIds = PageIds(await _service.SearchExecutedAsync(term, 1, 20));
+            Assert.Contains(doc.Id, pageIds);
+            var mainIds = PageIds(await _service.SearchAsync(term, null, null, null, null, null, null, null, null, 1, 20));
+            Assert.True(pageIds.SetEquals(mainIds), $"تكافؤ المجموعات مكسور للعبارة: {term}");
+        }
+    }
+
+    [Fact]
+    public async Task ArchiveSearch_ExecutedPage_MatchesApplicantSideBorrowerHeirAndAppeal()
+    {
+        // طالبة تنفيذ منفذة بالتسوية: المقترض الثلاثي/الوريث/اللقطة على صفحة المنفذة + التكافؤ.
+        var req = Sample();
+        req.BorrowerHeirs = new() { new HeirDto(null, "غريب", "عن", "المقترض", null, null, null) };
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        await AddAppealSnapshotAsync(doc.Id, "مستأنف تسوية فريد", "ضد تسوية");
+        Assert.True(await _service.UpdateStatusAsync(doc.Id, "منفذ بالتسوية",
+            new Dictionary<string, string?> { ["baraetNumber"] = "77", ["baraetDate"] = "1/1/2024" }, "lawyer1"));
+
+        foreach (var term in new[] { "أحمد خالد الخطيب", "غريب عن المقترض", "مستأنف تسوية فريد" })
+        {
+            var pageIds = PageIds(await _service.SearchExecutedAsync(term, 1, 20));
+            Assert.Contains(doc.Id, pageIds);
+            var mainIds = PageIds(await _service.SearchAsync(term, null, null, null, null, null, null, null, null, 1, 20));
+            Assert.True(pageIds.SetEquals(mainIds), $"تكافؤ المجموعات مكسور للعبارة: {term}");
+        }
+    }
+
+    [Fact]
+    public async Task ArchiveSearch_DeletedPage_MatchesAllBranches_AndStaysOutOfMainSearch()
+    {
+        // المحذوفة: كل الفروع الستة تُرجع الملف المحذوف، والقائمة لا تعيده أبدًا (عزل لا تكافؤ).
+        var req = Sample();
+        req.BorrowerHeirs = new() { new HeirDto(null, "غريب", "عن", "المقترض", null, null, null) };
+        var first = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        var second = await _service.CreateAsync(ExecutedArchiveSample(), 1, "lawyer1", 1);
+        Assert.True(await _service.DeleteAsync(first.Id, "lawyer1"));
+        Assert.True(await _service.DeleteAsync(second.Id, "lawyer1"));
+        // اللقطة بعد الحذف مباشرة عبر _db: الحارس يمنع الحذف فوق استئناف، فالتجهيز
+        // اصطناعي عمدًا لتغطية فرع اللقطات في الكتلة الموحدة على هذه الصفحة.
+        await AddAppealSnapshotAsync(first.Id, "مستأنف محذوف فريد", "ضد محذوف");
+
+        foreach (var (term, expectedId) in new[]
+        {
+            ("سمير حسن علي", first.Id), ("غريب عن المقترض", first.Id), ("مستأنف محذوف فريد", first.Id),
+            ("المصرف العقاري", second.Id), ("سامر حسن علي", second.Id), ("أحمد خالد الخطيب", second.Id),
+        })
+        {
+            var deletedIds = PageIds(await _service.SearchDeletedAsync(term, 1, 20));
+            Assert.Contains(expectedId, deletedIds);
+            var mainIds = PageIds(await _service.SearchAsync(term, null, null, null, null, null, null, null, null, 1, 20));
+            Assert.DoesNotContain(expectedId, mainIds);
+        }
+    }
+
+    [Fact]
+    public async Task ArchiveSearch_MainListWithoutQuery_HidesArchivedDocs()
+    {
+        // ثبات سلبي: القائمة بلا نص بحث تخفي المنفذة/المشطوبة/المحالة/المحذوفة
+        // رغم توسيع الكتلة الموحدة (العقد القائم لا يُكسر).
+        var struck = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        Assert.True(await _service.UpdateStatusAsync(struck.Id, "مشطوب",
+            new Dictionary<string, string?> { ["struckOffDate"] = "1/2/2024" }, "lawyer1"));
+
+        var executed = await _service.CreateAsync(ExecutedArchiveSample(), 1, "lawyer1", 1);
+        Assert.True(await _service.UpdateExecutedStatusAsync(executed.Id, ExecutedStatusCatalog.Executed, "lawyer1"));
+
+        var referred = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        Assert.True(await _service.UpdateStatusAsync(referred.Id, ExecutionStatusCatalog.ReferredToStart,
+            ReferredToStartFields(), "lawyer1"));
+
+        var deleted = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        Assert.True(await _service.DeleteAsync(deleted.Id, "lawyer1"));
+
+        var plain = await _service.SearchAsync(null, null, null, null, null, null, null, null, null, 1, 20);
+        var ids = plain.Items.Select(d => d.Id).ToHashSet();
+        Assert.DoesNotContain(struck.Id, ids);
+        Assert.DoesNotContain(executed.Id, ids);
+        Assert.DoesNotContain(referred.Id, ids);
+        Assert.DoesNotContain(deleted.Id, ids);
+    }
+
     [Fact]
     public async Task RevertStatus_FromDeferred_RequiresSayerFields()
     {

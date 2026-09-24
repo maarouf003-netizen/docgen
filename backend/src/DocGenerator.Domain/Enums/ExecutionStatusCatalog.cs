@@ -62,6 +62,18 @@ public static class ExecutionStatusCatalog
         SubPartiallyExecuted, SubFullyExecuted,
     };
 
+    /// <summary>
+    /// قيم فلتر «الحالة» المقبولة في البحث/التصدير/خيارات الفلاتر — أي قيمة خارجها تُرفض
+    /// (400) بدل السقوط الصامت في فرع «متداول». الفارغ/الأبيض يعني «بلا فلتر» لا قيمة مرفوضة.
+    /// </summary>
+    public static readonly IReadOnlySet<string> ValidSearchFilters = new HashSet<string>
+    {
+        None, StateCirculating, ExecutedFilter, Deferred, DraftFilter,
+    };
+
+    public static bool IsValidSearchFilter(string? status) =>
+        string.IsNullOrWhiteSpace(status) || ValidSearchFilters.Contains(status.Trim());
+
     public static ExecutionStatus Classify(string status) => status switch
     {
         ExecutedForcibly => ExecutionStatus.ExecutedForcibly,

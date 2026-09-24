@@ -118,6 +118,13 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         int? visibleBranchId,
         int? visibleUserId)
     {
+        // صرامة فلتر «الحالة»: أي قيمة خارج الكتالوج تُرفض (400 عبر المعالج العام) بدل
+        // السقوط الصامت في فرع «متداول» — وتُقلَّم القيمة أولًا فيُقبل المبطَّن بدلالته.
+        // الموضع هنا (أول الدالة) يغطي البوابات الأربع المشتركة: البحث والتصدير
+        // وعدّ التصدير وخيارات الفلاتر.
+        status = string.IsNullOrWhiteSpace(status) ? null : status.Trim();
+        if (!ExecutionStatusCatalog.IsValidSearchFilter(status))
+            throw new ArgumentException("قيمة فلتر الحالة غير صالحة");
         if (visibleBranchId.HasValue)
             q = q.Where(d => d.BranchId == visibleBranchId);
         if (visibleUserId.HasValue)
@@ -223,9 +230,11 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
 
     /// <summary>
     /// كتلة البحث النصي الشاملة الموحدة (أسماء الأطراف): المصدر الوحيد لمنطق مطابقة
-    /// الأسماء في القائمة الرئيسية (ApplySearchFilters) وفي صفحة «محال الى البداية»
-    /// (SearchReferredToStartAsync) — توحيدٌ يمنع تباعد التغطية بين المسارين (الكفيل/
-    /// الوريث/لقطات الاستئناف).
+    /// الأسماء في القائمة الرئيسية (ApplySearchFilters) وفي صفحات «محال الى البداية»
+    /// (SearchReferredToStartAsync) و«الملفات المشطوبة» (SearchStruckOffAsync)
+    /// و«الملفات المنفذة» (SearchExecutedAsync) و«المحذوفة» (SearchDeletedAsync) —
+    /// توحيدٌ يمنع تباعد التغطية بين المسارات (الكفيل/الوريث/لقطات الاستئناف/
+    /// عائلة «منفذ عليه» الصريحة).
     /// </summary>
     private IQueryable<Document> ApplyPersonNameSearch(IQueryable<Document> q, string term)
     {
@@ -237,6 +246,19 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             (d.BorrowerName != null &&
                 ((d.BorrowerName + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term) ||
                  (d.BorrowerName + " " + (d.BorrowerFather ?? string.Empty) + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term))) ||
+            // فروع عائلة «منفذ عليه» الصريحة — بنسخة كتلة المشطوبة حرفيًا: تصلّبٌ للبحث
+            // لا تبديلٌ لـ SearchText الذي يضم هذه الأسماء لكنه مقصوص عند 1000 حرف
+            // وقابل للتقادم — فلا تُزال هذه الفروع بصمت لاحقًا.
+            d.ExecutionApplicants.Any(a =>
+                (a.Name != null &&
+                    ((a.Name + " " + (a.Family ?? string.Empty)).Contains(term) ||
+                     (a.Name + " " + (a.Father ?? string.Empty) + " " + (a.Family ?? string.Empty)).Contains(term))) ||
+                ((a.DeceasedName ?? string.Empty) + " " + (a.DeceasedFamily ?? string.Empty)).Contains(term)) ||
+            d.ExecutedNaturalPersons.Any(p =>
+                p.Name != null &&
+                ((p.Name + " " + (p.Family ?? string.Empty)).Contains(term) ||
+                 (p.Name + " " + (p.Father ?? string.Empty) + " " + (p.Family ?? string.Empty)).Contains(term))) ||
+            d.ExecutedPublicEntities.Any(e => e.EntityName != null && e.EntityName.Contains(term)) ||
             d.Guarantors.Any(g =>
                 g.GuarantorName != null &&
                 ((g.GuarantorName + " " + (g.GuarantorFamily ?? string.Empty)).Contains(term) ||
@@ -393,24 +415,9 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
 
         if (!string.IsNullOrWhiteSpace(query))
         {
-            var term = query.Trim();
-            q = q.Where(d =>
-                (d.SearchText != null && d.SearchText.Contains(term)) ||
-                (d.BorrowerName != null &&
-                    ((d.BorrowerName + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term) ||
-                     (d.BorrowerName + " " + (d.BorrowerFather ?? string.Empty) + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term))) ||
-                d.Guarantors.Any(g =>
-                    g.GuarantorName != null &&
-                    ((g.GuarantorName + " " + (g.GuarantorFamily ?? string.Empty)).Contains(term) ||
-                     (g.GuarantorName + " " + (g.GuarantorFather ?? string.Empty) + " " + (g.GuarantorFamily ?? string.Empty)).Contains(term))) ||
-                d.Heirs.Any(h =>
-                    h.HeirName != null &&
-                    ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
-                     (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term))) ||
-                d.ExecutedHeirs.Any(h =>
-                    h.HeirName != null &&
-                    ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
-                     (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term))));
+            // البحث النصي عبر الكتلة الموحدة نفسها المستخدمة في القائمة الرئيسية
+            // (ApplyPersonNameSearch) — مع ملاحظة IgnoreQueryFilters الخاصة بهذه الصفحة.
+            q = ApplyPersonNameSearch(q, query.Trim());
         }
 
         var total = await q.CountAsync(ct);
@@ -584,7 +591,8 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
     {
         // ملفات «منفذ عليها»/«عرض وايداع» المشطوبة وملفات «طالبة تنفيذ» المشطوبة فقط،
         // غير المحذوفة (Query Filter مطبق تلقائيًا): مكتملة الاستبعاد من البحث العام والتصدير،
-        // ويُعرض سجلها في صفحة «الملفات المشطوبة».
+        // ويُعرض سجلها في صفحة «الملفات المشطوبة». البحث النصي عبر الكتلة الموحدة
+        // (ApplyPersonNameSearch) نفسها المستخدمة في القائمة الرئيسية فتتكافأ التغطية.
         IQueryable<Document> q = Db.Documents.AsNoTracking()
             .Where(d => (d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
                 || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit)
@@ -630,26 +638,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
 
         if (!string.IsNullOrWhiteSpace(query))
         {
-            var term = query.Trim();
-            q = q.Where(d =>
-                (d.SearchText != null && d.SearchText.Contains(term)) ||
-                (d.BorrowerName != null &&
-                    ((d.BorrowerName + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term) ||
-                     (d.BorrowerName + " " + (d.BorrowerFather ?? string.Empty) + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term))) ||
-                d.ExecutionApplicants.Any(a =>
-                    (a.Name != null &&
-                        ((a.Name + " " + (a.Family ?? string.Empty)).Contains(term) ||
-                         (a.Name + " " + (a.Father ?? string.Empty) + " " + (a.Family ?? string.Empty)).Contains(term))) ||
-                    ((a.DeceasedName ?? string.Empty) + " " + (a.DeceasedFamily ?? string.Empty)).Contains(term)) ||
-                d.ExecutedNaturalPersons.Any(p =>
-                    p.Name != null &&
-                    ((p.Name + " " + (p.Family ?? string.Empty)).Contains(term) ||
-                     (p.Name + " " + (p.Father ?? string.Empty) + " " + (p.Family ?? string.Empty)).Contains(term))) ||
-                d.ExecutedPublicEntities.Any(e => e.EntityName != null && e.EntityName.Contains(term)) ||
-                d.ExecutedHeirs.Any(h =>
-                    h.HeirName != null &&
-                    ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
-                     (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term))));
+            q = ApplyPersonNameSearch(q, query.Trim());
         }
 
         var total = await q.CountAsync(ct);
@@ -676,7 +665,8 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         // (بالتسوية أو الجبري الكامل) — تُخفى من البحث العام إلا عند البحث النصي عنها،
         // فيُعرض سجلها في صفحة «الملفات المنفذة». غير المحذوفة (Query Filter مطبق تلقائيًا)
         // وتُستبعد المشطوبة لأن حالتها «مشطوب» تُبقيها خارج شرط «منفذ» (فهي في صفحة
-        // «الملفات المشطوبة»).
+        // «الملفات المشطوبة»). البحث النصي عبر الكتلة الموحدة (ApplyPersonNameSearch)
+        // نفسها المستخدمة في القائمة الرئيسية فتتكافأ التغطية.
         IQueryable<Document> q = Db.Documents.AsNoTracking()
             .Where(d =>
                 ((d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
@@ -697,26 +687,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
 
         if (!string.IsNullOrWhiteSpace(query))
         {
-            var term = query.Trim();
-            q = q.Where(d =>
-                (d.SearchText != null && d.SearchText.Contains(term)) ||
-                (d.BorrowerName != null &&
-                    ((d.BorrowerName + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term) ||
-                     (d.BorrowerName + " " + (d.BorrowerFather ?? string.Empty) + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term))) ||
-                d.ExecutionApplicants.Any(a =>
-                    (a.Name != null &&
-                        ((a.Name + " " + (a.Family ?? string.Empty)).Contains(term) ||
-                         (a.Name + " " + (a.Father ?? string.Empty) + " " + (a.Family ?? string.Empty)).Contains(term))) ||
-                    ((a.DeceasedName ?? string.Empty) + " " + (a.DeceasedFamily ?? string.Empty)).Contains(term)) ||
-                d.ExecutedNaturalPersons.Any(p =>
-                    p.Name != null &&
-                    ((p.Name + " " + (p.Family ?? string.Empty)).Contains(term) ||
-                     (p.Name + " " + (p.Father ?? string.Empty) + " " + (p.Family ?? string.Empty)).Contains(term))) ||
-                d.ExecutedPublicEntities.Any(e => e.EntityName != null && e.EntityName.Contains(term)) ||
-                d.ExecutedHeirs.Any(h =>
-                    h.HeirName != null &&
-                    ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
-                     (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term))));
+            q = ApplyPersonNameSearch(q, query.Trim());
         }
 
         var total = await q.CountAsync(ct);

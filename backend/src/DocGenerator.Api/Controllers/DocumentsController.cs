@@ -64,6 +64,17 @@ public class DocumentsController : ControllerBase
         return doc;
     }
 
+    /// <summary>
+    /// استجابة قائمة مع تعقيم العدادات لغير المصرَّح لهم (سياسة CanViewCounters) —
+    /// المصدر الوحيد لهذا النمط في نقاط القوائم الخمس (المسار (ب) من الخطة).
+    /// </summary>
+    private IActionResult OkSanitized(PagedResult<DocumentResponse> result)
+    {
+        if (!CanViewCounters)
+            result.Items = result.Items.Select(Sanitize).ToList();
+        return Ok(result);
+    }
+
     private bool CanAccess(DocumentResponse doc)
     {
         if (HasFullAccess) return true;
@@ -96,9 +107,7 @@ public class DocumentsController : ControllerBase
 
         var result = await _documents.SearchAsync(q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
             page, perPage, visibleBranch, visibleUser, ct);
-        if (!CanViewCounters)
-            result.Items = result.Items.Select(Sanitize).ToList();
-        return Ok(result);
+        return OkSanitized(result);
     }
 
     [HttpGet("filter-options")]
@@ -168,7 +177,7 @@ public class DocumentsController : ControllerBase
         var visibleUser = IsHead ? (int?)null : User.GetUserId();
 
         var result = await _documents.SearchDeletedAsync(q, page, perPage, visibleBranch, visibleUser, ct);
-        return Ok(result);
+        return OkSanitized(result);
     }
 
     [HttpGet("struck-off")]
@@ -185,7 +194,7 @@ public class DocumentsController : ControllerBase
         var visibleUser = IsHead ? (int?)null : User.GetUserId();
 
         var result = await _documents.SearchStruckOffAsync(q, page, perPage, visibleBranch, visibleUser, ct);
-        return Ok(result);
+        return OkSanitized(result);
     }
 
     [HttpGet("executed")]
@@ -199,7 +208,7 @@ public class DocumentsController : ControllerBase
         var visibleUser = HasFullAccess || IsHead ? (int?)null : User.GetUserId();
 
         var result = await _documents.SearchExecutedAsync(q, page, perPage, visibleBranch, visibleUser, ct);
-        return Ok(result);
+        return OkSanitized(result);
     }
 
     [HttpGet("referred-to-start")]
@@ -213,9 +222,7 @@ public class DocumentsController : ControllerBase
         var visibleUser = HasFullAccess || IsHead ? (int?)null : User.GetUserId();
 
         var result = await _documents.SearchReferredToStartAsync(q, page, perPage, visibleBranch, visibleUser, ct);
-        if (!CanViewCounters)
-            result.Items = result.Items.Select(Sanitize).ToList();
-        return Ok(result);
+        return OkSanitized(result);
     }
 
     [HttpGet("{id:int}")]

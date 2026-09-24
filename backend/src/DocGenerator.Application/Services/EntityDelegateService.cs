@@ -143,7 +143,10 @@ public sealed class EntityDelegateService : IEntityDelegateService
     private async Task<DelegateDto> BuildDtoWithScopeAsync(User user, CancellationToken ct)
     {
         var groupName = user.PortalGroup?.CanonicalName;
-        var entryLabel = user.PortalEntry is null
+        // قد يملأ EF navigation user.PortalEntry عبر fix-up بكيان مُتتبَّع حُمِّل
+        // بلا Include(Group) (كما في ResolveScopeAsync عبر GetEntryAsync)،
+        // فتكون Group null رغم أن PortalEntry نفسها غير null — لذا الفحص على Group.
+        var entryLabel = user.PortalEntry?.Group is null
             ? null
             : $"{user.PortalEntry.Group.CanonicalName} / {user.PortalEntry.BranchName}";
 
@@ -155,7 +158,7 @@ public sealed class EntityDelegateService : IEntityDelegateService
         if (user.PortalEntryId.HasValue && entryLabel is null)
         {
             var entry = await _registry.GetEntryWithDetailsAsync(user.PortalEntryId.Value, ct);
-            entryLabel = entry is null ? null : $"{entry.Group.CanonicalName} / {entry.BranchName}";
+            entryLabel = entry?.Group is null ? null : $"{entry.Group.CanonicalName} / {entry.BranchName}";
         }
 
         return new DelegateDto(
@@ -176,6 +179,15 @@ public sealed class EntityDelegateService : IEntityDelegateService
         {
             var entry = await _registry.GetEntryAsync(entryId.Value, ct)
                 ?? throw new ArgumentException("قيد الجهة غير موجود في السجل");
+            // شرط الظهور نفسه في البوابة (PortalRepository.ResolveForUserAsync):
+            // نهائي + نشط + بلا مراجعة معلقة — وإلا قُبِل الربط وبقيت بوابة
+            // المندوب فارغة بصمت. الرسائل على نسق PublicEntityService.
+            if (entry.Status != EntityStatusCatalog.Final)
+                throw new ArgumentException("لا يمكن ربط مندوب بقيد بانتظار الاعتماد");
+            if (entry.NeedsReview)
+                throw new ArgumentException("لا يمكن ربط مندوب بقيد بانتظار المراجعة؛ اعتمده أولًا");
+            if (!entry.IsActive)
+                throw new ArgumentException("لا يمكن ربط مندوب بقيد غير نشط");
             return (null, entry.Id);
         }
 

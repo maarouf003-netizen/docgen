@@ -145,4 +145,36 @@ public class ExecutionStatusCatalogTests
     {
         Assert.False(ExecutionStatusCatalog.IsExecuted(ExecutionStatusCatalog.ReferredToStart, subStatus));
     }
+
+    /// <summary>
+    /// عقد فلتر «الحالة» في البحث/التصدير (المسار (أ) من الخطة): المقبول حصرًا هو الفارغ
+    /// (بلا فلتر) والقيم الأربع — و«مشطوب» و«محال الى البداية» مرفوضتان قصدًا في القائمة.
+    /// </summary>
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("", true)]
+    [InlineData("   ", true)]
+    [InlineData("متداول", true)]
+    [InlineData("منفذ", true)]
+    [InlineData("تريث", true)]
+    [InlineData("تحت رفع", true)]
+    [InlineData(" متداول ", true)]
+    [InlineData("مشطوب", false)]
+    [InlineData("محال الى البداية", false)]
+    [InlineData("منفذ جبريا", false)]
+    [InlineData("منفذ بالتسوية", false)]
+    [InlineData("حالة مزيفة", false)]
+    [InlineData("xyz", false)]
+    public void IsValidSearchFilter_PinsFilterContract(string? status, bool expected)
+    {
+        Assert.Equal(expected, ExecutionStatusCatalog.IsValidSearchFilter(status));
+    }
+
+    [Fact]
+    public void ValidSearchFilters_ContainExactlyTheFourFiltersPlusNone()
+    {
+        Assert.Equal(
+            new[] { "", "تحت رفع", "تريث", "متداول", "منفذ" },
+            ExecutionStatusCatalog.ValidSearchFilters.OrderBy(s => s, StringComparer.Ordinal).ToArray());
+    }
 }

@@ -44,6 +44,24 @@ public class EntityDelegateServiceTests : IDisposable
 
     public void Dispose() => _db.Dispose();
 
+    /// <summary>قيد إضافي بحالة محددة لاختبارات أهلية الربط (معلق/مراجعة/موقوف).</summary>
+    private async Task<int> AddEntryAsync(string branch, string? status = null, bool needsReview = false, bool isActive = true)
+    {
+        var entry = new PublicEntity
+        {
+            GroupId = _groupId,
+            Governorate = "دمشق",
+            BranchName = branch,
+            Status = status ?? EntityStatusCatalog.Final,
+            NeedsReview = needsReview,
+            IsActive = isActive,
+            CreatedById = 1,
+        };
+        _db.PublicEntities.Add(entry);
+        await _db.SaveChangesAsync();
+        return entry.Id;
+    }
+
     [Fact]
     public async Task Create_HashesPassword_BindsScope_AndAudits()
     {
@@ -91,6 +109,95 @@ public class EntityDelegateServiceTests : IDisposable
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateAsync(new CreateDelegateRequest("delegate.x", "مندوب", "secret6", null, 999), "مدير"));
+    }
+
+    [Fact]
+    public async Task Create_PendingEntry_Rejected()
+    {
+        var pendingId = await AddEntryAsync("فرع معلق", status: EntityStatusCatalog.Pending);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(new CreateDelegateRequest("delegate.pend", "مندوب", "secret6", null, pendingId), "مدير"));
+
+        Assert.Contains("بانتظار الاعتماد", ex.Message);
+        Assert.Empty(await _service.ListAsync());
+        Assert.Empty(_audit.Actions);
+    }
+
+    [Fact]
+    public async Task Create_NeedsReviewEntry_Rejected()
+    {
+        var reviewId = await AddEntryAsync("فرع مراجعة", needsReview: true);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(new CreateDelegateRequest("delegate.rev", "مندوب", "secret6", null, reviewId), "مدير"));
+
+        Assert.Contains("بانتظار المراجعة", ex.Message);
+        Assert.Empty(await _service.ListAsync());
+    }
+
+    [Fact]
+    public async Task Create_InactiveEntry_Rejected()
+    {
+        var offId = await AddEntryAsync("فرع موقوف", isActive: false);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(new CreateDelegateRequest("delegate.stop", "مندوب", "secret6", null, offId), "مدير"));
+
+        Assert.Contains("غير نشط", ex.Message);
+        Assert.Empty(await _service.ListAsync());
+    }
+
+    [Fact]
+    public async Task Create_EntryScope_WithUnloadedGroup_ResolvesLabel()
+    {
+        // يحاكي طلب الإنتاج: القيد مُتتبَّع بلا Include(Group) كما يحمّله
+        // ResolveScopeAsync عبر GetEntryAsync، فيملأ EF fix-up navigation
+        // user.PortalEntry بكيان مجموعته null — وكان يفجر NullReferenceException
+        // في BuildDtoWithScopeAsync قبل الإصلاح (سطر entryLabel).
+        _db.ChangeTracker.Clear();
+
+        var dto = await _service.CreateAsync(
+            new CreateDelegateRequest("delegate.entry", "مندوب القيد", "secret6", null, _entryId), "مدير");
+
+        Assert.Null(dto.PortalGroupId);
+        Assert.Equal(_entryId, dto.PortalEntryId);
+        Assert.Equal("وزارة التعليم / الفرع الرئيسي", dto.PortalEntryLabel);
+    }
+
+    [Fact]
+    public async Task Update_ToEntryScope_AfterDetach_ResolvesLabel()
+    {
+        var created = await _service.CreateAsync(new CreateDelegateRequest("delegate.move", "مندوب", "old1234", _groupId, null), "مدير");
+        _db.ChangeTracker.Clear();
+
+        var updated = await _service.UpdateAsync(created.Id,
+            new UpdateDelegateRequest(null, null, null, PortalGroupId: null, PortalEntryId: _entryId),
+            "المدير");
+
+        Assert.NotNull(updated);
+        Assert.Null(updated.PortalGroupId);
+        Assert.Equal(_entryId, updated.PortalEntryId);
+        Assert.Equal("وزارة التعليم / الفرع الرئيسي", updated.PortalEntryLabel);
+    }
+
+    [Fact]
+    public async Task Update_ToIneligibleEntry_Rejected()
+    {
+        var created = await _service.CreateAsync(new CreateDelegateRequest("delegate.keep", "مندوب", "old1234", _groupId, null), "مدير");
+        var pendingId = await AddEntryAsync("فرع معلق", status: EntityStatusCatalog.Pending);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateAsync(created.Id,
+                new UpdateDelegateRequest(null, null, null, PortalGroupId: null, PortalEntryId: pendingId),
+                "المدير"));
+
+        Assert.Contains("بانتظار الاعتماد", ex.Message);
+
+        // الرفض قبل أي تعديل: النطاق القديم محفوظ.
+        var dto = Assert.Single(await _service.ListAsync());
+        Assert.Equal(_groupId, dto.PortalGroupId);
+        Assert.Null(dto.PortalEntryId);
     }
 
     [Fact]
