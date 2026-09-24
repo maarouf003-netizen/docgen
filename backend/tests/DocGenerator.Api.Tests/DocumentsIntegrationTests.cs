@@ -934,6 +934,52 @@ public class DocumentsIntegrationTests
     }
 
     [Fact]
+    public async Task DeletedPage_ShowsAllFilesToAdmin()
+    {
+        // المشرف ليس محاميًا (لا ملفات خاصة به) ويرى الكل كالمدير: ملف المحامي
+        // المحذوف يظهر له، مع العدادات غير المعقّمة.
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var lawyerClient = _factory.WithToken(token);
+        var managerClient = _factory.AuthorizedClient("manager");
+        var adminClient = _factory.AuthorizedClient("admin");
+
+        var id = await _factory.CreateDocumentAsync(token, "محذوفة نطاق مشرف");
+        await managerClient.PostAsync($"/api/documents/{id}/view", null);
+        var delete = await lawyerClient.DeleteAsync($"/api/documents/{id}");
+        Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
+
+        var response = await adminClient.GetAsync("/api/documents/deleted?perPage=50");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var item = body!.RootElement.GetProperty("items").EnumerateArray()
+            .First(i => i.GetProperty("id").GetInt32() == id);
+        Assert.Equal(1, item.GetProperty("viewCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task StruckOffPage_ShowsAllFilesToAdmin()
+    {
+        // المشرف يرى ملف المحامي المشطوب (نطاق الكل)، مع العدادات غير المعقّمة.
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var lawyerClient = _factory.WithToken(token);
+        var managerClient = _factory.AuthorizedClient("manager");
+        var adminClient = _factory.AuthorizedClient("admin");
+
+        var id = await CreateCirculatingDocumentAsync(token);
+        var strike = await lawyerClient.PostAsJsonAsync($"/api/documents/{id}/status",
+            new { status = "مشطوب", fields = new { struckOffDate = "1/2/2024" } });
+        Assert.Equal(HttpStatusCode.OK, strike.StatusCode);
+        await managerClient.PostAsync($"/api/documents/{id}/view", null);
+
+        var response = await adminClient.GetAsync("/api/documents/struck-off?perPage=50");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var item = body!.RootElement.GetProperty("items").EnumerateArray()
+            .First(i => i.GetProperty("id").GetInt32() == id);
+        Assert.Equal(1, item.GetProperty("viewCount").GetInt32());
+    }
+
+    [Fact]
     public async Task ExecutedPage_ShowCountersToAdmin()
     {
         // الإيجابي غير الفارغ على صفحة المنفذة: المشرف (وصول كامل) يرى الكل

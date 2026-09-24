@@ -174,7 +174,7 @@ public class DocumentsController : ControllerBase
             return Forbid();
 
         var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
-        var visibleUser = IsHead ? (int?)null : User.GetUserId();
+        var visibleUser = HasFullAccess || IsHead ? (int?)null : User.GetUserId();
 
         var result = await _documents.SearchDeletedAsync(q, page, perPage, visibleBranch, visibleUser, ct);
         return OkSanitized(result);
@@ -191,7 +191,7 @@ public class DocumentsController : ControllerBase
             return Forbid();
 
         var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
-        var visibleUser = IsHead ? (int?)null : User.GetUserId();
+        var visibleUser = HasFullAccess || IsHead ? (int?)null : User.GetUserId();
 
         var result = await _documents.SearchStruckOffAsync(q, page, perPage, visibleBranch, visibleUser, ct);
         return OkSanitized(result);
