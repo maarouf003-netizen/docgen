@@ -119,11 +119,9 @@ export interface AssetDto {
   registrationDate?: string;
   shopGovernorate?: string;
   shopDescription?: string;
-  shopLocation?: string;
+shopLocation?: string;
   // كفالة الرواتب
   publicEntity?: string;
-  /** معرّف قيد السجل المرجعي لجهة عمل صاحب الراتب — حقل واجهة محلي يُقصّ قبل الإرسال ولا يُحفَظ بالخلفية. */
-  publicEntityRegistryId?: number | null;
   // المتجر غير المسجل
   licenseNumber?: string;
   /** تاريخ القاء الحجز على الأصل — نص حر يُفسَّر زمنيًا بالخلفية. */

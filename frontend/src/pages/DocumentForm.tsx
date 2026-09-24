@@ -34,6 +34,7 @@ import { slotDefaultCurrency } from '../utils/amountCurrencies';
 import { normalizeArabicDigits } from '../utils/arabicDigits';
 import { blockedAssetIds } from '../utils/delegationAssets';
 import { tripleName, isExecutedLike } from '../utils/documentDisplay';
+import { EXEC_STATUS_STRUCK_OFF } from '../utils/documentStatus';
 import { governorateFromBranch } from '../utils/governorate';
 import type {
   AppealDto,
@@ -79,7 +80,7 @@ export default function DocumentForm() {
   // نافذة اختيار الجهة العامة من السجل المرجعي (المرحلة 2): الجهة المستهدفة
   // من الطرفين ورقم صفها، وتُملأ حقولها النصية من القيد المختار مع ربطه.
   const [registryPicker, setRegistryPicker] = useState<
-    { side: 'applicant' | 'executed' | 'execution-applicant' | 'salary'; index: number } | null
+    { side: 'applicant' | 'executed' | 'execution-applicant'; index: number } | null
   >(null);
   const [guarantors, setGuarantors] = useState<GuarantorDto[]>([emptyGuarantor()]);
   const [borrowerHeirs, setBorrowerHeirs] = useState<HeirDto[]>([]);
@@ -174,7 +175,7 @@ export default function DocumentForm() {
         setExecutedPublicEntities(d.executedPublicEntities.length ? d.executedPublicEntities : [{ ...emptyExecutedPublicEntity(), governorate: defaultGovernorateRef.current }]);
         setApplicantPublicEntities(d.applicantPublicEntities.length ? d.applicantPublicEntities : [{ ...emptyApplicantPublicEntity(), governorate: defaultGovernorateRef.current }]);
         setExecutedNaturalPersons(d.executedNaturalPersons);
-        setWasOriginallyStruckOff(d.executedStatus === 'مشطوب');
+        setWasOriginallyStruckOff(d.executedStatus === EXEC_STATUS_STRUCK_OFF);
         setOriginalExecutedStatus(d.executedStatus ?? '');
       })
       .catch((err) => setError(getApiErrorMessage(err)));
@@ -417,11 +418,6 @@ export default function DocumentForm() {
       xs.map((x, idx) => (idx === i ? { ...x, name: '', registryId: null } : x)),
     );
 
-  const unlinkSalaryPublicEntity = (i: number) =>
-    setAssets((as) =>
-      as.map((a, idx) => (idx === i ? { ...a, publicEntity: '', publicEntityRegistryId: null } : a)),
-    );
-
   // ربط صف جهة بالقيد المختار من نافذة السجل: تُملأ حقول الهوية النصية من القيد
   // المعتمد نفسه فتظل الأعمدة النصية متسقة مع السجل، ويُحفظ معرّف الربط.
   const applyRegistryPick = (entry: PublicEntityEntryDto) => {
@@ -443,15 +439,7 @@ export default function DocumentForm() {
             : x,
         ),
       );
-    } else if (side === 'salary') {
-      setAssets((xs) =>
-        xs.map((x, idx) =>
-          idx === index
-            ? { ...x, publicEntity: entry.canonicalName, publicEntityRegistryId: entry.id }
-            : x,
-        ),
-      );
-    } else {
+    } else if (side === 'executed') {
       setExecutedPublicEntities((xs) =>
         xs.map((x, idx) =>
           idx === index
@@ -734,15 +722,6 @@ export default function DocumentForm() {
       setError('يجب اختيار طالب التنفيذ الاعتباري من السجل المرجعي قبل الحفظ');
       return;
     }
-    if (!isExecutedSubmit && assets.some(
-      (a) => a.assetKind === ASSET_KINDS.salaryGuarantee
-        && (a.owners ?? []).some((o) => (o ?? '').trim())
-        && (a.publicEntity ?? '').trim()
-        && a.publicEntityRegistryId == null,
-    )) {
-      setError('يجب اختيار جهة العمل من السجل المرجعي لكافلات الرواتب قبل الحفظ');
-      return;
-    }
 
     setBusy(true);
     try {
@@ -842,11 +821,8 @@ export default function DocumentForm() {
             return (a.owners ?? []).some((o) => (o ?? '').trim());
           })
           .map((a) => {
-            // «publicEntityRegistryId» حقل واجهة محلي لفرض الاختيار من السجل — لا يصل الخادم أبدًا.
-            const clean = { ...a };
-            delete clean.publicEntityRegistryId;
             return {
-              ...clean,
+              ...a,
               property: `${a.propertyNumber ?? ''} ${a.propertyDistrict ?? ''}`.trim(),
               // تطبيع الأرقام العربية/الفارسية في تاريخَي المتجر قبل الإرسال (تتقبلها الخلفية كتواريخ حرة).
               registrationDate: normalizeArabicDigits(a.registrationDate ?? '').trim(),
@@ -1180,8 +1156,6 @@ export default function DocumentForm() {
             onSingleOwnerSet={setSingleOwner}
             onEstateAdd={addEstate}
             ownerOptions={ownerOptions}
-            onPickSalaryRegistry={(i) => setRegistryPicker({ side: 'salary', index: i })}
-            onSalaryRegistryUnlink={unlinkSalaryPublicEntity}
           />
         )}
 
