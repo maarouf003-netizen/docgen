@@ -1820,6 +1820,51 @@ public class DocumentServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ArchiveSearch_ReferredPage_MatchesApplicantSideBranches()
+    {
+        // المحالة (كتلة مخصصة): الكفيل/الوريث/لقطة الاستئناف على بيانات «طالبة تنفيذ»
+        // واقعية — وتكافؤ المجموعات مع القائمة (التضييق لا يُسقط شيئًا واقعيًا).
+        var req = Sample();
+        req.BorrowerHeirs = new() { new HeirDto(null, "غريب", "عن", "المقترض", null, null, null) };
+        var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
+        await AddAppealSnapshotAsync(doc.Id, "مستأنف محال فريد", "ضد محال");
+        Assert.True(await _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
+            ReferredToStartFields(), "lawyer1"));
+
+        foreach (var term in new[] { "سمير حسن علي", "غريب عن المقترض", "مستأنف محال فريد" })
+        {
+            var pageIds = PageIds(await _service.SearchReferredToStartAsync(term, 1, 20));
+            Assert.Contains(doc.Id, pageIds);
+            var mainIds = PageIds(await _service.SearchAsync(term, null, null, null, null, null, null, null, null, 1, 20));
+            Assert.True(pageIds.SetEquals(mainIds), $"تكافؤ المجموعات مكسور للعبارة: {term}");
+        }
+    }
+
+    [Fact]
+    public async Task ArchiveSearch_ReferredPage_IgnoresExecutedFamilyTables()
+    {
+        // تثبيت التضييق: صف «منفذ عليه» دخيل على ملف محال (مستحيل عبر الدومين —
+        // حقن مباشر عبر _db) تجده القائمة ولا تجده صفحة المحالة، والصفحة ما زالت
+        // تجد الملف نفسه بفرع أصيل (الكفيل) — فالتضييق جراحي لا كسر.
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        Assert.True(await _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.ReferredToStart,
+            ReferredToStartFields(), "lawyer1"));
+        _db.ExecutedPublicEntities.Add(new ExecutedPublicEntity
+        {
+            DocumentId = doc.Id,
+            EntityName = "جهة دخيلة فريدة",
+        });
+        await _db.SaveChangesAsync();
+
+        var mainIds = PageIds(await _service.SearchAsync("جهة دخيلة فريدة", null, null, null, null, null, null, null, null, 1, 20));
+        Assert.Contains(doc.Id, mainIds);
+        var pageIds = PageIds(await _service.SearchReferredToStartAsync("جهة دخيلة فريدة", 1, 20));
+        Assert.DoesNotContain(doc.Id, pageIds);
+        var saneIds = PageIds(await _service.SearchReferredToStartAsync("سمير حسن علي", 1, 20));
+        Assert.Contains(doc.Id, saneIds);
+    }
+
+    [Fact]
     public async Task RevertStatus_FromDeferred_RequiresSayerFields()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);

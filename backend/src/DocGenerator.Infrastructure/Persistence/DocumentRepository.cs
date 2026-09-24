@@ -230,11 +230,11 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
 
     /// <summary>
     /// كتلة البحث النصي الشاملة الموحدة (أسماء الأطراف): المصدر الوحيد لمنطق مطابقة
-    /// الأسماء في القائمة الرئيسية (ApplySearchFilters) وفي صفحات «محال الى البداية»
-    /// (SearchReferredToStartAsync) و«الملفات المشطوبة» (SearchStruckOffAsync)
-    /// و«الملفات المنفذة» (SearchExecutedAsync) و«المحذوفة» (SearchDeletedAsync) —
-    /// توحيدٌ يمنع تباعد التغطية بين المسارات (الكفيل/الوريث/لقطات الاستئناف/
-    /// عائلة «منفذ عليه» الصريحة).
+    /// الأسماء في القائمة الرئيسية (ApplySearchFilters) وفي صفحات «الملفات المشطوبة»
+    /// (SearchStruckOffAsync) و«الملفات المنفذة» (SearchExecutedAsync) و«المحذوفة»
+    /// (SearchDeletedAsync) — توحيدٌ يمنع تباعد التغطية بين المسارات (الكفيل/الوريث/
+    /// لقطات الاستئناف/عائلة «منفذ عليه» الصريحة). صفحة «محال الى البداية» وحدها
+    /// تستخدم كتلتها المخصصة (ApplyReferredPersonNameSearch) بتضييق دلالي معتمد.
     /// </summary>
     private IQueryable<Document> ApplyPersonNameSearch(IQueryable<Document> q, string term)
     {
@@ -259,6 +259,46 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
                 ((p.Name + " " + (p.Family ?? string.Empty)).Contains(term) ||
                  (p.Name + " " + (p.Father ?? string.Empty) + " " + (p.Family ?? string.Empty)).Contains(term))) ||
             d.ExecutedPublicEntities.Any(e => e.EntityName != null && e.EntityName.Contains(term)) ||
+            d.Guarantors.Any(g =>
+                g.GuarantorName != null &&
+                ((g.GuarantorName + " " + (g.GuarantorFamily ?? string.Empty)).Contains(term) ||
+                 (g.GuarantorName + " " + (g.GuarantorFather ?? string.Empty) + " " + (g.GuarantorFamily ?? string.Empty)).Contains(term))) ||
+            // البحث بأسماء الورثة: ورثة المقترض/الكفلاء في وضع «طالب تنفيذ» (اسم ثلاثي كالكفلاء)،
+            // وورثة المورثين المتوفين في وضع «منفذ عليه» (اسم ثلاثي).
+            d.Heirs.Any(h =>
+                h.HeirName != null &&
+                ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
+                 (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term))) ||
+            d.ExecutedHeirs.Any(h =>
+                h.HeirName != null &&
+                ((h.HeirName + " " + (h.HeirFamily ?? string.Empty)).Contains(term) ||
+                 (h.HeirName + " " + (h.HeirFather ?? string.Empty) + " " + (h.HeirFamily ?? string.Empty)).Contains(term))) ||
+            appeals.Any(a =>
+                a.DocumentId == d.Id &&
+                ((a.AppellantsJson != null && a.AppellantsJson.Contains(term)) ||
+                 (a.AppelleesJson != null && a.AppelleesJson.Contains(term)))));
+    }
+
+    /// <summary>
+    /// كتلة البحث النصي الخاصة بصفحة «محال الى البداية»: نسخة <see cref="ApplyPersonNameSearch"/>
+    /// بلا فروع عائلة «منفذ عليه» الثلاثة (طالب التنفيذ/الطبيعي/الجهة العامة) — لأن الصفحة
+    /// مقيدة بنيويًا بملفات «طالبة تنفيذ» (GeneralEntitySide == Applicant) فلا صفوف
+    /// «منفذ عليه» فيها لتُطابَق (تضييق دلالي معتمد 2026-09-24 لا توثيقٌ للدَّين).
+    /// أي تعديل على الفروع المشتركة هنا يجب عكسه في الكتلة الموحدة (والعكس) — ويحرس
+    /// ذلك اختبارا ArchiveSearch_ReferredPage_MatchesApplicantSideBranches (تكافؤ على
+    /// بيانات واقعية) وArchiveSearch_ReferredPage_IgnoresExecutedFamilyTables (تثبيت التضييق).
+    /// </summary>
+    private IQueryable<Document> ApplyReferredPersonNameSearch(IQueryable<Document> q, string term)
+    {
+        // البنية نسخة حرفية من الكتلة الموحدة (راجع تعليقات فروعها هناك) بلا الفروع الثلاثة.
+        // ويُبقى فرع ورثة المنفذ عليه عمدًا رغم اسمه: مطابقته على هذه الصفحة سلوك قائم
+        // منذ قبل التوحيد (ج) — فإزالته انحدار خارج نطاق التضييق المعتمد، لا تتميم له.
+        var appeals = Db.DocumentAppeals;
+        return q.Where(d =>
+            (d.SearchText != null && d.SearchText.Contains(term)) ||
+            (d.BorrowerName != null &&
+                ((d.BorrowerName + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term) ||
+                 (d.BorrowerName + " " + (d.BorrowerFather ?? string.Empty) + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term))) ||
             d.Guarantors.Any(g =>
                 g.GuarantorName != null &&
                 ((g.GuarantorName + " " + (g.GuarantorFamily ?? string.Empty)).Contains(term) ||
@@ -713,9 +753,10 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         // ملفات «طالبة تنفيذ» بحالة «محال الى البداية» فقط — ومنها القادم من «منفذ جبريا»
         // المحال بجزئيته (يُحمل ExecStatus=ReferredToStart ويبقي ExecSubStatus خاصته فيضمّه
         // هذا الشرط حرفيًا بلا استثناء). قيد الصفة صريح دفاعًا عن العقد رغم أن مسار تغيير
-        // الحالة يمنع أصلًا إحالة غير «طالبة تنفيذ». البحث النصي عبر الكتلة الموحدة نفسها
-        // المستخدمة في القائمة الرئيسية (ApplyPersonNameSearch) فتتكافأ التغطية (الكفيل/
-        // الوريث/لقطات الاستئناف). غير المحذوفة (Query Filter مطبق تلقائيًا) وتُستبعد
+        // الحالة يمنع أصلًا إحالة غير «طالبة تنفيذ». البحث النصي عبر الكتلة المخصصة
+        // لهذه الصفحة (ApplyReferredPersonNameSearch: نسخة الكتلة الموحدة بلا فروع
+        // عائلة «منفذ عليه» — تضييق دلالي لأن الصفحة «طالبة تنفيذ» حصرًا) فتتكافأ
+        // التغطية (الكفيل/الوريث/لقطات الاستئناف). غير المحذوفة (Query Filter مطبق تلقائيًا) وتُستبعد
         // المشطوبة لأن حالتها «مشطوب» تُبقيها خارج شرط «محال» (فهي في صفحة
         // «الملفات المشطوبة»).
         IQueryable<Document> q = Db.Documents.AsNoTracking()
@@ -730,7 +771,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
 
         if (!string.IsNullOrWhiteSpace(query))
         {
-            q = ApplyPersonNameSearch(q, query.Trim());
+            q = ApplyReferredPersonNameSearch(q, query.Trim());
         }
 
         var total = await q.CountAsync(ct);
