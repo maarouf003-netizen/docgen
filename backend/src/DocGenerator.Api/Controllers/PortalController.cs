@@ -19,12 +19,14 @@ namespace DocGenerator.Api.Controllers;
 public class PortalController : ControllerBase
 {
     private readonly IPortalService _portal;
+    private readonly ICorrespondenceService _correspondence;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
 
-    public PortalController(IPortalService portal, TimeProvider clock, TimeZoneInfo timeZone)
+    public PortalController(IPortalService portal, ICorrespondenceService correspondence, TimeProvider clock, TimeZoneInfo timeZone)
     {
         _portal = portal;
+        _correspondence = correspondence;
         _clock = clock;
         _timeZone = timeZone;
     }
@@ -63,6 +65,38 @@ public class PortalController : ControllerBase
         return appeals is null ? NotFound() : Ok(appeals);
     }
 
+    /// <summary>الإجراءات التنفيذية للملف (نوع action فقط) — 404 عند الخروج عن النطاق.</summary>
+    [HttpGet("files/{id:int}/execution-actions")]
+    public async Task<IActionResult> ExecutionActions(int id, CancellationToken ct)
+    {
+        var actions = await _portal.ListExecutionActionsAsync(UserId, id, ct);
+        return actions is null ? NotFound() : Ok(actions);
+    }
+
+    /// <summary>تشعبات الملف القرائية (إنابة) — 404 عند الخروج عن النطاق.</summary>
+    [HttpGet("files/{id:int}/delegations")]
+    public async Task<IActionResult> Delegations(int id, CancellationToken ct)
+    {
+        var delegations = await _portal.ListDelegationsAsync(UserId, id, ct);
+        return delegations is null ? NotFound() : Ok(delegations);
+    }
+
+    /// <summary>تفاصيل استئنافات الملف (رأي المحامي مخفي) — 404 عند الخروج عن النطاق.</summary>
+    [HttpGet("files/{id:int}/appeals/details")]
+    public async Task<IActionResult> AppealDetails(int id, CancellationToken ct)
+    {
+        var appeals = await _portal.ListAppealDetailsAsync(UserId, id, ct);
+        return appeals is null ? NotFound() : Ok(appeals);
+    }
+
+    /// <summary>تاريخ أرقام الأساس للملف — 404 عند الخروج عن النطاق.</summary>
+    [HttpGet("files/{id:int}/base-numbers")]
+    public async Task<IActionResult> BaseNumbers(int id, CancellationToken ct)
+    {
+        var history = await _portal.ListBaseNumbersAsync(UserId, id, ct);
+        return history is null ? NotFound() : Ok(history);
+    }
+
     /// <summary>إحصاءات قرائية لنطاق الجهة (المرحلة 4).</summary>
     [HttpGet("stats")]
     public async Task<IActionResult> Stats(CancellationToken ct)
@@ -85,6 +119,158 @@ public class PortalController : ControllerBase
         catch (ArgumentException e)
         {
             return BadRequest(new { message = e.Message });
+        }
+    }
+
+    // ── مراسلات المندوب: الاستثناء الكتابي الوحيد في البوابة القرائية ──
+    // المندوب طرف كامل (تسطير/لاحق/رد/مشاهدة) لكن حصرًا عبر هذه المسارات المقيدة
+    // بنطاقه وبدور EntityManager، دون المساس بحارس العزل البنيوي.
+
+    /// <summary>مراسلات المندوب (كطرف منشئ أو مستلم) مع البحث وفلتر الأهمية.</summary>
+    [HttpGet("correspondence")]
+    public async Task<IActionResult> CorrespondenceList(
+        [FromQuery] string? q,
+        [FromQuery] string? importance,
+        [FromQuery] int page = 1,
+        [FromQuery] int perPage = 20,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            return Ok(await _correspondence.SearchAsync(UserId,
+                DocGenerator.Domain.Enums.UserRole.EntityManager, null,
+                q, null, importance, page, perPage, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+    }
+
+    /// <summary>مرشحو الاستلام بالاسم لمندوب الجهة.</summary>
+    [HttpGet("correspondence/targets")]
+    public async Task<IActionResult> CorrespondenceTargets([FromQuery] string? q, CancellationToken ct)
+        => Ok(await _correspondence.SearchTargetsAsync(UserId,
+            DocGenerator.Domain.Enums.UserRole.EntityManager, q, ct));
+
+    /// <summary>عدد مراسلات المندوب العاجلة بلا تأكيد مشاهدة — جرس البوابة.</summary>
+    [HttpGet("correspondence/urgent-unseen-count")]
+    public async Task<IActionResult> CorrespondenceUrgentCount(CancellationToken ct)
+        => Ok(new { count = await _correspondence.CountUrgentUnseenAsync(UserId, ct) });
+
+    /// <summary>مراسلة المندوب برسائلها — مقصورة على ما هو طرف فيه.</summary>
+    [HttpGet("correspondence/{id:int}")]
+    public async Task<IActionResult> CorrespondenceGet(int id, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _correspondence.GetByIdAsync(id, UserId,
+                DocGenerator.Domain.Enums.UserRole.EntityManager, null, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return NotFound(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    /// <summary>تسطير مراسلة من المندوب لطرف معيَّن بالاسم.</summary>
+    [HttpPost("correspondence")]
+    public async Task<IActionResult> CorrespondenceCreate(
+        [FromBody] CreateCorrespondenceRequest request, CancellationToken ct)
+    {
+        try
+        {
+            var letter = await _correspondence.CreateAsync(request, UserId, ViewerName,
+                DocGenerator.Domain.Enums.UserRole.EntityManager, null, ct);
+            return CreatedAtAction(nameof(CorrespondenceGet), new { id = letter.Id }, letter);
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    /// <summary>إضافة لاحق — مندوب منشئ المراسلة نفسه فقط.</summary>
+    [HttpPost("correspondence/{id:int}/addenda")]
+    public async Task<IActionResult> CorrespondenceAddAddendum(int id,
+        [FromBody] AddCorrespondenceAddendumRequest request, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _correspondence.AddAddendumAsync(id, request, UserId, ViewerName, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return NotFound(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    /// <summary>رد المندوب المستلم على المراسلة — المستلم المعيَّن فقط.</summary>
+    [HttpPost("correspondence/{id:int}/replies")]
+    public async Task<IActionResult> CorrespondenceReply(int id,
+        [FromBody] ReplyCorrespondenceRequest request, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _correspondence.ReplyAsync(id, request, UserId, ViewerName, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return NotFound(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    /// <summary>تأكيد مشاهدة المندوب — زر «تمت المشاهدة».</summary>
+    [HttpPost("correspondence/{id:int}/mark-seen")]
+    public async Task<IActionResult> CorrespondenceMarkSeen(int id, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _correspondence.MarkSeenAsync(id, UserId, ViewerName,
+                DocGenerator.Domain.Enums.UserRole.EntityManager, null, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return NotFound(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
+    /// <summary>مراسلات ملف من نطاق المندوب — ما هو طرف فيه فقط، 404 خارج النطاق.</summary>
+    [HttpGet("files/{id:int}/correspondence")]
+    public async Task<IActionResult> FileCorrespondence(int id, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _correspondence.ListByDocumentAsync(id, UserId,
+                DocGenerator.Domain.Enums.UserRole.EntityManager, null, ct));
+        }
+        catch (ArgumentException)
+        {
+            return NotFound();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return NotFound();
         }
     }
 }

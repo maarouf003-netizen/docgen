@@ -252,4 +252,8 @@ npm test
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260922184415_AddReferredToStartStatus.cs` — يضيف `NoFundsDemandNumber` (`TEXT` ≤100) و`NoFundsDemandDate` (`DateTime?`) و`StartReferralNumber` (`TEXT` ≤100) و`StartReferralDate` (`DateTime?`) إلى `Documents`. **مُطبَّق محليًا على `docgen.db` (MigrateAsync عند الإقلاع).**
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260922184420_AddReferredToStartStatus.cs` — نفسه (`character varying(100)` + `timestamp with time zone` nullable).
   - بدون التطبيق يفشل الدخول/العودة إلى «محال الى البداية» فعليًا برسالة `no such column: NoFundsDemandNumber` رغم نجاح الاختبارات محليًا.
+- [ ] **2026-09-24 — `AddCorrespondences` / `AddCorrespondencesPg`** (ميزة المراسلات: تواصل ثنائي مندوب↔محامٍ/رئيس برقم وتاريخ تلقائيين وأهمية وتوثيق مشاهدة):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260924180352_AddCorrespondences.cs` — ينشئ جداول `Correspondences` (رقم فريد + `BranchId?` + `Governorate` + `TargetUserId` + `Importance` + `DocumentId?`) و`CorrespondenceMessages` (FK تتالٍ) و`CorrespondenceReceipts` (قيد فريد `CorrespondenceId+UserId`) مع الفهارس. **مُطبَّق محليًا على `docgen.db`.**
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260924180425_AddCorrespondencesPg.cs` — نفسه (`timestamp with time zone` للتواريخ).
+  - بدون التطبيق تفشل كل شاشات المراسلات فعليًا برسالة `no such table: Correspondences` رغم نجاح الاختبارات محليًا.
 

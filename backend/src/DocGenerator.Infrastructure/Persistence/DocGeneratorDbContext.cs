@@ -45,6 +45,9 @@ public class DocGeneratorDbContext : DbContext
     public DbSet<AppealBaseNumber> AppealBaseNumbers => Set<AppealBaseNumber>();
     public DbSet<ReviewLetter> ReviewLetters => Set<ReviewLetter>();
     public DbSet<ReviewLetterMessage> ReviewLetterMessages => Set<ReviewLetterMessage>();
+    public DbSet<Correspondence> Correspondences => Set<Correspondence>();
+    public DbSet<CorrespondenceMessage> CorrespondenceMessages => Set<CorrespondenceMessage>();
+    public DbSet<CorrespondenceReceipt> CorrespondenceReceipts => Set<CorrespondenceReceipt>();
     public DbSet<DocumentFieldChange> DocumentFieldChanges => Set<DocumentFieldChange>();
     public DbSet<PublicEntityGroup> PublicEntityGroups => Set<PublicEntityGroup>();
     public DbSet<PublicEntity> PublicEntities => Set<PublicEntity>();

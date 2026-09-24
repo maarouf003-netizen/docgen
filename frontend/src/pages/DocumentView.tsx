@@ -30,6 +30,7 @@ import { DelegationsCard } from '../components/delegation/DelegationsCard';
 import { SourceFileInfoCard } from '../components/delegation/SourceFileInfoCard';
 import { DelegationStatusCard } from '../components/delegation/DelegationStatusCard';
 import DocumentReviewLettersCard from '../components/review/DocumentReviewLettersCard';
+import DocumentCorrespondenceCard from '../components/correspondence/DocumentCorrespondenceCard';
 import AppealFormModal from '../components/appeal/AppealFormModal';
 import AppealInfoModal from '../components/appeal/AppealInfoModal';
 import type { AppealDirection, AppealDto, DelegationDto, DocumentResponse } from '../types';
@@ -240,6 +241,13 @@ export default function DocumentView() {
           canCreate={canEdit && isOwner}
         />
       )}
+      {id !== undefined && (
+        <DocumentCorrespondenceCard
+          documentId={Number(id)}
+          documentTitle={debtorFullName || doc.documentType || undefined}
+          canCreate={(canEdit && isOwner) || canTransfer}
+        />
+      )}
     </>
   );
   const delegationsPanel = (
@@ -337,6 +345,20 @@ export default function DocumentView() {
                 تعديل
               </Link>
             )}
+            {/* زر «مراسلات» جانب التعديل: يتمرير إلى بطاقة مراسلات الملف (مرتبطة بهذا الملف). */}
+            <a
+              href="#file-correspondence"
+              onClick={(e) => {
+                e.preventDefault();
+                const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                document
+                  .getElementById('file-correspondence')
+                  ?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+              }}
+              className="bg-sky-800 hover:bg-sky-700 text-white rounded-lg px-4 py-2 text-sm inline-flex items-center min-h-11 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-700"
+            >
+              مراسلات
+            </a>
             {/* زر «استئناف» بقائمة منسدلة (مستأنِفين / مستأنف علينا) — محامي الملف المالك. */}
             {canCreateAppeal && (
               <>

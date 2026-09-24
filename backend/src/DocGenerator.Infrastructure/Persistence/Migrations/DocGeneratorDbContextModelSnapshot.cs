@@ -333,6 +333,155 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.ToTable("Branches", (string)null);
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.Correspondence", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("BranchId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CorrespondenceDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CorrespondenceNumber")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("DocumentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Governorate")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Importance")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TargetUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("CorrespondenceNumber")
+                        .IsUnique();
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("Governorate");
+
+                    b.HasIndex("Importance");
+
+                    b.HasIndex("TargetUserId");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.ToTable("Correspondences", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.CorrespondenceMessage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("AuthorId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AuthorName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AuthorRole")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BodyHtml")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BodyPlainText")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CorrespondenceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("MessageDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MessageNumber")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BodyPlainText");
+
+                    b.HasIndex("CorrespondenceId");
+
+                    b.ToTable("CorrespondenceMessages", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.CorrespondenceReceipt", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("CorrespondenceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("SeenAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("UserName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("CorrespondenceId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("CorrespondenceReceipts", (string)null);
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.DelegationAsset", b =>
                 {
                     b.Property<int>("Id")
@@ -2411,6 +2560,61 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Navigation("Asset");
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.Correspondence", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("DocGenerator.Domain.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.Document", "Document")
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("DocGenerator.Domain.Entities.User", "TargetUser")
+                        .WithMany()
+                        .HasForeignKey("TargetUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("Document");
+
+                    b.Navigation("TargetUser");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.CorrespondenceMessage", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.Correspondence", "Correspondence")
+                        .WithMany("Messages")
+                        .HasForeignKey("CorrespondenceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Correspondence");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.CorrespondenceReceipt", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.Correspondence", "Correspondence")
+                        .WithMany("Receipts")
+                        .HasForeignKey("CorrespondenceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Correspondence");
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.DelegationAsset", b =>
                 {
                     b.HasOne("DocGenerator.Domain.Entities.DocumentDelegation", "Delegation")
@@ -2945,6 +3149,13 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Navigation("Documents");
 
                     b.Navigation("Users");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.Correspondence", b =>
+                {
+                    b.Navigation("Messages");
+
+                    b.Navigation("Receipts");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.Document", b =>

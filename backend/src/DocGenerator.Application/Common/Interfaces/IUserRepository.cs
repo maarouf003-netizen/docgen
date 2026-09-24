@@ -36,4 +36,10 @@ public interface IUserRepository : IRepository<User>
     /// إلى القيد الناجي عند طيّ قيد في قيد (متتبَّعة للتعديل). لا يشمل مندوبي مستوى الهوية الأم.
     /// </summary>
     Task<List<User>> ListEntityManagersByEntryIdAsync(int entryId, CancellationToken ct = default);
+
+    /// <summary>
+    /// مرشحو استلام مراسلة: حسابات نشطة بدور محامٍ/رئيس قسم/مندوب جهة، بلا المستثنى،
+    /// مع الفرع ونطاق البوابة لعرض المحافظة — يُصفَّى بالاسم ويُسقَف بالحد الممرر.
+    /// </summary>
+    Task<List<User>> SearchCorrespondenceTargetsAsync(int excludeUserId, string? q, int limit, CancellationToken ct = default);
 }

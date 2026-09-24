@@ -85,6 +85,13 @@ public static class RolePermissions
     /// <summary>الرد على كتب المطالعة — رئيس القسم لفرعه فقط.</summary>
     public static bool CanReplyReviewLetters(UserRole role) => role == UserRole.Head;
 
+    /// <summary>
+    /// تسطير المراسلات واللاحقات والردود — محامٍ/رئيس قسم/مندوب جهة
+    /// (كتابة المندوب حصرًا عبر مسارات البوابة المخصصة).
+    /// </summary>
+    public static bool CanCreateCorrespondences(UserRole role) =>
+        role is UserRole.Lawyer or UserRole.Head or UserRole.EntityManager;
+
     /// <summary>رؤية عمود «المحامي المختص» — رئيس قسم/مدير/مشرف.</summary>
     public static bool CanSeeAssignedLawyer(UserRole role) =>
         role is UserRole.Head or UserRole.Manager or UserRole.Admin;

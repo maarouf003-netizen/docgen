@@ -1033,6 +1033,95 @@ public class ReviewLetterMessageConfiguration : IEntityTypeConfiguration<ReviewL
     }
 }
 
+public class CorrespondenceConfiguration : IEntityTypeConfiguration<Correspondence>
+{
+    public void Configure(EntityTypeBuilder<Correspondence> builder)
+    {
+        builder.ToTable("Correspondences");
+        builder.HasKey(c => c.Id);
+
+        builder.Property(c => c.CorrespondenceNumber).HasMaxLength(50).IsRequired();
+        builder.HasIndex(c => c.CorrespondenceNumber).IsUnique();
+
+        builder.Property(c => c.CorrespondenceDate).HasColumnType("datetime2");
+        builder.Property(c => c.Governorate).HasMaxLength(100).IsRequired();
+        builder.Property(c => c.Importance).HasMaxLength(20).IsRequired();
+
+        builder.HasIndex(c => c.BranchId);
+        builder.HasIndex(c => c.Governorate);
+        builder.HasIndex(c => c.CreatedById);
+        builder.HasIndex(c => c.TargetUserId);
+        builder.HasIndex(c => c.DocumentId);
+        builder.HasIndex(c => c.Importance);
+        builder.HasIndex(c => c.UpdatedAt);
+
+        // العامة من مندوب بلا فرع (SetNull عند حذف الفرع)؛ المراسلة وثيقة رسمية
+        // لا تُحذف بحذف الفرع.
+        builder.HasOne(c => c.Branch)
+            .WithMany()
+            .HasForeignKey(c => c.BranchId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        builder.HasOne(c => c.CreatedBy)
+            .WithMany()
+            .HasForeignKey(c => c.CreatedById)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(c => c.TargetUser)
+            .WithMany()
+            .HasForeignKey(c => c.TargetUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // الملف المرتبط اختياري (عامة عندما يكون null)؛ تُفكّ الرابط فقط (SetNull)
+        // لأن المراسلة وثيقة رسمية لا تُحذف بحذف الملف.
+        builder.HasOne(c => c.Document)
+            .WithMany()
+            .HasForeignKey(c => c.DocumentId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        builder.HasMany(c => c.Messages)
+            .WithOne(m => m.Correspondence)
+            .HasForeignKey(m => m.CorrespondenceId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasMany(c => c.Receipts)
+            .WithOne(r => r.Correspondence)
+            .HasForeignKey(r => r.CorrespondenceId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class CorrespondenceMessageConfiguration : IEntityTypeConfiguration<CorrespondenceMessage>
+{
+    public void Configure(EntityTypeBuilder<CorrespondenceMessage> builder)
+    {
+        builder.ToTable("CorrespondenceMessages");
+        builder.HasKey(m => m.Id);
+
+        builder.Property(m => m.Kind).HasMaxLength(20).IsRequired();
+        builder.Property(m => m.MessageNumber).HasMaxLength(50).IsRequired();
+        builder.Property(m => m.AuthorName).HasMaxLength(100).IsRequired();
+        builder.Property(m => m.AuthorRole).HasMaxLength(20).IsRequired();
+        builder.HasIndex(m => m.CorrespondenceId);
+        builder.HasIndex(m => m.BodyPlainText);
+    }
+}
+
+public class CorrespondenceReceiptConfiguration : IEntityTypeConfiguration<CorrespondenceReceipt>
+{
+    public void Configure(EntityTypeBuilder<CorrespondenceReceipt> builder)
+    {
+        builder.ToTable("CorrespondenceReceipts");
+        builder.HasKey(r => r.Id);
+
+        builder.Property(r => r.UserName).HasMaxLength(200).IsRequired();
+
+        // توثيق واحد لكل مطّلع على المراسلة (أول تأكيد هو المرجع).
+        builder.HasIndex(r => new { r.CorrespondenceId, r.UserId }).IsUnique();
+        builder.HasIndex(r => r.UserId);
+    }
+}
+
 public class DocumentFieldChangeConfiguration : IEntityTypeConfiguration<DocumentFieldChange>
 {
     public void Configure(EntityTypeBuilder<DocumentFieldChange> builder)

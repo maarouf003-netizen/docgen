@@ -1184,6 +1184,103 @@ export interface AppealActionDto {
   createdAt: string;
 }
 
+/* ── المراسلات ─────────────────────────────────────────────────────────── */
+
+export type CorrespondenceMessageKind = 'letter' | 'addendum' | 'reply';
+
+export type CorrespondenceImportance = 'normal' | 'important' | 'urgent';
+
+/** سياق الملف المرتبط بصيغة العرض: مراسلة بملف (الاسم الثلاثي) رقم.. نوع.. لعام.. دائرة تنفيذ.. */
+export interface CorrespondenceFileContext {
+  executedName: string;
+  fileNumber: string | null;
+  fileType: string | null;
+  fileYear: string | null;
+  court: string | null;
+}
+
+/** رسالة واحدة ضمن مراسلة (الأصل letter أو لاحق addendum أو رد reply). */
+export interface CorrespondenceMessageDto {
+  id: number;
+  kind: CorrespondenceMessageKind;
+  bodyHtml: string;
+  messageNumber: string;
+  messageDate: string;
+  authorId: number;
+  authorName: string;
+  authorRole: 'lawyer' | 'head' | 'entitymanager';
+}
+
+/** توثيق مشاهدة واحدة: من شاهد ومتى. */
+export interface CorrespondenceReceiptDto {
+  userId: number;
+  userName: string;
+  seenAt: string;
+}
+
+/** سطر مراسلة في القائمة؛ fileContext فارغ للمراسلة العامة غير المرتبطة بملف. */
+export interface CorrespondenceListItemDto {
+  id: number;
+  correspondenceNumber: string;
+  correspondenceDate: string;
+  importance: CorrespondenceImportance;
+  documentId: number | null;
+  fileContext: CorrespondenceFileContext | null;
+  creatorName: string;
+  targetName: string;
+  snippet: string;
+  lastKind: CorrespondenceMessageKind;
+  seenByMe: boolean;
+  /** عاجلة ولم يؤكد القارئ الحالي مشاهدتها — وقود الجرس. */
+  isUrgentUnseen: boolean;
+  messagesCount: number;
+  receiptsCount: number;
+  /** اسم فرع الإدارة — يُعرض للمدير/المشرف فقط. */
+  administrativeBranchName: string | null;
+  governorate: string;
+  updatedAt: string;
+}
+
+export interface CorrespondenceDto {
+  id: number;
+  correspondenceNumber: string;
+  correspondenceDate: string;
+  importance: CorrespondenceImportance;
+  documentId: number | null;
+  fileContext: CorrespondenceFileContext | null;
+  branchId: number | null;
+  governorate: string;
+  /** اسم فرع الإدارة — يُعرض للمدير/المشرف فقط. */
+  administrativeBranchName: string | null;
+  creatorId: number;
+  creatorName: string;
+  creatorRole: string;
+  targetUserId: number;
+  targetName: string;
+  targetRole: string;
+  /** هل أكّد القارئ الحالي مشاهدته؟ */
+  seenByMe: boolean;
+  messages: CorrespondenceMessageDto[];
+  receipts: CorrespondenceReceiptDto[];
+  createdAt: string;
+}
+
+export interface CreateCorrespondenceRequest {
+  documentId?: number | null;
+  targetUserId: number;
+  importance: CorrespondenceImportance;
+  bodyHtml: string;
+}
+
+/** مستلم مرشح لمراسلة جديدة (بحث بالاسم). */
+export interface CorrespondenceTargetDto {
+  userId: number;
+  fullName: string;
+  role: string;
+  branchName?: string | null;
+  governorate?: string | null;
+}
+
 /* ── كتب المطالعة ─────────────────────────────────────────────────────── */
 
 export type ReviewLetterMessageKind = 'letter' | 'addendum' | 'reply';
@@ -1743,6 +1840,18 @@ export interface PortalAppealDto {
   createdAt: string;
   decisionDate?: string | null;
   decisionRuling?: string | null;
+}
+
+/** إجراء تنفيذي قرائي على بطاقة «الإجراءات التنفيذية» — نوع action فقط، بلا شارة تذكير (ق7). */
+export interface PortalExecutionActionDto {
+  id: number;
+  /** نص الإجراء الغني — يُعقَّم عبر sanitizeRichText قبل العرض. */
+  text: string;
+  /** تاريخ الإجراء (نص حر يُعرض كما هو). */
+  actionDate?: string;
+  /** المحامي الذي أدخل الإجراء. */
+  createdByName?: string;
+  createdAt: string;
 }
 
 export interface CreateDelegateRequest {

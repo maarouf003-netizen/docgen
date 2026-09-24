@@ -105,6 +105,15 @@ public class DocGeneratorPostgresDbContext : DocGeneratorDbContext
         modelBuilder.Entity<ReviewLetterMessage>()
             .Property(m => m.MessageDate)
             .HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<Correspondence>()
+            .Property(c => c.CorrespondenceDate)
+            .HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<CorrespondenceMessage>()
+            .Property(m => m.MessageDate)
+            .HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<CorrespondenceReceipt>()
+            .Property(r => r.SeenAt)
+            .HasColumnType("timestamp with time zone");
         modelBuilder.Entity<PublicEntityChangeEvent>()
             .Property(e => e.DecreeDate)
             .HasColumnType("timestamp with time zone");

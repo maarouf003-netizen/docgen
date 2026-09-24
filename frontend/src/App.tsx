@@ -33,6 +33,8 @@ const AuditLogs = lazy(() => import('./pages/AuditLogs'));
 const ChangePassword = lazy(() => import('./pages/ChangePassword'));
 const ReviewsList = lazy(() => import('./pages/ReviewsList'));
 const ReviewDetail = lazy(() => import('./pages/ReviewDetail'));
+const CorrespondencesList = lazy(() => import('./pages/CorrespondencesList'));
+const CorrespondenceDetail = lazy(() => import('./pages/CorrespondenceDetail'));
 
 function PageLoader() {
   return <div className="min-h-screen flex items-center justify-center text-gray-500">جارِ التحميل...</div>;
@@ -82,6 +84,28 @@ export default function App() {
             <Route path="/documents" element={<DocumentsList />} />
             <Route path="/reviews" element={<ReviewsList />} />
             <Route path="/reviews/:id" element={<ReviewDetail />} />
+            <Route
+              path="/correspondence"
+              element={
+                <RequireRole
+                  allowed={(role) =>
+                    role === 'lawyer' || role === 'head' || role === 'manager' || role === 'admin'}
+                >
+                  <CorrespondencesList />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/correspondence/:id"
+              element={
+                <RequireRole
+                  allowed={(role) =>
+                    role === 'lawyer' || role === 'head' || role === 'manager' || role === 'admin'}
+                >
+                  <CorrespondenceDetail />
+                </RequireRole>
+              }
+            />
           <Route path="/appeals" element={<AppealsList />} />
           <Route path="/appeals/:id" element={<AppealDetail />} />
             <Route path="/documents/deleted" element={<DeletedDocuments />} />
@@ -171,6 +195,22 @@ export default function App() {
               element={
                 <RequireRole allowed={(role) => role === 'entitymanager'}>
                   <PortalFileDetail />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/portal/correspondence"
+              element={
+                <RequireRole allowed={(role) => role === 'entitymanager'}>
+                  <CorrespondencesList portal />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/portal/correspondence/:id"
+              element={
+                <RequireRole allowed={(role) => role === 'entitymanager'}>
+                  <CorrespondenceDetail portal />
                 </RequireRole>
               }
             />

@@ -30,6 +30,7 @@ public static class DependencyInjection
         services.AddScoped<IPortalService, PortalService>();
         services.AddScoped<IEntityDelegateService, EntityDelegateService>();
         services.AddScoped<IReviewLetterService, ReviewLetterService>();
+        services.AddScoped<ICorrespondenceService, CorrespondenceService>();
         services.AddScoped<IDocumentDelegationService, DocumentDelegationService>();
         services.AddScoped<IDocumentAppealService, DocumentAppealService>();
         services.AddScoped<IDocumentContextBuilder, DocumentContextBuilder>();

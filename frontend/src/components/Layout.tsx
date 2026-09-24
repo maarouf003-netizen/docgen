@@ -6,6 +6,8 @@ import { useIsMobile } from '../hooks/useMediaQuery';
 import NetworkStatusBanner from './NetworkStatusBanner';
 import CurrentYearBanner from './CurrentYearBanner';
 import ReviewPendingBell from './review/ReviewPendingBell';
+import CorrespondenceBell from './correspondence/CorrespondenceBell';
+import { CORRESPONDENCE_UNSEEN_EVENT } from './correspondence/correspondenceDisplay';
 import { REVIEWS_UNSEEN_EVENT } from './review/reviewDisplay';
 import nationalEmblem from '../assets/national.png';
 
@@ -14,6 +16,7 @@ const ROLES: Record<string, string> = {
   head: 'رئيس قسم',
   manager: 'مدير',
   admin: 'مشرف نظام',
+  entitymanager: 'مندوب جهة',
 };
 
 interface NavItem {
@@ -33,6 +36,9 @@ export default function Layout() {
   const drawerTriggerRef = useRef<HTMLButtonElement>(null);
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
   const isLawyerUser = user?.role === 'lawyer';
+  const canHaveCorrespondenceUrgent =
+    user?.role === 'lawyer' || user?.role === 'head' || user?.role === 'entitymanager';
+  const [urgentCorrespondence, setUrgentCorrespondence] = useState(0);
 
   // عدّاد كتب المطالعة فيها ردّ لم يطّلع عليه المحامي — شارة حمراء على بند المطالعات،
   // تُحدَّث كل دقيقة وفورًا عند فتح كتاب بعد الاطلاع (حدث reviews:unseen-changed).
@@ -58,6 +64,37 @@ export default function Layout() {
       window.removeEventListener(REVIEWS_UNSEEN_EVENT, onSeenChanged);
     };
   }, [isLawyerUser]);
+
+  // عدّاد المراسلات العاجلة بلا تأكيد مشاهدة — الاستطلاع الوحيد: يغذّي شارة بند
+  // المراسلات والأجراس معًا (تُمرَّر count للأجراس فلا تستطلع بنفسها)، يُحدَّث كل
+  // دقيقة وفورًا عند تأكيد المشاهدة (حدث correspondence:unseen-changed).
+  // المندوب يُغذَّى من مسار البوابة، وغيره من المسار الرئيسي.
+  useEffect(() => {
+    if (!canHaveCorrespondenceUrgent) return undefined;
+    const endpoint =
+      user?.role === 'entitymanager'
+        ? '/portal/correspondence/urgent-unseen-count'
+        : '/correspondence/urgent-unseen-count';
+    let cancelled = false;
+    const fetchCount = () =>
+      api
+        .get<{ count: number }>(endpoint)
+        .then((r) => {
+          if (!cancelled) setUrgentCorrespondence(r.data.count);
+        })
+        .catch(() => {
+          /* الشارة تبقى على آخر قيمة معروفة عند فشل التحديث */
+        });
+    void fetchCount();
+    const timer = window.setInterval(fetchCount, 60_000);
+    const onSeenChanged = () => fetchCount();
+    window.addEventListener(CORRESPONDENCE_UNSEEN_EVENT, onSeenChanged);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener(CORRESPONDENCE_UNSEEN_EVENT, onSeenChanged);
+    };
+  }, [canHaveCorrespondenceUrgent, user?.role]);
 
   // نمط WAI-ARIA Dialog: Escape يغلق، والتركيز محصور داخل الدرج أثناء فتحه،
   // ويعاد إلى زر الفتح عند الإغلاق — دورة تركيز كاملة لمستخدمي لوحة المفاتيح.
@@ -102,14 +139,19 @@ export default function Layout() {
   const canManageBranchLawyers = user?.role === 'head' || user?.role === 'admin';
   const canManageUsers = user?.role === 'admin';
   const canManageDelegates = hasFullAccess || isHead;
-  // مندوب الجهة: قائمة بوابة مختصرة فقط (ملفاتي/تصدير) دون باقي البنود (المرحلة 3).
+  // مندوب الجهة: قائمة بوابة مختصرة فقط (ملفاتي/تصدير/مراسلات) دون باقي البنود (المرحلة 3).
   const isEntityManager = user?.role === 'entitymanager';
 
   const navItems: NavItem[] = [];
 
   if (isEntityManager) {
-    // مندوب الجهة: قائمة بوابة مختصرة فقط (ملفاتي/تصدير) دون باقي البنود (المرحلة 3).
+    // مندوب الجهة: قائمة بوابة مختصرة فقط (ملفاتي/تصدير/مراسلات) دون باقي البنود (المرحلة 3).
     navItems.push({ to: '/portal', label: 'ملفات الجهة' });
+    navItems.push({
+      to: '/portal/correspondence',
+      label: 'مراسلات الجهة',
+      badge: urgentCorrespondence > 0 ? urgentCorrespondence : undefined,
+    });
   } else {
     navItems.push(
       { to: '/', label: 'لوحة التحكم', end: true },
@@ -119,6 +161,11 @@ export default function Layout() {
       to: '/reviews',
       label: user?.role === 'lawyer' ? 'المطالعات' : 'كتب المطالعات',
       badge: isLawyerUser && unseenReplies > 0 ? unseenReplies : undefined,
+    });
+    navItems.push({
+      to: '/correspondence',
+      label: 'المراسلات',
+      badge: canHaveCorrespondenceUrgent && urgentCorrespondence > 0 ? urgentCorrespondence : undefined,
     });
     if (canManageBranchLawyers) navItems.push({ to: '/branch-lawyers', label: 'محامو الفرع' });
     if (user?.role === 'head') navItems.push({ to: '/delegations/requests', label: 'طلبات الإنابة' });
@@ -166,8 +213,14 @@ export default function Layout() {
           مساعد محامي الدولة الذكي في إدارة الملفات التنفيذية
         </p>
         {user?.role === 'head' && (
-          <div className="flex justify-center mt-2">
+          <div className="flex justify-center mt-2 gap-1">
             <ReviewPendingBell />
+            <CorrespondenceBell count={urgentCorrespondence} />
+          </div>
+        )}
+        {(user?.role === 'lawyer' || isEntityManager) && (
+          <div className="flex justify-center mt-2">
+            <CorrespondenceBell portal={isEntityManager} count={urgentCorrespondence} />
           </div>
         )}
       </div>
@@ -266,6 +319,14 @@ export default function Layout() {
               />
               <h1 className="text-lg font-bold text-emerald-900">مسار</h1>
               <ReviewPendingBell className="ms-auto" />
+              {(user?.role === 'lawyer' ||
+                user?.role === 'head' ||
+                user?.role === 'entitymanager') && (
+                <CorrespondenceBell
+                  portal={user?.role === 'entitymanager'}
+                  count={urgentCorrespondence}
+                />
+              )}
             </div>
           )}
           <Outlet />

@@ -191,7 +191,7 @@ describe('Layout', () => {
     expect(screen.queryByRole('link', { name: 'إدارة المستخدمين' })).not.toBeInTheDocument();
   });
 
-  it('يعرض «محامو الفرع» لرئيس القسم والمشرف ولا يعرضها للمدير', () => {
+  it('يعرض «محامو الفرع» لرئيس القسم والمشرف ولا يعرضها للمدير', async () => {
     for (const role of ['head', 'admin']) {
       useAuthMock.mockReturnValue({
         ...baseUser(),
@@ -199,7 +199,10 @@ describe('Layout', () => {
       });
       stubMatchMedia(true);
       const { unmount } = render(<Layout />);
-      expect(screen.getByRole('link', { name: 'محامو الفرع' })).toHaveAttribute(
+      // الشريط السفلي أول 4 بنود فقط («المراسلات» أزاح البقية) — البند في درج «المزيد».
+      await userEvent.setup().click(screen.getByRole('button', { name: /المزيد/ }));
+      const dialog = screen.getByRole('dialog', { name: 'قائمة التنقل' });
+      expect(within(dialog).getByRole('link', { name: 'محامو الفرع' })).toHaveAttribute(
         'href',
         '/branch-lawyers',
       );
@@ -212,6 +215,43 @@ describe('Layout', () => {
     });
     render(<Layout />);
     expect(screen.queryByRole('link', { name: 'محامو الفرع' })).not.toBeInTheDocument();
+  });
+
+  it('يعرض بند «المراسلات» في الشريط السفلي للمحامي ورئيس القسم وفي بوابة المندوب', async () => {
+    // محامي (مكتبي): البند ظاهر مباشرة في القائمة الرئيسية.
+    stubMatchMedia(false);
+    const { unmount } = render(<Layout />);
+    expect(screen.getByRole('link', { name: 'المراسلات' })).toHaveAttribute(
+      'href',
+      '/correspondence',
+    );
+    unmount();
+
+    // رئيس قسم (جوال): البند ضمن أول 4 بنود في الشريط السفلي.
+    useAuthMock.mockReturnValue({
+      ...baseUser(),
+      user: { ...baseUser().user, role: 'head' },
+    });
+    stubMatchMedia(true);
+    const second = render(<Layout />);
+    const bottomNav = screen.getByRole('navigation', { name: 'التنقل السفلي' });
+    expect(within(bottomNav).getByRole('link', { name: 'المراسلات' })).toHaveAttribute(
+      'href',
+      '/correspondence',
+    );
+    second.unmount();
+
+    // مندوب جهة: بند «مراسلات الجهة» في الشريط السفلي للبوابة.
+    useAuthMock.mockReturnValue({
+      ...baseUser(),
+      user: { ...baseUser().user, role: 'entitymanager' },
+    });
+    render(<Layout />);
+    const portalNav = screen.getByRole('navigation', { name: 'التنقل السفلي' });
+    expect(within(portalNav).getByRole('link', { name: 'مراسلات الجهة' })).toHaveAttribute(
+      'href',
+      '/portal/correspondence',
+    );
   });
 
   it('يعرض «طلبات الإنابة» لرئيس القسم فقط', async () => {
@@ -294,5 +334,16 @@ describe('Layout', () => {
     expect(within(sidebar).queryByRole('link', { name: 'لوحة التحكم' })).not.toBeInTheDocument();
     expect(within(sidebar).queryByRole('link', { name: 'الملفات التنفيذية' })).not.toBeInTheDocument();
     expect(within(sidebar).queryByRole('link', { name: 'سجل التدقيق' })).not.toBeInTheDocument();
+  });
+
+  it('يعرض تسمية دور المندوب «مندوب جهة» في الشريط الجانبي', () => {
+    useAuthMock.mockReturnValue({
+      ...baseUser(),
+      user: { ...baseUser().user, role: 'entitymanager', fullName: 'مندوب الوزارة' },
+    });
+    stubMatchMedia(false);
+    render(<Layout />);
+
+    expect(screen.getByText('مندوب جهة — دمشق')).toBeInTheDocument();
   });
 });
