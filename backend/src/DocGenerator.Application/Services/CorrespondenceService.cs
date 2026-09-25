@@ -73,7 +73,7 @@ public interface ICorrespondenceService
 /// </summary>
 public sealed class CorrespondenceService : ICorrespondenceService
 {
-    private const int NumberRandomDigits = 4;
+    private const int NumberRandomDigits = 5;
     private const int MaxNumberGenerationAttempts = 20;
     private const int TargetsLimit = 20;
 
@@ -227,8 +227,6 @@ public sealed class CorrespondenceService : ICorrespondenceService
             document, role, actorUserId, actorBranchId, ct);
 
         var now = DateTime.UtcNow;
-        var number = await GenerateUniqueNumberAsync(prefix, now, ct);
-
         var letter = new Correspondence
         {
             BranchId = branchId,
@@ -236,7 +234,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
             CreatedById = actorUserId,
             TargetUserId = target.Id,
             DocumentId = document?.Id,
-            CorrespondenceNumber = number,
+            CorrespondenceNumber = string.Empty, // يُضبط أدناه مع رقم الرسالة الأولى = المرشّح النهائي بعد حل أي سباق.
             CorrespondenceDate = now,
             Importance = request.Importance,
             CreatedAt = now,
@@ -248,7 +246,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
                     Kind = CorrespondenceMessage.KindLetter,
                     BodyHtml = bodyHtml,
                     BodyPlainText = HtmlInputSanitizer.ToPlainText(bodyHtml),
-                    MessageNumber = number,
+                    MessageNumber = string.Empty, // يُضبط أدناه = رقم المراسلة النهائي.
                     MessageDate = now,
                     AuthorId = actorUserId,
                     AuthorName = actorName ?? string.Empty,
@@ -256,16 +254,38 @@ public sealed class CorrespondenceService : ICorrespondenceService
                 },
             ],
         };
+        var firstMessage = letter.Messages.Single(m => m.Kind == CorrespondenceMessage.KindLetter);
 
         var scope = document is null ? "عامة" : $"ملف {document.Id}";
-        await _tx.RunAsync(async token =>
+        // سباق الترقيم: فحص التفرّد خارج المعاملة قد يتجاوزه إدراج متزامن بالمرشّح
+        // نفسه؛ القيد الفريد على CorrespondenceNumber هو الحارس الأخير، وعند
+        // اصطدامه يُعاد التوليد بمرشّح جديد على الكيان نفسه بدل خطأ 500 —
+        // فإعادة الحفظ بعد فشل سباق تُكرّر الإدراج الوحيد المعلّق لا غير، والتدقيق
+        // لا يُسجَّل إلا داخل المحاولة الناجحة.
+        var candidate = await GenerateUniqueNumberAsync(prefix, now, ct);
+        for (var attempt = 0; attempt < MaxNumberGenerationAttempts; attempt++)
         {
-            await _letters.AddAsync(letter, token);
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actorName, "create_correspondence",
-                details: $"سطّر مراسلة ({scope}) برقم {letter.CorrespondenceNumber} إلى {target.FullName}",
-                ct: token);
-        }, ct);
+            letter.CorrespondenceNumber = candidate;
+            firstMessage.MessageNumber = candidate;
+            try
+            {
+                await _tx.RunAsync(async token =>
+                {
+                    await _letters.AddAsync(letter, token);
+                    await _uow.SaveChangesAsync(token);
+                    await _audit.LogAsync(actorName, "create_correspondence",
+                        details: $"سطّر مراسلة ({scope}) برقم {letter.CorrespondenceNumber} إلى {target.FullName}",
+                        ct: token);
+                }, ct);
+                break;
+            }
+            catch (Exception ex) when (_errors.IsUniqueViolation(ex))
+            {
+                if (attempt + 1 >= MaxNumberGenerationAttempts)
+                    throw new DocumentConflictException("تعذر توليد رقم فريد للمراسلة، حاول مجدداً", ex);
+                candidate = await GenerateUniqueNumberAsync(prefix, now, ct);
+            }
+        }
 
         var stored = await _letters.GetByIdWithDetailsAsync(letter.Id, ct) ?? letter;
         return ToDto(stored, actorUserId);
@@ -286,7 +306,6 @@ public sealed class CorrespondenceService : ICorrespondenceService
         if (letter.CreatedById != actorUserId)
             throw new UnauthorizedAccessException("اللاحق يُضاف من منشئ المراسلة نفسه");
 
-        var prefix = await ResolvePrefixAsync(letter, ct);
         var now = DateTime.UtcNow;
         var addendum = new CorrespondenceMessage
         {
@@ -294,7 +313,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
             Kind = CorrespondenceMessage.KindAddendum,
             BodyHtml = bodyHtml,
             BodyPlainText = HtmlInputSanitizer.ToPlainText(bodyHtml),
-            MessageNumber = await GenerateUniqueNumberAsync(prefix, now, ct),
+            MessageNumber = NextMessageNumber(letter),
             MessageDate = now,
             AuthorId = actorUserId,
             AuthorName = actorName ?? string.Empty,
@@ -330,7 +349,6 @@ public sealed class CorrespondenceService : ICorrespondenceService
         if (letter.TargetUserId != actorUserId)
             throw new UnauthorizedAccessException("الرد متاح للطرف المستلم المعيَّن فقط");
 
-        var prefix = await ResolvePrefixAsync(letter, ct);
         var now = DateTime.UtcNow;
         var reply = new CorrespondenceMessage
         {
@@ -338,7 +356,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
             Kind = CorrespondenceMessage.KindReply,
             BodyHtml = bodyHtml,
             BodyPlainText = HtmlInputSanitizer.ToPlainText(bodyHtml),
-            MessageNumber = await GenerateUniqueNumberAsync(prefix, now, ct),
+            MessageNumber = NextMessageNumber(letter),
             MessageDate = now,
             AuthorId = actorUserId,
             AuthorName = actorName ?? string.Empty,
@@ -668,19 +686,34 @@ public sealed class CorrespondenceService : ICorrespondenceService
         return await _portal.IsDocumentInScopeAsync(documentId, scope.EntryIds, ct);
     }
 
-    private async Task<string> ResolvePrefixAsync(Correspondence letter, CancellationToken ct)
+    /// <summary>
+    /// ترقيم الرسائل داخل نطاق المراسلة: الأولى تحمل رقم المراسلة نفسه، واللاحقات
+    /// والردود <c>{رقم المراسلة}-{التسلسل}</c> حيث التسلسل = عدد الرسائل + 1.
+    /// حتمي بلا تخمين عشوائي: لا سباق توليد ولا غموض ترقيم في السجل الرسمي —
+    /// والترتيب الزمني المرجعي يبقى بالمعرّف كما في كل مسارات القراءة.
+    /// قرار موثّق — سباق مقبول: العدّاد يُقرأ خارج المعاملة، فطلبٌ متزامن نادر قد
+    /// يحسب التسلسل نفسه لرسالتين (لا قيد تفرّد ممكن على MessageNumber لأن الأولى
+    /// تكرّر نفس رقم المراسلة عمدًا). أثره تجميلي لا مرجعي: الترتيب الرسمي بالمعرّف
+    /// بكل مسارات القراءة، ولا مرجع خارجي على MessageNumber. المحفّز الأرجح (نقرة
+    /// مزدوجة) مسدود من الواجهة — زر الإرسال معطَّل أثناء الحفظ — والإغلاق الكامل
+    /// بعدّاد ذرّي (UPDATE … RETURNING) مؤجَّل بقرار صريح لأنه يستلزم هجرة EF
+    /// لا تبرّر كلفتها الأثرُ المتبقي النادر.
+    /// </summary>
+    private static string NextMessageNumber(Correspondence letter)
     {
-        if (letter.BranchId is not null)
-        {
-            var branch = await _branches.GetByIdAsync(letter.BranchId.Value, ct)
-                ?? throw new ArgumentException("الفرع غير موجود");
-            return branch.Code;
-        }
-        return letter.Governorate;
+        var sequence = letter.Messages.Count + 1;
+        if (sequence <= 1)
+            return letter.CorrespondenceNumber;
+        return letter.CorrespondenceNumber
+            + "-"
+            + sequence.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 
     /// <summary>
-    /// الرقم بصيغة {الرمز}-{السنة}-{عشوائي 4 خانات} مع ضمان التفرّد بإعادة المحاولة.
+    /// الرقم بصيغة {الرمز}-{السنة}-{عشوائي 5 خانات} مع فحص تفرّد مسبق بإعادة المحاولة:
+    /// سعة 100,000 رقم لكل بادئة/سنة (5 خانات بدل 4) لاستيعاب الضغط دون استنفاد مبكر.
+    /// الفحص استباقي فقط (خارج المعاملة)؛ الضمان النهائي قيد التفرّد الفريد في قاعدة
+    /// البيانات مع حلقة إعادة التوليد في مسار الإنشاء عند اصطدامه (F1).
     /// </summary>
     private async Task<string> GenerateUniqueNumberAsync(string code, DateTime at,
         CancellationToken ct)
@@ -690,7 +723,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
 
         for (var attempt = 0; attempt < MaxNumberGenerationAttempts; attempt++)
         {
-            var random = Random.Shared.NextInt64(0, 10_000)
+            var random = Random.Shared.NextInt64(0, 100_000)
                 .ToString(System.Globalization.CultureInfo.InvariantCulture)
                 .PadLeft(NumberRandomDigits, '0');
             var candidate = $"{prefix}-{year}-{random}";
@@ -698,7 +731,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
                 return candidate;
         }
 
-        throw new InvalidOperationException("تعذر توليد رقم فريد للمراسلة، حاول مجدداً");
+        throw new DocumentConflictException("تعذر توليد رقم فريد للمراسلة، حاول مجدداً");
     }
 
     private static string NormalizePrefix(string code)

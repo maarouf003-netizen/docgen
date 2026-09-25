@@ -143,6 +143,26 @@ public class ExceptionHandlerIntegrationTests
     }
 
     [Fact]
+    public async Task DocumentConflictException_WithDbInnerChain_ProjectsFriendlyMessageWithoutLeak()
+    {
+        // الشكل الفعلي لمسار نفاد إعادة التوليد في المراسلات: غلاف الخدمة يحمل سلسلة
+        // DbUpdateException ← سبب SQL العميق (UNIQUE constraint failed). المعالج يجب
+        // أن يردّ رسالة 409 الودّية لا أن يُسرّب تفاصيل القيد/المزود في الإنتاج.
+        var deep = new InvalidOperationException(
+            "SQLite Error 19: 'UNIQUE constraint failed: Correspondences.CorrespondenceNumber'");
+        var ex = new DocumentConflictException(
+            "تعذر توليد رقم فريد للمراسلة، حاول مجدداً",
+            new DbUpdateException("An error occurred while saving the entity changes.", deep));
+
+        var (status, body) = await HandleAsync(ex);
+
+        Assert.Equal(StatusCodes.Status409Conflict, status);
+        Assert.Equal("تعذر توليد رقم فريد للمراسلة، حاول مجدداً", ReadMessage(body));
+        Assert.DoesNotContain("UNIQUE", body);
+        Assert.DoesNotContain("SQLite", body);
+    }
+
+    [Fact]
     public async Task ResponseAlreadyStarted_ReturnsFalse()
     {
         var handler = new GlobalExceptionHandler(

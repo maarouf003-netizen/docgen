@@ -1,9 +1,11 @@
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 namespace DocGenerator.Application.Tests;
 
@@ -75,17 +77,19 @@ public class CorrespondenceServiceTests : IDisposable
 
     public void Dispose() => _db.Dispose();
 
-    private CorrespondenceService BuildService()
+    private CorrespondenceService BuildService() => BuildService(new UnitOfWork(_db));
+
+    private CorrespondenceService BuildService(IUnitOfWork uow, ICorrespondenceRepository? letters = null)
     {
         return new CorrespondenceService(
-            new CorrespondenceRepository(_db),
+            letters ?? new CorrespondenceRepository(_db),
             new DocumentRepository(_db),
             new BranchRepository(_db),
             new UserRepository(_db),
             new AppealRepository(_db),
             new DelegationRepository(_db),
             new PortalRepository(_db),
-            new UnitOfWork(_db),
+            uow,
             new TransactionRunner(_db),
             _audit,
             new DbExceptionClassifier(),
@@ -584,5 +588,218 @@ var names = targets.Select(t => t.FullName).ToList();
         Assert.All(byDelegate, t => Assert.NotEqual(_delegate.Id, t.UserId));
         Assert.Contains(byDelegate, t => t.FullName == "المحامي الأول");
         Assert.DoesNotContain(byDelegate, t => t.FullName == "مندوب الجهة");
+    }
+
+    /// <summary>
+    /// وحدة عمل اختبارية تُفشل أول حفظ (أو أول N حفظ) باستثناء تفرّد حقيقي من
+    /// المزود — بلا محاكاة: تُنشئ قاعدة لحظية وتُدخل صفّين بنفس الرقم الفريد
+    /// وتلتقط DbUpdateException الفعلي، فيمر عبر المصنّف الحقيقي في الخدمة.
+    /// </summary>
+    private sealed class FailCountingUnitOfWork : IUnitOfWork
+    {
+        private readonly IUnitOfWork _inner;
+        private readonly int _failTimes;
+        private readonly Func<Exception> _failureFactory;
+        private Exception? _failure;
+        public int Calls { get; private set; }
+
+        public FailCountingUnitOfWork(IUnitOfWork inner, int failTimes, Func<Exception>? failureFactory = null)
+        {
+            _inner = inner;
+            _failTimes = failTimes;
+            _failureFactory = failureFactory ?? BuildRealUniqueViolation;
+        }
+
+        public async Task<int> SaveChangesAsync(CancellationToken ct = default)
+        {
+            Calls++;
+            if (Calls <= _failTimes)
+                throw _failure ??= _failureFactory();
+            return await _inner.SaveChangesAsync(ct);
+        }
+
+        private static DbUpdateException BuildRealUniqueViolation()
+        {
+            var options = new DbContextOptionsBuilder<DocGeneratorDbContext>()
+                .UseSqlite("DataSource=:memory:")
+                .Options;
+            using var db = new DocGeneratorDbContext(options);
+            db.Database.OpenConnection();
+            db.Database.EnsureCreated();
+            var maker = new User { Username = "conflict_maker", FullName = "صانع التعارض", Role = UserRole.Lawyer, PasswordHash = "x" };
+            var target = new User { Username = "conflict_target", FullName = "مستلم التعارض", Role = UserRole.EntityManager, PasswordHash = "x" };
+            db.Users.AddRange(maker, target);
+            db.SaveChanges();
+            var duplicate = () => new Correspondence
+            {
+                Governorate = "دمشق",
+                CreatedById = maker.Id,
+                TargetUserId = target.Id,
+                CorrespondenceNumber = "CNF-2026-0001",
+                Importance = Correspondence.ImportanceNormal,
+            };
+            db.Correspondences.Add(duplicate());
+            db.SaveChanges();
+            db.Correspondences.Add(duplicate());
+            try
+            {
+                db.SaveChanges();
+            }
+            catch (DbUpdateException ex)
+            {
+                return ex;
+            }
+            throw new InvalidOperationException("تعذّر توليد تعارض فريد حقيقي من المزود");
+        }
+    }
+
+    /// <summary>
+    /// مستودع مراسلات مغلّف يسجّل كل رقمٍ عُرض على فحص التفرّد (NumberExistsAsync)
+    /// ويفوّض بقية الاستعلامات للمستودع الحقيقي — لإثبات أن السباق غيّر المرشّح
+    /// فعليًا لا أن المحاولة الثانية نجحت بالرقم المتصادم نفسه.
+    /// </summary>
+    private sealed class RecordingCorrespondenceRepository : ICorrespondenceRepository
+    {
+        private readonly CorrespondenceRepository _inner;
+
+        public RecordingCorrespondenceRepository(DocGeneratorDbContext db) => _inner = new CorrespondenceRepository(db);
+
+        public List<string> CheckedCandidates { get; } = new();
+
+        public Task<Correspondence?> GetByIdAsync(int id, CancellationToken ct = default) => _inner.GetByIdAsync(id, ct);
+
+        public Task<List<Correspondence>> ListAsync(CancellationToken ct = default) => _inner.ListAsync(ct);
+
+        public Task AddAsync(Correspondence entity, CancellationToken ct = default) => _inner.AddAsync(entity, ct);
+
+        public void Update(Correspondence entity) => _inner.Update(entity);
+
+        public void Remove(Correspondence entity) => _inner.Remove(entity);
+
+        public Task<(List<Correspondence> Items, int TotalCount)> SearchForPartyAsync(
+            int userId, string? q, string? importance, int page, int perPage, CancellationToken ct = default)
+            => _inner.SearchForPartyAsync(userId, q, importance, page, perPage, ct);
+
+        public Task<(List<Correspondence> Items, int TotalCount)> SearchForBranchAsync(
+            int branchId, string governorate, string? q, string? importance, int page, int perPage, CancellationToken ct = default)
+            => _inner.SearchForBranchAsync(branchId, governorate, q, importance, page, perPage, ct);
+
+        public Task<(List<Correspondence> Items, int TotalCount)> SearchAllAsync(
+            string? governorate, string? q, string? importance, int page, int perPage, CancellationToken ct = default)
+            => _inner.SearchAllAsync(governorate, q, importance, page, perPage, ct);
+
+        public Task<List<string>> GetGovernoratesAsync(CancellationToken ct = default) => _inner.GetGovernoratesAsync(ct);
+
+        public Task<Correspondence?> GetByIdWithDetailsAsync(int id, CancellationToken ct = default) => _inner.GetByIdWithDetailsAsync(id, ct);
+
+        public Task<List<Correspondence>> ListByDocumentAsync(int documentId, CancellationToken ct = default) => _inner.ListByDocumentAsync(documentId, ct);
+
+        public async Task<bool> NumberExistsAsync(string correspondenceNumber, CancellationToken ct = default)
+        {
+            CheckedCandidates.Add(correspondenceNumber);
+            return await _inner.NumberExistsAsync(correspondenceNumber, ct);
+        }
+
+        public Task<int> CountUrgentUnseenForTargetAsync(int userId, CancellationToken ct = default) => _inner.CountUrgentUnseenForTargetAsync(userId, ct);
+
+        public Task<CorrespondenceReceipt?> FindReceiptAsync(int correspondenceId, int userId, CancellationToken ct = default) => _inner.FindReceiptAsync(correspondenceId, userId, ct);
+
+        public Task<Correspondence?> GetTrackedWithDetailsAsync(int id, CancellationToken ct = default) => _inner.GetTrackedWithDetailsAsync(id, ct);
+    }
+
+    [Fact]
+    public async Task Create_RaceConflict_RetriesWithFreshNumberAndSucceeds()
+    {
+        // المحاولة الأولى تصطدم بالقيد الفريد (سباق ترقيم) فتُعاد بالتوليد برقم جديد.
+        var recorder = new RecordingCorrespondenceRepository(_db);
+        var uow = new FailCountingUnitOfWork(new UnitOfWork(_db), failTimes: 1);
+        var service = BuildService(uow, recorder);
+
+        var letter = await service.CreateAsync(
+            new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>سباق الترقيم</p>"),
+            _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
+
+        Assert.Equal(2, uow.Calls);
+        Assert.StartsWith("DAM-", letter.CorrespondenceNumber);
+        Assert.Single(letter.Messages);
+        // رقم الرسالة الأولى يتبع الرقم النهائي بعد حل السباق — لا الرقم المتصادم.
+        Assert.Equal(letter.CorrespondenceNumber, letter.Messages[0].MessageNumber);
+        // التدقيق سُجّل مرة واحدة داخل المحاولة الناجحة، وصف واحد فقط في القاعدة.
+        Assert.Single(_audit.Actions, "create_correspondence");
+        Assert.Equal(1, await _db.Correspondences.CountAsync());
+        // إثبات «تغيّر المرشّح» الذي كان مستنتجًا لا مثبتًا: أول رقم عُرض على فحص
+        // التفرّد ≠ الرقم النهائي، والرقم النهائي صدر عن التوليد الثاني بعد الاصطدام.
+        // (احتمال تصادف الرقمين عشوائيًا 1/100,000 — نفس حتمية اختبارات التفرّد القائمة.)
+        Assert.Equal(2, recorder.CheckedCandidates.Count);
+        Assert.NotEqual(recorder.CheckedCandidates[0], letter.CorrespondenceNumber);
+        Assert.Equal(recorder.CheckedCandidates[1], letter.CorrespondenceNumber);
+    }
+
+    [Fact]
+    public async Task Create_PersistentConflict_ThrowsFriendlyAfterExhaustion()
+    {
+        // 20 = حد محاولات التوليد: كل المحاولات متصادمة فيُرفض الطلب برسالة مفهومة بلا صف يتيم.
+        var uow = new FailCountingUnitOfWork(new UnitOfWork(_db), failTimes: 20);
+        var service = BuildService(uow);
+
+        var ex = await Assert.ThrowsAsync<DocumentConflictException>(() => service.CreateAsync(
+            new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>سباق مستعصٍ</p>"),
+            _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId));
+
+        Assert.Contains("رقم فريد", ex.Message);
+        Assert.Equal(20, uow.Calls);
+        Assert.Empty(_audit.Actions);
+        Assert.Equal(0, await _db.Correspondences.CountAsync());
+    }
+
+    [Fact]
+    public async Task Create_NonUniqueFailure_PropagatesWithoutRetry()
+    {
+        // الفشل غير الفريد (عطل حفظ عام) لا يُعاد: يتصاعد كما هو من أول محاولة.
+        var boom = new DbUpdateException("فشل حفظ", new InvalidOperationException("سبب داخلي غير فريد"));
+        var uow = new FailCountingUnitOfWork(new UnitOfWork(_db), failTimes: 1, failureFactory: () => boom);
+        var service = BuildService(uow);
+
+        var ex = await Assert.ThrowsAsync<DbUpdateException>(() => service.CreateAsync(
+            new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>نص</p>"),
+            _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId));
+
+        Assert.Same(boom, ex);
+        Assert.Equal(1, uow.Calls);
+        Assert.Empty(_audit.Actions);
+        Assert.Equal(0, await _db.Correspondences.CountAsync());
+    }
+
+    [Fact]
+    public async Task Messages_AreNumberedSequentiallyWithinLetterScope()
+    {
+        var letter = await _service.CreateAsync(
+            new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>الأصل</p>"),
+            _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
+
+        Assert.Equal(letter.CorrespondenceNumber, letter.Messages[0].MessageNumber);
+
+        var addendum = await _service.AddAddendumAsync(letter.Id,
+            new AddCorrespondenceAddendumRequest("<p>لاحق أول</p>"),
+            _lawyer1.Id, "المحامي الأول");
+        Assert.Equal(letter.CorrespondenceNumber + "-2", addendum.MessageNumber);
+
+        var reply = await _service.ReplyAsync(letter.Id,
+            new ReplyCorrespondenceRequest("<p>رد المستلم</p>"),
+            _delegate.Id, "مندوب الجهة");
+        Assert.Equal(letter.CorrespondenceNumber + "-3", reply.MessageNumber);
+
+        var secondAddendum = await _service.AddAddendumAsync(letter.Id,
+            new AddCorrespondenceAddendumRequest("<p>لاحق ثانٍ</p>"),
+            _lawyer1.Id, "المحامي الأول");
+        Assert.Equal(letter.CorrespondenceNumber + "-4", secondAddendum.MessageNumber);
+
+        // الخيط كاملًا مرتب بالمعرّف، وأرقامه مميزة داخل النطاق.
+        var full = await _service.GetByIdAsync(letter.Id, _lawyer1.Id, UserRole.Lawyer, _branchId);
+        Assert.Equal(4, full.Messages.Count);
+        Assert.Equal(
+            new[] { letter.CorrespondenceNumber, addendum.MessageNumber, reply.MessageNumber, secondAddendum.MessageNumber },
+            full.Messages.Select(m => m.MessageNumber).ToArray());
+        Assert.Equal(4, full.Messages.Select(m => m.MessageNumber).Distinct().Count());
     }
 }
