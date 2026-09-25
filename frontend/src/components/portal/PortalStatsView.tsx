@@ -41,12 +41,10 @@ function CurrencyTotalsList({ totals }: { totals: PortalCurrencyStatDto[] }) {
  */
 export default function PortalStatsView({
   stats,
-  scopeType,
-  singleEntry = false,
 }: {
   stats: PortalStatsDto;
   scopeType?: string | null;
-  /** عرض فرع واحد (أو قيد واحد): تُخفى ملاحظة الاحتساب المتعدد لانتفاء موضوعها. */
+  /** محجوز لتوافق المتصل (منتقي الفرع/القيد) — غير مستخدم في العرض حاليًا. */
   singleEntry?: boolean;
 }) {
   const amountTotals = stats.amountTotals ?? [];
@@ -156,15 +154,6 @@ export default function PortalStatsView({
         })()}
       </div>
 
-      <p className="mt-3 text-[11px] text-gray-400">
-        ملاحظة: ملفات الإنابة (منفذ إنابة/مسترد) تُحتسب في الأعداد دون المبالغ — مبالغها محسوبة في ملفها المنيب.
-        وعدد الملفات بجانب كل عملة هو الحاملون لمبلغ غير صفري فيها فقط (لا عدّاد النوع الكامل أعلاه).
-      </p>
-      {scopeType === 'group' && !singleEntry && (
-        <p className="mt-1 text-[11px] text-gray-400">
-          ملاحظة: الملف المرتبط بأكثر من قيد ضمن النطاق يُحتسب تحت كل قيد ارتبط به.
-        </p>
-      )}
     </section>
   );
 }

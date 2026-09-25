@@ -87,8 +87,9 @@ describe('PortalStats', () => {
     expect(screen.getByText('المبالغ لكل نوع من الملفات')).toBeInTheDocument();
     expect(screen.queryByText('أعلى العملات')).not.toBeInTheDocument();
     expect(screen.getAllByText('ليرة سورية').length).toBeGreaterThanOrEqual(1);
-    // حاشية الإنابة (عددًا دون مبالغ) ظاهرة بجانب الحواشي.
-    expect(screen.getByText(/ملفات الإنابة.*تُحتسب في الأعداد دون المبالغ/)).toBeInTheDocument();
+    // حاشيتا التوضيح حُذفتا من العرض نهائيًا.
+    expect(screen.queryByText(/ملفات الإنابة.*تُحتسب في الأعداد دون المبالغ/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/يُحتسب تحت كل قيد ارتبط به/)).not.toBeInTheDocument();
   });
 
   it('يطلب إحصائيات الفرع المختار عبر entryId', async () => {
