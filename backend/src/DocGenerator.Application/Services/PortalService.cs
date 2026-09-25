@@ -14,7 +14,7 @@ public interface IPortalService
     Task<PortalScopeDto?> GetMyScopeAsync(int userId, CancellationToken ct = default);
 
     Task<PagedResult<PortalFileListItemDto>> ListFilesAsync(
-        int userId, string? query, string? status, int page, int perPage, CancellationToken ct = default);
+        int userId, string? query, string? status, int page, int perPage, CancellationToken ct = default, int? entryId = null);
 
     /// <summary>
     /// تفاصيل ملف قراءةً — null إذا خرج عن نطاق المندوب (يُترجم 404). داخليّات المحامي
@@ -41,10 +41,10 @@ public interface IPortalService
     /// مصنّف Excel لملفات النطاق وفق فلاتر القائمة نفسها، مع سقف
     /// ExportOptions.MaxRows وتدقيق export_entity_portal_excel.
     /// </summary>
-    Task<byte[]> ExportWorkbookAsync(int userId, string? query, string? status, string? viewerName, CancellationToken ct = default);
+    Task<byte[]> ExportWorkbookAsync(int userId, string? query, string? status, string? viewerName, CancellationToken ct = default, int? entryId = null);
 
-    /// <summary>إحصاءات قرائية لنطاق المندوب (المرحلة 4).</summary>
-    Task<PortalStatsDto> GetStatsAsync(int userId, CancellationToken ct = default);
+    /// <summary>إحصاءات قرائية لنطاق المندوب (المرحلة 4) — مع فلتر فرع اختياري ضمن النطاق.</summary>
+    Task<PortalStatsDto> GetStatsAsync(int userId, CancellationToken ct = default, int? entryId = null);
 }
 
 /// <summary>
@@ -101,16 +101,31 @@ public sealed class PortalService : IPortalService
     }
 
     public async Task<PagedResult<PortalFileListItemDto>> ListFilesAsync(
-        int userId, string? query, string? status, int page, int perPage, CancellationToken ct = default)
+        int userId, string? query, string? status, int page, int perPage, CancellationToken ct = default, int? entryId = null)
     {
         var scope = await _portal.ResolveForUserAsync(userId, ct);
         page = Math.Max(1, page);
         perPage = Math.Clamp(perPage <= 0 ? 20 : perPage, 1, 100);
 
-        var (total, items) = await _portal.SearchScopedAsync(scope?.EntryIds ?? new List<int>(), query, status, page, perPage, ct);
+        var effectiveIds = ResolveEffectiveIds(scope, entryId);
+        var (total, items) = await _portal.SearchScopedAsync(effectiveIds, query, status, page, perPage, ct);
         var result = new PagedResult<PortalFileListItemDto> { Page = page, PerPage = perPage, TotalCount = total };
-        result.Items = items.Select(ToListItem).ToList();
+        result.Items = items.Select(d => ToListItem(d, scope)).ToList();
         return result;
+    }
+
+    /// <summary>
+    /// معرّفات القيود الفعّالة: كامل النطاق افتراضيًا، أو القيد المختار وحده بعد التحقق
+    /// أنه ضمن نطاق المندوب (تقاطع لا توسيع — خارج النطاق يُرفض).
+    /// </summary>
+    private static List<int> ResolveEffectiveIds(PortalScopeResolution? scope, int? entryId)
+    {
+        var ids = scope?.EntryIds?.ToList() ?? new List<int>();
+        if (!entryId.HasValue)
+            return ids;
+        if (!ids.Contains(entryId.Value))
+            throw new UnauthorizedAccessException("القيد المختار خارج نطاقك");
+        return new List<int> { entryId.Value };
     }
 
     public async Task<DocumentResponse?> GetFileAsync(int userId, int documentId, string? viewerName, CancellationToken ct = default)
@@ -126,21 +141,67 @@ public sealed class PortalService : IPortalService
         await _audit.LogAsync(viewerName, "view_entity_portal_files", documentId,
             details: "عرض ملف في بوابة الجهة العامة", ct: ct);
 
-        // ق7 سلكيًا لا عرضيًا: الملاحظات الداخلية (`Notes`/`ImmediateActions`) تُصفَّر وإجراءات
-        // نوع `note` تُرشَّح من الاستجابة قبل مغادرة الخادم — الواجهة ليست خط الدفاع الوحيد.
-        // بيانات التذكير الداخلية (`ReminderDuration`/`ReminderColor`) تُجرَّد أيضًا: البطاقة
-        // «بلا شارة تذكير» (ق7) فلا مبرر لعبورها الشبكة أصلًا.
+        // ق7 سلكيًا لا عرضيًا: كل حقل لا تستهلكه واجهة البوابة (`PortalFileDetail`
+        // وكل المشتركات المعروضة فيه — مُدقَّق حقلًا بحقل ضد الاستهلاك الفعلي) يُحجب
+        // قبل مغادرة الخادم — الواجهة ليست خط الدفاع الوحيد.
+        // المحجوب: الملاحظات الداخلية (`Notes`/`ImmediateActions`)، العدّادات
+        // التشغيلية (`ViewCount`/`PrintCount`)، الهوية الإدارية (`AdministrativeBranchName`/
+        // `BranchId`)، هوية المنشئ (`CreatedById`/`CreatedByName`)، حقل `Lawyer` الحر،
+        // وشارات قوائم المحامين (`NeedsRotation`/`HasAppeals`/`MatchedAppealId`)، ورابط
+        // الإنابة الداخلي (`SourceDelegationId` — عرضه عبر نقطة التشعبات المخصصة)،
+        // ومعرّفات الأصول المباعة (`SoldAssetIds`)، وتاريخ قرار الإحالة القطعية
+        // (`ForcedExecutionDate`)، والتسمية المشتقة (`GeneralEntitySideLabel` —
+        // لا يستهلكها العرض)، وختم الحذف (`DeletedAt` — دائم الفراغ هنا أصلًا)،
+        // واسم الفرع (`BranchName` — العرض يستدعي `FileDataCard` بـ `showBranch={false}`).
+        // المحفوظ قصدًا رغم الشبهة (مستهلك فعلًا في العرض): `Assignments` (ومنها
+        // `AssignedByName` — يعرضه `TransferHistoryModal` «أحالها»)، و`ReferredFromLawyer`
+        // و`UnderFilingNumber` و`FileIncoming*` و`FileArrival*` و`FileReceipt*` و`ExecutedDescription`
+        // (يعرضها `FileDataCard`)، و`ExecutedRequired/Paid*` (يعرضها `ExecutoryDocumentCard`
+        // و`FileDataCard`)، و`Baraet/Tarith/Sayer/NoFunds/StartReferral/Renewal/ForcibleTransfer`
+        // و`Collected*` (يعرضها `OccurrencesModal` و`StatusCard`)، و`GeneralEntitySide`.
+        // أي حقل جديد في `DocumentResponse` بلا تصريف صريح يُفشل اختبار الحارس
+        // (`PortalDetailResponse_EveryPropertyHasExplicitDisposition`) — لا تسرب صامت.
+        // سياسة الحجب الواحدة (A): الدالة نفسها يستدعيها مسار التفاصيل ومسار
+        // التصدير معًا — فلا يتباعدا بصمت كما حدث مع عمود «الفرع».
         var response = DocumentResponse.FromEntity(doc, ServerClock.CurrentYear(_clock, _timeZone));
+        ScrubForPortal(response);
+
+        return response;
+    }
+
+    /// <summary>
+    /// سياسة حجب البوابة الواحدة: كل حقل لا تستهلكه واجهة البوابة يُصفَّر هنا.
+    /// يستدعيها <see cref="GetFileAsync"/> و<see cref="ExportWorkbookAsync"/> معًا —
+    /// أي حقل جديد يُحسم هنا مرة واحدة فيغطي التفاصيل والتصدير معًا.
+    /// </summary>
+    private static void ScrubForPortal(DocumentResponse response)
+    {
         response.Notes = null;
         response.ImmediateActions = null;
+        response.ViewCount = 0;
+        response.PrintCount = 0;
+        response.AdministrativeBranchName = null;
+        response.BranchId = null;
+        response.CreatedById = 0;
+        response.CreatedByName = null;
+        response.Lawyer = null;
+        response.NeedsRotation = false;
+        response.HasAppeals = false;
+        response.MatchedAppealId = null;
+        response.SourceDelegationId = null;
+        response.SoldAssetIds = new List<int>();
+        response.ForcedExecutionDate = null;
+        response.GeneralEntitySideLabel = null;
+        response.DeletedAt = null;
+        // `BranchName` لا يُعرض في البوابة (`FileDataCard` يُستدعى فيها
+        // بـ `showBranch={false}` ولا يقرؤه أي مكوّن بوابة آخر) — فيُحجب.
+        response.BranchName = null;
         response.ExecutionActions = response.ExecutionActions
             .Where(a => a.Type == "action")
             .OrderByDescending(a => a.CreatedAt)
             .ThenByDescending(a => a.Id)
             .Select(a => a with { ReminderDuration = null, ReminderColor = null })
             .ToList();
-
-        return response;
     }
 
     public async Task<IReadOnlyList<PortalAppealDto>?> ListAppealsAsync(int userId, int documentId, CancellationToken ct = default)
@@ -217,10 +278,10 @@ public sealed class PortalService : IPortalService
             .ToList();
     }
 
-    public async Task<byte[]> ExportWorkbookAsync(int userId, string? query, string? status, string? viewerName, CancellationToken ct = default)
+    public async Task<byte[]> ExportWorkbookAsync(int userId, string? query, string? status, string? viewerName, CancellationToken ct = default, int? entryId = null)
     {
         var scope = await _portal.ResolveForUserAsync(userId, ct);
-        var entryIds = scope?.EntryIds ?? new List<int>();
+        var entryIds = ResolveEffectiveIds(scope, entryId);
 
         var total = await _portal.CountScopedAsync(entryIds, query, status, ct);
         if (total > _maxExportRows)
@@ -231,18 +292,18 @@ public sealed class PortalService : IPortalService
             .Select(d => DocumentResponse.FromEntity(d, ServerClock.CurrentYear(_clock, _timeZone)))
             .ToList();
 
-        // ف12: عمود «الإجراءات والملاحظات» في Excel يُقرأ من أول إجراء بترتيب CreatedAt تنازلي —
-        // إن لم يُقصر على النوع action قد تتصدره ملاحظة داخلية. يُرشَّح هنا فلا تتسرب الملاحظات،
-        // وبكسر تعادل `Id` نفسه المعتمد في بطاقة التفاصيل فيتطابقا حتميًا حتى عند تساوي اللحظة.
+        // ف12 + سياسة الحجب الواحدة (A): التنقية نفسها المستدعاة في التفاصيل —
+        // عمود «الإجراءات والملاحظات» يُقرأ من أول إجراء بترتيب CreatedAt تنازلي،
+        // وإن لم يُقصر على النوع action قد تتصدره ملاحظة داخلية؛ وبكسر تعادل `Id`
+        // نفسه المعتمد في بطاقة التفاصيل فيتطابقا حتميًا حتى عند تساوي اللحظة.
+        // (عمود Excel يقرأ `Text` وحده، فتجريد التذكير الإضافي هنا بلا أثر مرئي.)
         foreach (var response in responses)
-            response.ExecutionActions = response.ExecutionActions
-                .Where(a => a.Type == "action")
-                .OrderByDescending(a => a.CreatedAt)
-                .ThenByDescending(a => a.Id)
-                .ToList();
+            ScrubForPortal(response);
 
         await _audit.LogAsync(viewerName, "export_entity_portal_excel",
-            details: $"صدّر {responses.Count} ملفًا من بوابة الجهة إلى Excel", ct: ct);
+            details: entryId.HasValue
+                ? $"صدّر {responses.Count} ملفًا من بوابة الجهة إلى Excel (فرع {entryId.Value})"
+                : $"صدّر {responses.Count} ملفًا من بوابة الجهة إلى Excel", ct: ct);
 
         // أعمدة المحامين الداخلية (فرع الإدارة/المحامي المختص/العدادات) مخفية دائمًا عن البوابة.
         return _excel.BuildDocumentsWorkbook(
@@ -267,40 +328,57 @@ public sealed class PortalService : IPortalService
     // ── إحصاءات الجهة (المرحلة 4) ──
 
     /// <inheritdoc />
-    public async Task<PortalStatsDto> GetStatsAsync(int userId, CancellationToken ct = default)
+    public async Task<PortalStatsDto> GetStatsAsync(int userId, CancellationToken ct = default, int? entryId = null)
     {
         var scope = await _portal.ResolveForUserAsync(userId, ct);
-        var ids = scope?.EntryIds ?? new List<int>();
+        var ids = ResolveEffectiveIds(scope, entryId);
 
-        var statusPairs = await _portal.ListStatusPairsAsync(ids, ct);
-        int draft = 0, circulating = 0, executed = 0, deferred = 0, referredToStart = 0;
-        foreach (var (isDraft, execStatus) in statusPairs)
+        // اللقطة الوحيدة: كل العدّادات والمجاميع تُشتق من نفس الصفوف (فلا سباق
+        // بين استعلامين ولا ازدواج تصنيف). الحالة أولًا دائمًا، والمسودة مسودة
+        // بلا حالة فقط — مطابقة فلتر القائمة (`ScopedQuery`) حرفيًا عبر ثوابت
+        // الكتالوج نفسها (أي انحراف بينهما عيب حاجب — تثبّته لازمة التطابق).
+        var amountRows = await _portal.ListAmountRowsAsync(ids, ct);
+
+        var bucketCounts = new Dictionary<string, int>(StringComparer.Ordinal)
         {
-            if (!string.IsNullOrEmpty(execStatus))
+            [ExecutionStatusCatalog.StateCirculating] = 0,
+            [ExecutionStatusCatalog.Deferred] = 0,
+            [ExecutionStatusCatalog.ExecutedFilter] = 0,
+            [ExecutionStatusCatalog.ReferredToStart] = 0,
+            [ExecutionStatusCatalog.DraftFilter] = 0,
+        };
+        var bearingRows = new List<(int DocId, string? Currency, decimal Amount)>();
+        var bearingBuckets = new Dictionary<string, List<(int DocId, string? Currency, decimal Amount)>>(StringComparer.Ordinal)
+        {
+            [ExecutionStatusCatalog.StateCirculating] = new(),
+            [ExecutionStatusCatalog.Deferred] = new(),
+            [ExecutionStatusCatalog.ExecutedFilter] = new(),
+            [ExecutionStatusCatalog.ReferredToStart] = new(),
+            [ExecutionStatusCatalog.DraftFilter] = new(),
+        };
+        foreach (var row in amountRows)
+        {
+            var bucket = ClassifyPortalBucket(row.IsDraft, row.ExecStatus, row.ExecSubStatus);
+            bucketCounts[bucket]++;
+            // ملف الإنابة يُحتسب عددًا دون مبالغ (قرار المالك): نسخه تحمل مبالغ
+            // المنيب فلا تُجمع مرتين — القاعدة مطابقة ب6 في الاستثناء لا في المقياس
+            // (هنا مبالغ الدين الستة، وهناك المحصّل — يُوثَّق الفرق ولا يُدَّعى تطابق).
+            if (IsAmountBearing(row))
             {
-                if (execStatus == ExecutionStatusCatalog.ExecutedForcibly
-                    || execStatus == ExecutionStatusCatalog.ExecutedBySettlement
-                    || execStatus == ExecutionStatusCatalog.DelegationExecuted
-                    || execStatus == ExecutionStatusCatalog.Recovered)
-                    executed++;
-                else if (execStatus == ExecutionStatusCatalog.Deferred)
-                    deferred++;
-                // «محال الى البداية» سلّة مستقلة تحل محل عدّها المفترض ضمن «منفذ» (السلة
-                // التنفيذية تبتلع جبريا بأي فرع) — فتبقى بطاقتها وفلترها متطابقين حرفيًا.
-                else if (execStatus == ExecutionStatusCatalog.ReferredToStart)
-                    referredToStart++;
-                // الإحصاء يطابق فلتر القائمة حرفيًا (المنفذة الأربعة بضمنها «المسترد» عدًدا
-                // دون مبالغ + تريث + محال) ليتطابق رقم البطاقة مع نتيجة الفلتر نفسه دون انحراف.
+                var pairs = DebtAmountPairs(row);
+                bearingRows.AddRange(pairs);
+                bearingBuckets[bucket].AddRange(pairs);
             }
-            else if (isDraft) draft++;
-            else circulating++;
         }
 
         var createdDates = await _portal.ListCreatedDatesAsync(ids, ct);
-        var monthly = BuildMonthlySeries(createdDates);
+        var monthly = BuildMonthlySeries(createdDates, ServerClock.Now(_clock, _timeZone), _timeZone);
 
         var perEntryCounts = await _portal.CountDocsPerEntryAsync(ids, ct);
-        var perEntry = (scope?.Entries ?? Array.Empty<(int Id, string Governorate, string BranchName, bool IsActive)>())
+        var scopeEntries = scope?.Entries ?? Array.Empty<(int Id, string Governorate, string BranchName, bool IsActive)>();
+        if (entryId.HasValue)
+            scopeEntries = scopeEntries.Where(e => e.Id == entryId.Value).ToList();
+        var perEntry = scopeEntries
             .Select(e => new PortalEntryStatDto(
                 e.Id,
                 e.Governorate,
@@ -311,41 +389,124 @@ public sealed class PortalService : IPortalService
             .ThenBy(e => e.BranchName, StringComparer.Ordinal)
             .ToList();
 
-        var currencyAmounts = await _portal.ListCurrencyAmountsAsync(ids, ct);
-        var topCurrencies = currencyAmounts
-            .GroupBy(x => string.IsNullOrWhiteSpace(x.Currency) ? "غير محددة" : x.Currency!.Trim(), StringComparer.Ordinal)
-            .Select(g => new PortalCurrencyStatDto(g.Key, g.Count(), g.Sum(x => x.Amount)))
-            .OrderByDescending(c => c.Files)
-            .ThenByDescending(c => c.TotalAmount)
-            .Take(5)
+        // «أعلى العملات» بلا مستهلك في العرض حاليًا — يُبقى في العقد لاستقراره
+        // (حذفه تغيير عقد بلا مقابل تشغيلي: يُشتق من اللقطة نفسها بلا استعلام زائد).
+        var topCurrencies = GroupAmounts(bearingRows).Take(5).ToList();
+        var amountTotals = GroupAmounts(bearingRows);
+        var amountByStatus = bearingBuckets
+            .Select(kv => new PortalStatusAmountDto(kv.Key, bucketCounts[kv.Key], GroupAmounts(kv.Value)))
             .ToList();
 
         var (pendingAppeals, closedAppeals) = await _portal.AppealsBreakdownAsync(ids, ct);
 
         return new PortalStatsDto(
-            TotalFiles: statusPairs.Count,
-            DraftFiles: draft,
-            CirculatingFiles: circulating,
-            ExecutedFiles: executed,
-            DeferredFiles: deferred,
-            ReferredToStartFiles: referredToStart,
+            TotalFiles: amountRows.Count,
+            DraftFiles: bucketCounts[ExecutionStatusCatalog.DraftFilter],
+            CirculatingFiles: bucketCounts[ExecutionStatusCatalog.StateCirculating],
+            ExecutedFiles: bucketCounts[ExecutionStatusCatalog.ExecutedFilter],
+            DeferredFiles: bucketCounts[ExecutionStatusCatalog.Deferred],
+            ReferredToStartFiles: bucketCounts[ExecutionStatusCatalog.ReferredToStart],
             PendingAppeals: pendingAppeals,
             ClosedAppeals: closedAppeals,
             Monthly: monthly,
             PerEntry: perEntry,
-            TopCurrencies: topCurrencies);
+            TopCurrencies: topCurrencies,
+            AmountTotals: amountTotals,
+            AmountByStatus: amountByStatus);
     }
 
-    /// <summary>سلسلة آخر 12 شهرًا متصلة حتى الشهر الحالي (UTC)، الأشهر بلا ملفات = 0.</summary>
-    private static List<PortalMonthlyCountDto> BuildMonthlySeries(IReadOnlyList<DateTime> createdAtDates)
+    /// <summary>
+    /// المصنّف الوحيد لسلّات البوابة (عدّادات + مطابقة فلتر القائمة): الحالة أولًا
+    /// دائمًا، والمسودة مسودة بلا حالة فقط. فرع «منفذ» هو `IsExecuted` من الكتالوج
+    /// نفسه (تسوية/إنابة/مسترد/جبريا غير جزئي) — «منفذ جبريا + منفذ جزئيا» متداول
+    /// دائمًا بقرار المالك (كالمدير وآلة الحالات وقائمة المحامين بعد التوحيد).
+    /// «محال الى البداية» سلّة مستقلة. أي حالة غير مصنّفة (إرثية) تُعامل «متداولًا»
+    /// هنا وفي فلتر القائمة معًا (قرار المالك) — فلا عدّاد بلا فلتر مطابق.
+    /// </summary>
+    private static string ClassifyPortalBucket(bool isDraft, string? execStatus, string? execSubStatus)
     {
-        var nowUtc = DateTime.UtcNow;
-        var start = new DateTime(nowUtc.Year, nowUtc.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(-11);
+        if (!string.IsNullOrEmpty(execStatus))
+        {
+            if (ExecutionStatusCatalog.IsExecuted(execStatus, execSubStatus))
+                return ExecutionStatusCatalog.ExecutedFilter;
+            if (execStatus == ExecutionStatusCatalog.Deferred)
+                return ExecutionStatusCatalog.Deferred;
+            if (execStatus == ExecutionStatusCatalog.ReferredToStart)
+                return ExecutionStatusCatalog.ReferredToStart;
+            return ExecutionStatusCatalog.StateCirculating;
+        }
+        return isDraft ? ExecutionStatusCatalog.DraftFilter : ExecutionStatusCatalog.StateCirculating;
+    }
+
+    /// <summary>
+    /// حامل المبلغ: ليس نسخة إنابة (`SourceDelegationId == null`) وليس في حالة
+    /// إنابة انتهائية (`منفذ إنابة`/`مسترد` — منابان دائمًا) — فيُحتسب عددًا دون
+    /// مبالغ (قرار المالك). الرابط يغطي النسخة المتداولة/المسوّاة، والحالة تغطي
+    /// صفوفًا قديمة قد يكون رابطها فارغًا. المسودة حاملة لمبالغها (القاعدة
+    /// المعتمدة تستثني الإنابة وحدها — بخلاف إجمالي المدير الذي يستثني المسودات).
+    /// </summary>
+    private static bool IsAmountBearing(PortalAmountRow row)
+        => row.SourceDelegationId == null
+        && row.ExecStatus != ExecutionStatusCatalog.DelegationExecuted
+        && row.ExecStatus != ExecutionStatusCatalog.Recovered;
+
+    /// <summary>
+    /// أزواج مبالغ الدين الستة كما سُجّلت في النموذج (المبلغ×3 + مبلغ الإدراج×3
+    /// بعملاتها — قرار المالك) مع إسقاط الصفري: ملف بلا مبلغ لا يُنشئ ملفًا وهميًا
+    /// في عملته الافتراضية (مرآة `AddAmount` في إحصاءات المدير) — يبقى في عدّاد
+    /// سلّته (عددًا) دون أن يدخل أي مجموع عملة.
+    /// </summary>
+    private static List<(int DocId, string? Currency, decimal Amount)> DebtAmountPairs(PortalAmountRow row)
+    {
+        var pairs = new (int DocId, string? Currency, decimal Amount)[]
+        {
+            (row.DocumentId, row.Currency, row.AmountNumeric),
+            (row.DocumentId, row.Currency2, row.Amount2Numeric),
+            (row.DocumentId, row.Currency3, row.Amount3Numeric),
+            (row.DocumentId, row.InclusionCurrency, row.InclusionAmountNumeric),
+            (row.DocumentId, row.InclusionCurrency2, row.InclusionAmount2Numeric),
+            (row.DocumentId, row.InclusionCurrency3, row.InclusionAmount3Numeric),
+        };
+        return pairs.Where(p => p.Amount != 0).ToList();
+    }
+
+    /// <summary>
+    /// تجميع مبالغ حسب العملة (تطبيع الفراغ إلى «غير محددة») مرتبًا بعدد الملفات
+    /// ثم المبلغ. `Files` = عدد الملفات **المتميزة** الحاملة لمبلغ غير صفري بهذه
+    /// العملة (الزوج الثاني/الإدراج لا يضاعف عدّ الملف) — ويختلف عن عدّاد السلّة
+    /// الكامل (الذي يشمل الصفرية والإنابة عددًا) قصدًا وبتوثيق في `PortalStatusAmountDto`.
+    /// </summary>
+    private static List<PortalCurrencyStatDto> GroupAmounts(IEnumerable<(int DocId, string? Currency, decimal Amount)> rows)
+        => rows
+            .GroupBy(x => string.IsNullOrWhiteSpace(x.Currency) ? "غير محددة" : x.Currency!.Trim(), StringComparer.Ordinal)
+            .Select(g => new PortalCurrencyStatDto(g.Key, g.Select(x => x.DocId).Distinct().Count(), g.Sum(x => x.Amount)))
+            .OrderByDescending(c => c.Files)
+            .ThenByDescending(c => c.TotalAmount)
+            .ToList();
+
+    /// <summary>
+    /// سلسلة آخر 12 شهرًا متصلة حتى الشهر الحالي (بتوقيت النظام المحقون —
+    /// المرساة والسلال معًا بالتوقيت المحلي، فملف على حدّ الشهر يُحتسب في
+    /// شهره المحلي لا UTC).
+    /// الأشهر بلا ملفات = 0.
+    /// </summary>
+    private static List<PortalMonthlyCountDto> BuildMonthlySeries(IReadOnlyList<DateTime> createdAtDates, DateTime now, TimeZoneInfo zone)
+    {
+        var start = new DateTime(now.Year, now.Month, 1).AddMonths(-11);
 
         var counts = new Dictionary<(int Year, int Month), int>();
         foreach (var date in createdAtDates)
         {
-            var key = (date.Year, date.Month);
+            // تطبيع آمن لأي Kind قادم من القاعدة (Unspecified من SQLite شائع)
+            // قبل التحويل — بلا رمي استثناء على أي نوع.
+            var utc = date.Kind switch
+            {
+                DateTimeKind.Utc => date,
+                DateTimeKind.Local => date.ToUniversalTime(),
+                _ => DateTime.SpecifyKind(date, DateTimeKind.Utc),
+            };
+            var local = TimeZoneInfo.ConvertTimeFromUtc(utc, zone);
+            var key = (local.Year, local.Month);
             counts[key] = counts.TryGetValue(key, out var n) ? n + 1 : 1;
         }
 
@@ -361,18 +522,65 @@ public sealed class PortalService : IPortalService
         return series;
     }
 
-    private static PortalFileListItemDto ToListItem(Document d) => new(
-        d.Id,
-        d.DocumentType ?? string.Empty,
-        d.IsDraft,
-        d.BorrowerName,
-        d.Applicant,
-        ExecutedSummary(d),
-        d.AmountNumeric,
-        d.Currency,
-        d.ExecStatus,
-        d.CreatedAt,
-        d.UpdatedAt);
+    private static PortalFileListItemDto ToListItem(Document d, PortalScopeResolution? scope = null)
+    {
+        // أحدث رقم أساس دائمًا (غير مقيّد بسنة الفحص) — وإلا رقم الملف/سنة قيده الأصلية.
+        // انحراف مقصود وموثّق عن بقية النظام (as-of السنة الحالية): قرار صاحب المشروع
+        // «دائمًا أحدث رقم أساس مع السنة» — فرقم بسنة مستقبلية (خطأ إدخال) يظهر هنا
+        // دون قوائم المحامين؛ مثبّت باختبار سنة مستقبلية قصدًا لا سهوًا.
+        var latestBase = EffectiveFileIdentity.LatestFrom(d.BaseNumbers, int.MaxValue);
+        var displayNumber = latestBase?.BaseNumber ?? d.FileNumber;
+        var displayYear = latestBase is not null ? latestBase.Year.ToString() : d.FileYear;
+        return new(
+            d.Id,
+            d.DocumentType ?? string.Empty,
+            d.IsDraft,
+            d.BorrowerName,
+            d.Applicant,
+            ExecutedSummary(d),
+            d.AmountNumeric,
+            d.Currency,
+            d.ExecStatus,
+            d.CreatedAt,
+            d.UpdatedAt,
+            d.BorrowerFather,
+            d.BorrowerFamily,
+            d.FileType,
+            d.Court,
+            displayNumber,
+            displayYear,
+            BuildMatchedEntries(d, scope),
+            // شارة البطاقة من المصدر الوحيد (`DocumentStatusResolver`) — لا منطق
+            // تصنيف في الواجهة: الخام (`ExecStatus`) للفلترة، والمعروض للشارة.
+            DocumentStatusResolver.Resolve(d));
+    }
+
+    /// <summary>
+    /// قيود النطاق المطابقة للملف (تقاطع RegistryIds الثلاثة مع معرّفات النطاق) —
+    /// تُغذي السطر الثاني «فرع الجهة العامة» (مثال: المصرف التجاري — اللاذقية/فرع 1).
+    /// </summary>
+    private static IReadOnlyList<PortalScopeEntryDto> BuildMatchedEntries(Document d, PortalScopeResolution? scope)
+    {
+        if (scope is null)
+            return Array.Empty<PortalScopeEntryDto>();
+        var byId = scope.Entries.ToDictionary(e => e.Id);
+        var matchedIds = new HashSet<int>();
+        foreach (var a in d.ApplicantPublicEntities)
+            if (a.RegistryId.HasValue && byId.ContainsKey(a.RegistryId.Value))
+                matchedIds.Add(a.RegistryId.Value);
+        foreach (var e in d.ExecutedPublicEntities)
+            if (e.RegistryId.HasValue && byId.ContainsKey(e.RegistryId.Value))
+                matchedIds.Add(e.RegistryId.Value);
+        foreach (var a in d.ExecutionApplicants)
+            if (a.RegistryId.HasValue && byId.ContainsKey(a.RegistryId.Value))
+                matchedIds.Add(a.RegistryId.Value);
+        return matchedIds
+            .Select(id => byId[id])
+            .OrderBy(e => e.Governorate, StringComparer.Ordinal)
+            .ThenBy(e => e.BranchName, StringComparer.Ordinal)
+            .Select(e => new PortalScopeEntryDto(e.Id, e.Governorate, e.BranchName, e.IsActive))
+            .ToList();
+    }
 
     private static string ExecutedSummary(Document d) =>
         string.Join("؛ ", d.ExecutedPublicEntities

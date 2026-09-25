@@ -241,14 +241,14 @@ describe('Layout', () => {
     );
     second.unmount();
 
-    // مندوب جهة: بند «مراسلات الجهة» في الشريط السفلي للبوابة.
+    // مندوب جهة: بند «المراسلات» في الشريط السفلي للبوابة.
     useAuthMock.mockReturnValue({
       ...baseUser(),
       user: { ...baseUser().user, role: 'entitymanager' },
     });
     render(<Layout />);
     const portalNav = screen.getByRole('navigation', { name: 'التنقل السفلي' });
-    expect(within(portalNav).getByRole('link', { name: 'مراسلات الجهة' })).toHaveAttribute(
+    expect(within(portalNav).getByRole('link', { name: 'المراسلات' })).toHaveAttribute(
       'href',
       '/portal/correspondence',
     );
@@ -321,7 +321,7 @@ describe('Layout', () => {
     expect(dialog).toBeInTheDocument();
   });
 
-  it('يقصر قائمة مندوب الجهة على بوابته القرائية حصرًا (المرحلة 3)', () => {
+  it('يقصر قائمة مندوب الجهة على بوابته القرائية حصرًا (الإحصائيات + الملفات + المراسلات)', () => {
     useAuthMock.mockReturnValue({
       ...baseUser(),
       user: { ...baseUser().user, role: 'entitymanager', fullName: 'مندوب الوزارة' },
@@ -330,9 +330,10 @@ describe('Layout', () => {
     render(<Layout />);
 
     const sidebar = screen.getByRole('navigation', { name: 'القائمة الرئيسية' });
-    expect(within(sidebar).getByRole('link', { name: 'ملفات الجهة' })).toHaveAttribute('href', '/portal');
+    expect(within(sidebar).getByRole('link', { name: 'الإحصائيات' })).toHaveAttribute('href', '/portal/stats');
+    expect(within(sidebar).getByRole('link', { name: 'الملفات التنفيذية' })).toHaveAttribute('href', '/portal/files');
+    expect(within(sidebar).getByRole('link', { name: 'المراسلات' })).toHaveAttribute('href', '/portal/correspondence');
     expect(within(sidebar).queryByRole('link', { name: 'لوحة التحكم' })).not.toBeInTheDocument();
-    expect(within(sidebar).queryByRole('link', { name: 'الملفات التنفيذية' })).not.toBeInTheDocument();
     expect(within(sidebar).queryByRole('link', { name: 'سجل التدقيق' })).not.toBeInTheDocument();
   });
 

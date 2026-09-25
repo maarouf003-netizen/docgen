@@ -369,6 +369,22 @@ public class PortalFileDetailTests : IDisposable
     }
 
     [Fact]
+    public async Task Export_ScrubsInternalBranchName_FromBranchColumn()
+    {
+        // A: عمود «الفرع» في تصدير البوابة يُقرأ من BranchName الداخلي —
+        // ومسار التفاصيل يحجبه، فيجب أن يحجبه التصدير أيضًا (سياسة حجب واحدة
+        // يمرّ بها كل مسار، لا تعليق يُنسخ).
+        var doc = await SeedInScopeDocAsync("ملف فرع التصدير");
+        doc.BranchName = "فرع داخلي سري";
+        await _db.SaveChangesAsync();
+
+        var bytes = await _portal.ExportWorkbookAsync(_delegateGroupId, null, null, "مندوب");
+
+        var sheetXml = ReadFirstSheetXml(bytes);
+        Assert.DoesNotContain("فرع داخلي سري", sheetXml);
+    }
+
+    [Fact]
     public async Task Export_TieBreakById_MatchesDetailCardOrder()
     {
         var doc = await SeedInScopeDocAsync("ملف التعادل في التصدير");
@@ -383,6 +399,39 @@ public class PortalFileDetailTests : IDisposable
         var sheetXml = ReadFirstSheetXml(bytes);
         Assert.Contains("إجراء التعادل الأحدث", sheetXml);
         Assert.DoesNotContain("إجراء التعادل الأقدم", sheetXml);
+    }
+
+    [Fact]
+    public async Task Export_PortalHeadersMatchDeclaredAllowlist()
+    {
+        // G2: أي عمود جديد في تصدير البوابة يُجبر صاحبه على قرار صريح —
+        // تُقارَن العناوين بقائمة حرفية كاملة لا بالاحتواء فقط، وبالرايات
+        // المعطلة للبوابة (بلا فرع إدارة/محامٍ مختص/عدادات).
+        var doc = await SeedInScopeDocAsync("ملف عناوين التصدير");
+
+        var bytes = await _portal.ExportWorkbookAsync(_delegateGroupId, null, null, "مندوب");
+
+        var headers = ReadFirstRowTexts(ReadFirstSheetXml(bytes));
+        Assert.Equal(
+            new[]
+            {
+                "الحالة", "طالب التنفيذ", "الفرع", "المنفذ عليه", "دائرة التنفيذ",
+                "رقم الملف", "لعام", "ملحق العقد", "الإجراءات والملاحظات",
+            },
+            headers);
+    }
+
+    private static List<string> ReadFirstRowTexts(string sheetXml)
+    {
+        // تحليل بالاسم المحلي لا بالبادئة — لا يعتمد على شكل الـnamespace
+        // الذي يكتبه مولّد OpenXML.
+        var xdoc = System.Xml.Linq.XDocument.Parse(sheetXml);
+        return xdoc.Descendants()
+            .Where(e => e.Name.LocalName == "row").First()
+            .Descendants()
+            .Where(e => e.Name.LocalName == "t")
+            .Select(t => t.Value)
+            .ToList();
     }
 
     private static string ReadFirstSheetXml(byte[] xlsx)

@@ -103,6 +103,8 @@ public class PortalRepository : IPortalRepository
             .Take(perPage)
             .Include(d => d.ApplicantPublicEntities)
             .Include(d => d.ExecutedPublicEntities)
+            .Include(d => d.ExecutionApplicants)
+            .Include(d => d.BaseNumbers)
             .ToListAsync(ct);
         return (total, items);
     }
@@ -176,36 +178,65 @@ public class PortalRepository : IPortalRepository
 
     // ── مساعدات خاصة ──
 
-    /// <summary>بناء الاستعلام المقيّد بالفلاتر — يُترجم إلى SQL كاملًا.</summary>
+    /// <summary>
+    /// بناء الاستعلام المقيّد بالفلاتر — يُترجم إلى SQL كاملًا.
+    /// صرامة فلتر الحالة ضد المصدر الوحيد (`ExecutionStatusCatalog.IsValidPortalFilter`):
+    /// التقليم أولًا ثم رفض الغريب (`ArgumentException` → `400`) بدل السقوط الصامت.
+    /// الفروع الخمسة مرآة حرفية للمصنّف `PortalService.ClassifyPortalBucket` (عبر ثوابت
+    /// الكتالوج نفسها — التركيب مكرر لتعذّر ترجمة استدعاءات الدوال في SQL):
+    /// - «منفذ» = `IsExecuted` (تسوية/إنابة/مسترد/جبريا غير جزئي) — «منفذ جبريا +
+    ///   منفذ جزئيا» متداول دائمًا بقرار المالك (كلوحة المدير وآلة الحالات).
+    /// - «تحت رفع» = مسودة بلا حالة فقط.
+    /// - «متداول» = مقيد بلا حالة، أو جبريا-جزئي، أو أي حالة غير مصنّفة (إرثية) —
+    ///   الطيّ هنا وفي المصنّف معًا (قرار المالك) فلا عدّاد بلا فلتر مطابق.
+    /// </summary>
     private IQueryable<Document> ScopedQuery(IReadOnlyCollection<int> entryIds, string? query, string? status)
     {
         // نسخة محلية ليُترجم Contains ضمن شجرة التعبير.
         var ids = entryIds.ToList();
 
+        status = string.IsNullOrWhiteSpace(status) ? null : status.Trim();
+        if (!ExecutionStatusCatalog.IsValidPortalFilter(status))
+            throw new ArgumentException("قيمة فلتر الحالة غير صالحة");
+
         var q = _db.Documents.AsNoTracking()
             .Where(d => !d.IsDeleted)
-            .Where(d => d.ExecStatus != ExecutionStatusCatalog.StateStruckOff)
+            // الشطب في النظامين معًا: `ExecStatus` لطالبة التنفيذ و`ExecutedStatus`
+            // لعائلة «منفذ عليه/عرض وايداع» (H1) — مطابقة قائمة المحامين حرفيًا.
+            .Where(d => d.ExecStatus != ExecutionStatusCatalog.StateStruckOff
+                && d.ExecutedStatus != ExecutedStatusCatalog.StruckOff)
             .Where(ScopePredicate(ids));
 
         var term = query?.Trim();
         if (!string.IsNullOrWhiteSpace(term))
             q = q.Where(d => d.SearchText != null && d.SearchText.Contains(term));
 
-        if (!string.IsNullOrWhiteSpace(status))
+        if (status != null)
         {
             if (status == ExecutionStatusCatalog.ExecutedFilter)
-                q = q.Where(d => d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
-                    || d.ExecStatus == ExecutionStatusCatalog.ExecutedBySettlement
+                q = q.Where(d => d.ExecStatus == ExecutionStatusCatalog.ExecutedBySettlement
                     || d.ExecStatus == ExecutionStatusCatalog.DelegationExecuted
-                    || d.ExecStatus == ExecutionStatusCatalog.Recovered);
+                    || d.ExecStatus == ExecutionStatusCatalog.Recovered
+                    || (d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
+                        && (d.ExecSubStatus == null
+                            || d.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted)));
             else if (status == ExecutionStatusCatalog.Deferred)
                 q = q.Where(d => d.ExecStatus == ExecutionStatusCatalog.Deferred);
             else if (status == ExecutionStatusCatalog.ReferredToStart)
                 q = q.Where(d => d.ExecStatus == ExecutionStatusCatalog.ReferredToStart);
             else if (status == ExecutionStatusCatalog.DraftFilter)
-                q = q.Where(d => d.IsDraft);
+                q = q.Where(d => d.IsDraft && string.IsNullOrEmpty(d.ExecStatus));
             else if (status == ExecutionStatusCatalog.StateCirculating)
-                q = q.Where(d => !d.IsDraft && string.IsNullOrEmpty(d.ExecStatus));
+                q = q.Where(d => (!d.IsDraft && string.IsNullOrEmpty(d.ExecStatus))
+                    || (d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
+                        && d.ExecSubStatus == ExecutionStatusCatalog.SubPartiallyExecuted)
+                    || (!string.IsNullOrEmpty(d.ExecStatus)
+                        && d.ExecStatus != ExecutionStatusCatalog.ExecutedBySettlement
+                        && d.ExecStatus != ExecutionStatusCatalog.DelegationExecuted
+                        && d.ExecStatus != ExecutionStatusCatalog.Recovered
+                        && d.ExecStatus != ExecutionStatusCatalog.ExecutedForcibly
+                        && d.ExecStatus != ExecutionStatusCatalog.Deferred
+                        && d.ExecStatus != ExecutionStatusCatalog.ReferredToStart));
         }
 
         return q;
@@ -214,23 +245,15 @@ public class PortalRepository : IPortalRepository
     // ── إحصاءات الجهة (المرحلة 4) — قاعدة أساس موحّدة لكل الاستعلامات الإحصائية ──
 
     /// <summary>
-    /// نقطة انطلاق الاستعلامات الإحصائية: يستبعد المشطوب دائمًا (مطابقًا للقائمة)
-    /// فوق مسند الرؤية الموحد؛ والحذف المنطقي يُستبعد آليًا بعامل الاستعلام العام.
+    /// نقطة انطلاق الاستعلامات الإحصائية: يستبعد المشطوب دائمًا في النظامين
+    /// (`ExecStatus` و`ExecutedStatus` — مطابقًا للقائمة) فوق مسند الرؤية الموحد؛
+    /// والحذف المنطقي يُستبعد آليًا بعامل الاستعلام العام.
     /// </summary>
     private IQueryable<Document> StatsBase(List<int> ids)
         => _db.Documents.AsNoTracking()
-            .Where(d => d.ExecStatus != ExecutionStatusCatalog.StateStruckOff)
+            .Where(d => d.ExecStatus != ExecutionStatusCatalog.StateStruckOff
+                && d.ExecutedStatus != ExecutedStatusCatalog.StruckOff)
             .Where(ScopePredicate(ids));
-
-    /// <inheritdoc />
-    public async Task<List<(bool IsDraft, string? ExecStatus)>> ListStatusPairsAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default)
-    {
-        var ids = entryIds.ToList();
-        var rows = await StatsBase(ids)
-            .Select(d => new { d.IsDraft, d.ExecStatus })
-            .ToListAsync(ct);
-        return rows.Select(r => (r.IsDraft, r.ExecStatus)).ToList();
-    }
 
     /// <inheritdoc />
     public Task<List<DateTime>> ListCreatedDatesAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default)
@@ -242,13 +265,29 @@ public class PortalRepository : IPortalRepository
     }
 
     /// <inheritdoc />
-    public async Task<List<(string? Currency, decimal Amount)>> ListCurrencyAmountsAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default)
+    public async Task<List<PortalAmountRow>> ListAmountRowsAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default)
     {
         var ids = entryIds.ToList();
-        var rows = await StatsBase(ids)
-            .Select(d => new { d.Currency, d.AmountNumeric })
+        return await StatsBase(ids)
+            .Select(d => new PortalAmountRow(
+                d.Id,
+                d.IsDraft,
+                d.ExecStatus,
+                d.ExecSubStatus,
+                d.SourceDelegationId,
+                d.Currency,
+                d.AmountNumeric,
+                d.Currency2,
+                d.Amount2Numeric,
+                d.Currency3,
+                d.Amount3Numeric,
+                d.InclusionCurrency,
+                d.InclusionAmountNumeric,
+                d.InclusionCurrency2,
+                d.InclusionAmount2Numeric,
+                d.InclusionCurrency3,
+                d.InclusionAmount3Numeric))
             .ToListAsync(ct);
-        return rows.Select(r => (r.Currency, r.AmountNumeric)).ToList();
     }
 
     /// <inheritdoc />
@@ -308,11 +347,13 @@ public class PortalRepository : IPortalRepository
              select appeal.Status)
             .ToListAsync(ct);
 
+        // المغلق بمجموعة صريحة (محسوم/مشطوب) — أي قيمة مستقبلية غير معروفة
+        // تُحتسب معلّقة (ظاهرة تستدعي المعالجة) بدل دفنها صامتًا في المغلق.
         int pending = 0, closed = 0;
         foreach (var status in statuses)
         {
-            if (status == AppealStatusCatalog.Pending) pending++;
-            else closed++;
+            if (status == AppealStatusCatalog.Decided || status == AppealStatusCatalog.StruckOff) closed++;
+            else pending++;
         }
         return (pending, closed);
     }

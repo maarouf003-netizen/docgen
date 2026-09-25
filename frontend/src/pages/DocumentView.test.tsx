@@ -2336,7 +2336,8 @@ await screen.findByText('بيانات الملف');
     expect(screen.getByText('نوع الملف المنيب')).toBeInTheDocument();
     expect(screen.getByText('سند مصارف')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'حالة الإنابة' })).toBeInTheDocument();
-    expect(screen.getByText('حدّث المنيب بيانات السند')).toBeInTheDocument();
+    // شريط التنبيهات يجلب بياناته في طلب ثانٍ مستقل بعد الإنابة، فننتظر ظهوره.
+    expect(await screen.findByText('حدّث المنيب بيانات السند')).toBeInTheDocument();
     expect(screen.queryByText('الأموال المنقولة وغير المنقولة')).not.toBeInTheDocument();
 
     // كتب المطالعة تحت بطاقة «حالة الإنابة» في عمود السند (مكتبي).

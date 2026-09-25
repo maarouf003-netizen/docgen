@@ -233,7 +233,7 @@ export default function Dashboard() {
   if (isManager) {
   // مندوب الجهة لا يملك لوحة تحكم — يُحوَّل مباشرة إلى بوابته القرائية
   // (بعد كل الخطافات التزامًا بقواعد React).
-  if (user?.role === 'entitymanager') return <Navigate to="/portal" replace />;
+  if (user?.role === 'entitymanager') return <Navigate to="/portal/stats" replace />;
 
   return (
       <div className="max-w-7xl mx-auto">

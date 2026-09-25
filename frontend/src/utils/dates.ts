@@ -20,3 +20,12 @@ export function formatDateTime(value?: string, emptyFallback = ''): string {
   const date = parseDate(value);
   return date ? date.toLocaleString('ar-SY') : value;
 }
+
+/**
+ * مفتاح اليوم المحلي `yyyy-MM-dd` (بتوقيت المتصفح لا UTC) — لأسماء ملفات
+ * التصدير المولّدة عميلًا، فيطابق تاريخ الخادم المحلي ولا ينزاح يومًا.
+ */
+export function todayLocalKey(date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}

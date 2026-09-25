@@ -74,6 +74,20 @@ public static class ExecutionStatusCatalog
     public static bool IsValidSearchFilter(string? status) =>
         string.IsNullOrWhiteSpace(status) || ValidSearchFilters.Contains(status.Trim());
 
+    /// <summary>
+    /// قيم فلتر «الحالة» في بوابة المندوب: الخمسة المشتركة + «محال الى البداية» الذي
+    /// تخفيه القائمة الرئيسية للمحامين في صفحة مستقلة بينما البوابة تعرضه فلترًا —
+    /// المصدر الوحيد للحقيقة في البوابة (تستهلكه `PortalRepository.ScopedQuery`) فلا
+    /// تُبنى مجموعة حرفيات يدوية في أي موضع آخر.
+    /// </summary>
+    public static readonly IReadOnlySet<string> PortalSearchFilters = new HashSet<string>
+    {
+        None, StateCirculating, ExecutedFilter, Deferred, DraftFilter, ReferredToStart,
+    };
+
+    public static bool IsValidPortalFilter(string? status) =>
+        string.IsNullOrWhiteSpace(status) || PortalSearchFilters.Contains(status.Trim());
+
     public static ExecutionStatus Classify(string status) => status switch
     {
         ExecutedForcibly => ExecutionStatus.ExecutedForcibly,

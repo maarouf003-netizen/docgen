@@ -149,18 +149,36 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
                     && (d.ExecStatus == ExecutionStatusCatalog.ExecutedBySettlement
                         || d.ExecStatus == ExecutionStatusCatalog.DelegationExecuted
                         || d.ExecStatus == ExecutionStatusCatalog.Recovered
+                        // صيغة صريحة آمنة لـ NULL (H4): الجزئي مطابقة تامة فقط —
+                        // NULL منفذ كامل. (سلوكيًا مكافئ لمنطق SQL الثلاثي هنا،
+                        // لكن القصد مقروء ولا يعتمد على مصادفة التقييم.)
                         || (d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
-                            && d.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted))));
+                            && (d.ExecSubStatus == null
+                                || d.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted)))));
         }
         if (!string.IsNullOrWhiteSpace(status))
         {
+            // «منفذ جبريا + منفذ جزئيا» متداول دائمًا بقرار المالك (مرآة `IsExecuted`
+            // ولوحة المدير وآلة الحالات): يُستبعد من فلتر «منفذ» هنا وفي صفحة
+            // «الملفات المنفذة» معًا فلا ينفصلان. الصيغة آمنة للقيم الفارغة
+            // (`ExecSubStatus` قد تكون null في صفوف قديمة — تُعامل منفذًا كاملًا
+            // مطابقةً لدلالة C# في `IsExecuted`، لا لمنطق SQL الثلاثي).
             if (status == ExecutionStatusCatalog.ExecutedFilter)
-                q = q.Where(d => d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
-                    || d.ExecStatus == ExecutionStatusCatalog.ExecutedBySettlement
+                q = q.Where(d => d.ExecStatus == ExecutionStatusCatalog.ExecutedBySettlement
                     || d.ExecStatus == ExecutionStatusCatalog.DelegationExecuted
-                    || d.ExecStatus == ExecutionStatusCatalog.Recovered);
+                    || d.ExecStatus == ExecutionStatusCatalog.Recovered
+                    || (d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
+                        && (d.ExecSubStatus == null
+                            || d.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted)));
             else if (status == ExecutionStatusCatalog.Deferred)
                 q = q.Where(d => d.ExecStatus == ExecutionStatusCatalog.Deferred);
+            else if (status == ExecutionStatusCatalog.StateCirculating)
+                // «منفذ جبريا + منفذ جزئيا» متداول دائمًا بقرار المالك (H3 — مرآة
+                // فلتر البوابة): مطابقة تامة هنا، وصيغة آمنة لـ NULL (الجزئي مطابقة
+                // تامة فقط — NULL يبقى منفذًا كاملًا).
+                q = q.Where(d => (string.IsNullOrEmpty(d.ExecStatus) && !d.IsDraft)
+                    || (d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
+                        && d.ExecSubStatus == ExecutionStatusCatalog.SubPartiallyExecuted));
             else
                 q = q.Where(d =>
                     string.IsNullOrEmpty(d.ExecStatus) &&
@@ -593,8 +611,10 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
                 : d.ExecStatus != ExecutionStatusCatalog.ExecutedBySettlement
                     && d.ExecStatus != ExecutionStatusCatalog.DelegationExecuted
                     && d.ExecStatus != ExecutionStatusCatalog.Recovered
+                    // الصيغة الصريحة نفسها (H4 — مكافئة سلوكيًا، ومقصودة قراءةً).
                     && !(d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
-                        && d.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted)
+                        && (d.ExecSubStatus == null
+                            || d.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted))
                     && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff)
             .Where(d => !d.BaseNumbers.Any(b => b.Year == currentYear))
             .Where(d => d.FileYear != currentYear.ToString());
@@ -718,7 +738,8 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
                         || d.ExecStatus == ExecutionStatusCatalog.DelegationExecuted
                         || d.ExecStatus == ExecutionStatusCatalog.Recovered
                         || (d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
-                            && d.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted))));
+                            && (d.ExecSubStatus == null
+                                || d.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted)))));
 
         if (visibleBranchId.HasValue)
             q = q.Where(d => d.BranchId == visibleBranchId);

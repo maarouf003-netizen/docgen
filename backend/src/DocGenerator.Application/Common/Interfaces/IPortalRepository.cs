@@ -26,6 +26,31 @@ public sealed record DocumentScopeKeys(
 }
 
 /// <summary>
+/// صف اللقطة الإحصائية لملف واحد: حقول التصنيف (IsDraft، ExecStatus، ExecSubStatus —
+/// الأخيرة لتمييز «منفذ جبريا + منفذ جزئيا» المتداول دائمًا بقرار المالك) ورابط الإنابة
+/// (SourceDelegationId — نسخة الإنابة تُحتسب عددًا دون مبالغ) وأزواج مبالغ الدين الستة
+/// كما سُجّلت في النموذج (المبلغ×3 + مبلغ الإدراج×3 بعملاتها).
+/// </summary>
+public sealed record PortalAmountRow(
+    int DocumentId,
+    bool IsDraft,
+    string? ExecStatus,
+    string? ExecSubStatus,
+    int? SourceDelegationId,
+    string? Currency,
+    decimal AmountNumeric,
+    string? Currency2,
+    decimal Amount2Numeric,
+    string? Currency3,
+    decimal Amount3Numeric,
+    string? InclusionCurrency,
+    decimal InclusionAmountNumeric,
+    string? InclusionCurrency2,
+    decimal InclusionAmount2Numeric,
+    string? InclusionCurrency3,
+    decimal InclusionAmount3Numeric);
+
+/// <summary>
 /// مستودع بوابة مندوب الجهة: استعلامات الملفات المقيّدة بنطاق المندوب
 /// (أي تطابق طرفي بقيد نهائي — د1/د4) والتصدير منها.
 /// </summary>
@@ -58,14 +83,16 @@ public interface IPortalRepository
 
     // ── إحصاءات الجهة (المرحلة 4) — كلها فوق ScopePredicate الموحد وبلا صفحات ──
 
-    /// <summary>ثنائيات (IsDraft، ExecStatus) لملفات النطاق — يُصنّفها المستدعي وفق كتالوج الحالات.</summary>
-    Task<List<(bool IsDraft, string? ExecStatus)>> ListStatusPairsAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default);
-
     /// <summary>تواريخ إنشاء ملفات النطاق (UTC) لبناء السلسلة الشهرية.</summary>
     Task<List<DateTime>> ListCreatedDatesAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default);
 
-    /// <summary>ثنائيات (العملة، المبلغ) لملفات النطاق لتجميع العملات الأعلى.</summary>
-    Task<List<(string? Currency, decimal Amount)>> ListCurrencyAmountsAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default);
+    /// <summary>
+    /// اللقطة الوحيدة التي تُشتق منها عدّادات الحالات والمجاميع معًا في الخدمة
+    /// (فلا سباق بين استعلامين): كل ملف مع سلّة حالته (IsDraft، ExecStatus،
+    /// ExecSubStatus) ورابط الإنابة (SourceDelegationId) وأزواج مبالغ الدين الستة
+    /// (المبلغ×3 + مبلغ الإدراج×3 بعملاتها) — تُجمَّع حسب العملة بعد إسقاط الصفري.
+    /// </summary>
+    Task<List<PortalAmountRow>> ListAmountRowsAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default);
 
     /// <summary>
     /// عدد الملفات المرتبطة بكل قيد من قيود النطاق. قد يُحتسب الملف الواحد تحت أكثر
@@ -73,6 +100,9 @@ public interface IPortalRepository
     /// </summary>
     Task<Dictionary<int, int>> CountDocsPerEntryAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default);
 
-    /// <summary>استئنافات ملفات النطاق: (معلّقة، مغلقة) — المغلق يشمل المحسوم والمشطوب.</summary>
+    /// <summary>
+    /// استئنافات ملفات النطاق: (معلّقة، مغلقة) — المغلق = محسوم/مشطوب حصرًا،
+    /// وأي حالة مستقبلية غير معروفة تُحتسب معلّقة (ظاهرة لا مدفونة).
+    /// </summary>
     Task<(int Pending, int Closed)> AppealsBreakdownAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default);
 }

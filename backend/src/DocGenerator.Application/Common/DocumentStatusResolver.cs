@@ -30,7 +30,7 @@ public static class DocumentStatusResolver
         if (doc.ExecStatus == ExecutionStatusCatalog.Recovered) return "مسترد";
         if (doc.ExecStatus == ExecutionStatusCatalog.Deferred) return "تريث";
         if (doc.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
-            && doc.ExecSubStatus == "منفذ جزئيا") return "متداول / منفذ جزئيا";
+            && doc.ExecSubStatus == ExecutionStatusCatalog.SubPartiallyExecuted) return "متداول / منفذ جزئيا";
         if (doc.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
             || doc.ExecStatus == ExecutionStatusCatalog.ExecutedBySettlement
             || doc.ExecStatus == ExecutionStatusCatalog.DelegationExecuted) return "منفذ";

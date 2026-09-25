@@ -15,7 +15,7 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public static class PortalServiceFactory
 {
-    public static IPortalService Create(DocGeneratorDbContext db, IAuditLogger audit, int maxRows = 10_000)
+    public static IPortalService Create(DocGeneratorDbContext db, IAuditLogger audit, int maxRows = 10_000, TimeProvider? clock = null)
     {
         var documents = new DocumentRepository(db);
         var users = new UserRepository(db);
@@ -69,7 +69,7 @@ public static class PortalServiceFactory
             new ExcelExportService(),
             audit,
             Options.Create(new ExportOptions { MaxRows = maxRows }),
-            TimeProvider.System,
+            clock ?? TimeProvider.System,
             TestClock.TimeZone);
     }
 }

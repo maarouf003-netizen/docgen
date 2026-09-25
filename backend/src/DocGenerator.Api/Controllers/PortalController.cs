@@ -39,15 +39,29 @@ public class PortalController : ControllerBase
     public async Task<IActionResult> MyScope(CancellationToken ct)
         => Ok(await _portal.GetMyScopeAsync(UserId, ct));
 
-    /// <summary>قائمة ملفات الجهة (قراءة فقط) بنفس فلاتر القائمة الأساسية.</summary>
+    /// <summary>قائمة ملفات الجهة (قراءة فقط) بنفس فلاتر القائمة الأساسية + فلتر فرع ضمن النطاق.</summary>
     [HttpGet("files")]
     public async Task<IActionResult> Files(
         [FromQuery] string? q,
         [FromQuery] string? status,
         [FromQuery] int page = 1,
         [FromQuery] int perPage = 20,
+        [FromQuery] int? entryId = null,
         CancellationToken ct = default)
-        => Ok(await _portal.ListFilesAsync(UserId, q, status, page, perPage, ct));
+    {
+        try
+        {
+            return Ok(await _portal.ListFilesAsync(UserId, q, status, page, perPage, ct, entryId));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
 
     /// <summary>تفاصيل ملف قراءةً — 404 عند الخروج عن النطاق دون كشف الوجود.</summary>
     [HttpGet("files/{id:int}")]
@@ -97,28 +111,42 @@ public class PortalController : ControllerBase
         return history is null ? NotFound() : Ok(history);
     }
 
-    /// <summary>إحصاءات قرائية لنطاق الجهة (المرحلة 4).</summary>
+    /// <summary>إحصاءات قرائية لنطاق الجهة (المرحلة 4) — إجمالي أو فرع مختار ضمن النطاق.</summary>
     [HttpGet("stats")]
-    public async Task<IActionResult> Stats(CancellationToken ct)
-        => Ok(await _portal.GetStatsAsync(UserId, ct));
+    public async Task<IActionResult> Stats([FromQuery] int? entryId = null, CancellationToken ct = default)
+    {
+        try
+        {
+            return Ok(await _portal.GetStatsAsync(UserId, ct, entryId));
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
 
     /// <summary>تصدير Excel لملفات النطاق وفق نفس الفلاتر وبسقف صفوف التصدير.</summary>
     [HttpGet("export")]
     public async Task<IActionResult> Export(
         [FromQuery] string? q,
         [FromQuery] string? status,
-        CancellationToken ct)
+        [FromQuery] int? entryId = null,
+        CancellationToken ct = default)
     {
         try
         {
-            var bytes = await _portal.ExportWorkbookAsync(UserId, q, status, ViewerName, ct);
+            var bytes = await _portal.ExportWorkbookAsync(UserId, q, status, ViewerName, ct, entryId);
             return File(bytes,
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                $"ملفات الجهة {ServerClock.TodayString(_clock, _timeZone, "yyyy-MM-dd")}.xlsx");
+                $"الملفات التنفيذية {ServerClock.TodayString(_clock, _timeZone, "yyyy-MM-dd")}.xlsx");
         }
         catch (ArgumentException e)
         {
             return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
         }
     }
 

@@ -139,17 +139,18 @@ export default function Layout() {
   const canManageBranchLawyers = user?.role === 'head' || user?.role === 'admin';
   const canManageUsers = user?.role === 'admin';
   const canManageDelegates = hasFullAccess || isHead;
-  // مندوب الجهة: قائمة بوابة مختصرة فقط (ملفاتي/تصدير/مراسلات) دون باقي البنود (المرحلة 3).
+  // مندوب الجهة: الإحصائيات + الملفات التنفيذية + المراسلات دون باقي البنود (بوابة قرائية).
   const isEntityManager = user?.role === 'entitymanager';
 
   const navItems: NavItem[] = [];
 
   if (isEntityManager) {
-    // مندوب الجهة: قائمة بوابة مختصرة فقط (ملفاتي/تصدير/مراسلات) دون باقي البنود (المرحلة 3).
-    navItems.push({ to: '/portal', label: 'ملفات الجهة' });
+    // مندوب الجهة: الإحصائيات + الملفات التنفيذية + المراسلات (لا شيء سواها).
+    navItems.push({ to: '/portal/stats', label: 'الإحصائيات' });
+    navItems.push({ to: '/portal/files', label: 'الملفات التنفيذية' });
     navItems.push({
       to: '/portal/correspondence',
-      label: 'مراسلات الجهة',
+      label: 'المراسلات',
       badge: urgentCorrespondence > 0 ? urgentCorrespondence : undefined,
     });
   } else {

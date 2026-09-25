@@ -295,7 +295,7 @@ describe('PortalFileDetail المرآة القرائية', () => {
     renderPage();
 
     expect(await screen.findByRole('alert')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'رجوع إلى ملفات الجهة' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'رجوع إلى الملفات التنفيذية' })).toBeInTheDocument();
   });
 
   it('يعرض شريط إعادة المحاولة عند تعذر تحميل الوقوعات/الاستئنافات ثم يعيد التحميل بنجاح', async () => {

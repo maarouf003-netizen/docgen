@@ -19,6 +19,7 @@ public record PortalScopeEntryDto(
 /// <summary>
 /// ملف في قائمة البوابة — قراءة فقط، بنفس غنى قائمة الملفات دون أي حقول داخلية
 /// للمحامين (عدّادات/محامي مختص/فرع إدارة).
+/// الحقول الجديدة اختيارية بقيَم افتراضية حفاظًا على توافق البناء الموضعي القائم.
 /// </summary>
 public record PortalFileListItemDto(
     int Id,
@@ -31,7 +32,26 @@ public record PortalFileListItemDto(
     string? Currency,
     string? ExecStatus,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime UpdatedAt,
+    /// <summary>مكوّنا الاسم الثلاثي للمنفذ عليه (الأب والعائلة) — يُركَّبان مع BorrowerName في العرض.</summary>
+    string? BorrowerFather = null,
+    /// <summary>العائلة من الاسم الثلاثي للمنفذ عليه.</summary>
+    string? BorrowerFamily = null,
+    /// <summary>نوع الملف (FileType: سند مصارف، تأمين، …) — نص حر كما أدخله المحامي.</summary>
+    string? FileType = null,
+    /// <summary>دائرة التنفيذ المختصة (Document.Court) — تُخفى عرضيًا عند فراغها.</summary>
+    string? Court = null,
+    /// <summary>أحدث رقم أساس دائمًا (غير مقيّد بسنة الفحص) وإلا رقم الملف الأصلي.</summary>
+    string? DisplayBaseNumber = null,
+    /// <summary>سنة رقم الأساس المعروض وإلا سنة قيد الملف الأصلية.</summary>
+    string? DisplayBaseYear = null,
+    /// <summary>قيود النطاق المطابقة لهذا الملف (للسطر الثاني «فرع الجهة العامة»).</summary>
+    IReadOnlyList<PortalScopeEntryDto>? MatchedEntries = null,
+    /// <summary>
+    /// حالة العرض من المصدر الوحيد (`DocumentStatusResolver`) — تشتق منها الواجهة
+    /// الشارة مباشرة بلا إعادة تصنيف (الخام `ExecStatus` للفلاتر فقط).
+    /// </summary>
+    string? DisplayStatus = null);
 
 /// <summary>استئناف قرائي على بطاقة استئنافات البوابة.</summary>
 public record PortalAppealDto(
@@ -84,8 +104,13 @@ public record DelegateDto(
 /* ── إحصاءات الجهة (المرحلة 4) ── */
 
 /// <summary>
-/// إحصاءات قرائية لنطاق مندوب الجهة: تصنيف الحالة يطابق فلاتر القائمة
-/// (منفذ/تريث/محال الى البداية/تحت رفع/متداول)، والمشطوب مستبعد دائمًا كما في القائمة.
+/// إحصاءات قرائية لنطاق مندوب الجهة: تصنيف الحالة يطابق فلاتر القائمة حرفيًا
+/// (منفذ/تريث/محال الى البداية/تحت رفع/متداول — بما فيها طيّ الإرثي والجزئي في
+/// المتداول)، والمشطوب مستبعد دائمًا كما في القائمة.
+/// أساس المبالغ (قرار المالك): أزواج مبالغ الدين الستة كما سُجّلت (المبلغ×3 +
+/// مبلغ الإدراج×3 بعملاتها) بعد إسقاط الصفري — لا خلط بين العملات إطلاقًا.
+/// ملاحظة مقياس: هنا مبالغ الدين، بينما ب6/لوحة المدير تجمع المحصّل — الفرق
+/// موثّق قصدًا لا تطابقًا مُدَّعى.
 /// </summary>
 public record PortalStatsDto(
     int TotalFiles,
@@ -101,8 +126,12 @@ public record PortalStatsDto(
     IReadOnlyList<PortalMonthlyCountDto> Monthly,
     /// <summary>توزيع الارتباط على قيود النطاق؛ قد يُحتسب الملف تحت أكثر من قيد.</summary>
     IReadOnlyList<PortalEntryStatDto> PerEntry,
-    /// <summary>أعلى العملات بعدد الملفات مع مجموع مبالغها ضمن العملة نفسها.</summary>
-    IReadOnlyList<PortalCurrencyStatDto> TopCurrencies);
+    /// <summary>أعلى العملات بعدد الملفات مع مجموع مبالغها ضمن العملة نفسها (مهمل عرضيًا — يُخفى من الواجهة).</summary>
+    IReadOnlyList<PortalCurrencyStatDto> TopCurrencies,
+    /// <summary>إجمالي المبالغ لكل النطاق (أو القيد المختار) مكسّرًا حسب العملة.</summary>
+    IReadOnlyList<PortalCurrencyStatDto>? AmountTotals = null,
+    /// <summary>المبالغ لكل سلّة حالة (متداول/تريث/منفذ/محال/تحت رفع) مكسّرة حسب العملة.</summary>
+    IReadOnlyList<PortalStatusAmountDto>? AmountByStatus = null);
 
 /// <summary>عدد ملفات شهر محدد في السلسلة الشهرية.</summary>
 public record PortalMonthlyCountDto(int Year, int Month, int Files);
@@ -114,5 +143,18 @@ public record PortalEntryStatDto(
     string BranchName,
     int Files);
 
-/// <summary>عملة مجمّعة: عدد الملفات ومجموع مبالغها بالعملة نفسها فقط.</summary>
+/// <summary>
+/// عملة مجمّعة: عدد الملفات **المتميزة** الحاملة لمبلغ غير صفري بهذه العملة
+/// ومجموع مبالغها فيها فقط — ليس عدّاد السلّة (الصفري والإنابة عددًا خارج المجاميع).
+/// </summary>
 public record PortalCurrencyStatDto(string Currency, int Files, decimal TotalAmount);
+
+/// <summary>
+/// مبالغ سلّة حالة واحدة (تسمية السلّة كما في فلاتر القائمة) مكسّرة حسب العملة.
+/// `Files` = عدّاد السلّة الكامل (مطابق رقم الفلتر)؛ بينما `Totals[].Files` =
+/// الحاملون لمبالغ بهذه العملة فقط — الفرق مقصود (إنابة/صفرية عددًا دون مبالغ).
+/// </summary>
+public record PortalStatusAmountDto(
+    string Status,
+    int Files,
+    IReadOnlyList<PortalCurrencyStatDto> Totals);

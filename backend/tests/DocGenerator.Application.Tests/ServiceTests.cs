@@ -4616,6 +4616,45 @@ public class DocumentServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task H3_PartialForcibly_AppearsUnderLawyerCirculatingFilter_NotUnderExecuted()
+    {
+        // قرار المالك: «منفذ جبريا + منفذ جزئيا» متداول دائمًا — في فلتر «متداول»
+        // لقائمة المحامين أيضًا (كالبوابة)، لا في فلتر «منفذ».
+        var created = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        var doc = await _db.Documents.FindAsync(created.Id);
+        doc!.ExecStatus = ExecutionStatusCatalog.ExecutedForcibly;
+        doc.ExecSubStatus = ExecutionStatusCatalog.SubPartiallyExecuted;
+        await _db.SaveChangesAsync();
+
+        var circulating = await _service.SearchAsync(null, ExecutionStatusCatalog.StateCirculating,
+            null, null, null, null, null, null, null, 1, 20);
+        Assert.Contains(circulating.Items, d => d.Id == created.Id);
+
+        var executed = await _service.SearchAsync(null, ExecutionStatusCatalog.ExecutedFilter,
+            null, null, null, null, null, null, null, 1, 20);
+        Assert.DoesNotContain(executed.Items, d => d.Id == created.Id);
+    }
+
+    [Fact]
+    public async Task H4_LegacyForciblyNullSubstatus_SingleHomedInExecutedPage()
+    {
+        // صف قديم: جبريا بلا جزئية (ExecSubStatus = NULL) = منفذ كامل بدلالة IsExecuted —
+        // يُستبعد من القائمة العامة ويظهر في صفحة المنفذة فقط (لا ازدواج ولا اختفاء).
+        // (تثبيت عقد: الصيغة الصريحة الآمنة لـ NULL — لا اعتماد على منطق SQL الثلاثي.)
+        var created = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+        var doc = await _db.Documents.FindAsync(created.Id);
+        doc!.ExecStatus = ExecutionStatusCatalog.ExecutedForcibly;
+        doc.ExecSubStatus = null;
+        await _db.SaveChangesAsync();
+
+        var executed = await _service.SearchExecutedAsync(null, page: 1, perPage: 20);
+        Assert.Contains(executed.Items, d => d.Id == created.Id);
+
+        var general = await _service.SearchAsync(null, null, null, null, null, null, null, null, null, 1, 20);
+        Assert.DoesNotContain(general.Items, d => d.Id == created.Id);
+    }
+
+    [Fact]
     public async Task SearchReferredToStart_ByGuarantorFamilyName_FindsReferred()
     {
         // كفيل العينة «سمير حسن علي»: SearchText يضم الاسم الأول فقط، فيثبت هذا الاختبار

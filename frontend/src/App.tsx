@@ -28,6 +28,7 @@ const EntityRegistryReviewManagement = lazy(() => import('./pages/EntityRegistry
 const EntityRegistryReview = lazy(() => import('./pages/EntityRegistryReview'));
 const EntityDelegates = lazy(() => import('./pages/EntityDelegates'));
 const PortalFiles = lazy(() => import('./pages/PortalFiles'));
+const PortalStats = lazy(() => import('./pages/PortalStats'));
 const PortalFileDetail = lazy(() => import('./pages/PortalFileDetail'));
 const AuditLogs = lazy(() => import('./pages/AuditLogs'));
 const ChangePassword = lazy(() => import('./pages/ChangePassword'));
@@ -184,6 +185,22 @@ export default function App() {
             />
             <Route
               path="/portal"
+              element={
+                <RequireRole allowed={(role) => role === 'entitymanager'}>
+                  <Navigate to="/portal/stats" replace />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/portal/stats"
+              element={
+                <RequireRole allowed={(role) => role === 'entitymanager'}>
+                  <PortalStats />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/portal/files"
               element={
                 <RequireRole allowed={(role) => role === 'entitymanager'}>
                   <PortalFiles />

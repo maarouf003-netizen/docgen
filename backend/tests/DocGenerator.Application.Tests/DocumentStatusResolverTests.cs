@@ -1,6 +1,7 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
+using DocGenerator.Domain.Enums;
 using Xunit;
 
 namespace DocGenerator.Application.Tests;
@@ -72,5 +73,20 @@ public class DocumentStatusResolverTests
         Assert.Equal("محال الى البداية", DocumentStatusResolver.Resolve(Doc(execStatus: "محال الى البداية")));
         Assert.Equal("محال الى البداية", DocumentStatusResolver.Resolve(
             Doc(execStatus: "محال الى البداية", execSubStatus: "منفذ جزئيا")));
+    }
+
+    [Fact]
+    public void PartialForcibly_DrivenByCatalogSubStatus_NotALiteral()
+    {
+        // L2: مقارنة السقوط الجزئي تُقرأ من ExecutionStatusCatalog وحده، لا من حرف مكرر؛
+        // فتغيير نص الكتالوج ينعكس على الاشتقاق تلقائيًا، والقيمة الأخرى لا تُعدّ جزئية.
+        Assert.Equal("متداول / منفذ جزئيا", DocumentStatusResolver.Resolve(
+            Doc(execStatus: ExecutionStatusCatalog.ExecutedForcibly,
+                execSubStatus: ExecutionStatusCatalog.SubPartiallyExecuted)));
+        // قيمة جزئية مختلفة (أو مشوهة) لا تُصدر حالة الجزئية.
+        Assert.Equal("منفذ", DocumentStatusResolver.Resolve(
+            Doc(execStatus: ExecutionStatusCatalog.ExecutedForcibly, execSubStatus: "جزئي")));
+        Assert.Equal("منفذ", DocumentStatusResolver.Resolve(
+            Doc(execStatus: ExecutionStatusCatalog.ExecutedForcibly, execSubStatus: "  ")));
     }
 }

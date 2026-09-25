@@ -154,10 +154,10 @@ export default function PortalFileDetail() {
             إعادة المحاولة
           </button>
           <Link
-            to="/portal"
+            to="/portal/files"
             className="text-sky-700 hover:bg-sky-50 rounded-lg px-3 py-2 min-h-11 inline-block"
           >
-            رجوع إلى ملفات الجهة
+            رجوع إلى الملفات التنفيذية
           </Link>
         </div>
       </div>
@@ -304,10 +304,10 @@ export default function PortalFileDetail() {
   return (
     <div className="max-w-6xl mx-auto">
       <Link
-        to="/portal"
+        to="/portal/files"
         className="inline-block text-sky-700 hover:bg-sky-50 rounded-lg px-3 py-2 min-h-11 mb-4"
       >
-        ← رجوع إلى ملفات الجهة
+        ← رجوع إلى الملفات التنفيذية
       </Link>
 
       <div className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-gray-200 rounded-b-xl shadow-sm px-4 py-3 mb-5">

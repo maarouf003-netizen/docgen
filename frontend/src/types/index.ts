@@ -1825,6 +1825,21 @@ export interface PortalFileListItemDto {
   execStatus?: string | null;
   createdAt: string;
   updatedAt: string;
+  /** مكوّنا الاسم الثلاثي للمنفذ عليه. */
+  borrowerFather?: string | null;
+  borrowerFamily?: string | null;
+  /** نوع الملف (FileType: سند مصارف، تأمين، …). */
+  fileType?: string | null;
+  /** دائرة التنفيذ المختصة — تُخفى عرضيًا عند فراغها. */
+  court?: string | null;
+  /** أحدث رقم أساس دائمًا وإلا رقم الملف الأصلي. */
+  displayBaseNumber?: string | null;
+  /** سنة رقم الأساس المعروض وإلا سنة قيد الملف الأصلية. */
+  displayBaseYear?: string | null;
+  /** قيود النطاق المطابقة لهذا الملف (للسطر الثاني «فرع الجهة العامة»). */
+  matchedEntries?: PortalScopeEntryDto[] | null;
+  /** حالة العرض من الخادم (`DocumentStatusResolver`) — تشتق منها الشارة مباشرة بلا إعادة تصنيف. */
+  displayStatus?: string | null;
 }
 
 export type PortalFilesResponse = PagedResult<PortalFileListItemDto>;
@@ -1904,6 +1919,13 @@ export interface PortalCurrencyStatDto {
   totalAmount: number;
 }
 
+/** مبالغ سلّة حالة واحدة مكسّرة حسب العملة (لا خلط بين العملات). */
+export interface PortalStatusAmountDto {
+  status: string;
+  files: number;
+  totals: PortalCurrencyStatDto[];
+}
+
 export interface PortalStatsDto {
   totalFiles: number;
   draftFiles: number;
@@ -1918,6 +1940,10 @@ export interface PortalStatsDto {
   monthly: PortalMonthlyCountDto[];
   perEntry: PortalEntryStatDto[];
   topCurrencies: PortalCurrencyStatDto[];
+  /** إجمالي المبالغ مكسّرًا حسب العملة. */
+  amountTotals?: PortalCurrencyStatDto[] | null;
+  /** المبالغ لكل سلّة حالة مكسّرة حسب العملة. */
+  amountByStatus?: PortalStatusAmountDto[] | null;
 }
 
 /* ── إدارة فروع رئيس القسم (ضمن محافظته — بلا مرسوم) ─────────────────── */

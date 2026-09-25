@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { api, getApiErrorMessage } from '../api/client';
+import { useEffect, useState } from 'react';
+import { api } from '../api/client';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { downloadBlob } from '../utils/download';
+import { todayLocalKey } from '../utils/dates';
 import {
   EXECUTED_STATUS_EXECUTED,
   EXEC_STATUS_DEFERRED,
@@ -10,11 +11,11 @@ import {
   STATE_CIRCULATING,
   STATE_DRAFT,
 } from '../utils/documentStatus';
+import PortalBranchSelect from '../components/portal/PortalBranchSelect';
+import PortalFileCard from '../components/portal/PortalFileCard';
 import type {
-  PortalFileListItemDto,
   PortalFilesResponse,
   PortalScopeDto,
-  PortalStatsDto,
 } from '../types';
 
 const PAGE_SIZE = 20;
@@ -28,13 +29,7 @@ const STATUS_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
   { value: EXEC_STATUS_REFERRED_TO_START, label: EXEC_STATUS_REFERRED_TO_START },
 ];
 
-const AR_MONTHS = ['ك2', 'شباط', 'آذار', 'نيسان', 'أيار', 'حزيران', 'تموز', 'آب', 'أيلول', 'ت1', 'ت2', 'كانون الأول'];
-
-function monthLabel(year: number, month: number): string {
-  return `${AR_MONTHS[month - 1] ?? month} ${year}`;
-}
-
-/** صفحة «ملفات الجهة» — البوابة القرائية لمندوب الجهة العامة (المراحل 3+4). */
+/** صفحة «الملفات التنفيذية» — البوابة القرائية لمندوب الجهة العامة (بلا إحصاءات). */
 export default function PortalFiles() {
   const scopeQuery = useCancellableRequest<PortalScopeDto>(
     (signal) => api.get('/portal/my-scope', { signal }).then((r) => r.data),
@@ -42,53 +37,59 @@ export default function PortalFiles() {
   );
   const scope = scopeQuery.data;
 
-  const statsQuery = useCancellableRequest<PortalStatsDto>(
-    (signal) => api.get('/portal/stats', { signal }).then((r) => r.data),
-    [],
-  );
-  const stats = statsQuery.data;
-
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('');
+  const [entryId, setEntryId] = useState('');
   const [page, setPage] = useState(1);
-  const [list, setList] = useState<PortalFilesResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState('');
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const res = await api.get<PortalFilesResponse>('/portal/files', {
-        params: {
-          q: query.trim() || undefined,
-          status: status || undefined,
-          page,
-          perPage: PAGE_SIZE,
-        },
-      });
-      setList(res.data);
-    } catch (err) {
-      setError(getApiErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [query, status, page]);
+  // إلغاء الطلب السابق عند كل تغيير (لا استجابة قديمة تكتب فوق الأحدث) +
+  // تأخير البحث النصي 300ms (طلب واحد لكل كتابة لا لكل حرف).
+  const debouncedQuery = useDebouncedValue(query, 300);
 
+  const showBranchSelect = scope?.scopeType === 'group' && (scope?.entries?.length ?? 0) > 1;
+
+  // تغيّر النطاق يُبطل الترقيم: عودة للصفحة الأولى (setPage بلا أثر عند التطابق فلا حلقة).
+  const scopeKey = scope == null ? null : `${scope.scopeType}:${scope.groupId}:${scope.entries?.length ?? 0}`;
   useEffect(() => {
-    void load();
-  }, [load]);
+    setPage(1);
+  }, [scopeKey]);
+
+  const listQuery = useCancellableRequest<PortalFilesResponse>(
+    (signal) => api.get<PortalFilesResponse>('/portal/files', {
+      signal,
+      params: {
+        q: debouncedQuery.trim() || undefined,
+        status: status || undefined,
+        entryId: entryId ? Number(entryId) : undefined,
+        page,
+        perPage: PAGE_SIZE,
+      },
+    }).then((r) => r.data),
+    [debouncedQuery, status, entryId, page],
+  );
+  const list = listQuery.data;
+  const loading = listQuery.isLoading;
+  const error = listQuery.error;
 
   const exportExcel = () => {
     setExportMsg('');
     setExporting(true);
     // عبر مثيل axios المشترك: يضيف CSRF تلقائيًا ويعيد التوجيه عند انتهاء الجلسة.
     api
-      .get('/portal/export', { params: { q: query.trim() || undefined, status: status || undefined }, responseType: 'blob' })
+      .get('/portal/export', {
+        params: {
+          // المؤجَّل لا الخام (M1): المصدَّر يطابق القائمة المعروضة حرفيًا —
+          // وإلا صدّر المستخدم خلال نافذة الـ300ms مجموعةً غير ما يرى.
+          q: debouncedQuery.trim() || undefined,
+          status: status || undefined,
+          entryId: entryId ? Number(entryId) : undefined,
+        },
+        responseType: 'blob',
+      })
       .then((res) => {
-        downloadBlob(res.data as Blob, `ملفات الجهة ${new Date().toISOString().slice(0, 10)}.xlsx`);
+        downloadBlob(res.data as Blob, `الملفات التنفيذية ${todayLocalKey()}.xlsx`);
       })
       .catch(() => setExportMsg('تعذر تصدير الملف. حاول مرة أخرى'))
       .finally(() => setExporting(false));
@@ -100,33 +101,27 @@ export default function PortalFiles() {
 
   return (
     <div className="max-w-6xl mx-auto">
-      <h2 className="text-2xl font-bold text-gray-800 mb-2">ملفات الجهة</h2>
+      <h2 className="text-2xl font-bold text-gray-800 mb-2">الملفات التنفيذية</h2>
       {scope && (
         <p className="text-sm text-gray-500 mb-4">
           نطاقك:{' '}
           <span className="font-medium text-gray-700">{scope.canonicalName || 'غير مضبوط بعد'}</span>
           {' · '}
-          {scope.entries.length} قيدًا نشطًا
-          {scope.entries.length > 0 && (
-            <>
-              {' ('}
-              {scope.entries.map((e) => `${e.governorate}/${e.branchName}`).join(' · ')}
-              {')'}
-            </>
-          )}
+          {scope.entries?.length ?? 0} قيدًا نشطًا
         </p>
       )}
 
       <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-center gap-3">
         <div className="grow min-w-[200px]">
-          <label htmlFor="portal-search" className="sr-only">بحث في ملفات الجهة</label>
+          <label htmlFor="portal-search" className="sr-only">بحث في الملفات التنفيذية</label>
           <input
             id="portal-search"
             value={query}
             onChange={(e) => { setQuery(e.target.value); setPage(1); }}
             placeholder="بحث في الملفات…"
             autoComplete="off"
-            className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            name="q"
+            className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
           />
         </div>
         <div>
@@ -135,17 +130,26 @@ export default function PortalFiles() {
             id="portal-status"
             value={status}
             onChange={(e) => { setStatus(e.target.value); setPage(1); }}
-            className="min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
           >
             {STATUS_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>
         </div>
+        {showBranchSelect && (
+          <PortalBranchSelect
+            entries={scope?.entries ?? []}
+            value={entryId}
+            onChange={(next) => { setEntryId(next); setPage(1); }}
+            id="portal-files-branch"
+            label="فلتر الفرع"
+          />
+        )}
         <button
           onClick={exportExcel}
           disabled={exporting || loading}
-          className="border border-sky-200 text-sky-800 hover:bg-sky-50 disabled:opacity-40 rounded-lg px-4 py-2 text-sm min-h-11"
+          className="border border-sky-200 text-sky-800 hover:bg-sky-50 disabled:opacity-40 rounded-lg px-4 py-2 text-sm min-h-11 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
         >
           {exporting ? 'جارِ التصدير…' : 'تصدير إكسل'}
         </button>
@@ -153,139 +157,18 @@ export default function PortalFiles() {
 
       {exportMsg && <p role="alert" className="text-red-600 text-sm mb-3">{exportMsg}</p>}
       {error && <div role="alert" className="text-red-600 mb-4">{error}</div>}
-
-      {/* بطاقة إحصاءات الجهة (المرحلة 4) — قرائية بالكامل */}
-      {stats && (
-        <section aria-labelledby="portal-stats-title" className="bg-white rounded-xl shadow p-4 sm:p-5 mb-4">
-          <h3 id="portal-stats-title" className="font-bold text-gray-800 mb-3">إحصاءات نطاق جهتك</h3>
-
-          <dl className="grid grid-cols-2 sm:grid-cols-6 gap-2 text-center">
-            {([
-              ['الإجمالي', stats.totalFiles, 'bg-emerald-800 text-white'],
-              [STATE_CIRCULATING, stats.circulatingFiles, 'bg-emerald-50 text-emerald-900'],
-              [EXECUTED_STATUS_EXECUTED, stats.executedFiles, 'bg-sky-50 text-sky-900'],
-              [EXEC_STATUS_DEFERRED, stats.deferredFiles, 'bg-amber-50 text-amber-900'],
-              [EXEC_STATUS_REFERRED_TO_START, stats.referredToStartFiles ?? 0, 'bg-purple-50 text-purple-900'],
-              [STATE_DRAFT, stats.draftFiles, 'bg-gray-100 text-gray-700'],
-            ] as const).map(([label, value, cls]) => (
-              <div key={label} className={`rounded-lg px-2 py-3 ${cls}`}>
-                <dt className="text-[11px] opacity-80">{label}</dt>
-                <dd className="text-xl font-bold tabular-nums">{value}</dd>
-              </div>
-            ))}
-          </dl>
-
-          <p className="mt-3 text-xs text-gray-500 tabular-nums">
-            الاستئنافات: {stats.pendingAppeals} معلّقًا · {stats.closedAppeals} مغلقًا
-          </p>
-
-          {/* سلسلة آخر 12 شهرًا */}
-          <h4 className="text-xs font-bold text-gray-600 mt-4 mb-1">الملفات الواردة — آخر 12 شهرًا</h4>
-          <div className="flex items-end gap-1 h-20" role="img"
-               aria-label={`ملفات آخر 12 شهرًا، الإجمالي ${stats.monthly.reduce((s, m) => s + m.files, 0)}`}>
-            {(() => {
-              const max = Math.max(1, ...stats.monthly.map((m) => m.files));
-              return stats.monthly.map((m) => (
-                <div key={`${m.year}-${m.month}`} className="flex-1 flex flex-col items-center justify-end gap-0.5 min-w-0"
-                     title={`${monthLabel(m.year, m.month)}: ${m.files}`}>
-                  <span className="text-[9px] text-gray-400 tabular-nums">{m.files || ''}</span>
-                  <div
-                    className="w-full bg-emerald-600/80 rounded-t"
-                    style={{ height: `${Math.max(2, Math.round((m.files / max) * 56))}px` }}
-                    aria-hidden="true"
-                  />
-                  <span className="text-[8px] text-gray-400 truncate w-full text-center">{AR_MONTHS[m.month - 1] ?? m.month}</span>
-                </div>
-              ));
-            })()}
-          </div>
-
-          <div className="grid sm:grid-cols-2 gap-5 mt-5">
-            {/* توزيع القيود */}
-            <div>
-              <h4 className="text-xs font-bold text-gray-600 mb-1">توزيع الارتباط على القيود</h4>
-              {(() => {
-                const max = Math.max(1, ...stats.perEntry.map((e) => e.files));
-                return (
-                  <ul className="space-y-1.5">
-                    {stats.perEntry.slice(0, 6).map((e) => (
-                      <li key={e.entryId} className="text-xs">
-                        <div className="flex justify-between gap-2 mb-0.5">
-                          <span className="truncate text-gray-700">{e.governorate}/{e.branchName}</span>
-                          <span className="tabular-nums text-gray-500 shrink-0">{e.files}</span>
-                        </div>
-                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-emerald-600/70" style={{ width: `${(e.files / max) * 100}%` }} aria-hidden="true" />
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                );
-              })()}
-            </div>
-
-            {/* العملات الأعلى */}
-            <div>
-              <h4 className="text-xs font-bold text-gray-600 mb-1">أعلى العملات</h4>
-              {stats.topCurrencies.length === 0 ? (
-                <p className="text-xs text-gray-400">لا توجد مبالغ مسجلة</p>
-              ) : (
-                <ul className="divide-y divide-gray-100">
-                  {stats.topCurrencies.map((c) => (
-                    <li key={c.currency} className="py-1.5 flex items-center justify-between gap-3 text-sm">
-                      <span className="truncate text-gray-700">{c.currency}</span>
-                      <span className="shrink-0 tabular-nums text-gray-600">
-                        {c.files} ملفًا · {c.totalAmount.toLocaleString('ar-SY')}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-
-          {scope?.scopeType === 'group' && (
-            <p className="mt-3 text-[11px] text-gray-400">
-              ملاحظة: الملف المرتبط بأكثر من قيد ضمن النطاق يُحتسب تحت كل قيد ارتبط به.
-            </p>
-          )}
-        </section>
-      )}
+      {scopeQuery.error && <div role="alert" className="text-red-600 mb-4">{scopeQuery.error}</div>}
 
       <div className="bg-white rounded-xl shadow overflow-hidden">
-        {/* قائمة قرائية: كل صف رابط للتفاصيل فقط، لا أزرار تعديل إطلاقًا */}
-        {!loading && entries.length === 0 && (
+        {/* قائمة قرائية: كل صف رابط للتفاصيل فقط، لا أزرار تعديل إطلاقًا.
+            الفراغ يختبئ عند أي خطأ (قائمة أو نطاق) — «لا توجد ملفات في نطاق
+            جهتك» زعم غير صحيح بعد فشل الجلب أو فشل تحميل النطاق نفسه. */}
+        {!loading && !error && !scopeQuery.error && entries.length === 0 && (
           <div className="px-4 py-8 text-center text-gray-400">لا توجد ملفات مطابقة في نطاق جهتك</div>
         )}
         <ul className="divide-y divide-gray-100">
-          {entries.map((f: PortalFileListItemDto) => (
-            <li key={f.id}>
-              <Link
-                to={`/portal/files/${f.id}`}
-                className="block px-4 py-3 hover:bg-emerald-50/60 min-h-11"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <span className="min-w-0">
-                    <span className="block font-medium text-gray-800 break-words">
-                      {f.borrowerName || f.documentType}
-                    </span>
-                    <span className="block text-xs text-gray-500 mt-0.5 truncate">
-                      {f.applicant && <>{f.applicant} · </>}
-                      {f.executedEntitiesSummary}
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-xs tabular-nums text-gray-600">
-                    {(f.amountNumeric ?? 0).toLocaleString('ar-SY')} {f.currency}
-                  </span>
-                </div>
-                <div className="mt-1 flex flex-wrap gap-2 text-xs">
-                  <span className={`rounded-full px-2 py-0.5 ${f.isDraft ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
-                    {f.execStatus || (f.isDraft ? 'تحت رفع' : 'متداول')}
-                  </span>
-                  <span className="text-gray-400">{f.documentType}</span>
-                </div>
-              </Link>
-            </li>
+          {entries.map((f) => (
+            <PortalFileCard key={f.id} file={f} canonicalName={scope?.canonicalName} />
           ))}
         </ul>
 
@@ -294,7 +177,7 @@ export default function PortalFiles() {
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1 || loading}
-              className="border border-gray-300 rounded-lg px-3 py-2 min-h-11 disabled:opacity-40 hover:bg-gray-50"
+              className="border border-gray-300 rounded-lg px-3 py-2 min-h-11 disabled:opacity-40 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
               السابق
             </button>
@@ -302,7 +185,7 @@ export default function PortalFiles() {
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages || loading}
-              className="border border-gray-300 rounded-lg px-3 py-2 min-h-11 disabled:opacity-40 hover:bg-gray-50"
+              className="border border-gray-300 rounded-lg px-3 py-2 min-h-11 disabled:opacity-40 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
               التالي
             </button>
