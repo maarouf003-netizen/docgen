@@ -16,11 +16,26 @@ public interface IPortalService
     Task<PagedResult<PortalFileListItemDto>> ListFilesAsync(
         int userId, string? query, string? status, int page, int perPage, CancellationToken ct = default);
 
-    /// <summary>تفاصيل ملف قراءةً — null إذا خرج عن نطاق المندوب (يُترجم 404).</summary>
+    /// <summary>
+    /// تفاصيل ملف قراءةً — null إذا خرج عن نطاق المندوب (يُترجم 404). داخليّات المحامي
+    /// (الملاحظات `Notes`/`ImmediateActions` وإجراءات نوع `note`) مُسقطة سلكيًا (ق7).
+    /// </summary>
     Task<DocumentResponse?> GetFileAsync(int userId, int documentId, string? viewerName, CancellationToken ct = default);
 
     /// <summary>بطاقة الاستئنافات القرائية لملف داخل النطاق — null إذا خرج عن النطاق.</summary>
     Task<IReadOnlyList<PortalAppealDto>?> ListAppealsAsync(int userId, int documentId, CancellationToken ct = default);
+
+    /// <summary>الإجراءات التنفيذية القرائية (نوع action فقط، الأحدث أولًا) — null خارج النطاق.</summary>
+    Task<IReadOnlyList<PortalExecutionActionDto>?> ListExecutionActionsAsync(int userId, int documentId, CancellationToken ct = default);
+
+    /// <summary>تشعبات الملف القرائية (إنابة) — null خارج النطاق.</summary>
+    Task<IReadOnlyList<DelegationDto>?> ListDelegationsAsync(int userId, int documentId, CancellationToken ct = default);
+
+    /// <summary>تفاصيل استئنافات الملف (رأي المحامي وملاحظاته مخفيّان عنه في البوابة) — null خارج النطاق.</summary>
+    Task<IReadOnlyList<AppealDto>?> ListAppealDetailsAsync(int userId, int documentId, CancellationToken ct = default);
+
+    /// <summary>تاريخ أرقام الأساس للملف — null خارج النطاق.</summary>
+    Task<IReadOnlyList<BaseNumberHistoryDto>?> ListBaseNumbersAsync(int userId, int documentId, CancellationToken ct = default);
 
     /// <summary>
     /// مصنّف Excel لملفات النطاق وفق فلاتر القائمة نفسها، مع سقف
@@ -42,6 +57,8 @@ public sealed class PortalService : IPortalService
     private readonly IPortalRepository _portal;
     private readonly IRepository<Document> _documents;
     private readonly IAppealRepository _appeals;
+    private readonly IDocumentAppealService _appealService;
+    private readonly IDocumentDelegationService _delegationService;
     private readonly IExcelExportService _excel;
     private readonly IAuditLogger _audit;
     private readonly int _maxExportRows;
@@ -52,6 +69,8 @@ public sealed class PortalService : IPortalService
         IPortalRepository portal,
         IRepository<Document> documents,
         IAppealRepository appeals,
+        IDocumentAppealService appealService,
+        IDocumentDelegationService delegationService,
         IExcelExportService excel,
         IAuditLogger audit,
         IOptions<ExportOptions> exportOptions,
@@ -61,6 +80,8 @@ public sealed class PortalService : IPortalService
         _portal = portal;
         _documents = documents;
         _appeals = appeals;
+        _appealService = appealService;
+        _delegationService = delegationService;
         _excel = excel;
         _audit = audit;
         _maxExportRows = Math.Max(1, exportOptions.Value.MaxRows);
@@ -105,7 +126,21 @@ public sealed class PortalService : IPortalService
         await _audit.LogAsync(viewerName, "view_entity_portal_files", documentId,
             details: "عرض ملف في بوابة الجهة العامة", ct: ct);
 
-        return DocumentResponse.FromEntity(doc, ServerClock.CurrentYear(_clock, _timeZone));
+        // ق7 سلكيًا لا عرضيًا: الملاحظات الداخلية (`Notes`/`ImmediateActions`) تُصفَّر وإجراءات
+        // نوع `note` تُرشَّح من الاستجابة قبل مغادرة الخادم — الواجهة ليست خط الدفاع الوحيد.
+        // بيانات التذكير الداخلية (`ReminderDuration`/`ReminderColor`) تُجرَّد أيضًا: البطاقة
+        // «بلا شارة تذكير» (ق7) فلا مبرر لعبورها الشبكة أصلًا.
+        var response = DocumentResponse.FromEntity(doc, ServerClock.CurrentYear(_clock, _timeZone));
+        response.Notes = null;
+        response.ImmediateActions = null;
+        response.ExecutionActions = response.ExecutionActions
+            .Where(a => a.Type == "action")
+            .OrderByDescending(a => a.CreatedAt)
+            .ThenByDescending(a => a.Id)
+            .Select(a => a with { ReminderDuration = null, ReminderColor = null })
+            .ToList();
+
+        return response;
     }
 
     public async Task<IReadOnlyList<PortalAppealDto>?> ListAppealsAsync(int userId, int documentId, CancellationToken ct = default)
@@ -126,6 +161,62 @@ public sealed class PortalService : IPortalService
             a.DecisionRuling)).ToList();
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<PortalExecutionActionDto>?> ListExecutionActionsAsync(int userId, int documentId, CancellationToken ct = default)
+    {
+        var doc = await GetScopedDocumentAsync(userId, documentId, ct);
+        if (doc is null)
+            return null;
+
+        // النوع action فقط (الملاحظات الداخلية لا تصل إلى البوابة أصلًا) والأحدث أولًا،
+        // وكسر التعادل الزمني بـ Id الأحدث (ف11: CreatedAt ثم Id).
+        return doc.ExecutionActions
+            .Where(a => a.Type == "action")
+            .OrderByDescending(a => a.CreatedAt)
+            .ThenByDescending(a => a.Id)
+            .Select(a => new PortalExecutionActionDto(a.Id, a.Text, a.ActionDate, a.CreatedBy?.FullName, a.CreatedAt))
+            .ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<DelegationDto>?> ListDelegationsAsync(int userId, int documentId, CancellationToken ct = default)
+    {
+        var doc = await GetScopedDocumentAsync(userId, documentId, ct);
+        if (doc is null)
+            return null;
+
+        return await _delegationService.ListForDocumentAsync(documentId, ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<AppealDto>?> ListAppealDetailsAsync(int userId, int documentId, CancellationToken ct = default)
+    {
+        var doc = await GetScopedDocumentAsync(userId, documentId, ct);
+        if (doc is null)
+            return null;
+
+        var appeals = await _appealService.ListForDocumentAsync(documentId, ct);
+
+        // رأي المحامي الداخلي (دفاعه) وملاحظاته الحرة لا يظهران للمندوب (ق10 الموسّعة) —
+        // حقلان حرّان من إدخال المحامي بلا ضمان بنيوي بأنهما وقائع قضية، فيُصفَّران معًا.
+        // بقية الحقول (اسم المحامي المتابع وسطر «سطّره») تبقى ظاهرة (ق9).
+        return appeals.Select(a => a with { DefenseOpinion = null, Notes = null }).ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<BaseNumberHistoryDto>?> ListBaseNumbersAsync(int userId, int documentId, CancellationToken ct = default)
+    {
+        var doc = await GetScopedDocumentAsync(userId, documentId, ct);
+        if (doc is null)
+            return null;
+
+        return doc.BaseNumbers
+            .OrderByDescending(b => b.Year)
+            .ThenByDescending(b => b.CreatedAt)
+            .Select(b => new BaseNumberHistoryDto(b.Year, b.BaseNumber))
+            .ToList();
+    }
+
     public async Task<byte[]> ExportWorkbookAsync(int userId, string? query, string? status, string? viewerName, CancellationToken ct = default)
     {
         var scope = await _portal.ResolveForUserAsync(userId, ct);
@@ -140,6 +231,16 @@ public sealed class PortalService : IPortalService
             .Select(d => DocumentResponse.FromEntity(d, ServerClock.CurrentYear(_clock, _timeZone)))
             .ToList();
 
+        // ف12: عمود «الإجراءات والملاحظات» في Excel يُقرأ من أول إجراء بترتيب CreatedAt تنازلي —
+        // إن لم يُقصر على النوع action قد تتصدره ملاحظة داخلية. يُرشَّح هنا فلا تتسرب الملاحظات،
+        // وبكسر تعادل `Id` نفسه المعتمد في بطاقة التفاصيل فيتطابقا حتميًا حتى عند تساوي اللحظة.
+        foreach (var response in responses)
+            response.ExecutionActions = response.ExecutionActions
+                .Where(a => a.Type == "action")
+                .OrderByDescending(a => a.CreatedAt)
+                .ThenByDescending(a => a.Id)
+                .ToList();
+
         await _audit.LogAsync(viewerName, "export_entity_portal_excel",
             details: $"صدّر {responses.Count} ملفًا من بوابة الجهة إلى Excel", ct: ct);
 
@@ -152,6 +253,15 @@ public sealed class PortalService : IPortalService
     {
         var scope = await _portal.ResolveForUserAsync(userId, ct);
         return await _portal.IsDocumentInScopeAsync(documentId, scope?.EntryIds ?? new List<int>(), ct);
+    }
+
+    /// <summary>ملف داخل نطاق المندوب (لا يكشف الوجود خارج النطاق) — null عند خروجه أو غيابه.</summary>
+    private async Task<Document?> GetScopedDocumentAsync(int userId, int documentId, CancellationToken ct)
+    {
+        if (!await IsInScopeAsync(userId, documentId, ct))
+            return null;
+
+        return await _documents.GetByIdAsync(documentId, ct);
     }
 
     // ── إحصاءات الجهة (المرحلة 4) ──

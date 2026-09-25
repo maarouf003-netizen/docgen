@@ -9,9 +9,12 @@ import type { AppealDto } from '../../types';
 export default function AppealInfoModal({
   appeal,
   onClose,
+  hideOpinion = false,
 }: {
   appeal: AppealDto | null;
   onClose: () => void;
+  /** بوابة مندوب الجهة: يُخفى «رأي المحامي المتابع» وحده (ق10) بالتوازي مع التصفير الخلفي. */
+  hideOpinion?: boolean;
 }) {
   if (!appeal) return null;
 
@@ -42,7 +45,7 @@ export default function AppealInfoModal({
         </div>
 
         <div className="px-5 py-4">
-          <AppealDetailsBody appeal={appeal} />
+          <AppealDetailsBody appeal={appeal} hideOpinion={hideOpinion} />
         </div>
       </div>
     </div>

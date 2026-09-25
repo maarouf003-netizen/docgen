@@ -45,6 +45,14 @@ public record PortalAppealDto(
     DateTime? DecisionDate,
     string? DecisionRuling);
 
+/// <summary>إجراء تنفيذي قرائي على بطاقة «الإجراءات التنفيذية» (النوع action فقط — بلا تذكير).</summary>
+public record PortalExecutionActionDto(
+    int Id,
+    string Text,
+    string? ActionDate,
+    string? CreatedByName,
+    DateTime CreatedAt);
+
 /// <summary>إنشاء حساب مندوب جهة مربوط بنطاقه — مدير/مشرف/رئيس قسم (د11).</summary>
 public record CreateDelegateRequest(
     string Username,

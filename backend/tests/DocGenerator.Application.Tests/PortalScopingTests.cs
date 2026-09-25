@@ -64,15 +64,7 @@ public class PortalScopingTests : IDisposable
         _delegateGroupId = delegateGroup.Id;
         _delegateEntryAId = delegateEntry.Id;
 
-        _portal = new PortalService(
-            new PortalRepository(_db),
-            new Repository<Document>(_db),
-            new AppealRepository(_db),
-            new ExcelExportService(),
-            _audit,
-            Options.Create(new ExportOptions { MaxRows = 10_000 }),
-            TimeProvider.System,
-            TestClock.TimeZone);
+        _portal = PortalServiceFactory.Create(_db, _audit);
 
         _entities = new PublicEntityService(
             new PublicEntityRepository(_db),
@@ -262,15 +254,7 @@ public class PortalScopingTests : IDisposable
         await SeedDocumentAsync("ملف أ", applicantRegistryId: _entryAId);
         await SeedDocumentAsync("ملف ب", applicantRegistryId: _entryAId);
 
-        var cappedPortal = new PortalService(
-            new PortalRepository(_db),
-            new Repository<Document>(_db),
-            new AppealRepository(_db),
-            new ExcelExportService(),
-            _audit,
-            Options.Create(new ExportOptions { MaxRows = 1 }),
-            TimeProvider.System,
-            TestClock.TimeZone);
+        var cappedPortal = PortalServiceFactory.Create(_db, _audit, maxRows: 1);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             cappedPortal.ExportWorkbookAsync(_delegateGroupId, null, null, "مندوب"));

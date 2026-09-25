@@ -7,11 +7,14 @@ export default function BaseNumbersModal({
   documentTitle,
   fileType,
   onClose,
+  fetchUrl,
 }: {
   documentId: number;
   documentTitle?: string;
   fileType?: string;
   onClose: () => void;
+  /** مسار جلب التاريخ (افتراضيًا المسار الداخلي للمحامي) — بوابة المندوب تمرّر النقطة المسموح لها. */
+  fetchUrl?: string;
 }) {
   const [entries, setEntries] = useState<BaseNumberHistoryDto[] | null>(null);
   const [error, setError] = useState('');
@@ -21,7 +24,7 @@ export default function BaseNumbersModal({
     setEntries(null);
     setError('');
     api
-      .get<BaseNumberHistoryDto[]>(`/documents/${documentId}/base-numbers`)
+      .get<BaseNumberHistoryDto[]>(fetchUrl ?? `/documents/${documentId}/base-numbers`)
       .then((r) => {
         if (!cancelled) setEntries(r.data ?? []);
       })
@@ -31,7 +34,7 @@ export default function BaseNumbersModal({
     return () => {
       cancelled = true;
     };
-  }, [documentId]);
+  }, [documentId, fetchUrl]);
 
   return (
     <div

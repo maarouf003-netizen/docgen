@@ -46,6 +46,7 @@ public class Repository<T> : IRepository<T> where T : class
                 .ThenInclude(a => a.Owners)
                 .Include(d => ((Document)(object)d).Heirs)
                 .Include(d => ((Document)(object)d).ExecutionActions)
+                .ThenInclude(a => a.CreatedBy)
                 .Include(d => ((Document)(object)d).RegistrationDate)
                 .Include(d => ((Document)(object)d).CreatedBy)
                 .Include(d => ((Document)(object)d).Branch)

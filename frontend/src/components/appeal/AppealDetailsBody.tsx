@@ -13,8 +13,16 @@ import type { AppealDto } from '../../types';
 /**
  * جسم تفاصيل الاستئناف المشترك بين نافذة البطاقة وصفحة التفاصيل:
  * الأطراف، القرار المستأنف وكتبه، القيد الاستئنافي، قرار الحسم أو الشطب، والملاحظات.
+ * `hideOpinion` يخفي «رأي المحامي المتابع» (defenseOpinion) وحده في بوابة مندوب الجهة —
+ * رأي داخلي لا اسم (ق10)؛ يُبقى اسم المحامي وسطر «سطّره» (ق9).
  */
-export default function AppealDetailsBody({ appeal }: { appeal: AppealDto }) {
+export default function AppealDetailsBody({
+  appeal,
+  hideOpinion = false,
+}: {
+  appeal: AppealDto;
+  hideOpinion?: boolean;
+}) {
   const isDecided = appeal.status === APPEAL_STATUS_DECIDED;
   const isStruck = appeal.status === APPEAL_STATUS_STRUCK_OFF;
 
@@ -71,7 +79,7 @@ export default function AppealDetailsBody({ appeal }: { appeal: AppealDto }) {
           <>
             <FieldCell label="رقم ورود سند تبليغ الاستئناف" value={appeal.noticeNumber} showEmpty />
             <FieldCell label="تاريخ ورود سند تبليغ الاستئناف" value={formatDate(appeal.noticeDate)} showEmpty />
-            {appeal.defenseOpinion && (
+            {!hideOpinion && appeal.defenseOpinion && (
               <FieldCell label="رأي المحامي المتابع بأسباب الاستئناف" value={appeal.defenseOpinion} showEmpty />
             )}
             {/* كتاب إيداع الملف رئيس القسم: مسار «مستأنف علينا» فقط. */}

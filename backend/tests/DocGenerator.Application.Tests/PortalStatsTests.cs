@@ -42,15 +42,7 @@ public class PortalStatsTests : IDisposable
         _db.SaveChanges();
         _delegateGroupId = delegateGroup.Id;
 
-        _portal = new PortalService(
-            new PortalRepository(_db),
-            new Repository<Document>(_db),
-            new AppealRepository(_db),
-            new ExcelExportService(),
-            _audit,
-            Options.Create(new ExportOptions { MaxRows = 10_000 }),
-            TimeProvider.System,
-            TestClock.TimeZone);
+        _portal = PortalServiceFactory.Create(_db, _audit);
     }
 
     public void Dispose() => _db.Dispose();
