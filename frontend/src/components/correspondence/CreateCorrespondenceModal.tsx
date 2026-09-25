@@ -35,7 +35,7 @@ export default function CreateCorrespondenceModal({
   const [importance, setImportance] = useState<CorrespondenceImportance>('normal');
   const [query, setQuery] = useState('');
   const [targets, setTargets] = useState<CorrespondenceTargetDto[]>([]);
-  const [targetId, setTargetId] = useState<number | null>(null);
+  const [selectedTarget, setSelectedTarget] = useState<CorrespondenceTargetDto | null>(null);
   const [targetsLoading, setTargetsLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -51,6 +51,7 @@ const searchTimer = useRef<number | undefined>(undefined);
     const term = query.trim();
     if (!term) {
       setTargets([]);
+      setTargetsLoading(false);
       return undefined;
     }
     setTargetsLoading(true);
@@ -74,10 +75,8 @@ const searchTimer = useRef<number | undefined>(undefined);
     return () => window.clearTimeout(searchTimer.current);
   }, [query, base, documentId]);
 
-  const selectedTarget = targets.find((t) => t.userId === targetId) ?? null;
-
   const submit = async () => {
-    if (!targetId) {
+    if (!selectedTarget) {
       setError('حدّد الطرف المستلم بالاسم أولًا');
       return;
     }
@@ -86,7 +85,7 @@ const searchTimer = useRef<number | undefined>(undefined);
     try {
       const response = await api.post<CorrespondenceDto>(base, {
         documentId: documentId ?? null,
-        targetUserId: targetId,
+        targetUserId: selectedTarget.userId,
         importance,
         bodyHtml,
       });
@@ -140,7 +139,7 @@ const searchTimer = useRef<number | undefined>(undefined);
             autoComplete="off"
             value={selectedTarget ? selectedTarget.fullName : query}
             onChange={(e) => {
-              setTargetId(null);
+              setSelectedTarget(null);
               setQuery(e.target.value);
             }}
             placeholder="ابحث باسم المحامي أو رئيس القسم أو المندوب…"
@@ -167,7 +166,7 @@ const searchTimer = useRef<number | undefined>(undefined);
                     role="option"
                     aria-selected="false"
                     onClick={() => {
-                      setTargetId(t.userId);
+                      setSelectedTarget(t);
                       setTargets([]);
                     }}
                     className="w-full text-right px-3 py-2.5 text-sm hover:bg-emerald-50 min-h-11 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500"
@@ -192,7 +191,7 @@ const searchTimer = useRef<number | undefined>(undefined);
               <button
                 type="button"
                 onClick={() => {
-                  setTargetId(null);
+                  setSelectedTarget(null);
                   setQuery('');
                 }}
                 className="underline hover:no-underline mr-2 min-h-11 px-1"

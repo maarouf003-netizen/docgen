@@ -133,4 +133,86 @@ describe('CreateCorrespondenceModal', () => {
     expect(screen.queryByText('مندوب حلب')).not.toBeInTheDocument();
     expect(screen.getByText('المحامي الأول')).toBeInTheDocument();
   });
+
+  it('نقر نتيجة يثبّت المستلم ويغلق القائمة ويرسل نفس المعرّف، و«تغيير» يمسحه', async () => {
+    const { userEvent } = await import('@testing-library/user-event');
+    const user = userEvent.setup();
+    const postMock = api.post as unknown as ReturnType<typeof vi.fn>;
+    getMock().mockResolvedValue({
+      data: [
+        { userId: 8, fullName: 'مندوب الجهة', role: 'entitymanager', governorate: 'دمشق' },
+      ],
+    });
+    postMock.mockResolvedValue({ data: {} });
+    renderModal();
+
+    const input = screen.getByLabelText('الطرف المستلم (بالاسم)');
+    await user.type(input, 'مندوب');
+    await user.click(await screen.findByText('مندوب الجهة'));
+
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(input).toHaveValue('مندوب الجهة');
+    expect(screen.getByText(/المستلم:/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'حفظ وإرسال' }));
+    expect(postMock).toHaveBeenCalledWith('/correspondence', {
+      documentId: null,
+      targetUserId: 8,
+      importance: 'normal',
+      bodyHtml: '',
+    });
+
+    await user.click(screen.getByRole('button', { name: 'تغيير' }));
+    expect(input).toHaveValue('');
+    expect(screen.queryByText(/المستلم:/)).not.toBeInTheDocument();
+  });
+
+  it('بحث جديد بعد الاختيار يمسح الاختيار الثابت ويعيد عرض النتائج', async () => {
+    const { userEvent } = await import('@testing-library/user-event');
+    const user = userEvent.setup();
+    getMock().mockResolvedValue({
+      data: [
+        { userId: 8, fullName: 'مندوب الجهة', role: 'entitymanager', governorate: 'دمشق' },
+      ],
+    });
+    renderModal();
+
+    const input = screen.getByLabelText('الطرف المستلم (بالاسم)');
+    await user.type(input, 'مندوب');
+    await user.click(await screen.findByText('مندوب الجهة'));
+    expect(screen.getByText(/المستلم:/)).toBeInTheDocument();
+
+    await user.type(input, 'الجهة');
+    expect(screen.queryByText(/المستلم:/)).not.toBeInTheDocument();
+    expect(await screen.findByText('مندوب الجهة')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getMock()).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('مسح البحث أثناء طلب جارٍ لا يعلق «جارِ البحث…» وتُتجاهل الاستجابة المتأخرة', async () => {
+    const { userEvent } = await import('@testing-library/user-event');
+    const user = userEvent.setup();
+    let resolve!: (value: { data: unknown }) => void;
+    const pending = new Promise<{ data: unknown }>((r) => { resolve = r; });
+    getMock().mockReturnValue(pending);
+    renderModal();
+
+    const input = screen.getByLabelText('الطرف المستلم (بالاسم)');
+    await user.type(input, 'مندوب');
+    await waitFor(() => {
+      expect(getMock()).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByText('جارِ البحث…')).toBeInTheDocument();
+
+    await user.clear(input);
+    expect(screen.queryByText('جارِ البحث…')).not.toBeInTheDocument();
+
+    resolve({
+      data: [{ userId: 8, fullName: 'مندوب الجهة', role: 'entitymanager', governorate: 'دمشق' }],
+    });
+    await pending;
+    expect(screen.queryByText('مندوب الجهة')).not.toBeInTheDocument();
+    expect(screen.queryByText('جارِ البحث…')).not.toBeInTheDocument();
+  });
 });
