@@ -49,6 +49,48 @@ public class PortalRepository : IPortalRepository
             .AnyAsync(ct);
     }
 
+    /// <summary>
+    /// قيود الملف النهائية النشطة (نفس فلتر ScopePredicate مضافًا إليه IsActive ليطابق
+    /// نطاق المندوب المحلول) مع هوياتها الأم — يُستخدم لعكس النطاق: أي مناديب مؤهلون؟
+    /// </summary>
+    public async Task<DocumentScopeKeys> GetDocumentScopeKeysAsync(
+        int documentId, CancellationToken ct = default)
+    {
+        var entryIds = await _db.Documents.AsNoTracking()
+            .Where(d => d.Id == documentId)
+            .SelectMany(d => d.ApplicantPublicEntities
+                .Where(a => a.RegistryId != null && a.Registry != null
+                    && a.Registry.Status == EntityStatusCatalog.Final
+                    && !a.Registry.NeedsReview && a.Registry.IsActive)
+                .Select(a => a.RegistryId!.Value))
+            .Union(_db.Documents.Where(d => d.Id == documentId)
+                .SelectMany(d => d.ExecutedPublicEntities
+                    .Where(e => e.EntityNature == PartyNatureCatalog.PublicEntity
+                        && e.RegistryId != null && e.Registry != null
+                        && e.Registry.Status == EntityStatusCatalog.Final
+                        && !e.Registry.NeedsReview && e.Registry.IsActive)
+                    .Select(e => e.RegistryId!.Value)))
+            .Union(_db.Documents.Where(d => d.Id == documentId)
+                .SelectMany(d => d.ExecutionApplicants
+                    .Where(a => a.RegistryId != null && a.Registry != null
+                        && a.Registry.Status == EntityStatusCatalog.Final
+                        && !a.Registry.NeedsReview && a.Registry.IsActive)
+                    .Select(a => a.RegistryId!.Value)))
+            .Distinct()
+            .ToListAsync(ct);
+
+        if (entryIds.Count == 0)
+            return new DocumentScopeKeys(entryIds, Array.Empty<int>());
+
+        var groupIds = await _db.PublicEntities.AsNoTracking()
+            .Where(e => entryIds.Contains(e.Id))
+            .Select(e => e.GroupId)
+            .Distinct()
+            .ToListAsync(ct);
+
+        return new DocumentScopeKeys(entryIds, groupIds);
+    }
+
     public async Task<(int TotalCount, List<Document> Items)> SearchScopedAsync(
         IReadOnlyCollection<int> entryIds, string? query, string? status,
         int page, int perPage, CancellationToken ct = default)

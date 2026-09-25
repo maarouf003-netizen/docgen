@@ -39,26 +39,40 @@ export default function CreateCorrespondenceModal({
   const [targetsLoading, setTargetsLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const searchTimer = useRef<number | undefined>(undefined);
+const searchTimer = useRef<number | undefined>(undefined);
+  const searchSeq = useRef(0);
 
   // بحث المستلمين بالاسم مع تأخير منعًا لإغراق الخادم بكل ضغطة.
+  // عند وجود ملف تُقيَّد الأهلية بالخلفية تلقائيًا: مندوب←محامو الملف، محامٍ/رئيس←مناديب النطاق.
   useEffect(() => {
     window.clearTimeout(searchTimer.current);
+    // إبطال أي استجابة معلّقة من مصطلح/ملف سابق حتى لا تكتسح نتائج أحدث.
+    searchSeq.current += 1;
     const term = query.trim();
     if (!term) {
       setTargets([]);
       return undefined;
     }
     setTargetsLoading(true);
+    const seq = searchSeq.current;
     searchTimer.current = window.setTimeout(() => {
+      const params: Record<string, unknown> = { q: term };
+      if (documentId) params.documentId = documentId;
       api
-        .get<CorrespondenceTargetDto[]>(`${base}/targets`, { params: { q: term } })
-        .then((r) => setTargets(Array.isArray(r.data) ? r.data : []))
-        .catch(() => setTargets([]))
-        .finally(() => setTargetsLoading(false));
+        .get<CorrespondenceTargetDto[]>(`${base}/targets`, { params })
+        .then((r) => {
+          if (seq === searchSeq.current)
+            setTargets(Array.isArray(r.data) ? r.data : []);
+        })
+        .catch(() => {
+          if (seq === searchSeq.current) setTargets([]);
+        })
+        .finally(() => {
+          if (seq === searchSeq.current) setTargetsLoading(false);
+        });
     }, 300);
     return () => window.clearTimeout(searchTimer.current);
-  }, [query, base]);
+  }, [query, base, documentId]);
 
   const selectedTarget = targets.find((t) => t.userId === targetId) ?? null;
 
@@ -133,6 +147,13 @@ export default function CreateCorrespondenceModal({
             className="w-full min-w-0 border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-11 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
           />
           {targetsLoading && <p className="text-xs text-gray-500 mt-1">جارِ البحث…</p>}
+          {!selectedTarget && !targetsLoading && query.trim() && targets.length === 0 && (
+            <p className="text-xs text-gray-500 mt-1">
+              {documentId
+                ? 'لا يوجد مستلم مؤهل لهذه المراسلة — المؤهلون: مندوب←محامو الملف، محامٍ/رئيس←مناديب نطاق الملف'
+                : 'لا توجد نتائج مطابقة للبحث'}
+            </p>
+          )}
           {!selectedTarget && targets.length > 0 && (
             <ul
               className="mt-1 max-h-44 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100"

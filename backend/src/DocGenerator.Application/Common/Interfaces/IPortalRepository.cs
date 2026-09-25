@@ -15,6 +15,17 @@ public sealed record PortalScopeResolution(
 }
 
 /// <summary>
+/// مفاتيح نطاق ملف لاستهداف مناديب الجهة: قيود الملف النهائية النشطة (RegistryIds)
+/// مع معرّفات الهويات الأم (PublicEntityGroups) لتلك القيود.
+/// </summary>
+public sealed record DocumentScopeKeys(
+    IReadOnlyList<int> EntryIds,
+    IReadOnlyList<int> GroupIds)
+{
+    public static DocumentScopeKeys Empty { get; } = new(Array.Empty<int>(), Array.Empty<int>());
+}
+
+/// <summary>
 /// مستودع بوابة مندوب الجهة: استعلامات الملفات المقيّدة بنطاق المندوب
 /// (أي تطابق طرفي بقيد نهائي — د1/د4) والتصدير منها.
 /// </summary>
@@ -25,6 +36,12 @@ public interface IPortalRepository
 
     /// <summary>هل يقع الملف ضمن نطاق معرّفات القيود المعطاة (بقيد نهائي)؟</summary>
     Task<bool> IsDocumentInScopeAsync(int documentId, IReadOnlyCollection<int> entryIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// قيود الملف النهائية النشطة وهوياتها الأم — لحصر مناديب الجهة المؤهلين
+    /// لمراسلة مرتبطة بهذا الملف (عكس اشتقاق النطاق، بلا التحميل المسبق).
+    /// </summary>
+    Task<DocumentScopeKeys> GetDocumentScopeKeysAsync(int documentId, CancellationToken ct = default);
 
     /// <summary>قائمة ملفات النطاق مع عدّادها الكامل.</summary>
     Task<(int TotalCount, List<Document> Items)> SearchScopedAsync(

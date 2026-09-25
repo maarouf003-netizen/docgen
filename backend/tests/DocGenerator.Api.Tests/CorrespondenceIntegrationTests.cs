@@ -21,8 +21,10 @@ public sealed class CorrespondenceIntegrationTests : IAsyncLifetime
     private readonly ApiFactory _factory = new();
     private int _branchId;
     private int _lawyerId;
+    private int _lawyer2Id;
     private int _headId;
     private int _delegateId;
+    private int _documentId;
 
     public async Task InitializeAsync()
     {
@@ -65,18 +67,45 @@ public sealed class CorrespondenceIntegrationTests : IAsyncLifetime
             PasswordHash = hasher.Hash("123456"),
         };
         var lawyer = mk("corrlawyer", "المحامي", UserRole.Lawyer, branch.Id);
+        var lawyer2 = mk("corrlawyer2", "المحامي الثاني", UserRole.Lawyer, branch.Id);
         var head = mk("corrhead", "الرئيس", UserRole.Head, branch.Id);
         var del = mk("corrdelegate", "المندوب", UserRole.EntityManager, null);
-        db.Users.AddRange(lawyer, head, del);
+        db.Users.AddRange(lawyer, lawyer2, head, del);
         await db.SaveChangesAsync();
 
         del.PortalEntryId = entryId;
         await db.SaveChangesAsync();
 
+        var document = new Document
+        {
+            BranchId = branch.Id,
+            CreatedById = lawyer.Id,
+            IsDraft = false,
+            BorrowerName = "سعيد",
+            BorrowerFather = "خالد",
+            BorrowerFamily = "الزعيم",
+            FileNumber = "12/2026",
+            FileType = "تنفيذي",
+            FileYear = "2026",
+            Court = "دائرة تنفيذ دمشق",
+            AmountNumeric = 0,
+            ExecStatus = string.Empty,
+        };
+        document.ExecutionApplicants.Add(new ExecutionApplicant
+        {
+            Name = "وزارة التعليم",
+            ApplicantNature = PartyNatureCatalog.Legal,
+            RegistryId = entryId,
+        });
+        db.Documents.Add(document);
+        await db.SaveChangesAsync();
+
         _branchId = branch.Id;
         _lawyerId = lawyer.Id;
+        _lawyer2Id = lawyer2.Id;
         _headId = head.Id;
         _delegateId = del.Id;
+        _documentId = document.Id;
     }
 
     public Task DisposeAsync()
@@ -206,5 +235,65 @@ public sealed class CorrespondenceIntegrationTests : IAsyncLifetime
     {
         var response = await _factory.CreateClient().GetAsync("/api/correspondence");
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Delegate_OnFileLinked_TargetsUninvolvedLawyer_ReturnsBadRequest()
+    {
+        var response = await Delegate().PostAsync("/api/portal/correspondence", Json(new
+        {
+            documentId = _documentId,
+            targetUserId = _lawyer2Id,
+            importance = "normal",
+            bodyHtml = "<p>للمحامي الثاني</p>",
+        }));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Lawyer_OnFileLinked_TargetsHead_ReturnsBadRequest()
+    {
+        var response = await Lawyer().PostAsync("/api/correspondence", Json(new
+        {
+            documentId = _documentId,
+            targetUserId = _headId,
+            importance = "normal",
+            bodyHtml = "<p>لرئيس القسم</p>",
+        }));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Delegate_OnFileLinked_TargetsOwnerLawyer_ReturnsCreated()
+    {
+        var response = await Delegate().PostAsync("/api/portal/correspondence", Json(new
+        {
+            documentId = _documentId,
+            targetUserId = _lawyerId,
+            importance = "normal",
+            bodyHtml = "<p>استفسار عن الملف</p>",
+        }));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await ReadJsonAsync(response);
+        Assert.Equal(_documentId, body.GetProperty("documentId").GetInt32());
+        Assert.Equal(_lawyerId, body.GetProperty("targetUserId").GetInt32());
+    }
+
+    [Fact]
+    public async Task TargetsEndpoint_WithDocumentId_ReturnsScopeDelegatesOnly()
+    {
+        var response = await Lawyer().GetAsync(
+            $"/api/correspondence/targets?q=مندوب&documentId={_documentId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await ReadJsonAsync(response);
+        var fullNames = body.EnumerateArray()
+            .Select(t => t.GetProperty("fullName").GetString())
+            .ToList();
+        Assert.Single(fullNames);
+        Assert.Equal("المندوب", fullNames[0]);
     }
 }

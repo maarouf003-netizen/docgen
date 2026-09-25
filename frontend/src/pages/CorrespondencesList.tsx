@@ -177,7 +177,7 @@ export default function CorrespondencesList({ portal = false }: { portal?: boole
               }}
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-11 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
-              <option value="">كل الأهميات</option>
+              <option value="">أهمية المراسلة</option>
               {(Object.keys(CORRESPONDENCE_IMPORTANCE_LABELS) as CorrespondenceImportance[]).map((key) => (
                 <option key={key} value={key}>
                   {CORRESPONDENCE_IMPORTANCE_LABELS[key]}

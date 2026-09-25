@@ -64,14 +64,19 @@ public class CorrespondencesController : ControllerBase
 
     /// <summary>مرشحو الاستلام بالاسم — محامٍ/رئيس قسم (المندوب عبر البوابة).</summary>
     [HttpGet("targets")]
-    public async Task<IActionResult> SearchTargets([FromQuery] string? q, CancellationToken ct)
+    public async Task<IActionResult> SearchTargets(
+        [FromQuery] string? q, [FromQuery] int? documentId, CancellationToken ct)
     {
         if (!RolePermissions.CanCreateCorrespondences(Role) || Role == UserRole.EntityManager)
             return Forbid();
 
         try
         {
-            return Ok(await _letters.SearchTargetsAsync(UserId, Role, q, ct));
+            return Ok(await _letters.SearchTargetsAsync(UserId, Role, BranchId, q, documentId, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
         }
         catch (UnauthorizedAccessException)
         {

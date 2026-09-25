@@ -55,9 +55,14 @@ public interface ICorrespondenceService
     /// <summary>المحافظات المميزة لفلتر المدير/المشرف.</summary>
     Task<List<string>> GetGovernoratesAsync(CancellationToken ct = default);
 
-    /// <summary>مرشحو الاستلام بالاسم — محامٍ/رئيس قسم/مندوب جهة نشط، بلا المنشئ نفسه.</summary>
-    Task<List<CorrespondenceTargetDto>> SearchTargetsAsync(int actorUserId, UserRole role,
-        string? q, CancellationToken ct = default);
+    /// <summary>
+    /// مرشحو الاستلام بالاسم — محامٍ/رئيس قسم/مندوب جهة نشط، بلا المنشئ نفسه.
+    /// مع documentId تُقيَّد الأهلية بنوع المراسلة: مندوب الجهة ← محامو الملف (مالكه
+    /// ومتابعوه) حصرًا؛ المحامي/رئيس القسم ← مناديب نطاق الملف فقط. عامة بلا ملف = بحث حر.
+    /// </summary>
+    Task<List<CorrespondenceTargetDto>> SearchTargetsAsync(
+        int actorUserId, UserRole role, int? actorBranchId, string? q, int? documentId,
+        CancellationToken ct = default);
 }
 
 /// <summary>
@@ -203,6 +208,17 @@ public sealed class CorrespondenceService : ICorrespondenceService
 
             if (!await MayAttachAsync(document, actorUserId, role, actorBranchId, ct))
                 throw new UnauthorizedAccessException("لا تملك صلاحية تسطير مراسلة على هذا الملف");
+
+            // فرض الأهلية بالمصدر نفسه: مستلم مراسلة مربوطة بملف يجب أن يكون ضمن
+            // المؤهلين (مندوب←محامو الملف؛ محامٍ/رئيس←مناديب نطاق الملف) — حتى لا
+            // تصل مراسلة مرتبطة لطرف خارج نطاقها عبر مُرسِلٍ متعمّد لتجاوز البحث.
+            if (!await IsEligibleTargetAsync(document, role, target.Id, ct))
+            {
+                var eligibilityMessage = role == UserRole.EntityManager
+                    ? "المستلم يجب أن يكون محامي الملف نفسه أو أحد متابعيه لهذه المراسلة"
+                    : "المستلم يجب أن يكون مندوب جهة ضمن نطاق هذا الملف";
+                throw new ArgumentException(eligibilityMessage);
+            }
         }
 
         // الفرع/المحافظة/بادئة الرقم: للمرتبطة بملف من فرع الملف، وللعامة من فرع
@@ -396,22 +412,74 @@ public sealed class CorrespondenceService : ICorrespondenceService
         => _letters.GetGovernoratesAsync(ct);
 
     public async Task<List<CorrespondenceTargetDto>> SearchTargetsAsync(
-        int actorUserId, UserRole role, string? q, CancellationToken ct = default)
+        int actorUserId, UserRole role, int? actorBranchId, string? q, int? documentId,
+        CancellationToken ct = default)
     {
         if (!CanWrite(role))
             throw new UnauthorizedAccessException("الدور غير مخوّل لتسطير المراسلات");
 
-        // السقف مصدره الوحيد TargetsLimit ويُطبَّق في المستودع (SQL) — بلا Take مكرر هنا.
-        var users = await _users.SearchCorrespondenceTargetsAsync(actorUserId, q, TargetsLimit, ct);
-        return users
-            .Select(u => new CorrespondenceTargetDto(
-                u.Id,
-                u.FullName,
-                u.Role.ToString().ToLowerInvariant(),
-                u.Branch?.Name,
-                u.Branch?.Governorate ?? u.PortalEntry?.Governorate))
-            .ToList();
+        Document? document = null;
+        if (documentId is not null)
+        {
+            document = await _documents.GetByIdAsync(documentId.Value, ct)
+                ?? throw new ArgumentException("الملف غير موجود");
+
+            // بوابة البحث = صلاحية التسطير على هذا الملف (نفس فحص الإنشاء) فلا نكشف
+            // مرشحين لمن لا يملك الكتابة عليه مهما كان دوره.
+            if (!await MayAttachAsync(document, actorUserId, role, actorBranchId, ct))
+                throw new UnauthorizedAccessException("لا تملك صلاحية تسطير مراسلة على هذا الملف");
+        }
+
+        return await ResolveEligibleTargetsAsync(actorUserId, role, q, document, ct);
     }
+
+    /// <summary>
+    /// مصدر الحقيقة الوحيد لأهلية المستلمين: عامة بلا ملف = البحث الحر المعتاد؛
+    /// مربوطة بملف = مندوب←محامو الملف، محامٍ/رئيس←مناديب نطاق الملف.
+    /// يُستخدم من البحث والإنشاء معًا فلا يمكن أن يُترشح مستلمٌ ثم يُرفض إنشاؤه أو العكس.
+    /// </summary>
+    private async Task<List<CorrespondenceTargetDto>> ResolveEligibleTargetsAsync(
+        int actorUserId, UserRole role, string? q, Document? document, CancellationToken ct)
+    {
+        if (document is null)
+        {
+            var users = await _users.SearchCorrespondenceTargetsAsync(actorUserId, q, TargetsLimit, ct);
+            return users.Select(ToTargetDto).ToList();
+        }
+
+        if (role == UserRole.EntityManager)
+        {
+            var lawyers = await _users.SearchDocumentLawyerTargetsAsync(
+                document.Id, document.CreatedById, actorUserId, q, TargetsLimit, ct);
+            return lawyers.Select(ToTargetDto).ToList();
+        }
+
+        // محامٍ/رئيس قسم: مناديب نطاق الملف فقط — لا رؤساء ولا محامين آخرين.
+        var scope = await _portal.GetDocumentScopeKeysAsync(document.Id, ct);
+        var delegates = await _users.SearchScopeDelegateTargetsAsync(
+            scope.EntryIds, scope.GroupIds, actorUserId, q, TargetsLimit, ct);
+        return delegates.Select(ToTargetDto).ToList();
+    }
+
+    /// <summary>هل المستلم المؤهل فعلًا لهذه المراسلة؟ (العامة دائمًا نعم؛ المربوطة حسب الدور).</summary>
+    private async Task<bool> IsEligibleTargetAsync(
+        Document document, UserRole role, int targetUserId, CancellationToken ct)
+    {
+        if (role == UserRole.EntityManager)
+            return await _users.IsDocumentLawyerTargetAsync(
+                document.Id, document.CreatedById, targetUserId, ct);
+
+        var scope = await _portal.GetDocumentScopeKeysAsync(document.Id, ct);
+        return await _users.IsScopeDelegateTargetAsync(
+            scope.EntryIds, scope.GroupIds, targetUserId, ct);
+    }
+
+    private static CorrespondenceTargetDto ToTargetDto(User u) => new(
+        u.Id,
+        u.FullName,
+        u.Role.ToString().ToLowerInvariant(),
+        u.Branch?.Name,
+        u.Branch?.Governorate ?? u.PortalEntry?.Governorate);
 
     public async Task<List<CorrespondenceListItemDto>> ListByDocumentAsync(int documentId,
         int actorUserId, UserRole role, int? actorBranchId, CancellationToken ct = default)

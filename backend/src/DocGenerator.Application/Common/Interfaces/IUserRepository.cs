@@ -42,4 +42,32 @@ public interface IUserRepository : IRepository<User>
     /// مع الفرع ونطاق البوابة لعرض المحافظة — يُصفَّى بالاسم ويُسقَف بالحد الممرر.
     /// </summary>
     Task<List<User>> SearchCorrespondenceTargetsAsync(int excludeUserId, string? q, int limit, CancellationToken ct = default);
+
+    /// <summary>
+    /// محامو الملف المؤهلون كمستلمين لمراسلة مربوطة به لمندوب الجهة: مالك الملف
+    /// (CreatedById) + متابعو الاستئناف عليه + المحامون المسندون في إناباته (مصدرًا/منابًّا) —
+    /// نفس دلالة FollowsDocumentAsync المستخدمة في بوابة الكتابة. نشطون بدور محامٍ، بلا
+    /// المستثنى، يُصفَّون بالاسم ويُسقَفون بالحد الممرر.
+    /// </summary>
+    Task<List<User>> SearchDocumentLawyerTargetsAsync(
+        int documentId, int? ownerUserId, int excludeUserId, string? q, int limit,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// مناديب الجهة المؤهلون كمستلمين لمراسلة مربوطة بملف لمحامي/رئيس القسم: نشطون،
+    /// مرتبطون بقيد من قيود الملف النهائية النشطة أو بهوية أم من هوياتها (عكس النطاق)،
+    /// بلا المستثنى، يُصفَّون بالاسم ويُسقَفون بالحد الممرر.
+    /// </summary>
+    Task<List<User>> SearchScopeDelegateTargetsAsync(
+        IReadOnlyCollection<int> entryIds, IReadOnlyCollection<int> groupIds,
+        int excludeUserId, string? q, int limit, CancellationToken ct = default);
+
+    /// <summary>هل المستخدم المحدد (نشط بدور محامٍ) هو مالك الملف أو أحد متابعيه؟</summary>
+    Task<bool> IsDocumentLawyerTargetAsync(
+        int documentId, int? ownerUserId, int userId, CancellationToken ct = default);
+
+    /// <summary>هل المستخدم المحدد (نشط بدور مندوب جهة) ضمن نطاق القيود/الهويات المعطاة؟</summary>
+    Task<bool> IsScopeDelegateTargetAsync(
+        IReadOnlyCollection<int> entryIds, IReadOnlyCollection<int> groupIds,
+        int userId, CancellationToken ct = default);
 }

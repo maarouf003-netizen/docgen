@@ -147,11 +147,25 @@ public class PortalController : ControllerBase
         }
     }
 
-    /// <summary>مرشحو الاستلام بالاسم لمندوب الجهة.</summary>
+    /// <summary>مرشحو الاستلام بالاسم لمندوب الجهة — مع documentId محامو الملف فقط.</summary>
     [HttpGet("correspondence/targets")]
-    public async Task<IActionResult> CorrespondenceTargets([FromQuery] string? q, CancellationToken ct)
-        => Ok(await _correspondence.SearchTargetsAsync(UserId,
-            DocGenerator.Domain.Enums.UserRole.EntityManager, q, ct));
+    public async Task<IActionResult> CorrespondenceTargets(
+        [FromQuery] string? q, [FromQuery] int? documentId, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _correspondence.SearchTargetsAsync(UserId,
+                DocGenerator.Domain.Enums.UserRole.EntityManager, null, q, documentId, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
 
     /// <summary>عدد مراسلات المندوب العاجلة بلا تأكيد مشاهدة — جرس البوابة.</summary>
     [HttpGet("correspondence/urgent-unseen-count")]

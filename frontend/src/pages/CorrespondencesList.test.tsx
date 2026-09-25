@@ -109,6 +109,9 @@ describe('CorrespondencesList', () => {
 
     expect(await screen.findByRole('button', { name: '+ مراسلة جديدة' })).toBeInTheDocument();
 
+    // تسمية فلتر الأهمية المعتمدة وواحدتها الافتراضية.
+    expect(screen.getByLabelText('فلتر الأهمية')).toHaveValue('');
+
     await user.selectOptions(screen.getByLabelText('فلتر الأهمية'), 'urgent');
     await waitFor(() => {
       const lastCall = (api.get as unknown as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as string;
