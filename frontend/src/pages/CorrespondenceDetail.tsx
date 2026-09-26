@@ -11,6 +11,7 @@ import type {
 } from '../types';
 import RichTextEditor from '../components/RichTextEditor';
 import CorrespondenceImportanceBadge from '../components/correspondence/CorrespondenceImportanceBadge';
+import CorrespondenceSeenBadge from '../components/correspondence/CorrespondenceSeenBadge';
 import {
   CORRESPONDENCE_MESSAGE_KIND_LABELS,
   CORRESPONDENCE_UNSEEN_EVENT,
@@ -101,7 +102,11 @@ export default function CorrespondenceDetail({ portal = false }: { portal?: bool
   }, [id, base, refreshKey]);
 
   const canAddAddendum = letter !== null && user != null && letter.creatorId === user.id;
-  const canReply = letter !== null && user != null && letter.targetUserId === user.id;
+  // حقّ الرد قرار خادم يُقرأ من `canReply` لا من مقارنة المعرّفات هنا.
+  const canReply = letter !== null && letter.canReply;
+  // حقّ التوثيق قرار خادم يُقرأ من `canMarkSeen` لا من مقارنة المعرّفات هنا:
+  // «يمكنني الرد» و«يمكنني التوثيق» صلاحيتان منفصلتان، ولا يصحّ أن تتبع إحداهما الأخرى.
+  const canMarkSeen = letter !== null && letter.canMarkSeen;
 
   const send = async () => {
     if (!composerKind || !letter) return;
@@ -164,7 +169,17 @@ export default function CorrespondenceDetail({ portal = false }: { portal?: bool
           <h1 className="font-bold text-gray-900 text-base sm:text-lg leading-relaxed break-words flex-1 min-w-0">
             {correspondenceTitle(letter.fileContext)}
           </h1>
-          <CorrespondenceImportanceBadge importance={letter.importance} />
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* منطقة حيّة: التوثيق يغيّر حالة الاطلاع في المكان نفسه، فيُعلَن لقارئ
+                الشاشة. محلية لهذه الصفحة فقط حتى لا يصير كل سطر في القائمة مُعلنًا. */}
+            <span role="status">
+              <CorrespondenceSeenBadge
+                viewStatus={letter.viewStatus}
+                canMarkSeen={canMarkSeen}
+              />
+            </span>
+            <CorrespondenceImportanceBadge importance={letter.importance} />
+          </div>
         </div>
         <dl className="flex items-center gap-x-4 gap-y-1 flex-wrap mt-3 text-xs sm:text-sm text-gray-600">
           <div className="flex items-center gap-1.5">
@@ -224,7 +239,7 @@ export default function CorrespondenceDetail({ portal = false }: { portal?: bool
         )}
 
         <div className="flex gap-2 flex-wrap mt-4 pt-3 border-t border-gray-100">
-          {!letter.seenByMe ? (
+          {canMarkSeen && letter.viewStatus === 'pending' ? (
             <button
               onClick={markSeen}
               disabled={markingSeen}
@@ -232,11 +247,11 @@ export default function CorrespondenceDetail({ portal = false }: { portal?: bool
             >
               {markingSeen ? 'جارِ التوثيق…' : 'تمت المشاهدة'}
             </button>
-          ) : (
+          ) : canMarkSeen ? (
             <span className="inline-flex items-center rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-2 text-sm min-h-11">
               أكّدتَ مشاهدتها ✓
             </span>
-          )}
+          ) : null}
           {canAddAddendum && (
             <button
               onClick={() => {

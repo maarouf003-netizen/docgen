@@ -95,8 +95,8 @@ public interface IPortalRepository
     Task<List<PortalAmountRow>> ListAmountRowsAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default);
 
     /// <summary>
-    /// عدد الملفات المرتبطة بكل قيد من قيود النطاق. قد يُحتسب الملف الواحد تحت أكثر
-    /// من قيد إذا ارتبط بأطراف متعددة ضمن النطاق نفسه (توزيع ارتباط لا تجزئة حصرية).
+    /// عدد الملفات المرتبطة بكل فرع من فروع النطاق. قد يُحتسب الملف الواحد تحت أكثر
+    /// من فرع إذا ارتبط بأطراف متعددة ضمن النطاق نفسه (توزيع لا تجزئة حصرية).
     /// </summary>
     Task<Dictionary<int, int>> CountDocsPerEntryAsync(IReadOnlyCollection<int> entryIds, CancellationToken ct = default);
 

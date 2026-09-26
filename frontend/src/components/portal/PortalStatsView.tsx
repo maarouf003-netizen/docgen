@@ -36,7 +36,7 @@ function CurrencyTotalsList({ totals }: { totals: PortalCurrencyStatDto[] }) {
 
 /**
  * عرض إحصاءات نطاق الجهة: عدّادات الحالة + مجموع المبالغ الإجمالي ولكل نوع
- * (مكسّرًا حسب العملة بلا خلط) + السلسلة الشهرية + توزيع القيود + الاستئنافات.
+ * (مكسّرًا حسب العملة بلا خلط) + السلسلة الشهرية + توزع الملفات على الفروع + الاستئنافات.
  * كتلة «أعلى العملات» محذوفة نهائيًا بقرار صاحب المشروع.
  */
 export default function PortalStatsView({
@@ -122,7 +122,7 @@ export default function PortalStatsView({
       </div>
 
       <div className="mt-5">
-        <h4 id="portal-perentry-title" className="text-xs font-bold text-gray-600 mb-1">توزيع الارتباط على القيود</h4>
+        <h4 id="portal-perentry-title" className="text-xs font-bold text-gray-600 mb-1">توزع الملفات على الفروع</h4>
         {(() => {
           // أعلى ستة قيود للنظرة السريعة، والباقي مُعلنٌ بعد الحدّ لا مقطوعًا بصمت.
           const visible = perEntry.slice(0, VISIBLE_ENTRIES);
@@ -146,7 +146,7 @@ export default function PortalStatsView({
               </ul>
               {hiddenCount > 0 && (
                 <p className="mt-1.5 text-[11px] text-gray-400 tabular-nums">
-                  +{hiddenCount} قيدًا آخر غير معروض… (اطّلع من صفحة الملفات)
+                  فروع أخرى غير معروضة ({hiddenCount})… (اطّلع من صفحة الملفات)
                 </p>
               )}
             </>

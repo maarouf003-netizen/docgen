@@ -1,16 +1,14 @@
 import type { PortalScopeEntryDto } from '../../types';
+import { publicEntityBranchLabel } from '../../utils/publicEntityBranchLabel';
 
-const PARENT_BRANCH_NAME = 'الجهة الأم';
-
-/** تسمية قيد واحد بصيغة «المحافظة/الفرع» (والجهة الأم تُعرض بلا تكرار فرعي). */
+/** تسمية فرع واحد بصيغة «المحافظة/الفرع» (والجهة الأم تُعرض بلا تكرار فرعي). */
 function formatEntryShort(entry: PortalScopeEntryDto): string {
-  if (!entry.branchName || entry.branchName === PARENT_BRANCH_NAME) return `${entry.governorate}`;
-  return `${entry.governorate}/${entry.branchName}`;
+  return publicEntityBranchLabel(entry.governorate, entry.branchName);
 }
 
 /**
- * منتقي فرع الجهة لمندوب الهوية: «كل الفروع (الإجمالي)» + قيد لكل فرع.
- * يُخفى تمامًا لمندوب القيد (قرار العرض: إحصائيات القيد فقط بلا منتقي).
+ * منتقي فرع الجهة لمندوب الهوية: خيار «كل الفروع (الإجمالي)» ثم خيارًا لكل فرع.
+ * يُخفى تمامًا لمندوب الفرع الواحد (قرار العرض: إحصائيات الفرع فقط بلا منتقي).
  */
 export default function PortalBranchSelect({
   entries,

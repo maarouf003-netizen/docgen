@@ -37,7 +37,11 @@ public interface ICorrespondenceService
 
     /// <summary>
     /// تأكيد المشاهدة الصريح (زر «تمت المشاهدة») — يسجّل (من؟ متى؟) مرة واحدة؛
-    /// التكرار يُبقي أول توثيق ولا يجدّده.
+    /// التكرار يُبقي أول توثيق ولا يجدّده. مقصور على الطرف المستلم معيَّنًا بالاسم:
+    /// من يقرأ المراسلة (المرسل/رئيس/المدير) يرى حالتها ولا يُنشئ توثيقًا.
+    /// قرار أرشيف مقصود: توثيقات قديمة أنشأها غير المستلم (حين كان الحق مفتوحًا)
+    /// تبقى في القاعدة ولا تُعرض في الواجهة، والمراسلة تُقرأ «بانتظار» حتى يوثّق
+    /// المستلم — فالتوثيق المرئي هو توثيق المستلم وحده دائمًا.
     /// </summary>
     Task<CorrespondenceReceiptDto> MarkSeenAsync(int correspondenceId, int actorUserId,
         string? actorName, UserRole role, int? actorBranchId, CancellationToken ct = default);
@@ -226,7 +230,9 @@ public sealed class CorrespondenceService : ICorrespondenceService
         var (branchId, governorate, prefix) = await ResolveScopeAsync(
             document, role, actorUserId, actorBranchId, ct);
 
-        var now = DateTime.UtcNow;
+        // مصدر الوقت الوحيد: الساعة المحقونة (قابلة للتجميد في الاختبارات) —
+        // لا `DateTime.UtcNow` مباشرًا في أي مسار كتابة.
+        var now = _clock.GetUtcNow().UtcDateTime;
         var letter = new Correspondence
         {
             BranchId = branchId,
@@ -288,6 +294,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
         }
 
         var stored = await _letters.GetByIdWithDetailsAsync(letter.Id, ct) ?? letter;
+        // المنشئ لا يمكن أن يكون المستلم (متحقَّق منه أعلاه)، فـ«حق التوثيق» false هنا.
         return ToDto(stored, actorUserId);
     }
 
@@ -306,7 +313,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
         if (letter.CreatedById != actorUserId)
             throw new UnauthorizedAccessException("اللاحق يُضاف من منشئ المراسلة نفسه");
 
-        var now = DateTime.UtcNow;
+        var now = _clock.GetUtcNow().UtcDateTime;
         var addendum = new CorrespondenceMessage
         {
             CorrespondenceId = letter.Id,
@@ -349,7 +356,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
         if (letter.TargetUserId != actorUserId)
             throw new UnauthorizedAccessException("الرد متاح للطرف المستلم المعيَّن فقط");
 
-        var now = DateTime.UtcNow;
+        var now = _clock.GetUtcNow().UtcDateTime;
         var reply = new CorrespondenceMessage
         {
             CorrespondenceId = letter.Id,
@@ -387,6 +394,10 @@ public sealed class CorrespondenceService : ICorrespondenceService
         if (!await CanViewAsync(letter, actorUserId, role, actorBranchId, ct))
             throw new UnauthorizedAccessException("لا تملك صلاحية الاطلاع على هذه المراسلة");
 
+        // التوثيق مقصور على المستلم: من يستلم هو من يشاهد.
+        if (letter.TargetUserId != actorUserId)
+            throw new UnauthorizedAccessException("تأكيد المشاهدة مقصور على الطرف المستلم");
+
         var existing = letter.Receipts.FirstOrDefault(r => r.UserId == actorUserId);
         if (existing is not null)
             return new CorrespondenceReceiptDto(existing.UserId, existing.UserName, existing.SeenAt);
@@ -396,7 +407,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
             CorrespondenceId = letter.Id,
             UserId = actorUserId,
             UserName = actorName ?? string.Empty,
-            SeenAt = DateTime.UtcNow,
+            SeenAt = _clock.GetUtcNow().UtcDateTime,
         };
         letter.Receipts.Add(receipt);
 
@@ -792,10 +803,16 @@ public sealed class CorrespondenceService : ICorrespondenceService
             doc.Court);
     }
 
-    private CorrespondenceDto ToDto(Correspondence letter, int viewerUserId)
+    // التوثيق شأن المستلم وحده: يُعرض سجلّه وحده ويقرأه كل قارئ مصرَّح له
+    // (المدير/رئيس القسم) بحالة واحدة مشتركة بدل «هل شاهدها كل واحد» المتناقضة.
+    // وحقّ التوثيق قرار خادم يُشتقّ من هوية القارئ هنا، لا مقارنة في الواجهة.
+    private CorrespondenceDto ToDto(Correspondence letter, int readerUserId)
     {
         var messages = letter.Messages.OrderBy(m => m.Id).ToList();
-        var receipts = letter.Receipts.OrderBy(r => r.SeenAt).ToList();
+        var receipts = letter.Receipts
+            .Where(r => r.UserId == letter.TargetUserId)
+            .OrderBy(r => r.SeenAt)
+            .ToList();
         return new CorrespondenceDto(
             letter.Id,
             letter.CorrespondenceNumber,
@@ -812,7 +829,10 @@ public sealed class CorrespondenceService : ICorrespondenceService
             letter.TargetUserId,
             letter.TargetUser?.FullName ?? string.Empty,
             letter.TargetUser?.Role.ToString().ToLowerInvariant() ?? string.Empty,
-            receipts.Any(r => r.UserId == viewerUserId),
+            receipts.Count > 0 ? Correspondence.ViewStatusSeen : Correspondence.ViewStatusPending,
+            letter.TargetUserId == readerUserId,
+            // حق الرد للمستلم وحده أيضًا — يُحسب هنا لا في الواجهة، ومستقل عن حق التوثيق.
+            letter.TargetUserId == readerUserId,
             messages.Select(ToMessageDto).ToList(),
             receipts.Select(r => new CorrespondenceReceiptDto(r.UserId, r.UserName, r.SeenAt)).ToList(),
             letter.CreatedAt);
@@ -825,11 +845,10 @@ public sealed class CorrespondenceService : ICorrespondenceService
             ?? messages.FirstOrDefault()?.BodyPlainText
             ?? string.Empty;
         var lastKind = messages.Count > 0 ? messages[^1].Kind : CorrespondenceMessage.KindLetter;
-        var seenByMe = letter.Receipts.Any(r => r.UserId == viewerUserId);
-        // شارة الانتباه للمستلم وحده: المنشئ يعرف محتواه، واطّلاع الطرف يُقاس بعدّاد التوثيق.
-        var isUrgentUnseen = Correspondence.IsUrgent(letter.Importance)
-            && !seenByMe
-            && letter.TargetUserId == viewerUserId;
+        // شارة الاطلاع تُقرأ من توثيق المستلم وحده، وحقّ التوثيق قرار خادم:
+        // «يمكنني أن أوثّق» (المستلم) منفصل عن «هل وُثّقت» (كل القراء).
+        var canMarkSeen = letter.TargetUserId == viewerUserId;
+        var seen = letter.Receipts.Any(r => r.UserId == letter.TargetUserId);
 
         return new CorrespondenceListItemDto(
             letter.Id,
@@ -842,10 +861,11 @@ public sealed class CorrespondenceService : ICorrespondenceService
             letter.TargetUser?.FullName ?? string.Empty,
             snippet.Length > 160 ? snippet[..160] + "…" : snippet,
             lastKind,
-            seenByMe,
-            isUrgentUnseen,
+            seen ? Correspondence.ViewStatusSeen : Correspondence.ViewStatusPending,
+            canMarkSeen,
+            // حق الرد للمستلم وحده — قرار خادم مستقل عن حق التوثيق.
+            letter.TargetUserId == viewerUserId,
             messages.Count,
-            letter.Receipts.Count,
             letter.Branch?.Name,
             letter.Governorate,
             letter.UpdatedAt);

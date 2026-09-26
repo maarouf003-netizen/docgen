@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import CorrespondenceDetail from './CorrespondenceDetail';
 import type { CorrespondenceDto } from '../types';
@@ -45,7 +45,9 @@ const detail = (overrides: Partial<CorrespondenceDto> = {}): CorrespondenceDto =
   targetUserId: 11,
   targetName: 'مندوب الجهة',
   targetRole: 'entitymanager',
-  seenByMe: false,
+  viewStatus: 'pending',
+  canMarkSeen: false,
+  canReply: false,
   messages: [
     {
       id: 10,
@@ -80,7 +82,7 @@ beforeEach(() => {
 describe('CorrespondenceDetail', () => {
   it('يعرض الرأس الكامل: العنوان والرقم والأهمية والطرفين وزر المشاهدة', async () => {
     useAuthMock.mockReturnValue({ user: { role: 'entitymanager', id: 11 }, hasFullAccess: false, isHead: false });
-    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: detail() });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: detail({ canMarkSeen: true, canReply: true }) });
     renderDetail();
 
     expect(await screen.findByText(/مراسلة بملف \(أحمد محمد العلي\)/)).toBeInTheDocument();
@@ -100,12 +102,13 @@ describe('CorrespondenceDetail', () => {
     const user = userEvent.setup();
     useAuthMock.mockReturnValue({ user: { role: 'entitymanager', id: 11 }, hasFullAccess: false, isHead: false });
     const getMock = api.get as unknown as ReturnType<typeof vi.fn>;
-    getMock.mockResolvedValue({ data: detail() });
+    getMock.mockResolvedValue({ data: detail({ canMarkSeen: true }) });
     (api.post as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
       if (url.endsWith('/mark-seen')) {
         getMock.mockResolvedValue({
           data: detail({
-            seenByMe: true,
+            canMarkSeen: true,
+            viewStatus: 'seen',
             receipts: [{ userId: 11, userName: 'مندوب الجهة', seenAt: '2026-08-02T10:00:00Z' }],
           }),
         });
@@ -131,5 +134,50 @@ describe('CorrespondenceDetail', () => {
 
     expect(await screen.findByRole('button', { name: 'إضافة لاحق' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'الرد على المراسلة' })).not.toBeInTheDocument();
+  });
+
+  it('لا يظهر زر التوثيق لغير المستلم مع بقاء حالة الاطلاع معروضة', async () => {
+    // المرسل يقرأ حالة المستلم بلا زر: التوثيق فعل المستلم وحده (يفرضه الخادم
+    // بـ403 أيضًا، فاختفاء الزر ليس تجميلًا بل منع إجراء غير مسموح).
+    useAuthMock.mockReturnValue({ user: { role: 'lawyer', id: 3 }, hasFullAccess: false, isHead: false });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: detail() });
+    renderDetail();
+
+    expect(await screen.findByText('بانتظار المشاهدة')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'تمت المشاهدة' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/أكّدتَ مشاهدتها/)).not.toBeInTheDocument();
+  });
+
+  it('المدير يقرأ حالة اطلاع المستلم بلا زر توثيق', async () => {
+    useAuthMock.mockReturnValue({ user: { role: 'manager', id: 9 }, hasFullAccess: true, isHead: false });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: detail({
+        viewStatus: 'seen',
+        receipts: [{ userId: 11, userName: 'مندوب الجهة', seenAt: '2026-08-02T10:00:00Z' }],
+      }),
+    });
+    renderDetail();
+
+    expect(await screen.findByText('مشاهَدات موثقة (1)')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'تمت المشاهدة' })).not.toBeInTheDocument();
+  });
+
+  it('لا تُشتق صلاحية التوثيق من صلاحية الرد: المستلم بلا حق خادم لا يرى زر المشاهدة', async () => {
+    useAuthMock.mockReturnValue({ user: { role: 'entitymanager', id: 11 }, hasFullAccess: false, isHead: false });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: detail({ canMarkSeen: false, canReply: true }) });
+    renderDetail();
+
+    expect(await screen.findByRole('button', { name: 'الرد على المراسلة' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'تمت المشاهدة' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/أكّدتَ مشاهدتها/)).not.toBeInTheDocument();
+  });
+
+  it('تُعلن حالة الاطلاع لقارئ الشاشة من منطقة حية في صفحة التفاصيل', async () => {
+    useAuthMock.mockReturnValue({ user: { role: 'entitymanager', id: 11 }, hasFullAccess: false, isHead: false });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: detail({ canMarkSeen: true }) });
+    renderDetail();
+
+    const status = await screen.findByRole('status');
+    expect(within(status).getByText('بانتظار المشاهدة')).toBeInTheDocument();
   });
 });

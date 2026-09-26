@@ -35,6 +35,10 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
             ArgumentException => StatusCodes.Status400BadRequest,
             KeyNotFoundException => StatusCodes.Status404NotFound,
             DocumentConflictException => StatusCodes.Status409Conflict,
+            // الرفض الصريح وصولًا (لا خطأ خادم): أي `UnauthorizedAccessException`
+            // يفلت من المتحكمات (وسائط المصادقة/الحماية) يُردّ 403 لا 500 —
+            // المتحكمات نفسها تحوّله إلى `Forbid()` قبل وصوله إلى هنا.
+            UnauthorizedAccessException => StatusCodes.Status403Forbidden,
             _ => StatusCodes.Status500InternalServerError,
         };
 
@@ -51,7 +55,8 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
 
         var message = exception switch
         {
-            ArgumentException or KeyNotFoundException or DocumentConflictException => exception.Message,
+            ArgumentException or KeyNotFoundException or DocumentConflictException
+                or UnauthorizedAccessException => exception.Message,
             DbUpdateException ex when _environment.IsDevelopment() => DescribeDbUpdateException(ex),
             DbUpdateException => "فشل حفظ التغييرات في قاعدة البيانات",
             _ when _environment.IsDevelopment() => exception.Message,

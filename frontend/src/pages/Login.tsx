@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../auth/useAuth';
+import { getHomeForRole } from '../auth/roleHome';
 import type { LoginBranchSelectionResponse, LoginResponse } from '../types';
 import nationalEmblem from '../assets/national.png';
 import syrianFlag from '../assets/flag.jpg';
@@ -47,7 +48,8 @@ export default function Login() {
           result.branches.length === 1 ? String(result.branches[0].branchId ?? 0) : '',
         );
       } else {
-        navigate('/');
+        // الهبوط حسب الدور مباشرة: المندوب إلى بوابته دون المرور بلوحة لا يملكها.
+        navigate(getHomeForRole(result.user.role));
       }
     } catch (err) {
       const message = axios.isAxiosError(err)

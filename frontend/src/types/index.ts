@@ -1190,6 +1190,9 @@ export type CorrespondenceMessageKind = 'letter' | 'addendum' | 'reply';
 
 export type CorrespondenceImportance = 'normal' | 'important' | 'urgent';
 
+/** حالة اطلاع الطرف المستلم كما يقرّرها الخادم — لا تُشتقّ في الواجهة. */
+export type CorrespondenceViewStatus = 'seen' | 'pending';
+
 /** سياق الملف المرتبط بصيغة العرض: مراسلة بملف (الاسم الثلاثي) رقم.. نوع.. لعام.. دائرة تنفيذ.. */
 export interface CorrespondenceFileContext {
   executedName: string;
@@ -1230,11 +1233,13 @@ export interface CorrespondenceListItemDto {
   targetName: string;
   snippet: string;
   lastKind: CorrespondenceMessageKind;
-  seenByMe: boolean;
-  /** عاجلة ولم يؤكد القارئ الحالي مشاهدتها — وقود الجرس. */
-  isUrgentUnseen: boolean;
+  /** حالة اطلاع الطرف المستلم: 'seen' أو 'pending'. */
+  viewStatus: CorrespondenceViewStatus;
+  /** هل لهذا القارئ حق التوثيق؟ (المستلم وحده). */
+  canMarkSeen: boolean;
+  /** هل لهذا القارئ حق الرد؟ (المستلم وحده — من الخادم). */
+  canReply: boolean;
   messagesCount: number;
-  receiptsCount: number;
   /** اسم فرع الإدارة — يُعرض للمدير/المشرف فقط. */
   administrativeBranchName: string | null;
   governorate: string;
@@ -1258,9 +1263,14 @@ export interface CorrespondenceDto {
   targetUserId: number;
   targetName: string;
   targetRole: string;
-  /** هل أكّد القارئ الحالي مشاهدته؟ */
-  seenByMe: boolean;
+  /** حالة اطلاع الطرف المستلم: 'seen' أو 'pending'. */
+  viewStatus: CorrespondenceViewStatus;
+  /** هل لهذا القارئ حق التوثيق؟ (المستلم وحده — من الخادم). */
+  canMarkSeen: boolean;
+  /** هل لهذا القارئ حق الرد؟ (المستلم وحده — من الخادم). */
+  canReply: boolean;
   messages: CorrespondenceMessageDto[];
+  /** توثيق مشاهدة المستلم وحده. */
   receipts: CorrespondenceReceiptDto[];
   createdAt: string;
 }

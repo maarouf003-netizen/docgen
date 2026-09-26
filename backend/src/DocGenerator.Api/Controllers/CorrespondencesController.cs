@@ -203,10 +203,15 @@ public class CorrespondencesController : ControllerBase
         }
     }
 
-    /// <summary>تأكيد المشاهدة الصريح — زر «تمت المشاهدة» لأي مطّلع مخوّل.</summary>
+    /// <summary>تأكيد المشاهدة الصريح — الطرف المستلم وحده (يفرضه الخادم بـ403 لغيره).</summary>
     [HttpPost("{id:int}/mark-seen")]
     public async Task<IActionResult> MarkSeen(int id, CancellationToken ct)
     {
+        // بوابة الدور الصريحة نفسها في كل مسارات الكتابة: الخدمة تفرض المستلم،
+        // وهذه البوابة تمنع أي دور غير كاتب من المحاولة أصلًا (دفاع معمّق).
+        if (!RolePermissions.CanCreateCorrespondences(Role) || Role == UserRole.EntityManager)
+            return Forbid();
+
         try
         {
             var receipt = await _letters.MarkSeenAsync(id, UserId, ActorName, Role, BranchId, ct);

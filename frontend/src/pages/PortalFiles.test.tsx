@@ -97,12 +97,13 @@ describe('PortalFiles', () => {
     expect(screen.getAllByText(/دائرة التنفيذ المختصة/).length).toBe(1);
   });
 
-  it('لا يعرض أي زر تعديل — البوابة قرائية (د10)', async () => {
+  it('لا يعرض أي زر تعديل — البوابة اطلاع قانونيات العامة (د10)', async () => {
     render(<MemoryRouter><PortalFiles /></MemoryRouter>);
 
     await screen.findByText('أحمد خالد الخطيب');
     expect(screen.queryByRole('button', { name: /تعديل/ })).not.toBeInTheDocument();
-    expect(screen.getByText(/بوابة اطلاع قرائية/)).toBeInTheDocument();
+    expect(screen.getByText(/بوابة اطلاع قانونيات الجهات العامة/)).toBeInTheDocument();
+    expect(screen.getByText(/الاستثناء الوحيد: مراسلاتك كطرف/)).toBeInTheDocument();
   });
 
   it('يعرض منتقي الفرع لمندوب الهوية ويمرره للاستعلام والتصدير', async () => {

@@ -33,6 +33,39 @@ public static class PublicEntityTypeCatalog
 }
 
 /// <summary>
+/// تسمية فرع الجهة العامة للعرض: «المحافظة/الفرع»، و«الجهة الأم» تُعرَض بلا
+/// تكرار فرعي لأنها لا فرع فعليًا. الدلالة أصلها هنا (عمود «فرع الجهة» في تصدير
+/// البوابة)، ولها تنفيذٌ واحد في الواجهة: `publicEntityBranchLabel` في
+/// `frontend/src/utils/publicEntityBranchLabel.ts`، ويصدر عنه كلٌّ من
+/// `PortalFileCard.branchShort` (بطاقة الملف) و`PortalBranchSelect.formatEntryShort`
+/// (قائمة الفرع) تفويضًا لا تنفيذًا مستقلًا — فلا تتمايز الدلالة بين الثلاثة.
+/// القاعدة نفسها (تقليم الطرفين، اعتبار الفراغ اسمًا فارغًا، وفرع بلا محافظة
+/// يُعرض وحده) مثبّتة باختبار في كل جهة من الجهات الأربع:
+/// `PublicEntityBranchCatalogTests` هنا،
+/// و`publicEntityBranchLabel.test.ts` و`PortalFileCard.test.tsx`
+/// و`PortalBranchSelect.test.tsx` في الواجهة — فتغيير الدلالة في أي جهة يُفشل
+/// اختبارات الجهات الثلاث الأخرى بدل أن تتمايز بصمت.
+/// </summary>
+public static class PublicEntityBranchCatalog
+{
+    /// <summary>اسم الفرع الافتراضي للجهة الأم (فرع بلا اسم فرعي).</summary>
+    public const string ParentBranchName = "الجهة الأم";
+
+    /// <summary>
+    /// صيغة العرض المعتمدة لفرع واحد: المحافظة وحدها للجهة الأم (أو لفرع فارغ)،
+    /// وإلا «المحافظة/الفرع»؛ وبلا محافظة يُعرض اسم الفرع وحده.
+    /// </summary>
+    public static string Label(string? governorate, string? branchName)
+    {
+        var gov = governorate?.Trim() ?? string.Empty;
+        var branch = branchName?.Trim() ?? string.Empty;
+        if (branch.Length == 0 || string.Equals(branch, ParentBranchName, StringComparison.Ordinal))
+            return gov;
+        return gov.Length == 0 ? branch : $"{gov}/{branch}";
+    }
+}
+
+/// <summary>
 /// حالة قيد الجهة في السجل: Final (معتمدة وتظهر لبوات المندوبين) /
 /// Pending (بانتظار اعتماد رئيس القسم — لا تظهر للمندوبين).
 /// </summary>

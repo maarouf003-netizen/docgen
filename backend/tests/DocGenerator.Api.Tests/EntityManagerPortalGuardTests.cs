@@ -6,8 +6,8 @@ using Microsoft.AspNetCore.Http;
 namespace DocGenerator.Api.Tests;
 
 /// <summary>
-/// العزل البنيوي لدور مندوب الجهة: يُمنع من كل مسارات API عدا بوابته القرائية
-/// و«من أنا/تسجيل الخروج» — بغضّ النظر عن أي متحكم قائم أو لاحق.
+/// العزل البنيوي لدور مندوب الجهة: يُمنع من كل مسارات API عدا مسارات بوابته
+/// المسموحة و«من أنا/تسجيل الخروج» — بغضّ النظر عن أي متحكم قائم أو لاحق.
 /// </summary>
 public class EntityManagerPortalGuardTests
 {
@@ -55,6 +55,9 @@ public class EntityManagerPortalGuardTests
     [InlineData("/api/portal/correspondence")]
     [InlineData("/api/portal/correspondence/targets")]
     [InlineData("/api/portal/correspondence/1")]
+    [InlineData("/api/portal/correspondence/1/replies")]
+    [InlineData("/api/portal/correspondence/1/addenda")]
+    [InlineData("/api/portal/correspondence/1/mark-seen")]
     [InlineData("/api/portal/my-scope")]
     [InlineData("/api/auth/me")]
     [InlineData("/api/meta/current-year")]

@@ -10,7 +10,7 @@ namespace DocGenerator.Application.Services;
 
 public interface IPortalService
 {
-    /// <summary>نطاق المندوب (هوية/قيد) — null إن لم يُربط بنطاق بعد.</summary>
+    /// <summary>نطاق المندوب (هوية/فرع) — null إن لم يُربط بنطاق بعد.</summary>
     Task<PortalScopeDto?> GetMyScopeAsync(int userId, CancellationToken ct = default);
 
     Task<PagedResult<PortalFileListItemDto>> ListFilesAsync(
@@ -49,7 +49,7 @@ public interface IPortalService
 
 /// <summary>
 /// خدمة بوابة مندوب الجهة العامة (المرحلة 3): رؤية قرائية بحسب الربط — هوية أم
-/// تشمل كل قيودها النهائية، أو قيد بعينه (د1/د4)؛ قيود الانتظار لا تظهر إطلاقًا.
+/// تشمل كل فروعها النهائية، أو فرع بعينه (د1/د4)؛ فروع الانتظار لا تظهر إطلاقًا.
 /// التصدير يمرّ بسقف الصفوف ويُدوَّن، وأعمدة المحامين الداخلية مخفية دائمًا عن البوابة.
 /// </summary>
 public sealed class PortalService : IPortalService
@@ -115,7 +115,7 @@ public sealed class PortalService : IPortalService
     }
 
     /// <summary>
-    /// معرّفات القيود الفعّالة: كامل النطاق افتراضيًا، أو القيد المختار وحده بعد التحقق
+    /// معرّفات الفروع الفعّالة: كامل النطاق افتراضيًا، أو الفرع المختار وحده بعد التحقق
     /// أنه ضمن نطاق المندوب (تقاطع لا توسيع — خارج النطاق يُرفض).
     /// </summary>
     private static List<int> ResolveEffectiveIds(PortalScopeResolution? scope, int? entryId)
@@ -124,7 +124,7 @@ public sealed class PortalService : IPortalService
         if (!entryId.HasValue)
             return ids;
         if (!ids.Contains(entryId.Value))
-            throw new UnauthorizedAccessException("القيد المختار خارج نطاقك");
+            throw new UnauthorizedAccessException("الفرع المختار خارج نطاقك");
         return new List<int> { entryId.Value };
     }
 
@@ -193,8 +193,11 @@ public sealed class PortalService : IPortalService
         response.ForcedExecutionDate = null;
         response.GeneralEntitySideLabel = null;
         response.DeletedAt = null;
-        // `BranchName` لا يُعرض في البوابة (`FileDataCard` يُستدعى فيها
-        // بـ `showBranch={false}` ولا يقرؤه أي مكوّن بوابة آخر) — فيُحجب.
+        // `BranchName` هو فرع الإدارة الداخلي (نص حر يكتبه المحامي) ولا تُعرض منه
+        // واجهة البوابة ولا مصنّف تصديرها — فيُحجب في المسارين. أما ما تعرضه البوابة
+        // من فروع فهو فروع *نطاق المندوب* (`MatchedEntries` في
+        // `PortalScopeEntryDto`)، وهي بيانات نطاقات لا حقول هذا الملف — فلا يمسّها
+        // هذا الحجب أصلًا. (`FileDataCard` يُستدعى هنا بـ `showBranch={false}`.)
         response.BranchName = null;
         response.ExecutionActions = response.ExecutionActions
             .Where(a => a.Type == "action")
@@ -288,26 +291,53 @@ public sealed class PortalService : IPortalService
             throw new ArgumentException($"عدد النتائج يتجاوز الحد الأقصى للتصدير ({_maxExportRows:N0}) — طبّق فلترًا أضيق");
 
         var docs = await _portal.ExportScopedAsync(entryIds, query, status, ct);
-        var responses = docs
-            .Select(d => DocumentResponse.FromEntity(d, ServerClock.CurrentYear(_clock, _timeZone)))
-            .ToList();
 
-        // ف12 + سياسة الحجب الواحدة (A): التنقية نفسها المستدعاة في التفاصيل —
-        // عمود «الإجراءات والملاحظات» يُقرأ من أول إجراء بترتيب CreatedAt تنازلي،
-        // وإن لم يُقصر على النوع action قد تتصدره ملاحظة داخلية؛ وبكسر تعادل `Id`
-        // نفسه المعتمد في بطاقة التفاصيل فيتطابقا حتميًا حتى عند تساوي اللحظة.
-        // (عمود Excel يقرأ `Text` وحده، فتجريد التذكير الإضافي هنا بلا أثر مرئي.)
-        foreach (var response in responses)
-            ScrubForPortal(response);
+        // عمود «فرع الجهة» مصدره النطاق المضيَّق إلى معرّفات القواعد التي رُشِّحت
+        // بها الصفوف فعلًا (`entryIds`)، لا النطاق الكامل: وإلا عرض عمود الفروع
+        // فروعًا لم تدخل الصفوف أصلًا فنناقض معلومة التصدير نفسها. (والقائمة تُبقي
+        // نطاقها كاملًا لعرضه مختصرًا في البطاقة — قرار يخصّ العرض لا التصدير.)
+        var scopedForRows = NarrowScope(scope, entryIds);
+
+        var rows = docs
+            .Select(d =>
+            {
+                var response = DocumentResponse.FromEntity(d, ServerClock.CurrentYear(_clock, _timeZone));
+                // طبقتان لا واحدة: التحكم الأساسي في التصدير هو **قائمة الأعمدة
+                // المغلقة** (`ExcelExportService.PortalColumns` + `BuildPortalValues`)،
+                // فحقل داخلي لا يظهر أصلًا وإن لم تحجبْه التنقية؛ والتنقية هنا طبقة
+                // دفاع ثانية تُبطل أي حقل محجوب قبل أن يقرأه عمودٌ مستقبلي بالخطأ،
+                // وهي اليوم ما يجعل عمود «الإجراءات والملاحظات» علنيًّا خالصًا:
+                // أول `ExecutionActions` بعدها هو أحدث إجراء من النوع `action` حتمًا.
+                ScrubForPortal(response);
+                return new PortalWorkbookRow(response, BuildMatchedEntries(d, scopedForRows));
+            })
+            .ToList();
 
         await _audit.LogAsync(viewerName, "export_entity_portal_excel",
             details: entryId.HasValue
-                ? $"صدّر {responses.Count} ملفًا من بوابة الجهة إلى Excel (فرع {entryId.Value})"
-                : $"صدّر {responses.Count} ملفًا من بوابة الجهة إلى Excel", ct: ct);
+                ? $"صدّر {rows.Count} ملفًا من بوابة الجهة إلى Excel (فرع {entryId.Value})"
+                : $"صدّر {rows.Count} ملفًا من بوابة الجهة إلى Excel", ct: ct);
 
-        // أعمدة المحامين الداخلية (فرع الإدارة/المحامي المختص/العدادات) مخفية دائمًا عن البوابة.
-        return _excel.BuildDocumentsWorkbook(
-            responses, includeAdministrativeBranch: false, includeAssignedLawyer: false, includeViewCount: false);
+        // مصنّف البوابة عقد منفصل عن مصنّف المدير: «ملحق العقد» و«الإجراءات
+        // والملاحظات» غير موجودين فيه بحكم التصميم، و«فرع الجهة» فروع نطاق المندوب
+        // لا فرع الإدارة الداخلي.
+        return _excel.BuildPortalWorkbook(rows);
+    }
+
+    /// <summary>
+    /// نسخة من النطاق مقيَّدة بمعرّفات معيّنة (القيود الفعّالة بعد مُرشِّح التصدير
+    /// أو القائمة) — تُغذّي `BuildMatchedEntries` فلا يعرض أي مسار فروعًا خارج
+    /// ما طلبه الفلتر. النطاق الفارغ أو غير المربوط يُبقي الدالة بلا أثر.
+    /// </summary>
+    private static PortalScopeResolution? NarrowScope(
+        PortalScopeResolution? scope, IReadOnlyCollection<int> entryIds)
+    {
+        if (scope is null)
+            return null;
+        return scope with
+        {
+            Entries = scope.Entries.Where(e => entryIds.Contains(e.Id)).ToList(),
+        };
     }
 
     private async Task<bool> IsInScopeAsync(int userId, int documentId, CancellationToken ct)
@@ -385,8 +415,10 @@ public sealed class PortalService : IPortalService
                 e.BranchName,
                 perEntryCounts.GetValueOrDefault(e.Id)))
             .OrderByDescending(e => e.Files)
-            .ThenBy(e => e.Governorate, StringComparer.Ordinal)
-            .ThenBy(e => e.BranchName, StringComparer.Ordinal)
+            // كسر التعادل بالترتيب العربي الوحيد نفسه — لا `Ordinal` منفصلًا
+            // فيتباين سطر الإحصاء عن قائمة الفرع للنطاق نفسه.
+            .ThenBy(e => e.Governorate, PortalScopeOrdering.ArabicDisplay)
+            .ThenBy(e => e.BranchName, PortalScopeOrdering.ArabicDisplay)
             .ToList();
 
         // «أعلى العملات» بلا مستهلك في العرض حاليًا — يُبقى في العقد لاستقراره
@@ -556,8 +588,15 @@ public sealed class PortalService : IPortalService
     }
 
     /// <summary>
-    /// قيود النطاق المطابقة للملف (تقاطع RegistryIds الثلاثة مع معرّفات النطاق) —
-    /// تُغذي السطر الثاني «فرع الجهة العامة» (مثال: المصرف التجاري — اللاذقية/فرع 1).
+    /// فروع النطاق المطابقة للملف (تقاطع RegistryIds الثلاثة مع معرّفات النطاق) —
+    /// تُغذّي السطر الثاني «فرع الجهة العامة» في بطاقة الملف (مثال: المصرف التجاري
+    /// — اللاذقية/فرع 1)، وعمود «فرع الجهة» في مصنّف تصدير البوابة.
+    ///
+    /// مصدران يتشاركان هذه الدالة، فقواعد إلزامية على أي مراجعة:
+    /// (1) لا تُقرأ `Registry.*` إطلاقًا (لا `ThenInclude` في `ExportScopedAsync`
+    /// ولا تحميل كسول) — المرجع `RegistryId` والمدى `scope.Entries` وحدهما؛
+    /// (2) لا يخرج عن نطاق المندوب أبدًا، فالبوابة عاجزة بنيويًا عن عرض فرع جهة
+    /// أخرى (فرع إداري أو فرع طرف ثالث) مهما بلغ عدد أطراف الملف.
     /// </summary>
     private static IReadOnlyList<PortalScopeEntryDto> BuildMatchedEntries(Document d, PortalScopeResolution? scope)
     {
@@ -576,8 +615,10 @@ public sealed class PortalService : IPortalService
                 matchedIds.Add(a.RegistryId.Value);
         return matchedIds
             .Select(id => byId[id])
-            .OrderBy(e => e.Governorate, StringComparer.Ordinal)
-            .ThenBy(e => e.BranchName, StringComparer.Ordinal)
+            // الترتيب العربي الوحيد نفسه (`PortalScopeOrdering`): خلية التصدير
+            // وبطاقة الملف وقائمة الفرع ثلاثتها بترتيب واحد لا ثلاثة.
+            .OrderBy(e => e.Governorate, PortalScopeOrdering.ArabicDisplay)
+            .ThenBy(e => e.BranchName, PortalScopeOrdering.ArabicDisplay)
             .Select(e => new PortalScopeEntryDto(e.Id, e.Governorate, e.BranchName, e.IsActive))
             .ToList();
     }

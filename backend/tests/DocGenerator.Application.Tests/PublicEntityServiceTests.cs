@@ -1731,6 +1731,37 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal((byte)'K', bytes[1]);
     }
 
+    [Fact]
+    public async Task ChangeLog_Export_WritesSheetNameHeadersRowsAndAutoFilter()
+    {
+        // حارس محتوى حقيقي لمسار التصدير بعد مشاركته محرّك `WriteWorkbook` مع
+        // تصدير البوابة: «إنه ملف zip» لا يكشف كسرًا في اسم الورقة ولا العناوين ولا
+        // صفوف البيانات ولا مدى الفلتر — وكلها عقدٌ يلتزم به هذا المسار.
+        var source = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الحارس", "ministry", "حمص", "فرع حمص"), ManagerActor());
+        var target = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الهدف", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        // نقلٌ لا إنشاء: الحدث المسجَّل في سجل التغييرات هو النقل — الإنشاء وحده
+        // لا يُسجّل صفًّا، فيبقى المصنّف بلا بيانات إن لم يُنفَّذ نقل.
+        await _service.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
+
+        var bytes = await _service.ExportChangeEventsAsync(
+            new EntityChangeEventQuery(null, null, null, null, null, 1, 20), ManagerActor());
+
+        var sheetXml = XlsxReader.FirstSheetXml(bytes);
+        Assert.Equal("سجل التغييرات", XlsxReader.FirstSheetName(bytes));
+        Assert.Equal(
+            new[] { "التاريخ", "الفاعل", "النوع", "الجهة", "المحافظة", "المرسوم", "التفاصيل" },
+            XlsxReader.RowTexts(sheetXml, 0));
+
+        // صفّ بيانات واحد على الأقل يتضمّن اسم الجهة والمحافظة (لا صفوفًا فارغة).
+        var dataRow = XlsxReader.RowTexts(sheetXml, 1);
+        Assert.Equal(7, dataRow.Count);
+        Assert.Contains("جهة الحارس", dataRow);
+        Assert.Contains("حمص", dataRow);
+
+        // مدى الفلتر مشتقّ من عدد العناوين(=G) وعدد الصفوف المحققة(+1 للعناوين).
+        Assert.Equal($"A1:G{1 + XlsxReader.DataRowCount(sheetXml)}", XlsxReader.AutoFilterReference(sheetXml));
+    }
+
     // ── قائمة المجموعات وتوحيد التسمية N←1 (المدير/المشرف) ──
 
     [Fact]

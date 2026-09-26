@@ -132,7 +132,8 @@ public interface IPublicEntityService
 /// </summary>
 public sealed class PublicEntityService : IPublicEntityService
 {
-    private const string DefaultBranchName = "الجهة الأم";
+    /// <summary>الاسم الافتراضي لفرع قيد الجهة الأم — من الكتالوج لا من حرفي مكرر.</summary>
+    private const string DefaultBranchName = PublicEntityBranchCatalog.ParentBranchName;
 
     private readonly IPublicEntityRepository _entities;
     private readonly IRepository<Branch> _branches;

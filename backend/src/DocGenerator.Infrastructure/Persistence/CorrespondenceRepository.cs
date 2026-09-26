@@ -192,7 +192,13 @@ public class CorrespondenceRepository : Repository<Correspondence>, ICorresponde
                         AuthorName = m.AuthorName,
                         AuthorRole = m.AuthorRole,
                     }).ToList(),
+                // التوثيق للمستلم وحده (L9): تُسقَط صفوف غير المستلم في SQL نفسه،
+                // فمسارات القائمة (`ToListItem`) لا تطابق أصلًا إلا صف المستلم —
+                // الترشيح هنا محايد سلوكيًا ويُبقي الحمولة ≤ صف واحد لكل مراسلة.
+                // (مسار الكاتب `GetTrackedWithDetailsAsync` يبقى كاملًا عمدًا:
+                // `MarkSeenAsync` يفحص التوثيق القائم ويضيف عليه.)
                 Receipts = c.Receipts
+                    .Where(r => r.UserId == c.TargetUserId)
                     .Select(r => new CorrespondenceReceipt
                     {
                         Id = r.Id,

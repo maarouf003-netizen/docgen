@@ -4,7 +4,6 @@ using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Services;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Domain.Entities;
-using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Xunit.Abstractions;
 

@@ -17,6 +17,12 @@ public class Correspondence
     /// <summary>مراسلة عاجلة — تُظهر جرسًا للطرف الذي لم يؤكد مشاهدتها.</summary>
     public const string ImportanceUrgent = "urgent";
 
+    /// <summary>حالة اطلاع: الطرف المستلم أكّد مشاهدته (توثيق واحد له لا يتجدّد).</summary>
+    public const string ViewStatusSeen = "seen";
+
+    /// <summary>حالة اطلاع: لم يؤكّد الطرف المستلم مشاهدته بعد.</summary>
+    public const string ViewStatusPending = "pending";
+
     public int Id { get; set; }
 
     /// <summary>

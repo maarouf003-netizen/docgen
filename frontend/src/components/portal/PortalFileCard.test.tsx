@@ -75,6 +75,16 @@ describe('PortalFileCard', () => {
     expect(screen.getByText(/المصرف التجاري السوري · دمشق$/)).toBeInTheDocument();
   });
 
+  it('يقرلم اسمي المحافظة والفرع فلا تظهر مسافات طرفية', () => {
+    renderCard({ matchedEntries: [{ id: 11, governorate: ' دمشق ', branchName: ' فرع 1 ', isActive: true }] });
+    expect(screen.getByText(/· دمشق\/فرع 1$/)).toBeInTheDocument();
+  });
+
+  it('يعرض اسم الفرع وحده حين لا محافظة (بلا «/» معلّقة)', () => {
+    renderCard({ matchedEntries: [{ id: 11, governorate: '', branchName: 'فرع 1', isActive: true }] });
+    expect(screen.getByText(/· فرع 1$/)).toBeInTheDocument();
+  });
+
   it('الشارة من displayStatus لا من الخام', () => {
     renderCard({ execStatus: 'منفذ جبريا', displayStatus: 'منفذ' });
     const badge = screen.getByText('منفذ');

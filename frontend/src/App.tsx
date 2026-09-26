@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthContext';
 import { useAuth } from './auth/useAuth';
+import { getHomeForRole } from './auth/roleHome';
 import CurrentYearProvider from './components/CurrentYearProvider';
 import ErrorBoundary from './components/ErrorBoundary';
 import Layout from './components/Layout';
@@ -62,8 +63,31 @@ function RequireRole({
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-500">جارِ التحميل...</div>;
   if (!user || !allowed(user.role, hasFullAccess, isHead))
-    return <Navigate to="/" replace state={{ from: location }} />;
+    return <Navigate to={getHomeForRole(user?.role)} replace state={{ from: location }} />;
   return <>{children}</>;
+}
+
+/**
+ * المسارات التشغيلية الداخلية: مسموحة للأدوار الداخلية صراحةً (قائمة
+ * سماح مغلقة الفشل)، ومحجوبة عن مندوب الجهة الذي بوابته القرائية فقط —
+ * الرفض يرتد به إلى وطنه عبر `getHomeForRole` (بوابته لا اللوحة).
+ * `/change-password` يبقى خارجها (حق شخصي لكل الأدوار بما فيها المندوب).
+ */
+const allowInternal = (role: string | undefined) =>
+  role === 'lawyer' || role === 'head' || role === 'manager' || role === 'admin';
+
+/**
+ * مسار الجذر حسب الدور: مندوب الجهة لا يملك لوحة تحكم إطلاقًا فيُحوَّل
+ * إلى بوابته القرائية قبل تحميل `Dashboard` (فلا تنطلق استعلاماتها
+ * المرفوضة بـ403 ولا تظهر شاشتها) — بقية الأدوار ترى اللوحة.
+ * يغطي هذا الزيارة المباشرة لـ`/` وارتدادات `RequireRole` معًا.
+ */
+function RootRoute() {
+  const { user, loading } = useAuth();
+  if (loading) return <PageLoader />;
+  const home = getHomeForRole(user?.role);
+  if (home !== '/') return <Navigate to={home} replace />;
+  return <Dashboard />;
 }
 
 export default function App() {
@@ -81,17 +105,35 @@ export default function App() {
               </RequireAuth>
             }
           >
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/documents" element={<DocumentsList />} />
-            <Route path="/reviews" element={<ReviewsList />} />
-            <Route path="/reviews/:id" element={<ReviewDetail />} />
+            <Route path="/" element={<RootRoute />} />
+            <Route
+              path="/documents"
+              element={
+                <RequireRole allowed={allowInternal}>
+                  <DocumentsList />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/reviews"
+              element={
+                <RequireRole allowed={allowInternal}>
+                  <ReviewsList />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/reviews/:id"
+              element={
+                <RequireRole allowed={allowInternal}>
+                  <ReviewDetail />
+                </RequireRole>
+              }
+            />
             <Route
               path="/correspondence"
               element={
-                <RequireRole
-                  allowed={(role) =>
-                    role === 'lawyer' || role === 'head' || role === 'manager' || role === 'admin'}
-                >
+                <RequireRole allowed={allowInternal}>
                   <CorrespondencesList />
                 </RequireRole>
               }
@@ -99,20 +141,59 @@ export default function App() {
             <Route
               path="/correspondence/:id"
               element={
-                <RequireRole
-                  allowed={(role) =>
-                    role === 'lawyer' || role === 'head' || role === 'manager' || role === 'admin'}
-                >
+                <RequireRole allowed={allowInternal}>
                   <CorrespondenceDetail />
                 </RequireRole>
               }
             />
-          <Route path="/appeals" element={<AppealsList />} />
-          <Route path="/appeals/:id" element={<AppealDetail />} />
-            <Route path="/documents/deleted" element={<DeletedDocuments />} />
-            <Route path="/documents/struck-off" element={<StruckOffDocuments />} />
-            <Route path="/documents/executed" element={<ExecutedDocuments />} />
-            <Route path="/documents/referred-to-start" element={<ReferredToStartDocuments />} />
+          <Route
+            path="/appeals"
+            element={
+              <RequireRole allowed={allowInternal}>
+                <AppealsList />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="/appeals/:id"
+            element={
+              <RequireRole allowed={allowInternal}>
+                <AppealDetail />
+              </RequireRole>
+            }
+          />
+            <Route
+              path="/documents/deleted"
+              element={
+                <RequireRole allowed={allowInternal}>
+                  <DeletedDocuments />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/documents/struck-off"
+              element={
+                <RequireRole allowed={allowInternal}>
+                  <StruckOffDocuments />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/documents/executed"
+              element={
+                <RequireRole allowed={allowInternal}>
+                  <ExecutedDocuments />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/documents/referred-to-start"
+              element={
+                <RequireRole allowed={allowInternal}>
+                  <ReferredToStartDocuments />
+                </RequireRole>
+              }
+            />
             <Route
               path="/documents/rotate"
               element={
@@ -121,9 +202,30 @@ export default function App() {
                 </RequireRole>
               }
             />
-            <Route path="/documents/new" element={<DocumentForm />} />
-            <Route path="/documents/:id" element={<DocumentView />} />
-            <Route path="/documents/:id/edit" element={<DocumentForm />} />
+            <Route
+              path="/documents/new"
+              element={
+                <RequireRole allowed={allowInternal}>
+                  <DocumentForm />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/documents/:id"
+              element={
+                <RequireRole allowed={allowInternal}>
+                  <DocumentView />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/documents/:id/edit"
+              element={
+                <RequireRole allowed={allowInternal}>
+                  <DocumentForm />
+                </RequireRole>
+              }
+            />
             <Route
               path="/branch-lawyers"
               element={

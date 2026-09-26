@@ -5,8 +5,8 @@ using Microsoft.AspNetCore.Http;
 namespace DocGenerator.Api.Middleware;
 
 /// <summary>
-/// عزل بنيوي لدور مندوب الجهة (د10): أي طلب API من هذا الدور خارج مسارات
-/// البوابة القرائية و«من أنا/خروج» يُرفض بـ403 فورًا — لا يعتمد على تذكّر
+/// عزل بنيوي لدور مندوب الجهة: أي طلب API من هذا الدور خارج مسارات
+/// البوابة المسموحة و«من أنا/خروج» يُرفض بـ403 فورًا — لا يعتمد على تذكّر
 /// كل متحكم قائم أو لاحق بفحص الدور.
 /// </summary>
 public sealed class EntityManagerPortalGuard
@@ -34,7 +34,7 @@ public sealed class EntityManagerPortalGuard
             if (!allowed)
             {
                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await context.Response.WriteAsJsonAsync(new { message = "بوابة الجهة قراءة فقط (تصدير Excel متاح)" });
+                await context.Response.WriteAsJsonAsync(new { message = "غير مسموح خارج مسارات بوابة الجهة" });
                 return;
             }
         }

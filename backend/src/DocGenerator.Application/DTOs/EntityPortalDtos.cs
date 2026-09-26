@@ -53,6 +53,16 @@ public record PortalFileListItemDto(
     /// </summary>
     string? DisplayStatus = null);
 
+/// <summary>
+/// سطر تصدير بوابة المندوب: استجابة الملف بعد `ScrubForPortal` (وكل حقوله
+/// الداخلية محجوبة) مع فروع نطاق المندوب المطابقة لهذا الملف.
+/// نقل الفروع صراحةً يجعل المصنّف لا يقرأ أي حقل داخلي إطلاقًا: عمود
+/// «فرع الجهة» مصدره `MatchedEntries` وحدها.
+/// </summary>
+public sealed record PortalWorkbookRow(
+    DocumentResponse Document,
+    IReadOnlyList<PortalScopeEntryDto> ScopedEntries);
+
 /// <summary>استئناف قرائي على بطاقة استئنافات البوابة.</summary>
 public record PortalAppealDto(
     int Id,
@@ -124,7 +134,7 @@ public record PortalStatsDto(
     int ClosedAppeals,
     /// <summary>آخر 12 شهرًا متصلة حتى الشهر الحالي (UTC) شاملة الأشهر الصفرية.</summary>
     IReadOnlyList<PortalMonthlyCountDto> Monthly,
-    /// <summary>توزيع الارتباط على قيود النطاق؛ قد يُحتسب الملف تحت أكثر من قيد.</summary>
+    /// <summary>توزع الملفات على فروع النطاق؛ قد يُحتسب الملف تحت أكثر من فرع.</summary>
     IReadOnlyList<PortalEntryStatDto> PerEntry,
     /// <summary>أعلى العملات بعدد الملفات مع مجموع مبالغها ضمن العملة نفسها (مهمل عرضيًا — يُخفى من الواجهة).</summary>
     IReadOnlyList<PortalCurrencyStatDto> TopCurrencies,

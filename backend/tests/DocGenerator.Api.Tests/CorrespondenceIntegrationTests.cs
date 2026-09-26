@@ -129,6 +129,74 @@ public sealed class CorrespondenceIntegrationTests : IAsyncLifetime
         return JsonDocument.Parse(text).RootElement;
     }
 
+    /// <summary>
+    /// بيان العقد المشترك (`frontend/src/test/contracts/correspondence-contracts.json`):
+    /// مصدر الحقيقة الوحيد لأسماء حقول السلك. يُقرأ من الشجرة لا من مجلد البناء،
+    /// فيعمل تحت `dotnet test` من أي دليل عمل.
+    /// </summary>
+    private static JsonElement ReadSharedContract(string section)
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(
+                dir.FullName, "frontend", "src", "test", "contracts",
+                "correspondence-contracts.json");
+            if (File.Exists(candidate))
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(candidate));
+                return doc.RootElement.GetProperty(section).Clone();
+            }
+            dir = dir.Parent;
+        }
+        throw new FileNotFoundException("بيان العقد المشترك غير موجود في الشجرة");
+    }
+
+    private static List<string> SortedKeys(JsonElement obj)
+        => obj.EnumerateObject().Select(p => p.Name).OrderBy(n => n).ToList();
+
+    [Fact]
+    public async Task WireContract_DetailKeysMatchSharedManifest()
+    {
+        // أي حقل جديد/محذوف/مُعاد تسميته في `CorrespondenceDto` يُفشل هنا حتى
+        // تُحدَّث الواجهة والبيان معًا — لا تباين C#↔TS بصمت.
+        var create = await Lawyer().PostAsync("/api/correspondence", Json(new
+        {
+            documentId = (int?)null,
+            targetUserId = _delegateId,
+            importance = "normal",
+            bodyHtml = "<p>عقد السلك</p>",
+        }));
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+
+        var body = await ReadJsonAsync(create);
+        var expected = ReadSharedContract("detail")
+            .EnumerateArray().Select(e => e.GetString()!).OrderBy(n => n).ToList();
+        Assert.Equal(expected, SortedKeys(body));
+    }
+
+    [Fact]
+    public async Task WireContract_ListItemKeysMatchSharedManifest()
+    {
+        var create = await Lawyer().PostAsync("/api/correspondence", Json(new
+        {
+            documentId = (int?)null,
+            targetUserId = _delegateId,
+            importance = "normal",
+            bodyHtml = "<p>عقد سلك القائمة</p>",
+        }));
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        var id = (await ReadJsonAsync(create)).GetProperty("id").GetInt32();
+
+        var list = await ReadJsonAsync(
+            await Lawyer().GetAsync("/api/correspondence?page=1&perPage=20"));
+        var row = list.GetProperty("items").EnumerateArray()
+            .First(e => e.GetProperty("id").GetInt32() == id);
+        var expected = ReadSharedContract("list")
+            .EnumerateArray().Select(e => e.GetString()!).OrderBy(n => n).ToList();
+        Assert.Equal(expected, SortedKeys(row));
+    }
+
     [Fact]
     public async Task Lawyer_CreatesUrgentGeneralCorrespondence_ReturnsCreatedWithNumber()
     {
@@ -147,6 +215,8 @@ public sealed class CorrespondenceIntegrationTests : IAsyncLifetime
         Assert.Equal("urgent", body.GetProperty("importance").GetString());
         Assert.Equal("دمشق", body.GetProperty("governorate").GetString());
         Assert.Equal(_delegateId, body.GetProperty("targetUserId").GetInt32());
+        Assert.False(body.GetProperty("canMarkSeen").GetBoolean());
+        Assert.False(body.GetProperty("canReply").GetBoolean());
     }
 
     [Fact]
@@ -280,6 +350,57 @@ public sealed class CorrespondenceIntegrationTests : IAsyncLifetime
         var body = await ReadJsonAsync(response);
         Assert.Equal(_documentId, body.GetProperty("documentId").GetInt32());
         Assert.Equal(_lawyerId, body.GetProperty("targetUserId").GetInt32());
+    }
+
+    [Fact]
+    public async Task MarkSeen_ForCreatorOrHead_ReturnsForbidden_AndTargetSucceeds()
+    {
+        // عقد `mark-seen` على السلك: المستلم فقط 403 لغيره، مع بقاء الحالة
+        // «بانتظار» — الحجب على مستوى نقطة النهاية لا على زرّ في الواجهة.
+        var create = await Lawyer().PostAsync("/api/correspondence", Json(new
+        {
+            documentId = (int?)null,
+            targetUserId = _delegateId,
+            importance = "urgent",
+            bodyHtml = "<p>عاجل</p>",
+        }));
+        var id = (await ReadJsonAsync(create)).GetProperty("id").GetInt32();
+
+        // حق التوثيق والرد على السلك قرار خادم لا زرّ: المنشئ والرئيس بلا حق، والمستلم وحده بحق.
+        var creatorDetail = await ReadJsonAsync(
+            await Lawyer().GetAsync($"/api/correspondence/{id}"));
+        Assert.False(creatorDetail.GetProperty("canMarkSeen").GetBoolean());
+        Assert.False(creatorDetail.GetProperty("canReply").GetBoolean());
+        var headDetail = await ReadJsonAsync(
+            await Head().GetAsync($"/api/correspondence/{id}"));
+        Assert.False(headDetail.GetProperty("canMarkSeen").GetBoolean());
+        Assert.False(headDetail.GetProperty("canReply").GetBoolean());
+
+        // المنشئ (المحامي) لا يوثّق نيابةً عن المستلم.
+        var byCreator = await Lawyer().PostAsync($"/api/correspondence/{id}/mark-seen", Json(new { }));
+        Assert.Equal(HttpStatusCode.Forbidden, byCreator.StatusCode);
+
+        // رئيس قسم المحافظة (قارئ مصرَّح) كذلك — يقرأ ولا يؤشّر.
+        var byHead = await Head().PostAsync($"/api/correspondence/{id}/mark-seen", Json(new { }));
+        Assert.Equal(HttpStatusCode.Forbidden, byHead.StatusCode);
+
+        // الحالة لم تتغيّر بِرفض غير المستلم.
+        var detailBefore = await ReadJsonAsync(
+            await Delegate().GetAsync($"/api/portal/correspondence/{id}"));
+        Assert.Equal("pending", detailBefore.GetProperty("viewStatus").GetString());
+        Assert.True(detailBefore.GetProperty("canMarkSeen").GetBoolean());
+        Assert.True(detailBefore.GetProperty("canReply").GetBoolean());
+        Assert.Equal(0, detailBefore.GetProperty("receipts").GetArrayLength());
+
+        // المستلم يوثّق بنجاح.
+        var byTarget = await Delegate().PostAsync($"/api/portal/correspondence/{id}/mark-seen", Json(new { }));
+        Assert.Equal(HttpStatusCode.OK, byTarget.StatusCode);
+
+        var detailAfter = await ReadJsonAsync(
+            await Delegate().GetAsync($"/api/portal/correspondence/{id}"));
+        Assert.Equal("seen", detailAfter.GetProperty("viewStatus").GetString());
+        Assert.True(detailAfter.GetProperty("canMarkSeen").GetBoolean());
+        Assert.Equal(1, detailAfter.GetProperty("receipts").GetArrayLength());
     }
 
     [Fact]

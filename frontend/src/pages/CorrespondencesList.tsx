@@ -10,6 +10,7 @@ import type {
 } from '../types';
 import CreateCorrespondenceModal from '../components/correspondence/CreateCorrespondenceModal';
 import CorrespondenceImportanceBadge from '../components/correspondence/CorrespondenceImportanceBadge';
+import CorrespondenceSeenBadge from '../components/correspondence/CorrespondenceSeenBadge';
 import {
   CORRESPONDENCE_IMPORTANCE_LABELS,
   correspondenceTitle,
@@ -221,12 +222,10 @@ export default function CorrespondencesList({ portal = false }: { portal?: boole
                     </time>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    {item.isUrgentUnseen && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-red-600 text-white px-2.5 py-0.5 text-[11px] font-bold whitespace-nowrap">
-                        <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" aria-hidden="true" />
-                        عاجل بلا مشاهدة
-                      </span>
-                    )}
+                    <CorrespondenceSeenBadge
+                      viewStatus={item.viewStatus}
+                      canMarkSeen={item.canMarkSeen}
+                    />
                     <CorrespondenceImportanceBadge importance={item.importance} />
                   </div>
                 </div>
@@ -238,7 +237,6 @@ export default function CorrespondencesList({ portal = false }: { portal?: boole
                   {' · '}إلى: <span className="font-medium text-gray-700">{item.targetName}</span>
                   {' · '}
                   {item.messagesCount} رسالة
-                  {item.receiptsCount > 0 && ` · ${item.receiptsCount} مشاهَدة موثقة`}
                 </p>
                 {(hasFullAccess || isHead) && (
                   <p className="text-xs text-gray-500 mt-0.5">

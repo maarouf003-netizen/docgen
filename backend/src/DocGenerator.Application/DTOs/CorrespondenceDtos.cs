@@ -58,9 +58,26 @@ public record CorrespondenceDto(
     int TargetUserId,
     string TargetName,
     string TargetRole,
-    /// <summary>هل أكّد القارئ الحالي مشاهدته؟ (لإظهار زر «تمت المشاهدة» أو حالته).</summary>
-    bool SeenByMe,
+    /// <summary>
+    /// حالة اطلاع الطرف المستلم: <c>seen</c> أو <c>pending</c> — من الخادم لا من
+    /// مقارنة المعرّفات، فيصل لكل قارئ مصرَّح له (المدير يرى حالة مستلمه لا حالته).
+    /// التوثيق مقصور على المستلم وحده، فإجماله — لا «هل شاهدته أنا».
+    /// </summary>
+    string ViewStatus,
+    /// <summary>
+    /// هل لهذا القارئ حق التوثيق؟ (المستلم وحده — قرار خادم لا مقارنة في الواجهة).
+    /// يقابل <c>CorrespondenceListItemDto.CanMarkSeen</c>؛ فصلُه عن صلاحية الرد
+    /// يمنع الواجهة من تمرير «يمكنني الرد» إلى «يمكنني التوثيق» بالتصادم.
+    /// </summary>
+    bool CanMarkSeen,
+    /// <summary>
+    /// هل لهذا القارئ حق الرد؟ (المستلم وحده — قرار خادم لا مقارنة في الواجهة).
+    /// صلاحية الرد مستقلة عن صلاحية التوثيق: تطابقهما اليوم صدفة نموذج لا قاعدة،
+    /// فلا تُستنتج إحداهما من الأخرى في أي عميل.
+    /// </summary>
+    bool CanReply,
     IReadOnlyList<CorrespondenceMessageDto> Messages,
+    /// <summary>توثيق مشاهدة المستلم فقط (لا مرسل ولا رئيس ولا مدير).</summary>
     IReadOnlyList<CorrespondenceReceiptDto> Receipts,
     DateTime CreatedAt);
 
@@ -79,11 +96,18 @@ public record CorrespondenceListItemDto(
     string TargetName,
     string Snippet,
     string LastKind,
-    bool SeenByMe,
-    /// <summary>عاجلة ولم يؤكد القارئ الحالي مشاهدتها — وقود الجرس.</summary>
-    bool IsUrgentUnseen,
+    /// <summary>
+    /// حالة اطلاع الطرف المستلم: <c>seen</c> أو <c>pending</c>.
+    /// ⚠️ مقياسها المراسلة لا الرسالة: التوثيق يُسجَّل على المراسلة كلها، فإضافةُ
+    /// لاحق بعد اطلاع المستلم تُبقيها <c>seen</c>، وجعلها تُقاس على كل رسالة على
+    /// حدة يحتاج توثيقًا لكل رسالة (تغيير مخطط + هجرة) — خارج هذا العقد.
+    /// </summary>
+    string ViewStatus,
+    /// <summary>هل لهذا القارئ حق التوثيق؟ (المستلم وحده — لا يُشتقّ من معرّفات في الواجهة).</summary>
+    bool CanMarkSeen,
+    /// <summary>هل لهذا القارئ حق الرد؟ (المستلم وحده — قرار خادم).</summary>
+    bool CanReply,
     int MessagesCount,
-    int ReceiptsCount,
     string? AdministrativeBranchName,
     string Governorate,
     DateTime UpdatedAt);

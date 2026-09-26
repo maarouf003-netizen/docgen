@@ -132,8 +132,8 @@ describe('PortalStats', () => {
     expect(screen.queryByLabelText('اختيار الفرع لعرض إحصائياته')).not.toBeInTheDocument();
   });
 
-  it('يعرض ستة قيود فقط ويصرّح بالباقي بعد الحدّ بدل قطعه بصمت', async () => {
-    // L3: القصّ الصامت عند القيود الستة كان يُخفي قيدًا بلا أي مؤشر.
+  it('يعرض ستة فروع فقط ويصرّح بالباقي بعد الحدّ بدل قطعه بصمت', async () => {
+    // L3: القصّ الصامت عند الفروع الستة كان يُخفي فرعًا بلا أي مؤشر.
     const perEntry = Array.from({ length: 8 }, (_, i) => ({
       entryId: 20 + i,
       governorate: `محافظة ${i + 1}`,
@@ -149,8 +149,8 @@ describe('PortalStats', () => {
     });
     render(<MemoryRouter><PortalStats /></MemoryRouter>);
 
-    const list = await screen.findByRole('list', { name: /القيود/ });
+    const list = await screen.findByRole('list', { name: /الفروع/ });
     expect(within(list).getAllByRole('listitem')).toHaveLength(6);
-    expect(screen.getByText(/\+2 قيدًا/)).toBeInTheDocument();
+    expect(screen.getByText(/فروع أخرى غير معروضة \(2\)/)).toBeInTheDocument();
   });
 });

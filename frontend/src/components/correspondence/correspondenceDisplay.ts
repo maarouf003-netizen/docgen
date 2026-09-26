@@ -2,6 +2,7 @@ import type {
   CorrespondenceFileContext,
   CorrespondenceImportance,
   CorrespondenceMessageKind,
+  CorrespondenceViewStatus,
 } from '../../types';
 
 /** حدث تُطلق عند تأكيد مشاهدة مراسلة، لتحديث عدّاد الجرس فورًا في Layout. */
@@ -19,6 +20,12 @@ export const CORRESPONDENCE_IMPORTANCE_LABELS: Record<CorrespondenceImportance, 
   normal: 'عادي',
   important: 'هام',
   urgent: 'عاجل',
+};
+
+/** تسميات حالة اطلاع المستلم كما تظهر في الواجهة. */
+export const CORRESPONDENCE_VIEW_STATUS_LABELS: Record<CorrespondenceViewStatus, string> = {
+  seen: 'تمت المشاهدة',
+  pending: 'بانتظار المشاهدة',
 };
 
 /** أدوار أطراف المراسلة كما تظهر في الواجهة. */

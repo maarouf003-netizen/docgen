@@ -16,13 +16,17 @@ public static class ClaimsPrincipalExtensions
         => user.FindFirstValue(ClaimTypes.Role)?.ToLowerInvariant() ?? string.Empty;
 
     /// <summary>
-    /// يحوّل دور التوكن النصي (أحرف صغيرة) إلى التعداد المقابل؛
-    /// القيمة الافتراضية Lawyer لمنع التصريح عن غير قصد عند قيمة غير معروفة.
+    /// يحوّل دور التوكن النصي (أحرف صغيرة) إلى التعداد المقابل — إغلاق صريح
+    /// للفشل: رمز بلا دور أو بدور غير معروف يرمي `UnauthorizedAccessException`
+    /// (يُترجم إلى 403 في `GlobalExceptionHandler`) بدل التدهور الصامت إلى دور
+    /// افتراضي قد يمنح صلاحيات غير مستحقة.
     /// </summary>
     public static UserRole GetRoleEnum(this ClaimsPrincipal user)
-        => Enum.TryParse<UserRole>(user.GetRole(), ignoreCase: true, out var role)
-            ? role
-            : UserRole.Lawyer;
+    {
+        if (Enum.TryParse<UserRole>(user.GetRole(), ignoreCase: true, out var role))
+            return role;
+        throw new UnauthorizedAccessException("دور المستخدم في الرمز غير معروف — سجّل الدخول مجددًا");
+    }
 
     public static int? GetBranchId(this ClaimsPrincipal user)
     {

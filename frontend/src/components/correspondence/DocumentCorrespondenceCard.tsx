@@ -5,6 +5,7 @@ import { formatDate } from '../../utils/dates';
 import type { CorrespondenceListItemDto } from '../../types';
 import CreateCorrespondenceModal from './CreateCorrespondenceModal';
 import CorrespondenceImportanceBadge from './CorrespondenceImportanceBadge';
+import CorrespondenceSeenBadge from './CorrespondenceSeenBadge';
 import { correspondenceTitle } from './correspondenceDisplay';
 
 /**
@@ -118,17 +119,10 @@ export default function DocumentCorrespondenceCard({
                   </span>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  {item.seenByMe && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 text-[11px] font-bold whitespace-nowrap">
-                      ✓ تمت المشاهدة
-                    </span>
-                  )}
-                  {item.isUrgentUnseen && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-red-600 text-white px-2.5 py-0.5 text-[11px] font-bold whitespace-nowrap">
-                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" aria-hidden="true" />
-                      عاجل بلا مشاهدة
-                    </span>
-                  )}
+                  <CorrespondenceSeenBadge
+                    viewStatus={item.viewStatus}
+                    canMarkSeen={item.canMarkSeen}
+                  />
                   <CorrespondenceImportanceBadge importance={item.importance} />
                 </div>
               </Link>

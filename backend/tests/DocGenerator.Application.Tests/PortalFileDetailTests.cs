@@ -1,5 +1,3 @@
-using System.IO.Compression;
-using System.Text;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
@@ -348,14 +346,59 @@ public class PortalFileDetailTests : IDisposable
         Assert.Null(history);
     }
 
-    // ── تصدير Excel: لا تسريب للملاحظات (ف12) ─────────────────────────────
+    /// <summary>
+    /// يضيف فروعًا إضافية إلى هوية المندوب الأم ويربطها بالملف — لاختبار تعدّد
+    /// الفروع المطابقة (وتضييقها بالفلتر). الفروع `Final` وغير مُراجَع ونشطة كما في
+    /// `ResolveForUserAsync`، فتدخل النطاق بلا تهيئة إضافية.
+    /// </summary>
+    private async Task<List<int>> AddScopedEntriesAsync(
+        Document doc, params (string Governorate, string BranchName)[] branches)
+    {
+        var group = await _db.PublicEntityGroups.Include(g => g.Entries)
+            .FirstAsync(g => g.CanonicalName == "وزارة التعليم");
+        var ids = new List<int>();
+        foreach (var (governorate, branchName) in branches)
+        {
+            var entry = new PublicEntity
+            {
+                Governorate = governorate,
+                BranchName = branchName,
+                Status = EntityStatusCatalog.Final,
+                CreatedById = 1,
+            };
+            group.Entries.Add(entry);
+            await _db.SaveChangesAsync();
+            ids.Add(entry.Id);
+
+            doc.ApplicantPublicEntities.Add(new ApplicantPublicEntity
+            {
+                Name = $"{doc.BorrowerName} - {governorate}",
+                Governorate = governorate,
+                RegistryId = entry.Id,
+            });
+        }
+        await _db.SaveChangesAsync();
+        return ids;
+    }
+
+    // ── تصدير Excel: عقد مستقل عن مصنّف المدير + فروع النطاق (ف12) ─────────
+    //
+    // عمود «الإجراءات والملاحظات» عاد إلى المصنّف بمحتوى علني خالص: أحدث إجراء
+    // من النوع `action` وحده (الملاحظات الداخلية لا تصل إلى العمود أصلًا)،
+    // فيتحقق منه `Export_OmitsAnnexColumn_KeepsNewestPublicActionOnly` أدناه،
+    // و«ترتيب الإجراءات الأحدث أولًا مع كسر Id» مغطّى أيضًا في مسار التفاصيل
+    // بـ`ListExecutionActions_BreaksCreatedAtTieByNewerId` أعلاه.
 
     [Fact]
-    public async Task Export_DoesNotLeakInternalNotes_IntoExcelColumn()
+    public async Task Export_OmitsAnnexColumn_KeepsNewestPublicActionOnly()
     {
+        // «ملحق العقد» خارج المصنّف بحكم التصميم؛ وعمود «الإجراءات والملاحظات»
+        // يعرض أحدث إجراء علني وحده — لا الملاحظة الداخلية الأحدث زمنًا.
         var doc = await SeedInScopeDocAsync("ملف التصدير");
-        // الإجراء الأقدم أولًا، ثم ملاحظة أحدث منه — كانت الملاحظة ستصدر أحيانًا في العمود
-        // (الأحدث CreatedAt يتصدر القائمة) قبل ترشيح النوع action (ف12).
+        doc.AnnexNumber = "ملحق-٩٩٩-سري";
+        await _db.SaveChangesAsync();
+        // الإجراء الأقدم أولًا، ثم ملاحظة أحدث منه — كانت الملاحظة تتصدر العمود
+        // (الأحدث CreatedAt) قبل ترشيح النوع action.
         await AddExecutionActionAsync(doc.Id, "action", "نص إجراء تنفيذي علني",
             new DateTime(2026, 8, 1, 10, 0, 0, DateTimeKind.Utc));
         await AddExecutionActionAsync(doc.Id, "note", "ملاحظة داخلية سرية لا تُصدَّر",
@@ -363,84 +406,141 @@ public class PortalFileDetailTests : IDisposable
 
         var bytes = await _portal.ExportWorkbookAsync(_delegateGroupId, null, null, "مندوب");
 
-        var sheetXml = ReadFirstSheetXml(bytes);
+        var sheetXml = XlsxReader.FirstSheetXml(bytes);
+        var headers = XlsxReader.RowTexts(sheetXml);
+        Assert.DoesNotContain("ملحق العقد", headers);
+        Assert.Contains("الإجراءات والملاحظات", headers);
+        // أحدث إجراء علني في العمود، والملاحظة الأحدث زمنًا لا تتسرب إليه.
         Assert.Contains("نص إجراء تنفيذي علني", sheetXml);
         Assert.DoesNotContain("ملاحظة داخلية سرية لا تُصدَّر", sheetXml);
+        Assert.DoesNotContain("ملحق-٩٩٩-سري", sheetXml);
+        // والخلية الثامنة (عمود «الإجراءات والملاحظات») هي نصّ الإجراء العلني حرفيًا.
+        var dataRow = XlsxReader.RowTexts(sheetXml, 1);
+        Assert.Equal(8, dataRow.Count);
+        Assert.Equal("نص إجراء تنفيذي علني", dataRow[7]);
     }
 
     [Fact]
-    public async Task Export_ScrubsInternalBranchName_FromBranchColumn()
+    public async Task Export_BranchColumn_ShowsScopedEntryBranch_NotInternalBranchName()
     {
-        // A: عمود «الفرع» في تصدير البوابة يُقرأ من BranchName الداخلي —
-        // ومسار التفاصيل يحجبه، فيجب أن يحجبه التصدير أيضًا (سياسة حجب واحدة
-        // يمرّ بها كل مسار، لا تعليق يُنسخ).
+        // عمود «فرع الجهة» مصدره فروع نطاق المندوب (`MatchedEntries`) لا
+        // `DocumentResponse.BranchName` الداخلي المحجوب: فرع النطاق يظهر، والفرع
+        // الداخلي لا يظهر. (المصدران منفصلان عمدًا.)
         var doc = await SeedInScopeDocAsync("ملف فرع التصدير");
-        doc.BranchName = "فرع داخلي سري";
+        doc.BranchName = "فرع إداري سري";
         await _db.SaveChangesAsync();
 
         var bytes = await _portal.ExportWorkbookAsync(_delegateGroupId, null, null, "مندوب");
 
-        var sheetXml = ReadFirstSheetXml(bytes);
-        Assert.DoesNotContain("فرع داخلي سري", sheetXml);
+        var sheetXml = XlsxReader.FirstSheetXml(bytes);
+        Assert.Contains("دمشق/الفرع الرئيسي", sheetXml);
+        Assert.DoesNotContain("فرع إداري سري", sheetXml);
     }
 
     [Fact]
-    public async Task Export_TieBreakById_MatchesDetailCardOrder()
+    public async Task Export_BranchColumn_ListsEveryScopedBranch_WithoutCardTruncation()
     {
-        var doc = await SeedInScopeDocAsync("ملف التعادل في التصدير");
-        // اللحظة نفسها بالضبط — عمود التصدير يجب أن يتصدره الأحدث Id كما في بطاقة التفاصيل.
-        var sameInstant = new DateTime(2026, 8, 1, 10, 0, 0, DateTimeKind.Utc);
-        await AddExecutionActionAsync(doc.Id, "action", "إجراء التعادل الأقدم", sameInstant);
-        await AddExecutionActionAsync(doc.Id, "action", "إجراء التعادل الأحدث", sameInstant);
+        // البطاقة في الواجهة تختصر «أول فرعين +N» لحجر البصر؛ المصنّف لا يقتطع أبدًا
+        // (اقتطاع خلية في إكسل يفقد بيانات بصمت ويمنع الفرز على كل قيمها).
+        var doc = await SeedInScopeDocAsync("ملف تعدّد الفروع");
+        await AddScopedEntriesAsync(doc,
+            ("حمص", "فرع حمص"),
+            ("حلب", "فرع حلب"),
+            ("طرطوس", "فرع طرطوس"));
 
         var bytes = await _portal.ExportWorkbookAsync(_delegateGroupId, null, null, "مندوب");
 
-        // عمود التصدير خلية واحدة (الإجراء الأول) — كسر التعادل يختار الأحدث Id كما في البطاقة.
-        var sheetXml = ReadFirstSheetXml(bytes);
-        Assert.Contains("إجراء التعادل الأحدث", sheetXml);
-        Assert.DoesNotContain("إجراء التعادل الأقدم", sheetXml);
+        // المقارنة الحرفية على نصّ خلية «فرع الجهة» (العمود الثالث، بترتيب
+        // العناوين المثبَّت في اختبار العناوين أدناه) تُثبت ثلاثة أشياء معًا: اكتمال
+        // الفروع الأربعة، وترتيبها، وسلام الفصل بينها — أي خلوّها من مؤشّر الاقتطاع
+        // «+2» الذي تلحقه البطاقة. تعداد «الاحتواء» وحده لا يثبت شيئًا عن الترتيب
+        // ولا عن سلامة الفصل، و«+2» نصٌّ يُطابق في XML الخام عرضًا (كـ`fillId="2"`)
+        // فيُنتج فشلًا كاذبًا؛ و`BuildRow` يُصدر خليةً لكل قيمة فيكتمل الصف ثمانيًا.
+        //
+        // الترتيب المتوقَّع هنا لغوي عربي بالمحافظة (حلب، حمص، دمشق، طرطوس) لا بترتيب
+        // الإدراج، لأنه ترتيب `PortalScopeResolution.Entries` نفسه
+        // (`OrderBy(Governorate).ThenBy(BranchName)` بمقارن ثقافة `ar`
+        // في `PortalRepository`) — أي أنه ترتيب قائمة الفرع الذي يراه المندوب،
+        // فتبقى الخلية مطابقة للقائمة على كل محرك قاعدة.
+        var dataRow = XlsxReader.RowTexts(XlsxReader.FirstSheetXml(bytes), 1);
+        Assert.Equal(8, dataRow.Count);
+        Assert.Equal(
+            "حلب/فرع حلب · حمص/فرع حمص · دمشق/الفرع الرئيسي · طرطوس/فرع طرطوس",
+            dataRow[2]);
+    }
+
+    [Fact]
+    public async Task Export_BranchCellOrderMatchesScopeDropdownOrder()
+    {
+        // توحيد الترتيب ميكانيكيًا: خلية «فرع الجهة» تسرد الفروع بالترتيب نفسه
+        // الذي تسرده قائمة الفرع (`PortalScopeResolution.Entries`) — مقارن واحد
+        // مشترك (`PortalScopeOrdering.ArabicDisplay`) لا نسختان قد تتباينان
+        // على بيانات الهمزات رغم تطابقهما على البيانات الحالية.
+        var doc = await SeedInScopeDocAsync("ملف توحيد الترتيب");
+        await AddScopedEntriesAsync(doc,
+            ("حمص", "فرع حمص"),
+            ("حلب", "فرع حلب"),
+            ("طرطوس", "فرع طرطوس"));
+
+        var bytes = await _portal.ExportWorkbookAsync(_delegateGroupId, null, null, "مندوب");
+        var dataRow = XlsxReader.RowTexts(XlsxReader.FirstSheetXml(bytes), 1);
+        var cellBranches = dataRow[2].Split(" · ", StringSplitOptions.None).ToList();
+
+        var scope = await _portal.GetMyScopeAsync(_delegateGroupId);
+        Assert.NotNull(scope);
+        var matchedIds = new HashSet<int>();
+        foreach (var a in doc.ApplicantPublicEntities)
+            if (a.RegistryId.HasValue)
+                matchedIds.Add(a.RegistryId.Value);
+        foreach (var e in doc.ExecutedPublicEntities)
+            if (e.RegistryId.HasValue)
+                matchedIds.Add(e.RegistryId.Value);
+        foreach (var a in doc.ExecutionApplicants)
+            if (a.RegistryId.HasValue)
+                matchedIds.Add(a.RegistryId.Value);
+        var expected = scope!.Entries
+            .Where(e => matchedIds.Contains(e.Id))
+            .Select(e => PublicEntityBranchCatalog.Label(e.Governorate, e.BranchName))
+            .ToList();
+
+        Assert.Equal(expected, cellBranches);
+    }
+
+    [Fact]
+    public async Task Export_WithEntryFilter_BranchColumnShowsThatBranchOnly()
+    {
+        // عمود الفروع يوافق مُرشِّح التصدير: تصدير فرع واحد لا يذكر فروع المندوب
+        // الأخرى (وإلا عرض عمودٌ فروعًا لم تدخل الصفوف أصلًا).
+        var doc = await SeedInScopeDocAsync("ملف الفلترة بالفرع");
+        var extra = await AddScopedEntriesAsync(doc, ("حمص", "فرع حمص"));
+
+        var bytes = await _portal.ExportWorkbookAsync(
+            _delegateGroupId, null, null, "مندوب", default, entryId: extra[0]);
+
+        var sheetXml = XlsxReader.FirstSheetXml(bytes);
+        Assert.Contains("حمص/فرع حمص", sheetXml);
+        Assert.DoesNotContain("دمشق/الفرع الرئيسي", sheetXml);
     }
 
     [Fact]
     public async Task Export_PortalHeadersMatchDeclaredAllowlist()
     {
         // G2: أي عمود جديد في تصدير البوابة يُجبر صاحبه على قرار صريح —
-        // تُقارَن العناوين بقائمة حرفية كاملة لا بالاحتواء فقط، وبالرايات
-        // المعطلة للبوابة (بلا فرع إدارة/محامٍ مختص/عدادات).
+        // تُقارَن العناوين بقائمة حرفية كاملة لا بالاحتواء فقط. «ملحق العقد»
+        // وحده خارجها بحكم التصميم، و«الإجراءات والملاحظات» أحدث إجراء علني
+        // وحده، و«فرع الجهة» هو فروع نطاق المندوب لا فرع الإدارة الداخلي.
         var doc = await SeedInScopeDocAsync("ملف عناوين التصدير");
 
         var bytes = await _portal.ExportWorkbookAsync(_delegateGroupId, null, null, "مندوب");
 
-        var headers = ReadFirstRowTexts(ReadFirstSheetXml(bytes));
+        var headers = XlsxReader.RowTexts(XlsxReader.FirstSheetXml(bytes));
         Assert.Equal(
             new[]
             {
-                "الحالة", "طالب التنفيذ", "الفرع", "المنفذ عليه", "دائرة التنفيذ",
-                "رقم الملف", "لعام", "ملحق العقد", "الإجراءات والملاحظات",
+                "الحالة", "طالب التنفيذ", "فرع الجهة", "المنفذ عليه", "دائرة التنفيذ",
+                "رقم الملف", "لعام", "الإجراءات والملاحظات",
             },
             headers);
-    }
-
-    private static List<string> ReadFirstRowTexts(string sheetXml)
-    {
-        // تحليل بالاسم المحلي لا بالبادئة — لا يعتمد على شكل الـnamespace
-        // الذي يكتبه مولّد OpenXML.
-        var xdoc = System.Xml.Linq.XDocument.Parse(sheetXml);
-        return xdoc.Descendants()
-            .Where(e => e.Name.LocalName == "row").First()
-            .Descendants()
-            .Where(e => e.Name.LocalName == "t")
-            .Select(t => t.Value)
-            .ToList();
-    }
-
-    private static string ReadFirstSheetXml(byte[] xlsx)
-    {
-        using var stream = new MemoryStream(xlsx);
-        using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
-        var entry = archive.Entries.First(e => e.FullName.EndsWith("sheet1.xml", StringComparison.OrdinalIgnoreCase));
-        using var reader = new StreamReader(entry.Open(), Encoding.UTF8);
-        return reader.ReadToEnd();
     }
 
     private static UpsertAppealRequest Request(int entityId) => new(

@@ -6,6 +6,7 @@ using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Time.Testing;
 
 namespace DocGenerator.Application.Tests;
 
@@ -79,7 +80,8 @@ public class CorrespondenceServiceTests : IDisposable
 
     private CorrespondenceService BuildService() => BuildService(new UnitOfWork(_db));
 
-    private CorrespondenceService BuildService(IUnitOfWork uow, ICorrespondenceRepository? letters = null)
+    private CorrespondenceService BuildService(
+        IUnitOfWork uow, ICorrespondenceRepository? letters = null, TimeProvider? clock = null)
     {
         return new CorrespondenceService(
             letters ?? new CorrespondenceRepository(_db),
@@ -93,7 +95,7 @@ public class CorrespondenceServiceTests : IDisposable
             new TransactionRunner(_db),
             _audit,
             new DbExceptionClassifier(),
-            TimeProvider.System, TestClock.TimeZone);
+            clock ?? TimeProvider.System, TestClock.TimeZone);
     }
 
     private static User NewUser(string username, string fullName, UserRole role, int? branchId)
@@ -166,7 +168,7 @@ public class CorrespondenceServiceTests : IDisposable
         Assert.Equal(_delegate.Id, letter.TargetUserId);
         Assert.Single(letter.Messages);
         Assert.Equal("letter", letter.Messages[0].Kind);
-        Assert.False(letter.SeenByMe);
+        Assert.Equal(Correspondence.ViewStatusPending, letter.ViewStatus);
         Assert.Empty(letter.Receipts);
     }
 
@@ -319,11 +321,16 @@ public class CorrespondenceServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task MarkSeen_DocumentsViewerOnce()
+    public async Task MarkSeen_TargetOnly_DocumentsOnce_AndReportsViewStatus()
     {
         var letter = await _service.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, "urgent", "<p>عاجل</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
+
+        var pending = await _service.GetByIdAsync(
+            letter.Id, _delegate.Id, UserRole.EntityManager, null);
+        Assert.Equal(Correspondence.ViewStatusPending, pending.ViewStatus);
+        Assert.Empty(pending.Receipts);
 
         var first = await _service.MarkSeenAsync(
             letter.Id, _delegate.Id, "مندوب الجهة", UserRole.EntityManager, null);
@@ -334,9 +341,138 @@ public class CorrespondenceServiceTests : IDisposable
 
         var stored = await _service.GetByIdAsync(
             letter.Id, _delegate.Id, UserRole.EntityManager, null);
-        Assert.True(stored.SeenByMe);
+        Assert.Equal(Correspondence.ViewStatusSeen, stored.ViewStatus);
         Assert.Single(stored.Receipts);
         Assert.Equal("مندوب الجهة", stored.Receipts[0].UserName);
+    }
+
+    [Fact]
+    public async Task Timestamps_ComeFromInjectedClock_NotSystemTime()
+    {
+        // حتمية الوقت: تجميد الساعة يجعل كل طوابع الكتابة مساوية للحظة
+        // المحقونة — فأي `DateTime.UtcNow` مباشر متبقٍّ في مسارات الكتابة
+        // الأربعة (تسطير/لاحق/رد/توثيق) سيُفشل هذا الاختبار.
+        var frozen = new DateTimeOffset(2026, 9, 26, 12, 0, 0, TimeSpan.Zero);
+        var service = BuildService(new UnitOfWork(_db), clock: new FakeTimeProvider(frozen));
+
+        var letter = await service.CreateAsync(
+            new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>نص</p>"),
+            _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
+        Assert.Equal(frozen.UtcDateTime, letter.CorrespondenceDate);
+        Assert.Equal(frozen.UtcDateTime, letter.CreatedAt);
+        Assert.Equal(frozen.UtcDateTime, Assert.Single(letter.Messages).MessageDate);
+
+        var receipt = await service.MarkSeenAsync(
+            letter.Id, _delegate.Id, "مندوب الجهة", UserRole.EntityManager, null);
+        Assert.Equal(frozen.UtcDateTime, receipt.SeenAt);
+
+        var addendum = await service.AddAddendumAsync(letter.Id,
+            new AddCorrespondenceAddendumRequest("<p>لاحق</p>"),
+            _lawyer1.Id, "المحامي الأول");
+        Assert.Equal(frozen.UtcDateTime, addendum.MessageDate);
+
+        var reply = await service.ReplyAsync(letter.Id,
+            new ReplyCorrespondenceRequest("<p>رد</p>"),
+            _delegate.Id, "مندوب الجهة");
+        Assert.Equal(frozen.UtcDateTime, reply.MessageDate);
+    }
+
+    [Theory]
+    [InlineData("lawyer")]
+    [InlineData("head")]
+    [InlineData("manager")]
+    public async Task MarkSeen_Rejected_ForEveryoneButTheTarget(string role)
+    {
+        // القارئ غير المستلم يقرأ الحالة ولا ينشئ توثيقًا: «مشاهدة» بلا مشاهدة
+        // تُفسد العدّاد وتدّعي طرفًا استلم وهو لم يستلم.
+        var letter = await _service.CreateAsync(
+            new CreateCorrespondenceRequest(null, _delegate.Id, "urgent", "<p>عاجل</p>"),
+            _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
+
+        var actor = role switch
+        {
+            "lawyer" => _lawyer1,
+            "head" => _head,
+            _ => _manager,
+        };
+        var actorRole = role switch
+        {
+            "lawyer" => UserRole.Lawyer,
+            "head" => UserRole.Head,
+            _ => UserRole.Manager,
+        };
+        int? actorBranch = role == "lawyer" || role == "head" ? _branchId : null;
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.MarkSeenAsync(
+            letter.Id, actor.Id, "قارئ", actorRole, actorBranch));
+
+        // لم يُنشأ توثيق باسم القارئ، والحالة تبقى «بانتظار» عند المستلم.
+        var stored = await _service.GetByIdAsync(
+            letter.Id, _delegate.Id, UserRole.EntityManager, null);
+        Assert.Equal(Correspondence.ViewStatusPending, stored.ViewStatus);
+        Assert.Empty(stored.Receipts);
+    }
+
+    [Fact]
+    public async Task Receipts_AreFilteredToTarget_AndListReportsStatusAndRight()
+    {
+        // مستند قديم: توثيقات أنشأها مرسلون وقت كان الحقل مفتوحًا للجميع.
+        var letter = await _service.CreateAsync(
+            new CreateCorrespondenceRequest(null, _delegate.Id, "urgent", "<p>عاجل</p>"),
+            _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
+        var entity = await _db.Correspondences.FirstAsync(c => c.Id == letter.Id);
+        entity.Receipts.Add(new CorrespondenceReceipt
+        {
+            CorrespondenceId = entity.Id,
+            UserId = _lawyer1.Id,
+            UserName = "المحامي الأول",
+            SeenAt = new DateTime(2026, 7, 1, 9, 0, 0, DateTimeKind.Utc),
+        });
+        await _db.SaveChangesAsync();
+
+        // القارئ (المدير) يرى توثيق المستلم وحده — لا توثيقه القديم ولا أي اسم آخر.
+        var seenByManager = await _service.GetByIdAsync(
+            letter.Id, _manager.Id, UserRole.Manager, null);
+        Assert.Equal(Correspondence.ViewStatusPending, seenByManager.ViewStatus);
+        Assert.Empty(seenByManager.Receipts);
+        // وحق التوثيق في التفاصيل قرار خادم: المدير يقرأ ولا يوثق ولا يرد.
+        Assert.False(seenByManager.CanMarkSeen);
+        Assert.False(seenByManager.CanReply);
+
+        // المرسل المنشئ يقرأ التفاصيل بلا حق توثيق ولا رد، فالقاعدة على هوية المستلم.
+        var seenByCreator = await _service.GetByIdAsync(
+            letter.Id, _lawyer1.Id, UserRole.Lawyer, _branchId);
+        Assert.False(seenByCreator.CanMarkSeen);
+        Assert.False(seenByCreator.CanReply);
+
+        // المستلم وحده يحمل حقّي التوثيق والرد في التفاصيل (وهو ما تُبني عليه الواجهة).
+        var seenByTarget = await _service.GetByIdAsync(
+            letter.Id, _delegate.Id, UserRole.EntityManager, null);
+        Assert.True(seenByTarget.CanMarkSeen);
+        Assert.True(seenByTarget.CanReply);
+
+        await _service.MarkSeenAsync(
+            letter.Id, _delegate.Id, "مندوب الجهة", UserRole.EntityManager, null);
+        var afterTargetSeen = await _service.GetByIdAsync(
+            letter.Id, _manager.Id, UserRole.Manager, null);
+        Assert.Equal(Correspondence.ViewStatusSeen, afterTargetSeen.ViewStatus);
+        Assert.Single(afterTargetSeen.Receipts);
+        Assert.Equal(_delegate.Id, afterTargetSeen.Receipts[0].UserId);
+
+        // القائمة: الحالة مشتركة للجميع، وحقّا التوثيق والرد للمستلم وحده.
+        // (المدير لا يطلب قائمة بلا محافظة — فلتره الإجباري.)
+        var listForManager = await _service.SearchAsync(
+            _manager.Id, UserRole.Manager, null, null, letter.Governorate, null, 1, 20);
+        var managerRow = listForManager.Items.Single(i => i.Id == letter.Id);
+        Assert.Equal(Correspondence.ViewStatusSeen, managerRow.ViewStatus);
+        Assert.False(managerRow.CanMarkSeen);
+        Assert.False(managerRow.CanReply);
+
+        var listForTarget = await _service.SearchAsync(
+            _delegate.Id, UserRole.EntityManager, null, null, null, null, 1, 20);
+        var targetRow = listForTarget.Items.Single(i => i.Id == letter.Id);
+        Assert.True(targetRow.CanMarkSeen);
+        Assert.True(targetRow.CanReply);
     }
 
     [Fact]

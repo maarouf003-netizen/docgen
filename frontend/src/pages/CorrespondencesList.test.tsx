@@ -45,10 +45,10 @@ const linkedItem = (): CorrespondenceListItemDto => ({
   targetName: 'مندوب الجهة',
   snippet: 'نطلب موافاتنا بالبيانات',
   lastKind: 'letter',
-  seenByMe: false,
-  isUrgentUnseen: true,
+  viewStatus: 'pending',
+  canMarkSeen: false,
+  canReply: false,
   messagesCount: 1,
-  receiptsCount: 0,
   administrativeBranchName: 'دمشق',
   governorate: 'دمشق',
   updatedAt: '2026-08-01T09:00:00Z',
@@ -61,8 +61,9 @@ const generalItem = (): CorrespondenceListItemDto => ({
   importance: 'normal',
   documentId: null,
   fileContext: null,
-  seenByMe: true,
-  isUrgentUnseen: false,
+  viewStatus: 'seen',
+  canMarkSeen: false,
+  canReply: false,
 });
 
 function renderList(portal = false) {
@@ -88,9 +89,12 @@ describe('CorrespondencesList', () => {
     expect(await screen.findByText(/مراسلة بملف \(أحمد محمد العلي\) رقم 77\/2026/)).toBeInTheDocument();
     expect(screen.getByText('مراسلة عامة غير مرتبطة بملف')).toBeInTheDocument();
     expect(screen.getAllByText('DAM-2026-1234').length).toBeGreaterThan(0);
-    // شارة العاجل + شارة «عاجل بلا مشاهدة»
+    // شارة العاجل + شارة حالة الاطلاع (المستلم لم يوثّق بعد)
     expect(screen.getAllByText('عاجل').length).toBeGreaterThan(0);
-    expect(screen.getByText('عاجل بلا مشاهدة')).toBeInTheDocument();
+    expect(screen.getByText('بانتظار المشاهدة')).toBeInTheDocument();
+    // المرسل يقرأ الحالة ولا يُميَّز بتنبيه حجز الفعل عليه — والعاجل لم يعد يحمل شارة اطلاع خاصة.
+    expect(screen.getByText('تمت المشاهدة')).toBeInTheDocument();
+    expect(screen.queryByText('عاجل بلا مشاهدة')).not.toBeInTheDocument();
     // «عادي» شارةً وخيار فلتر معًا
     expect(screen.getAllByText('عادي').length).toBeGreaterThanOrEqual(2);
     // الطرفان ظاهران
@@ -162,6 +166,33 @@ describe('CorrespondencesList', () => {
     const govParas = screen.getAllByText(/المحافظة:/);
     expect(govParas.length).toBeGreaterThan(0);
     expect(govParas[0]).toHaveTextContent('دمشق');
+  });
+
+  it('يبقى تنبيه الاطلاع هادئًا لقارئ ليس طرفًا في التوثيق (المرسل)', async () => {
+    // المرسل يقرأ حالة مستلمه، لكن لا يُميَّز بتنبيه حجز الفعل عليه.
+    useAuthMock.mockReturnValue({ user: { role: 'lawyer', id: 3 }, hasFullAccess: false, isHead: false });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { items: [linkedItem()], page: 1, perPage: 20, totalCount: 1 },
+    });
+    const { container } = renderList();
+
+    expect(await screen.findByText('بانتظار المشاهدة')).toBeInTheDocument();
+    expect(screen.getByText('بانتظار المشاهدة').className).toContain('bg-amber-100');
+    expect(container.querySelector('.bg-amber-100')).not.toBeNull();
+  });
+
+  it('ينبّه المستلم نابضًا قبل توثيقه', async () => {
+    useAuthMock.mockReturnValue({ user: { role: 'entitymanager', id: 11 }, hasFullAccess: false, isHead: false });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { items: [{ ...linkedItem(), canMarkSeen: true }], page: 1, perPage: 20, totalCount: 1 },
+    });
+    const { container } = renderList();
+
+    expect(await screen.findByText('بانتظار المشاهدة')).toBeInTheDocument();
+    const badge = screen.getByText('بانتظار المشاهدة');
+    expect(badge.className).toContain('bg-red-600');
+    expect(badge.querySelector('.motion-safe\\:animate-pulse')).not.toBeNull();
+    expect(container.querySelector('.motion-safe\\:animate-pulse')).not.toBeNull();
   });
 
   it('يطلب مسار البوابة للمندوب ويخفي فلتر المحافظة', async () => {

@@ -110,6 +110,20 @@ describe('Login', () => {
     expect(loginMock).toHaveBeenCalledTimes(1);
   });
 
+  it('يوجّه المندوب إلى بوابته مباشرة لا إلى لوحة لا يملكها', async () => {
+    loginMock.mockResolvedValue({
+      user: { ...successResponse.user, role: 'entitymanager' },
+    });
+    const user = userEvent.setup();
+    render(<Login />);
+
+    await user.type(screen.getByLabelText('اسم المستخدم'), 'delegate1');
+    await user.type(screen.getByLabelText('كلمة المرور'), '123456');
+    await user.click(screen.getByRole('button', { name: 'دخول' }));
+
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/portal/stats'));
+  });
+
   it('يعرض رسالة الخطأ عند كلمة مرور خاطئة ولا يوجّه', async () => {
     loginMock.mockRejectedValue({
       isAxiosError: true,

@@ -34,7 +34,7 @@ public class PortalController : ControllerBase
     private string? ViewerName => User.Identity?.Name;
     private int UserId => User.GetUserId();
 
-    /// <summary>ما يُسمح للمندوب برؤيته: الهوية/القيد المربوط بحسابه وقيوده النهائية.</summary>
+    /// <summary>ما يُسمح للمندوب برؤيته: الهوية/الفرع المربوط بحسابه وفروعه النهائية.</summary>
     [HttpGet("my-scope")]
     public async Task<IActionResult> MyScope(CancellationToken ct)
         => Ok(await _portal.GetMyScopeAsync(UserId, ct));

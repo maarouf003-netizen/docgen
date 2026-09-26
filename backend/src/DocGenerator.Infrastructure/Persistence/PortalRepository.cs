@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -153,8 +154,8 @@ public class PortalRepository : IPortalRepository
                 "group", group.Id, group.CanonicalName, group.EntityType,
                 group.Entries
                     .Where(e => e.Status == EntityStatusCatalog.Final && !e.NeedsReview && e.IsActive)
-                    .OrderBy(e => e.Governorate, StringComparer.Ordinal)
-                    .ThenBy(e => e.BranchName, StringComparer.Ordinal)
+                    .OrderBy(e => e.Governorate, PortalScopeOrdering.ArabicDisplay)
+                    .ThenBy(e => e.BranchName, PortalScopeOrdering.ArabicDisplay)
                     .Select(e => (e.Id, e.Governorate, e.BranchName, e.IsActive))
                     .ToList());
         }

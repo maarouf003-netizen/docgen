@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import type { PortalFileListItemDto } from '../../types';
 import { tripleName } from '../../utils/documentDisplay';
+import { publicEntityBranchLabel } from '../../utils/publicEntityBranchLabel';
 
 /**
  * ألوان الشارة لكل قيم `DocumentStatusResolver` الثماني — النص من الخادم حصرًا
@@ -27,8 +28,7 @@ function statusLabel(file: PortalFileListItemDto): string {
 
 /** تسمية فرع الجهة للسطر الثاني: «المحافظة/الفرع» (الجهة الأم بلا لاحقة فرعية). */
 function branchShort(governorate: string, branchName: string): string {
-  if (!branchName || branchName === 'الجهة الأم') return governorate;
-  return `${governorate}/${branchName}`;
+  return publicEntityBranchLabel(governorate, branchName);
 }
 
 /**

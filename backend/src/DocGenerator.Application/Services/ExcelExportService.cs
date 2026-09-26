@@ -12,6 +12,10 @@ namespace DocGenerator.Application.Services;
 /// توليد ملف xlsx حقيقي للملفات التنفيذية عبر DocumentFormat.OpenXml
 /// (موجودة أصلًا في المشروع) دون أي اعتماد خارجي جديد.
 /// الأعمدة تُبنى حسب أذونات الدور المُمرّرة من المتحكم.
+///
+/// مساران بعقدين منفصلين عمدًا (لا رايات متضاربة تُنسى):
+/// ‎<see cref="BuildDocumentsWorkbook"/>‎ للمدير/المحامي (يُعمَّم على رايات الدور)،
+/// و‎<see cref="BuildPortalWorkbook"/>‎ لبوابة المندوب (قائمة أعمدة ثابتة مضبوطة سلفًا).
 /// </summary>
 public interface IExcelExportService
 {
@@ -20,6 +24,16 @@ public interface IExcelExportService
         bool includeAdministrativeBranch,
         bool includeAssignedLawyer,
         bool includeViewCount);
+
+    /// <summary>
+    /// مصنّف بوابة المندوب: أعمدة ثابتة لا رايات. «ملحق العقد» غير موجود فيه
+    /// بحكم التصميم، وعمود «الإجراءات والملاحظات» يحمل **أحدث إجراء علني واحدًا**
+    /// فقط (أول عنصر بعد تنقية `ScrubForPortal`: النوع `action` حصرًا، الأحدث
+    /// `CreatedAt` ثم `Id` — الملاحظات الداخلية لا تصل إلى العمود أصلًا)،
+    /// وعمود الفرع يحمل <b>فروع نطاق المندوب نفسه</b> (المصدر الآمن
+    /// `MatchedEntries`) لا `DocumentResponse.BranchName` الداخلي المحجوب.
+    /// </summary>
+    byte[] BuildPortalWorkbook(IReadOnlyList<PortalWorkbookRow> rows);
 
     byte[] BuildChangeEventsWorkbook(IReadOnlyList<EntityChangeEventDto> events);
 }
@@ -32,11 +46,81 @@ public sealed class ExcelExportService : IExcelExportService
         "رقم الملف", "لعام", "ملحق العقد",
     };
 
+    /// <summary>
+    /// أعمدة بوابة المندوب — تعريف مغلق ومحكوم بالقائمة الحرفية أدناه
+    /// (الاختبار `Export_PortalHeadersMatchDeclaredAllowlist` يقارن التسلسل كاملًا).
+    /// العنوان «فرع الجهة» لا «الفرع» عمدًا: في تصدير المدير «الفرع» هو فرع الإدارة
+    /// الداخلي، وفي هذا المصنّف هو فروع نطاق المندوب — فتسمية واحدة بمعنيين يقرأه
+    /// المدقق تناقضًا.
+    /// </summary>
+    private static readonly string[] PortalColumns =
+    {
+        "الحالة", "طالب التنفيذ", "فرع الجهة", "المنفذ عليه", "دائرة التنفيذ",
+        "رقم الملف", "لعام", "الإجراءات والملاحظات",
+    };
+
     public byte[] BuildDocumentsWorkbook(
         IReadOnlyList<DocumentResponse> documents,
         bool includeAdministrativeBranch,
         bool includeAssignedLawyer,
         bool includeViewCount)
+    {
+        var headers = BuildHeaders(includeAdministrativeBranch, includeAssignedLawyer, includeViewCount);
+        return WriteWorkbook(
+            "الملفات التنفيذية",
+            headers,
+            documents.Select(doc => BuildValues(
+                doc,
+                includeAdministrativeBranch, includeAssignedLawyer, includeViewCount)));
+    }
+
+    public byte[] BuildPortalWorkbook(IReadOnlyList<PortalWorkbookRow> rows)
+        => WriteWorkbook(
+            "الملفات التنفيذية",
+            PortalColumns,
+            rows.Select(r => BuildPortalValues(r)));
+
+    private static List<string> BuildPortalValues(PortalWorkbookRow row)
+    {
+        var doc = row.Document;
+        return new List<string>
+        {
+            StatusText(doc),
+            ApplicantText(doc),
+            PortalBranchText(row.ScopedEntries),
+            FullName(doc),
+            doc.Court ?? string.Empty,
+            FileNumberText(doc),
+            doc.DisplayFileYear ?? doc.FileYear ?? string.Empty,
+            // أحدث إجراء علني وحده: `ScrubForPortal` رشّح `ExecutionActions` إلى
+            // النوع `action` مرتّبًا (الأحدث أولًا) قبل بناء الصف، فالأول هنا هو
+            // الأحدث حتمًا، والملاحظات الداخلية لا تصل إلى هذا العمود أصلًا.
+            HtmlInputSanitizer.ToPlainText(doc.ExecutionActions.FirstOrDefault()?.Text),
+        };
+    }
+
+    /// <summary>
+    /// عمود «فرع الجهة»: كل الفروع المطابقة من نطاق المندوب، كاملة بلا اقتطاع
+    /// (خلافًا لبطاقة الواجهة التي تختصر أول فرعين وتلحق «+N» لحجر البصر — الاقتطاع
+    /// في ملف إكسل يفقد بيانات بصمت ويجعل الخلية غير قابلة للفرز على كل قيمها).
+    /// الترتيب ليس ترتيب الإدراج ولا ترتيب قاعدة البيانات: هو ترتيب
+    /// `BuildMatchedEntries` أي ترتيب `PortalScopeResolution.Entries` — لغوي
+    /// عربي (المحافظة ثم الفرع بمقارن ثقافة `ar` في `PortalRepository`)،
+    /// وهو نفسه ترتيب قائمة الفرع في واجهة المندوب، فالخلية تطابق قائمته.
+    /// </summary>
+    private static string PortalBranchText(IReadOnlyList<PortalScopeEntryDto> entries)
+        => entries.Count == 0
+            ? string.Empty
+            : string.Join(" · ", entries.Select(e => PublicEntityBranchCatalog.Label(e.Governorate, e.BranchName)));
+
+    /// <summary>
+    /// المحرك المشترك لكتابة المصنَّف (بنية الملف + AutoFilter + الصفوف) — مصدر
+    /// واحد يبقي مسارَي التصدير متطابقين بنيويًا بلا ازدواج، ويبقى حساب نطاق
+    /// `AutoFilter` مشتقًا من عدد العناوين الفعلي فلا يبقى يدويًا يخطئ عند أي
+    /// إضافة أو حذف عمود.
+    /// </summary>
+    private static byte[] WriteWorkbook(
+        string sheetName, IReadOnlyList<string> headers, IEnumerable<IReadOnlyList<string>> rows)
     {
         using var stream = new MemoryStream();
 
@@ -54,22 +138,23 @@ public sealed class ExcelExportService : IExcelExportService
             {
                 Id = workbookPart.GetIdOfPart(worksheetPart),
                 SheetId = 1,
-                Name = "الملفات التنفيذية",
+                Name = sheetName,
             });
 
             var sheetData = worksheetPart.Worksheet.GetFirstChild<SheetData>()!;
-
-            var headers = BuildHeaders(includeAdministrativeBranch, includeAssignedLawyer, includeViewCount);
             sheetData.AppendChild(BuildRow(headers));
 
-            foreach (var doc in documents)
-                sheetData.AppendChild(BuildRow(BuildValues(doc,
-                    includeAdministrativeBranch, includeAssignedLawyer, includeViewCount)));
+            var rowCount = 0;
+            foreach (var values in rows)
+            {
+                sheetData.AppendChild(BuildRow(values));
+                rowCount++;
+            }
 
             // نطاق AutoFilter يبدأ من صف العنوان إلى آخر صف بيانات ليكون صالحًا في إكسل
             // (AutoFilter بلا Reference منتج ملفًا غير مطابق للمخطط ويُطلب إصلاحه).
             worksheetPart.Worksheet.GetFirstChild<AutoFilter>()!.Reference =
-                $"A1:{ColumnLetter(headers.Count)}{1 + documents.Count}";
+                $"A1:{ColumnLetter(headers.Count)}{1 + rowCount}";
 
             worksheetPart.Worksheet.Save();
         }
@@ -167,43 +252,21 @@ public sealed class ExcelExportService : IExcelExportService
 
     public byte[] BuildChangeEventsWorkbook(IReadOnlyList<EntityChangeEventDto> events)
     {
-        using var stream = new MemoryStream();
-        using (var document = SpreadsheetDocument.Create(stream, SpreadsheetDocumentType.Workbook))
-        {
-            var workbookPart = document.AddWorkbookPart();
-            workbookPart.Workbook = new Workbook(new Sheets());
-            var worksheetPart = workbookPart.AddNewPart<WorksheetPart>();
-            worksheetPart.Worksheet = new Worksheet(new SheetData());
-            worksheetPart.Worksheet.Append(new AutoFilter());
-            var sheets = workbookPart.Workbook.GetFirstChild<Sheets>()!;
-            sheets.AppendChild(new Sheet
+        var headers = new[] { "التاريخ", "الفاعل", "النوع", "الجهة", "المحافظة", "المرسوم", "التفاصيل" };
+        return WriteWorkbook(
+            "سجل التغييرات",
+            headers,
+            events.Select(e => (IReadOnlyList<string>)new[]
             {
-                Id = workbookPart.GetIdOfPart(worksheetPart),
-                SheetId = 1,
-                Name = "سجل التغييرات",
-            });
-            var sheetData = worksheetPart.Worksheet.GetFirstChild<SheetData>()!;
-            var headers = new[] { "التاريخ", "الفاعل", "النوع", "الجهة", "المحافظة", "المرسوم", "التفاصيل" };
-            sheetData.AppendChild(BuildRow(headers));
-            foreach (var e in events)
-            {
-                var decree = string.Join(" ", new[] { e.DecreeKind, e.DecreeNumber, e.DecreeDate }.Where(v => !string.IsNullOrWhiteSpace(v)));
-                sheetData.AppendChild(BuildRow(new[]
-                {
-                    e.CreatedAtUtc ?? string.Empty,
-                    e.ActorName ?? string.Empty,
-                    e.ActionKind ?? string.Empty,
-                    e.CanonicalName ?? string.Empty,
-                    e.Governorate ?? string.Empty,
-                    decree,
-                    e.PayloadJson ?? string.Empty,
-                }));
-            }
-            worksheetPart.Worksheet.GetFirstChild<AutoFilter>()!.Reference =
-                $"A1:{ColumnLetter(headers.Length)}{1 + events.Count}";
-            worksheetPart.Worksheet.Save();
-        }
-        return stream.ToArray();
+                e.CreatedAtUtc ?? string.Empty,
+                e.ActorName ?? string.Empty,
+                e.ActionKind ?? string.Empty,
+                e.CanonicalName ?? string.Empty,
+                e.Governorate ?? string.Empty,
+                string.Join(" ", new[] { e.DecreeKind, e.DecreeNumber, e.DecreeDate }
+                    .Where(v => !string.IsNullOrWhiteSpace(v))),
+                e.PayloadJson ?? string.Empty,
+            }));
     }
 
     private static Row BuildRow(IReadOnlyList<string> values)
