@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
@@ -11,10 +11,13 @@ import type {
 } from '../types';
 import RichTextEditor from '../components/RichTextEditor';
 import CorrespondenceImportanceBadge from '../components/correspondence/CorrespondenceImportanceBadge';
+import CorrespondenceLengthCounter from '../components/correspondence/CorrespondenceLengthCounter';
 import CorrespondenceSeenBadge from '../components/correspondence/CorrespondenceSeenBadge';
 import {
+  CORRESPONDENCE_MAX_BODY_CHARS,
   CORRESPONDENCE_MESSAGE_KIND_LABELS,
   CORRESPONDENCE_UNSEEN_EVENT,
+  correspondencePlainText,
   correspondenceRoleLabel,
   correspondenceTitle,
 } from '../components/correspondence/correspondenceDisplay';
@@ -81,6 +84,11 @@ export default function CorrespondenceDetail({ portal = false }: { portal?: bool
   const [sending, setSending] = useState(false);
   const [markingSeen, setMarkingSeen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // عدّاد الأحرف المرئية للصياغة (المقياس نفسه في الخادم) — المنع المبكر هنا، والفرض هناك.
+  const counterId = useId();
+  const plainLen = useMemo(() => correspondencePlainText(draftHtml).length, [draftHtml]);
+  const tooLong = plainLen > CORRESPONDENCE_MAX_BODY_CHARS;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -305,11 +313,17 @@ export default function CorrespondenceDetail({ portal = false }: { portal?: bool
           <label htmlFor="correspondence-composer-body" className="sr-only">
             {composerKind === 'reply' ? 'نص الرد' : 'نص اللاحق'}
           </label>
-          <RichTextEditor value={draftHtml} onChange={setDraftHtml} placeholder="اكتب هنا…" />
+          <RichTextEditor
+            value={draftHtml}
+            onChange={setDraftHtml}
+            placeholder="اكتب هنا…"
+            describedById={counterId}
+          />
+          <CorrespondenceLengthCounter counterId={counterId} plainLen={plainLen} tooLong={tooLong} />
           <div className="mt-4 flex gap-2 flex-wrap">
             <button
               onClick={send}
-              disabled={sending}
+              disabled={sending || tooLong}
               className={
                 composerKind === 'reply'
                   ? 'bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg px-4 py-2 text-sm min-h-11'

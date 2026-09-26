@@ -215,4 +215,39 @@ describe('CreateCorrespondenceModal', () => {
     expect(screen.queryByText('مندوب الجهة')).not.toBeInTheDocument();
     expect(screen.queryByText('جارِ البحث…')).not.toBeInTheDocument();
   });
+
+  it('النص فوق الحد الأقصى يعطّل الإرسال ويعرض التحذير والعدّاد', async () => {
+    const { fireEvent } = await import('@testing-library/react');
+    getMock().mockResolvedValue({ data: [] });
+    renderModal();
+
+    fireEvent.change(screen.getByLabelText('نص المراسلة'), {
+      target: { value: 'ن'.repeat(10001) },
+    });
+
+    // العدّاد ثلاث عقد نصية (`10001` و` / ` و`10000`) في `span` واحد —
+    // المطابق يستثني الأسلاف (تحمل النص نفسه ضمن `textContent`).
+    const counter = (_: string, el: Element | null) =>
+      el?.tagName === 'SPAN' && el?.textContent === '10001 / 10000';
+    expect(screen.getByText(counter)).toBeInTheDocument();
+    expect(screen.getByText(/تجاوز النص الحد الأقصى/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'حفظ وإرسال' })).toBeDisabled();
+    expect(api.post as unknown as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
+  });
+
+  it('النص عند الحد الأقصى يبقي الإرسال متاحًا', async () => {
+    const { fireEvent } = await import('@testing-library/react');
+    getMock().mockResolvedValue({ data: [] });
+    renderModal();
+
+    fireEvent.change(screen.getByLabelText('نص المراسلة'), {
+      target: { value: 'ن'.repeat(10000) },
+    });
+
+    const counter = (_: string, el: Element | null) =>
+      el?.tagName === 'SPAN' && el?.textContent === '10000 / 10000';
+    expect(screen.getByText(counter)).toBeInTheDocument();
+    expect(screen.queryByText(/تجاوز النص الحد الأقصى/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'حفظ وإرسال' })).not.toBeDisabled();
+  });
 });

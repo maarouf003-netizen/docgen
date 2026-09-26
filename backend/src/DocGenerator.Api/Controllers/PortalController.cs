@@ -209,9 +209,13 @@ public class PortalController : ControllerBase
             return Ok(await _correspondence.GetByIdAsync(id, UserId,
                 DocGenerator.Domain.Enums.UserRole.EntityManager, null, ct));
         }
-        catch (ArgumentException e)
+        catch (KeyNotFoundException e)
         {
             return NotFound(new { message = e.Message });
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
         }
         catch (UnauthorizedAccessException)
         {
@@ -249,9 +253,13 @@ public class PortalController : ControllerBase
         {
             return Ok(await _correspondence.AddAddendumAsync(id, request, UserId, ViewerName, ct));
         }
-        catch (ArgumentException e)
+        catch (KeyNotFoundException e)
         {
             return NotFound(new { message = e.Message });
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
         }
         catch (UnauthorizedAccessException)
         {
@@ -268,9 +276,13 @@ public class PortalController : ControllerBase
         {
             return Ok(await _correspondence.ReplyAsync(id, request, UserId, ViewerName, ct));
         }
-        catch (ArgumentException e)
+        catch (KeyNotFoundException e)
         {
             return NotFound(new { message = e.Message });
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
         }
         catch (UnauthorizedAccessException)
         {
@@ -287,9 +299,13 @@ public class PortalController : ControllerBase
             return Ok(await _correspondence.MarkSeenAsync(id, UserId, ViewerName,
                 DocGenerator.Domain.Enums.UserRole.EntityManager, null, ct));
         }
-        catch (ArgumentException e)
+        catch (KeyNotFoundException e)
         {
             return NotFound(new { message = e.Message });
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
         }
         catch (UnauthorizedAccessException)
         {
@@ -306,8 +322,9 @@ public class PortalController : ControllerBase
             return Ok(await _correspondence.ListByDocumentAsync(id, UserId,
                 DocGenerator.Domain.Enums.UserRole.EntityManager, null, ct));
         }
-        catch (ArgumentException)
+        catch (KeyNotFoundException)
         {
+            // إخفاء مقصود: لا تمييز بين «ملف غير موجود» و«خارج النطاق».
             return NotFound();
         }
         catch (UnauthorizedAccessException)

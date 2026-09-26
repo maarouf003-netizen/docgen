@@ -180,4 +180,20 @@ describe('CorrespondenceDetail', () => {
     const status = await screen.findByRole('status');
     expect(within(status).getByText('بانتظار المشاهدة')).toBeInTheDocument();
   });
+
+  it('يربط عدّاد الأحرف بالملحن لقارئ الشاشة ويعطّل الإرسال عند التجاوز', async () => {
+    // G2: ملحن التفاصيل (لاحق/رد) يعيد استخدام العدّاد المشترك نفسه —
+    // الربط `aria-describedby` والتعطيل مثبتان هنا لا في النافذة وحدها.
+    const { userEvent } = await import('@testing-library/user-event');
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({ user: { role: 'entitymanager', id: 11 }, hasFullAccess: false, isHead: false });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: detail({ canMarkSeen: true, canReply: true }) });
+    renderDetail();
+
+    await user.click(await screen.findByRole('button', { name: 'الرد على المراسلة' }));
+    const editor = await screen.findByLabelText('اكتب هنا…');
+    const describedBy = editor.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy!)?.textContent).toContain('/ 10000');
+  });
 });

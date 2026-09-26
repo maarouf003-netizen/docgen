@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { api, getApiErrorMessage } from '../../api/client';
 import RichTextEditor from '../RichTextEditor';
 import type {
@@ -8,8 +8,11 @@ import type {
 } from '../../types';
 import {
   CORRESPONDENCE_IMPORTANCE_LABELS,
+  CORRESPONDENCE_MAX_BODY_CHARS,
+  correspondencePlainText,
   correspondenceRoleLabel,
 } from './correspondenceDisplay';
+import CorrespondenceLengthCounter from './CorrespondenceLengthCounter';
 
 /**
  * نافذة تسطير مراسلة لطرف معيَّن بالاسم:
@@ -39,8 +42,13 @@ export default function CreateCorrespondenceModal({
   const [targetsLoading, setTargetsLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-const searchTimer = useRef<number | undefined>(undefined);
+  const searchTimer = useRef<number | undefined>(undefined);
   const searchSeq = useRef(0);
+
+  // عدّاد الأحرف المرئية (المقياس نفسه في الخادم) — المنع المبكر هنا، والفرض هناك.
+  const counterId = useId();
+  const plainLen = useMemo(() => correspondencePlainText(bodyHtml).length, [bodyHtml]);
+  const tooLong = plainLen > CORRESPONDENCE_MAX_BODY_CHARS;
 
   // بحث المستلمين بالاسم مع تأخير منعًا لإغراق الخادم بكل ضغطة.
   // عند وجود ملف تُقيَّد الأهلية بالخلفية تلقائيًا: مندوب←محامو الملف، محامٍ/رئيس←مناديب النطاق.
@@ -224,7 +232,13 @@ const searchTimer = useRef<number | undefined>(undefined);
           <label htmlFor="correspondence-body" className="block text-sm font-medium text-gray-700 mb-1.5 mt-4">
             نص المراسلة
           </label>
-          <RichTextEditor value={bodyHtml} onChange={setBodyHtml} placeholder="اكتب نص المراسلة…" />
+          <RichTextEditor
+            value={bodyHtml}
+            onChange={setBodyHtml}
+            placeholder="اكتب نص المراسلة…"
+            describedById={counterId}
+          />
+          <CorrespondenceLengthCounter counterId={counterId} plainLen={plainLen} tooLong={tooLong} />
 
           {error && (
             <p className="text-red-600 text-sm mt-3" role="alert">
@@ -235,7 +249,7 @@ const searchTimer = useRef<number | undefined>(undefined);
           <div className="mt-5 flex flex-wrap gap-2">
             <button
               onClick={submit}
-              disabled={saving}
+              disabled={saving || tooLong}
               className="bg-[#800000] hover:bg-[#9e0e0e] disabled:opacity-50 text-white rounded-lg px-4 py-2 text-sm min-h-11 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#800000]"
             >
               {saving ? 'جارِ الحفظ والإرسال…' : 'حفظ وإرسال'}

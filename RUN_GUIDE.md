@@ -100,6 +100,15 @@ dotnet test DocGenerator.sln
 
 النتيجة المتوقعة: `61` اختباراً (39 وحدة + 22 تكامل عبر `WebApplicationFactory` بقاعدة مؤقتة معزولة — لن تلمس `docgen.db`).
 
+> بوابة التسلسل: اختبارات وسيط الإثراء (`EnricherMiddlewareTests`) موسومة
+> `Category=Sequential` لأنها تستبدل `Log.Logger` العام — عند أي فشل عابر فيها
+> أعد التشغيل على خطوتين (الكل متوازيًا عدا الوسم، ثم الوسم وحده تسلسليًا):
+>
+> ```powershell
+> dotnet test backend/DocGenerator.sln --filter "Category!=Sequential"
+> dotnet test backend/tests/DocGenerator.Api.Tests --filter "Category=Sequential"
+> ```
+
 الواجهة:
 
 ```powershell

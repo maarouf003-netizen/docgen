@@ -7,6 +7,11 @@ using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Services;
 
+/// <summary>
+/// عقد الاستثناءات: كيان غير موجود (`مراسلة`/`ملف`) ← `KeyNotFoundException`
+/// (يترجم إلى 404)، ومدخل تحقق خاطئ ← `ArgumentException` (يترجم إلى 400) —
+/// لا يُرمى أحدهما مكان الآخر في أي مسار.
+/// </summary>
 public interface ICorrespondenceService
 {
     /// <summary>
@@ -80,6 +85,16 @@ public sealed class CorrespondenceService : ICorrespondenceService
     private const int NumberRandomDigits = 5;
     private const int MaxNumberGenerationAttempts = 20;
     private const int TargetsLimit = 20;
+
+    /// <summary>
+    /// حدّ النص الصافي للمراسلة (بعد التعقيم): 10000 حرف — يمنع الرسائل شاذة
+    /// الحجم (تكلفة التعقيم والعرض والتخزين) دون أن يمسّ أي مراسلة رسمية
+    /// مشروعة. المقياس أحرف النص المرئي المطبّع (`ToPlainText`) لا وسوم HTML
+    /// ولا كلمات — وهو نفسه مقياس عدّاد الواجهة (`correspondencePlainText`).
+    /// يُفرض هنا (400) لا في الواجهة وحدها. بلا هجرة: الأعمدة `TEXT` مفتوحة
+    /// والصفوف القائمة تُقرأ كما هي.
+    /// </summary>
+    private const int MaxBodyPlainTextLength = 10_000;
 
     private readonly ICorrespondenceRepository _letters;
     private readonly IDocumentRepository _documents;
@@ -172,7 +187,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
         int? actorBranchId, CancellationToken ct = default)
     {
         var letter = await _letters.GetByIdWithDetailsAsync(id, ct)
-            ?? throw new ArgumentException("المراسلة غير موجودة");
+            ?? throw new KeyNotFoundException("المراسلة غير موجودة");
 
         if (!await CanViewAsync(letter, actorUserId, role, actorBranchId, ct))
             throw new UnauthorizedAccessException("لا تملك صلاحية الاطلاع على هذه المراسلة");
@@ -191,8 +206,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
             throw new ArgumentException("الأهمية غير صالحة — اختر: عادي أو هام أو عاجل");
 
         var bodyHtml = HtmlInputSanitizer.Sanitize(request.BodyHtml);
-        if (string.IsNullOrWhiteSpace(HtmlInputSanitizer.ToPlainText(bodyHtml)))
-            throw new ArgumentException("نص المراسلة مطلوب");
+        var bodyText = RequireBodyText(bodyHtml, "نص المراسلة مطلوب", "نص المراسلة");
 
         // الطرف المستلم معيَّن بالاسم: حساب نشط من الأدوار الثلاثة، غير المنشئ نفسه.
         var target = await _users.GetByIdAsync(request.TargetUserId, ct)
@@ -251,7 +265,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
                 {
                     Kind = CorrespondenceMessage.KindLetter,
                     BodyHtml = bodyHtml,
-                    BodyPlainText = HtmlInputSanitizer.ToPlainText(bodyHtml),
+                    BodyPlainText = bodyText,
                     MessageNumber = string.Empty, // يُضبط أدناه = رقم المراسلة النهائي.
                     MessageDate = now,
                     AuthorId = actorUserId,
@@ -303,11 +317,10 @@ public sealed class CorrespondenceService : ICorrespondenceService
         CancellationToken ct = default)
     {
         var bodyHtml = HtmlInputSanitizer.Sanitize(request.BodyHtml);
-        if (string.IsNullOrWhiteSpace(HtmlInputSanitizer.ToPlainText(bodyHtml)))
-            throw new ArgumentException("نص اللاحق مطلوب");
+        var bodyText = RequireBodyText(bodyHtml, "نص اللاحق مطلوب", "نص اللاحق");
 
         var letter = await _letters.GetTrackedWithDetailsAsync(correspondenceId, ct)
-            ?? throw new ArgumentException("المراسلة غير موجودة");
+            ?? throw new KeyNotFoundException("المراسلة غير موجودة");
 
         // اللاحق من المنشئ نفسه حصرًا (أحد الأطراف) — كتابة المندوب تصل عبر مسار البوابة.
         if (letter.CreatedById != actorUserId)
@@ -319,7 +332,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
             CorrespondenceId = letter.Id,
             Kind = CorrespondenceMessage.KindAddendum,
             BodyHtml = bodyHtml,
-            BodyPlainText = HtmlInputSanitizer.ToPlainText(bodyHtml),
+            BodyPlainText = bodyText,
             MessageNumber = NextMessageNumber(letter),
             MessageDate = now,
             AuthorId = actorUserId,
@@ -346,11 +359,10 @@ public sealed class CorrespondenceService : ICorrespondenceService
         CancellationToken ct = default)
     {
         var bodyHtml = HtmlInputSanitizer.Sanitize(request.BodyHtml);
-        if (string.IsNullOrWhiteSpace(HtmlInputSanitizer.ToPlainText(bodyHtml)))
-            throw new ArgumentException("نص الرد مطلوب");
+        var bodyText = RequireBodyText(bodyHtml, "نص الرد مطلوب", "نص الرد");
 
         var letter = await _letters.GetTrackedWithDetailsAsync(correspondenceId, ct)
-            ?? throw new ArgumentException("المراسلة غير موجودة");
+            ?? throw new KeyNotFoundException("المراسلة غير موجودة");
 
         // الرد من الطرف المستلم المعيَّن حصرًا (أحد الأطراف) — لا رد لرئيس غير طرف.
         if (letter.TargetUserId != actorUserId)
@@ -362,7 +374,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
             CorrespondenceId = letter.Id,
             Kind = CorrespondenceMessage.KindReply,
             BodyHtml = bodyHtml,
-            BodyPlainText = HtmlInputSanitizer.ToPlainText(bodyHtml),
+            BodyPlainText = bodyText,
             MessageNumber = NextMessageNumber(letter),
             MessageDate = now,
             AuthorId = actorUserId,
@@ -389,7 +401,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
         CancellationToken ct = default)
     {
         var letter = await _letters.GetTrackedWithDetailsAsync(correspondenceId, ct)
-            ?? throw new ArgumentException("المراسلة غير موجودة");
+            ?? throw new KeyNotFoundException("المراسلة غير موجودة");
 
         if (!await CanViewAsync(letter, actorUserId, role, actorBranchId, ct))
             throw new UnauthorizedAccessException("لا تملك صلاحية الاطلاع على هذه المراسلة");
@@ -514,7 +526,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
         int actorUserId, UserRole role, int? actorBranchId, CancellationToken ct = default)
     {
         var document = await _documents.GetByIdAsync(documentId, ct)
-            ?? throw new ArgumentException("الملف غير موجود");
+            ?? throw new KeyNotFoundException("الملف غير موجود");
 
         if (!await MayListDocumentAsync(document, actorUserId, role, actorBranchId, ct))
             throw new UnauthorizedAccessException("لا تملك صلاحية الاطلاع على مراسلات هذا الملف");
@@ -754,6 +766,21 @@ public sealed class CorrespondenceService : ICorrespondenceService
         foreach (var ch in trimmed)
             builder.Append(char.IsWhiteSpace(ch) ? '-' : ch);
         return builder.ToString().ToUpperInvariant();
+    }
+
+    /// <summary>
+    /// نص الرسالة الصافي بعد التعقيم، مع فرض حدّ الطول: الفارغ يُرفض برسالة
+    /// النوع، والمتجاوز يُرفض برسالة الحد (`MaxBodyPlainTextLength`).
+    /// </summary>
+    private static string RequireBodyText(string bodyHtml, string emptyMessage, string kindLabel)
+    {
+        var bodyText = HtmlInputSanitizer.ToPlainText(bodyHtml);
+        if (string.IsNullOrWhiteSpace(bodyText))
+            throw new ArgumentException(emptyMessage);
+        if (bodyText.Length > MaxBodyPlainTextLength)
+            throw new ArgumentException(
+                $"{kindLabel} يتجاوز الحد الأقصى ({MaxBodyPlainTextLength.ToString(System.Globalization.CultureInfo.InvariantCulture)} حرف)");
+        return bodyText;
     }
 
     private static string? NormalizeImportanceFilter(string? importance)

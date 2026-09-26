@@ -13,6 +13,13 @@ namespace DocGenerator.Api.Tests;
 /// النطاق (<c>FromLogContext</c>)، مع إعادة <c>Log.Logger</c> العام في <c>finally</c> حتى لا
 /// يتسرب الإعداد لاختبارات متوازية.
 /// </summary>
+/// <remarks>
+/// عزل إجباري عن التوازي: الاختبار يستبدل `Log.Logger` العام للعملية، وأي إقلاع
+/// تطبيق (`ApiFactory` → `UseSerilog`) في خيط موازٍ يستبدله في النافذة نفسها
+/// فيضيع حدث المسبار (فشل عابر مثبّت). شغّل هذه الفئة تسلسليًا وحدها:
+/// `dotnet test --filter Category=Sequential` بعد `dotnet test --filter Category!=Sequential`.
+/// </remarks>
+[Trait("Category", "Sequential")]
 public class EnricherMiddlewareTests
 {
     private sealed class CollectSink : ILogEventSink

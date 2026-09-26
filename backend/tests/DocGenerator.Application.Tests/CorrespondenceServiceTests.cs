@@ -320,6 +320,82 @@ public class CorrespondenceServiceTests : IDisposable
             _head.Id, "رئيس القسم"));
     }
 
+    [Theory]
+    [InlineData("create")]
+    [InlineData("addendum")]
+    [InlineData("reply")]
+    public async Task BodyText_OverLimit_IsRejectedOnAllWritePaths(string path)
+    {
+        // النص الصافي فوق 10000 حرف يُرفض قبل الحفظ — والرسالة تذكر الحد.
+        var oversized = $"<p>{new string('ن', 10_001)}</p>";
+        var letter = await _service.CreateAsync(
+            new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>الأصل</p>"),
+            _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
+
+        var ex = path switch
+        {
+            "create" => await Assert.ThrowsAsync<ArgumentException>(() => _service.CreateAsync(
+                new CreateCorrespondenceRequest(null, _delegate.Id, "normal", oversized),
+                _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId)),
+            "addendum" => await Assert.ThrowsAsync<ArgumentException>(() => _service.AddAddendumAsync(
+                letter.Id, new AddCorrespondenceAddendumRequest(oversized),
+                _lawyer1.Id, "المحامي الأول")),
+            _ => await Assert.ThrowsAsync<ArgumentException>(() => _service.ReplyAsync(
+                letter.Id, new ReplyCorrespondenceRequest(oversized),
+                _delegate.Id, "مندوب الجهة")),
+        };
+        Assert.Contains("10000", ex.Message);
+    }
+
+    [Fact]
+    public async Task BodyText_AtLimit_IsAccepted()
+    {
+        // الحدّية: 10000 حرف بالضبط تُقبل — الحد للشذوذ لا للرسائل المشروعة.
+        var letter = await _service.CreateAsync(
+            new CreateCorrespondenceRequest(null, _delegate.Id, "normal", $"<p>{new string('ن', 10_000)}</p>"),
+            _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
+        Assert.Contains(new string('ن', 10_000), letter.Messages.Single().BodyHtml);
+    }
+
+    [Fact]
+    public async Task BodyText_TagsDoNotCount_TowardLimit()
+    {
+        // 3000 حرف مرئي داخل ~21000 حرف وسوم (`<b>` المسموح): تُقبل لأن
+        // المقياس النص الصافي لا HTML — ولو احتُسبت الوسوم لرُفضت.
+        var body = string.Concat(Enumerable.Repeat("<b>ن</b>", 3000));
+        Assert.True(body.Length > 10_000);
+
+        var letter = await _service.CreateAsync(
+            new CreateCorrespondenceRequest(null, _delegate.Id, "normal", body),
+            _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
+        Assert.Single(letter.Messages);
+    }
+
+    [Theory]
+    [InlineData("get")]
+    [InlineData("addendum")]
+    [InlineData("reply")]
+    [InlineData("markseen")]
+    [InlineData("listbydoc")]
+    public async Task MissingEntity_ThrowsKeyNotFound(string path)
+    {
+        // كيان غير موجود ← `KeyNotFoundException` (يترجم إلى 404)، لا
+        // `ArgumentException` المخصص لمدخل التحقق الخاطئ (400).
+        const int missing = int.MaxValue;
+        var validBody = new AddCorrespondenceAddendumRequest("<p>نص</p>");
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => path switch
+        {
+            "get" => _service.GetByIdAsync(missing, _lawyer1.Id, UserRole.Lawyer, _branchId),
+            "addendum" => _service.AddAddendumAsync(missing, validBody, _lawyer1.Id, "المحامي الأول"),
+            "reply" => _service.ReplyAsync(missing,
+                new ReplyCorrespondenceRequest("<p>نص</p>"), _delegate.Id, "مندوب الجهة"),
+            "markseen" => _service.MarkSeenAsync(missing, _delegate.Id, "مندوب الجهة",
+                UserRole.EntityManager, null),
+            _ => _service.ListByDocumentAsync(missing, _lawyer1.Id, UserRole.Lawyer, _branchId),
+        });
+    }
+
     [Fact]
     public async Task MarkSeen_TargetOnly_DocumentsOnce_AndReportsViewStatus()
     {

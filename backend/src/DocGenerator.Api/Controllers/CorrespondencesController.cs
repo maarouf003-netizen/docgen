@@ -104,9 +104,13 @@ public class CorrespondencesController : ControllerBase
             var items = await _letters.ListByDocumentAsync(documentId, UserId, Role, BranchId, ct);
             return Ok(items);
         }
-        catch (ArgumentException e)
+        catch (KeyNotFoundException e)
         {
             return NotFound(new { message = e.Message });
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
         }
         catch (UnauthorizedAccessException)
         {
@@ -147,9 +151,13 @@ public class CorrespondencesController : ControllerBase
             var letter = await _letters.GetByIdAsync(id, UserId, Role, BranchId, ct);
             return Ok(letter);
         }
-        catch (ArgumentException e)
+        catch (KeyNotFoundException e)
         {
             return NotFound(new { message = e.Message });
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
         }
         catch (UnauthorizedAccessException)
         {
@@ -170,9 +178,13 @@ public class CorrespondencesController : ControllerBase
             var addendum = await _letters.AddAddendumAsync(id, request, UserId, ActorName, ct);
             return Ok(addendum);
         }
-        catch (ArgumentException e)
+        catch (KeyNotFoundException e)
         {
             return NotFound(new { message = e.Message });
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
         }
         catch (UnauthorizedAccessException)
         {
@@ -193,9 +205,13 @@ public class CorrespondencesController : ControllerBase
             var reply = await _letters.ReplyAsync(id, request, UserId, ActorName, ct);
             return Ok(reply);
         }
-        catch (ArgumentException e)
+        catch (KeyNotFoundException e)
         {
             return NotFound(new { message = e.Message });
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
         }
         catch (UnauthorizedAccessException)
         {
@@ -217,9 +233,13 @@ public class CorrespondencesController : ControllerBase
             var receipt = await _letters.MarkSeenAsync(id, UserId, ActorName, Role, BranchId, ct);
             return Ok(receipt);
         }
-        catch (ArgumentException e)
+        catch (KeyNotFoundException e)
         {
             return NotFound(new { message = e.Message });
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
         }
         catch (UnauthorizedAccessException)
         {

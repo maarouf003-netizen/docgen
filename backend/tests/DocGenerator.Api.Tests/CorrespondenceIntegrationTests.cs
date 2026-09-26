@@ -301,6 +301,56 @@ public sealed class CorrespondenceIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Addendum_OverLimit_ReturnsBadRequest_NotNotFound()
+    {
+        // رسالة التحقق (تجاوز الحد) تُردّ 400 لا 404 — الفصل المقصود في F1.
+        var create = await Lawyer().PostAsync("/api/correspondence", Json(new
+        {
+            documentId = (int?)null,
+            targetUserId = _delegateId,
+            importance = "normal",
+            bodyHtml = "<p>الأصل</p>",
+        }));
+        var id = (await ReadJsonAsync(create)).GetProperty("id").GetInt32();
+
+        var oversized = $"<p>{new string('ن', 10_001)}</p>";
+        var response = await Lawyer().PostAsync($"/api/correspondence/{id}/addenda",
+            Json(new { bodyHtml = oversized }));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("الحد", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Reply_OverLimit_ReturnsBadRequest_OnPortalPath()
+    {
+        var create = await Lawyer().PostAsync("/api/correspondence", Json(new
+        {
+            documentId = (int?)null,
+            targetUserId = _delegateId,
+            importance = "normal",
+            bodyHtml = "<p>الأصل</p>",
+        }));
+        var id = (await ReadJsonAsync(create)).GetProperty("id").GetInt32();
+
+        var oversized = $"<p>{new string('ن', 10_001)}</p>";
+        var response = await Delegate().PostAsync($"/api/portal/correspondence/{id}/replies",
+            Json(new { bodyHtml = oversized }));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("الحد", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Get_MissingLetter_ReturnsNotFound()
+    {
+        // غير-الموجود يُردّ 404 (عبر `KeyNotFoundException`) لا 400.
+        var response = await Lawyer().GetAsync($"/api/correspondence/{int.MaxValue}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Anonymous_CannotAccessCorrespondence()
     {
         var response = await _factory.CreateClient().GetAsync("/api/correspondence");

@@ -121,11 +121,14 @@ export default function RichTextEditor({
   onChange,
   placeholder,
   onReady,
+  describedById,
 }: {
   value: string;
   onChange: (html: string) => void;
   placeholder?: string;
   onReady?: (editor: Editor) => void;
+  /** معرّف عنصر وصفي (عدّاد أحرف ونحوه) يُعلَن لقارئ الشاشة وصفًا للمحرر. */
+  describedById?: string;
 }) {
   const extensions = useMemo(
     () => [
@@ -160,6 +163,7 @@ export default function RichTextEditor({
           class:
             'rich-text-editor w-full min-h-32 max-h-64 overflow-y-auto rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500',
           'aria-label': placeholder ?? 'محرر النص',
+          ...(describedById ? { 'aria-describedby': describedById } : {}),
         },
       },
     },

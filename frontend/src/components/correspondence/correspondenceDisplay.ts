@@ -28,6 +28,31 @@ export const CORRESPONDENCE_VIEW_STATUS_LABELS: Record<CorrespondenceViewStatus,
   pending: 'بانتظار المشاهدة',
 };
 
+/**
+ * الحد الأقصى لأحرف النص الصافي للمراسلة (تسطير/لاحق/رد) — مرآة حرفية لـ
+ * `MaxBodyPlainTextLength` في الخلفية (`CorrespondenceService`)، والفرض
+ * الحقيقي هناك (400). عدّاد الواجهة إرشادي ومنع مبكر فقط.
+ */
+export const CORRESPONDENCE_MAX_BODY_CHARS = 10000;
+
+/**
+ * النص الصافي لمحتوى المحرر — مرآة لخوارزمية `HtmlInputSanitizer.ToPlainText`
+ * في الخلفية: الكتل العلوية تُقرأ نصًا وتُقلَّم وتُطبَّع فراغاتها وتُجمع بفاصل
+ * وحيد. أي اختلاف طفيف في الحالات الشاذة (كيانات غريبة) يحسمه الخادم برسالة
+ * عربية صريحة، فالواجهة لا تمنع إرسالًا يقبله الخادم إلا بهذا المقياس نفسه.
+ */
+export function correspondencePlainText(html: string): string {
+  if (!html) return '';
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const parts: string[] = [];
+  doc.body.childNodes.forEach((node) => {
+    const text = (node.textContent ?? '').trim();
+    if (!text) return;
+    parts.push(text.replace(/\s+/g, ' '));
+  });
+  return parts.join(' ').trim();
+}
+
 /** أدوار أطراف المراسلة كما تظهر في الواجهة. */
 export function correspondenceRoleLabel(role: string): string {
   switch (role) {
