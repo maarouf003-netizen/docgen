@@ -31,6 +31,7 @@ function makeStats(overrides: Partial<ManagerStatsDto> = {}): ManagerStatsDto {
     periodQuarter: null,
     periodMonth: 5,
     periodDateFallbackCount: 0,
+    periodDateFromReceiptCount: 0,
     ...overrides,
   };
 }
@@ -70,7 +71,7 @@ describe('ManagerStatsSection — وسم مصدر الفترة', () => {
         error=""
       />,
     );
-    expect(screen.getByText(/حُسبت بتاريخ إدخالها لتعذّر تحليل تاريخ قيدها/)).toBeInTheDocument();
+    expect(screen.getByText(/حُسبت بتاريخ إدخالها لغياب تاريخ قيدها أو تعذّر تحليله/)).toBeInTheDocument();
 
     rerender(
       <ManagerStatsSection
@@ -87,7 +88,43 @@ describe('ManagerStatsSection — وسم مصدر الفترة', () => {
         error=""
       />,
     );
-    expect(screen.queryByText(/حُسبت بتاريخ إدخالها لتعذّر تحليل تاريخ قيدها/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/حُسبت بتاريخ إدخالها لغياب تاريخ قيدها أو تعذّر تحليله/)).not.toBeInTheDocument();
+  });
+
+  it('يعرض حاشية غياب الإخطار بسببها الدقيق ويخفيها عند الصفر', () => {
+    const { rerender } = render(
+      <ManagerStatsSection
+        period={'monthly' as StatsPeriod}
+        onPeriodChange={vi.fn()}
+        availablePeriods={[]}
+        selection={{ year: 2026, month: 5 }}
+        onSelectionChange={vi.fn()}
+        branches={[]}
+        branchId={null}
+        onBranchChange={vi.fn()}
+        stats={makeStats({ periodDateFromReceiptCount: 2 })}
+        lawyers={[]}
+        error=""
+      />,
+    );
+    expect(screen.getByText(/حُسبت بتاريخ إدخالها لغياب تاريخ ورود الإخطار/)).toBeInTheDocument();
+
+    rerender(
+      <ManagerStatsSection
+        period={'monthly' as StatsPeriod}
+        onPeriodChange={vi.fn()}
+        availablePeriods={[]}
+        selection={{ year: 2026, month: 5 }}
+        onSelectionChange={vi.fn()}
+        branches={[]}
+        branchId={null}
+        onBranchChange={vi.fn()}
+        stats={makeStats({ periodDateFromReceiptCount: 0 })}
+        lawyers={[]}
+        error=""
+      />,
+    );
+    expect(screen.queryByText(/حُسبت بتاريخ إدخالها لغياب تاريخ ورود الإخطار/)).not.toBeInTheDocument();
   });
 
   it('يعرض حاشية جدول المحامين عند وجود نقاط محسوبة بتاريخ الإدخال', () => {
@@ -101,7 +138,7 @@ describe('ManagerStatsSection — وسم مصدر الفترة', () => {
         ],
       },
     ], 1);
-    expect(screen.getByText(/محسوبة\s*بتاريخ الإدخال لتعذّر تحليل تاريخ قيدها/)).toBeInTheDocument();
+    expect(screen.getByText(/محسوبة\s*بتاريخ الإدخال لغياب تاريخ قيدها أو تعذّر تحليله/)).toBeInTheDocument();
   });
 
   it('يخفي حاشية جدول المحامين عند غياب الوسم', () => {

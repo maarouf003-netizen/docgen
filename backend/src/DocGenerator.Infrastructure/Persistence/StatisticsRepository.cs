@@ -99,7 +99,7 @@ public class StatisticsRepository : IStatisticsRepository
             })
             .ToListAsync(ct);
 
-        return GroupMonths(dates.Select(x => (x.RegDateParsed ?? x.CreatedAt.Date, x.RegDateParsed is null)));
+        return GroupMonths(dates.Select(x => x.RegDateParsed ?? x.CreatedAt.Date));
     }
 
     public async Task<List<BranchSummaryDto>> GetBranchesSummaryAsync(CancellationToken ct = default)
@@ -215,8 +215,13 @@ public class StatisticsRepository : IStatisticsRepository
         /// <summary>مجموع بدل المبيع لإنابات الملف المنفذة (تُضاف لسلة «منفذ جبريا» عند اعتباره منفذًا).</summary>
         public decimal? DelegationSalesAmount { get; set; }
         public DateTime PeriodDate { get; set; }
-        /// <summary>حُسبت فترة الملف بتاريخ إدخاله لتعذّر تحليل تاريخ قيده (وسم المصدر).</summary>
+        /// <summary>حُسبت فترة الملف بتاريخ إدخاله لسقوط تاريخه المعتمد (وسم المصدر).</summary>
         public bool PeriodDateFromCreatedAt { get; set; }
+        /// <summary>
+        /// سبب الاحتياط لجهتي «منفذ عليها/إيداع»: غياب تاريخ ورود الإخطار (لا تعذّر تحليل تاريخ القيد —
+        /// تاريخ القيد ليس التاريخ المعتمد لهاتين الجهتين أصلًا). يُستخدم لفصل العدّاد والتصريح الدقيق.
+        /// </summary>
+        public bool PeriodDateReceiptMissing { get; set; }
     }
 
     public async Task<ManagerStatsDto> GetManagerStatsAsync(StatsPeriod period, int? branchId,
@@ -273,10 +278,15 @@ public class StatisticsRepository : IStatisticsRepository
                         : d.RegistrationDate!.DateParsed ?? d.CreatedAt,
                 // وسم المصدر بذات شرط الاحتياط أعلاه: جهات «منفذ عليها/إيداع» تسقط إلى
                 // الإدخال عند غياب ورود الإخطار، وغيرها عند غياب/تعذّر تحليل تاريخ القيد.
+                // السبب مفصول في علم مستقل (`PeriodDateReceiptMissing`) لأن تاريخ القيد ليس
+                // التاريخ المعتمد لهاتين الجهتين أصلًا — فلا يُنسب احتياطهما إلى «تعذّر تحليله».
                 PeriodDateFromCreatedAt = d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
                     || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit
                         ? d.FileReceiptDate == null
                         : d.RegistrationDate == null || d.RegistrationDate.DateParsed == null,
+                PeriodDateReceiptMissing = (d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
+                    || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit)
+                    && d.FileReceiptDate == null,
             })
             .Where(r => r.PeriodDate >= window.Start && r.PeriodDate < window.End)
             .ToListAsync(ct);
@@ -336,11 +346,14 @@ public class StatisticsRepository : IStatisticsRepository
                     || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit
                         ? d.FileReceiptDate ?? d.CreatedAt
                         : d.RegistrationDate!.DateParsed ?? d.CreatedAt,
-                // وسم المصدر بذات شرط الاحتياط أعلاه (راجع مسار المدير).
+                // وسم المصدر بذات شرط الاحتياط أعلاه (راجع مسار المدير — مع فصل سبب الإخطار).
                 PeriodDateFromCreatedAt = d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
                     || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit
                         ? d.FileReceiptDate == null
                         : d.RegistrationDate == null || d.RegistrationDate.DateParsed == null,
+                PeriodDateReceiptMissing = (d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
+                    || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit)
+                    && d.FileReceiptDate == null,
             })
             .Where(r => r.PeriodDate >= window.Start && r.PeriodDate < window.End)
             .ToListAsync(ct);
@@ -430,8 +443,10 @@ public class StatisticsRepository : IStatisticsRepository
         var depositTradingCount = 0;
         var depositExecutedCount = 0;
         decimal depositExecutedAmount = 0;
-        // وسم مصدر الفترة: ملفات النطاق المحسوبة بتاريخ إدخالها (تُجمَع هنا وتُعرض معلنة).
+        // وسم مصدر الفترة: ملفات النطاق المحسوبة بتاريخ إدخالها (تُجمَع هنا وتُعرض معلنة) —
+        // مفصولة السبب: تعذّر تاريخ القيد (`periodFallbackCount`) وغياب إخطار الورود (`periodReceiptCount`).
         var periodFallbackCount = 0;
+        var periodReceiptCount = 0;
 
         var activeBanking = 0;
         var activeOrdinary = 0;
@@ -457,7 +472,10 @@ public class StatisticsRepository : IStatisticsRepository
 
         foreach (var r in rows)
         {
-            if (r.PeriodDateFromCreatedAt)
+            // فصل السبب: غياب الإخطار لجهتي «منفذ عليها/إيداع» لا يُنسب إلى «تعذّر تحليل تاريخ القيد».
+            if (r.PeriodDateReceiptMissing)
+                periodReceiptCount++;
+            else if (r.PeriodDateFromCreatedAt)
                 periodFallbackCount++;
 
             // ملف «الجهة العامة منفذ عليها»: يُحتسب في «متداول للضد» (المتداول فقط)
@@ -614,7 +632,8 @@ public class StatisticsRepository : IStatisticsRepository
             PeriodYear: window.Start.Year,
             PeriodQuarter: period == StatsPeriod.Quarterly ? (window.Start.Month - 1) / 3 + 1 : null,
             PeriodMonth: period == StatsPeriod.Monthly ? window.Start.Month : null,
-            PeriodDateFallbackCount: periodFallbackCount);
+            PeriodDateFallbackCount: periodFallbackCount,
+            PeriodDateFromReceiptCount: periodReceiptCount);
     }
 
     /// <summary>
@@ -738,23 +757,22 @@ public class StatisticsRepository : IStatisticsRepository
             })
             .ToListAsync(ct);
 
-        return GroupMonths(dates.Select(x => (x.RegDateParsed ?? x.CreatedAt.Date, x.RegDateParsed is null)));
+        return GroupMonths(dates.Select(x => x.RegDateParsed ?? x.CreatedAt.Date));
     }
 
-    private static List<MonthlyStatDto> GroupMonths(IEnumerable<(DateTime Date, bool FromCreatedAt)> dates)
+    private static List<MonthlyStatDto> GroupMonths(IEnumerable<DateTime> dates)
     {
-        var counts = new Dictionary<(int Year, int Month), (int Count, int Fallback)>();
-        foreach (var (date, fromCreatedAt) in dates)
+        var counts = new Dictionary<(int Year, int Month), int>();
+        foreach (var date in dates)
         {
             var key = (date.Year, date.Month);
-            var (count, fallback) = counts.TryGetValue(key, out var e) ? e : (0, 0);
-            counts[key] = (count + 1, fallback + (fromCreatedAt ? 1 : 0));
+            counts[key] = counts.TryGetValue(key, out var c) ? c + 1 : 1;
         }
 
         return counts
             .OrderBy(k => k.Key.Year)
             .ThenBy(k => k.Key.Month)
-            .Select(k => new MonthlyStatDto(k.Key.Year, k.Key.Month, k.Value.Count, k.Value.Fallback))
+            .Select(k => new MonthlyStatDto(k.Key.Year, k.Key.Month, k.Value))
             .ToList();
     }
 

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using DocGenerator.Application.DTOs;
 
 namespace DocGenerator.Api.Tests;
@@ -129,6 +130,21 @@ public class ManagerStatsIntegrationTests
 
         Assert.NotNull(stats);
         Assert.True(stats.TotalFiles >= 1);
+    }
+
+    [Fact]
+    public async Task ManagerStats_WireContract_ExposesFallbackSourceKeys()
+    {
+        // يثبت اسمي مفتاحي وسم المصدر سلكيًا (camelCase) — فالواجهة تقرأهما حرفيًا، وأي
+        // انحراف تسمية يُخفي الحاشية بصمت عبر `?? 0` بدل أن يفشل بصوت.
+        var manager = _factory.AuthorizedClient("manager");
+        var response = await manager.GetAsync("/api/stats/manager?period=monthly&year=2026&month=5");
+        response.EnsureSuccessStatusCode();
+        using var doc = await response.Content.ReadFromJsonAsync<JsonDocument>();
+
+        Assert.NotNull(doc);
+        Assert.True(doc.RootElement.TryGetProperty("periodDateFallbackCount", out _));
+        Assert.True(doc.RootElement.TryGetProperty("periodDateFromReceiptCount", out _));
     }
 
     [Fact]

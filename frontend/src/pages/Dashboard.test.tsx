@@ -97,6 +97,7 @@ const MANAGER_STATS: ManagerStatsDto = {
   periodQuarter: null,
   periodMonth: 8,
   periodDateFallbackCount: 0,
+  periodDateFromReceiptCount: 0,
 };
 
 const MANAGER_LAWYERS: ManagerLawyerStatDto[] = [
@@ -104,9 +105,9 @@ const MANAGER_LAWYERS: ManagerLawyerStatDto[] = [
 ];
 
 const PERIODS: MonthlyStatDto[] = [
-  { year: 2026, month: 8, count: 3, fromCreatedAtCount: 0 },
-  { year: 2026, month: 7, count: 2, fromCreatedAtCount: 0 },
-  { year: 2025, month: 12, count: 1, fromCreatedAtCount: 0 },
+  { year: 2026, month: 8, count: 3 },
+  { year: 2026, month: 7, count: 2 },
+  { year: 2025, month: 12, count: 1 },
 ];
 
 const BRANCH_LAWYERS: LawyerListItem[] = [

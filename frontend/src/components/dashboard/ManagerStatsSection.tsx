@@ -134,7 +134,17 @@ export function ManagerStatsSection({
           <span className="font-bold tabular-nums" dir="ltr">
             ({stats.periodDateFallbackCount})
           </span>{' '}
-          ملفًا حُسبت بتاريخ إدخالها لتعذّر تحليل تاريخ قيدها
+          ملفًا حُسبت بتاريخ إدخالها لغياب تاريخ قيدها أو تعذّر تحليله
+        </p>
+      ) : null}
+
+      {(stats.periodDateFromReceiptCount ?? 0) > 0 ? (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-6">
+          وتشمل أيضًا{' '}
+          <span className="font-bold tabular-nums" dir="ltr">
+            ({stats.periodDateFromReceiptCount})
+          </span>{' '}
+          ملفًا لجهات «منفذ عليها» أو «عرض وايداع» حُسبت بتاريخ إدخالها لغياب تاريخ ورود الإخطار
         </p>
       ) : null}
 
@@ -294,7 +304,7 @@ export function ManagerStatsSection({
           {lawyerFallbackTotal > 0 ? (
             <p className="text-xs text-amber-700 mt-3">
               منها <span className="font-bold tabular-nums" dir="ltr">({lawyerFallbackTotal})</span> محسوبة
-              بتاريخ الإدخال لتعذّر تحليل تاريخ قيدها
+              بتاريخ الإدخال لغياب تاريخ قيدها أو تعذّر تحليله
             </p>
           ) : null}
         </div>

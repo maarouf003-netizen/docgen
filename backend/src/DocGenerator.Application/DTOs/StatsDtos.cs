@@ -45,12 +45,8 @@ public record ReminderDto(
     DateTime DueDate,
     bool DueDateSuspect);
 
-/// <summary>
-/// شهر إحصائي (تاريخ القيد، وإن تعذّر تحليله فشهر الإدخال).
-/// `FromCreatedAtCount` وسم مصدر صريح: عدد الملفات المحسوبة بتاريخ الإدخال
-/// لتعذّر تحليل تاريخ قيدها — يُعرض معلنًا لا مدمجًا بصمت.
-/// </summary>
-public record MonthlyStatDto(int Year, int Month, int Count, int FromCreatedAtCount = 0);
+/// <summary>شهر إحصائي (تاريخ القيد، وإن غاب أو تعذّر تحليله فشهر الإدخال).</summary>
+public record MonthlyStatDto(int Year, int Month, int Count);
 
 /// <summary>
 /// نطاق الفترة الزمنية في إحصاءات المدير:
@@ -132,10 +128,17 @@ public record ManagerStatsDto(
     int ReferredToStartCount = 0,
     ManagerContractSplitDto? ReferredSplit = null,
     /// <summary>
-    /// وسم مصدر الفترة: عدد ملفات النطاق التي حُسبت بتاريخ إدخالها (CreatedAt) لتعذّر
-    /// تحليل تاريخ قيدها (DateParsed) — يُعرض معلنًا لا مدمجًا بصمت.
+    /// وسم مصدر الفترة (سبب القيد فقط): عدد ملفات النطاق التي حُسبت بتاريخ إدخالها (CreatedAt)
+    /// لغياب تاريخ قيدها أو تعذّر تحليله (DateParsed) — يُعرض معلنًا لا مدمجًا بصمت.
+    /// لا يشمل جهتي «منفذ عليها/إيداع» عند غياب إخطار ورودهما (راجع `PeriodDateFromReceiptCount`).
     /// </summary>
-    int PeriodDateFallbackCount = 0);
+    int PeriodDateFallbackCount = 0,
+    /// <summary>
+    /// وسم مصدر الفترة (سبب الإخطار فقط): عدد ملفات جهتي «منفذ عليها/إيداع» التي حُسبت بتاريخ
+    /// إدخالها لغياب تاريخ ورود الإخطار (`FileReceiptDate`) — تاريخ القيد ليس تاريخهما المعتمد
+    /// أصلًا، فيُفصل عدّاده وتصريحه عن سبب القيد أعلاه.
+    /// </summary>
+    int PeriodDateFromReceiptCount = 0);
 
 /// <summary>عدادات بطاقة «الاستئنافات» في لوحة المحامي وفق فلاتر الفترة.</summary>
 public record AppealsStatsDto(
@@ -143,7 +146,7 @@ public record AppealsStatsDto(
     int DecidedInFavor,
     int DecidedAgainst);
 
-/// <summary>نقطة زمنية داخل نطاق الفترة (شهر) لجدول محامي الفرع، مع وسم المصدر (راجع `MonthlyStatDto`).</summary>
+/// <summary>نقطة زمنية داخل نطاق الفترة (شهر) لجدول محامي الفرع، مع وسم المصدر: ملفات النقطة المحسوبة بتاريخ إدخالها لغياب تاريخ قيدها أو تعذّر تحليله.</summary>
 public record ManagerPeriodPointDto(int Year, int Month, int Count, int FromCreatedAtCount = 0);
 
 /// <summary>

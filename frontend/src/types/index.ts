@@ -744,8 +744,6 @@ export interface MonthlyStatDto {
   year: number;
   month: number;
   count: number;
-  /** وسم المصدر: ملفات هذا الشهر المحسوبة بتاريخ إدخالها لتعذّر تحليل تاريخ قيدها. */
-  fromCreatedAtCount: number;
 }
 
 export type StatsPeriod = 'yearly' | 'quarterly' | 'monthly';
@@ -809,8 +807,10 @@ export interface ManagerStatsDto {
   periodYear: number;
   periodQuarter: number | null;
   periodMonth: number | null;
-  /** وسم مصدر الفترة: ملفات النطاق المحسوبة بتاريخ إدخالها لتعذّر تحليل تاريخ قيدها. */
+  /** وسم مصدر الفترة (سبب القيد فقط): ملفات النطاق المحسوبة بتاريخ إدخالها لغياب تاريخ قيدها أو تعذّر تحليله. */
   periodDateFallbackCount: number;
+  /** وسم مصدر الفترة (سبب الإخطار فقط): ملفات جهتي «منفذ عليها/إيداع» المحسوبة بتاريخ إدخالها لغياب تاريخ ورود الإخطار. */
+  periodDateFromReceiptCount: number;
   /** إحصاء استئنافات المحامي وفق فلاتر الفترة — null عند غياب أي استئناف (تُخفى البطاقة). */
   appeals?: AppealsStatsDto | null;
 }
@@ -836,7 +836,7 @@ export interface ManagerPeriodPointDto {
   year: number;
   month: number;
   count: number;
-  /** وسم المصدر: ملفات هذه النقطة المحسوبة بتاريخ إدخالها لتعذّر تحليل تاريخ قيدها. */
+  /** وسم المصدر: ملفات هذه النقطة المحسوبة بتاريخ إدخالها لغياب تاريخ قيدها أو تعذّر تحليله. */
   fromCreatedAtCount: number;
 }
 

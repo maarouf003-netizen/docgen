@@ -120,16 +120,17 @@ describe('EntityChangeLog', () => {
     expect(screen.queryByText('ملخص منقوص')).not.toBeInTheDocument();
   });
 
-  it('فلتر المستخدم بالرموز فقط يوضح أن الفراغ قد يعني عدم المطابقة', async () => {
+  it('فلتر المستخدم باسم لا يطابق يوضح أن الفراغ قد يعني عدم المطابقة', async () => {
     const user = userEvent.setup();
     mockRows([]);
     render(<MemoryRouter><EntityChangeLog /></MemoryRouter>);
     await screen.findByText('سجل تغييرات الجهات');
 
-    await user.type(screen.getByLabelText('المستخدم'), '...');
+    await user.type(screen.getByLabelText('المستخدم'), 'أحمد');
     await act(() => new Promise((resolve) => setTimeout(resolve, 400)));
 
-    // التلميح في التخطيطين معًا (جدول `md:block` وبطاقات `md:hidden`).
-    expect(await screen.findAllByText(/الرموز وحدها قد لا تطابق أي اسم/)).toHaveLength(2);
+    // التلميح في التخطيطين معًا (جدول `md:block` وبطاقات `md:hidden`) — بصياغة محايدة
+    // لا تذكر الرموز تحديدًا لأنها تظهر لأي نص فلتر غير فارغ.
+    expect(await screen.findAllByText(/قد لا يطابق الاسم أو المعرّف أي سجل/)).toHaveLength(2);
   }, 8000);
 });
