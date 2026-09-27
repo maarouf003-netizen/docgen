@@ -1,10 +1,12 @@
 using DocGenerator.Api.Authorization;
+using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace DocGenerator.Api.Controllers;
 
@@ -113,6 +115,7 @@ public class PortalController : ControllerBase
 
     /// <summary>إحصاءات قرائية لنطاق الجهة (المرحلة 4) — إجمالي أو فرع مختار ضمن النطاق.</summary>
     [HttpGet("stats")]
+    [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
     public async Task<IActionResult> Stats([FromQuery] int? entryId = null, CancellationToken ct = default)
     {
         try
@@ -127,6 +130,7 @@ public class PortalController : ControllerBase
 
     /// <summary>تصدير Excel لملفات النطاق وفق نفس الفلاتر وبسقف صفوف التصدير.</summary>
     [HttpGet("export")]
+    [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
     public async Task<IActionResult> Export(
         [FromQuery] string? q,
         [FromQuery] string? status,

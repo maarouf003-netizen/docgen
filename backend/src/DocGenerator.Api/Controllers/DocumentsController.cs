@@ -1,4 +1,5 @@
 using DocGenerator.Api.Authorization;
+using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
@@ -6,6 +7,7 @@ using DocGenerator.Application.Services;
 using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace DocGenerator.Api.Controllers;
 
@@ -135,6 +137,7 @@ public class DocumentsController : ControllerBase
     }
 
     [HttpGet("export")]
+    [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
     public async Task<IActionResult> Export(
         [FromQuery] string? q, [FromQuery] string? status,
         [FromQuery] string? applicant, [FromQuery] string? court,
@@ -493,6 +496,7 @@ public class DocumentsController : ControllerBase
     }
 
     [HttpGet("{id:int}/generate")]
+    [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
     public async Task<IActionResult> Generate(
         int id,
         [FromQuery] string template,

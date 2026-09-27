@@ -4,8 +4,10 @@ using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using DocGenerator.Api.Auth;
 using DocGenerator.Api.Middleware;
+using DocGenerator.Api.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 
 namespace DocGenerator.Api.Controllers;
@@ -39,6 +41,7 @@ public class AuthController : ControllerBase
 
     [HttpPost("login")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitingSetup.LoginIpPolicy)]
     public async Task<IActionResult> Login([FromBody] LoginRequest request, CancellationToken ct)
     {
         // بعد UseForwardedHeaders الموثوق (KnownProxy فقط)، يعكس RemoteIpAddress عنوان
@@ -99,6 +102,7 @@ public class AuthController : ControllerBase
 
     [HttpPost("change-password")]
     [Authorize]
+    [EnableRateLimiting(RateLimitingSetup.PasswordPolicy)]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request, CancellationToken ct)
     {
         try

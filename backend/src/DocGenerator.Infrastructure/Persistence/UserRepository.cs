@@ -65,7 +65,7 @@ public class UserRepository : Repository<User>, IUserRepository
         if (groupIds is null || groupIds.Count == 0)
             return new List<User>();
 
-        var idSet = groupIds as IReadOnlySet<int> ?? new HashSet<int>(groupIds);
+        var idSet = groupIds as IReadOnlySet<int> ?? new HashSet<int>(groupIds ?? []);
 
         // معرّفات القيود (Entry) التابعة للهويات الأم المطلوبة، لتعيين مندوبي مستوى القيد.
         var entryIds = await Db.PublicEntities
@@ -166,8 +166,8 @@ public class UserRepository : Repository<User>, IUserRepository
         if ((entryIds is null || entryIds.Count == 0) && (groupIds is null || groupIds.Count == 0))
             return new List<User>();
 
-        var entrySet = entryIds as IReadOnlySet<int> ?? new HashSet<int>(entryIds);
-        var groupSet = groupIds as IReadOnlySet<int> ?? new HashSet<int>(groupIds);
+        var entrySet = entryIds as IReadOnlySet<int> ?? new HashSet<int>(entryIds ?? []);
+        var groupSet = groupIds as IReadOnlySet<int> ?? new HashSet<int>(groupIds ?? []);
 
         IQueryable<User> query = Db.Users
             .AsNoTracking()
@@ -209,8 +209,8 @@ public class UserRepository : Repository<User>, IUserRepository
         IReadOnlyCollection<int> entryIds, IReadOnlyCollection<int> groupIds,
         int userId, CancellationToken ct = default)
     {
-        var entrySet = entryIds as IReadOnlySet<int> ?? new HashSet<int>(entryIds);
-        var groupSet = groupIds as IReadOnlySet<int> ?? new HashSet<int>(groupIds);
+        var entrySet = entryIds as IReadOnlySet<int> ?? new HashSet<int>(entryIds ?? []);
+        var groupSet = groupIds as IReadOnlySet<int> ?? new HashSet<int>(groupIds ?? []);
         return Db.Users.AnyAsync(u => u.Id == userId && u.Role == UserRole.EntityManager && u.IsActive
             && ((u.PortalGroupId != null && groupSet.Contains(u.PortalGroupId.Value))
                 || (u.PortalEntryId != null && entrySet.Contains(u.PortalEntryId.Value))), ct);

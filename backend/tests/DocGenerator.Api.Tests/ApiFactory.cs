@@ -36,6 +36,14 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Jwt:Secret", "integration-test-secret-0123456789-0123456789-0123456789");
         builder.UseSetting("RateLimiting:MaxLoginAttempts", "5");
         builder.UseSetting("RateLimiting:WindowMinutes", "5");
+        // سقوف المحدد العام مرفوعة في المصنع المشترك حتى لا يخنق سير الاختبارات المتسلسلة
+        // (نفس عنوان IP للخادم الاختباري ومستخدمون مشتركون) — اختبارات S4 المخصصة تخفّضها
+        // عبر WithWebHostBuilder على نسخ معزولة (انظر RateLimitingIntegrationTests).
+        builder.UseSetting("RateLimiting:LoginIpPerMinute", "100000");
+        builder.UseSetting("RateLimiting:GeneralAnonPerMinute", "100000");
+        builder.UseSetting("RateLimiting:GeneralAuthPerMinute", "100000");
+        builder.UseSetting("RateLimiting:ExpensivePerMinute", "100000");
+        builder.UseSetting("RateLimiting:PasswordPerMinute", "100000");
 
         builder.ConfigureServices(services =>
         {

@@ -1,8 +1,8 @@
-﻿using System.Net;
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using System.Text;
 using DocGenerator.Api.Auth;
 using DocGenerator.Api.Middleware;
+using DocGenerator.Api.Security;
 using DocGenerator.Application;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
@@ -25,6 +25,18 @@ try
 {
 
 var builder = WebApplication.CreateBuilder(args);
+
+// لا بصمة خادم في الترويسات (S3): إخفاء `Server: Kestrel` من كل رد.
+// سقف حجم الطلب 10MB (S4): يمنع الحمولات الضخمة قبل وصولها لخدمات `PBKDF2/Excel/Word`.
+builder.WebHost.UseKestrel(o =>
+{
+    o.AddServerHeader = false;
+    o.Limits.MaxRequestBodySize = 10 * 1024 * 1024;
+});
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
+    o.MultipartBodyLengthLimit = 10 * 1024 * 1024);
+builder.Services.Configure<Microsoft.AspNetCore.Http.Json.JsonOptions>(o =>
+    o.SerializerOptions.MaxDepth = 32);
 
 // يدعم المضيفون السحابيون ربط قاعدة Postgres فيحقنون DATABASE_URL تلقائيًا بصيغة postgres://؛
 // وهو مصدر موثوق يغني عن اللصق اليدوي لسلسلة الاتصال.
@@ -77,9 +89,10 @@ static string DescribeRawValue(string? raw)
 }
 
 var jwt = builder.Configuration.GetSection("Jwt").Get<JwtOptions>() ?? new JwtOptions();
-if (string.IsNullOrWhiteSpace(jwt.Secret))
+// مفتاح HMAC-SHA256 بحد أدنى 256 بت (S5): مفتاح قصير يقبل توقيعًا ضعيفًا قابلًا للتخمين.
+if (string.IsNullOrWhiteSpace(jwt.Secret) || Encoding.UTF8.GetByteCount(jwt.Secret) < 32)
     throw new InvalidOperationException(
-        "Jwt:Secret is required. Configure it via appsettings.Development.json, `dotnet user-secrets`, or the Jwt__Secret environment variable.");
+        "Jwt:Secret is required with at least 32 bytes (256-bit) of entropy. Configure it via appsettings.Development.json, `dotnet user-secrets`, or the Jwt__Secret environment variable.");
 
 var swaggerEnabled = builder.Environment.IsDevelopment()
     || builder.Configuration.GetValue<bool>("Swagger:Enabled");
@@ -119,6 +132,7 @@ builder.Services
     .AddSingleton(jwt)
     .Configure<DocGenerator.Application.Common.ExportOptions>(builder.Configuration.GetSection("Export"))
     .Configure<RateLimitOptions>(builder.Configuration.GetSection("RateLimiting"))
+    .Configure<SecurityOptions>(builder.Configuration.GetSection("Security"))
     .Configure<LockoutOptions>(builder.Configuration.GetSection("Lockout"))
     .Configure<LoggingOptions>(builder.Configuration.GetSection("Logging:File"))
     .Configure<WordTemplatesOptions>(o =>
@@ -134,6 +148,7 @@ builder.Services
     .AddControllers();
 
 builder.Services.AddMemoryCache();
+builder.Services.AddRateLimiter(RateLimitingSetup.Configure);
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
     {
@@ -147,6 +162,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidAudience = jwt.Audience,
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromMinutes(1),
+            // تثبيت الخوارزمية (S5): المفتاح متماثل واحد فلا تُقبل أي خوارزمية أخرى.
+            ValidAlgorithms = new[] { SecurityAlgorithms.HmacSha256 },
         };
         o.Events = new JwtBearerEvents
         {
@@ -174,7 +191,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 var claimVersion = int.TryParse(
                     context.Principal?.FindFirstValue("token_version"), out var v) ? v : 0;
 
-                // إبطال: حساب ملغي/معطل، أو نسخة توكن قديمة (تغيّرت كلمة المرور)
+                // إبطال: حساب ملغي/معطل، أو نسخة توكن قديمة (تغيّرت كلمة المرور/الدور/الفرع — S1).
                 if (user is null || !user.IsActive || user.TokenVersion != claimVersion)
                     context.Fail("token revoked");
             }
@@ -190,31 +207,7 @@ builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 // وكيل معروف صراحةً في الإعدادات (Security:KnownProxies، عنوان IP أو نطاق CIDR). بلا أي وكيل
 // معروف يبقى النظام مغلقًا ضد التزوير: أي ترويسة X-Forwarded-For يرسلها عميل مباشر تُتجاهَل.
 builder.Services.Configure<ForwardedHeadersOptions>(o =>
-{
-    o.ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor
-        | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto;
-
-    var known = builder.Configuration.GetSection("Security:KnownProxies").Get<string[]>() ?? [];
-    foreach (var entry in known)
-    {
-        var item = entry.Trim();
-        if (item.Length == 0)
-            continue;
-        if (item.Contains('/'))
-        {
-            var parts = item.Split('/');
-            if (parts.Length == 2
-                && IPAddress.TryParse(parts[0], out var networkAddress)
-                && int.TryParse(parts[1], out var prefix))
-            {
-                o.KnownIPNetworks.Add(new System.Net.IPNetwork(networkAddress, prefix));
-                continue;
-            }
-        }
-        if (IPAddress.TryParse(item, out var ip))
-            o.KnownProxies.Add(ip);
-    }
-});
+    ForwardedHeadersSetup.Configure(o, builder.Configuration.GetSection("Security:KnownProxies").Get<string[]>()));
 
 builder.Services.AddSwaggerGen(o =>
 {
@@ -239,12 +232,35 @@ builder.Services.AddSwaggerGen(o =>
     });
 });
 
+// رايات الحماية لكل بيئة (S3): الافتراضي مغلق لمنصة تتولى TLS بنفسها؛ المخدّم الخاص
+// يفعّل عبر Security__HstsEnabled / Security__HttpsRedirectionEnabled (انظر RUN_GUIDE.md §9).
+// تُقرأ قبل البناء لأن AddHsts تسجيل خدمة لا يجوز بعد تجميد الحاوية.
+var security = builder.Configuration.GetSection("Security").Get<SecurityOptions>() ?? new SecurityOptions();
+if (security.HstsEnabled)
+{
+    // سنة + includeSubDomains + preload؛ لا يُفعَّل preload إلا على النطاق الإنتاجي الحقيقي.
+    builder.Services.AddHsts(o =>
+    {
+        o.MaxAge = TimeSpan.FromDays(365);
+        o.IncludeSubDomains = true;
+        o.Preload = true;
+    });
+}
+
 var app = builder.Build();
 
 // أول وسيط في السلسلة حتى تعكس Request.Scheme وRemoteIpAddress البروتوكول والعنوان الحقيقيين
 // للعميل (المعالجة تعتمد على وكلاء معروفين فقط؛ بلا وكيل تُتجاهَل كل الترويسات فتبقى الحالة مغلقة).
 app.UseForwardedHeaders();
+// ترويسات الأمان على كل رد (S3) — قبل معالج الاستثناءات فتبقى حتى مع الردود الاستثنائية.
+app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseExceptionHandler();
+
+if (security.HstsEnabled)
+    app.UseHsts();
+if (security.HttpsRedirectionEnabled)
+    app.UseHttpsRedirection();
+
 app.UseMiddleware<CsrfMiddleware>();
 
 // توزيع من أصل واحد: الخلفية تخدم الواجهة المبنية (wwwroot) بنفس الأصل فيغني عن CORS في الإنتاج.
@@ -273,9 +289,17 @@ if (swaggerEnabled)
     app.UseSwaggerUI();
 }
 
-app.UseCors("Vite");
+// الإنتاج أحادي الأصل (wwwroot بنفس الأصل) فلا يحتاج CORS: السياسة للتطوير فقط (S3)،
+// وإبقاؤها عالميًا يُبقي أصلي localhost مسموحة مع AllowCredentials في الإنتاج.
+if (builder.Environment.IsDevelopment())
+    app.UseCors("Vite");
 app.UseAuthentication();
 app.UseAuthorization();
+// حد المعدل العام (S4) — بعد المصادقة عمدًا: مفاتيح التقسيم لكل مستخدم (userId) لا تتوفر
+// في HttpContext.User إلا بعدها؛ وضعه قبلها كان يُسقط الكل إلى مفتاح IP فيتقاسم مستخدمو
+// الشبكة الواحدة نفس الدلو. ثمنه المقبول: طلبات التوكن تعبر تحقق JWT (رخيص) قبل الخنق،
+// بينما يبقى العمل المكلف (تصدير/PBKDF2) محميًا خلفه (انظر docs/SECURITY_PLAN.md §6).
+app.UseRateLimiter();
 // إثراء LogContext بالهوية بعد المصادقة (قبل المتحكمات) — Anonymous لغير المعتمد.
 // ملاحظة الترتيب: معالج الاستثناءات أعلى السلسلة، لذا يسجل GlobalExceptionHandler
 // المعرّف والهوية صراحة من HttpContext ولا يعتمد على نطاق LogContext هنا.

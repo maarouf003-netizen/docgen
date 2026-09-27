@@ -169,7 +169,8 @@ public class UserManagementServiceTests : IDisposable
 
         Assert.NotNull(updated);
         var reloaded = await _db.Users.FindAsync(user.Id);
-        Assert.Equal(1, reloaded!.TokenVersion);
+        // (R2) الطلب يغيّر اسم الدخول ("reset" ← "مستخدم") وكلمة المرور معًا: +1 لكلٍّ منهما.
+        Assert.Equal(2, reloaded!.TokenVersion);
         Assert.True(_hasher.Verify("654321", reloaded.PasswordHash));
     }
 

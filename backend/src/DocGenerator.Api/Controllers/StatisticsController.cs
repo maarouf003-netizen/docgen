@@ -1,4 +1,5 @@
 using DocGenerator.Api.Authorization;
+using DocGenerator.Api.Security;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
@@ -6,12 +7,14 @@ using DocGenerator.Domain.Enums;
 using DocGenerator.Application.Common.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace DocGenerator.Api.Controllers;
 
 [ApiController]
 [Route("api")]
 [Authorize]
+[EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
 public class StatisticsController : ControllerBase
 {
     private readonly IStatisticsService _stats;

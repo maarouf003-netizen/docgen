@@ -6,19 +6,23 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-# ---- 2) Backend publish (ASP.NET Core 8) with the built SPA in wwwroot ----
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+# ---- 2) Backend publish (ASP.NET Core 10) with the built SPA in wwwroot ----
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src/backend
 COPY backend/ ./
 COPY --from=frontend /src/frontend/dist /src/backend/src/DocGenerator.Api/wwwroot
 RUN dotnet publish src/DocGenerator.Api/DocGenerator.Api.csproj -c Release -o /app/publish
 
 # ---- 3) Runtime ----
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 # PORT تُضبط تلقائيًا بواسطة Render/المضيف؛ البديل 8080 إن غاب.
 RUN echo '#!/bin/sh\nexec dotnet DocGenerator.Api.dll --urls "http://0.0.0.0:${PORT:-8080}"' > /entrypoint.sh \
     && chmod +x /entrypoint.sh
 COPY --from=build /app/publish ./
+# تشغيل بصلاحية غير جذرية (S5): مجلد السجلات (Logging:File:Path الافتراضي logs/)
+# يجب أن يبقى قابلًا للكتابة لمالكه الجديد، وإلا بقيت السجلات على stdout فقط.
+RUN mkdir -p /app/logs && chown -R app:app /app
+USER app
 EXPOSE 8080
 ENTRYPOINT ["/entrypoint.sh"]

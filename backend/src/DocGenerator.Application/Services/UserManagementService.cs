@@ -118,6 +118,9 @@ public sealed class UserManagementService : IUserManagementService
                 && await _users.UsernameExistsAsync(newUsername, user.BranchId, user.Id, ct))
                 throw new ArgumentException(DuplicateUsernameMessage(user.BranchId));
 
+            // (R2) اسم الدخول جزء من هوية التوكن (Name/UniqueName): تغيّره يُبطل الجلسات كالدور/الفرع.
+            if (newUsername != user.Username)
+                user.TokenVersion++;
             user.FullName = request.FullName.Trim();
             user.Username = newUsername;
         }
@@ -234,6 +237,7 @@ public sealed class UserManagementService : IUserManagementService
         if (userId == actorUserId && (!request.IsActive || role != UserRole.Admin))
             throw new ArgumentException("لا يمكنك إيقاف حسابك أو تغيير دورك أنت بنفسك");
 
+        var usernameChanged = false;
         if (!string.IsNullOrWhiteSpace(request.FullName))
         {
             // الاسم الثلاثي هو اسم الدخول: تعديل الاسم يحدّث اسم الدخول تلقائياً مع بقاء التفرد ضمن الفرع.
@@ -242,9 +246,17 @@ public sealed class UserManagementService : IUserManagementService
                 && await _users.UsernameExistsAsync(newUsername, branchId, user.Id, ct))
                 throw new ArgumentException(DuplicateUsernameMessage(branchId));
 
+            // (R2) اسم الدخول جزء من هوية التوكن (Name/UniqueName): تغيّره يُبطل الجلسات كالدور/الفرع.
+            if (newUsername != user.Username)
+                usernameChanged = true;
             user.FullName = request.FullName.Trim();
             user.Username = newUsername;
         }
+        // إبطال أمني (S1): تغيير الدور أو الفرع يُسقط التوكنات الصادرة سابقًا، وإلا بقيت
+        // صلاحيات الدور/الفرع القديم صالحة حتى انتهاء التوكن (الـ claims تُقرأ من التوكن حصرًا).
+        var roleOrBranchChanged = user.Role != role || user.BranchId != branchId;
+        if (roleOrBranchChanged || usernameChanged)
+            user.TokenVersion++;
         user.Role = role;
         user.BranchId = branchId;
         user.UpdatedAt = DateTime.UtcNow;
@@ -269,7 +281,8 @@ public sealed class UserManagementService : IUserManagementService
             _users.Update(user);
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "update_user",
-                details: $"عدّل المستخدم: {user.FullName} ({user.Username})", ct: token);
+                details: $"عدّل المستخدم: {user.FullName} ({user.Username})"
+                    + (roleOrBranchChanged || usernameChanged ? " — أُبطلت الجلسات السابقة لتغيّر الدور/الفرع/اسم الدخول" : ""), ct: token);
             return ToUserDto(user);
         }, ct);
     }

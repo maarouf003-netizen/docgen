@@ -4830,7 +4830,8 @@ public class AuthServiceTests : IDisposable
         var user = _db.Users.First();
         Assert.NotNull(user.LockoutEndUtc);
         Assert.True(user.LockoutEndUtc > DateTime.UtcNow);
-        Assert.Equal(0, user.FailedLoginCount);
+        // (S6) لا تصفير عند القفل: الاحتفاظ بالعداد يبني التراجع الأسّي عند تكرار القفل.
+        Assert.Equal(3, user.FailedLoginCount);
     }
 
     [Fact]
@@ -4865,7 +4866,7 @@ public class AuthServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Login_AfterLockoutExpires_WrongPassword_StartsFreshCounter()
+    public async Task Login_AfterLockoutExpires_WrongPassword_RelocksWithBackoff()
     {
         var user = _db.Users.First();
         user.LockoutEndUtc = DateTime.UtcNow.AddMinutes(-1);
@@ -4876,9 +4877,11 @@ public class AuthServiceTests : IDisposable
 
         var result = await service.LoginAsync(new LoginRequest("lawyer1", "bad"));
 
+        // (S6) العداد محتفَظ به بعد انتهاء القفل، فالمحاولة الخاطئة التالية تعيد القفل
+        // فورًا بمدة مضاعفة بدل بدء عدّاد جديد.
         Assert.Equal(LoginStatus.InvalidCredentials, result.Status);
-        Assert.Equal(1, _db.Users.First().FailedLoginCount);
-        Assert.Null(_db.Users.First().LockoutEndUtc);
+        Assert.Equal(4, _db.Users.First().FailedLoginCount);
+        Assert.NotNull(_db.Users.First().LockoutEndUtc);
     }
 
     [Fact]

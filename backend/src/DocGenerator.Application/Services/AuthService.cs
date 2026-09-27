@@ -39,6 +39,7 @@ public sealed class AuthService : IAuthService
     public async Task<LoginResult> LoginAsync(LoginRequest request, CancellationToken ct = default)
     {
         var username = request.Username.Trim();
+        var now = DateTime.UtcNow;
         var matches = await _users.FindByUsernameAllAsync(username, ct);
         var candidates = matches.Where(m => m.IsActive).ToList();
 
@@ -64,6 +65,10 @@ public sealed class AuthService : IAuthService
                 // والاسم الثلاثي نفسه معلن أصلاً في الملفات، لذا كشف وجود حسابات به ضمن فروع
                 // مختلفة غير مؤثر أمنياً. التخمين الفعلي لكلمة المرور يبقى مقيداً بمحدد المحاولات
                 // وبقفل الحساب بمجرد اختيار الفرع.
+                // استثناء (R1): إن كانت كل الحسابات المرشحة مقفلة حاليًا يُرجع القفل مباشرة —
+                // إرجاع اختيار فرع لحسابات لا يقبل أيٌّ منها الدخول إشارة مضللة وتجربة مكسورة.
+                if (candidates.All(m => m.LockoutEndUtc is DateTime end && end > now))
+                    return new LoginResult(LoginStatus.LockedOut, null);
                 var branches = candidates
                     .Select(m => new LoginBranchChoiceDto(m.BranchId, m.Branch?.Name))
                     .ToList();
@@ -81,14 +86,14 @@ public sealed class AuthService : IAuthService
             return new LoginResult(LoginStatus.InvalidCredentials, null);
         }
 
-        var now = DateTime.UtcNow;
         if (user.LockoutEndUtc is DateTime lockoutEnd && lockoutEnd > now)
             return new LoginResult(LoginStatus.LockedOut, null);
 
-        // انتهت مدة القفل: تصفير العداد وتحرير الحساب قبل معالجة المحاولة
+        // انتهت مدة القفل: تحرير الحساب قبل معالجة المحاولة مع الاحتفاظ بعدّاد الإخفاقات
+        // عمدًا — تصفيره هنا كان يمحو أثر تكرار القفل، وبقاؤه يبني التراجع الأسّي (S6)
+        // عند قفل متتالٍ دون نجاح بينهما (النجاح وحده هو ما يصفّر).
         if (user.LockoutEndUtc is not null)
         {
-            user.FailedLoginCount = 0;
             user.LockoutEndUtc = null;
             user.UpdatedAt = now;
             _users.Update(user);
@@ -100,10 +105,15 @@ public sealed class AuthService : IAuthService
             user.FailedLoginCount++;
             user.UpdatedAt = now;
             var locked = false;
+            var lockoutMinutes = 0;
             if (user.FailedLoginCount >= Math.Max(1, _lockout.MaxFailedAttempts))
             {
-                user.LockoutEndUtc = now.AddMinutes(Math.Max(1, _lockout.LockoutMinutes));
-                user.FailedLoginCount = 0;
+                // تراجع أسّي (S6): القفل الأول بالمدة الأساسية، وكل قفل متتالٍ دون نجاح
+                // يضاعفها (×2، ×4، ×8) حتى السقف. لا تصفير للعداد هنا لنفس السبب أعلاه.
+                var extra = user.FailedLoginCount - Math.Max(1, _lockout.MaxFailedAttempts);
+                lockoutMinutes = Math.Max(1, _lockout.LockoutMinutes) * (1 << Math.Min(extra, 3));
+                lockoutMinutes = Math.Min(lockoutMinutes, Math.Max(1, _lockout.MaxLockoutMinutes));
+                user.LockoutEndUtc = now.AddMinutes(lockoutMinutes);
                 locked = true;
             }
             _users.Update(user);
@@ -112,7 +122,7 @@ public sealed class AuthService : IAuthService
             if (locked)
             {
                 await _audit.LogAsync(username, "login_locked",
-                    details: $"قفل الحساب مؤقتاً بعد {Math.Max(1, _lockout.MaxFailedAttempts)} محاولات فاشلة", ct: ct);
+                    details: $"قفل الحساب مؤقتاً لـ {lockoutMinutes} دقيقة بعد {user.FailedLoginCount} محاولات فاشلة متتالية", ct: ct);
             }
             return new LoginResult(LoginStatus.InvalidCredentials, null);
         }
