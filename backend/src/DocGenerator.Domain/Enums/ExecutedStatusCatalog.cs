@@ -33,10 +33,15 @@ public static class ExecutedStatusCatalog
     /// <summary>هل الحالة حالة قابلة للتخزين الفعلي في قاعدة البيانات؟</summary>
     public static bool IsStored(string status) => status == Executed || status == StruckOff;
 
+    /// <summary>
+    /// التسمية العربية للحالة. الفارغ (`None`) هو «متداول» بالتصميم (لا تُخزَّن قيمة)؛
+    /// والقيمة المجهولة غير الفارغة تُعرض خامها — لا تُموَّه «متداول».
+    /// </summary>
     public static string ToLabel(string status) => status switch
     {
         Executed => Executed,
         StruckOff => StruckOff,
-        _ => TradingFilter,
+        None => TradingFilter,
+        _ => status,
     };
 }

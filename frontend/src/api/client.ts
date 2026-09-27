@@ -4,14 +4,19 @@ import { reportClientError } from '../utils/errorReporting';
 const CSRF_COOKIE = 'docgen_csrf';
 const CSRF_HEADER = 'X-CSRF-Token';
 
+/// العقد المصدَر لأخطاء الخادم: كل استجابة خطأ تحمل `‎{ message }‎` عربيًا صريحًا
+/// (‎`GlobalExceptionHandler` + `BadRequest(new { message })` في المتحكمات).
+/// حقلا `errors` و`title` الإطاريان (`ValidationProblemDetails`) لا يُقرآن أبدًا عمدًا —
+/// رسائلهما إنجليزية إطارية، فغياب `message` مع `400` يُترجم لرسالة عربية ثابتة بدل التسريب.
 export function getApiErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status;
     if (!error.response) return 'تعذر الاتصال بالخادم. تحقق من الاتصال وأعد المحاولة';
     if (status === 401) return 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً';
     if (status === 403) return 'لا تملك صلاحية تنفيذ هذا الإجراء';
-    const data = error.response.data as { message?: string } | undefined;
-    if (data?.message) return data.message;
+    const data = error.response.data as { message?: unknown } | undefined;
+    if (typeof data?.message === 'string' && data.message.trim().length > 0) return data.message;
+    if (status === 400) return 'الطلب غير صالح — تحقق من الحقول وأعد المحاولة';
     if (status && status >= 500) return 'حدث خطأ في الخادم. حاول مرة أخرى لاحقاً';
   }
   return 'حدث خطأ غير متوقع';

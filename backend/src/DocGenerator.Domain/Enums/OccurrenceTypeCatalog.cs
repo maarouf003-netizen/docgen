@@ -54,6 +54,10 @@ public static class OccurrenceTypeCatalog
         ReferredToStart,
     };
 
+    /// <summary>
+    /// التسمية العربية للنوع — المجهول يُعرض خامه. (الافتراض السابق إلى «شطب» كان الأخطر
+    /// دلاليًا: حدث مجهول يظهر كشطب يُخفي الملف من القوائم.)
+    /// </summary>
     public static string ToLabel(string type) => type switch
     {
         StruckOff => "شطب",
@@ -65,7 +69,7 @@ public static class OccurrenceTypeCatalog
         EntityChange => "تغيير جهة",
         Recovered => "استرداد",
         ReferredToStart => "محال الى البداية",
-        _ => StruckOff,
+        _ => type,
     };
 
     public static bool IsStruckOff(string? type) => type == StruckOff;

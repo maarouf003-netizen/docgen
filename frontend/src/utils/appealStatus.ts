@@ -12,7 +12,7 @@ export const APPEAL_OUTCOME_AGAINST: AppealOutcome = 'against';
 export const APPEAL_DIRECTION_APPELLANTS: AppealDirection = 'appellants';
 export const APPEAL_DIRECTION_AGAINST_US: AppealDirection = 'against-us';
 
-/** التسمية العربية لحالة الاستئناف (الفارغة/غير المعروفة تُعامل منظورًا اتساقًا مع الافتراض الخلفي). */
+/** التسمية العربية لحالة الاستئناف — المجهول يُعرض خامه، والغائب شرطة (لا «منظور» مخترعة). */
 export function appealStatusLabel(status?: string): string {
   switch (status) {
     case APPEAL_STATUS_PENDING:
@@ -22,7 +22,7 @@ export function appealStatusLabel(status?: string): string {
     case APPEAL_STATUS_STRUCK_OFF:
       return 'مشطوب';
     default:
-      return 'منظور';
+      return status || '—';
   }
 }
 
@@ -33,7 +33,7 @@ export interface AppealBadge {
 
 /**
  * شارة حالة الاستئناف:
- * منظور حمراء (قيد النظر)، محسوم خضراء، مشطوب رمادية.
+ * منظور حمراء (قيد النظر)، محسوم خضراء، مشطوب رمادية — والمجهولة رمادية محايدة بخامها.
  */
 export function appealStatusBadge(status?: string): AppealBadge {
   switch (status) {
@@ -41,18 +41,22 @@ export function appealStatusBadge(status?: string): AppealBadge {
       return { text: 'محسوم', cls: 'bg-green-100 text-green-700' };
     case APPEAL_STATUS_STRUCK_OFF:
       return { text: 'مشطوب', cls: 'bg-gray-200 text-gray-700' };
-    default:
+    case APPEAL_STATUS_PENDING:
       return { text: 'منظور', cls: 'bg-red-100 text-red-800' };
+    default:
+      return { text: status || '—', cls: 'bg-gray-100 text-gray-700' };
   }
 }
 
-/** التسمية العربية لاتجاه الاستئناف. */
+/** التسمية العربية لاتجاه الاستئناف — المجهول يُعرض خامه، والغائب شرطة. */
 export function appealDirectionLabel(direction?: string): string {
   switch (direction) {
     case APPEAL_DIRECTION_AGAINST_US:
       return 'مستأنف علينا';
-    default:
+    case APPEAL_DIRECTION_APPELLANTS:
       return 'مستأنِفين';
+    default:
+      return direction || '—';
   }
 }
 

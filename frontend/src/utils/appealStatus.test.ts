@@ -21,9 +21,10 @@ describe('appealStatusLabel', () => {
     expect(appealStatusLabel(APPEAL_STATUS_STRUCK_OFF)).toBe('مشطوب');
   });
 
-  it('يعامل الحالة الفارغة وغير المعروفة منظورًا', () => {
-    expect(appealStatusLabel(undefined)).toBe('منظور');
-    expect(appealStatusLabel('قيمة غريبة')).toBe('منظور');
+  it('المجهول يُعرض خامه والغائب شرطة (لا «منظور» مخترعة)', () => {
+    expect(appealStatusLabel(undefined)).toBe('—');
+    expect(appealStatusLabel('')).toBe('—');
+    expect(appealStatusLabel('قيمة غريبة')).toBe('قيمة غريبة');
   });
 });
 
@@ -42,16 +43,20 @@ describe('appealStatusBadge', () => {
     expect(struck.cls).toContain('bg-gray-200');
   });
 
-  it('الحالة الفارغة تعامل منظورًا', () => {
-    expect(appealStatusBadge(undefined).text).toBe('منظور');
+  it('الحالة الغائبة شرطة محايدة والمجهولة بخامها', () => {
+    expect(appealStatusBadge(undefined).text).toBe('—');
+    const unknown = appealStatusBadge('قيمة غريبة');
+    expect(unknown.text).toBe('قيمة غريبة');
+    expect(unknown.cls).toContain('bg-gray-100');
   });
 });
 
 describe('appealDirectionLabel', () => {
-  it('يميز الاتجاهين', () => {
+  it('يميز الاتجاهين والمجهول خامه والغائب شرطة', () => {
     expect(appealDirectionLabel(APPEAL_DIRECTION_APPELLANTS)).toBe('مستأنِفين');
     expect(appealDirectionLabel(APPEAL_DIRECTION_AGAINST_US)).toBe('مستأنف علينا');
-    expect(appealDirectionLabel(undefined)).toBe('مستأنِفين');
+    expect(appealDirectionLabel(undefined)).toBe('—');
+    expect(appealDirectionLabel('اتجاه غريب')).toBe('اتجاه غريب');
   });
 });
 

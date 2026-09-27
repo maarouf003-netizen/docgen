@@ -30,18 +30,38 @@ public static class AppealSnapshotSerializer
 
     /// <summary>فكِّ لقطة أطراف (مستأنفين أو مستأنف عليهم) إلى قائمة أطراف.</summary>
     public static List<AppealPartyDto> DeserializeParties(string? json)
+        => TryDeserializeParties(json).Parties;
+
+    /// <summary>
+    /// فكٌّ مع وسم الجودة: تالف عندما يكون الحمل غير فارغ ولا يُنتج أطرافًا (JSON مكسور أو
+    /// بنية غير قائمة) — يُعرض موسومًا لا قائمة فارغة نظيفة. الفارغ تطبيع لا تلف.
+    /// </summary>
+    public static (List<AppealPartyDto> Parties, bool IsCorrupted) TryDeserializeParties(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
-            return new List<AppealPartyDto>();
+            return (new List<AppealPartyDto>(), false);
         try
         {
-            return JsonSerializer.Deserialize<List<AppealPartyDto>>(json, SnapshotJsonOptions)
-                   ?? new List<AppealPartyDto>();
+            return (JsonSerializer.Deserialize<List<AppealPartyDto>>(json, SnapshotJsonOptions)
+                    ?? new List<AppealPartyDto>(), false);
         }
         catch (JsonException)
         {
-            return new List<AppealPartyDto>();
+            return (new List<AppealPartyDto>(), true);
         }
+    }
+
+    /// <summary>
+    /// هل اللقطة تالفة (تستحق الوسم/التدقيق)؟ الفارغ و`"null"` النصية تطبيع لا تلف.
+    /// المصدر الوحيد لتعريف التلف — تُبنى عليه المزامنة والوسم معًا فلا يتشعب التعريف.
+    /// </summary>
+    public static bool IsCorruptedSnapshot(string? json)
+    {
+        var trimmed = json?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed)
+            || string.Equals(trimmed, "null", StringComparison.OrdinalIgnoreCase))
+            return false;
+        return TryDeserializeParties(json).IsCorrupted;
     }
 
     /// <summary>تسلسل قائمة الأطراف إلى نص اللقطة (بذات الخيارات).</summary>
@@ -61,13 +81,12 @@ public static class AppealSnapshotSerializer
         string? json,
         IReadOnlyDictionary<(string Kind, int PartyId), string> newNames)
     {
-        var parties = DeserializeParties(json);
+        var (parties, corrupted) = TryDeserializeParties(json);
         if (parties.Count == 0)
         {
-            var trimmed = json?.Trim();
-            return string.IsNullOrWhiteSpace(trimmed) || string.Equals(trimmed, "null", StringComparison.OrdinalIgnoreCase)
-                ? "[]"
-                : json!;
+            // اللقطة التالفة تُتخطى بلا كسر المعاملة (وتُدوَّن عند المستدعي)؛
+            // الفارغ/"null" النصية تُطبَّع إلى "[]" لا تُترك null خامًا.
+            return corrupted ? json! : "[]";
         }
 
         var changed = false;

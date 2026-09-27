@@ -17,10 +17,14 @@ public static class AppealOutcomeCatalog
         InFavor, Against,
     };
 
+    /// <summary>
+    /// التسمية العربية للنتيجة. المجهول يُعرض خامه (لا يُخترع «للصالح») — القيمة المخزنة
+    /// تُكتب من الثوابت حصرًا، فالمجهول تلف يستحق الظهور لا التمويه.
+    /// </summary>
     public static string ToLabel(string outcome) => outcome switch
     {
         InFavor => "للصالح",
         Against => "للضد",
-        _ => InFavor,
+        _ => outcome,
     };
 }

@@ -49,7 +49,14 @@ export default function AppealDetailsBody({
 
       {/* الأطراف */}
       <section aria-label="أطراف الاستئناف" className="space-y-1.5">
-        <h4 className="font-semibold text-gray-700">المستأنف</h4>
+        <h4 className="font-semibold text-gray-700">
+          المستأنف
+          {appeal.partiesDegraded ? (
+            <span className="text-[11px] font-normal px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 mr-2">
+              بيانات أطراف تالفة
+            </span>
+          ) : null}
+        </h4>
         <p className="text-gray-800 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
           {(appeal.appellants ?? []).map((p) => p.name).join('، ') || '—'}
         </p>

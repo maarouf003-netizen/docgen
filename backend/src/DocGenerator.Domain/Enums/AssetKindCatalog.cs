@@ -47,15 +47,22 @@ public static class AssetKindCatalog
     /// <summary>هل يجوز بيع هذا النوع بالمزاد العلني في «منفذ جبريا»؟</summary>
     public static bool IsAuctionable(string? kind) => kind is not null && AuctionableKinds.Contains(kind);
 
-    /// <summary>قيمة «تمام» الخاصة بالنوع (تمام العقار / تمام المركبة / تمام المتجر).</summary>
+    /// <summary>
+    /// قيمة «تمام» الخاصة بالنوع (تمام العقار / تمام المركبة / تمام المتجر) — الغائب
+    /// والقيمة المجهولة يُعرض خامها؛ المستدعي الوحيد (`BuildAsset`) محروس بـ `HasShare`.
+    /// </summary>
     public static string FullShareLabel(string? kind) => kind switch
     {
         Vehicle => "تمام المركبة",
         Shop => "تمام المتجر",
-        _ => "تمام العقار",
+        RealEstate => "تمام العقار",
+        _ => kind ?? "تمام العقار",
     };
 
-    /// <summary>تسمية النوع للعرض العام (تُستخدم في «منفذ جبريا» وفي قوائم الاختيار).</summary>
+    /// <summary>
+    /// تسمية النوع للعرض العام — القيم المعروفة تُعرَض عربيًا، والمجهولة غير الفارغة
+    /// تُعرض خامها لا «عقار» مخترعة؛ والغائب (`null`) يُعامَل عقارًا (السلوك القائم).
+    /// </summary>
     public static string ToLabel(string? kind) => kind switch
     {
         RealEstate => RealEstate,
@@ -63,6 +70,6 @@ public static class AssetKindCatalog
         Shop => Shop,
         SalaryGuarantee => SalaryGuarantee,
         UnregisteredShop => UnregisteredShop,
-        _ => RealEstate,
+        _ => kind ?? RealEstate,
     };
 }

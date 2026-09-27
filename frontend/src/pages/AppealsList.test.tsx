@@ -191,4 +191,22 @@ describe('AppealsList', () => {
     expect(screen.queryByRole('button', { name: 'نقل المحامي' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'إسناد لمحامٍ' })).not.toBeInTheDocument();
   });
+
+  it('يعرض شارة «بيانات أطراف تالفة» للموسوم فقط', async () => {
+    setup('manager');
+    apiMock.get.mockResolvedValueOnce({
+      data: {
+        items: [
+          makeAppeal({ id: 1, partiesDegraded: true }),
+          makeAppeal({ id: 2, partiesDegraded: false }),
+        ],
+        totalCount: 2,
+        totalPages: 1,
+      },
+    });
+    render(<AppealsList />);
+
+    await screen.findByRole('table');
+    expect(screen.getAllByText('بيانات أطراف تالفة')).toHaveLength(1);
+  });
 });

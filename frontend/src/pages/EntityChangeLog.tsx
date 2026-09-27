@@ -130,7 +130,14 @@ export default function EntityChangeLog() {
                 <td className="px-4 py-3 min-w-0 break-words">{r.canonicalName ?? '-'}</td>
                 <td className="px-4 py-3">{r.governorate ?? '-'}</td>
                 <td className="px-4 py-3 tabular-nums">{[r.decreeKind, r.decreeNumber, r.decreeDate].filter(Boolean).join(' ') || '-'}</td>
-                <td className="px-4 py-3 max-w-xs min-w-0 break-words">{r.summaryAr}</td>
+                <td className="px-4 py-3 max-w-xs min-w-0 break-words">
+                  {r.summaryDegraded ? (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 ml-1">
+                      ملخص منقوص
+                    </span>
+                  ) : null}
+                  {r.summaryAr}
+                </td>
               </tr>
             ))}
             {rows.length === 0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">لا توجد سجلات</td></tr>}
@@ -150,7 +157,14 @@ export default function EntityChangeLog() {
               <div>الفاعل: {r.actorName ?? `#${r.actorUserId}`} — {formatDateTime(r.createdAtUtc)}</div>
               <div>المحافظة: {r.governorate ?? '-'}</div>
               <div>المرسوم: {[r.decreeKind, r.decreeNumber, r.decreeDate].filter(Boolean).join(' ') || '-'}</div>
-              <div className="line-clamp-3 break-words">{r.summaryAr}</div>
+              <div className="line-clamp-3 break-words">
+                {r.summaryDegraded ? (
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 ml-1">
+                    ملخص منقوص
+                  </span>
+                ) : null}
+                {r.summaryAr}
+              </div>
             </div>
           </div>
         ))}

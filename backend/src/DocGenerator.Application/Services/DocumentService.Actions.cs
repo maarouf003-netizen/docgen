@@ -191,8 +191,7 @@ public sealed partial class DocumentService
             throw new ArgumentException("نص الإجراء أو الملاحظة مطلوب");
 
         type = (type ?? "action").Trim();
-        if (type is not ("action" or "note"))
-            throw new ArgumentException("نوع غير صالح");
+        ActionReminderCalculator.ValidateActionType(type, "نوع");
 
         var trimmedDate = actionDate?.Trim();
 
@@ -205,6 +204,10 @@ public sealed partial class DocumentService
         {
             trimmedDate = ServerClock.TodayString(_clock, _timeZone, "yyyy-MM-dd");
         }
+
+        // رفض الكتابة الميتة: تاريخ غير فارغ لا يُحلَّل كان يُخزَّن نصًا ثم يسقط بصمت إلى
+        // تاريخ الإنشاء في حساب التذكير — الآن يُرفض برسالة الحقل (الفارغ/الافتراضي مباح).
+        ActionReminderCalculator.ValidateActionDate(trimmedDate, "تاريخ الإجراء");
 
         return (type, sanitizedText, trimmedDate);
     }
@@ -219,13 +222,8 @@ public sealed partial class DocumentService
         if (string.IsNullOrWhiteSpace(trimmedDuration) && string.IsNullOrWhiteSpace(trimmedColor))
             return (null, null);
 
-        var validDurations = new[] { "3 أيام", "أسبوع", "أسبوعين", "شهر" };
-        if (!string.IsNullOrWhiteSpace(trimmedDuration) && !validDurations.Contains(trimmedDuration))
-            throw new ArgumentException("مدة تذكير غير صالحة");
-
-        var validColors = new[] { "أحمر", "بنفسجي", "أصفر" };
-        if (!string.IsNullOrWhiteSpace(trimmedColor) && !validColors.Contains(trimmedColor))
-            throw new ArgumentException("لون تذكير غير صالح");
+        // المصدر الوحيد للحقيقة (ActionReminderCalculator) — لا مجموعات حرفيات مكررة.
+        ActionReminderCalculator.ValidateReminder(trimmedDuration, trimmedColor);
 
         return (trimmedDuration, trimmedColor);
     }

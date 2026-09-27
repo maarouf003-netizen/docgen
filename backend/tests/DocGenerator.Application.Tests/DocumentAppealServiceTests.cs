@@ -614,9 +614,10 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.True(action.Id > 0);
 
         var updatedAction = await _service.UpdateActionAsync(created.Id, action.Id,
-            new UpdateAppealActionRequest("action", "نص معدّل", null, "شهر", "أخضر"),
+            new UpdateAppealActionRequest("action", "نص معدّل", null, "شهر", "أصفر"),
             _lawyer2.Id, "lawyer2");
         Assert.Equal("نص معدّل", updatedAction!.Text);
+        Assert.Equal("أصفر", updatedAction!.ReminderColor);
 
         // تذكير يظهر للمتابع فقط.
         var reminders = await _service.GetRemindersAsync(_lawyer2.Id);
@@ -629,6 +630,67 @@ public class DocumentAppealServiceTests : IDisposable
 
         Assert.True(await _service.DeleteActionAsync(created.Id, action.Id, _lawyer2.Id, "lawyer2"));
         Assert.Empty(await _service.GetActionsAsync(created.Id));
+    }
+
+    private async Task<int> CreateAppealWithAssigneeAsync()
+    {
+        var doc = await CreateApplicantDocAsync();
+        var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
+        var created = await _service.CreateAsync(doc.Id,
+            Request(AppealDirectionCatalog.Appellants,
+                new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
+            _lawyer1.Id, "lawyer1");
+        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        return created.Id;
+    }
+
+    [Theory]
+    [InlineData("3/8/2026", "سنة", "أحمر")]
+    [InlineData("3/8/2026", "أسبوع", "أخضر")]
+    [InlineData("ليس تاريخا", "أسبوع", "أحمر")]
+    public async Task Actions_InvalidReminderOrDate_Throws(string? date, string? duration, string? color)
+    {
+        // اتساقًا مع مسار إجراءات الملفات: لا مدد/ألوان/تواريخ ميتة تُخزَّن.
+        var appealId = await CreateAppealWithAssigneeAsync();
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.AddActionAsync(appealId,
+                new AddAppealActionRequest("action", "إجراء بتذكير ميت", date, duration, color),
+                _lawyer2.Id, "lawyer2"));
+    }
+
+    [Fact]
+    public async Task Actions_UpdateWithInvalidDuration_Throws()
+    {
+        var appealId = await CreateAppealWithAssigneeAsync();
+        var action = await _service.AddActionAsync(appealId,
+            new AddAppealActionRequest("action", "إجراء سليم", "3/8/2026", "أسبوع", "أحمر"),
+            _lawyer2.Id, "lawyer2");
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateActionAsync(appealId, action.Id,
+                new UpdateAppealActionRequest("action", "إجراء سليم", "3/8/2026", "سنة", "أحمر"),
+                _lawyer2.Id, "lawyer2"));
+    }
+
+    [Fact]
+    public async Task Actions_InvalidActionType_ThrowsOnAddAndUpdate()
+    {
+        var appealId = await CreateAppealWithAssigneeAsync();
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.AddActionAsync(appealId,
+                new AddAppealActionRequest("xyz", "إجراء بنوع ميت", "3/8/2026", null, null),
+                _lawyer2.Id, "lawyer2"));
+
+        var action = await _service.AddActionAsync(appealId,
+            new AddAppealActionRequest("action", "إجراء سليم", "3/8/2026", null, null),
+            _lawyer2.Id, "lawyer2");
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateActionAsync(appealId, action.Id,
+                new UpdateAppealActionRequest("xyz", "إجراء سليم", "3/8/2026", null, null),
+                _lawyer2.Id, "lawyer2"));
     }
 
     [Fact]

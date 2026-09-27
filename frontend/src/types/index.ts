@@ -736,6 +736,8 @@ export interface ReminderDto {
   reminderDuration?: string;
   reminderColor?: string;
   dueDate: string;
+  /** وسم جودة: تاريخ/مدة قديمة لا تُحلَّل فسقط الحساب إلى احتياط — يُعرض موسومًا. */
+  dueDateSuspect?: boolean;
 }
 
 export interface MonthlyStatDto {
@@ -936,6 +938,8 @@ export interface AppealReminderDto {
   reminderDuration?: string;
   reminderColor?: string;
   dueDate: string;
+  /** وسم جودة: تاريخ/مدة قديمة لا تُحلَّل فسقط الحساب إلى احتياط — يُعرض موسومًا. */
+  dueDateSuspect?: boolean;
 }
 
 export interface CreateHeadAlertRequest {
@@ -1084,6 +1088,8 @@ export interface AppealDto {
   documentEffectiveNumber?: string | null;
   /** سنة الرقم الفعّال المعروض للملف في الاستئناف. */
   documentEffectiveYear?: string | null;
+  /** وسم جودة اللقطات: إحدى لقطتي الأطراف تالفة فعُرضت فارغة — تُعرض موسومة. */
+  partiesDegraded?: boolean;
 }
 
 /** تسطير/تعديل استئناف قبل الإسناد (التواريخ نصوص حرة بصيغة «1/8/2026»). */
@@ -1788,6 +1794,8 @@ export interface EntityChangeEventDto {
   decreeNumber?: string | null;
   decreeDate?: string | null;
   summaryAr: string;
+  /** وسم جودة الملخّص: حمل غير فارغ لا يُنتج تفاصيل فسقط إلى التسمية — يُعرض موسومًا. */
+  summaryDegraded?: boolean;
   actorUserId: number;
   actorName?: string | null;
   createdAtUtc: string;

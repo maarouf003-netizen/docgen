@@ -103,6 +103,7 @@ public record AppealActionDto(
 
 /// <summary>
 /// تذكير إجراء على استئناف يتابعه المحامي، بأسلوب بطاقة التذكيرات في لوحة التحكم.
+/// `DueDateSuspect` وسم جودة: تاريخ/مدة قديمة لا تُحلَّل فسقط الحساب إلى احتياط.
 /// </summary>
 public record AppealReminderDto(
     int ActionId,
@@ -113,7 +114,8 @@ public record AppealReminderDto(
     string? ActionDate,
     string? ReminderDuration,
     string? ReminderColor,
-    DateTime DueDate);
+    DateTime DueDate,
+    bool DueDateSuspect);
 
 /// <summary>
 /// استئناف للعرض: كامل حقوله ولقطتا الأطراف وبيانات الملف الأساس اللازمة للأعمدة،
@@ -167,4 +169,9 @@ public record AppealDto(
     /// <summary>رقم الملف الفعّال — يُحسب مع DocumentEffectiveYear من السجل نفسه، فلا يُعرض أحدهما مع سنة/رقم الزوج الآخر.</summary>
     string? DocumentEffectiveNumber = null,
     /// <summary>سنة رقم الملف الفعّال المرافقة لـ DocumentEffectiveNumber.</summary>
-    string? DocumentEffectiveYear = null);
+    string? DocumentEffectiveYear = null,
+    /// <summary>
+    /// وسم جودة اللقطات: إحدى لقطتي الأطراف (`AppellantsJson`/`AppelleesJson`) تالفة فعُرضت
+    /// فارغة — تُعرض موسومة «بيانات أطراف تالفة» لا استئنافًا بلا أطراف.
+    /// </summary>
+    bool PartiesDegraded = false);

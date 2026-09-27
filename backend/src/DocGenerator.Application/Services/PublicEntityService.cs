@@ -834,11 +834,23 @@ public sealed class PublicEntityService : IPublicEntityService
 
     private static (DateTime? From, DateTime? To) ParseChangeEventPeriod(string? fromRaw, string? toRaw)
     {
+        // رفض صريح بدل التوسيع الصامت: تاريخ فلتر غير فارغ وغير صالح كان يُفسَّر «بلا فلتر»
+        // فيُرى الكل ظنًّا أنه المدة المطلوبة (قرار إداري وتصدير على مجموعة موسعة خطأ).
         DateTime? from = null, to = null;
-        var f = ActionDateParser.TryParse(fromRaw);
-        if (f.HasValue) from = f.Value.Date;
-        var t = ActionDateParser.TryParse(toRaw);
-        if (t.HasValue) to = t.Value.Date.AddDays(1).AddTicks(-1);
+        if (!string.IsNullOrWhiteSpace(fromRaw))
+        {
+            var f = ActionDateParser.TryParse(fromRaw);
+            if (!f.HasValue)
+                throw new ArgumentException("تاريخ البداية (من) غير صالح — استخدم مثال: 1/8/2026");
+            from = f.Value.Date;
+        }
+        if (!string.IsNullOrWhiteSpace(toRaw))
+        {
+            var t = ActionDateParser.TryParse(toRaw);
+            if (!t.HasValue)
+                throw new ArgumentException("تاريخ النهاية (إلى) غير صالح — استخدم مثال: 1/8/2026");
+            to = t.Value.Date.AddDays(1).AddTicks(-1);
+        }
         return (from, to);
     }
 
@@ -898,12 +910,16 @@ public sealed class PublicEntityService : IPublicEntityService
         return (null, raw);
     }
 
-    /// <summary>مطابقة اسم الفاعل بعد التطبيع العربي على الاسم الكامل أو اسم الدخول.</summary>
+    /// <summary>
+    /// مطابقة اسم الفاعل بعد التطبيع العربي على الاسم الكامل أو اسم الدخول.
+    /// فلتر يُطبَّع إلى فراغ (محارف تُحذف كلها) يطابق لا شيء — لا الكل: إرجاع الكل هنا كان
+    /// يحوّل فلترًا بلا معنى إلى إلغاء صامت للفلترة.
+    /// </summary>
     private static bool MatchesActorName(PublicEntityChangeEvent e, string actorName)
     {
         var normalized = ArabicNameNormalizer.Normalize(actorName);
         if (normalized.Length == 0)
-            return true;
+            return false;
         return ArabicNameNormalizer.Normalize(e.ActorUser?.FullName).Contains(normalized, StringComparison.Ordinal)
             || ArabicNameNormalizer.Normalize(e.ActorUser?.Username).Contains(normalized, StringComparison.Ordinal);
     }
@@ -922,28 +938,36 @@ public sealed class PublicEntityService : IPublicEntityService
     {
         var filtered = await GetFilteredChangeEventsAsync(query, actor, ct);
         var items = filtered.Take(5000).Select(ToChangeEventDto).ToList();
+        var degraded = items.Count(i => i.SummaryDegraded);
         await _audit.LogAsync(actor.Name, "export_change_events",
-            details: $"تصدير سجل تغييرات الجهات: {items.Count} سطرًا" + (query.Governorate != null ? $" محافظة={query.Governorate}" : ""), ct: ct);
+            details: $"تصدير سجل تغييرات الجهات: {items.Count} سطرًا"
+                + (degraded > 0 ? $" (منها {degraded} بملخص منقوص — راجع الحمل الخام)" : "")
+                + (query.Governorate != null ? $" محافظة={query.Governorate}" : ""), ct: ct);
         var exporter = new ExcelExportService();
         return exporter.BuildChangeEventsWorkbook(items);
     }
 
-    private static EntityChangeEventDto ToChangeEventDto(PublicEntityChangeEvent e) => new(
-        e.Id,
-        e.EntryId,
-        e.GroupId,
-        e.ActionKind,
-        e.DecreeKind,
-        e.DecreeNumber,
-        e.DecreeDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
-        e.PayloadJson,
-        e.ActorUserId,
-        e.ActorUser?.FullName ?? e.ActorUser?.Username,
-        e.CreatedAtUtc.ToString("yyyy-MM-ddTHH:mm:ssZ", System.Globalization.CultureInfo.InvariantCulture),
-        e.Entry?.Governorate ?? e.Group?.Entries.FirstOrDefault()?.Governorate,
-        e.Group?.CanonicalName ?? e.Entry?.Group?.CanonicalName,
-        ActionKindCatalog.ToLabel(e.ActionKind),
-        EntityChangeLogSummary.Build(e.ActionKind, e.PayloadJson, e.DecreeKind, e.DecreeNumber, e.DecreeDate));
+    private static EntityChangeEventDto ToChangeEventDto(PublicEntityChangeEvent e)
+    {
+        var (summary, degraded) = EntityChangeLogSummary.Build(e.ActionKind, e.PayloadJson, e.DecreeKind, e.DecreeNumber, e.DecreeDate);
+        return new(
+            e.Id,
+            e.EntryId,
+            e.GroupId,
+            e.ActionKind,
+            e.DecreeKind,
+            e.DecreeNumber,
+            e.DecreeDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+            e.PayloadJson,
+            e.ActorUserId,
+            e.ActorUser?.FullName ?? e.ActorUser?.Username,
+            e.CreatedAtUtc.ToString("yyyy-MM-ddTHH:mm:ssZ", System.Globalization.CultureInfo.InvariantCulture),
+            e.Entry?.Governorate ?? e.Group?.Entries.FirstOrDefault()?.Governorate,
+            e.Group?.CanonicalName ?? e.Entry?.Group?.CanonicalName,
+            ActionKindCatalog.ToLabel(e.ActionKind),
+            summary,
+            degraded);
+    }
 
     /// <summary>اعتماد قيد كما هو: يقفل المراجعة دون تعديل ودون إشعار للمُدخِل (حسب القرار).</summary>
     public async Task<PublicEntityEntryDto?> ApproveReviewAsync(int entryId, EntityRegistryActor actor, CancellationToken ct = default)
@@ -3465,6 +3489,18 @@ public sealed class PublicEntityService : IPublicEntityService
 
         foreach (var appeal in appeals)
         {
+            // اللقطة التالفة تُتخطى حمايةً للمعاملة — وتُدوَّن واقعة تخطٍّ بدل الصمت، فبقاء الاسم
+            // القديم في اللقطة بعد إعادة تسمية ناجحة يُقرأ خطأً كفشل العملية.
+            if (AppealSnapshotSerializer.IsCorruptedSnapshot(appeal.AppellantsJson)
+                || AppealSnapshotSerializer.IsCorruptedSnapshot(appeal.AppelleesJson))
+            {
+                await _audit.LogAsync(actor.Name, "appeal_entity_sync_skipped",
+                    documentId: appeal.DocumentId, documentType: null,
+                    details: $"تُخطيت مزامنة لقطات الاستئناف (رقم {appeal.Id}) بعد تغيير جهة عامة في الملف #{appeal.DocumentId} — لقطة أطراف تالفة",
+                    ct: token);
+                continue;
+            }
+
             var newAppellants = AppealSnapshotSerializer.UpdateEntityParties(appeal.AppellantsJson, newNames);
             var newAppellees = AppealSnapshotSerializer.UpdateEntityParties(appeal.AppelleesJson, newNames);
             var changed = !string.Equals(newAppellants, appeal.AppellantsJson, StringComparison.Ordinal)

@@ -9,20 +9,23 @@ namespace DocGenerator.Application.Services;
 /// الصياغة الجاهزة تُستعار من <see cref="EntityChangeMessages"/> للأصناف المغطاة
 /// (إعادة تسمية/نقل/دمج/توحيد/حلول) كي تبقى العربية مصدرًا واحدًا؛ وصياغات
 /// الأصناف الأخرى (اقتراح/تحديث) محلية هنا لأن لا قناة واقعة/تنبيه لها.
-/// الحمل التالف أو المجهول يُطبَّع إلى تسمية الصنف فقط — لا يُسقط الشاشة أبدًا.
+/// الحمل الفارغ يُطبَّع إلى تسمية الصنف (لا تفاصيل متوقعة)؛ والحمل غير الفارغ الذي لا
+/// يُنتج تفاصيل (تالف أو ناقص المفاتيح أو صنف مجهول) يُطبَّع إلى التسمية مع وسم
+/// التدهور — فالسطر التدقيقي المبتور يُعرض موسومًا لا سليمًا. لا يرمي أبدًا.
 /// </summary>
 public static class EntityChangeLogSummary
 {
-    /// <summary>يبني الملخّص العربي لحدث تغيير واحد. لا يرمي أبدًا.</summary>
-    public static string Build(
+    /// <summary>يبني الملخّص العربي لحدث تغيير واحد مع وسم الجودة. لا يرمي أبدًا.</summary>
+    public static (string Summary, bool IsDegraded) Build(
         string actionKind,
         string? payloadJson,
         string? decreeKind,
         string? decreeNumber,
         DateTime? decreeDate)
     {
+        var label = ActionKindCatalog.ToLabel(actionKind ?? string.Empty);
         if (string.IsNullOrWhiteSpace(payloadJson))
-            return ActionKindCatalog.ToLabel(actionKind ?? string.Empty);
+            return (label, false);
 
         Dictionary<string, JsonElement> fields;
         try
@@ -32,7 +35,7 @@ public static class EntityChangeLogSummary
         }
         catch (JsonException)
         {
-            return ActionKindCatalog.ToLabel(actionKind ?? string.Empty);
+            return (label, true);
         }
 
         var summary = actionKind switch
@@ -47,8 +50,8 @@ public static class EntityChangeLogSummary
             _ => (string?)null,
         };
         return string.IsNullOrWhiteSpace(summary)
-            ? ActionKindCatalog.ToLabel(actionKind ?? string.Empty)
-            : summary;
+            ? (label, true)
+            : (summary, false);
     }
 
     // ── استخراج دفاعي ──

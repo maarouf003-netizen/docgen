@@ -23,6 +23,42 @@ describe('getApiErrorMessage', () => {
     ).toBe('حالة غير صالحة');
   });
 
+  it('يعيد رسالة عربية ثابتة عند 400 إطاري بلا message (ويتجاهل errors الإنجليزية)', () => {
+    expect(
+      getApiErrorMessage({
+        isAxiosError: true,
+        response: {
+          status: 400,
+          data: {
+            title: 'One or more validation errors occurred.',
+            errors: { FileNumber: ['The FileNumber field is required.'] },
+          },
+        },
+      }),
+    ).toBe('الطلب غير صالح — تحقق من الحقول وأعد المحاولة');
+  });
+
+  it('يعيد رسالة الجلسة عند 401', () => {
+    expect(getApiErrorMessage({ isAxiosError: true, response: { status: 401, data: {} } })).toBe(
+      'انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً',
+    );
+  });
+
+  it('يعيد رسالة الخادم العامة عند 500 بلا message', () => {
+    expect(getApiErrorMessage({ isAxiosError: true, response: { status: 500, data: {} } })).toBe(
+      'حدث خطأ في الخادم. حاول مرة أخرى لاحقاً',
+    );
+  });
+
+  it('يتجاهل message غير النصية ويسقط للرسالة المناسبة للحالة', () => {
+    expect(
+      getApiErrorMessage({ isAxiosError: true, response: { status: 400, data: { message: 42 } } }),
+    ).toBe('الطلب غير صالح — تحقق من الحقول وأعد المحاولة');
+    expect(
+      getApiErrorMessage({ isAxiosError: true, response: { status: 400, data: { message: '   ' } } }),
+    ).toBe('الطلب غير صالح — تحقق من الحقول وأعد المحاولة');
+  });
+
   it('يعيد رسالة عامة عند خطأ غير معروف', () => {
     expect(getApiErrorMessage(new Error('something'))).toBe('حدث خطأ غير متوقع');
   });

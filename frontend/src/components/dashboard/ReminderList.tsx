@@ -71,6 +71,11 @@ export function ReminderList({
                   <span className="block text-sm text-gray-500 truncate mt-0.5">{richToPlainText(r.actionText)}</span>
                 </Link>
                 <span className="shrink-0 flex flex-col items-end gap-1.5">
+                  {r.dueDateSuspect ? (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200">
+                      تاريخ مشتبه — تحقق
+                    </span>
+                  ) : null}
                   {r.reminderColor ? (
                     <span
                       className={`text-[11px] px-2 py-0.5 rounded-full border ${
@@ -119,6 +124,11 @@ export function ReminderList({
                 <span className="block text-sm text-gray-500 truncate mt-0.5">{richToPlainText(r.actionText)}</span>
               </Link>
               <span className="shrink-0 flex flex-col items-end gap-1.5">
+                {r.dueDateSuspect ? (
+                  <span className="text-[11px] px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200">
+                    تاريخ مشتبه — تحقق
+                  </span>
+                ) : null}
                 {r.reminderColor ? (
                   <span
                     className={`text-[11px] px-2 py-0.5 rounded-full border ${

@@ -18,10 +18,11 @@ public static class AppealDirectionCatalog
         Appellants, AgainstUs,
     };
 
+    /// <summary>التسمية العربية للاتجاه — المجهول يُعرض خامه لا «مستأنِفين» مخترعة.</summary>
     public static string ToLabel(string direction) => direction switch
     {
         Appellants => "مستأنِفين",
         AgainstUs => "مستأنف علينا",
-        _ => Appellants,
+        _ => direction,
     };
 }

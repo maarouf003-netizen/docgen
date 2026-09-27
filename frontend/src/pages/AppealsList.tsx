@@ -289,7 +289,14 @@ export default function AppealsList() {
                   <tr className="align-top hover:bg-gray-50/60">
                     <td className="px-2 py-3"><BaseNumberCell a={a} /></td>
                     <td className="px-2 py-3 text-gray-800 max-w-[150px] break-words">{a.appellateCourt || '—'}</td>
-                    <td className="px-2 py-3 text-gray-800 max-w-[180px] break-words">{appellantsText(a)}</td>
+                    <td className="px-2 py-3 text-gray-800 max-w-[180px] break-words">
+                      {a.partiesDegraded ? (
+                        <span className="block w-fit text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 mb-1">
+                          بيانات أطراف تالفة
+                        </span>
+                      ) : null}
+                      {appellantsText(a)}
+                    </td>
                     <td className="px-2 py-3 text-gray-800 max-w-[160px] break-words">{firstAppellee(a)}</td>
                     <td className="px-2 py-3 text-gray-800 whitespace-nowrap tabular-nums">
                       {[a.documentEffectiveNumber ?? a.fileNumber, a.fileType, a.documentEffectiveYear ?? a.fileYear].filter(Boolean).join(' / ') || '—'}
@@ -344,7 +351,14 @@ export default function AppealsList() {
                     <span className="text-[11px] text-gray-500">{a.appealTypeLabel || '—'}</span>
                   </div>
                 </div>
-                <p className="text-gray-900 font-medium break-words">{appellantsText(a)}</p>
+                <p className="text-gray-900 font-medium break-words">
+                  {a.partiesDegraded ? (
+                    <span className="text-[11px] font-normal px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 ml-1">
+                      بيانات أطراف تالفة
+                    </span>
+                  ) : null}
+                  {appellantsText(a)}
+                </p>
                 <p className="text-xs text-gray-600">ضد: {firstAppellee(a)}</p>
                 <p className="text-xs text-gray-600">
                   {[a.documentEffectiveNumber ?? a.fileNumber, a.fileType, a.documentEffectiveYear ?? a.fileYear].filter(Boolean).join(' / ') || '—'}

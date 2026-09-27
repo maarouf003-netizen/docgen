@@ -5,11 +5,19 @@ namespace DocGenerator.Api;
 
 public static class ClaimsPrincipalExtensions
 {
+    /// <summary>
+    /// معرّف المستخدم من الرمز — إغلاق صريح للفشل: رمز بلا معرّف أو بمعرّف غير رقمي يرمي
+    /// `UnauthorizedAccessException` (يُترجم إلى 403 في `GlobalExceptionHandler`) بدل التدهور
+    /// الصامت إلى `0` الذي قد يُخلط بمستخدم حقيقي في الاستعلامات اللاحقة.
+    /// عمليًا غير بالغ (وسيط المصادقة يرفض `sub` غير الرقمي قبل المتحكمات)، لكنه حارس حدّي.
+    /// </summary>
     public static int GetUserId(this ClaimsPrincipal user)
     {
         var sub = user.FindFirstValue(ClaimTypes.NameIdentifier)
             ?? user.FindFirstValue("sub");
-        return int.TryParse(sub, out var id) ? id : 0;
+        if (int.TryParse(sub, out var id))
+            return id;
+        throw new UnauthorizedAccessException("هوية المستخدم في الرمز غير صالحة — سجّل الدخول مجددًا");
     }
 
     public static string GetRole(this ClaimsPrincipal user)

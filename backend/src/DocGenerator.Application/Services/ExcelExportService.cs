@@ -265,7 +265,8 @@ public sealed class ExcelExportService : IExcelExportService
                 e.Governorate ?? string.Empty,
                 string.Join(" ", new[] { e.DecreeKind, e.DecreeNumber, e.DecreeDate }
                     .Where(v => !string.IsNullOrWhiteSpace(v))),
-                e.SummaryAr,
+                // السطر المبتور موسوم نصًا داخل خلية التفاصيل — المصنّف بلا عمود جديد (عقد الأعمدة السبعة محفوظ).
+                e.SummaryDegraded ? $"ملخص منقوص — {e.SummaryAr}" : e.SummaryAr,
             }));
     }
 

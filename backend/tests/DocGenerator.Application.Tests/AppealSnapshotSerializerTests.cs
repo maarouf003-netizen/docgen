@@ -172,4 +172,48 @@ public class AppealSnapshotSerializerTests
         Assert.Single(parties);
         Assert.Equal("المؤسسة السورية للتجارة", parties[0].Name);
     }
+
+    [Fact]
+    public void TryDeserializeParties_CorruptedJson_ReturnsEmptyWithCorruptedFlag()
+    {
+        var (parties, corrupted) = AppealSnapshotSerializer.TryDeserializeParties("{bad json");
+
+        Assert.Empty(parties);
+        Assert.True(corrupted);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("null")]
+    [InlineData("[]")]
+    public void TryDeserializeParties_EmptyOrNormalizedJson_NotCorrupted(string? json)
+    {
+        var (parties, corrupted) = AppealSnapshotSerializer.TryDeserializeParties(json);
+
+        Assert.Empty(parties);
+        Assert.False(corrupted);
+    }
+
+    [Theory]
+    [InlineData("{bad json", true)]
+    [InlineData("[{bad}]", true)]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData("null", false)]
+    [InlineData("[]", false)]
+    public void IsCorruptedSnapshot_ClassifiesCorrectly(string? json, bool expected)
+    {
+        Assert.Equal(expected, AppealSnapshotSerializer.IsCorruptedSnapshot(json));
+    }
+
+    [Fact]
+    public void IsCorruptedSnapshot_ValidPartiesJson_NotCorrupted()
+    {
+        var json = AppealSnapshotSerializer.SerializeParties(
+            new List<AppealPartyDto> { new("applicant-entity", 1, "جهة") });
+
+        Assert.False(AppealSnapshotSerializer.IsCorruptedSnapshot(json));
+    }
 }

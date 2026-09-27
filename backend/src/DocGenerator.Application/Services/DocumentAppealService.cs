@@ -531,6 +531,13 @@ public sealed class DocumentAppealService : IDocumentAppealService
             ?? throw new ArgumentException("الاستئناف غير موجود");
         EnsureAssignedFollower(appeal, userId);
 
+        // سدّ ثغرة الكتابة الحرة: مسار إجراءات الملفات يرفض المدد/الألوان/التواريخ الميتة
+        // (NormalizeAction/NormalizeReminder) بينما كان هذا المسار يقبل أي نص بطول مباح،
+        // فتُخزَّن قيم تُفسَّر صفرًا أو بتاريخ الإنشاء بصمت وقت القراءة.
+        ActionReminderCalculator.ValidateActionType(request.Type, "نوع الإجراء");
+        ActionReminderCalculator.ValidateActionDate(request.ActionDate, "تاريخ الإجراء");
+        ActionReminderCalculator.ValidateReminder(request.ReminderDuration, request.ReminderColor);
+
         var action = new AppealAction
         {
             AppealId = appeal.Id,
@@ -568,6 +575,11 @@ public sealed class DocumentAppealService : IDocumentAppealService
         EnsureAssignedFollower(appeal, userId);
         var action = appeal.Actions.FirstOrDefault(a => a.Id == actionId)
             ?? throw new ArgumentException("الإجراء غير موجود");
+
+        // ذات تحقق الإضافة أعلاه — التعديل يستبدل الحقول wholesale فتُرفض القيم الميتة هنا أيضًا.
+        ActionReminderCalculator.ValidateActionType(request.Type, "نوع الإجراء");
+        ActionReminderCalculator.ValidateActionDate(request.ActionDate, "تاريخ الإجراء");
+        ActionReminderCalculator.ValidateReminder(request.ReminderDuration, request.ReminderColor);
 
         action.Type = Bounded(request.Type, 20, "نوع الإجراء") ?? action.Type;
         action.Text = RequireText(request.Text, "نص الإجراء");
@@ -642,16 +654,21 @@ public sealed class DocumentAppealService : IDocumentAppealService
     {
         var rows = await ListReminderRowsAsync(userId, ct);
         return rows
-            .Select(r => new AppealReminderDto(
-                r.ActionId,
-                r.AppealId,
-                r.DocumentId,
-                r.AppealTitle,
-                r.Text,
-                r.ActionDate,
-                r.ReminderDuration,
-                r.ReminderColor,
-                ActionReminderCalculator.ComputeDueDate(r.ActionDate, r.ReminderDuration, r.CreatedAt)))
+            .Select(r =>
+            {
+                var (dueDate, suspect) = ActionReminderCalculator.TryComputeDueDate(r.ActionDate, r.ReminderDuration, r.CreatedAt);
+                return new AppealReminderDto(
+                    r.ActionId,
+                    r.AppealId,
+                    r.DocumentId,
+                    r.AppealTitle,
+                    r.Text,
+                    r.ActionDate,
+                    r.ReminderDuration,
+                    r.ReminderColor,
+                    dueDate,
+                    suspect);
+            })
             .OrderBy(r => r.DueDate)
             .ThenBy(r => r.AppealId)
             .ToList();
@@ -1027,6 +1044,10 @@ public sealed class DocumentAppealService : IDocumentAppealService
             && latestRecorded < currentYear
             && !hasCurrentYearRow;
 
+        // وسم تلف اللقطات: التالف يُعرض موسومًا لا قائمة فارغة نظيفة تُقرأ خطأً كنقص إدخال.
+        var (appellants, appellantsCorrupted) = AppealSnapshotSerializer.TryDeserializeParties(a.AppellantsJson);
+        var (appellees, appelleesCorrupted) = AppealSnapshotSerializer.TryDeserializeParties(a.AppelleesJson);
+
         return new AppealDto(
             a.Id,
             a.DocumentId,
@@ -1040,8 +1061,8 @@ public sealed class DocumentAppealService : IDocumentAppealService
             a.Status,
             AppealStatusCatalog.ToLabel(a.Status),
             a.AppealTypeLabel,
-            AppealSnapshotSerializer.DeserializeParties(a.AppellantsJson),
-            AppealSnapshotSerializer.DeserializeParties(a.AppelleesJson),
+            appellants,
+            appellees,
             a.AppealedDecisionText,
             a.AppealedDecisionSummary,
             FreeDateParser.ToResponse(a.AppealedDecisionDate),
@@ -1073,7 +1094,8 @@ public sealed class DocumentAppealService : IDocumentAppealService
             a.CreatedBy?.FullName,
             a.CreatedById,
             EffectiveFileIdentity.Number(d, asOfYear),
-            EffectiveFileIdentity.Year(d, asOfYear));
+            EffectiveFileIdentity.Year(d, asOfYear),
+            PartiesDegraded: appellantsCorrupted || appelleesCorrupted);
     }
 
     /// <summary>خيار طرف داخل لقطات الاستئناف (بناء داخلي قبل التسلسل).</summary>

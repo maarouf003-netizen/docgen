@@ -166,7 +166,10 @@ public static class ExecutionStatusCatalog
     public static bool CanRevert(string currentState) =>
         currentState == Deferred || currentState == ExecutedBySettlement || currentState == ExecutedForcibly;
 
-    /// <summary>تسمية الحالة الحالية في رسائل التحقق (تُقرأ من قيم آلة الحالات).</summary>
+    /// <summary>
+    /// تسمية الحالة الحالية في رسائل التحقق (تُقرأ من قيم آلة الحالات) — المجهول يُعرض
+    /// خامه لا «متداول» مخترعة. المدخلات هنا مخرجات `CurrentState` دائمًا (معروفة).
+    /// </summary>
     public static string ToStateLabel(string state) => state switch
     {
         DraftFilter => DraftFilter,
@@ -178,10 +181,10 @@ public static class ExecutionStatusCatalog
         DelegationExecuted => DelegationExecuted,
         Recovered => Recovered,
         StateStruckOff => StateStruckOff,
-        _ => StateCirculating,
+        _ => state,
     };
 
-    /// <summary>تسمية الحالة المستهدفة في رسائل التحقق.</summary>
+    /// <summary>تسمية الحالة المستهدفة في رسائل التحقق — المجهول يُعرض خامه.</summary>
     public static string ToStatusLabel(string status) => status switch
     {
         ExecutedForcibly => ExecutedForcibly,
@@ -191,6 +194,6 @@ public static class ExecutionStatusCatalog
         DelegationExecuted => DelegationExecuted,
         Recovered => Recovered,
         StateStruckOff => StateStruckOff,
-        _ => StateCirculating,
+        _ => status,
     };
 }

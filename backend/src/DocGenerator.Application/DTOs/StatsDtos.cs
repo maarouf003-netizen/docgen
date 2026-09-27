@@ -28,6 +28,8 @@ public record DashboardStatsDto(
 /// <summary>
 /// تذكير إجراء/ملاحظة مرتبط بمستند، مع تاريخ الاستحقاق المحسوب
 /// (تاريخ الإجراء + مدة التذكير، وإن غاب التاريخ فتاريخ الإنشاء + المدة).
+/// `DueDateSuspect` وسم جودة: تاريخ/مدة قديمة لا تُحلَّل فسقط الحساب إلى احتياط —
+/// يُعرض للمستخدم موسومًا لا تاريخًا عاديًا.
 /// </summary>
 public record ReminderDto(
     int ActionId,
@@ -40,7 +42,8 @@ public record ReminderDto(
     string? ActionDate,
     string? ReminderDuration,
     string? ReminderColor,
-    DateTime DueDate);
+    DateTime DueDate,
+    bool DueDateSuspect);
 
 public record MonthlyStatDto(int Year, int Month, int Count);
 

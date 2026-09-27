@@ -4,12 +4,12 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import EntityChangeLog from './EntityChangeLog';
 
-vi.mock('../api/client', () => ({
-  api: { get: vi.fn() },
-  getApiErrorMessage: (error: unknown) =>
-    (error as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-    'حدث خطأ غير متوقع',
-}));
+// العقد المصدَر `‎{message}‎`: الدالة الحقيقية (لا محاكاة) — أي كسر في
+// `getApiErrorMessage` يكسر هذا الملف، وهذا مقصود (حارس العقد من جهة العرض).
+vi.mock('../api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/client')>();
+  return { ...actual, api: { get: vi.fn() } };
+});
 vi.mock('../utils/dates', () => ({ formatDateTime: (v: string) => v }));
 
 import { api } from '../api/client';
@@ -27,6 +27,7 @@ function row(overrides: Record<string, unknown> = {}) {
     decreeNumber: '7',
     decreeDate: '2026-08-01',
     summaryAr: 'تم نقل قيد من «جهة أ» إلى «جهة ب» بموجب قرار رقم 7',
+    summaryDegraded: false,
     actorUserId: 3,
     actorName: 'رئيس قسم دمشق',
     createdAtUtc: '2026-08-01T10:00:00Z',
@@ -101,5 +102,21 @@ describe('EntityChangeLog', () => {
 
     expect(await screen.findByText('تعذر تحميل السجل — حاول مرة أخرى')).toBeInTheDocument();
     expect(screen.queryByText('حدث خطأ غير متوقع')).not.toBeInTheDocument();
+  });
+
+  it('يعرض شارة «ملخص منقوص» للسطر الموسوم فقط (جدول المكتبي وبطاقة الجوال)', async () => {
+    mockRows([row({ id: 1, summaryDegraded: true }), row({ id: 2 })]);
+    render(<MemoryRouter><EntityChangeLog /></MemoryRouter>);
+
+    // الشارة في التخطيطين معًا (جدول `md:block` وبطاقات `md:hidden`) — موسوم واحد × تخطيطين.
+    expect(await screen.findAllByText('ملخص منقوص')).toHaveLength(2);
+  });
+
+  it('لا يعرض أي شارة تدهور بلا وسم', async () => {
+    mockRows([row()]);
+    render(<MemoryRouter><EntityChangeLog /></MemoryRouter>);
+
+    await screen.findAllByText('تم نقل قيد من «جهة أ» إلى «جهة ب» بموجب قرار رقم 7');
+    expect(screen.queryByText('ملخص منقوص')).not.toBeInTheDocument();
   });
 });

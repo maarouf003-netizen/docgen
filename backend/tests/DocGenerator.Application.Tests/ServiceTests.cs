@@ -2506,6 +2506,38 @@ public class DocumentServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task AddAction_UnparsableActionDate_Throws()
+    {
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.AddExecutionActionAsync(doc.Id,
+                new AddExecutionActionRequest
+                {
+                    Text = "إجراء",
+                    ActionDate = "ليس تاريخا",
+                },
+                userId: 1, actorName: "lawyer1"));
+        Assert.Contains("تاريخ الإجراء", ex.Message);
+    }
+
+    [Fact]
+    public async Task AddAction_InvalidActionType_Throws()
+    {
+        var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.AddExecutionActionAsync(doc.Id,
+                new AddExecutionActionRequest
+                {
+                    Type = "xyz",
+                    Text = "إجراء",
+                    ActionDate = "1/8/2026",
+                },
+                userId: 1, actorName: "lawyer1"));
+    }
+
+    [Fact]
     public async Task AddAction_PartialReminderWithoutColor_SavesDurationOnly()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);

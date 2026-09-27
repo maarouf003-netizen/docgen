@@ -30,10 +30,16 @@ public static class PartyNatureCatalog
 
     public static bool IsLegal(string? nature) => nature == Legal;
 
+    /// <summary>
+    /// التسمية العربية للطبيعة — الغائب (`null`) هو «شخص طبيعي» بالتصميم (الافتراضي في
+    /// `DocumentContextBuilder`)؛ والقيمة المجهولة غير الفارغة تُعرض خامها.
+    /// </summary>
     public static string ToLabel(string? nature) => nature switch
     {
         Legal => "شخص اعتباري",
         PublicEntity => "جهة عامة",
-        _ => "شخص طبيعي",
+        Natural => "شخص طبيعي",
+        null => "شخص طبيعي",
+        _ => nature,
     };
 }

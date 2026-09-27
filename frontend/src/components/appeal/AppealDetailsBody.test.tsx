@@ -82,4 +82,12 @@ describe('AppealDetailsBody', () => {
     expect(screen.getByText('رأي المحامي المتابع بأسباب الاستئناف')).toBeInTheDocument();
     expect(screen.getByText('رأي سري داخلي')).toBeInTheDocument();
   });
+
+  it('يعرض شارة «بيانات أطراف تالفة» عند وسم التدهور ويخفيها للسليم', () => {
+    const { rerender } = render(<AppealDetailsBody appeal={makeAppeal({ partiesDegraded: true })} />);
+    expect(screen.getByText('بيانات أطراف تالفة')).toBeInTheDocument();
+
+    rerender(<AppealDetailsBody appeal={makeAppeal({ partiesDegraded: false })} />);
+    expect(screen.queryByText('بيانات أطراف تالفة')).not.toBeInTheDocument();
+  });
 });

@@ -18,12 +18,13 @@ public static class GeneralEntitySideCatalog
         Applicant, Executed, Deposit,
     };
 
-    /// <summary>العنوان العربي الظاهر للمستخدم للصفة المحددة.</summary>
+    /// <summary>العنوان العربي الظاهر للمستخدم للصفة المحددة — المجهول يُعرض خامه.</summary>
     public static string ToLabel(string side) => side switch
     {
         Executed => "الجهة العامة منفذ عليها",
         Deposit => "عرض وايداع",
-        _ => "الجهة العامة طالبة التنفيذ",
+        Applicant => "الجهة العامة طالبة التنفيذ",
+        _ => side,
     };
 
     /// <summary>

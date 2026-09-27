@@ -784,18 +784,23 @@ public class StatisticsRepository : IStatisticsRepository
             .ToListAsync(ct);
 
         return rows
-            .Select(r => new ReminderDto(
-                r.Id,
-                r.DocumentId,
-                r.DocumentType,
-                r.BorrowerName,
-                r.BorrowerFather,
-                r.BorrowerFamily,
-                r.Text,
-                r.ActionDate,
-                r.ReminderDuration,
-                r.ReminderColor,
-                ActionReminderCalculator.ComputeDueDate(r.ActionDate, r.ReminderDuration, r.CreatedAt)))
+            .Select(r =>
+            {
+                var (dueDate, suspect) = ActionReminderCalculator.TryComputeDueDate(r.ActionDate, r.ReminderDuration, r.CreatedAt);
+                return new ReminderDto(
+                    r.Id,
+                    r.DocumentId,
+                    r.DocumentType,
+                    r.BorrowerName,
+                    r.BorrowerFather,
+                    r.BorrowerFamily,
+                    r.Text,
+                    r.ActionDate,
+                    r.ReminderDuration,
+                    r.ReminderColor,
+                    dueDate,
+                    suspect);
+            })
             .OrderBy(r => r.DueDate)
             .ThenBy(r => r.DocumentId)
             .ToList();

@@ -312,7 +312,12 @@ public record EntityChangeEventDto(
     /// <summary>التسمية العربية للصنف من <c>ActionKindCatalog.ToLabel</c> — المصدر الوحيد للعرض.</summary>
     string ActionKindLabel,
     /// <summary>ملخّص عربي قابل للعرض يُبنى وقت القراءة من <c>PayloadJson</c> — بديل عرضه الخام.</summary>
-    string SummaryAr);
+    string SummaryAr,
+    /// <summary>
+    /// وسم جودة الملخّص: حمل غير فارغ لا يُنتج تفاصيل (تالف أو ناقص أو صنف مجهول) فسقط
+    /// إلى تسمية الصنف وحدها — يُعرض السطر موسومًا «ملخص منقوص» لا سليمًا.
+    /// </summary>
+    bool SummaryDegraded);
 
 /// <summary>استعلام سجل التغييرات مع ترقيم وفلترة.</summary>
 public record EntityChangeEventQuery(

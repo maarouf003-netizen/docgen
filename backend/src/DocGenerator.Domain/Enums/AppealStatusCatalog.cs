@@ -21,11 +21,12 @@ public static class AppealStatusCatalog
         Pending, Decided, StruckOff,
     };
 
+    /// <summary>التسمية العربية للحالة — المجهول يُعرض خامه لا «منظور» مخترعة.</summary>
     public static string ToLabel(string status) => status switch
     {
         Pending => "منظور",
         Decided => "محسوم",
         StruckOff => "مشطوب",
-        _ => Pending,
+        _ => status,
     };
 }

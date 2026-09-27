@@ -1721,6 +1721,34 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(0, byOther.TotalCount);
     }
 
+    [Theory]
+    [InlineData("ليس تاريخا", null)]
+    [InlineData(null, "32/13/2026")]
+    [InlineData("غدًا", "أمس")]
+    public async Task ChangeLog_InvalidPeriodFilter_ThrowsArgumentException(string? from, string? to)
+    {
+        // رفض صريح بدل التوسيع الصامت إلى بلا فلتر (قرار إداري على مجموعة موسعة خطأ).
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, null, from, to, 1, 20), ManagerActor()));
+        Assert.Contains("غير صالح", ex.Message);
+    }
+
+    [Fact]
+    public async Task ChangeLog_ActorFilterNormalizingToEmpty_MatchesNothing()
+    {
+        var a = await _service.CreateAsync(new CreatePublicEntityRequest("جهة ط1", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var b = await _service.CreateAsync(new CreatePublicEntityRequest("جهة ط1-ت", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        await _service.MoveEntryAsync(a.Id, new MoveEntryRequest(b.GroupId, null, null, null, null, null), ManagerActor());
+
+        var all = await _service.ListChangeEventsAsync(new EntityChangeEventQuery(null, null, null, null, null, 1, 20), ManagerActor());
+        Assert.True(all.TotalCount >= 1);
+
+        // "ـ" (تطويل) يُطبَّع إلى فراغ — فلتر بلا معنى يطابق لا شيء، لا الكل.
+        var none = await _service.ListChangeEventsAsync(
+            new EntityChangeEventQuery(null, null, null, null, null, 1, 20, Actor: "ـ"), ManagerActor());
+        Assert.Equal(0, none.TotalCount);
+    }
+
     [Fact]
     public async Task ChangeLog_ExportProducesWorkbook()
     {
@@ -1834,18 +1862,31 @@ public class PublicEntityServiceTests : IDisposable
 
         var summary = EntityChangeLogSummary.Build("merge", escaped, "قرار", "5", null);
 
-        Assert.Contains("مديرية الزراعة والإصلاح الزراعي", summary);
-        Assert.Contains("وزارة الزراعة", summary);
-        Assert.DoesNotContain("\\u", summary);
+        Assert.False(summary.IsDegraded);
+        Assert.Contains("مديرية الزراعة والإصلاح الزراعي", summary.Summary);
+        Assert.Contains("وزارة الزراعة", summary.Summary);
+        Assert.DoesNotContain("\\u", summary.Summary);
     }
 
     [Fact]
     public void ChangeLog_SummaryFallsBackToLabelOnCorruptPayload()
     {
-        Assert.Equal("نقل قيد", EntityChangeLogSummary.Build("move", "{broken", null, null, null));
-        Assert.Equal("نقل قيد", EntityChangeLogSummary.Build("move", null, null, null, null));
-        Assert.Equal("نقل قيد", EntityChangeLogSummary.Build("move", "{}", null, null, null));
-        Assert.Equal("some-unknown-kind", EntityChangeLogSummary.Build("some-unknown-kind", "{}", null, null, null));
+        // التالف/الناقص موسوم التدهور؛ الفارغ تطبيع لا تدهور (لا تفاصيل متوقعة).
+        var corrupt = EntityChangeLogSummary.Build("move", "{broken", null, null, null);
+        Assert.Equal("نقل قيد", corrupt.Summary);
+        Assert.True(corrupt.IsDegraded);
+
+        var empty = EntityChangeLogSummary.Build("move", null, null, null, null);
+        Assert.Equal("نقل قيد", empty.Summary);
+        Assert.False(empty.IsDegraded);
+
+        var missingKeys = EntityChangeLogSummary.Build("move", "{}", null, null, null);
+        Assert.Equal("نقل قيد", missingKeys.Summary);
+        Assert.True(missingKeys.IsDegraded);
+
+        var unknownKind = EntityChangeLogSummary.Build("some-unknown-kind", "{}", null, null, null);
+        Assert.Equal("some-unknown-kind", unknownKind.Summary);
+        Assert.True(unknownKind.IsDegraded);
     }
 
     [Fact]
@@ -2847,6 +2888,42 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal("هيئة الصحة العامة", parties[0].Name);
 
         Assert.Contains("appeal_entity_sync", _audit.Actions);
+    }
+
+    [Fact]
+    public async Task AbolishAndReplace_CorruptedAppealSnapshot_SkipsSyncWithAuditAndKeepsOriginal()
+    {
+        var absorbed = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "جهة اللقطة التالفة", "authority", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var doc = await SeedApplicantDocumentAsync("جهة اللقطة التالفة", "دمشق");
+        var row = await _db.ApplicantPublicEntities.SingleAsync(a => a.DocumentId == doc.Id);
+        var absorbedEntry = await _db.PublicEntities.SingleAsync(e => e.GroupId == absorbed.GroupId);
+        row.RegistryId = absorbedEntry.Id;
+        await _db.SaveChangesAsync();
+
+        var appeal = await SeedAppealAsync(
+            doc.Id,
+            new List<AppealPartyDto> { EntityParty("applicant-entity", row.Id, "جهة اللقطة التالفة") },
+            new List<AppealPartyDto>());
+
+        // إتلاف اللقطة مباشرة في القاعدة (لا يمكن إنتاجها عبر المسارات المُتحقَّق منها).
+        const string corrupted = "{bad json";
+        appeal.AppellantsJson = corrupted;
+        await _db.SaveChangesAsync();
+
+        await _service.AbolishAndReplaceAsync(
+            new AbolishAndReplaceRequest(
+                new[] { absorbed.GroupId },
+                "هيئة اللقطة البديلة", "authority", "دمشق",
+                DecreeKind: "قرار", DecreeNumber: "310", DecreeDate: "24/6/2026"), ManagerActor());
+
+        // الملف حُلّ؛ اللقطة التالفة بقيت كما هي مع واقعة تخطٍّ بدل الصمت.
+        var updatedRow = await _db.ApplicantPublicEntities.FindAsync(row.Id);
+        Assert.Equal("هيئة اللقطة البديلة", updatedRow!.Name);
+
+        var updatedAppeal = await _db.DocumentAppeals.FindAsync(appeal.Id);
+        Assert.Equal(corrupted, updatedAppeal!.AppellantsJson);
+        Assert.Contains("appeal_entity_sync_skipped", _audit.Actions);
     }
 
     [Fact]
