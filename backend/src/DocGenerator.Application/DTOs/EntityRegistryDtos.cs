@@ -308,7 +308,11 @@ public record EntityChangeEventDto(
     string? ActorName,
     string CreatedAtUtc,
     string? Governorate,
-    string? CanonicalName);
+    string? CanonicalName,
+    /// <summary>التسمية العربية للصنف من <c>ActionKindCatalog.ToLabel</c> — المصدر الوحيد للعرض.</summary>
+    string ActionKindLabel,
+    /// <summary>ملخّص عربي قابل للعرض يُبنى وقت القراءة من <c>PayloadJson</c> — بديل عرضه الخام.</summary>
+    string SummaryAr);
 
 /// <summary>استعلام سجل التغييرات مع ترقيم وفلترة.</summary>
 public record EntityChangeEventQuery(
@@ -318,7 +322,9 @@ public record EntityChangeEventQuery(
     string? From,
     string? To,
     int Page = 1,
-    int PerPage = 20);
+    int PerPage = 20,
+    /// <summary>نص الفلتر الخام للفاعل: رقم يُفسَّر معرِّفًا، ونصٌّ يُطابَق بالاسم بعد التطبيع العربي.</summary>
+    string? Actor = null);
 
 // ── إعادة تسمية هوية أم (المدير/المشرف — على مستوى المجموعة مع مرسوم إلزامي) ──
 

@@ -1,4 +1,5 @@
-﻿using DocGenerator.Application.Common;
+﻿using System.Globalization;
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Audit;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
@@ -866,15 +867,45 @@ public sealed class PublicEntityService : IPublicEntityService
             governorate = NormalizeOptional(headBranch?.Governorate);
         }
         var actionKind = NormalizeOptional(query.ActionKind);
+        var (actorUserId, actorName) = ResolveActorFilter(query);
         var (from, to) = ParseChangeEventPeriod(query.From, query.To);
         return all
             .Where(e => MatchesGovernorate(e, governorate))
             .Where(e => actionKind is null || e.ActionKind == actionKind)
             .Where(e => query.ActorUserId is null || e.ActorUserId == query.ActorUserId)
+            .Where(e => actorUserId is null || e.ActorUserId == actorUserId)
+            .Where(e => actorName is null || MatchesActorName(e, actorName))
             .Where(e => from is null || e.CreatedAtUtc >= from)
             .Where(e => to is null || e.CreatedAtUtc <= to)
             .OrderByDescending(e => e.CreatedAtUtc)
             .ToList();
+    }
+
+    /// <summary>
+    /// يفسّر نص الفلتر الخام للفاعل: فارغ بلا فلترة، ورقم (بأرقام عربية أيضًا)
+    /// يُفسَّر معرِّفًا، ونصٌّ يُطابَق على الاسم الكامل أو اسم الدخول بعد التطبيع العربي.
+    /// </summary>
+    private static (int? ActorUserId, string? ActorName) ResolveActorFilter(EntityChangeEventQuery query)
+    {
+        if (query.ActorUserId.HasValue)
+            return (query.ActorUserId, null);
+        var raw = NormalizeOptional(query.Actor);
+        if (raw is null)
+            return (null, null);
+        var digits = ArabicDigitNormalizer.Normalize(raw);
+        if (int.TryParse(digits, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id) && id > 0)
+            return (id, null);
+        return (null, raw);
+    }
+
+    /// <summary>مطابقة اسم الفاعل بعد التطبيع العربي على الاسم الكامل أو اسم الدخول.</summary>
+    private static bool MatchesActorName(PublicEntityChangeEvent e, string actorName)
+    {
+        var normalized = ArabicNameNormalizer.Normalize(actorName);
+        if (normalized.Length == 0)
+            return true;
+        return ArabicNameNormalizer.Normalize(e.ActorUser?.FullName).Contains(normalized, StringComparison.Ordinal)
+            || ArabicNameNormalizer.Normalize(e.ActorUser?.Username).Contains(normalized, StringComparison.Ordinal);
     }
 
     public async Task<PagedResult<EntityChangeEventDto>> ListChangeEventsAsync(EntityChangeEventQuery query, EntityRegistryActor actor, CancellationToken ct = default)
@@ -910,7 +941,9 @@ public sealed class PublicEntityService : IPublicEntityService
         e.ActorUser?.FullName ?? e.ActorUser?.Username,
         e.CreatedAtUtc.ToString("yyyy-MM-ddTHH:mm:ssZ", System.Globalization.CultureInfo.InvariantCulture),
         e.Entry?.Governorate ?? e.Group?.Entries.FirstOrDefault()?.Governorate,
-        e.Group?.CanonicalName ?? e.Entry?.Group?.CanonicalName);
+        e.Group?.CanonicalName ?? e.Entry?.Group?.CanonicalName,
+        ActionKindCatalog.ToLabel(e.ActionKind),
+        EntityChangeLogSummary.Build(e.ActionKind, e.PayloadJson, e.DecreeKind, e.DecreeNumber, e.DecreeDate));
 
     /// <summary>اعتماد قيد كما هو: يقفل المراجعة دون تعديل ودون إشعار للمُدخِل (حسب القرار).</summary>
     public async Task<PublicEntityEntryDto?> ApproveReviewAsync(int entryId, EntityRegistryActor actor, CancellationToken ct = default)

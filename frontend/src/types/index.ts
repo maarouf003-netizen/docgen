@@ -1783,10 +1783,11 @@ export interface EntityChangeEventDto {
   entryId?: number | null;
   groupId?: number | null;
   actionKind: string;
+  actionKindLabel: string;
   decreeKind?: string | null;
   decreeNumber?: string | null;
   decreeDate?: string | null;
-  payloadJson: string;
+  summaryAr: string;
   actorUserId: number;
   actorName?: string | null;
   createdAtUtc: string;

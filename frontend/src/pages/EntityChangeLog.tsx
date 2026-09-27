@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { api } from '../api/client';
 import { formatDateTime } from '../utils/dates';
+import { normalizeArabicDigits } from '../utils/arabicDigits';
 import { downloadBlob } from '../utils/download';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
@@ -13,14 +14,13 @@ interface Paged<T> {
   totalCount: number;
 }
 
+// خيارات فلتر نوع الحدث: القيم عقد API، والتسميات مطابقة لـ ActionKindCatalog.ToLabel.
+// الأصناف create/review/import محذوفة عمدًا — لا تُكتَب في سجل التغييرات إطلاقًا.
 const ACTION_LABELS: Record<string, string> = {
-  create: 'إنشاء',
   rename: 'إعادة تسمية',
-  move: 'نقل',
+  move: 'نقل قيد',
   merge: 'دمج',
   abolish: 'إلغاء',
-  review: 'مراجعة',
-  import: 'استيراد',
   unify: 'توحيد تسمية',
   update: 'تحديث عام',
   propose: 'اقتراح تعديل',
@@ -39,11 +39,15 @@ export default function EntityChangeLog() {
   const debouncedGovernorate = useDebouncedValue(governorate, 300);
   const debouncedActorUserId = useDebouncedValue(actorUserId, 300);
 
+  // الفاعل نص حر: رقم يُفسَّر معرِّفًا ونصٌّ يُطابَق بالاسم.
+  // الأرقام العربية تُطبَّع هنا (اتساقًا مع DocumentForm) والخادم يحرس أيضًا.
+  const actorText = normalizeArabicDigits(debouncedActorUserId).trim();
+
   const query = useCancellableRequest<Paged<EntityChangeEventDto>>((signal) => {
     const params = new URLSearchParams({ page: String(page), perPage: String(perPage) });
     if (debouncedGovernorate) params.set('governorate', debouncedGovernorate);
     if (actionKind) params.set('actionKind', actionKind);
-    if (debouncedActorUserId) params.set('actorUserId', debouncedActorUserId);
+    if (actorText !== '') params.set('actorUserId', actorText);
     if (from) params.set('from', from);
     if (to) params.set('to', to);
     return api.get(`/entity-registry/change-events?${params.toString()}`, { signal }).then((r) => r.data);
@@ -59,7 +63,7 @@ export default function EntityChangeLog() {
     const params = new URLSearchParams();
     if (debouncedGovernorate) params.set('governorate', debouncedGovernorate);
     if (actionKind) params.set('actionKind', actionKind);
-    if (debouncedActorUserId) params.set('actorUserId', debouncedActorUserId);
+    if (actorText !== '') params.set('actorUserId', actorText);
     if (from) params.set('from', from);
     if (to) params.set('to', to);
     api.get(`/entity-registry/change-events/export?${params.toString()}`, { responseType: 'blob' }).then((res) => {
@@ -88,7 +92,7 @@ export default function EntityChangeLog() {
         </div>
         <div className="flex flex-col min-w-28">
           <label htmlFor="chg-actor" className="text-sm text-gray-600 mb-1">المستخدم</label>
-          <input id="chg-actor" name="actorUserId" autoComplete="off" value={actorUserId} onChange={(e) => { setActorUserId(e.target.value); setPage(1); }} placeholder="معرّف المستخدم…" inputMode="numeric" className="min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500" />
+          <input id="chg-actor" name="actorUserId" autoComplete="off" value={actorUserId} onChange={(e) => { setActorUserId(e.target.value); setPage(1); }} placeholder="اسم المستخدم أو معرّفه…" className="min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500" />
         </div>
         <div className="flex flex-col min-w-36">
           <label htmlFor="chg-from" className="text-sm text-gray-600 mb-1">من تاريخ</label>
@@ -122,11 +126,11 @@ export default function EntityChangeLog() {
               <tr key={r.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3 whitespace-nowrap tabular-nums">{formatDateTime(r.createdAtUtc)}</td>
                 <td className="px-4 py-3 min-w-0 break-words">{r.actorName ?? `#${r.actorUserId}`}</td>
-                <td className="px-4 py-3">{ACTION_LABELS[r.actionKind] ?? r.actionKind}</td>
+                <td className="px-4 py-3">{r.actionKindLabel}</td>
                 <td className="px-4 py-3 min-w-0 break-words">{r.canonicalName ?? '-'}</td>
                 <td className="px-4 py-3">{r.governorate ?? '-'}</td>
                 <td className="px-4 py-3 tabular-nums">{[r.decreeKind, r.decreeNumber, r.decreeDate].filter(Boolean).join(' ') || '-'}</td>
-                <td className="px-4 py-3 max-w-xs truncate" title={r.payloadJson}>{r.payloadJson.slice(0, 120)}</td>
+                <td className="px-4 py-3 max-w-xs min-w-0 break-words">{r.summaryAr}</td>
               </tr>
             ))}
             {rows.length === 0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">لا توجد سجلات</td></tr>}
@@ -140,13 +144,13 @@ export default function EntityChangeLog() {
           <div key={r.id} className="bg-white rounded-xl shadow p-4">
             <div className="flex flex-wrap justify-between gap-2 text-sm">
               <span className="font-bold text-gray-800">{r.canonicalName ?? '—'}</span>
-              <span className="text-emerald-700 bg-emerald-50 rounded-full px-2 py-0.5">{ACTION_LABELS[r.actionKind] ?? r.actionKind}</span>
+              <span className="text-emerald-700 bg-emerald-50 rounded-full px-2 py-0.5">{r.actionKindLabel}</span>
             </div>
             <div className="mt-2 text-sm text-gray-600 space-y-1 break-words">
               <div>الفاعل: {r.actorName ?? `#${r.actorUserId}`} — {formatDateTime(r.createdAtUtc)}</div>
               <div>المحافظة: {r.governorate ?? '-'}</div>
               <div>المرسوم: {[r.decreeKind, r.decreeNumber, r.decreeDate].filter(Boolean).join(' ') || '-'}</div>
-              <div className="line-clamp-3 break-words">{r.payloadJson}</div>
+              <div className="line-clamp-3 break-words">{r.summaryAr}</div>
             </div>
           </div>
         ))}

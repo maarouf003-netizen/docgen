@@ -465,7 +465,7 @@ public class EntityRegistryController : ControllerBase
     public async Task<IActionResult> ListChangeEvents(
         [FromQuery] string? governorate,
         [FromQuery] string? actionKind,
-        [FromQuery] int? actorUserId,
+        [FromQuery] string? actorUserId,
         [FromQuery] string? from,
         [FromQuery] string? to,
         [FromQuery] int page = 1,
@@ -474,8 +474,15 @@ public class EntityRegistryController : ControllerBase
     {
         if (!RolePermissions.CanManageEntityRegistry(Role))
             return Forbid();
-        return Ok(await _registry.ListChangeEventsAsync(
-            new EntityChangeEventQuery(governorate, actionKind, actorUserId, from, to, page, perPage), Actor, ct));
+        try
+        {
+            return Ok(await _registry.ListChangeEventsAsync(
+                new EntityChangeEventQuery(governorate, actionKind, null, from, to, page, perPage, Actor: actorUserId), Actor, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
     }
 
     /// <summary>تصدير سجل التغييرات إلى Excel (نفس فلاتر القائمة — رئيس القسم يرى محافظته).</summary>
@@ -483,16 +490,23 @@ public class EntityRegistryController : ControllerBase
     public async Task<IActionResult> ExportChangeEvents(
         [FromQuery] string? governorate,
         [FromQuery] string? actionKind,
-        [FromQuery] int? actorUserId,
+        [FromQuery] string? actorUserId,
         [FromQuery] string? from,
         [FromQuery] string? to,
         CancellationToken ct = default)
     {
         if (!RolePermissions.CanManageEntityRegistry(Role))
             return Forbid();
-        var bytes = await _registry.ExportChangeEventsAsync(
-            new EntityChangeEventQuery(governorate, actionKind, actorUserId, from, to, 1, 5000), Actor, ct);
-        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "change-events.xlsx");
+        try
+        {
+            var bytes = await _registry.ExportChangeEventsAsync(
+                new EntityChangeEventQuery(governorate, actionKind, null, from, to, 1, 5000, Actor: actorUserId), Actor, ct);
+            return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "change-events.xlsx");
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
     }
 
     // ── عمليات فروع رئيس القسم (تعديل التسمية/دمج/إلغاء/توحيد — ضمن محافظته) ──

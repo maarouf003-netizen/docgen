@@ -1762,6 +1762,161 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal($"A1:G{1 + XlsxReader.DataRowCount(sheetXml)}", XlsxReader.AutoFilterReference(sheetXml));
     }
 
+    // ── سجل التغييرات: الملخّص العربي القابل للعرض (إصلاح عرض PayloadJson الخام) ──
+
+    [Fact]
+    public async Task ChangeLog_SummaryShowsArabicMoveDetails_NotRawJson()
+    {
+        var source = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الملخص أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
+        var target = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الملخص ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
+        await _service.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
+
+        var paged = await _service.ListChangeEventsAsync(
+            new EntityChangeEventQuery(null, "move", null, null, null, 1, 20), ManagerActor());
+
+        Assert.True(paged.TotalCount >= 1);
+        var item = paged.Items.First(i => i.ActionKind == "move");
+        Assert.Equal(ActionKindCatalog.ToLabel("move"), item.ActionKindLabel);
+        Assert.Equal("نقل قيد", item.ActionKindLabel);
+        Assert.Contains("تم نقل قيد من", item.SummaryAr);
+        Assert.Contains("جهة الملخص أ", item.SummaryAr);
+        Assert.Contains("جهة الملخص ب", item.SummaryAr);
+        Assert.DoesNotContain("{", item.SummaryAr);
+        Assert.DoesNotContain("\\u", item.SummaryAr);
+    }
+
+    [Fact]
+    public async Task ChangeLog_RenameSummaryShowsBeforeAfterAndDecree()
+    {
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة التسمية القديمة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        await _service.RenameGroupAsync(
+            new RenameGroupRequest(dto.GroupId, "جهة التسمية الجديدة", "قرار", "77", "1/8/2026"), ManagerActor());
+
+        var paged = await _service.ListChangeEventsAsync(
+            new EntityChangeEventQuery(null, "rename", null, null, null, 1, 20), ManagerActor());
+
+        Assert.True(paged.TotalCount >= 1);
+        var item = paged.Items.First(i => i.ActionKind == "rename");
+        Assert.Equal("إعادة تسمية", item.ActionKindLabel);
+        Assert.Contains("تم تعديل اسم الجهة من «جهة التسمية القديمة» إلى «جهة التسمية الجديدة»", item.SummaryAr);
+        Assert.Contains("بموجب قرار رقم 77 بتاريخ 2026-08-01", item.SummaryAr);
+    }
+
+    [Fact]
+    public async Task ChangeLog_MergeSummaryShowsSurvivorAndAbsorbed()
+    {
+        var (sg, ag1, _) = await SeedThreeGroupsForMergeAsync();
+        var survivorName = (await _db.PublicEntityGroups.FindAsync(sg))!.CanonicalName;
+        var absorbedName = (await _db.PublicEntityGroups.FindAsync(ag1))!.CanonicalName;
+        await _service.CommitMergeAsync(
+            new MergeCommitRequest(sg, new[] { ag1 },
+                DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
+
+        var paged = await _service.ListChangeEventsAsync(
+            new EntityChangeEventQuery(null, "merge", null, null, null, 1, 20), ManagerActor());
+
+        var item = paged.Items.First(i => i.ActionKind == "merge");
+        Assert.Equal("دمج", item.ActionKindLabel);
+        Assert.Contains($"تم دمج \"{absorbedName}\" مع \"{survivorName}\"", item.SummaryAr);
+        Assert.Contains("بموجب قرار رقم 123", item.SummaryAr);
+    }
+
+    [Fact]
+    public void ChangeLog_SummaryDecodesEscapedUnicodePayload()
+    {
+        // يحاكي صفًّا مخزّنًا بالمُرمِّز الافتراضي (هروب \uXXXX): الملخّص يعرض عربيًا صريحًا.
+        var escaped = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            oldCanonicalNames = new[] { "مديرية الزراعة والإصلاح الزراعي" },
+            newCanonical = "وزارة الزراعة",
+        });
+        Assert.Contains("\\u", escaped); // حارس: الفيكسشر مهروب فعلًا
+
+        var summary = EntityChangeLogSummary.Build("merge", escaped, "قرار", "5", null);
+
+        Assert.Contains("مديرية الزراعة والإصلاح الزراعي", summary);
+        Assert.Contains("وزارة الزراعة", summary);
+        Assert.DoesNotContain("\\u", summary);
+    }
+
+    [Fact]
+    public void ChangeLog_SummaryFallsBackToLabelOnCorruptPayload()
+    {
+        Assert.Equal("نقل قيد", EntityChangeLogSummary.Build("move", "{broken", null, null, null));
+        Assert.Equal("نقل قيد", EntityChangeLogSummary.Build("move", null, null, null, null));
+        Assert.Equal("نقل قيد", EntityChangeLogSummary.Build("move", "{}", null, null, null));
+        Assert.Equal("some-unknown-kind", EntityChangeLogSummary.Build("some-unknown-kind", "{}", null, null, null));
+    }
+
+    [Fact]
+    public async Task ChangeLog_ExportDetailsAreReadableArabic()
+    {
+        var source = await _service.CreateAsync(new CreatePublicEntityRequest("جهة التصدير أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
+        var target = await _service.CreateAsync(new CreatePublicEntityRequest("جهة التصدير ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
+        await _service.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
+
+        var bytes = await _service.ExportChangeEventsAsync(
+            new EntityChangeEventQuery(null, null, null, null, null, 1, 20), ManagerActor());
+
+        var dataRow = XlsxReader.RowTexts(XlsxReader.FirstSheetXml(bytes), 1);
+        Assert.Equal(7, dataRow.Count);
+        Assert.Equal("نقل قيد", dataRow[2]);
+        Assert.Contains("تم نقل قيد من", dataRow[6]);
+        Assert.DoesNotContain("{", dataRow[6]);
+    }
+
+    [Fact]
+    public async Task ChangeLog_FilterByActorNameMatchesFullName()
+    {
+        var source = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الاسم أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
+        var target = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الاسم ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
+        await _service.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
+
+        var paged = await _service.ListChangeEventsAsync(
+            new EntityChangeEventQuery(null, null, null, null, null, 1, 20, Actor: "المدير"), ManagerActor());
+
+        Assert.True(paged.TotalCount >= 1);
+        Assert.All(paged.Items, i => Assert.Equal(_managerId, i.ActorUserId));
+    }
+
+    [Fact]
+    public async Task ChangeLog_FilterByActorNameMatchesUsername()
+    {
+        var source = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الدخول أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
+        var target = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الدخول ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
+        await _service.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
+
+        var paged = await _service.ListChangeEventsAsync(
+            new EntityChangeEventQuery(null, null, null, null, null, 1, 20, Actor: "mgr"), ManagerActor());
+
+        Assert.True(paged.TotalCount >= 1);
+        Assert.All(paged.Items, i => Assert.Equal(_managerId, i.ActorUserId));
+    }
+
+    [Fact]
+    public async Task ChangeLog_UnknownActorNameReturnsEmpty()
+    {
+        var paged = await _service.ListChangeEventsAsync(
+            new EntityChangeEventQuery(null, null, null, null, null, 1, 20, Actor: "اسم غير موجود إطلاقًا"), ManagerActor());
+
+        Assert.Equal(0, paged.TotalCount);
+    }
+
+    [Fact]
+    public async Task ChangeLog_ArabicDigitsActorIdIsAccepted()
+    {
+        var source = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الرقم أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
+        var target = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الرقم ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
+        await _service.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
+
+        var arabicDigits = string.Concat(_managerId.ToString().Select(c => (char)('٠' + (c - '0'))));
+        var paged = await _service.ListChangeEventsAsync(
+            new EntityChangeEventQuery(null, null, null, null, null, 1, 20, Actor: arabicDigits), ManagerActor());
+
+        Assert.True(paged.TotalCount >= 1);
+        Assert.All(paged.Items, i => Assert.Equal(_managerId, i.ActorUserId));
+    }
+
     // ── قائمة المجموعات وتوحيد التسمية N←1 (المدير/المشرف) ──
 
     [Fact]

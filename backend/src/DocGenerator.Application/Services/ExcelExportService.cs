@@ -260,12 +260,12 @@ public sealed class ExcelExportService : IExcelExportService
             {
                 e.CreatedAtUtc ?? string.Empty,
                 e.ActorName ?? string.Empty,
-                e.ActionKind ?? string.Empty,
+                e.ActionKindLabel,
                 e.CanonicalName ?? string.Empty,
                 e.Governorate ?? string.Empty,
                 string.Join(" ", new[] { e.DecreeKind, e.DecreeNumber, e.DecreeDate }
                     .Where(v => !string.IsNullOrWhiteSpace(v))),
-                e.PayloadJson ?? string.Empty,
+                e.SummaryAr,
             }));
     }
 
