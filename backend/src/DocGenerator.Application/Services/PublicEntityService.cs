@@ -444,7 +444,7 @@ public sealed class PublicEntityService : IPublicEntityService
                 ActorUserId = actor.UserId,
                 CreatedAtUtc = DateTime.UtcNow,
             };
-            await _changeEvents.AddAsync(changeEvent, token);
+            await TrackChangeEventAsync(changeEvent, token);
             await _uow.SaveChangesAsync(token);
 
             // تنبيه رؤساء محافظة القيد — يُدمج اقتراح تعديل الجهة الواحدة قبل الاعتماد
@@ -735,7 +735,7 @@ public sealed class PublicEntityService : IPublicEntityService
                     ActorUserId = actor.UserId,
                     CreatedAtUtc = DateTime.UtcNow,
                 };
-                await _changeEvents.AddAsync(changeEvent, token);
+                await TrackChangeEventAsync(changeEvent, token);
                 await _uow.SaveChangesAsync(token);
             }
 
@@ -941,10 +941,22 @@ public sealed class PublicEntityService : IPublicEntityService
         var degraded = items.Count(i => i.SummaryDegraded);
         await _audit.LogAsync(actor.Name, "export_change_events",
             details: $"تصدير سجل تغييرات الجهات: {items.Count} سطرًا"
-                + (degraded > 0 ? $" (منها {degraded} بملخص منقوص — راجع الحمل الخام)" : "")
+                + (degraded > 0 ? $" (منها {degraded} بملخص منقوص — يلزم مراجعة بياناتها في قاعدة البيانات)" : "")
                 + (query.Governorate != null ? $" محافظة={query.Governorate}" : ""), ct: ct);
         var exporter = new ExcelExportService();
         return exporter.BuildChangeEventsWorkbook(items);
+    }
+
+    /// <summary>
+    /// نقطة الخنق الوحيدة لكتابة أحداث سجل التغييرات: ترفض صنفًا خارج الكتالوج
+    /// (`ActionKindCatalog.IsValid`) قبل التتبّع — فالصنف المجهول لا يُخزَّن أصلًا
+    /// (اتساقًا مع كل كتالوجات الكتابة الأخرى)، وما يُقرأ لاحقًا مضمون الصنف.
+    /// </summary>
+    private async Task TrackChangeEventAsync(PublicEntityChangeEvent changeEvent, CancellationToken token)
+    {
+        if (!ActionKindCatalog.IsValid(changeEvent.ActionKind))
+            throw new ArgumentException("صنف حدث التغيير غير صالح");
+        await _changeEvents.AddAsync(changeEvent, token);
     }
 
     private static EntityChangeEventDto ToChangeEventDto(PublicEntityChangeEvent e)
@@ -958,7 +970,6 @@ public sealed class PublicEntityService : IPublicEntityService
             e.DecreeKind,
             e.DecreeNumber,
             e.DecreeDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
-            e.PayloadJson,
             e.ActorUserId,
             e.ActorUser?.FullName ?? e.ActorUser?.Username,
             e.CreatedAtUtc.ToString("yyyy-MM-ddTHH:mm:ssZ", System.Globalization.CultureInfo.InvariantCulture),
@@ -1531,7 +1542,7 @@ public sealed class PublicEntityService : IPublicEntityService
                 ActorUserId = actor.UserId,
                 CreatedAtUtc = DateTime.UtcNow,
             };
-            await _changeEvents.AddAsync(changeEvent, token);
+            await TrackChangeEventAsync(changeEvent, token);
             await _uow.SaveChangesAsync(token);
             changeEventId = changeEvent.Id;
 
@@ -1617,7 +1628,7 @@ public sealed class PublicEntityService : IPublicEntityService
                 ActorUserId = actor.UserId,
                 CreatedAtUtc = DateTime.UtcNow,
             };
-            await _changeEvents.AddAsync(changeEvent, token);
+            await TrackChangeEventAsync(changeEvent, token);
             await _uow.SaveChangesAsync(token);
             changeEventId = changeEvent.Id;
 
@@ -1719,7 +1730,7 @@ public sealed class PublicEntityService : IPublicEntityService
                     ActorUserId = actor.UserId,
                     CreatedAtUtc = DateTime.UtcNow,
                 };
-                await _changeEvents.AddAsync(changeEvent, token);
+                await TrackChangeEventAsync(changeEvent, token);
                 await _uow.SaveChangesAsync(token);
                 changeEventId = changeEvent.Id;
 
@@ -1756,7 +1767,7 @@ public sealed class PublicEntityService : IPublicEntityService
                     ActorUserId = actor.UserId,
                     CreatedAtUtc = DateTime.UtcNow,
                 };
-                await _changeEvents.AddAsync(changeEvent, token);
+                await TrackChangeEventAsync(changeEvent, token);
                 await _uow.SaveChangesAsync(token);
                 changeEventId = changeEvent.Id;
 
@@ -1874,7 +1885,7 @@ public sealed class PublicEntityService : IPublicEntityService
                 ActorUserId = actor.UserId,
                 CreatedAtUtc = DateTime.UtcNow,
             };
-            await _changeEvents.AddAsync(changeEvent, token);
+            await TrackChangeEventAsync(changeEvent, token);
             await _uow.SaveChangesAsync(token);
             changeEventId = changeEvent.Id;
 
@@ -1977,7 +1988,7 @@ public sealed class PublicEntityService : IPublicEntityService
                 ActorUserId = actor.UserId,
                 CreatedAtUtc = DateTime.UtcNow,
             };
-            await _changeEvents.AddAsync(changeEvent, token);
+            await TrackChangeEventAsync(changeEvent, token);
             await _uow.SaveChangesAsync(token);
 
             await _audit.LogAsync(actor.Name, "suggest_parent_edit",
@@ -2614,7 +2625,7 @@ public sealed class PublicEntityService : IPublicEntityService
                 ActorUserId = actor.UserId,
                 CreatedAtUtc = DateTime.UtcNow,
             };
-            await _changeEvents.AddAsync(changeEvent, token);
+            await TrackChangeEventAsync(changeEvent, token);
 
             await _uow.SaveChangesAsync(token);
 
@@ -2736,7 +2747,7 @@ public sealed class PublicEntityService : IPublicEntityService
                 ActorUserId = actor.UserId,
                 CreatedAtUtc = DateTime.UtcNow,
             };
-            await _changeEvents.AddAsync(changeEvent, token);
+            await TrackChangeEventAsync(changeEvent, token);
 
             await _uow.SaveChangesAsync(token);
 
@@ -3073,7 +3084,7 @@ public sealed class PublicEntityService : IPublicEntityService
                 ActorUserId = actor.UserId,
                 CreatedAtUtc = DateTime.UtcNow,
             };
-            await _changeEvents.AddAsync(changeEvent, token);
+            await TrackChangeEventAsync(changeEvent, token);
             await _uow.SaveChangesAsync(token);
 
             // وقوعات آلية لكل ملف متأثر (اتحاد الاسمية + المترحلة عبر RegistryId)
@@ -3374,7 +3385,7 @@ public sealed class PublicEntityService : IPublicEntityService
                 ActorUserId = actor.UserId,
                 CreatedAtUtc = DateTime.UtcNow,
             };
-            await _changeEvents.AddAsync(changeEvent, token);
+            await TrackChangeEventAsync(changeEvent, token);
 
             // 8) وقوعات آلية لكل ملف متأثر (نوع entity-change)
             var absorbedNamesJoined = string.Join('،', oldNames);
@@ -3469,15 +3480,15 @@ public sealed class PublicEntityService : IPublicEntityService
         {
             foreach (var a in doc.ApplicantPublicEntities)
                 if (!string.IsNullOrWhiteSpace(a.Name))
-                    newNames[("applicant-entity", a.Id)] = a.Name;
+                    newNames[(AppealSnapshotSerializer.KindApplicantEntity, a.Id)] = a.Name;
             foreach (var e in doc.ExecutedPublicEntities)
                 if (!string.IsNullOrWhiteSpace(e.EntityName))
-                    newNames[("executed-public", e.Id)] = e.EntityName;
+                    newNames[(AppealSnapshotSerializer.KindExecutedPublic, e.Id)] = e.EntityName;
             // طالب التنفيذ الاعتباري المربوط جهة عامة (RegistryId != null): الاسم الاعتباري
             // يعادل TripleOr(Name, null, null, null) == Name — لا يُلمس natural (بلا RegistryId).
             foreach (var ea in doc.ExecutionApplicants.Where(ea => ea.RegistryId.HasValue))
                 if (!string.IsNullOrWhiteSpace(ea.Name))
-                    newNames[("execution-applicant", ea.Id)] = ea.Name;
+                    newNames[(AppealSnapshotSerializer.KindExecutionApplicant, ea.Id)] = ea.Name;
         }
         if (newNames.Count == 0)
             return;
@@ -3674,7 +3685,7 @@ public sealed class PublicEntityService : IPublicEntityService
                 ActorUserId = actor.UserId,
                 CreatedAtUtc = DateTime.UtcNow,
             };
-            await _changeEvents.AddAsync(changeEvent, token);
+            await TrackChangeEventAsync(changeEvent, token);
 
             await _uow.SaveChangesAsync(token);
 
@@ -3922,7 +3933,7 @@ public sealed class PublicEntityService : IPublicEntityService
                 ActorUserId = actor.UserId,
                 CreatedAtUtc = DateTime.UtcNow,
             };
-            await _changeEvents.AddAsync(changeEvent, token);
+            await TrackChangeEventAsync(changeEvent, token);
             await _uow.SaveChangesAsync(token);
 
             // 8) تنبيه عام لكل المحامين + رؤساء الأقسام

@@ -24,6 +24,7 @@ function makeAppeal(overrides: Partial<AppealDto> = {}): AppealDto {
     depositBookNumber: 'K-9',
     depositBookDate: '2026-08-02',
     needsRotation: false,
+    partiesDegraded: false,
     createdAt: '2026-08-01T00:00:00Z',
     createdById: 55,
     ...overrides,

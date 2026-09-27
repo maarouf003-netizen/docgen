@@ -140,7 +140,7 @@ export default function EntityChangeLog() {
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">لا توجد سجلات</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">لا توجد سجلات{actorText !== '' ? ' — تحقق من فلتر المستخدم: الرموز وحدها قد لا تطابق أي اسم' : ''}</td></tr>}
           </tbody>
         </table>
       </div>
@@ -168,7 +168,7 @@ export default function EntityChangeLog() {
             </div>
           </div>
         ))}
-        {rows.length === 0 && <div className="bg-white rounded-xl shadow p-8 text-center text-gray-400">لا توجد سجلات</div>}
+        {rows.length === 0 && <div className="bg-white rounded-xl shadow p-8 text-center text-gray-400">لا توجد سجلات{actorText !== '' ? ' — تحقق من فلتر المستخدم: الرموز وحدها قد لا تطابق أي اسم' : ''}</div>}
       </div>
 
       <div className="flex items-center justify-between mt-4 text-sm text-gray-600">

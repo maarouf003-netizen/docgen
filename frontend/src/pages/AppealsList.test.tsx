@@ -42,6 +42,7 @@ function makeAppeal(overrides: Partial<AppealDto> = {}): AppealDto {
     appealedDecisionText: 'نص القرار',
     appealedDecisionSummary: 'ملخص القرار المستأنف',
     needsRotation: false,
+    partiesDegraded: false,
     createdAt: '2026-08-01T00:00:00Z',
     createdById: 55,
     ...overrides,

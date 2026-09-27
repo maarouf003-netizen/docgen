@@ -1331,4 +1331,69 @@ public class StatisticsRepositoryTests : IDisposable
         Assert.Equal(100m, AmountOf(s.TotalAmounts, "ليرة سورية"));
         Assert.Equal(0m, AmountOf(s.ActiveSplit.OrdinaryAmounts, "ليرة سورية"));
     }
+
+    [Fact]
+    public async Task AvailablePeriods_MarksFilesCountedFromCreatedAt()
+    {
+        var branch = await _db.Branches.FirstAsync();
+        _db.Documents.Add(new Document
+        {
+            BranchId = branch.Id,
+            CreatedById = 1,
+            IsDraft = true,
+            ExecStatus = string.Empty,
+            CreatedAt = new DateTime(2026, 7, 31),
+        });
+        _db.SaveChanges();
+
+        var all = await _stats.GetAvailablePeriodsAsync(branch.Id, null);
+
+        var july = Assert.Single(all, p => p.Year == 2026 && p.Month == 7);
+        Assert.Equal(1, july.Count);
+        Assert.Equal(1, july.FromCreatedAtCount);
+    }
+
+    [Fact]
+    public async Task ManagerStats_MarksPeriodFallbackCount()
+    {
+        _db.Documents.AddRange(
+            RegisteredDoc(1, false, null, "5/5/2026"),
+            new Document
+            {
+                BranchId = 1,
+                CreatedById = 1,
+                IsDraft = false,
+                ExecStatus = string.Empty,
+                CreatedAt = new DateTime(2026, 5, 20),
+                RegistrationDate = new DocumentRegistrationDate { Date = "تاريخ غير صالح", DateParsed = null },
+            });
+        _db.SaveChanges();
+
+        var s = await _stats.GetManagerStatsAsync(StatsPeriod.Monthly, 1, year: 2026, month: 5);
+
+        Assert.Equal(2, s.TotalFiles);
+        Assert.Equal(1, s.PeriodDateFallbackCount);
+    }
+
+    [Fact]
+    public async Task ManagerLawyerStats_MarksPointsCountedFromCreatedAt()
+    {
+        var branch = await _db.Branches.FirstAsync();
+        var today = DateTime.Today;
+        _db.Documents.Add(new Document
+        {
+            BranchId = branch.Id,
+            CreatedById = 1,
+            IsDraft = true,
+            ExecStatus = string.Empty,
+            CreatedAt = new DateTime(today.Year, today.Month, 15),
+        });
+        _db.SaveChanges();
+
+        var stats = await _stats.GetManagerLawyerStatsAsync(StatsPeriod.Monthly, branch.Id);
+
+        var me = stats.Single(s => s.LawyerId == 1);
+        Assert.Equal(1, me.TotalCount);
+        Assert.Equal(1, me.Points.Single().FromCreatedAtCount);
+    }
 }

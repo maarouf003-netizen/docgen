@@ -294,7 +294,11 @@ public record UnifyNamesResponse(
 
 // ── سجل تغييرات الجهات (د5 §7) ──
 
-/// <summary>سطر في سجل تغييرات الجهات — مصدره PublicEntityChangeEvent فقط.</summary>
+/// <summary>
+/// سطر في سجل تغييرات الجهات — مصدره PublicEntityChangeEvent فقط.
+/// الحمل الخام (`PayloadJson`) لا يغادر الخادم عمدًا: لا مستهلك له في أي واجهة،
+/// فيبقى في قاعدة البيانات للتدقيق العميق ويُعرض هنا ملخّصه العربي ووسم جودته فقط.
+/// </summary>
 public record EntityChangeEventDto(
     int Id,
     int? EntryId,
@@ -303,7 +307,6 @@ public record EntityChangeEventDto(
     string? DecreeKind,
     string? DecreeNumber,
     string? DecreeDate,
-    string PayloadJson,
     int ActorUserId,
     string? ActorName,
     string CreatedAtUtc,
@@ -311,7 +314,7 @@ public record EntityChangeEventDto(
     string? CanonicalName,
     /// <summary>التسمية العربية للصنف من <c>ActionKindCatalog.ToLabel</c> — المصدر الوحيد للعرض.</summary>
     string ActionKindLabel,
-    /// <summary>ملخّص عربي قابل للعرض يُبنى وقت القراءة من <c>PayloadJson</c> — بديل عرضه الخام.</summary>
+    /// <summary>ملخّص عربي قابل للعرض يُبنى وقت القراءة من حمل الحدث — بديل عرضه الخام.</summary>
     string SummaryAr,
     /// <summary>
     /// وسم جودة الملخّص: حمل غير فارغ لا يُنتج تفاصيل (تالف أو ناقص أو صنف مجهول) فسقط

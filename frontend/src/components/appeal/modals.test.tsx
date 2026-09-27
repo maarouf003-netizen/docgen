@@ -29,6 +29,7 @@ function makeAppeal(): AppealDto {
     appealBaseNumber: '900',
     currentBaseNumber: '900',
     needsRotation: true,
+    partiesDegraded: false,
     createdAt: '2026-08-01T00:00:00Z',
     createdById: 1,
   };

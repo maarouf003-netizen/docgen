@@ -28,12 +28,9 @@ public static class AppealSnapshotSerializer
     /// <summary>نوع الطرف المرجعي لطالب التنفيذ الاعتباري (الجهة العامة) في وضع «منفذ عليه».</summary>
     public const string KindExecutionApplicant = "execution-applicant";
 
-    /// <summary>فكِّ لقطة أطراف (مستأنفين أو مستأنف عليهم) إلى قائمة أطراف.</summary>
-    public static List<AppealPartyDto> DeserializeParties(string? json)
-        => TryDeserializeParties(json).Parties;
-
     /// <summary>
-    /// فكٌّ مع وسم الجودة: تالف عندما يكون الحمل غير فارغ ولا يُنتج أطرافًا (JSON مكسور أو
+    /// فكٌّ مع وسم الجودة (المدخل الوحيد للفكّ — لا متغيّر صامت يعيد قائمة فارغة
+    /// نظيفة للتالف): تالف عندما يكون الحمل غير فارغ ولا يُنتج أطرافًا (JSON مكسور أو
     /// بنية غير قائمة) — يُعرض موسومًا لا قائمة فارغة نظيفة. الفارغ تطبيع لا تلف.
     /// </summary>
     public static (List<AppealPartyDto> Parties, bool IsCorrupted) TryDeserializeParties(string? json)

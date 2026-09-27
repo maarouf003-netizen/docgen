@@ -49,6 +49,13 @@ export function ManagerStatsSection({
 
   const options = periodOptions(availablePeriods, period);
   const selectedValue = selectionValue(selection);
+  // مجموع ملفات جدول المحامين المحسوبة بتاريخ إدخالها (وسم المصدر) — يُعرض معلنًا.
+  const lawyerFallbackTotal = showLawyerTable
+    ? lawyers.reduce(
+        (sum, l) => sum + l.points.reduce((s, p) => s + (p.fromCreatedAtCount ?? 0), 0),
+        0,
+      )
+    : 0;
 
   return (
     <>
@@ -120,6 +127,16 @@ export function ManagerStatsSection({
       <p className="text-sm text-gray-500 mb-6">
         عرض الفترة: <span className="font-medium text-gray-800">{periodLabel(stats)}</span>
       </p>
+
+      {(stats.periodDateFallbackCount ?? 0) > 0 ? (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-6">
+          تشمل هذه الفترة{' '}
+          <span className="font-bold tabular-nums" dir="ltr">
+            ({stats.periodDateFallbackCount})
+          </span>{' '}
+          ملفًا حُسبت بتاريخ إدخالها لتعذّر تحليل تاريخ قيدها
+        </p>
+      ) : null}
 
       <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6 ${appealsStats ? 'xl:grid-cols-7' : 'xl:grid-cols-6'}`}>
         <StatCard label="إجمالي الملفات" value={stats.totalFiles} accent="#059669" icon={ICONS.documents}>
@@ -274,6 +291,12 @@ export function ManagerStatsSection({
               </table>
             </div>
           )}
+          {lawyerFallbackTotal > 0 ? (
+            <p className="text-xs text-amber-700 mt-3">
+              منها <span className="font-bold tabular-nums" dir="ltr">({lawyerFallbackTotal})</span> محسوبة
+              بتاريخ الإدخال لتعذّر تحليل تاريخ قيدها
+            </p>
+          ) : null}
         </div>
       ) : showLawyerTable ? (
         <p className="text-sm text-gray-400 mb-6">اختر فرعًا لعرض إحصائيات محامي الفرع</p>

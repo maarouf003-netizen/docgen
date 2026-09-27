@@ -19,6 +19,7 @@ function makeAppeal(overrides: Partial<AppealDto> = {}): AppealDto {
     appellees: [],
     appealedDecisionDate: '2026-08-01',
     needsRotation: false,
+    partiesDegraded: false,
     createdAt: '2026-08-02T00:00:00Z',
     createdById: 1,
     ...overrides,

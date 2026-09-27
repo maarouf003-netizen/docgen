@@ -69,6 +69,7 @@ function portalAppeal(overrides: Partial<AppealDto> = {}): AppealDto {
     createdByName: 'المدخل',
     createdById: 55,
     needsRotation: false,
+    partiesDegraded: false,
     ...overrides,
   };
 }

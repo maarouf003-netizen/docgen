@@ -45,7 +45,12 @@ public record ReminderDto(
     DateTime DueDate,
     bool DueDateSuspect);
 
-public record MonthlyStatDto(int Year, int Month, int Count);
+/// <summary>
+/// شهر إحصائي (تاريخ القيد، وإن تعذّر تحليله فشهر الإدخال).
+/// `FromCreatedAtCount` وسم مصدر صريح: عدد الملفات المحسوبة بتاريخ الإدخال
+/// لتعذّر تحليل تاريخ قيدها — يُعرض معلنًا لا مدمجًا بصمت.
+/// </summary>
+public record MonthlyStatDto(int Year, int Month, int Count, int FromCreatedAtCount = 0);
 
 /// <summary>
 /// نطاق الفترة الزمنية في إحصاءات المدير:
@@ -125,7 +130,12 @@ public record ManagerStatsDto(
     /// ومبالغه من المتداول هنا، وTotalFiles يشمله (متداول + تحت رفع + تريث + محال).
     /// </summary>
     int ReferredToStartCount = 0,
-    ManagerContractSplitDto? ReferredSplit = null);
+    ManagerContractSplitDto? ReferredSplit = null,
+    /// <summary>
+    /// وسم مصدر الفترة: عدد ملفات النطاق التي حُسبت بتاريخ إدخالها (CreatedAt) لتعذّر
+    /// تحليل تاريخ قيدها (DateParsed) — يُعرض معلنًا لا مدمجًا بصمت.
+    /// </summary>
+    int PeriodDateFallbackCount = 0);
 
 /// <summary>عدادات بطاقة «الاستئنافات» في لوحة المحامي وفق فلاتر الفترة.</summary>
 public record AppealsStatsDto(
@@ -133,8 +143,8 @@ public record AppealsStatsDto(
     int DecidedInFavor,
     int DecidedAgainst);
 
-/// <summary>نقطة زمنية داخل نطاق الفترة (شهر) لجدول محامي الفرع.</summary>
-public record ManagerPeriodPointDto(int Year, int Month, int Count);
+/// <summary>نقطة زمنية داخل نطاق الفترة (شهر) لجدول محامي الفرع، مع وسم المصدر (راجع `MonthlyStatDto`).</summary>
+public record ManagerPeriodPointDto(int Year, int Month, int Count, int FromCreatedAtCount = 0);
 
 /// <summary>
 /// إحصاء محامي الفرع في نطاق الفترة،

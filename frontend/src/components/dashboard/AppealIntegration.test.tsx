@@ -37,6 +37,7 @@ describe('تكامل الاستئنافات مع اللوحة والقائمة',
       actionText: '<p>إحالة عقار للمزاد</p>',
       reminderColor: 'أحمر',
       dueDate: '2026-09-10T00:00:00Z',
+      dueDateSuspect: false,
     };
     const appeal: AppealReminderDto = {
       actionId: 2,
@@ -46,6 +47,7 @@ describe('تكامل الاستئنافات مع اللوحة والقائمة',
       actionText: '<p>إيداع موجبات الاستئناف</p>',
       reminderColor: 'أصفر',
       dueDate: '2026-09-01T00:00:00Z',
+      dueDateSuspect: false,
     };
     const onCancelAppeal = vi.fn();
 

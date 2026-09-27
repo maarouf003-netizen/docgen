@@ -737,13 +737,15 @@ export interface ReminderDto {
   reminderColor?: string;
   dueDate: string;
   /** وسم جودة: تاريخ/مدة قديمة لا تُحلَّل فسقط الحساب إلى احتياط — يُعرض موسومًا. */
-  dueDateSuspect?: boolean;
+  dueDateSuspect: boolean;
 }
 
 export interface MonthlyStatDto {
   year: number;
   month: number;
   count: number;
+  /** وسم المصدر: ملفات هذا الشهر المحسوبة بتاريخ إدخالها لتعذّر تحليل تاريخ قيدها. */
+  fromCreatedAtCount: number;
 }
 
 export type StatsPeriod = 'yearly' | 'quarterly' | 'monthly';
@@ -807,6 +809,8 @@ export interface ManagerStatsDto {
   periodYear: number;
   periodQuarter: number | null;
   periodMonth: number | null;
+  /** وسم مصدر الفترة: ملفات النطاق المحسوبة بتاريخ إدخالها لتعذّر تحليل تاريخ قيدها. */
+  periodDateFallbackCount: number;
   /** إحصاء استئنافات المحامي وفق فلاتر الفترة — null عند غياب أي استئناف (تُخفى البطاقة). */
   appeals?: AppealsStatsDto | null;
 }
@@ -832,6 +836,8 @@ export interface ManagerPeriodPointDto {
   year: number;
   month: number;
   count: number;
+  /** وسم المصدر: ملفات هذه النقطة المحسوبة بتاريخ إدخالها لتعذّر تحليل تاريخ قيدها. */
+  fromCreatedAtCount: number;
 }
 
 export interface ManagerLawyerStatDto {
@@ -939,7 +945,7 @@ export interface AppealReminderDto {
   reminderColor?: string;
   dueDate: string;
   /** وسم جودة: تاريخ/مدة قديمة لا تُحلَّل فسقط الحساب إلى احتياط — يُعرض موسومًا. */
-  dueDateSuspect?: boolean;
+  dueDateSuspect: boolean;
 }
 
 export interface CreateHeadAlertRequest {
@@ -1089,7 +1095,7 @@ export interface AppealDto {
   /** سنة الرقم الفعّال المعروض للملف في الاستئناف. */
   documentEffectiveYear?: string | null;
   /** وسم جودة اللقطات: إحدى لقطتي الأطراف تالفة فعُرضت فارغة — تُعرض موسومة. */
-  partiesDegraded?: boolean;
+  partiesDegraded: boolean;
 }
 
 /** تسطير/تعديل استئناف قبل الإسناد (التواريخ نصوص حرة بصيغة «1/8/2026»). */
@@ -1795,7 +1801,7 @@ export interface EntityChangeEventDto {
   decreeDate?: string | null;
   summaryAr: string;
   /** وسم جودة الملخّص: حمل غير فارغ لا يُنتج تفاصيل فسقط إلى التسمية — يُعرض موسومًا. */
-  summaryDegraded?: boolean;
+  summaryDegraded: boolean;
   actorUserId: number;
   actorName?: string | null;
   createdAtUtc: string;

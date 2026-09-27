@@ -99,7 +99,7 @@ public class StatisticsRepository : IStatisticsRepository
             })
             .ToListAsync(ct);
 
-        return GroupMonths(dates.Select(x => x.RegDateParsed ?? x.CreatedAt.Date));
+        return GroupMonths(dates.Select(x => (x.RegDateParsed ?? x.CreatedAt.Date, x.RegDateParsed is null)));
     }
 
     public async Task<List<BranchSummaryDto>> GetBranchesSummaryAsync(CancellationToken ct = default)
@@ -215,6 +215,8 @@ public class StatisticsRepository : IStatisticsRepository
         /// <summary>مجموع بدل المبيع لإنابات الملف المنفذة (تُضاف لسلة «منفذ جبريا» عند اعتباره منفذًا).</summary>
         public decimal? DelegationSalesAmount { get; set; }
         public DateTime PeriodDate { get; set; }
+        /// <summary>حُسبت فترة الملف بتاريخ إدخاله لتعذّر تحليل تاريخ قيده (وسم المصدر).</summary>
+        public bool PeriodDateFromCreatedAt { get; set; }
     }
 
     public async Task<ManagerStatsDto> GetManagerStatsAsync(StatsPeriod period, int? branchId,
@@ -269,6 +271,12 @@ public class StatisticsRepository : IStatisticsRepository
                     || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit
                         ? d.FileReceiptDate ?? d.CreatedAt
                         : d.RegistrationDate!.DateParsed ?? d.CreatedAt,
+                // وسم المصدر بذات شرط الاحتياط أعلاه: جهات «منفذ عليها/إيداع» تسقط إلى
+                // الإدخال عند غياب ورود الإخطار، وغيرها عند غياب/تعذّر تحليل تاريخ القيد.
+                PeriodDateFromCreatedAt = d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
+                    || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit
+                        ? d.FileReceiptDate == null
+                        : d.RegistrationDate == null || d.RegistrationDate.DateParsed == null,
             })
             .Where(r => r.PeriodDate >= window.Start && r.PeriodDate < window.End)
             .ToListAsync(ct);
@@ -328,6 +336,11 @@ public class StatisticsRepository : IStatisticsRepository
                     || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit
                         ? d.FileReceiptDate ?? d.CreatedAt
                         : d.RegistrationDate!.DateParsed ?? d.CreatedAt,
+                // وسم المصدر بذات شرط الاحتياط أعلاه (راجع مسار المدير).
+                PeriodDateFromCreatedAt = d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
+                    || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit
+                        ? d.FileReceiptDate == null
+                        : d.RegistrationDate == null || d.RegistrationDate.DateParsed == null,
             })
             .Where(r => r.PeriodDate >= window.Start && r.PeriodDate < window.End)
             .ToListAsync(ct);
@@ -417,6 +430,8 @@ public class StatisticsRepository : IStatisticsRepository
         var depositTradingCount = 0;
         var depositExecutedCount = 0;
         decimal depositExecutedAmount = 0;
+        // وسم مصدر الفترة: ملفات النطاق المحسوبة بتاريخ إدخالها (تُجمَع هنا وتُعرض معلنة).
+        var periodFallbackCount = 0;
 
         var activeBanking = 0;
         var activeOrdinary = 0;
@@ -442,6 +457,9 @@ public class StatisticsRepository : IStatisticsRepository
 
         foreach (var r in rows)
         {
+            if (r.PeriodDateFromCreatedAt)
+                periodFallbackCount++;
+
             // ملف «الجهة العامة منفذ عليها»: يُحتسب في «متداول للضد» (المتداول فقط)
             // أو «منفذ للضد» (المنفذ فقط)، والمشطوب مستبعد من الاثنتين (فلتُر في SQL).
             if (r.GeneralEntitySide == GeneralEntitySideCatalog.Executed)
@@ -595,7 +613,8 @@ public class StatisticsRepository : IStatisticsRepository
                 ToCurrencyAmounts(referredBankingBuckets), ToCurrencyAmounts(referredOrdinaryBuckets)),
             PeriodYear: window.Start.Year,
             PeriodQuarter: period == StatsPeriod.Quarterly ? (window.Start.Month - 1) / 3 + 1 : null,
-            PeriodMonth: period == StatsPeriod.Monthly ? window.Start.Month : null);
+            PeriodMonth: period == StatsPeriod.Monthly ? window.Start.Month : null,
+            PeriodDateFallbackCount: periodFallbackCount);
     }
 
     /// <summary>
@@ -657,10 +676,11 @@ public class StatisticsRepository : IStatisticsRepository
             .Select(u => new { u.Id, u.FullName, u.Username })
             .ToListAsync(ct);
 
-        var counts = new Dictionary<int, Dictionary<(int Year, int Month), int>>();
+        var counts = new Dictionary<int, Dictionary<(int Year, int Month), (int Count, int Fallback)>>();
         foreach (var r in rows)
         {
-            // فترة الملف: تاريخ قيده، وإن لم يُقيد بعد (تحت رفع) فشهر إدخاله.
+            // فترة الملف: تاريخ قيده، وإن لم يُقيد بعد (تحت رفع) فشهر إدخاله —
+            // مع وسم المصدر لكل شهر (راجع `MonthlyStatDto`).
             var periodDate = r.RegDateParsed ?? r.CreatedAt.Date;
             if (periodDate < window.Start || periodDate >= window.End)
                 continue;
@@ -668,10 +688,11 @@ public class StatisticsRepository : IStatisticsRepository
             var key = (periodDate.Year, periodDate.Month);
             if (!counts.TryGetValue(r.CreatedById, out var months))
             {
-                months = new Dictionary<(int, int), int>();
+                months = new Dictionary<(int, int), (int, int)>();
                 counts[r.CreatedById] = months;
             }
-            months[key] = months.TryGetValue(key, out var existing) ? existing + 1 : 1;
+            var (count, fallback) = months.TryGetValue(key, out var e) ? e : (0, 0);
+            months[key] = (count + 1, fallback + (r.RegDateParsed is null ? 1 : 0));
         }
 
         var points = new List<(int Year, int Month)>();
@@ -681,12 +702,13 @@ public class StatisticsRepository : IStatisticsRepository
         return lawyers
             .Select(l =>
             {
-                var months = counts.TryGetValue(l.Id, out var m) ? m : new Dictionary<(int, int), int>();
+                var months = counts.TryGetValue(l.Id, out var m) ? m : new Dictionary<(int, int), (int, int)>();
                 var lawyerPoints = points
-                    .Select(p => new ManagerPeriodPointDto(
-                        p.Year,
-                        p.Month,
-                        months.TryGetValue((p.Year, p.Month), out var c) ? c : 0))
+                    .Select(p =>
+                    {
+                        var (count, fallback) = months.TryGetValue((p.Year, p.Month), out var e) ? e : (0, 0);
+                        return new ManagerPeriodPointDto(p.Year, p.Month, count, fallback);
+                    })
                     .ToList();
                 return new ManagerLawyerStatDto(
                     l.Id,
@@ -716,22 +738,23 @@ public class StatisticsRepository : IStatisticsRepository
             })
             .ToListAsync(ct);
 
-        return GroupMonths(dates.Select(x => x.RegDateParsed ?? x.CreatedAt.Date));
+        return GroupMonths(dates.Select(x => (x.RegDateParsed ?? x.CreatedAt.Date, x.RegDateParsed is null)));
     }
 
-    private static List<MonthlyStatDto> GroupMonths(IEnumerable<DateTime> dates)
+    private static List<MonthlyStatDto> GroupMonths(IEnumerable<(DateTime Date, bool FromCreatedAt)> dates)
     {
-        var counts = new Dictionary<(int Year, int Month), int>();
-        foreach (var date in dates)
+        var counts = new Dictionary<(int Year, int Month), (int Count, int Fallback)>();
+        foreach (var (date, fromCreatedAt) in dates)
         {
             var key = (date.Year, date.Month);
-            counts[key] = counts.TryGetValue(key, out var c) ? c + 1 : 1;
+            var (count, fallback) = counts.TryGetValue(key, out var e) ? e : (0, 0);
+            counts[key] = (count + 1, fallback + (fromCreatedAt ? 1 : 0));
         }
 
         return counts
             .OrderBy(k => k.Key.Year)
             .ThenBy(k => k.Key.Month)
-            .Select(k => new MonthlyStatDto(k.Key.Year, k.Key.Month, k.Value))
+            .Select(k => new MonthlyStatDto(k.Key.Year, k.Key.Month, k.Value.Count, k.Value.Fallback))
             .ToList();
     }
 

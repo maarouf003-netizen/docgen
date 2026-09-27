@@ -1793,6 +1793,42 @@ public class PublicEntityServiceTests : IDisposable
     // ── سجل التغييرات: الملخّص العربي القابل للعرض (إصلاح عرض PayloadJson الخام) ──
 
     [Fact]
+    public void ChangeLog_DtoExposesNoRawPayload()
+    {
+        // عقد أمني: الحمل الخام لا يغادر الخادم — أي إعادة لإضافة الحقل تكسر هذا الاختبار عمدًا.
+        Assert.Null(typeof(EntityChangeEventDto).GetProperty("PayloadJson"));
+
+        var dto = new EntityChangeEventDto(
+            1, null, 2, "rename", "قرار", "77", "2026-08-01",
+            9, "فاعل", "2026-08-01T00:00:00Z", "دمشق", "جهة",
+            "إعادة تسمية", "ملخص", false);
+        var json = System.Text.Json.JsonSerializer.Serialize(dto,
+            new System.Text.Json.JsonSerializerOptions
+            {
+                PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
+            });
+
+        Assert.DoesNotContain("payload", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ChangeEvents_AllWrittenKindsAreCatalogValid()
+    {
+        // نقطة الخنق TrackChangeEventAsync ترفض أي صنف خارج الكتالوج — هذا الاختبار
+        // يثبت الحارس عبر عمليات كتابة متنوعة (نقل/إعادة تسمية) ثم يدقق الأصناف المخزّنة.
+        var a = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الحارس أ", "ministry", "دمشق", "فرع أ"), ManagerActor());
+        var b = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الحارس ب", "ministry", "دمشق", "فرع ب"), ManagerActor());
+        await _service.MoveEntryAsync(a.Id, new MoveEntryRequest(b.GroupId, null, null, null, null, null), ManagerActor());
+        await _service.RenameGroupAsync(
+            new RenameGroupRequest(b.GroupId, "جهة الحارس ب الجديدة", "قرار", "1", "1/8/2026"), ManagerActor());
+
+        var kinds = _db.PublicEntityChangeEvents.Select(e => e.ActionKind).Distinct().ToList();
+
+        Assert.NotEmpty(kinds);
+        Assert.All(kinds, k => Assert.True(ActionKindCatalog.IsValid(k), $"kind: {k}"));
+    }
+
+    [Fact]
     public async Task ChangeLog_SummaryShowsArabicMoveDetails_NotRawJson()
     {
         var source = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الملخص أ", "ministry", "دمشق", "فرع المصدر"), ManagerActor());
@@ -2883,7 +2919,7 @@ public class PublicEntityServiceTests : IDisposable
 
         // لقطة الاستئناف حُلّت باسم الجهة الجديدة
         var updatedAppeal = await _db.DocumentAppeals.FindAsync(appeal.Id);
-        var parties = AppealSnapshotSerializer.DeserializeParties(updatedAppeal!.AppellantsJson);
+        var parties = AppealSnapshotSerializer.TryDeserializeParties(updatedAppeal!.AppellantsJson).Parties;
         Assert.Single(parties);
         Assert.Equal("هيئة الصحة العامة", parties[0].Name);
 
@@ -2954,7 +2990,7 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal("الهيئة الضريبية الوطنية", updatedRow!.Name);
 
         var updatedAppeal = await _db.DocumentAppeals.FindAsync(appeal.Id);
-        var parties = AppealSnapshotSerializer.DeserializeParties(updatedAppeal!.AppellantsJson);
+        var parties = AppealSnapshotSerializer.TryDeserializeParties(updatedAppeal!.AppellantsJson).Parties;
         Assert.Single(parties);
         Assert.Equal("الهيئة الضريبية الوطنية", parties[0].Name);
     }
@@ -3033,7 +3069,7 @@ public class PublicEntityServiceTests : IDisposable
                 DecreeKind: "قرار", DecreeNumber: "304", DecreeDate: "25/6/2026"), ManagerActor());
 
         var updatedAppeal = await _db.DocumentAppeals.FindAsync(appeal.Id);
-        var parties = AppealSnapshotSerializer.DeserializeParties(updatedAppeal!.AppellantsJson);
+        var parties = AppealSnapshotSerializer.TryDeserializeParties(updatedAppeal!.AppellantsJson).Parties;
         Assert.Single(parties);
         Assert.Equal("شركة البناء الحديثة", parties[0].Name);
         Assert.DoesNotContain("appeal_entity_sync", _audit.Actions);
@@ -3057,7 +3093,7 @@ public class PublicEntityServiceTests : IDisposable
                 DecreeKind: "قرار", DecreeNumber: "105", DecreeDate: "5/7/2026"), ManagerActor());
 
         var updatedAppeal = await _db.DocumentAppeals.FindAsync(appeal.Id);
-        var parties = AppealSnapshotSerializer.DeserializeParties(updatedAppeal!.AppellantsJson);
+        var parties = AppealSnapshotSerializer.TryDeserializeParties(updatedAppeal!.AppellantsJson).Parties;
         Assert.Single(parties);
         Assert.Equal("وزارة النقل والمواصلات", parties[0].Name);
 
@@ -3096,7 +3132,7 @@ public class PublicEntityServiceTests : IDisposable
                 DecreeKind: "قرار", DecreeNumber: "106", DecreeDate: "6/7/2026"), ManagerActor());
 
         var updatedAppeal = await _db.DocumentAppeals.FindAsync(appeal.Id);
-        var appellees = AppealSnapshotSerializer.DeserializeParties(updatedAppeal!.AppelleesJson);
+        var appellees = AppealSnapshotSerializer.TryDeserializeParties(updatedAppeal!.AppelleesJson).Parties;
         Assert.Single(appellees);
         Assert.Equal("أمانة دمشق", appellees[0].Name);
         Assert.Contains("appeal_entity_sync", _audit.Actions);
@@ -3221,7 +3257,7 @@ public class PublicEntityServiceTests : IDisposable
                 DecreeKind: "قرار", DecreeNumber: "108", DecreeDate: "8/7/2026"), ManagerActor());
 
         var updatedAppeal = await _db.DocumentAppeals.FindAsync(appeal.Id);
-        var parties = AppealSnapshotSerializer.DeserializeParties(updatedAppeal!.AppellantsJson);
+        var parties = AppealSnapshotSerializer.TryDeserializeParties(updatedAppeal!.AppellantsJson).Parties;
         Assert.Single(parties);
         Assert.Equal("هيئة التجارة الموحدة", parties[0].Name);
 

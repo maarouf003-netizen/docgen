@@ -4,10 +4,11 @@ import { reportClientError } from '../utils/errorReporting';
 const CSRF_COOKIE = 'docgen_csrf';
 const CSRF_HEADER = 'X-CSRF-Token';
 
-/// العقد المصدَر لأخطاء الخادم: كل استجابة خطأ تحمل `‎{ message }‎` عربيًا صريحًا
-/// (‎`GlobalExceptionHandler` + `BadRequest(new { message })` في المتحكمات).
-/// حقلا `errors` و`title` الإطاريان (`ValidationProblemDetails`) لا يُقرآن أبدًا عمدًا —
-/// رسائلهما إنجليزية إطارية، فغياب `message` مع `400` يُترجم لرسالة عربية ثابتة بدل التسريب.
+/// سياسة رسائل أخطاء الخادم: `‎{ message }‎` عربيًا هو **العرف** لا الضمان
+/// (`GlobalExceptionHandler` + `BadRequest(new { message })` في المتحكمات)؛
+/// واستثناءات بلا جسم قائمة: `ValidationProblemDetails` (ربط النموذج) و`403`
+/// المختصرة من الوسطاء — فغياب `message` يُترجم لرسالة عربية ثابتة حسب الحالة.
+/// حقلا `errors` و`title` الإطاريان لا يُقرآن أبدًا عمدًا (إنجليزية إطارية).
 export function getApiErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status;
@@ -17,6 +18,9 @@ export function getApiErrorMessage(error: unknown): string {
     const data = error.response.data as { message?: unknown } | undefined;
     if (typeof data?.message === 'string' && data.message.trim().length > 0) return data.message;
     if (status === 400) return 'الطلب غير صالح — تحقق من الحقول وأعد المحاولة';
+    if (status === 404) return 'العنصر المطلوب غير موجود — ربما حُذف أو نُقل';
+    if (status === 409) return 'تعارض في البيانات — حدّث الصفحة وحاول مجددًا';
+    if (status === 429) return 'طلبات كثيرة في وقت قصير — انتظر قليلًا وحاول مجددًا';
     if (status && status >= 500) return 'حدث خطأ في الخادم. حاول مرة أخرى لاحقاً';
   }
   return 'حدث خطأ غير متوقع';

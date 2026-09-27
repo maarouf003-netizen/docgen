@@ -17,6 +17,7 @@ function makeFileReminder(overrides: Partial<ReminderDto> = {}): ReminderDto {
     actionDate: '2026-08-01',
     reminderDuration: 'أسبوع',
     dueDate: '2026-08-08',
+    dueDateSuspect: false,
     ...overrides,
   };
 }
@@ -31,6 +32,7 @@ function makeAppealReminder(overrides: Partial<AppealReminderDto> = {}): AppealR
     actionDate: '2026-08-01',
     reminderDuration: 'أسبوع',
     dueDate: '2026-08-08',
+    dueDateSuspect: false,
     ...overrides,
   };
 }

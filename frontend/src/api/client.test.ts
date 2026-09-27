@@ -50,6 +50,27 @@ describe('getApiErrorMessage', () => {
     );
   });
 
+  it('يعيد رسائل عربية ثابتة لـ 404/409/429 بلا message', () => {
+    expect(getApiErrorMessage({ isAxiosError: true, response: { status: 404, data: {} } })).toBe(
+      'العنصر المطلوب غير موجود — ربما حُذف أو نُقل',
+    );
+    expect(getApiErrorMessage({ isAxiosError: true, response: { status: 409, data: {} } })).toBe(
+      'تعارض في البيانات — حدّث الصفحة وحاول مجددًا',
+    );
+    expect(getApiErrorMessage({ isAxiosError: true, response: { status: 429, data: {} } })).toBe(
+      'طلبات كثيرة في وقت قصير — انتظر قليلًا وحاول مجددًا',
+    );
+  });
+
+  it('رسالة الخادم النصية تسبق رسالة الحالة الثابتة', () => {
+    expect(
+      getApiErrorMessage({
+        isAxiosError: true,
+        response: { status: 404, data: { message: 'الملف غير موجود' } },
+      }),
+    ).toBe('الملف غير موجود');
+  });
+
   it('يتجاهل message غير النصية ويسقط للرسالة المناسبة للحالة', () => {
     expect(
       getApiErrorMessage({ isAxiosError: true, response: { status: 400, data: { message: 42 } } }),

@@ -19,7 +19,7 @@ public class AppealSnapshotSerializerTests
             new("guarantor", 3, "ناجي"),
         };
         var json = AppealSnapshotSerializer.SerializeParties(parties);
-        var back = AppealSnapshotSerializer.DeserializeParties(json);
+        var back = AppealSnapshotSerializer.TryDeserializeParties(json).Parties;
 
         Assert.Equal(2, back.Count);
         Assert.Equal("applicant-entity", back[0].Kind);
@@ -28,14 +28,18 @@ public class AppealSnapshotSerializerTests
     }
 
     [Theory]
+    [InlineData(null)]
     [InlineData("")]
-    [InlineData("[]")]
+    [InlineData("   ")]
     [InlineData("null")]
-    public void DeserializeParties_NullOrEmpty_ReturnsEmpty(string json)
+    [InlineData("[]")]
+    public void TryDeserializeParties_EmptyOrNormalizedJson_ReturnsEmptyListNotCorrupted(string? json)
     {
-        var result = AppealSnapshotSerializer.DeserializeParties(json);
-        Assert.NotNull(result);
-        Assert.Empty(result);
+        var (parties, corrupted) = AppealSnapshotSerializer.TryDeserializeParties(json);
+
+        Assert.NotNull(parties);
+        Assert.Empty(parties);
+        Assert.False(corrupted);
     }
 
     [Fact]
@@ -69,7 +73,7 @@ public class AppealSnapshotSerializerTests
         var result = AppealSnapshotSerializer.UpdateEntityParties(
             json, new Dictionary<(string, int), string> { { ("applicant-entity", 42), "الهيئة الضريبية الوطنية" } });
 
-        var parties = AppealSnapshotSerializer.DeserializeParties(result);
+        var parties = AppealSnapshotSerializer.TryDeserializeParties(result).Parties;
         Assert.Single(parties);
         Assert.Equal("الهيئة الضريبية الوطنية", parties[0].Name);
     }
@@ -88,7 +92,7 @@ public class AppealSnapshotSerializerTests
         var result = AppealSnapshotSerializer.UpdateEntityParties(
             json, new Dictionary<(string, int), string> { { ("applicant-entity", 2), "الجهة الموحدة" } });
 
-        var parties = AppealSnapshotSerializer.DeserializeParties(result);
+        var parties = AppealSnapshotSerializer.TryDeserializeParties(result).Parties;
         Assert.Equal(3, parties.Count);
         Assert.Equal("جهة أ", parties[0].Name);
         Assert.Equal("الجهة الموحدة", parties[1].Name);
@@ -117,10 +121,10 @@ public class AppealSnapshotSerializerTests
     }
 
     [Fact]
-    public void DeserializeParties_CorruptedJson_ReturnsEmptyWithoutThrow()
+    public void TryDeserializeParties_CorruptedJson_ReturnsEmptyListWithoutThrow()
     {
         const string corrupted = "{ bad json";
-        var result = AppealSnapshotSerializer.DeserializeParties(corrupted);
+        var result = AppealSnapshotSerializer.TryDeserializeParties(corrupted).Parties;
         Assert.NotNull(result);
         Assert.Empty(result);
     }
@@ -152,7 +156,7 @@ public class AppealSnapshotSerializerTests
         var result = AppealSnapshotSerializer.UpdateEntityParties(
             json, new Dictionary<(string, int), string> { { ("execution-applicant", 901), "هيئة التجارة الموحدة" } });
 
-        var parties = AppealSnapshotSerializer.DeserializeParties(result);
+        var parties = AppealSnapshotSerializer.TryDeserializeParties(result).Parties;
         Assert.Single(parties);
         Assert.Equal("execution-applicant", parties[0].Kind);
         Assert.Equal(901, parties[0].PartyId);
@@ -168,7 +172,7 @@ public class AppealSnapshotSerializerTests
         var result = AppealSnapshotSerializer.UpdateEntityParties(
             json, new Dictionary<(string, int), string> { { ("execution-applicant", 999), "جهة أخرى" } });
 
-        var parties = AppealSnapshotSerializer.DeserializeParties(result);
+        var parties = AppealSnapshotSerializer.TryDeserializeParties(result).Parties;
         Assert.Single(parties);
         Assert.Equal("المؤسسة السورية للتجارة", parties[0].Name);
     }
@@ -180,20 +184,6 @@ public class AppealSnapshotSerializerTests
 
         Assert.Empty(parties);
         Assert.True(corrupted);
-    }
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
-    [InlineData("null")]
-    [InlineData("[]")]
-    public void TryDeserializeParties_EmptyOrNormalizedJson_NotCorrupted(string? json)
-    {
-        var (parties, corrupted) = AppealSnapshotSerializer.TryDeserializeParties(json);
-
-        Assert.Empty(parties);
-        Assert.False(corrupted);
     }
 
     [Theory]

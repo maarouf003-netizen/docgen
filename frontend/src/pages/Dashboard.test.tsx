@@ -96,16 +96,17 @@ const MANAGER_STATS: ManagerStatsDto = {
   periodYear: 2026,
   periodQuarter: null,
   periodMonth: 8,
+  periodDateFallbackCount: 0,
 };
 
 const MANAGER_LAWYERS: ManagerLawyerStatDto[] = [
-  { lawyerId: 1, lawyerName: 'محامي دمشق', totalCount: 3, points: [{ year: 2026, month: 8, count: 3 }] },
+  { lawyerId: 1, lawyerName: 'محامي دمشق', totalCount: 3, points: [{ year: 2026, month: 8, count: 3, fromCreatedAtCount: 0 }] },
 ];
 
 const PERIODS: MonthlyStatDto[] = [
-  { year: 2026, month: 8, count: 3 },
-  { year: 2026, month: 7, count: 2 },
-  { year: 2025, month: 12, count: 1 },
+  { year: 2026, month: 8, count: 3, fromCreatedAtCount: 0 },
+  { year: 2026, month: 7, count: 2, fromCreatedAtCount: 0 },
+  { year: 2025, month: 12, count: 1, fromCreatedAtCount: 0 },
 ];
 
 const BRANCH_LAWYERS: LawyerListItem[] = [
@@ -255,6 +256,7 @@ describe('Dashboard للمحامي', () => {
           actionText: 'مراجعة دائرة التنفيذ',
           reminderColor: 'أحمر',
           dueDate: '2030-01-01',
+          dueDateSuspect: false,
         },
         {
           actionId: 2,
@@ -266,6 +268,7 @@ describe('Dashboard للمحامي', () => {
           actionText: 'تقديم كتاب براءة',
           reminderColor: 'بنفسجي',
           dueDate: '2030-02-01',
+          dueDateSuspect: false,
         },
       ],
     });
@@ -299,6 +302,7 @@ describe('Dashboard للمحامي', () => {
           actionText: 'مراجعة دائرة التنفيذ',
           reminderColor: 'أحمر',
           dueDate: '2030-01-01',
+          dueDateSuspect: false,
         },
       ],
     });
