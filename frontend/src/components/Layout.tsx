@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../auth/useAuth';
@@ -9,6 +9,8 @@ import ReviewPendingBell from './review/ReviewPendingBell';
 import CorrespondenceBell from './correspondence/CorrespondenceBell';
 import { CORRESPONDENCE_UNSEEN_EVENT } from './correspondence/correspondenceDisplay';
 import { REVIEWS_UNSEEN_EVENT } from './review/reviewDisplay';
+import { ComingSoonToast } from './ComingSoonToast';
+import { ICONS } from './dashboard/dashboardIcons';
 import nationalEmblem from '../assets/national.png';
 
 const ROLES: Record<string, string> = {
@@ -25,6 +27,10 @@ interface NavItem {
   end?: boolean;
   /** عدد عناصر تحتاج انتباه صاحب الدور (مثل ردود غير مطّلع عليها). */
   badge?: number;
+  /** أيقونة البطاقة/البند (بنفس لغة `dashboardIcons`). */
+  icon?: ReactNode;
+  /** بند مؤجل: يُعرض زرًا يفتح تنبيه «قيد البناء» بدل رابط (لا مسار له). */
+  comingSoon?: boolean;
 }
 
 export default function Layout() {
@@ -153,6 +159,15 @@ export default function Layout() {
       label: 'المراسلات',
       badge: urgentCorrespondence > 0 ? urgentCorrespondence : undefined,
     });
+  } else if (isLawyerUser) {
+    // المحامي: لوحة التحكم + الملفات التنفيذية + المنتدى/المكتبة (قيد البناء).
+    // المطالعات والمراسلات تُفتح من بطاقات اللوحة (بأجراسها) لا من الشريط.
+    navItems.push(
+      { to: '/', label: 'لوحة التحكم', end: true, icon: ICONS.home },
+      { to: '/documents', label: 'الملفات التنفيذية', icon: ICONS.documents },
+      { to: '/forum', label: 'المنتدى', icon: ICONS.forum, comingSoon: true },
+      { to: '/library', label: 'المكتبة', icon: ICONS.library, comingSoon: true },
+    );
   } else {
     navItems.push(
       { to: '/', label: 'لوحة التحكم', end: true },
@@ -189,6 +204,11 @@ export default function Layout() {
 
   const renderNavLabel = (item: NavItem) => (
     <span className="inline-flex items-center gap-1.5 min-w-0 max-w-full">
+      {item.icon ? (
+        <span className="shrink-0 opacity-90" aria-hidden="true">
+          {item.icon}
+        </span>
+      ) : null}
       <span className="truncate">{item.label}</span>
       {item.badge != null && (
         <span
@@ -200,6 +220,39 @@ export default function Layout() {
       )}
     </span>
   );
+
+  const [comingSoonFeature, setComingSoonFeature] = useState<string | null>(null);
+
+  // بند مؤجل (قيد البناء) يُعرض زرًا يفتح التنبيه — لا مسار له ولا يُكسر التنقل.
+  // الروابط الحقيقية تستلم دالة الصنف كما هي للحفاظ على تمييز البند النشط.
+  const renderNavItem = (
+    item: NavItem,
+    className: ((props: { isActive: boolean }) => string) | string,
+    onNavigate?: () => void,
+  ) => {
+    if (item.comingSoon) {
+      const staticClass = typeof className === 'string' ? className : className({ isActive: false });
+      return (
+        <button
+          key={item.to}
+          type="button"
+          onClick={() => {
+            onNavigate?.();
+            setComingSoonFeature(item.label);
+          }}
+          className={`${staticClass} w-full text-right opacity-90`}
+          aria-label={`${item.label} — الميزة قيد البناء حاليا`}
+        >
+          {renderNavLabel(item)}
+        </button>
+      );
+    }
+    return (
+      <NavLink key={item.to} to={item.to} end={item.end} onClick={onNavigate} className={className}>
+        {renderNavLabel(item)}
+      </NavLink>
+    );
+  };
 
   const renderSidebarContent = (onNavigate?: () => void) => (
     <>
@@ -226,35 +279,49 @@ export default function Layout() {
         )}
       </div>
       <nav className="flex-1 min-h-0 p-3 overflow-y-auto" aria-label="القائمة الرئيسية">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.end}
-            onClick={onNavigate}
-            className={linkClass}
-          >
-            {renderNavLabel(item)}
-          </NavLink>
-        ))}
+        {navItems.map((item) => renderNavItem(item, linkClass, onNavigate))}
       </nav>
       <div className="p-4 border-t border-emerald-700 text-sm">
-        <div className="font-medium">{user?.fullName}</div>
-        <div className="text-emerald-300 text-xs mb-2">
-          {user?.role ? ROLES[user.role] : ''} — {user?.branchName || 'كل الفروع'}
-        </div>
-        <button
-          onClick={logout}
-          className="block w-full text-right text-emerald-100 hover:text-white hover:underline text-xs mb-1 min-h-11"
-        >
-          تسجيل الخروج
-        </button>
-        <NavLink
-          to="/change-password"
-          className="block text-emerald-100 hover:text-white hover:underline text-xs min-h-11"
-        >
-          تغيير كلمة المرور
-        </NavLink>
+        {isLawyerUser ? (
+          <NavLink
+            to="/account"
+            onClick={onNavigate}
+            className="flex items-center gap-2.5 rounded-xl p-2 -m-1 hover:bg-emerald-700/40 focus-visible:ring-2 focus-visible:ring-emerald-300 min-h-11"
+            aria-label={`الحساب الشخصي: ${user?.fullName ?? ''}`}
+          >
+            <span
+              className="shrink-0 w-9 h-9 rounded-full bg-emerald-700 text-white inline-flex items-center justify-center font-bold"
+              aria-hidden="true"
+            >
+              {(user?.fullName ?? '').trim().slice(0, 2) || '؟'}
+            </span>
+            <span className="min-w-0">
+              <span className="block font-medium truncate">{user?.fullName}</span>
+              <span className="block text-emerald-300 text-xs truncate">
+                {user?.role ? ROLES[user.role] : ''} — {user?.branchName || 'كل الفروع'}
+              </span>
+            </span>
+          </NavLink>
+        ) : (
+          <>
+            <div className="font-medium">{user?.fullName}</div>
+            <div className="text-emerald-300 text-xs mb-2">
+              {user?.role ? ROLES[user.role] : ''} — {user?.branchName || 'كل الفروع'}
+            </div>
+            <button
+              onClick={logout}
+              className="block w-full text-right text-emerald-100 hover:text-white hover:underline text-xs mb-1 min-h-11"
+            >
+              تسجيل الخروج
+            </button>
+            <NavLink
+              to="/change-password"
+              className="block text-emerald-100 hover:text-white hover:underline text-xs min-h-11"
+            >
+              تغيير كلمة المرور
+            </NavLink>
+          </>
+        )}
       </div>
     </>
   );
@@ -271,11 +338,7 @@ export default function Layout() {
         className="fixed bottom-0 inset-x-0 z-40 bg-emerald-900 text-white flex border-t border-emerald-700 pb-[env(safe-area-inset-bottom)]"
         aria-label="التنقل السفلي"
       >
-        {bottomItems.map((item) => (
-          <NavLink key={item.to} to={item.to} end={item.end} className={bottomNavClass}>
-            {renderNavLabel(item)}
-          </NavLink>
-        ))}
+        {bottomItems.map((item) => renderNavItem(item, bottomNavClass))}
         {hasMore && (
           <button
             type="button"
@@ -356,6 +419,10 @@ export default function Layout() {
       )}
 
       {isMobile && renderBottomNav()}
+
+      {comingSoonFeature ? (
+        <ComingSoonToast feature={comingSoonFeature} onClose={() => setComingSoonFeature(null)} />
+      ) : null}
     </div>
   );
 }

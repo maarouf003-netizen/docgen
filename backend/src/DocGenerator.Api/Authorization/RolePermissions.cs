@@ -121,4 +121,10 @@ public static class RolePermissions
     /// <summary>دمج جهات عامة متعددة في هوية واحدة — مدير/مشرف فقط (د5 §4).</summary>
     public static bool CanMergeEntities(UserRole role) =>
         role is UserRole.Manager or UserRole.Admin;
+
+    /// <summary>إدارة التذكيرات الشخصية الحرة (بلا ملف) — المحامي لملكه فقط.</summary>
+    public static bool CanManagePersonalReminders(UserRole role) => role == UserRole.Lawyer;
+
+    /// <summary>قراءة كل اقتراحات التطوير وتعليمها مقروءة — المشرف فقط.</summary>
+    public static bool CanViewAppSuggestions(UserRole role) => role == UserRole.Admin;
 }

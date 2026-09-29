@@ -1323,3 +1323,55 @@ public class ParentEditSuggestionConfiguration : IEntityTypeConfiguration<Parent
             .OnDelete(DeleteBehavior.SetNull);
     }
 }
+
+public class PersonalReminderConfiguration : IEntityTypeConfiguration<PersonalReminder>
+{
+    public void Configure(EntityTypeBuilder<PersonalReminder> builder)
+    {
+        builder.ToTable("PersonalReminders");
+        builder.HasKey(r => r.Id);
+
+        builder.Property(r => r.Title)
+            .HasMaxLength(PersonalReminderCatalog.TitleMaxLength)
+            .IsRequired();
+        builder.Property(r => r.Notes).HasMaxLength(PersonalReminderCatalog.NotesMaxLength);
+        builder.Property(r => r.DueDate).HasColumnType("datetime2");
+        builder.Property(r => r.Color).HasMaxLength(20);
+        builder.Property(r => r.Recurrence).HasMaxLength(20).IsRequired();
+        builder.Property(r => r.RecurrenceEnd).HasColumnType("datetime2");
+        builder.Property(r => r.CompletedOccurrenceKeys)
+            .HasMaxLength(PersonalReminderCatalog.CompletedKeysMaxLength)
+            .IsRequired();
+
+        // استعلام التقويم والقوائم دومًا بمالك التذكير (ومرتبًا بتاريخ الاستحقاق).
+        builder.HasIndex(r => r.LawyerId);
+        builder.HasIndex(r => new { r.LawyerId, r.DueDate });
+        builder.HasIndex(r => r.IsArchived);
+
+        // مالك التذكير: منع حذف حسابه ما دام له تذكير مسجل (لا حذف صامت للسجل).
+        builder.HasOne(r => r.Lawyer)
+            .WithMany()
+            .HasForeignKey(r => r.LawyerId)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public class AppSuggestionConfiguration : IEntityTypeConfiguration<AppSuggestion>
+{
+    public void Configure(EntityTypeBuilder<AppSuggestion> builder)
+    {
+        builder.ToTable("AppSuggestions");
+        builder.HasKey(s => s.Id);
+
+        builder.Property(s => s.Message).HasMaxLength(2000).IsRequired();
+
+        builder.HasIndex(s => s.SenderId);
+        builder.HasIndex(s => s.CreatedAt);
+
+        // المرسل: منع حذف حسابه ما دام له اقتراح مسجل.
+        builder.HasOne(s => s.Sender)
+            .WithMany()
+            .HasForeignKey(s => s.SenderId)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}

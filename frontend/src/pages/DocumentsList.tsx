@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { isAxiosError } from 'axios';
 import { api } from '../api/client';
 import { useAuth } from '../auth/useAuth';
@@ -317,17 +317,47 @@ export default function DocumentsList() {
   // استعادة موضع القائمة (البحث/الفلاتر/الصفحة) وملف «آخر ما فُتح» من جلسة المتصفح عند العودة
   // من صفحة ملف، فيعود المستخدم إلى مكانه ويُميَّز الملف الذي كان يعمل عليه.
   const [saved] = useState(() => loadDocumentsListPosition());
+  const [searchParams] = useSearchParams();
   const [query, setQuery] = useState(saved?.query ?? '');
-  // حالة الجلسة تُعقَّم: قيمة لم تعد خيارًا معتمدًا في فلتر «الحالة» (مثل «محال الى البداية»
-  // بعد نقله لصفحته) تُهمل وتُعامل كأنها «لا فلتر» — لا أن تُرسل للخلفية فتنطبق بفرع خاطئ.
-  const [status, setStatus] = useState(() => (saved?.status && isStatusOption(saved.status) ? saved.status : ''));
+  // فلتر الحالة من الـ `URL` (روابط التعمّق من لوحة المحامي) يسبق موضع الجلسة المستعاد،
+  // والقيمة الغريبة تُهمل في الحالتين (تُعامل كأنها «لا فلتر»).
+  const [status, setStatus] = useState(() => {
+    const fromUrl = searchParams.get('status');
+    if (fromUrl && isStatusOption(fromUrl)) return fromUrl;
+    return saved?.status && isStatusOption(saved.status) ? saved.status : '';
+  });
+  // فلتر `URL` طبقة مؤقتة: لا يُحفَظ في الجلسة حتى يلمسه المستخدم يدويًا —
+  // وإلا علّق رابط التعمّق فلترًا دائمًا في الزيارات النظيفة اللاحقة.
+  const [statusTouched, setStatusTouched] = useState(false);
+  const persistedStatus = statusTouched ? status : (saved?.status && isStatusOption(saved.status) ? saved.status : '');
+
+  // مزامنة الـ `URL` مع الحالة عند تغيّره دون إعادة تركيب (رجوع/تقدم أو رابط تعمّق
+  // ثانٍ) — التعديل اليدوي لا يُمسّ، ورابط التعمّق الجديد يبدأ دومًا من الصفحة الأولى.
+  const urlStatusParam = searchParams.get('status');
+  const appliedUrlStatus = useRef<string | null>(null);
+  useEffect(() => {
+    const valid = urlStatusParam && isStatusOption(urlStatusParam) ? urlStatusParam : null;
+    if (valid !== appliedUrlStatus.current) {
+      appliedUrlStatus.current = valid;
+      if (valid) {
+        setStatus(valid);
+        setStatusTouched(false);
+        setPage(1);
+      }
+    }
+  }, [urlStatusParam]);
   const [applicant, setApplicant] = useState(saved?.applicant ?? '');
   const [court, setCourt] = useState(saved?.court ?? '');
   const [lawyer, setLawyer] = useState(saved?.lawyer ?? '');
   const [administrativeBranch, setAdministrativeBranch] = useState(saved?.administrativeBranch ?? '');
   const [executedEntity, setExecutedEntity] = useState(saved?.executedEntity ?? '');
   const [publicEntityBranch, setPublicEntityBranch] = useState(saved?.publicEntityBranch ?? '');
-  const [page, setPage] = useState(saved?.page ?? 1);
+  const [page, setPage] = useState(() => {
+    // رابط التعمّق يبدأ دومًا من الصفحة الأولى لا صفحة الجلسة المحفوظة.
+    const fromUrl = searchParams.get('status');
+    if (fromUrl && isStatusOption(fromUrl)) return 1;
+    return saved?.page ?? 1;
+  });
   const [focusId, setFocusId] = useState<number | null>(null);
   const [focusName, setFocusName] = useState<string | null>(null);
   // «آخر ملف فُتح» يُقرأ بعد تحميل هوية المستخدم (AuthContext بلا هوية أصلًا ثم يملؤها من /auth/me)،
@@ -381,9 +411,10 @@ export default function DocumentsList() {
   const loading = listQuery.isLoading;
 
   // يُحفظ الموضع الحالي في كل تغيير للفلاتر أو الصفحة كي تُستعاد القائمة في مكانها عند العودة من صفحة ملف.
+  // (الحالة القادمة من `URL` لا تُحفَظ حتى تُلمَس — انظر `persistedStatus`.)
   useEffect(() => {
-    saveDocumentsListPosition({ query, status, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, page });
-  }, [query, status, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, page]);
+    saveDocumentsListPosition({ query, status: persistedStatus, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, page });
+  }, [query, persistedStatus, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, page]);
 
   // موضع مستعاد يتجاوز عدد الصفحات بعد تغيّر البيانات أثناء الغياب: العودة لآخر صفحة صالحة.
   useEffect(() => {
@@ -394,7 +425,7 @@ export default function DocumentsList() {
 
   // عند فتح ملف من القائمة: يُحفظ الموضع الحالي ويُسجَّل الملف كآخر ما فُتح ليميّز عند العودة.
   const openDocument = (id: number) => {
-    saveDocumentsListPosition({ query, status, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, page });
+    saveDocumentsListPosition({ query, status: persistedStatus, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, page });
     saveLastViewedDocumentId(id, user?.id ?? null);
   };
 
@@ -526,7 +557,7 @@ export default function DocumentsList() {
           <>
             <FilterSelect
               value={status}
-              onChange={(v) => { setStatus(v); setPage(1); }}
+              onChange={(v) => { setStatus(v); setStatusTouched(true); setPage(1); }}
               ariaLabel="فلترة الحالة"
               allLabel="كل الحالات"
               options={STATUS_OPTIONS}
@@ -714,7 +745,7 @@ export default function DocumentsList() {
                         label="الحالة"
                         ariaLabel="فلترة الحالة"
                         value={status}
-                        onChange={(v) => { setStatus(v); setPage(1); }}
+                        onChange={(v) => { setStatus(v); setStatusTouched(true); setPage(1); }}
                         allLabel="كل الحالات"
                         options={STATUS_OPTIONS}
                       />

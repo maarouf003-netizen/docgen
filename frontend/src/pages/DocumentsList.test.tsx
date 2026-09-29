@@ -7,12 +7,15 @@ import type { DocumentResponse, PagedResult } from '../types';
 import { makeDocument } from '../test/factories';
 import { saveLastViewedDocumentId } from '../utils/listSession';
 
+const searchQueryMock = vi.hoisted(() => ({ value: '' }));
+
 vi.mock('react-router-dom', () => ({
   Link: ({ children, to, ...rest }: { children: ReactNode; to: string } & Record<string, unknown>) => (
     <a href={to} {...rest}>
       {children}
     </a>
   ),
+  useSearchParams: () => [new URLSearchParams(searchQueryMock.value)],
 }));
 
 const useAuthMock = vi.hoisted(() => vi.fn());
@@ -107,6 +110,7 @@ function stubDesktop() {
 beforeEach(() => {
   vi.clearAllMocks();
   sessionStorage.clear();
+  searchQueryMock.value = '';
   stubDesktop();
   Element.prototype.scrollIntoView = vi.fn();
   useAuthMock.mockReturnValue({
@@ -1553,5 +1557,107 @@ describe('DocumentsList', () => {
       expect(screen.queryByText('تعذر تحديث القائمة — تُعرض بيانات سابقة.')).not.toBeInTheDocument(),
     );
     expect(screen.getByRole('link', { name: 'أحمد خالد الخطيب' })).toBeInTheDocument();
+  });
+});
+
+describe('DocumentsList — فلتر الحالة من الـ URL (تعمّق اللوحة)', () => {
+  function lastListUrl() {
+    const calls = vi.mocked(api.get).mock.calls.map((c) => c[0] as string);
+    return calls.filter((u) => u.startsWith('/documents?')).at(-1) ?? '';
+  }
+
+  function lastListStatus() {
+    const url = lastListUrl();
+    if (!url) return undefined;
+    return new URLSearchParams(url.split('?')[1]).get('status');
+  }
+
+  it('يطبّق `status` من الـ URL على أول طلب', async () => {
+    searchQueryMock.value = `status=${encodeURIComponent('متداول')}`;
+    mockPage([]);
+
+    renderList();
+    await waitFor(() => expect(lastListUrl()).not.toBe(''));
+
+    expect(lastListStatus()).toBe('متداول');
+  });
+
+  it('يهمل قيمة `status` غريبة من الـ URL (لا فلتر)', async () => {
+    searchQueryMock.value = 'status=قيمة-غريبة';
+    mockPage([]);
+
+    renderList();
+    await waitFor(() => expect(lastListUrl()).not.toBe(''));
+
+    expect(lastListStatus()).toBeNull();
+  });
+
+  it('يسبق فلتر الـ URL موضع الجلسة المستعاد', async () => {
+    sessionStorage.setItem(
+      'documentsListPosition',
+      JSON.stringify({ query: '', status: 'تريث', page: 1 }),
+    );
+    searchQueryMock.value = `status=${encodeURIComponent('تحت رفع')}`;
+    mockPage([]);
+
+    renderList();
+    await waitFor(() => expect(lastListUrl()).not.toBe(''));
+
+    expect(lastListStatus()).toBe('تحت رفع');
+  });
+
+  it('لا يحفظ فلتر الـ URL في الجلسة (طبقة مؤقتة حتى اللمس اليدوي)', async () => {
+    searchQueryMock.value = `status=${encodeURIComponent('متداول')}`;
+    mockPage([]);
+
+    renderList();
+    await waitFor(() => expect(lastListUrl()).not.toBe(''));
+
+    const saved = JSON.parse(sessionStorage.getItem('documentsListPosition') ?? '{}');
+    expect(saved.status ?? '').toBe('');
+  });
+
+  it('يحفظ الحالة في الجلسة بعد لمسها يدويًا', async () => {
+    const user = userEvent.setup();
+    searchQueryMock.value = `status=${encodeURIComponent('متداول')}`;
+    mockPage([makeDocument({ id: 1 })]);
+
+    renderList();
+    const table = await screen.findByRole('table');
+    await user.click(within(table).getByRole('button', { name: 'فلترة الحالة' }));
+    const menu = screen.getByRole('menu', { name: 'فلترة الحالة' });
+    await user.click(within(menu).getByRole('menuitem', { name: 'تريث' }));
+
+    await waitFor(() => {
+      const saved = JSON.parse(sessionStorage.getItem('documentsListPosition') ?? '{}');
+      expect(saved.status).toBe('تريث');
+    });
+  });
+
+  it('يزامن الفلتر عند تغيّر الـ URL دون إعادة تركيب', async () => {
+    searchQueryMock.value = `status=${encodeURIComponent('متداول')}`;
+    mockPage([makeDocument({ id: 1 })]);
+
+    const { rerender } = renderList();
+    await waitFor(() => expect(lastListStatus()).toBe('متداول'));
+
+    searchQueryMock.value = `status=${encodeURIComponent('تريث')}`;
+    rerender(<DocumentsList />);
+    await waitFor(() => expect(lastListStatus()).toBe('تريث'));
+  });
+
+  it('يبدأ رابط التعمّق من الصفحة الأولى لا صفحة الجلسة المحفوظة', async () => {
+    sessionStorage.setItem(
+      'documentsListPosition',
+      JSON.stringify({ query: '', status: '', page: 3 }),
+    );
+    searchQueryMock.value = `status=${encodeURIComponent('متداول')}`;
+    mockPage([]);
+
+    renderList();
+    await waitFor(() => expect(lastListUrl()).not.toBe(''));
+
+    const params = new URLSearchParams(lastListUrl().split('?')[1]);
+    expect(params.get('page')).toBe('1');
   });
 });

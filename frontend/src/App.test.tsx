@@ -55,6 +55,7 @@ function renderAt(path: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
   stubMobile(false);
   rejectAllApi();
 });
@@ -76,11 +77,53 @@ describe('توجيه الجذر حسب الدور (انحدار: المندوب 
     expect(urls).not.toContain('/alerts');
   });
 
-  it('المحامي على / يرى لوحة التحكم كالمعتاد', async () => {
+  it('المحامي على / يرى لوحته الجديدة (ترحيب + أقسام) بدل عنوان «لوحة التحكم»', async () => {
     useAuthMock.mockReturnValue(authState('lawyer'));
     renderAt('/');
 
+    expect(await screen.findByRole('heading', { name: 'مرحبًا، مستخدم' })).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'أقسام لوحة المحامي' })).toBeInTheDocument();
+  });
+
+  it('المحامي على /account يرى حسابه، وغيره يُرتد إلى وطنه', async () => {
+    useAuthMock.mockReturnValue(authState('lawyer'));
+    const { unmount } = renderAt('/account');
+    expect(await screen.findByRole('heading', { name: 'الحساب الشخصي' })).toBeInTheDocument();
+    unmount();
+
+    useAuthMock.mockReturnValue(authState('head'));
+    renderAt('/account');
     expect(await screen.findByRole('heading', { name: 'لوحة التحكم' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'الحساب الشخصي' })).not.toBeInTheDocument();
+  });
+
+  it('المحامي على /stats و/calendar يرى الصفحتين، وغيره يُرتد', async () => {
+    useAuthMock.mockReturnValue(authState('lawyer'));
+    const { unmount } = renderAt('/stats');
+    expect(await screen.findByRole('heading', { name: 'الإحصائيات' })).toBeInTheDocument();
+    unmount();
+
+    useAuthMock.mockReturnValue(authState('lawyer'));
+    const { unmount: unmount2 } = renderAt('/calendar');
+    expect(await screen.findByRole('heading', { name: 'التقويم' })).toBeInTheDocument();
+    unmount2();
+
+    useAuthMock.mockReturnValue(authState('head'));
+    renderAt('/stats');
+    expect(await screen.findByRole('heading', { name: 'لوحة التحكم' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'الإحصائيات' })).not.toBeInTheDocument();
+  });
+
+  it('المشرف على /suggestions يرى الصندوق، والمحامي يُرتد إلى لوحته', async () => {
+    useAuthMock.mockReturnValue(authState('admin'));
+    const { unmount } = renderAt('/suggestions');
+    expect(await screen.findByRole('heading', { name: 'اقتراحات التطوير' })).toBeInTheDocument();
+    unmount();
+
+    useAuthMock.mockReturnValue(authState('lawyer'));
+    renderAt('/suggestions');
+    expect(await screen.findByRole('heading', { name: 'مرحبًا، مستخدم' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'اقتراحات التطوير' })).not.toBeInTheDocument();
   });
 
   it('رفض صلاحية المندوب على مسار داخلي محروس يرتد به إلى بوابته لا إلى اللوحة', async () => {

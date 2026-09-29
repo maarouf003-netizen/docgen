@@ -1,0 +1,145 @@
+/* طبقة تخصيص ثيم الزمردي فوق `react-calendar` (تُستورد بعد `Calendar.css` الأصلية). */
+.lawyer-calendar {
+  --rc-accent: #047857;
+  --rc-accent-soft: #ecfdf5;
+  --rc-accent-ring: #6ee7b7;
+  --rc-alert: #dc2626;
+  --rc-alert-soft: #fef2f2;
+}
+
+.lawyer-calendar .react-calendar {
+  width: 100%;
+  border: 1px solid #e5e7eb;
+  border-radius: 1rem;
+  background: #fff;
+  font-family: inherit;
+  line-height: 1.6;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+  padding: 0.5rem;
+}
+
+/* التنقل: أهداف لمس مريحة وتسميات عربية من الخصائص. */
+.lawyer-calendar .react-calendar__navigation {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.lawyer-calendar .react-calendar__navigation button {
+  min-height: 44px;
+  min-width: 44px;
+  border-radius: 0.75rem;
+  font-weight: 700;
+  color: #065f46;
+  background: transparent;
+}
+
+.lawyer-calendar .react-calendar__navigation button:enabled:hover,
+.lawyer-calendar .react-calendar__navigation button:enabled:focus-visible {
+  background: var(--rc-accent-soft);
+}
+
+.lawyer-calendar .react-calendar__navigation__label {
+  flex-grow: 1;
+  font-size: 1rem;
+}
+
+/* أسماء الأيام والأرقام بخط المشروع وأرقام لاتينية موحدة. */
+.lawyer-calendar .react-calendar__month-view__weekdays {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #6b7280;
+  text-transform: none;
+}
+
+.lawyer-calendar .react-calendar__month-view__weekdays__weekday {
+  padding: 0.5rem 0;
+}
+
+.lawyer-calendar .react-calendar__month-view__weekdays__weekday abbr {
+  text-decoration: none;
+}
+
+/* البلاطات: كل يوم زر حقيقي بارتفاع لمس أدنى. */
+.lawyer-calendar .react-calendar__tile {
+  min-height: 44px;
+  border-radius: 0.75rem;
+  padding: 0.25rem 0.125rem;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  color: #1f2937;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.lawyer-calendar .react-calendar__tile:enabled:hover,
+.lawyer-calendar .react-calendar__tile:enabled:focus-visible {
+  background: var(--rc-accent-soft);
+}
+
+.lawyer-calendar .react-calendar__tile--now {
+  background: #f3f4f6;
+  box-shadow: inset 0 0 0 2px var(--rc-accent-ring);
+}
+
+.lawyer-calendar .react-calendar__tile--active {
+  background: var(--rc-accent);
+  color: #fff;
+}
+
+.lawyer-calendar .react-calendar__tile--active:enabled:hover,
+.lawyer-calendar .react-calendar__tile--active:enabled:focus-visible {
+  background: #065f46;
+}
+
+.lawyer-calendar .react-calendar__tile--hasActive {
+  background: var(--rc-accent-soft);
+}
+
+.lawyer-calendar .react-calendar__month-view__days__day--neighboringMonth {
+  color: #9ca3af;
+}
+
+/* أيام التذكيرات: خلفية مميزة + حلقة. */
+.lawyer-calendar .react-calendar__tile.has-reminders {
+  background: var(--rc-accent-soft);
+  box-shadow: inset 0 0 0 1.5px var(--rc-accent-ring);
+  font-weight: 700;
+}
+
+.lawyer-calendar .react-calendar__tile.has-reminders:enabled:hover,
+.lawyer-calendar .react-calendar__tile.has-reminders:enabled:focus-visible {
+  background: #d1fae5;
+}
+
+/* أيام اليوم/المتأخر: تنبيه أحمر خفيف (مطابق لمعيار الجرس). */
+.lawyer-calendar .react-calendar__tile.has-urgent {
+  background: var(--rc-alert-soft);
+  box-shadow: inset 0 0 0 1.5px #fca5a5;
+}
+
+.lawyer-calendar .react-calendar__tile.has-urgent:enabled:hover,
+.lawyer-calendar .react-calendar__tile.has-urgent:enabled:focus-visible {
+  background: #fee2e2;
+}
+
+/* عطلة نهاية الأسبوع بلون هادئ دون إخفاء. */
+.lawyer-calendar .react-calendar__month-view__days__day--weekend {
+  color: #b45309;
+}
+
+.lawyer-calendar .react-calendar__tile:disabled {
+  background: transparent;
+  color: #d1d5db;
+}
+
+/* مناظر الشهر/السنة/العقد: شبكة مريحة بلا تجاوز. */
+.lawyer-calendar .react-calendar__year-view .react-calendar__tile,
+.lawyer-calendar .react-calendar__decade-view .react-calendar__tile,
+.lawyer-calendar .react-calendar__century-view .react-calendar__tile {
+  min-height: 44px;
+  padding: 0.75rem 0.25rem;
+}

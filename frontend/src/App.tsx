@@ -35,6 +35,10 @@ const PortalFileDetail = lazy(() => import('./pages/PortalFileDetail'));
 const PortalFileCorrespondence = lazy(() => import('./pages/PortalFileCorrespondence'));
 const AuditLogs = lazy(() => import('./pages/AuditLogs'));
 const ChangePassword = lazy(() => import('./pages/ChangePassword'));
+const AccountPage = lazy(() => import('./pages/AccountPage'));
+const StatsPage = lazy(() => import('./pages/StatsPage'));
+const CalendarPage = lazy(() => import('./pages/CalendarPage'));
+const SuggestionsPage = lazy(() => import('./pages/SuggestionsPage'));
 const ReviewsList = lazy(() => import('./pages/ReviewsList'));
 const ReviewDetail = lazy(() => import('./pages/ReviewDetail'));
 const CorrespondencesList = lazy(() => import('./pages/CorrespondencesList'));
@@ -387,6 +391,38 @@ export default function App() {
               }
             />
             <Route path="/change-password" element={<ChangePassword />} />
+            <Route
+              path="/account"
+              element={
+                <RequireRole allowed={(role) => role === 'lawyer'}>
+                  <AccountPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/stats"
+              element={
+                <RequireRole allowed={(role) => role === 'lawyer'}>
+                  <StatsPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/calendar"
+              element={
+                <RequireRole allowed={(role) => role === 'lawyer'}>
+                  <CalendarPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/suggestions"
+              element={
+                <RequireRole allowed={(role) => role === 'admin'}>
+                  <SuggestionsPage />
+                </RequireRole>
+              }
+            />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

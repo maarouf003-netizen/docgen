@@ -152,3 +152,89 @@ export function dueLabel(dueDate: string): { text: string; tone: string } {
 export function borrowerFullName(r: ReminderDto): string {
   return tripleName(r.borrowerName, r.borrowerFather, r.borrowerFamily) || r.documentType || `مستند ${r.documentId}`;
 }
+
+/** الاسم الأول من الاسم الكامل (أول كلمة بعد تطبيع الفراغات)، مع `fallback` للكامل عند غيابه. */
+export function firstName(fullName: string | null | undefined): string {
+  const normalized = (fullName ?? '').trim().replace(/\s+/g, ' ');
+  if (!normalized) return '';
+  return normalized.split(' ')[0];
+}
+
+/**
+ * الفترة السابقة لنفس النطاق (للدلتا عن الفترة السابقة)، مع لفّ الحدود:
+ * كانون الثاني → كانون الأول (سنة−1)، والربع الأول → الرابع (سنة−1)؛
+ * `null` عند غياب التحديد أو تجاوز حد سنة الخلفية (1900).
+ */
+export function previousSelection(selection: PeriodSelection | null, period: StatsPeriod): PeriodSelection | null {
+  if (!selection) return null;
+  if (period === 'monthly' && selection.month != null) {
+    if (selection.month > 1) return { year: selection.year, month: selection.month - 1 };
+    if (selection.year - 1 < 1900) return null;
+    return { year: selection.year - 1, month: 12 };
+  }
+  if (period === 'quarterly' && selection.quarter != null) {
+    if (selection.quarter > 1) return { year: selection.year, quarter: selection.quarter - 1 };
+    if (selection.year - 1 < 1900) return null;
+    return { year: selection.year - 1, quarter: 4 };
+  }
+  if (period === 'yearly') {
+    if (selection.year - 1 < 1900) return null;
+    return { year: selection.year - 1 };
+  }
+  return null;
+}
+
+/**
+ * نسبة التغيّر المئوية `(current − previous) / |previous| × 100` —
+ * `null` عند غياب السابق أو صفره (الدلتا تُخفى حينها بدل عرض مضلِّل).
+ */
+export function deltaPercent(current: number, previous: number | null | undefined): number | null {
+  if (previous == null || previous === 0) return null;
+  return ((current - previous) / Math.abs(previous)) * 100;
+}
+
+/** تنسيق الدلتا للعرض: إشارة صريحة ومنزلة عشرية واحدة (`‎+12.5%`). */
+export function formatDelta(value: number): string {
+  const rounded = Number(value.toFixed(1));
+  return `${rounded > 0 ? '+' : ''}${String(rounded)}%`;
+}
+
+/**
+ * أشهر متصلة من أول شهر متاح لآخره مع صفر-fill للفجوات —
+ * `GET /stats/periods` يُرجع الأشهر ذات البيانات فقط، والرسم يحتاج السلسلة كاملة.
+ */
+export function zeroFilledMonthlyCounts(
+  available: MonthlyStatDto[],
+): { year: number; month: number; count: number }[] {
+  if (available.length === 0) return [];
+  const byKey = new Map<string, number>();
+  for (const m of available) byKey.set(`${m.year}-${m.month}`, m.count);
+  const sorted = [...available].sort((a, b) => a.year - b.year || a.month - b.month);
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  const out: { year: number; month: number; count: number }[] = [];
+  let y = first.year;
+  let mo = first.month;
+  while (y < last.year || (y === last.year && mo <= last.month)) {
+    out.push({ year: y, month: mo, count: byKey.get(`${y}-${mo}`) ?? 0 });
+    mo += 1;
+    if (mo > 12) {
+      mo = 1;
+      y += 1;
+    }
+  }
+  return out;
+}
+
+/**
+ * هل تاريخ الاستحقاق اليوم أو متأخر؟ — التواريخ الفاسدة تُستبعد (لا تُحسب «اليوم»)
+ * خلاف `daysUntilDue` الذي يُرجع 0 للفاسد.
+ */
+export function isDueTodayOrOverdue(dueDate: string): boolean {
+  const due = new Date(dueDate);
+  if (Number.isNaN(due.getTime())) return false;
+  due.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return due.getTime() <= today.getTime();
+}

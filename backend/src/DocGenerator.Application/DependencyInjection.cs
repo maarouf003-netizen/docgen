@@ -26,6 +26,8 @@ public static class DependencyInjection
         services.AddScoped<IUserManagementService, UserManagementService>();
         services.AddScoped<IBranchManagementService, BranchManagementService>();
         services.AddScoped<IHeadAlertService, HeadAlertService>();
+        services.AddScoped<IPersonalReminderService, PersonalReminderService>();
+        services.AddScoped<IAppSuggestionService, AppSuggestionService>();
         services.AddScoped<IPublicEntityService, PublicEntityService>();
         services.AddScoped<IPortalService, PortalService>();
         services.AddScoped<IEntityDelegateService, EntityDelegateService>();

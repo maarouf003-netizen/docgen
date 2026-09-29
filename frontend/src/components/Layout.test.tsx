@@ -11,17 +11,19 @@ vi.mock('react-router-dom', () => ({
     end: _end,
     className,
     onClick,
+    ...rest
   }: {
     children: ReactNode;
     to: string;
     end?: boolean;
     className?: (props: { isActive: boolean }) => string | undefined;
     onClick?: () => void;
-  }) => (
+  } & Record<string, unknown>) => (
     <a
       href={to}
       className={typeof className === 'function' ? className({ isActive: false }) : className}
       onClick={onClick}
+      {...rest}
     >
       {children}
     </a>
@@ -84,18 +86,72 @@ describe('Layout', () => {
     expect(screen.queryByRole('button', { name: 'فتح القائمة' })).not.toBeInTheDocument();
   });
 
-  it('يعرض النسر والهوية وبيانات المستخدم في الشريط الجانبي دون العلم', () => {
+  it('يعرض النسر والهوية وبطاقة الحساب للمحامي دون خروج/كلمة مرور في التذييل', () => {
     stubMatchMedia(false);
     render(<Layout />);
 
     expect(screen.getByAltText('شعار نسر صلاح الدين')).toBeInTheDocument();
     expect(screen.queryByAltText('علم الجمهورية العربية السورية')).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'مسار' })).toBeInTheDocument();
-    // شريط بيانات المستخدم ثابت ودائم الظهور في الصفحة الرئيسية.
+    // بطاقة التذييل المضغوطة تنقل إلى الحساب الشخصي بدل بندي الخروج وكلمة المرور.
+    expect(screen.getByRole('link', { name: /الحساب الشخصي/ })).toHaveAttribute('href', '/account');
     expect(screen.getByText('أحمد الخطيب')).toBeInTheDocument();
     expect(screen.getByText('محامي — دمشق')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'تسجيل الخروج' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'تغيير كلمة المرور' })).not.toBeInTheDocument();
+  });
+
+  it('يُبقي تسجيل الخروج وتغيير كلمة المرور في التذييل لغير المحامي', () => {
+    useAuthMock.mockReturnValue({
+      ...baseUser(),
+      user: { ...baseUser().user, role: 'head' },
+    });
+    stubMatchMedia(false);
+    render(<Layout />);
+
     expect(screen.getByRole('button', { name: 'تسجيل الخروج' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'تغيير كلمة المرور' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /الحساب الشخصي/ })).not.toBeInTheDocument();
+  });
+
+  it('يعرض للمحامي 4 بنود فقط: اللوحة والملفات والمنتدى والمكتبة (بلا مطالعات/مراسلات)', () => {
+    stubMatchMedia(false);
+    render(<Layout />);
+
+    const sidebar = screen.getByRole('navigation', { name: 'القائمة الرئيسية' });
+    expect(within(sidebar).getByRole('link', { name: 'لوحة التحكم' })).toHaveAttribute('href', '/');
+    expect(within(sidebar).getByRole('link', { name: 'الملفات التنفيذية' })).toHaveAttribute(
+      'href',
+      '/documents',
+    );
+    expect(within(sidebar).getByRole('button', { name: /المنتدى/ })).toBeInTheDocument();
+    expect(within(sidebar).getByRole('button', { name: /المكتبة/ })).toBeInTheDocument();
+    expect(within(sidebar).queryByRole('link', { name: 'المطالعات' })).not.toBeInTheDocument();
+    expect(within(sidebar).queryByRole('link', { name: 'المراسلات' })).not.toBeInTheDocument();
+    expect(within(sidebar).queryByRole('button', { name: 'المزيد' })).not.toBeInTheDocument();
+  });
+
+  it('يعرض بنود المحامي الأربعة في الشريط السفلي بلا زر «المزيد» على الجوال', () => {
+    stubMatchMedia(true);
+    render(<Layout />);
+
+    const bottomNav = screen.getByRole('navigation', { name: 'التنقل السفلي' });
+    expect(within(bottomNav).getAllByRole('link')).toHaveLength(2);
+    expect(within(bottomNav).getAllByRole('button')).toHaveLength(2);
+    expect(within(bottomNav).queryByRole('button', { name: /المزيد/ })).not.toBeInTheDocument();
+  });
+
+  it('يفتح تنبيه «قيد البناء» عند نقر المنتدى/المكتبة ويغلقه زر الإغلاق', async () => {
+    const user = userEvent.setup();
+    stubMatchMedia(false);
+    render(<Layout />);
+
+    const sidebar = screen.getByRole('navigation', { name: 'القائمة الرئيسية' });
+    await user.click(within(sidebar).getByRole('button', { name: /المنتدى/ }));
+    expect(screen.getByRole('status')).toHaveTextContent('الميزة قيد البناء حاليا');
+
+    await user.click(screen.getByRole('button', { name: 'إغلاق التنبيه' }));
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
   it('يعرض زر القائمة والتنقل السفلي على شاشة الموبايل', () => {
@@ -122,7 +178,12 @@ describe('Layout', () => {
   });
 
   it('يقصر الشريط السفلي على أول 4 بنود مع زر «المزيد» على الجوال (أهداف لمس مريحة)', () => {
-    useAuthMock.mockReturnValue({ ...baseUser(), hasFullAccess: true, isHead: true });
+    useAuthMock.mockReturnValue({
+      ...baseUser(),
+      user: { ...baseUser().user, role: 'head' },
+      hasFullAccess: true,
+      isHead: true,
+    });
     stubMatchMedia(true);
     render(<Layout />);
 
@@ -137,7 +198,12 @@ describe('Layout', () => {
   });
 
   it('يبقي كل البنود ظاهرة كروابط في الشريط الجانبي المكتبية', () => {
-    useAuthMock.mockReturnValue({ ...baseUser(), hasFullAccess: true, isHead: true });
+    useAuthMock.mockReturnValue({
+      ...baseUser(),
+      user: { ...baseUser().user, role: 'head' },
+      hasFullAccess: true,
+      isHead: true,
+    });
     stubMatchMedia(false);
     render(<Layout />);
 
@@ -146,7 +212,12 @@ describe('Layout', () => {
   });
 
   it('يعرض روابط صلاحية خاصة فقط: نشاط المستخدمين للمدير وسجل التدقيق لرئيس القسم', async () => {
-    useAuthMock.mockReturnValue({ ...baseUser(), hasFullAccess: true, isHead: true });
+    useAuthMock.mockReturnValue({
+      ...baseUser(),
+      user: { ...baseUser().user, role: 'head' },
+      hasFullAccess: true,
+      isHead: true,
+    });
     stubMatchMedia(true);
     render(<Layout />);
 
@@ -217,14 +288,11 @@ describe('Layout', () => {
     expect(screen.queryByRole('link', { name: 'محامو الفرع' })).not.toBeInTheDocument();
   });
 
-  it('يعرض بند «المراسلات» في الشريط السفلي للمحامي ورئيس القسم وفي بوابة المندوب', async () => {
-    // محامي (مكتبي): البند ظاهر مباشرة في القائمة الرئيسية.
+  it('يُخفي بند «المراسلات» عن المحامي (تُفتح من بطاقة اللوحة) ويُبقيه لرئيس القسم والمندوب', async () => {
+    // محامي (مكتبي): لا بند مراسلات في القائمة الرئيسية.
     stubMatchMedia(false);
     const { unmount } = render(<Layout />);
-    expect(screen.getByRole('link', { name: 'المراسلات' })).toHaveAttribute(
-      'href',
-      '/correspondence',
-    );
+    expect(screen.queryByRole('link', { name: 'المراسلات' })).not.toBeInTheDocument();
     unmount();
 
     // رئيس قسم (جوال): البند ضمن أول 4 بنود في الشريط السفلي.

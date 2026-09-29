@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
+import { useReminderCancellation } from '../hooks/useReminderCancellation';
 import type {
   AppealReminderDto,
   BranchDto,
@@ -12,13 +13,24 @@ import type {
   ManagerLawyerStatDto,
   ManagerStatsDto,
   MonthlyStatDto,
+  PersonalReminderDto,
   PublicEntityEntryDto,
   ReminderDto,
   StatsPeriod,
 } from '../types';
 import { AlertRow } from '../components/dashboard/AlertRow';
 import { CreateAlertForm } from '../components/dashboard/CreateAlertForm';
-import { mostRecentSelection } from '../components/dashboard/dashboardFormat';
+import { DayRemindersModal } from '../components/dashboard/DayRemindersModal';
+import { GreetingHeader } from '../components/dashboard/GreetingHeader';
+import { LawyerCalendar } from '../components/dashboard/LawyerCalendar';
+import { LawyerIconRow } from '../components/dashboard/LawyerIconRow';
+import {
+  isDueTodayOrOverdue,
+  mostRecentSelection,
+} from '../components/dashboard/dashboardFormat';
+import { currentWeekRange, dayKeyOf, expandPersonalReminder, groupRemindersByDay, hasPendingOccurrenceOnOrBefore, parseDayKey } from '../components/dashboard/personalReminders';
+import { CORRESPONDENCE_UNSEEN_EVENT } from '../components/correspondence/correspondenceDisplay';
+import { REVIEWS_UNSEEN_EVENT } from '../components/review/reviewDisplay';
 import type { PeriodSelection } from '../components/dashboard/dashboardTypes';
 import { ManagerStatsSection } from '../components/dashboard/ManagerStatsSection';
 import { ReminderList } from '../components/dashboard/ReminderList';
@@ -29,9 +41,6 @@ export default function Dashboard() {
   const isLawyer = user?.role === 'lawyer';
   const isManager = user?.role === 'manager' || user?.role === 'admin';
   const isHead = user?.role === 'head';
-
-  const [cancellingKey, setCancellingKey] = useState<string | null>(null);
-  const [actionError, setActionError] = useState('');
 
   const [alertsError, setAlertsError] = useState('');
   const [markingKey, setMarkingKey] = useState<string | null>(null);
@@ -67,6 +76,16 @@ export default function Dashboard() {
     [isLawyer],
     { enabled: userReady && isLawyer },
   );
+
+  // التذكيرات الشخصية الحرة — تُدمج في التقويم ونافذة اليوم.
+  const personalQuery = useCancellableRequest<PersonalReminderDto[]>(
+    (signal) => api.get('/personal-reminders', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
+    [isLawyer],
+    { enabled: userReady && isLawyer },
+  );
+
+  const { cancellingKey, actionError, cancelReminder, cancelAppealReminder } =
+    useReminderCancellation(remindersQuery, appealRemindersQuery);
 
   const alertsQuery = useCancellableRequest<HeadAlertDto[]>(
     (signal) => api.get('/alerts', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
@@ -105,7 +124,8 @@ export default function Dashboard() {
         .then((r) => (Array.isArray(r.data) ? r.data : []));
     },
     [isManager, branchId],
-    { enabled: userReady },
+    // الإحصائيات في صفحة `/stats` للمحامي — اللوحة لا تجلب الفترات له.
+    { enabled: userReady && !isLawyer },
   );
 
   const statsQuery = useCancellableRequest<ManagerStatsDto>((signal) => {
@@ -115,13 +135,35 @@ export default function Dashboard() {
       if (selection.month != null) params.month = selection.month;
       if (selection.quarter != null) params.quarter = selection.quarter;
     }
-    const url = isLawyer ? '/stats/me' : '/stats/manager';
-    if (!isLawyer && isManager && branchId) params.branchId = branchId;
-    return api.get<ManagerStatsDto>(url, { params, signal }).then((r) => r.data);
-  }, [isLawyer, isManager, period, selection, branchId], { enabled: userReady });
+    if (isManager && branchId) params.branchId = branchId;
+    return api.get<ManagerStatsDto>('/stats/manager', { params, signal }).then((r) => r.data);
+  }, [isManager, period, selection, branchId], { enabled: userReady && !isLawyer });
 
-  const lawyersBranch = isManager ? branchId : (user?.branchId ?? null);
-  const lawyerStatsQuery = useCancellableRequest<ManagerLawyerStatDto[]>((signal) => {
+  // عدّادا بطاقتي المطالعات/المراسلات للمحامي: جلب واحد عند التركيب + تحديث
+  // فور حدث المشاهدة — بلا استطلاع دوري مكرر (الاستطلاع الدوري في `Layout` وحده).
+  const unseenRepliesQuery = useCancellableRequest<{ count: number }>(
+    (signal) => api.get('/review-letters/unseen-replies-count', { signal }).then((r) => r.data),
+    [isLawyer],
+    { enabled: userReady && isLawyer },
+  );
+  const urgentQuery = useCancellableRequest<{ count: number }>(
+    (signal) => api.get('/correspondence/urgent-unseen-count', { signal }).then((r) => r.data),
+    [isLawyer],
+    { enabled: userReady && isLawyer },
+  );
+  const { refetch: refetchReplies } = unseenRepliesQuery;
+  const { refetch: refetchUrgent } = urgentQuery;
+  useEffect(() => {
+    if (!isLawyer) return;
+    window.addEventListener(REVIEWS_UNSEEN_EVENT, refetchReplies);
+    window.addEventListener(CORRESPONDENCE_UNSEEN_EVENT, refetchUrgent);
+    return () => {
+      window.removeEventListener(REVIEWS_UNSEEN_EVENT, refetchReplies);
+      window.removeEventListener(CORRESPONDENCE_UNSEEN_EVENT, refetchUrgent);
+    };
+  }, [isLawyer, refetchReplies, refetchUrgent]);
+
+  const lawyersBranch = isManager ? branchId : (user?.branchId ?? null);  const lawyerStatsQuery = useCancellableRequest<ManagerLawyerStatDto[]>((signal) => {
     const params: Record<string, unknown> = { period };
     if (selection) {
       params.year = selection.year;
@@ -136,6 +178,7 @@ export default function Dashboard() {
 
   const reminders = useMemo(() => remindersQuery.data ?? [], [remindersQuery.data]);
   const appealReminders = useMemo(() => appealRemindersQuery.data ?? [], [appealRemindersQuery.data]);
+  const personalReminders = useMemo(() => personalQuery.data ?? [], [personalQuery.data]);
   const alerts = useMemo(() => alertsQuery.data ?? [], [alertsQuery.data]);
   const branches = useMemo(() => branchesQuery.data ?? [], [branchesQuery.data]);
   const branchLawyers = useMemo(() => branchLawyersQuery.data ?? [], [branchLawyersQuery.data]);
@@ -146,33 +189,52 @@ export default function Dashboard() {
     [lawyersBranch, lawyerStatsQuery.data],
   );
   const unreadCount = Math.max(0, Number(unreadQuery.data?.count) || 0);
+  const unseenReplies = isLawyer ? Math.max(0, Number(unseenRepliesQuery.data?.count) || 0) : 0;
+  const urgentCorrespondence = isLawyer ? Math.max(0, Number(urgentQuery.data?.count) || 0) : 0;
+  // بطاقة التذكيرات في اللوحة: الأسبوع الحالي فقط (من الأحد إلى السبت) —
+  // ملف/استئناف بتواريخها، والشخصي بتكراراته غير المنجزة (الكل في `/calendar`).
+  const weekRange = useMemo(() => currentWeekRange(), []);
+  const inWeekFileReminders = useMemo(() => {
+    if (!isLawyer) return { reminders: [] as ReminderDto[], appealReminders: [] as AppealReminderDto[] };
+    const inWeek = (dueDate: string) => {
+      const key = dayKeyOf(dueDate);
+      return key !== null && key >= weekRange.fromKey && key <= weekRange.toKey;
+    };
+    return {
+      reminders: reminders.filter((r) => inWeek(r.dueDate)),
+      appealReminders: appealReminders.filter((r) => inWeek(r.dueDate)),
+    };
+  }, [isLawyer, reminders, appealReminders, weekRange]);
+  const inWeekPersonalCount = useMemo(() => {
+    if (!isLawyer) return 0;
+    return personalReminders.reduce(
+      (n, p) => n + expandPersonalReminder(p, weekRange.fromDate, weekRange.toDate).length,
+      0,
+    );
+  }, [isLawyer, personalReminders, weekRange]);
+  const totalReminderCount = inWeekFileReminders.reminders.length + inWeekFileReminders.appealReminders.length + inWeekPersonalCount;
+  // جرس التقويم: تذكير اليوم أو متأخر فقط (المعيار المعتمد) — مشتق محليًا من دمج
+  // التذكيرات الثلاثة (ملف + استئناف + شخصي بتكراراته غير المنجزة).
+  const calendarAlerts = useMemo(() => {
+    if (!isLawyer) return 0;
+    const today = new Date();
+    const fileAlerts = [...reminders, ...appealReminders].filter((r) => isDueTodayOrOverdue(r.dueDate)).length;
+    const personalAlerts = personalReminders.filter((p) => hasPendingOccurrenceOnOrBefore(p, today)).length;
+    return fileAlerts + personalAlerts;
+  }, [isLawyer, reminders, appealReminders, personalReminders]);
 
-  const cancelReminder = async (r: ReminderDto) => {
-    const key = String(r.actionId);
-    setCancellingKey(key);
-    setActionError('');
-    try {
-      await api.delete(`/documents/${r.documentId}/actions/${r.actionId}/reminder`);
-      remindersQuery.setData((prev) => (prev ?? []).filter((x) => x.actionId !== r.actionId));
-    } catch (err) {
-      setActionError(getApiErrorMessage(err));
-    } finally {
-      setCancellingKey(null);
-    }
-  };
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const dayOccurrences = useMemo(() => {
+    if (!isLawyer || !selectedDay) return [];
+    const day = parseDayKey(selectedDay);
+    if (!day) return [];
+    return groupRemindersByDay([...reminders, ...appealReminders], personalReminders, day, day).get(selectedDay) ?? [];
+  }, [isLawyer, selectedDay, reminders, appealReminders, personalReminders]);
 
-  const cancelAppealReminder = async (r: AppealReminderDto) => {
-    const key = `appeal-${r.actionId}`;
-    setCancellingKey(key);
-    setActionError('');
-    try {
-      await api.delete(`/appeals/${r.appealId}/actions/${r.actionId}/reminder`);
-      appealRemindersQuery.setData((prev) => (prev ?? []).filter((x) => x.actionId !== r.actionId));
-    } catch (err) {
-      setActionError(getApiErrorMessage(err));
-    } finally {
-      setCancellingKey(null);
-    }
+  const refreshReminders = () => {
+    remindersQuery.refetch();
+    appealRemindersQuery.refetch();
+    personalQuery.refetch();
   };
 
   const markAlertRead = async (a: HeadAlertDto) => {
@@ -253,24 +315,62 @@ export default function Dashboard() {
 
   return (
     <div className="max-w-7xl mx-auto">
-      <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-6">لوحة التحكم</h2>
+      {isLawyer ? (
+        <>
+          <GreetingHeader fullName={user?.fullName} />
+          <div className="mt-4">
+            <LawyerIconRow
+              counts={{ unseenReplies, urgentCorrespondence, calendarAlerts }}
+            />
+          </div>
 
-      <ManagerStatsSection
-        period={period}
-        onPeriodChange={setPeriod}
-        availablePeriods={available}
-        selection={selection}
-        onSelectionChange={setSelection}
-        branches={branches}
-        branchId={user?.branchId ?? null}
-        onBranchChange={() => {}}
-        showBranchSelect={false}
-        showLawyerTable={!isLawyer}
-        stats={managerStats}
-        lawyers={lawyerStats}
-        error={statsQuery.error ?? ''}
-        appealsStats={isLawyer ? (managerStats?.appeals ?? null) : null}
-      />
+          <section aria-label="التقويم" id="lawyer-calendar" className="scroll-mt-4 mt-8">
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="w-2 h-2 rounded-full bg-violet-500" aria-hidden="true" />
+                <h3 className="font-bold text-gray-900">التقويم</h3>
+              </div>
+              <LawyerCalendar
+                reminders={[...reminders, ...appealReminders]}
+                personal={personalReminders}
+                weekStartsOn="sunday"
+                selectedDay={selectedDay}
+                onSelectDay={setSelectedDay}
+              />
+            </div>
+          </section>
+
+          {selectedDay ? (
+            <DayRemindersModal
+              dayKey={selectedDay}
+              occurrences={dayOccurrences}
+              onClose={() => setSelectedDay(null)}
+              onChanged={refreshReminders}
+            />
+          ) : null}
+        </>
+      ) : (
+        <>
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-6">لوحة التحكم</h2>
+
+          <ManagerStatsSection
+            period={period}
+            onPeriodChange={setPeriod}
+            availablePeriods={available}
+            selection={selection}
+            onSelectionChange={setSelection}
+            branches={branches}
+            branchId={user?.branchId ?? null}
+            onBranchChange={() => {}}
+            showBranchSelect={false}
+            showLawyerTable={!isLawyer}
+            stats={managerStats}
+            lawyers={lawyerStats}
+            error={statsQuery.error ?? ''}
+            appealsStats={isLawyer ? (managerStats?.appeals ?? null) : null}
+          />
+        </>
+      )}
 
       {isLawyer ? (
         <>
@@ -279,11 +379,11 @@ export default function Dashboard() {
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-amber-500" aria-hidden="true" />
                 <h3 className="font-bold text-gray-900">التذكيرات</h3>
-                <span className="text-xs bg-emerald-100 text-emerald-800 rounded-full px-2 py-0.5 font-medium">
-                  {reminders.length + appealReminders.length}
+                <span className="text-xs bg-emerald-100 text-emerald-800 rounded-full px-2 py-0.5 font-medium tabular-nums">
+                  {totalReminderCount}
                 </span>
               </div>
-              <span className="text-xs text-gray-400">الأقرب أولاً</span>
+              <span className="text-xs text-gray-400">الأسبوع الحالي</span>
             </div>
 
             {actionError || remindersQuery.error || appealRemindersQuery.error ? (
@@ -292,18 +392,34 @@ export default function Dashboard() {
               </div>
             ) : null}
 
-            {reminders.length === 0 && appealReminders.length === 0 ? (
+            {totalReminderCount === 0 ? (
               <div className="p-10 text-center">
-                <p className="text-gray-400 text-sm">لا توجد تذكيرات حالياً</p>
+                <p className="text-gray-400 text-sm">لا توجد تذكيرات هذا الأسبوع</p>
               </div>
             ) : (
-              <ReminderList
-                reminders={reminders}
-                appealReminders={appealReminders}
-                onCancel={cancelReminder}
-                onCancelAppeal={cancelAppealReminder}
-                cancellingKey={cancellingKey}
-              />
+              <>
+                {inWeekFileReminders.reminders.length + inWeekFileReminders.appealReminders.length > 0 ? (
+                  <ReminderList
+                    reminders={inWeekFileReminders.reminders}
+                    appealReminders={inWeekFileReminders.appealReminders}
+                    onCancel={cancelReminder}
+                    onCancelAppeal={cancelAppealReminder}
+                    cancellingKey={cancellingKey}
+                  />
+                ) : null}
+                {inWeekPersonalCount > 0 ? (
+                  <Link
+                    to="/calendar"
+                    className={`block px-4 sm:px-5 py-3 text-sm text-emerald-800 hover:bg-emerald-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-600 min-h-11 ${
+                      inWeekFileReminders.reminders.length + inWeekFileReminders.appealReminders.length > 0
+                        ? 'border-t border-gray-100'
+                        : ''
+                    }`}
+                  >
+                    تذكيرات شخصية هذا الأسبوع ({inWeekPersonalCount}) — عرض في التقويم ←
+                  </Link>
+                ) : null}
+              </>
             )}
           </div>
 

@@ -155,6 +155,10 @@ npm test
   dotnet ef database update --context DocGeneratorPostgresDbContext   # قاعدة PostgreSQL في الإنتاج
   ```
 - تتصل الأوامر بسلسلة الاتصال الموجودة في `appsettings.json` لبيئة الخادم (مع `Database:UsePostgres = true` لقاعدة الإنتاج). إن لم يكن `dotnet-ef` مثبتًا عالميًا: `dotnet tool install --global dotnet-ef`.
+- **هجرات معلّقة من دفعة `l-main-page` (2026-09-28) — طبّقها في النشر القادم ثم احذف هذا البند:**
+  - SQLite (`Persistence\Migrations\`): `20260928082242_AddPersonalReminders` (جدول `PersonalReminders`)، `20260928085246_AddAppSuggestions` (جدول `AppSuggestions`).
+  - PostgreSQL (`Persistence\MigrationsPostgres\`): `20260928082313_AddPersonalRemindersPg`، `20260928085307_AddAppSuggestionsPg`.
+  - الأمران أعلاه يطبّقانها معًا؛ إهمالها = فشل تشغيل فعلي (`no such column`) رغم نجاح كل الاختبارات محليًا.
 - **تذكير للجلسات القادمة**: بعد كل تعديل يضيف هجرات جديدة، يجب ذكرها بالاسم وعددها في تقرير الإنجاز وتنبيه النشر — انظر `AGENTS.md`.
 
 ### فحص Postgres قبل النشر (إلزامي عند تغيّر المخطط)

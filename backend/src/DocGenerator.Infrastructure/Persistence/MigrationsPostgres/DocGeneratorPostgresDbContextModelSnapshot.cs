@@ -22,6 +22,37 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.AppSuggestion", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<int>("SenderId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("SenderId");
+
+                    b.ToTable("AppSuggestions", (string)null);
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.AppealAction", b =>
                 {
                     b.Property<int>("Id")
@@ -2175,6 +2206,63 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.ToTable("ParentEditSuggestions", (string)null);
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.PersonalReminder", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Color")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("CompletedOccurrenceKeys")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("DueDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("LawyerId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("Recurrence")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("RecurrenceEnd")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsArchived");
+
+                    b.HasIndex("LawyerId");
+
+                    b.HasIndex("LawyerId", "DueDate");
+
+                    b.ToTable("PersonalReminders", (string)null);
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.PublicEntity", b =>
                 {
                     b.Property<int>("Id")
@@ -2559,6 +2647,17 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .IsUnique();
 
                     b.ToTable("Users", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.AppSuggestion", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.User", "Sender")
+                        .WithMany()
+                        .HasForeignKey("SenderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Sender");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.AppealAction", b =>
@@ -3089,6 +3188,17 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Navigation("Group");
 
                     b.Navigation("ReviewedBy");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.PersonalReminder", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.User", "Lawyer")
+                        .WithMany()
+                        .HasForeignKey("LawyerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Lawyer");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.PublicEntity", b =>

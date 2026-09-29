@@ -33,6 +33,8 @@ public static class DependencyInjection
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IBranchRepository, BranchRepository>();
         services.AddScoped<IHeadAlertRepository, HeadAlertRepository>();
+        services.AddScoped<IPersonalReminderRepository, PersonalReminderRepository>();
+        services.AddScoped<IAppSuggestionRepository, AppSuggestionRepository>();
         services.AddScoped<IPublicEntityRepository, PublicEntityRepository>();
         services.AddScoped<IPortalRepository, PortalRepository>();
         services.AddScoped<IReviewLetterRepository, ReviewLetterRepository>();

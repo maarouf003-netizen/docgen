@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import Dashboard from './Dashboard';
@@ -10,11 +10,16 @@ import type {
   ManagerLawyerStatDto,
   ManagerStatsDto,
   MonthlyStatDto,
+  PersonalReminderDto,
   ReminderDto,
 } from '../types';
 
 vi.mock('react-router-dom', () => ({
-  Link: ({ children, to }: { children: ReactNode; to: string }) => <a href={to}>{children}</a>,
+  Link: ({ children, to, ...rest }: { children: ReactNode; to: string } & Record<string, unknown>) => (
+    <a href={to} {...rest}>
+      {children}
+    </a>
+  ),
 }));
 
 const useAuthMock = vi.hoisted(() => vi.fn());
@@ -28,6 +33,20 @@ vi.mock('../api/client', () => ({
 }));
 
 import { api } from '../api/client';
+import { currentWeekRange } from '../components/dashboard/personalReminders';
+import { dueLabel } from '../components/dashboard/dashboardFormat';
+
+/**
+ * تاريخ `yyyy-MM-dd` (بتوقيت الظهيرة المحلي — ثابت اليوم في كل المناطق)
+ * بعد `offset` أيام من بداية الأسبوع الحالي، مثبّتًا داخل الأسبوع.
+ */
+function inWeekIso(offset: number): string {
+  const { fromDate } = currentWeekRange();
+  const d = new Date(fromDate);
+  d.setDate(d.getDate() + Math.min(Math.max(offset, 0), 6));
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T12:00:00`;
+}
 
 const STATS: DashboardStatsDto = {
   totalDocuments: 10,
@@ -172,25 +191,25 @@ function mockApi(overrides?: {
   alerts?: HeadAlertDto[];
   unreadCount?: number;
   lawyers?: LawyerListItem[];
+  personal?: PersonalReminderDto[];
 }) {
   const reminders = overrides?.reminders ?? [];
   const monthly = overrides?.monthly ?? [];
   const alerts = overrides?.alerts ?? [];
   const unreadCount = overrides?.unreadCount ?? 0;
   const lawyers = overrides?.lawyers ?? [];
+  const personal = overrides?.personal ?? [];
   (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation(
     (url: string, config?: { params?: Record<string, unknown> }) => {
       if (url === '/dashboard') return Promise.resolve({ data: STATS });
       if (url === '/reminders') return Promise.resolve({ data: reminders });
+      if (url === '/appeals/reminders') return Promise.resolve({ data: [] });
+      if (url === '/personal-reminders') return Promise.resolve({ data: personal });
       if (url === '/alerts') return Promise.resolve({ data: alerts });
       if (url === '/alerts/unread-count') return Promise.resolve({ data: { count: unreadCount } });
       if (url === '/users/lawyers') return Promise.resolve({ data: lawyers });
       if (url === '/monthly-stats') return Promise.resolve({ data: monthly });
       if (url === '/stats/periods') return Promise.resolve({ data: PERIODS });
-      if (url === '/stats/me') {
-        const period = typeof config?.params?.period === 'string' ? config.params.period : 'yearly';
-        return Promise.resolve({ data: managerStatsFor(period) });
-      }
       if (url === '/branches') {
         return Promise.resolve({
           data: [
@@ -211,27 +230,43 @@ function mockApi(overrides?: {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
   useAuthMock.mockReturnValue({
     user: { id: 1, username: 'lawyer1', fullName: 'محامي', role: 'lawyer', branchId: 1 },
   });
 });
 
 describe('Dashboard للمحامي', () => {
-  it('يعرض بطاقات إحصاءاته الشخصية ويجلب التذكيرات والتنبيهات', async () => {
+  it('يعرض الترحيب وصف الأيقونات دون إحصائيات (لها صفحة `/stats` مستقلة)', async () => {
     mockApi();
 
     render(<Dashboard />);
 
-    expect(await screen.findByText('إجمالي الملفات')).toBeInTheDocument();
-    expect(screen.getByText('متداول')).toBeInTheDocument();
-    expect(screen.getByText('منفذ بالتسوية')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'شهري' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'ربعي' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'سنوي' })).toBeInTheDocument();
-    expect(await screen.findAllByText('السنة 2026')).not.toHaveLength(0);
+    // الترحيب بالاسم الأول (صيغة الزيارة الأولى بعد مسح التخزين).
+    expect(await screen.findByRole('heading', { name: 'مرحبًا، محامي' })).toBeInTheDocument();
 
-    expect(api.get).toHaveBeenCalledWith('/stats/me', expect.any(Object));
-    expect(api.get).toHaveBeenCalledWith('/stats/periods', expect.any(Object));
+    // صف الأيقونات الخمس بروابط الصفحات.
+    const quickNav = screen.getByRole('navigation', { name: 'أقسام لوحة المحامي' });
+    expect(within(quickNav).getByRole('link', { name: 'الإحصائيات' })).toHaveAttribute('href', '/stats');
+    expect(within(quickNav).getByRole('link', { name: 'المطالعات' })).toHaveAttribute('href', '/reviews');
+    expect(within(quickNav).getByRole('link', { name: 'المراسلات' })).toHaveAttribute('href', '/correspondence');
+    expect(within(quickNav).getByRole('link', { name: 'التقويم' })).toHaveAttribute('href', '/calendar');
+    expect(within(quickNav).getByRole('link', { name: 'الحساب الشخصي' })).toHaveAttribute('href', '/account');
+
+    // لا إحصائيات في اللوحة إطلاقًا.
+    expect(screen.queryByRole('heading', { name: /متداولة ضمن/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'إجمالي الملفات' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'شهري' })).not.toBeInTheDocument();
+
+    // قسم التقويم المصغر ما زال في اللوحة.
+    expect(screen.getByRole('heading', { name: 'التقويم' })).toBeInTheDocument();
+
+    expect(api.get).not.toHaveBeenCalledWith('/stats/me', expect.any(Object));
+    expect(api.get).not.toHaveBeenCalledWith('/stats/periods', expect.any(Object));
+    expect(api.get).toHaveBeenCalledWith('/appeals/reminders', expect.any(Object));
+    expect(api.get).toHaveBeenCalledWith('/personal-reminders', expect.any(Object));
+    expect(api.get).toHaveBeenCalledWith('/review-letters/unseen-replies-count', expect.any(Object));
+    expect(api.get).toHaveBeenCalledWith('/correspondence/urgent-unseen-count', expect.any(Object));
     expect(api.get).toHaveBeenCalledWith('/reminders', expect.any(Object));
     expect(api.get).toHaveBeenCalledWith('/alerts', expect.any(Object));
     expect(api.get).toHaveBeenCalledWith('/alerts/unread-count', expect.any(Object));
@@ -240,11 +275,10 @@ describe('Dashboard للمحامي', () => {
     expect(api.get).not.toHaveBeenCalledWith('/monthly-stats');
     expect(api.get).not.toHaveBeenCalledWith('/stats/manager');
     expect(api.get).not.toHaveBeenCalledWith('/branches', expect.any(Object));
-    expect(screen.queryByText('المستندات شهرياً')).not.toBeInTheDocument();
     expect(screen.queryByText('إحصائيات محامي الفرع')).not.toBeInTheDocument();
   });
 
-  it('يعرض التذكيرات بالاسم الثلاثي مع النص والشارة ورابط صفحة الملف', async () => {
+  it('يُظهر جرس التقويم عند تذكير اليوم أو متأخر فقط', async () => {
     mockApi({
       reminders: [
         {
@@ -256,7 +290,104 @@ describe('Dashboard للمحامي', () => {
           borrowerFamily: 'حسن',
           actionText: 'مراجعة دائرة التنفيذ',
           reminderColor: 'أحمر',
-          dueDate: '2030-01-01',
+          dueDate: '2000-01-01',
+          dueDateSuspect: false,
+        },
+      ],
+    });
+
+    render(<Dashboard />);
+
+    expect(await screen.findByRole('link', { name: 'التقويم — 1 تذكيرات اليوم أو متأخرة' })).toBeInTheDocument();
+  });
+
+  it('يضمّن الجرس التذكيرات الشخصية المستحقة ويتجاهل المنجزة', async () => {
+    mockApi({
+      personal: [
+        {
+          id: 1,
+          title: 'متأخر',
+          notes: null,
+          dueDate: '2000-01-01',
+          color: 'أحمر',
+          recurrence: 'مرة واحدة',
+          recurrenceEnd: null,
+          isArchived: false,
+          completedOccurrenceKeys: [],
+          createdAt: '2000-01-01',
+        },
+        {
+          id: 2,
+          title: 'منجز',
+          notes: null,
+          dueDate: '2000-01-01',
+          color: 'أحمر',
+          recurrence: 'مرة واحدة',
+          recurrenceEnd: null,
+          isArchived: false,
+          completedOccurrenceKeys: ['2000-01-01'],
+          createdAt: '2000-01-01',
+        },
+      ],
+    });
+
+    render(<Dashboard />);
+
+    expect(await screen.findByRole('link', { name: 'التقويم — 1 تذكيرات اليوم أو متأخرة' })).toBeInTheDocument();
+  });
+
+  it('يضمّن عدّاد بطاقة التذكيرات الشخصي مع سطر إحالة للتقويم', async () => {
+    mockApi({
+      personal: [
+        {
+          id: 1,
+          title: 'شخصي أول',
+          notes: null,
+          dueDate: inWeekIso(1),
+          color: 'زمردي',
+          recurrence: 'مرة واحدة',
+          recurrenceEnd: null,
+          isArchived: false,
+          completedOccurrenceKeys: [],
+          createdAt: '2026-08-01',
+        },
+        {
+          id: 2,
+          title: 'شخصي ثانٍ',
+          notes: null,
+          dueDate: inWeekIso(2),
+          color: 'أحمر',
+          recurrence: 'مرة واحدة',
+          recurrenceEnd: null,
+          isArchived: false,
+          completedOccurrenceKeys: [],
+          createdAt: '2026-08-01',
+        },
+      ],
+    });
+
+    render(<Dashboard />);
+
+    await waitFor(() => expect(screen.queryByText('لا توجد تذكيرات هذا الأسبوع')).not.toBeInTheDocument());
+    const referral = screen.getByRole('link', { name: 'تذكيرات شخصية هذا الأسبوع (2) — عرض في التقويم ←' });
+    expect(referral).toHaveAttribute('href', '/calendar');
+  });
+
+  it('يعرض تذكيرات الأسبوع بالاسم الثلاثي مع النص والشارة ورابط صفحة الملف', async () => {
+    const due1 = inWeekIso(2);
+    const due2 = inWeekIso(3);
+    mockApi({
+      reminders: [
+        {
+          actionId: 1,
+          documentId: 5,
+          documentType: 'متداول - سامر حسن',
+          borrowerName: 'سامر',
+          borrowerFather: 'محمد',
+          borrowerFamily: 'حسن',
+          actionText: 'مراجعة دائرة التنفيذ',
+          reminderColor: 'أحمر',
+          dueDate: due1,
           dueDateSuspect: false,
         },
         {
@@ -268,7 +399,7 @@ describe('Dashboard للمحامي', () => {
           borrowerFamily: 'العلي',
           actionText: 'تقديم كتاب براءة',
           reminderColor: 'بنفسجي',
-          dueDate: '2030-02-01',
+          dueDate: due2,
           dueDateSuspect: false,
         },
       ],
@@ -284,9 +415,34 @@ describe('Dashboard للمحامي', () => {
     expect(screen.getByText('أحمر')).toBeInTheDocument();
     expect(screen.getByText('بنفسجي')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /أحمد خالد العلي/ })).toHaveAttribute('href', '/documents/8');
-    expect(screen.getAllByText(/^بعد \d+ يوم$/).length).toBeGreaterThanOrEqual(2);
-    expect(screen.getAllByText('2').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText(dueLabel(due1).text)).toBeInTheDocument();
+    expect(screen.getByText(dueLabel(due2).text)).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'إلغاء التذكير' }).length).toBe(2);
+  });
+
+  it('يخفي تذكيرات خارج الأسبوع الحالي من بطاقة اللوحة', async () => {
+    mockApi({
+      reminders: [
+        {
+          actionId: 1,
+          documentId: 5,
+          documentType: 'متداول - سامر حسن',
+          borrowerName: 'سامر',
+          borrowerFather: 'محمد',
+          borrowerFamily: 'حسن',
+          actionText: 'مراجعة بعيدة',
+          reminderColor: 'أحمر',
+          dueDate: '2030-01-01T12:00:00',
+          dueDateSuspect: false,
+        },
+      ],
+    });
+
+    render(<Dashboard />);
+
+    await waitFor(() => expect(screen.queryByText('لا توجد تذكيرات هذا الأسبوع')).not.toBeNull());
+    expect(screen.getByText('لا توجد تذكيرات هذا الأسبوع')).toBeInTheDocument();
+    expect(screen.queryByText('سامر محمد حسن')).not.toBeInTheDocument();
   });
 
   it('يلغي التذكير ويستدعي النقطة المناسبة ويزيل العنصر من القائمة', async () => {
@@ -302,7 +458,7 @@ describe('Dashboard للمحامي', () => {
           borrowerFamily: 'حسن',
           actionText: 'مراجعة دائرة التنفيذ',
           reminderColor: 'أحمر',
-          dueDate: '2030-01-01',
+          dueDate: inWeekIso(1),
           dueDateSuspect: false,
         },
       ],
@@ -315,7 +471,7 @@ describe('Dashboard للمحامي', () => {
     await user.click(button);
 
     expect(api.delete).toHaveBeenCalledWith('/documents/5/actions/7/reminder');
-    expect(await screen.findByText('لا توجد تذكيرات حالياً')).toBeInTheDocument();
+    expect(await screen.findByText('لا توجد تذكيرات هذا الأسبوع')).toBeInTheDocument();
   });
 
   it('يعرض حالة فارغة للتنبيهات ولا يظهر شارة غير المقروء', async () => {
@@ -323,7 +479,7 @@ describe('Dashboard للمحامي', () => {
 
     render(<Dashboard />);
 
-    expect(await screen.findByText('لا توجد تذكيرات حالياً')).toBeInTheDocument();
+    expect(await screen.findByText('لا توجد تذكيرات هذا الأسبوع')).toBeInTheDocument();
     expect(screen.getByText('تنبيهات رئيس القسم')).toBeInTheDocument();
     expect(screen.getByText('لا توجد تنبيهات حالياً')).toBeInTheDocument();
     expect(screen.queryByText(/غير مقروء/)).not.toBeInTheDocument();
