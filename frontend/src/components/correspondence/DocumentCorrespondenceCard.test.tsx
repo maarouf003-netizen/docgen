@@ -124,6 +124,21 @@ describe('DocumentCorrespondenceCard', () => {
     });
   });
 
+  it('يستدعي onAccessDenied مع الإخفاء عند تزويدها (403) — لصفحات المراسلات المستقلة', async () => {
+    getMock().mockRejectedValue({ response: { status: 403 } });
+    const onAccessDenied = vi.fn();
+    const { container } = render(
+      <MemoryRouter>
+        <DocumentCorrespondenceCard documentId={7} canCreate={false} onAccessDenied={onAccessDenied} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(onAccessDenied).toHaveBeenCalledTimes(1);
+    });
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it('يعرض الشارتين معًا على الجوال بلا فقد أيٍّ منهما', async () => {
     // الشارتان متجاورتان في صفّ واحد `flex-wrap`: على 375px ينلّف الصفّ ولا
     // يُقصّ. التحقق هنا من مسار الجوال ومن بقاء الشارتين قابلتين للقراءة،

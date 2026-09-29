@@ -65,6 +65,26 @@ export function formatFileNumber(doc: DocumentResponse): string {
   return parts.filter(Boolean).join(' ');
 }
 
+/**
+ * قيمة بطاقة «رقم الملف والسنة» في شريط هوية الترويسة (DocumentView/PortalFileDetail):
+ * الرقم والسنة مدمجان (`66 / 2026`)؛ غياب أحدهما يعرض الآخر وحده؛ غيابهما معًا
+ * (أو ملف تحت الرفع بلا رقم معتمد) → `—`.
+ * قاعدة الزوج الواحد (مطابقة الخلفية `EffectiveFileIdentity`): الرقم والسنة
+ * يُقرآن معًا من مصدر واحد — الزوج المعروض (`display*`) متى حضر أحد نصفيه،
+ * وإلا الزوج الخام (`file*`). فلا يُخلط رقمُ سجلٍ مع سنةِ سجلٍ آخر، والفراغ
+ * النصي يُعامَل غيابًا عند اختيار المصدر لا بعده فقط.
+ */
+export function identityFileNumber(doc: DocumentResponse): string {
+  if (doc.isDraft) return '—';
+  const displayNumber = (doc.displayFileNumber ?? '').trim();
+  const displayYear = (doc.displayFileYear ?? '').trim();
+  const hasDisplay = displayNumber !== '' || displayYear !== '';
+  const number = hasDisplay ? displayNumber : (doc.fileNumber ?? '').trim();
+  const year = hasDisplay ? displayYear : (doc.fileYear ?? '').trim();
+  if (number && year) return `${number} / ${year}`;
+  return number || year || '—';
+}
+
 export function fullName(person: PersonFields): string {
   return tripleName(person.name, person.father, person.family);
 }

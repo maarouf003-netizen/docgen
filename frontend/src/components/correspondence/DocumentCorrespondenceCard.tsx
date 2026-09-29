@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../../api/client';
 import { formatDate } from '../../utils/dates';
@@ -11,18 +11,22 @@ import { correspondenceTitle } from './correspondenceDisplay';
 /**
  * بطاقة «المراسلات» في تفاصيل الملف: مراسلات هذا الملف حصرًا مع أهميتها.
  * للمندوب تُغذَّى من مسار البوابة (ما هو طرف فيه فقط)، ولغيره من المسار الرئيسي.
- * تخفى البطاقة كليًا عن من لا يملك صلاحية الاطلاع (403/404).
+ * تخفى البطاقة كليًا عن من لا يملك صلاحية الاطلاع (403/404) — وإذا زُوّدت
+ * بـ `onAccessDenied` استُدعي مع الإخفاء (لصفحات المراسلات المستقلة التي تعرض
+ * تنبيهًا صريحًا مع رابط عودة بدل الفراغ).
  */
 export default function DocumentCorrespondenceCard({
   documentId,
   documentTitle,
   canCreate,
   portal = false,
+  onAccessDenied,
 }: {
   documentId: number;
   documentTitle?: string;
   canCreate: boolean;
   portal?: boolean;
+  onAccessDenied?: () => void;
 }) {
   const detailBase = portal ? '/portal/correspondence' : '/correspondence';
   const [items, setItems] = useState<CorrespondenceListItemDto[]>([]);
@@ -30,6 +34,11 @@ export default function DocumentCorrespondenceCard({
   const [hidden, setHidden] = useState(false);
   const [error, setError] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
+  // أحدث `onAccessDenied` دون إعادة بناء `load` عند تغيّر مرجع الدالة.
+  const onAccessDeniedRef = useRef(onAccessDenied);
+  useEffect(() => {
+    onAccessDeniedRef.current = onAccessDenied;
+  }, [onAccessDenied]);
 
   const endpoint = portal ? `/portal/files/${documentId}/correspondence` : `/correspondence/document/${documentId}`;
 
@@ -44,7 +53,10 @@ export default function DocumentCorrespondenceCard({
         .catch((err) => {
           const status = err?.response?.status;
           if (status === 403 || status === 404) {
+            // تُخفى البطاقة دائمًا؛ ومع `onAccessDenied` يُبلَّغ الأب أيضًا
+            // ليعرض تنبيهًا صريحًا مع رابط عودة (صفحات المراسلات المستقلة).
             setHidden(true);
+            onAccessDeniedRef.current?.();
             return;
           }
           if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return;

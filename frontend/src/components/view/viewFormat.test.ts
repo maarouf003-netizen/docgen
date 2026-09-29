@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildStatusSummary, occurrenceLine } from './viewFormat';
+import { buildStatusSummary, identityFileNumber, occurrenceLine } from './viewFormat';
 import { formatDate } from '../../utils/dates';
 import type { DocumentOccurrenceDto, DocumentResponse } from '../../types';
 
@@ -165,5 +165,58 @@ describe('occurrenceLine (referred-to-start و revert — B3/B4)', () => {
         }),
       ),
     ).toBe('تراجع عن الحالة بموجب كتاب السير بالملف رقم 8 بتاريخ 1/8/2026');
+  });
+});
+
+describe('identityFileNumber (بطاقة «رقم الملف والسنة» المدمجة)', () => {
+  it('يدمج الرقم والسنة بصيغة «66 / 2026»', () => {
+    expect(identityFileNumber(targetDoc({ fileNumber: '66', fileYear: '2026' }))).toBe('66 / 2026');
+  });
+
+  it('يفضّل displayFileNumber/displayFileYear على الخام', () => {
+    expect(
+      identityFileNumber(
+        targetDoc({
+          displayFileNumber: '7',
+          fileNumber: '66',
+          displayFileYear: '2025',
+          fileYear: '2026',
+        }),
+      ),
+    ).toBe('7 / 2025');
+  });
+
+  it('يعرض الرقم وحده عند غياب السنة', () => {
+    expect(identityFileNumber(targetDoc({ fileNumber: '66', fileYear: '' }))).toBe('66');
+  });
+
+  it('يعرض السنة وحدها عند غياب الرقم', () => {
+    expect(identityFileNumber(targetDoc({ fileNumber: '  ', fileYear: '2026' }))).toBe('2026');
+  });
+
+  it('يعرض «—» عند غياب الرقم والسنة معًا', () => {
+    expect(identityFileNumber(targetDoc({ fileNumber: '', fileYear: '' }))).toBe('—');
+  });
+
+  it('يعرض «—» للملف تحت الرفع حتى مع وجود رقم خام', () => {
+    expect(identityFileNumber(targetDoc({ isDraft: true, fileNumber: '66', fileYear: '2026' }))).toBe(
+      '—',
+    );
+  });
+
+  it('لا يستعير الرقم الخام عند فراغ رقم العرض (مصدر واحد للزوجين)', () => {
+    expect(
+      identityFileNumber(
+        targetDoc({ displayFileNumber: '  ', fileNumber: '66', displayFileYear: '2026' }),
+      ),
+    ).toBe('2026');
+  });
+
+  it('لا يخلط رقم العرض مع سنة القيد الأصلية عند غياب سنة العرض', () => {
+    expect(
+      identityFileNumber(
+        targetDoc({ displayFileNumber: '1500', fileNumber: '99', fileYear: '2024' }),
+      ),
+    ).toBe('1500');
   });
 });

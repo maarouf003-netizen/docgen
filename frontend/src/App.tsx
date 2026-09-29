@@ -20,6 +20,7 @@ const ReferredToStartDocuments = lazy(() => import('./pages/ReferredToStartDocum
 const Rotation = lazy(() => import('./pages/Rotation'));
 const DocumentForm = lazy(() => import('./pages/DocumentForm'));
 const DocumentView = lazy(() => import('./pages/DocumentView'));
+const FileCorrespondence = lazy(() => import('./pages/FileCorrespondence'));
 const UsersActivity = lazy(() => import('./pages/UsersActivity'));
 const BranchLawyers = lazy(() => import('./pages/BranchLawyers'));
 const DelegationRequests = lazy(() => import('./pages/DelegationRequests'));
@@ -31,6 +32,7 @@ const EntityDelegates = lazy(() => import('./pages/EntityDelegates'));
 const PortalFiles = lazy(() => import('./pages/PortalFiles'));
 const PortalStats = lazy(() => import('./pages/PortalStats'));
 const PortalFileDetail = lazy(() => import('./pages/PortalFileDetail'));
+const PortalFileCorrespondence = lazy(() => import('./pages/PortalFileCorrespondence'));
 const AuditLogs = lazy(() => import('./pages/AuditLogs'));
 const ChangePassword = lazy(() => import('./pages/ChangePassword'));
 const ReviewsList = lazy(() => import('./pages/ReviewsList'));
@@ -227,6 +229,14 @@ export default function App() {
               }
             />
             <Route
+              path="/documents/:id/correspondence"
+              element={
+                <RequireRole allowed={allowInternal}>
+                  <FileCorrespondence />
+                </RequireRole>
+              }
+            />
+            <Route
               path="/branch-lawyers"
               element={
                 <RequireRole allowed={(role) => role === 'head' || role === 'admin'}>
@@ -314,6 +324,14 @@ export default function App() {
               element={
                 <RequireRole allowed={(role) => role === 'entitymanager'}>
                   <PortalFileDetail />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/portal/files/:id/correspondence"
+              element={
+                <RequireRole allowed={(role) => role === 'entitymanager'}>
+                  <PortalFileCorrespondence />
                 </RequireRole>
               }
             />

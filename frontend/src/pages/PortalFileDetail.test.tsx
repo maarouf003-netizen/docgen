@@ -170,9 +170,10 @@ describe('PortalFileDetail المرآة القرائية', () => {
     expect(screen.getByText('5/9/2026')).toBeInTheDocument();
     expect(screen.getByText('· المحامي سامر')).toBeInTheDocument();
 
-    // شريط الهوية: رقم/سنة/دائرة.
-    expect(screen.getByText('99')).toBeInTheDocument();
-    expect(screen.getByText('2026')).toBeInTheDocument();
+    // شريط الهوية: «رقم الملف والسنة» مدمجان + نوع الملف + دائرة.
+    const facts = screen.getByText('رقم الملف والسنة').closest('dl') as HTMLElement;
+    expect(within(facts).getByText('99 / 2026')).toBeInTheDocument();
+    expect(within(facts).getByText('حقوق')).toBeInTheDocument();
 
     // النقاط الأربع كلها تُستدعى.
     expect(apiMock.get).toHaveBeenCalledWith('/portal/files/1', expect.anything());
@@ -436,5 +437,21 @@ describe('PortalFileDetail المرآة القرائية', () => {
 
     const dialog = await screen.findByRole('dialog', { name: 'تفاصيل الاستئناف رقم 5' });
     expect(within(dialog).getByText('المحامي المتابع')).toBeInTheDocument();
+  });
+
+  it('زر «مراسلات» رابط لصفحة المراسلات المستقلة ولا بطاقة مراسلات في الصفحة', async () => {
+    setEndpoints({ doc: portalDoc() });
+    renderPage();
+
+    await screen.findByText('أطراف الملف التنفيذي');
+    expect(screen.getByRole('link', { name: 'مراسلات' })).toHaveAttribute(
+      'href',
+      '/portal/files/1/correspondence',
+    );
+    expect(screen.queryByRole('heading', { name: 'المراسلات' })).not.toBeInTheDocument();
+    expect(apiMock.get).not.toHaveBeenCalledWith(
+      '/portal/files/1/correspondence',
+      expect.anything(),
+    );
   });
 });

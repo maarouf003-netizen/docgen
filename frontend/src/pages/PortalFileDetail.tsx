@@ -6,7 +6,7 @@ import { getDocumentBadge } from '../utils/documentStatus';
 import { isExecutedLike } from '../utils/documentDisplay';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
-import { executedTitle, fullName } from '../components/view/viewFormat';
+import { executedTitle, fullName, identityFileNumber } from '../components/view/viewFormat';
 import { SectionCard } from '../components/view/SectionCard';
 import { PartiesCard } from '../components/view/PartiesCard';
 import { FileDataCard } from '../components/view/FileDataCard';
@@ -23,7 +23,6 @@ import { SourceFileInfoCard } from '../components/delegation/SourceFileInfoCard'
 import { DelegationStatusCard } from '../components/delegation/DelegationStatusCard';
 import AppealInfoModal from '../components/appeal/AppealInfoModal';
 import BaseNumbersModal from '../components/BaseNumbersModal';
-import DocumentCorrespondenceCard from '../components/correspondence/DocumentCorrespondenceCard';
 import { PortalExecutionActionsCard } from '../components/portal/PortalExecutionActionsCard';
 import type {
   AppealDto,
@@ -319,36 +318,27 @@ export default function PortalFileDetail() {
             <span className="min-w-0 truncate">{title}</span>
           </h2>
           <div className="flex gap-2 flex-wrap">
-            {/* زر «مراسلات» جانب العنوان: يتمرير إلى بطاقة مراسلات الملف (ما المندوب طرف فيه). */}
-            <a
-              href="#file-correspondence"
-              onClick={(e) => {
-                e.preventDefault();
-                const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-                document
-                  .getElementById('file-correspondence')
-                  ?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
-              }}
+            {/* زر «مراسلات»: انتقال لصفحة مراسلات الملف المستقلة (لا تمرير — البطاقة حُذفت). */}
+            <Link
+              to={`/portal/files/${id}/correspondence`}
               className="bg-sky-800 hover:bg-sky-700 text-white rounded-lg px-4 py-2 text-sm inline-flex items-center min-h-11 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-700"
             >
               مراسلات
-            </a>
+            </Link>
           </div>
         </div>
 
-        {/* شريط الهوية: بطاقات الملف الأساسية (رقم/سنة/دائرة) لقراءة فورية أثناء التمرير. */}
+        {/* شريط الهوية: بطاقات الملف الأساسية (رقم/سنة مدمجان + نوع + دائرة) لقراءة فورية أثناء التمرير. */}
         <dl className="mt-3 flex flex-wrap gap-2 text-sm">
           <div className="inline-flex items-baseline gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-1.5">
-            <dt className="text-xs text-emerald-800 font-medium">رقم الملف</dt>
-            <dd className="text-gray-800 font-semibold tabular-nums">
-              {doc.displayFileNumber ?? doc.fileNumber ?? '—'}
+            <dt className="text-xs text-emerald-800 font-medium">رقم الملف والسنة</dt>
+            <dd dir="ltr" className="text-gray-800 font-semibold tabular-nums isolate">
+              {identityFileNumber(doc)}
             </dd>
           </div>
           <div className="inline-flex items-baseline gap-1.5 rounded-lg bg-gray-50 border border-gray-200 px-3 py-1.5">
-            <dt className="text-xs text-gray-500 font-medium">السنة</dt>
-            <dd className="text-gray-800 font-semibold tabular-nums">
-              {doc.displayFileYear ?? doc.fileYear ?? '—'}
-            </dd>
+            <dt className="text-xs text-gray-500 font-medium">نوع الملف</dt>
+            <dd className="text-gray-800 font-semibold">{(doc.fileType ?? '').trim()}</dd>
           </div>
           <div className="inline-flex items-baseline gap-1.5 rounded-lg bg-gray-50 border border-gray-200 px-3 py-1.5">
             <dt className="text-xs text-gray-500 font-medium">الدائرة</dt>
@@ -400,18 +390,6 @@ export default function PortalFileDetail() {
           </div>
           <div className="mt-6 flex flex-col gap-5">{statusPanel}</div>
         </>
-      )}
-
-      {/* مراسلات الملف للمندوب: ما هو طرف فيه فقط (تسطير/رد/مشاهدة عبر مسارات البوابة). */}
-      {id !== undefined && (
-        <div className="mt-6 flex flex-col gap-5">
-          <DocumentCorrespondenceCard
-            documentId={Number(id)}
-            documentTitle={modalTitle}
-            canCreate={true}
-            portal={true}
-          />
-        </div>
       )}
 
       {partyModal && <PartyDetailsModal modal={partyModal} onClose={() => setPartyModal(null)} />}

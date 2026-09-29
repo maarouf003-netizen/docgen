@@ -157,6 +157,9 @@ function renderView() {
 beforeEach(() => {
   vi.clearAllMocks();
   sessionStorage.clear();
+  // إعادة ضبط مقاس الجوال حتميًا: أي اختبار يفعّل `stubMobile(true)` لا يسرّب
+  // حالته إلى الاختبارات اللاحقة (ترتيب الملف).
+  stubMobile(false);
   useAuthMock.mockReturnValue({ isHead: false, user: { role: 'lawyer', id: 7 } });
   (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: mockDoc });
 });
@@ -501,7 +504,10 @@ describe('DocumentView', () => {
 
     expect(await screen.findByText('بيانات الملف')).toBeInTheDocument();
     expect(screen.getByText('1500 سند مصارف لعام 2025')).toBeInTheDocument();
-    expect(screen.getByText('2025')).toBeInTheDocument();
+    // شريط الهوية المدمج: الرقم الفعّال والسنة الفعّالة في عقدة واحدة + بطاقة النوع.
+    const facts = screen.getByText('رقم الملف والسنة').closest('dl') as HTMLElement;
+    expect(within(facts).getByText('1500 / 2025')).toBeInTheDocument();
+    expect(within(facts).getByText('سند مصارف')).toBeInTheDocument();
   });
 
   it('يعرض شريط خطأ محصورًا عند فشل جلب الإنابات مع إعادة محاولة ناجحة', async () => {
@@ -883,8 +889,7 @@ describe('DocumentView', () => {
       .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({ data: [] })
-      // بطاقة المراسلات: GET إضافي عند التحميل (مراسلات الملف).
-      .mockResolvedValueOnce({ data: [] })
+      // بطاقة المراسلات حُذفت من الصفحة: لا طلب مراسلات بعد التحميل.
       .mockResolvedValueOnce({
         data: new Blob(['docx']),
         headers: { 'content-disposition': 'attachment; filename="أحمد_001.docx"' },
@@ -987,8 +992,7 @@ describe('DocumentView', () => {
       .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({ data: [] })
-      // بطاقة المراسلات: GET إضافي عند التحميل (مراسلات الملف).
-      .mockResolvedValueOnce({ data: [] })
+      // بطاقة المراسلات حُذفت من الصفحة: لا طلب مراسلات بعد التحميل.
       .mockResolvedValueOnce({
         data: new Blob(['docx']),
         headers: { 'content-disposition': 'attachment; filename="أحمد_003.docx"' },
@@ -1008,9 +1012,9 @@ describe('DocumentView', () => {
 
     await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(2));
     expect(await screen.findByText('✅ تم إنشاء 2 إخطار بنجاح')).toBeInTheDocument();
-    expect(apiGet).toHaveBeenNthCalledWith(6, '/documents/1/generate',
+    expect(apiGet).toHaveBeenNthCalledWith(5, '/documents/1/generate',
       expect.objectContaining({ params: { template: '003', recipient: 0 } }));
-    expect(apiGet).toHaveBeenNthCalledWith(7, '/documents/1/generate',
+    expect(apiGet).toHaveBeenNthCalledWith(6, '/documents/1/generate',
       expect.objectContaining({ params: { template: '003', recipient: 1 } }));
 
     vi.unstubAllGlobals();
@@ -1028,8 +1032,7 @@ describe('DocumentView', () => {
       .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({ data: [] })
-      // بطاقة المراسلات: GET إضافي عند التحميل (مراسلات الملف).
-      .mockResolvedValueOnce({ data: [] })
+      // بطاقة المراسلات حُذفت من الصفحة: لا طلب مراسلات بعد التحميل.
       .mockResolvedValueOnce({
         data: new Blob(['docx']),
         headers: { 'content-disposition': 'attachment; filename="أحمد_007.docx"' },
@@ -1044,7 +1047,7 @@ describe('DocumentView', () => {
 
     await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1));
     expect(await screen.findByText('✅ تم إنشاء 1 إخطار تنفيذي بالصحف بنجاح')).toBeInTheDocument();
-    expect(apiGet).toHaveBeenNthCalledWith(6, '/documents/1/generate',
+    expect(apiGet).toHaveBeenNthCalledWith(5, '/documents/1/generate',
       expect.objectContaining({ params: { template: '007', recipient: 2 } }));
 
     vi.unstubAllGlobals();
@@ -1072,8 +1075,7 @@ describe('DocumentView', () => {
       .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({ data: [] })
-      // بطاقة المراسلات: GET إضافي عند التحميل (مراسلات الملف).
-      .mockResolvedValueOnce({ data: [] })
+      // بطاقة المراسلات حُذفت من الصفحة: لا طلب مراسلات بعد التحميل.
       .mockResolvedValueOnce({
         data: new Blob(['docx']),
         headers: { 'content-disposition': 'attachment; filename="أحمد_005.docx"' },
@@ -1088,7 +1090,7 @@ describe('DocumentView', () => {
 
     await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
     expect(await screen.findByText('✅ تم إنشاء إخطار بيع أموال غير منقولة بنجاح')).toBeInTheDocument();
-    expect(apiGet).toHaveBeenNthCalledWith(6, '/documents/1/generate',
+    expect(apiGet).toHaveBeenNthCalledWith(5, '/documents/1/generate',
       expect.objectContaining({ params: { template: '005', recipient: 0, estateIds: [1] } }));
 
     vi.unstubAllGlobals();
@@ -1151,8 +1153,7 @@ describe('DocumentView', () => {
       .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({ data: [] })
-      // بطاقة المراسلات: GET إضافي عند التحميل (مراسلات الملف).
-      .mockResolvedValueOnce({ data: [] })
+      // بطاقة المراسلات حُذفت من الصفحة: لا طلب مراسلات بعد التحميل.
       .mockResolvedValueOnce({
         data: new Blob(['docx']),
         headers: { 'content-disposition': 'attachment; filename="أحمد_PS.docx"' },
@@ -1168,7 +1169,7 @@ describe('DocumentView', () => {
 
     await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
     expect(await screen.findByText('✅ تم إنشاء 1 مستند حجز عقاري')).toBeInTheDocument();
-    expect(apiGet).toHaveBeenNthCalledWith(6, '/documents/1/generate',
+    expect(apiGet).toHaveBeenNthCalledWith(5, '/documents/1/generate',
       expect.objectContaining({ params: { template: 'PS', recipient: 0, estateIds: [1] } }));
 
     vi.unstubAllGlobals();
@@ -1387,8 +1388,7 @@ describe('DocumentView', () => {
       .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({ data: [] })
-      // بطاقة المراسلات: GET إضافي عند التحميل (مراسلات الملف).
-      .mockResolvedValueOnce({ data: [] })
+      // بطاقة المراسلات حُذفت من الصفحة: لا طلب مراسلات بعد التحميل.
       .mockResolvedValueOnce({
         data: new Blob(['docx']),
         headers: { 'content-disposition': 'attachment; filename="مستند_003.docx"' },
@@ -1408,9 +1408,9 @@ describe('DocumentView', () => {
 
     await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(2));
     expect(await screen.findByText('✅ تم إنشاء 2 إخطار بنجاح')).toBeInTheDocument();
-    expect(apiGet).toHaveBeenNthCalledWith(6, '/documents/1/generate',
+    expect(apiGet).toHaveBeenNthCalledWith(5, '/documents/1/generate',
       expect.objectContaining({ params: expect.objectContaining({ template: '003', heirId: 10 }) }));
-    expect(apiGet).toHaveBeenNthCalledWith(7, '/documents/1/generate',
+    expect(apiGet).toHaveBeenNthCalledWith(6, '/documents/1/generate',
       expect.objectContaining({ params: expect.objectContaining({ template: '003', heirId: 11 }) }));
 
     vi.unstubAllGlobals();
@@ -1433,8 +1433,7 @@ describe('DocumentView', () => {
       .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({ data: [] })
-      // بطاقة المراسلات: GET إضافي عند التحميل (مراسلات الملف).
-      .mockResolvedValueOnce({ data: [] })
+      // بطاقة المراسلات حُذفت من الصفحة: لا طلب مراسلات بعد التحميل.
       .mockResolvedValueOnce({
         data: new Blob(['docx']),
         headers: { 'content-disposition': 'attachment; filename="مستند_005.docx"' },
@@ -1449,7 +1448,7 @@ describe('DocumentView', () => {
 
     await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1));
     expect(await screen.findByText('✅ تم إنشاء 1 إخطار بيع أموال غير منقولة بنجاح')).toBeInTheDocument();
-    expect(apiGet).toHaveBeenNthCalledWith(6, '/documents/1/generate',
+    expect(apiGet).toHaveBeenNthCalledWith(5, '/documents/1/generate',
       expect.objectContaining({ params: expect.objectContaining({ template: '005', heirId: 10 }) }));
 
     vi.unstubAllGlobals();
@@ -2218,14 +2217,162 @@ it('يُسجّل الملف كآخر ما فُتح في الجلسة ليُمي�
     expect(screen.queryByRole('button', { name: 'إتمام الإنابة' })).not.toBeInTheDocument();
   });
 
-  it('يعرض شريط هوية لاصقًا أعلى الصفحة ببطاقات الملف الأساسية (رقم/سنة/دائرة)', async () => {
+  it('يعرض شريط هوية لاصقًا أعلى الصفحة ببطاقة «رقم الملف والسنة» المدمجة ونوع الملف والدائرة', async () => {
     renderView();
 
     await screen.findByText('بيانات الملف');
-    const facts = screen.getByText('رقم الملف').closest('dl') as HTMLElement;
-    expect(within(facts).getByText('99')).toBeInTheDocument();
-    expect(within(facts).getByText('2026')).toBeInTheDocument();
+    const facts = screen.getByText('رقم الملف والسنة').closest('dl') as HTMLElement;
+    expect(within(facts).getByText('99 / 2026')).toBeInTheDocument();
     expect(within(facts).getByText('محكمة دمشق')).toBeInTheDocument();
+    // نوع الملف غائب في mockDoc → فراغ (لا «—»).
+    expect(within(facts).getByText('نوع الملف').closest('div')?.textContent).toBe('نوع الملف');
+  });
+
+  it('يجمع إجراءات الترويسة في «المزيد» على الجوال دون تكرار خارجها', async () => {
+    stubMobile(true);
+    const user = userEvent.setup();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { ...mockDoc, createdById: 7 },
+    });
+    renderView();
+
+    await screen.findByText('بيانات الملف');
+    // قبل الفتح: الأزرار الخمسة مخفية (لا تكرار)، والخارجان ظاهران.
+    expect(screen.queryByRole('link', { name: 'تعديل' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'استئناف ▾' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'مراسلات' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'توليد مستندات' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'نقل الملف' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'الإجراءات والملاحظات' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'عودة' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'المزيد' }));
+    const menu = await screen.findByRole('menu', { name: 'المزيد' });
+    expect(within(menu).getByRole('menuitem', { name: 'تعديل' })).toHaveAttribute(
+      'href',
+      '/documents/1/edit',
+    );
+    expect(within(menu).getByRole('menuitem', { name: 'مراسلات' })).toHaveAttribute(
+      'href',
+      '/documents/1/correspondence',
+    );
+    expect(within(menu).getByRole('menuitem', { name: 'استئناف ▾' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    expect(within(menu).getByRole('menuitem', { name: 'توليد مستندات' })).toBeInTheDocument();
+    // رئيس القسم فقط: «توجيه تنبيه» و«نقل الملف» غائبان للمحامي.
+    expect(within(menu).queryByRole('menuitem', { name: 'توجيه تنبيه' })).not.toBeInTheDocument();
+    expect(within(menu).queryByRole('menuitem', { name: 'نقل الملف' })).not.toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('menu', { name: 'المزيد' })).not.toBeInTheDocument();
+  });
+
+  it('يجمع «توجيه تنبيه» و«نقل الملف» في «المزيد» لرئيس القسم دون بنود المحامي', async () => {
+    stubMobile(true);
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({ isHead: true, user: { role: 'head', id: 9 } });
+    renderView();
+
+    await screen.findByText('بيانات الملف');
+    expect(screen.queryByRole('link', { name: 'تعديل' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'استئناف ▾' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'المزيد' }));
+    const menu = await screen.findByRole('menu', { name: 'المزيد' });
+    expect(within(menu).getByRole('menuitem', { name: 'مراسلات' })).toHaveAttribute(
+      'href',
+      '/documents/1/correspondence',
+    );
+    expect(within(menu).getByRole('menuitem', { name: 'توجيه تنبيه' })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: 'نقل الملف' })).toBeInTheDocument();
+    expect(within(menu).queryByRole('menuitem', { name: 'تعديل' })).not.toBeInTheDocument();
+  });
+
+  it('يفتح اللوحة المتداخلة للاستئناف من «المزيد» ويسطّر «مستأنِفين»', async () => {
+    stubMobile(true);
+    const user = userEvent.setup();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { ...mockDoc, createdById: 7 },
+    });
+    renderView();
+
+    await screen.findByText('بيانات الملف');
+    await user.click(screen.getByRole('button', { name: 'المزيد' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'استئناف ▾' }));
+
+    expect(screen.getByRole('menuitem', { name: 'استئناف ▾' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    const sub = screen.getByRole('menu', { name: 'نوع الاستئناف' });
+    await user.click(within(sub).getByRole('menuitem', { name: 'مستأنِفين' }));
+
+    expect(await screen.findByRole('dialog', { name: 'تسطير استئناف — مستأنِفين' })).toBeInTheDocument();
+    expect(screen.queryByRole('menu', { name: 'المزيد' })).not.toBeInTheDocument();
+  });
+
+  it('تطوي اللوحة المتداخلة عند إغلاق «المزيد» بـ Escape فتُعاد الفتحة مطوية', async () => {
+    stubMobile(true);
+    const user = userEvent.setup();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { ...mockDoc, createdById: 7 },
+    });
+    renderView();
+
+    await screen.findByText('بيانات الملف');
+    await user.click(screen.getByRole('button', { name: 'المزيد' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'استئناف ▾' }));
+    expect(screen.getByRole('menu', { name: 'نوع الاستئناف' })).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('menu', { name: 'المزيد' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'المزيد' }));
+    expect(await screen.findByRole('menuitem', { name: 'استئناف ▾' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    expect(screen.queryByRole('menu', { name: 'نوع الاستئناف' })).not.toBeInTheDocument();
+  });
+
+  it('يضع التركيز على أول بند عند الفتح وينقل بالأسهم ويعيده للمشغّل عند Escape', async () => {
+    stubMobile(true);
+    const user = userEvent.setup();
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { ...mockDoc, createdById: 7 },
+    });
+    renderView();
+
+    await screen.findByText('بيانات الملف');
+    const trigger = screen.getByRole('button', { name: 'المزيد' });
+    await user.click(trigger);
+    const menu = await screen.findByRole('menu', { name: 'المزيد' });
+
+    // initialFocus: أول بند (تعديل) يستقبل التركيز فور الفتح — لا مسار Tab طويل.
+    expect(within(menu).getByRole('menuitem', { name: 'تعديل' })).toHaveFocus();
+
+    // السهم للأسفل ينقل التركيز للبند التالي بترتيب الظهور.
+    await user.keyboard('{ArrowDown}');
+    expect(within(menu).getByRole('menuitem', { name: 'مراسلات' })).toHaveFocus();
+
+    // Escape من داخل القائمة يغلقها ويعيد التركيز للمشغّل (لا ضياع في body).
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('menu', { name: 'المزيد' })).not.toBeInTheDocument();
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
+  it('يعرض زر «مراسلات» رابطًا لصفحة المراسلات على المكتبي بدل التمرير', async () => {
+    stubMobile(false);
+    renderView();
+
+    await screen.findByText('بيانات الملف');
+    expect(screen.getByRole('link', { name: 'مراسلات' })).toHaveAttribute(
+      'href',
+      '/documents/1/correspondence',
+    );
+    expect(screen.queryByText('المراسلات')).not.toBeInTheDocument();
   });
 
   it('يعرض تبويبات أقسام الملف على الجوال ويستخدم تبويبًا واحدًا تلو الآخر', async () => {
