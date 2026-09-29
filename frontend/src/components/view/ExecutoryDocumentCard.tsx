@@ -9,7 +9,7 @@ function joinAmountWords(...parts: Array<string | null | undefined>): string {
 }
 
 /** بطاقة «بيانات السند التنفيذي» الموحّدة لكل الصفات: نوع السند، المحكمة/العقد، الرقم، التاريخ، والمبلغ حسب الصفة. */
-export function ExecutoryDocumentCard({ doc }: { doc: DocumentResponse }) {
+export function ExecutoryDocumentCard({ doc, isMirror }: { doc: DocumentResponse; isMirror?: boolean }) {
   const isExecuted = isExecutedLike(doc.generalEntitySide);
   const isDeposit = doc.generalEntitySide === 'deposit';
   const isOrdinary = doc.contractTypeSelector === 'عادي';
@@ -56,6 +56,11 @@ export function ExecutoryDocumentCard({ doc }: { doc: DocumentResponse }) {
         amountWords && (
           <div className="mt-2.5">
             <FieldCell label="المبلغ المطالب به" value={amountWords} emphasized />
+            {isMirror && (
+              <p className="mt-1 text-xs text-gray-500">
+                مُزامَن تلقائيًا من الملف المنيب (الملف المناب مرآةً للمنيب) — تعديله من الملف المنيب حصرًا.
+              </p>
+            )}
           </div>
         )
       )}

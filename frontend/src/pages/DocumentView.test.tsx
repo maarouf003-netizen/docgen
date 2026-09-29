@@ -258,6 +258,29 @@ describe('DocumentView', () => {
     expect(within(card).queryByText('خلاصة الحكم')).not.toBeInTheDocument();
   });
 
+  it('يعرض وسم المزامنة من المنيب بجانب المبلغ في الملف المناب', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { ...mockDoc, sourceDelegationId: 9 },
+    });
+    renderView();
+
+    const heading = await screen.findByText('بيانات السند التنفيذي');
+    const card = heading.closest('div') as HTMLElement;
+    expect(within(card).getByText('المبلغ المطالب به')).toBeInTheDocument();
+    expect(
+      within(card).getByText('مُزامَن تلقائيًا من الملف المنيب (الملف المناب مرآةً للمنيب) — تعديله من الملف المنيب حصرًا.'),
+    ).toBeInTheDocument();
+  });
+
+  it('لا يعرض وسم المزامنة في الملف غير المناب', async () => {
+    renderView();
+
+    const heading = await screen.findByText('بيانات السند التنفيذي');
+    const card = heading.closest('div') as HTMLElement;
+    expect(within(card).getByText('المبلغ المطالب به')).toBeInTheDocument();
+    expect(within(card).queryByText(/مُزامَن تلقائيًا من الملف المنيب/)).not.toBeInTheDocument();
+  });
+
   it('يعرض «ملحق العقد» في بيانات السند التنفيذي عندما يكون محفوظًا', async () => {
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: {

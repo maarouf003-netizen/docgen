@@ -18,10 +18,14 @@ interface ProbeProps {
   fetcher: (signal: AbortSignal) => Promise<number>;
   deps: readonly unknown[];
   enabled?: boolean;
+  resetOnDepsChange?: boolean;
 }
 
-function Probe({ fetcher, deps, enabled }: ProbeProps): ReactNode {
-  latest = useCancellableRequest<number>(fetcher, deps, enabled === undefined ? {} : { enabled });
+function Probe({ fetcher, deps, enabled, resetOnDepsChange }: ProbeProps): ReactNode {
+  latest = useCancellableRequest<number>(fetcher, deps, {
+    ...(enabled === undefined ? {} : { enabled }),
+    ...(resetOnDepsChange === undefined ? {} : { resetOnDepsChange }),
+  });
   return null;
 }
 
@@ -212,5 +216,59 @@ describe('useCancellableRequest', () => {
     });
 
     expect(latest?.data).toBeNull();
+  });
+
+  it('مع resetOnDepsChange: تُصفَّر بيانات الملف السابق عند تغيّر الهوية (لا تسريب عرضي)', async () => {
+    const first = deferred<number>();
+    const second = deferred<number>();
+    let n = 0;
+    const fetcher = vi.fn(() => (++n === 1 ? first.promise : second.promise));
+
+    const { rerender } = render(<Probe fetcher={fetcher} deps={['1']} resetOnDepsChange />);
+    first.resolve(5000);
+    await waitFor(() => expect(latest?.data).toBe(5000));
+
+    // الانتقال إلى ملف آخر: أثناء تحميل الجديد يجب ألا يُعرض مال القديم.
+    rerender(<Probe fetcher={fetcher} deps={['2']} resetOnDepsChange />);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(latest?.isLoading).toBe(true);
+    expect(latest?.data).toBeNull();
+
+    second.resolve(7000);
+    await waitFor(() => expect(latest?.data).toBe(7000));
+  });
+
+  it('بدون resetOnDepsChange: تُحفَظ البيانات أثناء إعادة الجلب (لا وميض في القوائم)', async () => {
+    const first = deferred<number>();
+    const second = deferred<number>();
+    let n = 0;
+    const fetcher = vi.fn(() => (++n === 1 ? first.promise : second.promise));
+
+    const { rerender } = render(<Probe fetcher={fetcher} deps={['صفحة 1']} />);
+    first.resolve(111);
+    await waitFor(() => expect(latest?.data).toBe(111));
+
+    // تغيير الفلتر/الصفحة في قائمة: تُبقى البيانات المعروضة حتى وصول الجديدة.
+    rerender(<Probe fetcher={fetcher} deps={['صفحة 2']} />);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(latest?.isLoading).toBe(true);
+    expect(latest?.data).toBe(111);
+
+    second.resolve(222);
+    await waitFor(() => expect(latest?.data).toBe(222));
+  });
+
+  it('مع resetOnDepsChange: إعادة الجلب refetch لا تُصفِّر البيانات (لا وميض عند التحديث)', async () => {
+    const fetcher = vi.fn(() => Promise.resolve(7));
+
+    render(<Probe fetcher={fetcher} deps={['static']} resetOnDepsChange />);
+    await waitFor(() => expect(latest?.data).toBe(7));
+
+    await act(async () => {
+      latest?.refetch();
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(latest?.data).toBe(7));
   });
 });

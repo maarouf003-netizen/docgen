@@ -19,13 +19,15 @@ export default function FileCorrespondence() {
   const { user } = useAuth();
   const [accessDenied, setAccessDenied] = useState(false);
 
+  // resetOnDepsChange: استعلام هوية الملف المفرد — تُصفَّر بيانات السابق
+  // عند تبديل الملف فلا يُعرض ماله تحت عنوان الجديد أثناء التحميل.
   const docQuery = useCancellableRequest<DocumentResponse>(
     (signal) =>
       api
         .get<DocumentResponse>(`/documents/${id}`, { signal })
         .then((r) => normalizeDocumentResponse(r.data)),
     [id],
-    { enabled: Boolean(id) },
+    { enabled: Boolean(id), resetOnDepsChange: true },
   );
   const doc = docQuery.data ?? null;
 

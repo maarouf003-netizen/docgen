@@ -1,5 +1,5 @@
-import { lazy, Suspense } from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Fragment, lazy, Suspense } from 'react';
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthContext';
 import { useAuth } from './auth/useAuth';
 import { getHomeForRole } from './auth/roleHome';
@@ -46,6 +46,17 @@ const CorrespondenceDetail = lazy(() => import('./pages/CorrespondenceDetail'));
 
 function PageLoader() {
   return <div className="min-h-screen flex items-center justify-center text-gray-500">جارِ التحميل...</div>;
+}
+
+/**
+ * إعادة التركيب عند تبديل الهوية: صفحات الكيان المفرد (`/x/:id`) تُعاد تهيئتها
+ * بالكامل عند الانتقال بين معرف وآخر، فلا تتسرب حالة الكيان السابق (ومنها
+ * المبالغ) إلى الجديد — لا عرضًا أثناء التحميل ولا كتابةً عبر استجابة متأخرة.
+ * النمط القياسي الموصى به من React لهذه الفئة من العيوب (key يعيد الضبط).
+ */
+function KeyedById({ children }: { children: React.ReactNode }) {
+  const { id } = useParams();
+  return <Fragment key={id ?? 'new'}>{children}</Fragment>;
 }
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -132,7 +143,7 @@ export default function App() {
               path="/reviews/:id"
               element={
                 <RequireRole allowed={allowInternal}>
-                  <ReviewDetail />
+                  <KeyedById><ReviewDetail /></KeyedById>
                 </RequireRole>
               }
             />
@@ -148,7 +159,7 @@ export default function App() {
               path="/correspondence/:id"
               element={
                 <RequireRole allowed={allowInternal}>
-                  <CorrespondenceDetail />
+                  <KeyedById><CorrespondenceDetail /></KeyedById>
                 </RequireRole>
               }
             />
@@ -160,14 +171,14 @@ export default function App() {
               </RequireRole>
             }
           />
-          <Route
-            path="/appeals/:id"
-            element={
-              <RequireRole allowed={allowInternal}>
-                <AppealDetail />
-              </RequireRole>
-            }
-          />
+            <Route
+              path="/appeals/:id"
+              element={
+                <RequireRole allowed={allowInternal}>
+                  <KeyedById><AppealDetail /></KeyedById>
+                </RequireRole>
+              }
+            />
             <Route
               path="/documents/deleted"
               element={
@@ -220,7 +231,7 @@ export default function App() {
               path="/documents/:id"
               element={
                 <RequireRole allowed={allowInternal}>
-                  <DocumentView />
+                  <KeyedById><DocumentView /></KeyedById>
                 </RequireRole>
               }
             />
@@ -228,7 +239,7 @@ export default function App() {
               path="/documents/:id/edit"
               element={
                 <RequireRole allowed={allowInternal}>
-                  <DocumentForm />
+                  <KeyedById><DocumentForm /></KeyedById>
                 </RequireRole>
               }
             />
@@ -236,7 +247,7 @@ export default function App() {
               path="/documents/:id/correspondence"
               element={
                 <RequireRole allowed={allowInternal}>
-                  <FileCorrespondence />
+                  <KeyedById><FileCorrespondence /></KeyedById>
                 </RequireRole>
               }
             />
@@ -327,7 +338,7 @@ export default function App() {
               path="/portal/files/:id"
               element={
                 <RequireRole allowed={(role) => role === 'entitymanager'}>
-                  <PortalFileDetail />
+                  <KeyedById><PortalFileDetail /></KeyedById>
                 </RequireRole>
               }
             />
@@ -335,7 +346,7 @@ export default function App() {
               path="/portal/files/:id/correspondence"
               element={
                 <RequireRole allowed={(role) => role === 'entitymanager'}>
-                  <PortalFileCorrespondence />
+                  <KeyedById><PortalFileCorrespondence /></KeyedById>
                 </RequireRole>
               }
             />
@@ -351,7 +362,7 @@ export default function App() {
               path="/portal/correspondence/:id"
               element={
                 <RequireRole allowed={(role) => role === 'entitymanager'}>
-                  <CorrespondenceDetail portal />
+                  <KeyedById><CorrespondenceDetail portal /></KeyedById>
                 </RequireRole>
               }
             />
@@ -394,7 +405,7 @@ export default function App() {
             <Route
               path="/account"
               element={
-                <RequireRole allowed={(role) => role === 'lawyer'}>
+                <RequireRole allowed={(role) => role === 'lawyer' || role === 'head'}>
                   <AccountPage />
                 </RequireRole>
               }
@@ -402,7 +413,7 @@ export default function App() {
             <Route
               path="/stats"
               element={
-                <RequireRole allowed={(role) => role === 'lawyer'}>
+                <RequireRole allowed={(role) => role === 'lawyer' || role === 'head'}>
                   <StatsPage />
                 </RequireRole>
               }

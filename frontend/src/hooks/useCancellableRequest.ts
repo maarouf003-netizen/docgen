@@ -12,6 +12,13 @@ export interface CancellableRequestResult<T> {
 
 export interface UseCancellableRequestOptions {
   enabled?: boolean;
+  /**
+   * تصفير البيانات عند تغيّر مفتاح الهوية (deps) — لاستعلامات الكيان المفرد
+   * فقط (ملف/استئناف بالمعرف)، فلا يُعرض كيان سابق أثناء تحميل الجديد.
+   * الافتراضي false عمدًا: القوائم تُبقي بياناتها أثناء الفلترة والترقيم
+   * (لا وميض). إعادة الجلب refetch لا تُصفِّر أبدًا في الحالتين.
+   */
+  resetOnDepsChange?: boolean;
 }
 
 export function useCancellableRequest<T>(
@@ -20,6 +27,7 @@ export function useCancellableRequest<T>(
   options: UseCancellableRequestOptions = {},
 ): CancellableRequestResult<T> {
   const enabled = options.enabled ?? true;
+  const resetOnDepsChange = options.resetOnDepsChange ?? false;
 
   const [data, setData] = useState<T | null>(null);
   const [isLoading, setIsLoading] = useState(enabled);
@@ -27,6 +35,9 @@ export function useCancellableRequest<T>(
   const [attempt, setAttempt] = useState(0);
 
   const latestFetcher = useRef(fetcher);
+  // آخر مفتاح هوية شوهِد: التصفير يحدث فقط عند تغيّره فعلًا، لا عند
+  // إعادة الجلب (attempt) ولا عند أول تركيب — فيبقى سلوك القوائم كما هو.
+  const prevDeps = useRef<readonly unknown[] | null>(null);
 
   useEffect(() => {
     latestFetcher.current = fetcher;
@@ -40,6 +51,19 @@ export function useCancellableRequest<T>(
 
     const controller = new AbortController();
     let active = true;
+
+    // تغيّر الهوية (لا إعادة الجلب): تُصفَّر بيانات الكيان السابق فورًا
+    // عند تفعيل الخيار، فلا يظهر كيان قديم تحت عنوان جديد أثناء التحميل.
+    const previous = prevDeps.current;
+    prevDeps.current = deps;
+    const keyChanged =
+      resetOnDepsChange &&
+      previous !== null &&
+      (previous.length !== deps.length ||
+        previous.some((d, i) => !Object.is(d, deps[i])));
+    if (keyChanged) {
+      setData(null);
+    }
 
     setIsLoading(true);
     setError(null);

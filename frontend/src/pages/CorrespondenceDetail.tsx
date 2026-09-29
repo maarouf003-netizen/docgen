@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
@@ -90,10 +90,18 @@ export default function CorrespondenceDetail({ portal = false }: { portal?: bool
   const plainLen = useMemo(() => correspondencePlainText(draftHtml).length, [draftHtml]);
   const tooLong = plainLen > CORRESPONDENCE_MAX_BODY_CHARS;
 
+  // تصفير الكتاب عند تبديل الهوية فقط (لا عند التحديث بعد إرسال — فلا وميض):
+  // بوابة `loading && !letter` لا تحجب بيانات سابقة، فيُرى كتاب قديم تحت
+  // عنوان جديد أثناء التحميل.
+  const prevLetterIdRef = useRef(id);
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
     setError('');
+    if (prevLetterIdRef.current !== id) {
+      prevLetterIdRef.current = id;
+      setLetter(null);
+    }
     api
       .get<CorrespondenceDto>(`${base}/${id}`, { signal: controller.signal })
       .then((r) => {

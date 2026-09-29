@@ -92,13 +92,15 @@ export default function DocumentView() {
   const [activeTab, setActiveTab] = useState<'info' | 'security' | 'delegations' | 'status'>('info');
 
   // حد الثقة: تُطبَّع استجابة الملف قبل انتشارها للبطاقات.
+  // resetOnDepsChange: استعلامات هوية الملف المفرد — تُصفَّر بيانات السابق
+  // عند تبديل الملف فلا يُعرض ماله (ولا غيره) تحت عنوان الجديد أثناء التحميل.
   const docQuery = useCancellableRequest<DocumentResponse | null>(
     (signal) =>
       api
         .get<DocumentResponse>(`/documents/${id}`, { signal })
         .then((r) => normalizeDocumentResponse(r.data)),
     [id],
-    { enabled: Boolean(id) },
+    { enabled: Boolean(id), resetOnDepsChange: true },
   );
   const delegationsQuery = useCancellableRequest<DelegationDto[]>(
     (signal) =>
@@ -106,7 +108,7 @@ export default function DocumentView() {
         .get<DelegationDto[]>(`/documents/${id}/delegations`, { signal })
         .then((r) => (Array.isArray(r.data) ? r.data : [])),
     [id],
-    { enabled: Boolean(id) },
+    { enabled: Boolean(id), resetOnDepsChange: true },
   );
   // استئنافات الملف: تُغذّي جزء «الاستئنافات» في بطاقة وقوعات الملف.
   const appealsQuery = useCancellableRequest<AppealDto[]>(
@@ -115,7 +117,7 @@ export default function DocumentView() {
         .get<AppealDto[]>(`/documents/${id}/appeals`, { signal })
         .then((r) => (Array.isArray(r.data) ? r.data : [])),
     [id],
-    { enabled: Boolean(id) },
+    { enabled: Boolean(id), resetOnDepsChange: true },
   );
 
   const doc = docQuery.data ?? null;
@@ -257,7 +259,7 @@ export default function DocumentView() {
   );
   const securityPanel = (
     <>
-      <ExecutoryDocumentCard doc={doc} />
+      <ExecutoryDocumentCard doc={doc} isMirror={doc.sourceDelegationId != null} />
       {delegationOfThisFile && (
         <DelegationStatusCard doc={doc} delegationId={delegationOfThisFile.id} />
       )}

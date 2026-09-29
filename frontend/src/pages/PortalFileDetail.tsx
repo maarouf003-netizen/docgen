@@ -75,13 +75,15 @@ export default function PortalFileDetail() {
   const appealsGroupRef = useRef<HTMLDivElement>(null);
   const actionsGroupRef = useRef<HTMLDivElement>(null);
 
+  // resetOnDepsChange: استعلامات هوية الملف المفرد — تُصفَّر بيانات السابق
+  // عند تبديل الملف فلا يُعرض ماله (ولا غيره) تحت عنوان الجديد أثناء التحميل.
   const docQuery = useCancellableRequest<DocumentResponse | null>(
     (signal) =>
       api
         .get<DocumentResponse>(`/portal/files/${id}`, { signal })
         .then((r) => normalizeDocumentResponse(r.data)),
     [id],
-    { enabled: Boolean(id) },
+    { enabled: Boolean(id), resetOnDepsChange: true },
   );
   const delegationsQuery = useCancellableRequest<DelegationDto[]>(
     (signal) =>
@@ -89,7 +91,7 @@ export default function PortalFileDetail() {
         .get<DelegationDto[]>(`/portal/files/${id}/delegations`, { signal })
         .then((r) => (Array.isArray(r.data) ? r.data : [])),
     [id],
-    { enabled: Boolean(id) },
+    { enabled: Boolean(id), resetOnDepsChange: true },
   );
   // تفاصيل استئنافات الملف كاملة (رأي المحامي مصفَّر خلفيًا — ق10) لنافذة الاستئناف.
   const appealsQuery = useCancellableRequest<AppealDto[]>(
@@ -98,7 +100,7 @@ export default function PortalFileDetail() {
         .get<AppealDto[]>(`/portal/files/${id}/appeals/details`, { signal })
         .then((r) => (Array.isArray(r.data) ? r.data : [])),
     [id],
-    { enabled: Boolean(id) },
+    { enabled: Boolean(id), resetOnDepsChange: true },
   );
   const actionsQuery = useCancellableRequest<PortalExecutionActionDto[]>(
     (signal) =>
@@ -106,7 +108,7 @@ export default function PortalFileDetail() {
         .get<PortalExecutionActionDto[]>(`/portal/files/${id}/execution-actions`, { signal })
         .then((r) => (Array.isArray(r.data) ? r.data : [])),
     [id],
-    { enabled: Boolean(id) },
+    { enabled: Boolean(id), resetOnDepsChange: true },
   );
 
   const doc = docQuery.data ?? null;
@@ -204,7 +206,7 @@ export default function PortalFileDetail() {
 
   const securityPanel = (
     <>
-      <ExecutoryDocumentCard doc={doc} />
+      <ExecutoryDocumentCard doc={doc} isMirror={doc.sourceDelegationId != null} />
       {delegationOfThisFile && (
         <DelegationStatusCard doc={doc} delegationId={delegationOfThisFile.id} />
       )}

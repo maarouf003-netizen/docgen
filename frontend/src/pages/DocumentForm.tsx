@@ -76,6 +76,11 @@ export default function DocumentForm() {
   });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // بوابة تحميل وضع التعديل: أثناء جلب ملف جديد لا يُعرض النموذج ولا يُتاح
+  // الحفظ، فلا يرى المستخدم مال الملف السابق ولا يكتبه في الجديد —
+  // يمنع التسرب العرضي والكتابي معًا عند تبديل الهوية (نفس المكوّن).
+  // تُهيَّأ مفعّلة في التعديل لئلا يومض نموذج فارغ قبل أول جلب.
+  const [loading, setLoading] = useState(isEdit);
   const [deleteBusy, setDeleteBusy] = useState(false);
   // نافذة اختيار الجهة العامة من السجل المرجعي (المرحلة 2): الجهة المستهدفة
   // من الطرفين ورقم صفها، وتُملأ حقولها النصية من القيد المختار مع ربطه.
@@ -118,12 +123,57 @@ export default function DocumentForm() {
     executedNaturalPersons: [],
   });
 // تحميل كامل للمستند عند دخول وضع التعديل.
-  const loadDocument = useCallback(() => {
-    if (id === undefined) return;
+  // تصفير كامل لحالة النموذج المشتقة من ملف: يُستدعى قبل كل جلب (فلا يبقى
+  // مال الملف السابق معروضًا ولا قابلًا للحفظ أثناء التحميل) ومن زر «مسح»
+  // اليدوي — سلوك واحد موحد يمنع أي تسرب بين ملفين.
+  const clearFormState = useCallback(() => {
+    setForm({
+      guarantors: [],
+      assets: [],
+      currency: 'ليرة سورية',
+      currency2: 'دولار أمريكي',
+      inclusionCurrency: 'ليرة سورية',
+      contractTypeSelector: 'مصرفي',
+      borrowerAddressType: 'موطن مختار',
+      borrowerNature: 'natural',
+      // «فرع الملف» قيمة نظامية مشتقة من فرع المحامي المنشئ — لا يُكتب يدويًا.
+      branchName: user?.branchName ?? '',
+      generalEntitySide: 'applicant',
+      executedStatus: '',
+      executionApplicants: [],
+      executedPublicEntities: [],
+      executedNaturalPersons: [],
+    });
+    setGuarantors([emptyGuarantor()]);
+    setBorrowerHeirs([]);
+    setAssets([]);
+    setExecutionApplicants([emptyExecutionApplicant()]);
+    setExecutedPublicEntities([freshExecutedEntity()]);
+    setApplicantPublicEntities([freshApplicantEntity()]);
+    setExecutedNaturalPersons([]);
+    setShowInclusionAmount(false);
+    setPaidAmountSlots(1);
+    setShowRequiredAmount(false);
+    setRequiredAmountSlots(1);
+    setBankingAmountSlots(1);
+    setOrdinaryAmountSlots(1);
     setIsMirror(false);
+    setWasOriginallyStruckOff(false);
+    setOriginalExecutedStatus('');
+  }, [user?.branchName]);
+
+  const loadDocument = useCallback(() => {
+    if (id === undefined) return undefined;
+    // قبل الجلب: تصفير الحالة وبوابة تحميل — فلا يُعرض مال السابق ولا يُحفظ به.
+    clearFormState();
+    setError('');
+    setLoading(true);
+    // حارس السباق: استجابة ملف سابق متأخرة تُتجاهل فلا تكتب ماله فوق الحالي.
+    let cancelled = false;
     api
       .get<DocumentResponse>(`/documents/${id}`)
       .then((r) => {
+        if (cancelled) return;
         const d = normalizeDocumentResponse(r.data);
         setForm(toUpsert(d));
         setIsMirror(d.sourceDelegationId != null);
@@ -177,13 +227,21 @@ export default function DocumentForm() {
         setExecutedNaturalPersons(d.executedNaturalPersons);
         setWasOriginallyStruckOff(d.executedStatus === EXEC_STATUS_STRUCK_OFF);
         setOriginalExecutedStatus(d.executedStatus ?? '');
+        setLoading(false);
       })
-      .catch((err) => setError(getApiErrorMessage(err)));
-  }, [id]);
+      .catch((err) => {
+        if (cancelled) return;
+        setError(getApiErrorMessage(err));
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, clearFormState]);
 
   useEffect(() => {
     if (!isEdit) return;
-    loadDocument();
+    return loadDocument();
   }, [id, isEdit, loadDocument]);
 
   // إنابات الملف في وضع التعديل — لقفل «الحجز بعد التسطير» أماميًا (مرآة مريحة فقط؛
@@ -620,34 +678,7 @@ export default function DocumentForm() {
   const removeEstate = (i: number) => setAssets((as) => as.filter((_, idx) => idx !== i));
 
   const resetForm = () => {
-    setForm({
-      guarantors: [],
-      assets: [],
-      currency: 'ليرة سورية',
-      currency2: 'دولار أمريكي',
-      inclusionCurrency: 'ليرة سورية',
-      contractTypeSelector: 'مصرفي',
-      borrowerAddressType: 'موطن مختار',
-      borrowerNature: 'natural',
-      branchName: user?.branchName ?? '',
-      generalEntitySide: 'applicant',
-      executedStatus: '',
-      executionApplicants: [],
-      executedPublicEntities: [],
-      executedNaturalPersons: [],
-    });
-    setGuarantors([emptyGuarantor()]);
-    setBorrowerHeirs([]);
-    setAssets([]);
-    setExecutionApplicants([emptyExecutionApplicant()]);
-    setExecutedPublicEntities([freshExecutedEntity()]);
-    setApplicantPublicEntities([freshApplicantEntity()]);
-    setExecutedNaturalPersons([]);
-    setShowInclusionAmount(false);
-    setPaidAmountSlots(1);
-    setRequiredAmountSlots(1);
-    setBankingAmountSlots(1);
-    setOrdinaryAmountSlots(1);
+    clearFormState();
     setError('');
   };
 
@@ -905,6 +936,16 @@ export default function DocumentForm() {
   };
 
   const debtorFullName = tripleName(form.borrowerName, form.borrowerFather, form.borrowerFamily);
+
+  // بوابة تحميل وضع التعديل: لا يُعرض النموذج ولا يُتاح الحفظ قبل اكتمال
+  // جلب الملف الحالي — فلا يرى المستخدم مال ملف سابق ولا يكتبه في الجديد.
+  if (isEdit && loading) {
+    return (
+      <div className="max-w-6xl mx-auto">
+        <div className="flex items-center justify-center text-gray-500 py-16">جارِ تحميل بيانات الملف...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -1187,7 +1228,7 @@ export default function DocumentForm() {
         )}
 
         <div className="mt-8 flex gap-3">
-          <button type="submit" disabled={busy} className="bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-lg px-6 py-2.5 transition-colors min-h-11">
+          <button type="submit" disabled={busy || loading} className="bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-lg px-6 py-2.5 transition-colors min-h-11">
             {busy ? 'جارِ الحفظ...' : isEdit ? 'حفظ التعديلات' : '💾 حفظ'}
           </button>
           {!isEdit && (

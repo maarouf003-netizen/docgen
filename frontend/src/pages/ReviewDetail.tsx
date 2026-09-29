@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
@@ -70,10 +70,18 @@ export default function ReviewDetail() {
   // الجلب مرتبط بالمعرّف والمستخدم ومفتاح التحديث بعد كل إرسال.
   // عند فتح المحامي صاحب الكتاب ووجود ردّ غير مطّلع عليه: يُعلَّم مقروءًا فورًا
   // فيُطفأ شارة «رد جديد» ويُحدَّث عدّاد بند المطالعات عبر حدث عام.
+  // تصفير الكتاب عند تبديل الهوية فقط (لا عند التحديث بعد إرسال — فلا وميض):
+  // بوابة `loading && !letter` لا تحجب بيانات سابقة، فيُرى كتاب قديم تحت
+  // عنوان جديد أثناء التحميل.
+  const prevLetterIdRef = useRef(id);
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
     setError('');
+    if (prevLetterIdRef.current !== id) {
+      prevLetterIdRef.current = id;
+      setLetter(null);
+    }
     api
       .get<ReviewLetterDto>(`/review-letters/${id}`, { signal: controller.signal })
       .then((r) => {

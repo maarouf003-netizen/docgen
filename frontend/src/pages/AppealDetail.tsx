@@ -22,13 +22,15 @@ export default function AppealDetail() {
   const { id } = useParams();
   const { user } = useAuth();
 
+  // resetOnDepsChange: استعلاما الهوية المفردة — تُصفَّر بيانات السابق
+  // عند تبديل الاستئناف فلا يُعرض كيان قديم تحت عنوان جديد أثناء التحميل.
   const appealQuery = useCancellableRequest<AppealDto | null>(
     (signal) =>
       api
         .get<AppealDto>(`/appeals/${id}`, { signal })
         .then((r) => r.data ?? null),
     [id],
-    { enabled: Boolean(id) },
+    { enabled: Boolean(id), resetOnDepsChange: true },
   );
   const docQuery = useCancellableRequest<DocumentResponse | null>(
     (signal) =>
@@ -36,7 +38,7 @@ export default function AppealDetail() {
         .get<DocumentResponse>(`/documents/${appealQuery.data?.documentId}`, { signal })
         .then((r) => r.data ?? null),
     [appealQuery.data?.documentId],
-    { enabled: Boolean(appealQuery.data?.documentId) },
+    { enabled: Boolean(appealQuery.data?.documentId), resetOnDepsChange: true },
   );
 
   const [actionsOpen, setActionsOpen] = useState(false);
