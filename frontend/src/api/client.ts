@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { type AxiosRequestConfig } from 'axios';
 import { reportClientError } from '../utils/errorReporting';
 
 const CSRF_COOKIE = 'docgen_csrf';
@@ -53,6 +53,26 @@ export function getCsrfToken(): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+/** تأخير إعادة المحاولة الوحيدة عند حد المعدل (بالميلي ثانية). */
+const RATE_LIMIT_RETRY_DELAY_MS = 1000;
+
+type RetryableConfig = AxiosRequestConfig & { _rateLimitRetried?: boolean };
+
+/**
+ * إعداد إعادة المحاولة عند `429`: طلبات القراءة (`GET`/`HEAD`) التي لم تُعَد
+ * من قبل فقط — الكتابات لا تُعاد أبدًا (عدم تكرار الأثر)، والعلم يمنع التتالي.
+ */
+function rateLimitRetryConfig(error: unknown): RetryableConfig | null {
+  if (!axios.isAxiosError(error)) return null;
+  if (error.response?.status !== 429) return null;
+  const method = (error.config?.method ?? 'get').toLowerCase();
+  if (method !== 'get' && method !== 'head') return null;
+  const config = error.config as RetryableConfig | undefined;
+  if (!config || config._rateLimitRetried) return null;
+  config._rateLimitRetried = true;
+  return config;
+}
+
 api.interceptors.request.use((config) => {
   const method = (config.method ?? 'get').toLowerCase();
   if (method !== 'get' && method !== 'head' && method !== 'options') {
@@ -65,6 +85,16 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (error) => {
+    // عثرة حد المعدل العابرة (كعنقود لوحة الإحصائيات): إعادة واحدة لطلبات
+    // القراءة فقط — قبل أي معالجة أخرى، وبعلم يمنع التتالي.
+    const retryConfig = rateLimitRetryConfig(error);
+    if (retryConfig) {
+      return new Promise((resolve, reject) => {
+        window.setTimeout(() => {
+          api.request(retryConfig).then(resolve, reject);
+        }, RATE_LIMIT_RETRY_DELAY_MS);
+      });
+    }
     if (error.response?.status === 401) {
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';

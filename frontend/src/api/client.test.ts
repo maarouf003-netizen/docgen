@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { api, getApiErrorMessage, getCsrfToken } from './client';
 
 describe('getApiErrorMessage', () => {
@@ -139,5 +139,80 @@ describe('api CSRF interceptor', () => {
     const headers = captured[0].headers as { get?: (k: string) => unknown; [k: string]: unknown };
     const value = headers['X-CSRF-Token'] ?? headers.get?.('X-CSRF-Token');
     expect(value).toBeUndefined();
+  });
+});
+
+describe('api 429 retry', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    delete api.defaults.adapter;
+  });
+
+  it('لا يجدول أي مؤقت عند النجاح من أول مرة', async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    api.defaults.adapter = async (config) => {
+      calls += 1;
+      return { data: { ok: true }, status: 200, statusText: 'OK', headers: {}, config };
+    };
+
+    const res = await api.get('/stats/me');
+    expect(res.status).toBe(200);
+    expect(calls).toBe(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  /** خطأ شبكي بشكل AxiosError يحمل الحالة المطلوبة (المحوّل المخصص يتجاوز فحص الحالة المدمج). */
+  const rateLimitError = (config: unknown) => ({
+    isAxiosError: true,
+    message: 'Request failed with status code 429',
+    config,
+    response: { status: 429, data: {}, headers: {}, config },
+  });
+
+  it('يعيد طلب القراءة مرة واحدة عند 429 ثم ينجح', async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    api.defaults.adapter = async (config) => {
+      calls += 1;
+      if (calls === 1) throw rateLimitError(config);
+      return { data: { ok: true }, status: 200, statusText: 'OK', headers: {}, config };
+    };
+
+    const pending = api.get('/stats/me');
+    await vi.advanceTimersByTimeAsync(1100);
+    const res = await pending;
+
+    expect(res.status).toBe(200);
+    expect(calls).toBe(2);
+  });
+
+  it('لا يتتالي عند 429 متكرر — يرفض بعد المحاولة الوحيدة', async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    api.defaults.adapter = async (config) => {
+      calls += 1;
+      throw rateLimitError(config);
+    };
+
+    const pending = api.get('/stats/me');
+    const assertion = expect(pending).rejects.toMatchObject({ response: { status: 429 } });
+    await vi.advanceTimersByTimeAsync(1100);
+    await assertion;
+    expect(calls).toBe(2);
+  });
+
+  it('لا يعيد طلبات الكتابة عند 429', async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    api.defaults.adapter = async (config) => {
+      calls += 1;
+      throw rateLimitError(config);
+    };
+
+    await expect(api.post('/personal-reminders', {})).rejects.toMatchObject({
+      response: { status: 429 },
+    });
+    expect(calls).toBe(1);
   });
 });
