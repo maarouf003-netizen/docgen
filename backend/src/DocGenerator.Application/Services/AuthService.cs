@@ -143,14 +143,20 @@ public sealed class AuthService : IAuthService
                 user.LockoutEndUtc = now.AddMinutes(lockoutMinutes);
                 locked = true;
             }
-            _users.Update(user);
-            await _uow.SaveChangesAsync(ct);
-            await _audit.LogAsync(username, "login_failed", details: "محاولة دخول فاشلة", ct: ct);
-            if (locked)
+            // RF-012: العدّاد والتدقيق والقفل في معاملة واحدة — عطل بينها (خصوصًا فشل
+            // التدقيق) يتراجع عن الكل فلا يثبت عدّاد بلا سجل ولا سجل بلا عدّاد.
+            // حساب التراجع الأسّي أعلاه حسابٌ خالص بلا حفظ عمدًا (يُحفَظ مرة واحدة داخل المعاملة).
+            await _tx.RunAsync(async token =>
             {
-                await _audit.LogAsync(username, "login_locked",
-                    details: $"قفل الحساب مؤقتاً لـ {lockoutMinutes} دقيقة بعد {user.FailedLoginCount} محاولات فاشلة متتالية", ct: ct);
-            }
+                _users.Update(user);
+                await _uow.SaveChangesAsync(token);
+                await _audit.LogAsync(username, "login_failed", details: "محاولة دخول فاشلة", ct: token);
+                if (locked)
+                {
+                    await _audit.LogAsync(username, "login_locked",
+                        details: $"قفل الحساب مؤقتاً لـ {lockoutMinutes} دقيقة بعد {user.FailedLoginCount} محاولات فاشلة متتالية", ct: token);
+                }
+            }, ct);
             return new LoginResult(LoginStatus.InvalidCredentials, null);
         }
 
