@@ -63,8 +63,10 @@ public class DbSeederTests
         using var db = TestDb.Create();
         var hasher = new PasswordHasher();
 
-        await DbSeeder.SeedAsync(db, hasher);
+        // العقد الجديد (RF-006): كلمة صريحة تُستخدَم كما هي (كانت "123456" ثابتة ملتزمة قبل الإصلاح).
+        var used = await DbSeeder.SeedAsync(db, hasher, devPassword: "123456");
 
+        Assert.Equal("123456", used);
         Assert.Equal(5, db.Branches.Count());
         Assert.Equal(
             new[] { "admin", "head1", "lawyer1", "manager" },

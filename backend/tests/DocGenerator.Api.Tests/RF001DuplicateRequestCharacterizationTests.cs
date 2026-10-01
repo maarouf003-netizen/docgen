@@ -25,6 +25,8 @@ public class RF001DuplicateRequestCharacterizationTests
         return Task.FromResult(db.Branches.Single(b => b.Code == code).Id);
     }
 
+    private static string NewName(string prefix) => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 16, 40)];
+
     private async Task<LawyerListItemDto> CreateLawyerAsync(string branchCode, string fullName)
     {
         var admin = _factory.AuthorizedClient("admin");
@@ -76,7 +78,9 @@ public class RF001DuplicateRequestCharacterizationTests
         await _factory.CreateDocumentAsync(token, borrowerName: "نقل مكرر 2");
         var target = await CreateLawyerAsync("DAM", "محامي الهدف المكرر");
 
-        var head = _factory.AuthorizedClient("head1");
+        // رئيس جديد (لا head1 المشترك) حتى لا تتداخل صفوف التدقيق مع اختبارات أخرى في القاعدة المشتركة.
+        var freshHead = await _factory.CreateUserAsync(NewName("head_dup"), UserRole.Head, await BranchIdAsync("DAM"));
+        var head = _factory.AuthorizedClient(freshHead.Username);
         var body = new { sourceLawyerId = source.Id, targetLawyerId = target.Id };
 
         var first = await head.PostAsJsonAsync("/api/documents/transfer-all", body);
