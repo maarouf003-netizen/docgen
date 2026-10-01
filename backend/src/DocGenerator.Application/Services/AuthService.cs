@@ -69,10 +69,19 @@ public sealed class AuthService : IAuthService
                 // استثناء (R1): إن كانت كل الحسابات المرشحة مقفلة حاليًا يُرجع القفل مباشرة —
                 // إرجاع اختيار فرع لحسابات لا يقبل أيٌّ منها الدخول إشارة مضللة وتجربة مكسورة.
                 if (candidates.All(m => m.LockoutEndUtc is DateTime end && end > now))
+                {
+                    // RF-005: إعادة المحاولة على المقفل كانت صامتة — توثَّق الآن (مقيّدة أصلًا
+                    // بمحدد المحاولات لكل IP:مستخدم فلا فيض).
+                    await _audit.LogAsync(username, "login_locked_retry",
+                        details: "إعادة محاولة دخول على حساب مقفل", ct: ct);
                     return new LoginResult(LoginStatus.LockedOut, null);
+                }
                 var branches = candidates
                     .Select(m => new LoginBranchChoiceDto(m.BranchId, m.Branch?.Name))
                     .ToList();
+                // RF-005: طلب اختيار الفرع يكشف أسماء الفروع — يُوثَّق بالعدد فقط (مقيّد بالمحدد).
+                await _audit.LogAsync(username, "login_branch_choices",
+                    details: $"طلب اختيار فرع بين {branches.Count} حسابات", ct: ct);
                 return new LoginResult(LoginStatus.BranchSelectionRequired, null, branches);
             }
         }
@@ -88,7 +97,12 @@ public sealed class AuthService : IAuthService
         }
 
         if (user.LockoutEndUtc is DateTime lockoutEnd && lockoutEnd > now)
+        {
+            // RF-005: انظر أعلاه — إعادة المحاولة على المقفل تُوثَّق (كانت صامتة).
+            await _audit.LogAsync(username, "login_locked_retry",
+                details: "إعادة محاولة دخول على حساب مقفل", ct: ct);
             return new LoginResult(LoginStatus.LockedOut, null);
+        }
 
         // انتهت مدة القفل: تحرير الحساب قبل معالجة المحاولة مع الاحتفاظ بعدّاد الإخفاقات
         // عمدًا — تصفيره هنا كان يمحو أثر تكرار القفل، وبقاؤه يبني التراجع الأسّي (S6)
