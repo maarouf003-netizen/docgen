@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
+  arabicCount,
   deltaPercent,
   firstName,
   formatDelta,
   isDueTodayOrOverdue,
   previousSelection,
+  trendDirectionText,
   zeroFilledMonthlyCounts,
 } from './dashboardFormat';
 
@@ -85,6 +87,29 @@ describe('zeroFilledMonthlyCounts', () => {
     ]);
     expect(out.map((p) => `${p.year}-${p.month}`)).toEqual(['2025-12', '2026-1', '2026-2']);
     expect(zeroFilledMonthlyCounts([])).toEqual([]);
+  });
+});
+
+describe('arabicCount', () => {
+  it('يستخدم المفرد التام عند 1 والعدد مع الجمع فوقه', () => {
+    expect(arabicCount(1, 'مراسلة عاجلة واحدة', 'مراسلات عاجلة')).toBe('مراسلة عاجلة واحدة');
+    expect(arabicCount(2, 'مراسلة عاجلة واحدة', 'مراسلات عاجلة')).toBe('2 مراسلات عاجلة');
+    expect(arabicCount(5, 'جهة واحدة بانتظار المراجعة', 'جهات بانتظار المراجعة')).toBe(
+      '5 جهات بانتظار المراجعة',
+    );
+  });
+});
+
+describe('trendDirectionText', () => {
+  it('يقارن آخر نقطة بالأولى: ارتفاع/انخفاض/ثبات', () => {
+    expect(trendDirectionText([{ count: 2 }, { count: 5 }])).toBe('ارتفاع');
+    expect(trendDirectionText([{ count: 5 }, { count: 2 }])).toBe('انخفاض');
+    expect(trendDirectionText([{ count: 3 }, { count: 0 }, { count: 3 }])).toBe('ثبات');
+  });
+
+  it('يُرجع «نقطة واحدة» عند غياب السلسلة أو فرادتها', () => {
+    expect(trendDirectionText([])).toBe('نقطة واحدة');
+    expect(trendDirectionText([{ count: 4 }])).toBe('نقطة واحدة');
   });
 });
 

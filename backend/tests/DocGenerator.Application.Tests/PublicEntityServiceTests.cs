@@ -4087,4 +4087,14 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Contains("فرع التجهيز", preview.Summary);
         Assert.DoesNotContain(preview.Errors, e => e.Contains("للفروع فقط"));
     }
+
+    [Fact]
+    public async Task CountNeedsReview_BranchlessHead_ReturnsZero()
+    {
+        // رئيس بلا فرع: صفر بلا نطاق (الحالة الشاذة لا تُحتسب) — يُختبر على مستوى
+        // الخدمة لأن قيد القاعدة يمنع تجسيد الصف الشاذ في قاعدة الاختبار.
+        var branchlessHead = new EntityRegistryActor(_headDamascusId, "رئيس قسم دمشق", UserRole.Head, null);
+
+        Assert.Equal(0, await _service.CountNeedsReviewAsync(branchlessHead));
+    }
 }

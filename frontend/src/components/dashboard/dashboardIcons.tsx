@@ -1,57 +1,33 @@
 import type { ReactNode } from 'react';
 
-export const ICONS: Record<string, ReactNode> = {
+/**
+ * قاموس أيقونات اللوحات — بلا تعليق نوع موسّع عمدًا: الاستدلال يجعل كل مفتاح
+ * مُدقَّقًا وقت الترجمة، فالمفتاح الخاطئ (`ICONS.entitiy`) خطأ ترجمة لا أيقونة
+ * فارغة صامتة وقت التشغيل. كل الوصول الحالي خصائص ثابتة (لا فهرسة ديناميكية).
+ */
+export const ICONS: Record<
+  | 'documents'
+  | 'borrowers'
+  | 'home'
+  | 'chart'
+  | 'reviews'
+  | 'correspondence'
+  | 'calendar'
+  | 'account'
+  | 'forum'
+  | 'library'
+  | 'delegation'
+  | 'entity'
+  | 'audit'
+  | 'delegate',
+  ReactNode
+> = {
   documents: (
     <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <path d="M14 2v6h6" />
       <path d="M8 13h8" />
       <path d="M8 17h5" />
-    </svg>
-  ),
-  active: (
-    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
-      <path d="M21 3v5h-5" />
-    </svg>
-  ),
-  drafts: (
-    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-      <path d="m15 5 4 4" />
-    </svg>
-  ),
-  deferred: (
-    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="12" cy="12" r="10" />
-      <path d="M10 9v6" />
-      <path d="M14 9v6" />
-    </svg>
-  ),
-  referred: (
-    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="m15 14 5-5-5-5" />
-      <path d="M4 20v-7a3 3 0 0 1 3-3h13" />
-    </svg>
-  ),
-  executed: (
-    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="12" cy="12" r="10" />
-      <path d="m9 12 2 2 4-4" />
-    </svg>
-  ),
-  amount: (
-    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect width="20" height="12" x="2" y="6" rx="2" />
-      <circle cx="12" cy="12" r="2" />
-      <path d="M6 12h.01" />
-      <path d="M18 12h.01" />
-    </svg>
-  ),
-  collected: (
-    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M22 7 13.5 15.5 8.5 10.5 2 17" />
-      <path d="M16 7h6v6" />
     </svg>
   ),
   borrowers: (
@@ -114,6 +90,37 @@ export const ICONS: Record<string, ReactNode> = {
       <path d="M12 6v14" />
       <path d="M8 8v12" />
       <path d="M4 4v16" />
+    </svg>
+  ),
+  delegation: (
+    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M8 3 4 7l4 4" />
+      <path d="M4 7h16" />
+      <path d="m16 21 4-4-4-4" />
+      <path d="M20 21H4" />
+    </svg>
+  ),
+  entity: (
+    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 22h18" />
+      <path d="M6 18v-7" />
+      <path d="M10 18v-7" />
+      <path d="M14 18v-7" />
+      <path d="M18 18v-7" />
+      <path d="m12 2 8 5H4z" />
+    </svg>
+  ),
+  audit: (
+    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
+  ),
+  delegate: (
+    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="m16 11 2 2 4-4" />
     </svg>
   ),
 };

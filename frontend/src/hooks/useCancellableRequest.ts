@@ -17,9 +17,22 @@ export interface UseCancellableRequestOptions {
    * فقط (ملف/استئناف بالمعرف)، فلا يُعرض كيان سابق أثناء تحميل الجديد.
    * الافتراضي false عمدًا: القوائم تُبقي بياناتها أثناء الفلترة والترقيم
    * (لا وميض). إعادة الجلب refetch لا تُصفِّر أبدًا في الحالتين.
+   *
+   * عقد إلزامي: طول `deps` ثابت مدى حياة المكوّن — التبعيات منثورة في
+   * مصفوفة التأثير، فتغيّر الطول بين الرندرات يُطلق تحذير React ويُعيد
+   * الجلب عبثًا (يُكتشف في التطوير عبر `console.error` أدناه).
    */
   resetOnDepsChange?: boolean;
 }
+
+// تُحسب مرة واحدة على مستوى الوحدة: الحارس تطويري فقط ولا أثر له إنتاجيًا.
+const isDev = (() => {
+  try {
+    return (import.meta as unknown as { env?: { DEV?: boolean } })?.env?.DEV === true;
+  } catch {
+    return false;
+  }
+})();
 
 export function useCancellableRequest<T>(
   fetcher: (signal: AbortSignal) => Promise<T>,
@@ -55,6 +68,12 @@ export function useCancellableRequest<T>(
     // تغيّر الهوية (لا إعادة الجلب): تُصفَّر بيانات الكيان السابق فورًا
     // عند تفعيل الخيار، فلا يظهر كيان قديم تحت عنوان جديد أثناء التحميل.
     const previous = prevDeps.current;
+    if (isDev && previous !== null && previous.length !== deps.length) {
+      console.error(
+        '[useCancellableRequest] تغيّر طول مصفوفة الهوية (deps) بين الرندرات — ' +
+          'مرّر مصفوفة ثابتة الطول وإلا أُعيد الجلب مع تحذير React.',
+      );
+    }
     prevDeps.current = deps;
     const keyChanged =
       resetOnDepsChange &&

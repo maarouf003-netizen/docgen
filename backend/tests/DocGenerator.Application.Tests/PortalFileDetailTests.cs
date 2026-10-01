@@ -30,9 +30,11 @@ public class PortalFileDetailTests : IDisposable
         _db = TestDb.Create();
 
         _db.Users.Add(new User { Username = "creator", FullName = "منشئ", Role = UserRole.Admin, PasswordHash = "x" });
+        // الفرع لازم للمحامي (قيد القاعدة) — رؤية البوابة بالنطاق لا بفرع المستخدم.
+        var damascus = _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" }).Entity;
         _db.SaveChanges();
 
-        var lawyer = new User { Username = "lawyer1", FullName = "محامي دمشق", Role = UserRole.Lawyer, PasswordHash = "x" };
+        var lawyer = new User { Username = "lawyer1", FullName = "محامي دمشق", Role = UserRole.Lawyer, BranchId = damascus.Id, PasswordHash = "x" };
         _db.Users.Add(lawyer);
         _db.SaveChanges();
         _lawyerId = lawyer.Id;

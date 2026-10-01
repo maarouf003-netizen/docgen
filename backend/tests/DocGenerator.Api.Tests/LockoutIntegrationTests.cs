@@ -40,7 +40,7 @@ public class LockoutIntegrationTests
     public async Task RepeatedFailures_EventuallyLockAccount_Return423()
     {
         var username = $"lk_{Guid.NewGuid():N}"[..16];
-        await _factory.CreateUserAsync(username, UserRole.Lawyer, password: "123456");
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId: BranchId("DAM"), password: "123456");
 
         using var factory = CreateLockoutFactory(maxFailedAttempts: 3);
         for (var i = 0; i < 3; i++)
@@ -63,7 +63,7 @@ public class LockoutIntegrationTests
     public async Task LockedAccount_CorrectPassword_Returns423()
     {
         var username = $"l2_{Guid.NewGuid():N}"[..16];
-        await _factory.CreateUserAsync(username, UserRole.Lawyer, password: "123456");
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId: BranchId("DAM"), password: "123456");
 
         using var factory = CreateLockoutFactory(maxFailedAttempts: 2);
         await LoginAsync(factory, username, "wrong");
@@ -77,7 +77,7 @@ public class LockoutIntegrationTests
     public async Task AfterLockoutExpires_CorrectPasswordSucceeds()
     {
         var username = $"l3_{Guid.NewGuid():N}"[..16];
-        await _factory.CreateUserAsync(username, UserRole.Lawyer, password: "123456");
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId: BranchId("DAM"), password: "123456");
 
         using var factory = CreateLockoutFactory(maxFailedAttempts: 2, lockoutMinutes: 15);
         await LoginAsync(factory, username, "wrong");
@@ -101,7 +101,7 @@ public class LockoutIntegrationTests
     public async Task SuccessfulLogin_ResetsFailedAttempts()
     {
         var username = $"l4_{Guid.NewGuid():N}"[..16];
-        await _factory.CreateUserAsync(username, UserRole.Lawyer, password: "123456");
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId: BranchId("DAM"), password: "123456");
 
         using var factory = CreateLockoutFactory(maxFailedAttempts: 5);
         await LoginAsync(factory, username, "wrong");
@@ -125,7 +125,7 @@ public class LockoutIntegrationTests
     public async Task RepeatedLockouts_BackoffDoublesDuration()
     {
         var username = $"lb_{Guid.NewGuid():N}"[..16];
-        await _factory.CreateUserAsync(username, UserRole.Lawyer, password: "123456");
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId: BranchId("DAM"), password: "123456");
 
         using var factory = CreateLockoutFactory(maxFailedAttempts: 2, lockoutMinutes: 15);
         await LoginAsync(factory, username, "wrong");
@@ -141,7 +141,7 @@ public class LockoutIntegrationTests
     public async Task SuccessfulLogin_BetweenLockouts_ResetsBackoffLevel()
     {
         var username = $"lr_{Guid.NewGuid():N}"[..16];
-        await _factory.CreateUserAsync(username, UserRole.Lawyer, password: "123456");
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId: BranchId("DAM"), password: "123456");
 
         using var factory = CreateLockoutFactory(maxFailedAttempts: 2, lockoutMinutes: 15);
         await LoginAsync(factory, username, "wrong");

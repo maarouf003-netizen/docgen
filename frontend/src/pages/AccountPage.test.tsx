@@ -29,9 +29,17 @@ import { api } from '../api/client';
 function mockApi() {
   (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
     if (url === '/stats/me') return Promise.resolve({ data: { totalFiles: 12 } });
+    if (url === '/stats/manager') return Promise.resolve({ data: { totalFiles: 42 } });
     if (url === '/personal-reminders')
       return Promise.resolve({ data: [{ id: 1 }, { id: 2 }] });
     if (url === '/alerts/unread-count') return Promise.resolve({ data: { count: 3 } });
+    if (url === '/alerts')
+      return Promise.resolve({
+        data: [
+          { id: 1, recipientCount: 2, unreadCount: 2 },
+          { id: 2, recipientCount: 3, unreadCount: 1 },
+        ],
+      });
     if (url === '/app-suggestions')
       return Promise.resolve({
         data: [{ id: 9, message: 'اقتراحي', createdAt: '2026-08-08T10:00:00', isRead: false }],
@@ -97,5 +105,35 @@ describe('AccountPage', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent('نص الاقتراح مطلوب');
     expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('يعرض لرئيس القسم ملخص الفرع (ملفات + غير مقروءة + اقتراحاتي) بلا استعلامات المحامي', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 2, username: 'head1', fullName: 'رئيس القسم', role: 'head', branchName: 'دمشق' },
+      logout: vi.fn(),
+    });
+    render(<AccountPage />);
+
+    expect(await screen.findByRole('heading', { name: 'الحساب الشخصي' })).toBeInTheDocument();
+    expect(screen.getByText('رئيس قسم — دمشق')).toBeInTheDocument();
+    expect(screen.queryByText('محامي — دمشق')).not.toBeInTheDocument();
+
+    await waitFor(() => expect(screen.getByText('42')).toBeInTheDocument());
+    expect(screen.getByText('ملفات الفرع هذه السنة')).toBeInTheDocument();
+    // الدلالة مجموع المستلمين غير القارئين عبر التنبيهات (2+1=3) لا عدد التنبيهات (2)
+    // ولا عدد الأشخاص المميزين — الوسم يصرّح بالمجموع عمدًا.
+    expect(screen.getByText('مجموع مستلمي تنبيهات الفرع غير القارئين')).toBeInTheDocument();
+    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.getAllByText('اقتراحاتي').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('تذكيراتي النشطة')).not.toBeInTheDocument();
+    expect(screen.queryByText('ملفاتي هذه السنة')).not.toBeInTheDocument();
+
+    const urls = (api.get as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
+    expect(urls).toContain('/stats/manager');
+    expect(urls).toContain('/alerts');
+    expect(urls).toContain('/app-suggestions');
+    expect(urls).not.toContain('/stats/me');
+    expect(urls).not.toContain('/personal-reminders');
+    expect(urls).not.toContain('/alerts/unread-count');
   });
 });

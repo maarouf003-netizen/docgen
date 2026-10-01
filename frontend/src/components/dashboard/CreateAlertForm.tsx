@@ -3,6 +3,15 @@ import type { HeadAlertTargetType, LawyerListItem } from '../../types';
 import { TARGET_TYPE_LABELS } from './dashboardFormat';
 
 /**
+ * خطأ النموذج منسوب لحقله: `message` للنص، `lawyer` للقائمة، و`null`
+ * لخطأ الإرسال الخادمي (لا حقل مخالف — يُعلن وحده دون تعليم أي حقل).
+ */
+export interface AlertFormError {
+  field: 'message' | 'lawyer' | null;
+  text: string;
+}
+
+/**
  * نموذج إصدار تنبيه لرئيس القسم: رسالة خاصة لمحامٍ أو تعميم لجميع محامي الفرع.
  * Mobile-first مع أهداف لمس 44px+.
  */
@@ -27,7 +36,7 @@ export function CreateAlertForm({
   message: string;
   onMessageChange: (v: string) => void;
   submitting: boolean;
-  error: string;
+  error: AlertFormError;
   onSubmit: (e: FormEvent) => void;
   onCancel: () => void;
 }) {
@@ -60,9 +69,11 @@ export function CreateAlertForm({
             id="alert-lawyer"
             value={lawyerId}
             onChange={(e) => onLawyerIdChange(e.target.value)}
+            aria-invalid={error.field === 'lawyer' ? true : undefined}
+            aria-describedby={error.field === 'lawyer' ? 'alert-form-error' : undefined}
             className="w-full min-h-11 rounded-xl border border-gray-200 bg-white px-3 text-sm"
           >
-            <option value="">اختر محامياً...</option>
+            <option value="">اختر محاميًا…</option>
             {lawyers.map((l) => (
               <option key={l.id} value={l.id}>
                 {l.fullName}
@@ -81,11 +92,17 @@ export function CreateAlertForm({
           value={message}
           onChange={(e) => onMessageChange(e.target.value)}
           rows={3}
+          aria-invalid={error.field === 'message' ? true : undefined}
+          aria-describedby={error.field === 'message' ? 'alert-form-error' : undefined}
           className="w-full min-h-11 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
         />
       </div>
 
-      {error ? <p className="text-red-600 text-sm">{error}</p> : null}
+      {error.text ? (
+        <p id="alert-form-error" role="alert" className="text-red-600 text-sm">
+          {error.text}
+        </p>
+      ) : null}
 
       <div className="flex flex-wrap gap-2">
         <button
@@ -93,7 +110,7 @@ export function CreateAlertForm({
           disabled={submitting}
           className="min-h-11 px-4 rounded-lg bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium"
         >
-          {submitting ? 'جارِ الإرسال...' : 'إرسال التنبيه'}
+          {submitting ? 'جارٍ الإرسال…' : 'إرسال التنبيه'}
         </button>
         <button
           type="button"

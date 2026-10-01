@@ -11,6 +11,12 @@ public interface IPublicEntityRepository
     /// <summary>كل الهويات الأم مع قيودها وأسمائها البديلة (للبحث والتطبيع في الذاكرة).</summary>
     Task<List<PublicEntityGroup>> ListGroupsWithEntriesAsync(CancellationToken ct = default);
 
+    /// <summary>
+    /// عدد القيود «بحاجة مراجعة» ضمن نطاق رئيس القسم (فرع مُدخِل القيد)، أو كل السجل
+    /// للمدير/المشرف — نفس نطاق قائمة المراجعة دون تحميل القيود: لشارة رئيس القسم الخفيفة.
+    /// </summary>
+    Task<int> CountNeedsReviewAsync(int? headBranchId, CancellationToken ct = default);
+
     /// <summary>الهويات الأم متتبَّعة (لإعادة استخدامها عند إنشاء قيد دون تعارض تتبع).</summary>
     Task<List<PublicEntityGroup>> ListGroupsTrackedAsync(CancellationToken ct = default);
 

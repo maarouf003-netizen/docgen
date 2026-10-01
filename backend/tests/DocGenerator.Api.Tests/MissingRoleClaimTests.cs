@@ -3,6 +3,8 @@ using System.Net;
 using System.Security.Claims;
 using System.Text;
 using DocGenerator.Domain.Enums;
+using DocGenerator.Infrastructure.Persistence;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 
 namespace DocGenerator.Api.Tests;
@@ -19,7 +21,15 @@ public sealed class MissingRoleClaimTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var user = await _factory.CreateUserAsync("norole_lawyer", UserRole.Lawyer, branchId: null);
+        // الفرع لازم للمحامي (قيد القاعدة) — منطق مطالبة الدور محايد الفرع،
+        // والنطاق user-scoped فيبقى الضابط الإيجابي (200 فارغة) صالحًا.
+        int damascusId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+            damascusId = db.Branches.Single(b => b.Code == "DAM").Id;
+        }
+        var user = await _factory.CreateUserAsync("norole_lawyer", UserRole.Lawyer, branchId: damascusId);
         _lawyerId = user.Id;
     }
 

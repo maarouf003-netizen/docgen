@@ -93,7 +93,8 @@ describe('ExecutionActionsModal', () => {
     expect(screen.getByText(/يلزم للإجراء، اختياري للملاحظة/)).toBeInTheDocument();
   });
 
-  it('يحفظ ملاحظة جديدة عند الضغط على حفظ كملاحظة', async () => {    const user = userEvent.setup();
+  it('يحفظ ملاحظة جديدة عند الضغط على حفظ كملاحظة', async () => {
+    const user = userEvent.setup();
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: [] });
     (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({});
 

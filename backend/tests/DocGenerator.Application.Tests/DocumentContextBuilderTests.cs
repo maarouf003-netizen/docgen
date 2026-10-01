@@ -25,7 +25,9 @@ public class DocumentContextBuilderTests : IDisposable
             if (!_db.Users.Any(u => u.Id == 1))
             {
                 // علاقة المحامي المختص إلزامية: نضمن وجود مالك صالح قبل إدراج الملف.
-                _db.Users.Add(new User { Username = "seeded", FullName = "مالك افتراضي", PasswordHash = "x" });
+                // الدور الافتراضي (محامٍ) بلا فرع حالة محرّمة بالقيد، فالمالك
+                // الشكلي هنا مشرف (بلا فرع بالتصميم) — الدور لا يؤثر في بناء السياق.
+                _db.Users.Add(new User { Username = "seeded", FullName = "مالك افتراضي", Role = UserRole.Manager, PasswordHash = "x" });
                 await _db.SaveChangesAsync();
             }
             doc.CreatedById = 1;

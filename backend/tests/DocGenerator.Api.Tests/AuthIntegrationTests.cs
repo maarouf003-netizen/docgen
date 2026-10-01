@@ -39,11 +39,16 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal((int)HttpStatusCode.Unauthorized, result!.StatusCode);
     }
 
+    // ملاحظة طبقية: تجسيد «بلا فرع» لرئيس/محامٍ عبر EF أصبح مستحيلًا (قيد
+    // القاعدة يرفض الإدراج)، فانتقلت تغطية البوابة إلى `AuthServiceBranchGateTests`
+    // (قرار الخدمة بمستودع مزيف) و`AuthControllerBranchRequiredTests` (الترجمة
+    // إلى 400 والرسالة العامة) — والدخول الشرعي بفرع مغطى أدناه وفي كل الاختبارات.
+
     [Fact]
     public async Task Login_AfterMaxFailedAttempts_ReturnsTooManyRequests()
     {
         var username = $"rl_{Guid.NewGuid():N}"[..16];
-        await _factory.CreateUserAsync(username, UserRole.Lawyer);
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId: await GetBranchIdAsync("DAM"));
 
         var statuses = new List<int>();
         for (var i = 0; i < 6; i++)
@@ -60,7 +65,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
     public async Task ChangePassword_FullFlow_Works()
     {
         var username = $"cp_{Guid.NewGuid():N}"[..16];
-        await _factory.CreateUserAsync(username, UserRole.Lawyer, password: "123456");
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId: await GetBranchIdAsync("DAM"), password: "123456");
 
         var client = _factory.AuthorizedClient(username);
         var changeBody = JsonSerializer.Serialize(new { oldPassword = "123456", newPassword = "654321" });
@@ -225,7 +230,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
     public async Task Login_WithLegacyUnsaltedSha256_UpgradeHashTransparently()
     {
         var username = $"lg_{Guid.NewGuid():N}"[..16];
-        await _factory.CreateUserAsync(username, UserRole.Lawyer);
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId: await GetBranchIdAsync("DAM"));
 
         int tokenVersionBefore;
         string legacyHash;
@@ -265,7 +270,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
     public async Task Login_WithCanonicalFormat_DoesNotRehash()
     {
         var username = $"cn_{Guid.NewGuid():N}"[..16];
-        await _factory.CreateUserAsync(username, UserRole.Lawyer);
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId: await GetBranchIdAsync("DAM"));
 
         string canonical;
         using (var scope = _factory.Services.CreateScope())

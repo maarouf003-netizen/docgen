@@ -3,14 +3,7 @@ import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import type { BranchDto, Role, UserListItem } from '../types';
-
-const ROLE_LABELS: Record<Role, string> = {
-  lawyer: 'محامي',
-  head: 'رئيس قسم',
-  manager: 'مدير',
-  admin: 'مشرف نظام',
-  entitymanager: 'مندوب جهة',
-};
+import { ROLE_LABELS } from '../auth/roleLabels';
 
 const BRANCH_ROLES: Role[] = ['lawyer', 'head'];
 

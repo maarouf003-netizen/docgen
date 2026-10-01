@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http;
 using System.Net.Http.Json;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
@@ -29,6 +30,38 @@ public class EntityRegistryHeadScopeIntegrationTests
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
         return db.Branches.Single(b => b.Code == code).Id;
+    }
+
+    private sealed record PendingReviewCountDto(int Count);
+
+    /// <summary>يزرع قيدًا «بحاجة مراجعة» أدخله مستخدم بعينه — لقياس عدّاد النطاق.</summary>
+    private async Task SeedNeedsReviewEntryAsync(int createdById)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+        var creator = db.Users.Single(u => u.Id == createdById);
+        var group = new PublicEntityGroup { CanonicalName = $"جهة عدّ {Guid.NewGuid():N}".Trim(), EntityType = PublicEntityTypeCatalog.Company };
+        var entry = new PublicEntity
+        {
+            Group = group,
+            Governorate = "دمشق",
+            BranchName = "فرع العدّ",
+            CreatedById = creator.Id,
+            CreatedBy = creator,
+            NeedsReview = true,
+        };
+        group.Entries.Add(entry);
+        db.PublicEntityGroups.Add(group);
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task<int> GetPendingReviewCountAsync(HttpClient client)
+    {
+        var response = await client.GetAsync("/api/entity-registry/pending-review-count");
+        response.EnsureSuccessStatusCode();
+        var dto = await response.Content.ReadFromJsonAsync<PendingReviewCountDto>();
+        Assert.NotNull(dto);
+        return dto!.Count;
     }
 
     /// <summary>
@@ -94,6 +127,39 @@ public class EntityRegistryHeadScopeIntegrationTests
     }
 
     #endregion
+
+    [Fact]
+    public async Task PendingReviewCount_ScopesToHeadBranch_AndGuardsHold()
+    {
+        var head = _factory.AuthorizedClient("head1");
+        var manager = _factory.AuthorizedClient("manager");
+        var lawyer = _factory.AuthorizedClient("lawyer1");
+
+        var headBefore = await GetPendingReviewCountAsync(head);
+        var managerBefore = await GetPendingReviewCountAsync(manager);
+
+        // قيد أدخله محامي فرع الرئيس (دمشق): يرفع عدّاد الرئيس والمدير معًا.
+        int lawyer1Id;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+            lawyer1Id = db.Users.Single(u => u.Username == ArabicNameNormalizer.Normalize("lawyer1")).Id;
+        }
+        await SeedNeedsReviewEntryAsync(lawyer1Id);
+        Assert.Equal(headBefore + 1, await GetPendingReviewCountAsync(head));
+        Assert.Equal(managerBefore + 1, await GetPendingReviewCountAsync(manager));
+
+        // قيد أدخله محامي فرع آخر (حلب): يرفع عدّاد المدير وحده.
+        var alpLawyer = await _factory.CreateUserAsync($"lawyer_alpcount_{Guid.NewGuid():N}"[..40], UserRole.Lawyer, branchId: await BranchIdAsync("ALP"));
+        await SeedNeedsReviewEntryAsync(alpLawyer.Id);
+        Assert.Equal(headBefore + 1, await GetPendingReviewCountAsync(head));
+        Assert.Equal(managerBefore + 2, await GetPendingReviewCountAsync(manager));
+
+        // المحامي ممنوع من العدّاد (403). سلوك «رئيس بلا فرع يرى صفرًا» منطق خدمة
+        // (`CountNeedsReviewAsync`) لا يحتاج صفًا شاذًا — تغطيته في
+        // `PublicEntityServiceTests.CountNeedsReview_BranchlessHead_ReturnsZero`.
+        Assert.Equal(HttpStatusCode.Forbidden, (await lawyer.GetAsync("/api/entity-registry/pending-review-count")).StatusCode);
+    }
 
     [Fact]
     public async Task ChangeEvents_HeadAndManagement_Allowed_LawyerForbidden()

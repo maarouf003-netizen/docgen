@@ -18,6 +18,12 @@ public class PublicEntityRepository : IPublicEntityRepository
             .OrderBy(g => g.CanonicalName)
             .ToListAsync(ct);
 
+    public Task<int> CountNeedsReviewAsync(int? headBranchId, CancellationToken ct = default)
+        => _db.PublicEntities.AsNoTracking()
+            .Where(e => e.NeedsReview && (headBranchId == null
+                || (e.CreatedBy != null && e.CreatedBy.BranchId == headBranchId)))
+            .CountAsync(ct);
+
     public Task<List<PublicEntityGroup>> ListGroupsTrackedAsync(CancellationToken ct = default)
         => _db.PublicEntityGroups.OrderBy(g => g.Id).ToListAsync(ct);
 

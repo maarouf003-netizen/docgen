@@ -27,12 +27,16 @@ public class SearchServerYearTests : IDisposable
     public SearchServerYearTests()
     {
         _db = TestDb.Create();
+        // الفرع لازم للمحامي (قيد القاعدة) — البحث هنا user-scoped بلا فلتر فرع
+        // (`visibleBranchId: null` تعني بلا فلترة) فالقيمة لا تؤثر في التأكيدات.
+        var damascus = _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" }).Entity;
+        _db.SaveChanges();
         _db.Users.Add(new User
         {
             Username = "lawyer1",
             FullName = "محامي",
             Role = UserRole.Lawyer,
-            BranchId = null,
+            BranchId = damascus.Id,
             PasswordHash = new PasswordHasher().Hash("123456"),
         });
         _db.SaveChanges();

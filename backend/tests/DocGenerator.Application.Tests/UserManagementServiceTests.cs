@@ -144,6 +144,25 @@ public class UserManagementServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateUser_HeadWithoutBranch_Throws()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateUserAsync(new CreateUserRequest("head_nob", "رئيس بلا فرع", "head", null, "123456"), "admin"));
+    }
+
+    [Fact]
+    public async Task UpdateUser_RoleToLawyerWithoutBranch_Throws()
+    {
+        // المسار الوحيد القابل للوصول عبر الخدمة: مندوب (بلا فرع بالتصميم) يُحوَّل
+        // إلى محامٍ دون فرع — `ResolveBranchAsync` يرفض بدل تثبيت حالة شاذة.
+        // (الزرع المباشر لصف شاذ أصبح مستحيلًا بقيد القاعدة.)
+        var user = await AddUserAsync("delegate_x", "مندوب", UserRole.EntityManager, null);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateUserAsync(user.Id, new UpdateUserRequest("مندوب", "lawyer", null, true, null), 999, "admin"));
+    }
+
+    [Fact]
     public async Task CreateUser_InvalidRole_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>

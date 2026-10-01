@@ -2646,7 +2646,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.HasIndex("Username", "BranchId")
                         .IsUnique();
 
-                    b.ToTable("Users", (string)null);
+                    b.ToTable("Users", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Users_BranchRequiredForBranchRoles", "\"BranchId\" IS NOT NULL OR \"Role\" NOT IN ('Lawyer', 'Head')");
+                        });
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.AppSuggestion", b =>

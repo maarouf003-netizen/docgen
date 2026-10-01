@@ -32,4 +32,14 @@ describe('LawyerIconRow', () => {
     // بلا جرس عند الصفر.
     expect(screen.getByRole('link', { name: 'المراسلات' })).toBeInTheDocument();
   });
+
+  it('يستخدم المفرد التام عند العدّ 1 (لا «1 مراسلات» ولا «1 ردود»)', () => {
+    render(<LawyerIconRow counts={{ unseenReplies: 1, urgentCorrespondence: 1, calendarAlerts: 1 }} />);
+
+    expect(screen.getByRole('link', { name: 'المطالعات — رد واحد غير مقروء' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'المراسلات — مراسلة عاجلة واحدة' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'التقويم — تذكير واحد اليوم أو متأخر' }),
+    ).toBeInTheDocument();
+  });
 });

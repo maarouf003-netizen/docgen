@@ -2,36 +2,49 @@ import { useState } from 'react';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { api } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import { ROLE_LABELS } from '../auth/roleLabels';
 import { ChangePasswordForm } from '../components/ChangePasswordForm';
 import { SuggestionDialog } from '../components/SuggestionDialog';
 import { formatNumber } from '../components/dashboard/dashboardFormat';
-import type { AppSuggestionDto, ManagerStatsDto, PersonalReminderDto } from '../types';
+import type { AppSuggestionDto, HeadAlertDto, ManagerStatsDto, PersonalReminderDto } from '../types';
 
 /**
- * الحساب الشخصي للمحامي (`/account` — مكوّنات قابلة للتعميم لاحقًا):
+ * الحساب الشخصي (`/account` — محامٍ ورئيس قسم):
  * بطاقة الملف + تغيير كلمة المرور + تسجيل الخروج + ملخص إحصائي +
  * اقتراحات التطوير وسجلها.
+ *
+ * الملخص حسب الدور (الاستعلامات المحامية `403` لغيره — تُغلق صراحةً):
+ * - المحامي: ملفاتي هذه السنة + تذكيراتي النشطة + تنبيهات غير مقروءة.
+ * - رئيس القسم: ملفات الفرع هذه السنة (`/stats/manager` — فرعه إجباري خلفيًا) +
+ *   مجموع مستلمي تنبيهات الفرع غير القارئين (مجموع `unreadCount` عبر التنبيهات —
+ *   أزواج (تنبيه × مستلم) لا أشخاصًا مميزين، وأبدًا `isRead` فهو `null` في عرض الرئيس) + اقتراحاتي.
  */
 export default function AccountPage() {
   const { user, logout } = useAuth();
   const userReady = Boolean(user);
+  const isHead = user?.role === 'head';
   const [dialogOpen, setDialogOpen] = useState(false);
   const [sentFlash, setSentFlash] = useState(false);
 
   const statsQuery = useCancellableRequest<ManagerStatsDto>(
-    (signal) => api.get('/stats/me', { signal }).then((r) => r.data),
-    [],
+    (signal) => api.get(isHead ? '/stats/manager' : '/stats/me', { signal }).then((r) => r.data),
+    [isHead],
     { enabled: userReady },
   );
   const personalQuery = useCancellableRequest<PersonalReminderDto[]>(
     (signal) => api.get('/personal-reminders', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
     [],
-    { enabled: userReady },
+    { enabled: userReady && !isHead },
   );
   const unreadQuery = useCancellableRequest<{ count: number }>(
     (signal) => api.get('/alerts/unread-count', { signal }).then((r) => r.data),
     [],
-    { enabled: userReady },
+    { enabled: userReady && !isHead },
+  );
+  const headAlertsQuery = useCancellableRequest<HeadAlertDto[]>(
+    (signal) => api.get('/alerts', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
+    [],
+    { enabled: userReady && isHead },
   );
   const suggestionsQuery = useCancellableRequest<AppSuggestionDto[]>(
     (signal) => api.get('/app-suggestions', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
@@ -41,6 +54,13 @@ export default function AccountPage() {
 
   const suggestions = suggestionsQuery.data ?? [];
   const initials = (user?.fullName ?? '').trim().slice(0, 2) || '؟';
+  const branchUnread = (headAlertsQuery.data ?? []).reduce(
+    (sum, a) => sum + Math.max(0, Number(a.unreadCount) || 0),
+    0,
+  );
+  const summaryError = isHead
+    ? (statsQuery.error ?? headAlertsQuery.error)
+    : (statsQuery.error ?? personalQuery.error ?? unreadQuery.error);
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -66,7 +86,9 @@ export default function AccountPage() {
               <p className="text-sm text-gray-500 truncate" dir="ltr">
                 {user?.username}
               </p>
-              <p className="text-xs text-gray-500 mt-0.5">محامي — {user?.branchName || 'كل الفروع'}</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {user?.role ? ROLE_LABELS[user.role] : ''} — {user?.branchName || 'كل الفروع'}
+              </p>
             </div>
           </div>
           <button
@@ -85,30 +107,48 @@ export default function AccountPage() {
 
         <section aria-label="ملخص إحصائي" className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
           <h3 className="font-bold text-gray-900 mb-3">ملخص سريع</h3>
-          {statsQuery.error || personalQuery.error || unreadQuery.error ? (
+          {summaryError ? (
             <p role="alert" className="text-red-700 text-sm">
-              {statsQuery.error ?? personalQuery.error ?? unreadQuery.error}
+              {summaryError}
             </p>
           ) : (
             <dl className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
               <div className="rounded-xl bg-gray-50 px-2 py-3">
-                <dt className="text-xs text-gray-500 mb-1">ملفاتي هذه السنة</dt>
+                <dt className="text-xs text-gray-500 mb-1">{isHead ? 'ملفات الفرع هذه السنة' : 'ملفاتي هذه السنة'}</dt>
                 <dd className="text-xl font-bold text-gray-900 tabular-nums" dir="ltr">
                   {statsQuery.data ? formatNumber(statsQuery.data.totalFiles) : '…'}
                 </dd>
               </div>
-              <div className="rounded-xl bg-gray-50 px-2 py-3">
-                <dt className="text-xs text-gray-500 mb-1">تذكيراتي النشطة</dt>
-                <dd className="text-xl font-bold text-gray-900 tabular-nums" dir="ltr">
-                  {personalQuery.data ? formatNumber(personalQuery.data.length) : '…'}
-                </dd>
-              </div>
-              <div className="rounded-xl bg-gray-50 px-2 py-3">
-                <dt className="text-xs text-gray-500 mb-1">تنبيهات غير مقروءة</dt>
-                <dd className="text-xl font-bold text-gray-900 tabular-nums" dir="ltr">
-                  {unreadQuery.data ? formatNumber(Number(unreadQuery.data.count) || 0) : '…'}
-                </dd>
-              </div>
+              {isHead ? (
+                <div className="rounded-xl bg-gray-50 px-2 py-3">
+                  <dt className="text-xs text-gray-500 mb-1">مجموع مستلمي تنبيهات الفرع غير القارئين</dt>
+                  <dd className="text-xl font-bold text-gray-900 tabular-nums" dir="ltr">
+                    {headAlertsQuery.data ? formatNumber(branchUnread) : '…'}
+                  </dd>
+                </div>
+              ) : (
+                <div className="rounded-xl bg-gray-50 px-2 py-3">
+                  <dt className="text-xs text-gray-500 mb-1">تذكيراتي النشطة</dt>
+                  <dd className="text-xl font-bold text-gray-900 tabular-nums" dir="ltr">
+                    {personalQuery.data ? formatNumber(personalQuery.data.length) : '…'}
+                  </dd>
+                </div>
+              )}
+              {isHead ? (
+                <div className="rounded-xl bg-gray-50 px-2 py-3">
+                  <dt className="text-xs text-gray-500 mb-1">اقتراحاتي</dt>
+                  <dd className="text-xl font-bold text-gray-900 tabular-nums" dir="ltr">
+                    {suggestionsQuery.data ? formatNumber(suggestions.length) : '…'}
+                  </dd>
+                </div>
+              ) : (
+                <div className="rounded-xl bg-gray-50 px-2 py-3">
+                  <dt className="text-xs text-gray-500 mb-1">تنبيهات غير مقروءة</dt>
+                  <dd className="text-xl font-bold text-gray-900 tabular-nums" dir="ltr">
+                    {unreadQuery.data ? formatNumber(Number(unreadQuery.data.count) || 0) : '…'}
+                  </dd>
+                </div>
+              )}
             </dl>
           )}
         </section>

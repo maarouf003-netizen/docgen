@@ -25,7 +25,6 @@ public class AppSuggestionsController : ControllerBase
 
     private UserRole Role => User.GetRoleEnum();
     private bool IsAdmin => RolePermissions.CanViewAppSuggestions(Role);
-    private bool IsLawyer => Role == UserRole.Lawyer;
 
     /// <summary>
     /// قائمة الاقتراحات: المشرف يرى الصندوق مرقّمًا (`page`/`perPage` — بحد أقصى 50)،
@@ -52,12 +51,12 @@ public class AppSuggestionsController : ControllerBase
         return dto is null ? NotFound() : Ok(dto);
     }
 
-    /// <summary>إرسال اقتراح تطوير — المحامي الآن (لاحقًا كل الأدوار).</summary>
+    /// <summary>إرسال اقتراح تطوير — المحامي ورئيس القسم (صندوق المشرف).</summary>
     [HttpPost]
     [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
     public async Task<IActionResult> Create([FromBody] CreateAppSuggestionRequest request, CancellationToken ct)
     {
-        if (!IsLawyer)
+        if (!RolePermissions.CanSuggestApp(Role))
             return Forbid();
         try
         {

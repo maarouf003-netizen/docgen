@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -88,6 +88,46 @@ public class StaleRoleRevocationTests
 
         // التوكن القديم (بفرع DAM) يجب أن يسقط فورًا.
         Assert.Equal(HttpStatusCode.Unauthorized, (await staleClient.GetAsync("/api/auth/me")).StatusCode);
+
+        var fresh = await _factory.LoginAsync(username, "123456");
+        Assert.Equal((int)HttpStatusCode.OK, fresh!.StatusCode);
+    }
+
+    /// <summary>
+    /// نقل رئيس القسم بين الفروع يُبطل توكن الفرع القديم (S1): الفرع جزء
+    /// من هوية التوكن فيُعامَل كالدور — فلا يرى بيانات فرعه السابق بصمت.
+    /// </summary>
+    [Fact]
+    public async Task HeadBranchTransfer_InvalidatesPreviouslyIssuedTokens()
+    {
+        // نفس آلية S1 لكن بدور الرئيس محل التحقيق: نقل الرئيس بين الفروع
+        // يُسقط توكن الفرع القديم فورًا فلا يرى بياناته بصمت.
+        var username = $"hmove_{Guid.NewGuid():N}"[..16];
+        var target = await _factory.CreateUserAsync(username, UserRole.Head, branchId: BranchId("DAM"), password: "123456");
+
+        var login = await _factory.LoginAsync(username, "123456");
+        Assert.Equal((int)HttpStatusCode.OK, login!.StatusCode);
+
+        var staleClient = _factory.CreateClient();
+        staleClient.SetAuthCookie(login.Token!);
+        Assert.Equal(HttpStatusCode.OK, (await staleClient.GetAsync("/api/auth/me")).StatusCode);
+        // نقطة بيانات حقيقية (لا `/me` وحدها): رئيس فرع DAM يرى لوحته.
+        Assert.Equal(HttpStatusCode.OK, (await staleClient.GetAsync("/api/dashboard")).StatusCode);
+
+        var admin = _factory.AuthorizedClient("admin");
+        var move = await admin.PutAsJsonAsync($"/api/users/{target.Id}", new
+        {
+            fullName = (string?)null,
+            role = "head",
+            branchId = (int?)BranchId("ALP"),
+            isActive = true,
+            password = (string?)null,
+        });
+        Assert.Equal(HttpStatusCode.OK, move.StatusCode);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await staleClient.GetAsync("/api/auth/me")).StatusCode);
+        // والنقطة البيانية تسقط معها — لا قراءة صامتة لبيانات الفرع السابق.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await staleClient.GetAsync("/api/dashboard")).StatusCode);
 
         var fresh = await _factory.LoginAsync(username, "123456");
         Assert.Equal((int)HttpStatusCode.OK, fresh!.StatusCode);

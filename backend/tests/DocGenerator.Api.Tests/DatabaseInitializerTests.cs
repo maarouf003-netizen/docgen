@@ -97,7 +97,9 @@ public class DatabaseInitializerTests
             {
                 Username = "existing",
                 FullName = "المشرف العام",
-                Role = UserRole.Lawyer,
+                // مشرف بلا فرع بالتصميم (قيد القاعدة يمنع المحامي/الرئيس بلا فرع) —
+                // نية الاختبار «مستخدم موجود» لا تتأثر بالدور.
+                Role = UserRole.Admin,
                 PasswordHash = new FastTestPasswordHasher().Hash("123456"),
             });
             await db.SaveChangesAsync();

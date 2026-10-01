@@ -3,28 +3,41 @@ import { api } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { LawyerStatsSection } from '../components/dashboard/LawyerStatsSection';
+import { LawyersTable } from '../components/dashboard/LawyersTable';
 import { mostRecentSelection, previousSelection } from '../components/dashboard/dashboardFormat';
 import type { PeriodSelection } from '../components/dashboard/dashboardTypes';
-import type { ManagerStatsDto, MonthlyStatDto, StatsPeriod } from '../types';
+import type { ManagerLawyerStatDto, ManagerStatsDto, MonthlyStatDto, StatsPeriod } from '../types';
 
 /**
- * صفحة إحصائيات المحامي (`/stats`): قسم الإحصائيات الكامل الذي كان في اللوحة —
- * البطل ضمن-الفترة + الدلتا + الاتجاه + التفاصيل خلف التوسيع + روابط التعمّق.
+ * صفحة الإحصائيات (`/stats`) حسب الدور:
+ * - المحامي: إحصائياته الشخصية (`/stats/me`) بروابط التعمّق.
+ * - رئيس القسم: إحصائيات فرعه (`/stats/manager` — الفرع إجباري خلفيًا)
+ *   بلا روابط تعمّق وبلا استئنافات (`null` تلقائيًا)، مع جدول محامي الفرع.
+ * (المدير/المشرف: إحصائياتهما في اللوحة، لا يصلان هنا — الحارس في `App.tsx`.)
  */
 export default function StatsPage() {
   const { user } = useAuth();
   const userReady = Boolean(user);
+  const isHead = user?.role === 'head';
   const [period, setPeriod] = useState<StatsPeriod>('yearly');
   const [selection, setSelection] = useState<PeriodSelection | null>(null);
+  // رئيس بلا فرع: حالة محرّمة تُرفض عند الدخول أصلًا — فإن وُجدت (دفاع عمقي)
+  // لا تُطلق طلباته ويُخفى القسم، فتبقى رسالة تعيين الفرع الوحيدة في الجدول أدناه.
+  const headMissingBranch = isHead && (user?.branchId ?? null) == null;
 
   const availableQuery = useCancellableRequest<MonthlyStatDto[]>(
     (signal) =>
       api.get('/stats/periods', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
-    [],
-    { enabled: userReady },
+    [isHead],
+    { enabled: userReady && !headMissingBranch },
   );
   const available = useMemo(() => availableQuery.data ?? [], [availableQuery.data]);
 
+  // رئيس القسم يُحصر بفرعه خلفيًا — لا وسيط `branchId` إطلاقًا.
+  // رئيس بلا فرع: لا إحصائيات له أصلًا — لا تُطلق طلباته، ويُخفى القسم
+  // فتبقى رسالة تعيين الفرع الوحيدة في الجدول أدناه (بلا تكديس رسائل).
+  const statsEndpoint = isHead ? '/stats/manager' : '/stats/me';
+  const noBranchMessage = 'لا يوجد فرع مرتبط بحسابك — تواصل مع المشرف لتعيين فرعك';
   const statsQuery = useCancellableRequest<ManagerStatsDto>((signal) => {
     const params: Record<string, unknown> = { period };
     if (selection) {
@@ -32,8 +45,8 @@ export default function StatsPage() {
       if (selection.month != null) params.month = selection.month;
       if (selection.quarter != null) params.quarter = selection.quarter;
     }
-    return api.get<ManagerStatsDto>('/stats/me', { params, signal }).then((r) => r.data);
-  }, [period, selection], { enabled: userReady });
+    return api.get<ManagerStatsDto>(statsEndpoint, { params, signal }).then((r) => r.data);
+  }, [period, selection, statsEndpoint], { enabled: userReady && !headMissingBranch });
 
   const prevSelection = useMemo(() => previousSelection(selection, period), [selection, period]);
   const prevStatsQuery = useCancellableRequest<ManagerStatsDto | null>((signal) => {
@@ -41,8 +54,22 @@ export default function StatsPage() {
     const params: Record<string, unknown> = { period, year: prevSelection.year };
     if (prevSelection.month != null) params.month = prevSelection.month;
     if (prevSelection.quarter != null) params.quarter = prevSelection.quarter;
-    return api.get<ManagerStatsDto>('/stats/me', { params, signal }).then((r) => r.data);
-  }, [period, prevSelection], { enabled: userReady && prevSelection != null });
+    return api.get<ManagerStatsDto>(statsEndpoint, { params, signal }).then((r) => r.data);
+  }, [period, prevSelection, statsEndpoint], { enabled: userReady && !headMissingBranch && prevSelection != null });
+
+  // جدول محامي الفرع لرئيس القسم فقط (فرعه من الرمز — بلا وسائط).
+  const lawyersQuery = useCancellableRequest<ManagerLawyerStatDto[]>((signal) => {
+    const params: Record<string, unknown> = { period };
+    if (selection) {
+      params.year = selection.year;
+      if (selection.month != null) params.month = selection.month;
+      if (selection.quarter != null) params.quarter = selection.quarter;
+    }
+    return api
+      .get('/stats/manager/lawyers', { params, signal })
+      .then((r) => (Array.isArray(r.data) ? r.data : []));
+  }, [period, selection], { enabled: userReady && isHead && !headMissingBranch });
+  const lawyers = useMemo(() => lawyersQuery.data ?? [], [lawyersQuery.data]);
 
   useEffect(() => {
     setSelection(mostRecentSelection(available, period));
@@ -51,17 +78,33 @@ export default function StatsPage() {
   return (
     <div className="max-w-7xl mx-auto">
       <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-6 text-balance">الإحصائيات</h2>
-      <LawyerStatsSection
-        period={period}
-        onPeriodChange={setPeriod}
-        availablePeriods={available}
-        selection={selection}
-        onSelectionChange={setSelection}
-        stats={statsQuery.data ?? null}
-        prevStats={prevStatsQuery.data ?? null}
-        appealsStats={statsQuery.data?.appeals ?? null}
-        error={statsQuery.error ?? ''}
-      />
+      {headMissingBranch ? null : (
+        <LawyerStatsSection
+          period={period}
+          onPeriodChange={setPeriod}
+          availablePeriods={available}
+          selection={selection}
+          onSelectionChange={setSelection}
+          stats={statsQuery.data ?? null}
+          prevStats={prevStatsQuery.data ?? null}
+          appealsStats={isHead ? null : (statsQuery.data?.appeals ?? null)}
+          error={statsQuery.error ?? ''}
+          showDrillLinks={!isHead}
+          sectionLabel={isHead ? 'إحصائيات الفرع' : 'إحصائيات المحامي'}
+          sectionId={isHead ? 'branch-stats' : 'lawyer-stats'}
+        />
+      )}
+      {isHead ? (
+        <div className="mt-3 sm:mt-4">
+          <LawyersTable
+            showTable
+            branchId={user?.branchId ?? null}
+            lawyers={lawyers}
+            error={lawyersQuery.error ?? ''}
+            noBranchMessage={noBranchMessage}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

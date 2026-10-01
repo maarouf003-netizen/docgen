@@ -65,6 +65,8 @@ beforeEach(() => {
   (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
     if (url === '/stats/periods') return Promise.resolve({ data: PERIODS });
     if (url === '/stats/me') return Promise.resolve({ data: STATS });
+    if (url === '/stats/manager') return Promise.resolve({ data: STATS });
+    if (url === '/stats/manager/lawyers') return Promise.resolve({ data: [] });
     return Promise.resolve({ data: {} });
   });
 });
@@ -82,5 +84,86 @@ describe('StatsPage', () => {
     const years = calls().map(([, config]) => (config as { params?: Record<string, unknown> })?.params?.year);
     expect(years).toContain(2026);
     expect(years).toContain(2025);
+  });
+
+  it('تعرض لرئيس القسم إحصائيات فرعه بلا روابط تعمّق مع جدول المحامين', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 1, username: 'head1', fullName: 'رئيس', role: 'head', branchId: 1 },
+    });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/stats/periods') return Promise.resolve({ data: PERIODS });
+      if (url === '/stats/manager') return Promise.resolve({ data: STATS });
+      if (url === '/stats/manager/lawyers')
+        return Promise.resolve({
+          data: [
+            {
+              lawyerId: 1,
+              lawyerName: 'محامي دمشق',
+              totalCount: 3,
+              points: [{ year: 2026, month: 8, count: 3, fromCreatedAtCount: 0 }],
+            },
+          ],
+        });
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<StatsPage />);
+
+    expect(await screen.findByLabelText('إحصائيات الفرع')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'متداولة ضمن السنة 2026' })).toBeInTheDocument();
+    // بلا روابط تعمّق وبلا استئنافات لرئيس القسم.
+    expect(screen.queryByRole('link', { name: 'عرض الملفات ←' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'الاستئنافات' })).not.toBeInTheDocument();
+    // جدول محامي الفرع حاضرة.
+    expect(screen.getByRole('heading', { name: 'إحصائيات محامي الفرع' })).toBeInTheDocument();
+    expect(screen.getByText('محامي دمشق')).toBeInTheDocument();
+
+    const urls = vi.mocked(api.get).mock.calls.map(([url]) => url);
+    expect(urls).toContain('/stats/manager');
+    expect(urls).toContain('/stats/manager/lawyers');
+    expect(urls).not.toContain('/stats/me');
+    // فرع الرئيس إجباري خلفيًا — لا وسيط `branchId` إطلاقًا.
+    for (const [, config] of vi.mocked(api.get).mock.calls) {
+      expect((config as { params?: Record<string, unknown> } | undefined)?.params?.branchId).toBeUndefined();
+    }
+    // مسار الدلتا السابق يعمل للرئيس (نداءان بسنتين مختلفتين).
+    const mgrCalls = () => vi.mocked(api.get).mock.calls.filter(([url]) => url === '/stats/manager');
+    await waitFor(() => expect(mgrCalls().length).toBeGreaterThanOrEqual(2));
+    const years = mgrCalls().map(([, c]) => (c as { params?: Record<string, unknown> })?.params?.year);
+    expect(years).toContain(2026);
+    expect(years).toContain(2025);
+  });
+
+  it('تعرض خطأ جدول المحامين للرئيس بدل عبارة «لا يوجد محامون» المضللة', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 1, username: 'head1', fullName: 'رئيس', role: 'head', branchId: 1 },
+    });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/stats/periods') return Promise.resolve({ data: PERIODS });
+      if (url === '/stats/manager') return Promise.resolve({ data: STATS });
+      if (url === '/stats/manager/lawyers') return Promise.reject(new Error('تعذّر جلب الجدول'));
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<StatsPage />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('تعذّر جلب الجدول');
+    expect(screen.queryByText('لا يوجد محامون في هذا الفرع')).not.toBeInTheDocument();
+  });
+
+  it('الرئيس بلا فرع يرى رسالة تعيين الفرع وحده بلا أي طلب إحصائيات', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 1, username: 'head1', fullName: 'رئيس', role: 'head', branchId: null },
+    });
+
+    render(<StatsPage />);
+
+    // رسالة واحدة فقط — القسم مخفي فلا تكديس مع خطأ شبكة.
+    expect(await screen.findByText('لا يوجد فرع مرتبط بحسابك — تواصل مع المشرف لتعيين فرعك')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    const urls = vi.mocked(api.get).mock.calls.map(([url]) => url);
+    expect(urls).not.toContain('/stats/periods');
+    expect(urls).not.toContain('/stats/manager');
+    expect(urls).not.toContain('/stats/manager/lawyers');
   });
 });

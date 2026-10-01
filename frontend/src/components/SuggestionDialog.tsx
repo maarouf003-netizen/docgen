@@ -11,6 +11,10 @@ export function SuggestionDialog({ onClose, onSent }: { onClose: () => void; onS
   const [sending, setSending] = useState(false);
   const panelRef = useRef<HTMLFormElement>(null);
   const messageRef = useRef<HTMLTextAreaElement>(null);
+  // `onClose` يأتي دالةً مضمّنة من الأب (هوية جديدة كل render) — عبر مرجع
+  // يركّب التأثير مرة واحدة فلا يُعاد التركيز ولا المستمع مع كل استعلام يحل.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null;
@@ -18,7 +22,7 @@ export function SuggestionDialog({ onClose, onSent }: { onClose: () => void; onS
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key !== 'Tab' || !panelRef.current) return;
@@ -44,7 +48,7 @@ export function SuggestionDialog({ onClose, onSent }: { onClose: () => void; onS
       document.removeEventListener('keydown', onKeyDown);
       previouslyFocused?.focus?.();
     };
-  }, [onClose]);
+  }, []);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();

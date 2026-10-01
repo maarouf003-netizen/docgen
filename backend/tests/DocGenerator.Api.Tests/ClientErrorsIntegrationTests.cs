@@ -2,6 +2,8 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using DocGenerator.Domain.Enums;
+using DocGenerator.Infrastructure.Persistence;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace DocGenerator.Api.Tests;
 
@@ -30,10 +32,19 @@ public class ClientErrorsIntegrationTests
         return client;
     }
 
+    private async Task<int> BranchIdAsync(string code)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+        return db.Branches.Single(b => b.Code == code).Id;
+    }
+
     private async Task<HttpClient> FreshUserClientAsync(UserRole role = UserRole.Lawyer)
     {
         var username = $"clienterr_{Guid.NewGuid():N}";
-        await _factory.CreateUserAsync(username, role);
+        // الفرع لازم للمحامي (قيد القاعدة)؛ المندوب بلا فرع بالتصميم.
+        var branchId = role == UserRole.EntityManager ? null : (int?)await BranchIdAsync("DAM");
+        await _factory.CreateUserAsync(username, role, branchId: branchId);
         var login = await _factory.LoginAsync(username, "123456");
         Assert.NotNull(login?.Token);
         return login!.Client;

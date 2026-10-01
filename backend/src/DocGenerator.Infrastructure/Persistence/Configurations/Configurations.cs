@@ -19,6 +19,12 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.HasIndex(u => u.Username)
             .HasFilter("\"BranchId\" IS NULL")
             .IsUnique();
+        // المحامي ورئيس القسم فرعيان بالتصميم: قيد على مستوى قاعدة البيانات يمنع
+        // الصف الشاذ (خدمة الإدارة وحدها لا تغطي الكتابة المباشرة أو الاستعادات).
+        // الدور مخزّن نصًا (HasConversion<string>) فتعمل الصيغة نفسها على
+        // SQLite وPostgres معًا؛ الأدوار بلا فرع (مشرف/مدير/مندوب) غير مشمولة.
+        builder.HasCheckConstraint("CK_Users_BranchRequiredForBranchRoles",
+            "\"BranchId\" IS NOT NULL OR \"Role\" NOT IN ('Lawyer', 'Head')");
         builder.Property(u => u.PasswordHash).HasMaxLength(256).IsRequired();
         builder.Property(u => u.FullName).HasMaxLength(100).IsRequired();
         builder.Property(u => u.Email).HasMaxLength(150);

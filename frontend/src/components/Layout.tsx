@@ -5,21 +5,12 @@ import { useAuth } from '../auth/useAuth';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import NetworkStatusBanner from './NetworkStatusBanner';
 import CurrentYearBanner from './CurrentYearBanner';
-import ReviewPendingBell from './review/ReviewPendingBell';
 import CorrespondenceBell from './correspondence/CorrespondenceBell';
 import { CORRESPONDENCE_UNSEEN_EVENT } from './correspondence/correspondenceDisplay';
-import { REVIEWS_UNSEEN_EVENT } from './review/reviewDisplay';
 import { ComingSoonToast } from './ComingSoonToast';
 import { ICONS } from './dashboard/dashboardIcons';
 import nationalEmblem from '../assets/national.png';
-
-const ROLES: Record<string, string> = {
-  lawyer: 'محامي',
-  head: 'رئيس قسم',
-  manager: 'مدير',
-  admin: 'مشرف نظام',
-  entitymanager: 'مندوب جهة',
-};
+import { ROLE_LABELS } from '../auth/roleLabels';
 
 interface NavItem {
   to: string;
@@ -37,39 +28,14 @@ export default function Layout() {
   const { user, logout, hasFullAccess, isHead } = useAuth();
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [unseenReplies, setUnseenReplies] = useState(0);
   const drawerRef = useRef<HTMLDivElement>(null);
   const drawerTriggerRef = useRef<HTMLButtonElement>(null);
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
   const isLawyerUser = user?.role === 'lawyer';
+  // رئيس القسم يجلب عدّاده من لوحته (بطاقة المراسلات) — هذا الاستطلاع للمحامي والمندوب فقط.
   const canHaveCorrespondenceUrgent =
-    user?.role === 'lawyer' || user?.role === 'head' || user?.role === 'entitymanager';
+    user?.role === 'lawyer' || user?.role === 'entitymanager';
   const [urgentCorrespondence, setUrgentCorrespondence] = useState(0);
-
-  // عدّاد كتب المطالعة فيها ردّ لم يطّلع عليه المحامي — شارة حمراء على بند المطالعات،
-  // تُحدَّث كل دقيقة وفورًا عند فتح كتاب بعد الاطلاع (حدث reviews:unseen-changed).
-  useEffect(() => {
-    if (!isLawyerUser) return undefined;
-    let cancelled = false;
-    const fetchCount = () =>
-      api
-        .get<{ count: number }>('/review-letters/unseen-replies-count')
-        .then((r) => {
-          if (!cancelled) setUnseenReplies(r.data.count);
-        })
-        .catch(() => {
-          /* الشارة تبقى على آخر قيمة معروفة عند فشل التحديث */
-        });
-    void fetchCount();
-    const timer = window.setInterval(fetchCount, 60_000);
-    const onSeenChanged = () => fetchCount();
-    window.addEventListener(REVIEWS_UNSEEN_EVENT, onSeenChanged);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-      window.removeEventListener(REVIEWS_UNSEEN_EVENT, onSeenChanged);
-    };
-  }, [isLawyerUser]);
 
   // عدّاد المراسلات العاجلة بلا تأكيد مشاهدة — الاستطلاع الوحيد: يغذّي شارة بند
   // المراسلات والأجراس معًا (تُمرَّر count للأجراس فلا تستطلع بنفسها)، يُحدَّث كل
@@ -141,10 +107,12 @@ export default function Layout() {
     };
   }, [isMobile, drawerOpen]);
 
-  const canViewAuditLogs = hasFullAccess || isHead;
-  const canManageBranchLawyers = user?.role === 'head' || user?.role === 'admin';
+  // الفرع الأخير يخدم المدير/المشرف فقط (المحامي ورئيس القسم والمندوب فُرزوا أعلاه) —
+  // فلا شروط أدوار أخرى هنا عمدًا.
+  const canViewAuditLogs = hasFullAccess;
+  const canManageBranchLawyers = user?.role === 'admin';
   const canManageUsers = user?.role === 'admin';
-  const canManageDelegates = hasFullAccess || isHead;
+  const canManageDelegates = hasFullAccess;
   // مندوب الجهة: الإحصائيات + الملفات التنفيذية + المراسلات دون باقي البنود (بوابة قرائية).
   const isEntityManager = user?.role === 'entitymanager';
 
@@ -159,9 +127,9 @@ export default function Layout() {
       label: 'المراسلات',
       badge: urgentCorrespondence > 0 ? urgentCorrespondence : undefined,
     });
-  } else if (isLawyerUser) {
-    // المحامي: لوحة التحكم + الملفات التنفيذية + المنتدى/المكتبة (قيد البناء).
-    // المطالعات والمراسلات تُفتح من بطاقات اللوحة (بأجراسها) لا من الشريط.
+  } else if (isLawyerUser || isHead) {
+    // المحامي ورئيس القسم: نفس البنود الأربعة عمدًا (لوحة + ملفات + قيد البناء) —
+    // شرط واحد حتى لا ينحرفا عن بعضهما؛ بقية الأقسام تُفتح من بطاقات اللوحة.
     navItems.push(
       { to: '/', label: 'لوحة التحكم', end: true, icon: ICONS.home },
       { to: '/documents', label: 'الملفات التنفيذية', icon: ICONS.documents },
@@ -175,18 +143,14 @@ export default function Layout() {
     );
     navItems.push({
       to: '/reviews',
-      label: user?.role === 'lawyer' ? 'المطالعات' : 'كتب المطالعات',
-      badge: isLawyerUser && unseenReplies > 0 ? unseenReplies : undefined,
+      label: 'كتب المطالعات',
     });
     navItems.push({
       to: '/correspondence',
       label: 'المراسلات',
-      badge: canHaveCorrespondenceUrgent && urgentCorrespondence > 0 ? urgentCorrespondence : undefined,
     });
     if (canManageBranchLawyers) navItems.push({ to: '/branch-lawyers', label: 'محامو الفرع' });
-    if (user?.role === 'head') navItems.push({ to: '/delegations/requests', label: 'طلبات الإنابة' });
     if (hasFullAccess) navItems.push({ to: '/entities/review-management', label: 'مراجعة سجل الجهات العامة' });
-    if (user?.role === 'head') navItems.push({ to: '/entities/review', label: 'مراجعة سجل الجهات' });
     if (canManageDelegates) navItems.push({ to: '/delegates', label: 'مندوبو الجهات' });
     if (canManageUsers) navItems.push({ to: '/users/manage', label: 'إدارة المستخدمين' });
     if (canManageUsers) navItems.push({ to: '/branches/manage', label: 'إدارة الفروع' });
@@ -266,13 +230,7 @@ export default function Layout() {
         <p className="text-xs text-emerald-300 mt-1">
           مساعد محامي الدولة الذكي في إدارة الملفات التنفيذية
         </p>
-        {user?.role === 'head' && (
-          <div className="flex justify-center mt-2 gap-1">
-            <ReviewPendingBell />
-            <CorrespondenceBell count={urgentCorrespondence} />
-          </div>
-        )}
-        {(user?.role === 'lawyer' || isEntityManager) && (
+        {canHaveCorrespondenceUrgent && (
           <div className="flex justify-center mt-2">
             <CorrespondenceBell portal={isEntityManager} count={urgentCorrespondence} />
           </div>
@@ -282,7 +240,7 @@ export default function Layout() {
         {navItems.map((item) => renderNavItem(item, linkClass, onNavigate))}
       </nav>
       <div className="p-4 border-t border-emerald-700 text-sm">
-        {isLawyerUser ? (
+        {isLawyerUser || isHead ? (
           <NavLink
             to="/account"
             onClick={onNavigate}
@@ -298,7 +256,7 @@ export default function Layout() {
             <span className="min-w-0">
               <span className="block font-medium truncate">{user?.fullName}</span>
               <span className="block text-emerald-300 text-xs truncate">
-                {user?.role ? ROLES[user.role] : ''} — {user?.branchName || 'كل الفروع'}
+                {user?.role ? ROLE_LABELS[user.role] : ''} — {user?.branchName || 'كل الفروع'}
               </span>
             </span>
           </NavLink>
@@ -306,7 +264,7 @@ export default function Layout() {
           <>
             <div className="font-medium">{user?.fullName}</div>
             <div className="text-emerald-300 text-xs mb-2">
-              {user?.role ? ROLES[user.role] : ''} — {user?.branchName || 'كل الفروع'}
+              {user?.role ? ROLE_LABELS[user.role] : ''} — {user?.branchName || 'كل الفروع'}
             </div>
             <button
               onClick={logout}
@@ -382,13 +340,11 @@ export default function Layout() {
                 className="w-9 h-9 shrink-0"
               />
               <h1 className="text-lg font-bold text-emerald-900">مسار</h1>
-              <ReviewPendingBell className="ms-auto" />
-              {(user?.role === 'lawyer' ||
-                user?.role === 'head' ||
-                user?.role === 'entitymanager') && (
+              {canHaveCorrespondenceUrgent && (
                 <CorrespondenceBell
-                  portal={user?.role === 'entitymanager'}
+                  portal={isEntityManager}
                   count={urgentCorrespondence}
+                  className="ms-auto"
                 />
               )}
             </div>

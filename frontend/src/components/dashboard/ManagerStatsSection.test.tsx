@@ -152,4 +152,29 @@ describe('ManagerStatsSection — وسم مصدر الفترة', () => {
     ], 1);
     expect(screen.queryByText(/محسوبة\s*بتاريخ الإدخال/)).not.toBeInTheDocument();
   });
+
+  it('يعرض البطاقات الجديدة بلا روابط تعمّق ومع الدلتا والرسم المصغّر', () => {
+    render(
+      <ManagerStatsSection
+        period={'yearly' as StatsPeriod}
+        onPeriodChange={vi.fn()}
+        availablePeriods={[{ year: 2026, month: 8, count: 3 }]}
+        selection={{ year: 2026 }}
+        onSelectionChange={vi.fn()}
+        branches={[]}
+        branchId={null}
+        onBranchChange={vi.fn()}
+        stats={makeStats({ totalFiles: 6 })}
+        prevStats={makeStats({ totalFiles: 3 })}
+        lawyers={[]}
+        error=""
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: /متداولة ضمن/ })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'عرض الملفات ←' })).not.toBeInTheDocument();
+    // الدلتا: 6 مقابل 3 = +100%.
+    expect(screen.getByLabelText('ارتفاع +100% عن الفترة السابقة')).toBeInTheDocument();
+    expect(screen.getByText(/الملفات المسجَّلة شهريًا/)).toBeInTheDocument();
+  });
 });

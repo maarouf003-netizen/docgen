@@ -287,4 +287,9 @@ npm test
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260924180352_AddCorrespondences.cs` — ينشئ جداول `Correspondences` (رقم فريد + `BranchId?` + `Governorate` + `TargetUserId` + `Importance` + `DocumentId?`) و`CorrespondenceMessages` (FK تتالٍ) و`CorrespondenceReceipts` (قيد فريد `CorrespondenceId+UserId`) مع الفهارس. **مُطبَّق محليًا على `docgen.db`.**
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20260924180425_AddCorrespondencesPg.cs` — نفسه (`timestamp with time zone` للتواريخ).
   - بدون التطبيق تفشل كل شاشات المراسلات فعليًا برسالة `no such table: Correspondences` رغم نجاح الاختبارات محليًا.
+- [ ] **2026-10-01 — `RequireBranchForBranchRoles` / `RequireBranchForBranchRolesPg`** (قيد «المحامي/الرئيس بلا فرع محرّم» — إغلاق تسريب إحصاءات كل الفروع على مستوى القاعدة):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261001063551_RequireBranchForBranchRoles.cs` — يضيف قيد `CK_Users_BranchRequiredForBranchRoles` (`"BranchId" IS NOT NULL OR "Role" NOT IN ('Lawyer','Head')`). **طُبّق تجريبيًا على قاعدة مؤقتة نظيفة بنجاح (`database update` + فحص السلسلة كاملة).**
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261001063633_RequireBranchForBranchRolesPg.cs` — نفسه (نص SQL مولّد ومُراجع: `ALTER TABLE "Users" ADD CONSTRAINT … CHECK (…)`؛ لا خادم Postgres محليًا للتجربة الحية).
+  - ⚠️ القيد يتحقق من الصفوف القائمة لحظة التطبيق: أي صف `Lawyer`/`Head` بلا فرع في الإنتاج سيُسقط الهجرة — نفّذ أولًا استعلام التدقيق: `SELECT "Username", "Role" FROM "Users" WHERE "BranchId" IS NULL AND "Role" IN ('Lawyer','Head');` (يجب أن يكون فارغًا)، وإن وُجدت صفوف عالجها إداريًا (تعيين فرع أو تعطيل) قبل التطبيق.
+  - بدون التطبيق تبقى الحماية التطبيقية وحدها (البوابة + الحراس + الخدمة — كلها خضراء) لكن الكتابة المباشرة/الاستعادة تبقى قادرة على زرع الصف الشاذ.
 

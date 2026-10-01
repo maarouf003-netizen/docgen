@@ -28,17 +28,49 @@ public class StatisticsController : ControllerBase
 
     private UserRole Role => User.GetRoleEnum();
 
+    /// <summary>
+    /// فرع الدور المقيَّد بالفرع (رئيس قسم/محامٍ): رفض صريح (400) عند غيابه —
+    /// يمنع تفسير `null` ضمنيًا كـ«كل الفروع» في مستودع الإحصاءات (محامٍ بلا فرع
+    /// كان يرى مجاميع كل الفروع). الرسالة عامة عمدًا لتغطية الدورين معًا.
+    /// </summary>
+    private ActionResult? RequireOwnBranch(out int branchId)
+    {
+        branchId = 0;
+        var own = User.GetBranchId();
+        if (own is null)
+            return BadRequest(new { message = "الحساب غير مرتبط بفرع" });
+        branchId = own.Value;
+        return null;
+    }
+
     [HttpGet("dashboard")]
+    [Authorize(Roles = "manager,admin,head,lawyer")]
     public async Task<ActionResult<DashboardStatsDto>> Dashboard(CancellationToken ct)
     {
-        var branchId = RolePermissions.HasFullAccess(Role) ? (int?)null : User.GetBranchId();
+        // الأدوار المقيَّدة (رئيس/محامٍ — المندوب مستبعد بقيد الدور أعلاه) تُحصر
+        // في فرعها؛ `null` هنا تعني الكل ولا تُمنح إلا لوصول المدير/المشرف الكامل.
+        int? branchId = null;
+        if (!RolePermissions.HasFullAccess(Role))
+        {
+            var error = RequireOwnBranch(out var own);
+            if (error is not null) return error;
+            branchId = own;
+        }
         return Ok(await _stats.GetDashboardStatsAsync(branchId, ct));
     }
 
     [HttpGet("monthly-stats")]
+    [Authorize(Roles = "manager,admin,head,lawyer")]
     public async Task<ActionResult<List<MonthlyStatDto>>> Monthly(CancellationToken ct)
     {
-        var branchId = RolePermissions.HasFullAccess(Role) ? (int?)null : User.GetBranchId();
+        // كـ `/dashboard` أعلاه: لا شهريات كل الفروع لدور مقيَّد بلا فرع.
+        int? branchId = null;
+        if (!RolePermissions.HasFullAccess(Role))
+        {
+            var error = RequireOwnBranch(out var own);
+            if (error is not null) return error;
+            branchId = own;
+        }
         return Ok(await _stats.GetMonthlyStatsAsync(branchId, ct));
     }
 
@@ -76,10 +108,9 @@ public class StatisticsController : ControllerBase
         // رئيس القسم يُحتسب على فرعه فقط، ولا يحق له اختيار فرع آخر.
         if (Role == UserRole.Head)
         {
-            var ownBranch = User.GetBranchId();
-            if (ownBranch is null)
-                return BadRequest(new { message = "رئيس القسم بلا فرع محدد" });
-            branchId = ownBranch;
+            var error = RequireOwnBranch(out var own);
+            if (error is not null) return error;
+            branchId = own;
         }
 
         return Ok(await _stats.GetManagerStatsAsync(period, branchId, year, month, quarter, ct));
@@ -102,10 +133,8 @@ public class StatisticsController : ControllerBase
         // رئيس القسم يُحصر جدول المحامين في فرعه تلقائيًا.
         if (Role == UserRole.Head)
         {
-            var ownBranch = User.GetBranchId();
-            if (ownBranch is null)
-                return BadRequest(new { message = "رئيس القسم بلا فرع محدد" });
-            branchId = ownBranch.Value;
+            var error = RequireOwnBranch(out branchId);
+            if (error is not null) return error;
         }
 
         if (branchId <= 0)
@@ -132,15 +161,29 @@ public class StatisticsController : ControllerBase
     /// <summary>
     /// الأشهر المتاحة التي قُيّدت فيها ملفات، لنطاق المستخدم:
     /// مشرف/مدير: كل الفروع (أو فرع محدد)، رئيس قسم: فرعه، محامٍ: ملفاته هو.
+    /// الدور المقيَّد بلا فرع (رئيس/محامٍ) يُرفض صراحة (400) بدل التسريب الضمني —
+    /// المحامي محصور بملفاته أصلًا لكن غياب الفرع حالة شاذة تُرفض كالرئيس.
     /// </summary>
     [HttpGet("stats/periods")]
+    [Authorize(Roles = "manager,admin,head,lawyer")]
     public async Task<ActionResult<List<MonthlyStatDto>>> AvailablePeriods(
         [FromQuery] int? branchId = null,
         CancellationToken ct = default)
     {
         int? effectiveBranch = RolePermissions.HasFullAccess(Role) ? branchId : null;
         if (Role == UserRole.Head)
-            effectiveBranch = User.GetBranchId();
+        {
+            var error = RequireOwnBranch(out var own);
+            if (error is not null) return error;
+            effectiveBranch = own;
+        }
+        else if (Role == UserRole.Lawyer)
+        {
+            // الحصر بالملفات يبقى عبر userId أدناه؛ الحارس هنا يرفض الحالة
+            // الشاذة (محامٍ بلا فرع) بدل تمريرها بصمت.
+            var error = RequireOwnBranch(out _);
+            if (error is not null) return error;
+        }
         var userId = Role == UserRole.Lawyer ? User.GetUserId() : (int?)null;
 
         return Ok(await _stats.GetAvailablePeriodsAsync(effectiveBranch, userId, ct));

@@ -18,11 +18,15 @@ public class PersonalReminderServiceTests : IDisposable
     public PersonalReminderServiceTests()
     {
         _db = TestDb.Create();
+        // الفرع لازم للمحامي (قيد القاعدة) — التذكيرات user-scoped فالقيمة محايدة.
+        var damascus = _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" }).Entity;
+        _db.SaveChanges();
         _lawyer1 = new User
         {
             Username = "prem_law1",
             FullName = "محامي أول",
             Role = UserRole.Lawyer,
+            BranchId = damascus.Id,
             PasswordHash = "x",
         };
         _lawyer2 = new User
@@ -30,6 +34,7 @@ public class PersonalReminderServiceTests : IDisposable
             Username = "prem_law2",
             FullName = "محامي ثان",
             Role = UserRole.Lawyer,
+            BranchId = damascus.Id,
             PasswordHash = "x",
         };
         _db.Users.AddRange(_lawyer1, _lawyer2);

@@ -139,4 +139,28 @@ describe('Login', () => {
     expect(await screen.findByText('اسم المستخدم أو كلمة المرور غير صحيحة')).toBeInTheDocument();
     expect(navigateMock).not.toHaveBeenCalled();
   });
+
+  it('يعرض رسالة رفض الحساب بلا فرع (400) ولا يوجّه', async () => {
+    // أول حالة دخول تُرجع `400`: الرسالة التوجيهية للخادم يجب أن تظهر
+    // حرفيًا (لا رسالة عامة)، والحساب المحرّم لا يغادر صفحة الدخول.
+    // الرسالة عامة عمدًا: الحالة تشمل رئيس القسم والمحامي بلا فرع.
+    loginMock.mockRejectedValue({
+      isAxiosError: true,
+      response: {
+        status: 400,
+        data: { message: 'الحساب غير مرتبط بفرع — تواصل مع المشرف لتعيين فرعك' },
+      },
+    });
+    const user = userEvent.setup();
+    render(<Login />);
+
+    await user.type(screen.getByLabelText('اسم المستخدم'), 'head1');
+    await user.type(screen.getByLabelText('كلمة المرور'), '123456');
+    await user.click(screen.getByRole('button', { name: 'دخول' }));
+
+    expect(
+      await screen.findByText('الحساب غير مرتبط بفرع — تواصل مع المشرف لتعيين فرعك'),
+    ).toBeInTheDocument();
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
 });

@@ -11,15 +11,22 @@ public class AppSuggestionServiceTests : IDisposable
     private readonly IAppSuggestionService _service;
     private readonly FakeAuditLogger _audit = new();
     private readonly User _lawyer;
+    private readonly int _damascusId;
 
     public AppSuggestionServiceTests()
     {
         _db = TestDb.Create();
+        // الفرع لازم للمحامين (قيد القاعدة CK_Users_BranchRequiredForBranchRoles) —
+        // الاقتراحات user-scoped فقيمة الفرع لا تؤثر في أي تأكيد هنا.
+        _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM", Governorate = "دمشق" });
+        _db.SaveChanges();
+        _damascusId = _db.Branches.Single(b => b.Code == "DAM").Id;
         _lawyer = new User
         {
             Username = "sugg_law",
             FullName = "محامي مقترح",
             Role = UserRole.Lawyer,
+            BranchId = _damascusId,
             PasswordHash = "x",
         };
         _db.Users.Add(_lawyer);
@@ -65,7 +72,7 @@ public class AppSuggestionServiceTests : IDisposable
     {
         await _service.CreateAsync("الأول", _lawyer.Id, "lawyer");
         await _service.CreateAsync("الثاني", _lawyer.Id, "lawyer");
-        var other = new User { Username = "sugg_other", FullName = "آخر", Role = UserRole.Lawyer, PasswordHash = "x" };
+        var other = new User { Username = "sugg_other", FullName = "آخر", Role = UserRole.Lawyer, BranchId = _damascusId, PasswordHash = "x" };
         _db.Users.Add(other);
         await _db.SaveChangesAsync();
         await _service.CreateAsync("للآخر", other.Id, "other");
@@ -119,6 +126,7 @@ public class AppSuggestionServiceTests : IDisposable
             Username = "sugg_law2",
             FullName = "محامي ثانٍ",
             Role = UserRole.Lawyer,
+            BranchId = _damascusId,
             PasswordHash = "x",
         };
         _db.Users.Add(other);

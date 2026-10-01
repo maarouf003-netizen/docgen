@@ -225,7 +225,10 @@ public class EntityDelegateServiceTests : IDisposable
     [Fact]
     public async Task Update_NonDelegate_ReturnsNull()
     {
-        _db.Users.Add(new User { Username = "plain", FullName = "محامي", Role = UserRole.Lawyer, PasswordHash = "x" });
+        // الفرع لازم للمحامي (قيد القاعدة) — النية «غير مندوب» لا تتأثر بقيمته.
+        var damascus = _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" }).Entity;
+        await _db.SaveChangesAsync();
+        _db.Users.Add(new User { Username = "plain", FullName = "محامي", Role = UserRole.Lawyer, BranchId = damascus.Id, PasswordHash = "x" });
         await _db.SaveChangesAsync();
         var lawyerId = _db.Users.Single(u => u.Username == "plain").Id;
 

@@ -838,7 +838,10 @@ var names = targets.Select(t => t.FullName).ToList();
             using var db = new DocGeneratorDbContext(options);
             db.Database.OpenConnection();
             db.Database.EnsureCreated();
-            var maker = new User { Username = "conflict_maker", FullName = "صانع التعارض", Role = UserRole.Lawyer, PasswordHash = "x" };
+            // الفرع لازم للمحامي (قيد القاعدة) — الدور هنا عرضي لتوليد تعارض فريد.
+            var damascus = db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" }).Entity;
+            db.SaveChanges();
+            var maker = new User { Username = "conflict_maker", FullName = "صانع التعارض", Role = UserRole.Lawyer, BranchId = damascus.Id, PasswordHash = "x" };
             var target = new User { Username = "conflict_target", FullName = "مستلم التعارض", Role = UserRole.EntityManager, PasswordHash = "x" };
             db.Users.AddRange(maker, target);
             db.SaveChanges();

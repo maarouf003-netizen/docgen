@@ -227,6 +227,28 @@ export function zeroFilledMonthlyCounts(
 }
 
 /**
+ * تسمية عدّية عربية سليمة: مفرد تام عند 1 («مراسلة عاجلة واحدة»)،
+ * والعدد مع الجمع فيما فوق («3 مراسلات عاجلة») — تُستخدم في شارات
+ * `aria-label` لصفّي المحامي ورئيس القسم.
+ */
+export function arabicCount(n: number, one: string, many: string): string {
+  return n === 1 ? one : `${n} ${many}`;
+}
+
+/**
+ * اتجاه سلسلة العدّات الشهرية (آخر نقطة مقابل أولها) لوصف `sparkline` لقارئ الشاشة —
+ * منطق مشترك بين قسمي المحامي والمدير.
+ */
+export function trendDirectionText(points: { count: number }[]): string {
+  if (points.length <= 1) return 'نقطة واحدة';
+  const last = points[points.length - 1].count;
+  const first = points[0].count;
+  if (last > first) return 'ارتفاع';
+  if (last < first) return 'انخفاض';
+  return 'ثبات';
+}
+
+/**
  * هل تاريخ الاستحقاق اليوم أو متأخر؟ — التواريخ الفاسدة تُستبعد (لا تُحسب «اليوم»)
  * خلاف `daysUntilDue` الذي يُرجع 0 للفاسد.
  */

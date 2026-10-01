@@ -2,6 +2,7 @@ using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
+using DocGenerator.Domain.Enums;
 using Microsoft.Extensions.Options;
 
 namespace DocGenerator.Application.Services;
@@ -100,6 +101,18 @@ public sealed class AuthService : IAuthService
             await _uow.SaveChangesAsync(ct);
         }
 
+        // رئيس القسم أو المحامي بلا فرع: حالة محرّمة — تُرفض الجلسة أصلًا بدل
+        // دخول ناقص يُنتج أخطاء مضللة لاحقًا (محامٍ بلا فرع كان يرى إحصاءات كل
+        // الفروع ضمنيًا لأن `branchId == null` تعني الكل في المستودع). قبل التحقق
+        // من كلمة المرور عمدًا: لا عدّ إخفاق ولا قفل لحساب لا يملك صاحبه إصلاحه
+        // (عيب إداري لا تخمين)، وبعد فحص القفل حتى لا تُخفى حالة القفل القائمة.
+        if (user.BranchId is null && user.Role is UserRole.Head or UserRole.Lawyer)
+        {
+            await _audit.LogAsync(username, "login_branch_required",
+                details: $"رفض دخول {RoleLabel(user.Role)} بلا فرع محدد", ct: ct);
+            return new LoginResult(LoginStatus.BranchRequired, null);
+        }
+
         if (!_hasher.Verify(request.Password, user.PasswordHash))
         {
             user.FailedLoginCount++;
@@ -179,6 +192,13 @@ public sealed class AuthService : IAuthService
         var user = await _users.GetByIdAsync(userId, ct);
         return user is null ? null : ToDto(user);
     }
+
+    private static string RoleLabel(UserRole role) => role switch
+    {
+        UserRole.Head => "رئيس قسم",
+        UserRole.Lawyer => "محامٍ",
+        _ => role.ToString(),
+    };
 
     private static UserDto ToDto(User user) => new(
         user.Id,

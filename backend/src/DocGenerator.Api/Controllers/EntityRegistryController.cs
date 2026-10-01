@@ -162,6 +162,15 @@ public class EntityRegistryController : ControllerBase
         return Ok(await _registry.ListNeedsReviewAsync(Actor, ct));
     }
 
+    /// <summary>عدد قيود «بحاجة مراجعة» ضمن نطاق الفاعل — شارة خفيفة (استطلاع دوري) دون تحميل القائمة.</summary>
+    [HttpGet("pending-review-count")]
+    public async Task<IActionResult> PendingReviewCount(CancellationToken ct)
+    {
+        if (!RolePermissions.CanManageEntityRegistry(Role))
+            return Forbid();
+        return Ok(new { count = await _registry.CountNeedsReviewAsync(Actor, ct) });
+    }
+
     /// <summary>اعتماد قيد كما هو: يقفل مراجعته دون تعديل ودون إشعار للمُدخِل.</summary>
     [HttpPost("{id:int}/approve-review")]
     public async Task<IActionResult> ApproveReview(int id, CancellationToken ct)

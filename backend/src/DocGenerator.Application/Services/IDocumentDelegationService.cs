@@ -24,6 +24,9 @@ public interface IDocumentDelegationService
     /// <summary>طلبات الإنابة المعلّقة لفرع رئيس القسم — نافذة «طلبات الإنابة والاستئنافات والمطالعات».</summary>
     Task<List<DelegationDto>> ListPendingForHeadAsync(int branchId, CancellationToken ct = default);
 
+    /// <summary>عدد طلبات الإنابة المعلّقة لفرع رئيس القسم — شارة خفيفة دون تحميل القائمة.</summary>
+    Task<int> CountPendingForHeadAsync(int branchId, CancellationToken ct = default);
+
     /// <summary>
     /// هل المستخدم طرفٌ في الإنابة؟ (محامي الملف المنيب، محامي الملف المناب، المحامي المختص،
     /// أو أحد محتلفيها بالنقل) — لترخيص قراءة تنبيهات الإنابة المدموجة عبر by-delegation.

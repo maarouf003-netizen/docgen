@@ -85,19 +85,24 @@ describe('توجيه الجذر حسب الدور (انحدار: المندوب 
     expect(screen.getByRole('navigation', { name: 'أقسام لوحة المحامي' })).toBeInTheDocument();
   });
 
-  it('المحامي على /account يرى حسابه، وغيره يُرتد إلى وطنه', async () => {
+  it('المحامي ورئيس القسم على /account يريان حسابيهما، وغيرهما يُرتد إلى وطنه', async () => {
     useAuthMock.mockReturnValue(authState('lawyer'));
     const { unmount } = renderAt('/account');
     expect(await screen.findByRole('heading', { name: 'الحساب الشخصي' })).toBeInTheDocument();
     unmount();
 
     useAuthMock.mockReturnValue(authState('head'));
+    const { unmount: unmount2 } = renderAt('/account');
+    expect(await screen.findByRole('heading', { name: 'الحساب الشخصي' })).toBeInTheDocument();
+    unmount2();
+
+    useAuthMock.mockReturnValue(authState('manager'));
     renderAt('/account');
     expect(await screen.findByRole('heading', { name: 'لوحة التحكم' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'الحساب الشخصي' })).not.toBeInTheDocument();
   });
 
-  it('المحامي على /stats و/calendar يرى الصفحتين، وغيره يُرتد', async () => {
+  it('المحامي على /stats و/calendar يرى الصفحتين، ورئيس القسم على /stats يرى فرعه، وغيرهما يُرتد', async () => {
     useAuthMock.mockReturnValue(authState('lawyer'));
     const { unmount } = renderAt('/stats');
     expect(await screen.findByRole('heading', { name: 'الإحصائيات' })).toBeInTheDocument();
@@ -109,6 +114,11 @@ describe('توجيه الجذر حسب الدور (انحدار: المندوب 
     unmount2();
 
     useAuthMock.mockReturnValue(authState('head'));
+    const { unmount: unmount3 } = renderAt('/stats');
+    expect(await screen.findByRole('heading', { name: 'الإحصائيات' })).toBeInTheDocument();
+    unmount3();
+
+    useAuthMock.mockReturnValue(authState('manager'));
     renderAt('/stats');
     expect(await screen.findByRole('heading', { name: 'لوحة التحكم' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'الإحصائيات' })).not.toBeInTheDocument();

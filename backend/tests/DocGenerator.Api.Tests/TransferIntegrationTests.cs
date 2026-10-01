@@ -279,18 +279,7 @@ public class TransferIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
-    public async Task TransferAll_HeadWithoutBranch_Forbidden()
-    {
-        var branchlessHead = await _factory.CreateUserAsync("head_nobranch", UserRole.Head, branchId: null);
-        var token = (await _factory.LoginAsync(branchlessHead.Username, "123456"))!.Token!;
-        var client = _factory.WithToken(token);
-
-        var transfer = await client.PostAsJsonAsync("/api/documents/transfer-all",
-            new { sourceLawyerId = 1, targetLawyerId = 2 });
-        Assert.Equal(HttpStatusCode.Forbidden, transfer.StatusCode);
-
-        var count = await client.GetAsync("/api/documents/owner/1/count");
-        Assert.Equal(HttpStatusCode.Forbidden, count.StatusCode);
-    }
+    // ملاحظة طبقية: «رئيس بلا فرع» غير قابل للتجسيد عبر EF (قيد القاعدة) —
+    // تغطية حارسي النقل (`TransferAll` والعدّاد) في `TransferBranchGuardTests`
+    // بهوية مطالبات مصنوعة.
 }

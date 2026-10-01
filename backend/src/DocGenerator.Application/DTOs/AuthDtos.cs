@@ -17,7 +17,8 @@ public record LoginResponse(
 /// <summary>
 /// نتيجة محاولة الدخول؛ تُفرّق بين النجاح وبيانات الدخول الخاطئة
 /// والحساب المقفل، والحاجة إلى اختيار الفرع عند تكرار الاسم الثلاثي
-/// عبر فروع مختلفة — ليستجيب المتحكّم برسالة واضحة.
+/// عبر فروع مختلفة، ورفض الحساب الفرعي (رئيس قسم/محامٍ) بلا فرع
+/// (حالة محرّمة — بلا جلسة أصلًا) — ليستجيب المتحكّم برسالة واضحة.
 /// </summary>
 public enum LoginStatus
 {
@@ -25,6 +26,7 @@ public enum LoginStatus
     InvalidCredentials,
     LockedOut,
     BranchSelectionRequired,
+    BranchRequired,
 }
 
 /// <summary>

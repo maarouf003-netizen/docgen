@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using DocGenerator.Application.DTOs;
+using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Api.Tests;
 
@@ -103,6 +104,22 @@ public class ManagerStatsIntegrationTests
         Assert.NotNull(periods);
         Assert.All(periods, p => Assert.True(p.Count >= 1));
         Assert.Equal(periods.OrderBy(p => p.Year).ThenBy(p => p.Month), periods);
+    }
+
+    // ملاحظة طبقية: «رئيس بلا فرع» غير قابل للتجسيد عبر EF (قيد القاعدة) —
+    // تغطية الحارس في `StatisticsBranchGuardTests` بهوية مطالبات مصنوعة.
+
+    // رئيس بفرع: نجاح فقط — إثبات النطاق (عدم التسريب) في
+    // `StatisticsTests.AvailablePeriods_ScopesByBranch` على مستوى الخدمة.
+    [Fact]
+    public async Task AvailablePeriods_HeadWithBranch_Succeeds()
+    {
+        var head = _factory.AuthorizedClient("head1");
+        var response = await head.GetAsync("/api/stats/periods");
+        response.EnsureSuccessStatusCode();
+        var periods = await response.Content.ReadFromJsonAsync<List<MonthlyStatDto>>();
+
+        Assert.NotNull(periods);
     }
 
     [Fact]

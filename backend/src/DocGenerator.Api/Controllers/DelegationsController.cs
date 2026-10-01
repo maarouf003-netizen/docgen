@@ -126,6 +126,18 @@ public class DelegationsController : ControllerBase
         return Ok(await _delegations.ListPendingForHeadAsync(branchId.Value, ct));
     }
 
+    /// <summary>عدد طلبات الإنابة المعلّقة لفرع رئيس القسم — شارة خفيفة (استطلاع دوري) دون تحميل القائمة.</summary>
+    [HttpGet("delegations/pending-count")]
+    public async Task<IActionResult> PendingCount(CancellationToken ct)
+    {
+        if (!CanApprove)
+            return Forbid();
+        var branchId = User.GetBranchId();
+        if (branchId is null)
+            return BadRequest(new { message = "رئيس القسم دون فرع لا يمكنه الاطلاع على طلبات الإنابة" });
+        return Ok(new { count = await _delegations.CountPendingForHeadAsync(branchId.Value, ct) });
+    }
+
     /// <summary>
     /// اعتماد الإنابة واختيار المحامي المختص (تُنشأ الملف المناب تلقائيًا) — رئيس القسم.
     /// الإنابة الداخلية من رئيس قسم الفرع المنيب، والخارجية من رئيس قسم الفرع المناب.

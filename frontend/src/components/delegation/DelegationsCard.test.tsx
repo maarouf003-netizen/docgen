@@ -152,7 +152,8 @@ describe('DelegationsCard', () => {
     expect(screen.getByText('المحامي هشام')).toBeInTheDocument();
   });
 
-  it('يعرض زر «تسطير إنابة» عند الإذن ويستدعي onCreate', () => {    const onCreate = vi.fn();
+  it('يعرض زر «تسطير إنابة» عند الإذن ويستدعي onCreate', () => {
+    const onCreate = vi.fn();
     render(
       <DelegationsCard delegations={[]} canCreate onCreate={onCreate} onEdit={noop} onDelete={noop} />,
     );

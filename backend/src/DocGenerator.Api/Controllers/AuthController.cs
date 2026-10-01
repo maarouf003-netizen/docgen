@@ -65,6 +65,12 @@ public class AuthController : ControllerBase
                 requiresBranchSelection = true,
                 branches = result.Branches ?? new List<LoginBranchChoiceDto>(),
             }),
+            LoginStatus.BranchRequired => BadRequest(new
+            {
+                // عامة عمدًا: الحالة تشمل رئيس القسم والمحامي بلا فرع —
+                // التفصيل بحسب الدور مسجّل في التدقيق لا في رسالة المستخدم.
+                message = "الحساب غير مرتبط بفرع — تواصل مع المشرف لتعيين فرعك",
+            }),
             _ => throw new ArgumentOutOfRangeException(nameof(result.Status), result.Status,
                 "حالة دخول غير معروفة"),
         };

@@ -219,7 +219,10 @@ public class BranchManagementServiceTests : IDisposable
             Username = "doc_owner",
             FullName = "محامي",
             Role = UserRole.Lawyer,
-            BranchId = null,
+            // فرع مختلف عن المحذوف عمدًا: فحص المستخدمين يسبق فحص المستندات،
+            // فمالك في الفرع المحذوف كان سيُفشل الاختبار برسالة «مستخدمين».
+            // (محامٍ بلا فرع حالة محرّمة يمنعها قيد القاعدة CK_Users_BranchRequiredForBranchRoles)
+            BranchId = AleppoId,
             PasswordHash = new PasswordHasher().Hash("123456"),
         };
         _db.Users.Add(user);

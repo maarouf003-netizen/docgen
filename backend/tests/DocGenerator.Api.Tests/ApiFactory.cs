@@ -119,6 +119,21 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         return client;
     }
 
+    /// <summary>
+    /// سكّ توكن لجلسة مفروضة مباشرة دون المرور ببوابة الدخول — لاختبار حراسات
+    /// النقاط الطرفية ضد جلسات شاذة (كرئيس بلا فرع) ترفضها البوابة أصلًا.
+    /// الدفاع العمقي يُختبر هنا، والبوابة تُختبر في `AuthIntegrationTests`.
+    /// تنبيه: التوكن يُسكّ من نسخة الكيان الممررة لحظيًا — أي تغيير لاحق
+    /// (نقل فرع/دور) يُبطل هذا التوكن (`TokenVersion`) فلا تُمرّر كيانًا قديمًا
+    /// ثم تتوقع نجاحًا.
+    /// </summary>
+    public HttpClient ClientForUser(User user)
+    {
+        using var scope = Services.CreateScope();
+        var tokens = scope.ServiceProvider.GetRequiredService<ITokenService>();
+        return ClientWithToken(tokens.CreateToken(user));
+    }
+
     public async Task<User> CreateUserAsync(string username, UserRole role, int? branchId = null, string password = "123456", bool isActive = true)
     {
         using var scope = Services.CreateScope();

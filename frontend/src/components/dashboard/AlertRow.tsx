@@ -76,7 +76,7 @@ export function AlertRow({
               disabled={isMarking}
               className="min-h-11 px-3 rounded-lg text-xs font-medium border border-gray-200 text-gray-600 hover:text-emerald-700 hover:border-emerald-200 hover:bg-emerald-50 disabled:opacity-50 transition-colors"
             >
-              {isMarking ? 'جارِ التحديث...' : 'تمت القراءة'}
+              {isMarking ? 'جارٍ التحديث…' : 'تمت القراءة'}
             </button>
           ) : onMarkRead && alert.isRead ? (
             <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200">

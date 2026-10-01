@@ -14,27 +14,28 @@ import type {
   ManagerStatsDto,
   MonthlyStatDto,
   PersonalReminderDto,
-  PublicEntityEntryDto,
   ReminderDto,
   StatsPeriod,
 } from '../types';
-import { AlertRow } from '../components/dashboard/AlertRow';
-import { CreateAlertForm } from '../components/dashboard/CreateAlertForm';
+import { AlertsPanel } from '../components/dashboard/AlertsPanel';
+import { CreateAlertForm, type AlertFormError } from '../components/dashboard/CreateAlertForm';
 import { DayRemindersModal } from '../components/dashboard/DayRemindersModal';
 import { GreetingHeader } from '../components/dashboard/GreetingHeader';
+import { HeadIconRow } from '../components/dashboard/HeadIconRow';
 import { LawyerCalendar } from '../components/dashboard/LawyerCalendar';
 import { LawyerIconRow } from '../components/dashboard/LawyerIconRow';
 import {
   isDueTodayOrOverdue,
   mostRecentSelection,
+  previousSelection,
 } from '../components/dashboard/dashboardFormat';
 import { currentWeekRange, dayKeyOf, expandPersonalReminder, groupRemindersByDay, hasPendingOccurrenceOnOrBefore, parseDayKey } from '../components/dashboard/personalReminders';
 import { CORRESPONDENCE_UNSEEN_EVENT } from '../components/correspondence/correspondenceDisplay';
 import { REVIEWS_UNSEEN_EVENT } from '../components/review/reviewDisplay';
+import { useBadgeCount } from '../hooks/useBadgeCount';
 import type { PeriodSelection } from '../components/dashboard/dashboardTypes';
 import { ManagerStatsSection } from '../components/dashboard/ManagerStatsSection';
 import { ReminderList } from '../components/dashboard/ReminderList';
-import { formatEntityCoverage } from '../utils/entityRegistry';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -50,12 +51,15 @@ export default function Dashboard() {
   const [alertLawyerId, setAlertLawyerId] = useState('');
   const [alertMessage, setAlertMessage] = useState('');
   const [alertSubmitting, setAlertSubmitting] = useState(false);
-  const [alertFormError, setAlertFormError] = useState('');
+  const [alertFormError, setAlertFormError] = useState<AlertFormError>({ field: null, text: '' });
   const [period, setPeriod] = useState<StatsPeriod>('yearly');
   const [selection, setSelection] = useState<PeriodSelection | null>(null);
   const [branchId, setBranchId] = useState<number | null>(null);
 
   const userReady = Boolean(user);
+  // رئيس بلا فرع: عدّادات شاراته مرفوضة (`400`) أو صفرية خلفيًا —
+  // لا تُطلق ولا تُستطلع أصلًا، وتبقى الشارات صفرًا.
+  const headBadgesEnabled = userReady && isHead && (user?.branchId ?? null) != null;
 
   const branchesQuery = useCancellableRequest<BranchDto[]>(
     (signal) => api.get('/branches', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
@@ -101,19 +105,17 @@ export default function Dashboard() {
 
   const branchLawyersQuery = useCancellableRequest<LawyerListItem[]>(
     (signal) => api.get('/users/lawyers', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
-    [],
-    { enabled: isHead },
-  );
-
-  // جهات أدخلها المحامون وبانتظار مراجعة رئيس القسم (نموذج الحوكمة الجديد).
-  const entityReviewQuery = useCancellableRequest<PublicEntityEntryDto[]>(
-    (signal) => api
-      .get('/entity-registry/pending-review', { signal })
-      .then((r) => (Array.isArray(r.data) ? r.data : [])),
     [isHead],
     { enabled: userReady && isHead },
   );
-  const entityReview = entityReviewQuery.data ?? [];
+
+  // عدّاد بطاقة سجل الجهات: جهات أدخلها المحامون وبانتظار مراجعة رئيس القسم —
+  // endpoint عدّ خفيف (`{ count }`) بدل تنزيل القائمة كاملة كل دقيقة.
+  const entityPending = useBadgeCount('/entity-registry/pending-review-count', {
+    enabled: headBadgesEnabled,
+    intervalMs: 60_000,
+    shape: 'count',
+  });
 
   const availableQuery = useCancellableRequest<MonthlyStatDto[]>(
     (signal) => {
@@ -124,8 +126,8 @@ export default function Dashboard() {
         .then((r) => (Array.isArray(r.data) ? r.data : []));
     },
     [isManager, branchId],
-    // الإحصائيات في صفحة `/stats` للمحامي — اللوحة لا تجلب الفترات له.
-    { enabled: userReady && !isLawyer },
+    // الإحصائيات في صفحة `/stats` للمدير/المشرف — اللوحة لا تجلب الفترات لغيرهما.
+    { enabled: userReady && isManager },
   );
 
   const statsQuery = useCancellableRequest<ManagerStatsDto>((signal) => {
@@ -137,7 +139,18 @@ export default function Dashboard() {
     }
     if (isManager && branchId) params.branchId = branchId;
     return api.get<ManagerStatsDto>('/stats/manager', { params, signal }).then((r) => r.data);
-  }, [isManager, period, selection, branchId], { enabled: userReady && !isLawyer });
+  }, [isManager, period, selection, branchId], { enabled: userReady && isManager });
+
+  // إحصائيات الفترة السابقة للدلتا (المدير/المشرف فقط — اللوحة لا تجلبها لغيرهما).
+  const prevSelection = useMemo(() => previousSelection(selection, period), [selection, period]);
+  const prevStatsQuery = useCancellableRequest<ManagerStatsDto | null>((signal) => {
+    if (!prevSelection) return Promise.resolve(null);
+    const params: Record<string, unknown> = { period, year: prevSelection.year };
+    if (prevSelection.month != null) params.month = prevSelection.month;
+    if (prevSelection.quarter != null) params.quarter = prevSelection.quarter;
+    if (branchId) params.branchId = branchId;
+    return api.get<ManagerStatsDto>('/stats/manager', { params, signal }).then((r) => r.data);
+  }, [isManager, period, prevSelection, branchId], { enabled: userReady && isManager && prevSelection != null });
 
   // عدّادا بطاقتي المطالعات/المراسلات للمحامي: جلب واحد عند التركيب + تحديث
   // فور حدث المشاهدة — بلا استطلاع دوري مكرر (الاستطلاع الدوري في `Layout` وحده).
@@ -163,7 +176,8 @@ export default function Dashboard() {
     };
   }, [isLawyer, refetchReplies, refetchUrgent]);
 
-  const lawyersBranch = isManager ? branchId : (user?.branchId ?? null);  const lawyerStatsQuery = useCancellableRequest<ManagerLawyerStatDto[]>((signal) => {
+  const lawyersBranch = isManager ? branchId : (user?.branchId ?? null);
+  const lawyerStatsQuery = useCancellableRequest<ManagerLawyerStatDto[]>((signal) => {
     const params: Record<string, unknown> = { period };
     if (selection) {
       params.year = selection.year;
@@ -174,7 +188,26 @@ export default function Dashboard() {
     return api
       .get('/stats/manager/lawyers', { params: { ...params, branchId: lawyersBranch }, signal })
       .then((r) => (Array.isArray(r.data) ? r.data : []));
-  }, [isLawyer, isManager, period, selection, branchId, lawyersBranch], { enabled: userReady && lawyersBranch != null });
+  }, [isLawyer, isManager, period, selection, branchId, lawyersBranch], { enabled: userReady && isManager && lawyersBranch != null });
+
+  // عدّادات بطاقات رئيس القسم: جلب عند التركيب + استطلاع كل دقيقة (إيقاع الأجراس
+  // السابقة) + تحديث حدثي للمراسلات — بلا استطلاع مكرر في `Layout` له.
+  const reviewsPending = useBadgeCount('/review-letters/pending-count', {
+    enabled: headBadgesEnabled,
+    intervalMs: 60_000,
+    shape: 'count',
+  });
+  const headUrgentCorrespondence = useBadgeCount('/correspondence/urgent-unseen-count', {
+    enabled: headBadgesEnabled,
+    intervalMs: 60_000,
+    shape: 'count',
+    eventName: CORRESPONDENCE_UNSEEN_EVENT,
+  });
+  const delegationsPending = useBadgeCount('/delegations/pending-count', {
+    enabled: headBadgesEnabled,
+    intervalMs: 60_000,
+    shape: 'count',
+  });
 
   const reminders = useMemo(() => remindersQuery.data ?? [], [remindersQuery.data]);
   const appealReminders = useMemo(() => appealRemindersQuery.data ?? [], [appealRemindersQuery.data]);
@@ -255,20 +288,24 @@ export default function Dashboard() {
   const submitAlert = async (e: FormEvent) => {
     e.preventDefault();
     if (!alertMessage.trim()) {
-      setAlertFormError('نص التنبيه مطلوب');
+      setAlertFormError({ field: 'message', text: 'نص التنبيه مطلوب' });
+      // تركيز أول حقل خاطئ عند الإرسال (قاعدة AGENTS.md) — عبر المعرف الثابت
+      // لأن الحقل داخل `CreateAlertForm` ولا مرجع مباشر له هنا.
+      document.getElementById('alert-message')?.focus();
       return;
     }
     let targetLawyerId: number | null = null;
     if (alertTargetType === 'lawyer') {
       targetLawyerId = alertLawyerId ? Number(alertLawyerId) : null;
       if (!targetLawyerId) {
-        setAlertFormError('اختر المحامي المستلم');
+        setAlertFormError({ field: 'lawyer', text: 'اختر المحامي المستلم' });
+        document.getElementById('alert-lawyer')?.focus();
         return;
       }
     }
 
     setAlertSubmitting(true);
-    setAlertFormError('');
+    setAlertFormError({ field: null, text: '' });
     try {
       const { data } = await api.post<HeadAlertDto>('/alerts', {
         targetType: alertTargetType,
@@ -281,7 +318,8 @@ export default function Dashboard() {
       setAlertMessage('');
       setAlertLawyerId('');
     } catch (err) {
-      setAlertFormError(getApiErrorMessage(err));
+      // خطأ الإرسال الخادمي بلا حقل مخالف — يُعلن وحده دون تعليم أي حقل.
+      setAlertFormError({ field: null, text: getApiErrorMessage(err) });
     } finally {
       setAlertSubmitting(false);
     }
@@ -306,7 +344,9 @@ export default function Dashboard() {
           branchId={branchId}
           onBranchChange={setBranchId}
           stats={managerStats}
+          prevStats={prevStatsQuery.data ?? null}
           lawyers={lawyerStats}
+          lawyersError={lawyerStatsQuery.error ?? ''}
           error={statsQuery.error ?? ''}
         />
       </div>
@@ -351,24 +391,17 @@ export default function Dashboard() {
         </>
       ) : (
         <>
-          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-6">لوحة التحكم</h2>
-
-          <ManagerStatsSection
-            period={period}
-            onPeriodChange={setPeriod}
-            availablePeriods={available}
-            selection={selection}
-            onSelectionChange={setSelection}
-            branches={branches}
-            branchId={user?.branchId ?? null}
-            onBranchChange={() => {}}
-            showBranchSelect={false}
-            showLawyerTable={!isLawyer}
-            stats={managerStats}
-            lawyers={lawyerStats}
-            error={statsQuery.error ?? ''}
-            appealsStats={isLawyer ? (managerStats?.appeals ?? null) : null}
-          />
+          <GreetingHeader fullName={user?.fullName} />
+          <div className="mt-4">
+            <HeadIconRow
+              counts={{
+                reviewsPending,
+                urgentCorrespondence: headUrgentCorrespondence,
+                delegationsPending,
+                entityPending,
+              }}
+            />
+          </div>
         </>
       )}
 
@@ -423,50 +456,30 @@ export default function Dashboard() {
             )}
           </div>
 
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden mt-8">
-            <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-4 border-b border-gray-100">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-red-500" aria-hidden="true" />
-                <h3 className="font-bold text-gray-900">تنبيهات رئيس القسم</h3>
-                {unreadCount > 0 ? (
-                  <span className="text-xs bg-red-100 text-red-800 rounded-full px-2 py-0.5 font-medium">
-                    {unreadCount} غير مقروء
-                  </span>
-                ) : null}
-              </div>
-              <span className="text-xs text-gray-400">الأحدث أولاً</span>
-            </div>
-
-            {(alertsError || alertsQuery.error) ? (
-              <div className="px-4 sm:px-5 py-2.5 bg-red-50 border-b border-red-100">
-                <p className="text-red-700 text-sm">{alertsError || alertsQuery.error}</p>
-              </div>
-            ) : null}
-
-            {alerts.length === 0 ? (
-              <div className="p-10 text-center">
-                <p className="text-gray-400 text-sm">لا توجد تنبيهات حالياً</p>
-              </div>
-            ) : (
-              <ul className="divide-y divide-gray-100 max-h-[420px] overflow-y-auto">
-                {alerts.map((a) => (
-                  <AlertRow key={a.id} alert={a} onMarkRead={markAlertRead} markingKey={markingKey} />
-                ))}
-              </ul>
-            )}
-          </div>
+          <AlertsPanel
+            badge={
+              unreadCount > 0 ? (
+                <span className="text-xs bg-red-100 text-red-800 rounded-full px-2 py-0.5 font-medium">
+                  {unreadCount} غير مقروء
+                </span>
+              ) : null
+            }
+            headerExtra={<span className="text-xs text-gray-400">الأحدث أولاً</span>}
+            error={alertsError || alertsQuery.error || ''}
+            alerts={alerts}
+            onMarkRead={markAlertRead}
+            markingKey={markingKey}
+          />
         </>
       ) : (
         <>
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden mt-8">
-            <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-4 border-b border-gray-100">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-red-500" aria-hidden="true" />
-                <h3 className="font-bold text-gray-900">تنبيهات رئيس القسم</h3>
-                <span className="text-xs bg-emerald-100 text-emerald-800 rounded-full px-2 py-0.5 font-medium">
-                  {alerts.length}
-                </span>
-              </div>
+          <AlertsPanel
+            badge={
+              <span className="text-xs bg-emerald-100 text-emerald-800 rounded-full px-2 py-0.5 font-medium">
+                {alerts.length}
+              </span>
+            }
+            headerExtra={
               <button
                 type="button"
                 onClick={() => setShowAlertForm((v) => !v)}
@@ -474,85 +487,27 @@ export default function Dashboard() {
               >
                 {showAlertForm ? 'إلغاء' : '+ إصدار تنبيه'}
               </button>
-            </div>
-
-            {showAlertForm ? (
-              <CreateAlertForm
-                targetType={alertTargetType}
-                onTargetTypeChange={setAlertTargetType}
-                lawyers={branchLawyers}
-                lawyerId={alertLawyerId}
-                onLawyerIdChange={setAlertLawyerId}
-                message={alertMessage}
-                onMessageChange={setAlertMessage}
-                submitting={alertSubmitting}
-                error={alertFormError}
-                onSubmit={submitAlert}
-                onCancel={() => setShowAlertForm(false)}
-              />
-            ) : null}
-
-            {(alertsError || alertsQuery.error) ? (
-              <div className="px-4 sm:px-5 py-2.5 bg-red-50 border-b border-red-100">
-                <p className="text-red-700 text-sm">{alertsError || alertsQuery.error}</p>
-              </div>
-            ) : null}
-
-            {alerts.length === 0 ? (
-              <div className="p-10 text-center">
-                <p className="text-gray-400 text-sm">لا توجد تنبيهات حالياً</p>
-              </div>
-            ) : (
-              <ul className="divide-y divide-gray-100 max-h-[420px] overflow-y-auto">
-                {alerts.map((a) => (
-                  <AlertRow key={a.id} alert={a} />
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {isHead && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden mt-8">
-              <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-4 border-b border-gray-100">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-amber-500" aria-hidden="true" />
-                  <h3 className="font-bold text-gray-900">مراجعة سجل الجهات العامة</h3>
-                  <span
-                    className={`text-xs rounded-full px-2 py-0.5 font-medium ${
-                      entityReview.length > 0
-                        ? 'bg-amber-100 text-amber-800'
-                        : 'bg-emerald-100 text-emerald-800'
-                    }`}
-                  >
-                    {entityReview.length}
-                  </span>
-                </div>
-                <Link to="/entities/review" className="text-sm text-sky-700 hover:bg-sky-50 rounded-lg px-3 py-2 min-h-11">
-                  مراجعة السجل…
-                </Link>
-              </div>
-              {entityReviewQuery.error ? (
-                <div className="px-4 sm:px-5 py-2.5 bg-red-50 border-b border-red-100">
-                  <p className="text-red-700 text-sm">{entityReviewQuery.error}</p>
-                </div>
-              ) : entityReview.length === 0 ? (
-                <div className="p-6 text-center">
-                  <p className="text-gray-400 text-sm">لا توجد جهات بانتظار المراجعة</p>
-                </div>
-              ) : (
-                <ul className="divide-y divide-gray-100">
-                  {entityReview.slice(0, 5).map((e) => (
-                    <li key={e.id} className="px-4 sm:px-5 py-3">
-                      <p className="font-medium text-gray-800 break-words">{e.canonicalName}</p>
-                      <p className="text-xs text-gray-500 mt-0.5 tabular-nums">
-                        {formatEntityCoverage(e)} / {e.branchName} · أدخلها {e.createdByName || 'محامٍ'}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
+            }
+            form={
+              showAlertForm ? (
+                <CreateAlertForm
+                  targetType={alertTargetType}
+                  onTargetTypeChange={setAlertTargetType}
+                  lawyers={branchLawyers}
+                  lawyerId={alertLawyerId}
+                  onLawyerIdChange={setAlertLawyerId}
+                  message={alertMessage}
+                  onMessageChange={setAlertMessage}
+                  submitting={alertSubmitting}
+                  error={alertFormError}
+                  onSubmit={submitAlert}
+                  onCancel={() => setShowAlertForm(false)}
+                />
+              ) : null
+            }
+            error={alertsError || alertsQuery.error || ''}
+            alerts={alerts}
+          />
         </>
       )}
     </div>

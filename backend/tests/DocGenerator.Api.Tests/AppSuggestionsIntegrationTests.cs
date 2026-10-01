@@ -87,14 +87,48 @@ public class AppSuggestionsIntegrationTests
     }
 
     [Fact]
-    public async Task NonLawyer_CannotCreate()
+    public async Task NonLawyerNonHead_CannotCreate()
     {
-        foreach (var username in new[] { "manager", "admin", "head1" })
+        foreach (var username in new[] { "manager", "admin" })
         {
             var client = _factory.AuthorizedClient(username);
             var response = await client.PostAsJsonAsync("/api/app-suggestions", new { message = "x" });
             Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         }
+
+        // الدور الخامس (مندوب الجهة) محظور أيضًا — أي توسيع لاحق لـ `CanSuggestApp`
+        // دون تحديث هذا الاختبار سيفشل هنا عمدًا.
+        var entityManager = await _factory.CreateUserAsync(NewName("sugg_delegate"), UserRole.EntityManager);
+        var delegateClient = _factory.AuthorizedClient(entityManager.Username);
+        var delegateResponse = await delegateClient.PostAsJsonAsync("/api/app-suggestions", new { message = "x" });
+        Assert.Equal(HttpStatusCode.Forbidden, delegateResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Head_CreatesAndSeesOwnHistory()
+    {
+        var lawyer = _factory.AuthorizedClient("lawyer1");
+        var lawyerCreated = await lawyer.PostAsJsonAsync("/api/app-suggestions", new { message = "اقتراح محامٍ" });
+        var lawyerDto = await lawyerCreated.Content.ReadFromJsonAsync<AppSuggestionDto>();
+        Assert.NotNull(lawyerDto);
+
+        var head = _factory.AuthorizedClient("head1");
+        var created = await head.PostAsJsonAsync("/api/app-suggestions", new { message = "اقتراح رئيس القسم" });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var dto = await created.Content.ReadFromJsonAsync<AppSuggestionDto>();
+        Assert.NotNull(dto);
+
+        var mine = await (await head.GetAsync("/api/app-suggestions")).Content
+            .ReadFromJsonAsync<List<AppSuggestionDto>>();
+        Assert.NotNull(mine);
+        Assert.Contains(mine, s => s.Id == dto.Id);
+        // عزل الملكية: سجل الرئيس لا يكشف اقتراحات غيره، والقراءة المباشرة 404،
+        // وتعليم المقروء محظور (المشرف فقط).
+        Assert.DoesNotContain(mine, s => s.Id == lawyerDto.Id);
+        Assert.Equal(HttpStatusCode.NotFound, (await head.GetAsync($"/api/app-suggestions/{lawyerDto.Id}")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.Forbidden,
+            (await head.PatchAsync($"/api/app-suggestions/{dto.Id}/read", null)).StatusCode);
     }
 
     [Fact]

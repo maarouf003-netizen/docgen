@@ -39,6 +39,9 @@ public interface IPublicEntityService
     /// <summary>قيود بانتظار مراجعة رئيس القسم ضمن نطاقه (المدير/المشرف يرىان الكل).</summary>
     Task<List<PublicEntityEntryDto>> ListNeedsReviewAsync(EntityRegistryActor actor, CancellationToken ct = default);
 
+    /// <summary>عدد قيود «بانتظار المراجعة» ضمن نطاق الفاعل — شارة خفيفة دون تحميل القائمة.</summary>
+    Task<int> CountNeedsReviewAsync(EntityRegistryActor actor, CancellationToken ct = default);
+
     /// <summary>سجل تغييرات الجهات — مصدره PublicEntityChangeEvent فقط (د5 §7).
     /// نطاق رئيس القسم محافظته فقط (الجبر الخادمي يتجاهل پارامتر العميل).</summary>
     Task<PagedResult<EntityChangeEventDto>> ListChangeEventsAsync(EntityChangeEventQuery query, EntityRegistryActor actor, CancellationToken ct = default);
@@ -828,6 +831,20 @@ public sealed class PublicEntityService : IPublicEntityService
             .OrderByDescending(x => x.Entry.CreatedAt)
             .Select(x => ToEntryDto(x.Group, x.Entry))
             .ToList();
+    }
+
+    public async Task<int> CountNeedsReviewAsync(EntityRegistryActor actor, CancellationToken ct = default)
+    {
+        int? headBranchId = null;
+        if (actor.Role == UserRole.Head)
+        {
+            var branch = actor.BranchId is null ? null : await _branches.GetByIdAsync(actor.BranchId.Value, ct);
+            headBranchId = branch?.Id;
+            if (headBranchId is null)
+                return 0;
+        }
+
+        return await _entities.CountNeedsReviewAsync(headBranchId, ct);
     }
 
     // ── سجل تغييرات الجهات (د5 §7) ──

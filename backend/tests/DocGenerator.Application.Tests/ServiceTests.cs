@@ -4767,11 +4767,16 @@ public class AuthServiceTests : IDisposable
     public AuthServiceTests()
     {
         _db = TestDb.Create();
+        // الفرع لازم للمحامي (قيد القاعدة CK_Users_BranchRequiredForBranchRoles) —
+        // كل تأكيدات هذا الصنف حيادية الفرع (قفل/تدقيق/اختيار فرع).
+        var damascus = _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" }).Entity;
+        _db.SaveChanges();
         _db.Users.Add(new User
         {
             Username = "lawyer1",
             FullName = "محامي",
             Role = UserRole.Lawyer,
+            BranchId = damascus.Id,
             PasswordHash = new PasswordHasher().Hash("123456"),
         });
         _db.SaveChanges();
@@ -4810,6 +4815,10 @@ public class AuthServiceTests : IDisposable
         Assert.Null(result.Response);
         Assert.Contains("login_failed", _audit.Actions);
     }
+
+    // ملاحظة طبقية: حالة «بلا فرع» لرئيس/محامٍ أصبحت غير قابلة للتجسيد عبر EF
+    // (قيد القاعدة يرفض الإدراج)، فانتقلت تغطيتها إلى `AuthServiceBranchGateTests`
+    // بمستودع مزيف — للرئيس والمحامي معًا، مع إثبات عدم عدّ الإخفاق.
 
     [Fact]
     public async Task Login_AfterMaxFailedAttempts_LocksAccount()
@@ -4998,7 +5007,9 @@ public class AuthServiceTests : IDisposable
         _db.SaveChanges();
         var name = ArabicNameNormalizer.Normalize("غسان وائل هاني");
         _db.Users.Add(new User { Username = name, FullName = name, Role = UserRole.Lawyer, BranchId = b1.Id, PasswordHash = new PasswordHasher().Hash("123456") });
-        _db.Users.Add(new User { Username = name, FullName = name, Role = UserRole.Lawyer, BranchId = null, PasswordHash = new PasswordHasher().Hash("123456") });
+        // المرشح الثاني غير المطابق كان محاميًا بلا فرع — حالة محرّمة بالقيد،
+        // فاستُبدل بدور بلا فرع بالتصميم (مندوب) مع بقاء نية الاختبار: فرع مجهول لا يطابق أحدًا.
+        _db.Users.Add(new User { Username = name, FullName = name, Role = UserRole.EntityManager, BranchId = null, PasswordHash = new PasswordHasher().Hash("123456") });
         _db.SaveChanges();
 
         var result = await CreateService().LoginAsync(new LoginRequest("غسان وائل هاني", "123456", 999));

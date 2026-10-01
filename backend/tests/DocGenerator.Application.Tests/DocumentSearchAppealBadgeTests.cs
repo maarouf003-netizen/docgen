@@ -24,12 +24,15 @@ public class DocumentSearchAppealBadgeTests : IDisposable
     public DocumentSearchAppealBadgeTests()
     {
         _db = TestDb.Create();
+        // الفرع لازم للمحامي (قيد القاعدة) — الشارة user-scoped فالقيمة محايدة.
+        var damascus = _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" }).Entity;
+        _db.SaveChanges();
         var user = new User
         {
             Username = "lawyer1",
             FullName = "محامي",
             Role = UserRole.Lawyer,
-            BranchId = null,
+            BranchId = damascus.Id,
             PasswordHash = new PasswordHasher().Hash("123456"),
         };
         _db.Users.Add(user);

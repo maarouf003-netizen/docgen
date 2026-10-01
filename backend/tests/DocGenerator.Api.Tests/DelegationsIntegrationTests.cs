@@ -16,6 +16,8 @@ public class DelegationsIntegrationTests
 
     private static string NewName(string prefix) => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 16, 40)];
 
+    private sealed record PendingCountDto(int Count);
+
     private async Task<(int DocId, int AssetId)> CreateSourceWithAssetAsync()
     {
         var login = await _factory.LoginAsync("lawyer1", "123456");
@@ -209,6 +211,28 @@ public class DelegationsIntegrationTests
         var response = await client.PostAsJsonAsync($"/api/delegations/{created!.Id}/assign",
             new { assignedLawyerId = targetLawyer.Id });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PendingCount_HeadSeesOwnBranchScope_AndGuardsHold()
+    {
+        var (docId, assetId) = await CreateSourceWithAssetAsync();
+        var lawyer1 = _factory.AuthorizedClient("lawyer1");
+        var created = await lawyer1.PostAsJsonAsync($"/api/documents/{docId}/delegations", SampleBody(assetId));
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+
+        // رئيس فرع المنيب يرى العدّاد (خفيف — بلا قائمة).
+        var head = _factory.AuthorizedClient("head1");
+        var countResponse = await head.GetAsync("/api/delegations/pending-count");
+        Assert.Equal(HttpStatusCode.OK, countResponse.StatusCode);
+        var count = await countResponse.Content.ReadFromJsonAsync<PendingCountDto>();
+        Assert.NotNull(count);
+        Assert.True(count!.Count >= 1);
+
+        // المحامي ممنوع (403). حارس «رئيس بلا فرع» (400) غير قابل للتجسيد عبر
+        // EF (قيد القاعدة) — تغطيته في `DelegationPendingCountBranchGuardTests`
+        // بهوية مطالبات مصنوعة.
+        Assert.Equal(HttpStatusCode.Forbidden, (await lawyer1.GetAsync("/api/delegations/pending-count")).StatusCode);
     }
 
     [Fact]

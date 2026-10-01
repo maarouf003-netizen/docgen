@@ -127,4 +127,8 @@ public static class RolePermissions
 
     /// <summary>قراءة كل اقتراحات التطوير وتعليمها مقروءة — المشرف فقط.</summary>
     public static bool CanViewAppSuggestions(UserRole role) => role == UserRole.Admin;
+
+    /// <summary>إرسال اقتراح تطوير — المحامي ورئيس القسم (صندوق المشرف).</summary>
+    public static bool CanSuggestApp(UserRole role) =>
+        role is UserRole.Lawyer or UserRole.Head;
 }

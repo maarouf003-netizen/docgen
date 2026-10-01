@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+﻿import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
@@ -28,9 +28,13 @@ vi.mock('../auth/useAuth', () => ({
   useAuth: () => useAuthMock(),
 }));
 
-vi.mock('../api/client', () => ({
-  api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
-}));
+vi.mock('../api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/client')>();
+  return {
+    ...actual,
+    api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
+  };
+});
 
 import { api } from '../api/client';
 import { currentWeekRange } from '../components/dashboard/personalReminders';
@@ -192,6 +196,10 @@ function mockApi(overrides?: {
   unreadCount?: number;
   lawyers?: LawyerListItem[];
   personal?: PersonalReminderDto[];
+  pendingReviews?: number;
+  urgentCount?: number;
+  pendingDelegationsCount?: number;
+  entityReviewCount?: number;
 }) {
   const reminders = overrides?.reminders ?? [];
   const monthly = overrides?.monthly ?? [];
@@ -199,6 +207,10 @@ function mockApi(overrides?: {
   const unreadCount = overrides?.unreadCount ?? 0;
   const lawyers = overrides?.lawyers ?? [];
   const personal = overrides?.personal ?? [];
+  const pendingReviews = overrides?.pendingReviews ?? 0;
+  const urgentCount = overrides?.urgentCount ?? 0;
+  const pendingDelegationsCount = overrides?.pendingDelegationsCount ?? 0;
+  const entityReviewCount = overrides?.entityReviewCount ?? 0;
   (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation(
     (url: string, config?: { params?: Record<string, unknown> }) => {
       if (url === '/dashboard') return Promise.resolve({ data: STATS });
@@ -209,6 +221,10 @@ function mockApi(overrides?: {
       if (url === '/alerts/unread-count') return Promise.resolve({ data: { count: unreadCount } });
       if (url === '/users/lawyers') return Promise.resolve({ data: lawyers });
       if (url === '/monthly-stats') return Promise.resolve({ data: monthly });
+      if (url === '/review-letters/pending-count') return Promise.resolve({ data: { count: pendingReviews } });
+      if (url === '/correspondence/urgent-unseen-count') return Promise.resolve({ data: { count: urgentCount } });
+      if (url === '/delegations/pending-count') return Promise.resolve({ data: { count: pendingDelegationsCount } });
+      if (url === '/entity-registry/pending-review-count') return Promise.resolve({ data: { count: entityReviewCount } });
       if (url === '/stats/periods') return Promise.resolve({ data: PERIODS });
       if (url === '/branches') {
         return Promise.resolve({
@@ -298,7 +314,7 @@ describe('Dashboard للمحامي', () => {
 
     render(<Dashboard />);
 
-    expect(await screen.findByRole('link', { name: 'التقويم — 1 تذكيرات اليوم أو متأخرة' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'التقويم — تذكير واحد اليوم أو متأخر' })).toBeInTheDocument();
   });
 
   it('يضمّن الجرس التذكيرات الشخصية المستحقة ويتجاهل المنجزة', async () => {
@@ -333,7 +349,7 @@ describe('Dashboard للمحامي', () => {
 
     render(<Dashboard />);
 
-    expect(await screen.findByRole('link', { name: 'التقويم — 1 تذكيرات اليوم أو متأخرة' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'التقويم — تذكير واحد اليوم أو متأخر' })).toBeInTheDocument();
   });
 
   it('يضمّن عدّاد بطاقة التذكيرات الشخصي مع سطر إحالة للتقويم', async () => {
@@ -517,25 +533,60 @@ describe('Dashboard للمحامي', () => {
 });
 
 describe('Dashboard لرئيس القسم', () => {
-  it('يعرض إحصاءات فترة فرعه وجدول محاميه وتنبيهات القسم دون قسم التذكيرات', async () => {
+  it('يعرض الترحيب وصف الأيقونات التسع وتنبيهات القسم دون إحصائيات أو قسم سجل', async () => {
     useAuthMock.mockReturnValue({
       user: { id: 1, username: 'head1', fullName: 'رئيس', role: 'head', branchId: 1 },
     });
-    mockApi({ alerts: HEAD_ALERTS, lawyers: BRANCH_LAWYERS });
+    mockApi({
+      alerts: HEAD_ALERTS,
+      lawyers: BRANCH_LAWYERS,
+      pendingReviews: 2,
+      urgentCount: 1,
+      pendingDelegationsCount: 2,
+      entityReviewCount: 1,
+    });
 
     render(<Dashboard />);
 
-    expect(await screen.findByText('إجمالي الملفات')).toBeInTheDocument();
-    expect(screen.getByText('منفذ بالتسوية')).toBeInTheDocument();
-    expect(screen.queryByText('التذكيرات')).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'مرحبًا، رئيس' })).toBeInTheDocument();
+
+    const quickNav = screen.getByRole('navigation', { name: 'أقسام لوحة رئيس القسم' });
+    expect(within(quickNav).getAllByRole('link')).toHaveLength(9);
+    expect(within(quickNav).getByRole('link', { name: 'المطالعات — 2 كتب مطالعة بانتظار الرد' })).toHaveAttribute(
+      'href',
+      '/reviews',
+    );
+    expect(within(quickNav).getByRole('link', { name: 'المراسلات — مراسلة عاجلة واحدة' })).toHaveAttribute(
+      'href',
+      '/correspondence',
+    );
+    expect(
+      within(quickNav).getByRole('link', { name: 'طلبات الإنابة — 2 طلبات إنابة معلّقة' }),
+    ).toHaveAttribute('href', '/delegations/requests');
+    expect(
+      within(quickNav).getByRole('link', { name: 'مراجعة سجل الجهات — جهة واحدة بانتظار المراجعة' }),
+    ).toHaveAttribute('href', '/entities/review');
+
+    // لا إحصائيات ولا قسم سجل في اللوحة إطلاقًا.
+    expect(screen.queryByRole('heading', { name: /متداولة ضمن/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'إجمالي الملفات' })).not.toBeInTheDocument();
+    expect(screen.queryByText('إحصائيات محامي الفرع')).not.toBeInTheDocument();
+    expect(screen.queryByText('مراجعة سجل الجهات العامة')).not.toBeInTheDocument();
     expect(screen.getByText('تنبيهات رئيس القسم')).toBeInTheDocument();
-    expect(screen.getByText('إحصائيات محامي الفرع')).toBeInTheDocument();
-    expect(screen.getByText('محامي دمشق')).toBeInTheDocument();
-    expect(api.get).toHaveBeenCalledWith('/stats/manager', expect.any(Object));
-    expect(api.get).toHaveBeenCalledWith('/stats/periods', expect.any(Object));
-    expect(api.get).not.toHaveBeenCalledWith('/reminders', expect.any(Object));
+
+    expect(api.get).toHaveBeenCalledWith('/review-letters/pending-count');
+    expect(api.get).toHaveBeenCalledWith('/correspondence/urgent-unseen-count');
+    // الشارات الثقيلة سابقًا صارت عدّادات خفيفة — القوائم الكاملة لا تُطلب إطلاقًا.
+    expect(api.get).toHaveBeenCalledWith('/delegations/pending-count');
+    expect(api.get).toHaveBeenCalledWith('/entity-registry/pending-review-count');
+    expect(api.get).not.toHaveBeenCalledWith('/delegations/pending', expect.any(Object));
+    expect(api.get).not.toHaveBeenCalledWith('/entity-registry/pending-review', expect.any(Object));
     expect(api.get).toHaveBeenCalledWith('/alerts', expect.any(Object));
     expect(api.get).toHaveBeenCalledWith('/users/lawyers', expect.any(Object));
+    expect(api.get).not.toHaveBeenCalledWith('/stats/manager', expect.any(Object));
+    expect(api.get).not.toHaveBeenCalledWith('/stats/periods', expect.any(Object));
+    expect(api.get).not.toHaveBeenCalledWith('/stats/manager/lawyers', expect.any(Object));
+    expect(api.get).not.toHaveBeenCalledWith('/reminders', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/branches', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/dashboard');
     expect(api.get).not.toHaveBeenCalledWith('/alerts/unread-count', expect.any(Object));
@@ -620,8 +671,60 @@ describe('Dashboard لرئيس القسم', () => {
     await user.click(await screen.findByRole('button', { name: '+ إصدار تنبيه' }));
     await user.click(screen.getByRole('button', { name: 'إرسال التنبيه' }));
 
-    expect(await screen.findByText('نص التنبيه مطلوب')).toBeInTheDocument();
+    // الخطأ منسوب لحقل النص وحده: معلن ومرتبط به ومركّز عليه، ولا تعليم لحقل آخر.
+    const error = await screen.findByRole('alert');
+    expect(error).toHaveTextContent('نص التنبيه مطلوب');
+    const textarea = screen.getByLabelText('نص التنبيه');
+    expect(textarea).toHaveAttribute('aria-invalid', 'true');
+    expect(textarea).toHaveAttribute('aria-describedby', 'alert-form-error');
+    expect(document.activeElement).toBe(textarea);
     expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('إصدار رسالة لمحامٍ بلا اختيار يعزو الخطأ للقائمة وحدها', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({
+      user: { id: 1, username: 'head1', fullName: 'رئيس', role: 'head', branchId: 1 },
+    });
+    mockApi({ alerts: [], lawyers: BRANCH_LAWYERS });
+
+    render(<Dashboard />);
+
+    await user.click(await screen.findByRole('button', { name: '+ إصدار تنبيه' }));
+    await user.click(screen.getByRole('button', { name: 'رسالة لمحامٍ' }));
+    await user.type(await screen.findByLabelText('نص التنبيه'), 'رسالة خاصة');
+    await user.click(screen.getByRole('button', { name: 'إرسال التنبيه' }));
+
+    const error = await screen.findByRole('alert');
+    expect(error).toHaveTextContent('اختر المحامي المستلم');
+    const select = screen.getByLabelText('المحامي');
+    expect(select).toHaveAttribute('aria-invalid', 'true');
+    expect(select).toHaveAttribute('aria-describedby', 'alert-form-error');
+    expect(document.activeElement).toBe(select);
+    // حقل النص السليم لا يُعلَّم بخطأ غيره.
+    expect(screen.getByLabelText('نص التنبيه')).not.toHaveAttribute('aria-invalid');
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('فشل إرسال التنبيه خادميًا يُعلن الخطأ دون تعليم أي حقل', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({
+      user: { id: 1, username: 'head1', fullName: 'رئيس', role: 'head', branchId: 1 },
+    });
+    mockApi({ alerts: [], lawyers: BRANCH_LAWYERS });
+    (api.post as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('عطل'));
+
+    render(<Dashboard />);
+
+    await user.click(await screen.findByRole('button', { name: '+ إصدار تنبيه' }));
+    await user.type(await screen.findByLabelText('نص التنبيه'), 'اجتماع الفرع');
+    await user.click(screen.getByRole('button', { name: 'إرسال التنبيه' }));
+
+    // خطأ بلا حقل مخالف (`field: null`): معلن وحده، ولا `aria-invalid` على أي حقل.
+    const error = await screen.findByRole('alert');
+    expect(error).toHaveTextContent('حدث خطأ غير متوقع');
+    expect(screen.getByLabelText('نص التنبيه')).not.toHaveAttribute('aria-invalid');
+    expect(screen.getByLabelText('نص التنبيه')).not.toHaveAttribute('aria-describedby');
   });
 
   it('اختيار «رسالة لمحامٍ» يعرض قائمة محامي الفرع ويرسلها', async () => {
@@ -681,10 +784,44 @@ describe('Dashboard لرئيس القسم', () => {
       expect.objectContaining({ params: expect.objectContaining({ perPage: 100 }) }),
     );
   });
+
+  it('رئيس بلا فرع: الشارات صفر بلا كسر ولا طلبات عدّادات أو إحصائيات', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 1, username: 'head1', fullName: 'رئيس', role: 'head', branchId: null },
+    });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/alerts') return Promise.resolve({ data: [] });
+      if (url === '/users/lawyers') return Promise.resolve({ data: [] });
+      return Promise.reject(new Error('400 رئيس القسم دون فرع'));
+    });
+
+    render(<Dashboard />);
+
+    expect(await screen.findByRole('heading', { name: 'مرحبًا، رئيس' })).toBeInTheDocument();
+    // الشارات صفر بلا كسر — الأسماء المجردة فقط، ونقاط العدّ لا تُستدعى أصلًا.
+    expect(api.get).not.toHaveBeenCalledWith('/review-letters/pending-count', expect.any(Object));
+    expect(api.get).not.toHaveBeenCalledWith('/correspondence/urgent-unseen-count', expect.any(Object));
+    expect(api.get).not.toHaveBeenCalledWith('/delegations/pending-count', expect.any(Object));
+    expect(api.get).not.toHaveBeenCalledWith('/entity-registry/pending-review-count', expect.any(Object));
+    expect(screen.getByRole('link', { name: 'المطالعات' })).toHaveAttribute('href', '/reviews');
+    expect(screen.getByRole('link', { name: 'المراسلات' })).toHaveAttribute('href', '/correspondence');
+    expect(screen.getByRole('link', { name: 'طلبات الإنابة' })).toHaveAttribute(
+      'href',
+      '/delegations/requests',
+    );
+    expect(screen.getByRole('link', { name: 'مراجعة سجل الجهات' })).toHaveAttribute(
+      'href',
+      '/entities/review',
+    );
+    expect(screen.getByText('تنبيهات رئيس القسم')).toBeInTheDocument();
+    expect(api.get).not.toHaveBeenCalledWith('/stats/manager', expect.any(Object));
+    expect(api.get).not.toHaveBeenCalledWith('/stats/periods', expect.any(Object));
+    expect(api.get).not.toHaveBeenCalledWith('/stats/manager/lawyers', expect.any(Object));
+  });
 });
 
 describe('Dashboard للمدير/المشرف', () => {
-  it('يعرض بطاقات إحصاءات المدير ومحدد الفترة والفرع دون الإحصائيات القديمة', async () => {
+  it('يعرض بطاقات إحصاءات المدير الجديدة (بطل + مؤشرات) ومحدد الفترة والفرع بلا روابط تعمّق', async () => {
     useAuthMock.mockReturnValue({
       user: { id: 1, username: 'manager1', fullName: 'مدير', role: 'manager', branchId: null },
     });
@@ -692,31 +829,22 @@ describe('Dashboard للمدير/المشرف', () => {
 
     render(<Dashboard />);
 
-    expect(await screen.findByText('إجمالي الملفات')).toBeInTheDocument();
-    expect(screen.getByText('متداول')).toBeInTheDocument();
-    expect(screen.getByText('تحت رفع')).toBeInTheDocument();
-    expect(screen.getByText('تريث')).toBeInTheDocument();
-    expect(screen.getByText('منفذ')).toBeInTheDocument();
-    expect(screen.getByText('محال الى البداية')).toBeInTheDocument();
-    expect(screen.getByText('منفذ للصالح')).toBeInTheDocument();
-    expect(screen.getByText('منفذ بالتسوية')).toBeInTheDocument();
-    expect(screen.getByText('منفذ جبريا')).toBeInTheDocument();
-    expect(screen.getByText('منفذ للضد')).toBeInTheDocument();
-    expect(screen.getByText('2,000 ل.س')).toBeInTheDocument();
-    expect(screen.getByText('1,600 ل.س')).toBeInTheDocument();
-    expect(screen.getByText('1,000 ل.س')).toBeInTheDocument();
-    expect(screen.getByText('800 ل.س')).toBeInTheDocument();
-    expect(screen.getByText('1,200 دولار')).toBeInTheDocument();
-    expect(screen.getByText('4,500 ل.س')).toBeInTheDocument();
-    expect(screen.getByText('1,500 ل.س')).toBeInTheDocument();
-    expect(screen.getByText('500 ل.س')).toBeInTheDocument();
-    expect(screen.getByText('5,000 دولار')).toBeInTheDocument();
-    expect(screen.getByText('5,200 دولار')).toBeInTheDocument();
-    expect(screen.getByText('200 دولار')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /متداولة ضمن/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'إجمالي الملفات' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'تحت رفع' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'تريث' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'منفذ' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'محال الى البداية' })).toBeInTheDocument();
+    // بلا روابط تعمّق للمدير.
+    expect(screen.queryByRole('link', { name: 'عرض الملفات ←' })).not.toBeInTheDocument();
+    // الرسم المصغّر للمسجَّلة شهريًا حاضر بوصفه.
+    expect(screen.getByText(/الملفات المسجَّلة شهريًا/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'شهري' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'ربعي' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'سنوي' })).toBeInTheDocument();
     expect(await screen.findAllByText('السنة 2026')).not.toHaveLength(0);
+    // بلا فرع مختار: رسالة اختيار الفرع بدل الجدول.
+    expect(screen.getByText('اختر فرعًا لعرض إحصائيات محامي الفرع')).toBeInTheDocument();
 
     expect(api.get).toHaveBeenCalledWith('/branches', expect.any(Object));
     expect(api.get).toHaveBeenCalledWith('/stats/periods', expect.any(Object));
@@ -736,6 +864,7 @@ describe('Dashboard للمدير/المشرف', () => {
   });
 
   it('يجمع إحصائيات المنفذ في بطاقة واحدة: للصالح (بالتسوية + جبريا + عرض وايداع) وللضد بعدد الملفات والمبالغ', async () => {
+    const user = userEvent.setup();
     useAuthMock.mockReturnValue({
       user: { id: 1, username: 'manager1', fullName: 'مدير', role: 'manager', branchId: null },
     });
@@ -743,12 +872,13 @@ describe('Dashboard للمدير/المشرف', () => {
 
     render(<Dashboard />);
 
-    await screen.findByText('إجمالي الملفات');
+    await screen.findByRole('heading', { name: 'منفذ' });
 
-    const card = screen.getByText('منفذ').closest('.bg-white.rounded-2xl') as HTMLElement;
+    const card = screen.getByRole('heading', { name: 'منفذ' }).closest('article') as HTMLElement;
     expect(card).toBeTruthy();
 
     expect(within(card).getByText('5')).toBeInTheDocument();
+    await user.click(within(card).getByRole('button', { name: 'عرض التفاصيل' }));
     expect(within(card).getByText('منفذ للصالح')).toBeInTheDocument();
     expect(within(card).getByText('منفذ بالتسوية')).toBeInTheDocument();
     expect(within(card).getByText('منفذ جبريا')).toBeInTheDocument();
@@ -761,7 +891,7 @@ describe('Dashboard للمدير/المشرف', () => {
     expect(screen.queryByText('المبلغ المحصل')).not.toBeInTheDocument();
   });
 
-  it('يثبّت عداد الملفات في موضع واحد في جميع بطاقات الإحصائيات', async () => {
+  it('يثبّت عداد الملفات يسارًا بأرقام جدولية في جميع بطاقات الإحصائيات', async () => {
     useAuthMock.mockReturnValue({
       user: { id: 1, username: 'manager1', fullName: 'مدير', role: 'manager', branchId: null },
     });
@@ -769,20 +899,20 @@ describe('Dashboard للمدير/المشرف', () => {
 
     render(<Dashboard />);
 
-    await screen.findByText('إجمالي الملفات');
+    await screen.findByRole('heading', { name: 'إجمالي الملفات' });
 
-    const counters = Array.from(document.querySelectorAll('.font-bold.tabular-nums'));
-    expect(counters).toHaveLength(6);
-    counters.forEach((el) => {
-      expect(el.getAttribute('dir')).toBe('ltr');
-      expect(el.className).toContain('text-right');
-    });
-
-    const contentBlocks = Array.from(document.querySelectorAll('.bg-white.rounded-2xl .flex-1.min-w-0'));
-    expect(contentBlocks).toHaveLength(6);
+    const titles = [/متداولة ضمن/, 'إجمالي الملفات', 'تحت رفع', 'منفذ', 'تريث', 'محال الى البداية'];
+    expect(titles).toHaveLength(6);
+    for (const name of titles) {
+      const card = screen.getByRole('heading', { name }).closest('article') as HTMLElement;
+      expect(card).toBeTruthy();
+      const value = card.querySelector('[dir="ltr"].tabular-nums');
+      expect(value).not.toBeNull();
+    }
   });
 
-  it('يعرض ملفات «عرض وايداع» المتداولة كسطر فرعي داخل بطاقة متداول', async () => {
+  it('يعرض ملفات «عرض وايداع» المتداولة كسطر فرعي داخل بطاقة البطل', async () => {
+    const user = userEvent.setup();
     useAuthMock.mockReturnValue({
       user: { id: 1, username: 'manager1', fullName: 'مدير', role: 'manager', branchId: null },
     });
@@ -790,11 +920,12 @@ describe('Dashboard للمدير/المشرف', () => {
 
     render(<Dashboard />);
 
-    await screen.findByText('إجمالي الملفات');
+    await screen.findByRole('heading', { name: /متداولة ضمن/ });
 
-    const card = screen.getByText('متداول').closest('.bg-white.rounded-2xl') as HTMLElement;
+    const card = screen.getByRole('heading', { name: /متداولة ضمن/ }).closest('article') as HTMLElement;
     expect(card).toBeTruthy();
 
+    await user.click(within(card).getByRole('button', { name: 'عرض التفاصيل' }));
     expect(within(card).getByText('متداول للصالح')).toBeInTheDocument();
     expect(within(card).getByText('عرض وايداع')).toBeInTheDocument();
     expect(within(card).getByText('متداول للضد')).toBeInTheDocument();
@@ -849,4 +980,22 @@ describe('Dashboard للمدير/المشرف', () => {
     expect(await screen.findByText('إجمالي الملفات')).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith('/stats/manager', expect.any(Object));
   });
+
+  it.each(['manager', 'admin'] as const)(
+    'لا يعرض لوحة «تنبيهات رئيس القسم» ولا زر إصدار تنبيه لدور %s (خارج نطاق التنبيهات خلفيًا)',
+    async (role) => {
+      useAuthMock.mockReturnValue({
+        user: { id: 1, username: `${role}1`, fullName: 'مدير', role, branchId: null },
+      });
+      mockApi();
+
+      render(<Dashboard />);
+
+      // انتظر اكتمال لوحة المدير أولًا — الغياب قبل الاكتمال قد يكون تحميلًا لا منعًا.
+      expect(await screen.findByText('إجمالي الملفات')).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'تنبيهات رئيس القسم' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '+ إصدار تنبيه' })).not.toBeInTheDocument();
+      expect(api.get).not.toHaveBeenCalledWith('/alerts', expect.any(Object));
+    },
+  );
 });

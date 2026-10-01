@@ -78,12 +78,16 @@ public class DelegationRepository : Repository<DocumentDelegation>, IDelegationR
             .FirstOrDefaultAsync(ct);
     }
 
-    public async Task<List<DocumentDelegation>> ListPendingByBranchAsync(int branchId, CancellationToken ct = default)
-    {
-        return await Db.DocumentDelegations
+    /// <summary>نطاق «المعلّقة بانتظار رئيس القسم» لفرعٍ معيّن — مشترك بين القائمة والعدّاد.</summary>
+    private IQueryable<DocumentDelegation> PendingByBranchQuery(int branchId)
+        => Db.DocumentDelegations
             .Where(d => d.Status == DelegationStatusCatalog.PendingHead
                 && ((!d.IsExternal && d.SourceDocument.BranchId == branchId)
-                    || (d.IsExternal && d.ExternalBranchId == branchId)))
+                    || (d.IsExternal && d.ExternalBranchId == branchId)));
+
+    public async Task<List<DocumentDelegation>> ListPendingByBranchAsync(int branchId, CancellationToken ct = default)
+    {
+        return await PendingByBranchQuery(branchId)
             .OrderByDescending(d => d.CreatedAt)
             .Include(d => d.SourceDocument)
                 .ThenInclude(s => s!.BaseNumbers)
@@ -93,6 +97,9 @@ public class DelegationRepository : Repository<DocumentDelegation>, IDelegationR
             .Include(d => d.Assets)
             .ToListAsync(ct);
     }
+
+    public Task<int> CountPendingByBranchAsync(int branchId, CancellationToken ct = default)
+        => PendingByBranchQuery(branchId).CountAsync(ct);
 
     public async Task<List<DocumentDelegation>> ListPendingBySourceWithTargetsAsync(int sourceDocumentId, CancellationToken ct = default)
     {

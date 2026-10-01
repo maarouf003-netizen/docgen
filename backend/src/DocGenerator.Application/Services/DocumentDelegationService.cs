@@ -301,6 +301,9 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         return delegations.Select(d => ToDto(d, d.SourceDocument, ServerClock.CurrentYear(_clock, _timeZone))).ToList();
     }
 
+    public Task<int> CountPendingForHeadAsync(int branchId, CancellationToken ct = default)
+        => _delegations.CountPendingByBranchAsync(branchId, ct);
+
     public async Task<bool> IsPartyAsync(int delegationId, int userId, CancellationToken ct = default)
     {
         var delegation = await _delegations.GetByIdWithDetailsAsync(delegationId, ct);
