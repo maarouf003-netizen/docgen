@@ -275,7 +275,10 @@ using (var scope = app.Services.CreateScope())
     var initializer = scope.ServiceProvider.GetRequiredService<IDatabaseInitializer>();
     initializer.InitializeAsync(
         builder.Environment.IsDevelopment(),
-        builder.Configuration["Bootstrap:AdminPassword"])
+        builder.Configuration["Bootstrap:AdminPassword"],
+        // تجاوز كلمة بذر التطوير (للاختبارات المعزولة فقط عبر ApiFactory) — بلا قيمة
+        // هنا فيولّد البذر كلمة عشوائية تُطبَع على الكونسول المحلي (RF-006).
+        devSeedPassword: builder.Configuration["Bootstrap:DevSeedPassword"])
         .GetAwaiter().GetResult();
 }
 

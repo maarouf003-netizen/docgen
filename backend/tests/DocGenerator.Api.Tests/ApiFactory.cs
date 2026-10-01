@@ -32,6 +32,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         // عزل ملف سجل Serilog عن المستودع: كل مصنع يكتب في مجلد مؤقت خاص به.
         builder.UseSetting("Logging:File:Path", Path.Combine(_logDir, "logs-.txt"));
         builder.UseSetting("Database:UsePostgres", "false");
+        // تجاوز كلمة بذر التطوير بقيمة اختبارية ثابتة (RF-006): القاعدة هنا ملف SQLite مؤقت
+        // معزول يُحذَف في Dispose، فلا يصل هذا التجاوز لأي بيئة حقيقية.
+        builder.UseSetting("Bootstrap:DevSeedPassword", "123456");
         builder.UseSetting("Swagger:Enabled", "false");
         builder.UseSetting("Jwt:Secret", "integration-test-secret-0123456789-0123456789-0123456789");
         builder.UseSetting("RateLimiting:MaxLoginAttempts", "5");

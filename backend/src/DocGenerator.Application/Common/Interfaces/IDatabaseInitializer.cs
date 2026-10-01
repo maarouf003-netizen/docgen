@@ -7,5 +7,9 @@ namespace DocGenerator.Application.Common.Interfaces;
 /// </summary>
 public interface IDatabaseInitializer
 {
-    Task InitializeAsync(bool development, string? bootstrapAdminPassword, CancellationToken ct = default);
+    Task InitializeAsync(
+        bool development,
+        string? bootstrapAdminPassword,
+        CancellationToken ct = default,
+        string? devSeedPassword = null);
 }

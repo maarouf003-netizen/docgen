@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -5,20 +6,28 @@ using DocGenerator.Domain.Enums;
 namespace DocGenerator.Infrastructure.Persistence;
 
 /// <summary>
-/// بذر الفروع والمستخدمين نفس بيانات تطبيق Flask المرجعي (كلمة سر: 123456).
-/// يُستدعى في بيئة التطوير فقط؛ أما الإنتاج فلا يُنشئ حسابات افتراضية بكلمة معروفة.
+/// بذر الفروع والمستخدمين لبيئة التطوير فقط؛ أما الإنتاج فلا يُنشئ حسابات افتراضية بكلمة معروفة.
+/// كلمة مرور التطوير عشوائية عند كل بذر (تُطبَع على الكونسول المحلي لمرة واحدة) ما لم تُمرَّر
+/// صراحة عبر <c>Bootstrap:DevSeedPassword</c> (تجاوز للاختبارات المعزولة فقط) — RF-006 (SEC-004).
 /// </summary>
 public static class DbSeeder
 {
     /// <summary>
-    /// كلمة مرور حسابات بيئة التطوير حصرًا (نفس بيانات تطبيق Flask المرجعي).
-    /// لا تُستخدم في الإنتاج أبدًا: مسار الإنتاج <see cref="BootstrapAsync"/> يحقن
-    /// كلمة المرور من الإعدادات (Bootstrap__AdminPassword) ويرفض أي بذر افتراضي.
+    /// يبذر الفروع وحسابات التطوير الأربعة، ويعيد كلمة المرور المستخدمة (للطباعة/الاختبار).
+    /// لا تُسجَّل الكلمة في ملفات السجلات أبدًا — الكونسول المحلي فقط.
     /// </summary>
-    private const string DevSeedPassword = "123456";
-
-    public static async Task SeedAsync(DocGeneratorDbContext db, IPasswordHasher hasher, CancellationToken ct = default)
+    public static async Task<string> SeedAsync(
+        DocGeneratorDbContext db,
+        IPasswordHasher hasher,
+        CancellationToken ct = default,
+        string? devPassword = null)
     {
+        var password = string.IsNullOrWhiteSpace(devPassword) ? GenerateDevPassword() : devPassword;
+        if (string.IsNullOrWhiteSpace(devPassword))
+        {
+            // كونسول محلي فقط (لا Serilog ولا ملفات): بيئة التطوير وحدها تصل هنا.
+            Console.WriteLine($"[DbSeeder] Development accounts seeded. One-time password: {password}");
+        }
         if (!db.Branches.Any())
         {
             db.Branches.AddRange(
@@ -34,12 +43,28 @@ public static class DbSeeder
         {
             var damascus = db.Branches.FirstOrDefault(b => b.Code == "DAM");
             db.Users.AddRange(
-                new User { Username = "admin", FullName = "مشرف النظام", Role = UserRole.Admin, PasswordHash = hasher.Hash(DevSeedPassword) },
-                new User { Username = "manager", FullName = "مدير النظام", Role = UserRole.Manager, PasswordHash = hasher.Hash(DevSeedPassword) },
-                new User { Username = "head1", FullName = "رئيس قسم دمشق", Role = UserRole.Head, BranchId = damascus?.Id, PasswordHash = hasher.Hash(DevSeedPassword) },
-                new User { Username = "lawyer1", FullName = "محامي دمشق", Role = UserRole.Lawyer, BranchId = damascus?.Id, PasswordHash = hasher.Hash(DevSeedPassword) });
+                new User { Username = "admin", FullName = "مشرف النظام", Role = UserRole.Admin, PasswordHash = hasher.Hash(password) },
+                new User { Username = "manager", FullName = "مدير النظام", Role = UserRole.Manager, PasswordHash = hasher.Hash(password) },
+                new User { Username = "head1", FullName = "رئيس قسم دمشق", Role = UserRole.Head, BranchId = damascus?.Id, PasswordHash = hasher.Hash(password) },
+                new User { Username = "lawyer1", FullName = "محامي دمشق", Role = UserRole.Lawyer, BranchId = damascus?.Id, PasswordHash = hasher.Hash(password) });
             await db.SaveChangesAsync(ct);
         }
+
+        return password;
+    }
+
+    /// <summary>
+    /// كلمة عشوائية 12 خانة من أبجدية بلا التباس (تُستخدَم عند غياب التجاوز الصريح فقط).
+    /// </summary>
+    private static string GenerateDevPassword()
+    {
+        const string alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
+        return string.Create(12, alphabet, static (span, chars) =>
+        {
+            var bytes = RandomNumberGenerator.GetBytes(span.Length);
+            for (var i = 0; i < span.Length; i++)
+                span[i] = chars[bytes[i] % chars.Length];
+        });
     }
 
     /// <summary>

@@ -21,12 +21,13 @@ public sealed class DatabaseInitializer : IDatabaseInitializer
     public async Task InitializeAsync(
         bool development,
         string? bootstrapAdminPassword,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? devSeedPassword = null)
     {
         await _db.Database.MigrateAsync(ct);
 
         if (development)
-            await DbSeeder.SeedAsync(_db, _hasher, ct);
+            await DbSeeder.SeedAsync(_db, _hasher, ct, devSeedPassword);
         else
             await DbSeeder.BootstrapAsync(_db, _hasher, bootstrapAdminPassword, ct);
     }
