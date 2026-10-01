@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
@@ -573,6 +574,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
 
         var sales = request.Sales ?? new List<DelegationSaleDto>();
         var salesByAssetId = sales.ToDictionary(s => s.DelegationAssetId);
+        // RF-017 (INT-005): التقاط البدلات قبل الكتابة لتوثيق قبل/بعد في تفاصيل التدقيق.
+        var oldPrices = delegation.Assets.ToDictionary(a => a.Id, a => a.SalePrice);
         foreach (var asset in delegation.Assets)
         {
             if (!salesByAssetId.TryGetValue(asset.Id, out var sale))
@@ -645,7 +648,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
 
             await _audit.LogAsync(actorName, "complete_delegation",
                 delegation.SourceDocumentId, delegation.SourceDocument.DocumentType,
-                $"أتم إنابة (رقم {delegation.Id}): بيع الأموال موضوع الإنابة وإعادة الملف للدائرة المنيبة — اعتُبر الملف المنيب «منفذ جبريا (منفذ جزئيا)» تلقائيًا حتى اعتباره منفذًا كاملًا بهذا البيع", token);
+                $"أتم إنابة (رقم {delegation.Id}): بيع الأموال موضوع الإنابة وإعادة الملف للدائرة المنيبة — اعتُبر الملف المنيب «منفذ جبريا (منفذ جزئيا)» تلقائيًا حتى اعتباره منفذًا كاملًا بهذا البيع — بدلات المبيع: {FormatSalePrices(delegation, oldPrices)} — التغطية: {(request.SaleCoversFullDebt.Value ? "غطّى كامل المديونية" : "لم يغطِّ كامل المديونية")}", token);
         }, ct);
 
         // تصفية تنبيه «بانتظار الإتمام» بعد إتمام الإنابة (أنجز مهمّته). إشعار فرعي —
@@ -996,6 +999,23 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
 
     private static string SerializeDetails(Dictionary<string, string> details) =>
         JsonSerializer.Serialize(details);
+
+    /// <summary>
+    /// RF-017 (INT-005): بدلات المبيع قبل/بعد لكل أصل — تُلحَق بتفاصيل تدقيق الإتمام
+    /// (المتتبع الحقلي يغطي كيان المستند لا أصول الإنابة). نفس تنسيق المتتبع الثابت.
+    /// </summary>
+    private static string FormatSalePrices(
+        DocumentDelegation delegation, Dictionary<int, decimal?> oldPrices)
+        => string.Join("؛ ", delegation.Assets
+            .OrderBy(a => a.Id)
+            .Select(a =>
+            {
+                var oldText = oldPrices.TryGetValue(a.Id, out var old) && old.HasValue
+                    ? old.Value.ToString("0.########", CultureInfo.InvariantCulture)
+                    : "بلا";
+                var newText = a.SalePrice?.ToString("0.########", CultureInfo.InvariantCulture) ?? "بلا";
+                return $"{a.AssetLabel}: {oldText} ← {newText}";
+            }));
 
     private static DelegationDto ToDto(DocumentDelegation d, Document source, int currentYear) => new(
         d.Id,

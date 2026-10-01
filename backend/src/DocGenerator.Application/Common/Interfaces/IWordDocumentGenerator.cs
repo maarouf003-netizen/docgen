@@ -10,5 +10,6 @@ public interface IWordDocumentGenerator
         int recipient = 0,
         int[]? estateIds = null,
         int heirId = 0,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        string? actorName = null);
 }

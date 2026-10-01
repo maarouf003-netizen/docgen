@@ -130,7 +130,7 @@ public sealed partial class DocumentService
 
     public async Task<List<DocumentResponse>> ExportAsync(
         string? query, string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch,
-        int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default)
+        int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, string? actorName = null)
     {
         // سقف التصدير: يُعدَّل عدد النتائج المطابقة أولًا قبل جلب أي صف إلى الذاكرة،
         // فيُرفض التصدير الواسع برسالة واضحة بدل ذروة ذاكرة غير محصورة على الخادم.
@@ -141,6 +141,12 @@ public sealed partial class DocumentService
 
         var items = await _documents.ExportAsync(
             query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, ct);
+        // RF-017 (SEC-002): التصدير قراءة بلا كتابة عمل — تدقيقه حفظة واحدة بلا معاملة
+        // (بالفلاتر والعدد الفعلي؛ الفلاتر الفارغة تُحذَف من النص).
+        var filters = string.Join("،", new[] { query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch }
+            .Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s!.Trim()));
+        await _audit.LogAsync(actorName, "export_documents",
+            details: $"صدّر {items.Count} صفًا" + (filters.Length == 0 ? " (بلا فلاتر)" : $" بفلاتر: {filters}"), ct: ct);
         return items.Select(d => DocumentResponse.FromEntity(d, CurrentYear())).ToList();
     }
 

@@ -75,7 +75,7 @@ public class AppSuggestionsController : ControllerBase
     {
         if (!IsAdmin)
             return Forbid();
-        var ok = await _suggestions.MarkReadAsync(id, ct);
+        var ok = await _suggestions.MarkReadAsync(id, ct, ActorName);
         return ok ? NoContent() : NotFound();
     }
 }

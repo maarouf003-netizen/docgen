@@ -153,7 +153,7 @@ public class DocumentsController : ControllerBase
         var visibleUser = HasFullAccess || IsHead ? (int?)null : User.GetUserId();
 
         var items = await _documents.ExportAsync(q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
-            visibleBranch, visibleUser, ct);
+            visibleBranch, visibleUser, ct, ActorName);
         if (!CanViewCounters)
             items = items.Select(Sanitize).ToList();
 
@@ -518,7 +518,7 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var result = await _generator.GenerateAsync(id, template, recipient, estateIds, heirId, ct);
+            var result = await _generator.GenerateAsync(id, template, recipient, estateIds, heirId, ct, ActorName);
             return File(result.Bytes, WordContentType, result.FileName);
         }
         catch (KeyNotFoundException)

@@ -21,6 +21,7 @@ public class AuthController : ControllerBase
     private readonly RateLimitOptions _rateOptions;
     private readonly JwtOptions _jwt;
     private readonly IWebHostEnvironment _env;
+    private readonly IAuditLogger _audit;
 
     /// <summary>نفس عمر Cookie الجلسة بالضبط حتى يتزامن زوجا Cookie (المصادقة + CSRF) عند الطرح والانتهاء.</summary>
     private TimeSpan SessionMaxAge => TimeSpan.FromMinutes(Math.Max(1, _jwt.ExpiryMinutes));
@@ -30,13 +31,15 @@ public class AuthController : ControllerBase
         ILoginRateLimiter rateLimiter,
         IOptions<RateLimitOptions> rateOptions,
         JwtOptions jwt,
-        IWebHostEnvironment env)
+        IWebHostEnvironment env,
+        IAuditLogger audit)
     {
         _auth = auth;
         _rateLimiter = rateLimiter;
         _rateOptions = rateOptions.Value;
         _jwt = jwt;
         _env = env;
+        _audit = audit;
     }
 
     [HttpPost("login")]
@@ -98,9 +101,13 @@ public class AuthController : ControllerBase
 
     [HttpPost("logout")]
     [AllowAnonymous]
-    public IActionResult Logout()
+    public async Task<IActionResult> Logout(CancellationToken ct)
     {
         // [AllowAnonymous] حتى يُحذف الـ Cookie حتى لو انتهى التوكن أو أُبطلت صلاحيته.
+        // RF-017 (SEC-009): توثيق الخروج باسم الجلسة (المتخفي بلا هوية يُتجاهَل تدقيقه لا حذفه).
+        var userName = User.Identity?.IsAuthenticated == true ? User.Identity.Name : null;
+        if (!string.IsNullOrWhiteSpace(userName))
+            await _audit.LogAsync(userName, "logout", details: "تسجيل خروج", ct: ct);
         Response.Cookies.Delete(AuthCookie.Name, AuthCookie.DeleteOptions(_env));
         Response.Cookies.Delete(CsrfMiddleware.CookieName, CsrfMiddleware.CookieOptions(_env, SessionMaxAge));
         return Ok(new { message = "تم تسجيل الخروج" });
