@@ -5,6 +5,7 @@ using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Domain.Entities;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -39,6 +40,19 @@ public sealed class AuthControllerBranchRequiredTests
         public Task ResetAsync(string key, CancellationToken ct = default) => Task.CompletedTask;
     }
 
+    private sealed class NoopAuditLogger : IAuditLogger
+    {
+        public Task LogAsync(string? userName, string actionType, int? documentId = null,
+            string? documentType = null, string? details = null, CancellationToken ct = default)
+            => Task.CompletedTask;
+        public Task LogManyAsync(IReadOnlyList<AuditLogEntry> entries, CancellationToken ct = default)
+            => Task.CompletedTask;
+        public Task LogDocumentChangeAsync(string? userName, string actionType, int documentId,
+            string? documentType, string details, IReadOnlyList<DocumentFieldChange> changes,
+            CancellationToken ct = default)
+            => Task.CompletedTask;
+    }
+
     private sealed class TestEnvironment : IWebHostEnvironment
     {
         public string EnvironmentName { get; set; } = "Development";
@@ -57,7 +71,8 @@ public sealed class AuthControllerBranchRequiredTests
             new AllowAllRateLimiter(),
             Options.Create(new RateLimitOptions()),
             new JwtOptions(),
-            new TestEnvironment());
+            new TestEnvironment(),
+            new NoopAuditLogger());
         var http = new DefaultHttpContext();
         http.Connection.RemoteIpAddress = System.Net.IPAddress.Loopback;
         controller.ControllerContext = new ControllerContext { HttpContext = http };
