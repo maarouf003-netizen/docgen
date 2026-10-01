@@ -7,7 +7,8 @@ namespace DocGenerator.Application.Services;
 public interface IAuditLogService
 {
     Task<PagedResult<AuditLogDto>> SearchAsync(
-        string? userName, string? actionType, int page, int perPage, CancellationToken ct = default);
+        string? userName, string? actionType, int page, int perPage, CancellationToken ct = default,
+        int? scopeBranchId = null);
 
     /// <summary>
     /// سجل تعديلات ملف محدد على مستوى الحقول: مجموعات مرتبة زمنيًا (الأحدث أولًا)
@@ -24,12 +25,13 @@ public sealed class AuditLogService : IAuditLogService
     public AuditLogService(IAuditLogRepository logs) => _logs = logs;
 
     public async Task<PagedResult<AuditLogDto>> SearchAsync(
-        string? userName, string? actionType, int page, int perPage, CancellationToken ct = default)
+        string? userName, string? actionType, int page, int perPage, CancellationToken ct = default,
+        int? scopeBranchId = null)
     {
         page = Math.Max(1, page);
         perPage = Math.Clamp(perPage, 1, 100);
 
-        var (total, items) = await _logs.SearchAsync(userName, actionType, page, perPage, ct);
+        var (total, items) = await _logs.SearchAsync(userName, actionType, page, perPage, ct, scopeBranchId);
 
         return new PagedResult<AuditLogDto>
         {

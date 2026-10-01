@@ -16,7 +16,8 @@ public class AuditLogRepository : Repository<AuditLog>, IAuditLogRepository
         string? actionType,
         int page,
         int perPage,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        int? scopeBranchId = null)
     {
         IQueryable<AuditLog> q = Db.AuditLogs.AsNoTracking();
 
@@ -29,6 +30,17 @@ public class AuditLogRepository : Repository<AuditLog>, IAuditLogRepository
         {
             var type = actionType.Trim();
             q = q.Where(a => a.ActionType == type);
+        }
+        if (scopeBranchId.HasValue)
+        {
+            // RF-007: نطاق الفرع — الصف مرئي إن نُسِب لمستند الفرع (ولو حُذف منطقيًا، فتاريخ
+            // الفرع يبقى لفرعه) أو لفاعل من الفرع. غير المنسوب مخفي (افتراض آمن).
+            var branch = scopeBranchId.Value;
+            q = q.Where(a =>
+                (a.DocumentId != null && Db.Documents.IgnoreQueryFilters()
+                    .Any(d => d.Id == a.DocumentId && d.BranchId == branch))
+                || (a.UserName != null && Db.Users
+                    .Any(u => u.Username == a.UserName && u.BranchId == branch)));
         }
 
         var total = await q.CountAsync(ct);

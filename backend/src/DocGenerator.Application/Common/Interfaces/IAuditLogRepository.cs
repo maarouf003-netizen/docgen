@@ -12,7 +12,8 @@ public interface IAuditLogRepository : IRepository<AuditLog>
         string? actionType,
         int page,
         int perPage,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        int? scopeBranchId = null);
 
     /// <summary>
     /// صفحة «سجل التعديلات» لملف محدد: إدخالات التدقيق التي لها تغييرات حقول،
