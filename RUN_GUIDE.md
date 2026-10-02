@@ -312,4 +312,8 @@ npm test
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261002003604_RF009_NumberingUniqueIndexPg.cs` — نفسه. نص SQL في `docs/audit/migrations/RF009_postgres.sql`.
   - القاعدة جديدة فارغة حاليًا (لا فحص تكرار لازم) — أول إقلاع يطبقها تلقائيًا مع البقية. بعد الإقلاع: تحقق من سجل `__EFMigrationsHistory` ثم جرّب إدخال رقم مكرر — المتوقع `409` برسالة عربية.
   - ⚠️ مستقبلًا (قاعدة فيها بيانات): أي تكرار فعّال قائم سيُسقط الهجرة — نفّذ أولًا: `SELECT Court, FileNumber, FileType, FileYear, COUNT(*) FROM Documents WHERE IsDeleted = 0 AND FileNumber IS NOT NULL GROUP BY 1,2,3,4 HAVING COUNT(*) > 1;` (يجب أن يكون فارغًا).
+- [ ] **2026-10-02 — `RF010_ConcurrencyVersion` / `RF010_ConcurrencyVersionPg`** (`RF-010`: عدّاد التزامن المتفائل — `409` بدل المحو الصامت عند التحرير/الحالة المتزامنين):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261002133853_RF010_ConcurrencyVersion.cs` — عمود `Version` (`INTEGER NOT NULL DEFAULT 0`) على `Documents`. نص SQL مولّد ومُراجَع في `docs/audit/migrations/RF010_sqlite.sql`.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261002134010_RF010_ConcurrencyVersionPg.cs` — نفسه (`bigint`). نص SQL في `docs/audit/migrations/RF010_postgres.sql`.
+  - عمود جديد بقيمة افتراضية — بلا تنظيف بيانات لازم؛ الصفوف القائمة تنال `0` تلقائيًا. محليًا يُطبَّق تلقائيًا عند أول إقلاع (`MigrateAsync`). بعد الإقلاع: تحقق من سجل `__EFMigrationsHistory` ثم جرّب تحريرين متزامنين بنفس النسخة — المتوقع `409` للثاني برسالة عربية.
 
