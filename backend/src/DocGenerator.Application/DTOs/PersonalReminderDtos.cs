@@ -57,6 +57,9 @@ public static class PersonalReminderDates
         var parsed = ActionDateParser.TryParse(value);
         if (parsed is null)
             throw new ArgumentException($"{fieldName} غير صالح — استخدم مثال: 1/8/2026");
-        return parsed.Value.Date;
+        // RF-013 (ARC-007): منتصف الليل بتوقيت `Utc` صراحةً — تقبله `Postgres`
+        // (`timestamptz`) بدل الرفض، ويطابق عرف القراءة (`Unspecified` تُعامَل `Utc`)،
+        // والنص المخزّن على `SQLite` حرفيًا نفسه (اليوم ثابت والعرض `yyyy-MM-dd`).
+        return DateTime.SpecifyKind(parsed.Value.Date, DateTimeKind.Utc);
     }
 }

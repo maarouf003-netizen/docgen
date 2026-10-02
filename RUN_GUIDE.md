@@ -316,4 +316,7 @@ npm test
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261002133853_RF010_ConcurrencyVersion.cs` — عمود `Version` (`INTEGER NOT NULL DEFAULT 0`) على `Documents`. نص SQL مولّد ومُراجَع في `docs/audit/migrations/RF010_sqlite.sql`.
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261002134010_RF010_ConcurrencyVersionPg.cs` — نفسه (`bigint`). نص SQL في `docs/audit/migrations/RF010_postgres.sql`.
   - عمود جديد بقيمة افتراضية — بلا تنظيف بيانات لازم؛ الصفوف القائمة تنال `0` تلقائيًا. محليًا يُطبَّق تلقائيًا عند أول إقلاع (`MigrateAsync`). بعد الإقلاع: تحقق من سجل `__EFMigrationsHistory` ثم جرّب تحريرين متزامنين بنفس النسخة — المتوقع `409` للثاني برسالة عربية.
+- [ ] **2026-10-02 — `RF013_ReminderTimestamptzPg`** (`RF-013`: طوابع التذكيرات `timestamptz` — بلا إزاحة منطقة):
+  - `DocGeneratorPostgresDbContext` (PostgreSQL **فقط** — `SQLite` بلا هجرة لثبات نموذجها): `Persistence\MigrationsPostgres\20261002151805_RF013_ReminderTimestamptzPg.cs` — يحوّل `DueDate` و`RecurrenceEnd` في `PersonalReminders` إلى `timestamp with time zone`. نص SQL مولّد ومُراجَع في `docs/audit/migrations/RF013_postgres.sql`.
+  - الجدول نفسه معلق التطبيق في الإنتاج ضمن دفعة `l-main-page` أعلاه — فالتحويل فارغ عمليًا؛ يُطبَّق مع الدفعة في نفس النافذة.
 

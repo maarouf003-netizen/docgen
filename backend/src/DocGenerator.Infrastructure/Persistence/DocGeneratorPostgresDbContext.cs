@@ -126,5 +126,12 @@ public class DocGeneratorPostgresDbContext : DocGeneratorDbContext
         modelBuilder.Entity<ParentEditSuggestion>()
             .Property(s => s.ReviewedAtUtc)
             .HasColumnType("timestamp with time zone");
+        // RF-013 (INT-011): عمودا التذكير يلحقان بقية الطوابع (`datetime2` في اللقطة انحراف).
+        modelBuilder.Entity<PersonalReminder>()
+            .Property(r => r.DueDate)
+            .HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<PersonalReminder>()
+            .Property(r => r.RecurrenceEnd)
+            .HasColumnType("timestamp with time zone");
     }
 }
