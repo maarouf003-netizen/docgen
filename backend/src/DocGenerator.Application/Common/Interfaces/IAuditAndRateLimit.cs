@@ -87,6 +87,19 @@ public interface IDocumentRepository : IRepository<Document>
         CancellationToken ct = default);
 
     /// <summary>
+    /// RF-009: هل يوجد ملف ظاهر (غير محذوف منطقيًا) بغير هذا المعرف يحمل نفس المفتاح
+    /// الفعّال (الدائرة + الرقم + النوع + السنة) — يشمل أرقام الأساس الدورية (تدوير/تجديد)
+    /// لا الرقم الأصلي فقط. مقارنة مُطبَّعة (Trim)؛ الرقم/السنة الفارغان = لا تعارض.
+    /// </summary>
+    Task<bool> ExistsActiveWithNumberAsync(
+        int? excludeDocumentId,
+        string? court,
+        string? number,
+        string? type,
+        string? year,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// يجلب مستنداً محذوفاً منطقياً متجاوزاً Query Filter، لخدمة الاستعادة.
     /// </summary>
     Task<Document?> GetDeletedByIdAsync(int id, CancellationToken ct = default);

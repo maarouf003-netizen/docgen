@@ -211,6 +211,15 @@ builder.Property(d => d.SayerNumber).HasMaxLength(100);
         builder.HasIndex(d => d.BranchId);
         builder.HasIndex(d => d.CreatedById);
 
+        // RF-009 (INT-001): وحدانية رقم الأساس الفعّالة (الدائرة + الرقم + النوع + السنة)
+        // للملفات الظاهرة فقط — المحذوف منطقيًا خارج القيد (رقمه قابل لإعادة الاستعمال
+        // عمدًا، والاستعادة تفحص خدميًا)، والمسودات بلا رقم خارج القيد (FileNumber IS NOT NULL).
+        // الصيغة المقتبسة صالحة لـ SQLite وPostgres معًا (نفس اصطلاح ":19-21" القائم).
+        // ملاحظة: Court نص حر فيقارن القيد نصًا دقيقًا؛ الخدمة تُطبِّع (Trim) وتفحص.
+        builder.HasIndex(d => new { d.Court, d.FileNumber, d.FileType, d.FileYear })
+            .HasFilter("NOT \"IsDeleted\" AND \"FileNumber\" IS NOT NULL")
+            .IsUnique();
+
         builder.HasOne(d => d.Branch)
             .WithMany(b => b.Documents)
             .HasForeignKey(d => d.BranchId)

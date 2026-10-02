@@ -127,6 +127,7 @@ public sealed partial class DocumentService : IDocumentService
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
+    private readonly IDbExceptionClassifier _dbErrors;
     private readonly int _maxExportRows;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
@@ -148,7 +149,8 @@ public sealed partial class DocumentService : IDocumentService
         IAuditLogger audit,
         Microsoft.Extensions.Options.IOptions<Common.ExportOptions> exportOptions,
         TimeProvider clock,
-        TimeZoneInfo timeZone)
+        TimeZoneInfo timeZone,
+        IDbExceptionClassifier dbErrors)
     {
         _documents = documents;
         _users = users;
@@ -164,6 +166,7 @@ public sealed partial class DocumentService : IDocumentService
         _uow = uow;
         _tx = tx;
         _audit = audit;
+        _dbErrors = dbErrors;
         _maxExportRows = Math.Max(1, exportOptions.Value.MaxRows);
         _clock = clock;
         _timeZone = timeZone;
@@ -211,7 +214,10 @@ public sealed partial class DocumentService : IDocumentService
         FillDerivedFields(doc);
         ApplyRegistrationDate(doc, request.FileRegistrationDate);
 
-        return await _tx.RunAsync(async token =>
+        // RF-009: فحص مبكر للتكرار قبل الحفظ (409 ودي)، والقيد الفريد ظهر للسباق.
+        await EnsureNumberUniqueAsync(null, doc.Court, doc.FileNumber, doc.FileType, doc.FileYear, ct);
+
+        return await WithNumberGuardAsync(() => _tx.RunAsync(async token =>
         {
             await _documents.AddAsync(doc, token);
             await _uow.SaveChangesAsync(token);
@@ -227,7 +233,7 @@ public sealed partial class DocumentService : IDocumentService
             await _uow.SaveChangesAsync(token);
             await SeedInitialActionsAsync(doc, request.InitialActions, userId, actorName, token);
             return DocumentResponse.FromEntity(doc, CurrentYear());
-        }, ct);
+        }, ct), doc.FileNumber);
     }
 
     public async Task<DocumentResponse?> UpdateAsync(int documentId, DocumentUpsertRequest request, string? actorName, int? userId = null, CancellationToken ct = default)
@@ -266,8 +272,11 @@ public sealed partial class DocumentService : IDocumentService
         ApplyRegistrationDate(doc, request.FileRegistrationDate);
         doc.UpdatedAt = DateTime.UtcNow;
 
+        // RF-009: فحص التكرار بعد تطبيق الطلب (قد يغيّر الرقم/النوع/السنة/الدائرة).
+        await EnsureNumberUniqueAsync(documentId, doc.Court, doc.FileNumber, doc.FileType, doc.FileYear, ct);
+
         List<MirrorAlertIntent> mirrorIntents = [];
-        var result = await _tx.RunAsync(async token =>
+        var result = await WithNumberGuardAsync(() => _tx.RunAsync(async token =>
         {
             if (wasStruckOff && doc.ExecutedStatus == ExecutedStatusCatalog.None)
                 await ApplyRenewalAsync(doc, request, true, userId, token);
@@ -283,7 +292,7 @@ public sealed partial class DocumentService : IDocumentService
                 $"عدّل المستند (رقم {doc.Id})", token);
             await SeedInitialActionsAsync(doc, request.InitialActions, userId, actorName, token);
             return DocumentResponse.FromEntity(doc, CurrentYear());
-        }, ct);
+        }, ct), doc.FileNumber);
 
         // تُطلق التنبيهات بعد نجاح المعاملة ولا تفشل الحفظ أبدًا:
         // (1) تنبيهات المرآة إلى المحامين المنابين بتحديث نسخة الملف،
@@ -362,7 +371,14 @@ public sealed partial class DocumentService : IDocumentService
         if (doc is null || !doc.IsDeleted)
             return false;
 
-        return await _tx.RunAsync(async token =>
+        // RF-009 (INT-008): الاستعادة تفحص تعارض المفتاح الفعّال (قد أُعيد استعمال رقمه
+        // أثناء حذفه) — 409 بدل تكرار ظاهري.
+        var currentYear = CurrentYear();
+        await EnsureNumberUniqueAsync(documentId, doc.Court,
+            Common.EffectiveFileIdentity.Number(doc, currentYear), doc.FileType,
+            Common.EffectiveFileIdentity.Year(doc, currentYear), ct);
+
+        return await WithNumberGuardAsync(() => _tx.RunAsync(async token =>
         {
             doc.IsDeleted = false;
             doc.DeletedAt = null;
@@ -372,7 +388,7 @@ public sealed partial class DocumentService : IDocumentService
             await _audit.LogAsync(actorName, "restore", documentId, doc.DocumentType,
                 AuditWithActor($"استعادة المستند (رقم {documentId})", doc), token);
             return true;
-        }, ct);
+        }, ct), doc.FileNumber);
     }
 
     public async Task<DocumentResponse> TransferAsync(int documentId, int targetLawyerId, string? actorName, CancellationToken ct = default)

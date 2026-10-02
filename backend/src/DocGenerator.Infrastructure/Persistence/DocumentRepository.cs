@@ -589,6 +589,35 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             .ToListAsync(ct);
     }
 
+    public async Task<bool> ExistsActiveWithNumberAsync(
+        int? excludeDocumentId,
+        string? court,
+        string? number,
+        string? type,
+        string? year,
+        CancellationToken ct = default)
+    {
+        // RF-009: المفتاح الفعّال (دائرة + رقم + نوع + سنة) — الرقم/السنة الفارغان لا تعارض
+        // (مسودات). المحذوف مستثنى تلقائيًا (Query Filter) + تصريحًا لوضوح مطابقة القيد الجزئي.
+        var n = number?.Trim();
+        var y = year?.Trim();
+        if (string.IsNullOrEmpty(n) || string.IsNullOrEmpty(y))
+            return false;
+        var c = court?.Trim() ?? string.Empty;
+        var t = type?.Trim() ?? string.Empty;
+        var yearInt = int.TryParse(y, out var parsed) ? parsed : (int?)null;
+        return await Db.Documents
+            .AsNoTracking()
+            .Where(d => !d.IsDeleted)
+            .Where(d => excludeDocumentId == null || d.Id != excludeDocumentId)
+            .Where(d => (d.Court ?? string.Empty).Trim() == c
+                && (d.FileType ?? string.Empty).Trim() == t)
+            .Where(d => (d.FileNumber != null && d.FileNumber.Trim() == n
+                    && d.FileYear != null && d.FileYear.Trim() == y)
+                || (yearInt != null && d.BaseNumbers.Any(b => b.Year == yearInt && b.BaseNumber.Trim() == n)))
+            .AnyAsync(ct);
+    }
+
     public async Task<(int TotalCount, List<Document> Items)> GetRotationCandidatesAsync(
         int userId, int currentYear, int page, int perPage, CancellationToken ct = default)
     {

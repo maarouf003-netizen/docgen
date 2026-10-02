@@ -474,8 +474,14 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         if (registrationDate is null)
             throw new ArgumentException("تاريخ قيد الإنابة مطلوب");
 
-        await _tx.RunAsync(async token =>
+        // RF-009: فحص التكرار لرقم التسجيل قبل الحفظ (409 ودي) — بنوع الملف المناب الظاهر.
+        if (await _documents.ExistsActiveWithNumberAsync(target.Id, target.Court, fileNumber, target.FileType, fileYear, ct))
+            throw new DocumentConflictException($"رقم الأساس {fileNumber} مكرر في {target.Court} لسنة {fileYear} — تحقق من الدائرة والرقم والنوع");
+
+        try
         {
+            await _tx.RunAsync(async token =>
+            {
             target.FileNumber = fileNumber;
             target.FileYear = fileYear;
             target.IsDraft = false;
@@ -492,6 +498,12 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
                 delegation.SourceDocumentId, delegation.SourceDocument.DocumentType,
                 $"سجّل إنابة (رقم {delegation.Id}) أصولًا برقم أساس {fileNumber}", token);
         }, ct);
+        }
+        catch (Exception ex) when (_dbErrors.IsUniqueViolation(ex))
+        {
+            // RF-009: شبكة السباق — تعارض القيد عند التسجيل المتزامن يُترجَم 409 وديًا.
+            throw new DocumentConflictException($"رقم الأساس {fileNumber} مكرر — أُدخل أثناء الحفظ من مستخدم آخر، أعد المحاولة برقم مختلف", ex);
+        }
 
         // إشعار رئيس القسم بإتمام التسجيل وبقاء الإنابة بانتظار الإتمام (بيع الأموال وإعادة
         // الملف): يُنشأ في فرع الملف المناب (فرع متابعة الإتمام). إشعار فرعي — فشله لا يُفشل

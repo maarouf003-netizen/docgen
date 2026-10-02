@@ -1084,6 +1084,10 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.HasIndex("SourceDelegationId")
                         .IsUnique();
 
+                    b.HasIndex("Court", "FileNumber", "FileType", "FileYear")
+                        .IsUnique()
+                        .HasFilter("NOT \"IsDeleted\" AND \"FileNumber\" IS NOT NULL");
+
                     b.ToTable("Documents", (string)null);
                 });
 

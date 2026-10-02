@@ -778,19 +778,24 @@ public sealed partial class DocumentService
         else
             doc.ExecStatus = ExecutionStatusCatalog.None;
 
-        var restored = await _tx.RunAsync(async token =>
+        var restored = await WithNumberGuardAsync(() => _tx.RunAsync(async token =>
         {
             // إعادة الملف المشطوب من صفحة «الملفات المشطوبة» تُعد تجديدًا: رقم الملف الجديد
             // إلزامي (ومعه سنة الإعادة في نظام «طالبة تنفيذ»)، ويُسجَّل رقم أساس لسنة الإعادة
             // فيعود الملف بالرقم والنوع الجديدين.
             await ApplyRenewalAsync(doc, renewal, executedLike, doc.CreatedById, token);
+            // RF-009: فحص التكرار لرقم التجديد (بسنة الإعادة ونوعه الجديد) قبل الحفظ.
+            await EnsureNumberUniqueAsync(doc.Id, doc.Court, doc.RenewalFileNumber, doc.RenewalFileType,
+                executedLike
+                    ? CurrentYear().ToString()
+                    : renewal?.RenewalYear?.ToString(), token);
             doc.UpdatedAt = DateTime.UtcNow;
             _documents.Update(doc);
             await _uow.SaveChangesAsync(token);
             await LogDocumentChangesAsync(restoreBefore, doc, actorName, "restore-struck-off",
                 "أعاد ملفًا مشطوبًا إلى المتداول مع تجديد رقم الملف", token);
             return true;
-        }, ct);
+        }, ct), renewal?.RenewalFileNumber);
 
         // مرآة: فك الشطب «تغيّر حالة المنيب» يُنبه مناباته المعلقة بالصيغة العامة (بعد نجاح المعاملة —
         // عزل فشل التنبيه). S1 يجعل وجود إنابات معلقة على مصدر مشطوب شبه معدوم — الاحتفاظ عام.

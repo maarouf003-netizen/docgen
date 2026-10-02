@@ -244,7 +244,7 @@ public sealed partial class DocumentService
         if (unique.Count != entries.Count)
             throw new ArgumentException("لا يمكن تكرار نفس الملف في طلب التدوير");
 
-        await _tx.RunAsync(async token =>
+        await WithNumberGuardAsync(() => _tx.RunAsync(async token =>
         {
             var docs = await _documents.GetByIdsAsync(unique.Select(e => e.DocumentId).ToList(), token);
             var found = docs.ToDictionary(d => d.Id);
@@ -293,6 +293,10 @@ public sealed partial class DocumentService
                 if (normalized.Length > 50)
                     throw new ArgumentException("رقم الأساس يتجاوز الطول المسموح");
 
+                // RF-009: فحص التكرار لكل رقم مدوَّر (بنوع الملف الظاهر وسنة التدوير)
+                // قبل إدراجه — 409 بدل ازدواج قضائي.
+                await EnsureNumberUniqueAsync(doc.Id, doc.Court, normalized, doc.FileType, year.ToString(), token);
+
                 // سجل جديد دائمًا: كل تدوير يلحق سجلًا بسنة التدوير، والأحدث (Year ثم CreatedAt) هو المعتبر.
                 var record = new DocumentBaseNumber
                 {
@@ -315,7 +319,7 @@ public sealed partial class DocumentService
             // (مهم في الحسابات الكبيرة التي قد تصل لآلاف الملفات).
             await _uow.SaveChangesAsync(token);
             await _audit.LogManyAsync(auditEntries, token);
-        }, ct);
+        }, ct), entries.FirstOrDefault(e => !string.IsNullOrWhiteSpace(e?.BaseNumber))?.BaseNumber);
     }
 
 }
