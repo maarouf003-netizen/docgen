@@ -20,10 +20,14 @@ public class WordGenerationIntegrationTests
     private async Task<string> LoginLawyerAsync() =>
         (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
 
-    private static async Task<int> CreateFullDocumentAsync(ApiFactory factory, string token)
+    private static int s_numberSeq;
+
+    private static async Task<(int Id, string Number)> CreateFullDocumentAsync(ApiFactory factory, string token)
     {
         var client = factory.CreateClient();
         client.SetAuthCookie(token);
+        // رقم فريد لكل استدعاء (RF-009): القاعدة المشتركة تمنع تكرار المفتاح (الدائرة + الرقم + النوع + السنة).
+        var number = $"520{System.Threading.Interlocked.Increment(ref s_numberSeq):D4}";
         var response = await client.PostAsJsonAsync("/api/documents", new
         {
             borrowerName = "أحمد",
@@ -38,7 +42,7 @@ public class WordGenerationIntegrationTests
             amountNumeric = 500,
             applicant = "المدير العام",
             lawyer = "المحامي",
-            fileNumber = "520",
+            fileNumber = number,
             fileType = "أساس",
             fileYear = "2024",
             fileRegistrationDate = "01/01/2024",
@@ -72,7 +76,7 @@ public class WordGenerationIntegrationTests
         response.EnsureSuccessStatusCode();
         var content = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(content);
-        return doc.RootElement.GetProperty("id").GetInt32();
+        return (doc.RootElement.GetProperty("id").GetInt32(), number);
     }
 
     private static async Task<int> GetFirstEstateIdAsync(HttpClient client, int docId)
@@ -138,7 +142,7 @@ public class WordGenerationIntegrationTests
     public async Task Generate_SeizureTemplate_ReturnsValidDocxWithFilledPlaceholders()
     {
         var token = await LoginLawyerAsync();
-        var id = await CreateFullDocumentAsync(_factory, token);
+        var (id, number) = await CreateFullDocumentAsync(_factory, token);
 
         var client = _factory.CreateClient();
         client.SetAuthCookie(token);
@@ -165,14 +169,14 @@ public class WordGenerationIntegrationTests
         Assert.Contains("دائرة تنفيذ دمشق", xml);
         Assert.Contains("أحمد", xml);
         Assert.Contains("سمير", xml);
-        Assert.Contains("520 أساس", xml.Replace("&#10;", "\n"));
+        Assert.Contains($"{number} أساس", xml.Replace("&#10;", "\n"));
     }
 
     [Fact]
     public async Task Generate_MissingTemplateParam_ReturnsBadRequest()
     {
         var token = await LoginLawyerAsync();
-        var id = await CreateFullDocumentAsync(_factory, token);
+        var (id, _) = await CreateFullDocumentAsync(_factory, token);
 
         var client = _factory.CreateClient();
         client.SetAuthCookie(token);
@@ -185,7 +189,7 @@ public class WordGenerationIntegrationTests
     public async Task Generate_UnknownTemplateCode_ReturnsBadRequest()
     {
         var token = await LoginLawyerAsync();
-        var id = await CreateFullDocumentAsync(_factory, token);
+        var (id, _) = await CreateFullDocumentAsync(_factory, token);
 
         var client = _factory.CreateClient();
         client.SetAuthCookie(token);
@@ -210,7 +214,7 @@ public class WordGenerationIntegrationTests
     public async Task Generate_ByLawyerFromAnotherBranch_ReturnsForbidden()
     {
         var token = await LoginLawyerAsync();
-        var id = await CreateFullDocumentAsync(_factory, token);
+        var (id, _) = await CreateFullDocumentAsync(_factory, token);
 
         var other = await _factory.CreateUserAsync("other_lawyer", UserRole.Lawyer, branchId: 2);
         Assert.NotNull(other);
@@ -225,7 +229,7 @@ public class WordGenerationIntegrationTests
     public async Task Generate_GuarantorNotice_WithRecipient_ReturnsValidDocx()
     {
         var token = await LoginLawyerAsync();
-        var id = await CreateFullDocumentAsync(_factory, token);
+        var (id, _) = await CreateFullDocumentAsync(_factory, token);
 
         var client = _factory.CreateClient();
         client.SetAuthCookie(token);
@@ -243,7 +247,7 @@ public class WordGenerationIntegrationTests
     public async Task Generate_PropertySale_WithoutEstate_ReturnsBadRequest()
     {
         var token = await LoginLawyerAsync();
-        var id = await CreateFullDocumentAsync(_factory, token);
+        var (id, _) = await CreateFullDocumentAsync(_factory, token);
 
         var client = _factory.CreateClient();
         client.SetAuthCookie(token);
@@ -256,7 +260,7 @@ public class WordGenerationIntegrationTests
     public async Task Generate_PropertySale_WithEstate_ReturnsValidDocx()
     {
         var token = await LoginLawyerAsync();
-        var id = await CreateFullDocumentAsync(_factory, token);
+        var (id, _) = await CreateFullDocumentAsync(_factory, token);
 
         var client = _factory.CreateClient();
         client.SetAuthCookie(token);
@@ -275,7 +279,7 @@ public class WordGenerationIntegrationTests
     public async Task Generate_PropertySalePaper_WithEstate_ReturnsValidDocx()
     {
         var token = await LoginLawyerAsync();
-        var id = await CreateFullDocumentAsync(_factory, token);
+        var (id, _) = await CreateFullDocumentAsync(_factory, token);
 
         var client = _factory.CreateClient();
         client.SetAuthCookie(token);
@@ -294,7 +298,7 @@ public class WordGenerationIntegrationTests
     public async Task Generate_NoticePaper_WithRecipient_ReturnsValidDocx()
     {
         var token = await LoginLawyerAsync();
-        var id = await CreateFullDocumentAsync(_factory, token);
+        var (id, _) = await CreateFullDocumentAsync(_factory, token);
 
         var client = _factory.CreateClient();
         client.SetAuthCookie(token);
@@ -368,7 +372,7 @@ public class WordGenerationIntegrationTests
     public async Task Generate_PropertySeizure_WithEstate_ReturnsValidDocx()
     {
         var token = await LoginLawyerAsync();
-        var id = await CreateFullDocumentAsync(_factory, token);
+        var (id, _) = await CreateFullDocumentAsync(_factory, token);
 
         var client = _factory.CreateClient();
         client.SetAuthCookie(token);

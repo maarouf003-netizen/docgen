@@ -91,7 +91,8 @@ public class DocumentDelegationServiceTests : IDisposable
             _audit,
             Options.Create(new ExportOptions()),
             TimeProvider.System,
-            TestClock.TimeZone);
+            TestClock.TimeZone,
+            new DbExceptionClassifier());
     }
 
     public void Dispose() => _db.Dispose();
@@ -105,9 +106,13 @@ public class DocumentDelegationServiceTests : IDisposable
         PasswordHash = new Services.PasswordHasher().Hash("123456"),
     };
 
+    private static int s_sourceSeq;
+
     /// <summary>ملف «طالبة تنفيذ» مقيد بأصل عقار واحد، في ملكية lawyer1.</summary>
-    private async Task<Document> CreateSourceAsync()
+    private async Task<Document> CreateSourceAsync(string? fileNumber = null)
     {
+        // الرقم الفعلي مرة واحدة ليُستخدم في الحقول المشتقة (SearchText) كما في الإنتاج.
+        var number = fileNumber ?? $"520{System.Threading.Interlocked.Increment(ref s_sourceSeq):D4}";
         var doc = new Document
         {
             CreatedById = _lawyer1.Id,
@@ -124,10 +129,11 @@ public class DocumentDelegationServiceTests : IDisposable
             ContractNumber = "12/2024",
             Court = "دمشق",
             Applicant = "المدعي",
-            FileNumber = "520",
+            // رقم فريد افتراضيًا (RF-009) — والمؤكِّد لقيمة يمررها صراحة.
+            FileNumber = number,
             FileYear = "2024",
             DocumentType = "متداول - أحمد خالد الخطيب",
-            SearchText = "أحمد الخطيب المدعي 520",
+            SearchText = $"أحمد الخطيب المدعي {number}",
         };
         _db.Documents.Add(doc);
         await _db.SaveChangesAsync();
@@ -280,7 +286,7 @@ public class DocumentDelegationServiceTests : IDisposable
     [Fact]
     public async Task Create_SourceFile_ReturnsPendingDelegationWithAssetSnapshot()
     {
-        var source = await CreateSourceAsync();
+        var source = await CreateSourceAsync("520");
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
 
         var dto = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
@@ -2408,7 +2414,7 @@ public class DocumentDelegationServiceTests : IDisposable
     [Fact]
     public async Task ListForSource_SourceRotatedAfterDelegation_SourceFileNumberUpdates()
     {
-        var source = await CreateSourceAsync();
+        var source = await CreateSourceAsync("520");
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
 
@@ -3128,7 +3134,7 @@ public class DocumentDelegationServiceTests : IDisposable
         object? V2,
         object? Flip);
 
-    private async Task AssertFieldEquivalenceAsync(FieldEquivalenceCase c)
+    private async Task AssertFieldEquivalenceAsync(FieldEquivalenceCase c, int seq)
     {
         // 1) نسخ الإنشاء: الهدف يحمل قيمة المصدر عند الاعتماد.
         var source = await CreateSourceAsync();
@@ -3142,7 +3148,7 @@ public class DocumentDelegationServiceTests : IDisposable
         var copied = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == targetId);
         Assert.Equal(c.V1, c.EntityGet(copied));
 
-        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest($"890{seq:D4}", "2026", "5/8/2026"),
             _lawyer2.Id, "lawyer2");
 
         // 2) دمج المرآة: تعديل المنيب يُحدث المناب بنفس الحقل.
@@ -3251,8 +3257,9 @@ public class DocumentDelegationServiceTests : IDisposable
                 PartyNatureCatalog.Natural, PartyNatureCatalog.Legal, PartyNatureCatalog.Natural),
         });
 
+        var seq = 0;
         foreach (var c in cases)
-            await AssertFieldEquivalenceAsync(c);
+            await AssertFieldEquivalenceAsync(c, seq++);
     }
 
     // ── منع حذف ملفٍ فيه إنابة أو استئناف (أي حالة) ──────────────────────────

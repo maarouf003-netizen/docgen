@@ -14,6 +14,8 @@ public class DocumentsExportIntegrationTests
 
     public DocumentsExportIntegrationTests(ApiFactory factory) => _factory = factory;
 
+    private static int ExportNumberSeq;
+
     [Fact]
     public async Task Export_AsLawyer_ReturnsXlsxWithHeaders()
     {
@@ -143,7 +145,7 @@ public class DocumentsExportIntegrationTests
             court = "دمشق",
             contractType = "تعهد",
             amountNumeric = 500,
-            fileNumber = "520",
+            fileNumber = $"520{System.Threading.Interlocked.Increment(ref ExportNumberSeq):D4}",
             fileYear = "2024",
             fileRegistrationDate = "1/1/2024",
             branchName = "الفرع الرئيسي - دمشق",

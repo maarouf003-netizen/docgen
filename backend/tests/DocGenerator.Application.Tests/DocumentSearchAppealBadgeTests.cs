@@ -62,7 +62,8 @@ public class DocumentSearchAppealBadgeTests : IDisposable
             _audit,
             Options.Create(new ExportOptions()),
             Clock,
-            TestClock.TimeZone);
+            TestClock.TimeZone,
+            new DbExceptionClassifier());
     }
 
     private Document NewDoc(string borrowerName = "أحمد")

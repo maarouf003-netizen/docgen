@@ -53,7 +53,8 @@ public class ExportCapTests : IDisposable
             _audit,
             Options.Create(new ExportOptions { MaxRows = maxRows }),
             TimeProvider.System,
-            TestClock.TimeZone);
+            TestClock.TimeZone,
+            new DbExceptionClassifier());
     }
 
     private async Task CreateDocsAsync(IDocumentService svc, int count)

@@ -67,12 +67,14 @@ public class DocumentServiceTests : IDisposable
         var occurrences = new Repository<DocumentOccurrence>(_db);
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
-        _service = new DocumentService(documents, users, guarantors, estates, actions, baseNumbers, registrationDates, occurrences, new DelegationRepository(_db), new AppealRepository(_db), new HeadAlertService(new HeadAlertRepository(_db), new DocumentRepository(_db), new UserRepository(_db), new Repository<Branch>(_db), uow, tx, _audit), uow, tx, _audit, Microsoft.Extensions.Options.Options.Create(new DocGenerator.Application.Common.ExportOptions()), TimeProvider.System, TestClock.TimeZone);
+        _service = new DocumentService(documents, users, guarantors, estates, actions, baseNumbers, registrationDates, occurrences, new DelegationRepository(_db), new AppealRepository(_db), new HeadAlertService(new HeadAlertRepository(_db), new DocumentRepository(_db), new UserRepository(_db), new Repository<Branch>(_db), uow, tx, _audit), uow, tx, _audit, Microsoft.Extensions.Options.Options.Create(new DocGenerator.Application.Common.ExportOptions()), TimeProvider.System, TestClock.TimeZone, new DbExceptionClassifier());
     }
 
     public void Dispose() => _db.Dispose();
 
-    private static DocumentUpsertRequest Sample() => new()
+    private static int s_sampleSeq;
+
+    private static DocumentUpsertRequest Sample(string? fileNumber = null) => new()
     {
         BorrowerName = "أحمد",
         BorrowerFather = "خالد",
@@ -82,7 +84,9 @@ public class DocumentServiceTests : IDisposable
         ContractNumber = "12/2024",
         Court = "دمشق",
         Applicant = "المدعي",
-        FileNumber = "520",
+        // رقم فريد افتراضيًا (RF-009): القيد الفريد الجزئي يمنع تكرار المفتاح
+        // (الدائرة + الرقم + النوع + السنة) — والاختبارات المؤكِّدة لقيمة تمررها صراحة.
+        FileNumber = fileNumber ?? $"520{System.Threading.Interlocked.Increment(ref s_sampleSeq):D4}",
         FileYear = "2024",
         FileRegistrationDate = "1/1/2024",
         Guarantors = new()
@@ -2886,9 +2890,10 @@ public class DocumentServiceTests : IDisposable
         string? execStatus = null,
         string? execSubStatus = null,
         bool draft = false,
-        bool deleted = false)
+        bool deleted = false,
+        string? fileNumber = null)
     {
-        var req = Sample();
+        var req = Sample(fileNumber);
         if (draft)
         {
             req.FileNumber = null;
@@ -2966,7 +2971,7 @@ public class DocumentServiceTests : IDisposable
         });
 
         // دوّر في سنة سابقة فقط → يظهر (لم يُدوَّر لهذا العام).
-        var previousOnly = await CreateDocForRotation(1);
+        var previousOnly = await CreateDocForRotation(1, fileNumber: "520");
         _db.BaseNumbers.Add(new DocumentBaseNumber
         {
             DocumentId = previousOnly.Id,
@@ -3054,7 +3059,7 @@ public class DocumentServiceTests : IDisposable
     [Fact]
     public async Task GetAsync_DisplayFileNumber_ReplacesFileNumberWithCurrentYearBaseNumber()
     {
-        var doc = await CreateDocForRotation(1);
+        var doc = await CreateDocForRotation(1, fileNumber: "520");
 
         // دون تدوير: الرقم الظاهر = رقم الملف الأصلي.
         var before = await _service.GetAsync(doc.Id);
@@ -3528,11 +3533,12 @@ public class DocumentServiceTests : IDisposable
         Assert.False((await _service.GetAsync(draft.Id))!.NeedsRotation);
     }
 
-    private static DocumentUpsertRequest ExecutedSample() => new()
+    private static DocumentUpsertRequest ExecutedSample(string? fileNumber = null) => new()
     {
         GeneralEntitySide = GeneralEntitySideCatalog.Executed,
         DocumentType = "الجهة العامة منفذ عليها",
-        FileNumber = "777",
+        // رقم فريد افتراضيًا (RF-009) — والمؤكِّد لقيمة يمررها صراحة.
+        FileNumber = fileNumber ?? $"777{System.Threading.Interlocked.Increment(ref s_sampleSeq):D4}",
         FileYear = "2024",
         FileRegistrationDate = null,
         ContractTypeSelector = "عادي",
@@ -3555,11 +3561,11 @@ public class DocumentServiceTests : IDisposable
         },
     };
 
-    private static DocumentUpsertRequest DepositSample() => new()
+    private static DocumentUpsertRequest DepositSample(string? fileNumber = null) => new()
     {
         GeneralEntitySide = GeneralEntitySideCatalog.Deposit,
         DocumentType = "عرض وايداع",
-        FileNumber = "888",
+        FileNumber = fileNumber ?? $"888{System.Threading.Interlocked.Increment(ref s_sampleSeq):D4}",
         FileYear = "2024",
         FileRegistrationDate = null,
         ContractTypeSelector = "عادي",
@@ -5061,6 +5067,7 @@ public class AuthServiceTests : IDisposable
 
 public class ConsiderDelegationExecutedTests : IDisposable
 {
+    private static int s_considerSeq;
     private readonly DocGeneratorDbContext _db;
     private readonly IDocumentService _service;
     private readonly FakeAuditLogger _audit = new();
@@ -5077,12 +5084,12 @@ public class ConsiderDelegationExecutedTests : IDisposable
             new DocumentRepository(_db), new UserRepository(_db), new Repository<Guarantor>(_db),
             new Repository<Asset>(_db), new Repository<ExecutionAction>(_db),
             new Repository<DocumentBaseNumber>(_db), new Repository<DocumentRegistrationDate>(_db),
-            new Repository<DocumentOccurrence>(_db), new DelegationRepository(_db), new AppealRepository(_db), new HeadAlertService(new HeadAlertRepository(_db), new DocumentRepository(_db), new UserRepository(_db), new Repository<Branch>(_db), uow, tx, _audit), uow, tx, _audit, Microsoft.Extensions.Options.Options.Create(new DocGenerator.Application.Common.ExportOptions()), TimeProvider.System, TestClock.TimeZone);
+            new Repository<DocumentOccurrence>(_db), new DelegationRepository(_db), new AppealRepository(_db), new HeadAlertService(new HeadAlertRepository(_db), new DocumentRepository(_db), new UserRepository(_db), new Repository<Branch>(_db), uow, tx, _audit), uow, tx, _audit, Microsoft.Extensions.Options.Options.Create(new DocGenerator.Application.Common.ExportOptions()), TimeProvider.System, TestClock.TimeZone, new DbExceptionClassifier());
     }
 
     public void Dispose() => _db.Dispose();
 
-    private async Task<Document> CreateSourceAsync()
+    private async Task<Document> CreateSourceAsync(string? fileNumber = null)
     {
         var req = new DocumentUpsertRequest
         {
@@ -5094,7 +5101,8 @@ public class ConsiderDelegationExecutedTests : IDisposable
             ContractNumber = "1/2025",
             Court = "دمشق",
             Applicant = "المدعي",
-            FileNumber = "900",
+            // رقم فريد لكل استدعاء (RF-009) — لا يُؤكَّد حرفيًا في هذه الفئة.
+            FileNumber = fileNumber ?? $"900{System.Threading.Interlocked.Increment(ref s_considerSeq):D4}",
             FileYear = "2025",
             FileRegistrationDate = "2/1/2025",
             Assets = new()
@@ -5112,9 +5120,9 @@ public class ConsiderDelegationExecutedTests : IDisposable
         return await _db.Documents.SingleAsync(d => d.Id == dto.Id);
     }
 
-    private async Task<Document> SourceInPartialForciblyAsync()
+    private async Task<Document> SourceInPartialForciblyAsync(string? fileNumber = null)
     {
-        var doc = await CreateSourceAsync();
+        var doc = await CreateSourceAsync(fileNumber);
         doc.ExecStatus = ExecutionStatusCatalog.ExecutedForcibly;
         doc.ExecSubStatus = ExecutionStatusCatalog.SubPartiallyExecuted;
         _db.Documents.Update(doc);
@@ -5309,7 +5317,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
     }
 
     /// <summary>مناب تابع لملف منيب معيّن (إنابة مسجلة مرتبطة عبر SourceDelegationId).</summary>
-    private async Task<Document> AddDelegatedTargetForAsync(int sourceId, bool isDraft = false)
+    private async Task<Document> AddDelegatedTargetForAsync(int sourceId, bool isDraft = false, string? fileNumber = null)
     {
         var delegation = new DocumentDelegation
         {
@@ -5341,7 +5349,8 @@ public class ConsiderDelegationExecutedTests : IDisposable
             Currency = "ليرة سورية",
             Court = "دمشق",
             Applicant = "المدعي",
-            FileNumber = "890",
+            // رقم فريد افتراضيًا (RF-009) — والمؤكِّد لقيمة يمررها صراحة.
+            FileNumber = fileNumber ?? $"890{System.Threading.Interlocked.Increment(ref s_considerSeq):D4}",
             FileYear = "2026",
         };
         _db.Documents.Add(target);
@@ -5845,7 +5854,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
     public async Task StatusChange_ToDeferred_NotifiesTarget_WithDeferredFormula()
     {
         var source = await CreateSourceAsync();
-        var target = await AddDelegatedTargetForAsync(source.Id);
+        var target = await AddDelegatedTargetForAsync(source.Id, fileNumber: "890");
         var delegationId = (await _db.DocumentDelegations.SingleAsync(d => d.Id == target.SourceDelegationId)).Id;
 
         Assert.True(await _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1"));
@@ -5860,7 +5869,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
     public async Task StatusChange_ToSettlement_NotifiesTarget_WithSettlementFormula()
     {
         var source = await CreateSourceAsync();
-        var target = await AddDelegatedTargetForAsync(source.Id);
+        var target = await AddDelegatedTargetForAsync(source.Id, fileNumber: "890");
         var delegationId = (await _db.DocumentDelegations.SingleAsync(d => d.Id == target.SourceDelegationId)).Id;
 
         Assert.True(await _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement, SettlementFields(), "lawyer1"));
@@ -5874,7 +5883,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
     public async Task RevertStatus_NotifiesTarget_WithReturnedFormula()
     {
         var source = await CreateSourceAsync();
-        var target = await AddDelegatedTargetForAsync(source.Id);
+        var target = await AddDelegatedTargetForAsync(source.Id, fileNumber: "890");
         var delegationId = (await _db.DocumentDelegations.SingleAsync(d => d.Id == target.SourceDelegationId)).Id;
         await _service.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1");
 
@@ -5909,9 +5918,9 @@ public class ConsiderDelegationExecutedTests : IDisposable
     [Fact]
     public async Task ConsiderExecuted_NotifiesTarget_WithForcibleRecoveryFormula()
     {
-        var source = await SourceInPartialForciblyAsync();
+        var source = await SourceInPartialForciblyAsync("900");
         await AddExecutedDelegationAsync(source.Id);
-        var target = await AddDelegatedTargetForAsync(source.Id);
+        var target = await AddDelegatedTargetForAsync(source.Id, fileNumber: "890");
         var delegationId = (await _db.DocumentDelegations.SingleAsync(d => d.Id == target.SourceDelegationId)).Id;
 
         Assert.True(await _service.ConsiderExecutedByDelegationAsync(source.Id,

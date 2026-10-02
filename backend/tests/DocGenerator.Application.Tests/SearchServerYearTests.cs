@@ -64,7 +64,8 @@ public class SearchServerYearTests : IDisposable
             _audit,
             Options.Create(new ExportOptions()),
             Clock,
-            TestClock.TimeZone);
+            TestClock.TimeZone,
+            new DbExceptionClassifier());
     }
 
     /// <summary>

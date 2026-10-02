@@ -174,7 +174,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             contractType = "تعهد",
             amountNumeric = 500,
             branchName = "الفرع الرئيسي - دمشق",
-            fileNumber = registered ? "900" : null,
+            fileNumber = registered ? $"9{Guid.NewGuid():N}"[..7] : null,
             fileYear = registered ? "2026" : null,
             fileRegistrationDate = registered ? "1/8/2026" : null,
             assets = withEstate

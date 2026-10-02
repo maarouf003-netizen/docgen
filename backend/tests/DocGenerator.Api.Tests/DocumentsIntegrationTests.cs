@@ -1753,9 +1753,13 @@ public class DocumentsIntegrationTests
 
     /// إنشاء ملف «طالبة تنفيذ» مقيد (متداول) مع عقار واحد — للاختبارات التي تحتاج انتقالات
     /// الحالة المتاحة من المتداول فقط (مثل «منفذ جبريا» الذي يتطلب عقارات مباعة بالمزاد).
+    private static int CirculatingNumberSeq;
+
     private async Task<int> CreateCirculatingDocumentAsync(string token)
     {
         var client = _factory.WithToken(token);
+        // رقم فريد لكل استدعاء (RF-009): القاعدة المشتركة تمنع تكرار المفتاح.
+        var number = $"520{System.Threading.Interlocked.Increment(ref CirculatingNumberSeq):D4}";
         var response = await client.PostAsJsonAsync("/api/documents", new
         {
             generalEntitySide = "applicant",
@@ -1764,7 +1768,7 @@ public class DocumentsIntegrationTests
             court = "دمشق",
             contractType = "تعهد",
             amountNumeric = 500,
-            fileNumber = "520",
+            fileNumber = number,
             fileYear = "2024",
             fileRegistrationDate = "1/1/2024",
             branchName = "الفرع الرئيسي - دمشق",
@@ -1788,11 +1792,12 @@ public class DocumentsIntegrationTests
     private async Task<int> CreateExecutedDocumentAsync(string token)
     {
         var client = _factory.WithToken(token);
+        var number = $"999{System.Threading.Interlocked.Increment(ref CirculatingNumberSeq):D4}";
         var response = await client.PostAsJsonAsync("/api/documents", new
         {
             generalEntitySide = "executed",
             documentType = "الجهة العامة منفذ عليها",
-            fileNumber = "999",
+            fileNumber = number,
             fileYear = "2024",
             fileRegistrationDate = (string?)null,
             fileReceiptDate = "2024-01-05",
@@ -1821,11 +1826,12 @@ public class DocumentsIntegrationTests
     private async Task<int> CreateDepositDocumentAsync(string token)
     {
         var client = _factory.WithToken(token);
+        var number = $"888{System.Threading.Interlocked.Increment(ref CirculatingNumberSeq):D4}";
         var response = await client.PostAsJsonAsync("/api/documents", new
         {
             generalEntitySide = "deposit",
             documentType = "عرض وايداع",
-            fileNumber = "888",
+            fileNumber = number,
             fileYear = "2024",
             fileRegistrationDate = (string?)null,
             fileReceiptDate = "2024-01-05",

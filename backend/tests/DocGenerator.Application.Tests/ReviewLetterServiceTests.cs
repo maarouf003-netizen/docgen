@@ -67,7 +67,9 @@ public class ReviewLetterServiceTests : IDisposable
             PasswordHash = new PasswordHasher().Hash("123456"),
         };
 
-    private async Task<Document> AddDocumentAsync(User owner)
+    private static int s_docSeq;
+
+    private async Task<Document> AddDocumentAsync(User owner, string? fileNumber = null)
     {
         var doc = new Document
         {
@@ -77,7 +79,8 @@ public class ReviewLetterServiceTests : IDisposable
             BorrowerName = "أحمد",
             BorrowerFather = "محمد",
             BorrowerFamily = "العلي",
-            FileNumber = "77/2026",
+            // رقم فريد افتراضيًا (RF-009) — والمؤكِّد لقيمة يمررها صراحة.
+            FileNumber = fileNumber ?? $"77/{System.Threading.Interlocked.Increment(ref s_docSeq):D4}/2026",
             FileType = "تنفيذي",
             FileYear = "2026",
             Court = "دائرة تنفيذ دمشق",
@@ -121,7 +124,7 @@ public class ReviewLetterServiceTests : IDisposable
     [Fact]
     public async Task Create_LinkedLetter_BuildsFileContextFromDocument()
     {
-        var doc = await AddDocumentAsync(_lawyer1);
+        var doc = await AddDocumentAsync(_lawyer1, "77/2026");
 
         var letter = await _service.CreateAsync(
             new CreateReviewLetterRequest(doc.Id, "<p>مطالعة بملف</p>"),
