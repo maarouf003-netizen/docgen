@@ -24,6 +24,7 @@ public class DocumentsController : ControllerBase
     private readonly IExcelExportService _excel;
     private readonly IDocumentAppealService _appeals;
     private readonly IAuditLogService _auditLogs;
+    private readonly IAuditLogger _audit;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
 
@@ -33,6 +34,7 @@ public class DocumentsController : ControllerBase
         IExcelExportService excel,
         IDocumentAppealService appeals,
         IAuditLogService auditLogs,
+        IAuditLogger audit,
         TimeProvider clock,
         TimeZoneInfo timeZone)
     {
@@ -41,6 +43,7 @@ public class DocumentsController : ControllerBase
         _excel = excel;
         _appeals = appeals;
         _auditLogs = auditLogs;
+        _audit = audit;
         _clock = clock;
         _timeZone = timeZone;
     }
@@ -234,6 +237,10 @@ public class DocumentsController : ControllerBase
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
         if (!await CanAccessOrFollowAsync(doc)) return Forbid();
+        // RF-018 (SEC-003 + قرار BQ-021): فتح التفاصيل الناجح والمصرّح يُدوَّن (قارئ + ملف) —
+        // في المتحكم عمدًا لا الخدمة (GetAsync تُستدعَى من مسارات أخرى)، والقوائم خارج النطاق.
+        await _audit.LogAsync(ActorName, "view_document", doc.Id, doc.DocumentType,
+            $"اطّلع على الملف (رقم {doc.Id})", ct);
         return Ok(Sanitize(doc));
     }
 
