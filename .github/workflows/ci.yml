@@ -37,11 +37,10 @@ jobs:
       - name: Build
         run: npm run build
 
-  # فحص الاعتماديات إعلامي (لا يحجب الدمج): يُشدَّد لاحقًا بعد تثبيت خط الأساس.
-  # فحص Snyk الكامل يتطلب سر `SNYK_TOKEN` في أسرار المستودع ثم يُضاف هنا.
+  # فحص الاعتماديات حاجب للدمج (RF-002 — شُدِّد بعد تثبيت خط الأساس الأخضر في RF-001).
+  # فحص Snyk الكامل يتطلب سر `SNYK_TOKEN` في أسرار المستودع ثم يُضاف هنا (مهمة المالك).
   audit:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
