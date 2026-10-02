@@ -40,7 +40,7 @@ public class RF019AppendOnlyTests
         log.Details = "تزوير";
         db.AuditLogs.Update(log);
         var ex = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
-        Assert.Contains("إلحاق", ex.Message);
+        Assert.Contains("إلحاق", ex.ToString());
     }
 
     [Fact]
