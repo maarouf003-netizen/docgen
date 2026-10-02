@@ -7,6 +7,12 @@ public class Document : IDocumentExecutionState
     public int Id { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    /// <summary>
+    /// عدّاد التزامن المتفائل (RF-010 — INT-002/INT-012): رمز `IsConcurrencyToken`
+    /// محمول (`SQLite`/`Postgres`) يُزاد يدويًا عند كل كتابة محمية، ويُفحص في `WHERE`
+    /// عند الحفظ فيُرفَض التعارض `409` بدل المحو الصامت.
+    /// </summary>
+    public long Version { get; set; }
     public int CreatedById { get; set; }
     public int? BranchId { get; set; }
 

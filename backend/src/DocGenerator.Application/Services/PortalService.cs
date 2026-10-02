@@ -176,6 +176,8 @@ public sealed class PortalService : IPortalService
     /// </summary>
     private static void ScrubForPortal(DocumentResponse response)
     {
+        // RF-010: عدّاد التزامن بلا معنى لقارئ البوابة (لا سطح كتابة فيها) — فيُصفَّر مع البقية.
+        response.Version = 0;
         response.Notes = null;
         response.ImmediateActions = null;
         response.ViewCount = 0;

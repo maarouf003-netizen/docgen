@@ -102,7 +102,8 @@ export default function ExecutedStatusModal({
   const normalize = (s: string) => normalizeArabicDigits(s.trim());
 
   const buildBody = (): Record<string, unknown> => {
-    const body: Record<string, unknown> = { status: executedStatusValue(target) };
+    // عدّاد التزامن المتفائل (RF-010): يُرسَل مع كل انتقال — غيابه توافق (بلا فحص مبكر).
+    const body: Record<string, unknown> = { status: executedStatusValue(target), version: doc.version ?? null };
     if (target === EXECUTED_STATUS_EXECUTED) {
       // المبلغ المدفوع يتبع القاعدة العامة «حتى ثلاثة مبالغ بعملات متمايزة» في الصفّين:
       // كل خانة معبأة تُرسل بمبلغها وعملتها المختارة، والخانات الفارغة تُتجاهل كليًا.

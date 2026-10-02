@@ -490,6 +490,13 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         return (total, items);
     }
 
+    /// <summary>
+    /// RF-010: تثبيت `OriginalValue` لعدّاد التزامن على الكيان المتتبَّع —
+    /// أي حفظ لاحق يفشل `DbUpdateConcurrencyException` إن تغيّر الصف تحته.
+    /// </summary>
+    public void SetVersionOriginal(Document doc, long expected)
+        => Db.Entry(doc).Property(d => d.Version).OriginalValue = expected;
+
     public async Task<Document?> TransferOwnerAsync(
         int id,
         int expectedCreatedById,

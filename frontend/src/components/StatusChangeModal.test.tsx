@@ -51,6 +51,7 @@ describe('StatusChangeModal', () => {
     expect(api.post).toHaveBeenCalledWith('/documents/1/status', {
       status: 'تريث',
       fields: { tarithNumber: '5', tarithDate: '1/1/2024' },
+      version: 0,
     });
   });
 
@@ -102,6 +103,7 @@ describe('StatusChangeModal', () => {
     expect(api.post).toHaveBeenCalledWith('/documents/1/status', {
       status: 'منفذ جبريا',
       fields: { execSubStatus: 'منفذ كاملا', forcedExecutionDate: '5/6/2026', soldAssetIds: '7' },
+      version: 0,
     });
   });
 
@@ -121,6 +123,7 @@ describe('StatusChangeModal', () => {
 
     expect(api.post).toHaveBeenCalledWith('/documents/1/revert-status', {
       fields: { sayerNumber: '8', sayerDate: '2/2/2024', sayerRegNumber: '9', sayerRegDate: '3/3/2024' },
+      version: 0,
     });
   });
 
@@ -153,6 +156,7 @@ describe('StatusChangeModal', () => {
 
     expect(api.post).toHaveBeenCalledWith('/documents/1/consider-executed-by-delegation', {
       fields: { forcedTransferDate: '15/8/2026', forcedTransferNoticeNumber: '999/2026' },
+      version: 0,
     });
   });
 
@@ -222,6 +226,7 @@ describe('StatusChangeModal', () => {
         startReferralNumber: '6',
         startReferralDate: '7/6/2026',
       },
+      version: 0,
     });
   });
 
@@ -269,6 +274,7 @@ describe('StatusChangeModal', () => {
       renewalFileNumber: '777',
       renewalDate: '3/3/2026',
       renewalYear: 2026,
+      version: 0,
     });
   });
 
@@ -281,7 +287,7 @@ describe('StatusChangeModal', () => {
 
     await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
 
-    expect(api.post).toHaveBeenCalledWith('/documents/1/return-referred-to-start', {});
+    expect(api.post).toHaveBeenCalledWith('/documents/1/return-referred-to-start', { version: 0 });
   });
 
   it('يرفض العودة مع رقم جديد دون تاريخ التجديد وسنة الإعادة', async () => {
@@ -301,5 +307,34 @@ describe('StatusChangeModal', () => {
     renderModal({ isDraft: false, execStatus: 'محال الى البداية', execSubStatus: 'منفذ جزئيا' });
 
     expect(screen.getByText('محال الى البداية (منفذ جزئيا)')).toBeInTheDocument();
+  });
+
+  it('يرسل عدّاد الإصدار المقروء مع الانتقال (RF-010)', async () => {
+    const user = userEvent.setup();
+    renderModal({ isDraft: false, execStatus: '', version: 5 });
+
+    await user.type(screen.getByLabelText('رقم كتاب التريث'), '5');
+    await user.type(screen.getByLabelText('تاريخ كتاب التريث'), '1/1/2024');
+    await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
+
+    expect(api.post).toHaveBeenCalledWith('/documents/1/status', {
+      status: 'تريث',
+      fields: { tarithNumber: '5', tarithDate: '1/1/2024' },
+      version: 5,
+    });
+  });
+
+  it('يعرض رسالة التعارض الودية عند رفض الخادم 409 (RF-010)', async () => {
+    const user = userEvent.setup();
+    renderModal({ isDraft: false, execStatus: '' });
+    (api.post as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce({
+      response: { status: 409, data: { message: 'تغيّر الملف أثناء التحرير من مستخدم آخر — أعد تحميل الملف وحاول مجددًا' } },
+    });
+
+    await user.type(screen.getByLabelText('رقم كتاب التريث'), '5');
+    await user.type(screen.getByLabelText('تاريخ كتاب التريث'), '1/1/2024');
+    await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
+
+    expect(await screen.findByText(/تغيّر الملف أثناء التحرير/)).toBeInTheDocument();
   });
 });

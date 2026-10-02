@@ -181,6 +181,7 @@ describe('StruckOffDocuments', () => {
     await user.click(within(dialog).getByRole('button', { name: 'تأكيد الإعادة' }));
 
     expect(api.post).toHaveBeenCalledWith('/documents/7/restore-struck-off', {
+      version: 0,
       renewalFileReceiptNumber: 'A-5',
       renewalFileReceiptDate: '1/8/2026',
       renewalFileNumber: '100',

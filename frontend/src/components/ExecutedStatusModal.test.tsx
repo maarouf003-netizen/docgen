@@ -48,12 +48,14 @@ describe('ExecutedStatusModal', () => {
 
     await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
       status: 'منفذ',
+      version: 0,
       executedDescription: 'تم التحصيل',
       executedPaidAmount: 2000,
       executedPaidCurrency: 'ليرة سورية',
     }));
     expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
       status: 'منفذ',
+      version: 0,
       executedDescription: 'تم التحصيل',
       executedPaidAmount: 2000,
       executedPaidCurrency: 'ليرة سورية',
@@ -71,10 +73,12 @@ describe('ExecutedStatusModal', () => {
 
     await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
       status: 'منفذ',
+      version: 0,
       executedExecutionDate: '15/8/2026',
     }));
     expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
       status: 'منفذ',
+      version: 0,
       executedExecutionDate: '15/8/2026',
     });
   });
@@ -94,6 +98,7 @@ describe('ExecutedStatusModal', () => {
 
     await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
       status: 'منفذ',
+      version: 0,
       executedPaidAmount: 2000,
       executedPaidCurrency: 'دولار أمريكي',
       executedPaidAmount2: 3000,
@@ -101,6 +106,7 @@ describe('ExecutedStatusModal', () => {
     }));
     expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
       status: 'منفذ',
+      version: 0,
       executedPaidAmount: 2000,
       executedPaidCurrency: 'دولار أمريكي',
       executedPaidAmount2: 3000,
@@ -120,12 +126,14 @@ describe('ExecutedStatusModal', () => {
 
     await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
       status: 'منفذ',
+      version: 0,
       executedPaidAmount: 1250,
       executedPaidCurrency: 'ليرة سورية',
       executedDepositDate: '10/6/2024',
     }));
     expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
       status: 'منفذ',
+      version: 0,
       executedPaidAmount: 1250,
       executedPaidCurrency: 'ليرة سورية',
       executedDepositDate: '10/6/2024',
@@ -144,10 +152,12 @@ describe('ExecutedStatusModal', () => {
 
     await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
       status: 'مشطوب',
+      version: 0,
       struckOffDate: '5/8/2026',
     }));
     expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
       status: 'مشطوب',
+      version: 0,
       struckOffDate: '5/8/2026',
     });
   });
@@ -178,6 +188,7 @@ describe('ExecutedStatusModal', () => {
 
     await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
       status: '',
+      version: 0,
       renewalFileNumber: '2026/55',
       renewalFileType: 'قضية تنفيذ',
       renewalFileReceiptNumber: null,
@@ -188,6 +199,7 @@ describe('ExecutedStatusModal', () => {
     }));
     expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
       status: '',
+      version: 0,
       renewalFileNumber: '2026/55',
       renewalFileType: 'قضية تنفيذ',
       renewalFileReceiptNumber: null,
@@ -254,6 +266,7 @@ describe('ExecutedStatusModal', () => {
 
     await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
       status: '',
+      version: 0,
       sayerNumber: '44',
       sayerDate: '1/8/2026',
       sayerRegNumber: '55',
@@ -261,6 +274,7 @@ describe('ExecutedStatusModal', () => {
     }));
     expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
       status: '',
+      version: 0,
       sayerNumber: '44',
       sayerDate: '1/8/2026',
       sayerRegNumber: '55',
@@ -268,6 +282,22 @@ describe('ExecutedStatusModal', () => {
     });
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
     expect(onChanged).toHaveBeenCalled();
+  });
+
+  it('يرسل عدّاد الإصدار المقروء مع الانتقال (RF-010)', async () => {
+    const apiPost = api.post as unknown as ReturnType<typeof vi.fn>;
+    apiPost.mockResolvedValue({});
+    const user = userEvent.setup();
+    renderModal(makeDocument({ generalEntitySide: 'executed', executedStatus: '', version: 4 }));
+
+    await user.type(screen.getByLabelText('تاريخ التنفيذ'), '15/8/2026');
+    await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
+
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/documents/1/executed-status', {
+      status: 'منفذ',
+      version: 4,
+      executedExecutionDate: '15/8/2026',
+    }));
   });
 
   it('يستدعي onChanged عند نجاح الحفظ ويُغلق النافذة', async () => {

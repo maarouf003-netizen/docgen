@@ -284,6 +284,18 @@ render(<DocumentForm />);
   });
 
 
+  it('يرسل عدّاد الإصدار المقروء في PUT عند التعديل (RF-010)', async () => {
+    const user = userEvent.setup();
+    await renderEdit({ ...mockDoc, version: 7 });
+
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديلات' }));
+
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    const [, payload] = vi.mocked(api.put).mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.version).toBe(7);
+  });
+
+
   it('يخفي حقل الملاحظات في التعديل ويبقيه في الإدخال الجديد فقط', async () => {
     await renderEdit({ ...mockDoc, notes: 'ملاحظة محفوظة سابقًا' });
 

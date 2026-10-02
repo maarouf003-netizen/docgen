@@ -215,6 +215,7 @@ describe('ArchivedDocumentsList', () => {
     await user.click(within(dialog).getByRole('button', { name: 'تأكيد' }));
 
     expect(api.post).toHaveBeenCalledWith('/documents/3/restore', {
+      version: 0,
       renewalFileReceiptNumber: null,
       renewalFileReceiptDate: null,
       renewalFileNumber: '999',

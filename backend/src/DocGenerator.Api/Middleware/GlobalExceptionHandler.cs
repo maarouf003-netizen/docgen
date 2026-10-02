@@ -35,6 +35,9 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
             ArgumentException => StatusCodes.Status400BadRequest,
             KeyNotFoundException => StatusCodes.Status404NotFound,
             DocumentConflictException => StatusCodes.Status409Conflict,
+            // RF-010: أي تعارض تفاؤلية يفلت من الحراس الخدميين (رمز التزامن الوحيد
+            // في النظام هو `Document.Version`) يُردّ 409 لا 500.
+            DbUpdateConcurrencyException => StatusCodes.Status409Conflict,
             // الرفض الصريح وصولًا (لا خطأ خادم): أي `UnauthorizedAccessException`
             // يفلت من المتحكمات (وسائط المصادقة/الحماية) يُردّ 403 لا 500 —
             // المتحكمات نفسها تحوّله إلى `Forbid()` قبل وصوله إلى هنا.
@@ -55,6 +58,9 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
 
         var message = exception switch
         {
+            // رسالة `EF` التقنية إنجليزية فتُستبدَل بعربية ودية ثابتة (التفاصيل في السجل أعلاه).
+            DbUpdateConcurrencyException =>
+                "تغيّر الملف أثناء الحفظ من مستخدم آخر — أعد تحميل الملف وحاول مجددًا",
             // رسائل `4xx` عربية مقصودة لكنها قد تعكس مدخلًا خامًا (`SEC-012`)، فتُعقَّم
             // (تسطيح/تجريد/قصّ) قبل الرد — التفاصيل الكاملة تبقى في السجل التشخيصي أعلاه.
             ArgumentException or KeyNotFoundException or DocumentConflictException

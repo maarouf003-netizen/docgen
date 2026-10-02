@@ -247,11 +247,14 @@ export default function StatusChangeModal({
     }
     setBusy(true);
     try {
+      // عدّاد التزامن المتفائل (RF-010): يُرسَل مع كل انتقال — غيابه توافق (بلا فحص مبكر).
+      const version = doc.version ?? null;
       if (target === STATUS_ACTION_REVERT) {
-        await api.post(`/documents/${doc.id}/revert-status`, { fields: payload });
+        await api.post(`/documents/${doc.id}/revert-status`, { fields: payload, version });
       } else if (target === STATUS_ACTION_COMPLETE_SALE) {
         await api.post(`/documents/${doc.id}/consider-executed-by-delegation`, {
           fields: payload,
+          version,
         });
       } else if (
         target === STATUS_ACTION_RETURN_CIRCULATING ||
@@ -263,11 +266,11 @@ export default function StatusChangeModal({
         // الصارم لا يحوّل نصًا إلى int؟).
         const returnBody =
           payload.renewalYear !== undefined
-            ? { ...payload, renewalYear: Number(payload.renewalYear) }
-            : payload;
+            ? { ...payload, renewalYear: Number(payload.renewalYear), version }
+            : { ...payload, version };
         await api.post(`/documents/${doc.id}/return-referred-to-start`, returnBody);
       } else {
-        await api.post(`/documents/${doc.id}/status`, { status: target, fields: payload });
+        await api.post(`/documents/${doc.id}/status`, { status: target, fields: payload, version });
       }
       onChanged();
       onClose();

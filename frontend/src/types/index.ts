@@ -267,6 +267,8 @@ export interface DocumentResponse {
   id: number;
   createdAt: string;
   updatedAt: string;
+  /** عدّاد التزامن المتفائل (RF-010) — يُعاد إرساله في `version` عند الحفظ. */
+  version: number;
   createdById?: number;
   branchId?: number;
 documentType?: string;
@@ -703,6 +705,8 @@ export interface DocumentUpsertRequest {
   fileArrivalNumber?: string;
   /** تاريخ ورود الملف في وضع «الجهة العامة طالبة تنفيذ» (نص حر). */
   fileArrivalDate?: string;
+  /** عدّاد التزامن المتفائل (RF-010) كما قُرئ عند الجلب — غيابه = قبول بلا فحص مبكر. */
+  version?: number | null;
 }
 
 export interface PagedResult<T> {

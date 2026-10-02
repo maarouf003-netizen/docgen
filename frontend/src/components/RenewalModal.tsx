@@ -66,6 +66,8 @@ export default function RenewalModal({
     setError('');
     try {
       await api.post(endpoint, {
+        // عدّاد التزامن المتفائل (RF-010): يُرسَل مع الإعادة — غيابه توافق (بلا فحص مبكر).
+        version: doc.version ?? null,
         renewalFileReceiptNumber: trimNull(renewal.renewalFileReceiptNumber),
         renewalFileReceiptDate: trimNull(renewal.renewalFileReceiptDate),
         renewalFileNumber: trimNull(renewal.renewalFileNumber),

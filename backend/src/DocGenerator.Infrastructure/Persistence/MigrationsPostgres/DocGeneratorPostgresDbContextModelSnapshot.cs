@@ -1090,6 +1090,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
                     b.Property<int>("ViewCount")
                         .HasColumnType("integer");
 

@@ -44,7 +44,7 @@ public interface IDocumentService
     Task<PagedResult<DocumentResponse>> SearchReferredToStartAsync(string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default);
     Task<List<DocumentResponse>> ExportAsync(string? query, string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, string? actorName = null);
     Task<DocumentFilterOptions> GetFilterOptionsAsync(string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default);
-    Task<bool> UpdateStatusAsync(int documentId, string status, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default);
+    Task<bool> UpdateStatusAsync(int documentId, string status, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default, long? version = null);
     /// <summary>
     /// «اعتبار الملف منفذًا كاملًا بهذا البيع» (نظام «طالبة تنفيذ»): إغلاق «منفذ جبريا (منفذ
     /// جزئيا)» الذي فُعّل تلقائيًا بإتمام إنابة إلى «منفذ كاملا» — يُخصم من ملفٍ منفذ جزئيًا
@@ -52,13 +52,13 @@ public interface IDocumentService
     /// اختياريًا)، ويُسجَّل وقعة «منفذ جبريا» في وقوعات الملف. حينها فقط يدخل بدل الإنابة
     /// ضمن «إحصاءات منفذ جبريا» مرة واحدة (عبر مسار DelegationSalesAmount القائم).
     /// </summary>
-    Task<bool> ConsiderExecutedByDelegationAsync(int documentId, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default);
+    Task<bool> ConsiderExecutedByDelegationAsync(int documentId, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default, long? version = null);
     /// <summary>
     /// «التراجع» في نظام «طالبة تنفيذ»: إعادة الملف إلى المتداول من تريث أو منفذ بالتسوية أو منفذ
     /// جبريا بموجب كتاب الجهة العامة بالسير بالملف (رقم وتاريخ الكتاب وورودهما إلزاميان)،
     /// ويُسجَّل وقعة «تراجع» بحقولها في وقوعات الملف.
     /// </summary>
-    Task<bool> RevertStatusAsync(int documentId, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default);
+    Task<bool> RevertStatusAsync(int documentId, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default, long? version = null);
     /// <summary>
     /// العودة من «محال الى البداية» (نقطة «return-referred-to-start») بنتيجتين حسب اللازمة
     /// (§2-10 — بلا عمود جديد): إن حمل الملف «منفذ جزئيا» عاد «منفذ جبريا» مع بقاء عائلة
@@ -275,8 +275,11 @@ public sealed partial class DocumentService : IDocumentService
         // RF-009: فحص التكرار بعد تطبيق الطلب (قد يغيّر الرقم/النوع/السنة/الدائرة).
         await EnsureNumberUniqueAsync(documentId, doc.Court, doc.FileNumber, doc.FileType, doc.FileYear, ct);
 
+        // RF-010: فحص التزامن المبكر (409 ودي) + زيادة العدّاد وشبكة السباق.
+        EnsureConcurrency(doc, request.Version);
+
         List<MirrorAlertIntent> mirrorIntents = [];
-        var result = await WithNumberGuardAsync(() => _tx.RunAsync(async token =>
+        var result = await WithConcurrencyGuardAsync(() => WithNumberGuardAsync(() => _tx.RunAsync(async token =>
         {
             if (wasStruckOff && doc.ExecutedStatus == ExecutedStatusCatalog.None)
                 await ApplyRenewalAsync(doc, request, true, userId, token);
@@ -292,7 +295,7 @@ public sealed partial class DocumentService : IDocumentService
                 $"عدّل المستند (رقم {doc.Id})", token);
             await SeedInitialActionsAsync(doc, request.InitialActions, userId, actorName, token);
             return DocumentResponse.FromEntity(doc, CurrentYear());
-        }, ct), doc.FileNumber);
+        }, ct), doc.FileNumber));
 
         // تُطلق التنبيهات بعد نجاح المعاملة ولا تفشل الحفظ أبدًا:
         // (1) تنبيهات المرآة إلى المحامين المنابين بتحديث نسخة الملف،

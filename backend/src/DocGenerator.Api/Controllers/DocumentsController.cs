@@ -370,7 +370,7 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var ok = await _documents.UpdateStatusAsync(id, request.Status, request.Fields ?? new(), ActorName, ct);
+            var ok = await _documents.UpdateStatusAsync(id, request.Status, request.Fields ?? new(), ActorName, ct, request.Version);
             return ok ? Ok(new { message = "تم تحديث الحالة" }) : NotFound();
         }
         catch (ArgumentException e)
@@ -392,7 +392,7 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var ok = await _documents.RevertStatusAsync(id, request.Fields ?? new(), ActorName, ct);
+            var ok = await _documents.RevertStatusAsync(id, request.Fields ?? new(), ActorName, ct, request.Version);
             return ok ? Ok(new { message = "عُد الملف إلى المتداول" }) : NotFound();
         }
         catch (ArgumentException e)
@@ -438,7 +438,7 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var ok = await _documents.ConsiderExecutedByDelegationAsync(id, request.Fields ?? new(), ActorName, ct);
+            var ok = await _documents.ConsiderExecutedByDelegationAsync(id, request.Fields ?? new(), ActorName, ct, request.Version);
             return ok ? Ok(new { message = "اعتُبر الملف منفذًا كاملًا بهذا البيع" }) : NotFound();
         }
         catch (ArgumentException e)
@@ -720,5 +720,7 @@ public class DocumentsController : ControllerBase
     {
         public string Status { get; set; } = string.Empty;
         public Dictionary<string, string?>? Fields { get; set; }
+        /// <summary>عدّاد التزامن المتفائل (RF-010) — غيابه = قبول بلا فحص مبكر.</summary>
+        public long? Version { get; set; }
     }
 }

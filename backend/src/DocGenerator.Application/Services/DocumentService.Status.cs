@@ -80,7 +80,7 @@ public sealed partial class DocumentService
         }
     }
 
-    public async Task<bool> UpdateStatusAsync(int documentId, string status, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default)
+    public async Task<bool> UpdateStatusAsync(int documentId, string status, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default, long? version = null)
     {
         var doc = await _documents.GetByIdAsync(documentId, ct);
         if (doc is null)
@@ -126,6 +126,9 @@ public sealed partial class DocumentService
         if (!ExecutionStatusCatalog.IsAllowedStatusChange(current, status))
             throw new ArgumentException(
                 $"لا يمكن الانتقال من الحالة «{ExecutionStatusCatalog.ToStateLabel(current)}» إلى «{ExecutionStatusCatalog.ToStatusLabel(status)}»");
+
+        // RF-010: فحص التزامن المبكر (409 ودي) + زيادة العدّاد وشبكة السباق.
+        EnsureConcurrency(doc, version);
 
         // لقطة ما قبل التغيير — لتوليد صفوف «حقل/قبل/بعد» في سجل التعديلات.
         var statusBefore = DocumentChangeTracker.Capture(doc);
@@ -258,7 +261,7 @@ public sealed partial class DocumentService
                 _ => throw new ArgumentException("حالة غير صالحة"),
             };
 
-        var statusUpdated = await _tx.RunAsync(async token =>
+        var statusUpdated = await WithConcurrencyGuardAsync(() => _tx.RunAsync(async token =>
         {
             doc.UpdatedAt = DateTime.UtcNow;
             _documents.Update(doc);
@@ -293,7 +296,7 @@ public sealed partial class DocumentService
             // ب4: توريث «تريث»/استرداد المناب يتبَع حالة المنيب الجديدة — داخل معاملة الحالة نفسها.
             await ApplyDelegationInheritanceOrRecoveryAsync(doc, token);
             return true;
-        }, ct);
+        }, ct));
 
         // D3: نهائية مناب (استرداد/شطب يدوي) تُنظّف تنبيه «بانتظار الإتمام» العالق —
         // قبل إطلاق تنبيهات الحالة الجديدة (الحذف شامل بالإنابة فيمحو ما أُطلق للتو).
@@ -306,7 +309,7 @@ public sealed partial class DocumentService
         return statusUpdated;
     }
 
-    public async Task<bool> RevertStatusAsync(int documentId, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default)
+    public async Task<bool> RevertStatusAsync(int documentId, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default, long? version = null)
     {
         var doc = await _documents.GetByIdAsync(documentId, ct);
         if (doc is null)
@@ -322,6 +325,9 @@ public sealed partial class DocumentService
         if (!ExecutionStatusCatalog.CanRevert(current))
             throw new ArgumentException(
                 $"لا يمكن التراجع عن الحالة الحالية «{ExecutionStatusCatalog.ToStateLabel(current)}»");
+
+        // RF-010: فحص التزامن المبكر (409 ودي) + زيادة العدّاد وشبكة السباق.
+        EnsureConcurrency(doc, version);
 
         // لقطة ما قبل التغيير — لتوليد صفوف «حقل/قبل/بعد» في سجل التعديلات.
         var revertBefore = DocumentChangeTracker.Capture(doc);
@@ -354,7 +360,7 @@ public sealed partial class DocumentService
         doc.SoldAssetIds = null;
 
         var targetsReverted = false;
-        var reverted = await _tx.RunAsync(async token =>
+        var reverted = await WithConcurrencyGuardAsync(() => _tx.RunAsync(async token =>
         {
             doc.UpdatedAt = DateTime.UtcNow;
             _documents.Update(doc);
@@ -376,7 +382,7 @@ public sealed partial class DocumentService
             // ب4: عودة المناب الموروث-تريث تلقائيًا عند تراجع المنيب من «تريث» (D3).
             targetsReverted = await ApplyDelegationInheritanceOrRecoveryAsync(doc, token);
             return true;
-        }, ct);
+        }, ct));
 
         // مرآة: عودة المناب الفعلية تُنبه (T3 — متابعة السير بالملف). أما التراجع من
         // تسوية/جبريا فلا يُرجع منابًا (المسترد لا يُرجع — C1)، فلا يُطلق تنبيه
@@ -415,6 +421,9 @@ public sealed partial class DocumentService
         if (current != ExecutionStatusCatalog.ReferredToStart)
             throw new ArgumentException(
                 $"لا يمكن العودة إلى السير بالملف من الحالة الحالية «{ExecutionStatusCatalog.ToStateLabel(current)}»");
+
+        // RF-010: فحص التزامن المبكر (409 ودي) + زيادة العدّاد وشبكة السباق.
+        EnsureConcurrency(doc, request?.Version);
 
         // لقطة ما قبل التغيير — لتوليد صفوف «حقل/قبل/بعد» في سجل التعديلات.
         var returnBefore = DocumentChangeTracker.Capture(doc);
@@ -472,7 +481,7 @@ public sealed partial class DocumentService
             CopyDetail(details, "renewalYear", request?.RenewalYear?.ToString());
         }
 
-        var returned = await _tx.RunAsync(async token =>
+        var returned = await WithConcurrencyGuardAsync(() => _tx.RunAsync(async token =>
         {
             doc.UpdatedAt = DateTime.UtcNow;
             _documents.Update(doc);
@@ -497,13 +506,13 @@ public sealed partial class DocumentService
             // دون إنابات سارية على «محال»)، وتُستدعى للاتساق السلوكي مع التراجع.
             await ApplyDelegationInheritanceOrRecoveryAsync(doc, token);
             return true;
-        }, ct);
+        }, ct));
 
         // بلا تنبيهات مرآة عمدًا — مبرَّر بقرار 9 (لا إنابات سارية على «محال» حتى تُنبَّه).
         return returned;
     }
 
-    public async Task<bool> ConsiderExecutedByDelegationAsync(int documentId, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default)
+    public async Task<bool> ConsiderExecutedByDelegationAsync(int documentId, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default, long? version = null)
     {
         var doc = await _documents.GetByIdAsync(documentId, ct);
         if (doc is null)
@@ -533,6 +542,9 @@ public sealed partial class DocumentService
         if (executedDelegation is null)
             throw new ArgumentException("لا توجد إنابة منفذة للملف ليُعتبر منفذًا بهذا البيع");
 
+        // RF-010: فحص التزامن المبكر (409 ودي) + زيادة العدّاد وشبكة السباق.
+        EnsureConcurrency(doc, version);
+
         // لقطة ما قبل التغيير — لتوليد صفوف «حقل/قبل/بعد» في سجل التعديلات.
         var considerBefore = DocumentChangeTracker.Capture(doc);
 
@@ -556,7 +568,7 @@ public sealed partial class DocumentService
         doc.ExecSubStatus = ExecutionStatusCatalog.SubFullyExecuted;
         doc.UpdatedAt = DateTime.UtcNow;
 
-        var considered = await _tx.RunAsync(async token =>
+        var considered = await WithConcurrencyGuardAsync(() => _tx.RunAsync(async token =>
         {
             _documents.Update(doc);
             await _uow.SaveChangesAsync(token);
@@ -578,7 +590,7 @@ public sealed partial class DocumentService
             // ب4: استرداد المناب لاعتبار المنيب منفذًا كاملًا (وقف إجراءات الإنابة).
             await ApplyDelegationInheritanceOrRecoveryAsync(doc, token);
             return true;
-        }, ct);
+        }, ct));
 
         // D3: المنابات المستردة هنا تحررت — نظّف تنبيه «بانتظار الإتمام» العالق
         // قبل إطلاق تنبيه الاسترداد (الحذف شامل بالإنابة).
@@ -654,6 +666,9 @@ public sealed partial class DocumentService
             CopyDetail(revertDetails, "sayerRegDate", doc.SayerRegDate);
         }
 
+        // RF-010: فحص التزامن المبكر (409 ودي) + زيادة العدّاد وشبكة السباق.
+        EnsureConcurrency(doc, request?.Version);
+
         var wasStruckOff = ExecutedStatusCatalog.IsStruckOff(current);
         doc.ExecutedStatus = ExecutedStatusCatalog.IsStored(status) ? status : ExecutedStatusCatalog.None;
         // عند الدخول إلى «مشطوب» يُحدَّث تاريخ الشطب: بتاريخه المُرسَل إن وُجد وإلا للآن.
@@ -712,7 +727,7 @@ public sealed partial class DocumentService
             }
         }
 
-        return await _tx.RunAsync(async token =>
+        return await WithConcurrencyGuardAsync(() => _tx.RunAsync(async token =>
         {
             // العودة من مشطوب إلى متداول تستلزم تجديد الملف برقم ملف جديد لسنة الإعادة.
             if (wasStruckOff && doc.ExecutedStatus == ExecutedStatusCatalog.None)
@@ -743,7 +758,7 @@ public sealed partial class DocumentService
                 : $"حالة وضع «{sideLabel}»: {label}";
             await LogDocumentChangesAsync(executedBefore, doc, actorName, "executed-status", auditDetail, token);
             return true;
-        }, ct);
+        }, ct));
     }
 
     public async Task<bool> RestoreStruckOffAsync(int documentId, string? actorName, CancellationToken ct = default)
@@ -769,6 +784,9 @@ public sealed partial class DocumentService
         if (doc.SourceDelegationId != null)
             throw new ArgumentException("ملفات الانابة في حال شطبت تعاد الى الدائرة المنيبة ويتوجب تسطير انابة جديدة");
 
+        // RF-010: فحص التزامن المبكر (409 ودي) + زيادة العدّاد وشبكة السباق.
+        EnsureConcurrency(doc, renewal?.Version);
+
         // لقطة ما قبل التغيير — لتوليد صفوف «حقل/قبل/بعد» في سجل التعديلات.
         var restoreBefore = DocumentChangeTracker.Capture(doc);
 
@@ -778,7 +796,7 @@ public sealed partial class DocumentService
         else
             doc.ExecStatus = ExecutionStatusCatalog.None;
 
-        var restored = await WithNumberGuardAsync(() => _tx.RunAsync(async token =>
+        var restored = await WithConcurrencyGuardAsync(() => WithNumberGuardAsync(() => _tx.RunAsync(async token =>
         {
             // إعادة الملف المشطوب من صفحة «الملفات المشطوبة» تُعد تجديدًا: رقم الملف الجديد
             // إلزامي (ومعه سنة الإعادة في نظام «طالبة تنفيذ»)، ويُسجَّل رقم أساس لسنة الإعادة
@@ -795,7 +813,7 @@ public sealed partial class DocumentService
             await LogDocumentChangesAsync(restoreBefore, doc, actorName, "restore-struck-off",
                 "أعاد ملفًا مشطوبًا إلى المتداول مع تجديد رقم الملف", token);
             return true;
-        }, ct), renewal?.RenewalFileNumber);
+        }, ct), renewal?.RenewalFileNumber));
 
         // مرآة: فك الشطب «تغيّر حالة المنيب» يُنبه مناباته المعلقة بالصيغة العامة (بعد نجاح المعاملة —
         // عزل فشل التنبيه). S1 يجعل وجود إنابات معلقة على مصدر مشطوب شبه معدوم — الاحتفاظ عام.

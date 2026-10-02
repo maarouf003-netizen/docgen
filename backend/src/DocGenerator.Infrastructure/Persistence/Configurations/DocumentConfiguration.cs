@@ -165,6 +165,11 @@ builder.Property(d => d.SayerNumber).HasMaxLength(100);
             .HasFilter("NOT \"IsDeleted\" AND \"FileNumber\" IS NOT NULL")
             .IsUnique();
 
+        // RF-010 (INT-002/INT-012): عدّاد التزامن المتفائل — عمود جديد بلا مساس
+        // بالصفوف القائمة (الافتراضي 0 يُملأ تلقائيًا عند التطبيق)؛ يُزاد خدميًا
+        // عند كل حفظ محمي ويُفحص في `WHERE` (محمول `SQLite`/`Postgres` بلا توليد مخزني).
+        builder.Property(d => d.Version).IsConcurrencyToken();
+
         builder.HasOne(d => d.Branch)
             .WithMany(b => b.Documents)
             .HasForeignKey(d => d.BranchId)

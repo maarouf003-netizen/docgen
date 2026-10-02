@@ -9,4 +9,7 @@ public interface IDbExceptionClassifier
 {
     /// <summary>هل هذا الاستثناء (أو سببه الداخلي) تعارض قيد فريد؟</summary>
     bool IsUniqueViolation(Exception ex);
+
+    /// <summary>هل هذا الاستثناء (أو سببه الداخلي) تعارض تزامن متفائل؟</summary>
+    bool IsConcurrencyViolation(Exception ex);
 }

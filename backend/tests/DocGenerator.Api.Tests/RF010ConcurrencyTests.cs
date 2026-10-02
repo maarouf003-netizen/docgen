@@ -7,7 +7,7 @@ namespace DocGenerator.Api.Tests;
 /// <summary>
 /// اختبارات RF-010 (INT-002 + INT-012): التعارض `409` بدل المحو الصامت.
 /// تفشل قبل الإصلاح (نجاح ماحٍ `200`) وتخضر بعده.
-/// التوافق: غياب `rowVersion` يُقبل (عملاء قدامى)؛ التالف `400`.
+/// التوافق: غياب `version` يُقبل (عملاء قدامى)؛ النوع المخالف `400`.
 /// </summary>
 [Collection(ApiTestCollection.Name)]
 public class RF010ConcurrencyTests
@@ -16,11 +16,13 @@ public class RF010ConcurrencyTests
 
     public RF010ConcurrencyTests(ApiFactory factory) => _factory = factory;
 
-    private static async Task<string?> GetRowVersionAsync(HttpClient client, int id)
+    private static async Task<long?> GetVersionAsync(HttpClient client, int id)
     {
         using var doc = await (await client.GetAsync($"/api/documents/{id}")).Content.ReadFromJsonAsync<JsonDocument>();
-        if (doc!.RootElement.TryGetProperty("rowVersion", out var rv))
-            return rv.ValueKind == JsonValueKind.Null ? null : rv.GetString();
+        if (doc!.RootElement.TryGetProperty("version", out var v)
+            && v.ValueKind == JsonValueKind.Number
+            && v.TryGetInt64(out var n))
+            return n;
         return null;
     }
 
@@ -31,13 +33,34 @@ public class RF010ConcurrencyTests
         var client = _factory.WithToken(token);
         var id = await _factory.CreateDocumentAsync(token, borrowerName: "تزامن طازج");
 
-        var version = await GetRowVersionAsync(client, id);
+        var version = await GetVersionAsync(client, id);
         var response = await client.PutAsJsonAsync($"/api/documents/{id}", new
         {
             borrowerName = "تزامن طازج معدل",
-            rowVersion = version,
+            version,
         });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task FreshEdit_BumpsVersion()
+    {
+        // الحفظ الناجح يزيد العدّاد — فتُكشَف القراءة القديمة لاحقًا.
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.WithToken(token);
+        var id = await _factory.CreateDocumentAsync(token, borrowerName: "زيادة العدّاد");
+
+        var before = await GetVersionAsync(client, id);
+        var response = await client.PutAsJsonAsync($"/api/documents/{id}", new
+        {
+            borrowerName = "زيادة العدّاد معدل",
+            version = before,
+        });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var after = await GetVersionAsync(client, id);
+        Assert.NotNull(after);
+        Assert.True(after > (before ?? -1), $"expected bump, was {before} now {after}");
     }
 
     [Fact]
@@ -49,19 +72,19 @@ public class RF010ConcurrencyTests
         var client = _factory.WithToken(token);
         var id = await _factory.CreateDocumentAsync(token, borrowerName: "تحرير متعارض");
 
-        var stale = await GetRowVersionAsync(client, id);
+        var stale = await GetVersionAsync(client, id);
 
         var first = await client.PutAsJsonAsync($"/api/documents/{id}", new
         {
             borrowerName = "الفائز الأول",
-            rowVersion = stale,
+            version = stale,
         });
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
 
         var second = await client.PutAsJsonAsync($"/api/documents/{id}", new
         {
             borrowerName = "المتأخر الممحي",
-            rowVersion = stale,
+            version = stale,
         });
         Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
     }
@@ -75,13 +98,13 @@ public class RF010ConcurrencyTests
         var client = _factory.WithToken(token);
         var id = await _factory.CreateDocumentAsync(token, borrowerName: "حالة متعارضة");
 
-        var stale = await GetRowVersionAsync(client, id);
+        var stale = await GetVersionAsync(client, id);
 
         var defer = await client.PostAsJsonAsync($"/api/documents/{id}/status", new
         {
             status = "تريث",
             fields = new { tarithNumber = "9", tarithDate = "1/1/2024" },
-            rowVersion = stale,
+            version = stale,
         });
         Assert.Equal(HttpStatusCode.OK, defer.StatusCode);
 
@@ -89,13 +112,13 @@ public class RF010ConcurrencyTests
         {
             status = "منفذ بالتسوية",
             fields = new { baraetNumber = "3", baraetDate = "2/1/2024" },
-            rowVersion = stale,
+            version = stale,
         });
         Assert.Equal(HttpStatusCode.Conflict, settled.StatusCode);
     }
 
     [Fact]
-    public async Task MissingRowVersion_Accepted_BackwardCompatible()
+    public async Task MissingVersion_Accepted_BackwardCompatible()
     {
         // عملاء قدامى بلا الحقل: يُقبلون قبل الإصلاح وبعده (لا كسر).
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
@@ -110,9 +133,9 @@ public class RF010ConcurrencyTests
     }
 
     [Fact]
-    public async Task MalformedRowVersion_BadRequest()
+    public async Task MalformedVersion_BadRequest()
     {
-        // `base64` غير صالح → `400` برسالة عربية (اليوم: يُتجاهل فينجح `200`).
+        // نوع مخالف للعدّاد → `400` (اليوم: يُتجاهل فينجح `200`).
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var client = _factory.WithToken(token);
         var id = await _factory.CreateDocumentAsync(token, borrowerName: "نسخة تالفة");
@@ -120,7 +143,7 @@ public class RF010ConcurrencyTests
         var response = await client.PutAsJsonAsync($"/api/documents/{id}", new
         {
             borrowerName = "نسخة تالفة معدلة",
-            rowVersion = "!!!not-base64!!!",
+            version = "!!!not-a-number!!!",
         });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }

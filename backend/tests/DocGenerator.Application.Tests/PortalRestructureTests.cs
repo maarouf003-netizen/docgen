@@ -475,10 +475,12 @@ public class PortalRestructureTests : IDisposable
         doc.PrintCount = 3;
         doc.Lawyer = "محامٍ داخلي";
         doc.Branch = branch;
+        doc.Version = 9;
         await _db.SaveChangesAsync();
 
         var response = await _portal.GetFileAsync(_delegateGroupId, id, "tester");
         Assert.NotNull(response);
+        Assert.Equal(0, response.Version);
         Assert.Null(response.Notes);
         Assert.Null(response.ImmediateActions);
         Assert.Equal(0, response.ViewCount);
@@ -699,6 +701,8 @@ public class PortalRestructureTests : IDisposable
             "Lawyer", "NeedsRotation", "HasAppeals", "MatchedAppealId",
             "SourceDelegationId", "SoldAssetIds", "ForcedExecutionDate",
             "GeneralEntitySideLabel", "DeletedAt", "BranchName",
+            // RF-010: عدّاد التزامن يُصفَّر سلكيًا للبوابة (بلا سطح كتابة فيها).
+            "Version",
         };
         var consumed = new HashSet<string>(StringComparer.Ordinal)
         {

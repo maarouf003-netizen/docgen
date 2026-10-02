@@ -7,6 +7,7 @@ export const mockDoc: DocumentResponse = {
   id: 1,
   createdAt: '2026-07-31',
   updatedAt: '2026-07-31',
+  version: 0,
   isDraft: false,
   documentType: 'سند دين',
   borrowerName: 'أحمد',

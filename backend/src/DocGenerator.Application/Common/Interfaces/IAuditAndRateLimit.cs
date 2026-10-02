@@ -105,6 +105,12 @@ public interface IDocumentRepository : IRepository<Document>
     Task<Document?> GetDeletedByIdAsync(int id, CancellationToken ct = default);
 
     /// <summary>
+    /// RF-010: يثبّت القيمة الأصلية المتوقعة لعدّاد التزامن (`OriginalValue`) على الكيان
+    /// المتتبَّع، لتكشف `EF` السباق عند الحفظ (`DbUpdateConcurrencyException ← 409`).
+    /// </summary>
+    void SetVersionOriginal(Document doc, long expected);
+
+    /// <summary>
     /// بحث ترحّلي عن المستندات المحذوفة منطقياً فقط (متجاوزاً Query Filter)،
     /// ليُعرض سجل المحذوفات قبل الاستعادة.
     /// </summary>

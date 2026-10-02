@@ -221,6 +221,13 @@ public class UpdateExecutionActionRequest
 /// </summary>
 public class RenewalRequest
 {
+    /// <summary>
+    /// عدّاد التزامن المتفائل (RF-010): قيمة `Version` كما قُرئت عند الجلب.
+    /// اختياري للتوافق (غيابه = قبول بلا فحص مبكر)؛ القديم يُرفض `409`.
+    /// موروث في `DocumentUpsertRequest` و`ReturnReferredToStartRequest` و`ExecutedStatusRequest`.
+    /// </summary>
+    public long? Version { get; set; }
+
     /// <summary>رقم ورود اخطار التجديد (اختياري).</summary>
     public string? RenewalFileReceiptNumber { get; set; }
 
@@ -546,6 +553,8 @@ public class DocumentResponse : DocGenerator.Domain.Entities.IDocumentExecutionS
     public int Id { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    /// <summary>عدّاد التزامن المتفائل (RF-010) — يُعاد إرساله في `Version` عند الحفظ.</summary>
+    public long Version { get; set; }
     public int CreatedById { get; set; }
     public int? BranchId { get; set; }
     public string? DocumentType { get; set; }
@@ -755,6 +764,7 @@ public class DocumentResponse : DocGenerator.Domain.Entities.IDocumentExecutionS
         Id = d.Id,
         CreatedAt = d.CreatedAt,
         UpdatedAt = d.UpdatedAt,
+        Version = d.Version,
         CreatedById = d.CreatedById,
         BranchId = d.BranchId,
         DocumentType = d.DocumentType,

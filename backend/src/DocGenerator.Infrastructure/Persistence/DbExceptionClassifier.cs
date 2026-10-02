@@ -24,4 +24,18 @@ public class DbExceptionClassifier : IDbExceptionClassifier
         }
         return false;
     }
+
+    /// <summary>
+    /// تعارض التزامن المتفائل (RF-010): `EF` ترفع `DbUpdateConcurrencyException` عند
+    /// فشل `WHERE` رمز التزامن (`Document.Version`) — تُكتشَف عبر كامل السلسلة.
+    /// </summary>
+    public bool IsConcurrencyViolation(Exception ex)
+    {
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            if (current is DbUpdateConcurrencyException)
+                return true;
+        }
+        return false;
+    }
 }

@@ -93,4 +93,31 @@ public class DbExceptionClassifierTests : IDisposable
     {
         Assert.False(_classifier.IsUniqueViolation(new InvalidOperationException("عطل عام")));
     }
+
+    [Fact]
+    public async Task IsConcurrencyViolation_StaleVersionSave_True()
+    {
+        // تعارض تزامن حقيقي على مستوى `EF` (RF-010 — لا محاكاة لمصنّف):
+        // قيمة أصلية قديمة لا تطابق أي صف فيفشل `WHERE Version` (السباق الحقيقي
+        // عبر سياقين مغطى تكامليًا في `RF010ConcurrencyTests`).
+        var (_, _) = await SeedAsync();
+        var staleId = _db.Documents.Select(d => d.Id).First();
+
+        var stale = await _db.Documents.FindAsync(staleId);
+        stale!.BorrowerName = "المتأخر";
+        stale.Version++;
+        _db.Entry(stale).Property(d => d.Version).OriginalValue = -1;
+        var ex = await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => _db.SaveChangesAsync());
+
+        Assert.True(_classifier.IsConcurrencyViolation(ex));
+        Assert.False(_classifier.IsUniqueViolation(ex));
+    }
+
+    [Fact]
+    public void IsConcurrencyViolation_PlainException_False()
+    {
+        Assert.False(_classifier.IsConcurrencyViolation(new InvalidOperationException("عطل عام")));
+        Assert.False(_classifier.IsConcurrencyViolation(
+            new DbUpdateException("فشل حفظ", new InvalidOperationException("سبب داخلي"))));
+    }
 }

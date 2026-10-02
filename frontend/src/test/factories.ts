@@ -6,6 +6,7 @@ export function makeDocument(overrides: Partial<DocumentResponse> = {}): Documen
     id: 1,
     createdAt: '2026-07-31',
     updatedAt: '2026-07-31',
+    version: 0,
     documentType: 'متداول - مقترض',
     isDraft: false,
     amountNumeric: 0,
