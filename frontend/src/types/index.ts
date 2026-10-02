@@ -796,14 +796,18 @@ export interface ManagerStatsDto {
   tradingAgainstCount: number;
   /** عدد ملفات وضع «الجهة العامة منفذ عليها» المنفذة في الفترة (بطاقة «منفذ للضد»). */
   executedAgainstCount: number;
-  /** مجموع المبالغ التي دفعتها الجهات العامة في ملفات المنفذ (بطاقة «منفذ للضد»). */
+  /** سلة «ليرة سورية» من المبالغ التي دفعتها الجهات العامة (للتوافق — الفصل الكامل في `executedAgainstAmounts`). */
   executedAgainstAmount: number;
+  /** المبالغ التي دفعتها الجهات العامة مفصولة لكل عملة (`BQ-029`) — بما فيها سلة «أخرى» (`BQ-030`). */
+  executedAgainstAmounts?: CurrencyAmountDto[];
   /** عدد ملفات «عرض وايداع» المتداولة في الفترة (سطر «عرض وايداع» داخل بطاقة «متداول للصالح»). */
   depositTradingCount: number;
   /** عدد ملفات «عرض وايداع» المنفذة في الفترة (سطر «عرض وايداع» داخل بطاقة «منفذ للصالح»). */
   depositExecutedCount: number;
-  /** مجموع المبالغ المودعة لملفات «عرض وايداع» المنفذة في الفترة. */
+  /** سلة «ليرة سورية» من المبالغ المودعة (للتوافق — الفصل الكامل في `depositExecutedAmounts`). */
   depositExecutedAmount: number;
+  /** المبالغ المودعة لملفات «عرض وايداع» مفصولة لكل عملة (`BQ-029`) — بما فيها سلة «أخرى» (`BQ-030`). */
+  depositExecutedAmounts?: CurrencyAmountDto[];
   periodYear: number;
   periodQuarter: number | null;
   periodMonth: number | null;

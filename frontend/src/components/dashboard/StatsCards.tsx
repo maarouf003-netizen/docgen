@@ -151,8 +151,17 @@ export function StatsCards({ stats, prevStats, showDrillLinks, appealsStats, spa
                     ({stats.depositExecutedCount ?? 0})
                   </span>
                   <span className="text-sky-700 tabular-nums whitespace-nowrap" dir="ltr">
-                    {formatNumber(Number(stats.depositExecutedAmount ?? 0))} {currencyLabel('ليرة سورية')}
+                    {stats.depositExecutedAmounts?.length
+                      ? stats.depositExecutedAmounts
+                          .map((a) => `${formatNumber(Number(a.amount))} ${currencyLabel(a.currency)}`)
+                          .join(' + ')
+                      : `${formatNumber(Number(stats.depositExecutedAmount ?? 0))} ${currencyLabel('ليرة سورية')}`}
                   </span>
+                  {stats.depositExecutedAmounts?.some((a) => a.currency === 'أخرى') ? (
+                    <span role="note" className="w-full text-[11px] font-normal text-amber-700">
+                      تتضمن عملات غير معروفة — يلزم المراجعة
+                    </span>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -163,8 +172,17 @@ export function StatsCards({ stats, prevStats, showDrillLinks, appealsStats, spa
                 ({Number(stats.executedAgainstCount ?? 0)})
               </span>
               <div className="text-indigo-700 tabular-nums whitespace-nowrap" dir="ltr">
-                {formatNumber(Number(stats.executedAgainstAmount ?? 0))} {currencyLabel('ليرة سورية')}
+                {stats.executedAgainstAmounts?.length
+                  ? stats.executedAgainstAmounts
+                      .map((a) => `${formatNumber(Number(a.amount))} ${currencyLabel(a.currency)}`)
+                      .join(' + ')
+                  : `${formatNumber(Number(stats.executedAgainstAmount ?? 0))} ${currencyLabel('ليرة سورية')}`}
               </div>
+              {stats.executedAgainstAmounts?.some((a) => a.currency === 'أخرى') ? (
+                <span role="note" className="text-[11px] font-normal text-amber-700">
+                  تتضمن عملات غير معروفة — يلزم المراجعة
+                </span>
+              ) : null}
             </div>
           </div>
         </LawyerStatCard>

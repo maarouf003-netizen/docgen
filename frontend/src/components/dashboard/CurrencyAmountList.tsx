@@ -4,6 +4,7 @@ import { currencyLabel, formatNumber } from './dashboardFormat';
 /** مبالغ مجمّعة بعملاتها الفعلية (كل مبلغ بتسمية عملته لا بوسم ثابت). */
 export function CurrencyAmountList({ amounts }: { amounts: CurrencyAmountDto[] }) {
   if (!amounts || amounts.length === 0) return null;
+  const hasOther = amounts.some((a) => a.currency === 'أخرى');
   return (
     <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs font-semibold text-gray-700 mt-1.5">
       {amounts.map((a) => (
@@ -11,6 +12,11 @@ export function CurrencyAmountList({ amounts }: { amounts: CurrencyAmountDto[] }
           {formatNumber(Number(a.amount))} {currencyLabel(a.currency)}
         </span>
       ))}
+      {hasOther ? (
+        <span role="note" className="w-full text-[11px] font-normal text-amber-700">
+          تتضمن عملات غير معروفة — يلزم المراجعة
+        </span>
+      ) : null}
     </div>
   );
 }

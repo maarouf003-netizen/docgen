@@ -208,8 +208,11 @@ public class StatisticsRepository : IStatisticsRepository
         public decimal? ExecutedRequiredAmount3 { get; set; }
         public string? ExecutedRequiredCurrency3 { get; set; }
         public decimal? ExecutedPaidAmount { get; set; }
+        public string? ExecutedPaidCurrency { get; set; }
         public decimal? ExecutedPaidAmount2 { get; set; }
+        public string? ExecutedPaidCurrency2 { get; set; }
         public decimal? ExecutedPaidAmount3 { get; set; }
+        public string? ExecutedPaidCurrency3 { get; set; }
         /// <summary>المناب: يُعدّ في العدادات بلا مبالغ (نسخة من المنيب لا تُحسب مرتين).</summary>
         public int? SourceDelegationId { get; set; }
         /// <summary>مجموع بدل المبيع لإنابات الملف المنفذة (تُضاف لسلة «منفذ جبريا» عند اعتباره منفذًا).</summary>
@@ -266,8 +269,11 @@ public class StatisticsRepository : IStatisticsRepository
                 ExecutedRequiredAmount3 = d.ExecutedRequiredAmount3,
                 ExecutedRequiredCurrency3 = d.ExecutedRequiredCurrency3,
                 ExecutedPaidAmount = d.ExecutedPaidAmount,
+                ExecutedPaidCurrency = d.ExecutedPaidCurrency,
                 ExecutedPaidAmount2 = d.ExecutedPaidAmount2,
+                ExecutedPaidCurrency2 = d.ExecutedPaidCurrency2,
                 ExecutedPaidAmount3 = d.ExecutedPaidAmount3,
+                ExecutedPaidCurrency3 = d.ExecutedPaidCurrency3,
                 DelegationSalesAmount = d.Delegations
                     .Where(dl => dl.Status == DelegationStatusCatalog.Executed)
                     .SelectMany(dl => dl.Assets)
@@ -336,8 +342,11 @@ public class StatisticsRepository : IStatisticsRepository
                 ExecutedRequiredAmount3 = d.ExecutedRequiredAmount3,
                 ExecutedRequiredCurrency3 = d.ExecutedRequiredCurrency3,
                 ExecutedPaidAmount = d.ExecutedPaidAmount,
+                ExecutedPaidCurrency = d.ExecutedPaidCurrency,
                 ExecutedPaidAmount2 = d.ExecutedPaidAmount2,
+                ExecutedPaidCurrency2 = d.ExecutedPaidCurrency2,
                 ExecutedPaidAmount3 = d.ExecutedPaidAmount3,
+                ExecutedPaidCurrency3 = d.ExecutedPaidCurrency3,
                 DelegationSalesAmount = d.Delegations
                     .Where(dl => dl.Status == DelegationStatusCatalog.Executed)
                     .SelectMany(dl => dl.Assets)
@@ -400,6 +409,9 @@ public class StatisticsRepository : IStatisticsRepository
     private static readonly string[] KnownCurrencies =
         { "ليرة سورية", "دولار أمريكي", "يورو" };
 
+    /// <summary>سلة العملات خارج المعروفة (`BQ-030`): تُجمَّع هنا مع تنبيه مراجعة بدل إسقاطها بصمت.</summary>
+    private const string OtherCurrencyBucket = "أخرى";
+
     private static string NormalizeCurrency(string? currency) =>
         string.IsNullOrWhiteSpace(currency) ? "ليرة سورية" : currency.Trim();
 
@@ -409,7 +421,7 @@ public class StatisticsRepository : IStatisticsRepository
 
     /// <summary>
     /// يُضيف مبلغًا لسلة عملته متجاهلًا الصفر والغائب؛
-    /// والعملات خارج المعروفة تُهمل من العرض (لا يُفترض حدوثها لكون النموذج مقيدًا بها).
+    /// والعملات خارج المعروفة تُجمَّع في سلة «أخرى» (`BQ-030`) لمراجعتها بدل إسقاطها بصمت.
     /// </summary>
     private static void AddAmount(Dictionary<string, decimal> buckets, string? currency, decimal? amount)
     {
@@ -417,15 +429,18 @@ public class StatisticsRepository : IStatisticsRepository
             return;
         var key = NormalizeCurrency(currency);
         if (!KnownCurrencies.Contains(key))
-            return;
+            key = OtherCurrencyBucket;
         buckets[key] = buckets.TryGetValue(key, out var current) ? current + amount.Value : amount.Value;
     }
 
-    /// <summary>السلات بالترتيب الثابت المعروف، وتستبعد العملات غير المجمّعة (صفرية).</summary>
+    /// <summary>السلات بالترتيب الثابت المعروف ثم «أخرى» أخيرًا، وتستبعد العملات غير المجمّعة (صفرية).</summary>
     private static List<CurrencyAmountDto> ToCurrencyAmounts(Dictionary<string, decimal> buckets) =>
         KnownCurrencies
             .Where(buckets.ContainsKey)
             .Select(c => new CurrencyAmountDto(c, buckets[c]))
+            .Concat(buckets.ContainsKey(OtherCurrencyBucket)
+                ? new[] { new CurrencyAmountDto(OtherCurrencyBucket, buckets[OtherCurrencyBucket]) }
+                : Array.Empty<CurrencyAmountDto>())
             .ToList();
 
     private static ManagerStatsDto AggregateManagerStats(
@@ -439,10 +454,8 @@ public class StatisticsRepository : IStatisticsRepository
         var forcibleCount = 0;
         var tradingAgainstCount = 0;
         var executedAgainstCount = 0;
-        decimal executedAgainstAmount = 0;
         var depositTradingCount = 0;
         var depositExecutedCount = 0;
-        decimal depositExecutedAmount = 0;
         // وسم مصدر الفترة: ملفات النطاق المحسوبة بتاريخ إدخالها (تُجمَع هنا وتُعرض معلنة) —
         // مفصولة السبب: تعذّر تاريخ القيد (`periodFallbackCount`) وغياب إخطار الورود (`periodReceiptCount`).
         var periodFallbackCount = 0;
@@ -467,6 +480,8 @@ public class StatisticsRepository : IStatisticsRepository
         var referredOrdinaryBuckets = new Dictionary<string, decimal>();
         var totalBuckets = new Dictionary<string, decimal>();
         var tradingAgainstBuckets = new Dictionary<string, decimal>();
+        var executedAgainstBuckets = new Dictionary<string, decimal>();
+        var depositExecutedBuckets = new Dictionary<string, decimal>();
         var settledCollectedBuckets = new Dictionary<string, decimal>();
         var forcibleCollectedBuckets = new Dictionary<string, decimal>();
 
@@ -488,9 +503,9 @@ public class StatisticsRepository : IStatisticsRepository
                 if (r.ExecutedStatus == ExecutedStatusCatalog.Executed)
                 {
                     executedAgainstCount++;
-                    executedAgainstAmount += (r.ExecutedPaidAmount ?? 0)
-                        + (r.ExecutedPaidAmount2 ?? 0)
-                        + (r.ExecutedPaidAmount3 ?? 0);
+                    AddAmount(executedAgainstBuckets, r.ExecutedPaidCurrency, r.ExecutedPaidAmount);
+                    AddAmount(executedAgainstBuckets, r.ExecutedPaidCurrency2, r.ExecutedPaidAmount2);
+                    AddAmount(executedAgainstBuckets, r.ExecutedPaidCurrency3, r.ExecutedPaidAmount3);
                 }
                 else
                 {
@@ -514,9 +529,9 @@ public class StatisticsRepository : IStatisticsRepository
                 if (r.ExecutedStatus == ExecutedStatusCatalog.Executed || r.WasDepositExecuted)
                 {
                     depositExecutedCount++;
-                    depositExecutedAmount += (r.ExecutedPaidAmount ?? 0)
-                        + (r.ExecutedPaidAmount2 ?? 0)
-                        + (r.ExecutedPaidAmount3 ?? 0);
+                    AddAmount(depositExecutedBuckets, r.ExecutedPaidCurrency, r.ExecutedPaidAmount);
+                    AddAmount(depositExecutedBuckets, r.ExecutedPaidCurrency2, r.ExecutedPaidAmount2);
+                    AddAmount(depositExecutedBuckets, r.ExecutedPaidCurrency3, r.ExecutedPaidAmount3);
                 }
                 else
                 {
@@ -621,10 +636,12 @@ public class StatisticsRepository : IStatisticsRepository
             ForcibleCollectedAmounts: ToCurrencyAmounts(forcibleCollectedBuckets),
             TradingAgainstCount: tradingAgainstCount,
             ExecutedAgainstCount: executedAgainstCount,
-            ExecutedAgainstAmount: executedAgainstAmount,
+            ExecutedAgainstAmount: executedAgainstBuckets.TryGetValue("ليرة سورية", out var executedPrimary) ? executedPrimary : 0,
+            ExecutedAgainstAmounts: ToCurrencyAmounts(executedAgainstBuckets),
             DepositTradingCount: depositTradingCount,
             DepositExecutedCount: depositExecutedCount,
-            DepositExecutedAmount: depositExecutedAmount,
+            DepositExecutedAmount: depositExecutedBuckets.TryGetValue("ليرة سورية", out var depositPrimary) ? depositPrimary : 0,
+            DepositExecutedAmounts: ToCurrencyAmounts(depositExecutedBuckets),
             ReferredToStartCount: referredToStart,
             ReferredSplit: new ManagerContractSplitDto(
                 referredBanking, referredOrdinary,

@@ -59,7 +59,7 @@ public enum StatsPeriod
     Monthly = 3,
 }
 
-/// <summary>مبلغ مجمّع بعملة محددة (ليرة سورية / دولار أمريكي / يورو)، بقيمة غير صفرية.</summary>
+/// <summary>مبلغ مجمّع بعملة محددة (ليرة سورية / دولار أمريكي / يورو / «أخرى» لغير المعروفة)، بقيمة غير صفرية.</summary>
 public record CurrencyAmountDto(string Currency, decimal Amount);
 
 /// <summary>
@@ -85,7 +85,11 @@ public record ManagerContractSplitDto(
 /// «منفذ للضد» = ملفات منفذ فقط ومبلغها الذي دفعته الجهة العامة، وفترة البطاقتين من تاريخ ورود الاخطار.
 /// صفة «عرض وايداع» تُحتسب «للصالح» كأسطر فرعية داخل بطاقتي متداول/منفذ:
 /// DepositTradingCount = عدد ملفات العرض المتداولة، DepositExecutedCount + DepositExecutedAmount
-/// = عدد ملفات العرض المنفذة ومجموع المبالغ المودعة، وفترة العرض من تاريخ ورود الاخطار أيضًا.
+/// = عدد ملفات العرض المنفذة ومجموع المبالغ المودعة بالليرة (وDepositExecutedAmounts فصلها لكل عملة)،
+/// وفترة العرض من تاريخ ورود الاخطار أيضًا.
+/// «منفذ للضد» مفصول لكل عملة (ExecutedAgainstAmounts) بموجب `BQ-029`؛ وحقلا `ExecutedAgainstAmount`
+/// و`DepositExecutedAmount` هما سلة «ليرة سورية» فقط للتوافق (لا مجموعًا مختلطًا).
+/// العملات خارج الثلاث المعروفة تُجمَّع في سلة «أخرى» مع تنبيه مراجعة بموجب `BQ-030`.
 /// حقول الفترة توضح النطاق المعروض فعليًا على الخادم:
 /// شهريًا: PeriodMonth مع PeriodYear، ربعيًا: PeriodQuarter مع PeriodYear، سنويًا: PeriodYear فقط.
 /// </summary>
@@ -108,9 +112,11 @@ public record ManagerStatsDto(
     int TradingAgainstCount,
     int ExecutedAgainstCount,
     decimal ExecutedAgainstAmount,
+    List<CurrencyAmountDto> ExecutedAgainstAmounts,
     int DepositTradingCount,
     int DepositExecutedCount,
     decimal DepositExecutedAmount,
+    List<CurrencyAmountDto> DepositExecutedAmounts,
     int PeriodYear,
     int? PeriodQuarter,
     int? PeriodMonth,
