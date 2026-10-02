@@ -54,6 +54,27 @@ public sealed class GlobalExceptionHandlerTests
         Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
     }
 
+    [Fact]
+    public async Task ClientErrorMessage_SanitizedBeforeReflection()
+    {
+        // `SEC-012`: رسالة `4xx` المنعكسة تُسطَّح وتُجرَّد وتُقصّ — لا مدخلات خام للمستخدم.
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+
+        await Handler().TryHandleAsync(
+            context,
+            new ArgumentException("مدخل user@example.com خاطئ\nسطر ثانٍ" + new string('z', 2000)),
+            CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
+        var body = JsonDocument.Parse(await ReadBodyAsync(context)).RootElement;
+        var message = body.GetProperty("message").GetString() ?? "";
+        Assert.DoesNotContain('\n', message);
+        Assert.DoesNotContain("user@example.com", message);
+        Assert.Contains("[بريد محجوب]", message);
+        Assert.True(message.Length <= LogSanitizer.ResponseMessageLimit);
+    }
+
     private static async Task<string> ReadBodyAsync(DefaultHttpContext context)
     {
         context.Response.Body.Seek(0, SeekOrigin.Begin);

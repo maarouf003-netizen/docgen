@@ -95,6 +95,28 @@ public class ClientErrorsIntegrationTests
     }
 
     [Fact]
+    public async Task ReportWithSecrets_Returns202WithoutEcho()
+    {
+        // `SEC-012`: حمولة تحمل بريدًا واعتمادًا تُقبل (`202` بلا صدى) — التجريد
+        // نفسه مثبت وحدويًا في `LogSanitizerTests` (محتوى السجل لا يُقاس تكامليًا).
+        var client = await FreshUserClientAsync();
+
+        var response = await client.PostAsync("/api/client-errors",
+            JsonBody(new
+            {
+                message = "فشل للبريد lawyer@example.com مع password=Secret123",
+                stack = "Error: boom\n    at render (/app/x.js:1:2)",
+                component = "Probe",
+                url = "/docs",
+            }));
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.DoesNotContain("lawyer@example.com", body);
+        Assert.DoesNotContain("Secret123", body);
+    }
+
+    [Fact]
     public async Task OversizedMessage_Returns400()
     {
         var client = await FreshUserClientAsync();
