@@ -5,9 +5,8 @@ using System.Text.Json;
 namespace DocGenerator.Api.Tests;
 
 /// <summary>
-/// اختبارات توصيف RF-001 للسلوك الحالي لوحدانية رقم الأساس (INT-001) وتفاعلها مع
-/// الحذف المنطقي/الاستعادة (INT-008). هذه الاختبارات خضراء على الكود الحالي عمدًا —
-/// توثّق الواقع الذي ستغيّره RF-009 (قيد فريد جزئي + 409).
+/// اختبارات RF-001/RF-009 لوحدانية رقم الأساس (INT-001) وتفاعلها مع
+/// الحذف المنطقي/الاستعادة (INT-008). عُكست توقعاتها في RF-009: التكرار مرفوض 409.
 /// </summary>
 [Collection(ApiTestCollection.Name)]
 public class RF001NumberingCharacterizationTests
@@ -38,27 +37,25 @@ public class RF001NumberingCharacterizationTests
     }
 
     [Fact]
-    public async Task SameBasisNumber_TwoCreates_BothSucceed_CurrentBehavior()
+    public async Task SameBasisNumber_TwoCreates_SecondConflict()
     {
-        // السلوك الحالي (INT-001): لا قيد قاعدة ولا فحص خدمي — التكرار يُقبَل بصمت.
-        // بعد RF-009 يجب أن تُعكَس هذه التوقعات: الثاني 409 Conflict.
+        // RF-009: القيد الفريد الجزئي + الفحص الخدمي — الثاني 409 برسالة ودية.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var client = _factory.WithToken(token);
         var number = $"9{Random.Shared.Next(100000, 999999)}";
 
         var first = await CreateIdAsync(client, NumberedPayload("تكرار أول", number));
-        var second = await CreateIdAsync(client, NumberedPayload("تكرار ثانٍ", number));
 
-        Assert.NotEqual(first, second);
+        var second = await client.PostAsJsonAsync("/api/documents", NumberedPayload("تكرار ثانٍ", number));
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync($"/api/documents/{first}")).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync($"/api/documents/{second}")).StatusCode);
     }
 
     [Fact]
-    public async Task RestoreAfterNumberReuse_BothVisible_CurrentBehavior()
+    public async Task RestoreAfterNumberReuse_Conflict()
     {
-        // السلوك الحالي (INT-008): الاستعادة لا تفحص تعارض الأرقام — ملفان ظاهران بنفس الرقم.
-        // بعد RF-009 يجب أن تُعكَس: الاستعادة المتعارضة 409.
+        // RF-009 (INT-008): الاستعادة تفحص تعارض المفتاح الفعّال — 409 بدل تكرار ظاهري.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var client = _factory.WithToken(token);
         var number = $"8{Random.Shared.Next(100000, 999999)}";
@@ -66,12 +63,9 @@ public class RF001NumberingCharacterizationTests
         var doomed = await CreateIdAsync(client, NumberedPayload("سيُحذف", number));
         Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync($"/api/documents/{doomed}")).StatusCode);
 
-        var reuse = await CreateIdAsync(client, NumberedPayload("إعادة استعمال", number));
+        await CreateIdAsync(client, NumberedPayload("إعادة استعمال", number));
 
         var restore = await client.PostAsync($"/api/documents/{doomed}/restore", null);
-        Assert.Equal(HttpStatusCode.OK, restore.StatusCode);
-
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync($"/api/documents/{doomed}")).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync($"/api/documents/{reuse}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, restore.StatusCode);
     }
 }
