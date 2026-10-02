@@ -33,6 +33,7 @@ public sealed partial class PublicEntityService : IPublicEntityService
     private readonly IAuditLogger _audit;
     private readonly IUserRepository _users;
     private readonly IAppealRepository _appeals;
+    private readonly IIdempotencyStore? _idempotency;
 
     public PublicEntityService(
         IPublicEntityRepository entities,
@@ -45,7 +46,8 @@ public sealed partial class PublicEntityService : IPublicEntityService
         ITransactionRunner tx,
         IAuditLogger audit,
         IUserRepository users,
-        IAppealRepository appeals)
+        IAppealRepository appeals,
+        IIdempotencyStore? idempotency = null)
     {
         _entities = entities;
         _branches = branches;
@@ -58,6 +60,7 @@ public sealed partial class PublicEntityService : IPublicEntityService
         _audit = audit;
         _users = users;
         _appeals = appeals;
+        _idempotency = idempotency;
     }
     /// <summary>
     /// إبلاغ المُدخِل المحامي بتغيير تسمية جهته أثناء المراجعة:

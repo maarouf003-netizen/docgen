@@ -87,7 +87,29 @@ public sealed partial class PublicEntityService
         return new UnifyNamesPreviewResponse(targetGroup.CanonicalName, absorbedDtos, totalToMove, folds.Count, folds, warnings);
     }
     /// <inheritdoc/>
-    public async Task<UnifyNamesResponse> UnifyNamesAsync(UnifyNamesRequest request, EntityRegistryActor actor, CancellationToken ct = default)
+    public async Task<UnifyNamesResponse> UnifyNamesAsync(UnifyNamesRequest request, EntityRegistryActor actor, CancellationToken ct = default, string? idempotencyKey = null)
+    {
+        // RF-011: حجز المفتاح أولًا (التحققات داخل المعاملة عمدًا) — التكرار
+        // يُعيد النتيجة المخزنة نفسها.
+        var ticket = await IdempotencyGuard.BeginAsync(_idempotency, "registry.unify",
+            actor.UserId, idempotencyKey, IdempotencyGuard.Fingerprint(request), ct);
+        UnifyNamesResponse result;
+        try
+        {
+            result = await UnifyNamesCoreAsync(request, actor, ct);
+        }
+        catch
+        {
+            await IdempotencyGuard.ReleaseAsync(_idempotency, ticket, ct);
+            throw;
+        }
+
+        await IdempotencyGuard.CompleteAsync(_idempotency, ticket, IdempotencyGuard.Snapshot(result), ct);
+        return result;
+    }
+
+    private async Task<UnifyNamesResponse> UnifyNamesCoreAsync(
+        UnifyNamesRequest request, EntityRegistryActor actor, CancellationToken ct)
     {
         return await _tx.RunAsync(async token =>
         {

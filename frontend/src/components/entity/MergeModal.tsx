@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, getApiErrorMessage } from '../../api/client';
+import { idempotencyHeaders, newIdempotencyKey } from '../../utils/idempotency';
 import type {
   AbsorbedGroupPreviewDto,
   MergePreviewResponse,
@@ -25,6 +26,8 @@ export function MergeModal({ onClose, onCommitted }: MergeModalProps) {
   const [committing, setCommitting] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  // مفتاح عدم التكرار (RF-011): واحد لكل فتح نافذة — الدمج المزدوج يُعاد مخزنًا.
+  const [idempotencyKey] = useState(newIdempotencyKey);
 
   useEffect(() => {
     let active = true;
@@ -85,7 +88,7 @@ export function MergeModal({ onClose, onCommitted }: MergeModalProps) {
         survivorGroupId: survivorId,
         absorbedGroupIds: [...absorbedIds],
         unifyTexts: false,
-      });
+      }, idempotencyHeaders(idempotencyKey));
       const r = res.data as { absorbedGroupsCount: number; entriesMigrated: number; totalAffectedDocuments: number };
       onCommitted(
         `تم الدمج: ${r.absorbedGroupsCount} هويات في «${preview.survivorName}» — ${r.entriesMigrated} قيد، ${r.totalAffectedDocuments} ملفًا متأثرًا`,

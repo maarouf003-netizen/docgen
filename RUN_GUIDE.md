@@ -323,4 +323,8 @@ npm test
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261002162056_RF019_AuditAppendOnly.cs` — 4 مشغّلات `RAISE(ABORT)` على `AuditLogs` و`DocumentFieldChanges`. نص SQL مولّد ومُراجَع في `docs/audit/migrations/RF019_sqlite.sql`.
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261002162231_RF019_AuditAppendOnlyPg.cs` — دالة `fn_prevent_audit_mutation()` + 4 مشغّلات. نص SQL في `docs/audit/migrations/RF019_postgres.sql`.
   - مشغّلات بلا مساس بالصفوف — بلا تنظيف لازم. بعد الإقلاع: تحقق من سجل `__EFMigrationsHistory` ثم جرّب تعديل صف تدقيق مباشرةً — المتوقع فشل صريح. (إجراء تنقية القديم — سنتان بيد مشغّل النشر حصرًا — في `docs/audit/units/RF-019.md` § الإجراء.)
+- [ ] **2026-10-02 — `RF011_IdempotencyKeys` / `RF011_IdempotencyKeysPg`** (`RF-011`: مفاتيح عدم التكرار — النقرة المزدوجة لا تُكرر الأثر):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261002171957_RF011_IdempotencyKeys.cs` — جدول `IdempotencyKeys` (قيد فريد مركب + فهرس انتهاء). نص SQL مولّد ومُراجَع في `docs/audit/migrations/RF011_sqlite.sql`.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261002172031_RF011_IdempotencyKeysPg.cs` — نفسه. نص SQL في `docs/audit/migrations/RF011_postgres.sql`.
+  - جدول جديد فارغ — بلا تنظيف لازم. بعد الإقلاع: تحقق من سجل `__EFMigrationsHistory` ثم جرّب إنشاء ملف مرتين بنفس ترويسة `X-Idempotency-Key` — المتوقع ملف واحد والثانية `200` بنفس الجسم.
 

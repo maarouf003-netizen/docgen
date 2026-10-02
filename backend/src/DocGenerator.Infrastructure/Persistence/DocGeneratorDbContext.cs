@@ -56,6 +56,7 @@ public class DocGeneratorDbContext : DbContext
     public DbSet<ParentEditSuggestion> ParentEditSuggestions => Set<ParentEditSuggestion>();
     public DbSet<PersonalReminder> PersonalReminders => Set<PersonalReminder>();
     public DbSet<AppSuggestion> AppSuggestions => Set<AppSuggestion>();
+    public DbSet<IdempotencyKey> IdempotencyKeys => Set<IdempotencyKey>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

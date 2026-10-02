@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api, getApiErrorMessage } from '../../api/client';
+import { idempotencyHeaders, newIdempotencyKey } from '../../utils/idempotency';
 import { normalizeArabicDigits } from '../../utils/arabicDigits';
 import { ActionModal, CloseButton } from './ReviewActionModal';
 import { DecreeFields } from './DecreeFields';
@@ -25,6 +26,8 @@ export function MergeBranchesModal({
   const [confirmText, setConfirmText] = useState('');
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState('');
+  // مفتاح عدم التكرار (RF-011): واحد لكل فتح نافذة — الدمج المزدوج يُعاد مخزنًا.
+  const [idempotencyKey] = useState(newIdempotencyKey);
 
   const absorbed = selected.filter((s) => s.groupId !== targetId);
   const target = selected.find((s) => s.groupId === targetId) ?? selected[0];
@@ -49,7 +52,7 @@ export function MergeBranchesModal({
         decreeKind: kind.trim(),
         decreeNumber: number.trim(),
         decreeDate: normalizeArabicDigits(date).trim(),
-      });
+      }, idempotencyHeaders(idempotencyKey));
       const r = res.data as { absorbedGroupsCount: number; entriesMigrated: number; totalAffectedDocuments: number };
       onCommitted(
         `تم دمج ${r.absorbedGroupsCount} هويات في «${finalName.trim() || target.canonicalName}» بموجب ${kind.trim()} — ${r.entriesMigrated} قيد، ${r.totalAffectedDocuments} ملفًا`,

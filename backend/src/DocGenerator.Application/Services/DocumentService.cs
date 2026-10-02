@@ -13,7 +13,7 @@ public interface IDocumentService
 {
     Task<DocumentResponse?> GetAsync(int documentId, CancellationToken ct = default);
     Task<DocumentResponse?> GetDeletedAsync(int documentId, CancellationToken ct = default);
-    Task<DocumentResponse> CreateAsync(DocumentUpsertRequest request, int userId, string? actorName, int? branchId, CancellationToken ct = default);
+    Task<DocumentResponse> CreateAsync(DocumentUpsertRequest request, int userId, string? actorName, int? branchId, CancellationToken ct = default, string? idempotencyKey = null);
     Task<DocumentResponse?> UpdateAsync(int documentId, DocumentUpsertRequest request, string? actorName, int? userId = null, CancellationToken ct = default);
     Task<bool> DeleteAsync(int documentId, string? actorName, CancellationToken ct = default);
     Task<bool> RestoreAsync(int documentId, string? actorName, CancellationToken ct = default);
@@ -24,7 +24,7 @@ public interface IDocumentService
     /// نقل كامل ملفات محامٍ إلى محامٍ آخر بجميع الحالات — رئيس القسم (ضمن فرعه) فقط.
     /// scopeBranchId يُقيّد النطاق بفرع رئيس القسم ويُرجع عدد الملفات المنقولة.
     /// </summary>
-    Task<int> TransferAllAsync(int sourceLawyerId, int targetLawyerId, int? scopeBranchId, string? actorName, CancellationToken ct = default);
+    Task<int> TransferAllAsync(int sourceLawyerId, int targetLawyerId, int? scopeBranchId, string? actorName, CancellationToken ct = default, string? idempotencyKey = null);
     Task<PagedResult<DocumentResponse>> SearchDeletedAsync(string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default);
     Task<PagedResult<DocumentResponse>> SearchAsync(string? query, string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default);
     /// <summary>
@@ -131,6 +131,7 @@ public sealed partial class DocumentService : IDocumentService
     private readonly int _maxExportRows;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
+    private readonly IIdempotencyStore? _idempotency;
 
     public DocumentService(
         IDocumentRepository documents,
@@ -150,7 +151,8 @@ public sealed partial class DocumentService : IDocumentService
         Microsoft.Extensions.Options.IOptions<Common.ExportOptions> exportOptions,
         TimeProvider clock,
         TimeZoneInfo timeZone,
-        IDbExceptionClassifier dbErrors)
+        IDbExceptionClassifier dbErrors,
+        IIdempotencyStore? idempotency = null)
     {
         _documents = documents;
         _users = users;
@@ -166,10 +168,13 @@ public sealed partial class DocumentService : IDocumentService
         _uow = uow;
         _tx = tx;
         _audit = audit;
-        _dbErrors = dbErrors;
         _maxExportRows = Math.Max(1, exportOptions.Value.MaxRows);
         _clock = clock;
         _timeZone = timeZone;
+        // إصلاح خارج النطاق (RF-009/010): المعامل كان يُستقبَل ولا يُخزَّن —
+        // أي سباق حقيقي يصل شبكتي القيد/التزامن كان يرمي `NullReference` بدل `409`.
+        _dbErrors = dbErrors;
+        _idempotency = idempotency;
     }
 
     public async Task<DocumentResponse?> GetAsync(int documentId, CancellationToken ct = default)
@@ -184,7 +189,7 @@ public sealed partial class DocumentService : IDocumentService
         return doc is null || !doc.IsDeleted ? null : DocumentResponse.FromEntity(doc, ServerClock.CurrentYear(_clock, _timeZone));
     }
 
-    public async Task<DocumentResponse> CreateAsync(DocumentUpsertRequest request, int userId, string? actorName, int? branchId, CancellationToken ct = default)
+    public async Task<DocumentResponse> CreateAsync(DocumentUpsertRequest request, int userId, string? actorName, int? branchId, CancellationToken ct = default, string? idempotencyKey = null)
     {
         if (string.IsNullOrWhiteSpace(request.BorrowerName)
             && (request.GeneralEntitySide == GeneralEntitySideCatalog.Applicant
@@ -214,6 +219,31 @@ public sealed partial class DocumentService : IDocumentService
         FillDerivedFields(doc);
         ApplyRegistrationDate(doc, request.FileRegistrationDate);
 
+        // RF-011: حجز المفتاح بعد كل التحققات (المدخل الباطل 400 بلا حجز) وقبل أي
+        // كتابة — التكرار بنفس البصمة يُعيد المخزن (`IdempotentReplayException`)،
+        // والقيد المعالَج يُرفَض `409`، والبصمة المختلفة نية جديدة تُنفَّذ طازجة.
+        var ticket = await IdempotencyGuard.BeginAsync(_idempotency, "documents.create",
+            userId, idempotencyKey, IdempotencyGuard.Fingerprint(request), ct);
+
+        DocumentResponse result;
+        try
+        {
+            result = await CreateCoreAsync(doc, request, userId, actor, actorName, ct);
+        }
+        catch
+        {
+            await IdempotencyGuard.ReleaseAsync(_idempotency, ticket, ct);
+            throw;
+        }
+
+        await IdempotencyGuard.CompleteAsync(_idempotency, ticket, IdempotencyGuard.Snapshot(result), ct);
+        return result;
+    }
+
+    /// <summary>نواة الإنشاء (فحص الترقيم + المعاملة) — تُستدعى بعد حجز مفتاح عدم التكرار.</summary>
+    private async Task<DocumentResponse> CreateCoreAsync(
+        Document doc, DocumentUpsertRequest request, int userId, User actor, string? actorName, CancellationToken ct)
+    {
         // RF-009: فحص مبكر للتكرار قبل الحفظ (409 ودي)، والقيد الفريد ظهر للسباق.
         await EnsureNumberUniqueAsync(null, doc.Court, doc.FileNumber, doc.FileType, doc.FileYear, ct);
 
@@ -443,7 +473,35 @@ public sealed partial class DocumentService : IDocumentService
         return await _documents.CountByOwnerAsync(ownerId, ct);
     }
 
-    public async Task<int> TransferAllAsync(int sourceLawyerId, int targetLawyerId, int? scopeBranchId, string? actorName, CancellationToken ct = default)
+    public async Task<int> TransferAllAsync(int sourceLawyerId, int targetLawyerId, int? scopeBranchId, string? actorName, CancellationToken ct = default, string? idempotencyKey = null)
+    {
+        // RF-011: حجز المفتاح أولًا (لا تحقق مسبق يستحق `400` هنا — التحققات داخل
+        // المعاملة عمدًا ضد `TOCTOU`) — النطاق محامي المصدر (النية = نقل ملفاته) —
+        // التكرار يُعيد العدد المخزن نفسه.
+        var ticket = await IdempotencyGuard.BeginAsync(_idempotency, "documents.transfer-all",
+            sourceLawyerId, idempotencyKey,
+            IdempotencyGuard.Fingerprint(new { sourceLawyerId, targetLawyerId, scopeBranchId }), ct);
+
+        int transferred;
+        try
+        {
+            transferred = await TransferAllCoreAsync(sourceLawyerId, targetLawyerId, scopeBranchId, actorName, ct);
+        }
+        catch
+        {
+            await IdempotencyGuard.ReleaseAsync(_idempotency, ticket, ct);
+            throw;
+        }
+
+        // اللقطة بشكل الاستجابة نفسه (`{"transferredCount":N}`) ليُعاد حرفيًا عند التكرار.
+        await IdempotencyGuard.CompleteAsync(_idempotency, ticket,
+            IdempotencyGuard.Snapshot(new { transferredCount = transferred }), ct);
+        return transferred;
+    }
+
+    /// <summary>نواة النقل الجماعي (تحققات + نقل + تدقيق) — تُستدعى بعد حجز مفتاح عدم التكرار.</summary>
+    private async Task<int> TransferAllCoreAsync(
+        int sourceLawyerId, int targetLawyerId, int? scopeBranchId, string? actorName, CancellationToken ct)
     {
         return await _tx.RunAsync(async token =>
         {
@@ -470,8 +528,8 @@ public sealed partial class DocumentService : IDocumentService
             if (files.Count == 0)
                 return 0;
 
-            var transferred = await _documents.TransferAllOwnerAsync(sourceLawyerId, target.Id, target.FullName, source.FullName, token);
-            if (transferred != files.Count)
+            var moved = await _documents.TransferAllOwnerAsync(sourceLawyerId, target.Id, target.FullName, source.FullName, token);
+            if (moved != files.Count)
                 throw new DocumentConflictException("تغيّرت بيانات الملفات أثناء النقل الجماعي — أعد المحاولة");
 
             var now = ServerClock.Now(_clock, _timeZone);
@@ -484,7 +542,7 @@ public sealed partial class DocumentService : IDocumentService
                     $"تم إحالة هذا الملف إلى المحامي: {target.FullName} بتاريخ {now:d/M/yyyy} — المنفذ عليه: {ActorFullName(file)}", token);
             }
 
-            return transferred;
+            return moved;
         }, ct);
     }
 

@@ -133,5 +133,12 @@ public class DocGeneratorPostgresDbContext : DocGeneratorDbContext
         modelBuilder.Entity<PersonalReminder>()
             .Property(r => r.RecurrenceEnd)
             .HasColumnType("timestamp with time zone");
+        // RF-011: طوابع مفاتيح عدم التكرار تلحق بقية الطوابع.
+        modelBuilder.Entity<IdempotencyKey>()
+            .Property(k => k.CreatedAt)
+            .HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<IdempotencyKey>()
+            .Property(k => k.ExpiresAt)
+            .HasColumnType("timestamp with time zone");
     }
 }

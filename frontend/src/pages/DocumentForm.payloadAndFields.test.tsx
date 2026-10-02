@@ -257,6 +257,18 @@ render(<DocumentForm />);
   });
 
 
+  it('يرسل ترويسة مفتاح عدم التكرار في POST الإنشاء (RF-011)', async () => {
+    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    const [, , config] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>, { headers?: Record<string, string> }];
+    expect(config?.headers?.['X-Idempotency-Key']).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+
   it('لا يرسل initialActions عندما يكون الحقلان فارغين', async () => {
     const user = userEvent.setup();
     render(<DocumentForm />);

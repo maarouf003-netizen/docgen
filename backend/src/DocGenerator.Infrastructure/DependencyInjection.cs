@@ -42,6 +42,7 @@ public static class DependencyInjection
         services.AddScoped<IDelegationRepository, DelegationRepository>();
         services.AddScoped<IDelegationReservationRepository, DelegationReservationRepository>();
         services.AddScoped<IDbExceptionClassifier, DbExceptionClassifier>();
+        services.AddScoped<IIdempotencyStore, IdempotencyStore>();
         services.AddScoped<IAppealRepository, AppealRepository>();
         services.AddScoped<IStatisticsRepository, StatisticsRepository>();
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();

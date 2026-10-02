@@ -75,6 +75,8 @@ describe('MergeBranchesModal', () => {
     expect(post()).toHaveBeenCalledWith(
       '/entity-registry/merge-commit',
       expect.objectContaining({ survivorGroupId: 1, absorbedGroupIds: [2], decreeKind: 'مرسوم' }),
+      // مفتاح عدم التكرار (RF-011): ترويسة `uuid` مع كل اعتماد.
+      expect.objectContaining({ headers: expect.objectContaining({ 'X-Idempotency-Key': expect.any(String) }) }),
     );
   });
 });

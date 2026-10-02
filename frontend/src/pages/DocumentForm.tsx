@@ -34,6 +34,7 @@ import { slotDefaultCurrency } from '../utils/amountCurrencies';
 import { normalizeArabicDigits } from '../utils/arabicDigits';
 import { blockedAssetIds } from '../utils/delegationAssets';
 import { tripleName, isExecutedLike } from '../utils/documentDisplay';
+import { idempotencyHeaders, newIdempotencyKey } from '../utils/idempotency';
 import { EXEC_STATUS_STRUCK_OFF } from '../utils/documentStatus';
 import { governorateFromBranch } from '../utils/governorate';
 import type {
@@ -76,6 +77,9 @@ export default function DocumentForm() {
   });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // مفتاح عدم التكرار (RF-011): واحد لكل فتح نموذج إدخال — يُرسَل في `POST` الإنشاء
+  // فقط (التعديل `PUT` خارج النطاق)؛ والبصمة الخادمية تحمي تصحيح-ثم-إعادة-إرسال.
+  const [idempotencyKey] = useState(newIdempotencyKey);
   // بوابة تحميل وضع التعديل: أثناء جلب ملف جديد لا يُعرض النموذج ولا يُتاح
   // الحفظ، فلا يرى المستخدم مال الملف السابق ولا يكتبه في الجديد —
   // يمنع التسرب العرضي والكتابي معًا عند تبديل الهوية (نفس المكوّن).
@@ -887,7 +891,7 @@ export default function DocumentForm() {
         ...(initialActions.length > 0 ? { initialActions } : {}),
       };
       if (isEdit) await api.put(`/documents/${id}`, payload);
-      else await api.post('/documents', payload);
+      else await api.post('/documents', payload, idempotencyHeaders(idempotencyKey));
       navigate('/documents');
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } }).response?.data?.message;

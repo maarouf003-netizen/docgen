@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, getApiErrorMessage } from '../../api/client';
+import { idempotencyHeaders, newIdempotencyKey } from '../../utils/idempotency';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import type {
   AbsorbedGroupUnifyPreviewDto,
@@ -34,6 +35,8 @@ export function UnifyNamesModal({ onClose, onCommitted, initialGroupId, initialA
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState('');
+  // مفتاح عدم التكرار (RF-011): واحد لكل فتح نافذة — التوحيد المزدوج يُعاد مخزنًا.
+  const [idempotencyKey] = useState(newIdempotencyKey);
   const initializedAbsorbed = useRef(false);
   const requestSeq = useRef(0);
 
@@ -126,7 +129,7 @@ export function UnifyNamesModal({ onClose, onCommitted, initialGroupId, initialA
       const res = await api.post<UnifyResponse>('/entity-registry/groups/unify', {
         targetGroupId: targetId,
         absorbedGroupIds: [...absorbedIds],
-      });
+      }, idempotencyHeaders(idempotencyKey));
       const r = res.data;
       const foldedNote = r.entriesFolded > 0 ? ` و${r.entriesFolded} قيدًا مطابقًا سابق الوجود طُوي على القيد الناجي` : '';
       onCommitted(

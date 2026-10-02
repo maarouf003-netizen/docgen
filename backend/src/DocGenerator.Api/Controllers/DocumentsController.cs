@@ -277,8 +277,14 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var doc = await _documents.CreateAsync(request, User.GetUserId(), ActorName, User.GetBranchId(), ct);
+            // RF-011: مفتاح عدم التكرار ترويسة اختيارية — التكرار يُردّ `200` بالجسم المخزن نفسه.
+            var doc = await _documents.CreateAsync(request, User.GetUserId(), ActorName, User.GetBranchId(), ct,
+                IdempotencyKeyHeader());
             return CreatedAtAction(nameof(Get), new { id = doc.Id }, Sanitize(doc));
+        }
+        catch (IdempotentReplayException r)
+        {
+            return Content(r.ResponseBody, "application/json");
         }
         catch (ArgumentException e)
         {
@@ -580,9 +586,15 @@ public class DocumentsController : ControllerBase
 
         try
         {
+            // RF-011: التكرار بنفس المفتاح يُعيد العدد المخزن نفسه.
             var transferredCount = await _documents.TransferAllAsync(
-                request.SourceLawyerId, request.TargetLawyerId, scopeBranchId, ActorName, ct);
+                request.SourceLawyerId, request.TargetLawyerId, scopeBranchId, ActorName, ct,
+                IdempotencyKeyHeader());
             return Ok(new { transferredCount });
+        }
+        catch (IdempotentReplayException r)
+        {
+            return Content(r.ResponseBody, "application/json");
         }
         catch (KeyNotFoundException)
         {
@@ -723,4 +735,10 @@ public class DocumentsController : ControllerBase
         /// <summary>عدّاد التزامن المتفائل (RF-010) — غيابه = قبول بلا فحص مبكر.</summary>
         public long? Version { get; set; }
     }
+
+    /// <summary>مفتاح عدم التكرار (RF-011) من الترويسة — غيابه = المسار القديم.</summary>
+    private string? IdempotencyKeyHeader() =>
+        Request.Headers.TryGetValue(IdempotencyGuard.HeaderName, out var values)
+            ? values.ToString()
+            : null;
 }

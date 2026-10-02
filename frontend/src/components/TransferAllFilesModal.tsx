@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
+import { idempotencyHeaders, newIdempotencyKey } from '../utils/idempotency';
 import type { LawyerListItem } from '../types';
 
 export default function TransferAllFilesModal({
@@ -20,6 +21,8 @@ export default function TransferAllFilesModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [transferredCount, setTransferredCount] = useState<number | null>(null);
+  // مفتاح عدم التكرار (RF-011): واحد لكل فتح نافذة — النقل المزدوج يُعاد مخزنًا.
+  const [idempotencyKey] = useState(newIdempotencyKey);
 
   const eligible = lawyers.filter((l) => l.isActive && l.id !== sourceLawyer.id);
   const target = eligible.find((l) => l.id === targetId);
@@ -51,7 +54,7 @@ export default function TransferAllFilesModal({
       const res = await api.post<{ transferredCount: number }>('/documents/transfer-all', {
         sourceLawyerId: sourceLawyer.id,
         targetLawyerId: target.id,
-      });
+      }, idempotencyHeaders(idempotencyKey));
       const count = res.data.transferredCount;
       setTransferredCount(count);
       onTransferred(count);

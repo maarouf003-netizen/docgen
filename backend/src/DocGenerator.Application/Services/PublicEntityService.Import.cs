@@ -14,10 +14,33 @@ public sealed partial class PublicEntityService
 
     public async Task<ImportPreviewResponse> PreviewImportAsync(CancellationToken ct = default)
         => new(DateTime.UtcNow, await BuildImportCandidatesAsync(ct));
-    public async Task<ImportCommitResultDto> CommitImportAsync(ImportCommitRequest request, int actorUserId, string? actorName, CancellationToken ct = default)
+    public async Task<ImportCommitResultDto> CommitImportAsync(ImportCommitRequest request, int actorUserId, string? actorName, CancellationToken ct = default, string? idempotencyKey = null)
     {
         if (request.Items is null || request.Items.Count == 0)
             throw new ArgumentException("لم تُحدَّد نصوص للاستيراد");
+
+        // RF-011: حجز المفتاح بعد التحقق (المدخل الباطل 400 بلا حجز) — التكرار
+        // يُعيد النتيجة المخزنة نفسها (الاعتماد الثاني: كل `skipped` لا إنشاء).
+        var ticket = await IdempotencyGuard.BeginAsync(_idempotency, "registry.import-commit",
+            actorUserId, idempotencyKey, IdempotencyGuard.Fingerprint(request), ct);
+        ImportCommitResultDto result;
+        try
+        {
+            result = await CommitImportCoreAsync(request, actorUserId, actorName, ct);
+        }
+        catch
+        {
+            await IdempotencyGuard.ReleaseAsync(_idempotency, ticket, ct);
+            throw;
+        }
+
+        await IdempotencyGuard.CompleteAsync(_idempotency, ticket, IdempotencyGuard.Snapshot(result), ct);
+        return result;
+    }
+
+    private async Task<ImportCommitResultDto> CommitImportCoreAsync(
+        ImportCommitRequest request, int actorUserId, string? actorName, CancellationToken ct)
+    {
 
         // مرجعية الخادم: الكتابات البديلة تؤخذ من معاينة حية لا من طلب العميل.
         var candidates = (await BuildImportCandidatesAsync(ct))

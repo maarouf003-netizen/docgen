@@ -210,6 +210,8 @@ describe('EntityRegistryReviewManagement', () => {
           decreeNumber: '7',
           decreeDate: '2/8/2026',
         }),
+        // مفتاح عدم التكرار (RF-011): ترويسة `uuid` مع كل دمج.
+        expect.objectContaining({ headers: expect.objectContaining({ 'X-Idempotency-Key': expect.any(String) }) }),
       );
     });
   });

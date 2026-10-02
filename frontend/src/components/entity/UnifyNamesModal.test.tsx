@@ -156,7 +156,8 @@ describe('UnifyNamesModal', () => {
     await user.click(screen.getByRole('button', { name: 'تأكيد التوحيد' }));
 
     await waitFor(() => {
-      expect(api.post).toHaveBeenCalledWith('/entity-registry/groups/unify', expect.objectContaining({ targetGroupId: 1, absorbedGroupIds: expect.any(Array) }));
+      // مفتاح عدم التكرار (RF-011): ترويسة `uuid` مع كل اعتماد.
+      expect(api.post).toHaveBeenCalledWith('/entity-registry/groups/unify', expect.objectContaining({ targetGroupId: 1, absorbedGroupIds: expect.any(Array) }), expect.objectContaining({ headers: expect.objectContaining({ 'X-Idempotency-Key': expect.any(String) }) }));
     });
     expect(onCommitted).toHaveBeenCalledWith(expect.stringContaining('تم توحيد'));
   });

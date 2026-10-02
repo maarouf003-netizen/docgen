@@ -1,4 +1,5 @@
 using DocGenerator.Api.Authorization;
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -25,6 +26,12 @@ public class EntityRegistryController : ControllerBase
     private string? ActorName => User.Identity?.Name;
     private UserRole Role => User.GetRoleEnum();
     private EntityRegistryActor Actor => new(User.GetUserId(), ActorName, Role, User.GetBranchId());
+
+    /// <summary>مفتاح عدم التكرار (RF-011) من الترويسة — غيابه = المسار القديم.</summary>
+    private string? IdempotencyKeyHeader() =>
+        Request.Headers.TryGetValue(IdempotencyGuard.HeaderName, out var values)
+            ? values.ToString()
+            : null;
 
     /// <summary>قائمة السجل لشاشة الإدارة — رئيس قسم/مدير/مشرف (تشمل قيود الانتظار).</summary>
     [HttpGet]
@@ -206,7 +213,13 @@ public class EntityRegistryController : ControllerBase
             return Forbid();
         try
         {
-            return Ok(await _registry.CommitImportAsync(request, User.GetUserId(), ActorName, ct));
+            // RF-011: التكرار بنفس المفتاح يُعيد النتيجة المخزنة نفسها.
+            return Ok(await _registry.CommitImportAsync(request, User.GetUserId(), ActorName, ct,
+                IdempotencyKeyHeader()));
+        }
+        catch (IdempotentReplayException r)
+        {
+            return Content(r.ResponseBody, "application/json");
         }
         catch (ArgumentException e)
         {
@@ -339,7 +352,13 @@ public class EntityRegistryController : ControllerBase
             return Forbid();
         try
         {
-            return Ok(await _registry.UnifyNamesAsync(request, Actor, ct));
+            // RF-011: التكرار بنفس المفتاح يُعيد النتيجة المخزنة نفسها.
+            return Ok(await _registry.UnifyNamesAsync(request, Actor, ct,
+                IdempotencyKeyHeader()));
+        }
+        catch (IdempotentReplayException r)
+        {
+            return Content(r.ResponseBody, "application/json");
         }
         catch (ArgumentException e)
         {
@@ -377,7 +396,13 @@ public class EntityRegistryController : ControllerBase
             return Forbid();
         try
         {
-            return Ok(await _registry.CommitMergeAsync(request, Actor, ct));
+            // RF-011: التكرار بنفس المفتاح يُعيد النتيجة المخزنة نفسها.
+            return Ok(await _registry.CommitMergeAsync(request, Actor, ct,
+                IdempotencyKeyHeader()));
+        }
+        catch (IdempotentReplayException r)
+        {
+            return Content(r.ResponseBody, "application/json");
         }
         catch (ArgumentException e)
         {

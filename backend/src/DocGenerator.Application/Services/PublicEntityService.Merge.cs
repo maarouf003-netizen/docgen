@@ -88,7 +88,7 @@ public sealed partial class PublicEntityService
         return new MergePreviewResponse(survivorGroup.CanonicalName, absorbedDtos, totalAffected, warnings);
     }
     /// <inheritdoc/>
-    public async Task<MergeCommitResponse> CommitMergeAsync(MergeCommitRequest request, EntityRegistryActor actor, CancellationToken ct = default)
+    public async Task<MergeCommitResponse> CommitMergeAsync(MergeCommitRequest request, EntityRegistryActor actor, CancellationToken ct = default, string? idempotencyKey = null)
     {
         var decreeKind = Required(request.DecreeKind, "نوع المرجع مطلوب", 100);
         var decreeNumber = Required(request.DecreeNumber, "رقم المرجع مطلوب", 100);
@@ -96,6 +96,29 @@ public sealed partial class PublicEntityService
         if (decreeDate is null)
             throw new ArgumentException("تاريخ المرجع مطلوب — استخدم مثال: 1/8/2026");
 
+        // RF-011: حجز المفتاح بعد التحقق (المرجع الباطل 400 بلا حجز) — التكرار
+        // يُعيد النتيجة المخزنة نفسها.
+        var ticket = await IdempotencyGuard.BeginAsync(_idempotency, "registry.merge-commit",
+            actor.UserId, idempotencyKey, IdempotencyGuard.Fingerprint(request), ct);
+        MergeCommitResponse result;
+        try
+        {
+            result = await CommitMergeCoreAsync(request, actor, decreeKind, decreeNumber, decreeDate, ct);
+        }
+        catch
+        {
+            await IdempotencyGuard.ReleaseAsync(_idempotency, ticket, ct);
+            throw;
+        }
+
+        await IdempotencyGuard.CompleteAsync(_idempotency, ticket, IdempotencyGuard.Snapshot(result), ct);
+        return result;
+    }
+
+    private async Task<MergeCommitResponse> CommitMergeCoreAsync(
+        MergeCommitRequest request, EntityRegistryActor actor,
+        string decreeKind, string decreeNumber, DateTime? decreeDate, CancellationToken ct)
+    {
         return await _tx.RunAsync(async token =>
         {
             var survivorGroup = await _entities.GetGroupAsync(request.SurvivorGroupId, token)

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, getApiErrorMessage } from '../../api/client';
+import { idempotencyHeaders, newIdempotencyKey } from '../../utils/idempotency';
 import { GOVERNORATES } from '../../utils/governorate';
 import type {
   ImportCommitItemRequest,
@@ -24,6 +25,8 @@ export function ImportModal({ onClose, onCommitted }: ImportModalProps) {
   const [loading, setLoading] = useState(true);
   const [committing, setCommitting] = useState(false);
   const [message, setMessage] = useState('');
+  // مفتاح عدم التكرار (RF-011): واحد لكل فتح نافذة — الاعتماد المزدوج يُعاد مخزنًا.
+  const [idempotencyKey] = useState(newIdempotencyKey);
 
   useEffect(() => {
     let active = true;
@@ -84,6 +87,7 @@ export function ImportModal({ onClose, onCommitted }: ImportModalProps) {
       const res = await api.post<{ groupsCreated: number; entriesCreated: number; aliasesAdded: number }>(
         '/entity-registry/import-commit',
         { items },
+        idempotencyHeaders(idempotencyKey),
       );
       const r = res.data;
       onCommitted(

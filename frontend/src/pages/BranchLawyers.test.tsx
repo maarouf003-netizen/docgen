@@ -241,10 +241,11 @@ describe('BranchLawyers', () => {
     await user.click(screen.getByRole('button', { name: 'تأكيد النقل النهائي' }));
 
     await waitFor(() => {
+      // مفتاح عدم التكرار (RF-011): ترويسة `uuid` مع كل نقل.
       expect(api.post).toHaveBeenCalledWith('/documents/transfer-all', {
         sourceLawyerId: 1,
         targetLawyerId: 2,
-      });
+      }, expect.objectContaining({ headers: expect.objectContaining({ 'X-Idempotency-Key': expect.any(String) }) }));
     });
     expect(await screen.findByText(/تم نقل 3 ملفًا إلى محامي ثانٍ/)).toBeInTheDocument();
   });
