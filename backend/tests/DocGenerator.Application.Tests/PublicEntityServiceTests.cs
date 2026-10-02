@@ -4097,4 +4097,23 @@ public class PublicEntityServiceTests : IDisposable
 
         Assert.Equal(0, await _service.CountNeedsReviewAsync(branchlessHead));
     }
+
+    [Fact]
+    public async Task RenameGroupPreview_ShowsOldNewAndCountsWithoutWriting()
+    {
+        // توصيف `RF-022`: المعاينة تعرض القديم/الجديد وعدد الملفات والفروع بلا أي كتابة.
+        var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
+            "جهة المعاينة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+
+        var preview = await _service.PreviewRenameGroupAsync(
+            new RenameGroupPreviewRequest(dto.GroupId, "جهة المعاينة الجديدة"));
+
+        Assert.Equal("جهة المعاينة", preview.OldCanonicalName);
+        Assert.Equal("جهة المعاينة الجديدة", preview.NewCanonicalName);
+        Assert.Equal(0, preview.AffectedDocuments);
+        Assert.Contains("الفرع الرئيسي", preview.Branches);
+
+        var group = await _db.PublicEntityGroups.FindAsync(dto.GroupId);
+        Assert.Equal("جهة المعاينة", group!.CanonicalName);
+    }
 }
