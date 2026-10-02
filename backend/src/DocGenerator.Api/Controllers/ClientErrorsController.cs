@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
+using DocGenerator.Api.Middleware;
 using DocGenerator.Application.Common.Options;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -46,11 +47,12 @@ public class ClientErrorsController : ControllerBase
         // المسار بلا استعلام/مقتطف (قد يحمل الاستعلام توكنات أو بيانات شخصية) ثم قصّ.
         // أسطر الرسالة تُسطَّح لمسافة: سطر السجل النصي أحادي السطر، والمحارف السطرية فيه
         // تتيح تزوير السطور (log forging) وتكسر قابلية القراءة الآلية — المكدس يبقى متعدد الأسطر قصدًا.
-        var flatMessage = report.Message.Replace('\r', ' ').Replace('\n', ' ');
-        report.Message = Clip(flatMessage, _options.ClientErrorPayloadSizeLimit);
-        report.Stack = report.Stack is null ? null : Clip(report.Stack, _options.ClientErrorStackLimit);
-        report.Url = Clip(StripQuery(report.Url ?? ""), 500);
-        report.Component = Clip(report.Component ?? "", 100);
+        // النص الحر (رسالة/مكدس) قد يحمل بريدًا أو اعتمادات مسرّبة من الواجهة (`SEC-012`)،
+        // فيُجرَّد عبر `LogSanitizer` قبل التسجيل — الأرقام والأسماء لا تُمسّ (تشخيص/رسائل عربية).
+        report.Message = LogSanitizer.SanitizeForLog(report.Message, _options.ClientErrorPayloadSizeLimit)!;
+        report.Stack = LogSanitizer.SanitizeForLog(report.Stack, _options.ClientErrorStackLimit);
+        report.Url = LogSanitizer.SanitizeForLog(StripQuery(report.Url ?? ""), 500);
+        report.Component = LogSanitizer.SanitizeForLog(report.Component ?? "", 100);
 
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
         var countKey = $"{CachePrefix}{userId}";
@@ -72,12 +74,6 @@ public class ClientErrorsController : ControllerBase
             report.Stack ?? "");
 
         return Accepted(new { ok = true });
-    }
-
-    private static string Clip(string value, int max)
-    {
-        if (value.Length <= max) return value;
-        return value[..max];
     }
 
     private static string StripQuery(string url)

@@ -55,8 +55,10 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
 
         var message = exception switch
         {
+            // رسائل `4xx` عربية مقصودة لكنها قد تعكس مدخلًا خامًا (`SEC-012`)، فتُعقَّم
+            // (تسطيح/تجريد/قصّ) قبل الرد — التفاصيل الكاملة تبقى في السجل التشخيصي أعلاه.
             ArgumentException or KeyNotFoundException or DocumentConflictException
-                or UnauthorizedAccessException => exception.Message,
+                or UnauthorizedAccessException => LogSanitizer.SanitizeForResponse(exception.Message),
             DbUpdateException ex when _environment.IsDevelopment() => DescribeDbUpdateException(ex),
             DbUpdateException => "فشل حفظ التغييرات في قاعدة البيانات",
             _ when _environment.IsDevelopment() => exception.Message,
