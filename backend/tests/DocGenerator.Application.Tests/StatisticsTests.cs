@@ -1403,6 +1403,107 @@ public class StatisticsRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task ManagerStats_ExecutedAgainst_SplitsPerCurrency_NoMixedSum()
+    {
+        // `BQ-029`: مدفوعات «منفذ للضد» بعملات مختلفة تُفصل لكل عملة كالبقية،
+        // وحقل الليرة توافقٌ فقط (لا مجموعًا مختلطًا).
+        var today = DateTime.Today;
+        _db.Documents.Add(
+            new Document
+            {
+                BranchId = 1,
+                CreatedById = 1,
+                IsDraft = false,
+                GeneralEntitySide = GeneralEntitySideCatalog.Executed,
+                ExecutedStatus = ExecutedStatusCatalog.Executed,
+                ExecutedPaidAmount = 1000,
+                ExecutedPaidCurrency = "ليرة سورية",
+                ExecutedPaidAmount2 = 200,
+                ExecutedPaidCurrency2 = "دولار أمريكي",
+                ExecutedPaidAmount3 = 50,
+                ExecutedPaidCurrency3 = "يورو",
+                FileReceiptDate = new DateTime(today.Year, today.Month, 3),
+            });
+        _db.SaveChanges();
+
+        var s = await _stats.GetManagerStatsAsync(StatsPeriod.Monthly, 1);
+
+        Assert.Equal(1, s.ExecutedAgainstCount);
+        Assert.Equal(1000m, s.ExecutedAgainstAmount);
+        Assert.Equal(1000m, AmountOf(s.ExecutedAgainstAmounts, "ليرة سورية"));
+        Assert.Equal(200m, AmountOf(s.ExecutedAgainstAmounts, "دولار أمريكي"));
+        Assert.Equal(50m, AmountOf(s.ExecutedAgainstAmounts, "يورو"));
+        Assert.Equal(3, s.ExecutedAgainstAmounts.Count);
+    }
+
+    [Fact]
+    public async Task ManagerStats_DepositExecuted_SplitsPerCurrency_NoMixedSum()
+    {
+        // `BQ-029`: مبالغ «عرض وايداع» المنفذة تُفصل لكل عملة، وحقل الليرة توافقٌ فقط.
+        var today = DateTime.Today;
+        _db.Documents.Add(
+            new Document
+            {
+                BranchId = 1,
+                CreatedById = 1,
+                IsDraft = false,
+                GeneralEntitySide = GeneralEntitySideCatalog.Deposit,
+                ExecutedStatus = ExecutedStatusCatalog.Executed,
+                ExecutedPaidAmount = 700,
+                ExecutedPaidCurrency = "ليرة سورية",
+                ExecutedPaidAmount2 = 300,
+                ExecutedPaidCurrency2 = "دولار أمريكي",
+                FileReceiptDate = new DateTime(today.Year, today.Month, 4),
+            });
+        _db.SaveChanges();
+
+        var s = await _stats.GetManagerStatsAsync(StatsPeriod.Monthly, 1);
+
+        Assert.Equal(1, s.DepositExecutedCount);
+        Assert.Equal(700m, s.DepositExecutedAmount);
+        Assert.Equal(700m, AmountOf(s.DepositExecutedAmounts, "ليرة سورية"));
+        Assert.Equal(300m, AmountOf(s.DepositExecutedAmounts, "دولار أمريكي"));
+        Assert.Equal(2, s.DepositExecutedAmounts.Count);
+    }
+
+    [Fact]
+    public async Task ManagerStats_UnknownCurrency_BucketsAsOther_NotDropped()
+    {
+        // `BQ-030`: العملات خارج الثلاث لا تُسقَط بصمت بل تُجمَّع في سلة «أخرى» للمراجعة.
+        var today = DateTime.Today;
+        _db.Documents.AddRange(
+            new Document
+            {
+                BranchId = 1,
+                CreatedById = 1,
+                IsDraft = false,
+                GeneralEntitySide = GeneralEntitySideCatalog.Executed,
+                ExecutedStatus = ExecutedStatusCatalog.None,
+                ExecutedRequiredAmount = 500,
+                ExecutedRequiredCurrency = "جنيه إسترليني",
+                FileReceiptDate = new DateTime(today.Year, today.Month, 5),
+            },
+            new Document
+            {
+                BranchId = 1,
+                CreatedById = 1,
+                IsDraft = false,
+                GeneralEntitySide = GeneralEntitySideCatalog.Executed,
+                ExecutedStatus = ExecutedStatusCatalog.Executed,
+                ExecutedPaidAmount = 400,
+                ExecutedPaidCurrency = "جنيه إسترليني",
+                FileReceiptDate = new DateTime(today.Year, today.Month, 6),
+            });
+        _db.SaveChanges();
+
+        var s = await _stats.GetManagerStatsAsync(StatsPeriod.Monthly, 1);
+
+        Assert.Equal(500m, AmountOf(s.TradingAgainstAmounts, "أخرى"));
+        Assert.Equal(400m, AmountOf(s.ExecutedAgainstAmounts, "أخرى"));
+        Assert.Equal(0m, s.ExecutedAgainstAmount);
+    }
+
+    [Fact]
     public async Task ManagerLawyerStats_MarksPointsCountedFromCreatedAt()
     {
         var branch = await _db.Branches.FirstAsync();

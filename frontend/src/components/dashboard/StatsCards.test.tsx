@@ -110,4 +110,27 @@ describe('StatsCards', () => {
     expect(screen.getByText('1,600 ل.س')).toBeInTheDocument();
     expect(screen.getByText('300 دولار')).toBeInTheDocument();
   });
+
+  it('يعرض مبالغ «منفذ للضد» و«عرض وايداع» مفصولة لكل عملة (BQ-029)', async () => {
+    const user = userEvent.setup();
+    const stats = makeStats();
+    stats.executedAgainstCount = 1;
+    stats.executedAgainstAmount = 1000;
+    stats.executedAgainstAmounts = [
+      { currency: 'ليرة سورية', amount: 1000 },
+      { currency: 'دولار أمريكي', amount: 200 },
+    ];
+    stats.depositExecutedCount = 1;
+    stats.depositExecutedAmount = 700;
+    stats.depositExecutedAmounts = [
+      { currency: 'ليرة سورية', amount: 700 },
+      { currency: 'يورو', amount: 50 },
+    ];
+    render(<StatsCards stats={stats} prevStats={null} showDrillLinks appealsStats={null} />);
+
+    const executed = screen.getByRole('heading', { name: 'منفذ' }).closest('article') as HTMLElement;
+    await user.click(within(executed).getByRole('button', { name: 'عرض التفاصيل' }));
+    expect(within(executed).getByText(/1,000.*ل\.س.*200.*دولار/s)).toBeInTheDocument();
+    expect(within(executed).getByText(/700.*ل\.س.*50.*يورو/s)).toBeInTheDocument();
+  });
 });
