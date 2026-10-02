@@ -149,6 +149,9 @@ builder.Services
 
 builder.Services.AddMemoryCache();
 builder.Services.AddRateLimiter(RateLimitingSetup.Configure);
+// RF-016: فحص صحة القاعدة — خارج /api فلا مصادقة ولا حارس بوابة؛ بلا حزم جديدة.
+builder.Services.AddHealthChecks()
+    .AddCheck<DocGenerator.Api.Health.DatabaseHealthCheck>("database");
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
     {
@@ -311,6 +314,9 @@ app.UseMiddleware<RequestLoggingEnricherMiddleware>();
 app.UseMiddleware<EntityManagerPortalGuard>();
 
 app.MapControllers();
+
+// RF-016: نقطة الصحة قبل احتياطي SPA — لا تُبتلَع بواسطة index.html في الإنتاج.
+app.MapHealthChecks("/healthz");
 
 // كل مسارات SPA غير المعروفة تعود إلى index.html (تُستخدم مع خدمة الملفات الثابتة أعلاه).
 if (!builder.Environment.IsDevelopment())
