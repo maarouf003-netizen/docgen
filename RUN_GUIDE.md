@@ -307,4 +307,9 @@ npm test
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261001063633_RequireBranchForBranchRolesPg.cs` — نفسه (نص SQL مولّد ومُراجع: `ALTER TABLE "Users" ADD CONSTRAINT … CHECK (…)`؛ لا خادم Postgres محليًا للتجربة الحية).
   - ⚠️ القيد يتحقق من الصفوف القائمة لحظة التطبيق: أي صف `Lawyer`/`Head` بلا فرع في الإنتاج سيُسقط الهجرة — نفّذ أولًا استعلام التدقيق: `SELECT "Username", "Role" FROM "Users" WHERE "BranchId" IS NULL AND "Role" IN ('Lawyer','Head');` (يجب أن يكون فارغًا)، وإن وُجدت صفوف عالجها إداريًا (تعيين فرع أو تعطيل) قبل التطبيق.
   - بدون التطبيق تبقى الحماية التطبيقية وحدها (البوابة + الحراس + الخدمة — كلها خضراء) لكن الكتابة المباشرة/الاستعادة تبقى قادرة على زرع الصف الشاذ.
+- [ ] **2026-10-02 — `RF009_NumberingUniqueIndex` / `RF009_NumberingUniqueIndexPg`** (`RF-009`: وحدانية رقم الأساس الفعّالة — قيد فريد جزئي يمنع ازدواج (الدائرة + الرقم + النوع + السنة) قضائيًا):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261002003430_RF009_NumberingUniqueIndex.cs` — فهرس `IX_Documents_Court_FileNumber_FileType_FileYear` فريد جزئي (`NOT "IsDeleted" AND "FileNumber" IS NOT NULL`). نص SQL مولّد ومُراجَع في `docs/audit/migrations/RF009_sqlite.sql`.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261002003604_RF009_NumberingUniqueIndexPg.cs` — نفسه. نص SQL في `docs/audit/migrations/RF009_postgres.sql`.
+  - القاعدة جديدة فارغة حاليًا (لا فحص تكرار لازم) — أول إقلاع يطبقها تلقائيًا مع البقية. بعد الإقلاع: تحقق من سجل `__EFMigrationsHistory` ثم جرّب إدخال رقم مكرر — المتوقع `409` برسالة عربية.
+  - ⚠️ مستقبلًا (قاعدة فيها بيانات): أي تكرار فعّال قائم سيُسقط الهجرة — نفّذ أولًا: `SELECT Court, FileNumber, FileType, FileYear, COUNT(*) FROM Documents WHERE IsDeleted = 0 AND FileNumber IS NOT NULL GROUP BY 1,2,3,4 HAVING COUNT(*) > 1;` (يجب أن يكون فارغًا).
 
