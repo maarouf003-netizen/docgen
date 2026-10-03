@@ -69,7 +69,7 @@ public class AppSuggestionsController : ControllerBase
         }
     }
 
-    /// <summary>تعليم الاقتراح مقروءًا — المشرف فقط.</summary>
+    /// <summary>تعليم الاقتراح مقروءًا — مشرف ومدير (`BQ-001`).</summary>
     [HttpPatch("{id:int}/read")]
     public async Task<IActionResult> MarkRead(int id, CancellationToken ct)
     {

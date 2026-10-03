@@ -16,7 +16,7 @@ public interface IAppSuggestionService
 
 /// <summary>
 /// اقتراحات تطوير التطبيق: الإرسال للمستخدمين (المحامي الآن)، والقراءة الشاملة
-/// وتعليم المقروء للمشرف فقط — والكتابة ضمن معاملة مع سجل التدقيق.
+/// وتعليم المقروء للمشرف والمدير (`BQ-001`) — والكتابة ضمن معاملة مع سجل التدقيق.
 /// </summary>
 public sealed class AppSuggestionService : IAppSuggestionService
 {

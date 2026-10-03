@@ -35,7 +35,7 @@ public record UserListItemDto(
     string? BranchName,
     bool IsActive);
 
-/// <summary>إنشاء مستخدم بأي دور — المشرف فقط.</summary>
+/// <summary>إنشاء مستخدم — مشرف (أي دور) ومدير (عدا دور المشرف — `BQ-001د`).</summary>
 public record CreateUserRequest(
     string Username,
     string FullName,
@@ -43,7 +43,7 @@ public record CreateUserRequest(
     int? BranchId,
     string Password);
 
-/// <summary>تحديث مستخدم — المشرف فقط (كلمة المرور اختيارية لإعادة التعيين).</summary>
+/// <summary>تحديث مستخدم — مشرف (الكل) ومدير (عدا حسابات المشرف — `BQ-001د`)؛ كلمة المرور اختيارية لإعادة التعيين.</summary>
 public record UpdateUserRequest(
     string? FullName,
     string? Role,

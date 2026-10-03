@@ -175,7 +175,7 @@ public class DocumentsController : ControllerBase
         [FromQuery] string? q,
         [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
     {
-        // رؤية المحذوفات: محامٍ (ملفاته) / رئيس قسم (فرعه) / مشرف (الكل)، والمدير لا يراها.
+        // رؤية المحذوفات: محامٍ (ملفاته) / رئيس قسم (فرعه) / مدير ومشرف (الكل) — `BQ-001`.
         if (!RolePermissions.CanViewDeletedDocuments(Role))
             return Forbid();
 
@@ -192,7 +192,7 @@ public class DocumentsController : ControllerBase
         [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
     {
         // رؤية الملفات المشطوبة في وضع «منفذ عليه» بنفس صلاحيات المحذوفات:
-        // محامٍ (ملفاته) / رئيس قسم (فرعه) / مشرف (الكل)، والمدير لا يراها.
+        // محامٍ (ملفاته) / رئيس قسم (فرعه) / مدير ومشرف (الكل) — `BQ-001`.
         if (!RolePermissions.CanViewDeletedDocuments(Role))
             return Forbid();
 

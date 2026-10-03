@@ -29,7 +29,7 @@ public class UserManagementController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> ListUsers(CancellationToken ct)
     {
-        // إدارة المستخدمين الكاملة — المشرف فقط.
+        // إدارة المستخدمين — مشرف (الكل) ومدير (عدا حسابات المشرف — `BQ-001د`).
         if (!CanManageUsers)
             return Forbid();
         return Ok(await _users.ListUsersAsync(ct));

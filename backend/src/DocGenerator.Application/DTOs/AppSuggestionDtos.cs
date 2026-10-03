@@ -1,6 +1,6 @@
 namespace DocGenerator.Application.DTOs;
 
-/// <summary>اقتراح تطوير — `SenderName` للمشرف فقط (سجل المرسل بلا أسماء الآخرين).</summary>
+/// <summary>اقتراح تطوير — `SenderName` للمشرف والمدير (`BQ-001`)؛ سجل المرسل بلا أسماء الآخرين.</summary>
 public record AppSuggestionDto(
     int Id,
     string Message,
