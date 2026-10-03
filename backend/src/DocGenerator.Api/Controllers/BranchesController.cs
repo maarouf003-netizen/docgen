@@ -9,7 +9,7 @@ namespace DocGenerator.Api.Controllers;
 
 [ApiController]
 [Route("api/branches")]
-[Authorize]
+[Authorize(Roles = "lawyer,head,manager,admin")]
 public class BranchesController : ControllerBase
 {
     private readonly IBranchManagementService _branches;

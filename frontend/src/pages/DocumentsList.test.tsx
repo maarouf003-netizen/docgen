@@ -1093,14 +1093,15 @@ describe('DocumentsList', () => {
     vi.unstubAllGlobals();
   });
 
-  it('يعرض زر «الملفات المحذوفة» للمحامي ورئيس القسم والمشرف ولا يعرضه للمدير', async () => {
+  it('يعرض زر «الملفات المحذوفة» للمحامي ورئيس القسم والمشرف والمدير (`BQ-001`)', async () => {
     const user = userEvent.setup();
     mockPage([]);
 
-    const roles = ['lawyer', 'head', 'admin'];
+    // `BQ-001` (`RF-004`): المدير يرى المحذوفات كالمشرف (كان مستبعدًا).
+    const roles = ['lawyer', 'head', 'admin', 'manager'];
     for (const role of roles) {
       useAuthMock.mockReturnValue({
-        hasFullAccess: role === 'admin',
+        hasFullAccess: role === 'admin' || role === 'manager',
         isHead: role === 'head',
         user: { role },
       });
@@ -1114,16 +1115,6 @@ describe('DocumentsList', () => {
       );
       unmount();
     }
-
-    useAuthMock.mockReturnValue({ hasFullAccess: true, isHead: false, user: { role: 'manager' } });
-    renderList();
-    await screen.findByRole('table');
-    await user.click(screen.getByRole('button', { name: 'المزيد' }));
-    expect(
-      within(screen.getByRole('menu', { name: 'المزيد' })).queryByRole('menuitem', {
-        name: 'الملفات المحذوفة',
-      }),
-    ).not.toBeInTheDocument();
   });
 
   it('يعرض زر «تدوير أرقام الأساس» للمحامي فقط', async () => {

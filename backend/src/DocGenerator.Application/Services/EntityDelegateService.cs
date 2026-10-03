@@ -9,13 +9,13 @@ namespace DocGenerator.Application.Services;
 
 public interface IEntityDelegateService
 {
-    Task<List<DelegateDto>> ListAsync(CancellationToken ct = default);
+    Task<List<DelegateDto>> ListAsync(CancellationToken ct = default, EntityRegistryActor? actor = null);
 
     /// <summary>إنشاء حساب مندوب مربوط بنطاقه — يجب تحديد هوية أو قيدًا واحدًا حصرًا (د11).</summary>
-    Task<DelegateDto> CreateAsync(CreateDelegateRequest request, string? actorName, CancellationToken ct = default);
+    Task<DelegateDto> CreateAsync(CreateDelegateRequest request, string? actorName, CancellationToken ct = default, EntityRegistryActor? actor = null);
 
     /// <summary>تعديل حساب مندوب قائم (الاسم/التفعيل/كلمة المرور/نطاقه) — null إن لم يوجد.</summary>
-    Task<DelegateDto?> UpdateAsync(int delegateUserId, UpdateDelegateRequest request, string? actorName, CancellationToken ct = default);
+    Task<DelegateDto?> UpdateAsync(int delegateUserId, UpdateDelegateRequest request, string? actorName, CancellationToken ct = default, EntityRegistryActor? actor = null);
 }
 
 /// <summary>
@@ -33,6 +33,7 @@ public sealed class EntityDelegateService : IEntityDelegateService
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
+    private readonly IRepository<Branch>? _branches;
 
     public EntityDelegateService(
         IUserRepository users,
@@ -40,7 +41,8 @@ public sealed class EntityDelegateService : IEntityDelegateService
         IPasswordHasher hasher,
         IUnitOfWork uow,
         ITransactionRunner tx,
-        IAuditLogger audit)
+        IAuditLogger audit,
+        IRepository<Branch>? branches = null)
     {
         _users = users;
         _registry = registry;
@@ -48,22 +50,31 @@ public sealed class EntityDelegateService : IEntityDelegateService
         _uow = uow;
         _tx = tx;
         _audit = audit;
+        // مستودع الفروع لنطاق المحافظة اختياري التركيب (اختبارات قديمة بلا فاعل) —
+        // الإنتاج يمرره دائمًا عبر `DI`؛ غيابه مع فاعل رئيس = بلا قيد (موثق).
+        _branches = branches;
     }
 
-    public async Task<List<DelegateDto>> ListAsync(CancellationToken ct = default)
+    public async Task<List<DelegateDto>> ListAsync(CancellationToken ct = default, EntityRegistryActor? actor = null)
     {
         var delegates = await _users.ListEntityManagersAsync(ct);
+        var governorate = await HeadGovernorateAsync(actor, ct);
         var result = new List<DelegateDto>(delegates.Count);
         foreach (var d in delegates)
+        {
+            if (governorate is not null && !await IsScopeInGovernorateAsync(d.PortalGroupId, d.PortalEntryId, governorate, ct))
+                continue;
             result.Add(await BuildDtoWithScopeAsync(d, ct));
+        }
         return result;
     }
 
-    public async Task<DelegateDto> CreateAsync(CreateDelegateRequest request, string? actorName, CancellationToken ct = default)
+    public async Task<DelegateDto> CreateAsync(CreateDelegateRequest request, string? actorName, CancellationToken ct = default, EntityRegistryActor? actor = null)
     {
         var username = NormalizeUsername(request.Username);
         ValidateCredentials(username, request.Password, request.FullName);
         var (groupId, entryId) = await ResolveScopeAsync(request.PortalGroupId, request.PortalEntryId, ct);
+        await EnsureHeadGovernorateAsync(actor, groupId, entryId, ct);
 
         if (await _users.UsernameExistsAsync(username, branchId: null, excludeUserId: null, ct))
             throw new ArgumentException("يوجد مستخدم بنفس اسم الدخول، يرجى اختيار اسم مختلف");
@@ -89,11 +100,14 @@ public sealed class EntityDelegateService : IEntityDelegateService
         }, ct);
     }
 
-    public async Task<DelegateDto?> UpdateAsync(int delegateUserId, UpdateDelegateRequest request, string? actorName, CancellationToken ct = default)
+    public async Task<DelegateDto?> UpdateAsync(int delegateUserId, UpdateDelegateRequest request, string? actorName, CancellationToken ct = default, EntityRegistryActor? actor = null)
     {
         var user = await _users.GetByIdAsync(delegateUserId, ct);
         if (user is null || user.Role != UserRole.EntityManager)
             return null;
+
+        // `BQ-002`: الرئيس لا يمس مندوبًا خارج محافظته — الحالي أولًا.
+        await EnsureHeadGovernorateAsync(actor, user.PortalGroupId, user.PortalEntryId, ct);
 
         int? groupId = user.PortalGroupId;
         int? entryId = user.PortalEntryId;
@@ -104,6 +118,8 @@ public sealed class EntityDelegateService : IEntityDelegateService
             groupId = request.PortalGroupId;
             entryId = request.PortalEntryId;
             (groupId, entryId) = await ResolveScopeAsync(groupId, entryId, ct);
+            // ... ولا ينقله خارجها.
+            await EnsureHeadGovernorateAsync(actor, groupId, entryId, ct);
         }
 
         if (!string.IsNullOrWhiteSpace(request.NewPassword))
@@ -135,6 +151,51 @@ public sealed class EntityDelegateService : IEntityDelegateService
         }, ct);
 
         return await BuildDtoWithScopeAsync(user, ct);
+    }
+
+    /// <summary>
+    /// محافظة فرع الفاعل إن كان رئيس قسم بمستودع فروع حاضر — وإلا null (بلا قيد).
+    /// </summary>
+    private async Task<string?> HeadGovernorateAsync(EntityRegistryActor? actor, CancellationToken ct)
+    {
+        if (actor?.Role != UserRole.Head || !actor.BranchId.HasValue || _branches is null)
+            return null;
+        var branch = await _branches.GetByIdAsync(actor.BranchId.Value, ct);
+        var governorate = branch?.Governorate?.Trim();
+        return string.IsNullOrEmpty(governorate) ? null : governorate;
+    }
+
+    /// <summary>
+    /// نطاق المندوب داخل محافظة (`BQ-002`): القيد بنفس محافظته؛ الهوية بقيودها
+    /// النشطة كلها داخلها (الفارغة تُقبَل — لا بيانات تُسرَّب). المخالفة `403`.
+    /// </summary>
+    private async Task EnsureHeadGovernorateAsync(
+        EntityRegistryActor? actor, int? groupId, int? entryId, CancellationToken ct)
+    {
+        var governorate = await HeadGovernorateAsync(actor, ct);
+        if (governorate is null)
+            return;
+        if (!await IsScopeInGovernorateAsync(groupId, entryId, governorate, ct))
+            throw new UnauthorizedAccessException("نطاق المندوب خارج محافظة فرعك");
+    }
+
+    private async Task<bool> IsScopeInGovernorateAsync(
+        int? groupId, int? entryId, string governorate, CancellationToken ct)
+    {
+        if (entryId.HasValue)
+        {
+            var entry = await _registry.GetEntryAsync(entryId.Value, ct);
+            return entry is not null
+                && string.Equals(entry.Governorate?.Trim(), governorate, StringComparison.Ordinal);
+        }
+        if (groupId.HasValue)
+        {
+            var entries = await _registry.ListEntriesByGroupAsync(groupId.Value, ct);
+            var actives = entries.Where(e => e.IsActive).ToList();
+            return actives.Count == 0
+                || actives.All(e => string.Equals(e.Governorate?.Trim(), governorate, StringComparison.Ordinal));
+        }
+        return false;
     }
 
     // ── مساعدات خاصة ──

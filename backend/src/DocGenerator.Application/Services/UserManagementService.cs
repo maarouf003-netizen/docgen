@@ -13,7 +13,7 @@ public interface IUserManagementService
     Task<LawyerListItemDto?> UpdateLawyerAsync(int userId, UpdateLawyerRequest request, int? scopeBranchId, string? actorName, CancellationToken ct = default);
     Task<bool> SetLawyerActiveAsync(int userId, bool isActive, int? scopeBranchId, string? actorName, CancellationToken ct = default);
     Task<List<UserListItemDto>> ListUsersAsync(CancellationToken ct = default);
-    Task<UserListItemDto> CreateUserAsync(CreateUserRequest request, string? actorName, CancellationToken ct = default);
+    Task<UserListItemDto> CreateUserAsync(CreateUserRequest request, string? actorName, CancellationToken ct = default, int? actorUserId = null);
     Task<UserListItemDto?> UpdateUserAsync(int userId, UpdateUserRequest request, int actorUserId, string? actorName, CancellationToken ct = default);
 }
 
@@ -179,7 +179,7 @@ public sealed class UserManagementService : IUserManagementService
         return users.Select(ToUserDto).ToList();
     }
 
-    public async Task<UserListItemDto> CreateUserAsync(CreateUserRequest request, string? actorName, CancellationToken ct = default)
+    public async Task<UserListItemDto> CreateUserAsync(CreateUserRequest request, string? actorName, CancellationToken ct = default, int? actorUserId = null)
     {
         var username = NormalizeUsername(request.Username);
         ValidateUsername(username);
@@ -188,6 +188,7 @@ public sealed class UserManagementService : IUserManagementService
             throw new ArgumentException("الاسم الكامل مطلوب");
 
         var role = ParseRole(request.Role);
+        await GuardManagerAdminBoundaryAsync(actorUserId, requestedIsAdmin: role == UserRole.Admin, targetIsAdmin: false, ct);
         var branchId = await ResolveBranchAsync(request.BranchId, role, ct);
 
         if (await _users.UsernameExistsAsync(username, branchId, null, ct))
@@ -223,6 +224,7 @@ public sealed class UserManagementService : IUserManagementService
             return null;
 
         var role = request.Role is null ? user.Role : ParseRole(request.Role);
+        await GuardManagerAdminBoundaryAsync(actorUserId, requestedIsAdmin: role == UserRole.Admin, targetIsAdmin: user.Role == UserRole.Admin, ct);
         var branchId = await ResolveBranchAsync(request.BranchId ?? user.BranchId, role, ct);
 
         // انضباط بيانات (بوابة الجهات): الانتقال بعيدًا عن دور المندوب يفكّ نطاق
@@ -307,6 +309,22 @@ public sealed class UserManagementService : IUserManagementService
         if (!Enum.TryParse<UserRole>(role?.Trim(), ignoreCase: true, out var parsed))
             throw new ArgumentException("دور غير صالح");
         return parsed;
+    }
+
+    /// <summary>
+    /// حد المشرف (`BQ-001د`): المدير يدير كل الأدوار عدا المشرف — إنشاء حساب
+    /// مشرف أو المساس بحساب مشرف (تعديل/إيقاف) مرفوض `403`. الفاعل الغائب
+    /// (مسارات قديمة/اختبارات بلا فاعل) يتجاوز الفحص مؤقتًا — كل نقاط الإنتاج
+    /// تمرر الفاعل.
+    /// </summary>
+    private async Task GuardManagerAdminBoundaryAsync(
+        int? actorUserId, bool requestedIsAdmin, bool targetIsAdmin, CancellationToken ct)
+    {
+        if (actorUserId is null)
+            return;
+        var actor = await _users.GetByIdAsync(actorUserId.Value, ct);
+        if (actor?.Role == UserRole.Manager && (requestedIsAdmin || targetIsAdmin))
+            throw new UnauthorizedAccessException("حسابات المشرف يديرها مشرف فقط");
     }
 
     private static string NormalizeUsername(string username)

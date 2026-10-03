@@ -383,7 +383,8 @@ export default function DocumentsList() {
   const canSeeAssignedLawyer = hasFullAccess || isHead;
   const canSearchByLawyer = hasFullAccess || isHead;
   const canCreate = user?.role === 'lawyer';
-  const canViewDeleted = user?.role === 'lawyer' || user?.role === 'head' || user?.role === 'admin';
+  // `BQ-001`: المدير يرى المحذوفات كالمشرف.
+  const canViewDeleted = user?.role === 'lawyer' || user?.role === 'head' || user?.role === 'admin' || user?.role === 'manager';
   const canRotate = user?.role === 'lawyer';
 
   // يُمنع تصدير كل الملفات: يتطلب التصدير تطبيق فلتر واحد على الأقل (بحث أو أي فلتر منسدل)،

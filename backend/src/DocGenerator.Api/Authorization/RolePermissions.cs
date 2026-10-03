@@ -19,10 +19,10 @@ public static class RolePermissions
 
     /// <summary>
     /// رؤية قائمة المستندات المحذوفة —
-    /// محامٍ (ملفاته) / رئيس قسم (فرعه) / مشرف (الكل)، والمدير لا يراها.
+    /// محامٍ (ملفاته) / رئيس قسم (فرعه) / مدير ومشرف (الكل) — `BQ-001`.
     /// </summary>
     public static bool CanViewDeletedDocuments(UserRole role) =>
-        role is UserRole.Lawyer or UserRole.Head or UserRole.Admin;
+        role is UserRole.Lawyer or UserRole.Head or UserRole.Manager or UserRole.Admin;
 
     /// <summary>إضافة/تعديل/حذف إجراءات التنفيذ وإلغاء التذكير — المحامي فقط.</summary>
     public static bool CanManageExecutionActions(UserRole role) => role == UserRole.Lawyer;
@@ -43,8 +43,8 @@ public static class RolePermissions
     /// <summary>إدارة محامي الفرع (إضافة/تعطيل) — رئيس القسم ومشرف.</summary>
     public static bool CanManageBranchLawyers(UserRole role) => role is UserRole.Head or UserRole.Admin;
 
-    /// <summary>إدارة المستخدمين بكاملها — المشرف فقط.</summary>
-    public static bool CanManageUsers(UserRole role) => role == UserRole.Admin;
+    /// <summary>إدارة المستخدمين — مشرف (الكل) ومدير (كل الأدوار عدا المشرف — `BQ-001د`؛ حد دور المشرف يُفرَض في الخدمة).</summary>
+    public static bool CanManageUsers(UserRole role) => role is UserRole.Manager or UserRole.Admin;
 
     /// <summary>إدارة الفروع (إضافة/تعديل/حذف) — المشرف فقط.</summary>
     public static bool CanManageBranches(UserRole role) => role == UserRole.Admin;
@@ -125,8 +125,10 @@ public static class RolePermissions
     /// <summary>إدارة التذكيرات الشخصية الحرة (بلا ملف) — المحامي لملكه فقط.</summary>
     public static bool CanManagePersonalReminders(UserRole role) => role == UserRole.Lawyer;
 
-    /// <summary>قراءة كل اقتراحات التطوير وتعليمها مقروءة — المشرف فقط.</summary>
-    public static bool CanViewAppSuggestions(UserRole role) => role == UserRole.Admin;
+    /// <summary>
+    /// قراءة كل اقتراحات التطوير وتعليمها مقروءة — مشرف ومدير (`BQ-001`).
+    /// </summary>
+    public static bool CanViewAppSuggestions(UserRole role) => role is UserRole.Manager or UserRole.Admin;
 
     /// <summary>إرسال اقتراح تطوير — المحامي ورئيس القسم (صندوق المشرف).</summary>
     public static bool CanSuggestApp(UserRole role) =>

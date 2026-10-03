@@ -300,6 +300,11 @@ if (swaggerEnabled)
 if (builder.Environment.IsDevelopment())
     app.UseCors("Vite");
 app.UseAuthentication();
+// عزل بنيوي لدور مندوب الجهة: يُمنع من كل مسارات API عدا بوابته القرائية (المرحلة 3).
+// RF-004: قبل التفويض عمدًا (بعد المصادقة التي تغذيه بالهوية) — فرفض الدور يُسجَّل
+// (`portal_forbidden` في الحارس نفسه) قبل أن يقطعه وسيط التفويض بصمت عند تضييق
+// سمات `[Authorize(Roles=...)]`؛ ولغير المندوب تمرير خالص بلا أي تغيير سلوكي.
+app.UseMiddleware<EntityManagerPortalGuard>();
 app.UseAuthorization();
 // حد المعدل العام (S4) — بعد المصادقة عمدًا: مفاتيح التقسيم لكل مستخدم (userId) لا تتوفر
 // في HttpContext.User إلا بعدها؛ وضعه قبلها كان يُسقط الكل إلى مفتاح IP فيتقاسم مستخدمو
@@ -310,8 +315,6 @@ app.UseRateLimiter();
 // ملاحظة الترتيب: معالج الاستثناءات أعلى السلسلة، لذا يسجل GlobalExceptionHandler
 // المعرّف والهوية صراحة من HttpContext ولا يعتمد على نطاق LogContext هنا.
 app.UseMiddleware<RequestLoggingEnricherMiddleware>();
-// عزل بنيوي لدور مندوب الجهة: يُمنع من كل مسارات API عدا بوابته القرائية (المرحلة 3).
-app.UseMiddleware<EntityManagerPortalGuard>();
 
 app.MapControllers();
 

@@ -13,7 +13,7 @@ namespace DocGenerator.Api.Controllers;
 
 [ApiController]
 [Route("api/documents")]
-[Authorize]
+[Authorize(Roles = "lawyer,head,manager,admin")]
 public class DocumentsController : ControllerBase
 {
     private const string WordContentType =

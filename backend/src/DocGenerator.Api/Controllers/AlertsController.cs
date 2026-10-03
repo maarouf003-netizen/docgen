@@ -9,7 +9,7 @@ namespace DocGenerator.Api.Controllers;
 
 [ApiController]
 [Route("api/alerts")]
-[Authorize]
+[Authorize(Roles = "lawyer,head")]
 public class AlertsController : ControllerBase
 {
     private readonly IHeadAlertService _alerts;

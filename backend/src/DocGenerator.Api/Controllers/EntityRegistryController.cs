@@ -16,7 +16,7 @@ namespace DocGenerator.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/entity-registry")]
-[Authorize]
+[Authorize(Roles = "lawyer,head,manager,admin")]
 public class EntityRegistryController : ControllerBase
 {
     private readonly IPublicEntityService _registry;

@@ -379,26 +379,27 @@ describe('Layout', () => {
     }
   });
 
-  it('يعرض «إدارة المستخدمين» للمشرف فقط', async () => {
-    useAuthMock.mockReturnValue({
-      ...baseUser(),
-      user: { ...baseUser().user, role: 'admin' },
-    });
-    stubMatchMedia(true);
-    const { unmount: unmountAdmin } = render(<Layout />);
+  it('يعرض «إدارة المستخدمين» للمشرف والمدير (`BQ-001د`) لا لغيرهما', async () => {
+    for (const role of ['admin', 'manager'] as const) {
+      useAuthMock.mockReturnValue({
+        ...baseUser(),
+        user: { ...baseUser().user, role },
+      });
+      stubMatchMedia(true);
+      const { unmount } = render(<Layout />);
 
-    // بند متأخر على الجوال: خلف زر «المزيد».
-    await userEvent.setup().click(screen.getByRole('button', { name: /المزيد/ }));
-    const dialog = screen.getByRole('dialog', { name: 'قائمة التنقل' });
-    expect(within(dialog).getByRole('link', { name: 'إدارة المستخدمين' })).toHaveAttribute(
-      'href',
-      '/users/manage',
-    );
-    unmountAdmin();
+      // بند متأخر على الجوال: خلف زر «المزيد».
+      await userEvent.setup().click(screen.getByRole('button', { name: /المزيد/ }));
+      const dialog = screen.getByRole('dialog', { name: 'قائمة التنقل' });
+      expect(within(dialog).getByRole('link', { name: 'إدارة المستخدمين' })).toHaveAttribute(
+        'href',
+        '/users/manage',
+      );
+      unmount();
+    }
 
     for (const [role, flags] of [
       ['head', { isHead: true }],
-      ['manager', { hasFullAccess: true }],
       ['lawyer', {}],
     ] as const) {
       useAuthMock.mockReturnValue({ ...baseUser(), user: { ...baseUser().user, role }, ...flags });
@@ -406,6 +407,29 @@ describe('Layout', () => {
       expect(screen.queryByRole('link', { name: 'إدارة المستخدمين' })).not.toBeInTheDocument();
       unmount();
     }
+  });
+
+  it('يعرض «إدارة الفروع» للمشرف فقط (لا للمدير)', async () => {
+    useAuthMock.mockReturnValue({
+      ...baseUser(),
+      user: { ...baseUser().user, role: 'admin' },
+    });
+    stubMatchMedia(true);
+    const { unmount: unmountAdmin } = render(<Layout />);
+    await userEvent.setup().click(screen.getByRole('button', { name: /المزيد/ }));
+    expect(
+      within(screen.getByRole('dialog', { name: 'قائمة التنقل' })).getByRole('link', { name: 'إدارة الفروع' }),
+    ).toHaveAttribute('href', '/branches/manage');
+    unmountAdmin();
+
+    useAuthMock.mockReturnValue({
+      ...baseUser(),
+      user: { ...baseUser().user, role: 'manager' },
+      hasFullAccess: true,
+    });
+    const { unmount } = render(<Layout />);
+    expect(screen.queryByRole('link', { name: 'إدارة الفروع' })).not.toBeInTheDocument();
+    unmount();
   });
 
   it('يبقي الشريط الجانبي على الموبايل داخل الدرج عند فتحه', async () => {

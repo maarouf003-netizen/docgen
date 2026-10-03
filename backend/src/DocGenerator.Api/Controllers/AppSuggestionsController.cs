@@ -11,7 +11,7 @@ namespace DocGenerator.Api.Controllers;
 
 [ApiController]
 [Route("api/app-suggestions")]
-[Authorize]
+[Authorize(Roles = "lawyer,head,manager,admin")]
 public class AppSuggestionsController : ControllerBase
 {
     private readonly IAppSuggestionService _suggestions;

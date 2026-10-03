@@ -11,7 +11,7 @@ namespace DocGenerator.Api.Controllers;
 
 [ApiController]
 [Route("api/personal-reminders")]
-[Authorize]
+[Authorize(Roles = "lawyer")]
 public class PersonalRemindersController : ControllerBase
 {
     private readonly IPersonalReminderService _reminders;

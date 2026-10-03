@@ -13,7 +13,7 @@ namespace DocGenerator.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api")]
-[Authorize]
+[Authorize(Roles = "lawyer,head,manager,admin")]
 public class AppealsController : ControllerBase
 {
     private readonly IDocumentAppealService _appeals;

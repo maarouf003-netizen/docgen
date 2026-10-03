@@ -9,7 +9,7 @@ namespace DocGenerator.Api.Controllers;
 
 [ApiController]
 [Route("api/users")]
-[Authorize]
+[Authorize(Roles = "head,manager,admin")]
 public class UserManagementController : ControllerBase
 {
     private readonly IUserManagementService _users;
@@ -42,8 +42,13 @@ public class UserManagementController : ControllerBase
             return Forbid();
         try
         {
-            var user = await _users.CreateUserAsync(request, ActorName, ct);
+            // حد المشرف يُفرَض في الخدمة بمعرفة الفاعل (`BQ-001د`).
+            var user = await _users.CreateUserAsync(request, ActorName, ct, User.GetUserId());
             return CreatedAtAction(nameof(GetUser), new { id = user.Id }, user);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
         }
         catch (ArgumentException e)
         {

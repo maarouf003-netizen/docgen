@@ -27,12 +27,22 @@ public class UserManagementIntegrationTests
     [Fact]
     public async Task UserManagement_NonAdminRoles_Forbidden()
     {
-        foreach (var username in new[] { "manager", "head1", "lawyer1" })
+        // `BQ-001د` (`RF-004`): المدير يدير المستخدمين — بقي head1/lawyer1 مرفوضين.
+        foreach (var username in new[] { "head1", "lawyer1" })
         {
             var client = _factory.AuthorizedClient(username);
             var response = await client.GetAsync("/api/users");
             Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         }
+    }
+
+    [Fact]
+    public async Task UserManagement_AsManager_Allowed()
+    {
+        // `BQ-001د` (`RF-004`): المدير يسرد المستخدمين (كان `403`).
+        var client = _factory.AuthorizedClient("manager");
+        var response = await client.GetAsync("/api/users");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]

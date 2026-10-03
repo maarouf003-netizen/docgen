@@ -341,7 +341,7 @@ public class PortalController : ControllerBase
 /// <summary>إدارة حسابات مندوبي الجهات وربط نطاقهم — مدير/مشرف/رئيس قسم (د11).</summary>
 [ApiController]
 [Route("api/entity-portal/delegates")]
-[Authorize]
+[Authorize(Roles = "manager,admin,head")]
 public class DelegatesController : ControllerBase
 {
     private readonly IEntityDelegateService _delegates;
@@ -353,7 +353,7 @@ public class DelegatesController : ControllerBase
     {
         if (!RolePermissions.CanManageDelegates(User.GetRoleEnum()))
             return Forbid();
-        return Ok(await _delegates.ListAsync(ct));
+        return Ok(await _delegates.ListAsync(ct, Actor()));
     }
 
     [HttpPost]
@@ -363,7 +363,7 @@ public class DelegatesController : ControllerBase
             return Forbid();
         try
         {
-            return Ok(await _delegates.CreateAsync(request, User.Identity?.Name, ct));
+            return Ok(await _delegates.CreateAsync(request, User.Identity?.Name, ct, Actor()));
         }
         catch (ArgumentException e)
         {
@@ -378,7 +378,7 @@ public class DelegatesController : ControllerBase
             return Forbid();
         try
         {
-            var dto = await _delegates.UpdateAsync(id, request, User.Identity?.Name, ct);
+            var dto = await _delegates.UpdateAsync(id, request, User.Identity?.Name, ct, Actor());
             return dto is null ? NotFound() : Ok(dto);
         }
         catch (ArgumentException e)
@@ -386,4 +386,7 @@ public class DelegatesController : ControllerBase
             return BadRequest(new { message = e.Message });
         }
     }
+
+    private DocGenerator.Application.Services.EntityRegistryActor Actor() =>
+        new(User.GetUserId(), User.Identity?.Name, User.GetRoleEnum(), User.GetBranchId());
 }

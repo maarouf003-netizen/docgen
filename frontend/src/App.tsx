@@ -270,7 +270,7 @@ export default function App() {
             <Route
               path="/users/manage"
               element={
-                <RequireRole allowed={(role) => role === 'admin'}>
+                <RequireRole allowed={(role) => role === 'admin' || role === 'manager'}>
                   <UsersManagement />
                 </RequireRole>
               }
@@ -429,7 +429,7 @@ export default function App() {
             <Route
               path="/suggestions"
               element={
-                <RequireRole allowed={(role) => role === 'admin'}>
+                <RequireRole allowed={(role) => role === 'admin' || role === 'manager'}>
                   <SuggestionsPage />
                 </RequireRole>
               }

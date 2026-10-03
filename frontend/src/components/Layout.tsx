@@ -111,7 +111,9 @@ export default function Layout() {
   // فلا شروط أدوار أخرى هنا عمدًا.
   const canViewAuditLogs = hasFullAccess;
   const canManageBranchLawyers = user?.role === 'admin';
-  const canManageUsers = user?.role === 'admin';
+  // `BQ-001د`: المدير يدير المستخدمين عدا المشرف — إدارة الفروع مشرف فقط.
+  const canManageUsers = user?.role === 'admin' || user?.role === 'manager';
+  const canManageBranches = user?.role === 'admin';
   const canManageDelegates = hasFullAccess;
   // مندوب الجهة: الإحصائيات + الملفات التنفيذية + المراسلات دون باقي البنود (بوابة قرائية).
   const isEntityManager = user?.role === 'entitymanager';
@@ -153,7 +155,7 @@ export default function Layout() {
     if (hasFullAccess) navItems.push({ to: '/entities/review-management', label: 'مراجعة سجل الجهات العامة' });
     if (canManageDelegates) navItems.push({ to: '/delegates', label: 'مندوبو الجهات' });
     if (canManageUsers) navItems.push({ to: '/users/manage', label: 'إدارة المستخدمين' });
-    if (canManageUsers) navItems.push({ to: '/branches/manage', label: 'إدارة الفروع' });
+    if (canManageBranches) navItems.push({ to: '/branches/manage', label: 'إدارة الفروع' });
     if (hasFullAccess) navItems.push({ to: '/users', label: 'نشاط المستخدمين' });
     if (canViewAuditLogs) navItems.push({ to: '/audit-logs', label: 'سجل التدقيق' });
   }

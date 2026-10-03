@@ -14,7 +14,7 @@ namespace DocGenerator.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/review-letters")]
-[Authorize]
+[Authorize(Roles = "lawyer,head,manager,admin")]
 public class ReviewLettersController : ControllerBase
 {
     private readonly IReviewLetterService _letters;

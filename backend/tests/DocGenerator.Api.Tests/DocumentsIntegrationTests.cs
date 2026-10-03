@@ -140,12 +140,13 @@ public class DocumentsIntegrationTests
     }
 
     [Fact]
-    public async Task GetDeleted_AsManager_Forbidden()
+    public async Task GetDeleted_AsManager_Allowed()
     {
+        // `BQ-001` (`RF-004`): المدير يرى المحذوفات كالمشرف (كان `403`).
         var managerClient = _factory.AuthorizedClient("manager");
         var response = await managerClient.GetAsync("/api/documents/deleted");
 
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]
@@ -2145,12 +2146,12 @@ public class DocumentsIntegrationTests
     }
 
     [Fact]
-    public async Task StruckOff_Page_AsNonPrivilegedRole_Forbidden()
+    public async Task StruckOff_Page_AsManager_Allowed()
     {
-        // الملفات المشطوبة بنفس صلاحيات المحذوفات: المدير لا يرى هذه الصفحة.
+        // الملفات المشطوبة بنفس صلاحيات المحذوفات: المدير يراها (`BQ-001`, كان `403`).
         var managerClient = _factory.AuthorizedClient("manager");
         var response = await managerClient.GetAsync("/api/documents/struck-off");
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]

@@ -122,6 +122,37 @@ describe('UsersManagement', () => {
     });
   });
 
+  it('المدير لا يرى خيار دور المشرف ولا زر تعديل على صفوف المشرفين (`BQ-001د`)', async () => {
+    useAuthMock.mockReturnValue({ user: { id: 8, role: 'manager' } });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/branches') return Promise.resolve({ data: branches });
+      return Promise.resolve({ data: [userItem({ id: 7, role: 'admin', fullName: 'مشرف النظام' }), userItem()] });
+    });
+    const user = userEvent.setup();
+    render(<UsersManagement />);
+
+    expect(await screen.findByText('مشرف النظام')).toBeInTheDocument();
+    // لا زر تعديل على صف المشرف — زر وحيد لصف المحامي.
+    expect(screen.getAllByRole('button', { name: 'تعديل' })).toHaveLength(1);
+
+    await user.click(screen.getByRole('button', { name: '+ إضافة مستخدم' }));
+    const roleSelect = screen.getByLabelText('الدور') as HTMLSelectElement;
+    const options = Array.from(roleSelect.options).map((o) => o.value);
+    expect(options).not.toContain('admin');
+    expect(options).toContain('lawyer');
+  });
+
+  it('المشرف يرى خيار دور المشرف وزر تعديل على كل الصفوف', async () => {
+    render(<UsersManagement />);
+
+    expect(await screen.findByText('محامي دمشق')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'تعديل' })).toBeInTheDocument();
+
+    await userEvent.setup().click(screen.getByRole('button', { name: '+ إضافة مستخدم' }));
+    const roleSelect = screen.getByLabelText('الدور') as HTMLSelectElement;
+    expect(Array.from(roleSelect.options).map((o) => o.value)).toContain('admin');
+  });
+
   it('يظهر شارة الحالة الموقوف في القائمة', async () => {
     (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
       if (url === '/branches') return Promise.resolve({ data: branches });

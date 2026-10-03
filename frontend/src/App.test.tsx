@@ -124,11 +124,13 @@ describe('توجيه الجذر حسب الدور (انحدار: المندوب 
     expect(screen.queryByRole('heading', { name: 'الإحصائيات' })).not.toBeInTheDocument();
   });
 
-  it('المشرف على /suggestions يرى الصندوق، والمحامي يُرتد إلى لوحته', async () => {
-    useAuthMock.mockReturnValue(authState('admin'));
-    const { unmount } = renderAt('/suggestions');
-    expect(await screen.findByRole('heading', { name: 'اقتراحات التطوير' })).toBeInTheDocument();
-    unmount();
+  it('المشرف والمدير على /suggestions يريان الصندوق، والمحامي يُرتد إلى لوحته (`BQ-001`)', async () => {
+    for (const role of ['admin', 'manager'] as const) {
+      useAuthMock.mockReturnValue(authState(role));
+      const { unmount } = renderAt('/suggestions');
+      expect(await screen.findByRole('heading', { name: 'اقتراحات التطوير' })).toBeInTheDocument();
+      unmount();
+    }
 
     useAuthMock.mockReturnValue(authState('lawyer'));
     renderAt('/suggestions');
