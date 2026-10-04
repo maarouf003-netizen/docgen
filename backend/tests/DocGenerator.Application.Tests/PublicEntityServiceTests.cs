@@ -1126,7 +1126,8 @@ public class PublicEntityServiceTests : IDisposable
     public async Task MoveEntry_CreatesChangeEvent()
     {
         var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
-        await _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, "admin_decision", "123", "2026/1/1", "ملاحظة"), ManagerActor());
+        // `RF-014`: صيغة السنة-أولًا غير المبطنة (`2026/1/1`) مرفوضة — نفس التاريخ بصيغة يوم/شهر.
+        await _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, "admin_decision", "123", "1/1/2026", "ملاحظة"), ManagerActor());
 
         var evt = await _db.PublicEntityChangeEvents.SingleAsync();
         Assert.Equal(e1, evt.EntryId);
