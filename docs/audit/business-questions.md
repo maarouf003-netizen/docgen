@@ -41,6 +41,8 @@
   - **الدليل**: `render.yaml:1-25` (قاعدة `Postgres` مدارة + خدمة `docker` + أسرار بيئية `sync:false`)؛ القائمة الملزمة وسياسة النسخ (`RPO` 24 ساعة / `RTO` 4 ساعات) في `RUN_GUIDE.md` §9؛ لا `SMS`/بريد/تكامل حكومي في الكود (غياب متحقق — `02-security.md:39`).
 - BQ-019 (PROMPT 1 §2): هل دور `entitymanager` الخارجي معزول بنيويًا عن كل الكتابة عدا بوابته؟ `EntityManagerPortalGuard` (`Program.cs:307-308`) يدّعي ذلك — يحتاج إثبات PROMPT 2.
 - BQ-020 (PROMPT 1 §4): ملف `docs/audit/00-PROJECT-CONTEXT.md` غير موجود؛ قُرئ `docs/00-PROJECT-CONTEXT.md` بدلًا منه — هل هما متطابقان أم يُنسَخ الملف إلى `docs/audit/`؟
+  - **القرار (المالك)**: انسخوه. نُفذ (نسخة بايتية مطابقة — بصمة `SHA256` متطابقة؛ الأصل `docs/00-PROJECT-CONTEXT.md` هو المرجع لأي تعديل مستقبلي).
+  - **الدليل**: الملف نفسه يأمر بالنسخ (`docs/00-PROJECT-CONTEXT.md:3`: «انسخه إلى المستودع في `docs/audit/00-PROJECT-CONTEXT.md`»).
 
 # أسئلة المالك — من PROMPT 2 (SECURITY)
 
