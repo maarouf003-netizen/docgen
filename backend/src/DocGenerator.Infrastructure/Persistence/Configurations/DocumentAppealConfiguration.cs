@@ -13,7 +13,12 @@ public class DocumentAppealConfiguration : IEntityTypeConfiguration<DocumentAppe
 {
     public void Configure(EntityTypeBuilder<DocumentAppeal> builder)
     {
-        builder.ToTable("DocumentAppeals");
+        // `PB-002` (`BQ-035`): حالة الاستئناف مجمدة قاعديًا من الكتالوج نفسه.
+        builder.ToTable("DocumentAppeals", table =>
+        {
+            table.HasCheckConstraint("CK_DocumentAppeals_Status",
+                $"\"Status\" IN ({CheckConstraintLists.InList(AppealStatusCatalog.ValidStatuses)})");
+        });
         builder.HasKey(a => a.Id);
 
         // عامل مطابق لقفل الحذف المنطقي للملف الأب.

@@ -331,4 +331,8 @@ npm test
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261004061212_PB001_Normalization.cs` — أعمدة `CanonicalNameNorm` (فريد) و`CourtNorm` (مفهرس + فريد مركب للترقيم) و`DelegatedCourtNorm`. نص SQL مولّد ومُراجَع في `docs/audit/migrations/PB001_sqlite.sql`.
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261004061229_PB001_NormalizationPg.cs` — نفسه. نص SQL في `docs/audit/migrations/PB001_postgres.sql`.
   - القائم تجريبي بقرار المالك (تعبئة نسخ خام). ⚠️ على أي قاعدة فيها بيانات حقيقية: نفّذ أولًا استعلام الكشف في `docs/audit/units/PB-001.md` (يجب فارغًا) ونظّف بالدمج — وإلا أسقط الفريدُ الهجرة. بعد الإقلاع: تحقق من `__EFMigrationsHistory` ثم جرّب هوية بمتغير إملائي — المتوقع `400`.
+- [ ] **2026-10-04 — `PB002_StatusChecks` / `PB002_StatusChecksPg`** (`PB-002`: تجميد آلات الحالة — أي إملاء خاطئ مرفوض عند الكتابة):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261004070753_PB002_StatusChecks.cs` — 6 قيود `Check` من الكتالوجات. نص SQL مولّد ومُراجَع في `docs/audit/migrations/PB002_sqlite.sql`.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261004070818_PB002_StatusChecksPg.cs` — نفسه. نص SQL في `docs/audit/migrations/PB002_postgres.sql`.
+  - ⚠️ على أي قاعدة فيها بيانات: نفّذ أولًا استعلامات الكشف في `docs/audit/units/PB-002.md` (كلها يجب فارغة) ونظّف الصفوف اليتيمة — وإلا أسقط القيدُ الهجرة. بعد الإقلاع: تحقق من `__EFMigrationsHistory`.
 

@@ -9,7 +9,12 @@ public class DocumentDelegationConfiguration : IEntityTypeConfiguration<Document
 {
     public void Configure(EntityTypeBuilder<DocumentDelegation> builder)
     {
-        builder.ToTable("DocumentDelegations");
+        // `PB-002` (`BQ-035`): حالة الإنابة مجمدة قاعديًا من الكتالوج نفسه.
+        builder.ToTable("DocumentDelegations", table =>
+        {
+            table.HasCheckConstraint("CK_DocumentDelegations_Status",
+                $"\"Status\" IN ({CheckConstraintLists.InList(DelegationStatusCatalog.ValidStatuses)})");
+        });
         builder.HasKey(d => d.Id);
 
         // الإنابة جزء من الملف المنيب: تُخفى عند الحذف المنطقي للمصدر (مطابق لعوامل الأبناء).

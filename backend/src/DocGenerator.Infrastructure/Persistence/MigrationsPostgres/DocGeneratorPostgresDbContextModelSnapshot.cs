@@ -1135,7 +1135,16 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .IsUnique()
                         .HasFilter("NOT \"IsDeleted\" AND \"FileNumber\" IS NOT NULL AND \"CourtNorm\" IS NOT NULL");
 
-                    b.ToTable("Documents", (string)null);
+                    b.ToTable("Documents", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Documents_ExecStatus", "\"ExecStatus\" IN ('', 'منفذ جبريا', 'منفذ بالتسوية', 'تريث', 'منفذ إنابة', 'مسترد', 'محال الى البداية', 'مشطوب')");
+
+                            t.HasCheckConstraint("CK_Documents_ExecSubStatus", "\"ExecSubStatus\" IN ('منفذ جزئيا', 'منفذ كاملا')");
+
+                            t.HasCheckConstraint("CK_Documents_ExecutedStatus", "\"ExecutedStatus\" IN ('', 'منفذ', 'مشطوب')");
+
+                            t.HasCheckConstraint("CK_Documents_GeneralEntitySide", "\"GeneralEntitySide\" IN ('applicant', 'executed', 'deposit')");
+                        });
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentAppeal", b =>
@@ -1281,7 +1290,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.HasIndex("Status");
 
-                    b.ToTable("DocumentAppeals", (string)null);
+                    b.ToTable("DocumentAppeals", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_DocumentAppeals_Status", "\"Status\" IN ('pending', 'decided', 'struck-off')");
+                        });
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentAssignment", b =>
@@ -1432,7 +1444,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.HasIndex("Status");
 
-                    b.ToTable("DocumentDelegations", (string)null);
+                    b.ToTable("DocumentDelegations", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_DocumentDelegations_Status", "\"Status\" IN ('بانتظار رئيس القسم', 'محالة', 'مسجلة أصولًا', 'منفذ إنابة')");
+                        });
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentFieldChange", b =>

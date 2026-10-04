@@ -9,7 +9,19 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
 {
     public void Configure(EntityTypeBuilder<Document> builder)
     {
-        builder.ToTable("Documents");
+        // `PB-002` (`BQ-035`): آلات الحالة مجمدة قاعديًا — القوائم من ثوابت
+        // الكتالوجات نفسها (مصدر واحد؛ `NULL` تجتاز الفحص تلقائيًا).
+        builder.ToTable("Documents", table =>
+        {
+            table.HasCheckConstraint("CK_Documents_ExecStatus",
+                $"\"ExecStatus\" IN ({CheckConstraintLists.InList(ExecutionStatusCatalog.ValidStatuses.Append(ExecutionStatusCatalog.StateStruckOff))})");
+            table.HasCheckConstraint("CK_Documents_ExecSubStatus",
+                $"\"ExecSubStatus\" IN ({CheckConstraintLists.InList(ExecutionStatusCatalog.ValidSubStatuses)})");
+            table.HasCheckConstraint("CK_Documents_ExecutedStatus",
+                $"\"ExecutedStatus\" IN ({CheckConstraintLists.InList(ExecutedStatusCatalog.ValidStatuses)})");
+            table.HasCheckConstraint("CK_Documents_GeneralEntitySide",
+                $"\"GeneralEntitySide\" IN ({CheckConstraintLists.InList(GeneralEntitySideCatalog.ValidSides)})");
+        });
         builder.HasKey(d => d.Id);
 
         // الحذف المنطقي: يُخفى المحذوف تلقائياً من كل الاستعلامات

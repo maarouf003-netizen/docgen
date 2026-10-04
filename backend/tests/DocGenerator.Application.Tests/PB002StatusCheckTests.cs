@@ -64,7 +64,7 @@ public class PB002StatusCheckTests : IDisposable
         _db.Documents.Add(doc);
         await _db.SaveChangesAsync();
 
-        _db.DocumentDelegations.Add(new DocumentDelegation { SourceDocumentId = doc.Id, Status = "يتيمة" });
+        _db.DocumentDelegations.Add(new DocumentDelegation { SourceDocumentId = doc.Id, CreatedById = uid, Status = "يتيمة" });
         await Assert.ThrowsAsync<DbUpdateException>(() => _db.SaveChangesAsync());
     }
 
@@ -77,7 +77,7 @@ public class PB002StatusCheckTests : IDisposable
         await _db.SaveChangesAsync();
 
         foreach (var s in DelegationStatusCatalog.ValidStatuses)
-            _db.DocumentDelegations.Add(new DocumentDelegation { SourceDocumentId = doc.Id, Status = s });
+            _db.DocumentDelegations.Add(new DocumentDelegation { SourceDocumentId = doc.Id, CreatedById = uid, Status = s });
         await _db.SaveChangesAsync();
     }
 
@@ -89,7 +89,7 @@ public class PB002StatusCheckTests : IDisposable
         _db.Documents.Add(doc);
         await _db.SaveChangesAsync();
 
-        _db.DocumentAppeals.Add(new DocumentAppeal { DocumentId = doc.Id, Status = "يتيم" });
+        _db.DocumentAppeals.Add(new DocumentAppeal { DocumentId = doc.Id, CreatedById = uid, Status = "يتيم" });
         await Assert.ThrowsAsync<DbUpdateException>(() => _db.SaveChangesAsync());
     }
 
@@ -102,7 +102,7 @@ public class PB002StatusCheckTests : IDisposable
         await _db.SaveChangesAsync();
 
         foreach (var s in AppealStatusCatalog.ValidStatuses)
-            _db.DocumentAppeals.Add(new DocumentAppeal { DocumentId = doc.Id, Status = s });
+            _db.DocumentAppeals.Add(new DocumentAppeal { DocumentId = doc.Id, CreatedById = uid, Status = s });
         await _db.SaveChangesAsync();
     }
 }

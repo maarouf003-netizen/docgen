@@ -6,6 +6,7 @@ using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Time.Testing;
 
 namespace DocGenerator.Application.Tests;
@@ -252,16 +253,15 @@ public class PortalRestructureTests : IDisposable
     [Fact]
     public async Task LegacyUnknownStatus_CountedAsCirculating_BucketsReconcile()
     {
-        // H2: صف إرثي بحالة غير مصنّفة يُعامل «متداولًا» — ومجموع السلّات يساوي الإجمالي دائمًا.
-        await SeedDocAsync("إرثي", null, null, _entryDamascusId, "حالة إرثية قديمة", false, "ليرة سورية", 70);
+        // `PB-002` (`BQ-035`): الحالات اليتيمة مستحيلة قاعديًا — زرع صف إرثي
+        // مرفوض عند الحفظ (كان يُطوى «متداولًا» قبل التجميد؛ التوفيق مغطى بغيره).
         await SeedDocAsync("متداول", null, null, _entryDamascusId, null, false, "ليرة سورية", 30);
+        await Assert.ThrowsAsync<DbUpdateException>(() =>
+            SeedDocAsync("إرثي", null, null, _entryDamascusId, "حالة إرثية قديمة", false, "ليرة سورية", 70));
 
         var stats = await _portal.GetStatsAsync(_delegateGroupId);
-        Assert.Equal(2, stats.TotalFiles);
-        Assert.Equal(2, stats.CirculatingFiles);
-        Assert.Equal(stats.TotalFiles,
-            stats.CirculatingFiles + stats.DeferredFiles + stats.ExecutedFiles
-            + stats.ReferredToStartFiles + stats.DraftFiles);
+        Assert.Equal(1, stats.TotalFiles);
+        Assert.Equal(1, stats.CirculatingFiles);
     }
 
     /// <summary>
@@ -421,20 +421,18 @@ public class PortalRestructureTests : IDisposable
     [Fact]
     public async Task LegacyUnknownStatus_FoldedIntoCirculating_FilterMatchesCounter()
     {
-        // قرار المالك: الإرثي يُطوى «متداولًا» في العدّاد والفلتر معًا — لا عدّاد بلا فلتر.
-        await SeedDocAsync("إرثي", null, null, _entryDamascusId, "قيد المعالجة", false, "ليرة سورية", 100);
-        await SeedDocAsync("مسودة إرثية", null, null, _entryDamascusId, "قيد المعالجة", true, "ليرة سورية", 50);
+        // `PB-002` (`BQ-035`): زرع اليتيم مرفوض — والفلتر == العدّاد على الصالح.
+        // (الصالح أولًا: الإدخال الفاشل يبقى متتبَّعًا فيسمم أي حفظ لاحق.)
+        await SeedDocAsync("متداول", null, null, _entryDamascusId, null, false, "ليرة سورية", 30);
+        await Assert.ThrowsAsync<DbUpdateException>(() =>
+            SeedDocAsync("إرثي", null, null, _entryDamascusId, "قيد المعالجة", false, "ليرة سورية", 100));
 
         var stats = await _portal.GetStatsAsync(_delegateGroupId);
-        Assert.Equal(2, stats.TotalFiles);
-        Assert.Equal(2, stats.CirculatingFiles);
-        Assert.Equal(0, stats.DraftFiles);
+        Assert.Equal(1, stats.TotalFiles);
+        Assert.Equal(1, stats.CirculatingFiles);
 
-        // لازمة التطابق الدقيقة التي فاتت المراجعة السابقة: الفلتر == العدّاد حتى مع الإرثي.
         var circulating = await _portal.ListFilesAsync(_delegateGroupId, null, ExecutionStatusCatalog.StateCirculating, 1, 20);
         Assert.Equal(stats.CirculatingFiles, circulating.TotalCount);
-        var drafts = await _portal.ListFilesAsync(_delegateGroupId, null, ExecutionStatusCatalog.DraftFilter, 1, 20);
-        Assert.Equal(0, drafts.TotalCount);
     }
 
     [Fact]
@@ -505,7 +503,8 @@ public class PortalRestructureTests : IDisposable
     [Fact]
     public async Task AppealsBreakdown_ExplicitSets_UnknownIsPending()
     {
-        // المغلق = محسوم/مشطوب حصرًا؛ أي حالة مستقبلية معلّقة ظاهرة لا مدفونة.
+        // `PB-002` (`BQ-035`): المغلق = محسوم/مشطوب حصرًا قاعديًا — أي حالة
+        // مستقبلية مرفوضة عند الزرع (كانت معلّقة ظاهرة قبل التجميد).
         var inScope = await SeedDocAsync("داخل", null, null, _entryDamascusId, null, false, "ليرة سورية", 10);
         var outScope = new Document
         {
@@ -519,12 +518,15 @@ public class PortalRestructureTests : IDisposable
             new DocumentAppeal { DocumentId = inScope, Direction = AppealDirectionCatalog.Appellants, Status = AppealStatusCatalog.Pending, AppellantsJson = "[]", AppelleesJson = "[]", CreatedById = 1 },
             new DocumentAppeal { DocumentId = inScope, Direction = AppealDirectionCatalog.Appellants, Status = AppealStatusCatalog.Decided, AppellantsJson = "[]", AppelleesJson = "[]", CreatedById = 1 },
             new DocumentAppeal { DocumentId = inScope, Direction = AppealDirectionCatalog.Appellants, Status = AppealStatusCatalog.StruckOff, AppellantsJson = "[]", AppelleesJson = "[]", CreatedById = 1 },
-            new DocumentAppeal { DocumentId = inScope, Direction = AppealDirectionCatalog.Appellants, Status = "حالة مستقبلية", AppellantsJson = "[]", AppelleesJson = "[]", CreatedById = 1 },
             new DocumentAppeal { DocumentId = outScope.Id, Direction = AppealDirectionCatalog.Appellants, Status = AppealStatusCatalog.Pending, AppellantsJson = "[]", AppelleesJson = "[]", CreatedById = 1 });
         await _db.SaveChangesAsync();
 
+        _db.DocumentAppeals.Add(
+            new DocumentAppeal { DocumentId = inScope, Direction = AppealDirectionCatalog.Appellants, Status = "حالة مستقبلية", AppellantsJson = "[]", AppelleesJson = "[]", CreatedById = 1 });
+        await Assert.ThrowsAsync<DbUpdateException>(() => _db.SaveChangesAsync());
+
         var stats = await _portal.GetStatsAsync(_delegateGroupId);
-        Assert.Equal(2, stats.PendingAppeals);
+        Assert.Equal(1, stats.PendingAppeals);
         Assert.Equal(2, stats.ClosedAppeals);
     }
 
