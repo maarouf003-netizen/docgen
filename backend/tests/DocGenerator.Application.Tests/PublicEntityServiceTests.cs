@@ -379,7 +379,8 @@ public class PublicEntityServiceTests : IDisposable
 
         var applicantAfter = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == applicantDoc.Id);
         Assert.Equal("وزارة التربية - محافظة دمشق", applicantAfter.Applicant);
-        Assert.Contains("وزارة التربية", applicantAfter.SearchText);
+        // `PB-001`: البلوب مطبَّع (العرض خام كما هو).
+        Assert.Contains("وزاره التربيه", applicantAfter.SearchText);
 
         var executedRow = await _db.ExecutedPublicEntities.AsNoTracking().SingleAsync(e => e.DocumentId == executedDoc.Id);
         Assert.Equal("وزارة التربية", executedRow.EntityName);
@@ -423,7 +424,8 @@ public class PublicEntityServiceTests : IDisposable
 
         Assert.Contains("كفيل مستقل", doc.SearchText);
         Assert.Contains("وريث مستقل", doc.SearchText);
-        Assert.Contains("هيئة أخرى", doc.SearchText);
+        // `PB-001`: البلوب مطبَّع (`ة`←`ه` و`ى`←`ي`؛ `ؤ` تبقى).
+        Assert.Contains("هيئه اخري", doc.SearchText);
 
         var entry = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة التعليم", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         _audit.Actions.Clear();
@@ -432,11 +434,12 @@ public class PublicEntityServiceTests : IDisposable
             new UpdatePublicEntityRequest("وزارة التربية", null, null, null, null, null, null), ManagerActor());
 
         var after = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == doc.Id);
-        Assert.Contains("وزارة التربية", after.SearchText);
+        // `PB-001`: البلوب مطبَّع (العرض في `Applicant` خام كما هو).
+        Assert.Contains("وزاره التربيه", after.SearchText);
         Assert.Contains("كفيل مستقل", after.SearchText);
         Assert.Contains("وريث مستقل", after.SearchText);
-        Assert.Contains("هيئة أخرى", after.SearchText);
-        Assert.DoesNotContain("وزارة التعليم", after.SearchText);
+        Assert.Contains("هيئه اخري", after.SearchText);
+        Assert.DoesNotContain("وزاره التعليم", after.SearchText);
 
         // إدخال تدقيق واحد للملف يجمع تغيّرَي الطالب والمنفذ المطابق.
         var syncLog = Assert.Single(_audit.ChangeLogs.Where(c => c.DocumentId == doc.Id));
@@ -1460,7 +1463,8 @@ public class PublicEntityServiceTests : IDisposable
 
         var after = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == doc.Id);
         Assert.Equal("وزارة الصحة والسكان - محافظة دمشق", after.Applicant);
-        Assert.Contains("وزارة الصحة والسكان", after.SearchText);
+        // `PB-001`: البلوب مطبَّع.
+        Assert.Contains("وزاره الصحه والسكان", after.SearchText);
         Assert.False(ArabicNameNormalizer.Normalize(after.SearchText)
             .Contains("وزارة الصحة -", StringComparison.Ordinal));
     }
@@ -1500,8 +1504,9 @@ public class PublicEntityServiceTests : IDisposable
 
         var after = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == doc.Id);
         Assert.Equal("وزارة الصحة والسكان - محافظة دمشق", after.Applicant);
-        Assert.Contains("وزارة الصحة والسكان", after.SearchText);
-        Assert.DoesNotContain("مديرية الصحة", after.SearchText);
+        // `PB-001`: البلوب مطبَّع.
+        Assert.Contains("وزاره الصحه والسكان", after.SearchText);
+        Assert.DoesNotContain("مديريه الصحه", after.SearchText);
     }
 
     [Fact]
@@ -2312,8 +2317,9 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal(survivor.Id, after.ApplicantRegistryId);
 
         // النص أُعيد بناؤه بالاسم الموحّد.
-        Assert.Contains("الجهة الموحدة الهدف", after.SearchText);
-        Assert.DoesNotContain("الجهة الممتصة", after.SearchText);
+        // `PB-001`: البلوب مطبَّع.
+        Assert.Contains("الجهه الموحده الهدف", after.SearchText);
+        Assert.DoesNotContain("الجهه الممتصه", after.SearchText);
 
         // مندوب المطوي يرحل لناجيه؛ مندوب المنقول يبقى على قيده (المنقول ما زال قيدًا صالحًا).
         var foldedDelegate = await _db.Users.AsNoTracking().SingleAsync(u => u.Username == "del.folded");
@@ -3190,8 +3196,9 @@ public class PublicEntityServiceTests : IDisposable
         Assert.Equal("هيئة التجارة الموحدة", updatedRow.Name);
 
         var after = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == doc.Id);
-        Assert.Contains("هيئة التجارة الموحدة", after.SearchText);
-        Assert.DoesNotContain("المؤسسة السورية للتجارة", after.SearchText);
+        // `PB-001`: البلوب مطبَّع.
+        Assert.Contains("هيئه التجاره الموحده", after.SearchText);
+        Assert.DoesNotContain("المؤسسه السوريه للتجاره", after.SearchText);
     }
 
     [Fact]
@@ -3235,8 +3242,9 @@ public class PublicEntityServiceTests : IDisposable
 
         // الاسم الجديد يُعاد بناء نص البحث، ولا يبقى الاسم القديم في SearchText.
         var after = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == doc.Id);
-        Assert.Contains("وزارة الصحة والسكان", after.SearchText);
-        Assert.DoesNotContain("مديرية الصحة", after.SearchText);
+        // `PB-001`: البلوب مطبَّع.
+        Assert.Contains("وزاره الصحه والسكان", after.SearchText);
+        Assert.DoesNotContain("مديريه الصحه", after.SearchText);
     }
 
     [Fact]
@@ -3265,8 +3273,9 @@ public class PublicEntityServiceTests : IDisposable
         var updatedRow = await _db.ExecutionApplicants.AsNoTracking().SingleAsync(a => a.Id == row.Id);
         Assert.Equal("هيئة التجارة الموحدة", updatedRow.Name);
         var after = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == doc.Id);
-        Assert.Contains("هيئة التجارة الموحدة", after.SearchText);
-        Assert.DoesNotContain("المؤسسة السورية للتجارة", after.SearchText);
+        // `PB-001`: البلوب مطبَّع.
+        Assert.Contains("هيئه التجاره الموحده", after.SearchText);
+        Assert.DoesNotContain("المؤسسه السوريه للتجاره", after.SearchText);
 
         Assert.Contains("appeal_entity_sync", _audit.Actions);
 

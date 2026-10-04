@@ -170,7 +170,8 @@ public class ApplicantAndAssignmentTests : IDisposable
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
         var stored = await _db.Documents.SingleAsync(d => d.Id == doc.Id);
 
-        Assert.Contains("شركة النور", stored.SearchText);
+        // `PB-001`: البلوب مطبَّع.
+        Assert.Contains("شركه النور", stored.SearchText);
         Assert.Contains("ر-777", stored.SearchText);
     }
 }

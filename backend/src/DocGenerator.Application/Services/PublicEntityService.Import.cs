@@ -79,6 +79,7 @@ public sealed partial class PublicEntityService
                     group = new PublicEntityGroup
                     {
                         CanonicalName = canonical,
+                        CanonicalNameNorm = canonicalNorm,
                         EntityType = entityType,
                         IsActive = true,
                         CreatedAt = DateTime.UtcNow,

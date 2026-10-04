@@ -17,6 +17,9 @@ public class PublicEntityGroupConfiguration : IEntityTypeConfiguration<PublicEnt
         builder.HasKey(g => g.Id);
         builder.Property(g => g.CanonicalName).HasMaxLength(200).IsRequired();
         builder.HasIndex(g => g.CanonicalName).IsUnique();
+        // `PB-001`: وحدانية الاسم المعياري (المتغيرات الإملائية هوية واحدة).
+        builder.Property(g => g.CanonicalNameNorm).HasMaxLength(200);
+        builder.HasIndex(g => g.CanonicalNameNorm).IsUnique();
         builder.Property(g => g.EntityType).HasMaxLength(30).IsRequired();
         builder.HasIndex(g => g.EntityType);
     }

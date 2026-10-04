@@ -327,4 +327,8 @@ npm test
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261002171957_RF011_IdempotencyKeys.cs` — جدول `IdempotencyKeys` (قيد فريد مركب + فهرس انتهاء). نص SQL مولّد ومُراجَع في `docs/audit/migrations/RF011_sqlite.sql`.
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261002172031_RF011_IdempotencyKeysPg.cs` — نفسه. نص SQL في `docs/audit/migrations/RF011_postgres.sql`.
   - جدول جديد فارغ — بلا تنظيف لازم. بعد الإقلاع: تحقق من سجل `__EFMigrationsHistory` ثم جرّب إنشاء ملف مرتين بنفس ترويسة `X-Idempotency-Key` — المتوقع ملف واحد والثانية `200` بنفس الجسم.
+- [ ] **2026-10-04 — `PB001_Normalization` / `PB001_NormalizationPg`** (`PB-001`: التطبيع العربي الشامل — الهمزة المختلفة لا تصنع هوية):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261004061212_PB001_Normalization.cs` — أعمدة `CanonicalNameNorm` (فريد) و`CourtNorm` (مفهرس + فريد مركب للترقيم) و`DelegatedCourtNorm`. نص SQL مولّد ومُراجَع في `docs/audit/migrations/PB001_sqlite.sql`.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261004061229_PB001_NormalizationPg.cs` — نفسه. نص SQL في `docs/audit/migrations/PB001_postgres.sql`.
+  - القائم تجريبي بقرار المالك (تعبئة نسخ خام). ⚠️ على أي قاعدة فيها بيانات حقيقية: نفّذ أولًا استعلام الكشف في `docs/audit/units/PB-001.md` (يجب فارغًا) ونظّف بالدمج — وإلا أسقط الفريدُ الهجرة. بعد الإقلاع: تحقق من `__EFMigrationsHistory` ثم جرّب هوية بمتغير إملائي — المتوقع `400`.
 

@@ -66,7 +66,9 @@ public static class DocumentSearchTextBuilder
                 .Concat(entityLegalFields)
                 .Concat(executedHeirNames);
         }
-        return Truncate(string.Join(' ', parts));
+        // `PB-001`: البلوب مطبَّع — كلمة البحث تُطبَّع بدورها في المستودعات
+        // فيُصاب المتغير ويبقى العرض خامًا (لا شيء يعرض `SearchText`).
+        return Truncate(ArabicNameNormalizer.Normalize(string.Join(' ', parts)));
     }
 
     /// <summary>
@@ -103,10 +105,12 @@ public static class DocumentSearchTextBuilder
         if (string.IsNullOrWhiteSpace(term))
             return current ?? string.Empty;
 
+        // `PB-001`: البلوب مطبَّع — يُطبَّع الملحق ويُقارَن معياريًا.
+        var normTerm = ArabicNameNormalizer.Normalize(term);
         var text = current ?? string.Empty;
-        if (text.Contains(term.Trim(), StringComparison.Ordinal))
+        if (text.Contains(normTerm, StringComparison.Ordinal))
             return text;
 
-        return Truncate(string.Join(' ', new[] { text, term.Trim() }.Where(v => !string.IsNullOrWhiteSpace(v))));
+        return Truncate(string.Join(' ', new[] { text, normTerm }.Where(v => !string.IsNullOrWhiteSpace(v))));
     }
 }

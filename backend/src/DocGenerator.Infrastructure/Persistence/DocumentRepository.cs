@@ -1,3 +1,4 @@
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
@@ -194,7 +195,9 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         if (!string.IsNullOrWhiteSpace(court))
         {
             var term = court.Trim();
-            q = q.Where(d => d.Court != null && d.Court == term);
+            // `PB-001`: الدقة الخام أو المعيارية (مجموعة عليا — بلا انحدار مطابقات دقيقة).
+            var normTerm = ArabicNameNormalizer.Normalize(term);
+            q = q.Where(d => d.Court != null && (d.Court == term || d.CourtNorm == normTerm));
         }
 
         if (!string.IsNullOrWhiteSpace(lawyer))
@@ -256,11 +259,14 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
     /// </summary>
     private IQueryable<Document> ApplyPersonNameSearch(IQueryable<Document> q, string term)
     {
+        // `PB-001`: البلوب مطبَّع — تُطبَّع الكلمة لبنده فقط؛ البنود الحرفية على
+        // النص الخام تبقى كما هي (فلا تنحدر المطابقات الدقيقة).
+        var normTerm = ArabicNameNormalizer.Normalize(term);
         // البحث بأسماء المستأنف/المستأنف عليهم من لقطات الاستئنافات: ملفٌ يطابق
         // إذا كان عليه استئناف تحوي الاسم في لقطته — تظهر نتائجه بشارة «استئناف».
         var appeals = Db.DocumentAppeals;
         return q.Where(d =>
-            (d.SearchText != null && d.SearchText.Contains(term)) ||
+            (d.SearchText != null && d.SearchText.Contains(normTerm)) ||
             (d.BorrowerName != null &&
                 ((d.BorrowerName + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term) ||
                  (d.BorrowerName + " " + (d.BorrowerFather ?? string.Empty) + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term))) ||
@@ -312,9 +318,11 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         // البنية نسخة حرفية من الكتلة الموحدة (راجع تعليقات فروعها هناك) بلا الفروع الثلاثة.
         // ويُبقى فرع ورثة المنفذ عليه عمدًا رغم اسمه: مطابقته على هذه الصفحة سلوك قائم
         // منذ قبل التوحيد (ج) — فإزالته انحدار خارج نطاق التضييق المعتمد، لا تتميم له.
+        // `PB-001`: الكلمة مطبَّعة لبند البلوب فقط كالكتلة الموحدة.
+        var normTerm = ArabicNameNormalizer.Normalize(term);
         var appeals = Db.DocumentAppeals;
         return q.Where(d =>
-            (d.SearchText != null && d.SearchText.Contains(term)) ||
+            (d.SearchText != null && d.SearchText.Contains(normTerm)) ||
             (d.BorrowerName != null &&
                 ((d.BorrowerName + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term) ||
                  (d.BorrowerName + " " + (d.BorrowerFather ?? string.Empty) + " " + (d.BorrowerFamily ?? string.Empty)).Contains(term))) ||
@@ -611,13 +619,16 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         if (string.IsNullOrEmpty(n) || string.IsNullOrEmpty(y))
             return false;
         var c = court?.Trim() ?? string.Empty;
+        // `PB-001`: الدائرة تُقارَن معيارية-لمعيارية (تغلق ثغرة متغيرات الإملاء في
+        // قيد `RF-009`)؛ الصفوف القديمة بلا معيار تسقط على الخام كما قبل.
+        var normC = ArabicNameNormalizer.Normalize(court);
         var t = type?.Trim() ?? string.Empty;
         var yearInt = int.TryParse(y, out var parsed) ? parsed : (int?)null;
         return await Db.Documents
             .AsNoTracking()
             .Where(d => !d.IsDeleted)
             .Where(d => excludeDocumentId == null || d.Id != excludeDocumentId)
-            .Where(d => (d.Court ?? string.Empty).Trim() == c
+            .Where(d => (d.CourtNorm != null ? d.CourtNorm == normC : (d.Court ?? string.Empty).Trim() == c)
                 && (d.FileType ?? string.Empty).Trim() == t)
             .Where(d => (d.FileNumber != null && d.FileNumber.Trim() == n
                     && d.FileYear != null && d.FileYear.Trim() == y)
@@ -712,7 +723,9 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         if (!string.IsNullOrWhiteSpace(court))
         {
             var term = court.Trim();
-            q = q.Where(d => d.Court != null && d.Court == term);
+            // `PB-001`: الدقة الخام أو المعيارية (مجموعة عليا — بلا انحدار مطابقات دقيقة).
+            var normTerm = ArabicNameNormalizer.Normalize(term);
+            q = q.Where(d => d.Court != null && (d.Court == term || d.CourtNorm == normTerm));
         }
 
         if (!string.IsNullOrWhiteSpace(lawyer))

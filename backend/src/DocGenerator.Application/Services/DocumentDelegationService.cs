@@ -92,6 +92,10 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
             {
                 SourceDocumentId = source.Id,
                 DelegatedCourt = court,
+                // `PB-001`: الدائرة المنابة المعيارية (تضبط مع الخام).
+                DelegatedCourtNorm = string.IsNullOrWhiteSpace(court)
+                    ? null
+                    : ArabicNameNormalizer.Normalize(court),
                 IsExternal = fields.IsExternal,
                 ExternalBranchId = fields.ExternalBranchId,
                 DelegationDate = fields.DelegationDate,
@@ -195,6 +199,9 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
             await ValidateAssetsNotBlockedAsync(fresh, request.AssetIds, excludeDelegationId: delegation.Id, token);
 
             delegation.DelegatedCourt = court;
+            delegation.DelegatedCourtNorm = string.IsNullOrWhiteSpace(court)
+                ? null
+                : ArabicNameNormalizer.Normalize(court);
             delegation.IsExternal = fields.IsExternal;
             delegation.ExternalBranchId = fields.ExternalBranchId;
             delegation.DelegationDate = fields.DelegationDate;

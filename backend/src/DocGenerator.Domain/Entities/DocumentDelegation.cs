@@ -24,6 +24,11 @@ public class DocumentDelegation
 
     /// <summary>الدائرة المنابة (دائرة التنفيذ في المحكمة المستهدفة) — حقل نص حر.</summary>
     public string? DelegatedCourt { get; set; }
+    /// <summary>
+    /// الدائرة المنابة المعيارية (`PB-001`): تطبيع `DelegatedCourt` — تضبطها
+    /// الخدمة عند التسطير/التعديل؛ `NULL` للصفوف القديمة.
+    /// </summary>
+    public string? DelegatedCourtNorm { get; set; }
 
     /// <summary>هل الإنابة خارجية (لمحافظة أخرى)؟ عندها يُذكر الفرع المناب والفرع المنيب.</summary>
     public bool IsExternal { get; set; }

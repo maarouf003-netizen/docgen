@@ -69,6 +69,9 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.InclusionCurrency3).HasMaxLength(50);
 
         builder.Property(d => d.Court).HasMaxLength(200);
+        // `PB-001`: الدائرة المعيارية لوحدانية الترقيم الحقيقية (تضبط خدميًا).
+        builder.Property(d => d.CourtNorm).HasMaxLength(200);
+        builder.HasIndex(d => d.CourtNorm);
         builder.Property(d => d.Applicant).HasMaxLength(200);
         // نسخة تسريع لفلترة جهة الطالب في البوابة — تُحدَّث عند الحفظ من صفوف الجهات.
         builder.Property(d => d.ApplicantRegistryId);
@@ -163,6 +166,12 @@ builder.Property(d => d.SayerNumber).HasMaxLength(100);
         // ملاحظة: Court نص حر فيقارن القيد نصًا دقيقًا؛ الخدمة تُطبِّع (Trim) وتفحص.
         builder.HasIndex(d => new { d.Court, d.FileNumber, d.FileType, d.FileYear })
             .HasFilter("NOT \"IsDeleted\" AND \"FileNumber\" IS NOT NULL")
+            .IsUnique();
+        // PB-001: ظهر الوحدانية للسباق المتزامن بمتغيرات الإملاء (الدائرة المعيارية) —
+        // الفحص الخدمي (`ExistsActiveWithNumberAsync`) يصطاد التسلسل، وهذا ظهر السباق.
+        // صفوف `CourtNorm` الفارغة (قديمة) لا تتعارض (`NULL` مميزة في الفريد).
+        builder.HasIndex(d => new { d.CourtNorm, d.FileNumber, d.FileType, d.FileYear })
+            .HasFilter("NOT \"IsDeleted\" AND \"FileNumber\" IS NOT NULL AND \"CourtNorm\" IS NOT NULL")
             .IsUnique();
 
         // RF-010 (INT-002/INT-012): عدّاد التزامن المتفائل — عمود جديد بلا مساس

@@ -189,7 +189,8 @@ public class DocumentServiceTests : IDisposable
         Assert.True(stored.SearchText!.Length <= 1000);
         Assert.False(string.IsNullOrWhiteSpace(stored.SearchText));
         // ما بعد الحد منصوع فعلًا (يبدأ بحقول المقترض) لا تفريغ كامل.
-        Assert.Contains("أ", stored.SearchText);
+        // `PB-001`: البلوب مطبَّع (`أ` ← `ا`).
+        Assert.Contains("ا", stored.SearchText);
     }
 
     [Fact]

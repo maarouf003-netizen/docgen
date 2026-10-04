@@ -245,6 +245,7 @@ public sealed partial class PublicEntityService
         var oldBranch = entry.BranchName;
 
         if (newCanonical is not null) group.CanonicalName = newCanonical;
+        SetGroupNorm(group);
         entry.Governorate = newGovernorate;
         entry.BranchName = newBranchName;
 
@@ -511,6 +512,7 @@ public sealed partial class PublicEntityService
 
         if (renamed)
             group.CanonicalName = newCanonical!;
+        SetGroupNorm(group);
         entry.Governorate = newGovernorate;
         entry.BranchName = newBranchName;
         if (entry.NeedsReview)
@@ -671,13 +673,15 @@ public sealed partial class PublicEntityService
         var existing = await FindGroupByNormAsync(norm, token);
         if (existing is not null)
             return existing;
-        return new PublicEntityGroup
+        var created = new PublicEntityGroup
         {
             CanonicalName = canonical,
             EntityType = entityType,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
         };
+        SetGroupNorm(created);
+        return created;
     }
     private static PublicEntityEntryDto ToEntryDto(PublicEntityGroup group, PublicEntity entry) => new(
         entry.Id,

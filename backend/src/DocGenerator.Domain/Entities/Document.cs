@@ -96,6 +96,11 @@ public class Document : IDocumentExecutionState
     public string? InclusionCurrency3 { get; set; } = "ليرة سورية";
 
     public string? Court { get; set; }
+    /// <summary>
+    /// الدائرة المعيارية (`PB-001`): تطبيع `Court` لوحدانية الترقيم الحقيقية —
+    /// تضبطها الخدمة عند كل حفظ (`FillDerivedFields`)؛ `NULL` للصفوف القديمة.
+    /// </summary>
+    public string? CourtNorm { get; set; }
     public string? Applicant { get; set; }
     public string? Lawyer { get; set; }
 

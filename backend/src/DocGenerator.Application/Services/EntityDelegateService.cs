@@ -182,18 +182,20 @@ public sealed class EntityDelegateService : IEntityDelegateService
     private async Task<bool> IsScopeInGovernorateAsync(
         int? groupId, int? entryId, string governorate, CancellationToken ct)
     {
+        // `PB-001`: مقارنة معيارية للطرفين (كانت `Trim` فقط).
+        var normGov = ArabicNameNormalizer.Normalize(governorate);
         if (entryId.HasValue)
         {
             var entry = await _registry.GetEntryAsync(entryId.Value, ct);
             return entry is not null
-                && string.Equals(entry.Governorate?.Trim(), governorate, StringComparison.Ordinal);
+                && string.Equals(ArabicNameNormalizer.Normalize(entry.Governorate), normGov, StringComparison.Ordinal);
         }
         if (groupId.HasValue)
         {
             var entries = await _registry.ListEntriesByGroupAsync(groupId.Value, ct);
             var actives = entries.Where(e => e.IsActive).ToList();
             return actives.Count == 0
-                || actives.All(e => string.Equals(e.Governorate?.Trim(), governorate, StringComparison.Ordinal));
+                || actives.All(e => string.Equals(ArabicNameNormalizer.Normalize(e.Governorate), normGov, StringComparison.Ordinal));
         }
         return false;
     }

@@ -919,6 +919,12 @@ public sealed partial class DocumentService
             doc.DocumentType = $"{ExecutedStatusCatalog.ToLabel(doc.ExecutedStatus ?? ExecutedStatusCatalog.None)}";
         }
 
+        // `PB-001`: الدائرة المعيارية لوحدانية الترقيم الحقيقية (تُقارَن معيارية-لمعيارية
+        // في `ExistsActiveWithNumberAsync`؛ العرض يبقى `Court` الخام).
+        doc.CourtNorm = string.IsNullOrWhiteSpace(doc.Court)
+            ? null
+            : ArabicNameNormalizer.Normalize(doc.Court);
+
         doc.SearchText = Common.DocumentSearchTextBuilder.Build(doc);
 
         doc.FullData = Common.DocumentSearchTextBuilder.BuildFullData(doc);

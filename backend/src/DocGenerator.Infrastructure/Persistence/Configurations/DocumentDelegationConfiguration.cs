@@ -28,6 +28,8 @@ public class DocumentDelegationConfiguration : IEntityTypeConfiguration<Document
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.Property(d => d.DelegatedCourt).HasMaxLength(300);
+        // `PB-001`: الدائرة المنابة المعيارية (تضبط خدميًا عند التسطير/التعديل).
+        builder.Property(d => d.DelegatedCourtNorm).HasMaxLength(300);
         builder.Property(d => d.DelegationText).HasMaxLength(2000);
         builder.Property(d => d.DepositBookNumber).HasMaxLength(200);
         builder.Property(d => d.DepositBookDate).HasColumnType("datetime2");

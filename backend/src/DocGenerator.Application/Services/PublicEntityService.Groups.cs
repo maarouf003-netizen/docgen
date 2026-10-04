@@ -59,6 +59,7 @@ public sealed partial class PublicEntityService
             await EnsureCanonicalAvailableAsync(newCanonical, group.Id, token);
 
             group.CanonicalName = newCanonical;
+            SetGroupNorm(group);
 
             // حفظ الاسم القديم اسمًا بديلًا (حجّة قانونية): يُضاف على القيد الأم بمحافظة الفرع
             // وعلى كل قيود المجموعة ليبقى البحث بالاسم القديم يعثر على الجهة.
@@ -220,6 +221,7 @@ public sealed partial class PublicEntityService
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow,
             };
+            SetGroupNorm(newGroup);
             await _entities.AddGroupAsync(newGroup, token);
             await _uow.SaveChangesAsync(token);
 

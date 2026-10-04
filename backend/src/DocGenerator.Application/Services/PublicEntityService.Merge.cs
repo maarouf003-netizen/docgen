@@ -150,6 +150,7 @@ public sealed partial class PublicEntityService
                 previousSurvivorName = survivorGroup.CanonicalName;
                 await EnsureCanonicalAvailableAsync(newName, survivorGroup.Id, token);
                 survivorGroup.CanonicalName = newName;
+                SetGroupNorm(survivorGroup);
             }
 
             var absorbedGroupsProcessed = 0;

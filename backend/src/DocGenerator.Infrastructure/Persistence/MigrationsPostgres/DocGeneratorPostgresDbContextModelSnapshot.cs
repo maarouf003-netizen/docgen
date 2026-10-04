@@ -788,6 +788,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<string>("CourtNorm")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1106,6 +1110,8 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.HasIndex("BranchId");
 
+                    b.HasIndex("CourtNorm");
+
                     b.HasIndex("CreatedAt");
 
                     b.HasIndex("CreatedById");
@@ -1124,6 +1130,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.HasIndex("Court", "FileNumber", "FileType", "FileYear")
                         .IsUnique()
                         .HasFilter("NOT \"IsDeleted\" AND \"FileNumber\" IS NOT NULL");
+
+                    b.HasIndex("CourtNorm", "FileNumber", "FileType", "FileYear")
+                        .IsUnique()
+                        .HasFilter("NOT \"IsDeleted\" AND \"FileNumber\" IS NOT NULL AND \"CourtNorm\" IS NOT NULL");
 
                     b.ToTable("Documents", (string)null);
                 });
@@ -1366,6 +1376,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .HasColumnType("integer");
 
                     b.Property<string>("DelegatedCourt")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("DelegatedCourtNorm")
                         .HasMaxLength(300)
                         .HasColumnType("character varying(300)");
 
@@ -2489,6 +2503,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<string>("CanonicalNameNorm")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -2503,6 +2521,9 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.HasKey("Id");
 
                     b.HasIndex("CanonicalName")
+                        .IsUnique();
+
+                    b.HasIndex("CanonicalNameNorm")
                         .IsUnique();
 
                     b.HasIndex("EntityType");

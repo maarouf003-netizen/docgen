@@ -209,8 +209,9 @@ public class PortalRepository : IPortalRepository
             .Where(ScopePredicate(ids));
 
         var term = query?.Trim();
+        // `PB-001`: البلوب مطبَّع — تُطبَّع الكلمة (البند الوحيد هنا).
         if (!string.IsNullOrWhiteSpace(term))
-            q = q.Where(d => d.SearchText != null && d.SearchText.Contains(term));
+            q = q.Where(d => d.SearchText != null && d.SearchText.Contains(ArabicNameNormalizer.Normalize(term)));
 
         if (status != null)
         {

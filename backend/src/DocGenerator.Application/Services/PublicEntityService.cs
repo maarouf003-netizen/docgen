@@ -282,6 +282,13 @@ public sealed partial class PublicEntityService : IPublicEntityService
         var groups = await _entities.ListGroupsTrackedAsync(token);
         return groups.FirstOrDefault(g => ArabicNameNormalizer.Normalize(g.CanonicalName) == norm);
     }
+    /// <summary>
+    /// ضبط الاسم المعياري (`PB-001`) — يُستدعى بعد كل كتابة `CanonicalName`
+    /// (إنشاء/تسمية/دمج/استيراد) فيغذّي القيد الفريد المعياري.
+    /// </summary>
+    private static void SetGroupNorm(PublicEntityGroup group)
+        => group.CanonicalNameNorm = ArabicNameNormalizer.Normalize(group.CanonicalName);
+
     private async Task EnsureCanonicalAvailableAsync(string canonical, int excludeGroupId, CancellationToken ct)
     {
         var norm = ArabicNameNormalizer.Normalize(canonical);
@@ -293,11 +300,15 @@ public sealed partial class PublicEntityService : IPublicEntityService
     {
         var norm = ArabicNameNormalizer.Normalize(canonical);
         var groups = await _entities.ListGroupsWithEntriesAsync(ct);
+        // `PB-001`: الفرع نص حر — يُقارَن معياريًا (المحافظة من كتالوج ثابت، وتُطبَّع مع ذلك توحيدًا).
+        var normGov = ArabicNameNormalizer.Normalize(governorate);
+        var normBranch = ArabicNameNormalizer.Normalize(branchName);
         var duplicated = groups
             .Where(g => ArabicNameNormalizer.Normalize(g.CanonicalName) == norm)
             .SelectMany(g => g.Entries)
             .Any(e => (excludeEntryId is null || e.Id != excludeEntryId)
-                && e.Governorate == governorate && e.BranchName == branchName);
+                && ArabicNameNormalizer.Normalize(e.Governorate) == normGov
+                && ArabicNameNormalizer.Normalize(e.BranchName) == normBranch);
         if (duplicated)
             throw new ArgumentException("يوجد قيد لنفس الجهة بنفس المحافظة والفرع");
     }
