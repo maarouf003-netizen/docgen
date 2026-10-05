@@ -3,7 +3,8 @@ import { api, getApiErrorMessage } from '../../api/client';
 import { normalizeArabicDigits } from '../../utils/arabicDigits';
 import { assetDisplayName } from '../../utils/assetDisplay';
 import { delegationAssetLabel, matchDelegationAssets } from '../../utils/delegationAssets';
-import type { AssetDto, BranchDto, DelegationDto, UpsertDelegationRequest } from '../../types';
+import CircuitPickerModal from '../circuit/CircuitPickerModal';
+import type { AssetDto, BranchDto, DelegationDto, ExecutionCircuitDto, UpsertDelegationRequest } from '../../types';
 
 const DATE_PLACEHOLDER = 'مثال: 1/8/2026';
 
@@ -29,6 +30,11 @@ export default function DelegationFormModal({
 }) {
   const isEdit = initial !== undefined && initial !== null;
   const [delegatedCourt, setDelegatedCourt] = useState(initial?.delegatedCourt ?? '');
+  const [delegatedCircuitId, setDelegatedCircuitId] = useState<number | null>(
+    initial?.delegatedCircuitId ?? null,
+  );
+  const [circuitPickerOpen, setCircuitPickerOpen] = useState(false);
+  const circuitButtonRef = useRef<HTMLButtonElement>(null);
   const [isExternal, setIsExternal] = useState(initial?.isExternal ?? false);
   const [externalBranchId, setExternalBranchId] = useState<number | ''>(
     initial?.externalBranchId ?? '',
@@ -47,6 +53,24 @@ export default function DelegationFormModal({
   const [branches, setBranches] = useState<BranchDto[]>([]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  // انتقالي: قائمة المنابة من السجل؛ فرع بلا سجل (أو فشل تحميل كبيئة الاختبارات)
+  // يُبقي النص الحر حتى يُعبَّأ السجل.
+  const [registryCircuits, setRegistryCircuits] = useState<ExecutionCircuitDto[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await api.get<ExecutionCircuitDto[]>('/execution-circuits/for-delegation');
+        if (!cancelled) setRegistryCircuits(r?.data ?? []);
+      } catch {
+        if (!cancelled) setRegistryCircuits(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const courtRef = useRef<HTMLInputElement>(null);
   const branchRef = useRef<HTMLSelectElement>(null);
@@ -77,7 +101,10 @@ export default function DelegationFormModal({
     });
   };
 
+  const registryEnforced = !isExternal && (registryCircuits?.length ?? 0) > 0;
   const validate = (): string => {
+    if (!isExternal && registryEnforced && delegatedCircuitId == null)
+      return 'الدائرة المنابة مطلوبة — اختر من قائمة المحافظة';
     if (!delegatedCourt.trim()) return 'الدائرة المنابة مطلوبة';
     if (isExternal && externalBranchId === '') return 'الإنابة الخارجية تتطلب تحديد الفرع المناب';
     if (!delegationDate.trim()) return 'تاريخ الإنابة مطلوب';
@@ -90,20 +117,31 @@ export default function DelegationFormModal({
     const problem = validate();
     if (problem) {
       setFormError(problem);
-      const firstInvalid = isExternal && externalBranchId === ''
-        ? branchRef
-        : !delegatedCourt.trim()
+      const firstInvalid = isExternal
+        ? !delegatedCourt.trim()
           ? courtRef
-          : !delegationDate.trim()
-            ? dateRef
-            : null;
-      firstInvalid?.current?.focus();
+          : externalBranchId === ''
+            ? branchRef
+            : !delegationDate.trim()
+              ? dateRef
+              : null
+        : registryEnforced && delegatedCircuitId == null
+          ? circuitButtonRef
+          : !delegatedCourt.trim()
+            ? courtRef
+            : !delegationDate.trim()
+              ? dateRef
+              : null;
+      if (firstInvalid && 'current' in firstInvalid) firstInvalid.current?.focus();
       return;
     }
     setFormError('');
     setSaving(true);
     const payload: UpsertDelegationRequest = {
-      delegatedCourt: normalizeArabicDigits(delegatedCourt).trim() || null,
+      delegatedCourt: isExternal
+        ? normalizeArabicDigits(delegatedCourt).trim() || null
+        : delegatedCourt.trim() || null,
+      delegatedCircuitId: isExternal ? null : delegatedCircuitId,
       isExternal,
       externalBranchId: isExternal && externalBranchId !== '' ? Number(externalBranchId) : null,
       delegationDate: normalizeArabicDigits(delegationDate).trim() || null,
@@ -161,23 +199,56 @@ export default function DelegationFormModal({
             <label htmlFor="delegatedCourt" className="block text-xs font-bold text-gray-600 mb-1">
               الدائرة المنابة
             </label>
-            <input
-              id="delegatedCourt"
-              ref={courtRef}
-              type="text"
-              value={delegatedCourt}
-              onChange={(e) => setDelegatedCourt(e.target.value)}
-              placeholder="مثال: محكمة التنفيذ الأولى بدمشق…"
-              className={inputCls}
-              autoComplete="off"
-            />
+            {isExternal || !registryEnforced ? (
+              <input
+                id="delegatedCourt"
+                ref={courtRef}
+                type="text"
+                value={delegatedCourt}
+                onChange={(e) => setDelegatedCourt(e.target.value)}
+                placeholder="مثال: محكمة التنفيذ الأولى بدمشق…"
+                className={inputCls}
+                autoComplete="off"
+              />
+            ) : (
+              <>
+                <input
+                  id="delegatedCourt"
+                  type="text"
+                  value={delegatedCourt}
+                  readOnly
+                  placeholder="اختر من قائمة المحافظة…"
+                  aria-readonly="true"
+                  className={`${inputCls} bg-gray-50 cursor-not-allowed`}
+                />
+                <button
+                  ref={circuitButtonRef}
+                  type="button"
+                  onClick={() => setCircuitPickerOpen(true)}
+                  className="mt-1 border border-emerald-200 text-emerald-800 hover:bg-emerald-50 rounded-lg px-3 py-2 text-xs min-h-11 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                >
+                  {delegatedCircuitId != null ? 'تغيير من القائمة…' : 'اختيار من القائمة…'}
+                </button>
+                {delegatedCircuitId != null && (
+                  <span className="ms-2 inline-block rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 px-2 py-0.5 text-[11px] whitespace-nowrap">
+                    مرتبطة بالسجل ✓
+                  </span>
+                )}
+              </>
+            )}
           </div>
 
           <label className="flex items-center gap-2 min-h-11 cursor-pointer">
             <input
               type="checkbox"
               checked={isExternal}
-              onChange={(e) => setIsExternal(e.target.checked)}
+              onChange={(e) => {
+                const external = e.target.checked;
+                setIsExternal(external);
+                // الخارجية نص حر خارج السجل؛ الداخلية من القائمة حصرًا.
+                if (external) setDelegatedCircuitId(null);
+                else setDelegatedCourt('');
+              }}
               className="h-5 w-5 rounded border-gray-300 text-emerald-700"
             />
             <span className="text-sm text-gray-800">إنابة إلى فرع في محافظة أخرى</span>
@@ -338,6 +409,20 @@ export default function DelegationFormModal({
           </div>
         </form>
       </div>
+
+      {circuitPickerOpen && !isExternal && (
+        <CircuitPickerModal
+          title="اختيار الدائرة المنابة"
+          fetchUrl="/execution-circuits/for-delegation"
+          initialSelectedId={delegatedCircuitId}
+          onSelect={(c: ExecutionCircuitDto) => {
+            setDelegatedCircuitId(c.id);
+            setDelegatedCourt(c.name);
+            setCircuitPickerOpen(false);
+          }}
+          onClose={() => setCircuitPickerOpen(false)}
+        />
+      )}
     </div>
   );
 }

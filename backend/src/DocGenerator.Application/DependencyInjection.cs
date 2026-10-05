@@ -35,6 +35,7 @@ public static class DependencyInjection
         services.AddScoped<ICorrespondenceService, CorrespondenceService>();
         services.AddScoped<IDocumentDelegationService, DocumentDelegationService>();
         services.AddScoped<IDocumentAppealService, DocumentAppealService>();
+        services.AddScoped<IExecutionCircuitService, ExecutionCircuitService>();
         services.AddScoped<IDocumentContextBuilder, DocumentContextBuilder>();
         services.AddScoped<IDocumentRenderer, WordTemplateRenderer>();
         services.AddScoped<IWordDocumentGenerator, WordDocumentGenerator>();

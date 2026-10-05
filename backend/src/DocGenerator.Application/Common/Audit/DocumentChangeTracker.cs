@@ -83,6 +83,8 @@ public static class DocumentChangeTracker
         [nameof(Document.InclusionAmount3Words)] = "مبلغ التضمين الثالث كتابةً",
         [nameof(Document.InclusionCurrency3)] = "عملة التضمين الثالث",
         [nameof(Document.Court)] = "دائرة التنفيذ",
+        [nameof(Document.ExecutionCircuitId)] = "دائرة التنفيذ",
+        [nameof(Document.NeedsRegistration)] = "بانتظار إعادة القيد",
         [nameof(Document.Applicant)] = "طالب التنفيذ",
         [nameof(Document.ApplicantRegistryId)] = "ربط جهة الطالب بالسجل المرجعي",
         [nameof(Document.Lawyer)] = "المحامي",

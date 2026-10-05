@@ -175,6 +175,30 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             .ToListAsync(ct);
     }
 
+    public async Task<HeadAlert?> FindPendingAlertAsync(int lawyerId, string message, CancellationToken ct = default)
+    {
+        return await Db.HeadAlerts
+            .Where(a => a.TargetLawyerId == lawyerId && a.Message == message)
+            .OrderByDescending(a => a.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<List<HeadAlert>> ListPendingAlertsForLawyerAsync(int lawyerId, string prefix, CancellationToken ct = default)
+    {
+        return await Db.HeadAlerts
+            .Where(a => a.TargetLawyerId == lawyerId && a.Message.StartsWith(prefix))
+            .OrderByDescending(a => a.CreatedAt)
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<HeadAlert>> FindByMessageAndBranchAsync(string message, int branchId, CancellationToken ct = default)
+    {
+        // S4: النطاق الفرعي في SQL نفسه — متتبَّعة للترحيل داخل التسمية فقط.
+        return await Db.HeadAlerts
+            .Where(a => a.Message == message && a.BranchId == branchId)
+            .ToListAsync(ct);
+    }
+
     public async Task<HeadAlert?> FindLatestUnseenByReviewLetterAsync(
         int reviewLetterId, int recipientUserId, CancellationToken ct = default)
     {

@@ -848,6 +848,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("ExecutionCircuitId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("FileArrivalDate")
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
@@ -958,6 +961,11 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Property<string>("Lawyer")
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("NeedsRegistration")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(false);
 
                     b.Property<DateTime?>("NoFundsDemandDate")
                         .HasColumnType("datetime2");
@@ -1087,6 +1095,8 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ExecutedStatus");
 
+                    b.HasIndex("ExecutionCircuitId");
+
                     b.HasIndex("GeneralEntitySide");
 
                     b.HasIndex("SearchText");
@@ -1094,13 +1104,13 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.HasIndex("SourceDelegationId")
                         .IsUnique();
 
-                    b.HasIndex("Court", "FileNumber", "FileType", "FileYear")
-                        .IsUnique()
-                        .HasFilter("NOT \"IsDeleted\" AND \"FileNumber\" IS NOT NULL");
-
                     b.HasIndex("CourtNorm", "FileNumber", "FileType", "FileYear")
                         .IsUnique()
-                        .HasFilter("NOT \"IsDeleted\" AND \"FileNumber\" IS NOT NULL AND \"CourtNorm\" IS NOT NULL");
+                        .HasFilter("NOT \"IsDeleted\" AND \"FileNumber\" IS NOT NULL AND \"ExecutionCircuitId\" IS NULL AND \"CourtNorm\" IS NOT NULL");
+
+                    b.HasIndex("ExecutionCircuitId", "FileNumber", "FileType", "FileYear")
+                        .IsUnique()
+                        .HasFilter("NOT \"IsDeleted\" AND \"FileNumber\" IS NOT NULL AND \"ExecutionCircuitId\" IS NOT NULL");
 
                     b.ToTable("Documents", null, t =>
                         {
@@ -1346,6 +1356,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Property<int>("CreatedById")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("DelegatedCircuitId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("DelegatedCourt")
                         .HasMaxLength(300)
                         .HasColumnType("TEXT");
@@ -1396,6 +1409,8 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.HasIndex("AssignedLawyerId");
 
                     b.HasIndex("CreatedById");
+
+                    b.HasIndex("DelegatedCircuitId");
 
                     b.HasIndex("ExternalBranchId");
 
@@ -1477,9 +1492,13 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("FromCircuitName")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("OccurrenceType")
                         .IsRequired()
-                        .HasMaxLength(20)
+                        .HasMaxLength(30)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("ReceiptDate")
@@ -1495,6 +1514,10 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("TEXT")
                         .HasDefaultValue("manual");
+
+                    b.Property<string>("ToCircuitName")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
@@ -1853,6 +1876,57 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.HasIndex("RegistryId");
 
                     b.ToTable("ExecutionApplicants", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ExecutionCircuit", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("BranchId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NameNorm")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("IsActive");
+
+                    b.HasIndex("BranchId", "NameNorm")
+                        .IsUnique();
+
+                    b.ToTable("ExecutionCircuits", (string)null);
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.Guarantor", b =>
@@ -2835,6 +2909,11 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("DocGenerator.Domain.Entities.ExecutionCircuit", "ExecutionCircuit")
+                        .WithMany("Documents")
+                        .HasForeignKey("ExecutionCircuitId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("DocGenerator.Domain.Entities.DocumentDelegation", "SourceDelegation")
                         .WithOne("TargetDocument")
                         .HasForeignKey("DocGenerator.Domain.Entities.Document", "SourceDelegationId")
@@ -2843,6 +2922,8 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Navigation("Branch");
 
                     b.Navigation("CreatedBy");
+
+                    b.Navigation("ExecutionCircuit");
 
                     b.Navigation("SourceDelegation");
                 });
@@ -2916,6 +2997,11 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("DocGenerator.Domain.Entities.ExecutionCircuit", "DelegatedCircuit")
+                        .WithMany()
+                        .HasForeignKey("DelegatedCircuitId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("DocGenerator.Domain.Entities.Branch", "ExternalBranch")
                         .WithMany()
                         .HasForeignKey("ExternalBranchId")
@@ -2930,6 +3016,8 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Navigation("AssignedLawyer");
 
                     b.Navigation("CreatedBy");
+
+                    b.Navigation("DelegatedCircuit");
 
                     b.Navigation("ExternalBranch");
 
@@ -3066,6 +3154,25 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Navigation("Document");
 
                     b.Navigation("Registry");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ExecutionCircuit", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("CreatedBy");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.Guarantor", b =>
@@ -3407,6 +3514,11 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("DocGenerator.Domain.Entities.ExecutionApplicant", b =>
                 {
                     b.Navigation("Heirs");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ExecutionCircuit", b =>
+                {
+                    b.Navigation("Documents");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.HeadAlert", b =>

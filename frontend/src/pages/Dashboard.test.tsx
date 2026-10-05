@@ -200,6 +200,8 @@ function mockApi(overrides?: {
   urgentCount?: number;
   pendingDelegationsCount?: number;
   entityReviewCount?: number;
+  circuits?: Array<{ id: number; name: string; pendingCount: number }>;
+  pendingRegistrations?: Array<{ documentId: number }>;
 }) {
   const reminders = overrides?.reminders ?? [];
   const monthly = overrides?.monthly ?? [];
@@ -211,6 +213,8 @@ function mockApi(overrides?: {
   const urgentCount = overrides?.urgentCount ?? 0;
   const pendingDelegationsCount = overrides?.pendingDelegationsCount ?? 0;
   const entityReviewCount = overrides?.entityReviewCount ?? 0;
+  const circuits = overrides?.circuits ?? [];
+  const pendingRegistrations = overrides?.pendingRegistrations ?? [];
   (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation(
     (url: string, config?: { params?: Record<string, unknown> }) => {
       if (url === '/dashboard') return Promise.resolve({ data: STATS });
@@ -225,6 +229,8 @@ function mockApi(overrides?: {
       if (url === '/correspondence/urgent-unseen-count') return Promise.resolve({ data: { count: urgentCount } });
       if (url === '/delegations/pending-count') return Promise.resolve({ data: { count: pendingDelegationsCount } });
       if (url === '/entity-registry/pending-review-count') return Promise.resolve({ data: { count: entityReviewCount } });
+      if (url === '/execution-circuits/mine') return Promise.resolve({ data: circuits });
+      if (url === '/documents/my-pending-registrations') return Promise.resolve({ data: pendingRegistrations });
       if (url === '/stats/periods') return Promise.resolve({ data: PERIODS });
       if (url === '/branches') {
         return Promise.resolve({
@@ -261,13 +267,17 @@ describe('Dashboard للمحامي', () => {
     // الترحيب بالاسم الأول (صيغة الزيارة الأولى بعد مسح التخزين).
     expect(await screen.findByRole('heading', { name: 'مرحبًا، محامي' })).toBeInTheDocument();
 
-    // صف الأيقونات الخمس بروابط الصفحات.
+    // صف الأيقونات الست بروابط الصفحات.
     const quickNav = screen.getByRole('navigation', { name: 'أقسام لوحة المحامي' });
     expect(within(quickNav).getByRole('link', { name: 'الإحصائيات' })).toHaveAttribute('href', '/stats');
     expect(within(quickNav).getByRole('link', { name: 'المطالعات' })).toHaveAttribute('href', '/reviews');
     expect(within(quickNav).getByRole('link', { name: 'المراسلات' })).toHaveAttribute('href', '/correspondence');
     expect(within(quickNav).getByRole('link', { name: 'التقويم' })).toHaveAttribute('href', '/calendar');
     expect(within(quickNav).getByRole('link', { name: 'الحساب الشخصي' })).toHaveAttribute('href', '/account');
+    // بعد نجاح الجلب والصفر المؤكد تُحجب بطاقة «ملفات معلقة» (fail-open فقط أثناء التحميل/الخطأ).
+    await waitFor(() => {
+      expect(within(quickNav).queryByRole('link', { name: 'ملفات معلقة' })).not.toBeInTheDocument();
+    });
 
     // لا إحصائيات في اللوحة إطلاقًا.
     expect(screen.queryByRole('heading', { name: /متداولة ضمن/ })).not.toBeInTheDocument();
@@ -350,6 +360,18 @@ describe('Dashboard للمحامي', () => {
     render(<Dashboard />);
 
     expect(await screen.findByRole('link', { name: 'التقويم — تذكير واحد اليوم أو متأخر' })).toBeInTheDocument();
+  });
+
+  it('يُظهر شارة الملفات المحالة للمحامي بعدّادها', async () => {
+    mockApi({ pendingRegistrations: [{ documentId: 7 }, { documentId: 8 }] });
+
+    render(<Dashboard />);
+
+    const quickNav = await screen.findByRole('navigation', { name: 'أقسام لوحة المحامي' });
+    expect(
+      within(quickNav).getByRole('link', { name: 'ملفات معلقة — 2 ملفات بانتظار تحديث بياناتها' }),
+    ).toHaveAttribute('href', '/pending-registrations');
+    expect(api.get).toHaveBeenCalledWith('/documents/my-pending-registrations', expect.any(Object));
   });
 
   it('يضمّن عدّاد بطاقة التذكيرات الشخصي مع سطر إحالة للتقويم', async () => {
@@ -533,7 +555,7 @@ describe('Dashboard للمحامي', () => {
 });
 
 describe('Dashboard لرئيس القسم', () => {
-  it('يعرض الترحيب وصف الأيقونات التسع وتنبيهات القسم دون إحصائيات أو قسم سجل', async () => {
+  it('يعرض الترحيب وصف الأيقونات العشر وتنبيهات القسم دون إحصائيات أو قسم سجل', async () => {
     useAuthMock.mockReturnValue({
       user: { id: 1, username: 'head1', fullName: 'رئيس', role: 'head', branchId: 1 },
     });
@@ -551,7 +573,10 @@ describe('Dashboard لرئيس القسم', () => {
     expect(await screen.findByRole('heading', { name: 'مرحبًا، رئيس' })).toBeInTheDocument();
 
     const quickNav = screen.getByRole('navigation', { name: 'أقسام لوحة رئيس القسم' });
-    expect(within(quickNav).getAllByRole('link')).toHaveLength(9);
+    expect(within(quickNav).getAllByRole('link')).toHaveLength(10);
+    expect(
+      within(quickNav).getByRole('link', { name: 'إدارة دوائر التنفيذ' }),
+    ).toHaveAttribute('href', '/execution-circuits');
     expect(within(quickNav).getByRole('link', { name: 'المطالعات — 2 كتب مطالعة بانتظار الرد' })).toHaveAttribute(
       'href',
       '/reviews',
@@ -591,6 +616,25 @@ describe('Dashboard لرئيس القسم', () => {
     expect(api.get).not.toHaveBeenCalledWith('/dashboard');
     expect(api.get).not.toHaveBeenCalledWith('/alerts/unread-count', expect.any(Object));
     expect(screen.queryByText('عدد المقترضين')).not.toBeInTheDocument();
+  });
+
+  it('يُظهر شارة معلقات الدوائر لرئيس القسم بعدّادها', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 1, username: 'head1', fullName: 'رئيس', role: 'head', branchId: 1 },
+    });
+    mockApi({
+      alerts: HEAD_ALERTS,
+      lawyers: BRANCH_LAWYERS,
+      circuits: [{ id: 1, name: 'دائرة أ', pendingCount: 2 }],
+    });
+
+    render(<Dashboard />);
+
+    const quickNav = await screen.findByRole('navigation', { name: 'أقسام لوحة رئيس القسم' });
+    expect(
+      within(quickNav).getByRole('link', { name: 'إدارة دوائر التنفيذ — 2 ملفات محالة' }),
+    ).toHaveAttribute('href', '/execution-circuits');
+    expect(api.get).toHaveBeenCalledWith('/execution-circuits/mine', expect.any(Object));
   });
 
   it('لا يجلب التذكيرات ولا يعرض قسمها في لوحة رئيس القسم', async () => {

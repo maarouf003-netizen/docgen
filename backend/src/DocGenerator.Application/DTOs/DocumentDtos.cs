@@ -371,6 +371,11 @@ public class DocumentUpsertRequest : RenewalRequest
     public string? InclusionCurrency3 { get; set; } = "ليرة سورية";
 
     public string? Court { get; set; }
+    /// <summary>
+    /// دائرة التنفيذ (سجل الدوائر): إلزامية للجديد عدا ملفات المناب الخارجي
+    /// (IsExternal=true). الخادم يشتق Court/CourtNorm من الدائرة ويتجاهل نص العميل دائمًا.
+    /// </summary>
+    public int? ExecutionCircuitId { get; set; }
     public string? Applicant { get; set; }
 
     public string? FileNumber { get; set; }
@@ -546,7 +551,9 @@ public record DocumentOccurrenceDto(
     IReadOnlyDictionary<string, string>? Details,
     string? CreatedByName,
     string? Source = null,
-    string? DetailsText = null);
+    string? DetailsText = null,
+    string? FromCircuitName = null,
+    string? ToCircuitName = null);
 
 public class DocumentResponse : DocGenerator.Domain.Entities.IDocumentExecutionState
 {
@@ -608,6 +615,10 @@ public class DocumentResponse : DocGenerator.Domain.Entities.IDocumentExecutionS
     public string? InclusionAmount3Words { get; set; }
     public string? InclusionCurrency3 { get; set; }
     public string? Court { get; set; }
+    /// <summary>دائرة التنفيذ المرجعية (سجل الدوائر) — تُعرض نصًا عبر Court للتوافق.</summary>
+    public int? ExecutionCircuitId { get; set; }
+    /// <summary>علم «بانتظار إعادة القيد» — بانتظار المحامي لإدخال الرقم الجديد.</summary>
+    public bool NeedsRegistration { get; set; }
     public string? Applicant { get; set; }
     /// <summary>نسخة تسريع: معرّف قيد أول جهة طالب مرتبطة بالسجل (للفلترة في البوابة).</summary>
     public int? ApplicantRegistryId { get; set; }
@@ -814,6 +825,8 @@ public class DocumentResponse : DocGenerator.Domain.Entities.IDocumentExecutionS
         InclusionAmount3Words = d.InclusionAmount3Words,
         InclusionCurrency3 = d.InclusionCurrency3,
         Court = d.Court,
+        ExecutionCircuitId = d.ExecutionCircuitId,
+        NeedsRegistration = d.NeedsRegistration,
         Applicant = d.Applicant,
         ApplicantRegistryId = d.ApplicantRegistryId,
         Lawyer = d.Lawyer,
@@ -967,7 +980,8 @@ public class DocumentResponse : DocGenerator.Domain.Entities.IDocumentExecutionS
         return new DocumentOccurrenceDto(o.Id, o.OccurrenceType,
             OccurrenceTypeCatalog.ToLabel(o.OccurrenceType), o.EventDate,
             o.FileNumber, o.FileType, o.Year, o.ReceiptNumber, o.ReceiptDate,
-            details, o.CreatedBy?.FullName, o.Source, detailsText);
+            details, o.CreatedBy?.FullName, o.Source, detailsText,
+            o.FromCircuitName, o.ToCircuitName);
     }
 
     /// <summary>فكّ قائمة معرّفات الأموال المباعة من JSON المخزن (أو قائمة فارغة عند العطب).</summary>

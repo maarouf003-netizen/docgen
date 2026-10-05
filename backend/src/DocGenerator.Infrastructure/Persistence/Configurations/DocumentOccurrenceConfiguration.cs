@@ -13,7 +13,9 @@ public class DocumentOccurrenceConfiguration : IEntityTypeConfiguration<Document
         builder.HasKey(o => o.Id);
         // عامل مطابق لقفل الحذف المنطقي للمستند الأب
         builder.HasQueryFilter(o => o.Document == null || !o.Document.IsDeleted);
-builder.Property(o => o.OccurrenceType).HasMaxLength(20).IsRequired();
+        // S3: عرض 30 (لا 20) — أطول رمز حالي («circuit-reregistered») طوله 20 بالضبط،
+        // وPostgres وحده يفرض الحد فيفشل أي رمز أطول مستقبلًا عليه فقط.
+        builder.Property(o => o.OccurrenceType).HasMaxLength(30).IsRequired();
         builder.HasIndex(o => o.OccurrenceType);
         builder.Property(o => o.Source).HasMaxLength(10).IsRequired().HasDefaultValue("manual");
         builder.Property(o => o.EventDate).HasColumnType("datetime2");
@@ -24,6 +26,8 @@ builder.Property(o => o.OccurrenceType).HasMaxLength(20).IsRequired();
         builder.Property(o => o.ReceiptNumber).HasMaxLength(200);
         builder.Property(o => o.ReceiptDate).HasColumnType("datetime2");
         builder.Property(o => o.Details).HasColumnType("text");
+        builder.Property(o => o.FromCircuitName).HasMaxLength(200);
+        builder.Property(o => o.ToCircuitName).HasMaxLength(200);
         builder.HasIndex(o => o.DocumentId);
 
         builder.HasOne(o => o.Document)

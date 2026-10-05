@@ -324,6 +324,10 @@ documentType?: string;
   inclusionAmount3Words?: string;
   inclusionCurrency3?: string;
   court?: string;
+  /** دائرة التنفيذ المرجعية (سجل الدوائر) — تُعرض نصًا عبر court للتوافق. */
+  executionCircuitId?: number | null;
+  /** علم «بانتظار إعادة القيد» — بانتظار المحامي لإدخال الرقم الجديد. */
+  needsRegistration?: boolean;
   applicant?: string;
   lawyer?: string;
   /** اسم المحامي الذي أُحيل منه الملف إلى المحامي الحالي (فارغ إذا لم يُنقل). */
@@ -487,6 +491,8 @@ export interface DelegationDto {
   sourceFileYear?: string | null;
   targetDocumentId?: number | null;
   delegatedCourt?: string;
+  /** الدائرة المنابة المرجعية (للداخلية فقط — الخارجية نص حر). */
+  delegatedCircuitId?: number | null;
   isExternal: boolean;
   externalBranchId?: number | null;
   externalBranchName?: string | null;
@@ -533,6 +539,8 @@ export interface DelegationDto {
 /** تسطير/تعديل إنابة: التواريخ نصوص حرة تُفسَّر في الخلفية؛ الخارجية تتطلب الفرع المناب. */
 export interface UpsertDelegationRequest {
   delegatedCourt?: string | null;
+  /** الدائرة المنابة المرجعية (للداخلية — تُشتق منها الدائرة نصًا خدميًا). */
+  delegatedCircuitId?: number | null;
   isExternal: boolean;
   externalBranchId?: number | null;
   delegationDate?: string | null;
@@ -624,6 +632,8 @@ export interface DocumentUpsertRequest {
   inclusionAmount3Words?: string;
   inclusionCurrency3?: string;
   court?: string;
+  /** دائرة التنفيذ (سجل الدوائر): إلزامية — الخادم يشتق court منها ويتجاهل النص دائمًا. */
+  executionCircuitId?: number | null;
   applicant?: string;
   /** نسخة تسريع: معرّف قيد أول جهة طالب مرتبطة بالسجل — تُحدَّث عند الحفظ (للفلترة في البوابة). */
   applicantRegistryId?: number | null;
@@ -996,7 +1006,7 @@ export interface BaseNumberHistoryDto {
 }
 
 /** نوع وقعة الملف: شطب/تجديد (وضع «منفذ عليه») أو إجراء تغيير حالة (نظام «طالبة تنفيذ») أو تغيير جهة آلي. */
-export type OccurrenceType = 'struck-off' | 'renewal' | 'deferred' | 'settled' | 'forcible' | 'revert' | 'recovered' | 'entity-change' | 'referred-to-start';
+export type OccurrenceType = 'struck-off' | 'renewal' | 'deferred' | 'settled' | 'forcible' | 'revert' | 'recovered' | 'entity-change' | 'referred-to-start' | 'circuit-referred' | 'circuit-reregistered' | 'circuit-renamed';
 
 /** وقعة واحدة من «وقوعات الملف»: شطب/تجديد أو إجراء تغيير حالة (تريث/منفذ/تراجع) أو تغيير جهة آلي. */
 export interface DocumentOccurrenceDto {
@@ -1024,6 +1034,10 @@ export interface DocumentOccurrenceDto {
   createdByName?: string;
   /** مصدر الوقعة: "system" (سجّلها النظام آليًا — لا تُعدَّل/تُحذف من الواجهة) أو "manual" (إدخال يدوي). */
   source?: 'system' | 'manual';
+  /** اسم دائرة المصدر نصًا مجمدًا للتاريخ (يُملأ عند الإحالة). */
+  fromCircuitName?: string | null;
+  /** اسم دائرة الوجهة نصًا مجمدًا للتاريخ (يُملأ عند الإحالة). */
+  toCircuitName?: string | null;
 }
 
 /* ── الاستئنافات على الملف التنفيذي ──────────────────────────────────── */
@@ -2155,6 +2169,72 @@ message: string;
 createdAt: string;
 isRead: boolean;
 senderName?: string | null;
+}
+
+/* ── سجل دوائر التنفيذ (BQ-004) ─────────────────────────────────────── */
+
+/** دائرة تنفيذ واحدة مع عداداتها (ملفات + معلقات). */
+export interface ExecutionCircuitDto {
+  id: number;
+  branchId: number;
+  branchName?: string | null;
+  name: string;
+  isActive: boolean;
+  fileCount: number;
+  pendingCount: number;
+  version: number;
+}
+
+/** إدخال/تسمية دائرة (الاسم فقط — الفرع من سياق رئيس القسم). */
+export interface UpsertExecutionCircuitRequest {
+  name?: string | null;
+  version?: number | null;
+}
+
+/** تعطيل/تفعيل دائرة. */
+export interface SetCircuitActiveRequest {
+  isActive: boolean;
+  version?: number | null;
+}
+
+/** إحالة دفعة ملفات من دائرة إلى محامٍ (نفس الفرع، ذري). */
+export interface ReferCircuitFilesRequest {
+  fileIds: number[];
+  targetLawyerId: number;
+  targetCircuitId: number;
+}
+
+/** صف ملف بانتظار إعادة القيد (المعروض حاليًا قديم من EffectiveFileIdentity). */
+export interface PendingRegistrationDto {
+  documentId: number;
+  circuitId: number;
+  circuitName?: string | null;
+  borrowerName?: string | null;
+  oldFileNumber?: string | null;
+  oldFileType?: string | null;
+  oldFileYear?: string | null;
+}
+
+/** حفظ ذري لإعادة القيد (ملك المحامي فقط + وحدانية). */
+export interface CompleteRegistrationsRequest {
+  entries: Array<{
+    documentId: number;
+    fileNumber?: string | null;
+    fileType?: string | null;
+    fileYear?: string | null;
+  }>;
+}
+
+/** صف إحصائية دائرة (الدائرة × ملفاتها × محامون نشطون × معلقات). */
+export interface CircuitStatsDto {
+  circuitId: number;
+  circuitName: string;
+  branchId: number;
+  branchName?: string | null;
+  isActive: boolean;
+  fileCount: number;
+  lawyerCount: number;
+  pendingCount: number;
 }
 
 

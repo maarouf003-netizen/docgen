@@ -48,10 +48,28 @@ public static class OccurrenceTypeCatalog
     /// </summary>
     public const string ReferredToStart = "referred-to-start";
 
+    /// <summary>
+    /// إحالة نقل دائرة: تفريغ الملف من الدائرة الملغاة (يحمل الرقم/النوع/السنة القديمة
+    /// + FromCircuitName/ToCircuitName نصًا مجمدًا للتاريخ).
+    /// </summary>
+    public const string CircuitReferred = "circuit-referred";
+
+    /// <summary>
+    /// إعادة قيد بدائرة جديدة: إدخال المحامي الأرقام الجديدة (يحمل الجديدة،
+    /// والقديمة تُقرأ من وقوعّة الإحالة).
+    /// </summary>
+    public const string CircuitReregistered = "circuit-reregistered";
+
+    /// <summary>
+    /// إعادة تسمية دائرة (§5.2): تُسجَّل على كل ملف متأثر بالتسمية (قديم/جديد
+    /// في FromCircuitName/ToCircuitName) — وإلا مرّت التسمية الجماعية بلا أثر ملفي.
+    /// </summary>
+    public const string CircuitRenamed = "circuit-renamed";
+
     public static readonly IReadOnlySet<string> ValidTypes = new HashSet<string>
     {
         StruckOff, Renewal, Deferred, Settled, Forcible, Revert, EntityChange, Recovered,
-        ReferredToStart,
+        ReferredToStart, CircuitReferred, CircuitReregistered, CircuitRenamed,
     };
 
     /// <summary>
@@ -69,6 +87,9 @@ public static class OccurrenceTypeCatalog
         EntityChange => "تغيير جهة",
         Recovered => "استرداد",
         ReferredToStart => "محال الى البداية",
+        CircuitReferred => "إحالة نقل دائرة",
+        CircuitReregistered => "إعادة قيد بدائرة جديدة",
+        CircuitRenamed => "إعادة تسمية دائرة",
         _ => type,
     };
 

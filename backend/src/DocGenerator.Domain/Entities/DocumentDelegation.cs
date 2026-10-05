@@ -29,6 +29,13 @@ public class DocumentDelegation
     /// الخدمة عند التسطير/التعديل؛ `NULL` للصفوف القديمة.
     /// </summary>
     public string? DelegatedCourtNorm { get; set; }
+    /// <summary>
+    /// الدائرة المنابة المرجعية (للداخلية فقط — تُشتق من اختيار المنابة؛
+    /// الخارجية IsExternal=true تبقى DelegatedCourt نصًا حرًا).
+    /// </summary>
+    public int? DelegatedCircuitId { get; set; }
+    /// <summary>الدائرة المنابة المرجعية (سجل الدوائر).</summary>
+    public ExecutionCircuit? DelegatedCircuit { get; set; }
 
     /// <summary>هل الإنابة خارجية (لمحافظة أخرى)؟ عندها يُذكر الفرع المناب والفرع المنيب.</summary>
     public bool IsExternal { get; set; }

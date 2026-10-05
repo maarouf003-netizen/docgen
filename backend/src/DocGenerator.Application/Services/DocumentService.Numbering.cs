@@ -9,24 +9,8 @@ namespace DocGenerator.Application.Services;
 /// </summary>
 public sealed partial class DocumentService
 {
-    /// <summary>
-    /// فحص مبكر: هل يحمل ملف ظاهر آخر نفس المفتاح الفعّال؟ الرقم/السنة الفارغان = لا فحص.
-    /// </summary>
-    private async Task EnsureNumberUniqueAsync(
-        int? excludeDocumentId,
-        string? court,
-        string? number,
-        string? type,
-        string? year,
-        CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(number) || string.IsNullOrWhiteSpace(year))
-            return;
-        if (await _documents.ExistsActiveWithNumberAsync(excludeDocumentId, court, number, type, year, ct))
-            throw new DocumentConflictException(
-                $"رقم الأساس {number.Trim()} مكرر في {court?.Trim()} لسنة {year.Trim()} — تحقق من الدائرة والرقم والنوع");
-    }
-
+    // ملاحظة: التوقيع النصي القديم EnsureNumberUniqueAsync(court, …) أُسقط بعد ترحيل
+    // المواضع الستة إلى التوقيع الدائري (M12 — بلا منادٍ). تاريخه في Git فقط.
     /// <summary>
     /// شبكة السباق: تعارض القيد الفريد عند الحفظ المتزامن يُترجَم 409 وديًا بدل 500.
     /// تُلفّ حول استدعاء _tx.RunAsync كاملًا (تعديل سطرين لكل موقع).

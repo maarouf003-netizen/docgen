@@ -6,14 +6,39 @@ export interface LawyerIconCounts {
   unseenReplies: number;
   urgentCorrespondence: number;
   calendarAlerts: number;
+  /** ملفات المحامي المحالة بانتظار تحديث بياناتها (بطاقة تفتح صفحة المعلقات — B19). */
+  pendingRegistrations: number;
 }
 
 /**
- * صف الأيقونات الخمس للوحة المحامي (جوال أولًا: عمودان → 3 → 5):
+ * صف الأيقونات الست للوحة المحامي (جوال أولًا: عمودان → 3 → 5):
  * كل بطاقة رابط واحد (`Link`) وبداخله الجرس
  * **شارة غير تفاعلية** (لا عناصر تفاعلية متداخلة)، بعدّادها في `aria-label`.
  */
-export function LawyerIconRow({ counts }: { counts: LawyerIconCounts }) {
+export function LawyerIconRow({
+  counts,
+  showReferredFiles,
+  pendingState,
+}: {
+  counts: LawyerIconCounts;
+  /**
+   * إظهار بطاقة «ملفات معلقة»: تُحجب بعد نجاح الجلب والصفر المؤكد،
+   * وتبقى أثناء التحميل وعند الخطأ (fail-open) حتى لا يفقد المحامي مدخل صفحته بصمت.
+   */
+  showReferredFiles: boolean;
+  /** حالة جلب المعلقات — لصياغة صادقة للسطر الفرعي أثناء التحميل أو عند الخطأ. */
+  pendingState?: 'loading' | 'error';
+}) {
+  const referredSubtitle =
+    counts.pendingRegistrations > 0
+      ? `${counts.pendingRegistrations} بانتظار تحديث بياناتها`
+      : pendingState === 'loading'
+        ? 'جارِ التحميل…'
+        : pendingState === 'error'
+          ? 'تعذّر الجلب — افتح للتحقق'
+          : 'لا معلقات';
+  // مفتاح بطاقة الملفات المحالة — يُستخدم في التعريف والترشيح معًا فلا ينكسرا منفصلين.
+  const REFERRED_CARD_KEY = 'referred-files';
   const cards: CardDef[] = [
     {
       key: 'stats',
@@ -78,7 +103,24 @@ export function LawyerIconRow({ counts }: { counts: LawyerIconCounts }) {
       tone: 'bg-slate-100 text-slate-700',
       to: '/account',
     },
+    {
+      key: REFERRED_CARD_KEY,
+      icon: ICONS.documents,
+      title: 'ملفات معلقة',
+      subtitle: referredSubtitle,
+      tone: 'bg-violet-100 text-violet-700',
+      badge:
+        counts.pendingRegistrations > 0
+          ? {
+              count: counts.pendingRegistrations,
+              label: arabicCount(counts.pendingRegistrations, 'ملف واحد بانتظار تحديث بياناته', 'ملفات بانتظار تحديث بياناتها'),
+            }
+          : undefined,
+      to: '/pending-registrations',
+    },
   ];
 
-  return <IconCardGrid label="أقسام لوحة المحامي" gridClass="sm:grid-cols-3 lg:grid-cols-5" cards={cards} />;
+  const visible = showReferredFiles ? cards : cards.filter((c) => c.key !== REFERRED_CARD_KEY);
+
+  return <IconCardGrid label="أقسام لوحة المحامي" gridClass="sm:grid-cols-3 lg:grid-cols-5" cards={visible} />;
 }

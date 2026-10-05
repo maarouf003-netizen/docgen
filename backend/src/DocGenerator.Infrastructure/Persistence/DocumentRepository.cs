@@ -521,6 +521,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
                 .SetProperty(d => d.Lawyer, targetFullName)
                 .SetProperty(d => d.ReferredFromLawyer, referredFromLawyer)
                 .SetProperty(d => d.ReferredAt, now)
+                .SetProperty(d => d.Version, d => d.Version + 1)
                 .SetProperty(d => d.UpdatedAt, now), ct);
 
         if (rows == 0)
@@ -576,6 +577,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
     {
         var now = DateTime.UtcNow;
         // Query Filter (!IsDeleted) مطبق تلقائياً على ExecuteUpdate فيستثني المحذوف.
+        // (البند 56: رفع Version يدويًا — وإلا فُقدت حماية RF-010 بصمت.)
         return await Db.Documents
             .Where(d => d.CreatedById == sourceOwnerId)
             .ExecuteUpdateAsync(setters => setters
@@ -583,6 +585,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
                 .SetProperty(d => d.Lawyer, targetFullName)
                 .SetProperty(d => d.ReferredFromLawyer, referredFromLawyer)
                 .SetProperty(d => d.ReferredAt, now)
+                .SetProperty(d => d.Version, d => d.Version + 1)
                 .SetProperty(d => d.UpdatedAt, now), ct);
     }
 
@@ -604,31 +607,126 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             .ToListAsync(ct);
     }
 
-    public async Task<bool> ExistsActiveWithNumberAsync(
+    public async Task<List<Document>> ListByCircuitAsync(int circuitId, bool includeDeleted, CancellationToken ct = default)
+    {
+        // شمول كامل (لا BaseNumbers فقط): التسمية الجماعية تعيد بناء الثلاثية المشتقة
+        // (CourtNorm + SearchText + FullData) — وبناء SearchText من كيان ناقص التحميل
+        // يُسقط شروط الورثة/الكفلاء صامتًا. التسمية نادرة إداريًا فالتكلفة مقبولة.
+        IQueryable<Document> q = WithStandardIncludes(Db.Documents);
+        if (includeDeleted)
+            q = q.IgnoreQueryFilters();
+        return await q.Where(d => d.ExecutionCircuitId == circuitId).ToListAsync(ct);
+    }
+
+    public async Task<List<Document>> ListByIdsForUpdateAsync(List<int> ids, CancellationToken ct = default)
+    {
+        // شمول كامل لذات سبب ListByCircuitAsync: الإحالة/إعادة القيد تعيدان بناء
+        // الثلاثية المشتقة — والبناء من كيان ناقص يُسقط الشروط صامتًا.
+        return await WithStandardIncludes(Db.Documents)
+            .Where(d => ids.Contains(d.Id))
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<Document>> ListPendingForLawyerAsync(int lawyerId, int? circuitId, CancellationToken ct = default)
+    {
+        IQueryable<Document> q = Db.Documents
+            .AsNoTracking()
+            .Include(d => d.ExecutionCircuit)
+            .Where(d => d.CreatedById == lawyerId && d.NeedsRegistration && !d.IsDeleted);
+        if (circuitId is not null)
+            q = q.Where(d => d.ExecutionCircuitId == circuitId);
+        return await q.OrderBy(d => d.Id).ToListAsync(ct);
+    }
+
+    public async Task<Dictionary<int, (int FileCount, int PendingCount)>> CountByCircuitsAsync(List<int> circuitIds, CancellationToken ct = default)
+    {
+        var result = circuitIds.Distinct().ToDictionary(id => id, _ => (FileCount: 0, PendingCount: 0));
+        if (result.Count == 0) return result;
+        var ids = result.Keys.ToList();
+        var rows = await Db.Documents
+            .AsNoTracking()
+            .Where(d => d.ExecutionCircuitId != null && ids.Contains(d.ExecutionCircuitId.Value) && !d.IsDeleted)
+            .Select(d => new { d.ExecutionCircuitId, d.NeedsRegistration })
+            .ToListAsync(ct);
+        foreach (var g in rows.GroupBy(r => r.ExecutionCircuitId!.Value))
+            result[g.Key] = (g.Count(), g.Count(r => r.NeedsRegistration));
+        return result;
+    }
+
+    public async Task<int> CountAllByCircuitAsync(int circuitId, CancellationToken ct = default)
+    {
+        return await Db.Documents
+            .IgnoreQueryFilters()
+            .CountAsync(d => d.ExecutionCircuitId == circuitId, ct);
+    }
+
+    public async Task<List<DocumentOccurrence>> ListLastCircuitReferralsAsync(List<int> documentIds, CancellationToken ct = default)
+    {
+        if (documentIds.Count == 0) return new List<DocumentOccurrence>();
+        var rows = await Db.DocumentOccurrences
+            .AsNoTracking()
+            .Where(o => documentIds.Contains(o.DocumentId) && o.OccurrenceType == OccurrenceTypeCatalog.CircuitReferred)
+            .OrderByDescending(o => o.Id)
+            .ToListAsync(ct);
+        return rows.GroupBy(o => o.DocumentId).Select(g => g.First()).ToList();
+    }
+
+    public async Task<Dictionary<int, int>> CountLawyersByCircuitsAsync(List<int> circuitIds, CancellationToken ct = default)
+    {
+        var ids = circuitIds.Distinct().ToList();
+        var result = ids.ToDictionary(id => id, _ => 0);
+        if (ids.Count == 0) return result;
+        var rows = await Db.Documents
+            .AsNoTracking()
+            .Where(d => d.ExecutionCircuitId != null && ids.Contains(d.ExecutionCircuitId.Value) && !d.IsDeleted)
+            .GroupBy(d => d.ExecutionCircuitId!.Value)
+            .Select(g => new { CircuitId = g.Key, LawyerCount = g.Select(d => d.CreatedById).Distinct().Count() })
+            .ToListAsync(ct);
+        foreach (var r in rows)
+            result[r.CircuitId] = r.LawyerCount;
+        return result;
+    }
+
+    // ملاحظة (M12): التنفيذ النصي القديم ExistsActiveWithNumberAsync أُسقط مع ترحيل
+    // آخر مناديه إلى التوقيع الدائري أدناه — تاريخه في Git فقط.
+
+    public async Task<bool> ExistsActiveWithNumberByCircuitAsync(
         int? excludeDocumentId,
-        string? court,
+        int? circuitId,
+        string? courtNormFallback,
         string? number,
         string? type,
         string? year,
         CancellationToken ct = default)
     {
-        // RF-009: المفتاح الفعّال (دائرة + رقم + نوع + سنة) — الرقم/السنة الفارغان لا تعارض
-        // (مسودات). المحذوف مستثنى تلقائيًا (Query Filter) + تصريحًا لوضوح مطابقة القيد الجزئي.
         var n = number?.Trim();
         var y = year?.Trim();
         if (string.IsNullOrEmpty(n) || string.IsNullOrEmpty(y))
             return false;
-        var c = court?.Trim() ?? string.Empty;
-        // `PB-001`: الدائرة تُقارَن معيارية-لمعيارية (تغلق ثغرة متغيرات الإملاء في
-        // قيد `RF-009`)؛ الصفوف القديمة بلا معيار تسقط على الخام كما قبل.
-        var normC = ArabicNameNormalizer.Normalize(court);
         var t = type?.Trim() ?? string.Empty;
         var yearInt = int.TryParse(y, out var parsed) ? parsed : (int?)null;
+        if (circuitId is not null)
+        {
+            // مطابقة FK مباشرة (البند 28) — تشمل أرقام الأساس الدورية.
+            return await Db.Documents
+                .AsNoTracking()
+                .Where(d => !d.IsDeleted)
+                .Where(d => excludeDocumentId == null || d.Id != excludeDocumentId)
+                .Where(d => d.ExecutionCircuitId == circuitId
+                    && (d.FileType ?? string.Empty).Trim() == t)
+                .Where(d => (d.FileNumber != null && d.FileNumber.Trim() == n
+                        && d.FileYear != null && d.FileYear.Trim() == y)
+                    || (yearInt != null && d.BaseNumbers.Any(b => b.Year == yearInt && b.BaseNumber.Trim() == n)))
+                .AnyAsync(ct);
+        }
+        // صفوف NULL (المناب الخارجي): الوحدانية النصية القديمة.
+        var normC = courtNormFallback ?? string.Empty;
         return await Db.Documents
             .AsNoTracking()
             .Where(d => !d.IsDeleted)
             .Where(d => excludeDocumentId == null || d.Id != excludeDocumentId)
-            .Where(d => (d.CourtNorm != null ? d.CourtNorm == normC : (d.Court ?? string.Empty).Trim() == c)
+            .Where(d => d.ExecutionCircuitId == null
+                && (d.CourtNorm ?? string.Empty) == normC
                 && (d.FileType ?? string.Empty).Trim() == t)
             .Where(d => (d.FileNumber != null && d.FileNumber.Trim() == n
                     && d.FileYear != null && d.FileYear.Trim() == y)
@@ -651,6 +749,8 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             .AsNoTracking()
             .Where(d => d.CreatedById == userId)
             .Where(d => !d.IsDraft)
+            // الملفات المعلقة (NULL الرقم آمن فريدًا): تُستبعد من التدوير حتى إعادة القيد.
+            .Where(d => !d.NeedsRegistration)
             .Where(d => (d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
                 || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit)
                 ? d.ExecutedStatus == ExecutedStatusCatalog.None

@@ -661,9 +661,11 @@ render(<DocumentForm />);
       expect(screen.getByLabelText(label)).toHaveAttribute('readonly');
     }
 
-    // الدائرة حقيقة خاصة بالمناب (المنابة المسجَّل فيها): قابلة للتحرير وتعرض قيمته لا المنيب.
-    expect(screen.getByLabelText('دائرة التنفيذ')).not.toHaveAttribute('readonly');
+    // الدائرة حقيقة خاصة بالمناب (المنابة المسجَّل فيها): زر مقفل بداخله «اختيار»
+    // (نمط السجل — قراءة للعرض + زر تغيير) وتعرض قيمته لا المنيب.
+    expect(screen.getByLabelText('دائرة التنفيذ')).toHaveAttribute('readonly');
     expect(screen.getByLabelText('دائرة التنفيذ')).toHaveValue('محكمة حلب');
+    expect(screen.getByRole('button', { name: /اختيار الدائرة|تغيير الدائرة/ })).toBeInTheDocument();
 
     // الهوية الثلاثية تبقى قابلة للتحرير (قرار 5)
     expect(screen.getByLabelText('رقم الملف')).not.toHaveAttribute('readonly');
@@ -671,6 +673,21 @@ render(<DocumentForm />);
 
     // زر «إضافة/إزالة الملحق» مخفي في المرآة (يمس حقولًا مقفولة)
     expect(screen.queryByRole('button', { name: /إضافة ملحق|إزالة الملحق/ })).not.toBeInTheDocument();
+  });
+
+  it('يعرض الدائرة المرتبطة داخل الحقل مع زر قلم وإشارة صح (لا زر سفلي)', async () => {
+    await renderEdit({ ...mockDoc, executionCircuitId: 5, court: 'دائرة دمشق' });
+
+    expect(screen.getByLabelText('دائرة التنفيذ')).toHaveValue('دائرة دمشق');
+    expect(screen.getByRole('button', { name: 'تغيير الدائرة' })).toBeInTheDocument();
+    expect(screen.getByText('مرتبطة بالسجل')).toBeInTheDocument();
+  });
+
+  it('يعرض زر اختيار الدائرة بلا إشارة ارتباط قبل الاختيار', () => {
+    render(<DocumentForm />);
+
+    expect(screen.getByRole('button', { name: 'اختيار الدائرة' })).toBeInTheDocument();
+    expect(screen.queryByText('مرتبطة بالسجل')).not.toBeInTheDocument();
   });
 
 });

@@ -475,14 +475,45 @@ export default function DocumentsList() {
       )
       .then((r) => {
         setApplicants(Array.isArray(r.data.applicants) ? r.data.applicants : []);
-        setCourts(Array.isArray(r.data.courts) ? r.data.courts : []);
         setLawyers(Array.isArray(r.data.lawyers) ? r.data.lawyers : []);
         setAdministrativeBranches(Array.isArray(r.data.administrativeBranches) ? r.data.administrativeBranches : []);
         setExecutedEntities(Array.isArray(r.data.executedEntities) ? r.data.executedEntities : []);
         setPublicEntityBranches(Array.isArray(r.data.publicEntityBranches) ? r.data.publicEntityBranches : []);
       })
       .catch(() => {});
-  }, [status, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch]);
+    // مصدر خيارات «دائرة التنفيذ» من السجل (B24) — دوائر الفرع للمحامي/الرئيس،
+    // وكل الدوائر للمدير/المشرف (من الإحصاءات) — مع بقاء عقد الفلتر (court= نصًا)
+    // لأن Court يبقى مُزامَنًا. احتياطي القيم الحية عند فراغ السجل فقط.
+    (async () => {
+      try {
+        if (hasFullAccess) {
+          const r = await api.get<Array<{ circuitName: string }>>('/execution-circuits/stats');
+          const names = ((r?.data ?? []) as Array<{ circuitName: string }>)
+            .map((c) => c.circuitName)
+            .filter(Boolean);
+          if (names.length > 0) {
+            setCourts([...new Set(names)]);
+            return;
+          }
+        } else {
+          const r = await api.get<Array<{ id: number; name: string }>>('/execution-circuits/for-lawyer');
+          const names = ((r?.data ?? []) as Array<{ id: number; name: string }>).map((c) => c.name).filter(Boolean);
+          if (names.length > 0) {
+            setCourts(names);
+            return;
+          }
+        }
+      } catch {
+        // السجل الفارغ أو دور بلا نقطة: احتياطي القيم الحية أدناه.
+      }
+      try {
+        const fr = await api.get<{ courts: string[] }>(`/documents/filter-options${qs ? `?${qs}` : ''}`);
+        if (Array.isArray(fr?.data?.courts)) setCourts(fr.data.courts);
+      } catch {
+        // احتياطي صامت: تُبقى القائمة السابقة.
+      }
+    })();
+  }, [status, applicant, court, lawyer, administrativeBranch, executedEntity, publicEntityBranch, hasFullAccess]);
 
   useEffect(() => {
     if (hasActiveFilter) setExportMsg('');

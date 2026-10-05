@@ -35,6 +35,7 @@ public class DocumentDelegationConfiguration : IEntityTypeConfiguration<Document
         builder.Property(d => d.DelegatedCourt).HasMaxLength(300);
         // `PB-001`: الدائرة المنابة المعيارية (تضبط خدميًا عند التسطير/التعديل).
         builder.Property(d => d.DelegatedCourtNorm).HasMaxLength(300);
+        builder.HasIndex(d => d.DelegatedCircuitId);
         builder.Property(d => d.DelegationText).HasMaxLength(2000);
         builder.Property(d => d.DepositBookNumber).HasMaxLength(200);
         builder.Property(d => d.DepositBookDate).HasColumnType("datetime2");
@@ -58,6 +59,12 @@ public class DocumentDelegationConfiguration : IEntityTypeConfiguration<Document
         builder.HasOne(d => d.CreatedBy)
             .WithMany()
             .HasForeignKey(d => d.CreatedById)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // الدائرة المنابة المرجعية (للداخلية فقط).
+        builder.HasOne(d => d.DelegatedCircuit)
+            .WithMany()
+            .HasForeignKey(d => d.DelegatedCircuitId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

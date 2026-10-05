@@ -3,7 +3,7 @@
 > من الأدوار الموجودة **فعلًا في الكود** مقابل أدوار السياق. كل خلية بدليل `path:line` أو `UNKNOWN`.
 > `A` = `ALLOW`، `D` = `DENY`، `C` = `CONDITIONAL` (يُذكر الشرط)، `U` = `UNKNOWN`.
 > العمود الأخير: هل الإنفاذ خادميًا (`yes`) أم واجهة فقط (`frontend only`) — كل المصفوفة `yes` إلا ما يُذكر.
-> المصدر المركزي: `backend/src/DocGenerator.Api/Authorization/RolePermissions.cs:1-134`.
+> المصدر المركزي: `backend/src/DocGenerator.Api/Authorization/RolePermissions.cs:1-142`.
 > الأدوار النصية في التوكن: `lawyer/head/manager/admin/entitymanager`
 > (`Infrastructure/Security/TokenService.cs:34` — `ToString().ToLowerInvariant()`، VERIFIED).
 
@@ -51,15 +51,20 @@
 | اقتراحات: إرسال | D (`CanSuggestApp` محامٍ/رئيس `:132`) | D (`:132`) | A (`:132`) | A (`:132`) | D | yes |
 | تنبيهات الرؤساء | D (`CanCreateAlerts` رئيس فقط `:53`) | D (`:53`) | A فرعه (`:53`) | D (يستلم فقط) | D | yes |
 | تدوير سنوي | D (`CanRotate` محامٍ فقط `:31`) | D (`:31`) | D (`:31`) | A ملكه (`:31`) | D | yes |
+| سجل دوائر التنفيذ: إدارة (إدخال/تسمية/تعطيل/حذف-إفراغ/إحالة) | D (`CanManageExecutionCircuits` رئيس فقط `RolePermissions.cs:141`) | D | A فرعه (النطاق إجباري خلفيًا من `User.GetBranchId()` + شرط محافظة الفرع) — وتنبيه: `POST …/{id}/refer-files` نقل ملكية جماعي (`CreatedById` لكل ملف) بتفويض الإدارة لا `CanTransferDocuments` (صف «نقل بين المحامين») | D (اختيار فقط + معالج إعادة قيد ملفاته) | D | yes |
+| سجل دوائر التنفيذ: إحصاءات | A كل الفروع (منتقي فرع) | A كالمدير | C فرعه فقط | D | D | yes |
+| سجل دوائر التنفيذ: قراءة للاختيار (`GET …/for-lawyer` فرعه؛ `GET …/for-delegation` محافظته بكل الفروع) | D | D | A (`ExecutionCircuitsController.cs:142-164`) | A (`:142-164`) | D | yes |
+| سجل دوائر التنفيذ: معالج إعادة القيد (`GET …/my-pending-registrations` + `POST …/complete-registrations`) | D | D | D | A ملكه حصرًا (يُتحقق `CreatedById` داخل المعاملة) | D | yes |
 
 ## 3. ملاحظات التفويض الحرجة
 
 1. **التفويض مشتت برمجيًا لا إعلانيًا**: معظم النقاط `[Authorize]` عارٍ (184 نقطة، انظر `01-endpoints.md`)
    والفحص داخل الأكشن عبر `RolePermissions.*` + `return Forbid()` — أي أكشن جديد يُنسى فحصه ينفتح
-   افتراضيًا (فشل مفتوح). الاستثناءات الإعلانية الوحيدة: `AuditLogsController.cs:11`
+   افتراضيًا (فشل مفتوح). الاستثناءات الإعلانية: `AuditLogsController.cs:11`
    (`Roles="manager,admin,head"`) و`PortalController.cs:20` (`Roles="entitymanager"`) وبعض أفعال
    `StatisticsController.cs:47,63,78,85,90,95,120,146,168` و`AppealsController.cs:408-409`
-   (`Roles="lawyer"` للتذكيرات) — VERIFIED.
+   (`Roles="lawyer"` للتذكيرات) — VERIFIED — وأفعال سجل الدوائر الإحدى عشرة
+   (`ExecutionCircuitsController.cs:45,61,82,102,122,143,153,167,209,237,244`) — VERIFIED.
 2. **الدفاع العميق للبوابة سليم التصميم**: حتى لو نسي متحكم داخلي فحص الدور،
    `EntityManagerPortalGuard.cs:20-40` يحصر `entitymanager` في
    `/api/portal|/api/auth/me|/api/auth/logout|/api/client-errors|/api/meta` — VERIFIED.

@@ -30,6 +30,8 @@ import { ExecutedSideSections } from '../components/form/ExecutedSideSections';
 import { makeFieldHelpers } from '../components/form/formFields';
 import { FormSectionTitle } from '../components/form/FormSectionTitle';
 import { PublicEntityPickerModal } from '../components/entity/PublicEntityPickerModal';
+import CircuitPickerModal from '../components/circuit/CircuitPickerModal';
+import type { ExecutionCircuitDto } from '../types';
 import { slotDefaultCurrency } from '../utils/amountCurrencies';
 import { normalizeArabicDigits } from '../utils/arabicDigits';
 import { blockedAssetIds } from '../utils/delegationAssets';
@@ -91,6 +93,27 @@ export default function DocumentForm() {
   const [registryPicker, setRegistryPicker] = useState<
     { side: 'applicant' | 'executed' | 'execution-applicant'; index: number } | null
   >(null);
+  // سجل دوائر التنفيذ (BQ-004): الحقل زر مقفل بداخله «اختيار» — القائمة من
+  // دوائر الفرع حصرًا، والإلزامية تمنع الحفظ مع تركيز أول خطأ.
+  // انتقالي: فرع بلا سجل (قائمة فارغة/فشل تحميل) يُقبل النص الحر حتى يُعبَّأ السجل.
+  const [circuitPickerOpen, setCircuitPickerOpen] = useState(false);
+  const [branchCircuits, setBranchCircuits] = useState<ExecutionCircuitDto[] | null>(null);
+  const circuitPickerButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await api.get<ExecutionCircuitDto[]>('/execution-circuits/for-lawyer');
+        if (!cancelled) setBranchCircuits(r?.data ?? []);
+      } catch {
+        if (!cancelled) setBranchCircuits(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [guarantors, setGuarantors] = useState<GuarantorDto[]>([emptyGuarantor()]);
   const [borrowerHeirs, setBorrowerHeirs] = useState<HeirDto[]>([]);
   const [assets, setAssets] = useState<AssetDto[]>([]);
@@ -713,6 +736,15 @@ export default function DocumentForm() {
     const isDepositSubmit = form.generalEntitySide === 'deposit';
     const sideLabel = isDepositSubmit ? 'عرض وايداع' : 'الجهة العامة منفذ عليها';
 
+    // سجل الدوائر: الدائرة إلزامية دائمًا وفي كل الأوضاع — تمنع الحفظ مع تركيز أول خطأ.
+    // انتقالي: فرع بلا سجل (قائمة فارغة أو تعذّر تحميلها كبيئة الاختبارات) يُقبل بلا دائرة.
+    const registryEnforced = (branchCircuits?.length ?? 0) > 0 || form.executionCircuitId != null;
+    if (form.executionCircuitId == null && !isMirror && registryEnforced) {
+      setError('دائرة التنفيذ مطلوبة — اختر من السجل');
+      circuitPickerButtonRef.current?.focus();
+      return;
+    }
+
     if (
       isExecutedSubmit &&
       (!(form.fileNumber ?? '').trim() || !(form.fileYear ?? '').trim())
@@ -1017,7 +1049,53 @@ export default function DocumentForm() {
 
         <FormSectionTitle title="🏛️ المعلومات الأساسية" />
         <div className="grid md:grid-cols-5 gap-4 items-end">
-          {field('دائرة التنفيذ', 'court')}
+          <div>
+            <label htmlFor="court-display" className="block text-xs font-bold text-gray-600 mb-1">
+              دائرة التنفيذ
+            </label>
+            <div className="relative">
+              <input
+                id="court-display"
+                value={form.court ?? ''}
+                readOnly
+                placeholder="اختر من السجل…"
+                aria-readonly="true"
+                className={`w-full min-h-11 border border-gray-300 bg-gray-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 cursor-not-allowed ${
+                  form.executionCircuitId != null ? 'pe-20' : 'pe-14'
+                }`}
+              />
+              <div className="absolute inset-y-0 end-1 flex items-center gap-1">
+                {form.executionCircuitId != null && (
+                  <span className="text-emerald-600 font-bold leading-none" title="مرتبطة بالسجل">
+                    <span aria-hidden="true">✓</span>
+                    <span className="sr-only">مرتبطة بالسجل</span>
+                  </span>
+                )}
+                <button
+                  ref={circuitPickerButtonRef}
+                  type="button"
+                  onClick={() => setCircuitPickerOpen(true)}
+                  aria-label={form.executionCircuitId != null ? 'تغيير الدائرة' : 'اختيار الدائرة'}
+                  title={form.executionCircuitId != null ? 'تغيير الدائرة' : 'اختيار الدائرة'}
+                  className="flex items-center justify-center min-h-11 min-w-11 rounded-lg border border-emerald-200 text-emerald-800 hover:bg-emerald-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                >
+                  {form.executionCircuitId != null ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                    </svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                      <circle cx="11" cy="11" r="7" />
+                      <path d="m21 21-4.3-4.3" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
+            {form.executionCircuitId == null && !isMirror && (branchCircuits?.length ?? 0) > 0 && (
+              <p className="text-xs text-red-600 mt-1">دائرة التنفيذ مطلوبة — اختر من السجل</p>
+            )}
+          </div>
           {field('رقم الملف', 'fileNumber', 'رقم الملف...')}
           {selectField('سنة الملف', 'fileYear', ['', ...FILE_YEARS], form.fileYear ?? '', (v) => set('fileYear', v))}
           {field('نوع الملف', 'fileType', 'نوع الملف...')}
@@ -1269,6 +1347,19 @@ export default function DocumentForm() {
         <PublicEntityPickerModal
           onClose={() => setRegistryPicker(null)}
           onPick={applyRegistryPick}
+        />
+      )}
+
+      {circuitPickerOpen && (
+        <CircuitPickerModal
+          fetchUrl="/execution-circuits/for-lawyer"
+          initialSelectedId={form.executionCircuitId ?? null}
+          onSelect={(c: ExecutionCircuitDto) => {
+            set('executionCircuitId', c.id);
+            set('court', c.name);
+            setCircuitPickerOpen(false);
+          }}
+          onClose={() => setCircuitPickerOpen(false)}
         />
       )}
     </div>

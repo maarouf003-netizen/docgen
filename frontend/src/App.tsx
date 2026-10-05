@@ -43,6 +43,9 @@ const ReviewsList = lazy(() => import('./pages/ReviewsList'));
 const ReviewDetail = lazy(() => import('./pages/ReviewDetail'));
 const CorrespondencesList = lazy(() => import('./pages/CorrespondencesList'));
 const CorrespondenceDetail = lazy(() => import('./pages/CorrespondenceDetail'));
+const ExecutionCircuitsPage = lazy(() => import('./pages/ExecutionCircuitsPage'));
+const PendingRegistrationsPage = lazy(() => import('./pages/PendingRegistrationsPage'));
+const CircuitStatsPage = lazy(() => import('./pages/CircuitStatsPage'));
 
 function PageLoader() {
   return <div className="min-h-screen flex items-center justify-center text-gray-500">جارِ التحميل...</div>;
@@ -264,6 +267,30 @@ export default function App() {
               element={
                 <RequireRole allowed={(role) => role === 'head'}>
                   <DelegationRequests />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/execution-circuits"
+              element={
+                <RequireRole allowed={(role) => role === 'head'}>
+                  <ExecutionCircuitsPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/pending-registrations"
+              element={
+                <RequireRole allowed={(role) => role === 'lawyer'}>
+                  <PendingRegistrationsPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/circuit-stats"
+              element={
+                <RequireRole allowed={(_role, hasFullAccess, isHead) => hasFullAccess || isHead}>
+                  <CircuitStatsPage />
                 </RequireRole>
               }
             />

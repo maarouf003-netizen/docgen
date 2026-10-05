@@ -697,6 +697,8 @@ public sealed class DocumentAppealService : IDocumentAppealService
     /// <summary>شروط الاستئناف على الملف: مقيد (ليس تحت الرفع). الشطب لا يمنع الاستئناف.</summary>
     private static void ValidateSourceForAppeal(Document source)
     {
+        if (source.NeedsRegistration)
+            throw new ArgumentException("لا يمكن تسطير استئناف على ملف بانتظار إعادة القيد — أدخل رقمه الجديد أولًا");
         if (source.IsDraft)
             throw new ArgumentException("لا يمكن الاستئناف على ملف تحت الرفع");
     }

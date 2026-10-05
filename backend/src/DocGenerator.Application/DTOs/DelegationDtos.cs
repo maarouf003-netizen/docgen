@@ -24,7 +24,8 @@ public record UpsertDelegationRequest(
     string? DelegationText,
     string? DepositBookNumber,
     string? DepositBookDate,
-    List<int>? AssetIds);
+    List<int>? AssetIds,
+    int? DelegatedCircuitId = null);
 
 /// <summary>
 /// تعيين المحامي المختص للإنابة من رئيس القسم (الدائرة المنابة): يُنشأ الملف المناب تلقائيًا.
@@ -114,4 +115,6 @@ public record DelegationDto(
     /// هل بلغ الملف المناب حالة نهائية (مشطوب بجهتيه/مسترد/منفذ إنابة)؟ — مرآة IsTargetTerminal
     /// للعرض (إخفاء سطر «بانتظار الإتمام» للمناب النهائي)؛ false قبل اعتماد الإنابة (بلا مناب).
     /// </summary>
-    bool TargetTerminal = false);
+    bool TargetTerminal = false,
+    /// <summary>الدائرة المنابة المرجعية (للداخلية فقط).</summary>
+    int? DelegatedCircuitId = null);

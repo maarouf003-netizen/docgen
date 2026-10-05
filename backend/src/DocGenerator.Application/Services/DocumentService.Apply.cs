@@ -308,12 +308,12 @@ public sealed partial class DocumentService
         doc.InclusionAmount3Numeric = r.InclusionAmount3Numeric ?? 0;
         doc.InclusionAmount3Words = r.InclusionAmount3Words;
         doc.InclusionCurrency3 = r.InclusionCurrency3;
-        doc.Court = r.Court;
-        // «طالب التنفيذ» في وضع «طالبة تنفيذ» يُشتق من قائمة الجهات (ApplicantPublicEntities)
-        // في FillDerivedFields؛ ولا يُؤخذ نصيًا من الطلب بعد الآن.
-        doc.FileNumber = r.FileNumber;
+        // العقد: الخادم يشتق Court/CourtNorm من الدائرة ويتجاهل نص العميل دائمًا (لا 400) —
+        // يُضبط في Create/Update عبر ApplyCircuitDerivation بعد ApplyRequest.
+        // التطبيع الرقمي مركزيًا: الثقب 123 مقابل ١٢٣ يُغلق هنا للإنشاء/التعديل.
+        doc.FileNumber = DigitNormalizer.NormalizeDigits(r.FileNumber);
         doc.FileType = r.FileType;
-        doc.FileYear = r.FileYear;
+        doc.FileYear = DigitNormalizer.NormalizeDigits(r.FileYear);
         doc.FileIncoming = r.FileIncoming;
         doc.FileIncomingDate = r.FileIncomingDate;
         doc.UnderFilingNumber = r.UnderFilingNumber;
@@ -895,7 +895,11 @@ public sealed partial class DocumentService
         if (doc.InclusionAmount3Numeric > 0 && string.IsNullOrWhiteSpace(doc.InclusionAmount3Words))
             doc.InclusionAmount3Words = FormatAmountWords(doc.InclusionAmount3Numeric, doc.InclusionCurrency3);
 
-        doc.IsDraft = string.IsNullOrWhiteSpace(doc.FileNumber) || string.IsNullOrWhiteSpace(doc.FileYear);
+        // فك ارتباط IsDraft عن التفريغ: IsDraft = (فارغ الرقم/السنة) && !NeedsRegistration —
+        // والمعلق يبقى IsDraft=false بشارة مستقلة (وإلا تلوث: منع الإنابة/الاستئناف على المسودات،
+        // عدادات Drafts/Active، لافتة «تحت رفع»، قوائم المتداول، تصنيف البوابة).
+        doc.IsDraft = (string.IsNullOrWhiteSpace(doc.FileNumber) || string.IsNullOrWhiteSpace(doc.FileYear))
+            && !doc.NeedsRegistration;
         var label = doc.IsDraft ? ExecutionStatusCatalog.DraftFilter : "متداول";
         var borrower = (doc.BorrowerName ?? string.Empty).Trim();
         doc.DocumentType = string.IsNullOrWhiteSpace(borrower) ? label : $"{label} - {borrower}";
