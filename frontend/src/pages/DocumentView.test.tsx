@@ -2375,11 +2375,12 @@ it('يُسجّل الملف كآخر ما فُتح في الجلسة ليُمي�
     const menu = await screen.findByRole('menu', { name: 'المزيد' });
 
     // initialFocus: أول بند (تعديل) يستقبل التركيز فور الفتح — لا مسار Tab طويل.
-    expect(within(menu).getByRole('menuitem', { name: 'تعديل' })).toHaveFocus();
+    // (انتظار صريح: نقل التركيز يحدث في تأثير لاحق للفتح، فيسبق الـassertion تحت ضغط المعالج.)
+    await waitFor(() => expect(within(menu).getByRole('menuitem', { name: 'تعديل' })).toHaveFocus());
 
     // السهم للأسفل ينقل التركيز للبند التالي بترتيب الظهور.
     await user.keyboard('{ArrowDown}');
-    expect(within(menu).getByRole('menuitem', { name: 'مراسلات' })).toHaveFocus();
+    await waitFor(() => expect(within(menu).getByRole('menuitem', { name: 'مراسلات' })).toHaveFocus());
 
     // Escape من داخل القائمة يغلقها ويعيد التركيز للمشغّل (لا ضياع في body).
     await user.keyboard('{Escape}');
