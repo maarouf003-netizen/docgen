@@ -132,6 +132,8 @@ public sealed partial class DocumentService : IDocumentService
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
     private readonly IIdempotencyStore? _idempotency;
+    private readonly IRepository<ExecutionCircuit> _circuits;
+    private readonly IRepository<Branch> _branches;
 
     public DocumentService(
         IDocumentRepository documents,
@@ -152,8 +154,12 @@ public sealed partial class DocumentService : IDocumentService
         TimeProvider clock,
         TimeZoneInfo timeZone,
         IDbExceptionClassifier dbErrors,
-        IIdempotencyStore? idempotency = null)
+        IIdempotencyStore? idempotency = null,
+        IRepository<ExecutionCircuit>? circuits = null,
+        IRepository<Branch>? branches = null)
     {
+        _circuits = circuits ?? new UnconfiguredCircuitRepository();
+        _branches = branches ?? new UnconfiguredBranchRepository();
         _documents = documents;
         _users = users;
         _guarantors = guarantors;
@@ -216,6 +222,9 @@ public sealed partial class DocumentService : IDocumentService
         };
 
         ApplyRequest(doc, request);
+        // سجل الدوائر: اشتقاق الدائرة (إلزامية) قبل المشتقات — يتجاهل نص العميل.
+        var createCircuit = await ResolveCircuitForWriteAsync(request, branchId, isExternalTarget: false, ct);
+        ApplyCircuitDerivation(doc, createCircuit, request);
         FillDerivedFields(doc);
         ApplyRegistrationDate(doc, request.FileRegistrationDate);
 
@@ -244,8 +253,9 @@ public sealed partial class DocumentService : IDocumentService
     private async Task<DocumentResponse> CreateCoreAsync(
         Document doc, DocumentUpsertRequest request, int userId, User actor, string? actorName, CancellationToken ct)
     {
-        // RF-009: فحص مبكر للتكرار قبل الحفظ (409 ودي)، والقيد الفريد ظهر للسباق.
-        await EnsureNumberUniqueAsync(null, doc.Court, doc.FileNumber, doc.FileType, doc.FileYear, ct);
+        // RF-009 بتوقيع الدائرة (البند 28/34): مطابقة FK مباشرة بدل النص.
+        await EnsureNumberUniqueByCircuitAsync(null, doc.ExecutionCircuitId, doc.CourtNorm,
+            doc.FileNumber, doc.FileType, doc.FileYear, ct);
 
         return await WithNumberGuardAsync(() => _tx.RunAsync(async token =>
         {
@@ -297,18 +307,47 @@ public sealed partial class DocumentService : IDocumentService
         // مرفوض — قبل أي تغيير (ApplyRequest يستبدل الأصول بالكامل).
         await ValidateDelegationSeizureLockAsync(doc, request, ct);
 
+        // سجل الدوائر: تبديل الدائرة من التعديل مسموح (فحص 409) — يُحفظ القديم للوقوعتين.
+        // إن لم يُرسل تغيير دائرة (لا معرف ولا نص)، يُبقى الحالي بلا إعادة حل (توافق الطلبات الجزئية).
+        var oldCircuitId = doc.ExecutionCircuitId;
+        var oldCircuitName = doc.Court;
+        var oldCourtNorm = doc.CourtNorm;
+        var wasPending = doc.NeedsRegistration;
+
         ApplyRequest(doc, request);
+        // سجل الدوائر: تبديل الدائرة من التعديل مسموح (فحص 409) — يُحفظ القديم للوقوعتين.
+        // القواعد: (1) بلا معرف ولا نص → إبقاء الحالي (توافق الطلبات الجزئية)؛
+        // (2) نفس المعرف → إبقاء (قاعدة الجد: ملف الدائرة المعطلة يُعدَّل ويبقى عليها)؛
+        // (3) سواهما → حل صريح بالمعرف أو بالنص (خارج السجل = 400، لا تجاهل صامت).
+        var idProvided = request.ExecutionCircuitId is not null;
+        var textProvided = !string.IsNullOrWhiteSpace(request.Court);
+        if ((!idProvided && !textProvided) || (idProvided && request.ExecutionCircuitId == oldCircuitId))
+        {
+            doc.ExecutionCircuitId = oldCircuitId;
+            doc.Court = oldCircuitName;
+            doc.CourtNorm = oldCourtNorm;
+        }
+        else
+        {
+            var editCircuit = await ResolveCircuitForWriteAsync(request, doc.BranchId, isExternalTarget: false, ct);
+            ApplyCircuitDerivation(doc, editCircuit, request);
+        }
+        // تعديل ملف «بانتظار إعادة القيد» برقم غير فارغ يُسقط الـ flag (مع إعادة تحقق الوحدانية).
+        if (wasPending && !string.IsNullOrWhiteSpace(doc.FileNumber) && !string.IsNullOrWhiteSpace(doc.FileYear))
+            doc.NeedsRegistration = false;
         FillDerivedFields(doc);
         ApplyRegistrationDate(doc, request.FileRegistrationDate);
         doc.UpdatedAt = DateTime.UtcNow;
 
-        // RF-009: فحص التكرار بعد تطبيق الطلب (قد يغيّر الرقم/النوع/السنة/الدائرة).
-        await EnsureNumberUniqueAsync(documentId, doc.Court, doc.FileNumber, doc.FileType, doc.FileYear, ct);
+        // RF-009 بتوقيع الدائرة: فحص التكرار بعد تطبيق الطلب.
+        await EnsureNumberUniqueByCircuitAsync(documentId, doc.ExecutionCircuitId, doc.CourtNorm,
+            doc.FileNumber, doc.FileType, doc.FileYear, ct);
 
         // RF-010: فحص التزامن المبكر (409 ودي) + زيادة العدّاد وشبكة السباق.
         EnsureConcurrency(doc, request.Version);
 
         List<MirrorAlertIntent> mirrorIntents = [];
+        var circuitSwitched = oldCircuitId != doc.ExecutionCircuitId;
         var result = await WithConcurrencyGuardAsync(() => WithNumberGuardAsync(() => _tx.RunAsync(async token =>
         {
             if (wasStruckOff && doc.ExecutedStatus == ExecutedStatusCatalog.None)
@@ -317,6 +356,9 @@ public sealed partial class DocumentService : IDocumentService
                 await AddStruckOffOccurrenceAsync(doc, userId, token);
             _documents.Update(doc);
             await _uow.SaveChangesAsync(token);
+            // تبديل الدائرة من التعديل يسجل الوقوعتين تلقائيًا (قديم/جديد) — وإلا قفزت بلا أثر.
+            if (circuitSwitched)
+                await AddCircuitSwitchOccurrencesAsync(doc, oldCircuitName, userId, token);
             await SyncDelegationSnapshotsForDocumentAsync(doc, token);
             // المرآة: نسخ تغييرات المنيب إلى مناباته المعلقة (داخل المعاملة نفسها) وإعادة اشتقاق
             // الحقول المحسوبة فيها — تعيد نوايا تنبيه تُطلق بعد نجاح المعاملة.
@@ -405,14 +447,28 @@ public sealed partial class DocumentService : IDocumentService
             return false;
 
         // RF-009 (INT-008): الاستعادة تفحص تعارض المفتاح الفعّال (قد أُعيد استعمال رقمه
-        // أثناء حذفه) — 409 بدل تكرار ظاهري.
+        // أثناء حذفه) — 409 بدل تكرار ظاهري. بتوقيع الدائرة (البند 34).
+        // مسار إفراغ المحذوفة منطقيًا الوحيد: استعادة ثم إحالة — Restore يفحص بالرقم الجديد.
         var currentYear = CurrentYear();
-        await EnsureNumberUniqueAsync(documentId, doc.Court,
+        await EnsureNumberUniqueByCircuitAsync(documentId, doc.ExecutionCircuitId, doc.CourtNorm,
             Common.EffectiveFileIdentity.Number(doc, currentYear), doc.FileType,
             Common.EffectiveFileIdentity.Year(doc, currentYear), ct);
 
         return await WithNumberGuardAsync(() => _tx.RunAsync(async token =>
         {
+            // الاستعادة تعيد اشتقاق الدائرة من السجل (M3): التسمية الجماعية أثناء
+            // الحذف المنطقي لا تمسّ المحذوف، فتُزامَن هنا وإلا عُرض الاسم القديم.
+            if (doc.ExecutionCircuitId is not null)
+            {
+                var circuit = await _circuits.GetByIdAsync(doc.ExecutionCircuitId.Value, token);
+                if (circuit is not null)
+                {
+                    doc.Court = circuit.Name;
+                    doc.CourtNorm = ArabicNameNormalizer.Normalize(circuit.Name);
+                    doc.SearchText = DocumentSearchTextBuilder.Build(doc);
+                    doc.FullData = DocumentSearchTextBuilder.BuildFullData(doc);
+                }
+            }
             doc.IsDeleted = false;
             doc.DeletedAt = null;
             doc.UpdatedAt = DateTime.UtcNow;

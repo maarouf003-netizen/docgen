@@ -171,20 +171,21 @@ builder.Property(d => d.SayerNumber).HasMaxLength(100);
         builder.HasIndex(d => d.BranchId);
         builder.HasIndex(d => d.CreatedById);
 
-        // RF-009 (INT-001): وحدانية رقم الأساس الفعّالة (الدائرة + الرقم + النوع + السنة)
-        // للملفات الظاهرة فقط — المحذوف منطقيًا خارج القيد (رقمه قابل لإعادة الاستعمال
-        // عمدًا، والاستعادة تفحص خدميًا)، والمسودات بلا رقم خارج القيد (FileNumber IS NOT NULL).
-        // الصيغة المقتبسة صالحة لـ SQLite وPostgres معًا (نفس اصطلاح ":19-21" القائم).
-        // ملاحظة: Court نص حر فيقارن القيد نصًا دقيقًا؛ الخدمة تُطبِّع (Trim) وتفحص.
-        builder.HasIndex(d => new { d.Court, d.FileNumber, d.FileType, d.FileYear })
-            .HasFilter("NOT \"IsDeleted\" AND \"FileNumber\" IS NOT NULL")
+        // RF-009 (INT-001): وحدانية رقم الأساس الفعّالة — انتقلت إلى
+        // (ExecutionCircuitId, FileNumber, FileType, FileYear) بفهرس فريد جزئي
+        // يستثني المحذوف وNULL (فيحمي تفريغ الأرقام أثناء انتظار إعادة القيد
+        // من أي تصادم). صفوف المناب الخارجي (ExecutionCircuitId IS NULL) تبقى
+        // على الوحدانية النصية (CourtNorm, FileNumber, FileType, FileYear).
+        // يُبقى فهرس CourtNorm المفرد للبحث. (البندان 52 و54.)
+        // ملاحظة: اصطلاح الاقتباس HasFilter صالح لـ SQLite وPostgres معًا.
+        builder.HasIndex(d => new { d.ExecutionCircuitId, d.FileNumber, d.FileType, d.FileYear })
+            .HasFilter("NOT \"IsDeleted\" AND \"FileNumber\" IS NOT NULL AND \"ExecutionCircuitId\" IS NOT NULL")
             .IsUnique();
-        // PB-001: ظهر الوحدانية للسباق المتزامن بمتغيرات الإملاء (الدائرة المعيارية) —
-        // الفحص الخدمي (`ExistsActiveWithNumberAsync`) يصطاد التسلسل، وهذا ظهر السباق.
-        // صفوف `CourtNorm` الفارغة (قديمة) لا تتعارض (`NULL` مميزة في الفريد).
         builder.HasIndex(d => new { d.CourtNorm, d.FileNumber, d.FileType, d.FileYear })
-            .HasFilter("NOT \"IsDeleted\" AND \"FileNumber\" IS NOT NULL AND \"CourtNorm\" IS NOT NULL")
+            .HasFilter("NOT \"IsDeleted\" AND \"FileNumber\" IS NOT NULL AND \"ExecutionCircuitId\" IS NULL AND \"CourtNorm\" IS NOT NULL")
             .IsUnique();
+        builder.HasIndex(d => d.ExecutionCircuitId);
+        builder.Property(d => d.NeedsRegistration).HasDefaultValue(false);
 
         // RF-010 (INT-002/INT-012): عدّاد التزامن المتفائل — عمود جديد بلا مساس
         // بالصفوف القائمة (الافتراضي 0 يُملأ تلقائيًا عند التطبيق)؛ يُزاد خدميًا
@@ -199,5 +200,11 @@ builder.Property(d => d.SayerNumber).HasMaxLength(100);
         // الملف المناب: يرتبط بإنابته بمفتاح أجنبي فريد (كل إنابة تُنشئ ملفًا منابًا واحدًا).
         builder.Property(d => d.SourceDelegationId);
         builder.HasIndex(d => d.SourceDelegationId).IsUnique();
+
+        // سجل دوائر التنفيذ: FK اختياري قاعديًا (إلزامي منطقيًا للجديد عدا المناب الخارجي).
+        builder.HasOne(d => d.ExecutionCircuit)
+            .WithMany(c => c.Documents)
+            .HasForeignKey(d => d.ExecutionCircuitId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -1,6 +1,7 @@
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
+using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Services;
 
@@ -58,6 +59,8 @@ public sealed class BranchManagementService : IBranchManagementService
         var code = NormalizeRequired(request.Code, "كود الفرع مطلوب");
         // المحافظة إجبارية لأنها تحدد نطاق رئيس القسم في سجل الجهات العامة (Branches.Governorate).
         var governorate = NormalizeRequired(request.Governorate, "المحافظة مطلوبة — اختر محافظة الفرع من القائمة");
+        if (!GovernorateCatalog.IsGovernorate(governorate))
+            throw new ArgumentException("المحافظة غير معتمدة — اختر محافظة الفرع من القائمة");
 
         if (await _branches.NameExistsAsync(name, null, ct))
             throw new ArgumentException("اسم الفرع مستخدم مسبقاً");
@@ -97,6 +100,8 @@ public sealed class BranchManagementService : IBranchManagementService
         // المحافظة إجبارية حتى في التعديل — إن كانت فرعًا قديمًا بلا محافظة فالتعديل يفرض اختيارها
         // (تُشفى البيانات القديمة تدريجيًا عبر نفس الشاشة بلا هجرة بيانات).
         var governorate = NormalizeRequired(request.Governorate, "المحافظة مطلوبة — اختر محافظة الفرع من القائمة");
+        if (!GovernorateCatalog.IsGovernorate(governorate))
+            throw new ArgumentException("المحافظة غير معتمدة — اختر محافظة الفرع من القائمة");
 
         if (await _branches.NameExistsAsync(name, branch.Id, ct))
             throw new ArgumentException("اسم الفرع مستخدم مسبقاً");

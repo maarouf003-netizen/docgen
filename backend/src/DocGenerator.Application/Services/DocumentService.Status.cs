@@ -85,6 +85,8 @@ public sealed partial class DocumentService
         var doc = await _documents.GetByIdAsync(documentId, ct);
         if (doc is null)
             return false;
+        // حراس NeedsRegistration الصريحة (البند 32): تُمنع على المعلق — تغيير الحالة حيث تلزم الهوية.
+        EnsureNotPendingRegistration(doc, "تغيير الحالة");
         if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
             throw new ArgumentException("حالة نظام «طالبة تنفيذ» تخص ملفات «الجهة العامة طالبة التنفيذ» فقط");
 
@@ -314,6 +316,7 @@ public sealed partial class DocumentService
         var doc = await _documents.GetByIdAsync(documentId, ct);
         if (doc is null)
             return false;
+        EnsureNotPendingRegistration(doc, "التراجع عن الحالة");
         if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
             throw new ArgumentException("التراجع عن الحالة يخص ملفات «الجهة العامة طالبة التنفيذ» فقط");
 
@@ -410,6 +413,7 @@ public sealed partial class DocumentService
         var doc = await _documents.GetByIdAsync(documentId, ct);
         if (doc is null)
             return false;
+        EnsureNotPendingRegistration(doc, "العودة من «محال الى البداية»");
         if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
             throw new ArgumentException("العودة من «محال الى البداية» تخص ملفات «الجهة العامة طالبة التنفيذ» فقط");
 
@@ -517,6 +521,7 @@ public sealed partial class DocumentService
         var doc = await _documents.GetByIdAsync(documentId, ct);
         if (doc is null)
             return false;
+        EnsureNotPendingRegistration(doc, "اعتبار الملف منفذًا");
         if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
             throw new ArgumentException("حالة نظام «طالبة تنفيذ» تخص ملفات «الجهة العامة طالبة التنفيذ» فقط");
 
@@ -802,8 +807,9 @@ public sealed partial class DocumentService
             // إلزامي (ومعه سنة الإعادة في نظام «طالبة تنفيذ»)، ويُسجَّل رقم أساس لسنة الإعادة
             // فيعود الملف بالرقم والنوع الجديدين.
             await ApplyRenewalAsync(doc, renewal, executedLike, doc.CreatedById, token);
-            // RF-009: فحص التكرار لرقم التجديد (بسنة الإعادة ونوعه الجديد) قبل الحفظ.
-            await EnsureNumberUniqueAsync(doc.Id, doc.Court, doc.RenewalFileNumber, doc.RenewalFileType,
+            // RF-009 بتوقيع الدائرة (البند 34): مطابقة FK مباشرة.
+            await EnsureNumberUniqueByCircuitAsync(doc.Id, doc.ExecutionCircuitId, doc.CourtNorm,
+                doc.RenewalFileNumber, doc.RenewalFileType,
                 executedLike
                     ? CurrentYear().ToString()
                     : renewal?.RenewalYear?.ToString(), token);

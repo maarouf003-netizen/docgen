@@ -287,6 +287,7 @@ export function toUpsert(d: DocumentResponse): DocumentUpsertRequest {
     inclusionAmount3Words: d.inclusionAmount3Words ?? '',
     inclusionCurrency3: d.inclusionCurrency3 ?? 'ليرة سورية',
     court: d.court ?? '',
+    executionCircuitId: d.executionCircuitId ?? null,
     applicant: d.applicant ?? '',
     fileNumber: d.fileNumber ?? '',
     fileType: d.fileType ?? '',

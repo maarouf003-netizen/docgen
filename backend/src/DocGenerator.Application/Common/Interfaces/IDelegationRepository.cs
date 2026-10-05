@@ -38,4 +38,23 @@ public interface IDelegationRepository : IRepository<DocumentDelegation>
     /// للمنيب» دون N+1. الإنابات المنفذة سجل نهائي فلا تُمسّ نسخها.
     /// </summary>
     Task<List<DocumentDelegation>> ListPendingBySourceWithTargetsAsync(int sourceDocumentId, CancellationToken ct = default);
+
+    /// <summary>إنابات تستهدف دائرة (DelegatedCircuitId) — لإعادة التسمية/التوجيه الجماعي.</summary>
+    Task<List<DocumentDelegation>> ListByDelegatedCircuitAsync(int circuitId, CancellationToken ct = default);
+
+    /// <summary>
+    /// إنابات تستهدف دائرة متجاوزةً فلتر المصدر المحذوف (C1) — لمسار الحذف فقط:
+    /// الفلتر العام يُخفي إنابات مصادرها محذوفة، لكن قيد FK ما زال يراها فينفجر
+    /// الحذف 500 إن لم تُفك. التسمية تبقي الافتراضي (لا أثر مرئيًا هناك).
+    /// </summary>
+    Task<List<DocumentDelegation>> ListByDelegatedCircuitIncludingDeletedAsync(int circuitId, CancellationToken ct = default);
+
+    /// <summary>عدد الإنابات الواردة المعلقة التي تستهدف الدائرة — حارس الحذف الموسع.</summary>
+    Task<int> CountPendingIncomingByCircuitAsync(int circuitId, CancellationToken ct = default);
+
+    /// <summary>
+    /// عدد الإنابات المعلقة متجاوزًا فلتر المصدر المحذوف (C1) — لحارس الحذف: المعلقة
+    /// تحظر الحذف أيًا كان حال مصدرها (صفها القاعدي ما زال يشير للدائرة).
+    /// </summary>
+    Task<int> CountPendingIncomingByCircuitIncludingDeletedAsync(int circuitId, CancellationToken ct = default);
 }

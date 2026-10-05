@@ -47,6 +47,17 @@ public class DocumentOccurrence
     /// </summary>
     public string? Details { get; set; }
 
+    /// <summary>
+    /// اسم دائرة المصدر نصًا مجمدًا للتاريخ (يُملأ عند الإحالة — circuit-referred).
+    /// مبدأ التاريخ المجمد: إنابات مكتملة تستهدف دائرة محذوفة تبقي عرض اسمها القديم عمدًا.
+    /// </summary>
+    public string? FromCircuitName { get; set; }
+
+    /// <summary>
+    /// اسم دائرة الوجهة نصًا مجمدًا للتاريخ (يُملأ عند الإحالة — circuit-referred).
+    /// </summary>
+    public string? ToCircuitName { get; set; }
+
     public int CreatedById { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

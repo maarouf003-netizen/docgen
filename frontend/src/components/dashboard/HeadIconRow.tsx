@@ -7,10 +7,12 @@ export interface HeadIconCounts {
   urgentCorrespondence: number;
   delegationsPending: number;
   entityPending: number;
+  /** ملفات بانتظار إعادة القيد في دوائر الفرع (شارة بطاقة الدوائر — B44). */
+  circuitsPending: number;
 }
 
 /**
- * صف الأيقونات التسع للوحة رئيس القسم (جوال أولًا: عمودان → 3 → 3):
+ * صف الأيقونات العشر للوحة رئيس القسم (جوال أولًا: عمودان → 3 → 3):
  * الشارة الحمراء بجانب الأيقونة التي فيها تنبيه فقط (مطالعات/مراسلات/
  * إنابات/سجل جهات)، وبقية البطاقات بلا شارة — بنفس عقد `CardDef`.
  */
@@ -103,6 +105,22 @@ export function HeadIconRow({ counts }: { counts: HeadIconCounts }) {
       subtitle: 'حسابات المندوبين',
       tone: 'bg-cyan-100 text-cyan-700',
       to: '/delegates',
+    },
+    {
+      key: 'circuits',
+      icon: ICONS.chart,
+      title: 'إدارة دوائر التنفيذ',
+      subtitle:
+        counts.circuitsPending > 0 ? `${counts.circuitsPending} ملفات محالة` : 'سجل دوائر التنفيذ',
+      tone: 'bg-violet-100 text-violet-700',
+      badge:
+        counts.circuitsPending > 0
+          ? {
+              count: counts.circuitsPending,
+              label: arabicCount(counts.circuitsPending, 'ملف محال واحد', 'ملفات محالة'),
+            }
+          : undefined,
+      to: '/execution-circuits',
     },
     {
       key: 'audit',

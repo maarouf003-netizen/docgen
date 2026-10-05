@@ -268,6 +268,11 @@ public sealed partial class DocumentService
                 if (doc.IsDraft || doc.FileYear == year.ToString())
                     throw new ArgumentException($"الملف (رقم {doc.Id}) غير مؤهل للتدوير");
 
+                // حارس التدوير للمعلق (البند 53): يُستبعد المعلق من التدوير دائمًا —
+                // لا اعتماد على IsDraft (الذي صار false للمعلق بموجب البند 31).
+                if (doc.NeedsRegistration)
+                    throw new ArgumentException($"الملف (رقم {doc.Id}) بانتظار إعادة القيد — غير مؤهل للتدوير");
+
                 var eligible = GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide)
                     ? doc.ExecutedStatus == ExecutedStatusCatalog.None
                         && doc.BaseNumbers.Any(b => b.Year < year)
@@ -293,9 +298,9 @@ public sealed partial class DocumentService
                 if (normalized.Length > 50)
                     throw new ArgumentException("رقم الأساس يتجاوز الطول المسموح");
 
-                // RF-009: فحص التكرار لكل رقم مدوَّر (بنوع الملف الظاهر وسنة التدوير)
-                // قبل إدراجه — 409 بدل ازدواج قضائي.
-                await EnsureNumberUniqueAsync(doc.Id, doc.Court, normalized, doc.FileType, year.ToString(), token);
+                // RF-009 بتوقيع الدائرة (البند 34): مطابقة FK مباشرة — قبل إدراجه.
+                await EnsureNumberUniqueByCircuitAsync(doc.Id, doc.ExecutionCircuitId, doc.CourtNorm,
+                    normalized, doc.FileType, year.ToString(), token);
 
                 // سجل جديد دائمًا: كل تدوير يلحق سجلًا بسنة التدوير، والأحدث (Year ثم CreatedAt) هو المعتبر.
                 var record = new DocumentBaseNumber

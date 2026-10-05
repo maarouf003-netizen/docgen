@@ -103,8 +103,6 @@ public class DelegationRepository : Repository<DocumentDelegation>, IDelegationR
 
     public async Task<List<DocumentDelegation>> ListPendingBySourceWithTargetsAsync(int sourceDocumentId, CancellationToken ct = default)
     {
-        // المرآة تلامس مجموعات الملف المناب المحلية (الكفلاء/الورثة/الجهات) فتُحمَّل
-        // مسبقًا — دونها تتفكك المجموعات بلا قيد (N+1) ويُفشل الدمج بالكيان المتتبع.
         return await Db.DocumentDelegations
             .Where(d => d.SourceDocumentId == sourceDocumentId
                 && d.Status != DelegationStatusCatalog.Executed
@@ -120,5 +118,33 @@ public class DelegationRepository : Repository<DocumentDelegation>, IDelegationR
             .Include(d => d.TargetDocument)
                 .ThenInclude(t => t!.ApplicantPublicEntities)
             .ToListAsync(ct);
+    }
+
+    public async Task<List<DocumentDelegation>> ListByDelegatedCircuitAsync(int circuitId, CancellationToken ct = default)
+    {
+        return await Db.DocumentDelegations
+            .Where(d => d.DelegatedCircuitId == circuitId)
+            .ToListAsync(ct);
+    }
+
+    public async Task<int> CountPendingIncomingByCircuitAsync(int circuitId, CancellationToken ct = default)
+    {
+        return await Db.DocumentDelegations
+            .CountAsync(d => d.DelegatedCircuitId == circuitId && d.Status == DelegationStatusCatalog.PendingHead, ct);
+    }
+
+    public async Task<List<DocumentDelegation>> ListByDelegatedCircuitIncludingDeletedAsync(int circuitId, CancellationToken ct = default)
+    {
+        return await Db.DocumentDelegations
+            .IgnoreQueryFilters()
+            .Where(d => d.DelegatedCircuitId == circuitId)
+            .ToListAsync(ct);
+    }
+
+    public async Task<int> CountPendingIncomingByCircuitIncludingDeletedAsync(int circuitId, CancellationToken ct = default)
+    {
+        return await Db.DocumentDelegations
+            .IgnoreQueryFilters()
+            .CountAsync(d => d.DelegatedCircuitId == circuitId && d.Status == DelegationStatusCatalog.PendingHead, ct);
     }
 }

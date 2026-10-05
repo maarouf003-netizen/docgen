@@ -703,6 +703,8 @@ public class PortalRestructureTests : IDisposable
             "Lawyer", "NeedsRotation", "HasAppeals", "MatchedAppealId",
             "SourceDelegationId", "SoldAssetIds", "ForcedExecutionDate",
             "GeneralEntitySideLabel", "DeletedAt", "BranchName",
+            // سجل الدوائر: المعرف المرجعي وعلم الانتظار داخليان فيُحجبان سلكيًا.
+            "ExecutionCircuitId", "NeedsRegistration",
             // RF-010: عدّاد التزامن يُصفَّر سلكيًا للبوابة (بلا سطح كتابة فيها).
             "Version",
         };

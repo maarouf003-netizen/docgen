@@ -30,6 +30,10 @@ export function FileDataCard({
   const isExecuted = isExecutedLike(doc.generalEntitySide);
   const fileNumber = formatFileNumber(doc);
   const paidAmounts = isExecuted ? formatPaidAmounts(doc) : '';
+  // الرقم القديم من وقوعّة الإحالة (إن وُجدت) — يُعرض بجانب الحالي بعد النقل.
+  const lastReferral = (doc.occurrences ?? [])
+    .filter((o) => o.occurrenceType === 'circuit-referred')
+    .sort((a, b) => b.id - a.id)[0];
 
   const interactiveTile =
     'w-full flex items-center justify-between gap-3 text-right rounded-lg border border-gray-200 bg-gray-50 hover:bg-emerald-50 hover:border-emerald-200 px-3 py-2 min-h-11';
@@ -39,7 +43,21 @@ export function FileDataCard({
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5 items-start">
         <FieldCell label="دائرة التنفيذ المختصة" value={doc.court} />
         {showBranch && <FieldCell label="فرع الملف" value={doc.branchName} />}
+        {doc.needsRegistration && (
+          <span className="self-center rounded-full bg-amber-50 border border-amber-200 text-amber-800 px-2 py-1 text-xs whitespace-nowrap">
+            بانتظار إعادة القيد
+          </span>
+        )}
       </div>
+      {lastReferral && (
+        <p className="mt-1.5 text-xs text-gray-500 tabular-nums break-words">
+          الرقم السابق قبل النقل: {lastReferral.fileNumber ?? '—'} {lastReferral.fileType ?? ''}{' '}
+          {lastReferral.year ?? ''}
+          {lastReferral.fromCircuitName || lastReferral.toCircuitName
+            ? ` (من ${lastReferral.fromCircuitName ?? '—'} إلى ${lastReferral.toCircuitName ?? '—'})`
+            : ''}
+        </p>
+      )}
 
       {showLawyer ? (
         <div className="mt-2.5">

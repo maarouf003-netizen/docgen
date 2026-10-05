@@ -87,13 +87,16 @@ public interface IDocumentRepository : IRepository<Document>
         CancellationToken ct = default);
 
     /// <summary>
-    /// RF-009: هل يوجد ملف ظاهر (غير محذوف منطقيًا) بغير هذا المعرف يحمل نفس المفتاح
-    /// الفعّال (الدائرة + الرقم + النوع + السنة) — يشمل أرقام الأساس الدورية (تدوير/تجديد)
-    /// لا الرقم الأصلي فقط. مقارنة مُطبَّعة (Trim)؛ الرقم/السنة الفارغان = لا تعارض.
+    /// وحدانية الدوائر (البند 28): التوقيع الموحد بمطابقة FK مباشرة (circuitId)
+    /// بدل المقارنة المعيارية بالنص. صفوف circuitId=NULL (المناب الخارجي) تُفحص
+    /// بالفرع النصي داخل التنفيذ نفسه (CourtNorm fallback).
     /// </summary>
-    Task<bool> ExistsActiveWithNumberAsync(
+    // ملاحظة (M12): التوقيع النصي القديم ExistsActiveWithNumberAsync أُسقط مع ترحيل
+    // آخر مناديه — تاريخه في Git فقط.
+    Task<bool> ExistsActiveWithNumberByCircuitAsync(
         int? excludeDocumentId,
-        string? court,
+        int? circuitId,
+        string? courtNormFallback,
         string? number,
         string? type,
         string? year,
@@ -180,6 +183,42 @@ public interface IDocumentRepository : IRepository<Document>
     /// لخدمة حفظ التدوير ذرّيًا داخل المعاملة.
     /// </summary>
     Task<List<Document>> GetByIdsAsync(List<int> ids, CancellationToken ct = default);
+
+    /// <summary>
+    /// ملفات دائرة واحدة (متتبعة مع أرقام الأساس) لعمليات الإفراغ/التسمية الجماعية داخل المعاملة.
+    /// </summary>
+    Task<List<Document>> ListByCircuitAsync(int circuitId, bool includeDeleted, CancellationToken ct = default);
+
+    /// <summary>
+    /// ملفات بمعرفاتها (متتبعة مع أرقام الأساس) لعمليات الإحالة/إعادة القيد داخل المعاملة.
+    /// </summary>
+    Task<List<Document>> ListByIdsForUpdateAsync(List<int> ids, CancellationToken ct = default);
+
+    /// <summary>
+    /// ملفات المحامي بانتظار إعادة القيد (مع الدائرة) — صفحة معلقاته مجموعةً بالدوائر.
+    /// </summary>
+    Task<List<Document>> ListPendingForLawyerAsync(int lawyerId, int? circuitId, CancellationToken ct = default);
+
+    /// <summary>
+    /// عدادات الدوائر (ملفات + معلقات) لغير المحذوفة — لقائمتي الإدارة والإحصاءات.
+    /// </summary>
+    Task<Dictionary<int, (int FileCount, int PendingCount)>> CountByCircuitsAsync(List<int> circuitIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// عدد كل الصفوف غير المطهّرة لدائرة (بما فيها المحذوفة منطقيًا) — حارس الحذف.
+    /// </summary>
+    Task<int> CountAllByCircuitAsync(int circuitId, CancellationToken ct = default);
+
+    /// <summary>
+    /// آخر وقوعّة إحالة (circuit-referred) لكل ملف — لعرض «المعروض حاليًا (قديم)» دفعة واحدة بلا N+1.
+    /// </summary>
+    Task<List<DocumentOccurrence>> ListLastCircuitReferralsAsync(List<int> documentIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// عدد المحامين المميزين (≥ ملف واحد غير محذوف) لكل دائرة — لإحصاءات الدوائر
+    /// باستعلام تجميعي واحد بدل تحميل الكيانات (N+1).
+    /// </summary>
+    Task<Dictionary<int, int>> CountLawyersByCircuitsAsync(List<int> circuitIds, CancellationToken ct = default);
 
     /// <summary>
     /// ملفات المحامي المؤهلة لتدوير أرقام الأساس (بحث ترحّلي): غير محذوفة (Query Filter)،

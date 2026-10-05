@@ -18,6 +18,14 @@ public class OccurrenceTypeCatalogTests
         Assert.Contains(OccurrenceTypeCatalog.ReferredToStart, OccurrenceTypeCatalog.ValidTypes);
     }
 
+    [Fact]
+    public void ValidTypes_FitWithinColumnLimit()
+    {
+        // S3: عمود OccurrenceType بعرض 30 — أي رمز أطول ينفجر على Postgres وحده
+        // (SQLite يتجاهل حد الطول)، فيحرس هذا الاختبار الرموز المستقبلية.
+        Assert.All(OccurrenceTypeCatalog.ValidTypes, t => Assert.True(t.Length <= 30, t));
+    }
+
     [Theory]
     [InlineData(null, false)]
     [InlineData("", false)]

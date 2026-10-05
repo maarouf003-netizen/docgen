@@ -55,8 +55,14 @@ const noop = () => {};
 describe('DelegationFormModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: [branch(2, 'فرع حمص'), branch(3, 'فرع اللاذقية')],
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      // سجل الدوائر فارغ في هذه الاختبارات (وضع انتقالي — نص حر) إلا ما يُجاوَز صراحةً.
+      if (typeof url === 'string' && url.startsWith('/execution-circuits/')) {
+        return Promise.resolve({ data: [] });
+      }
+      return Promise.resolve({
+        data: [branch(2, 'فرع حمص'), branch(3, 'فرع اللاذقية')],
+      });
     });
   });
 
@@ -135,6 +141,7 @@ describe('DelegationFormModal', () => {
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith('/documents/10/delegations', {
         delegatedCourt: 'محكمة التنفيذ الأولى',
+        delegatedCircuitId: null,
         isExternal: false,
         externalBranchId: null,
         delegationDate: '1/8/2026',
@@ -244,6 +251,7 @@ describe('DelegationFormModal', () => {
     await waitFor(() =>
       expect(api.put).toHaveBeenCalledWith('/delegations/9', {
         delegatedCourt: 'محكمة ثانية',
+        delegatedCircuitId: null,
         isExternal: false,
         externalBranchId: null,
         delegationDate: '2026-08-01',

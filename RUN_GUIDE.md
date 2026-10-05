@@ -182,6 +182,10 @@ npm test
     الاقتراحات عند الرجوع.
   - هجرتا التعبئة `BackfillMirrorLawyer` و`BackfillDelegationTargetCourt`: الـ`Down` فارغ عمدًا
     (التعبئة غير قابلة للعكس) — آمنة إعادةً (`idempotent`) لكن لا تراجع لها.
+  - `AddExecutionCircuitRegistry` (ونظيرتها): الـ`Down` يسقط جدول `ExecutionCircuits` والأعمدة
+    `ExecutionCircuitId`/`DelegatedCircuitId`/`NeedsRegistration` — **خسارة روابط الدوائر نهائيًا**
+    (لا ترقية لاحقة تستعيدها)، ويعيد إنشاء فهرسين فريدين عامين على `Court/CourtNorm` —
+    **يفشل بوجود دائرتين بالاسم نفسه في فرعين بمحافظة واحدة** (مسموح في النموذج الجديد).
 - هجرات التحويل/الحذف مستقبلًا (مثل قيد الترقيم الفريد في `RF-009`) تتطلب: تنظيف البيانات المخالفة
   أولًا، ونسخة احتياطية، ونص `SQL` مولّد محفوظ في `docs/audit/migrations/`، واعتمادًا صريحًا منفصلًا.
 

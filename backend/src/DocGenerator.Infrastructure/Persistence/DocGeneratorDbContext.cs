@@ -57,6 +57,7 @@ public class DocGeneratorDbContext : DbContext
     public DbSet<PersonalReminder> PersonalReminders => Set<PersonalReminder>();
     public DbSet<AppSuggestion> AppSuggestions => Set<AppSuggestion>();
     public DbSet<IdempotencyKey> IdempotencyKeys => Set<IdempotencyKey>();
+    public DbSet<ExecutionCircuit> ExecutionCircuits => Set<ExecutionCircuit>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

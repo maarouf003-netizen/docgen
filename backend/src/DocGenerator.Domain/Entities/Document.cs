@@ -101,6 +101,18 @@ public class Document : IDocumentExecutionState
     /// تضبطها الخدمة عند كل حفظ (`FillDerivedFields`)؛ `NULL` للصفوف القديمة.
     /// </summary>
     public string? CourtNorm { get; set; }
+    /// <summary>
+    /// دائرة التنفيذ (سجل الدوائر): إلزامية للجديد عدا ملفات المناب الخارجي
+    /// (IsExternal=true حيث يقبل NULL). تُشتق منها Court/CourtNorm خدميًا دائمًا.
+    /// </summary>
+    public int? ExecutionCircuitId { get; set; }
+    /// <summary>الدائرة المرجعية للملف (سجل الدوائر).</summary>
+    public ExecutionCircuit? ExecutionCircuit { get; set; }
+    /// <summary>
+    /// علم «بانتظار إعادة القيد»: ملف منقول لدائرة جديدة بلا رقم بعد — بانتظار المحامي.
+    /// يُستبعد من التدوير حتى إعادة القيد، ويبقى IsDraft=false بشارة مستقلة.
+    /// </summary>
+    public bool NeedsRegistration { get; set; }
     public string? Applicant { get; set; }
     public string? Lawyer { get; set; }
 

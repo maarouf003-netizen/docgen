@@ -201,6 +201,10 @@ public sealed class PortalService : IPortalService
         // `PortalScopeEntryDto`)، وهي بيانات نطاقات لا حقول هذا الملف — فلا يمسّها
         // هذا الحجب أصلًا. (`FileDataCard` يُستدعى هنا بـ `showBranch={false}`.)
         response.BranchName = null;
+        // سجل الدوائر: المعرف المرجعي داخلي (لا منتقي دوائر في البوابة) فيُحجب،
+        // وعلم «بانتظار إعادة القيد» سير عمل داخلي للمحامي فيُصفَّر (البوابة قرائية).
+        response.ExecutionCircuitId = null;
+        response.NeedsRegistration = false;
         response.ExecutionActions = response.ExecutionActions
             .Where(a => a.Type == "action")
             .OrderByDescending(a => a.CreatedAt)

@@ -59,6 +59,20 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
     Task<List<HeadAlert>> ListByAppealAsync(int appealId, CancellationToken ct = default);
 
     /// <summary>
+    /// تنبيه معلق (إعادة قيد) بعينه لمحامٍ (مدمج لكل محامٍ × دائرة برسالة ثابتة) — للإحالة المدمجة.
+    /// </summary>
+    Task<HeadAlert?> FindPendingAlertAsync(int lawyerId, string message, CancellationToken ct = default);
+
+    /// <summary>كل تنبيهات إعادة القيد لمحامٍ (بادئة ثابتة) — للتنظيف التلقائي عند الصفر.</summary>
+    Task<List<HeadAlert>> ListPendingAlertsForLawyerAsync(int lawyerId, string prefix, CancellationToken ct = default);
+
+    /// <summary>
+    /// تنبيهات الرسالة نفسها مقيدةً بالفرع في SQL (S4) — لترحيل التسمية؛
+    /// الوحدانية الاسمية داخل الفرع فقط، فلا يُسحب أي تنبيه من فرع آخر أصلًا.
+    /// </summary>
+    Task<List<HeadAlert>> FindByMessageAndBranchAsync(string message, int branchId, CancellationToken ct = default);
+
+    /// <summary>
     /// أحدث تنبيه تعديل غير مقروء مرتبط بجهة عامة معينة لمستلم محدد — تستخدمه
     /// الاقتراحات المتلاحقة لتعديل الجهة نفسها قبل الاعتماد لدمجها في تنبيه واحد
     /// بآخر تعديل بدل تراكم تنبيهات متعددة.

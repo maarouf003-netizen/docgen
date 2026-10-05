@@ -25,8 +25,16 @@ export function AlertRow({
           aria-hidden="true"
         />
         <div className="min-w-0 flex-1">
-          {/* التنبيهات المرتبطة بكتاب مطالعة تفتح الكتاب، وباستئناف تفتح تفاصيله، وسواهر تفتح الملف. */}
-          {alert.reviewLetterId ? (
+          {/* تنبيه إعادة القيد (لكل محامٍ × دائرة، مدمج) يفتح صفحة معلقاته كلها
+              مجموعةً بالدوائر — لا ملفات بعينها. */}
+          {alert.message.startsWith('أحال لك رئيس القسم ملفات من دائرة ') ? (
+            <Link
+              to="/pending-registrations"
+              className="block font-medium text-gray-800 hover:text-emerald-700 truncate"
+            >
+              {alert.message}
+            </Link>
+          ) : alert.reviewLetterId ? (
             <Link
               to={`/reviews/${alert.reviewLetterId}`}
               className="block font-medium text-gray-800 hover:text-emerald-700 truncate"

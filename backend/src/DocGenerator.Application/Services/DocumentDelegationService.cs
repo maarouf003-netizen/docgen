@@ -28,6 +28,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
     private readonly IHeadAlertService _alerts;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
+    private readonly IRepository<ExecutionCircuit> _circuits;
 
     public DocumentDelegationService(
         IDelegationRepository delegations,
@@ -43,7 +44,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         IAuditLogger audit,
         IHeadAlertService alerts,
         TimeProvider clock,
-        TimeZoneInfo timeZone)
+        TimeZoneInfo timeZone,
+        IRepository<ExecutionCircuit>? circuits = null)
     {
         _delegations = delegations;
         _reservations = reservations;
@@ -59,6 +61,16 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         _alerts = alerts;
         _clock = clock;
         _timeZone = timeZone;
+        _circuits = circuits ?? new UnconfiguredCircuitRepository();
+    }
+
+    private sealed class UnconfiguredCircuitRepository : IRepository<ExecutionCircuit>
+    {
+        public Task AddAsync(ExecutionCircuit entity, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<ExecutionCircuit?> GetByIdAsync(int id, CancellationToken ct = default) => Task.FromResult<ExecutionCircuit?>(null);
+        public Task<List<ExecutionCircuit>> ListAsync(CancellationToken ct = default) => Task.FromResult(new List<ExecutionCircuit>());
+        public void Remove(ExecutionCircuit entity) { }
+        public void Update(ExecutionCircuit entity) { }
     }
 
     public async Task<DelegationDto> CreateAsync(
@@ -74,8 +86,10 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         ValidateSourceForDelegation(source);
         if (source.CreatedById != userId)
             throw new ArgumentException("لا يمكنك تسطير إنابة على ملف لا تملكه");
+        if (source.NeedsRegistration)
+            throw new ArgumentException("لا يمكن تسطير إنابة على ملف بانتظار إعادة القيد — أدخل رقمه الجديد أولًا");
 
-        var (court, fields) = await ValidateAndBuildAsync(request, ct);
+        var (court, circuitId, fields) = await ValidateAndBuildAsync(request, source.BranchId, ct);
 
         DocumentDelegation delegation = null!;
         await _tx.RunAsync(async token =>
@@ -96,6 +110,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
                 DelegatedCourtNorm = string.IsNullOrWhiteSpace(court)
                     ? null
                     : ArabicNameNormalizer.Normalize(court),
+                DelegatedCircuitId = circuitId,
                 IsExternal = fields.IsExternal,
                 ExternalBranchId = fields.ExternalBranchId,
                 DelegationDate = fields.DelegationDate,
@@ -187,7 +202,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         EnsurePendingByOwner(delegation, userId);
         var source = delegation.SourceDocument;
 
-        var (court, fields) = await ValidateAndBuildAsync(request, ct);
+        var (court, circuitId, fields) = await ValidateAndBuildAsync(request, source.BranchId, ct);
 
         await _tx.RunAsync(async token =>
         {
@@ -202,6 +217,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
             delegation.DelegatedCourtNorm = string.IsNullOrWhiteSpace(court)
                 ? null
                 : ArabicNameNormalizer.Normalize(court);
+            delegation.DelegatedCircuitId = circuitId;
             delegation.IsExternal = fields.IsExternal;
             delegation.ExternalBranchId = fields.ExternalBranchId;
             delegation.DelegationDate = fields.DelegationDate;
@@ -342,6 +358,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
             throw new ArgumentException("لا يمكن اعتماد إنابة لم تعد معلّقة");
 
         var source = delegation.SourceDocument;
+        if (source.NeedsRegistration)
+            throw new ArgumentException("لا يمكن اعتماد إنابة على ملف بانتظار إعادة القيد — أدخل رقمه الجديد أولًا");
         var isExternal = delegation.IsExternal;
         var externalBranchId = delegation.ExternalBranchId;
 
@@ -361,6 +379,49 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
 
         var targetBranch = isExternal ? externalBranchId : source.BranchId;
 
+        // استنتاج دائرة المناب عند الاعتماد من DelegatedCircuitId (فحص المحافظة لا الفرع):
+        // المناب قد يُسجَّل بدائرة فرع آخر؛ Document.BranchId يبقى فرع المحامي.
+        int? targetCircuitId = null;
+        string targetCourt;
+        if (isExternal)
+        {
+            targetCourt = Normalize(delegation.DelegatedCourt) ?? source.Court ?? string.Empty;
+        }
+        else
+        {
+            // انتقالي: إنابات قديمة/اختبارية بلا دائرة مرجعية تُعتمد بنصها الحر
+            // (صفوف ما قبل السجل) — الجديد يُلزم بالسجل في ValidateAndBuild.
+            if (delegation.DelegatedCircuitId is null)
+            {
+                targetCircuitId = null;
+                targetCourt = Normalize(delegation.DelegatedCourt) ?? source.Court ?? string.Empty;
+            }
+            else
+            {
+                var targetCircuit = await _circuits.GetByIdAsync(delegation.DelegatedCircuitId.Value, ct)
+                    ?? throw new ArgumentException("الدائرة المنابة غير موجودة");
+                if (!targetCircuit.IsActive)
+                    throw new ArgumentException("الدائرة المنابة معطلة — اختر دائرة نشطة");
+                // فحص المحافظة فقط لا الفرع: محافظة فرع الدائرة == محافظة فرع المنيب.
+                var sourceBranch = await _branches.GetByIdAsync(source.BranchId ?? 0, ct);
+                var circuitBranch = await _branches.GetByIdAsync(targetCircuit.BranchId, ct);
+                var sourceGov = sourceBranch?.Governorate?.Trim() ?? string.Empty;
+                var circuitGov = circuitBranch?.Governorate?.Trim() ?? string.Empty;
+                if (!string.IsNullOrWhiteSpace(sourceGov) && !string.IsNullOrWhiteSpace(circuitGov)
+                    && !string.Equals(sourceGov, circuitGov, StringComparison.Ordinal)
+                    && !GovernorateCatalog.IsGovernorate(sourceGov))
+                {
+                    // محافظة الفرع غير معتمدة — يُرفض بصمت مفسَّر (البند 38).
+                    throw new ArgumentException("محافظة الفرع غير معتمدة — ثبّتها من الإدارة قبل الإنابة");
+                }
+                if (!string.IsNullOrWhiteSpace(sourceGov) && !string.IsNullOrWhiteSpace(circuitGov)
+                    && !string.Equals(sourceGov, circuitGov, StringComparison.Ordinal))
+                    throw new ArgumentException("دائرة المناب ليست ضمن محافظة الملف المنيب");
+                targetCircuitId = targetCircuit.Id;
+                targetCourt = targetCircuit.Name;
+            }
+        }
+
         Document? target = null;
         await _tx.RunAsync(async token =>
         {
@@ -376,7 +437,9 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
                 Lawyer = string.IsNullOrWhiteSpace(lawyer.FullName) ? lawyer.Username : lawyer.FullName,
                 BranchId = targetBranch,
                 BranchName = isExternal ? delegation.ExternalBranch?.Name ?? source.BranchName : source.BranchName,
-                Court = Normalize(delegation.DelegatedCourt) ?? source.Court,
+                ExecutionCircuitId = targetCircuitId,
+                Court = targetCourt,
+                CourtNorm = string.IsNullOrWhiteSpace(targetCourt) ? null : ArabicNameNormalizer.Normalize(targetCourt),
                 GeneralEntitySide = source.GeneralEntitySide,
                 IsDraft = true,
                 FileType = FileTypeCatalog.Delegation,
@@ -471,18 +534,18 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
             ValidateSourceForDelegation(source);
         }
 
-        var fileNumber = Normalize(request.FileNumber);
+        var fileNumber = DigitNormalizer.NormalizeDigits(Normalize(request.FileNumber));
         if (string.IsNullOrWhiteSpace(fileNumber))
             throw new ArgumentException("رقم أساس الإنابة مطلوب");
-        var fileYear = Normalize(request.FileYear);
+        var fileYear = DigitNormalizer.NormalizeDigits(Normalize(request.FileYear));
         if (string.IsNullOrWhiteSpace(fileYear))
             throw new ArgumentException("سنة قيد الإنابة مطلوبة");
         var registrationDate = FreeDateParser.Parse(request.FileRegistrationDate, "تاريخ قيد الإنابة");
         if (registrationDate is null)
             throw new ArgumentException("تاريخ قيد الإنابة مطلوب");
 
-        // RF-009: فحص التكرار لرقم التسجيل قبل الحفظ (409 ودي) — بنوع الملف المناب الظاهر.
-        if (await _documents.ExistsActiveWithNumberAsync(target.Id, target.Court, fileNumber, target.FileType, fileYear, ct))
+        // RF-009 بتوقيع الدائرة (البند 28/34): مطابقة FK مباشرة بدل النص.
+        if (await _documents.ExistsActiveWithNumberByCircuitAsync(target.Id, target.ExecutionCircuitId, target.CourtNorm, fileNumber, target.FileType, fileYear, ct))
             throw new DocumentConflictException($"رقم الأساس {fileNumber} مكرر في {target.Court} لسنة {fileYear} — تحقق من الدائرة والرقم والنوع");
 
         try
@@ -742,6 +805,9 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
 
     private static void ValidateSourceForDelegation(Document source)
     {
+        // حراس NeedsRegistration الصريحة: تُمنع على المعلق — تسطير/اعتماد إنابة حيث تلزم الهوية.
+        if (source.NeedsRegistration)
+            throw new ArgumentException("لا يمكن تسطير إنابة على ملف بانتظار إعادة القيد — أدخل رقمه الجديد أولًا");
         // الملف تحت رفع (بلا رقم قيد) لا يُسطَّر عليه إنابة — الرقم ضروري لرابطة المصدر/الهدف.
         if (source.IsDraft)
             throw new ArgumentException("لا يمكن تسطير إنابة على ملف تحت رفع");
@@ -765,17 +831,20 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
             throw new ArgumentException("لا يمكنك تعديل أو حذف إنابة على ملف لا تملكه");
     }
 
-    private async Task<(string Court, DelegationFields Fields)> ValidateAndBuildAsync(
-        UpsertDelegationRequest request, CancellationToken ct)
+    private async Task<(string Court, int? CircuitId, DelegationFields Fields)> ValidateAndBuildAsync(
+        UpsertDelegationRequest request, int? sourceBranchId, CancellationToken ct)
     {
-        var court = Normalize(request.DelegatedCourt);
-        if (string.IsNullOrWhiteSpace(court))
-            throw new ArgumentException("الدائرة المنابة مطلوبة");
-
         var isExternal = request.IsExternal;
         int? externalBranchId;
+        string court;
+        int? circuitId = null;
         if (isExternal)
         {
+            // الاستثناء الخارجي: دائرتها خارج المحافظة وخارج السجل — تبقى نصًا حرًا.
+            court = Normalize(request.DelegatedCourt)
+                ?? throw new ArgumentException("الدائرة المنابة مطلوبة");
+            if (request.DelegatedCircuitId is not null)
+                throw new ArgumentException("الإنابة الخارجية لا تُربط بسجل الدوائر");
             externalBranchId = request.ExternalBranchId;
             if (externalBranchId is null)
                 throw new ArgumentException("الإنابة الخارجية تتطلب تحديد الفرع المناب في المحافظة الأخرى");
@@ -786,13 +855,48 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         else
         {
             externalBranchId = null;
+            // قفل تسطير الإنابة (S2): الداخلي يتحقق من السجل منذ الإنشاء —
+            // الوجود + النشاط + محافظة فرع الدائرة == محافظة فرع المنيب
+            // (مرآة فحص الاعتماد، البند 38)، وإلا تسرّب اسم دائرة فرع آخر
+            // في المسودة ثم يفشل الاعتماد متأخرًا.
+            if (request.DelegatedCircuitId is not null)
+            {
+                var circuit = await _circuits.GetByIdAsync(request.DelegatedCircuitId.Value, ct)
+                    ?? throw new ArgumentException("الدائرة المنابة المختارة غير موجودة");
+                if (!circuit.IsActive)
+                    throw new ArgumentException("الدائرة المنابة معطلة — اختر دائرة نشطة");
+                var draftSourceBranch = await _branches.GetByIdAsync(sourceBranchId ?? 0, ct);
+                var draftCircuitBranch = await _branches.GetByIdAsync(circuit.BranchId, ct);
+                var draftSourceGov = draftSourceBranch?.Governorate?.Trim() ?? string.Empty;
+                var draftCircuitGov = draftCircuitBranch?.Governorate?.Trim() ?? string.Empty;
+                if (!string.IsNullOrWhiteSpace(draftSourceGov) && !string.IsNullOrWhiteSpace(draftCircuitGov)
+                    && !string.Equals(draftSourceGov, draftCircuitGov, StringComparison.Ordinal)
+                    && !GovernorateCatalog.IsGovernorate(draftSourceGov))
+                {
+                    throw new ArgumentException("محافظة الفرع غير معتمدة — ثبّتها من الإدارة قبل الإنابة");
+                }
+                if (!string.IsNullOrWhiteSpace(draftSourceGov) && !string.IsNullOrWhiteSpace(draftCircuitGov)
+                    && !string.Equals(draftSourceGov, draftCircuitGov, StringComparison.Ordinal))
+                    throw new ArgumentException("دائرة المناب ليست ضمن محافظة الملف المنيب");
+                circuitId = circuit.Id;
+                court = circuit.Name;
+            }
+            else
+            {
+                // انتقالي: نص حر يُقبل فقط حين لا يملك النطاق أي دائرة بعد.
+                court = Normalize(request.DelegatedCourt)
+                    ?? throw new ArgumentException("الدائرة المنابة مطلوبة");
+                var all = await _circuits.ListAsync(ct);
+                if (all.Count > 0)
+                    throw new ArgumentException("الدائرة المنابة خارج السجل — اختر من قائمة المحافظة");
+            }
         }
 
         var delegationDate = FreeDateParser.Parse(request.DelegationDate, "تاريخ الإنابة");
         if (delegationDate is null)
             throw new ArgumentException("تاريخ الإنابة مطلوب");
 
-        return (court, new DelegationFields(
+        return (court, circuitId, new DelegationFields(
             isExternal,
             externalBranchId,
             delegationDate,
@@ -1066,7 +1170,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         d.TargetDocument?.ExecStatus,
         Normalize(source.Court),
         DelegationActivityPolicy.IsAssetBlocking(d),
-        d.TargetDocument is not null && DelegationActivityPolicy.IsTargetTerminal(d.TargetDocument));
+        d.TargetDocument is not null && DelegationActivityPolicy.IsTargetTerminal(d.TargetDocument),
+        d.DelegatedCircuitId);
 
     private static string SourceLabel(Document source)
     {

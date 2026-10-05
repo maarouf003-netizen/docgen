@@ -133,4 +133,10 @@ public static class RolePermissions
     /// <summary>إرسال اقتراح تطوير — المحامي ورئيس القسم (صندوق المشرف).</summary>
     public static bool CanSuggestApp(UserRole role) =>
         role is UserRole.Lawyer or UserRole.Head;
+
+    /// <summary>
+    /// إدارة سجل دوائر التنفيذ (إدخال/تسمية/تعطيل/حذف-إفراغ/إحالة) — رئيس القسم لفرعه فقط.
+    /// (مصممة للتوسعة: or role == UserRole.SubHead مستقبلًا دون تغيير المواضع.)
+    /// </summary>
+    public static bool CanManageExecutionCircuits(UserRole role) => role == UserRole.Head;
 }

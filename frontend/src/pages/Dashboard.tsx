@@ -7,12 +7,14 @@ import { useReminderCancellation } from '../hooks/useReminderCancellation';
 import type {
   AppealReminderDto,
   BranchDto,
+  ExecutionCircuitDto,
   HeadAlertDto,
   HeadAlertTargetType,
   LawyerListItem,
   ManagerLawyerStatDto,
   ManagerStatsDto,
   MonthlyStatDto,
+  PendingRegistrationDto,
   PersonalReminderDto,
   ReminderDto,
   StatsPeriod,
@@ -209,6 +211,30 @@ export default function Dashboard() {
     shape: 'count',
   });
 
+  // شارة معلقات الدوائر لرئيس القسم (B44): مجموع pendingCount من قائمة الإدارة —
+  // تُجلب مرة عند التركيب (بلا استطلاع: التحديث عبر صفحة الإدارة نفسها).
+  const circuitsQuery = useCancellableRequest<ExecutionCircuitDto[]>(
+    (signal) => api.get('/execution-circuits/mine', { signal }).then((r) => (Array.isArray(r?.data) ? r.data : [])),
+    [isHead],
+    { enabled: headBadgesEnabled },
+  );
+  const circuitsPending = useMemo(() => {
+    if (!isHead) return 0;
+    return (circuitsQuery.data ?? []).reduce((n, c) => n + Math.max(0, Number(c.pendingCount) || 0), 0);
+  }, [isHead, circuitsQuery.data]);
+
+  // مدخل معلقات المحامي (B19): عدد ملفاته المحالة بانتظار تحديث بياناتها — بطاقة «ملفات معلقة».
+  // تُحجب البطاقة بعد نجاح الجلب والصفر المؤكد فقط؛ وتبقى أثناء التحميل وعند الخطأ (fail-open).
+  const pendingRegistrationsQuery = useCancellableRequest<PendingRegistrationDto[]>(
+    (signal) => api.get('/documents/my-pending-registrations', { signal }).then((r) => (Array.isArray(r?.data) ? r.data : [])),
+    [isLawyer],
+    { enabled: userReady && isLawyer },
+  );
+  const pendingRegistrations = isLawyer ? (pendingRegistrationsQuery.data ?? []).length : 0;
+  const showReferredFiles =
+    pendingRegistrationsQuery.isLoading ||
+    pendingRegistrationsQuery.error != null ||
+    pendingRegistrations > 0;
   const reminders = useMemo(() => remindersQuery.data ?? [], [remindersQuery.data]);
   const appealReminders = useMemo(() => appealRemindersQuery.data ?? [], [appealRemindersQuery.data]);
   const personalReminders = useMemo(() => personalQuery.data ?? [], [personalQuery.data]);
@@ -360,7 +386,15 @@ export default function Dashboard() {
           <GreetingHeader fullName={user?.fullName} />
           <div className="mt-4">
             <LawyerIconRow
-              counts={{ unseenReplies, urgentCorrespondence, calendarAlerts }}
+              counts={{ unseenReplies, urgentCorrespondence, calendarAlerts, pendingRegistrations }}
+              showReferredFiles={showReferredFiles}
+              pendingState={
+                pendingRegistrationsQuery.isLoading
+                  ? 'loading'
+                  : pendingRegistrationsQuery.error != null
+                    ? 'error'
+                    : undefined
+              }
             />
           </div>
 
@@ -399,6 +433,7 @@ export default function Dashboard() {
                 urgentCorrespondence: headUrgentCorrespondence,
                 delegationsPending,
                 entityPending,
+                circuitsPending,
               }}
             />
           </div>
