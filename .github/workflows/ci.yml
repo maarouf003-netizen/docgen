@@ -39,6 +39,18 @@ jobs:
       - name: Build
         run: npm run build
 
+  # حراس انحدار خطة رئيس الشعبة (المرحلة 9 — بند 4): يفشل عند أي تضييق
+  # منسي (نداء محامين بلا mode، فحص head منفرد، سمة بلا subhead).
+  guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: SubHead regression guards
+        run: node scripts/subhead-guards.mjs
+
   # فحص الاعتماديات حاجب للدمج (RF-002 — شُدِّد بعد تثبيت خط الأساس الأخضر في RF-001).
   # فحص Snyk الكامل يتطلب سر `SNYK_TOKEN` في أسرار المستودع ثم يُضاف هنا (مهمة المالك).
   audit:

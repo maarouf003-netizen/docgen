@@ -289,4 +289,59 @@ public class RF004AuthzTests
         await db.SaveChangesAsync();
         return entry.Id;
     }
+
+    [Fact]
+    public void HeadImpliesSubHead_OnApiControllers()
+    {
+        // حارس مصفوفة التخويل (المرحلة 9 — بند 1): أي سمة فعّالة تذكر `head`
+        // يجب أن تذكر `subhead` (أو سياسة `HeadOrSubHead`) — وإلا تسربت بوابة
+        // جديدة/معدلة من التماثل (§2.1/§2.21). الاستثناءات المعللة أدناه فقط.
+        var exclusions = new HashSet<(string Controller, string Action)>
+        {
+            // النطاق الدائري للتدقيق مغلق للشعبة حتى `ownerSectionId` (قرار 23) —
+            // الفتح الآن تسريب فرعي، لا تماثل.
+            ("AuditLogsController", "*"),
+        };
+        var expand = new Func<string, IEnumerable<string>>(roles =>
+            roles.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .SelectMany(r => r.Equals("HeadOrSubHead", StringComparison.OrdinalIgnoreCase)
+                    ? new[] { "head", "subhead" }
+                    : new[] { r.ToLowerInvariant() }));
+        var violations = new List<string>();
+        var controllers = typeof(Program).Assembly.GetTypes()
+            .Where(t => t.IsClass && !t.IsAbstract
+                && t.IsSubclassOf(typeof(ControllerBase))
+                && t.Name.EndsWith("Controller", StringComparison.Ordinal));
+        foreach (var controller in controllers)
+        {
+            // سمات الصنف والتابع تتراكم (`AND`) — فيُفحص كل مستوى مستقلًا:
+            // أي مستوى يذكر `head` بلا `subhead` تسريب (عدا الاستثناءات).
+            var classRoles = controller
+                .GetCustomAttributes<AuthorizeAttribute>(inherit: false)
+                .SelectMany(a => new[] { a.Roles, a.Policy })
+                .Where(r => !string.IsNullOrWhiteSpace(r))
+                .SelectMany(r => expand(r!));
+            var classSet = new HashSet<string>(classRoles);
+            if (classSet.Contains("head") && !classSet.Contains("subhead")
+                && !exclusions.Contains((controller.Name, "*")))
+                violations.Add($"{controller.Name}.* [{string.Join(",", classSet)}]");
+            var actions = controller.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                .Where(m => !m.IsSpecialName
+                    && m.GetCustomAttribute<NonActionAttribute>() is null
+                    && m.GetCustomAttributes().OfType<HttpMethodAttribute>().Any());
+            foreach (var action in actions)
+            {
+                var methodSet = new HashSet<string>(action
+                    .GetCustomAttributes<AuthorizeAttribute>(inherit: false)
+                    .SelectMany(a => new[] { a.Roles, a.Policy })
+                    .Where(r => !string.IsNullOrWhiteSpace(r))
+                    .SelectMany(r => expand(r!)));
+                if (methodSet.Contains("head") && !methodSet.Contains("subhead")
+                    && !exclusions.Contains((controller.Name, action.Name))
+                    && !exclusions.Contains((controller.Name, "*")))
+                    violations.Add($"{controller.Name}.{action.Name} [{string.Join(",", methodSet)}]");
+            }
+        }
+        Assert.True(violations.Count == 0, "بوابات تذكر head بلا subhead:\n" + string.Join("\n", violations));
+    }
 }

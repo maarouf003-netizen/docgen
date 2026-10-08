@@ -84,7 +84,8 @@ describe('توجيه الجذر حسب الدور (انحدار: المندوب 
     useAuthMock.mockReturnValue(authState('lawyer'));
     renderAt('/');
 
-    expect(await screen.findByRole('heading', { name: 'مرحبًا، مستخدم' })).toBeInTheDocument();
+    // أول تركيب للوحة يحوّل الكتلة الكسولة — مهلة موسعة ضد التقطع الحدي (قيس 1710ms محليًا).
+    expect(await screen.findByRole('heading', { name: 'مرحبًا، مستخدم' }, { timeout: 5000 })).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'أقسام لوحة المحامي' })).toBeInTheDocument();
   });
 
@@ -215,5 +216,73 @@ describe('توجيه الجذر حسب الدور (انحدار: المندوب 
     renderAt('/branches/manage');
 
     expect(await screen.findByRole('heading', { name: 'إدارة الفروع' })).toBeInTheDocument();
+  });
+
+  // مصفوفة حراسة المسارات الكاملة (المرحلة 9 — بند 2): كل مسار × كل دور.
+  // المسموح يرى عنوان الصفحة؛ المرفوض يُرتد لوطنه (لوحته/بوابته) بلا عنوانها.
+  // أي مسار جديد أو بوابة معدلة يجب تسجيلها هنا — وإلا فشلت المصفوفة عمدًا.
+  // مستثنى عمدًا: صفحات التفاصيل المفردة وصفحات تُخفي عنوانها عند فشل الجلب
+  // (`/documents/:id`، `/documents/:id/edit`، `/documents/:id/correspondence`،
+  // `/users`) — بواباتها نفس آلية `RequireRole` المغطاة هنا، وعناوينها
+  // غير صالحة كمؤشر سماح تحت `rejectAllApi`.
+  const ALL_ROLES = ['lawyer', 'head', 'subhead', 'manager', 'admin', 'entitymanager'];
+  const INTERNAL = ['lawyer', 'head', 'subhead', 'manager', 'admin'];
+  const MATRIX: Array<{ path: string; allowed: string[]; heading: (role: string) => string }> = [
+    { path: '/documents', allowed: INTERNAL, heading: () => 'الملفات التنفيذية' },
+    { path: '/reviews', allowed: INTERNAL, heading: (r) => (r === 'lawyer' ? 'المطالعات' : 'كتب المطالعات') },
+    { path: '/correspondence', allowed: INTERNAL, heading: () => 'المراسلات' },
+    { path: '/appeals', allowed: INTERNAL, heading: () => 'الاستئنافات' },
+    { path: '/documents/deleted', allowed: INTERNAL, heading: () => 'الملفات المحذوفة' },
+    { path: '/documents/struck-off', allowed: INTERNAL, heading: () => 'الملفات المشطوبة' },
+    { path: '/documents/executed', allowed: INTERNAL, heading: () => 'الملفات المنفذة' },
+    { path: '/documents/referred-to-start', allowed: INTERNAL, heading: () => 'الملفات المحالة الى البداية' },
+    { path: '/documents/new', allowed: INTERNAL, heading: () => 'إدخال ملف جديد' },
+    { path: '/branch-lawyers', allowed: ['head', 'subhead', 'admin'], heading: () => 'محامو الفرع' },
+    { path: '/delegations/requests', allowed: ['head', 'subhead'], heading: () => 'طلبات الإنابة' },
+    { path: '/execution-circuits', allowed: ['head', 'subhead'], heading: () => 'إدارة دوائر التنفيذ' },
+    { path: '/circuit-stats', allowed: ['head', 'subhead', 'manager', 'admin'], heading: () => 'إحصائيات الدوائر' },
+    { path: '/users/manage', allowed: ['manager', 'admin'], heading: () => 'إدارة المستخدمين' },
+    { path: '/branches/manage', allowed: ['manager', 'admin'], heading: () => 'إدارة الفروع' },
+    { path: '/entities/review-management', allowed: ['manager', 'admin'], heading: () => 'مراجعة سجل الجهات العامة' },
+    { path: '/entities/review', allowed: ['head', 'subhead', 'manager', 'admin'], heading: () => 'مراجعة سجل الجهات العامة الممثلة' },
+    { path: '/delegates', allowed: ['head', 'subhead', 'manager', 'admin'], heading: () => 'مندوبو الجهات' },
+    { path: '/audit-logs', allowed: ['head', 'manager', 'admin'], heading: () => 'سجل التدقيق' },
+    { path: '/account', allowed: ['lawyer', 'head', 'subhead'], heading: () => 'الحساب الشخصي' },
+    { path: '/stats', allowed: ['lawyer', 'head', 'subhead'], heading: () => 'الإحصائيات' },
+    { path: '/calendar', allowed: ['lawyer'], heading: () => 'التقويم' },
+    { path: '/documents/rotate', allowed: ['lawyer'], heading: () => 'تدوير أرقام الأساس' },
+    { path: '/pending-registrations', allowed: ['lawyer'], heading: () => 'ملفات محالة حديثًا' },
+    { path: '/suggestions', allowed: ['manager', 'admin'], heading: () => 'اقتراحات التطوير' },
+    { path: '/change-password', allowed: ALL_ROLES, heading: () => 'تغيير كلمة المرور' },
+    { path: '/portal/stats', allowed: ['entitymanager'], heading: () => 'الإحصائيات' },
+    { path: '/portal/files', allowed: ['entitymanager'], heading: () => 'الملفات التنفيذية' },
+  ];
+
+  // عنوان الوطن لكل دور عند الارتداد (لوحة الدور نفسه لا عنوان الصفحة).
+  function homeMarker(role: string): string {
+    if (role === 'entitymanager') return 'الإحصائيات';
+    if (role === 'manager' || role === 'admin') return 'لوحة التحكم';
+    return 'مرحبًا، مستخدم';
+  }
+
+  it.each(
+    MATRIX.flatMap((row) => ALL_ROLES.map((role) => ({ ...row, role }))),
+  )('$role على $path: مسموح=$allowed', async ({ path, allowed, heading, role }) => {
+    useAuthMock.mockReturnValue(authState(role));
+    const { unmount } = renderAt(path);
+    try {
+      if (allowed.includes(role)) {
+        expect(await screen.findByRole('heading', { name: heading(role) })).toBeInTheDocument();
+      } else {
+        // انتظر استقرار الارتداد ثم تأكد من غياب عنوان الصفحة المحروسة.
+        // (استثناء: وطن المندوب عنوانه «الإحصائيات» نفسه فيطابق العنوان — يكفي حضوره.)
+        expect(await screen.findByRole('heading', { name: homeMarker(role) })).toBeInTheDocument();
+        if (homeMarker(role) !== heading(role)) {
+          expect(screen.queryByRole('heading', { name: heading(role) })).not.toBeInTheDocument();
+        }
+      }
+    } finally {
+      unmount();
+    }
   });
 });
