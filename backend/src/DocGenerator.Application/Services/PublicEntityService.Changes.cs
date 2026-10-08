@@ -49,9 +49,9 @@ public sealed partial class PublicEntityService
         CancellationToken ct)
     {
         var all = await _entities.ListChangeEventsAsync(ct);
-        // نطاق رئيس القسم: محافظته فقط (جبر خادمي يتجاهل پارامتر العميل تمامًا).
+        // نطاق الرئيس: محافظته فقط (جبر خادمي يتجاهل پارامتر العميل تمامًا).
         string? governorate = NormalizeOptional(query.Governorate);
-        if (actor.Role == UserRole.Head && actor.BranchId.HasValue)
+        if (actor.Role is UserRole.Head or UserRole.SubHead && actor.BranchId.HasValue)
         {
             var headBranch = await _branches.GetByIdAsync(actor.BranchId.Value, ct);
             governorate = NormalizeOptional(headBranch?.Governorate);

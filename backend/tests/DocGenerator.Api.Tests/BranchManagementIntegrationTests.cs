@@ -36,9 +36,10 @@ public class BranchManagementIntegrationTests
     }
 
     [Fact]
-    public async Task BranchManagement_NonAdminRoles_Forbidden()
+    public async Task BranchManagement_HeadAndLawyer_Forbidden()
     {
-        foreach (var username in new[] { "manager", "head1", "lawyer1" })
+        // القرار §2.15 يوسّع الإدارة للمشرف والمدير — الرئيس والمحامي مرفوضون.
+        foreach (var username in new[] { "head1", "lawyer1" })
         {
             var client = _factory.AuthorizedClient(username);
             var create = await client.PostAsJsonAsync("/api/branches", new
@@ -63,6 +64,40 @@ public class BranchManagementIntegrationTests
             var delete = await client.DeleteAsync($"/api/branches/{await BranchIdAsync("DAM")}");
             Assert.Equal(HttpStatusCode.Forbidden, delete.StatusCode);
         }
+    }
+
+    [Fact]
+    public async Task BranchManagement_Manager_FullLifecycle()
+    {
+        // قرار §2.15 (توسيع مقصود): المدير يدير الفروع كالمشرف — إنشاء وتعديل
+        // وحذف فرع غير مستخدم.
+        var manager = _factory.AuthorizedClient("manager");
+        var code = $"MGR_{Guid.NewGuid():N}"[..12].ToUpperInvariant();
+        var created = await manager.PostAsJsonAsync("/api/branches", new
+        {
+            name = "فرع المدير",
+            code,
+            address = (string?)null,
+            phone = (string?)null,
+            governorate = "حمص",
+        });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var branch = await created.Content.ReadFromJsonAsync<BranchDto>();
+        Assert.NotNull(branch);
+
+        var updated = await manager.PutAsJsonAsync($"/api/branches/{branch!.Id}", new
+        {
+            name = "فرع المدير المعدل",
+            code,
+            address = (string?)null,
+            phone = (string?)null,
+            isActive = true,
+            governorate = "حمص",
+        });
+        Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
+
+        var deleted = await manager.DeleteAsync($"/api/branches/{branch.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
     }
 
     [Fact]

@@ -72,7 +72,8 @@ function MessageCard({ message }: { message: CorrespondenceMessageDto }) {
  */
 export default function CorrespondenceDetail({ portal = false }: { portal?: boolean }) {
   const { id } = useParams();
-  const { user, hasFullAccess, isHead } = useAuth();
+  const { user, hasFullAccess } = useAuth();
+  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
   const base = portal ? '/portal/correspondence' : '/correspondence';
   const backTo = portal ? '/portal/correspondence' : '/correspondence';
   const backLabel = 'عودة إلى المراسلات';
@@ -220,7 +221,7 @@ export default function CorrespondenceDetail({ portal = false }: { portal?: bool
               {letter.targetName} ({correspondenceRoleLabel(letter.targetRole)})
             </dd>
           </div>
-          {(hasFullAccess || isHead) && (
+          {(hasFullAccess || isHeadOrSubHead) && (
             <div className="flex items-center gap-1.5">
               <dt className="text-gray-400">المحافظة:</dt>
               <dd>{letter.governorate}</dd>

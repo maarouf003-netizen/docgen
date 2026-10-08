@@ -251,4 +251,203 @@ public class ExecutionCircuitsIntegrationTests
         Assert.Null(delegation.DelegatedCircuitId);
         Assert.Equal(courtName, delegation.DelegatedCourt);
     }
+
+    [Fact]
+    public async Task Transfer_ByManager_MovesOwnership()
+    {
+        await HeadBranchIdAsync();
+        var head = _factory.AuthorizedClient("head1");
+        var circuitId = await CreateCircuitAsync(head, Unique("دائرة للنقل"));
+        var manager = _factory.AuthorizedClient("manager");
+        var section = await manager.PostAsJsonAsync("/api/sections", new
+        {
+            branchId = await BranchIdOfHeadAsync(),
+            name = Unique("شعبة النقل"),
+        });
+        Assert.Equal(HttpStatusCode.Created, section.StatusCode);
+        using var sectionDoc = await section.Content.ReadFromJsonAsync<JsonDocument>();
+        var sectionId = sectionDoc!.RootElement.GetProperty("id").GetInt32();
+
+        var transfer = await manager.PostAsJsonAsync($"/api/execution-circuits/{circuitId}/transfer",
+            new { targetSectionId = sectionId });
+        Assert.Equal(HttpStatusCode.OK, transfer.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+        Assert.Equal(sectionId, (await db.ExecutionCircuits.FindAsync(circuitId))!.SectionId);
+    }
+
+    [Fact]
+    public async Task Transfer_ByHead_Forbidden()
+    {
+        await HeadBranchIdAsync();
+        var head = _factory.AuthorizedClient("head1");
+        var circuitId = await CreateCircuitAsync(head, Unique("دائرة للنقل"));
+
+        var transfer = await head.PostAsJsonAsync($"/api/execution-circuits/{circuitId}/transfer",
+            new { targetSectionId = (int?)null });
+
+        Assert.Equal(HttpStatusCode.Forbidden, transfer.StatusCode);
+    }
+
+    [Fact]
+    public async Task Transfer_MissingCircuit_BadRequest()
+    {
+        var manager = _factory.AuthorizedClient("manager");
+        var transfer = await manager.PostAsJsonAsync("/api/execution-circuits/999999/transfer",
+            new { targetSectionId = (int?)null });
+
+        Assert.Equal(HttpStatusCode.BadRequest, transfer.StatusCode);
+    }
+
+    private async Task<int> BranchIdOfHeadAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+        return (await db.Users.SingleAsync(u => u.Username == "head1")).BranchId!.Value;
+    }
+
+    private async Task<(int SectionId, HttpClient SubHead)> NewSectionHeadAsync(string sectionName)
+    {
+        await HeadBranchIdAsync();
+        var manager = _factory.AuthorizedClient("manager");
+        var branchId = await BranchIdOfHeadAsync();
+        var section = await manager.PostAsJsonAsync("/api/sections", new { branchId, name = sectionName });
+        Assert.Equal(HttpStatusCode.Created, section.StatusCode);
+        using var sectionDoc = await section.Content.ReadFromJsonAsync<JsonDocument>();
+        var sectionId = sectionDoc!.RootElement.GetProperty("id").GetInt32();
+
+        var admin = _factory.AuthorizedClient("admin");
+        var username = Unique("subh");
+        var created = await admin.PostAsJsonAsync("/api/users", new
+        {
+            username,
+            fullName = username,
+            role = "subhead",
+            branchId,
+            password = "123456",
+            sectionId,
+        });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var token = (await _factory.LoginAsync(username, "123456"))!.Token!;
+        return (sectionId, _factory.WithToken(token));
+    }
+
+    [Fact]
+    public async Task Mine_SubHeadSeesOwnSectionOnly_AndCreatesAutoTagged()
+    {
+        await HeadBranchIdAsync();
+        var head = _factory.AuthorizedClient("head1");
+        var divisionCircuit = await CreateCircuitAsync(head, Unique("قسم-عزل"));
+        var (_, sub) = await NewSectionHeadAsync(Unique("شعبة-عزل"));
+
+        // إنشاء رئيس الشعبة يلتحق بشعبته تلقائيًا (§8.4).
+        var created = await sub.PostAsJsonAsync("/api/execution-circuits", new { name = Unique("شعبة-دائرة") });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        using var createdDoc = await created.Content.ReadFromJsonAsync<JsonDocument>();
+        var subCircuit = createdDoc!.RootElement.GetProperty("id").GetInt32();
+
+        var mine = await sub.GetAsync("/api/execution-circuits/mine");
+        Assert.Equal(HttpStatusCode.OK, mine.StatusCode);
+        using var mineDoc = await mine.Content.ReadFromJsonAsync<JsonDocument>();
+        var ids = mineDoc!.RootElement.EnumerateArray().Select(e => e.GetProperty("id").GetInt32()).ToList();
+        Assert.DoesNotContain(divisionCircuit, ids);
+        Assert.Contains(subCircuit, ids);
+
+        // رئيس القسم لا يرى دائرة الشعبة (عزل كامل — قرار §1.11).
+        var headMine = await head.GetAsync("/api/execution-circuits/mine");
+        using var headDoc = await headMine.Content.ReadFromJsonAsync<JsonDocument>();
+        var headIds = headDoc!.RootElement.EnumerateArray().Select(e => e.GetProperty("id").GetInt32()).ToList();
+        Assert.Contains(divisionCircuit, headIds);
+        Assert.DoesNotContain(subCircuit, headIds);
+    }
+
+    [Fact]
+    public async Task Rename_ForeignScope_BadRequest()
+    {
+        await HeadBranchIdAsync();
+        var (_, sub) = await NewSectionHeadAsync(Unique("شعبة-دخيلة"));
+        var created = await sub.PostAsJsonAsync("/api/execution-circuits", new { name = Unique("دائرة-دخيلة") });
+        using var createdDoc = await created.Content.ReadFromJsonAsync<JsonDocument>();
+        var circuitId = createdDoc!.RootElement.GetProperty("id").GetInt32();
+
+        var head = _factory.AuthorizedClient("head1");
+        var rename = await head.PutAsJsonAsync($"/api/execution-circuits/{circuitId}/rename", new { name = "اسم دخيل" });
+        Assert.Equal(HttpStatusCode.BadRequest, rename.StatusCode);
+        Assert.Contains("ليست ضمن نطاقك", await rename.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Rename_OwnScope_SubHead_Ok()
+    {
+        // المسار الموجب عبر السياسة والنطاق: رئيس الشعبة يسمّي دائرته (200).
+        await HeadBranchIdAsync();
+        var (_, sub) = await NewSectionHeadAsync(Unique("شعبة-تسمية"));
+        var created = await sub.PostAsJsonAsync("/api/execution-circuits", new { name = Unique("دائرة-تسمية") });
+        using var createdDoc = await created.Content.ReadFromJsonAsync<JsonDocument>();
+        var circuitId = createdDoc!.RootElement.GetProperty("id").GetInt32();
+
+        var rename = await sub.PutAsJsonAsync($"/api/execution-circuits/{circuitId}/rename", new { name = Unique("دائرة-مسماة") });
+        Assert.Equal(HttpStatusCode.OK, rename.StatusCode);
+    }
+
+    [Fact]
+    public async Task Delete_ForeignScope_BadRequest()
+    {
+        await HeadBranchIdAsync();
+        var (_, sub) = await NewSectionHeadAsync(Unique("شعبة-حذف"));
+        var created = await sub.PostAsJsonAsync("/api/execution-circuits", new { name = Unique("دائرة-حذف") });
+        using var createdDoc = await created.Content.ReadFromJsonAsync<JsonDocument>();
+        var circuitId = createdDoc!.RootElement.GetProperty("id").GetInt32();
+
+        // دائرة فارغة بلا ملفات: الرفض سببه النطاق لا الإشغال.
+        var head = _factory.AuthorizedClient("head1");
+        var delete = await head.DeleteAsync($"/api/execution-circuits/{circuitId}");
+        Assert.Equal(HttpStatusCode.BadRequest, delete.StatusCode);
+        Assert.Contains("ليست ضمن نطاقك", await delete.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Stats_HeadSeesDivisionOnly()
+    {
+        await HeadBranchIdAsync();
+        var head = _factory.AuthorizedClient("head1");
+        var divisionCircuit = await CreateCircuitAsync(head, Unique("قسم-إحصاء"));
+        var (_, sub) = await NewSectionHeadAsync(Unique("شعبة-إحصاء"));
+        var created = await sub.PostAsJsonAsync("/api/execution-circuits", new { name = Unique("شعبة-إحصاء-دائرة") });
+        using var createdDoc = await created.Content.ReadFromJsonAsync<JsonDocument>();
+        var subCircuit = createdDoc!.RootElement.GetProperty("id").GetInt32();
+
+        var stats = await head.GetAsync("/api/execution-circuits/stats");
+        Assert.Equal(HttpStatusCode.OK, stats.StatusCode);
+        using var statsDoc = await stats.Content.ReadFromJsonAsync<JsonDocument>();
+        var ids = statsDoc!.RootElement.EnumerateArray().Select(e => e.GetProperty("circuitId").GetInt32()).ToList();
+        Assert.Contains(divisionCircuit, ids);
+        Assert.DoesNotContain(subCircuit, ids);
+    }
+
+    [Fact]
+    public async Task ForLawyer_LawyerSeesAll_HeadSeesOwn()
+    {
+        await HeadBranchIdAsync();
+        var head = _factory.AuthorizedClient("head1");
+        var divisionCircuit = await CreateCircuitAsync(head, Unique("قسم-قائمة"));
+        var (_, sub) = await NewSectionHeadAsync(Unique("شعبة-قائمة"));
+        var created = await sub.PostAsJsonAsync("/api/execution-circuits", new { name = Unique("شعبة-قائمة-دائرة") });
+        using var createdDoc = await created.Content.ReadFromJsonAsync<JsonDocument>();
+        var subCircuit = createdDoc!.RootElement.GetProperty("id").GetInt32();
+
+        var lawyer = _factory.AuthorizedClient("lawyer1");
+        var all = await lawyer.GetAsync("/api/execution-circuits/for-lawyer");
+        using var allDoc = await all.Content.ReadFromJsonAsync<JsonDocument>();
+        var allIds = allDoc!.RootElement.EnumerateArray().Select(e => e.GetProperty("id").GetInt32()).ToList();
+        Assert.Contains(divisionCircuit, allIds);
+        Assert.Contains(subCircuit, allIds);
+
+        var own = await head.GetAsync("/api/execution-circuits/for-lawyer");
+        using var ownDoc = await own.Content.ReadFromJsonAsync<JsonDocument>();
+        var ownIds = ownDoc!.RootElement.EnumerateArray().Select(e => e.GetProperty("id").GetInt32()).ToList();
+        Assert.Contains(divisionCircuit, ownIds);
+        Assert.DoesNotContain(subCircuit, ownIds);
+    }
 }

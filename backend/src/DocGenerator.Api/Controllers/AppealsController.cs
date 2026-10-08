@@ -1,4 +1,5 @@
 using DocGenerator.Api.Authorization;
+using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using DocGenerator.Domain.Enums;
@@ -13,7 +14,7 @@ namespace DocGenerator.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api")]
-[Authorize(Roles = "lawyer,head,manager,admin")]
+[Authorize(Roles = "lawyer,head,subhead,manager,admin")]
 public class AppealsController : ControllerBase
 {
     private readonly IDocumentAppealService _appeals;
@@ -30,20 +31,40 @@ public class AppealsController : ControllerBase
     private UserRole Role => User.GetRoleEnum();
     private bool HasFullAccess => RolePermissions.HasFullAccess(Role);
     private bool IsHead => Role == UserRole.Head;
+    private bool IsHeadOrSubHead => RolePermissions.IsHeadOrSubHead(Role);
     private bool CanManageAppeals => RolePermissions.CanManageAppeals(Role);
     private bool CanAssignAppeals => RolePermissions.CanAssignAppeals(Role);
 
-    /// <summary>قاعدة الوصول للملف (مطابقة DocumentsController.CanAccess): إدارة الكل، رئيس فرعه، محامٍ ملفه.</summary>
-    private bool CanAccessDocument(DocGenerator.Application.DTOs.DocumentResponse doc)
+    /// <summary>
+    /// قاعدة الوصول للملف بالنطاق (§5 + الاستثناء القرائي 22′): الإدارة (الكل)؛
+    /// محامٍ (ملفه)؛ رئيس قسم (ملفات دوائر القسم وبلا دائرة في فرعه + المحال له
+    /// حتى الحسم)؛ رئيس شعبة (ملفات دوائر شعبته).
+    /// </summary>
+    private async Task<bool> CanAccessDocumentAsync(DocGenerator.Application.DTOs.DocumentResponse doc)
     {
         if (HasFullAccess) return true;
-        if (IsHead) return doc.BranchId == User.GetBranchId();
-        return doc.CreatedById == User.GetUserId();
+        if (Role == UserRole.Lawyer)
+            return doc.CreatedById == User.GetUserId();
+        if (doc.BranchId != User.GetBranchId())
+            return false;
+        if (Role == UserRole.Head)
+        {
+            if (doc.ExecutionCircuitId is null || !doc.SectionId.HasValue)
+                return true;
+            return await _appeals.HasForwardedAppealAsync(doc.Id);
+        }
+        if (Role == UserRole.SubHead)
+            return doc.SectionId.HasValue && doc.SectionId == User.GetSectionId();
+        return false;
     }
 
+    private async Task<bool> CanAccessOrFollowAsync(DocGenerator.Application.DTOs.DocumentResponse doc)
+        => await CanAccessDocumentAsync(doc) || await _appeals.IsAssignedFollowerAsync(doc.Id, User.GetUserId());
+
     /// <summary>
-    /// صلاحية رؤية الاستئناف: منشؤه، أو المحامي المسند إليه للمتابعة، أو رئيس قسم
-    /// فرع الملف، أو الإدارة (قراءة مطلقة).
+    /// صلاحية رؤية الاستئناف بالنطاق (§5 + 22′): منشؤه، أو المحامي المسند إليه
+    /// للمتابعة، أو رئيس القسم (ملفات دوائر القسم وبلا دائرة في فرعه + المحال
+    /// له حتى الحسم)، أو رئيس الشعبة (استئنافات ملفات دوائر شعبته)، أو الإدارة.
     /// </summary>
     private async Task<bool> CanViewAppealAsync(int appealId)
     {
@@ -52,7 +73,20 @@ public class AppealsController : ControllerBase
         if (HasFullAccess) return true;
         if (appeal.CreatedById == User.GetUserId() || appeal.AssignedLawyerId == User.GetUserId())
             return true;
-        if (IsHead && appeal.Document.BranchId == User.GetBranchId()) return true;
+        var doc = appeal.Document;
+        if (doc.BranchId != User.GetBranchId())
+            return false;
+        if (Role == UserRole.Head)
+        {
+            if (doc.ExecutionCircuitId is null || doc.ExecutionCircuit?.SectionId is null)
+                return true;
+            // الاستثناء القرائي (22′): المحال له فقط وهو منظور — ينتهي بعد الحسم النهائي.
+            return appeal.Status == AppealStatusCatalog.Pending
+                && appeal.ForwardState == AppealForwardCatalog.ForwardedToHead;
+        }
+        if (Role == UserRole.SubHead)
+            return doc.ExecutionCircuitId is not null
+                && doc.ExecutionCircuit?.SectionId == User.GetSectionId();
         return false;
     }
 
@@ -96,7 +130,7 @@ public class AppealsController : ControllerBase
 
     // ── صفحة «الاستئنافات» ────────────────────────────────────────────────
 
-    /// <summary>بحث/قائمة الاستئنافات بنطاق الرؤية: محامٍ (استئنافاته)، رئيس القسم (فرعه)، الإدارة (الكل).</summary>
+    /// <summary>بحث/قائمة الاستئنافات بنطاق الرؤية (§5): محامٍ (استئنافاته)، رئيس القسم (دوائر القسم وبلا دائرة + المحال له)، رئيس الشعبة (دوائر شعبته)، الإدارة (الكل).</summary>
     [HttpGet("appeals")]
     public async Task<IActionResult> Search(
         [FromQuery] string? q, [FromQuery] string? status,
@@ -104,18 +138,25 @@ public class AppealsController : ControllerBase
         CancellationToken ct = default)
     {
         if (HasFullAccess)
-            return Ok(await _appeals.SearchAsync(q, status, null, null, page, perPage, ct));
+            return Ok(await _appeals.SearchAsync(q, status, null, null, null, page, perPage, ct));
 
-        if (IsHead)
+        if (IsHeadOrSubHead)
         {
-            // رئيس القسم بلا فرع لا يملك نطاق رؤية محددًا — يُرفض بدل تسريب كل الاستئنافات.
-            var headBranch = User.GetBranchId();
-            if (headBranch is null)
-                return BadRequest(new { message = "رئيس القسم دون فرع لا يمكنه الاطلاع على الاستئنافات" });
-            return Ok(await _appeals.SearchAsync(q, status, headBranch, null, page, perPage, ct));
+            // رئيس بلا فرع لا يملك نطاق رؤية محددًا — يُرفض بدل تسريب كل الاستئنافات.
+            var branch = User.GetBranchId();
+            if (branch is null)
+                return BadRequest(new { message = "الرئيس دون فرع لا يمكنه الاطلاع على الاستئنافات" });
+            int? section = null;
+            if (Role == UserRole.SubHead)
+            {
+                section = User.GetSectionId();
+                if (section is null)
+                    return Forbid();
+            }
+            return Ok(await _appeals.SearchAsync(q, status, branch, null, section, page, perPage, ct));
         }
 
-        return Ok(await _appeals.SearchAsync(q, status, null, User.GetUserId(), page, perPage, ct));
+        return Ok(await _appeals.SearchAsync(q, status, null, User.GetUserId(), null, page, perPage, ct));
     }
 
     /// <summary>تفاصيل استئناف كاملة.</summary>
@@ -215,9 +256,9 @@ public class AppealsController : ControllerBase
         }
     }
 
-    // ── الإسناد والنقل (رئيس القسم) ───────────────────────────────────────
+    // ── الإسناد والنقل (رئيس القسم والشعبة بنطاقه) ─────────────────────────
 
-    /// <summary>إسناد الاستئناف إلى محامي الفرع للمتابعة — رئيس القسم (فرعه).</summary>
+    /// <summary>إسناد الاستئناف إلى محامي الفرع للمتابعة — رئيس القسم والشعبة (نطاقه).</summary>
     [HttpPost("appeals/{id:int}/assign")]
     public async Task<IActionResult> Assign(int id, [FromBody] AssignAppealRequest request, CancellationToken ct)
     {
@@ -225,16 +266,20 @@ public class AppealsController : ControllerBase
             return Forbid();
         try
         {
-            var assigned = await _appeals.AssignAsync(id, request, User.GetUserId(), User.GetBranchId(), ActorName, ct);
+            var assigned = await _appeals.AssignAsync(id, request, User.GetUserId(), ActorName, ct);
             return assigned is null ? NotFound() : Ok(assigned);
         }
         catch (ArgumentException e)
         {
             return BadRequest(new { message = e.Message });
         }
+        catch (DocumentConflictException e)
+        {
+            return Conflict(new { message = e.Message });
+        }
     }
 
-    /// <summary>نقل استئناف مفرد بين محامي الفرع — رئيس القسم (فرعه).</summary>
+    /// <summary>نقل استئناف مفرد بين محامي الفرع — رئيس القسم والشعبة (نطاقه).</summary>
     [HttpPost("appeals/{id:int}/transfer")]
     public async Task<IActionResult> Transfer(int id, [FromBody] TransferAppealRequest request, CancellationToken ct)
     {
@@ -242,16 +287,20 @@ public class AppealsController : ControllerBase
             return Forbid();
         try
         {
-            var transferred = await _appeals.TransferAsync(id, request, User.GetUserId(), User.GetBranchId(), ActorName, ct);
+            var transferred = await _appeals.TransferAsync(id, request, User.GetUserId(), ActorName, ct);
             return transferred is null ? NotFound() : Ok(transferred);
         }
         catch (ArgumentException e)
         {
             return BadRequest(new { message = e.Message });
         }
+        catch (DocumentConflictException e)
+        {
+            return Conflict(new { message = e.Message });
+        }
     }
 
-    /// <summary>نقل كل استئنافات محامٍ إلى محامٍ آخر ضمن الفرع — رئيس القسم (فرعه).</summary>
+    /// <summary>نقل كل استئنافات محامٍ إلى محامٍ آخر ضمن نطاق المنفِّذ — رئيس القسم والشعبة.</summary>
     [HttpPost("appeals/transfer-all")]
     public async Task<IActionResult> TransferAll([FromBody] TransferAllAppealsRequest request, CancellationToken ct)
     {
@@ -259,7 +308,17 @@ public class AppealsController : ControllerBase
             return Forbid();
         try
         {
-            var count = await _appeals.TransferAllAsync(request, User.GetBranchId(), ActorName, ct);
+            var branchId = User.GetBranchId();
+            if (branchId is null)
+                return BadRequest(new { message = "الرئيس دون فرع لا يمكنه نقل الاستئنافات" });
+            int? section = null;
+            if (Role == UserRole.SubHead)
+            {
+                section = User.GetSectionId();
+                if (section is null)
+                    return Forbid();
+            }
+            var count = await _appeals.TransferAllAsync(request, branchId, section, ActorName, ct);
             return Ok(new { transferredCount = count });
         }
         catch (ArgumentException e)
@@ -268,7 +327,7 @@ public class AppealsController : ControllerBase
         }
     }
 
-    /// <summary>عدد الاستئنافات المنظورة لمحامٍ ضمن فرع رئيس القسم — لمعاينة النقل الجملة.</summary>
+    /// <summary>عدد الاستئنافات المنظورة لمحامٍ ضمن نطاق الرئيس — لمعاينة النقل الجملة (تطابق المنقول).</summary>
     [HttpGet("appeals/owner/{lawyerId:int}/count")]
     public async Task<IActionResult> CountForOwner(int lawyerId, CancellationToken ct)
     {
@@ -276,11 +335,80 @@ public class AppealsController : ControllerBase
             return Forbid();
         try
         {
-            return Ok(new { count = await _appeals.CountByAssigneeForHeadAsync(lawyerId, User.GetBranchId(), ct) });
+            var branchId = User.GetBranchId();
+            if (branchId is null)
+                return BadRequest(new { message = "الرئيس دون فرع لا يمكنه الاطلاع على الاستئنافات" });
+            int? section = null;
+            if (Role == UserRole.SubHead)
+            {
+                section = User.GetSectionId();
+                if (section is null)
+                    return Forbid();
+            }
+            return Ok(new { count = await _appeals.CountByAssigneeForHeadAsync(lawyerId, branchId, section, ct) });
         }
         catch (ArgumentException e)
         {
             return BadRequest(new { message = e.Message });
+        }
+    }
+
+    // ── الإحالة لرئيس القسم والتراجع عنها (شعبة → قسم، اتجاه واحد — §6) ────
+
+    /// <summary>إحالة استئناف لرئيس القسم — رئيس الشعبة فقط (زر «إحالة لرئيس القسم»).</summary>
+    [HttpPost("appeals/{id:int}/forward")]
+    public async Task<IActionResult> Forward(int id, [FromBody] ForwardAppealRequest request, CancellationToken ct)
+    {
+        try
+        {
+            var forwarded = await _appeals.ForwardAsync(id, request ?? new ForwardAppealRequest(), User.GetUserId(), ActorName, ct);
+            return forwarded is null ? NotFound() : Ok(forwarded);
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (DocumentConflictException e)
+        {
+            return Conflict(new { message = e.Message });
+        }
+    }
+
+    /// <summary>استرجاع المحيل إحالته قبل الإسناد.</summary>
+    [HttpPost("appeals/{id:int}/recall-forward")]
+    public async Task<IActionResult> RecallForward(int id, CancellationToken ct)
+    {
+        try
+        {
+            var recalled = await _appeals.RecallForwardAsync(id, User.GetUserId(), ActorName, ct);
+            return recalled is null ? NotFound() : Ok(recalled);
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (DocumentConflictException e)
+        {
+            return Conflict(new { message = e.Message });
+        }
+    }
+
+    /// <summary>إعادة المستلم (رئيس القسم) الإحالة لمحيلها قبل الإسناد.</summary>
+    [HttpPost("appeals/{id:int}/return-forward")]
+    public async Task<IActionResult> ReturnForward(int id, CancellationToken ct)
+    {
+        try
+        {
+            var returned = await _appeals.RecallForwardAsync(id, User.GetUserId(), ActorName, ct);
+            return returned is null ? NotFound() : Ok(returned);
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (DocumentConflictException e)
+        {
+            return Conflict(new { message = e.Message });
         }
     }
 
@@ -409,7 +537,4 @@ public class AppealsController : ControllerBase
     [Authorize(Roles = "lawyer")]
     public async Task<IActionResult> Reminders(CancellationToken ct)
         => Ok(await _appeals.GetRemindersAsync(User.GetUserId(), ct));
-
-    private async Task<bool> CanAccessOrFollowAsync(DocGenerator.Application.DTOs.DocumentResponse doc)
-        => CanAccessDocument(doc) || await _appeals.IsAssignedFollowerAsync(doc.Id, User.GetUserId());
 }

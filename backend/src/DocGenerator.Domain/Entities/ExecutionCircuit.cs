@@ -13,6 +13,12 @@ public class ExecutionCircuit
     /// <summary>فرع الإدارة المالك للدائرة (إلزامي، لا يتغير أبدًا).</summary>
     public int BranchId { get; set; }
 
+    /// <summary>
+    /// الشعبة المالكة للدائرة؛ `null` = ملك القسم مباشرة. يُضبط من المنشئ عند
+    /// الإنشاء (دائرة رئيس الشعبة تلحق بشعبته)، والنقل لاحقًا بإجراء «نقل دائرة».
+    /// </summary>
+    public int? SectionId { get; set; }
+
     /// <summary>اسم الدائرة (200).</summary>
     public string Name { get; set; } = string.Empty;
 
@@ -34,6 +40,7 @@ public class ExecutionCircuit
     public long Version { get; set; }
 
     public Branch? Branch { get; set; }
+    public Section? Section { get; set; }
     public User? CreatedBy { get; set; }
     public ICollection<Document> Documents { get; set; } = new List<Document>();
 }

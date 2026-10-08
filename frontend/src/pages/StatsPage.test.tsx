@@ -109,7 +109,7 @@ describe('StatsPage', () => {
 
     render(<StatsPage />);
 
-    expect(await screen.findByLabelText('إحصائيات الفرع')).toBeInTheDocument();
+    expect(await screen.findByLabelText('إحصائيات القسم')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'متداولة ضمن السنة 2026' })).toBeInTheDocument();
     // بلا روابط تعمّق وبلا استئنافات لرئيس القسم.
     expect(screen.queryByRole('link', { name: 'عرض الملفات ←' })).not.toBeInTheDocument();
@@ -165,5 +165,35 @@ describe('StatsPage', () => {
     expect(urls).not.toContain('/stats/periods');
     expect(urls).not.toContain('/stats/manager');
     expect(urls).not.toContain('/stats/manager/lawyers');
+  });
+
+  it('تعرض لرئيس الشعبة إحصائيات شعبته عبر /stats/manager (نطاقه إجباري خلفيًا)', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 6, username: 'sub1', fullName: 'رئيس شعبة', role: 'subhead', branchId: 1, sectionId: 3 },
+    });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/stats/periods') return Promise.resolve({ data: PERIODS });
+      if (url === '/stats/manager') return Promise.resolve({ data: STATS });
+      if (url === '/stats/manager/lawyers') return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<StatsPage />);
+
+    expect(await screen.findByLabelText('إحصائيات الشعبة')).toBeInTheDocument();
+    const urls = vi.mocked(api.get).mock.calls.map(([url]) => url);
+    expect(urls).toContain('/stats/manager');
+    expect(urls).not.toContain('/stats/me');
+  });
+
+  it('رئيس الشعبة برمز بلا شعبة يرى رسالة تعيين الفرع بلا أي طلب', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 6, username: 'sub1', fullName: 'رئيس شعبة', role: 'subhead', branchId: 1, sectionId: null },
+    });
+
+    render(<StatsPage />);
+
+    expect(await screen.findByText('لا يوجد فرع مرتبط بحسابك — تواصل مع المشرف لتعيين فرعك')).toBeInTheDocument();
+    expect(vi.mocked(api.get).mock.calls).toHaveLength(0);
   });
 });

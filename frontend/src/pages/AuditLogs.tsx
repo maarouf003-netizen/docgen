@@ -35,6 +35,16 @@ const ACTION_LABELS: Record<string, string> = {
   transfer: 'نقل ملف',
   create_user: 'إنشاء مستخدم',
   update_user: 'تعديل مستخدم',
+  forward_appeal: 'إحالة استئناف لرئيس القسم',
+  recall_forward: 'استرجاع إحالة الاستئناف',
+  redirect_delegation: 'توجيه إنابة لشعبة',
+  recall_redirect_delegation: 'تراجع عن توجيه إنابة',
+  reject_delegation: 'رفض إنابة',
+  transfer_circuit: 'نقل دائرة',
+  create_section: 'إنشاء شعبة',
+  rename_section: 'تسمية شعبة',
+  activate_section: 'تفعيل شعبة',
+  deactivate_section: 'تعطيل شعبة',
 };
 
 export default function AuditLogs() {

@@ -229,7 +229,7 @@ public sealed partial class PublicEntityService : IPublicEntityService
 
     private async Task EnsureHeadScopeAsync(EntityRegistryActor actor, PublicEntity? entry, string? fallbackGovernorate, CancellationToken ct)
     {
-        if (actor.Role != UserRole.Head)
+        if (actor.Role is not (UserRole.Head or UserRole.SubHead))
             return;
         var branch = actor.BranchId is null ? null : await _branches.GetByIdAsync(actor.BranchId.Value, ct);
         var branchGov = NormalizeOptional(branch?.Governorate);
@@ -260,7 +260,7 @@ public sealed partial class PublicEntityService : IPublicEntityService
     /// </summary>
     private static void GuardHeadCannotEditParent(EntityRegistryActor actor, PublicEntity entry)
     {
-        if (actor.Role == UserRole.Head && entry.IsParentEntity)
+        if (actor.Role is UserRole.Head or UserRole.SubHead && entry.IsParentEntity)
             throw new UnauthorizedAccessException(
                 "الجهة الأم تُدار عبر الاقتراح فقط — أرسل اقتراح تعديل للإدارة");
     }

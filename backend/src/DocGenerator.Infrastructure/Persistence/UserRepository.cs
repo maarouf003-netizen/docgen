@@ -19,8 +19,55 @@ public class UserRepository : Repository<User>, IUserRepository
         var normalized = ArabicNameNormalizer.Normalize(username);
         return await Db.Users
             .Include(u => u.Branch)
+            .Include(u => u.Section)
             .Where(u => u.Username == normalized)
             .OrderBy(u => u.BranchId)
+            .ToListAsync(ct);
+    }
+
+    /// <summary>وحدانية الرئاسة المفعّلة (قرار §2.3/§2.26) — فحص خدمي، والقيد الجزئي الفريد ظهرًا.</summary>
+    public async Task<bool> ExistsActiveHeadAsync(UserRole role, int? branchId, int? sectionId, int? excludeUserId, CancellationToken ct = default)
+    {
+        if (role is not (UserRole.Head or UserRole.SubHead))
+            return false;
+        return await Db.Users
+            .AsNoTracking()
+            .AnyAsync(u => u.IsActive
+                && u.Role == role
+                && u.BranchId == branchId
+                && u.SectionId == sectionId
+                && (excludeUserId == null || u.Id != excludeUserId.Value), ct);
+    }
+
+    public async Task<List<User>> ListUsersBySectionAsync(int sectionId, CancellationToken ct = default)
+    {
+        return await Db.Users
+            .AsNoTracking()
+            .Where(u => u.SectionId == sectionId)
+            .OrderBy(u => u.FullName)
+            .ToListAsync(ct);
+    }
+
+    public async Task<User?> FindActiveHeadAsync(UserRole role, int? branchId, int? sectionId, CancellationToken ct = default)
+    {
+        if (role is not (UserRole.Head or UserRole.SubHead))
+            return null;
+        return await Db.Users
+            .AsNoTracking()
+            .Where(u => u.IsActive
+                && u.Role == role
+                && u.BranchId == branchId
+                && u.SectionId == sectionId)
+            .OrderBy(u => u.Id)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<List<User>> ListByCreatorAsync(int creatorId, CancellationToken ct = default)
+    {
+        return await Db.Users
+            .AsNoTracking()
+            .Where(u => u.CreatedById == creatorId)
+            .OrderBy(u => u.FullName)
             .ToListAsync(ct);
     }
 
@@ -42,6 +89,7 @@ public class UserRepository : Repository<User>, IUserRepository
         return await Db.Users
             .AsNoTracking()
             .Include(u => u.Branch)
+            .Include(u => u.Section)
             .OrderBy(u => u.FullName)
             .ToListAsync(ct);
     }
@@ -102,6 +150,7 @@ public class UserRepository : Repository<User>, IUserRepository
                 && u.Id != excludeUserId
                 && (u.Role == UserRole.Lawyer
                     || u.Role == UserRole.Head
+                    || u.Role == UserRole.SubHead
                     || u.Role == UserRole.EntityManager));
 
         if (!string.IsNullOrWhiteSpace(q))

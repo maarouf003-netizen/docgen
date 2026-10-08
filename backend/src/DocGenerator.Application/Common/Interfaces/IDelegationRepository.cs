@@ -21,16 +21,19 @@ public interface IDelegationRepository : IRepository<DocumentDelegation>
     Task<DocumentDelegation?> FindByTargetAsync(int targetDocumentId, CancellationToken ct = default);
 
     /// <summary>
-    /// طلبات الإنابة المعلّقة (بانتظار رئيس القسم) لفرعٍ معيّن: إنابات ملفات ذلك الفرع،
-    /// مع بيانات المصدر والمنشئ — لنافذة «طلبات الإنابة والاستئنافات والمطالعات».
+    /// طلبات الإنابة المعلّقة (بانتظار الاعتماد) لنطاق رئيسٍ معيّن (§7.1 + §7.4):
+    /// داخلية بدائرة لرئيس شعبته (أو قسمه إن بلا شعبة)، وداخلية بلا دائرة
+    /// لرئيس قسم فرع المنيب، وخارجية لرئيس قسم الفرع المناب ما لم تُوجَّه لشعبة.
+    /// `rejectedOnly` لفلتر «مرفوض بانتظار التصحيح» — لنافذة
+    /// «طلبات الإنابة والاستئنافات والمطالعات».
     /// </summary>
-    Task<List<DocumentDelegation>> ListPendingByBranchAsync(int branchId, CancellationToken ct = default);
+    Task<List<DocumentDelegation>> ListPendingByBranchAsync(int branchId, int? ownerSectionId = null, bool rejectedOnly = false, CancellationToken ct = default);
 
     /// <summary>
-    /// عدد طلبات الإنابة المعلّقة لفرعٍ معيّن — نفس نطاق <see cref="ListPendingByBranchAsync"/>
-    /// دون تحميل القوائم المرتبطة: لشارة رئيس القسم الخفيفة (استطلاع دوري).
+    /// عدد طلبات الإنابة المعلّقة لنطاق الرئيس — نفس نطاق <see cref="ListPendingByBranchAsync"/>
+    /// دون تحميل القوائم المرتبطة: لشارة الرئيس الخفيفة (استطلاع دوري).
     /// </summary>
-    Task<int> CountPendingByBranchAsync(int branchId, CancellationToken ct = default);
+    Task<int> CountPendingByBranchAsync(int branchId, int? ownerSectionId = null, bool rejectedOnly = false, CancellationToken ct = default);
 
     /// <summary>
     /// الإنابات غير المنفذة لملفٍ منيبٍ معيّن مع جميع مجموعات الملف المناب المحلية

@@ -2,14 +2,24 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { useIsMobile } from '../hooks/useMediaQuery';
-import type { BranchDto, Role, UserListItem } from '../types';
+import type { BranchDto, Role, SectionDto, UserListItem } from '../types';
 import { ROLE_LABELS } from '../auth/roleLabels';
 
-const BRANCH_ROLES: Role[] = ['lawyer', 'head'];
+const BRANCH_ROLES: Role[] = ['lawyer', 'head', 'subhead'];
 
 function branchRequired(role: Role): boolean {
   return BRANCH_ROLES.includes(role);
 }
+
+function sectionRequired(role: Role): boolean {
+  return role === 'subhead';
+}
+
+function isHeadRole(role: Role): boolean {
+  return role === 'head' || role === 'subhead';
+}
+
+const userCountFormatter = new Intl.NumberFormat('ar-SY');
 
 export default function UsersManagement() {
   const { user: me } = useAuth();
@@ -27,6 +37,9 @@ export default function UsersManagement() {
   const [fullName, setFullName] = useState('');
   const [role, setRole] = useState<Role>('lawyer');
   const [branchId, setBranchId] = useState<number | null>(null);
+  const [sectionId, setSectionId] = useState<number | null>(null);
+  const [sections, setSections] = useState<SectionDto[]>([]);
+  const [sectionsLoading, setSectionsLoading] = useState(false);
   const [password, setPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
@@ -35,7 +48,11 @@ export default function UsersManagement() {
   const [editFullName, setEditFullName] = useState('');
   const [editRole, setEditRole] = useState<Role>('lawyer');
   const [editBranchId, setEditBranchId] = useState<number | null>(null);
+  const [editSectionId, setEditSectionId] = useState<number | null>(null);
+  const [editSections, setEditSections] = useState<SectionDto[]>([]);
+  const [editSectionsLoading, setEditSectionsLoading] = useState(false);
   const [editActive, setEditActive] = useState(true);
+  const [editSuccessorId, setEditSuccessorId] = useState<number | null>(null);
   const [editPassword, setEditPassword] = useState('');
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
@@ -59,10 +76,58 @@ export default function UsersManagement() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!showForm || !sectionRequired(role) || branchId === null) {
+      setSections([]);
+      return;
+    }
+    let cancelled = false;
+    setSectionsLoading(true);
+    api
+      .get<SectionDto[]>(`/sections?branchId=${branchId}`)
+      .then((r) => {
+        if (!cancelled) setSections(r.data);
+      })
+      .catch(() => {
+        if (!cancelled) setSections([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSectionsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showForm, role, branchId]);
+
+  useEffect(() => {
+    if (!editing || !sectionRequired(editRole) || editBranchId === null) {
+      setEditSections([]);
+      return;
+    }
+    let cancelled = false;
+    setEditSectionsLoading(true);
+    api
+      .get<SectionDto[]>(`/sections?branchId=${editBranchId}`)
+      .then((r) => {
+        if (!cancelled) setEditSections(r.data);
+      })
+      .catch(() => {
+        if (!cancelled) setEditSections([]);
+      })
+      .finally(() => {
+        if (!cancelled) setEditSectionsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editing, editRole, editBranchId]);
+
   const resetForm = () => {
     setFullName('');
     setRole('lawyer');
     setBranchId(null);
+    setSectionId(null);
+    setSections([]);
     setPassword('');
     setFormError('');
     setShowForm(false);
@@ -85,6 +150,10 @@ export default function UsersManagement() {
       setFormError('يجب تحديد الفرع لهذا الدور');
       return;
     }
+    if (sectionRequired(role) && sectionId === null) {
+      setFormError('الشعبة إلزامية لرئيس الشعبة');
+      return;
+    }
 
     setSaving(true);
     setFormError('');
@@ -95,6 +164,7 @@ export default function UsersManagement() {
         fullName: name,
         role,
         branchId: branchRequired(role) ? branchId : null,
+        sectionId: sectionRequired(role) ? sectionId : null,
         password,
       });
       resetForm();
@@ -111,7 +181,10 @@ export default function UsersManagement() {
     setEditFullName(u.fullName);
     setEditRole(u.role);
     setEditBranchId(u.branchId);
+    setEditSectionId(u.sectionId ?? null);
+    setEditSections([]);
     setEditActive(u.isActive);
+    setEditSuccessorId(null);
     setEditPassword('');
     setEditError('');
   };
@@ -119,8 +192,20 @@ export default function UsersManagement() {
   const closeEdit = () => {
     setEditing(null);
     setEditPassword('');
+    setEditSuccessorId(null);
     setEditError('');
   };
+
+  const editDeactivating = Boolean(editing && editing.isActive && !editActive && isHeadRole(editRole));
+  const successorCandidates = users.filter(
+    (u) =>
+      editing &&
+      u.id !== editing.id &&
+      u.isActive &&
+      u.branchId !== null &&
+      u.branchId === editBranchId &&
+      (u.role === 'lawyer' || u.role === 'head' || u.role === 'subhead'),
+  );
 
   const saveEdit = async () => {
     if (!editing) return;
@@ -130,6 +215,14 @@ export default function UsersManagement() {
     }
     if (branchRequired(editRole) && editBranchId === null) {
       setEditError('يجب تحديد الفرع لهذا الدور');
+      return;
+    }
+    if (sectionRequired(editRole) && editSectionId === null) {
+      setEditError('الشعبة إلزامية لرئيس الشعبة');
+      return;
+    }
+    if (editDeactivating && editSuccessorId === null) {
+      setEditError('التعطيل يتطلب خلفًا إجباريًا — حدد الخلف');
       return;
     }
     if (editPassword && editPassword.length < 6) {
@@ -144,7 +237,9 @@ export default function UsersManagement() {
         fullName: editFullName.trim(),
         role: editRole,
         branchId: branchRequired(editRole) ? editBranchId : null,
+        sectionId: sectionRequired(editRole) ? editSectionId : null,
         isActive: editActive,
+        successorId: editDeactivating ? editSuccessorId : null,
         password: editPassword || null,
       });
       closeEdit();
@@ -164,7 +259,7 @@ export default function UsersManagement() {
 
       <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm text-gray-600">
-          {loading ? 'جارِ التحميل...' : `${users.length} مستخدم`}
+          {loading ? 'جارِ التحميل...' : `${userCountFormatter.format(users.length)} مستخدم`}
         </div>
         <button
           onClick={() => setShowForm((v) => !v)}
@@ -217,6 +312,27 @@ export default function UsersManagement() {
               ))}
             </select>
           </div>
+          {sectionRequired(role) && (
+            <div>
+              <label htmlFor="user-section" className="block text-xs font-medium text-gray-600 mb-1">الشعبة (إلزامية لرئيس الشعبة)</label>
+              <select
+                id="user-section"
+                value={sectionId ?? ''}
+                onChange={(e) => setSectionId(e.target.value ? Number(e.target.value) : null)}
+                disabled={branchId === null || sectionsLoading}
+                className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:bg-gray-50 disabled:text-gray-400"
+              >
+                <option value="">
+                  {branchId === null ? 'اختر الفرع أولًا...' : sectionsLoading ? 'جارِ تحميل الشعب...' : 'اختر الشعبة...'}
+                </option>
+                {sections.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}{s.headName ? ` — ${s.headName}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="sm:col-span-2">
             <label htmlFor="user-password" className="block text-xs font-medium text-gray-600 mb-1">كلمة المرور (6 أحرف على الأقل)</label>
             <input
@@ -251,6 +367,7 @@ export default function UsersManagement() {
                 <th className="px-4 py-3">اسم المستخدم</th>
                 <th className="px-4 py-3">الدور</th>
                 <th className="px-4 py-3">الفرع</th>
+                <th className="px-4 py-3">الشعبة</th>
                 <th className="px-4 py-3">الحالة</th>
                 <th className="px-4 py-3">إجراء</th>
               </tr>
@@ -262,6 +379,7 @@ export default function UsersManagement() {
                   <td className="px-4 py-3">{u.username}</td>
                   <td className="px-4 py-3">{ROLE_LABELS[u.role] ?? u.role}</td>
                   <td className="px-4 py-3">{u.branchName || '—'}</td>
+                  <td className="px-4 py-3 break-words">{u.sectionName ?? '—'}</td>
                   <td className="px-4 py-3">
                     <span
                       className={`inline-block rounded-full px-2 py-0.5 text-xs ${
@@ -287,7 +405,7 @@ export default function UsersManagement() {
               ))}
               {!loading && users.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-gray-400">لا يوجد مستخدمون</td>
+                  <td colSpan={7} className="px-4 py-8 text-center text-gray-400">لا يوجد مستخدمون</td>
                 </tr>
               )}
             </tbody>
@@ -314,6 +432,7 @@ export default function UsersManagement() {
                 <div className="text-sm text-gray-600 mt-1">
                   {u.username} · {ROLE_LABELS[u.role] ?? u.role}
                   {u.branchName ? <span className="text-gray-400"> · {u.branchName}</span> : null}
+                  {u.sectionName ? <span className="text-gray-400"> · {u.sectionName}</span> : null}
                 </div>
                 {isManager && u.role === 'admin' ? (
                   <span className="mt-3 inline-block text-xs text-gray-400">مشرف</span>
@@ -390,6 +509,27 @@ export default function UsersManagement() {
                   ))}
                 </select>
               </div>
+              {sectionRequired(editRole) && (
+                <div>
+                  <label htmlFor="edit-section" className="block text-xs font-medium text-gray-600 mb-1">الشعبة (إلزامية لرئيس الشعبة)</label>
+                  <select
+                    id="edit-section"
+                    value={editSectionId ?? ''}
+                    onChange={(e) => setEditSectionId(e.target.value ? Number(e.target.value) : null)}
+                    disabled={editBranchId === null || editSectionsLoading}
+                    className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:bg-gray-50 disabled:text-gray-400"
+                  >
+                    <option value="">
+                      {editBranchId === null ? 'اختر الفرع أولًا...' : editSectionsLoading ? 'جارِ تحميل الشعب...' : 'اختر الشعبة...'}
+                    </option>
+                    {editSections.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}{s.headName ? ` — ${s.headName}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label htmlFor="edit-password" className="block text-xs font-medium text-gray-600 mb-1">كلمة مرور جديدة (اختياري)</label>
                 <input
@@ -413,6 +553,27 @@ export default function UsersManagement() {
               الحساب مفعّل
               {isSelf(editing) && <span className="text-xs text-gray-400">(لا يمكنك إيقاف حسابك)</span>}
             </label>
+
+            {editDeactivating && (
+              <div className="mt-4">
+                <label htmlFor="edit-successor" className="block text-xs font-medium text-gray-600 mb-1">
+                  الخلف الإجباري (يحل محل الرئيس المعطّل في كل شيء)
+                </label>
+                <select
+                  id="edit-successor"
+                  value={editSuccessorId ?? ''}
+                  onChange={(e) => setEditSuccessorId(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                >
+                  <option value="">اختر الخلف...</option>
+                  {successorCandidates.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.fullName} — {ROLE_LABELS[c.role] ?? c.role}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {editError && <p className="text-red-600 text-sm mt-3">{editError}</p>}
 

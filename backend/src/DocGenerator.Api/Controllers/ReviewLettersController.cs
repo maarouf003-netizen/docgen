@@ -9,12 +9,13 @@ using Microsoft.AspNetCore.Mvc;
 namespace DocGenerator.Api.Controllers;
 
 /// <summary>
-/// كتب المطالعة: المحامي يسطّر ويردّ رئيس القسم، والاطلاع موسّع لمالك الملف
-/// ومتابعيه (إحالة/إنابة/استئناف) وللمدير والمشرف (قراءة فقط بفرع إدارة منتقى).
+/// كتب المطالعة: المحامي يسطّر (موجَّهًا لمالك الدائرة تلقائيًا مع ملف، وباختيار
+/// المنسدل بلا ملف)، ويردّ مالك الكتاب (قسمه/شعبته §10)، والاطلاع موسّع لمالك
+/// الملف ومتابعيه (إحالة/إنابة/استئناف) وللمدير والمشرف (قراءة فقط بفرع إدارة منتقى).
 /// </summary>
 [ApiController]
 [Route("api/review-letters")]
-[Authorize(Roles = "lawyer,head,manager,admin")]
+[Authorize(Roles = "lawyer,head,subhead,manager,admin")]
 public class ReviewLettersController : ControllerBase
 {
     private readonly IReviewLetterService _letters;
@@ -28,8 +29,9 @@ public class ReviewLettersController : ControllerBase
 
     private UserRole Role => User.GetRoleEnum();
     private bool IsLawyer => Role == UserRole.Lawyer;
-    private bool IsHead => Role == UserRole.Head;
+    private bool IsHeadOrSubHead => RolePermissions.IsHeadOrSubHead(Role);
     private int? BranchId => User.GetBranchId();
+    private int? SectionId => User.GetSectionId();
     private int UserId => User.GetUserId();
 
     /// <summary>قائمة كتب المطالعة بحسب الدور، مع بحث نصي وترقيم؛ المدير/المشرف بفرع إدارة إجباري.</summary>
@@ -39,10 +41,12 @@ public class ReviewLettersController : ControllerBase
         [FromQuery] int page = 1, [FromQuery] int perPage = 20,
         CancellationToken ct = default)
     {
+        if (Role == UserRole.SubHead && SectionId is null)
+            return Forbid();
         try
         {
             var result = await _letters.SearchAsync(UserId, Role, BranchId, q, page, perPage,
-                administrativeBranch, ct);
+                administrativeBranch, ct, SectionId);
             return Ok(result);
         }
         catch (ArgumentException e)
@@ -62,16 +66,18 @@ public class ReviewLettersController : ControllerBase
         return Ok(new { administrativeBranches = branches });
     }
 
-    /// <summary>عدد كتب الفرع بانتظار الرد — جرس رئيس القسم الأحمر.</summary>
+    /// <summary>عدد كتب النطاق بانتظار الرد — جرس المالك الأحمر (§10).</summary>
     [HttpGet("pending-count")]
     public async Task<IActionResult> PendingCount(CancellationToken ct)
     {
-        if (!IsHead)
+        if (!IsHeadOrSubHead)
             return Forbid();
         if (BranchId is null)
-            return BadRequest(new { message = "رئيس القسم دون فرع" });
+            return BadRequest(new { message = "الرئيس دون فرع" });
+        if (Role == UserRole.SubHead && SectionId is null)
+            return Forbid();
 
-        var count = await _letters.CountPendingForHeadAsync(BranchId.Value, ct);
+        var count = await _letters.CountPendingForHeadAsync(BranchId.Value, SectionId, ct);
         return Ok(new { count });
     }
 
@@ -108,13 +114,13 @@ public class ReviewLettersController : ControllerBase
         }
     }
 
-    /// <summary>كتب ملف محدد — لمالك الملف ورئيس قسمه والإدارة ومتابعيه.</summary>
+    /// <summary>كتب ملف محدد — لمالك الملف ورئيس نطاقه والإدارة ومتابعيه.</summary>
     [HttpGet("document/{documentId:int}")]
     public async Task<IActionResult> ListByDocument(int documentId, CancellationToken ct)
     {
         try
         {
-            var items = await _letters.ListByDocumentAsync(documentId, UserId, Role, BranchId, ct);
+            var items = await _letters.ListByDocumentAsync(documentId, UserId, Role, BranchId, ct, SectionId);
             return Ok(items);
         }
         catch (ArgumentException e)
@@ -157,7 +163,7 @@ public class ReviewLettersController : ControllerBase
     {
         try
         {
-            var letter = await _letters.GetByIdAsync(id, UserId, Role, BranchId, ct);
+            var letter = await _letters.GetByIdAsync(id, UserId, Role, BranchId, ct, SectionId);
             return Ok(letter);
         }
         catch (ArgumentException e)
@@ -193,7 +199,7 @@ public class ReviewLettersController : ControllerBase
         }
     }
 
-    /// <summary>رد رئيس القسم على كتاب — رئيس قسم الفرع نفسه فقط.</summary>
+    /// <summary>رد مالك الكتاب على كتاب — قسمه لدوائر القسم وبلا دائرة، وشعبته لدوائر شعبته (§10).</summary>
     [HttpPost("{id:int}/replies")]
     public async Task<IActionResult> Reply(int id, [FromBody] ReplyReviewLetterRequest request,
         CancellationToken ct)
@@ -201,11 +207,13 @@ public class ReviewLettersController : ControllerBase
         if (!RolePermissions.CanReplyReviewLetters(Role))
             return Forbid();
         if (BranchId is null)
-            return BadRequest(new { message = "رئيس القسم دون فرع لا يمكنه الرد على المطالعات" });
+            return BadRequest(new { message = "الرئيس دون فرع لا يمكنه الرد على المطالعات" });
+        if (Role == UserRole.SubHead && SectionId is null)
+            return Forbid();
 
         try
         {
-            var reply = await _letters.ReplyAsync(id, request, UserId, ActorName, BranchId.Value, ct);
+            var reply = await _letters.ReplyAsync(id, request, UserId, ActorName, BranchId.Value, ct, Role, SectionId);
             return Ok(reply);
         }
         catch (ArgumentException e)

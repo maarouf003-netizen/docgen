@@ -36,6 +36,10 @@ public class TokenService : ITokenService
         if (user.BranchId.HasValue)
             claims.Add(new Claim("branch_id", user.BranchId.Value.ToString()));
 
+        // شعبة الحساب (قرار §2.16): لرئيس الشعبة فقط — تُقرأ دفاعيًا عند التحقق.
+        if (user.SectionId.HasValue)
+            claims.Add(new Claim("section_id", user.SectionId.Value.ToString()));
+
         // نسخة التوكن لإبطال الرموز القديمة عند تغيير كلمة المرور/تعطيل الحساب
         claims.Add(new Claim("token_version", user.TokenVersion.ToString()));
 

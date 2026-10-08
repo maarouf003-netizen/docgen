@@ -11,6 +11,7 @@ import type { Role } from '../types';
 export const ROLE_LABELS: Record<Role, string> = {
   lawyer: 'محامي',
   head: 'رئيس قسم',
+  subhead: 'رئيس شعبة',
   manager: 'مدير',
   admin: 'مشرف نظام',
   entitymanager: 'مندوب جهة',

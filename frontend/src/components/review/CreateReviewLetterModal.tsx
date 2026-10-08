@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, getApiErrorMessage } from '../../api/client';
+import { useAuth } from '../../auth/useAuth';
 import RichTextEditor from '../RichTextEditor';
-import type { ReviewLetterDto } from '../../types';
+import type { ReviewLetterDto, SectionDto } from '../../types';
 
 /**
  * نافذة تسطير كتاب مطالعة:
- * - من صفحة المطالعات: كتاب عام غير مرتبط بملف (documentId فارغ).
- * - من تفاصيل ملف: الكتاب مرتبط بذلك الملف حصرًا.
+ * - من صفحة المطالعات: كتاب عام غير مرتبط بملف (documentId فارغ) — مع منسدل
+ *   المستلم الإجباري (`رئيس القسم | شعبة …` بافتراضي القسم — §10.2 + قرار 28).
+ * - من تفاصيل ملف: الكتاب مرتبط بذلك الملف حصرًا (المستلم تلقائي لمالك الدائرة).
  * «حفظ وإرسال» تولّد الرقم والتاريخ تلقائيًا في الخلفية.
  */
 export default function CreateReviewLetterModal({
@@ -20,9 +22,22 @@ export default function CreateReviewLetterModal({
   onClose: () => void;
   onCreated?: (letter: ReviewLetterDto) => void;
 }) {
+  const { user } = useAuth();
   const [bodyHtml, setBodyHtml] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [sections, setSections] = useState<SectionDto[]>([]);
+  const [recipientSectionId, setRecipientSectionId] = useState<number | ''>('');
+
+  const isGeneral = documentId == null;
+
+  useEffect(() => {
+    if (!isGeneral || user?.branchId == null) return;
+    api
+      .get<SectionDto[]>('/sections', { params: { branchId: user.branchId } })
+      .then((r) => setSections(Array.isArray(r.data) ? r.data.filter((s) => s.isActive && s.headName) : []))
+      .catch(() => setSections([]));
+  }, [isGeneral, user?.branchId]);
 
   const submit = async () => {
     setSaving(true);
@@ -31,6 +46,7 @@ export default function CreateReviewLetterModal({
       const response = await api.post<ReviewLetterDto>('/review-letters', {
         documentId: documentId ?? null,
         bodyHtml,
+        recipientSectionId: isGeneral && recipientSectionId !== '' ? recipientSectionId : null,
       });
       onCreated?.(response.data);
       onClose();
@@ -70,6 +86,26 @@ export default function CreateReviewLetterModal({
           ) : (
             <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 mb-4 text-sm text-emerald-800">
               كتاب مطالعة عام غير مرتبط بملف
+            </div>
+          )}
+
+          {isGeneral && (
+            <div className="mb-4">
+              <label htmlFor="review-recipient" className="block text-sm font-medium text-gray-700 mb-1.5">
+                المستلم (رئيس القسم افتراضيًا)
+              </label>
+              <select
+                id="review-recipient"
+                name="review-recipient"
+                value={recipientSectionId}
+                onChange={(e) => setRecipientSectionId(e.target.value ? Number(e.target.value) : '')}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-11 bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              >
+                <option value="">رئيس القسم</option>
+                {sections.map((s) => (
+                  <option key={s.id} value={s.id}>شعبة {s.name}</option>
+                ))}
+              </select>
             </div>
           )}
 

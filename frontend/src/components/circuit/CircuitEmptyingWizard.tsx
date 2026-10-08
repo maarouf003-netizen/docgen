@@ -77,7 +77,7 @@ export default function CircuitEmptyingWizard({
         if (!cancelled) setError('تعذّر تحميل ملفات الدائرة');
       });
     api
-      .get<Array<{ id: number; fullName: string; isActive?: boolean }>>('/users/lawyers')
+      .get<Array<{ id: number; fullName: string; isActive?: boolean }>>('/users/lawyers', { params: { mode: 'branch' } })
       .then((r) => {
         if (!cancelled) setLawyers(r.data ?? []);
       })

@@ -26,10 +26,10 @@ public interface IDocumentAppealService
     /// <summary>استئنافات ملف (بطاقة «الاستئنافات» في وقوعات الملف).</summary>
     Task<List<AppealDto>> ListForDocumentAsync(int documentId, CancellationToken ct = default);
 
-    /// <summary>بحث/قائمة الاستئنافات لنطاق رؤية محدد (صفحة «الاستئنافات»).</summary>
+    /// <summary>بحث/قائمة الاستئنافات لنطاق رؤية محدد (صفحة «الاستئنافات» — §5).</summary>
     Task<PagedResult<AppealDto>> SearchAsync(
         string? query, string? status, int? visibleBranchId, int? visibleUserId,
-        int page, int perPage, CancellationToken ct = default);
+        int? ownerSectionId, int page, int perPage, CancellationToken ct = default);
 
     /// <summary>تفاصيل استئناف بمعرفه.</summary>
     Task<AppealDto?> GetAsync(int appealId, CancellationToken ct = default);
@@ -46,17 +46,23 @@ public interface IDocumentAppealService
     /// <summary>شطب الاستئناف بتاريخ الشطب ورقم قرار الشطب — المحامي المتابع.</summary>
     Task<AppealDto?> StrikeAsync(int appealId, StrikeAppealRequest request, int userId, string? actorName, CancellationToken ct = default);
 
-    /// <summary>إسناد الاستئناف إلى محامي الفرع للمتابعة — رئيس القسم (فرعه).</summary>
-    Task<AppealDto?> AssignAsync(int appealId, AssignAppealRequest request, int userId, int? headBranchId, string? actorName, CancellationToken ct = default);
+    /// <summary>إسناد الاستئناف إلى محامي الفرع للمتابعة — رئيس القسم والشعبة بنطاقه.</summary>
+    Task<AppealDto?> AssignAsync(int appealId, AssignAppealRequest request, int userId, string? actorName, CancellationToken ct = default);
 
-    /// <summary>نقل استئناف مفرد بين محامي الفرع — رئيس القسم (فرعه).</summary>
-    Task<AppealDto?> TransferAsync(int appealId, TransferAppealRequest request, int userId, int? headBranchId, string? actorName, CancellationToken ct = default);
+    /// <summary>نقل استئناف مفرد بين محامي الفرع — رئيس القسم والشعبة بنطاقه.</summary>
+    Task<AppealDto?> TransferAsync(int appealId, TransferAppealRequest request, int userId, string? actorName, CancellationToken ct = default);
 
-    /// <summary>نقل كل استئنافات محامٍ إلى محامٍ آخر ضمن الفرع — رئيس القسم (فرعه).</summary>
-    Task<int> TransferAllAsync(TransferAllAppealsRequest request, int? headBranchId, string? actorName, CancellationToken ct = default);
+    /// <summary>نقل كل استئنافات محامٍ إلى محامٍ آخر ضمن نطاق المنفِّذ — رئيس القسم والشعبة.</summary>
+    Task<int> TransferAllAsync(TransferAllAppealsRequest request, int? headBranchId, int? ownerSectionId, string? actorName, CancellationToken ct = default);
 
-    /// <summary>عدد استئنافات محامٍ ضمن فرع رئيس القسم — لمعاينة النقل الجملة.</summary>
-    Task<int> CountByAssigneeForHeadAsync(int assigneeId, int? headBranchId, CancellationToken ct = default);
+    /// <summary>عدد استئنافات محامٍ ضمن نطاق الرئيس — لمعاينة النقل الجملة (تطابق المنقول).</summary>
+    Task<int> CountByAssigneeForHeadAsync(int assigneeId, int? headBranchId, int? ownerSectionId, CancellationToken ct = default);
+
+    /// <summary>إحالة استئناف من رئيس الشعبة لرئيس قسم فرعه (اتجاه واحد — §6.2).</summary>
+    Task<AppealDto?> ForwardAsync(int appealId, ForwardAppealRequest request, int callerUserId, string? actorName, CancellationToken ct = default);
+
+    /// <summary>التراجع عن الإحالة قبل الإسناد (استرجاع المحيل / إعادة المستلم — §6.5).</summary>
+    Task<AppealDto?> RecallForwardAsync(int appealId, int callerUserId, string? actorName, CancellationToken ct = default);
 
     /// <summary>تاريخ أرقام الأساس الاستئنافية لكل السنوات.</summary>
     Task<List<AppealBaseNumberHistoryDto>> GetBaseNumberHistoryAsync(int appealId, CancellationToken ct = default);
@@ -66,6 +72,9 @@ public interface IDocumentAppealService
 
     /// <summary>هل المستخدم هو المحامي المسند إليه متابعة استئناف على الملف؟ (وصول قرائي للملف الأساس).</summary>
     Task<bool> IsAssignedFollowerAsync(int documentId, int userId, CancellationToken ct = default);
+
+    /// <summary>الاستثناء القرائي للإحالة (قرار §2.22): إحالة مفتوحة لرئيس القسم على الملف.</summary>
+    Task<bool> HasForwardedAppealAsync(int documentId, CancellationToken ct = default);
 
     // ── الإجراءات والملاحظات المستقلة للاستئناف ────────────────────────────
 

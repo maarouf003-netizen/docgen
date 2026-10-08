@@ -9,7 +9,16 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
 {
     public void Configure(EntityTypeBuilder<User> builder)
     {
-        builder.ToTable("Users");
+        // `PB-002`: المحامي ورئيس القسم ورئيس الشعبة فرعيون بالتصميم — قيد قاعدة
+        // البيانات يمنع الصف الشاذ (خدمة الإدارة وحدها لا تغطي الكتابة المباشرة
+        // أو الاستعادات). الدور مخزّن نصًا (HasConversion<string>) فتعمل الصيغة
+        // نفسها على SQLite وPostgres معًا؛ الأدوار بلا فرع (مشرف/مدير/مندوب)
+        // غير مشمولة.
+        builder.ToTable("Users", table =>
+        {
+            table.HasCheckConstraint("CK_Users_BranchRequiredForBranchRoles",
+                "\"BranchId\" IS NOT NULL OR \"Role\" NOT IN ('Lawyer', 'Head', 'SubHead')");
+        });
         builder.HasKey(u => u.Id);
         builder.Property(u => u.Username).HasMaxLength(50).IsRequired();
         // الاسم الثلاثي فريد ضمن الفرع؛ المستخدمون بلا فرع (مشرف/مدير) يتفردون فيما بينهم منطقياً.
@@ -19,12 +28,6 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.HasIndex(u => u.Username)
             .HasFilter("\"BranchId\" IS NULL")
             .IsUnique();
-        // المحامي ورئيس القسم فرعيان بالتصميم: قيد على مستوى قاعدة البيانات يمنع
-        // الصف الشاذ (خدمة الإدارة وحدها لا تغطي الكتابة المباشرة أو الاستعادات).
-        // الدور مخزّن نصًا (HasConversion<string>) فتعمل الصيغة نفسها على
-        // SQLite وPostgres معًا؛ الأدوار بلا فرع (مشرف/مدير/مندوب) غير مشمولة.
-        builder.HasCheckConstraint("CK_Users_BranchRequiredForBranchRoles",
-            "\"BranchId\" IS NOT NULL OR \"Role\" NOT IN ('Lawyer', 'Head')");
         builder.Property(u => u.PasswordHash).HasMaxLength(256).IsRequired();
         builder.Property(u => u.FullName).HasMaxLength(100).IsRequired();
         builder.Property(u => u.Email).HasMaxLength(150);
@@ -42,5 +45,29 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .WithMany()
             .HasForeignKey(u => u.PortalEntryId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // شعبة الحساب (إلزامية لرئيس الشعبة خدميًا — مرحلة الحسابات §9) ومنشئه
+        // (لمباشرة محامي الصفر ملفات؛ SetNull عند حذف المنشئ فيُعامل كقديم).
+        // ملاحظة: لا فهرس عادي على `SectionId` — الفريد الجزئي أدناه يغني عنه
+        // في البحث (الفهرس الفريد يخدم الاستعلامات غير الفريدة أيضًا).
+        builder.HasIndex(u => u.CreatedById);
+        builder.HasOne(u => u.Section)
+            .WithMany(s => s.Users)
+            .HasForeignKey(u => u.SectionId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(u => u.CreatedBy)
+            .WithMany()
+            .HasForeignKey(u => u.CreatedById)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // واحد لواحد على المفعّلين فقط (قرار §2.3/§2.26): شعبة واحدة = رئيس
+        // شعبة مفعّل واحد، وفرع واحد = رئيس قسم مفعّل واحد. الصيغة المقتبسة
+        // المزدوجة تعمل على SQLite وPostgres معًا (سابقة `IS NULL` الجزئية).
+        builder.HasIndex(u => u.SectionId)
+            .HasFilter("\"Role\" = 'SubHead' AND \"IsActive\"")
+            .IsUnique();
+        builder.HasIndex(u => u.BranchId)
+            .HasFilter("\"Role\" = 'Head' AND \"IsActive\"")
+            .IsUnique();
     }
 }

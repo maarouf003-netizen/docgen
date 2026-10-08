@@ -14,8 +14,12 @@ public interface IReviewLetterRepository : IRepository<ReviewLetter>
         int userId, string? q, int page, int perPage, CancellationToken ct = default);
 
     /// <summary>كل كتب الفرع (عرض رئيس القسم)، الأحدث تحديثًا أولاً، مع البحث والترقيم.</summary>
-    Task<(List<ReviewLetter> Items, int TotalCount)> SearchForBranchAsync(
-        int branchId, string? q, int page, int perPage, CancellationToken ct = default);
+    /// <summary>
+    /// بحث نطاق المالك (§10): مالك الكتاب = شعبة دائرة ملفه (بلا دائرة → القسم)،
+    /// وبلا ملف = الشعبة المستلمة (`null` → القسم). `ownerSectionId` فارغٌ للقسم.
+    /// </summary>
+    Task<(List<ReviewLetter> Items, int TotalCount)> SearchForScopeAsync(
+        int branchId, int? ownerSectionId, string? q, int page, int perPage, CancellationToken ct = default);
 
     /// <summary>
     /// كتب المطالعة لفرع إدارة منتقى (مدير/مشرف) مع البحث والترقيم؛
@@ -28,7 +32,8 @@ public interface IReviewLetterRepository : IRepository<ReviewLetter>
     Task<List<string>> GetAdministrativeBranchesAsync(CancellationToken ct = default);
 
     /// <summary>عدد كتب الفرع التي لم يُرد عليها بعد (جرس رئيس القسم).</summary>
-    Task<int> CountPendingForBranchAsync(int branchId, CancellationToken ct = default);
+    /// <summary>عدد كتب النطاق بانتظار الرد (§10 — جرس المالك الأحمر).</summary>
+    Task<int> CountPendingForScopeAsync(int branchId, int? ownerSectionId, CancellationToken ct = default);
 
     /// <summary>كتاب برسائله مرتبة زمنيًا ومنشئه وملفه وفرعه.</summary>
     Task<ReviewLetter?> GetByIdWithDetailsAsync(int id, CancellationToken ct = default);

@@ -3746,6 +3746,78 @@ public class PublicEntityServiceTests : IDisposable
             _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), ManagerActor()));
     }
 
+    private async Task<EntityRegistryActor> SubHeadDamascusActorAsync()
+    {
+        var sub = new User { Username = "sub_dam", FullName = "رئيس شعبة دمشق", Role = UserRole.SubHead, BranchId = _damascusId, PasswordHash = "x" };
+        _db.Users.Add(sub);
+        await _db.SaveChangesAsync();
+        return new EntityRegistryActor(sub.Id, "رئيس شعبة دمشق", UserRole.SubHead, _damascusId);
+    }
+
+    [Fact]
+    public async Task SuggestParentEdit_SubHead_ParityWithHead()
+    {
+        var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+        var sub = await SubHeadDamascusActorAsync();
+
+        var suggestion = await _service.SuggestParentEditAsync(
+            entryId, new SuggestParentEditRequest("وزارة التعليم المقترحة", Reason: "سبب"), sub);
+        Assert.Equal(ParentEditSuggestionStatusCatalog.Pending, suggestion.Status);
+
+        // خارج محافظة فرعه مرفوض كما القسم.
+        var alpEntry = await SeedParentEntityAsync("وزارة الصحة", "حلب", "فرع حلب");
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.SuggestParentEditAsync(alpEntry, new SuggestParentEditRequest(Reason: "سبب"), sub));
+    }
+
+    [Fact]
+    public async Task ListSuggestions_SubHead_SeesOwnOnly()
+    {
+        var subEntry = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+        var headEntry = await SeedParentEntityAsync("وزارة النقل", "دمشق", "فرع التجهيز");
+        var sub = await SubHeadDamascusActorAsync();
+        await _service.SuggestParentEditAsync(subEntry, new SuggestParentEditRequest("اقتراح الشعبة", Reason: "سبب"), sub);
+        await _service.SuggestParentEditAsync(headEntry, new SuggestParentEditRequest("اقتراح القسم", Reason: "سبب"), HeadDamascusActor());
+
+        var subView = await _service.ListParentEditSuggestionsAsync(new ParentEditSuggestionListQuery(), sub);
+        Assert.Equal(1, subView.TotalCount);
+        Assert.Equal("اقتراح الشعبة", subView.Items[0].ProposedCanonicalName);
+    }
+
+    [Fact]
+    public async Task WithdrawParentEditSuggestion_SubHead_OwnOnly()
+    {
+        var subEntry = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+        var headEntry = await SeedParentEntityAsync("وزارة النقل", "دمشق", "فرع التجهيز");
+        var sub = await SubHeadDamascusActorAsync();
+        var own = await _service.SuggestParentEditAsync(subEntry, new SuggestParentEditRequest(Reason: "سبب"), sub);
+        var withdrawn = await _service.WithdrawParentEditSuggestionAsync(own.Id, sub);
+        Assert.Equal(ParentEditSuggestionStatusCatalog.Withdrawn, withdrawn!.Status);
+
+        var headSuggestion = await _service.SuggestParentEditAsync(headEntry, new SuggestParentEditRequest("اقتراح القسم", Reason: "سبب"), HeadDamascusActor());
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.WithdrawParentEditSuggestionAsync(headSuggestion.Id, sub));
+    }
+
+    [Fact]
+    public async Task Registry_SubHead_ScopedLikeHead_AndParentBanned()
+    {
+        await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+        await SeedParentEntityAsync("وزارة الصحة", "حلب", "فرع حلب");
+        var sub = await SubHeadDamascusActorAsync();
+
+        // نطاق المجموعات: محافظة فرعه فقط — مجموعة حلب محجوبة.
+        var groups = await _service.ListGroupsAsync(
+            new EntityGroupListQuery(null, null, 1, 50, null, null), sub, default);
+        Assert.Contains(groups.Items, g => g.CanonicalName == "وزارة التعليم");
+        Assert.DoesNotContain(groups.Items, g => g.CanonicalName == "وزارة الصحة");
+
+        // حظر الأم المباشر كما القسم.
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.CreateAsync(
+            new CreatePublicEntityRequest("جهة أم مباشرة", "ministry", "دمشق", "الجهة الأم", IsParentEntity: true),
+            sub, default));
+    }
+
     [Fact]
     public async Task SuggestParentEdit_DuplicatePendingPerBranch_Throws()
     {

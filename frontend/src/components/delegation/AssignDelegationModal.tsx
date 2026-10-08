@@ -26,7 +26,7 @@ export default function AssignDelegationModal({
   useEffect(() => {
     let cancelled = false;
     api
-      .get<LawyerListItem[]>('/users/lawyers')
+      .get<LawyerListItem[]>('/users/lawyers', { params: { mode: 'branch' } })
       .then((r) => {
         if (!cancelled) setLawyers(Array.isArray(r.data) ? r.data : []);
       })

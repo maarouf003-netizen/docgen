@@ -421,6 +421,9 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<int?>("RecipientSectionId")
+                        .HasColumnType("integer");
+
                     b.Property<int>("TargetUserId")
                         .HasColumnType("integer");
 
@@ -441,6 +444,8 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.HasIndex("Governorate");
 
                     b.HasIndex("Importance");
+
+                    b.HasIndex("RecipientSectionId");
 
                     b.HasIndex("TargetUserId");
 
@@ -1242,6 +1247,23 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Property<int>("DocumentId")
                         .HasColumnType("integer");
 
+                    b.Property<string>("ForwardReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("ForwardState")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Owned");
+
+                    b.Property<DateTime?>("ForwardedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("ForwardedById")
+                        .HasColumnType("integer");
+
                     b.Property<string>("GroundsSummary")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
@@ -1286,6 +1308,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AssignedLawyerId");
@@ -1298,10 +1324,16 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.HasIndex("DocumentId");
 
+                    b.HasIndex("ForwardState");
+
+                    b.HasIndex("ForwardedById");
+
                     b.HasIndex("Status");
 
                     b.ToTable("DocumentAppeals", null, t =>
                         {
+                            t.HasCheckConstraint("CK_DocumentAppeals_ForwardState", "\"ForwardState\" IN ('Owned', 'ForwardedToHead')");
+
                             t.HasCheckConstraint("CK_DocumentAppeals_Status", "\"Status\" IN ('pending', 'decided', 'struck-off')");
                         });
                 });
@@ -1428,6 +1460,13 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Property<bool>("IsExternal")
                         .HasColumnType("boolean");
 
+                    b.Property<int?>("RedirectedToSectionId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RejectReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
                     b.Property<DateTime?>("ReturnDate")
                         .HasColumnType("timestamp with time zone");
 
@@ -1445,6 +1484,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AssignedLawyerId");
@@ -1454,6 +1497,8 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.HasIndex("DelegatedCircuitId");
 
                     b.HasIndex("ExternalBranchId");
+
+                    b.HasIndex("RedirectedToSectionId");
 
                     b.HasIndex("SourceDocumentId");
 
@@ -1965,6 +2010,9 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<int?>("SectionId")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1979,6 +2027,8 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.HasIndex("CreatedById");
 
                     b.HasIndex("IsActive");
+
+                    b.HasIndex("SectionId");
 
                     b.HasIndex("BranchId", "NameNorm")
                         .IsUnique();
@@ -2175,6 +2225,60 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.HasIndex("UserId");
 
                     b.ToTable("HeadAlertRecipients", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.HeadSuccession", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ActorName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("At")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("BranchId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Event")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<int?>("SectionId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("At");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("SectionId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("HeadSuccessions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_HeadSuccessions_Event", "\"Event\" IN ('appointed', 'deactivated', 'succeeded', 'circuit-transferred', 'renamed')");
+                        });
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.Heir", b =>
@@ -2653,6 +2757,9 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<int?>("RecipientSectionId")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -2668,6 +2775,8 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.HasIndex("LetterNumber")
                         .IsUnique();
+
+                    b.HasIndex("RecipientSectionId");
 
                     b.HasIndex("UpdatedAt");
 
@@ -2734,6 +2843,50 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.ToTable("ReviewLetterMessages", (string)null);
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.Section", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BranchId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("NameNorm")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("IsActive");
+
+                    b.HasIndex("BranchId", "NameNorm")
+                        .IsUnique();
+
+                    b.ToTable("Sections", (string)null);
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.User", b =>
                 {
                     b.Property<int>("Id")
@@ -2747,6 +2900,9 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("CreatedById")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Email")
                         .HasMaxLength(150)
@@ -2785,6 +2941,9 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<int?>("SectionId")
+                        .HasColumnType("integer");
+
                     b.Property<int>("TokenVersion")
                         .HasColumnType("integer");
 
@@ -2798,11 +2957,19 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BranchId");
+                    b.HasIndex("BranchId")
+                        .IsUnique()
+                        .HasFilter("\"Role\" = 'Head' AND \"IsActive\"");
+
+                    b.HasIndex("CreatedById");
 
                     b.HasIndex("PortalEntryId");
 
                     b.HasIndex("PortalGroupId");
+
+                    b.HasIndex("SectionId")
+                        .IsUnique()
+                        .HasFilter("\"Role\" = 'SubHead' AND \"IsActive\"");
 
                     b.HasIndex("Username")
                         .IsUnique()
@@ -2813,7 +2980,7 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.ToTable("Users", null, t =>
                         {
-                            t.HasCheckConstraint("CK_Users_BranchRequiredForBranchRoles", "\"BranchId\" IS NOT NULL OR \"Role\" NOT IN ('Lawyer', 'Head')");
+                            t.HasCheckConstraint("CK_Users_BranchRequiredForBranchRoles", "\"BranchId\" IS NOT NULL OR \"Role\" NOT IN ('Lawyer', 'Head', 'SubHead')");
                         });
                 });
 
@@ -2924,6 +3091,11 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("DocGenerator.Domain.Entities.Section", "RecipientSection")
+                        .WithMany()
+                        .HasForeignKey("RecipientSectionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("DocGenerator.Domain.Entities.User", "TargetUser")
                         .WithMany()
                         .HasForeignKey("TargetUserId")
@@ -2935,6 +3107,8 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Navigation("CreatedBy");
 
                     b.Navigation("Document");
+
+                    b.Navigation("RecipientSection");
 
                     b.Navigation("TargetUser");
                 });
@@ -3094,6 +3268,11 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .HasForeignKey("ExternalBranchId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("DocGenerator.Domain.Entities.Section", "RedirectedToSection")
+                        .WithMany()
+                        .HasForeignKey("RedirectedToSectionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("DocGenerator.Domain.Entities.Document", "SourceDocument")
                         .WithMany("Delegations")
                         .HasForeignKey("SourceDocumentId")
@@ -3107,6 +3286,8 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Navigation("DelegatedCircuit");
 
                     b.Navigation("ExternalBranch");
+
+                    b.Navigation("RedirectedToSection");
 
                     b.Navigation("SourceDocument");
                 });
@@ -3257,9 +3438,16 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("DocGenerator.Domain.Entities.Section", "Section")
+                        .WithMany("Circuits")
+                        .HasForeignKey("SectionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Branch");
 
                     b.Navigation("CreatedBy");
+
+                    b.Navigation("Section");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.Guarantor", b =>
@@ -3342,6 +3530,32 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .IsRequired();
 
                     b.Navigation("HeadAlert");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.HeadSuccession", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.Section", "Section")
+                        .WithMany()
+                        .HasForeignKey("SectionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DocGenerator.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("Section");
 
                     b.Navigation("User");
                 });
@@ -3483,11 +3697,18 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("DocGenerator.Domain.Entities.Section", "RecipientSection")
+                        .WithMany()
+                        .HasForeignKey("RecipientSectionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Branch");
 
                     b.Navigation("CreatedBy");
 
                     b.Navigation("Document");
+
+                    b.Navigation("RecipientSection");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.ReviewLetterMessage", b =>
@@ -3501,11 +3722,27 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Navigation("ReviewLetter");
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.Section", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Branch");
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.User", b =>
                 {
                     b.HasOne("DocGenerator.Domain.Entities.Branch", "Branch")
                         .WithMany("Users")
                         .HasForeignKey("BranchId");
+
+                    b.HasOne("DocGenerator.Domain.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("DocGenerator.Domain.Entities.PublicEntity", "PortalEntry")
                         .WithMany()
@@ -3517,11 +3754,20 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .HasForeignKey("PortalGroupId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("DocGenerator.Domain.Entities.Section", "Section")
+                        .WithMany("Users")
+                        .HasForeignKey("SectionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Branch");
+
+                    b.Navigation("CreatedBy");
 
                     b.Navigation("PortalEntry");
 
                     b.Navigation("PortalGroup");
+
+                    b.Navigation("Section");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.Asset", b =>
@@ -3626,6 +3872,13 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
             modelBuilder.Entity("DocGenerator.Domain.Entities.ReviewLetter", b =>
                 {
                     b.Navigation("Messages");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.Section", b =>
+                {
+                    b.Navigation("Circuits");
+
+                    b.Navigation("Users");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.User", b =>

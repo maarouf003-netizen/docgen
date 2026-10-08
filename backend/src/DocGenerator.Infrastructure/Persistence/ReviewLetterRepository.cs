@@ -17,6 +17,11 @@ public class ReviewLetterRepository : Repository<ReviewLetter>, IReviewLetterRep
         .Include(l => l.CreatedBy)
         .Include(l => l.Document)
         .ThenInclude(d => d!.BaseNumbers)
+        // دائرة الملف وشعبتها لاشتقاق مالك الكتاب المرتبط (§10.1).
+        .Include(l => l.Document)
+        .ThenInclude(d => d!.ExecutionCircuit)
+        .ThenInclude(c => c!.Section)
+        .Include(l => l.RecipientSection)
         .Include(l => l.Branch)
         .Include(l => l.Messages.OrderBy(m => m.Id));
 
@@ -24,9 +29,21 @@ public class ReviewLetterRepository : Repository<ReviewLetter>, IReviewLetterRep
         int userId, string? q, int page, int perPage, CancellationToken ct = default)
         => SearchAsync(Db.ReviewLetters.Where(l => l.CreatedById == userId), q, null, page, perPage, ct);
 
-    public Task<(List<ReviewLetter> Items, int TotalCount)> SearchForBranchAsync(
-        int branchId, string? q, int page, int perPage, CancellationToken ct = default)
-        => SearchAsync(Db.ReviewLetters.Where(l => l.BranchId == branchId), q, null, page, perPage, ct);
+    /// <summary>
+    /// بحث نطاق المالك (§10): مالك الكتاب = شعبة دائرة ملفه (بلا دائرة → القسم)،
+    /// وبلا ملف = الشعبة المستلمة (`null` → القسم). `ownerSectionId` فارغٌ للقسم.
+    /// </summary>
+    public Task<(List<ReviewLetter> Items, int TotalCount)> SearchForScopeAsync(
+        int branchId, int? ownerSectionId, string? q, int page, int perPage, CancellationToken ct = default)
+        => SearchAsync(InScope(Db.ReviewLetters.Where(l => l.BranchId == branchId), ownerSectionId), q, null, page, perPage, ct);
+
+    /// <summary>قيد ملكية الكتاب المشترك للبحث والعدّاد (§10.1 + §10.2).</summary>
+    private static IQueryable<ReviewLetter> InScope(IQueryable<ReviewLetter> source, int? ownerSectionId)
+        => source.Where(l => l.DocumentId == null
+            ? l.RecipientSectionId == ownerSectionId
+            : (l.Document!.ExecutionCircuitId == null
+                ? ownerSectionId == null
+                : l.Document.ExecutionCircuit!.SectionId == ownerSectionId));
 
     public Task<(List<ReviewLetter> Items, int TotalCount)> SearchAllAsync(
         string? administrativeBranch, string? q, int page, int perPage, CancellationToken ct = default)
@@ -47,8 +64,10 @@ public class ReviewLetterRepository : Repository<ReviewLetter>, IReviewLetterRep
             .OrderBy(n => n)
             .ToListAsync(ct);
 
-    public Task<int> CountPendingForBranchAsync(int branchId, CancellationToken ct = default)
-        => Db.ReviewLetters.CountAsync(l => l.BranchId == branchId && !l.IsAnswered, ct);
+    /// <summary>عدد كتب النطاق بانتظار الرد (§10 — جرس المالك الأحمر).</summary>
+    public Task<int> CountPendingForScopeAsync(int branchId, int? ownerSectionId, CancellationToken ct = default)
+        => InScope(Db.ReviewLetters.Where(l => l.BranchId == branchId && !l.IsAnswered), ownerSectionId)
+            .CountAsync(ct);
 
     public async Task<ReviewLetter?> GetByIdWithDetailsAsync(int id, CancellationToken ct = default)
         => await DetailedLetters.FirstOrDefaultAsync(l => l.Id == id, ct);
@@ -109,6 +128,12 @@ public class ReviewLetterRepository : Repository<ReviewLetter>, IReviewLetterRep
                 BranchId = l.BranchId,
                 CreatedById = l.CreatedById,
                 DocumentId = l.DocumentId,
+                RecipientSectionId = l.RecipientSectionId,
+                RecipientSection = l.RecipientSection == null ? null : new Section
+                {
+                    Id = l.RecipientSection.Id,
+                    Name = l.RecipientSection.Name,
+                },
                 LetterNumber = l.LetterNumber,
                 LetterDate = l.LetterDate,
                 IsAnswered = l.IsAnswered,

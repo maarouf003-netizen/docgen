@@ -18,20 +18,35 @@ public class ExecutionCircuitsController : ControllerBase
 {
     private readonly IExecutionCircuitService _circuits;
     private readonly Application.Common.Interfaces.IRepository<Domain.Entities.Branch> _branches;
+    private readonly IExcelExportService _excel;
+    private readonly TimeProvider _clock;
+    private readonly TimeZoneInfo _timeZone;
 
     public ExecutionCircuitsController(
         IExecutionCircuitService circuits,
-        Application.Common.Interfaces.IRepository<Domain.Entities.Branch> branches)
+        Application.Common.Interfaces.IRepository<Domain.Entities.Branch> branches,
+        IExcelExportService excel,
+        TimeProvider clock,
+        TimeZoneInfo timeZone)
     {
         _circuits = circuits;
         _branches = branches;
+        _excel = excel;
+        _clock = clock;
+        _timeZone = timeZone;
     }
 
     private UserRole Role => User.GetRoleEnum();
     private string? ActorName => User.Identity?.Name;
-    private ActionResult? RequireHeadBranch(out int branchId)
+    /// <summary>
+    /// نطاق المالك المشتق خادميًا (قرار §2.21): الفرع من الرمز، والشعبة من
+    /// `section_id` لرئيس الشعبة — بلا أي نطاق من العميل. رئيس شعبة برمز بلا
+    /// شعبة مرفوض (أعد الدخول — قرار §2.16) بدل التدهور لنطاق القسم.
+    /// </summary>
+    private ActionResult? RequireOwnerScope(out int branchId, out int? ownerSectionId)
     {
         branchId = 0;
+        ownerSectionId = null;
         if (!RolePermissions.CanManageExecutionCircuits(Role))
             return Forbid();
         var own = User.GetBranchId();
@@ -39,18 +54,25 @@ public class ExecutionCircuitsController : ControllerBase
             // S6.b: غياب سياق التفويض (claim الفرع) فشل تفويض لا طلب مشوَّه.
             return Forbid();
         branchId = own.Value;
+        if (Role == UserRole.SubHead)
+        {
+            var section = User.GetSectionId();
+            if (section is null)
+                return Forbid();
+            ownerSectionId = section;
+        }
         return null;
     }
 
     [HttpGet("mine")]
-    [Authorize(Roles = "head")]
+    [Authorize(Policy = "HeadOrSubHead")]
     public async Task<IActionResult> Mine(CancellationToken ct)
     {
-        var error = RequireHeadBranch(out var branchId);
+        var error = RequireOwnerScope(out var branchId, out var ownerSectionId);
         if (error is not null) return error;
         try
         {
-            return Ok(await _circuits.ListMineAsync(branchId, ct));
+            return Ok(await _circuits.ListMineAsync(branchId, ownerSectionId, ct));
         }
         catch (ArgumentException e)
         {
@@ -59,10 +81,10 @@ public class ExecutionCircuitsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "head")]
+    [Authorize(Policy = "HeadOrSubHead")]
     public async Task<IActionResult> Create([FromBody] UpsertExecutionCircuitRequest request, CancellationToken ct)
     {
-        var error = RequireHeadBranch(out var branchId);
+        var error = RequireOwnerScope(out var branchId, out _);
         if (error is not null) return error;
         try
         {
@@ -80,14 +102,14 @@ public class ExecutionCircuitsController : ControllerBase
     }
 
     [HttpPut("{id:int}/rename")]
-    [Authorize(Roles = "head")]
+    [Authorize(Policy = "HeadOrSubHead")]
     public async Task<IActionResult> Rename(int id, [FromBody] UpsertExecutionCircuitRequest request, CancellationToken ct)
     {
-        var error = RequireHeadBranch(out var branchId);
+        var error = RequireOwnerScope(out var branchId, out var ownerSectionId);
         if (error is not null) return error;
         try
         {
-            return Ok(await _circuits.RenameAsync(id, branchId, ActorName, request.Name ?? string.Empty, request.Version, ct, User.GetUserId()));
+            return Ok(await _circuits.RenameAsync(id, branchId, ownerSectionId, ActorName, request.Name ?? string.Empty, request.Version, ct, User.GetUserId()));
         }
         catch (DocumentConflictException e)
         {
@@ -100,14 +122,14 @@ public class ExecutionCircuitsController : ControllerBase
     }
 
     [HttpPut("{id:int}/active")]
-    [Authorize(Roles = "head")]
+    [Authorize(Policy = "HeadOrSubHead")]
     public async Task<IActionResult> SetActive(int id, [FromBody] SetCircuitActiveRequest request, CancellationToken ct)
     {
-        var error = RequireHeadBranch(out var branchId);
+        var error = RequireOwnerScope(out var branchId, out var ownerSectionId);
         if (error is not null) return error;
         try
         {
-            return Ok(await _circuits.SetActiveAsync(id, branchId, ActorName, request.IsActive, request.Version, ct));
+            return Ok(await _circuits.SetActiveAsync(id, branchId, ownerSectionId, ActorName, request.IsActive, request.Version, ct));
         }
         catch (DocumentConflictException e)
         {
@@ -120,14 +142,14 @@ public class ExecutionCircuitsController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = "head")]
+    [Authorize(Policy = "HeadOrSubHead")]
     public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {
-        var error = RequireHeadBranch(out var branchId);
+        var error = RequireOwnerScope(out var branchId, out var ownerSectionId);
         if (error is not null) return error;
         try
         {
-            await _circuits.DeleteAsync(id, branchId, ActorName, ct);
+            await _circuits.DeleteAsync(id, branchId, ownerSectionId, ActorName, ct);
             return NoContent();
         }
         catch (DocumentConflictException e)
@@ -141,17 +163,22 @@ public class ExecutionCircuitsController : ControllerBase
     }
 
     [HttpGet("for-lawyer")]
-    [Authorize(Roles = "lawyer,head")]
+    [Authorize(Roles = "lawyer,head,subhead")]
     public async Task<IActionResult> ForLawyer(CancellationToken ct)
     {
         var branchId = User.GetBranchId();
         if (branchId is null)
             return Forbid();
-        return Ok(await _circuits.ListForLawyerAsync(branchId.Value, ct));
+        // المحامي يرى كل دوائر الفرع (قرار §2.11)؛ الرئيس دوائر نطاقه فقط.
+        var limitToOwner = Role is UserRole.Head or UserRole.SubHead;
+        var ownerSectionId = limitToOwner ? User.GetSectionId() : null;
+        if (limitToOwner && Role == UserRole.SubHead && ownerSectionId is null)
+            return Forbid();
+        return Ok(await _circuits.ListForLawyerAsync(branchId.Value, ownerSectionId, limitToOwner, ct));
     }
 
     [HttpGet("for-delegation")]
-    [Authorize(Roles = "lawyer,head")]
+    [Authorize(Roles = "lawyer,head,subhead")]
     public async Task<IActionResult> ForDelegation(CancellationToken ct)
     {
         var branchId = User.GetBranchId();
@@ -165,14 +192,14 @@ public class ExecutionCircuitsController : ControllerBase
     }
 
     [HttpPost("{id:int}/refer-files")]
-    [Authorize(Roles = "head")]
+    [Authorize(Policy = "HeadOrSubHead")]
     public async Task<IActionResult> ReferFiles(int id, [FromBody] ReferCircuitFilesRequest request, CancellationToken ct)
     {
-        var error = RequireHeadBranch(out var branchId);
+        var error = RequireOwnerScope(out var branchId, out var ownerSectionId);
         if (error is not null) return error;
         try
         {
-            var result = await _circuits.ReferFilesAsync(id, branchId, User.GetUserId(), ActorName, request, ct,
+            var result = await _circuits.ReferFilesAsync(id, branchId, ownerSectionId, User.GetUserId(), ActorName, request, ct,
                 IdempotencyKeyHeader());
             return Ok(new
             {
@@ -196,6 +223,29 @@ public class ExecutionCircuitsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// نقل ملكية دائرة لمالك جديد داخل الفرع نفسه (قسم الفرع أو شعبة فيه) —
+    /// مشرف/مدير (قرار §2.5 + §8.3). `TargetSectionId` فارغ = قسم الفرع.
+    /// </summary>
+    [HttpPost("{id:int}/transfer")]
+    [Authorize(Roles = "manager,admin")]
+    public async Task<IActionResult> Transfer(int id, [FromBody] TransferCircuitRequest request, CancellationToken ct)
+    {
+        try
+        {
+            var result = await _circuits.TransferCircuitAsync(id, request?.TargetSectionId, User.GetUserId(), ActorName, ct, request?.Version);
+            return Ok(result);
+        }
+        catch (DocumentConflictException e)
+        {
+            return Conflict(new { message = e.Message });
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+    }
+
     private string? IdempotencyKeyHeader()
     {
         if (Request.Headers.TryGetValue(IdempotencyGuard.HeaderName, out var values))
@@ -207,14 +257,38 @@ public class ExecutionCircuitsController : ControllerBase
     }
 
     [HttpGet("stats")]
-    [Authorize(Roles = "manager,admin,head")]
+    [Authorize(Roles = "manager,admin,head,subhead")]
     public async Task<IActionResult> Stats([FromQuery] int? branchId, CancellationToken ct)
     {
         if (RolePermissions.HasFullAccess(Role))
-            return Ok(await _circuits.CircuitStatsAsync(branchId, ct));
-        var error = RequireHeadBranch(out var own);
+            return Ok(await _circuits.CircuitStatsAsync(branchId, null, true, ct));
+        var error = RequireOwnerScope(out var own, out var ownerSectionId);
         if (error is not null) return error;
-        return Ok(await _circuits.CircuitStatsAsync(own, ct));
+        return Ok(await _circuits.CircuitStatsAsync(own, ownerSectionId, false, ct));
+    }
+
+    /// <summary>
+    /// تصدير جدول إحصاءات الدوائر (§12) — بالنطاق نفسه لمسار `stats`
+    /// (القسم/الشعبة/الفرع ككل) مع عمود الشعبة.
+    /// </summary>
+    [HttpGet("stats/export")]
+    [Authorize(Roles = "manager,admin,head,subhead")]
+    public async Task<IActionResult> ExportStats([FromQuery] int? branchId, CancellationToken ct)
+    {
+        List<CircuitStatsDto> rows;
+        if (RolePermissions.HasFullAccess(Role))
+        {
+            rows = await _circuits.CircuitStatsAsync(branchId, null, true, ct);
+        }
+        else
+        {
+            var error = RequireOwnerScope(out var own, out var ownerSectionId);
+            if (error is not null) return error;
+            rows = await _circuits.CircuitStatsAsync(own, ownerSectionId, false, ct);
+        }
+        var bytes = _excel.BuildCircuitStatsWorkbook(rows);
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            $"إحصاءات الدوائر {ServerClock.TodayString(_clock, _timeZone, "yyyy-MM-dd")}.xlsx");
     }
 }
 

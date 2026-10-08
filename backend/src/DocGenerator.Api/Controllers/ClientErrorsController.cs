@@ -35,7 +35,7 @@ public class ClientErrorsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "lawyer,head,manager,admin,entitymanager")]
+    [Authorize(Roles = "lawyer,head,subhead,manager,admin,entitymanager")]
     [Consumes("application/json")]
     [ResponseCache(NoStore = true)]
     public IActionResult Report([FromBody] ClientErrorReport report)

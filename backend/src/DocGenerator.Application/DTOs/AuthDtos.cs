@@ -8,7 +8,9 @@ public record UserDto(
     string FullName,
     string Role,
     int? BranchId,
-    string? BranchName);
+    string? BranchName,
+    int? SectionId = null,
+    string? SectionName = null);
 
 public record LoginResponse(
     string Token,

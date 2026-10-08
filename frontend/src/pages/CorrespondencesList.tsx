@@ -24,7 +24,8 @@ const PER_PAGE = 20;
  * وبحث بالرقم والاسم والنص. زر «+ مراسلة جديدة» عامة (غير مرتبطة بملف).
  */
 export default function CorrespondencesList({ portal = false }: { portal?: boolean }) {
-  const { user, hasFullAccess, isHead } = useAuth();
+  const { user, hasFullAccess } = useAuth();
+  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
   const base = portal ? '/portal/correspondence' : '/correspondence';
   const detailBase = portal ? '/portal/correspondence' : '/correspondence';
   const [items, setItems] = useState<CorrespondenceListItemDto[]>([]);
@@ -41,11 +42,11 @@ export default function CorrespondencesList({ portal = false }: { portal?: boole
   const [governorate, setGovernorate] = useState('');
   const [governorates, setGovernorates] = useState<string[]>([]);
 
-  // الكتابة: محامٍ/رئيس قسم في المسار الرئيسي، ومندوب الجهة في البوابة حصرًا —
+  // الكتابة: محامٍ/رئيس قسم أو شعبة في المسار الرئيسي، ومندوب الجهة في البوابة حصرًا —
   // تطابق CanCreateCorrespondences في الخلفية (المدير/المشرف قراءة فقط).
   const canCreate = portal
     ? user?.role === 'entitymanager'
-    : user?.role === 'lawyer' || user?.role === 'head';
+    : user?.role === 'lawyer' || user?.role === 'head' || user?.role === 'subhead';
 
   // جلب خيارات فلتر المحافظة — مرة واحدة فقط للمدير/المشرف.
   useEffect(() => {
@@ -238,7 +239,7 @@ export default function CorrespondencesList({ portal = false }: { portal?: boole
                   {' · '}
                   {item.messagesCount} رسالة
                 </p>
-                {(hasFullAccess || isHead) && (
+                {(hasFullAccess || isHeadOrSubHead) && (
                   <p className="text-xs text-gray-500 mt-0.5">
                     المحافظة: <span className="font-medium text-gray-700">{item.governorate}</span>
                     {item.administrativeBranchName && (
@@ -246,7 +247,7 @@ export default function CorrespondencesList({ portal = false }: { portal?: boole
                     )}
                   </p>
                 )}
-                {!hasFullAccess && !isHead && item.snippet && (
+                {!hasFullAccess && !isHeadOrSubHead && item.snippet && (
                   <p className="text-xs text-gray-500 mt-1 truncate">{item.snippet}</p>
                 )}
               </Link>

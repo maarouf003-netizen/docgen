@@ -9,17 +9,25 @@ namespace DocGenerator.Application.Services;
 
 public interface IExecutionCircuitService
 {
-    Task<List<ExecutionCircuitDto>> ListMineAsync(int branchId, CancellationToken ct = default);
+    Task<List<ExecutionCircuitDto>> ListMineAsync(int branchId, int? ownerSectionId, CancellationToken ct = default);
     Task<ExecutionCircuitDto> CreateAsync(int branchId, int actorUserId, string? actorName, string name, CancellationToken ct = default);
-    Task<ExecutionCircuitDto> RenameAsync(int circuitId, int branchId, string? actorName, string name, long? version, CancellationToken ct = default, int? actorUserId = null);
-    Task<ExecutionCircuitDto> SetActiveAsync(int circuitId, int branchId, string? actorName, bool isActive, long? version, CancellationToken ct = default);
-    Task DeleteAsync(int circuitId, int branchId, string? actorName, CancellationToken ct = default);
-    Task<List<ExecutionCircuitDto>> ListForLawyerAsync(int branchId, CancellationToken ct = default);
+    Task<ExecutionCircuitDto> RenameAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, string name, long? version, CancellationToken ct = default, int? actorUserId = null);
+    Task<ExecutionCircuitDto> SetActiveAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, bool isActive, long? version, CancellationToken ct = default);
+    Task DeleteAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, CancellationToken ct = default);
+    Task<List<ExecutionCircuitDto>> ListForLawyerAsync(int branchId, int? ownerSectionId, bool limitToOwner, CancellationToken ct = default);
     Task<List<ExecutionCircuitDto>> ListForDelegationAsync(string? governorate, CancellationToken ct = default);
-    Task<ReferCircuitFilesResult> ReferFilesAsync(int sourceCircuitId, int branchId, int actorUserId, string? actorName, ReferCircuitFilesRequest request, CancellationToken ct = default, string? idempotencyKey = null);
+    Task<ReferCircuitFilesResult> ReferFilesAsync(int sourceCircuitId, int branchId, int? ownerSectionId, int actorUserId, string? actorName, ReferCircuitFilesRequest request, CancellationToken ct = default, string? idempotencyKey = null);
     Task<List<PendingRegistrationDto>> MyPendingRegistrationsAsync(int lawyerId, int? circuitId, CancellationToken ct = default);
     Task<int> CompleteRegistrationsAsync(int lawyerId, string? actorName, CompleteRegistrationsRequest request, CancellationToken ct = default);
-    Task<List<CircuitStatsDto>> CircuitStatsAsync(int? branchId, CancellationToken ct = default);
+    Task<List<CircuitStatsDto>> CircuitStatsAsync(int? branchId, int? ownerSectionId, bool fullAccess, CancellationToken ct = default);
+    /// <summary>
+    /// نقل ملكية دائرة لمالك جديد داخل الفرع نفسه (قسم الفرع أو شعبة فيه —
+    /// قرار §2.5): المفتوح والمغلق يتبع الجديد، والإحالات المفتوحة تُعاد توجيه
+    /// تنبيهاتها للمالك الجديد (إنشاء بديلة لا تعديل القديمة — §6.6)، والتدقيق
+    /// ثابت بأسماء الفاعلين الأصليين. `ForwardState` لا يتغير (استثناء فرعي).
+    /// `version` للتفاؤلية كالتسمية والتفعيل.
+    /// </summary>
+    Task<ExecutionCircuitDto> TransferCircuitAsync(int circuitId, int? targetSectionId, int actorUserId, string? actorName, CancellationToken ct = default, long? version = null);
     /// <summary>
     /// خطاف التنظيف المسمّى DeleteByPendingRegistration (على نمط DeleteByDelegationAsync):
     /// يُصفّى تنبيه المحامي تلقائيًا عند الصفر.
@@ -47,10 +55,13 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
 
     private readonly IRepository<ExecutionCircuit> _circuits;
     private readonly IRepository<Branch> _branches;
+    private readonly IRepository<Section> _sections;
     private readonly IDocumentRepository _documents;
     private readonly IDelegationRepository _delegations;
+    private readonly IAppealRepository _appeals;
     private readonly IRepository<DocumentOccurrence> _occurrences;
     private readonly IRepository<DocumentBaseNumber> _baseNumbers;
+    private readonly IRepository<HeadSuccession> _successions;
     private readonly IHeadAlertRepository _alerts;
     private readonly IUserRepository _users;
     private readonly IUnitOfWork _uow;
@@ -64,10 +75,13 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
     public ExecutionCircuitService(
         IRepository<ExecutionCircuit> circuits,
         IRepository<Branch> branches,
+        IRepository<Section> sections,
         IDocumentRepository documents,
         IDelegationRepository delegations,
+        IAppealRepository appeals,
         IRepository<DocumentOccurrence> occurrences,
         IRepository<DocumentBaseNumber> baseNumbers,
+        IRepository<HeadSuccession> successions,
         IHeadAlertRepository alerts,
         IUserRepository users,
         IUnitOfWork uow,
@@ -80,10 +94,13 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
     {
         _circuits = circuits;
         _branches = branches;
+        _sections = sections;
         _documents = documents;
         _delegations = delegations;
+        _appeals = appeals;
         _occurrences = occurrences;
         _baseNumbers = baseNumbers;
+        _successions = successions;
         _alerts = alerts;
         _users = users;
         _uow = uow;
@@ -107,6 +124,27 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         return branch;
     }
 
+    /// <summary>
+    /// شعبة المنشئ المالكة للدائرة الجديدة (§8.4 + اتساق §4.4 خدميًا: الشعبة
+    /// في الفرع نفسه — لا قيد بين جدولين في المزوّدين). `null` = ملك القسم.
+    /// </summary>
+    private async Task<Section?> ResolveOwnerSectionAsync(int branchId, int actorUserId, CancellationToken ct)
+    {
+        var actor = await _users.GetByIdAsync(actorUserId, ct)
+            ?? throw new ArgumentException("المنشئ غير موجود");
+        if (actor.Role == UserRole.Head)
+            return null;
+        if (actor.Role != UserRole.SubHead)
+            throw new ArgumentException("إنشاء الدوائر مقصور على الرؤساء — الإدارة تنقل فقط");
+        if (actor.SectionId is null)
+            throw new ArgumentException("حسابك بلا شعبة — راجع الإدارة");
+        var section = await _sections.GetByIdAsync(actor.SectionId.Value, ct)
+            ?? throw new ArgumentException("شعبتك غير موجودة — راجع الإدارة");
+        if (section.BranchId != branchId)
+            throw new ArgumentException("شعبتك ليست ضمن هذا الفرع");
+        return section;
+    }
+
     private static string NormalizeName(string? name)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -117,26 +155,41 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         return trimmed;
     }
 
-    private async Task<ExecutionCircuit> GetOwnedAsync(int circuitId, int branchId, CancellationToken ct)
+    private async Task<ExecutionCircuit> GetOwnedAsync(int circuitId, int branchId, int? ownerSectionId, CancellationToken ct)
     {
         var circuit = await _circuits.GetByIdAsync(circuitId, ct)
             ?? throw new ArgumentException("الدائرة غير موجودة");
         if (circuit.BranchId != branchId)
             throw new ArgumentException("الدائرة ليست ضمن فرعك");
+        // ملكية النطاق (§5.3 — قرار §2.21): رئيس القسم لدوائر القسم (`null`)،
+        // ورئيس الشعبة لدوائر شعبته — وغيرها «ليست ضمن نطاقك» (§14).
+        if (circuit.SectionId != ownerSectionId)
+            throw new ArgumentException("الدائرة ليست ضمن نطاقك");
         return circuit;
     }
 
-    public async Task<List<ExecutionCircuitDto>> ListMineAsync(int branchId, CancellationToken ct = default)
+    public async Task<List<ExecutionCircuitDto>> ListMineAsync(int branchId, int? ownerSectionId, CancellationToken ct = default)
     {
         await RequireBranchWithGovernorateAsync(branchId, ct);
         var all = await _circuits.ListAsync(ct);
-        var circuits = all.Where(c => c.BranchId == branchId).OrderBy(c => c.Name).ToList();
+        var circuits = all
+            .Where(c => c.BranchId == branchId && c.SectionId == ownerSectionId)
+            .OrderBy(c => c.Name)
+            .ToList();
         var counts = await _documents.CountByCircuitsAsync(circuits.Select(c => c.Id).ToList(), ct);
+        var sectionNames = await SectionNamesAsync(ct);
         return circuits.Select(c => new ExecutionCircuitDto(
             c.Id, c.BranchId, null, c.Name, c.IsActive,
             counts.TryGetValue(c.Id, out var v) ? v.FileCount : 0,
             counts.TryGetValue(c.Id, out var v2) ? v2.PendingCount : 0,
-            c.Version)).ToList();
+            c.Version, c.SectionId,
+            c.SectionId.HasValue ? sectionNames.GetValueOrDefault(c.SectionId.Value) : null)).ToList();
+    }
+
+    private async Task<Dictionary<int, string>> SectionNamesAsync(CancellationToken ct)
+    {
+        var sections = await _sections.ListAsync(ct);
+        return sections.ToDictionary(s => s.Id, s => s.Name);
     }
 
     public async Task<ExecutionCircuitDto> CreateAsync(int branchId, int actorUserId, string? actorName, string name, CancellationToken ct = default)
@@ -147,9 +200,14 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         if (string.IsNullOrEmpty(norm))
             throw new ArgumentException("اسم الدائرة مطلوب");
 
+        // ملكية المنشئ (§8.4): دائرة رئيس الشعبة تلحق بشعبته تلقائيًا، ودائرة
+        // رئيس القسم ملك القسم (`null`)؛ وغير الرؤساء مرفوض (الإدارة تنقل فقط).
+        var ownerSection = await ResolveOwnerSectionAsync(branchId, actorUserId, ct);
+
         var circuit = new ExecutionCircuit
         {
             BranchId = branchId,
+            SectionId = ownerSection?.Id,
             Name = trimmed,
             NameNorm = norm,
             IsActive = true,
@@ -171,10 +229,11 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         {
             throw new DocumentConflictException($"الدائرة «{trimmed}» موجودة مسبقًا في فرعك", ex);
         }
-        return new ExecutionCircuitDto(circuit.Id, circuit.BranchId, null, circuit.Name, circuit.IsActive, 0, 0, circuit.Version);
+        return new ExecutionCircuitDto(circuit.Id, circuit.BranchId, null, circuit.Name, circuit.IsActive, 0, 0, circuit.Version,
+            circuit.SectionId, ownerSection?.Name);
     }
 
-    public async Task<ExecutionCircuitDto> RenameAsync(int circuitId, int branchId, string? actorName, string name, long? version, CancellationToken ct = default, int? actorUserId = null)
+    public async Task<ExecutionCircuitDto> RenameAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, string name, long? version, CancellationToken ct = default, int? actorUserId = null)
     {
         await RequireBranchWithGovernorateAsync(branchId, ct);
         var trimmed = NormalizeName(name);
@@ -185,7 +244,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         {
             await _tx.RunAsync(async token =>
             {
-                var circuit = await GetOwnedAsync(circuitId, branchId, token);
+                var circuit = await GetOwnedAsync(circuitId, branchId, ownerSectionId, token);
                 if (version is not null && circuit.Version != version.Value)
                     throw new DocumentConflictException("تعارض تزامن — أعد تحميل الدائرة وحاول مجددًا");
                 if (circuit.Name != trimmed)
@@ -269,13 +328,13 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         return result;
     }
 
-    public async Task<ExecutionCircuitDto> SetActiveAsync(int circuitId, int branchId, string? actorName, bool isActive, long? version, CancellationToken ct = default)
+    public async Task<ExecutionCircuitDto> SetActiveAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, bool isActive, long? version, CancellationToken ct = default)
     {
         await RequireBranchWithGovernorateAsync(branchId, ct);
         ExecutionCircuitDto result = null!;
         await _tx.RunAsync(async token =>
         {
-            var tracked = await GetOwnedAsync(circuitId, branchId, token);
+            var tracked = await GetOwnedAsync(circuitId, branchId, ownerSectionId, token);
             if (version is not null && tracked.Version != version.Value)
                 throw new DocumentConflictException("تعارض تزامن — أعد تحميل الدائرة وحاول مجددًا");
             tracked.IsActive = isActive;
@@ -290,12 +349,12 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         return result;
     }
 
-    public async Task DeleteAsync(int circuitId, int branchId, string? actorName, CancellationToken ct = default)
+    public async Task DeleteAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, CancellationToken ct = default)
     {
         await RequireBranchWithGovernorateAsync(branchId, ct);
         await _tx.RunAsync(async token =>
         {
-            var circuit = await GetOwnedAsync(circuitId, branchId, token);
+            var circuit = await GetOwnedAsync(circuitId, branchId, ownerSectionId, token);
             // حارس الحذف: كل الصفوف غير المطهّرة بما فيها المحذوفة منطقيًا + الإنابات الواردة المعلقة.
             var fileCount = await _documents.CountAllByCircuitAsync(circuitId, token);
             if (fileCount > 0)
@@ -327,13 +386,126 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         }, ct);
     }
 
-    public async Task<List<ExecutionCircuitDto>> ListForLawyerAsync(int branchId, CancellationToken ct = default)
+    /// <summary>
+    /// نقل ملكية دائرة لمالك جديد داخل الفرع نفسه (قرار §2.5 + §8.3): المفتوح
+    /// والمغلق يتبع الجديد (الملكية على الدائرة نفسها)، والتدقيق ثابت. الإحالات
+    /// المفتوحة (§6.6): تُنشأ تنبيهات بديلة للمالك الجديد (لا تعديل القديمة) —
+    /// و`ForwardState` لا يتغير (استثناء فرعي لا شعبي).
+    /// </summary>
+    public async Task<ExecutionCircuitDto> TransferCircuitAsync(
+        int circuitId, int? targetSectionId, int actorUserId, string? actorName, CancellationToken ct = default, long? version = null)
+    {
+        ExecutionCircuitDto result = null!;
+        try
+        {
+            await _tx.RunAsync(async token =>
+            {
+            var circuit = await _circuits.GetByIdAsync(circuitId, token)
+                ?? throw new ArgumentException("الدائرة غير موجودة");
+            if (version is not null && circuit.Version != version.Value)
+                throw new DocumentConflictException("تعارض تزامن — أعد تحميل الدائرة وحاول مجددًا");
+
+            Section? targetSection = null;
+            if (targetSectionId.HasValue)
+            {
+                targetSection = await _sections.GetByIdAsync(targetSectionId.Value, token)
+                    ?? throw new ArgumentException("الشعبة الهدف غير موجودة");
+                if (targetSection.BranchId != circuit.BranchId)
+                    throw new ArgumentException("النقل داخل الفرع نفسه — الشعبة من فرع آخر");
+                if (!targetSection.IsActive)
+                    throw new ArgumentException("الشعبة الهدف معطلة — اختر شعبة نشطة");
+            }
+
+            if (circuit.SectionId == targetSectionId)
+            {
+                result = await ToDtoAsync(circuit, token);
+                return;
+            }
+
+            var oldOwner = circuit.SectionId.HasValue
+                ? (await _sections.GetByIdAsync(circuit.SectionId.Value, token))?.Name ?? "؟"
+                : "رئيس القسم";
+            var newOwner = targetSection?.Name ?? "رئيس القسم";
+
+            circuit.SectionId = targetSectionId;
+            circuit.UpdatedAt = DateTime.UtcNow;
+            circuit.Version++;
+            _circuits.Update(circuit);
+            await _uow.SaveChangesAsync(token);
+            // النتيجة تُثبَّت هنا قبل أي خروج مبكر (مالك بلا رئيس) — وإلا عاد
+            // `null` فتحوّل `Ok` إلى `204`.
+            result = await ToDtoAsync(circuit, token);
+
+            await _audit.LogAsync(actorName, "transfer_circuit", null, null,
+                $"نقل الدائرة «{circuit.Name}» من {oldOwner} إلى {newOwner} (الملفات المفتوحة والمغلقة تتبع المالك الجديد)", token);
+
+            // المالك الجديد: رئيس الشعبة الهدف، أو رئيس القسم للقسم.
+            var newHead = targetSectionId.HasValue
+                ? await _users.FindActiveHeadAsync(UserRole.SubHead, circuit.BranchId, targetSectionId, token)
+                : await _users.FindActiveHeadAsync(UserRole.Head, circuit.BranchId, null, token);
+            if (newHead is null)
+                return;
+
+            await _successions.AddAsync(new HeadSuccession
+            {
+                BranchId = circuit.BranchId,
+                SectionId = targetSectionId,
+                UserId = newHead.Id,
+                Role = newHead.Role,
+                Event = HeadSuccessionEventCatalog.CircuitTransferred,
+                At = DateTime.UtcNow,
+                ActorName = actorName,
+                Reason = $"نُقلت الدائرة «{circuit.Name}» من {oldOwner} إلى {newOwner}",
+            }, token);
+
+            // بدائل المعلّق للمالك الجديد (§6.6): إنابات واردة معلقة + استئنافات
+            // بلا إسناد على ملفات الدائرة — تنبيه واحد جامع (لا تعديل القديمة).
+            var fileIds = (await _documents.ListByCircuitAsync(circuit.Id, includeDeleted: false, token))
+                .Select(d => d.Id)
+                .ToList();
+            var pendingDelegations = (await _delegations.ListByDelegatedCircuitAsync(circuit.Id, token))
+                .Count(g => g.Status == DelegationStatusCatalog.PendingHead);
+            var pendingAppeals = 0;
+            if (fileIds.Count > 0)
+            {
+                pendingAppeals = (await _appeals.ListByDocumentIdsAsync(fileIds, token))
+                    .Count(a => a.Status == AppealStatusCatalog.Pending && a.AssignedLawyerId == null);
+            }
+
+            await _alerts.AddAsync(new HeadAlert
+            {
+                BranchId = circuit.BranchId,
+                CreatedById = actorUserId,
+                TargetType = HeadAlertTargetType.Head,
+                Message = $"نُقلت إليك دائرة «{circuit.Name}» — {fileIds.Count} ملفًا، {pendingDelegations} إنابة معلقة، {pendingAppeals} استئنافًا بانتظار الإسناد",
+                CreatedAt = DateTime.UtcNow,
+                Recipients = new List<HeadAlertRecipient> { new() { UserId = newHead.Id } },
+            }, token);
+            await _uow.SaveChangesAsync(token);
+        }, ct);
+        }
+        catch (Exception ex) when (_dbErrors.IsConcurrencyViolation(ex))
+        {
+            // كتابتان متزامنتان حقيقيتان على الدائرة نفسها — 409 ودية بدل 500 خام.
+            throw new DocumentConflictException("تعارض تزامن — أعد تحميل الدائرة وحاول مجددًا");
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// قوائم الاختيار للمحامين (تسطير الملفات في أي دائرة — قرار §2.11) مقابل
+    /// الرؤساء (دوائر نطاقهم فقط). `limitToOwner` يميّز الحالتين صراحةً — لا
+    /// قيمة سحرية (`null` تعني القسم للرئيس، ولا شيء للمحامي).
+    /// </summary>
+    public async Task<List<ExecutionCircuitDto>> ListForLawyerAsync(int branchId, int? ownerSectionId, bool limitToOwner, CancellationToken ct = default)
     {
         var all = await _circuits.ListAsync(ct);
-        return all.Where(c => c.BranchId == branchId && c.IsActive)
+        var sectionNames = await SectionNamesAsync(ct);
+        return all.Where(c => c.BranchId == branchId && c.IsActive && (!limitToOwner || c.SectionId == ownerSectionId))
             .OrderBy(c => c.Name)
             .Select(c => new ExecutionCircuitDto(
-                c.Id, c.BranchId, null, c.Name, c.IsActive, 0, 0, c.Version)).ToList();
+                c.Id, c.BranchId, null, c.Name, c.IsActive, 0, 0, c.Version,
+                c.SectionId, c.SectionId.HasValue ? sectionNames.GetValueOrDefault(c.SectionId.Value) : null)).ToList();
     }
 
     public async Task<List<ExecutionCircuitDto>> ListForDelegationAsync(string? governorate, CancellationToken ct = default)
@@ -352,7 +524,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
     }
 
     public async Task<ReferCircuitFilesResult> ReferFilesAsync(
-        int sourceCircuitId, int branchId, int actorUserId, string? actorName,
+        int sourceCircuitId, int branchId, int? ownerSectionId, int actorUserId, string? actorName,
         ReferCircuitFilesRequest request, CancellationToken ct = default, string? idempotencyKey = null)
     {
         // RF-011: حجز المفتاح قبل أي تحقق يستحق 400 بلا حجز — التحققات الثقيلة داخل
@@ -368,12 +540,13 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                 request.TargetLawyerId,
                 request.TargetCircuitId,
                 branchId,
+                ownerSectionId,
             }), ct);
 
         ReferCircuitFilesResult result;
         try
         {
-            result = await ReferFilesCoreAsync(sourceCircuitId, branchId, actorUserId, actorName, request, ct);
+            result = await ReferFilesCoreAsync(sourceCircuitId, branchId, ownerSectionId, actorUserId, actorName, request, ct);
         }
         catch
         {
@@ -395,7 +568,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
 
     /// <summary>نواة الإحالة (تحققات + نقل + تدقيق) — تُستدعى بعد حجز مفتاح عدم التكرار.</summary>
     private async Task<ReferCircuitFilesResult> ReferFilesCoreAsync(
-        int sourceCircuitId, int branchId, int actorUserId, string? actorName,
+        int sourceCircuitId, int branchId, int? ownerSectionId, int actorUserId, string? actorName,
         ReferCircuitFilesRequest request, CancellationToken ct)
     {
         await RequireBranchWithGovernorateAsync(branchId, ct);
@@ -409,8 +582,8 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
 
         await _tx.RunAsync(async token =>
         {
-            var source = await GetOwnedAsync(sourceCircuitId, branchId, token);
-            var target = await GetOwnedAsync(request.TargetCircuitId, branchId, token);
+            var source = await GetOwnedAsync(sourceCircuitId, branchId, ownerSectionId, token);
+            var target = await GetOwnedAsync(request.TargetCircuitId, branchId, ownerSectionId, token);
             if (!target.IsActive)
                 throw new ArgumentException("دائرة الهدف معطلة — اختر دائرة نشطة");
             var sourceName = source.Name;
@@ -796,23 +969,36 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         return removedAny;
     }
 
-    public async Task<List<CircuitStatsDto>> CircuitStatsAsync(int? branchId, CancellationToken ct = default)
+    /// <summary>
+    /// صفوف إحصاءات الدوائر بالنطاق (قرار §2.27 — التفصيل الرباعي في المرحلة 8):
+    /// الرئيس لدوائر نطاقه فقط، والمدير/المشرف للكل.
+    /// </summary>
+    public async Task<List<CircuitStatsDto>> CircuitStatsAsync(int? branchId, int? ownerSectionId, bool fullAccess, CancellationToken ct = default)
     {
         var all = await _circuits.ListAsync(ct);
-        var circuits = (branchId is null ? all : all.Where(c => c.BranchId == branchId.Value))
-            .OrderBy(c => c.BranchId).ThenBy(c => c.Name).ToList();
-        if (circuits.Count == 0) return new List<CircuitStatsDto>();
+        var circuits = (branchId is null ? all : all.Where(c => c.BranchId == branchId.Value));
+        if (!fullAccess)
+            circuits = circuits.Where(c => c.SectionId == ownerSectionId);
+        var ordered = circuits.OrderBy(c => c.BranchId).ThenBy(c => c.Name).ToList();
+        if (ordered.Count == 0) return new List<CircuitStatsDto>();
         var branches = await _branches.ListAsync(ct);
         var branchNames = branches.ToDictionary(b => b.Id, b => b.Name);
-        var counts = await _documents.CountByCircuitsAsync(circuits.Select(c => c.Id).ToList(), ct);
+        // أسماء الشعب دفعة واحدة — بلا استعلام لكل دائرة (N+1).
+        var sectionNames = (await _sections.ListAsync(ct))
+            .Where(s => ordered.Any(c => c.SectionId == s.Id))
+            .ToDictionary(s => s.Id, s => s.Name);
+        var counts = await _documents.CountByCircuitsAsync(ordered.Select(c => c.Id).ToList(), ct);
         // المحامون النشطون (≥ ملف واحد): استعلام تجميعي واحد — بلا تحميل كيانات (N+1).
-        var lawyerCounts = await _documents.CountLawyersByCircuitsAsync(circuits.Select(c => c.Id).ToList(), ct);
-        return circuits.Select(c =>
+        var lawyerCounts = await _documents.CountLawyersByCircuitsAsync(ordered.Select(c => c.Id).ToList(), ct);
+        return ordered.Select(c =>
         {
             counts.TryGetValue(c.Id, out var v);
             return new CircuitStatsDto(c.Id, c.Name, c.BranchId,
                 branchNames.TryGetValue(c.BranchId, out var n) ? n : null,
-                c.IsActive, v.FileCount, lawyerCounts.TryGetValue(c.Id, out var lc) ? lc : 0, v.PendingCount);
+                c.IsActive, v.FileCount, lawyerCounts.TryGetValue(c.Id, out var lc) ? lc : 0, v.PendingCount,
+                c.SectionId,
+                c.SectionId.HasValue && sectionNames.TryGetValue(c.SectionId.Value, out var s) ? s : null,
+                c.Version);
         }).ToList();
     }
 
@@ -820,7 +1006,11 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
     {
         var counts = await _documents.CountByCircuitsAsync(new List<int> { c.Id }, token);
         counts.TryGetValue(c.Id, out var v);
-        return new ExecutionCircuitDto(c.Id, c.BranchId, null, c.Name, c.IsActive, v.FileCount, v.PendingCount, c.Version);
+        string? sectionName = null;
+        if (c.SectionId.HasValue)
+            sectionName = (await _sections.GetByIdAsync(c.SectionId.Value, token))?.Name;
+        return new ExecutionCircuitDto(c.Id, c.BranchId, null, c.Name, c.IsActive, v.FileCount, v.PendingCount, c.Version,
+            c.SectionId, sectionName);
     }
 
     /// <summary>

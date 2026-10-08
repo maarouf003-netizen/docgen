@@ -31,4 +31,35 @@ public sealed class ClaimsPrincipalExtensionsTests
 
         Assert.Throws<UnauthorizedAccessException>(() => user.GetUserId());
     }
+
+    [Theory]
+    [InlineData("head", null, true)]
+    [InlineData("subhead", "4", true)]
+    [InlineData("lawyer", null, false)]
+    [InlineData("manager", null, false)]
+    [InlineData("admin", null, false)]
+    [InlineData("entitymanager", null, false)]
+    public void IsHeadOrSubHead_MatchesRoleClaim(string role, string? sectionId, bool expected)
+    {
+        var claims = new List<Claim> { new(ClaimTypes.Role, role) };
+        if (sectionId is not null)
+            claims.Add(new Claim("section_id", sectionId));
+        var user = new ClaimsPrincipal(new ClaimsIdentity(claims, authenticationType: "test"));
+
+        Assert.Equal(expected, user.IsHeadOrSubHead());
+    }
+
+    [Theory]
+    [InlineData("4", 4)]
+    [InlineData(null, null)]
+    [InlineData("not-a-number", null)]
+    public void GetSectionId_ParsesOrDefaultsNull(string? raw, int? expected)
+    {
+        var claims = new List<Claim> { new Claim(ClaimTypes.Role, "subhead") };
+        if (raw is not null)
+            claims.Add(new Claim("section_id", raw));
+        var user = new ClaimsPrincipal(new ClaimsIdentity(claims, authenticationType: "test"));
+
+        Assert.Equal(expected, user.GetSectionId());
+    }
 }

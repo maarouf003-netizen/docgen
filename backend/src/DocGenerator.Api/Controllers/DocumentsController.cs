@@ -13,7 +13,7 @@ namespace DocGenerator.Api.Controllers;
 
 [ApiController]
 [Route("api/documents")]
-[Authorize(Roles = "lawyer,head,manager,admin")]
+[Authorize(Roles = "lawyer,head,subhead,manager,admin")]
 public class DocumentsController : ControllerBase
 {
     private const string WordContentType =
@@ -55,7 +55,7 @@ public class DocumentsController : ControllerBase
 
     private UserRole Role => User.GetRoleEnum();
     private bool HasFullAccess => RolePermissions.HasFullAccess(Role);
-    private bool IsHead => Role == UserRole.Head;
+    private bool IsHeadOrSubHead => RolePermissions.IsHeadOrSubHead(Role);
     private bool CanViewCounters => RolePermissions.CanViewCounters(Role);
     private bool CanSearchByLawyer => RolePermissions.CanSearchByLawyer(Role);
     private bool CanEdit => RolePermissions.CanEditDocuments(Role);
@@ -83,11 +83,45 @@ public class DocumentsController : ControllerBase
         return Ok(result);
     }
 
-    private bool CanAccess(DocumentResponse doc)
+    /// <summary>
+    /// نطاق المالك المشتق خادميًا لقوائم الملفات (§5 — قرار §2.21): شعبة رئيس
+    /// الشعبة من الرمز، و`null` لغيره. رئيس شعبة برمز بلا شعبة مرفوض (أعد
+    /// الدخول) بدل التدهور لنطاق القسم.
+    /// </summary>
+    private ActionResult? RequireOwnerScope(out int? ownerSectionId)
+    {
+        ownerSectionId = null;
+        if (Role == UserRole.SubHead)
+        {
+            ownerSectionId = User.GetSectionId();
+            if (ownerSectionId is null)
+                return Forbid();
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// وصول القراءة بالنطاق (§5 + الاستثناء القرائي 22′): مدير/مشرف (الكل)؛
+    /// محامٍ (ملفاته)؛ رئيس قسم (ملفات دوائر القسم + بلا دائرة + المحال له حتى
+    /// الحسم)؛ رئيس شعبة (ملفات دوائر شعبته).
+    /// </summary>
+    private async Task<bool> CanAccessAsync(DocumentResponse doc)
     {
         if (HasFullAccess) return true;
-        if (IsHead) return doc.BranchId == User.GetBranchId();
-        return doc.CreatedById == User.GetUserId();
+        if (Role == UserRole.Lawyer)
+            return doc.CreatedById == User.GetUserId();
+        if (doc.BranchId != User.GetBranchId())
+            return false;
+        if (Role == UserRole.Head)
+        {
+            if (doc.ExecutionCircuitId is null || !doc.SectionId.HasValue)
+                return true;
+            // الاستثناء القرائي: محال لرئيس قسم نفس الفرع — يُرى حتى الحسم.
+            return await _appeals.HasForwardedAppealAsync(doc.Id);
+        }
+        if (Role == UserRole.SubHead)
+            return doc.SectionId.HasValue && doc.SectionId == User.GetSectionId();
+        return false;
     }
 
     /// <summary>
@@ -95,7 +129,7 @@ public class DocumentsController : ControllerBase
     /// استئناف على هذا الملف (قراءة فقط — لصفحة تفاصيل الاستئناف).
     /// </summary>
     private async Task<bool> CanAccessOrFollowAsync(DocumentResponse doc)
-        => CanAccess(doc) || await _appeals.IsAssignedFollowerAsync(doc.Id, User.GetUserId());
+        => await CanAccessAsync(doc) || await _appeals.IsAssignedFollowerAsync(doc.Id, User.GetUserId());
 
     [HttpGet]
     public async Task<IActionResult> Search(
@@ -106,15 +140,17 @@ public class DocumentsController : ControllerBase
         [FromQuery] string? publicEntityBranch,
         [FromQuery] int page = 1, [FromQuery] int perPage = 20, CancellationToken ct = default)
     {
-        // البحث/الفلترة باسم المحامي محصور برئيس القسم/المدير/المشرف.
+        // البحث/الفلترة باسم المحامي محصور برئيس القسم والشعبة/المدير/المشرف.
         if (!string.IsNullOrWhiteSpace(lawyer) && !CanSearchByLawyer)
             return Forbid();
 
         var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
-        var visibleUser = HasFullAccess || IsHead ? (int?)null : User.GetUserId();
+        var visibleUser = HasFullAccess || IsHeadOrSubHead ? (int?)null : User.GetUserId();
+        var scopeError = RequireOwnerScope(out var ownerSectionId);
+        if (scopeError is not null) return scopeError;
 
         var result = await _documents.SearchAsync(q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
-            page, perPage, visibleBranch, visibleUser, ct);
+            page, perPage, visibleBranch, visibleUser, ct, ownerSectionId: ownerSectionId);
         return OkSanitized(result);
     }
 
@@ -127,9 +163,11 @@ public class DocumentsController : ControllerBase
         CancellationToken ct)
     {
         var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
-        var visibleUser = HasFullAccess || IsHead ? (int?)null : User.GetUserId();
+        var visibleUser = HasFullAccess || IsHeadOrSubHead ? (int?)null : User.GetUserId();
+        var scopeError = RequireOwnerScope(out var ownerSectionId);
+        if (scopeError is not null) return scopeError;
         var options = await _documents.GetFilterOptionsAsync(status, applicant, court, lawyer, branch,
-            administrativeBranch, executedEntity, publicEntityBranch, visibleBranch, visibleUser, ct);
+            administrativeBranch, executedEntity, publicEntityBranch, visibleBranch, visibleUser, ct, ownerSectionId: ownerSectionId);
         return Ok(new
         {
             applicants = options.Applicants,
@@ -151,15 +189,17 @@ public class DocumentsController : ControllerBase
         [FromQuery] string? administrativeBranch, [FromQuery] string? executedEntity,
         [FromQuery] string? publicEntityBranch, CancellationToken ct)
     {
-        // التصدير يحترم نفس أذونات الفلترة: البحث باسم المحامي محصور برئيس القسم/المدير/المشرف.
+        // التصدير يحترم نفس أذونات الفلترة: البحث باسم المحامي محصور برئيس القسم والشعبة/المدير/المشرف.
         if (!string.IsNullOrWhiteSpace(lawyer) && !CanSearchByLawyer)
             return Forbid();
 
         var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
-        var visibleUser = HasFullAccess || IsHead ? (int?)null : User.GetUserId();
+        var visibleUser = HasFullAccess || IsHeadOrSubHead ? (int?)null : User.GetUserId();
+        var scopeError = RequireOwnerScope(out var ownerSectionId);
+        if (scopeError is not null) return scopeError;
 
         var items = await _documents.ExportAsync(q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
-            visibleBranch, visibleUser, ct, ActorName);
+            visibleBranch, visibleUser, ct, ActorName, ownerSectionId: ownerSectionId);
         if (!CanViewCounters)
             items = items.Select(Sanitize).ToList();
 
@@ -183,7 +223,9 @@ public class DocumentsController : ControllerBase
             return Forbid();
 
         var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
-        var visibleUser = HasFullAccess || IsHead ? (int?)null : User.GetUserId();
+        var visibleUser = HasFullAccess || IsHeadOrSubHead ? (int?)null : User.GetUserId();
+        var scopeError = RequireOwnerScope(out var ownerSectionId);
+        if (scopeError is not null) return scopeError;
 
         var result = await _documents.SearchDeletedAsync(q, page, perPage, visibleBranch, visibleUser, ct);
         return OkSanitized(result);
@@ -200,7 +242,9 @@ public class DocumentsController : ControllerBase
             return Forbid();
 
         var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
-        var visibleUser = HasFullAccess || IsHead ? (int?)null : User.GetUserId();
+        var visibleUser = HasFullAccess || IsHeadOrSubHead ? (int?)null : User.GetUserId();
+        var scopeError = RequireOwnerScope(out var ownerSectionId);
+        if (scopeError is not null) return scopeError;
 
         var result = await _documents.SearchStruckOffAsync(q, page, perPage, visibleBranch, visibleUser, ct);
         return OkSanitized(result);
@@ -214,7 +258,9 @@ public class DocumentsController : ControllerBase
         // صفحة «الملفات المنفذة» ظاهرة لجميع الأدوار (لا تُحجب بصلاحية المحذوفات):
         // محامٍ (ملفاته) / رئيس قسم (فرعه) / ذو الوصول الكامل (الكل).
         var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
-        var visibleUser = HasFullAccess || IsHead ? (int?)null : User.GetUserId();
+        var visibleUser = HasFullAccess || IsHeadOrSubHead ? (int?)null : User.GetUserId();
+        var scopeError = RequireOwnerScope(out var ownerSectionId);
+        if (scopeError is not null) return scopeError;
 
         var result = await _documents.SearchExecutedAsync(q, page, perPage, visibleBranch, visibleUser, ct);
         return OkSanitized(result);
@@ -228,7 +274,9 @@ public class DocumentsController : ControllerBase
         // صفحة «محال الى البداية» ظاهرة لجميع الأدوار (كصفحة «الملفات المنفذة»):
         // محامٍ (ملفاته) / رئيس قسم (فرعه) / ذو الوصول الكامل (الكل).
         var visibleBranch = HasFullAccess ? (int?)null : User.GetBranchId();
-        var visibleUser = HasFullAccess || IsHead ? (int?)null : User.GetUserId();
+        var visibleUser = HasFullAccess || IsHeadOrSubHead ? (int?)null : User.GetUserId();
+        var scopeError = RequireOwnerScope(out var ownerSectionId);
+        if (scopeError is not null) return scopeError;
 
         var result = await _documents.SearchReferredToStartAsync(q, page, perPage, visibleBranch, visibleUser, ct);
         return OkSanitized(result);
@@ -267,14 +315,14 @@ public class DocumentsController : ControllerBase
     {
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!CanAccess(doc)) return Forbid();
+        if (!await CanAccessAsync(doc)) return Forbid();
         return Ok(await _auditLogs.GetDocumentChangesAsync(id, page, perPage, ct));
     }
 
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] DocumentUpsertRequest request, CancellationToken ct)
     {
-        // إدخال الملفات محصور بالمحامي: لا إدخال لرئيس القسم، وقراءة مطلقة للمدير/المشرف.
+        // إدخال الملفات محصور بالمحامي: لا إدخال للرؤساء، وقراءة مطلقة للمدير/المشرف.
         if (!CanEdit)
             return Forbid();
 
@@ -303,7 +351,7 @@ public class DocumentsController : ControllerBase
 
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!CanAccess(doc)) return Forbid();
+        if (!await CanAccessAsync(doc)) return Forbid();
 
         var updated = await _documents.UpdateAsync(id, request, ActorName, User.GetUserId(), ct);
         return updated is null ? NotFound() : Ok(Sanitize(updated));
@@ -346,7 +394,7 @@ public class DocumentsController : ControllerBase
 
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!CanAccess(doc)) return Forbid();
+        if (!await CanAccessAsync(doc)) return Forbid();
 
         return await _documents.DeleteAsync(id, ActorName, ct) ? NoContent() : NotFound();
     }
@@ -360,7 +408,7 @@ public class DocumentsController : ControllerBase
 
         var doc = await _documents.GetDeletedAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!CanAccess(doc)) return Forbid();
+        if (!await CanAccessAsync(doc)) return Forbid();
 
         return await _documents.RestoreAsync(id, ActorName, ct)
             ? Ok(new { message = "تمت استعادة المستند" })
@@ -375,7 +423,7 @@ public class DocumentsController : ControllerBase
 
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!CanAccess(doc)) return Forbid();
+        if (!await CanAccessAsync(doc)) return Forbid();
 
         try
         {
@@ -397,7 +445,7 @@ public class DocumentsController : ControllerBase
 
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!CanAccess(doc)) return Forbid();
+        if (!await CanAccessAsync(doc)) return Forbid();
 
         try
         {
@@ -420,7 +468,7 @@ public class DocumentsController : ControllerBase
 
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!CanAccess(doc)) return Forbid();
+        if (!await CanAccessAsync(doc)) return Forbid();
 
         try
         {
@@ -443,7 +491,7 @@ public class DocumentsController : ControllerBase
 
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!CanAccess(doc)) return Forbid();
+        if (!await CanAccessAsync(doc)) return Forbid();
 
         try
         {
@@ -465,7 +513,7 @@ public class DocumentsController : ControllerBase
 
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!CanAccess(doc)) return Forbid();
+        if (!await CanAccessAsync(doc)) return Forbid();
 
         try
         {
@@ -487,7 +535,7 @@ public class DocumentsController : ControllerBase
 
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!CanAccess(doc)) return Forbid();
+        if (!await CanAccessAsync(doc)) return Forbid();
 
         try
         {
@@ -506,7 +554,7 @@ public class DocumentsController : ControllerBase
     {
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!CanAccess(doc)) return Forbid();
+        if (!await CanAccessAsync(doc)) return Forbid();
         await _documents.IncrementViewCountAsync(id, ct);
         return Ok();
     }
@@ -526,7 +574,7 @@ public class DocumentsController : ControllerBase
 
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!CanAccess(doc)) return Forbid();
+        if (!await CanAccessAsync(doc)) return Forbid();
 
         // توليد المستندات محصور بنظام «طالبة تنفيذ»: ملفات عائلة وضع «منفذ عليه» لا تُولَّد.
         if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
@@ -555,18 +603,21 @@ public class DocumentsController : ControllerBase
     [HttpGet("owner/{lawyerId:int}/count")]
     public async Task<IActionResult> CountFilesByOwner(int lawyerId, CancellationToken ct)
     {
-        // عدد ملفات المحامي (معاينة قبل النقل الجماعي) — رئيس القسم (ضمن فرعه) فقط.
+        // عدد ملفات المحامي (معاينة قبل النقل الجماعي) — رئيس القسم والشعبة
+        // (ضمن فرعه) فقط — بالنطاق نفسه (§5.5): المعاينة تطابق المنقول فعلًا.
         if (!RolePermissions.CanTransferDocuments(Role))
             return Forbid();
 
-        // رئيس القسم بلا فرع لا يملك نطاقًا صالحًا للنقل (يُمنع صراحةً كبقية عمليات الفرع).
+        // رئيس القسم والشعبة بلا فرع لا يملك نطاقًا صالحًا للنقل (يُمنع صراحةً كبقية عمليات الفرع).
         var scopeBranchId = User.GetBranchId();
         if (scopeBranchId is null)
             return Forbid();
+        var scopeError = RequireOwnerScope(out var ownerSectionId);
+        if (scopeError is not null) return scopeError;
 
         try
         {
-            var count = await _documents.CountFilesByOwnerAsync(lawyerId, scopeBranchId, ct);
+            var count = await _documents.CountFilesByOwnerAsync(lawyerId, scopeBranchId, ct, ownerSectionId);
             return Ok(new { count });
         }
         catch (ArgumentException e)
@@ -578,21 +629,24 @@ public class DocumentsController : ControllerBase
     [HttpPost("transfer-all")]
     public async Task<IActionResult> TransferAll([FromBody] TransferAllRequest request, CancellationToken ct)
     {
-        // نقل كامل ملفات محامٍ إلى محامٍ آخر بجميع الحالات — رئيس القسم (ضمن فرعه) فقط.
+        // نقل كامل ملفات محامٍ إلى محامٍ آخر بجميع الحالات — رئيس القسم والشعبة
+        // (ضمن فرعه) فقط — بتقاطع النطاق (§5.5): ملفات المصدر ضمن نطاق المنفِّذ فقط.
         if (!RolePermissions.CanTransferDocuments(Role))
             return Forbid();
 
-        // رئيس القسم بلا فرع لا يملك نطاقًا صالحًا للنقل (يُمنع صراحةً كبقية عمليات الفرع).
+        // رئيس القسم والشعبة بلا فرع لا يملك نطاقًا صالحًا للنقل (يُمنع صراحةً كبقية عمليات الفرع).
         var scopeBranchId = User.GetBranchId();
         if (scopeBranchId is null)
             return Forbid();
+        var scopeError = RequireOwnerScope(out var ownerSectionId);
+        if (scopeError is not null) return scopeError;
 
         try
         {
             // RF-011: التكرار بنفس المفتاح يُعيد العدد المخزن نفسه.
             var transferredCount = await _documents.TransferAllAsync(
                 request.SourceLawyerId, request.TargetLawyerId, scopeBranchId, ActorName, ct,
-                IdempotencyKeyHeader());
+                IdempotencyKeyHeader(), ownerSectionId);
             // سجل الدوائر (H2): التنبيه يتبع المالك — مزامنة تنبيهات إعادة القيد بعد
             // النقل (إشعار فرعي: فشلها يُسجَّل ولا يُفشل النقل الناجح).
             await SyncCircuitAlertsAfterTransferAsync(
@@ -620,13 +674,14 @@ public class DocumentsController : ControllerBase
     [HttpPost("{id:int}/transfer")]
     public async Task<IActionResult> Transfer(int id, [FromBody] TransferDocumentRequest request, CancellationToken ct)
     {
-        // نقل الملفات بين المحامين — رئيس القسم (ضمن فرعه) فقط.
+        // نقل الملفات بين المحامين — رئيس القسم والشعبة (ضمن فرعه) فقط —
+        // والملف نفسه ضمن نطاق المنفِّذ (`CanAccessAsync`).
         if (!RolePermissions.CanTransferDocuments(Role))
             return Forbid();
 
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!CanAccess(doc)) return Forbid();
+        if (!await CanAccessAsync(doc)) return Forbid();
 
         try
         {
@@ -670,7 +725,7 @@ public class DocumentsController : ControllerBase
 
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!CanAccess(doc)) return Forbid();
+        if (!await CanAccessAsync(doc)) return Forbid();
 
         try
         {
@@ -692,7 +747,7 @@ public class DocumentsController : ControllerBase
 
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!CanAccess(doc)) return Forbid();
+        if (!await CanAccessAsync(doc)) return Forbid();
 
         try
         {
@@ -715,7 +770,7 @@ public class DocumentsController : ControllerBase
 
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!CanAccess(doc)) return Forbid();
+        if (!await CanAccessAsync(doc)) return Forbid();
 
         var deleted = await _documents.DeleteExecutionActionAsync(id, actionId, ActorName, ct);
         if (!deleted) return NotFound();
@@ -731,7 +786,7 @@ public class DocumentsController : ControllerBase
 
         var doc = await _documents.GetAsync(id, ct);
         if (doc is null) return NotFound();
-        if (!CanAccess(doc)) return Forbid();
+        if (!await CanAccessAsync(doc)) return Forbid();
 
         return await _documents.ClearReminderAsync(id, actionId, ActorName, ct)
             ? NoContent()

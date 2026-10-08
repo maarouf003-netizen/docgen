@@ -115,12 +115,12 @@ public sealed class AuthService : IAuthService
             await _uow.SaveChangesAsync(ct);
         }
 
-        // رئيس القسم أو المحامي بلا فرع: حالة محرّمة — تُرفض الجلسة أصلًا بدل
+        // رئيس القسم أو رئيس الشعبة أو المحامي بلا فرع: حالة محرّمة — تُرفض الجلسة أصلًا بدل
         // دخول ناقص يُنتج أخطاء مضللة لاحقًا (محامٍ بلا فرع كان يرى إحصاءات كل
         // الفروع ضمنيًا لأن `branchId == null` تعني الكل في المستودع). قبل التحقق
         // من كلمة المرور عمدًا: لا عدّ إخفاق ولا قفل لحساب لا يملك صاحبه إصلاحه
         // (عيب إداري لا تخمين)، وبعد فحص القفل حتى لا تُخفى حالة القفل القائمة.
-        if (user.BranchId is null && user.Role is UserRole.Head or UserRole.Lawyer)
+        if (user.BranchId is null && user.Role is UserRole.Head or UserRole.Lawyer or UserRole.SubHead)
         {
             await _audit.LogAsync(username, "login_branch_required",
                 details: $"رفض دخول {RoleLabel(user.Role)} بلا فرع محدد", ct: ct);
@@ -216,6 +216,7 @@ public sealed class AuthService : IAuthService
     private static string RoleLabel(UserRole role) => role switch
     {
         UserRole.Head => "رئيس قسم",
+        UserRole.SubHead => "رئيس شعبة",
         UserRole.Lawyer => "محامٍ",
         _ => role.ToString(),
     };
@@ -226,5 +227,7 @@ public sealed class AuthService : IAuthService
         user.FullName,
         user.Role.ToString().ToLowerInvariant(),
         user.BranchId,
-        user.Branch?.Name);
+        user.Branch?.Name,
+        user.SectionId,
+        user.Section?.Name);
 }

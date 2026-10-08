@@ -12,12 +12,12 @@ namespace DocGenerator.Application.Services;
 public sealed partial class DocumentService
 {
     public async Task<PagedResult<DocumentResponse>> SearchDeletedAsync(
-        string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default)
+        string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null)
     {
         page = Math.Max(1, page);
         perPage = Math.Clamp(perPage, 1, 100);
 
-        var (total, items) = await _documents.SearchDeletedAsync(query, visibleBranchId, visibleUserId, page, perPage, ct);
+        var (total, items) = await _documents.SearchDeletedAsync(query, visibleBranchId, visibleUserId, page, perPage, ct, ownerSectionId);
 
         return new PagedResult<DocumentResponse>
         {
@@ -29,12 +29,12 @@ public sealed partial class DocumentService
     }
 
     public async Task<PagedResult<DocumentResponse>> SearchStruckOffAsync(
-        string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default)
+        string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null)
     {
         page = Math.Max(1, page);
         perPage = Math.Clamp(perPage, 1, 100);
 
-        var (total, items) = await _documents.SearchStruckOffAsync(query, null, null, null, null, null, visibleBranchId, visibleUserId, page, perPage, ct);
+        var (total, items) = await _documents.SearchStruckOffAsync(query, null, null, null, null, null, visibleBranchId, visibleUserId, page, perPage, ct, ownerSectionId);
 
         return new PagedResult<DocumentResponse>
         {
@@ -46,12 +46,12 @@ public sealed partial class DocumentService
     }
 
     public async Task<PagedResult<DocumentResponse>> SearchExecutedAsync(
-        string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default)
+        string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null)
     {
         page = Math.Max(1, page);
         perPage = Math.Clamp(perPage, 1, 100);
 
-        var (total, items) = await _documents.SearchExecutedAsync(query, visibleBranchId, visibleUserId, page, perPage, ct);
+        var (total, items) = await _documents.SearchExecutedAsync(query, visibleBranchId, visibleUserId, page, perPage, ct, ownerSectionId);
 
         return new PagedResult<DocumentResponse>
         {
@@ -63,12 +63,12 @@ public sealed partial class DocumentService
     }
 
     public async Task<PagedResult<DocumentResponse>> SearchReferredToStartAsync(
-        string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default)
+        string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null)
     {
         page = Math.Max(1, page);
         perPage = Math.Clamp(perPage, 1, 100);
 
-        var (total, items) = await _documents.SearchReferredToStartAsync(query, visibleBranchId, visibleUserId, page, perPage, ct);
+        var (total, items) = await _documents.SearchReferredToStartAsync(query, visibleBranchId, visibleUserId, page, perPage, ct, ownerSectionId);
 
         return new PagedResult<DocumentResponse>
         {
@@ -81,13 +81,13 @@ public sealed partial class DocumentService
 
     public async Task<PagedResult<DocumentResponse>> SearchAsync(
         string? query, string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch, int page, int perPage,
-        int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default)
+        int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null)
     {
         page = Math.Max(1, page);
         perPage = Math.Clamp(perPage, 1, 100);
 
         var (total, items) = await _documents.SearchAsync(
-            query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, page, perPage, ct);
+            query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, page, perPage, ct, ownerSectionId);
 
         var result = new PagedResult<DocumentResponse>
         {
@@ -125,22 +125,22 @@ public sealed partial class DocumentService
 
     public async Task<DocumentFilterOptions> GetFilterOptionsAsync(
         string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch,
-        int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default)
-        => await _documents.GetFilterOptionsAsync(status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, ct);
+        int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null)
+        => await _documents.GetFilterOptionsAsync(status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, ct, ownerSectionId);
 
     public async Task<List<DocumentResponse>> ExportAsync(
         string? query, string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch,
-        int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, string? actorName = null)
+        int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, string? actorName = null, int? ownerSectionId = null)
     {
         // سقف التصدير: يُعدَّل عدد النتائج المطابقة أولًا قبل جلب أي صف إلى الذاكرة،
         // فيُرفض التصدير الواسع برسالة واضحة بدل ذروة ذاكرة غير محصورة على الخادم.
         var total = await _documents.CountExportAsync(
-            query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, ct);
+            query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, ct, ownerSectionId);
         if (total > _maxExportRows)
             throw new ArgumentException($"عدد النتائج يتجاوز الحد الأقصى للتصدير ({_maxExportRows:N0}) — طبّق فلترًا أضيق");
 
         var items = await _documents.ExportAsync(
-            query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, ct);
+            query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, ct, ownerSectionId);
         // RF-017 (SEC-002): التصدير قراءة بلا كتابة عمل — تدقيقه حفظة واحدة بلا معاملة
         // (بالفلاتر والعدد الفعلي؛ الفلاتر الفارغة تُحذَف من النص).
         var filters = string.Join("،", new[] { query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch }

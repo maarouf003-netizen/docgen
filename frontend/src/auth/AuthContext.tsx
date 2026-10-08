@@ -50,6 +50,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
         hasFullAccess: user?.role === 'manager' || user?.role === 'admin',
         isHead: user?.role === 'head',
+        isSubHead: user?.role === 'subhead',
+        isHeadOrSubHead: user?.role === 'head' || user?.role === 'subhead',
+        sectionId: user?.sectionId ?? null,
       }}
     >
       {children}

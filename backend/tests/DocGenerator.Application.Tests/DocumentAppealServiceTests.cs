@@ -1,3 +1,4 @@
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -162,7 +163,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Contains(dto.Appellees, p => p.Name == "أحمد خالد الخطيب");
         Assert.DoesNotContain(dto.Appellees, p => p.Name == "المؤسسة العامة للكهرباء");
 
-        var headAlerts = await _alertService.ListForHeadAsync(_branch.Id);
+        var headAlerts = await _alertService.ListForHeadAsync(_head1.Id, _branch.Id);
         Assert.Contains(headAlerts, a => a.TargetType == "head" && a.Message.Contains("يرجى اختيار محامي"));
     }
 
@@ -291,7 +292,7 @@ public class DocumentAppealServiceTests : IDisposable
         var selections = new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) };
         var created = await _service.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants, selections), _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.UpdateAsync(created.Id, Request(AppealDirectionCatalog.Appellants, selections), _lawyer1.Id, "lawyer1"));
@@ -308,7 +309,7 @@ public class DocumentAppealServiceTests : IDisposable
             _lawyer1.Id, "lawyer1");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head2.Id, _otherBranch.Id, "head2"));
+            _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head2.Id, "head2"));
     }
 
     [Fact]
@@ -321,19 +322,19 @@ public class DocumentAppealServiceTests : IDisposable
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
 
-        var assigned = await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         Assert.NotNull(assigned);
         Assert.Equal(_lawyer2.Id, assigned!.AssignedLawyerId);
         // تنبيه الرئيس المعلّق صُفّي، ووصل المحامي تنبيه الإحالة.
-        var headAlerts = await _alertService.ListForHeadAsync(_branch.Id);
+        var headAlerts = await _alertService.ListForHeadAsync(_head1.Id, _branch.Id);
         Assert.DoesNotContain(headAlerts, a => a.Message.Contains("يرجى اختيار محامي"));
         var lawyerAlerts = await _alertService.ListForLawyerAsync(_lawyer2.Id);
         Assert.Contains(lawyerAlerts, a => a.Message.Contains("أحال إليك رئيس القسم استئناف"));
 
         // إسناد مكرر مرفوض.
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1"));
+            _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1"));
     }
     [Fact]
     public async Task Decide_ByFollower_SetsOutcomeAndNotifiesBaseLawyer()
@@ -344,7 +345,7 @@ public class DocumentAppealServiceTests : IDisposable
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var decided = await _service.DecideAsync(created.Id,
             new DecideAppealRequest("قرار-55", "15/9/2026", "قبول الاستئناف جزئيًا", AppealOutcomeCatalog.InFavor),
@@ -375,7 +376,7 @@ public class DocumentAppealServiceTests : IDisposable
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var struck = await _service.StrikeAsync(created.Id,
             new StrikeAppealRequest("قرار-شطب-3", "1/10/2026"), _lawyer2.Id, "lawyer2");
@@ -395,7 +396,7 @@ public class DocumentAppealServiceTests : IDisposable
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.DecideAsync(created.Id,
@@ -417,7 +418,7 @@ public class DocumentAppealServiceTests : IDisposable
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var updated = await _service.UpdateRegistrationAsync(created.Id,
             new UpdateAppealRegistrationRequest("جمركي", "محكمة استئناف دمشق", "1450", "2026", "7/8/2026"),
@@ -441,7 +442,7 @@ public class DocumentAppealServiceTests : IDisposable
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         // القيد قبل التدوير: رقم أساس لسنة سابقة.
         var previousYear = (DateTime.Today.Year - 1).ToString();
@@ -500,7 +501,7 @@ public class DocumentAppealServiceTests : IDisposable
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         _db.AppealBaseNumbers.Add(new AppealBaseNumber
         {
@@ -545,7 +546,7 @@ public class DocumentAppealServiceTests : IDisposable
             _service.SaveBaseNumbersAsync(created.Id, SaveAs("100"), _lawyer1.Id, "lawyer1"));
         Assert.Contains("لا تتابعه", exUnassigned.Message);
 
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         // المنشئ غير المسند مرفوض بعد الإسناد.
         var exCreator = await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -565,7 +566,7 @@ public class DocumentAppealServiceTests : IDisposable
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[1].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(second.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        await _service.AssignAsync(second.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
         await _service.StrikeAsync(second.Id,
             new StrikeAppealRequest("شطب-1", "1/10/2026"), _lawyer2.Id, "lawyer2");
         var exStruck = await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -583,7 +584,7 @@ public class DocumentAppealServiceTests : IDisposable
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var before = await _service.GetAsync(created.Id);
         Assert.NotNull(before);
@@ -606,7 +607,7 @@ public class DocumentAppealServiceTests : IDisposable
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         var action = await _service.AddActionAsync(created.Id,
             new AddAppealActionRequest("action", "إيداع موجبات الاستئناف", "3/8/2026", "أسبوع", "أحمر"),
@@ -640,7 +641,7 @@ public class DocumentAppealServiceTests : IDisposable
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
         return created.Id;
     }
 
@@ -704,27 +705,27 @@ public class DocumentAppealServiceTests : IDisposable
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(first.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        await _service.AssignAsync(first.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
         var second = await _service.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[1].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(second.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        await _service.AssignAsync(second.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         // نقل فردي: من lawyer2 إلى lawyer1.
         var transferred = await _service.TransferAsync(first.Id,
-            new TransferAppealRequest(_lawyer1.Id), _head1.Id, _branch.Id, "head1");
+            new TransferAppealRequest(_lawyer1.Id), _head1.Id, "head1");
         Assert.NotNull(transferred);
         Assert.Equal(_lawyer1.Id, transferred!.AssignedLawyerId);
 
         // نقل جملة ضمن الفرع: كل استئنافات lawyer2 تصير لـ lawyer1 (الاستئناف الثاني).
         var count = await _service.TransferAllAsync(
-            new TransferAllAppealsRequest(_lawyer2.Id, _lawyer1.Id), _branch.Id, "head1");
+            new TransferAllAppealsRequest(_lawyer2.Id, _lawyer1.Id), _branch.Id, null, "head1");
         Assert.Equal(1, count);
 
         // نقل جملة من رئيس فرع آخر مرفوض (نطاق الفرع).
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.TransferAllAsync(new TransferAllAppealsRequest(_lawyer1.Id, _lawyer2.Id), _otherBranch.Id, "head2"));
+            _service.TransferAllAsync(new TransferAllAppealsRequest(_lawyer1.Id, _lawyer2.Id), _otherBranch.Id, null, "head2"));
     }
 
     [Fact]
@@ -736,12 +737,12 @@ public class DocumentAppealServiceTests : IDisposable
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(first.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        await _service.AssignAsync(first.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
         var second = await _service.CreateAsync(doc.Id,
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[1].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(second.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        await _service.AssignAsync(second.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         await _service.DecideAsync(first.Id,
             new DecideAppealRequest("قرار-1", "15/9/2026", "نص", AppealOutcomeCatalog.InFavor),
@@ -751,7 +752,7 @@ public class DocumentAppealServiceTests : IDisposable
 
         // لا منظور قابل للنقل ← صفر، والمحسوم والمشطوب يبقيان عند المسند الأصلي (R5).
         var count = await _service.TransferAllAsync(
-            new TransferAllAppealsRequest(_lawyer2.Id, _lawyer1.Id), _branch.Id, "head1");
+            new TransferAllAppealsRequest(_lawyer2.Id, _lawyer1.Id), _branch.Id, null, "head1");
         Assert.Equal(0, count);
         Assert.Equal(_lawyer2.Id, (await _service.GetAsync(first.Id))!.AssignedLawyerId);
         Assert.Equal(_lawyer2.Id, (await _service.GetAsync(second.Id))!.AssignedLawyerId);
@@ -784,21 +785,21 @@ public class DocumentAppealServiceTests : IDisposable
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[1].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(first.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        await _service.AssignAsync(first.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
-        Assert.Equal(1, await _service.CountByAssigneeForHeadAsync(_lawyer2.Id, _branch.Id));
-        Assert.Equal(0, await _service.CountByAssigneeForHeadAsync(_lawyer1.Id, _branch.Id));
+        Assert.Equal(1, await _service.CountByAssigneeForHeadAsync(_lawyer2.Id, _branch.Id, null));
+        Assert.Equal(0, await _service.CountByAssigneeForHeadAsync(_lawyer1.Id, _branch.Id, null));
 
         // استئناف محسوم مسند لنفس المحامي لا يدخل العدّاد (المنظورة فقط — R5/C3).
-        await _service.AssignAsync(second.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        await _service.AssignAsync(second.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
         await _service.DecideAsync(second.Id,
             new DecideAppealRequest("قرار-2", "15/9/2026", "نص", AppealOutcomeCatalog.InFavor),
             _lawyer2.Id, "lawyer2");
-        Assert.Equal(1, await _service.CountByAssigneeForHeadAsync(_lawyer2.Id, _branch.Id));
+        Assert.Equal(1, await _service.CountByAssigneeForHeadAsync(_lawyer2.Id, _branch.Id, null));
 
         // رئيس قسم بلا فرع يُرفض بدل تسريب العدّادات.
         await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.CountByAssigneeForHeadAsync(_lawyer2.Id, null));
+            () => _service.CountByAssigneeForHeadAsync(_lawyer2.Id, null, null));
         Assert.True(second.Id > 0);
     }
 
@@ -812,20 +813,20 @@ public class DocumentAppealServiceTests : IDisposable
             Request(AppealDirectionCatalog.Appellants,
                 new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
             _lawyer1.Id, "lawyer1");
-        await _service.AssignAsync(first.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, _branch.Id, "head1");
+        await _service.AssignAsync(first.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
 
         // بحث بالاسم المستأنف (من اللقطة).
-        var byName = await _service.SearchAsync("المؤسسة العامة للكهرباء", null, null, null, 1, 20);
+        var byName = await _service.SearchAsync("المؤسسة العامة للكهرباء", null, null, null, null, 1, 20);
         Assert.Single(byName.Items);
 
         // نطاق المحامي المسند إليه يرى الاستئناف؛ والمنشئ غير المسند لا يراه (R6).
-        var followerScope = await _service.SearchAsync(null, null, null, _lawyer2.Id, 1, 20);
+        var followerScope = await _service.SearchAsync(null, null, null, _lawyer2.Id, null, 1, 20);
         Assert.Single(followerScope.Items);
-        var creatorScope = await _service.SearchAsync(null, null, null, _lawyer1.Id, 1, 20);
+        var creatorScope = await _service.SearchAsync(null, null, null, _lawyer1.Id, null, 1, 20);
         Assert.Empty(creatorScope.Items);
 
         // فلتر الحالة.
-        var pendingOnly = await _service.SearchAsync(null, AppealStatusCatalog.Pending, null, null, 1, 20);
+        var pendingOnly = await _service.SearchAsync(null, AppealStatusCatalog.Pending, null, null, null, 1, 20);
         Assert.Single(pendingOnly.Items);
     }
 
@@ -884,5 +885,374 @@ public class DocumentAppealServiceTests : IDisposable
 
         // لا يوجد رقم أساس فعّال حتى الآن (المستقبلي لا يُحتسب) → لا يُعرض رقم مستقبلي أبدًا.
         Assert.Null(list!.CurrentBaseNumber);
+    }
+
+    private async Task<int> AddSectionAsync(string name, int branchId)
+    {
+        var section = new Section { BranchId = branchId, Name = name, NameNorm = name, IsActive = true };
+        _db.Sections.Add(section);
+        await _db.SaveChangesAsync();
+        return section.Id;
+    }
+
+    private async Task<User> AddSubHeadAsync(string username, int branchId, int sectionId)
+    {
+        var user = User(branchId, username, username, UserRole.SubHead);
+        user.SectionId = sectionId;
+        _db.Users.Add(user);
+        await _db.SaveChangesAsync();
+        return user;
+    }
+
+    private async Task<int> AddCircuitAsync(string name, int branchId, int? sectionId, int creatorId)
+    {
+        var circuit = new ExecutionCircuit
+        {
+            BranchId = branchId, SectionId = sectionId, Name = name, NameNorm = name,
+            IsActive = true, CreatedById = creatorId,
+        };
+        _db.ExecutionCircuits.Add(circuit);
+        await _db.SaveChangesAsync();
+        return circuit.Id;
+    }
+
+    private async Task SetDocCircuitAsync(int docId, int? circuitId)
+    {
+        var doc = await _db.Documents.SingleAsync(d => d.Id == docId);
+        doc.ExecutionCircuitId = circuitId;
+        await _db.SaveChangesAsync();
+    }
+
+    private async Task<DocumentAppeal> CreatePendingAppealAsync(int docId, int? circuitId = null, int? creatorId = null)
+    {
+        if (circuitId.HasValue)
+            await SetDocCircuitAsync(docId, circuitId);
+        var doc = await _db.Documents.SingleAsync(d => d.Id == docId);
+        var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
+        if (doc.GeneralEntitySide != GeneralEntitySideCatalog.Applicant || entities.Count == 0)
+        {
+            doc = await CreateApplicantDocAsync();
+            if (circuitId.HasValue)
+                await SetDocCircuitAsync(doc.Id, circuitId);
+            entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
+        }
+        var creator = creatorId ?? _lawyer1.Id;
+        var dto = await _service.CreateAsync(doc.Id,
+            Request(AppealDirectionCatalog.Appellants,
+                new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
+            creator, "lawyer");
+        return (await _db.DocumentAppeals.SingleAsync(a => a.Id == dto.Id))!;
+    }
+
+    private async Task SetDocNumberAsync(int docId, string number)
+    {
+        var doc = await _db.Documents.SingleAsync(d => d.Id == docId);
+        doc.FileNumber = number;
+        await _db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Forward_HappyPath_SetsStateAuditsAndRetargetsAlert()
+    {
+        var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
+        var sub = await AddSubHeadAsync("sub_masyaf", _branch.Id, sectionId);
+        var circuitId = await AddCircuitAsync("دائرة الشعبة", _branch.Id, sectionId, _head1.Id);
+        var doc = await CreateApplicantDocAsync();
+        var appeal = await CreatePendingAppealAsync(doc.Id, circuitId);
+
+        var forwarded = await _service.ForwardAsync(appeal.Id, new ForwardAppealRequest("سبب"), sub.Id, "sub_masyaf");
+
+        Assert.NotNull(forwarded);
+        Assert.Equal(AppealForwardCatalog.ForwardedToHead, forwarded!.ForwardState);
+        Assert.Equal(sectionId, forwarded.SectionId);
+        Assert.Equal(circuitId, forwarded.ExecutionCircuitId);
+        Assert.Contains("forward_appeal", _audit.Actions);
+        var alerts = await _db.HeadAlerts.Include(a => a.Recipients).Where(a => a.AppealId == appeal.Id).ToListAsync();
+        var headAlert = Assert.Single(alerts);
+        Assert.Equal(_head1.Id, Assert.Single(headAlert.Recipients).UserId);
+    }
+
+    [Fact]
+    public async Task Forward_ByHeadOrLawyer_Throws()
+    {
+        var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
+        var circuitId = await AddCircuitAsync("دائرة الشعبة", _branch.Id, sectionId, _head1.Id);
+        var doc = await CreateApplicantDocAsync();
+        var appeal = await CreatePendingAppealAsync(doc.Id, circuitId);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), _head1.Id, "head1"));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), _lawyer1.Id, "lawyer1"));
+    }
+
+    [Fact]
+    public async Task Forward_WrongSectionOrAssignedOrDouble_Throws()
+    {
+        var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
+        var otherId = await AddSectionAsync("شعبة أخرى", _branch.Id);
+        var sub = await AddSubHeadAsync("sub_masyaf", _branch.Id, sectionId);
+        var stranger = await AddSubHeadAsync("sub_other", _branch.Id, otherId);
+        var circuitId = await AddCircuitAsync("دائرة الشعبة", _branch.Id, sectionId, _head1.Id);
+        var doc = await CreateApplicantDocAsync();
+        var appeal = await CreatePendingAppealAsync(doc.Id, circuitId);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), stranger.Id, "stranger"));
+        // الإسناد (بمالك النطاق) يغلق باب الإحالة.
+        await _service.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id), sub.Id, "sub");
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub"));
+    }
+
+    [Fact]
+    public async Task Forward_NoDivisionHead_Throws()
+    {
+        var lonely = new Branch { Name = "بلا رئيس", Code = "NOR" };
+        _db.Branches.Add(lonely);
+        await _db.SaveChangesAsync();
+        var sectionId = await AddSectionAsync("شعبة يتيمة", lonely.Id);
+        var sub = await AddSubHeadAsync("sub_lonely", lonely.Id, sectionId);
+        var lawyer = User(lonely.Id, "law_lonely", "محام يتيم");
+        _db.Users.Add(lawyer);
+        await _db.SaveChangesAsync();
+        var doc = NewDoc(GeneralEntitySideCatalog.Applicant);
+        doc.CreatedById = lawyer.Id;
+        doc.BranchId = lonely.Id;
+        _db.Documents.Add(doc);
+        await _db.SaveChangesAsync();
+        _db.ApplicantPublicEntities.Add(new ApplicantPublicEntity { DocumentId = doc.Id, Name = "جهة" });
+        await _db.SaveChangesAsync();
+        var circuitId = await AddCircuitAsync("دائرة يتيمة", lonely.Id, sectionId, sub.Id);
+        var appeal = await CreatePendingAppealAsync(doc.Id, circuitId, lawyer.Id);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub"));
+    }
+
+    [Fact]
+    public async Task Recall_ByForwarderAndByHead_RestoresOwned()
+    {
+        foreach (var byHead in new[] { false, true })
+        {
+            var sectionId = await AddSectionAsync($"شعبة {Guid.NewGuid():N}"[..12], _branch.Id);
+            var sub = await AddSubHeadAsync($"sub_{Guid.NewGuid():N}"[..12], _branch.Id, sectionId);
+            var circuitId = await AddCircuitAsync($"دائرة {Guid.NewGuid():N}"[..12], _branch.Id, sectionId, _head1.Id);
+            var doc = await CreateApplicantDocAsync();
+            var appeal = await CreatePendingAppealAsync(doc.Id, circuitId);
+            await _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub");
+
+            var callerId = byHead ? _head1.Id : sub.Id;
+            var recalled = await _service.RecallForwardAsync(appeal.Id, callerId, byHead ? "head1" : "sub");
+
+            Assert.NotNull(recalled);
+            Assert.Equal(AppealForwardCatalog.Owned, recalled!.ForwardState);
+            Assert.Contains("recall_forward", _audit.Actions);
+        }
+    }
+    [Fact]
+    public async Task Recall_RestoresSingleAlertForForwarder()
+    {
+        // التراجع بفرعيه (استرجاع المحيل / إعادة الرئيس) يجب أن يترك تنبيهًا
+        // واحدًا للمحيل فقط — لا تنبيه يتيم لرئيس القسم.
+        foreach (var byHead in new[] { false, true })
+        {
+            var sectionId = await AddSectionAsync($"شعبة {Guid.NewGuid():N}"[..12], _branch.Id);
+            var sub = await AddSubHeadAsync($"sub_{Guid.NewGuid():N}"[..12], _branch.Id, sectionId);
+            var circuitId = await AddCircuitAsync($"دائرة {Guid.NewGuid():N}"[..12], _branch.Id, sectionId, _head1.Id);
+            var doc = await CreateApplicantDocAsync();
+            var appeal = await CreatePendingAppealAsync(doc.Id, circuitId);
+            await _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub");
+
+            var callerId = byHead ? _head1.Id : sub.Id;
+            await _service.RecallForwardAsync(appeal.Id, callerId, byHead ? "head1" : "sub");
+
+            var alerts = await _db.HeadAlerts.Include(a => a.Recipients)
+                .Where(a => a.AppealId == appeal.Id).ToListAsync();
+            var alert = Assert.Single(alerts);
+            Assert.Equal(sub.Id, Assert.Single(alert.Recipients).UserId);
+        }
+    }
+
+    [Fact]
+    public async Task Decide_And_Strike_BumpVersion()
+    {
+        // كل تحوّل للحالة خارج «منظور» يرفع الرمز لإبطال الكتابات المتزامنة القديمة.
+        var doc = await CreateApplicantDocAsync();
+        await SetDocNumberAsync(doc.Id, "540");
+        var appeal = await CreatePendingAppealAsync(doc.Id);
+        Assert.Equal(1, (await _service.GetEntityAsync(appeal.Id))!.Version);
+        await _service.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        Assert.Equal(2, (await _service.GetEntityAsync(appeal.Id))!.Version);
+        await _service.DecideAsync(appeal.Id,
+            new DecideAppealRequest("قرار-1", "15/9/2026", "نص المنطوق", AppealOutcomeCatalog.InFavor),
+            _lawyer2.Id, "lawyer2");
+        Assert.Equal(3, (await _service.GetEntityAsync(appeal.Id))!.Version);
+
+        var doc2 = await CreateApplicantDocAsync();
+        await SetDocNumberAsync(doc2.Id, "541");
+        var appeal2 = await CreatePendingAppealAsync(doc2.Id);
+        await _service.AssignAsync(appeal2.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _service.StrikeAsync(appeal2.Id,
+            new StrikeAppealRequest("قرار-2", "16/9/2026"),
+            _lawyer2.Id, "lawyer2");
+        Assert.Equal(3, (await _service.GetEntityAsync(appeal2.Id))!.Version);
+    }
+
+    [Fact]
+    public async Task Recall_ByStrangerOrAfterAssign_Throws()
+    {
+        var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
+        var sub = await AddSubHeadAsync("sub_masyaf", _branch.Id, sectionId);
+        var circuitId = await AddCircuitAsync("دائرة الشعبة", _branch.Id, sectionId, _head1.Id);
+        var doc = await CreateApplicantDocAsync();
+        var appeal = await CreatePendingAppealAsync(doc.Id, circuitId);
+        await _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub");
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.RecallForwardAsync(appeal.Id, _lawyer2.Id, "lawyer2"));
+
+        await _service.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.RecallForwardAsync(appeal.Id, sub.Id, "sub"));
+    }
+
+    [Fact]
+    public async Task Assign_ForwardedAppeal_ByHead_Succeeds_WithException()
+    {
+        var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
+        var sub = await AddSubHeadAsync("sub_masyaf", _branch.Id, sectionId);
+        var circuitId = await AddCircuitAsync("دائرة الشعبة", _branch.Id, sectionId, _head1.Id);
+        var doc = await CreateApplicantDocAsync();
+        var appeal = await CreatePendingAppealAsync(doc.Id, circuitId);
+        await _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub");
+
+        var assigned = await _service.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+
+        Assert.NotNull(assigned);
+        Assert.Equal(_lawyer2.Id, assigned!.AssignedLawyerId);
+        Assert.Equal(AppealForwardCatalog.ForwardedToHead, assigned.ForwardState);
+    }
+
+    [Fact]
+    public async Task Assign_SectionFile_ByHead_WithoutForward_ThrowsOutOfScope()
+    {
+        var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
+        await AddSubHeadAsync("sub_masyaf", _branch.Id, sectionId);
+        var circuitId = await AddCircuitAsync("دائرة الشعبة", _branch.Id, sectionId, _head1.Id);
+        var doc = await CreateApplicantDocAsync();
+        var appeal = await CreatePendingAppealAsync(doc.Id, circuitId);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1"));
+        Assert.Contains("ليست ضمن نطاقك", ex.Message);
+    }
+
+    [Fact]
+    public async Task Assign_BySubHead_OwnSection_Succeeds_Forwarded_Throws()
+    {
+        var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
+        var sub = await AddSubHeadAsync("sub_masyaf", _branch.Id, sectionId);
+        var circuitId = await AddCircuitAsync("دائرة الشعبة", _branch.Id, sectionId, _head1.Id);
+        var doc = await CreateApplicantDocAsync();
+        var appeal = await CreatePendingAppealAsync(doc.Id, circuitId);
+
+        var assigned = await _service.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id), sub.Id, "sub");
+        Assert.NotNull(assigned);
+
+        var doc2 = await CreateApplicantDocAsync();
+        await SetDocNumberAsync(doc2.Id, "521");
+        var appeal2 = await CreatePendingAppealAsync(doc2.Id, circuitId);
+        await _service.ForwardAsync(appeal2.Id, new ForwardAppealRequest(), sub.Id, "sub");
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.AssignAsync(appeal2.Id, new AssignAppealRequest(_lawyer2.Id), sub.Id, "sub"));
+    }
+
+    [Fact]
+    public async Task Assign_StaleVersion_Conflict()
+    {
+        var doc = await CreateApplicantDocAsync();
+        var appeal = await CreatePendingAppealAsync(doc.Id);
+
+        // نسخة قديمة صراحةً → `409` ودية بالفحص المسبق (السباق الحقيقي يصطاده الرمز).
+        await Assert.ThrowsAsync<DocumentConflictException>(() =>
+            _service.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer2.Id, 9999), _head1.Id, "head1"));
+    }
+
+    [Fact]
+    public async Task TransferAll_Intersection_ByScope()
+    {
+        var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
+        var sub = await AddSubHeadAsync("sub_masyaf", _branch.Id, sectionId);
+        var divisionCircuit = await AddCircuitAsync("دائرة القسم", _branch.Id, null, _head1.Id);
+        var sectionCircuit = await AddCircuitAsync("دائرة الشعبة", _branch.Id, sectionId, _head1.Id);
+        var docA = await CreateApplicantDocAsync();
+        await SetDocCircuitAsync(docA.Id, divisionCircuit);
+        var docB = await CreateApplicantDocAsync();
+        await SetDocCircuitAsync(docB.Id, sectionCircuit);
+        var appealA = await CreatePendingAppealAsync(docA.Id);
+        var appealB = await CreatePendingAppealAsync(docB.Id);
+        await _service.AssignAsync(appealA.Id, new AssignAppealRequest(_lawyer1.Id), _head1.Id, "head1");
+        await _service.AssignAsync(appealB.Id, new AssignAppealRequest(_lawyer1.Id), sub.Id, "sub");
+
+        var subCount = await _service.TransferAllAsync(
+            new TransferAllAppealsRequest(_lawyer1.Id, _lawyer2.Id), _branch.Id, sectionId, "sub");
+        Assert.Equal(1, subCount);
+        var headCount = await _service.TransferAllAsync(
+            new TransferAllAppealsRequest(_lawyer1.Id, _lawyer2.Id), _branch.Id, null, "head1");
+        Assert.Equal(1, headCount);
+        Assert.Equal(0, await _service.CountByAssigneeForHeadAsync(_lawyer1.Id, _branch.Id, sectionId));
+    }
+
+    [Fact]
+    public async Task NotifyHeadPending_TargetedToOwnerOnly()
+    {
+        var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
+        var sub = await AddSubHeadAsync("sub_masyaf", _branch.Id, sectionId);
+        var circuitId = await AddCircuitAsync("دائرة الشعبة", _branch.Id, sectionId, _head1.Id);
+        var doc = await CreateApplicantDocAsync();
+        await CreatePendingAppealAsync(doc.Id, circuitId);
+
+        var alerts = await _db.HeadAlerts.Include(a => a.Recipients).Where(a => a.AppealId != null).ToListAsync();
+        var creation = Assert.Single(alerts);
+        Assert.Equal(sub.Id, Assert.Single(creation.Recipients).UserId);
+    }
+
+    [Fact]
+    public async Task Search_HeadExcludesSection_IncludesForwardedUntilDecided()
+    {
+        var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
+        var sub = await AddSubHeadAsync("sub_masyaf", _branch.Id, sectionId);
+        var divisionCircuit = await AddCircuitAsync("دائرة القسم", _branch.Id, null, _head1.Id);
+        var sectionCircuit = await AddCircuitAsync("دائرة الشعبة", _branch.Id, sectionId, _head1.Id);
+        var docDivision = await CreateApplicantDocAsync();
+        await SetDocNumberAsync(docDivision.Id, "530");
+        var docSection = await CreateApplicantDocAsync();
+        await SetDocNumberAsync(docSection.Id, "531");
+        var appealDivision = await CreatePendingAppealAsync(docDivision.Id, divisionCircuit);
+        var appealSection = await CreatePendingAppealAsync(docSection.Id, sectionCircuit);
+
+        // العزل: القسم يرى قسمه دون الشعبة، والشعبة ترى شعبته دون القسم.
+        var headResults = await _service.SearchAsync(null, null, _branch.Id, null, null, 1, 20);
+        Assert.Contains(headResults.Items, a => a.Id == appealDivision.Id);
+        Assert.DoesNotContain(headResults.Items, a => a.Id == appealSection.Id);
+        var subResults = await _service.SearchAsync(null, null, _branch.Id, null, sectionId, 1, 20);
+        Assert.Contains(subResults.Items, a => a.Id == appealSection.Id);
+        Assert.DoesNotContain(subResults.Items, a => a.Id == appealDivision.Id);
+
+        // الاستثناء القرائي (22′): المحال المنظور يظهر للقسم، وبعد الحسم يختفي.
+        await _service.ForwardAsync(appealSection.Id, new ForwardAppealRequest(), sub.Id, "sub");
+        headResults = await _service.SearchAsync(null, null, _branch.Id, null, null, 1, 20);
+        Assert.Contains(headResults.Items, a => a.Id == appealSection.Id);
+
+        await _service.AssignAsync(appealSection.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        await _service.DecideAsync(appealSection.Id,
+            new DecideAppealRequest("قرار-1", "15/9/2026", "نص المنطوق", AppealOutcomeCatalog.InFavor),
+            _lawyer2.Id, "lawyer2");
+        headResults = await _service.SearchAsync(null, null, _branch.Id, null, null, 1, 20);
+        Assert.DoesNotContain(headResults.Items, a => a.Id == appealSection.Id);
+        // مالك النطاق (الشعبة) يبقى يرى ملفه بعد الحسم.
+        subResults = await _service.SearchAsync(null, null, _branch.Id, null, sectionId, 1, 20);
+        Assert.Contains(subResults.Items, a => a.Id == appealSection.Id);
     }
 }

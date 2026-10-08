@@ -42,6 +42,9 @@ function authState(role: string) {
     logout: vi.fn(),
     hasFullAccess: role === 'manager' || role === 'admin',
     isHead: role === 'head',
+    isSubHead: role === 'subhead',
+    isHeadOrSubHead: role === 'head' || role === 'subhead',
+    sectionId: null,
   };
 }
 
@@ -181,5 +184,36 @@ describe('توجيه الجذر حسب الدور (انحدار: المندوب 
     renderAt('/change-password');
 
     expect(await screen.findByRole('heading', { name: 'تغيير كلمة المرور' })).toBeInTheDocument();
+  });
+
+  it.each([
+    ['/account', 'الحساب الشخصي'],
+    ['/stats', 'الإحصائيات'],
+    ['/branch-lawyers', 'محامو الفرع'],
+    ['/delegations/requests', 'طلبات الإنابة'],
+    ['/execution-circuits', 'إدارة دوائر التنفيذ'],
+    ['/circuit-stats', 'إحصائيات الدوائر'],
+    ['/entities/review', 'مراجعة سجل الجهات العامة الممثلة'],
+    ['/delegates', 'مندوبو الجهات'],
+  ])('رئيس الشعبة على %s يرى الصفحة (نطاقه)', async (path, heading) => {
+    useAuthMock.mockReturnValue(authState('subhead'));
+    renderAt(path);
+
+    expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument();
+  });
+
+  it('رئيس الشعبة على /audit-logs يُرتد إلى لوحته (النطاق الدائري مغلق حتى ownerSectionId)', async () => {
+    useAuthMock.mockReturnValue(authState('subhead'));
+    renderAt('/audit-logs');
+
+    expect(await screen.findByRole('heading', { name: 'مرحبًا، مستخدم' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'سجل التدقيق' })).not.toBeInTheDocument();
+  });
+
+  it('المدير على /branches/manage يرى إدارة الفروع (توسيع §2.15)', async () => {
+    useAuthMock.mockReturnValue(authState('manager'));
+    renderAt('/branches/manage');
+
+    expect(await screen.findByRole('heading', { name: 'إدارة الفروع' })).toBeInTheDocument();
   });
 });

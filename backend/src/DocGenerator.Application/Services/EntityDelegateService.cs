@@ -154,11 +154,11 @@ public sealed class EntityDelegateService : IEntityDelegateService
     }
 
     /// <summary>
-    /// محافظة فرع الفاعل إن كان رئيس قسم بمستودع فروع حاضر — وإلا null (بلا قيد).
+    /// محافظة فرع الفاعل إن كان رئيس قسم أو شعبة بمستودع فروع حاضر — وإلا null (بلا قيد).
     /// </summary>
     private async Task<string?> HeadGovernorateAsync(EntityRegistryActor? actor, CancellationToken ct)
     {
-        if (actor?.Role != UserRole.Head || !actor.BranchId.HasValue || _branches is null)
+        if (actor?.Role is not (UserRole.Head or UserRole.SubHead) || !actor.BranchId.HasValue || _branches is null)
             return null;
         var branch = await _branches.GetByIdAsync(actor.BranchId.Value, ct);
         var governorate = branch?.Governorate?.Trim();

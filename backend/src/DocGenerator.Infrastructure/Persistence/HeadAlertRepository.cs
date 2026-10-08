@@ -25,11 +25,14 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             .ToListAsync(ct);
     }
 
-    public async Task<List<HeadAlert>> ListByBranchAsync(int branchId, CancellationToken ct = default)
+    /// <summary>
+    /// تنبيهات مستلم في فرع (§8: قراءة بالمستلم لا بالفرع) — لرؤساء النطاق.
+    /// </summary>
+    public async Task<List<HeadAlert>> ListByRecipientInBranchAsync(int userId, int branchId, CancellationToken ct = default)
     {
         return await Db.HeadAlerts
             .AsNoTracking()
-            .Where(a => a.BranchId == branchId)
+            .Where(a => a.BranchId == branchId && a.Recipients.Any(r => r.UserId == userId))
             .OrderByDescending(a => a.CreatedAt)
             .Include(a => a.CreatedBy)
             .Include(a => a.Document)
@@ -173,6 +176,34 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             .Where(a => a.AppealId == appealId)
             .OrderByDescending(a => a.CreatedAt)
             .ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// حذف انتقائي (§6.2/§6.5): صفوف استلام مستلم واحد من تنبيهات استئناف، مع
+    /// حذف التنبيهات الميتة (كل مستلميها هو) — بلا مساس بباقي المستلمين، وبلا
+    /// حفظ (ضمن معاملة المتصل).
+    /// </summary>
+    public async Task<int> RemoveAppealRecipientAsync(int appealId, int userId, CancellationToken ct = default)
+    {
+        var alerts = await Db.HeadAlerts
+            .Where(a => a.AppealId == appealId)
+            .Include(a => a.Recipients)
+            .ToListAsync(ct);
+        var removed = 0;
+        foreach (var alert in alerts)
+        {
+            var mine = alert.Recipients.Where(r => r.UserId == userId).ToList();
+            if (mine.Count == 0)
+                continue;
+            foreach (var r in mine)
+            {
+                Db.HeadAlertRecipients.Remove(r);
+                removed++;
+            }
+            if (alert.Recipients.Count == mine.Count)
+                Db.HeadAlerts.Remove(alert);
+        }
+        return removed;
     }
 
     public async Task<HeadAlert?> FindPendingAlertAsync(int lawyerId, string message, CancellationToken ct = default)

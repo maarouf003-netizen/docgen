@@ -62,7 +62,7 @@ describe('AssignDelegationModal', () => {
     expect(screen.getByRole('dialog', { name: 'اعتماد الإنابة' })).toBeInTheDocument();
     expect(screen.getByText('أحمد خالد الخطيب')).toBeInTheDocument();
     expect(screen.getByText('دائرة تنفيذ حلب')).toBeInTheDocument();
-    expect(api.get).toHaveBeenCalledWith('/users/lawyers');
+    expect(api.get).toHaveBeenCalledWith('/users/lawyers', { params: { mode: 'branch' } });
     expect(
       await screen.findByRole('option', { name: 'المحامي أحمد' }),
     ).toBeInTheDocument();
@@ -81,7 +81,7 @@ describe('AssignDelegationModal', () => {
     );
 
     // حدّ act للجلب التركيبي: يُفرغ setLawyers داخل نطاق مُنتظَر قبل التأكيدات المتزامنة.
-    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/users/lawyers'));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/users/lawyers', { params: { mode: 'branch' } }));
 
     expect(
       screen.getByText(/إنابة خارجية — سيُنشأ الملف المناب في فرع اللاذقية/),

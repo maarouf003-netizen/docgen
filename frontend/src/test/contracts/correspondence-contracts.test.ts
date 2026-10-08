@@ -50,6 +50,7 @@ const detail: CorrespondenceDto = {
   messages: [],
   receipts: [],
   createdAt: '2026-08-01T09:00:00Z',
+  recipientSectionId: null,
 };
 
 describe('correspondence-contracts', () => {

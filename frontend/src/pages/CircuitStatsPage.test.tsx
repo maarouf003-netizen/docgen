@@ -36,7 +36,7 @@ describe('CircuitStatsPage', () => {
 
     expect(await screen.findByText('دائرة أ')).toBeInTheDocument();
     expect(screen.queryByLabelText('الفرع')).not.toBeInTheDocument();
-    expect(screen.getByText('إحصائيات دوائر فرعك')).toBeInTheDocument();
+    expect(screen.getByText('إحصائيات دوائر قسمك')).toBeInTheDocument();
   });
 
   it('يعرض المنتقي للمدير ويُرسل الفرع المختار', async () => {
@@ -53,5 +53,24 @@ describe('CircuitStatsPage', () => {
     render(<CircuitStatsPage />);
 
     expect(await screen.findByLabelText('الفرع')).toBeInTheDocument();
+  });
+
+  it('رئيس الشعبة يرى نطاق شعبته مع عمود الشعبة', async () => {
+    useAuthMock.mockReturnValue({ user: { role: 'subhead', branchId: 1, sectionId: 3 } });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/execution-circuits/stats') {
+        return Promise.resolve({
+          data: [
+            { circuitId: 1, circuitName: 'دائرة أ', branchId: 1, branchName: 'دمشق', isActive: true, fileCount: 5, lawyerCount: 2, pendingCount: 1, sectionId: 3, sectionName: 'مصياف' },
+          ],
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    render(<CircuitStatsPage />);
+
+    expect(await screen.findByText('إحصائيات دوائر شعبتك')).toBeInTheDocument();
+    expect(screen.queryByLabelText('الفرع')).not.toBeInTheDocument();
+    expect(screen.getByText('مصياف')).toBeInTheDocument();
   });
 });

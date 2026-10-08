@@ -9,7 +9,7 @@ namespace DocGenerator.Api.Controllers;
 
 [ApiController]
 [Route("api/branches")]
-[Authorize(Roles = "lawyer,head,manager,admin")]
+[Authorize(Roles = "lawyer,head,subhead,manager,admin")]
 public class BranchesController : ControllerBase
 {
     private readonly IBranchManagementService _branches;
@@ -31,7 +31,7 @@ public class BranchesController : ControllerBase
         return Ok(await _branches.ListBranchesAsync(ct));
     }
 
-    /// <summary>إنشاء فرع — المشرف فقط.</summary>
+    /// <summary>إنشاء فرع — المشرف والمدير (قرار §2.15).</summary>
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateBranchRequest request, CancellationToken ct)
     {
@@ -55,7 +55,7 @@ public class BranchesController : ControllerBase
         return branch is null ? NotFound() : Ok(branch);
     }
 
-    /// <summary>تعديل فرع (بما فيه التفعيل/التعطيل) — المشرف فقط.</summary>
+    /// <summary>تعديل فرع (بما فيه التفعيل/التعطيل) — المشرف والمدير (قرار §2.15).</summary>
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] UpdateBranchRequest request, CancellationToken ct)
     {
@@ -73,7 +73,7 @@ public class BranchesController : ControllerBase
     }
 
     /// <summary>
-    /// حذف فرع نهائياً — المشرف فقط، والفروع المستخدمة (مستخدمون/مستندات) تُرفض
+    /// حذف فرع نهائياً — المشرف والمدير (قرار §2.15)، والفروع المستخدمة (مستخدمون/مستندات) تُرفض
     /// وتعطَّل بدلاً من الحذف.
     /// </summary>
     [HttpDelete("{id:int}")]

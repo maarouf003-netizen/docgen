@@ -196,12 +196,30 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
                 // إبطال: حساب ملغي/معطل، أو نسخة توكن قديمة (تغيّرت كلمة المرور/الدور/الفرع — S1).
                 if (user is null || !user.IsActive || user.TokenVersion != claimVersion)
+                {
                     context.Fail("token revoked");
+                    return;
+                }
+
+                // تحقق دفاعي للشعبة (قرار §2.16): `section_id` غير رقمي يُرفض،
+                // والمختلف عن شعبة الحساب الحالية (نقل دائرة/إحلال) يُبطل الرمز —
+                // يُجبر إعادة الدخول بدل العمل بنطاق قديم بصمت.
+                var claimSectionRaw = context.Principal?.FindFirstValue("section_id");
+                if (claimSectionRaw is not null)
+                {
+                    if (!int.TryParse(claimSectionRaw, out var claimSection) || user.SectionId != claimSection)
+                        context.Fail("token section mismatch");
+                }
             }
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    // سياسة الرئاسة الموحدة (قرار §2.21): رئيس قسم أو شعبة — تُطبَّق على السمات
+    // مرحليًا مع فلترة النطاق لكل منطقة (§5–§12)، لا دفعة واحدة قبل اكتمالها.
+    options.AddPolicy("HeadOrSubHead", policy => policy.RequireRole("head", "subhead"));
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();

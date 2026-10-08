@@ -206,8 +206,11 @@ public class DelegationsIntegrationTests
             .Content.ReadFromJsonAsync<DelegationDto>();
 
         var targetLawyer = await _factory.CreateUserAsync(NewName("lawyer_lat"), UserRole.Lawyer, branchId: await BranchIdAsync("LAT"));
-        var latHead = await _factory.CreateUserAsync(NewName("head_lat"), UserRole.Head, branchId: await BranchIdAsync("LAT"));
-        var client = _factory.AuthorizedClient(latHead.Username);
+        // رئيس فرعٍ آخر (فرع معزول برئيسه الوحيد — قرار §2.26) يحاول اعتماد
+        // إنابة ليست من اختصاص فرعه.
+        var otherBranchId = await CreateBranchAsync("فرع آخر");
+        var otherHead = await _factory.CreateUserAsync(NewName("head_lat"), UserRole.Head, branchId: otherBranchId);
+        var client = _factory.AuthorizedClient(otherHead.Username);
         var response = await client.PostAsJsonAsync($"/api/delegations/{created!.Id}/assign",
             new { assignedLawyerId = targetLawyer.Id });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -343,6 +346,22 @@ public class DelegationsIntegrationTests
         return db.Branches.Single(b => b.Code == code).Id;
     }
 
+    /// <summary>
+    /// فرع جديد معزول برئيسه الوحيد (وحدانية الرئيس المفعّل لكل فرع — قرار §2.26:
+    /// الفروع المزروعة قد تحوي رؤساء من اختبارات أخرى في القاعدة المشتركة).
+    /// </summary>
+    private async Task<int> CreateBranchAsync(string name)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+        // محافظة مختلفة عن دمشق عمدًا (حلب): «فرع آخر» بكل الأبعاد (فرع +
+        // محافظة) فلا يُمنح أي وصول جواري.
+        var branch = new DocGenerator.Domain.Entities.Branch { Name = name, Code = $"DL_{Guid.NewGuid():N}"[..12].ToUpperInvariant(), Governorate = "حلب" };
+        db.Branches.Add(branch);
+        await db.SaveChangesAsync();
+        return branch.Id;
+    }
+
     [Fact]
     public async Task ListForDocument_OtherLawyersFile_IsForbidden()
     {
@@ -380,9 +399,11 @@ public class DelegationsIntegrationTests
     public async Task ListForDocument_HeadOfAnotherBranch_IsForbidden()
     {
         var (docId, _) = await CreateSourceWithAssetAsync();
-        var latHead = await _factory.CreateUserAsync(NewName("head_other"), UserRole.Head, branchId: await BranchIdAsync("LAT"));
+        // رئيس فرعٍ آخر (فرع معزول برئيسه الوحيد — قرار §2.26).
+        var otherBranchId = await CreateBranchAsync("فرع محجوب");
+        var otherHead = await _factory.CreateUserAsync(NewName("head_other"), UserRole.Head, branchId: otherBranchId);
 
-        var client = _factory.AuthorizedClient(latHead.Username);
+        var client = _factory.AuthorizedClient(otherHead.Username);
         var response = await client.GetAsync($"/api/documents/{docId}/delegations");
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);

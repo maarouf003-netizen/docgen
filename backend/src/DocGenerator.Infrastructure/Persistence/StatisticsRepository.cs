@@ -24,11 +24,12 @@ public class StatisticsRepository : IStatisticsRepository
         _timeZone = timeZone;
     }
 
-    public async Task<DashboardStatsDto> GetDashboardStatsAsync(int? branchId, CancellationToken ct = default)
+    public async Task<DashboardStatsDto> GetDashboardStatsAsync(int? branchId, CancellationToken ct = default,
+        int? ownerSectionId = null, bool fullAccess = true)
     {
         // الملفات المشطوبة (وضع «منفذ عليه») مستثناة من الإحصائيات كما هي مستثناة من
         // القوائم والتصدير؛ سجلها الوحيد هو صفحة «الملفات المشطوبة».
-        var q = _db.Documents.AsNoTracking()
+        var q = InOwnerScope(_db.Documents.AsNoTracking(), ownerSectionId, fullAccess)
             .Where(d => branchId == null || d.BranchId == branchId)
             .Where(d => d.ExecutedStatus != ExecutedStatusCatalog.StruckOff && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff);
 
@@ -85,11 +86,12 @@ public class StatisticsRepository : IStatisticsRepository
             TotalCollectedAmount: totalCollectedAmount);
     }
 
-    public async Task<List<MonthlyStatDto>> GetMonthlyStatsAsync(int? branchId, CancellationToken ct = default)
+    public async Task<List<MonthlyStatDto>> GetMonthlyStatsAsync(int? branchId, CancellationToken ct = default,
+        int? ownerSectionId = null, bool fullAccess = true)
     {
         // شهر الملف هو تاريخ قيده؛ وإن لم يُقيد بعد (تحت رفع) فيُحسب بشهر إدخاله.
         // الملفات المشطوبة مستثناة لتوافق الشهري مع القوائم والتصدير.
-        var dates = await _db.Documents.AsNoTracking()
+        var dates = await InOwnerScope(_db.Documents.AsNoTracking(), ownerSectionId, fullAccess)
             .Where(d => branchId == null || d.BranchId == branchId)
             .Where(d => d.ExecutedStatus != ExecutedStatusCatalog.StruckOff && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff)
             .Select(d => new
@@ -228,10 +230,11 @@ public class StatisticsRepository : IStatisticsRepository
     }
 
     public async Task<ManagerStatsDto> GetManagerStatsAsync(StatsPeriod period, int? branchId,
-        int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default)
+        int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default,
+        int? ownerSectionId = null, bool fullAccess = true)
     {
         var window = GetPeriodWindow(period, year, month, quarter);
-        var rows = await _db.Documents.AsNoTracking()
+        var rows = await InOwnerScope(_db.Documents.AsNoTracking(), ownerSectionId, fullAccess)
             .Where(d => branchId == null || d.BranchId == branchId)
             .Where(d => d.ExecutedStatus != ExecutedStatusCatalog.StruckOff && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff)
             .Select(d => new ManagerStatRow
@@ -693,10 +696,11 @@ public class StatisticsRepository : IStatisticsRepository
     }
 
     public async Task<List<ManagerLawyerStatDto>> GetManagerLawyerStatsAsync(StatsPeriod period, int branchId,
-        int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default)
+        int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default,
+        int? ownerSectionId = null, bool fullAccess = true)
     {
         var window = GetPeriodWindow(period, year, month, quarter);
-        var rows = await _db.Documents.AsNoTracking()
+        var rows = await InOwnerScope(_db.Documents.AsNoTracking(), ownerSectionId, fullAccess)
             .Where(d => d.BranchId == branchId)
             .Where(d => d.ExecutedStatus != ExecutedStatusCatalog.StruckOff && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff)
             .Select(d => new
@@ -761,9 +765,10 @@ public class StatisticsRepository : IStatisticsRepository
     /// الأشهر المتاحة (تاريخ القيد، وإن لم يُقيد بعد فشهر الإدخال) ضمن نطاق الفرع/المستخدم،
     /// لتغذية منتقي الفترة المحددة في الواجهة.
     /// </summary>
-    public async Task<List<MonthlyStatDto>> GetAvailablePeriodsAsync(int? branchId, int? userId, CancellationToken ct = default)
+    public async Task<List<MonthlyStatDto>> GetAvailablePeriodsAsync(int? branchId, int? userId, CancellationToken ct = default,
+        int? ownerSectionId = null, bool fullAccess = true)
     {
-        var dates = await _db.Documents.AsNoTracking()
+        var dates = await InOwnerScope(_db.Documents.AsNoTracking(), ownerSectionId, fullAccess)
             .Where(d => branchId == null || d.BranchId == branchId)
             .Where(d => userId == null || d.CreatedById == userId)
             .Where(d => d.ExecutedStatus != ExecutedStatusCatalog.StruckOff && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff)
@@ -794,9 +799,24 @@ public class StatisticsRepository : IStatisticsRepository
     }
 
     /// <summary>
+    /// قيد نطاق المالك (§12/قرار 27): الفرع ككل عند `fullAccess` (إدارة)، وإلا
+    /// دوائر القسم وبلا دائرة (قسم)، أو دوائر الشعبة — كل ملف لمالك واحد
+    /// (قرار §2.20: المناب في دائرته، والمنيب في دائرته، وبلا دائرة للقسم).
+    /// </summary>
+    private static IQueryable<Document> InOwnerScope(
+        IQueryable<Document> source, int? ownerSectionId, bool fullAccess)
+    {
+        if (fullAccess)
+            return source;
+        return ownerSectionId.HasValue
+            ? source.Where(d => d.ExecutionCircuitId != null && d.ExecutionCircuit!.SectionId == ownerSectionId.Value)
+            : source.Where(d => d.ExecutionCircuitId == null || d.ExecutionCircuit!.SectionId == null);
+    }
+
+    /// <summary>
     /// نطاق الفترة: شهري = شهر محدد (افتراضيًا الحالي)، ربعي = ربع محدد (افتراضيًا الحالي)،
     /// عام = سنة محددة (افتراضيًا الحالية). النطاق نصف مفتوح [Start, End).
-    /// year/month/quarter تُتحقق من صحة قيمها في المتحكم قبل الوصول إلى هنا.
+    /// year/month/quarter تُتحقق من صحتها في المتحكم قبل الوصول إلى هنا.
     /// </summary>
     private (DateTime Start, DateTime End) GetPeriodWindow(StatsPeriod period,
         int? year = null, int? month = null, int? quarter = null)

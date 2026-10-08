@@ -53,7 +53,9 @@ public class CorrespondenceConcurrencyTests : IDisposable
             new TransactionRunner(db),
             audit,
             new DbExceptionClassifier(),
-            TimeProvider.System, TestClock.TimeZone);
+            TimeProvider.System, TestClock.TimeZone,
+            new Repository<Section>(db),
+            new Repository<ExecutionCircuit>(db));
 
     private async Task<(int LawyerId, int DelegateId, int BranchId)> SeedAsync()
     {

@@ -65,8 +65,8 @@ export default function AppealsList() {
   const isMobile = useIsMobile();
   const role = user?.role;
   const hasFullAccess = role === 'manager' || role === 'admin';
-  const isHead = role === 'head';
-  const canSeeAssigned = hasFullAccess || isHead;
+  const isHeadOrSubHead = role === 'head' || role === 'subhead';
+  const canSeeAssigned = hasFullAccess || isHeadOrSubHead;
   /** عدد أعمدة الجدول المعروضة فعلًا — يُشتق من HEAD_CELLS (+ المشروط) لصف الإجراءات (C17). */
   const colCount = HEAD_CELLS.length + (canSeeAssigned ? 1 : 0);
 
@@ -100,7 +100,7 @@ export default function AppealsList() {
   const isFollower = (a: AppealDto) => role === 'lawyer' && a.assignedLawyerId === user?.id;
   // (R3 + الخيار ب): التدوير للمسند المنظور دائمًا — needsRotation للتمييز الأحمر فقط، لا بوابة.
   const canRotateAppeal = (a: AppealDto) => isFollower(a) && a.status === APPEAL_STATUS_PENDING;
-  const canAssign = (a: AppealDto) => isHead && a.status === APPEAL_STATUS_PENDING;
+  const canAssign = (a: AppealDto) => isHeadOrSubHead && a.status === APPEAL_STATUS_PENDING;
 
   const openAssign = (a: AppealDto) =>
     setAssignTarget({ appeal: a, mode: a.assignedLawyerId ? 'transfer' : 'assign' });
@@ -210,7 +210,7 @@ export default function AppealsList() {
     <div className="max-w-7xl mx-auto">
       <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
         <h2 className="text-xl md:text-2xl font-bold text-red-800">الاستئنافات</h2>
-        {isHead && (
+        {isHeadOrSubHead && (
           <button
             type="button"
             onClick={() => setTransferAllOpen(true)}

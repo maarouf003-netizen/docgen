@@ -166,8 +166,9 @@ public class RF004AuthzTests
     [Fact]
     public void NoBareAuthorizeOnApiControllers()
     {
-        // حارس الفشل المغلق: كل أكشن يُصرَّح بأدوار صريحة (من التابع أو الصنف)،
-        // عدا مجهولية البنية المعلنة أدناه — أي `[Authorize]` عارٍ جديد يُفشل هذا الاختبار.
+        // حارس الفشل المغلق: كل أكشن يُصرَّح بأدوار صريحة أو سياسة مسماة (من
+        // التابع أو الصنف)، عدا مجهولية البنية المعلنة أدناه — أي `[Authorize]`
+        // عارٍ جديد يُفشل هذا الاختبار.
         var anonymousAllow = new HashSet<(string Controller, string Action)>
         {
             ("AuthController", "Login"),
@@ -183,7 +184,7 @@ public class RF004AuthzTests
         {
             var classRoles = string.Join(",", controller
                 .GetCustomAttributes<AuthorizeAttribute>(inherit: false)
-                .Select(a => a.Roles)
+                .SelectMany(a => new[] { a.Roles, a.Policy })
                 .Where(r => !string.IsNullOrWhiteSpace(r)));
             var classAnon = controller.GetCustomAttribute<AllowAnonymousAttribute>(inherit: false) is not null;
             var actions = controller.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
@@ -201,7 +202,7 @@ public class RF004AuthzTests
                 }
                 var methodRoles = string.Join(",", action
                     .GetCustomAttributes<AuthorizeAttribute>(inherit: false)
-                    .Select(a => a.Roles)
+                    .SelectMany(a => new[] { a.Roles, a.Policy })
                     .Where(r => !string.IsNullOrWhiteSpace(r)));
                 var effective = string.IsNullOrWhiteSpace(methodRoles) ? classRoles : methodRoles;
                 if (string.IsNullOrWhiteSpace(effective))

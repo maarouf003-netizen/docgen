@@ -114,7 +114,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("change-password")]
-    [Authorize(Roles = "lawyer,head,manager,admin,entitymanager")]
+    [Authorize(Roles = "lawyer,head,subhead,manager,admin,entitymanager")]
     [EnableRateLimiting(RateLimitingSetup.PasswordPolicy)]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request, CancellationToken ct)
     {
@@ -132,7 +132,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpGet("me")]
-    [Authorize(Roles = "lawyer,head,manager,admin,entitymanager")]
+    [Authorize(Roles = "lawyer,head,subhead,manager,admin,entitymanager")]
     public async Task<IActionResult> Me(CancellationToken ct)
     {
         var user = await _auth.GetUserAsync(User.GetUserId(), ct);

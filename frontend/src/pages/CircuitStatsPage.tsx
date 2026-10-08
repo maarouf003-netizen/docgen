@@ -1,24 +1,27 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import { downloadBlob } from '../utils/download';
 import type { BranchDto, CircuitStatsDto } from '../types';
 
 /**
  * صفحة «إحصائيات الدوائر» للمدير/المشرف (منتقي فرع + جدول الدوائر)
- * ورئيس القسم (فرعه فقط — بلا منتقي إذ يُتجاهل اختياره خادميًا).
- * لكل دائرة: ملفات × محامون نشطون × معلقات.
+ * ورئيس القسم/الشعبة (نطاقه فقط — بلا منتقي إذ يُتجاهل اختياره خادميًا).
+ * لكل دائرة: ملفات × محامون نشطون × معلقات × الشعبة المالكة (§12).
  */
 export default function CircuitStatsPage() {
   const { user } = useAuth();
-  const isHead = user?.role === 'head';
+  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
+  const isSubHead = user?.role === 'subhead';
   const [branches, setBranches] = useState<BranchDto[]>([]);
   const [branchId, setBranchId] = useState<number | ''>('');
   const [rows, setRows] = useState<CircuitStatsDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    if (isHead) {
+    if (isHeadOrSubHead) {
       setBranches([]);
       return;
     }
@@ -34,7 +37,7 @@ export default function CircuitStatsPage() {
     return () => {
       cancelled = true;
     };
-  }, [isHead]);
+  }, [isHeadOrSubHead]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -57,10 +60,37 @@ export default function CircuitStatsPage() {
 
   const fmt = (n: number) => new Intl.NumberFormat('ar-SY').format(n);
 
+  const exportStats = async () => {
+    if (exporting) return;
+    setExporting(true);
+    setError('');
+    try {
+      const r = await api.get('/execution-circuits/stats/export', {
+        params: branchId === '' ? {} : { branchId },
+        responseType: 'blob',
+      });
+      downloadBlob(r.data as Blob, 'إحصاءات الدوائر.xlsx');
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6 text-balance">إحصائيات الدوائر</h2>
-      {!isHead && (
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-6">
+        <h2 className="text-2xl font-bold text-gray-800 text-balance">إحصائيات الدوائر</h2>
+        <button
+          type="button"
+          onClick={exportStats}
+          disabled={exporting || loading}
+          className="min-h-11 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+        >
+          {exporting ? 'جارِ التصدير…' : 'تصدير Excel'}
+        </button>
+      </div>
+      {!isHeadOrSubHead && (
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div>
           <label htmlFor="stats-branch" className="block text-xs font-bold text-gray-600 mb-1">
@@ -82,8 +112,10 @@ export default function CircuitStatsPage() {
         </div>
       </div>
       )}
-      {isHead && (
-        <p className="text-sm text-gray-500 mb-4">إحصائيات دوائر فرعك</p>
+      {isHeadOrSubHead && (
+        <p className="text-sm text-gray-500 mb-4">
+          {isSubHead ? 'إحصائيات دوائر شعبتك' : 'إحصائيات دوائر قسمك'}
+        </p>
       )}
       {error && (
         <div className="bg-red-50 text-red-700 border border-red-200 rounded-lg p-3 mb-4" role="alert">
@@ -101,6 +133,7 @@ export default function CircuitStatsPage() {
               <tr className="bg-gray-50 text-gray-600">
                 <th className="px-4 py-3 text-start font-bold">الدائرة</th>
                 <th className="px-4 py-3 text-start font-bold">الفرع</th>
+                <th className="px-4 py-3 text-start font-bold">الشعبة</th>
                 <th className="px-4 py-3 text-start font-bold tabular-nums">الملفات</th>
                 <th className="px-4 py-3 text-start font-bold tabular-nums">المحامون النشطون</th>
                 <th className="px-4 py-3 text-start font-bold tabular-nums">المعلقات</th>
@@ -114,6 +147,7 @@ export default function CircuitStatsPage() {
                     {!r.isActive && <span className="ms-2 text-xs text-gray-500">(معطلة)</span>}
                   </td>
                   <td className="px-4 py-3">{r.branchName ?? '—'}</td>
+                  <td className="px-4 py-3 break-words">{r.sectionName ?? 'القسم'}</td>
                   <td className="px-4 py-3 tabular-nums">{fmt(r.fileCount)}</td>
                   <td className="px-4 py-3 tabular-nums">{fmt(r.lawyerCount)}</td>
                   <td className="px-4 py-3 tabular-nums">{fmt(r.pendingCount)}</td>

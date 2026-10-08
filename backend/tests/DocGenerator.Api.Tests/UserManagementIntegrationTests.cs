@@ -24,6 +24,20 @@ public class UserManagementIntegrationTests
 
     private static string NewUsername(string prefix) => $"{prefix}_{Guid.NewGuid():N}"[..20];
 
+    /// <summary>
+    /// فرع معزول برئيسه المستقبلي الوحيد (وحدانية الرئيس المفعّل لكل فرع —
+    /// قرار §2.26: الفروع المزروعة قد تحوي رؤساء من اختبارات أخرى في القاعدة المشتركة).
+    /// </summary>
+    private async Task<int> CreateBranchAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+        var branch = new DocGenerator.Domain.Entities.Branch { Name = "فرع اختبار", Code = $"UM_{Guid.NewGuid():N}"[..12].ToUpperInvariant() };
+        db.Branches.Add(branch);
+        await db.SaveChangesAsync();
+        return branch.Id;
+    }
+
     [Fact]
     public async Task UserManagement_NonAdminRoles_Forbidden()
     {
@@ -62,13 +76,14 @@ public class UserManagementIntegrationTests
     public async Task Admin_CreatesUser_NewUserCanLogin()
     {
         var username = NewUsername("u");
+        var branchId = await CreateBranchAsync();
         var admin = _factory.AuthorizedClient("admin");
         var response = await admin.PostAsJsonAsync("/api/users", new
         {
             username,
             fullName = "رئيس قسم جديد",
             role = "head",
-            branchId = await BranchIdAsync("DAM"),
+            branchId,
             password = "123456",
         });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
@@ -80,6 +95,35 @@ public class UserManagementIntegrationTests
 
         var login = await _factory.LoginAsync(username, "123456");
         Assert.Equal(HttpStatusCode.OK, (HttpStatusCode)login!.StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_CreatesSecondHeadSameBranch_BadRequestWithApprovedMessage()
+    {
+        // وحدانية الرئيس المفعّل (قرار §2.26): الثاني مرفوض `400` بالرسالة
+        // المعتمدة — لا `500` من القيد.
+        var branchId = await CreateBranchAsync();
+        var admin = _factory.AuthorizedClient("admin");
+        var first = await admin.PostAsJsonAsync("/api/users", new
+        {
+            username = NewUsername("h1"),
+            fullName = "رئيس أول",
+            role = "head",
+            branchId,
+            password = "123456",
+        });
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+
+        var second = await admin.PostAsJsonAsync("/api/users", new
+        {
+            username = NewUsername("h2"),
+            fullName = "رئيس ثان",
+            role = "head",
+            branchId,
+            password = "123456",
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, second.StatusCode);
+        Assert.Contains("الفرع لا يقبل رئيسي قسم", await second.Content.ReadAsStringAsync());
     }
 
     [Fact]
@@ -247,13 +291,14 @@ public class UserManagementIntegrationTests
     public async Task Admin_CreatesUser_ArabicTripartiteName_LoginWithEquivalentSpelling()
     {
         var name = "أحمد خالد العلي";
+        var branchId = await CreateBranchAsync();
         var admin = _factory.AuthorizedClient("admin");
         var response = await admin.PostAsJsonAsync("/api/users", new
         {
             username = name,
             fullName = name,
             role = "head",
-            branchId = await BranchIdAsync("DAM"),
+            branchId,
             password = "123456",
         });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
@@ -271,13 +316,14 @@ public class UserManagementIntegrationTests
     public async Task Admin_CreatesUser_DuplicateTripartiteNameSameBranch_BadRequest()
     {
         var name = "سامر محمود عيد";
+        var branchId = await CreateBranchAsync();
         var admin = _factory.AuthorizedClient("admin");
         var first = await admin.PostAsJsonAsync("/api/users", new
         {
             username = name,
             fullName = name,
             role = "head",
-            branchId = await BranchIdAsync("DAM"),
+            branchId,
             password = "123456",
         });
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
@@ -287,7 +333,7 @@ public class UserManagementIntegrationTests
             username = name,
             fullName = name,
             role = "lawyer",
-            branchId = await BranchIdAsync("DAM"),
+            branchId,
             password = "123456",
         });
         Assert.Equal(HttpStatusCode.BadRequest, second.StatusCode);
@@ -299,13 +345,15 @@ public class UserManagementIntegrationTests
     public async Task Admin_CreatesUser_SameTripartiteNameDifferentBranch_Allowed()
     {
         var name = "نزار عادل صالح";
+        var branchA = await CreateBranchAsync();
+        var branchB = await CreateBranchAsync();
         var admin = _factory.AuthorizedClient("admin");
         var first = await admin.PostAsJsonAsync("/api/users", new
         {
             username = name,
             fullName = name,
             role = "head",
-            branchId = await BranchIdAsync("DAM"),
+            branchId = branchA,
             password = "123456",
         });
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
@@ -315,7 +363,7 @@ public class UserManagementIntegrationTests
             username = name,
             fullName = name,
             role = "head",
-            branchId = await BranchIdAsync("ALP"),
+            branchId = branchB,
             password = "123456",
         });
         Assert.Equal(HttpStatusCode.Created, second.StatusCode);
@@ -485,5 +533,241 @@ public class UserManagementIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("نفس الفرع", body);
+    }
+
+    private async Task<int> CreateSectionAsync(string name, int branchId)
+    {
+        var admin = _factory.AuthorizedClient("admin");
+        var response = await admin.PostAsJsonAsync("/api/sections", new { branchId, name });
+        response.EnsureSuccessStatusCode();
+        using var doc = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonDocument>();
+        return doc!.RootElement.GetProperty("id").GetInt32();
+    }
+
+    [Fact]
+    public async Task Admin_CreatesSubHead_WithSection_CreatedAndCanLogin()
+    {
+        var branchId = await BranchIdAsync("DAM");
+        var sectionId = await CreateSectionAsync($"شعبة التكامل {Guid.NewGuid():N}"[..20], branchId);
+        var username = NewUsername("s");
+        var admin = _factory.AuthorizedClient("admin");
+        var response = await admin.PostAsJsonAsync("/api/users", new
+        {
+            username,
+            fullName = "رئيس شعبة التكامل",
+            role = "subhead",
+            branchId,
+            password = "123456",
+            sectionId,
+        });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<UserListItemDto>();
+        Assert.NotNull(created);
+        Assert.Equal("subhead", created!.Role);
+        Assert.Equal(sectionId, created.SectionId);
+
+        // الدخول يعمل (بوابة الفرع) — ونقاط الدوائر مفتوحة للسياسة منذ المرحلة 3
+        // لكن مفلترة بالنطاق (شعبته فقط — هنا فارغة).
+        var login = await _factory.LoginAsync(username, "123456");
+        Assert.Equal(HttpStatusCode.OK, (HttpStatusCode)login!.StatusCode);
+        var client = _factory.CreateClient();
+        client.SetAuthCookie(login.Token!);
+        var mine = await client.GetAsync("/api/execution-circuits/mine");
+        Assert.Equal(HttpStatusCode.OK, mine.StatusCode);
+        using var mineDoc = await mine.Content.ReadFromJsonAsync<System.Text.Json.JsonDocument>();
+        Assert.Equal(0, mineDoc!.RootElement.GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Admin_CreatesSubHead_MissingSection_BadRequest()
+    {
+        var admin = _factory.AuthorizedClient("admin");
+        var response = await admin.PostAsJsonAsync("/api/users", new
+        {
+            username = NewUsername("s"),
+            fullName = "رئيس شعبة بلا",
+            role = "subhead",
+            branchId = await BranchIdAsync("DAM"),
+            password = "123456",
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("الشعبة إلزامية", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Admin_CreatesSubHead_OccupiedSection_BadRequest()
+    {
+        var branchId = await BranchIdAsync("DAM");
+        var sectionId = await CreateSectionAsync($"شعبة مشغولة {Guid.NewGuid():N}"[..20], branchId);
+        var admin = _factory.AuthorizedClient("admin");
+        var first = await admin.PostAsJsonAsync("/api/users", new
+        {
+            username = NewUsername("s1"),
+            fullName = "رئيس أول",
+            role = "subhead",
+            branchId,
+            password = "123456",
+            sectionId,
+        });
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+
+        var second = await admin.PostAsJsonAsync("/api/users", new
+        {
+            username = NewUsername("s2"),
+            fullName = "رئيس ثان",
+            role = "subhead",
+            branchId,
+            password = "123456",
+            sectionId,
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, second.StatusCode);
+        Assert.Contains("الشعبة مشغولة برئيس مفعّل", await second.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Admin_CreatesSubHead_ForeignSection_BadRequest()
+    {
+        var sectionId = await CreateSectionAsync($"شعبة حلب {Guid.NewGuid():N}"[..20], await BranchIdAsync("ALP"));
+        var admin = _factory.AuthorizedClient("admin");
+        var response = await admin.PostAsJsonAsync("/api/users", new
+        {
+            username = NewUsername("s"),
+            fullName = "رئيس شعبة خطأ",
+            role = "subhead",
+            branchId = await BranchIdAsync("DAM"),
+            password = "123456",
+            sectionId,
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Manager_DeactivatesHeadWithSuccessor_FullFlow()
+    {
+        var admin = _factory.AuthorizedClient("admin");
+        var branchId = await BranchIdAsync("DAM");
+        var sectionId = await CreateSectionAsync($"شعبة إحلال {Guid.NewGuid():N}"[..20], branchId);
+        var head = await admin.PostAsJsonAsync("/api/users", new
+        {
+            username = NewUsername("sh"),
+            fullName = "رئيس شعبة محل",
+            role = "subhead",
+            branchId,
+            password = "123456",
+            sectionId,
+        });
+        Assert.Equal(HttpStatusCode.Created, head.StatusCode);
+        var headDto = await head.Content.ReadFromJsonAsync<UserListItemDto>();
+        var lawyer = await admin.PostAsJsonAsync("/api/users/lawyers", new
+        {
+            username = NewUsername("sl"),
+            fullName = "محامي الخلف",
+            password = "123456",
+            branchId,
+        });
+        Assert.Equal(HttpStatusCode.OK, lawyer.StatusCode);
+        var lawyerDto = await lawyer.Content.ReadFromJsonAsync<LawyerListItemDto>();
+
+        var manager = _factory.AuthorizedClient("manager");
+        var deactivate = await manager.PutAsJsonAsync($"/api/users/{headDto!.Id}", new
+        {
+            fullName = (string?)null,
+            role = (string?)null,
+            branchId = (int?)null,
+            isActive = false,
+            password = (string?)null,
+            sectionId = (int?)null,
+            successorId = lawyerDto!.Id,
+        });
+        Assert.Equal(HttpStatusCode.OK, deactivate.StatusCode);
+
+        // الخلف رُقّي بشعبة السلف.
+        var fetched = await manager.GetAsync($"/api/users/{lawyerDto.Id}");
+        var promoted = await fetched.Content.ReadFromJsonAsync<UserListItemDto>();
+        Assert.Equal("subhead", promoted!.Role);
+        Assert.Equal(sectionId, promoted.SectionId);
+
+        // سجل التعاقب مرئي للإدارة بصفين على الأقل (تعطيل + إحلال).
+        var log = await manager.GetAsync("/api/head-succession");
+        Assert.Equal(HttpStatusCode.OK, log.StatusCode);
+        var logBody = await log.Content.ReadAsStringAsync();
+        Assert.Contains("succeeded", logBody);
+
+        // إعادة تفعيل السلف مرفوضة (الخلف شاغل).
+        var reactivate = await manager.PutAsJsonAsync($"/api/users/{headDto.Id}", new
+        {
+            fullName = (string?)null,
+            role = (string?)null,
+            branchId = (int?)null,
+            isActive = true,
+            password = (string?)null,
+            sectionId = (int?)null,
+            successorId = (int?)null,
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, reactivate.StatusCode);
+    }
+
+    [Fact]
+    public async Task Manager_DeactivatesHeadWithoutSuccessor_BadRequest()
+    {
+        var admin = _factory.AuthorizedClient("admin");
+        var branchId = await BranchIdAsync("DAM");
+        var sectionId = await CreateSectionAsync($"شعبة بلا خلف {Guid.NewGuid():N}"[..20], branchId);
+        var head = await admin.PostAsJsonAsync("/api/users", new
+        {
+            username = NewUsername("sh"),
+            fullName = "رئيس بلا خلف",
+            role = "subhead",
+            branchId,
+            password = "123456",
+            sectionId,
+        });
+        var headDto = await head.Content.ReadFromJsonAsync<UserListItemDto>();
+
+        var manager = _factory.AuthorizedClient("manager");
+        var deactivate = await manager.PutAsJsonAsync($"/api/users/{headDto!.Id}", new
+        {
+            fullName = (string?)null,
+            role = (string?)null,
+            branchId = (int?)null,
+            isActive = false,
+            password = (string?)null,
+            sectionId = (int?)null,
+            successorId = (int?)null,
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, deactivate.StatusCode);
+        Assert.Contains("خلفًا إجباريًا", await deactivate.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Head_UpdateUser_Forbidden()
+    {
+        var head = _factory.AuthorizedClient("head1");
+        var response = await head.PutAsJsonAsync("/api/users/1", new { fullName = "x" });
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("manager")]
+    [InlineData("admin")]
+    public async Task HeadSuccession_ManagementRoles_Ok(string username)
+    {
+        var client = _factory.AuthorizedClient(username);
+        var response = await client.GetAsync("/api/head-succession");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("head1")]
+    [InlineData("lawyer1")]
+    public async Task HeadSuccession_NonManagementRoles_Forbidden(string username)
+    {
+        // `head1` مرفوض بالسمة (ليس مديرًا/مشرفًا) — نطاق التدقيق الدائري (§2.23)
+        // يُفرض في متحكم التدقيق نفسه عند بنائه (المرحلة 8).
+        var client = _factory.AuthorizedClient(username);
+        var response = await client.GetAsync("/api/head-succession");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 }

@@ -617,6 +617,10 @@ public class DocumentResponse : DocGenerator.Domain.Entities.IDocumentExecutionS
     public string? Court { get; set; }
     /// <summary>دائرة التنفيذ المرجعية (سجل الدوائر) — تُعرض نصًا عبر Court للتوافق.</summary>
     public int? ExecutionCircuitId { get; set; }
+    /// <summary>شعبة الدائرة المالكة (`null` = ملك القسم) — للنطاق والعرض.</summary>
+    public int? SectionId { get; set; }
+    /// <summary>اسم الشعبة المالكة — للعرض فقط.</summary>
+    public string? SectionName { get; set; }
     /// <summary>علم «بانتظار إعادة القيد» — بانتظار المحامي لإدخال الرقم الجديد.</summary>
     public bool NeedsRegistration { get; set; }
     public string? Applicant { get; set; }
@@ -826,6 +830,8 @@ public class DocumentResponse : DocGenerator.Domain.Entities.IDocumentExecutionS
         InclusionCurrency3 = d.InclusionCurrency3,
         Court = d.Court,
         ExecutionCircuitId = d.ExecutionCircuitId,
+        SectionId = d.ExecutionCircuit?.SectionId,
+        SectionName = d.ExecutionCircuit?.Section?.Name,
         NeedsRegistration = d.NeedsRegistration,
         Applicant = d.Applicant,
         ApplicantRegistryId = d.ApplicantRegistryId,

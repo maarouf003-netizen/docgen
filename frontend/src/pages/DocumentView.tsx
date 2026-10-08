@@ -154,17 +154,17 @@ export default function DocumentView() {
   if (!doc) return <div className="text-gray-500">جارِ التحميل...</div>;
 
   const canEdit = user?.role === 'lawyer';
-  const canTransfer = user?.role === 'head';
-  const canDirectAlert = user?.role === 'head';
+  const canTransfer = user?.role === 'head' || user?.role === 'subhead';
+  const canDirectAlert = user?.role === 'head' || user?.role === 'subhead';
   const isExecuted = isExecutedLike(doc.generalEntitySide);
   const isLawyer = user?.role === 'lawyer';
   // «منفذ إنابة» (الملف المناب عند إتمام الإنابة): حالة نهائية تُعامل منفذًا — لا توليد
   // مستندات ولا تغيير حالة بعدها (الخلفية تراقب أيضًا عبر آلة الحالات).
   const isDelegationExecuted = doc.execStatus === EXEC_STATUS_DELEGATION_EXECUTED;
-  // «الفرع» يظهر للمدير والمشرف فقط؛ و«المحامي المختص» يظهر للمدير والمشرف ورئيس القسم
+  // «الفرع» يظهر للمدير والمشرف فقط؛ و«المحامي المختص» يظهر للمدير والمشرف ورئيس القسم/الشعبة
   // (لا يظهر للمحامي المختص نفسه الذي يرى ملفه من صفحة أخرى).
   const showBranch = user?.role === 'admin' || user?.role === 'manager';
-  const showLawyer = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'head';
+  const showLawyer = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'head' || user?.role === 'subhead';
 
   const debtor = {
     name: doc.borrowerName,

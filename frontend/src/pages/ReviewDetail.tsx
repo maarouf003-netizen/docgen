@@ -58,7 +58,8 @@ function MessageCard({ message }: { message: ReviewLetterMessageDto }) {
 
 export default function ReviewDetail() {
   const { id } = useParams();
-  const { user, hasFullAccess, isHead } = useAuth();
+  const { user, hasFullAccess } = useAuth();
+  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
   const [letter, setLetter] = useState<ReviewLetterDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -114,7 +115,7 @@ export default function ReviewDetail() {
 
   const originalAuthorId = letter?.messages.find((m) => m.kind === 'letter')?.authorId;
   const canAddAddendum = user?.role === 'lawyer' && letter !== null && originalAuthorId === user?.id;
-  const canReply = isHead && letter !== null;
+  const canReply = isHeadOrSubHead && letter !== null;
 
   const send = async () => {
     if (!composerKind || !letter) return;
@@ -174,7 +175,7 @@ export default function ReviewDetail() {
             <dt className="text-gray-400">تاريخه:</dt>
             <dd className="tabular-nums">{formatDateTime(letter.letterDate)}</dd>
           </div>
-          {(hasFullAccess || isHead) && (
+          {(hasFullAccess || isHeadOrSubHead) && (
             <div className="flex items-center gap-1.5">
               <dt className="text-gray-400">سطّره:</dt>
               <dd>{letter.lawyerName}</dd>

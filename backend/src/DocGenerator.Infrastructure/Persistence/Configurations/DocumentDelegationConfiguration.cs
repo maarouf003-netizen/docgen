@@ -36,6 +36,10 @@ public class DocumentDelegationConfiguration : IEntityTypeConfiguration<Document
         // `PB-001`: الدائرة المنابة المعيارية (تضبط خدميًا عند التسطير/التعديل).
         builder.Property(d => d.DelegatedCourtNorm).HasMaxLength(300);
         builder.HasIndex(d => d.DelegatedCircuitId);
+        // التوجيه لشعبة + الرفض للتصحيح + التزامن المتفائل لمسار الاعتماد (§7).
+        builder.HasIndex(d => d.RedirectedToSectionId);
+        builder.Property(d => d.RejectReason).HasMaxLength(1000);
+        builder.Property(d => d.Version).IsConcurrencyToken();
         builder.Property(d => d.DelegationText).HasMaxLength(2000);
         builder.Property(d => d.DepositBookNumber).HasMaxLength(200);
         builder.Property(d => d.DepositBookDate).HasColumnType("datetime2");
@@ -65,6 +69,12 @@ public class DocumentDelegationConfiguration : IEntityTypeConfiguration<Document
         builder.HasOne(d => d.DelegatedCircuit)
             .WithMany()
             .HasForeignKey(d => d.DelegatedCircuitId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // الشعبة الموجَّه لها طلب الخارجية (زر «توجيه للشعبة»).
+        builder.HasOne(d => d.RedirectedToSection)
+            .WithMany()
+            .HasForeignKey(d => d.RedirectedToSectionId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

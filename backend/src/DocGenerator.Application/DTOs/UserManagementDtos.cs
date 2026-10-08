@@ -7,7 +7,8 @@ public record LawyerListItemDto(
     string FullName,
     bool IsActive,
     int? BranchId,
-    string? BranchName);
+    string? BranchName,
+    int? CreatedById = null);
 
 /// <summary>إضافة محامٍ إلى فرع — رئيس القسم لمحامي فرعه، والمشرف لأي فرع (يحدد BranchId).</summary>
 public record CreateLawyerRequest(
@@ -33,23 +34,43 @@ public record UserListItemDto(
     string Role,
     int? BranchId,
     string? BranchName,
-    bool IsActive);
+    bool IsActive,
+    int? SectionId = null,
+    string? SectionName = null);
 
-/// <summary>إنشاء مستخدم — مشرف (أي دور) ومدير (عدا دور المشرف — `BQ-001د`).</summary>
+/// <summary>إنشاء مستخدم — مشرف (أي دور) ومدير (عدا دور المشرف — `BQ-001د`). `SectionId` إلزامي لرئيس الشعبة فقط.</summary>
 public record CreateUserRequest(
     string Username,
     string FullName,
     string Role,
     int? BranchId,
-    string Password);
+    string Password,
+    int? SectionId = null);
 
-/// <summary>تحديث مستخدم — مشرف (الكل) ومدير (عدا حسابات المشرف — `BQ-001د`)؛ كلمة المرور اختيارية لإعادة التعيين.</summary>
+/// <summary>تحديث مستخدم — مشرف (الكل) ومدير (عدا حسابات المشرف — `BQ-001د`)؛ كلمة المرور اختيارية لإعادة التعيين. `SectionId` لرئيس الشعبة فقط (نقل الرئيس بين الشعب). `SuccessorId` إجباري عند تعطيل رئيس (خلف يحل محله — قرار §2.18).</summary>
 public record UpdateUserRequest(
     string? FullName,
     string? Role,
     int? BranchId,
     bool IsActive,
-    string? Password);
+    string? Password,
+    int? SectionId = null,
+    int? SuccessorId = null);
+
+/// <summary>صف سجل تعاقب رئاسة — للمدير والمشرف فقط (قرار §2.17).</summary>
+public record HeadSuccessionDto(
+    int Id,
+    int BranchId,
+    string? BranchName,
+    int? SectionId,
+    string? SectionName,
+    int UserId,
+    string? UserName,
+    string Role,
+    string Event,
+    DateTime At,
+    string? ActorName,
+    string? Reason);
 
 /// <summary>نقل ملف إلى محامٍ آخر — رئيس القسم (ضمن فرعه).</summary>
 public record TransferDocumentRequest(int TargetLawyerId);

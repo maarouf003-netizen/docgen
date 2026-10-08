@@ -19,8 +19,8 @@ public sealed partial class PublicEntityService
         EntityRegistryActor actor,
         CancellationToken ct = default)
     {
-        if (actor.Role != UserRole.Head)
-            throw new UnauthorizedAccessException("اقتراح تعديل الجهة الأم متاح لرئيس القسم فقط");
+        if (actor.Role is not (UserRole.Head or UserRole.SubHead))
+            throw new UnauthorizedAccessException("اقتراح تعديل الجهة الأم متاح لرئيس القسم أو الشعبة فقط");
         if (!actor.BranchId.HasValue)
             throw new UnauthorizedAccessException("حسابك غير مرتبط بفرع لتقديم اقتراح");
 
@@ -117,8 +117,8 @@ public sealed partial class PublicEntityService
             .Where(s => status is null || s.Status == status)
             .Where(s => query.GroupId is null || s.GroupId == query.GroupId);
 
-        // نطاق رئيس القسم: اقتراحاته هو فقط (لحالة المعلّق في نافذة فروع جهة محافظته).
-        if (actor.Role == UserRole.Head)
+        // نطاق الرئيس: اقتراحاته هو فقط (لحالة المعلّق في نافذة فروع جهة محافظته).
+        if (actor.Role is UserRole.Head or UserRole.SubHead)
             filtered = filtered.Where(s => s.CreatedById == actor.UserId);
 
         var ordered = filtered.OrderByDescending(s => s.CreatedAtUtc).ToList();
@@ -183,14 +183,14 @@ public sealed partial class PublicEntityService
         EntityRegistryActor actor,
         CancellationToken ct = default)
     {
-        if (actor.Role != UserRole.Head)
-            throw new UnauthorizedAccessException("سحب اقتراح الجهة الأم متاح لمنشئه رئيس القسم فقط");
+        if (actor.Role is not (UserRole.Head or UserRole.SubHead))
+            throw new UnauthorizedAccessException("سحب اقتراح الجهة الأم متاح لمنشئه رئيس القسم أو الشعبة فقط");
 
         var suggestion = await _suggestions.GetByIdAsync(suggestionId, ct);
         if (suggestion is null)
             return null;
         if (suggestion.CreatedById != actor.UserId)
-            throw new UnauthorizedAccessException("لا يمكنك سحب اقتراح منشأ من رئيس قسم آخر");
+            throw new UnauthorizedAccessException("لا يمكنك سحب اقتراح منشأ من رئيس آخر");
         if (suggestion.Status != ParentEditSuggestionStatusCatalog.Pending)
             throw new ArgumentException("الاقتراح لم يعد معلّقًا فلا يُسحب");
 

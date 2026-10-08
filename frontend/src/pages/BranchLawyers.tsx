@@ -8,7 +8,7 @@ import type { BranchDto, LawyerListItem } from '../types';
 export default function BranchLawyers() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
-  const isHead = user?.role === 'head';
+  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
   const isMobile = useIsMobile();
 
   const [branches, setBranches] = useState<BranchDto[]>([]);
@@ -260,7 +260,7 @@ export default function BranchLawyers() {
                       >
                         تعديل
                       </button>
-                      {isHead && (
+                      {isHeadOrSubHead && (
                         <button
                           onClick={() => setTransferSource(l)}
                           className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg px-3 py-1.5 text-xs min-h-11"
@@ -320,7 +320,7 @@ export default function BranchLawyers() {
                   >
                     تعديل
                   </button>
-                  {isHead && (
+                  {isHeadOrSubHead && (
                     <button
                       onClick={() => setTransferSource(l)}
                       className="rounded-lg px-3 py-2 text-xs min-h-11 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"

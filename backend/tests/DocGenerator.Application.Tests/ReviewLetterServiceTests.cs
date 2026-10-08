@@ -1,3 +1,4 @@
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -53,8 +54,12 @@ public class ReviewLetterServiceTests : IDisposable
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
         return new ReviewLetterService(
-            letters, documents, branches, appeals, delegations, headAlerts, uow, tx, _audit,
-            TimeProvider.System, TestClock.TimeZone);
+            letters, documents, branches, appeals, delegations, headAlerts,
+            new DbExceptionClassifier(), uow, tx, _audit,
+            TimeProvider.System, TestClock.TimeZone,
+            new UserRepository(_db),
+            new Repository<Section>(_db),
+            new Repository<ExecutionCircuit>(_db));
     }
 
     private static User NewUser(string username, string fullName, UserRole role, int? branchId)

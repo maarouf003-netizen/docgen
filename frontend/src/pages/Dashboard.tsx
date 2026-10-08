@@ -43,7 +43,8 @@ export default function Dashboard() {
   const { user } = useAuth();
   const isLawyer = user?.role === 'lawyer';
   const isManager = user?.role === 'manager' || user?.role === 'admin';
-  const isHead = user?.role === 'head';
+  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
+  const isSubHead = user?.role === 'subhead';
 
   const [alertsError, setAlertsError] = useState('');
   const [markingKey, setMarkingKey] = useState<string | null>(null);
@@ -59,9 +60,10 @@ export default function Dashboard() {
   const [branchId, setBranchId] = useState<number | null>(null);
 
   const userReady = Boolean(user);
-  // رئيس بلا فرع: عدّادات شاراته مرفوضة (`400`) أو صفرية خلفيًا —
+  // رئيس بلا فرع (ورئيس شعبة برمز بلا شعبة): عدّادات شاراته مرفوضة (`400`/`403`) أو صفرية خلفيًا —
   // لا تُطلق ولا تُستطلع أصلًا، وتبقى الشارات صفرًا.
-  const headBadgesEnabled = userReady && isHead && (user?.branchId ?? null) != null;
+  const headBadgesEnabled =
+    userReady && isHeadOrSubHead && (user?.branchId ?? null) != null && (isSubHead ? (user?.sectionId ?? null) != null : true);
 
   const branchesQuery = useCancellableRequest<BranchDto[]>(
     (signal) => api.get('/branches', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
@@ -107,8 +109,8 @@ export default function Dashboard() {
 
   const branchLawyersQuery = useCancellableRequest<LawyerListItem[]>(
     (signal) => api.get('/users/lawyers', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
-    [isHead],
-    { enabled: userReady && isHead },
+    [isHeadOrSubHead],
+    { enabled: userReady && isHeadOrSubHead },
   );
 
   // عدّاد بطاقة سجل الجهات: جهات أدخلها المحامون وبانتظار مراجعة رئيس القسم —
@@ -215,13 +217,13 @@ export default function Dashboard() {
   // تُجلب مرة عند التركيب (بلا استطلاع: التحديث عبر صفحة الإدارة نفسها).
   const circuitsQuery = useCancellableRequest<ExecutionCircuitDto[]>(
     (signal) => api.get('/execution-circuits/mine', { signal }).then((r) => (Array.isArray(r?.data) ? r.data : [])),
-    [isHead],
+    [isHeadOrSubHead],
     { enabled: headBadgesEnabled },
   );
   const circuitsPending = useMemo(() => {
-    if (!isHead) return 0;
+    if (!isHeadOrSubHead) return 0;
     return (circuitsQuery.data ?? []).reduce((n, c) => n + Math.max(0, Number(c.pendingCount) || 0), 0);
-  }, [isHead, circuitsQuery.data]);
+  }, [isHeadOrSubHead, circuitsQuery.data]);
 
   // مدخل معلقات المحامي (B19): عدد ملفاته المحالة بانتظار تحديث بياناتها — بطاقة «ملفات معلقة».
   // تُحجب البطاقة بعد نجاح الجلب والصفر المؤكد فقط؛ وتبقى أثناء التحميل وعند الخطأ (fail-open).
@@ -435,6 +437,8 @@ export default function Dashboard() {
                 entityPending,
                 circuitsPending,
               }}
+              scopeLabel={isSubHead ? 'مؤشرات الشعبة' : 'مؤشرات الفرع'}
+              hideAudit={isSubHead}
             />
           </div>
         </>

@@ -7,7 +7,7 @@ describe('getHomeForRole', () => {
   });
 
   it('يوجّه بقية الأدوار إلى لوحة التحكم', () => {
-    for (const role of ['lawyer', 'head', 'manager', 'admin'] as const) {
+    for (const role of ['lawyer', 'head', 'subhead', 'manager', 'admin'] as const) {
       expect(getHomeForRole(role)).toBe('/');
     }
   });

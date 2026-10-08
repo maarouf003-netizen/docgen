@@ -312,7 +312,8 @@ function ActionsCell({ d, onClick }: { d: DocumentResponse; onClick: () => void 
 }
 
 export default function DocumentsList() {
-  const { hasFullAccess, isHead, user } = useAuth();
+  const { hasFullAccess, user } = useAuth();
+  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
   const isMobile = useIsMobile();
   // استعادة موضع القائمة (البحث/الفلاتر/الصفحة) وملف «آخر ما فُتح» من جلسة المتصفح عند العودة
   // من صفحة ملف، فيعود المستخدم إلى مكانه ويُميَّز الملف الذي كان يعمل عليه.
@@ -380,11 +381,11 @@ export default function DocumentsList() {
   // عدد المشاهدات للمدير/المشرف فقط — يُخفى عن رئيس القسم بقرار المنتج (لا داعي لعرضه له).
   const canViewCounters = hasFullAccess;
   const canSeeAdministrativeBranch = hasFullAccess;
-  const canSeeAssignedLawyer = hasFullAccess || isHead;
-  const canSearchByLawyer = hasFullAccess || isHead;
+  const canSeeAssignedLawyer = hasFullAccess || isHeadOrSubHead;
+  const canSearchByLawyer = hasFullAccess || isHeadOrSubHead;
   const canCreate = user?.role === 'lawyer';
-  // `BQ-001`: المدير يرى المحذوفات كالمشرف.
-  const canViewDeleted = user?.role === 'lawyer' || user?.role === 'head' || user?.role === 'admin' || user?.role === 'manager';
+  // `BQ-001`: المدير يرى المحذوفات كالمشرف — ورئيس الشعبة كنطاق رئيس القسم (قرار §2.1).
+  const canViewDeleted = user?.role === 'lawyer' || user?.role === 'head' || user?.role === 'subhead' || user?.role === 'admin' || user?.role === 'manager';
   const canRotate = user?.role === 'lawyer';
 
   // يُمنع تصدير كل الملفات: يتطلب التصدير تطبيق فلتر واحد على الأقل (بحث أو أي فلتر منسدل)،

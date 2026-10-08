@@ -44,6 +44,20 @@ public class RF011IdempotencyTests
         return (await db.Branches.SingleAsync(b => b.Code == code)).Id;
     }
 
+    /// <summary>
+    /// فرع معزول برئيسه الوحيد (قرار §2.26 + عزل صفوف التدقيق عن `head1` المشترك —
+    /// عرف الملف: فاعل مشترك = تلوّث `Count`).
+    /// </summary>
+    private async Task<int> CreateBranchAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+        var branch = new Branch { Name = "فرع عدم التكرار", Code = $"IB_{Guid.NewGuid():N}"[..12].ToUpperInvariant() };
+        db.Branches.Add(branch);
+        await db.SaveChangesAsync();
+        return branch.Id;
+    }
+
     private static async Task<HttpResponseMessage> PostWithKeyAsync(
         HttpClient client, string url, object body, string? key)
     {
@@ -133,10 +147,10 @@ public class RF011IdempotencyTests
     public async Task DoubleTransferAll_SameKey_SameCount()
     {
         // النقل الثاني اليوم يعيد `0`؛ بعد RF-011 يعيد العدد المخزن نفسه.
-        var branchId = await BranchIdAsync("DAM");
-        var headName = Unique("idemhead");
-        await _factory.CreateUserAsync(headName, UserRole.Head, branchId, "123456");
-        var headToken = (await _factory.LoginAsync(headName, "123456"))!.Token!;
+        // فرع معزول برئيسه (لا `head1` المشترك — عزل التدقيق).
+        var branchId = await CreateBranchAsync();
+        var freshHead = await _factory.CreateUserAsync(Unique("idemhead"), UserRole.Head, branchId, "123456");
+        var headToken = (await _factory.LoginAsync(freshHead.Username, "123456"))!.Token!;
         var (sourceId, sourceToken) = await NewLawyerAsync(branchId);
         var (targetId, _) = await NewLawyerAsync(branchId);
         await _factory.CreateDocumentAsync(sourceToken, borrowerName: Unique("منقول"));

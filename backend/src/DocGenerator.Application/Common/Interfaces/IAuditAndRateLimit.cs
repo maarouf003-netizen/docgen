@@ -32,7 +32,8 @@ public interface IDocumentRepository : IRepository<Document>
         int? visibleUserId,
         int page,
         int perPage,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        int? ownerSectionId = null);
 
     /// <summary>
     /// كل المستندات المطابقة لفلاتر البحث (دون ترقيم) لتصديرها إلى ملف إكسل.
@@ -49,7 +50,8 @@ public interface IDocumentRepository : IRepository<Document>
         string? publicEntityBranch,
         int? visibleBranchId,
         int? visibleUserId,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        int? ownerSectionId = null);
 
     /// <summary>
     /// عدد المستندات المطابقة لفلاتر التصدير نفسها — يُستخدم للتحقق من سقف الصفوف
@@ -67,7 +69,8 @@ public interface IDocumentRepository : IRepository<Document>
         string? publicEntityBranch,
         int? visibleBranchId,
         int? visibleUserId,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        int? ownerSectionId = null);
 
     /// <summary>
     /// خيارات فلترة «الملفات التنفيذية» بأسلوب إكسل. كل قائمة مُقيَّدة بباقي الفلاتر
@@ -84,7 +87,8 @@ public interface IDocumentRepository : IRepository<Document>
         string? publicEntityBranch,
         int? visibleBranchId,
         int? visibleUserId,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        int? ownerSectionId = null);
 
     /// <summary>
     /// وحدانية الدوائر (البند 28): التوقيع الموحد بمطابقة FK مباشرة (circuitId)
@@ -123,7 +127,8 @@ public interface IDocumentRepository : IRepository<Document>
         int? visibleUserId,
         int page,
         int perPage,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        int? ownerSectionId = null);
 
     /// <summary>
     /// نقل ذرّي آمن للتفاؤلية: يحدّث المحامي المختص للملف بشرط أن يكون المحامي المختص
@@ -176,6 +181,23 @@ public interface IDocumentRepository : IRepository<Document>
         int targetId,
         string targetFullName,
         string referredFromLawyer,
+        int? scopeBranchId,
+        int? ownerSectionId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// ملفات محامٍ بالنطاق (§5.5 للمعاينة والتدقيق) + عدّها — المعاينة تطابق المنقول فعلًا.
+    /// </summary>
+    Task<List<Document>> ListByOwnerInScopeAsync(
+        int ownerId,
+        int? scopeBranchId,
+        int? ownerSectionId,
+        CancellationToken ct = default);
+
+    Task<int> CountByOwnerInScopeAsync(
+        int ownerId,
+        int? scopeBranchId,
+        int? ownerSectionId,
         CancellationToken ct = default);
 
     /// <summary>
@@ -183,6 +205,14 @@ public interface IDocumentRepository : IRepository<Document>
     /// لخدمة حفظ التدوير ذرّيًا داخل المعاملة.
     /// </summary>
     Task<List<Document>> GetByIdsAsync(List<int> ids, CancellationToken ct = default);
+
+    /// <summary>
+    /// معرفات مالكي الملفات غير المحذوفة في دوائر معينة — لقائمة `mine` (§5.4:
+    /// له ملف في دوائري). فارغة عند غياب الدوائر.
+    /// </summary>
+    Task<List<int>> ListOwnerIdsByCircuitIdsAsync(
+        IReadOnlyCollection<int> circuitIds,
+        CancellationToken ct = default);
 
     /// <summary>
     /// ملفات دائرة واحدة (متتبعة مع أرقام الأساس) لعمليات الإفراغ/التسمية الجماعية داخل المعاملة.
@@ -244,7 +274,8 @@ public interface IDocumentRepository : IRepository<Document>
         int? visibleUserId,
         int page,
         int perPage,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        int? ownerSectionId = null);
 
     /// <summary>
     /// بحث ترحّلي عن الملفات المنفذة: ملفات وضع «منفذ عليه»/«عرض وايداع» بحالة «منفذ» فقط،
@@ -257,7 +288,8 @@ public interface IDocumentRepository : IRepository<Document>
         int? visibleUserId,
         int page,
         int perPage,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        int? ownerSectionId = null);
 
     /// <summary>
     /// بحث ترحّلي عن ملفات «طالبة تنفيذ» بحالة «محال الى البداية» فقط (ومنها القادم من
@@ -270,7 +302,8 @@ public interface IDocumentRepository : IRepository<Document>
         int? visibleUserId,
         int page,
         int perPage,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        int? ownerSectionId = null);
 }
 
 /// <summary>

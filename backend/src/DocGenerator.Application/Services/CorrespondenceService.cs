@@ -16,19 +16,22 @@ public interface ICorrespondenceService
 {
     /// <summary>
     /// قائمة المراسلات بحسب الدور: الطرف (منشئ/مستلم) مراسلاته، ورئيس القسم مراسلات
-    /// محافظته (فرعه + العامة من مندوبيها)، والمدير/المشرف بمحافظة منتقاة إجباريًا.
+    /// محافظته (فرعه + العامة من مندوبيها)، ورئيس الشعبة مراسلات نطاقه (طرفٌ فيها
+    /// أو ملك دائرة شعبته)، والمدير/المشرف بمحافظة منتقاة إجباريًا.
     /// </summary>
     Task<PagedResult<CorrespondenceListItemDto>> SearchAsync(
         int actorUserId, UserRole role, int? actorBranchId, string? q, string? governorate,
-        string? importance, int page, int perPage, CancellationToken ct = default);
+        string? importance, int page, int perPage, CancellationToken ct = default,
+        int? actorSectionId = null);
 
-    /// <summary>مراسلة برسائلها وتوثيق مشاهداتها — بعد التحقق من حق الوصول.</summary>
+    /// <summary>مراسلة برسائلها وتوثيق مشاهداتها — بعد التحقق من حق الوصول (نطاق الشعبة §10).</summary>
     Task<CorrespondenceDto> GetByIdAsync(int id, int actorUserId, UserRole role,
-        int? actorBranchId, CancellationToken ct = default);
+        int? actorBranchId, CancellationToken ct = default, int? actorSectionId = null);
 
     /// <summary>تسطير مراسلة (مربوطة بملف أو عامة) لطرف معيَّن بالاسم، برقم وتاريخ تلقائيين.</summary>
     Task<CorrespondenceDto> CreateAsync(CreateCorrespondenceRequest request, int actorUserId,
-        string? actorName, UserRole role, int? actorBranchId, CancellationToken ct = default);
+        string? actorName, UserRole role, int? actorBranchId, CancellationToken ct = default,
+        int? actorSectionId = null);
 
     /// <summary>إضافة لاحق إلى مراسلة — منشئ المراسلة نفسه فقط.</summary>
     Task<CorrespondenceMessageDto> AddAddendumAsync(int correspondenceId,
@@ -39,7 +42,6 @@ public interface ICorrespondenceService
     Task<CorrespondenceMessageDto> ReplyAsync(int correspondenceId,
         ReplyCorrespondenceRequest request, int actorUserId, string? actorName,
         CancellationToken ct = default);
-
     /// <summary>
     /// تأكيد المشاهدة الصريح (زر «تمت المشاهدة») — يسجّل (من؟ متى؟) مرة واحدة؛
     /// التكرار يُبقي أول توثيق ولا يجدّده. مقصور على الطرف المستلم معيَّنًا بالاسم:
@@ -49,17 +51,19 @@ public interface ICorrespondenceService
     /// المستلم — فالتوثيق المرئي هو توثيق المستلم وحده دائمًا.
     /// </summary>
     Task<CorrespondenceReceiptDto> MarkSeenAsync(int correspondenceId, int actorUserId,
-        string? actorName, UserRole role, int? actorBranchId, CancellationToken ct = default);
+        string? actorName, UserRole role, int? actorBranchId,
+        CancellationToken ct = default, int? actorSectionId = null);
 
     /// <summary>عدد مراسلات المستخدم العاجلة (كمستلم) بلا تأكيد مشاهدة — عدّاد الجرس.</summary>
     Task<int> CountUrgentUnseenAsync(int actorUserId, CancellationToken ct = default);
 
     /// <summary>
-    /// مراسلات ملف محدد: لمالك الملف ورئيس قسمه والمدير/المشرف ومتابعيه (إحالة/إنابة/استئناف)،
+    /// مراسلات ملف محدد: لمالك الملف ورئيس نطاقه (قسمه لدوائر القسم وبلا دائرة،
+    /// وشعبته لدوائر شعبته) والمدير/المشرف ومتابعيه (إحالة/إنابة/استئناف)،
     /// ولمندوب الجهة المراسلات التي هو طرف فيها على هذا الملف.
     /// </summary>
     Task<List<CorrespondenceListItemDto>> ListByDocumentAsync(int documentId, int actorUserId,
-        UserRole role, int? actorBranchId, CancellationToken ct = default);
+        UserRole role, int? actorBranchId, CancellationToken ct = default, int? actorSectionId = null);
 
     /// <summary>المحافظات المميزة لفلتر المدير/المشرف.</summary>
     Task<List<string>> GetGovernoratesAsync(CancellationToken ct = default);
@@ -71,7 +75,7 @@ public interface ICorrespondenceService
     /// </summary>
     Task<List<CorrespondenceTargetDto>> SearchTargetsAsync(
         int actorUserId, UserRole role, int? actorBranchId, string? q, int? documentId,
-        CancellationToken ct = default);
+        CancellationToken ct = default, int? actorSectionId = null);
 }
 
 /// <summary>
@@ -100,6 +104,8 @@ public sealed class CorrespondenceService : ICorrespondenceService
     private readonly IDocumentRepository _documents;
     private readonly IBranchRepository _branches;
     private readonly IUserRepository _users;
+    private readonly IRepository<Section> _sections;
+    private readonly IRepository<ExecutionCircuit> _circuits;
     private readonly IAppealRepository _appeals;
     private readonly IDelegationRepository _delegations;
     private readonly IPortalRepository _portal;
@@ -123,12 +129,16 @@ public sealed class CorrespondenceService : ICorrespondenceService
         IAuditLogger audit,
         IDbExceptionClassifier errors,
         TimeProvider clock,
-        TimeZoneInfo timeZone)
+        TimeZoneInfo timeZone,
+        IRepository<Section> sections,
+        IRepository<ExecutionCircuit> circuits)
     {
         _letters = letters;
         _documents = documents;
         _branches = branches;
         _users = users;
+        _sections = sections;
+        _circuits = circuits;
         _appeals = appeals;
         _delegations = delegations;
         _portal = portal;
@@ -142,7 +152,8 @@ public sealed class CorrespondenceService : ICorrespondenceService
 
     public async Task<PagedResult<CorrespondenceListItemDto>> SearchAsync(
         int actorUserId, UserRole role, int? actorBranchId, string? q, string? governorate,
-        string? importance, int page, int perPage, CancellationToken ct = default)
+        string? importance, int page, int perPage, CancellationToken ct = default,
+        int? actorSectionId = null)
     {
         page = Math.Max(1, page);
         perPage = Math.Clamp(perPage, 1, 100);
@@ -169,6 +180,13 @@ public sealed class CorrespondenceService : ICorrespondenceService
                     q, importanceFilter, page, perPage, ct),
             UserRole.Head
                 => throw new ArgumentException("رئيس القسم دون فرع لا يمكنه عرض المراسلات"),
+            // نطاق الشعبة (§10): طرفٌ فيها أو ملك دائرة شعبته — بلا تدهور.
+            UserRole.SubHead when actorBranchId is not null && actorSectionId is not null
+                => await _letters.SearchForScopeAsync(
+                    actorUserId, actorBranchId.Value, actorSectionId.Value,
+                    q, importanceFilter, page, perPage, ct),
+            UserRole.SubHead
+                => throw new ArgumentException("حسابك بلا شعبة — أعد الدخول"),
             UserRole.Manager or UserRole.Admin
                 => await _letters.SearchAllAsync(governorate, q, importanceFilter, page, perPage, ct),
             _ => throw new ArgumentException("الدور غير مخوّل لعرض المراسلات"),
@@ -184,12 +202,12 @@ public sealed class CorrespondenceService : ICorrespondenceService
     }
 
     public async Task<CorrespondenceDto> GetByIdAsync(int id, int actorUserId, UserRole role,
-        int? actorBranchId, CancellationToken ct = default)
+        int? actorBranchId, CancellationToken ct = default, int? actorSectionId = null)
     {
         var letter = await _letters.GetByIdWithDetailsAsync(id, ct)
             ?? throw new KeyNotFoundException("المراسلة غير موجودة");
 
-        if (!await CanViewAsync(letter, actorUserId, role, actorBranchId, ct))
+        if (!await CanViewAsync(letter, actorUserId, role, actorBranchId, actorSectionId, ct))
             throw new UnauthorizedAccessException("لا تملك صلاحية الاطلاع على هذه المراسلة");
 
         return ToDto(letter, actorUserId);
@@ -197,7 +215,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
 
     public async Task<CorrespondenceDto> CreateAsync(CreateCorrespondenceRequest request,
         int actorUserId, string? actorName, UserRole role, int? actorBranchId,
-        CancellationToken ct = default)
+        CancellationToken ct = default, int? actorSectionId = null)
     {
         if (!CanWrite(role))
             throw new UnauthorizedAccessException("الدور غير مخوّل لتسطير المراسلات");
@@ -215,8 +233,8 @@ public sealed class CorrespondenceService : ICorrespondenceService
             throw new ArgumentException("حساب المستلم معطّل — اختر مستلمًا نشطًا");
         if (target.Id == actorUserId)
             throw new ArgumentException("لا يمكن تسطير مراسلة لنفسك — حدّد مستلمًا آخر");
-        if (target.Role is not (UserRole.Lawyer or UserRole.Head or UserRole.EntityManager))
-            throw new ArgumentException("المستلم يجب أن يكون محاميًا أو رئيس قسم أو مندوب جهة");
+        if (target.Role is not (UserRole.Lawyer or UserRole.Head or UserRole.SubHead or UserRole.EntityManager))
+            throw new ArgumentException("المستلم يجب أن يكون محاميًا أو رئيس قسم/شعبة أو مندوب جهة");
 
         Document? document = null;
         if (request.DocumentId is not null)
@@ -224,7 +242,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
             document = await _documents.GetByIdAsync(request.DocumentId.Value, ct)
                 ?? throw new ArgumentException("الملف غير موجود");
 
-            if (!await MayAttachAsync(document, actorUserId, role, actorBranchId, ct))
+            if (!await MayAttachAsync(document, actorUserId, role, actorBranchId, actorSectionId, ct))
                 throw new UnauthorizedAccessException("لا تملك صلاحية تسطير مراسلة على هذا الملف");
 
             // فرض الأهلية بالمصدر نفسه: مستلم مراسلة مربوطة بملف يجب أن يكون ضمن
@@ -238,6 +256,16 @@ public sealed class CorrespondenceService : ICorrespondenceService
                 throw new ArgumentException(eligibilityMessage);
             }
         }
+
+        // عقد المستلم الرئيس (§10.2 + قرار 24): تُجمَّد الشعبة على المراسلة،
+        // والرئيس المفعّل وقت الإنشاء في `TargetUserId` — فلا يعيد التعاقب توجيهها.
+        // المرتبطة بملف لا تصل لرئيس أبدًا (مثبت: تُرفض أعلاه بالأهلية).
+        int? recipientSectionId = null;
+        if (target.Role is UserRole.Head or UserRole.SubHead)
+            recipientSectionId = await ResolveHeadRecipientSectionAsync(
+                request.RecipientSectionId, target, document, role, actorBranchId, ct);
+        else if (request.RecipientSectionId is not null)
+            throw new ArgumentException("الشعبة المختارة للمستلم الرئيس فقط");
 
         // الفرع/المحافظة/بادئة الرقم: للمرتبطة بملف من فرع الملف، وللعامة من فرع
         // المنشئ، وللعامة من مندوب (بلا فرع) من محافظة جهته.
@@ -253,6 +281,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
             Governorate = governorate,
             CreatedById = actorUserId,
             TargetUserId = target.Id,
+            RecipientSectionId = recipientSectionId,
             DocumentId = document?.Id,
             CorrespondenceNumber = string.Empty, // يُضبط أدناه مع رقم الرسالة الأولى = المرشّح النهائي بعد حل أي سباق.
             CorrespondenceDate = now,
@@ -398,12 +427,12 @@ public sealed class CorrespondenceService : ICorrespondenceService
 
     public async Task<CorrespondenceReceiptDto> MarkSeenAsync(int correspondenceId,
         int actorUserId, string? actorName, UserRole role, int? actorBranchId,
-        CancellationToken ct = default)
+        CancellationToken ct = default, int? actorSectionId = null)
     {
         var letter = await _letters.GetTrackedWithDetailsAsync(correspondenceId, ct)
             ?? throw new KeyNotFoundException("المراسلة غير موجودة");
 
-        if (!await CanViewAsync(letter, actorUserId, role, actorBranchId, ct))
+        if (!await CanViewAsync(letter, actorUserId, role, actorBranchId, actorSectionId, ct))
             throw new UnauthorizedAccessException("لا تملك صلاحية الاطلاع على هذه المراسلة");
 
         // التوثيق مقصور على المستلم: من يستلم هو من يشاهد.
@@ -454,7 +483,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
 
     public async Task<List<CorrespondenceTargetDto>> SearchTargetsAsync(
         int actorUserId, UserRole role, int? actorBranchId, string? q, int? documentId,
-        CancellationToken ct = default)
+        CancellationToken ct = default, int? actorSectionId = null)
     {
         if (!CanWrite(role))
             throw new UnauthorizedAccessException("الدور غير مخوّل لتسطير المراسلات");
@@ -467,7 +496,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
 
             // بوابة البحث = صلاحية التسطير على هذا الملف (نفس فحص الإنشاء) فلا نكشف
             // مرشحين لمن لا يملك الكتابة عليه مهما كان دوره.
-            if (!await MayAttachAsync(document, actorUserId, role, actorBranchId, ct))
+            if (!await MayAttachAsync(document, actorUserId, role, actorBranchId, actorSectionId, ct))
                 throw new UnauthorizedAccessException("لا تملك صلاحية تسطير مراسلة على هذا الملف");
         }
 
@@ -479,6 +508,47 @@ public sealed class CorrespondenceService : ICorrespondenceService
     /// مربوطة بملف = مندوب←محامو الملف، محامٍ/رئيس←مناديب نطاق الملف.
     /// يُستخدم من البحث والإنشاء معًا فلا يمكن أن يُترشح مستلمٌ ثم يُرفض إنشاؤه أو العكس.
     /// </summary>
+    /// <summary>
+    /// تجميد المستلم الرئيس (§10.2 + قرار 24): المرتبطة بملف لا تصل لرئيس أبدًا
+    /// (مثبت بالاختبارات — الرئيس يستلم عبر نطاق دائرته لا بالتسمية)؛ وبلا ملف
+    /// تُجمَّد الشعبة المختارة (فارغةٌ تعني رئيس القسم): الشعبة نشطة بفرع المستلم
+    /// ومستلمُها رئيسُها المفعّل، والافتراضي رئيس قسم فرع المنشئ — وإلا
+    /// «يجب اختيار المستلم».
+    /// </summary>
+    private async Task<int?> ResolveHeadRecipientSectionAsync(
+        int? recipientSectionId, User target, Document? document, UserRole role,
+        int? actorBranchId, CancellationToken ct)
+    {
+        if (document is not null)
+            return null;
+        if (recipientSectionId is null)
+        {
+            // الافتراضي رئيس القسم (حسب الاعتماد): رئيس قسم فرع المنشئ المفعّل حصرًا.
+            if (target.Role != UserRole.Head || target.BranchId != actorBranchId || !target.IsActive)
+            {
+                // مستلم الشعبة المسمّى بالاسم: تُشتق شعبته من حسابه (قرار 24) —
+                // شعبة نشطة ورئيسها المفعّل هو المستلم نفسه، وإلا «يجب اختيار المستلم».
+                if (target.Role != UserRole.SubHead || !target.IsActive || target.SectionId is null)
+                    throw new ArgumentException("يجب اختيار المستلم — حدّد رئيس القسم أو شعبة نشطة برئيس مفعّل");
+                var ownSection = await _sections.GetByIdAsync(target.SectionId.Value, ct);
+                var ownHead = ownSection is not null
+                    ? await _users.FindActiveHeadAsync(UserRole.SubHead, ownSection.BranchId, ownSection.Id, ct)
+                    : null;
+                if (ownSection is null || !ownSection.IsActive || ownHead?.Id != target.Id)
+                    throw new ArgumentException("يجب اختيار المستلم — حدّد رئيس القسم أو شعبة نشطة برئيس مفعّل");
+                return ownSection.Id;
+            }
+            return null;
+        }
+        var section = await _sections.GetByIdAsync(recipientSectionId.Value, ct);
+        var head = section is not null
+            ? await _users.FindActiveHeadAsync(UserRole.SubHead, section.BranchId, section.Id, ct)
+            : null;
+        if (section is null || !section.IsActive || head?.Id != target.Id)
+            throw new ArgumentException("يجب اختيار المستلم — حدّد رئيس القسم أو شعبة نشطة برئيس مفعّل");
+        return section.Id;
+    }
+
     private async Task<List<CorrespondenceTargetDto>> ResolveEligibleTargetsAsync(
         int actorUserId, UserRole role, string? q, Document? document, CancellationToken ct)
     {
@@ -523,12 +593,13 @@ public sealed class CorrespondenceService : ICorrespondenceService
         u.Branch?.Governorate ?? u.PortalEntry?.Governorate);
 
     public async Task<List<CorrespondenceListItemDto>> ListByDocumentAsync(int documentId,
-        int actorUserId, UserRole role, int? actorBranchId, CancellationToken ct = default)
+        int actorUserId, UserRole role, int? actorBranchId, CancellationToken ct = default,
+        int? actorSectionId = null)
     {
         var document = await _documents.GetByIdAsync(documentId, ct)
             ?? throw new KeyNotFoundException("الملف غير موجود");
 
-        if (!await MayListDocumentAsync(document, actorUserId, role, actorBranchId, ct))
+        if (!await MayListDocumentAsync(document, actorUserId, role, actorBranchId, actorSectionId, ct))
             throw new UnauthorizedAccessException("لا تملك صلاحية الاطلاع على مراسلات هذا الملف");
 
         var letters = await _letters.ListByDocumentAsync(documentId, ct);
@@ -554,7 +625,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
     }
 
     private async Task<bool> MayAttachAsync(Document document, int actorUserId, UserRole role,
-        int? actorBranchId, CancellationToken ct)
+        int? actorBranchId, int? actorSectionId, CancellationToken ct)
     {
         switch (role)
         {
@@ -568,6 +639,16 @@ public sealed class CorrespondenceService : ICorrespondenceService
                 // لفرعه/محافظته في ListByDocumentAsync، ورقمها من فرع المنشئ).
                 return actorBranchId is not null
                     && (actorBranchId == document.BranchId || document.BranchId is null);
+            case UserRole.SubHead:
+                // نطاق الشعبة (§10): فرعه ودائرة شعبته حصرًا — بلا تدهور لملف
+                // بلا دائرة (مرآة MayListDocumentAsync).
+                if (actorBranchId is null || actorBranchId != document.BranchId || actorSectionId is null)
+                    return false;
+                if (document.ExecutionCircuitId is null)
+                    return false;
+                var subCircuit = document.ExecutionCircuit
+                    ?? await _circuits.GetByIdAsync(document.ExecutionCircuitId.Value, ct);
+                return subCircuit?.SectionId == actorSectionId;
             case UserRole.EntityManager:
                 return await IsDocumentInDelegateScopeAsync(document.Id, actorUserId, ct);
             default:
@@ -576,7 +657,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
     }
 
     private async Task<bool> MayListDocumentAsync(Document document, int actorUserId,
-        UserRole role, int? actorBranchId, CancellationToken ct)
+        UserRole role, int? actorBranchId, int? actorSectionId, CancellationToken ct)
     {
         switch (role)
         {
@@ -585,6 +666,16 @@ public sealed class CorrespondenceService : ICorrespondenceService
             case UserRole.Head:
                 return actorBranchId is not null
                     && (actorBranchId == document.BranchId || document.BranchId is null);
+            case UserRole.SubHead:
+                // نطاق الشعبة (§10): فرعه ودائرة شعبته — بلا تدهور. حارس null
+                // صريح (مرآة نمط Head أعلاه): رئيس مشوَّه بلا فرع مرفوض دائمًا.
+                if (actorBranchId is null || actorBranchId != document.BranchId || actorSectionId is null)
+                    return false;
+                if (document.ExecutionCircuitId is null)
+                    return false;
+                var circuit = document.ExecutionCircuit
+                    ?? await _circuits.GetByIdAsync(document.ExecutionCircuitId.Value, ct);
+                return circuit?.SectionId == actorSectionId;
             case UserRole.Lawyer:
                 return document.CreatedById == actorUserId
                     || await FollowsDocumentAsync(document.Id, actorUserId, ct);
@@ -614,7 +705,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
     }
 
     private async Task<bool> CanViewAsync(Correspondence letter, int actorUserId, UserRole role,
-        int? actorBranchId, CancellationToken ct)
+        int? actorBranchId, int? actorSectionId, CancellationToken ct)
     {
         // الطرفان (المنشئ والمستلم المعيَّن) يريان دائمًا.
         if (letter.CreatedById == actorUserId || letter.TargetUserId == actorUserId)
@@ -628,11 +719,30 @@ public sealed class CorrespondenceService : ICorrespondenceService
                     letter.Governorate,
                     await ResolveHeadGovernorateAsync(actorBranchId.Value, ct),
                     StringComparison.Ordinal);
+            case UserRole.SubHead when actorBranchId is not null && actorSectionId is not null:
+                // نطاق الشعبة (§10): فرعه وملك دائرته (شعبته) — بلا تدهور.
+                return letter.BranchId == actorBranchId
+                    && await OwnerSectionOfAsync(letter, ct) == actorSectionId;
             case UserRole.Manager or UserRole.Admin:
                 return true;
             default:
                 return false;
         }
+    }
+
+    /// <summary>
+    /// مالك المراسلة (§10): شعبة دائرة ملفها (بلا دائرة → لا مالك شعبي)،
+    /// وبلا ملف الشعبة المستلمة المجمدة. الملف المحذوف مصدره يعامَل بلا مالك.
+    /// </summary>
+    private async Task<int?> OwnerSectionOfAsync(Correspondence letter, CancellationToken ct)
+    {
+        if (letter.DocumentId is null)
+            return letter.RecipientSectionId;
+        var doc = letter.Document ?? await _documents.GetByIdAsync(letter.DocumentId.Value, ct);
+        if (doc?.ExecutionCircuitId is null)
+            return null;
+        var circuit = doc.ExecutionCircuit ?? await _circuits.GetByIdAsync(doc.ExecutionCircuitId.Value, ct);
+        return circuit?.SectionId;
     }
 
     /// <summary>
@@ -664,7 +774,7 @@ public sealed class CorrespondenceService : ICorrespondenceService
             return (branch.Id, branch.Governorate.Trim(), branch.Code);
         }
 
-        if (role is UserRole.Lawyer or UserRole.Head)
+        if (role is UserRole.Lawyer or UserRole.Head or UserRole.SubHead)
         {
             if (actorBranchId is null)
                 throw new ArgumentException("الحساب دون فرع لا يمكنه تسطير مراسلة عامة");
@@ -794,11 +904,13 @@ public sealed class CorrespondenceService : ICorrespondenceService
     }
 
     /// <summary>
-    /// أدوار الكتابة في المراسلات: محامٍ/رئيس قسم/مندوب جهة (تُفرض أيضًا عبر
-    /// RolePermissions في المتحكمات؛ هذا الفحص دفاع داخلي للخدمة).
+    /// أدوار الكتابة في المراسلات: محامٍ/رئيس قسم/شعبة/مندوب جهة (تُفرض أيضًا عبر
+    /// RolePermissions في المتحكمات؛ هذا الفحص دفاع داخلي للخدمة). الشعبة ترث
+    /// القسم هنا بموجب القرار §2.21 — لا تأليف على الملفات لها (`MayAttach`
+    /// يردها)، بل مراسلات عامة بفرعها.
     /// </summary>
     private static bool CanWrite(UserRole role)
-        => role is UserRole.Lawyer or UserRole.Head or UserRole.EntityManager;
+        => role is UserRole.Lawyer or UserRole.Head or UserRole.SubHead or UserRole.EntityManager;
 
     private static CorrespondenceMessageDto ToMessageDto(CorrespondenceMessage m) => new(
         m.Id,
@@ -862,7 +974,8 @@ public sealed class CorrespondenceService : ICorrespondenceService
             letter.TargetUserId == readerUserId,
             messages.Select(ToMessageDto).ToList(),
             receipts.Select(r => new CorrespondenceReceiptDto(r.UserId, r.UserName, r.SeenAt)).ToList(),
-            letter.CreatedAt);
+            letter.CreatedAt,
+            letter.RecipientSectionId);
     }
 
     private CorrespondenceListItemDto ToListItem(Correspondence letter, int viewerUserId)

@@ -22,6 +22,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
     private readonly IHeadAlertService _alerts;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
+    private readonly IDbExceptionClassifier? _dbErrors;
 
     public DocumentAppealService(
         IAppealRepository appeals,
@@ -32,7 +33,8 @@ public sealed class DocumentAppealService : IDocumentAppealService
         IAuditLogger audit,
         IHeadAlertService alerts,
         TimeProvider clock,
-        TimeZoneInfo timeZone)
+        TimeZoneInfo timeZone,
+        IDbExceptionClassifier? dbErrors = null)
     {
         _appeals = appeals;
         _documents = documents;
@@ -43,6 +45,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
         _alerts = alerts;
         _clock = clock;
         _timeZone = timeZone;
+        _dbErrors = dbErrors;
     }
 
     // ── التسطير والتعديل قبل الإسناد ───────────────────────────────────────
@@ -71,6 +74,8 @@ public sealed class DocumentAppealService : IDocumentAppealService
             Status = AppealStatusCatalog.Pending,
             AppellantsJson = appellantsJson,
             AppelleesJson = appelleesJson,
+            ForwardState = AppealForwardCatalog.Owned,
+            Version = 1,
             CreatedById = userId,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
@@ -168,19 +173,19 @@ public sealed class DocumentAppealService : IDocumentAppealService
 
     public Task<PagedResult<AppealDto>> SearchAsync(
         string? query, string? status, int? visibleBranchId, int? visibleUserId,
-        int page, int perPage, CancellationToken ct = default)
+        int? ownerSectionId, int page, int perPage, CancellationToken ct = default)
     {
         page = Math.Max(1, page);
         perPage = Math.Clamp(perPage, 1, 100);
-        return SearchCoreAsync(query, status, visibleBranchId, visibleUserId, page, perPage, ct);
+        return SearchCoreAsync(query, status, visibleBranchId, visibleUserId, ownerSectionId, page, perPage, ct);
     }
 
     private async Task<PagedResult<AppealDto>> SearchCoreAsync(
         string? query, string? status, int? visibleBranchId, int? visibleUserId,
-        int page, int perPage, CancellationToken ct)
+        int? ownerSectionId, int page, int perPage, CancellationToken ct)
     {
         var (total, items) = await _appeals.SearchAsync(
-            query, status, visibleBranchId, visibleUserId, page, perPage, ct);
+            query, status, visibleBranchId, visibleUserId, ownerSectionId, page, perPage, ct);
 
         return new PagedResult<AppealDto>
         {
@@ -263,6 +268,9 @@ public sealed class DocumentAppealService : IDocumentAppealService
         appeal.DecisionRuling = ruling;
         appeal.Outcome = outcome;
         appeal.UpdatedAt = DateTime.UtcNow;
+        // خروج الحالة من «منظور» يُبطل شروط الإسناد/النقل/الإحالة المقروءة
+        // خارج المعاملة — الرفع يجعل أي كتابة متزامنة قديمة تفشل برمز التزامن.
+        appeal.Version++;
 
         await _tx.RunAsync(async token =>
         {
@@ -299,6 +307,8 @@ public sealed class DocumentAppealService : IDocumentAppealService
         appeal.StruckOffDate = struckOffDate;
         appeal.StruckOffDecisionNumber = decisionNumber;
         appeal.UpdatedAt = DateTime.UtcNow;
+        // كالحسم: خروج الحالة من «منظور» يرفع الرمز لإبطال الكتابات المتزامنة القديمة.
+        appeal.Version++;
 
         await _tx.RunAsync(async token =>
         {
@@ -313,26 +323,30 @@ public sealed class DocumentAppealService : IDocumentAppealService
         return ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
     }
 
-    // ── الإسناد والنقل (رئيس القسم) ───────────────────────────────────────
+    // ── الإسناد والنقل (رئيس القسم والشعبة بنطاقه) ──────────────────────────
 
     public async Task<AppealDto?> AssignAsync(
         int appealId,
         AssignAppealRequest request,
         int userId,
-        int? headBranchId,
         string? actorName,
         CancellationToken ct = default)
     {
-        var appeal = await LoadForHeadActionAsync(appealId, headBranchId, ct);
+        var appeal = await LoadForHeadActionAsync(appealId, userId, ct);
         if (appeal.AssignedLawyerId is not null)
             throw new ArgumentException("لا يمكن إسناد استئناف أُسند سلفًا");
+        if (request.Version.HasValue && appeal.Version != request.Version.Value)
+            throw new DocumentConflictException("تعارض تزامن — أعد تحميل الاستئناف وحاول مجددًا");
 
         var lawyer = await ResolveTargetLawyerAsync(request.AssignedLawyerId, appeal.Document.BranchId, ct);
 
         appeal.AssignedLawyerId = lawyer.Id;
         appeal.AssignedAt = DateTime.UtcNow;
         appeal.UpdatedAt = DateTime.UtcNow;
+        appeal.Version++;
 
+        // التعارض الحقيقي (سباق بعد الفحص) يرميه الرمز (`IsConcurrencyToken`) —
+        // المعالج العام يترجمه `409` برسالة ودية (RF-010).
         await _tx.RunAsync(async token =>
         {
             _appeals.Update(appeal);
@@ -362,19 +376,21 @@ public sealed class DocumentAppealService : IDocumentAppealService
         int appealId,
         TransferAppealRequest request,
         int userId,
-        int? headBranchId,
         string? actorName,
         CancellationToken ct = default)
     {
-        var appeal = await LoadForHeadActionAsync(appealId, headBranchId, ct);
+        var appeal = await LoadForHeadActionAsync(appealId, userId, ct);
         if (request.TargetLawyerId == appeal.AssignedLawyerId)
             throw new ArgumentException("الاستئناف مسند لهذا المحامي سلفًا");
+        if (request.Version.HasValue && appeal.Version != request.Version.Value)
+            throw new DocumentConflictException("تعارض تزامن — أعد تحميل الاستئناف وحاول مجددًا");
 
         var lawyer = await ResolveTargetLawyerAsync(request.TargetLawyerId, appeal.Document.BranchId, ct);
 
         appeal.AssignedLawyerId = lawyer.Id;
         appeal.AssignedAt = DateTime.UtcNow;
         appeal.UpdatedAt = DateTime.UtcNow;
+        appeal.Version++;
 
         await _tx.RunAsync(async token =>
         {
@@ -392,6 +408,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
     public async Task<int> TransferAllAsync(
         TransferAllAppealsRequest request,
         int? headBranchId,
+        int? ownerSectionId,
         string? actorName,
         CancellationToken ct = default)
     {
@@ -402,11 +419,10 @@ public sealed class DocumentAppealService : IDocumentAppealService
 
         var target = await ResolveTargetLawyerAsync(request.TargetLawyerId, headBranchId.Value, ct);
 
-        var movable = await _appeals.ListByAssigneeAsync(
-            request.SourceLawyerId, headBranchId.Value, asNoTracking: false, ct);
-
-        // النقل الجملة للمنظورة فقط — المحسوم والمشطوب يُتخطَّيان (R5).
-        var pendingOnly = movable.Where(a => a.Status == AppealStatusCatalog.Pending).ToList();
+        // النقل الجملة للمنظورة ضمن نطاق المنفِّذ فقط (§5.5) — فلترة قاعدية
+        // (المحسوم والمشطوب وخارج النطاق مستبعدان في المستودع)، وبتتبّع للتحديث.
+        var pendingOnly = await _appeals.ListPendingByAssigneeInScopeAsync(
+            request.SourceLawyerId, headBranchId.Value, ownerSectionId, ct);
 
         await _tx.RunAsync(async token =>
         {
@@ -415,6 +431,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
                 appeal.AssignedLawyerId = target.Id;
                 appeal.AssignedAt = DateTime.UtcNow;
                 appeal.UpdatedAt = DateTime.UtcNow;
+                appeal.Version++;
                 _appeals.Update(appeal);
             }
             await _uow.SaveChangesAsync(token);
@@ -425,11 +442,195 @@ public sealed class DocumentAppealService : IDocumentAppealService
         return pendingOnly.Count;
     }
 
-    public Task<int> CountByAssigneeForHeadAsync(int assigneeId, int? headBranchId, CancellationToken ct = default)
+    public async Task<int> CountByAssigneeForHeadAsync(int assigneeId, int? headBranchId, int? ownerSectionId, CancellationToken ct = default)
     {
         if (headBranchId is null)
             throw new ArgumentException("رئيس القسم دون فرع لا يمكنه الاطلاع على الاستئنافات");
-        return _appeals.CountByAssigneeAsync(assigneeId, headBranchId.Value, AppealStatusCatalog.Pending, ct);
+        // المعاينة بالنطاق نفسه (§5.5): عدّ قاعدي يطابق المنقول فعلًا.
+        return await _appeals.CountPendingByAssigneeInScopeAsync(
+            assigneeId, headBranchId.Value, ownerSectionId, ct);
+    }
+
+    // ── الإحالة لرئيس القسم والتراجع عنها (شعبة → قسم، اتجاه واحد) ──────────
+
+    /// <summary>
+    /// إحالة استئناف من رئيس الشعبة لرئيس قسم فرعه (§6.2): استثناء لمرة واحدة
+    /// — القسم يسند رغم الدائرة، ويبقى الاستثناء حتى الحسم (قرار §2.22).
+    /// </summary>
+    public async Task<AppealDto?> ForwardAsync(
+        int appealId,
+        ForwardAppealRequest request,
+        int callerUserId,
+        string? actorName,
+        CancellationToken ct = default)
+    {
+        var appeal = await _appeals.GetByIdWithDetailsAsync(appealId, ct)
+            ?? throw new ArgumentException("الاستئناف غير موجود");
+        if (appeal.Status != AppealStatusCatalog.Pending)
+            throw new ArgumentException("لا يمكن إحالة استئناف لم يبق منظورًا");
+        if (appeal.AssignedLawyerId is not null)
+            throw new ArgumentException("لا يمكن إحالة استئناف أُسند سلفًا — التراجع قبل الإسناد فقط");
+        if (appeal.ForwardState == AppealForwardCatalog.ForwardedToHead)
+            throw new ArgumentException("الاستئناف محال سلفًا لرئيس القسم");
+        if (request.Version.HasValue && appeal.Version != request.Version.Value)
+            throw new DocumentConflictException("تعارض تزامن — أعد تحميل الاستئناف وحاول مجددًا");
+
+        var caller = await _users.GetByIdAsync(callerUserId, ct)
+            ?? throw new ArgumentException("المستخدم غير موجود");
+        if (caller.Role != UserRole.SubHead)
+            throw new ArgumentException("الإحالة لرئيس الشعبة فقط");
+        var doc = appeal.Document;
+        if (doc.BranchId is null || doc.BranchId != caller.BranchId)
+            throw new ArgumentException("لا يمكنك إحالة هذا الاستئناف — ليس ضمن فرعك");
+        if (doc.ExecutionCircuitId is null || doc.ExecutionCircuit?.SectionId != caller.SectionId || caller.SectionId is null)
+            throw new ArgumentException("الدائرة ليست ضمن نطاقك");
+
+        var head = await _users.FindActiveHeadAsync(UserRole.Head, doc.BranchId, null, ct)
+            ?? throw new ArgumentException("لا يوجد رئيس قسم مفعّل في الفرع — تعذّرت الإحالة");
+        var reason = string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason.Trim();
+        if (reason?.Length > 1000)
+            throw new ArgumentException("طول سبب الإحالة يتجاوز الحد الأقصى (1000 حرف)");
+
+        var now = DateTime.UtcNow;
+        try
+        {
+            await _tx.RunAsync(async token =>
+            {
+                appeal.ForwardedById = caller.Id;
+                appeal.ForwardedAt = now;
+                appeal.ForwardState = AppealForwardCatalog.ForwardedToHead;
+                appeal.ForwardReason = reason;
+                appeal.UpdatedAt = now;
+                appeal.Version++;
+                _appeals.Update(appeal);
+                await _uow.SaveChangesAsync(token);
+                await _audit.LogAsync(actorName, "forward_appeal",
+                    appeal.DocumentId, appeal.Document.DocumentType,
+                    $"يرجى التفضل بإسناد الاستئناف (ملف {appeal.DocumentId} — محال من {caller.FullName})"
+                    + (reason is null ? string.Empty : $" — السبب: {reason}"), token);
+            }, ct);
+        }
+        catch (Exception ex) when (_dbErrors?.IsConcurrencyViolation(ex) == true)
+        {
+            // إحالتان متزامنتان حقيقيتان — 409 ودية بدل 500 خام.
+            throw new DocumentConflictException("تعارض تزامن — أعد تحميل الاستئناف وحاول مجددًا");
+        }
+
+        // جراحة التنبيهات (§6.2): حذف انتقائي لتنبيه المحيل + تنبيه موجَّه لرئيس
+        // القسم — أفضل جهد (لا تُفشل الإحالة الثابتة).
+        try
+        {
+            await _alerts.RemoveAppealRecipientAsync(appeal.Id, caller.Id, ct);
+        }
+        catch (Exception ex)
+        {
+            await _audit.LogAsync(actorName, "head_alert_failed",
+                appeal.DocumentId, appeal.Document.DocumentType,
+                $"تعذّر تصفية تنبيه المحيل بعد الإحالة (رقم {appeal.Id}): {ex.Message}", ct);
+        }
+        try
+        {
+            await _alerts.CreateAsync(new CreateHeadAlertRequest(
+                TargetType: "head",
+                DocumentId: appeal.DocumentId,
+                TargetLawyerId: null,
+                Message: $"يرجى التفضل بإسناد الاستئناف (ملف {appeal.DocumentId} — محال من {caller.FullName})",
+                AppealId: appeal.Id,
+                RecipientUserId: head.Id),
+                caller.Id, doc.BranchId.Value, actorName, ct);
+        }
+        catch (Exception ex)
+        {
+            await _audit.LogAsync(actorName, "head_alert_failed",
+                appeal.DocumentId, appeal.Document.DocumentType,
+                $"تعذّر إشعار رئيس القسم بالإحالة (رقم {appeal.Id}): {ex.Message}", ct);
+        }
+
+        return ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
+    }
+
+    /// <summary>
+    /// التراجع عن الإحالة قبل الإسناد (§6.5): استرجاع المحيل أو إعادة المستلم —
+    /// يُصفَّر الاستثناء وتُعاد البدائل للمحيل. بعد الإسناد: نقل عادي.
+    /// </summary>
+    public async Task<AppealDto?> RecallForwardAsync(
+        int appealId,
+        int callerUserId,
+        string? actorName,
+        CancellationToken ct = default)
+    {
+        var appeal = await _appeals.GetByIdWithDetailsAsync(appealId, ct)
+            ?? throw new ArgumentException("الاستئناف غير موجود");
+        if (appeal.Status != AppealStatusCatalog.Pending)
+            throw new ArgumentException("لا يمكن التراجع عن إحالة استئناف لم يبق منظورًا");
+        if (appeal.AssignedLawyerId is not null)
+            throw new ArgumentException("تعذّر التراجع بعد الإسناد — انقل الاستئناف نقلًا عاديًا");
+        if (appeal.ForwardState != AppealForwardCatalog.ForwardedToHead || appeal.ForwardedById is null)
+            throw new ArgumentException("لا توجد إحالة مفتوحة لهذا الاستئناف");
+
+        var caller = await _users.GetByIdAsync(callerUserId, ct)
+            ?? throw new ArgumentException("المستخدم غير موجود");
+        var doc = appeal.Document;
+        var isForwarder = appeal.ForwardedById == caller.Id;
+        var isDivisionHead = caller.Role == UserRole.Head
+            && doc.BranchId is not null && doc.BranchId == caller.BranchId;
+        if (!isForwarder && !isDivisionHead)
+            throw new ArgumentException("التراجع للمحيل أو لرئيس قسم الفرع فقط");
+        var forwarderId = appeal.ForwardedById.Value;
+
+        try
+        {
+            await _tx.RunAsync(async token =>
+            {
+                appeal.ForwardState = AppealForwardCatalog.Owned;
+                appeal.ForwardedById = null;
+                appeal.ForwardedAt = null;
+                appeal.ForwardReason = null;
+                appeal.UpdatedAt = DateTime.UtcNow;
+                appeal.Version++;
+                _appeals.Update(appeal);
+                await _uow.SaveChangesAsync(token);
+                await _audit.LogAsync(actorName, "recall_forward",
+                    appeal.DocumentId, appeal.Document.DocumentType,
+                    isForwarder
+                        ? $"استرجع المحيل إحالته للاستئناف (رقم {appeal.Id})"
+                        : $"أعاد رئيس القسم الإحالة (رقم {appeal.Id}) لمحيلها", token);
+            }, ct);
+        }
+        catch (Exception ex) when (_dbErrors?.IsConcurrencyViolation(ex) == true)
+        {
+            // تراجعان متزامنان حقيقيان — 409 ودية بدل 500 خام.
+            throw new DocumentConflictException("تعارض تزامن — أعد تحميل الاستئناف وحاول مجددًا");
+        }
+
+        // بدائل المحيل (§6.6): حذف تنبيهات الإحالة المعلقة ثم تنبيه معلّق جديد
+        // له — الحذف شامل لنطاق الاستئناف لأنه لحظة التراجع لا يملك أي تنبيه
+        // لهذا الاستئناف إلا تنبيه الإحالة لرئيس القسم (تنبيه المحيل الأصلي
+        // أُزيل وقت الإحالة)، فيعمل صحيحًا بفرعيه: استرجاع المحيل وإعادة الرئيس.
+        try
+        {
+            var forwarder = await _users.GetByIdAsync(forwarderId, ct);
+            if (forwarder is not null && doc.BranchId.HasValue)
+            {
+                await _alerts.DeleteByAppealAsync(appeal.Id, ct);
+                await _alerts.CreateAsync(new CreateHeadAlertRequest(
+                    TargetType: "head",
+                    DocumentId: appeal.DocumentId,
+                    TargetLawyerId: null,
+                    Message: $"أُعيد الاستئناف (ملف {appeal.DocumentId}) لنطاقك — يرجى اختيار محامي لمتابعته",
+                    AppealId: appeal.Id,
+                    RecipientUserId: forwarder.Id),
+                    caller.Id, doc.BranchId.Value, actorName, ct);
+            }
+        }
+        catch (Exception ex)
+        {
+            await _audit.LogAsync(actorName, "head_alert_failed",
+                appeal.DocumentId, appeal.Document.DocumentType,
+                $"تعذّر ترتيب تنبيهات التراجع (رقم {appeal.Id}): {ex.Message}", ct);
+        }
+
+        return ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
     }
 
     // ── تدوير رقم الأساس الاستئنافي ───────────────────────────────────────
@@ -507,6 +708,9 @@ public sealed class DocumentAppealService : IDocumentAppealService
 
     public Task<bool> IsAssignedFollowerAsync(int documentId, int userId, CancellationToken ct = default)
         => _appeals.IsAssignedFollowerAsync(documentId, userId, ct);
+
+    public Task<bool> HasForwardedAppealAsync(int documentId, CancellationToken ct = default)
+        => _appeals.HasForwardedAppealAsync(documentId, ct);
 
     // ── الإجراءات والملاحظات المستقلة ─────────────────────────────────────
 
@@ -717,15 +921,37 @@ public sealed class DocumentAppealService : IDocumentAppealService
             throw new ArgumentException("لا يمكنك تعديل هذا الاستئناف — ليس مسندًا إليك للمتابعة");
     }
 
-    private async Task<DocumentAppeal> LoadForHeadActionAsync(int appealId, int? headBranchId, CancellationToken ct)
+    private async Task<DocumentAppeal> LoadForHeadActionAsync(int appealId, int callerUserId, CancellationToken ct)
     {
         var appeal = await _appeals.GetByIdWithDetailsAsync(appealId, ct)
             ?? throw new ArgumentException("الاستئناف غير موجود");
         if (appeal.Status != AppealStatusCatalog.Pending)
             throw new ArgumentException("لا يمكن التنفيذ على استئناف لم يبق منظورًا");
-        if (appeal.Document.BranchId is null || appeal.Document.BranchId != headBranchId)
+        var caller = await _users.GetByIdAsync(callerUserId, ct)
+            ?? throw new ArgumentException("المستخدم غير موجود");
+        var doc = appeal.Document;
+        if (doc.BranchId is null || doc.BranchId != caller.BranchId)
             throw new ArgumentException("لا يمكنك التنفيذ على هذا الاستئناف — ليس ضمن فرعك");
-        return appeal;
+        if (caller.Role == UserRole.Head)
+        {
+            // رئيس القسم: ملفات دوائر القسم + المحال له استثناءً حتى الحسم (قرار §2.22).
+            var sectionId = doc.ExecutionCircuit?.SectionId;
+            if (sectionId.HasValue && appeal.ForwardState != AppealForwardCatalog.ForwardedToHead)
+                throw new ArgumentException("الدائرة ليست ضمن نطاقك");
+            return appeal;
+        }
+        if (caller.Role == UserRole.SubHead)
+        {
+            // رئيس الشعبة: ملفات دوائر شعبته غير المحالة (المحال صار لرئيس القسم).
+            if (caller.SectionId is null)
+                throw new ArgumentException("حسابك بلا شعبة — أعد الدخول");
+            if (doc.ExecutionCircuitId is null || doc.ExecutionCircuit?.SectionId != caller.SectionId)
+                throw new ArgumentException("الدائرة ليست ضمن نطاقك");
+            if (appeal.ForwardState == AppealForwardCatalog.ForwardedToHead)
+                throw new ArgumentException("الاستئناف محال لرئيس القسم — بانتظار إسناده");
+            return appeal;
+        }
+        throw new ArgumentException("إسناد الاستئنافات للرؤساء فقط");
     }
 
     private async Task<User> ResolveTargetLawyerAsync(int lawyerId, int? branchId, CancellationToken ct)
@@ -905,19 +1131,34 @@ public sealed class DocumentAppealService : IDocumentAppealService
         }
         try
         {
+            // الإشعار الأولي لمالك واحد حسب دائرة الملف (§6.1): رئيس شعبته،
+            // وإلا رئيس القسم — لا بث لفرع (قرار §2 + §17/5).
+            var sectionId = source.ExecutionCircuit?.SectionId;
+            var owner = sectionId.HasValue
+                ? await _users.FindActiveHeadAsync(UserRole.SubHead, source.BranchId, sectionId, ct)
+                    ?? await _users.FindActiveHeadAsync(UserRole.Head, source.BranchId, null, ct)
+                : await _users.FindActiveHeadAsync(UserRole.Head, source.BranchId, null, ct);
+            if (owner is null)
+            {
+                await _audit.LogAsync(actorName, "head_alert_failed",
+                    source.Id, source.DocumentType,
+                    $"تعذّر إشعار الرئيس بالاستئناف المعلّق (رقم {appealId}): لا رئيس مفعّل للنطاق", ct);
+                return;
+            }
             await _alerts.CreateAsync(new CreateHeadAlertRequest(
                 TargetType: "head",
                 DocumentId: source.Id,
                 TargetLawyerId: null,
                 Message: $"وقع استئناف بملف {DocumentTitle(source)} رقم {EffectiveFileIdentity.Number(source, ServerClock.CurrentYear(_clock, _timeZone)) ?? "—"} نوع {source.FileType ?? "—"} دائرة تنفيذ {source.Court ?? "—"}، يرجى اختيار محامي لمتابعة الاستئناف",
-                AppealId: appealId),
+                AppealId: appealId,
+                RecipientUserId: owner.Id),
                 userId, source.BranchId.Value, actorName, ct);
         }
         catch (Exception ex)
         {
             await _audit.LogAsync(actorName, "head_alert_failed",
                 source.Id, source.DocumentType,
-                $"تعذّر إشعار رئيس القسم بالاستئناف المعلّق (رقم {appealId}): {ex.Message}", ct);
+                $"تعذّر إشعار الرئيس بالاستئناف المعلّق (رقم {appealId}): {ex.Message}", ct);
         }
     }
 
@@ -1097,7 +1338,11 @@ public sealed class DocumentAppealService : IDocumentAppealService
             a.CreatedById,
             EffectiveFileIdentity.Number(d, asOfYear),
             EffectiveFileIdentity.Year(d, asOfYear),
-            PartiesDegraded: appellantsCorrupted || appelleesCorrupted);
+            PartiesDegraded: appellantsCorrupted || appelleesCorrupted,
+            ForwardState: a.ForwardState,
+            SectionId: d.ExecutionCircuit?.SectionId,
+            ExecutionCircuitId: d.ExecutionCircuitId,
+            Version: a.Version);
     }
 
     /// <summary>خيار طرف داخل لقطات الاستئناف (بناء داخلي قبل التسلسل).</summary>

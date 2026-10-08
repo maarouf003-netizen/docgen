@@ -3,12 +3,15 @@ namespace DocGenerator.Application.DTOs;
 /// <summary>
 /// تسطير مراسلة — محامٍ أو رئيس قسم أو مندوب جهة. DocumentId فارغ يعني مراسلة عامة
 /// غير مرتبطة بملف. TargetUserId إجباري: الطرف المستلم المعيَّن بالاسم.
+/// `RecipientSectionId` لعقد المستلم الرئيس (§10.2 + قرار 24): مع مستلم رئيس
+/// بلا ملف تُجمَّد الشعبة (فارغةٌ تعني رئيس القسم)؛ ومع غير الرئيس تُرفض.
 /// </summary>
 public record CreateCorrespondenceRequest(
     int? DocumentId,
     int TargetUserId,
     string Importance,
-    string BodyHtml);
+    string BodyHtml,
+    int? RecipientSectionId = null);
 
 /// <summary>إضافة لاحق إلى مراسلة — منشئ المراسلة نفسه فقط.</summary>
 public record AddCorrespondenceAddendumRequest(string BodyHtml);
@@ -79,7 +82,9 @@ public record CorrespondenceDto(
     IReadOnlyList<CorrespondenceMessageDto> Messages,
     /// <summary>توثيق مشاهدة المستلم فقط (لا مرسل ولا رئيس ولا مدير).</summary>
     IReadOnlyList<CorrespondenceReceiptDto> Receipts,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    /// <summary>الشعبة المجمدة للمستلم الرئيس (§10.2 + قرار 24) — `null` لغيره.</summary>
+    int? RecipientSectionId = null);
 
 /// <summary>
 /// سطر مراسلة في القائمة: للمرتبطة بالملف تُملأ FileContext، وللعامة تبقى null.

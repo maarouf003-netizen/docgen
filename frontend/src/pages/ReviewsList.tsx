@@ -11,7 +11,8 @@ import { reviewLetterTitle } from '../components/review/reviewDisplay';
 const PER_PAGE = 20;
 
 export default function ReviewsList() {
-  const { user, hasFullAccess, isHead } = useAuth();
+  const { user, hasFullAccess } = useAuth();
+  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
   const [items, setItems] = useState<ReviewLetterListItemDto[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
@@ -196,10 +197,10 @@ export default function ReviewsList() {
                 <h3 className="font-semibold text-gray-800 text-sm leading-relaxed break-words">
                   {reviewLetterTitle(item.fileContext)}
                 </h3>
-                {!hasFullAccess && !isHead && item.snippet && (
+                {!hasFullAccess && !isHeadOrSubHead && item.snippet && (
                   <p className="text-xs text-gray-500 mt-1 truncate">{item.snippet}</p>
                 )}
-                {(hasFullAccess || isHead) && (
+                {(hasFullAccess || isHeadOrSubHead) && (
                   <p className="text-xs text-gray-500 mt-1">
                     سطّره: <span className="font-medium text-gray-700">{item.lawyerName}</span>
                     {' · '}

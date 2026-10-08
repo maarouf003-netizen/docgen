@@ -66,9 +66,9 @@ public sealed partial class PublicEntityService
             ? new HashSet<int>()
             : new HashSet<int>(query.IncludeIds.Distinct());
 
-        // نطاق رئيس القسم: محافظة فرعه فقط — بلا فرع/محافظة لا يُعرض شيء
+        // نطاق الرئيس (قسم/شعبة): محافظة فرعه فقط — بلا فرع/محافظة لا يُعرض شيء
         string? headGovernorate = null;
-        bool isHead = actor.Role == UserRole.Head;
+        bool isHead = actor.Role is UserRole.Head or UserRole.SubHead;
         if (isHead)
         {
             if (!actor.BranchId.HasValue)
@@ -149,8 +149,8 @@ public sealed partial class PublicEntityService
         var entries = await _entities.ListEntriesByGroupAsync(groupId, ct);
         var filtered = entries.Where(e => e.IsActive).ToList();
 
-        // نطاق رئيس القسم: محافظته فقط — مع ضمان ظهور قيد «الجهة الأم» دائمًا (F4).
-        if (actor.Role == UserRole.Head && actor.BranchId.HasValue)
+        // نطاق الرئيس (قسم/شعبة): محافظته فقط — مع ضمان ظهور قيد «الجهة الأم» دائمًا (F4).
+        if (actor.Role is UserRole.Head or UserRole.SubHead && actor.BranchId.HasValue)
         {
             var branch = await _branches.GetByIdAsync(actor.BranchId.Value, ct);
             var gov = NormalizeOptional(branch?.Governorate);
@@ -313,13 +313,13 @@ public sealed partial class PublicEntityService
         await EnsureHeadScopeAsync(actor, null, governorate, ct);
         await EnsureNoDuplicateEntryAsync(excludeEntryId: null, canonical, governorate, branchName, ct);
 
-        // حوكمة S1 — منع صريح للجميع: رئيس القسم والمحامي لا ينشئان قيدًا «لجهة أم»
+        // حوكمة S1 — منع صريح للجميع: الرئيس (قسم/شعبة) والمحامي لا ينشئان قيدًا «لجهة أم»
         // صراحةً (المسار المركزي للإدارة)، والاشتقاق الضمني من اسم الفرع الافتراضي
         // مُجمَّد لهما — الإنشاء بالاسم الافتراضي يبقى فرعًا عاديًا (مع NeedsReview للمحامي).
-        if (request.IsParentEntity == true && actor.Role is UserRole.Head or UserRole.Lawyer)
+        if (request.IsParentEntity == true && actor.Role is UserRole.Head or UserRole.SubHead or UserRole.Lawyer)
             throw new UnauthorizedAccessException("لا يُنشئ قيد «الجهة الأم» إلا الإدارة عبر المسارات المركزية");
         var isParentEntity = request.IsParentEntity
-            ?? (branchName == DefaultBranchName && actor.Role is not (UserRole.Head or UserRole.Lawyer));
+            ?? (branchName == DefaultBranchName && actor.Role is not (UserRole.Head or UserRole.SubHead or UserRole.Lawyer));
 
         PublicEntityGroup group = new();
         var entry = new PublicEntity();
@@ -452,14 +452,14 @@ public sealed partial class PublicEntityService
         if (!string.IsNullOrWhiteSpace(request.BranchName))
             newBranchName = RequiredWithFallback(request.BranchName, DefaultBranchName, 200);
 
-        // نطاق رئيس القسم: قيود محافظته فقط، ولا يعيد تسمية هوية تشمل محافظات أخرى (د5/د6).
+        // نطاق الرئيس (قسم/شعبة): قيود محافظته فقط، ولا يعيد تسمية هوية تشمل محافظات أخرى (د5/د6).
         await EnsureHeadScopeAsync(actor, entry, entry.Governorate, ct);
-        // حارس الجهة الأم (C3/F3): لا يحرّر رئيس القسم قيد «الجهة الأم» إطلاقًا — الاقتراح فقط.
+        // حارس الجهة الأم (C3/F3): لا يحرّر الرئيس قيد «الجهة الأم» إطلاقًا — الاقتراح فقط.
         GuardHeadCannotEditParent(actor, entry);
-        if (actor.Role == UserRole.Head)
+        if (actor.Role is UserRole.Head or UserRole.SubHead)
         {
             if (!string.Equals(newGovernorate, entry.Governorate, StringComparison.Ordinal))
-                throw new UnauthorizedAccessException("رئيس القسم مقصور على قيود محافظة فرعه");
+                throw new UnauthorizedAccessException("الرئيس مقصور على قيود محافظة فرعه");
             if (newCanonical is not null
                 && group.Entries.Any(e => e.Id != entry.Id && e.Governorate != entry.Governorate))
                 throw new UnauthorizedAccessException("إعادة تسمية الهوية تشمل قيودًا خارج محافظة فرعك");
@@ -481,15 +481,15 @@ public sealed partial class PublicEntityService
             entry.CoverageLabel = ValidateCoverageLabel(request.CoverageLabel);
         if (request.IsParentEntity is bool isParent)
         {
-            if (isParent && actor.Role == UserRole.Head)
-                throw new UnauthorizedAccessException("رئيس القسم لا يرقّي قيدًا إلى جهة أم — أرسل اقتراح تعديل للإدارة");
+            if (isParent && actor.Role is UserRole.Head or UserRole.SubHead)
+                throw new UnauthorizedAccessException("الرئيس لا يرقّي قيدًا إلى جهة أم — أرسل اقتراح تعديل للإدارة");
             entry.IsParentEntity = isParent;
         }
         else
         {
             // الاشتقاق الضمني من اسم الفرع الافتراضي مُجمَّد للرئيس (حوكمة S1)؛
             // يُحفَظ وضعه الحالي (فرع عادي) بلا رفض.
-            entry.IsParentEntity = newBranchName == DefaultBranchName && actor.Role != UserRole.Head;
+            entry.IsParentEntity = newBranchName == DefaultBranchName && actor.Role is not (UserRole.Head or UserRole.SubHead);
         }
 
         await EnsureNoDuplicateEntryAsync(entry.Id, group.CanonicalName, newGovernorate, newBranchName, ct);
@@ -608,14 +608,14 @@ public sealed partial class PublicEntityService
     // ── مراجعة سجل الجهات العامة الممثلة (النموذج الجديد) ──
 
     /// <summary>
-    /// قائمة «بحاجة مراجعة»: رئيس القسم يرى ما أدخله محامو فرعه (بغض النظر عن محافظة
+    /// قائمة «بحاجة مراجعة»: الرئيس (قسم/شعبة) يرى ما أدخله محامو فرعه (بغض النظر عن محافظة
     /// الجهة نفسها — قد يُقيم محامٍ ملفًا تنفيذيًا على جهة تتبع محافظة أخرى)، والمدير/
     /// المشرف يرىان كل السجل. رئيس بلا فرع مضبوط تعني قائمة فارغة.
     /// </summary>
     public async Task<List<PublicEntityEntryDto>> ListNeedsReviewAsync(EntityRegistryActor actor, CancellationToken ct = default)
     {
         int? headBranchId = null;
-        if (actor.Role == UserRole.Head)
+        if (actor.Role is UserRole.Head or UserRole.SubHead)
         {
             var branch = actor.BranchId is null ? null : await _branches.GetByIdAsync(actor.BranchId.Value, ct);
             headBranchId = branch?.Id;
@@ -636,7 +636,7 @@ public sealed partial class PublicEntityService
     public async Task<int> CountNeedsReviewAsync(EntityRegistryActor actor, CancellationToken ct = default)
     {
         int? headBranchId = null;
-        if (actor.Role == UserRole.Head)
+        if (actor.Role is UserRole.Head or UserRole.SubHead)
         {
             var branch = actor.BranchId is null ? null : await _branches.GetByIdAsync(actor.BranchId.Value, ct);
             headBranchId = branch?.Id;

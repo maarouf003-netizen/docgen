@@ -60,13 +60,16 @@ public record StrikeAppealRequest(
     string? StruckOffDate);
 
 /// <summary>إسناد الاستئناف إلى محامٍ للمتابعة من رئيس القسم.</summary>
-public record AssignAppealRequest(int AssignedLawyerId);
+public record AssignAppealRequest(int AssignedLawyerId, long? Version = null);
 
 /// <summary>نقل استئناف مفرد بين محامي الفرع (مستقل تمامًا عن نقل الملفات).</summary>
-public record TransferAppealRequest(int TargetLawyerId);
+public record TransferAppealRequest(int TargetLawyerId, long? Version = null);
 
 /// <summary>نقل كل استئنافات محامٍ إلى محامٍ آخر ضمن الفرع نفسه.</summary>
 public record TransferAllAppealsRequest(int SourceLawyerId, int TargetLawyerId);
+
+/// <summary>إحالة استئناف من رئيس الشعبة لرئيس القسم (اتجاه واحد) — السبب اختياري.</summary>
+public record ForwardAppealRequest(string? Reason = null, long? Version = null);
 
 /// <summary>إدخال رقم الأساس الاستئنافي لسنة التدوير الحالية (نمط تدوير أرقام الملفات).</summary>
 public record AppealBaseNumberEntry(string? BaseNumber);
@@ -174,4 +177,15 @@ public record AppealDto(
     /// وسم جودة اللقطات: إحدى لقطتي الأطراف (`AppellantsJson`/`AppelleesJson`) تالفة فعُرضت
     /// فارغة — تُعرض موسومة «بيانات أطراف تالفة» لا استئنافًا بلا أطراف.
     /// </summary>
-    bool PartiesDegraded = false);
+    bool PartiesDegraded = false,
+    /// <summary>حالة الإحالة (`AppealForwardCatalog`): `Owned` أو `ForwardedToHead` — للبحث والعرض.</summary>
+    string ForwardState = "Owned",
+    /// <summary>شعبة دائرة الملف المالكة (`null` = ملك القسم) — للبحث والعرض.</summary>
+    int? SectionId = null,
+    /// <summary>دائرة الملف — للبحث والعرض.</summary>
+    int? ExecutionCircuitId = null,
+    /// <summary>
+    /// رمز التزامن التفاؤلي للصف — يُعاد في القراءة ويُرسَل في طلبات الكتابة
+    /// التي تدعمه (`إسناد/نقل/إحالة`) لكشف السباق مبكرًا برسالة ودية.
+    /// </summary>
+    long Version = 0);

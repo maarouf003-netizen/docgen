@@ -18,7 +18,7 @@ export default function TransferAllAppealsModal({
   const lawyersQuery = useCancellableRequest<LawyerListItem[]>(
     (signal) =>
       api
-        .get<LawyerListItem[]>('/users/lawyers', { signal })
+        .get<LawyerListItem[]>('/users/lawyers', { signal, params: { mode: 'branch' } })
         .then((r) => (Array.isArray(r.data) ? r.data : [])),
     [],
   );
@@ -145,7 +145,7 @@ export default function TransferAllAppealsModal({
                   سيتم نقل <span className="font-bold tabular-nums">{count}</span> استئنافًا من{' '}
                   <span className="font-semibold">{sourceName}</span> إلى{' '}
                   <span className="font-semibold">{targetName}</span>.
-                  <span className="block text-xs mt-1">تُنقل الاستئنافات المنظورة فقط.</span>
+                  <span className="block text-xs mt-1">تُنقل الاستئنافات المنظورة فقط — وضمن نطاقك (دوائرك) حصرًا، والباقي يبقى لأصحابه.</span>
                 </div>
               )}
 

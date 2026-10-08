@@ -197,23 +197,35 @@ public class HeadAlertServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task ListForHead_ReturnsBranchAlertsWithCounts()
+    public async Task ListForHead_ReturnsOnlyOwnRecipientAlerts()
     {
         var doc = await AddDocumentAsync(_lawyer1);
         await _service.CreateAsync(
             new CreateHeadAlertRequest("document", doc.Id, null, "تنبيه أول"), _head.Id, _branchId, "head_x");
         await _service.CreateAsync(
             new CreateHeadAlertRequest("branch", null, null, "تعميم"), _head.Id, _branchId, "head_x");
+        var own = await _service.CreateAsync(
+            new CreateHeadAlertRequest("head", null, null, "لرئيس القسم", RecipientUserId: _head.Id),
+            _head.Id, _branchId, "head_x");
 
-        var list = await _service.ListForHeadAsync(_branchId);
+        // قراءة بالمستلم (§8): الرئيس يرى تنبيهه فقط — لا تنبيهات المحامين ولا التعميم.
+        var list = await _service.ListForHeadAsync(_head.Id, _branchId);
 
-        Assert.Equal(2, list.Count);
-        Assert.Equal("تعميم", list[0].Message); // الأحدث أولاً
-        Assert.Equal(2, list[0].RecipientCount); // محاميان في الفرع
-        Assert.Equal(2, list[0].UnreadCount);
-        Assert.Equal("تنبيه أول", list[1].Message);
-        Assert.Equal(1, list[1].RecipientCount); // المحامي المختص فقط
-        Assert.Equal(1, list[1].UnreadCount);
+        var single = Assert.Single(list);
+        Assert.Equal(own.Id, single.Id);
+        Assert.False(single.IsRead);
+        Assert.Equal(1, single.RecipientCount);
+        Assert.Equal(1, single.UnreadCount);
+
+        // تعليم القراءة يعمل للمستلم الرئيس ويُرى أثره.
+        Assert.True(await _service.MarkReadAsync(own.Id, _head.Id));
+        list = await _service.ListForHeadAsync(_head.Id, _branchId);
+        Assert.True(Assert.Single(list).IsRead);
+
+        // محامٍ غير مستلم لا يرى تنبيه الرئيس.
+        Assert.DoesNotContain(
+            await _service.ListForLawyerAsync(_lawyer2.Id),
+            a => a.Id == own.Id);
     }
 
     [Fact]

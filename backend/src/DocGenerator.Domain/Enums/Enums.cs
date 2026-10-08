@@ -11,7 +11,13 @@ public enum UserRole
     /// مندوب الجهة العامة (بوابة قراءة فقط + تصدير Excel) — يُربط بهوية جهة
     /// (Group) أو قيد (Entry) ويُمنع بنيويًا من كل مسارات الكتابة.
     /// </summary>
-    EntityManager = 5
+    EntityManager = 5,
+
+    /// <summary>
+    /// رئيس شعبة: نفس صلاحيات رئيس القسم (`Head`) لكن محصورة بملفات دوائر
+    /// التنفيذ التي تتبع شعبته (`Section`) داخل نفس فرع الفرع الأم.
+    /// </summary>
+    SubHead = 6
 }
 
 public enum ContractTypeSelector
