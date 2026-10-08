@@ -10,7 +10,7 @@ import { CORRESPONDENCE_UNSEEN_EVENT } from './correspondence/correspondenceDisp
 import { ComingSoonToast } from './ComingSoonToast';
 import { ICONS } from './dashboard/dashboardIcons';
 import nationalEmblem from '../assets/national.png';
-import { ROLE_LABELS } from '../auth/roleLabels';
+import { formatRoleScope } from '../auth/roleLabels';
 
 interface NavItem {
   to: string;
@@ -261,7 +261,7 @@ export default function Layout() {
             <span className="min-w-0">
               <span className="block font-medium truncate">{user?.fullName}</span>
               <span className="block text-emerald-300 text-xs truncate">
-                {user?.role ? ROLE_LABELS[user.role] : ''} — {user?.branchName || 'كل الفروع'}
+                {formatRoleScope(user)}
               </span>
             </span>
           </NavLink>
@@ -269,7 +269,7 @@ export default function Layout() {
           <>
             <div className="font-medium">{user?.fullName}</div>
             <div className="text-emerald-300 text-xs mb-2">
-              {user?.role ? ROLE_LABELS[user.role] : ''} — {user?.branchName || 'كل الفروع'}
+              {formatRoleScope(user)}
             </div>
             <button
               onClick={logout}

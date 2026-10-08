@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { api } from '../api/client';
 import { useAuth } from '../auth/useAuth';
-import { ROLE_LABELS } from '../auth/roleLabels';
+import { formatRoleScope } from '../auth/roleLabels';
 import { ChangePasswordForm } from '../components/ChangePasswordForm';
 import { SuggestionDialog } from '../components/SuggestionDialog';
 import { formatNumber } from '../components/dashboard/dashboardFormat';
@@ -87,7 +87,7 @@ export default function AccountPage() {
                 {user?.username}
               </p>
               <p className="text-xs text-gray-500 mt-0.5">
-                {user?.role ? ROLE_LABELS[user.role] : ''} — {user?.branchName || 'كل الفروع'}
+                {formatRoleScope(user)}
               </p>
             </div>
           </div>
