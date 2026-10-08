@@ -41,6 +41,19 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             .ToListAsync(ct);
     }
 
+    public async Task<List<HeadAlert>> ListSentAsync(int userId, int branchId, CancellationToken ct = default)
+    {
+        return await Db.HeadAlerts
+            .AsNoTracking()
+            .Where(a => a.BranchId == branchId && a.CreatedById == userId)
+            .OrderByDescending(a => a.CreatedAt)
+            .Include(a => a.CreatedBy)
+            .Include(a => a.Document)
+            .Include(a => a.TargetLawyer)
+            .Include(a => a.Recipients)
+            .ToListAsync(ct);
+    }
+
     public Task<int> CountUnreadAsync(int userId, CancellationToken ct = default)
         => Db.HeadAlertRecipients.CountAsync(r => r.UserId == userId && !r.IsRead, ct);
 

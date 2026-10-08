@@ -16,6 +16,12 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
     /// </summary>
     Task<List<HeadAlert>> ListByRecipientInBranchAsync(int userId, int branchId, CancellationToken ct = default);
 
+    /// <summary>
+    /// ما أصدره الرئيس في فرعه (صندوق الصادر — تبويب «أرسلتها»): لا يدخل نطاق
+    /// المستلمين، فلا يؤثر في العدّادات ولا يُرحَّل عند التعاقب.
+    /// </summary>
+    Task<List<HeadAlert>> ListSentAsync(int userId, int branchId, CancellationToken ct = default);
+
     /// <summary>عدد تنبيهات المحامي غير المقروءة.</summary>
     Task<int> CountUnreadAsync(int userId, CancellationToken ct = default);
 

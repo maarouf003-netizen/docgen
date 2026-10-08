@@ -61,6 +61,21 @@ public class AlertsController : ControllerBase
         return Forbid();
     }
 
+    /// <summary>
+    /// ما أصدره الرئيس في فرعه (تبويب «أرسلتها» — قراءة فقط): رئيس القسم
+    /// والشعبة بفرع — بلا زر تعليم مقروء (المُرسِل ليس مستلمًا).
+    /// </summary>
+    [HttpGet("sent")]
+    public async Task<IActionResult> Sent(CancellationToken ct)
+    {
+        if (!IsHeadOrSubHead)
+            return Forbid();
+        var branchId = User.GetBranchId();
+        if (branchId is null)
+            return Forbid();
+        return Ok(await _alerts.ListSentAsync(User.GetUserId(), branchId.Value, ct));
+    }
+
     /// <summary>إصدار تنبيه — رئيس القسم لفرعه فقط.</summary>
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateHeadAlertRequest request, CancellationToken ct)

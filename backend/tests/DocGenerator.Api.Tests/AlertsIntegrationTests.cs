@@ -418,5 +418,36 @@ public class AlertsIntegrationTests
         Assert.DoesNotContain(list!, a => a.Message == "تنبيه خاص بحلب");
     }
 
+    [Fact]
+    public async Task Sent_HeadSeesOwnIssued_LawyerAndManagerForbidden()
+    {
+        var damId = await BranchIdAsync("DAM");
+        var target = await _factory.CreateUserAsync(NewName("lawyer_sent"), UserRole.Lawyer, damId);
+        var head = _factory.AuthorizedClient("head1");
+
+        var created = await head.PostAsJsonAsync("/api/alerts", new
+        {
+            targetType = "lawyer",
+            documentId = (int?)null,
+            targetLawyerId = target.Id,
+            message = "تعميم صادر",
+        });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+
+        var sent = await (await head.GetAsync("/api/alerts/sent")).Content.ReadFromJsonAsync<List<HeadAlertDto>>();
+        var item = Assert.Single(sent!, a => a.Message == "تعميم صادر");
+        Assert.Equal(1, item.RecipientCount);
+
+        // قائمة المستلَمات لا تشمله (قراءة المستلم لا تضم المُرسِل).
+        var received = await (await head.GetAsync("/api/alerts")).Content.ReadFromJsonAsync<List<HeadAlertDto>>();
+        Assert.DoesNotContain(received!, a => a.Message == "تعميم صادر");
+
+        foreach (var username in new[] { "lawyer1", "manager", "admin" })
+        {
+            var response = await _factory.AuthorizedClient(username).GetAsync("/api/alerts/sent");
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        }
+    }
+
     private sealed record UnreadCountDto(int Count);
 }

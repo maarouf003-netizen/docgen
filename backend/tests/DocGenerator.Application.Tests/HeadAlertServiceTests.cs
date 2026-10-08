@@ -345,4 +345,52 @@ public class HeadAlertServiceTests : IDisposable
         Assert.Null(await _db.HeadAlerts.FindAsync(first.Id));
         Assert.NotNull(await _db.HeadAlerts.FindAsync(second.Id));
     }
+
+    [Fact]
+    public async Task Sent_ListsOwnIssued_AndReceivedExcludesThem()
+    {
+        var sent = await _service.CreateAsync(
+            new CreateHeadAlertRequest("lawyer", null, _lawyer2.Id, "رسالة خاصة"), _head.Id, _branchId, "head_x");
+
+        // الصادر: يراه مُصدِره بفرعه مع عدّادات المستلمين...
+        var sentList = await _service.ListSentAsync(_head.Id, _branchId);
+        var item = Assert.Single(sentList);
+        Assert.Equal(sent.Id, item.Id);
+        Assert.Equal(1, item.RecipientCount);
+
+        // ...ولا يظهر في مستلَماته (قراءة المستلم لا تشمل المُرسِل).
+        var received = await _service.ListForHeadAsync(_head.Id, _branchId);
+        Assert.DoesNotContain(received, a => a.Id == sent.Id);
+
+        // وفرع آخر لا يراه.
+        var otherBranch = new Branch { Name = "حلب", Code = "ALP" };
+        _db.Branches.Add(otherBranch);
+        await _db.SaveChangesAsync();
+        Assert.Empty(await _service.ListSentAsync(_head.Id, otherBranch.Id));
+    }
+
+    [Fact]
+    public async Task Sent_SubHead_SeesOwnOnly()
+    {
+        var sub = new User
+        {
+            Username = "sub_x",
+            FullName = "رئيس الشعبة",
+            Role = UserRole.SubHead,
+            BranchId = _branchId,
+            PasswordHash = "x",
+        };
+        _db.Users.Add(sub);
+        await _db.SaveChangesAsync();
+
+        await _service.CreateAsync(
+            new CreateHeadAlertRequest("lawyer", null, _lawyer1.Id, "من الشعبة"), sub.Id, _branchId, "sub_x");
+        await _service.CreateAsync(
+            new CreateHeadAlertRequest("lawyer", null, _lawyer2.Id, "من القسم"), _head.Id, _branchId, "head_x");
+
+        var subSent = await _service.ListSentAsync(sub.Id, _branchId);
+        Assert.Equal("من الشعبة", Assert.Single(subSent).Message);
+        var headSent = await _service.ListSentAsync(_head.Id, _branchId);
+        Assert.Equal("من القسم", Assert.Single(headSent).Message);
+    }
 }

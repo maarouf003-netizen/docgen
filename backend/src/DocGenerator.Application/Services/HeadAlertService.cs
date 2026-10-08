@@ -12,6 +12,11 @@ public interface IHeadAlertService
     /// تنبيهات الرئيس (§8: قراءة بالمستلم لا بالفرع) — ما استلمه في فرعه فقط.
     /// </summary>
     Task<List<HeadAlertDto>> ListForHeadAsync(int userId, int branchId, CancellationToken ct = default);
+    /// <summary>
+    /// ما أصدره الرئيس في فرعه (تبويب «أرسلتها»): يُعرض للقراءة فقط — بلا زر
+    /// تعليم مقروء (المُرسِل ليس مستلمًا) وبلا أثر في العدّادات والتعاقب.
+    /// </summary>
+    Task<List<HeadAlertDto>> ListSentAsync(int userId, int branchId, CancellationToken ct = default);
     Task<int> CountUnreadAsync(int userId, CancellationToken ct = default);
     Task<HeadAlertDto> CreateAsync(CreateHeadAlertRequest request, int actorUserId, int actorBranchId, string? actorName, CancellationToken ct = default);
     Task<bool> MarkReadAsync(int alertId, int userId, CancellationToken ct = default);
@@ -76,6 +81,12 @@ public sealed class HeadAlertService : IHeadAlertService
     public async Task<List<HeadAlertDto>> ListForHeadAsync(int userId, int branchId, CancellationToken ct = default)
     {
         var alerts = await _alerts.ListByRecipientInBranchAsync(userId, branchId, ct);
+        return alerts.Select(a => ToHeadDto(a, userId)).ToList();
+    }
+
+    public async Task<List<HeadAlertDto>> ListSentAsync(int userId, int branchId, CancellationToken ct = default)
+    {
+        var alerts = await _alerts.ListSentAsync(userId, branchId, ct);
         return alerts.Select(a => ToHeadDto(a, userId)).ToList();
     }
 

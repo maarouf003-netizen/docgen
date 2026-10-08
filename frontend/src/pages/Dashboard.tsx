@@ -101,6 +101,16 @@ export default function Dashboard() {
     { enabled: userReady && !isManager },
   );
 
+  // صندوق الصادر («أرسلتها» — قراءة فقط): ما أصدره الرئيس في فرعه، منفصل عن
+  // المستلَمات حتى لا يختلط المُرسَل بالمستلَم ولا يُطالب بتعليم مقروء.
+  const [alertsTab, setAlertsTab] = useState<'received' | 'sent'>('received');
+  const [sentFlash, setSentFlash] = useState('');
+  const sentQuery = useCancellableRequest<HeadAlertDto[]>(
+    (signal) => api.get('/alerts/sent', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
+    [isHeadOrSubHead],
+    { enabled: headBadgesEnabled },
+  );
+
   const unreadQuery = useCancellableRequest<{ count: number }>(
     (signal) => api.get('/alerts/unread-count', { signal }).then((r) => r.data),
     [isLawyer],
@@ -336,16 +346,18 @@ export default function Dashboard() {
     setAlertSubmitting(true);
     setAlertFormError({ field: null, text: '' });
     try {
-      const { data } = await api.post<HeadAlertDto>('/alerts', {
+      await api.post<HeadAlertDto>('/alerts', {
         targetType: alertTargetType,
         documentId: null,
         targetLawyerId,
         message: alertMessage.trim(),
       });
-      alertsQuery.setData((prev) => [data, ...(prev ?? [])]);
+      // بلا إلحاق تفاؤلي عمدًا: القائمة مستلَمات فقط، والمُرسَل في تبويب «أرسلتها».
       setShowAlertForm(false);
       setAlertMessage('');
       setAlertLawyerId('');
+      setSentFlash('تم إصدار التنبيه — تجده في تبويب «أرسلتها»');
+      sentQuery.refetch();
     } catch (err) {
       // خطأ الإرسال الخادمي بلا حقل مخالف — يُعلن وحده دون تعليم أي حقل.
       setAlertFormError({ field: null, text: getApiErrorMessage(err) });
@@ -513,10 +525,31 @@ export default function Dashboard() {
         </>
       ) : (
         <>
+          {sentFlash ? (
+            <p role="status" className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 mb-4">
+              {sentFlash}
+            </p>
+          ) : null}
+          <div className="flex gap-2 mb-4" role="tablist" aria-label="تبويبات التنبيهات">
+            {(['received', 'sent'] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                role="tab"
+                aria-selected={alertsTab === t}
+                onClick={() => setAlertsTab(t)}
+                className={`min-h-11 rounded-lg px-4 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+                  alertsTab === t ? 'bg-emerald-800 text-white' : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                {t === 'received' ? 'مستلمة' : 'أرسلتها'}
+              </button>
+            ))}
+          </div>
           <AlertsPanel
             badge={
-              <span className="text-xs bg-emerald-100 text-emerald-800 rounded-full px-2 py-0.5 font-medium">
-                {alerts.length}
+              <span className="text-xs bg-emerald-100 text-emerald-800 rounded-full px-2 py-0.5 font-medium tabular-nums">
+                {alertsTab === 'received' ? alerts.length : (sentQuery.data ?? []).length}
               </span>
             }
             headerExtra={
@@ -545,8 +578,8 @@ export default function Dashboard() {
                 />
               ) : null
             }
-            error={alertsError || alertsQuery.error || ''}
-            alerts={alerts}
+            error={alertsError || alertsQuery.error || sentQuery.error || ''}
+            alerts={alertsTab === 'received' ? alerts : (sentQuery.data ?? [])}
           />
         </>
       )}
