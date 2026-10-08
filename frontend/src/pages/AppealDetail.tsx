@@ -214,13 +214,21 @@ export default function AppealDetail() {
         <section aria-label="إجراءات وملاحظات الاستئناف" className="bg-white rounded-xl border shadow-sm px-5 py-4">
           <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
             <h3 className="text-lg font-bold text-emerald-800">إجراءات وملاحظات الاستئناف</h3>
-            {isFollower && (
+            {isFollower ? (
               <button
                 type="button"
                 onClick={() => setActionsOpen(true)}
                 className="bg-[#800000] hover:bg-[#9e0e0e] text-white rounded-lg px-4 py-2 text-sm min-h-11"
               >
                 إدخال ملاحظات وإجراءات جديدة
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setActionsOpen(true)}
+                className="border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg px-4 py-2 text-sm min-h-11"
+              >
+                عرض الإجراءات والملاحظات
               </button>
             )}
           </div>
@@ -269,6 +277,7 @@ export default function AppealDetail() {
           appealId={appeal.id}
           onClose={() => setActionsOpen(false)}
           onChanged={appealQuery.refetch}
+          canWrite={isFollower}
         />
       )}
       {registrationOpen && appeal && (

@@ -615,10 +615,11 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.True(action.Id > 0);
 
         var updatedAction = await _service.UpdateActionAsync(created.Id, action.Id,
-            new UpdateAppealActionRequest("action", "نص معدّل", null, "شهر", "أصفر"),
+            new UpdateAppealActionRequest("action", "نص معدّل", "4/8/2026", "شهر", "أصفر"),
             _lawyer2.Id, "lawyer2");
         Assert.Equal("نص معدّل", updatedAction!.Text);
         Assert.Equal("أصفر", updatedAction!.ReminderColor);
+        Assert.Equal("4/8/2026", updatedAction!.ActionDate);
 
         // تذكير يظهر للمتابع فقط.
         var reminders = await _service.GetRemindersAsync(_lawyer2.Id);
@@ -692,6 +693,33 @@ public class DocumentAppealServiceTests : IDisposable
             _service.UpdateActionAsync(appealId, action.Id,
                 new UpdateAppealActionRequest("xyz", "إجراء سليم", "3/8/2026", null, null),
                 _lawyer2.Id, "lawyer2"));
+    }
+
+    [Fact]
+    public async Task Actions_DateRequiredForAction_OptionalForNote()
+    {
+        // مرآة قاعدة إجراءات الملف: الإجراء بلا تاريخ مرفوض، والملاحظة بلا تاريخ مباحة.
+        var appealId = await CreateAppealWithAssigneeAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.AddActionAsync(appealId,
+                new AddAppealActionRequest("action", "إجراء بلا تاريخ", null, null, null),
+                _lawyer2.Id, "lawyer2"));
+        Assert.Contains("تاريخ الإجراء", ex.Message);
+
+        var note = await _service.AddActionAsync(appealId,
+            new AddAppealActionRequest("note", "ملاحظة بلا تاريخ", null, null, null),
+            _lawyer2.Id, "lawyer2");
+        Assert.Null(note.ActionDate);
+
+        var action = await _service.AddActionAsync(appealId,
+            new AddAppealActionRequest("action", "إجراء مؤرخ", "5/8/2026", null, null),
+            _lawyer2.Id, "lawyer2");
+        var exUpdate = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateActionAsync(appealId, action.Id,
+                new UpdateAppealActionRequest("action", "إجراء مؤرخ", null, null, null),
+                _lawyer2.Id, "lawyer2"));
+        Assert.Contains("تاريخ الإجراء", exUpdate.Message);
     }
 
     [Fact]

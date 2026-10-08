@@ -114,4 +114,21 @@ describe('AppealDetail — الإحالة لرئيس القسم (§6)', () => {
     renderDetail();
     expect(await screen.findByRole('button', { name: 'إسناد لمحامٍ' })).toBeInTheDocument();
   });
+
+  it('غير المتابع (رئيس) يرى زر عرض الإجراءات لا زر الإدخال', async () => {
+    useAuthMock.mockReturnValue({ user: { id: 5, role: 'head' } });
+    mockAppeal(appeal());
+    renderDetail();
+
+    expect(await screen.findByRole('button', { name: 'عرض الإجراءات والملاحظات' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'إدخال ملاحظات وإجراءات جديدة' })).not.toBeInTheDocument();
+  });
+
+  it('المتابع يرى زر الإدخال', async () => {
+    useAuthMock.mockReturnValue({ user: { id: 7, role: 'lawyer' } });
+    mockAppeal(appeal({ assignedLawyerId: 7 }));
+    renderDetail();
+
+    expect(await screen.findByRole('button', { name: 'إدخال ملاحظات وإجراءات جديدة' })).toBeInTheDocument();
+  });
 });

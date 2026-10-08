@@ -739,6 +739,11 @@ public sealed class DocumentAppealService : IDocumentAppealService
         // (NormalizeAction/NormalizeReminder) بينما كان هذا المسار يقبل أي نص بطول مباح،
         // فتُخزَّن قيم تُفسَّر صفرًا أو بتاريخ الإنشاء بصمت وقت القراءة.
         ActionReminderCalculator.ValidateActionType(request.Type, "نوع الإجراء");
+        // مرآة قاعدة إجراءات الملف (`DocumentService.Actions`): الإجراء بلا تاريخ
+        // مرفوض (الملاحظة اختيارية) — بدل تخزين تاريخ ميت.
+        var effectiveType = (request.Type ?? "action").Trim();
+        if (effectiveType == "action" && string.IsNullOrWhiteSpace(request.ActionDate))
+            throw new ArgumentException("يجب إدخال تاريخ الإجراء");
         ActionReminderCalculator.ValidateActionDate(request.ActionDate, "تاريخ الإجراء");
         ActionReminderCalculator.ValidateReminder(request.ReminderDuration, request.ReminderColor);
 
@@ -782,6 +787,9 @@ public sealed class DocumentAppealService : IDocumentAppealService
 
         // ذات تحقق الإضافة أعلاه — التعديل يستبدل الحقول wholesale فتُرفض القيم الميتة هنا أيضًا.
         ActionReminderCalculator.ValidateActionType(request.Type, "نوع الإجراء");
+        var effectiveType = (request.Type ?? action.Type ?? "action").Trim();
+        if (effectiveType == "action" && string.IsNullOrWhiteSpace(request.ActionDate))
+            throw new ArgumentException("يجب إدخال تاريخ الإجراء");
         ActionReminderCalculator.ValidateActionDate(request.ActionDate, "تاريخ الإجراء");
         ActionReminderCalculator.ValidateReminder(request.ReminderDuration, request.ReminderColor);
 
