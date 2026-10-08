@@ -709,7 +709,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         catch (Exception ex) when (_dbErrors.IsConcurrencyViolation(ex))
         {
             // توجيهان متزامنان حقيقيان للإنابة نفسها — 409 ودية بدل 500 خام.
-            throw new DocumentConflictException("تعارض تزامن — أعد تحميل الإنابة وحاول مجددًا");
+            throw new DocumentConflictException("تعارض تزامن — أعد تحميل الإنابة وحاول مجددًا", ex);
         }
 
         // يُستبدل تنبيه القسم بتنبيه موجَّه لرئيس الشعبة — أفضل جهد.
@@ -783,7 +783,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         catch (Exception ex) when (_dbErrors.IsConcurrencyViolation(ex))
         {
             // تراجعان متزامنان حقيقيان — 409 ودية بدل 500 خام.
-            throw new DocumentConflictException("تعارض تزامن — أعد تحميل الإنابة وحاول مجددًا");
+            throw new DocumentConflictException("تعارض تزامن — أعد تحميل الإنابة وحاول مجددًا", ex);
         }
 
         // يُستبدل تنبيه الشعبة بتنبيه موجَّه لرئيس القسم المسترجِع — أفضل جهد.
@@ -862,7 +862,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         catch (Exception ex) when (_dbErrors.IsConcurrencyViolation(ex))
         {
             // رفضان متزامنان حقيقيان — 409 ودية بدل 500 خام.
-            throw new DocumentConflictException("تعارض تزامن — أعد تحميل الإنابة وحاول مجددًا");
+            throw new DocumentConflictException("تعارض تزامن — أعد تحميل الإنابة وحاول مجددًا", ex);
         }
 
         // إشعار محامي المنيب بالرفض (بطاقة ملفه تُظهر السبب، وهذا التنبيه يوقظه) —

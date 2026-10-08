@@ -513,7 +513,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
         catch (Exception ex) when (_dbErrors?.IsConcurrencyViolation(ex) == true)
         {
             // إحالتان متزامنتان حقيقيتان — 409 ودية بدل 500 خام.
-            throw new DocumentConflictException("تعارض تزامن — أعد تحميل الاستئناف وحاول مجددًا");
+            throw new DocumentConflictException("تعارض تزامن — أعد تحميل الاستئناف وحاول مجددًا", ex);
         }
 
         // جراحة التنبيهات (§6.2): حذف انتقائي لتنبيه المحيل + تنبيه موجَّه لرئيس
@@ -600,7 +600,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
         catch (Exception ex) when (_dbErrors?.IsConcurrencyViolation(ex) == true)
         {
             // تراجعان متزامنان حقيقيان — 409 ودية بدل 500 خام.
-            throw new DocumentConflictException("تعارض تزامن — أعد تحميل الاستئناف وحاول مجددًا");
+            throw new DocumentConflictException("تعارض تزامن — أعد تحميل الاستئناف وحاول مجددًا", ex);
         }
 
         // بدائل المحيل (§6.6): حذف تنبيهات الإحالة المعلقة ثم تنبيه معلّق جديد
