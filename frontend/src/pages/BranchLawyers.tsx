@@ -46,10 +46,12 @@ export default function BranchLawyers() {
   const load = (selectedBranchId: number | null) => {
     setLoading(true);
     setError('');
+    // صفحة الإدارة تعرض كل محامي النطاق (§5.4 `mode=branch`) — الوضع الافتراضي
+    // `mine` يستبعد الجدد بلا ملفات (قرار §2.9: يُرى بملف في دوائري أو من إنشائي).
+    const params: Record<string, unknown> = { mode: 'branch' };
+    if (isAdmin && selectedBranchId) params.branchId = selectedBranchId;
     api
-      .get<LawyerListItem[]>('/users/lawyers', {
-        params: isAdmin && selectedBranchId ? { branchId: selectedBranchId } : undefined,
-      })
+      .get<LawyerListItem[]>('/users/lawyers', { params })
       .then((r) => setLawyers(r.data))
       .catch((err) => setError(getApiErrorMessage(err)))
       .finally(() => setLoading(false));

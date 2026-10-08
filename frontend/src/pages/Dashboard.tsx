@@ -108,7 +108,8 @@ export default function Dashboard() {
   );
 
   const branchLawyersQuery = useCancellableRequest<LawyerListItem[]>(
-    (signal) => api.get('/users/lawyers', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
+    // قائمة التنبيهات: كل محامي النطاق (الجدد بلا ملفات مشمولون — `mode=branch`).
+    (signal) => api.get('/users/lawyers', { signal, params: { mode: 'branch' } }).then((r) => (Array.isArray(r.data) ? r.data : [])),
     [isHeadOrSubHead],
     { enabled: userReady && isHeadOrSubHead },
   );

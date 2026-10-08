@@ -64,6 +64,18 @@ describe('BranchLawyers', () => {
     expect(screen.queryByLabelText('الفرع')).not.toBeInTheDocument();
   });
 
+  it('يطلب وضع الفرع الكامل فيطلب الرئيس كل المحامين بمن فيهم الجدد بلا ملفات (§5.4)', async () => {
+    render(<BranchLawyers />);
+
+    await screen.findByText('محامي دمشق');
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith(
+        '/users/lawyers',
+        expect.objectContaining({ params: expect.objectContaining({ mode: 'branch' }) }),
+      );
+    });
+  });
+
   it('يعرض منتقي الفرع للمشرف ويطلب الفرع عند الإضافة', async () => {
     useAuthMock.mockReturnValue({ user: { role: 'admin' } });
     (api.get as unknown as ReturnType<typeof vi.fn>)
