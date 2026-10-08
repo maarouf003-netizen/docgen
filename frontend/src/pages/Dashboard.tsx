@@ -580,6 +580,7 @@ export default function Dashboard() {
             }
             error={alertsError || alertsQuery.error || sentQuery.error || ''}
             alerts={alertsTab === 'received' ? alerts : (sentQuery.data ?? [])}
+            sentView={alertsTab === 'sent'}
           />
         </>
       )}

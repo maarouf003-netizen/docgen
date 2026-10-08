@@ -6,15 +6,19 @@ import { formatDateTime } from '../../utils/dates';
 /**
  * صف تنبيه واحد. يظهر زر «تمت القراءة» للمحامي فقط عبر onMarkRead،
  * وتظهر العدادات (غير مقروء/المجموع) لرئيس القسم فقط عند توفرها.
+ * في عرض الصادر (`sentView` — تبويب «أرسلتها») تُستبدل شارة «مقروء»
+ * بالعدّاد الصفري حتى لا يُقرأ «غير مقروء: 0» كغير مقروء.
  */
 export function AlertRow({
   alert,
   onMarkRead,
   markingKey,
+  sentView = false,
 }: {
   alert: HeadAlertDto;
   onMarkRead?: (a: HeadAlertDto) => void;
   markingKey?: string | null;
+  sentView?: boolean;
 }) {
   const isMarking = markingKey === String(alert.id);
   return (
@@ -91,9 +95,14 @@ export function AlertRow({
               مقروء
             </span>
           ) : null}
-          {alert.recipientCount != null ? (
-            <span className="text-[11px] px-2 py-0.5 rounded-full border border-gray-200 text-gray-600">
+          {alert.recipientCount != null && !(sentView && (alert.unreadCount ?? 0) === 0) ? (
+            <span className="text-[11px] px-2 py-0.5 rounded-full border border-gray-200 text-gray-600 tabular-nums">
               غير مقروء: {alert.unreadCount ?? 0} / {alert.recipientCount}
+            </span>
+          ) : null}
+          {sentView && alert.recipientCount != null && (alert.unreadCount ?? 0) === 0 ? (
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+              مقروء من الجميع
             </span>
           ) : null}
         </div>

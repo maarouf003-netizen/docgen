@@ -838,7 +838,7 @@ describe('Dashboard لرئيس القسم', () => {
           message: 'تعميم صادر مني',
           targetType: 'branch',
           recipientCount: 2,
-          unreadCount: 1,
+          unreadCount: 0,
           createdAt: '2026-08-04T10:00:00Z',
           createdByName: 'رئيس',
         },
@@ -857,6 +857,8 @@ describe('Dashboard لرئيس القسم', () => {
     // الصادر قراءة فقط: لا زر «تمت القراءة» (تعليمه 404 خلفيًا).
     expect(screen.queryByRole('button', { name: 'تمت القراءة' })).not.toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith('/alerts/sent', expect.any(Object));
+    // الكل قرأ: شارة صريحة بدل العدّاد الصفري المضلل.
+    expect(screen.getByText('مقروء من الجميع')).toBeInTheDocument();
   });
 
   it('لا يعرض خيار «مرتبط بملف» في نموذج إصدار التنبيه', async () => {
