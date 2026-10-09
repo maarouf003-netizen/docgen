@@ -24,12 +24,12 @@
 | # | الخطورة | البند | الشاهد المؤكد | الحكم |
 |---|---------|-------|---------------|-------|
 | 1 | 🔴 حرجة | القوائم الأربع (`GetDeleted`/`GetStruckOff`/`GetExecuted`/`GetReferredToStart`) تحسب `ownerSectionId` ولا تمرره — الشعبة ترى نطاق القسم | `DocumentsController.cs:227/230`، `:246/249`، `:262/265`، `:278/281`؛ التواقيع تقبل الوسيط أصلًا (`DocumentService.cs:28-44`، `DocumentService.Search.cs:14-71`) والمستودع يطبّق `ApplyOwnerScope` (`DocumentRepository.cs:511,902,981,1022`) | إصلاح 4 أسطر في المتحكم فقط — بلا تغيير عقود |
-| 2 | 🟠 عالية | `InScope` يتجاهل المحال للقسم في **فرع الرئيس فقط** — فرع الشعبة صحيح أصلًا ومطابق للبحث | `AppealRepository.cs:128-132` مقابل البحث `:61-65`؛ المناداة `DocumentAppealService.cs:424,450` | نسخ محمول البحث حرفيًا إلى فرع الرئيس؛ عدم لمس فرع الشعبة |
+| 2 | 🟠 عالية | `InScope` يتجاهل المحال للقسم في **فرع الرئيس فقط** — فرع الشعبة صحيح أصلًا ومطابق للبحث | `AppealRepository.cs:131-135` مقابل البحث `:61-65`؛ المناداة `DocumentAppealService.cs:429,450` | نسخ محمول البحث حرفيًا إلى فرع الرئيس؛ عدم لمس فرع الشعبة |
 | 3 | 🟡 متوسطة | إحصاءات الدوائر تهمل ملفات بلا دائرة — والعودة المبكرة `:983` تُفقد الصف الاصطناعي | `ExecutionCircuitService.cs:976-1003`؛ الوسم الصحيح `ExcelExportService.cs:98` (لا `:214` = تصدير الملفات `:215`)؛ `CircuitStatsDto` (`ExecutionCircuitDtos.cs:71`) بحقلي `int` غير قابلين للـnull | صف اصطناعي `Id=0` «بلا دائرة» بشروط §F4 أدناه |
 | 4 | 🟡 متوسطة | `TransferAllAsync` يقرأ خارج `_tx` بلا حارس نسخة (المفرد مغطى) — **وليست «500»**: `GlobalExceptionHandler.cs:41` يترجم `DbUpdateConcurrencyException → 409` برسالة عربية | `DocumentAppealService.cs:408-443` (قراءة `:424` خارج `_tx` في `:427`) مقابل نمط `AssignAsync (:335-357)`؛ تصحيح `F5.2`: `TransferCircuitAsync` يقرأ داخل `_tx` (`:401`) و`RejectAsync` له فحص `Version` + `catch` (`:834,862`) — القصد مسارات الاستئناف فقط | تضييق النطاق على `TransferAllAsync` بنمط `AssignAsync` |
 | 5 | 🟡 متوسطة | تنبيهات الجهات العامة لا تصل للشعب: 4 مواضع `Head`-فقط (قرار أ: توسيع بالنطاق حسب الاستعلام) | `PublicEntityRepository.cs:57,65`، `HeadAlertRepository.cs:119`، `HeadAlertRepository.cs:81` (عبر `HeadAlertService.cs:347`)؛ الاستهلاك: `Registry.cs:285,287,377-381`، `Moves.cs:186,310`، `Branches.cs:706`، `PublicEntityService.cs:618` | توسيع الدور مع توثيق تغيّر سلوك «غياب الرئيس» |
 | 6 | 🔵 قرار معتمد | النطاق الدائري لسجل التدقيق — يُنفَّذ الآن (قرار 23 أصلًا يفرضه: «تأجيل معتمد غير منفَّذ») | `AuditLogsController.cs` + `AuditLogRepository.cs:34-44` (نمط الفرع القائم) + `App.tsx:421` + `Layout.tsx:135` (فرع البنود الأربعة) + `HeadIconRow.tsx:154` (`hideAudit`) | سلسلة 8 ملفات متزامنة (التفصيل في F6) |
-| 7 | 🔵 قرار معتمد (أ) | سقوط إشعار الشعبة بلا رئيس على القسم — إبقاء + توثيق (ليس صامتًا: تدقيق + تنبيه `:1145-1148`) | `DocumentAppealService.cs:1145-1148` | توثيق فقط |
+| 7 | 🔵 قرار معتمد (أ) | سقوط إشعار الشعبة بلا رئيس على القسم — إبقاء + توثيق (ليس صامتًا: تدقيق + تنبيه `:1150-1153`) | `DocumentAppealService.cs:1145-1148` | توثيق فقط |
 | 8 | 🔵 تصحيح | `ExecutedByDelegationId` غير موجود في الكود (4 مواضع توثيقية) لكنه **شرط بوابة في قرار 25 المعتمد** — يُصحَّح النص لا يُحذف | `SUBHEAD_PLAN.md:46,87` + `SUBHEAD_REVIEW_FIX_PLAN.md:71,285` (هذا الملف: لا ذكر للمعرّف) | تصحيح صياغة قرار 25 |
 
 ### ملاحظة أمانة (خارج النطاق — جرد لاحق منفصل)
@@ -148,7 +148,7 @@ var result = await _documents.SearchReferredToStartAsync(q, page, perPage, visib
   صار «غياب الرئيس والشعبة ⇒ رفض».
 
 **يُستثنى صراحةً:** مناديات `FindActiveHeadAsync(UserRole.Head, …)` للتوجيه
-(`DocumentAppealService.cs:1147-1148`، `ExecutionCircuitService.cs:445`،
+(`DocumentAppealService.cs:1152-1153`، `ExecutionCircuitService.cs:445`،
 `DocumentDelegationService.cs:995/1334/1341/1342/1346`) — توجيه موافقة لا بثّ (قرار F7).
 
 **الضمان:** كل مستهلك ينشئ تنبيهًا لكل مستلم بفرعه، والقراءة `ListByRecipientInBranchAsync`
@@ -193,7 +193,7 @@ var result = await _documents.SearchReferredToStartAsync(q, page, perPage, visib
 
 ### F5 — تحصين `TransferAllAsync` بنمط `AssignAsync` (🟡 متوسطة — مضيّق)
 
-**الملف:** `DocumentAppealService.cs:408-443` — نقل القراءة (`:424-425`) **داخل** `_tx.RunAsync`
+**الملف:** `DocumentAppealService.cs:408-443` — نقل القراءة (`:429-430`) **داخل** `_tx.RunAsync`
 + إعادة فحص `Pending` لكل عنصر + `Version++` (الرمز `IsConcurrencyToken` يرمي، والمعالج
 العام يترجم `409` عربية — بلا `catch` جديد، مرآةً لـ`AssignAsync :335-357`).
 
@@ -209,7 +209,7 @@ var result = await _documents.SearchReferredToStartAsync(q, page, perPage, visib
 ### F7/F8 — توثيق (قرار أ + تصحيح)
 
 - **F7:** توثيق «شعبة بلا رئيس → قسم» قرار توفّر في `SUBHEAD_PLAN.md` (قرب §6.2/قرار 22)
-  مع الإشارة للتدقيق والتنبيه (`:1145-1148`) — بلا تغيير كود.
+  مع الإشارة للتدقيق والتنبيه (`:1150-1153`) — بلا تغيير كود.
 - **F8:** تصحيح صياغة قرار 25 في `SUBHEAD_PLAN.md:46,87` (توضيح أن الشرط توثيقي-تعاقدي
   يُطبَّق عند إدخال الحقل مستقبلًا) — **لا حذف** من قرار معتمد.
 
@@ -248,5 +248,5 @@ var result = await _documents.SearchReferredToStartAsync(q, page, perPage, visib
 | F4 | `Services/ExecutionCircuitService.cs` / `Services/ExcelExportService.cs` / `DTOs/ExecutionCircuitDtos.cs` | `976-1003` / `:98` / `:71-83` |
 | F5 | `Services/DocumentAppealService.cs` / `Middleware/GlobalExceptionHandler.cs` | `335-357` (النمط)، `408-443` (الهدف) / `:37,41,63-64` |
 | F6 | `Controllers/AuditLogsController.cs` / `Persistence/AuditLogRepository.cs` / `Services/AuditLogService.cs` / `App.tsx` / `HeadIconRow.tsx` | `12,31` / `14-44` / `7-34` / `419-425` / `:154` |
-| F7 | `Services/DocumentAppealService.cs` | `1145-1148` |
+| F7 | `Services/DocumentAppealService.cs` | `1150-1153` |
 | الحراس/CI | `scripts/subhead-guards.mjs` + `.github/workflows/ci.yml` | — |
