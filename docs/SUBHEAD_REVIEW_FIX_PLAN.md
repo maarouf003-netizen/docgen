@@ -219,6 +219,9 @@ var result = await _documents.SearchReferredToStartAsync(q, page, perPage, visib
 
 1. **حارس F1** في `scripts/subhead-guards.mjs`: استدعاء القوائم الأربع من `Api` بدون
    `ownerSectionId` ⇒ فشل `CI`.
+2. **تجزئة Api في `CI`** (`ci.yml` + `scripts/api-shard-guard.mjs`): التشغيل الموحد
+   كان يعلّق ساعات بصمت (~14 مصنعًا متوازيًا) — 4 دفعات مثبتة + حارس تغطية يمنع
+   إسقاط أي فئة مستقبلًا + `timeout-minutes` يمنع التكرار.
 2. **تحديثات F6** في نفس الحارس (إسقاط/تعديل مدخلي السماح) + `RF004AuthzTests`.
 3. تشغيل الشبكات محليًا قبل الدفع (نفس أمر `CI`).
 

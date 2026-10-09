@@ -7,13 +7,30 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    # مهلة صريحة وحدّ أعلى: التشغيل الموحد لـ Api.Tests كان يعلق ساعات بصمت
+    # (~14 مصنع WebApplicationFactory متوازيًا يجمّد انتظار الدخول — مشخّص
+    # بـ blame-hang على جهازين). لذا تُشغَّل Api على 4 دفعات مثبتة الخضرة
+    # (تغطيتها الكاملة يفرضها scripts/api-shard-guard.mjs — لا إسقاط صامت).
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+      - name: Shard coverage guard
+        run: node scripts/api-shard-guard.mjs
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
-      - name: Test (backend)
-        run: dotnet test backend/DocGenerator.sln --nologo -v q
+      - name: Build (backend)
+        run: dotnet build backend/DocGenerator.sln --nologo -v q
+      - name: Test (application)
+        run: dotnet test backend/tests/DocGenerator.Application.Tests/DocGenerator.Application.Tests.csproj --no-build --nologo -v q
+      - name: Test (api shard 1/4)
+        run: dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build --nologo -v q --filter 'FullyQualifiedName~RF007AuditScopeTests|FullyQualifiedName~ExecutionCircuits|FullyQualifiedName~DocumentsExportIntegrationTests|FullyQualifiedName~AppealForwardFlowTests|FullyQualifiedName~TransferIntegrationTests|FullyQualifiedName~TransferBranchGuardTests|FullyQualifiedName~RF004AuthzTests|FullyQualifiedName~SubHeadRolePermissionsTests'
+      - name: Test (api shard 2/4)
+        run: dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build --nologo -v q --filter 'FullyQualifiedName~DocumentsIntegrationTests|FullyQualifiedName~DocumentScopeIsolationTests|FullyQualifiedName~DelegationsIntegrationTests|FullyQualifiedName~DelegationScopeIsolationTests|FullyQualifiedName~DelegationPendingCountBranchGuardTests|FullyQualifiedName~AlertsIntegrationTests|FullyQualifiedName~CorrespondenceIntegrationTests|FullyQualifiedName~ReviewCorrespondenceScopeTests|FullyQualifiedName~EntityRegistry'
+      - name: Test (api shard 3/4)
+        run: dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build --nologo -v q --filter 'FullyQualifiedName~StatisticsBranchGuardTests|FullyQualifiedName~StatisticsHeadScopeIntegrationTests|FullyQualifiedName~StatsScopeTests|FullyQualifiedName~ManagerStatsIntegrationTests|FullyQualifiedName~SectionsIntegrationTests|FullyQualifiedName~UserManagementIntegrationTests|FullyQualifiedName~UserBranchInvariantTests|FullyQualifiedName~BranchManagementIntegrationTests|FullyQualifiedName~AuthIntegrationTests|FullyQualifiedName~AuthControllerBranchRequiredTests|FullyQualifiedName~AuditIntegrationTests|FullyQualifiedName~AppSuggestionsIntegrationTests|FullyQualifiedName~PersonalRemindersIntegrationTests|FullyQualifiedName~WordGenerationIntegrationTests|FullyQualifiedName~ClientErrorsIntegrationTests'
+      - name: Test (api shard 4/4)
+        run: dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build --nologo -v q --filter 'FullyQualifiedName~RF001|FullyQualifiedName~RF003AuthzProofTests|FullyQualifiedName~RF005SecurityLoggingTests|FullyQualifiedName~RF006PostgresFactoryTests|FullyQualifiedName~RF008SessionLifetimeTests|FullyQualifiedName~RF009NumberingTests|FullyQualifiedName~RF010ConcurrencyTests|FullyQualifiedName~RF011IdempotencyTests|FullyQualifiedName~RF016HealthTests|FullyQualifiedName~RF017SilentWriteAuditTests|FullyQualifiedName~RF018ReadAuditTests|FullyQualifiedName~RF019AppendOnlyTests|FullyQualifiedName~ClaimsPrincipalExtensionsTests|FullyQualifiedName~DatabaseInitializerTests|FullyQualifiedName~EnricherMiddlewareTests|FullyQualifiedName~EntityManagerPortalGuardTests|FullyQualifiedName~ExceptionHandlerIntegrationTests|FullyQualifiedName~ForwardedHeadersOptionsTests|FullyQualifiedName~GlobalExceptionHandlerTests|FullyQualifiedName~JwtSecretValidationTests|FullyQualifiedName~LockoutIntegrationTests|FullyQualifiedName~LogSanitizerTests|FullyQualifiedName~MetaControllerTests|FullyQualifiedName~MissingRoleClaimTests|FullyQualifiedName~PostgresConnectionStringTests|FullyQualifiedName~RateLimitingIntegrationTests|FullyQualifiedName~SecurityHeadersIntegrationTests|FullyQualifiedName~StaleRoleRevocationTests|FullyQualifiedName~SwaggerIntegrationTests|FullyQualifiedName~TokenRevocationIntegrationTests'
 
   frontend:
     runs-on: ubuntu-latest
