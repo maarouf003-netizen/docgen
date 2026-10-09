@@ -94,7 +94,10 @@ public sealed class ExcelExportService : IExcelExportService
             rows.Select(r => new List<string>
             {
                 r.CircuitName ?? string.Empty,
-                r.BranchName ?? string.Empty,
+                // (ب): الصف الاصطناعي «بلا دائرة» لمدير يرى الكل (`CircuitId = 0` بلا
+                // اسم فرع) يُوسم «كل الفروع» بدل الخلية الفارغة المضللة — لرئيس القسم
+                // اسم فرعه موجود أصلًا فلا تغيير له، والصفوف العادية كما كانت.
+                r.CircuitId == 0 && r.BranchName is null ? "كل الفروع" : (r.BranchName ?? string.Empty),
                 r.SectionName ?? "القسم",
                 r.FileCount.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 r.LawyerCount.ToString(System.Globalization.CultureInfo.InvariantCulture),

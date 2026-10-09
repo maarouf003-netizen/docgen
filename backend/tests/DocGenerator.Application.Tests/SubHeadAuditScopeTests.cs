@@ -178,4 +178,22 @@ public class SubHeadAuditScopeTests : IDisposable
         var (fullTotal, _) = await _logs.SearchAsync(null, null, 1, 20);
         Assert.Equal(2, fullTotal);
     }
+
+    [Fact]
+    public async Task Search_RenamedUserEventsBecomeUnattributed_HiddenFailClosed()
+    {
+        // (د): أسماء الدخول قابلة للتغيير — فحدث الفاعل الذي غُيّر اسمه يفقد نسبه
+        // ويُحجب (فشل-مغلق)، بينما حدث المستند يبقى مرئيًا بشرط الدائرة.
+        AddEvent("lawyer1", _docA.Id);
+        AddEvent("sub_a", null);
+
+        var subA = _db.Users.Single(u => u.Username == "sub_a");
+        subA.Username = "sub_a_new";
+        await _db.SaveChangesAsync();
+
+        var (total, items) = await _logs.SearchAsync(null, null, 1, 20, default, null, _sectionA);
+
+        Assert.Equal(1, total);
+        Assert.Equal(_docA.Id, Assert.Single(items).DocumentId);
+    }
 }

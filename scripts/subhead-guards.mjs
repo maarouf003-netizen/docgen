@@ -5,7 +5,9 @@
  *  2. فحص دور `head` منفرد في كود الإنتاج خارج قائمة السماح المعللة.
  *  3. سمة `[Authorize(Roles=...)]` تذكر `head` بلا `subhead` خارج السماح.
  *  4. استدعاء القوائم الأربع (محذوفة/مشطوبة/منفذة/محالة للبداية) من طبقة `Api`
- *     بلا `ownerSectionId` (F1 — تضييق «الشعبة ترى القسم»).
+ *     بلا `ownerSectionId` (F1 — تضييق «الشعبة ترى القسم»). الفحص استكشافي بنافذة
+ *     ‏±3 أسطر (لا قطعي): يغفر الالتفاف متعدد الأسطر، وقد يُغفل تعليقًا يحمل الاسم
+ *     دون تمرير — فالحماية الحقيقية الاختبارات لا هذا النص.
  *
  * الاستثناءات في قوائم السماح أدناه — أي إضافة لها تتطلب تعليلًا في نفس السطر.
  * يُشغَّل في `CI` (job ‏`guards`) ومحليًا: `node scripts/subhead-guards.mjs`.
@@ -84,9 +86,12 @@ for (const file of walk(ROOT)) {
 
   // 4) القوائم الأربع من طبقة Api يجب أن تمرر ownerSectionId (F1) — وإلا عاد
   // تضييق «الشعبة ترى القسم» في المحذوفة/المشطوبة/المنفذة/المحالة للبداية.
+  // النافذة ±3 تغفر الالتفاف متعدد الأسطر (ج) — فإن غاب الاسم عنها فُشل مغلقًا.
   if (rel === 'backend/src/DocGenerator.Api/Controllers/DocumentsController.cs') {
     lines.forEach((line, i) => {
-      if (/Search(Deleted|StruckOff|Executed|ReferredToStart)Async\(/.test(line) && !line.includes('ownerSectionId')) {
+      if (!/Search(Deleted|StruckOff|Executed|ReferredToStart)Async\(/.test(line)) return;
+      const window = lines.slice(i, Math.min(lines.length, i + 4)).join('\n');
+      if (!window.includes('ownerSectionId')) {
         failures.push(`${rel}:${i + 1}: استدعاء قائمة بلا ownerSectionId — مرر نطاق المالك`);
       }
     });

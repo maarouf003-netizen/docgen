@@ -146,7 +146,7 @@ export default function CircuitStatsPage() {
                     {r.circuitName}
                     {!r.isActive && <span className="ms-2 text-xs text-gray-500">(معطلة)</span>}
                   </td>
-                  <td className="px-4 py-3">{r.branchName ?? '—'}</td>
+                  <td className="px-4 py-3">{r.circuitId === 0 && r.branchName == null ? 'كل الفروع' : (r.branchName ?? '—')}</td>
                   <td className="px-4 py-3 break-words">{r.sectionName ?? 'القسم'}</td>
                   <td className="px-4 py-3 tabular-nums">{fmt(r.fileCount)}</td>
                   <td className="px-4 py-3 tabular-nums">{fmt(r.lawyerCount)}</td>
