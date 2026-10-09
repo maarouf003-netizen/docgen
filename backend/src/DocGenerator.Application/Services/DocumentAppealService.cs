@@ -426,6 +426,9 @@ public sealed class DocumentAppealService : IDocumentAppealService
         var moved = 0;
         await _tx.RunAsync(async token =>
         {
+            // D5: العدّاد يُصفَّر داخل المعاملة — فلو أُعيد تنفيذ الـlambda (إعادة
+            // محاولة مستقبلية عند تفعيل `EnableRetryOnFailure`) لا يزدوج العدّ.
+            moved = 0;
             var pendingOnly = await _appeals.ListPendingByAssigneeInScopeAsync(
                 request.SourceLawyerId, headBranchId.Value, ownerSectionId, token);
             foreach (var appeal in pendingOnly)

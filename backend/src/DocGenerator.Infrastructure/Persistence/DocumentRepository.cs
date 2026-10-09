@@ -781,16 +781,23 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
     {
         // F4: ملفات بلا دائرة حصرًا (`ExecutionCircuitId == null`) — دوائر `SectionId == null`
         // لها صفوفها الخاصة فلا تُجمع هنا (منع ازدواج العدّ)؛ غير المحذوفة مرآةً لعدادات الدوائر.
+        // استعلام تجميعي واحد (D2): `COUNT(CASE…)` للمعلقات و`COUNT(DISTINCT…)` للمحامين —
+        // نفس بنية `CountLawyersByCircuitsAsync` المثبتة الترجمة على SQLite/PostgreSQL.
         var q = Db.Documents
             .AsNoTracking()
             .Where(d => d.ExecutionCircuitId == null && !d.IsDeleted);
         if (branchId.HasValue)
             q = q.Where(d => d.BranchId == branchId.Value);
-        var fileCount = await q.CountAsync(ct);
-        if (fileCount == 0) return (0, 0, 0);
-        var pendingCount = await q.CountAsync(d => d.NeedsRegistration, ct);
-        var lawyerCount = await q.Select(d => d.CreatedById).Distinct().CountAsync(ct);
-        return (fileCount, pendingCount, lawyerCount);
+        var row = await q
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                FileCount = g.Count(),
+                PendingCount = g.Count(d => d.NeedsRegistration),
+                LawyerCount = g.Select(d => d.CreatedById).Distinct().Count(),
+            })
+            .SingleOrDefaultAsync(ct);
+        return row is null ? (0, 0, 0) : (row.FileCount, row.PendingCount, row.LawyerCount);
     }
 
     // ملاحظة (M12): التنفيذ النصي القديم ExistsActiveWithNumberAsync أُسقط مع ترحيل

@@ -28,7 +28,7 @@
 | 3 | 🟡 متوسطة | إحصاءات الدوائر تهمل ملفات بلا دائرة — والعودة المبكرة `:983` تُفقد الصف الاصطناعي | `ExecutionCircuitService.cs:976-1003`؛ الوسم الصحيح `ExcelExportService.cs:98` (لا `:214` = تصدير الملفات `:215`)؛ `CircuitStatsDto` (`ExecutionCircuitDtos.cs:71`) بحقلي `int` غير قابلين للـnull | صف اصطناعي `Id=0` «بلا دائرة» بشروط §F4 أدناه |
 | 4 | 🟡 متوسطة | `TransferAllAsync` يقرأ خارج `_tx` بلا حارس نسخة (المفرد مغطى) — **وليست «500»**: `GlobalExceptionHandler.cs:41` يترجم `DbUpdateConcurrencyException → 409` برسالة عربية | `DocumentAppealService.cs:408-443` (قراءة `:424` خارج `_tx` في `:427`) مقابل نمط `AssignAsync (:335-357)`؛ تصحيح `F5.2`: `TransferCircuitAsync` يقرأ داخل `_tx` (`:401`) و`RejectAsync` له فحص `Version` + `catch` (`:834,862`) — القصد مسارات الاستئناف فقط | تضييق النطاق على `TransferAllAsync` بنمط `AssignAsync` |
 | 5 | 🟡 متوسطة | تنبيهات الجهات العامة لا تصل للشعب: 4 مواضع `Head`-فقط (قرار أ: توسيع بالنطاق حسب الاستعلام) | `PublicEntityRepository.cs:57,65`، `HeadAlertRepository.cs:119`، `HeadAlertRepository.cs:81` (عبر `HeadAlertService.cs:347`)؛ الاستهلاك: `Registry.cs:285,287,377-381`، `Moves.cs:186,310`، `Branches.cs:706`، `PublicEntityService.cs:618` | توسيع الدور مع توثيق تغيّر سلوك «غياب الرئيس» |
-| 6 | 🔵 قرار معتمد | النطاق الدائري لسجل التدقيق — يُنفَّذ الآن (قرار 23 أصلًا يفرضه: «تأجيل معتمد غير منفَّذ») | `AuditLogsController.cs` + `AuditLogRepository.cs:34-44` (نمط الفرع القائم) + `App.tsx:421` + `Layout.tsx:135` (فرع البنود الأربعة) + `HeadIconRow.tsx:154` (`hideAudit`) | سلسلة 8 ملفات متزامنة (التفصيل في F6) |
+| 6 | 🔵 قرار معتمد | النطاق الدائري لسجل التدقيق — يُنفَّذ الآن (قرار 23 أصلًا يفرضه: «تأجيل معتمد غير منفَّذ») | `AuditLogsController.cs` + `AuditLogRepository.cs:34-44` (نمط الفرع القائم) + `App.tsx:421` + `Layout.tsx:135` (فرع البنود الأربعة) + `HeadIconRow.tsx` (أُزيل `hideAudit` واستُبدل بمعامل `isSubHead` — السلسلة منفَّذة أدناه) | سلسلة 8 ملفات متزامنة (التفصيل في F6) |
 | 7 | 🔵 قرار معتمد (أ) | سقوط إشعار الشعبة بلا رئيس على القسم — إبقاء + توثيق (ليس صامتًا: تدقيق + تنبيه `:1150-1153`) | `DocumentAppealService.cs:1145-1148` | توثيق فقط |
 | 8 | 🔵 تصحيح | `ExecutedByDelegationId` غير موجود في الكود (4 مواضع توثيقية) لكنه **شرط بوابة في قرار 25 المعتمد** — يُصحَّح النص لا يُحذف | `SUBHEAD_PLAN.md:46,87` + `SUBHEAD_REVIEW_FIX_PLAN.md:71,285` (هذا الملف: لا ذكر للمعرّف) | تصحيح صياغة قرار 25 |
 
@@ -176,7 +176,7 @@ var result = await _documents.SearchReferredToStartAsync(q, page, perPage, visib
 **الواجهة (الوصول عبر بطاقة اللوحة — لا بند جانبي في الفرع الخاطئ):**
 
 4. `App.tsx:419-425`: إضافة `isSubHead` وتحديث التعليق (الشرط الخلفي تحقق).
-5. بطاقة «سجل التدقيق» للشعبة في اللوحة (إظهار ما يخفيه `hideAudit` عن `subhead`).
+5. بطاقة «سجل التدقيق» للشعبة في اللوحة (المعامل `isSubHead` بدل `hideAudit` المُزال — البطاقة ظاهرة للشعبة مع تمييز التسمية).
 6. `Layout.tsx`: **لا** بند جانبي جديد (الرئيس والشعبة في فرع البنود الأربعة `:135` عمدًا).
 
 **الشبكات (نفس الالتزام — وإلا يفشل `CI`):**
