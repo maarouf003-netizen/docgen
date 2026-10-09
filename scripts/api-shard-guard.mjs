@@ -1,6 +1,6 @@
 /**
  * حارس تغطية تجزئة اختبارات Api (مكمل لشبكات subhead):
- * مهمة backend في CI تشغّل Api.Tests على 4 دفعات (shards) بدل التشغيل الموحد —
+ * مهمة backend في CI تشغّل Api.Tests على 5 دفعات (shards) بدل التشغيل الموحد —
  * لأن ~14 مصنع WebApplicationFactory متوازيًا يعلّق انتظار الدخول إلى الأبد
  * (مشخّص بـ blame-hang على جهازين: الأنصاف خضراء، الموحد أحمر بلا أي إكمال).
  * هذا الحارس يضمن أن كل فئة `*Tests.cs` مغطاة بدفعة واحدة على الأقل — فأي فئة
@@ -27,16 +27,18 @@ const shards = {
     'RF004AuthzTests',
     'SubHeadRolePermissionsTests',
   ],
-  'shard-2': [
+  'shard-2a': [
     'DocumentsIntegrationTests',
-    'DocumentScopeIsolationTests',
     'DelegationsIntegrationTests',
-    'DelegationScopeIsolationTests',
     'DelegationPendingCountBranchGuardTests',
     'AlertsIntegrationTests',
+    'EntityRegistry',
+  ],
+  'shard-2b': [
+    'DocumentScopeIsolationTests',
+    'DelegationScopeIsolationTests',
     'CorrespondenceIntegrationTests',
     'ReviewCorrespondenceScopeTests',
-    'EntityRegistry',
   ],
   'shard-3': [
     'StatisticsBranchGuardTests',
@@ -103,4 +105,4 @@ if (uncovered.length > 0) {
   );
   process.exit(1);
 }
-console.log(`api-shards: مغطاة — ${classes.length} فئة في 4 دفعات.`);
+console.log(`api-shards: مغطاة — ${classes.length} فئة في 5 دفعات.`);
