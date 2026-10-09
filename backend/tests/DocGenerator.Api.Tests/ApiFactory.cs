@@ -25,6 +25,16 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     private readonly string _logDir = Path.Combine(
         Path.GetTempPath(), $"docgen_it_logs_{Guid.NewGuid():N}");
 
+    /// <summary>
+    /// يبني المضيف (الترحيلات + البذر) فورًا على خيط بلا <see cref="SynchronizationContext"/>،
+    /// فلا تلتقط استمراريات <c>Program.cs</c> الداخلية سياق xUnit المتوازي (سبب قفل ميت
+    /// موثّق عندما تعمل عدة مصانع مستقلة بالتوازي على عدّاء ضعيف الأنوية).
+    /// </summary>
+    public ApiFactory()
+    {
+        _ = Task.Run(() => Services).GetAwaiter().GetResult();
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
@@ -104,10 +114,12 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         return null;
     }
 
-    /// <summary>عميل مُصادَق عبر Cookie الدخول الفعلي (POST /api/auth/login).</summary>
+    /// <summary>عميل مُصادَق عبر Cookie الدخول الفعلي (POST /api/auth/login).
+    /// يُدار الدخول على خيط بلا <see cref="SynchronizationContext"/> حتى لا يلتقط
+    /// <c>await</c> الداخلي سياق xUnit المتوازي فيحجب الخيط إلى الأبد (قفل ميت).</summary>
     public HttpClient AuthorizedClient(string username, string password = "123456")
     {
-        var login = LoginAsync(username, password).GetAwaiter().GetResult();
+        var login = Task.Run(() => LoginAsync(username, password)).GetAwaiter().GetResult();
         if (login?.Token is null)
             throw new InvalidOperationException(
                 $"Login failed for '{username}' (status {(login?.StatusCode ?? 0)}).");
