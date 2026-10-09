@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  CI-only: serialize the sensitive shard (MaxParallelThreads 1).
+  WHY: the four classes in shard 2b each boot a full WebApplicationFactory.
+  Even four parallel factories wedge login waits on constrained runners
+  (shard 1 with nine classes passes in seconds on the same runner; 2b stalls).
+  Local dev keeps default parallelism. Skips nothing, weakens no assertion.
+-->
+<RunSettings>
+  <xUnit>
+    <MaxParallelThreads>1</MaxParallelThreads>
+  </xUnit>
+</RunSettings>
