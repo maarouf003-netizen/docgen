@@ -451,7 +451,7 @@ export default function Dashboard() {
                 circuitsPending,
               }}
               scopeLabel={isSubHead ? 'مؤشرات الشعبة' : 'مؤشرات الفرع'}
-              hideAudit={isSubHead}
+              isSubHead={isSubHead}
             />
           </div>
         </>

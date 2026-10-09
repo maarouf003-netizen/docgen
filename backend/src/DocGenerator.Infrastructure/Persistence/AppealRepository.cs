@@ -129,7 +129,10 @@ public class AppealRepository : Repository<DocumentAppeal>, IAppealRepository
             ? q.Where(a => a.Document.ExecutionCircuitId != null
                 && a.Document.ExecutionCircuit!.SectionId == ownerSectionId.Value)
             : q.Where(a => a.Document.ExecutionCircuitId == null
-                || a.Document.ExecutionCircuit!.SectionId == null);
+                || a.Document.ExecutionCircuit!.SectionId == null
+                // رئيس القسم: المحال له استثناءً حتى الحسم — مرآة البحث (قرار §2.22).
+                || (a.Status == AppealStatusCatalog.Pending
+                    && a.ForwardState == AppealForwardCatalog.ForwardedToHead));
     }
     public Task<int> CountByAssigneeAsync(int assigneeId, int? branchId = null, string? status = null, CancellationToken ct = default)
     {

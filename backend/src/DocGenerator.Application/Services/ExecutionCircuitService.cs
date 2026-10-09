@@ -971,7 +971,9 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
 
     /// <summary>
     /// صفوف إحصاءات الدوائر بالنطاق (قرار §2.27 — التفصيل الرباعي في المرحلة 8):
-    /// الرئيس لدوائر نطاقه فقط، والمدير/المشرف للكل.
+    /// الرئيس لدوائر نطاقه فقط، والمدير/المشرف للكل — زائد صف اصطناعي واحد «بلا دائرة»
+    /// (`CircuitId = 0`) لملفات النطاق بلا دائرة عندما وُجدت (F4: شرط `FileCount > 0`
+    /// يمنع صفًا صفريًا دائمًا؛ والشعبة بلا صف أصلًا إذ ملفاتها كلها بدوائر §5.6).
     /// </summary>
     public async Task<List<CircuitStatsDto>> CircuitStatsAsync(int? branchId, int? ownerSectionId, bool fullAccess, CancellationToken ct = default)
     {
@@ -980,7 +982,6 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         if (!fullAccess)
             circuits = circuits.Where(c => c.SectionId == ownerSectionId);
         var ordered = circuits.OrderBy(c => c.BranchId).ThenBy(c => c.Name).ToList();
-        if (ordered.Count == 0) return new List<CircuitStatsDto>();
         var branches = await _branches.ListAsync(ct);
         var branchNames = branches.ToDictionary(b => b.Id, b => b.Name);
         // أسماء الشعب دفعة واحدة — بلا استعلام لكل دائرة (N+1).
@@ -990,7 +991,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         var counts = await _documents.CountByCircuitsAsync(ordered.Select(c => c.Id).ToList(), ct);
         // المحامون النشطون (≥ ملف واحد): استعلام تجميعي واحد — بلا تحميل كيانات (N+1).
         var lawyerCounts = await _documents.CountLawyersByCircuitsAsync(ordered.Select(c => c.Id).ToList(), ct);
-        return ordered.Select(c =>
+        var rows = ordered.Select(c =>
         {
             counts.TryGetValue(c.Id, out var v);
             return new CircuitStatsDto(c.Id, c.Name, c.BranchId,
@@ -1000,6 +1001,17 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                 c.SectionId.HasValue && sectionNames.TryGetValue(c.SectionId.Value, out var s) ? s : null,
                 c.Version);
         }).ToList();
+        if (!ownerSectionId.HasValue)
+        {
+            var (fileCount, pendingCount, lawyerCount) = await _documents.CountWithoutCircuitAsync(branchId, ct);
+            if (fileCount > 0)
+            {
+                branchNames.TryGetValue(branchId ?? 0, out var branchName);
+                rows.Add(new CircuitStatsDto(0, "بلا دائرة", branchId ?? 0, branchName,
+                    true, fileCount, lawyerCount, pendingCount, null, null, 0));
+            }
+        }
+        return rows;
     }
 
     private async Task<ExecutionCircuitDto> ToDtoAsync(ExecutionCircuit c, CancellationToken token)

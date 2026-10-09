@@ -419,27 +419,32 @@ public sealed class DocumentAppealService : IDocumentAppealService
 
         var target = await ResolveTargetLawyerAsync(request.TargetLawyerId, headBranchId.Value, ct);
 
-        // النقل الجملة للمنظورة ضمن نطاق المنفِّذ فقط (§5.5) — فلترة قاعدية
-        // (المحسوم والمشطوب وخارج النطاق مستبعدان في المستودع)، وبتتبّع للتحديث.
-        var pendingOnly = await _appeals.ListPendingByAssigneeInScopeAsync(
-            request.SourceLawyerId, headBranchId.Value, ownerSectionId, ct);
-
+        // النقل الجملة للمنظورة ضمن نطاق المنفِّذ فقط (§5.5) — القراءة داخل المعاملة
+        // (F5: منع الكتابة فوق تغيير متزامن)، وإعادة فحص `Pending` قبل كل كتابة،
+        // والرمز `IsConcurrencyToken` على `Version` يترجم السباق `409` ودية عبر
+        // المعالج العام — مرآة المسارين المفردين (`AssignAsync`/`TransferAsync`).
+        var moved = 0;
         await _tx.RunAsync(async token =>
         {
+            var pendingOnly = await _appeals.ListPendingByAssigneeInScopeAsync(
+                request.SourceLawyerId, headBranchId.Value, ownerSectionId, token);
             foreach (var appeal in pendingOnly)
             {
+                if (appeal.Status != AppealStatusCatalog.Pending)
+                    continue;
                 appeal.AssignedLawyerId = target.Id;
                 appeal.AssignedAt = DateTime.UtcNow;
                 appeal.UpdatedAt = DateTime.UtcNow;
                 appeal.Version++;
                 _appeals.Update(appeal);
+                moved++;
             }
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "transfer_all_appeals",
-                details: $"نقل {pendingOnly.Count} استئنافًا منظورًا من المحامي (رقم {request.SourceLawyerId}) إلى المحامي {target.FullName}", ct: token);
+                details: $"نقل {moved} استئنافًا منظورًا من المحامي (رقم {request.SourceLawyerId}) إلى المحامي {target.FullName}", ct: token);
         }, ct);
 
-        return pendingOnly.Count;
+        return moved;
     }
 
     public async Task<int> CountByAssigneeForHeadAsync(int assigneeId, int? headBranchId, int? ownerSectionId, CancellationToken ct = default)

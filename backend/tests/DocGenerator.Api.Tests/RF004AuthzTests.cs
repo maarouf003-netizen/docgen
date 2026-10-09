@@ -295,12 +295,10 @@ public class RF004AuthzTests
     {
         // حارس مصفوفة التخويل (المرحلة 9 — بند 1): أي سمة فعّالة تذكر `head`
         // يجب أن تذكر `subhead` (أو سياسة `HeadOrSubHead`) — وإلا تسربت بوابة
-        // جديدة/معدلة من التماثل (§2.1/§2.21). الاستثناءات المعللة أدناه فقط.
+        // جديدة/معدلة من التماثل (§2.1/§2.21). الاستثناءات المعللة أدناه فقط
+        // (فارغة حاليًا — كل البوابات متماثلة بعد F6).
         var exclusions = new HashSet<(string Controller, string Action)>
         {
-            // النطاق الدائري للتدقيق مغلق للشعبة حتى `ownerSectionId` (قرار 23) —
-            // الفتح الآن تسريب فرعي، لا تماثل.
-            ("AuditLogsController", "*"),
         };
         var expand = new Func<string, IEnumerable<string>>(roles =>
             roles.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)

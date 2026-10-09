@@ -4198,4 +4198,52 @@ public class PublicEntityServiceTests : IDisposable
         var group = await _db.PublicEntityGroups.FindAsync(dto.GroupId);
         Assert.Equal("جهة المعاينة", group!.CanonicalName);
     }
+
+    // ── F3: تماثل إشعار الجهات العامة لرؤساء الشعب (قرار أ — بالنطاق حسب الاستعلام) ──
+
+    [Fact]
+    public async Task Create_ByLawyer_NotifiesBranchSubHead_WithOwnBranchId()
+    {
+        var subDam = new User { Username = "sub_dam", FullName = "رئيس شعبة دمشق", Role = UserRole.SubHead, BranchId = _damascusId, IsActive = true, PasswordHash = "x" };
+        var subAlp = new User { Username = "sub_alp", FullName = "رئيس شعبة حلب", Role = UserRole.SubHead, BranchId = _aleppoId, IsActive = true, PasswordHash = "x" };
+        _db.Users.AddRange(subDam, subAlp);
+        await _db.SaveChangesAsync();
+
+        await _service.CreateAsync(new CreatePublicEntityRequest(
+            "هيئة الشعبة", "authority", "دمشق", "الفرع الرئيسي", CitationFormulaCatalog.AddToJob),
+            LawyerActor());
+
+        // فرع المُدخِل (دمشق): الرئيس + رئيس الشعبة يستلمان، كلٌّ بتنبيه على فرعه حصرًا.
+        var alerts = await _db.HeadAlerts.AsNoTracking().Include(a => a.Recipients).ToListAsync();
+        Assert.Equal(2, alerts.Count);
+        var recipients = alerts.Select(a => a.Recipients.Single().UserId).ToList();
+        Assert.Contains(_headDamascusId, recipients);
+        Assert.Contains(subDam.Id, recipients);
+        Assert.All(alerts, a => Assert.Equal(_damascusId, a.BranchId));
+        // شعبة فرع آخر (حلب) لا تستلم — بلا تسريب عبر الفروع.
+        Assert.DoesNotContain(subAlp.Id, recipients);
+        Assert.DoesNotContain(_headAleppoId, recipients);
+    }
+
+    [Fact]
+    public async Task ListActiveHeadsByGovernorate_IncludesSubHeads_OfSameGovernorateOnly()
+    {
+        var subDam = new User { Username = "sub_dam", FullName = "رئيس شعبة دمشق", Role = UserRole.SubHead, BranchId = _damascusId, IsActive = true, PasswordHash = "x" };
+        var subAlp = new User { Username = "sub_alp", FullName = "رئيس شعبة حلب", Role = UserRole.SubHead, BranchId = _aleppoId, IsActive = true, PasswordHash = "x" };
+        var inactiveSub = new User { Username = "sub_off", FullName = "رئيس شعبة معطل", Role = UserRole.SubHead, BranchId = _damascusId, IsActive = false, PasswordHash = "x" };
+        _db.Users.AddRange(subDam, subAlp, inactiveSub);
+        await _db.SaveChangesAsync();
+
+        var repo = new PublicEntityRepository(_db);
+        var damascus = await repo.ListActiveHeadsByGovernorateAsync("دمشق");
+        Assert.Contains(damascus, u => u.Id == _headDamascusId);
+        Assert.Contains(damascus, u => u.Id == subDam.Id);
+        Assert.DoesNotContain(damascus, u => u.Id == _headAleppoId);
+        Assert.DoesNotContain(damascus, u => u.Id == subAlp.Id);
+        Assert.DoesNotContain(damascus, u => u.Id == inactiveSub.Id);
+
+        var branch = await repo.ListActiveHeadsByBranchAsync(_damascusId);
+        Assert.Contains(branch, u => u.Id == _headDamascusId);
+        Assert.Contains(branch, u => u.Id == subDam.Id);
+    }
 }

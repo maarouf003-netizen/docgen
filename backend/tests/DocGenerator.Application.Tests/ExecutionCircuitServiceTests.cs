@@ -624,6 +624,69 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Equal(0, rowB.LawyerCount);
     }
 
+    [Fact]
+    public async Task CircuitStats_IncludesNoCircuitRow_OnlyWhenOrphansExist()
+    {
+        // F4: صف «بلا دائرة» الاصطناعي (`CircuitId = 0`) يظهر لرئيس القسم/الإدارة
+        // عندما توجد ملفات يتيمة فقط — والشعبة بلا صف أصلًا (§5.6).
+        var sectionId = await AddSectionAsync("شعبة مصياف");
+        await CreateDocAsync(await CreateCircuitAsync("دائرة أ"), _lawyer1Id, "762", "2026");
+        await AddOrphanDocAsync(_lawyer1Id, pending: true);
+        await AddOrphanDocAsync(_lawyer2Id, pending: false);
+
+        var headStats = await _circuits.CircuitStatsAsync(_branchId, null, false);
+        var synthetic = Assert.Single(headStats, s => s.CircuitId == 0);
+        Assert.Equal("بلا دائرة", synthetic.CircuitName);
+        Assert.Equal(_branchId, synthetic.BranchId);
+        Assert.Equal(2, synthetic.FileCount);
+        Assert.Equal(1, synthetic.PendingCount);
+        Assert.Equal(2, synthetic.LawyerCount);
+        Assert.Null(synthetic.SectionId);
+        Assert.Null(synthetic.SectionName);
+        Assert.True(synthetic.IsActive);
+
+        var subStats = await _circuits.CircuitStatsAsync(_branchId, sectionId, false);
+        Assert.DoesNotContain(subStats, s => s.CircuitId == 0);
+    }
+
+    [Fact]
+    public async Task CircuitStats_OmitsNoCircuitRow_WhenNoOrphans()
+    {
+        // بلا ملفات يتيمة: الاستجابة مطابقة للسابق تمامًا (منع انحدار).
+        var a = await CreateCircuitAsync("دائرة أ");
+        await CreateDocAsync(a, _lawyer1Id, "763", "2026");
+
+        var headStats = await _circuits.CircuitStatsAsync(_branchId, null, false);
+        Assert.DoesNotContain(headStats, s => s.CircuitId == 0);
+        var fullStats = await _circuits.CircuitStatsAsync(_branchId, null, true);
+        Assert.DoesNotContain(fullStats, s => s.CircuitId == 0);
+    }
+
+    private async Task AddOrphanDocAsync(int lawyerId, bool pending)
+    {
+        var number = $"790{System.Threading.Interlocked.Increment(ref s_orphanSeq):D4}";
+        _db.Documents.Add(new DocGenerator.Domain.Entities.Document
+        {
+            BranchId = _branchId,
+            CreatedById = lawyerId,
+            IsDraft = false,
+            BorrowerName = "أحمد",
+            BorrowerFather = "خالد",
+            BorrowerFamily = "الخطيب",
+            FileNumber = $"{number}/2026",
+            FileType = "تنفيذي",
+            FileYear = "2026",
+            Court = "دائرة تنفيذ دمشق",
+            ExecutionCircuitId = null,
+            NeedsRegistration = pending,
+            AmountNumeric = 0,
+            ExecStatus = string.Empty,
+        });
+        await _db.SaveChangesAsync();
+    }
+
+    private static int s_orphanSeq;
+
     private async Task<int> AddSectionAsync(string name)
     {
         var section = new Section { BranchId = _branchId, Name = name, NameNorm = name, IsActive = true };
