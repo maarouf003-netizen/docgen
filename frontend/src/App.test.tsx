@@ -203,12 +203,11 @@ describe('توجيه الجذر حسب الدور (انحدار: المندوب 
     expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument();
   });
 
-  it('رئيس الشعبة على /audit-logs يُرتد إلى لوحته (النطاق الدائري مغلق حتى ownerSectionId)', async () => {
+  it('رئيس الشعبة على /audit-logs يرى الصفحة (النطاق الدائري §2.23 مطبَّق خلفيًا)', async () => {
     useAuthMock.mockReturnValue(authState('subhead'));
     renderAt('/audit-logs');
 
-    expect(await screen.findByRole('heading', { name: 'مرحبًا، مستخدم' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'سجل التدقيق' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'سجل التدقيق' })).toBeInTheDocument();
   });
 
   it('المدير على /branches/manage يرى إدارة الفروع (توسيع §2.15)', async () => {
@@ -246,7 +245,7 @@ describe('توجيه الجذر حسب الدور (انحدار: المندوب 
     { path: '/entities/review-management', allowed: ['manager', 'admin'], heading: () => 'مراجعة سجل الجهات العامة' },
     { path: '/entities/review', allowed: ['head', 'subhead', 'manager', 'admin'], heading: () => 'مراجعة سجل الجهات العامة الممثلة' },
     { path: '/delegates', allowed: ['head', 'subhead', 'manager', 'admin'], heading: () => 'مندوبو الجهات' },
-    { path: '/audit-logs', allowed: ['head', 'manager', 'admin'], heading: () => 'سجل التدقيق' },
+    { path: '/audit-logs', allowed: ['head', 'subhead', 'manager', 'admin'], heading: () => 'سجل التدقيق' },
     { path: '/account', allowed: ['lawyer', 'head', 'subhead'], heading: () => 'الحساب الشخصي' },
     { path: '/stats', allowed: ['lawyer', 'head', 'subhead'], heading: () => 'الإحصائيات' },
     { path: '/calendar', allowed: ['lawyer'], heading: () => 'التقويم' },

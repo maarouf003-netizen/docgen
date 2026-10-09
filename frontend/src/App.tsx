@@ -418,7 +418,7 @@ export default function App() {
             <Route
               path="/audit-logs"
               element={
-                <RequireRole allowed={(_role, hasFullAccess, isHead) => hasFullAccess || isHead /* نطاق الشعبة الدائري (§2.23) يتطلب ownerSectionId خلفيًا قبل فتحه للشعبة — مغلق حتى ذلك الحين */}>
+                <RequireRole allowed={(_role, hasFullAccess, isHead, isSubHead) => hasFullAccess || isHead || isSubHead === true /* النطاق الدائري للشعبة (§2.23) مطبَّق خلفيًا عبر ownerSectionId — F6 */}>
                   <AuditLogs />
                 </RequireRole>
               }

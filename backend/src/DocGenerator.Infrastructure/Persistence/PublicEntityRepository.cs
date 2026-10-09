@@ -49,12 +49,12 @@ public class PublicEntityRepository : IPublicEntityRepository
     public async Task AddEntryAsync(PublicEntity entry, CancellationToken ct = default)
         => await _db.PublicEntities.AddAsync(entry, ct);
 
-    // ── تنبيه المراجعة: رؤساء الأقسام النشطون لمحافظة محددة ──
+    // ── تنبيه المراجعة: رؤساء الأقسام والشعب النشطون لمحافظة محددة (F3: تماثل §2) ──
 
     public Task<List<User>> ListActiveHeadsByGovernorateAsync(string governorate, CancellationToken ct = default)
         => _db.Users.AsNoTracking()
             .Include(u => u.Branch)
-            .Where(u => u.Role == UserRole.Head && u.IsActive
+            .Where(u => (u.Role == UserRole.Head || u.Role == UserRole.SubHead) && u.IsActive
                 && u.Branch != null && u.Branch.Governorate == governorate)
             .OrderBy(u => u.Id)
             .ToListAsync(ct);
@@ -62,7 +62,7 @@ public class PublicEntityRepository : IPublicEntityRepository
     public Task<List<User>> ListActiveHeadsByBranchAsync(int branchId, CancellationToken ct = default)
         => _db.Users.AsNoTracking()
             .Include(u => u.Branch)
-            .Where(u => u.Role == UserRole.Head && u.IsActive
+            .Where(u => (u.Role == UserRole.Head || u.Role == UserRole.SubHead) && u.IsActive
                 && u.BranchId == branchId)
             .OrderBy(u => u.Id)
             .ToListAsync(ct);

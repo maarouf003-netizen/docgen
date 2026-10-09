@@ -4,6 +4,10 @@
  *  1. نداء `GET /users/lawyers` بلا `mode` صريح (الافتراضي `mine` يستبعد الجدد).
  *  2. فحص دور `head` منفرد في كود الإنتاج خارج قائمة السماح المعللة.
  *  3. سمة `[Authorize(Roles=...)]` تذكر `head` بلا `subhead` خارج السماح.
+ *  4. استدعاء القوائم الأربع (محذوفة/مشطوبة/منفذة/محالة للبداية) من طبقة `Api`
+ *     بلا `ownerSectionId` (F1 — تضييق «الشعبة ترى القسم»). الفحص استكشافي بنافذة
+ *     ‏±3 أسطر (لا قطعي): يغفر الالتفاف متعدد الأسطر، وقد يُغفل تعليقًا يحمل الاسم
+ *     دون تمرير — فالحماية الحقيقية الاختبارات لا هذا النص.
  *
  * الاستثناءات في قوائم السماح أدناه — أي إضافة لها تتطلب تعليلًا في نفس السطر.
  * يُشغَّل في `CI` (job ‏`guards`) ومحليًا: `node scripts/subhead-guards.mjs`.
@@ -28,12 +32,11 @@ const allowHeadOnlyFrontend = new Map([
   // ملف: السبب — يُقرأ عند أي تعديل هنا
   ['frontend/src/auth/AuthContext.tsx', 'تعريف راية isHead الدلالية (ليست بوابة)'],
   ['frontend/src/auth/auth-context.ts', 'تعريف نوع السياق'],
-  ['frontend/src/App.tsx', 'سباكة RequireRole + مسار audit-logs المغلق عمدًا (قرار 23)'],
   ['frontend/src/pages/AppealDetail.tsx', 'زر «إعادة الإحالة للشعبة» لرئيس القسم حصرًا (§6.5)'],
   ['frontend/src/pages/DelegationRequests.tsx', 'التوجيه/التراجع لرئيس قسم الفرع المناب حصرًا (§7.3)'],
 ]);
 const allowHeadOnlyBackend = new Map([
-  ['backend/src/DocGenerator.Api/Controllers/AuditLogsController.cs', 'النطاق الدائري مغلق حتى ownerSectionId (قرار 23)'],
+  // فارغة عمدًا بعد F6 — كل البوابات متماثلة؛ أي إدخال جديد يتطلب تعليلًا.
 ]);
 
 for (const file of walk(ROOT)) {
@@ -77,6 +80,19 @@ for (const file of walk(ROOT)) {
       const roles = value.split(',').map((r) => r.trim());
       if (roles.includes('head') && !roles.includes('subhead') && !allowHeadOnlyBackend.has(rel)) {
         failures.push(`${rel}:${i + 1}: سمة تذكر head بلا subhead خارج السماح — وسّع أو علل في allowHeadOnlyBackend`);
+      }
+    });
+  }
+
+  // 4) القوائم الأربع من طبقة Api يجب أن تمرر ownerSectionId (F1) — وإلا عاد
+  // تضييق «الشعبة ترى القسم» في المحذوفة/المشطوبة/المنفذة/المحالة للبداية.
+  // النافذة ±3 تغفر الالتفاف متعدد الأسطر (ج) — فإن غاب الاسم عنها فُشل مغلقًا.
+  if (rel === 'backend/src/DocGenerator.Api/Controllers/DocumentsController.cs') {
+    lines.forEach((line, i) => {
+      if (!/Search(Deleted|StruckOff|Executed|ReferredToStart)Async\(/.test(line)) return;
+      const window = lines.slice(i, Math.min(lines.length, i + 4)).join('\n');
+      if (!window.includes('ownerSectionId')) {
+        failures.push(`${rel}:${i + 1}: استدعاء قائمة بلا ownerSectionId — مرر نطاق المالك`);
       }
     });
   }

@@ -227,7 +227,7 @@ public class DocumentsController : ControllerBase
         var scopeError = RequireOwnerScope(out var ownerSectionId);
         if (scopeError is not null) return scopeError;
 
-        var result = await _documents.SearchDeletedAsync(q, page, perPage, visibleBranch, visibleUser, ct);
+        var result = await _documents.SearchDeletedAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
         return OkSanitized(result);
     }
 
@@ -246,7 +246,7 @@ public class DocumentsController : ControllerBase
         var scopeError = RequireOwnerScope(out var ownerSectionId);
         if (scopeError is not null) return scopeError;
 
-        var result = await _documents.SearchStruckOffAsync(q, page, perPage, visibleBranch, visibleUser, ct);
+        var result = await _documents.SearchStruckOffAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
         return OkSanitized(result);
     }
 
@@ -262,7 +262,7 @@ public class DocumentsController : ControllerBase
         var scopeError = RequireOwnerScope(out var ownerSectionId);
         if (scopeError is not null) return scopeError;
 
-        var result = await _documents.SearchExecutedAsync(q, page, perPage, visibleBranch, visibleUser, ct);
+        var result = await _documents.SearchExecutedAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
         return OkSanitized(result);
     }
 
@@ -278,7 +278,7 @@ public class DocumentsController : ControllerBase
         var scopeError = RequireOwnerScope(out var ownerSectionId);
         if (scopeError is not null) return scopeError;
 
-        var result = await _documents.SearchReferredToStartAsync(q, page, perPage, visibleBranch, visibleUser, ct);
+        var result = await _documents.SearchReferredToStartAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
         return OkSanitized(result);
     }
 

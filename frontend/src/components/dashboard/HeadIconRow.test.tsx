@@ -92,12 +92,12 @@ describe('HeadIconRow', () => {
     ).toBeInTheDocument();
   });
 
-  it('رئيس الشعبة: بلا بطاقة تدقيق (النطاق الدائري مغلق) وتسمية الشعبة', () => {
-    render(<HeadIconRow counts={zero} scopeLabel="مؤشرات الشعبة" hideAudit />);
+  it('رئيس الشعبة: مع بطاقة تدقيق (النطاق الدائري §2.23) وتسمية الشعبة', () => {
+    render(<HeadIconRow counts={zero} scopeLabel="مؤشرات الشعبة" isSubHead />);
 
     const nav = screen.getByRole('navigation', { name: 'أقسام لوحة رئيس الشعبة' });
-    expect(nav.querySelectorAll('a')).toHaveLength(9);
-    expect(screen.queryByRole('link', { name: 'سجل التدقيق' })).not.toBeInTheDocument();
+    expect(nav.querySelectorAll('a')).toHaveLength(10);
+    expect(screen.getByRole('link', { name: 'سجل التدقيق' })).toHaveAttribute('href', '/audit-logs');
     expect(screen.getByText('مؤشرات الشعبة')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'الإحصائيات' })).toHaveAttribute('href', '/stats');
   });

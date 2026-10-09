@@ -251,6 +251,12 @@ public interface IDocumentRepository : IRepository<Document>
     Task<Dictionary<int, int>> CountLawyersByCircuitsAsync(List<int> circuitIds, CancellationToken ct = default);
 
     /// <summary>
+    /// عدادات ملفات بلا دائرة (`ExecutionCircuitId == null`) غير المحذوفة ضمن فرع
+    /// (أو الكل عند `null`) — للصف الاصطناعي «بلا دائرة» في إحصاءات الدوائر (F4).
+    /// </summary>
+    Task<(int FileCount, int PendingCount, int LawyerCount)> CountWithoutCircuitAsync(int? branchId, CancellationToken ct = default);
+
+    /// <summary>
     /// ملفات المحامي المؤهلة لتدوير أرقام الأساس (بحث ترحّلي): غير محذوفة (Query Filter)،
     /// مقيدة برقم ملف (ليست تحت رفع)، وغير منفَّذة — مع أرقام الأساس الخاصة بها.
     /// سنة التدوير تُمرَّر صراحة من الخدمة (سنة قرار السنة من ساعة النظام ومنطقته).

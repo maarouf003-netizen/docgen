@@ -306,6 +306,34 @@ public class HeadAlertServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Create_HeadTargeted_IncludesActiveSubHead_OnlySubHeadActive_NoThrow()
+    {
+        // (هـ/F3 — قرار أ): بثّ «head» يشمل رؤساء الشعب المفعّلين — فبوجود شعبة
+        // مفعّلة وحدها لا يُرفض الإنشاء (عتبة الرفض: غياب الرئيس والشعبة معًا).
+        _db.Users.Add(new User
+        {
+            Username = "sub_y",
+            FullName = "رئيس شعبة",
+            Role = UserRole.SubHead,
+            BranchId = _branchId,
+            IsActive = true,
+            PasswordHash = new PasswordHasher().Hash("123456"),
+        });
+        var blocked = _db.Users.Single(u => u.Id == _head.Id);
+        blocked.IsActive = false;
+        await _db.SaveChangesAsync();
+
+        var alert = await _service.CreateAsync(
+            new CreateHeadAlertRequest("head", null, null, "بثّ للشعبة وحدها", DelegationId: 9),
+            _head.Id, _branchId, "head_x");
+
+        Assert.Equal(1, alert.RecipientCount);
+        var stored = await _db.HeadAlerts.Include(a => a.Recipients).SingleAsync(a => a.Id == alert.Id);
+        var subId = _db.Users.Single(u => u.Username == "sub_y").Id;
+        Assert.Equal(subId, Assert.Single(stored.Recipients).UserId);
+    }
+
+    [Fact]
     public async Task UpdateDelegationAlert_UpdatesLatestMessageKeepingRecipients()
     {
         var alert = await _service.CreateAsync(

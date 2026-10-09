@@ -7,13 +7,19 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    # مهلة صريحة: شبكة أمان ضد أي تعليق مستقبلي بدل حجب المجموعة ساعات بصمت.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
-      - name: Test (backend)
-        run: dotnet test backend/DocGenerator.sln --nologo -v q
+      - name: Build (backend)
+        run: dotnet build backend/DocGenerator.sln --nologo -v q
+      - name: Test (application)
+        run: dotnet test backend/tests/DocGenerator.Application.Tests/DocGenerator.Application.Tests.csproj --no-build --nologo -v q
+      - name: Test (api)
+        run: dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build --nologo -v q
 
   frontend:
     runs-on: ubuntu-latest

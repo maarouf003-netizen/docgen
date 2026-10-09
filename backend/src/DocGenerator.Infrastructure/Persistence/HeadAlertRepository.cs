@@ -77,8 +77,10 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
 
     public async Task<List<User>> ListActiveHeadsAsync(int branchId, CancellationToken ct = default)
     {
+        // F3: رؤساء الأقسام والشعب المفعّلون (تماثل §2) — وعند غياب الجميع يُرفض الإنشاء
+        // ويُسجَّل فشل الإشعار في سجل التدقيق (سلوك الغياب محفوظ).
         return await Db.Users
-            .Where(u => u.Role == UserRole.Head && u.BranchId == branchId && u.IsActive)
+            .Where(u => (u.Role == UserRole.Head || u.Role == UserRole.SubHead) && u.BranchId == branchId && u.IsActive)
             .OrderBy(u => u.FullName)
             .ToListAsync(ct);
     }
@@ -114,9 +116,10 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
 
     public async Task<List<(int BranchId, List<User> Heads)>> ListAllActiveHeadsGroupedByBranchAsync(CancellationToken ct = default)
     {
+        // F3: رؤساء الأقسام والشعب (تماثل §2) — كل تنبيه لفرع المستلم حصرًا (بلا تسريب).
         var rows = await Db.Users
             .AsNoTracking()
-            .Where(u => u.Role == UserRole.Head && u.BranchId != null && u.IsActive)
+            .Where(u => (u.Role == UserRole.Head || u.Role == UserRole.SubHead) && u.BranchId != null && u.IsActive)
             .OrderBy(u => u.FullName)
             .Select(u => new { BranchId = u.BranchId!.Value, u.Id, u.FullName, u.Username, u.Email, u.Role, u.IsActive, u.CreatedAt, u.UpdatedAt })
             .ToListAsync(ct);

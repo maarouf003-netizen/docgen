@@ -777,6 +777,29 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         return result;
     }
 
+    public async Task<(int FileCount, int PendingCount, int LawyerCount)> CountWithoutCircuitAsync(int? branchId, CancellationToken ct = default)
+    {
+        // F4: ملفات بلا دائرة حصرًا (`ExecutionCircuitId == null`) — دوائر `SectionId == null`
+        // لها صفوفها الخاصة فلا تُجمع هنا (منع ازدواج العدّ)؛ غير المحذوفة مرآةً لعدادات الدوائر.
+        // استعلام تجميعي واحد (D2): `COUNT(CASE…)` للمعلقات و`COUNT(DISTINCT…)` للمحامين —
+        // نفس بنية `CountLawyersByCircuitsAsync` المثبتة الترجمة على SQLite/PostgreSQL.
+        var q = Db.Documents
+            .AsNoTracking()
+            .Where(d => d.ExecutionCircuitId == null && !d.IsDeleted);
+        if (branchId.HasValue)
+            q = q.Where(d => d.BranchId == branchId.Value);
+        var row = await q
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                FileCount = g.Count(),
+                PendingCount = g.Count(d => d.NeedsRegistration),
+                LawyerCount = g.Select(d => d.CreatedById).Distinct().Count(),
+            })
+            .SingleOrDefaultAsync(ct);
+        return row is null ? (0, 0, 0) : (row.FileCount, row.PendingCount, row.LawyerCount);
+    }
+
     // ملاحظة (M12): التنفيذ النصي القديم ExistsActiveWithNumberAsync أُسقط مع ترحيل
     // آخر مناديه إلى التوقيع الدائري أدناه — تاريخه في Git فقط.
 

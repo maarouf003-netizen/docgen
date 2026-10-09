@@ -1283,4 +1283,52 @@ public class DocumentAppealServiceTests : IDisposable
         subResults = await _service.SearchAsync(null, null, _branch.Id, null, sectionId, 1, 20);
         Assert.Contains(subResults.Items, a => a.Id == appealSection.Id);
     }
+
+    [Fact]
+    public async Task TransferAll_IncludesForwardedPendingAppeal_ForHead()
+    {
+        // F2: المحال المنظور المسند يبقى في نطاق القسم للنقل الجملي (قرار §2.22) —
+        // مرآة استثناء البحث، والمشترك الوحيد `InScope` يغطي العدّ والنقل معًا.
+        var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
+        var sub = await AddSubHeadAsync("sub_masyaf", _branch.Id, sectionId);
+        var sectionCircuit = await AddCircuitAsync("دائرة الشعبة", _branch.Id, sectionId, _head1.Id);
+        var doc = await CreateApplicantDocAsync();
+        await SetDocCircuitAsync(doc.Id, sectionCircuit);
+        var appeal = await CreatePendingAppealAsync(doc.Id);
+        await _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub");
+        await _service.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer1.Id), _head1.Id, "head1");
+
+        Assert.Equal(1, await _service.CountByAssigneeForHeadAsync(_lawyer1.Id, _branch.Id, null));
+
+        var moved = await _service.TransferAllAsync(
+            new TransferAllAppealsRequest(_lawyer1.Id, _lawyer2.Id), _branch.Id, null, "head1");
+        Assert.Equal(1, moved);
+        Assert.Equal(_lawyer2.Id, (await _service.GetAsync(appeal.Id))!.AssignedLawyerId);
+    }
+
+    [Fact]
+    public async Task TransferAll_ExcludesDecidedForwardedAppeal_SubScopeUnchanged()
+    {
+        var sectionId = await AddSectionAsync("شعبة مصياف", _branch.Id);
+        var sub = await AddSubHeadAsync("sub_masyaf", _branch.Id, sectionId);
+        var sectionCircuit = await AddCircuitAsync("دائرة الشعبة", _branch.Id, sectionId, _head1.Id);
+        var doc = await CreateApplicantDocAsync();
+        await SetDocCircuitAsync(doc.Id, sectionCircuit);
+        var appeal = await CreatePendingAppealAsync(doc.Id);
+        await _service.ForwardAsync(appeal.Id, new ForwardAppealRequest(), sub.Id, "sub");
+        await _service.AssignAsync(appeal.Id, new AssignAppealRequest(_lawyer1.Id), _head1.Id, "head1");
+        await _service.DecideAsync(appeal.Id,
+            new DecideAppealRequest("قرار-1", "15/9/2026", "نص المنطوق", AppealOutcomeCatalog.InFavor),
+            _lawyer1.Id, "lawyer1");
+
+        // المحسوم مستبعد من العدّ والنقل ولو كان محالًا (قيد `Pending` الأصلي).
+        Assert.Equal(0, await _service.CountByAssigneeForHeadAsync(_lawyer1.Id, _branch.Id, null));
+        var moved = await _service.TransferAllAsync(
+            new TransferAllAppealsRequest(_lawyer1.Id, _lawyer2.Id), _branch.Id, null, "head1");
+        Assert.Equal(0, moved);
+
+        // فرع الشعبة بلا تغيير: المحال خارج شعبته لا يدخل نطاقها.
+        var otherSection = await AddSectionAsync("شعبة أخرى", _branch.Id);
+        Assert.Equal(0, await _service.CountByAssigneeForHeadAsync(_lawyer1.Id, _branch.Id, otherSection));
+    }
 }
