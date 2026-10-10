@@ -128,7 +128,7 @@ public sealed partial class DocumentService
         int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null)
         => await _documents.GetFilterOptionsAsync(status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, ct, ownerSectionId);
 
-    public async Task<List<DocumentResponse>> ExportAsync(
+    public async Task<List<DocumentExportRow>> ExportAsync(
         string? query, string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch,
         int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, string? actorName = null, int? ownerSectionId = null)
     {
@@ -139,15 +139,24 @@ public sealed partial class DocumentService
         if (total > _maxExportRows)
             throw new ArgumentException($"عدد النتائج يتجاوز الحد الأقصى للتصدير ({_maxExportRows:N0}) — طبّق فلترًا أضيق");
 
-        var items = await _documents.ExportAsync(
+        var currentYear = CurrentYear();
+        var rows = await _documents.ExportRowsAsync(
             query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, ct, ownerSectionId);
+        // الرقم الفعّال (LatestFrom) على البذور المسقطة — نفس منطق `FromEntity` حرفيًا،
+        // في الذاكرة (رخيص: بضعة أرقام أساس لكل صف).
+        foreach (var row in rows)
+        {
+            var latest = EffectiveFileIdentity.LatestFrom(row.BaseNumbers, currentYear);
+            row.DisplayFileNumber = latest?.BaseNumber ?? row.FileNumber;
+            row.DisplayFileYear = latest?.Year.ToString() ?? row.FileYear;
+        }
         // RF-017 (SEC-002): التصدير قراءة بلا كتابة عمل — تدقيقه حفظة واحدة بلا معاملة
         // (بالفلاتر والعدد الفعلي؛ الفلاتر الفارغة تُحذَف من النص).
         var filters = string.Join("،", new[] { query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch }
             .Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s!.Trim()));
         await _audit.LogAsync(actorName, "export_documents",
-            details: $"صدّر {items.Count} صفًا" + (filters.Length == 0 ? " (بلا فلاتر)" : $" بفلاتر: {filters}"), ct: ct);
-        return items.Select(d => DocumentResponse.FromEntity(d, CurrentYear())).ToList();
+            details: $"صدّر {rows.Count} صفًا" + (filters.Length == 0 ? " (بلا فلاتر)" : $" بفلاتر: {filters}"), ct: ct);
+        return rows;
     }
 
 

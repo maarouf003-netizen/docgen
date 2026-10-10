@@ -172,6 +172,32 @@ public class DocumentsExportIntegrationTests
         Assert.Contains(searchedRows, row => row.Count > 1 && row[1] == "محال الى البداية");
     }
 
+    [Fact]
+    public async Task Export_RowProjection_ValuesMatch()
+    {
+        // الإسقاط العمودي: قيم الخلايا مطابقة لمسار الكيان الكامل
+        // (الحالة محلولة، طالب التنفيذ، المنفذ عليه، نص الإجراء الأول).
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var id = await _factory.CreateDocumentAsync(token, "مقترض تصدير غني", applicant: "المصرف", court: "دمشق");
+        var lawyer = _factory.WithToken(token);
+        var action = await lawyer.PostAsJsonAsync($"/api/documents/{id}/actions",
+            new { text = "إجراء متابعة صريح", actionDate = "1/8/2026" });
+        Assert.Equal(HttpStatusCode.OK, action.StatusCode);
+
+        var manager = _factory.AuthorizedClient("manager");
+        var response = await manager.GetAsync("/api/documents/export");
+        response.EnsureSuccessStatusCode();
+
+        var rows = DataRows(await response.Content.ReadAsByteArrayAsync());
+        // الأعمدة (مدير): 0 فرع الإدارة، 1 الحالة، 2 طالب التنفيذ، 3 الفرع،
+        // 4 المنفذ عليه، 5 الدائرة، 6 الشعبة، 7 رقم الملف، 8 لعام، 9 الملحق،
+        // 10 المحامي، 11 الإجراءات، 12 المشاهدات.
+        var row = Assert.Single(rows, r => r.Count > 4 && r[4] == "مقترض تصدير غني");
+        Assert.Equal("المصرف", row[2]);
+        Assert.False(string.IsNullOrWhiteSpace(row[1]));
+        Assert.Equal("إجراء متابعة صريح", row[11]);
+    }
+
     private static List<List<string>> DataRows(byte[] bytes)
     {
         using var stream = new MemoryStream(bytes);

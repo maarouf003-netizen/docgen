@@ -36,9 +36,12 @@ public interface IDocumentRepository : IRepository<Document>
         int? ownerSectionId = null);
 
     /// <summary>
-    /// كل المستندات المطابقة لفلاتر البحث (دون ترقيم) لتصديرها إلى ملف إكسل.
+    /// صفوف التصدير بالإسقاط العمودي: كل المستندات المطابقة لفلاتر البحث (دون
+    /// ترقيم) لكن بأعمدة الورقة فقط (بلا `Include` للشجرة الكاملة) — يخفض ذاكرة
+    /// التصدير الكبير جذريًا. نفس الفلاتر والترتيب، والاختلاف في الأعمدة فقط.
+    /// يحل محل `ExportAsync` (كيانات كاملة) الذي أُسقط مع آخر مناديه.
     /// </summary>
-    Task<List<Document>> ExportAsync(
+    Task<List<DocumentExportRow>> ExportRowsAsync(
         string? query,
         string? status,
         string? applicant,
