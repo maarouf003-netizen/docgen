@@ -32,6 +32,7 @@
 - **التخزين (Entity/DB)**: يُخزَّن `DateTime?`؛ والاستجابة تنسّقه `"yyyy-MM-dd"` (InvariantCulture) ليُعرض نصًا، وتُقبل الصيغة ISO عند إعادة الإرسال.
 - **حالات لا يتغير فيها الكيان**: إذا كان التخزين الحالي `DateTime?` فلا حاجة لهجرة، إلا إذا تغيّر نوع العمود نفسه.
 - **مثال مرجعي مطبّق**: `RegistrationDate` (المتجر المسجل) و`LicenseDate` (المتجر غير المسجل) في `AssetDto` و`ApplicantSideSections.tsx`.
+- **التخزين الزمني (قاعدة ملزمة)**: أي كتابة `DateTime` في الأعمدة = `DateTime.UtcNow` حصرًا؛ توقيت دمشق الجداري (`ServerClock.Now`) للعرض والحسابات فقط. الخروج عنها مستقبلًا (كتابة `Local`) يسمّيه `UtcDateTimeConverter` الزمن `UTC` خطأً صامتًا (+3 ساعات).
 
 
 # Frontend Rules (Mandatory — apply to every change)
