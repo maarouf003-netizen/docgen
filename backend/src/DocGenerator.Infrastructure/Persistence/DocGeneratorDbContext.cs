@@ -61,6 +61,16 @@ public class DocGeneratorDbContext : DbContext
     public DbSet<Section> Sections => Set<Section>();
     public DbSet<HeadSuccession> HeadSuccessions => Set<HeadSuccession>();
 
+    /// <summary>
+    /// ضمان مركزي لنوع الزمن المخزّن: كل خصائص <c>DateTime</c> (بما فيها <c>DateTime?</c>)
+    /// تمر بمحوّل <c>UtcDateTimeConverter</c> — تُقرأ كـ <c>Utc</c> وتُكتب <c>Utc</c> حصرًا.
+    /// التجاوز في القاعدة يغطي <c>DocGeneratorPostgresDbContext</c> المُشتق تلقائيًا.
+    /// </summary>
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        configurationBuilder.Properties<DateTime>().HaveConversion<UtcDateTimeConverter>();
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
