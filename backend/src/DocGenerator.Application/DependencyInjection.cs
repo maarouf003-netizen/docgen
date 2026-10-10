@@ -33,6 +33,8 @@ public static class DependencyInjection
         services.AddScoped<IEntityDelegateService, EntityDelegateService>();
         services.AddScoped<IReviewLetterService, ReviewLetterService>();
         services.AddScoped<ICorrespondenceService, CorrespondenceService>();
+        services.AddScoped<IForumService, ForumService>();
+        services.AddScoped<IForumRetentionService, ForumRetentionService>();
         services.AddScoped<IDocumentDelegationService, DocumentDelegationService>();
         services.AddScoped<IDocumentAppealService, DocumentAppealService>();
         services.AddScoped<IExecutionCircuitService, ExecutionCircuitService>();

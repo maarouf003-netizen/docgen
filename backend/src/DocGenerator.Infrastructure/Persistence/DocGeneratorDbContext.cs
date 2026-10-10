@@ -60,6 +60,8 @@ public class DocGeneratorDbContext : DbContext
     public DbSet<ExecutionCircuit> ExecutionCircuits => Set<ExecutionCircuit>();
     public DbSet<Section> Sections => Set<Section>();
     public DbSet<HeadSuccession> HeadSuccessions => Set<HeadSuccession>();
+    public DbSet<ForumMessage> ForumMessages => Set<ForumMessage>();
+    public DbSet<ForumMessageRead> ForumMessageReads => Set<ForumMessageRead>();
 
     /// <summary>
     /// ضمان مركزي لنوع الزمن المخزّن: كل خصائص <c>DateTime</c> (بما فيها <c>DateTime?</c>)

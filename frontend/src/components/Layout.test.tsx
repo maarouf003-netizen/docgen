@@ -140,7 +140,7 @@ describe('Layout', () => {
       'href',
       '/documents',
     );
-    expect(within(sidebar).getByRole('button', { name: /المنتدى/ })).toBeInTheDocument();
+    expect(within(sidebar).getByRole('link', { name: /المنتدى/ })).toHaveAttribute('href', '/forum');
     expect(within(sidebar).getByRole('button', { name: /المكتبة/ })).toBeInTheDocument();
     expect(within(sidebar).queryByRole('link', { name: 'المطالعات' })).not.toBeInTheDocument();
     expect(within(sidebar).queryByRole('link', { name: 'المراسلات' })).not.toBeInTheDocument();
@@ -152,18 +152,18 @@ describe('Layout', () => {
     render(<Layout />);
 
     const bottomNav = screen.getByRole('navigation', { name: 'التنقل السفلي' });
-    expect(within(bottomNav).getAllByRole('link')).toHaveLength(2);
-    expect(within(bottomNav).getAllByRole('button')).toHaveLength(2);
+    expect(within(bottomNav).getAllByRole('link')).toHaveLength(3);
+    expect(within(bottomNav).getAllByRole('button')).toHaveLength(1);
     expect(within(bottomNav).queryByRole('button', { name: /المزيد/ })).not.toBeInTheDocument();
   });
 
-  it('يفتح تنبيه «قيد البناء» عند نقر المنتدى/المكتبة ويغلقه زر الإغلاق', async () => {
+  it('يفتح تنبيه «قيد البناء» عند نقر المكتبة ويغلقه زر الإغلاق', async () => {
     const user = userEvent.setup();
     stubMatchMedia(false);
     render(<Layout />);
 
     const sidebar = screen.getByRole('navigation', { name: 'القائمة الرئيسية' });
-    await user.click(within(sidebar).getByRole('button', { name: /المنتدى/ }));
+    await user.click(within(sidebar).getByRole('button', { name: /المكتبة/ }));
     expect(screen.getByRole('status')).toHaveTextContent('الميزة قيد البناء حاليا');
 
     await user.click(screen.getByRole('button', { name: 'إغلاق التنبيه' }));
@@ -208,7 +208,7 @@ describe('Layout', () => {
       'href',
       '/documents',
     );
-    expect(within(sidebar).getByRole('button', { name: /المنتدى/ })).toBeInTheDocument();
+    expect(within(sidebar).getByRole('link', { name: /المنتدى/ })).toHaveAttribute('href', '/forum');
     expect(within(sidebar).getByRole('button', { name: /المكتبة/ })).toBeInTheDocument();
     expect(within(sidebar).queryByRole('link', { name: 'كتب المطالعات' })).not.toBeInTheDocument();
     expect(within(sidebar).queryByRole('link', { name: 'المراسلات' })).not.toBeInTheDocument();
@@ -226,8 +226,8 @@ describe('Layout', () => {
     render(<Layout />);
 
     const bottomNav = screen.getByRole('navigation', { name: 'التنقل السفلي' });
-    expect(within(bottomNav).getAllByRole('link')).toHaveLength(2);
-    expect(within(bottomNav).getAllByRole('button')).toHaveLength(2);
+    expect(within(bottomNav).getAllByRole('link')).toHaveLength(3);
+    expect(within(bottomNav).getAllByRole('button')).toHaveLength(1);
     expect(within(bottomNav).queryByRole('button', { name: /المزيد/ })).not.toBeInTheDocument();
   });
 

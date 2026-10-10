@@ -131,6 +131,7 @@ builder.Services.AddSerilog(serilogConfig.CreateLogger(), dispose: true);
 builder.Services
     .AddSingleton(jwt)
     .Configure<DocGenerator.Application.Common.ExportOptions>(builder.Configuration.GetSection("Export"))
+    .Configure<DocGenerator.Application.Common.ForumOptions>(builder.Configuration.GetSection("Forum"))
     .Configure<RateLimitOptions>(builder.Configuration.GetSection("RateLimiting"))
     .Configure<SecurityOptions>(builder.Configuration.GetSection("Security"))
     .Configure<LockoutOptions>(builder.Configuration.GetSection("Lockout"))
@@ -150,6 +151,14 @@ builder.Services
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<DocGenerator.Api.Security.ExportConcurrencyGuard>();
 builder.Services.AddRateLimiter(RateLimitingSetup.Configure);
+// احتفاظ المنتدى: قيمة سالبة تُفشل الإقلاع مبكرًا (كحارس مفتاح JWT أعلاه) —
+// `0` معطّل مشروع، والموجب أشهر الحذف الصلب التلقائي عدا المثبّتة.
+var forumRetentionMonths = builder.Configuration.GetValue<int?>("Forum:RetentionMonths") ?? 6;
+if (forumRetentionMonths < 0)
+    throw new InvalidOperationException(
+        "Forum:RetentionMonths must be 0 (disabled) or a positive number of months. "
+        + "Negative retention is rejected at startup to prevent deleting the whole forum history.");
+builder.Services.AddHostedService<DocGenerator.Api.Background.ForumRetentionHostedService>();
 // RF-016: فحص صحة القاعدة — خارج /api فلا مصادقة ولا حارس بوابة؛ بلا حزم جديدة.
 builder.Services.AddHealthChecks()
     .AddCheck<DocGenerator.Api.Health.DatabaseHealthCheck>("database");
