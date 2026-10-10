@@ -20,8 +20,8 @@ public class CircuitStatsExportTests
     [Fact]
     public void BuildCircuitStatsWorkbook_LabelsNoCircuitBranchCell()
     {
-        var bytes = new ExcelExportService().BuildCircuitStatsWorkbook(Rows());
-        var xml = XlsxReader.FirstSheetXml(bytes);
+        using var stream = new ExcelExportService().BuildCircuitStatsWorkbook(Rows());
+        var xml = XlsxReader.FirstSheetXml(stream);
 
         Assert.Equal("كل الفروع", XlsxReader.RowTexts(xml, 1)[1]);
         Assert.Equal("دمشق", XlsxReader.RowTexts(xml, 2)[1]);
@@ -31,8 +31,8 @@ public class CircuitStatsExportTests
     [Fact]
     public void BuildCircuitStatsWorkbook_SectionFallbackUnchanged()
     {
-        var bytes = new ExcelExportService().BuildCircuitStatsWorkbook(Rows());
-        var xml = XlsxReader.FirstSheetXml(bytes);
+        using var stream = new ExcelExportService().BuildCircuitStatsWorkbook(Rows());
+        var xml = XlsxReader.FirstSheetXml(stream);
 
         // احتياطي «القسم» للصفوف بلا شعبة — كما في الصفحة، بلا انشقاق عرض/تصدير.
         Assert.Equal("القسم", XlsxReader.RowTexts(xml, 1)[2]);

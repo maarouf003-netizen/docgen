@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { api } from '../api/client';
+import { api, getDownloadErrorMessage } from '../api/client';
+import SpinnerIcon from '../components/SpinnerIcon';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { downloadBlob } from '../utils/download';
@@ -91,7 +92,8 @@ export default function PortalFiles() {
       .then((res) => {
         downloadBlob(res.data as Blob, `الملفات التنفيذية ${todayLocalKey()}.xlsx`);
       })
-      .catch(() => setExportMsg('تعذر تصدير الملف. حاول مرة أخرى'))
+      // أخطاء التنزيل `Blob` فيُستخرج نصها (كـ429 الحارس) بدل رسالة عامة.
+      .catch(async (err: unknown) => setExportMsg(await getDownloadErrorMessage(err)))
       .finally(() => setExporting(false));
   };
 
@@ -149,11 +151,24 @@ export default function PortalFiles() {
         <button
           onClick={exportExcel}
           disabled={exporting || loading}
-          className="border border-sky-200 text-sky-800 hover:bg-sky-50 disabled:opacity-40 rounded-lg px-4 py-2 text-sm min-h-11 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+          className="border border-sky-200 text-sky-800 hover:bg-sky-50 disabled:opacity-40 rounded-lg px-4 py-2 text-sm min-h-11 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 inline-flex items-center gap-2"
         >
-          {exporting ? 'جارِ التصدير…' : 'تصدير إكسل'}
+          {exporting ? (
+            <>
+              <SpinnerIcon />
+              جارِ التصدير…
+            </>
+          ) : (
+            'تصدير إكسل'
+          )}
         </button>
       </div>
+
+      {exporting && (
+        <p role="status" className="text-xs text-gray-500 mb-3">
+          التصدير الكبير قد يستغرق دقائق — لا تغلق الصفحة
+        </p>
+      )}
 
       {exportMsg && <p role="alert" className="text-red-600 text-sm mb-3">{exportMsg}</p>}
       {error && <div role="alert" className="text-red-600 mb-4">{error}</div>}

@@ -19,7 +19,13 @@ namespace DocGenerator.Application.Services;
 /// </summary>
 public interface IExcelExportService
 {
-    byte[] BuildDocumentsWorkbook(
+    /// <summary>
+    /// كل المصنفات تُبنى بتوليد `SAX` (`OpenXmlWriter`) في دفق ذاكرة واحد
+    /// وتُعاد كـ`Stream` (موضعه البداية) — بلا شجرة `DOM` للخلايا وبلا نسخة
+    /// `ToArray` إضافية؛ الذاكرة العابرة ≈ حجم الملف فقط مهما بلغت الصفوف.
+    /// المتصل (`File(stream, ...)`) يتولى التصرّف بعد الإرسال.
+    /// </summary>
+    Stream BuildDocumentsWorkbook(
         IReadOnlyList<DocumentExportRow> documents,
         bool includeAdministrativeBranch,
         bool includeAssignedLawyer,
@@ -33,15 +39,15 @@ public interface IExcelExportService
     /// وعمود الفرع يحمل <b>فروع نطاق المندوب نفسه</b> (المصدر الآمن
     /// `MatchedEntries`) لا `DocumentResponse.BranchName` الداخلي المحجوب.
     /// </summary>
-    byte[] BuildPortalWorkbook(IReadOnlyList<PortalWorkbookRow> rows);
+    Stream BuildPortalWorkbook(IReadOnlyList<PortalWorkbookRow> rows);
 
-    byte[] BuildChangeEventsWorkbook(IReadOnlyList<EntityChangeEventDto> events);
+    Stream BuildChangeEventsWorkbook(IReadOnlyList<EntityChangeEventDto> events);
 
     /// <summary>
     /// مصنّف إحصاءات الدوائر (§12): الجدول الرباعي بعمود شعبة — بالنطاق نفسه
     /// المحسوب في نقطة `stats/export` (القسم/الشعبة/الفرع ككل).
     /// </summary>
-    byte[] BuildCircuitStatsWorkbook(IReadOnlyList<CircuitStatsDto> rows);
+    Stream BuildCircuitStatsWorkbook(IReadOnlyList<CircuitStatsDto> rows);
 }
 
 public sealed class ExcelExportService : IExcelExportService
@@ -65,7 +71,7 @@ public sealed class ExcelExportService : IExcelExportService
         "رقم الملف", "لعام", "الإجراءات والملاحظات",
     };
 
-    public byte[] BuildDocumentsWorkbook(
+    public Stream BuildDocumentsWorkbook(
         IReadOnlyList<DocumentExportRow> documents,
         bool includeAdministrativeBranch,
         bool includeAssignedLawyer,
@@ -77,17 +83,17 @@ public sealed class ExcelExportService : IExcelExportService
             headers,
             documents.Select(doc => BuildValues(
                 doc,
-                includeAdministrativeBranch, includeAssignedLawyer, includeViewCount)));
+                includeAdministrativeBranch, includeAssignedLawyer, includeViewCount)).ToList());
     }
 
-    public byte[] BuildPortalWorkbook(IReadOnlyList<PortalWorkbookRow> rows)
+    public Stream BuildPortalWorkbook(IReadOnlyList<PortalWorkbookRow> rows)
         => WriteWorkbook(
             "الملفات التنفيذية",
             PortalColumns,
-            rows.Select(r => BuildPortalValues(r)));
+            rows.Select(r => BuildPortalValues(r)).ToList());
 
     /// <summary>صف جدول الدوائر: الدائرة والفرع والشعبة (القسم لدوائر القسم) والعدّادات.</summary>
-    public byte[] BuildCircuitStatsWorkbook(IReadOnlyList<CircuitStatsDto> rows)
+    public Stream BuildCircuitStatsWorkbook(IReadOnlyList<CircuitStatsDto> rows)
         => WriteWorkbook(
             "إحصاءات الدوائر",
             new[] { "الدائرة", "الفرع", "الشعبة", "الملفات", "المحامون النشطون", "المعلقات" },
@@ -102,7 +108,7 @@ public sealed class ExcelExportService : IExcelExportService
                 r.FileCount.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 r.LawyerCount.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 r.PendingCount.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            }));
+            }).ToList());
 
     private static List<string> BuildPortalValues(PortalWorkbookRow row)
     {
@@ -139,24 +145,40 @@ public sealed class ExcelExportService : IExcelExportService
 
     /// <summary>
     /// المحرك المشترك لكتابة المصنَّف (بنية الملف + AutoFilter + الصفوف) — مصدر
-    /// واحد يبقي مسارَي التصدير متطابقين بنيويًا بلا ازدواج، ويبقى حساب نطاق
+    /// واحد يبقي مسارات التصدير متطابقة بنيويًا بلا ازدواج، ويبقى حساب نطاق
     /// `AutoFilter` مشتقًا من عدد العناوين الفعلي فلا يبقى يدويًا يخطئ عند أي
     /// إضافة أو حذف عمود.
+    /// توليد `SAX` (`OpenXmlWriter`) أمامي فقط: ذاكرة O(1) أثناء الكتابة مهما
+    /// بلغت الصفوف (بلا شجرة `DOM` للخلايا)، ويُعاد دفق ذاكرة واحد موضعه
+    /// البداية (بلا نسخة `ToArray` إضافية). المرجع محسوب مسبقًا (العدد معروف)
+    /// فيُكتب بترتيبه المخططي الصحيح بعد `SheetData`. التسلسل الناتج مطابق
+    /// لبنية `DOM` السابقة فيُفتح ويُقرأ بالأدوات نفسها.
     /// </summary>
-    private static byte[] WriteWorkbook(
-        string sheetName, IReadOnlyList<string> headers, IEnumerable<IReadOnlyList<string>> rows)
+    private static MemoryStream WriteWorkbook(
+        string sheetName, IReadOnlyList<string> headers, IReadOnlyList<IReadOnlyList<string>> rows)
     {
-        using var stream = new MemoryStream();
-
+        var stream = new MemoryStream();
         using (var document = SpreadsheetDocument.Create(stream, SpreadsheetDocumentType.Workbook))
         {
             var workbookPart = document.AddWorkbookPart();
             workbookPart.Workbook = new Workbook(new Sheets());
-
             var worksheetPart = workbookPart.AddNewPart<WorksheetPart>();
-            worksheetPart.Worksheet = new Worksheet(new SheetData());
-            worksheetPart.Worksheet.Append(new AutoFilter());
-
+            using (var writer = OpenXmlWriter.Create(worksheetPart))
+            {
+                writer.WriteStartElement(new Worksheet());
+                writer.WriteStartElement(new SheetData());
+                WriteRow(writer, headers);
+                foreach (var values in rows)
+                    WriteRow(writer, values);
+                writer.WriteEndElement(); // SheetData
+                // نطاق AutoFilter يبدأ من صف العنوان إلى آخر صف بيانات ليكون صالحًا في إكسل
+                // (AutoFilter بلا Reference منتج ملفًا غير مطابق للمخطط ويُطلب إصلاحه).
+                writer.WriteElement(new AutoFilter
+                {
+                    Reference = $"A1:{ColumnLetter(headers.Count)}{1 + rows.Count}"
+                });
+                writer.WriteEndElement(); // Worksheet
+            }
             var sheets = workbookPart.Workbook.GetFirstChild<Sheets>()!;
             sheets.AppendChild(new Sheet
             {
@@ -164,26 +186,24 @@ public sealed class ExcelExportService : IExcelExportService
                 SheetId = 1,
                 Name = sheetName,
             });
-
-            var sheetData = worksheetPart.Worksheet.GetFirstChild<SheetData>()!;
-            sheetData.AppendChild(BuildRow(headers));
-
-            var rowCount = 0;
-            foreach (var values in rows)
-            {
-                sheetData.AppendChild(BuildRow(values));
-                rowCount++;
-            }
-
-            // نطاق AutoFilter يبدأ من صف العنوان إلى آخر صف بيانات ليكون صالحًا في إكسل
-            // (AutoFilter بلا Reference منتج ملفًا غير مطابق للمخطط ويُطلب إصلاحه).
-            worksheetPart.Worksheet.GetFirstChild<AutoFilter>()!.Reference =
-                $"A1:{ColumnLetter(headers.Count)}{1 + rowCount}";
-
-            worksheetPart.Worksheet.Save();
+            workbookPart.Workbook.Save();
         }
+        stream.Position = 0;
+        return stream;
+    }
 
-        return stream.ToArray();
+    private static void WriteRow(OpenXmlWriter writer, IReadOnlyList<string> values)
+    {
+        writer.WriteStartElement(new Row());
+        foreach (var value in values)
+        {
+            writer.WriteStartElement(new Cell { DataType = CellValues.InlineString });
+            writer.WriteStartElement(new InlineString());
+            writer.WriteElement(new Text(value ?? string.Empty));
+            writer.WriteEndElement(); // InlineString
+            writer.WriteEndElement(); // Cell
+        }
+        writer.WriteEndElement(); // Row
     }
 
     private static List<string> BuildHeaders(bool includeAdministrativeBranch, bool includeAssignedLawyer, bool includeViewCount)
@@ -276,7 +296,7 @@ public sealed class ExcelExportService : IExcelExportService
         return type.Length > 0 ? $"{number} {type}".Trim() : number;
     }
 
-    public byte[] BuildChangeEventsWorkbook(IReadOnlyList<EntityChangeEventDto> events)
+    public Stream BuildChangeEventsWorkbook(IReadOnlyList<EntityChangeEventDto> events)
     {
         var headers = new[] { "التاريخ", "الفاعل", "النوع", "الجهة", "المحافظة", "المرسوم", "التفاصيل" };
         return WriteWorkbook(
@@ -293,21 +313,7 @@ public sealed class ExcelExportService : IExcelExportService
                     .Where(v => !string.IsNullOrWhiteSpace(v))),
                 // السطر المبتور موسوم نصًا داخل خلية التفاصيل — المصنّف بلا عمود جديد (عقد الأعمدة السبعة محفوظ).
                 e.SummaryDegraded ? $"ملخص منقوص — {e.SummaryAr}" : e.SummaryAr,
-            }));
-    }
-
-    private static Row BuildRow(IReadOnlyList<string> values)
-    {
-        var row = new Row();
-        foreach (var value in values)
-        {
-            row.AppendChild(new Cell
-            {
-                DataType = CellValues.InlineString,
-                InlineString = new InlineString(new Text(value ?? string.Empty)),
-            });
-        }
-        return row;
+            }).ToList());
     }
 
     /// <summary>حرف العمود المقابل لفهرس عمود (1 = A، 2 = B، ...) مع دعم أعمدة AA+.</summary>

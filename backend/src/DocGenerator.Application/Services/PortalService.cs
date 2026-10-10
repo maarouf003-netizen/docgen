@@ -41,7 +41,7 @@ public interface IPortalService
     /// مصنّف Excel لملفات النطاق وفق فلاتر القائمة نفسها، مع سقف
     /// ExportOptions.MaxRows وتدقيق export_entity_portal_excel.
     /// </summary>
-    Task<byte[]> ExportWorkbookAsync(int userId, string? query, string? status, string? viewerName, CancellationToken ct = default, int? entryId = null);
+    Task<Stream> ExportWorkbookAsync(int userId, string? query, string? status, string? viewerName, CancellationToken ct = default, int? entryId = null);
 
     /// <summary>إحصاءات قرائية لنطاق المندوب (المرحلة 4) — مع فلتر فرع اختياري ضمن النطاق.</summary>
     Task<PortalStatsDto> GetStatsAsync(int userId, CancellationToken ct = default, int? entryId = null);
@@ -290,7 +290,7 @@ public sealed class PortalService : IPortalService
             .ToList();
     }
 
-    public async Task<byte[]> ExportWorkbookAsync(int userId, string? query, string? status, string? viewerName, CancellationToken ct = default, int? entryId = null)
+    public async Task<Stream> ExportWorkbookAsync(int userId, string? query, string? status, string? viewerName, CancellationToken ct = default, int? entryId = null)
     {
         var scope = await _portal.ResolveForUserAsync(userId, ct);
         var entryIds = ResolveEffectiveIds(scope, entryId);

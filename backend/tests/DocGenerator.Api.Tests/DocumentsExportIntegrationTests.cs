@@ -2,8 +2,12 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using DocGenerator.Api.Security;
+using DocGenerator.Infrastructure.Persistence;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace DocGenerator.Api.Tests;
 
@@ -196,6 +200,39 @@ public class DocumentsExportIntegrationTests
         Assert.Equal("المصرف", row[2]);
         Assert.False(string.IsNullOrWhiteSpace(row[1]));
         Assert.Equal("إجراء متابعة صريح", row[11]);
+    }
+
+    [Fact]
+    public async Task Export_WhileSlotHeld_Returns429ThenSucceedsAfterRelease()
+    {
+        // حتمي بلا سباق: نحجز خانة المستخدم يدويًا بنفس صيغة مفتاح الفلتر،
+        // فالطلب يُردّ 429 برسالة الانشغال، وبعد التحرير ينجح — ويثبت هذا
+        // أيضًا أن الخانة لا تتسرب (الصادرات المتسلسلة في بقية الاختبارات خضراء).
+        var guard = _factory.Services.GetRequiredService<ExportConcurrencyGuard>();
+        int lawyerId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+            lawyerId = await db.Users.Where(u => u.Username == "lawyer1").Select(u => u.Id).SingleAsync();
+        }
+        var key = ExportConcurrencyGuard.KeyFor(lawyerId.ToString(), null);
+        Assert.True(guard.TryEnter(key));
+        try
+        {
+            var client = _factory.AuthorizedClient("lawyer1");
+            var busy = await client.GetAsync("/api/documents/export");
+            Assert.Equal(HttpStatusCode.TooManyRequests, busy.StatusCode);
+            // الجسم `JSON` بهروب `\uXXXX` (المسرِّع الافتراضي) فيُفكّ قبل المقارنة.
+            using var body = JsonDocument.Parse(await busy.Content.ReadAsStringAsync());
+            Assert.Contains("قيد التنفيذ", body.RootElement.GetProperty("message").GetString());
+        }
+        finally
+        {
+            guard.Exit(key);
+        }
+
+        var retry = await _factory.AuthorizedClient("lawyer1").GetAsync("/api/documents/export");
+        Assert.True(retry.IsSuccessStatusCode);
     }
 
     private static List<List<string>> DataRows(byte[] bytes)

@@ -133,17 +133,34 @@ public class ExportProjectionTests : IDisposable
         var rows = await svc.ExportAsync(null, null, null, null, null, null, null, null, null);
         var row = Assert.Single(rows, r => r.BorrowerName == "مقترض الترتيب");
 
-        var bytes = new ExcelExportService().BuildDocumentsWorkbook(new[] { row }, false, false, false);
-        var cells = WorkbookFirstDataRow(bytes);
+        using var stream = new ExcelExportService().BuildDocumentsWorkbook(new[] { row }, false, false, false);
+        var cells = WorkbookFirstDataRow(stream);
         // بلا رايات: 0 الحالة، 1 طالب التنفيذ، 2 الفرع، 3 المنفذ عليه، ...
         Assert.Equal("ثانٍ أب عائلة", cells[1]);
         Assert.Equal("ثانٍ أب عائلة", cells[3]);
     }
 
-    private static List<string> WorkbookFirstDataRow(byte[] bytes)
+    [Fact]
+    public void BuildDocumentsWorkbook_EscapesSpecialChars()
     {
-        using var stream = new MemoryStream(bytes);
-        using var doc = SpreadsheetDocument.Open(stream, false);
+        // محارف XML الخاصة (`&`, `<`, `>`) في الخلايا يجب أن تُهرَّب في التسلسل
+        // وتعود سليمة عند القراءة — حماية مسار كاتب SAX أمام نصوص حرة.
+        var row = new DocumentExportRow
+        {
+            BorrowerName = "بحث & تطوير <هام>",
+            Applicant = "مصرف > فرع",
+            Court = "دمشق",
+        };
+        using var stream = new ExcelExportService().BuildDocumentsWorkbook(new[] { row }, false, false, false);
+        var cells = WorkbookFirstDataRow(stream);
+        // بلا رايات: 1 طالب التنفيذ، 3 المنفذ عليه.
+        Assert.Equal("مصرف > فرع", cells[1]);
+        Assert.Equal("بحث & تطوير <هام>", cells[3]);
+    }
+
+    private static List<string> WorkbookFirstDataRow(Stream workbook)
+    {
+        using var doc = SpreadsheetDocument.Open(workbook, false);
         var sheetData = doc.WorkbookPart!.WorksheetParts.First().Worksheet.GetFirstChild<SheetData>()!;
         return sheetData.Elements<Row>().Skip(1).First()
             .Elements<Cell>().Select(c => c.InlineString?.Text?.Text ?? string.Empty).ToList();

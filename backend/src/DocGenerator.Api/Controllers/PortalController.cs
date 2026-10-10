@@ -131,6 +131,7 @@ public class PortalController : ControllerBase
     /// <summary>تصدير Excel لملفات النطاق وفق نفس الفلاتر وبسقف صفوف التصدير.</summary>
     [HttpGet("export")]
     [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
+    [SingleExportPerUser]
     public async Task<IActionResult> Export(
         [FromQuery] string? q,
         [FromQuery] string? status,
@@ -139,8 +140,8 @@ public class PortalController : ControllerBase
     {
         try
         {
-            var bytes = await _portal.ExportWorkbookAsync(UserId, q, status, ViewerName, ct, entryId);
-            return File(bytes,
+            var stream = await _portal.ExportWorkbookAsync(UserId, q, status, ViewerName, ct, entryId);
+            return File(stream,
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 $"الملفات التنفيذية {ServerClock.TodayString(_clock, _timeZone, "yyyy-MM-dd")}.xlsx");
         }

@@ -7,6 +7,21 @@ import PortalFiles from './PortalFiles';
 vi.mock('../api/client', () => ({
   api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() },
   getApiErrorMessage: () => 'خطأ من الخادم',
+  // مطابقة السلوك الحقيقي: أخطاء التنزيل `Blob` يُستخرج نصها أولًا.
+  getDownloadErrorMessage: async (error: unknown) => {
+    const data = (error as { response?: { data?: unknown } })?.response?.data;
+    if (data instanceof Blob) {
+      try {
+        const parsed = JSON.parse(await data.text()) as { message?: unknown };
+        if (typeof parsed?.message === 'string' && parsed.message.trim().length > 0) {
+          return parsed.message;
+        }
+      } catch {
+        // يسقط للرسالة العامة أدناه.
+      }
+    }
+    return 'خطأ من الخادم';
+  },
 }));
 
 import { api } from '../api/client';
@@ -134,6 +149,29 @@ describe('PortalFiles', () => {
       expect.objectContaining({ params: expect.objectContaining({ q: undefined, status: undefined }), responseType: 'blob' }));
     blobUrlSpy.mockRestore();
     revokeSpy.mockRestore();
+  });
+
+  it('يعرض رسالة الخادم الدقيقة عند رفض التصدير المتزامن (429)', async () => {
+    // جسم خطأ التنزيل `Blob` (حتى JSON الخطأ) فيُستخرج نصه — وإلا ضاعت
+    // رسالة الحارس «لديك تصدير قيد التنفيذ…» خلف رسالة عامة.
+    const user = userEvent.setup();
+    render(<MemoryRouter><PortalFiles /></MemoryRouter>);
+    await screen.findByText('أحمد خالد الخطيب');
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/portal/export') {
+        return Promise.reject({
+          response: {
+            status: 429,
+            data: new Blob([JSON.stringify({ message: 'لديك تصدير قيد التنفيذ — انتظر' })]),
+          },
+        });
+      }
+      return Promise.resolve({ data: { items: [], page: 1, perPage: 20, totalCount: 0, totalPages: 1 } });
+    });
+
+    await user.click(screen.getByRole('button', { name: 'تصدير إكسل' }));
+
+    await screen.findByText('لديك تصدير قيد التنفيذ — انتظر');
   });
 
   it('يفلتر بالحالة ويحدّث الاستعلام', async () => {

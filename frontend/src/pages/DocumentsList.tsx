@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useSearchParams } from 'react-router-dom';
 import { isAxiosError } from 'axios';
-import { api } from '../api/client';
+import { api, getDownloadErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import SpinnerIcon from '../components/SpinnerIcon';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { useFloatingMenu } from '../hooks/useFloatingMenu';
@@ -280,9 +281,16 @@ function MoreMenu({
                 onExport();
               }}
               disabled={exporting}
-              className="block w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-inset"
+              className="w-full text-right px-4 py-2 min-h-11 text-sm text-gray-800 hover:bg-emerald-50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-inset inline-flex items-center gap-2"
             >
-              {exporting ? 'جارِ التصدير...' : 'تصدير إكسل'}
+              {exporting ? (
+                <>
+                  <SpinnerIcon />
+                  جارِ التصدير...
+                </>
+              ) : (
+                'تصدير إكسل'
+              )}
             </button>
           </div>,
           document.body,
@@ -537,8 +545,9 @@ export default function DocumentsList() {
       .then((res) => {
         downloadBlob(res.data as Blob, `الملفات التنفيذية ${new Date().toISOString().slice(0, 10)}.xlsx`);
       })
-      .catch(() => {
-        setExportMsg('تعذر تصدير الملف. حاول مرة أخرى');
+      .catch(async (err: unknown) => {
+        // أخطاء التنزيل `Blob` فيُستخرج نصها (كـ429 الحارس) بدل رسالة عامة.
+        setExportMsg(await getDownloadErrorMessage(err));
       })
       .finally(() => setExporting(false));
   };
@@ -577,6 +586,11 @@ export default function DocumentsList() {
         >
           {exportMsg}
         </div>
+      )}
+      {exporting && !exportMsg && (
+        <p role="status" className="text-xs text-gray-500 mb-6">
+          التصدير قيد التنفيذ — الكبير منه قد يستغرق دقائق، لا تغلق الصفحة
+        </p>
       )}
 
       <div className="bg-white rounded-xl shadow p-4 mb-6 flex flex-col sm:flex-row flex-wrap gap-3">

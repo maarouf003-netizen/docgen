@@ -10,7 +10,21 @@ vi.mock('../auth/useAuth', () => ({
 
 vi.mock('../api/client', () => ({
   api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() },
-  getApiErrorMessage: () => 'حدث خطأ غير متوقع',
+  getApiErrorMessage: () => 'خطأ من الخادم',
+  getDownloadErrorMessage: async (error: unknown) => {
+    const data = (error as { response?: { data?: unknown } })?.response?.data;
+    if (data instanceof Blob) {
+      try {
+        const parsed = JSON.parse(await data.text()) as { message?: unknown };
+        if (typeof parsed?.message === 'string' && parsed.message.trim().length > 0) {
+          return parsed.message;
+        }
+      } catch {
+        // يسقط للرسالة العامة أدناه.
+      }
+    }
+    return 'خطأ من الخادم';
+  },
 }));
 
 import { api } from '../api/client';

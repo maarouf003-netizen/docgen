@@ -26,6 +26,28 @@ export function getApiErrorMessage(error: unknown): string {
   return 'حدث خطأ غير متوقع';
 }
 
+/// استخراج رسالة خطأ طلبات التنزيل (`responseType: 'blob'`): جسم الخطأ يصل
+/// `Blob` لا `JSON` مُفسَّرًا، فيُقرأ نصًا ويُفكّ (`{ message }`) قبل السقوط
+/// إلى `getApiErrorMessage` — وإلا ظهرت رسالة عامة حتى مع رسالة خادم دقيقة
+/// (كـ429 حارس التصدير «لديك تصدير قيد التنفيذ…»).
+export async function getDownloadErrorMessage(error: unknown): Promise<string> {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data;
+    if (data instanceof Blob) {
+      try {
+        const text = await data.text();
+        const parsed = JSON.parse(text) as { message?: unknown };
+        if (typeof parsed?.message === 'string' && parsed.message.trim().length > 0) {
+          return parsed.message;
+        }
+      } catch {
+        // جسم غير JSON (مقطوع/فارغ) — نسقط للرسالة العامة أدناه.
+      }
+    }
+  }
+  return getApiErrorMessage(error);
+}
+
 export const api = axios.create({
   baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },

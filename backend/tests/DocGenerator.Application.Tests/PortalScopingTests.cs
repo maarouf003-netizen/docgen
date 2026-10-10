@@ -267,8 +267,9 @@ public class PortalScopingTests : IDisposable
     {
         await SeedDocumentAsync("ملف تصدير", applicantRegistryId: _entryAId);
 
-        var bytes = await _portal.ExportWorkbookAsync(_delegateGroupId, null, null, "مندوب");
+        await using var stream = await _portal.ExportWorkbookAsync(_delegateGroupId, null, null, "مندوب");
 
+        var bytes = XlsxReader.ToArray(stream);
         Assert.NotEmpty(bytes);
         // توقيع xlsx: ملف ZIP يبدأ بالبايتات PK.
         Assert.Equal((byte)'P', bytes[0]);

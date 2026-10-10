@@ -1759,7 +1759,8 @@ public class PublicEntityServiceTests : IDisposable
     public async Task ChangeLog_ExportProducesWorkbook()
     {
         await _service.CreateAsync(new CreatePublicEntityRequest("جهة د", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        var bytes = await _service.ExportChangeEventsAsync(new EntityChangeEventQuery(null, null, null, null, null, 1, 20), ManagerActor());
+        await using var stream = await _service.ExportChangeEventsAsync(new EntityChangeEventQuery(null, null, null, null, null, 1, 20), ManagerActor());
+        var bytes = XlsxReader.ToArray(stream);
         Assert.True(bytes.Length > 100);
         Assert.Equal((byte)'P', bytes[0]); // PK zip header
         Assert.Equal((byte)'K', bytes[1]);
@@ -1777,11 +1778,11 @@ public class PublicEntityServiceTests : IDisposable
         // لا يُسجّل صفًّا، فيبقى المصنّف بلا بيانات إن لم يُنفَّذ نقل.
         await _service.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
 
-        var bytes = await _service.ExportChangeEventsAsync(
+        await using var stream = await _service.ExportChangeEventsAsync(
             new EntityChangeEventQuery(null, null, null, null, null, 1, 20), ManagerActor());
 
-        var sheetXml = XlsxReader.FirstSheetXml(bytes);
-        Assert.Equal("سجل التغييرات", XlsxReader.FirstSheetName(bytes));
+        var sheetXml = XlsxReader.FirstSheetXml(stream);
+        Assert.Equal("سجل التغييرات", XlsxReader.FirstSheetName(stream));
         Assert.Equal(
             new[] { "التاريخ", "الفاعل", "النوع", "الجهة", "المحافظة", "المرسوم", "التفاصيل" },
             XlsxReader.RowTexts(sheetXml, 0));
@@ -1938,10 +1939,10 @@ public class PublicEntityServiceTests : IDisposable
         var target = await _service.CreateAsync(new CreatePublicEntityRequest("جهة التصدير ب", "ministry", "دمشق", "فرع الهدف"), ManagerActor());
         await _service.MoveEntryAsync(source.Id, new MoveEntryRequest(target.GroupId, null, null, null, null, null), ManagerActor());
 
-        var bytes = await _service.ExportChangeEventsAsync(
+        await using var stream = await _service.ExportChangeEventsAsync(
             new EntityChangeEventQuery(null, null, null, null, null, 1, 20), ManagerActor());
 
-        var dataRow = XlsxReader.RowTexts(XlsxReader.FirstSheetXml(bytes), 1);
+        var dataRow = XlsxReader.RowTexts(XlsxReader.FirstSheetXml(stream), 1);
         Assert.Equal(7, dataRow.Count);
         Assert.Equal("نقل قيد", dataRow[2]);
         Assert.Contains("تم نقل قيد من", dataRow[6]);

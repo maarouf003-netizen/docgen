@@ -357,9 +357,9 @@ public class PortalRestructureTests : IDisposable
     {
         await SeedDocAsync("دمشق", null, null, _entryDamascusId, null, false, "ليرة سورية", 100);
 
-        var bytes = await _portal.ExportWorkbookAsync(_delegateGroupId, null, null, "tester", default, _entryDamascusId);
-        Assert.NotNull(bytes);
-        Assert.NotEmpty(bytes);
+        await using var stream = await _portal.ExportWorkbookAsync(_delegateGroupId, null, null, "tester", default, _entryDamascusId);
+        Assert.NotNull(stream);
+        Assert.True(stream.Length > 0);
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _portal.ExportWorkbookAsync(_delegateGroupId, null, null, "tester", default, 999999));

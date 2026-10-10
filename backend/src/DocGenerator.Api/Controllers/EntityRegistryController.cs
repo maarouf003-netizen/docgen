@@ -1,4 +1,5 @@
 using DocGenerator.Api.Authorization;
+using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
@@ -521,6 +522,7 @@ public class EntityRegistryController : ControllerBase
 
     /// <summary>تصدير سجل التغييرات إلى Excel (نفس فلاتر القائمة — رئيس القسم يرى محافظته).</summary>
     [HttpGet("change-events/export")]
+    [SingleExportPerUser]
     public async Task<IActionResult> ExportChangeEvents(
         [FromQuery] string? governorate,
         [FromQuery] string? actionKind,
@@ -533,9 +535,9 @@ public class EntityRegistryController : ControllerBase
             return Forbid();
         try
         {
-            var bytes = await _registry.ExportChangeEventsAsync(
+            var stream = await _registry.ExportChangeEventsAsync(
                 new EntityChangeEventQuery(governorate, actionKind, null, from, to, 1, 5000, Actor: actorUserId), Actor, ct);
-            return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "change-events.xlsx");
+            return File(stream, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "change-events.xlsx");
         }
         catch (ArgumentException e)
         {

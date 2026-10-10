@@ -273,6 +273,7 @@ public class ExecutionCircuitsController : ControllerBase
     /// </summary>
     [HttpGet("stats/export")]
     [Authorize(Roles = "manager,admin,head,subhead")]
+    [SingleExportPerUser]
     public async Task<IActionResult> ExportStats([FromQuery] int? branchId, CancellationToken ct)
     {
         List<CircuitStatsDto> rows;
@@ -286,8 +287,8 @@ public class ExecutionCircuitsController : ControllerBase
             if (error is not null) return error;
             rows = await _circuits.CircuitStatsAsync(own, ownerSectionId, false, ct);
         }
-        var bytes = _excel.BuildCircuitStatsWorkbook(rows);
-        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        var stream = _excel.BuildCircuitStatsWorkbook(rows);
+        return File(stream, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             $"إحصاءات الدوائر {ServerClock.TodayString(_clock, _timeZone, "yyyy-MM-dd")}.xlsx");
     }
 }

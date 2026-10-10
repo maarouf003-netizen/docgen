@@ -182,6 +182,7 @@ public class DocumentsController : ControllerBase
 
     [HttpGet("export")]
     [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
+    [SingleExportPerUser]
     public async Task<IActionResult> Export(
         [FromQuery] string? q, [FromQuery] string? status,
         [FromQuery] string? applicant, [FromQuery] string? court,
@@ -203,13 +204,13 @@ public class DocumentsController : ControllerBase
         // بلا Sanitize هنا: عمود «عدد المشاهدات» محكوم أصلًا براية includeViewCount
         // (= CanViewCounters) فلا يظهر لغير المصرَّح لهم إطلاقًا — والورقة متطابقة.
 
-        var bytes = _excel.BuildDocumentsWorkbook(
+        var stream = _excel.BuildDocumentsWorkbook(
             items,
             includeAdministrativeBranch: RolePermissions.CanSeeAdministrativeBranch(Role),
             includeAssignedLawyer: RolePermissions.CanSeeAssignedLawyer(Role),
             includeViewCount: CanViewCounters);
 
-        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        return File(stream, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             $"الملفات التنفيذية {ServerClock.TodayString(_clock, _timeZone, "yyyy-MM-dd")}.xlsx");
     }
 

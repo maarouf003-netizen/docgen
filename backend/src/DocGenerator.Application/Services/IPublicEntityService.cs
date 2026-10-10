@@ -47,7 +47,7 @@ public interface IPublicEntityService
     Task<PagedResult<EntityChangeEventDto>> ListChangeEventsAsync(EntityChangeEventQuery query, EntityRegistryActor actor, CancellationToken ct = default);
 
     /// <summary>تصدير سجل التغييرات إلى Excel (نفس فلاتر القائمة ونطاق رئيس القسم).</summary>
-    Task<byte[]> ExportChangeEventsAsync(EntityChangeEventQuery query, EntityRegistryActor actor, CancellationToken ct = default);
+    Task<Stream> ExportChangeEventsAsync(EntityChangeEventQuery query, EntityRegistryActor actor, CancellationToken ct = default);
 
     /// <summary>اعتماد قيد كما هو: يقفل مراجعته دون أي تعديل ولا إشعار للمُدخِل.</summary>
     Task<PublicEntityEntryDto?> ApproveReviewAsync(int entryId, EntityRegistryActor actor, CancellationToken ct = default);
