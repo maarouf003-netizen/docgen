@@ -80,7 +80,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         CancellationToken ct = default,
         int? ownerSectionId = null)
     {
-        // الإسقاط العمودي للتصدير الكبير: نفس فلاتر `ExportAsync` وترتيبه، لكن
+        // الإسقاط العمودي للتصدير الكبير: نفس فلاتر البحث وترتيب القوائم، لكن
         // بإسقاط أعمدة الورقة فقط (بلا `WithStandardIncludes` للشجرة الكاملة
         // المكوّنة من ~16 ملحقًا) — فينهار استهلاك الذاكرة لكل صف من عشرات
         // الكيلوبايتات إلى حفنة حقول. القوائم الصغيرة (0-3 عناصر) تُسقط كاملة

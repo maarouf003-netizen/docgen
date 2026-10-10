@@ -5,6 +5,8 @@ using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Spreadsheet;
 using Microsoft.Extensions.Options;
 
 namespace DocGenerator.Application.Tests;
@@ -102,5 +104,48 @@ public class ExportProjectionTests : IDisposable
         var full = await svc.GetAsync(created.Id);
         Assert.NotNull(full);
         Assert.Equal(full!.DisplayStatus, DocumentStatusResolver.Resolve(row));
+    }
+
+    [Fact]
+    public async Task ExportAsync_JoinedNamesFollowProjectedOrder()
+    {
+        // عائلة «منفذ عليه»: الاسم المعروض أول طالب تنفيذ غير فارغ — الأول الفارغ
+        // يُتخطى والثاني المسمّى يفوز، فيثبت حفظ الترتيب عبر الإسقاط إلى الورقة.
+        var svc = Build();
+        var created = await svc.CreateAsync(new DocumentUpsertRequest
+        {
+            BorrowerName = "مقترض الترتيب",
+            Guarantors = new List<GuarantorDto>(),
+            Assets = new List<AssetDto>(),
+            BorrowerHeirs = new List<HeirDto>(),
+            ExecutionApplicants = new List<ExecutionApplicantDto>(),
+            ExecutedPublicEntities = new List<ExecutedPublicEntityDto>(),
+            ExecutedNaturalPersons = new List<ExecutedNaturalPersonDto>(),
+        }, _userId, "tester", branchId: 1);
+
+        var doc = await _db.Documents.FindAsync(created.Id);
+        Assert.NotNull(doc);
+        doc!.GeneralEntitySide = "executed";
+        _db.ExecutionApplicants.Add(new ExecutionApplicant { DocumentId = created.Id, Name = null, Father = null, Family = null });
+        _db.ExecutionApplicants.Add(new ExecutionApplicant { DocumentId = created.Id, Name = "ثانٍ", Father = "أب", Family = "عائلة" });
+        await _db.SaveChangesAsync();
+
+        var rows = await svc.ExportAsync(null, null, null, null, null, null, null, null, null);
+        var row = Assert.Single(rows, r => r.BorrowerName == "مقترض الترتيب");
+
+        var bytes = new ExcelExportService().BuildDocumentsWorkbook(new[] { row }, false, false, false);
+        var cells = WorkbookFirstDataRow(bytes);
+        // بلا رايات: 0 الحالة، 1 طالب التنفيذ، 2 الفرع، 3 المنفذ عليه، ...
+        Assert.Equal("ثانٍ أب عائلة", cells[1]);
+        Assert.Equal("ثانٍ أب عائلة", cells[3]);
+    }
+
+    private static List<string> WorkbookFirstDataRow(byte[] bytes)
+    {
+        using var stream = new MemoryStream(bytes);
+        using var doc = SpreadsheetDocument.Open(stream, false);
+        var sheetData = doc.WorkbookPart!.WorksheetParts.First().Worksheet.GetFirstChild<SheetData>()!;
+        return sheetData.Elements<Row>().Skip(1).First()
+            .Elements<Cell>().Select(c => c.InlineString?.Text?.Text ?? string.Empty).ToList();
     }
 }
