@@ -65,7 +65,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         return (total, items);
     }
 
-    public async Task<List<Document>> ExportAsync(
+    public async Task<List<DocumentExportRow>> ExportRowsAsync(
         string? query,
         string? status,
         string? applicant,
@@ -80,10 +80,60 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         CancellationToken ct = default,
         int? ownerSectionId = null)
     {
+        // الإسقاط العمودي للتصدير الكبير: نفس فلاتر البحث وترتيب القوائم، لكن
+        // بإسقاط أعمدة الورقة فقط (بلا `WithStandardIncludes` للشجرة الكاملة
+        // المكوّنة من ~16 ملحقًا) — فينهار استهلاك الذاكرة لكل صف من عشرات
+        // الكيلوبايتات إلى حفنة حقول. القوائم الصغيرة (0-3 عناصر) تُسقط كاملة
+        // مرتبة بـ`Id` ليطابق «الأول» سلوك التحميل العملي؛ `BaseNumbers` بذور
+        // (سنة/زمن/رقم) ينتخب `LatestFrom` منها الرقم الفعّال في الخدمة.
+        // `AsSplitQuery` يُبقيها حفنة استعلامات ثابتة العدد مهما بلغت الصفوف.
         IQueryable<Document> q = ApplySearchFilters(
             Db.Documents.AsNoTracking(), query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, ownerSectionId);
 
-        return await WithStandardIncludes(q.OrderByDescending(d => d.CreatedAt))
+        return await q.OrderByDescending(d => d.CreatedAt)
+            .AsSplitQuery()
+            .Select(d => new DocumentExportRow
+            {
+                AdministrativeBranchName = d.Branch.Name,
+                BranchName = d.BranchName,
+                Court = d.Court,
+                SectionName = d.ExecutionCircuit.Section.Name,
+                IsDraft = d.IsDraft,
+                FileNumber = d.FileNumber,
+                FileType = d.FileType,
+                FileYear = d.FileYear,
+                AnnexNumber = d.AnnexNumber,
+                Lawyer = d.Lawyer,
+                ViewCount = d.ViewCount,
+                GeneralEntitySide = d.GeneralEntitySide,
+                ExecutedStatus = d.ExecutedStatus,
+                ExecStatus = d.ExecStatus,
+                ExecSubStatus = d.ExecSubStatus,
+                Applicant = d.Applicant,
+                BorrowerName = d.BorrowerName,
+                BorrowerFather = d.BorrowerFather,
+                BorrowerFamily = d.BorrowerFamily,
+                ExecutionApplicants = d.ExecutionApplicants
+                    .OrderBy(a => a.Id)
+                    .Select(a => new ExportApplicant { Name = a.Name, Father = a.Father, Family = a.Family })
+                    .ToList(),
+                ExecutedPublicEntities = d.ExecutedPublicEntities
+                    .OrderBy(e => e.Id)
+                    .Select(e => new ExportPublicEntity { EntityName = e.EntityName })
+                    .ToList(),
+                ExecutedNaturalPersons = d.ExecutedNaturalPersons
+                    .OrderBy(p => p.Id)
+                    .Select(p => new ExportNaturalPerson { Name = p.Name, Father = p.Father, Family = p.Family })
+                    .ToList(),
+                ExecutionActions = d.ExecutionActions
+                    .OrderBy(a => a.Id)
+                    .Take(1)
+                    .Select(a => new ExportAction { Text = a.Text })
+                    .ToList(),
+                BaseNumbers = d.BaseNumbers
+                    .Select(b => new DocumentBaseNumber { Year = b.Year, CreatedAt = b.CreatedAt, BaseNumber = b.BaseNumber })
+                    .ToList(),
+            })
             .ToListAsync(ct);
     }
 

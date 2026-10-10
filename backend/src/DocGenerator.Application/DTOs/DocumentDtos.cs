@@ -102,7 +102,7 @@ public record ExecutionActionDto(
     string? ReminderDuration,
     string? ReminderColor,
     string? CreatedByName,
-    DateTime CreatedAt);
+    DateTime CreatedAt) : IExportAction;
 
 /// <summary>
 /// وريث لمورثٍ متوفى في وضع «منفذ عليه» (اسم ثلاثي). القيمة الفارغة في الحقلين
@@ -141,7 +141,7 @@ public record ExecutionApplicantDto(
     string? AddressType = null,
     string? Address = null,
     /// <summary>معرّف قيد طالب التنفيذ الاعتباري (الجهة العامة) في السجل المرجعي (اختياري — من نافذة الاختيار).</summary>
-    int? RegistryId = null);
+    int? RegistryId = null) : IExportApplicant;
 
 /// <summary>الجهة العامة أو الشخص الاعتباري المنفذ عليه في وضع «منفذ عليه».</summary>
 public record ExecutedPublicEntityDto(
@@ -155,7 +155,7 @@ public record ExecutedPublicEntityDto(
     string? Address = null,
     string? Governorate = null,
     /// <summary>معرّف قيد الجهة في السجل المرجعي (اختياري — من نافذة الاختيار).</summary>
-    int? RegistryId = null);
+    int? RegistryId = null) : IExportPublicEntity;
 
 /// <summary>الجهة العامة طالبة التنفيذ في وضع «الجهة العامة طالبة تنفيذ» (اسم الجهة + فرعها + محافظتها).</summary>
 public record ApplicantPublicEntityDto(
@@ -194,7 +194,7 @@ public record ExecutedNaturalPersonDto(
     string? RepresentativeCapacity,
     string? RepresentativeAddressType,
     string? RepresentativeAddress,
-    List<ExecutedHeirDto>? Heirs = null);
+    List<ExecutedHeirDto>? Heirs = null) : IExportNaturalPerson;
 
 public class AddExecutionActionRequest
 {
@@ -555,8 +555,16 @@ public record DocumentOccurrenceDto(
     string? FromCircuitName = null,
     string? ToCircuitName = null);
 
-public class DocumentResponse : DocGenerator.Domain.Entities.IDocumentExecutionState
+public class DocumentResponse : IDocumentSheetFields
 {
+    // تحقيق صريح لحقول القوائم في `IDocumentSheetFields`: `List<T>` لا يطابق
+    // `IReadOnlyList<I>` في توقيع التنفيذ (CS0738) رغم التحويل الضمني — وهذه
+    // الأعضاء الصريحة غير مرئية للتسلسل `JSON` فلا يتغير عقد الواجهة.
+    IReadOnlyList<IExportApplicant> IDocumentSheetFields.ExecutionApplicants => ExecutionApplicants;
+    IReadOnlyList<IExportPublicEntity> IDocumentSheetFields.ExecutedPublicEntities => ExecutedPublicEntities;
+    IReadOnlyList<IExportNaturalPerson> IDocumentSheetFields.ExecutedNaturalPersons => ExecutedNaturalPersons;
+    IReadOnlyList<IExportAction> IDocumentSheetFields.ExecutionActions => ExecutionActions;
+
     public int Id { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

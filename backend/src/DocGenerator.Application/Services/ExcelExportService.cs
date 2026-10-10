@@ -20,7 +20,7 @@ namespace DocGenerator.Application.Services;
 public interface IExcelExportService
 {
     byte[] BuildDocumentsWorkbook(
-        IReadOnlyList<DocumentResponse> documents,
+        IReadOnlyList<DocumentExportRow> documents,
         bool includeAdministrativeBranch,
         bool includeAssignedLawyer,
         bool includeViewCount);
@@ -66,7 +66,7 @@ public sealed class ExcelExportService : IExcelExportService
     };
 
     public byte[] BuildDocumentsWorkbook(
-        IReadOnlyList<DocumentResponse> documents,
+        IReadOnlyList<DocumentExportRow> documents,
         bool includeAdministrativeBranch,
         bool includeAssignedLawyer,
         bool includeViewCount)
@@ -201,7 +201,7 @@ public sealed class ExcelExportService : IExcelExportService
     }
 
     private static List<string> BuildValues(
-        DocumentResponse doc,
+        IDocumentSheetFields doc,
         bool includeAdministrativeBranch,
         bool includeAssignedLawyer,
         bool includeViewCount)
@@ -228,7 +228,7 @@ public sealed class ExcelExportService : IExcelExportService
     }
 
     /// <summary>اسم طالب التنفيذ/العرض: في عائلة وضع «منفذ عليه» يُؤخذ من أول «طالب تنفيذ/عرض» (اسم ثلاثي)، وإلا الحقل المباشر.</summary>
-    private static string ApplicantText(DocumentResponse doc)
+    private static string ApplicantText(IDocumentSheetFields doc)
     {
         if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
         {
@@ -241,10 +241,10 @@ public sealed class ExcelExportService : IExcelExportService
         return doc.Applicant ?? string.Empty;
     }
 
-    private static string StatusText(DocumentResponse doc)
+    private static string StatusText(IDocumentSheetFields doc)
         => DocumentStatusResolver.Resolve(doc);
 
-    private static string FullName(DocumentResponse doc)
+    private static string FullName(IDocumentSheetFields doc)
     {
         // ملف عائلة وضع «منفذ عليه» (Executed + Deposit): الاسم المعروض هو أول طرف
         // (طالب التنفيذ/العرض أولًا، ثم الجهة/الشخص المنفذ عليه) — بلا مقترض.
@@ -268,7 +268,7 @@ public sealed class ExcelExportService : IExcelExportService
             new[] { doc.BorrowerName, doc.BorrowerFather, doc.BorrowerFamily }.Where(v => !string.IsNullOrWhiteSpace(v)));
     }
 
-    private static string FileNumberText(DocumentResponse doc)
+    private static string FileNumberText(IDocumentSheetFields doc)
     {
         if (doc.IsDraft) return string.Empty;
         var number = doc.DisplayFileNumber ?? doc.FileNumber ?? string.Empty;

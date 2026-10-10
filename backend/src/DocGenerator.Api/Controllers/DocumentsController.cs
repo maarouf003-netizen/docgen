@@ -200,8 +200,8 @@ public class DocumentsController : ControllerBase
 
         var items = await _documents.ExportAsync(q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
             visibleBranch, visibleUser, ct, ActorName, ownerSectionId: ownerSectionId);
-        if (!CanViewCounters)
-            items = items.Select(Sanitize).ToList();
+        // بلا Sanitize هنا: عمود «عدد المشاهدات» محكوم أصلًا براية includeViewCount
+        // (= CanViewCounters) فلا يظهر لغير المصرَّح لهم إطلاقًا — والورقة متطابقة.
 
         var bytes = _excel.BuildDocumentsWorkbook(
             items,
