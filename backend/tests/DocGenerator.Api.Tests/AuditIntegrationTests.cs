@@ -79,6 +79,77 @@ public class AuditIntegrationTests
 
         body.Dispose();
     }
+
+    [Fact]
+    public async Task AuditLogs_Timestamps_CarryExplicitUtcOffset()
+    {
+        // انحدار السلك (خطة timezone-fix-plan §5): كل timestamp يُسلَّل بإزاحة صريحة (ينتهي بـ Z)
+        // فيعتمد formatDateTime على تحويل آمن لتوقيت المتصفح بدل تفسير نص بلا إزاحة وهو متخلف 3 ساعات.
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        await _factory.CreateDocumentAsync(token, "مقترض الانحدار");
+
+        var manager = _factory.AuthorizedClient("manager");
+        var response = await manager.GetAsync("/api/audit-logs?userName=lawyer1&perPage=50");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var items = body!.RootElement.GetProperty("items");
+
+        var timestamps = items.EnumerateArray()
+            .Select(e => e.GetProperty("timestamp").GetString())
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .ToList();
+        Assert.NotEmpty(timestamps);
+        Assert.All(timestamps, t => Assert.EndsWith("Z", t));
+
+        body.Dispose();
+    }
+
+    [Fact]
+    public async Task WireDates_CarryExplicitUtcOffset_AcrossRepresentativeEndpoints()
+    {
+        // مراجعة نقدية (NE): العقد أوسع من سجل التدقيق — أي DateTime في الاستجابات يُسلَّل الآن
+        // بإزاحة صريحة/اختبار المتغير Z (المستند + سجل تعديلاته عيّنة تمثيلية من مسارين مختلفين).
+        var login = await _factory.LoginAsync("lawyer1", "123456");
+        var documentId = await _factory.CreateDocumentAsync(login!.Token!, "مقترض العقد");
+
+        foreach (var path in new[] { $"/api/documents/{documentId}", $"/api/documents/{documentId}/changes" })
+        {
+            var response = await login.Client.GetAsync(path);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+            AssertNoOffsetlessDatetime(body!.RootElement, path);
+            body.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// يمشي الاستجابة بأكملها ويتأكد أن كل قيمة نصية بصيغة ISO زمنية (تحوي T) تنتهي بإزاحة صريحة
+    /// (Z) — أي قيمة من دونها تدل على انحدار عقد الطوابع الذي يخلط على المتصفح توقيت UTC بالتجريد.
+    /// التواريخ النصية المحضة (yyyy-MM-dd بلا T) خارج النطاق عمدًا (إزاحة لا تعنيها).
+    /// </summary>
+    private static void AssertNoOffsetlessDatetime(JsonElement element, string context)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                foreach (var property in element.EnumerateObject())
+                    AssertNoOffsetlessDatetime(property.Value, context);
+                break;
+            case JsonValueKind.Array:
+                foreach (var item in element.EnumerateArray())
+                    AssertNoOffsetlessDatetime(item, context);
+                break;
+            case JsonValueKind.String:
+                var value = element.GetString();
+                if (value is not null && value.Length > 10
+                    && value[4] == '-' && value[7] == '-' && value[10] == 'T')
+                {
+                    Assert.True(value.EndsWith("Z", StringComparison.Ordinal),
+                        $"قيمة ISO زمنية بدون إزاحة في {context}: {value}");
+                }
+                break;
+        }
+    }
 }
 
 [Collection(ApiTestCollection.Name)]
