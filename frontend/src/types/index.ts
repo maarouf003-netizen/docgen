@@ -1,4 +1,4 @@
-export type Role = 'lawyer' | 'head' | 'manager' | 'admin' | 'entitymanager';
+export type Role = 'lawyer' | 'head' | 'subhead' | 'manager' | 'admin' | 'entitymanager';
 
 export interface UserDto {
   id: number;
@@ -7,6 +7,8 @@ export interface UserDto {
   role: Role;
   branchId: number | null;
   branchName?: string | null;
+  sectionId?: number | null;
+  sectionName?: string | null;
 }
 
 export interface LoginResponse {
@@ -51,6 +53,17 @@ export interface UpdateBranchRequest {
   phone?: string | null;
   isActive: boolean;
   governorate?: string | null;
+}
+
+/** شعبة داخل فرع — تطابق `SectionDto` الخلفي (§8). */
+export interface SectionDto {
+  id: number;
+  branchId: number;
+  branchName?: string | null;
+  name: string;
+  isActive: boolean;
+  circuitCount: number;
+  headName?: string | null;
 }
 
 export interface GuarantorDto {
@@ -534,6 +547,20 @@ export interface DelegationDto {
    * IsTargetTerminal) لإخفاء سطر «بانتظار الإتمام» للمناب النهائي؛ غائب/false قبل الاعتماد.
    */
   targetTerminal?: boolean;
+  /** سبب رفض الدائرة الخطأ (§7.4) — يُعرض للمحامي في بطاقة الملف؛ غائب قبل أي رفض وبعد التصحيح. */
+  rejectReason?: string | null;
+  /** الشعبة الموجَّه لها طلب الإنابة الخارجية (§7.3) — غائب قبل التوجيه. */
+  redirectedToSectionId?: number | null;
+  /** اسم الشعبة الموجَّه لها الطلب — للعرض فقط. */
+  redirectedToSectionName?: string | null;
+  /** فرع الملف المناب الحي (قد يعبر الفروع — قرار §2.25) — قراءة سياقية داخل عرض المنيب. */
+  targetBranchId?: number | null;
+  /** اسم فرع الملف المناب الحي — للعرض فقط. */
+  targetBranchName?: string | null;
+  /** المحامي المالك الحالي للملف المناب — للعرض فقط. */
+  targetLawyerName?: string | null;
+  /** رمز التزامن التفاؤلي — يُرسَل في طلبات الكتابة الداعمة لكشف السباق. */
+  version?: number;
 }
 
 /** تسطير/تعديل إنابة: التواريخ نصوص حرة تُفسَّر في الخلفية؛ الخارجية تتطلب الفرع المناب. */
@@ -551,9 +578,21 @@ export interface UpsertDelegationRequest {
   assetIds: number[];
 }
 
-/** اعتماد الإنابة: تعيين المحامي المختص من رئيس القسم (يُنشأ الملف المناب تلقائيًا). */
+/** اعتماد الإنابة: تعيين المحامي المختص من مالك الدائرة المنابة (يُنشأ الملف المناب تلقائيًا). */
 export interface AssignDelegationRequest {
   assignedLawyerId: number;
+  /** رمز التزامن التفاؤلي — اختياري، غيابه يعني فحص القاعدة فقط. */
+  version?: number | null;
+}
+
+/** توجيه إنابة خارجية معلّقة لشعبة في الفرع المناب — رئيس قسم الفرع المناب فقط (§7.3). */
+export interface RedirectDelegationRequest {
+  sectionId: number;
+}
+
+/** رفض الدائرة الخطأ برسالة تُعيد المحامي للتصحيح (§7.4) — السبب إلزامي. */
+export interface RejectDelegationRequest {
+  reason?: string | null;
 }
 
 /** تسجيل الإنابة أصولًا من محامي الملف المناب: رقم أساس الإنابة وتاريخ قيدها. */
@@ -901,6 +940,8 @@ export interface UserListItem {
   branchId: number | null;
   branchName?: string | null;
   isActive: boolean;
+  sectionId?: number | null;
+  sectionName?: string | null;
 }
 
 export interface CreateUserRequest {
@@ -909,6 +950,7 @@ export interface CreateUserRequest {
   role: Role;
   branchId: number | null;
   password: string;
+  sectionId?: number | null;
 }
 
 export interface UpdateUserRequest {
@@ -917,6 +959,30 @@ export interface UpdateUserRequest {
   branchId: number | null;
   isActive: boolean;
   password?: string | null;
+  sectionId?: number | null;
+  successorId?: number | null;
+}
+
+/** صف سجل تعاقب رئاسة — للمدير والمشرف فقط (قرار §2.17). */
+export interface HeadSuccessionDto {
+  id: number;
+  branchId: number;
+  branchName?: string | null;
+  sectionId?: number | null;
+  sectionName?: string | null;
+  userId: number;
+  userName?: string | null;
+  role: string;
+  event: string;
+  at: string;
+  actorName?: string | null;
+  reason?: string | null;
+}
+
+/** نقل ملكية دائرة لمالك جديد داخل الفرع — `null` = قسم الفرع (§8.3). */
+export interface TransferCircuitRequest {
+  targetSectionId: number | null;
+  version?: number | null;
 }
 
 export interface TransferDocumentRequest {
@@ -1118,6 +1184,14 @@ export interface AppealDto {
   documentEffectiveYear?: string | null;
   /** وسم جودة اللقطات: إحدى لقطتي الأطراف تالفة فعُرضت فارغة — تُعرض موسومة. */
   partiesDegraded: boolean;
+  /** حالة الإحالة (`Owned` أو `ForwardedToHead`) — للبحث والعرض (المرحلة 5ب). */
+  forwardState?: string;
+  /** شعبة دائرة الملف المالكة (`undefined` = ملك القسم) — للبحث والعرض. */
+  sectionId?: number | null;
+  /** دائرة الملف — للبحث والعرض. */
+  executionCircuitId?: number | null;
+  /** رمز التزامن التفاؤلي — يُرسَل في طلبات الكتابة الداعمة لكشف السباق. */
+  version?: number;
 }
 
 /** تسطير/تعديل استئناف قبل الإسناد (التواريخ نصوص حرة بصيغة «1/8/2026»). */
@@ -1168,11 +1242,22 @@ export interface StrikeAppealRequest {
 /** إسناد الاستئناف إلى محامٍ للمتابعة — رئيس القسم. */
 export interface AssignAppealRequest {
   assignedLawyerId: number;
+  /** رمز التزامن التفاؤلي (من `AppealDto.version`) — اختياري، غيابه يعني فحص القاعدة فقط. */
+  version?: number;
 }
 
 /** نقل استئناف مفرد بين محامي الفرع — رئيس القسم. */
 export interface TransferAppealRequest {
   targetLawyerId: number;
+  /** رمز التزامن التفاؤلي (من `AppealDto.version`) — اختياري. */
+  version?: number;
+}
+
+/** إحالة استئناف من رئيس الشعبة لرئيس القسم (اتجاه واحد) — السبب اختياري. */
+export interface ForwardAppealRequest {
+  reason?: string | null;
+  /** رمز التزامن التفاؤلي (من `AppealDto.version`) — اختياري. */
+  version?: number;
 }
 
 /** نقل كل استئنافات محامٍ إلى محامٍ آخر ضمن الفرع نفسه. */
@@ -1236,7 +1321,7 @@ export interface CorrespondenceFileContext {
   court: string | null;
 }
 
-/** رسالة واحدة ضمن مراسلة (الأصل letter أو لاحق addendum أو رد reply). */
+/** رسالة واحدة ضمن مراسلة (الأصل letter أو لاحق addendum أو رد reply) — الكاتب قد يكون رئيس شعبة كمستلم. */
 export interface CorrespondenceMessageDto {
   id: number;
   kind: CorrespondenceMessageKind;
@@ -1245,7 +1330,7 @@ export interface CorrespondenceMessageDto {
   messageDate: string;
   authorId: number;
   authorName: string;
-  authorRole: 'lawyer' | 'head' | 'entitymanager';
+  authorRole: 'lawyer' | 'head' | 'subhead' | 'entitymanager';
 }
 
 /** توثيق مشاهدة واحدة: من شاهد ومتى. */
@@ -1307,6 +1392,8 @@ export interface CorrespondenceDto {
   /** توثيق مشاهدة المستلم وحده. */
   receipts: CorrespondenceReceiptDto[];
   createdAt: string;
+  /** الشعبة المجمدة للمستلم الرئيس (§10.2) — غائب لغيره. */
+  recipientSectionId?: number | null;
 }
 
 export interface CreateCorrespondenceRequest {
@@ -1314,6 +1401,8 @@ export interface CreateCorrespondenceRequest {
   targetUserId: number;
   importance: CorrespondenceImportance;
   bodyHtml: string;
+  /** عقد المستلم الرئيس (§10.2): شعبة مجمدة — غائب يعني رئيس القسم؛ لغير الرئيس تُرفض. */
+  recipientSectionId?: number | null;
 }
 
 /** مستلم مرشح لمراسلة جديدة (بحث بالاسم). */
@@ -1347,7 +1436,7 @@ export interface ReviewLetterMessageDto {
   messageDate: string;
   authorId: number;
   authorName: string;
-  authorRole: 'lawyer' | 'head';
+  authorRole: 'lawyer' | 'head' | 'subhead';
 }
 
 /** سطر كتاب في القائمة؛ fileContext فارغ للكتاب العام غير المرتبط بملف. */
@@ -1367,6 +1456,10 @@ export interface ReviewLetterListItemDto {
   /** اسم فرع الإدارة — يُعرض للمدير/المشرف فقط. */
   administrativeBranchName?: string | null;
   updatedAt: string;
+  /** الشعبة المستلمة (لبلا ملف — غائب يعني رئيس القسم؛ مع ملف مشتقة من دائرته). */
+  recipientSectionId?: number | null;
+  /** اسم الشعبة المستلمة — للعرض فقط. */
+  recipientSectionName?: string | null;
 }
 
 export interface ReviewLetterDto {
@@ -1384,11 +1477,17 @@ export interface ReviewLetterDto {
   hasUnseenReply?: boolean;
   messages: ReviewLetterMessageDto[];
   createdAt: string;
+  /** الشعبة المستلمة (لبلا ملف — غائب يعني رئيس القسم؛ مع ملف مشتقة من دائرته). */
+  recipientSectionId?: number | null;
+  /** اسم الشعبة المستلمة — للعرض فقط. */
+  recipientSectionName?: string | null;
 }
 
 export interface CreateReviewLetterRequest {
   documentId?: number | null;
   bodyHtml: string;
+  /** اختيار المستلم لبلا ملف (شعبة) — غائب يعني رئيس القسم؛ مع ملف يُتجاهل. */
+  recipientSectionId?: number | null;
 }
 
 export interface AddReviewLetterAddendumRequest {
@@ -2183,6 +2282,10 @@ export interface ExecutionCircuitDto {
   fileCount: number;
   pendingCount: number;
   version: number;
+  /** معرّف الشعبة المالكة — غائب/`null` يعني قسم الفرع (§8). */
+  sectionId?: number | null;
+  /** اسم الشعبة المالكة — للعرض فقط. */
+  sectionName?: string | null;
 }
 
 /** إدخال/تسمية دائرة (الاسم فقط — الفرع من سياق رئيس القسم). */
@@ -2225,7 +2328,7 @@ export interface CompleteRegistrationsRequest {
   }>;
 }
 
-/** صف إحصائية دائرة (الدائرة × ملفاتها × محامون نشطون × معلقات). */
+/** صف إحصائية دائرة (الدائرة × ملفاتها × محامون نشطون × معلقات) — مع عمود الشعبة (§12). */
 export interface CircuitStatsDto {
   circuitId: number;
   circuitName: string;
@@ -2235,6 +2338,12 @@ export interface CircuitStatsDto {
   fileCount: number;
   lawyerCount: number;
   pendingCount: number;
+  /** شعبة الدائرة المالكة — غائب يعني القسم. */
+  sectionId?: number | null;
+  /** اسم الشعبة المالكة — للعرض فقط. */
+  sectionName?: string | null;
+  /** رمز التزامن التفاؤلي — يُرسَل في نقل الدائرة لكشف السباق. */
+  version?: number | null;
 }
 
 

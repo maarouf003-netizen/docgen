@@ -9,7 +9,7 @@ using Microsoft.Extensions.Options;
 namespace DocGenerator.Application.Tests;
 
 /// <summary>
-/// بوابة الدخول للحساب الفرعي بلا فرع (رئيس قسم/محامٍ): حالة محرّمة تُرفض بلا
+/// بوابة الدخول للحساب الفرعي بلا فرع (رئيس قسم/رئيس شعبة/محامٍ): حالة محرّمة تُرفض بلا
 /// جلسة أصلًا. تُختبر هنا بمستودع مزيف لأن قيد القاعدة يجعل تجسيد الحالة عبر
 /// EF مستحيلًا — وهذا مقصود: الخدمة تحرس منطق القرار، والقاعدة تحرس التخزين.
 /// </summary>
@@ -22,6 +22,18 @@ public class AuthServiceBranchGateTests
 
         public Task<List<User>> FindByUsernameAllAsync(string username, CancellationToken ct = default)
             => Task.FromResult(_users.Where(u => u.Username == username).ToList());
+        public Task<bool> ExistsActiveHeadAsync(UserRole role, int? branchId, int? sectionId, int? excludeUserId, CancellationToken ct = default)
+            => Task.FromResult(role is (UserRole.Head or UserRole.SubHead)
+                && _users.Any(u => u.IsActive && u.Role == role && u.BranchId == branchId
+                    && u.SectionId == sectionId && (excludeUserId == null || u.Id != excludeUserId.Value)));
+        public Task<List<User>> ListUsersBySectionAsync(int sectionId, CancellationToken ct = default)
+            => Task.FromResult(_users.Where(u => u.SectionId == sectionId).OrderBy(u => u.FullName).ToList());
+        public Task<User?> FindActiveHeadAsync(UserRole role, int? branchId, int? sectionId, CancellationToken ct = default)
+            => Task.FromResult(role is (UserRole.Head or UserRole.SubHead)
+                ? _users.Where(u => u.IsActive && u.Role == role && u.BranchId == branchId && u.SectionId == sectionId).OrderBy(u => u.Id).FirstOrDefault()
+                : null);
+        public Task<List<User>> ListByCreatorAsync(int creatorId, CancellationToken ct = default)
+            => Task.FromResult(_users.Where(u => u.CreatedById == creatorId).OrderBy(u => u.FullName).ToList());
 
         public Task<User?> GetByIdAsync(int id, CancellationToken ct = default)
             => Task.FromResult(_users.FirstOrDefault(u => u.Id == id));
@@ -81,6 +93,7 @@ public class AuthServiceBranchGateTests
 
     [Theory]
     [InlineData(UserRole.Head)]
+    [InlineData(UserRole.SubHead)]
     [InlineData(UserRole.Lawyer)]
     public async Task Login_BranchlessBranchRole_ReturnsBranchRequiredWithoutSession(UserRole role)
     {

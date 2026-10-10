@@ -99,6 +99,12 @@ public class DocGeneratorPostgresDbContext : DocGeneratorDbContext
         modelBuilder.Entity<DocumentAppeal>()
             .Property(a => a.AssignedAt)
             .HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<DocumentAppeal>()
+            .Property(a => a.ForwardedAt)
+            .HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<HeadSuccession>()
+            .Property(h => h.At)
+            .HasColumnType("timestamp with time zone");
         modelBuilder.Entity<ReviewLetter>()
             .Property(l => l.LetterDate)
             .HasColumnType("timestamp with time zone");

@@ -651,6 +651,9 @@ public class PortalRestructureTests : IDisposable
         Assert.Null(response.GeneralEntitySideLabel);
         Assert.Null(response.DeletedAt);
         Assert.Null(response.BranchName);
+        // النطاق الداخلي (§5): معرف الشعبة واسمها يُحجبان سلكيًا كالدائرة.
+        Assert.Null(response.SectionId);
+        Assert.Null(response.SectionName);
     }
 
     [Fact]
@@ -705,6 +708,8 @@ public class PortalRestructureTests : IDisposable
             "GeneralEntitySideLabel", "DeletedAt", "BranchName",
             // سجل الدوائر: المعرف المرجعي وعلم الانتظار داخليان فيُحجبان سلكيًا.
             "ExecutionCircuitId", "NeedsRegistration",
+            // الشعب: معرف الشعبة واسمها داخليان للنطاق (§5) فيُحجبان سلكيًا كالدائرة.
+            "SectionId", "SectionName",
             // RF-010: عدّاد التزامن يُصفَّر سلكيًا للبوابة (بلا سطح كتابة فيها).
             "Version",
         };

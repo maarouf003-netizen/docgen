@@ -13,11 +13,13 @@ public class DocumentAppealConfiguration : IEntityTypeConfiguration<DocumentAppe
 {
     public void Configure(EntityTypeBuilder<DocumentAppeal> builder)
     {
-        // `PB-002` (`BQ-035`): حالة الاستئناف مجمدة قاعديًا من الكتالوج نفسه.
+        // `PB-002`: حالة الإحالة مجمدة قاعديًا من الكتالوج نفسه.
         builder.ToTable("DocumentAppeals", table =>
         {
             table.HasCheckConstraint("CK_DocumentAppeals_Status",
                 $"\"Status\" IN ({CheckConstraintLists.InList(AppealStatusCatalog.ValidStatuses)})");
+            table.HasCheckConstraint("CK_DocumentAppeals_ForwardState",
+                $"\"ForwardState\" IN ({CheckConstraintLists.InList(AppealForwardCatalog.ValidStates)})");
         });
         builder.HasKey(a => a.Id);
 
@@ -70,6 +72,15 @@ public class DocumentAppealConfiguration : IEntityTypeConfiguration<DocumentAppe
         builder.HasIndex(a => a.DocumentId);
         builder.HasIndex(a => a.AssignedLawyerId);
         builder.HasIndex(a => a.CreatedAt);
+
+        // حقول الإحالة (شعبة → قسم): الافتراضي ملك النطاق؛ التزامن المتفائل
+        // لمسارات الإسناد الثلاثة (قرار §2 + §6.7).
+        builder.Property(a => a.ForwardState).HasMaxLength(20).IsRequired().HasDefaultValue(AppealForwardCatalog.Owned);
+        builder.HasIndex(a => a.ForwardState);
+        builder.Property(a => a.ForwardedAt).HasColumnType("datetime2");
+        builder.Property(a => a.ForwardReason).HasMaxLength(1000);
+        builder.HasIndex(a => a.ForwardedById);
+        builder.Property(a => a.Version).IsConcurrencyToken();
 
         builder.HasOne(a => a.AssignedLawyer)
             .WithMany()

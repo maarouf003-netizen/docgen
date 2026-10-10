@@ -65,9 +65,9 @@ export default function FileCorrespondence() {
   }
 
   // صلاحية التسطير: عبارة البطاقة الأصلية حرفيًا (DocumentView) — محامي الملف
-  // المالك أو رئيس القسم.
+  // المالك أو رئيس القسم/الشعبة.
   const canEdit = user?.role === 'lawyer';
-  const canTransfer = user?.role === 'head';
+  const canTransfer = user?.role === 'head' || user?.role === 'subhead';
   const isOwner = doc.createdById != null && doc.createdById === user?.id;
   // عنوان نافذة التسطير: عبارة البطاقة الأصلية حرفيًا (لا عبارة الترويسة).
   const documentTitle =

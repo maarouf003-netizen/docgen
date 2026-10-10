@@ -95,7 +95,9 @@ public class CorrespondenceServiceTests : IDisposable
             new TransactionRunner(_db),
             _audit,
             new DbExceptionClassifier(),
-            clock ?? TimeProvider.System, TestClock.TimeZone);
+            clock ?? TimeProvider.System, TestClock.TimeZone,
+            new Repository<Section>(_db),
+            new Repository<ExecutionCircuit>(_db));
     }
 
     private static User NewUser(string username, string fullName, UserRole role, int? branchId)
@@ -899,6 +901,10 @@ var names = targets.Select(t => t.FullName).ToList();
             int branchId, string governorate, string? q, string? importance, int page, int perPage, CancellationToken ct = default)
             => _inner.SearchForBranchAsync(branchId, governorate, q, importance, page, perPage, ct);
 
+        public Task<(List<Correspondence> Items, int TotalCount)> SearchForScopeAsync(
+            int userId, int branchId, int sectionId, string? q, string? importance, int page, int perPage, CancellationToken ct = default)
+            => _inner.SearchForScopeAsync(userId, branchId, sectionId, q, importance, page, perPage, ct);
+
         public Task<(List<Correspondence> Items, int TotalCount)> SearchAllAsync(
             string? governorate, string? q, string? importance, int page, int perPage, CancellationToken ct = default)
             => _inner.SearchAllAsync(governorate, q, importance, page, perPage, ct);
@@ -1016,5 +1022,83 @@ var names = targets.Select(t => t.FullName).ToList();
             new[] { letter.CorrespondenceNumber, addendum.MessageNumber, reply.MessageNumber, secondAddendum.MessageNumber },
             full.Messages.Select(m => m.MessageNumber).ToArray());
         Assert.Equal(4, full.Messages.Select(m => m.MessageNumber).Distinct().Count());
+    }
+
+    private async Task<(User Sub, int SectionId)> AddSubHeadWithSectionAsync()
+    {
+        var section = new Section
+        {
+            Name = "شعبة مصياف",
+            NameNorm = ArabicNameNormalizer.Normalize("شعبة مصياف"),
+            BranchId = _branchId,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow,
+        };
+        _db.Sections.Add(section);
+        await _db.SaveChangesAsync();
+        var sub = NewUser("corr_sub", "رئيس الشعبة", UserRole.SubHead, _branchId);
+        sub.SectionId = section.Id;
+        _db.Users.Add(sub);
+        await _db.SaveChangesAsync();
+        return (sub, section.Id);
+    }
+
+    private async Task<Document> AddSectionDocumentAsync(User owner, int? sectionId)
+    {
+        var circuit = new ExecutionCircuit
+        {
+            BranchId = _branchId,
+            SectionId = sectionId,
+            Name = sectionId.HasValue ? "دائرة الشعبة" : "دائرة القسم",
+            NameNorm = ArabicNameNormalizer.Normalize(sectionId.HasValue ? "دائرة الشعبة" : "دائرة القسم"),
+            IsActive = true,
+            CreatedById = _head.Id,
+        };
+        _db.ExecutionCircuits.Add(circuit);
+        await _db.SaveChangesAsync();
+        var doc = await AddDocumentAsync(owner);
+        doc.ExecutionCircuitId = circuit.Id;
+        await _db.SaveChangesAsync();
+        return doc;
+    }
+
+    [Fact]
+    public async Task SubHead_FileLinked_Create_AllowedInOwnSectionOnly()
+    {
+        var (sub, sectionId) = await AddSubHeadWithSectionAsync();
+        var ownDoc = await AddSectionDocumentAsync(_lawyer1, sectionId);
+        await LinkDocumentToEntryAsync(ownDoc, _entryId);
+        var otherDoc = await AddSectionDocumentAsync(_lawyer1, null);
+        await LinkDocumentToEntryAsync(otherDoc, _entryId);
+
+        var letter = await _service.CreateAsync(
+            new CreateCorrespondenceRequest(ownDoc.Id, _delegate.Id, "normal", "<p>من الشعبة</p>"),
+            sub.Id, "رئيس الشعبة", UserRole.SubHead, _branchId, default, sectionId);
+        Assert.Equal(ownDoc.Id, letter.DocumentId);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.CreateAsync(
+            new CreateCorrespondenceRequest(otherDoc.Id, _delegate.Id, "normal", "<p>خارج النطاق</p>"),
+            sub.Id, "رئيس الشعبة", UserRole.SubHead, _branchId, default, sectionId));
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.CreateAsync(
+            new CreateCorrespondenceRequest(ownDoc.Id, _delegate.Id, "normal", "<p>بلا شعبة</p>"),
+            sub.Id, "رئيس الشعبة", UserRole.SubHead, _branchId, default, null));
+    }
+
+    [Fact]
+    public async Task SubHead_FileLinked_SearchTargets_GatedByScope()
+    {
+        var (sub, sectionId) = await AddSubHeadWithSectionAsync();
+        var ownDoc = await AddSectionDocumentAsync(_lawyer1, sectionId);
+        await LinkDocumentToEntryAsync(ownDoc, _entryId);
+        var otherDoc = await AddSectionDocumentAsync(_lawyer1, null);
+        await LinkDocumentToEntryAsync(otherDoc, _entryId);
+
+        var targets = await _service.SearchTargetsAsync(
+            sub.Id, UserRole.SubHead, _branchId, "مندوب", ownDoc.Id, default, sectionId);
+        Assert.NotEmpty(targets);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.SearchTargetsAsync(
+            sub.Id, UserRole.SubHead, _branchId, "مندوب", otherDoc.Id, default, sectionId));
     }
 }

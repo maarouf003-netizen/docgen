@@ -386,7 +386,7 @@ describe('DocumentsList', () => {
   });
 
   it('يخفي عمود «عدد المشاهدات» عن رئيس القسم', async () => {
-    useAuthMock.mockReturnValue({ hasFullAccess: false, isHead: true });
+    useAuthMock.mockReturnValue({ hasFullAccess: false, isHead: true, user: { role: 'head' } });
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [makeDocument({ viewCount: 3 })] },
     });
@@ -749,7 +749,7 @@ describe('DocumentsList', () => {
   });
 
   it('يعرض عمود «المحامي المختص» لرئيس القسم دون «فرع الإدارة»', async () => {
-    useAuthMock.mockReturnValue({ hasFullAccess: false, isHead: true });
+    useAuthMock.mockReturnValue({ hasFullAccess: false, isHead: true, user: { role: 'head' } });
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: {
         page: 1,

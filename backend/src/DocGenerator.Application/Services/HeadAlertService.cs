@@ -8,7 +8,15 @@ namespace DocGenerator.Application.Services;
 public interface IHeadAlertService
 {
     Task<List<HeadAlertDto>> ListForLawyerAsync(int userId, CancellationToken ct = default);
-    Task<List<HeadAlertDto>> ListForHeadAsync(int branchId, CancellationToken ct = default);
+    /// <summary>
+    /// تنبيهات الرئيس (§8: قراءة بالمستلم لا بالفرع) — ما استلمه في فرعه فقط.
+    /// </summary>
+    Task<List<HeadAlertDto>> ListForHeadAsync(int userId, int branchId, CancellationToken ct = default);
+    /// <summary>
+    /// ما أصدره الرئيس في فرعه (تبويب «أرسلتها»): يُعرض للقراءة فقط — بلا زر
+    /// تعليم مقروء (المُرسِل ليس مستلمًا) وبلا أثر في العدّادات والتعاقب.
+    /// </summary>
+    Task<List<HeadAlertDto>> ListSentAsync(int userId, int branchId, CancellationToken ct = default);
     Task<int> CountUnreadAsync(int userId, CancellationToken ct = default);
     Task<HeadAlertDto> CreateAsync(CreateHeadAlertRequest request, int actorUserId, int actorBranchId, string? actorName, CancellationToken ct = default);
     Task<bool> MarkReadAsync(int alertId, int userId, CancellationToken ct = default);
@@ -25,6 +33,11 @@ public interface IHeadAlertService
     Task<bool> DeleteByDelegationAsync(int delegationId, CancellationToken ct = default);
     /// <summary>حذف كل تنبيهات الاستئناف (تصفية تنبيه «اختيار المحامي» بعد الإسناد).</summary>
     Task<bool> DeleteByAppealAsync(int appealId, CancellationToken ct = default);
+    /// <summary>
+    /// حذف انتقائي لمستلم واحد من تنبيهات استئناف (§6.2/§6.5 — إحالة/تراجع) —
+    /// بلا مساس بباقي المستلمين.
+    /// </summary>
+    Task<int> RemoveAppealRecipientAsync(int appealId, int userId, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -65,10 +78,16 @@ public sealed class HeadAlertService : IHeadAlertService
         return alerts.Select(a => ToLawyerDto(a, userId)).ToList();
     }
 
-    public async Task<List<HeadAlertDto>> ListForHeadAsync(int branchId, CancellationToken ct = default)
+    public async Task<List<HeadAlertDto>> ListForHeadAsync(int userId, int branchId, CancellationToken ct = default)
     {
-        var alerts = await _alerts.ListByBranchAsync(branchId, ct);
-        return alerts.Select(ToHeadDto).ToList();
+        var alerts = await _alerts.ListByRecipientInBranchAsync(userId, branchId, ct);
+        return alerts.Select(a => ToHeadDto(a, userId)).ToList();
+    }
+
+    public async Task<List<HeadAlertDto>> ListSentAsync(int userId, int branchId, CancellationToken ct = default)
+    {
+        var alerts = await _alerts.ListSentAsync(userId, branchId, ct);
+        return alerts.Select(a => ToHeadDto(a, userId)).ToList();
     }
 
     public Task<int> CountUnreadAsync(int userId, CancellationToken ct = default)
@@ -260,6 +279,21 @@ public sealed class HeadAlertService : IHeadAlertService
         return true;
     }
 
+    /// <summary>
+    /// حذف انتقائي لمستلم واحد من تنبيهات استئناف (§6.2/§6.5 — إحالة/تراجع) —
+    /// بلا مساس بباقي المستلمين. أفضل جهد للمتصل (لا يرمي).
+    /// </summary>
+    public async Task<int> RemoveAppealRecipientAsync(int appealId, int userId, CancellationToken ct = default)
+    {
+        var removed = 0;
+        await _tx.RunAsync(async token =>
+        {
+            removed = await _alerts.RemoveAppealRecipientAsync(appealId, userId, token);
+            await _uow.SaveChangesAsync(token);
+        }, ct);
+        return removed;
+    }
+
     private async Task<List<User>> ResolveRecipientsAsync(
         HeadAlertTargetType targetType,
         CreateHeadAlertRequest request,
@@ -299,6 +333,17 @@ public sealed class HeadAlertService : IHeadAlertService
             case HeadAlertTargetType.Head:
                 // تنبيهات النظام لروّاد القسم (مراحل الإنابة): تصل لرؤساء أقسام الفرع المفعلين،
                 // وعند غياب أي رئيس يُرفض الإنشاء ويُسجَّل فشل الإشعار في سجل التدقيق.
+                // التوجيه لمالك واحد (§6.1 — قرار §2.21): `RecipientUserId` يقيّد
+                // المستلمين به حصرًا بعد التحقق (رئيس مفعّل في الفرع).
+                if (request.RecipientUserId.HasValue)
+                {
+                    var directed = await _users.GetByIdAsync(request.RecipientUserId.Value, ct);
+                    if (directed is null || !directed.IsActive
+                        || directed.Role is not (UserRole.Head or UserRole.SubHead)
+                        || directed.BranchId != branchId)
+                        throw new ArgumentException("المستلم الموجَّه ليس رئيسًا مفعّلًا في الفرع");
+                    return new List<User> { directed };
+                }
                 return await _alerts.ListActiveHeadsAsync(branchId, ct);
             default:
                 throw new ArgumentException("نوع التنبيه غير صالح");
@@ -341,7 +386,10 @@ public sealed class HeadAlertService : IHeadAlertService
         a.ReviewLetterId,
         a.DelegationId);
 
-    private static HeadAlertDto ToHeadDto(HeadAlert a) => new(
+    /// <summary>عرض الإنشاء/التحديث (بلا قارئ معيَّن — حالة القراءة فارغة).</summary>
+    private static HeadAlertDto ToHeadDto(HeadAlert a) => ToHeadDto(a, -1);
+
+    private static HeadAlertDto ToHeadDto(HeadAlert a, int userId) => new(
         a.Id,
         a.Message,
         a.TargetType.ToString().ToLowerInvariant(),
@@ -349,7 +397,7 @@ public sealed class HeadAlertService : IHeadAlertService
         DocumentTitle(a),
         a.TargetLawyerId,
         a.TargetLawyer?.FullName,
-        null,
+        a.Recipients.FirstOrDefault(r => r.UserId == userId)?.IsRead,
         a.Recipients.Count,
         a.Recipients.Count(r => !r.IsRead),
         a.CreatedAt,

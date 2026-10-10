@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { api, getApiErrorMessage } from '../../api/client';
-import { useAuth } from '../../auth/useAuth';
 import { sanitizeRichText, richToPlainText } from '../../utils/richText';
 import { normalizeArabicDigits } from '../../utils/arabicDigits';
 import RichTextEditor from '../RichTextEditor';
@@ -21,20 +20,20 @@ const REMINDER_COLOR_STYLES: Record<string, string> = {
 
 /**
  * الإجراءات والملاحظات المستقلة للاستئناف — مرآة لنافذة إجراءات الملف
- * بنقاط نهاية الاستئناف، والإدخال للمحامي المتابع والقراءة لباقي المشاهدين.
+ * بنقاط نهاية الاستئناف. الكتابة للمحامي المتابع (`canWrite`)، والقراءة
+ * لباقي المشاهدين (تُخفى أزرار الإضافة والتعديل والحذف والتذكير).
  */
 export default function AppealActionsModal({
   appealId,
   onClose,
   onChanged,
+  canWrite,
 }: {
   appealId: number;
   onClose: () => void;
   onChanged?: () => void;
+  canWrite: boolean;
 }) {
-  const { user } = useAuth();
-  const isLawyer = user?.role === 'lawyer';
-
   const [actions, setActions] = useState<AppealActionDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -82,6 +81,13 @@ export default function AppealActionsModal({
   const submit = async (targetType: 'action' | 'note') => {
     if (!richToPlainText(text)) {
       setSaveError('نص الإجراء أو الملاحظة مطلوب');
+      return;
+    }
+    // مرآة قاعدة إجراءات الملف: تاريخ الإجراء إلزامي (الملاحظة اختيارية) —
+    // مع تركيز أول حقل خاطئ عند الإرسال.
+    if (targetType === 'action' && !normalizeArabicDigits(actionDate).trim()) {
+      setSaveError('يجب إدخال تاريخ الإجراء');
+      document.getElementById('appeal-action-date')?.focus();
       return;
     }
     setSaving(true);
@@ -178,7 +184,7 @@ export default function AppealActionsModal({
 
         <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
           <span className="text-sm text-gray-600 tabular-nums">{actions.length} عنصر</span>
-          {isLawyer && !showForm && (
+          {canWrite && !showForm && (
             <button
               onClick={() => { setShowForm(true); setSaveError(''); }}
               className="bg-emerald-800 hover:bg-emerald-700 text-white rounded-lg px-4 py-2 text-sm min-h-11"
@@ -347,7 +353,7 @@ export default function AppealActionsModal({
                     {a.createdByName ? <span className="text-gray-400"> · {a.createdByName}</span> : null}
                   </div>
                 </div>
-                {isLawyer && (
+                {canWrite && (
                   <div className="flex gap-1 shrink-0">
                     {(a.reminderDuration || a.reminderColor) && (
                       <button

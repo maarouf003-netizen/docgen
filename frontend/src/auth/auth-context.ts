@@ -12,6 +12,9 @@ export interface AuthContextValue {
   logout: () => void;
   hasFullAccess: boolean;
   isHead: boolean;
+  isSubHead: boolean;
+  isHeadOrSubHead: boolean;
+  sectionId: number | null;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);

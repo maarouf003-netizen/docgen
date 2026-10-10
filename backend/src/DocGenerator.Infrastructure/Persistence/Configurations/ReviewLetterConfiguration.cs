@@ -20,6 +20,7 @@ public class ReviewLetterConfiguration : IEntityTypeConfiguration<ReviewLetter>
         builder.HasIndex(l => l.BranchId);
         builder.HasIndex(l => l.DocumentId);
         builder.HasIndex(l => l.CreatedById);
+        builder.HasIndex(l => l.RecipientSectionId);
         builder.HasIndex(l => l.IsAnswered);
         builder.HasIndex(l => l.UpdatedAt);
 
@@ -31,6 +32,12 @@ public class ReviewLetterConfiguration : IEntityTypeConfiguration<ReviewLetter>
         builder.HasOne(l => l.CreatedBy)
             .WithMany()
             .HasForeignKey(l => l.CreatedById)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // الشعبة المستلمة (لبلا ملف) — مرآة قرار التوجيه وقت الإنشاء.
+        builder.HasOne(l => l.RecipientSection)
+            .WithMany()
+            .HasForeignKey(l => l.RecipientSectionId)
             .OnDelete(DeleteBehavior.Restrict);
 
         // الملف المرتبط اختياري (كتاب عام عندما يكون null)؛ الكتاب وثيقة رسمية

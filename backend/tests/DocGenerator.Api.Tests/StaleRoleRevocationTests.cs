@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Net.Http.Json;
+using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,6 +24,19 @@ public class StaleRoleRevocationTests
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
         return db.Branches.Single(b => b.Code == code).Id;
+    }
+
+    /// <summary>
+    /// فرع معزول برئيسه الوحيد (وحدانية الرئيس المفعّل لكل فرع — قرار §2.26).
+    /// </summary>
+    private async Task<int> CreateBranchAsync(string name, string governorate)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+        var branch = new Branch { Name = name, Code = $"SR_{Guid.NewGuid():N}"[..12].ToUpperInvariant(), Governorate = governorate };
+        db.Branches.Add(branch);
+        await db.SaveChangesAsync();
+        return branch.Id;
     }
 
     [Fact]
@@ -101,9 +115,11 @@ public class StaleRoleRevocationTests
     public async Task HeadBranchTransfer_InvalidatesPreviouslyIssuedTokens()
     {
         // نفس آلية S1 لكن بدور الرئيس محل التحقيق: نقل الرئيس بين الفروع
-        // يُسقط توكن الفرع القديم فورًا فلا يرى بياناته بصمت.
+        // يُسقط توكن الفرع القديم فورًا فلا يرى بياناته بصمت. الرئيس يُنشأ في
+        // فرع معزول (وحدانية الرئيس — قرار §2.26: دمشق فيها head1 المزروع).
         var username = $"hmove_{Guid.NewGuid():N}"[..16];
-        var target = await _factory.CreateUserAsync(username, UserRole.Head, branchId: BranchId("DAM"), password: "123456");
+        var srcBranchId = await CreateBranchAsync("فرع المصدر", "حمص");
+        var target = await _factory.CreateUserAsync(username, UserRole.Head, branchId: srcBranchId, password: "123456");
 
         var login = await _factory.LoginAsync(username, "123456");
         Assert.Equal((int)HttpStatusCode.OK, login!.StatusCode);
@@ -111,7 +127,7 @@ public class StaleRoleRevocationTests
         var staleClient = _factory.CreateClient();
         staleClient.SetAuthCookie(login.Token!);
         Assert.Equal(HttpStatusCode.OK, (await staleClient.GetAsync("/api/auth/me")).StatusCode);
-        // نقطة بيانات حقيقية (لا `/me` وحدها): رئيس فرع DAM يرى لوحته.
+        // نقطة بيانات حقيقية (لا `/me` وحدها): رئيس الفرع يرى لوحته.
         Assert.Equal(HttpStatusCode.OK, (await staleClient.GetAsync("/api/dashboard")).StatusCode);
 
         var admin = _factory.AuthorizedClient("admin");

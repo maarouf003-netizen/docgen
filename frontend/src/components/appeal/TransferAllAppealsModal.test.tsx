@@ -39,7 +39,8 @@ describe('TransferAllAppealsModal', () => {
     await user.click(screen.getByRole('button', { name: 'متابعة' }));
 
     expect(await screen.findByText(/سيتم نقل/)).toBeInTheDocument();
-    expect(screen.getByText('تُنقل الاستئنافات المنظورة فقط.')).toBeInTheDocument();
+    expect(screen.getByText(/تُنقل الاستئنافات المنظورة فقط/)).toBeInTheDocument();
+    expect(screen.getByText(/وضمن نطاقك.*حصرًا/)).toBeInTheDocument();
     expect(apiMock.get).toHaveBeenCalledWith('/appeals/owner/3/count');
   });
 });

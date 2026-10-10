@@ -9,7 +9,7 @@ namespace DocGenerator.Api.Controllers;
 
 [ApiController]
 [Route("api/alerts")]
-[Authorize(Roles = "lawyer,head")]
+[Authorize(Roles = "lawyer,head,subhead")]
 public class AlertsController : ControllerBase
 {
     private readonly IHeadAlertService _alerts;
@@ -25,12 +25,12 @@ public class AlertsController : ControllerBase
 
     private UserRole Role => User.GetRoleEnum();
     private bool IsLawyer => Role == UserRole.Lawyer;
-    private bool IsHead => Role == UserRole.Head;
+    private bool IsHeadOrSubHead => RolePermissions.IsHeadOrSubHead(Role);
     private bool CanCreateAlerts => RolePermissions.CanCreateAlerts(Role);
 
     /// <summary>
-    /// قائمة التنبيهات: المحامي يرى تنبيهاته، ورئيس القسم يرى تنبيهات فرعه.
-    /// المدير/المشرف خارج نطاق التنبيهات.
+    /// قائمة التنبيهات (§8: قراءة بالمستلم): المحامي تنبيهاته، ورئيس القسم/الشعبة
+    /// ما استلمه في فرعه فقط. المدير/المشرف خارج نطاق التنبيهات.
     /// </summary>
     [HttpGet]
     public async Task<IActionResult> List(CancellationToken ct)
@@ -38,12 +38,12 @@ public class AlertsController : ControllerBase
         if (IsLawyer)
             return Ok(await _alerts.ListForLawyerAsync(User.GetUserId(), ct));
 
-        if (IsHead)
+        if (IsHeadOrSubHead)
         {
             var branchId = User.GetBranchId();
             if (branchId is null)
                 return Forbid();
-            return Ok(await _alerts.ListForHeadAsync(branchId.Value, ct));
+            return Ok(await _alerts.ListForHeadAsync(User.GetUserId(), branchId.Value, ct));
         }
 
         return Forbid();
@@ -52,11 +52,28 @@ public class AlertsController : ControllerBase
     [HttpGet("unread-count")]
     public async Task<IActionResult> UnreadCount(CancellationToken ct)
     {
-        // عدّاد غير المقروء خاص بالمحامي المستلم؛ رئيس القسم يقرأه من قائمة تنبيهاته.
-        if (!IsLawyer)
+        // عدّاد غير المقروء خاص بالمستلم (محامٍ أو رئيس نطاق)؛ يُحسب على صفوفه.
+        if (IsLawyer || IsHeadOrSubHead)
+        {
+            var count = await _alerts.CountUnreadAsync(User.GetUserId(), ct);
+            return Ok(new { count });
+        }
+        return Forbid();
+    }
+
+    /// <summary>
+    /// ما أصدره الرئيس في فرعه (تبويب «أرسلتها» — قراءة فقط): رئيس القسم
+    /// والشعبة بفرع — بلا زر تعليم مقروء (المُرسِل ليس مستلمًا).
+    /// </summary>
+    [HttpGet("sent")]
+    public async Task<IActionResult> Sent(CancellationToken ct)
+    {
+        if (!IsHeadOrSubHead)
             return Forbid();
-        var count = await _alerts.CountUnreadAsync(User.GetUserId(), ct);
-        return Ok(new { count });
+        var branchId = User.GetBranchId();
+        if (branchId is null)
+            return Forbid();
+        return Ok(await _alerts.ListSentAsync(User.GetUserId(), branchId.Value, ct));
     }
 
     /// <summary>إصدار تنبيه — رئيس القسم لفرعه فقط.</summary>
@@ -91,12 +108,12 @@ public class AlertsController : ControllerBase
             return alert is null ? NotFound() : Ok(alert);
         }
 
-        if (IsHead)
+        if (IsHeadOrSubHead)
         {
             var branchId = User.GetBranchId();
             if (branchId is null)
                 return Forbid();
-            var list = await _alerts.ListForHeadAsync(branchId.Value, ct);
+            var list = await _alerts.ListForHeadAsync(User.GetUserId(), branchId.Value, ct);
             var alert = list.FirstOrDefault(a => a.Id == id);
             return alert is null ? NotFound() : Ok(alert);
         }
@@ -119,11 +136,14 @@ public class AlertsController : ControllerBase
         return Ok(await _alerts.ListByDelegationAsync(delegationId, userId, ct));
     }
 
-    /// <summary>تعليم التنبيه كمقروء — المحامي المستلم فقط.</summary>
+    /// <summary>
+    /// تعليم التنبيه كمقروء — المستلم فقط (محامٍ أو رئيس نطاق)؛ يُبقي سجل
+    /// المقروء تاريخًا لا يُرحَّل عند التعاقب. غير المستلم يُرفض (404).
+    /// </summary>
     [HttpPatch("{id:int}/read")]
     public async Task<IActionResult> MarkRead(int id, CancellationToken ct)
     {
-        if (!IsLawyer)
+        if (!IsLawyer && !IsHeadOrSubHead)
             return Forbid();
         var ok = await _alerts.MarkReadAsync(id, User.GetUserId(), ct);
         return ok ? NoContent() : NotFound();

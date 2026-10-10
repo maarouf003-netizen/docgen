@@ -120,4 +120,17 @@ public class DbExceptionClassifierTests : IDisposable
         Assert.False(_classifier.IsConcurrencyViolation(
             new DbUpdateException("فشل حفظ", new InvalidOperationException("سبب داخلي"))));
     }
+
+    [Fact]
+    public void IsConcurrencyViolation_StorageBusy_Friendly()
+    {
+        // انشغال/قفل التخزين المتزامن (المرحلة 9): كتابتان حقيقيتان تتصادمان
+        // خارج `WHERE` الرمز — تُترجمان 409 ودية بدل 500 خام.
+        Assert.True(_classifier.IsConcurrencyViolation(
+            new DbUpdateException("فشل حفظ", new Microsoft.Data.Sqlite.SqliteException("database is locked", 5))));
+        Assert.True(_classifier.IsConcurrencyViolation(
+            new Microsoft.Data.Sqlite.SqliteException("database table is locked", 6)));
+        Assert.False(_classifier.IsConcurrencyViolation(
+            new Microsoft.Data.Sqlite.SqliteException("constraint failed", 19)));
+    }
 }

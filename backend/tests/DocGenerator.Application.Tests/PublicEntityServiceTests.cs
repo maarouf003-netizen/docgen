@@ -3746,6 +3746,78 @@ public class PublicEntityServiceTests : IDisposable
             _service.SuggestParentEditAsync(entryId, new SuggestParentEditRequest(Reason: "سبب"), ManagerActor()));
     }
 
+    private async Task<EntityRegistryActor> SubHeadDamascusActorAsync()
+    {
+        var sub = new User { Username = "sub_dam", FullName = "رئيس شعبة دمشق", Role = UserRole.SubHead, BranchId = _damascusId, PasswordHash = "x" };
+        _db.Users.Add(sub);
+        await _db.SaveChangesAsync();
+        return new EntityRegistryActor(sub.Id, "رئيس شعبة دمشق", UserRole.SubHead, _damascusId);
+    }
+
+    [Fact]
+    public async Task SuggestParentEdit_SubHead_ParityWithHead()
+    {
+        var entryId = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+        var sub = await SubHeadDamascusActorAsync();
+
+        var suggestion = await _service.SuggestParentEditAsync(
+            entryId, new SuggestParentEditRequest("وزارة التعليم المقترحة", Reason: "سبب"), sub);
+        Assert.Equal(ParentEditSuggestionStatusCatalog.Pending, suggestion.Status);
+
+        // خارج محافظة فرعه مرفوض كما القسم.
+        var alpEntry = await SeedParentEntityAsync("وزارة الصحة", "حلب", "فرع حلب");
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.SuggestParentEditAsync(alpEntry, new SuggestParentEditRequest(Reason: "سبب"), sub));
+    }
+
+    [Fact]
+    public async Task ListSuggestions_SubHead_SeesOwnOnly()
+    {
+        var subEntry = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+        var headEntry = await SeedParentEntityAsync("وزارة النقل", "دمشق", "فرع التجهيز");
+        var sub = await SubHeadDamascusActorAsync();
+        await _service.SuggestParentEditAsync(subEntry, new SuggestParentEditRequest("اقتراح الشعبة", Reason: "سبب"), sub);
+        await _service.SuggestParentEditAsync(headEntry, new SuggestParentEditRequest("اقتراح القسم", Reason: "سبب"), HeadDamascusActor());
+
+        var subView = await _service.ListParentEditSuggestionsAsync(new ParentEditSuggestionListQuery(), sub);
+        Assert.Equal(1, subView.TotalCount);
+        Assert.Equal("اقتراح الشعبة", subView.Items[0].ProposedCanonicalName);
+    }
+
+    [Fact]
+    public async Task WithdrawParentEditSuggestion_SubHead_OwnOnly()
+    {
+        var subEntry = await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+        var headEntry = await SeedParentEntityAsync("وزارة النقل", "دمشق", "فرع التجهيز");
+        var sub = await SubHeadDamascusActorAsync();
+        var own = await _service.SuggestParentEditAsync(subEntry, new SuggestParentEditRequest(Reason: "سبب"), sub);
+        var withdrawn = await _service.WithdrawParentEditSuggestionAsync(own.Id, sub);
+        Assert.Equal(ParentEditSuggestionStatusCatalog.Withdrawn, withdrawn!.Status);
+
+        var headSuggestion = await _service.SuggestParentEditAsync(headEntry, new SuggestParentEditRequest("اقتراح القسم", Reason: "سبب"), HeadDamascusActor());
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.WithdrawParentEditSuggestionAsync(headSuggestion.Id, sub));
+    }
+
+    [Fact]
+    public async Task Registry_SubHead_ScopedLikeHead_AndParentBanned()
+    {
+        await SeedParentEntityAsync("وزارة التعليم", "دمشق", "الفرع الرئيسي");
+        await SeedParentEntityAsync("وزارة الصحة", "حلب", "فرع حلب");
+        var sub = await SubHeadDamascusActorAsync();
+
+        // نطاق المجموعات: محافظة فرعه فقط — مجموعة حلب محجوبة.
+        var groups = await _service.ListGroupsAsync(
+            new EntityGroupListQuery(null, null, 1, 50, null, null), sub, default);
+        Assert.Contains(groups.Items, g => g.CanonicalName == "وزارة التعليم");
+        Assert.DoesNotContain(groups.Items, g => g.CanonicalName == "وزارة الصحة");
+
+        // حظر الأم المباشر كما القسم.
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.CreateAsync(
+            new CreatePublicEntityRequest("جهة أم مباشرة", "ministry", "دمشق", "الجهة الأم", IsParentEntity: true),
+            sub, default));
+    }
+
     [Fact]
     public async Task SuggestParentEdit_DuplicatePendingPerBranch_Throws()
     {
@@ -4125,5 +4197,53 @@ public class PublicEntityServiceTests : IDisposable
 
         var group = await _db.PublicEntityGroups.FindAsync(dto.GroupId);
         Assert.Equal("جهة المعاينة", group!.CanonicalName);
+    }
+
+    // ── F3: تماثل إشعار الجهات العامة لرؤساء الشعب (قرار أ — بالنطاق حسب الاستعلام) ──
+
+    [Fact]
+    public async Task Create_ByLawyer_NotifiesBranchSubHead_WithOwnBranchId()
+    {
+        var subDam = new User { Username = "sub_dam", FullName = "رئيس شعبة دمشق", Role = UserRole.SubHead, BranchId = _damascusId, IsActive = true, PasswordHash = "x" };
+        var subAlp = new User { Username = "sub_alp", FullName = "رئيس شعبة حلب", Role = UserRole.SubHead, BranchId = _aleppoId, IsActive = true, PasswordHash = "x" };
+        _db.Users.AddRange(subDam, subAlp);
+        await _db.SaveChangesAsync();
+
+        await _service.CreateAsync(new CreatePublicEntityRequest(
+            "هيئة الشعبة", "authority", "دمشق", "الفرع الرئيسي", CitationFormulaCatalog.AddToJob),
+            LawyerActor());
+
+        // فرع المُدخِل (دمشق): الرئيس + رئيس الشعبة يستلمان، كلٌّ بتنبيه على فرعه حصرًا.
+        var alerts = await _db.HeadAlerts.AsNoTracking().Include(a => a.Recipients).ToListAsync();
+        Assert.Equal(2, alerts.Count);
+        var recipients = alerts.Select(a => a.Recipients.Single().UserId).ToList();
+        Assert.Contains(_headDamascusId, recipients);
+        Assert.Contains(subDam.Id, recipients);
+        Assert.All(alerts, a => Assert.Equal(_damascusId, a.BranchId));
+        // شعبة فرع آخر (حلب) لا تستلم — بلا تسريب عبر الفروع.
+        Assert.DoesNotContain(subAlp.Id, recipients);
+        Assert.DoesNotContain(_headAleppoId, recipients);
+    }
+
+    [Fact]
+    public async Task ListActiveHeadsByGovernorate_IncludesSubHeads_OfSameGovernorateOnly()
+    {
+        var subDam = new User { Username = "sub_dam", FullName = "رئيس شعبة دمشق", Role = UserRole.SubHead, BranchId = _damascusId, IsActive = true, PasswordHash = "x" };
+        var subAlp = new User { Username = "sub_alp", FullName = "رئيس شعبة حلب", Role = UserRole.SubHead, BranchId = _aleppoId, IsActive = true, PasswordHash = "x" };
+        var inactiveSub = new User { Username = "sub_off", FullName = "رئيس شعبة معطل", Role = UserRole.SubHead, BranchId = _damascusId, IsActive = false, PasswordHash = "x" };
+        _db.Users.AddRange(subDam, subAlp, inactiveSub);
+        await _db.SaveChangesAsync();
+
+        var repo = new PublicEntityRepository(_db);
+        var damascus = await repo.ListActiveHeadsByGovernorateAsync("دمشق");
+        Assert.Contains(damascus, u => u.Id == _headDamascusId);
+        Assert.Contains(damascus, u => u.Id == subDam.Id);
+        Assert.DoesNotContain(damascus, u => u.Id == _headAleppoId);
+        Assert.DoesNotContain(damascus, u => u.Id == subAlp.Id);
+        Assert.DoesNotContain(damascus, u => u.Id == inactiveSub.Id);
+
+        var branch = await repo.ListActiveHeadsByBranchAsync(_damascusId);
+        Assert.Contains(branch, u => u.Id == _headDamascusId);
+        Assert.Contains(branch, u => u.Id == subDam.Id);
     }
 }

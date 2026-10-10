@@ -15,6 +15,8 @@ export interface AlertsPanelProps {
   /** تعليم المقروء — للمحامي فقط (غيابه يُخفي الزر كما في صف الرئيس). */
   onMarkRead?: (a: HeadAlertDto) => void;
   markingKey?: string | null;
+  /** عرض الصادر (تبويب «أرسلتها»): يُظهر شارة «مقروء من الجميع» بدل العدّاد الصفري. */
+  sentView?: boolean;
 }
 
 /**
@@ -29,6 +31,7 @@ export function AlertsPanel({
   alerts,
   onMarkRead,
   markingKey,
+  sentView = false,
 }: AlertsPanelProps) {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden mt-8">
@@ -56,7 +59,7 @@ export function AlertsPanel({
       ) : (
         <ul className="divide-y divide-gray-100 max-h-[420px] overflow-y-auto">
           {alerts.map((a) => (
-            <AlertRow key={a.id} alert={a} onMarkRead={onMarkRead} markingKey={markingKey} />
+            <AlertRow key={a.id} alert={a} onMarkRead={onMarkRead} markingKey={markingKey} sentView={sentView} />
           ))}
         </ul>
       )}

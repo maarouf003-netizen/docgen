@@ -10,7 +10,7 @@ import { CORRESPONDENCE_UNSEEN_EVENT } from './correspondence/correspondenceDisp
 import { ComingSoonToast } from './ComingSoonToast';
 import { ICONS } from './dashboard/dashboardIcons';
 import nationalEmblem from '../assets/national.png';
-import { ROLE_LABELS } from '../auth/roleLabels';
+import { formatRoleScope } from '../auth/roleLabels';
 
 interface NavItem {
   to: string;
@@ -25,7 +25,10 @@ interface NavItem {
 }
 
 export default function Layout() {
-  const { user, logout, hasFullAccess, isHead } = useAuth();
+  const { user, logout, hasFullAccess } = useAuth();
+  // مشتق من الدور مباشرة (لا من راية السياق) — فيبقى صحيحًا مع أي `mock` قديم
+  // يوفّر `user.role` بلا الرايات الجديدة.
+  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -111,9 +114,9 @@ export default function Layout() {
   // فلا شروط أدوار أخرى هنا عمدًا.
   const canViewAuditLogs = hasFullAccess;
   const canManageBranchLawyers = user?.role === 'admin';
-  // `BQ-001د`: المدير يدير المستخدمين عدا المشرف — إدارة الفروع مشرف فقط.
+  // `BQ-001د`: المدير يدير المستخدمين عدا المشرف — إدارة الفروع مشرف ومدير (قرار §2.15).
   const canManageUsers = user?.role === 'admin' || user?.role === 'manager';
-  const canManageBranches = user?.role === 'admin';
+  const canManageBranches = user?.role === 'admin' || user?.role === 'manager';
   const canManageDelegates = hasFullAccess;
   // مندوب الجهة: الإحصائيات + الملفات التنفيذية + المراسلات دون باقي البنود (بوابة قرائية).
   const isEntityManager = user?.role === 'entitymanager';
@@ -129,9 +132,9 @@ export default function Layout() {
       label: 'المراسلات',
       badge: urgentCorrespondence > 0 ? urgentCorrespondence : undefined,
     });
-  } else if (isLawyerUser || isHead) {
-    // المحامي ورئيس القسم: نفس البنود الأربعة عمدًا (لوحة + ملفات + قيد البناء) —
-    // شرط واحد حتى لا ينحرفا عن بعضهما؛ بقية الأقسام تُفتح من بطاقات اللوحة.
+  } else if (isLawyerUser || isHeadOrSubHead) {
+    // المحامي ورئيس القسم والشعبة: نفس البنود الأربعة عمدًا (لوحة + ملفات + قيد البناء) —
+    // شرط واحد حتى لا تنحرف عن بعضها؛ بقية الأقسام تُفتح من بطاقات اللوحة.
     navItems.push(
       { to: '/', label: 'لوحة التحكم', end: true, icon: ICONS.home },
       { to: '/documents', label: 'الملفات التنفيذية', icon: ICONS.documents },
@@ -242,7 +245,7 @@ export default function Layout() {
         {navItems.map((item) => renderNavItem(item, linkClass, onNavigate))}
       </nav>
       <div className="p-4 border-t border-emerald-700 text-sm">
-        {isLawyerUser || isHead ? (
+        {isLawyerUser || isHeadOrSubHead ? (
           <NavLink
             to="/account"
             onClick={onNavigate}
@@ -258,7 +261,7 @@ export default function Layout() {
             <span className="min-w-0">
               <span className="block font-medium truncate">{user?.fullName}</span>
               <span className="block text-emerald-300 text-xs truncate">
-                {user?.role ? ROLE_LABELS[user.role] : ''} — {user?.branchName || 'كل الفروع'}
+                {formatRoleScope(user)}
               </span>
             </span>
           </NavLink>
@@ -266,7 +269,7 @@ export default function Layout() {
           <>
             <div className="font-medium">{user?.fullName}</div>
             <div className="text-emerald-300 text-xs mb-2">
-              {user?.role ? ROLE_LABELS[user.role] : ''} — {user?.branchName || 'كل الفروع'}
+              {formatRoleScope(user)}
             </div>
             <button
               onClick={logout}

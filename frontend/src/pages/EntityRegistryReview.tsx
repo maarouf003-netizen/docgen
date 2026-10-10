@@ -25,7 +25,7 @@ const HEAD_ACCURACY_NOTE =
   'يرجى التأكد من صحة البيانات وادخالها بدقة لأن تعديل قيود الجهات العامة مكلف ويتتطلب موافقات عدة';
 export default function EntityRegistryReview() {
   const { user } = useAuth();
-  const isHead = user?.role === 'head';
+  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
 
   const [items, setItems] = useState<PublicEntityEntryDto[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -198,13 +198,13 @@ export default function EntityRegistryReview() {
     <div className="max-w-4xl mx-auto">
       <h2 className="text-2xl font-bold text-gray-800 mb-2">مراجعة سجل الجهات العامة الممثلة</h2>
       <p className="text-sm text-gray-500 mb-4">
-        {isHead
+        {isHeadOrSubHead
           ? 'تراجع هنا الجهات التي أدخلها المحامون في محافظة فرعك. اعتمادها لا يبلّغ أحدًا، وتعديل تسميتها يوجّه تنبيهًا للمُدخِل بالاسمين.'
           : 'تشمل مراجعتك كل المحافظات، ويمكنك إدخال جهات مسبقة لأي محافظة.'}
       </p>
 
-      {isHead && (
-        <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="أدوات رئيس القسم">
+      {isHeadOrSubHead && (
+        <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="أدوات رئيس القسم أو الشعبة">
           <button
             onClick={() => { setBranchManagerOpen((v) => !v); setLogOpen(false); }}
             aria-expanded={branchManagerOpen}
@@ -229,7 +229,7 @@ export default function EntityRegistryReview() {
       )}
 
       {/* اختيار جهة لإدارة فروعها */}
-      {isHead && branchManagerOpen && (
+      {isHeadOrSubHead && branchManagerOpen && (
         <div className="mb-4 bg-white rounded-xl shadow p-4" role="search">
           <h3 className="text-sm font-bold text-gray-800 mb-2">إدارة فروع جهة عامة</h3>
           <p className="text-xs text-gray-500 mb-3">
@@ -282,7 +282,7 @@ export default function EntityRegistryReview() {
         />
       )}
 
-      {isHead && logOpen && (
+      {isHeadOrSubHead && logOpen && (
         <div className="mb-4 bg-white rounded-xl shadow p-4">
           <h3 className="text-sm font-bold text-gray-800 mb-2">سجل تغييرات محافظتي</h3>
           <p className="text-xs text-gray-500 mb-3">
@@ -321,7 +321,7 @@ export default function EntityRegistryReview() {
           onSubmit={(e) => { e.preventDefault(); void submitCreate(); }}
           className="bg-white rounded-xl shadow p-4 mb-4 grid sm:grid-cols-2 gap-4"
         >
-          {isHead && (
+          {isHeadOrSubHead && (
             <p role="note" className="text-xs font-medium text-red-700 bg-red-50 border border-red-100 rounded-lg p-3 leading-relaxed sm:col-span-2">
               {HEAD_ACCURACY_NOTE}
             </p>
@@ -379,7 +379,7 @@ export default function EntityRegistryReview() {
       )}
 
       {/* قائمة المراجعة */}
-      {isHead && (
+      {isHeadOrSubHead && (
         <p role="note" className="mb-3 text-xs font-medium text-red-700 bg-red-50 border border-red-100 rounded-lg p-3 leading-relaxed">
           {HEAD_ACCURACY_NOTE}
         </p>
@@ -448,7 +448,7 @@ export default function EntityRegistryReview() {
               المُدخِل بالاسم القديم والجديد.
             </p>
 
-            {isHead && (
+            {isHeadOrSubHead && (
               <p role="note" className="text-xs font-medium text-red-700 bg-red-50 border border-red-100 rounded-lg p-3 leading-relaxed mb-4">
                 {HEAD_ACCURACY_NOTE}
               </p>

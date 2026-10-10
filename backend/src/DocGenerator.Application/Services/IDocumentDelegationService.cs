@@ -21,11 +21,27 @@ public interface IDocumentDelegationService
     /// <summary>إنابات ملف (المنيب: المصدر؛ أو المناب: إنابته) — بطاقة «تشعبات الملف».</summary>
     Task<List<DelegationDto>> ListForDocumentAsync(int documentId, CancellationToken ct = default);
 
-    /// <summary>طلبات الإنابة المعلّقة لفرع رئيس القسم — نافذة «طلبات الإنابة والاستئنافات والمطالعات».</summary>
-    Task<List<DelegationDto>> ListPendingForHeadAsync(int branchId, CancellationToken ct = default);
+    /// <summary>
+    /// طلبات الإنابة المعلّقة لنطاق الرئيس (§7.1): رئيس القسم (دوائر القسم وبلا
+    /// دائرة + الخارجية غير الموجَّهة في فرعه)، ورئيس الشعبة (دوائر شعبته +
+    /// الخارجية الموجَّهة لشعبته). `rejectedOnly` لفلتر «مرفوض بانتظار التصحيح» (§7.4).
+    /// </summary>
+    Task<List<DelegationDto>> ListPendingForHeadAsync(int branchId, int? ownerSectionId = null, bool rejectedOnly = false, CancellationToken ct = default);
 
-    /// <summary>عدد طلبات الإنابة المعلّقة لفرع رئيس القسم — شارة خفيفة دون تحميل القائمة.</summary>
-    Task<int> CountPendingForHeadAsync(int branchId, CancellationToken ct = default);
+    /// <summary>
+    /// عدد طلبات الإنابة المعلّقة لنطاق الرئيس (§7.1 + §7.4) — نفس نطاق
+    /// <see cref="ListPendingForHeadAsync"/> دون تحميل القوائم المرتبطة.
+    /// </summary>
+    Task<int> CountPendingForHeadAsync(int branchId, int? ownerSectionId = null, bool rejectedOnly = false, CancellationToken ct = default);
+
+    /// <summary>توجيه إنابة خارجية معلّقة لشعبة في الفرع المناب — رئيس قسم الفرع المناب فقط (§7.3).</summary>
+    Task<DelegationDto?> RedirectToSectionAsync(int delegationId, RedirectDelegationRequest request, int userId, string? actorName, CancellationToken ct = default);
+
+    /// <summary>التراجع عن توجيه الشعبة قبل الإسناد — رئيس قسم فرع الاعتماد فقط (§7.3).</summary>
+    Task<DelegationDto?> RecallRedirectAsync(int delegationId, int userId, string? actorName, CancellationToken ct = default);
+
+    /// <summary>رفض الدائرة الخطأ برسالة تُعيد المحامي للتصحيح (§7.4) — المعتمد الحالي فقط.</summary>
+    Task<DelegationDto?> RejectAsync(int delegationId, RejectDelegationRequest request, int userId, string? actorName, CancellationToken ct = default);
 
     /// <summary>
     /// هل المستخدم طرفٌ في الإنابة؟ (محامي الملف المنيب، محامي الملف المناب، المحامي المختص،
@@ -34,9 +50,12 @@ public interface IDocumentDelegationService
     Task<bool> IsPartyAsync(int delegationId, int userId, CancellationToken ct = default);
 
     /// <summary>
-    /// اعتماد الإنابة: يختار رئيس القسم المحامي المختص (وفي الإنابة الخارجية الفرع وكتاب الإرسال)،
-    /// ويُحدَّث بيانات الإرسال إن وُجدت، ويُنشأ الملف المناب تلقائيًا، ويُشعر المحامي المختص
-    /// بتنبييه. رئيس القسم (فرعه) فقط (يُقيد الدور في المتحكم، وهنا يُتحقق الفرع والمحامي).
+    /// اعتماد الإنابة (§7.1): الاعتماد لمالك الدائرة المنابة لا المنيب — داخلية
+    /// بدائرة ذات شعبة لرئيس شعبته، وبدائرة قسم (أو بلا دائرة انتقاليًا) لرئيس
+    /// قسم فرع الدائرة، وخارجية غير موجَّهة لرئيس قسم الفرع المناب، وخارجية
+    /// موجَّهة لرئيس الشعبة الموجَّه لها. المحامي المختص من فرع الدائرة المنابة،
+    /// والملف المناب بفرع الدائرة ودائرتها (قرار §2.25). يُنشأ الملف المناب
+    /// تلقائيًا (وحدانية `SourceDelegationId` تحمي التوأم برسالة ودية).
     /// </summary>
     Task<DelegationDto?> AssignAsync(int delegationId, AssignDelegationRequest request, int userId, int? headBranchId, string? actorName, CancellationToken ct = default);
 

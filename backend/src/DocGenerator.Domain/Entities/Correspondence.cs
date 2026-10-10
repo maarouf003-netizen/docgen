@@ -43,6 +43,12 @@ public class Correspondence
     /// <summary>الطرف المستلم المعيَّن بالاسم (محامٍ أو رئيس قسم أو مندوب جهة).</summary>
     public int TargetUserId { get; set; }
 
+    /// <summary>
+    /// الشعبة المستلمة (لبلا ملف عندما يُختار «شعبة»)؛ مرآة قرار التوجيه وقت
+    /// الإنشاء — تُنقَل للخلف عند الإحلال مع `TargetUserId`.
+    /// </summary>
+    public int? RecipientSectionId { get; set; }
+
     /// <summary>الملف التنفيذي المرتبط؛ null يعني «مراسلة عامة غير مرتبطة بملف».</summary>
     public int? DocumentId { get; set; }
 
@@ -59,6 +65,7 @@ public class Correspondence
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     public Branch? Branch { get; set; }
+    public Section? RecipientSection { get; set; }
     public User? CreatedBy { get; set; }
     public User? TargetUser { get; set; }
     public Document? Document { get; set; }

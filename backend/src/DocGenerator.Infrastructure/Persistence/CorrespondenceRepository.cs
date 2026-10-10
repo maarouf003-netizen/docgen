@@ -18,6 +18,11 @@ public class CorrespondenceRepository : Repository<Correspondence>, ICorresponde
         .Include(c => c.TargetUser)
         .Include(c => c.Document)
         .ThenInclude(d => d!.BaseNumbers)
+        // دائرة الملف وشعبتها + الشعبة المستلمة لاشتقاق نطاق الشعبة (§10).
+        .Include(c => c.Document)
+        .ThenInclude(d => d!.ExecutionCircuit)
+        .ThenInclude(c => c!.Section)
+        .Include(c => c.RecipientSection)
         .Include(c => c.Branch)
         .Include(c => c.Messages.OrderBy(m => m.Id))
         .Include(c => c.Receipts.OrderBy(r => r.SeenAt));
@@ -36,6 +41,23 @@ public class CorrespondenceRepository : Repository<Correspondence>, ICorresponde
             Db.Correspondences.Where(c =>
                 c.BranchId == branchId
                 || (c.BranchId == null && c.Governorate == governorate)),
+            q, null, importance, page, perPage, ct);
+
+    /// <summary>
+    /// بحث نطاق الشعبة (§10): طرفٌ فيها (منشئ/مستلم) أو ملك دائرة شعبته —
+    /// بلا ملف بالشعبة المستلمة، وبملف بشعبة دائرته (بلا دائرة للقسم وحده).
+    /// </summary>
+    public Task<(List<Correspondence> Items, int TotalCount)> SearchForScopeAsync(
+        int userId, int branchId, int sectionId, string? q, string? importance,
+        int page, int perPage, CancellationToken ct = default)
+        => SearchAsync(
+            Db.Correspondences.Where(c =>
+                c.CreatedById == userId || c.TargetUserId == userId
+                || (c.BranchId == branchId
+                    && ((c.DocumentId == null && c.RecipientSectionId == sectionId)
+                        || (c.DocumentId != null
+                            && c.Document!.ExecutionCircuitId != null
+                            && c.Document.ExecutionCircuit!.SectionId == sectionId)))),
             q, null, importance, page, perPage, ct);
 
     public Task<(List<Correspondence> Items, int TotalCount)> SearchAllAsync(

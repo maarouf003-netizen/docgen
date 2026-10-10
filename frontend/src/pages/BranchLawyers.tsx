@@ -8,7 +8,7 @@ import type { BranchDto, LawyerListItem } from '../types';
 export default function BranchLawyers() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
-  const isHead = user?.role === 'head';
+  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
   const isMobile = useIsMobile();
 
   const [branches, setBranches] = useState<BranchDto[]>([]);
@@ -46,10 +46,12 @@ export default function BranchLawyers() {
   const load = (selectedBranchId: number | null) => {
     setLoading(true);
     setError('');
+    // صفحة الإدارة تعرض كل محامي النطاق (§5.4 `mode=branch`) — الوضع الافتراضي
+    // `mine` يستبعد الجدد بلا ملفات (قرار §2.9: يُرى بملف في دوائري أو من إنشائي).
+    const params: Record<string, unknown> = { mode: 'branch' };
+    if (isAdmin && selectedBranchId) params.branchId = selectedBranchId;
     api
-      .get<LawyerListItem[]>('/users/lawyers', {
-        params: isAdmin && selectedBranchId ? { branchId: selectedBranchId } : undefined,
-      })
+      .get<LawyerListItem[]>('/users/lawyers', { params })
       .then((r) => setLawyers(r.data))
       .catch((err) => setError(getApiErrorMessage(err)))
       .finally(() => setLoading(false));
@@ -260,7 +262,7 @@ export default function BranchLawyers() {
                       >
                         تعديل
                       </button>
-                      {isHead && (
+                      {isHeadOrSubHead && (
                         <button
                           onClick={() => setTransferSource(l)}
                           className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg px-3 py-1.5 text-xs min-h-11"
@@ -320,7 +322,7 @@ export default function BranchLawyers() {
                   >
                     تعديل
                   </button>
-                  {isHead && (
+                  {isHeadOrSubHead && (
                     <button
                       onClick={() => setTransferSource(l)}
                       className="rounded-lg px-3 py-2 text-xs min-h-11 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"

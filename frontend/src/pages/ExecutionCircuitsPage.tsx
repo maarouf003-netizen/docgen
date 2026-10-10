@@ -5,9 +5,10 @@ import type { ExecutionCircuitDto } from '../types';
 import CircuitEmptyingWizard from '../components/circuit/CircuitEmptyingWizard';
 
 /**
- * صفحة «إدارة دوائر التنفيذ» لرئيس القسم (حارس head):
- * زر «إدخال دائرة» + جدول (الاسم × عدد الملفات × شارة معطل × تعديل).
+ * صفحة «إدارة دوائر التنفيذ» لرئيس القسم/الشعبة (نطاق المالك من الرمز):
+ * زر «إدخال دائرة» + جدول (الاسم × الشعبة المالكة × عدد الملفات × شارة معطل × تعديل).
  * الجوال: بطاقات؛ المكتبي: جدول داخل overflow-x-auto.
+ * (نقل الملكية بين القسم والشعب إجراء مدير/مشرف في «إدارة الفروع» — §8.3.)
  */
 export default function ExecutionCircuitsPage() {
   const isMobile = useIsMobile();
@@ -140,6 +141,9 @@ export default function ExecutionCircuitsPage() {
               <p className="text-sm text-gray-600 mt-1 tabular-nums">
                 {c.fileCount} ملفًا · {c.pendingCount} بانتظار إعادة القيد
               </p>
+              <p className="text-xs text-gray-500 mt-1 break-words">
+                {c.sectionName ? `شعبة ${c.sectionName}` : 'قسم الفرع'}
+              </p>
               <div className="flex flex-wrap gap-2 mt-3">
                 <button
                   type="button"
@@ -189,6 +193,7 @@ export default function ExecutionCircuitsPage() {
             <thead>
               <tr className="bg-gray-50 text-gray-600">
                 <th className="px-4 py-3 text-start font-bold">الاسم</th>
+                <th className="px-4 py-3 text-start font-bold">الشعبة</th>
                 <th className="px-4 py-3 text-start font-bold tabular-nums">عدد الملفات</th>
                 <th className="px-4 py-3 text-start font-bold">الحالة</th>
                 <th className="px-4 py-3 text-start font-bold">إجراءات</th>
@@ -198,6 +203,7 @@ export default function ExecutionCircuitsPage() {
               {circuits.map((c) => (
                 <tr key={c.id} className="border-t border-gray-100">
                   <td className="px-4 py-3 font-medium text-gray-800 break-words">{c.name}</td>
+                  <td className="px-4 py-3 break-words">{c.sectionName ?? 'القسم'}</td>
                   <td className="px-4 py-3 tabular-nums">
                     {c.fileCount}
                     {c.pendingCount > 0 && <span className="text-amber-700"> ({c.pendingCount} معلق)</span>}

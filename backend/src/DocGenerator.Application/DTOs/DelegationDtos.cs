@@ -31,7 +31,21 @@ public record UpsertDelegationRequest(
 /// تعيين المحامي المختص للإنابة من رئيس القسم (الدائرة المنابة): يُنشأ الملف المناب تلقائيًا.
 /// </summary>
 public record AssignDelegationRequest(
-    int AssignedLawyerId);
+    int AssignedLawyerId,
+    /// <summary>رمز التزامن التفاؤلي (من `DelegationDto`) — اختياري، غيابه يعني فحص القاعدة فقط.</summary>
+    long? Version = null);
+
+/// <summary>توجيه إنابة خارجية معلّقة لشعبة في الفرع المناب — رئيس قسم الفرع المناب فقط (§7.3).</summary>
+public record RedirectDelegationRequest(
+    int SectionId,
+    /// <summary>رمز التزامن التفاؤلي — اختياري، غيابه يعني فحص القاعدة فقط.</summary>
+    long? Version = null);
+
+/// <summary>رفض الدائرة الخطأ برسالة تُعيد المحامي للتصحيح (§7.4) — السبب إلزامي.</summary>
+public record RejectDelegationRequest(
+    string? Reason,
+    /// <summary>رمز التزامن التفاؤلي — اختياري، غيابه يعني فحص القاعدة فقط.</summary>
+    long? Version = null);
 
 /// <summary>
 /// تسجيل الإنابة أصولًا من محامي الفرع المناب: رقم أساس الإنابة وتاريخ قيدها (بيانات الملف المناب).
@@ -117,4 +131,24 @@ public record DelegationDto(
     /// </summary>
     bool TargetTerminal = false,
     /// <summary>الدائرة المنابة المرجعية (للداخلية فقط).</summary>
-    int? DelegatedCircuitId = null);
+    int? DelegatedCircuitId = null,
+    /// <summary>
+    /// بطاقة الملف المناب (§5.7 — قرار §2.25): فرع الملف المناب الحي (قد يعبر
+    /// الفروع) — قراءة سياقية داخل عرض المنيب، بلا ملاحة مباشرة.
+    /// </summary>
+    int? TargetBranchId = null,
+    /// <summary>اسم فرع الملف المناب الحي — للعرض فقط.</summary>
+    string? TargetBranchName = null,
+    /// <summary>المحامي المالك الحالي للملف المناب (مرآة `Lawyer`) — للعرض فقط.</summary>
+    string? TargetLawyerName = null,
+    /// <summary>سبب رفض الدائرة الخطأ (§7.4) — `null` قبل أي رفض وبعد تصحيح المحامي.</summary>
+    string? RejectReason = null,
+    /// <summary>الشعبة الموجَّه لها طلب الإنابة الخارجية (§7.3) — `null` قبل التوجيه.</summary>
+    int? RedirectedToSectionId = null,
+    /// <summary>اسم الشعبة الموجَّه لها الطلب — للعرض فقط.</summary>
+    string? RedirectedToSectionName = null,
+    /// <summary>
+    /// رمز التزامن التفاؤلي للصف — يُعاد في القراءة ويُرسَل في طلبات الكتابة
+    /// التي تدعمه (اعتماد/توجيه/رفض) لكشف السباق مبكرًا برسالة ودية.
+    /// </summary>
+    long Version = 0);

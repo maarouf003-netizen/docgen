@@ -36,6 +36,12 @@ public interface IExcelExportService
     byte[] BuildPortalWorkbook(IReadOnlyList<PortalWorkbookRow> rows);
 
     byte[] BuildChangeEventsWorkbook(IReadOnlyList<EntityChangeEventDto> events);
+
+    /// <summary>
+    /// مصنّف إحصاءات الدوائر (§12): الجدول الرباعي بعمود شعبة — بالنطاق نفسه
+    /// المحسوب في نقطة `stats/export` (القسم/الشعبة/الفرع ككل).
+    /// </summary>
+    byte[] BuildCircuitStatsWorkbook(IReadOnlyList<CircuitStatsDto> rows);
 }
 
 public sealed class ExcelExportService : IExcelExportService
@@ -43,7 +49,7 @@ public sealed class ExcelExportService : IExcelExportService
     private static readonly string[] BaseColumns =
     {
         "الحالة", "طالب التنفيذ", "الفرع", "المنفذ عليه", "دائرة التنفيذ",
-        "رقم الملف", "لعام", "ملحق العقد",
+        "الشعبة", "رقم الملف", "لعام", "ملحق العقد",
     };
 
     /// <summary>
@@ -79,6 +85,24 @@ public sealed class ExcelExportService : IExcelExportService
             "الملفات التنفيذية",
             PortalColumns,
             rows.Select(r => BuildPortalValues(r)));
+
+    /// <summary>صف جدول الدوائر: الدائرة والفرع والشعبة (القسم لدوائر القسم) والعدّادات.</summary>
+    public byte[] BuildCircuitStatsWorkbook(IReadOnlyList<CircuitStatsDto> rows)
+        => WriteWorkbook(
+            "إحصاءات الدوائر",
+            new[] { "الدائرة", "الفرع", "الشعبة", "الملفات", "المحامون النشطون", "المعلقات" },
+            rows.Select(r => new List<string>
+            {
+                r.CircuitName ?? string.Empty,
+                // (ب): الصف الاصطناعي «بلا دائرة» لمدير يرى الكل (`CircuitId = 0` بلا
+                // اسم فرع) يُوسم «كل الفروع» بدل الخلية الفارغة المضللة — لرئيس القسم
+                // اسم فرعه موجود أصلًا فلا تغيير له، والصفوف العادية كما كانت.
+                r.CircuitId == 0 && r.BranchName is null ? "كل الفروع" : (r.BranchName ?? string.Empty),
+                r.SectionName ?? "القسم",
+                r.FileCount.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                r.LawyerCount.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                r.PendingCount.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            }));
 
     private static List<string> BuildPortalValues(PortalWorkbookRow row)
     {
@@ -190,6 +214,8 @@ public sealed class ExcelExportService : IExcelExportService
         values.Add(doc.BranchName ?? string.Empty);
         values.Add(FullName(doc));
         values.Add(doc.Court ?? string.Empty);
+        // عمود الشعبة (§12/قرار 29): اسم الشعبة المالكة، و"القسم" لدوائر القسم وبلا دائرة.
+        values.Add(doc.SectionName ?? "القسم");
         values.Add(FileNumberText(doc));
         values.Add(doc.DisplayFileYear ?? doc.FileYear ?? string.Empty);
         values.Add(doc.AnnexNumber ?? string.Empty);

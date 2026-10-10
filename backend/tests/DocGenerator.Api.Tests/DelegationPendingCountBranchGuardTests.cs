@@ -21,8 +21,11 @@ public sealed class DelegationPendingCountBranchGuardTests
         public Task<DelegationDto?> UpdateAsync(int delegationId, UpsertDelegationRequest request, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<bool> DeleteAsync(int delegationId, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<List<DelegationDto>> ListForDocumentAsync(int documentId, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<List<DelegationDto>> ListPendingForHeadAsync(int branchId, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<int> CountPendingForHeadAsync(int branchId, CancellationToken ct = default) => throw new NotImplementedException();
+        public Task<List<DelegationDto>> ListPendingForHeadAsync(int branchId, int? ownerSectionId = null, bool rejectedOnly = false, CancellationToken ct = default) => throw new NotImplementedException();
+        public Task<int> CountPendingForHeadAsync(int branchId, int? ownerSectionId = null, bool rejectedOnly = false, CancellationToken ct = default) => throw new NotImplementedException();
+        public Task<DelegationDto?> RedirectToSectionAsync(int delegationId, RedirectDelegationRequest request, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
+        public Task<DelegationDto?> RecallRedirectAsync(int delegationId, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
+        public Task<DelegationDto?> RejectAsync(int delegationId, RejectDelegationRequest request, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<bool> IsPartyAsync(int delegationId, int userId, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<DelegationDto?> AssignAsync(int delegationId, AssignDelegationRequest request, int userId, int? headBranchId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<DelegationDto?> RegisterAsync(int delegationId, RegisterDelegationRequest request, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();

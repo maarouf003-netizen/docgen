@@ -27,6 +27,21 @@ public class RF001DuplicateRequestCharacterizationTests
 
     private static string NewName(string prefix) => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 16, 40)];
 
+    /// <summary>
+    /// فرع معزول برئيسه الوحيد (قرار §2.26 + عزل صفوف التدقيق عن `head1` المشترك —
+    /// رئيس جديد لا `head1` حتى لا تتداخل صفوف التدقيق في القاعدة المشتركة).
+    /// يُعيد رمز الفرع لاستخدامه في مساعدي المحامين.
+    /// </summary>
+    private async Task<string> CreateBranchCodeAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+        var branch = new DocGenerator.Domain.Entities.Branch { Name = "فرع التكرار", Code = $"RD_{Guid.NewGuid():N}"[..12].ToUpperInvariant() };
+        db.Branches.Add(branch);
+        await db.SaveChangesAsync();
+        return branch.Code;
+    }
+
     private async Task<LawyerListItemDto> CreateLawyerAsync(string branchCode, string fullName)
     {
         var admin = _factory.AuthorizedClient("admin");
@@ -72,14 +87,16 @@ public class RF001DuplicateRequestCharacterizationTests
     {
         // النقل الجماعي آمن نسبيًا اليوم: التنفيذ الثاني يجد المصدر فارغًا فيعيد صفرًا
         // (DocumentService.cs:450-452) — لكن نقرة أثناء الانتظار قد تُدقق مرتين (:459-466).
-        var source = await CreateLawyerAsync("DAM", "محامي المصدر المكرر");
+        // فرع معزول بمحامييه ورئيسه (لا دمشق — عزل النطاق والتدقيق معًا).
+        var branchCode = await CreateBranchCodeAsync();
+        var source = await CreateLawyerAsync(branchCode, "محامي المصدر المكرر");
         var token = (await _factory.LoginAsync(source.Username, "123456"))!.Token!;
         await _factory.CreateDocumentAsync(token, borrowerName: "نقل مكرر 1");
         await _factory.CreateDocumentAsync(token, borrowerName: "نقل مكرر 2");
-        var target = await CreateLawyerAsync("DAM", "محامي الهدف المكرر");
+        var target = await CreateLawyerAsync(branchCode, "محامي الهدف المكرر");
 
         // رئيس جديد (لا head1 المشترك) حتى لا تتداخل صفوف التدقيق مع اختبارات أخرى في القاعدة المشتركة.
-        var freshHead = await _factory.CreateUserAsync(NewName("head_dup"), UserRole.Head, await BranchIdAsync("DAM"));
+        var freshHead = await _factory.CreateUserAsync(NewName("head_dup"), UserRole.Head, await BranchIdAsync(branchCode));
         var head = _factory.AuthorizedClient(freshHead.Username);
         var body = new { sourceLawyerId = source.Id, targetLawyerId = target.Id };
 

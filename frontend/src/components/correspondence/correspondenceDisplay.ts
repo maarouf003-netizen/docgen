@@ -60,6 +60,8 @@ export function correspondenceRoleLabel(role: string): string {
       return 'محامٍ';
     case 'head':
       return 'رئيس قسم';
+    case 'subhead':
+      return 'رئيس شعبة';
     case 'entitymanager':
       return 'مندوب جهة';
     case 'manager':

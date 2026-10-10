@@ -1,4 +1,5 @@
 using DocGenerator.Domain.Entities;
+using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Common.Interfaces;
 
@@ -9,6 +10,25 @@ public interface IUserRepository : IRepository<User>
 {
     /// <summary>كل الحسابات المطابقة للاسم المطبّع (قد يتكرر الاسم عبر فروع مختلفة).</summary>
     Task<List<User>> FindByUsernameAllAsync(string username, CancellationToken ct = default);
+
+    /// <summary>
+    /// هل يوجد رئيس مفعّل آخر بنفس النطاق (وحدانية القسم/الشعبة — قرار §2.3/§2.26)؟
+    /// رئيس القسم: نفس الفرع؛ رئيس الشعبة: نفس الفرع والشعبة (تساوي `null` يُحسب
+    /// تطابقًا). `excludeUserId` يستثني الذات عند التحديث.
+    /// </summary>
+    Task<bool> ExistsActiveHeadAsync(UserRole role, int? branchId, int? sectionId, int? excludeUserId, CancellationToken ct = default);
+
+    /// <summary>حسابات شعبة (أي دور) — لعرض الإشغال وحراس الحذف.</summary>
+    Task<List<User>> ListUsersBySectionAsync(int sectionId, CancellationToken ct = default);
+
+    /// <summary>
+    /// الرئيس المفعّل لنطاق (وحدانية القسم/الشعبة): رأس القسم لفرع، أو رئيس
+    /// الشعبة لشعبتها — `null` عند الشغور. للتنبيهات الموجهة وسجل التعاقب.
+    /// </summary>
+    Task<User?> FindActiveHeadAsync(UserRole role, int? branchId, int? sectionId, CancellationToken ct = default);
+
+    /// <summary>محامو منشئ معين (مباشَرة محامي الصفر ملفات — قرار §2.10).</summary>
+    Task<List<User>> ListByCreatorAsync(int creatorId, CancellationToken ct = default);
 
     /// <summary>محامو فرع (أو كل المحامين إن كان الفرع فارغاً) ببيانات الفرع.</summary>
     Task<List<User>> ListLawyersAsync(int? branchId, CancellationToken ct = default);

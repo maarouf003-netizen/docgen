@@ -23,6 +23,14 @@ public interface ICorrespondenceRepository : IRepository<Correspondence>
         int page, int perPage, CancellationToken ct = default);
 
     /// <summary>
+    /// بحث نطاق الشعبة (§10): طرفٌ فيها (منشئ/مستلم) أو ملك دائرة شعبته —
+    /// بلا ملف بالشعبة المستلمة، وبملف بشعبة دائرته (بلا دائرة للقسم وحده).
+    /// </summary>
+    Task<(List<Correspondence> Items, int TotalCount)> SearchForScopeAsync(
+        int userId, int branchId, int sectionId, string? q, string? importance,
+        int page, int perPage, CancellationToken ct = default);
+
+    /// <summary>
     /// مراسلات محافظة منتقاة (مدير/مشرف)؛ فراغ governorate يُنفَّذ بلا عناصر
     /// (الحجب قبل اختيار المحافظة).
     /// </summary>

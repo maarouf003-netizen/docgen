@@ -27,10 +27,20 @@ public class DelegationRepository : Repository<DocumentDelegation>, IDelegationR
             // — إسقاط هذا السطر يُفشل أي تعديل في الإنتاج برسالة «لا يتبع الملف المنيب».
             .Include(d => d.SourceDocument)
                 .ThenInclude(s => s!.Assets)
+            // سلاسل النطاق (§7): دائرة المصدر وشعبتها + المنابة وشعبتها.
+            .Include(d => d.SourceDocument)
+                .ThenInclude(s => s!.ExecutionCircuit)
+                .ThenInclude(c => c!.Section)
+            .Include(d => d.DelegatedCircuit)
+                .ThenInclude(c => c!.Section)
+            .Include(d => d.RedirectedToSection)
             .Include(d => d.TargetDocument)
                 .ThenInclude(t => t!.RegistrationDate)
             .Include(d => d.TargetDocument)
                 .ThenInclude(t => t!.BaseNumbers)
+            // فرع المناب الحي لبطاقة §5.7.
+            .Include(d => d.TargetDocument)
+                .ThenInclude(t => t!.Branch)
             .Include(d => d.ExternalBranch)
             .Include(d => d.AssignedLawyer)
             .Include(d => d.CreatedBy)
@@ -50,6 +60,11 @@ public class DelegationRepository : Repository<DocumentDelegation>, IDelegationR
             .Include(d => d.CreatedBy)
             .Include(d => d.TargetDocument)
                 .ThenInclude(t => t!.BaseNumbers)
+            // فرع المناب الحي لبطاقة §5.7.
+            .Include(d => d.TargetDocument)
+                .ThenInclude(t => t!.Branch)
+            // الشعبة الموجَّه لها (§7.3) لاسمها في بطاقة الملف.
+            .Include(d => d.RedirectedToSection)
             .Include(d => d.Assets)
             .ToListAsync(ct);
     }
@@ -73,24 +88,51 @@ public class DelegationRepository : Repository<DocumentDelegation>, IDelegationR
             .Include(d => d.SourceDelegation)
                 .ThenInclude(dl => dl!.TargetDocument)
                 .ThenInclude(t => t!.BaseNumbers)
+            // فرع المناب الحي لبطاقة §5.7 (توحيد الدلالة عبر كل الاستعلامات).
+            .Include(d => d.SourceDelegation)
+                .ThenInclude(dl => dl!.TargetDocument)
+                .ThenInclude(t => t!.Branch)
             .Where(d => d.Id == targetDocumentId && d.SourceDelegation != null)
             .Select(d => d.SourceDelegation!)
             .FirstOrDefaultAsync(ct);
     }
 
-    /// <summary>نطاق «المعلّقة بانتظار رئيس القسم» لفرعٍ معيّن — مشترك بين القائمة والعدّاد.</summary>
-    private IQueryable<DocumentDelegation> PendingByBranchQuery(int branchId)
+    /// <summary>
+    /// نطاق «المعلّقة بانتظار الاعتماد» لنطاق رئيسٍ معيّن (§7.1 + §7.4) — مشترك
+    /// بين القائمة والعدّاد: داخلية بدائرة لرئيس شعبته (أو قسمه إن بلا شعبة)،
+    /// وداخلية بلا دائرة (انتقالية/قديمة/مفكوكة) لرئيس قسم فرع المنيب، وخارجية
+    /// لرئيس قسم الفرع المناب ما لم تُوجَّه لشعبة. `rejectedOnly` لفلتر
+    /// «مرفوض بانتظار التصحيح» (الافتراضي: القابلة للاعتماد فقط).
+    /// </summary>
+    private IQueryable<DocumentDelegation> PendingByScopeQuery(int branchId, int? ownerSectionId, bool rejectedOnly)
         => Db.DocumentDelegations
             .Where(d => d.Status == DelegationStatusCatalog.PendingHead
-                && ((!d.IsExternal && d.SourceDocument.BranchId == branchId)
-                    || (d.IsExternal && d.ExternalBranchId == branchId)));
+                && (rejectedOnly ? d.RejectReason != null : d.RejectReason == null)
+                && ((!d.IsExternal
+                        && ((d.DelegatedCircuitId == null
+                                && !ownerSectionId.HasValue
+                                && d.SourceDocument.BranchId == branchId)
+                            || (d.DelegatedCircuitId != null
+                                && d.DelegatedCircuit!.BranchId == branchId
+                                && d.DelegatedCircuit!.SectionId == ownerSectionId)))
+                    || (d.IsExternal
+                        && d.ExternalBranchId == branchId
+                        && d.RedirectedToSectionId == ownerSectionId)));
 
-    public async Task<List<DocumentDelegation>> ListPendingByBranchAsync(int branchId, CancellationToken ct = default)
+    public async Task<List<DocumentDelegation>> ListPendingByBranchAsync(
+        int branchId, int? ownerSectionId = null, bool rejectedOnly = false, CancellationToken ct = default)
     {
-        return await PendingByBranchQuery(branchId)
+        return await PendingByScopeQuery(branchId, ownerSectionId, rejectedOnly)
             .OrderByDescending(d => d.CreatedAt)
             .Include(d => d.SourceDocument)
                 .ThenInclude(s => s!.BaseNumbers)
+            // دائرة المصدر وشعبتها + الدائرة المنابة وشعبتها للتوجيه بالنطاق (§7).
+            .Include(d => d.SourceDocument)
+                .ThenInclude(s => s!.ExecutionCircuit)
+                .ThenInclude(c => c!.Section)
+            .Include(d => d.DelegatedCircuit)
+                .ThenInclude(c => c!.Section)
+            .Include(d => d.RedirectedToSection)
             .Include(d => d.ExternalBranch)
             .Include(d => d.AssignedLawyer)
             .Include(d => d.CreatedBy)
@@ -98,8 +140,9 @@ public class DelegationRepository : Repository<DocumentDelegation>, IDelegationR
             .ToListAsync(ct);
     }
 
-    public Task<int> CountPendingByBranchAsync(int branchId, CancellationToken ct = default)
-        => PendingByBranchQuery(branchId).CountAsync(ct);
+    public Task<int> CountPendingByBranchAsync(
+        int branchId, int? ownerSectionId = null, bool rejectedOnly = false, CancellationToken ct = default)
+        => PendingByScopeQuery(branchId, ownerSectionId, rejectedOnly).CountAsync(ct);
 
     public async Task<List<DocumentDelegation>> ListPendingBySourceWithTargetsAsync(int sourceDocumentId, CancellationToken ct = default)
     {
@@ -117,6 +160,9 @@ public class DelegationRepository : Repository<DocumentDelegation>, IDelegationR
                 .ThenInclude(t => t!.Heirs)
             .Include(d => d.TargetDocument)
                 .ThenInclude(t => t!.ApplicantPublicEntities)
+            // فرع المناب الحي لبطاقة §5.7 (توحيد الدلالة عبر كل الاستعلامات).
+            .Include(d => d.TargetDocument)
+                .ThenInclude(t => t!.Branch)
             .ToListAsync(ct);
     }
 

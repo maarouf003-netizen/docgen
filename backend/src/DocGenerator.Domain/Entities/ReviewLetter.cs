@@ -17,6 +17,11 @@ public class ReviewLetter
     /// <summary>الملف التنفيذي المرتبط؛ null يعني «كتاب مطالعة عام غير مرتبط بملف».</summary>
     public int? DocumentId { get; set; }
 
+    /// <summary>
+    /// الشعبة المستلمة (لبلا ملف عندما يُختار «شعبة»)؛ مرآة قرار التوجيه وقت الإنشاء.
+    /// </summary>
+    public int? RecipientSectionId { get; set; }
+
     /// <summary>رقم كتاب المطالعة المولد تلقائيًا (فريد).</summary>
     public string LetterNumber { get; set; } = string.Empty;
 
@@ -33,6 +38,7 @@ public class ReviewLetter
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     public Branch? Branch { get; set; }
+    public Section? RecipientSection { get; set; }
     public User? CreatedBy { get; set; }
     public Document? Document { get; set; }
 

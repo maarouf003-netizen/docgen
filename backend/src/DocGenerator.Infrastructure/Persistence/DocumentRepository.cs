@@ -48,10 +48,11 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         int? visibleUserId,
         int page,
         int perPage,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        int? ownerSectionId = null)
     {
         IQueryable<Document> q = ApplySearchFilters(
-            Db.Documents.AsNoTracking(), query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId);
+            Db.Documents.AsNoTracking(), query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, ownerSectionId);
 
         var total = await q.CountAsync(ct);
 
@@ -76,10 +77,11 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         string? publicEntityBranch,
         int? visibleBranchId,
         int? visibleUserId,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        int? ownerSectionId = null)
     {
         IQueryable<Document> q = ApplySearchFilters(
-            Db.Documents.AsNoTracking(), query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId);
+            Db.Documents.AsNoTracking(), query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, ownerSectionId);
 
         return await WithStandardIncludes(q.OrderByDescending(d => d.CreatedAt))
             .ToListAsync(ct);
@@ -97,12 +99,40 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         string? publicEntityBranch,
         int? visibleBranchId,
         int? visibleUserId,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        int? ownerSectionId = null)
     {
         IQueryable<Document> q = ApplySearchFilters(
-            Db.Documents.AsNoTracking(), query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId);
+            Db.Documents.AsNoTracking(), query, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch, visibleBranchId, visibleUserId, ownerSectionId);
 
         return await q.CountAsync(ct);
+    }
+
+    /// <summary>
+    /// قاعدة نطاق الملفات (§5 — قرار §2.21): مدير/مشرف (بلا قيود)؛ محامٍ
+    /// (ملفاته)؛ رئيس شعبة (ملفات دوائر شعبته حصرًا — بلا ملفات بلا دائرة، §5.6)؛
+    /// رئيس قسم (ملفات دوائر القسم + ملفات بلا دائرة، §5.6). تُستدعى من كل
+    /// مسارات القوائم والتصدير والعدّة — نقطة واحدة لا منطق متناثر.
+    /// </summary>
+    private static IQueryable<Document> ApplyOwnerScope(
+        IQueryable<Document> q,
+        int? visibleBranchId,
+        int? visibleUserId,
+        int? ownerSectionId)
+    {
+        if (visibleBranchId.HasValue)
+            q = q.Where(d => d.BranchId == visibleBranchId);
+
+        if (visibleUserId.HasValue)
+            return q.Where(d => d.CreatedById == visibleUserId);
+
+        if (ownerSectionId.HasValue)
+            return q.Where(d => d.ExecutionCircuitId != null && d.ExecutionCircuit!.SectionId == ownerSectionId.Value);
+
+        if (visibleBranchId.HasValue)
+            return q.Where(d => d.ExecutionCircuitId == null || d.ExecutionCircuit!.SectionId == null);
+
+        return q;
     }
 
     private IQueryable<Document> ApplySearchFilters(
@@ -117,7 +147,8 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         string? executedEntity,
         string? publicEntityBranch,
         int? visibleBranchId,
-        int? visibleUserId)
+        int? visibleUserId,
+        int? ownerSectionId = null)
     {
         // صرامة فلتر «الحالة»: أي قيمة خارج الكتالوج تُرفض (400 عبر المعالج العام) بدل
         // السقوط الصامت في فرع «متداول» — وتُقلَّم القيمة أولًا فيُقبل المبطَّن بدلالته.
@@ -125,11 +156,8 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         // وعدّ التصدير وخيارات الفلاتر.
         status = string.IsNullOrWhiteSpace(status) ? null : status.Trim();
         if (!ExecutionStatusCatalog.IsValidSearchFilter(status))
-            throw new ArgumentException("قيمة فلتر الحالة غير صالحة");
-        if (visibleBranchId.HasValue)
-            q = q.Where(d => d.BranchId == visibleBranchId);
-        if (visibleUserId.HasValue)
-            q = q.Where(d => d.CreatedById == visibleUserId);
+            throw new ArgumentException("قيمة فلتر الحالة غير صالح");
+        q = ApplyOwnerScope(q, visibleBranchId, visibleUserId, ownerSectionId);
         // الملفات «المنفذة» (عائلة «منفذ عليه»/«عرض وايداع» بحالة «منفذ»، وملفات «طالبة تنفيذ»
         // المنفذة بالتسوية أو الجبري الكامل)، وملفات «طالبة تنفيذ» المشطوبة («مشطوب») أو
         // «محال الى البداية» تُخفى من القائمة والتصدير العام إلا عند البحث النصي عنها
@@ -360,6 +388,10 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             .Include(d => d.CreatedBy)
             .Include(d => d.Branch)
             .Include(d => d.BaseNumbers)
+            // الدائرة وشعبتها للتوجيه بالنطاق (§5 — قرار §2.21): بدونهما يبقى
+            // `SectionId` فارغًا بصمت في منطق النطاق.
+            .Include(d => d.ExecutionCircuit)
+                .ThenInclude(c => c!.Section)
             .Include(d => d.ExecutionApplicants)
             .Include(d => d.ExecutedPublicEntities)
             .Include(d => d.ExecutedNaturalPersons)
@@ -380,12 +412,13 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         string? publicEntityBranch,
         int? visibleBranchId,
         int? visibleUserId,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        int? ownerSectionId = null)
     {
         // كل قائمة تُقيَّد بباقي الفلاتر النشطة ما عدا فلتر الحقل نفسه،
         // فيلتزم الاختيار اللاحق بنتائج الفلتر السابق بأسلوب إكسل.
         IQueryable<Document> Base(string? st, string? ap, string? co, string? lw, string? br, string? ab, string? ee, string? peb) =>
-            ApplySearchFilters(Db.Documents.AsNoTracking(), null, st, ap, co, lw, br, ab, ee, peb, visibleBranchId, visibleUserId);
+            ApplySearchFilters(Db.Documents.AsNoTracking(), null, st, ap, co, lw, br, ab, ee, peb, visibleBranchId, visibleUserId, ownerSectionId);
 
         var applicants = await Base(status, null, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch)
             .Where(d => d.Applicant != null && d.Applicant != string.Empty)
@@ -468,17 +501,14 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         int? visibleUserId,
         int page,
         int perPage,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        int? ownerSectionId = null)
     {
         IQueryable<Document> q = Db.Documents.AsNoTracking()
             .IgnoreQueryFilters()
             .Where(d => d.IsDeleted);
 
-        if (visibleBranchId.HasValue)
-            q = q.Where(d => d.BranchId == visibleBranchId);
-
-        if (visibleUserId.HasValue)
-            q = q.Where(d => d.CreatedById == visibleUserId);
+        q = ApplyOwnerScope(q, visibleBranchId, visibleUserId, ownerSectionId);
 
         if (!string.IsNullOrWhiteSpace(query))
         {
@@ -568,25 +598,71 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             .ToListAsync(ct);
     }
 
+    /// <summary>
+    /// نقل جماعي ذرّي بالنطاق (§5.5): ملفات المصدر المتقاطعة مع نطاق المنفِّذ
+    /// فقط (قسمه أو شعبته) — لا كل ملفات المحامي.
+    /// </summary>
     public async Task<int> TransferAllOwnerAsync(
         int sourceOwnerId,
         int targetId,
         string targetFullName,
         string referredFromLawyer,
+        int? scopeBranchId,
+        int? ownerSectionId,
         CancellationToken ct = default)
     {
         var now = DateTime.UtcNow;
         // Query Filter (!IsDeleted) مطبق تلقائياً على ExecuteUpdate فيستثني المحذوف.
         // (البند 56: رفع Version يدويًا — وإلا فُقدت حماية RF-010 بصمت.)
-        return await Db.Documents
-            .Where(d => d.CreatedById == sourceOwnerId)
-            .ExecuteUpdateAsync(setters => setters
+        IQueryable<Document> q = Db.Documents
+            .Where(d => d.CreatedById == sourceOwnerId);
+        q = ApplyOwnerScope(q, scopeBranchId, null, ownerSectionId);
+        return await q.ExecuteUpdateAsync(setters => setters
                 .SetProperty(d => d.CreatedById, targetId)
                 .SetProperty(d => d.Lawyer, targetFullName)
                 .SetProperty(d => d.ReferredFromLawyer, referredFromLawyer)
                 .SetProperty(d => d.ReferredAt, now)
                 .SetProperty(d => d.Version, d => d.Version + 1)
                 .SetProperty(d => d.UpdatedAt, now), ct);
+    }
+
+    /// <summary>
+    /// ملفات محامٍ بالنطاق (§5.5 للمعاينة والتدقيق): نفس قاعدة النقل الجماعي —
+    /// المعاينة تطابق المنقول فعلًا.
+    /// </summary>
+    public async Task<List<Document>> ListByOwnerInScopeAsync(
+        int ownerId,
+        int? scopeBranchId,
+        int? ownerSectionId,
+        CancellationToken ct = default)
+    {
+        IQueryable<Document> q = Db.Documents
+            .AsNoTracking()
+            .Where(d => d.CreatedById == ownerId);
+        q = ApplyOwnerScope(q, scopeBranchId, null, ownerSectionId);
+        return await q
+            .OrderBy(d => d.Id)
+            .Select(d => new Document
+            {
+                Id = d.Id,
+                DocumentType = d.DocumentType,
+                BorrowerName = d.BorrowerName,
+                BorrowerFather = d.BorrowerFather,
+                BorrowerFamily = d.BorrowerFamily,
+            })
+            .ToListAsync(ct);
+    }
+
+    public async Task<int> CountByOwnerInScopeAsync(
+        int ownerId,
+        int? scopeBranchId,
+        int? ownerSectionId,
+        CancellationToken ct = default)
+    {
+        IQueryable<Document> q = Db.Documents
+            .Where(d => d.CreatedById == ownerId);
+        q = ApplyOwnerScope(q, scopeBranchId, null, ownerSectionId);
+        return await q.CountAsync(ct);
     }
 
     public async Task<int> IncrementViewCountAsync(int documentId, CancellationToken ct = default)
@@ -604,6 +680,20 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             .AsNoTracking()
             .Include(d => d.BaseNumbers)
             .Where(d => ids.Contains(d.Id))
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<int>> ListOwnerIdsByCircuitIdsAsync(
+        IReadOnlyCollection<int> circuitIds,
+        CancellationToken ct = default)
+    {
+        if (circuitIds.Count == 0)
+            return new List<int>();
+        return await Db.Documents
+            .AsNoTracking()
+            .Where(d => d.ExecutionCircuitId != null && circuitIds.Contains(d.ExecutionCircuitId.Value))
+            .Select(d => d.CreatedById)
+            .Distinct()
             .ToListAsync(ct);
     }
 
@@ -685,6 +775,29 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         foreach (var r in rows)
             result[r.CircuitId] = r.LawyerCount;
         return result;
+    }
+
+    public async Task<(int FileCount, int PendingCount, int LawyerCount)> CountWithoutCircuitAsync(int? branchId, CancellationToken ct = default)
+    {
+        // F4: ملفات بلا دائرة حصرًا (`ExecutionCircuitId == null`) — دوائر `SectionId == null`
+        // لها صفوفها الخاصة فلا تُجمع هنا (منع ازدواج العدّ)؛ غير المحذوفة مرآةً لعدادات الدوائر.
+        // استعلام تجميعي واحد (D2): `COUNT(CASE…)` للمعلقات و`COUNT(DISTINCT…)` للمحامين —
+        // نفس بنية `CountLawyersByCircuitsAsync` المثبتة الترجمة على SQLite/PostgreSQL.
+        var q = Db.Documents
+            .AsNoTracking()
+            .Where(d => d.ExecutionCircuitId == null && !d.IsDeleted);
+        if (branchId.HasValue)
+            q = q.Where(d => d.BranchId == branchId.Value);
+        var row = await q
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                FileCount = g.Count(),
+                PendingCount = g.Count(d => d.NeedsRegistration),
+                LawyerCount = g.Select(d => d.CreatedById).Distinct().Count(),
+            })
+            .SingleOrDefaultAsync(ct);
+        return row is null ? (0, 0, 0) : (row.FileCount, row.PendingCount, row.LawyerCount);
     }
 
     // ملاحظة (M12): التنفيذ النصي القديم ExistsActiveWithNumberAsync أُسقط مع ترحيل
@@ -795,7 +908,8 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         int? visibleUserId,
         int page,
         int perPage,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        int? ownerSectionId = null)
     {
         // ملفات «منفذ عليها»/«عرض وايداع» المشطوبة وملفات «طالبة تنفيذ» المشطوبة فقط،
         // غير المحذوفة (Query Filter مطبق تلقائيًا): مكتملة الاستبعاد من البحث العام والتصدير،
@@ -808,11 +922,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
                 || (d.GeneralEntitySide == GeneralEntitySideCatalog.Applicant
                     && d.ExecStatus == ExecutionStatusCatalog.StateStruckOff));
 
-        if (visibleBranchId.HasValue)
-            q = q.Where(d => d.BranchId == visibleBranchId);
-
-        if (visibleUserId.HasValue)
-            q = q.Where(d => d.CreatedById == visibleUserId);
+        q = ApplyOwnerScope(q, visibleBranchId, visibleUserId, ownerSectionId);
 
         if (!string.IsNullOrWhiteSpace(applicant))
         {
@@ -869,7 +979,8 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         int? visibleUserId,
         int page,
         int perPage,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        int? ownerSectionId = null)
     {
         // ملفات «منفذ عليها»/«عرض وايداع» بحالة «منفذ» فقط، وملفات «طالبة تنفيذ» المنفذة
         // (بالتسوية أو الجبري الكامل) — تُخفى من البحث العام إلا عند البحث النصي عنها،
@@ -890,11 +1001,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
                             && (d.ExecSubStatus == null
                                 || d.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted)))));
 
-        if (visibleBranchId.HasValue)
-            q = q.Where(d => d.BranchId == visibleBranchId);
-
-        if (visibleUserId.HasValue)
-            q = q.Where(d => d.CreatedById == visibleUserId);
+        q = ApplyOwnerScope(q, visibleBranchId, visibleUserId, ownerSectionId);
 
         if (!string.IsNullOrWhiteSpace(query))
         {
@@ -919,7 +1026,8 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         int? visibleUserId,
         int page,
         int perPage,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        int? ownerSectionId = null)
     {
         // ملفات «طالبة تنفيذ» بحالة «محال الى البداية» فقط — ومنها القادم من «منفذ جبريا»
         // المحال بجزئيته (يُحمل ExecStatus=ReferredToStart ويبقي ExecSubStatus خاصته فيضمّه
@@ -934,11 +1042,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             .Where(d => d.GeneralEntitySide == GeneralEntitySideCatalog.Applicant
                 && d.ExecStatus == ExecutionStatusCatalog.ReferredToStart);
 
-        if (visibleBranchId.HasValue)
-            q = q.Where(d => d.BranchId == visibleBranchId);
-
-        if (visibleUserId.HasValue)
-            q = q.Where(d => d.CreatedById == visibleUserId);
+        q = ApplyOwnerScope(q, visibleBranchId, visibleUserId, ownerSectionId);
 
         if (!string.IsNullOrWhiteSpace(query))
         {

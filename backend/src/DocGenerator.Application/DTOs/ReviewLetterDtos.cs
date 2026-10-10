@@ -1,12 +1,16 @@
 namespace DocGenerator.Application.DTOs;
 
-/// <summary>تسطير كتاب مطالعة — المحامي فقط. DocumentId فارغ يعني كتابًا عامًا غير مرتبط بملف.</summary>
-public record CreateReviewLetterRequest(int? DocumentId, string BodyHtml);
+/// <summary>
+/// تسطير كتاب مطالعة — المحامي فقط. DocumentId فارغ يعني كتابًا عامًا غير مرتبط بملف.
+/// بلا ملف: `RecipientSectionId` اختيار المستلم (شعبة) — فارغٌ يعني رئيس القسم (الافتراضي)؛
+/// مع ملف: يُشتق تلقائيًا من دائرة الملف ويُتجاهل المُرسَل.
+/// </summary>
+public record CreateReviewLetterRequest(int? DocumentId, string BodyHtml, int? RecipientSectionId = null);
 
 /// <summary>إضافة لاحق إلى كتاب مطالعة — محامي الكتاب فقط. يعيد الكتاب إلى «بانتظار رد».</summary>
 public record AddReviewLetterAddendumRequest(string BodyHtml);
 
-/// <summary>رد رئيس القسم على كتاب المطالعة أو أحد اللاحقات — رئيس قسم الفرع فقط.</summary>
+/// <summary>رد رئيس القسم أو الشعبة على كتاب المطالعة أو أحد اللاحقات — مالك النطاق فقط.</summary>
 public record ReplyReviewLetterRequest(string BodyHtml);
 
 /// <summary>رسالة واحدة ضمن كتاب المطالعة (الأصل أو لاحق أو رد).</summary>
@@ -42,7 +46,11 @@ public record ReviewLetterDto(
     /// <summary>هل فيه ردّ رئيس قسم لم يطّلع عليه محامي الكتاب؟ (لأتمتة تعليم الإطلاع عند الفتح).</summary>
     bool HasUnseenReply,
     IReadOnlyList<ReviewLetterMessageDto> Messages,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    /// <summary>الشعبة المستلمة (لبلا ملف — `null` تعني رئيس القسم؛ مع ملف مشتقة من دائرته).</summary>
+    int? RecipientSectionId = null,
+    /// <summary>اسم الشعبة المستلمة — للعرض فقط.</summary>
+    string? RecipientSectionName = null);
 
 /// <summary>
 /// سطر كتاب في القائمة: للكتاب المربوط بالملف تُملأ FileContext،
@@ -62,4 +70,8 @@ public record ReviewLetterListItemDto(
     bool HasUnseenReply,
     int MessagesCount,
     string? AdministrativeBranchName,
-    DateTime UpdatedAt);
+    DateTime UpdatedAt,
+    /// <summary>الشعبة المستلمة (لبلا ملف — `null` تعني رئيس القسم؛ مع ملف مشتقة من دائرته).</summary>
+    int? RecipientSectionId = null,
+    /// <summary>اسم الشعبة المستلمة — للعرض فقط.</summary>
+    string? RecipientSectionName = null);

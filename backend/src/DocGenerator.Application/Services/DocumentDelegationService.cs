@@ -29,6 +29,7 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
     private readonly IRepository<ExecutionCircuit> _circuits;
+    private readonly IRepository<Section> _sections;
 
     public DocumentDelegationService(
         IDelegationRepository delegations,
@@ -45,7 +46,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         IHeadAlertService alerts,
         TimeProvider clock,
         TimeZoneInfo timeZone,
-        IRepository<ExecutionCircuit>? circuits = null)
+        IRepository<ExecutionCircuit>? circuits = null,
+        IRepository<Section>? sections = null)
     {
         _delegations = delegations;
         _reservations = reservations;
@@ -62,6 +64,16 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         _clock = clock;
         _timeZone = timeZone;
         _circuits = circuits ?? new UnconfiguredCircuitRepository();
+        _sections = sections ?? new UnconfiguredSectionRepository();
+    }
+
+    private sealed class UnconfiguredSectionRepository : IRepository<Section>
+    {
+        public Task AddAsync(Section entity, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<Section?> GetByIdAsync(int id, CancellationToken ct = default) => Task.FromResult<Section?>(null);
+        public Task<List<Section>> ListAsync(CancellationToken ct = default) => Task.FromResult(new List<Section>());
+        public void Remove(Section entity) { }
+        public void Update(Section entity) { }
     }
 
     private sealed class UnconfiguredCircuitRepository : IRepository<ExecutionCircuit>
@@ -155,34 +167,29 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
                 $"سطّر إنابة على الملف (رقم {source.Id}) إلى {court}", token);
         }, ct);
 
-        // إشعار رئيس القسم بإنابة معلّقة بانتظار اعتماده عبر نظام تنبيهات رئيس القسم: يُنشأ في
-        // فرع الجهة المعنية بالاعتماد (الفرع المناب للإنابة الخارجية، فرع المنيب للداخلية).
-        // إشعار فرعي — فشله لا يُفشل التسطير، ويُسجَّل في سجل التدقيق.
-        var approvalBranchId = fields.IsExternal ? fields.ExternalBranchId : source.BranchId;
-        if (approvalBranchId is null)
+        // إشعار مالك الاعتماد بإنابة معلّقة بانتظار اعتماده عبر نظام تنبيهات رئيس القسم:
+        // فرع الدائرة المنابة للداخلية بدائرة (قد يعبر الفروع)، والفرع المناب
+        // للخارجية، وفرع المنيب بلا دائرة. إشعار فرعي — فشله لا يُفشل التسطير.
+        try
+        {
+            // الاستهداف (§7.1): مالك الدائرة المنابة (رئيس شعبته وإلا قسمه)،
+            // وخارجيةً رئيس قسم الفرع المناب، وبلا دائرة رئيس قسم فرع المنيب.
+            var (alertBranch, ownerId) = await ResolvePendingAlertTargetAsync(
+                fields.IsExternal, fields.ExternalBranchId, source.BranchId, circuitId, ct);
+            await _alerts.CreateAsync(new CreateHeadAlertRequest(
+                TargetType: "head",
+                DocumentId: source.Id,
+                TargetLawyerId: null,
+                Message: PendingApprovalMessage(source, court),
+                DelegationId: delegation.Id,
+                RecipientUserId: ownerId),
+                userId, alertBranch, actorName, ct);
+        }
+        catch (Exception ex)
         {
             await _audit.LogAsync(actorName, "head_alert_failed",
                 source.Id, source.DocumentType,
-                $"تعذّر إشعار رئيس القسم بالإنابة المعلّقة (رقم {delegation.Id}): لا يوجد فرع معني بالاعتماد", ct);
-        }
-        else
-        {
-            try
-            {
-                await _alerts.CreateAsync(new CreateHeadAlertRequest(
-                    TargetType: "head",
-                    DocumentId: source.Id,
-                    TargetLawyerId: null,
-                    Message: PendingApprovalMessage(source, court),
-                    DelegationId: delegation.Id),
-                    userId, approvalBranchId.Value, actorName, ct);
-            }
-            catch (Exception ex)
-            {
-                await _audit.LogAsync(actorName, "head_alert_failed",
-                    source.Id, source.DocumentType,
-                    $"تعذّر إشعار رئيس القسم بالإنابة المعلّقة (رقم {delegation.Id}): {ex.Message}", ct);
-            }
+                $"تعذّر إشعار مالك الاعتماد بالإنابة المعلّقة (رقم {delegation.Id}): {ex.Message}", ct);
         }
 
         var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
@@ -203,6 +210,12 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         var source = delegation.SourceDocument;
 
         var (court, circuitId, fields) = await ValidateAndBuildAsync(request, source.BranchId, ct);
+
+        // يُلتقط قرار الرئيس السابق قبل الكتابة: التصحيح يُبطله أدناه فيُعاد
+        // بناء تنبيهه لمالك الاعتماد الجديد (لا تحديث نص التنبيه القديم الذي قد
+        // يكون تنبيه رفض للمحامي أو تنبيه شعبة لم تعد مالكة).
+        var hadRedirect = delegation.RedirectedToSectionId is not null;
+        var hadReject = delegation.RejectReason is not null;
 
         await _tx.RunAsync(async token =>
         {
@@ -225,6 +238,12 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
             delegation.DepositBookNumber = Normalize(request.DepositBookNumber);
             delegation.DepositBookDate = fields.DepositBookDate;
             delegation.UpdatedAt = DateTime.UtcNow;
+            // أي كتابة ترفع الرمز — وإلا سحقت كتابة متزامنة قديمة بصمت (TOCTOU).
+            delegation.Version++;
+            // تصحيح المحامي يُبطل قراري الرئيس السابقين على المحتوى القديم (التوجيه
+            // لشعبة والرفض للدائرة الخطأ) — تُعاد المراجعة من جديد على المحتوى الجديد.
+            delegation.RedirectedToSectionId = null;
+            delegation.RejectReason = null;
             ApplyDelegationAssets(delegation, fresh, request.AssetIds);
 
             // B3: مواءمة الحجوزات مع اللقطات الجديدة (حذف المباشر أولًا فلا تعارض ذاتي) —
@@ -255,18 +274,48 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
                 $"عدّل إنابة (رقم {delegation.Id}) إلى {court}", token);
         }, ct);
 
-        // تحديث رسالة تنبيه «بانتظار اعتماد الإنابة» لتطابق البيانات المعدّلة (تُبقى علامات
-        // القراءة والمستلمين). إن لم يُنشأ التنبيه سابقًا (فشل إشعار سابق) لا يُستحدث هنا —
-        // مسار الإشعار لا يُفشل عملية التعديل ويُسجَّل فشله في سجل التدقيق.
-        try
+        // تصحيحٌ أبطل توجيهًا/رفضًا سابقًا: يُعاد بناء تنبيه الاعتماد لمالكه الجديد
+        // (حذف القديم وإنشاء موجَّه) — تحديث النص وحده كان يلوّث تنبيه الرفض
+        // ويُبقي تنبيه الشعبة السابقة. بلا إبطال: تحديث الرسالة مع بقاء المستلمين.
+        if (hadRedirect || hadReject)
         {
-            await _alerts.UpdateDelegationAlertAsync(delegation.Id, PendingApprovalMessage(source, court), ct);
+            try
+            {
+                await _alerts.DeleteByDelegationAsync(delegation.Id, ct);
+                var (rebuildBranch, rebuildOwner) = await ResolvePendingAlertTargetAsync(
+                    delegation.IsExternal, delegation.ExternalBranchId,
+                    source.BranchId, delegation.DelegatedCircuitId, ct);
+                await _alerts.CreateAsync(new CreateHeadAlertRequest(
+                    TargetType: "head",
+                    DocumentId: source.Id,
+                    TargetLawyerId: null,
+                    Message: PendingApprovalMessage(source, court),
+                    DelegationId: delegation.Id,
+                    RecipientUserId: rebuildOwner),
+                    userId, rebuildBranch, actorName, ct);
+            }
+            catch (Exception ex)
+            {
+                await _audit.LogAsync(actorName, "head_alert_failed",
+                    source.Id, source.DocumentType,
+                    $"تعذّر إعادة بناء تنبيه الإنابة المعلّقة (رقم {delegation.Id}) بعد تصحيحها: {ex.Message}", ct);
+            }
         }
-        catch (Exception ex)
+        else
         {
-            await _audit.LogAsync(actorName, "head_alert_failed",
-                source.Id, source.DocumentType,
-                $"تعذّر تحديث تنبيه الإنابة المعلّقة (رقم {delegation.Id}) بعد تعديلها: {ex.Message}", ct);
+            // تحديث رسالة تنبيه «بانتظار اعتماد الإنابة» لتطابق البيانات المعدّلة (تُبقى علامات
+            // القراءة والمستلمين). إن لم يُنشأ التنبيه سابقًا (فشل إشعار سابق) لا يُستحدث هنا —
+            // مسار الإشعار لا يُفشل عملية التعديل ويُسجَّل فشله في سجل التدقيق.
+            try
+            {
+                await _alerts.UpdateDelegationAlertAsync(delegation.Id, PendingApprovalMessage(source, court), ct);
+            }
+            catch (Exception ex)
+            {
+                await _audit.LogAsync(actorName, "head_alert_failed",
+                    source.Id, source.DocumentType,
+                    $"تعذّر تحديث تنبيه الإنابة المعلّقة (رقم {delegation.Id}) بعد تعديلها: {ex.Message}", ct);
+            }
         }
 
         var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
@@ -319,14 +368,16 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         return delegations.Select(d => ToDto(d, d.SourceDocument, ServerClock.CurrentYear(_clock, _timeZone))).ToList();
     }
 
-    public async Task<List<DelegationDto>> ListPendingForHeadAsync(int branchId, CancellationToken ct = default)
+    public async Task<List<DelegationDto>> ListPendingForHeadAsync(
+        int branchId, int? ownerSectionId = null, bool rejectedOnly = false, CancellationToken ct = default)
     {
-        var delegations = await _delegations.ListPendingByBranchAsync(branchId, ct);
+        var delegations = await _delegations.ListPendingByBranchAsync(branchId, ownerSectionId, rejectedOnly, ct);
         return delegations.Select(d => ToDto(d, d.SourceDocument, ServerClock.CurrentYear(_clock, _timeZone))).ToList();
     }
 
-    public Task<int> CountPendingForHeadAsync(int branchId, CancellationToken ct = default)
-        => _delegations.CountPendingByBranchAsync(branchId, ct);
+    public Task<int> CountPendingForHeadAsync(
+        int branchId, int? ownerSectionId = null, bool rejectedOnly = false, CancellationToken ct = default)
+        => _delegations.CountPendingByBranchAsync(branchId, ownerSectionId, rejectedOnly, ct);
 
     public async Task<bool> IsPartyAsync(int delegationId, int userId, CancellationToken ct = default)
     {
@@ -356,50 +407,69 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
 
         if (delegation.Status != DelegationStatusCatalog.PendingHead)
             throw new ArgumentException("لا يمكن اعتماد إنابة لم تعد معلّقة");
+        if (delegation.RejectReason is not null)
+            throw new ArgumentException("لا يمكن اعتماد إنابة مرفوضة — بانتظار تصحيح المحامي");
+        if (request.Version.HasValue && delegation.Version != request.Version.Value)
+            throw new DocumentConflictException("تعارض تزامن — أعد تحميل الإنابة وحاول مجددًا");
 
         var source = delegation.SourceDocument;
         if (source.NeedsRegistration)
             throw new ArgumentException("لا يمكن اعتماد إنابة على ملف بانتظار إعادة القيد — أدخل رقمه الجديد أولًا");
+
+        var caller = await LoadHeadCallerAsync(userId, headBranchId, ct);
+        var callerBranch = caller.BranchId ?? headBranchId
+            ?? throw new ArgumentException("الرئيس دون فرع لا يمكنه اعتماد الإنابات");
+
         var isExternal = delegation.IsExternal;
         var externalBranchId = delegation.ExternalBranchId;
 
-        // الإنابة الخارجية: يختار المحامي رئيس قسم الفرع المناب (الفرع المستلم).
-        // الداخلية: رئيس قسم الفرع المنيب (الفرع الذي يملك الملف).
-        var requiredBranch = isExternal ? externalBranchId : source.BranchId;
-        if (requiredBranch is null || requiredBranch != headBranchId)
-            throw new ArgumentException("لا يمكنك اعتماد هذه الإنابة — ليست ضمن فرعك");
+        // نطاق الاعتماد (§7.1 — قلب القاعدة): الاعتماد لمالك الدائرة المنابة لا المنيب.
+        var (approvalBranchId, approvalSectionId) = await ResolveApprovalScopeAsync(delegation, ct);
+        EnsureApprover(caller, callerBranch, approvalBranchId, approvalSectionId);
+
+        ExecutionCircuit? approvalCircuit = null;
+        if (!isExternal && delegation.DelegatedCircuitId is not null)
+            approvalCircuit = delegation.DelegatedCircuit
+                ?? await _circuits.GetByIdAsync(delegation.DelegatedCircuitId.Value, ct);
 
         var lawyer = await _users.GetByIdAsync(request.AssignedLawyerId, ct);
         if (lawyer is null || lawyer.Role != UserRole.Lawyer)
             throw new ArgumentException("المحامي المختص غير موجود");
-        if (!isExternal && lawyer.BranchId != source.BranchId)
-            throw new ArgumentException("المحامي المختص ليس ضمن فرع الملف المنيب");
-        if (isExternal && lawyer.BranchId != externalBranchId)
-            throw new ArgumentException("المحامي المختص ليس ضمن الفرع المناب");
+        // قاعدة الفرع (375-378): المحامي المختص من فرع الدائرة المنابة دائمًا —
+        // للداخلية بدائرة فرع الدائرة (قد يعبر الفروع)، وللخارجية الفرع المناب،
+        // وللداخلية بلا دائرة (قديمة) فرع الملف المنيب.
+        if (lawyer.BranchId != approvalBranchId)
+            throw new ArgumentException(isExternal
+                ? "المحامي المختص ليس ضمن الفرع المناب"
+                : approvalCircuit is not null
+                    ? "المحامي المختص ليس ضمن فرع الدائرة المنابة"
+                    : "المحامي المختص ليس ضمن فرع الملف المنيب");
 
-        var targetBranch = isExternal ? externalBranchId : source.BranchId;
+        var targetBranch = approvalBranchId;
 
         // استنتاج دائرة المناب عند الاعتماد من DelegatedCircuitId (فحص المحافظة لا الفرع):
         // المناب قد يُسجَّل بدائرة فرع آخر؛ Document.BranchId يبقى فرع المحامي.
         int? targetCircuitId = null;
         string targetCourt;
+        string? targetBranchName;
         if (isExternal)
         {
             targetCourt = Normalize(delegation.DelegatedCourt) ?? source.Court ?? string.Empty;
+            targetBranchName = delegation.ExternalBranch?.Name;
         }
         else
         {
             // انتقالي: إنابات قديمة/اختبارية بلا دائرة مرجعية تُعتمد بنصها الحر
             // (صفوف ما قبل السجل) — الجديد يُلزم بالسجل في ValidateAndBuild.
-            if (delegation.DelegatedCircuitId is null)
+            if (approvalCircuit is null)
             {
                 targetCircuitId = null;
                 targetCourt = Normalize(delegation.DelegatedCourt) ?? source.Court ?? string.Empty;
+                targetBranchName = source.BranchName;
             }
             else
             {
-                var targetCircuit = await _circuits.GetByIdAsync(delegation.DelegatedCircuitId.Value, ct)
-                    ?? throw new ArgumentException("الدائرة المنابة غير موجودة");
+                var targetCircuit = approvalCircuit;
                 if (!targetCircuit.IsActive)
                     throw new ArgumentException("الدائرة المنابة معطلة — اختر دائرة نشطة");
                 // فحص المحافظة فقط لا الفرع: محافظة فرع الدائرة == محافظة فرع المنيب.
@@ -419,52 +489,65 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
                     throw new ArgumentException("دائرة المناب ليست ضمن محافظة الملف المنيب");
                 targetCircuitId = targetCircuit.Id;
                 targetCourt = targetCircuit.Name;
+                // هوية المناب من الدائرة (قرار §2.25): فرع الدائرة لا فرع المنيب.
+                targetBranchName = (await _branches.GetByIdAsync(targetCircuit.BranchId, ct))?.Name
+                    ?? source.BranchName;
             }
         }
 
         Document? target = null;
-        await _tx.RunAsync(async token =>
+        try
         {
-            // إنشاء الملف المناب تلقائيًا: نفس السند التنفيذي والأطراف، بنوع «انابة»،
-            // موكولاً للمحامي المختص في الفرع المناب، مرتبطًا بإنابته (SourceDelegationId).
-            // هوية المناب مستقلة: دائرته هي الدائرة المنابة المسجَّل فيها (موطن المال مكانيًا)،
-            // ورقم أساسه مستقل (تسجيل أصولًا)، ونوعه «إنابة» دائمًا — لا دائرة المنيب.
-            // المحامي المختص (Lawyer) يُضبط باسم المحامي الموكول — كمصدر العرض والفلترة
-            // في «الملفات التنفيذية» — بنفس صيغة الإنشاء العادي (الاسم الكامل وإلا الدخول).
-            target = new Document
+            await _tx.RunAsync(async token =>
             {
-                CreatedById = lawyer.Id,
-                Lawyer = string.IsNullOrWhiteSpace(lawyer.FullName) ? lawyer.Username : lawyer.FullName,
-                BranchId = targetBranch,
-                BranchName = isExternal ? delegation.ExternalBranch?.Name ?? source.BranchName : source.BranchName,
-                ExecutionCircuitId = targetCircuitId,
-                Court = targetCourt,
-                CourtNorm = string.IsNullOrWhiteSpace(targetCourt) ? null : ArabicNameNormalizer.Normalize(targetCourt),
-                GeneralEntitySide = source.GeneralEntitySide,
-                IsDraft = true,
-                FileType = FileTypeCatalog.Delegation,
-                SourceDelegationId = delegation.Id,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow,
-            };
-            CopySourcePartiesAndBond(source, target);
+                // إنشاء الملف المناب تلقائيًا: نفس السند التنفيذي والأطراف، بنوع «انابة»،
+                // موكولاً للمحامي المختص في الفرع المناب، مرتبطًا بإنابته (SourceDelegationId).
+                // هوية المناب مستقلة: دائرته هي الدائرة المنابة المسجَّل فيها (موطن المال مكانيًا)،
+                // ورقم أساسه مستقل (تسجيل أصولًا)، ونوعه «إنابة» دائمًا — لا دائرة المنيب.
+                // المحامي المختص (Lawyer) يُضبط باسم المحامي الموكول — كمصدر العرض والفلترة
+                // في «الملفات التنفيذية» — بنفس صيغة الإنشاء العادي (الاسم الكامل وإلا الدخول).
+                target = new Document
+                {
+                    CreatedById = lawyer.Id,
+                    Lawyer = string.IsNullOrWhiteSpace(lawyer.FullName) ? lawyer.Username : lawyer.FullName,
+                    BranchId = targetBranch,
+                    BranchName = targetBranchName ?? source.BranchName,
+                    ExecutionCircuitId = targetCircuitId,
+                    Court = targetCourt,
+                    CourtNorm = string.IsNullOrWhiteSpace(targetCourt) ? null : ArabicNameNormalizer.Normalize(targetCourt),
+                    GeneralEntitySide = source.GeneralEntitySide,
+                    IsDraft = true,
+                    FileType = FileTypeCatalog.Delegation,
+                    SourceDelegationId = delegation.Id,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                };
+                CopySourcePartiesAndBond(source, target);
 
-            delegation.AssignedLawyerId = lawyer.Id;
-            delegation.Status = DelegationStatusCatalog.Assigned;
-            delegation.UpdatedAt = DateTime.UtcNow;
+                delegation.AssignedLawyerId = lawyer.Id;
+                delegation.Status = DelegationStatusCatalog.Assigned;
+                delegation.UpdatedAt = DateTime.UtcNow;
+                delegation.Version++;
 
-            await _documents.AddAsync(target, token);
-            await _uow.SaveChangesAsync(token);
-            _delegations.Update(delegation);
-            await _uow.SaveChangesAsync(token);
+                await _documents.AddAsync(target, token);
+                await _uow.SaveChangesAsync(token);
+                _delegations.Update(delegation);
+                await _uow.SaveChangesAsync(token);
 
-            await _documents.AddAssignmentAsync(target.Id, AssignmentKindCatalog.Create,
-                lawyer.FullName, actorName, DateTime.UtcNow, token);
+                await _documents.AddAssignmentAsync(target.Id, AssignmentKindCatalog.Create,
+                    lawyer.FullName, actorName, DateTime.UtcNow, token);
 
-            await _audit.LogAsync(actorName, "assign_delegation",
-                source.Id, source.DocumentType,
-                $"اعتمد إنابة (رقم {delegation.Id}) إلى {delegation.DelegatedCourt} وكلّف المحامي {lawyer.FullName}", token);
-        }, ct);
+                await _audit.LogAsync(actorName, "assign_delegation",
+                    source.Id, source.DocumentType,
+                    $"اعتمد إنابة (رقم {delegation.Id}) إلى {delegation.DelegatedCourt} وكلّف المحامي {lawyer.FullName}", token);
+            }, ct);
+        }
+        catch (Exception ex) when (_dbErrors.IsUniqueViolation(ex))
+        {
+            // §7.7: سباق الاعتماد المزدوج — وحدانية `SourceDelegationId` تحمي التوأم،
+            // والترجمة ودية (409 بالمجال) لا 500.
+            throw new DocumentConflictException("الإنابة مأخوذة مسبقًا — اعتُمدت من مستخدم آخر", ex);
+        }
 
         // تصفية تنبيه «بانتظار اعتماد الإنابة» بعد الاعتماد (أنجز مهمّته). إشعار فرعي —
         // فشله لا يُفشل الاعتماد، ويُسجَّل في سجل التدقيق.
@@ -490,13 +573,324 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
                     DocumentId: target.Id,
                     TargetLawyerId: null,
                     Message: $"أحال إليك رئيس القسم ملف إنابة لقيده أصولًا في {delegation.DelegatedCourt} (ملف {SourceLabel(source)})"),
-                    userId, targetBranch!.Value, actorName, ct);
+                    userId, targetBranch, actorName, ct);
             }
             catch (Exception ex)
             {
                 await _audit.LogAsync(actorName, "head_alert_failed",
                     source.Id, source.DocumentType,
                     $"تعذّر إشعار المحامي {lawyer.FullName} بإنشاء الملف المناب: {ex.Message}", ct);
+            }
+        }
+
+        return await _delegations.GetByIdWithDetailsAsync(delegation.Id, ct) is { } reloaded
+            ? ToDto(reloaded, reloaded.SourceDocument, ServerClock.CurrentYear(_clock, _timeZone))
+            : null;
+    }
+
+    /// <summary>
+    /// نطاق الاعتماد المحسوب (§7.1): فرع الاعتماد + شعبته (null للقسم).
+    /// داخلية بدائرة → فرع الدائرة وشعبتها؛ داخلية بلا دائرة (قديمة/انتقالية/
+    /// مفكوكة) → فرع المنيب بلا شعبة (قاعدته القديمة)؛ خارجية → الفرع المناب
+    /// مع الشعبة الموجَّه لها (null قبل التوجيه).
+    /// </summary>
+    private async Task<(int BranchId, int? SectionId)> ResolveApprovalScopeAsync(
+        DocumentDelegation delegation, CancellationToken ct)
+    {
+        if (!delegation.IsExternal && delegation.DelegatedCircuitId is not null)
+        {
+            var circuit = delegation.DelegatedCircuit
+                ?? await _circuits.GetByIdAsync(delegation.DelegatedCircuitId.Value, ct);
+            if (circuit is null)
+                throw new ArgumentException("الدائرة المنابة غير موجودة — أعد ربط الإنابة بدائرة نشطة");
+            return (circuit.BranchId, circuit.SectionId);
+        }
+        if (!delegation.IsExternal)
+        {
+            return (delegation.SourceDocument.BranchId
+                ?? throw new ArgumentException("لا يمكن اعتماد هذه الإنابة — الملف المنيب بلا فرع"), null);
+        }
+        return (delegation.ExternalBranchId
+            ?? throw new ArgumentException("الإنابة الخارجية بلا فرع مناب — تعذّر الاعتماد"),
+            delegation.RedirectedToSectionId);
+    }
+
+    /// <summary>
+    /// حارس المعتمد (§7.1): رئيس القسم لنطاق القسم (بلا شعبة)، ورئيس الشعبة
+    /// لشعبتها حصرًا — رمز بلا شعبة مرفوض بلا تدهور لنطاق القسم.
+    /// </summary>
+    private static void EnsureApprover(User caller, int callerBranch, int approvalBranch, int? approvalSection)
+    {
+        if (caller.Role != UserRole.Head && caller.Role != UserRole.SubHead)
+            throw new ArgumentException("اعتماد الإنابات للرؤساء فقط");
+        if (callerBranch != approvalBranch)
+            throw new ArgumentException("لا يمكنك اعتماد هذه الإنابة — ليست ضمن فرعك");
+        if (caller.Role == UserRole.Head)
+        {
+            if (approvalSection.HasValue)
+                throw new ArgumentException("الدائرة ليست ضمن نطاقك");
+        }
+        else if (caller.SectionId is null || approvalSection != caller.SectionId)
+        {
+            throw new ArgumentException("الدائرة ليست ضمن نطاقك");
+        }
+    }
+
+    private async Task<User> LoadHeadCallerAsync(int userId, int? headBranchId, CancellationToken ct)
+    {
+        var caller = await _users.GetByIdAsync(userId, ct)
+            ?? throw new ArgumentException("المستخدم غير موجود");
+        if (caller.Role != UserRole.Head && caller.Role != UserRole.SubHead)
+            throw new ArgumentException("اعتماد الإنابات للرؤساء فقط");
+        if (caller.Role == UserRole.SubHead && caller.SectionId is null)
+            throw new ArgumentException("حسابك بلا شعبة — أعد الدخول");
+        if (caller.BranchId is null && headBranchId is null)
+            throw new ArgumentException("الرئيس دون فرع لا يمكنه اعتماد الإنابات");
+        return caller;
+    }
+
+    /// <summary>
+    /// توجيه إنابة خارجية معلّقة لشعبة في الفرع المناب (§7.3) — رئيس قسم الفرع
+    /// المناب فقط، والشعبة من فرعه ونشطة ولها رئيس مفعّل. يُستبدل تنبيه القسم
+    /// بتنبيه موجَّه لرئيس الشعبة، ويُعاد للقسم بالتراجع قبل الإسناد.
+    /// </summary>
+    public async Task<DelegationDto?> RedirectToSectionAsync(
+        int delegationId,
+        RedirectDelegationRequest request,
+        int userId,
+        string? actorName,
+        CancellationToken ct = default)
+    {
+        var delegation = await _delegations.GetByIdWithDetailsAsync(delegationId, ct)
+            ?? throw new ArgumentException("الإنابة غير موجودة");
+        if (delegation.Status != DelegationStatusCatalog.PendingHead)
+            throw new ArgumentException("لا يمكن توجيه إنابة لم تعد معلّقة");
+        if (delegation.AssignedLawyerId is not null)
+            throw new ArgumentException("لا يمكن توجيه إنابة بعد إسنادها");
+        if (delegation.RejectReason is not null)
+            throw new ArgumentException("لا يمكن توجيه إنابة مرفوضة — بانتظار تصحيح المحامي");
+        if (!delegation.IsExternal)
+            throw new ArgumentException("التوجيه للشعبة للإنابات الخارجية فقط");
+        if (delegation.RedirectedToSectionId is not null)
+            throw new ArgumentException("الإنابة موجَّهة لشعبة سلفًا — تراجع عن التوجيه أولًا");
+        if (request.Version.HasValue && delegation.Version != request.Version.Value)
+            throw new DocumentConflictException("تعارض تزامن — أعد تحميل الإنابة وحاول مجددًا");
+
+        var caller = await _users.GetByIdAsync(userId, ct)
+            ?? throw new ArgumentException("المستخدم غير موجود");
+        var approvalBranch = delegation.ExternalBranchId
+            ?? throw new ArgumentException("الإنابة الخارجية بلا فرع مناب — تعذّر التوجيه");
+        if (caller.Role != UserRole.Head || caller.BranchId != approvalBranch)
+            throw new ArgumentException("التوجيه للشعبة لرئيس قسم الفرع المناب فقط");
+
+        var section = await _sections.GetByIdAsync(request.SectionId, ct)
+            ?? throw new ArgumentException("الشعبة الموجَّه لها غير موجودة");
+        if (section.BranchId != approvalBranch)
+            throw new ArgumentException("التوجيه لشعبة في الفرع المناب نفسه");
+        if (!section.IsActive)
+            throw new ArgumentException("الشعبة الموجَّه لها معطلة — اختر شعبة نشطة");
+        var subHead = await _users.FindActiveHeadAsync(UserRole.SubHead, approvalBranch, section.Id, ct)
+            ?? throw new ArgumentException("الشعبة بلا رئيس مفعّل — عيّن رئيسًا قبل التوجيه");
+
+        try
+        {
+            await _tx.RunAsync(async token =>
+            {
+                delegation.RedirectedToSectionId = section.Id;
+                delegation.UpdatedAt = DateTime.UtcNow;
+                delegation.Version++;
+                _delegations.Update(delegation);
+                await _uow.SaveChangesAsync(token);
+                await _audit.LogAsync(actorName, "redirect_delegation",
+                    delegation.SourceDocumentId, delegation.SourceDocument.DocumentType,
+                    $"وجّه الإنابة (رقم {delegation.Id}) لشعبة {section.Name}", token);
+            }, ct);
+        }
+        catch (Exception ex) when (_dbErrors.IsConcurrencyViolation(ex))
+        {
+            // توجيهان متزامنان حقيقيان للإنابة نفسها — 409 ودية بدل 500 خام.
+            throw new DocumentConflictException("تعارض تزامن — أعد تحميل الإنابة وحاول مجددًا", ex);
+        }
+
+        // يُستبدل تنبيه القسم بتنبيه موجَّه لرئيس الشعبة — أفضل جهد.
+        try
+        {
+            await _alerts.DeleteByDelegationAsync(delegation.Id, ct);
+            await _alerts.CreateAsync(new CreateHeadAlertRequest(
+                TargetType: "head",
+                DocumentId: delegation.SourceDocumentId,
+                TargetLawyerId: null,
+                Message: $"الإنابة من اختصاصكم يرجى التفضل بالاطلاع والإسناد (إنابة رقم {delegation.Id} على ملف {SourceLabel(delegation.SourceDocument)})",
+                DelegationId: delegation.Id,
+                RecipientUserId: subHead.Id),
+                userId, approvalBranch, actorName, ct);
+        }
+        catch (Exception ex)
+        {
+            await _audit.LogAsync(actorName, "head_alert_failed",
+                delegation.SourceDocumentId, delegation.SourceDocument.DocumentType,
+                $"تعذّر توجيه تنبيه الإنابة (رقم {delegation.Id}) للشعبة: {ex.Message}", ct);
+        }
+
+        return await _delegations.GetByIdWithDetailsAsync(delegation.Id, ct) is { } reloaded
+            ? ToDto(reloaded, reloaded.SourceDocument, ServerClock.CurrentYear(_clock, _timeZone))
+            : null;
+    }
+
+    /// <summary>
+    /// التراجع عن توجيه الشعبة قبل الإسناد (§7.3) — رئيس قسم فرع الاعتماد
+    /// (آمن للتعاقب: أي رئيس قسم حالي للفرع نفسه). يُستبدل تنبيه الشعبة بتنبيه القسم.
+    /// </summary>
+    public async Task<DelegationDto?> RecallRedirectAsync(
+        int delegationId,
+        int userId,
+        string? actorName,
+        CancellationToken ct = default)
+    {
+        var delegation = await _delegations.GetByIdWithDetailsAsync(delegationId, ct)
+            ?? throw new ArgumentException("الإنابة غير موجودة");
+        if (delegation.Status != DelegationStatusCatalog.PendingHead)
+            throw new ArgumentException("لا يمكن التراجع عن توجيه إنابة لم تعد معلّقة");
+        if (delegation.AssignedLawyerId is not null)
+            throw new ArgumentException("تعذّر التراجع بعد الإسناد");
+        if (delegation.RedirectedToSectionId is null)
+            throw new ArgumentException("لا يوجد توجيه مفتوح لهذه الإنابة");
+        if (delegation.RejectReason is not null)
+            throw new ArgumentException("لا يمكن التراجع عن توجيه إنابة مرفوضة — بانتظار تصحيح المحامي");
+
+        var caller = await _users.GetByIdAsync(userId, ct)
+            ?? throw new ArgumentException("المستخدم غير موجود");
+        var approvalBranch = delegation.IsExternal
+            ? delegation.ExternalBranchId
+            : delegation.SourceDocument.BranchId;
+        if (caller.Role != UserRole.Head || caller.BranchId != approvalBranch)
+            throw new ArgumentException("التراجع عن التوجيه لرئيس قسم فرع الاعتماد فقط");
+
+        try
+        {
+            await _tx.RunAsync(async token =>
+            {
+                delegation.RedirectedToSectionId = null;
+                delegation.UpdatedAt = DateTime.UtcNow;
+                delegation.Version++;
+                _delegations.Update(delegation);
+                await _uow.SaveChangesAsync(token);
+                await _audit.LogAsync(actorName, "recall_redirect_delegation",
+                    delegation.SourceDocumentId, delegation.SourceDocument.DocumentType,
+                    $"تراجع عن توجيه الإنابة (رقم {delegation.Id}) للشعبة — عادت لرئيس القسم", token);
+            }, ct);
+        }
+        catch (Exception ex) when (_dbErrors.IsConcurrencyViolation(ex))
+        {
+            // تراجعان متزامنان حقيقيان — 409 ودية بدل 500 خام.
+            throw new DocumentConflictException("تعارض تزامن — أعد تحميل الإنابة وحاول مجددًا", ex);
+        }
+
+        // يُستبدل تنبيه الشعبة بتنبيه موجَّه لرئيس القسم المسترجِع — أفضل جهد.
+        try
+        {
+            await _alerts.DeleteByDelegationAsync(delegation.Id, ct);
+            await _alerts.CreateAsync(new CreateHeadAlertRequest(
+                TargetType: "head",
+                DocumentId: delegation.SourceDocumentId,
+                TargetLawyerId: null,
+                Message: PendingApprovalMessage(delegation.SourceDocument, delegation.DelegatedCourt ?? string.Empty),
+                DelegationId: delegation.Id,
+                RecipientUserId: userId),
+                userId, approvalBranch!.Value, actorName, ct);
+        }
+        catch (Exception ex)
+        {
+            await _audit.LogAsync(actorName, "head_alert_failed",
+                delegation.SourceDocumentId, delegation.SourceDocument.DocumentType,
+                $"تعذّر إعادة تنبيه الإنابة (رقم {delegation.Id}) لرئيس القسم: {ex.Message}", ct);
+        }
+
+        return await _delegations.GetByIdWithDetailsAsync(delegation.Id, ct) is { } reloaded
+            ? ToDto(reloaded, reloaded.SourceDocument, ServerClock.CurrentYear(_clock, _timeZone))
+            : null;
+    }
+
+    /// <summary>
+    /// رفض الدائرة الخطأ برسالة تُعيد المحامي للتصحيح (§7.4) — المعتمد الحالي
+    /// فقط (نطاق الاعتماد نفسه). تبقى معلّقة بفلتر «مرفوض بانتظار التصحيح»،
+    /// ويُشعَر محامي المنيب (بطاقة ملفه + تنبيه)، وتحرّرها تعديله.
+    /// </summary>
+    public async Task<DelegationDto?> RejectAsync(
+        int delegationId,
+        RejectDelegationRequest request,
+        int userId,
+        string? actorName,
+        CancellationToken ct = default)
+    {
+        var delegation = await _delegations.GetByIdWithDetailsAsync(delegationId, ct)
+            ?? throw new ArgumentException("الإنابة غير موجودة");
+        if (delegation.Status != DelegationStatusCatalog.PendingHead)
+            throw new ArgumentException("لا يمكن رفض إنابة لم تعد معلّقة");
+        if (delegation.AssignedLawyerId is not null)
+            throw new ArgumentException("لا يمكن رفض إنابة بعد إسنادها");
+        if (delegation.RejectReason is not null)
+            throw new ArgumentException("الإنابة مرفوضة سلفًا — بانتظار تصحيح المحامي");
+        if (request.Version.HasValue && delegation.Version != request.Version.Value)
+            throw new DocumentConflictException("تعارض تزامن — أعد تحميل الإنابة وحاول مجددًا");
+        var reason = string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason.Trim();
+        if (reason is null)
+            throw new ArgumentException("سبب الرفض مطلوب — يُعرض للمحامي للتصحيح");
+        if (reason.Length > 1000)
+            throw new ArgumentException("طول سبب الرفض يتجاوز الحد الأقصى (1000 حرف)");
+
+        var caller = await LoadHeadCallerAsync(userId, null, ct);
+        var callerBranch = caller.BranchId
+            ?? throw new ArgumentException("الرئيس دون فرع لا يمكنه رفض الإنابات");
+        var (approvalBranch, approvalSection) = await ResolveApprovalScopeAsync(delegation, ct);
+        EnsureApprover(caller, callerBranch, approvalBranch, approvalSection);
+
+        try
+        {
+            await _tx.RunAsync(async token =>
+            {
+                delegation.RejectReason = reason;
+                delegation.UpdatedAt = DateTime.UtcNow;
+                delegation.Version++;
+                _delegations.Update(delegation);
+                await _uow.SaveChangesAsync(token);
+                await _audit.LogAsync(actorName, "reject_delegation",
+                    delegation.SourceDocumentId, delegation.SourceDocument.DocumentType,
+                    $"رفض الإنابة (رقم {delegation.Id}) للدائرة الخطأ — السبب: {reason}", token);
+            }, ct);
+        }
+        catch (Exception ex) when (_dbErrors.IsConcurrencyViolation(ex))
+        {
+            // رفضان متزامنان حقيقيان — 409 ودية بدل 500 خام.
+            throw new DocumentConflictException("تعارض تزامن — أعد تحميل الإنابة وحاول مجددًا", ex);
+        }
+
+        // إشعار محامي المنيب بالرفض (بطاقة ملفه تُظهر السبب، وهذا التنبيه يوقظه) —
+        // مرتبط بالإنابة فيُصفَّى تلقائيًا عند الاعتماد اللاحق. أفضل جهد.
+        var sourceBranch = delegation.SourceDocument.BranchId;
+        if (sourceBranch is null)
+        {
+            await _audit.LogAsync(actorName, "head_alert_failed",
+                delegation.SourceDocumentId, delegation.SourceDocument.DocumentType,
+                $"تعذّر إشعار المحامي برفض الإنابة (رقم {delegation.Id}): الملف المنيب بلا فرع", ct);
+        }
+        else
+        {
+            try
+            {
+                await _alerts.CreateAsync(new CreateHeadAlertRequest(
+                    TargetType: "document",
+                    DocumentId: delegation.SourceDocumentId,
+                    TargetLawyerId: null,
+                    Message: $"رُفضت الإنابة (رقم {delegation.Id}) للدائرة الخطأ — {reason} — صحّح الدائرة من بطاقة تشعبات الملف",
+                    DelegationId: delegation.Id),
+                    userId, sourceBranch.Value, actorName, ct);
+            }
+            catch (Exception ex)
+            {
+                await _audit.LogAsync(actorName, "head_alert_failed",
+                    delegation.SourceDocumentId, delegation.SourceDocument.DocumentType,
+                    $"تعذّر إشعار المحامي برفض الإنابة (رقم {delegation.Id}): {ex.Message}", ct);
             }
         }
 
@@ -561,6 +955,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
 
             delegation.Status = DelegationStatusCatalog.Registered;
             delegation.UpdatedAt = DateTime.UtcNow;
+            // تحوّل الحالة يرفع الرمز — تسجيل مزدوج متزامن يفشل برمز التزامن (409).
+            delegation.Version++;
             _delegations.Update(delegation);
             await _uow.SaveChangesAsync(token);
 
@@ -575,32 +971,49 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
             throw new DocumentConflictException($"رقم الأساس {fileNumber} مكرر — أُدخل أثناء الحفظ من مستخدم آخر، أعد المحاولة برقم مختلف", ex);
         }
 
-        // إشعار رئيس القسم بإتمام التسجيل وبقاء الإنابة بانتظار الإتمام (بيع الأموال وإعادة
-        // الملف): يُنشأ في فرع الملف المناب (فرع متابعة الإتمام). إشعار فرعي — فشله لا يُفشل
-        // التسجيل، ويُسجَّل في سجل التدقيق.
+        // إشعار مالك الاعتماد بإتمام التسجيل وبقاء الإنابة بانتظار الإتمام (بيع
+        // الأموال وإعادة الملف): مالك دائرة المناب (شعبته بعد التوجيه، وإلا
+        // قسمه). إشعار فرعي — فشله لا يُفشل التسجيل، ويُسجَّل في سجل التدقيق.
         if (target.BranchId is null)
         {
             await _audit.LogAsync(actorName, "head_alert_failed",
                 delegation.SourceDocumentId, delegation.SourceDocument.DocumentType,
-                $"تعذّر إشعار رئيس القسم بإنابة مسجّلة بانتظار الإتمام (رقم {delegation.Id}): الملف المناب بلا فرع", ct);
+                $"تعذّر إشعار مالك الاعتماد بالإنابة المسجّلة بانتظار الإتمام (رقم {delegation.Id}): الملف المناب بلا فرع", ct);
         }
         else
         {
             try
             {
+                // الاستهداف (§7.1 + §7.3): الموجَّهة لشعبة لرئيس شعبته، وإلا مالك
+                // دائرة الملف المناب (رئيس شعبته وإلا قسمه).
+                int completionOwnerBranch = target.BranchId.Value;
+                int? completionOwnerId;
+                if (delegation.RedirectedToSectionId.HasValue)
+                {
+                    completionOwnerId = (await _users.FindActiveHeadAsync(
+                            UserRole.SubHead, completionOwnerBranch, delegation.RedirectedToSectionId, ct)
+                        ?? await _users.FindActiveHeadAsync(UserRole.Head, completionOwnerBranch, null, ct))?.Id;
+                }
+                else
+                {
+                    (completionOwnerBranch, completionOwnerId) = await ResolvePendingAlertTargetAsync(
+                        isExternal: false, externalBranchId: null,
+                        sourceBranchId: target.BranchId, circuitId: target.ExecutionCircuitId, ct);
+                }
                 await _alerts.CreateAsync(new CreateHeadAlertRequest(
                     TargetType: "head",
                     DocumentId: target.Id,
                     TargetLawyerId: null,
                     Message: "بانتظار الإتمام",
-                    DelegationId: delegation.Id),
-                    userId, target.BranchId.Value, actorName, ct);
+                    DelegationId: delegation.Id,
+                    RecipientUserId: completionOwnerId),
+                    userId, completionOwnerBranch, actorName, ct);
             }
             catch (Exception ex)
             {
                 await _audit.LogAsync(actorName, "head_alert_failed",
                     delegation.SourceDocumentId, delegation.SourceDocument.DocumentType,
-                    $"تعذّر إشعار رئيس القسم بالإنابة المسجّلة بانتظار الإتمام (رقم {delegation.Id}): {ex.Message}", ct);
+                    $"تعذّر إشعار مالك الاعتماد بالإنابة المسجّلة بانتظار الإتمام (رقم {delegation.Id}): {ex.Message}", ct);
             }
         }
 
@@ -676,6 +1089,8 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
             delegation.Status = DelegationStatusCatalog.Executed;
             delegation.SaleCoversFullDebt = request.SaleCoversFullDebt.Value;
             delegation.UpdatedAt = DateTime.UtcNow;
+            // تحوّل الحالة يرفع الرمز — إتمام مزدوج متزامن يفشل برمز التزامن (409).
+            delegation.Version++;
             _delegations.Update(delegation);
 
             // الملف المناب يُصبح «منفذ إنابة»: حالة نهائية تُعامل منفذًا في القوائم والإحصاءات.
@@ -901,6 +1316,34 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
             externalBranchId,
             delegationDate,
             FreeDateParser.Parse(request.DepositBookDate, "تاريخ كتاب إيداع رئيس القسم")));
+    }
+
+    /// <summary>
+    /// هدف تنبيه «بانتظار الاعتماد» (§7.1): فرع الاعتماد + مالكه — فرع الدائرة
+    /// المنابة ومالكها (رئيس شعبته وإلا قسمه) للداخلية بدائرة، والفرع المناب
+    /// ورئيس قسمه للخارجية، وفرع المنيب ورئيس قسمه بلا دائرة. `null` للمالك
+    /// عند غياب مفعّل (يُبثّ حينها لنطاق الفرع ويُسجَّل الفشل لاحقًا).
+    /// </summary>
+    private async Task<(int BranchId, int? OwnerId)> ResolvePendingAlertTargetAsync(
+        bool isExternal, int? externalBranchId, int? sourceBranchId, int? circuitId, CancellationToken ct)
+    {
+        if (isExternal)
+        {
+            var branch = externalBranchId
+                ?? throw new ArgumentException("الإنابة الخارجية بلا فرع مناب — تعذّر الاستهداف");
+            return (branch, (await _users.FindActiveHeadAsync(UserRole.Head, branch, null, ct))?.Id);
+        }
+        var circuit = circuitId.HasValue ? await _circuits.GetByIdAsync(circuitId.Value, ct) : null;
+        if (circuit is not null)
+        {
+            if (circuit.SectionId.HasValue)
+                return (circuit.BranchId, ((await _users.FindActiveHeadAsync(UserRole.SubHead, circuit.BranchId, circuit.SectionId, ct))
+                    ?? await _users.FindActiveHeadAsync(UserRole.Head, circuit.BranchId, null, ct))?.Id);
+            return (circuit.BranchId, (await _users.FindActiveHeadAsync(UserRole.Head, circuit.BranchId, null, ct))?.Id);
+        }
+        var srcBranch = sourceBranchId
+            ?? throw new ArgumentException("الملف بلا فرع — تعذّر الاستهداف");
+        return (srcBranch, (await _users.FindActiveHeadAsync(UserRole.Head, srcBranch, null, ct))?.Id);
     }
 
     /// <summary>حقول الإنابة المنبثقة من الطلب بعد التحقق (الجهة الخارجية وتواريخها النصية الحرة).</summary>
@@ -1171,7 +1614,14 @@ public sealed class DocumentDelegationService : IDocumentDelegationService
         Normalize(source.Court),
         DelegationActivityPolicy.IsAssetBlocking(d),
         d.TargetDocument is not null && DelegationActivityPolicy.IsTargetTerminal(d.TargetDocument),
-        d.DelegatedCircuitId);
+        d.DelegatedCircuitId,
+        d.TargetDocument?.BranchId,
+        d.TargetDocument?.Branch?.Name,
+        d.TargetDocument?.Lawyer,
+        RejectReason: d.RejectReason,
+        RedirectedToSectionId: d.RedirectedToSectionId,
+        RedirectedToSectionName: d.RedirectedToSection?.Name,
+        Version: d.Version);
 
     private static string SourceLabel(Document source)
     {

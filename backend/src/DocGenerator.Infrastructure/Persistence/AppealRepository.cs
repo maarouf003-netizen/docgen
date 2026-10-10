@@ -30,6 +30,7 @@ public class AppealRepository : Repository<DocumentAppeal>, IAppealRepository
         string? status,
         int? visibleBranchId,
         int? visibleUserId,
+        int? ownerSectionId,
         int page,
         int perPage,
         CancellationToken ct = default)
@@ -46,8 +47,22 @@ public class AppealRepository : Repository<DocumentAppeal>, IAppealRepository
         }
         else if (visibleBranchId is not null)
         {
-            // رئيس قسم: استئنافات ملفات فرعه.
             q = q.Where(a => a.Document.BranchId == visibleBranchId.Value);
+            if (ownerSectionId.HasValue)
+            {
+                // رئيس شعبة: استئنافات ملفات دوائر شعبته.
+                q = q.Where(a => a.Document.ExecutionCircuitId != null
+                    && a.Document.ExecutionCircuit!.SectionId == ownerSectionId.Value);
+            }
+            else
+            {
+                // رئيس قسم: استئنافات ملفات دوائر القسم وبلا دائرة + المحال له
+                // استثناءً حتى الحسم (قرار §2.22 — المحسوم/المشطوب لا استثناء له).
+                q = q.Where(a => a.Document.ExecutionCircuitId == null
+                    || a.Document.ExecutionCircuit!.SectionId == null
+                    || (a.Status == AppealStatusCatalog.Pending
+                        && a.ForwardState == AppealForwardCatalog.ForwardedToHead));
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(status))
@@ -80,6 +95,45 @@ public class AppealRepository : Repository<DocumentAppeal>, IAppealRepository
     public Task<bool> IsAssignedFollowerAsync(int documentId, int userId, CancellationToken ct = default)
         => Db.DocumentAppeals.AnyAsync(a => a.DocumentId == documentId && a.AssignedLawyerId == userId, ct);
 
+    public Task<List<DocumentAppeal>> ListPendingByAssigneeInScopeAsync(
+        int assigneeId, int branchId, int? ownerSectionId, CancellationToken ct = default)
+    {
+        // النقل الجملة للمنظورة ضمن نطاق المنفِّذ فقط (§5.5) — فلترة قاعدية
+        // بلا تحميل التفاصيل (المحسوم والمشطوب وخارج النطاق يُستبعدان هنا).
+        // بتتبّع لأن القصد تحديثها؛ لا روابط لازمة (الحقول المكتوبة عددية فقط).
+        return InScope(Db.DocumentAppeals, assigneeId, branchId, ownerSectionId)
+            .OrderByDescending(a => a.CreatedAt)
+            .ToListAsync(ct);
+    }
+
+    public Task<int> CountPendingByAssigneeInScopeAsync(
+        int assigneeId, int branchId, int? ownerSectionId, CancellationToken ct = default)
+    {
+        // المعاينة بالنطاق نفسه (§5.5): تطابق المنقول فعلًا — عدّ قاعدي بلا جلب.
+        return InScope(Db.DocumentAppeals.AsNoTracking(), assigneeId, branchId, ownerSectionId)
+            .CountAsync(ct);
+    }
+
+    /// <summary>
+    /// قيد النطاق المشترك للنقل الجملة ومعاينته: إسناد + فرع + منظور +
+    /// ملكية الدائرة (شعبة المنفِّذ، أو القسم وبلا دائرة لرئيس القسم).
+    /// </summary>
+    private static IQueryable<DocumentAppeal> InScope(
+        IQueryable<DocumentAppeal> source, int assigneeId, int branchId, int? ownerSectionId)
+    {
+        var q = source.Where(a =>
+            a.AssignedLawyerId == assigneeId
+            && a.Document.BranchId == branchId
+            && a.Status == AppealStatusCatalog.Pending);
+        return ownerSectionId.HasValue
+            ? q.Where(a => a.Document.ExecutionCircuitId != null
+                && a.Document.ExecutionCircuit!.SectionId == ownerSectionId.Value)
+            : q.Where(a => a.Document.ExecutionCircuitId == null
+                || a.Document.ExecutionCircuit!.SectionId == null
+                // رئيس القسم: المحال له استثناءً حتى الحسم — مرآة البحث (قرار §2.22).
+                || (a.Status == AppealStatusCatalog.Pending
+                    && a.ForwardState == AppealForwardCatalog.ForwardedToHead));
+    }
     public Task<int> CountByAssigneeAsync(int assigneeId, int? branchId = null, string? status = null, CancellationToken ct = default)
     {
         var q = Db.DocumentAppeals.AsNoTracking()
@@ -115,6 +169,16 @@ public class AppealRepository : Repository<DocumentAppeal>, IAppealRepository
             .ToListAsync(ct);
     }
 
+    /// <summary>
+    /// الاستثناء القرائي للإحالة (قرار §2.22): هل على الملف إحالة مفتوحة لرئيس
+    /// القسم (`ForwardedToHead`) — تُرى حتى الحسم (المحسوم/المشطوب لا استثناء له).
+    /// </summary>
+    public Task<bool> HasForwardedAppealAsync(int documentId, CancellationToken ct = default)
+        => Db.DocumentAppeals.AsNoTracking()
+            .AnyAsync(a => a.DocumentId == documentId
+                && a.Status == AppealStatusCatalog.Pending
+                && a.ForwardState == AppealForwardCatalog.ForwardedToHead, ct);
+
     public async Task<Dictionary<int, int>> MapFirstAppealIdByDocumentIdsAsync(
         IReadOnlyCollection<int> documentIds, CancellationToken ct = default)
     {
@@ -142,6 +206,10 @@ public class AppealRepository : Repository<DocumentAppeal>, IAppealRepository
     private static IQueryable<DocumentAppeal> WithIncludes(IQueryable<DocumentAppeal> q) =>
         q.Include(a => a.Document)
             .ThenInclude(d => d!.BaseNumbers)
+            // الدائرة وشعبتها للتوجيه بالنطاق (§5 — قرار §2.21).
+            .Include(a => a.Document)
+                .ThenInclude(d => d!.ExecutionCircuit)
+                .ThenInclude(c => c!.Section)
             .Include(a => a.AssignedLawyer)
             .Include(a => a.CreatedBy)
             .Include(a => a.BaseNumbers)

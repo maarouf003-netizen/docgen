@@ -19,14 +19,14 @@ interface CorrespondenceBellProps {
 /**
  * مؤشر المراسلات العاجلة (أيقونة رسالة حديثة): أحمر مع عدد المراسلات العاجلة
  * التي لم يؤكد المستخدم مشاهدتها، ويُحدَّث كل دقيقة وفورًا عند تأكيد المشاهدة.
- * للمحامي ورئيس القسم والمندوب (كلٌّ يرى عاجلَه كطرف) — لا يظهر للمدير/المشرف.
+ * للمحامي ورئيس القسم/الشعبة والمندوب (كلٌّ يرى عاجلَه كطرف) — لا يظهر للمدير/المشرف.
  */
 export default function CorrespondenceBell({ portal = false, className = '', count: fedCount }: CorrespondenceBellProps) {
   const { user } = useAuth();
   const [selfCount, setSelfCount] = useState(0);
 
   const canHaveUrgent =
-    user?.role === 'lawyer' || user?.role === 'head' || user?.role === 'entitymanager';
+    user?.role === 'lawyer' || user?.role === 'head' || user?.role === 'subhead' || user?.role === 'entitymanager';
   const base = portal ? '/portal/correspondence' : '/correspondence';
 
   useEffect(() => {

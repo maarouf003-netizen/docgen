@@ -39,7 +39,8 @@ public class EntityDelegateServiceTests : IDisposable
             new PasswordHasher(),
             new UnitOfWork(_db),
             new TransactionRunner(_db),
-            _audit);
+            _audit,
+            new Repository<Branch>(_db));
     }
 
     public void Dispose() => _db.Dispose();
@@ -260,5 +261,36 @@ public class EntityDelegateServiceTests : IDisposable
         var after = await _db.Users.AsNoTracking().SingleAsync(u => u.Id == created.Id);
         Assert.False(after.IsActive);
         Assert.True(after.TokenVersion > before.TokenVersion);
+    }
+
+    [Fact]
+    public async Task SubHead_GovernorateLock_ParityWithHead()
+    {
+        var branch = new Branch { Name = "دمشق", Code = "DAM", Governorate = "دمشق" };
+        _db.Branches.Add(branch);
+        await _db.SaveChangesAsync();
+        var aleppoGroup = new PublicEntityGroup { CanonicalName = "وزارة الصحة", EntityType = PublicEntityTypeCatalog.Ministry };
+        aleppoGroup.Entries.Add(new PublicEntity { Governorate = "حلب", BranchName = "فرع حلب", Status = EntityStatusCatalog.Final, CreatedById = 1 });
+        _db.PublicEntityGroups.Add(aleppoGroup);
+        await _db.SaveChangesAsync();
+        var aleppoEntryId = aleppoGroup.Entries.First().Id;
+
+        var sub = new User { Username = "sub_dam", FullName = "رئيس شعبة", Role = UserRole.SubHead, BranchId = branch.Id, PasswordHash = "x" };
+        _db.Users.Add(sub);
+        await _db.SaveChangesAsync();
+        var actor = new EntityRegistryActor(sub.Id, "رئيس شعبة", UserRole.SubHead, branch.Id);
+
+        // خارج محافظة فرعه مرفوض إنشاءً...
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.CreateAsync(
+            new CreateDelegateRequest("delegate.alp", "مندوب حلب", "secret6", null, aleppoEntryId), "رئيس شعبة", default, actor));
+
+        // ...وداخلها مسموح.
+        var dto = await _service.CreateAsync(
+            new CreateDelegateRequest("delegate.dam", "مندوب دمشق", "secret6", null, _entryId), "رئيس شعبة", default, actor);
+        Assert.Equal("delegate.dam", dto.Username);
+
+        // والقائمة محجوبة عن خارج المحافظة.
+        var list = await _service.ListAsync(default, actor);
+        Assert.All(list, d => Assert.NotEqual("delegate.alp", d.Username));
     }
 }

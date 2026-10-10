@@ -58,6 +58,8 @@ public class DocGeneratorDbContext : DbContext
     public DbSet<AppSuggestion> AppSuggestions => Set<AppSuggestion>();
     public DbSet<IdempotencyKey> IdempotencyKeys => Set<IdempotencyKey>();
     public DbSet<ExecutionCircuit> ExecutionCircuits => Set<ExecutionCircuit>();
+    public DbSet<Section> Sections => Set<Section>();
+    public DbSet<HeadSuccession> HeadSuccessions => Set<HeadSuccession>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

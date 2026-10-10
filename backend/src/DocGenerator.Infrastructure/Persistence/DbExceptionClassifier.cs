@@ -28,12 +28,21 @@ public class DbExceptionClassifier : IDbExceptionClassifier
     /// <summary>
     /// تعارض التزامن المتفائل (RF-010): `EF` ترفع `DbUpdateConcurrencyException` عند
     /// فشل `WHERE` رمز التزامن (`Document.Version`) — تُكتشَف عبر كامل السلسلة.
+    /// إضافة المرحلة 9: انشغال/قفل التخزين المتزامن (SQLite `BUSY/LOCKED` وPostgres
+    /// `serialization_failure/deadlock_detected`) — كتابتان متزامنتان حقيقيتان
+    /// تتصادمان خارج `WHERE` الرمز، فتُترجمان 409 ودية بدل 500 خام.
     /// </summary>
     public bool IsConcurrencyViolation(Exception ex)
     {
         for (var current = ex; current is not null; current = current.InnerException)
         {
             if (current is DbUpdateConcurrencyException)
+                return true;
+            if (current is SqliteException sqlite
+                && (sqlite.SqliteErrorCode == 5 || sqlite.SqliteErrorCode == 6))
+                return true;
+            if (current is PostgresException postgres
+                && (postgres.SqlState is "40001" or "40P01"))
                 return true;
         }
         return false;

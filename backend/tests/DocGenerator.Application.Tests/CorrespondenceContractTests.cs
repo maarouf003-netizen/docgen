@@ -31,6 +31,7 @@ public class CorrespondenceContractTests
     ];
 
     // قائمة الإدراج الكاملة لعقد التفاصيل — القاعدة نفسها.
+    // (§10.2: `RecipientSectionId` للشعبة المجمدة للمستلم الرئيس.)
     private static readonly string[] DetailMembers =
     [
         "Id", "CorrespondenceNumber", "CorrespondenceDate", "Importance",
@@ -38,6 +39,7 @@ public class CorrespondenceContractTests
         "AdministrativeBranchName", "CreatorId", "CreatorName", "CreatorRole",
         "TargetUserId", "TargetName", "TargetRole", "ViewStatus",
         "CanMarkSeen", "CanReply", "Messages", "Receipts", "CreatedAt",
+        "RecipientSectionId",
     ];
 
     [Fact]

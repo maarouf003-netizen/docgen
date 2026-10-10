@@ -398,6 +398,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("RecipientSectionId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("TargetUserId")
                         .HasColumnType("INTEGER");
 
@@ -418,6 +421,8 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.HasIndex("Governorate");
 
                     b.HasIndex("Importance");
+
+                    b.HasIndex("RecipientSectionId");
 
                     b.HasIndex("TargetUserId");
 
@@ -1207,6 +1212,23 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Property<int>("DocumentId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ForwardReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ForwardState")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("Owned");
+
+                    b.Property<DateTime?>("ForwardedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ForwardedById")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("GroundsSummary")
                         .HasMaxLength(2000)
                         .HasColumnType("TEXT");
@@ -1251,6 +1273,10 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AssignedLawyerId");
@@ -1263,10 +1289,16 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("DocumentId");
 
+                    b.HasIndex("ForwardState");
+
+                    b.HasIndex("ForwardedById");
+
                     b.HasIndex("Status");
 
                     b.ToTable("DocumentAppeals", null, t =>
                         {
+                            t.HasCheckConstraint("CK_DocumentAppeals_ForwardState", "\"ForwardState\" IN ('Owned', 'ForwardedToHead')");
+
                             t.HasCheckConstraint("CK_DocumentAppeals_Status", "\"Status\" IN ('pending', 'decided', 'struck-off')");
                         });
                 });
@@ -1387,6 +1419,13 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsExternal")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("RedirectedToSectionId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("RejectReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("ReturnDate")
                         .HasColumnType("datetime2");
 
@@ -1404,6 +1443,10 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AssignedLawyerId");
@@ -1413,6 +1456,8 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.HasIndex("DelegatedCircuitId");
 
                     b.HasIndex("ExternalBranchId");
+
+                    b.HasIndex("RedirectedToSectionId");
 
                     b.HasIndex("SourceDocumentId");
 
@@ -1908,6 +1953,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("SectionId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
 
@@ -1922,6 +1970,8 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.HasIndex("CreatedById");
 
                     b.HasIndex("IsActive");
+
+                    b.HasIndex("SectionId");
 
                     b.HasIndex("BranchId", "NameNorm")
                         .IsUnique();
@@ -2112,6 +2162,58 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("HeadAlertRecipients", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.HeadSuccession", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ActorName")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("At")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("BranchId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Event")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("SectionId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("At");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("SectionId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("HeadSuccessions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_HeadSuccessions_Event", "\"Event\" IN ('appointed', 'deactivated', 'succeeded', 'circuit-transferred', 'renamed')");
+                        });
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.Heir", b =>
@@ -2570,6 +2672,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("RecipientSectionId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
 
@@ -2585,6 +2690,8 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("LetterNumber")
                         .IsUnique();
+
+                    b.HasIndex("RecipientSectionId");
 
                     b.HasIndex("UpdatedAt");
 
@@ -2649,6 +2756,48 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.ToTable("ReviewLetterMessages", (string)null);
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.Section", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("BranchId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NameNorm")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("IsActive");
+
+                    b.HasIndex("BranchId", "NameNorm")
+                        .IsUnique();
+
+                    b.ToTable("Sections", (string)null);
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.User", b =>
                 {
                     b.Property<int>("Id")
@@ -2660,6 +2809,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
+
+                    b.Property<int?>("CreatedById")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Email")
                         .HasMaxLength(150)
@@ -2698,6 +2850,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("SectionId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("TokenVersion")
                         .HasColumnType("INTEGER");
 
@@ -2711,11 +2866,19 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BranchId");
+                    b.HasIndex("BranchId")
+                        .IsUnique()
+                        .HasFilter("\"Role\" = 'Head' AND \"IsActive\"");
+
+                    b.HasIndex("CreatedById");
 
                     b.HasIndex("PortalEntryId");
 
                     b.HasIndex("PortalGroupId");
+
+                    b.HasIndex("SectionId")
+                        .IsUnique()
+                        .HasFilter("\"Role\" = 'SubHead' AND \"IsActive\"");
 
                     b.HasIndex("Username")
                         .IsUnique()
@@ -2726,7 +2889,7 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.ToTable("Users", null, t =>
                         {
-                            t.HasCheckConstraint("CK_Users_BranchRequiredForBranchRoles", "\"BranchId\" IS NOT NULL OR \"Role\" NOT IN ('Lawyer', 'Head')");
+                            t.HasCheckConstraint("CK_Users_BranchRequiredForBranchRoles", "\"BranchId\" IS NOT NULL OR \"Role\" NOT IN ('Lawyer', 'Head', 'SubHead')");
                         });
                 });
 
@@ -2837,6 +3000,11 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("DocGenerator.Domain.Entities.Section", "RecipientSection")
+                        .WithMany()
+                        .HasForeignKey("RecipientSectionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("DocGenerator.Domain.Entities.User", "TargetUser")
                         .WithMany()
                         .HasForeignKey("TargetUserId")
@@ -2848,6 +3016,8 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Navigation("CreatedBy");
 
                     b.Navigation("Document");
+
+                    b.Navigation("RecipientSection");
 
                     b.Navigation("TargetUser");
                 });
@@ -3007,6 +3177,11 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasForeignKey("ExternalBranchId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("DocGenerator.Domain.Entities.Section", "RedirectedToSection")
+                        .WithMany()
+                        .HasForeignKey("RedirectedToSectionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("DocGenerator.Domain.Entities.Document", "SourceDocument")
                         .WithMany("Delegations")
                         .HasForeignKey("SourceDocumentId")
@@ -3020,6 +3195,8 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Navigation("DelegatedCircuit");
 
                     b.Navigation("ExternalBranch");
+
+                    b.Navigation("RedirectedToSection");
 
                     b.Navigation("SourceDocument");
                 });
@@ -3170,9 +3347,16 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("DocGenerator.Domain.Entities.Section", "Section")
+                        .WithMany("Circuits")
+                        .HasForeignKey("SectionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Branch");
 
                     b.Navigation("CreatedBy");
+
+                    b.Navigation("Section");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.Guarantor", b =>
@@ -3255,6 +3439,32 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("HeadAlert");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.HeadSuccession", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.Section", "Section")
+                        .WithMany()
+                        .HasForeignKey("SectionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DocGenerator.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("Section");
 
                     b.Navigation("User");
                 });
@@ -3396,11 +3606,18 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("DocGenerator.Domain.Entities.Section", "RecipientSection")
+                        .WithMany()
+                        .HasForeignKey("RecipientSectionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Branch");
 
                     b.Navigation("CreatedBy");
 
                     b.Navigation("Document");
+
+                    b.Navigation("RecipientSection");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.ReviewLetterMessage", b =>
@@ -3414,11 +3631,27 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Navigation("ReviewLetter");
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.Section", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Branch");
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.User", b =>
                 {
                     b.HasOne("DocGenerator.Domain.Entities.Branch", "Branch")
                         .WithMany("Users")
                         .HasForeignKey("BranchId");
+
+                    b.HasOne("DocGenerator.Domain.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("DocGenerator.Domain.Entities.PublicEntity", "PortalEntry")
                         .WithMany()
@@ -3430,11 +3663,20 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasForeignKey("PortalGroupId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("DocGenerator.Domain.Entities.Section", "Section")
+                        .WithMany("Users")
+                        .HasForeignKey("SectionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Branch");
+
+                    b.Navigation("CreatedBy");
 
                     b.Navigation("PortalEntry");
 
                     b.Navigation("PortalGroup");
+
+                    b.Navigation("Section");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.Asset", b =>
@@ -3539,6 +3781,13 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("DocGenerator.Domain.Entities.ReviewLetter", b =>
                 {
                     b.Navigation("Messages");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.Section", b =>
+                {
+                    b.Navigation("Circuits");
+
+                    b.Navigation("Users");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.User", b =>

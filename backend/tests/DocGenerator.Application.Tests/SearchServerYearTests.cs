@@ -183,7 +183,7 @@ public class SearchServerYearTests : IDisposable
             Clock,
             TestClock.TimeZone);
 
-        var page = await service.SearchAsync(null, null, null, userId, page: 1, perPage: 100);
+        var page = await service.SearchAsync(null, null, null, userId, null, page: 1, perPage: 100);
 
         Assert.Equal(2, page.TotalCount);
         foreach (var row in page.Items)

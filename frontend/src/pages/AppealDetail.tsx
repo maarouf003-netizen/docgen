@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { api } from '../api/client';
+import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { sanitizeRichText } from '../utils/richText';
@@ -50,7 +50,27 @@ export default function AppealDetail() {
   const appeal = appealQuery.data ?? null;
   const doc = docQuery.data ?? null;
   const isFollower = user?.role === 'lawyer' && appeal?.assignedLawyerId === user.id;
+  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
+  const isSubHead = user?.role === 'subhead';
   const isHead = user?.role === 'head';
+  const isForwarded = appeal?.forwardState === 'ForwardedToHead';
+  const isUnassigned = appeal != null && appeal.assignedLawyerId == null;
+  const [forwardBusy, setForwardBusy] = useState(false);
+  const [forwardError, setForwardError] = useState('');
+
+  const runForwardAction = async (path: 'forward' | 'recall-forward' | 'return-forward') => {
+    if (!appeal || forwardBusy) return;
+    setForwardBusy(true);
+    setForwardError('');
+    try {
+      await api.post(`/appeals/${appeal.id}/${path}`, path === 'forward' ? { version: appeal.version ?? null } : {});
+      await appealQuery.refetch();
+    } catch (err) {
+      setForwardError(getApiErrorMessage(err));
+    } finally {
+      setForwardBusy(false);
+    }
+  };
 
   if (appealQuery.error) {
     return <div role="alert" className="max-w-3xl mx-auto text-red-600">{appealQuery.error}</div>;
@@ -102,7 +122,7 @@ export default function AppealDetail() {
                 )}
               </>
             )}
-            {isHead && appeal.status === 'pending' && (
+            {isHeadOrSubHead && appeal.status === 'pending' && (
               <button
                 type="button"
                 onClick={() => setAssignOpen(appeal.assignedLawyerId ? 'transfer' : 'assign')}
@@ -111,11 +131,51 @@ export default function AppealDetail() {
                 {appeal.assignedLawyerId ? 'نقل المحامي' : 'إسناد لمحامٍ'}
               </button>
             )}
+            {isSubHead && appeal.status === 'pending' && !isForwarded && (
+              <button
+                type="button"
+                onClick={() => runForwardAction('forward')}
+                disabled={forwardBusy}
+                className="border border-amber-300 text-amber-800 hover:bg-amber-50 disabled:opacity-40 rounded-lg px-4 py-2 text-sm min-h-11"
+              >
+                إحالة لرئيس القسم
+              </button>
+            )}
+            {isSubHead && isForwarded && isUnassigned && appeal.status === 'pending' && (
+              <button
+                type="button"
+                onClick={() => runForwardAction('recall-forward')}
+                disabled={forwardBusy}
+                className="border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 rounded-lg px-4 py-2 text-sm min-h-11"
+              >
+                استرجاع الإحالة
+              </button>
+            )}
+            {isHead && isForwarded && isUnassigned && appeal.status === 'pending' && (
+              <button
+                type="button"
+                onClick={() => runForwardAction('return-forward')}
+                disabled={forwardBusy}
+                className="border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 rounded-lg px-4 py-2 text-sm min-h-11"
+              >
+                إعادة الإحالة للشعبة
+              </button>
+            )}
             <Link to="/appeals" className="border border-gray-300 rounded-lg px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 inline-flex items-center min-h-11">
               عودة للاستئنافات
             </Link>
           </div>
         </div>
+        {forwardError ? (
+          <p role="alert" className="mt-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            {forwardError}
+          </p>
+        ) : null}
+        {isForwarded ? (
+          <p className="mt-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            محال لرئيس القسم — يبقى مرئيًا حتى الحسم النهائي
+          </p>
+        ) : null}
 
         <dl className="mt-3 flex flex-wrap gap-2 text-sm">
           <div className="inline-flex items-baseline gap-1.5 rounded-lg bg-gray-50 border border-gray-200 px-3 py-1.5">
@@ -154,13 +214,21 @@ export default function AppealDetail() {
         <section aria-label="إجراءات وملاحظات الاستئناف" className="bg-white rounded-xl border shadow-sm px-5 py-4">
           <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
             <h3 className="text-lg font-bold text-emerald-800">إجراءات وملاحظات الاستئناف</h3>
-            {isFollower && (
+            {isFollower ? (
               <button
                 type="button"
                 onClick={() => setActionsOpen(true)}
                 className="bg-[#800000] hover:bg-[#9e0e0e] text-white rounded-lg px-4 py-2 text-sm min-h-11"
               >
                 إدخال ملاحظات وإجراءات جديدة
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setActionsOpen(true)}
+                className="border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg px-4 py-2 text-sm min-h-11"
+              >
+                عرض الإجراءات والملاحظات
               </button>
             )}
           </div>
@@ -209,6 +277,7 @@ export default function AppealDetail() {
           appealId={appeal.id}
           onClose={() => setActionsOpen(false)}
           onChanged={appealQuery.refetch}
+          canWrite={isFollower}
         />
       )}
       {registrationOpen && appeal && (

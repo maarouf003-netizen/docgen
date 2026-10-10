@@ -16,7 +16,7 @@ namespace DocGenerator.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/entity-registry")]
-[Authorize(Roles = "lawyer,head,manager,admin")]
+[Authorize(Roles = "lawyer,head,subhead,manager,admin")]
 public class EntityRegistryController : ControllerBase
 {
     private readonly IPublicEntityService _registry;
@@ -647,11 +647,11 @@ public class EntityRegistryController : ControllerBase
 
     // ── اقتراح تعديل الجهة الأم (رئيس القسم → مدير/مشرف) ──
 
-    /// <summary>اقتراح تعديل بيانات قيد «الجهة الأم» من رئيس القسم (بلا أي كتابة على القيد).</summary>
+    /// <summary>اقتراح تعديل بيانات قيد «الجهة الأم» من رئيس القسم أو الشعبة (بلا أي كتابة على القيد).</summary>
     [HttpPost("entries/{entryId:int}/suggest-parent-edit")]
     public async Task<IActionResult> SuggestParentEdit(int entryId, [FromBody] SuggestParentEditRequest request, CancellationToken ct)
     {
-        if (Role != UserRole.Head)
+        if (Role != UserRole.Head && Role != UserRole.SubHead)
             return Forbid();
         try
         {
@@ -704,11 +704,11 @@ public class EntityRegistryController : ControllerBase
         }
     }
 
-    /// <summary>سحب ذاتي لاقتراح معلّق (رئيس القسم المنشئ نفسه فقط).</summary>
+    /// <summary>سحب ذاتي لاقتراح معلّق (رئيس القسم أو الشعبة المنشئ نفسه فقط).</summary>
     [HttpPost("parent-edit-suggestions/{suggestionId:int}/withdraw")]
     public async Task<IActionResult> WithdrawParentEditSuggestion(int suggestionId, CancellationToken ct)
     {
-        if (Role != UserRole.Head)
+        if (Role != UserRole.Head && Role != UserRole.SubHead)
             return Forbid();
         try
         {

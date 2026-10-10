@@ -203,7 +203,10 @@ public sealed class PortalService : IPortalService
         response.BranchName = null;
         // سجل الدوائر: المعرف المرجعي داخلي (لا منتقي دوائر في البوابة) فيُحجب،
         // وعلم «بانتظار إعادة القيد» سير عمل داخلي للمحامي فيُصفَّر (البوابة قرائية).
+        // والشعبة المالكة ومعرفها داخليان للنطاق (§5) فيُحجبان مع الدائرة.
         response.ExecutionCircuitId = null;
+        response.SectionId = null;
+        response.SectionName = null;
         response.NeedsRegistration = false;
         response.ExecutionActions = response.ExecutionActions
             .Where(a => a.Type == "action")

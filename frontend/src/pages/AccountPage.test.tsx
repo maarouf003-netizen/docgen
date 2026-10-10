@@ -119,10 +119,10 @@ describe('AccountPage', () => {
     expect(screen.queryByText('محامي — دمشق')).not.toBeInTheDocument();
 
     await waitFor(() => expect(screen.getByText('42')).toBeInTheDocument());
-    expect(screen.getByText('ملفات الفرع هذه السنة')).toBeInTheDocument();
+    expect(screen.getByText('ملفات النطاق هذه السنة')).toBeInTheDocument();
     // الدلالة مجموع المستلمين غير القارئين عبر التنبيهات (2+1=3) لا عدد التنبيهات (2)
     // ولا عدد الأشخاص المميزين — الوسم يصرّح بالمجموع عمدًا.
-    expect(screen.getByText('مجموع مستلمي تنبيهات الفرع غير القارئين')).toBeInTheDocument();
+    expect(screen.getByText('مجموع مستلمي تنبيهات النطاق غير القارئين')).toBeInTheDocument();
     expect(screen.getByText('3')).toBeInTheDocument();
     expect(screen.getAllByText('اقتراحاتي').length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText('تذكيراتي النشطة')).not.toBeInTheDocument();

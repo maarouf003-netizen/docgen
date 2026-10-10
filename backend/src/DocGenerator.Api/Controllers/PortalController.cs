@@ -338,10 +338,10 @@ public class PortalController : ControllerBase
     }
 }
 
-/// <summary>إدارة حسابات مندوبي الجهات وربط نطاقهم — مدير/مشرف/رئيس قسم (د11).</summary>
+/// <summary>إدارة حسابات مندوبي الجهات وربط نطاقهم — مدير/مشرف/رئيس قسم وشعبة (د11).</summary>
 [ApiController]
 [Route("api/entity-portal/delegates")]
-[Authorize(Roles = "manager,admin,head")]
+[Authorize(Roles = "manager,admin,head,subhead")]
 public class DelegatesController : ControllerBase
 {
     private readonly IEntityDelegateService _delegates;

@@ -25,7 +25,7 @@ export default function TransferDocumentModal({
   const lawyersQuery = useCancellableRequest<LawyerListItem[]>(
     (signal) =>
       api
-        .get<LawyerListItem[]>('/users/lawyers', { signal })
+        .get<LawyerListItem[]>('/users/lawyers', { signal, params: { mode: 'branch' } })
         .then((r) => (Array.isArray(r.data) ? r.data : [])),
     [],
   );

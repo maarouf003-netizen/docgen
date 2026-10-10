@@ -9,14 +9,14 @@ using Microsoft.AspNetCore.Mvc;
 namespace DocGenerator.Api.Controllers;
 
 /// <summary>
-/// المراسلات (محامٍ/رئيس قسم/مندوب جهة): التسطير لطرف معيَّن بالاسم برقم وتاريخ
+/// المراسلات (محامٍ/رئيس قسم أو شعبة/مندوب جهة): التسطير لطرف معيَّن بالاسم برقم وتاريخ
 /// تلقائيين، واللاحق من المنشئ والرد من المستلم فقط، وتأكيد المشاهدة موثّق (من؟ متى؟).
 /// كتابة المندوب تصل حصرًا عبر مسارات البوابة (PortalController) — هذا المتحكم
-/// للمحامي ورئيس القسم (كتابة وقراءة) والمدير/المشرف (قراءة بفلتر محافظة).
+/// للمحامي ورئيس القسم والشعبة (كتابة وقراءة) والمدير/المشرف (قراءة بفلتر محافظة).
 /// </summary>
 [ApiController]
 [Route("api/correspondence")]
-[Authorize(Roles = "lawyer,head,manager,admin")]
+[Authorize(Roles = "lawyer,head,subhead,manager,admin")]
 public class CorrespondencesController : ControllerBase
 {
     private readonly ICorrespondenceService _letters;
@@ -30,6 +30,7 @@ public class CorrespondencesController : ControllerBase
 
     private UserRole Role => User.GetRoleEnum();
     private int? BranchId => User.GetBranchId();
+    private int? SectionId => User.GetSectionId();
     private int UserId => User.GetUserId();
 
     /// <summary>قائمة المراسلات بحسب الدور، مع بحث وفلتر محافظة/أهمية وترقيم.</summary>
@@ -39,10 +40,12 @@ public class CorrespondencesController : ControllerBase
         [FromQuery] int page = 1, [FromQuery] int perPage = 20,
         CancellationToken ct = default)
     {
+        if (Role == UserRole.SubHead && SectionId is null)
+            return Forbid();
         try
         {
             var result = await _letters.SearchAsync(UserId, Role, BranchId, q, governorate,
-                importance, page, perPage, ct);
+                importance, page, perPage, ct, SectionId);
             return Ok(result);
         }
         catch (ArgumentException e)
@@ -62,17 +65,19 @@ public class CorrespondencesController : ControllerBase
         return Ok(new { governorates });
     }
 
-    /// <summary>مرشحو الاستلام بالاسم — محامٍ/رئيس قسم (المندوب عبر البوابة).</summary>
+    /// <summary>مرشحو الاستلام بالاسم — محامٍ/رئيس قسم أو شعبة (المندوب عبر البوابة).</summary>
     [HttpGet("targets")]
     public async Task<IActionResult> SearchTargets(
         [FromQuery] string? q, [FromQuery] int? documentId, CancellationToken ct)
     {
         if (!RolePermissions.CanCreateCorrespondences(Role) || Role == UserRole.EntityManager)
             return Forbid();
+        if (Role == UserRole.SubHead && SectionId is null)
+            return Forbid();
 
         try
         {
-            return Ok(await _letters.SearchTargetsAsync(UserId, Role, BranchId, q, documentId, ct));
+            return Ok(await _letters.SearchTargetsAsync(UserId, Role, BranchId, q, documentId, ct, SectionId));
         }
         catch (ArgumentException e)
         {
@@ -95,13 +100,13 @@ public class CorrespondencesController : ControllerBase
         return Ok(new { count });
     }
 
-    /// <summary>مراسلات ملف محدد — لمالك الملف ورئيس قسمه والإدارة ومتابعيه.</summary>
+    /// <summary>مراسلات ملف محدد — لمالك الملف ورئيس نطاقه والإدارة ومتابعيه.</summary>
     [HttpGet("document/{documentId:int}")]
     public async Task<IActionResult> ListByDocument(int documentId, CancellationToken ct)
     {
         try
         {
-            var items = await _letters.ListByDocumentAsync(documentId, UserId, Role, BranchId, ct);
+            var items = await _letters.ListByDocumentAsync(documentId, UserId, Role, BranchId, ct, SectionId);
             return Ok(items);
         }
         catch (KeyNotFoundException e)
@@ -118,7 +123,7 @@ public class CorrespondencesController : ControllerBase
         }
     }
 
-    /// <summary>تسطير مراسلة لطرف معيَّن — محامٍ/رئيس قسم (المندوب عبر البوابة).</summary>
+    /// <summary>تسطير مراسلة لطرف معيَّن — محامٍ/رئيس قسم أو شعبة (المندوب عبر البوابة).</summary>
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateCorrespondenceRequest request,
         CancellationToken ct)
@@ -127,10 +132,12 @@ public class CorrespondencesController : ControllerBase
             return Forbid();
         if (Role is UserRole.Lawyer or UserRole.Head && BranchId is null)
             return BadRequest(new { message = "الحساب دون فرع لا يمكنه تسطير مراسلات" });
+        if (Role == UserRole.SubHead && SectionId is null)
+            return Forbid();
 
         try
         {
-            var letter = await _letters.CreateAsync(request, UserId, ActorName, Role, BranchId, ct);
+            var letter = await _letters.CreateAsync(request, UserId, ActorName, Role, BranchId, ct, SectionId);
             return CreatedAtAction(nameof(Get), new { id = letter.Id }, letter);
         }
         catch (ArgumentException e)
@@ -148,7 +155,7 @@ public class CorrespondencesController : ControllerBase
     {
         try
         {
-            var letter = await _letters.GetByIdAsync(id, UserId, Role, BranchId, ct);
+            var letter = await _letters.GetByIdAsync(id, UserId, Role, BranchId, ct, SectionId);
             return Ok(letter);
         }
         catch (KeyNotFoundException e)
@@ -230,7 +237,7 @@ public class CorrespondencesController : ControllerBase
 
         try
         {
-            var receipt = await _letters.MarkSeenAsync(id, UserId, ActorName, Role, BranchId, ct);
+            var receipt = await _letters.MarkSeenAsync(id, UserId, ActorName, Role, BranchId, ct, SectionId);
             return Ok(receipt);
         }
         catch (KeyNotFoundException e)

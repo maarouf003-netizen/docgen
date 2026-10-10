@@ -20,17 +20,19 @@ public sealed class StatisticsBranchGuardTests
 {
     private sealed class FakeStatisticsService : IStatisticsService
     {
-        public Task<DashboardStatsDto> GetDashboardStatsAsync(int? branchId, CancellationToken ct = default)
+        public Task<DashboardStatsDto> GetDashboardStatsAsync(int? branchId, CancellationToken ct = default,
+            int? ownerSectionId = null, bool fullAccess = true)
             => Task.FromResult(new DashboardStatsDto(0, 0, 0, 0, 0, 0, 0, 0));
-        public Task<List<MonthlyStatDto>> GetMonthlyStatsAsync(int? branchId, CancellationToken ct = default)
+        public Task<List<MonthlyStatDto>> GetMonthlyStatsAsync(int? branchId, CancellationToken ct = default,
+            int? ownerSectionId = null, bool fullAccess = true)
             => Task.FromResult(new List<MonthlyStatDto>());
         public Task<List<BranchSummaryDto>> GetBranchesSummaryAsync(CancellationToken ct = default) => throw new NotImplementedException();
         public Task<List<UserActivityDto>> GetUserActivityAsync(CancellationToken ct = default) => throw new NotImplementedException();
         public Task<List<ReminderDto>> GetRemindersAsync(int userId, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<ManagerStatsDto> GetManagerStatsAsync(StatsPeriod period, int? branchId, int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<List<ManagerLawyerStatDto>> GetManagerLawyerStatsAsync(StatsPeriod period, int branchId, int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default) => throw new NotImplementedException();
+        public Task<ManagerStatsDto> GetManagerStatsAsync(StatsPeriod period, int? branchId, int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default, int? ownerSectionId = null, bool fullAccess = true) => throw new NotImplementedException();
+        public Task<List<ManagerLawyerStatDto>> GetManagerLawyerStatsAsync(StatsPeriod period, int branchId, int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default, int? ownerSectionId = null, bool fullAccess = true) => throw new NotImplementedException();
         public Task<ManagerStatsDto> GetPersonalStatsAsync(StatsPeriod period, int userId, int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<List<MonthlyStatDto>> GetAvailablePeriodsAsync(int? branchId, int? userId, CancellationToken ct = default)
+        public Task<List<MonthlyStatDto>> GetAvailablePeriodsAsync(int? branchId, int? userId, CancellationToken ct = default, int? ownerSectionId = null, bool fullAccess = true)
             => Task.FromResult(new List<MonthlyStatDto>());
     }
 

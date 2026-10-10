@@ -127,6 +127,28 @@ public class DocumentAppeal
     /// <summary>لحظة إسناد الاستئناف للمحامي المختص (UTC).</summary>
     public DateTime? AssignedAt { get; set; }
 
+    // ── حقول الإحالة (شعبة → قسم) ─────────────────────────────────────────
+
+    /// <summary>
+    /// رئيس الشعبة المحيل (طابع تدقيقي بلا قيد خارجي — يبقى بعد تعطيل المحيل).
+    /// </summary>
+    public int? ForwardedById { get; set; }
+
+    /// <summary>لحظة الإحالة (UTC).</summary>
+    public DateTime? ForwardedAt { get; set; }
+
+    /// <summary>
+    /// حالة الإحالة (`AppealForwardCatalog`): `Owned` افتراضيًا، `ForwardedToHead`
+    /// استثناء قرائي لرئيس قسم نفس الفرع حتى الحسم.
+    /// </summary>
+    public string ForwardState { get; set; } = AppealForwardCatalog.Owned;
+
+    /// <summary>سبب الإحالة (نص رئيس الشعبة).</summary>
+    public string? ForwardReason { get; set; }
+
+    /// <summary>عدّاد التزامن المتفائل لمسارات الإسناد الثلاثة.</summary>
+    public long Version { get; set; }
+
     public int CreatedById { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

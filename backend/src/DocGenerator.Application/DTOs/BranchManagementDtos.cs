@@ -1,6 +1,6 @@
 namespace DocGenerator.Application.DTOs;
 
-/// <summary>إنشاء فرع جديد — مشرف النظام فقط. Governorate إجبارية وتحدد محافظة الفرع لنطاق رئيس القسم في سجل الجهات (د5).</summary>
+/// <summary>إنشاء فرع جديد — مشرف النظام والمدير (قرار §2.15). Governorate إجبارية وتحدد محافظة الفرع لنطاق رئيس القسم في سجل الجهات (د5).</summary>
 public record CreateBranchRequest(
     string Name,
     string Code,
@@ -8,7 +8,7 @@ public record CreateBranchRequest(
     string? Phone,
     string? Governorate = null);
 
-/// <summary>تحديث فرع — مشرف النظام فقط (IsActive لتفعيل/تعطيل الفرع بدل الحذف عند الاستخدام).</summary>
+/// <summary>تحديث فرع — مشرف النظام والمدير (قرار §2.15) (IsActive لتفعيل/تعطيل الفرع بدل الحذف عند الاستخدام).</summary>
 public record UpdateBranchRequest(
     string Name,
     string Code,

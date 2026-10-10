@@ -17,7 +17,8 @@ public class AuditLogRepository : Repository<AuditLog>, IAuditLogRepository
         int page,
         int perPage,
         CancellationToken ct = default,
-        int? scopeBranchId = null)
+        int? scopeBranchId = null,
+        int? scopeSectionId = null)
     {
         IQueryable<AuditLog> q = Db.AuditLogs.AsNoTracking();
 
@@ -41,6 +42,18 @@ public class AuditLogRepository : Repository<AuditLog>, IAuditLogRepository
                     .Any(d => d.Id == a.DocumentId && d.BranchId == branch))
                 || (a.UserName != null && Db.Users
                     .Any(u => u.Username == a.UserName && u.BranchId == branch)));
+        }
+        else if (scopeSectionId.HasValue)
+        {
+            // F6: نطاق الشعبة الدائري (قرار 23) — مرآة نطاق الفرع: الصف مرئي إن نُسِب
+            // لمستند دائرته في الشعبة (ولو حُذف منطقيًا، فتاريخ الشعبة يبقى لشعبته)
+            // أو لفاعل من الشعبة. غير المنسوب مخفي (افتراض آمن).
+            var section = scopeSectionId.Value;
+            q = q.Where(a =>
+                (a.DocumentId != null && Db.Documents.IgnoreQueryFilters()
+                    .Any(d => d.Id == a.DocumentId && d.ExecutionCircuitId != null && d.ExecutionCircuit!.SectionId == section))
+                || (a.UserName != null && Db.Users
+                    .Any(u => u.Username == a.UserName && u.SectionId == section)));
         }
 
         var total = await q.CountAsync(ct);

@@ -6,6 +6,7 @@ import Dashboard from './Dashboard';
 import type {
   DashboardStatsDto,
   HeadAlertDto,
+  HeadAlertTargetType,
   LawyerListItem,
   ManagerLawyerStatDto,
   ManagerStatsDto,
@@ -194,7 +195,7 @@ function mockApi(overrides?: {
   monthly?: [];
   alerts?: HeadAlertDto[];
   unreadCount?: number;
-  lawyers?: LawyerListItem[];
+  lawyers?: Array<{ id: number; fullName: string; isActive?: boolean }>;
   personal?: PersonalReminderDto[];
   pendingReviews?: number;
   urgentCount?: number;
@@ -202,6 +203,7 @@ function mockApi(overrides?: {
   entityReviewCount?: number;
   circuits?: Array<{ id: number; name: string; pendingCount: number }>;
   pendingRegistrations?: Array<{ documentId: number }>;
+  sent?: Array<{ id: number; message: string; targetType: HeadAlertTargetType; recipientCount?: number; unreadCount?: number; createdAt: string; createdByName?: string }>;
 }) {
   const reminders = overrides?.reminders ?? [];
   const monthly = overrides?.monthly ?? [];
@@ -215,6 +217,7 @@ function mockApi(overrides?: {
   const entityReviewCount = overrides?.entityReviewCount ?? 0;
   const circuits = overrides?.circuits ?? [];
   const pendingRegistrations = overrides?.pendingRegistrations ?? [];
+  const sent = overrides?.sent ?? [];
   (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation(
     (url: string, config?: { params?: Record<string, unknown> }) => {
       if (url === '/dashboard') return Promise.resolve({ data: STATS });
@@ -222,6 +225,7 @@ function mockApi(overrides?: {
       if (url === '/appeals/reminders') return Promise.resolve({ data: [] });
       if (url === '/personal-reminders') return Promise.resolve({ data: personal });
       if (url === '/alerts') return Promise.resolve({ data: alerts });
+      if (url === '/alerts/sent') return Promise.resolve({ data: sent });
       if (url === '/alerts/unread-count') return Promise.resolve({ data: { count: unreadCount } });
       if (url === '/users/lawyers') return Promise.resolve({ data: lawyers });
       if (url === '/monthly-stats') return Promise.resolve({ data: monthly });
@@ -699,8 +703,10 @@ describe('Dashboard لرئيس القسم', () => {
       targetLawyerId: null,
       message: 'اجتماع الفرع يوم الأحد',
     });
-    expect(await screen.findByText('اجتماع الفرع يوم الأحد')).toBeInTheDocument();
+    // بلا إلحاق تفاؤلي: رسالة نجاح + النموذج مغلق + المُرسَل في تبويب «أرسلتها» لا المستلَمات.
+    expect(await screen.findByRole('status')).toHaveTextContent(/تم إصدار التنبيه/);
     expect(screen.queryByLabelText('نص التنبيه')).not.toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith('/alerts/sent', expect.any(Object));
   });
 
   it('إصدار تنبيه بلا نص يعرض خطأ ولا يرسل', async () => {
@@ -805,7 +811,54 @@ describe('Dashboard لرئيس القسم', () => {
       targetLawyerId: 2,
       message: 'رسالة خاصة',
     });
-    expect(await screen.findByText('رسالة خاصة')).toBeInTheDocument();
+    expect(await screen.findByRole('status')).toHaveTextContent(/تم إصدار التنبيه/);
+  });
+
+  it('تبويبا المستلمة/أرسلتها: المُرسَل لا يظهر في المستلمات ويظهر في الصادر بلا زر قراءة', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({
+      user: { id: 1, username: 'head1', fullName: 'رئيس', role: 'head', branchId: 1 },
+    });
+    mockApi({
+      alerts: [
+        {
+          id: 1,
+          message: 'وارد من النظام',
+          targetType: 'head',
+          recipientCount: 1,
+          unreadCount: 1,
+          createdAt: '2026-08-03T10:00:00Z',
+          createdByName: 'النظام',
+        },
+      ],
+      lawyers: BRANCH_LAWYERS,
+      sent: [
+        {
+          id: 9,
+          message: 'تعميم صادر مني',
+          targetType: 'branch',
+          recipientCount: 2,
+          unreadCount: 0,
+          createdAt: '2026-08-04T10:00:00Z',
+          createdByName: 'رئيس',
+        },
+      ],
+    });
+
+    render(<Dashboard />);
+
+    expect(await screen.findByRole('tab', { name: 'مستلمة' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('وارد من النظام')).toBeInTheDocument();
+    expect(screen.queryByText('تعميم صادر مني')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: 'أرسلتها' }));
+    expect(await screen.findByText('تعميم صادر مني')).toBeInTheDocument();
+    expect(screen.queryByText('وارد من النظام')).not.toBeInTheDocument();
+    // الصادر قراءة فقط: لا زر «تمت القراءة» (تعليمه 404 خلفيًا).
+    expect(screen.queryByRole('button', { name: 'تمت القراءة' })).not.toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith('/alerts/sent', expect.any(Object));
+    // الكل قرأ: شارة صريحة بدل العدّاد الصفري المضلل.
+    expect(screen.getByText('مقروء من الجميع')).toBeInTheDocument();
   });
 
   it('لا يعرض خيار «مرتبط بملف» في نموذج إصدار التنبيه', async () => {

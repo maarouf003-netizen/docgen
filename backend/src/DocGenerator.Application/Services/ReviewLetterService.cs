@@ -10,16 +10,17 @@ namespace DocGenerator.Application.Services;
 public interface IReviewLetterService
 {
     /// <summary>
-    /// قائمة كتب المطالعة بحسب الدور: المحامي كتبه، ورئيس القسم كتب فرعه،
-    /// والمدير/المشرف كتب فرع الإدارة المنتقى (لا عرض قبل اختيار الفرع).
+    /// قائمة كتب المطالعة بحسب الدور: المحامي كتبه، ورئيس القسم كتب قسمه
+    /// (دوائر القسم وبلا دائرة)، ورئيس الشعبة كتب شعبته، والمدير/المشرف كتب
+    /// فرع الإدارة المنتقى (لا عرض قبل اختيار الفرع).
     /// </summary>
     Task<PagedResult<ReviewLetterListItemDto>> SearchAsync(
         int actorUserId, UserRole role, int? actorBranchId, string? q, int page, int perPage,
-        string? administrativeBranch, CancellationToken ct = default);
+        string? administrativeBranch, CancellationToken ct = default, int? actorSectionId = null);
 
-    /// <summary>كتاب مطالعة برسائله — بعد التحقق من حق الوصول.</summary>
+    /// <summary>كتاب مطالعة برسائله — بعد التحقق من حق الوصول (نطاق المالك §10).</summary>
     Task<ReviewLetterDto> GetByIdAsync(int id, int actorUserId, UserRole role, int? actorBranchId,
-        CancellationToken ct = default);
+        CancellationToken ct = default, int? actorSectionId = null);
 
     /// <summary>تسطير كتاب مطالعة (مربوط بملف أو عام) وتوليد رقمه وتاريخه تلقائيًا.</summary>
     Task<ReviewLetterDto> CreateAsync(CreateReviewLetterRequest request, int actorUserId,
@@ -29,12 +30,13 @@ public interface IReviewLetterService
     Task<ReviewLetterMessageDto> AddAddendumAsync(int letterId, AddReviewLetterAddendumRequest request,
         int actorUserId, string? actorName, CancellationToken ct = default);
 
-    /// <summary>رد رئيس القسم على كتاب المطالعة — يولّد رقم الرد وتاريخه ويعلّم الكتاب «تم الرد».</summary>
+    /// <summary>رد مالك الكتاب على كتاب المطالعة — يولّد رقم الرد وتاريخه ويعلّم الكتاب «تم الرد».</summary>
     Task<ReviewLetterMessageDto> ReplyAsync(int letterId, ReplyReviewLetterRequest request,
-        int actorUserId, string? actorName, int actorBranchId, CancellationToken ct = default);
+        int actorUserId, string? actorName, int actorBranchId, CancellationToken ct = default,
+        UserRole role = UserRole.Head, int? actorSectionId = null);
 
-    /// <summary>عدد كتب الفرع بانتظار الرد (جرس رئيس القسم الأحمر).</summary>
-    Task<int> CountPendingForHeadAsync(int branchId, CancellationToken ct = default);
+    /// <summary>عدد كتب النطاق بانتظار الرد (جرس المالك الأحمر §10).</summary>
+    Task<int> CountPendingForHeadAsync(int branchId, int? ownerSectionId = null, CancellationToken ct = default);
 
     /// <summary>
     /// عدد كتب المحامي التي فيها ردّ لم يطّلع عليه بعد — شارة بند المطالعات.
@@ -47,11 +49,11 @@ public interface IReviewLetterService
     Task<bool> MarkRepliesSeenAsync(int letterId, int actorUserId, CancellationToken ct = default);
 
     /// <summary>
-    /// كتب ملف محدد — لمالك الملف ورئيس قسمه والمدير/المشرف، ولكل محامٍ
-    /// أُحيل إليه الملف أو يتابع إنابةً أو استئنافًا عليه.
+    /// كتب ملف محدد — لمالك الملف ومتابعيه (إحالة/إنابة/استئناف) والمدير/المشرف،
+    /// ولرئيس نطاق الملف (قسمه لدوائر القسم وبلا دائرة، وشعبته لدوائر شعبته).
     /// </summary>
     Task<List<ReviewLetterListItemDto>> ListByDocumentAsync(int documentId, int actorUserId,
-        UserRole role, int? actorBranchId, CancellationToken ct = default);
+        UserRole role, int? actorBranchId, CancellationToken ct = default, int? actorSectionId = null);
 
     /// <summary>أسماء فروع الإدارة المميزة لفلتر المدير/المشرف.</summary>
     Task<List<string>> GetAdministrativeBranchesAsync(CancellationToken ct = default);
@@ -69,9 +71,13 @@ public sealed class ReviewLetterService : IReviewLetterService
     private readonly IReviewLetterRepository _letters;
     private readonly IDocumentRepository _documents;
     private readonly IBranchRepository _branches;
+    private readonly IUserRepository _users;
+    private readonly IRepository<Section> _sections;
+    private readonly IRepository<ExecutionCircuit> _circuits;
     private readonly IAppealRepository _appeals;
     private readonly IDelegationRepository _delegations;
     private readonly IHeadAlertRepository _headAlerts;
+    private readonly IDbExceptionClassifier _dbErrors;
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
@@ -85,18 +91,26 @@ public sealed class ReviewLetterService : IReviewLetterService
         IAppealRepository appeals,
         IDelegationRepository delegations,
         IHeadAlertRepository headAlerts,
+        IDbExceptionClassifier dbErrors,
         IUnitOfWork uow,
         ITransactionRunner tx,
         IAuditLogger audit,
         TimeProvider clock,
-        TimeZoneInfo timeZone)
+        TimeZoneInfo timeZone,
+        IUserRepository users,
+        IRepository<Section> sections,
+        IRepository<ExecutionCircuit> circuits)
     {
         _letters = letters;
         _documents = documents;
         _branches = branches;
+        _users = users;
+        _sections = sections;
+        _circuits = circuits;
         _appeals = appeals;
         _delegations = delegations;
         _headAlerts = headAlerts;
+        _dbErrors = dbErrors;
         _uow = uow;
         _tx = tx;
         _audit = audit;
@@ -106,7 +120,7 @@ public sealed class ReviewLetterService : IReviewLetterService
 
     public async Task<PagedResult<ReviewLetterListItemDto>> SearchAsync(
         int actorUserId, UserRole role, int? actorBranchId, string? q, int page, int perPage,
-        string? administrativeBranch, CancellationToken ct = default)
+        string? administrativeBranch, CancellationToken ct = default, int? actorSectionId = null)
     {
         page = Math.Max(1, page);
         perPage = Math.Clamp(perPage, 1, 100);
@@ -125,10 +139,15 @@ public sealed class ReviewLetterService : IReviewLetterService
         var (items, totalCount) = role switch
         {
             UserRole.Lawyer => await _letters.SearchForLawyerAsync(actorUserId, q, page, perPage, ct),
+            // نطاق المالك (§10): القسم لدوائر القسم وبلا دائرة، والشعبة لدوائر شعبته.
             UserRole.Head when actorBranchId is not null
-                => await _letters.SearchForBranchAsync(actorBranchId.Value, q, page, perPage, ct),
+                => await _letters.SearchForScopeAsync(actorBranchId.Value, null, q, page, perPage, ct),
             UserRole.Head
                 => throw new ArgumentException("رئيس القسم دون فرع لا يمكنه عرض كتب المطالعة"),
+            UserRole.SubHead when actorBranchId is not null && actorSectionId is not null
+                => await _letters.SearchForScopeAsync(actorBranchId.Value, actorSectionId, q, page, perPage, ct),
+            UserRole.SubHead
+                => throw new ArgumentException("حسابك بلا شعبة — أعد الدخول"),
             UserRole.Manager or UserRole.Admin
                 => await _letters.SearchAllAsync(administrativeBranch, q, page, perPage, ct),
             _ => throw new ArgumentException("الدور غير مخوّل لعرض كتب المطالعة"),
@@ -148,12 +167,12 @@ public sealed class ReviewLetterService : IReviewLetterService
     }
 
     public async Task<ReviewLetterDto> GetByIdAsync(int id, int actorUserId, UserRole role,
-        int? actorBranchId, CancellationToken ct = default)
+        int? actorBranchId, CancellationToken ct = default, int? actorSectionId = null)
     {
         var letter = await _letters.GetByIdWithDetailsAsync(id, ct)
             ?? throw new ArgumentException("كتاب المطالعة غير موجود");
 
-        if (!await CanViewAsync(letter, actorUserId, role, actorBranchId, ct))
+        if (!await CanViewAsync(letter, actorUserId, role, actorBranchId, actorSectionId, ct))
             throw new UnauthorizedAccessException("لا تملك صلاحية الاطلاع على كتاب المطالعة هذا");
 
         return ToDto(letter);
@@ -182,14 +201,30 @@ public sealed class ReviewLetterService : IReviewLetterService
         }
 
         var now = DateTime.UtcNow;
-        var letterNumber = await GenerateUniqueNumberAsync(branch.Code, now, ct);
+
+        // توجيه المستلم (§10): مع ملف تلقائي لمالك دائرته (بلا منسدل ويُتجاهل
+        // المُرسَل)؛ وبلا ملف اختيار المنسدل (رئيس القسم افتراضيًا — قرار 28).
+        Section? recipientSection = null;
+        int? recipientSectionId;
+        if (document is not null)
+        {
+            recipientSectionId = await FileOwnerSectionAsync(document, ct);
+        }
+        else
+        {
+            recipientSection = await ResolveGeneralRecipientSectionAsync(
+                request.RecipientSectionId, actorBranchId, ct);
+            recipientSectionId = recipientSection?.Id;
+        }
 
         var letter = new ReviewLetter
         {
             BranchId = actorBranchId,
             CreatedById = actorUserId,
             DocumentId = document?.Id,
-            LetterNumber = letterNumber,
+            RecipientSectionId = recipientSectionId,
+            RecipientSection = recipientSection,
+            LetterNumber = string.Empty, // يُضبط أدناه مع رقم الرسالة الأولى = المرشّح النهائي بعد حل أي سباق.
             LetterDate = now,
             IsAnswered = false,
             CreatedAt = now,
@@ -201,7 +236,7 @@ public sealed class ReviewLetterService : IReviewLetterService
                     Kind = ReviewLetterMessage.KindLetter,
                     BodyHtml = bodyHtml,
                     BodyPlainText = HtmlInputSanitizer.ToPlainText(bodyHtml),
-                    MessageNumber = letterNumber,
+                    MessageNumber = string.Empty, // يُضبط أدناه = رقم الكتاب النهائي.
                     MessageDate = now,
                     AuthorId = actorUserId,
                     AuthorName = actorName ?? string.Empty,
@@ -211,14 +246,40 @@ public sealed class ReviewLetterService : IReviewLetterService
         };
 
         var scope = document is null ? "عام" : $"ملف {document.Id}";
-        await _tx.RunAsync(async token =>
+        var recipient = recipientSectionId.HasValue ? $"للشعبة {recipientSectionId.Value}" : "للقسم";
+        // سباق الترقيم: فحص التفرّد خارج المعاملة قد يتجاوزه إدراج متزامن بالمرشّح
+        // نفسه؛ القيد الفريد على LetterNumber هو الحارس الأخير، وعند اصطدامه
+        // يُعاد التوليد بمرشّح جديد على الكيان نفسه بدل خطأ 500 — فإعادة الحفظ
+        // بعد فشل سباق تُكرّر الإدراج الوحيد المعلّق لا غير، والتدقيق لا يُسجَّل
+        // إلا داخل المحاولة الناجحة (مرآة نمط المراسلات).
+        var candidate = await GenerateUniqueNumberAsync(branch.Code, now, ct);
+        for (var attempt = 0; attempt < MaxNumberGenerationAttempts; attempt++)
         {
-            await _letters.AddAsync(letter, token);
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actorName, "create_review_letter",
-                details: $"سطّر كتاب مطالعة ({scope}) برقم {letter.LetterNumber}",
-                ct: token);
-        }, ct);
+            letter.LetterNumber = candidate;
+            letter.Messages.Single(m => m.Kind == ReviewLetterMessage.KindLetter).MessageNumber = candidate;
+            try
+            {
+                await _tx.RunAsync(async token =>
+                {
+                    await _letters.AddAsync(letter, token);
+                    await _uow.SaveChangesAsync(token);
+                    await _audit.LogAsync(actorName, "create_review_letter",
+                        details: $"سطّر كتاب مطالعة ({scope}) برقم {letter.LetterNumber} {recipient}",
+                        ct: token);
+                }, ct);
+                break;
+            }
+            catch (Exception ex) when (_dbErrors.IsUniqueViolation(ex))
+            {
+                if (attempt + 1 >= MaxNumberGenerationAttempts)
+                    throw new DocumentConflictException("تعذر توليد رقم فريد لكتاب المطالعة، حاول مجدداً", ex);
+                candidate = await GenerateUniqueNumberAsync(branch.Code, now, ct);
+            }
+        }
+
+        // اسم الشعبة المستلمة للعرض (الكيان المنشأ بلا روابط محمّلة).
+        if (letter.RecipientSection is null && letter.RecipientSectionId.HasValue)
+            letter.RecipientSection = await _sections.GetByIdAsync(letter.RecipientSectionId.Value, ct);
 
         return ToDto(letter);
     }
@@ -273,7 +334,7 @@ public sealed class ReviewLetterService : IReviewLetterService
 
     public async Task<ReviewLetterMessageDto> ReplyAsync(int letterId,
         ReplyReviewLetterRequest request, int actorUserId, string? actorName, int actorBranchId,
-        CancellationToken ct = default)
+        CancellationToken ct = default, UserRole role = UserRole.Head, int? actorSectionId = null)
     {
         var bodyHtml = HtmlInputSanitizer.Sanitize(request.BodyHtml);
         if (string.IsNullOrWhiteSpace(HtmlInputSanitizer.ToPlainText(bodyHtml)))
@@ -283,7 +344,8 @@ public sealed class ReviewLetterService : IReviewLetterService
             ?? throw new ArgumentException("كتاب المطالعة غير موجود");
 
         if (letter.BranchId != actorBranchId)
-            throw new UnauthorizedAccessException("رد رئيس القسم مقصور على كتب فرعه");
+            throw new UnauthorizedAccessException("رد المطالعات مقصور على كتب الفرع نفسه");
+        EnsureLetterOwner(role, actorSectionId, await OwnerSectionOfAsync(letter, ct));
 
         var branchCode = await ResolveBranchCodeAsync(actorBranchId, ct);
         var now = DateTime.UtcNow;
@@ -299,7 +361,7 @@ public sealed class ReviewLetterService : IReviewLetterService
             MessageDate = now,
             AuthorId = actorUserId,
             AuthorName = actorName ?? string.Empty,
-            AuthorRole = nameof(UserRole.Head).ToLowerInvariant(),
+            AuthorRole = role.ToString().ToLowerInvariant(),
         };
         letter.Messages.Add(reply);
 
@@ -381,24 +443,25 @@ public sealed class ReviewLetterService : IReviewLetterService
         return true;
     }
 
-    public Task<int> CountPendingForHeadAsync(int branchId, CancellationToken ct = default)
-        => _letters.CountPendingForBranchAsync(branchId, ct);
+    public Task<int> CountPendingForHeadAsync(int branchId, int? ownerSectionId = null, CancellationToken ct = default)
+        => _letters.CountPendingForScopeAsync(branchId, ownerSectionId, ct);
 
     public Task<List<string>> GetAdministrativeBranchesAsync(CancellationToken ct = default)
         => _letters.GetAdministrativeBranchesAsync(ct);
 
     public async Task<List<ReviewLetterListItemDto>> ListByDocumentAsync(int documentId,
-        int actorUserId, UserRole role, int? actorBranchId, CancellationToken ct = default)
+        int actorUserId, UserRole role, int? actorBranchId, CancellationToken ct = default,
+        int? actorSectionId = null)
     {
         var document = await _documents.GetByIdAsync(documentId, ct)
             ?? throw new ArgumentException("الملف غير موجود");
 
         var isOwnerOrSupervisor = role is UserRole.Manager or UserRole.Admin
-            || (role == UserRole.Head && actorBranchId == document.BranchId)
             || document.CreatedById == actorUserId;
 
         if (!isOwnerOrSupervisor &&
-            !await FollowsDocumentAsync(documentId, actorUserId, ct))
+            !await FollowsDocumentAsync(documentId, actorUserId, ct) &&
+            !await InFileScopeAsync(document, role, actorBranchId, actorSectionId, ct))
         {
             throw new UnauthorizedAccessException("لا تملك صلاحية الاطلاع على كتب هذا الملف");
         }
@@ -409,6 +472,92 @@ public sealed class ReviewLetterService : IReviewLetterService
                 l,
                 revealUnseen: role == UserRole.Lawyer && l.CreatedById == actorUserId))
             .ToList();
+    }
+
+    /// <summary>
+    /// مالك الكتاب (§10): شعبة دائرة ملفه (بلا دائرة → القسم)، وبلا ملف الشعبة
+    /// المستلمة (`null` → القسم). الملف المحذوف مصدره يعامَل كبلا دائرة.
+    /// </summary>
+    private async Task<int?> OwnerSectionOfAsync(ReviewLetter letter, CancellationToken ct)
+    {
+        if (letter.DocumentId is null)
+            return letter.RecipientSectionId;
+        var doc = letter.Document ?? await _documents.GetByIdAsync(letter.DocumentId.Value, ct);
+        if (doc?.ExecutionCircuitId is null)
+            return null;
+        var circuit = doc.ExecutionCircuit ?? await _circuits.GetByIdAsync(doc.ExecutionCircuitId.Value, ct);
+        return circuit?.SectionId;
+    }
+
+    /// <summary>مالك دائرة ملف (§10.1) — يُشتق منه مستلم الكتاب المرتبط تلقائيًا.</summary>
+    private async Task<int?> FileOwnerSectionAsync(Document document, CancellationToken ct)
+    {
+        if (document.ExecutionCircuitId is null)
+            return null;
+        var circuit = document.ExecutionCircuit
+            ?? await _circuits.GetByIdAsync(document.ExecutionCircuitId.Value, ct);
+        return circuit?.SectionId;
+    }
+
+    /// <summary>
+    /// اختيار مستلم الكتاب العام (§10.2 + قرار 28): فارغٌ يعني رئيس القسم،
+    /// وغيره شعبة نشطة بفرع الكتاب ولها رئيس مفعّل — وإلا «يجب اختيار المستلم».
+    /// </summary>
+    private async Task<Section?> ResolveGeneralRecipientSectionAsync(
+        int? recipientSectionId, int actorBranchId, CancellationToken ct)
+    {
+        if (recipientSectionId is null)
+            return null;
+        var section = await _sections.GetByIdAsync(recipientSectionId.Value, ct);
+        var head = section is not null
+            ? await _users.FindActiveHeadAsync(UserRole.SubHead, section.BranchId, section.Id, ct)
+            : null;
+        if (section is null || section.BranchId != actorBranchId || !section.IsActive || head is null)
+            throw new ArgumentException("يجب اختيار المستلم — حدّد رئيس القسم أو شعبة نشطة برئيس مفعّل");
+        return section;
+    }
+
+    /// <summary>
+    /// نطاق الملف (§10): القسم لدوائر القسم وبلا دائرة، والشعبة لدوائر شعبته —
+    /// بلا تدهور (رمز بلا شعبة مرفوض).
+    /// </summary>
+    private async Task<bool> InFileScopeAsync(Document document, UserRole role,
+        int? actorBranchId, int? actorSectionId, CancellationToken ct)
+    {
+        // حارس null صريح: مقارنة int?==int? تعدّ null==null صوابًا، فيرى رئيس
+        // بلا فرع ملفًا إرثيًا بلا فرع — ثغرة حسابات مشوّهة (مرآة نمط المراسلات).
+        if (actorBranchId is null || actorBranchId != document.BranchId)
+            return false;
+        var ownerSection = await FileOwnerSectionAsync(document, ct);
+        return role switch
+        {
+            UserRole.Head => ownerSection is null,
+            UserRole.SubHead => actorSectionId is not null && ownerSection == actorSectionId,
+            _ => false,
+        };
+    }
+
+    /// <summary>
+    /// حارس المالك للرد (§10): القسم لكتبه، والشعبة لكتبها — «مقصور على كتب نطاقه».
+    /// </summary>
+    private static void EnsureLetterOwner(UserRole role, int? actorSectionId, int? ownerSectionId)
+    {
+        if (role == UserRole.Head)
+        {
+            if (ownerSectionId.HasValue)
+                throw new UnauthorizedAccessException("مقصور على كتب نطاقه");
+        }
+        else if (role == UserRole.SubHead)
+        {
+            if (actorSectionId is null)
+                throw new UnauthorizedAccessException("حسابك بلا شعبة — أعد الدخول");
+            if (ownerSectionId != actorSectionId)
+                throw new UnauthorizedAccessException("مقصور على كتب نطاقه");
+        }
+        else
+        {
+            throw new UnauthorizedAccessException("رد المطالعات للرؤساء فقط");
+        }
     }
 
     /// <summary>
@@ -430,7 +579,7 @@ public sealed class ReviewLetterService : IReviewLetterService
     }
 
     private async Task<bool> CanViewAsync(ReviewLetter letter, int actorUserId, UserRole role,
-        int? actorBranchId, CancellationToken ct)
+        int? actorBranchId, int? actorSectionId, CancellationToken ct)
     {
         switch (role)
         {
@@ -442,7 +591,14 @@ public sealed class ReviewLetterService : IReviewLetterService
                     && await FollowsDocumentAsync(letter.DocumentId.Value, actorUserId, ct);
 
             case UserRole.Head:
-                return letter.BranchId == actorBranchId;
+                if (letter.BranchId != actorBranchId)
+                    return false;
+                return await OwnerSectionOfAsync(letter, ct) is null;
+
+            case UserRole.SubHead:
+                if (letter.BranchId != actorBranchId || actorSectionId is null)
+                    return false;
+                return await OwnerSectionOfAsync(letter, ct) == actorSectionId;
 
             case UserRole.Manager or UserRole.Admin:
                 return true;
@@ -537,7 +693,9 @@ public sealed class ReviewLetterService : IReviewLetterService
             letter.CreatedBy?.FullName ?? string.Empty,
             messages.Any(m => m.Kind == ReviewLetterMessage.KindReply && !m.IsSeenByLawyer),
             messages.Select(ToMessageDto).ToList(),
-            letter.CreatedAt);
+            letter.CreatedAt,
+            letter.RecipientSectionId,
+            letter.RecipientSection?.Name);
     }
 
     private ReviewLetterListItemDto ToListItem(ReviewLetter letter, bool revealUnseen)
@@ -563,6 +721,8 @@ public sealed class ReviewLetterService : IReviewLetterService
             hasUnseenReply,
             messages.Count,
             letter.Branch?.Name,
-            letter.UpdatedAt);
+            letter.UpdatedAt,
+            letter.RecipientSectionId,
+            letter.RecipientSection?.Name);
     }
 }

@@ -68,10 +68,12 @@ public sealed class CorrespondenceIntegrationTests : IAsyncLifetime
         };
         var lawyer = mk("corrlawyer", "المحامي", UserRole.Lawyer, branch.Id);
         var lawyer2 = mk("corrlawyer2", "المحامي الثاني", UserRole.Lawyer, branch.Id);
-        var head = mk("corrhead", "الرئيس", UserRole.Head, branch.Id);
         var del = mk("corrdelegate", "المندوب", UserRole.EntityManager, null);
-        db.Users.AddRange(lawyer, lawyer2, head, del);
+        db.Users.AddRange(lawyer, lawyer2, del);
         await db.SaveChangesAsync();
+        // رئيس الفرع هو المزروع `head1` (وحدانية رئيس القسم المفعّل لكل فرع —
+        // قرار §2.26: لا رئيس ثانٍ في الفرع نفسه).
+        var head = await db.Users.SingleAsync(u => u.Username == "head1");
 
         del.PortalEntryId = entryId;
         await db.SaveChangesAsync();
@@ -115,7 +117,7 @@ public sealed class CorrespondenceIntegrationTests : IAsyncLifetime
     }
 
     private HttpClient Lawyer() => _factory.AuthorizedClient("corrlawyer");
-    private HttpClient Head() => _factory.AuthorizedClient("corrhead");
+    private HttpClient Head() => _factory.AuthorizedClient("head1");
     private HttpClient Delegate() => _factory.AuthorizedClient("corrdelegate");
 
     private static StringContent Json(object body) => new(

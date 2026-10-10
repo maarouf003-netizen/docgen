@@ -25,6 +25,7 @@ public class TokenServiceTests
     [InlineData(UserRole.Admin, "admin")]
     [InlineData(UserRole.Manager, "manager")]
     [InlineData(UserRole.Head, "head")]
+    [InlineData(UserRole.SubHead, "subhead")]
     [InlineData(UserRole.Lawyer, "lawyer")]
     public void CreateToken_RoleClaim_IsLowercase(UserRole role, string expected)
     {
@@ -72,6 +73,39 @@ public class TokenServiceTests
         var jwt = new JwtSecurityTokenHandler().ReadJwtToken(token);
 
         Assert.Equal("7", jwt.Claims.First(c => c.Type == "token_version").Value);
+    }
+
+    [Fact]
+    public void CreateToken_IncludesSectionId_ForSubHead()
+    {
+        var service = new TokenService(new JwtOptions
+        {
+            Secret = "test-secret-key-0123456789-0123456789-0123456789",
+            Issuer = "Test",
+            Audience = "Test",
+        });
+
+        var token = service.CreateToken(new User { Id = 1, Username = "u", FullName = "x", Role = UserRole.SubHead, BranchId = 2, SectionId = 4 });
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(token);
+
+        Assert.Equal("subhead", jwt.Claims.First(c => c.Type == ClaimTypes.Role).Value);
+        Assert.Equal("4", jwt.Claims.First(c => c.Type == "section_id").Value);
+    }
+
+    [Fact]
+    public void CreateToken_OmitsSectionId_WhenAbsent()
+    {
+        var service = new TokenService(new JwtOptions
+        {
+            Secret = "test-secret-key-0123456789-0123456789-0123456789",
+            Issuer = "Test",
+            Audience = "Test",
+        });
+
+        var token = service.CreateToken(new User { Id = 1, Username = "u", FullName = "x", Role = UserRole.Head, BranchId = 2 });
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(token);
+
+        Assert.DoesNotContain(jwt.Claims, c => c.Type == "section_id");
     }
 }
 

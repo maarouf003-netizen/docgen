@@ -58,6 +58,17 @@ public class DocumentDelegation
     /// <summary>المحامي المختص الذي يتابع الإنابة في الدائرة/الفرع المناب (يختاره رئيس القسم).</summary>
     public int? AssignedLawyerId { get; set; }
 
+    /// <summary>
+    /// الشعبة الموجَّه لها طلب الإنابة الخارجية (زر «توجيه للشعبة»)؛ `null` قبل التوجيه.
+    /// </summary>
+    public int? RedirectedToSectionId { get; set; }
+
+    /// <summary>سبب رفض الدائرة الخطأ (يُعيد المحامي للتصحيح).</summary>
+    public string? RejectReason { get; set; }
+
+    /// <summary>عدّاد التزامن المتفائل لمسار الاعتماد.</summary>
+    public long Version { get; set; }
+
     /// <summary>تاريخ إعادة الملف المناب إلى الدائرة المنيبة بعد إتمام الإنابة (نص حر).</summary>
     public DateTime? ReturnDate { get; set; }
 
@@ -78,6 +89,7 @@ public class DocumentDelegation
 
     public Document SourceDocument { get; set; } = null!;
     public Branch? ExternalBranch { get; set; }
+    public Section? RedirectedToSection { get; set; }
     public User? AssignedLawyer { get; set; }
     public User CreatedBy { get; set; } = null!;
     public ICollection<DelegationAsset> Assets { get; set; } = new List<DelegationAsset>();

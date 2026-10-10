@@ -23,6 +23,7 @@ public class CorrespondenceConfiguration : IEntityTypeConfiguration<Corresponden
         builder.HasIndex(c => c.Governorate);
         builder.HasIndex(c => c.CreatedById);
         builder.HasIndex(c => c.TargetUserId);
+        builder.HasIndex(c => c.RecipientSectionId);
         builder.HasIndex(c => c.DocumentId);
         builder.HasIndex(c => c.Importance);
         builder.HasIndex(c => c.UpdatedAt);
@@ -42,6 +43,12 @@ public class CorrespondenceConfiguration : IEntityTypeConfiguration<Corresponden
         builder.HasOne(c => c.TargetUser)
             .WithMany()
             .HasForeignKey(c => c.TargetUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // الشعبة المستلمة (لبلا ملف) — مرآة قرار التوجيه وقت الإنشاء.
+        builder.HasOne(c => c.RecipientSection)
+            .WithMany()
+            .HasForeignKey(c => c.RecipientSectionId)
             .OnDelete(DeleteBehavior.Restrict);
 
         // الملف المرتبط اختياري (عامة عندما يكون null)؛ تُفكّ الرابط فقط (SetNull)

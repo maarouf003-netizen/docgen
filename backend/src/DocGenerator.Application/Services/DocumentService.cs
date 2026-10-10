@@ -19,31 +19,31 @@ public interface IDocumentService
     Task<bool> RestoreAsync(int documentId, string? actorName, CancellationToken ct = default);
     Task<DocumentResponse> TransferAsync(int documentId, int targetLawyerId, string? actorName, CancellationToken ct = default);
     /// <summary>عدد ملفات المحامي غير المحذوفة (للمعاينة قبل النقل الجماعي).</summary>
-    Task<int> CountFilesByOwnerAsync(int ownerId, int? scopeBranchId, CancellationToken ct = default);
+    Task<int> CountFilesByOwnerAsync(int ownerId, int? scopeBranchId, CancellationToken ct = default, int? ownerSectionId = null);
     /// <summary>
     /// نقل كامل ملفات محامٍ إلى محامٍ آخر بجميع الحالات — رئيس القسم (ضمن فرعه) فقط.
     /// scopeBranchId يُقيّد النطاق بفرع رئيس القسم ويُرجع عدد الملفات المنقولة.
     /// </summary>
-    Task<int> TransferAllAsync(int sourceLawyerId, int targetLawyerId, int? scopeBranchId, string? actorName, CancellationToken ct = default, string? idempotencyKey = null);
-    Task<PagedResult<DocumentResponse>> SearchDeletedAsync(string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default);
-    Task<PagedResult<DocumentResponse>> SearchAsync(string? query, string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default);
+    Task<int> TransferAllAsync(int sourceLawyerId, int targetLawyerId, int? scopeBranchId, string? actorName, CancellationToken ct = default, string? idempotencyKey = null, int? ownerSectionId = null);
+    Task<PagedResult<DocumentResponse>> SearchDeletedAsync(string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null);
+    Task<PagedResult<DocumentResponse>> SearchAsync(string? query, string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null);
     /// <summary>
     /// بحث ترحّلي عن ملفات وضع «منفذ عليه» المشطوبة فقط — صفحة «الملفات المشطوبة».
     /// بنفس صلاحيات المحذوفات: محامٍ (ملفاته) / رئيس قسم (فرعه) / مشرف (الكل).
     /// </summary>
-    Task<PagedResult<DocumentResponse>> SearchStruckOffAsync(string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default);
+    Task<PagedResult<DocumentResponse>> SearchStruckOffAsync(string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null);
     /// <summary>
     /// بحث ترحّلي عن الملفات المنفذة (منفذ عليها/عرض وايداع بحالة «منفذ»، وطالبة تنفيذ
     /// بالتسوية أو الجبري الكامل) — صفحة «الملفات المنفذة»، ظاهرة لجميع الأدوار.
     /// </summary>
-    Task<PagedResult<DocumentResponse>> SearchExecutedAsync(string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default);
+    Task<PagedResult<DocumentResponse>> SearchExecutedAsync(string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null);
     /// <summary>
     /// بحث ترحّلي عن ملفات «طالبة تنفيذ» بحالة «محال الى البداية» فقط (ومنها القادم من
     /// «منفذ جبريا» المحال بجزئيته) — صفحة «محال الى البداية»، ظاهرة لجميع الأدوار.
     /// </summary>
-    Task<PagedResult<DocumentResponse>> SearchReferredToStartAsync(string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default);
-    Task<List<DocumentResponse>> ExportAsync(string? query, string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, string? actorName = null);
-    Task<DocumentFilterOptions> GetFilterOptionsAsync(string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default);
+    Task<PagedResult<DocumentResponse>> SearchReferredToStartAsync(string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null);
+    Task<List<DocumentResponse>> ExportAsync(string? query, string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, string? actorName = null, int? ownerSectionId = null);
+    Task<DocumentFilterOptions> GetFilterOptionsAsync(string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null);
     Task<bool> UpdateStatusAsync(int documentId, string status, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default, long? version = null);
     /// <summary>
     /// «اعتبار الملف منفذًا كاملًا بهذا البيع» (نظام «طالبة تنفيذ»): إغلاق «منفذ جبريا (منفذ
@@ -519,29 +519,30 @@ public sealed partial class DocumentService : IDocumentService
         }, ct);
     }
 
-    public async Task<int> CountFilesByOwnerAsync(int ownerId, int? scopeBranchId, CancellationToken ct = default)
+    public async Task<int> CountFilesByOwnerAsync(int ownerId, int? scopeBranchId, CancellationToken ct = default, int? ownerSectionId = null)
     {
         var owner = await _users.GetByIdAsync(ownerId, ct);
         if (owner is null || owner.Role != UserRole.Lawyer)
             throw new ArgumentException("المحامي غير موجود");
         if (scopeBranchId.HasValue && owner.BranchId != scopeBranchId)
             throw new ArgumentException("لا يمكن عرض ملفات محامٍ من فرع آخر");
-        return await _documents.CountByOwnerAsync(ownerId, ct);
+        // المعاينة بالنطاق نفسه (§5.5): تطابق المنقول فعلًا.
+        return await _documents.CountByOwnerInScopeAsync(ownerId, scopeBranchId, ownerSectionId, ct);
     }
 
-    public async Task<int> TransferAllAsync(int sourceLawyerId, int targetLawyerId, int? scopeBranchId, string? actorName, CancellationToken ct = default, string? idempotencyKey = null)
+    public async Task<int> TransferAllAsync(int sourceLawyerId, int targetLawyerId, int? scopeBranchId, string? actorName, CancellationToken ct = default, string? idempotencyKey = null, int? ownerSectionId = null)
     {
         // RF-011: حجز المفتاح أولًا (لا تحقق مسبق يستحق `400` هنا — التحققات داخل
         // المعاملة عمدًا ضد `TOCTOU`) — النطاق محامي المصدر (النية = نقل ملفاته) —
         // التكرار يُعيد العدد المخزن نفسه.
         var ticket = await IdempotencyGuard.BeginAsync(_idempotency, "documents.transfer-all",
             sourceLawyerId, idempotencyKey,
-            IdempotencyGuard.Fingerprint(new { sourceLawyerId, targetLawyerId, scopeBranchId }), ct);
+            IdempotencyGuard.Fingerprint(new { sourceLawyerId, targetLawyerId, scopeBranchId, ownerSectionId }), ct);
 
         int transferred;
         try
         {
-            transferred = await TransferAllCoreAsync(sourceLawyerId, targetLawyerId, scopeBranchId, actorName, ct);
+            transferred = await TransferAllCoreAsync(sourceLawyerId, targetLawyerId, scopeBranchId, ownerSectionId, actorName, ct);
         }
         catch
         {
@@ -557,7 +558,7 @@ public sealed partial class DocumentService : IDocumentService
 
     /// <summary>نواة النقل الجماعي (تحققات + نقل + تدقيق) — تُستدعى بعد حجز مفتاح عدم التكرار.</summary>
     private async Task<int> TransferAllCoreAsync(
-        int sourceLawyerId, int targetLawyerId, int? scopeBranchId, string? actorName, CancellationToken ct)
+        int sourceLawyerId, int targetLawyerId, int? scopeBranchId, int? ownerSectionId, string? actorName, CancellationToken ct)
     {
         return await _tx.RunAsync(async token =>
         {
@@ -580,11 +581,11 @@ public sealed partial class DocumentService : IDocumentService
             if (source.BranchId != target.BranchId)
                 throw new ArgumentException("لا يمكن نقل الملفات إلى محامٍ من فرع آخر");
 
-            var files = await _documents.ListByOwnerAsync(sourceLawyerId, token);
+            var files = await _documents.ListByOwnerInScopeAsync(sourceLawyerId, scopeBranchId, ownerSectionId, token);
             if (files.Count == 0)
                 return 0;
 
-            var moved = await _documents.TransferAllOwnerAsync(sourceLawyerId, target.Id, target.FullName, source.FullName, token);
+            var moved = await _documents.TransferAllOwnerAsync(sourceLawyerId, target.Id, target.FullName, source.FullName, scopeBranchId, ownerSectionId, token);
             if (moved != files.Count)
                 throw new DocumentConflictException("تغيّرت بيانات الملفات أثناء النقل الجماعي — أعد المحاولة");
 

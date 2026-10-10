@@ -49,8 +49,11 @@ public class Repository<T> : IRepository<T> where T : class
                 .ThenInclude(a => a.CreatedBy)
                 .Include(d => ((Document)(object)d).RegistrationDate)
                 .Include(d => ((Document)(object)d).CreatedBy)
-                .Include(d => ((Document)(object)d).Branch)
-                .Include(d => ((Document)(object)d).BaseNumbers)
+            .Include(d => ((Document)(object)d).Branch)
+            // الدائرة وشعبتها لبوابات الوصول المفردة (§5 — قرار §2.21).
+            .Include(d => ((Document)(object)d).ExecutionCircuit)
+                .ThenInclude(c => c!.Section)
+            .Include(d => ((Document)(object)d).BaseNumbers)
                 .Include(d => ((Document)(object)d).ExecutionApplicants)
                 .ThenInclude(a => a.Heirs)
                 .Include(d => ((Document)(object)d).ExecutedPublicEntities)
@@ -70,9 +73,9 @@ public class Repository<T> : IRepository<T> where T : class
         }
         else if (typeof(T) == typeof(User))
         {
-            query = query.Include(u => ((User)(object)u).Branch);
-        }
-        else if (typeof(T) == typeof(ParentEditSuggestion))
+            query = query.Include(u => ((User)(object)u).Branch)
+                .Include(u => ((User)(object)u).Section);
+        }        else if (typeof(T) == typeof(ParentEditSuggestion))
         {
             query = query
                 .Include(s => ((ParentEditSuggestion)(object)s).Group)

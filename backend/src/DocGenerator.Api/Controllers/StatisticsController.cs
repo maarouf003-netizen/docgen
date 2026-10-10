@@ -43,35 +43,69 @@ public class StatisticsController : ControllerBase
         return null;
     }
 
+    /// <summary>
+    /// نطاق مالك الإحصاءات (§12/قرار 27): القسم لدوائر القسم وبلا دائرة، والشعبة
+    /// لدوائر شعبته — بلا تدهور (رمز بلا شعبة مرفوض). الإدارة بلا قيد.
+    /// </summary>
+    private ActionResult? RequireOwnerScope(out int branchId, out int? ownerSectionId, out bool fullAccess)
+    {
+        branchId = 0;
+        ownerSectionId = null;
+        fullAccess = RolePermissions.HasFullAccess(Role);
+        if (fullAccess)
+            return null;
+        var error = RequireOwnBranch(out branchId);
+        if (error is not null) return error;
+        if (Role == UserRole.SubHead)
+        {
+            var section = User.GetSectionId();
+            if (section is null)
+                return Forbid();
+            ownerSectionId = section;
+        }
+        else if (Role != UserRole.Head)
+        {
+            return Forbid();
+        }
+        return null;
+    }
+
     [HttpGet("dashboard")]
-    [Authorize(Roles = "manager,admin,head,lawyer")]
+    [Authorize(Roles = "manager,admin,head,subhead,lawyer")]
     public async Task<ActionResult<DashboardStatsDto>> Dashboard(CancellationToken ct)
     {
-        // الأدوار المقيَّدة (رئيس/محامٍ — المندوب مستبعد بقيد الدور أعلاه) تُحصر
-        // في فرعها؛ `null` هنا تعني الكل ولا تُمنح إلا لوصول المدير/المشرف الكامل.
-        int? branchId = null;
-        if (!RolePermissions.HasFullAccess(Role))
+        // الأدوار المقيَّدة (رئيس/شعبة/محامٍ — المندوب مستبعد بقيد الدور أعلاه):
+        // الرؤساء بنطاق المالك (§12/قرار 27)، والمحامي بفرعه كما كان.
+        // `null` هنا تعني الكل ولا تُمنح إلا لوصول المدير/المشرف الكامل.
+        if (RolePermissions.HasFullAccess(Role))
+            return Ok(await _stats.GetDashboardStatsAsync(null, ct));
+        if (Role is UserRole.Head or UserRole.SubHead)
         {
-            var error = RequireOwnBranch(out var own);
-            if (error is not null) return error;
-            branchId = own;
+            var scopeError = RequireOwnerScope(out var own, out var ownerSectionId, out _);
+            if (scopeError is not null) return scopeError;
+            return Ok(await _stats.GetDashboardStatsAsync(own, ct, ownerSectionId, false));
         }
-        return Ok(await _stats.GetDashboardStatsAsync(branchId, ct));
+        var branchError = RequireOwnBranch(out var branch);
+        if (branchError is not null) return branchError;
+        return Ok(await _stats.GetDashboardStatsAsync(branch, ct));
     }
 
     [HttpGet("monthly-stats")]
-    [Authorize(Roles = "manager,admin,head,lawyer")]
+    [Authorize(Roles = "manager,admin,head,subhead,lawyer")]
     public async Task<ActionResult<List<MonthlyStatDto>>> Monthly(CancellationToken ct)
     {
-        // كـ `/dashboard` أعلاه: لا شهريات كل الفروع لدور مقيَّد بلا فرع.
-        int? branchId = null;
-        if (!RolePermissions.HasFullAccess(Role))
+        // كـ `/dashboard` أعلاه: الرؤساء بنطاق المالك، والمحامي بفرعه.
+        if (RolePermissions.HasFullAccess(Role))
+            return Ok(await _stats.GetMonthlyStatsAsync(null, ct));
+        if (Role is UserRole.Head or UserRole.SubHead)
         {
-            var error = RequireOwnBranch(out var own);
-            if (error is not null) return error;
-            branchId = own;
+            var scopeError = RequireOwnerScope(out var own, out var ownerSectionId, out _);
+            if (scopeError is not null) return scopeError;
+            return Ok(await _stats.GetMonthlyStatsAsync(own, ct, ownerSectionId, false));
         }
-        return Ok(await _stats.GetMonthlyStatsAsync(branchId, ct));
+        var branchError = RequireOwnBranch(out var branch);
+        if (branchError is not null) return branchError;
+        return Ok(await _stats.GetMonthlyStatsAsync(branch, ct));
     }
 
     [HttpGet("reminders")]
@@ -92,7 +126,7 @@ public class StatisticsController : ControllerBase
         => Ok(await _stats.GetUserActivityAsync(ct));
 
     [HttpGet("stats/manager")]
-    [Authorize(Roles = "manager,admin,head")]
+    [Authorize(Roles = "manager,admin,head,subhead")]
     public async Task<ActionResult<ManagerStatsDto>> ManagerStats(
         [FromQuery] StatsPeriod period = StatsPeriod.Yearly,
         [FromQuery] int? branchId = null,
@@ -105,19 +139,17 @@ public class StatisticsController : ControllerBase
         if (invalid is not null)
             return invalid;
 
-        // رئيس القسم يُحتسب على فرعه فقط، ولا يحق له اختيار فرع آخر.
-        if (Role == UserRole.Head)
-        {
-            var error = RequireOwnBranch(out var own);
-            if (error is not null) return error;
-            branchId = own;
-        }
-
-        return Ok(await _stats.GetManagerStatsAsync(period, branchId, year, month, quarter, ct));
+        // نطاق المالك (§12/قرار 27): رئيس القسم لإحصاء قسمه (تضييق مقصود)،
+        // ورئيس الشعبة لشعبته، والمدير/المشرف للفرع ككل — ولا اختيار فرع آخر للرؤساء.
+        if (RolePermissions.HasFullAccess(Role))
+            return Ok(await _stats.GetManagerStatsAsync(period, branchId, year, month, quarter, ct));
+        var scopeError = RequireOwnerScope(out var own, out var ownerSectionId, out _);
+        if (scopeError is not null) return scopeError;
+        return Ok(await _stats.GetManagerStatsAsync(period, own, year, month, quarter, ct, ownerSectionId, false));
     }
 
     [HttpGet("stats/manager/lawyers")]
-    [Authorize(Roles = "manager,admin,head")]
+    [Authorize(Roles = "manager,admin,head,subhead")]
     public async Task<ActionResult<List<ManagerLawyerStatDto>>> ManagerLawyerStats(
         [FromQuery] StatsPeriod period = StatsPeriod.Yearly,
         [FromQuery] int branchId = 0,
@@ -130,16 +162,16 @@ public class StatisticsController : ControllerBase
         if (invalid is not null)
             return invalid;
 
-        // رئيس القسم يُحصر جدول المحامين في فرعه تلقائيًا.
-        if (Role == UserRole.Head)
+        // جدول المحامين بالنطاق نفسه (§12): العدّ ضمن نطاق المالك فقط.
+        if (RolePermissions.HasFullAccess(Role))
         {
-            var error = RequireOwnBranch(out branchId);
-            if (error is not null) return error;
+            if (branchId <= 0)
+                return BadRequest(new { message = "branchId مطلوب لجدول محامي الفرع" });
+            return Ok(await _stats.GetManagerLawyerStatsAsync(period, branchId, year, month, quarter, ct));
         }
-
-        if (branchId <= 0)
-            return BadRequest(new { message = "branchId مطلوب لجدول محامي الفرع" });
-        return Ok(await _stats.GetManagerLawyerStatsAsync(period, branchId, year, month, quarter, ct));
+        var scopeError = RequireOwnerScope(out var own, out var ownerSectionId, out _);
+        if (scopeError is not null) return scopeError;
+        return Ok(await _stats.GetManagerLawyerStatsAsync(period, own, year, month, quarter, ct, ownerSectionId, false));
     }
 
     [HttpGet("stats/me")]
@@ -160,22 +192,21 @@ public class StatisticsController : ControllerBase
 
     /// <summary>
     /// الأشهر المتاحة التي قُيّدت فيها ملفات، لنطاق المستخدم:
-    /// مشرف/مدير: كل الفروع (أو فرع محدد)، رئيس قسم: فرعه، محامٍ: ملفاته هو.
-    /// الدور المقيَّد بلا فرع (رئيس/محامٍ) يُرفض صراحة (400) بدل التسريب الضمني —
-    /// المحامي محصور بملفاته أصلًا لكن غياب الفرع حالة شاذة تُرفض كالرئيس.
+    /// مشرف/مدير: كل الفروع (أو فرع محدد)، رئيس قسم: قسمه، رئيس شعبة: شعبته،
+    /// محامٍ: ملفاته هو. الدور المقيَّد بلا فرع (رئيس/محامٍ) يُرفض صراحة (400).
     /// </summary>
     [HttpGet("stats/periods")]
-    [Authorize(Roles = "manager,admin,head,lawyer")]
+    [Authorize(Roles = "manager,admin,head,subhead,lawyer")]
     public async Task<ActionResult<List<MonthlyStatDto>>> AvailablePeriods(
         [FromQuery] int? branchId = null,
         CancellationToken ct = default)
     {
         int? effectiveBranch = RolePermissions.HasFullAccess(Role) ? branchId : null;
-        if (Role == UserRole.Head)
+        if (Role is UserRole.Head or UserRole.SubHead)
         {
-            var error = RequireOwnBranch(out var own);
-            if (error is not null) return error;
-            effectiveBranch = own;
+            var scopeError = RequireOwnerScope(out var own, out var ownerSectionId, out _);
+            if (scopeError is not null) return scopeError;
+            return Ok(await _stats.GetAvailablePeriodsAsync(own, null, ct, ownerSectionId, false));
         }
         else if (Role == UserRole.Lawyer)
         {

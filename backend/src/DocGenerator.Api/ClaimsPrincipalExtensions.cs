@@ -41,4 +41,22 @@ public static class ClaimsPrincipalExtensions
         var b = user.FindFirstValue("branch_id");
         return int.TryParse(b, out var id) ? id : null;
     }
+
+    /// <summary>
+    /// رئيس قسم أو شعبة (قرار §2.21) — للاستخدام في اشتقاق النطاق بدل فحص
+    /// `Role == UserRole.Head` المتناثر. التوسيع الفعلي للنطاق يتم مرحليًا
+    /// مع الفلترة (§5) لا هنا.
+    /// </summary>
+    public static bool IsHeadOrSubHead(this ClaimsPrincipal user)
+        => user.GetRoleEnum() is UserRole.Head or UserRole.SubHead;
+
+    /// <summary>
+    /// شعبة الحساب من الرمز (`section_id`)؛ `null` لغير رئيس الشعبة أو للرمز
+    /// القديم قبل تفعيل الشعب (يُعامل كملك القسم).
+    /// </summary>
+    public static int? GetSectionId(this ClaimsPrincipal user)
+    {
+        var s = user.FindFirstValue("section_id");
+        return int.TryParse(s, out var id) ? id : null;
+    }
 }

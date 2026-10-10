@@ -43,7 +43,8 @@ export default function Dashboard() {
   const { user } = useAuth();
   const isLawyer = user?.role === 'lawyer';
   const isManager = user?.role === 'manager' || user?.role === 'admin';
-  const isHead = user?.role === 'head';
+  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
+  const isSubHead = user?.role === 'subhead';
 
   const [alertsError, setAlertsError] = useState('');
   const [markingKey, setMarkingKey] = useState<string | null>(null);
@@ -59,9 +60,10 @@ export default function Dashboard() {
   const [branchId, setBranchId] = useState<number | null>(null);
 
   const userReady = Boolean(user);
-  // رئيس بلا فرع: عدّادات شاراته مرفوضة (`400`) أو صفرية خلفيًا —
+  // رئيس بلا فرع (ورئيس شعبة برمز بلا شعبة): عدّادات شاراته مرفوضة (`400`/`403`) أو صفرية خلفيًا —
   // لا تُطلق ولا تُستطلع أصلًا، وتبقى الشارات صفرًا.
-  const headBadgesEnabled = userReady && isHead && (user?.branchId ?? null) != null;
+  const headBadgesEnabled =
+    userReady && isHeadOrSubHead && (user?.branchId ?? null) != null && (isSubHead ? (user?.sectionId ?? null) != null : true);
 
   const branchesQuery = useCancellableRequest<BranchDto[]>(
     (signal) => api.get('/branches', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
@@ -99,6 +101,16 @@ export default function Dashboard() {
     { enabled: userReady && !isManager },
   );
 
+  // صندوق الصادر («أرسلتها» — قراءة فقط): ما أصدره الرئيس في فرعه، منفصل عن
+  // المستلَمات حتى لا يختلط المُرسَل بالمستلَم ولا يُطالب بتعليم مقروء.
+  const [alertsTab, setAlertsTab] = useState<'received' | 'sent'>('received');
+  const [sentFlash, setSentFlash] = useState('');
+  const sentQuery = useCancellableRequest<HeadAlertDto[]>(
+    (signal) => api.get('/alerts/sent', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
+    [isHeadOrSubHead],
+    { enabled: headBadgesEnabled },
+  );
+
   const unreadQuery = useCancellableRequest<{ count: number }>(
     (signal) => api.get('/alerts/unread-count', { signal }).then((r) => r.data),
     [isLawyer],
@@ -106,9 +118,10 @@ export default function Dashboard() {
   );
 
   const branchLawyersQuery = useCancellableRequest<LawyerListItem[]>(
-    (signal) => api.get('/users/lawyers', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
-    [isHead],
-    { enabled: userReady && isHead },
+    // قائمة التنبيهات: كل محامي النطاق (الجدد بلا ملفات مشمولون — `mode=branch`).
+    (signal) => api.get('/users/lawyers', { signal, params: { mode: 'branch' } }).then((r) => (Array.isArray(r.data) ? r.data : [])),
+    [isHeadOrSubHead],
+    { enabled: userReady && isHeadOrSubHead },
   );
 
   // عدّاد بطاقة سجل الجهات: جهات أدخلها المحامون وبانتظار مراجعة رئيس القسم —
@@ -215,13 +228,13 @@ export default function Dashboard() {
   // تُجلب مرة عند التركيب (بلا استطلاع: التحديث عبر صفحة الإدارة نفسها).
   const circuitsQuery = useCancellableRequest<ExecutionCircuitDto[]>(
     (signal) => api.get('/execution-circuits/mine', { signal }).then((r) => (Array.isArray(r?.data) ? r.data : [])),
-    [isHead],
+    [isHeadOrSubHead],
     { enabled: headBadgesEnabled },
   );
   const circuitsPending = useMemo(() => {
-    if (!isHead) return 0;
+    if (!isHeadOrSubHead) return 0;
     return (circuitsQuery.data ?? []).reduce((n, c) => n + Math.max(0, Number(c.pendingCount) || 0), 0);
-  }, [isHead, circuitsQuery.data]);
+  }, [isHeadOrSubHead, circuitsQuery.data]);
 
   // مدخل معلقات المحامي (B19): عدد ملفاته المحالة بانتظار تحديث بياناتها — بطاقة «ملفات معلقة».
   // تُحجب البطاقة بعد نجاح الجلب والصفر المؤكد فقط؛ وتبقى أثناء التحميل وعند الخطأ (fail-open).
@@ -333,16 +346,18 @@ export default function Dashboard() {
     setAlertSubmitting(true);
     setAlertFormError({ field: null, text: '' });
     try {
-      const { data } = await api.post<HeadAlertDto>('/alerts', {
+      await api.post<HeadAlertDto>('/alerts', {
         targetType: alertTargetType,
         documentId: null,
         targetLawyerId,
         message: alertMessage.trim(),
       });
-      alertsQuery.setData((prev) => [data, ...(prev ?? [])]);
+      // بلا إلحاق تفاؤلي عمدًا: القائمة مستلَمات فقط، والمُرسَل في تبويب «أرسلتها».
       setShowAlertForm(false);
       setAlertMessage('');
       setAlertLawyerId('');
+      setSentFlash('تم إصدار التنبيه — تجده في تبويب «أرسلتها»');
+      sentQuery.refetch();
     } catch (err) {
       // خطأ الإرسال الخادمي بلا حقل مخالف — يُعلن وحده دون تعليم أي حقل.
       setAlertFormError({ field: null, text: getApiErrorMessage(err) });
@@ -435,6 +450,8 @@ export default function Dashboard() {
                 entityPending,
                 circuitsPending,
               }}
+              scopeLabel={isSubHead ? 'مؤشرات الشعبة' : 'مؤشرات الفرع'}
+              isSubHead={isSubHead}
             />
           </div>
         </>
@@ -508,10 +525,31 @@ export default function Dashboard() {
         </>
       ) : (
         <>
+          {sentFlash ? (
+            <p role="status" className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 mb-4">
+              {sentFlash}
+            </p>
+          ) : null}
+          <div className="flex gap-2 mb-4" role="tablist" aria-label="تبويبات التنبيهات">
+            {(['received', 'sent'] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                role="tab"
+                aria-selected={alertsTab === t}
+                onClick={() => setAlertsTab(t)}
+                className={`min-h-11 rounded-lg px-4 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+                  alertsTab === t ? 'bg-emerald-800 text-white' : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                {t === 'received' ? 'مستلمة' : 'أرسلتها'}
+              </button>
+            ))}
+          </div>
           <AlertsPanel
             badge={
-              <span className="text-xs bg-emerald-100 text-emerald-800 rounded-full px-2 py-0.5 font-medium">
-                {alerts.length}
+              <span className="text-xs bg-emerald-100 text-emerald-800 rounded-full px-2 py-0.5 font-medium tabular-nums">
+                {alertsTab === 'received' ? alerts.length : (sentQuery.data ?? []).length}
               </span>
             }
             headerExtra={
@@ -540,8 +578,9 @@ export default function Dashboard() {
                 />
               ) : null
             }
-            error={alertsError || alertsQuery.error || ''}
-            alerts={alerts}
+            error={alertsError || alertsQuery.error || sentQuery.error || ''}
+            alerts={alertsTab === 'received' ? alerts : (sentQuery.data ?? [])}
+            sentView={alertsTab === 'sent'}
           />
         </>
       )}

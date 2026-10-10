@@ -23,6 +23,7 @@ public class ExecutionCircuitConfiguration : IEntityTypeConfiguration<ExecutionC
         builder.HasIndex(c => new { c.BranchId, c.NameNorm }).IsUnique();
         builder.HasIndex(c => c.BranchId);
         builder.HasIndex(c => c.IsActive);
+        builder.HasIndex(c => c.SectionId);
 
         // التزامن المتفائل (مثل Document.Version).
         builder.Property(c => c.Version).IsConcurrencyToken();
@@ -35,6 +36,14 @@ public class ExecutionCircuitConfiguration : IEntityTypeConfiguration<ExecutionC
         builder.HasOne(c => c.CreatedBy)
             .WithMany()
             .HasForeignKey(c => c.CreatedById)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // الشعبة المالكة (null = ملك القسم)؛ اتساق الفرعين فحص خدمي (§4.4) —
+        // لا قيد بين جدولين في SQLite/Postgres. حذف الشعبة محظور خدميًا مع
+        // وجود دوائر، والقيد Restrict ظهرًا.
+        builder.HasOne(c => c.Section)
+            .WithMany(s => s.Circuits)
+            .HasForeignKey(c => c.SectionId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

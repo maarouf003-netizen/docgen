@@ -15,14 +15,25 @@ export interface HeadIconCounts {
  * صف الأيقونات العشر للوحة رئيس القسم (جوال أولًا: عمودان → 3 → 3):
  * الشارة الحمراء بجانب الأيقونة التي فيها تنبيه فقط (مطالعات/مراسلات/
  * إنابات/سجل جهات)، وبقية البطاقات بلا شارة — بنفس عقد `CardDef`.
+ *
+ * رئيس الشعبة يرى الصف نفسه ببطاقة «سجل التدقيق» (نطاقه الدائري §2.23 مطبَّق
+ * خلفيًا عبر `ownerSectionId` — F6)، والتسمية تميّز لوحته عن لوحة القسم.
  */
-export function HeadIconRow({ counts }: { counts: HeadIconCounts }) {
+export function HeadIconRow({
+  counts,
+  scopeLabel = 'مؤشرات الفرع',
+  isSubHead = false,
+}: {
+  counts: HeadIconCounts;
+  scopeLabel?: string;
+  isSubHead?: boolean;
+}) {
   const cards: CardDef[] = [
     {
       key: 'stats',
       icon: ICONS.chart,
       title: 'الإحصائيات',
-      subtitle: 'مؤشرات الفرع',
+      subtitle: scopeLabel,
       tone: 'bg-emerald-100 text-emerald-700',
       to: '/stats',
     },
@@ -140,5 +151,11 @@ export function HeadIconRow({ counts }: { counts: HeadIconCounts }) {
     },
   ];
 
-  return <IconCardGrid label="أقسام لوحة رئيس القسم" gridClass="sm:grid-cols-3" cards={cards} />;
+  return (
+    <IconCardGrid
+      label={isSubHead ? 'أقسام لوحة رئيس الشعبة' : 'أقسام لوحة رئيس القسم'}
+      gridClass="sm:grid-cols-3"
+      cards={cards}
+    />
+  );
 }

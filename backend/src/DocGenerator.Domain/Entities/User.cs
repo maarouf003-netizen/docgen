@@ -11,6 +11,16 @@ public class User
     public string FullName { get; set; } = string.Empty;
     public UserRole Role { get; set; } = UserRole.Lawyer;
     public int? BranchId { get; set; }
+    /// <summary>
+    /// الشعبة التي يتبعها الحساب: إلزامي لرئيس الشعبة (`SubHead`)، `null` لغيره.
+    /// `null` تعني ملك القسم مباشرة.
+    /// </summary>
+    public int? SectionId { get; set; }
+    /// <summary>
+    /// منشئ الحساب (لمباشَرة محامي الصفر ملفات — قرار §2.10)؛ `null` للقدامى
+    /// (يراهم الجميع دائمًا) ولمن أنشأهم مشرف بلا سياق إنشائي.
+    /// </summary>
+    public int? CreatedById { get; set; }
     public bool IsActive { get; set; } = true;
     /// <summary>
     /// نسخة التوكن (Security Stamp): تُرفع عند تغيير كلمة المرور أو تعطيل الحساب
@@ -31,6 +41,8 @@ public class User
     public DateTime? LastLogin { get; set; }
 
     public Branch? Branch { get; set; }
+    public Section? Section { get; set; }
+    public User? CreatedBy { get; set; }
     public ICollection<Document> Documents { get; set; } = new List<Document>();
 
     /// <summary>

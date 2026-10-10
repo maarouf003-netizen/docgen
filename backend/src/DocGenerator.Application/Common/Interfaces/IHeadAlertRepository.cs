@@ -3,16 +3,24 @@ using DocGenerator.Domain.Entities;
 namespace DocGenerator.Application.Common.Interfaces;
 
 /// <summary>
-/// استعلامات تنبيهات رئيس القسم على مستوى قاعدة البيانات:
-/// قائمة مستلم، قائمة فرع، عدّاد غير المقروء، واستعلامات الاستهداف.
+/// استعلامات تنبيهات الرؤساء على مستوى قاعدة البيانات:
+/// قوائم المستلم، عدّاد غير المقروء، واستعلامات الاستهداف.
 /// </summary>
 public interface IHeadAlertRepository : IRepository<HeadAlert>
 {
     /// <summary>تنبيهات المحامي المستلم، الأحدث أولاً، مع بيانات منشئ التنبيه والملف.</summary>
     Task<List<HeadAlert>> ListForRecipientAsync(int userId, CancellationToken ct = default);
 
-    /// <summary>تنبيهات فرع معين (عرض رئيس القسم)، الأحدث أولاً.</summary>
-    Task<List<HeadAlert>> ListByBranchAsync(int branchId, CancellationToken ct = default);
+    /// <summary>
+    /// تنبيهات مستلم في فرع (§8: قراءة بالمستلم لا بالفرع) — لرؤساء النطاق.
+    /// </summary>
+    Task<List<HeadAlert>> ListByRecipientInBranchAsync(int userId, int branchId, CancellationToken ct = default);
+
+    /// <summary>
+    /// ما أصدره الرئيس في فرعه (صندوق الصادر — تبويب «أرسلتها»): لا يدخل نطاق
+    /// المستلمين، فلا يؤثر في العدّادات ولا يُرحَّل عند التعاقب.
+    /// </summary>
+    Task<List<HeadAlert>> ListSentAsync(int userId, int branchId, CancellationToken ct = default);
 
     /// <summary>عدد تنبيهات المحامي غير المقروءة.</summary>
     Task<int> CountUnreadAsync(int userId, CancellationToken ct = default);
@@ -57,6 +65,12 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
 
     /// <summary>كل تنبيهات الاستئناف المحدد (لتصفية تنبيه «اختيار المحامي» عند الإسناد).</summary>
     Task<List<HeadAlert>> ListByAppealAsync(int appealId, CancellationToken ct = default);
+
+    /// <summary>
+    /// حذف انتقائي (§6.2/§6.5): صفوف استلام مستلم واحد من تنبيهات استئناف، مع
+    /// حذف التنبيهات الميتة — بلا مساس بباقي المستلمين، وبلا حفظ (ضمن معاملة المتصل).
+    /// </summary>
+    Task<int> RemoveAppealRecipientAsync(int appealId, int userId, CancellationToken ct = default);
 
     /// <summary>
     /// تنبيه معلق (إعادة قيد) بعينه لمحامٍ (مدمج لكل محامٍ × دائرة برسالة ثابتة) — للإحالة المدمجة.

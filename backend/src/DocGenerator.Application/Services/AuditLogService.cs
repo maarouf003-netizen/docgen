@@ -8,7 +8,7 @@ public interface IAuditLogService
 {
     Task<PagedResult<AuditLogDto>> SearchAsync(
         string? userName, string? actionType, int page, int perPage, CancellationToken ct = default,
-        int? scopeBranchId = null);
+        int? scopeBranchId = null, int? scopeSectionId = null);
 
     /// <summary>
     /// سجل تعديلات ملف محدد على مستوى الحقول: مجموعات مرتبة زمنيًا (الأحدث أولًا)
@@ -26,12 +26,12 @@ public sealed class AuditLogService : IAuditLogService
 
     public async Task<PagedResult<AuditLogDto>> SearchAsync(
         string? userName, string? actionType, int page, int perPage, CancellationToken ct = default,
-        int? scopeBranchId = null)
+        int? scopeBranchId = null, int? scopeSectionId = null)
     {
         page = Math.Max(1, page);
         perPage = Math.Clamp(perPage, 1, 100);
 
-        var (total, items) = await _logs.SearchAsync(userName, actionType, page, perPage, ct, scopeBranchId);
+        var (total, items) = await _logs.SearchAsync(userName, actionType, page, perPage, ct, scopeBranchId, scopeSectionId);
 
         return new PagedResult<AuditLogDto>
         {

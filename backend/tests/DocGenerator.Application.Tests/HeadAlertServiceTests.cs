@@ -197,23 +197,35 @@ public class HeadAlertServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task ListForHead_ReturnsBranchAlertsWithCounts()
+    public async Task ListForHead_ReturnsOnlyOwnRecipientAlerts()
     {
         var doc = await AddDocumentAsync(_lawyer1);
         await _service.CreateAsync(
             new CreateHeadAlertRequest("document", doc.Id, null, "تنبيه أول"), _head.Id, _branchId, "head_x");
         await _service.CreateAsync(
             new CreateHeadAlertRequest("branch", null, null, "تعميم"), _head.Id, _branchId, "head_x");
+        var own = await _service.CreateAsync(
+            new CreateHeadAlertRequest("head", null, null, "لرئيس القسم", RecipientUserId: _head.Id),
+            _head.Id, _branchId, "head_x");
 
-        var list = await _service.ListForHeadAsync(_branchId);
+        // قراءة بالمستلم (§8): الرئيس يرى تنبيهه فقط — لا تنبيهات المحامين ولا التعميم.
+        var list = await _service.ListForHeadAsync(_head.Id, _branchId);
 
-        Assert.Equal(2, list.Count);
-        Assert.Equal("تعميم", list[0].Message); // الأحدث أولاً
-        Assert.Equal(2, list[0].RecipientCount); // محاميان في الفرع
-        Assert.Equal(2, list[0].UnreadCount);
-        Assert.Equal("تنبيه أول", list[1].Message);
-        Assert.Equal(1, list[1].RecipientCount); // المحامي المختص فقط
-        Assert.Equal(1, list[1].UnreadCount);
+        var single = Assert.Single(list);
+        Assert.Equal(own.Id, single.Id);
+        Assert.False(single.IsRead);
+        Assert.Equal(1, single.RecipientCount);
+        Assert.Equal(1, single.UnreadCount);
+
+        // تعليم القراءة يعمل للمستلم الرئيس ويُرى أثره.
+        Assert.True(await _service.MarkReadAsync(own.Id, _head.Id));
+        list = await _service.ListForHeadAsync(_head.Id, _branchId);
+        Assert.True(Assert.Single(list).IsRead);
+
+        // محامٍ غير مستلم لا يرى تنبيه الرئيس.
+        Assert.DoesNotContain(
+            await _service.ListForLawyerAsync(_lawyer2.Id),
+            a => a.Id == own.Id);
     }
 
     [Fact]
@@ -294,6 +306,34 @@ public class HeadAlertServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Create_HeadTargeted_IncludesActiveSubHead_OnlySubHeadActive_NoThrow()
+    {
+        // (هـ/F3 — قرار أ): بثّ «head» يشمل رؤساء الشعب المفعّلين — فبوجود شعبة
+        // مفعّلة وحدها لا يُرفض الإنشاء (عتبة الرفض: غياب الرئيس والشعبة معًا).
+        _db.Users.Add(new User
+        {
+            Username = "sub_y",
+            FullName = "رئيس شعبة",
+            Role = UserRole.SubHead,
+            BranchId = _branchId,
+            IsActive = true,
+            PasswordHash = new PasswordHasher().Hash("123456"),
+        });
+        var blocked = _db.Users.Single(u => u.Id == _head.Id);
+        blocked.IsActive = false;
+        await _db.SaveChangesAsync();
+
+        var alert = await _service.CreateAsync(
+            new CreateHeadAlertRequest("head", null, null, "بثّ للشعبة وحدها", DelegationId: 9),
+            _head.Id, _branchId, "head_x");
+
+        Assert.Equal(1, alert.RecipientCount);
+        var stored = await _db.HeadAlerts.Include(a => a.Recipients).SingleAsync(a => a.Id == alert.Id);
+        var subId = _db.Users.Single(u => u.Username == "sub_y").Id;
+        Assert.Equal(subId, Assert.Single(stored.Recipients).UserId);
+    }
+
+    [Fact]
     public async Task UpdateDelegationAlert_UpdatesLatestMessageKeepingRecipients()
     {
         var alert = await _service.CreateAsync(
@@ -332,5 +372,53 @@ public class HeadAlertServiceTests : IDisposable
 
         Assert.Null(await _db.HeadAlerts.FindAsync(first.Id));
         Assert.NotNull(await _db.HeadAlerts.FindAsync(second.Id));
+    }
+
+    [Fact]
+    public async Task Sent_ListsOwnIssued_AndReceivedExcludesThem()
+    {
+        var sent = await _service.CreateAsync(
+            new CreateHeadAlertRequest("lawyer", null, _lawyer2.Id, "رسالة خاصة"), _head.Id, _branchId, "head_x");
+
+        // الصادر: يراه مُصدِره بفرعه مع عدّادات المستلمين...
+        var sentList = await _service.ListSentAsync(_head.Id, _branchId);
+        var item = Assert.Single(sentList);
+        Assert.Equal(sent.Id, item.Id);
+        Assert.Equal(1, item.RecipientCount);
+
+        // ...ولا يظهر في مستلَماته (قراءة المستلم لا تشمل المُرسِل).
+        var received = await _service.ListForHeadAsync(_head.Id, _branchId);
+        Assert.DoesNotContain(received, a => a.Id == sent.Id);
+
+        // وفرع آخر لا يراه.
+        var otherBranch = new Branch { Name = "حلب", Code = "ALP" };
+        _db.Branches.Add(otherBranch);
+        await _db.SaveChangesAsync();
+        Assert.Empty(await _service.ListSentAsync(_head.Id, otherBranch.Id));
+    }
+
+    [Fact]
+    public async Task Sent_SubHead_SeesOwnOnly()
+    {
+        var sub = new User
+        {
+            Username = "sub_x",
+            FullName = "رئيس الشعبة",
+            Role = UserRole.SubHead,
+            BranchId = _branchId,
+            PasswordHash = "x",
+        };
+        _db.Users.Add(sub);
+        await _db.SaveChangesAsync();
+
+        await _service.CreateAsync(
+            new CreateHeadAlertRequest("lawyer", null, _lawyer1.Id, "من الشعبة"), sub.Id, _branchId, "sub_x");
+        await _service.CreateAsync(
+            new CreateHeadAlertRequest("lawyer", null, _lawyer2.Id, "من القسم"), _head.Id, _branchId, "head_x");
+
+        var subSent = await _service.ListSentAsync(sub.Id, _branchId);
+        Assert.Equal("من الشعبة", Assert.Single(subSent).Message);
+        var headSent = await _service.ListSentAsync(_head.Id, _branchId);
+        Assert.Equal("من القسم", Assert.Single(headSent).Message);
     }
 }

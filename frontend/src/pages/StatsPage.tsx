@@ -11,32 +11,35 @@ import type { ManagerLawyerStatDto, ManagerStatsDto, MonthlyStatDto, StatsPeriod
 /**
  * صفحة الإحصائيات (`/stats`) حسب الدور:
  * - المحامي: إحصائياته الشخصية (`/stats/me`) بروابط التعمّق.
- * - رئيس القسم: إحصائيات فرعه (`/stats/manager` — الفرع إجباري خلفيًا)
- *   بلا روابط تعمّق وبلا استئنافات (`null` تلقائيًا)، مع جدول محامي الفرع.
+ * - رئيس القسم/الشعبة: إحصائيات نطاقه (`/stats/manager` — النطاق إجباري خلفيًا:
+ *   القسم لدوائره، والشعبة لدوائرها — قرار §2.27)
+ *   بلا روابط تعمّق وبلا استئنافات (`null` تلقائيًا)، مع جدول محامي النطاق.
  * (المدير/المشرف: إحصائياتهما في اللوحة، لا يصلان هنا — الحارس في `App.tsx`.)
  */
 export default function StatsPage() {
   const { user } = useAuth();
   const userReady = Boolean(user);
-  const isHead = user?.role === 'head';
+  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
+  const isSubHead = user?.role === 'subhead';
   const [period, setPeriod] = useState<StatsPeriod>('yearly');
   const [selection, setSelection] = useState<PeriodSelection | null>(null);
-  // رئيس بلا فرع: حالة محرّمة تُرفض عند الدخول أصلًا — فإن وُجدت (دفاع عمقي)
+  // رئيس بلا فرع (ورئيس شعبة برمز بلا شعبة): حالة محرّمة تُرفض عند الدخول أصلًا — فإن وُجدت (دفاع عمقي)
   // لا تُطلق طلباته ويُخفى القسم، فتبقى رسالة تعيين الفرع الوحيدة في الجدول أدناه.
-  const headMissingBranch = isHead && (user?.branchId ?? null) == null;
+  const headMissingBranch =
+    isHeadOrSubHead && ((user?.branchId ?? null) == null || (isSubHead && (user?.sectionId ?? null) == null));
 
   const availableQuery = useCancellableRequest<MonthlyStatDto[]>(
     (signal) =>
       api.get('/stats/periods', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
-    [isHead],
+    [isHeadOrSubHead],
     { enabled: userReady && !headMissingBranch },
   );
   const available = useMemo(() => availableQuery.data ?? [], [availableQuery.data]);
 
-  // رئيس القسم يُحصر بفرعه خلفيًا — لا وسيط `branchId` إطلاقًا.
+  // رئيس القسم/الشعبة يُحصر بنطاقه خلفيًا — لا وسيط `branchId` إطلاقًا.
   // رئيس بلا فرع: لا إحصائيات له أصلًا — لا تُطلق طلباته، ويُخفى القسم
   // فتبقى رسالة تعيين الفرع الوحيدة في الجدول أدناه (بلا تكديس رسائل).
-  const statsEndpoint = isHead ? '/stats/manager' : '/stats/me';
+  const statsEndpoint = isHeadOrSubHead ? '/stats/manager' : '/stats/me';
   const noBranchMessage = 'لا يوجد فرع مرتبط بحسابك — تواصل مع المشرف لتعيين فرعك';
   const statsQuery = useCancellableRequest<ManagerStatsDto>((signal) => {
     const params: Record<string, unknown> = { period };
@@ -57,7 +60,7 @@ export default function StatsPage() {
     return api.get<ManagerStatsDto>(statsEndpoint, { params, signal }).then((r) => r.data);
   }, [period, prevSelection, statsEndpoint], { enabled: userReady && !headMissingBranch && prevSelection != null });
 
-  // جدول محامي الفرع لرئيس القسم فقط (فرعه من الرمز — بلا وسائط).
+  // جدول محامي النطاق لرئيس القسم/الشعبة فقط (نطاقه من الرمز — بلا وسائط).
   const lawyersQuery = useCancellableRequest<ManagerLawyerStatDto[]>((signal) => {
     const params: Record<string, unknown> = { period };
     if (selection) {
@@ -68,7 +71,7 @@ export default function StatsPage() {
     return api
       .get('/stats/manager/lawyers', { params, signal })
       .then((r) => (Array.isArray(r.data) ? r.data : []));
-  }, [period, selection], { enabled: userReady && isHead && !headMissingBranch });
+  }, [period, selection], { enabled: userReady && isHeadOrSubHead && !headMissingBranch });
   const lawyers = useMemo(() => lawyersQuery.data ?? [], [lawyersQuery.data]);
 
   useEffect(() => {
@@ -87,18 +90,18 @@ export default function StatsPage() {
           onSelectionChange={setSelection}
           stats={statsQuery.data ?? null}
           prevStats={prevStatsQuery.data ?? null}
-          appealsStats={isHead ? null : (statsQuery.data?.appeals ?? null)}
+          appealsStats={isHeadOrSubHead ? null : (statsQuery.data?.appeals ?? null)}
           error={statsQuery.error ?? ''}
-          showDrillLinks={!isHead}
-          sectionLabel={isHead ? 'إحصائيات الفرع' : 'إحصائيات المحامي'}
-          sectionId={isHead ? 'branch-stats' : 'lawyer-stats'}
+          showDrillLinks={!isHeadOrSubHead}
+          sectionLabel={isHeadOrSubHead ? (isSubHead ? 'إحصائيات الشعبة' : 'إحصائيات القسم') : 'إحصائيات المحامي'}
+          sectionId={isHeadOrSubHead ? 'branch-stats' : 'lawyer-stats'}
         />
       )}
-      {isHead ? (
+      {isHeadOrSubHead ? (
         <div className="mt-3 sm:mt-4">
           <LawyersTable
             showTable
-            branchId={user?.branchId ?? null}
+            branchId={headMissingBranch ? null : (user?.branchId ?? null)}
             lawyers={lawyers}
             error={lawyersQuery.error ?? ''}
             noBranchMessage={noBranchMessage}

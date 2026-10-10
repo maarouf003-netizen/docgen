@@ -25,11 +25,27 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             .ToListAsync(ct);
     }
 
-    public async Task<List<HeadAlert>> ListByBranchAsync(int branchId, CancellationToken ct = default)
+    /// <summary>
+    /// تنبيهات مستلم في فرع (§8: قراءة بالمستلم لا بالفرع) — لرؤساء النطاق.
+    /// </summary>
+    public async Task<List<HeadAlert>> ListByRecipientInBranchAsync(int userId, int branchId, CancellationToken ct = default)
     {
         return await Db.HeadAlerts
             .AsNoTracking()
-            .Where(a => a.BranchId == branchId)
+            .Where(a => a.BranchId == branchId && a.Recipients.Any(r => r.UserId == userId))
+            .OrderByDescending(a => a.CreatedAt)
+            .Include(a => a.CreatedBy)
+            .Include(a => a.Document)
+            .Include(a => a.TargetLawyer)
+            .Include(a => a.Recipients)
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<HeadAlert>> ListSentAsync(int userId, int branchId, CancellationToken ct = default)
+    {
+        return await Db.HeadAlerts
+            .AsNoTracking()
+            .Where(a => a.BranchId == branchId && a.CreatedById == userId)
             .OrderByDescending(a => a.CreatedAt)
             .Include(a => a.CreatedBy)
             .Include(a => a.Document)
@@ -61,8 +77,10 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
 
     public async Task<List<User>> ListActiveHeadsAsync(int branchId, CancellationToken ct = default)
     {
+        // F3: رؤساء الأقسام والشعب المفعّلون (تماثل §2) — وعند غياب الجميع يُرفض الإنشاء
+        // ويُسجَّل فشل الإشعار في سجل التدقيق (سلوك الغياب محفوظ).
         return await Db.Users
-            .Where(u => u.Role == UserRole.Head && u.BranchId == branchId && u.IsActive)
+            .Where(u => (u.Role == UserRole.Head || u.Role == UserRole.SubHead) && u.BranchId == branchId && u.IsActive)
             .OrderBy(u => u.FullName)
             .ToListAsync(ct);
     }
@@ -98,9 +116,10 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
 
     public async Task<List<(int BranchId, List<User> Heads)>> ListAllActiveHeadsGroupedByBranchAsync(CancellationToken ct = default)
     {
+        // F3: رؤساء الأقسام والشعب (تماثل §2) — كل تنبيه لفرع المستلم حصرًا (بلا تسريب).
         var rows = await Db.Users
             .AsNoTracking()
-            .Where(u => u.Role == UserRole.Head && u.BranchId != null && u.IsActive)
+            .Where(u => (u.Role == UserRole.Head || u.Role == UserRole.SubHead) && u.BranchId != null && u.IsActive)
             .OrderBy(u => u.FullName)
             .Select(u => new { BranchId = u.BranchId!.Value, u.Id, u.FullName, u.Username, u.Email, u.Role, u.IsActive, u.CreatedAt, u.UpdatedAt })
             .ToListAsync(ct);
@@ -173,6 +192,34 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             .Where(a => a.AppealId == appealId)
             .OrderByDescending(a => a.CreatedAt)
             .ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// حذف انتقائي (§6.2/§6.5): صفوف استلام مستلم واحد من تنبيهات استئناف، مع
+    /// حذف التنبيهات الميتة (كل مستلميها هو) — بلا مساس بباقي المستلمين، وبلا
+    /// حفظ (ضمن معاملة المتصل).
+    /// </summary>
+    public async Task<int> RemoveAppealRecipientAsync(int appealId, int userId, CancellationToken ct = default)
+    {
+        var alerts = await Db.HeadAlerts
+            .Where(a => a.AppealId == appealId)
+            .Include(a => a.Recipients)
+            .ToListAsync(ct);
+        var removed = 0;
+        foreach (var alert in alerts)
+        {
+            var mine = alert.Recipients.Where(r => r.UserId == userId).ToList();
+            if (mine.Count == 0)
+                continue;
+            foreach (var r in mine)
+            {
+                Db.HeadAlertRecipients.Remove(r);
+                removed++;
+            }
+            if (alert.Recipients.Count == mine.Count)
+                Db.HeadAlerts.Remove(alert);
+        }
+        return removed;
     }
 
     public async Task<HeadAlert?> FindPendingAlertAsync(int lawyerId, string message, CancellationToken ct = default)

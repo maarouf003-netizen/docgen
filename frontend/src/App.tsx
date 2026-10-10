@@ -75,14 +75,20 @@ function RequireRole({
   allowed,
   children,
 }: {
-  allowed: (role: string | undefined, hasFullAccess: boolean, isHead: boolean) => boolean;
+  allowed: (
+    role: string | undefined,
+    hasFullAccess: boolean,
+    isHead: boolean,
+    isSubHead?: boolean,
+    isHeadOrSubHead?: boolean,
+  ) => boolean;
   children: React.ReactNode;
 }) {
-  const { user, hasFullAccess, isHead, loading } = useAuth();
+  const { user, hasFullAccess, isHead, isSubHead, isHeadOrSubHead, loading } = useAuth();
   const location = useLocation();
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-500">جارِ التحميل...</div>;
-  if (!user || !allowed(user.role, hasFullAccess, isHead))
+  if (!user || !allowed(user.role, hasFullAccess, isHead, isSubHead, isHeadOrSubHead))
     return <Navigate to={getHomeForRole(user?.role)} replace state={{ from: location }} />;
   return <>{children}</>;
 }
@@ -94,7 +100,7 @@ function RequireRole({
  * `/change-password` يبقى خارجها (حق شخصي لكل الأدوار بما فيها المندوب).
  */
 const allowInternal = (role: string | undefined) =>
-  role === 'lawyer' || role === 'head' || role === 'manager' || role === 'admin';
+  role === 'lawyer' || role === 'head' || role === 'subhead' || role === 'manager' || role === 'admin';
 
 /**
  * مسار الجذر حسب الدور: مندوب الجهة لا يملك لوحة تحكم إطلاقًا فيُحوَّل
@@ -257,7 +263,7 @@ export default function App() {
             <Route
               path="/branch-lawyers"
               element={
-                <RequireRole allowed={(role) => role === 'head' || role === 'admin'}>
+                <RequireRole allowed={(role, _full, _head, _sub, both) => Boolean(both) || role === 'admin'}>
                   <BranchLawyers />
                 </RequireRole>
               }
@@ -265,7 +271,7 @@ export default function App() {
             <Route
               path="/delegations/requests"
               element={
-                <RequireRole allowed={(role) => role === 'head'}>
+                <RequireRole allowed={(_role, _full, _head, _sub, both) => Boolean(both)}>
                   <DelegationRequests />
                 </RequireRole>
               }
@@ -273,7 +279,7 @@ export default function App() {
             <Route
               path="/execution-circuits"
               element={
-                <RequireRole allowed={(role) => role === 'head'}>
+                <RequireRole allowed={(_role, _full, _head, _sub, both) => Boolean(both)}>
                   <ExecutionCircuitsPage />
                 </RequireRole>
               }
@@ -289,7 +295,7 @@ export default function App() {
             <Route
               path="/circuit-stats"
               element={
-                <RequireRole allowed={(_role, hasFullAccess, isHead) => hasFullAccess || isHead}>
+                <RequireRole allowed={(_role, hasFullAccess, _head, _sub, both) => hasFullAccess || Boolean(both)}>
                   <CircuitStatsPage />
                 </RequireRole>
               }
@@ -305,7 +311,7 @@ export default function App() {
             <Route
               path="/branches/manage"
               element={
-                <RequireRole allowed={(role) => role === 'admin'}>
+                <RequireRole allowed={(role) => role === 'admin' || role === 'manager'}>
                   <BranchesManagement />
                 </RequireRole>
               }
@@ -332,7 +338,7 @@ export default function App() {
             <Route
               path="/entities/review"
               element={
-                <RequireRole allowed={(_role, hasFullAccess, isHead) => hasFullAccess || isHead}>
+                <RequireRole allowed={(_role, hasFullAccess, _head, _sub, both) => hasFullAccess || Boolean(both)}>
                   <EntityRegistryReview />
                 </RequireRole>
               }
@@ -396,7 +402,7 @@ export default function App() {
             <Route
               path="/delegates"
               element={
-                <RequireRole allowed={(_role, hasFullAccess, isHead) => hasFullAccess || isHead}>
+                <RequireRole allowed={(_role, hasFullAccess, _head, _sub, both) => hasFullAccess || Boolean(both)}>
                   <EntityDelegates />
                 </RequireRole>
               }
@@ -412,7 +418,7 @@ export default function App() {
             <Route
               path="/audit-logs"
               element={
-                <RequireRole allowed={(_role, hasFullAccess, isHead) => hasFullAccess || isHead}>
+                <RequireRole allowed={(_role, hasFullAccess, isHead, isSubHead) => hasFullAccess || isHead || isSubHead === true /* النطاق الدائري للشعبة (§2.23) مطبَّق خلفيًا عبر ownerSectionId — F6 */}>
                   <AuditLogs />
                 </RequireRole>
               }
@@ -432,7 +438,7 @@ export default function App() {
             <Route
               path="/account"
               element={
-                <RequireRole allowed={(role) => role === 'lawyer' || role === 'head'}>
+                <RequireRole allowed={(role) => role === 'lawyer' || role === 'head' || role === 'subhead'}>
                   <AccountPage />
                 </RequireRole>
               }
@@ -440,7 +446,7 @@ export default function App() {
             <Route
               path="/stats"
               element={
-                <RequireRole allowed={(role) => role === 'lawyer' || role === 'head'}>
+                <RequireRole allowed={(role) => role === 'lawyer' || role === 'head' || role === 'subhead'}>
                   <StatsPage />
                 </RequireRole>
               }

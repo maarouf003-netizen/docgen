@@ -220,10 +220,12 @@ public class ExceptionHandlerIntegrationTests
 
     private sealed class ThrowingStatisticsService : IStatisticsService
     {
-        public Task<DashboardStatsDto> GetDashboardStatsAsync(int? branchId, CancellationToken ct = default)
+        public Task<DashboardStatsDto> GetDashboardStatsAsync(int? branchId, CancellationToken ct = default,
+            int? ownerSectionId = null, bool fullAccess = true)
             => throw new InvalidOperationException("تعطلت خدمة الإحصاءات");
 
-        public Task<List<MonthlyStatDto>> GetMonthlyStatsAsync(int? branchId, CancellationToken ct = default)
+        public Task<List<MonthlyStatDto>> GetMonthlyStatsAsync(int? branchId, CancellationToken ct = default,
+            int? ownerSectionId = null, bool fullAccess = true)
             => throw new InvalidOperationException("تعطلت خدمة الإحصاءات");
 
         public Task<List<BranchSummaryDto>> GetBranchesSummaryAsync(CancellationToken ct = default)
@@ -236,18 +238,21 @@ public class ExceptionHandlerIntegrationTests
             => throw new InvalidOperationException("تعطلت خدمة الإحصاءات");
 
         public Task<ManagerStatsDto> GetManagerStatsAsync(StatsPeriod period, int? branchId,
-            int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default)
+            int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default,
+            int? ownerSectionId = null, bool fullAccess = true)
             => throw new InvalidOperationException("تعطلت خدمة الإحصاءات");
 
         public Task<List<ManagerLawyerStatDto>> GetManagerLawyerStatsAsync(StatsPeriod period, int branchId,
-            int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default)
+            int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default,
+            int? ownerSectionId = null, bool fullAccess = true)
             => throw new InvalidOperationException("تعطلت خدمة الإحصاءات");
 
         public Task<ManagerStatsDto> GetPersonalStatsAsync(StatsPeriod period, int userId,
             int? year = null, int? month = null, int? quarter = null, CancellationToken ct = default)
             => throw new InvalidOperationException("تعطلت خدمة الإحصاءات");
 
-        public Task<List<MonthlyStatDto>> GetAvailablePeriodsAsync(int? branchId, int? userId, CancellationToken ct = default)
+        public Task<List<MonthlyStatDto>> GetAvailablePeriodsAsync(int? branchId, int? userId, CancellationToken ct = default,
+            int? ownerSectionId = null, bool fullAccess = true)
             => throw new InvalidOperationException("تعطلت خدمة الإحصاءات");
     }
 }

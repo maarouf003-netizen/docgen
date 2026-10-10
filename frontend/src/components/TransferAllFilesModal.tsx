@@ -111,6 +111,9 @@ export default function TransferAllFilesModal({
                   <p>
                     {`سيتم نقل ${fileCount} ملفًا من ${sourceLawyer.fullName} إلى محامٍ آخر بجميع الحالات.`}
                   </p>
+                  <p className="text-xs text-amber-800 mt-1">
+                    تُنقل ملفات نطاقك فقط — ملفات المحامي في دوائر خارج نطاقك تبقى لأصحابها.
+                  </p>
                   {fileCount === 0 && (
                     <p className="text-gray-500 mt-1">لا توجد ملفات لهذا المحامي حالياً.</p>
                   )}

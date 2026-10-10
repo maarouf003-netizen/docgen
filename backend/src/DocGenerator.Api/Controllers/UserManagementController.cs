@@ -9,7 +9,7 @@ namespace DocGenerator.Api.Controllers;
 
 [ApiController]
 [Route("api/users")]
-[Authorize(Roles = "head,manager,admin")]
+[Authorize(Roles = "head,subhead,manager,admin")]
 public class UserManagementController : ControllerBase
 {
     private readonly IUserManagementService _users;
@@ -22,7 +22,7 @@ public class UserManagementController : ControllerBase
     private string? ActorName => User.Identity?.Name;
 
     private UserRole Role => User.GetRoleEnum();
-    private bool IsHead => Role == UserRole.Head;
+    private bool IsHeadOrSubHead => RolePermissions.IsHeadOrSubHead(Role);
     private bool CanManageBranchLawyers => RolePermissions.CanManageBranchLawyers(Role);
     private bool CanManageUsers => RolePermissions.CanManageUsers(Role);
 
@@ -82,17 +82,39 @@ public class UserManagementController : ControllerBase
     }
 
     [HttpGet("lawyers")]
-    public async Task<IActionResult> ListLawyers([FromQuery] int? branchId, CancellationToken ct)
+    public async Task<IActionResult> ListLawyers(
+        [FromQuery] int? branchId,
+        [FromQuery] string? mode,
+        [FromQuery] bool includeInactive = true,
+        CancellationToken ct = default)
     {
-        // إدارة محامي الفرع — رئيس القسم (فرعه) والمشرف (أي فرع).
+        // إدارة محامي الفرع — رئيس القسم والشعبة (فرعه) والمشرف/المدير (أي فرع).
+        // الوضعان خادميًا (§5.4): `mine` (الافتراضي) و`branch` للنوافذ.
         if (!CanManageBranchLawyers)
             return Forbid();
 
-        var effectiveBranchId = IsHead ? User.GetBranchId() : branchId;
-        if (IsHead && effectiveBranchId is null)
-            return Forbid();
+        int? effectiveBranchId;
+        if (IsHeadOrSubHead)
+        {
+            effectiveBranchId = User.GetBranchId();
+            if (effectiveBranchId is null)
+                return Forbid();
+        }
+        else
+        {
+            effectiveBranchId = branchId;
+        }
 
-        return Ok(await _users.ListLawyersAsync(effectiveBranchId, ct));
+        try
+        {
+            return Ok(await _users.ListLawyersAsync(
+                effectiveBranchId, mode, User.GetUserId(), User.GetSectionId(),
+                IsHeadOrSubHead, includeInactive, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
     }
 
     [HttpPost("lawyers")]
@@ -101,9 +123,9 @@ public class UserManagementController : ControllerBase
         if (!CanManageBranchLawyers)
             return Forbid();
 
-        // رئيس القسم يضيف لمحامي فرعه فقط؛ المشرف يحدد الفرع في الطلب.
+        // رئيس القسم والشعبة يضيف لمحامي فرعه فقط؛ المشرف يحدد الفرع في الطلب.
         int? effectiveBranchId;
-        if (IsHead)
+        if (IsHeadOrSubHead)
         {
             effectiveBranchId = User.GetBranchId();
             if (effectiveBranchId is null)
@@ -118,7 +140,7 @@ public class UserManagementController : ControllerBase
 
         try
         {
-            var lawyer = await _users.CreateLawyerAsync(effectiveBranchId.Value, request, ActorName, ct);
+            var lawyer = await _users.CreateLawyerAsync(effectiveBranchId.Value, request, ActorName, ct, User.GetUserId());
             return Ok(lawyer);
         }
         catch (ArgumentException e)
@@ -133,9 +155,9 @@ public class UserManagementController : ControllerBase
         if (!CanManageBranchLawyers)
             return Forbid();
 
-        // نطاق رئيس القسم محصور بمحامي فرعه؛ المشرف بلا نطاق.
-        var scopeBranchId = IsHead ? User.GetBranchId() : (int?)null;
-        if (IsHead && scopeBranchId is null)
+        // نطاق رئيس القسم والشعبة محصور بمحامي فرعه؛ المشرف بلا نطاق.
+        var scopeBranchId = IsHeadOrSubHead ? User.GetBranchId() : (int?)null;
+        if (IsHeadOrSubHead && scopeBranchId is null)
             return Forbid();
 
         try
@@ -155,9 +177,9 @@ public class UserManagementController : ControllerBase
         if (!CanManageBranchLawyers)
             return Forbid();
 
-        // نطاق رئيس القسم محصور بمحامي فرعه؛ المشرف بلا نطاق.
-        var scopeBranchId = IsHead ? User.GetBranchId() : (int?)null;
-        if (IsHead && scopeBranchId is null)
+        // نطاق رئيس القسم والشعبة محصور بمحامي فرعه؛ المشرف بلا نطاق.
+        var scopeBranchId = IsHeadOrSubHead ? User.GetBranchId() : (int?)null;
+        if (IsHeadOrSubHead && scopeBranchId is null)
             return Forbid();
 
         var ok = await _users.SetLawyerActiveAsync(id, request.IsActive, scopeBranchId, ActorName, ct);

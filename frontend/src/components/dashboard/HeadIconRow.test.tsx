@@ -91,4 +91,14 @@ describe('HeadIconRow', () => {
       screen.getByRole('link', { name: 'طلبات الإنابة — طلب إنابة معلّق واحد' }),
     ).toBeInTheDocument();
   });
+
+  it('رئيس الشعبة: مع بطاقة تدقيق (النطاق الدائري §2.23) وتسمية الشعبة', () => {
+    render(<HeadIconRow counts={zero} scopeLabel="مؤشرات الشعبة" isSubHead />);
+
+    const nav = screen.getByRole('navigation', { name: 'أقسام لوحة رئيس الشعبة' });
+    expect(nav.querySelectorAll('a')).toHaveLength(10);
+    expect(screen.getByRole('link', { name: 'سجل التدقيق' })).toHaveAttribute('href', '/audit-logs');
+    expect(screen.getByText('مؤشرات الشعبة')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'الإحصائيات' })).toHaveAttribute('href', '/stats');
+  });
 });

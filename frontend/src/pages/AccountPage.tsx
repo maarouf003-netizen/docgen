@@ -2,49 +2,49 @@ import { useState } from 'react';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { api } from '../api/client';
 import { useAuth } from '../auth/useAuth';
-import { ROLE_LABELS } from '../auth/roleLabels';
+import { formatRoleScope } from '../auth/roleLabels';
 import { ChangePasswordForm } from '../components/ChangePasswordForm';
 import { SuggestionDialog } from '../components/SuggestionDialog';
 import { formatNumber } from '../components/dashboard/dashboardFormat';
 import type { AppSuggestionDto, HeadAlertDto, ManagerStatsDto, PersonalReminderDto } from '../types';
 
 /**
- * الحساب الشخصي (`/account` — محامٍ ورئيس قسم):
+ * الحساب الشخصي (`/account` — محامٍ ورئيس قسم/شعبة):
  * بطاقة الملف + تغيير كلمة المرور + تسجيل الخروج + ملخص إحصائي +
  * اقتراحات التطوير وسجلها.
  *
  * الملخص حسب الدور (الاستعلامات المحامية `403` لغيره — تُغلق صراحةً):
  * - المحامي: ملفاتي هذه السنة + تذكيراتي النشطة + تنبيهات غير مقروءة.
- * - رئيس القسم: ملفات الفرع هذه السنة (`/stats/manager` — فرعه إجباري خلفيًا) +
- *   مجموع مستلمي تنبيهات الفرع غير القارئين (مجموع `unreadCount` عبر التنبيهات —
+ * - رئيس القسم/الشعبة: ملفات نطاقه هذه السنة (`/stats/manager` — نطاقه إجباري خلفيًا) +
+ *   مجموع مستلمي تنبيهات نطاقه غير القارئين (مجموع `unreadCount` عبر التنبيهات —
  *   أزواج (تنبيه × مستلم) لا أشخاصًا مميزين، وأبدًا `isRead` فهو `null` في عرض الرئيس) + اقتراحاتي.
  */
 export default function AccountPage() {
   const { user, logout } = useAuth();
   const userReady = Boolean(user);
-  const isHead = user?.role === 'head';
+  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
   const [dialogOpen, setDialogOpen] = useState(false);
   const [sentFlash, setSentFlash] = useState(false);
 
   const statsQuery = useCancellableRequest<ManagerStatsDto>(
-    (signal) => api.get(isHead ? '/stats/manager' : '/stats/me', { signal }).then((r) => r.data),
-    [isHead],
+    (signal) => api.get(isHeadOrSubHead ? '/stats/manager' : '/stats/me', { signal }).then((r) => r.data),
+    [isHeadOrSubHead],
     { enabled: userReady },
   );
   const personalQuery = useCancellableRequest<PersonalReminderDto[]>(
     (signal) => api.get('/personal-reminders', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
     [],
-    { enabled: userReady && !isHead },
+    { enabled: userReady && !isHeadOrSubHead },
   );
   const unreadQuery = useCancellableRequest<{ count: number }>(
     (signal) => api.get('/alerts/unread-count', { signal }).then((r) => r.data),
     [],
-    { enabled: userReady && !isHead },
+    { enabled: userReady && !isHeadOrSubHead },
   );
   const headAlertsQuery = useCancellableRequest<HeadAlertDto[]>(
     (signal) => api.get('/alerts', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
     [],
-    { enabled: userReady && isHead },
+    { enabled: userReady && isHeadOrSubHead },
   );
   const suggestionsQuery = useCancellableRequest<AppSuggestionDto[]>(
     (signal) => api.get('/app-suggestions', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
@@ -58,7 +58,7 @@ export default function AccountPage() {
     (sum, a) => sum + Math.max(0, Number(a.unreadCount) || 0),
     0,
   );
-  const summaryError = isHead
+  const summaryError = isHeadOrSubHead
     ? (statsQuery.error ?? headAlertsQuery.error)
     : (statsQuery.error ?? personalQuery.error ?? unreadQuery.error);
 
@@ -87,7 +87,7 @@ export default function AccountPage() {
                 {user?.username}
               </p>
               <p className="text-xs text-gray-500 mt-0.5">
-                {user?.role ? ROLE_LABELS[user.role] : ''} — {user?.branchName || 'كل الفروع'}
+                {formatRoleScope(user)}
               </p>
             </div>
           </div>
@@ -114,14 +114,14 @@ export default function AccountPage() {
           ) : (
             <dl className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
               <div className="rounded-xl bg-gray-50 px-2 py-3">
-                <dt className="text-xs text-gray-500 mb-1">{isHead ? 'ملفات الفرع هذه السنة' : 'ملفاتي هذه السنة'}</dt>
+                <dt className="text-xs text-gray-500 mb-1">{isHeadOrSubHead ? 'ملفات النطاق هذه السنة' : 'ملفاتي هذه السنة'}</dt>
                 <dd className="text-xl font-bold text-gray-900 tabular-nums" dir="ltr">
                   {statsQuery.data ? formatNumber(statsQuery.data.totalFiles) : '…'}
                 </dd>
               </div>
-              {isHead ? (
+              {isHeadOrSubHead ? (
                 <div className="rounded-xl bg-gray-50 px-2 py-3">
-                  <dt className="text-xs text-gray-500 mb-1">مجموع مستلمي تنبيهات الفرع غير القارئين</dt>
+                  <dt className="text-xs text-gray-500 mb-1">مجموع مستلمي تنبيهات النطاق غير القارئين</dt>
                   <dd className="text-xl font-bold text-gray-900 tabular-nums" dir="ltr">
                     {headAlertsQuery.data ? formatNumber(branchUnread) : '…'}
                   </dd>
@@ -134,7 +134,7 @@ export default function AccountPage() {
                   </dd>
                 </div>
               )}
-              {isHead ? (
+              {isHeadOrSubHead ? (
                 <div className="rounded-xl bg-gray-50 px-2 py-3">
                   <dt className="text-xs text-gray-500 mb-1">اقتراحاتي</dt>
                   <dd className="text-xl font-bold text-gray-900 tabular-nums" dir="ltr">
