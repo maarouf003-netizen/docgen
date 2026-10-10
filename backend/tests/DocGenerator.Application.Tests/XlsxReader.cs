@@ -23,6 +23,21 @@ public static class XlsxReader
         return reader.ReadToEnd();
     }
 
+    /// <summary>الحمل نفسه من دفق (يُنسخ للذاكرة — للاختبارات الصغيرة فقط).</summary>
+    public static string FirstSheetXml(Stream xlsx)
+    {
+        return FirstSheetXml(ToArray(xlsx));
+    }
+
+    /// <summary>نسخة بايتات من دفق (يعيد التموضع للبداية أولًا — للاختبارات فقط).</summary>
+    public static byte[] ToArray(Stream xlsx)
+    {
+        if (xlsx.CanSeek) xlsx.Position = 0;
+        using var copy = new MemoryStream();
+        xlsx.CopyTo(copy);
+        return copy.ToArray();
+    }
+
     /// <summary>نصوص خلايا صفٍّ بعينه (الأفقي يُهمَل؛ الترتيب يتبع ترتيب الخلايا).</summary>
     public static List<string> RowTexts(string sheetXml, int rowIndex = 0)
         => XDocument.Parse(sheetXml)
@@ -45,6 +60,9 @@ public static class XlsxReader
             .First(e => e.Name.LocalName == "sheet")
             .Attribute("name")!.Value;
     }
+
+    /// <summary>الحمل نفسه من دفق (للاختبارات الصغيرة فقط).</summary>
+    public static string FirstSheetName(Stream xlsx) => FirstSheetName(ToArray(xlsx));
 
     /// <summary>عدد صفوف البيانات (كل صفوف الورقة ناقص صفَّ العناوين).</summary>
     public static int DataRowCount(string sheetXml)

@@ -406,9 +406,9 @@ public class PortalFileDetailTests : IDisposable
         await AddExecutionActionAsync(doc.Id, "note", "ملاحظة داخلية سرية لا تُصدَّر",
             new DateTime(2026, 8, 2, 10, 0, 0, DateTimeKind.Utc));
 
-        var bytes = await _portal.ExportWorkbookAsync(_delegateGroupId, null, null, "مندوب");
+        await using var stream = await _portal.ExportWorkbookAsync(_delegateGroupId, null, null, "مندوب");
 
-        var sheetXml = XlsxReader.FirstSheetXml(bytes);
+        var sheetXml = XlsxReader.FirstSheetXml(stream);
         var headers = XlsxReader.RowTexts(sheetXml);
         Assert.DoesNotContain("ملحق العقد", headers);
         Assert.Contains("الإجراءات والملاحظات", headers);
@@ -432,9 +432,9 @@ public class PortalFileDetailTests : IDisposable
         doc.BranchName = "فرع إداري سري";
         await _db.SaveChangesAsync();
 
-        var bytes = await _portal.ExportWorkbookAsync(_delegateGroupId, null, null, "مندوب");
+        await using var stream = await _portal.ExportWorkbookAsync(_delegateGroupId, null, null, "مندوب");
 
-        var sheetXml = XlsxReader.FirstSheetXml(bytes);
+        var sheetXml = XlsxReader.FirstSheetXml(stream);
         Assert.Contains("دمشق/الفرع الرئيسي", sheetXml);
         Assert.DoesNotContain("فرع إداري سري", sheetXml);
     }
@@ -450,7 +450,7 @@ public class PortalFileDetailTests : IDisposable
             ("حلب", "فرع حلب"),
             ("طرطوس", "فرع طرطوس"));
 
-        var bytes = await _portal.ExportWorkbookAsync(_delegateGroupId, null, null, "مندوب");
+        await using var stream = await _portal.ExportWorkbookAsync(_delegateGroupId, null, null, "مندوب");
 
         // المقارنة الحرفية على نصّ خلية «فرع الجهة» (العمود الثالث، بترتيب
         // العناوين المثبَّت في اختبار العناوين أدناه) تُثبت ثلاثة أشياء معًا: اكتمال
@@ -464,7 +464,7 @@ public class PortalFileDetailTests : IDisposable
         // (`OrderBy(Governorate).ThenBy(BranchName)` بمقارن ثقافة `ar`
         // في `PortalRepository`) — أي أنه ترتيب قائمة الفرع الذي يراه المندوب،
         // فتبقى الخلية مطابقة للقائمة على كل محرك قاعدة.
-        var dataRow = XlsxReader.RowTexts(XlsxReader.FirstSheetXml(bytes), 1);
+        var dataRow = XlsxReader.RowTexts(XlsxReader.FirstSheetXml(stream), 1);
         Assert.Equal(8, dataRow.Count);
         Assert.Equal(
             "حلب/فرع حلب · حمص/فرع حمص · دمشق/الفرع الرئيسي · طرطوس/فرع طرطوس",
@@ -484,8 +484,8 @@ public class PortalFileDetailTests : IDisposable
             ("حلب", "فرع حلب"),
             ("طرطوس", "فرع طرطوس"));
 
-        var bytes = await _portal.ExportWorkbookAsync(_delegateGroupId, null, null, "مندوب");
-        var dataRow = XlsxReader.RowTexts(XlsxReader.FirstSheetXml(bytes), 1);
+        await using var stream = await _portal.ExportWorkbookAsync(_delegateGroupId, null, null, "مندوب");
+        var dataRow = XlsxReader.RowTexts(XlsxReader.FirstSheetXml(stream), 1);
         var cellBranches = dataRow[2].Split(" · ", StringSplitOptions.None).ToList();
 
         var scope = await _portal.GetMyScopeAsync(_delegateGroupId);
@@ -516,10 +516,10 @@ public class PortalFileDetailTests : IDisposable
         var doc = await SeedInScopeDocAsync("ملف الفلترة بالفرع");
         var extra = await AddScopedEntriesAsync(doc, ("حمص", "فرع حمص"));
 
-        var bytes = await _portal.ExportWorkbookAsync(
+        await using var stream = await _portal.ExportWorkbookAsync(
             _delegateGroupId, null, null, "مندوب", default, entryId: extra[0]);
 
-        var sheetXml = XlsxReader.FirstSheetXml(bytes);
+        var sheetXml = XlsxReader.FirstSheetXml(stream);
         Assert.Contains("حمص/فرع حمص", sheetXml);
         Assert.DoesNotContain("دمشق/الفرع الرئيسي", sheetXml);
     }
@@ -533,9 +533,9 @@ public class PortalFileDetailTests : IDisposable
         // وحده، و«فرع الجهة» هو فروع نطاق المندوب لا فرع الإدارة الداخلي.
         var doc = await SeedInScopeDocAsync("ملف عناوين التصدير");
 
-        var bytes = await _portal.ExportWorkbookAsync(_delegateGroupId, null, null, "مندوب");
+        await using var stream = await _portal.ExportWorkbookAsync(_delegateGroupId, null, null, "مندوب");
 
-        var headers = XlsxReader.RowTexts(XlsxReader.FirstSheetXml(bytes));
+        var headers = XlsxReader.RowTexts(XlsxReader.FirstSheetXml(stream));
         Assert.Equal(
             new[]
             {

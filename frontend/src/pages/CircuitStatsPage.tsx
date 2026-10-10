@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, getApiErrorMessage } from '../api/client';
+import { api, getApiErrorMessage, getDownloadErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import SpinnerIcon from '../components/SpinnerIcon';
 import { downloadBlob } from '../utils/download';
 import type { BranchDto, CircuitStatsDto } from '../types';
 
@@ -71,7 +72,9 @@ export default function CircuitStatsPage() {
       });
       downloadBlob(r.data as Blob, 'إحصاءات الدوائر.xlsx');
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      // أخطاء التنزيل تصل `Blob` (حتى JSON الخطأ) فيُستخرج نصها أولًا —
+      // وإلا ضاعت رسالة الخادم الدقيقة (كـ429 «تصدير قيد التنفيذ»).
+      setError(await getDownloadErrorMessage(err));
     } finally {
       setExporting(false);
     }
@@ -85,11 +88,23 @@ export default function CircuitStatsPage() {
           type="button"
           onClick={exportStats}
           disabled={exporting || loading}
-          className="min-h-11 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+          className="min-h-11 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40 inline-flex items-center gap-2"
         >
-          {exporting ? 'جارِ التصدير…' : 'تصدير Excel'}
+          {exporting ? (
+            <>
+              <SpinnerIcon />
+              جارِ التصدير…
+            </>
+          ) : (
+            'تصدير Excel'
+          )}
         </button>
       </div>
+      {exporting && (
+        <p role="status" className="text-xs text-gray-500 mb-4">
+          التصدير الكبير قد يستغرق دقائق — لا تغلق الصفحة
+        </p>
+      )}
       {!isHeadOrSubHead && (
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div>

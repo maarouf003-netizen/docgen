@@ -108,7 +108,7 @@ public sealed partial class PublicEntityService
         var items = filtered.Skip((page - 1) * perPage).Take(perPage).Select(ToChangeEventDto).ToList();
         return new PagedResult<EntityChangeEventDto> { Items = items, Page = page, PerPage = perPage, TotalCount = total };
     }
-    public async Task<byte[]> ExportChangeEventsAsync(EntityChangeEventQuery query, EntityRegistryActor actor, CancellationToken ct = default)
+    public async Task<Stream> ExportChangeEventsAsync(EntityChangeEventQuery query, EntityRegistryActor actor, CancellationToken ct = default)
     {
         var filtered = await GetFilteredChangeEventsAsync(query, actor, ct);
         var items = filtered.Take(5000).Select(ToChangeEventDto).ToList();

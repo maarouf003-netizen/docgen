@@ -148,6 +148,7 @@ builder.Services
     .AddControllers();
 
 builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<DocGenerator.Api.Security.ExportConcurrencyGuard>();
 builder.Services.AddRateLimiter(RateLimitingSetup.Configure);
 // RF-016: فحص صحة القاعدة — خارج /api فلا مصادقة ولا حارس بوابة؛ بلا حزم جديدة.
 builder.Services.AddHealthChecks()
