@@ -191,36 +191,6 @@ public sealed partial class DocumentService
         };
     }
 
-    /// <summary>
-    /// اسم العرض للملف في صفحة التدوير. لعائلتي وضع «منفذ عليه» (Executed + Deposit) لا يوجد
-    /// مقترض، فأُعرض اسم طالب العرض (الجهة العامة أو الشخص الطبيعي) كما تُعرض في ملفات الإكسل
-    /// والطباعة، ولو تعذّر توافره فلا أسمًا. ولنظام «طالبة تنفيذ» تُستخدم أسماء المقترض المعتادة.
-    /// </summary>
-    private static string RotationDisplayName(Document d)
-    {
-        if (!GeneralEntitySideCatalog.IsExecutedLike(d.GeneralEntitySide))
-            return FormatName(d.BorrowerName, d.BorrowerFather, d.BorrowerFamily);
-
-        var applicant = d.ExecutionApplicants
-            .Select(a => FormatName(a.Name, a.Father, a.Family))
-            .FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
-        if (!string.IsNullOrWhiteSpace(applicant))
-            return applicant;
-
-        var entity = d.ExecutedPublicEntities
-            .Select(e => e.EntityName)
-            .FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
-        if (!string.IsNullOrWhiteSpace(entity))
-            return entity;
-
-        return d.ExecutedNaturalPersons
-            .Select(p => FormatName(p.Name, p.Father, p.Family))
-            .FirstOrDefault(v => !string.IsNullOrWhiteSpace(v)) ?? string.Empty;
-    }
-
-    private static string FormatName(string? first, string? father, string? family) =>
-        string.Join(' ', new[] { first, father, family }.Where(v => !string.IsNullOrWhiteSpace(v)));
-
     public async Task<List<BaseNumberHistoryDto>> GetBaseNumberHistoryAsync(int documentId, CancellationToken ct = default)
     {
         var doc = await _documents.GetByIdAsync(documentId, ct);

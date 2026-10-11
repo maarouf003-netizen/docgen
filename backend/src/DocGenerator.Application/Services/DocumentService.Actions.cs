@@ -262,8 +262,6 @@ public sealed partial class DocumentService
         return (type, sanitizedText, trimmedDate);
     }
 
-    private static string TypeLabel(string type) => type == "note" ? "ملاحظة" : "إجراء";
-
     private static (string? Duration, string? Color) NormalizeReminder(string? duration, string? color)
     {
         var trimmedDuration = duration?.Trim();

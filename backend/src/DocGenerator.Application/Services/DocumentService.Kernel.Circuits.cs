@@ -7,11 +7,17 @@ using DocGenerator.Domain.Enums;
 namespace DocGenerator.Application.Services;
 
 /// <summary>
+/// نواة الدوائر والترقيم داخل الصنف (المرحلة 0 — بلا `DI` ولا تغيير باني ولا توقيع عام):
+/// نقل ميكانيكي حرفي من `DocumentService.Circuits.cs` (حلّ الدائرة للكتابة + اشتقاقها
+/// + فحص الوحدانية بتوقيع الدائرة + وقوعّة التبديل + المستودعين الاحتياطيين)
+/// ومساعدي عرض التدوير من `DocumentService.Search.cs` (`RotationDisplayName` /
+/// `FormatName`) — بلا أي تغيير سلوكي.
 /// سجل دوائر التنفيذ — تكامل DocumentService (BQ-004):
 /// العقد ExecutionCircuitId إلزامي؛ الخادم يشتق Court/CourtNorm من الدائرة
 /// ويتجاهل نص العميل دائمًا (لا 400). الاستثناء: ملفات المناب الخارجي
 /// (IsExternal=true) تقبل NULL. الوضع الانتقالي: فرع بلا دوائر (قاعدة فارغة/
 /// اختبارات قائمة ترسل court) يُقبل النص الحر مؤقتًا حتى يُعبَّأ السجل.
+/// التدوير يبقى مع النواة (ترقيم/دوائر — قريب من `Numbering.cs` و`Circuits.cs`) لا مع البحث.
 /// </summary>
 public sealed partial class DocumentService
 {
@@ -131,13 +137,6 @@ public sealed partial class DocumentService
                 $"رقم الأساس {number?.Trim()} مكرر في دائرة الملف لسنة {year?.Trim()} — تحقق من الدائرة والرقم والنوع");
     }
 
-    /// <summary>حارس المعلق الصريح: تُمنع عليه العمليات التي تلزم الهوية الرقمية.</summary>
-    private static void EnsureNotPendingRegistration(Document doc, string actionLabel)
-    {
-        if (doc.NeedsRegistration)
-            throw new ArgumentException($"لا يمكن {actionLabel} على ملف بانتظار إعادة القيد — أدخل رقمه الجديد أولًا");
-    }
-
     /// <summary>
     /// وقوعّتا تبديل الدائرة من التعديل العادي (قديم/جديد) — النطاق الصريح CircuitId
     /// على كل الصفوف غير المحذوفة بما فيها المعلقة، وتحمل اسمي الدائرتين نصًا (التاريخ المجمد).
@@ -176,6 +175,36 @@ public sealed partial class DocumentService
         await _occurrences.AddAsync(oldOcc, token);
         await _uow.SaveChangesAsync(token);
     }
+
+    /// <summary>
+    /// اسم العرض للملف في صفحة التدوير. لعائلتي وضع «منفذ عليه» (Executed + Deposit) لا يوجد
+    /// مقترض، فأُعرض اسم طالب العرض (الجهة العامة أو الشخص الطبيعي) كما تُعرض في ملفات الإكسل
+    /// والطباعة، ولو تعذّر توافره فلا أسمًا. ولنظام «طالبة تنفيذ» تُستخدم أسماء المقترض المعتادة.
+    /// </summary>
+    private static string RotationDisplayName(Document d)
+    {
+        if (!GeneralEntitySideCatalog.IsExecutedLike(d.GeneralEntitySide))
+            return FormatName(d.BorrowerName, d.BorrowerFather, d.BorrowerFamily);
+
+        var applicant = d.ExecutionApplicants
+            .Select(a => FormatName(a.Name, a.Father, a.Family))
+            .FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+        if (!string.IsNullOrWhiteSpace(applicant))
+            return applicant;
+
+        var entity = d.ExecutedPublicEntities
+            .Select(e => e.EntityName)
+            .FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+        if (!string.IsNullOrWhiteSpace(entity))
+            return entity;
+
+        return d.ExecutedNaturalPersons
+            .Select(p => FormatName(p.Name, p.Father, p.Family))
+            .FirstOrDefault(v => !string.IsNullOrWhiteSpace(v)) ?? string.Empty;
+    }
+
+    private static string FormatName(string? first, string? father, string? family) =>
+        string.Join(' ', new[] { first, father, family }.Where(v => !string.IsNullOrWhiteSpace(v)));
 
     /// <summary>
     /// مستودع احتياطي للاختبارات القائمة التي تبني DocumentService يدويًا بلا سجل دوائر:

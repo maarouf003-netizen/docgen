@@ -618,19 +618,6 @@ public sealed partial class DocumentService : IDocumentService
         await _documents.IncrementViewCountAsync(documentId, ct);
     }
 
-    /// <summary>
-    /// الاسم الثلاثي للمنفذ عليه من بيانات المستند، يُلحق بكل أحداث التدقيق
-    /// ليُعرف أي ملف وقع عليه الإجراء دون فتح صفحة المستند.
-    /// </summary>
-    private static string ActorFullName(Document doc) => string.Join(' ',
-        new[] { doc.BorrowerName, doc.BorrowerFather, doc.BorrowerFamily }
-            .Where(v => !string.IsNullOrWhiteSpace(v)));
-
-    private static string AuditWithActor(string action, Document doc) =>
-        string.IsNullOrWhiteSpace(ActorFullName(doc))
-            ? action
-            : $"{action} — المنفذ عليه: {ActorFullName(doc)}";
-
     /// <summary>سنة «قرار السنة» الحالية من ساعة النظام ومنطقته — مصدر واحد لا تكرار قرار.</summary>
     private int CurrentYear() => ServerClock.CurrentYear(_clock, _timeZone);
 
