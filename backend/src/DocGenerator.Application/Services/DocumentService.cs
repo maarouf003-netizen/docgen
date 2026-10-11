@@ -102,6 +102,12 @@ public interface IDocumentService
     Task<ExecutionActionDto?> UpdateExecutionActionAsync(int documentId, int actionId, UpdateExecutionActionRequest request, string? actorName, CancellationToken ct = default);
     Task<bool> DeleteExecutionActionAsync(int documentId, int actionId, string? actorName, CancellationToken ct = default);
     Task<bool> ClearReminderAsync(int documentId, int actionId, string? actorName, CancellationToken ct = default);
+    /// <summary>
+    /// نقل تذكير إجراء إلى يوم استحقاق جديد من نافذة اليوم: المدخل هو `dueDate`
+    /// نفسه، ويُعاد حساب `ActionDate = newDueDate − DurationDays` مع بقاء المدة
+    /// وبقية الحقول دون مساس. يرفض غياب التذكير والمدد الملتبسة برسائل ودية.
+    /// </summary>
+    Task<ExecutionActionDto> RescheduleReminderAsync(int documentId, int actionId, string? newDueDate, string? actorName, CancellationToken ct = default);
     /// <summary>جدول تدوير أرقام الأساس للمحامي (ترحّلي): ملفاته المؤهلة مع رقم أساس السنة الحالية إن وُجد.</summary>
     Task<PagedResult<RotationDocumentDto>> GetRotationListAsync(int userId, int page, int perPage, CancellationToken ct = default);
     /// <summary>

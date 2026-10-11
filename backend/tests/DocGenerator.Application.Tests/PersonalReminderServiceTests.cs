@@ -158,6 +158,38 @@ public class PersonalReminderServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Create_BeyondCap_MessageDirectsToDelete()
+    {
+        // بلا خيار أرشفة في الواجهة: الرسالة توجه للحذف لا للأرشفة.
+        for (var i = 0; i < PersonalReminderCatalog.MaxActivePerUser; i++)
+            await _service.CreateAsync(ValidRequest(title: $"تذكير {i}"), _lawyer1.Id, "lawyer1");
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.CreateAsync(ValidRequest(title: "زائد"), _lawyer1.Id, "lawyer1"));
+        Assert.Equal(
+            $"تجاوزت الحد الأقصى للتذكيرات النشطة ({PersonalReminderCatalog.MaxActivePerUser}) — احذف القديم منها",
+            ex.Message);
+    }
+
+    [Fact]
+    public async Task SetOccurrence_Overflow_MessageDirectsToEndDateOrDelete()
+    {
+        var dto = await _service.CreateAsync(
+            ValidRequest(recurrence: PersonalReminderCatalog.RecurrenceDaily), _lawyer1.Id, "lawyer1");
+        // ملء السجل حتى حده مباشرة بمفاتيح مميزة (أسرع من مئات الاستدعاءات) ثم تجاوزه بنداء واحد.
+        var stuffed = await _db.PersonalReminders.FindAsync(dto.Id);
+        Assert.NotNull(stuffed);
+        stuffed!.CompletedOccurrenceKeys = string.Join(',',
+            Enumerable.Range(0, PersonalReminderCatalog.CompletedKeysMaxLength / 11)
+                .Select(i => new DateOnly(2025, 1, 1).AddDays(i).ToString("yyyy-MM-dd")));
+        await _db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.SetOccurrenceAsync(dto.Id, "2026-08-08", true, _lawyer1.Id));
+        Assert.Equal("تجاوز سجل التكرارات المنجزة حده — حدّد تاريخ انتهاء للتكرار أو احذف التذكير", ex.Message);
+    }
+
+    [Fact]
     public async Task GetById_OwnerReturnsNonOwnerNull()
     {
         var created = await _service.CreateAsync(ValidRequest(), _lawyer1.Id, "lawyer1");

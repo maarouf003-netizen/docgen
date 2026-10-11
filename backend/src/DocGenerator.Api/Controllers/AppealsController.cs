@@ -498,6 +498,23 @@ public class AppealsController : ControllerBase
         }
     }
 
+    /// <summary>نقل تذكير إجراء على الاستئناف إلى يوم استحقاق جديد من نافذة اليوم — المحامي المتابع.</summary>
+    [HttpPost("appeals/{id:int}/actions/{actionId:int}/reschedule")]
+    public async Task<IActionResult> RescheduleReminder(int id, int actionId, [FromBody] RescheduleAppealReminderRequest? request, CancellationToken ct)
+    {
+        if (!CanManageAppeals)
+            return Forbid();
+        try
+        {
+            var rescheduled = await _appeals.RescheduleAppealReminderAsync(id, actionId, request?.NewDueDate, User.GetUserId(), ActorName, ct);
+            return Ok(rescheduled);
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+    }
+
     /// <summary>حذف إجراء من الاستئناف — المحامي المتابع.</summary>
     [HttpDelete("appeals/{id:int}/actions/{actionId:int}")]
     public async Task<IActionResult> DeleteAction(int id, int actionId, CancellationToken ct)

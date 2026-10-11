@@ -83,6 +83,8 @@ public interface IDocumentAppealService
     Task<AppealActionDto?> UpdateActionAsync(int appealId, int actionId, UpdateAppealActionRequest request, int userId, string? actorName, CancellationToken ct = default);
     Task<bool> DeleteActionAsync(int appealId, int actionId, int userId, string? actorName, CancellationToken ct = default);
     Task<bool> ClearReminderAsync(int appealId, int actionId, int userId, string? actorName, CancellationToken ct = default);
+    /// <summary>نقل تذكير إجراء استئناف إلى يوم استحقاق جديد — نظير `IDocumentService.RescheduleReminderAsync` للملفات.</summary>
+    Task<AppealActionDto> RescheduleAppealReminderAsync(int appealId, int actionId, string? newDueDate, int userId, string? actorName, CancellationToken ct = default);
 
     /// <summary>تذكيرات إجراءات الاستئنافات التي يتابعها المحامي (بطاقة التذكيرات).</summary>
     Task<List<AppealReminderDto>> GetRemindersAsync(int userId, CancellationToken ct = default);

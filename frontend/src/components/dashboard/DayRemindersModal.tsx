@@ -2,18 +2,19 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../../api/client';
 import type {
-  AppealActionDto,
   AppealReminderDto,
-  ExecutionActionDto,
   PersonalReminderDto,
   ReminderDto,
 } from '../../types';
 import { PERSONAL_COLORS, PERSONAL_RECURRENCES } from '../../types';
+import { normalizeArabicDigits } from '../../utils/arabicDigits';
+import { richToPlainText } from '../../utils/richText';
 import {
   borrowerFullName,
   dueLabel,
 } from './dashboardFormat';
 import {
+  dayKeyOf,
   dayLabelOf,
   dotTone,
   parseDayKey,
@@ -116,7 +117,8 @@ export function DayRemindersModal({
           o.kind === 'personal' ? o.personal?.notes : null,
           o.reminder && 'borrowerName' in o.reminder ? borrowerFullName(o.reminder as ReminderDto) : null,
           o.reminder && 'appealTitle' in o.reminder ? (o.reminder as AppealReminderDto).appealTitle : null,
-          o.reminder?.actionText,
+          // نص الإجراء غني (`<p>…</p>`) فيُجرَّد قبل البحث كما في العرض.
+          o.reminder?.actionText ? richToPlainText(o.reminder.actionText) : null,
         ]
           .filter(Boolean)
           .join(' ');
@@ -140,15 +142,10 @@ export function DayRemindersModal({
     setRescheduleSaving(true);
     setRescheduleError('');
     try {
-      // نوع الإجراء الأصلي يُحفَظ كما هو (لا يُكشف في `ReminderDto`) — يُجلب من القائمة.
-      const { data: actions } = await api.get<(ExecutionActionDto | AppealActionDto)[]>(`${base}/actions`);
-      const current = (Array.isArray(actions) ? actions : []).find((a) => a.id === r.actionId);
-      await api.put(`${base}/actions/${r.actionId}`, {
-        type: current?.type ?? 'action',
-        text: r.actionText,
-        actionDate: rescheduleInput.trim(),
-        reminderDuration: r.reminderDuration ?? null,
-        reminderColor: r.reminderColor ?? null,
+      // المدخل يوم الاستحقاق نفسه — الخلفية تعيد حساب تاريخ الإجراء خلفيًا
+      // مع بقاء المدة (لا `GET actions` ولا `PUT` ولا حساب تواريخ هنا).
+      await api.post(`${base}/actions/${r.actionId}/reschedule`, {
+        newDueDate: normalizeArabicDigits(rescheduleInput).trim(),
       });
       setRescheduling(null);
       onChanged();
@@ -446,6 +443,9 @@ function DayRow({
     ? (r.appealTitle ?? `استئناف ${parentId}`)
     : borrowerFullName(r as ReminderDto);
   const rescheduleKey = `${o.kind}-${r.actionId}`;
+  // نص الإجراء غني (`<p>…</p>`) فيُعرض نصًا عاديًا كما في `ReminderList` — الفارغ
+  // بعد التجريد (مثل `<p><br></p>`) يُخفى سطره فلا واجهة مكسورة.
+  const plainActionText = richToPlainText(r.actionText);
 
   return (
     <li className="py-3">
@@ -454,26 +454,31 @@ function DayRow({
           <Link to={linkTo} className="font-medium text-sky-700 hover:underline break-words">
             {title}
           </Link>
-          <p className="text-xs text-gray-500 mt-0.5 break-words line-clamp-2">{r.actionText}</p>
+          {plainActionText ? (
+            <p className="text-xs text-gray-500 mt-0.5 break-words line-clamp-2">{plainActionText}</p>
+          ) : null}
         </div>
         <RowBadge dueDate={r.dueDate} />
       </div>
       {rescheduling === rescheduleKey ? (
         <div className="mt-2 rounded-xl border border-gray-200 p-3">
           <label className="block text-xs text-gray-600 mb-1.5" htmlFor={`reschedule-${rescheduleKey}`}>
-            اليوم الجديد (تاريخ حر — المدة نفسها تُحفَظ)
+            اليوم الجديد
           </label>
           <input
             id={`reschedule-${rescheduleKey}`}
             type="text"
-            inputMode="numeric"
             value={rescheduleInput}
             onChange={(e) => onRescheduleInput(e.target.value)}
             placeholder="مثال: 1/8/2026…"
             name={`reschedule-${rescheduleKey}`}
             autoComplete="off"
+            aria-describedby={`reschedule-help-${rescheduleKey}`}
             className="w-full min-h-11 rounded-xl border border-gray-200 px-3 text-sm tabular-nums focus-visible:ring-2 focus-visible:ring-emerald-600"
           />
+          <p id={`reschedule-help-${rescheduleKey}`} className="text-[11px] text-gray-500 mt-1">
+            يوم الاستحقاق نفسه — المدة نفسها تُحفَظ، ويُعاد حساب تاريخ الإجراء تلقائيًا.
+          </p>
           {rescheduleError ? (
             <p role="alert" className="text-red-700 text-xs mt-1.5">
               {rescheduleError}
@@ -501,7 +506,7 @@ function DayRow({
         <div className="flex flex-wrap gap-2 mt-2">
           <button
             type="button"
-            onClick={() => onStartReschedule(rescheduleKey, r.actionDate ?? r.dueDate)}
+            onClick={() => onStartReschedule(rescheduleKey, dayKeyOf(r.dueDate) ?? o.dayKey)}
             className="min-h-11 px-3 rounded-lg text-xs font-medium border border-gray-200 hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-emerald-600"
           >
             تغيير اليوم
@@ -542,7 +547,6 @@ export function PersonalForm({
   const [color, setColor] = useState(initial ? (initial.color ?? '') : 'زمردي');
   const [recurrence, setRecurrence] = useState(initial?.recurrence ?? 'مرة واحدة');
   const [endDays, setEndDays] = useState('');
-  const [archived, setArchived] = useState(initial?.isArchived ?? false);
   const [titleError, setTitleError] = useState('');
   const [submitError, setSubmitError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -572,7 +576,6 @@ export function PersonalForm({
           recurrence,
           // `__clear__` تُرسل سلسلة فارغة فتمسحها الخلفية؛ `undefined` تُبقي الحالية.
           recurrenceEnd: endDays === '__clear__' ? '' : endDays ? endDateFrom(dayKey, endDays) : undefined,
-          isArchived: archived,
         });
       } else {
         await api.post('/personal-reminders', {
@@ -689,20 +692,6 @@ export function PersonalForm({
           {initial?.recurrenceEnd ? <option value="__clear__">إزالة النهاية</option> : null}
         </select>
       </label>
-
-      {initial ? (
-        <label className="flex items-center gap-2 mb-3 text-sm text-gray-700 min-h-11" htmlFor="personal-archived">
-          <input
-            id="personal-archived"
-            type="checkbox"
-            checked={archived}
-            onChange={(e) => setArchived(e.target.checked)}
-            name="personal-archived"
-            className="w-5 h-5 accent-emerald-700"
-          />
-          مؤرشف (يُخفى من التقويم)
-        </label>
-      ) : null}
 
       {submitError ? (
         <p role="alert" className="text-red-700 text-xs mb-2">

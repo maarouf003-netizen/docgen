@@ -1238,6 +1238,61 @@ public class DocumentsIntegrationTests
     }
 
     [Fact]
+    public async Task RescheduleReminder_AsLawyer_MovesDueDateKeepingDuration()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.WithToken(token);
+        var id = await _factory.CreateDocumentAsync(token);
+        var createResponse = await client.PostAsJsonAsync($"/api/documents/{id}/actions",
+            new { type = "action", text = "إجراء بموعد", actionDate = "1/8/2026", reminderDuration = "3 أيام", reminderColor = "أحمر" });
+        using var created = await createResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var actionId = created!.RootElement.GetProperty("id").GetInt32();
+
+        var response = await client.PostAsJsonAsync($"/api/documents/{id}/actions/{actionId}/reschedule",
+            new { newDueDate = "10/8/2026" });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var rescheduled = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.Equal("2026-08-07", rescheduled!.RootElement.GetProperty("actionDate").GetString());
+        Assert.Equal("3 أيام", rescheduled.RootElement.GetProperty("reminderDuration").GetString());
+        Assert.Equal("أحمر", rescheduled.RootElement.GetProperty("reminderColor").GetString());
+    }
+
+    [Fact]
+    public async Task RescheduleReminder_AsManager_Forbidden()
+    {
+        var client = _factory.AuthorizedClient("manager");
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var id = await _factory.CreateDocumentAsync(token);
+        var postClient = _factory.WithToken(token);
+        var createResponse = await postClient.PostAsJsonAsync($"/api/documents/{id}/actions",
+            new { type = "action", text = "إجراء", actionDate = "1/1/2026", reminderDuration = "أسبوع", reminderColor = "أصفر" });
+        using var created = await createResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var actionId = created!.RootElement.GetProperty("id").GetInt32();
+
+        var response = await client.PostAsJsonAsync($"/api/documents/{id}/actions/{actionId}/reschedule",
+            new { newDueDate = "10/8/2026" });
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task RescheduleReminder_InvalidDate_ReturnsFriendlyBadRequest()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.WithToken(token);
+        var id = await _factory.CreateDocumentAsync(token);
+        var createResponse = await client.PostAsJsonAsync($"/api/documents/{id}/actions",
+            new { type = "action", text = "إجراء بموعد", actionDate = "1/8/2026", reminderDuration = "أسبوع", reminderColor = "أحمر" });
+        using var created = await createResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var actionId = created!.RootElement.GetProperty("id").GetInt32();
+
+        var response = await client.PostAsJsonAsync($"/api/documents/{id}/actions/{actionId}/reschedule",
+            new { newDueDate = "31/2/2026" });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("اليوم الجديد", body);
+    }
+
+    [Fact]
     public async Task Search_ByApplicantFilter_FiltersResults()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
