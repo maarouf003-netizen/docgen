@@ -48,6 +48,7 @@ public class DocumentServiceTests : IDisposable
 {
     private readonly DocGeneratorDbContext _db;
     private readonly IDocumentService _service;
+    private readonly IExecutionActionService _actions;
     private readonly FakeAuditLogger _audit = new();
 
     public DocumentServiceTests()
@@ -73,7 +74,9 @@ public class DocumentServiceTests : IDisposable
         var occurrences = new Repository<DocumentOccurrence>(_db);
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
-        _service = new DocumentService(documents, users, guarantors, estates, actions, baseNumbers, registrationDates, occurrences, new DelegationRepository(_db), new AppealRepository(_db), new HeadAlertService(new HeadAlertRepository(_db), new DocumentRepository(_db), new UserRepository(_db), new Repository<Branch>(_db), uow, tx, _audit), uow, tx, _audit, Microsoft.Extensions.Options.Options.Create(new DocGenerator.Application.Common.ExportOptions()), TimeProvider.System, TestClock.TimeZone, new DbExceptionClassifier());
+        var bundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, guarantors: guarantors, assets: estates, actions: actions, baseNumbers: baseNumbers, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx);
+        _service = bundle.Documents;
+        _actions = bundle.Actions;
     }
 
     public void Dispose() => _db.Dispose();
@@ -2445,7 +2448,7 @@ public class DocumentServiceTests : IDisposable
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var action = await _service.AddExecutionActionAsync(doc.Id,
+        var action = await _actions.AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Text = "تم إشعار المنفذ عليه", ActionDate = "1/8/2026" },
             userId: 1, actorName: "lawyer1");
 
@@ -2453,7 +2456,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("تم إشعار المنفذ عليه", action.Text);
         Assert.Equal("1/8/2026", action.ActionDate);
 
-        var list = await _service.GetExecutionActionsAsync(doc.Id);
+        var list = await _actions.GetExecutionActionsAsync(doc.Id);
         Assert.Single(list);
         Assert.Contains("action", _audit.Actions);
     }
@@ -2463,7 +2466,7 @@ public class DocumentServiceTests : IDisposable
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var action = await _service.AddExecutionActionAsync(doc.Id,
+        var action = await _actions.AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest
             {
                 Text = "متابعة مع المحكمة",
@@ -2476,7 +2479,7 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("أسبوع", action.ReminderDuration);
         Assert.Equal("أحمر", action.ReminderColor);
 
-        var list = await _service.GetExecutionActionsAsync(doc.Id);
+        var list = await _actions.GetExecutionActionsAsync(doc.Id);
         Assert.Single(list);
         Assert.Equal("أسبوع", list[0].ReminderDuration);
         Assert.Equal("أحمر", list[0].ReminderColor);
@@ -2488,7 +2491,7 @@ public class DocumentServiceTests : IDisposable
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AddExecutionActionAsync(doc.Id,
+            _actions.AddExecutionActionAsync(doc.Id,
                 new AddExecutionActionRequest
                 {
                     Text = "إجراء",
@@ -2505,7 +2508,7 @@ public class DocumentServiceTests : IDisposable
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AddExecutionActionAsync(doc.Id,
+            _actions.AddExecutionActionAsync(doc.Id,
                 new AddExecutionActionRequest
                 {
                     Text = "إجراء",
@@ -2522,7 +2525,7 @@ public class DocumentServiceTests : IDisposable
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AddExecutionActionAsync(doc.Id,
+            _actions.AddExecutionActionAsync(doc.Id,
                 new AddExecutionActionRequest
                 {
                     Text = "إجراء",
@@ -2538,7 +2541,7 @@ public class DocumentServiceTests : IDisposable
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AddExecutionActionAsync(doc.Id,
+            _actions.AddExecutionActionAsync(doc.Id,
                 new AddExecutionActionRequest
                 {
                     Type = "xyz",
@@ -2553,7 +2556,7 @@ public class DocumentServiceTests : IDisposable
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var action = await _service.AddExecutionActionAsync(doc.Id,
+        var action = await _actions.AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest
             {
                 Text = "إجراء مع مدة فقط",
@@ -2570,7 +2573,7 @@ public class DocumentServiceTests : IDisposable
     public async Task UpdateAction_ChangesReminder()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        var action = await _service.AddExecutionActionAsync(doc.Id,
+        var action = await _actions.AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest
             {
                 Text = "إجراء",
@@ -2580,7 +2583,7 @@ public class DocumentServiceTests : IDisposable
             },
             userId: 1, actorName: "lawyer1");
 
-        var updated = await _service.UpdateExecutionActionAsync(doc.Id, action.Id,
+        var updated = await _actions.UpdateExecutionActionAsync(doc.Id, action.Id,
             new UpdateExecutionActionRequest
             {
                 Type = "action",
@@ -2601,7 +2604,7 @@ public class DocumentServiceTests : IDisposable
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AddExecutionActionAsync(doc.Id, new AddExecutionActionRequest { Text = "  " },
+            _actions.AddExecutionActionAsync(doc.Id, new AddExecutionActionRequest { Text = "  " },
                 userId: 1, actorName: "lawyer1"));
     }
 
@@ -2609,12 +2612,12 @@ public class DocumentServiceTests : IDisposable
     public async Task GetActions_OrdersNewestFirst()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _service.AddExecutionActionAsync(doc.Id,
+        await _actions.AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Text = "أول", ActionDate = "1/1/2026" }, 1, "lawyer1");
-        await _service.AddExecutionActionAsync(doc.Id,
+        await _actions.AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Text = "ثان", ActionDate = "2/2/2026" }, 1, "lawyer1");
 
-        var list = await _service.GetExecutionActionsAsync(doc.Id);
+        var list = await _actions.GetExecutionActionsAsync(doc.Id);
         Assert.Equal(2, list.Count);
         Assert.Equal("ثان", list[0].Text);
         Assert.Equal("أول", list[1].Text);
@@ -2624,7 +2627,7 @@ public class DocumentServiceTests : IDisposable
     public async Task AddAction_MissingDocument_ThrowsKeyNotFound()
     {
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
-            _service.AddExecutionActionAsync(9999,
+            _actions.AddExecutionActionAsync(9999,
                 new AddExecutionActionRequest { Text = "إجراء" }, userId: 1, actorName: "lawyer1"));
     }
 
@@ -2633,7 +2636,7 @@ public class DocumentServiceTests : IDisposable
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var note = await _service.AddExecutionActionAsync(doc.Id,
+        var note = await _actions.AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Type = "note", Text = "ملاحظة بلا تاريخ" },
             userId: 1, actorName: "lawyer1");
 
@@ -2647,7 +2650,7 @@ public class DocumentServiceTests : IDisposable
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AddExecutionActionAsync(doc.Id,
+            _actions.AddExecutionActionAsync(doc.Id,
                 new AddExecutionActionRequest { Type = "action", Text = "إجراء بلا تاريخ" },
                 userId: 1, actorName: "lawyer1"));
     }
@@ -2658,7 +2661,7 @@ public class DocumentServiceTests : IDisposable
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.AddExecutionActionAsync(doc.Id,
+            _actions.AddExecutionActionAsync(doc.Id,
                 new AddExecutionActionRequest { Type = "other", Text = "نص" },
                 userId: 1, actorName: "lawyer1"));
     }
@@ -2667,11 +2670,11 @@ public class DocumentServiceTests : IDisposable
     public async Task UpdateAction_ChangesTextAndType()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        var action = await _service.AddExecutionActionAsync(doc.Id,
+        var action = await _actions.AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Type = "action", Text = "إجراء قديم", ActionDate = "1/1/2026" },
             userId: 1, actorName: "lawyer1");
 
-        var updated = await _service.UpdateExecutionActionAsync(doc.Id, action.Id,
+        var updated = await _actions.UpdateExecutionActionAsync(doc.Id, action.Id,
             new UpdateExecutionActionRequest { Type = "note", Text = "ملاحظة محدثة" }, "lawyer1");
 
         Assert.NotNull(updated);
@@ -2684,12 +2687,12 @@ public class DocumentServiceTests : IDisposable
     public async Task UpdateAction_WrongDocument_ThrowsKeyNotFound()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        var action = await _service.AddExecutionActionAsync(doc.Id,
+        var action = await _actions.AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Type = "action", Text = "إجراء", ActionDate = "1/1/2026" },
             userId: 1, actorName: "lawyer1");
 
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
-            _service.UpdateExecutionActionAsync(doc.Id + 9999, action.Id,
+            _actions.UpdateExecutionActionAsync(doc.Id + 9999, action.Id,
                 new UpdateExecutionActionRequest { Type = "note", Text = "x" }, "lawyer1"));
     }
 
@@ -2697,12 +2700,12 @@ public class DocumentServiceTests : IDisposable
     public async Task UpdateAction_WithoutDate_WhenAction_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        var action = await _service.AddExecutionActionAsync(doc.Id,
+        var action = await _actions.AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Type = "note", Text = "ملاحظة" },
             userId: 1, actorName: "lawyer1");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.UpdateExecutionActionAsync(doc.Id, action.Id,
+            _actions.UpdateExecutionActionAsync(doc.Id, action.Id,
                 new UpdateExecutionActionRequest { Type = "action", Text = "تحويل إلى إجراء بلا تاريخ" }, "lawyer1"));
     }
 
@@ -2710,14 +2713,14 @@ public class DocumentServiceTests : IDisposable
     public async Task DeleteAction_RemovesAction()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        var action = await _service.AddExecutionActionAsync(doc.Id,
+        var action = await _actions.AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Type = "action", Text = "إجراء", ActionDate = "1/1/2026" },
             userId: 1, actorName: "lawyer1");
 
-        var deleted = await _service.DeleteExecutionActionAsync(doc.Id, action.Id, "lawyer1");
+        var deleted = await _actions.DeleteExecutionActionAsync(doc.Id, action.Id, "lawyer1");
 
         Assert.True(deleted);
-        Assert.Empty(await _service.GetExecutionActionsAsync(doc.Id));
+        Assert.Empty(await _actions.GetExecutionActionsAsync(doc.Id));
         Assert.Contains("action", _audit.Actions);
     }
 
@@ -2725,11 +2728,11 @@ public class DocumentServiceTests : IDisposable
     public async Task DeleteAction_WrongDocument_ReturnsFalse()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        var action = await _service.AddExecutionActionAsync(doc.Id,
+        var action = await _actions.AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Type = "action", Text = "إجراء", ActionDate = "1/1/2026" },
             userId: 1, actorName: "lawyer1");
 
-        var deleted = await _service.DeleteExecutionActionAsync(doc.Id + 9999, action.Id, "lawyer1");
+        var deleted = await _actions.DeleteExecutionActionAsync(doc.Id + 9999, action.Id, "lawyer1");
         Assert.False(deleted);
     }
 
@@ -2737,7 +2740,7 @@ public class DocumentServiceTests : IDisposable
     public async Task ClearReminder_ClearsReminderFieldsKeepsAction()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        var action = await _service.AddExecutionActionAsync(doc.Id,
+        var action = await _actions.AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest
             {
                 Type = "action",
@@ -2748,10 +2751,10 @@ public class DocumentServiceTests : IDisposable
             },
             userId: 1, actorName: "lawyer1");
 
-        var cleared = await _service.ClearReminderAsync(doc.Id, action.Id, "lawyer1");
+        var cleared = await _actions.ClearReminderAsync(doc.Id, action.Id, "lawyer1");
 
         Assert.True(cleared);
-        var list = await _service.GetExecutionActionsAsync(doc.Id);
+        var list = await _actions.GetExecutionActionsAsync(doc.Id);
         var single = Assert.Single(list);
         Assert.Equal("إجراء بموعد", single.Text);
         Assert.Null(single.ReminderDuration);
@@ -2763,11 +2766,11 @@ public class DocumentServiceTests : IDisposable
     public async Task ClearReminder_WrongDocument_ReturnsFalse()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        var action = await _service.AddExecutionActionAsync(doc.Id,
+        var action = await _actions.AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Type = "action", Text = "إجراء", ActionDate = "1/1/2026" },
             userId: 1, actorName: "lawyer1");
 
-        var cleared = await _service.ClearReminderAsync(doc.Id + 9999, action.Id, "lawyer1");
+        var cleared = await _actions.ClearReminderAsync(doc.Id + 9999, action.Id, "lawyer1");
         Assert.False(cleared);
     }
 
@@ -2776,7 +2779,7 @@ public class DocumentServiceTests : IDisposable
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var cleared = await _service.ClearReminderAsync(doc.Id, 9999, "lawyer1");
+        var cleared = await _actions.ClearReminderAsync(doc.Id, 9999, "lawyer1");
         Assert.False(cleared);
     }
 
@@ -2792,7 +2795,7 @@ public class DocumentServiceTests : IDisposable
 
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
 
-        var list = await _service.GetExecutionActionsAsync(doc.Id);
+        var list = await _actions.GetExecutionActionsAsync(doc.Id);
         Assert.Equal(2, list.Count);
         var action = list.Single(a => a.Type == "action");
         Assert.Equal("تم إشعار المنفذ عليه", action.Text);
@@ -2814,7 +2817,7 @@ public class DocumentServiceTests : IDisposable
 
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
 
-        Assert.Empty(await _service.GetExecutionActionsAsync(doc.Id));
+        Assert.Empty(await _actions.GetExecutionActionsAsync(doc.Id));
     }
 
     [Fact]
@@ -2852,7 +2855,7 @@ public class DocumentServiceTests : IDisposable
         await _service.UpdateAsync(doc.Id, update, "lawyer1", userId: 1);
 
         // لا يتضاعف الإجراء المطابق، وتُضاف الملاحظة الجديدة فقط.
-        var list = await _service.GetExecutionActionsAsync(doc.Id);
+        var list = await _actions.GetExecutionActionsAsync(doc.Id);
         Assert.Equal(2, list.Count);
         Assert.Single(list.Where(a => a.Type == "action" && a.Text == "إشعار أول"));
         Assert.Single(list.Where(a => a.Type == "note" && a.Text == "متابعة لاحقة"));
@@ -2862,7 +2865,7 @@ public class DocumentServiceTests : IDisposable
     public async Task Update_WithNewInitialAction_AddsPreservingExisting()
     {
         var doc = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
-        await _service.AddExecutionActionAsync(doc.Id,
+        await _actions.AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Type = "action", Text = "إجراء قائم", ActionDate = "1/1/2026" },
             userId: 1, actorName: "lawyer1");
 
@@ -2873,7 +2876,7 @@ public class DocumentServiceTests : IDisposable
         };
         await _service.UpdateAsync(doc.Id, update, "lawyer1", userId: 1);
 
-        var list = await _service.GetExecutionActionsAsync(doc.Id);
+        var list = await _actions.GetExecutionActionsAsync(doc.Id);
         Assert.Equal(2, list.Count);
         Assert.Single(list.Where(a => a.Type == "action" && a.Text == "إجراء قائم"));
         Assert.Single(list.Where(a => a.Type == "note" && a.Text == "ملاحظة جديدة"));
@@ -5085,13 +5088,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
         _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" });
         _db.Users.Add(new User { Username = "lawyer1", FullName = "محامي", Role = UserRole.Lawyer, BranchId = 1, PasswordHash = new PasswordHasher().Hash("123456") });
         _db.SaveChanges();
-        var uow = new UnitOfWork(_db);
-        var tx = new TransactionRunner(_db);
-        _service = new DocumentService(
-            new DocumentRepository(_db), new UserRepository(_db), new Repository<Guarantor>(_db),
-            new Repository<Asset>(_db), new Repository<ExecutionAction>(_db),
-            new Repository<DocumentBaseNumber>(_db), new Repository<DocumentRegistrationDate>(_db),
-            new Repository<DocumentOccurrence>(_db), new DelegationRepository(_db), new AppealRepository(_db), new HeadAlertService(new HeadAlertRepository(_db), new DocumentRepository(_db), new UserRepository(_db), new Repository<Branch>(_db), uow, tx, _audit), uow, tx, _audit, Microsoft.Extensions.Options.Options.Create(new DocGenerator.Application.Common.ExportOptions()), TimeProvider.System, TestClock.TimeZone, new DbExceptionClassifier());
+        _service = DocumentServiceFactory.Create(_db, _audit).Documents;
     }
 
     public void Dispose() => _db.Dispose();

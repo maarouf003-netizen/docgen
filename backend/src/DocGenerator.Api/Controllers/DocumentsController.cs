@@ -20,6 +20,7 @@ public class DocumentsController : ControllerBase
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
     private readonly IDocumentService _documents;
+    private readonly IExecutionActionService _executionActions;
     private readonly IWordDocumentGenerator _generator;
     private readonly IExcelExportService _excel;
     private readonly IDocumentAppealService _appeals;
@@ -31,6 +32,7 @@ public class DocumentsController : ControllerBase
 
     public DocumentsController(
         IDocumentService documents,
+        IExecutionActionService executionActions,
         IWordDocumentGenerator generator,
         IExcelExportService excel,
         IDocumentAppealService appeals,
@@ -41,6 +43,7 @@ public class DocumentsController : ControllerBase
         IExecutionCircuitService? circuits = null)
     {
         _documents = documents;
+        _executionActions = executionActions;
         _generator = generator;
         _excel = excel;
         _appeals = appeals;
@@ -713,7 +716,7 @@ public class DocumentsController : ControllerBase
         if (doc is null) return NotFound();
         if (!await CanAccessOrFollowAsync(doc)) return Forbid();
 
-        var actions = await _documents.GetExecutionActionsAsync(id, ct);
+        var actions = await _executionActions.GetExecutionActionsAsync(id, ct);
         return Ok(actions);
     }
 
@@ -730,7 +733,7 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var action = await _documents.AddExecutionActionAsync(id, request, User.GetUserId(), ActorName, ct);
+            var action = await _executionActions.AddExecutionActionAsync(id, request, User.GetUserId(), ActorName, ct);
             return Ok(action);
         }
         catch (ArgumentException e)
@@ -752,7 +755,7 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var action = await _documents.UpdateExecutionActionAsync(id, actionId, request, ActorName, ct);
+            var action = await _executionActions.UpdateExecutionActionAsync(id, actionId, request, ActorName, ct);
             if (action is null) return NotFound();
             return Ok(action);
         }
@@ -776,7 +779,7 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var action = await _documents.RescheduleReminderAsync(id, actionId, request?.NewDueDate, ActorName, ct);
+            var action = await _executionActions.RescheduleReminderAsync(id, actionId, request?.NewDueDate, ActorName, ct);
             return Ok(action);
         }
         catch (ArgumentException e)
@@ -796,7 +799,7 @@ public class DocumentsController : ControllerBase
         if (doc is null) return NotFound();
         if (!await CanAccessAsync(doc)) return Forbid();
 
-        var deleted = await _documents.DeleteExecutionActionAsync(id, actionId, ActorName, ct);
+        var deleted = await _executionActions.DeleteExecutionActionAsync(id, actionId, ActorName, ct);
         if (!deleted) return NotFound();
         return NoContent();
     }
@@ -812,7 +815,7 @@ public class DocumentsController : ControllerBase
         if (doc is null) return NotFound();
         if (!await CanAccessAsync(doc)) return Forbid();
 
-        return await _documents.ClearReminderAsync(id, actionId, ActorName, ct)
+        return await _executionActions.ClearReminderAsync(id, actionId, ActorName, ct)
             ? NoContent()
             : NotFound();
     }

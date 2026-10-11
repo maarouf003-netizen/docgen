@@ -44,28 +44,9 @@ public class SearchServerYearTests : IDisposable
 
     public void Dispose() => _db.Dispose();
 
-    private DocumentService NewDocumentService()
+    private IDocumentService NewDocumentService()
     {
-        var baseNumbers = new Repository<DocumentBaseNumber>(_db);
-        return new DocumentService(
-            new DocumentRepository(_db),
-            new UserRepository(_db),
-            new Repository<Guarantor>(_db),
-            new Repository<Asset>(_db),
-            new Repository<ExecutionAction>(_db),
-            baseNumbers,
-            new Repository<DocumentRegistrationDate>(_db),
-            new Repository<DocumentOccurrence>(_db),
-            new DelegationRepository(_db),
-            new AppealRepository(_db),
-            new HeadAlertService(new HeadAlertRepository(_db), new DocumentRepository(_db), new UserRepository(_db), new Repository<Branch>(_db), new UnitOfWork(_db), new TransactionRunner(_db), _audit),
-            new UnitOfWork(_db),
-            new TransactionRunner(_db),
-            _audit,
-            Options.Create(new ExportOptions()),
-            Clock,
-            TestClock.TimeZone,
-            new DbExceptionClassifier());
+        return DocumentServiceFactory.Create(_db, _audit, clock: Clock).Documents;
     }
 
     /// <summary>

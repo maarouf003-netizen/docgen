@@ -60,7 +60,7 @@ public sealed partial class DocumentService
         if (doc is null)
             return false;
         // حراس NeedsRegistration الصريحة (البند 32): تُمنع على المعلق — تغيير الحالة حيث تلزم الهوية.
-        EnsureNotPendingRegistration(doc, "تغيير الحالة");
+        DocumentText.EnsureNotPendingRegistration(doc, "تغيير الحالة");
         if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
             throw new ArgumentException("حالة نظام «طالبة تنفيذ» تخص ملفات «الجهة العامة طالبة التنفيذ» فقط");
 
@@ -290,7 +290,7 @@ public sealed partial class DocumentService
         var doc = await _documents.GetByIdAsync(documentId, ct);
         if (doc is null)
             return false;
-        EnsureNotPendingRegistration(doc, "التراجع عن الحالة");
+        DocumentText.EnsureNotPendingRegistration(doc, "التراجع عن الحالة");
         if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
             throw new ArgumentException("التراجع عن الحالة يخص ملفات «الجهة العامة طالبة التنفيذ» فقط");
 
@@ -387,7 +387,7 @@ public sealed partial class DocumentService
         var doc = await _documents.GetByIdAsync(documentId, ct);
         if (doc is null)
             return false;
-        EnsureNotPendingRegistration(doc, "العودة من «محال الى البداية»");
+        DocumentText.EnsureNotPendingRegistration(doc, "العودة من «محال الى البداية»");
         if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
             throw new ArgumentException("العودة من «محال الى البداية» تخص ملفات «الجهة العامة طالبة التنفيذ» فقط");
 
@@ -495,7 +495,7 @@ public sealed partial class DocumentService
         var doc = await _documents.GetByIdAsync(documentId, ct);
         if (doc is null)
             return false;
-        EnsureNotPendingRegistration(doc, "اعتبار الملف منفذًا");
+        DocumentText.EnsureNotPendingRegistration(doc, "اعتبار الملف منفذًا");
         if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
             throw new ArgumentException("حالة نظام «طالبة تنفيذ» تخص ملفات «الجهة العامة طالبة التنفيذ» فقط");
 

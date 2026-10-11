@@ -11,14 +11,14 @@ namespace DocGenerator.Api.Tests;
 /// حارسا النقل لرئيس بلا فرع (`TransferAll` وعدّاد المالك): منع صريح بلا نطاق.
 /// يُختبران بهوية مطالبات مصنوعة، لأن قيد القاعدة يجعل تجسيد الصف الشاذ عبر EF
 /// مستحيلًا. (تغيير سلوكي صفري — الحارسان قائمان؛ النقل للوحدة لاستحالة التكامل.)
-/// خدمات المتحكم السبع غير مستخدمة في هذين المسارين (الحارس يسبقها) فتُمرَّر
+/// خدمات المتحكم التسع غير مستخدمة في هذين المسارين (الحارس يسبقها) فتُمرَّر
 /// `null!` صراحة مع هذا التوثيق.
 /// </summary>
 public sealed class TransferBranchGuardTests
 {
     private static DocumentsController BranchlessHeadController()
     {
-        var controller = new DocumentsController(null!, null!, null!, null!, null!, null!, null!, null!);
+        var controller = new DocumentsController(null!, null!, null!, null!, null!, null!, null!, null!, null!);
         var principal = new ClaimsPrincipal(new ClaimsIdentity(new[]
         {
             new Claim(ClaimTypes.NameIdentifier, "7"),

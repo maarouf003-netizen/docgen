@@ -49,21 +49,7 @@ public class EntityRegistryLinkTests : IDisposable
         var users = new UserRepository(_db);
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
-        _service = new DocumentService(
-            documents, users,
-            new Repository<Guarantor>(_db),
-            new Repository<Asset>(_db),
-            new Repository<ExecutionAction>(_db),
-            new Repository<DocumentBaseNumber>(_db),
-            new Repository<DocumentRegistrationDate>(_db),
-            new Repository<DocumentOccurrence>(_db),
-            new DelegationRepository(_db), new AppealRepository(_db),
-            new HeadAlertService(new HeadAlertRepository(_db), new DocumentRepository(_db), new UserRepository(_db), new Repository<Branch>(_db), uow, tx, _audit),
-            uow, tx, _audit,
-            Microsoft.Extensions.Options.Options.Create(new DocGenerator.Application.Common.ExportOptions()),
-            TimeProvider.System,
-            TestClock.TimeZone,
-            new DbExceptionClassifier());
+        _service = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, uow: uow, tx: tx).Documents;
     }
 
     public void Dispose() => _db.Dispose();

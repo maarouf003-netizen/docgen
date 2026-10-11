@@ -351,7 +351,7 @@ public sealed partial class DocumentService
 
     private static void RequireSame(List<string> errors, string label, string? requested, string? current)
     {
-        if (!string.Equals(Trimmed(requested), Trimmed(current), StringComparison.Ordinal))
+        if (!string.Equals(DocumentText.Trimmed(requested), DocumentText.Trimmed(current), StringComparison.Ordinal))
             errors.Add($"«{label}» مقفول على الملف المناب");
     }
 
@@ -365,55 +365,55 @@ public sealed partial class DocumentService
     private static (int?, string, string, string) HeirIdentityKey(Heir h) =>
         (
             h.GuarantorNumber,
-            Trimmed(h.HeirName) ?? string.Empty,
-            Trimmed(h.HeirFather) ?? string.Empty,
-            Trimmed(h.HeirFamily) ?? string.Empty);
+            DocumentText.Trimmed(h.HeirName) ?? string.Empty,
+            DocumentText.Trimmed(h.HeirFather) ?? string.Empty,
+            DocumentText.Trimmed(h.HeirFamily) ?? string.Empty);
 
     /// <summary>هل تطابق قيم الوريث التامة (الصفة ونوع العنوان والعنوان)؟— لتأكيد بقائه كما هو.
     /// عند إعفاء العنوان (ورثة/ممثل على الطرف في الطلب) يُقارن الصفة فقط لأن العنوان/نوعه
     /// يُفرّغان مرافقين متى وُجد ورثة أو ممثل (قرارات 11/13-15).</summary>
     private static bool HeirValueEquals(Heir a, Heir b, bool exemptAddress) =>
-        string.Equals(Trimmed(a.HeirCapacity), Trimmed(b.HeirCapacity), StringComparison.Ordinal)
+        string.Equals(DocumentText.Trimmed(a.HeirCapacity), DocumentText.Trimmed(b.HeirCapacity), StringComparison.Ordinal)
         && (exemptAddress
-            || (string.Equals(Trimmed(a.AddressType), Trimmed(b.AddressType), StringComparison.Ordinal)
-                && string.Equals(Trimmed(a.HeirAddress), Trimmed(b.HeirAddress), StringComparison.Ordinal)));
+            || (string.Equals(DocumentText.Trimmed(a.AddressType), DocumentText.Trimmed(b.AddressType), StringComparison.Ordinal)
+                && string.Equals(DocumentText.Trimmed(a.HeirAddress), DocumentText.Trimmed(b.HeirAddress), StringComparison.Ordinal)));
 
     /// <summary>هل تطابقت قيم الكفيل غير الممثل؟ (الدمج بالرقم المرجعي لا المساس بالحقول الممثلة).
     /// عند إعفاء العنوان (ورثة/ممثل على هذا الكفيل في الطلب) يُستثنى عنوانه ونوعه من المقارنة.</summary>
     private static bool GuarantorCoreEquals(Guarantor a, Guarantor b, bool exemptAddress = false) =>
-        string.Equals(Trimmed(a.GuarantorName), Trimmed(b.GuarantorName), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.GuarantorFather), Trimmed(b.GuarantorFather), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.GuarantorFamily), Trimmed(b.GuarantorFamily), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.GuarantorMother), Trimmed(b.GuarantorMother), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.GuarantorBirth), Trimmed(b.GuarantorBirth), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.GuarantorRegister), Trimmed(b.GuarantorRegister), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.GuarantorNationalId), Trimmed(b.GuarantorNationalId), StringComparison.Ordinal)
+        string.Equals(DocumentText.Trimmed(a.GuarantorName), DocumentText.Trimmed(b.GuarantorName), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.GuarantorFather), DocumentText.Trimmed(b.GuarantorFather), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.GuarantorFamily), DocumentText.Trimmed(b.GuarantorFamily), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.GuarantorMother), DocumentText.Trimmed(b.GuarantorMother), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.GuarantorBirth), DocumentText.Trimmed(b.GuarantorBirth), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.GuarantorRegister), DocumentText.Trimmed(b.GuarantorRegister), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.GuarantorNationalId), DocumentText.Trimmed(b.GuarantorNationalId), StringComparison.Ordinal)
         && (exemptAddress
-            || (string.Equals(Trimmed(a.GuarantorAddress), Trimmed(b.GuarantorAddress), StringComparison.Ordinal)
-                && string.Equals(Trimmed(a.AddressType), Trimmed(b.AddressType), StringComparison.Ordinal)))
-        && string.Equals(Trimmed(a.GuarantorNature), Trimmed(b.GuarantorNature), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.GuarantorRegistrationNumber), Trimmed(b.GuarantorRegistrationNumber), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.GuarantorRepresentedBy), Trimmed(b.GuarantorRepresentedBy), StringComparison.Ordinal);
+            || (string.Equals(DocumentText.Trimmed(a.GuarantorAddress), DocumentText.Trimmed(b.GuarantorAddress), StringComparison.Ordinal)
+                && string.Equals(DocumentText.Trimmed(a.AddressType), DocumentText.Trimmed(b.AddressType), StringComparison.Ordinal)))
+        && string.Equals(DocumentText.Trimmed(a.GuarantorNature), DocumentText.Trimmed(b.GuarantorNature), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.GuarantorRegistrationNumber), DocumentText.Trimmed(b.GuarantorRegistrationNumber), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.GuarantorRepresentedBy), DocumentText.Trimmed(b.GuarantorRepresentedBy), StringComparison.Ordinal);
 
     /// <summary>هل تطابقت حقول الممثل الشرعي للكفيل المُطبَّعة (المخزَّنة مقابل المُرسَلة)?</summary>
     private static bool GuarantorRepresentativeEquals(Guarantor a, Guarantor b) =>
-        string.Equals(Trimmed(a.RepresentativeName), Trimmed(b.RepresentativeName), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.RepresentativeFather), Trimmed(b.RepresentativeFather), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.RepresentativeFamily), Trimmed(b.RepresentativeFamily), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.RepresentativeCapacity), Trimmed(b.RepresentativeCapacity), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.RepresentativeAddressType), Trimmed(b.RepresentativeAddressType), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.RepresentativeAddress), Trimmed(b.RepresentativeAddress), StringComparison.Ordinal);
+        string.Equals(DocumentText.Trimmed(a.RepresentativeName), DocumentText.Trimmed(b.RepresentativeName), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.RepresentativeFather), DocumentText.Trimmed(b.RepresentativeFather), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.RepresentativeFamily), DocumentText.Trimmed(b.RepresentativeFamily), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.RepresentativeCapacity), DocumentText.Trimmed(b.RepresentativeCapacity), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.RepresentativeAddressType), DocumentText.Trimmed(b.RepresentativeAddressType), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.RepresentativeAddress), DocumentText.Trimmed(b.RepresentativeAddress), StringComparison.Ordinal);
 
     /// <summary>هل الممثل الشرعي للمقترض المخزَّن يطابق ما أُرسل (بعد التطبيع نفسه الذي يعتمده الحفظ)?</summary>
     private static bool BorrowerRepresentativeEquals(Document d, DocumentUpsertRequest r)
     {
         var requested = BorrowerRepresentativeRequestValues(r);
-        return string.Equals(Trimmed(d.BorrowerRepresentativeName), requested.RepresentativeName, StringComparison.Ordinal)
-            && string.Equals(Trimmed(d.BorrowerRepresentativeFather), requested.RepresentativeFather, StringComparison.Ordinal)
-            && string.Equals(Trimmed(d.BorrowerRepresentativeFamily), requested.RepresentativeFamily, StringComparison.Ordinal)
-            && string.Equals(Trimmed(d.BorrowerRepresentativeCapacity), requested.RepresentativeCapacity, StringComparison.Ordinal)
-            && string.Equals(Trimmed(d.BorrowerRepresentativeAddressType), requested.RepresentativeAddressType, StringComparison.Ordinal)
-            && string.Equals(Trimmed(d.BorrowerRepresentativeAddress), requested.RepresentativeAddress, StringComparison.Ordinal);
+        return string.Equals(DocumentText.Trimmed(d.BorrowerRepresentativeName), requested.RepresentativeName, StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(d.BorrowerRepresentativeFather), requested.RepresentativeFather, StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(d.BorrowerRepresentativeFamily), requested.RepresentativeFamily, StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(d.BorrowerRepresentativeCapacity), requested.RepresentativeCapacity, StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(d.BorrowerRepresentativeAddressType), requested.RepresentativeAddressType, StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(d.BorrowerRepresentativeAddress), requested.RepresentativeAddress, StringComparison.Ordinal);
     }
 
     /// <summary>حقول الممثل الشرعي للمقترض في الطلب مُطبَّعة كما يخزّنها ApplyRequest (صفرة عند الغياب).</summary>
@@ -479,11 +479,11 @@ public sealed partial class DocumentService
     private static bool ApplicantEntityMatches(ApplicantPublicEntity a, ApplicantPublicEntity b)
     {
         var sameRegistry = a.RegistryId is not null && b.RegistryId is not null && a.RegistryId == b.RegistryId;
-        var sameName = string.Equals(Trimmed(a.Name), Trimmed(b.Name), StringComparison.Ordinal);
+        var sameName = string.Equals(DocumentText.Trimmed(a.Name), DocumentText.Trimmed(b.Name), StringComparison.Ordinal);
         if (!sameRegistry && !sameName)
             return false;
-        return string.Equals(Trimmed(a.Branch), Trimmed(b.Branch), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.Governorate), Trimmed(b.Governorate), StringComparison.Ordinal);
+        return string.Equals(DocumentText.Trimmed(a.Branch), DocumentText.Trimmed(b.Branch), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.Governorate), DocumentText.Trimmed(b.Governorate), StringComparison.Ordinal);
     }
 
     /// <summary>مقارنة الأصول كمجموعة بمعناها القيمي (بعد التطبيع نفسه الذي يعتمده الحفظ).</summary>
@@ -516,30 +516,30 @@ public sealed partial class DocumentService
 
     private static bool AssetsEqual(Asset a, Asset b)
     {
-        if (!string.Equals(Trimmed(a.AssetKind), Trimmed(b.AssetKind), StringComparison.Ordinal))
+        if (!string.Equals(DocumentText.Trimmed(a.AssetKind), DocumentText.Trimmed(b.AssetKind), StringComparison.Ordinal))
             return false;
-        if (!string.Equals(Trimmed(a.ShareType), Trimmed(b.ShareType), StringComparison.Ordinal))
+        if (!string.Equals(DocumentText.Trimmed(a.ShareType), DocumentText.Trimmed(b.ShareType), StringComparison.Ordinal))
             return false;
         if (!SameOwners(a.Owners, b.Owners))
             return false;
-        return string.Equals(Trimmed(a.Property), Trimmed(b.Property), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.PropertyNumber), Trimmed(b.PropertyNumber), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.PropertyDistrict), Trimmed(b.PropertyDistrict), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.LandRegistry), Trimmed(b.LandRegistry), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.VehicleType), Trimmed(b.VehicleType), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.VehicleClass), Trimmed(b.VehicleClass), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.PlateNumber), Trimmed(b.PlateNumber), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.VehicleGovernorate), Trimmed(b.VehicleGovernorate), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.RegisterNumber), Trimmed(b.RegisterNumber), StringComparison.Ordinal)
+        return string.Equals(DocumentText.Trimmed(a.Property), DocumentText.Trimmed(b.Property), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.PropertyNumber), DocumentText.Trimmed(b.PropertyNumber), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.PropertyDistrict), DocumentText.Trimmed(b.PropertyDistrict), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.LandRegistry), DocumentText.Trimmed(b.LandRegistry), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.VehicleType), DocumentText.Trimmed(b.VehicleType), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.VehicleClass), DocumentText.Trimmed(b.VehicleClass), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.PlateNumber), DocumentText.Trimmed(b.PlateNumber), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.VehicleGovernorate), DocumentText.Trimmed(b.VehicleGovernorate), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.RegisterNumber), DocumentText.Trimmed(b.RegisterNumber), StringComparison.Ordinal)
             && a.RegistrationDate == b.RegistrationDate
-            && string.Equals(Trimmed(a.ShopGovernorate), Trimmed(b.ShopGovernorate), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.ShopDescription), Trimmed(b.ShopDescription), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.ShopLocation), Trimmed(b.ShopLocation), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.PublicEntity), Trimmed(b.PublicEntity), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.LicenseNumber), Trimmed(b.LicenseNumber), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.ShopGovernorate), DocumentText.Trimmed(b.ShopGovernorate), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.ShopDescription), DocumentText.Trimmed(b.ShopDescription), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.ShopLocation), DocumentText.Trimmed(b.ShopLocation), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.PublicEntity), DocumentText.Trimmed(b.PublicEntity), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.LicenseNumber), DocumentText.Trimmed(b.LicenseNumber), StringComparison.Ordinal)
             && a.LicenseDate == b.LicenseDate
-            && string.Equals(Trimmed(a.LicenseIssuer), Trimmed(b.LicenseIssuer), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.Notes), Trimmed(b.Notes), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.LicenseIssuer), DocumentText.Trimmed(b.LicenseIssuer), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.Notes), DocumentText.Trimmed(b.Notes), StringComparison.Ordinal)
             && a.SeizureDate == b.SeizureDate;
     }
 
@@ -551,17 +551,11 @@ public sealed partial class DocumentService
             return false;
         for (var i = 0; i < anames.Count; i++)
         {
-            if (!string.Equals(Trimmed(anames[i]), Trimmed(bnames[i]), StringComparison.Ordinal))
+            if (!string.Equals(DocumentText.Trimmed(anames[i]), DocumentText.Trimmed(bnames[i]), StringComparison.Ordinal))
                 return false;
         }
         return true;
     }
-
-    private static string? Trimmed(string? value) =>
-        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-
-    private static string? DateText(DateTime? value) =>
-        value?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
 
     // ── المزامنة: منيب → مناب (نسخ قيمي بلا حذف إلا استثناء الكفيل المحذوف) ──────────
 
@@ -761,7 +755,7 @@ public sealed partial class DocumentService
     /// <summary>هوية الجهة للمطابقة: RegistryId المتساوي أولاً ثم الاسم.</summary>
     private static bool ApplicantEntitySameIdentity(ApplicantPublicEntity a, ApplicantPublicEntity b) =>
         (a.RegistryId is not null && b.RegistryId is not null && a.RegistryId == b.RegistryId)
-        || string.Equals(Trimmed(a.Name), Trimmed(b.Name), StringComparison.Ordinal);
+        || string.Equals(DocumentText.Trimmed(a.Name), DocumentText.Trimmed(b.Name), StringComparison.Ordinal);
 
     private static void MirrorGuarantorsInto(Document source, Document target, List<string> labels)
     {
@@ -897,9 +891,9 @@ public sealed partial class DocumentService
 
     private static bool CopyField(string? source, string? current, Action<string?> assign)
     {
-        if (string.Equals(Trimmed(source), Trimmed(current), StringComparison.Ordinal))
+        if (string.Equals(DocumentText.Trimmed(source), DocumentText.Trimmed(current), StringComparison.Ordinal))
             return false;
-        assign(Trimmed(source));
+        assign(DocumentText.Trimmed(source));
         return true;
     }
 
@@ -972,7 +966,7 @@ public sealed partial class DocumentService
     /// (اسم المنفذ عليه/رقم أساسه/دائرته) والمنيب (الكتب/رقمه) — تُعبَّأ runtime من الوثيقتين.</summary>
     private string BuildDelegationStatusChangeMessage(DelegationStatusAlertKind kind, Document doc, Document target)
     {
-        var executedOn = ActorFullName(target);
+        var executedOn = DocumentText.ActorFullName(target);
         var baseNumber = EffectiveFileIdentity.Number(target, CurrentYear());
         var court = target.Court;
 

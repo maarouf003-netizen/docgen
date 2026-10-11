@@ -11,8 +11,8 @@ namespace DocGenerator.Application.Services;
 /// بلا أي تغيير سلوكي.
 /// البيوت النهائية (تُطبَّق من المرحلة 1 فصاعدًا): الحراس ذات الاعتمادات
 /// (`EnsureConcurrency`، `WithConcurrencyGuardAsync`، `WithNumberGuardAsync`)
-/// ← متعاون نحيف محقون `IDocumentWriteGuard`، وحارس المعلق (خالص)
-/// ← صنف `static` مشترك `Common/DocumentText.cs`.
+/// ← متعاون نحيف محقون `IDocumentWriteGuard` — وحارس المعلق الخالص
+/// `EnsureNotPendingRegistration` ← البيت المشترك `Common/DocumentText.cs` (نُقل في المرحلة 1).
 /// </summary>
 public sealed partial class DocumentService
 {
@@ -81,10 +81,4 @@ public sealed partial class DocumentService
         }
     }
 
-    /// <summary>حارس المعلق الصريح: تُمنع عليه العمليات التي تلزم الهوية الرقمية.</summary>
-    private static void EnsureNotPendingRegistration(Document doc, string actionLabel)
-    {
-        if (doc.NeedsRegistration)
-            throw new ArgumentException($"لا يمكن {actionLabel} على ملف بانتظار إعادة القيد — أدخل رقمه الجديد أولًا");
-    }
 }

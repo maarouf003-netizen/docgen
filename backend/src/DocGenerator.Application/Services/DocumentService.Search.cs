@@ -177,7 +177,7 @@ public sealed partial class DocumentService
                 d.FileNumber,
                 d.FileType,
                 d.BaseNumbers.Where(b => b.Year == currentYear).OrderByDescending(b => b.CreatedAt).FirstOrDefault()?.BaseNumber,
-                RotationDisplayName(d),
+                DocumentText.RotationDisplayName(d),
                 EffectiveFileIdentity.Number(d, currentYear),
                 EffectiveFileIdentity.Year(d, currentYear)))
             .ToList();
@@ -268,7 +268,7 @@ public sealed partial class DocumentService
                         continue;
 
                     auditEntries.Add(new AuditLogEntry(actorName, "rotate", doc.Id, doc.DocumentType,
-                        AuditWithActor($"ألغى رقم أساس {year}: {string.Join("، ", currentYearRows.Select(r => r.BaseNumber))}", doc)));
+                        DocumentText.AuditWithActor($"ألغى رقم أساس {year}: {string.Join("، ", currentYearRows.Select(r => r.BaseNumber))}", doc)));
                     foreach (var row in currentYearRows)
                         _baseNumbers.Remove(row);
                     continue;
@@ -292,7 +292,7 @@ public sealed partial class DocumentService
                     UpdatedAt = DateTime.UtcNow,
                 };
                 auditEntries.Add(new AuditLogEntry(actorName, "rotate", doc.Id, doc.DocumentType,
-                    AuditWithActor($"دوّر الملف برقم أساس {year}: {normalized}", doc)));
+                    DocumentText.AuditWithActor($"دوّر الملف برقم أساس {year}: {normalized}", doc)));
                 await _baseNumbers.AddAsync(record, ct);
 
                 // إلحاق رقم الأساس الجديد لنص البحث القائم (إلحاق لا إعادة بناء) ليُلتقط البحث.

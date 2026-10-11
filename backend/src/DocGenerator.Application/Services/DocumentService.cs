@@ -97,17 +97,6 @@ public interface IDocumentService
     /// </summary>
     Task<bool> RestoreStruckOffAsync(int documentId, RenewalRequest renewal, string? actorName, CancellationToken ct = default);
     Task IncrementViewCountAsync(int documentId, CancellationToken ct = default);
-    Task<List<ExecutionActionDto>> GetExecutionActionsAsync(int documentId, CancellationToken ct = default);
-    Task<ExecutionActionDto> AddExecutionActionAsync(int documentId, AddExecutionActionRequest request, int userId, string? actorName, CancellationToken ct = default);
-    Task<ExecutionActionDto?> UpdateExecutionActionAsync(int documentId, int actionId, UpdateExecutionActionRequest request, string? actorName, CancellationToken ct = default);
-    Task<bool> DeleteExecutionActionAsync(int documentId, int actionId, string? actorName, CancellationToken ct = default);
-    Task<bool> ClearReminderAsync(int documentId, int actionId, string? actorName, CancellationToken ct = default);
-    /// <summary>
-    /// نقل تذكير إجراء إلى يوم استحقاق جديد من نافذة اليوم: المدخل هو `dueDate`
-    /// نفسه، ويُعاد حساب `ActionDate = newDueDate − DurationDays` مع بقاء المدة
-    /// وبقية الحقول دون مساس. يرفض غياب التذكير والمدد الملتبسة برسائل ودية.
-    /// </summary>
-    Task<ExecutionActionDto> RescheduleReminderAsync(int documentId, int actionId, string? newDueDate, string? actorName, CancellationToken ct = default);
     /// <summary>جدول تدوير أرقام الأساس للمحامي (ترحّلي): ملفاته المؤهلة مع رقم أساس السنة الحالية إن وُجد.</summary>
     Task<PagedResult<RotationDocumentDto>> GetRotationListAsync(int userId, int page, int perPage, CancellationToken ct = default);
     /// <summary>
@@ -137,6 +126,7 @@ public sealed partial class DocumentService : IDocumentService
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
+    private readonly IExecutionActionService _actionService;
     private readonly IDbExceptionClassifier _dbErrors;
     private readonly int _maxExportRows;
     private readonly TimeProvider _clock;
@@ -164,6 +154,7 @@ public sealed partial class DocumentService : IDocumentService
         TimeProvider clock,
         TimeZoneInfo timeZone,
         IDbExceptionClassifier dbErrors,
+        IExecutionActionService actionService,
         IIdempotencyStore? idempotency = null,
         IRepository<ExecutionCircuit>? circuits = null,
         IRepository<Branch>? branches = null)
@@ -184,6 +175,7 @@ public sealed partial class DocumentService : IDocumentService
         _uow = uow;
         _tx = tx;
         _audit = audit;
+        _actionService = actionService;
         _maxExportRows = Math.Max(1, exportOptions.Value.MaxRows);
         _clock = clock;
         _timeZone = timeZone;
@@ -234,7 +226,7 @@ public sealed partial class DocumentService : IDocumentService
         ApplyRequest(doc, request);
         // سجل الدوائر: اشتقاق الدائرة (إلزامية) قبل المشتقات — يتجاهل نص العميل.
         var createCircuit = await ResolveCircuitForWriteAsync(request, branchId, isExternalTarget: false, ct);
-        ApplyCircuitDerivation(doc, createCircuit, request);
+        DocumentText.ApplyCircuitDerivation(doc, createCircuit, request);
         FillDerivedFields(doc);
         ApplyRegistrationDate(doc, request.FileRegistrationDate);
 
@@ -275,13 +267,13 @@ public sealed partial class DocumentService : IDocumentService
             await _documents.AddAssignmentAsync(doc.Id, AssignmentKindCatalog.Create,
                 doc.Lawyer ?? actor.Username, null, DateTime.UtcNow, token);
             await _audit.LogAsync(actorName, "create", doc.Id, doc.DocumentType,
-                AuditWithActor($"أنشأ المستند (رقم {doc.Id})", doc), token);
+                DocumentText.AuditWithActor($"أنشأ المستند (رقم {doc.Id})", doc), token);
             // ملف أُنشئ مشطوبًا من البداية: يُسجَّل وقعة شطب تلقائيًا ليتسق سجل الوقوعات
             // مع البيانات المُرحَّلة (بعد حفظ المستند فيُعرف رقمه داخل المعاملة نفسها).
             if (doc.ExecutedStatus == ExecutedStatusCatalog.StruckOff)
                 await AddStruckOffOccurrenceAsync(doc, userId, token);
             await _uow.SaveChangesAsync(token);
-            await SeedInitialActionsAsync(doc, request.InitialActions, userId, actorName, token);
+            await _actionService.SeedInitialActionsAsync(doc, request.InitialActions, userId, actorName, token);
             return DocumentResponse.FromEntity(doc, CurrentYear());
         }, ct), doc.FileNumber);
     }
@@ -340,7 +332,7 @@ public sealed partial class DocumentService : IDocumentService
         else
         {
             var editCircuit = await ResolveCircuitForWriteAsync(request, doc.BranchId, isExternalTarget: false, ct);
-            ApplyCircuitDerivation(doc, editCircuit, request);
+            DocumentText.ApplyCircuitDerivation(doc, editCircuit, request);
         }
         // تعديل ملف «بانتظار إعادة القيد» برقم غير فارغ يُسقط الـ flag (مع إعادة تحقق الوحدانية).
         if (wasPending && !string.IsNullOrWhiteSpace(doc.FileNumber) && !string.IsNullOrWhiteSpace(doc.FileYear))
@@ -375,7 +367,7 @@ public sealed partial class DocumentService : IDocumentService
             mirrorIntents = await MirrorSourceEditsToTargetsAsync(doc, token);
             await LogDocumentChangesAsync(before, doc, actorName, "update",
                 $"عدّل المستند (رقم {doc.Id})", token);
-            await SeedInitialActionsAsync(doc, request.InitialActions, userId, actorName, token);
+            await _actionService.SeedInitialActionsAsync(doc, request.InitialActions, userId, actorName, token);
             return DocumentResponse.FromEntity(doc, CurrentYear());
         }, ct), doc.FileNumber));
 
@@ -445,7 +437,7 @@ public sealed partial class DocumentService : IDocumentService
             _documents.Update(doc);
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "delete", documentId, doc.DocumentType,
-                AuditWithActor($"حذف المستند (رقم {documentId})", doc), token);
+                DocumentText.AuditWithActor($"حذف المستند (رقم {documentId})", doc), token);
             return true;
         }, ct);
     }
@@ -485,7 +477,7 @@ public sealed partial class DocumentService : IDocumentService
             _documents.Update(doc);
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "restore", documentId, doc.DocumentType,
-                AuditWithActor($"استعادة المستند (رقم {documentId})", doc), token);
+                DocumentText.AuditWithActor($"استعادة المستند (رقم {documentId})", doc), token);
             return true;
         }, ct), doc.FileNumber);
     }
@@ -523,7 +515,7 @@ public sealed partial class DocumentService : IDocumentService
                 target.FullName, actorName, DateTime.UtcNow, token);
 
             await _audit.LogAsync(actorName, "transfer", documentId, doc.DocumentType,
-                AuditWithActor($"نقل الملف إلى المحامي: {target.FullName}", doc), token);
+                DocumentText.AuditWithActor($"نقل الملف إلى المحامي: {target.FullName}", doc), token);
 
             return DocumentResponse.FromEntity(transferred, CurrentYear());
         }, ct);
@@ -606,7 +598,7 @@ public sealed partial class DocumentService : IDocumentService
                 await _documents.AddAssignmentAsync(file.Id, AssignmentKindCatalog.Transfer,
                     target.FullName, actorName, DateTime.UtcNow, token);
                 await _audit.LogAsync(actorName, "transfer", file.Id, file.DocumentType,
-                    $"تم إحالة هذا الملف إلى المحامي: {target.FullName} بتاريخ {now:d/M/yyyy} — المنفذ عليه: {ActorFullName(file)}", token);
+                    $"تم إحالة هذا الملف إلى المحامي: {target.FullName} بتاريخ {now:d/M/yyyy} — المنفذ عليه: {DocumentText.ActorFullName(file)}", token);
             }
 
             return moved;

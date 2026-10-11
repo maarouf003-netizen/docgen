@@ -1,20 +1,46 @@
 using System.Globalization;
-using System.Text.Json;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.Common.Security;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
-using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Services;
 
-public sealed partial class DocumentService
+/// <summary>
+/// خدمة إجراءات التنفيذ والتذكيرات (مستخرجة من `DocumentService` — المرحلة 1، نقل ميكانيكي
+/// بلا سلوك): كل نقطة دخول عامة تفتح معاملتها الخاصة عبر `_tx.RunAsync` — باستثناء
+/// `SeedInitialActionsAsync` التي تنضم لمعاملة حفظ المستند (داخل معاملة المستدعي حصرًا).
+/// الاعتمادات: `_actions` و`_documents` و`_uow` و`_tx` و`_audit` والساعة/المنطقة فقط.
+/// </summary>
+public sealed class ExecutionActionService : IExecutionActionService
 {
-    // ملاحظة إعادة هيكلة (المرحلة 3 — مؤجلة): عند أول تعديل يمس إجراءات التنفيذ
-    // أو التذكيرات في هذا الملف، تُستخرج إلى خدمة مستقلة خلف واجهة (ExecutionActionService)
-    // بدل إضافة المزيد هنا. المرجع: FIXES_LOG.md بند المعلقات #4.
+    private readonly IRepository<ExecutionAction> _actions;
+    private readonly IDocumentRepository _documents;
+    private readonly IUnitOfWork _uow;
+    private readonly ITransactionRunner _tx;
+    private readonly IAuditLogger _audit;
+    private readonly TimeProvider _clock;
+    private readonly TimeZoneInfo _timeZone;
+
+    public ExecutionActionService(
+        IRepository<ExecutionAction> actions,
+        IDocumentRepository documents,
+        IUnitOfWork uow,
+        ITransactionRunner tx,
+        IAuditLogger audit,
+        TimeProvider clock,
+        TimeZoneInfo timeZone)
+    {
+        _actions = actions;
+        _documents = documents;
+        _uow = uow;
+        _tx = tx;
+        _audit = audit;
+        _clock = clock;
+        _timeZone = timeZone;
+    }
+
     public async Task<List<ExecutionActionDto>> GetExecutionActionsAsync(int documentId, CancellationToken ct = default)
     {
         var doc = await _documents.GetByIdAsync(documentId, ct);
@@ -53,7 +79,7 @@ public sealed partial class DocumentService
             await _actions.AddAsync(action, token);
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "action", doc.Id, doc.DocumentType,
-                AuditWithActor($"أضاف {TypeLabel(type)}: {HtmlInputSanitizer.ToPlainText(action.Text)}", doc), token);
+                DocumentText.AuditWithActor($"أضاف {DocumentText.TypeLabel(type)}: {HtmlInputSanitizer.ToPlainText(action.Text)}", doc), token);
         }, ct);
         return new ExecutionActionDto(action.Id, action.Type, action.Text, action.ActionDate,
             action.ReminderDuration, action.ReminderColor, actorName, action.CreatedAt);
@@ -83,7 +109,7 @@ public sealed partial class DocumentService
             _actions.Update(action);
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "action", documentId, doc.DocumentType,
-                AuditWithActor($"عدّل {TypeLabel(type)}: {HtmlInputSanitizer.ToPlainText(action.Text)}", doc), token);
+                DocumentText.AuditWithActor($"عدّل {DocumentText.TypeLabel(type)}: {HtmlInputSanitizer.ToPlainText(action.Text)}", doc), token);
         }, ct);
         return new ExecutionActionDto(action.Id, action.Type, action.Text, action.ActionDate,
             action.ReminderDuration, action.ReminderColor, actorName, action.CreatedAt);
@@ -104,7 +130,7 @@ public sealed partial class DocumentService
             _actions.Remove(action);
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "action", documentId, doc.DocumentType,
-                AuditWithActor($"حذف {TypeLabel(action.Type)}: {HtmlInputSanitizer.ToPlainText(action.Text)}", doc), token);
+                DocumentText.AuditWithActor($"حذف {DocumentText.TypeLabel(action.Type)}: {HtmlInputSanitizer.ToPlainText(action.Text)}", doc), token);
             return true;
         }, ct);
     }
@@ -127,7 +153,7 @@ public sealed partial class DocumentService
             _actions.Update(action);
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "action", documentId, doc.DocumentType,
-                AuditWithActor($"ألغى التذكير عن {TypeLabel(action.Type)}: {HtmlInputSanitizer.ToPlainText(action.Text)}", doc), token);
+                DocumentText.AuditWithActor($"ألغى التذكير عن {DocumentText.TypeLabel(action.Type)}: {HtmlInputSanitizer.ToPlainText(action.Text)}", doc), token);
             return true;
         }, ct);
     }
@@ -175,7 +201,7 @@ public sealed partial class DocumentService
             _actions.Update(action);
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "action", documentId, doc.DocumentType,
-                AuditWithActor($"نقل التذكير إلى {due:yyyy-MM-dd} (تاريخ الإجراء: {oldActionDate ?? "—"} ← {newActionDate})", doc), token);
+                DocumentText.AuditWithActor($"نقل التذكير إلى {due:yyyy-MM-dd} (تاريخ الإجراء: {oldActionDate ?? "—"} ← {newActionDate})", doc), token);
         }, ct);
         return new ExecutionActionDto(action.Id, action.Type, action.Text, action.ActionDate,
             action.ReminderDuration, action.ReminderColor, actorName, action.CreatedAt);
@@ -183,11 +209,12 @@ public sealed partial class DocumentService
 
     /// <summary>
     /// يزرع إجراءات/ملاحظات «الإدخال المبدئي» (InitialActions) في جدول الإجراءات والملاحظات
-    /// ذرّيًا ضمن معاملة حفظ المستند نفسها. كل عنصر يمر بـ NormalizeAction/NormalizeReminder
-    /// فنُرفض الطلبات الخبيثة أو الناقصة ذرّيًا، وتُتجاهل الحقول الفارغة، ولا يُنشأ أي سجل
-    /// مكرر (لا مقابل سجلات الملف القائمة ولا بين عناصر الطلب نفسه).
+    /// ذرّيًا ضمن معاملة حفظ المستند نفسها — داخل معاملة المستدعي حصرًا (لا تفتح معاملة
+    /// خاصة). كل عنصر يمر بـ NormalizeAction/NormalizeReminder فنُرفض الطلبات الخبيثة
+    /// أو الناقصة ذرّيًا، وتُتجاهل الحقول الفارغة، ولا يُنشأ أي سجل مكرر (لا مقابل
+    /// سجلات الملف القائمة ولا بين عناصر الطلب نفسه).
     /// </summary>
-    private async Task SeedInitialActionsAsync(
+    public async Task SeedInitialActionsAsync(
         Document doc,
         List<AddExecutionActionRequest>? initialActions,
         int? userId,
@@ -230,7 +257,7 @@ public sealed partial class DocumentService
             await _actions.AddAsync(action, ct);
             await _uow.SaveChangesAsync(ct);
             await _audit.LogAsync(actorName, "action", doc.Id, doc.DocumentType,
-                AuditWithActor($"أضاف {TypeLabel(type)}: {HtmlInputSanitizer.ToPlainText(action.Text)}", doc), ct);
+                DocumentText.AuditWithActor($"أضاف {DocumentText.TypeLabel(type)}: {HtmlInputSanitizer.ToPlainText(action.Text)}", doc), ct);
         }
     }
 
@@ -275,5 +302,4 @@ public sealed partial class DocumentService
 
         return (trimmedDuration, trimmedColor);
     }
-
 }

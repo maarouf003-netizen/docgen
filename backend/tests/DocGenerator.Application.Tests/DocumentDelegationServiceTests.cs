@@ -74,25 +74,7 @@ public class DocumentDelegationServiceTests : IDisposable
             TimeProvider.System,
             TestClock.TimeZone);
 
-        _documentService = new DocumentService(
-            documents,
-            users,
-            new Repository<Guarantor>(_db),
-            new Repository<Asset>(_db),
-            new Repository<ExecutionAction>(_db),
-            new Repository<DocumentBaseNumber>(_db),
-            registrationDates,
-            occurrences,
-            new DelegationRepository(_db),
-            new AppealRepository(_db),
-            headAlerts,
-            uow,
-            tx,
-            _audit,
-            Options.Create(new ExportOptions()),
-            TimeProvider.System,
-            TestClock.TimeZone,
-            new DbExceptionClassifier());
+        _documentService = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx, alertService: headAlerts).Documents;
     }
 
     public void Dispose() => _db.Dispose();

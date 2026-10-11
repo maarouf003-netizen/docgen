@@ -60,14 +60,7 @@ public class ExecutionCircuitServiceTests : IDisposable
             uow, tx, _audit, classifier, TimeProvider.System, TestClock.TimeZone);
         var alertService = new HeadAlertService(alertsRepo, documents, users,
             branchesRepo, uow, tx, _audit);
-        _documents = new DocumentService(
-            documents, users, new Repository<Guarantor>(_db), new Repository<Asset>(_db),
-            new Repository<ExecutionAction>(_db), baseNumbers,
-            new Repository<DocumentRegistrationDate>(_db), occurrences,
-            new DelegationRepository(_db), new AppealRepository(_db), alertService,
-            uow, tx, _audit, Options.Create(new ExportOptions()),
-            TimeProvider.System, TestClock.TimeZone, classifier,
-            null, circuitsRepo, branchesRepo);
+        _documents = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, baseNumbers: baseNumbers, occurrences: occurrences, uow: uow, tx: tx, alertService: alertService, dbErrors: classifier, circuits: circuitsRepo, branches: branchesRepo).Documents;
     }
 
     public void Dispose() => _db.Dispose();
