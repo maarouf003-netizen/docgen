@@ -205,72 +205,106 @@ describe('DayRemindersModal', () => {
     expect(api.post).not.toHaveBeenCalled();
   });
 
-  it('يغيّر يوم تذكير الملف مع حفظ نوع الإجراء الأصلي', async () => {
+  it('يغيّر يوم تذكير الملف بدلالة الاستحقاق عبر مسار إعادة الجدولة', async () => {
     const user = userEvent.setup();
-    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: [{ id: 1, type: 'action', text: 'مراجعة دائرة التنفيذ' }],
-    });
-    (api.put as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });
+    (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });
     const { onChanged } = renderModal([docOccurrence()]);
 
     await user.click(screen.getByRole('button', { name: 'تغيير اليوم' }));
     const input = screen.getByLabelText(/اليوم الجديد/);
+    // القيمة الابتدائية يوم الاستحقاق نفسه لا تاريخ الإجراء.
+    expect(input).toHaveValue('2026-08-08');
     await user.clear(input);
     await user.type(input, '10/8/2026');
     await user.click(screen.getByRole('button', { name: 'حفظ اليوم' }));
 
-    expect(api.get).toHaveBeenCalledWith('/documents/5/actions');
-    expect(api.put).toHaveBeenCalledWith(
-      '/documents/5/actions/1',
-      expect.objectContaining({
-        type: 'action',
-        text: 'مراجعة دائرة التنفيذ',
-        actionDate: '10/8/2026',
-        reminderDuration: '3 أيام',
-        reminderColor: 'أحمر',
-      }),
-    );
+    expect(api.get).not.toHaveBeenCalled();
+    expect(api.put).not.toHaveBeenCalled();
+    expect(api.post).toHaveBeenCalledWith('/documents/5/actions/1/reschedule', {
+      newDueDate: '10/8/2026',
+    });
     expect(onChanged).toHaveBeenCalledTimes(1);
   });
 
-  it('يغيّر يوم تذكير الاستئناف مع حفظ نوع الإجراء الأصلي', async () => {
+  it('يطبّع الأرقام العربية قبل إرسال اليوم الجديد', async () => {
     const user = userEvent.setup();
-    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: [{ id: 2, type: 'note', text: 'جلسة' }],
-    });
-    (api.put as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });
-    const { onChanged } = renderModal([appealOccurrence()]);
+    (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });
+    renderModal([docOccurrence()]);
 
     await user.click(screen.getByRole('button', { name: 'تغيير اليوم' }));
     const input = screen.getByLabelText(/اليوم الجديد/);
     await user.clear(input);
+    await user.type(input, '١٠/٨/٢٠٢٦');
+    await user.click(screen.getByRole('button', { name: 'حفظ اليوم' }));
+
+    expect(api.post).toHaveBeenCalledWith('/documents/5/actions/1/reschedule', {
+      newDueDate: '10/8/2026',
+    });
+  });
+
+  it('يغيّر يوم تذكير الاستئناف عبر مسار إعادة الجدولة نفسه', async () => {
+    const user = userEvent.setup();
+    (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });
+    const { onChanged } = renderModal([appealOccurrence()]);
+
+    await user.click(screen.getByRole('button', { name: 'تغيير اليوم' }));
+    const input = screen.getByLabelText(/اليوم الجديد/);
+    expect(input).toHaveValue('2026-08-08');
+    await user.clear(input);
     await user.type(input, '10/8/2026');
     await user.click(screen.getByRole('button', { name: 'حفظ اليوم' }));
 
-    expect(api.get).toHaveBeenCalledWith('/appeals/9/actions');
-    expect(api.put).toHaveBeenCalledWith(
-      '/appeals/9/actions/2',
-      expect.objectContaining({
-        type: 'note',
-        text: 'جلسة',
-        actionDate: '10/8/2026',
-      }),
-    );
+    expect(api.post).toHaveBeenCalledWith('/appeals/9/actions/2/reschedule', {
+      newDueDate: '10/8/2026',
+    });
     expect(onChanged).toHaveBeenCalledTimes(1);
   });
 
   it('يعرض خطأ الخلفية عند فشل تغيير اليوم', async () => {
     const user = userEvent.setup();
-    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: [] });
-    (api.put as unknown as ReturnType<typeof vi.fn>).mockRejectedValue({
-      message: 'تاريخ الإجراء غير صالح — استخدم مثال: 1/8/2026',
+    (api.post as unknown as ReturnType<typeof vi.fn>).mockRejectedValue({
+      message: 'اليوم الجديد غير صالح — استخدم مثال: 1/8/2026',
     });
     renderModal([docOccurrence()]);
 
     await user.click(screen.getByRole('button', { name: 'تغيير اليوم' }));
     await user.click(screen.getByRole('button', { name: 'حفظ اليوم' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('تاريخ الإجراء غير صالح');
+    expect(await screen.findByRole('alert')).toHaveTextContent('اليوم الجديد غير صالح');
+  });
+
+  it('يجرّد وسوم النص الغني من عرض نافذة اليوم ويجده البحث', async () => {
+    const user = userEvent.setup();
+    (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });
+    const occ = docOccurrence();
+    occ.reminder = {
+      ...occ.reminder!,
+      actionText: '<p>راسل المصرف ببيانات رواتب</p>',
+    } as ReminderDto;
+    const { container } = render(
+      <DayRemindersModal dayKey={DAY} occurrences={[occ]} onClose={vi.fn()} onChanged={vi.fn()} />,
+    );
+
+    expect(screen.getByText('راسل المصرف ببيانات رواتب')).toBeInTheDocument();
+    expect(container.innerHTML).not.toContain('<p>راسل المصرف');
+
+    await user.type(screen.getByPlaceholderText('بحث بالنص أو اسم الملف…'), 'راسل');
+    expect(screen.getByText('راسل المصرف ببيانات رواتب')).toBeInTheDocument();
+  });
+
+  it('لا يعرض خيار الأرشفة ولا يرسلها في التعديل', async () => {
+    const user = userEvent.setup();
+    (api.put as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });
+    renderModal([personalOccurrence()]);
+
+    await user.click(screen.getByRole('button', { name: 'تعديل' }));
+    expect(screen.queryByText(/مؤرشف/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديل' }));
+
+    expect(api.put).toHaveBeenCalledWith(
+      '/personal-reminders/7',
+      expect.not.objectContaining({ isArchived: expect.anything() }),
+    );
   });
 
   it('يلغي تذكير الملف بتأكيد صريح', async () => {

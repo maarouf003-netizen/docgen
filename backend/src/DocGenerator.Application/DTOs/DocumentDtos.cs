@@ -215,6 +215,16 @@ public class UpdateExecutionActionRequest
 }
 
 /// <summary>
+/// نقل تذكير إجراء إلى يوم استحقاق جديد (`POST .../actions/{id}/reschedule` من نافذة
+/// اليوم): المدخل هو يوم الاستحقاق نفسه، والخلفية تعيد حساب `ActionDate` خلفيًا
+/// (`newDueDate − DurationDays`) مع بقاء المدة — لا مساس ببقية حقول الإجراء.
+/// </summary>
+public class RescheduleActionReminderRequest
+{
+    public string? NewDueDate { get; set; }
+}
+
+/// <summary>
 /// بيان تجديد ملف مشطوب عند إعادته إلى المتداول (فك الشطب مع رقم ملف جديد لسنة الإعادة).
 /// الحقول المركبة تُرسَل نصوصًا حرة (مثال: 1/8/2026) وتُفسَّر وتُخزَّن زمنيًا كباقي تواريخ
 /// «منفذ عليه». «رقم الملف الجديد» إلزامي، وما عداها اختياري.

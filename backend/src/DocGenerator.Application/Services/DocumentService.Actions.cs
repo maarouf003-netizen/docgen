@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
@@ -129,6 +130,55 @@ public sealed partial class DocumentService
                 AuditWithActor($"ألغى التذكير عن {TypeLabel(action.Type)}: {HtmlInputSanitizer.ToPlainText(action.Text)}", doc), token);
             return true;
         }, ct);
+    }
+
+    /// <summary>
+    /// نقل تذكير إجراء إلى يوم استحقاق جديد من نافذة اليوم: المدخل (`newDueDate`)
+    /// هو يوم الاستحقاق نفسه لا تاريخ الإجراء، فيُعاد حساب
+    /// `ActionDate = newDueDate − DurationDays(ReminderDuration)` مع بقاء المدة
+    /// وبقية الحقول دون مساس. لا منطق تواريخ جديد هنا — المصدر الوحيد
+    /// (`DocumentValidator` + `ActionReminderCalculator`) كما في بقية المسارات.
+    /// </summary>
+    public async Task<ExecutionActionDto> RescheduleReminderAsync(int documentId, int actionId, string? newDueDate, string? actorName, CancellationToken ct = default)
+    {
+        var action = await _actions.GetByIdAsync(actionId, ct);
+        if (action is null || action.DocumentId != documentId)
+            throw new KeyNotFoundException();
+
+        var doc = await _documents.GetByIdAsync(documentId, ct);
+        if (doc is null)
+            throw new KeyNotFoundException();
+
+        if (string.IsNullOrWhiteSpace(newDueDate))
+            throw new ArgumentException("اليوم الجديد مطلوب — استخدم مثال: 1/8/2026");
+
+        var due = DocumentValidator.ParseDateTime(newDueDate.Trim(), "اليوم الجديد")
+            ?? throw new ArgumentException("اليوم الجديد مطلوب — استخدم مثال: 1/8/2026");
+
+        if (string.IsNullOrWhiteSpace(action.ReminderDuration) && string.IsNullOrWhiteSpace(action.ReminderColor))
+            throw new ArgumentException("لا يوجد تذكير لإعادة جدولته");
+
+        // حارس المدة الملتبسة (بيانات قديمة): مدة غير فارغة خارج المدد الأربع كانت
+        // تُحسب صفرًا بصمت فيُسكت وسم `dueDateSuspect` — هنا تُرفض برسالة توجه
+        // لنافذة الإجراءات بدل إصلاح صامت.
+        var trimmedDuration = action.ReminderDuration?.Trim();
+        if (!string.IsNullOrWhiteSpace(trimmedDuration) && !ActionReminderCalculator.ValidDurations.Contains(trimmedDuration))
+            throw new ArgumentException("مدة التذكير غير معروفة — عدّل الإجراء من نافذة الإجراءات");
+
+        var oldActionDate = action.ActionDate;
+        var newActionDate = due.AddDays(-ActionReminderCalculator.DurationDays(trimmedDuration))
+            .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        action.ActionDate = newActionDate;
+
+        await _tx.RunAsync(async token =>
+        {
+            _actions.Update(action);
+            await _uow.SaveChangesAsync(token);
+            await _audit.LogAsync(actorName, "action", documentId, doc.DocumentType,
+                AuditWithActor($"نقل التذكير إلى {due:yyyy-MM-dd} (تاريخ الإجراء: {oldActionDate ?? "—"} ← {newActionDate})", doc), token);
+        }, ct);
+        return new ExecutionActionDto(action.Id, action.Type, action.Text, action.ActionDate,
+            action.ReminderDuration, action.ReminderColor, actorName, action.CreatedAt);
     }
 
     /// <summary>

@@ -1,3 +1,4 @@
+using System.Globalization;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
@@ -868,6 +869,54 @@ public sealed class DocumentAppealService : IDocumentAppealService
         }, ct);
 
         return true;
+    }
+
+    /// <summary>
+    /// نقل تذكير إجراء استئناف إلى يوم استحقاق جديد من نافذة اليوم — مرآة
+    /// `DocumentService.RescheduleReminderAsync` للملفات: المدخل يوم الاستحقاق
+    /// نفسه، ويُعاد حساب `ActionDate` خلفيًا مع بقاء المدة وبقية الحقول.
+    /// الغياب يُردّ `ArgumentException` (عرف مسار الاستئناف) لا `KeyNotFoundException`.
+    /// </summary>
+    public async Task<AppealActionDto> RescheduleAppealReminderAsync(
+        int appealId,
+        int actionId,
+        string? newDueDate,
+        int userId,
+        string? actorName,
+        CancellationToken ct = default)
+    {
+        var appeal = await _appeals.GetByIdWithDetailsAsync(appealId, ct)
+            ?? throw new ArgumentException("الاستئناف غير موجود");
+        EnsureAssignedFollower(appeal, userId);
+        var action = appeal.Actions.FirstOrDefault(a => a.Id == actionId)
+            ?? throw new ArgumentException("الإجراء غير موجود");
+
+        if (string.IsNullOrWhiteSpace(newDueDate))
+            throw new ArgumentException("اليوم الجديد مطلوب — استخدم مثال: 1/8/2026");
+
+        var due = DocumentValidator.ParseDateTime(newDueDate.Trim(), "اليوم الجديد")
+            ?? throw new ArgumentException("اليوم الجديد مطلوب — استخدم مثال: 1/8/2026");
+
+        if (string.IsNullOrWhiteSpace(action.ReminderDuration) && string.IsNullOrWhiteSpace(action.ReminderColor))
+            throw new ArgumentException("لا يوجد تذكير لإعادة جدولته");
+
+        var trimmedDuration = action.ReminderDuration?.Trim();
+        if (!string.IsNullOrWhiteSpace(trimmedDuration) && !ActionReminderCalculator.ValidDurations.Contains(trimmedDuration))
+            throw new ArgumentException("مدة التذكير غير معروفة — عدّل الإجراء من نافذة الإجراءات");
+
+        var oldActionDate = action.ActionDate;
+        action.ActionDate = due.AddDays(-ActionReminderCalculator.DurationDays(trimmedDuration))
+            .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+        await _tx.RunAsync(async token =>
+        {
+            await _uow.SaveChangesAsync(token);
+            await _audit.LogAsync(actorName, "reschedule_appeal_reminder",
+                appeal.DocumentId, appeal.Document.DocumentType,
+                $"نقل تذكير إجراء على الاستئناف (رقم {appeal.Id}) إلى {due:yyyy-MM-dd} (تاريخ الإجراء: {oldActionDate ?? "—"} ← {action.ActionDate})", token);
+        }, ct);
+
+        return ToActionDto(action);
     }
 
     public async Task<List<AppealReminderDto>> GetRemindersAsync(int userId, CancellationToken ct = default)

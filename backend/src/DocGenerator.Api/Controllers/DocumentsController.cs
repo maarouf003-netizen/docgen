@@ -762,6 +762,29 @@ public class DocumentsController : ControllerBase
         }
     }
 
+    /// <summary>نقل تذكير إجراء إلى يوم استحقاق جديد من نافذة اليوم — المحامي المالك (المدخل `dueDate` نفسه).</summary>
+    [HttpPost("{id:int}/actions/{actionId:int}/reschedule")]
+    public async Task<IActionResult> RescheduleReminder(int id, int actionId, [FromBody] RescheduleActionReminderRequest? request, CancellationToken ct)
+    {
+        // النقل للمحامي فقط
+        if (!CanManageActions)
+            return Forbid();
+
+        var doc = await _documents.GetAsync(id, ct);
+        if (doc is null) return NotFound();
+        if (!await CanAccessAsync(doc)) return Forbid();
+
+        try
+        {
+            var action = await _documents.RescheduleReminderAsync(id, actionId, request?.NewDueDate, ActorName, ct);
+            return Ok(action);
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+    }
+
     [HttpDelete("{id:int}/actions/{actionId:int}")]
     public async Task<IActionResult> DeleteAction(int id, int actionId, CancellationToken ct)
     {

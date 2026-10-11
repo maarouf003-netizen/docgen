@@ -94,6 +94,12 @@ public record UpdateAppealActionRequest(
     string? ReminderDuration,
     string? ReminderColor);
 
+/// <summary>
+/// نقل تذكير إجراء استئناف إلى يوم استحقاق جديد — نظير `RescheduleActionReminderRequest`
+/// للملفات (عرف الفصل بين `DocumentDtos` و`AppealDtos`). المدخل يوم الاستحقاق نفسه.
+/// </summary>
+public record RescheduleAppealReminderRequest(string? NewDueDate);
+
 public record AppealActionDto(
     int Id,
     string Type,

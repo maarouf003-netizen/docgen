@@ -72,7 +72,7 @@ public sealed class PersonalReminderService : IPersonalReminderService
 
         var activeCount = await _reminders.CountActiveAsync(userId, ct);
         if (activeCount >= PersonalReminderCatalog.MaxActivePerUser)
-            throw new ArgumentException($"تجاوزت الحد الأقصى للتذكيرات النشطة ({PersonalReminderCatalog.MaxActivePerUser}) — أرشف القديم منها");
+            throw new ArgumentException($"تجاوزت الحد الأقصى للتذكيرات النشطة ({PersonalReminderCatalog.MaxActivePerUser}) — احذف القديم منها");
 
         var reminder = new PersonalReminder
         {
@@ -182,7 +182,7 @@ public sealed class PersonalReminderService : IPersonalReminderService
 
         reminder.CompletedOccurrenceKeys = string.Join(',', keys.OrderBy(k => k, StringComparer.Ordinal));
         if (reminder.CompletedOccurrenceKeys.Length > PersonalReminderCatalog.CompletedKeysMaxLength)
-            throw new ArgumentException("تجاوز سجل التكرارات المنجزة حده — أرشف التذكير وأنشئ غيره");
+            throw new ArgumentException("تجاوز سجل التكرارات المنجزة حده — حدّد تاريخ انتهاء للتكرار أو احذف التذكير");
 
         await _tx.RunAsync(async token =>
         {
