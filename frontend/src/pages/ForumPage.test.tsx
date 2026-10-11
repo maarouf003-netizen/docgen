@@ -161,6 +161,34 @@ describe('ForumPage', () => {
     expect(await screen.findByText('نُسخت الرسالة')).toBeInTheDocument();
   });
 
+  it('يعرض تنبيه فشل عند تعذر النسخ', async () => {
+    const user = userEvent.setup();
+    const writeText = mockClipboard();
+    writeText.mockRejectedValueOnce(new Error('denied'));
+    mockStream();
+    renderPage();
+    await screen.findByText('مرحبا بالمنتدى');
+
+    await user.click(screen.getByRole('button', { name: /إجراءات الرسالة/ }));
+    await user.click(screen.getByRole('menuitem', { name: 'نسخ' }));
+
+    expect(await screen.findByText('تعذر النسخ — انسخ النص يدويًا')).toBeInTheDocument();
+  });
+
+  it('يعرض علامتي القراءة ✓✓ لرسائلي المقروءة فقط', async () => {
+    mockStream([
+      message({ id: 1, body: 'مقروءة من اثنين', authorId: 3, readCount: 2 }),
+      message({ id: 2, body: 'بلا قرّاء بعد', authorId: 3, readCount: 0 }),
+    ]);
+    renderPage();
+    await screen.findByText('مقروءة من اثنين');
+    await screen.findByText('بلا قرّاء بعد');
+
+    const seen = screen.getByLabelText('شوهدت من 2');
+    expect(seen).toHaveTextContent('✓✓');
+    expect(screen.queryByLabelText('شوهدت من 0')).not.toBeInTheDocument();
+  });
+
   it('يفتح نافذة «شوهدت بواسطة» من القائمة', async () => {
     const user = userEvent.setup();
     mockStream([message({ readCount: 1 })]);
@@ -211,6 +239,23 @@ describe('ForumPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'إلغاء التعديل' }));
     expect(screen.getByLabelText(/نص الرسالة/)).toHaveValue('مسودة جارية');
+  });
+
+  it('يعرض شرائح الذِكر ويبرز ذِكر القارئ نفسه بلون مختلف', async () => {
+    mockStream([
+      message({ id: 1, body: 'راجع يا @[9:القارئ الثاني] الملف' }),
+      message({
+        id: 2,
+        body: 'وأنت يا @[3:المحامي الأول] تابع',
+        authorId: 9,
+        authorName: 'القارئ الثاني',
+      }),
+    ]);
+    renderPage();
+
+    expect(await screen.findByLabelText('ذِكر: القارئ الثاني')).toHaveTextContent('@القارئ الثاني');
+    const mine = await screen.findByLabelText('ذُكرت: المحامي الأول');
+    expect(mine.className).toContain('bg-emerald-700');
   });
 
   it('يعرض شريط المثبّتة عند وجودها', async () => {

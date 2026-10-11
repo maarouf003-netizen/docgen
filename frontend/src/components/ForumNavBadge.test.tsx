@@ -120,4 +120,14 @@ describe('شارة المنتدى في التنقل', () => {
     expect(screen.queryByRole('link', { name: /المنتدى/ })).not.toBeInTheDocument();
     expect(apiGet.mock.calls.filter((c) => c[0] === '/forum/unread-count')).toHaveLength(0);
   });
+
+  it('المنتدى رابط مباشر لا زر «قيد البناء» (بلا comingSoon)', async () => {
+    useAuthMock.mockReturnValue(authFor('lawyer'));
+    stubMatchMedia(false);
+    render(<Layout />);
+
+    const sidebar = screen.getByRole('navigation', { name: 'القائمة الرئيسية' });
+    expect(within(sidebar).getByRole('link', { name: /المنتدى/ })).toHaveAttribute('href', '/forum');
+    expect(within(sidebar).queryByRole('button', { name: /المنتدى/ })).not.toBeInTheDocument();
+  });
 });

@@ -1,4 +1,5 @@
 import type { ForumMessageDto } from '../../types';
+import { renderMentionText } from './mentionText';
 
 /**
  * شريط الرسالة المثبّتة أعلى التيار: دبوس + خلفية مميزة + النقر يقفز للرسالة.
@@ -9,11 +10,13 @@ export default function PinnedBanner({
   onJump,
   onUnpin,
   canUnpin,
+  currentUserId,
 }: {
   pinned: ForumMessageDto;
   onJump: () => void;
   onUnpin: () => void;
   canUnpin: boolean;
+  currentUserId?: number | null;
 }) {
   return (
     <div className="flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2">
@@ -28,7 +31,7 @@ export default function PinnedBanner({
           مثبّتة — {pinned.authorName}
         </span>
         <span className="block min-w-0 text-xs text-amber-900 break-words line-clamp-1">
-          {pinned.body}
+          {renderMentionText(pinned.body, currentUserId)}
         </span>
       </button>
       {canUnpin && (

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatRoleScope } from '../../auth/roleLabels';
 import { formatDateTime, formatRelativeTime } from '../../utils/dates';
+import { renderMentionText } from './mentionText';
 import type { ForumMessageDto } from '../../types';
 
 /** ألوان الأفاتار الدوّارة حسب الكاتب — ثابتة لنفس المعرف. */
@@ -38,6 +39,8 @@ interface MessageBubbleProps extends MessageBubbleActions {
   mine: boolean;
   /** المشرف (تثبيت/حذف أي رسالة). */
   isAdmin: boolean;
+  /** معرف القارئ الحالي — لإبراز ذِكره بلون مختلف (غائب = بلا إبراز). */
+  currentUserId?: number | null;
   /** يُظلَّل لحظيًا عند القفز إليه من اقتباس (يحترم تقليل الحركة). */
   highlighted: boolean;
 }
@@ -52,6 +55,7 @@ export default function MessageBubble({
   message,
   mine,
   isAdmin,
+  currentUserId,
   highlighted,
   onCopy,
   onQuote,
@@ -157,7 +161,7 @@ export default function MessageBubble({
                 {message.quotedAuthorName ?? ''}
               </span>
               <span className="block min-w-0 text-xs text-gray-600 break-words line-clamp-2">
-                {message.quotedExcerpt ?? ''}
+                {renderMentionText(message.quotedExcerpt ?? '', currentUserId)}
               </span>
             </button>
           )}
@@ -167,7 +171,7 @@ export default function MessageBubble({
               expanded ? '' : 'line-clamp-4'
             }`}
           >
-            {message.body}
+            {renderMentionText(message.body, currentUserId)}
           </p>
           {!expanded && overflows && (
             <button

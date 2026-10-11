@@ -192,6 +192,20 @@ public class ForumController : ControllerBase
         }
     }
 
+    /// <summary>مرشحو الذِكر بالاسم — نشطون فقط بلا الذات، بأجزاء الهوية.</summary>
+    [HttpGet("users/lookup")]
+    public async Task<IActionResult> SearchUsers([FromQuery] string? q, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _forum.SearchUsersAsync(q, UserId, ct));
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
     /// <summary>العدّاد — رسائل بلا إيصال لي (شارة أيقونة المنتدى).</summary>
     [HttpGet("unread-count")]
     public async Task<IActionResult> UnreadCount(CancellationToken ct)
