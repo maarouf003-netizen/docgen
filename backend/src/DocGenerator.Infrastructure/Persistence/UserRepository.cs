@@ -139,6 +139,27 @@ public class UserRepository : Repository<User>, IUserRepository
             .ToListAsync(ct);
     }
 
+    public async Task<List<User>> SearchForumMentionTargetsAsync(
+        int excludeUserId, string? q, int limit, CancellationToken ct = default)
+    {
+        IQueryable<User> query = Db.Users
+            .AsNoTracking()
+            .Include(u => u.Branch)
+            .Include(u => u.Section)
+            .Where(u => u.IsActive && u.Id != excludeUserId && u.Role != UserRole.EntityManager);
+
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var term = q.Trim();
+            query = query.Where(u => u.FullName.Contains(term) || u.Username.Contains(term));
+        }
+
+        return await query
+            .OrderBy(u => u.FullName)
+            .Take(Math.Clamp(limit, 1, 100))
+            .ToListAsync(ct);
+    }
+
     public async Task<List<User>> SearchCorrespondenceTargetsAsync(
         int excludeUserId, string? q, int limit, CancellationToken ct = default)
     {

@@ -48,6 +48,7 @@ public class AuthServiceBranchGateTests
         public Task<List<User>> ListEntityManagersByGroupIdsAsync(IReadOnlyCollection<int> groupIds, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<List<User>> ListEntityManagersByEntryIdAsync(int entryId, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<List<User>> SearchCorrespondenceTargetsAsync(int excludeUserId, string? q, int limit, CancellationToken ct = default) => throw new NotImplementedException();
+        public Task<List<User>> SearchForumMentionTargetsAsync(int excludeUserId, string? q, int limit, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<List<User>> SearchDocumentLawyerTargetsAsync(int documentId, int? ownerUserId, int excludeUserId, string? q, int limit, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<List<User>> SearchScopeDelegateTargetsAsync(IReadOnlyCollection<int> entryIds, IReadOnlyCollection<int> groupIds, int excludeUserId, string? q, int limit, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<bool> IsDocumentLawyerTargetAsync(int documentId, int? ownerUserId, int userId, CancellationToken ct = default) => throw new NotImplementedException();

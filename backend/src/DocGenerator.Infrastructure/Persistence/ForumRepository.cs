@@ -18,7 +18,9 @@ public class ForumRepository : Repository<ForumMessage>, IForumRepository
         var query = Ordered;
         if (!string.IsNullOrWhiteSpace(q))
             query = query.Where(m => m.Body.Contains(q.Trim()));
-        else if (before.HasValue)
+        // المفتاح مستقل عن البحث: الواجهة ترسلهما معًا في «تحميل المزيد»
+        // أثناء البحث، وتجاهل `before` هنا كان يعيد أحدث المطابقات تكرارًا.
+        if (before.HasValue)
             query = query.Where(m => m.Id < before.Value);
         else if (after.HasValue)
             query = query.Where(m => m.Id > after.Value);

@@ -418,6 +418,7 @@ export default function ForumPage() {
           onJump={() => void jumpToMessage(pinned.id)}
           onUnpin={() => void handleTogglePin(pinned)}
           canUnpin={isAdmin}
+          currentUserId={userId}
         />
       )}
 
@@ -485,6 +486,7 @@ export default function ForumPage() {
                 message={message}
                 mine={userId === message.authorId}
                 isAdmin={isAdmin}
+                currentUserId={userId}
                 highlighted={highlightId === message.id}
                 onCopy={(m) => void handleCopy(m)}
                 onQuote={setQuote}

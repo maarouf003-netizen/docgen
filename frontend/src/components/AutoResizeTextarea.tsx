@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type FocusEvent, type KeyboardEvent, type MouseEvent } from 'react';
 
 interface AutoResizeTextareaProps {
   value: string;
@@ -8,6 +8,14 @@ interface AutoResizeTextareaProps {
   minRows?: number;
   maxHeight?: number;
   className?: string;
+  /** تمرير أحداث لوحة المفاتيح/النقر (اختياري — لمنتقي الذِكر وتتبع المؤشر). */
+  onKeyDown?: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
+  onKeyUp?: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
+  onClick?: (e: MouseEvent<HTMLTextAreaElement>) => void;
+  onBlur?: (e: FocusEvent<HTMLTextAreaElement>) => void;
+  /** خاصية `aria` للمنتقي (موسّع/المتحكم) — غائبة بلا منتقي. */
+  ariaExpanded?: boolean;
+  ariaControls?: string;
 }
 
 export default function AutoResizeTextarea({
@@ -18,6 +26,12 @@ export default function AutoResizeTextarea({
   minRows = 2,
   maxHeight = 240,
   className,
+  onKeyDown,
+  onKeyUp,
+  onClick,
+  onBlur,
+  ariaExpanded,
+  ariaControls,
 }: AutoResizeTextareaProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
@@ -37,6 +51,12 @@ export default function AutoResizeTextarea({
       placeholder={placeholder}
       rows={minRows}
       className={className}
+      onKeyDown={onKeyDown}
+      onKeyUp={onKeyUp}
+      onClick={onClick}
+      onBlur={onBlur}
+      aria-expanded={ariaExpanded}
+      aria-controls={ariaControls}
     />
   );
 }

@@ -36,3 +36,9 @@ public record ForumMessagesPageDto(List<ForumMessageDto> Items, bool HasOlder);
 
 /// <summary>صف نافذة «شوهدت بواسطة»: هوية القارئ ولحظة اطلاعه — للكاتب فقط.</summary>
 public record ForumReaderDto(int UserId, string UserName, DateTime ReadAtUtc);
+
+/// <summary>
+/// مرشح ذِكر: أجزاء الهوية نفسها المعتمدة في الرسائل (يُعرضها العميل بالصيغة
+/// نفسها عبر `formatRoleScope`) — للنشطين فقط، بلا المستخدِم نفسه.
+/// </summary>
+public record ForumUserLookupDto(int Id, string Name, string Role, string Location, string? Section);

@@ -260,6 +260,18 @@ public class ForumServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task List_Search_WithBefore_ReturnsOlderMatchesOnly()
+    {
+        var first = await PostAsync(_lawyer1, "تقرير الربع الأول");
+        var second = await PostAsync(_lawyer1, "تقرير الربع الثاني");
+        var third = await PostAsync(_lawyer1, "تقرير الربع الثالث");
+
+        var page = await _service.ListAsync(_lawyer2.Id, 30, third.Id, null, "تقرير");
+
+        Assert.Equal(new[] { first.Id, second.Id }, page.Items.Select(m => m.Id));
+    }
+
+    [Fact]
     public async Task List_IsCrossBranch_GlobalStream()
     {
         await PostAsync(_lawyer2, "من دمشق");
@@ -387,6 +399,88 @@ public class ForumServiceTests : IDisposable
     public async Task Pin_MissingMessage_ThrowsNotFound()
     {
         await Assert.ThrowsAsync<KeyNotFoundException>(() => _service.TogglePinAsync(9999, _admin.Id));
+    }
+
+    [Fact]
+    public async Task Pin_ConcurrentDoublePin_MapsUniqueViolationToConflict()
+    {
+        var posted = await PostAsync(_lawyer1, "سباق تثبيت");
+        var racing = new ForumService(
+            new ForumRepository(_db),
+            new Repository<ForumMessageRead>(_db),
+            new UserRepository(_db),
+            new FailOncePinConflictUnitOfWork(new UnitOfWork(_db)),
+            new TransactionRunner(_db),
+            new DbExceptionClassifier(),
+            _clock);
+
+        var ex = await Assert.ThrowsAsync<DocumentConflictException>(
+            () => racing.TogglePinAsync(posted.Id, _admin.Id));
+
+        Assert.Contains("تزامن تثبيت", ex.Message);
+        // التراجع يبطل المعاملة لكن الكيان المتعقَّب في السياق المشترك يبقى
+        // موسومًا في الذاكرة — نُفرغ المتعقِّب (عرف اختبارات الاحتفاظ) قبل
+        // الجزم بأنه لم يُثبَّت شيء في القاعدة فعلًا.
+        _db.ChangeTracker.Clear();
+        Assert.False((await _service.GetByIdAsync(posted.Id, _admin.Id))!.IsPinned);
+    }
+
+    /// <summary>
+    /// وحدة عمل تُفشل أول حفظ باستثناء تفرّد حقيقي من المزود (عرف
+    /// CorrespondenceServiceTests): تُنشئ قاعدة لحظية وتُدخل رسالتين مثبّتتين
+    /// فيخرق الفهرس الفريد المفلتر نفسه الذي يحرس التثبيت، فيمر الاستثناء عبر
+    /// المصنّف الحقيقي في الخدمة — بلا محاكاة.
+    /// </summary>
+    private sealed class FailOncePinConflictUnitOfWork : IUnitOfWork
+    {
+        private readonly IUnitOfWork _inner;
+        private Exception? _failure;
+
+        public FailOncePinConflictUnitOfWork(IUnitOfWork inner) => _inner = inner;
+
+        public async Task<int> SaveChangesAsync(CancellationToken ct = default)
+        {
+            if (_failure is null)
+                throw _failure = BuildRealPinUniqueViolation();
+            return await _inner.SaveChangesAsync(ct);
+        }
+
+        private static DbUpdateException BuildRealPinUniqueViolation()
+        {
+            using var db = TestDb.Create();
+            var author = new User
+            {
+                Username = "pin_racer",
+                FullName = "متسابق التثبيت",
+                Role = UserRole.Admin,
+                PasswordHash = "x",
+            };
+            db.Users.Add(author);
+            db.SaveChanges();
+            db.ForumMessages.Add(Pinned(author));
+            db.SaveChanges();
+            db.ForumMessages.Add(Pinned(author));
+            try
+            {
+                db.SaveChanges();
+            }
+            catch (DbUpdateException ex)
+            {
+                return ex;
+            }
+            throw new InvalidOperationException("تعذّر توليد تعارض تثبيت حقيقي من المزود");
+
+            static ForumMessage Pinned(User a) => new()
+            {
+                Body = "مثبّتة",
+                AuthorId = a.Id,
+                AuthorName = a.FullName,
+                AuthorRole = "admin",
+                AuthorLocation = "كل الفروع",
+                IsPinned = true,
+                CreatedAt = DateTime.UtcNow,
+            };
+        }
     }
 
     // ---------- القراءة والعدّاد ----------
@@ -554,6 +648,124 @@ public class ForumServiceTests : IDisposable
         var others = page.Items.Single(m => m.AuthorId == _lawyer2.Id);
         Assert.Equal(1, mine.ReadCount);
         Assert.Equal(0, others.ReadCount);
+    }
+
+    // ---------- الذِكر (مرحلة 2) ----------
+
+    [Fact]
+    public async Task Post_WithMention_RewritesCanonicalName()
+    {
+        var dto = await PostAsync(_lawyer1, $"راجع يا @[{_lawyer2.Id}:اسم مزيّف] الملف");
+
+        Assert.Equal($"راجع يا @[{_lawyer2.Id}:محامي دمشق] الملف", dto.Body);
+    }
+
+    [Fact]
+    public async Task Post_WithMissingMentionedUser_ThrowsArgument()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => PostAsync(_lawyer1, "راجع يا @[987654:شبح] الملف"));
+    }
+
+    [Fact]
+    public async Task Post_WithInactiveMentionedUser_ThrowsArgument()
+    {
+        _lawyer2.IsActive = false;
+        await _db.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => PostAsync(_lawyer1, $"راجع يا @[{_lawyer2.Id}:محامي دمشق]"));
+    }
+
+    [Fact]
+    public async Task Post_MalformedMention_StaysLiteralText()
+    {
+        var dto = await PostAsync(_lawyer1, "سعر @[abc] ورمز @[5 غير مغلق");
+
+        Assert.Equal("سعر @[abc] ورمز @[5 غير مغلق", dto.Body);
+    }
+
+    [Fact]
+    public async Task Post_MoreThanTenMentions_ThrowsArgument()
+    {
+        var extra = new List<User>();
+        for (var i = 0; i < 4; i++)
+        {
+            var u = NewUser($"frm_extra{i}", $"إضافي {i}", UserRole.Lawyer, _branchId);
+            extra.Add(u);
+        }
+        _db.Users.AddRange(extra);
+        await _db.SaveChangesAsync();
+
+        var ten = new[] { _admin, _manager, _head, _subHead, _lawyer1, _lawyer2, _brokenSubHead }
+            .Concat(extra.Take(3)).ToList();
+        Assert.Equal(10, ten.Count);
+        var eleven = ten.Concat(extra.Skip(3)).ToList();
+        Assert.Equal(11, eleven.Count);
+
+        // عشرة بالضبط تمر.
+        var ok = await PostAsync(_lawyer1, string.Join(" ", ten.Select(u => $"@[{u.Id}:س]")));
+        Assert.Contains($"@[{_lawyer2.Id}:محامي دمشق]", ok.Body);
+
+        // الحادي عشر يرفض (كلهم صالحون — الرفض للسقف حصرًا).
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => PostAsync(_lawyer1, string.Join(" ", eleven.Select(u => $"@[{u.Id}:س]"))));
+    }
+
+    [Fact]
+    public async Task Post_MentioningDelegate_ThrowsArgument()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => PostAsync(_lawyer1, $"راجع يا @[{_delegate.Id}:مندوب الجهة]"));
+    }
+
+    [Fact]
+    public async Task Update_RevalidatesMentions()
+    {
+        var posted = await PostAsync(_lawyer1, "بلا ذِكر");
+        _lawyer2.IsActive = false;
+        await _db.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.UpdateAsync(posted.Id, new UpdateForumMessageRequest($"أضيف @[{_lawyer2.Id}:س]"), _lawyer1.Id));
+    }
+
+    [Fact]
+    public async Task SearchUsers_ReturnsActiveOnly_ExcludingSelf_WithIdentityParts()
+    {
+        _delegate.IsActive = false;
+        await _db.SaveChangesAsync();
+
+        var results = await _service.SearchUsersAsync("محامي", _lawyer1.Id);
+
+        Assert.Contains(results, u => u.Id == _lawyer2.Id && u.Role == "lawyer" && u.Location == "دمشق" && u.Section == null);
+        Assert.DoesNotContain(results, u => u.Id == _lawyer1.Id);
+        Assert.DoesNotContain(results, u => u.Id == _delegate.Id);
+    }
+
+    [Fact]
+    public async Task SearchUsers_ExcludesDelegates_EvenWhenActive()
+    {
+        var results = await _service.SearchUsersAsync(null, _lawyer1.Id);
+
+        Assert.NotEmpty(results);
+        Assert.DoesNotContain(results, u => u.Role == "entitymanager");
+        Assert.DoesNotContain(results, u => u.Id == _delegate.Id);
+    }
+
+    [Fact]
+    public async Task SearchUsers_SubHeadCarriesSection()
+    {
+        var results = await _service.SearchUsersAsync("الشعبة", _lawyer1.Id);
+
+        var sub = Assert.Single(results, u => u.Id == _subHead.Id);
+        Assert.Equal("subhead", sub.Role);
+        Assert.Equal("جبلة", sub.Section);
+        Assert.Equal("اللاذقية", sub.Location);
+    }
+
+    [Fact]
+    public async Task SearchUsers_DelegateCaller_ThrowsUnauthorized()
+    {
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.SearchUsersAsync(null, _delegate.Id));
     }
 
     // ---------- الاحتفاظ ----------

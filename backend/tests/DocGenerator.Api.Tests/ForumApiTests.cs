@@ -92,6 +92,51 @@ public class ForumApiTests
     }
 
     [Fact]
+    public async Task UsersLookup_ReturnsIdentityParts_DelegateForbidden_AnonymousUnauthorized()
+    {
+        var lawyer = await NewUserAsync("flaw", UserRole.Lawyer);
+        var lawyerClient = ClientFor(lawyer);
+
+        var ok = await lawyerClient.GetAsync("/api/forum/users/lookup?q=" + Uri.EscapeDataString("flaw"));
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        using var list = await ReadJsonAsync(ok);
+        Assert.True(list.RootElement.GetArrayLength() >= 1);
+        var first = list.RootElement[0];
+        foreach (var prop in new[] { "id", "name", "role", "location" })
+            Assert.True(first.TryGetProperty(prop, out _));
+
+        var gate = await NewUserAsync("fdel", UserRole.EntityManager, null);
+        var forbidden = await ClientFor(gate).GetAsync("/api/forum/users/lookup");
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+
+        var anonymous = await _factory.CreateClient().GetAsync("/api/forum/users/lookup");
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostMentionEndToEnd_CanonicalizesAndValidates()
+    {
+        var author = await NewUserAsync("flaw", UserRole.Lawyer);
+        var mentioned = await NewUserAsync("flaw", UserRole.Lawyer);
+        var authorClient = ClientFor(author);
+
+        using var users = await ReadJsonAsync(await authorClient.GetAsync("/api/forum/users/lookup"));
+        Assert.Contains(users.RootElement.EnumerateArray(),
+            u => u.GetProperty("id").GetInt32() == mentioned.Id);
+
+        var post = await authorClient.PostAsJsonAsync("/api/forum/messages",
+            new { body = $"مرحبا @[{mentioned.Id}:اسم مزيّف]" });
+        Assert.Equal(HttpStatusCode.Created, post.StatusCode);
+        using var created = await ReadJsonAsync(post);
+        Assert.Contains($"@[{mentioned.Id}:{mentioned.FullName}]",
+            created.RootElement.GetProperty("body").GetString());
+
+        var bad = await authorClient.PostAsJsonAsync("/api/forum/messages",
+            new { body = "مرحبا @[987654321:شبح]" });
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+    }
+
+    [Fact]
     public async Task Readers_OwnerSees_OthersForbidden()
     {
         var author = await NewUserAsync("flaw", UserRole.Lawyer);

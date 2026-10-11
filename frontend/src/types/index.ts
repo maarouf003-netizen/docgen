@@ -1449,6 +1449,24 @@ export interface ForumReaderDto {
   readAtUtc: string;
 }
 
+/** مرشح ذِكر: أجزاء الهوية نفسها (يُعرض بالصيغة نفسها عبر `formatRoleScope`). */
+export interface ForumUserLookupDto {
+  id: number;
+  name: string;
+  role: string;
+  location: string;
+  section: string | null;
+}
+
+/** مرشح ذِكر: أجزاء الهوية نفسها (يُعرض بالصيغة نفسها عبر `formatRoleScope`). */
+export interface ForumUserLookupDto {
+  id: number;
+  name: string;
+  role: string;
+  location: string;
+  section: string | null;
+}
+
 /* ── كتب المطالعة ─────────────────────────────────────────────────────── */
 
 export type ReviewLetterMessageKind = 'letter' | 'addendum' | 'reply';

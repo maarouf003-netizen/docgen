@@ -58,6 +58,14 @@ public interface IUserRepository : IRepository<User>
     Task<List<User>> ListEntityManagersByEntryIdAsync(int entryId, CancellationToken ct = default);
 
     /// <summary>
+    /// مرشحو ذِكر المنتدى بالاسم: الحسابات النشطة بالأدوار الداخلية حصرًا (بلا
+    /// مندوب الجهة — مستبعد من المنتدى كله) وبلا المستثنى، مع الفرع والشعبة
+    /// لعرض الهوية بالصيغة نفسها — يُصفَّى بالاسم الكامل أو المستخدم ويُسقَف
+    /// بالحد الممرر.
+    /// </summary>
+    Task<List<User>> SearchForumMentionTargetsAsync(int excludeUserId, string? q, int limit, CancellationToken ct = default);
+
+    /// <summary>
     /// مرشحو استلام مراسلة: حسابات نشطة بدور محامٍ/رئيس قسم/مندوب جهة، بلا المستثنى،
     /// مع الفرع ونطاق البوابة لعرض المحافظة — يُصفَّى بالاسم ويُسقَف بالحد الممرر.
     /// </summary>
