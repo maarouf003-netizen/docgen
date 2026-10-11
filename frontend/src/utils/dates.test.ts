@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatDate, formatDateTime, todayLocalKey } from './dates';
+import { formatDate, formatDateTime, formatRelativeTime, todayLocalKey } from './dates';
 
 describe('dates', () => {
   describe('formatDate', () => {
@@ -42,6 +42,31 @@ describe('dates', () => {
     it('يبني yyyy-MM-dd بالتوقيت المحلي لا UTC', () => {
       expect(todayLocalKey(new Date(2026, 5, 15, 12, 0, 0))).toBe('2026-06-15');
       expect(todayLocalKey(new Date(2026, 0, 5, 1, 2, 3))).toBe('2026-01-05');
+    });
+  });
+
+  describe('formatRelativeTime', () => {
+    const now = new Date(2026, 9, 10, 12, 0, 0).getTime();
+    const ago = (ms: number) => new Date(now - ms).toISOString();
+
+    it('يعيد فارغًا للغائب والنص كما هو لغير الصالح', () => {
+      expect(formatRelativeTime(undefined, now)).toBe('');
+      expect(formatRelativeTime('ليس تاريخًا', now)).toBe('ليس تاريخًا');
+    });
+
+    it('يدرج الدقائق والساعات والأيام', () => {
+      expect(formatRelativeTime(ago(10_000), now)).toBe('الآن');
+      expect(formatRelativeTime(ago(60_000), now)).toBe('منذ دقيقة');
+      expect(formatRelativeTime(ago(2 * 60_000), now)).toBe('منذ دقيقتين');
+      expect(formatRelativeTime(ago(15 * 60_000), now)).toBe('منذ 15 دقائق');
+      expect(formatRelativeTime(ago(3_600_000), now)).toBe('منذ ساعة');
+      expect(formatRelativeTime(ago(5 * 3_600_000), now)).toBe('منذ 5 ساعات');
+      expect(formatRelativeTime(ago(24 * 3_600_000), now)).toBe('أمس');
+      expect(formatRelativeTime(ago(3 * 24 * 3_600_000), now)).toBe('منذ 3 أيام');
+    });
+
+    it('يسقط للتاريخ الكامل فوق الأسبوع', () => {
+      expect(formatRelativeTime(ago(10 * 24 * 3_600_000), now)).toBe(formatDate(ago(10 * 24 * 3_600_000)));
     });
   });
 });

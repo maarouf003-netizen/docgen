@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import { useBadgeCount } from '../hooks/useBadgeCount';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import NetworkStatusBanner from './NetworkStatusBanner';
 import CurrentYearBanner from './CurrentYearBanner';
@@ -121,6 +122,16 @@ export default function Layout() {
   // مندوب الجهة: الإحصائيات + الملفات التنفيذية + المراسلات دون باقي البنود (بوابة قرائية).
   const isEntityManager = user?.role === 'entitymanager';
 
+  // شارة المنتدى: عدّاد غير المقروء للأدوار الداخلية الخمسة — استطلاع كل دقيقة
+  // يجمّد بخفاء التبويب (يُستأنف فور الظهور) بلا كسر لعدادات الدعوات القائمة.
+  const forumUnread = useBadgeCount('/forum/unread-count', {
+    enabled: user != null && !isEntityManager,
+    intervalMs: 60_000,
+    shape: 'count',
+    pauseWhenHidden: true,
+  });
+  const forumBadge = forumUnread > 0 ? forumUnread : undefined;
+
   const navItems: NavItem[] = [];
 
   if (isEntityManager) {
@@ -138,7 +149,7 @@ export default function Layout() {
     navItems.push(
       { to: '/', label: 'لوحة التحكم', end: true, icon: ICONS.home },
       { to: '/documents', label: 'الملفات التنفيذية', icon: ICONS.documents },
-      { to: '/forum', label: 'المنتدى', icon: ICONS.forum, comingSoon: true },
+      { to: '/forum', label: 'المنتدى', icon: ICONS.forum, badge: forumBadge },
       { to: '/library', label: 'المكتبة', icon: ICONS.library, comingSoon: true },
     );
   } else {
@@ -153,6 +164,11 @@ export default function Layout() {
     navItems.push({
       to: '/correspondence',
       label: 'المراسلات',
+    });
+    navItems.push({
+      to: '/forum',
+      label: 'المنتدى',
+      badge: forumBadge,
     });
     if (canManageBranchLawyers) navItems.push({ to: '/branch-lawyers', label: 'محامو الفرع' });
     if (hasFullAccess) navItems.push({ to: '/entities/review-management', label: 'مراجعة سجل الجهات العامة' });

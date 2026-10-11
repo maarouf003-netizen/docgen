@@ -10,6 +10,11 @@ export interface UseBadgeCountOptions {
   eventName?: string;
   /** شكل الاستجابة: `{ count }` أو قائمة يُحتسب طولها (بلا سقف ترقيم في نقطتي الرئيس). */
   shape: 'count' | 'list';
+  /**
+   * إيقاف الاستطلاع بخفاء التبويب (يُستأنف فور الظهور) — افتراضيًا مغلق عمدًا
+   * لعزل سلوك الدعوات القائمة؛ فعّله للعدادات الجديدة فقط.
+   */
+  pauseWhenHidden?: boolean;
 }
 
 /**
@@ -17,7 +22,7 @@ export interface UseBadgeCountOptions {
  * اختياري، مع الاحتفاظ بآخر قيمة معروفة عند فشل التحديث (لا كسر للوحة أبدًا).
  */
 export function useBadgeCount(endpoint: string, options: UseBadgeCountOptions): number {
-  const { enabled, intervalMs = 60_000, eventName, shape } = options;
+  const { enabled, intervalMs = 60_000, eventName, shape, pauseWhenHidden = false } = options;
   const [count, setCount] = useState(0);
 
   useEffect(() => {
@@ -30,7 +35,13 @@ export function useBadgeCount(endpoint: string, options: UseBadgeCountOptions): 
     // الاعتماديات البدائية، فالتصفير هنا آمن ولا يومض مع كل استطلاع.
     setCount(0);
     let cancelled = false;
+    const isHidden = () =>
+      pauseWhenHidden &&
+      typeof document !== 'undefined' &&
+      document.visibilityState === 'hidden';
     const fetchCount = () => {
+      // الخفاء يجمّد الاستطلاع (لا يصفّر الشارة) — يُستأنف فور الظهور أدناه.
+      if (isHidden()) return;
       if (shape === 'count') {
         api
           .get<{ count: number }>(endpoint)
@@ -55,12 +66,17 @@ export function useBadgeCount(endpoint: string, options: UseBadgeCountOptions): 
     void fetchCount();
     const timer = window.setInterval(fetchCount, intervalMs);
     if (eventName) window.addEventListener(eventName, fetchCount);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') fetchCount();
+    };
+    if (pauseWhenHidden) document.addEventListener('visibilitychange', onVisible);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
       if (eventName) window.removeEventListener(eventName, fetchCount);
+      if (pauseWhenHidden) document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [endpoint, enabled, intervalMs, eventName, shape]);
+  }, [endpoint, enabled, intervalMs, eventName, shape, pauseWhenHidden]);
 
   return count;
 }

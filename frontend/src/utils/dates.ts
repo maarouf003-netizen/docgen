@@ -22,6 +22,46 @@ export function formatDateTime(value?: string, emptyFallback = ''): string {
 }
 
 /**
+ * طابع نسبي عربي («منذ…») لتيار المنتدى: تحت الدقيقة «الآن»، وتحت الساعة
+ * بالدقائق، وتحت اليوم بالساعات، وتحت الأسبوع بالأيام، وفوق ذلك التاريخ
+ * الكامل عبر `formatDate` — والقيمة غير الصالحة تُعاد كما هي.
+ */
+export function formatRelativeTime(value?: string, nowMs = Date.now()): string {
+  if (!value) return '';
+  const date = parseDate(value);
+  if (!date) return value;
+  const diffMs = nowMs - date.getTime();
+  if (diffMs < 0) return formatDate(value);
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (diffMs < minute) return 'الآن';
+  if (diffMs < hour) {
+    const n = Math.floor(diffMs / minute);
+    return n === 1 ? 'منذ دقيقة' : n === 2 ? 'منذ دقيقتين' : `منذ ${n} دقائق`;
+  }
+  if (diffMs < day) {
+    const n = Math.floor(diffMs / hour);
+    return n === 1 ? 'منذ ساعة' : n === 2 ? 'منذ ساعتين' : `منذ ${n} ساعات`;
+  }
+  if (diffMs < 7 * day) {
+    const n = Math.floor(diffMs / day);
+    return n === 1 ? 'أمس' : `منذ ${n} أيام`;
+  }
+  return formatDate(value);
+}
+
+/**
+ * مفتاح فاصل اليوم المحلي `yyyy-MM-dd` (بتوقيت المتصفح) — لتجميع رسائل التيار
+ * تحت عناوين «اليوم/أمس/التاريخ».
+ */
+export function dayLocalKey(value: string): string {
+  const date = parseDate(value);
+  if (!date) return value;
+  return todayLocalKey(date);
+}
+
+/**
  * مفتاح اليوم المحلي `yyyy-MM-dd` (بتوقيت المتصفح لا UTC) — لأسماء ملفات
  * التصدير المولّدة عميلًا، فيطابق تاريخ الخادم المحلي ولا ينزاح يومًا.
  */

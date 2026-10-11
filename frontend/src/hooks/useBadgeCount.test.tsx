@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, act, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { api } from '../api/client';
-import { useBadgeCount } from './useBadgeCount';
+import { useBadgeCount, type UseBadgeCountOptions } from './useBadgeCount';
 
 vi.mock('../api/client', () => ({
   api: { get: vi.fn() },
@@ -18,7 +18,7 @@ function Probe({
   options,
 }: {
   endpoint: string;
-  options: { enabled: boolean; intervalMs?: number; eventName?: string; shape: 'count' | 'list' };
+  options: UseBadgeCountOptions;
 }): ReactNode {
   latest = useBadgeCount(endpoint, options);
   return null;
@@ -120,8 +120,7 @@ describe('useBadgeCount', () => {
     unmount();
   });
 
-  it('يوقف الفاصل الزمني عند الفك (بلا اعتماد على التوقيت)', async () => {
-    // بلا `waitFor` عمدًا: مؤقتاتها الداخلية تلوث عدّ `clearInterval`.
+  it('يوقف الفاصل الزمني عند الفك (بلا اعتماد على التوقيت)', async () => {    // بلا `waitFor` عمدًا: مؤقتاتها الداخلية تلوث عدّ `clearInterval`.
     const clearSpy = vi.spyOn(globalThis, 'clearInterval');
     apiGet.mockResolvedValue({ data: { count: 1 } });
     const { unmount } = render(
@@ -134,5 +133,46 @@ describe('useBadgeCount', () => {
     unmount();
     expect(clearSpy.mock.calls.length).toBe(callsBefore + 1);
     clearSpy.mockRestore();
+  });
+
+  describe('pauseWhenHidden', () => {
+    const realVisibility = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+    const setVisibility = (value: DocumentVisibilityState) => {
+      Object.defineProperty(document, 'visibilityState', { value, configurable: true });
+    };
+
+    beforeEach(() => {
+      if (realVisibility) Object.defineProperty(document, 'visibilityState', realVisibility);
+    });
+
+    it('يجمد الاستطلاع بخفاء التبويب ويستأنف فور الظهور', async () => {
+      apiGet.mockResolvedValue({ data: { count: 2 } });
+      setVisibility('hidden');
+      const { unmount } = render(
+        <Probe
+          endpoint="/forum/unread-count"
+          options={{ enabled: true, intervalMs: 60_000, shape: 'count', pauseWhenHidden: true }}
+        />,
+      );
+      await act(async () => {});
+      expect(apiGet).not.toHaveBeenCalled();
+
+      setVisibility('visible');
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await waitFor(() => expect(latest).toBe(2));
+      unmount();
+    });
+
+    it('بلا المعامل يبقى السلوك القائم (يجلب حتى بخفاء التبويب)', async () => {
+      apiGet.mockResolvedValue({ data: { count: 3 } });
+      setVisibility('hidden');
+      const { unmount } = render(
+        <Probe endpoint="/forum/unread-count" options={{ enabled: true, shape: 'count' }} />,
+      );
+      await waitFor(() => expect(latest).toBe(3));
+      unmount();
+    });
   });
 });

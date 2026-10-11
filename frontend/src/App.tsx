@@ -43,6 +43,7 @@ const ReviewsList = lazy(() => import('./pages/ReviewsList'));
 const ReviewDetail = lazy(() => import('./pages/ReviewDetail'));
 const CorrespondencesList = lazy(() => import('./pages/CorrespondencesList'));
 const CorrespondenceDetail = lazy(() => import('./pages/CorrespondenceDetail'));
+const ForumPage = lazy(() => import('./pages/ForumPage'));
 const ExecutionCircuitsPage = lazy(() => import('./pages/ExecutionCircuitsPage'));
 const PendingRegistrationsPage = lazy(() => import('./pages/PendingRegistrationsPage'));
 const CircuitStatsPage = lazy(() => import('./pages/CircuitStatsPage'));
@@ -169,6 +170,14 @@ export default function App() {
               element={
                 <RequireRole allowed={allowInternal}>
                   <KeyedById><CorrespondenceDetail /></KeyedById>
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/forum"
+              element={
+                <RequireRole allowed={allowInternal}>
+                  <ForumPage />
                 </RequireRole>
               }
             />

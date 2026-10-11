@@ -1979,6 +1979,107 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.ToTable("ExecutionCircuits", (string)null);
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ForumMessage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("AuthorId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AuthorLocation")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AuthorName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AuthorRole")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AuthorSection")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("EditedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("EditedById")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsPinned")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("QuotedAuthorName")
+                        .HasMaxLength(150)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("QuotedExcerpt")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("QuotedMessageId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuthorId");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("IsPinned")
+                        .IsUnique()
+                        .HasFilter("\"IsPinned\"");
+
+                    b.HasIndex("QuotedMessageId");
+
+                    b.ToTable("ForumMessages", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ForumMessageRead", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MessageId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("ReadAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("UserName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MessageId", "UserId")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "MessageId");
+
+                    b.ToTable("ForumMessageReads", (string)null);
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.Guarantor", b =>
                 {
                     b.Property<int>("Id")
@@ -3357,6 +3458,35 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Navigation("CreatedBy");
 
                     b.Navigation("Section");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ForumMessage", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.User", "Author")
+                        .WithMany()
+                        .HasForeignKey("AuthorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.ForumMessage", "QuotedMessage")
+                        .WithMany()
+                        .HasForeignKey("QuotedMessageId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Author");
+
+                    b.Navigation("QuotedMessage");
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.ForumMessageRead", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.ForumMessage", "Message")
+                        .WithMany()
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Message");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.Guarantor", b =>

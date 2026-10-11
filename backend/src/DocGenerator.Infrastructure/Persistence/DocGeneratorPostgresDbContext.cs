@@ -146,5 +146,15 @@ public class DocGeneratorPostgresDbContext : DocGeneratorDbContext
         modelBuilder.Entity<IdempotencyKey>()
             .Property(k => k.ExpiresAt)
             .HasColumnType("timestamp with time zone");
+        // المنتدى: كل الأعمدة الزمنية `timestamptz` بلا استثناء (درس `AlignPostgresTimestampTypes`).
+        modelBuilder.Entity<ForumMessage>()
+            .Property(m => m.CreatedAt)
+            .HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<ForumMessage>()
+            .Property(m => m.EditedAtUtc)
+            .HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<ForumMessageRead>()
+            .Property(r => r.ReadAtUtc)
+            .HasColumnType("timestamp with time zone");
     }
 }
