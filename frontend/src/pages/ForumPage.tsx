@@ -408,10 +408,6 @@ export default function ForumPage() {
         </div>
       </div>
 
-      <p role="note" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-        تنبيه مهني: لا تشارك بيانات ملفات حساسة في المنتدى.
-      </p>
-
       {pinned && (
         <PinnedBanner
           pinned={pinned}
