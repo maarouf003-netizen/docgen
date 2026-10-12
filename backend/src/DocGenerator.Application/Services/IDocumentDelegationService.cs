@@ -1,4 +1,5 @@
 using DocGenerator.Application.DTOs;
+using DocGenerator.Domain.Entities;
 
 namespace DocGenerator.Application.Services;
 
@@ -71,4 +72,48 @@ public interface IDocumentDelegationService
     /// «منفذ إنابة» (حالة نهائية تُعامل منفذًا في القوائم والإحصاءات).
     /// </summary>
     Task<DelegationDto?> CompleteAsync(int delegationId, CompleteDelegationRequest request, int userId, string? actorName, CancellationToken ct = default);
+
+    /// <summary>
+    /// حارس تعديل الملف المناب («الملف المناب مرآةً للمنيب»): يرفض الفروق القيمية في الحقول
+    /// المقفولة، ويرصد الإضافات المحلية المسموحة (وريث جديد/ممثل جديد) تقريرًا للتنبيه العكسي.
+    /// حارس قرائي قبل الكتابة — خارج المعاملة كسائر حراس التعديل.
+    /// </summary>
+    TargetEditReport ValidateTargetEdit(Document doc, DocumentUpsertRequest request);
+
+    /// <summary>
+    /// قفل «الحجز والأصل بعد التسطير» على الملف المنيب: تاريخ القاء الحجز على أصلٍ تحجبه
+    /// إنابة سارية يُعدَّل فقط ولا يُحذف، وحذف صف الأصل نفسه مرفوض.
+    /// حارس قرائي قبل الكتابة — خارج المعاملة كسائر حراس التعديل.
+    /// </summary>
+    Task ValidateSeizureLockAsync(Document doc, DocumentUpsertRequest request, CancellationToken ct);
+
+    /// <summary>
+    /// مزامنة لقطات أصول الإنابات غير المنفذة للملف المنيب بعد تعديل أصوله —
+    /// داخل معاملة المستدعي حصرًا (لا تفتح معاملة خاصة).
+    /// </summary>
+    Task SyncSnapshotsAsync(Document doc, CancellationToken ct);
+
+    /// <summary>
+    /// نسخ تغييرات المنيب إلى مناباته المعلقة (داخل معاملة المستدعي حصرًا) وإعادة اشتقاق
+    /// الحقول المحسوبة فيها — تعيد إشعارات تُطلق بعد نجاح المعاملة (نقطة خروج واحدة).
+    /// </summary>
+    Task<List<MirrorNotification>> MirrorSourceEditsAsync(Document doc, CancellationToken ct);
+
+    /// <summary>
+    /// إطلاق إشعارات المرآة المجمعة — بعد تثبيت معاملة الحفظ حصرًا
+    /// (كل فشل معزول ولا يُفشل الحفظ).
+    /// </summary>
+    Task FireMirrorNotificationsAsync(IReadOnlyList<MirrorNotification> notifications, CancellationToken ct);
+
+    /// <summary>
+    /// إطلاق تنبيه المنيب عند الإضافات المحلية (وريث/ممثل) على الملف المناب معزولًا —
+    /// بعد تثبيت معاملة التعديل حصرًا.
+    /// </summary>
+    Task FireTargetEditReportAsync(Document target, TargetEditReport report, CancellationToken ct);
+
+    /// <summary>
+    /// تنبيه تغيّر حالة المنيب إلى مناباته المعلقة (الصيغ T2-T5 بصياغات المستخدم المقفلة؛
+    /// المشطوب والجزئيا لا يصلان هنا) — بعد تثبيت معاملة الحالة حصرًا.
+    /// </summary>
+    Task FireStatusChangeAlertsAsync(Document doc, DelegationStatusAlertKind kind, CancellationToken ct);
 }

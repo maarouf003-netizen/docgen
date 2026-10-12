@@ -279,9 +279,9 @@ public sealed partial class DocumentService
         await CleanupPendingCompletionAlertsAsync(documentId, actorName, ct);
         // مرآة: تغيّر حالة المنيب يُنبه مناباته المعلقة (بعد نجاح المعاملة — عزل فشل التنبيه).
         // الصيغ T2/T4/T5 فقط؛ جزئيا (N1) ومشطوب (N7) وسواها كبت بلا تنبيه.
-        var statusAlertKind = DelegationStatusAlertKindFor(doc);
+        var statusAlertKind = DocumentDelegationService.DelegationStatusAlertKindFor(doc);
         if (statusAlertKind is not null)
-            await FireDelegationStatusChangeAlertsAsync(doc, statusAlertKind.Value, ct);
+            await _delegationService.FireStatusChangeAlertsAsync(doc, statusAlertKind.Value, ct);
         return statusUpdated;
     }
 
@@ -365,7 +365,7 @@ public sealed partial class DocumentService
         // تسوية/جبريا فلا يُرجع منابًا (المسترد لا يُرجع — C1)، فلا يُطلق تنبيه
         // «انتهاء حالة التريث» على مناب مسترد (ضلال).
         if (targetsReverted)
-            await FireDelegationStatusChangeAlertsAsync(doc, DelegationStatusAlertKind.Returned, ct);
+            await _delegationService.FireStatusChangeAlertsAsync(doc, DelegationStatusAlertKind.Returned, ct);
         return reverted;
     }
 
@@ -575,7 +575,7 @@ public sealed partial class DocumentService
         // قبل إطلاق تنبيه الاسترداد (الحذف شامل بالإنابة).
         await CleanupPendingCompletionAlertsAsync(documentId, actorName, ct);
         // مرآة: اكتمال تنفيذ المنيب يُنبه مناباته المعلقة (T5 — استرداد جبري).
-        await FireDelegationStatusChangeAlertsAsync(doc, DelegationStatusAlertKind.FullyForcibly, ct);
+        await _delegationService.FireStatusChangeAlertsAsync(doc, DelegationStatusAlertKind.FullyForcibly, ct);
         return considered;
     }
 
@@ -797,7 +797,7 @@ public sealed partial class DocumentService
 
         // مرآة: فك الشطب «تغيّر حالة المنيب» يُنبه مناباته المعلقة بالصيغة العامة (بعد نجاح المعاملة —
         // عزل فشل التنبيه). S1 يجعل وجود إنابات معلقة على مصدر مشطوب شبه معدوم — الاحتفاظ عام.
-        await FireDelegationStatusChangeAlertsAsync(doc, DelegationStatusAlertKind.Generic, ct);
+        await _delegationService.FireStatusChangeAlertsAsync(doc, DelegationStatusAlertKind.Generic, ct);
         return restored;
     }
 

@@ -34,70 +34,6 @@ public sealed partial class DocumentService
         doc.ForcibleTransferNoticeNumber = null;
     }
 
-    /// <summary>
-    /// مزامنة لقطات أصول الإنابات غير المنفذة للملف المنيب بعد تعديل أصوله: أصول الملف
-    /// تُعاد بناؤها بمعرفات جديدة عند كل تعديل، فتُطابَق اللقطات مع الأصول الحالية بالنوع
-    /// ثم الوصف — الأصل المطابق تمامًا (نوع + وصف) يبقى بلا تغيير، والأصل الذي تغيّر وصفه
-    /// من النوع نفسه تُحدَّث لقطته وتُعلَّم بأن بياناته عُدّلت بعد التسطير (يظهر تنبيه في
-    /// بطاقة «تشعبات الملف») — إلا إذا تغيّر عدد النوع (C2: تجميد — اللقطة اليتيمة تبقى
-    /// كما سُطّرت سجلًا تاريخيًا مع تحذيرها في الواجهة). الإنابات المنفذة سجل نهائي
-    /// بالبدل فلا تُمسّ لقطاتها.
-    /// </summary>
-    private async Task SyncDelegationSnapshotsForDocumentAsync(Document doc, CancellationToken token)
-    {
-        var delegations = await _delegations.ListBySourceAsync(doc.Id, token);
-        var pending = delegations.Where(DelegationActivityPolicy.IsLifecycleActive).ToList();
-        if (pending.Count == 0)
-            return;
-
-        // C2: تجميد النقل التلقائي عند تغيّر عدد النوع — لقطة يتيمة (حُذف أصلها) لا تُعاد
-        // تسميتها إلى أصل آخر من النوع نفسه عند اختلاف العدد (إضافة/حذف)، بل تبقى سجلًا
-        // تاريخيًا كما سُطّرت. يُسمح بالنقل فقط عند تساوي العدد (تعديل وصف بحت — آمن).
-        var snapshots = pending.SelectMany(d => d.Assets).OrderBy(s => s.Id).ToList();
-        var currentByKind = doc.Assets
-            .GroupBy(a => a.AssetKind)
-            .ToDictionary(g => g.Key, g => g.Count());
-        var frozenKinds = snapshots
-            .GroupBy(s => s.AssetKind)
-            .Where(g => !currentByKind.TryGetValue(g.Key, out var currentCount) || currentCount != g.Count())
-            .Select(g => g.Key)
-            .ToHashSet();
-
-        // C1: الفرز بالمفتاح قبل الجشع في المرحلتين — حتمية أي لقطة تُطابَق/تُعاد تسميتها.
-        var remaining = doc.Assets.OrderBy(a => a.Id).ToList();
-        var changed = false;
-        foreach (var snapshot in snapshots)
-        {
-            // تطابق تام (نوع + وصف): لم تتغير بيانات الأصل — تُستهلك وتُترك بلا تغيير.
-            var exact = remaining.FindIndex(a => a.AssetKind == snapshot.AssetKind && AssetDisplay.Label(a) == snapshot.AssetLabel);
-            if (exact >= 0)
-            {
-                remaining.RemoveAt(exact);
-                continue;
-            }
-            // C2: النوع المجمّد لا يُنقَل تلقائيًا — اللقطة اليتيمة تبقى كما سُطّرت.
-            if (frozenKinds.Contains(snapshot.AssetKind))
-                continue;
-            // تعديل وصف أصل من النوع نفسه بعد التسطير: تُحدَّث اللقطة ويُعلَّم التعديل.
-            var sameKind = remaining.FindIndex(a => a.AssetKind == snapshot.AssetKind);
-            if (sameKind >= 0)
-            {
-                var assetLabel = AssetDisplay.Label(remaining[sameKind]);
-                remaining.RemoveAt(sameKind);
-                if (snapshot.AssetLabel != assetLabel)
-                {
-                    snapshot.AssetLabel = assetLabel;
-                    snapshot.SnapshotAdjusted = true;
-                    changed = true;
-                }
-            }
-            // بلا أصل من النوع نفسه في الملف الحالي: تبقى اللقطة كما سُطّرت (سجل التسطير).
-        }
-
-        if (changed)
-            await _uow.SaveChangesAsync(token);
-    }
-
     private static void ClearTarithFields(Document doc)
     {
         doc.TarithNumber = null;
@@ -247,18 +183,18 @@ public sealed partial class DocumentService
         doc.BorrowerAddress = r.BorrowerAddress;
         doc.BorrowerAddressType = r.BorrowerAddressType;
 
-        var borrowerHasRep = !IsEmptyRepresentative(r.BorrowerRepresentativeName, r.BorrowerRepresentativeFather, r.BorrowerRepresentativeFamily);
+        var borrowerHasRep = !DocumentText.IsEmptyRepresentative(r.BorrowerRepresentativeName, r.BorrowerRepresentativeFather, r.BorrowerRepresentativeFamily);
         doc.BorrowerRepresentativeName = borrowerHasRep ? (r.BorrowerRepresentativeName ?? string.Empty).Trim() : null;
         doc.BorrowerRepresentativeFather = borrowerHasRep ? (r.BorrowerRepresentativeFather ?? string.Empty).Trim() : null;
         doc.BorrowerRepresentativeFamily = borrowerHasRep ? (r.BorrowerRepresentativeFamily ?? string.Empty).Trim() : null;
-        doc.BorrowerRepresentativeCapacity = borrowerHasRep ? NormalizeRepresentativeCapacity(r.BorrowerRepresentativeCapacity) : null;
-        doc.BorrowerRepresentativeAddressType = borrowerHasRep ? NormalizeRepresentativeAddressType(r.BorrowerRepresentativeAddressType) : null;
+        doc.BorrowerRepresentativeCapacity = borrowerHasRep ? DocumentText.NormalizeRepresentativeCapacity(r.BorrowerRepresentativeCapacity) : null;
+        doc.BorrowerRepresentativeAddressType = borrowerHasRep ? DocumentText.NormalizeRepresentativeAddressType(r.BorrowerRepresentativeAddressType) : null;
         doc.BorrowerRepresentativeAddress = borrowerHasRep ? (r.BorrowerRepresentativeAddress ?? string.Empty).Trim() : null;
 
         // طبيعة المقترض: الاعتباري يحمل اسم الشخص الاعتباري في BorrowerName وتُصفَّر حقول الهوية
         // الطبيعية والممثل الشرعي والورثة (مفاهيم تخص الشخص الطبيعي)، ويُحتفظ برقم التسجيل ومن يمثله.
         // الطبيعي يُصفِّر الحقول الاعتبارية.
-        doc.BorrowerNature = NormalizePartyNature(r.BorrowerNature);
+        doc.BorrowerNature = DocumentText.NormalizePartyNature(r.BorrowerNature);
         if (PartyNatureCatalog.IsLegal(doc.BorrowerNature))
         {
             doc.BorrowerFather = null;
@@ -428,7 +364,7 @@ public sealed partial class DocumentService
             // توافق مع الطلبات القديمة: نص «طالب التنفيذ» المرسل بلا قائمة يُعامَل كجهة واحدة.
             if ((applicantList is null || applicantList.Count == 0) && !string.IsNullOrWhiteSpace(r.Applicant))
                 applicantList = new List<ApplicantPublicEntityDto> { new(null, r.Applicant, null) };
-            foreach (var a in NormalizeApplicantPublicEntities(applicantList))
+            foreach (var a in DocumentText.NormalizeApplicantPublicEntities(applicantList))
                 doc.ApplicantPublicEntities.Add(a);
         }
 
@@ -442,151 +378,26 @@ public sealed partial class DocumentService
 
         doc.Guarantors.Clear();
         foreach (var g in r.Guarantors.OrderBy(g => g.GuarantorNumber))
-            doc.Guarantors.Add(BuildGuarantor(g));
+            doc.Guarantors.Add(DocumentText.BuildGuarantor(g));
 
         // الورثة: صفوف بلا اسم ثلاثي تُتجاهل، ونوع العنوان غير الصالح يُعيَّر إلى «عنوان».
         // لا ورثة لشخص اعتباري (ورثة تخص الشخص الطبيعي المتوفى فقط).
         doc.Heirs.Clear();
         if (!PartyNatureCatalog.IsLegal(doc.BorrowerNature))
-            foreach (var h in NormalizeHeirs(r.BorrowerHeirs, null))
+            foreach (var h in DocumentText.NormalizeHeirs(r.BorrowerHeirs, null))
                 doc.Heirs.Add(h);
         foreach (var g in r.Guarantors)
-            if (!PartyNatureCatalog.IsLegal(NormalizePartyNature(g.Nature)))
-                foreach (var h in NormalizeHeirs(g.Heirs, g.GuarantorNumber))
+            if (!PartyNatureCatalog.IsLegal(DocumentText.NormalizePartyNature(g.Nature)))
+                foreach (var h in DocumentText.NormalizeHeirs(g.Heirs, g.GuarantorNumber))
                     doc.Heirs.Add(h);
 
         doc.Assets.Clear();
         foreach (var re in r.Assets)
-            doc.Assets.Add(BuildAsset(re));
+            doc.Assets.Add(DocumentText.BuildAsset(re));
     }
 
-    /// <summary>
-    /// بناء كفيل من صفّ الطلب بتطبيع الحالة: تُصفَّر حقول الهوية الطبيعية للشخص الاعتباري
-    /// ويُحتفظ برقم التسجيل ومن يمثلها، والممثل الشرعي يُخزَّن للحقوق الطبيعية فقط (بصفته
-    /// وعنوانه المضبوطين) ويُصفَّر عند الغياب — مشترك بين الحفظ والحارس (مقارنات المرآة).
-    /// </summary>
-    private static Guarantor BuildGuarantor(GuarantorDto g)
-    {
-        var nature = NormalizePartyNature(g.Nature);
-        var isLegalGuarantor = PartyNatureCatalog.IsLegal(nature);
-        var hasRep = !isLegalGuarantor
-            && !IsEmptyRepresentative(g.RepresentativeName, g.RepresentativeFather, g.RepresentativeFamily);
-        return new Guarantor
-        {
-            GuarantorNumber = g.GuarantorNumber,
-            GuarantorName = g.Name,
-            GuarantorFather = isLegalGuarantor ? null : g.Father,
-            GuarantorFamily = isLegalGuarantor ? null : g.Family,
-            GuarantorMother = isLegalGuarantor ? null : g.Mother,
-            GuarantorBirth = isLegalGuarantor ? null : g.Birth,
-            GuarantorRegister = isLegalGuarantor ? null : g.Register,
-            GuarantorNationalId = isLegalGuarantor ? null : g.NationalId,
-            GuarantorAddress = g.Address,
-            AddressType = g.AddressType,
-            GuarantorNature = nature,
-            GuarantorRegistrationNumber = isLegalGuarantor ? (g.RegistrationNumber ?? string.Empty).Trim() : null,
-            GuarantorRepresentedBy = isLegalGuarantor ? (g.RepresentedBy ?? string.Empty).Trim() : null,
-            RepresentativeName = hasRep ? (g.RepresentativeName ?? string.Empty).Trim() : null,
-            RepresentativeFather = hasRep ? (g.RepresentativeFather ?? string.Empty).Trim() : null,
-            RepresentativeFamily = hasRep ? (g.RepresentativeFamily ?? string.Empty).Trim() : null,
-            RepresentativeCapacity = hasRep ? NormalizeRepresentativeCapacity(g.RepresentativeCapacity) : null,
-            RepresentativeAddressType = hasRep ? NormalizeRepresentativeAddressType(g.RepresentativeAddressType) : null,
-            RepresentativeAddress = hasRep ? (g.RepresentativeAddress ?? string.Empty).Trim() : null,
-        };
-    }
 
-    /// <summary>
-    /// بناء أصل من صفّ الطلب بتطبيق قواعد النوع والحصص والتواريخ الحرة
-    /// (مثل ApplyRequest تمامًا) — مشترك بين الحفظ والحارس (الفرق القيمي للأصول).
-    /// </summary>
-    private static Asset BuildAsset(AssetDto re)
-    {
-        var kind = (re.AssetKind ?? string.Empty).Trim();
-        if (!AssetKindCatalog.IsValid(kind))
-            throw new ArgumentException($"نوع الأصل غير صالح: {kind}");
 
-        var asset = new Asset
-        {
-            AssetKind = kind,
-            ShareType = re.ShareType,
-            Property = re.Property,
-            PropertyNumber = re.PropertyNumber,
-            PropertyDistrict = re.PropertyDistrict,
-            LandRegistry = re.LandRegistry,
-            VehicleType = re.VehicleType,
-            VehicleClass = re.VehicleClass,
-            PlateNumber = re.PlateNumber,
-            VehicleGovernorate = re.VehicleGovernorate,
-            RegisterNumber = re.RegisterNumber,
-            RegistrationDate = DocumentValidator.ParseDateTime(re.RegistrationDate, "تاريخ تسجيل المتجر"),
-            ShopGovernorate = re.ShopGovernorate,
-            ShopDescription = re.ShopDescription,
-            ShopLocation = re.ShopLocation,
-            PublicEntity = re.PublicEntity,
-            LicenseNumber = re.LicenseNumber,
-            LicenseDate = DocumentValidator.ParseDateTime(re.LicenseDate, "تاريخ الترخيص"),
-            LicenseIssuer = re.LicenseIssuer,
-            Notes = re.Notes,
-            SeizureDate = DocumentValidator.ParseDateTime(re.SeizureDate, "تاريخ القاء الحجز"),
-        };
-        asset.Owners = AssetMapper.NormalizeOwners(re.Owners);
-        // تمام الأصل لا يكون إلا لمالك واحد؛ عند تعدد الملاك تُفرض الحصة السهمية
-        // حتى لو أُرسل نوع حصة آخر (حماية البيانات على مستوى الخدمة).
-        // الأنواع غير الحصصية (كفالة الرواتب والمتجر غير المسجل) لا تحمل مقدار حصة.
-        if (AssetKindCatalog.HasShare(kind))
-        {
-            if (asset.Owners.Count > 1)
-                asset.ShareType = "حصة سهمية";
-            else if (string.IsNullOrWhiteSpace(asset.ShareType))
-                asset.ShareType = AssetKindCatalog.FullShareLabel(kind);
-        }
-        else
-        {
-            asset.ShareType = null;
-        }
-        return asset;
-    }
-
-    /// <summary>
-    /// تطبيع قائمة الورثة: يُتجاهل من فرغ اسمه الثلاثي، وتُقصّ الحقول من الطرفين،
-    /// ويُقيَّد نوع العنوان والصفة بالقيم المسموح بها.
-    /// </summary>
-    private static List<Heir> NormalizeHeirs(IEnumerable<HeirDto>? heirs, int? guarantorNumber)
-    {
-        var result = new List<Heir>();
-        if (heirs is null)
-            return result;
-
-        foreach (var h in heirs)
-        {
-            var name = (h.Name ?? string.Empty).Trim();
-            var father = (h.Father ?? string.Empty).Trim();
-            var family = (h.Family ?? string.Empty).Trim();
-            if (string.IsNullOrWhiteSpace(name) && string.IsNullOrWhiteSpace(father) && string.IsNullOrWhiteSpace(family))
-                continue;
-
-            var addressType = (h.AddressType ?? string.Empty).Trim();
-            if (addressType != "عنوان" && addressType != "وكيل" && addressType != "موطن مختار")
-                addressType = "عنوان";
-
-            var capacity = (h.Capacity ?? string.Empty).Trim();
-            if (capacity != "إضافة لتركة" && capacity != "أصالة وإضافة")
-                capacity = "أصالة";
-
-            result.Add(new Heir
-            {
-                GuarantorNumber = guarantorNumber,
-                HeirName = name,
-                HeirFather = father,
-                HeirFamily = family,
-                HeirCapacity = capacity,
-                AddressType = addressType,
-                HeirAddress = (h.Address ?? string.Empty).Trim(),
-            });
-        }
-
-        return result;
-    }
 
     /// <summary>
     /// تطبيع طلبات التنفيذ: يُتجاهل الطلب بلا اسم ثلاثي، ويُقيَّد نوع التمثيل بالقيم المسموح بها
@@ -607,7 +418,7 @@ public sealed partial class DocumentService
             if (string.IsNullOrWhiteSpace(name))
                 continue;
 
-            var nature = NormalizePartyNature(a.Nature);
+            var nature = DocumentText.NormalizePartyNature(a.Nature);
             var isLegal = PartyNatureCatalog.IsLegal(nature);
 
             // الشخص الاعتباري بلا تمثيل بالتركة ولا ممثل شرعي: تُصفَّر حقول الهوية الطبيعية
@@ -616,7 +427,7 @@ public sealed partial class DocumentService
                 ? "أصالة"
                 : NormalizeApplicantRepresentation(a.RepresentationType);
             var hasEstate = !isLegal && representationType is "إضافة لتركة" or "أصالة وإضافة";
-            var hasRep = !isLegal && !IsEmptyRepresentative(a.RepresentativeName, a.RepresentativeFather, a.RepresentativeFamily);
+            var hasRep = !isLegal && !DocumentText.IsEmptyRepresentative(a.RepresentativeName, a.RepresentativeFather, a.RepresentativeFamily);
 
             var applicant = new ExecutionApplicant
             {
@@ -636,7 +447,7 @@ public sealed partial class DocumentService
                 RepresentativeName = hasRep ? (a.RepresentativeName ?? string.Empty).Trim() : null,
                 RepresentativeFather = hasRep ? (a.RepresentativeFather ?? string.Empty).Trim() : null,
                 RepresentativeFamily = hasRep ? (a.RepresentativeFamily ?? string.Empty).Trim() : null,
-                RepresentativeCapacity = hasRep ? NormalizeRepresentativeCapacity(a.RepresentativeCapacity) : null,
+                RepresentativeCapacity = hasRep ? DocumentText.NormalizeRepresentativeCapacity(a.RepresentativeCapacity) : null,
                 RepresentativeLegalRepresentative = hasRep ? (a.RepresentativeLegalRepresentative ?? string.Empty).Trim() : null,
                 RegistryId = isLegal ? a.RegistryId : null,
             };
@@ -688,33 +499,6 @@ public sealed partial class DocumentService
         return result;
     }
 
-    /// <summary>
-    /// تطبيع قائمة الجهات طالبة التنفيذ في وضع «طالبة تنفيذ»: يُتجاهل ما بلا اسم جهة،
-    /// ويُقصّ اسم الجهة وفرعها ومحافظتها.
-    /// </summary>
-    private static List<ApplicantPublicEntity> NormalizeApplicantPublicEntities(IEnumerable<ApplicantPublicEntityDto>? entities)
-    {
-        var result = new List<ApplicantPublicEntity>();
-        if (entities is null)
-            return result;
-
-        foreach (var e in entities)
-        {
-            var name = (e.Name ?? string.Empty).Trim();
-            if (string.IsNullOrWhiteSpace(name))
-                continue;
-
-            result.Add(new ApplicantPublicEntity
-            {
-                Name = name,
-                Branch = (e.Branch ?? string.Empty).Trim(),
-                Governorate = (e.Governorate ?? string.Empty).Trim(),
-                RegistryId = e.RegistryId,
-            });
-        }
-
-        return result;
-    }
 
     /// <summary>
     /// تطبيع الأشخاص الطبيعيين المنفذ عليهم: يُتجاهل ما بلا اسم ثلاثي، ويُقيَّد نوع العنوان
@@ -743,7 +527,7 @@ public sealed partial class DocumentService
                 representationType = "أصالة";
 
             var hasEstate = representationType is "إضافة لتركة" or "أصالة وإضافة";
-            var hasRep = !IsEmptyRepresentative(p.RepresentativeName, p.RepresentativeFather, p.RepresentativeFamily);
+            var hasRep = !DocumentText.IsEmptyRepresentative(p.RepresentativeName, p.RepresentativeFather, p.RepresentativeFamily);
 
             var person = new ExecutedNaturalPerson
             {
@@ -759,8 +543,8 @@ public sealed partial class DocumentService
                 RepresentativeName = hasRep ? (p.RepresentativeName ?? string.Empty).Trim() : null,
                 RepresentativeFather = hasRep ? (p.RepresentativeFather ?? string.Empty).Trim() : null,
                 RepresentativeFamily = hasRep ? (p.RepresentativeFamily ?? string.Empty).Trim() : null,
-                RepresentativeCapacity = hasRep ? NormalizeRepresentativeCapacity(p.RepresentativeCapacity) : null,
-                RepresentativeAddressType = hasRep ? NormalizeRepresentativeAddressType(p.RepresentativeAddressType) : null,
+                RepresentativeCapacity = hasRep ? DocumentText.NormalizeRepresentativeCapacity(p.RepresentativeCapacity) : null,
+                RepresentativeAddressType = hasRep ? DocumentText.NormalizeRepresentativeAddressType(p.RepresentativeAddressType) : null,
                 RepresentativeAddress = hasRep ? (p.RepresentativeAddress ?? string.Empty).Trim() : null,
             };
             foreach (var heir in NormalizeExecutedHeirs(p.Heirs))
@@ -804,40 +588,9 @@ public sealed partial class DocumentService
         return result;
     }
 
-    /// <summary>
-    /// هل الممثل الشرعي غائب (اسمه الثلاثي فارغ كاملًا)؟ تُعدّ الحقول فارغة فلا يُخزَّن ممثل.
-    /// </summary>
-    private static bool IsEmptyRepresentative(string? name, string? father, string? family) =>
-        string.IsNullOrWhiteSpace(name) && string.IsNullOrWhiteSpace(father) && string.IsNullOrWhiteSpace(family);
 
-    /// <summary>
-    /// صفة الممثل الشرعي المقبولة: ولي / وصي / قيم؛ أي قيمة أخرى أو فارغة تُعاد فارغة.
-    /// </summary>
-    private static string NormalizeRepresentativeCapacity(string? capacity)
-    {
-        var value = (capacity ?? string.Empty).Trim();
-        return value is "ولي" or "وصي" or "قيم" ? value : string.Empty;
-    }
 
-    /// <summary>
-    /// نوع عنوان الممثل الشرعي المقبول: موطن مختار / عنوان / وكيل قانوني؛ أي قيمة أخرى أو فارغة
-    /// تُعيَّر إلى «عنوان».
-    /// </summary>
-    private static string NormalizeRepresentativeAddressType(string? addressType)
-    {
-        var value = (addressType ?? string.Empty).Trim();
-        return value is "موطن مختار" or "عنوان" or "وكيل قانوني" ? value : "عنوان";
-    }
 
-    /// <summary>
-    /// طبيعة الطرف المقبولة (مقترض/كفيل/طالب تنفيذ): شخص طبيعي (natural) أو شخص اعتباري (legal)؛
-    /// أي قيمة أخرى أو فارغة تُعيَّر إلى «شخص طبيعي».
-    /// </summary>
-    private static string NormalizePartyNature(string? nature)
-    {
-        var value = (nature ?? string.Empty).Trim();
-        return PartyNatureCatalog.ValidNatures.Contains(value) ? value : PartyNatureCatalog.Natural;
-    }
 
     /// <summary>
     /// طبيعة المنفذ عليه الاعتباري في وضع «منفذ عليه»: جهة عامة (public) أو شخص اعتباري (legal)؛
@@ -880,73 +633,4 @@ public sealed partial class DocumentService
         doc.RegistrationDate.DateParsed = ActionDateParser.TryParse(date);
     }
 
-    private static void FillDerivedFields(Document doc)
-    {
-        if (doc.AmountNumeric > 0 && string.IsNullOrWhiteSpace(doc.AmountWords))
-            doc.AmountWords = FormatAmountWords(doc.AmountNumeric, doc.Currency);
-        if (doc.Amount2Numeric > 0 && string.IsNullOrWhiteSpace(doc.Amount2Words))
-            doc.Amount2Words = FormatAmountWords(doc.Amount2Numeric, doc.Currency2);
-        if (doc.Amount3Numeric > 0 && string.IsNullOrWhiteSpace(doc.Amount3Words))
-            doc.Amount3Words = FormatAmountWords(doc.Amount3Numeric, doc.Currency3);
-        if (doc.InclusionAmountNumeric > 0 && string.IsNullOrWhiteSpace(doc.InclusionAmountWords))
-            doc.InclusionAmountWords = FormatAmountWords(doc.InclusionAmountNumeric, doc.InclusionCurrency);
-        if (doc.InclusionAmount2Numeric > 0 && string.IsNullOrWhiteSpace(doc.InclusionAmount2Words))
-            doc.InclusionAmount2Words = FormatAmountWords(doc.InclusionAmount2Numeric, doc.InclusionCurrency2);
-        if (doc.InclusionAmount3Numeric > 0 && string.IsNullOrWhiteSpace(doc.InclusionAmount3Words))
-            doc.InclusionAmount3Words = FormatAmountWords(doc.InclusionAmount3Numeric, doc.InclusionCurrency3);
-
-        // فك ارتباط IsDraft عن التفريغ: IsDraft = (فارغ الرقم/السنة) && !NeedsRegistration —
-        // والمعلق يبقى IsDraft=false بشارة مستقلة (وإلا تلوث: منع الإنابة/الاستئناف على المسودات،
-        // عدادات Drafts/Active، لافتة «تحت رفع»، قوائم المتداول، تصنيف البوابة).
-        doc.IsDraft = (string.IsNullOrWhiteSpace(doc.FileNumber) || string.IsNullOrWhiteSpace(doc.FileYear))
-            && !doc.NeedsRegistration;
-        var label = doc.IsDraft ? ExecutionStatusCatalog.DraftFilter : "متداول";
-        var borrower = (doc.BorrowerName ?? string.Empty).Trim();
-        doc.DocumentType = string.IsNullOrWhiteSpace(borrower) ? label : $"{label} - {borrower}";
-
-        // «طالب التنفيذ» في وضع «طالبة تنفيذ» يُشتق من قائمة الجهات (اسم + فرع بين قوسين)،
-        // فتُوحَّد طريقة التخزين ويبقى النص متوافقًا مع البحث والتصدير والتوليد. وإن كانت
-        // القائمة فارغة مع وجود نص قديم محفوظ يُحافظ عليه (توافق مع الطلبات القديمة).
-        var applicantText = BuildApplicantText(doc.ApplicantPublicEntities);
-        if (!string.IsNullOrWhiteSpace(applicantText) || string.IsNullOrWhiteSpace(doc.Applicant))
-            doc.Applicant = applicantText;
-
-        // نسخة تسريع لفلترة جهة الطالب في البوابة: اشتقاق موحّد من صفوف الجهات نفسها
-        // (أول ربط سجلي غير فارغ)، وتُصفَّر تلقائيًا حين تفرغ القائمة أو يزول الربط.
-        doc.ApplicantRegistryId = ApplicantRegistryIdDeriver.Derive(doc);
-
-        if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
-        {
-            // ملف «منفذ عليه»/«عرض وايداع»: مقيد دائمًا، والعنوان يعتمد على حالة الوضع،
-            // واسم البحث يضم أسماء طلبات التنفيذ/العرض والجهات/الأشخاص المنفذ عليهم.
-            doc.IsDraft = false;
-            doc.DocumentType = $"{ExecutedStatusCatalog.ToLabel(doc.ExecutedStatus ?? ExecutedStatusCatalog.None)}";
-        }
-
-        // `PB-001`: الدائرة المعيارية لوحدانية الترقيم الحقيقية (تُقارَن معيارية-لمعيارية
-        // في `ExistsActiveWithNumberAsync`؛ العرض يبقى `Court` الخام).
-        doc.CourtNorm = string.IsNullOrWhiteSpace(doc.Court)
-            ? null
-            : ArabicNameNormalizer.Normalize(doc.Court);
-
-        doc.SearchText = Common.DocumentSearchTextBuilder.Build(doc);
-
-        doc.FullData = Common.DocumentSearchTextBuilder.BuildFullData(doc);
-    }
-
-    private static string FormatAmountWords(decimal amount, string? currency)
-    {
-        var words = NumberToWords.Convert((long)amount);
-        return string.IsNullOrWhiteSpace(words)
-            ? string.Empty
-            : $"{words} {currency} فقط لا غير".Trim();
-    }
-
-    /// <summary>
-    /// النص الموحّد لطالب التنفيذ في وضع «طالبة تنفيذ» من قائمة الجهات:
-    /// «الجهة - محافظة X و الجهة - محافظة Y» — يُشتق ليغذي البحث والتصدير والتوليد.
-    /// الفرع لا يُضمّن هنا؛ يُعرض ويُفلتر عبر حقل الفرع المستقل في ApplicantPublicEntities.Branch.
-    /// </summary>
-    private static string BuildApplicantText(IEnumerable<ApplicantPublicEntity> entities) =>
-        Common.ApplicantTextBuilder.Build(entities);
 }

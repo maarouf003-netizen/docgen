@@ -104,6 +104,7 @@ public sealed partial class DocumentService : IDocumentService
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
     private readonly IExecutionActionService _actionService;
+    private readonly IDocumentDelegationService _delegationService;
     private readonly IDbExceptionClassifier _dbErrors;
     private readonly int _maxExportRows;
     private readonly TimeProvider _clock;
@@ -132,6 +133,7 @@ public sealed partial class DocumentService : IDocumentService
         TimeZoneInfo timeZone,
         IDbExceptionClassifier dbErrors,
         IExecutionActionService actionService,
+        IDocumentDelegationService delegationService,
         IIdempotencyStore? idempotency = null,
         IRepository<ExecutionCircuit>? circuits = null,
         IRepository<Branch>? branches = null)
@@ -153,6 +155,7 @@ public sealed partial class DocumentService : IDocumentService
         _tx = tx;
         _audit = audit;
         _actionService = actionService;
+        _delegationService = delegationService;
         _maxExportRows = Math.Max(1, exportOptions.Value.MaxRows);
         _clock = clock;
         _timeZone = timeZone;
@@ -204,7 +207,7 @@ public sealed partial class DocumentService : IDocumentService
         // سجل الدوائر: اشتقاق الدائرة (إلزامية) قبل المشتقات — يتجاهل نص العميل.
         var createCircuit = await ResolveCircuitForWriteAsync(request, branchId, isExternalTarget: false, ct);
         DocumentText.ApplyCircuitDerivation(doc, createCircuit, request);
-        FillDerivedFields(doc);
+        DocumentText.FillDerivedFields(doc);
         ApplyRegistrationDate(doc, request.FileRegistrationDate);
 
         // RF-011: حجز المفتاح بعد كل التحققات (المدخل الباطل 400 بلا حجز) وقبل أي
@@ -279,12 +282,12 @@ public sealed partial class DocumentService : IDocumentService
         // حارس تعديل الملف المناب (قرار 2: «الملف المناب مرآةً للمنيب»): يرفض الفروق القيمية
         // في الحقول المقفولة، ويرصد الإضافات المحلية المسموحة (وريث جديد/ممثل جديد) لتنبيه
         // منيب الملف بها بعد نجاح الحفظ.
-        var targetEditResult = ValidateDelegationTargetEdit(doc, request);
+        var targetEditReport = _delegationService.ValidateTargetEdit(doc, request);
 
         // قفل «الحجز والأصل بعد التسطير» على الملف المنيب (قرار المستخدم): تاريخ القاء
         // الحجز على أصلٍ تحجبه إنابة سارية يُعدَّل فقط ولا يُحذف، وحذف صف الأصل نفسه
         // مرفوض — قبل أي تغيير (ApplyRequest يستبدل الأصول بالكامل).
-        await ValidateDelegationSeizureLockAsync(doc, request, ct);
+        await _delegationService.ValidateSeizureLockAsync(doc, request, ct);
 
         // سجل الدوائر: تبديل الدائرة من التعديل مسموح (فحص 409) — يُحفظ القديم للوقوعتين.
         // إن لم يُرسل تغيير دائرة (لا معرف ولا نص)، يُبقى الحالي بلا إعادة حل (توافق الطلبات الجزئية).
@@ -314,7 +317,7 @@ public sealed partial class DocumentService : IDocumentService
         // تعديل ملف «بانتظار إعادة القيد» برقم غير فارغ يُسقط الـ flag (مع إعادة تحقق الوحدانية).
         if (wasPending && !string.IsNullOrWhiteSpace(doc.FileNumber) && !string.IsNullOrWhiteSpace(doc.FileYear))
             doc.NeedsRegistration = false;
-        FillDerivedFields(doc);
+        DocumentText.FillDerivedFields(doc);
         ApplyRegistrationDate(doc, request.FileRegistrationDate);
         doc.UpdatedAt = DateTime.UtcNow;
 
@@ -325,7 +328,7 @@ public sealed partial class DocumentService : IDocumentService
         // RF-010: فحص التزامن المبكر (409 ودي) + زيادة العدّاد وشبكة السباق.
         EnsureConcurrency(doc, request.Version);
 
-        List<MirrorAlertIntent> mirrorIntents = [];
+        List<MirrorNotification> mirrorNotifications = [];
         var circuitSwitched = oldCircuitId != doc.ExecutionCircuitId;
         var result = await WithConcurrencyGuardAsync(() => WithNumberGuardAsync(() => _tx.RunAsync(async token =>
         {
@@ -338,10 +341,10 @@ public sealed partial class DocumentService : IDocumentService
             // تبديل الدائرة من التعديل يسجل الوقوعتين تلقائيًا (قديم/جديد) — وإلا قفزت بلا أثر.
             if (circuitSwitched)
                 await AddCircuitSwitchOccurrencesAsync(doc, oldCircuitName, userId, token);
-            await SyncDelegationSnapshotsForDocumentAsync(doc, token);
+            await _delegationService.SyncSnapshotsAsync(doc, token);
             // المرآة: نسخ تغييرات المنيب إلى مناباته المعلقة (داخل المعاملة نفسها) وإعادة اشتقاق
-            // الحقول المحسوبة فيها — تعيد نوايا تنبيه تُطلق بعد نجاح المعاملة.
-            mirrorIntents = await MirrorSourceEditsToTargetsAsync(doc, token);
+            // الحقول المحسوبة فيها — تعيد إشعارات تُطلق بعد نجاح المعاملة.
+            mirrorNotifications = await _delegationService.MirrorSourceEditsAsync(doc, token);
             await LogDocumentChangesAsync(before, doc, actorName, "update",
                 $"عدّل المستند (رقم {doc.Id})", token);
             await _actionService.SeedInitialActionsAsync(doc, request.InitialActions, userId, actorName, token);
@@ -351,9 +354,9 @@ public sealed partial class DocumentService : IDocumentService
         // تُطلق التنبيهات بعد نجاح المعاملة ولا تفشل الحفظ أبدًا:
         // (1) تنبيهات المرآة إلى المحامين المنابين بتحديث نسخة الملف،
         // (2) تنبيه المنيب بالإضافات المحلية المضافة على الملف المناب (ورثة/ممثل شرعي).
-        await FireDelegationAlertsAsync(mirrorIntents, ct);
-        if (targetEditResult.HasAdditions)
-            await FireDelegationReverseAlertAsync(documentId, doc, targetEditResult, ct);
+        await _delegationService.FireMirrorNotificationsAsync(mirrorNotifications, ct);
+        if (targetEditReport.HasAdditions)
+            await _delegationService.FireTargetEditReportAsync(doc, targetEditReport, ct);
 
         return result;
     }

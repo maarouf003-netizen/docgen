@@ -3,6 +3,7 @@ using System.Security.Claims;
 using DocGenerator.Api.Controllers;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
+using DocGenerator.Domain.Entities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -30,6 +31,13 @@ public sealed class DelegationPendingCountBranchGuardTests
         public Task<DelegationDto?> AssignAsync(int delegationId, AssignDelegationRequest request, int userId, int? headBranchId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<DelegationDto?> RegisterAsync(int delegationId, RegisterDelegationRequest request, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<DelegationDto?> CompleteAsync(int delegationId, CompleteDelegationRequest request, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
+        public TargetEditReport ValidateTargetEdit(Document doc, DocumentUpsertRequest request) => throw new NotImplementedException();
+        public Task ValidateSeizureLockAsync(Document doc, DocumentUpsertRequest request, CancellationToken ct) => throw new NotImplementedException();
+        public Task SyncSnapshotsAsync(Document doc, CancellationToken ct) => throw new NotImplementedException();
+        public Task<List<MirrorNotification>> MirrorSourceEditsAsync(Document doc, CancellationToken ct) => throw new NotImplementedException();
+        public Task FireMirrorNotificationsAsync(IReadOnlyList<MirrorNotification> notifications, CancellationToken ct) => throw new NotImplementedException();
+        public Task FireTargetEditReportAsync(Document target, TargetEditReport report, CancellationToken ct) => throw new NotImplementedException();
+        public Task FireStatusChangeAlertsAsync(Document doc, DelegationStatusAlertKind kind, CancellationToken ct) => throw new NotImplementedException();
     }
 
     [Fact]

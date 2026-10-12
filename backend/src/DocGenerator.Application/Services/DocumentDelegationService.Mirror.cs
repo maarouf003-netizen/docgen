@@ -8,42 +8,36 @@ namespace DocGenerator.Application.Services;
 
 /// <summary>
 /// «الملف المناب مرآةً للمنيب»: مزامنة نسخ من المنيب إلى المناب عند كل تعديل جوهري
-/// (ref: docs/delegation-mirror-plan.md §3)، مع حارس تعديل المناب في UpdateAsync
+/// (ref: docs/delegation-mirror-plan.md §3)، مع حارس تعديل المناب في التعديل
 /// (§3-ج) وتنبيهين متعاكسين مدموجين (§3-ب). كل التغييرات قيمية بلا سكيما وبلا هجرات.
+/// (مدموج من `DocumentService` — المرحلة 3، نقل ميكانيكي بلا سلوك.)
+/// ثابت ملكية المعاملة: المزامنة داخل معاملة المستدعي، وإطلاق التنبيهات بعد تثبيتها —
+/// تُحفَظ المواضع حرفيًا (أي تبديل تغيير سلوكي). بلا `_tx` إطلاقًا في هذا الملف.
 /// </summary>
-public sealed partial class DocumentService
+public enum DelegationStatusAlertKind
 {
-    /// <summary>نية تنبيه مرآة (منيب ↔ مناب) تُطلق بعد نجاح معاملة الحفظ — الرسالة ملخص آخر تغيّر.</summary>
-    private sealed record MirrorAlertIntent(
-        int DelegationId,
-        int RecipientLawyerId,
-        int RecipientBranchId,
-        int ActorUserId,
-        string Message);
+    /// <summary>الرسالة العامة القديمة («تغيّرت حالة الملف المنيب») — مسار فك الشطب فقط.</summary>
+    Generic,
 
-    /// <summary>نوع تنبيه تغيّر حالة المنيب إلى مناباته المعلقة (T2-T5) — يُحدَّد صراحةً عند كل
-    /// استدعاء بحسب الانتقال، ولا يُشترط بعد في رسالة النقل التلقائي من الحالة نفسها.</summary>
-    private enum DelegationStatusAlertKind
-    {
-        /// <summary>الرسالة العامة القديمة («تغيّرت حالة الملف المنيب») — مسار فك الشطب فقط.</summary>
-        Generic,
+    /// <summary>T2: المنيب تريث — المناب يوقف إجراءات الإنابة.</summary>
+    Deferred,
 
-        /// <summary>T2: المنيب تريث — المناب يوقف إجراءات الإنابة.</summary>
-        Deferred,
+    /// <summary>T3: عودة المنيب إلى المتداول (تراجع من تريث) — متابعة السير.</summary>
+    Returned,
 
-        /// <summary>T3: عودة المنيب إلى المتداول (تراجع من تريث) — متابعة السير.</summary>
-        Returned,
+    /// <summary>T4: المنيب منفذ بالتسوية — المناب مسترد يوقف إجراءاته ويعود لمرجعه.</summary>
+    Settled,
 
-        /// <summary>T4: المنيب منفذ بالتسوية — المناب مسترد يوقف إجراءاته ويعود لمرجعه.</summary>
-        Settled,
+    /// <summary>T5: المنيب منفذ جبريًا كاملًا — المناب مسترد بتحصيل المبلغ جبريًا.</summary>
+    FullyForcibly,
+}
 
-        /// <summary>T5: المنيب منفذ جبريًا كاملًا — المناب مسترد بتحصيل المبلغ جبريًا.</summary>
-        FullyForcibly,
-    }
+public sealed partial class DocumentDelegationService
+{
 
     /// <summary>نوع تنبيه حالة المنيب بعد تغيير حالته عبر UpdateStatusAsync: تريث/تسوية/اكتمال جبري
     /// فحسب؛ «جزئيا» (N1) و«مشطوب» (N7) وسواها كبت بلا تنبيه.</summary>
-    private static DelegationStatusAlertKind? DelegationStatusAlertKindFor(Document doc) =>
+    public static DelegationStatusAlertKind? DelegationStatusAlertKindFor(Document doc) =>
         doc.ExecStatus switch
         {
             ExecutionStatusCatalog.Deferred => DelegationStatusAlertKind.Deferred,
@@ -53,13 +47,15 @@ public sealed partial class DocumentService
             _ => null,
         };
 
-    /// <summary>حاصل فحص تعديل المناب: الإضافات المحلية المسموحة (ورثة/ممثل) للتنبيه العكسي.</summary>
+    /// <summary>مجمّع خاص لفحص تعديل المناب — لا يعبر أي حدّ عام (يُبنى منه `TargetEditReport`).</summary>
     private sealed class TargetEditResult
     {
-        public List<Heir> AddedHeirs { get; } = new();
+        public List<AddedHeirEntry> AddedHeirs { get; } = new();
         public List<string> NewRepresentativeLabels { get; } = new();
-        public bool HasAdditions => AddedHeirs.Count > 0 || NewRepresentativeLabels.Count > 0;
     }
+
+    private static string HeirDisplayName(Heir h) => string.Join(' ',
+        new[] { h.HeirName, h.HeirFather, h.HeirFamily }.Where(v => !string.IsNullOrWhiteSpace(v)));
 
     // ── الحراسة: تعديل الملف المناب ────────────────────────────────────────────
 
@@ -68,13 +64,14 @@ public sealed partial class DocumentService
     /// يرفض أي فرق قيمي في الحقول المقفولة (الكتب/السند/المقترض/الجهات/الكفلاء/الأصول)،
     /// مع سماح الإضافات المحلية الوحيدة (وريث جديد، ممثل شرعي يُعبَّأ عند فراغه)،
     /// وتجاهل صامت لـ ImmediateActions (الحفظ الفارغ لا يمس السابق أصلًا).
-    /// يُعاد الورثة الجدد لتوليد تنبيه المنيب بعد نجاح الحفظ.
+    /// يُعاد الورثة الجدد تقريرًا عامًا (`TargetEditReport`) لتوليد تنبيه المنيب بعد نجاح الحفظ —
+    /// لا يعبر أي نوع خاص أي حدّ عام.
     /// </summary>
-    private static TargetEditResult ValidateDelegationTargetEdit(Document doc, DocumentUpsertRequest r)
+    public TargetEditReport ValidateTargetEdit(Document doc, DocumentUpsertRequest r)
     {
         var result = new TargetEditResult();
         if (doc.SourceDelegationId is null)
-            return result;
+            return new TargetEditReport(result.AddedHeirs, result.NewRepresentativeLabels);
 
         var errors = new List<string>();
 
@@ -137,17 +134,17 @@ public sealed partial class DocumentService
         // التنفيذ» كجهة واحدة عند غياب القائمة — DocumentService.Apply.cs) فلا يُرفض الحفظُ
         // المتطابق بفرقٍ وهمي من التراجع النصي نفسه، ويُعيَّن الفرقُ الحقيقي فقط (T4/B6).
         var requestedEntities = EffectiveApplicantEntities(
-            NormalizeApplicantPublicEntities(r.ApplicantPublicEntities), r.Applicant);
+            DocumentText.NormalizeApplicantPublicEntities(r.ApplicantPublicEntities), r.Applicant);
         var storedEntities = EffectiveApplicantEntities(doc.ApplicantPublicEntities, doc.Applicant);
         if (!ApplicantEntitySetsEqual(requestedEntities, storedEntities))
             errors.Add("الجهات العامة طالبة التنفيذ مقفولة على الملف المناب");
 
         // ورثة المقترض والممثل الشرعي له: إضافة الناقص أو تعبئة الفراغ فقط — لا حذف ولا تعديل
         // لقائم، ولا ورثة ولا ممثل على مقترض اعتباري (ApplyRequest يُسقطها بصمت فيُرفض صراحةً).
-        var borrowerNature = NormalizePartyNature(r.BorrowerNature);
+        var borrowerNature = DocumentText.NormalizePartyNature(r.BorrowerNature);
         var isLegalBorrower = PartyNatureCatalog.IsLegal(borrowerNature);
-        var requestedBorrowerHeirs = NormalizeHeirs(r.BorrowerHeirs, null);
-        var borrowerHasRepInRequest = !IsEmptyRepresentative(
+        var requestedBorrowerHeirs = DocumentText.NormalizeHeirs(r.BorrowerHeirs, null);
+        var borrowerHasRepInRequest = !DocumentText.IsEmptyRepresentative(
             r.BorrowerRepresentativeName, r.BorrowerRepresentativeFather, r.BorrowerRepresentativeFamily);
 
         // عنوان المقترض/نوعه: يُقفلان إلا عند وجود ورثة أو ممثل للمقترض في الطلب (الفراغ حينها
@@ -170,7 +167,7 @@ public sealed partial class DocumentService
             // الممثل الشرعي للمقترض: تعبئة أولى عند فراغه مسموحة (إضافة محلية مضبوطة من المناب)؛
             // وتعديل قائم أو إزالته مرفوض (لا صمت — ApplyRequest يُصفّر القائم عند غياب الممثل
             // في الطلب فيُعدّ ذلك إزالةً صريحة).
-            var borrowerStoredRepPresent = !IsEmptyRepresentative(
+            var borrowerStoredRepPresent = !DocumentText.IsEmptyRepresentative(
                 doc.BorrowerRepresentativeName, doc.BorrowerRepresentativeFather, doc.BorrowerRepresentativeFamily);
             if (borrowerHasRepInRequest)
             {
@@ -191,20 +188,20 @@ public sealed partial class DocumentService
         ValidateMirrorGuarantors(result, errors, r.Guarantors, doc);
 
         // الأصول: الفرق القيمي فقط (إعادة إرسال المخزَّن القديم كما هو مقبولة).
-        var requestedAssets = r.Assets.Select(BuildAsset).ToList();
+        var requestedAssets = r.Assets.Select(DocumentText.BuildAsset).ToList();
         if (!AssetMultisetsEqual(requestedAssets, doc.Assets))
             errors.Add("لا يمكن تعديل الأموال على الملف المناب");
 
         if (errors.Count > 0)
             throw new ArgumentException($"لا يمكن تعديل الحقول المقفولة على الملف المناب: {string.Join("، ", errors)}");
 
-        return result;
+        return new TargetEditReport(result.AddedHeirs, result.NewRepresentativeLabels);
     }
 
     private static void ValidateMirrorGuarantors(
         TargetEditResult result, List<string> errors, IEnumerable<GuarantorDto> requestedDtos, Document doc)
     {
-        var requested = requestedDtos.Select(BuildGuarantor).OrderBy(g => g.GuarantorNumber).ToList();
+        var requested = requestedDtos.Select(DocumentText.BuildGuarantor).OrderBy(g => g.GuarantorNumber).ToList();
         var stored = doc.Guarantors.OrderBy(g => g.GuarantorNumber).ToList();
         var requestedNumbers = requested.Select(g => g.GuarantorNumber).ToList();
         var storedNumbers = stored.Select(g => g.GuarantorNumber).ToList();
@@ -241,11 +238,11 @@ public sealed partial class DocumentService
                 continue;
 
             var dto = requestedDtosByNumber[g.GuarantorNumber];
-            var requestedHeirs = NormalizeHeirs(dto.Heirs, g.GuarantorNumber);
+            var requestedHeirs = DocumentText.NormalizeHeirs(dto.Heirs, g.GuarantorNumber);
             // تُقرأ حقول الممثل من صفّ الطلب مباشرةً لا من الكيان المُبنى (BuildGuarantor يُصفّر
             // ممثل الاعتباري مثل ApplyRequest) وإلا تعذّر على الحارس رؤية ممثلٍ على كفيل اعتباري
             // فيمر بصمت بدل الرفض الصريح (B3).
-            var gHasRep = !IsEmptyRepresentative(dto.RepresentativeName, dto.RepresentativeFather, dto.RepresentativeFamily);
+            var gHasRep = !DocumentText.IsEmptyRepresentative(dto.RepresentativeName, dto.RepresentativeFather, dto.RepresentativeFamily);
             var isLegalGuarantor = PartyNatureCatalog.IsLegal(g.GuarantorNature);
 
             // ورثة/ممثل على كفيل اعتباري: مرفوض صراحةً (ApplyRequest يُسقطها بصمت فتُجنَّب
@@ -263,7 +260,7 @@ public sealed partial class DocumentService
                 errors.Add($"بيانات الكفيل {GuarantorFullName(g)} مقفولة على الملف المناب");
 
             // الممثل الشرعي للكفيل: تعبئة أولى عند فراغه مسموحة؛ وتعديل قائم أو إزالته مرفوض.
-            var currentHasRep = !IsEmptyRepresentative(current.RepresentativeName, current.RepresentativeFather, current.RepresentativeFamily);
+            var currentHasRep = !DocumentText.IsEmptyRepresentative(current.RepresentativeName, current.RepresentativeFather, current.RepresentativeFamily);
             if (gHasRep)
             {
                 if (!currentHasRep)
@@ -295,7 +292,7 @@ public sealed partial class DocumentService
         // وريث جديد (هوية غير موجودة): إضافة محلية مسموحة تُخطر المنيب (مع تسمية الكفيل).
         foreach (var h in requested)
             if (!storedKeys.Contains(HeirIdentityKey(h)))
-                result.AddedHeirs.Add(h);
+                result.AddedHeirs.Add(new AddedHeirEntry(HeirDisplayName(h), h.GuarantorNumber));
 
         // حذف وريث قائم أو تغيير صفّته/عنوانه (نفس الهوية بقيمة مختلفة): مرفوض.
         foreach (var h in storedHeirs)
@@ -327,7 +324,7 @@ public sealed partial class DocumentService
         // الوريث الجديد (هوية غير موجودة): إضافة محلية مسموحة تُخطر المنيب.
         foreach (var h in requested)
             if (!storedKeys.Contains(HeirIdentityKey(h)))
-                result.AddedHeirs.Add(h);
+                result.AddedHeirs.Add(new AddedHeirEntry(HeirDisplayName(h), h.GuarantorNumber));
 
         // حذف وريث قائم أو تغيير صفّته/عنوانه (نفس الهوية بقيمة مختلفة): مرفوض.
         foreach (var h in storedHeirs)
@@ -421,14 +418,14 @@ public sealed partial class DocumentService
         string? RepresentativeCapacity, string? RepresentativeAddressType, string? RepresentativeAddress)
         BorrowerRepresentativeRequestValues(DocumentUpsertRequest r)
     {
-        if (IsEmptyRepresentative(r.BorrowerRepresentativeName, r.BorrowerRepresentativeFather, r.BorrowerRepresentativeFamily))
+        if (DocumentText.IsEmptyRepresentative(r.BorrowerRepresentativeName, r.BorrowerRepresentativeFather, r.BorrowerRepresentativeFamily))
             return (null, null, null, null, null, null);
         return (
             (r.BorrowerRepresentativeName ?? string.Empty).Trim(),
             (r.BorrowerRepresentativeFather ?? string.Empty).Trim(),
             (r.BorrowerRepresentativeFamily ?? string.Empty).Trim(),
-            NormalizeRepresentativeCapacity(r.BorrowerRepresentativeCapacity),
-            NormalizeRepresentativeAddressType(r.BorrowerRepresentativeAddressType),
+            DocumentText.NormalizeRepresentativeCapacity(r.BorrowerRepresentativeCapacity),
+            DocumentText.NormalizeRepresentativeAddressType(r.BorrowerRepresentativeAddressType),
             (r.BorrowerRepresentativeAddress ?? string.Empty).Trim());
     }
 
@@ -560,17 +557,18 @@ public sealed partial class DocumentService
     // ── المزامنة: منيب → مناب (نسخ قيمي بلا حذف إلا استثناء الكفيل المحذوف) ──────────
 
     /// <summary>
-    /// يُستدعى داخل معاملة UpdateAsync بعد حفظ المنيب. تنسخ المرآة الحقول المقفولة إلى كل
+    /// يُستدعى داخل معاملة التعديل بعد حفظ المنيب — داخل معاملة المستدعي حصرًا
+    /// (لا يفتح معاملة خاصة). تنسخ المرآة الحقول المقفولة إلى كل
     /// منابٍ لإضافةٍ معلّقة (غير منفذة)، وتُعيد اشتقاق بيانات المناب (FillDerivedFields)،
     /// وتُعيد نوايا التنبيه المُتحدِدة لتُطلق بعد نجاح المعاملة (نقطة خروج واحدة).
     /// </summary>
-    private async Task<List<MirrorAlertIntent>> MirrorSourceEditsToTargetsAsync(Document source, CancellationToken token)
+    public async Task<List<MirrorNotification>> MirrorSourceEditsAsync(Document source, CancellationToken token)
     {
         var delegations = await _delegations.ListPendingBySourceWithTargetsAsync(source.Id, token);
         if (delegations.Count == 0)
-            return new List<MirrorAlertIntent>();
+            return new List<MirrorNotification>();
 
-        var intents = new List<MirrorAlertIntent>();
+        var intents = new List<MirrorNotification>();
         foreach (var delegation in delegations)
         {
             var target = delegation.TargetDocument;
@@ -589,11 +587,11 @@ public sealed partial class DocumentService
             if (labels.Count == 0)
                 continue;
 
-            FillDerivedFields(target);
+            DocumentText.FillDerivedFields(target);
             await _uow.SaveChangesAsync(token);
 
             var recipientBranch = target.BranchId ?? source.BranchId ?? delegation.ExternalBranchId;
-            intents.Add(new MirrorAlertIntent(
+            intents.Add(new MirrorNotification(
                 delegation.Id,
                 target.CreatedById,
                 recipientBranch ?? 0,
@@ -609,7 +607,7 @@ public sealed partial class DocumentService
         // عنوان المقترض/نوعه لا يُكتبان على منابٍ له ورثة أو ممثل محلي (الفراغ مرافق مقصود للثابت
         // «ورثة/ممثل ⟺ عنوان فارغ») — التخطي صامت بلا تنبيه (قرار 17).
         var targetHasLocalFamily = target.Heirs.Any(h => h.GuarantorNumber is null)
-            || !IsEmptyRepresentative(target.BorrowerRepresentativeName, target.BorrowerRepresentativeFather, target.BorrowerRepresentativeFamily);
+            || !DocumentText.IsEmptyRepresentative(target.BorrowerRepresentativeName, target.BorrowerRepresentativeFather, target.BorrowerRepresentativeFamily);
 
         var changed = false;
         changed |= CopyField(source.BorrowerName, target.BorrowerName, v => target.BorrowerName = v);
@@ -632,8 +630,8 @@ public sealed partial class DocumentService
             labels.Add("بيانات المقترض");
 
         // الممثل الشرعي للمقترض: تعبئة عند الفراغ فقط — لا مساس بالمضبوط محليًا.
-        if (IsEmptyRepresentative(target.BorrowerRepresentativeName, target.BorrowerRepresentativeFather, target.BorrowerRepresentativeFamily)
-            && !IsEmptyRepresentative(source.BorrowerRepresentativeName, source.BorrowerRepresentativeFather, source.BorrowerRepresentativeFamily))
+        if (DocumentText.IsEmptyRepresentative(target.BorrowerRepresentativeName, target.BorrowerRepresentativeFather, target.BorrowerRepresentativeFamily)
+            && !DocumentText.IsEmptyRepresentative(source.BorrowerRepresentativeName, source.BorrowerRepresentativeFather, source.BorrowerRepresentativeFamily))
         {
             target.BorrowerRepresentativeName = source.BorrowerRepresentativeName;
             target.BorrowerRepresentativeFather = source.BorrowerRepresentativeFather;
@@ -772,11 +770,11 @@ public sealed partial class DocumentService
                 // عنوان الكفيل/نوعه لا يُكتبان على منابٍ له ورثة أو ممثل محلي لهذا الكفيل (فراغ
                 // مرافق مقصود — التخطي صامت بلا تنبيه).
                 var currentHasLocalFamily = target.Heirs.Any(h => h.GuarantorNumber == g.GuarantorNumber)
-                    || !IsEmptyRepresentative(current.RepresentativeName, current.RepresentativeFather, current.RepresentativeFamily);
+                    || !DocumentText.IsEmptyRepresentative(current.RepresentativeName, current.RepresentativeFather, current.RepresentativeFamily);
                 changed |= CopyGuarantorCoreFields(g, current, currentHasLocalFamily);
                 // الممثل الشرعي للكفيل: تعبئة عند الفراغ فقط (لئلا تُطمس الإضافة المحلية).
-                if (IsEmptyRepresentative(current.RepresentativeName, current.RepresentativeFather, current.RepresentativeFamily)
-                    && !IsEmptyRepresentative(g.RepresentativeName, g.RepresentativeFather, g.RepresentativeFamily))
+                if (DocumentText.IsEmptyRepresentative(current.RepresentativeName, current.RepresentativeFather, current.RepresentativeFamily)
+                    && !DocumentText.IsEmptyRepresentative(g.RepresentativeName, g.RepresentativeFather, g.RepresentativeFamily))
                 {
                     current.RepresentativeName = g.RepresentativeName;
                     current.RepresentativeFather = g.RepresentativeFather;
@@ -907,19 +905,20 @@ public sealed partial class DocumentService
 
     // ── إطلاق التنبيهات (بعد نجاح المعاملة — عزل الفشل بنمط head_alert_failed) ──────
 
-    /// <summary>إطلاق تنبيهات المرآة المجمعة بعد نجاح معاملة الحفظ (كل فشل معزول ولا يُفشل الحفظ).</summary>
-    private async Task FireDelegationAlertsAsync(IReadOnlyList<MirrorAlertIntent> intents, CancellationToken ct)
+    /// <summary>إطلاق تنبيهات المرآة المجمعة — بعد تثبيت معاملة الحفظ حصرًا
+    /// (كل فشل معزول ولا يُفشل الحفظ).</summary>
+    public async Task FireMirrorNotificationsAsync(IReadOnlyList<MirrorNotification> intents, CancellationToken ct)
     {
         foreach (var intent in intents)
             await FireDelegationAlertAsync(intent, ct);
     }
 
     /// <summary>تنبيه المرآة الفردي معزولًا: فشله يقع في سجل التدقيق ولا يمسّ نتيجة الحفظ.</summary>
-    private async Task FireDelegationAlertAsync(MirrorAlertIntent intent, CancellationToken ct)
+    private async Task FireDelegationAlertAsync(MirrorNotification intent, CancellationToken ct)
     {
         try
         {
-            await _alertService.UpsertDelegationMessageAsync(
+            await _alerts.UpsertDelegationMessageAsync(
                 intent.DelegationId, intent.RecipientLawyerId,
                 intent.ActorUserId, intent.RecipientBranchId, intent.Message, ct);
         }
@@ -930,10 +929,11 @@ public sealed partial class DocumentService
         }
     }
 
-    /// <summary>تنبيه تغيّر حالة المنيب إلى مناباته المعلقة (مسار StatusChangeModal المنفصل عن UpdateAsync).
+    /// <summary>تنبيه تغيّر حالة المنيب إلى مناباته المعلقة (مسار StatusChangeModal المنفصل عن التعديل).
     /// الصيغ T2-T5 بصياغات المستخدم المقفلة؛ المشطوب (N7) والجزئيا (N1) لا يصلان هنا أصلًا
-    /// (نوع فارغ في UpdateStatusAsync) — ومسار فك الشطب يبقي الصيغة العامة القديمة.</summary>
-    private async Task FireDelegationStatusChangeAlertsAsync(Document doc, DelegationStatusAlertKind kind, CancellationToken ct)
+    /// (نوع فارغ في تغيير الحالة) — ومسار فك الشطب يبقي الصيغة العامة القديمة.
+    /// يُستدعى بعد تثبيت معاملة الحالة حصرًا.</summary>
+    public async Task FireStatusChangeAlertsAsync(Document doc, DelegationStatusAlertKind kind, CancellationToken ct)
     {
         List<DocumentDelegation> delegations;
         try
@@ -952,7 +952,7 @@ public sealed partial class DocumentService
             var target = delegation.TargetDocument;
             if (target is null)
                 continue;
-            var intent = new MirrorAlertIntent(
+            var intent = new MirrorNotification(
                 delegation.Id,
                 target.CreatedById,
                 target.BranchId ?? recipientBranch ?? delegation.ExternalBranchId ?? 0,
@@ -967,7 +967,7 @@ public sealed partial class DocumentService
     private string BuildDelegationStatusChangeMessage(DelegationStatusAlertKind kind, Document doc, Document target)
     {
         var executedOn = DocumentText.ActorFullName(target);
-        var baseNumber = EffectiveFileIdentity.Number(target, CurrentYear());
+        var baseNumber = EffectiveFileIdentity.Number(target, ServerClock.CurrentYear(_clock, _timeZone));
         var court = target.Court;
 
         return kind switch
@@ -987,23 +987,24 @@ public sealed partial class DocumentService
             // T5 (استرداد-جبري): استُرد ملفك المناب بتحصيل المبلغ المطالب به جبريًا في الملف المنيب.
             DelegationStatusAlertKind.FullyForcibly =>
                 $"استُرد ملفك المناب رقم أساس {baseNumber} لاعتبار الملف المنيب " +
-                $"{EffectiveFileIdentity.Number(doc, CurrentYear())} منفذًا — بتحصيل المبلغ المطالب به جبريًا في الملف المنيب",
+                $"{EffectiveFileIdentity.Number(doc, ServerClock.CurrentYear(_clock, _timeZone))} منفذًا — بتحصيل المبلغ المطالب به جبريًا في الملف المنيب",
             // المسار العام (فك الشطب): الصيغة القديمة بلا تغيير — محفوظة للتسلسل التاريخي.
             _ => $"تغيّرت حالة الملف المنيب إلى «{DocumentStatusResolver.Resolve(doc)}»",
         };
     }
 
-    /// <summary>إطلاق تنبيه المنيب عند الإضافات المحلية (وريث/ممثل) على الملف المناب معزولًا.</summary>
-    private async Task FireDelegationReverseAlertAsync(int targetDocumentId, Document target, TargetEditResult result, CancellationToken ct)
+    /// <summary>إطلاق تنبيه المنيب عند الإضافات المحلية (وريث/ممثل) على الملف المناب معزولًا —
+    /// بعد تثبيت معاملة التعديل حصرًا.</summary>
+    public async Task FireTargetEditReportAsync(Document target, TargetEditReport report, CancellationToken ct)
     {
         DocumentDelegation? delegation = null;
         try
         {
-            delegation = await _delegations.FindByTargetAsync(targetDocumentId, ct);
+            delegation = await _delegations.FindByTargetAsync(target.Id, ct);
         }
         catch (Exception ex)
         {
-            await _audit.LogAsync(null, "head_alert_failed", targetDocumentId, null, ex.Message, ct);
+            await _audit.LogAsync(null, "head_alert_failed", target.Id, null, ex.Message, ct);
             return;
         }
 
@@ -1011,27 +1012,143 @@ public sealed partial class DocumentService
             return;
 
         var source = delegation.SourceDocument;
-        var intent = new MirrorAlertIntent(
+        var intent = new MirrorNotification(
             delegation.Id,
             source.CreatedById,
             source.BranchId ?? target.BranchId ?? 0,
             target.CreatedById,
-            ReverseAdditionsMessage(result));
+            ReverseAdditionsMessage(report));
         await FireDelegationAlertAsync(intent, ct);
     }
 
-    private static string ReverseAdditionsMessage(TargetEditResult result)
+    private static string ReverseAdditionsMessage(TargetEditReport report)
     {
         var parts = new List<string>();
-        foreach (var h in result.AddedHeirs)
+        foreach (var h in report.AddedHeirs)
         {
-            var name = string.Join(' ', new[] { h.HeirName, h.HeirFather, h.HeirFamily }.Where(v => !string.IsNullOrWhiteSpace(v)));
-            if (string.IsNullOrWhiteSpace(name))
+            if (string.IsNullOrWhiteSpace(h.Name))
                 continue;
             var suffix = h.GuarantorNumber is { } num ? $" لكفيل-{num}" : string.Empty;
-            parts.Add($"أُضيف الوريث {name}{suffix}");
+            parts.Add($"أُضيف الوريث {h.Name}{suffix}");
         }
-        parts.AddRange(result.NewRepresentativeLabels.Select(label => $"أُضيف {label}"));
+        parts.AddRange(report.NewRepresentativeLabels.Select(label => $"أُضيف {label}"));
         return $"تم تعديل بيانات الملف المناب بإضافة محلية — {string.Join("؛ ", parts)}";
+    }
+
+    /// <summary>
+    /// مزامنة لقطات أصول الإنابات غير المنفذة للملف المنيب بعد تعديل أصوله: أصول الملف
+    /// تُعاد بناؤها بمعرفات جديدة عند كل تعديل، فتُطابَق اللقطات مع الأصول الحالية بالنوع
+    /// ثم الوصف — الأصل المطابق تمامًا (نوع + وصف) يبقى بلا تغيير، والأصل الذي تغيّر وصفه
+    /// من النوع نفسه تُحدَّث لقطته وتُعلَّم بأن بياناته عُدّلت بعد التسطير (يظهر تنبيه في
+    /// بطاقة «تشعبات الملف») — إلا إذا تغيّر عدد النوع (C2: تجميد — اللقطة اليتيمة تبقى
+    /// كما سُطّرت سجلًا تاريخيًا مع تحذيرها في الواجهة). الإنابات المنفذة سجل نهائي
+    /// بالبدل فلا تُمسّ لقطاتها.
+    /// داخل معاملة المستدعي حصرًا (لا تفتح معاملة خاصة) — تُستدعى بعد حفظ المنيب.
+    /// </summary>
+    public async Task SyncSnapshotsAsync(Document doc, CancellationToken token)
+    {
+        var delegations = await _delegations.ListBySourceAsync(doc.Id, token);
+        var pending = delegations.Where(DelegationActivityPolicy.IsLifecycleActive).ToList();
+        if (pending.Count == 0)
+            return;
+
+        // C2: تجميد النقل التلقائي عند تغيّر عدد النوع — لقطة يتيمة (حُذف أصلها) لا تُعاد
+        // تسميتها إلى أصل آخر من النوع نفسه عند اختلاف العدد (إضافة/حذف)، بل تبقى سجلًا
+        // تاريخيًا كما سُطّرت. يُسمح بالنقل فقط عند تساوي العدد (تعديل وصف بحت — آمن).
+        var snapshots = pending.SelectMany(d => d.Assets).OrderBy(s => s.Id).ToList();
+        var currentByKind = doc.Assets
+            .GroupBy(a => a.AssetKind)
+            .ToDictionary(g => g.Key, g => g.Count());
+        var frozenKinds = snapshots
+            .GroupBy(s => s.AssetKind)
+            .Where(g => !currentByKind.TryGetValue(g.Key, out var currentCount) || currentCount != g.Count())
+            .Select(g => g.Key)
+            .ToHashSet();
+
+        // C1: الفرز بالمفتاح قبل الجشع في المرحلتين — حتمية أي لقطة تُطابَق/تُعاد تسميتها.
+        var remaining = doc.Assets.OrderBy(a => a.Id).ToList();
+        var changed = false;
+        foreach (var snapshot in snapshots)
+        {
+            // تطابق تام (نوع + وصف): لم تتغير بيانات الأصل — تُستهلك وتُترك بلا تغيير.
+            var exact = remaining.FindIndex(a => a.AssetKind == snapshot.AssetKind && AssetDisplay.Label(a) == snapshot.AssetLabel);
+            if (exact >= 0)
+            {
+                remaining.RemoveAt(exact);
+                continue;
+            }
+            // C2: النوع المجمّد لا يُنقَل تلقائيًا — اللقطة اليتيمة تبقى كما سُطّرت.
+            if (frozenKinds.Contains(snapshot.AssetKind))
+                continue;
+            // تعديل وصف أصل من النوع نفسه بعد التسطير: تُحدَّث اللقطة ويُعلَّم التعديل.
+            var sameKind = remaining.FindIndex(a => a.AssetKind == snapshot.AssetKind);
+            if (sameKind >= 0)
+            {
+                var assetLabel = AssetDisplay.Label(remaining[sameKind]);
+                remaining.RemoveAt(sameKind);
+                if (snapshot.AssetLabel != assetLabel)
+                {
+                    snapshot.AssetLabel = assetLabel;
+                    snapshot.SnapshotAdjusted = true;
+                    changed = true;
+                }
+            }
+            // بلا أصل من النوع نفسه في الملف الحالي: تبقى اللقطة كما سُطّرت (سجل التسطير).
+        }
+
+        if (changed)
+            await _uow.SaveChangesAsync(token);
+    }
+
+    /// <summary>
+    /// «الحجز والأصل بعد التسطير» على الملف المنيب (قرار المستخدم): تاريخ القاء الحجز على
+    /// أصلٍ تحجبه إنابة سارية يُعدَّل فقط ولا يُحذف، وحذف صف الأصل نفسه مرفوض ما دامت
+    /// الإنابة سارية. قفل خلفي مكمل لقفل الواجهة — يُطبَّق على الكتابة الجديدة فقط
+    /// (لا أثر رجعي على البيانات القديمة).
+    /// حارس «تاريخ القاء الحجز لا يُحذف بعد التسطير» و«المال المسطر به إنابة لا يُحذف»:
+    /// أي أصلٍ مخزَّن مربوطٍ بإنابة حاجبة (مطابقة اللقطات واحد-لواحد نفسها المستعملة في
+    /// حارس التسطير — عبر الحمل الداخلي المشترك) يُمنع إرساله في الطلب فارغ الحجز
+    /// متى كان له حجز مخزَّن، ويُمنع غياب صفه من الطلب مطلقًا (الصف بلا معرف مطابق
+    /// يُعد حذفًا مرفوضًا). تعديل قيمة الحجز بموعدٍ آخر مسموح (يُحلله البناء لاحقًا).
+    /// تُجلب الإنابات مع مناباتها بقراءة مستقلة لأن قراءة التعديل لا تشمل المناب،
+    /// وبدونه تُعامل المعلقة بلا مناب حاجبةً دائمًا فيُتسع القفل خطأً على المحرر منها.
+    /// يُستدعى قبل الكتابة — خارج المعاملة كسائر حراس التعديل.
+    /// مخاطرة متبقية موثقة ومقبولة: لا تسلسل بين تعديل المستند وتسطير إنابة متزامنين،
+    /// فالتداخل اللحظي النادر يُترك لسجل التدقيق بدل حصرٍ مكلف (كسباق الحجب المحسوم بقيد فريد).
+    /// </summary>
+    public async Task ValidateSeizureLockAsync(
+        Document doc, DocumentUpsertRequest request, CancellationToken ct)
+    {
+        if (doc.Delegations.Count == 0 || doc.Assets.Count == 0)
+            return;
+
+        var delegations = await _delegations.ListBySourceAsync(doc.Id, ct);
+        var referencedIds = ComputeBlockedIds(doc.Assets, delegations, excludeDelegationId: null);
+        if (referencedIds.Count == 0)
+            return;
+
+        // مطابقة القديم بالطلب عبر AssetDto.Id — تحفظه الواجهة عند التحميل.
+        var byId = request.Assets
+            .Where(re => re.Id is not null)
+            .GroupBy(re => re.Id!.Value)
+            .ToDictionary(g => g.Key, g => g.First());
+
+        var deletedAssets = new List<string>();
+        var clearedDates = new List<string>();
+        foreach (var stored in doc.Assets.Where(a => referencedIds.Contains(a.Id)))
+        {
+            if (!byId.TryGetValue(stored.Id, out var requested))
+            {
+                deletedAssets.Add(AssetDisplay.Label(stored));
+                continue;
+            }
+            if (stored.SeizureDate is not null && string.IsNullOrWhiteSpace(requested.SeizureDate))
+                clearedDates.Add(AssetDisplay.Label(stored));
+        }
+
+        if (deletedAssets.Count > 0)
+            throw new ArgumentException($"لا يمكن حذف هذا المال لأن هناك انابة سارية: {string.Join("، ", deletedAssets)}");
+        if (clearedDates.Count > 0)
+            throw new ArgumentException($"لا يمكن حذف تاريخ القاء الحجز على مال مسطر به انابة: {string.Join("، ", clearedDates)}");
     }
 }

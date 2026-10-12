@@ -76,6 +76,25 @@ public static class DocumentServiceFactory
             clockValue,
             timeZoneValue);
 
+        var delegationsValue = delegations ?? new DelegationRepository(db);
+        var registrationDatesValue = registrationDates ?? new Repository<DocumentRegistrationDate>(db);
+        var occurrencesValue = occurrences ?? new Repository<DocumentOccurrence>(db);
+        var delegationService = new DocumentDelegationService(
+            delegationsValue,
+            new DelegationReservationRepository(db),
+            dbErrorsValue,
+            documentsValue,
+            usersValue,
+            branches ?? new Repository<Branch>(db),
+            registrationDatesValue,
+            occurrencesValue,
+            uowValue,
+            txValue,
+            audit,
+            alertServiceValue,
+            clockValue,
+            timeZoneValue);
+
         var documentService = new DocumentService(
             documentsValue,
             usersValue,
@@ -83,9 +102,9 @@ public static class DocumentServiceFactory
             assets ?? new Repository<Asset>(db),
             actionsValue,
             baseNumbers ?? new Repository<DocumentBaseNumber>(db),
-            registrationDates ?? new Repository<DocumentRegistrationDate>(db),
-            occurrences ?? new Repository<DocumentOccurrence>(db),
-            delegations ?? new DelegationRepository(db),
+            registrationDatesValue,
+            occurrencesValue,
+            delegationsValue,
             appealsValue,
             alertServiceValue,
             uowValue,
@@ -96,6 +115,7 @@ public static class DocumentServiceFactory
             timeZoneValue,
             dbErrorsValue,
             actionService,
+            delegationService,
             idempotency,
             circuits,
             branches);
