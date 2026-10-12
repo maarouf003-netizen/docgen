@@ -21,6 +21,7 @@ public class DocumentsController : ControllerBase
 
     private readonly IDocumentService _documents;
     private readonly IExecutionActionService _executionActions;
+    private readonly IDocumentSearchService _search;
     private readonly IWordDocumentGenerator _generator;
     private readonly IExcelExportService _excel;
     private readonly IDocumentAppealService _appeals;
@@ -33,6 +34,7 @@ public class DocumentsController : ControllerBase
     public DocumentsController(
         IDocumentService documents,
         IExecutionActionService executionActions,
+        IDocumentSearchService search,
         IWordDocumentGenerator generator,
         IExcelExportService excel,
         IDocumentAppealService appeals,
@@ -44,6 +46,7 @@ public class DocumentsController : ControllerBase
     {
         _documents = documents;
         _executionActions = executionActions;
+        _search = search;
         _generator = generator;
         _excel = excel;
         _appeals = appeals;
@@ -152,7 +155,7 @@ public class DocumentsController : ControllerBase
         var scopeError = RequireOwnerScope(out var ownerSectionId);
         if (scopeError is not null) return scopeError;
 
-        var result = await _documents.SearchAsync(q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
+        var result = await _search.SearchAsync(q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
             page, perPage, visibleBranch, visibleUser, ct, ownerSectionId: ownerSectionId);
         return OkSanitized(result);
     }
@@ -169,7 +172,7 @@ public class DocumentsController : ControllerBase
         var visibleUser = HasFullAccess || IsHeadOrSubHead ? (int?)null : User.GetUserId();
         var scopeError = RequireOwnerScope(out var ownerSectionId);
         if (scopeError is not null) return scopeError;
-        var options = await _documents.GetFilterOptionsAsync(status, applicant, court, lawyer, branch,
+        var options = await _search.GetFilterOptionsAsync(status, applicant, court, lawyer, branch,
             administrativeBranch, executedEntity, publicEntityBranch, visibleBranch, visibleUser, ct, ownerSectionId: ownerSectionId);
         return Ok(new
         {
@@ -202,7 +205,7 @@ public class DocumentsController : ControllerBase
         var scopeError = RequireOwnerScope(out var ownerSectionId);
         if (scopeError is not null) return scopeError;
 
-        var items = await _documents.ExportAsync(q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
+        var items = await _search.ExportAsync(q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
             visibleBranch, visibleUser, ct, ActorName, ownerSectionId: ownerSectionId);
         // بلا Sanitize هنا: عمود «عدد المشاهدات» محكوم أصلًا براية includeViewCount
         // (= CanViewCounters) فلا يظهر لغير المصرَّح لهم إطلاقًا — والورقة متطابقة.
@@ -231,7 +234,7 @@ public class DocumentsController : ControllerBase
         var scopeError = RequireOwnerScope(out var ownerSectionId);
         if (scopeError is not null) return scopeError;
 
-        var result = await _documents.SearchDeletedAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
+        var result = await _search.SearchDeletedAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
         return OkSanitized(result);
     }
 
@@ -250,7 +253,7 @@ public class DocumentsController : ControllerBase
         var scopeError = RequireOwnerScope(out var ownerSectionId);
         if (scopeError is not null) return scopeError;
 
-        var result = await _documents.SearchStruckOffAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
+        var result = await _search.SearchStruckOffAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
         return OkSanitized(result);
     }
 
@@ -266,7 +269,7 @@ public class DocumentsController : ControllerBase
         var scopeError = RequireOwnerScope(out var ownerSectionId);
         if (scopeError is not null) return scopeError;
 
-        var result = await _documents.SearchExecutedAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
+        var result = await _search.SearchExecutedAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
         return OkSanitized(result);
     }
 
@@ -282,7 +285,7 @@ public class DocumentsController : ControllerBase
         var scopeError = RequireOwnerScope(out var ownerSectionId);
         if (scopeError is not null) return scopeError;
 
-        var result = await _documents.SearchReferredToStartAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
+        var result = await _search.SearchReferredToStartAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
         return OkSanitized(result);
     }
 

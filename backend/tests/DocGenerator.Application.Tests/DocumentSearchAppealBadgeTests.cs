@@ -42,9 +42,12 @@ public class DocumentSearchAppealBadgeTests : IDisposable
 
     public void Dispose() => _db.Dispose();
 
-    private IDocumentService NewDocumentService()
+    private async Task<DTOs.DocumentResponse> SearchSingleAsync(int documentId)
     {
-        return DocumentServiceFactory.Create(_db, _audit, clock: Clock).Documents;
+        var search = DocumentServiceFactory.Create(_db, _audit, clock: Clock).Search;
+        var page = await search.SearchAsync(null, null, null, null, null, null, null, null, null,
+            page: 1, perPage: 100, visibleBranchId: null, visibleUserId: _userId);
+        return page.Items.Single(i => i.Id == documentId);
     }
 
     private Document NewDoc(string borrowerName = "أحمد")
@@ -76,14 +79,6 @@ public class DocumentSearchAppealBadgeTests : IDisposable
             AppellantsJson = "[]",
             AppelleesJson = "[]",
         };
-    }
-
-    private async Task<DTOs.DocumentResponse> SearchSingleAsync(int documentId)
-    {
-        var service = NewDocumentService();
-        var page = await service.SearchAsync(null, null, null, null, null, null, null, null, null,
-            page: 1, perPage: 100, visibleBranchId: null, visibleUserId: _userId);
-        return page.Items.Single(i => i.Id == documentId);
     }
 
     [Fact]

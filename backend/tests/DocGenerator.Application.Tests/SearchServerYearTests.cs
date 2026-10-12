@@ -44,11 +44,6 @@ public class SearchServerYearTests : IDisposable
 
     public void Dispose() => _db.Dispose();
 
-    private IDocumentService NewDocumentService()
-    {
-        return DocumentServiceFactory.Create(_db, _audit, clock: Clock).Documents;
-    }
-
     /// <summary>
     /// ملفان في قائمة البحث، أحدهما دوّره المحامي في سنة سابقة (2025) بلا رقم لسنة 2026:
     /// يجب أن يعرض رقمَ الأساس 2025 وسنةَ 2025 واحتياج التدوير، أينما وقع في الصفحة —
@@ -90,8 +85,8 @@ public class SearchServerYearTests : IDisposable
             new DocumentBaseNumber { DocumentId = rotated.Id, Year = 2025, BaseNumber = "رقم-2025", CreatedById = userId, CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc), UpdatedAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc) });
         _db.SaveChanges();
 
-        var service = NewDocumentService();
-        var page = await service.SearchAsync(null, null, null, null, null, null, null, null, null,
+        var search = DocumentServiceFactory.Create(_db, _audit, clock: Clock).Search;
+        var page = await search.SearchAsync(null, null, null, null, null, null, null, null, null,
             page: 1, perPage: 100, visibleBranchId: null, visibleUserId: userId);
 
         var rotatedRow = page.Items.Single(i => i.Id == rotated.Id);

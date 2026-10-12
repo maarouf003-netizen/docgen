@@ -15,6 +15,7 @@ public class DocumentDelegationServiceTests : IDisposable
     private readonly DocGeneratorDbContext _db;
     private readonly IDocumentDelegationService _service;
     private readonly IDocumentService _documentService;
+    private readonly IDocumentSearchService _documentSearch;
     private readonly FakeAuditLogger _audit = new();
 
     private readonly Branch _branch;
@@ -74,7 +75,9 @@ public class DocumentDelegationServiceTests : IDisposable
             TimeProvider.System,
             TestClock.TimeZone);
 
-        _documentService = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx, alertService: headAlerts).Documents;
+        var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx, alertService: headAlerts);
+        _documentService = docBundle.Documents;
+        _documentSearch = docBundle.Search;
     }
 
     public void Dispose() => _db.Dispose();
@@ -1134,12 +1137,12 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(_lawyer2.FullName, target.Lawyer);
 
         // مستوى العقد: القائمة تعرض الاسم كما سيراه رئيس القسم/المدير/المشرف.
-        var page = await _documentService.SearchAsync(null, null, null, null, null, null, null, null, null,
+        var page = await _documentSearch.SearchAsync(null, null, null, null, null, null, null, null, null,
             1, 20, _branch.Id);
         Assert.Equal(_lawyer2.FullName, Assert.Single(page.Items, d => d.Id == targetId).Lawyer);
 
         // فلتر المحامي يلتقط الملف المناب باسمه.
-        var filtered = await _documentService.SearchAsync(null, null, null, null, _lawyer2.FullName, null, null, null, null,
+        var filtered = await _documentSearch.SearchAsync(null, null, null, null, _lawyer2.FullName, null, null, null, null,
             1, 20, _branch.Id);
         Assert.Contains(filtered.Items, d => d.Id == targetId);
     }

@@ -102,7 +102,8 @@ public class PB001NormalizationTests : IDisposable
         var service = NewDocumentService();
         await service.CreateAsync(DocRequest("أحمد"), _lawyerId, "tester", _damascusId);
 
-        var result = await service.SearchAsync("احمد", null, null, null, null, null, null, null, null, 1, 20);
+        var search = DocumentServiceFactory.Create(_db, _audit).Search;
+        var result = await search.SearchAsync("احمد", null, null, null, null, null, null, null, null, 1, 20);
         Assert.Equal(1, result.TotalCount);
     }
 

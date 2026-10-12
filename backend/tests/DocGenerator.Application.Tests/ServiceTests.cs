@@ -49,6 +49,7 @@ public class DocumentServiceTests : IDisposable
     private readonly DocGeneratorDbContext _db;
     private readonly IDocumentService _service;
     private readonly IExecutionActionService _actions;
+    private readonly IDocumentSearchService _search;
     private readonly FakeAuditLogger _audit = new();
 
     public DocumentServiceTests()
@@ -77,6 +78,7 @@ public class DocumentServiceTests : IDisposable
         var bundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, guarantors: guarantors, assets: estates, actions: actions, baseNumbers: baseNumbers, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx);
         _service = bundle.Documents;
         _actions = bundle.Actions;
+        _search = bundle.Search;
     }
 
     public void Dispose() => _db.Dispose();
@@ -278,7 +280,7 @@ public class DocumentServiceTests : IDisposable
         req2.BorrowerName = "سعاد";
         await _service.CreateAsync(req2, 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync("أحمد", null, null, null, null, null, null, null, null, 1, 20);
+        var result = await _search.SearchAsync("أحمد", null, null, null, null, null, null, null, null, 1, 20);
         Assert.Equal(1, result.TotalCount);
         Assert.Equal("أحمد", result.Items[0].BorrowerName);
     }
@@ -288,7 +290,7 @@ public class DocumentServiceTests : IDisposable
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync("سمير", null, null, null, null, null, null, null, null, 1, 20);
+        var result = await _search.SearchAsync("سمير", null, null, null, null, null, null, null, null, 1, 20);
         Assert.Equal(1, result.TotalCount);
     }
 
@@ -302,7 +304,7 @@ public class DocumentServiceTests : IDisposable
         };
         await _service.CreateAsync(req, 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync("محمود الحلبي", null, null, null, null, null, null, null, null, 1, 20);
+        var result = await _search.SearchAsync("محمود الحلبي", null, null, null, null, null, null, null, null, 1, 20);
         Assert.Equal(1, result.TotalCount);
         Assert.Equal("أحمد", result.Items[0].BorrowerName);
     }
@@ -320,7 +322,7 @@ public class DocumentServiceTests : IDisposable
         };
         await _service.CreateAsync(req, 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync("فارس الخالد", null, null, null, null, null, null, null, null, 1, 20);
+        var result = await _search.SearchAsync("فارس الخالد", null, null, null, null, null, null, null, null, 1, 20);
         Assert.Equal(1, result.TotalCount);
         Assert.Equal("أحمد", result.Items[0].BorrowerName);
     }
@@ -339,7 +341,7 @@ public class DocumentServiceTests : IDisposable
         };
         await _service.CreateAsync(req, 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync("وريث أول", null, null, null, null, null, null, null, null, 1, 20);
+        var result = await _search.SearchAsync("وريث أول", null, null, null, null, null, null, null, null, 1, 20);
         Assert.Equal(1, result.TotalCount);
         Assert.Equal(GeneralEntitySideCatalog.Executed, result.Items[0].GeneralEntitySide);
     }
@@ -358,7 +360,7 @@ public class DocumentServiceTests : IDisposable
         };
         await _service.CreateAsync(req, 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync("وريث أول والد1 عائلة1", null, null, null, null, null, null, null, null, 1, 20);
+        var result = await _search.SearchAsync("وريث أول والد1 عائلة1", null, null, null, null, null, null, null, null, 1, 20);
         Assert.Equal(1, result.TotalCount);
     }
 
@@ -372,7 +374,7 @@ public class DocumentServiceTests : IDisposable
             await _service.CreateAsync(req, 1, "lawyer1", 1);
         }
 
-        var page = await _service.SearchAsync(null, null, null, null, null, null, null, null, null, 2, 2);
+        var page = await _search.SearchAsync(null, null, null, null, null, null, null, null, null, 2, 2);
         Assert.Equal(5, page.TotalCount);
         Assert.Equal(2, page.Items.Count);
     }
@@ -382,7 +384,7 @@ public class DocumentServiceTests : IDisposable
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync("أحمد الخطيب", null, null, null, null, null, null, null, null, 1, 20);
+        var result = await _search.SearchAsync("أحمد الخطيب", null, null, null, null, null, null, null, null, 1, 20);
         Assert.Equal(1, result.TotalCount);
     }
 
@@ -391,7 +393,7 @@ public class DocumentServiceTests : IDisposable
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync("أحمد خالد الخطيب", null, null, null, null, null, null, null, null, 1, 20);
+        var result = await _search.SearchAsync("أحمد خالد الخطيب", null, null, null, null, null, null, null, null, 1, 20);
         Assert.Equal(1, result.TotalCount);
     }
 
@@ -400,7 +402,7 @@ public class DocumentServiceTests : IDisposable
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync("12/2024", null, null, null, null, null, null, null, null, 1, 20);
+        var result = await _search.SearchAsync("12/2024", null, null, null, null, null, null, null, null, 1, 20);
         Assert.Equal(1, result.TotalCount);
     }
 
@@ -409,7 +411,7 @@ public class DocumentServiceTests : IDisposable
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync("دمشق", null, null, null, null, null, null, null, null, 1, 20);
+        var result = await _search.SearchAsync("دمشق", null, null, null, null, null, null, null, null, 1, 20);
         Assert.Equal(1, result.TotalCount);
     }
 
@@ -421,7 +423,7 @@ public class DocumentServiceTests : IDisposable
         req2.Applicant = "مدعي آخر";
         await _service.CreateAsync(req2, 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync(null, null, "المدعي", null, null, null, null, null, null, 1, 20);
+        var result = await _search.SearchAsync(null, null, "المدعي", null, null, null, null, null, null, 1, 20);
         Assert.Equal(1, result.TotalCount);
     }
 
@@ -433,7 +435,7 @@ public class DocumentServiceTests : IDisposable
         req2.Court = "حلب";
         await _service.CreateAsync(req2, 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync(null, null, null, "حلب", null, null, null, null, null, 1, 20);
+        var result = await _search.SearchAsync(null, null, null, "حلب", null, null, null, null, null, 1, 20);
         Assert.Equal(1, result.TotalCount);
     }
 
@@ -452,7 +454,7 @@ public class DocumentServiceTests : IDisposable
         await _db.SaveChangesAsync();
         await _service.CreateAsync(Sample(), 2, "lawyer2", 1);
 
-        var result = await _service.SearchAsync(null, null, null, null, "محامي آخر", null, null, null, null, 1, 20);
+        var result = await _search.SearchAsync(null, null, null, null, "محامي آخر", null, null, null, null, 1, 20);
         Assert.Equal(1, result.TotalCount);
         Assert.Equal("محامي آخر", result.Items[0].Lawyer);
     }
@@ -487,7 +489,7 @@ public class DocumentServiceTests : IDisposable
         req2.Applicant = "مدعي آخر";
         await _service.CreateAsync(req2, 1, "lawyer1", 1);
 
-        var options = await _service.GetFilterOptionsAsync(null, null, null, null, null, null, null, null);
+        var options = await _search.GetFilterOptionsAsync(null, null, null, null, null, null, null, null);
         Assert.Contains("المدعي", options.Applicants);
         Assert.Contains("مدعي آخر", options.Applicants);
         Assert.Contains("دمشق", options.Courts);
@@ -505,7 +507,7 @@ public class DocumentServiceTests : IDisposable
         };
         await _service.CreateAsync(req2, 1, "lawyer1", 1);
 
-        var options = await _service.GetFilterOptionsAsync(null, null, null, null, null, null, null, null);
+        var options = await _search.GetFilterOptionsAsync(null, null, null, null, null, null, null, null);
         Assert.Contains("المصرف العقاري", options.ExecutedEntities);
         Assert.Contains("المصرف التجاري", options.ExecutedEntities);
     }
@@ -521,7 +523,7 @@ public class DocumentServiceTests : IDisposable
         };
         await _service.CreateAsync(req2, 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync(null, null, null, null, null, null, null, "المصرف العقاري", null, 1, 20);
+        var result = await _search.SearchAsync(null, null, null, null, null, null, null, "المصرف العقاري", null, 1, 20);
         Assert.Equal(1, result.TotalCount);
         var doc = Assert.Single(result.Items);
         Assert.Equal("المصرف العقاري", doc.ExecutedPublicEntities[0].EntityName);
@@ -547,7 +549,7 @@ public class DocumentServiceTests : IDisposable
         };
         await _service.CreateAsync(req3, 1, "lawyer1", 1);
 
-        var options = await _service.GetFilterOptionsAsync(null, null, null, null, null, null, null, null);
+        var options = await _search.GetFilterOptionsAsync(null, null, null, null, null, null, null, null);
         Assert.Contains("فرع المزة", options.PublicEntityBranches);
         Assert.Contains("فرع حلب", options.PublicEntityBranches);
         Assert.DoesNotContain("فرع الشام", options.PublicEntityBranches);
@@ -573,11 +575,11 @@ public class DocumentServiceTests : IDisposable
         };
         await _service.CreateAsync(req3, 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync(null, null, null, null, null, null, null, null, "فرع المزة", 1, 20);
+        var result = await _search.SearchAsync(null, null, null, null, null, null, null, null, "فرع المزة", 1, 20);
         Assert.Equal(1, result.TotalCount);
         Assert.Equal(GeneralEntitySideCatalog.Executed, Assert.Single(result.Items).GeneralEntitySide);
 
-        var result2 = await _service.SearchAsync(null, null, null, null, null, null, null, null, "فرع حلب", 1, 20);
+        var result2 = await _search.SearchAsync(null, null, null, null, null, null, null, null, "فرع حلب", 1, 20);
         Assert.Equal(1, result2.TotalCount);
         Assert.Equal(GeneralEntitySideCatalog.Applicant, Assert.Single(result2.Items).GeneralEntitySide);
     }
@@ -593,7 +595,7 @@ public class DocumentServiceTests : IDisposable
         };
         await _service.CreateAsync(req, 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync(null, null, null, null, null, null, null, null, "فرع الشام", 1, 20);
+        var result = await _search.SearchAsync(null, null, null, null, null, null, null, null, "فرع الشام", 1, 20);
         Assert.Equal(0, result.TotalCount);
     }
 
@@ -605,7 +607,7 @@ public class DocumentServiceTests : IDisposable
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
         // فلترة الباقي بدائرة معينة لا تحذف الفرع المطابق في «المصرف العقاري» (دمشق).
-        var options = await _service.GetFilterOptionsAsync(null, null, "دمشق", null, null, null, null, "فرع المزة");
+        var options = await _search.GetFilterOptionsAsync(null, null, "دمشق", null, null, null, null, "فرع المزة");
         Assert.Contains("فرع المزة", options.PublicEntityBranches);
     }
 
@@ -614,7 +616,7 @@ public class DocumentServiceTests : IDisposable
     {
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync(null, null, null, null, null, null, null, null, null, 1, 20);
+        var result = await _search.SearchAsync(null, null, null, null, null, null, null, null, null, 1, 20);
         var doc = Assert.Single(result.Items);
         Assert.Equal("دمشق", doc.AdministrativeBranchName);
     }
@@ -1646,10 +1648,10 @@ public class DocumentServiceTests : IDisposable
         Assert.NotNull(updated.StruckOffDate);
 
         // يختفي من البحث العام ويظهر في صفحة «الملفات المشطوبة».
-        var search = await _service.SearchAsync(null, null, null, null, null, null, null, null, null, 1, 20);
+        var search = await _search.SearchAsync(null, null, null, null, null, null, null, null, null, 1, 20);
         Assert.DoesNotContain(doc.Id, search.Items.Select(d => d.Id));
 
-        var struckOff = await _service.SearchStruckOffAsync(null, 1, 20);
+        var struckOff = await _search.SearchStruckOffAsync(null, 1, 20);
         Assert.Contains(doc.Id, struckOff.Items.Select(d => d.Id));
     }
 
@@ -1710,9 +1712,9 @@ public class DocumentServiceTests : IDisposable
 
         foreach (var term in new[] { "سمير حسن علي", "غريب عن المقترض", "مستأنف مشطوب فريد" })
         {
-            var pageIds = PageIds(await _service.SearchStruckOffAsync(term, 1, 20));
+            var pageIds = PageIds(await _search.SearchStruckOffAsync(term, 1, 20));
             Assert.Contains(doc.Id, pageIds);
-            var mainIds = PageIds(await _service.SearchAsync(term, null, null, null, null, null, null, null, null, 1, 20));
+            var mainIds = PageIds(await _search.SearchAsync(term, null, null, null, null, null, null, null, null, 1, 20));
             Assert.True(pageIds.SetEquals(mainIds), $"تكافؤ المجموعات مكسور للعبارة: {term}");
         }
     }
@@ -1731,9 +1733,9 @@ public class DocumentServiceTests : IDisposable
 
         foreach (var term in new[] { "المصرف العقاري", "سامر حسن علي", "أحمد خالد الخطيب", "سالم الغائب", "مستأنف منفذ مشطوب" })
         {
-            var pageIds = PageIds(await _service.SearchStruckOffAsync(term, 1, 20));
+            var pageIds = PageIds(await _search.SearchStruckOffAsync(term, 1, 20));
             Assert.Contains(doc.Id, pageIds);
-            var mainIds = PageIds(await _service.SearchAsync(term, null, null, null, null, null, null, null, null, 1, 20));
+            var mainIds = PageIds(await _search.SearchAsync(term, null, null, null, null, null, null, null, null, 1, 20));
             Assert.True(pageIds.SetEquals(mainIds), $"تكافؤ المجموعات مكسور للعبارة: {term}");
         }
     }
@@ -1752,9 +1754,9 @@ public class DocumentServiceTests : IDisposable
 
         foreach (var term in new[] { "المصرف العقاري", "سامر حسن علي", "أحمد خالد الخطيب", "سالم الغائب", "مستأنف منفذ فريد" })
         {
-            var pageIds = PageIds(await _service.SearchExecutedAsync(term, 1, 20));
+            var pageIds = PageIds(await _search.SearchExecutedAsync(term, 1, 20));
             Assert.Contains(doc.Id, pageIds);
-            var mainIds = PageIds(await _service.SearchAsync(term, null, null, null, null, null, null, null, null, 1, 20));
+            var mainIds = PageIds(await _search.SearchAsync(term, null, null, null, null, null, null, null, null, 1, 20));
             Assert.True(pageIds.SetEquals(mainIds), $"تكافؤ المجموعات مكسور للعبارة: {term}");
         }
     }
@@ -1772,9 +1774,9 @@ public class DocumentServiceTests : IDisposable
 
         foreach (var term in new[] { "أحمد خالد الخطيب", "غريب عن المقترض", "مستأنف تسوية فريد" })
         {
-            var pageIds = PageIds(await _service.SearchExecutedAsync(term, 1, 20));
+            var pageIds = PageIds(await _search.SearchExecutedAsync(term, 1, 20));
             Assert.Contains(doc.Id, pageIds);
-            var mainIds = PageIds(await _service.SearchAsync(term, null, null, null, null, null, null, null, null, 1, 20));
+            var mainIds = PageIds(await _search.SearchAsync(term, null, null, null, null, null, null, null, null, 1, 20));
             Assert.True(pageIds.SetEquals(mainIds), $"تكافؤ المجموعات مكسور للعبارة: {term}");
         }
     }
@@ -1799,9 +1801,9 @@ public class DocumentServiceTests : IDisposable
             ("المصرف العقاري", second.Id), ("سامر حسن علي", second.Id), ("أحمد خالد الخطيب", second.Id),
         })
         {
-            var deletedIds = PageIds(await _service.SearchDeletedAsync(term, 1, 20));
+            var deletedIds = PageIds(await _search.SearchDeletedAsync(term, 1, 20));
             Assert.Contains(expectedId, deletedIds);
-            var mainIds = PageIds(await _service.SearchAsync(term, null, null, null, null, null, null, null, null, 1, 20));
+            var mainIds = PageIds(await _search.SearchAsync(term, null, null, null, null, null, null, null, null, 1, 20));
             Assert.DoesNotContain(expectedId, mainIds);
         }
     }
@@ -1825,7 +1827,7 @@ public class DocumentServiceTests : IDisposable
         var deleted = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
         Assert.True(await _service.DeleteAsync(deleted.Id, "lawyer1"));
 
-        var plain = await _service.SearchAsync(null, null, null, null, null, null, null, null, null, 1, 20);
+        var plain = await _search.SearchAsync(null, null, null, null, null, null, null, null, null, 1, 20);
         var ids = plain.Items.Select(d => d.Id).ToHashSet();
         Assert.DoesNotContain(struck.Id, ids);
         Assert.DoesNotContain(executed.Id, ids);
@@ -1847,9 +1849,9 @@ public class DocumentServiceTests : IDisposable
 
         foreach (var term in new[] { "سمير حسن علي", "غريب عن المقترض", "مستأنف محال فريد" })
         {
-            var pageIds = PageIds(await _service.SearchReferredToStartAsync(term, 1, 20));
+            var pageIds = PageIds(await _search.SearchReferredToStartAsync(term, 1, 20));
             Assert.Contains(doc.Id, pageIds);
-            var mainIds = PageIds(await _service.SearchAsync(term, null, null, null, null, null, null, null, null, 1, 20));
+            var mainIds = PageIds(await _search.SearchAsync(term, null, null, null, null, null, null, null, null, 1, 20));
             Assert.True(pageIds.SetEquals(mainIds), $"تكافؤ المجموعات مكسور للعبارة: {term}");
         }
     }
@@ -1871,11 +1873,11 @@ public class DocumentServiceTests : IDisposable
         });
         await _db.SaveChangesAsync();
 
-        var mainIds = PageIds(await _service.SearchAsync("جهة دخيلة فريدة", null, null, null, null, null, null, null, null, 1, 20));
+        var mainIds = PageIds(await _search.SearchAsync("جهة دخيلة فريدة", null, null, null, null, null, null, null, null, 1, 20));
         Assert.Contains(doc.Id, mainIds);
-        var pageIds = PageIds(await _service.SearchReferredToStartAsync("جهة دخيلة فريدة", 1, 20));
+        var pageIds = PageIds(await _search.SearchReferredToStartAsync("جهة دخيلة فريدة", 1, 20));
         Assert.DoesNotContain(doc.Id, pageIds);
-        var saneIds = PageIds(await _service.SearchReferredToStartAsync("سمير حسن علي", 1, 20));
+        var saneIds = PageIds(await _search.SearchReferredToStartAsync("سمير حسن علي", 1, 20));
         Assert.Contains(doc.Id, saneIds);
     }
 
@@ -2376,7 +2378,7 @@ public class DocumentServiceTests : IDisposable
         var deleted = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
         await _service.DeleteAsync(deleted.Id, "head1");
 
-        var result = await _service.SearchDeletedAsync(null, 1, 20);
+        var result = await _search.SearchDeletedAsync(null, 1, 20);
 
         Assert.Equal(1, result.TotalCount);
         Assert.Contains(result.Items, d => d.Id == deleted.Id);
@@ -2391,7 +2393,7 @@ public class DocumentServiceTests : IDisposable
         await _service.DeleteAsync(deleted.Id, "head1");
         await _service.RestoreAsync(deleted.Id, "head1");
 
-        var result = await _service.SearchDeletedAsync(null, 1, 20);
+        var result = await _search.SearchDeletedAsync(null, 1, 20);
 
         Assert.DoesNotContain(result.Items, d => d.Id == deleted.Id);
     }
@@ -2402,10 +2404,10 @@ public class DocumentServiceTests : IDisposable
         var deleted = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
         await _service.DeleteAsync(deleted.Id, "head1");
 
-        var result = await _service.SearchDeletedAsync("أحمد خالد الخطيب", 1, 20);
+        var result = await _search.SearchDeletedAsync("أحمد خالد الخطيب", 1, 20);
         Assert.Contains(result.Items, d => d.Id == deleted.Id);
 
-        var noMatch = await _service.SearchDeletedAsync("اسم غير موجود", 1, 20);
+        var noMatch = await _search.SearchDeletedAsync("اسم غير موجود", 1, 20);
         Assert.Empty(noMatch.Items);
     }
 
@@ -2414,7 +2416,7 @@ public class DocumentServiceTests : IDisposable
     {
         var active = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var result = await _service.SearchDeletedAsync(null, 1, 20);
+        var result = await _search.SearchDeletedAsync(null, 1, 20);
         Assert.Empty(result.Items);
         Assert.NotNull(await _service.GetAsync(active.Id));
     }
@@ -4433,7 +4435,7 @@ public class DocumentServiceTests : IDisposable
         await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1); // منفذ عليه متداول
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);          // طالبة تنفيذ
 
-        var result = await _service.SearchStruckOffAsync(null, 1, 20);
+        var result = await _search.SearchStruckOffAsync(null, 1, 20);
 
         Assert.Equal(1, result.TotalCount);
         Assert.Equal(struck.Id, result.Items.Single().Id);
@@ -4578,7 +4580,7 @@ public class DocumentServiceTests : IDisposable
         await _service.UpdateExecutedStatusAsync(struck.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
         await _service.CreateAsync(DepositSample(), 1, "lawyer1", 1); // عرض وايداع متداول
 
-        var result = await _service.SearchStruckOffAsync(null, 1, 20);
+        var result = await _search.SearchStruckOffAsync(null, 1, 20);
 
         Assert.Equal(1, result.TotalCount);
         Assert.Equal(struck.Id, result.Items.Single().Id);
@@ -4590,7 +4592,7 @@ public class DocumentServiceTests : IDisposable
         var struck = await _service.CreateAsync(DepositSample(), 1, "lawyer1", 1);
         await _service.UpdateExecutedStatusAsync(struck.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
 
-        var result = await _service.SearchAsync(null, null, null, null, null, null, null, null, null, 1, 20);
+        var result = await _search.SearchAsync(null, null, null, null, null, null, null, null, null, 1, 20);
 
         Assert.DoesNotContain(result.Items, d => d.Id == struck.Id);
     }
@@ -4602,7 +4604,7 @@ public class DocumentServiceTests : IDisposable
         await _service.UpdateExecutedStatusAsync(struck.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
         await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
 
-        var result = await _service.SearchAsync(null, null, null, null, null, null, null, null, null, 1, 20);
+        var result = await _search.SearchAsync(null, null, null, null, null, null, null, null, null, 1, 20);
 
         Assert.DoesNotContain(result.Items, d => d.Id == struck.Id);
     }
@@ -4627,7 +4629,7 @@ public class DocumentServiceTests : IDisposable
             }, "lawyer1");
         await _service.UpdateStatusAsync(fromPartial.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
 
-        var page = await _service.SearchReferredToStartAsync(null, page: 1, perPage: 20);
+        var page = await _search.SearchReferredToStartAsync(null, page: 1, perPage: 20);
         Assert.Equal(2, page.TotalCount);
         var rows = page.Items.ToDictionary(d => d.Id);
         Assert.Contains(fromCirculating.Id, rows.Keys);
@@ -4642,10 +4644,10 @@ public class DocumentServiceTests : IDisposable
         var referred = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
         await _service.UpdateStatusAsync(referred.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
 
-        var plain = await _service.SearchAsync(null, null, null, null, null, null, null, null, null, 1, 20);
+        var plain = await _search.SearchAsync(null, null, null, null, null, null, null, null, null, 1, 20);
         Assert.DoesNotContain(plain.Items, d => d.Id == referred.Id);
 
-        var searched = await _service.SearchAsync("أحمد", null, null, null, null, null, null, null, null, 1, 20);
+        var searched = await _search.SearchAsync("أحمد", null, null, null, null, null, null, null, null, 1, 20);
         Assert.Contains(searched.Items, d => d.Id == referred.Id);
     }
 
@@ -4656,10 +4658,10 @@ public class DocumentServiceTests : IDisposable
         await _service.UpdateStatusAsync(struck.Id, ExecutionStatusCatalog.StateStruckOff,
             new Dictionary<string, string?> { ["struckOffDate"] = "1/2/2024" }, "lawyer1");
 
-        var searched = await _service.SearchAsync("أحمد", null, null, null, null, null, null, null, null, 1, 20);
+        var searched = await _search.SearchAsync("أحمد", null, null, null, null, null, null, null, null, 1, 20);
         Assert.Contains(searched.Items, d => d.Id == struck.Id);
 
-        var plain = await _service.SearchAsync(null, null, null, null, null, null, null, null, null, 1, 20);
+        var plain = await _search.SearchAsync(null, null, null, null, null, null, null, null, null, 1, 20);
         Assert.DoesNotContain(plain.Items, d => d.Id == struck.Id);
     }
 
@@ -4674,11 +4676,11 @@ public class DocumentServiceTests : IDisposable
         doc.ExecSubStatus = ExecutionStatusCatalog.SubPartiallyExecuted;
         await _db.SaveChangesAsync();
 
-        var circulating = await _service.SearchAsync(null, ExecutionStatusCatalog.StateCirculating,
+        var circulating = await _search.SearchAsync(null, ExecutionStatusCatalog.StateCirculating,
             null, null, null, null, null, null, null, 1, 20);
         Assert.Contains(circulating.Items, d => d.Id == created.Id);
 
-        var executed = await _service.SearchAsync(null, ExecutionStatusCatalog.ExecutedFilter,
+        var executed = await _search.SearchAsync(null, ExecutionStatusCatalog.ExecutedFilter,
             null, null, null, null, null, null, null, 1, 20);
         Assert.DoesNotContain(executed.Items, d => d.Id == created.Id);
     }
@@ -4695,10 +4697,10 @@ public class DocumentServiceTests : IDisposable
         doc.ExecSubStatus = null;
         await _db.SaveChangesAsync();
 
-        var executed = await _service.SearchExecutedAsync(null, page: 1, perPage: 20);
+        var executed = await _search.SearchExecutedAsync(null, page: 1, perPage: 20);
         Assert.Contains(executed.Items, d => d.Id == created.Id);
 
-        var general = await _service.SearchAsync(null, null, null, null, null, null, null, null, null, 1, 20);
+        var general = await _search.SearchAsync(null, null, null, null, null, null, null, null, null, 1, 20);
         Assert.DoesNotContain(general.Items, d => d.Id == created.Id);
     }
 
@@ -4710,10 +4712,10 @@ public class DocumentServiceTests : IDisposable
         var referred = await _service.CreateAsync(Sample(), 1, "lawyer1", 1);
         await _service.UpdateStatusAsync(referred.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
 
-        var page = await _service.SearchReferredToStartAsync("علي", page: 1, perPage: 20);
+        var page = await _search.SearchReferredToStartAsync("علي", page: 1, perPage: 20);
         Assert.Contains(page.Items, d => d.Id == referred.Id);
 
-        var main = await _service.SearchAsync("علي", null, null, null, null, null, null, null, null, 1, 20);
+        var main = await _search.SearchAsync("علي", null, null, null, null, null, null, null, null, 1, 20);
         Assert.Contains(main.Items, d => d.Id == referred.Id);
     }
 
@@ -4727,7 +4729,7 @@ public class DocumentServiceTests : IDisposable
         var referred = await _service.CreateAsync(req, 1, "lawyer1", 1);
         await _service.UpdateStatusAsync(referred.Id, ExecutionStatusCatalog.ReferredToStart, ReferredToStartFields(), "lawyer1");
 
-        var page = await _service.SearchReferredToStartAsync("غريب المقترض", page: 1, perPage: 20);
+        var page = await _search.SearchReferredToStartAsync("غريب المقترض", page: 1, perPage: 20);
         Assert.Contains(page.Items, d => d.Id == referred.Id);
     }
 
@@ -4749,7 +4751,7 @@ public class DocumentServiceTests : IDisposable
         });
         _db.SaveChanges();
 
-        var page = await _service.SearchReferredToStartAsync("فريد", page: 1, perPage: 20);
+        var page = await _search.SearchReferredToStartAsync("فريد", page: 1, perPage: 20);
         Assert.Contains(page.Items, d => d.Id == referred.Id);
     }
 
@@ -4767,7 +4769,7 @@ public class DocumentServiceTests : IDisposable
         fields["startReferralDate"] = null;
         await _service.UpdateStatusAsync(undated.Id, ExecutionStatusCatalog.ReferredToStart, fields, "lawyer1");
 
-        var page = await _service.SearchReferredToStartAsync(null, page: 1, perPage: 20);
+        var page = await _search.SearchReferredToStartAsync(null, page: 1, perPage: 20);
         Assert.Equal(2, page.TotalCount);
         Assert.Equal(dated.Id, page.Items[0].Id);
         Assert.Equal(undated.Id, page.Items[1].Id);

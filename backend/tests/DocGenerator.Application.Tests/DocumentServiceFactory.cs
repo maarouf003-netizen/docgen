@@ -16,7 +16,7 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public static class DocumentServiceFactory
 {
-    public static (IDocumentService Documents, IExecutionActionService Actions) Create(
+    public static (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search) Create(
         DocGeneratorDbContext db,
         IAuditLogger audit,
         TimeProvider? clock = null,
@@ -67,6 +67,15 @@ public static class DocumentServiceFactory
             clockValue,
             timeZoneValue);
 
+        var appealsValue = appeals ?? new AppealRepository(db);
+        var searchService = new DocumentSearchService(
+            documentsValue,
+            appealsValue,
+            audit,
+            Microsoft.Extensions.Options.Options.Create(exportOptionsValue),
+            clockValue,
+            timeZoneValue);
+
         var documentService = new DocumentService(
             documentsValue,
             usersValue,
@@ -77,7 +86,7 @@ public static class DocumentServiceFactory
             registrationDates ?? new Repository<DocumentRegistrationDate>(db),
             occurrences ?? new Repository<DocumentOccurrence>(db),
             delegations ?? new DelegationRepository(db),
-            appeals ?? new AppealRepository(db),
+            appealsValue,
             alertServiceValue,
             uowValue,
             txValue,
@@ -91,6 +100,6 @@ public static class DocumentServiceFactory
             circuits,
             branches);
 
-        return (documentService, actionService);
+        return (documentService, actionService, searchService);
     }
 }
