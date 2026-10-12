@@ -7,9 +7,9 @@ using DocGenerator.Infrastructure.Persistence;
 namespace DocGenerator.Application.Tests;
 
 /// <summary>
-/// مصنع اختباري يعزل مواقع بناء `DocumentService` (المرحلة 1أ — مشروع الاختبارات فقط):
-/// كل مواقع الاستدعاء تستخدم معاملات مسماة/اختيارية، فيبقى تقليص البواني لاحقًا
-/// (المراحل 2–5) داخل جسم المصنع فقط لا في مواقع الاستدعاء.
+/// مصنع اختباري يعزل مواقع بناء `DocumentService` (مشروع الاختبارات فقط):
+/// كل مواقع الاستدعاء تستخدم معاملات مسماة/اختيارية، فيبقى أي تقليص لاحق للبواني
+/// داخل جسم المصنع فقط لا في مواقع الاستدعاء.
 /// المستودعات مغلفات عديمة الحالة فوق `DbContext` نفسه فسلوك المثيلات الجديدة
 /// مكافئ — ما يُمرَّر صراحةً يُستخدم كما هو (كمشاركة `HeadAlertService` مع خدمة
 /// شقيقة أو مستودعات الدوائر/الفروع أو مصنّف مخصص).
@@ -25,8 +25,6 @@ public static class DocumentServiceFactory
         IDbExceptionClassifier? dbErrors = null,
         IDocumentRepository? documents = null,
         IUserRepository? users = null,
-        IRepository<Guarantor>? guarantors = null,
-        IRepository<Asset>? assets = null,
         IRepository<ExecutionAction>? actions = null,
         IRepository<DocumentBaseNumber>? baseNumbers = null,
         IRepository<DocumentRegistrationDate>? registrationDates = null,
@@ -120,29 +118,20 @@ public static class DocumentServiceFactory
         var documentService = new DocumentService(
             documentsValue,
             usersValue,
-            guarantors ?? new Repository<Guarantor>(db),
-            assets ?? new Repository<Asset>(db),
-            actionsValue,
             baseNumbersValue,
             registrationDatesValue,
-            occurrencesValue,
-            delegationsValue,
             appealsValue,
-            alertServiceValue,
             uowValue,
             txValue,
             audit,
-            Microsoft.Extensions.Options.Options.Create(exportOptionsValue),
             clockValue,
             timeZoneValue,
-            dbErrorsValue,
             actionService,
             delegationService,
             statusService,
             writeGuard,
             idempotency,
-            circuits,
-            branches);
+            circuits);
 
         return (documentService, actionService, searchService, statusService);
     }

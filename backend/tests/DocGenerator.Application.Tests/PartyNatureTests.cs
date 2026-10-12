@@ -35,15 +35,13 @@ public class PartyNatureTests : IDisposable
         _db.SaveChanges();
         var documents = new DocumentRepository(_db);
         var users = new UserRepository(_db);
-        var guarantors = new Repository<Guarantor>(_db);
-        var estates = new Repository<Asset>(_db);
         var actions = new Repository<ExecutionAction>(_db);
         var baseNumbers = new Repository<DocumentBaseNumber>(_db);
         var registrationDates = new Repository<DocumentRegistrationDate>(_db);
         var occurrences = new Repository<DocumentOccurrence>(_db);
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
-        _service = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, guarantors: guarantors, assets: estates, actions: actions, baseNumbers: baseNumbers, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx).Documents;
+        _service = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, actions: actions, baseNumbers: baseNumbers, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx).Documents;
     }
 
     public void Dispose() => _db.Dispose();
