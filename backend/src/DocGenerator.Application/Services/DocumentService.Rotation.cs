@@ -74,7 +74,7 @@ public sealed partial class DocumentService
         if (unique.Count != entries.Count)
             throw new ArgumentException("لا يمكن تكرار نفس الملف في طلب التدوير");
 
-        await WithNumberGuardAsync(() => _tx.RunAsync(async token =>
+        await _writeGuard.WithNumberGuardAsync(() => _tx.RunAsync(async token =>
         {
             var docs = await _documents.GetByIdsAsync(unique.Select(e => e.DocumentId).ToList(), token);
             var found = docs.ToDictionary(d => d.Id);
@@ -129,7 +129,7 @@ public sealed partial class DocumentService
                     throw new ArgumentException("رقم الأساس يتجاوز الطول المسموح");
 
                 // RF-009 بتوقيع الدائرة (البند 34): مطابقة FK مباشرة — قبل إدراجه.
-                await EnsureNumberUniqueByCircuitAsync(doc.Id, doc.ExecutionCircuitId, doc.CourtNorm,
+                await _writeGuard.EnsureNumberUniqueByCircuitAsync(doc.Id, doc.ExecutionCircuitId, doc.CourtNorm,
                     normalized, doc.FileType, year.ToString(), token);
 
                 // سجل جديد دائمًا: كل تدوير يلحق سجلًا بسنة التدوير، والأحدث (Year ثم CreatedAt) هو المعتبر.

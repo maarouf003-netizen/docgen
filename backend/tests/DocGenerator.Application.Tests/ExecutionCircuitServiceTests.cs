@@ -20,6 +20,7 @@ public class ExecutionCircuitServiceTests : IDisposable
     private readonly DocGeneratorDbContext _db;
     private readonly IExecutionCircuitService _circuits;
     private readonly IDocumentService _documents;
+    private readonly IDocumentStatusService _documentStatus;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _branchId;
     private readonly int _headId;
@@ -60,7 +61,9 @@ public class ExecutionCircuitServiceTests : IDisposable
             uow, tx, _audit, classifier, TimeProvider.System, TestClock.TimeZone);
         var alertService = new HeadAlertService(alertsRepo, documents, users,
             branchesRepo, uow, tx, _audit);
-        _documents = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, baseNumbers: baseNumbers, occurrences: occurrences, uow: uow, tx: tx, alertService: alertService, dbErrors: classifier, circuits: circuitsRepo, branches: branchesRepo).Documents;
+        var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, baseNumbers: baseNumbers, occurrences: occurrences, uow: uow, tx: tx, alertService: alertService, dbErrors: classifier, circuits: circuitsRepo, branches: branchesRepo);
+        _documents = docBundle.Documents;
+        _documentStatus = docBundle.Status;
     }
 
     public void Dispose() => _db.Dispose();
@@ -280,7 +283,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
             new ReferCircuitFilesRequest { FileIds = new List<int> { docId }, TargetLawyerId = _lawyer2Id, TargetCircuitId = target });
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documents.UpdateStatusAsync(docId, "متداول", new Dictionary<string, string?>(), "lawyer2"));
+            _documentStatus.UpdateStatusAsync(docId, "متداول", new Dictionary<string, string?>(), "lawyer2"));
     }
 
     [Fact]

@@ -24,7 +24,7 @@ public class ExportProjectionTests : IDisposable
 
     public void Dispose() => _db.Dispose();
 
-    private (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search) Build()
+    private (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status) Build()
     {
         _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" });
         _db.Users.Add(new User

@@ -25,54 +25,6 @@ public interface IDocumentService
     /// scopeBranchId يُقيّد النطاق بفرع رئيس القسم ويُرجع عدد الملفات المنقولة.
     /// </summary>
     Task<int> TransferAllAsync(int sourceLawyerId, int targetLawyerId, int? scopeBranchId, string? actorName, CancellationToken ct = default, string? idempotencyKey = null, int? ownerSectionId = null);
-    Task<bool> UpdateStatusAsync(int documentId, string status, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default, long? version = null);
-    /// <summary>
-    /// «اعتبار الملف منفذًا كاملًا بهذا البيع» (نظام «طالبة تنفيذ»): إغلاق «منفذ جبريا (منفذ
-    /// جزئيا)» الذي فُعّل تلقائيًا بإتمام إنابة إلى «منفذ كاملا» — يُخصم من ملفٍ منفذ جزئيًا
-    /// وفيه إنابة منفذة، ويُلزم إدخال «تاريخ تحويل بدل المبيع للجهة العامة» (و«رقم الإشعار»
-    /// اختياريًا)، ويُسجَّل وقعة «منفذ جبريا» في وقوعات الملف. حينها فقط يدخل بدل الإنابة
-    /// ضمن «إحصاءات منفذ جبريا» مرة واحدة (عبر مسار DelegationSalesAmount القائم).
-    /// </summary>
-    Task<bool> ConsiderExecutedByDelegationAsync(int documentId, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default, long? version = null);
-    /// <summary>
-    /// «التراجع» في نظام «طالبة تنفيذ»: إعادة الملف إلى المتداول من تريث أو منفذ بالتسوية أو منفذ
-    /// جبريا بموجب كتاب الجهة العامة بالسير بالملف (رقم وتاريخ الكتاب وورودهما إلزاميان)،
-    /// ويُسجَّل وقعة «تراجع» بحقولها في وقوعات الملف.
-    /// </summary>
-    Task<bool> RevertStatusAsync(int documentId, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default, long? version = null);
-    /// <summary>
-    /// العودة من «محال الى البداية» (نقطة «return-referred-to-start») بنتيجتين حسب اللازمة
-    /// (§2-10 — بلا عمود جديد): إن حمل الملف «منفذ جزئيا» عاد «منفذ جبريا» مع بقاء عائلة
-    /// الجبريا كما هي، وإلا عاد «متداول» مع مسح بقية العائلات. حقول التجديد موحّدة في
-    /// المسارين (رقم الملف الجديد يفعّل التجديد)، و«تاريخ الشطب» الاختياري لنتيجة-متداول فقط.
-    /// تُسجَّل وقعة «تراجع» بسرد آلي + حقول الشطب/التجديد إن وُجدت، وبلا تنبيهات مرآة عمدًا
-    /// (قرار 9 يجعل الإنابة السارية على «محال» مستحيلة).
-    /// </summary>
-    Task<bool> ReturnFromReferredToStartAsync(int documentId, ReturnReferredToStartRequest request, string? actorName, CancellationToken ct = default);
-    /// <summary>
-    /// تعيين حالة وضع «منفذ عليه» (ExecutedStatusCatalog): منفذ/مشطوب. عند الشطب يُثبَّت
-    /// StruckOffDate (لحظة الشطب UTC) فيُخفى الملف من القوائم والتصدير ويظهر في صفحة المشطوبة.
-    /// إعادة الحالة إلى متداول (سلسلة فارغة) تُبقي StruckOffDate محفوظًا لعرضه بعد الإعادة.
-    /// </summary>
-    Task<bool> UpdateExecutedStatusAsync(int documentId, string status, string? actorName, CancellationToken ct = default);
-    /// <summary>
-    /// تعيين حالة وضع «منفذ عليه» مع حقولها (ExecutedStatusRequest): عند الانتقال إلى «منفذ»
-    /// تُحفظ حقوله (المبلغ/كيفية التنفيذ/تاريخ الإيداع)، وعند الانتقال إلى «مشطوب» يُحفظ
-    /// تاريخ الشطب المُرسَل إن وُجد وإلا توقيت الانتقال. عند العودة من مشطوب إلى متداول
-    /// يُطبَّق بيان التجديد (رقم الملف الجديد إلزامي). إعادة الحالة إلى متداول (سلسلة فارغة)
-    /// تُبقي تاريخ الشطب محفوظًا لعرضه بعد الإعادة.
-    /// </summary>
-    Task<bool> UpdateExecutedStatusAsync(int documentId, string status, ExecutedStatusRequest? request, string? actorName, CancellationToken ct = default);
-    /// <summary>
-    /// إعادة ملف مشطوب إلى المتداول في وضع «منفذ عليه» (فك الشطب): تُصفَّر ExecutedStatus
-    /// وتبقى StruckOffDate محفوظة (تُعرض في تفاصيل الملف بعد الإعادة).
-    /// </summary>
-    Task<bool> RestoreStruckOffAsync(int documentId, string? actorName, CancellationToken ct = default);
-    /// <summary>
-    /// إعادة ملف مشطوب إلى المتداول مع تجديد الملف برقم ملف جديد لسنة الإعادة (إلزامي):
-    /// يُطبَّق بيان التجديد ويُسجَّل رقم أساس لسنة الإعادة الحالية فيعود الملف بالرقم والنوع الجديدين.
-    /// </summary>
-    Task<bool> RestoreStruckOffAsync(int documentId, RenewalRequest renewal, string? actorName, CancellationToken ct = default);
     Task IncrementViewCountAsync(int documentId, CancellationToken ct = default);
     /// <summary>جدول تدوير أرقام الأساس للمحامي (ترحّلي): ملفاته المؤهلة مع رقم أساس السنة الحالية إن وُجد.</summary>
     Task<PagedResult<RotationDocumentDto>> GetRotationListAsync(int userId, int page, int perPage, CancellationToken ct = default);
@@ -105,6 +57,8 @@ public sealed partial class DocumentService : IDocumentService
     private readonly IAuditLogger _audit;
     private readonly IExecutionActionService _actionService;
     private readonly IDocumentDelegationService _delegationService;
+    private readonly IDocumentStatusService _statusService;
+    private readonly IDocumentWriteGuard _writeGuard;
     private readonly IDbExceptionClassifier _dbErrors;
     private readonly int _maxExportRows;
     private readonly TimeProvider _clock;
@@ -134,6 +88,8 @@ public sealed partial class DocumentService : IDocumentService
         IDbExceptionClassifier dbErrors,
         IExecutionActionService actionService,
         IDocumentDelegationService delegationService,
+        IDocumentStatusService statusService,
+        IDocumentWriteGuard writeGuard,
         IIdempotencyStore? idempotency = null,
         IRepository<ExecutionCircuit>? circuits = null,
         IRepository<Branch>? branches = null)
@@ -156,6 +112,8 @@ public sealed partial class DocumentService : IDocumentService
         _audit = audit;
         _actionService = actionService;
         _delegationService = delegationService;
+        _statusService = statusService;
+        _writeGuard = writeGuard;
         _maxExportRows = Math.Max(1, exportOptions.Value.MaxRows);
         _clock = clock;
         _timeZone = timeZone;
@@ -205,7 +163,7 @@ public sealed partial class DocumentService : IDocumentService
 
         ApplyRequest(doc, request);
         // سجل الدوائر: اشتقاق الدائرة (إلزامية) قبل المشتقات — يتجاهل نص العميل.
-        var createCircuit = await ResolveCircuitForWriteAsync(request, branchId, isExternalTarget: false, ct);
+        var createCircuit = await _writeGuard.ResolveCircuitForWriteAsync(request, branchId, isExternalTarget: false, ct);
         DocumentText.ApplyCircuitDerivation(doc, createCircuit, request);
         DocumentText.FillDerivedFields(doc);
         ApplyRegistrationDate(doc, request.FileRegistrationDate);
@@ -236,10 +194,10 @@ public sealed partial class DocumentService : IDocumentService
         Document doc, DocumentUpsertRequest request, int userId, User actor, string? actorName, CancellationToken ct)
     {
         // RF-009 بتوقيع الدائرة (البند 28/34): مطابقة FK مباشرة بدل النص.
-        await EnsureNumberUniqueByCircuitAsync(null, doc.ExecutionCircuitId, doc.CourtNorm,
+        await _writeGuard.EnsureNumberUniqueByCircuitAsync(null, doc.ExecutionCircuitId, doc.CourtNorm,
             doc.FileNumber, doc.FileType, doc.FileYear, ct);
 
-        return await WithNumberGuardAsync(() => _tx.RunAsync(async token =>
+        return await _writeGuard.WithNumberGuardAsync(() => _tx.RunAsync(async token =>
         {
             await _documents.AddAsync(doc, token);
             await _uow.SaveChangesAsync(token);
@@ -251,7 +209,7 @@ public sealed partial class DocumentService : IDocumentService
             // ملف أُنشئ مشطوبًا من البداية: يُسجَّل وقعة شطب تلقائيًا ليتسق سجل الوقوعات
             // مع البيانات المُرحَّلة (بعد حفظ المستند فيُعرف رقمه داخل المعاملة نفسها).
             if (doc.ExecutedStatus == ExecutedStatusCatalog.StruckOff)
-                await AddStruckOffOccurrenceAsync(doc, userId, token);
+                await _statusService.AddStruckOffOccurrenceAsync(doc, userId, token);
             await _uow.SaveChangesAsync(token);
             await _actionService.SeedInitialActionsAsync(doc, request.InitialActions, userId, actorName, token);
             return DocumentResponse.FromEntity(doc, CurrentYear());
@@ -311,7 +269,7 @@ public sealed partial class DocumentService : IDocumentService
         }
         else
         {
-            var editCircuit = await ResolveCircuitForWriteAsync(request, doc.BranchId, isExternalTarget: false, ct);
+            var editCircuit = await _writeGuard.ResolveCircuitForWriteAsync(request, doc.BranchId, isExternalTarget: false, ct);
             DocumentText.ApplyCircuitDerivation(doc, editCircuit, request);
         }
         // تعديل ملف «بانتظار إعادة القيد» برقم غير فارغ يُسقط الـ flag (مع إعادة تحقق الوحدانية).
@@ -322,30 +280,30 @@ public sealed partial class DocumentService : IDocumentService
         doc.UpdatedAt = DateTime.UtcNow;
 
         // RF-009 بتوقيع الدائرة: فحص التكرار بعد تطبيق الطلب.
-        await EnsureNumberUniqueByCircuitAsync(documentId, doc.ExecutionCircuitId, doc.CourtNorm,
+        await _writeGuard.EnsureNumberUniqueByCircuitAsync(documentId, doc.ExecutionCircuitId, doc.CourtNorm,
             doc.FileNumber, doc.FileType, doc.FileYear, ct);
 
         // RF-010: فحص التزامن المبكر (409 ودي) + زيادة العدّاد وشبكة السباق.
-        EnsureConcurrency(doc, request.Version);
+        _writeGuard.EnsureConcurrency(doc, request.Version);
 
         List<MirrorNotification> mirrorNotifications = [];
         var circuitSwitched = oldCircuitId != doc.ExecutionCircuitId;
-        var result = await WithConcurrencyGuardAsync(() => WithNumberGuardAsync(() => _tx.RunAsync(async token =>
+        var result = await _writeGuard.WithConcurrencyGuardAsync(() => _writeGuard.WithNumberGuardAsync(() => _tx.RunAsync(async token =>
         {
             if (wasStruckOff && doc.ExecutedStatus == ExecutedStatusCatalog.None)
-                await ApplyRenewalAsync(doc, request, true, userId, token);
+                await _statusService.ApplyRenewalAsync(doc, request, true, userId, token);
             else if (!wasStruckOff && ExecutedStatusCatalog.IsStruckOff(doc.ExecutedStatus))
-                await AddStruckOffOccurrenceAsync(doc, userId, token);
+                await _statusService.AddStruckOffOccurrenceAsync(doc, userId, token);
             _documents.Update(doc);
             await _uow.SaveChangesAsync(token);
             // تبديل الدائرة من التعديل يسجل الوقوعتين تلقائيًا (قديم/جديد) — وإلا قفزت بلا أثر.
             if (circuitSwitched)
-                await AddCircuitSwitchOccurrencesAsync(doc, oldCircuitName, userId, token);
+                await _writeGuard.AddCircuitSwitchOccurrencesAsync(doc, oldCircuitName, userId, token);
             await _delegationService.SyncSnapshotsAsync(doc, token);
             // المرآة: نسخ تغييرات المنيب إلى مناباته المعلقة (داخل المعاملة نفسها) وإعادة اشتقاق
             // الحقول المحسوبة فيها — تعيد إشعارات تُطلق بعد نجاح المعاملة.
             mirrorNotifications = await _delegationService.MirrorSourceEditsAsync(doc, token);
-            await LogDocumentChangesAsync(before, doc, actorName, "update",
+            await _writeGuard.LogDocumentChangesAsync(before, doc, actorName, "update",
                 $"عدّل المستند (رقم {doc.Id})", token);
             await _actionService.SeedInitialActionsAsync(doc, request.InitialActions, userId, actorName, token);
             return DocumentResponse.FromEntity(doc, CurrentYear());
@@ -432,11 +390,11 @@ public sealed partial class DocumentService : IDocumentService
         // أثناء حذفه) — 409 بدل تكرار ظاهري. بتوقيع الدائرة (البند 34).
         // مسار إفراغ المحذوفة منطقيًا الوحيد: استعادة ثم إحالة — Restore يفحص بالرقم الجديد.
         var currentYear = CurrentYear();
-        await EnsureNumberUniqueByCircuitAsync(documentId, doc.ExecutionCircuitId, doc.CourtNorm,
+        await _writeGuard.EnsureNumberUniqueByCircuitAsync(documentId, doc.ExecutionCircuitId, doc.CourtNorm,
             Common.EffectiveFileIdentity.Number(doc, currentYear), doc.FileType,
             Common.EffectiveFileIdentity.Year(doc, currentYear), ct);
 
-        return await WithNumberGuardAsync(() => _tx.RunAsync(async token =>
+        return await _writeGuard.WithNumberGuardAsync(() => _tx.RunAsync(async token =>
         {
             // الاستعادة تعيد اشتقاق الدائرة من السجل (M3): التسمية الجماعية أثناء
             // الحذف المنطقي لا تمسّ المحذوف، فتُزامَن هنا وإلا عُرض الاسم القديم.
@@ -593,4 +551,16 @@ public sealed partial class DocumentService : IDocumentService
     /// <summary>سنة «قرار السنة» الحالية من ساعة النظام ومنطقته — مصدر واحد لا تكرار قرار.</summary>
     private int CurrentYear() => ServerClock.CurrentYear(_clock, _timeZone);
 
+    /// <summary>
+    /// مستودع احتياطي للاختبارات القائمة التي تبني DocumentService يدويًا بلا سجل فروع.
+    /// (يُتقاعَد مع معامل `branches` في المرحلة 5.)
+    /// </summary>
+    private sealed class UnconfiguredBranchRepository : IRepository<Branch>
+    {
+        public Task AddAsync(Branch entity, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<Branch?> GetByIdAsync(int id, CancellationToken ct = default) => Task.FromResult<Branch?>(null);
+        public Task<List<Branch>> ListAsync(CancellationToken ct = default) => Task.FromResult(new List<Branch>());
+        public void Remove(Branch entity) { }
+        public void Update(Branch entity) { }
+    }
 }

@@ -16,7 +16,7 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public static class DocumentServiceFactory
 {
-    public static (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search) Create(
+    public static (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status) Create(
         DocGeneratorDbContext db,
         IAuditLogger audit,
         TimeProvider? clock = null,
@@ -79,6 +79,14 @@ public static class DocumentServiceFactory
         var delegationsValue = delegations ?? new DelegationRepository(db);
         var registrationDatesValue = registrationDates ?? new Repository<DocumentRegistrationDate>(db);
         var occurrencesValue = occurrences ?? new Repository<DocumentOccurrence>(db);
+        var baseNumbersValue = baseNumbers ?? new Repository<DocumentBaseNumber>(db);
+        var writeGuard = new DocumentWriteGuard(
+            documentsValue,
+            dbErrorsValue,
+            audit,
+            occurrencesValue,
+            uowValue,
+            circuits);
         var delegationService = new DocumentDelegationService(
             delegationsValue,
             new DelegationReservationRepository(db),
@@ -95,13 +103,27 @@ public static class DocumentServiceFactory
             clockValue,
             timeZoneValue);
 
+        var statusService = new DocumentStatusService(
+            documentsValue,
+            occurrencesValue,
+            baseNumbersValue,
+            audit,
+            alertServiceValue,
+            delegationsValue,
+            txValue,
+            uowValue,
+            clockValue,
+            timeZoneValue,
+            delegationService,
+            writeGuard);
+
         var documentService = new DocumentService(
             documentsValue,
             usersValue,
             guarantors ?? new Repository<Guarantor>(db),
             assets ?? new Repository<Asset>(db),
             actionsValue,
-            baseNumbers ?? new Repository<DocumentBaseNumber>(db),
+            baseNumbersValue,
             registrationDatesValue,
             occurrencesValue,
             delegationsValue,
@@ -116,10 +138,12 @@ public static class DocumentServiceFactory
             dbErrorsValue,
             actionService,
             delegationService,
+            statusService,
+            writeGuard,
             idempotency,
             circuits,
             branches);
 
-        return (documentService, actionService, searchService);
+        return (documentService, actionService, searchService, statusService);
     }
 }

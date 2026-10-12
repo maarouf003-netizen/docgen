@@ -22,6 +22,7 @@ public class DocumentsController : ControllerBase
     private readonly IDocumentService _documents;
     private readonly IExecutionActionService _executionActions;
     private readonly IDocumentSearchService _search;
+    private readonly IDocumentStatusService _status;
     private readonly IWordDocumentGenerator _generator;
     private readonly IExcelExportService _excel;
     private readonly IDocumentAppealService _appeals;
@@ -35,6 +36,7 @@ public class DocumentsController : ControllerBase
         IDocumentService documents,
         IExecutionActionService executionActions,
         IDocumentSearchService search,
+        IDocumentStatusService status,
         IWordDocumentGenerator generator,
         IExcelExportService excel,
         IDocumentAppealService appeals,
@@ -47,6 +49,7 @@ public class DocumentsController : ControllerBase
         _documents = documents;
         _executionActions = executionActions;
         _search = search;
+        _status = status;
         _generator = generator;
         _excel = excel;
         _appeals = appeals;
@@ -434,7 +437,7 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var ok = await _documents.UpdateStatusAsync(id, request.Status, request.Fields ?? new(), ActorName, ct, request.Version);
+            var ok = await _status.UpdateStatusAsync(id, request.Status, request.Fields ?? new(), ActorName, ct, request.Version);
             return ok ? Ok(new { message = "تم تحديث الحالة" }) : NotFound();
         }
         catch (ArgumentException e)
@@ -456,7 +459,7 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var ok = await _documents.RevertStatusAsync(id, request.Fields ?? new(), ActorName, ct, request.Version);
+            var ok = await _status.RevertStatusAsync(id, request.Fields ?? new(), ActorName, ct, request.Version);
             return ok ? Ok(new { message = "عُد الملف إلى المتداول" }) : NotFound();
         }
         catch (ArgumentException e)
@@ -479,7 +482,7 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var ok = await _documents.ReturnFromReferredToStartAsync(id, request ?? new(), ActorName, ct);
+            var ok = await _status.ReturnFromReferredToStartAsync(id, request ?? new(), ActorName, ct);
             return ok ? Ok(new { message = "أعيد السير بالملف" }) : NotFound();
         }
         catch (ArgumentException e)
@@ -502,7 +505,7 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var ok = await _documents.ConsiderExecutedByDelegationAsync(id, request.Fields ?? new(), ActorName, ct, request.Version);
+            var ok = await _status.ConsiderExecutedByDelegationAsync(id, request.Fields ?? new(), ActorName, ct, request.Version);
             return ok ? Ok(new { message = "اعتُبر الملف منفذًا كاملًا بهذا البيع" }) : NotFound();
         }
         catch (ArgumentException e)
@@ -524,7 +527,7 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var ok = await _documents.UpdateExecutedStatusAsync(id, request.Status, request, ActorName, ct);
+            var ok = await _status.UpdateExecutedStatusAsync(id, request.Status, request, ActorName, ct);
             return ok ? Ok(new { message = "تم تحديث حالة وضع «الجهة العامة منفذ عليها»" }) : NotFound();
         }
         catch (ArgumentException e)
@@ -546,7 +549,7 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            return await _documents.RestoreStruckOffAsync(id, request, ActorName, ct)
+            return await _status.RestoreStruckOffAsync(id, request, ActorName, ct)
                 ? Ok(new { message = "أعيد الملف المشطوب إلى المتداول" })
                 : NotFound();
         }
