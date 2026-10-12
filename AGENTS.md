@@ -79,7 +79,11 @@
 
 الفرع الحي الوحيد هو `master` (الفرع `main` متقادم ومحذوف من البعيد — محتواه محفوظ بوسم `archive/main-20261004`).
 
-- **لا دفع مباشر إلى `master` أبدًا** — كل عمل على فرع (`feature/…` أو `refactor/…` أو `docs/…`) ثم `PR`؛ حماية الفرع في `GitHub` (`Settings` ← `Branches`) تشترط `PR` + نجاح فحوصات `CI` الثلاثة (`backend` + `frontend` + `audit`) + منع `force-push`/الحذف.
+- **لا دفع مباشر إلى `master` أبدًا** — كل عمل على فرع (`feature/…` أو `refactor/…` أو `docs/…`) ثم `PR`؛ حماية الفرع في `GitHub` (`Settings` ← `Branches`) تشترط `PR` + نجاح فحوصات `CI` الأربعة (`backend` + `frontend` + `guards` + `audit`) + منع `force-push`/الحذف.
 - **لا دمج قبل اخضرار البوابات الأربع على الفرع**: `dotnet test` للخلفية، و`npx oxlint src` و`npx tsc -b` و`npx vitest run` و`npm run build` للواجهة.
 - سلوك موصوف في السياق (`docs/audit/00-PROJECT-CONTEXT.md` §2–§8) لا يُغيَّر بلا موافقة المالك الصريحة — يُبلَّغ كسؤال أولًا.
+
+# Docs Policy (Mandatory — docs/audit lifecycle)
+
+- وثائق `docs/audit/` اللقطية (اكتشاف/عدّ/تحقق بتاريخ لحظي) لا تُحرَّر بعد تجميدها — أي تحديث يكون بوثيقة/ملحق جديد مؤرخ، لا بتحرير اللقطة.
 
