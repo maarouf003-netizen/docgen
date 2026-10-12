@@ -18,8 +18,14 @@ jobs:
         run: dotnet build backend/DocGenerator.sln --nologo -v q
       - name: Test (application)
         run: dotnet test backend/tests/DocGenerator.Application.Tests/DocGenerator.Application.Tests.csproj --no-build --nologo -v q
-      - name: Test (api)
-        run: dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build --nologo -v q
+      # عزل إجباري عن التوازي: فئة EnricherMiddlewareTests (Trait Category=Sequential)
+      # تستبدل Log.Logger العام للعملية، وأي إقلاع ApiFactory في خيط موازٍ يستبدله
+      # فيضيع حدث المسبار (فشل عابر). تُشغَّل الفئة تسلسليًا وحدها بعد البقية —
+      # كما تنص remarks الفئة نفسها (كانت موثقة بلا إنفاذ، فكان الـflake حتميًا).
+      - name: Test (api, parallelizable)
+        run: dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build --nologo -v q --filter "Category!=Sequential"
+      - name: Test (api, sequential)
+        run: dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build --nologo -v q --filter "Category=Sequential"
 
   frontend:
     runs-on: ubuntu-latest
