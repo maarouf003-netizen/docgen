@@ -12,32 +12,6 @@ namespace DocGenerator.Application.Services;
 
 public sealed partial class DocumentService
 {
-    /// <summary>
-    /// تسجيل تدقيق عمليات الملف مع تفاصيل تغيّرات الحقول: حين تُرصد فروقات
-    /// تُسجَّل صفوفًا (حقل/قبل/بعد) مرتبطة بالإدخال، وإلا يبقى التسجيل نصيًا كالسابق.
-    /// </summary>
-    private async Task LogDocumentChangesAsync(
-        Dictionary<string, string?> before,
-        Document after,
-        string? actorName,
-        string actionType,
-        string baseDetail,
-        CancellationToken token)
-    {
-        var changes = DocumentChangeTracker.Diff(before, after);
-        if (changes.Count == 0)
-        {
-            // لا تغييرات متتبعة: يبقى التسجيل النصي كما كان تاريخيًا.
-            await _audit.LogAsync(actorName, actionType, after.Id, after.DocumentType,
-                AuditWithActor(baseDetail, after), token);
-            return;
-        }
-
-        await _audit.LogDocumentChangeAsync(
-            actorName, actionType, after.Id, after.DocumentType,
-            AuditWithActor($"{baseDetail} — غيّر {changes.Count} حقلًا", after), changes, token);
-    }
-
     // ملاحظة إعادة هيكلة (المرحلة 3 — مؤجلة): عند أول تعديل يمس منطق انتقالات الحالة
     // أو الشطب/التجديد في هذا الملف، تُستخرج هذه التدفقات إلى خدمة مستقلة خلف واجهة
     // (StatusTransitionService) بدل إضافة المزيد هنا. المرجع: FIXES_LOG.md بند المعلقات #4.
