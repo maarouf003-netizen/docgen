@@ -8,11 +8,21 @@ using DocGenerator.Domain.Enums;
 namespace DocGenerator.Application.Services;
 
 /// <summary>
+/// علامة المستودع الاحتياطي غير المهيأ لدوائر التنفيذ: تمييز موثوق ومفحوص مترجمًا
+/// (بدل فحص الاسم النصي الهش `GetType().Name.Contains`) بأن المثيل هو البديل الانتقالي
+/// الذي يقبل النص الحر حتى يُعبَّأ السجل — مشتركة داخليًا بين النواة وحارس الكتابة
+/// وخدمة الإنابة.
+/// </summary>
+internal interface IUnconfiguredCircuitRepository
+{
+}
+
+/// <summary>
 /// مستودع احتياطي للاختبارات القائمة التي تُبنى بلا سجل دوائر: قائمة فارغة
 /// (وضع انتقالي — يُقبل النص الحر حتى يُعبَّأ السجل). مشترك داخليًا بين النواة
-/// وحارس الكتابة (فحص الاسم `Unconfigured` يعتمد عليه).
+/// وحارس الكتابة وخدمة الإنابة (يحمل علامة `IUnconfiguredCircuitRepository`).
 /// </summary>
-internal sealed class UnconfiguredCircuitRepository : IRepository<ExecutionCircuit>
+internal sealed class UnconfiguredCircuitRepository : IRepository<ExecutionCircuit>, IUnconfiguredCircuitRepository
 {
     public Task AddAsync(ExecutionCircuit entity, CancellationToken ct = default) => Task.CompletedTask;
     public Task<ExecutionCircuit?> GetByIdAsync(int id, CancellationToken ct = default) => Task.FromResult<ExecutionCircuit?>(null);
@@ -160,7 +170,7 @@ public sealed class DocumentWriteGuard : IDocumentWriteGuard
             return null;
         // الحساب بلا فرع إعداد معطوب — لا مسار حر له (M5): القفل يُتجاوز فقط
         // لوضع الاختبارات اليدوية (مستودع غير مُهيأ) أو القاعدة الفارغة أدناه.
-        if (branchId is null && !_circuits.GetType().Name.Contains("Unconfigured"))
+        if (branchId is null && _circuits is not IUnconfiguredCircuitRepository)
             throw new ArgumentException("الحساب غير مرتبط بفرع");
         if (request.ExecutionCircuitId is not null)
         {
@@ -179,7 +189,7 @@ public sealed class DocumentWriteGuard : IDocumentWriteGuard
             // وضع الاختبارات القائمة (مستودع غير مُهيأ يُبنى يدويًا): يُسمح بلا دائرة
             // للحفاظ على العقود القائمة؛ والقاعدة الفارغة (فرع بلا سجل) تُقبل مؤقتًا
             // حتى يُعبَّأ السجل — وبعد التعبئة تُطبَّق الإلزامية بصرامة (لا تغيير كاسر).
-            if (_circuits.GetType().Name.Contains("Unconfigured"))
+            if (_circuits is IUnconfiguredCircuitRepository)
                 return null;
             if (branchId is not null)
             {
@@ -216,13 +226,10 @@ public sealed class DocumentWriteGuard : IDocumentWriteGuard
     }
 
     /// <summary>
-    /// وقوعّتا تبديل الدائرة من التعديل العادي (قديم/جديد) — النطاق الصريح CircuitId
-    /// على كل الصفوف غير المحذوفة بما فيها المعلقة، وتحمل اسمي الدائرتين نصًا (التاريخ المجمد).
-    /// </summary>
-    /// <summary>
     /// وقوعّة تبديل الدائرة من التعديل العادي (M2): صف واحد يحمل محتوى «الوقوعتين»
-    /// (قديم/جديد في FromCircuitName/ToCircuitName + الرقم الحالي) — التاريخ المجمد
-    /// في صف واحد أدق من صفين منفصلين قد يُقرأ أحدهما دون الآخر.
+    /// (قديم/جديد في FromCircuitName/ToCircuitName + الرقم الحالي) على كل الصفوف
+    /// غير المحذوفة بما فيها المعلقة، ويحمل اسمي الدائرتين نصًا (التاريخ المجمد) —
+    /// التاريخ المجمد في صف واحد أدق من صفين منفصلين قد يُقرأ أحدهما دون الآخر.
     /// </summary>
     public async Task AddCircuitSwitchOccurrencesAsync(
         Document doc, string? oldCircuitName, int? userId, CancellationToken ct)

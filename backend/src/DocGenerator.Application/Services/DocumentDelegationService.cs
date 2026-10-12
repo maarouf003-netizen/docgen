@@ -76,15 +76,6 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         public void Update(Section entity) { }
     }
 
-    private sealed class UnconfiguredCircuitRepository : IRepository<ExecutionCircuit>
-    {
-        public Task AddAsync(ExecutionCircuit entity, CancellationToken ct = default) => Task.CompletedTask;
-        public Task<ExecutionCircuit?> GetByIdAsync(int id, CancellationToken ct = default) => Task.FromResult<ExecutionCircuit?>(null);
-        public Task<List<ExecutionCircuit>> ListAsync(CancellationToken ct = default) => Task.FromResult(new List<ExecutionCircuit>());
-        public void Remove(ExecutionCircuit entity) { }
-        public void Update(ExecutionCircuit entity) { }
-    }
-
     public async Task<DelegationDto> CreateAsync(
         int sourceDocumentId,
         UpsertDelegationRequest request,
