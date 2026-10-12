@@ -152,3 +152,31 @@ public record DelegationDto(
     /// التي تدعمه (اعتماد/توجيه/رفض) لكشف السباق مبكرًا برسالة ودية.
     /// </summary>
     long Version = 0);
+
+/// <summary>
+/// نية تنبيه مرآة (منيب ↔ مناب) تُطلق بعد نجاح معاملة الحفظ — الرسالة ملخص آخر تغيّر.
+/// عقد عام لنتائج `MirrorSourceEditsAsync` (المرحلة 3): تحل محل النوع الخاص السابق
+/// (`MirrorAlertIntent`) الذي لا يعبر أي حدّ عام.
+/// </summary>
+public record MirrorNotification(
+    int DelegationId,
+    int RecipientLawyerId,
+    int RecipientBranchId,
+    int ActorUserId,
+    string Message);
+
+/// <summary>وريث مضاف محليًا على الملف المناب (لتنبيه المنيب العكسي): الاسم المعروض ورقم الكفيل.</summary>
+public record AddedHeirEntry(
+    string Name,
+    int? GuarantorNumber);
+
+/// <summary>
+/// حاصل فحص تعديل المناب: الإضافات المحلية المسموحة (وريث جديد/ممثل شرعي) للتنبيه العكسي.
+/// عقد عام (المرحلة 3): يحل محل النوع الخاص السابق (`TargetEditResult`).
+/// </summary>
+public record TargetEditReport(
+    IReadOnlyList<AddedHeirEntry> AddedHeirs,
+    IReadOnlyList<string> NewRepresentativeLabels)
+{
+    public bool HasAdditions => AddedHeirs.Count > 0 || NewRepresentativeLabels.Count > 0;
+}

@@ -56,25 +56,8 @@ public class PB001NormalizationTests : IDisposable
 
     private EntityRegistryActor ManagerActor() => new(_managerId, "المدير", UserRole.Manager, null);
 
-    private DocumentService NewDocumentService() => new(
-        new DocumentRepository(_db),
-        new UserRepository(_db),
-        new Repository<Guarantor>(_db),
-        new Repository<Asset>(_db),
-        new Repository<ExecutionAction>(_db),
-        new Repository<DocumentBaseNumber>(_db),
-        new Repository<DocumentRegistrationDate>(_db),
-        new Repository<DocumentOccurrence>(_db),
-        new DelegationRepository(_db),
-        new AppealRepository(_db),
-        new HeadAlertService(new HeadAlertRepository(_db), new DocumentRepository(_db), new UserRepository(_db), new Repository<Branch>(_db), new UnitOfWork(_db), new TransactionRunner(_db), _audit),
-        new UnitOfWork(_db),
-        new TransactionRunner(_db),
-        _audit,
-        Options.Create(new DocGenerator.Application.Common.ExportOptions()),
-        TimeProvider.System,
-        TestClock.TimeZone,
-        new DbExceptionClassifier());
+    private IDocumentService NewDocumentService() =>
+        DocumentServiceFactory.Create(_db, _audit).Documents;
 
     private static DocumentUpsertRequest DocRequest(string borrower, string? number = null) => new()
     {
@@ -119,7 +102,8 @@ public class PB001NormalizationTests : IDisposable
         var service = NewDocumentService();
         await service.CreateAsync(DocRequest("أحمد"), _lawyerId, "tester", _damascusId);
 
-        var result = await service.SearchAsync("احمد", null, null, null, null, null, null, null, null, 1, 20);
+        var search = DocumentServiceFactory.Create(_db, _audit).Search;
+        var result = await search.SearchAsync("احمد", null, null, null, null, null, null, null, null, 1, 20);
         Assert.Equal(1, result.TotalCount);
     }
 

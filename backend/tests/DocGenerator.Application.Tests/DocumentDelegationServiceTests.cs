@@ -15,6 +15,8 @@ public class DocumentDelegationServiceTests : IDisposable
     private readonly DocGeneratorDbContext _db;
     private readonly IDocumentDelegationService _service;
     private readonly IDocumentService _documentService;
+    private readonly IDocumentSearchService _documentSearch;
+    private readonly IDocumentStatusService _documentStatus;
     private readonly FakeAuditLogger _audit = new();
 
     private readonly Branch _branch;
@@ -74,25 +76,10 @@ public class DocumentDelegationServiceTests : IDisposable
             TimeProvider.System,
             TestClock.TimeZone);
 
-        _documentService = new DocumentService(
-            documents,
-            users,
-            new Repository<Guarantor>(_db),
-            new Repository<Asset>(_db),
-            new Repository<ExecutionAction>(_db),
-            new Repository<DocumentBaseNumber>(_db),
-            registrationDates,
-            occurrences,
-            new DelegationRepository(_db),
-            new AppealRepository(_db),
-            headAlerts,
-            uow,
-            tx,
-            _audit,
-            Options.Create(new ExportOptions()),
-            TimeProvider.System,
-            TestClock.TimeZone,
-            new DbExceptionClassifier());
+        var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx, alertService: headAlerts);
+        _documentService = docBundle.Documents;
+        _documentSearch = docBundle.Search;
+        _documentStatus = docBundle.Status;
     }
 
     public void Dispose() => _db.Dispose();
@@ -1087,7 +1074,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.NotNull(second);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _documentService.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.StateStruckOff,
+            _documentStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.StateStruckOff,
                 new Dictionary<string, string?> { ["struckOffDate"] = "1/9/2026" }, "lawyer1"));
         Assert.Equal("لا يجوز شطب ملف فيه انابة سارية", ex.Message);
     }
@@ -1152,12 +1139,12 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.Equal(_lawyer2.FullName, target.Lawyer);
 
         // مستوى العقد: القائمة تعرض الاسم كما سيراه رئيس القسم/المدير/المشرف.
-        var page = await _documentService.SearchAsync(null, null, null, null, null, null, null, null, null,
+        var page = await _documentSearch.SearchAsync(null, null, null, null, null, null, null, null, null,
             1, 20, _branch.Id);
         Assert.Equal(_lawyer2.FullName, Assert.Single(page.Items, d => d.Id == targetId).Lawyer);
 
         // فلتر المحامي يلتقط الملف المناب باسمه.
-        var filtered = await _documentService.SearchAsync(null, null, null, null, _lawyer2.FullName, null, null, null, null,
+        var filtered = await _documentSearch.SearchAsync(null, null, null, null, _lawyer2.FullName, null, null, null, null,
             1, 20, _branch.Id);
         Assert.Contains(filtered.Items, d => d.Id == targetId);
     }
@@ -1950,7 +1937,7 @@ public class DocumentDelegationServiceTests : IDisposable
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
             _lawyer2.Id, "lawyer2");
 
-        Assert.True(await _documentService.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement,
+        Assert.True(await _documentStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement,
             new Dictionary<string, string?> { ["baraetNumber"] = "7", ["baraetDate"] = "3/7/2026" }, "lawyer1"));
 
         var target = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == assigned!.TargetDocumentId!.Value);
@@ -1984,7 +1971,7 @@ public class DocumentDelegationServiceTests : IDisposable
         var (source, created, _) = await RegisteredDelegationAsync();
         Assert.Single(await PendingCompletionAlertsAsync(created.Id));
 
-        Assert.True(await _documentService.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement,
+        Assert.True(await _documentStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement,
             new Dictionary<string, string?> { ["baraetNumber"] = "7", ["baraetDate"] = "3/7/2026" }, "lawyer1"));
 
         Assert.Empty(await PendingCompletionAlertsAsync(created.Id));
@@ -1998,7 +1985,7 @@ public class DocumentDelegationServiceTests : IDisposable
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         Assert.Single(await PendingCompletionAlertsAsync(created.Id));
 
-        Assert.True(await _documentService.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedForcibly,
+        Assert.True(await _documentStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedForcibly,
             new Dictionary<string, string?>
             {
                 ["execSubStatus"] = ExecutionStatusCatalog.SubFullyExecuted,
@@ -2016,7 +2003,7 @@ public class DocumentDelegationServiceTests : IDisposable
         var (_, created, targetId) = await RegisteredDelegationAsync();
         Assert.Single(await PendingCompletionAlertsAsync(created.Id));
 
-        Assert.True(await _documentService.UpdateStatusAsync(targetId, ExecutionStatusCatalog.StateStruckOff,
+        Assert.True(await _documentStatus.UpdateStatusAsync(targetId, ExecutionStatusCatalog.StateStruckOff,
             new Dictionary<string, string?> { ["struckOffDate"] = "1/9/2026" }, "lawyer2"));
 
         Assert.Empty(await PendingCompletionAlertsAsync(created.Id));
@@ -2033,7 +2020,7 @@ public class DocumentDelegationServiceTests : IDisposable
         await _db.SaveChangesAsync();
         Assert.Single(await PendingCompletionAlertsAsync(created.Id));
 
-        Assert.True(await _documentService.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement,
+        Assert.True(await _documentStatus.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement,
             new Dictionary<string, string?> { ["baraetNumber"] = "7", ["baraetDate"] = "3/7/2026" }, "lawyer1"));
 
         Assert.Empty(await PendingCompletionAlertsAsync(created.Id));
@@ -2943,7 +2930,7 @@ public class DocumentDelegationServiceTests : IDisposable
         _db.Documents.Update(source);
         await _db.SaveChangesAsync();
 
-        var restored = await _documentService.RestoreStruckOffAsync(source.Id,
+        var restored = await _documentStatus.RestoreStruckOffAsync(source.Id,
             new RenewalRequest { RenewalFileNumber = "899", RenewalYear = 2026 }, "lawyer1");
         Assert.True(restored);
 

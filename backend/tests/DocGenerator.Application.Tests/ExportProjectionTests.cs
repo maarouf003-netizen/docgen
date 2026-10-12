@@ -24,7 +24,7 @@ public class ExportProjectionTests : IDisposable
 
     public void Dispose() => _db.Dispose();
 
-    private IDocumentService Build()
+    private (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status) Build()
     {
         _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" });
         _db.Users.Add(new User
@@ -38,31 +38,14 @@ public class ExportProjectionTests : IDisposable
         _db.SaveChanges();
         _userId = _db.Users.First(u => u.Username == "lawyer_proj").Id;
 
-        return new DocumentService(
-            new DocumentRepository(_db),
-            new UserRepository(_db),
-            new Repository<Guarantor>(_db),
-            new Repository<Asset>(_db),
-            new Repository<ExecutionAction>(_db),
-            new Repository<DocumentBaseNumber>(_db),
-            new Repository<DocumentRegistrationDate>(_db),
-            new Repository<DocumentOccurrence>(_db),
-            new DelegationRepository(_db),
-            new AppealRepository(_db),
-            new HeadAlertService(new HeadAlertRepository(_db), new DocumentRepository(_db), new UserRepository(_db), new Repository<Branch>(_db), new UnitOfWork(_db), new TransactionRunner(_db), _audit),
-            new UnitOfWork(_db),
-            new TransactionRunner(_db),
-            _audit,
-            Options.Create(new ExportOptions { MaxRows = 10 }),
-            TimeProvider.System,
-            TestClock.TimeZone,
-            new DbExceptionClassifier());
+        return DocumentServiceFactory.Create(_db, _audit, exportOptions: new ExportOptions { MaxRows = 10 });
     }
 
     [Fact]
     public async Task ExportAsync_ProjectsRelatedListsAndEffectiveIdentity()
     {
-        var svc = Build();
+        var bundle = Build();
+        var svc = bundle.Documents;
         var created = await svc.CreateAsync(new DocumentUpsertRequest
         {
             BorrowerName = "مقترض الإسقاط",
@@ -84,7 +67,7 @@ public class ExportProjectionTests : IDisposable
         _db.BaseNumbers.Add(new DocumentBaseNumber { DocumentId = created.Id, Year = 2024, BaseNumber = "777", CreatedById = _userId, CreatedAt = new DateTime(2024, 5, 1, 0, 0, 0, DateTimeKind.Utc) });
         await _db.SaveChangesAsync();
 
-        var rows = await svc.ExportAsync(null, null, null, null, null, null, null, null, null);
+        var rows = await bundle.Search.ExportAsync(null, null, null, null, null, null, null, null, null);
         var row = Assert.Single(rows);
 
         Assert.Equal("مقترض الإسقاط", row.BorrowerName);
@@ -111,7 +94,8 @@ public class ExportProjectionTests : IDisposable
     {
         // عائلة «منفذ عليه»: الاسم المعروض أول طالب تنفيذ غير فارغ — الأول الفارغ
         // يُتخطى والثاني المسمّى يفوز، فيثبت حفظ الترتيب عبر الإسقاط إلى الورقة.
-        var svc = Build();
+        var bundle = Build();
+        var svc = bundle.Documents;
         var created = await svc.CreateAsync(new DocumentUpsertRequest
         {
             BorrowerName = "مقترض الترتيب",
@@ -130,7 +114,7 @@ public class ExportProjectionTests : IDisposable
         _db.ExecutionApplicants.Add(new ExecutionApplicant { DocumentId = created.Id, Name = "ثانٍ", Father = "أب", Family = "عائلة" });
         await _db.SaveChangesAsync();
 
-        var rows = await svc.ExportAsync(null, null, null, null, null, null, null, null, null);
+        var rows = await bundle.Search.ExportAsync(null, null, null, null, null, null, null, null, null);
         var row = Assert.Single(rows, r => r.BorrowerName == "مقترض الترتيب");
 
         using var stream = new ExcelExportService().BuildDocumentsWorkbook(new[] { row }, false, false, false);

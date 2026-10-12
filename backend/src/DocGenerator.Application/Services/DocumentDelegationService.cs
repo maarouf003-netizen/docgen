@@ -12,7 +12,7 @@ namespace DocGenerator.Application.Services;
 /// تنفيذ خدمة الإنابات التنفيذية: دورة حياة الإنابة من التسطير حتى الإتمام بالبيع وإعادة الملف.
 /// كل كتابة ضمن معاملة واحدة مع سجل التدقيق، وتحقق صارم من الصلاحيات والحالات المسموحة.
 /// </summary>
-public sealed class DocumentDelegationService : IDocumentDelegationService
+public sealed partial class DocumentDelegationService : IDocumentDelegationService
 {
     private readonly IDelegationRepository _delegations;
     private readonly IDelegationReservationRepository _reservations;

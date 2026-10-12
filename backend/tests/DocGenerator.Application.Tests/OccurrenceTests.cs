@@ -19,6 +19,7 @@ public class OccurrenceTests : IDisposable
 {
     private readonly DocGeneratorDbContext _db;
     private readonly IDocumentService _service;
+    private readonly IDocumentStatusService _status;
     private readonly FakeAuditLogger _audit = new();
 
     public OccurrenceTests()
@@ -36,15 +37,15 @@ public class OccurrenceTests : IDisposable
         _db.SaveChanges();
         var documents = new DocumentRepository(_db);
         var users = new UserRepository(_db);
-        var guarantors = new Repository<Guarantor>(_db);
-        var estates = new Repository<Asset>(_db);
         var actions = new Repository<ExecutionAction>(_db);
         var baseNumbers = new Repository<DocumentBaseNumber>(_db);
         var registrationDates = new Repository<DocumentRegistrationDate>(_db);
         var occurrences = new Repository<DocumentOccurrence>(_db);
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
-        _service = new DocumentService(documents, users, guarantors, estates, actions, baseNumbers, registrationDates, occurrences, new DelegationRepository(_db), new AppealRepository(_db), new HeadAlertService(new HeadAlertRepository(_db), new DocumentRepository(_db), new UserRepository(_db), new Repository<Branch>(_db), uow, tx, _audit), uow, tx, _audit, Microsoft.Extensions.Options.Options.Create(new DocGenerator.Application.Common.ExportOptions()), TimeProvider.System, TestClock.TimeZone, new DbExceptionClassifier());
+        var bundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, actions: actions, baseNumbers: baseNumbers, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx);
+        _service = bundle.Documents;
+        _status = bundle.Status;
     }
 
     public void Dispose() => _db.Dispose();
@@ -77,7 +78,7 @@ public class OccurrenceTests : IDisposable
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
 
-        var ok = await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        var ok = await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
         Assert.True(ok);
 
         var loaded = await _service.GetAsync(doc.Id);
@@ -99,7 +100,7 @@ public class OccurrenceTests : IDisposable
         req.FileType = "قضية تنفيذ";
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
 
-        var ok = await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        var ok = await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
         Assert.True(ok);
 
         var loaded = await _service.GetAsync(doc.Id);
@@ -124,7 +125,7 @@ public class OccurrenceTests : IDisposable
         req.FileType = "قضية تنفيذ";
         var doc = await _service.CreateAsync(req, 1, "lawyer1", 1);
 
-        var ok = await _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.StateStruckOff,
+        var ok = await _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.StateStruckOff,
             new Dictionary<string, string?> { ["struckOffDate"] = "1/8/2026" }, "lawyer1");
         Assert.True(ok);
 
@@ -154,7 +155,7 @@ public class OccurrenceTests : IDisposable
         });
         await _db.SaveChangesAsync();
 
-        var ok = await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        var ok = await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
         Assert.True(ok);
 
         var loaded = await _service.GetAsync(doc.Id);
@@ -187,7 +188,7 @@ public class OccurrenceTests : IDisposable
         });
         await _db.SaveChangesAsync();
 
-        var ok = await _service.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.StateStruckOff,
+        var ok = await _status.UpdateStatusAsync(doc.Id, ExecutionStatusCatalog.StateStruckOff,
             new Dictionary<string, string?> { ["struckOffDate"] = "1/8/2026" }, "lawyer1");
         Assert.True(ok);
 
@@ -204,9 +205,9 @@ public class OccurrenceTests : IDisposable
     public async Task RestoreStruckOff_RecordsRenewalOccurrence_AndKeepsStruckOffOccurrence()
     {
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
-        await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
 
-        var ok = await _service.RestoreStruckOffAsync(doc.Id, new RenewalRequest
+        var ok = await _status.RestoreStruckOffAsync(doc.Id, new RenewalRequest
         {
             RenewalFileNumber = "2026/55",
             RenewalFileType = "قضية تنفيذ",
@@ -255,8 +256,8 @@ public class OccurrenceTests : IDisposable
     {
         // شطب ثم تجديد ثم شطب من جديد: يُسجَّل وقعتا شطب معًا في السجل الزمني.
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
-        await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
-        await _service.RestoreStruckOffAsync(doc.Id, new RenewalRequest { RenewalFileNumber = "2026/55" }, "lawyer1");
+        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _status.RestoreStruckOffAsync(doc.Id, new RenewalRequest { RenewalFileNumber = "2026/55" }, "lawyer1");
 
         var req = ExecutedSample();
         req.ExecutedStatus = ExecutedStatusCatalog.StruckOff;
@@ -355,7 +356,7 @@ public class OccurrenceTests : IDisposable
     {
         // §4.6 حارس: مشطوب → منفذ مباشر عبر نموذج التعديل ممنوع — يجب الإعادة إلى المتداول أولًا.
         var doc = await _service.CreateAsync(ExecutedSample(), 1, "lawyer1", 1);
-        await _service.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
+        await _status.UpdateExecutedStatusAsync(doc.Id, ExecutedStatusCatalog.StruckOff, "lawyer1");
 
         var req = ExecutedSample();
         req.ExecutedStatus = ExecutedStatusCatalog.Executed;

@@ -44,30 +44,6 @@ public class SearchServerYearTests : IDisposable
 
     public void Dispose() => _db.Dispose();
 
-    private DocumentService NewDocumentService()
-    {
-        var baseNumbers = new Repository<DocumentBaseNumber>(_db);
-        return new DocumentService(
-            new DocumentRepository(_db),
-            new UserRepository(_db),
-            new Repository<Guarantor>(_db),
-            new Repository<Asset>(_db),
-            new Repository<ExecutionAction>(_db),
-            baseNumbers,
-            new Repository<DocumentRegistrationDate>(_db),
-            new Repository<DocumentOccurrence>(_db),
-            new DelegationRepository(_db),
-            new AppealRepository(_db),
-            new HeadAlertService(new HeadAlertRepository(_db), new DocumentRepository(_db), new UserRepository(_db), new Repository<Branch>(_db), new UnitOfWork(_db), new TransactionRunner(_db), _audit),
-            new UnitOfWork(_db),
-            new TransactionRunner(_db),
-            _audit,
-            Options.Create(new ExportOptions()),
-            Clock,
-            TestClock.TimeZone,
-            new DbExceptionClassifier());
-    }
-
     /// <summary>
     /// ملفان في قائمة البحث، أحدهما دوّره المحامي في سنة سابقة (2025) بلا رقم لسنة 2026:
     /// يجب أن يعرض رقمَ الأساس 2025 وسنةَ 2025 واحتياج التدوير، أينما وقع في الصفحة —
@@ -109,8 +85,8 @@ public class SearchServerYearTests : IDisposable
             new DocumentBaseNumber { DocumentId = rotated.Id, Year = 2025, BaseNumber = "رقم-2025", CreatedById = userId, CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc), UpdatedAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc) });
         _db.SaveChanges();
 
-        var service = NewDocumentService();
-        var page = await service.SearchAsync(null, null, null, null, null, null, null, null, null,
+        var search = DocumentServiceFactory.Create(_db, _audit, clock: Clock).Search;
+        var page = await search.SearchAsync(null, null, null, null, null, null, null, null, null,
             page: 1, perPage: 100, visibleBranchId: null, visibleUserId: userId);
 
         var rotatedRow = page.Items.Single(i => i.Id == rotated.Id);

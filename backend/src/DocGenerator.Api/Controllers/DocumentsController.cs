@@ -20,6 +20,9 @@ public class DocumentsController : ControllerBase
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
     private readonly IDocumentService _documents;
+    private readonly IExecutionActionService _executionActions;
+    private readonly IDocumentSearchService _search;
+    private readonly IDocumentStatusService _status;
     private readonly IWordDocumentGenerator _generator;
     private readonly IExcelExportService _excel;
     private readonly IDocumentAppealService _appeals;
@@ -31,6 +34,9 @@ public class DocumentsController : ControllerBase
 
     public DocumentsController(
         IDocumentService documents,
+        IExecutionActionService executionActions,
+        IDocumentSearchService search,
+        IDocumentStatusService status,
         IWordDocumentGenerator generator,
         IExcelExportService excel,
         IDocumentAppealService appeals,
@@ -41,6 +47,9 @@ public class DocumentsController : ControllerBase
         IExecutionCircuitService? circuits = null)
     {
         _documents = documents;
+        _executionActions = executionActions;
+        _search = search;
+        _status = status;
         _generator = generator;
         _excel = excel;
         _appeals = appeals;
@@ -149,7 +158,7 @@ public class DocumentsController : ControllerBase
         var scopeError = RequireOwnerScope(out var ownerSectionId);
         if (scopeError is not null) return scopeError;
 
-        var result = await _documents.SearchAsync(q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
+        var result = await _search.SearchAsync(q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
             page, perPage, visibleBranch, visibleUser, ct, ownerSectionId: ownerSectionId);
         return OkSanitized(result);
     }
@@ -166,7 +175,7 @@ public class DocumentsController : ControllerBase
         var visibleUser = HasFullAccess || IsHeadOrSubHead ? (int?)null : User.GetUserId();
         var scopeError = RequireOwnerScope(out var ownerSectionId);
         if (scopeError is not null) return scopeError;
-        var options = await _documents.GetFilterOptionsAsync(status, applicant, court, lawyer, branch,
+        var options = await _search.GetFilterOptionsAsync(status, applicant, court, lawyer, branch,
             administrativeBranch, executedEntity, publicEntityBranch, visibleBranch, visibleUser, ct, ownerSectionId: ownerSectionId);
         return Ok(new
         {
@@ -199,7 +208,7 @@ public class DocumentsController : ControllerBase
         var scopeError = RequireOwnerScope(out var ownerSectionId);
         if (scopeError is not null) return scopeError;
 
-        var items = await _documents.ExportAsync(q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
+        var items = await _search.ExportAsync(q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
             visibleBranch, visibleUser, ct, ActorName, ownerSectionId: ownerSectionId);
         // بلا Sanitize هنا: عمود «عدد المشاهدات» محكوم أصلًا براية includeViewCount
         // (= CanViewCounters) فلا يظهر لغير المصرَّح لهم إطلاقًا — والورقة متطابقة.
@@ -228,7 +237,7 @@ public class DocumentsController : ControllerBase
         var scopeError = RequireOwnerScope(out var ownerSectionId);
         if (scopeError is not null) return scopeError;
 
-        var result = await _documents.SearchDeletedAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
+        var result = await _search.SearchDeletedAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
         return OkSanitized(result);
     }
 
@@ -247,7 +256,7 @@ public class DocumentsController : ControllerBase
         var scopeError = RequireOwnerScope(out var ownerSectionId);
         if (scopeError is not null) return scopeError;
 
-        var result = await _documents.SearchStruckOffAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
+        var result = await _search.SearchStruckOffAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
         return OkSanitized(result);
     }
 
@@ -263,7 +272,7 @@ public class DocumentsController : ControllerBase
         var scopeError = RequireOwnerScope(out var ownerSectionId);
         if (scopeError is not null) return scopeError;
 
-        var result = await _documents.SearchExecutedAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
+        var result = await _search.SearchExecutedAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
         return OkSanitized(result);
     }
 
@@ -279,7 +288,7 @@ public class DocumentsController : ControllerBase
         var scopeError = RequireOwnerScope(out var ownerSectionId);
         if (scopeError is not null) return scopeError;
 
-        var result = await _documents.SearchReferredToStartAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
+        var result = await _search.SearchReferredToStartAsync(q, page, perPage, visibleBranch, visibleUser, ct, ownerSectionId);
         return OkSanitized(result);
     }
 
@@ -428,7 +437,7 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var ok = await _documents.UpdateStatusAsync(id, request.Status, request.Fields ?? new(), ActorName, ct, request.Version);
+            var ok = await _status.UpdateStatusAsync(id, request.Status, request.Fields ?? new(), ActorName, ct, request.Version);
             return ok ? Ok(new { message = "تم تحديث الحالة" }) : NotFound();
         }
         catch (ArgumentException e)
@@ -450,7 +459,7 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var ok = await _documents.RevertStatusAsync(id, request.Fields ?? new(), ActorName, ct, request.Version);
+            var ok = await _status.RevertStatusAsync(id, request.Fields ?? new(), ActorName, ct, request.Version);
             return ok ? Ok(new { message = "عُد الملف إلى المتداول" }) : NotFound();
         }
         catch (ArgumentException e)
@@ -473,7 +482,7 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var ok = await _documents.ReturnFromReferredToStartAsync(id, request ?? new(), ActorName, ct);
+            var ok = await _status.ReturnFromReferredToStartAsync(id, request ?? new(), ActorName, ct);
             return ok ? Ok(new { message = "أعيد السير بالملف" }) : NotFound();
         }
         catch (ArgumentException e)
@@ -496,7 +505,7 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var ok = await _documents.ConsiderExecutedByDelegationAsync(id, request.Fields ?? new(), ActorName, ct, request.Version);
+            var ok = await _status.ConsiderExecutedByDelegationAsync(id, request.Fields ?? new(), ActorName, ct, request.Version);
             return ok ? Ok(new { message = "اعتُبر الملف منفذًا كاملًا بهذا البيع" }) : NotFound();
         }
         catch (ArgumentException e)
@@ -518,7 +527,7 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var ok = await _documents.UpdateExecutedStatusAsync(id, request.Status, request, ActorName, ct);
+            var ok = await _status.UpdateExecutedStatusAsync(id, request.Status, request, ActorName, ct);
             return ok ? Ok(new { message = "تم تحديث حالة وضع «الجهة العامة منفذ عليها»" }) : NotFound();
         }
         catch (ArgumentException e)
@@ -540,7 +549,7 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            return await _documents.RestoreStruckOffAsync(id, request, ActorName, ct)
+            return await _status.RestoreStruckOffAsync(id, request, ActorName, ct)
                 ? Ok(new { message = "أعيد الملف المشطوب إلى المتداول" })
                 : NotFound();
         }
@@ -713,7 +722,7 @@ public class DocumentsController : ControllerBase
         if (doc is null) return NotFound();
         if (!await CanAccessOrFollowAsync(doc)) return Forbid();
 
-        var actions = await _documents.GetExecutionActionsAsync(id, ct);
+        var actions = await _executionActions.GetExecutionActionsAsync(id, ct);
         return Ok(actions);
     }
 
@@ -730,7 +739,7 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var action = await _documents.AddExecutionActionAsync(id, request, User.GetUserId(), ActorName, ct);
+            var action = await _executionActions.AddExecutionActionAsync(id, request, User.GetUserId(), ActorName, ct);
             return Ok(action);
         }
         catch (ArgumentException e)
@@ -752,7 +761,7 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var action = await _documents.UpdateExecutionActionAsync(id, actionId, request, ActorName, ct);
+            var action = await _executionActions.UpdateExecutionActionAsync(id, actionId, request, ActorName, ct);
             if (action is null) return NotFound();
             return Ok(action);
         }
@@ -776,7 +785,7 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var action = await _documents.RescheduleReminderAsync(id, actionId, request?.NewDueDate, ActorName, ct);
+            var action = await _executionActions.RescheduleReminderAsync(id, actionId, request?.NewDueDate, ActorName, ct);
             return Ok(action);
         }
         catch (ArgumentException e)
@@ -796,7 +805,7 @@ public class DocumentsController : ControllerBase
         if (doc is null) return NotFound();
         if (!await CanAccessAsync(doc)) return Forbid();
 
-        var deleted = await _documents.DeleteExecutionActionAsync(id, actionId, ActorName, ct);
+        var deleted = await _executionActions.DeleteExecutionActionAsync(id, actionId, ActorName, ct);
         if (!deleted) return NotFound();
         return NoContent();
     }
@@ -812,7 +821,7 @@ public class DocumentsController : ControllerBase
         if (doc is null) return NotFound();
         if (!await CanAccessAsync(doc)) return Forbid();
 
-        return await _documents.ClearReminderAsync(id, actionId, ActorName, ct)
+        return await _executionActions.ClearReminderAsync(id, actionId, ActorName, ct)
             ? NoContent()
             : NotFound();
     }

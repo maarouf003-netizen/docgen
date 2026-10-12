@@ -1,9 +1,6 @@
-using System.Text.Json;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
-using DocGenerator.Application.Common.Security;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 
@@ -25,89 +22,7 @@ public interface IDocumentService
     /// scopeBranchId يُقيّد النطاق بفرع رئيس القسم ويُرجع عدد الملفات المنقولة.
     /// </summary>
     Task<int> TransferAllAsync(int sourceLawyerId, int targetLawyerId, int? scopeBranchId, string? actorName, CancellationToken ct = default, string? idempotencyKey = null, int? ownerSectionId = null);
-    Task<PagedResult<DocumentResponse>> SearchDeletedAsync(string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null);
-    Task<PagedResult<DocumentResponse>> SearchAsync(string? query, string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null);
-    /// <summary>
-    /// بحث ترحّلي عن ملفات وضع «منفذ عليه» المشطوبة فقط — صفحة «الملفات المشطوبة».
-    /// بنفس صلاحيات المحذوفات: محامٍ (ملفاته) / رئيس قسم (فرعه) / مشرف (الكل).
-    /// </summary>
-    Task<PagedResult<DocumentResponse>> SearchStruckOffAsync(string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null);
-    /// <summary>
-    /// بحث ترحّلي عن الملفات المنفذة (منفذ عليها/عرض وايداع بحالة «منفذ»، وطالبة تنفيذ
-    /// بالتسوية أو الجبري الكامل) — صفحة «الملفات المنفذة»، ظاهرة لجميع الأدوار.
-    /// </summary>
-    Task<PagedResult<DocumentResponse>> SearchExecutedAsync(string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null);
-    /// <summary>
-    /// بحث ترحّلي عن ملفات «طالبة تنفيذ» بحالة «محال الى البداية» فقط (ومنها القادم من
-    /// «منفذ جبريا» المحال بجزئيته) — صفحة «محال الى البداية»، ظاهرة لجميع الأدوار.
-    /// </summary>
-    Task<PagedResult<DocumentResponse>> SearchReferredToStartAsync(string? query, int page, int perPage, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null);
-    /// <summary>
-    /// تصدير المستندات بصفوف مسقطة (`DocumentExportRow`) بدل الكيانات الكاملة —
-    /// تغيير عقد داخلي مبرر (منادٍ واحد) لخفض ذاكرة التصدير الكبير جذريًا.
-    /// </summary>
-    Task<List<DocumentExportRow>> ExportAsync(string? query, string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, string? actorName = null, int? ownerSectionId = null);
-    Task<DocumentFilterOptions> GetFilterOptionsAsync(string? status, string? applicant, string? court, string? lawyer, string? branch, string? administrativeBranch, string? executedEntity, string? publicEntityBranch, int? visibleBranchId = null, int? visibleUserId = null, CancellationToken ct = default, int? ownerSectionId = null);
-    Task<bool> UpdateStatusAsync(int documentId, string status, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default, long? version = null);
-    /// <summary>
-    /// «اعتبار الملف منفذًا كاملًا بهذا البيع» (نظام «طالبة تنفيذ»): إغلاق «منفذ جبريا (منفذ
-    /// جزئيا)» الذي فُعّل تلقائيًا بإتمام إنابة إلى «منفذ كاملا» — يُخصم من ملفٍ منفذ جزئيًا
-    /// وفيه إنابة منفذة، ويُلزم إدخال «تاريخ تحويل بدل المبيع للجهة العامة» (و«رقم الإشعار»
-    /// اختياريًا)، ويُسجَّل وقعة «منفذ جبريا» في وقوعات الملف. حينها فقط يدخل بدل الإنابة
-    /// ضمن «إحصاءات منفذ جبريا» مرة واحدة (عبر مسار DelegationSalesAmount القائم).
-    /// </summary>
-    Task<bool> ConsiderExecutedByDelegationAsync(int documentId, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default, long? version = null);
-    /// <summary>
-    /// «التراجع» في نظام «طالبة تنفيذ»: إعادة الملف إلى المتداول من تريث أو منفذ بالتسوية أو منفذ
-    /// جبريا بموجب كتاب الجهة العامة بالسير بالملف (رقم وتاريخ الكتاب وورودهما إلزاميان)،
-    /// ويُسجَّل وقعة «تراجع» بحقولها في وقوعات الملف.
-    /// </summary>
-    Task<bool> RevertStatusAsync(int documentId, Dictionary<string, string?> fields, string? actorName, CancellationToken ct = default, long? version = null);
-    /// <summary>
-    /// العودة من «محال الى البداية» (نقطة «return-referred-to-start») بنتيجتين حسب اللازمة
-    /// (§2-10 — بلا عمود جديد): إن حمل الملف «منفذ جزئيا» عاد «منفذ جبريا» مع بقاء عائلة
-    /// الجبريا كما هي، وإلا عاد «متداول» مع مسح بقية العائلات. حقول التجديد موحّدة في
-    /// المسارين (رقم الملف الجديد يفعّل التجديد)، و«تاريخ الشطب» الاختياري لنتيجة-متداول فقط.
-    /// تُسجَّل وقعة «تراجع» بسرد آلي + حقول الشطب/التجديد إن وُجدت، وبلا تنبيهات مرآة عمدًا
-    /// (قرار 9 يجعل الإنابة السارية على «محال» مستحيلة).
-    /// </summary>
-    Task<bool> ReturnFromReferredToStartAsync(int documentId, ReturnReferredToStartRequest request, string? actorName, CancellationToken ct = default);
-    /// <summary>
-    /// تعيين حالة وضع «منفذ عليه» (ExecutedStatusCatalog): منفذ/مشطوب. عند الشطب يُثبَّت
-    /// StruckOffDate (لحظة الشطب UTC) فيُخفى الملف من القوائم والتصدير ويظهر في صفحة المشطوبة.
-    /// إعادة الحالة إلى متداول (سلسلة فارغة) تُبقي StruckOffDate محفوظًا لعرضه بعد الإعادة.
-    /// </summary>
-    Task<bool> UpdateExecutedStatusAsync(int documentId, string status, string? actorName, CancellationToken ct = default);
-    /// <summary>
-    /// تعيين حالة وضع «منفذ عليه» مع حقولها (ExecutedStatusRequest): عند الانتقال إلى «منفذ»
-    /// تُحفظ حقوله (المبلغ/كيفية التنفيذ/تاريخ الإيداع)، وعند الانتقال إلى «مشطوب» يُحفظ
-    /// تاريخ الشطب المُرسَل إن وُجد وإلا توقيت الانتقال. عند العودة من مشطوب إلى متداول
-    /// يُطبَّق بيان التجديد (رقم الملف الجديد إلزامي). إعادة الحالة إلى متداول (سلسلة فارغة)
-    /// تُبقي تاريخ الشطب محفوظًا لعرضه بعد الإعادة.
-    /// </summary>
-    Task<bool> UpdateExecutedStatusAsync(int documentId, string status, ExecutedStatusRequest? request, string? actorName, CancellationToken ct = default);
-    /// <summary>
-    /// إعادة ملف مشطوب إلى المتداول في وضع «منفذ عليه» (فك الشطب): تُصفَّر ExecutedStatus
-    /// وتبقى StruckOffDate محفوظة (تُعرض في تفاصيل الملف بعد الإعادة).
-    /// </summary>
-    Task<bool> RestoreStruckOffAsync(int documentId, string? actorName, CancellationToken ct = default);
-    /// <summary>
-    /// إعادة ملف مشطوب إلى المتداول مع تجديد الملف برقم ملف جديد لسنة الإعادة (إلزامي):
-    /// يُطبَّق بيان التجديد ويُسجَّل رقم أساس لسنة الإعادة الحالية فيعود الملف بالرقم والنوع الجديدين.
-    /// </summary>
-    Task<bool> RestoreStruckOffAsync(int documentId, RenewalRequest renewal, string? actorName, CancellationToken ct = default);
     Task IncrementViewCountAsync(int documentId, CancellationToken ct = default);
-    Task<List<ExecutionActionDto>> GetExecutionActionsAsync(int documentId, CancellationToken ct = default);
-    Task<ExecutionActionDto> AddExecutionActionAsync(int documentId, AddExecutionActionRequest request, int userId, string? actorName, CancellationToken ct = default);
-    Task<ExecutionActionDto?> UpdateExecutionActionAsync(int documentId, int actionId, UpdateExecutionActionRequest request, string? actorName, CancellationToken ct = default);
-    Task<bool> DeleteExecutionActionAsync(int documentId, int actionId, string? actorName, CancellationToken ct = default);
-    Task<bool> ClearReminderAsync(int documentId, int actionId, string? actorName, CancellationToken ct = default);
-    /// <summary>
-    /// نقل تذكير إجراء إلى يوم استحقاق جديد من نافذة اليوم: المدخل هو `dueDate`
-    /// نفسه، ويُعاد حساب `ActionDate = newDueDate − DurationDays` مع بقاء المدة
-    /// وبقية الحقول دون مساس. يرفض غياب التذكير والمدد الملتبسة برسائل ودية.
-    /// </summary>
-    Task<ExecutionActionDto> RescheduleReminderAsync(int documentId, int actionId, string? newDueDate, string? actorName, CancellationToken ct = default);
     /// <summary>جدول تدوير أرقام الأساس للمحامي (ترحّلي): ملفاته المؤهلة مع رقم أساس السنة الحالية إن وُجد.</summary>
     Task<PagedResult<RotationDocumentDto>> GetRotationListAsync(int userId, int page, int perPage, CancellationToken ct = default);
     /// <summary>
@@ -121,75 +36,58 @@ public interface IDocumentService
     Task SaveBaseNumbersAsync(int userId, List<BaseNumberEntry> entries, string? actorName, CancellationToken ct = default);
 }
 
-public sealed partial class DocumentService : IDocumentService
+public sealed class DocumentService : IDocumentService
 {
     private readonly IDocumentRepository _documents;
     private readonly IUserRepository _users;
-    private readonly IRepository<Guarantor> _guarantors;
-    private readonly IRepository<Asset> _assets;
-    private readonly IRepository<ExecutionAction> _actions;
     private readonly IRepository<DocumentBaseNumber> _baseNumbers;
     private readonly IRepository<DocumentRegistrationDate> _registrationDates;
-    private readonly IRepository<DocumentOccurrence> _occurrences;
-    private readonly IDelegationRepository _delegations;
     private readonly IAppealRepository _appeals;
-    private readonly IHeadAlertService _alertService;
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
-    private readonly IDbExceptionClassifier _dbErrors;
-    private readonly int _maxExportRows;
+    private readonly IExecutionActionService _actionService;
+    private readonly IDocumentDelegationService _delegationService;
+    private readonly IDocumentStatusService _statusService;
+    private readonly IDocumentWriteGuard _writeGuard;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
     private readonly IIdempotencyStore? _idempotency;
     private readonly IRepository<ExecutionCircuit> _circuits;
-    private readonly IRepository<Branch> _branches;
 
     public DocumentService(
         IDocumentRepository documents,
         IUserRepository users,
-        IRepository<Guarantor> guarantors,
-        IRepository<Asset> assets,
-        IRepository<ExecutionAction> actions,
         IRepository<DocumentBaseNumber> baseNumbers,
         IRepository<DocumentRegistrationDate> registrationDates,
-        IRepository<DocumentOccurrence> occurrences,
-        IDelegationRepository delegations,
         IAppealRepository appeals,
-        IHeadAlertService alertService,
         IUnitOfWork uow,
         ITransactionRunner tx,
         IAuditLogger audit,
-        Microsoft.Extensions.Options.IOptions<Common.ExportOptions> exportOptions,
         TimeProvider clock,
         TimeZoneInfo timeZone,
-        IDbExceptionClassifier dbErrors,
+        IExecutionActionService actionService,
+        IDocumentDelegationService delegationService,
+        IDocumentStatusService statusService,
+        IDocumentWriteGuard writeGuard,
         IIdempotencyStore? idempotency = null,
-        IRepository<ExecutionCircuit>? circuits = null,
-        IRepository<Branch>? branches = null)
+        IRepository<ExecutionCircuit>? circuits = null)
     {
         _circuits = circuits ?? new UnconfiguredCircuitRepository();
-        _branches = branches ?? new UnconfiguredBranchRepository();
         _documents = documents;
         _users = users;
-        _guarantors = guarantors;
-        _assets = assets;
-        _actions = actions;
         _baseNumbers = baseNumbers;
         _registrationDates = registrationDates;
-        _occurrences = occurrences;
-        _delegations = delegations;
         _appeals = appeals;
-        _alertService = alertService;
         _uow = uow;
         _tx = tx;
         _audit = audit;
-        _maxExportRows = Math.Max(1, exportOptions.Value.MaxRows);
+        _actionService = actionService;
+        _delegationService = delegationService;
+        _statusService = statusService;
+        _writeGuard = writeGuard;
         _clock = clock;
         _timeZone = timeZone;
-        // إصلاح خارج النطاق (RF-009/010): المعامل كان يُستقبَل ولا يُخزَّن —
-        // أي سباق حقيقي يصل شبكتي القيد/التزامن كان يرمي `NullReference` بدل `409`.
-        _dbErrors = dbErrors;
         _idempotency = idempotency;
     }
 
@@ -233,9 +131,9 @@ public sealed partial class DocumentService : IDocumentService
 
         ApplyRequest(doc, request);
         // سجل الدوائر: اشتقاق الدائرة (إلزامية) قبل المشتقات — يتجاهل نص العميل.
-        var createCircuit = await ResolveCircuitForWriteAsync(request, branchId, isExternalTarget: false, ct);
-        ApplyCircuitDerivation(doc, createCircuit, request);
-        FillDerivedFields(doc);
+        var createCircuit = await _writeGuard.ResolveCircuitForWriteAsync(request, branchId, isExternalTarget: false, ct);
+        DocumentText.ApplyCircuitDerivation(doc, createCircuit, request);
+        DocumentText.FillDerivedFields(doc);
         ApplyRegistrationDate(doc, request.FileRegistrationDate);
 
         // RF-011: حجز المفتاح بعد كل التحققات (المدخل الباطل 400 بلا حجز) وقبل أي
@@ -264,10 +162,10 @@ public sealed partial class DocumentService : IDocumentService
         Document doc, DocumentUpsertRequest request, int userId, User actor, string? actorName, CancellationToken ct)
     {
         // RF-009 بتوقيع الدائرة (البند 28/34): مطابقة FK مباشرة بدل النص.
-        await EnsureNumberUniqueByCircuitAsync(null, doc.ExecutionCircuitId, doc.CourtNorm,
+        await _writeGuard.EnsureNumberUniqueByCircuitAsync(null, doc.ExecutionCircuitId, doc.CourtNorm,
             doc.FileNumber, doc.FileType, doc.FileYear, ct);
 
-        return await WithNumberGuardAsync(() => _tx.RunAsync(async token =>
+        return await _writeGuard.WithNumberGuardAsync(() => _tx.RunAsync(async token =>
         {
             await _documents.AddAsync(doc, token);
             await _uow.SaveChangesAsync(token);
@@ -275,13 +173,13 @@ public sealed partial class DocumentService : IDocumentService
             await _documents.AddAssignmentAsync(doc.Id, AssignmentKindCatalog.Create,
                 doc.Lawyer ?? actor.Username, null, DateTime.UtcNow, token);
             await _audit.LogAsync(actorName, "create", doc.Id, doc.DocumentType,
-                AuditWithActor($"أنشأ المستند (رقم {doc.Id})", doc), token);
+                DocumentText.AuditWithActor($"أنشأ المستند (رقم {doc.Id})", doc), token);
             // ملف أُنشئ مشطوبًا من البداية: يُسجَّل وقعة شطب تلقائيًا ليتسق سجل الوقوعات
             // مع البيانات المُرحَّلة (بعد حفظ المستند فيُعرف رقمه داخل المعاملة نفسها).
             if (doc.ExecutedStatus == ExecutedStatusCatalog.StruckOff)
-                await AddStruckOffOccurrenceAsync(doc, userId, token);
+                await _statusService.AddStruckOffOccurrenceAsync(doc, userId, token);
             await _uow.SaveChangesAsync(token);
-            await SeedInitialActionsAsync(doc, request.InitialActions, userId, actorName, token);
+            await _actionService.SeedInitialActionsAsync(doc, request.InitialActions, userId, actorName, token);
             return DocumentResponse.FromEntity(doc, CurrentYear());
         }, ct), doc.FileNumber);
     }
@@ -310,12 +208,12 @@ public sealed partial class DocumentService : IDocumentService
         // حارس تعديل الملف المناب (قرار 2: «الملف المناب مرآةً للمنيب»): يرفض الفروق القيمية
         // في الحقول المقفولة، ويرصد الإضافات المحلية المسموحة (وريث جديد/ممثل جديد) لتنبيه
         // منيب الملف بها بعد نجاح الحفظ.
-        var targetEditResult = ValidateDelegationTargetEdit(doc, request);
+        var targetEditReport = _delegationService.ValidateTargetEdit(doc, request);
 
         // قفل «الحجز والأصل بعد التسطير» على الملف المنيب (قرار المستخدم): تاريخ القاء
         // الحجز على أصلٍ تحجبه إنابة سارية يُعدَّل فقط ولا يُحذف، وحذف صف الأصل نفسه
         // مرفوض — قبل أي تغيير (ApplyRequest يستبدل الأصول بالكامل).
-        await ValidateDelegationSeizureLockAsync(doc, request, ct);
+        await _delegationService.ValidateSeizureLockAsync(doc, request, ct);
 
         // سجل الدوائر: تبديل الدائرة من التعديل مسموح (فحص 409) — يُحفظ القديم للوقوعتين.
         // إن لم يُرسل تغيير دائرة (لا معرف ولا نص)، يُبقى الحالي بلا إعادة حل (توافق الطلبات الجزئية).
@@ -339,52 +237,52 @@ public sealed partial class DocumentService : IDocumentService
         }
         else
         {
-            var editCircuit = await ResolveCircuitForWriteAsync(request, doc.BranchId, isExternalTarget: false, ct);
-            ApplyCircuitDerivation(doc, editCircuit, request);
+            var editCircuit = await _writeGuard.ResolveCircuitForWriteAsync(request, doc.BranchId, isExternalTarget: false, ct);
+            DocumentText.ApplyCircuitDerivation(doc, editCircuit, request);
         }
         // تعديل ملف «بانتظار إعادة القيد» برقم غير فارغ يُسقط الـ flag (مع إعادة تحقق الوحدانية).
         if (wasPending && !string.IsNullOrWhiteSpace(doc.FileNumber) && !string.IsNullOrWhiteSpace(doc.FileYear))
             doc.NeedsRegistration = false;
-        FillDerivedFields(doc);
+        DocumentText.FillDerivedFields(doc);
         ApplyRegistrationDate(doc, request.FileRegistrationDate);
         doc.UpdatedAt = DateTime.UtcNow;
 
         // RF-009 بتوقيع الدائرة: فحص التكرار بعد تطبيق الطلب.
-        await EnsureNumberUniqueByCircuitAsync(documentId, doc.ExecutionCircuitId, doc.CourtNorm,
+        await _writeGuard.EnsureNumberUniqueByCircuitAsync(documentId, doc.ExecutionCircuitId, doc.CourtNorm,
             doc.FileNumber, doc.FileType, doc.FileYear, ct);
 
         // RF-010: فحص التزامن المبكر (409 ودي) + زيادة العدّاد وشبكة السباق.
-        EnsureConcurrency(doc, request.Version);
+        _writeGuard.EnsureConcurrency(doc, request.Version);
 
-        List<MirrorAlertIntent> mirrorIntents = [];
+        List<MirrorNotification> mirrorNotifications = [];
         var circuitSwitched = oldCircuitId != doc.ExecutionCircuitId;
-        var result = await WithConcurrencyGuardAsync(() => WithNumberGuardAsync(() => _tx.RunAsync(async token =>
+        var result = await _writeGuard.WithConcurrencyGuardAsync(() => _writeGuard.WithNumberGuardAsync(() => _tx.RunAsync(async token =>
         {
             if (wasStruckOff && doc.ExecutedStatus == ExecutedStatusCatalog.None)
-                await ApplyRenewalAsync(doc, request, true, userId, token);
+                await _statusService.ApplyRenewalAsync(doc, request, true, userId, token);
             else if (!wasStruckOff && ExecutedStatusCatalog.IsStruckOff(doc.ExecutedStatus))
-                await AddStruckOffOccurrenceAsync(doc, userId, token);
+                await _statusService.AddStruckOffOccurrenceAsync(doc, userId, token);
             _documents.Update(doc);
             await _uow.SaveChangesAsync(token);
             // تبديل الدائرة من التعديل يسجل الوقوعتين تلقائيًا (قديم/جديد) — وإلا قفزت بلا أثر.
             if (circuitSwitched)
-                await AddCircuitSwitchOccurrencesAsync(doc, oldCircuitName, userId, token);
-            await SyncDelegationSnapshotsForDocumentAsync(doc, token);
+                await _writeGuard.AddCircuitSwitchOccurrencesAsync(doc, oldCircuitName, userId, token);
+            await _delegationService.SyncSnapshotsAsync(doc, token);
             // المرآة: نسخ تغييرات المنيب إلى مناباته المعلقة (داخل المعاملة نفسها) وإعادة اشتقاق
-            // الحقول المحسوبة فيها — تعيد نوايا تنبيه تُطلق بعد نجاح المعاملة.
-            mirrorIntents = await MirrorSourceEditsToTargetsAsync(doc, token);
-            await LogDocumentChangesAsync(before, doc, actorName, "update",
+            // الحقول المحسوبة فيها — تعيد إشعارات تُطلق بعد نجاح المعاملة.
+            mirrorNotifications = await _delegationService.MirrorSourceEditsAsync(doc, token);
+            await _writeGuard.LogDocumentChangesAsync(before, doc, actorName, "update",
                 $"عدّل المستند (رقم {doc.Id})", token);
-            await SeedInitialActionsAsync(doc, request.InitialActions, userId, actorName, token);
+            await _actionService.SeedInitialActionsAsync(doc, request.InitialActions, userId, actorName, token);
             return DocumentResponse.FromEntity(doc, CurrentYear());
         }, ct), doc.FileNumber));
 
         // تُطلق التنبيهات بعد نجاح المعاملة ولا تفشل الحفظ أبدًا:
         // (1) تنبيهات المرآة إلى المحامين المنابين بتحديث نسخة الملف،
         // (2) تنبيه المنيب بالإضافات المحلية المضافة على الملف المناب (ورثة/ممثل شرعي).
-        await FireDelegationAlertsAsync(mirrorIntents, ct);
-        if (targetEditResult.HasAdditions)
-            await FireDelegationReverseAlertAsync(documentId, doc, targetEditResult, ct);
+        await _delegationService.FireMirrorNotificationsAsync(mirrorNotifications, ct);
+        if (targetEditReport.HasAdditions)
+            await _delegationService.FireTargetEditReportAsync(doc, targetEditReport, ct);
 
         return result;
     }
@@ -445,7 +343,7 @@ public sealed partial class DocumentService : IDocumentService
             _documents.Update(doc);
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "delete", documentId, doc.DocumentType,
-                AuditWithActor($"حذف المستند (رقم {documentId})", doc), token);
+                DocumentText.AuditWithActor($"حذف المستند (رقم {documentId})", doc), token);
             return true;
         }, ct);
     }
@@ -460,11 +358,11 @@ public sealed partial class DocumentService : IDocumentService
         // أثناء حذفه) — 409 بدل تكرار ظاهري. بتوقيع الدائرة (البند 34).
         // مسار إفراغ المحذوفة منطقيًا الوحيد: استعادة ثم إحالة — Restore يفحص بالرقم الجديد.
         var currentYear = CurrentYear();
-        await EnsureNumberUniqueByCircuitAsync(documentId, doc.ExecutionCircuitId, doc.CourtNorm,
+        await _writeGuard.EnsureNumberUniqueByCircuitAsync(documentId, doc.ExecutionCircuitId, doc.CourtNorm,
             Common.EffectiveFileIdentity.Number(doc, currentYear), doc.FileType,
             Common.EffectiveFileIdentity.Year(doc, currentYear), ct);
 
-        return await WithNumberGuardAsync(() => _tx.RunAsync(async token =>
+        return await _writeGuard.WithNumberGuardAsync(() => _tx.RunAsync(async token =>
         {
             // الاستعادة تعيد اشتقاق الدائرة من السجل (M3): التسمية الجماعية أثناء
             // الحذف المنطقي لا تمسّ المحذوف، فتُزامَن هنا وإلا عُرض الاسم القديم.
@@ -485,7 +383,7 @@ public sealed partial class DocumentService : IDocumentService
             _documents.Update(doc);
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "restore", documentId, doc.DocumentType,
-                AuditWithActor($"استعادة المستند (رقم {documentId})", doc), token);
+                DocumentText.AuditWithActor($"استعادة المستند (رقم {documentId})", doc), token);
             return true;
         }, ct), doc.FileNumber);
     }
@@ -523,7 +421,7 @@ public sealed partial class DocumentService : IDocumentService
                 target.FullName, actorName, DateTime.UtcNow, token);
 
             await _audit.LogAsync(actorName, "transfer", documentId, doc.DocumentType,
-                AuditWithActor($"نقل الملف إلى المحامي: {target.FullName}", doc), token);
+                DocumentText.AuditWithActor($"نقل الملف إلى المحامي: {target.FullName}", doc), token);
 
             return DocumentResponse.FromEntity(transferred, CurrentYear());
         }, ct);
@@ -606,7 +504,7 @@ public sealed partial class DocumentService : IDocumentService
                 await _documents.AddAssignmentAsync(file.Id, AssignmentKindCatalog.Transfer,
                     target.FullName, actorName, DateTime.UtcNow, token);
                 await _audit.LogAsync(actorName, "transfer", file.Id, file.DocumentType,
-                    $"تم إحالة هذا الملف إلى المحامي: {target.FullName} بتاريخ {now:d/M/yyyy} — المنفذ عليه: {ActorFullName(file)}", token);
+                    $"تم إحالة هذا الملف إلى المحامي: {target.FullName} بتاريخ {now:d/M/yyyy} — المنفذ عليه: {DocumentText.ActorFullName(file)}", token);
             }
 
             return moved;
@@ -620,5 +518,618 @@ public sealed partial class DocumentService : IDocumentService
 
     /// <summary>سنة «قرار السنة» الحالية من ساعة النظام ومنطقته — مصدر واحد لا تكرار قرار.</summary>
     private int CurrentYear() => ServerClock.CurrentYear(_clock, _timeZone);
+    private static void ApplyRequest(Document doc, DocumentUpsertRequest r)
+    {
+        // صفة الملف تُثبَّت عند الإنشاء ولا تُغيَّر عند التعديل (الموافقة المعتمدة):
+        // على التعديل يبقى جانب الملف كما هو مهما أُرسل في الطلب.
+        // (ValidateSide تطبَّعت القيمة مسبقًا إلى قيمة صالحة غير فارغة).
+        if (doc.Id == 0 || doc.GeneralEntitySide == r.GeneralEntitySide)
+            doc.GeneralEntitySide = r.GeneralEntitySide!;
 
+        doc.DocumentType = r.DocumentType;
+        doc.BorrowerName = r.BorrowerName;
+        doc.BorrowerFather = r.BorrowerFather;
+        doc.BorrowerFamily = r.BorrowerFamily;
+        doc.BorrowerMother = r.BorrowerMother;
+        doc.BorrowerBirth = r.BorrowerBirth;
+        doc.BorrowerRegister = r.BorrowerRegister;
+        doc.BorrowerNationalId = r.BorrowerNationalId;
+        doc.BorrowerAddress = r.BorrowerAddress;
+        doc.BorrowerAddressType = r.BorrowerAddressType;
+
+        var borrowerHasRep = !DocumentText.IsEmptyRepresentative(r.BorrowerRepresentativeName, r.BorrowerRepresentativeFather, r.BorrowerRepresentativeFamily);
+        doc.BorrowerRepresentativeName = borrowerHasRep ? (r.BorrowerRepresentativeName ?? string.Empty).Trim() : null;
+        doc.BorrowerRepresentativeFather = borrowerHasRep ? (r.BorrowerRepresentativeFather ?? string.Empty).Trim() : null;
+        doc.BorrowerRepresentativeFamily = borrowerHasRep ? (r.BorrowerRepresentativeFamily ?? string.Empty).Trim() : null;
+        doc.BorrowerRepresentativeCapacity = borrowerHasRep ? DocumentText.NormalizeRepresentativeCapacity(r.BorrowerRepresentativeCapacity) : null;
+        doc.BorrowerRepresentativeAddressType = borrowerHasRep ? DocumentText.NormalizeRepresentativeAddressType(r.BorrowerRepresentativeAddressType) : null;
+        doc.BorrowerRepresentativeAddress = borrowerHasRep ? (r.BorrowerRepresentativeAddress ?? string.Empty).Trim() : null;
+
+        // طبيعة المقترض: الاعتباري يحمل اسم الشخص الاعتباري في BorrowerName وتُصفَّر حقول الهوية
+        // الطبيعية والممثل الشرعي والورثة (مفاهيم تخص الشخص الطبيعي)، ويُحتفظ برقم التسجيل ومن يمثله.
+        // الطبيعي يُصفِّر الحقول الاعتبارية.
+        doc.BorrowerNature = DocumentText.NormalizePartyNature(r.BorrowerNature);
+        if (PartyNatureCatalog.IsLegal(doc.BorrowerNature))
+        {
+            doc.BorrowerFather = null;
+            doc.BorrowerFamily = null;
+            doc.BorrowerMother = null;
+            doc.BorrowerBirth = null;
+            doc.BorrowerRegister = null;
+            doc.BorrowerNationalId = null;
+            doc.BorrowerRegistrationNumber = (r.BorrowerRegistrationNumber ?? string.Empty).Trim();
+            doc.BorrowerRepresentedBy = (r.BorrowerRepresentedBy ?? string.Empty).Trim();
+            doc.BorrowerRepresentativeName = null;
+            doc.BorrowerRepresentativeFather = null;
+            doc.BorrowerRepresentativeFamily = null;
+            doc.BorrowerRepresentativeCapacity = null;
+            doc.BorrowerRepresentativeAddressType = null;
+            doc.BorrowerRepresentativeAddress = null;
+        }
+        else
+        {
+            doc.BorrowerRegistrationNumber = null;
+            doc.BorrowerRepresentedBy = null;
+        }
+
+        doc.ContractType = r.ContractType;
+        doc.ContractTypeSelector = r.ContractTypeSelector;
+        doc.ContractNumber = r.ContractNumber;
+        doc.ContractDate = r.ContractDate;
+        doc.AnnexType = r.AnnexType;
+        doc.AnnexNumber = r.AnnexNumber;
+        doc.AnnexDate = r.AnnexDate;
+        doc.InclusionText = r.InclusionText;
+        doc.AmountNumeric = r.AmountNumeric ?? 0;
+        doc.AmountWords = r.AmountWords;
+        doc.Currency = r.Currency;
+        doc.Amount2Numeric = r.Amount2Numeric ?? 0;
+        doc.Amount2Words = r.Amount2Words;
+        doc.Currency2 = r.Currency2;
+        doc.Amount3Numeric = r.Amount3Numeric ?? 0;
+        doc.Amount3Words = r.Amount3Words;
+        doc.Currency3 = r.Currency3;
+        doc.InclusionAmountNumeric = r.InclusionAmountNumeric ?? 0;
+        doc.InclusionAmountWords = r.InclusionAmountWords;
+        doc.InclusionCurrency = r.InclusionCurrency;
+        doc.InclusionAmount2Numeric = r.InclusionAmount2Numeric ?? 0;
+        doc.InclusionAmount2Words = r.InclusionAmount2Words;
+        doc.InclusionCurrency2 = r.InclusionCurrency2;
+        doc.InclusionAmount3Numeric = r.InclusionAmount3Numeric ?? 0;
+        doc.InclusionAmount3Words = r.InclusionAmount3Words;
+        doc.InclusionCurrency3 = r.InclusionCurrency3;
+        // العقد: الخادم يشتق Court/CourtNorm من الدائرة ويتجاهل نص العميل دائمًا (لا 400) —
+        // يُضبط في Create/Update عبر ApplyCircuitDerivation بعد ApplyRequest.
+        // التطبيع الرقمي مركزيًا: الثقب 123 مقابل ١٢٣ يُغلق هنا للإنشاء/التعديل.
+        doc.FileNumber = DigitNormalizer.NormalizeDigits(r.FileNumber);
+        doc.FileType = r.FileType;
+        doc.FileYear = DigitNormalizer.NormalizeDigits(r.FileYear);
+        doc.FileIncoming = r.FileIncoming;
+        doc.FileIncomingDate = r.FileIncomingDate;
+        doc.UnderFilingNumber = r.UnderFilingNumber;
+        doc.BranchName = r.BranchName;
+        doc.SeizureDate = r.SeizureDate;
+        doc.ImmediateActions = r.ImmediateActions;
+        doc.Notes = r.Notes;
+
+        // حقلا ورود الملف خاصان بوضع «طالبة تنفيذ» فقط ويُصفَّران بغيرها.
+        if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
+        {
+            doc.FileArrivalNumber = null;
+            doc.FileArrivalDate = null;
+        }
+        else
+        {
+            var arrivalNumber = (r.FileArrivalNumber ?? string.Empty).Trim();
+            var arrivalDate = (r.FileArrivalDate ?? string.Empty).Trim();
+            doc.FileArrivalNumber = string.IsNullOrEmpty(arrivalNumber) ? null : arrivalNumber;
+            doc.FileArrivalDate = string.IsNullOrEmpty(arrivalDate) ? null : arrivalDate;
+        }
+
+        // حقول عائلة وضع «منفذ عليه» (Executed + Deposit): تُطبَّق على ملفات هذه الصفة فقط،
+        // وتُصفَّر خارجها. صفة العرض لا تحمل وصفًا إضافيًا (ExecutedDescription) بل تاريخ إيداع.
+        if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
+        {
+            var executedStatus = string.IsNullOrWhiteSpace(r.ExecutedStatus)
+                ? ExecutedStatusCatalog.None
+                : r.ExecutedStatus.Trim();
+            if (!ExecutedStatusCatalog.ValidStatuses.Contains(executedStatus))
+                throw new ArgumentException("حالة وضع (متداول/منفذ/مشطوب) غير صالحة");
+
+            // شطبٌ جديد بتاريخ مصرّح يُحفظ كما هو؛ شطبٌ جديد بتاريـخ فارغ يحمل تاريخ الآن؛
+            // وإعادة شطب (كان مشطوبًا قبل التعديل) بلا تاريخ صريح تُبقي تاريخها السابق —
+            // فلا يُعاد استخدام تاريخ شطب قديمٍ كحدثٍ جديد (يوحّد مع قاعدة Status.cs).
+            var wasStruckOff = ExecutedStatusCatalog.IsStruckOff(doc.ExecutedStatus);
+            doc.ExecutedStatus = ExecutedStatusCatalog.IsStored(executedStatus) ? executedStatus : ExecutedStatusCatalog.None;
+            if (doc.ExecutedStatus == ExecutedStatusCatalog.StruckOff)
+            {
+                var submitted = DocumentValidator.ParseDateTime(r.StruckOffDate, "تاريخ الشطب");
+                if (submitted is not null)
+                    doc.StruckOffDate = submitted;
+                else if (!wasStruckOff)
+                    doc.StruckOffDate = DateTime.UtcNow;
+            }
+            doc.ExecutedDescription = doc.GeneralEntitySide == GeneralEntitySideCatalog.Executed
+                ? (r.ExecutedDescription ?? string.Empty).Trim()
+                : null;
+            doc.FileReceiptDate = DocumentValidator.ParseDateTime(r.FileReceiptDate, "تاريخ ورود الاخطار");
+            doc.FileReceiptNumber = (r.FileReceiptNumber ?? string.Empty).Trim();
+            doc.ExecutedRequiredAmount = r.ExecutedRequiredAmount;
+            doc.ExecutedRequiredCurrency = r.ExecutedRequiredCurrency;
+            doc.ExecutedRequiredAmount2 = r.ExecutedRequiredAmount2;
+            doc.ExecutedRequiredCurrency2 = r.ExecutedRequiredCurrency2;
+            doc.ExecutedRequiredAmount3 = r.ExecutedRequiredAmount3;
+            doc.ExecutedRequiredCurrency3 = r.ExecutedRequiredCurrency3;
+            doc.ExecutedPaidAmount = r.ExecutedPaidAmount;
+            doc.ExecutedPaidCurrency = r.ExecutedPaidCurrency;
+            doc.ExecutedPaidAmount2 = r.ExecutedPaidAmount2;
+            doc.ExecutedPaidCurrency2 = r.ExecutedPaidCurrency2;
+            doc.ExecutedPaidAmount3 = r.ExecutedPaidAmount3;
+            doc.ExecutedPaidCurrency3 = r.ExecutedPaidCurrency3;
+            doc.ExecutedDepositDate = doc.GeneralEntitySide == GeneralEntitySideCatalog.Deposit
+                ? DocumentValidator.ParseDateTime(r.ExecutedDepositDate, "تاريخ ايداعه حساب الجهة العامة")
+                : null;
+            doc.ExecutedExecutionDate = doc.GeneralEntitySide == GeneralEntitySideCatalog.Executed
+                ? DocumentValidator.ParseDateTime(r.ExecutedExecutionDate, "تاريخ التنفيذ")
+                : null;
+        }
+        else
+        {
+            doc.ExecutedStatus = ExecutedStatusCatalog.None;
+            doc.ExecutedDescription = null;
+            doc.FileReceiptDate = null;
+            doc.FileReceiptNumber = null;
+            doc.ExecutedRequiredAmount = null;
+            doc.ExecutedRequiredCurrency = null;
+            doc.ExecutedRequiredAmount2 = null;
+            doc.ExecutedRequiredCurrency2 = null;
+            doc.ExecutedRequiredAmount3 = null;
+            doc.ExecutedRequiredCurrency3 = null;
+            doc.ExecutedPaidAmount = null;
+            doc.ExecutedPaidCurrency = null;
+            doc.ExecutedPaidAmount2 = null;
+            doc.ExecutedPaidCurrency2 = null;
+            doc.ExecutedPaidAmount3 = null;
+            doc.ExecutedPaidCurrency3 = null;
+            doc.ExecutedDepositDate = null;
+            doc.ExecutedExecutionDate = null;
+            doc.StruckOffDate = null;
+        }
+
+        doc.ExecutionApplicants.Clear();
+        foreach (var a in NormalizeExecutionApplicants(r.ExecutionApplicants))
+        {
+            doc.ExecutionApplicants.Add(a);
+            // ربط الورثة بالملف مباشرة (DocumentId) وبمورثهم (ExecutionApplicantId):
+            // EF يرتب كل مفتاح أجنبي عبر مجموعة المورث ومجموعة الملف معًا.
+            foreach (var heir in a.Heirs)
+                doc.ExecutedHeirs.Add(heir);
+        }
+
+        doc.ExecutedPublicEntities.Clear();
+        foreach (var e in NormalizeExecutedPublicEntities(r.ExecutedPublicEntities))
+            doc.ExecutedPublicEntities.Add(e);
+
+        // قائمة الجهات طالبة التنفيذ: تخص وضع «طالبة تنفيذ» فقط وتُصفَّر بغيره.
+        doc.ApplicantPublicEntities.Clear();
+        if (!GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
+        {
+            var applicantList = r.ApplicantPublicEntities;
+            // توافق مع الطلبات القديمة: نص «طالب التنفيذ» المرسل بلا قائمة يُعامَل كجهة واحدة.
+            if ((applicantList is null || applicantList.Count == 0) && !string.IsNullOrWhiteSpace(r.Applicant))
+                applicantList = new List<ApplicantPublicEntityDto> { new(null, r.Applicant, null) };
+            foreach (var a in DocumentText.NormalizeApplicantPublicEntities(applicantList))
+                doc.ApplicantPublicEntities.Add(a);
+        }
+
+        doc.ExecutedNaturalPersons.Clear();
+        foreach (var p in NormalizeExecutedNaturalPersons(r.ExecutedNaturalPersons))
+        {
+            doc.ExecutedNaturalPersons.Add(p);
+            foreach (var heir in p.Heirs)
+                doc.ExecutedHeirs.Add(heir);
+        }
+
+        doc.Guarantors.Clear();
+        foreach (var g in r.Guarantors.OrderBy(g => g.GuarantorNumber))
+            doc.Guarantors.Add(DocumentText.BuildGuarantor(g));
+
+        // الورثة: صفوف بلا اسم ثلاثي تُتجاهل، ونوع العنوان غير الصالح يُعيَّر إلى «عنوان».
+        // لا ورثة لشخص اعتباري (ورثة تخص الشخص الطبيعي المتوفى فقط).
+        doc.Heirs.Clear();
+        if (!PartyNatureCatalog.IsLegal(doc.BorrowerNature))
+            foreach (var h in DocumentText.NormalizeHeirs(r.BorrowerHeirs, null))
+                doc.Heirs.Add(h);
+        foreach (var g in r.Guarantors)
+            if (!PartyNatureCatalog.IsLegal(DocumentText.NormalizePartyNature(g.Nature)))
+                foreach (var h in DocumentText.NormalizeHeirs(g.Heirs, g.GuarantorNumber))
+                    doc.Heirs.Add(h);
+
+        doc.Assets.Clear();
+        foreach (var re in r.Assets)
+            doc.Assets.Add(DocumentText.BuildAsset(re));
+    }
+
+
+
+
+    /// <summary>
+    /// تطبيع طلبات التنفيذ: يُتجاهل الطلب بلا اسم ثلاثي، ويُقيَّد نوع التمثيل بالقيم المسموح بها
+    /// («أصالة»/«إضافة لتركة»/«أصالة وإضافة») مع معاملة أي قيمة أخرى أو فارغة كـ«أصالة»، ويُقصّ
+    /// الاسم الثلاثي للمورث إن لم يُحدَّد مع «إضافة لتركة» أو «أصالة وإضافة». وترتبط ورثة كل مورث
+    /// بمجموعته مباشرة، ويُطبَّع الممثل الشرعي (إن وُجد بغير اسم ثلاثي فارغ) حقولَه فيُصفَّر
+    /// عند الغياب.
+    /// </summary>
+    private static List<ExecutionApplicant> NormalizeExecutionApplicants(IEnumerable<ExecutionApplicantDto>? applicants)
+    {
+        var result = new List<ExecutionApplicant>();
+        if (applicants is null)
+            return result;
+
+        foreach (var a in applicants)
+        {
+            var name = (a.Name ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(name))
+                continue;
+
+            var nature = DocumentText.NormalizePartyNature(a.Nature);
+            var isLegal = PartyNatureCatalog.IsLegal(nature);
+
+            // الشخص الاعتباري بلا تمثيل بالتركة ولا ممثل شرعي: تُصفَّر حقول الهوية الطبيعية
+            // ويُحتفظ برقم التسجيل ومن يمثلها ونوع العنوان وعنوانه.
+            var representationType = isLegal
+                ? "أصالة"
+                : NormalizeApplicantRepresentation(a.RepresentationType);
+            var hasEstate = !isLegal && representationType is "إضافة لتركة" or "أصالة وإضافة";
+            var hasRep = !isLegal && !DocumentText.IsEmptyRepresentative(a.RepresentativeName, a.RepresentativeFather, a.RepresentativeFamily);
+
+            var applicant = new ExecutionApplicant
+            {
+                Name = name,
+                ApplicantNature = nature,
+                ApplicantRegistrationNumber = isLegal ? (a.RegistrationNumber ?? string.Empty).Trim() : null,
+                ApplicantRepresentedBy = isLegal ? (a.RepresentedBy ?? string.Empty).Trim() : null,
+                ApplicantAddressType = isLegal ? (a.AddressType ?? string.Empty).Trim() : null,
+                ApplicantAddress = isLegal ? (a.Address ?? string.Empty).Trim() : null,
+                Father = isLegal ? null : (a.Father ?? string.Empty).Trim(),
+                Family = isLegal ? null : (a.Family ?? string.Empty).Trim(),
+                LegalRepresentative = isLegal ? null : (a.LegalRepresentative ?? string.Empty).Trim(),
+                RepresentationType = representationType,
+                DeceasedName = hasEstate ? (a.DeceasedName ?? string.Empty).Trim() : null,
+                DeceasedFather = hasEstate ? (a.DeceasedFather ?? string.Empty).Trim() : null,
+                DeceasedFamily = hasEstate ? (a.DeceasedFamily ?? string.Empty).Trim() : null,
+                RepresentativeName = hasRep ? (a.RepresentativeName ?? string.Empty).Trim() : null,
+                RepresentativeFather = hasRep ? (a.RepresentativeFather ?? string.Empty).Trim() : null,
+                RepresentativeFamily = hasRep ? (a.RepresentativeFamily ?? string.Empty).Trim() : null,
+                RepresentativeCapacity = hasRep ? DocumentText.NormalizeRepresentativeCapacity(a.RepresentativeCapacity) : null,
+                RepresentativeLegalRepresentative = hasRep ? (a.RepresentativeLegalRepresentative ?? string.Empty).Trim() : null,
+                RegistryId = isLegal ? a.RegistryId : null,
+            };
+            if (!isLegal)
+            {
+                foreach (var heir in NormalizeExecutedHeirs(a.Heirs))
+                    applicant.Heirs.Add(heir);
+            }
+            result.Add(applicant);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// تطبيع المنفذ عليهم الاعتباريين (جهة عامة أو شخص اعتباري): يُتجاهل ما بلا اسم، ويُقصّ
+    /// اسمه وفرعه. عند الطبيعة (legal) تُعبَّأ حقول الشخص الاعتباري (رقم التسجيل/من يمثلها/العنوان)
+    /// ويُصفَّر فرع الجهة العامة؛ وعند (public) تُصفَّر حقول الشخص الاعتباري.
+    /// </summary>
+    private static List<ExecutedPublicEntity> NormalizeExecutedPublicEntities(IEnumerable<ExecutedPublicEntityDto>? entities)
+    {
+        var result = new List<ExecutedPublicEntity>();
+        if (entities is null)
+            return result;
+
+        foreach (var e in entities)
+        {
+            var name = (e.EntityName ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(name))
+                continue;
+
+            var nature = NormalizeEntityNature(e.Nature);
+            var isLegal = PartyNatureCatalog.IsLegal(nature);
+            result.Add(new ExecutedPublicEntity
+            {
+                EntityName = name,
+                EntityBranch = isLegal ? null : (e.EntityBranch ?? string.Empty).Trim(),
+                Governorate = (e.Governorate ?? string.Empty).Trim(),
+                // ربط السجل المرجعي خاص بجهات الدولة العامة لا بالأشخاص الاعتباريين.
+                RegistryId = isLegal ? null : e.RegistryId,
+                EntityNature = nature,
+                RegistrationNumber = isLegal ? (e.RegistrationNumber ?? string.Empty).Trim() : null,
+                RepresentedBy = isLegal ? (e.RepresentedBy ?? string.Empty).Trim() : null,
+                AddressType = isLegal ? (e.AddressType ?? string.Empty).Trim() : null,
+                Address = isLegal ? (e.Address ?? string.Empty).Trim() : null,
+            });
+        }
+
+        return result;
+    }
+
+
+    /// <summary>
+    /// تطبيع الأشخاص الطبيعيين المنفذ عليهم: يُتجاهل ما بلا اسم ثلاثي، ويُقيَّد نوع العنوان
+    /// («عنوان»/«وكيل») مع معاملة أي قيمة أخرى كـ«عنوان»، ونوع التمثيل («أصالة»/«إضافة لتركة»/
+    /// «أصالة وإضافة») مع معاملة أي قيمة أخرى كـ«أصالة». وترتبط ورثة كل مورث بمجموعته مباشرة،
+    /// ويُطبَّع الممثل الشرعي (إن وُجد) حقولَه فيُصفَّر عند الغياب.
+    /// </summary>
+    private static List<ExecutedNaturalPerson> NormalizeExecutedNaturalPersons(IEnumerable<ExecutedNaturalPersonDto>? persons)
+    {
+        var result = new List<ExecutedNaturalPerson>();
+        if (persons is null)
+            return result;
+
+        foreach (var p in persons)
+        {
+            var name = (p.Name ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(name))
+                continue;
+
+            var addressType = (p.AddressType ?? string.Empty).Trim();
+            if (addressType != "وكيل")
+                addressType = "عنوان";
+
+            var representationType = (p.RepresentationType ?? string.Empty).Trim();
+            if (representationType != "إضافة لتركة" && representationType != "أصالة وإضافة")
+                representationType = "أصالة";
+
+            var hasEstate = representationType is "إضافة لتركة" or "أصالة وإضافة";
+            var hasRep = !DocumentText.IsEmptyRepresentative(p.RepresentativeName, p.RepresentativeFather, p.RepresentativeFamily);
+
+            var person = new ExecutedNaturalPerson
+            {
+                Name = name,
+                Father = (p.Father ?? string.Empty).Trim(),
+                Family = (p.Family ?? string.Empty).Trim(),
+                AddressType = addressType,
+                AddressOrRepresentative = (p.AddressOrRepresentative ?? string.Empty).Trim(),
+                RepresentationType = representationType,
+                DeceasedName = hasEstate ? (p.DeceasedName ?? string.Empty).Trim() : null,
+                DeceasedFather = hasEstate ? (p.DeceasedFather ?? string.Empty).Trim() : null,
+                DeceasedFamily = hasEstate ? (p.DeceasedFamily ?? string.Empty).Trim() : null,
+                RepresentativeName = hasRep ? (p.RepresentativeName ?? string.Empty).Trim() : null,
+                RepresentativeFather = hasRep ? (p.RepresentativeFather ?? string.Empty).Trim() : null,
+                RepresentativeFamily = hasRep ? (p.RepresentativeFamily ?? string.Empty).Trim() : null,
+                RepresentativeCapacity = hasRep ? DocumentText.NormalizeRepresentativeCapacity(p.RepresentativeCapacity) : null,
+                RepresentativeAddressType = hasRep ? DocumentText.NormalizeRepresentativeAddressType(p.RepresentativeAddressType) : null,
+                RepresentativeAddress = hasRep ? (p.RepresentativeAddress ?? string.Empty).Trim() : null,
+            };
+            foreach (var heir in NormalizeExecutedHeirs(p.Heirs))
+                person.Heirs.Add(heir);
+            result.Add(person);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// تصفية صفوف الورثة الصالحة: يُتجاهل الوريث بلا اسم ثلاثي، ويُقيَّد نوع العنوان
+    /// («عنوان»/«وكيل») مع معاملة أي قيمة أخرى أو فارغة كـ«عنوان».
+    /// </summary>
+    private static List<ExecutedHeir> NormalizeExecutedHeirs(IEnumerable<ExecutedHeirDto>? heirs)
+    {
+        var result = new List<ExecutedHeir>();
+        if (heirs is null)
+            return result;
+
+        foreach (var h in heirs)
+        {
+            var name = (h.HeirName ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(name))
+                continue;
+
+            var addressType = (h.AddressType ?? string.Empty).Trim();
+            if (addressType != "عنوان" && addressType != "وكيل")
+                addressType = "عنوان";
+
+            result.Add(new ExecutedHeir
+            {
+                HeirName = name,
+                HeirFather = (h.HeirFather ?? string.Empty).Trim(),
+                HeirFamily = (h.HeirFamily ?? string.Empty).Trim(),
+                AddressType = addressType,
+                HeirAddress = (h.HeirAddress ?? string.Empty).Trim(),
+            });
+        }
+
+        return result;
+    }
+
+
+
+
+
+    /// <summary>
+    /// طبيعة المنفذ عليه الاعتباري في وضع «منفذ عليه»: جهة عامة (public) أو شخص اعتباري (legal)؛
+    /// أي قيمة أخرى أو فارغة تُعيَّر إلى «جهة عامة».
+    /// </summary>
+    private static string NormalizeEntityNature(string? nature)
+    {
+        var value = (nature ?? string.Empty).Trim();
+        return PartyNatureCatalog.ValidEntityNatures.Contains(value) ? value : PartyNatureCatalog.PublicEntity;
+    }
+
+    /// <summary>
+    /// نوع تمثيل طالب التنفيذ المقبول: أصالة / إضافة لتركة / أصالة وإضافة؛ أي قيمة أخرى أو فارغة
+    /// تُعيَّر إلى «أصالة».
+    /// </summary>
+    private static string NormalizeApplicantRepresentation(string? representationType)
+    {
+        var value = (representationType ?? string.Empty).Trim();
+        return value is "إضافة لتركة" or "أصالة وإضافة" ? value : "أصالة";
+    }
+
+    private void ApplyRegistrationDate(Document doc, string? value)
+    {
+        var date = value?.Trim();
+        if (string.IsNullOrWhiteSpace(date))
+        {
+            if (doc.RegistrationDate is not null)
+            {
+                _registrationDates.Remove(doc.RegistrationDate);
+                doc.RegistrationDate = null;
+            }
+            return;
+        }
+
+        if (doc.RegistrationDate is null)
+            doc.RegistrationDate = new DocumentRegistrationDate { Date = date };
+        else
+            doc.RegistrationDate.Date = date;
+
+        doc.RegistrationDate.DateParsed = ActionDateParser.TryParse(date);
+    }
+    public async Task<PagedResult<RotationDocumentDto>> GetRotationListAsync(int userId, int page, int perPage, CancellationToken ct = default)
+    {
+        page = Math.Max(1, page);
+        perPage = Math.Clamp(perPage, 1, 100);
+
+        var currentYear = CurrentYear();
+        var (total, docs) = await _documents.GetRotationCandidatesAsync(userId, currentYear, page, perPage, ct);
+        var items = docs
+            .Select(d => new RotationDocumentDto(
+                d.Id,
+                d.Court,
+                d.BorrowerName,
+                d.BorrowerFather,
+                d.BorrowerFamily,
+                d.FileNumber,
+                d.FileType,
+                d.BaseNumbers.Where(b => b.Year == currentYear).OrderByDescending(b => b.CreatedAt).FirstOrDefault()?.BaseNumber,
+                DocumentText.RotationDisplayName(d),
+                EffectiveFileIdentity.Number(d, currentYear),
+                EffectiveFileIdentity.Year(d, currentYear)))
+            .ToList();
+
+        return new PagedResult<RotationDocumentDto>
+        {
+            Items = items,
+            Page = page,
+            PerPage = perPage,
+            TotalCount = total,
+        };
+    }
+
+    public async Task<List<BaseNumberHistoryDto>> GetBaseNumberHistoryAsync(int documentId, CancellationToken ct = default)
+    {
+        var doc = await _documents.GetByIdAsync(documentId, ct);
+        if (doc is null)
+            return new List<BaseNumberHistoryDto>();
+
+        return doc.BaseNumbers
+            .OrderByDescending(b => b.Year)
+            .ThenByDescending(b => b.CreatedAt)
+            .Select(b => new BaseNumberHistoryDto(b.Year, b.BaseNumber))
+            .ToList();
+    }
+
+    public async Task SaveBaseNumbersAsync(int userId, List<BaseNumberEntry> entries, string? actorName, CancellationToken ct = default)
+    {
+        if (entries is null || entries.Count == 0)
+            return;
+
+        // حماية من طلب غير صالح يحتوي عنصرًا فارغًا — نرفضه بدل خطأ داخلي.
+        if (entries.Any(e => e is null))
+            throw new ArgumentException("طلب تدوير غير صالح");
+
+        var year = CurrentYear();
+
+        // منع تكرار نفس الملف داخل الطلب (سلوك غامض) — يُرفض الطلب كاملًا.
+        var unique = entries
+            .GroupBy(e => e.DocumentId)
+            .Select(g => g.Last())
+            .ToList();
+        if (unique.Count != entries.Count)
+            throw new ArgumentException("لا يمكن تكرار نفس الملف في طلب التدوير");
+
+        await _writeGuard.WithNumberGuardAsync(() => _tx.RunAsync(async token =>
+        {
+            var docs = await _documents.GetByIdsAsync(unique.Select(e => e.DocumentId).ToList(), token);
+            var found = docs.ToDictionary(d => d.Id);
+            var auditEntries = new List<AuditLogEntry>(unique.Count);
+
+            foreach (var entry in unique)
+            {
+                if (!found.TryGetValue(entry.DocumentId, out var doc))
+                    throw new ArgumentException("أحد الملفات غير موجود أو محذوف");
+                if (doc.CreatedById != userId)
+                    throw new ArgumentException("لا يمكن تعديل رقم أساس لملف لا يملكه المحامي");
+
+                // الأهلية: مقيد برقم ملف وغير مقيد في السنة الحالية — حتى لا يُدوَّر محتوى
+                // الملف تحت رفع أو ملفٌ حديث عهد قيده (رقم ملفه الأصلي هو نفسه رقم أساس سنته،
+                // فلا يحتاج رقم أساس جديدًا لهذه السنة).
+                // الفحص العائلي قطعي ومطابق حرفيًا لعبارة القائمة في المستودع: عائلتا وضع
+                // «منفذ عليه» (Executed + Deposit) تُحكمان حصريًا بحالة الوضع (متداولٌ فقط = لا
+                // منفذ ولا مشطوب) وبشرط وجود رقم أساس من سنة سابقة — التدوير فيهما استمرار لدوران
+                // سبق أن بدأ، ولا تُعدُّ حالة نظام «طالبة تنفيذ» (ExecStatus/ExecSubStatus) ذات
+                // فائدة فيهما. أما نظام «طالبة تنفيذ» فشرطه القديم نفسه.
+                if (doc.IsDraft || doc.FileYear == year.ToString())
+                    throw new ArgumentException($"الملف (رقم {doc.Id}) غير مؤهل للتدوير");
+
+                // حارس التدوير للمعلق (البند 53): يُستبعد المعلق من التدوير دائمًا —
+                // لا اعتماد على IsDraft (الذي صار false للمعلق بموجب البند 31).
+                if (doc.NeedsRegistration)
+                    throw new ArgumentException($"الملف (رقم {doc.Id}) بانتظار إعادة القيد — غير مؤهل للتدوير");
+
+                var eligible = GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide)
+                    ? doc.ExecutedStatus == ExecutedStatusCatalog.None
+                        && doc.BaseNumbers.Any(b => b.Year < year)
+                    : !ExecutionStatusCatalog.IsExecuted(doc.ExecStatus, doc.ExecSubStatus);
+                if (!eligible)
+                    throw new ArgumentException($"الملف (رقم {doc.Id}) غير مؤهل للتدوير");
+
+                var normalized = entry.BaseNumber?.Trim();
+                if (string.IsNullOrEmpty(normalized))
+                {
+                    // إلغاء رقم أساس السنة الحالية: حذف كل سجلاتها مع الاحتفاظ بأرقام السنوات السابقة.
+                    var currentYearRows = doc.BaseNumbers.Where(b => b.Year == year).ToList();
+                    if (currentYearRows.Count == 0)
+                        continue;
+
+                    auditEntries.Add(new AuditLogEntry(actorName, "rotate", doc.Id, doc.DocumentType,
+                        DocumentText.AuditWithActor($"ألغى رقم أساس {year}: {string.Join("، ", currentYearRows.Select(r => r.BaseNumber))}", doc)));
+                    foreach (var row in currentYearRows)
+                        _baseNumbers.Remove(row);
+                    continue;
+                }
+
+                if (normalized.Length > 50)
+                    throw new ArgumentException("رقم الأساس يتجاوز الطول المسموح");
+
+                // RF-009 بتوقيع الدائرة (البند 34): مطابقة FK مباشرة — قبل إدراجه.
+                await _writeGuard.EnsureNumberUniqueByCircuitAsync(doc.Id, doc.ExecutionCircuitId, doc.CourtNorm,
+                    normalized, doc.FileType, year.ToString(), token);
+
+                // سجل جديد دائمًا: كل تدوير يلحق سجلًا بسنة التدوير، والأحدث (Year ثم CreatedAt) هو المعتبر.
+                var record = new DocumentBaseNumber
+                {
+                    DocumentId = doc.Id,
+                    Year = year,
+                    BaseNumber = normalized,
+                    CreatedById = userId,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                };
+                auditEntries.Add(new AuditLogEntry(actorName, "rotate", doc.Id, doc.DocumentType,
+                    DocumentText.AuditWithActor($"دوّر الملف برقم أساس {year}: {normalized}", doc)));
+                await _baseNumbers.AddAsync(record, ct);
+
+                // إلحاق رقم الأساس الجديد لنص البحث القائم (إلحاق لا إعادة بناء) ليُلتقط البحث.
+                doc.SearchText = DocumentSearchTextBuilder.Append(doc.SearchText, normalized);
+            }
+
+            // حفظ ذرّي واحد لكل تغييرات الأرقام ثم دفعة تدقيق واحدة — بدل حفظٍ لكل ملف
+            // (مهم في الحسابات الكبيرة التي قد تصل لآلاف الملفات).
+            await _uow.SaveChangesAsync(token);
+            await _audit.LogManyAsync(auditEntries, token);
+        }, ct), entries.FirstOrDefault(e => !string.IsNullOrWhiteSpace(e?.BaseNumber))?.BaseNumber);
+    }
 }
+

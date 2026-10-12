@@ -18,6 +18,7 @@ public class RescheduleDocumentReminderTests : IDisposable
 {
     private readonly DocGeneratorDbContext _db;
     private readonly IDocumentService _service;
+    private readonly IExecutionActionService _actions;
     private readonly FakeAuditLogger _audit = new();
 
     public RescheduleDocumentReminderTests()
@@ -33,23 +34,9 @@ public class RescheduleDocumentReminderTests : IDisposable
             PasswordHash = new PasswordHasher().Hash("123456"),
         });
         _db.SaveChanges();
-        var uow = new UnitOfWork(_db);
-        var tx = new TransactionRunner(_db);
-        _service = new DocumentService(
-            new DocumentRepository(_db),
-            new UserRepository(_db),
-            new Repository<Guarantor>(_db),
-            new Repository<Asset>(_db),
-            new Repository<ExecutionAction>(_db),
-            new Repository<DocumentBaseNumber>(_db),
-            new Repository<DocumentRegistrationDate>(_db),
-            new Repository<DocumentOccurrence>(_db),
-            new DelegationRepository(_db),
-            new AppealRepository(_db),
-            new HeadAlertService(new HeadAlertRepository(_db), new DocumentRepository(_db), new UserRepository(_db), new Repository<Branch>(_db), uow, tx, _audit),
-            uow, tx, _audit,
-            Microsoft.Extensions.Options.Options.Create(new ExportOptions()),
-            TimeProvider.System, TestClock.TimeZone, new DbExceptionClassifier());
+        var bundle = DocumentServiceFactory.Create(_db, _audit);
+        _service = bundle.Documents;
+        _actions = bundle.Actions;
     }
 
     public void Dispose() => _db.Dispose();
@@ -74,7 +61,7 @@ public class RescheduleDocumentReminderTests : IDisposable
         string type = "action")
     {
         var doc = await _service.CreateAsync(Sample(), userId: 1, actorName: "lawyer1", branchId: 1);
-        var action = await _service.AddExecutionActionAsync(doc.Id,
+        var action = await _actions.AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest
             {
                 Type = type,
@@ -92,7 +79,7 @@ public class RescheduleDocumentReminderTests : IDisposable
     {
         var (documentId, action) = await SeedActionAsync();
 
-        var rescheduled = await _service.RescheduleReminderAsync(documentId, action.Id, "10/8/2026", "lawyer1");
+        var rescheduled = await _actions.RescheduleReminderAsync(documentId, action.Id, "10/8/2026", "lawyer1");
 
         Assert.Equal("2026-08-07", rescheduled.ActionDate);
         var (due, suspect) = ActionReminderCalculator.TryComputeDueDate(
@@ -116,7 +103,7 @@ public class RescheduleDocumentReminderTests : IDisposable
     {
         var (documentId, action) = await SeedActionAsync();
 
-        var rescheduled = await _service.RescheduleReminderAsync(documentId, action.Id, "١٠/٨/٢٠٢٦", "lawyer1");
+        var rescheduled = await _actions.RescheduleReminderAsync(documentId, action.Id, "١٠/٨/٢٠٢٦", "lawyer1");
 
         Assert.Equal("2026-08-07", rescheduled.ActionDate);
     }
@@ -130,7 +117,7 @@ public class RescheduleDocumentReminderTests : IDisposable
         var (documentId, action) = await SeedActionAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.RescheduleReminderAsync(documentId, action.Id, newDueDate, "lawyer1"));
+            () => _actions.RescheduleReminderAsync(documentId, action.Id, newDueDate, "lawyer1"));
         Assert.Equal("اليوم الجديد مطلوب — استخدم مثال: 1/8/2026", ex.Message);
     }
 
@@ -142,7 +129,7 @@ public class RescheduleDocumentReminderTests : IDisposable
         var (documentId, action) = await SeedActionAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.RescheduleReminderAsync(documentId, action.Id, newDueDate, "lawyer1"));
+            () => _actions.RescheduleReminderAsync(documentId, action.Id, newDueDate, "lawyer1"));
         Assert.Equal("اليوم الجديد غير صالح — استخدم مثال: 1/8/2026", ex.Message);
     }
 
@@ -150,12 +137,12 @@ public class RescheduleDocumentReminderTests : IDisposable
     public async Task Reschedule_NoReminder_Throws()
     {
         var doc = await _service.CreateAsync(Sample(), userId: 1, actorName: "lawyer1", branchId: 1);
-        var action = await _service.AddExecutionActionAsync(doc.Id,
+        var action = await _actions.AddExecutionActionAsync(doc.Id,
             new AddExecutionActionRequest { Type = "note", Text = "ملاحظة بلا تذكير" },
             userId: 1, actorName: "lawyer1");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.RescheduleReminderAsync(doc.Id, action.Id, "10/8/2026", "lawyer1"));
+            () => _actions.RescheduleReminderAsync(doc.Id, action.Id, "10/8/2026", "lawyer1"));
         Assert.Equal("لا يوجد تذكير لإعادة جدولته", ex.Message);
     }
 
@@ -179,7 +166,7 @@ public class RescheduleDocumentReminderTests : IDisposable
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
-            () => _service.RescheduleReminderAsync(doc.Id, legacy.Id, "10/8/2026", "lawyer1"));
+            () => _actions.RescheduleReminderAsync(doc.Id, legacy.Id, "10/8/2026", "lawyer1"));
         Assert.Equal("مدة التذكير غير معروفة — عدّل الإجراء من نافذة الإجراءات", ex.Message);
         // التاريخ الأصلي لم يُمسّ.
         Assert.Equal("1/8/2026", (await _db.ExecutionActions.FindAsync(legacy.Id))!.ActionDate);
@@ -190,7 +177,7 @@ public class RescheduleDocumentReminderTests : IDisposable
     {
         var (documentId, action) = await SeedActionAsync(duration: null, color: "أصفر");
 
-        var rescheduled = await _service.RescheduleReminderAsync(documentId, action.Id, "10/8/2026", "lawyer1");
+        var rescheduled = await _actions.RescheduleReminderAsync(documentId, action.Id, "10/8/2026", "lawyer1");
 
         Assert.Equal("2026-08-10", rescheduled.ActionDate);
     }
@@ -200,7 +187,7 @@ public class RescheduleDocumentReminderTests : IDisposable
     {
         var (documentId, action) = await SeedActionAsync(type: "note", actionDate: null, duration: "أسبوع");
 
-        var rescheduled = await _service.RescheduleReminderAsync(documentId, action.Id, "15/8/2026", "lawyer1");
+        var rescheduled = await _actions.RescheduleReminderAsync(documentId, action.Id, "15/8/2026", "lawyer1");
 
         Assert.Equal("2026-08-08", rescheduled.ActionDate);
         Assert.Equal("note", rescheduled.Type);
@@ -213,11 +200,11 @@ public class RescheduleDocumentReminderTests : IDisposable
         var other = await _service.CreateAsync(Sample(), userId: 1, actorName: "lawyer1", branchId: 1);
 
         await Assert.ThrowsAsync<KeyNotFoundException>(
-            () => _service.RescheduleReminderAsync(documentId, 999999, "10/8/2026", "lawyer1"));
+            () => _actions.RescheduleReminderAsync(documentId, 999999, "10/8/2026", "lawyer1"));
         await Assert.ThrowsAsync<KeyNotFoundException>(
-            () => _service.RescheduleReminderAsync(other.Id, action.Id, "10/8/2026", "lawyer1"));
+            () => _actions.RescheduleReminderAsync(other.Id, action.Id, "10/8/2026", "lawyer1"));
         await Assert.ThrowsAsync<KeyNotFoundException>(
-            () => _service.RescheduleReminderAsync(999999, action.Id, "10/8/2026", "lawyer1"));
+            () => _actions.RescheduleReminderAsync(999999, action.Id, "10/8/2026", "lawyer1"));
     }
 }
 

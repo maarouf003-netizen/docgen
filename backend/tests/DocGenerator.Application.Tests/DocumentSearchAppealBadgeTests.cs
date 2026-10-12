@@ -42,28 +42,12 @@ public class DocumentSearchAppealBadgeTests : IDisposable
 
     public void Dispose() => _db.Dispose();
 
-    private DocumentService NewDocumentService()
+    private async Task<DTOs.DocumentResponse> SearchSingleAsync(int documentId)
     {
-        var baseNumbers = new Repository<DocumentBaseNumber>(_db);
-        return new DocumentService(
-            new DocumentRepository(_db),
-            new UserRepository(_db),
-            new Repository<Guarantor>(_db),
-            new Repository<Asset>(_db),
-            new Repository<ExecutionAction>(_db),
-            baseNumbers,
-            new Repository<DocumentRegistrationDate>(_db),
-            new Repository<DocumentOccurrence>(_db),
-            new DelegationRepository(_db),
-            new AppealRepository(_db),
-            new HeadAlertService(new HeadAlertRepository(_db), new DocumentRepository(_db), new UserRepository(_db), new Repository<Branch>(_db), new UnitOfWork(_db), new TransactionRunner(_db), _audit),
-            new UnitOfWork(_db),
-            new TransactionRunner(_db),
-            _audit,
-            Options.Create(new ExportOptions()),
-            Clock,
-            TestClock.TimeZone,
-            new DbExceptionClassifier());
+        var search = DocumentServiceFactory.Create(_db, _audit, clock: Clock).Search;
+        var page = await search.SearchAsync(null, null, null, null, null, null, null, null, null,
+            page: 1, perPage: 100, visibleBranchId: null, visibleUserId: _userId);
+        return page.Items.Single(i => i.Id == documentId);
     }
 
     private Document NewDoc(string borrowerName = "أحمد")
@@ -95,14 +79,6 @@ public class DocumentSearchAppealBadgeTests : IDisposable
             AppellantsJson = "[]",
             AppelleesJson = "[]",
         };
-    }
-
-    private async Task<DTOs.DocumentResponse> SearchSingleAsync(int documentId)
-    {
-        var service = NewDocumentService();
-        var page = await service.SearchAsync(null, null, null, null, null, null, null, null, null,
-            page: 1, perPage: 100, visibleBranchId: null, visibleUserId: _userId);
-        return page.Items.Single(i => i.Id == documentId);
     }
 
     [Fact]

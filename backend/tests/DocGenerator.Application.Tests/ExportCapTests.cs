@@ -22,7 +22,7 @@ public class ExportCapTests : IDisposable
 
     public void Dispose() => _db.Dispose();
 
-    private IDocumentService Build(int maxRows)
+    private (IDocumentService Documents, IExecutionActionService Actions, IDocumentSearchService Search, IDocumentStatusService Status) Build(int maxRows)
     {
         _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" });
         _db.Users.Add(new User
@@ -36,25 +36,7 @@ public class ExportCapTests : IDisposable
         _db.SaveChanges();
         _userId = _db.Users.First(u => u.Username == "lawyer1").Id;
 
-        return new DocumentService(
-            new DocumentRepository(_db),
-            new UserRepository(_db),
-            new Repository<Guarantor>(_db),
-            new Repository<Asset>(_db),
-            new Repository<ExecutionAction>(_db),
-            new Repository<DocumentBaseNumber>(_db),
-            new Repository<DocumentRegistrationDate>(_db),
-            new Repository<DocumentOccurrence>(_db),
-            new DelegationRepository(_db),
-            new AppealRepository(_db),
-            new HeadAlertService(new HeadAlertRepository(_db), new DocumentRepository(_db), new UserRepository(_db), new Repository<Branch>(_db), new UnitOfWork(_db), new TransactionRunner(_db), _audit),
-            new UnitOfWork(_db),
-            new TransactionRunner(_db),
-            _audit,
-            Options.Create(new ExportOptions { MaxRows = maxRows }),
-            TimeProvider.System,
-            TestClock.TimeZone,
-            new DbExceptionClassifier());
+        return DocumentServiceFactory.Create(_db, _audit, exportOptions: new ExportOptions { MaxRows = maxRows });
     }
 
     private async Task CreateDocsAsync(IDocumentService svc, int count)
@@ -78,11 +60,11 @@ public class ExportCapTests : IDisposable
     [Fact]
     public async Task ExportAsync_WhenResultsExceedCap_ThrowsWithFriendlyMessage()
     {
-        var svc = Build(maxRows: 1);
-        await CreateDocsAsync(svc, 2);
+        var bundle = Build(maxRows: 1);
+        await CreateDocsAsync(bundle.Documents, 2);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            svc.ExportAsync(null, null, null, null, null, null, null, null, null));
+            bundle.Search.ExportAsync(null, null, null, null, null, null, null, null, null));
 
         Assert.Contains("الحد الأقصى للتصدير", ex.Message);
         Assert.Contains("طبّق فلترًا أضيق", ex.Message);
@@ -91,10 +73,10 @@ public class ExportCapTests : IDisposable
     [Fact]
     public async Task ExportAsync_AtExactCap_Passes()
     {
-        var svc = Build(maxRows: 2);
-        await CreateDocsAsync(svc, 2);
+        var bundle = Build(maxRows: 2);
+        await CreateDocsAsync(bundle.Documents, 2);
 
-        var rows = await svc.ExportAsync(null, null, null, null, null, null, null, null, null);
+        var rows = await bundle.Search.ExportAsync(null, null, null, null, null, null, null, null, null);
 
         Assert.Equal(2, rows.Count);
     }
@@ -102,10 +84,10 @@ public class ExportCapTests : IDisposable
     [Fact]
     public async Task ExportAsync_UnderCap_Passes()
     {
-        var svc = Build(maxRows: 10);
-        await CreateDocsAsync(svc, 1);
+        var bundle = Build(maxRows: 10);
+        await CreateDocsAsync(bundle.Documents, 1);
 
-        var rows = await svc.ExportAsync(null, null, null, null, null, null, null, null, null);
+        var rows = await bundle.Search.ExportAsync(null, null, null, null, null, null, null, null, null);
 
         Assert.Single(rows);
     }

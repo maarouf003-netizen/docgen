@@ -8,42 +8,36 @@ namespace DocGenerator.Application.Services;
 
 /// <summary>
 /// «الملف المناب مرآةً للمنيب»: مزامنة نسخ من المنيب إلى المناب عند كل تعديل جوهري
-/// (ref: docs/delegation-mirror-plan.md §3)، مع حارس تعديل المناب في UpdateAsync
+/// (ref: docs/delegation-mirror-plan.md §3)، مع حارس تعديل المناب في التعديل
 /// (§3-ج) وتنبيهين متعاكسين مدموجين (§3-ب). كل التغييرات قيمية بلا سكيما وبلا هجرات.
+/// (مدموج من `DocumentService` — المرحلة 3، نقل ميكانيكي بلا سلوك.)
+/// ثابت ملكية المعاملة: المزامنة داخل معاملة المستدعي، وإطلاق التنبيهات بعد تثبيتها —
+/// تُحفَظ المواضع حرفيًا (أي تبديل تغيير سلوكي). بلا `_tx` إطلاقًا في هذا الملف.
 /// </summary>
-public sealed partial class DocumentService
+public enum DelegationStatusAlertKind
 {
-    /// <summary>نية تنبيه مرآة (منيب ↔ مناب) تُطلق بعد نجاح معاملة الحفظ — الرسالة ملخص آخر تغيّر.</summary>
-    private sealed record MirrorAlertIntent(
-        int DelegationId,
-        int RecipientLawyerId,
-        int RecipientBranchId,
-        int ActorUserId,
-        string Message);
+    /// <summary>الرسالة العامة القديمة («تغيّرت حالة الملف المنيب») — مسار فك الشطب فقط.</summary>
+    Generic,
 
-    /// <summary>نوع تنبيه تغيّر حالة المنيب إلى مناباته المعلقة (T2-T5) — يُحدَّد صراحةً عند كل
-    /// استدعاء بحسب الانتقال، ولا يُشترط بعد في رسالة النقل التلقائي من الحالة نفسها.</summary>
-    private enum DelegationStatusAlertKind
-    {
-        /// <summary>الرسالة العامة القديمة («تغيّرت حالة الملف المنيب») — مسار فك الشطب فقط.</summary>
-        Generic,
+    /// <summary>T2: المنيب تريث — المناب يوقف إجراءات الإنابة.</summary>
+    Deferred,
 
-        /// <summary>T2: المنيب تريث — المناب يوقف إجراءات الإنابة.</summary>
-        Deferred,
+    /// <summary>T3: عودة المنيب إلى المتداول (تراجع من تريث) — متابعة السير.</summary>
+    Returned,
 
-        /// <summary>T3: عودة المنيب إلى المتداول (تراجع من تريث) — متابعة السير.</summary>
-        Returned,
+    /// <summary>T4: المنيب منفذ بالتسوية — المناب مسترد يوقف إجراءاته ويعود لمرجعه.</summary>
+    Settled,
 
-        /// <summary>T4: المنيب منفذ بالتسوية — المناب مسترد يوقف إجراءاته ويعود لمرجعه.</summary>
-        Settled,
+    /// <summary>T5: المنيب منفذ جبريًا كاملًا — المناب مسترد بتحصيل المبلغ جبريًا.</summary>
+    FullyForcibly,
+}
 
-        /// <summary>T5: المنيب منفذ جبريًا كاملًا — المناب مسترد بتحصيل المبلغ جبريًا.</summary>
-        FullyForcibly,
-    }
+public sealed partial class DocumentDelegationService
+{
 
     /// <summary>نوع تنبيه حالة المنيب بعد تغيير حالته عبر UpdateStatusAsync: تريث/تسوية/اكتمال جبري
     /// فحسب؛ «جزئيا» (N1) و«مشطوب» (N7) وسواها كبت بلا تنبيه.</summary>
-    private static DelegationStatusAlertKind? DelegationStatusAlertKindFor(Document doc) =>
+    public static DelegationStatusAlertKind? DelegationStatusAlertKindFor(Document doc) =>
         doc.ExecStatus switch
         {
             ExecutionStatusCatalog.Deferred => DelegationStatusAlertKind.Deferred,
@@ -53,13 +47,15 @@ public sealed partial class DocumentService
             _ => null,
         };
 
-    /// <summary>حاصل فحص تعديل المناب: الإضافات المحلية المسموحة (ورثة/ممثل) للتنبيه العكسي.</summary>
+    /// <summary>مجمّع خاص لفحص تعديل المناب — لا يعبر أي حدّ عام (يُبنى منه `TargetEditReport`).</summary>
     private sealed class TargetEditResult
     {
-        public List<Heir> AddedHeirs { get; } = new();
+        public List<AddedHeirEntry> AddedHeirs { get; } = new();
         public List<string> NewRepresentativeLabels { get; } = new();
-        public bool HasAdditions => AddedHeirs.Count > 0 || NewRepresentativeLabels.Count > 0;
     }
+
+    private static string HeirDisplayName(Heir h) => string.Join(' ',
+        new[] { h.HeirName, h.HeirFather, h.HeirFamily }.Where(v => !string.IsNullOrWhiteSpace(v)));
 
     // ── الحراسة: تعديل الملف المناب ────────────────────────────────────────────
 
@@ -68,13 +64,14 @@ public sealed partial class DocumentService
     /// يرفض أي فرق قيمي في الحقول المقفولة (الكتب/السند/المقترض/الجهات/الكفلاء/الأصول)،
     /// مع سماح الإضافات المحلية الوحيدة (وريث جديد، ممثل شرعي يُعبَّأ عند فراغه)،
     /// وتجاهل صامت لـ ImmediateActions (الحفظ الفارغ لا يمس السابق أصلًا).
-    /// يُعاد الورثة الجدد لتوليد تنبيه المنيب بعد نجاح الحفظ.
+    /// يُعاد الورثة الجدد تقريرًا عامًا (`TargetEditReport`) لتوليد تنبيه المنيب بعد نجاح الحفظ —
+    /// لا يعبر أي نوع خاص أي حدّ عام.
     /// </summary>
-    private static TargetEditResult ValidateDelegationTargetEdit(Document doc, DocumentUpsertRequest r)
+    public TargetEditReport ValidateTargetEdit(Document doc, DocumentUpsertRequest r)
     {
         var result = new TargetEditResult();
         if (doc.SourceDelegationId is null)
-            return result;
+            return new TargetEditReport(result.AddedHeirs, result.NewRepresentativeLabels);
 
         var errors = new List<string>();
 
@@ -137,17 +134,17 @@ public sealed partial class DocumentService
         // التنفيذ» كجهة واحدة عند غياب القائمة — DocumentService.Apply.cs) فلا يُرفض الحفظُ
         // المتطابق بفرقٍ وهمي من التراجع النصي نفسه، ويُعيَّن الفرقُ الحقيقي فقط (T4/B6).
         var requestedEntities = EffectiveApplicantEntities(
-            NormalizeApplicantPublicEntities(r.ApplicantPublicEntities), r.Applicant);
+            DocumentText.NormalizeApplicantPublicEntities(r.ApplicantPublicEntities), r.Applicant);
         var storedEntities = EffectiveApplicantEntities(doc.ApplicantPublicEntities, doc.Applicant);
         if (!ApplicantEntitySetsEqual(requestedEntities, storedEntities))
             errors.Add("الجهات العامة طالبة التنفيذ مقفولة على الملف المناب");
 
         // ورثة المقترض والممثل الشرعي له: إضافة الناقص أو تعبئة الفراغ فقط — لا حذف ولا تعديل
         // لقائم، ولا ورثة ولا ممثل على مقترض اعتباري (ApplyRequest يُسقطها بصمت فيُرفض صراحةً).
-        var borrowerNature = NormalizePartyNature(r.BorrowerNature);
+        var borrowerNature = DocumentText.NormalizePartyNature(r.BorrowerNature);
         var isLegalBorrower = PartyNatureCatalog.IsLegal(borrowerNature);
-        var requestedBorrowerHeirs = NormalizeHeirs(r.BorrowerHeirs, null);
-        var borrowerHasRepInRequest = !IsEmptyRepresentative(
+        var requestedBorrowerHeirs = DocumentText.NormalizeHeirs(r.BorrowerHeirs, null);
+        var borrowerHasRepInRequest = !DocumentText.IsEmptyRepresentative(
             r.BorrowerRepresentativeName, r.BorrowerRepresentativeFather, r.BorrowerRepresentativeFamily);
 
         // عنوان المقترض/نوعه: يُقفلان إلا عند وجود ورثة أو ممثل للمقترض في الطلب (الفراغ حينها
@@ -170,7 +167,7 @@ public sealed partial class DocumentService
             // الممثل الشرعي للمقترض: تعبئة أولى عند فراغه مسموحة (إضافة محلية مضبوطة من المناب)؛
             // وتعديل قائم أو إزالته مرفوض (لا صمت — ApplyRequest يُصفّر القائم عند غياب الممثل
             // في الطلب فيُعدّ ذلك إزالةً صريحة).
-            var borrowerStoredRepPresent = !IsEmptyRepresentative(
+            var borrowerStoredRepPresent = !DocumentText.IsEmptyRepresentative(
                 doc.BorrowerRepresentativeName, doc.BorrowerRepresentativeFather, doc.BorrowerRepresentativeFamily);
             if (borrowerHasRepInRequest)
             {
@@ -191,20 +188,20 @@ public sealed partial class DocumentService
         ValidateMirrorGuarantors(result, errors, r.Guarantors, doc);
 
         // الأصول: الفرق القيمي فقط (إعادة إرسال المخزَّن القديم كما هو مقبولة).
-        var requestedAssets = r.Assets.Select(BuildAsset).ToList();
+        var requestedAssets = r.Assets.Select(DocumentText.BuildAsset).ToList();
         if (!AssetMultisetsEqual(requestedAssets, doc.Assets))
             errors.Add("لا يمكن تعديل الأموال على الملف المناب");
 
         if (errors.Count > 0)
             throw new ArgumentException($"لا يمكن تعديل الحقول المقفولة على الملف المناب: {string.Join("، ", errors)}");
 
-        return result;
+        return new TargetEditReport(result.AddedHeirs, result.NewRepresentativeLabels);
     }
 
     private static void ValidateMirrorGuarantors(
         TargetEditResult result, List<string> errors, IEnumerable<GuarantorDto> requestedDtos, Document doc)
     {
-        var requested = requestedDtos.Select(BuildGuarantor).OrderBy(g => g.GuarantorNumber).ToList();
+        var requested = requestedDtos.Select(DocumentText.BuildGuarantor).OrderBy(g => g.GuarantorNumber).ToList();
         var stored = doc.Guarantors.OrderBy(g => g.GuarantorNumber).ToList();
         var requestedNumbers = requested.Select(g => g.GuarantorNumber).ToList();
         var storedNumbers = stored.Select(g => g.GuarantorNumber).ToList();
@@ -241,11 +238,11 @@ public sealed partial class DocumentService
                 continue;
 
             var dto = requestedDtosByNumber[g.GuarantorNumber];
-            var requestedHeirs = NormalizeHeirs(dto.Heirs, g.GuarantorNumber);
+            var requestedHeirs = DocumentText.NormalizeHeirs(dto.Heirs, g.GuarantorNumber);
             // تُقرأ حقول الممثل من صفّ الطلب مباشرةً لا من الكيان المُبنى (BuildGuarantor يُصفّر
             // ممثل الاعتباري مثل ApplyRequest) وإلا تعذّر على الحارس رؤية ممثلٍ على كفيل اعتباري
             // فيمر بصمت بدل الرفض الصريح (B3).
-            var gHasRep = !IsEmptyRepresentative(dto.RepresentativeName, dto.RepresentativeFather, dto.RepresentativeFamily);
+            var gHasRep = !DocumentText.IsEmptyRepresentative(dto.RepresentativeName, dto.RepresentativeFather, dto.RepresentativeFamily);
             var isLegalGuarantor = PartyNatureCatalog.IsLegal(g.GuarantorNature);
 
             // ورثة/ممثل على كفيل اعتباري: مرفوض صراحةً (ApplyRequest يُسقطها بصمت فتُجنَّب
@@ -263,7 +260,7 @@ public sealed partial class DocumentService
                 errors.Add($"بيانات الكفيل {GuarantorFullName(g)} مقفولة على الملف المناب");
 
             // الممثل الشرعي للكفيل: تعبئة أولى عند فراغه مسموحة؛ وتعديل قائم أو إزالته مرفوض.
-            var currentHasRep = !IsEmptyRepresentative(current.RepresentativeName, current.RepresentativeFather, current.RepresentativeFamily);
+            var currentHasRep = !DocumentText.IsEmptyRepresentative(current.RepresentativeName, current.RepresentativeFather, current.RepresentativeFamily);
             if (gHasRep)
             {
                 if (!currentHasRep)
@@ -295,7 +292,7 @@ public sealed partial class DocumentService
         // وريث جديد (هوية غير موجودة): إضافة محلية مسموحة تُخطر المنيب (مع تسمية الكفيل).
         foreach (var h in requested)
             if (!storedKeys.Contains(HeirIdentityKey(h)))
-                result.AddedHeirs.Add(h);
+                result.AddedHeirs.Add(new AddedHeirEntry(HeirDisplayName(h), h.GuarantorNumber));
 
         // حذف وريث قائم أو تغيير صفّته/عنوانه (نفس الهوية بقيمة مختلفة): مرفوض.
         foreach (var h in storedHeirs)
@@ -327,7 +324,7 @@ public sealed partial class DocumentService
         // الوريث الجديد (هوية غير موجودة): إضافة محلية مسموحة تُخطر المنيب.
         foreach (var h in requested)
             if (!storedKeys.Contains(HeirIdentityKey(h)))
-                result.AddedHeirs.Add(h);
+                result.AddedHeirs.Add(new AddedHeirEntry(HeirDisplayName(h), h.GuarantorNumber));
 
         // حذف وريث قائم أو تغيير صفّته/عنوانه (نفس الهوية بقيمة مختلفة): مرفوض.
         foreach (var h in storedHeirs)
@@ -351,7 +348,7 @@ public sealed partial class DocumentService
 
     private static void RequireSame(List<string> errors, string label, string? requested, string? current)
     {
-        if (!string.Equals(Trimmed(requested), Trimmed(current), StringComparison.Ordinal))
+        if (!string.Equals(DocumentText.Trimmed(requested), DocumentText.Trimmed(current), StringComparison.Ordinal))
             errors.Add($"«{label}» مقفول على الملف المناب");
     }
 
@@ -365,55 +362,55 @@ public sealed partial class DocumentService
     private static (int?, string, string, string) HeirIdentityKey(Heir h) =>
         (
             h.GuarantorNumber,
-            Trimmed(h.HeirName) ?? string.Empty,
-            Trimmed(h.HeirFather) ?? string.Empty,
-            Trimmed(h.HeirFamily) ?? string.Empty);
+            DocumentText.Trimmed(h.HeirName) ?? string.Empty,
+            DocumentText.Trimmed(h.HeirFather) ?? string.Empty,
+            DocumentText.Trimmed(h.HeirFamily) ?? string.Empty);
 
     /// <summary>هل تطابق قيم الوريث التامة (الصفة ونوع العنوان والعنوان)؟— لتأكيد بقائه كما هو.
     /// عند إعفاء العنوان (ورثة/ممثل على الطرف في الطلب) يُقارن الصفة فقط لأن العنوان/نوعه
     /// يُفرّغان مرافقين متى وُجد ورثة أو ممثل (قرارات 11/13-15).</summary>
     private static bool HeirValueEquals(Heir a, Heir b, bool exemptAddress) =>
-        string.Equals(Trimmed(a.HeirCapacity), Trimmed(b.HeirCapacity), StringComparison.Ordinal)
+        string.Equals(DocumentText.Trimmed(a.HeirCapacity), DocumentText.Trimmed(b.HeirCapacity), StringComparison.Ordinal)
         && (exemptAddress
-            || (string.Equals(Trimmed(a.AddressType), Trimmed(b.AddressType), StringComparison.Ordinal)
-                && string.Equals(Trimmed(a.HeirAddress), Trimmed(b.HeirAddress), StringComparison.Ordinal)));
+            || (string.Equals(DocumentText.Trimmed(a.AddressType), DocumentText.Trimmed(b.AddressType), StringComparison.Ordinal)
+                && string.Equals(DocumentText.Trimmed(a.HeirAddress), DocumentText.Trimmed(b.HeirAddress), StringComparison.Ordinal)));
 
     /// <summary>هل تطابقت قيم الكفيل غير الممثل؟ (الدمج بالرقم المرجعي لا المساس بالحقول الممثلة).
     /// عند إعفاء العنوان (ورثة/ممثل على هذا الكفيل في الطلب) يُستثنى عنوانه ونوعه من المقارنة.</summary>
     private static bool GuarantorCoreEquals(Guarantor a, Guarantor b, bool exemptAddress = false) =>
-        string.Equals(Trimmed(a.GuarantorName), Trimmed(b.GuarantorName), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.GuarantorFather), Trimmed(b.GuarantorFather), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.GuarantorFamily), Trimmed(b.GuarantorFamily), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.GuarantorMother), Trimmed(b.GuarantorMother), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.GuarantorBirth), Trimmed(b.GuarantorBirth), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.GuarantorRegister), Trimmed(b.GuarantorRegister), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.GuarantorNationalId), Trimmed(b.GuarantorNationalId), StringComparison.Ordinal)
+        string.Equals(DocumentText.Trimmed(a.GuarantorName), DocumentText.Trimmed(b.GuarantorName), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.GuarantorFather), DocumentText.Trimmed(b.GuarantorFather), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.GuarantorFamily), DocumentText.Trimmed(b.GuarantorFamily), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.GuarantorMother), DocumentText.Trimmed(b.GuarantorMother), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.GuarantorBirth), DocumentText.Trimmed(b.GuarantorBirth), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.GuarantorRegister), DocumentText.Trimmed(b.GuarantorRegister), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.GuarantorNationalId), DocumentText.Trimmed(b.GuarantorNationalId), StringComparison.Ordinal)
         && (exemptAddress
-            || (string.Equals(Trimmed(a.GuarantorAddress), Trimmed(b.GuarantorAddress), StringComparison.Ordinal)
-                && string.Equals(Trimmed(a.AddressType), Trimmed(b.AddressType), StringComparison.Ordinal)))
-        && string.Equals(Trimmed(a.GuarantorNature), Trimmed(b.GuarantorNature), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.GuarantorRegistrationNumber), Trimmed(b.GuarantorRegistrationNumber), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.GuarantorRepresentedBy), Trimmed(b.GuarantorRepresentedBy), StringComparison.Ordinal);
+            || (string.Equals(DocumentText.Trimmed(a.GuarantorAddress), DocumentText.Trimmed(b.GuarantorAddress), StringComparison.Ordinal)
+                && string.Equals(DocumentText.Trimmed(a.AddressType), DocumentText.Trimmed(b.AddressType), StringComparison.Ordinal)))
+        && string.Equals(DocumentText.Trimmed(a.GuarantorNature), DocumentText.Trimmed(b.GuarantorNature), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.GuarantorRegistrationNumber), DocumentText.Trimmed(b.GuarantorRegistrationNumber), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.GuarantorRepresentedBy), DocumentText.Trimmed(b.GuarantorRepresentedBy), StringComparison.Ordinal);
 
     /// <summary>هل تطابقت حقول الممثل الشرعي للكفيل المُطبَّعة (المخزَّنة مقابل المُرسَلة)?</summary>
     private static bool GuarantorRepresentativeEquals(Guarantor a, Guarantor b) =>
-        string.Equals(Trimmed(a.RepresentativeName), Trimmed(b.RepresentativeName), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.RepresentativeFather), Trimmed(b.RepresentativeFather), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.RepresentativeFamily), Trimmed(b.RepresentativeFamily), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.RepresentativeCapacity), Trimmed(b.RepresentativeCapacity), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.RepresentativeAddressType), Trimmed(b.RepresentativeAddressType), StringComparison.Ordinal)
-        && string.Equals(Trimmed(a.RepresentativeAddress), Trimmed(b.RepresentativeAddress), StringComparison.Ordinal);
+        string.Equals(DocumentText.Trimmed(a.RepresentativeName), DocumentText.Trimmed(b.RepresentativeName), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.RepresentativeFather), DocumentText.Trimmed(b.RepresentativeFather), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.RepresentativeFamily), DocumentText.Trimmed(b.RepresentativeFamily), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.RepresentativeCapacity), DocumentText.Trimmed(b.RepresentativeCapacity), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.RepresentativeAddressType), DocumentText.Trimmed(b.RepresentativeAddressType), StringComparison.Ordinal)
+        && string.Equals(DocumentText.Trimmed(a.RepresentativeAddress), DocumentText.Trimmed(b.RepresentativeAddress), StringComparison.Ordinal);
 
     /// <summary>هل الممثل الشرعي للمقترض المخزَّن يطابق ما أُرسل (بعد التطبيع نفسه الذي يعتمده الحفظ)?</summary>
     private static bool BorrowerRepresentativeEquals(Document d, DocumentUpsertRequest r)
     {
         var requested = BorrowerRepresentativeRequestValues(r);
-        return string.Equals(Trimmed(d.BorrowerRepresentativeName), requested.RepresentativeName, StringComparison.Ordinal)
-            && string.Equals(Trimmed(d.BorrowerRepresentativeFather), requested.RepresentativeFather, StringComparison.Ordinal)
-            && string.Equals(Trimmed(d.BorrowerRepresentativeFamily), requested.RepresentativeFamily, StringComparison.Ordinal)
-            && string.Equals(Trimmed(d.BorrowerRepresentativeCapacity), requested.RepresentativeCapacity, StringComparison.Ordinal)
-            && string.Equals(Trimmed(d.BorrowerRepresentativeAddressType), requested.RepresentativeAddressType, StringComparison.Ordinal)
-            && string.Equals(Trimmed(d.BorrowerRepresentativeAddress), requested.RepresentativeAddress, StringComparison.Ordinal);
+        return string.Equals(DocumentText.Trimmed(d.BorrowerRepresentativeName), requested.RepresentativeName, StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(d.BorrowerRepresentativeFather), requested.RepresentativeFather, StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(d.BorrowerRepresentativeFamily), requested.RepresentativeFamily, StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(d.BorrowerRepresentativeCapacity), requested.RepresentativeCapacity, StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(d.BorrowerRepresentativeAddressType), requested.RepresentativeAddressType, StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(d.BorrowerRepresentativeAddress), requested.RepresentativeAddress, StringComparison.Ordinal);
     }
 
     /// <summary>حقول الممثل الشرعي للمقترض في الطلب مُطبَّعة كما يخزّنها ApplyRequest (صفرة عند الغياب).</summary>
@@ -421,14 +418,14 @@ public sealed partial class DocumentService
         string? RepresentativeCapacity, string? RepresentativeAddressType, string? RepresentativeAddress)
         BorrowerRepresentativeRequestValues(DocumentUpsertRequest r)
     {
-        if (IsEmptyRepresentative(r.BorrowerRepresentativeName, r.BorrowerRepresentativeFather, r.BorrowerRepresentativeFamily))
+        if (DocumentText.IsEmptyRepresentative(r.BorrowerRepresentativeName, r.BorrowerRepresentativeFather, r.BorrowerRepresentativeFamily))
             return (null, null, null, null, null, null);
         return (
             (r.BorrowerRepresentativeName ?? string.Empty).Trim(),
             (r.BorrowerRepresentativeFather ?? string.Empty).Trim(),
             (r.BorrowerRepresentativeFamily ?? string.Empty).Trim(),
-            NormalizeRepresentativeCapacity(r.BorrowerRepresentativeCapacity),
-            NormalizeRepresentativeAddressType(r.BorrowerRepresentativeAddressType),
+            DocumentText.NormalizeRepresentativeCapacity(r.BorrowerRepresentativeCapacity),
+            DocumentText.NormalizeRepresentativeAddressType(r.BorrowerRepresentativeAddressType),
             (r.BorrowerRepresentativeAddress ?? string.Empty).Trim());
     }
 
@@ -479,11 +476,11 @@ public sealed partial class DocumentService
     private static bool ApplicantEntityMatches(ApplicantPublicEntity a, ApplicantPublicEntity b)
     {
         var sameRegistry = a.RegistryId is not null && b.RegistryId is not null && a.RegistryId == b.RegistryId;
-        var sameName = string.Equals(Trimmed(a.Name), Trimmed(b.Name), StringComparison.Ordinal);
+        var sameName = string.Equals(DocumentText.Trimmed(a.Name), DocumentText.Trimmed(b.Name), StringComparison.Ordinal);
         if (!sameRegistry && !sameName)
             return false;
-        return string.Equals(Trimmed(a.Branch), Trimmed(b.Branch), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.Governorate), Trimmed(b.Governorate), StringComparison.Ordinal);
+        return string.Equals(DocumentText.Trimmed(a.Branch), DocumentText.Trimmed(b.Branch), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.Governorate), DocumentText.Trimmed(b.Governorate), StringComparison.Ordinal);
     }
 
     /// <summary>مقارنة الأصول كمجموعة بمعناها القيمي (بعد التطبيع نفسه الذي يعتمده الحفظ).</summary>
@@ -516,30 +513,30 @@ public sealed partial class DocumentService
 
     private static bool AssetsEqual(Asset a, Asset b)
     {
-        if (!string.Equals(Trimmed(a.AssetKind), Trimmed(b.AssetKind), StringComparison.Ordinal))
+        if (!string.Equals(DocumentText.Trimmed(a.AssetKind), DocumentText.Trimmed(b.AssetKind), StringComparison.Ordinal))
             return false;
-        if (!string.Equals(Trimmed(a.ShareType), Trimmed(b.ShareType), StringComparison.Ordinal))
+        if (!string.Equals(DocumentText.Trimmed(a.ShareType), DocumentText.Trimmed(b.ShareType), StringComparison.Ordinal))
             return false;
         if (!SameOwners(a.Owners, b.Owners))
             return false;
-        return string.Equals(Trimmed(a.Property), Trimmed(b.Property), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.PropertyNumber), Trimmed(b.PropertyNumber), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.PropertyDistrict), Trimmed(b.PropertyDistrict), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.LandRegistry), Trimmed(b.LandRegistry), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.VehicleType), Trimmed(b.VehicleType), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.VehicleClass), Trimmed(b.VehicleClass), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.PlateNumber), Trimmed(b.PlateNumber), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.VehicleGovernorate), Trimmed(b.VehicleGovernorate), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.RegisterNumber), Trimmed(b.RegisterNumber), StringComparison.Ordinal)
+        return string.Equals(DocumentText.Trimmed(a.Property), DocumentText.Trimmed(b.Property), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.PropertyNumber), DocumentText.Trimmed(b.PropertyNumber), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.PropertyDistrict), DocumentText.Trimmed(b.PropertyDistrict), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.LandRegistry), DocumentText.Trimmed(b.LandRegistry), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.VehicleType), DocumentText.Trimmed(b.VehicleType), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.VehicleClass), DocumentText.Trimmed(b.VehicleClass), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.PlateNumber), DocumentText.Trimmed(b.PlateNumber), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.VehicleGovernorate), DocumentText.Trimmed(b.VehicleGovernorate), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.RegisterNumber), DocumentText.Trimmed(b.RegisterNumber), StringComparison.Ordinal)
             && a.RegistrationDate == b.RegistrationDate
-            && string.Equals(Trimmed(a.ShopGovernorate), Trimmed(b.ShopGovernorate), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.ShopDescription), Trimmed(b.ShopDescription), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.ShopLocation), Trimmed(b.ShopLocation), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.PublicEntity), Trimmed(b.PublicEntity), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.LicenseNumber), Trimmed(b.LicenseNumber), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.ShopGovernorate), DocumentText.Trimmed(b.ShopGovernorate), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.ShopDescription), DocumentText.Trimmed(b.ShopDescription), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.ShopLocation), DocumentText.Trimmed(b.ShopLocation), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.PublicEntity), DocumentText.Trimmed(b.PublicEntity), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.LicenseNumber), DocumentText.Trimmed(b.LicenseNumber), StringComparison.Ordinal)
             && a.LicenseDate == b.LicenseDate
-            && string.Equals(Trimmed(a.LicenseIssuer), Trimmed(b.LicenseIssuer), StringComparison.Ordinal)
-            && string.Equals(Trimmed(a.Notes), Trimmed(b.Notes), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.LicenseIssuer), DocumentText.Trimmed(b.LicenseIssuer), StringComparison.Ordinal)
+            && string.Equals(DocumentText.Trimmed(a.Notes), DocumentText.Trimmed(b.Notes), StringComparison.Ordinal)
             && a.SeizureDate == b.SeizureDate;
     }
 
@@ -551,32 +548,27 @@ public sealed partial class DocumentService
             return false;
         for (var i = 0; i < anames.Count; i++)
         {
-            if (!string.Equals(Trimmed(anames[i]), Trimmed(bnames[i]), StringComparison.Ordinal))
+            if (!string.Equals(DocumentText.Trimmed(anames[i]), DocumentText.Trimmed(bnames[i]), StringComparison.Ordinal))
                 return false;
         }
         return true;
     }
 
-    private static string? Trimmed(string? value) =>
-        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-
-    private static string? DateText(DateTime? value) =>
-        value?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
-
     // ── المزامنة: منيب → مناب (نسخ قيمي بلا حذف إلا استثناء الكفيل المحذوف) ──────────
 
     /// <summary>
-    /// يُستدعى داخل معاملة UpdateAsync بعد حفظ المنيب. تنسخ المرآة الحقول المقفولة إلى كل
+    /// يُستدعى داخل معاملة التعديل بعد حفظ المنيب — داخل معاملة المستدعي حصرًا
+    /// (لا يفتح معاملة خاصة). تنسخ المرآة الحقول المقفولة إلى كل
     /// منابٍ لإضافةٍ معلّقة (غير منفذة)، وتُعيد اشتقاق بيانات المناب (FillDerivedFields)،
     /// وتُعيد نوايا التنبيه المُتحدِدة لتُطلق بعد نجاح المعاملة (نقطة خروج واحدة).
     /// </summary>
-    private async Task<List<MirrorAlertIntent>> MirrorSourceEditsToTargetsAsync(Document source, CancellationToken token)
+    public async Task<List<MirrorNotification>> MirrorSourceEditsAsync(Document source, CancellationToken token)
     {
         var delegations = await _delegations.ListPendingBySourceWithTargetsAsync(source.Id, token);
         if (delegations.Count == 0)
-            return new List<MirrorAlertIntent>();
+            return new List<MirrorNotification>();
 
-        var intents = new List<MirrorAlertIntent>();
+        var intents = new List<MirrorNotification>();
         foreach (var delegation in delegations)
         {
             var target = delegation.TargetDocument;
@@ -595,11 +587,11 @@ public sealed partial class DocumentService
             if (labels.Count == 0)
                 continue;
 
-            FillDerivedFields(target);
+            DocumentText.FillDerivedFields(target);
             await _uow.SaveChangesAsync(token);
 
             var recipientBranch = target.BranchId ?? source.BranchId ?? delegation.ExternalBranchId;
-            intents.Add(new MirrorAlertIntent(
+            intents.Add(new MirrorNotification(
                 delegation.Id,
                 target.CreatedById,
                 recipientBranch ?? 0,
@@ -615,7 +607,7 @@ public sealed partial class DocumentService
         // عنوان المقترض/نوعه لا يُكتبان على منابٍ له ورثة أو ممثل محلي (الفراغ مرافق مقصود للثابت
         // «ورثة/ممثل ⟺ عنوان فارغ») — التخطي صامت بلا تنبيه (قرار 17).
         var targetHasLocalFamily = target.Heirs.Any(h => h.GuarantorNumber is null)
-            || !IsEmptyRepresentative(target.BorrowerRepresentativeName, target.BorrowerRepresentativeFather, target.BorrowerRepresentativeFamily);
+            || !DocumentText.IsEmptyRepresentative(target.BorrowerRepresentativeName, target.BorrowerRepresentativeFather, target.BorrowerRepresentativeFamily);
 
         var changed = false;
         changed |= CopyField(source.BorrowerName, target.BorrowerName, v => target.BorrowerName = v);
@@ -638,8 +630,8 @@ public sealed partial class DocumentService
             labels.Add("بيانات المقترض");
 
         // الممثل الشرعي للمقترض: تعبئة عند الفراغ فقط — لا مساس بالمضبوط محليًا.
-        if (IsEmptyRepresentative(target.BorrowerRepresentativeName, target.BorrowerRepresentativeFather, target.BorrowerRepresentativeFamily)
-            && !IsEmptyRepresentative(source.BorrowerRepresentativeName, source.BorrowerRepresentativeFather, source.BorrowerRepresentativeFamily))
+        if (DocumentText.IsEmptyRepresentative(target.BorrowerRepresentativeName, target.BorrowerRepresentativeFather, target.BorrowerRepresentativeFamily)
+            && !DocumentText.IsEmptyRepresentative(source.BorrowerRepresentativeName, source.BorrowerRepresentativeFather, source.BorrowerRepresentativeFamily))
         {
             target.BorrowerRepresentativeName = source.BorrowerRepresentativeName;
             target.BorrowerRepresentativeFather = source.BorrowerRepresentativeFather;
@@ -761,7 +753,7 @@ public sealed partial class DocumentService
     /// <summary>هوية الجهة للمطابقة: RegistryId المتساوي أولاً ثم الاسم.</summary>
     private static bool ApplicantEntitySameIdentity(ApplicantPublicEntity a, ApplicantPublicEntity b) =>
         (a.RegistryId is not null && b.RegistryId is not null && a.RegistryId == b.RegistryId)
-        || string.Equals(Trimmed(a.Name), Trimmed(b.Name), StringComparison.Ordinal);
+        || string.Equals(DocumentText.Trimmed(a.Name), DocumentText.Trimmed(b.Name), StringComparison.Ordinal);
 
     private static void MirrorGuarantorsInto(Document source, Document target, List<string> labels)
     {
@@ -778,11 +770,11 @@ public sealed partial class DocumentService
                 // عنوان الكفيل/نوعه لا يُكتبان على منابٍ له ورثة أو ممثل محلي لهذا الكفيل (فراغ
                 // مرافق مقصود — التخطي صامت بلا تنبيه).
                 var currentHasLocalFamily = target.Heirs.Any(h => h.GuarantorNumber == g.GuarantorNumber)
-                    || !IsEmptyRepresentative(current.RepresentativeName, current.RepresentativeFather, current.RepresentativeFamily);
+                    || !DocumentText.IsEmptyRepresentative(current.RepresentativeName, current.RepresentativeFather, current.RepresentativeFamily);
                 changed |= CopyGuarantorCoreFields(g, current, currentHasLocalFamily);
                 // الممثل الشرعي للكفيل: تعبئة عند الفراغ فقط (لئلا تُطمس الإضافة المحلية).
-                if (IsEmptyRepresentative(current.RepresentativeName, current.RepresentativeFather, current.RepresentativeFamily)
-                    && !IsEmptyRepresentative(g.RepresentativeName, g.RepresentativeFather, g.RepresentativeFamily))
+                if (DocumentText.IsEmptyRepresentative(current.RepresentativeName, current.RepresentativeFather, current.RepresentativeFamily)
+                    && !DocumentText.IsEmptyRepresentative(g.RepresentativeName, g.RepresentativeFather, g.RepresentativeFamily))
                 {
                     current.RepresentativeName = g.RepresentativeName;
                     current.RepresentativeFather = g.RepresentativeFather;
@@ -897,9 +889,9 @@ public sealed partial class DocumentService
 
     private static bool CopyField(string? source, string? current, Action<string?> assign)
     {
-        if (string.Equals(Trimmed(source), Trimmed(current), StringComparison.Ordinal))
+        if (string.Equals(DocumentText.Trimmed(source), DocumentText.Trimmed(current), StringComparison.Ordinal))
             return false;
-        assign(Trimmed(source));
+        assign(DocumentText.Trimmed(source));
         return true;
     }
 
@@ -913,19 +905,20 @@ public sealed partial class DocumentService
 
     // ── إطلاق التنبيهات (بعد نجاح المعاملة — عزل الفشل بنمط head_alert_failed) ──────
 
-    /// <summary>إطلاق تنبيهات المرآة المجمعة بعد نجاح معاملة الحفظ (كل فشل معزول ولا يُفشل الحفظ).</summary>
-    private async Task FireDelegationAlertsAsync(IReadOnlyList<MirrorAlertIntent> intents, CancellationToken ct)
+    /// <summary>إطلاق تنبيهات المرآة المجمعة — بعد تثبيت معاملة الحفظ حصرًا
+    /// (كل فشل معزول ولا يُفشل الحفظ).</summary>
+    public async Task FireMirrorNotificationsAsync(IReadOnlyList<MirrorNotification> intents, CancellationToken ct)
     {
         foreach (var intent in intents)
             await FireDelegationAlertAsync(intent, ct);
     }
 
     /// <summary>تنبيه المرآة الفردي معزولًا: فشله يقع في سجل التدقيق ولا يمسّ نتيجة الحفظ.</summary>
-    private async Task FireDelegationAlertAsync(MirrorAlertIntent intent, CancellationToken ct)
+    private async Task FireDelegationAlertAsync(MirrorNotification intent, CancellationToken ct)
     {
         try
         {
-            await _alertService.UpsertDelegationMessageAsync(
+            await _alerts.UpsertDelegationMessageAsync(
                 intent.DelegationId, intent.RecipientLawyerId,
                 intent.ActorUserId, intent.RecipientBranchId, intent.Message, ct);
         }
@@ -936,10 +929,11 @@ public sealed partial class DocumentService
         }
     }
 
-    /// <summary>تنبيه تغيّر حالة المنيب إلى مناباته المعلقة (مسار StatusChangeModal المنفصل عن UpdateAsync).
+    /// <summary>تنبيه تغيّر حالة المنيب إلى مناباته المعلقة (مسار StatusChangeModal المنفصل عن التعديل).
     /// الصيغ T2-T5 بصياغات المستخدم المقفلة؛ المشطوب (N7) والجزئيا (N1) لا يصلان هنا أصلًا
-    /// (نوع فارغ في UpdateStatusAsync) — ومسار فك الشطب يبقي الصيغة العامة القديمة.</summary>
-    private async Task FireDelegationStatusChangeAlertsAsync(Document doc, DelegationStatusAlertKind kind, CancellationToken ct)
+    /// (نوع فارغ في تغيير الحالة) — ومسار فك الشطب يبقي الصيغة العامة القديمة.
+    /// يُستدعى بعد تثبيت معاملة الحالة حصرًا.</summary>
+    public async Task FireStatusChangeAlertsAsync(Document doc, DelegationStatusAlertKind kind, CancellationToken ct)
     {
         List<DocumentDelegation> delegations;
         try
@@ -958,7 +952,7 @@ public sealed partial class DocumentService
             var target = delegation.TargetDocument;
             if (target is null)
                 continue;
-            var intent = new MirrorAlertIntent(
+            var intent = new MirrorNotification(
                 delegation.Id,
                 target.CreatedById,
                 target.BranchId ?? recipientBranch ?? delegation.ExternalBranchId ?? 0,
@@ -972,8 +966,8 @@ public sealed partial class DocumentService
     /// (اسم المنفذ عليه/رقم أساسه/دائرته) والمنيب (الكتب/رقمه) — تُعبَّأ runtime من الوثيقتين.</summary>
     private string BuildDelegationStatusChangeMessage(DelegationStatusAlertKind kind, Document doc, Document target)
     {
-        var executedOn = ActorFullName(target);
-        var baseNumber = EffectiveFileIdentity.Number(target, CurrentYear());
+        var executedOn = DocumentText.ActorFullName(target);
+        var baseNumber = EffectiveFileIdentity.Number(target, ServerClock.CurrentYear(_clock, _timeZone));
         var court = target.Court;
 
         return kind switch
@@ -993,23 +987,24 @@ public sealed partial class DocumentService
             // T5 (استرداد-جبري): استُرد ملفك المناب بتحصيل المبلغ المطالب به جبريًا في الملف المنيب.
             DelegationStatusAlertKind.FullyForcibly =>
                 $"استُرد ملفك المناب رقم أساس {baseNumber} لاعتبار الملف المنيب " +
-                $"{EffectiveFileIdentity.Number(doc, CurrentYear())} منفذًا — بتحصيل المبلغ المطالب به جبريًا في الملف المنيب",
+                $"{EffectiveFileIdentity.Number(doc, ServerClock.CurrentYear(_clock, _timeZone))} منفذًا — بتحصيل المبلغ المطالب به جبريًا في الملف المنيب",
             // المسار العام (فك الشطب): الصيغة القديمة بلا تغيير — محفوظة للتسلسل التاريخي.
             _ => $"تغيّرت حالة الملف المنيب إلى «{DocumentStatusResolver.Resolve(doc)}»",
         };
     }
 
-    /// <summary>إطلاق تنبيه المنيب عند الإضافات المحلية (وريث/ممثل) على الملف المناب معزولًا.</summary>
-    private async Task FireDelegationReverseAlertAsync(int targetDocumentId, Document target, TargetEditResult result, CancellationToken ct)
+    /// <summary>إطلاق تنبيه المنيب عند الإضافات المحلية (وريث/ممثل) على الملف المناب معزولًا —
+    /// بعد تثبيت معاملة التعديل حصرًا.</summary>
+    public async Task FireTargetEditReportAsync(Document target, TargetEditReport report, CancellationToken ct)
     {
         DocumentDelegation? delegation = null;
         try
         {
-            delegation = await _delegations.FindByTargetAsync(targetDocumentId, ct);
+            delegation = await _delegations.FindByTargetAsync(target.Id, ct);
         }
         catch (Exception ex)
         {
-            await _audit.LogAsync(null, "head_alert_failed", targetDocumentId, null, ex.Message, ct);
+            await _audit.LogAsync(null, "head_alert_failed", target.Id, null, ex.Message, ct);
             return;
         }
 
@@ -1017,27 +1012,143 @@ public sealed partial class DocumentService
             return;
 
         var source = delegation.SourceDocument;
-        var intent = new MirrorAlertIntent(
+        var intent = new MirrorNotification(
             delegation.Id,
             source.CreatedById,
             source.BranchId ?? target.BranchId ?? 0,
             target.CreatedById,
-            ReverseAdditionsMessage(result));
+            ReverseAdditionsMessage(report));
         await FireDelegationAlertAsync(intent, ct);
     }
 
-    private static string ReverseAdditionsMessage(TargetEditResult result)
+    private static string ReverseAdditionsMessage(TargetEditReport report)
     {
         var parts = new List<string>();
-        foreach (var h in result.AddedHeirs)
+        foreach (var h in report.AddedHeirs)
         {
-            var name = string.Join(' ', new[] { h.HeirName, h.HeirFather, h.HeirFamily }.Where(v => !string.IsNullOrWhiteSpace(v)));
-            if (string.IsNullOrWhiteSpace(name))
+            if (string.IsNullOrWhiteSpace(h.Name))
                 continue;
             var suffix = h.GuarantorNumber is { } num ? $" لكفيل-{num}" : string.Empty;
-            parts.Add($"أُضيف الوريث {name}{suffix}");
+            parts.Add($"أُضيف الوريث {h.Name}{suffix}");
         }
-        parts.AddRange(result.NewRepresentativeLabels.Select(label => $"أُضيف {label}"));
+        parts.AddRange(report.NewRepresentativeLabels.Select(label => $"أُضيف {label}"));
         return $"تم تعديل بيانات الملف المناب بإضافة محلية — {string.Join("؛ ", parts)}";
+    }
+
+    /// <summary>
+    /// مزامنة لقطات أصول الإنابات غير المنفذة للملف المنيب بعد تعديل أصوله: أصول الملف
+    /// تُعاد بناؤها بمعرفات جديدة عند كل تعديل، فتُطابَق اللقطات مع الأصول الحالية بالنوع
+    /// ثم الوصف — الأصل المطابق تمامًا (نوع + وصف) يبقى بلا تغيير، والأصل الذي تغيّر وصفه
+    /// من النوع نفسه تُحدَّث لقطته وتُعلَّم بأن بياناته عُدّلت بعد التسطير (يظهر تنبيه في
+    /// بطاقة «تشعبات الملف») — إلا إذا تغيّر عدد النوع (C2: تجميد — اللقطة اليتيمة تبقى
+    /// كما سُطّرت سجلًا تاريخيًا مع تحذيرها في الواجهة). الإنابات المنفذة سجل نهائي
+    /// بالبدل فلا تُمسّ لقطاتها.
+    /// داخل معاملة المستدعي حصرًا (لا تفتح معاملة خاصة) — تُستدعى بعد حفظ المنيب.
+    /// </summary>
+    public async Task SyncSnapshotsAsync(Document doc, CancellationToken token)
+    {
+        var delegations = await _delegations.ListBySourceAsync(doc.Id, token);
+        var pending = delegations.Where(DelegationActivityPolicy.IsLifecycleActive).ToList();
+        if (pending.Count == 0)
+            return;
+
+        // C2: تجميد النقل التلقائي عند تغيّر عدد النوع — لقطة يتيمة (حُذف أصلها) لا تُعاد
+        // تسميتها إلى أصل آخر من النوع نفسه عند اختلاف العدد (إضافة/حذف)، بل تبقى سجلًا
+        // تاريخيًا كما سُطّرت. يُسمح بالنقل فقط عند تساوي العدد (تعديل وصف بحت — آمن).
+        var snapshots = pending.SelectMany(d => d.Assets).OrderBy(s => s.Id).ToList();
+        var currentByKind = doc.Assets
+            .GroupBy(a => a.AssetKind)
+            .ToDictionary(g => g.Key, g => g.Count());
+        var frozenKinds = snapshots
+            .GroupBy(s => s.AssetKind)
+            .Where(g => !currentByKind.TryGetValue(g.Key, out var currentCount) || currentCount != g.Count())
+            .Select(g => g.Key)
+            .ToHashSet();
+
+        // C1: الفرز بالمفتاح قبل الجشع في المرحلتين — حتمية أي لقطة تُطابَق/تُعاد تسميتها.
+        var remaining = doc.Assets.OrderBy(a => a.Id).ToList();
+        var changed = false;
+        foreach (var snapshot in snapshots)
+        {
+            // تطابق تام (نوع + وصف): لم تتغير بيانات الأصل — تُستهلك وتُترك بلا تغيير.
+            var exact = remaining.FindIndex(a => a.AssetKind == snapshot.AssetKind && AssetDisplay.Label(a) == snapshot.AssetLabel);
+            if (exact >= 0)
+            {
+                remaining.RemoveAt(exact);
+                continue;
+            }
+            // C2: النوع المجمّد لا يُنقَل تلقائيًا — اللقطة اليتيمة تبقى كما سُطّرت.
+            if (frozenKinds.Contains(snapshot.AssetKind))
+                continue;
+            // تعديل وصف أصل من النوع نفسه بعد التسطير: تُحدَّث اللقطة ويُعلَّم التعديل.
+            var sameKind = remaining.FindIndex(a => a.AssetKind == snapshot.AssetKind);
+            if (sameKind >= 0)
+            {
+                var assetLabel = AssetDisplay.Label(remaining[sameKind]);
+                remaining.RemoveAt(sameKind);
+                if (snapshot.AssetLabel != assetLabel)
+                {
+                    snapshot.AssetLabel = assetLabel;
+                    snapshot.SnapshotAdjusted = true;
+                    changed = true;
+                }
+            }
+            // بلا أصل من النوع نفسه في الملف الحالي: تبقى اللقطة كما سُطّرت (سجل التسطير).
+        }
+
+        if (changed)
+            await _uow.SaveChangesAsync(token);
+    }
+
+    /// <summary>
+    /// «الحجز والأصل بعد التسطير» على الملف المنيب (قرار المستخدم): تاريخ القاء الحجز على
+    /// أصلٍ تحجبه إنابة سارية يُعدَّل فقط ولا يُحذف، وحذف صف الأصل نفسه مرفوض ما دامت
+    /// الإنابة سارية. قفل خلفي مكمل لقفل الواجهة — يُطبَّق على الكتابة الجديدة فقط
+    /// (لا أثر رجعي على البيانات القديمة).
+    /// حارس «تاريخ القاء الحجز لا يُحذف بعد التسطير» و«المال المسطر به إنابة لا يُحذف»:
+    /// أي أصلٍ مخزَّن مربوطٍ بإنابة حاجبة (مطابقة اللقطات واحد-لواحد نفسها المستعملة في
+    /// حارس التسطير — عبر الحمل الداخلي المشترك) يُمنع إرساله في الطلب فارغ الحجز
+    /// متى كان له حجز مخزَّن، ويُمنع غياب صفه من الطلب مطلقًا (الصف بلا معرف مطابق
+    /// يُعد حذفًا مرفوضًا). تعديل قيمة الحجز بموعدٍ آخر مسموح (يُحلله البناء لاحقًا).
+    /// تُجلب الإنابات مع مناباتها بقراءة مستقلة لأن قراءة التعديل لا تشمل المناب،
+    /// وبدونه تُعامل المعلقة بلا مناب حاجبةً دائمًا فيُتسع القفل خطأً على المحرر منها.
+    /// يُستدعى قبل الكتابة — خارج المعاملة كسائر حراس التعديل.
+    /// مخاطرة متبقية موثقة ومقبولة: لا تسلسل بين تعديل المستند وتسطير إنابة متزامنين،
+    /// فالتداخل اللحظي النادر يُترك لسجل التدقيق بدل حصرٍ مكلف (كسباق الحجب المحسوم بقيد فريد).
+    /// </summary>
+    public async Task ValidateSeizureLockAsync(
+        Document doc, DocumentUpsertRequest request, CancellationToken ct)
+    {
+        if (doc.Delegations.Count == 0 || doc.Assets.Count == 0)
+            return;
+
+        var delegations = await _delegations.ListBySourceAsync(doc.Id, ct);
+        var referencedIds = ComputeBlockedIds(doc.Assets, delegations, excludeDelegationId: null);
+        if (referencedIds.Count == 0)
+            return;
+
+        // مطابقة القديم بالطلب عبر AssetDto.Id — تحفظه الواجهة عند التحميل.
+        var byId = request.Assets
+            .Where(re => re.Id is not null)
+            .GroupBy(re => re.Id!.Value)
+            .ToDictionary(g => g.Key, g => g.First());
+
+        var deletedAssets = new List<string>();
+        var clearedDates = new List<string>();
+        foreach (var stored in doc.Assets.Where(a => referencedIds.Contains(a.Id)))
+        {
+            if (!byId.TryGetValue(stored.Id, out var requested))
+            {
+                deletedAssets.Add(AssetDisplay.Label(stored));
+                continue;
+            }
+            if (stored.SeizureDate is not null && string.IsNullOrWhiteSpace(requested.SeizureDate))
+                clearedDates.Add(AssetDisplay.Label(stored));
+        }
+
+        if (deletedAssets.Count > 0)
+            throw new ArgumentException($"لا يمكن حذف هذا المال لأن هناك انابة سارية: {string.Join("، ", deletedAssets)}");
+        if (clearedDates.Count > 0)
+            throw new ArgumentException($"لا يمكن حذف تاريخ القاء الحجز على مال مسطر به انابة: {string.Join("، ", clearedDates)}");
     }
 }

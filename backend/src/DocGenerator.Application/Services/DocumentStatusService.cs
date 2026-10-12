@@ -10,11 +10,62 @@ using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Services;
 
-public sealed partial class DocumentService
+/// <summary>
+/// خدمة الحالات (مستخرجة من `DocumentService` — المرحلة 4، نقل ميكانيكي بلا سلوك):
+/// آلة حالات نظام «طالبة تنفيذ» + حالات وضع «منفذ عليه»/«عرض وايداع» + التجديد/الشطب
+/// + توريث/استرداد المناب. الاسم الموحّد `IDocumentStatusService
+/// (تقاعُد اسم `StatusTransitionService` المؤجل).
+/// الاعتمادات الدقيقة: `_documents` و`_occurrences` و`_baseNumbers` و`_audit`
+/// و`_alertService` (استثناء البنية التحتية — القاعدة 4) و`_delegations` و`_tx` و`_uow`
+/// والساعة/المنطقة + `IDocumentDelegationService` (تنبيهات الإنابة) + `IDocumentWriteGuard`
+/// (الحراس المشتركة — أي حاجة عكسية تُحل بنقل المساعد لا بنداء خدمة).
+/// ثابت ملكية المعاملة: معاملة `_tx.RunAsync` واحدة لكل نقطة دخول عامة —
+/// المساعدات (`ApplyRenewalAsync`، `AddStruckOffOccurrenceAsync`، المزامنة) تنضم
+/// لمعاملة المستدعي، وإطلاق التنبيهات بعد التثبيت (تُحفَظ المواضع حرفيًا).
+/// </summary>
+public sealed class DocumentStatusService : IDocumentStatusService
 {
-    // ملاحظة إعادة هيكلة (المرحلة 3 — مؤجلة): عند أول تعديل يمس منطق انتقالات الحالة
-    // أو الشطب/التجديد في هذا الملف، تُستخرج هذه التدفقات إلى خدمة مستقلة خلف واجهة
-    // (StatusTransitionService) بدل إضافة المزيد هنا. المرجع: FIXES_LOG.md بند المعلقات #4.
+    private readonly IDocumentRepository _documents;
+    private readonly IRepository<DocumentOccurrence> _occurrences;
+    private readonly IRepository<DocumentBaseNumber> _baseNumbers;
+    private readonly IAuditLogger _audit;
+    private readonly IHeadAlertService _alertService;
+    private readonly IDelegationRepository _delegations;
+    private readonly ITransactionRunner _tx;
+    private readonly IUnitOfWork _uow;
+    private readonly TimeProvider _clock;
+    private readonly TimeZoneInfo _timeZone;
+    private readonly IDocumentDelegationService _delegationService;
+    private readonly IDocumentWriteGuard _writeGuard;
+
+    public DocumentStatusService(
+        IDocumentRepository documents,
+        IRepository<DocumentOccurrence> occurrences,
+        IRepository<DocumentBaseNumber> baseNumbers,
+        IAuditLogger audit,
+        IHeadAlertService alertService,
+        IDelegationRepository delegations,
+        ITransactionRunner tx,
+        IUnitOfWork uow,
+        TimeProvider clock,
+        TimeZoneInfo timeZone,
+        IDocumentDelegationService delegationService,
+        IDocumentWriteGuard writeGuard)
+    {
+        _documents = documents;
+        _occurrences = occurrences;
+        _baseNumbers = baseNumbers;
+        _audit = audit;
+        _alertService = alertService;
+        _delegations = delegations;
+        _tx = tx;
+        _uow = uow;
+        _clock = clock;
+        _timeZone = timeZone;
+        _delegationService = delegationService;
+        _writeGuard = writeGuard;
+    }
+
     /// <summary>
     /// D3: تنظيف تنبيه «بانتظار الإتمام» لكل مسار يجعل مناب مسجلة أصولًا نهائيًا —
     /// استرداد (تسوية/جبرية كاملة → «مسترد») أو شطب يدوي للمناب. لاحق الالتزام
@@ -60,7 +111,7 @@ public sealed partial class DocumentService
         if (doc is null)
             return false;
         // حراس NeedsRegistration الصريحة (البند 32): تُمنع على المعلق — تغيير الحالة حيث تلزم الهوية.
-        EnsureNotPendingRegistration(doc, "تغيير الحالة");
+        DocumentText.EnsureNotPendingRegistration(doc, "تغيير الحالة");
         if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
             throw new ArgumentException("حالة نظام «طالبة تنفيذ» تخص ملفات «الجهة العامة طالبة التنفيذ» فقط");
 
@@ -104,7 +155,7 @@ public sealed partial class DocumentService
                 $"لا يمكن الانتقال من الحالة «{ExecutionStatusCatalog.ToStateLabel(current)}» إلى «{ExecutionStatusCatalog.ToStatusLabel(status)}»");
 
         // RF-010: فحص التزامن المبكر (409 ودي) + زيادة العدّاد وشبكة السباق.
-        EnsureConcurrency(doc, version);
+        _writeGuard.EnsureConcurrency(doc, version);
 
         // لقطة ما قبل التغيير — لتوليد صفوف «حقل/قبل/بعد» في سجل التعديلات.
         var statusBefore = DocumentChangeTracker.Capture(doc);
@@ -237,7 +288,7 @@ public sealed partial class DocumentService
                 _ => throw new ArgumentException("حالة غير صالحة"),
             };
 
-        var statusUpdated = await WithConcurrencyGuardAsync(() => _tx.RunAsync(async token =>
+        var statusUpdated = await _writeGuard.WithConcurrencyGuardAsync(() => _tx.RunAsync(async token =>
         {
             doc.UpdatedAt = DateTime.UtcNow;
             _documents.Update(doc);
@@ -253,7 +304,7 @@ public sealed partial class DocumentService
                 OccurrenceType = occurrenceType,
                 EventDate = status == ExecutionStatusCatalog.StateStruckOff ? doc.StruckOffDate : DateTime.UtcNow,
                 FileNumber = status == ExecutionStatusCatalog.StateStruckOff
-                    ? EffectiveFileIdentity.Number(doc, doc.StruckOffDate?.Year ?? CurrentYear())
+                    ? EffectiveFileIdentity.Number(doc, doc.StruckOffDate?.Year ?? ServerClock.CurrentYear(_clock, _timeZone))
                     : null,
                 FileType = status == ExecutionStatusCatalog.StateStruckOff
                     ? string.IsNullOrWhiteSpace(doc.FileType) ? null : doc.FileType.Trim()
@@ -268,7 +319,7 @@ public sealed partial class DocumentService
             var auditDetail = status == ExecutionStatusCatalog.StateStruckOff
                 ? $"حالة {ExecutionStatusCatalog.StateStruckOff}"
                 : $"حالة {ExecutionStatusCatalog.ToLabel(ExecutionStatusCatalog.Classify(status))}";
-            await LogDocumentChangesAsync(statusBefore, doc, actorName, "status", auditDetail, token);
+            await _writeGuard.LogDocumentChangesAsync(statusBefore, doc, actorName, "status", auditDetail, token);
             // ب4: توريث «تريث»/استرداد المناب يتبَع حالة المنيب الجديدة — داخل معاملة الحالة نفسها.
             await ApplyDelegationInheritanceOrRecoveryAsync(doc, token);
             return true;
@@ -279,9 +330,9 @@ public sealed partial class DocumentService
         await CleanupPendingCompletionAlertsAsync(documentId, actorName, ct);
         // مرآة: تغيّر حالة المنيب يُنبه مناباته المعلقة (بعد نجاح المعاملة — عزل فشل التنبيه).
         // الصيغ T2/T4/T5 فقط؛ جزئيا (N1) ومشطوب (N7) وسواها كبت بلا تنبيه.
-        var statusAlertKind = DelegationStatusAlertKindFor(doc);
+        var statusAlertKind = DocumentDelegationService.DelegationStatusAlertKindFor(doc);
         if (statusAlertKind is not null)
-            await FireDelegationStatusChangeAlertsAsync(doc, statusAlertKind.Value, ct);
+            await _delegationService.FireStatusChangeAlertsAsync(doc, statusAlertKind.Value, ct);
         return statusUpdated;
     }
 
@@ -290,7 +341,7 @@ public sealed partial class DocumentService
         var doc = await _documents.GetByIdAsync(documentId, ct);
         if (doc is null)
             return false;
-        EnsureNotPendingRegistration(doc, "التراجع عن الحالة");
+        DocumentText.EnsureNotPendingRegistration(doc, "التراجع عن الحالة");
         if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
             throw new ArgumentException("التراجع عن الحالة يخص ملفات «الجهة العامة طالبة التنفيذ» فقط");
 
@@ -304,7 +355,7 @@ public sealed partial class DocumentService
                 $"لا يمكن التراجع عن الحالة الحالية «{ExecutionStatusCatalog.ToStateLabel(current)}»");
 
         // RF-010: فحص التزامن المبكر (409 ودي) + زيادة العدّاد وشبكة السباق.
-        EnsureConcurrency(doc, version);
+        _writeGuard.EnsureConcurrency(doc, version);
 
         // لقطة ما قبل التغيير — لتوليد صفوف «حقل/قبل/بعد» في سجل التعديلات.
         var revertBefore = DocumentChangeTracker.Capture(doc);
@@ -337,7 +388,7 @@ public sealed partial class DocumentService
         doc.SoldAssetIds = null;
 
         var targetsReverted = false;
-        var reverted = await WithConcurrencyGuardAsync(() => _tx.RunAsync(async token =>
+        var reverted = await _writeGuard.WithConcurrencyGuardAsync(() => _tx.RunAsync(async token =>
         {
             doc.UpdatedAt = DateTime.UtcNow;
             _documents.Update(doc);
@@ -354,7 +405,7 @@ public sealed partial class DocumentService
                 UpdatedAt = DateTime.UtcNow,
             }, token);
             await _uow.SaveChangesAsync(token);
-            await LogDocumentChangesAsync(revertBefore, doc, actorName, "status",
+            await _writeGuard.LogDocumentChangesAsync(revertBefore, doc, actorName, "status",
                 "تراجع عن الحالة وعاد الملف إلى المتداول", token);
             // ب4: عودة المناب الموروث-تريث تلقائيًا عند تراجع المنيب من «تريث» (D3).
             targetsReverted = await ApplyDelegationInheritanceOrRecoveryAsync(doc, token);
@@ -365,12 +416,10 @@ public sealed partial class DocumentService
         // تسوية/جبريا فلا يُرجع منابًا (المسترد لا يُرجع — C1)، فلا يُطلق تنبيه
         // «انتهاء حالة التريث» على مناب مسترد (ضلال).
         if (targetsReverted)
-            await FireDelegationStatusChangeAlertsAsync(doc, DelegationStatusAlertKind.Returned, ct);
+            await _delegationService.FireStatusChangeAlertsAsync(doc, DelegationStatusAlertKind.Returned, ct);
         return reverted;
     }
 
-    // ملاحظة دَين معتمدة: استخراج هذه الدالة (كبقية انتقالات الحالة) إلى
-    // StatusTransitionService مؤجل بقرار معتمد (§2-6) — تُكتب هنا بنفس بنية الملف القائمة.
     /// <summary>
     /// العودة من «محال الى البداية» بنتيجتين حسب اللازمة (§2-10 — بلا عمود جديد):
     /// إن حمل الملف «منفذ جزئيا» (الكاتب الوحيد لها دخول جبريا) عاد «منفذ جبريا» مع بقاء
@@ -387,7 +436,7 @@ public sealed partial class DocumentService
         var doc = await _documents.GetByIdAsync(documentId, ct);
         if (doc is null)
             return false;
-        EnsureNotPendingRegistration(doc, "العودة من «محال الى البداية»");
+        DocumentText.EnsureNotPendingRegistration(doc, "العودة من «محال الى البداية»");
         if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
             throw new ArgumentException("العودة من «محال الى البداية» تخص ملفات «الجهة العامة طالبة التنفيذ» فقط");
 
@@ -401,7 +450,7 @@ public sealed partial class DocumentService
                 $"لا يمكن العودة إلى السير بالملف من الحالة الحالية «{ExecutionStatusCatalog.ToStateLabel(current)}»");
 
         // RF-010: فحص التزامن المبكر (409 ودي) + زيادة العدّاد وشبكة السباق.
-        EnsureConcurrency(doc, request?.Version);
+        _writeGuard.EnsureConcurrency(doc, request?.Version);
 
         // لقطة ما قبل التغيير — لتوليد صفوف «حقل/قبل/بعد» في سجل التعديلات.
         var returnBefore = DocumentChangeTracker.Capture(doc);
@@ -459,7 +508,7 @@ public sealed partial class DocumentService
             CopyDetail(details, "renewalYear", request?.RenewalYear?.ToString());
         }
 
-        var returned = await WithConcurrencyGuardAsync(() => _tx.RunAsync(async token =>
+        var returned = await _writeGuard.WithConcurrencyGuardAsync(() => _tx.RunAsync(async token =>
         {
             doc.UpdatedAt = DateTime.UtcNow;
             _documents.Update(doc);
@@ -479,7 +528,7 @@ public sealed partial class DocumentService
             var auditDetail = returnsToPartiallyExecuted
                 ? "أعاد السير بالملف من «محال الى البداية» منفذًا جزئيًا"
                 : "أعاد السير بالملف من «محال الى البداية» إلى المتداول";
-            await LogDocumentChangesAsync(returnBefore, doc, actorName, "status", auditDetail, token);
+            await _writeGuard.LogDocumentChangesAsync(returnBefore, doc, actorName, "status", auditDetail, token);
             // ب4: عودة المناب الموروث-تريث تلقائيًا (D3) — عمليًا لا-عملية هنا (قرار 9 يحول
             // دون إنابات سارية على «محال»)، وتُستدعى للاتساق السلوكي مع التراجع.
             await ApplyDelegationInheritanceOrRecoveryAsync(doc, token);
@@ -495,7 +544,7 @@ public sealed partial class DocumentService
         var doc = await _documents.GetByIdAsync(documentId, ct);
         if (doc is null)
             return false;
-        EnsureNotPendingRegistration(doc, "اعتبار الملف منفذًا");
+        DocumentText.EnsureNotPendingRegistration(doc, "اعتبار الملف منفذًا");
         if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide))
             throw new ArgumentException("حالة نظام «طالبة تنفيذ» تخص ملفات «الجهة العامة طالبة التنفيذ» فقط");
 
@@ -522,7 +571,7 @@ public sealed partial class DocumentService
             throw new ArgumentException("لا توجد إنابة منفذة للملف ليُعتبر منفذًا بهذا البيع");
 
         // RF-010: فحص التزامن المبكر (409 ودي) + زيادة العدّاد وشبكة السباق.
-        EnsureConcurrency(doc, version);
+        _writeGuard.EnsureConcurrency(doc, version);
 
         // لقطة ما قبل التغيير — لتوليد صفوف «حقل/قبل/بعد» في سجل التعديلات.
         var considerBefore = DocumentChangeTracker.Capture(doc);
@@ -547,7 +596,7 @@ public sealed partial class DocumentService
         doc.ExecSubStatus = ExecutionStatusCatalog.SubFullyExecuted;
         doc.UpdatedAt = DateTime.UtcNow;
 
-        var considered = await WithConcurrencyGuardAsync(() => _tx.RunAsync(async token =>
+        var considered = await _writeGuard.WithConcurrencyGuardAsync(() => _tx.RunAsync(async token =>
         {
             _documents.Update(doc);
             await _uow.SaveChangesAsync(token);
@@ -564,7 +613,7 @@ public sealed partial class DocumentService
                 UpdatedAt = DateTime.UtcNow,
             }, token);
             await _uow.SaveChangesAsync(token);
-            await LogDocumentChangesAsync(considerBefore, doc, actorName, "status",
+            await _writeGuard.LogDocumentChangesAsync(considerBefore, doc, actorName, "status",
                 "اعتُبر الملف منفذًا كاملًا بهذا البيع (منفذ جبريا — منفذ كاملا)", token);
             // ب4: استرداد المناب لاعتبار المنيب منفذًا كاملًا (وقف إجراءات الإنابة).
             await ApplyDelegationInheritanceOrRecoveryAsync(doc, token);
@@ -575,7 +624,7 @@ public sealed partial class DocumentService
         // قبل إطلاق تنبيه الاسترداد (الحذف شامل بالإنابة).
         await CleanupPendingCompletionAlertsAsync(documentId, actorName, ct);
         // مرآة: اكتمال تنفيذ المنيب يُنبه مناباته المعلقة (T5 — استرداد جبري).
-        await FireDelegationStatusChangeAlertsAsync(doc, DelegationStatusAlertKind.FullyForcibly, ct);
+        await _delegationService.FireStatusChangeAlertsAsync(doc, DelegationStatusAlertKind.FullyForcibly, ct);
         return considered;
     }
 
@@ -646,7 +695,7 @@ public sealed partial class DocumentService
         }
 
         // RF-010: فحص التزامن المبكر (409 ودي) + زيادة العدّاد وشبكة السباق.
-        EnsureConcurrency(doc, request?.Version);
+        _writeGuard.EnsureConcurrency(doc, request?.Version);
 
         var wasStruckOff = ExecutedStatusCatalog.IsStruckOff(current);
         doc.ExecutedStatus = ExecutedStatusCatalog.IsStored(status) ? status : ExecutedStatusCatalog.None;
@@ -706,7 +755,7 @@ public sealed partial class DocumentService
             }
         }
 
-        return await WithConcurrencyGuardAsync(() => _tx.RunAsync(async token =>
+        return await _writeGuard.WithConcurrencyGuardAsync(() => _tx.RunAsync(async token =>
         {
             // العودة من مشطوب إلى متداول تستلزم تجديد الملف برقم ملف جديد لسنة الإعادة.
             if (wasStruckOff && doc.ExecutedStatus == ExecutedStatusCatalog.None)
@@ -735,7 +784,7 @@ public sealed partial class DocumentService
             var auditDetail = depositRevert
                 ? $"أعاد «{sideLabel}» إلى المتداول بكتاب الجهة العامة بالسير بالملف"
                 : $"حالة وضع «{sideLabel}»: {label}";
-            await LogDocumentChangesAsync(executedBefore, doc, actorName, "executed-status", auditDetail, token);
+            await _writeGuard.LogDocumentChangesAsync(executedBefore, doc, actorName, "executed-status", auditDetail, token);
             return true;
         }, ct));
     }
@@ -764,7 +813,7 @@ public sealed partial class DocumentService
             throw new ArgumentException("ملفات الانابة في حال شطبت تعاد الى الدائرة المنيبة ويتوجب تسطير انابة جديدة");
 
         // RF-010: فحص التزامن المبكر (409 ودي) + زيادة العدّاد وشبكة السباق.
-        EnsureConcurrency(doc, renewal?.Version);
+        _writeGuard.EnsureConcurrency(doc, renewal?.Version);
 
         // لقطة ما قبل التغيير — لتوليد صفوف «حقل/قبل/بعد» في سجل التعديلات.
         var restoreBefore = DocumentChangeTracker.Capture(doc);
@@ -775,38 +824,38 @@ public sealed partial class DocumentService
         else
             doc.ExecStatus = ExecutionStatusCatalog.None;
 
-        var restored = await WithConcurrencyGuardAsync(() => WithNumberGuardAsync(() => _tx.RunAsync(async token =>
+        var restored = await _writeGuard.WithConcurrencyGuardAsync(() => _writeGuard.WithNumberGuardAsync(() => _tx.RunAsync(async token =>
         {
             // إعادة الملف المشطوب من صفحة «الملفات المشطوبة» تُعد تجديدًا: رقم الملف الجديد
             // إلزامي (ومعه سنة الإعادة في نظام «طالبة تنفيذ»)، ويُسجَّل رقم أساس لسنة الإعادة
             // فيعود الملف بالرقم والنوع الجديدين.
             await ApplyRenewalAsync(doc, renewal, executedLike, doc.CreatedById, token);
             // RF-009 بتوقيع الدائرة (البند 34): مطابقة FK مباشرة.
-            await EnsureNumberUniqueByCircuitAsync(doc.Id, doc.ExecutionCircuitId, doc.CourtNorm,
+            await _writeGuard.EnsureNumberUniqueByCircuitAsync(doc.Id, doc.ExecutionCircuitId, doc.CourtNorm,
                 doc.RenewalFileNumber, doc.RenewalFileType,
                 executedLike
-                    ? CurrentYear().ToString()
+                    ? ServerClock.CurrentYear(_clock, _timeZone).ToString()
                     : renewal?.RenewalYear?.ToString(), token);
             doc.UpdatedAt = DateTime.UtcNow;
             _documents.Update(doc);
             await _uow.SaveChangesAsync(token);
-            await LogDocumentChangesAsync(restoreBefore, doc, actorName, "restore-struck-off",
+            await _writeGuard.LogDocumentChangesAsync(restoreBefore, doc, actorName, "restore-struck-off",
                 "أعاد ملفًا مشطوبًا إلى المتداول مع تجديد رقم الملف", token);
             return true;
         }, ct), renewal?.RenewalFileNumber));
 
         // مرآة: فك الشطب «تغيّر حالة المنيب» يُنبه مناباته المعلقة بالصيغة العامة (بعد نجاح المعاملة —
         // عزل فشل التنبيه). S1 يجعل وجود إنابات معلقة على مصدر مشطوب شبه معدوم — الاحتفاظ عام.
-        await FireDelegationStatusChangeAlertsAsync(doc, DelegationStatusAlertKind.Generic, ct);
+        await _delegationService.FireStatusChangeAlertsAsync(doc, DelegationStatusAlertKind.Generic, ct);
         return restored;
     }
 
     /// <summary>
     /// تطبيق بيان تجديد الملف المشطوب: رقم الملف الجديد إلزامي (ومعه سنة الإعادة في نظام
     /// «طالبة تنفيذ»)، وتُفسَّر التواريخ النصية الحرة، ويُسجَّل رقم أساس لسنة الإعادة فيعود
-    /// الملف بالرقم والنوع الجديدين.
+    /// الملف بالرقم والنوع الجديدين — داخل معاملة المستدعي حصرًا (لا تفتح معاملة خاصة).
     /// </summary>
-    private async Task ApplyRenewalAsync(Document doc, RenewalRequest? renewal, bool executedLike, int? userId, CancellationToken ct)
+    public async Task ApplyRenewalAsync(Document doc, RenewalRequest? renewal, bool executedLike, int? userId, CancellationToken ct)
     {
         var number = renewal?.RenewalFileNumber?.Trim();
         if (string.IsNullOrEmpty(number))
@@ -820,9 +869,9 @@ public sealed partial class DocumentService
         int year;
         if (executedLike)
         {
-            if (renewal?.RenewalYear is { } hiddenYear && hiddenYear != CurrentYear())
+            if (renewal?.RenewalYear is { } hiddenYear && hiddenYear != ServerClock.CurrentYear(_clock, _timeZone))
                 throw new ArgumentException("سنة الإعادة لعائلة «منفذ عليها/عرض وايداع» هي سنة اليوم الحالية فقط");
-            year = CurrentYear();
+            year = ServerClock.CurrentYear(_clock, _timeZone);
         }
         else
         {
@@ -892,11 +941,11 @@ public sealed partial class DocumentService
     /// تسجيل وقعة الشطب في «وقوعات الملف» عند انتقال ملف «منفذ عليه»/«عرض وايداع»
     /// إلى الحالة «مشطوب»: تاريخ الشطب المحفوظ في المستند والرقم الفعّال وقت الشطب
     /// (آخر رقم أساس ≤ سنة الشطب — المحلل المركزي — وإلا رقم الملف الأصلي) ونوع الملف
-    /// وسنة الشطب — ضمن المعاملة نفسها فلا يضيع السجل عند فشل الحفظ.
+    /// وسنة الشطب — داخل معاملة المستدعي حصرًا (لا تفتح معاملة خاصة).
     /// </summary>
-    private async Task AddStruckOffOccurrenceAsync(Document doc, int? userId, CancellationToken ct)
+    public async Task AddStruckOffOccurrenceAsync(Document doc, int? userId, CancellationToken ct)
     {
-        var struckOffYear = doc.StruckOffDate?.Year ?? CurrentYear();
+        var struckOffYear = doc.StruckOffDate?.Year ?? ServerClock.CurrentYear(_clock, _timeZone);
         string? effectiveNumber = EffectiveFileIdentity.Number(doc, struckOffYear) ?? string.Empty;
         string? fileType = (doc.FileType ?? string.Empty).Trim();
         await _occurrences.AddAsync(new DocumentOccurrence
@@ -948,7 +997,7 @@ public sealed partial class DocumentService
             return false;
 
         // «رقم أساس المنيب» لتفاصيل وقعة الاسترداد (F2) — الرقم الفعّال الحالي أو الأصلي.
-        var sourceFileNumber = EffectiveFileIdentity.Number(source, CurrentYear());
+        var sourceFileNumber = EffectiveFileIdentity.Number(source, ServerClock.CurrentYear(_clock, _timeZone));
 
         var changed = false;
         foreach (var delegation in delegations)
@@ -1104,4 +1153,157 @@ public sealed partial class DocumentService
         CopyDetail(details, "sayerRegDate", source.SayerRegDate);
         return details;
     }
+
+    private static void ClearBaraetFields(Document doc)
+    {
+        doc.BaraetNumber = null;
+        doc.BaraetDate = null;
+        doc.BaraetRegNumber = null;
+        doc.BaraetRegDate = null;
+    }
+
+    private static void ClearForcedExecutionField(Document doc)
+    {
+        doc.ForcedExecutionDate = null;
+    }
+
+    /// <summary>
+    /// تطهير حقلي «تحويل بدل المبيع» (تاريخ التحويل ورقم الإشعار) عند ترك حالة «منفذ جبريا»
+    /// (تسوية/تريث/شطب/تراجع) — يخصان «منفذ جبريا» حصرًا، فيُصفَّران بنفس منطق نظيرهما.
+    /// </summary>
+    private static void ClearForcibleTransferFields(Document doc)
+    {
+        doc.ForcibleTransferDate = null;
+        doc.ForcibleTransferNoticeNumber = null;
+    }
+
+    private static void ClearTarithFields(Document doc)
+    {
+        doc.TarithNumber = null;
+        doc.TarithDate = null;
+        doc.TarithRegNumber = null;
+        doc.TarithRegDate = null;
+    }
+
+    private static void ClearSayerFields(Document doc)
+    {
+        doc.SayerNumber = null;
+        doc.SayerDate = null;
+        doc.SayerRegNumber = null;
+        doc.SayerRegDate = null;
+    }
+
+    /// <summary>
+    /// تطهير حقول «محال الى البداية» الأربعة (رقم/تاريخ كتاب المطالعة ورقم/تاريخ كتاب الإحالة)
+    /// عند الخروج من الحالة عبر نقطة العودة فقط — الدخول إليها لا يمسح (قرار 11) والتطهير
+    /// منشطّر حسب المصدر في UpdateStatusAsync.
+    /// </summary>
+    private static void ClearReferredToStartFields(Document doc)
+    {
+        doc.NoFundsDemandNumber = null;
+        doc.NoFundsDemandDate = null;
+        doc.StartReferralNumber = null;
+        doc.StartReferralDate = null;
+    }
+
+    private static void ClearCollectedFields(Document doc)
+    {
+        doc.CollectedAmount = null;
+        doc.CollectedAmount2 = null;
+        doc.CollectedAmount3 = null;
+    }
+
+    private static decimal? ParseCollectedAmount(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+        // يوحّد الأرقام العربية/الفارسية ثم فواصل الأرقام العربية (فاصل عشري ٫ وألوف ٬)
+        // إلى ما يقبله التحليل؛ فلا يكسر ما يكتب بالأرقام ASCII (يمر كما هو).
+        raw = ArabicDigitNormalizer.Normalize(raw)
+            .Replace('\u066B', '.')   // ٫ الفاصل العشري العربي
+            .Replace('\u066C', ',');  // ٬ فاصل الألوف العربي
+        if (decimal.TryParse(raw, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var parsed)
+            || decimal.TryParse(raw, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.CurrentCulture, out parsed))
+        {
+            if (parsed < 0)
+                throw new ArgumentException("المبلغ المحصل لا يمكن أن يكون سالباً");
+            return parsed;
+        }
+        throw new ArgumentException("المبلغ المحصل غير صالح");
+    }
+
+    /// <summary>تطبيق المبالغ المحصلة (حتى ثلاثة بعملاتها) من حقول الطلب على المستند وسجل الوقعة.</summary>
+    private static void ApplyCollectedAmounts(Document doc, Dictionary<string, string?> fields, Dictionary<string, string> details)
+    {
+        doc.CollectedAmount = ParseCollectedAmount(fields.GetValueOrDefault("collectedAmount"));
+        doc.CollectedAmount2 = ParseCollectedAmount(fields.GetValueOrDefault("collectedAmount2"));
+        doc.CollectedAmount3 = ParseCollectedAmount(fields.GetValueOrDefault("collectedAmount3"));
+        var currency = fields.GetValueOrDefault("collectedCurrency");
+        var currency2 = fields.GetValueOrDefault("collectedCurrency2");
+        var currency3 = fields.GetValueOrDefault("collectedCurrency3");
+        doc.CollectedCurrency = string.IsNullOrWhiteSpace(currency) ? "ليرة سورية" : currency.Trim();
+        doc.CollectedCurrency2 = string.IsNullOrWhiteSpace(currency2) ? "دولار أمريكي" : currency2.Trim();
+        doc.CollectedCurrency3 = string.IsNullOrWhiteSpace(currency3) ? "يورو" : currency3.Trim();
+        if (doc.CollectedAmount.HasValue)
+        {
+            details["collectedAmount"] = doc.CollectedAmount.Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+            details["collectedCurrency"] = doc.CollectedCurrency;
+        }
+        if (doc.CollectedAmount2.HasValue)
+        {
+            details["collectedAmount2"] = doc.CollectedAmount2.Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+            details["collectedCurrency2"] = doc.CollectedCurrency2;
+        }
+        if (doc.CollectedAmount3.HasValue)
+        {
+            details["collectedAmount3"] = doc.CollectedAmount3.Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+            details["collectedCurrency3"] = doc.CollectedCurrency3;
+        }
+    }
+
+    /// <summary>
+    /// تطبيق الأموال المباعة بالمزاد العلني (إلزامية في «منفذ جبريا»): تُتحقق المعرّفات
+    /// من أموال الملف نفسه (عدا كفالة الرواتب)، وتُخزَّن JSON، وتُضمَّن أسماؤها في سجل الوقعة للعرض.
+    /// </summary>
+    private static void ApplySoldAssets(Document doc, Dictionary<string, string?> fields, Dictionary<string, string> details)
+    {
+        var raw = (fields.GetValueOrDefault("soldAssetIds") ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(raw))
+            throw new ArgumentException("اختر الأموال التي جرى بيعها بالمزاد العلني على الأقل");
+
+        var ids = new List<int>();
+        foreach (var part in raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!int.TryParse(part, out var id))
+                throw new ArgumentException("معرّف مال مباع غير صالح");
+            ids.Add(id);
+        }
+        var ownedIds = new HashSet<int>(doc.Assets
+            .Where(a => AssetKindCatalog.IsAuctionable(a.AssetKind))
+            .Select(a => a.Id));
+        if (ids.Any(id => !ownedIds.Contains(id)))
+            throw new ArgumentException("الأموال المختارة ليست من أموال الملف");
+
+        doc.SoldAssetIds = SerializeJson(ids);
+        details["soldAssetIds"] = string.Join(",", ids);
+        var soldNames = doc.Assets
+            .Where(a => ids.Contains(a.Id))
+            .Select(AssetDisplayName)
+            .Where(v => !string.IsNullOrWhiteSpace(v));
+        details["soldAssetNames"] = string.Join("، ", soldNames);
+    }
+
+    /// <summary>تسمية قراءة للأصل (تُستخدم في «منفذ جبريا» وفي قوائم العرض).</summary>
+    private static string AssetDisplayName(Asset a) => AssetDisplay.Label(a);
+
+    private static void CopyDetail(Dictionary<string, string> details, string key, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+            details[key] = value;
+    }
+
+    private static string SerializeDetails(Dictionary<string, string> details) =>
+        JsonSerializer.Serialize(details);
+
+    private static string SerializeJson<T>(T value) => JsonSerializer.Serialize(value);
 }
