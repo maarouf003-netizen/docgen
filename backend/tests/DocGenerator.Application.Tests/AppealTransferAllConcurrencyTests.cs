@@ -7,6 +7,8 @@ using DocGenerator.Infrastructure.Persistence;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
+using DocGenerator.Application.Tests.TestHelpers;
+
 namespace DocGenerator.Application.Tests;
 
 /// <summary>
@@ -40,8 +42,6 @@ public class AppealTransferAllConcurrencyTests : IDisposable
         return connection;
     }
 
-    private static DbContextOptions<DocGeneratorDbContext> Options(SqliteConnection connection)
-        => new DbContextOptionsBuilder<DocGeneratorDbContext>().UseSqlite(connection).Options;
 
     private static IDocumentAppealService AppealService(DocGeneratorDbContext db)
     {
@@ -65,7 +65,7 @@ public class AppealTransferAllConcurrencyTests : IDisposable
     private async Task<(int BranchId, int SourceId, int TargetId)> SeedAsync()
     {
         var connection = await OpenConnectionAsync();
-        await using var db = new DocGeneratorDbContext(Options(connection));
+        await using var db = new DocGeneratorDbContext(TestDb.CreateOptions(connection));
         await db.Database.EnsureCreatedAsync();
 
         var branch = new Branch { Name = "حماة", Code = "HAM", Governorate = "حماة" };
@@ -117,7 +117,7 @@ public class AppealTransferAllConcurrencyTests : IDisposable
             Task.Run(async () =>
             {
                 var taskConnection = await OpenConnectionAsync();
-                await using var db = new DocGeneratorDbContext(Options(taskConnection));
+                await using var db = new DocGeneratorDbContext(TestDb.CreateOptions(taskConnection));
                 try
                 {
                     var moved = await AppealService(db).TransferAllAsync(
@@ -129,7 +129,7 @@ public class AppealTransferAllConcurrencyTests : IDisposable
             Task.Run(async () =>
             {
                 var taskConnection = await OpenConnectionAsync();
-                await using var db = new DocGeneratorDbContext(Options(taskConnection));
+                await using var db = new DocGeneratorDbContext(TestDb.CreateOptions(taskConnection));
                 try
                 {
                     var moved = await AppealService(db).TransferAllAsync(
@@ -147,7 +147,7 @@ public class AppealTransferAllConcurrencyTests : IDisposable
         Assert.Equal(2, outcomes.Where(o => o.Error is null).Sum(o => o.Moved!.Value));
 
         var checkConnection = await OpenConnectionAsync();
-        await using var check = new DocGeneratorDbContext(Options(checkConnection));
+        await using var check = new DocGeneratorDbContext(TestDb.CreateOptions(checkConnection));
         Assert.Equal(2, await check.DocumentAppeals.CountAsync(a => a.AssignedLawyerId == seed.TargetId));
     }
 
@@ -156,7 +156,7 @@ public class AppealTransferAllConcurrencyTests : IDisposable
     {
         var seed = await SeedAsync();
         var connection = _connections[^1];
-        await using var db = new DocGeneratorDbContext(Options(connection));
+        await using var db = new DocGeneratorDbContext(TestDb.CreateOptions(connection));
 
         // المصدر بلا منظور مسند (الهدف نفسه لا يملك شيئًا) — صفر ناجح بلا استثناء.
         var moved = await AppealService(db).TransferAllAsync(

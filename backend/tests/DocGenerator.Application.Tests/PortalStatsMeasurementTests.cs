@@ -7,6 +7,8 @@ using DocGenerator.Domain.Entities;
 using DocGenerator.Infrastructure.Persistence;
 using Xunit.Abstractions;
 
+using DocGenerator.Application.Tests.TestHelpers;
+
 namespace DocGenerator.Application.Tests;
 
 /// <summary>

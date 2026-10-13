@@ -1,6 +1,7 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
+using DocGenerator.Application.Tests.TestHelpers;
 using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -31,10 +32,10 @@ public class ReviewLetterServiceTests : IDisposable
         _branchId = branch.Id;
         _otherBranchId = otherBranch.Id;
 
-        _head = NewUser("head_x", "رئيس القسم", UserRole.Head, _branchId);
-        _otherBranchHead = NewUser("head_y", "رئيس حلب", UserRole.Head, _otherBranchId);
-        _lawyer1 = NewUser("law1", "المحامي الأول", UserRole.Lawyer, _branchId);
-        _lawyer2 = NewUser("law2", "المحامي الثاني", UserRole.Lawyer, _branchId);
+        _head = EntityBuilders.NewUser("head_x", "رئيس القسم", UserRole.Head, _branchId);
+        _otherBranchHead = EntityBuilders.NewUser("head_y", "رئيس حلب", UserRole.Head, _otherBranchId);
+        _lawyer1 = EntityBuilders.NewUser("law1", "المحامي الأول", UserRole.Lawyer, _branchId);
+        _lawyer2 = EntityBuilders.NewUser("law2", "المحامي الثاني", UserRole.Lawyer, _branchId);
         _db.Users.AddRange(_head, _otherBranchHead, _lawyer1, _lawyer2);
         _db.SaveChanges();
 
@@ -62,15 +63,6 @@ public class ReviewLetterServiceTests : IDisposable
             new Repository<ExecutionCircuit>(_db));
     }
 
-    private static User NewUser(string username, string fullName, UserRole role, int? branchId)
-        => new()
-        {
-            Username = username,
-            FullName = fullName,
-            Role = role,
-            BranchId = branchId,
-            PasswordHash = new PasswordHasher().Hash("123456"),
-        };
 
     private static int s_docSeq;
 
@@ -312,7 +304,7 @@ public class ReviewLetterServiceTests : IDisposable
         Assert.Single(followerView);
 
         // محامٍ غريب لا يرى
-        var stranger = NewUser("stranger", "محامٍ غريب", UserRole.Lawyer, _branchId);
+        var stranger = EntityBuilders.NewUser("stranger", "محامٍ غريب", UserRole.Lawyer, _branchId);
         _db.Users.Add(stranger);
         await _db.SaveChangesAsync();
 
@@ -324,7 +316,7 @@ public class ReviewLetterServiceTests : IDisposable
     public async Task ListByDocument_FollowerViaAppeal_CanView()
     {
         var doc = await AddDocumentAsync(_lawyer1);
-        var assignee = NewUser("assignee", "محامي الاستئناف", UserRole.Lawyer, _branchId);
+        var assignee = EntityBuilders.NewUser("assignee", "محامي الاستئناف", UserRole.Lawyer, _branchId);
         _db.Users.Add(assignee);
         await _db.SaveChangesAsync();
         _db.DocumentAppeals.Add(new DocumentAppeal

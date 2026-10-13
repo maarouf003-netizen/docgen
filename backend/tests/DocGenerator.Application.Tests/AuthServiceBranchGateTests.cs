@@ -6,6 +6,8 @@ using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using Microsoft.Extensions.Options;
 
+using DocGenerator.Application.Tests.TestHelpers;
+
 namespace DocGenerator.Application.Tests;
 
 /// <summary>

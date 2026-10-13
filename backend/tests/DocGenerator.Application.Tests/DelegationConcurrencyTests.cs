@@ -6,6 +6,8 @@ using DocGenerator.Infrastructure.Persistence;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
+using DocGenerator.Application.Tests.TestHelpers;
+
 namespace DocGenerator.Application.Tests;
 
 /// <summary>
@@ -40,8 +42,6 @@ public class DelegationConcurrencyTests : IDisposable
         return connection;
     }
 
-    private static DbContextOptions<DocGeneratorDbContext> Options(SqliteConnection connection)
-        => new DbContextOptionsBuilder<DocGeneratorDbContext>().UseSqlite(connection).Options;
 
     private static IDocumentDelegationService BuildService(DocGeneratorDbContext db)
     {
@@ -73,7 +73,7 @@ public class DelegationConcurrencyTests : IDisposable
     private async Task<(int SourceId, List<int> AssetIds, int LawyerId)> SeedAsync()
     {
         var connection = await OpenConnectionAsync();
-        await using var db = new DocGeneratorDbContext(Options(connection));
+        await using var db = new DocGeneratorDbContext(TestDb.CreateOptions(connection));
         await db.Database.EnsureCreatedAsync();
 
         var branch = new Branch { Name = "دمشق", Code = "DAM" };
@@ -153,8 +153,8 @@ public class DelegationConcurrencyTests : IDisposable
 
         var connectionA = await OpenConnectionAsync();
         var connectionB = await OpenConnectionAsync();
-        await using var dbA = new DocGeneratorDbContext(Options(connectionA));
-        await using var dbB = new DocGeneratorDbContext(Options(connectionB));
+        await using var dbA = new DocGeneratorDbContext(TestDb.CreateOptions(connectionA));
+        await using var dbB = new DocGeneratorDbContext(TestDb.CreateOptions(connectionB));
         var serviceA = BuildService(dbA);
         var serviceB = BuildService(dbB);
 
@@ -183,7 +183,7 @@ public class DelegationConcurrencyTests : IDisposable
             Assert.Contains("إنابة سارية", domainError.Message);
         }
 
-        await using var verifyDb = new DocGeneratorDbContext(Options(await OpenConnectionAsync()));
+        await using var verifyDb = new DocGeneratorDbContext(TestDb.CreateOptions(await OpenConnectionAsync()));
         Assert.Equal(assetIds.Count, await verifyDb.DocumentDelegations.CountAsync(d => d.SourceDocumentId == sourceId));
         Assert.Equal(assetIds.Count, await verifyDb.DelegationAssetReservations.CountAsync(r => r.SourceDocumentId == sourceId));
     }

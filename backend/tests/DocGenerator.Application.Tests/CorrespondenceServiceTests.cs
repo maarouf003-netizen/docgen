@@ -1,6 +1,7 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
+using DocGenerator.Application.Tests.TestHelpers;
 using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -54,16 +55,16 @@ public class CorrespondenceServiceTests : IDisposable
         _groupId = group.Id;
         _outEntryId = outGroup.Entries.First().Id;
 
-        _head = NewUser("corr_head", "رئيس القسم", UserRole.Head, _branchId);
-        _otherBranchHead = NewUser("corr_head_alp", "رئيس حلب", UserRole.Head, _otherBranchId);
-        _lawyer1 = NewUser("corr_law1", "المحامي الأول", UserRole.Lawyer, _branchId);
-        _lawyer2 = NewUser("corr_law2", "المحامي الثاني", UserRole.Lawyer, _branchId);
-        _lawyer3 = NewUser("corr_law3", "المحامي الثالث", UserRole.Lawyer, _branchId);
-        _manager = NewUser("corr_mgr", "المدير", UserRole.Manager, null);
-        _delegate = NewUser("corr_del1", "مندوب الجهة", UserRole.EntityManager, null);
-        _delegate2 = NewUser("corr_del2", "مندوب الجهة الثاني", UserRole.EntityManager, null);
-        _groupBound = NewUser("corr_gdel", "مندوب الهوية الأم", UserRole.EntityManager, null);
-        _outDelegate = NewUser("corr_outdel", "مندوب حلب", UserRole.EntityManager, null);
+        _head = EntityBuilders.NewUser("corr_head", "رئيس القسم", UserRole.Head, _branchId);
+        _otherBranchHead = EntityBuilders.NewUser("corr_head_alp", "رئيس حلب", UserRole.Head, _otherBranchId);
+        _lawyer1 = EntityBuilders.NewUser("corr_law1", "المحامي الأول", UserRole.Lawyer, _branchId);
+        _lawyer2 = EntityBuilders.NewUser("corr_law2", "المحامي الثاني", UserRole.Lawyer, _branchId);
+        _lawyer3 = EntityBuilders.NewUser("corr_law3", "المحامي الثالث", UserRole.Lawyer, _branchId);
+        _manager = EntityBuilders.NewUser("corr_mgr", "المدير", UserRole.Manager, null);
+        _delegate = EntityBuilders.NewUser("corr_del1", "مندوب الجهة", UserRole.EntityManager, null);
+        _delegate2 = EntityBuilders.NewUser("corr_del2", "مندوب الجهة الثاني", UserRole.EntityManager, null);
+        _groupBound = EntityBuilders.NewUser("corr_gdel", "مندوب الهوية الأم", UserRole.EntityManager, null);
+        _outDelegate = EntityBuilders.NewUser("corr_outdel", "مندوب حلب", UserRole.EntityManager, null);
         _db.Users.AddRange(_head, _otherBranchHead, _lawyer1, _lawyer2, _lawyer3, _manager,
             _delegate, _delegate2, _groupBound, _outDelegate);
         _db.SaveChanges();
@@ -100,15 +101,6 @@ public class CorrespondenceServiceTests : IDisposable
             new Repository<ExecutionCircuit>(_db));
     }
 
-    private static User NewUser(string username, string fullName, UserRole role, int? branchId)
-        => new()
-        {
-            Username = username,
-            FullName = fullName,
-            Role = role,
-            BranchId = branchId,
-            PasswordHash = new PasswordHasher().Hash("123456"),
-        };
 
     private async Task<Document> AddDocumentAsync(User owner)
     {
@@ -253,7 +245,7 @@ public class CorrespondenceServiceTests : IDisposable
     [Fact]
     public async Task Create_DelegateWithoutScope_Throws()
     {
-        var orphan = NewUser("corr_orphan", "مندوب بلا نطاق", UserRole.EntityManager, null);
+        var orphan = EntityBuilders.NewUser("corr_orphan", "مندوب بلا نطاق", UserRole.EntityManager, null);
         _db.Users.Add(orphan);
         await _db.SaveChangesAsync();
 
@@ -643,7 +635,7 @@ public class CorrespondenceServiceTests : IDisposable
     public async Task SearchTargets_CapsResultsAtTwenty()
     {
         for (var i = 0; i < 25; i++)
-            _db.Users.Add(NewUser($"corr_cap{i:00}", $"مرشح تجريبي {i:00}", UserRole.Lawyer, _branchId));
+            _db.Users.Add(EntityBuilders.NewUser($"corr_cap{i:00}", $"مرشح تجريبي {i:00}", UserRole.Lawyer, _branchId));
         await _db.SaveChangesAsync();
 
         var targets = await _service.SearchTargetsAsync(
@@ -1036,7 +1028,7 @@ var names = targets.Select(t => t.FullName).ToList();
         };
         _db.Sections.Add(section);
         await _db.SaveChangesAsync();
-        var sub = NewUser("corr_sub", "رئيس الشعبة", UserRole.SubHead, _branchId);
+        var sub = EntityBuilders.NewUser("corr_sub", "رئيس الشعبة", UserRole.SubHead, _branchId);
         sub.SectionId = section.Id;
         _db.Users.Add(sub);
         await _db.SaveChangesAsync();

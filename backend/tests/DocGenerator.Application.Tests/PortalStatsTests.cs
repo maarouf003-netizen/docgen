@@ -8,6 +8,8 @@ using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
+using DocGenerator.Application.Tests.TestHelpers;
+
 namespace DocGenerator.Application.Tests;
 
 /// <summary>اختبارات إحصاءات بوابة الجهة (المرحلة 4): عزل النطاق وتطابق التصنيف مع فلاتر القائمة.</summary>

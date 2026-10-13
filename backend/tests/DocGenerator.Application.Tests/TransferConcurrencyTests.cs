@@ -13,17 +13,15 @@ namespace DocGenerator.Application.Tests;
 /// </summary>
 public class TransferConcurrencyTests
 {
-    private static DbContextOptions<DocGeneratorDbContext> Options(SqliteConnection connection)
-        => new DbContextOptionsBuilder<DocGeneratorDbContext>().UseSqlite(connection).Options;
 
     [Fact]
     public async Task TransferOwner_WhenOwnerIsFresh_SucceedsAndMovesDocument()
     {
         await using var connection = new SqliteConnection("DataSource=:memory:");
         await connection.OpenAsync();
-        Seed(Options(connection));
+        Seed(TestDb.CreateOptions(connection));
 
-        await using var db = new DocGeneratorDbContext(Options(connection));
+        await using var db = new DocGeneratorDbContext(TestDb.CreateOptions(connection));
         var repo = new DocumentRepository(db);
 
         var transferred = await repo.TransferOwnerAsync(1, expectedCreatedById: 1, targetId: 2, "سامر", "أحمد");
@@ -41,10 +39,10 @@ public class TransferConcurrencyTests
     {
         await using var connection = new SqliteConnection("DataSource=:memory:");
         await connection.OpenAsync();
-        Seed(Options(connection));
+        Seed(TestDb.CreateOptions(connection));
 
         // أول نقل (جلسة أ): المحامي المختص الحالي 1 ما زال متوقعاً → ينجح.
-        await using (var dbA = new DocGeneratorDbContext(Options(connection)))
+        await using (var dbA = new DocGeneratorDbContext(TestDb.CreateOptions(connection)))
         {
             var transferred = await new DocumentRepository(dbA)
                 .TransferOwnerAsync(1, expectedCreatedById: 1, targetId: 2, "سامر", "أحمد");
@@ -52,7 +50,7 @@ public class TransferConcurrencyTests
         }
 
         // نقل ثانٍ (جلسة ب) بنفس التوقع القديم 1: المحامي المختص أصبح 2 → يفشل (تعارض).
-        await using (var dbB = new DocGeneratorDbContext(Options(connection)))
+        await using (var dbB = new DocGeneratorDbContext(TestDb.CreateOptions(connection)))
         {
             var transferred = await new DocumentRepository(dbB)
                 .TransferOwnerAsync(1, expectedCreatedById: 1, targetId: 3, "خالد", "سامر");
@@ -60,7 +58,7 @@ public class TransferConcurrencyTests
         }
 
         // التحقق من أن القيمة الفعلية في القاعدة بقيت من النقل الناجح الأول.
-        await using (var verify = new DocGeneratorDbContext(Options(connection)))
+        await using (var verify = new DocGeneratorDbContext(TestDb.CreateOptions(connection)))
         {
             var doc = await verify.Documents.SingleAsync();
             Assert.Equal(2, doc.CreatedById);

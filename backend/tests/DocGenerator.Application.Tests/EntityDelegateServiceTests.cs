@@ -8,6 +8,8 @@ using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
+using DocGenerator.Application.Tests.TestHelpers;
+
 namespace DocGenerator.Application.Tests;
 
 /// <summary>اختبارات إدارة حسابات مندوبي الجهات وربط نطاقهم (د11 — المرحلة 3).</summary>

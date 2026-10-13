@@ -7,42 +7,9 @@ using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
+using DocGenerator.Application.Tests.TestHelpers;
+
 namespace DocGenerator.Application.Tests;
-
-public class FakeAuditLogger : IAuditLogger
-{
-    public List<string> Actions { get; } = new();
-    /// <summary>نصوص التفاصيل (`details`) لكل حدث — للتحقق من توثيق القديم/الجديد في أحداث النقل.</summary>
-    public List<string?> Details { get; } = new();
-    public List<(string ActionType, int? DocumentId, IReadOnlyList<DocumentFieldChange> Changes)> ChangeLogs { get; } = new();
-
-    public Task LogAsync(string? userName, string actionType, int? documentId = null,
-        string? documentType = null, string? details = null, CancellationToken ct = default)
-    {
-        Actions.Add(actionType);
-        Details.Add(details);
-        return Task.CompletedTask;
-    }
-
-    public Task LogManyAsync(IReadOnlyList<AuditLogEntry> entries, CancellationToken ct = default)
-    {
-        foreach (var entry in entries)
-        {
-            Actions.Add(entry.ActionType);
-            Details.Add(entry.Details);
-        }
-        return Task.CompletedTask;
-    }
-
-    public Task LogDocumentChangeAsync(string? userName, string actionType, int documentId,
-        string? documentType, string details, IReadOnlyList<DocumentFieldChange> changes,
-        CancellationToken ct = default)
-    {
-        Actions.Add(actionType);
-        ChangeLogs.Add((actionType, documentId, changes));
-        return Task.CompletedTask;
-    }
-}
 
 public class DocumentServiceTests : IDisposable
 {

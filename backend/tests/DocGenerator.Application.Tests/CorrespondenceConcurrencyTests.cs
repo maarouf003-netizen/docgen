@@ -6,6 +6,8 @@ using DocGenerator.Infrastructure.Persistence;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
+using DocGenerator.Application.Tests.TestHelpers;
+
 namespace DocGenerator.Application.Tests;
 
 /// <summary>
@@ -37,8 +39,6 @@ public class CorrespondenceConcurrencyTests : IDisposable
         return connection;
     }
 
-    private static DbContextOptions<DocGeneratorDbContext> Options(SqliteConnection connection)
-        => new DbContextOptionsBuilder<DocGeneratorDbContext>().UseSqlite(connection).Options;
 
     private static ICorrespondenceService BuildService(DocGeneratorDbContext db, FakeAuditLogger audit)
         => new CorrespondenceService(
@@ -60,7 +60,7 @@ public class CorrespondenceConcurrencyTests : IDisposable
     private async Task<(int LawyerId, int DelegateId, int BranchId)> SeedAsync()
     {
         var connection = await OpenConnectionAsync();
-        await using var db = new DocGeneratorDbContext(Options(connection));
+        await using var db = new DocGeneratorDbContext(TestDb.CreateOptions(connection));
         await db.Database.EnsureCreatedAsync();
 
         var branch = new Branch { Name = "دمشق", Code = "DAM", Governorate = "دمشق" };
@@ -100,7 +100,7 @@ public class CorrespondenceConcurrencyTests : IDisposable
             try
             {
                 var connection = await OpenConnectionAsync();
-                await using var db = new DocGeneratorDbContext(Options(connection));
+                await using var db = new DocGeneratorDbContext(TestDb.CreateOptions(connection));
                 var audit = new FakeAuditLogger();
                 var service = BuildService(db, audit);
                 var letter = await service.CreateAsync(
@@ -126,7 +126,7 @@ public class CorrespondenceConcurrencyTests : IDisposable
         // كل تسطير سجّل تدقيقه مرة واحدة داخل معاملته الناجحة.
         Assert.All(outcomes, o => Assert.Equal(1, o.AuditCount));
 
-        await using var verifyDb = new DocGeneratorDbContext(Options(await OpenConnectionAsync()));
+        await using var verifyDb = new DocGeneratorDbContext(TestDb.CreateOptions(await OpenConnectionAsync()));
         Assert.Equal(writers, await verifyDb.Correspondences.CountAsync());
     }
 }

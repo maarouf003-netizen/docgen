@@ -7,6 +7,8 @@ using DocGenerator.Infrastructure.Persistence;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
+using DocGenerator.Application.Tests.TestHelpers;
+
 namespace DocGenerator.Application.Tests;
 
 /// <summary>
