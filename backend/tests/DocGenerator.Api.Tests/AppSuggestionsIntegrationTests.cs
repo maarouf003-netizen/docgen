@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -14,15 +15,6 @@ public class AppSuggestionsIntegrationTests
     private readonly ApiFactory _factory;
 
     public AppSuggestionsIntegrationTests(ApiFactory factory) => _factory = factory;
-
-    private static string NewName(string prefix) => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 16, 40)];
-
-    private Task<int> BranchIdAsync(string code)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        return Task.FromResult(db.Branches.Single(b => b.Code == code).Id);
-    }
 
     [Fact]
     public async Task Lawyer_CreatesAndSeesOwnHistory()
@@ -59,8 +51,8 @@ public class AppSuggestionsIntegrationTests
 
         Assert.Equal(HttpStatusCode.NotFound, (await lawyer.GetAsync("/api/app-suggestions/999999")).StatusCode);
 
-        var damId = await BranchIdAsync("DAM");
-        var other = await _factory.CreateUserAsync(NewName("sugg_other"), UserRole.Lawyer, damId);
+        var damId = await _factory.GetBranchIdAsync("DAM");
+        var other = await _factory.CreateUserAsync(UniqueName("sugg_other"), UserRole.Lawyer, damId);
         var otherClient = _factory.AuthorizedClient(other.Username);
         Assert.Equal(HttpStatusCode.NotFound, (await otherClient.GetAsync($"/api/app-suggestions/{dto.Id}")).StatusCode);
 
@@ -98,7 +90,7 @@ public class AppSuggestionsIntegrationTests
 
         // الدور الخامس (مندوب الجهة) محظور أيضًا — أي توسيع لاحق لـ `CanSuggestApp`
         // دون تحديث هذا الاختبار سيفشل هنا عمدًا.
-        var entityManager = await _factory.CreateUserAsync(NewName("sugg_delegate"), UserRole.EntityManager);
+        var entityManager = await _factory.CreateUserAsync(UniqueName("sugg_delegate"), UserRole.EntityManager);
         var delegateClient = _factory.AuthorizedClient(entityManager.Username);
         var delegateResponse = await delegateClient.PostAsJsonAsync("/api/app-suggestions", new { message = "x" });
         Assert.Equal(HttpStatusCode.Forbidden, delegateResponse.StatusCode);

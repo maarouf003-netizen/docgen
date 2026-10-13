@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -14,37 +15,10 @@ public class AlertsIntegrationTests
 
     public AlertsIntegrationTests(ApiFactory factory) => _factory = factory;
 
-    private static string NewName(string prefix) => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 16, 40)];
-
-    private Task<int> BranchIdAsync(string code)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        return Task.FromResult(db.Branches.Single(b => b.Code == code).Id);
-    }
-
-    private async Task<int> CreateBranchAsync(string name)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        var branch = new DocGenerator.Domain.Entities.Branch { Name = name, Code = $"BX_{Guid.NewGuid():N}"[..8].ToUpperInvariant() };
-        db.Branches.Add(branch);
-        await db.SaveChangesAsync();
-        return branch.Id;
-    }
-
     private static async Task<int> CreateDocumentForLawyerAsync(ApiFactory factory, string username)
     {
         var login = await factory.LoginAsync(username, "123456");
         return await factory.CreateDocumentAsync(login!.Token!, borrowerName: "مقترض");
-    }
-
-    private async Task<int> UserIdAsync(string username)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        await Task.CompletedTask;
-        return db.Users.Single(u => u.Username == username).Id;
     }
 
     [Fact]
@@ -93,8 +67,8 @@ public class AlertsIntegrationTests
     [Fact]
     public async Task Head_CreatesDocumentAlert_OutsideBranch_BadRequest()
     {
-        var aleppoId = await BranchIdAsync("ALP");
-        var alpLawyer = await _factory.CreateUserAsync(NewName("lawyer_alp"), UserRole.Lawyer, aleppoId);
+        var aleppoId = await _factory.GetBranchIdAsync("ALP");
+        var alpLawyer = await _factory.CreateUserAsync(UniqueName("lawyer_alp"), UserRole.Lawyer, aleppoId);
         var login = await _factory.LoginAsync(alpLawyer.Username, "123456");
         var docId = await _factory.CreateDocumentAsync(login!.Token!, borrowerName: "مقترض حلب");
 
@@ -112,8 +86,8 @@ public class AlertsIntegrationTests
     [Fact]
     public async Task Head_CreatesLawyerAlert_OnlyTargetReceives()
     {
-        var damId = await BranchIdAsync("DAM");
-        var target = await _factory.CreateUserAsync(NewName("lawyer_extra"), UserRole.Lawyer, damId);
+        var damId = await _factory.GetBranchIdAsync("DAM");
+        var target = await _factory.CreateUserAsync(UniqueName("lawyer_extra"), UserRole.Lawyer, damId);
         var head = _factory.AuthorizedClient("head1");
 
         var response = await head.PostAsJsonAsync("/api/alerts", new
@@ -137,10 +111,10 @@ public class AlertsIntegrationTests
     [Fact]
     public async Task Head_CreatesBranchBroadcast_ReachesAllBranchLawyers()
     {
-        var branchId = await CreateBranchAsync("بث");
-        var headName = (await _factory.CreateUserAsync(NewName("head_bx"), UserRole.Head, branchId)).Username;
-        var first = await _factory.CreateUserAsync(NewName("lawyer_bx"), UserRole.Lawyer, branchId);
-        var second = await _factory.CreateUserAsync(NewName("lawyer_bx"), UserRole.Lawyer, branchId);
+        var branchId = await _factory.CreateBranchAsync("بث");
+        var headName = (await _factory.CreateUserAsync(UniqueName("head_bx"), UserRole.Head, branchId)).Username;
+        var first = await _factory.CreateUserAsync(UniqueName("lawyer_bx"), UserRole.Lawyer, branchId);
+        var second = await _factory.CreateUserAsync(UniqueName("lawyer_bx"), UserRole.Lawyer, branchId);
         var head = _factory.AuthorizedClient(headName);
 
         var response = await head.PostAsJsonAsync("/api/alerts", new
@@ -166,10 +140,10 @@ public class AlertsIntegrationTests
     [Fact]
     public async Task Head_ListsOnlyOwnRecipientAlerts_WithReadState()
     {
-        var branchId = await CreateBranchAsync("إحصاء");
-        var headName = (await _factory.CreateUserAsync(NewName("head_st"), UserRole.Head, branchId)).Username;
-        var first = await _factory.CreateUserAsync(NewName("lawyer_st"), UserRole.Lawyer, branchId);
-        await _factory.CreateUserAsync(NewName("lawyer_st"), UserRole.Lawyer, branchId);
+        var branchId = await _factory.CreateBranchAsync("إحصاء");
+        var headName = (await _factory.CreateUserAsync(UniqueName("head_st"), UserRole.Head, branchId)).Username;
+        var first = await _factory.CreateUserAsync(UniqueName("lawyer_st"), UserRole.Lawyer, branchId);
+        await _factory.CreateUserAsync(UniqueName("lawyer_st"), UserRole.Lawyer, branchId);
 
         var docLogin = await _factory.LoginAsync(first.Username, "123456");
         var docId = await _factory.CreateDocumentAsync(docLogin!.Token!, borrowerName: "مقترض");
@@ -195,7 +169,7 @@ public class AlertsIntegrationTests
             documentId = (int?)null,
             targetLawyerId = (int?)null,
             message = "لرئيس القسم",
-            recipientUserId = await UserIdAsync(headName),
+            recipientUserId = await _factory.UserIdAsync(headName),
         })).Content.ReadFromJsonAsync<HeadAlertDto>();
 
         // قراءة بالمستلم (§8): الرئيس يرى تنبيهه فقط — لا تنبيهات المحامين ولا التعميم.
@@ -240,9 +214,9 @@ public class AlertsIntegrationTests
     [Fact]
     public async Task Head_MarksOwnAlertRead_Succeeds_OthersNotFound()
     {
-        var branchId = await CreateBranchAsync("قراءة رئيس");
-        var headName = (await _factory.CreateUserAsync(NewName("head_rd"), UserRole.Head, branchId)).Username;
-        var lawyer = await _factory.CreateUserAsync(NewName("lawyer_rd"), UserRole.Lawyer, branchId);
+        var branchId = await _factory.CreateBranchAsync("قراءة رئيس");
+        var headName = (await _factory.CreateUserAsync(UniqueName("head_rd"), UserRole.Head, branchId)).Username;
+        var lawyer = await _factory.CreateUserAsync(UniqueName("lawyer_rd"), UserRole.Lawyer, branchId);
         var head = _factory.AuthorizedClient(headName);
 
         var own = await (await head.PostAsJsonAsync("/api/alerts", new
@@ -251,7 +225,7 @@ public class AlertsIntegrationTests
             documentId = (int?)null,
             targetLawyerId = (int?)null,
             message = "تنبيه الرئيس الخاص",
-            recipientUserId = await UserIdAsync(headName),
+            recipientUserId = await _factory.UserIdAsync(headName),
         })).Content.ReadFromJsonAsync<HeadAlertDto>();
         var others = await (await head.PostAsJsonAsync("/api/alerts", new
         {
@@ -319,10 +293,10 @@ public class AlertsIntegrationTests
     [Fact]
     public async Task Get_Alert_LawyerNonRecipient_NotFound()
     {
-        var branchId = await CreateBranchAsync("جلب");
-        var headName = (await _factory.CreateUserAsync(NewName("head_get"), UserRole.Head, branchId)).Username;
-        var target = await _factory.CreateUserAsync(NewName("lawyer_get"), UserRole.Lawyer, branchId);
-        var other = await _factory.CreateUserAsync(NewName("lawyer_get2"), UserRole.Lawyer, branchId);
+        var branchId = await _factory.CreateBranchAsync("جلب");
+        var headName = (await _factory.CreateUserAsync(UniqueName("head_get"), UserRole.Head, branchId)).Username;
+        var target = await _factory.CreateUserAsync(UniqueName("lawyer_get"), UserRole.Lawyer, branchId);
+        var other = await _factory.CreateUserAsync(UniqueName("lawyer_get2"), UserRole.Lawyer, branchId);
         var head = _factory.AuthorizedClient(headName);
 
         var created = await (await head.PostAsJsonAsync("/api/alerts", new
@@ -341,9 +315,9 @@ public class AlertsIntegrationTests
     [Fact]
     public async Task Get_Alert_HeadRecipient_ReturnsIt_OthersNotFound()
     {
-        var branchId = await CreateBranchAsync("جلب رئيس");
-        var headName = (await _factory.CreateUserAsync(NewName("head_g2"), UserRole.Head, branchId)).Username;
-        var lawyer = await _factory.CreateUserAsync(NewName("lawyer_g3"), UserRole.Lawyer, branchId);
+        var branchId = await _factory.CreateBranchAsync("جلب رئيس");
+        var headName = (await _factory.CreateUserAsync(UniqueName("head_g2"), UserRole.Head, branchId)).Username;
+        var lawyer = await _factory.CreateUserAsync(UniqueName("lawyer_g3"), UserRole.Lawyer, branchId);
         var head = _factory.AuthorizedClient(headName);
 
         var own = await (await head.PostAsJsonAsync("/api/alerts", new
@@ -352,7 +326,7 @@ public class AlertsIntegrationTests
             documentId = (int?)null,
             targetLawyerId = (int?)null,
             message = "جلب رئيس",
-            recipientUserId = await UserIdAsync(headName),
+            recipientUserId = await _factory.UserIdAsync(headName),
         })).Content.ReadFromJsonAsync<HeadAlertDto>();
         var others = await (await head.PostAsJsonAsync("/api/alerts", new
         {
@@ -369,9 +343,9 @@ public class AlertsIntegrationTests
     [Fact]
     public async Task Get_Alert_HeadOfAnotherBranch_NotFound()
     {
-        var branchA = await CreateBranchAsync("ألف");
-        var headA = (await _factory.CreateUserAsync(NewName("head_a"), UserRole.Head, branchA)).Username;
-        var lawyerA = await _factory.CreateUserAsync(NewName("lawyer_a"), UserRole.Lawyer, branchA);
+        var branchA = await _factory.CreateBranchAsync("ألف");
+        var headA = (await _factory.CreateUserAsync(UniqueName("head_a"), UserRole.Head, branchA)).Username;
+        var lawyerA = await _factory.CreateUserAsync(UniqueName("lawyer_a"), UserRole.Lawyer, branchA);
         var clientA = _factory.AuthorizedClient(headA);
         var created = await (await clientA.PostAsJsonAsync("/api/alerts", new
         {
@@ -381,8 +355,8 @@ public class AlertsIntegrationTests
             message = "تنبيه ألف",
         })).Content.ReadFromJsonAsync<HeadAlertDto>();
 
-        var branchB = await CreateBranchAsync("باء");
-        var headB = (await _factory.CreateUserAsync(NewName("head_b"), UserRole.Head, branchB)).Username;
+        var branchB = await _factory.CreateBranchAsync("باء");
+        var headB = (await _factory.CreateUserAsync(UniqueName("head_b"), UserRole.Head, branchB)).Username;
         var clientB = _factory.AuthorizedClient(headB);
 
         var response = await clientB.GetAsync($"/api/alerts/{created!.Id}");
@@ -400,9 +374,9 @@ public class AlertsIntegrationTests
     [Fact]
     public async Task Lawyer_ListsAlerts_DoesNotSeeOthersBranchesAlerts()
     {
-        var branchId = await CreateBranchAsync("حلب2");
-        var headName = (await _factory.CreateUserAsync(NewName("head_al2"), UserRole.Head, branchId)).Username;
-        var alpLawyer = await _factory.CreateUserAsync(NewName("lawyer_al2"), UserRole.Lawyer, branchId);
+        var branchId = await _factory.CreateBranchAsync("حلب2");
+        var headName = (await _factory.CreateUserAsync(UniqueName("head_al2"), UserRole.Head, branchId)).Username;
+        var alpLawyer = await _factory.CreateUserAsync(UniqueName("lawyer_al2"), UserRole.Lawyer, branchId);
         var headAlp = _factory.AuthorizedClient(headName);
 
         await headAlp.PostAsJsonAsync("/api/alerts", new
@@ -421,8 +395,8 @@ public class AlertsIntegrationTests
     [Fact]
     public async Task Sent_HeadSeesOwnIssued_LawyerAndManagerForbidden()
     {
-        var damId = await BranchIdAsync("DAM");
-        var target = await _factory.CreateUserAsync(NewName("lawyer_sent"), UserRole.Lawyer, damId);
+        var damId = await _factory.GetBranchIdAsync("DAM");
+        var target = await _factory.CreateUserAsync(UniqueName("lawyer_sent"), UserRole.Lawyer, damId);
         var head = _factory.AuthorizedClient("head1");
 
         var created = await head.PostAsJsonAsync("/api/alerts", new
