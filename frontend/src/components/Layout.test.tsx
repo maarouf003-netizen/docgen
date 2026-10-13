@@ -409,6 +409,40 @@ describe('Layout', () => {
     }
   });
 
+  it('يعرض «اقتراحات التطوير» للمشرف والمدير (`BQ-001`) لا لغيرهما', async () => {
+    for (const role of ['admin', 'manager'] as const) {
+      useAuthMock.mockReturnValue({
+        ...baseUser(),
+        user: { ...baseUser().user, role },
+      });
+      stubMatchMedia(false);
+      const { unmount } = render(<Layout />);
+
+      const sidebar = screen.getByRole('navigation', { name: 'القائمة الرئيسية' });
+      expect(within(sidebar).getByRole('link', { name: 'اقتراحات التطوير' })).toHaveAttribute(
+        'href',
+        '/suggestions',
+      );
+      unmount();
+    }
+
+    for (const [role, flags] of [
+      ['head', { isHead: true }],
+      ['subhead', {}],
+      ['lawyer', {}],
+      ['entitymanager', {}],
+    ] as const) {
+      useAuthMock.mockReturnValue({ ...baseUser(), user: { ...baseUser().user, role }, ...flags });
+      stubMatchMedia(false);
+      const { unmount } = render(<Layout />);
+      const sidebar = screen.getByRole('navigation', { name: 'القائمة الرئيسية' });
+      expect(
+        within(sidebar).queryByRole('link', { name: 'اقتراحات التطوير' }),
+      ).not.toBeInTheDocument();
+      unmount();
+    }
+  });
+
   it('يعرض «إدارة الفروع» للمشرف فقط (لا للمدير)', async () => {
     useAuthMock.mockReturnValue({
       ...baseUser(),
@@ -430,6 +464,24 @@ describe('Layout', () => {
     const { unmount } = render(<Layout />);
     expect(screen.queryByRole('link', { name: 'إدارة الفروع' })).not.toBeInTheDocument();
     unmount();
+  });
+
+  it('يعرض «اقتراحات التطوير» خلف «المزيد» على الجوال للمشرف والمدير', async () => {
+    for (const role of ['admin', 'manager'] as const) {
+      useAuthMock.mockReturnValue({
+        ...baseUser(),
+        user: { ...baseUser().user, role },
+      });
+      stubMatchMedia(true);
+      const { unmount } = render(<Layout />);
+      await userEvent.setup().click(screen.getByRole('button', { name: /المزيد/ }));
+      expect(
+        within(screen.getByRole('dialog', { name: 'قائمة التنقل' })).getByRole('link', {
+          name: 'اقتراحات التطوير',
+        }),
+      ).toHaveAttribute('href', '/suggestions');
+      unmount();
+    }
   });
 
   it('يبقي الشريط الجانبي على الموبايل داخل الدرج عند فتحه', async () => {
