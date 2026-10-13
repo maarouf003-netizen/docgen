@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -23,11 +24,11 @@ public sealed class ForbiddenShapeContractTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var lawyer1 = Unique("law1");
-        var lawyer2 = Unique("law2");
-        var del = Unique("del");
-        await _factory.CreateUserAsync(lawyer1, UserRole.Lawyer, await BranchIdAsync());
-        await _factory.CreateUserAsync(lawyer2, UserRole.Lawyer, await BranchIdAsync());
+        var lawyer1 = UniqueName("law1");
+        var lawyer2 = UniqueName("law2");
+        var del = UniqueName("del");
+        await _factory.CreateUserAsync(lawyer1, UserRole.Lawyer, await _factory.GetDamascusIdAsync());
+        await _factory.CreateUserAsync(lawyer2, UserRole.Lawyer, await _factory.GetDamascusIdAsync());
         await _factory.CreateUserAsync(del, UserRole.EntityManager);
 
         using var scope = _factory.Services.CreateScope();
@@ -60,21 +61,6 @@ public sealed class ForbiddenShapeContractTests : IAsyncLifetime
     {
         _factory.Dispose();
         return Task.CompletedTask;
-    }
-
-    private static string Unique(string prefix) => $"{prefix}_{Guid.NewGuid():N}"[..24];
-
-    private async Task<int> BranchIdAsync()
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        var branch = await db.Branches.SingleAsync(b => b.Code == "DAM");
-        if (string.IsNullOrWhiteSpace(branch.Governorate))
-        {
-            branch.Governorate = "دمشق";
-            await db.SaveChangesAsync();
-        }
-        return branch.Id;
     }
 
     private static async Task<string> ReadMessageAsync(HttpResponseMessage response)

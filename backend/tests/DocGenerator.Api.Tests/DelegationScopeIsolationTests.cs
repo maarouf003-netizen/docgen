@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using DocGenerator.Api.Tests.TestHelpers;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,66 +14,12 @@ namespace DocGenerator.Api.Tests;
 /// الاعتماد لمالك الدائرة المنابة، والتوجيه للشعبة والتراجع، والرفض للتصحيح.
 /// قاعدة معزولة لكل صنف (مصنع خاص) — بلا تلوث متبادل.
 /// </summary>
-public sealed class DelegationScopeIsolationTests : IAsyncLifetime
+public sealed class DelegationScopeIsolationTests : IsolatedApiTestBase
 {
-    private readonly ApiFactory _factory = new();
-
-    public Task InitializeAsync() => Task.CompletedTask;
-
-    public Task DisposeAsync()
-    {
-        _factory.Dispose();
-        return Task.CompletedTask;
-    }
-
-    private static string Unique(string prefix) => $"{prefix}_{Guid.NewGuid():N}"[..24];
-
-    private async Task<int> BranchIdAsync()
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        var branch = await db.Branches.SingleAsync(b => b.Code == "DAM");
-        if (string.IsNullOrWhiteSpace(branch.Governorate))
-        {
-            branch.Governorate = "دمشق";
-            await db.SaveChangesAsync();
-        }
-        return branch.Id;
-    }
-
-    private async Task<int> CreateSectionAsync(string name)
-    {
-        var manager = _factory.AuthorizedClient("manager");
-        var response = await manager.PostAsJsonAsync("/api/sections", new
-        {
-            branchId = await BranchIdAsync(),
-            name,
-        });
-        response.EnsureSuccessStatusCode();
-        using var doc = await response.Content.ReadFromJsonAsync<JsonDocument>();
-        return doc!.RootElement.GetProperty("id").GetInt32();
-    }
-
-    private async Task<string> CreateSubHeadTokenAsync(int sectionId)
-    {
-        var admin = _factory.AuthorizedClient("admin");
-        var username = Unique("sub");
-        var created = await admin.PostAsJsonAsync("/api/users", new
-        {
-            username,
-            fullName = username,
-            role = "subhead",
-            branchId = await BranchIdAsync(),
-            password = "123456",
-            sectionId,
-        });
-        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        return (await _factory.LoginAsync(username, "123456"))!.Token!;
-    }
 
     private async Task<int> CreateCircuitAsync(string name)
     {
-        var head = _factory.AuthorizedClient("head1");
+        var head = Factory.AuthorizedClient("head1");
         var response = await head.PostAsJsonAsync("/api/execution-circuits", new { name });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         using var doc = await response.Content.ReadFromJsonAsync<JsonDocument>();
@@ -80,7 +28,7 @@ public sealed class DelegationScopeIsolationTests : IAsyncLifetime
 
     private async Task TransferCircuitAsync(int circuitId, int? sectionId)
     {
-        var manager = _factory.AuthorizedClient("manager");
+        var manager = Factory.AuthorizedClient("manager");
         var response = await manager.PostAsJsonAsync($"/api/execution-circuits/{circuitId}/transfer", new
         {
             targetSectionId = sectionId,
@@ -88,26 +36,9 @@ public sealed class DelegationScopeIsolationTests : IAsyncLifetime
         response.EnsureSuccessStatusCode();
     }
 
-    private async Task<(int Id, string Token)> NewLawyerAsync()
-    {
-        var admin = _factory.AuthorizedClient("admin");
-        var username = Unique("law");
-        var created = await admin.PostAsJsonAsync("/api/users/lawyers", new
-        {
-            username,
-            fullName = username,
-            password = "123456",
-            branchId = await BranchIdAsync(),
-        });
-        Assert.Equal(HttpStatusCode.OK, created.StatusCode);
-        using var doc = await created.Content.ReadFromJsonAsync<JsonDocument>();
-        var token = (await _factory.LoginAsync(username, "123456"))!.Token!;
-        return (doc!.RootElement.GetProperty("id").GetInt32(), token);
-    }
-
     private async Task<int> CreateFileWithAssetAsync(string token, int circuitId, string borrower)
     {
-        var client = _factory.ClientWithToken(token);
+        var client = Factory.ClientWithToken(token);
         var response = await client.PostAsJsonAsync("/api/documents", new
         {
             documentType = "بيان دعوى",
@@ -143,14 +74,14 @@ public sealed class DelegationScopeIsolationTests : IAsyncLifetime
 
     private async Task<int> AssetIdAsync(int docId)
     {
-        using var scope = _factory.Services.CreateScope();
+        using var scope = Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
         return await db.Assets.Where(a => a.DocumentId == docId).Select(a => a.Id).SingleAsync();
     }
 
     private async Task<int> CreateDelegationAsync(string token, int docId, int circuitId, int assetId)
     {
-        var client = _factory.ClientWithToken(token);
+        var client = Factory.ClientWithToken(token);
         var response = await client.PostAsJsonAsync($"/api/documents/{docId}/delegations", new
         {
             delegatedCourt = (string?)null,
@@ -181,16 +112,16 @@ public sealed class DelegationScopeIsolationTests : IAsyncLifetime
     [Fact]
     public async Task PendingAssign_SectionCircuit_SubHeadOnly()
     {
-        var sectionId = await CreateSectionAsync(Unique("شعبة"));
-        var circuitId = await CreateCircuitAsync(Unique("دائرة"));
+        var sectionId = await Factory.CreateSectionAsync(UniqueName("شعبة"));
+        var circuitId = await CreateCircuitAsync(UniqueName("دائرة"));
         await TransferCircuitAsync(circuitId, sectionId);
-        var subToken = await CreateSubHeadTokenAsync(sectionId);
-        var subClient = _factory.ClientWithToken(subToken);
-        var (_, lawyerToken) = await NewLawyerAsync();
-        var (targetId, _) = await NewLawyerAsync();
-        var fileId = await CreateFileWithAssetAsync(lawyerToken, circuitId, Unique("مقترض"));
+        var subToken = await Factory.CreateSubHeadTokenAsync(sectionId);
+        var subClient = Factory.ClientWithToken(subToken);
+        var (_, lawyerToken) = await Factory.NewLawyerAsync();
+        var (targetId, _) = await Factory.NewLawyerAsync();
+        var fileId = await CreateFileWithAssetAsync(lawyerToken, circuitId, UniqueName("مقترض"));
         var delegationId = await CreateDelegationAsync(lawyerToken, fileId, circuitId, await AssetIdAsync(fileId));
-        var head = _factory.AuthorizedClient("head1");
+        var head = Factory.AuthorizedClient("head1");
 
         // العزل: الشعبة تراها والقسم لا.
         Assert.Contains(delegationId, await PendingIdsAsync(subClient));
@@ -214,12 +145,12 @@ public sealed class DelegationScopeIsolationTests : IAsyncLifetime
     [Fact]
     public async Task Reject_WrongCircuit_LawyerSeesReasonAndCorrects()
     {
-        var divisionCircuit = await CreateCircuitAsync(Unique("قسم"));
-        var (_, lawyerToken) = await NewLawyerAsync();
-        var fileId = await CreateFileWithAssetAsync(lawyerToken, divisionCircuit, Unique("مقترض"));
+        var divisionCircuit = await CreateCircuitAsync(UniqueName("قسم"));
+        var (_, lawyerToken) = await Factory.NewLawyerAsync();
+        var fileId = await CreateFileWithAssetAsync(lawyerToken, divisionCircuit, UniqueName("مقترض"));
         var delegationId = await CreateDelegationAsync(lawyerToken, fileId, divisionCircuit, await AssetIdAsync(fileId));
-        var head = _factory.AuthorizedClient("head1");
-        var lawyerClient = _factory.ClientWithToken(lawyerToken);
+        var head = Factory.AuthorizedClient("head1");
+        var lawyerClient = Factory.ClientWithToken(lawyerToken);
 
         // الرفض بلا سبب مرفوض، وبرسالة يُظهرها فلتر المرفوض وعدّاده وبطاقة الملف.
         var emptyReject = await head.PostAsJsonAsync($"/api/delegations/{delegationId}/reject", new { reason = "" });
@@ -242,7 +173,7 @@ public sealed class DelegationScopeIsolationTests : IAsyncLifetime
 
         // الاعتماد محظور حتى التصحيح، وبعده تعود للمعلّق.
         var blocked = await head.PostAsJsonAsync($"/api/delegations/{delegationId}/assign",
-            new { assignedLawyerId = (await NewLawyerAsync()).Id });
+            new { assignedLawyerId = (await Factory.NewLawyerAsync()).Id });
         Assert.Equal(HttpStatusCode.BadRequest, blocked.StatusCode);
     }
 }

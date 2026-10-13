@@ -20,6 +20,15 @@ namespace DocGenerator.Api.Tests;
 /// </summary>
 public sealed class ApiFactory : WebApplicationFactory<Program>
 {
+    /// <summary>
+    /// ثوابت سكّ التوكن الاختباري — مطابقة حرفيًا لإعدادات المصنع (`Jwt:Secret`
+    /// أدناه) ولقيم التحقق الافتراضية (المُصدِر/الجمهور)؛ المرجع الوحيد لسكّ
+    /// الرموز خارج بوابة الدخول (كـ`MintToken` في `MissingRoleClaimTests`).
+    /// </summary>
+    public const string TestJwtSecret = "integration-test-secret-0123456789-0123456789-0123456789";
+    public const string TestJwtIssuer = "DocGenerator";
+    public const string TestJwtAudience = "DocGeneratorClients";
+
     private readonly string _dbPath = Path.Combine(
         Path.GetTempPath(), $"docgen_it_{Guid.NewGuid():N}.db");
     private readonly string _logDir = Path.Combine(

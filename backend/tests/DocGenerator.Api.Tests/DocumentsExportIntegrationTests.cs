@@ -99,7 +99,7 @@ public class DocumentsExportIntegrationTests
     {
         // عمود «ملحق العقد» في التصدير يعرض رقم الملحق للمصرفي.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var create = await client.PostAsJsonAsync("/api/documents", new
         {
             generalEntitySide = "applicant",
@@ -139,7 +139,7 @@ public class DocumentsExportIntegrationTests
         // التصدير يمر عبر نفس الحجب المشروط بالبحث: الافتراضي يستبعد المحال، ومع نص بحث
         // مطابق يشمله (بحث شامل لكل الملفات غير المحذوفة أيا كانت حالتها).
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         // ملف متداول مسجل (غير مسودة) كي يمر انتقال «محال الى البداية» من آلة الحالات.
         var create = await client.PostAsJsonAsync("/api/documents", new
         {
@@ -183,7 +183,7 @@ public class DocumentsExportIntegrationTests
         // (الحالة محلولة، طالب التنفيذ، المنفذ عليه، نص الإجراء الأول).
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var id = await _factory.CreateDocumentAsync(token, "مقترض تصدير غني", applicant: "المصرف", court: "دمشق");
-        var lawyer = _factory.WithToken(token);
+        var lawyer = _factory.ClientWithToken(token);
         var action = await lawyer.PostAsJsonAsync($"/api/documents/{id}/actions",
             new { text = "إجراء متابعة صريح", actionDate = "1/8/2026" });
         Assert.Equal(HttpStatusCode.OK, action.StatusCode);

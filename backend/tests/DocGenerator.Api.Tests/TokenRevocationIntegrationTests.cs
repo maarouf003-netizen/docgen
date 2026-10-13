@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,18 +14,12 @@ public class TokenRevocationIntegrationTests
 
     public TokenRevocationIntegrationTests(ApiFactory factory) => _factory = factory;
 
-    private async Task<int> BranchIdAsync(string code)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        return db.Branches.Single(b => b.Code == code).Id;
-    }
 
     [Fact]
     public async Task ChangePassword_InvalidatesPreviouslyIssuedTokens()
     {
         var username = $"rev_{Guid.NewGuid():N}"[..16];
-        await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId: await BranchIdAsync("DAM"), password: "123456");
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId: await _factory.GetBranchIdAsync("DAM"), password: "123456");
 
         var firstLogin = await _factory.LoginAsync(username, "123456");
         Assert.Equal((int)HttpStatusCode.OK, firstLogin!.StatusCode);
@@ -51,7 +46,7 @@ public class TokenRevocationIntegrationTests
     public async Task DeactivatedAccount_TokensBecomeInvalid()
     {
         var username = $"deact_{Guid.NewGuid():N}"[..16];
-        await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId: await BranchIdAsync("DAM"), password: "123456");
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId: await _factory.GetBranchIdAsync("DAM"), password: "123456");
 
         var login = await _factory.LoginAsync(username, "123456");
         Assert.Equal((int)HttpStatusCode.OK, login!.StatusCode);

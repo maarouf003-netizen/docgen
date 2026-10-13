@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -19,18 +20,9 @@ public class ForumApiTests
 
     public ForumApiTests(ApiFactory factory) => _factory = factory;
 
-    private static string Unique(string prefix) => $"{prefix}_{Guid.NewGuid():N}"[..20];
-
-    private int BranchId(string code)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        return db.Branches.Single(b => b.Code == code).Id;
-    }
-
     private async Task<User> NewUserAsync(string prefix, UserRole role, string? branchCode = "DAM")
-        => await _factory.CreateUserAsync(Unique(prefix), role,
-            branchCode is null ? null : BranchId(branchCode));
+        => await _factory.CreateUserAsync(UniqueName(prefix), role,
+            branchCode is null ? null : await _factory.GetBranchIdAsync(branchCode));
 
     private HttpClient ClientFor(User user) => _factory.ClientForUser(user);
 

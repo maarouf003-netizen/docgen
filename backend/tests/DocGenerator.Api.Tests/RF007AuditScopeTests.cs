@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using System.Text.Json;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -19,18 +20,10 @@ public class RF007AuditScopeTests
 
     public RF007AuditScopeTests(ApiFactory factory) => _factory = factory;
 
-    private static string NewName(string prefix) => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 16, 40)];
-
-    private Task<int> BranchIdAsync(string code)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        return Task.FromResult(db.Branches.Single(b => b.Code == code).Id);
-    }
 
     private async Task<string> LawyerWithDocumentAsync(string branchCode)
     {
-        var user = await _factory.CreateUserAsync(NewName("lawyer_scope"), UserRole.Lawyer, await BranchIdAsync(branchCode));
+        var user = await _factory.CreateUserAsync(UniqueName("lawyer_scope"), UserRole.Lawyer, await _factory.GetBranchIdAsync(branchCode));
         var token = (await _factory.LoginAsync(user.Username, "123456"))!.Token!;
         await _factory.CreateDocumentAsync(token, borrowerName: $"نطاق {Guid.NewGuid():N}"[..30]);
         return user.Username;

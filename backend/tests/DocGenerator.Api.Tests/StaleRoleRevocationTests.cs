@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Net.Http.Json;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -29,16 +30,6 @@ public class StaleRoleRevocationTests
     /// <summary>
     /// فرع معزول برئيسه الوحيد (وحدانية الرئيس المفعّل لكل فرع — قرار §2.26).
     /// </summary>
-    private async Task<int> CreateBranchAsync(string name, string governorate)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        var branch = new Branch { Name = name, Code = $"SR_{Guid.NewGuid():N}"[..12].ToUpperInvariant(), Governorate = governorate };
-        db.Branches.Add(branch);
-        await db.SaveChangesAsync();
-        return branch.Id;
-    }
-
     [Fact]
     public async Task RoleDemotion_InvalidatesPreviouslyIssuedTokens()
     {
@@ -118,7 +109,7 @@ public class StaleRoleRevocationTests
         // يُسقط توكن الفرع القديم فورًا فلا يرى بياناته بصمت. الرئيس يُنشأ في
         // فرع معزول (وحدانية الرئيس — قرار §2.26: دمشق فيها head1 المزروع).
         var username = $"hmove_{Guid.NewGuid():N}"[..16];
-        var srcBranchId = await CreateBranchAsync("فرع المصدر", "حمص");
+        var srcBranchId = await _factory.CreateBranchAsync("فرع المصدر", "حمص");
         var target = await _factory.CreateUserAsync(username, UserRole.Head, branchId: srcBranchId, password: "123456");
 
         var login = await _factory.LoginAsync(username, "123456");

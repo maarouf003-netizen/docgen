@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
@@ -25,12 +26,6 @@ public class EntityRegistryHeadScopeIntegrationTests
 
     #region تهيئة بيانات معزولة
 
-    private async Task<int> BranchIdAsync(string code)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        return db.Branches.Single(b => b.Code == code).Id;
-    }
 
     private sealed record PendingReviewCountDto(int Count);
 
@@ -74,7 +69,7 @@ public class EntityRegistryHeadScopeIntegrationTests
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
 
-        var aleppoBranchId = await BranchIdAsync("ALP");
+        var aleppoBranchId = await _factory.GetBranchIdAsync("ALP");
         var user = new User
         {
             Username = ArabicNameNormalizer.Normalize($"lawyer_scope_{Guid.NewGuid():N}"),
@@ -150,7 +145,7 @@ public class EntityRegistryHeadScopeIntegrationTests
         Assert.Equal(managerBefore + 1, await GetPendingReviewCountAsync(manager));
 
         // قيد أدخله محامي فرع آخر (حلب): يرفع عدّاد المدير وحده.
-        var alpLawyer = await _factory.CreateUserAsync($"lawyer_alpcount_{Guid.NewGuid():N}"[..40], UserRole.Lawyer, branchId: await BranchIdAsync("ALP"));
+        var alpLawyer = await _factory.CreateUserAsync($"lawyer_alpcount_{Guid.NewGuid():N}"[..40], UserRole.Lawyer, branchId: await _factory.GetBranchIdAsync("ALP"));
         await SeedNeedsReviewEntryAsync(alpLawyer.Id);
         Assert.Equal(headBefore + 1, await GetPendingReviewCountAsync(head));
         Assert.Equal(managerBefore + 2, await GetPendingReviewCountAsync(manager));

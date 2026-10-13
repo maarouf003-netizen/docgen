@@ -20,7 +20,7 @@ public class RF019AppendOnlyTests
 
     private async Task SeedFieldChangeAsync(string token)
     {
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token, borrowerName: "تدقيق ثابت");
         var update = await client.PutAsJsonAsync($"/api/documents/{id}", new
         {

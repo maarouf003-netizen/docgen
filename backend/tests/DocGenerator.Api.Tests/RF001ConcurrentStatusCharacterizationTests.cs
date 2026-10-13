@@ -35,7 +35,7 @@ public class RF001ConcurrentStatusCharacterizationTests
     {
         // الآلة مطبَّقة خدميًا اليوم: تريث → تريث مرفوض (AllowedStatusChanges/CanRevert).
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token, borrowerName: "سباق تسلسلي");
 
         var first = await client.PostAsJsonAsync($"/api/documents/{id}/status", DeferralPayload("5"));
@@ -53,7 +53,7 @@ public class RF001ConcurrentStatusCharacterizationTests
         // السلوك الحالي (INT-012): بلا قفل متفائل — الفائز الأخير يكتب (أو يُرفَض الثاني إن تسلسلا).
         // بعد RF-010 يجب أن تُعكَس: المتعارض المتأخر 409 Conflict دائمًا.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token, borrowerName: "سباق متوازٍ");
 
         var both = await Task.WhenAll(

@@ -129,7 +129,7 @@ public class ManagerStatsIntegrationTests
         var regDate = $"{today.Day}/{today.Month}/{today.Year}";
 
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyerClient = _factory.WithToken(token);
+        var lawyerClient = _factory.ClientWithToken(token);
         var create = await lawyerClient.PostAsJsonAsync("/api/documents", new
         {
             documentType = "بيان دعوى",

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,12 +21,6 @@ public class RateLimitingIntegrationTests
     private WebApplicationFactory<Program> IsolatedFactory(string key, string value)
         => _factory.WithWebHostBuilder(b => b.UseSetting(key, value));
 
-    private async Task<int> BranchIdAsync(string code)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        return db.Branches.Single(b => b.Code == code).Id;
-    }
 
     private static async Task<HttpClient> AuthedClientAsync(
         WebApplicationFactory<Program> factory, string username, string password)
@@ -94,7 +89,7 @@ public class RateLimitingIntegrationTests
     public async Task PasswordPolicy_BlocksFloodWith429()
     {
         var username = $"rl_pwd_{Guid.NewGuid():N}"[..16];
-        await _factory.CreateUserAsync(username, DocGenerator.Domain.Enums.UserRole.Lawyer, branchId: await BranchIdAsync("DAM"), password: "123456");
+        await _factory.CreateUserAsync(username, DocGenerator.Domain.Enums.UserRole.Lawyer, branchId: await _factory.GetBranchIdAsync("DAM"), password: "123456");
 
         using var factory = IsolatedFactory("RateLimiting:PasswordPerMinute", "2");
         var client = await AuthedClientAsync(factory, username, "123456");

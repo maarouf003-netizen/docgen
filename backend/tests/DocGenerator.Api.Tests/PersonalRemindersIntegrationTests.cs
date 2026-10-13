@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -14,14 +15,6 @@ public class PersonalRemindersIntegrationTests
 
     public PersonalRemindersIntegrationTests(ApiFactory factory) => _factory = factory;
 
-    private static string NewName(string prefix) => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 16, 40)];
-
-    private Task<int> BranchIdAsync(string code)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        return Task.FromResult(db.Branches.Single(b => b.Code == code).Id);
-    }
 
     private static object ValidBody(string title = "مراجعة الملف") => new
     {
@@ -129,8 +122,8 @@ public class PersonalRemindersIntegrationTests
     [Fact]
     public async Task Lawyer_CannotTouchAnotherLawyerReminder()
     {
-        var damId = await BranchIdAsync("DAM");
-        var other = await _factory.CreateUserAsync(NewName("prem_other"), UserRole.Lawyer, damId);
+        var damId = await _factory.GetBranchIdAsync("DAM");
+        var other = await _factory.CreateUserAsync(UniqueName("prem_other"), UserRole.Lawyer, damId);
         var otherClient = _factory.AuthorizedClient(other.Username);
         var lawyer = _factory.AuthorizedClient("lawyer1");
 

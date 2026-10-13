@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,14 +18,6 @@ public class RF005SecurityLoggingTests
 
     public RF005SecurityLoggingTests(ApiFactory factory) => _factory = factory;
 
-    private static string NewName(string prefix) => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 16, 40)];
-
-    private Task<int> BranchIdAsync(string code)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        return Task.FromResult(db.Branches.Single(b => b.Code == code).Id);
-    }
 
     private Task<bool> HasAuditRowAsync(string actionType, string userName)
     {
@@ -36,7 +29,7 @@ public class RF005SecurityLoggingTests
     [Fact]
     public async Task GuardRejection_WritesPortalForbiddenRow()
     {
-        var username = NewName("em_sec");
+        var username = UniqueName("em_sec");
         await _factory.CreateUserAsync(username, UserRole.EntityManager);
         var client = _factory.AuthorizedClient(username);
 
@@ -49,8 +42,8 @@ public class RF005SecurityLoggingTests
     [Fact]
     public async Task LockedRetry_WritesLockedRetryRow()
     {
-        var username = NewName("lock_sec");
-        await _factory.CreateUserAsync(username, UserRole.Lawyer, await BranchIdAsync("DAM"));
+        var username = UniqueName("lock_sec");
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, await _factory.GetBranchIdAsync("DAM"));
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
@@ -70,9 +63,9 @@ public class RF005SecurityLoggingTests
     [Fact]
     public async Task BranchSelection_WritesBranchChoicesRow()
     {
-        var username = NewName("brsel_sec");
-        await _factory.CreateUserAsync(username, UserRole.Lawyer, await BranchIdAsync("DAM"));
-        await _factory.CreateUserAsync(username, UserRole.Lawyer, await BranchIdAsync("ALP"));
+        var username = UniqueName("brsel_sec");
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, await _factory.GetBranchIdAsync("DAM"));
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, await _factory.GetBranchIdAsync("ALP"));
 
         var client = _factory.CreateClient();
         var response = await client.PostAsJsonAsync("/api/auth/login", new { username, password = "123456" });

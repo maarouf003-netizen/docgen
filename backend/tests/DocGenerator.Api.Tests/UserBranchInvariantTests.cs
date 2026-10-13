@@ -1,4 +1,5 @@
 using System.Net;
+using DocGenerator.Api.Tests.TestHelpers;
 using DocGenerator.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,17 +12,8 @@ namespace DocGenerator.Api.Tests;
 /// لا خدمة الإدارة وحدها. يعمل على قاعدة SQLite مهاجَّرة فعليًا (المصنع يطبق
 /// الهجرات عند الإقلاع)، والأدوار بلا فرع بالتصميم تبقى صالحة (ضباط شرعية).
 /// </summary>
-public sealed class UserBranchInvariantTests : IAsyncLifetime
+public sealed class UserBranchInvariantTests : IsolatedApiTestBase
 {
-    private readonly ApiFactory _factory = new();
-
-    public Task InitializeAsync() => Task.CompletedTask;
-
-    public Task DisposeAsync()
-    {
-        _factory.Dispose();
-        return Task.CompletedTask;
-    }
 
     [Theory]
     [InlineData(UserRole.Lawyer)]
@@ -30,7 +22,7 @@ public sealed class UserBranchInvariantTests : IAsyncLifetime
     public async Task BranchRole_WithoutBranch_InsertThrows(UserRole role)
     {
         var ex = await Assert.ThrowsAsync<DbUpdateException>(() =>
-            _factory.CreateUserAsync($"nobranch_{role}_{Guid.NewGuid():N}"[..24], role, branchId: null));
+            Factory.CreateUserAsync($"nobranch_{role}_{Guid.NewGuid():N}"[..24], role, branchId: null));
 
         Assert.Contains("CK_Users_BranchRequiredForBranchRoles", ex.ToString());
     }
@@ -42,7 +34,7 @@ public sealed class UserBranchInvariantTests : IAsyncLifetime
     public async Task BranchlessByDesignRole_WithoutBranch_InsertsFine(UserRole role)
     {
         // الضابط الشرعي: الأدوار بلا فرع بالتصميم لا يمسّها القيد.
-        var user = await _factory.CreateUserAsync($"free_{role}_{Guid.NewGuid():N}"[..24], role, branchId: null);
+        var user = await Factory.CreateUserAsync($"free_{role}_{Guid.NewGuid():N}"[..24], role, branchId: null);
 
         Assert.Null(user.BranchId);
     }
@@ -55,7 +47,7 @@ public sealed class UserBranchInvariantTests : IAsyncLifetime
         // الضابط الإيجابي: الصف الشرعي بفرع يمرّ طبيعيًا — ورئيس القسم في فرعٍ
         // جديد (وحدانية الرئيس المفعّل لكل فرع — قرار §2.26: دمشق فيها head1).
         int branchId;
-        using (var scope = _factory.Services.CreateScope())
+        using (var scope = Factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<DocGenerator.Infrastructure.Persistence.DocGeneratorDbContext>();
             if (role == UserRole.Head)
@@ -71,7 +63,7 @@ public sealed class UserBranchInvariantTests : IAsyncLifetime
             }
         }
 
-        var user = await _factory.CreateUserAsync($"ok_{role}_{Guid.NewGuid():N}"[..24], role, branchId: branchId);
+        var user = await Factory.CreateUserAsync($"ok_{role}_{Guid.NewGuid():N}"[..24], role, branchId: branchId);
 
         Assert.Equal(branchId, user.BranchId);
     }
@@ -82,14 +74,14 @@ public sealed class UserBranchInvariantTests : IAsyncLifetime
         // ظهر قاعدة البيانات للوحدانية (قرار §2.26): رئيسا قسم مفعّلان في الفرع
         // نفسه مرفوضان على مستوى التخزين — دمشق فيها head1 المزروع.
         int damascusId;
-        using (var scope = _factory.Services.CreateScope())
+        using (var scope = Factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<DocGenerator.Infrastructure.Persistence.DocGeneratorDbContext>();
             damascusId = db.Branches.Single(b => b.Code == "DAM").Id;
         }
 
         var ex = await Assert.ThrowsAsync<DbUpdateException>(() =>
-            _factory.CreateUserAsync($"dup_head_{Guid.NewGuid():N}"[..24], UserRole.Head, branchId: damascusId));
+            Factory.CreateUserAsync($"dup_head_{Guid.NewGuid():N}"[..24], UserRole.Head, branchId: damascusId));
 
         // `SQLite` يسمّي العمود لا الفهرس في رسالته.
         Assert.Contains("UNIQUE constraint failed: Users.BranchId", ex.ToString());
@@ -102,18 +94,18 @@ public sealed class UserBranchInvariantTests : IAsyncLifetime
         // (بوابة الفرع) لكن كل نقاط الرئاسة ترفضه `403` — السمات لم تُحوَّل بعد
         // عمدًا (قرار §5.1 التنفيذي: التحويل مع الفلترة مرحليًا).
         int damascusId;
-        using (var scope = _factory.Services.CreateScope())
+        using (var scope = Factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<DocGenerator.Infrastructure.Persistence.DocGeneratorDbContext>();
             damascusId = db.Branches.Single(b => b.Code == "DAM").Id;
         }
-        var sub = await _factory.CreateUserAsync($"sub_noscope_{Guid.NewGuid():N}"[..24], UserRole.SubHead, branchId: damascusId);
+        var sub = await Factory.CreateUserAsync($"sub_noscope_{Guid.NewGuid():N}"[..24], UserRole.SubHead, branchId: damascusId);
 
-        var login = await _factory.LoginAsync(sub.Username, "123456");
+        var login = await Factory.LoginAsync(sub.Username, "123456");
         Assert.Equal(200, login!.StatusCode);
         Assert.NotNull(login.Token);
 
-        var client = _factory.CreateClient();
+        var client = Factory.CreateClient();
         client.SetAuthCookie(login.Token!);
         Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/execution-circuits/mine")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/appeals")).StatusCode);

@@ -8,6 +8,8 @@ using DocGenerator.Infrastructure.Persistence;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
+using DocGenerator.Application.Tests.TestHelpers;
+
 namespace DocGenerator.Application.Tests;
 
 /// <summary>
@@ -42,8 +44,6 @@ public class TransferRedirectConcurrencyTests : IDisposable
         return connection;
     }
 
-    private static DbContextOptions<DocGeneratorDbContext> Options(SqliteConnection connection)
-        => new DbContextOptionsBuilder<DocGeneratorDbContext>().UseSqlite(connection).Options;
 
     private static ExecutionCircuitService CircuitService(DocGeneratorDbContext db)
     {
@@ -71,7 +71,7 @@ public class TransferRedirectConcurrencyTests : IDisposable
     private async Task<(int BranchId, int SectionA, int SectionB, int CircuitId, int ManagerId, int HeadId)> SeedTransferAsync()
     {
         var connection = await OpenConnectionAsync();
-        await using var db = new DocGeneratorDbContext(Options(connection));
+        await using var db = new DocGeneratorDbContext(TestDb.CreateOptions(connection));
         await db.Database.EnsureCreatedAsync();
 
         var branch = new Branch { Name = "حماة", Code = "HAM", Governorate = "حماة" };
@@ -118,7 +118,7 @@ public class TransferRedirectConcurrencyTests : IDisposable
     }
 
     private DocGeneratorDbContext OpenDb(SqliteConnection connection)
-        => new(Options(connection));
+        => new(TestDb.CreateOptions(connection));
 
     [Fact]
     public async Task Transfer_StaleVersion_ThrowsFriendlyConflict_AndBumpsVersion()
@@ -217,7 +217,7 @@ public class TransferRedirectConcurrencyTests : IDisposable
     private async Task<(int DelegationId, int SectionA, int SectionB, int HeadId)> SeedRedirectAsync()
     {
         var connection = await OpenConnectionAsync();
-        await using var db = new DocGeneratorDbContext(Options(connection));
+        await using var db = new DocGeneratorDbContext(TestDb.CreateOptions(connection));
         await db.Database.EnsureCreatedAsync();
 
         var src = new Branch { Name = "دمشق", Code = "DAM", Governorate = "دمشق" };

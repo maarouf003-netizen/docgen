@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -21,42 +22,6 @@ public class RF011IdempotencyTests
     private readonly ApiFactory _factory;
 
     public RF011IdempotencyTests(ApiFactory factory) => _factory = factory;
-
-    private static string Unique(string prefix) => $"{prefix}_{Guid.NewGuid():N}"[..20];
-
-    /// <summary>محامٍ جديد بكلمة `123456` وتوكنه — فرع دمشق ما لم يُحدَّد غيره.</summary>
-    private async Task<(int Id, string Token)> NewLawyerAsync(int? branchId = null)
-    {
-        branchId ??= await BranchIdAsync("DAM");
-        var username = Unique("idemlaw");
-        await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId, "123456");
-        var token = (await _factory.LoginAsync(username, "123456"))!.Token!;
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        var id = (await db.Users.SingleAsync(u => u.Username == username)).Id;
-        return (id, token);
-    }
-
-    private async Task<int> BranchIdAsync(string code)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        return (await db.Branches.SingleAsync(b => b.Code == code)).Id;
-    }
-
-    /// <summary>
-    /// فرع معزول برئيسه الوحيد (قرار §2.26 + عزل صفوف التدقيق عن `head1` المشترك —
-    /// عرف الملف: فاعل مشترك = تلوّث `Count`).
-    /// </summary>
-    private async Task<int> CreateBranchAsync()
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        var branch = new Branch { Name = "فرع عدم التكرار", Code = $"IB_{Guid.NewGuid():N}"[..12].ToUpperInvariant() };
-        db.Branches.Add(branch);
-        await db.SaveChangesAsync();
-        return branch.Id;
-    }
 
     private static async Task<HttpResponseMessage> PostWithKeyAsync(
         HttpClient client, string url, object body, string? key)
@@ -84,10 +49,10 @@ public class RF011IdempotencyTests
     public async Task DoubleCreate_SameKey_SingleDocument()
     {
         // نقرة مزدوجة بنفس المفتاح: اليوم ملفّان؛ بعد RF-011 ملف واحد والثانية `200` بنفس الجسم.
-        var (_, token) = await NewLawyerAsync();
-        var client = _factory.WithToken(token);
+        var (_, token) = await _factory.NewLawyerAsync();
+        var client = _factory.ClientWithToken(token);
         var key = Guid.NewGuid().ToString();
-        var name = Unique("توأم");
+        var name = UniqueName("توأم");
 
         var first = await PostWithKeyAsync(client, "/api/documents", CreatePayload(name), key);
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
@@ -111,14 +76,14 @@ public class RF011IdempotencyTests
     {
         // مفتاح مستعمل لحمولة مختلفة (تصحيح-ثم-إعادة-إرسال): نية جديدة تُنفَّذ
         // طازجة — لا تُعاد نتيجة الأولى ولا يُرفَض التصحيح (يخضر قبل/بعد).
-        var (_, token) = await NewLawyerAsync();
-        var client = _factory.WithToken(token);
+        var (_, token) = await _factory.NewLawyerAsync();
+        var client = _factory.ClientWithToken(token);
         var key = Guid.NewGuid().ToString();
 
-        var first = await PostWithKeyAsync(client, "/api/documents", CreatePayload(Unique("أول")), key);
+        var first = await PostWithKeyAsync(client, "/api/documents", CreatePayload(UniqueName("أول")), key);
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
 
-        var second = await PostWithKeyAsync(client, "/api/documents", CreatePayload(Unique("مختلف")), key);
+        var second = await PostWithKeyAsync(client, "/api/documents", CreatePayload(UniqueName("مختلف")), key);
         Assert.Equal(HttpStatusCode.Created, second.StatusCode);
         var text1 = await first.Content.ReadAsStringAsync();
         var text2 = await second.Content.ReadAsStringAsync();
@@ -129,9 +94,9 @@ public class RF011IdempotencyTests
     public async Task MissingKey_LegacyDoubleCreate()
     {
         // توصيف (يخضر قبل/بعد): بلا مفتاح يبقى السلوك القديم — ملفّان.
-        var (_, token) = await NewLawyerAsync();
-        var client = _factory.WithToken(token);
-        var name = Unique("قديم");
+        var (_, token) = await _factory.NewLawyerAsync();
+        var client = _factory.ClientWithToken(token);
+        var name = UniqueName("قديم");
 
         var first = await PostWithKeyAsync(client, "/api/documents", CreatePayload(name), null);
         var second = await PostWithKeyAsync(client, "/api/documents", CreatePayload(name), null);
@@ -148,14 +113,14 @@ public class RF011IdempotencyTests
     {
         // النقل الثاني اليوم يعيد `0`؛ بعد RF-011 يعيد العدد المخزن نفسه.
         // فرع معزول برئيسه (لا `head1` المشترك — عزل التدقيق).
-        var branchId = await CreateBranchAsync();
-        var freshHead = await _factory.CreateUserAsync(Unique("idemhead"), UserRole.Head, branchId, "123456");
+        var branchId = await _factory.CreateBranchAsync("فرع عدم التكرار");
+        var freshHead = await _factory.CreateUserAsync(UniqueName("idemhead"), UserRole.Head, branchId, "123456");
         var headToken = (await _factory.LoginAsync(freshHead.Username, "123456"))!.Token!;
-        var (sourceId, sourceToken) = await NewLawyerAsync(branchId);
-        var (targetId, _) = await NewLawyerAsync(branchId);
-        await _factory.CreateDocumentAsync(sourceToken, borrowerName: Unique("منقول"));
+        var (sourceId, sourceToken) = await _factory.NewLawyerAsync(branchId);
+        var (targetId, _) = await _factory.NewLawyerAsync(branchId);
+        await _factory.CreateDocumentAsync(sourceToken, borrowerName: UniqueName("منقول"));
 
-        var client = _factory.WithToken(headToken);
+        var client = _factory.ClientWithToken(headToken);
         var key = Guid.NewGuid().ToString();
         var body = new { sourceLawyerId = sourceId, targetLawyerId = targetId };
 
@@ -176,7 +141,7 @@ public class RF011IdempotencyTests
     public async Task DoubleMerge_SameKey_SameResult()
     {
         // الدمج الثاني اليوم `400` (غير نشطة)؛ بعد RF-011 يعيد نتيجة الدمج المخزنة.
-        var adminName = Unique("idemadm");
+        var adminName = UniqueName("idemadm");
         await _factory.CreateUserAsync(adminName, UserRole.Admin, null, "123456");
         var adminToken = (await _factory.LoginAsync(adminName, "123456"))!.Token!;
         int survivor, absorbed, adminId;
@@ -184,8 +149,8 @@ public class RF011IdempotencyTests
         {
             var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
             adminId = (await db.Users.SingleAsync(u => u.Username == adminName)).Id;
-            var g1 = new PublicEntityGroup { CanonicalName = Unique("ناجية"), EntityType = PublicEntityTypeCatalog.Ministry, IsActive = true, CreatedAt = DateTime.UtcNow };
-            var g2 = new PublicEntityGroup { CanonicalName = Unique("ممتصة"), EntityType = PublicEntityTypeCatalog.Ministry, IsActive = true, CreatedAt = DateTime.UtcNow };
+            var g1 = new PublicEntityGroup { CanonicalName = UniqueName("ناجية"), EntityType = PublicEntityTypeCatalog.Ministry, IsActive = true, CreatedAt = DateTime.UtcNow };
+            var g2 = new PublicEntityGroup { CanonicalName = UniqueName("ممتصة"), EntityType = PublicEntityTypeCatalog.Ministry, IsActive = true, CreatedAt = DateTime.UtcNow };
             db.PublicEntityGroups.AddRange(g1, g2);
             await db.SaveChangesAsync();
             db.PublicEntities.AddRange(
@@ -196,7 +161,7 @@ public class RF011IdempotencyTests
             absorbed = g2.Id;
         }
 
-        var client = _factory.WithToken(adminToken);
+        var client = _factory.ClientWithToken(adminToken);
         var key = Guid.NewGuid().ToString();
         var body = new
         {

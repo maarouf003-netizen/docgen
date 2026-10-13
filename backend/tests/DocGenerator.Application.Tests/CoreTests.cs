@@ -1,4 +1,5 @@
 using DocGenerator.Application.Services;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace DocGenerator.Application.Tests;
@@ -15,6 +16,13 @@ public static class TestDb
         db.Database.EnsureCreated();
         return db;
     }
+
+    /// <summary>
+    /// خيارات سياق فوق اتصال مشترك مُدار خارجيًا (اختبارات التزامن متعددة
+    /// الاتصالات) — نفس السطر الموحد من ملفات التزامن الخمسة (R1-4).
+    /// </summary>
+    public static DbContextOptions<Infrastructure.Persistence.DocGeneratorDbContext> CreateOptions(SqliteConnection connection)
+        => new DbContextOptionsBuilder<Infrastructure.Persistence.DocGeneratorDbContext>().UseSqlite(connection).Options;
 }
 
 /// <summary>

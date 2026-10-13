@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using System.Text.Json;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Enums;
@@ -21,14 +22,6 @@ public class RF003AuthzProofTests
 
     public RF003AuthzProofTests(ApiFactory factory) => _factory = factory;
 
-    private static string NewName(string prefix) => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 16, 40)];
-
-    private Task<int> BranchIdAsync(string code)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        return Task.FromResult(db.Branches.Single(b => b.Code == code).Id);
-    }
 
     private async Task<(int DocId, int AppealId)> CreateAppealAsync(HttpClient lawyer, string token)
     {
@@ -75,10 +68,10 @@ public class RF003AuthzProofTests
     public async Task T1a_CrossOwner_AppealUpdate_Rejected_AndUnchanged()
     {
         var token1 = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyer1 = _factory.WithToken(token1);
+        var lawyer1 = _factory.ClientWithToken(token1);
         var (_, appealId) = await CreateAppealAsync(lawyer1, token1);
 
-        var stranger = await _factory.CreateUserAsync(NewName("lawyer_t1a"), UserRole.Lawyer, await BranchIdAsync("DAM"));
+        var stranger = await _factory.CreateUserAsync(UniqueName("lawyer_t1a"), UserRole.Lawyer, await _factory.GetBranchIdAsync("DAM"));
         var lawyer2 = _factory.AuthorizedClient(stranger.Username);
 
         var update = await lawyer2.PutAsJsonAsync($"/api/appeals/{appealId}", new
@@ -100,10 +93,10 @@ public class RF003AuthzProofTests
     public async Task T1b_CrossOwner_AppealDelete_Rejected_AndExists()
     {
         var token1 = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyer1 = _factory.WithToken(token1);
+        var lawyer1 = _factory.ClientWithToken(token1);
         var (_, appealId) = await CreateAppealAsync(lawyer1, token1);
 
-        var stranger = await _factory.CreateUserAsync(NewName("lawyer_t1b"), UserRole.Lawyer, await BranchIdAsync("DAM"));
+        var stranger = await _factory.CreateUserAsync(UniqueName("lawyer_t1b"), UserRole.Lawyer, await _factory.GetBranchIdAsync("DAM"));
         var lawyer2 = _factory.AuthorizedClient(stranger.Username);
 
         var delete = await lawyer2.DeleteAsync($"/api/appeals/{appealId}");
@@ -116,10 +109,10 @@ public class RF003AuthzProofTests
     public async Task T1c_CrossOwner_DelegationMutations_Rejected_AndUnchanged()
     {
         var token1 = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyer1 = _factory.WithToken(token1);
+        var lawyer1 = _factory.ClientWithToken(token1);
         var (docId, delegationId) = await CreateDelegationAsync(lawyer1, token1);
 
-        var stranger = await _factory.CreateUserAsync(NewName("lawyer_t1c"), UserRole.Lawyer, await BranchIdAsync("DAM"));
+        var stranger = await _factory.CreateUserAsync(UniqueName("lawyer_t1c"), UserRole.Lawyer, await _factory.GetBranchIdAsync("DAM"));
         var lawyer2 = _factory.AuthorizedClient(stranger.Username);
 
         int assetId;
@@ -152,9 +145,9 @@ public class RF003AuthzProofTests
     public async Task T4_LoginWithoutBranch_ReturnsBranchChoices_CurrentBehavior()
     {
         // السلوك الحالي: تعداد أسماء الفروع قبل كلمة المرور (SEC-006) — يُثبَّت هنا، وتقييمه لاحقًا.
-        var username = NewName("brsel");
-        await _factory.CreateUserAsync(username, UserRole.Lawyer, await BranchIdAsync("DAM"));
-        await _factory.CreateUserAsync(username, UserRole.Lawyer, await BranchIdAsync("ALP"));
+        var username = UniqueName("brsel");
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, await _factory.GetBranchIdAsync("DAM"));
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, await _factory.GetBranchIdAsync("ALP"));
 
         var client = _factory.CreateClient();
         var response = await client.PostAsJsonAsync("/api/auth/login", new { username, password = "123456" });
@@ -171,23 +164,23 @@ public class RF003AuthzProofTests
         var admin = _factory.AuthorizedClient("admin");
         var created = await admin.PostAsJsonAsync("/api/users/lawyers", new
         {
-            username = NewName("l"),
+            username = UniqueName("l"),
             fullName = "محامي النافذة",
             password = "123456",
-            branchId = await BranchIdAsync("DAM"),
+            branchId = await _factory.GetBranchIdAsync("DAM"),
         });
         created.EnsureSuccessStatusCode();
         var lawyer = (await created.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
 
         var staleToken = (await _factory.LoginAsync(lawyer.Username, "123456"))!.Token!;
-        var staleClient = _factory.WithToken(staleToken);
+        var staleClient = _factory.ClientWithToken(staleToken);
         Assert.Equal(HttpStatusCode.OK, (await staleClient.GetAsync("/api/documents?perPage=1")).StatusCode);
 
         var move = await admin.PutAsJsonAsync($"/api/users/{lawyer.Id}", new
         {
             fullName = (string?)null,
             role = (string?)null,
-            branchId = await BranchIdAsync("ALP"),
+            branchId = await _factory.GetBranchIdAsync("ALP"),
             isActive = true,
             password = (string?)null,
         });

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -17,15 +18,6 @@ public class RF001DuplicateRequestCharacterizationTests
     private readonly ApiFactory _factory;
 
     public RF001DuplicateRequestCharacterizationTests(ApiFactory factory) => _factory = factory;
-
-    private Task<int> BranchIdAsync(string code)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        return Task.FromResult(db.Branches.Single(b => b.Code == code).Id);
-    }
-
-    private static string NewName(string prefix) => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 16, 40)];
 
     /// <summary>
     /// فرع معزول برئيسه الوحيد (قرار §2.26 + عزل صفوف التدقيق عن `head1` المشترك —
@@ -51,7 +43,7 @@ public class RF001DuplicateRequestCharacterizationTests
             username,
             fullName,
             password = "123456",
-            branchId = await BranchIdAsync(branchCode),
+            branchId = await _factory.GetBranchIdAsync(branchCode),
         });
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
@@ -65,7 +57,7 @@ public class RF001DuplicateRequestCharacterizationTests
         // السلوك الحالي (INT-007): بلا بصمة طلب — الإرسال المكرر ملفٌ ثانٍ.
         // بعد RF-011 يجب أن تُعكَس: نفس المفتاح ملفٌ واحد.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var payload = new
         {
             documentType = "بيان دعوى",
@@ -96,7 +88,7 @@ public class RF001DuplicateRequestCharacterizationTests
         var target = await CreateLawyerAsync(branchCode, "محامي الهدف المكرر");
 
         // رئيس جديد (لا head1 المشترك) حتى لا تتداخل صفوف التدقيق مع اختبارات أخرى في القاعدة المشتركة.
-        var freshHead = await _factory.CreateUserAsync(NewName("head_dup"), UserRole.Head, await BranchIdAsync(branchCode));
+        var freshHead = await _factory.CreateUserAsync(UniqueName("head_dup"), UserRole.Head, await _factory.GetBranchIdAsync(branchCode));
         var head = _factory.AuthorizedClient(freshHead.Username);
         var body = new { sourceLawyerId = source.Id, targetLawyerId = target.Id };
 

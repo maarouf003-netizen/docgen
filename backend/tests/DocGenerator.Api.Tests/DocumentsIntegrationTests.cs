@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using System.Text.Json;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -50,7 +51,7 @@ public class DocumentsIntegrationTests
     public async Task Delete_AsManagerOrHead_Forbidden_AsOwnerLawyer_NoContent()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyerClient = _factory.WithToken(token);
+        var lawyerClient = _factory.ClientWithToken(token);
         var createResponse = await lawyerClient.PostAsJsonAsync("/api/documents", new
         {
             documentType = "بيان دعوى",
@@ -79,7 +80,7 @@ public class DocumentsIntegrationTests
     public async Task Delete_SoftDeletesDocument_ThenRestore_Works()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token);
 
         var delete = await client.DeleteAsync($"/api/documents/{id}");
@@ -110,7 +111,7 @@ public class DocumentsIntegrationTests
     public async Task Restore_AsManager_Forbidden()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyerClient = _factory.WithToken(token);
+        var lawyerClient = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token);
         await lawyerClient.DeleteAsync($"/api/documents/{id}");
 
@@ -124,7 +125,7 @@ public class DocumentsIntegrationTests
     public async Task GetDeleted_AsHead_ReturnsOnlyDeletedDocuments()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyerClient = _factory.WithToken(token);
+        var lawyerClient = _factory.ClientWithToken(token);
         var activeId = await _factory.CreateDocumentAsync(token, "محذوفة - نشطة");
         var deletedId = await _factory.CreateDocumentAsync(token, "محذوفة - ستُحذف");
         await lawyerClient.DeleteAsync($"/api/documents/{deletedId}");
@@ -153,7 +154,7 @@ public class DocumentsIntegrationTests
     public async Task Restore_AsLawyerOfAnotherBranch_Forbidden()
     {
         var damascusToken = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var damascusClient = _factory.WithToken(damascusToken);
+        var damascusClient = _factory.ClientWithToken(damascusToken);
         var id = await _factory.CreateDocumentAsync(damascusToken, "مستند محامي دمشق");
         await damascusClient.DeleteAsync($"/api/documents/{id}");
 
@@ -178,7 +179,7 @@ public class DocumentsIntegrationTests
     public async Task GetDeleted_Search_ByQuery_FiltersDeleted()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyerClient = _factory.WithToken(token);
+        var lawyerClient = _factory.ClientWithToken(token);
         var id1 = await _factory.CreateDocumentAsync(token, "محذوفة - فحص");
         var id2 = await _factory.CreateDocumentAsync(token, "محذوفة - أخرى");
         await lawyerClient.DeleteAsync($"/api/documents/{id1}");
@@ -198,7 +199,7 @@ public class DocumentsIntegrationTests
     public async Task SetStatus_ValidStatus_ReturnsOk()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token);
 
         var response = await client.PostAsJsonAsync($"/api/documents/{id}/status",
@@ -211,7 +212,7 @@ public class DocumentsIntegrationTests
     public async Task SetStatus_InvalidStatus_ReturnsBadRequest()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token);
 
         var response = await client.PostAsJsonAsync($"/api/documents/{id}/status",
@@ -224,7 +225,7 @@ public class DocumentsIntegrationTests
     public async Task SetStatus_NegativeCollectedAmount_ReturnsBadRequest()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token);
 
         var response = await client.PostAsJsonAsync($"/api/documents/{id}/status",
@@ -237,7 +238,7 @@ public class DocumentsIntegrationTests
     public async Task SetStatus_InvalidExecSubStatus_ReturnsBadRequest()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token);
 
         var response = await client.PostAsJsonAsync($"/api/documents/{id}/status",
@@ -250,7 +251,7 @@ public class DocumentsIntegrationTests
     public async Task SetStatus_Deferred_MissingTarithNumberDate_ReturnsBadRequest()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token);
 
         var response = await client.PostAsJsonAsync($"/api/documents/{id}/status",
@@ -263,7 +264,7 @@ public class DocumentsIntegrationTests
     public async Task SetStatus_Settlement_MissingBaraetNumberDate_ReturnsBadRequest()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token);
 
         var response = await client.PostAsJsonAsync($"/api/documents/{id}/status",
@@ -276,7 +277,7 @@ public class DocumentsIntegrationTests
     public async Task SetStatus_ForcedComplete_PersistsSubStatusWithoutBaraet()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await CreateCirculatingDocumentAsync(token);
         var estateId = await FirstEstateIdAsync(token, id);
 
@@ -298,7 +299,7 @@ public class DocumentsIntegrationTests
     public async Task SetStatus_ForcedExecution_PersistsSubStatusAndCollectedAmount()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await CreateCirculatingDocumentAsync(token);
         var estateId = await FirstEstateIdAsync(token, id);
 
@@ -320,7 +321,7 @@ public class DocumentsIntegrationTests
     public async Task SetStatus_FromDraft_ForbidsForcibleExecution_ReturnsBadRequest()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         // ملف تحت رفع (بلا رقم ملف): «منفذ جبريا» ممنوع من هذه الحالة.
         var draftResponse = await client.PostAsJsonAsync("/api/documents", new
         {
@@ -343,7 +344,7 @@ public class DocumentsIntegrationTests
     public async Task RevertStatus_WithSayerFields_ReturnsToCirculating()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token);
 
         var deferred = await client.PostAsJsonAsync($"/api/documents/{id}/status",
@@ -362,7 +363,7 @@ public class DocumentsIntegrationTests
     public async Task ReturnReferredToStart_FromCirculatingAdmission_ReturnsToCirculating()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await CreateCirculatingDocumentAsync(token);
 
         var referred = await client.PostAsJsonAsync($"/api/documents/{id}/status",
@@ -381,7 +382,7 @@ public class DocumentsIntegrationTests
     public async Task ReturnReferredToStart_FromPartialAdmission_RestoresForceFamily()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await CreateCirculatingDocumentAsync(token);
         var estateId = await FirstEstateIdAsync(token, id);
 
@@ -411,7 +412,7 @@ public class DocumentsIntegrationTests
         // كان بين الواجهة والخلفية). سنة الإعادة رقمية لأن System.Text.Json الصارم
         // لا يحوّل نصًا إلى int؟.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await CreateCirculatingDocumentAsync(token);
 
         var referred = await client.PostAsJsonAsync($"/api/documents/{id}/status",
@@ -434,7 +435,7 @@ public class DocumentsIntegrationTests
     public async Task MainList_HidesReferredToStart_UnlessTextSearch()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await CreateCirculatingDocumentAsync(token);
 
         var referred = await client.PostAsJsonAsync($"/api/documents/{id}/status",
@@ -473,7 +474,7 @@ public class DocumentsIntegrationTests
     public async Task ReferredToStartPage_ShowsReferred_AndExcludesOthers()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var referredId = await CreateCirculatingDocumentAsync(token);
         var plainId = await CreateCirculatingDocumentAsync(token);
         var partialId = await CreateCirculatingDocumentAsync(token);
@@ -510,7 +511,7 @@ public class DocumentsIntegrationTests
         // «طالبة تنفيذ» مشطوبة تُخفى من القائمة الافتراضية، ويظهر سجلها عند البحث النصي
         // الشامل وفي صفحة «الملفات المشطوبة».
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await CreateCirculatingDocumentAsync(token);
 
         var strike = await client.PostAsJsonAsync($"/api/documents/{id}/status",
@@ -532,7 +533,7 @@ public class DocumentsIntegrationTests
     public async Task SetStatus_ToStruckOff_ThenRestore_ApplicantSide()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await CreateCirculatingDocumentAsync(token);
 
         // متداول → مشطوب: يتطلب تاريخ الشطب، ويختفي الملف من القائمة العامة (بلا بحث) ويظهر
@@ -698,7 +699,7 @@ public class DocumentsIntegrationTests
     public async Task Search_FiltersByMutadawalAndTahRafaa()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
 
         var draftResponse = await client.PostAsJsonAsync("/api/documents", new
         {
@@ -745,7 +746,7 @@ public class DocumentsIntegrationTests
     public async Task Update_AddingFileNumberAndYear_BecomesMutadawal()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
 
         var draftResponse = await client.PostAsJsonAsync("/api/documents", new
         {
@@ -800,7 +801,7 @@ public class DocumentsIntegrationTests
     public async Task Get_AsLawyer_HidesViewCounters()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyerClient = _factory.WithToken(token);
+        var lawyerClient = _factory.ClientWithToken(token);
         var managerClient = _factory.AuthorizedClient("manager");
 
         var id = await _factory.CreateDocumentAsync(token, "مستند عدادات محامي");
@@ -817,7 +818,7 @@ public class DocumentsIntegrationTests
     public async Task Search_AsLawyer_HidesViewCounters()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyerClient = _factory.WithToken(token);
+        var lawyerClient = _factory.ClientWithToken(token);
         var managerClient = _factory.AuthorizedClient("manager");
 
         var id = await _factory.CreateDocumentAsync(token, "بحث عدادات محامي");
@@ -837,7 +838,7 @@ public class DocumentsIntegrationTests
     {
         // المحامي يملك الملف المنفذ فعلًا — التسرب الحقيقي الوحيد على هذه الصفحة.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyerClient = _factory.WithToken(token);
+        var lawyerClient = _factory.ClientWithToken(token);
         var managerClient = _factory.AuthorizedClient("manager");
 
         var id = await CreateExecutedDocumentAsync(token);
@@ -858,7 +859,7 @@ public class DocumentsIntegrationTests
     public async Task StruckOffPage_HidesCountersFromLawyer()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyerClient = _factory.WithToken(token);
+        var lawyerClient = _factory.ClientWithToken(token);
         var managerClient = _factory.AuthorizedClient("manager");
 
         var id = await CreateCirculatingDocumentAsync(token);
@@ -880,7 +881,7 @@ public class DocumentsIntegrationTests
     public async Task DeletedPage_HidesCountersFromLawyer()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyerClient = _factory.WithToken(token);
+        var lawyerClient = _factory.ClientWithToken(token);
         var managerClient = _factory.AuthorizedClient("manager");
 
         var id = await _factory.CreateDocumentAsync(token, "محذوفة عدادات محامي");
@@ -904,7 +905,7 @@ public class DocumentsIntegrationTests
         // الإيجابي الوحيد غير الفارغ على النقطتين المحجوبتين: رئيس القسم يرى كل ملفات
         // فرعه (بما فيها ملفات المحامي) ويملك العدادات — فيثبت عدم كسر العرض المصرَّح.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyerClient = _factory.WithToken(token);
+        var lawyerClient = _factory.ClientWithToken(token);
         var managerClient = _factory.AuthorizedClient("manager");
         var headClient = _factory.AuthorizedClient("head1");
 
@@ -940,7 +941,7 @@ public class DocumentsIntegrationTests
         // المشرف ليس محاميًا (لا ملفات خاصة به) ويرى الكل كالمدير: ملف المحامي
         // المحذوف يظهر له، مع العدادات غير المعقّمة.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyerClient = _factory.WithToken(token);
+        var lawyerClient = _factory.ClientWithToken(token);
         var managerClient = _factory.AuthorizedClient("manager");
         var adminClient = _factory.AuthorizedClient("admin");
 
@@ -962,7 +963,7 @@ public class DocumentsIntegrationTests
     {
         // المشرف يرى ملف المحامي المشطوب (نطاق الكل)، مع العدادات غير المعقّمة.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyerClient = _factory.WithToken(token);
+        var lawyerClient = _factory.ClientWithToken(token);
         var managerClient = _factory.AuthorizedClient("manager");
         var adminClient = _factory.AuthorizedClient("admin");
 
@@ -986,7 +987,7 @@ public class DocumentsIntegrationTests
         // الإيجابي غير الفارغ على صفحة المنفذة: المشرف (وصول كامل) يرى الكل
         // ويملك العدادات — فيثبت عدم كسر العرض المصرَّح.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyerClient = _factory.WithToken(token);
+        var lawyerClient = _factory.ClientWithToken(token);
         var managerClient = _factory.AuthorizedClient("manager");
         var adminClient = _factory.AuthorizedClient("admin");
 
@@ -1007,7 +1008,7 @@ public class DocumentsIntegrationTests
     public async Task AddAction_AsLawyer_ReturnsActionAndPersists()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token, "مستند إجراءات");
 
         var response = await client.PostAsJsonAsync($"/api/documents/{id}/actions",
@@ -1040,7 +1041,7 @@ public class DocumentsIntegrationTests
     public async Task AddAction_EmptyText_ReturnsBadRequest()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token);
 
         var response = await client.PostAsJsonAsync($"/api/documents/{id}/actions",
@@ -1052,7 +1053,7 @@ public class DocumentsIntegrationTests
     public async Task AddAction_AsLawyerOnOthersDocument_Forbidden()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
 
         using (var scope = _factory.Services.CreateScope())
         {
@@ -1072,7 +1073,7 @@ public class DocumentsIntegrationTests
     public async Task GetActions_IsEmptyInitially()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token);
 
         var response = await client.GetAsync($"/api/documents/{id}/actions");
@@ -1085,7 +1086,7 @@ public class DocumentsIntegrationTests
     public async Task Search_IncludesExecutionActions()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token, "مستند قائمة إجراءات");
         await client.PostAsJsonAsync($"/api/documents/{id}/actions",
             new { text = "إجراء في القائمة", actionDate = "1/8/2026" });
@@ -1105,7 +1106,7 @@ public class DocumentsIntegrationTests
     public async Task AddNote_WithoutDate_DefaultsToToday()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token);
 
         var response = await client.PostAsJsonAsync($"/api/documents/{id}/actions",
@@ -1120,7 +1121,7 @@ public class DocumentsIntegrationTests
     public async Task AddAction_WithoutDate_ReturnsBadRequest()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token);
 
         var response = await client.PostAsJsonAsync($"/api/documents/{id}/actions",
@@ -1132,7 +1133,7 @@ public class DocumentsIntegrationTests
     public async Task UpdateAction_AsLawyer_ReturnsUpdatedAction()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token);
         var createResponse = await client.PostAsJsonAsync($"/api/documents/{id}/actions",
             new { type = "action", text = "إجراء قديم", actionDate = "1/1/2026" });
@@ -1153,7 +1154,7 @@ public class DocumentsIntegrationTests
         var client = _factory.AuthorizedClient("manager");
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var id = await _factory.CreateDocumentAsync(token);
-        var postClient = _factory.WithToken(token);
+        var postClient = _factory.ClientWithToken(token);
         var createResponse = await postClient.PostAsJsonAsync($"/api/documents/{id}/actions",
             new { type = "action", text = "إجراء", actionDate = "1/1/2026" });
         using var created = await createResponse.Content.ReadFromJsonAsync<JsonDocument>();
@@ -1168,7 +1169,7 @@ public class DocumentsIntegrationTests
     public async Task DeleteAction_AsLawyer_RemovesAction()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token);
         var createResponse = await client.PostAsJsonAsync($"/api/documents/{id}/actions",
             new { type = "action", text = "إجراء للحذف", actionDate = "1/1/2026" });
@@ -1189,7 +1190,7 @@ public class DocumentsIntegrationTests
         var client = _factory.AuthorizedClient("manager");
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var id = await _factory.CreateDocumentAsync(token);
-        var postClient = _factory.WithToken(token);
+        var postClient = _factory.ClientWithToken(token);
         var createResponse = await postClient.PostAsJsonAsync($"/api/documents/{id}/actions",
             new { type = "action", text = "إجراء", actionDate = "1/1/2026" });
         using var created = await createResponse.Content.ReadFromJsonAsync<JsonDocument>();
@@ -1203,7 +1204,7 @@ public class DocumentsIntegrationTests
     public async Task ClearReminder_AsLawyer_RemovesReminderKeepsAction()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token);
         var createResponse = await client.PostAsJsonAsync($"/api/documents/{id}/actions",
             new { type = "action", text = "إجراء بموعد", actionDate = "1/8/2026", reminderDuration = "أسبوع", reminderColor = "أحمر" });
@@ -1227,7 +1228,7 @@ public class DocumentsIntegrationTests
         var client = _factory.AuthorizedClient("manager");
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var id = await _factory.CreateDocumentAsync(token);
-        var postClient = _factory.WithToken(token);
+        var postClient = _factory.ClientWithToken(token);
         var createResponse = await postClient.PostAsJsonAsync($"/api/documents/{id}/actions",
             new { type = "action", text = "إجراء", actionDate = "1/1/2026", reminderDuration = "أسبوع", reminderColor = "أصفر" });
         using var created = await createResponse.Content.ReadFromJsonAsync<JsonDocument>();
@@ -1241,7 +1242,7 @@ public class DocumentsIntegrationTests
     public async Task RescheduleReminder_AsLawyer_MovesDueDateKeepingDuration()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token);
         var createResponse = await client.PostAsJsonAsync($"/api/documents/{id}/actions",
             new { type = "action", text = "إجراء بموعد", actionDate = "1/8/2026", reminderDuration = "3 أيام", reminderColor = "أحمر" });
@@ -1263,7 +1264,7 @@ public class DocumentsIntegrationTests
         var client = _factory.AuthorizedClient("manager");
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var id = await _factory.CreateDocumentAsync(token);
-        var postClient = _factory.WithToken(token);
+        var postClient = _factory.ClientWithToken(token);
         var createResponse = await postClient.PostAsJsonAsync($"/api/documents/{id}/actions",
             new { type = "action", text = "إجراء", actionDate = "1/1/2026", reminderDuration = "أسبوع", reminderColor = "أصفر" });
         using var created = await createResponse.Content.ReadFromJsonAsync<JsonDocument>();
@@ -1278,7 +1279,7 @@ public class DocumentsIntegrationTests
     public async Task RescheduleReminder_InvalidDate_ReturnsFriendlyBadRequest()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token);
         var createResponse = await client.PostAsJsonAsync($"/api/documents/{id}/actions",
             new { type = "action", text = "إجراء بموعد", actionDate = "1/8/2026", reminderDuration = "أسبوع", reminderColor = "أحمر" });
@@ -1296,7 +1297,7 @@ public class DocumentsIntegrationTests
     public async Task Search_ByApplicantFilter_FiltersResults()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id1 = await _factory.CreateDocumentAsync(token, "مستند فلتر طالب", applicant: "المدعي");
         var id2 = await _factory.CreateDocumentAsync(token, "مستند آخر", applicant: "مدعي آخر");
 
@@ -1312,7 +1313,7 @@ public class DocumentsIntegrationTests
     public async Task Search_ByCourtFilter_FiltersResults()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id1 = await _factory.CreateDocumentAsync(token, "مستند دائرة دمشق", court: "دمشق");
         var id2 = await _factory.CreateDocumentAsync(token, "مستند دائرة حلب", court: "حلب");
 
@@ -1328,7 +1329,7 @@ public class DocumentsIntegrationTests
     public async Task GetFilterOptions_ReturnsApplicantsAndCourts()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         await _factory.CreateDocumentAsync(token, "مستند خيارات فلترة", applicant: "المدعي", court: "دمشق");
 
         var response = await client.GetAsync("/api/documents/filter-options");
@@ -1344,7 +1345,7 @@ public class DocumentsIntegrationTests
     public async Task Search_ByPublicEntityBranch_FiltersResults()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var executedId = await CreateExecutedDocumentAsync(token);
         var plainId = await _factory.CreateDocumentAsync(token, "مستند بلا جهة عامة");
 
@@ -1361,7 +1362,7 @@ public class DocumentsIntegrationTests
     public async Task GetFilterOptions_ReturnsPublicEntityBranches()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         await CreateExecutedDocumentAsync(token);
 
         var response = await client.GetAsync("/api/documents/filter-options");
@@ -1375,7 +1376,7 @@ public class DocumentsIntegrationTests
     public async Task Search_ByLawyerFilter_AsLawyer_Forbidden()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
 
         var response = await client.GetAsync("/api/documents?lawyer=" + Uri.EscapeDataString("محامي"));
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
@@ -1387,7 +1388,7 @@ public class DocumentsIntegrationTests
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var id1 = await _factory.CreateDocumentAsync(token, "مستند محامي دمشق");
 
-        var damId = await BranchIdAsync("DAM");
+        var damId = await _factory.GetBranchIdAsync("DAM");
         await _factory.CreateUserAsync("lawyer_filter_other", UserRole.Lawyer, damId);
         var otherToken = (await _factory.LoginAsync("lawyer_filter_other", "123456"))!.Token!;
         var id2 = await _factory.CreateDocumentAsync(otherToken, "مستند محامي آخر");
@@ -1434,7 +1435,7 @@ public class DocumentsIntegrationTests
     public async Task Search_ByTripleName_FiltersResults()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token, "أحمد", borrowerFather: "خالد", borrowerFamily: "الخطيب");
 
         var response = await client.GetAsync("/api/documents?q=" + Uri.EscapeDataString("أحمد خالد الخطيب") + "&perPage=50");
@@ -1448,7 +1449,7 @@ public class DocumentsIntegrationTests
     public async Task Search_ByBorrowerHeirName_FiltersResults()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var createResponse = await client.PostAsJsonAsync("/api/documents", new
         {
             borrowerName = "أحمد",
@@ -1477,7 +1478,7 @@ public class DocumentsIntegrationTests
     public async Task Create_WithRepresentativesAndHeirCapacity_RoundTrips()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var response = await client.PostAsJsonAsync("/api/documents", new
         {
             borrowerName = "أحمد",
@@ -1535,7 +1536,7 @@ public class DocumentsIntegrationTests
     public async Task Create_ExecutedSide_WithRepresentativeAndCombinedCapacity_RoundTrips()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var response = await client.PostAsJsonAsync("/api/documents", new
         {
             generalEntitySide = "executed",
@@ -1634,7 +1635,7 @@ public class DocumentsIntegrationTests
     public async Task GetDeleted_AsLawyer_ReturnsOwnDeletedDocuments()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyerClient = _factory.WithToken(token);
+        var lawyerClient = _factory.ClientWithToken(token);
         var ownId = await _factory.CreateDocumentAsync(token, "محذوفة - خاصتي");
         await lawyerClient.DeleteAsync($"/api/documents/{ownId}");
 
@@ -1646,7 +1647,7 @@ public class DocumentsIntegrationTests
         }
         var lawyer2Token = (await _factory.LoginAsync("lawyer_other_damascus2", "123456"))!.Token!;
         var otherId = await _factory.CreateDocumentAsync(lawyer2Token, "محذوفة - محامٍ آخر");
-        await _factory.WithToken(lawyer2Token).DeleteAsync($"/api/documents/{otherId}");
+        await _factory.ClientWithToken(lawyer2Token).DeleteAsync($"/api/documents/{otherId}");
 
         var response = await lawyerClient.GetAsync("/api/documents/deleted?perPage=50");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -1661,7 +1662,7 @@ public class DocumentsIntegrationTests
     public async Task BaseNumbersHistory_AfterRotation_ReturnsYearsAndDisplayFileNumber()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token);
 
         // قيد الملف (رقم + سنة + تاريخ قيد) في سنة سابقة حتى يخرج من «تحت رفع» ويصبح مؤهلًا
@@ -1715,7 +1716,7 @@ public class DocumentsIntegrationTests
             await _factory.CreateUserAsync("lawyer_other_bn", UserRole.Lawyer, damascus.Id);
         }
         var otherToken = (await _factory.LoginAsync("lawyer_other_bn", "123456"))!.Token!;
-        var otherClient = _factory.WithToken(otherToken);
+        var otherClient = _factory.ClientWithToken(otherToken);
 
         var response = await otherClient.GetAsync($"/api/documents/{id}/base-numbers");
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
@@ -1725,7 +1726,7 @@ public class DocumentsIntegrationTests
     public async Task GetRotationList_ExcludesFilesRegisteredInCurrentYear()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var currentYear = DateTime.Today.Year;
 
         // ملف مقيد في السنة الحالية → لا يظهر في جدول التدوير (رقمه الأصلي هو رقم أساس سنته).
@@ -1769,7 +1770,7 @@ public class DocumentsIntegrationTests
     public async Task SaveBaseNumbers_FileRegisteredInCurrentYear_Rejected()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var currentYear = DateTime.Today.Year;
 
         // قيد ملف في السنة الحالية ثم محاولة تدويره → تُرفض.
@@ -1799,13 +1800,6 @@ public class DocumentsIntegrationTests
         Assert.Empty(history!);
     }
 
-    private async Task<int> BranchIdAsync(string code)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        var branch = await db.Branches.AsNoTracking().SingleAsync(b => b.Code == code);
-        return branch.Id;
-    }
 
     /// إنشاء ملف «طالبة تنفيذ» مقيد (متداول) مع عقار واحد — للاختبارات التي تحتاج انتقالات
     /// الحالة المتاحة من المتداول فقط (مثل «منفذ جبريا» الذي يتطلب عقارات مباعة بالمزاد).
@@ -1813,7 +1807,7 @@ public class DocumentsIntegrationTests
 
     private async Task<int> CreateCirculatingDocumentAsync(string token)
     {
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         // رقم فريد لكل استدعاء (RF-009): القاعدة المشتركة تمنع تكرار المفتاح.
         var number = $"520{System.Threading.Interlocked.Increment(ref CirculatingNumberSeq):D4}";
         var response = await client.PostAsJsonAsync("/api/documents", new
@@ -1840,14 +1834,14 @@ public class DocumentsIntegrationTests
 
     private async Task<int> FirstEstateIdAsync(string token, int documentId)
     {
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         using var doc = await (await client.GetAsync($"/api/documents/{documentId}")).Content.ReadFromJsonAsync<JsonDocument>();
         return doc!.RootElement.GetProperty("assets")[0].GetProperty("id").GetInt32();
     }
 
     private async Task<int> CreateExecutedDocumentAsync(string token)
     {
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var number = $"999{System.Threading.Interlocked.Increment(ref CirculatingNumberSeq):D4}";
         var response = await client.PostAsJsonAsync("/api/documents", new
         {
@@ -1881,7 +1875,7 @@ public class DocumentsIntegrationTests
 
     private async Task<int> CreateDepositDocumentAsync(string token)
     {
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var number = $"888{System.Threading.Interlocked.Increment(ref CirculatingNumberSeq):D4}";
         var response = await client.PostAsJsonAsync("/api/documents", new
         {
@@ -1918,7 +1912,7 @@ public class DocumentsIntegrationTests
     {
         // صفة «الجهة العامة منفذ عليها»: حالة «منفذ» نهائية؛ لا إرجاع إلى متداول ولا شطب.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await CreateExecutedDocumentAsync(token);
         await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new { status = "منفذ" });
 
@@ -1935,7 +1929,7 @@ public class DocumentsIntegrationTests
     public async Task Deposit_FromExecutedToStruckOff_Forbidden()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await CreateDepositDocumentAsync(token);
         await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new { status = "منفذ" });
 
@@ -1947,7 +1941,7 @@ public class DocumentsIntegrationTests
     public async Task Deposit_FromExecutedToCirculating_RequiresSayerAndKeepsAmount()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await CreateDepositDocumentAsync(token);
         await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new
         {
@@ -1984,7 +1978,7 @@ public class DocumentsIntegrationTests
     public async Task ExecutedSide_Create_ThenStrikeOff_ThenRestore_AndSearch()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
 
         // إنشاء ملف وضع «الجهة العامة منفذ عليها» يحمل الصفة والكيانات الفرعية.
         var id = await CreateExecutedDocumentAsync(token);
@@ -2045,7 +2039,7 @@ public class DocumentsIntegrationTests
     public async Task RestoreStruckOff_WithoutRenewalFileNumber_BadRequest()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await CreateExecutedDocumentAsync(token);
 
         await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new { status = "مشطوب" });
@@ -2058,7 +2052,7 @@ public class DocumentsIntegrationTests
     public async Task ExecutedPage_ListExecutedLike_FullyExecuted_WithExecutionDate()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await CreateExecutedDocumentAsync(token);
 
         // تنفيذ الملف بوضع «منفذ» مع تاريخ التنفيذ → يظهر في صفحة «الملفات المنفذة».
@@ -2085,7 +2079,7 @@ public class DocumentsIntegrationTests
     public async Task ExecutedPage_ExcludesTradingAndStruckOff()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await CreateExecutedDocumentAsync(token);
 
         // قبل التنفيذ (متداول) لا يظهر في صفحة «الملفات المنفذة».
@@ -2107,7 +2101,7 @@ public class DocumentsIntegrationTests
     {
         // عائلة «منفذ عليها/عرض وايداع» بحالة «منفذ» تُخفى من القائمة العامة، وتظهر فقط عند البحث النصي.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await CreateExecutedDocumentAsync(token);
 
         var run = await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new { status = "منفذ" });
@@ -2129,7 +2123,7 @@ public class DocumentsIntegrationTests
     {
         // «طالبة تنفيذ» منفذة (بالتسوية) تُخفى من القائمة العامة، وتظهر فقط عند البحث النصي.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await CreateCirculatingDocumentAsync(token);
 
         var run = await client.PostAsJsonAsync($"/api/documents/{id}/status", new
@@ -2155,7 +2149,7 @@ public class DocumentsIntegrationTests
     {
         // ملحق العقد (للعقد المصرفي): يُحفظ ويُعاد عرضه، ويمكن البحث برقمه (مُضمّن في SearchText).
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
 
         var create = await client.PostAsJsonAsync("/api/documents", new
         {
@@ -2192,7 +2186,7 @@ public class DocumentsIntegrationTests
     public async Task Generate_ForExecutedSideDocument_Rejected()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await CreateExecutedDocumentAsync(token);
 
         var response = await client.GetAsync($"/api/documents/{id}/generate?template=basic_docs");
@@ -2215,7 +2209,7 @@ public class DocumentsIntegrationTests
         // إلغاء محرر الوقوعات اليدوي: نقاط (POST/PUT/DELETE /occurrences) لم تعد موجودة — عقد
         // الإدارة اليدوية أُلغي نهائيًا، فلا تُستجيب إلا بـ 404 (لا 403 ولا 400) لأي دور كان.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await CreateExecutedDocumentAsync(token);
 
         var add = await client.PostAsJsonAsync($"/api/documents/{id}/occurrences", new
