@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -26,7 +27,7 @@ public class TokenService : ITokenService
 
         var claims = new List<Claim>
         {
-            new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+            new(JwtRegisteredClaimNames.Sub, user.Id.ToString(CultureInfo.InvariantCulture)),
             new(JwtRegisteredClaimNames.UniqueName, user.Username),
             new(ClaimTypes.Name, user.Username),
             // الأحرف الصغيرة لتطابق قيم الأدوار في التحكم ([Authorize(Roles="manager,admin")] إلخ)
@@ -34,14 +35,14 @@ public class TokenService : ITokenService
         };
 
         if (user.BranchId.HasValue)
-            claims.Add(new Claim("branch_id", user.BranchId.Value.ToString()));
+            claims.Add(new Claim("branch_id", user.BranchId.Value.ToString(CultureInfo.InvariantCulture)));
 
         // شعبة الحساب (قرار §2.16): لرئيس الشعبة فقط — تُقرأ دفاعيًا عند التحقق.
         if (user.SectionId.HasValue)
-            claims.Add(new Claim("section_id", user.SectionId.Value.ToString()));
+            claims.Add(new Claim("section_id", user.SectionId.Value.ToString(CultureInfo.InvariantCulture)));
 
         // نسخة التوكن لإبطال الرموز القديمة عند تغيير كلمة المرور/تعطيل الحساب
-        claims.Add(new Claim("token_version", user.TokenVersion.ToString()));
+        claims.Add(new Claim("token_version", user.TokenVersion.ToString(CultureInfo.InvariantCulture)));
 
         var now = _clock.GetUtcNow().UtcDateTime;
         var token = new JwtSecurityToken(

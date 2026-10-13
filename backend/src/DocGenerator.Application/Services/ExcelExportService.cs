@@ -1,3 +1,4 @@
+using System.Globalization;
 using DocGenerator.Application.Common;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
@@ -243,7 +244,7 @@ public sealed class ExcelExportService : IExcelExportService
             values.Add(doc.Lawyer ?? string.Empty);
         values.Add(HtmlInputSanitizer.ToPlainText(doc.ExecutionActions.FirstOrDefault()?.Text));
         if (includeViewCount)
-            values.Add(doc.ViewCount.ToString());
+            values.Add(doc.ViewCount.ToString(CultureInfo.InvariantCulture));
         return values;
     }
 

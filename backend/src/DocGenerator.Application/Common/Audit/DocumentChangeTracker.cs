@@ -271,6 +271,12 @@ public static class DocumentChangeTracker
 
             case int integer:
                 return integer.ToString(CultureInfo.InvariantCulture);
+
+            case long integer:
+                return integer.ToString(CultureInfo.InvariantCulture);
+
+            case double number:
+                return number.ToString("0.########", CultureInfo.InvariantCulture);
         }
 
         return rawValue.Length == 0 ? null : rawValue;
@@ -294,7 +300,7 @@ public static class DocumentChangeTracker
                 a => Join(a.AssetKind,
                     FirstNonEmpty(a.Property, a.PlateNumber, a.RegisterNumber, a.LicenseNumber, a.ShopDescription))),
             ["__Col_ExecutionApplicants"] = d => Signature(d.ExecutionApplicants,
-                e => Join(e.Name, e.Father, e.Family, e.RegistryId?.ToString())),
+                e => Join(e.Name, e.Father, e.Family, e.RegistryId?.ToString(CultureInfo.InvariantCulture))),
             ["__Col_ExecutedPublicEntities"] = d => Signature(d.ExecutedPublicEntities,
                 e => Join(e.EntityName, e.EntityBranch)),
             ["__Col_ExecutedNaturalPersons"] = d => Signature(d.ExecutedNaturalPersons,

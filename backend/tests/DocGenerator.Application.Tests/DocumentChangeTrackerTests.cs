@@ -1,3 +1,4 @@
+using System.Globalization;
 using DocGenerator.Application.Common.Audit;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -92,5 +93,41 @@ public class DocumentChangeTrackerTests
         Assert.Equal("2026-08-01 10:30:00", snapshot[nameof(Document.ExecutedDepositDate)]);
         Assert.False(snapshot.ContainsKey(nameof(Document.SearchText)));
         Assert.False(snapshot.ContainsKey(nameof(Document.PrintCount)));
+    }
+
+    [Fact]
+    public void Capture_UnderArabicCulture_FormatsNumericsInvariant()
+    {
+        // حتمية R0-4: تحت ثقافة بفاصل عشري مختلف (ar-EG: ٫) يجب أن تبقى
+        // التنسيقات حتمية. ملاحظة دقيقة: تنسيق الصحيح (int/long) لاتيني أصلًا
+        // على .NET (لا استبدال أرقام) فسطرا RegistryId قفل توصيفي، بينما سطر
+        // العشرية حارس انحدار حقيقي (بدون Invariant لكانت "2500٫5").
+        var current = CultureInfo.CurrentCulture;
+        var currentUi = CultureInfo.CurrentUICulture;
+        try
+        {
+            var arabic = new CultureInfo("ar-EG");
+            CultureInfo.CurrentCulture = arabic;
+            CultureInfo.CurrentUICulture = arabic;
+
+            var doc = NewDocument();
+            doc.AmountNumeric = 2500.5m;
+            doc.ExecutionApplicants.Add(new ExecutionApplicant { Name = "سامي", Family = "الحمصي", RegistryId = 123 });
+
+            var before = DocumentChangeTracker.Capture(NewDocument());
+            var changes = DocumentChangeTracker.Diff(before, doc);
+            var byKey = changes.ToDictionary(c => c.FieldKey);
+
+            Assert.Equal("2500.5", byKey[nameof(Document.AmountNumeric)].NewValue);
+            // مقارنة ترتيبية صريحة: مقارنة xUnit الافتراضية حساسة للثقافة
+            // الحالية وقد تُكافئ لفظيًا بين الأرقام اللاتينية والمشرقية.
+            Assert.Contains("123", byKey["__Col_ExecutionApplicants"].NewValue, StringComparison.Ordinal);
+            Assert.DoesNotContain("١٢٣", byKey["__Col_ExecutionApplicants"].NewValue, StringComparison.Ordinal);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = current;
+            CultureInfo.CurrentUICulture = currentUi;
+        }
     }
 }
