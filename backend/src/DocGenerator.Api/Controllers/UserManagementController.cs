@@ -46,10 +46,6 @@ public class UserManagementController : ControllerBase
             var user = await _users.CreateUserAsync(request, ActorName, ct, User.GetUserId());
             return CreatedAtAction(nameof(GetUser), new { id = user.Id }, user);
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
         catch (ArgumentException e)
         {
             return BadRequest(new { message = e.Message });

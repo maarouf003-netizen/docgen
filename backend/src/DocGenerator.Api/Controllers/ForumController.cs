@@ -75,10 +75,6 @@ public class ForumController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     /// <summary>تعديل رسالة — الكاتب فقط (يختم «عُدّل»).</summary>
@@ -99,10 +95,6 @@ public class ForumController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     /// <summary>حذف صلب — الكاتب لرسالته والمشرف لأي رسالة (مع إيصالاتها).</summary>
@@ -119,10 +111,6 @@ public class ForumController : ControllerBase
         catch (KeyNotFoundException e)
         {
             return NotFound(new { message = e.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
         }
     }
 
@@ -142,10 +130,6 @@ public class ForumController : ControllerBase
         catch (KeyNotFoundException e)
         {
             return NotFound(new { message = e.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
         }
         catch (DocumentConflictException e)
         {
@@ -168,10 +152,6 @@ public class ForumController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     /// <summary>نافذة «شوهدت بواسطة» — الكاتب فقط.</summary>
@@ -186,38 +166,20 @@ public class ForumController : ControllerBase
         {
             return NotFound(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     /// <summary>مرشحو الذِكر بالاسم — نشطون فقط بلا الذات، بأجزاء الهوية.</summary>
     [HttpGet("users/lookup")]
     public async Task<IActionResult> SearchUsers([FromQuery] string? q, CancellationToken ct)
     {
-        try
-        {
-            return Ok(await _forum.SearchUsersAsync(q, UserId, ct));
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        return Ok(await _forum.SearchUsersAsync(q, UserId, ct));
     }
 
     /// <summary>العدّاد — رسائل بلا إيصال لي (شارة أيقونة المنتدى).</summary>
     [HttpGet("unread-count")]
     public async Task<IActionResult> UnreadCount(CancellationToken ct)
     {
-        try
-        {
-            var count = await _forum.CountUnreadAsync(UserId, ct);
-            return Ok(new { count });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        var count = await _forum.CountUnreadAsync(UserId, ct);
+        return Ok(new { count });
     }
 }
