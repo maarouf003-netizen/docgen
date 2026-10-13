@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
 using DocGenerator.Domain.Entities;
@@ -113,5 +114,12 @@ public static class ApiFixtureExtensions
         using var doc = await created.Content.ReadFromJsonAsync<JsonDocument>();
         var token = (await factory.LoginAsync(username, "123456"))!.Token!;
         return (doc!.RootElement.GetProperty("id").GetInt32(), token);
+    }
+
+    /// <summary>محامٍ جديد مع عميل مُصادَق جاهز (حقن التوكن) — يُرجع المعرف والعميل.</summary>
+    public static async Task<(int Id, HttpClient Client)> NewLawyerClientAsync(this ApiFactory factory, int? branchId = null)
+    {
+        var (id, token) = await NewLawyerAsync(factory, branchId);
+        return (id, factory.ClientWithToken(token));
     }
 }

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -48,7 +49,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
     public async Task Login_AfterMaxFailedAttempts_ReturnsTooManyRequests()
     {
         var username = $"rl_{Guid.NewGuid():N}"[..16];
-        await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId: await GetBranchIdAsync("DAM"));
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId: await _factory.GetBranchIdAsync("DAM"));
 
         var statuses = new List<int>();
         for (var i = 0; i < 6; i++)
@@ -65,7 +66,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
     public async Task ChangePassword_FullFlow_Works()
     {
         var username = $"cp_{Guid.NewGuid():N}"[..16];
-        await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId: await GetBranchIdAsync("DAM"), password: "123456");
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId: await _factory.GetBranchIdAsync("DAM"), password: "123456");
 
         var client = _factory.AuthorizedClient(username);
         var changeBody = JsonSerializer.Serialize(new { oldPassword = "123456", newPassword = "654321" });
@@ -162,8 +163,8 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
     [Fact]
     public async Task Login_DuplicateTripartiteNameAcrossBranches_ReturnsBranchSelection()
     {
-        var branch1 = await GetBranchIdAsync("DAM");
-        var branch2 = await GetBranchIdAsync("ALP");
+        var branch1 = await _factory.GetBranchIdAsync("DAM");
+        var branch2 = await _factory.GetBranchIdAsync("ALP");
         await _factory.CreateUserAsync("محمد أحمد علي", UserRole.Lawyer, branch1);
         await _factory.CreateUserAsync("محمد أحمد علي", UserRole.Lawyer, branch2);
 
@@ -183,8 +184,8 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
     [Fact]
     public async Task Login_DuplicateTripartiteName_SelectingBranch_LogsIntoCalledBranch()
     {
-        var branch1 = await GetBranchIdAsync("DAM");
-        var branch2 = await GetBranchIdAsync("ALP");
+        var branch1 = await _factory.GetBranchIdAsync("DAM");
+        var branch2 = await _factory.GetBranchIdAsync("ALP");
         await _factory.CreateUserAsync("خالد علي حسن", UserRole.Lawyer, branch1);
         await _factory.CreateUserAsync("خالد علي حسن", UserRole.Lawyer, branch2);
 
@@ -200,8 +201,8 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
     [Fact]
     public async Task Login_DuplicateTripartiteName_WrongBranch_ReturnsUnauthorized()
     {
-        var branch1 = await GetBranchIdAsync("DAM");
-        var branch2 = await GetBranchIdAsync("ALP");
+        var branch1 = await _factory.GetBranchIdAsync("DAM");
+        var branch2 = await _factory.GetBranchIdAsync("ALP");
         await _factory.CreateUserAsync("سامر أحمد محمود", UserRole.Lawyer, branch1);
         await _factory.CreateUserAsync("سامر أحمد محمود", UserRole.Lawyer, branch2);
 
@@ -212,8 +213,8 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
     [Fact]
     public async Task Login_DuplicateNameWithInactiveAccount_NoBranchSelectionNeeded()
     {
-        var branch1 = await GetBranchIdAsync("DAM");
-        var branch2 = await GetBranchIdAsync("ALP");
+        var branch1 = await _factory.GetBranchIdAsync("DAM");
+        var branch2 = await _factory.GetBranchIdAsync("ALP");
         await _factory.CreateUserAsync("حسن عمر فارس", UserRole.Lawyer, branch1);
         await _factory.CreateUserAsync("حسن عمر فارس", UserRole.Lawyer, branch2, isActive: false);
 
@@ -230,7 +231,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
     public async Task Login_WithLegacyUnsaltedSha256_UpgradeHashTransparently()
     {
         var username = $"lg_{Guid.NewGuid():N}"[..16];
-        await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId: await GetBranchIdAsync("DAM"));
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId: await _factory.GetBranchIdAsync("DAM"));
 
         int tokenVersionBefore;
         string legacyHash;
@@ -270,7 +271,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
     public async Task Login_WithCanonicalFormat_DoesNotRehash()
     {
         var username = $"cn_{Guid.NewGuid():N}"[..16];
-        await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId: await GetBranchIdAsync("DAM"));
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId: await _factory.GetBranchIdAsync("DAM"));
 
         string canonical;
         using (var scope = _factory.Services.CreateScope())
@@ -305,13 +306,6 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
         return null;
     }
 
-    private async Task<int> GetBranchIdAsync(string code)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        var branch = await db.Branches.AsNoTracking().FirstAsync(b => b.Code == code);
-        return branch.Id;
-    }
 }
 
 public static class TokenExtensions

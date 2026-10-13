@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,12 +14,6 @@ public class BranchManagementIntegrationTests
 
     public BranchManagementIntegrationTests(ApiFactory factory) => _factory = factory;
 
-    private Task<int> BranchIdAsync(string code)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        return Task.FromResult(db.Branches.Single(b => b.Code == code).Id);
-    }
 
     [Fact]
     public async Task AnyRole_ListsBranches()
@@ -51,7 +46,7 @@ public class BranchManagementIntegrationTests
             });
             Assert.Equal(HttpStatusCode.Forbidden, create.StatusCode);
 
-            var update = await client.PutAsJsonAsync($"/api/branches/{await BranchIdAsync("DAM")}", new
+            var update = await client.PutAsJsonAsync($"/api/branches/{await _factory.GetBranchIdAsync("DAM")}", new
             {
                 name = "الفرع الرئيسي - دمشق",
                 code = "DAM",
@@ -61,7 +56,7 @@ public class BranchManagementIntegrationTests
             });
             Assert.Equal(HttpStatusCode.Forbidden, update.StatusCode);
 
-            var delete = await client.DeleteAsync($"/api/branches/{await BranchIdAsync("DAM")}");
+            var delete = await client.DeleteAsync($"/api/branches/{await _factory.GetBranchIdAsync("DAM")}");
             Assert.Equal(HttpStatusCode.Forbidden, delete.StatusCode);
         }
     }
@@ -165,7 +160,7 @@ public class BranchManagementIntegrationTests
     public async Task Admin_UpdatesBranch_Deactivates()
     {
         var admin = _factory.AuthorizedClient("admin");
-        var id = await BranchIdAsync("HMS");
+        var id = await _factory.GetBranchIdAsync("HMS");
 
         var response = await admin.PutAsJsonAsync($"/api/branches/{id}", new
         {
@@ -228,7 +223,7 @@ public class BranchManagementIntegrationTests
     {
         // فرع دمشق فيه مستخدمون (head1/lawyer1) — يُرفض الحذف.
         var admin = _factory.AuthorizedClient("admin");
-        var id = await BranchIdAsync("DAM");
+        var id = await _factory.GetBranchIdAsync("DAM");
 
         var response = await admin.DeleteAsync($"/api/branches/{id}");
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);

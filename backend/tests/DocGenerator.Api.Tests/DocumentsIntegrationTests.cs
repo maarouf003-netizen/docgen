@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using System.Text.Json;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -1387,7 +1388,7 @@ public class DocumentsIntegrationTests
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var id1 = await _factory.CreateDocumentAsync(token, "مستند محامي دمشق");
 
-        var damId = await BranchIdAsync("DAM");
+        var damId = await _factory.GetBranchIdAsync("DAM");
         await _factory.CreateUserAsync("lawyer_filter_other", UserRole.Lawyer, damId);
         var otherToken = (await _factory.LoginAsync("lawyer_filter_other", "123456"))!.Token!;
         var id2 = await _factory.CreateDocumentAsync(otherToken, "مستند محامي آخر");
@@ -1799,13 +1800,6 @@ public class DocumentsIntegrationTests
         Assert.Empty(history!);
     }
 
-    private async Task<int> BranchIdAsync(string code)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        var branch = await db.Branches.AsNoTracking().SingleAsync(b => b.Code == code);
-        return branch.Id;
-    }
 
     /// إنشاء ملف «طالبة تنفيذ» مقيد (متداول) مع عقار واحد — للاختبارات التي تحتاج انتقالات
     /// الحالة المتاحة من المتداول فقط (مثل «منفذ جبريا» الذي يتطلب عقارات مباعة بالمزاد).

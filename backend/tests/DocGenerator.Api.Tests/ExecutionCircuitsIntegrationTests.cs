@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -31,17 +32,9 @@ public class ExecutionCircuitsIntegrationTests
 
     public ExecutionCircuitsIntegrationTests(ApiFactory factory) => _factory = factory;
 
-    private static string Unique(string prefix) => $"{prefix}_{Guid.NewGuid():N}"[..24];
-
-    /// <summary>محامٍ جديد في فرع الرئيس مع عميل مسجَّل دخوله فعليًا (Cookie + CSRF).</summary>
-    private async Task<(int Id, HttpClient Client)> NewLawyerClientAsync(int branchId)
-    {
-        var username = Unique("law2");
-        var user = await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId);
-        var token = (await _factory.LoginAsync(username, "123456"))!.Token!;
-        return (user.Id, _factory.WithToken(token));
-    }
-
+    // مستثنى من R1-1 عمدًا: `HeadBranchIdAsync` يُثبّت `Governorate` كأثر جانبي
+    // تعتمد عليه `NewSectionHeadAsync` (تستدعيه للتحضير لا للقيمة)، و`BranchIdOfHeadAsync`
+    // قراءة صرفة لفرع `head1` — توحيدهما كان سيُخفي هذا التقسيم المقصود.
     private async Task<int> HeadBranchIdAsync()
     {
         using var scope = _factory.Services.CreateScope();
@@ -69,7 +62,7 @@ public class ExecutionCircuitsIntegrationTests
         var response = await lawyer.PostAsJsonAsync("/api/documents", new
         {
             documentType = "بيان دعوى",
-            borrowerName = Unique("مقترض"),
+            borrowerName = UniqueName("مقترض"),
             applicant = "المدعي",
             contractType = "تعهد",
             amountNumeric = 500,
@@ -102,14 +95,14 @@ public class ExecutionCircuitsIntegrationTests
         var branchId = await HeadBranchIdAsync();
         var head = _factory.AuthorizedClient("head1");
         var lawyer = _factory.AuthorizedClient("lawyer1");
-        var sourceName = Unique("دائرة مصدر");
-        var targetName = Unique("دائرة هدف");
+        var sourceName = UniqueName("دائرة مصدر");
+        var targetName = UniqueName("دائرة هدف");
         var source = await CreateCircuitAsync(head, sourceName);
         var target = await CreateCircuitAsync(head, targetName);
         var number = $"8{Guid.NewGuid():N}"[..7];
         var docId = await CreateDocumentAsync(lawyer, source, number);
 
-        var (lawyer2Id, lawyer2Client) = await NewLawyerClientAsync(branchId);
+        var (lawyer2Id, lawyer2Client) = await _factory.NewLawyerClientAsync(branchId);
 
         var refer = await head.PostAsJsonAsync($"/api/execution-circuits/{source}/refer-files", new
         {
@@ -144,15 +137,15 @@ public class ExecutionCircuitsIntegrationTests
         await HeadBranchIdAsync();
         var head = _factory.AuthorizedClient("head1");
         var lawyer = _factory.AuthorizedClient("lawyer1");
-        var source = await CreateCircuitAsync(head, Unique("دائرة مصدر"));
-        var target = await CreateCircuitAsync(head, Unique("دائرة هدف"));
+        var source = await CreateCircuitAsync(head, UniqueName("دائرة مصدر"));
+        var target = await CreateCircuitAsync(head, UniqueName("دائرة هدف"));
         var number = $"7{Guid.NewGuid():N}"[..7];
         var docId = await CreateDocumentAsync(lawyer, source, number);
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
         var lawyer1 = await db.Users.FirstAsync(u => u.Username == "lawyer1");
-        var (otherId, _) = await NewLawyerClientAsync(lawyer1.BranchId!.Value);
+        var (otherId, _) = await _factory.NewLawyerClientAsync(lawyer1.BranchId!.Value);
 
         var key = Guid.NewGuid().ToString();
         var body = new { fileIds = new[] { docId }, targetLawyerId = otherId, targetCircuitId = target };
@@ -176,8 +169,8 @@ public class ExecutionCircuitsIntegrationTests
         await HeadBranchIdAsync();
         var head = _factory.AuthorizedClient("head1");
         var lawyer1 = _factory.AuthorizedClient("lawyer1");
-        var targetName = Unique("دائرة هدف");
-        var source = await CreateCircuitAsync(head, Unique("دائرة مصدر"));
+        var targetName = UniqueName("دائرة هدف");
+        var source = await CreateCircuitAsync(head, UniqueName("دائرة مصدر"));
         var target = await CreateCircuitAsync(head, targetName);
         var number = $"6{Guid.NewGuid():N}"[..7];
         var docId = await CreateDocumentAsync(lawyer1, source, number);
@@ -185,7 +178,7 @@ public class ExecutionCircuitsIntegrationTests
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
         var l1 = await db.Users.SingleAsync(u => u.Username == "lawyer1");
-        var (otherId, otherClient) = await NewLawyerClientAsync(l1.BranchId!.Value);
+        var (otherId, otherClient) = await _factory.NewLawyerClientAsync(l1.BranchId!.Value);
 
         // إحالة لمالكه نفسه في الدائرة الجديدة → معلق عند المحامي الأول بتنبيه.
         var refer = await head.PostAsJsonAsync($"/api/execution-circuits/{source}/refer-files", new
@@ -214,8 +207,8 @@ public class ExecutionCircuitsIntegrationTests
         await HeadBranchIdAsync();
         var head = _factory.AuthorizedClient("head1");
         var lawyer = _factory.AuthorizedClient("lawyer1");
-        var source = await CreateCircuitAsync(head, Unique("دائرة مصدر"));
-        var target = await CreateCircuitAsync(head, Unique("دائرة هدف"));
+        var source = await CreateCircuitAsync(head, UniqueName("دائرة مصدر"));
+        var target = await CreateCircuitAsync(head, UniqueName("دائرة هدف"));
         var number = $"5{Guid.NewGuid():N}"[..7];
         var docId = await CreateDocumentAsync(lawyer, source, number);
 
@@ -257,12 +250,12 @@ public class ExecutionCircuitsIntegrationTests
     {
         await HeadBranchIdAsync();
         var head = _factory.AuthorizedClient("head1");
-        var circuitId = await CreateCircuitAsync(head, Unique("دائرة للنقل"));
+        var circuitId = await CreateCircuitAsync(head, UniqueName("دائرة للنقل"));
         var manager = _factory.AuthorizedClient("manager");
         var section = await manager.PostAsJsonAsync("/api/sections", new
         {
             branchId = await BranchIdOfHeadAsync(),
-            name = Unique("شعبة النقل"),
+            name = UniqueName("شعبة النقل"),
         });
         Assert.Equal(HttpStatusCode.Created, section.StatusCode);
         using var sectionDoc = await section.Content.ReadFromJsonAsync<JsonDocument>();
@@ -282,7 +275,7 @@ public class ExecutionCircuitsIntegrationTests
     {
         await HeadBranchIdAsync();
         var head = _factory.AuthorizedClient("head1");
-        var circuitId = await CreateCircuitAsync(head, Unique("دائرة للنقل"));
+        var circuitId = await CreateCircuitAsync(head, UniqueName("دائرة للنقل"));
 
         var transfer = await head.PostAsJsonAsync($"/api/execution-circuits/{circuitId}/transfer",
             new { targetSectionId = (int?)null });
@@ -318,7 +311,7 @@ public class ExecutionCircuitsIntegrationTests
         var sectionId = sectionDoc!.RootElement.GetProperty("id").GetInt32();
 
         var admin = _factory.AuthorizedClient("admin");
-        var username = Unique("subh");
+        var username = UniqueName("subh");
         var created = await admin.PostAsJsonAsync("/api/users", new
         {
             username,
@@ -338,11 +331,11 @@ public class ExecutionCircuitsIntegrationTests
     {
         await HeadBranchIdAsync();
         var head = _factory.AuthorizedClient("head1");
-        var divisionCircuit = await CreateCircuitAsync(head, Unique("قسم-عزل"));
-        var (_, sub) = await NewSectionHeadAsync(Unique("شعبة-عزل"));
+        var divisionCircuit = await CreateCircuitAsync(head, UniqueName("قسم-عزل"));
+        var (_, sub) = await NewSectionHeadAsync(UniqueName("شعبة-عزل"));
 
         // إنشاء رئيس الشعبة يلتحق بشعبته تلقائيًا (§8.4).
-        var created = await sub.PostAsJsonAsync("/api/execution-circuits", new { name = Unique("شعبة-دائرة") });
+        var created = await sub.PostAsJsonAsync("/api/execution-circuits", new { name = UniqueName("شعبة-دائرة") });
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         using var createdDoc = await created.Content.ReadFromJsonAsync<JsonDocument>();
         var subCircuit = createdDoc!.RootElement.GetProperty("id").GetInt32();
@@ -366,8 +359,8 @@ public class ExecutionCircuitsIntegrationTests
     public async Task Rename_ForeignScope_BadRequest()
     {
         await HeadBranchIdAsync();
-        var (_, sub) = await NewSectionHeadAsync(Unique("شعبة-دخيلة"));
-        var created = await sub.PostAsJsonAsync("/api/execution-circuits", new { name = Unique("دائرة-دخيلة") });
+        var (_, sub) = await NewSectionHeadAsync(UniqueName("شعبة-دخيلة"));
+        var created = await sub.PostAsJsonAsync("/api/execution-circuits", new { name = UniqueName("دائرة-دخيلة") });
         using var createdDoc = await created.Content.ReadFromJsonAsync<JsonDocument>();
         var circuitId = createdDoc!.RootElement.GetProperty("id").GetInt32();
 
@@ -382,12 +375,12 @@ public class ExecutionCircuitsIntegrationTests
     {
         // المسار الموجب عبر السياسة والنطاق: رئيس الشعبة يسمّي دائرته (200).
         await HeadBranchIdAsync();
-        var (_, sub) = await NewSectionHeadAsync(Unique("شعبة-تسمية"));
-        var created = await sub.PostAsJsonAsync("/api/execution-circuits", new { name = Unique("دائرة-تسمية") });
+        var (_, sub) = await NewSectionHeadAsync(UniqueName("شعبة-تسمية"));
+        var created = await sub.PostAsJsonAsync("/api/execution-circuits", new { name = UniqueName("دائرة-تسمية") });
         using var createdDoc = await created.Content.ReadFromJsonAsync<JsonDocument>();
         var circuitId = createdDoc!.RootElement.GetProperty("id").GetInt32();
 
-        var rename = await sub.PutAsJsonAsync($"/api/execution-circuits/{circuitId}/rename", new { name = Unique("دائرة-مسماة") });
+        var rename = await sub.PutAsJsonAsync($"/api/execution-circuits/{circuitId}/rename", new { name = UniqueName("دائرة-مسماة") });
         Assert.Equal(HttpStatusCode.OK, rename.StatusCode);
     }
 
@@ -395,8 +388,8 @@ public class ExecutionCircuitsIntegrationTests
     public async Task Delete_ForeignScope_BadRequest()
     {
         await HeadBranchIdAsync();
-        var (_, sub) = await NewSectionHeadAsync(Unique("شعبة-حذف"));
-        var created = await sub.PostAsJsonAsync("/api/execution-circuits", new { name = Unique("دائرة-حذف") });
+        var (_, sub) = await NewSectionHeadAsync(UniqueName("شعبة-حذف"));
+        var created = await sub.PostAsJsonAsync("/api/execution-circuits", new { name = UniqueName("دائرة-حذف") });
         using var createdDoc = await created.Content.ReadFromJsonAsync<JsonDocument>();
         var circuitId = createdDoc!.RootElement.GetProperty("id").GetInt32();
 
@@ -412,9 +405,9 @@ public class ExecutionCircuitsIntegrationTests
     {
         await HeadBranchIdAsync();
         var head = _factory.AuthorizedClient("head1");
-        var divisionCircuit = await CreateCircuitAsync(head, Unique("قسم-إحصاء"));
-        var (_, sub) = await NewSectionHeadAsync(Unique("شعبة-إحصاء"));
-        var created = await sub.PostAsJsonAsync("/api/execution-circuits", new { name = Unique("شعبة-إحصاء-دائرة") });
+        var divisionCircuit = await CreateCircuitAsync(head, UniqueName("قسم-إحصاء"));
+        var (_, sub) = await NewSectionHeadAsync(UniqueName("شعبة-إحصاء"));
+        var created = await sub.PostAsJsonAsync("/api/execution-circuits", new { name = UniqueName("شعبة-إحصاء-دائرة") });
         using var createdDoc = await created.Content.ReadFromJsonAsync<JsonDocument>();
         var subCircuit = createdDoc!.RootElement.GetProperty("id").GetInt32();
 
@@ -431,9 +424,9 @@ public class ExecutionCircuitsIntegrationTests
     {
         await HeadBranchIdAsync();
         var head = _factory.AuthorizedClient("head1");
-        var divisionCircuit = await CreateCircuitAsync(head, Unique("قسم-قائمة"));
-        var (_, sub) = await NewSectionHeadAsync(Unique("شعبة-قائمة"));
-        var created = await sub.PostAsJsonAsync("/api/execution-circuits", new { name = Unique("شعبة-قائمة-دائرة") });
+        var divisionCircuit = await CreateCircuitAsync(head, UniqueName("قسم-قائمة"));
+        var (_, sub) = await NewSectionHeadAsync(UniqueName("شعبة-قائمة"));
+        var created = await sub.PostAsJsonAsync("/api/execution-circuits", new { name = UniqueName("شعبة-قائمة-دائرة") });
         using var createdDoc = await created.Content.ReadFromJsonAsync<JsonDocument>();
         var subCircuit = createdDoc!.RootElement.GetProperty("id").GetInt32();
 

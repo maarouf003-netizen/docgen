@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using System.Text.Json;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Enums;
@@ -15,12 +16,6 @@ public class TransferIntegrationTests
 
     public TransferIntegrationTests(ApiFactory factory) => _factory = factory;
 
-    private Task<int> BranchIdAsync(string code)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        return Task.FromResult(db.Branches.Single(b => b.Code == code).Id);
-    }
 
     private async Task<LawyerListItemDto> CreateLawyerAsync(string branchCode, string fullName)
     {
@@ -31,7 +26,7 @@ public class TransferIntegrationTests
             username,
             fullName,
             password = "123456",
-            branchId = await BranchIdAsync(branchCode),
+            branchId = await _factory.GetBranchIdAsync(branchCode),
         });
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
@@ -112,7 +107,7 @@ public class TransferIntegrationTests
             username,
             fullName = "محامي حلب",
             password = "123456",
-            branchId = await BranchIdAsync("ALP"),
+            branchId = await _factory.GetBranchIdAsync("ALP"),
         });
         var aleppoLawyer = (await created.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
 
