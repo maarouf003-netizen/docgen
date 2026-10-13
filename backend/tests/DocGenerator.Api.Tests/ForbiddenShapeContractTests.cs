@@ -96,4 +96,66 @@ public sealed class ForbiddenShapeContractTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.False(string.IsNullOrWhiteSpace(await ReadMessageAsync(response)));
     }
+
+    /// <summary>
+    /// عقد الدفعة A (R0-6 توسع): رئيس دمشق يعاين عملية فرع على قيد حلب أدخله
+    /// محامي حلب — يبلغ مسار الخدمة الرامي (`EnsureHeadScopeAsync`) لا الحارس
+    /// الاستباقي، فيُرد 403 بجسم `{ message }` غير فارغ من المعالج العام.
+    /// </summary>
+    [Fact]
+    public async Task EntityRegistry_PreviewBranch_OutOfScope_Returns403WithMessage()
+    {
+        var damId = await _factory.GetDamascusIdAsync();
+        var alpId = await _factory.GetBranchIdAsync("ALP");
+        var alpLawyer = await _factory.CreateUserAsync(UniqueName("alplaw"), UserRole.Lawyer, alpId);
+
+        int groupId;
+        int aleppoChildId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+            var group = new PublicEntityGroup
+            {
+                CanonicalName = $"مصرف العقد {Guid.NewGuid():N}".Trim(),
+                EntityType = PublicEntityTypeCatalog.Company,
+            };
+            var damChild = new PublicEntity
+            {
+                Group = group,
+                Governorate = "دمشق",
+                BranchName = "فرع دمشق",
+                CreatedById = alpLawyer.Id,
+            };
+            var aleppoChild = new PublicEntity
+            {
+                Group = group,
+                Governorate = "حلب",
+                BranchName = "فرع حلب",
+                CreatedById = alpLawyer.Id,
+            };
+            group.Entries.Add(damChild);
+            group.Entries.Add(aleppoChild);
+            db.PublicEntityGroups.Add(group);
+            await db.SaveChangesAsync();
+            groupId = group.Id;
+            aleppoChildId = aleppoChild.Id;
+        }
+
+        // رئيس دمشق المزروع (`head1` فرع DAM) — يمرّ الحارس الاستباقي
+        // (`CanManageEntityRegistry`) ويُرفَض خدميًا خارج محافظته.
+        var head = _factory.AuthorizedClient("head1");
+
+        var response = await head.PostAsJsonAsync(
+            $"/api/entity-registry/groups/{groupId}/branches/preview",
+            new
+            {
+                action = "rename",
+                entryId = aleppoChildId,
+                newBranchName = "فرع حلب المحدّث",
+            });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.False(string.IsNullOrWhiteSpace(await ReadMessageAsync(response)));
+        Assert.True(damId != alpId);
+    }
 }

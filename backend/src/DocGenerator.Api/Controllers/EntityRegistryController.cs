@@ -87,10 +87,6 @@ public class EntityRegistryController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     /// <summary>تعديل قيد/إعادة تسمية جماعية بمزامنة النصوص وتدقيق الحقول — نطاقات د5/د6.</summary>
@@ -107,10 +103,6 @@ public class EntityRegistryController : ControllerBase
         catch (ArgumentException e)
         {
             return BadRequest(new { message = e.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
         }
     }
 
@@ -129,10 +121,6 @@ public class EntityRegistryController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     /// <summary>اقتراح تعديل فردي من المحامي (يبقى بانتظار المراجعة — لا يزامن النصوص).</summary>
@@ -149,10 +137,6 @@ public class EntityRegistryController : ControllerBase
         catch (ArgumentException e)
         {
             return BadRequest(new { message = e.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
         }
     }
 
@@ -185,15 +169,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!RolePermissions.CanManageEntityRegistry(Role))
             return Forbid();
-        try
-        {
-            var dto = await _registry.ApproveReviewAsync(id, Actor, ct);
-            return dto is null ? NotFound() : Ok(dto);
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        var dto = await _registry.ApproveReviewAsync(id, Actor, ct);
+        return dto is null ? NotFound() : Ok(dto);
     }
     // ── الاستيراد التاريخي (د12) — إداري: مدير/مشرف ──
 
@@ -242,10 +219,6 @@ public class EntityRegistryController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     /// <summary>نقل جميع قيود هوية أم إلى هوية أم أخرى (د3 — الوضع أ فقط).</summary>
@@ -261,10 +234,6 @@ public class EntityRegistryController : ControllerBase
         catch (ArgumentException e)
         {
             return BadRequest(new { message = e.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
         }
     }
 
@@ -365,10 +334,6 @@ public class EntityRegistryController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     // ── الدمج N←1 (د5 §4) — صلاحية مخصصة: CanMergeEntities ──
@@ -409,10 +374,6 @@ public class EntityRegistryController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     // ── إعادة تسمية هوية أم (المدير/المشرف — بمرسوم إلزامي) ──
@@ -451,10 +412,6 @@ public class EntityRegistryController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     // ── الحلول (إلغاء عدة هويات أم واستبدالها بهوية جديدة — المدير/المشرف) ──
@@ -488,10 +445,6 @@ public class EntityRegistryController : ControllerBase
         catch (ArgumentException e)
         {
             return BadRequest(new { message = e.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
         }
     }
 
@@ -561,10 +514,6 @@ public class EntityRegistryController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     /// <summary>تعديل تسمية فرع ضمن محافظة رئيس القسم (بلا مرسوم) — يزامن لقطات الفروع (S7).</summary>
@@ -580,10 +529,6 @@ public class EntityRegistryController : ControllerBase
         catch (ArgumentException e)
         {
             return BadRequest(new { message = e.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
         }
     }
 
@@ -601,10 +546,6 @@ public class EntityRegistryController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     /// <summary>إلغاء فرع: تعطيل مباشر لصفر روابط أو دمج ضمني مع فرع هدف (S4) — ضمن نطاق رئيس القسم.</summary>
@@ -621,10 +562,6 @@ public class EntityRegistryController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     /// <summary>توحيد تسميات عدة فروع في فرع ناجٍ (اختياريًا مع تصحيح كتابة اسمه) — ضمن نطاق رئيس القسم.</summary>
@@ -640,10 +577,6 @@ public class EntityRegistryController : ControllerBase
         catch (ArgumentException e)
         {
             return BadRequest(new { message = e.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
         }
     }
 
@@ -662,10 +595,6 @@ public class EntityRegistryController : ControllerBase
         catch (ArgumentException e)
         {
             return BadRequest(new { message = e.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
         }
     }
 
@@ -700,10 +629,6 @@ public class EntityRegistryController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     /// <summary>سحب ذاتي لاقتراح معلّق (رئيس القسم أو الشعبة المنشئ نفسه فقط).</summary>
@@ -720,10 +645,6 @@ public class EntityRegistryController : ControllerBase
         catch (ArgumentException e)
         {
             return BadRequest(new { message = e.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
         }
     }
 }
