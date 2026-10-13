@@ -5,571 +5,11 @@ using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.DTOs;
 
-/// <summary>
-/// خيارات فلترة «الملفات التنفيذية» بأسلوب إكسل.
-/// كل قائمة مُقيدة بباقي الفلاتر النشطة (ما عدا فلتر الحقل نفسه)
-/// فيلتزم الاختيار اللاحق بنتائج الفلتر السابق تلقائيًا.
-/// </summary>
-public record DocumentFilterOptions(
-    List<string> Applicants,
-    List<string> Courts,
-    List<string> Lawyers,
-    List<string> AdministrativeBranches,
-    List<string> Branches,
-    List<string> ExecutedEntities,
-    List<string> PublicEntityBranches);
-
-public record GuarantorDto(
-    int? Id,
-    int GuarantorNumber,
-    string? Name,
-    string? Father,
-    string? Family,
-    string? Mother,
-    string? Birth,
-    string? Register,
-    string? NationalId,
-    string? Address,
-    string? AddressType,
-    string? RepresentativeName,
-    string? RepresentativeFather,
-    string? RepresentativeFamily,
-    string? RepresentativeCapacity,
-    string? RepresentativeAddressType,
-    string? RepresentativeAddress,
-    List<HeirDto>? Heirs = null,
-    string? Nature = PartyNatureCatalog.Natural,
-    string? RegistrationNumber = null,
-    string? RepresentedBy = null);
-
-/// <summary>
-/// وريث لمنفذ عليه متوفى. القيمة الفارغة في الحقلين (AddressType أو Address) تُلغى
-/// السابقة «عنوانه/يمثله» في المستندات فيُذكر الاسم الثلاثي للوريث فقط.
-/// </summary>
-public record HeirDto(
-    int? Id,
-    string? Name,
-    string? Father,
-    string? Family,
-    string? Capacity,
-    string? AddressType,
-    string? Address);
-
-/// <summary>
-/// مال مرهون ضمن قائمة الأموال المرهونة (منقول أو غير منقول). الملاك قائمة أسماء (واحد أو أكثر)
-/// بترتيب الاختيار، وتُستخدم في النصوص والتوليد مجمعةً، ويُوجَّه توليد 005/006 لكل وريثٍ من الورثة.
-/// الحقول غير المعنية بنوع الأصل تبقى فارغة.
-/// </summary>
-public record AssetDto(
-    int? Id,
-    string? AssetKind,
-    List<string>? Owners,
-    string? ShareType,
-    // العقار
-    string? Property,
-    string? PropertyNumber,
-    string? PropertyDistrict,
-    string? LandRegistry,
-    // المركبة
-    string? VehicleType,
-    string? VehicleClass,
-    string? PlateNumber,
-    string? VehicleGovernorate,
-    // المتجر المسجل
-    string? RegisterNumber,
-    /// <summary>تاريخ تسجيل المتجر (نص حر يُفسَّر بصيغ «1/8/2026» فيُخزَّن زمنيًا: مثل بقية تواريخ الملفات).</summary>
-    string? RegistrationDate,
-    string? ShopGovernorate,
-    string? ShopDescription,
-    string? ShopLocation,
-    // كفالة الرواتب
-    string? PublicEntity,
-    // المتجر غير المسجل
-    string? LicenseNumber,
-    /// <summary>تاريخ الترخيص (نص حر يُفسَّر بصيغ «1/8/2026» فيُخزَّن زمنيًا: مثل بقية تواريخ الملفات).</summary>
-    string? LicenseDate,
-    string? LicenseIssuer,
-    // الملاحظات
-    string? Notes,
-    /// <summary>تاريخ القاء الحجز على الأصل (نص حر يُفسَّر زمنيًا ويُستبدل في قوالب الوورد).</summary>
-    string? SeizureDate);
-
-public record ExecutionActionDto(
-    int Id,
-    string Type,
-    string Text,
-    string? ActionDate,
-    string? ReminderDuration,
-    string? ReminderColor,
-    string? CreatedByName,
-    DateTime CreatedAt) : IExportAction;
-
-/// <summary>
-/// وريث لمورثٍ متوفى في وضع «منفذ عليه» (اسم ثلاثي). القيمة الفارغة في الحقلين
-/// (AddressType أو HeirAddress) تعني عدم وجود عنوان/وكيل فيُذكر الاسم الثلاثي للوريث فقط.
-/// </summary>
-public record ExecutedHeirDto(
-    int? Id,
-    string? HeirName,
-    string? HeirFather,
-    string? HeirFamily,
-    string? AddressType,
-    string? HeirAddress);
-
-/// <summary>
-/// طالب التنفيذ في وضع «منفذ عليه» مع ورثة مورثه المتوفى إن اختير «إضافة لتركة».
-/// </summary>
-public record ExecutionApplicantDto(
-    int? Id,
-    string? Name,
-    string? Father,
-    string? Family,
-    string? LegalRepresentative,
-    string? RepresentationType,
-    string? DeceasedName,
-    string? DeceasedFather,
-    string? DeceasedFamily,
-    string? RepresentativeName,
-    string? RepresentativeFather,
-    string? RepresentativeFamily,
-    string? RepresentativeCapacity,
-    string? RepresentativeLegalRepresentative,
-    List<ExecutedHeirDto>? Heirs = null,
-    string? Nature = PartyNatureCatalog.Natural,
-    string? RegistrationNumber = null,
-    string? RepresentedBy = null,
-    string? AddressType = null,
-    string? Address = null,
-    /// <summary>معرّف قيد طالب التنفيذ الاعتباري (الجهة العامة) في السجل المرجعي (اختياري — من نافذة الاختيار).</summary>
-    int? RegistryId = null) : IExportApplicant;
-
-/// <summary>الجهة العامة أو الشخص الاعتباري المنفذ عليه في وضع «منفذ عليه».</summary>
-public record ExecutedPublicEntityDto(
-    int? Id,
-    string? EntityName,
-    string? EntityBranch,
-    string? Nature = PartyNatureCatalog.PublicEntity,
-    string? RegistrationNumber = null,
-    string? RepresentedBy = null,
-    string? AddressType = null,
-    string? Address = null,
-    string? Governorate = null,
-    /// <summary>معرّف قيد الجهة في السجل المرجعي (اختياري — من نافذة الاختيار).</summary>
-    int? RegistryId = null) : IExportPublicEntity;
-
-/// <summary>الجهة العامة طالبة التنفيذ في وضع «الجهة العامة طالبة تنفيذ» (اسم الجهة + فرعها + محافظتها).</summary>
-public record ApplicantPublicEntityDto(
-    int? Id,
-    string? Name,
-    string? Branch,
-    string? Governorate = null,
-    /// <summary>معرّف قيد الجهة في السجل المرجعي (اختياري — من نافذة الاختيار).</summary>
-    int? RegistryId = null);
-
-/// <summary>سجل تعاقب محامٍ على الملف: منشئ الملف (create) أو إحالة (transfer).</summary>
-public record DocumentAssignmentDto(
-    int Id,
-    string Kind,
-    string? LawyerName,
-    string? AssignedByName,
-    DateTime? AssignedAt);
-
-/// <summary>
-/// الشخص الطبيعي المنفذ عليه في وضع «منفذ عليه» مع ورثة مورثه المتوفى إن اختير «إضافة لتركة».
-/// </summary>
-public record ExecutedNaturalPersonDto(
-    int? Id,
-    string? Name,
-    string? Father,
-    string? Family,
-    string? AddressType,
-    string? AddressOrRepresentative,
-    string? RepresentationType,
-    string? DeceasedName,
-    string? DeceasedFather,
-    string? DeceasedFamily,
-    string? RepresentativeName,
-    string? RepresentativeFather,
-    string? RepresentativeFamily,
-    string? RepresentativeCapacity,
-    string? RepresentativeAddressType,
-    string? RepresentativeAddress,
-    List<ExecutedHeirDto>? Heirs = null) : IExportNaturalPerson;
-
-public class AddExecutionActionRequest
-{
-    public string Type { get; set; } = "action";
-    public string Text { get; set; } = string.Empty;
-    public string? ActionDate { get; set; }
-    public string? ReminderDuration { get; set; }
-    public string? ReminderColor { get; set; }
-}
-
-public class UpdateExecutionActionRequest
-{
-    public string Type { get; set; } = "action";
-    public string Text { get; set; } = string.Empty;
-    public string? ActionDate { get; set; }
-    public string? ReminderDuration { get; set; }
-    public string? ReminderColor { get; set; }
-}
-
-/// <summary>
-/// نقل تذكير إجراء إلى يوم استحقاق جديد (`POST .../actions/{id}/reschedule` من نافذة
-/// اليوم): المدخل هو يوم الاستحقاق نفسه، والخلفية تعيد حساب `ActionDate` خلفيًا
-/// (`newDueDate − DurationDays`) مع بقاء المدة — لا مساس ببقية حقول الإجراء.
-/// </summary>
-public class RescheduleActionReminderRequest
-{
-    public string? NewDueDate { get; set; }
-}
-
-/// <summary>
-/// بيان تجديد ملف مشطوب عند إعادته إلى المتداول (فك الشطب مع رقم ملف جديد لسنة الإعادة).
-/// الحقول المركبة تُرسَل نصوصًا حرة (مثال: 1/8/2026) وتُفسَّر وتُخزَّن زمنيًا كباقي تواريخ
-/// «منفذ عليه». «رقم الملف الجديد» إلزامي، وما عداها اختياري.
-/// </summary>
-public class RenewalRequest
-{
-    /// <summary>
-    /// عدّاد التزامن المتفائل (RF-010): قيمة `Version` كما قُرئت عند الجلب.
-    /// اختياري للتوافق (غيابه = قبول بلا فحص مبكر)؛ القديم يُرفض `409`.
-    /// موروث في `DocumentUpsertRequest` و`ReturnReferredToStartRequest` و`ExecutedStatusRequest`.
-    /// </summary>
-    public long? Version { get; set; }
-
-    /// <summary>رقم ورود اخطار التجديد (اختياري).</summary>
-    public string? RenewalFileReceiptNumber { get; set; }
-
-    /// <summary>تاريخ ورود اخطار التجديد (اختياري، نص حر).</summary>
-    public string? RenewalFileReceiptDate { get; set; }
-
-    /// <summary>رقم الملف الجديد عند إعادة الملف المشطوب (إلزامي).</summary>
-    public string? RenewalFileNumber { get; set; }
-
-    /// <summary>نوع الملف الجديد عند إعادة الملف المشطوب (اختياري).</summary>
-    public string? RenewalFileType { get; set; }
-
-    /// <summary>سنة الإعادة (إلزامية في نظام «طالبة تنفيذ»، وتُسجَّل بها سنة رقم الأساس الجديد).</summary>
-    public int? RenewalYear { get; set; }
-
-    /// <summary>تاريخ التجديد (اختياري، نص حر).</summary>
-    public string? RenewalDate { get; set; }
-}
-
-/// <summary>
-/// بيان العودة من «محال الى البداية» (نقطة «return-referred-to-start») — بنتيجتين:
-/// استعادة «منفذ جبريا» (منفذ جزئيا) حسب اللازمة وإلا «متداول». حقول التجديد موحّدة في
-/// المسارين (رقم الملف الجديد يفعّل التجديد ويلزم السنة 1900–2100 وتطابقها مع سنة التاريخ)،
-/// و«تاريخ الشطب» خاص بنتيجة-متداول فقط ويُتجاهل في عودة-جزئيا. كلها نصوص حرة (مثال: 1/8/2026)
-/// تُفسَّر وتُخزَّن زمنيًا كباقي تواريخ النظام.
-/// </summary>
-public class ReturnReferredToStartRequest : RenewalRequest
-{
-    /// <summary>تاريخ شطب الملف (اختياري — لعودة-متداول فقط، ويُتجاهل في عودة-جزئيا).</summary>
-    public string? StruckOffDate { get; set; }
-}
-
-/// <summary>
-/// تعيين حالة وضع «الجهة العامة منفذ عليها» (متداول/منفذ/مشطوب) من صفحة التفاصيل.
-/// عند الانتقال إلى «منفذ» تُحفظ حقوله (المبلغ/كيفية التنفيذ/تاريخ الإيداع)، وعند الانتقال
-/// إلى «مشطوب» يُحفظ تاريخ الشطب (نص حر؛ إن غاب يُثبَّت توقيت الانتقال)، وعند الإعادة إلى
-/// متداول تُطبَّق حقول التجديد الموروثة (رقم الملف الجديد إلزامي عند إعادة الملف المشطوب).
-/// </summary>
-public class ExecutedStatusRequest : RenewalRequest
-{
-    /// <summary>الحالة المستهدفة: متداول (سلسلة فارغة) / منفذ / مشطوب.</summary>
-    public string Status { get; set; } = string.Empty;
-
-    /// <summary>تاريخ الشطب عند الانتقال إلى «مشطوب» (نص حر؛ إن غاب يُحفظ توقيت الانتقال).</summary>
-    public string? StruckOffDate { get; set; }
-
-    /// <summary>المبلغ الذي دفعته الجهة العامة (صفة «منفذ عليها») أو المبلغ المودع (صفة «عرض وايداع»).</summary>
-    public decimal? ExecutedPaidAmount { get; set; }
-
-    /// <summary>عملة المبلغ المدفوع الأول (افتراضيًا ليرة سورية).</summary>
-    public string? ExecutedPaidCurrency { get; set; }
-
-    /// <summary>المبلغ المدفوع الثاني (اختياري) في وضع «منفذ عليه» / «عرض وايداع»، بعملته الخاصة.</summary>
-    public decimal? ExecutedPaidAmount2 { get; set; }
-
-    /// <summary>عملة المبلغ المدفوع الثاني (افتراضيًا ليرة سورية).</summary>
-    public string? ExecutedPaidCurrency2 { get; set; }
-
-    /// <summary>المبلغ المدفوع الثالث (اختياري) في وضع «منفذ عليه» / «عرض وايداع»، بعملته الخاصة.</summary>
-    public decimal? ExecutedPaidAmount3 { get; set; }
-
-    /// <summary>عملة المبلغ المدفوع الثالث (افتراضيًا ليرة سورية).</summary>
-    public string? ExecutedPaidCurrency3 { get; set; }
-
-    /// <summary>كيفية تنفيذ الملف (صفة «الجهة العامة منفذ عليها» فقط).</summary>
-    public string? ExecutedDescription { get; set; }
-
-    /// <summary>تاريخ ايداعه حساب الجهة العامة (صفة «عرض وايداع» فقط).</summary>
-    public string? ExecutedDepositDate { get; set; }
-
-    /// <summary>تاريخ التنفيذ (صفة «الجهة العامة منفذ عليها» فقط، نص حر يُفسَّر بصيغ «1/8/2026»).</summary>
-    public string? ExecutedExecutionDate { get; set; }
-
-    /// <summary>رقم كتاب الجهة العامة بالسير بالملف عند إرجاع «عرض وايداع» من «منفذ» إلى «متداول» (إلزامي).</summary>
-    public string? SayerNumber { get; set; }
-
-    /// <summary>تاريخ كتاب الجهة العامة بالسير بالملف عند الإرجاع من «منفذ» إلى «متداول» (إلزامي).</summary>
-    public string? SayerDate { get; set; }
-
-    /// <summary>رقم ورود كتاب بالسير بالملف عند الإرجاع من «منفذ» إلى «متداول» (إلزامي).</summary>
-    public string? SayerRegNumber { get; set; }
-
-    /// <summary>تاريخ ورود كتاب بالسير بالملف عند الإرجاع من «منفذ» إلى «متداول» (إلزامي).</summary>
-    public string? SayerRegDate { get; set; }
-}
-
-public class DocumentUpsertRequest : RenewalRequest
-{
-    public string? DocumentType { get; set; }
-    public string? BorrowerName { get; set; }
-    public string? BorrowerFather { get; set; }
-    public string? BorrowerFamily { get; set; }
-    public string? BorrowerMother { get; set; }
-    public string? BorrowerBirth { get; set; }
-    public string? BorrowerRegister { get; set; }
-    public string? BorrowerNationalId { get; set; }
-    public string? BorrowerAddress { get; set; }
-    public string? BorrowerAddressType { get; set; } = "موطن مختار";
-
-    /// <summary>الممثل الشرعي للمقترض (ولي/وصي/قيم) إن وُجد: اسمه الثلاثي وصفته وعنوانه.</summary>
-    public string? BorrowerRepresentativeName { get; set; }
-    public string? BorrowerRepresentativeFather { get; set; }
-    public string? BorrowerRepresentativeFamily { get; set; }
-    public string? BorrowerRepresentativeCapacity { get; set; }
-    public string? BorrowerRepresentativeAddressType { get; set; }
-    public string? BorrowerRepresentativeAddress { get; set; }
-
-    /// <summary>طبيعة المقترض/المنفذ عليه: شخص طبيعي (natural) أو شخص اعتباري (legal).</summary>
-    public string BorrowerNature { get; set; } = PartyNatureCatalog.Natural;
-    /// <summary>رقم تسجيل الشخص الاعتباري عند الطبيعة الاعتبارية (اختياري).</summary>
-    public string? BorrowerRegistrationNumber { get; set; }
-    /// <summary>من يمثل الشخص الاعتباري عند الطبيعة الاعتبارية (اختياري).</summary>
-    public string? BorrowerRepresentedBy { get; set; }
-
-    public string? ContractType { get; set; }
-    public string? ContractTypeSelector { get; set; } = "مصرفي";
-    public string? ContractNumber { get; set; }
-    public string? ContractDate { get; set; }
-    public string? AnnexType { get; set; }
-    public string? AnnexNumber { get; set; }
-    public string? AnnexDate { get; set; }
-    public string? InclusionText { get; set; }
-
-    public decimal? AmountNumeric { get; set; }
-    public string? AmountWords { get; set; }
-    public string? Currency { get; set; } = "ليرة سورية";
-    public decimal? Amount2Numeric { get; set; }
-    public string? Amount2Words { get; set; }
-    public string? Currency2 { get; set; } = "دولار أمريكي";
-    public decimal? Amount3Numeric { get; set; }
-    public string? Amount3Words { get; set; }
-    public string? Currency3 { get; set; } = "ليرة سورية";
-    public decimal? InclusionAmountNumeric { get; set; }
-    public string? InclusionAmountWords { get; set; }
-    public string? InclusionCurrency { get; set; } = "ليرة سورية";
-    public decimal? InclusionAmount2Numeric { get; set; }
-    public string? InclusionAmount2Words { get; set; }
-    public string? InclusionCurrency2 { get; set; } = "ليرة سورية";
-    public decimal? InclusionAmount3Numeric { get; set; }
-    public string? InclusionAmount3Words { get; set; }
-    public string? InclusionCurrency3 { get; set; } = "ليرة سورية";
-
-    public string? Court { get; set; }
-    /// <summary>
-    /// دائرة التنفيذ (سجل الدوائر): إلزامية للجديد عدا ملفات المناب الخارجي
-    /// (IsExternal=true). الخادم يشتق Court/CourtNorm من الدائرة ويتجاهل نص العميل دائمًا.
-    /// </summary>
-    public int? ExecutionCircuitId { get; set; }
-    public string? Applicant { get; set; }
-
-    public string? FileNumber { get; set; }
-    public string? FileType { get; set; }
-    public string? FileYear { get; set; }
-    public string? FileIncoming { get; set; }
-    public string? FileIncomingDate { get; set; }
-    public string? UnderFilingNumber { get; set; }
-    public string? FileRegistrationDate { get; set; }
-    public string? BranchName { get; set; }
-
-    public string? SeizureDate { get; set; }
-    public string? ImmediateActions { get; set; }
-    public string? Notes { get; set; }
-
-    public List<GuarantorDto> Guarantors { get; set; } = new();
-    public List<AssetDto> Assets { get; set; } = new();
-
-    /// <summary>ورثة المقترض المتوفى (إن وُجدوا)؛ الصفوف بلا اسم تُتجاهل عند الحفظ.</summary>
-    public List<HeirDto> BorrowerHeirs { get; set; } = new();
-
-    /// <summary>
-    /// صفة الملف (GeneralEntitySideCatalog): تُثبَّت عند الإنشاء ولا تُغيّر عند التعديل.
-    /// في وضع «منفذ عليه» يُشترط عادي فقط (لا مصرفي) وتُلغى بيانات المقترض والكفلاء والأموال.
-    /// </summary>
-    public string? GeneralEntitySide { get; set; } = GeneralEntitySideCatalog.Applicant;
-
-    /// <summary>حالة وضع «منفذ عليه» (ExecutedStatusCatalog): متداول/منفذ/مشطوب.</summary>
-    public string? ExecutedStatus { get; set; } = string.Empty;
-
-    /// <summary>تاريخ الشطب في وضع «منفذ عليه» (نص حر يُفسَّر بصيغ «1/8/2026» ويُخزَّن DateTime في القاعدة).</summary>
-    public string? StruckOffDate { get; set; }
-
-    /// <summary>وصف/بيان إضافي في وضع «منفذ عليه».</summary>
-    public string? ExecutedDescription { get; set; }
-
-    /// <summary>تاريخ ورود الاخطار في وضع «منفذ عليه» (نص حر يُفسَّر بصيغ «1/8/2026» ويغذي فترة إحصائية «متداول للضد»).</summary>
-    public string? FileReceiptDate { get; set; }
-
-    /// <summary>رقم ورود الإخطار التنفيذي في وضع «منفذ عليه».</summary>
-    public string? FileReceiptNumber { get; set; }
-
-    /// <summary>المبلغ المطلوب دفعه من الجهة العامة في وضع «منفذ عليه».</summary>
-    public decimal? ExecutedRequiredAmount { get; set; }
-
-    /// <summary>عملة المبلغ المطلوب الأول في وضع «منفذ عليه» (افتراضيًا ليرة سورية).</summary>
-    public string? ExecutedRequiredCurrency { get; set; }
-
-    /// <summary>المبلغ المطلوب الثاني (اختياري) في وضع «منفذ عليه».</summary>
-    public decimal? ExecutedRequiredAmount2 { get; set; }
-
-    /// <summary>عملة المبلغ المطلوب الثاني في وضع «منفذ عليه» (افتراضيًا ليرة سورية).</summary>
-    public string? ExecutedRequiredCurrency2 { get; set; }
-
-    /// <summary>المبلغ المطلوب الثالث (اختياري) في وضع «منفذ عليه».</summary>
-    public decimal? ExecutedRequiredAmount3 { get; set; }
-
-    /// <summary>عملة المبلغ المطلوب الثالث في وضع «منفذ عليه» (افتراضيًا ليرة سورية).</summary>
-    public string? ExecutedRequiredCurrency3 { get; set; }
-
-    /// <summary>المبلغ الذي دفعته الجهة العامة في وضع «منفذ عليه» / المبلغ المودع في «عرض وايداع».</summary>
-    public decimal? ExecutedPaidAmount { get; set; }
-
-    /// <summary>عملة المبلغ المدفوع الأول (افتراضيًا ليرة سورية).</summary>
-    public string? ExecutedPaidCurrency { get; set; }
-
-    /// <summary>المبلغ المدفوع الثاني (اختياري) في وضع «منفذ عليه» / «عرض وايداع».</summary>
-    public decimal? ExecutedPaidAmount2 { get; set; }
-
-    /// <summary>عملة المبلغ المدفوع الثاني (افتراضيًا ليرة سورية).</summary>
-    public string? ExecutedPaidCurrency2 { get; set; }
-
-    /// <summary>المبلغ المدفوع الثالث (اختياري) في وضع «منفذ عليه» / «عرض وايداع».</summary>
-    public decimal? ExecutedPaidAmount3 { get; set; }
-
-    /// <summary>عملة المبلغ المدفوع الثالث (افتراضيًا ليرة سورية).</summary>
-    public string? ExecutedPaidCurrency3 { get; set; }
-
-    /// <summary>تاريخ ايداعه حساب الجهة العامة في وضع «عرض وايداع» (نص حر يُفسَّر بصيغ «1/8/2026»).</summary>
-    public string? ExecutedDepositDate { get; set; }
-
-    /// <summary>تاريخ التنفيذ في وضع «الجهة العامة منفذ عليها» (نص حر يُفسَّر بصيغ «1/8/2026»).</summary>
-    public string? ExecutedExecutionDate { get; set; }
-
-    /// <summary>تاريخ قرار الإحالة القطعية في «منفذ جبريا» (نص حر).</summary>
-    public string? ForcedExecutionDate { get; set; }
-
-    /// <summary>طالبو التنفيذ في وضع «منفذ عليه».</summary>
-    public List<ExecutionApplicantDto> ExecutionApplicants { get; set; } = new();
-
-    /// <summary>الجهات العامة المنفذ عليها في وضع «منفذ عليه».</summary>
-    public List<ExecutedPublicEntityDto> ExecutedPublicEntities { get; set; } = new();
-
-    /// <summary>الأشخاص الطبيعيون المنفذ عليهم في وضع «منفذ عليه».</summary>
-    public List<ExecutedNaturalPersonDto> ExecutedNaturalPersons { get; set; } = new();
-
-    /// <summary>الجهات العامة طالبة التنفيذ في وضع «الجهة العامة طالبة تنفيذ» (واحدة أو أكثر).</summary>
-    public List<ApplicantPublicEntityDto> ApplicantPublicEntities { get; set; } = new();
-
-    /// <summary>رقم ورود الملف في وضع «الجهة العامة طالبة تنفيذ» (اختياري).</summary>
-    public string? FileArrivalNumber { get; set; }
-
-    /// <summary>تاريخ ورود الملف في وضع «الجهة العامة طالبة تنفيذ» (نص حر).</summary>
-    public string? FileArrivalDate { get; set; }
-
-    /// <summary>
-    /// إجراءات وملاحظات تُزرع في جدول «الإجراءات والملاحظات» ذرّيًا مع حفظ المستند.
-    /// كل عنصر يمر بنفس دوال التعقيم والتحقق الخاصة بالإجراءات (NormalizeAction/NormalizeReminder)،
-    /// وأي عنصر غير صالح يرفض الحفظ كاملًا بنفس المعاملة، ولا يُنشأ أي سجل مكرر عند التعديل.
-    /// الحقول المتروكة فارغة تُتجاهل ولا تُسبب فشل الحفظ.
-    /// </summary>
-    public List<AddExecutionActionRequest> InitialActions { get; set; } = new();
-}
-
-/// <summary>
-/// صف ملف واحد في جدول تدوير أرقام الأساس — ملفات المحامي المؤهلة للتدوير
-/// مع رقم أساس السنة الحالية إن وُجد (وإلا يكون null فيُترك الحقل فارغًا للإدخال).
-/// DisplayName هو اسم العرض (اسم المقترض، أو اسم طالب العرض لمن لفائف العائلتين
-/// Executed + Deposit اللتين بلا مقترض)، ويعود للواجهة لعرضه عمود الاسم الموحد.
-/// </summary>
-public record RotationDocumentDto(
-    int DocumentId,
-    string? Court,
-    string? BorrowerName,
-    string? BorrowerFather,
-    string? BorrowerFamily,
-    string? FileNumber,
-    string? FileType,
-    string? BaseNumber,
-    string? DisplayName,
-    string? EffectiveFileNumber = null,
-    string? EffectiveFileYear = null);
-
-/// <summary>
-/// رقم أساس مُدخل لملف واحد في سنة التدوير الحالية. القيمة الفارغة تعني
-/// إلغاء رقم أساس السنة الحالية لهذا الملف (مع الاحتفاظ بأرقام السنوات السابقة).
-/// </summary>
-public record BaseNumberEntry(
-    int DocumentId,
-    string? BaseNumber);
-
-public class SaveBaseNumbersRequest
-{
-    public List<BaseNumberEntry> Entries { get; set; } = new();
-}
-
-/// <summary>
-/// سجل رقم أساس لسنة واحدة من تاريخ تدوير أرقام الأساس للملف — تُعرض كل السجلات
-/// (سنة واحدة قد تملك أكثر من رقم — الأحدث CreatedAt هو المعتبر)، مرتبة بالسنة ثم CreatedAt تنازليًا.
-/// </summary>
-public record BaseNumberHistoryDto(
-    int Year,
-    string BaseNumber);
-
-/// <summary>
-/// وقعة واحدة من «وقوعات الملف»: شطب/تجديد (وضع «منفذ عليه») أو إجراء تغيير حالة
-/// (نظام «طالبة تنفيذ»: تريث/منفذ بالتسوية/منفذ جبريا/تراجع). EventDate/ReceiptDate
-/// زمنيّان (تُفسَّر النصوص الحرة في الخدمة وتحوَّل إلى DateTime)، وDetails تحمل حقول
-/// إجراءات تغيير الحالة الكاملة (المفاتيح الإنكليزية المعتمدة في الخدمة)، بينما
-/// DetailsText تحمل السرد النصي الحر للوقوعات الآلية (كنوع «تغيير جهة») — أحدهما
-/// فقط غير null، فلا يُلوَّث القاموس بالنص الخام.
-/// </summary>
-public record DocumentOccurrenceDto(
-    int Id,
-    string OccurrenceType,
-    string OccurrenceTypeLabel,
-    DateTime? EventDate,
-    string? FileNumber,
-    string? FileType,
-    int? Year,
-    string? ReceiptNumber,
-    DateTime? ReceiptDate,
-    IReadOnlyDictionary<string, string>? Details,
-    string? CreatedByName,
-    string? Source = null,
-    string? DetailsText = null,
-    string? FromCircuitName = null,
-    string? ToCircuitName = null);
-
 public class DocumentResponse : IDocumentSheetFields
 {
-    // تحقيق صريح لحقول القوائم في `IDocumentSheetFields`: `List<T>` لا يطابق
-    // `IReadOnlyList<I>` في توقيع التنفيذ (CS0738) رغم التحويل الضمني — وهذه
-    // الأعضاء الصريحة غير مرئية للتسلسل `JSON` فلا يتغير عقد الواجهة.
+    // طھط­ظ‚ظٹظ‚ طµط±ظٹط­ ظ„ط­ظ‚ظˆظ„ ط§ظ„ظ‚ظˆط§ط¦ظ… ظپظٹ `IDocumentSheetFields`: `List<T>` ظ„ط§ ظٹط·ط§ط¨ظ‚
+    // `IReadOnlyList<I>` ظپظٹ طھظˆظ‚ظٹط¹ ط§ظ„طھظ†ظپظٹط° (CS0738) ط±ط؛ظ… ط§ظ„طھط­ظˆظٹظ„ ط§ظ„ط¶ظ…ظ†ظٹ â€” ظˆظ‡ط°ظ‡
+    // ط§ظ„ط£ط¹ط¶ط§ط، ط§ظ„طµط±ظٹط­ط© ط؛ظٹط± ظ…ط±ط¦ظٹط© ظ„ظ„طھط³ظ„ط³ظ„ `JSON` ظپظ„ط§ ظٹطھط؛ظٹط± ط¹ظ‚ط¯ ط§ظ„ظˆط§ط¬ظ‡ط©.
     IReadOnlyList<IExportApplicant> IDocumentSheetFields.ExecutionApplicants => ExecutionApplicants;
     IReadOnlyList<IExportPublicEntity> IDocumentSheetFields.ExecutedPublicEntities => ExecutedPublicEntities;
     IReadOnlyList<IExportNaturalPerson> IDocumentSheetFields.ExecutedNaturalPersons => ExecutedNaturalPersons;
@@ -578,7 +18,7 @@ public class DocumentResponse : IDocumentSheetFields
     public int Id { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
-    /// <summary>عدّاد التزامن المتفائل (RF-010) — يُعاد إرساله في `Version` عند الحفظ.</summary>
+    /// <summary>ط¹ط¯ظ‘ط§ط¯ ط§ظ„طھط²ط§ظ…ظ† ط§ظ„ظ…طھظپط§ط¦ظ„ (RF-010) â€” ظٹظڈط¹ط§ط¯ ط¥ط±ط³ط§ظ„ظ‡ ظپظٹ `Version` ط¹ظ†ط¯ ط§ظ„ط­ظپط¸.</summary>
     public long Version { get; set; }
     public int CreatedById { get; set; }
     public int? BranchId { get; set; }
@@ -593,18 +33,18 @@ public class DocumentResponse : IDocumentSheetFields
     public string? BorrowerNationalId { get; set; }
     public string? BorrowerAddress { get; set; }
     public string? BorrowerAddressType { get; set; }
-    /// <summary>الممثل الشرعي للمقترض (ولي/وصي/قيم) إن وُجد: اسمه الثلاثي وصفته وعنوانه.</summary>
+    /// <summary>ط§ظ„ظ…ظ…ط«ظ„ ط§ظ„ط´ط±ط¹ظٹ ظ„ظ„ظ…ظ‚طھط±ط¶ (ظˆظ„ظٹ/ظˆطµظٹ/ظ‚ظٹظ…) ط¥ظ† ظˆظڈط¬ط¯: ط§ط³ظ…ظ‡ ط§ظ„ط«ظ„ط§ط«ظٹ ظˆطµظپطھظ‡ ظˆط¹ظ†ظˆط§ظ†ظ‡.</summary>
     public string? BorrowerRepresentativeName { get; set; }
     public string? BorrowerRepresentativeFather { get; set; }
     public string? BorrowerRepresentativeFamily { get; set; }
     public string? BorrowerRepresentativeCapacity { get; set; }
     public string? BorrowerRepresentativeAddressType { get; set; }
     public string? BorrowerRepresentativeAddress { get; set; }
-    /// <summary>طبيعة المقترض/المنفذ عليه: شخص طبيعي (natural) أو شخص اعتباري (legal).</summary>
+    /// <summary>ط·ط¨ظٹط¹ط© ط§ظ„ظ…ظ‚طھط±ط¶/ط§ظ„ظ…ظ†ظپط° ط¹ظ„ظٹظ‡: ط´ط®طµ ط·ط¨ظٹط¹ظٹ (natural) ط£ظˆ ط´ط®طµ ط§ط¹طھط¨ط§ط±ظٹ (legal).</summary>
     public string BorrowerNature { get; set; } = PartyNatureCatalog.Natural;
-    /// <summary>رقم تسجيل الشخص الاعتباري عند الطبيعة الاعتبارية (اختياري).</summary>
+    /// <summary>ط±ظ‚ظ… طھط³ط¬ظٹظ„ ط§ظ„ط´ط®طµ ط§ظ„ط§ط¹طھط¨ط§ط±ظٹ ط¹ظ†ط¯ ط§ظ„ط·ط¨ظٹط¹ط© ط§ظ„ط§ط¹طھط¨ط§ط±ظٹط© (ط§ط®طھظٹط§ط±ظٹ).</summary>
     public string? BorrowerRegistrationNumber { get; set; }
-    /// <summary>من يمثل الشخص الاعتباري عند الطبيعة الاعتبارية (اختياري).</summary>
+    /// <summary>ظ…ظ† ظٹظ…ط«ظ„ ط§ظ„ط´ط®طµ ط§ظ„ط§ط¹طھط¨ط§ط±ظٹ ط¹ظ†ط¯ ط§ظ„ط·ط¨ظٹط¹ط© ط§ظ„ط§ط¹طھط¨ط§ط±ظٹط© (ط§ط®طھظٹط§ط±ظٹ).</summary>
     public string? BorrowerRepresentedBy { get; set; }
     public string? ContractType { get; set; }
     public string? ContractTypeSelector { get; set; }
@@ -633,27 +73,27 @@ public class DocumentResponse : IDocumentSheetFields
     public string? InclusionAmount3Words { get; set; }
     public string? InclusionCurrency3 { get; set; }
     public string? Court { get; set; }
-    /// <summary>دائرة التنفيذ المرجعية (سجل الدوائر) — تُعرض نصًا عبر Court للتوافق.</summary>
+    /// <summary>ط¯ط§ط¦ط±ط© ط§ظ„طھظ†ظپظٹط° ط§ظ„ظ…ط±ط¬ط¹ظٹط© (ط³ط¬ظ„ ط§ظ„ط¯ظˆط§ط¦ط±) â€” طھظڈط¹ط±ط¶ ظ†طµظ‹ط§ ط¹ط¨ط± Court ظ„ظ„طھظˆط§ظپظ‚.</summary>
     public int? ExecutionCircuitId { get; set; }
-    /// <summary>شعبة الدائرة المالكة (`null` = ملك القسم) — للنطاق والعرض.</summary>
+    /// <summary>ط´ط¹ط¨ط© ط§ظ„ط¯ط§ط¦ط±ط© ط§ظ„ظ…ط§ظ„ظƒط© (`null` = ظ…ظ„ظƒ ط§ظ„ظ‚ط³ظ…) â€” ظ„ظ„ظ†ط·ط§ظ‚ ظˆط§ظ„ط¹ط±ط¶.</summary>
     public int? SectionId { get; set; }
-    /// <summary>اسم الشعبة المالكة — للعرض فقط.</summary>
+    /// <summary>ط§ط³ظ… ط§ظ„ط´ط¹ط¨ط© ط§ظ„ظ…ط§ظ„ظƒط© â€” ظ„ظ„ط¹ط±ط¶ ظپظ‚ط·.</summary>
     public string? SectionName { get; set; }
-    /// <summary>علم «بانتظار إعادة القيد» — بانتظار المحامي لإدخال الرقم الجديد.</summary>
+    /// <summary>ط¹ظ„ظ… آ«ط¨ط§ظ†طھط¸ط§ط± ط¥ط¹ط§ط¯ط© ط§ظ„ظ‚ظٹط¯آ» â€” ط¨ط§ظ†طھط¸ط§ط± ط§ظ„ظ…ط­ط§ظ…ظٹ ظ„ط¥ط¯ط®ط§ظ„ ط§ظ„ط±ظ‚ظ… ط§ظ„ط¬ط¯ظٹط¯.</summary>
     public bool NeedsRegistration { get; set; }
     public string? Applicant { get; set; }
-    /// <summary>نسخة تسريع: معرّف قيد أول جهة طالب مرتبطة بالسجل (للفلترة في البوابة).</summary>
+    /// <summary>ظ†ط³ط®ط© طھط³ط±ظٹط¹: ظ…ط¹ط±ظ‘ظپ ظ‚ظٹط¯ ط£ظˆظ„ ط¬ظ‡ط© ط·ط§ظ„ط¨ ظ…ط±طھط¨ط·ط© ط¨ط§ظ„ط³ط¬ظ„ (ظ„ظ„ظپظ„طھط±ط© ظپظٹ ط§ظ„ط¨ظˆط§ط¨ط©).</summary>
     public int? ApplicantRegistryId { get; set; }
     public string? Lawyer { get; set; }
     public string? ReferredFromLawyer { get; set; }
     public DateTime? ReferredAt { get; set; }
     public string? FileNumber { get; set; }
     /// <summary>
-    /// الرقم الظاهر للمستخدم: آخر رقم أساس ≤ سنة اليوم (إن وُجد)، وإلا رقم الملف الأصلي.
-    /// (رقم الملف الأصلي يبقى في FileNumber للتحرير والسجل التاريخي.)
+    /// ط§ظ„ط±ظ‚ظ… ط§ظ„ط¸ط§ظ‡ط± ظ„ظ„ظ…ط³طھط®ط¯ظ…: ط¢ط®ط± ط±ظ‚ظ… ط£ط³ط§ط³ â‰¤ ط³ظ†ط© ط§ظ„ظٹظˆظ… (ط¥ظ† ظˆظڈط¬ط¯)طŒ ظˆط¥ظ„ط§ ط±ظ‚ظ… ط§ظ„ظ…ظ„ظپ ط§ظ„ط£طµظ„ظٹ.
+    /// (ط±ظ‚ظ… ط§ظ„ظ…ظ„ظپ ط§ظ„ط£طµظ„ظٹ ظٹط¨ظ‚ظ‰ ظپظٹ FileNumber ظ„ظ„طھط­ط±ظٹط± ظˆط§ظ„ط³ط¬ظ„ ط§ظ„طھط§ط±ظٹط®ظٹ.)
     /// </summary>
     public string? DisplayFileNumber { get; set; }
-    /// <summary>سنة الرقم الفعّال المرافقة لـ DisplayFileNumber — يُحسبان معًا من السجل نفسه، فلا يُعرض أحدهما مع سنة/رقم الزوج الآخر.</summary>
+    /// <summary>ط³ظ†ط© ط§ظ„ط±ظ‚ظ… ط§ظ„ظپط¹ظ‘ط§ظ„ ط§ظ„ظ…ط±ط§ظپظ‚ط© ظ„ظ€ DisplayFileNumber â€” ظٹظڈط­ط³ط¨ط§ظ† ظ…ط¹ظ‹ط§ ظ…ظ† ط§ظ„ط³ط¬ظ„ ظ†ظپط³ظ‡طŒ ظپظ„ط§ ظٹظڈط¹ط±ط¶ ط£ط­ط¯ظ‡ظ…ط§ ظ…ط¹ ط³ظ†ط©/ط±ظ‚ظ… ط§ظ„ط²ظˆط¬ ط§ظ„ط¢ط®ط±.</summary>
     public string? DisplayFileYear { get; set; }
     public string? FileType { get; set; }
     public string? FileYear { get; set; }
@@ -662,28 +102,28 @@ public class DocumentResponse : IDocumentSheetFields
     public string? UnderFilingNumber { get; set; }
     public string? FileRegistrationDate { get; set; }
     public string? BranchName { get; set; }
-    /// <summary>اسم الفرع الإداري للملف (فرع المستخدم الذي أدخله) عبر BranchId.</summary>
+    /// <summary>ط§ط³ظ… ط§ظ„ظپط±ط¹ ط§ظ„ط¥ط¯ط§ط±ظٹ ظ„ظ„ظ…ظ„ظپ (ظپط±ط¹ ط§ظ„ظ…ط³طھط®ط¯ظ… ط§ظ„ط°ظٹ ط£ط¯ط®ظ„ظ‡) ط¹ط¨ط± BranchId.</summary>
     public string? AdministrativeBranchName { get; set; }
-    /// <summary>حالة العرض الموحدة المشتقة من الخلفية (المصدر الوحيد للقواعد) — تعرضها الواجهة كما هي.</summary>
+    /// <summary>ط­ط§ظ„ط© ط§ظ„ط¹ط±ط¶ ط§ظ„ظ…ظˆط­ط¯ط© ط§ظ„ظ…ط´طھظ‚ط© ظ…ظ† ط§ظ„ط®ظ„ظپظٹط© (ط§ظ„ظ…طµط¯ط± ط§ظ„ظˆط­ظٹط¯ ظ„ظ„ظ‚ظˆط§ط¹ط¯) â€” طھط¹ط±ط¶ظ‡ط§ ط§ظ„ظˆط§ط¬ظ‡ط© ظƒظ…ط§ ظ‡ظٹ.</summary>
     public string DisplayStatus { get; set; } = string.Empty;
 
     public string? ExecStatus { get; set; }
     public string? ExecSubStatus { get; set; }
-    /// <summary>المبالغ المحصَّلة (حتى ثلاثة بعملاتها) في «منفذ بالتسوية»/«منفذ جبريا».</summary>
+    /// <summary>ط§ظ„ظ…ط¨ط§ظ„ط؛ ط§ظ„ظ…ط­طµظژظ‘ظ„ط© (ط­طھظ‰ ط«ظ„ط§ط«ط© ط¨ط¹ظ…ظ„ط§طھظ‡ط§) ظپظٹ آ«ظ…ظ†ظپط° ط¨ط§ظ„طھط³ظˆظٹط©آ»/آ«ظ…ظ†ظپط° ط¬ط¨ط±ظٹط§آ».</summary>
     public decimal? CollectedAmount { get; set; }
     public decimal? CollectedAmount2 { get; set; }
     public decimal? CollectedAmount3 { get; set; }
     public string? CollectedCurrency { get; set; }
     public string? CollectedCurrency2 { get; set; }
     public string? CollectedCurrency3 { get; set; }
-    /// <summary>صفة الملف (GeneralEntitySideCatalog): applicant = طالبة تنفيذ، executed = منفذ عليه، deposit = عرض وايداع.</summary>
+    /// <summary>طµظپط© ط§ظ„ظ…ظ„ظپ (GeneralEntitySideCatalog): applicant = ط·ط§ظ„ط¨ط© طھظ†ظپظٹط°طŒ executed = ظ…ظ†ظپط° ط¹ظ„ظٹظ‡طŒ deposit = ط¹ط±ط¶ ظˆط§ظٹط¯ط§ط¹.</summary>
     public string? GeneralEntitySide { get; set; }
-    /// <summary>التسمية العربية للصفة.</summary>
+    /// <summary>ط§ظ„طھط³ظ…ظٹط© ط§ظ„ط¹ط±ط¨ظٹط© ظ„ظ„طµظپط©.</summary>
     public string? GeneralEntitySideLabel { get; set; }
     public string? ExecutedStatus { get; set; }
     public string? ExecutedDescription { get; set; }
     public DateTime? FileReceiptDate { get; set; }
-    /// <summary>رقم ورود الإخطار التنفيذي في وضع «منفذ عليه».</summary>
+    /// <summary>ط±ظ‚ظ… ظˆط±ظˆط¯ ط§ظ„ط¥ط®ط·ط§ط± ط§ظ„طھظ†ظپظٹط°ظٹ ظپظٹ ظˆط¶ط¹ آ«ظ…ظ†ظپط° ط¹ظ„ظٹظ‡آ».</summary>
     public string? FileReceiptNumber { get; set; }
     public decimal? ExecutedRequiredAmount { get; set; }
     public string? ExecutedRequiredCurrency { get; set; }
@@ -697,34 +137,34 @@ public class DocumentResponse : IDocumentSheetFields
     public string? ExecutedPaidCurrency2 { get; set; }
     public decimal? ExecutedPaidAmount3 { get; set; }
     public string? ExecutedPaidCurrency3 { get; set; }
-    /// <summary>تاريخ ايداعه حساب الجهة العامة في وضع «عرض وايداع».</summary>
+    /// <summary>طھط§ط±ظٹط® ط§ظٹط¯ط§ط¹ظ‡ ط­ط³ط§ط¨ ط§ظ„ط¬ظ‡ط© ط§ظ„ط¹ط§ظ…ط© ظپظٹ ظˆط¶ط¹ آ«ط¹ط±ط¶ ظˆط§ظٹط¯ط§ط¹آ».</summary>
     public DateTime? ExecutedDepositDate { get; set; }
-    /// <summary>تاريخ التنفيذ في وضع «الجهة العامة منفذ عليها».</summary>
+    /// <summary>طھط§ط±ظٹط® ط§ظ„طھظ†ظپظٹط° ظپظٹ ظˆط¶ط¹ آ«ط§ظ„ط¬ظ‡ط© ط§ظ„ط¹ط§ظ…ط© ظ…ظ†ظپط° ط¹ظ„ظٹظ‡ط§آ».</summary>
     public DateTime? ExecutedExecutionDate { get; set; }
-    /// <summary>تاريخ قرار الإحالة القطعية في «منفذ جبريا» (نص حر).</summary>
+    /// <summary>طھط§ط±ظٹط® ظ‚ط±ط§ط± ط§ظ„ط¥ط­ط§ظ„ط© ط§ظ„ظ‚ط·ط¹ظٹط© ظپظٹ آ«ظ…ظ†ظپط° ط¬ط¨ط±ظٹط§آ» (ظ†طµ ط­ط±).</summary>
     public string? ForcedExecutionDate { get; set; }
-    /// <summary>تاريخ تحويل بدل المبيع للجهة العامة عند «اعتبار الملف منفذًا كاملًا بهذا البيع» — نص حر يُعرَض «yyyy-MM-dd» (مثل بقية حقول التخزين الزمني الحر).</summary>
+    /// <summary>طھط§ط±ظٹط® طھط­ظˆظٹظ„ ط¨ط¯ظ„ ط§ظ„ظ…ط¨ظٹط¹ ظ„ظ„ط¬ظ‡ط© ط§ظ„ط¹ط§ظ…ط© ط¹ظ†ط¯ آ«ط§ط¹طھط¨ط§ط± ط§ظ„ظ…ظ„ظپ ظ…ظ†ظپط°ظ‹ط§ ظƒط§ظ…ظ„ظ‹ط§ ط¨ظ‡ط°ط§ ط§ظ„ط¨ظٹط¹آ» â€” ظ†طµ ط­ط± ظٹظڈط¹ط±ظژط¶ آ«yyyy-MM-ddآ» (ظ…ط«ظ„ ط¨ظ‚ظٹط© ط­ظ‚ظˆظ„ ط§ظ„طھط®ط²ظٹظ† ط§ظ„ط²ظ…ظ†ظٹ ط§ظ„ط­ط±).</summary>
     public string? ForcibleTransferDate { get; set; }
-    /// <summary>رقم الإشعار (اختياري) عند تحويل بدل المبيع للجهة العامة.</summary>
+    /// <summary>ط±ظ‚ظ… ط§ظ„ط¥ط´ط¹ط§ط± (ط§ط®طھظٹط§ط±ظٹ) ط¹ظ†ط¯ طھط­ظˆظٹظ„ ط¨ط¯ظ„ ط§ظ„ظ…ط¨ظٹط¹ ظ„ظ„ط¬ظ‡ط© ط§ظ„ط¹ط§ظ…ط©.</summary>
     public string? ForcibleTransferNoticeNumber { get; set; }
     public DateTime? StruckOffDate { get; set; }
-    /// <summary>رقم ورود اخطار التجديد عند إعادة ملف مشطوب إلى المتداول (اختياري).</summary>
+    /// <summary>ط±ظ‚ظ… ظˆط±ظˆط¯ ط§ط®ط·ط§ط± ط§ظ„طھط¬ط¯ظٹط¯ ط¹ظ†ط¯ ط¥ط¹ط§ط¯ط© ظ…ظ„ظپ ظ…ط´ط·ظˆط¨ ط¥ظ„ظ‰ ط§ظ„ظ…طھط¯ط§ظˆظ„ (ط§ط®طھظٹط§ط±ظٹ).</summary>
     public string? RenewalFileReceiptNumber { get; set; }
-    /// <summary>تاريخ ورود اخطار التجديد عند إعادة الملف المشطوب (اختياري).</summary>
+    /// <summary>طھط§ط±ظٹط® ظˆط±ظˆط¯ ط§ط®ط·ط§ط± ط§ظ„طھط¬ط¯ظٹط¯ ط¹ظ†ط¯ ط¥ط¹ط§ط¯ط© ط§ظ„ظ…ظ„ظپ ط§ظ„ظ…ط´ط·ظˆط¨ (ط§ط®طھظٹط§ط±ظٹ).</summary>
     public DateTime? RenewalFileReceiptDate { get; set; }
-    /// <summary>رقم الملف الجديد عند إعادة الملف المشطوب (إلزامي) — يعود الملف به لسنة الإعادة.</summary>
+    /// <summary>ط±ظ‚ظ… ط§ظ„ظ…ظ„ظپ ط§ظ„ط¬ط¯ظٹط¯ ط¹ظ†ط¯ ط¥ط¹ط§ط¯ط© ط§ظ„ظ…ظ„ظپ ط§ظ„ظ…ط´ط·ظˆط¨ (ط¥ظ„ط²ط§ظ…ظٹ) â€” ظٹط¹ظˆط¯ ط§ظ„ظ…ظ„ظپ ط¨ظ‡ ظ„ط³ظ†ط© ط§ظ„ط¥ط¹ط§ط¯ط©.</summary>
     public string? RenewalFileNumber { get; set; }
-    /// <summary>نوع الملف الجديد عند إعادة الملف المشطوب (اختياري).</summary>
+    /// <summary>ظ†ظˆط¹ ط§ظ„ظ…ظ„ظپ ط§ظ„ط¬ط¯ظٹط¯ ط¹ظ†ط¯ ط¥ط¹ط§ط¯ط© ط§ظ„ظ…ظ„ظپ ط§ظ„ظ…ط´ط·ظˆط¨ (ط§ط®طھظٹط§ط±ظٹ).</summary>
     public string? RenewalFileType { get; set; }
-    /// <summary>تاريخ التجديد عند إعادة الملف المشطوب (اختياري).</summary>
+    /// <summary>طھط§ط±ظٹط® ط§ظ„طھط¬ط¯ظٹط¯ ط¹ظ†ط¯ ط¥ط¹ط§ط¯ط© ط§ظ„ظ…ظ„ظپ ط§ظ„ظ…ط´ط·ظˆط¨ (ط§ط®طھظٹط§ط±ظٹ).</summary>
     public DateTime? RenewalDate { get; set; }
-    /// <summary>رقم كتاب المطالعة بعدم وجود أموال للتنفيذ عليها في «محال الى البداية».</summary>
+    /// <summary>ط±ظ‚ظ… ظƒطھط§ط¨ ط§ظ„ظ…ط·ط§ظ„ط¹ط© ط¨ط¹ط¯ظ… ظˆط¬ظˆط¯ ط£ظ…ظˆط§ظ„ ظ„ظ„طھظ†ظپظٹط° ط¹ظ„ظٹظ‡ط§ ظپظٹ آ«ظ…ط­ط§ظ„ ط§ظ„ظ‰ ط§ظ„ط¨ط¯ط§ظٹط©آ».</summary>
     public string? NoFundsDemandNumber { get; set; }
-    /// <summary>تاريخ كتاب المطالعة بعدم وجود أموال للتنفيذ عليها — نص حر يُعرَض «yyyy-MM-dd» (مثل بقية حقول التخزين الزمني الحر).</summary>
+    /// <summary>طھط§ط±ظٹط® ظƒطھط§ط¨ ط§ظ„ظ…ط·ط§ظ„ط¹ط© ط¨ط¹ط¯ظ… ظˆط¬ظˆط¯ ط£ظ…ظˆط§ظ„ ظ„ظ„طھظ†ظپظٹط° ط¹ظ„ظٹظ‡ط§ â€” ظ†طµ ط­ط± ظٹظڈط¹ط±ظژط¶ آ«yyyy-MM-ddآ» (ظ…ط«ظ„ ط¨ظ‚ظٹط© ط­ظ‚ظˆظ„ ط§ظ„طھط®ط²ظٹظ† ط§ظ„ط²ظ…ظ†ظٹ ط§ظ„ط­ط±).</summary>
     public string? NoFundsDemandDate { get; set; }
-    /// <summary>رقم كتاب الإحالة في «محال الى البداية».</summary>
+    /// <summary>ط±ظ‚ظ… ظƒطھط§ط¨ ط§ظ„ط¥ط­ط§ظ„ط© ظپظٹ آ«ظ…ط­ط§ظ„ ط§ظ„ظ‰ ط§ظ„ط¨ط¯ط§ظٹط©آ».</summary>
     public string? StartReferralNumber { get; set; }
-    /// <summary>تاريخ كتاب الإحالة — نص حر يُعرَض «yyyy-MM-dd» (مثل بقية حقول التخزين الزمني الحر).</summary>
+    /// <summary>طھط§ط±ظٹط® ظƒطھط§ط¨ ط§ظ„ط¥ط­ط§ظ„ط© â€” ظ†طµ ط­ط± ظٹظڈط¹ط±ظژط¶ آ«yyyy-MM-ddآ» (ظ…ط«ظ„ ط¨ظ‚ظٹط© ط­ظ‚ظˆظ„ ط§ظ„طھط®ط²ظٹظ† ط§ظ„ط²ظ…ظ†ظٹ ط§ظ„ط­ط±).</summary>
     public string? StartReferralDate { get; set; }
     public string? BaraetNumber { get; set; }
     public string? BaraetDate { get; set; }
@@ -734,12 +174,12 @@ public class DocumentResponse : IDocumentSheetFields
     public string? TarithDate { get; set; }
     public string? TarithRegNumber { get; set; }
     public string? TarithRegDate { get; set; }
-    /// <summary>حقول كتاب الجهة العامة بالسير بالملف عند التراجع (رقم/تاريخ الكتاب + وروده).</summary>
+    /// <summary>ط­ظ‚ظˆظ„ ظƒطھط§ط¨ ط§ظ„ط¬ظ‡ط© ط§ظ„ط¹ط§ظ…ط© ط¨ط§ظ„ط³ظٹط± ط¨ط§ظ„ظ…ظ„ظپ ط¹ظ†ط¯ ط§ظ„طھط±ط§ط¬ط¹ (ط±ظ‚ظ…/طھط§ط±ظٹط® ط§ظ„ظƒطھط§ط¨ + ظˆط±ظˆط¯ظ‡).</summary>
     public string? SayerNumber { get; set; }
     public string? SayerDate { get; set; }
     public string? SayerRegNumber { get; set; }
     public string? SayerRegDate { get; set; }
-    /// <summary>معرّفات الأموال المباعة بالمزاد العلني في «منفذ جبريا» (من أموال الملف، عدا كفالة الرواتب).</summary>
+    /// <summary>ظ…ط¹ط±ظ‘ظپط§طھ ط§ظ„ط£ظ…ظˆط§ظ„ ط§ظ„ظ…ط¨ط§ط¹ط© ط¨ط§ظ„ظ…ط²ط§ط¯ ط§ظ„ط¹ظ„ظ†ظٹ ظپظٹ آ«ظ…ظ†ظپط° ط¬ط¨ط±ظٹط§آ» (ظ…ظ† ط£ظ…ظˆط§ظ„ ط§ظ„ظ…ظ„ظپطŒ ط¹ط¯ط§ ظƒظپط§ظ„ط© ط§ظ„ط±ظˆط§طھط¨).</summary>
     public List<int> SoldAssetIds { get; set; } = new();
     public string? SeizureDate { get; set; }
     public string? ImmediateActions { get; set; }
@@ -749,44 +189,44 @@ public class DocumentResponse : IDocumentSheetFields
     public string? CreatedByName { get; set; }
     public DateTime? DeletedAt { get; set; }
     /// <summary>
-    /// صحيح إذا كان الملف بحاجة إلى تدوير هذا العام: مقيد برقم ملف (ليس تحت رفع)،
-    /// غير منفَّذ، لديه رقم أساس لسنة سابقة، ولا يحمل رقم أساس للسنة الحالية —
-    /// فيظهر رقم ملفه بالأحمر في «الملفات التنفيذية».
+    /// طµط­ظٹط­ ط¥ط°ط§ ظƒط§ظ† ط§ظ„ظ…ظ„ظپ ط¨ط­ط§ط¬ط© ط¥ظ„ظ‰ طھط¯ظˆظٹط± ظ‡ط°ط§ ط§ظ„ط¹ط§ظ…: ظ…ظ‚ظٹط¯ ط¨ط±ظ‚ظ… ظ…ظ„ظپ (ظ„ظٹط³ طھط­طھ ط±ظپط¹)طŒ
+    /// ط؛ظٹط± ظ…ظ†ظپظژظ‘ط°طŒ ظ„ط¯ظٹظ‡ ط±ظ‚ظ… ط£ط³ط§ط³ ظ„ط³ظ†ط© ط³ط§ط¨ظ‚ط©طŒ ظˆظ„ط§ ظٹط­ظ…ظ„ ط±ظ‚ظ… ط£ط³ط§ط³ ظ„ظ„ط³ظ†ط© ط§ظ„ط­ط§ظ„ظٹط© â€”
+    /// ظپظٹط¸ظ‡ط± ط±ظ‚ظ… ظ…ظ„ظپظ‡ ط¨ط§ظ„ط£ط­ظ…ط± ظپظٹ آ«ط§ظ„ظ…ظ„ظپط§طھ ط§ظ„طھظ†ظپظٹط°ظٹط©آ».
     /// </summary>
     public bool NeedsRotation { get; set; }
     /// <summary>
-    /// صحيح إذا كان على الملف استئناف منظور واحد على الأقل — تُعرض بجانب نتيجة البحث
-    /// شارة «استئناف»، ويفتح النقر عليها تفاصيل الاستئناف (MatchedAppealId).
-    /// المحسوم والمشطوب لا يُظهران الشارة.
+    /// طµط­ظٹط­ ط¥ط°ط§ ظƒط§ظ† ط¹ظ„ظ‰ ط§ظ„ظ…ظ„ظپ ط§ط³طھط¦ظ†ط§ظپ ظ…ظ†ط¸ظˆط± ظˆط§ط­ط¯ ط¹ظ„ظ‰ ط§ظ„ط£ظ‚ظ„ â€” طھظڈط¹ط±ط¶ ط¨ط¬ط§ظ†ط¨ ظ†طھظٹط¬ط© ط§ظ„ط¨ط­ط«
+    /// ط´ط§ط±ط© آ«ط§ط³طھط¦ظ†ط§ظپآ»طŒ ظˆظٹظپطھط­ ط§ظ„ظ†ظ‚ط± ط¹ظ„ظٹظ‡ط§ طھظپط§طµظٹظ„ ط§ظ„ط§ط³طھط¦ظ†ط§ظپ (MatchedAppealId).
+    /// ط§ظ„ظ…ط­ط³ظˆظ… ظˆط§ظ„ظ…ط´ط·ظˆط¨ ظ„ط§ ظٹظڈط¸ظ‡ط±ط§ظ† ط§ظ„ط´ط§ط±ط©.
     /// </summary>
     public bool HasAppeals { get; set; }
-    /// <summary>معرف أول استئناف منظور على الملف عند وجوده (للانتقال إلى تفاصيل الاستئناف).</summary>
+    /// <summary>ظ…ط¹ط±ظپ ط£ظˆظ„ ط§ط³طھط¦ظ†ط§ظپ ظ…ظ†ط¸ظˆط± ط¹ظ„ظ‰ ط§ظ„ظ…ظ„ظپ ط¹ظ†ط¯ ظˆط¬ظˆط¯ظ‡ (ظ„ظ„ط§ظ†طھظ‚ط§ظ„ ط¥ظ„ظ‰ طھظپط§طµظٹظ„ ط§ظ„ط§ط³طھط¦ظ†ط§ظپ).</summary>
     public int? MatchedAppealId { get; set; }
     /// <summary>
-    /// معرف الإنابة التي صدر عنها هذا الملف كمناب (غير فارغ ⇒ الملف «مرآة» للمنيب):
-    /// تُقفَل حقول المزامنة أماميًا وخلفيًا، وتُحفظ الإضافات المحلية (وريث/ممثل) مع تنبيه للمنيب.
+    /// ظ…ط¹ط±ظپ ط§ظ„ط¥ظ†ط§ط¨ط© ط§ظ„طھظٹ طµط¯ط± ط¹ظ†ظ‡ط§ ظ‡ط°ط§ ط§ظ„ظ…ظ„ظپ ظƒظ…ظ†ط§ط¨ (ط؛ظٹط± ظپط§ط±ط؛ â‡’ ط§ظ„ظ…ظ„ظپ آ«ظ…ط±ط¢ط©آ» ظ„ظ„ظ…ظ†ظٹط¨):
+    /// طھظڈظ‚ظپظژظ„ ط­ظ‚ظˆظ„ ط§ظ„ظ…ط²ط§ظ…ظ†ط© ط£ظ…ط§ظ…ظٹظ‹ط§ ظˆط®ظ„ظپظٹظ‹ط§طŒ ظˆطھظڈط­ظپط¸ ط§ظ„ط¥ط¶ط§ظپط§طھ ط§ظ„ظ…ط­ظ„ظٹط© (ظˆط±ظٹط«/ظ…ظ…ط«ظ„) ظ…ط¹ طھظ†ط¨ظٹظ‡ ظ„ظ„ظ…ظ†ظٹط¨.
     /// </summary>
     public int? SourceDelegationId { get; set; }
     public List<GuarantorDto> Guarantors { get; set; } = new();
     public List<AssetDto> Assets { get; set; } = new();
-    /// <summary>ورثة المقترض المتوفى (إن وُجدوا).</summary>
+    /// <summary>ظˆط±ط«ط© ط§ظ„ظ…ظ‚طھط±ط¶ ط§ظ„ظ…طھظˆظپظ‰ (ط¥ظ† ظˆظڈط¬ط¯ظˆط§).</summary>
     public List<HeirDto> BorrowerHeirs { get; set; } = new();
     public List<ExecutionActionDto> ExecutionActions { get; set; } = new();
     public List<ExecutionApplicantDto> ExecutionApplicants { get; set; } = new();
     public List<ExecutedPublicEntityDto> ExecutedPublicEntities { get; set; } = new();
     public List<ExecutedNaturalPersonDto> ExecutedNaturalPersons { get; set; } = new();
-    /// <summary>الجهات العامة طالبة التنفيذ في وضع «الجهة العامة طالبة تنفيذ» (واحدة أو أكثر).</summary>
+    /// <summary>ط§ظ„ط¬ظ‡ط§طھ ط§ظ„ط¹ط§ظ…ط© ط·ط§ظ„ط¨ط© ط§ظ„طھظ†ظپظٹط° ظپظٹ ظˆط¶ط¹ آ«ط§ظ„ط¬ظ‡ط© ط§ظ„ط¹ط§ظ…ط© ط·ط§ظ„ط¨ط© طھظ†ظپظٹط°آ» (ظˆط§ط­ط¯ط© ط£ظˆ ط£ظƒط«ط±).</summary>
     public List<ApplicantPublicEntityDto> ApplicantPublicEntities { get; set; } = new();
-    /// <summary>سجل تعاقب المحامين على الملف (منشئ + كل المحامين المتعاقبين مع تواريخ الإحالة).</summary>
+    /// <summary>ط³ط¬ظ„ طھط¹ط§ظ‚ط¨ ط§ظ„ظ…ط­ط§ظ…ظٹظ† ط¹ظ„ظ‰ ط§ظ„ظ…ظ„ظپ (ظ…ظ†ط´ط¦ + ظƒظ„ ط§ظ„ظ…ط­ط§ظ…ظٹظ† ط§ظ„ظ…طھط¹ط§ظ‚ط¨ظٹظ† ظ…ط¹ طھظˆط§ط±ظٹط® ط§ظ„ط¥ط­ط§ظ„ط©).</summary>
     public List<DocumentAssignmentDto> Assignments { get; set; } = new();
-    /// <summary>رقم ورود الملف في وضع «الجهة العامة طالبة تنفيذ» (اختياري).</summary>
+    /// <summary>ط±ظ‚ظ… ظˆط±ظˆط¯ ط§ظ„ظ…ظ„ظپ ظپظٹ ظˆط¶ط¹ آ«ط§ظ„ط¬ظ‡ط© ط§ظ„ط¹ط§ظ…ط© ط·ط§ظ„ط¨ط© طھظ†ظپظٹط°آ» (ط§ط®طھظٹط§ط±ظٹ).</summary>
     public string? FileArrivalNumber { get; set; }
-    /// <summary>تاريخ ورود الملف في وضع «الجهة العامة طالبة تنفيذ» (نص حر).</summary>
+    /// <summary>طھط§ط±ظٹط® ظˆط±ظˆط¯ ط§ظ„ظ…ظ„ظپ ظپظٹ ظˆط¶ط¹ آ«ط§ظ„ط¬ظ‡ط© ط§ظ„ط¹ط§ظ…ط© ط·ط§ظ„ط¨ط© طھظ†ظپظٹط°آ» (ظ†طµ ط­ط±).</summary>
     public string? FileArrivalDate { get; set; }
 
     /// <summary>
-    /// «وقوعات الملف» في وضع «منفذ عليه»/«عرض وايداع»: سجل زمني لكل شطب وتجديد،
-    /// مرتب تصاعديًا حسب تاريخ الوقعة (سرد زمني من الأقدم إلى الأحدث).
+    /// آ«ظˆظ‚ظˆط¹ط§طھ ط§ظ„ظ…ظ„ظپآ» ظپظٹ ظˆط¶ط¹ آ«ظ…ظ†ظپط° ط¹ظ„ظٹظ‡آ»/آ«ط¹ط±ط¶ ظˆط§ظٹط¯ط§ط¹آ»: ط³ط¬ظ„ ط²ظ…ظ†ظٹ ظ„ظƒظ„ ط´ط·ط¨ ظˆطھط¬ط¯ظٹط¯طŒ
+    /// ظ…ط±طھط¨ طھطµط§ط¹ط¯ظٹظ‹ط§ ط­ط³ط¨ طھط§ط±ظٹط® ط§ظ„ظˆظ‚ط¹ط© (ط³ط±ط¯ ط²ظ…ظ†ظٹ ظ…ظ† ط§ظ„ط£ظ‚ط¯ظ… ط¥ظ„ظ‰ ط§ظ„ط£ط­ط¯ط«).
     /// </summary>
     public List<DocumentOccurrenceDto> Occurrences { get; set; } = new();
 
@@ -1008,7 +448,7 @@ public class DocumentResponse : IDocumentSheetFields
             o.FromCircuitName, o.ToCircuitName);
     }
 
-    /// <summary>فكّ قائمة معرّفات الأموال المباعة من JSON المخزن (أو قائمة فارغة عند العطب).</summary>
+    /// <summary>ظپظƒظ‘ ظ‚ط§ط¦ظ…ط© ظ…ط¹ط±ظ‘ظپط§طھ ط§ظ„ط£ظ…ظˆط§ظ„ ط§ظ„ظ…ط¨ط§ط¹ط© ظ…ظ† JSON ط§ظ„ظ…ط®ط²ظ† (ط£ظˆ ظ‚ط§ط¦ظ…ط© ظپط§ط±ط؛ط© ط¹ظ†ط¯ ط§ظ„ط¹ط·ط¨).</summary>
     private static List<int> ParseSoldAssetIds(string? json)
     {
         if (string.IsNullOrWhiteSpace(json)) return new();
@@ -1023,10 +463,10 @@ public class DocumentResponse : IDocumentSheetFields
     }
 
     /// <summary>
-    /// قاعدة اللون الأحمر المعتمدة: يُلوَّن رقم الملف فقط إذا كان الملف مقيدًا
-    /// (ليس تحت رفع)، غير منفَّذ، وسبق أن دُوِّر في سنة سابقة، ولم يُدوَّر في السنة الحالية.
-    /// ولعائلتي وضع «منفذ عليه» (Executed + Deposit) يُؤخذ «غير منفَّذ» بمعناه العائلي:
-    /// متداولة فقط (لا منفذ ولا مشطوب) — مطابقًا لشرط أهليتهما في قائمة التدوير والحفظ.
+    /// ظ‚ط§ط¹ط¯ط© ط§ظ„ظ„ظˆظ† ط§ظ„ط£ط­ظ…ط± ط§ظ„ظ…ط¹طھظ…ط¯ط©: ظٹظڈظ„ظˆظژظ‘ظ† ط±ظ‚ظ… ط§ظ„ظ…ظ„ظپ ظپظ‚ط· ط¥ط°ط§ ظƒط§ظ† ط§ظ„ظ…ظ„ظپ ظ…ظ‚ظٹط¯ظ‹ط§
+    /// (ظ„ظٹط³ طھط­طھ ط±ظپط¹)طŒ ط؛ظٹط± ظ…ظ†ظپظژظ‘ط°طŒ ظˆط³ط¨ظ‚ ط£ظ† ط¯ظڈظˆظگظ‘ط± ظپظٹ ط³ظ†ط© ط³ط§ط¨ظ‚ط©طŒ ظˆظ„ظ… ظٹظڈط¯ظˆظژظ‘ط± ظپظٹ ط§ظ„ط³ظ†ط© ط§ظ„ط­ط§ظ„ظٹط©.
+    /// ظˆظ„ط¹ط§ط¦ظ„طھظٹ ظˆط¶ط¹ آ«ظ…ظ†ظپط° ط¹ظ„ظٹظ‡آ» (Executed + Deposit) ظٹظڈط¤ط®ط° آ«ط؛ظٹط± ظ…ظ†ظپظژظ‘ط°آ» ط¨ظ…ط¹ظ†ط§ظ‡ ط§ظ„ط¹ط§ط¦ظ„ظٹ:
+    /// ظ…طھط¯ط§ظˆظ„ط© ظپظ‚ط· (ظ„ط§ ظ…ظ†ظپط° ظˆظ„ط§ ظ…ط´ط·ظˆط¨) â€” ظ…ط·ط§ط¨ظ‚ظ‹ط§ ظ„ط´ط±ط· ط£ظ‡ظ„ظٹطھظ‡ظ…ط§ ظپظٹ ظ‚ط§ط¦ظ…ط© ط§ظ„طھط¯ظˆظٹط± ظˆط§ظ„ط­ظپط¸.
     /// </summary>
     private static bool NeedsRotationOf(Document d, int currentYear)
     {
@@ -1043,7 +483,7 @@ public class DocumentResponse : IDocumentSheetFields
     }
 
     /// <summary>
-    /// ورثة منفذ عليه محدد (GuarantorNumber = null يعني المقترض)، مرتبة بترتيب الإدخال.
+    /// ظˆط±ط«ط© ظ…ظ†ظپط° ط¹ظ„ظٹظ‡ ظ…ط­ط¯ط¯ (GuarantorNumber = null ظٹط¹ظ†ظٹ ط§ظ„ظ…ظ‚طھط±ط¶)طŒ ظ…ط±طھط¨ط© ط¨طھط±طھظٹط¨ ط§ظ„ط¥ط¯ط®ط§ظ„.
     /// </summary>
     private static List<HeirDto> ToHeirDtos(IEnumerable<Heir> heirs, int? guarantorNumber) =>
         heirs.Where(h => h.GuarantorNumber == guarantorNumber)
@@ -1051,8 +491,8 @@ public class DocumentResponse : IDocumentSheetFields
             .ToList();
 
     /// <summary>
-    /// ورثة مورثٍ محدد في وضع «منفذ عليه» (طالب تنفيذ متوفى أو منفذ عليه طبيعي متوفى)،
-    /// مرتبة بترتيب الإدخال.
+    /// ظˆط±ط«ط© ظ…ظˆط±ط«ظچ ظ…ط­ط¯ط¯ ظپظٹ ظˆط¶ط¹ آ«ظ…ظ†ظپط° ط¹ظ„ظٹظ‡آ» (ط·ط§ظ„ط¨ طھظ†ظپظٹط° ظ…طھظˆظپظ‰ ط£ظˆ ظ…ظ†ظپط° ط¹ظ„ظٹظ‡ ط·ط¨ظٹط¹ظٹ ظ…طھظˆظپظ‰)طŒ
+    /// ظ…ط±طھط¨ط© ط¨طھط±طھظٹط¨ ط§ظ„ط¥ط¯ط®ط§ظ„.
     /// </summary>
     private static List<ExecutedHeirDto> ToExecutedHeirDtos(
         IEnumerable<ExecutedHeir> heirs, int? applicantId, int? naturalPersonId) =>
