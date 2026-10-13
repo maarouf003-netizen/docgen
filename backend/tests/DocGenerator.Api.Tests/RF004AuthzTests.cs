@@ -33,7 +33,7 @@ public class RF004AuthzTests
         // `BQ-001`: المدير يرى المحذوفات (كان `403`).
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var id = await _factory.CreateDocumentAsync(token, borrowerName: UniqueName("محذوف"));
-        var lawyer = _factory.WithToken(token);
+        var lawyer = _factory.ClientWithToken(token);
         Assert.Equal(HttpStatusCode.NoContent, (await lawyer.DeleteAsync($"/api/documents/{id}")).StatusCode);
 
         var manager = _factory.AuthorizedClient("manager");
@@ -217,7 +217,7 @@ public class RF004AuthzTests
     {
         // تثبيت: إنشاء المحامي يعمل قبل/بعد (لا تضييق زائد).
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var response = await client.PostAsJsonAsync("/api/documents", new
         {
             documentType = "بيان دعوى",

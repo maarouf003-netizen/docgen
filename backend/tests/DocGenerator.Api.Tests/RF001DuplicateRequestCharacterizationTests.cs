@@ -57,7 +57,7 @@ public class RF001DuplicateRequestCharacterizationTests
         // السلوك الحالي (INT-007): بلا بصمة طلب — الإرسال المكرر ملفٌ ثانٍ.
         // بعد RF-011 يجب أن تُعكَس: نفس المفتاح ملفٌ واحد.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var payload = new
         {
             documentType = "بيان دعوى",

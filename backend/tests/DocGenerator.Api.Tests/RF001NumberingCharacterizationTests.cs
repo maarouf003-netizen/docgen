@@ -41,7 +41,7 @@ public class RF001NumberingCharacterizationTests
     {
         // RF-009: القيد الفريد الجزئي + الفحص الخدمي — الثاني 409 برسالة ودية.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var number = $"9{Random.Shared.Next(100000, 999999)}";
 
         var first = await CreateIdAsync(client, NumberedPayload("تكرار أول", number));
@@ -57,7 +57,7 @@ public class RF001NumberingCharacterizationTests
     {
         // RF-009 (INT-008): الاستعادة تفحص تعارض المفتاح الفعّال — 409 بدل تكرار ظاهري.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var number = $"8{Random.Shared.Next(100000, 999999)}";
 
         var doomed = await CreateIdAsync(client, NumberedPayload("سيُحذف", number));

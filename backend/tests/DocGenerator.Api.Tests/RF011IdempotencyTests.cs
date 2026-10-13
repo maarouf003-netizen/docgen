@@ -50,7 +50,7 @@ public class RF011IdempotencyTests
     {
         // نقرة مزدوجة بنفس المفتاح: اليوم ملفّان؛ بعد RF-011 ملف واحد والثانية `200` بنفس الجسم.
         var (_, token) = await _factory.NewLawyerAsync();
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var key = Guid.NewGuid().ToString();
         var name = UniqueName("توأم");
 
@@ -77,7 +77,7 @@ public class RF011IdempotencyTests
         // مفتاح مستعمل لحمولة مختلفة (تصحيح-ثم-إعادة-إرسال): نية جديدة تُنفَّذ
         // طازجة — لا تُعاد نتيجة الأولى ولا يُرفَض التصحيح (يخضر قبل/بعد).
         var (_, token) = await _factory.NewLawyerAsync();
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var key = Guid.NewGuid().ToString();
 
         var first = await PostWithKeyAsync(client, "/api/documents", CreatePayload(UniqueName("أول")), key);
@@ -95,7 +95,7 @@ public class RF011IdempotencyTests
     {
         // توصيف (يخضر قبل/بعد): بلا مفتاح يبقى السلوك القديم — ملفّان.
         var (_, token) = await _factory.NewLawyerAsync();
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var name = UniqueName("قديم");
 
         var first = await PostWithKeyAsync(client, "/api/documents", CreatePayload(name), null);
@@ -120,7 +120,7 @@ public class RF011IdempotencyTests
         var (targetId, _) = await _factory.NewLawyerAsync(branchId);
         await _factory.CreateDocumentAsync(sourceToken, borrowerName: UniqueName("منقول"));
 
-        var client = _factory.WithToken(headToken);
+        var client = _factory.ClientWithToken(headToken);
         var key = Guid.NewGuid().ToString();
         var body = new { sourceLawyerId = sourceId, targetLawyerId = targetId };
 
@@ -161,7 +161,7 @@ public class RF011IdempotencyTests
             absorbed = g2.Id;
         }
 
-        var client = _factory.WithToken(adminToken);
+        var client = _factory.ClientWithToken(adminToken);
         var key = Guid.NewGuid().ToString();
         var body = new
         {

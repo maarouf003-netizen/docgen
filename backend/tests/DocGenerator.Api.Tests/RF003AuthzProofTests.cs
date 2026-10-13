@@ -68,7 +68,7 @@ public class RF003AuthzProofTests
     public async Task T1a_CrossOwner_AppealUpdate_Rejected_AndUnchanged()
     {
         var token1 = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyer1 = _factory.WithToken(token1);
+        var lawyer1 = _factory.ClientWithToken(token1);
         var (_, appealId) = await CreateAppealAsync(lawyer1, token1);
 
         var stranger = await _factory.CreateUserAsync(UniqueName("lawyer_t1a"), UserRole.Lawyer, await _factory.GetBranchIdAsync("DAM"));
@@ -93,7 +93,7 @@ public class RF003AuthzProofTests
     public async Task T1b_CrossOwner_AppealDelete_Rejected_AndExists()
     {
         var token1 = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyer1 = _factory.WithToken(token1);
+        var lawyer1 = _factory.ClientWithToken(token1);
         var (_, appealId) = await CreateAppealAsync(lawyer1, token1);
 
         var stranger = await _factory.CreateUserAsync(UniqueName("lawyer_t1b"), UserRole.Lawyer, await _factory.GetBranchIdAsync("DAM"));
@@ -109,7 +109,7 @@ public class RF003AuthzProofTests
     public async Task T1c_CrossOwner_DelegationMutations_Rejected_AndUnchanged()
     {
         var token1 = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyer1 = _factory.WithToken(token1);
+        var lawyer1 = _factory.ClientWithToken(token1);
         var (docId, delegationId) = await CreateDelegationAsync(lawyer1, token1);
 
         var stranger = await _factory.CreateUserAsync(UniqueName("lawyer_t1c"), UserRole.Lawyer, await _factory.GetBranchIdAsync("DAM"));
@@ -173,7 +173,7 @@ public class RF003AuthzProofTests
         var lawyer = (await created.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
 
         var staleToken = (await _factory.LoginAsync(lawyer.Username, "123456"))!.Token!;
-        var staleClient = _factory.WithToken(staleToken);
+        var staleClient = _factory.ClientWithToken(staleToken);
         Assert.Equal(HttpStatusCode.OK, (await staleClient.GetAsync("/api/documents?perPage=1")).StatusCode);
 
         var move = await admin.PutAsJsonAsync($"/api/users/{lawyer.Id}", new

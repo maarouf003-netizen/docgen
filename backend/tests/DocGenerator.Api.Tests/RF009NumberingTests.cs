@@ -33,7 +33,7 @@ public class RF009NumberingTests
     public async Task DuplicateNumber_SecondCreate_Conflict()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var number = $"7{Random.Shared.Next(100000, 999999)}";
 
         var first = await client.PostAsJsonAsync("/api/documents", NumberedPayload("أول فريد", number));
@@ -47,7 +47,7 @@ public class RF009NumberingTests
     public async Task RestoreConflictingNumber_Conflict()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var number = $"6{Random.Shared.Next(100000, 999999)}";
 
         var createA = await client.PostAsJsonAsync("/api/documents", NumberedPayload("سيُحذف", number));

@@ -41,8 +41,7 @@ public sealed class MissingRoleClaimTests : IAsyncLifetime
 
     private static string MintToken(int userId, string username, string? role)
     {
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(
-            "integration-test-secret-0123456789-0123456789-0123456789"));
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(ApiFactory.TestJwtSecret));
         var claims = new List<Claim>
         {
             new(JwtRegisteredClaimNames.Sub, userId.ToString()),
@@ -53,8 +52,8 @@ public sealed class MissingRoleClaimTests : IAsyncLifetime
         if (role is not null)
             claims.Add(new Claim(ClaimTypes.Role, role));
         var token = new JwtSecurityToken(
-            issuer: "DocGenerator",
-            audience: "DocGeneratorClients",
+            issuer: ApiFactory.TestJwtIssuer,
+            audience: ApiFactory.TestJwtAudience,
             claims: claims,
             expires: DateTime.UtcNow.AddMinutes(30),
             signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256));

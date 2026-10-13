@@ -33,7 +33,7 @@ public class RF018ReadAuditTests
     {
         var user = await _factory.CreateUserAsync(UniqueName("lawyer_rd"), UserRole.Lawyer, await _factory.GetBranchIdAsync("DAM"));
         var token = (await _factory.LoginAsync(user.Username, "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var docId = await _factory.CreateDocumentAsync(token, borrowerName: $"مقروء {Guid.NewGuid():N}"[..30]);
 
         var response = await client.GetAsync($"/api/documents/{docId}");
@@ -47,7 +47,7 @@ public class RF018ReadAuditTests
     {
         var user = await _factory.CreateUserAsync(UniqueName("lawyer_sr"), UserRole.Lawyer, await _factory.GetBranchIdAsync("DAM"));
         var token = (await _factory.LoginAsync(user.Username, "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         await _factory.CreateDocumentAsync(token, borrowerName: $"قائمة {Guid.NewGuid():N}"[..30]);
 
         var response = await client.GetAsync("/api/documents?perPage=50");

@@ -38,7 +38,7 @@ public class RF017SilentWriteAuditTests
     {
         var user = await _factory.CreateUserAsync(UniqueName("lawyer_gen"), UserRole.Lawyer, await _factory.GetBranchIdAsync("DAM"));
         var token = (await _factory.LoginAsync(user.Username, "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var docId = await _factory.CreateDocumentAsync(token, borrowerName: $"توليد {Guid.NewGuid():N}"[..30]);
 
         var response = await client.GetAsync($"/api/documents/{docId}/generate?template=004");
@@ -95,7 +95,7 @@ public class RF017SilentWriteAuditTests
     {
         var source = await _factory.CreateUserAsync(UniqueName("lawyer_src"), UserRole.Lawyer, await _factory.GetBranchIdAsync("DAM"));
         var sourceToken = (await _factory.LoginAsync(source.Username, "123456"))!.Token!;
-        var sourceClient = _factory.WithToken(sourceToken);
+        var sourceClient = _factory.ClientWithToken(sourceToken);
         var docId = await _factory.CreateDocumentAsync(sourceToken, borrowerName: $"منيب بيع {Guid.NewGuid():N}"[..30],
             borrowerFather: "أب", borrowerFamily: "العائلة", withEstate: true, registered: true);
         int assetId;

@@ -30,7 +30,7 @@ public class RF010ConcurrencyTests
     public async Task FreshEdit_Succeeds()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token, borrowerName: "تزامن طازج");
 
         var version = await GetVersionAsync(client, id);
@@ -47,7 +47,7 @@ public class RF010ConcurrencyTests
     {
         // الحفظ الناجح يزيد العدّاد — فتُكشَف القراءة القديمة لاحقًا.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token, borrowerName: "زيادة العدّاد");
 
         var before = await GetVersionAsync(client, id);
@@ -69,7 +69,7 @@ public class RF010ConcurrencyTests
         // قراءتان لنفس الملف → حفظ الأول → إعادة حفظ الثاني بالنسخة القديمة.
         // اليوم: `200` (محو صامت)؛ بعد RF-010: `409`.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token, borrowerName: "تحرير متعارض");
 
         var stale = await GetVersionAsync(client, id);
@@ -95,7 +95,7 @@ public class RF010ConcurrencyTests
         // «تسوية» صالحة من متداول ومن تريث معًا — فيعزل الفحصُ الإصدارَ عن الآلة:
         // اليوم: `200` (انتقال ضائع)؛ بعد RF-010: `409`.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token, borrowerName: "حالة متعارضة");
 
         var stale = await GetVersionAsync(client, id);
@@ -122,7 +122,7 @@ public class RF010ConcurrencyTests
     {
         // عملاء قدامى بلا الحقل: يُقبلون قبل الإصلاح وبعده (لا كسر).
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token, borrowerName: "توافق قديم");
 
         var response = await client.PutAsJsonAsync($"/api/documents/{id}", new
@@ -137,7 +137,7 @@ public class RF010ConcurrencyTests
     {
         // نوع مخالف للعدّاد → `400` (اليوم: يُتجاهل فينجح `200`).
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var client = _factory.WithToken(token);
+        var client = _factory.ClientWithToken(token);
         var id = await _factory.CreateDocumentAsync(token, borrowerName: "نسخة تالفة");
 
         var response = await client.PutAsJsonAsync($"/api/documents/{id}", new

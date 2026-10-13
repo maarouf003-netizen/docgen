@@ -307,9 +307,3 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
     }
 
 }
-
-public static class TokenExtensions
-{
-    public static HttpClient WithToken(this ApiFactory factory, string token)
-        => factory.ClientWithToken(token);
-}

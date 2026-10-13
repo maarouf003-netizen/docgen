@@ -53,7 +53,7 @@ public class TransferIntegrationTests
         var target = await CreateLawyerAsync("DAM", "محامي النقل");
 
         var headToken = (await _factory.LoginAsync("head1", "123456"))!.Token!;
-        var head = _factory.WithToken(headToken);
+        var head = _factory.ClientWithToken(headToken);
         var response = await head.PostAsJsonAsync($"/api/documents/{docId}/transfer", new { targetLawyerId = target.Id });
         response.EnsureSuccessStatusCode();
 
@@ -67,7 +67,7 @@ public class TransferIntegrationTests
     public async Task Transfer_ToCurrentOwner_BadRequest()
     {
         var lawyerToken = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyer = _factory.WithToken(lawyerToken);
+        var lawyer = _factory.ClientWithToken(lawyerToken);
         var docId = await _factory.CreateDocumentAsync(lawyerToken);
         var doc = await lawyer.GetFromJsonAsync<DocumentResponse>($"/api/documents/{docId}");
 
@@ -84,7 +84,7 @@ public class TransferIntegrationTests
         var foreign = await CreateLawyerAsync("ALP", "محامي حلب");
 
         var headToken = (await _factory.LoginAsync("head1", "123456"))!.Token!;
-        var head = _factory.WithToken(headToken);
+        var head = _factory.ClientWithToken(headToken);
         var response = await head.PostAsJsonAsync($"/api/documents/{docId}/transfer", new { targetLawyerId = foreign.Id });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
