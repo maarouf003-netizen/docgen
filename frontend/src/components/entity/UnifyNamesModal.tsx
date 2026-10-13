@@ -155,12 +155,11 @@ export function UnifyNamesModal({ onClose, onCommitted, initialGroupId, initialA
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overscroll-contain"
       dir="rtl"
       role="dialog"
       aria-modal="true"
       aria-label="توحيد تسمية جهات عامة"
-      style={{ overscrollBehavior: 'contain' }}
     >
       <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
         {/* Header */}
