@@ -11,12 +11,12 @@ namespace DocGenerator.Api.Tests.TestHelpers;
 
 /// <summary>
 /// مساعدات `Api` المركزية (R1-1): التوحيد الشكلي لمولدات الأسماء الفريدة
-/// ومسارات البذر المتكررة (فرع/شعبة/رئيس شعبة/محامٍ) — بلا أي تغيير دلالي:
-/// كل مساعد نسخة حرفية للمتغيرات المحلية التي وحّدها (نفس النقاط الطرفية،
-/// نفس الأدوار، نفس الاقتطاع `[..24]` المحترم لحد `Username` الأربعين).
+/// ومسارات البذر المتكررة (فرع/شعبة/رئيس شعبة/محامٍ) — مكافئة سلوكيًا
+/// للمتغيرات المحلية (نفس النقاط الطرفية والأدوار؛ الفروق المقصودة والمدققة:
+/// عميل إنشاء الشعب موحد على `admin`، وبادئة رمز الفرع موحدة `TX_` فريدة،
+/// واقتطاع الاسم موحد `[..24]`، وبذر المحامي عبر نقطة `/api/users/lawyers`).
 /// المستثناة عمدًا (آثار جانبية مقصودة): `HeadBranchIdAsync` (يُثبّت
-/// `Governorate` كأثر جانبي) و`BranchIdOfHeadAsync` و`GetBranchIdAsync(code)`
-/// المخصصة — تبقى محلية وتُوثَّق في مواضعها.
+/// `Governorate` كأثر جانبي) و`BranchIdOfHeadAsync` — يبقيان محليين موثقين.
 /// </summary>
 public static class ApiFixtureExtensions
 {
@@ -45,7 +45,7 @@ public static class ApiFixtureExtensions
         return branch.Id;
     }
 
-    /// <summary>إنشاء شعبة عبر الـ API — العميل مدير افتراضيًا (صلاحية مؤكدة).</summary>
+    /// <summary>إنشاء شعبة عبر الـ API — العميل مشرف (`admin`) بصلاحية مؤكدة.</summary>
     public static async Task<int> CreateSectionAsync(this ApiFactory factory, string name, int? branchId = null)
     {
         var admin = factory.AuthorizedClient("admin");
