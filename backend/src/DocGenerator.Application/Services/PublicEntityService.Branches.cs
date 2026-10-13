@@ -68,7 +68,7 @@ public sealed partial class PublicEntityService
                 var target = await _entities.GetEntryWithDetailsAsync(request.TargetId.Value, ct);
                 try
                 {
-                    ValidateMergeablePair(groupId, source, target, request.TargetId.Value, actor, ct, errors, warnings);
+                    await ValidateMergeablePairAsync(groupId, source, target, request.TargetId.Value, actor, ct, errors, warnings);
                 }
                 catch (ArgumentException ex) { errors.Add(ex.Message); break; }
                 if (errors.Count == 0)
@@ -104,7 +104,7 @@ public sealed partial class PublicEntityService
                     }
                     else if (target is not null)
                     {
-                        ValidateMergeablePair(groupId, entry, target, request.TargetId!.Value, actor, ct, errors, warnings);
+                        await ValidateMergeablePairAsync(groupId, entry, target, request.TargetId!.Value, actor, ct, errors, warnings);
                     }
                     targetBranch = target?.BranchName ?? entry.BranchName;
                     totalAffected = count;
@@ -131,7 +131,7 @@ public sealed partial class PublicEntityService
                     foreach (var absorbedId in absorbed)
                     {
                         var ae = await _entities.GetEntryWithDetailsAsync(absorbedId, ct);
-                        ValidateMergeablePair(groupId, ae, target, target.Id, actor, ct, errors, warnings);
+                        await ValidateMergeablePairAsync(groupId, ae, target, target.Id, actor, ct, errors, warnings);
                         if (errors.Count > 0) break;
                         foreach (var doc in await _entities.ListDocumentsLinkedToEntryAsync(ae!.Id, ct))
                             absorbedDocIds[doc.Id] = doc;
@@ -180,7 +180,7 @@ public sealed partial class PublicEntityService
     /// رئيس القسم + بلا NeedsReview). يملأ الأخطاء/التحذيرات بلا رمي (للشروط) أو يرمي
     /// UnauthorizedAccessException (للنطاق/حارس الأم).
     /// </summary>
-    private void ValidateMergeablePair(
+    private async Task ValidateMergeablePairAsync(
         int groupId,
         PublicEntity? source,
         PublicEntity? target,
@@ -202,8 +202,8 @@ public sealed partial class PublicEntityService
         GuardHeadCannotEditParent(actor, source);
         GuardHeadCannotEditParent(actor, target);
         // النطاق يُرمى كـ Unauthorized — لا يُعرض كخطأ قابل للتجاوز في المعاينة.
-        EnsureHeadScopeAsync(actor, source, source.Governorate, ct).GetAwaiter().GetResult();
-        EnsureHeadScopeAsync(actor, target, target.Governorate, ct).GetAwaiter().GetResult();
+        await EnsureHeadScopeAsync(actor, source, source.Governorate, ct);
+        await EnsureHeadScopeAsync(actor, target, target.Governorate, ct);
     }
     /// <inheritdoc/>
     public async Task<RenameBranchResponse> RenameBranchAsync(
