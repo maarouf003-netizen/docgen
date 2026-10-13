@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -25,51 +26,6 @@ public sealed class DocumentScopeIsolationTests : IAsyncLifetime
         return Task.CompletedTask;
     }
 
-    private static string Unique(string prefix) => $"{prefix}_{Guid.NewGuid():N}"[..24];
-
-    private async Task<int> BranchIdAsync()
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        var branch = await db.Branches.SingleAsync(b => b.Code == "DAM");
-        if (string.IsNullOrWhiteSpace(branch.Governorate))
-        {
-            branch.Governorate = "دمشق";
-            await db.SaveChangesAsync();
-        }
-        return branch.Id;
-    }
-
-    private async Task<int> CreateSectionAsync(string name)
-    {
-        var manager = _factory.AuthorizedClient("manager");
-        var response = await manager.PostAsJsonAsync("/api/sections", new
-        {
-            branchId = await BranchIdAsync(),
-            name,
-        });
-        response.EnsureSuccessStatusCode();
-        using var doc = await response.Content.ReadFromJsonAsync<JsonDocument>();
-        return doc!.RootElement.GetProperty("id").GetInt32();
-    }
-
-    private async Task<string> CreateSubHeadTokenAsync(int sectionId)
-    {
-        var admin = _factory.AuthorizedClient("admin");
-        var username = Unique("sub");
-        var created = await admin.PostAsJsonAsync("/api/users", new
-        {
-            username,
-            fullName = username,
-            role = "subhead",
-            branchId = await BranchIdAsync(),
-            password = "123456",
-            sectionId,
-        });
-        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        return (await _factory.LoginAsync(username, "123456"))!.Token!;
-    }
-
     private async Task<int> CreateCircuitAsync(string name)
     {
         var head = _factory.AuthorizedClient("head1");
@@ -85,23 +41,6 @@ public sealed class DocumentScopeIsolationTests : IAsyncLifetime
         var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
         (await db.ExecutionCircuits.SingleAsync(c => c.Id == circuitId)).SectionId = sectionId;
         await db.SaveChangesAsync();
-    }
-
-    private async Task<(int Id, string Token)> NewLawyerAsync()
-    {
-        var admin = _factory.AuthorizedClient("admin");
-        var username = Unique("law");
-        var created = await admin.PostAsJsonAsync("/api/users/lawyers", new
-        {
-            username,
-            fullName = username,
-            password = "123456",
-            branchId = await BranchIdAsync(),
-        });
-        Assert.Equal(HttpStatusCode.OK, created.StatusCode);
-        using var doc = await created.Content.ReadFromJsonAsync<JsonDocument>();
-        var token = (await _factory.LoginAsync(username, "123456"))!.Token!;
-        return (doc!.RootElement.GetProperty("id").GetInt32(), token);
     }
 
     private async Task<int> CreateFileAsync(string token, int? circuitId, string borrower)
@@ -128,7 +67,7 @@ public sealed class DocumentScopeIsolationTests : IAsyncLifetime
         // بعد تعبئة السجل (الإلزامية)، فيُزرع مباشرةً كما تتركه المسارات الاستثنائية.
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        var branchId = await BranchIdAsync();
+        var branchId = await _factory.GetDamascusIdAsync();
         var doc = new DocGenerator.Domain.Entities.Document
         {
             BranchId = branchId,
@@ -155,21 +94,21 @@ public sealed class DocumentScopeIsolationTests : IAsyncLifetime
     [Fact]
     public async Task Search_HeadSeesDivisionAndNull_SubHeadSeesOwnOnly()
     {
-        var divisionCircuit = await CreateCircuitAsync(Unique("قسم"));
-        var sectionId = await CreateSectionAsync(Unique("شعبة"));
-        var sectionCircuit = await CreateCircuitAsync(Unique("شعبة-دائرة"));
+        var divisionCircuit = await CreateCircuitAsync(UniqueName("قسم"));
+        var sectionId = await _factory.CreateSectionAsync(UniqueName("شعبة"));
+        var sectionCircuit = await CreateCircuitAsync(UniqueName("شعبة-دائرة"));
         await SetCircuitSectionAsync(sectionCircuit, sectionId);
-        var (lawyerId, token) = await NewLawyerAsync();
-        var fDivision = await CreateFileAsync(token, divisionCircuit, Unique("مقترض-قسم"));
-        var fSection = await CreateFileAsync(token, sectionCircuit, Unique("مقترض-شعبة"));
-        var fNull = await CreateNullCircuitFileAsync(lawyerId, Unique("مقترض-بلا"));
+        var (lawyerId, token) = await _factory.NewLawyerAsync();
+        var fDivision = await CreateFileAsync(token, divisionCircuit, UniqueName("مقترض-قسم"));
+        var fSection = await CreateFileAsync(token, sectionCircuit, UniqueName("مقترض-شعبة"));
+        var fNull = await CreateNullCircuitFileAsync(lawyerId, UniqueName("مقترض-بلا"));
 
         var headIds = await SearchIdsAsync(_factory.AuthorizedClient("head1"));
         Assert.Contains(fDivision, headIds);
         Assert.Contains(fNull, headIds);
         Assert.DoesNotContain(fSection, headIds);
 
-        var subToken = await CreateSubHeadTokenAsync(sectionId);
+        var subToken = await _factory.CreateSubHeadTokenAsync(sectionId);
         var subClient = _factory.CreateClient();
         subClient.SetAuthCookie(subToken);
         var subIds = await SearchIdsAsync(subClient);
@@ -181,13 +120,13 @@ public sealed class DocumentScopeIsolationTests : IAsyncLifetime
     [Fact]
     public async Task Get_SingleDoc_CrossScope_Forbidden_ForwardException_AllowsHead()
     {
-        var sectionId = await CreateSectionAsync(Unique("شعبة"));
-        var sectionCircuit = await CreateCircuitAsync(Unique("شعبة-دائرة"));
+        var sectionId = await _factory.CreateSectionAsync(UniqueName("شعبة"));
+        var sectionCircuit = await CreateCircuitAsync(UniqueName("شعبة-دائرة"));
         await SetCircuitSectionAsync(sectionCircuit, sectionId);
-        var (_, token) = await NewLawyerAsync();
-        var fileId = await CreateFileAsync(token, sectionCircuit, Unique("مقترض"));
+        var (_, token) = await _factory.NewLawyerAsync();
+        var fileId = await CreateFileAsync(token, sectionCircuit, UniqueName("مقترض"));
 
-        var subToken = await CreateSubHeadTokenAsync(sectionId);
+        var subToken = await _factory.CreateSubHeadTokenAsync(sectionId);
         var subClient = _factory.CreateClient();
         subClient.SetAuthCookie(subToken);
         Assert.Equal(HttpStatusCode.OK, (await subClient.GetAsync($"/api/documents/{fileId}")).StatusCode);
@@ -218,14 +157,14 @@ public sealed class DocumentScopeIsolationTests : IAsyncLifetime
     [Fact]
     public async Task Transfer_Single_OutOfScope_Forbidden()
     {
-        var divisionCircuit = await CreateCircuitAsync(Unique("قسم"));
-        var (_, token) = await NewLawyerAsync();
-        var fileId = await CreateFileAsync(token, divisionCircuit, Unique("مقترض"));
-        var sectionId = await CreateSectionAsync(Unique("شعبة"));
-        var subToken = await CreateSubHeadTokenAsync(sectionId);
+        var divisionCircuit = await CreateCircuitAsync(UniqueName("قسم"));
+        var (_, token) = await _factory.NewLawyerAsync();
+        var fileId = await CreateFileAsync(token, divisionCircuit, UniqueName("مقترض"));
+        var sectionId = await _factory.CreateSectionAsync(UniqueName("شعبة"));
+        var subToken = await _factory.CreateSubHeadTokenAsync(sectionId);
         var subClient = _factory.CreateClient();
         subClient.SetAuthCookie(subToken);
-        var target = await NewLawyerAsync();
+        var target = await _factory.NewLawyerAsync();
 
         var transfer = await subClient.PostAsJsonAsync($"/api/documents/{fileId}/transfer",
             new { targetLawyerId = target.Id });
@@ -235,15 +174,15 @@ public sealed class DocumentScopeIsolationTests : IAsyncLifetime
     [Fact]
     public async Task TransferAll_Intersection_PreviewMatchesMoved()
     {
-        var divisionCircuit = await CreateCircuitAsync(Unique("قسم"));
-        var sectionId = await CreateSectionAsync(Unique("شعبة"));
-        var sectionCircuit = await CreateCircuitAsync(Unique("شعبة-دائرة"));
+        var divisionCircuit = await CreateCircuitAsync(UniqueName("قسم"));
+        var sectionId = await _factory.CreateSectionAsync(UniqueName("شعبة"));
+        var sectionCircuit = await CreateCircuitAsync(UniqueName("شعبة-دائرة"));
         await SetCircuitSectionAsync(sectionCircuit, sectionId);
-        var (sourceId, sourceToken) = await NewLawyerAsync();
-        await CreateFileAsync(sourceToken, divisionCircuit, Unique("مقترض-قسم"));
-        await CreateFileAsync(sourceToken, sectionCircuit, Unique("مقترض-شعبة"));
-        var (targetId, _) = await NewLawyerAsync();
-        var subToken = await CreateSubHeadTokenAsync(sectionId);
+        var (sourceId, sourceToken) = await _factory.NewLawyerAsync();
+        await CreateFileAsync(sourceToken, divisionCircuit, UniqueName("مقترض-قسم"));
+        await CreateFileAsync(sourceToken, sectionCircuit, UniqueName("مقترض-شعبة"));
+        var (targetId, _) = await _factory.NewLawyerAsync();
+        var subToken = await _factory.CreateSubHeadTokenAsync(sectionId);
         var subClient = _factory.CreateClient();
         subClient.SetAuthCookie(subToken);
 
@@ -280,19 +219,19 @@ public sealed class DocumentScopeIsolationTests : IAsyncLifetime
     [Fact]
     public async Task Lawyers_MineMode_UnionRule_ViaHttp()
     {
-        var divisionCircuit = await CreateCircuitAsync(Unique("قسم"));
-        var sectionId = await CreateSectionAsync(Unique("شعبة"));
-        var sectionCircuit = await CreateCircuitAsync(Unique("شعبة-دائرة"));
+        var divisionCircuit = await CreateCircuitAsync(UniqueName("قسم"));
+        var sectionId = await _factory.CreateSectionAsync(UniqueName("شعبة"));
+        var sectionCircuit = await CreateCircuitAsync(UniqueName("شعبة-دائرة"));
         await SetCircuitSectionAsync(sectionCircuit, sectionId);
         // أ: ملف قسم. ب: ملف شعبة. ج: صفري (لاختبار التقاطع اللاحق).
-        var (aId, aToken) = await NewLawyerAsync();
-        var (bId, bToken) = await NewLawyerAsync();
-        await NewLawyerAsync();
-        await CreateFileAsync(aToken, divisionCircuit, Unique("مقترض-أ"));
-        await CreateFileAsync(bToken, sectionCircuit, Unique("مقترض-ب"));
+        var (aId, aToken) = await _factory.NewLawyerAsync();
+        var (bId, bToken) = await _factory.NewLawyerAsync();
+        await _factory.NewLawyerAsync();
+        await CreateFileAsync(aToken, divisionCircuit, UniqueName("مقترض-أ"));
+        await CreateFileAsync(bToken, sectionCircuit, UniqueName("مقترض-ب"));
 
         var headNames = await LawyerNamesAsync(_factory.AuthorizedClient("head1"), "?mode=mine");
-        var subToken = await CreateSubHeadTokenAsync(sectionId);
+        var subToken = await _factory.CreateSubHeadTokenAsync(sectionId);
         var subClient = _factory.CreateClient();
         subClient.SetAuthCookie(subToken);
         var subNames = await LawyerNamesAsync(subClient, "?mode=mine");
@@ -331,7 +270,7 @@ public sealed class DocumentScopeIsolationTests : IAsyncLifetime
         // باختبارات الإنابات؛ هنا البطاقة فقط).
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        var branchId = await BranchIdAsync();
+        var branchId = await _factory.GetDamascusIdAsync();
         var delegation = new DocGenerator.Domain.Entities.DocumentDelegation
         {
             SourceDocumentId = sourceDocId,
@@ -367,13 +306,13 @@ public sealed class DocumentScopeIsolationTests : IAsyncLifetime
     public async Task Delegations_SubHeadSeesOwnDocCard_WithLiveTargetFields()
     {
         // البطاقة (§5.7): ملخص المناب الحي داخل عرض المنيب — قراءة بلا ملاحة.
-        var divisionCircuit = await CreateCircuitAsync(Unique("قسم"));
-        var sectionId = await CreateSectionAsync(Unique("شعبة"));
-        var sectionCircuit = await CreateCircuitAsync(Unique("شعبة-دائرة"));
+        var divisionCircuit = await CreateCircuitAsync(UniqueName("قسم"));
+        var sectionId = await _factory.CreateSectionAsync(UniqueName("شعبة"));
+        var sectionCircuit = await CreateCircuitAsync(UniqueName("شعبة-دائرة"));
         await SetCircuitSectionAsync(sectionCircuit, sectionId);
-        var (_, sourceToken) = await NewLawyerAsync();
-        var sourceId = await CreateFileAsync(sourceToken, divisionCircuit, Unique("مقترض-منيب"));
-        var (targetLawyerId, _) = await NewLawyerAsync();
+        var (_, sourceToken) = await _factory.NewLawyerAsync();
+        var sourceId = await CreateFileAsync(sourceToken, divisionCircuit, UniqueName("مقترض-منيب"));
+        var (targetLawyerId, _) = await _factory.NewLawyerAsync();
         await SeedDelegationWithTargetAsync(sourceId, sectionCircuit, targetLawyerId, "محامي المناب");
 
         // رئيس القسم يرى تشعبات ملف القسم مع حقول البطاقة الحية.
@@ -384,7 +323,7 @@ public sealed class DocumentScopeIsolationTests : IAsyncLifetime
         var item = Assert.Single(doc!.RootElement.EnumerateArray());
         Assert.Equal("محامي المناب", item.GetProperty("targetLawyerName").GetString());
         Assert.Equal("دائرة الشعبة", item.GetProperty("delegatedCourt").GetString());
-        var branchId = await BranchIdAsync();
+        var branchId = await _factory.GetDamascusIdAsync();
         Assert.Equal(branchId, item.GetProperty("targetBranchId").GetInt32());
         Assert.NotNull(item.GetProperty("targetBranchName").GetString());
     }
@@ -392,16 +331,16 @@ public sealed class DocumentScopeIsolationTests : IAsyncLifetime
     [Fact]
     public async Task Delegations_CrossSection_Forbidden()
     {
-        var sectionId = await CreateSectionAsync(Unique("شعبة-أ"));
-        var otherId = await CreateSectionAsync(Unique("شعبة-ب"));
-        var sectionCircuit = await CreateCircuitAsync(Unique("شعبة-دائرة"));
+        var sectionId = await _factory.CreateSectionAsync(UniqueName("شعبة-أ"));
+        var otherId = await _factory.CreateSectionAsync(UniqueName("شعبة-ب"));
+        var sectionCircuit = await CreateCircuitAsync(UniqueName("شعبة-دائرة"));
         await SetCircuitSectionAsync(sectionCircuit, sectionId);
-        var (_, sourceToken) = await NewLawyerAsync();
-        var sourceId = await CreateFileAsync(sourceToken, sectionCircuit, Unique("مقترض-منيب"));
-        var (targetLawyerId, _) = await NewLawyerAsync();
+        var (_, sourceToken) = await _factory.NewLawyerAsync();
+        var sourceId = await CreateFileAsync(sourceToken, sectionCircuit, UniqueName("مقترض-منيب"));
+        var (targetLawyerId, _) = await _factory.NewLawyerAsync();
         await SeedDelegationWithTargetAsync(sourceId, sectionCircuit, targetLawyerId, "محامي المناب");
 
-        var subToken = await CreateSubHeadTokenAsync(otherId);
+        var subToken = await _factory.CreateSubHeadTokenAsync(otherId);
         var subClient = _factory.CreateClient();
         subClient.SetAuthCookie(subToken);
         Assert.Equal(
