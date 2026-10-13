@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -24,31 +25,11 @@ public sealed class SectionsIntegrationTests : IAsyncLifetime
         return Task.CompletedTask;
     }
 
-    private async Task<int> BranchIdAsync(string code)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        return (await db.Branches.SingleAsync(b => b.Code == code)).Id;
-    }
-
-    private async Task<int> CreateSectionAsync(string name, int? branchId = null)
-    {
-        var admin = _factory.AuthorizedClient("admin");
-        var response = await admin.PostAsJsonAsync("/api/sections", new
-        {
-            branchId = branchId ?? await BranchIdAsync("DAM"),
-            name,
-        });
-        response.EnsureSuccessStatusCode();
-        var created = await response.Content.ReadFromJsonAsync<SectionDto>();
-        return created!.Id;
-    }
-
     private async Task AttachCircuitAsync(int sectionId)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        var branchId = await BranchIdAsync("DAM");
+        var branchId = await _factory.GetBranchIdAsync("DAM");
         var headId = (await db.Users.SingleAsync(u => u.Username == "head1")).Id;
         db.ExecutionCircuits.Add(new ExecutionCircuit
         {
@@ -72,7 +53,7 @@ public sealed class SectionsIntegrationTests : IAsyncLifetime
     public async Task List_AllAuthenticatedRoles_Ok(string username)
     {
         var client = _factory.AuthorizedClient(username);
-        var response = await client.GetAsync($"/api/sections?branchId={await BranchIdAsync("DAM")}");
+        var response = await client.GetAsync($"/api/sections?branchId={await _factory.GetBranchIdAsync("DAM")}");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
@@ -103,7 +84,7 @@ public sealed class SectionsIntegrationTests : IAsyncLifetime
         var client = _factory.AuthorizedClient(username);
         var response = await client.PostAsJsonAsync("/api/sections", new
         {
-            branchId = await BranchIdAsync("DAM"),
+            branchId = await _factory.GetBranchIdAsync("DAM"),
             name = "شعبة ممنوعة",
         });
 
@@ -118,7 +99,7 @@ public sealed class SectionsIntegrationTests : IAsyncLifetime
         var client = _factory.AuthorizedClient(username);
         var response = await client.PostAsJsonAsync("/api/sections", new
         {
-            branchId = await BranchIdAsync("DAM"),
+            branchId = await _factory.GetBranchIdAsync("DAM"),
             name = "شعبة مصياف",
         });
 
@@ -134,11 +115,11 @@ public sealed class SectionsIntegrationTests : IAsyncLifetime
     {
         // الفحص الخدمي المسبق يرفض التكرار `400`؛ وظهر القاعدة (`409`) لسباق
         // التزامن فقط — كلاهما بنفس الرسالة المعتمدة.
-        await CreateSectionAsync("شعبة مصياف");
+        await _factory.CreateSectionAsync("شعبة مصياف");
         var admin = _factory.AuthorizedClient("admin");
         var response = await admin.PostAsJsonAsync("/api/sections", new
         {
-            branchId = await BranchIdAsync("DAM"),
+            branchId = await _factory.GetBranchIdAsync("DAM"),
             name = "شعبة مصياف",
         });
 
@@ -152,7 +133,7 @@ public sealed class SectionsIntegrationTests : IAsyncLifetime
         var admin = _factory.AuthorizedClient("admin");
         var response = await admin.PostAsJsonAsync("/api/sections", new
         {
-            branchId = await BranchIdAsync("DAM"),
+            branchId = await _factory.GetBranchIdAsync("DAM"),
             name = "   ",
         });
 
@@ -171,7 +152,7 @@ public sealed class SectionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Rename_Manager_Ok()
     {
-        var id = await CreateSectionAsync("شعبة مصياف");
+        var id = await _factory.CreateSectionAsync("شعبة مصياف");
         var manager = _factory.AuthorizedClient("manager");
         var response = await manager.PutAsJsonAsync($"/api/sections/{id}/rename", new { name = "شعبة السلمية" });
 
@@ -183,7 +164,7 @@ public sealed class SectionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Rename_Head_Forbidden()
     {
-        var id = await CreateSectionAsync("شعبة مصياف");
+        var id = await _factory.CreateSectionAsync("شعبة مصياف");
         var head = _factory.AuthorizedClient("head1");
         var response = await head.PutAsJsonAsync($"/api/sections/{id}/rename", new { name = "شعبة السلمية" });
 
@@ -202,7 +183,7 @@ public sealed class SectionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task SetActive_DeactivateWithCircuits_BadRequest()
     {
-        var id = await CreateSectionAsync("شعبة مصياف");
+        var id = await _factory.CreateSectionAsync("شعبة مصياف");
         await AttachCircuitAsync(id);
         var manager = _factory.AuthorizedClient("manager");
         var response = await manager.PutAsJsonAsync($"/api/sections/{id}/active", new { isActive = false });
@@ -214,7 +195,7 @@ public sealed class SectionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Delete_WithCircuits_BadRequest()
     {
-        var id = await CreateSectionAsync("شعبة مصياف");
+        var id = await _factory.CreateSectionAsync("شعبة مصياف");
         await AttachCircuitAsync(id);
         var manager = _factory.AuthorizedClient("manager");
         var response = await manager.DeleteAsync($"/api/sections/{id}");
@@ -225,7 +206,7 @@ public sealed class SectionsIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Delete_Empty_NoContent()
     {
-        var id = await CreateSectionAsync("شعبة مصياف");
+        var id = await _factory.CreateSectionAsync("شعبة مصياف");
         var manager = _factory.AuthorizedClient("manager");
         var response = await manager.DeleteAsync($"/api/sections/{id}");
 

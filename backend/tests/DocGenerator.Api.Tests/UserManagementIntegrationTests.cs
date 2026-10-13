@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -14,29 +15,6 @@ public class UserManagementIntegrationTests
     private readonly ApiFactory _factory;
 
     public UserManagementIntegrationTests(ApiFactory factory) => _factory = factory;
-
-    private Task<int> BranchIdAsync(string code)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        return Task.FromResult(db.Branches.Single(b => b.Code == code).Id);
-    }
-
-    private static string NewUsername(string prefix) => $"{prefix}_{Guid.NewGuid():N}"[..20];
-
-    /// <summary>
-    /// فرع معزول برئيسه المستقبلي الوحيد (وحدانية الرئيس المفعّل لكل فرع —
-    /// قرار §2.26: الفروع المزروعة قد تحوي رؤساء من اختبارات أخرى في القاعدة المشتركة).
-    /// </summary>
-    private async Task<int> CreateBranchAsync()
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        var branch = new DocGenerator.Domain.Entities.Branch { Name = "فرع اختبار", Code = $"UM_{Guid.NewGuid():N}"[..12].ToUpperInvariant() };
-        db.Branches.Add(branch);
-        await db.SaveChangesAsync();
-        return branch.Id;
-    }
 
     [Fact]
     public async Task UserManagement_NonAdminRoles_Forbidden()
@@ -75,8 +53,8 @@ public class UserManagementIntegrationTests
     [Fact]
     public async Task Admin_CreatesUser_NewUserCanLogin()
     {
-        var username = NewUsername("u");
-        var branchId = await CreateBranchAsync();
+        var username = UniqueName("u");
+        var branchId = await _factory.CreateBranchAsync("فرع اختبار");
         var admin = _factory.AuthorizedClient("admin");
         var response = await admin.PostAsJsonAsync("/api/users", new
         {
@@ -102,11 +80,11 @@ public class UserManagementIntegrationTests
     {
         // وحدانية الرئيس المفعّل (قرار §2.26): الثاني مرفوض `400` بالرسالة
         // المعتمدة — لا `500` من القيد.
-        var branchId = await CreateBranchAsync();
+        var branchId = await _factory.CreateBranchAsync("فرع اختبار");
         var admin = _factory.AuthorizedClient("admin");
         var first = await admin.PostAsJsonAsync("/api/users", new
         {
-            username = NewUsername("h1"),
+            username = UniqueName("h1"),
             fullName = "رئيس أول",
             role = "head",
             branchId,
@@ -116,7 +94,7 @@ public class UserManagementIntegrationTests
 
         var second = await admin.PostAsJsonAsync("/api/users", new
         {
-            username = NewUsername("h2"),
+            username = UniqueName("h2"),
             fullName = "رئيس ثان",
             role = "head",
             branchId,
@@ -129,8 +107,8 @@ public class UserManagementIntegrationTests
     [Fact]
     public async Task Admin_UpdatesUser_DeactivateInvalidatesToken()
     {
-        var username = NewUsername("u");
-        await _factory.CreateUserAsync(username, UserRole.Lawyer, await BranchIdAsync("DAM"));
+        var username = UniqueName("u");
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, await _factory.GetBranchIdAsync("DAM"));
         var token = (await _factory.LoginAsync(username, "123456"))!.Token;
         Assert.False(string.IsNullOrWhiteSpace(token));
 
@@ -142,7 +120,7 @@ public class UserManagementIntegrationTests
         {
             fullName = "محامي معدل",
             role = "lawyer",
-            branchId = await BranchIdAsync("DAM"),
+            branchId = await _factory.GetBranchIdAsync("DAM"),
             isActive = false,
             password = (string?)null,
         });
@@ -176,7 +154,7 @@ public class UserManagementIntegrationTests
         var admin = _factory.AuthorizedClient("admin");
         var response = await admin.PostAsJsonAsync("/api/users", new
         {
-            username = NewUsername("b"),
+            username = UniqueName("b"),
             fullName = "مستخدم",
             role = "king",
             branchId = (int?)null,
@@ -192,7 +170,7 @@ public class UserManagementIntegrationTests
         var response = await head.GetAsync("/api/users/lawyers");
         response.EnsureSuccessStatusCode();
         var lawyers = await response.Content.ReadFromJsonAsync<List<LawyerListItemDto>>();
-        var damascusId = await BranchIdAsync("DAM");
+        var damascusId = await _factory.GetBranchIdAsync("DAM");
 
         Assert.NotNull(lawyers);
         Assert.DoesNotContain(lawyers, l => l.BranchId != damascusId);
@@ -204,15 +182,15 @@ public class UserManagementIntegrationTests
         var head = _factory.AuthorizedClient("head1");
         var response = await head.PostAsJsonAsync("/api/users/lawyers", new
         {
-            username = NewUsername("l"),
+            username = UniqueName("l"),
             fullName = "محامي جديد",
             password = "123456",
-            branchId = await BranchIdAsync("ALP"),
+            branchId = await _factory.GetBranchIdAsync("ALP"),
         });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var lawyer = await response.Content.ReadFromJsonAsync<LawyerListItemDto>();
-        Assert.Equal(await BranchIdAsync("DAM"), lawyer!.BranchId);
+        Assert.Equal(await _factory.GetBranchIdAsync("DAM"), lawyer!.BranchId);
     }
 
     [Fact]
@@ -221,15 +199,15 @@ public class UserManagementIntegrationTests
         var admin = _factory.AuthorizedClient("admin");
         var response = await admin.PostAsJsonAsync("/api/users/lawyers", new
         {
-            username = NewUsername("l"),
+            username = UniqueName("l"),
             fullName = "محامي حلب",
             password = "123456",
-            branchId = await BranchIdAsync("ALP"),
+            branchId = await _factory.GetBranchIdAsync("ALP"),
         });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var lawyer = await response.Content.ReadFromJsonAsync<LawyerListItemDto>();
-        Assert.Equal(await BranchIdAsync("ALP"), lawyer!.BranchId);
+        Assert.Equal(await _factory.GetBranchIdAsync("ALP"), lawyer!.BranchId);
     }
 
     [Fact]
@@ -238,7 +216,7 @@ public class UserManagementIntegrationTests
         var admin = _factory.AuthorizedClient("admin");
         var response = await admin.PostAsJsonAsync("/api/users/lawyers", new
         {
-            username = NewUsername("l"),
+            username = UniqueName("l"),
             fullName = "محامي",
             password = "123456",
             branchId = (int?)null,
@@ -252,10 +230,10 @@ public class UserManagementIntegrationTests
         var admin = _factory.AuthorizedClient("admin");
         var created = await admin.PostAsJsonAsync("/api/users/lawyers", new
         {
-            username = NewUsername("l"),
+            username = UniqueName("l"),
             fullName = "محامي حلب",
             password = "123456",
-            branchId = await BranchIdAsync("ALP"),
+            branchId = await _factory.GetBranchIdAsync("ALP"),
         });
         var aleppoLawyer = (await created.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
 
@@ -270,10 +248,10 @@ public class UserManagementIntegrationTests
         var admin = _factory.AuthorizedClient("admin");
         var created = await admin.PostAsJsonAsync("/api/users/lawyers", new
         {
-            username = NewUsername("l"),
+            username = UniqueName("l"),
             fullName = "محامي دمشق",
             password = "123456",
-            branchId = await BranchIdAsync("DAM"),
+            branchId = await _factory.GetBranchIdAsync("DAM"),
         });
         var lawyer = (await created.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
         var token = (await _factory.LoginAsync(lawyer.Username, "123456"))!.Token;
@@ -291,7 +269,7 @@ public class UserManagementIntegrationTests
     public async Task Admin_CreatesUser_ArabicTripartiteName_LoginWithEquivalentSpelling()
     {
         var name = "أحمد خالد العلي";
-        var branchId = await CreateBranchAsync();
+        var branchId = await _factory.CreateBranchAsync("فرع اختبار");
         var admin = _factory.AuthorizedClient("admin");
         var response = await admin.PostAsJsonAsync("/api/users", new
         {
@@ -316,7 +294,7 @@ public class UserManagementIntegrationTests
     public async Task Admin_CreatesUser_DuplicateTripartiteNameSameBranch_BadRequest()
     {
         var name = "سامر محمود عيد";
-        var branchId = await CreateBranchAsync();
+        var branchId = await _factory.CreateBranchAsync("فرع اختبار");
         var admin = _factory.AuthorizedClient("admin");
         var first = await admin.PostAsJsonAsync("/api/users", new
         {
@@ -345,8 +323,8 @@ public class UserManagementIntegrationTests
     public async Task Admin_CreatesUser_SameTripartiteNameDifferentBranch_Allowed()
     {
         var name = "نزار عادل صالح";
-        var branchA = await CreateBranchAsync();
-        var branchB = await CreateBranchAsync();
+        var branchA = await _factory.CreateBranchAsync("فرع اختبار");
+        var branchB = await _factory.CreateBranchAsync("فرع اختبار");
         var admin = _factory.AuthorizedClient("admin");
         var first = await admin.PostAsJsonAsync("/api/users", new
         {
@@ -372,7 +350,7 @@ public class UserManagementIntegrationTests
     [Fact]
     public async Task DbConstraint_SameUsernameWithoutBranch_Rejected()
     {
-        var username = NewUsername("nb");
+        var username = UniqueName("nb");
         await _factory.CreateUserAsync(username, UserRole.Manager);
 
         // الفهرس الفريد الجزئي (BranchId IS NULL) يمنع تكرار اسم المدير/المشرف في قاعدة البيانات.
@@ -383,8 +361,8 @@ public class UserManagementIntegrationTests
     [Fact]
     public async Task DbConstraint_SameUsername_OneWithBranchOneWithout_Allowed()
     {
-        var username = NewUsername("mix");
-        await _factory.CreateUserAsync(username, UserRole.Lawyer, await BranchIdAsync("DAM"));
+        var username = UniqueName("mix");
+        await _factory.CreateUserAsync(username, UserRole.Lawyer, await _factory.GetBranchIdAsync("DAM"));
 
         // الاسم نفسه مسموح مرةً بلا فرع وأخرى بفرع: قيود الفرعين مستقلتان.
         await _factory.CreateUserAsync(username, UserRole.Manager);
@@ -393,14 +371,14 @@ public class UserManagementIntegrationTests
     [Fact]
     public async Task Head_UpdatesOwnLawyer_RenameAndResetPassword()
     {
-        var username = NewUsername("l");
+        var username = UniqueName("l");
         var admin = _factory.AuthorizedClient("admin");
         var created = await admin.PostAsJsonAsync("/api/users/lawyers", new
         {
             username,
             fullName = "محامي دمشق",
             password = "123456",
-            branchId = await BranchIdAsync("DAM"),
+            branchId = await _factory.GetBranchIdAsync("DAM"),
         });
         var lawyer = (await created.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
         Assert.Equal(HttpStatusCode.OK, created.StatusCode);
@@ -430,10 +408,10 @@ public class UserManagementIntegrationTests
         var admin = _factory.AuthorizedClient("admin");
         var created = await admin.PostAsJsonAsync("/api/users/lawyers", new
         {
-            username = NewUsername("l"),
+            username = UniqueName("l"),
             fullName = "محامي حلب",
             password = "123456",
-            branchId = await BranchIdAsync("ALP"),
+            branchId = await _factory.GetBranchIdAsync("ALP"),
         });
         var aleppoLawyer = (await created.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
 
@@ -451,10 +429,10 @@ public class UserManagementIntegrationTests
         var admin = _factory.AuthorizedClient("admin");
         var created = await admin.PostAsJsonAsync("/api/users/lawyers", new
         {
-            username = NewUsername("l"),
+            username = UniqueName("l"),
             fullName = "محامي حلب",
             password = "123456",
-            branchId = await BranchIdAsync("ALP"),
+            branchId = await _factory.GetBranchIdAsync("ALP"),
         });
         var aleppoLawyer = (await created.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
 
@@ -465,7 +443,7 @@ public class UserManagementIntegrationTests
         Assert.Equal(HttpStatusCode.OK, update.StatusCode);
         var updated = await update.Content.ReadFromJsonAsync<LawyerListItemDto>();
         Assert.Equal("محامي حلب معدل", updated!.Username);
-        Assert.Equal(await BranchIdAsync("ALP"), updated.BranchId);
+        Assert.Equal(await _factory.GetBranchIdAsync("ALP"), updated.BranchId);
     }
 
     [Fact]
@@ -487,10 +465,10 @@ public class UserManagementIntegrationTests
         var admin = _factory.AuthorizedClient("admin");
         var created = await admin.PostAsJsonAsync("/api/users/lawyers", new
         {
-            username = NewUsername("l"),
+            username = UniqueName("l"),
             fullName = "محامي دمشق",
             password = "123456",
-            branchId = await BranchIdAsync("DAM"),
+            branchId = await _factory.GetBranchIdAsync("DAM"),
         });
         var lawyer = (await created.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
 
@@ -514,7 +492,7 @@ public class UserManagementIntegrationTests
             username = "مروان سعيد",
             fullName = "مروان سعيد",
             password = "123456",
-            branchId = await BranchIdAsync("DAM"),
+            branchId = await _factory.GetBranchIdAsync("DAM"),
         });
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
 
@@ -523,7 +501,7 @@ public class UserManagementIntegrationTests
             username = "قاسم علي",
             fullName = "قاسم علي",
             password = "123456",
-            branchId = await BranchIdAsync("DAM"),
+            branchId = await _factory.GetBranchIdAsync("DAM"),
         });
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
         var target = (await second.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
@@ -535,21 +513,12 @@ public class UserManagementIntegrationTests
         Assert.Contains("نفس الفرع", body);
     }
 
-    private async Task<int> CreateSectionAsync(string name, int branchId)
-    {
-        var admin = _factory.AuthorizedClient("admin");
-        var response = await admin.PostAsJsonAsync("/api/sections", new { branchId, name });
-        response.EnsureSuccessStatusCode();
-        using var doc = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonDocument>();
-        return doc!.RootElement.GetProperty("id").GetInt32();
-    }
-
     [Fact]
     public async Task Admin_CreatesSubHead_WithSection_CreatedAndCanLogin()
     {
-        var branchId = await BranchIdAsync("DAM");
-        var sectionId = await CreateSectionAsync($"شعبة التكامل {Guid.NewGuid():N}"[..20], branchId);
-        var username = NewUsername("s");
+        var branchId = await _factory.GetBranchIdAsync("DAM");
+        var sectionId = await _factory.CreateSectionAsync($"شعبة التكامل {Guid.NewGuid():N}"[..20], branchId);
+        var username = UniqueName("s");
         var admin = _factory.AuthorizedClient("admin");
         var response = await admin.PostAsJsonAsync("/api/users", new
         {
@@ -584,10 +553,10 @@ public class UserManagementIntegrationTests
         var admin = _factory.AuthorizedClient("admin");
         var response = await admin.PostAsJsonAsync("/api/users", new
         {
-            username = NewUsername("s"),
+            username = UniqueName("s"),
             fullName = "رئيس شعبة بلا",
             role = "subhead",
-            branchId = await BranchIdAsync("DAM"),
+            branchId = await _factory.GetBranchIdAsync("DAM"),
             password = "123456",
         });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -597,12 +566,12 @@ public class UserManagementIntegrationTests
     [Fact]
     public async Task Admin_CreatesSubHead_OccupiedSection_BadRequest()
     {
-        var branchId = await BranchIdAsync("DAM");
-        var sectionId = await CreateSectionAsync($"شعبة مشغولة {Guid.NewGuid():N}"[..20], branchId);
+        var branchId = await _factory.GetBranchIdAsync("DAM");
+        var sectionId = await _factory.CreateSectionAsync($"شعبة مشغولة {Guid.NewGuid():N}"[..20], branchId);
         var admin = _factory.AuthorizedClient("admin");
         var first = await admin.PostAsJsonAsync("/api/users", new
         {
-            username = NewUsername("s1"),
+            username = UniqueName("s1"),
             fullName = "رئيس أول",
             role = "subhead",
             branchId,
@@ -613,7 +582,7 @@ public class UserManagementIntegrationTests
 
         var second = await admin.PostAsJsonAsync("/api/users", new
         {
-            username = NewUsername("s2"),
+            username = UniqueName("s2"),
             fullName = "رئيس ثان",
             role = "subhead",
             branchId,
@@ -627,14 +596,14 @@ public class UserManagementIntegrationTests
     [Fact]
     public async Task Admin_CreatesSubHead_ForeignSection_BadRequest()
     {
-        var sectionId = await CreateSectionAsync($"شعبة حلب {Guid.NewGuid():N}"[..20], await BranchIdAsync("ALP"));
+        var sectionId = await _factory.CreateSectionAsync($"شعبة حلب {Guid.NewGuid():N}"[..20], await _factory.GetBranchIdAsync("ALP"));
         var admin = _factory.AuthorizedClient("admin");
         var response = await admin.PostAsJsonAsync("/api/users", new
         {
-            username = NewUsername("s"),
+            username = UniqueName("s"),
             fullName = "رئيس شعبة خطأ",
             role = "subhead",
-            branchId = await BranchIdAsync("DAM"),
+            branchId = await _factory.GetBranchIdAsync("DAM"),
             password = "123456",
             sectionId,
         });
@@ -645,11 +614,11 @@ public class UserManagementIntegrationTests
     public async Task Manager_DeactivatesHeadWithSuccessor_FullFlow()
     {
         var admin = _factory.AuthorizedClient("admin");
-        var branchId = await BranchIdAsync("DAM");
-        var sectionId = await CreateSectionAsync($"شعبة إحلال {Guid.NewGuid():N}"[..20], branchId);
+        var branchId = await _factory.GetBranchIdAsync("DAM");
+        var sectionId = await _factory.CreateSectionAsync($"شعبة إحلال {Guid.NewGuid():N}"[..20], branchId);
         var head = await admin.PostAsJsonAsync("/api/users", new
         {
-            username = NewUsername("sh"),
+            username = UniqueName("sh"),
             fullName = "رئيس شعبة محل",
             role = "subhead",
             branchId,
@@ -660,7 +629,7 @@ public class UserManagementIntegrationTests
         var headDto = await head.Content.ReadFromJsonAsync<UserListItemDto>();
         var lawyer = await admin.PostAsJsonAsync("/api/users/lawyers", new
         {
-            username = NewUsername("sl"),
+            username = UniqueName("sl"),
             fullName = "محامي الخلف",
             password = "123456",
             branchId,
@@ -711,11 +680,11 @@ public class UserManagementIntegrationTests
     public async Task Manager_DeactivatesHeadWithoutSuccessor_BadRequest()
     {
         var admin = _factory.AuthorizedClient("admin");
-        var branchId = await BranchIdAsync("DAM");
-        var sectionId = await CreateSectionAsync($"شعبة بلا خلف {Guid.NewGuid():N}"[..20], branchId);
+        var branchId = await _factory.GetBranchIdAsync("DAM");
+        var sectionId = await _factory.CreateSectionAsync($"شعبة بلا خلف {Guid.NewGuid():N}"[..20], branchId);
         var head = await admin.PostAsJsonAsync("/api/users", new
         {
-            username = NewUsername("sh"),
+            username = UniqueName("sh"),
             fullName = "رئيس بلا خلف",
             role = "subhead",
             branchId,

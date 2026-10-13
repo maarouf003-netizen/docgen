@@ -77,11 +77,13 @@ public static class ApiFixtureExtensions
     }
 
     /// <summary>إنشاء فرع مباشرة في القاعدة برمز فريد — بلا مرور بالـ API.</summary>
-    public static async Task<int> CreateBranchAsync(this ApiFactory factory, string name)
+    /// <param name="governorate">المحافظة الاختيارية — تُمرَّر صراحةً عندما يعتمد الاختبار على نطاق محافظة
+    /// (كمحافظة مختلفة عمدًا لاختبارات العزل؛ وحدانية الرئيس المفعّل لكل فرع — §2.26).</param>
+    public static async Task<int> CreateBranchAsync(this ApiFactory factory, string name, string? governorate = null)
     {
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        var branch = new Branch { Name = name, Code = $"TX_{Guid.NewGuid():N}"[..12].ToUpperInvariant() };
+        var branch = new Branch { Name = name, Code = $"TX_{Guid.NewGuid():N}"[..12].ToUpperInvariant(), Governorate = governorate };
         db.Branches.Add(branch);
         await db.SaveChangesAsync();
         return branch.Id;

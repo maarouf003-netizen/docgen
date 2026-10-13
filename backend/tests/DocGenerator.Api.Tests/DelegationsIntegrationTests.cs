@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Enums;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,8 +14,6 @@ public class DelegationsIntegrationTests
     private readonly ApiFactory _factory;
 
     public DelegationsIntegrationTests(ApiFactory factory) => _factory = factory;
-
-    private static string NewName(string prefix) => $"{prefix}_{Guid.NewGuid():N}"[..Math.Min(prefix.Length + 16, 40)];
 
     private sealed record PendingCountDto(int Count);
 
@@ -69,7 +68,7 @@ public class DelegationsIntegrationTests
         Assert.Contains(pending, d => d.Id == dto.Id);
 
         // محامٍ آخر في الفرع يتابع الإنابة (يُنشأ الملف المناب تلقائيًا).
-        var targetLawyer = await _factory.CreateUserAsync(NewName("lawyer_deleg"), UserRole.Lawyer, branchId: await BranchIdAsync("DAM"));
+        var targetLawyer = await _factory.CreateUserAsync(UniqueName("lawyer_deleg"), UserRole.Lawyer, branchId: await _factory.GetBranchIdAsync("DAM"));
         var assign = await head.PostAsJsonAsync($"/api/delegations/{dto.Id}/assign",
             new { assignedLawyerId = targetLawyer.Id });
         Assert.Equal(HttpStatusCode.OK, assign.StatusCode);
@@ -152,7 +151,7 @@ public class DelegationsIntegrationTests
         Assert.NotNull(created);
 
         var head = _factory.AuthorizedClient("head1");
-        var targetLawyer = await _factory.CreateUserAsync(NewName("lawyer_missingcov"), UserRole.Lawyer, branchId: await BranchIdAsync("DAM"));
+        var targetLawyer = await _factory.CreateUserAsync(UniqueName("lawyer_missingcov"), UserRole.Lawyer, branchId: await _factory.GetBranchIdAsync("DAM"));
         await head.PostAsJsonAsync($"/api/delegations/{created!.Id}/assign", new { assignedLawyerId = targetLawyer.Id });
         var targetClient = _factory.AuthorizedClient(targetLawyer.Username);
         var regResponse = await targetClient.PostAsJsonAsync($"/api/delegations/{created.Id}/register",
@@ -190,7 +189,7 @@ public class DelegationsIntegrationTests
     public async Task Create_ByLawyerNotOwner_BadRequest()
     {
         var (docId, assetId) = await CreateSourceWithAssetAsync();
-        var otherLawyer = await _factory.CreateUserAsync(NewName("lawyer_other"), UserRole.Lawyer, branchId: await BranchIdAsync("DAM"));
+        var otherLawyer = await _factory.CreateUserAsync(UniqueName("lawyer_other"), UserRole.Lawyer, branchId: await _factory.GetBranchIdAsync("DAM"));
 
         var client = _factory.AuthorizedClient(otherLawyer.Username);
         var response = await client.PostAsJsonAsync($"/api/documents/{docId}/delegations", SampleBody(assetId));
@@ -205,11 +204,11 @@ public class DelegationsIntegrationTests
         var created = await (await lawyer1.PostAsJsonAsync($"/api/documents/{docId}/delegations", SampleBody(assetId)))
             .Content.ReadFromJsonAsync<DelegationDto>();
 
-        var targetLawyer = await _factory.CreateUserAsync(NewName("lawyer_lat"), UserRole.Lawyer, branchId: await BranchIdAsync("LAT"));
+        var targetLawyer = await _factory.CreateUserAsync(UniqueName("lawyer_lat"), UserRole.Lawyer, branchId: await _factory.GetBranchIdAsync("LAT"));
         // رئيس فرعٍ آخر (فرع معزول برئيسه الوحيد — قرار §2.26) يحاول اعتماد
         // إنابة ليست من اختصاص فرعه.
-        var otherBranchId = await CreateBranchAsync("فرع آخر");
-        var otherHead = await _factory.CreateUserAsync(NewName("head_lat"), UserRole.Head, branchId: otherBranchId);
+        var otherBranchId = await _factory.CreateBranchAsync("فرع آخر", "حلب");
+        var otherHead = await _factory.CreateUserAsync(UniqueName("head_lat"), UserRole.Head, branchId: otherBranchId);
         var client = _factory.AuthorizedClient(otherHead.Username);
         var response = await client.PostAsJsonAsync($"/api/delegations/{created!.Id}/assign",
             new { assignedLawyerId = targetLawyer.Id });
@@ -242,7 +241,7 @@ public class DelegationsIntegrationTests
     public async Task ExternalFlow_AppearsForDelegatedBranchHead_AssignsAndTargetsExternalBranch()
     {
         var (docId, assetId) = await CreateSourceWithAssetAsync();
-        var latBranchId = await BranchIdAsync("LAT");
+        var latBranchId = await _factory.GetBranchIdAsync("LAT");
 
         // تسطير إنابة خارجية إلى فرع اللاذقية (محامي الملف المنيب في دمشق).
         var lawyer1 = _factory.AuthorizedClient("lawyer1");
@@ -260,14 +259,14 @@ public class DelegationsIntegrationTests
         Assert.NotNull(damPending);
         Assert.DoesNotContain(damPending, d => d.Id == dto.Id);
 
-        var latHead = await _factory.CreateUserAsync(NewName("head_external"), UserRole.Head, branchId: latBranchId);
+        var latHead = await _factory.CreateUserAsync(UniqueName("head_external"), UserRole.Head, branchId: latBranchId);
         var latClient = _factory.AuthorizedClient(latHead.Username);
         var latPending = await (await latClient.GetAsync("/api/delegations/pending")).Content.ReadFromJsonAsync<List<DelegationDto>>();
         Assert.NotNull(latPending);
         Assert.Contains(latPending, d => d.Id == dto.Id);
 
         // يعتمدها رئيس قسم اللاذقية ويكلف محاميًا ضمن فرعه؛ يُنشأ الملف المناب في فرع اللاذقية.
-        var latLawyer = await _factory.CreateUserAsync(NewName("lawyer_external"), UserRole.Lawyer, branchId: latBranchId);
+        var latLawyer = await _factory.CreateUserAsync(UniqueName("lawyer_external"), UserRole.Lawyer, branchId: latBranchId);
         var assign = await latClient.PostAsJsonAsync($"/api/delegations/{dto.Id}/assign", new { assignedLawyerId = latLawyer.Id });
         Assert.Equal(HttpStatusCode.OK, assign.StatusCode);
         var assigned = await assign.Content.ReadFromJsonAsync<DelegationDto>();
@@ -291,7 +290,7 @@ public class DelegationsIntegrationTests
         Assert.NotNull(created);
 
         var head = _factory.AuthorizedClient("head1");
-        var targetLawyer = await _factory.CreateUserAsync(NewName("lawyer_cons"), UserRole.Lawyer, branchId: await BranchIdAsync("DAM"));
+        var targetLawyer = await _factory.CreateUserAsync(UniqueName("lawyer_cons"), UserRole.Lawyer, branchId: await _factory.GetBranchIdAsync("DAM"));
         await head.PostAsJsonAsync($"/api/delegations/{created!.Id}/assign", new { assignedLawyerId = targetLawyer.Id });
         var targetClient = _factory.AuthorizedClient(targetLawyer.Username);
         var regResponse = await targetClient.PostAsJsonAsync($"/api/delegations/{created.Id}/register",
@@ -339,35 +338,12 @@ public class DelegationsIntegrationTests
         Assert.Contains("77/2026", occurrence.Details);
     }
 
-    private async Task<int> BranchIdAsync(string code)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        return db.Branches.Single(b => b.Code == code).Id;
-    }
-
-    /// <summary>
-    /// فرع جديد معزول برئيسه الوحيد (وحدانية الرئيس المفعّل لكل فرع — قرار §2.26:
-    /// الفروع المزروعة قد تحوي رؤساء من اختبارات أخرى في القاعدة المشتركة).
-    /// </summary>
-    private async Task<int> CreateBranchAsync(string name)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        // محافظة مختلفة عن دمشق عمدًا (حلب): «فرع آخر» بكل الأبعاد (فرع +
-        // محافظة) فلا يُمنح أي وصول جواري.
-        var branch = new DocGenerator.Domain.Entities.Branch { Name = name, Code = $"DL_{Guid.NewGuid():N}"[..12].ToUpperInvariant(), Governorate = "حلب" };
-        db.Branches.Add(branch);
-        await db.SaveChangesAsync();
-        return branch.Id;
-    }
-
     [Fact]
     public async Task ListForDocument_OtherLawyersFile_IsForbidden()
     {
         // تشعبات ملف محامٍ آخر لا تُكشف لأي محامٍ آخر (نفس قاعدة الوصول على صفحة الملف).
         var (docId, _) = await CreateSourceWithAssetAsync();
-        var otherLawyer = await _factory.CreateUserAsync(NewName("lawyer_stranger"), UserRole.Lawyer, branchId: await BranchIdAsync("DAM"));
+        var otherLawyer = await _factory.CreateUserAsync(UniqueName("lawyer_stranger"), UserRole.Lawyer, branchId: await _factory.GetBranchIdAsync("DAM"));
 
         var client = _factory.AuthorizedClient(otherLawyer.Username);
         var response = await client.GetAsync($"/api/documents/{docId}/delegations");
@@ -400,8 +376,8 @@ public class DelegationsIntegrationTests
     {
         var (docId, _) = await CreateSourceWithAssetAsync();
         // رئيس فرعٍ آخر (فرع معزول برئيسه الوحيد — قرار §2.26).
-        var otherBranchId = await CreateBranchAsync("فرع محجوب");
-        var otherHead = await _factory.CreateUserAsync(NewName("head_other"), UserRole.Head, branchId: otherBranchId);
+        var otherBranchId = await _factory.CreateBranchAsync("فرع محجوب", "حلب");
+        var otherHead = await _factory.CreateUserAsync(UniqueName("head_other"), UserRole.Head, branchId: otherBranchId);
 
         var client = _factory.AuthorizedClient(otherHead.Username);
         var response = await client.GetAsync($"/api/documents/{docId}/delegations");
@@ -447,7 +423,7 @@ public class DelegationsIntegrationTests
 
         var head = _factory.AuthorizedClient("head1");
         var assign = await head.PostAsJsonAsync($"/api/appeals/{appeal!.Id}/assign",
-            new { assignedLawyerId = await UserIdAsync("lawyer1") });
+            new { assignedLawyerId = await _factory.UserIdAsync("lawyer1") });
         Assert.Equal(HttpStatusCode.OK, assign.StatusCode);
 
         var decide = await lawyer1.PostAsJsonAsync($"/api/appeals/{appeal.Id}/decide", new
@@ -466,12 +442,5 @@ public class DelegationsIntegrationTests
 
         var stillThere = await lawyer1.GetAsync($"/api/documents/{docId}");
         Assert.Equal(HttpStatusCode.OK, stillThere.StatusCode);
-    }
-
-    private async Task<int> UserIdAsync(string username)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
-        return db.Users.Single(u => u.Username == username).Id;
     }
 }
