@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using DocGenerator.Api.Tests.TestHelpers;
 using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -13,40 +14,31 @@ namespace DocGenerator.Api.Tests;
 /// توجيه المستلم، والرؤية والرد والعدّاد بالنطاق.
 /// قاعدة معزولة لكل صنف (مصنع خاص) — بلا تلوث متبادل.
 /// </summary>
-public sealed class ReviewCorrespondenceScopeTests : IAsyncLifetime
+public sealed class ReviewCorrespondenceScopeTests : IsolatedApiTestBase
 {
-    private readonly ApiFactory _factory = new();
-
-    public Task InitializeAsync() => Task.CompletedTask;
-
-    public Task DisposeAsync()
-    {
-        _factory.Dispose();
-        return Task.CompletedTask;
-    }
 
     private async Task<(string Token, int Id)> CreateSubHeadAsync(int sectionId)
     {
-        var admin = _factory.AuthorizedClient("admin");
+        var admin = Factory.AuthorizedClient("admin");
         var username = UniqueName("sub");
         var created = await admin.PostAsJsonAsync("/api/users", new
         {
             username,
             fullName = username,
             role = "subhead",
-            branchId = await _factory.GetDamascusIdAsync(),
+            branchId = await Factory.GetDamascusIdAsync(),
             password = "123456",
             sectionId,
         });
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         using var createdDoc = await created.Content.ReadFromJsonAsync<JsonDocument>();
-        var token = (await _factory.LoginAsync(username, "123456"))!.Token!;
+        var token = (await Factory.LoginAsync(username, "123456"))!.Token!;
         return (token, createdDoc!.RootElement.GetProperty("id").GetInt32());
     }
 
     private async Task<int> CreateCircuitAsync(string name)
     {
-        var head = _factory.AuthorizedClient("head1");
+        var head = Factory.AuthorizedClient("head1");
         var response = await head.PostAsJsonAsync("/api/execution-circuits", new { name });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         using var doc = await response.Content.ReadFromJsonAsync<JsonDocument>();
@@ -55,7 +47,7 @@ public sealed class ReviewCorrespondenceScopeTests : IAsyncLifetime
 
     private async Task TransferCircuitAsync(int circuitId, int? sectionId)
     {
-        var manager = _factory.AuthorizedClient("manager");
+        var manager = Factory.AuthorizedClient("manager");
         var response = await manager.PostAsJsonAsync($"/api/execution-circuits/{circuitId}/transfer", new
         {
             targetSectionId = sectionId,
@@ -65,7 +57,7 @@ public sealed class ReviewCorrespondenceScopeTests : IAsyncLifetime
 
     private async Task<int> CreateFileAsync(string token, int circuitId)
     {
-        var client = _factory.ClientWithToken(token);
+        var client = Factory.ClientWithToken(token);
         var response = await client.PostAsJsonAsync("/api/documents", new
         {
             documentType = "بيان دعوى",
@@ -96,17 +88,17 @@ public sealed class ReviewCorrespondenceScopeTests : IAsyncLifetime
     [Fact]
     public async Task LetterFlow_OwnedBySection_SubReplies_HeadDenied()
     {
-        var sectionId = await _factory.CreateSectionAsync(UniqueName("شعبة"));
+        var sectionId = await Factory.CreateSectionAsync(UniqueName("شعبة"));
         var circuitId = await CreateCircuitAsync(UniqueName("دائرة"));
         await TransferCircuitAsync(circuitId, sectionId);
         var (subToken, _) = await CreateSubHeadAsync(sectionId);
-        var subClient = _factory.ClientWithToken(subToken);
-        var (_, lawyerToken) = await _factory.NewLawyerAsync();
+        var subClient = Factory.ClientWithToken(subToken);
+        var (_, lawyerToken) = await Factory.NewLawyerAsync();
         var fileId = await CreateFileAsync(lawyerToken, circuitId);
-        var head = _factory.AuthorizedClient("head1");
+        var head = Factory.AuthorizedClient("head1");
 
         // التسطير على ملف الشعبة — المستلم تلقائي (بلا منسدل).
-        var lawyerClient = _factory.ClientWithToken(lawyerToken);
+        var lawyerClient = Factory.ClientWithToken(lawyerToken);
         var created = await lawyerClient.PostAsJsonAsync("/api/review-letters", new
         {
             documentId = fileId,
@@ -133,12 +125,12 @@ public sealed class ReviewCorrespondenceScopeTests : IAsyncLifetime
     [Fact]
     public async Task LetterFlow_GeneralWithSection_SubSees_HeadDoesNot()
     {
-        var sectionId = await _factory.CreateSectionAsync(UniqueName("شعبة"));
+        var sectionId = await Factory.CreateSectionAsync(UniqueName("شعبة"));
         var (subToken, _) = await CreateSubHeadAsync(sectionId);
-        var subClient = _factory.ClientWithToken(subToken);
-        var (_, lawyerToken) = await _factory.NewLawyerAsync();
-        var lawyerClient = _factory.ClientWithToken(lawyerToken);
-        var head = _factory.AuthorizedClient("head1");
+        var subClient = Factory.ClientWithToken(subToken);
+        var (_, lawyerToken) = await Factory.NewLawyerAsync();
+        var lawyerClient = Factory.ClientWithToken(lawyerToken);
+        var head = Factory.AuthorizedClient("head1");
 
         // بلا ملف: اختيار الشعبة من المنسدل.
         var created = await lawyerClient.PostAsJsonAsync("/api/review-letters", new
@@ -160,11 +152,11 @@ public sealed class ReviewCorrespondenceScopeTests : IAsyncLifetime
     [Fact]
     public async Task CorrespondenceFlow_GeneralToSectionHead_VisibleToSub()
     {
-        var sectionId = await _factory.CreateSectionAsync(UniqueName("شعبة"));
+        var sectionId = await Factory.CreateSectionAsync(UniqueName("شعبة"));
         var (subToken, subId) = await CreateSubHeadAsync(sectionId);
-        var subClient = _factory.ClientWithToken(subToken);
-        var (_, lawyerToken) = await _factory.NewLawyerAsync();
-        var lawyerClient = _factory.ClientWithToken(lawyerToken);
+        var subClient = Factory.ClientWithToken(subToken);
+        var (_, lawyerToken) = await Factory.NewLawyerAsync();
+        var lawyerClient = Factory.ClientWithToken(lawyerToken);
 
         // مراسلة عامة لرئيس الشعبة مع تجميد الشعبة.
         var created = await lawyerClient.PostAsJsonAsync("/api/correspondence", new

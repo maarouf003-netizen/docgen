@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using DocGenerator.Api.Tests.TestHelpers;
 using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -13,21 +14,11 @@ namespace DocGenerator.Api.Tests;
 /// إحالة شعبة → قسم (رؤية القسم للاستئناف وملفه) → تراجع (استرجاع المحيل / إعادة المستلم).
 /// قاعدة معزولة لكل صنف (مصنع خاص) — بلا تلوث متبادل مع تدقيق `head1` المشترك.
 /// </summary>
-public sealed class AppealForwardFlowTests : IAsyncLifetime
+public sealed class AppealForwardFlowTests : IsolatedApiTestBase
 {
-    private readonly ApiFactory _factory = new();
-
-    public Task InitializeAsync() => Task.CompletedTask;
-
-    public Task DisposeAsync()
-    {
-        _factory.Dispose();
-        return Task.CompletedTask;
-    }
-
     private async Task<int> CreateCircuitAsync(string name)
     {
-        var head = _factory.AuthorizedClient("head1");
+        var head = Factory.AuthorizedClient("head1");
         var response = await head.PostAsJsonAsync("/api/execution-circuits", new { name });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         using var doc = await response.Content.ReadFromJsonAsync<JsonDocument>();
@@ -36,7 +27,7 @@ public sealed class AppealForwardFlowTests : IAsyncLifetime
 
     private async Task TransferCircuitAsync(int circuitId, int? sectionId)
     {
-        var manager = _factory.AuthorizedClient("manager");
+        var manager = Factory.AuthorizedClient("manager");
         var response = await manager.PostAsJsonAsync($"/api/execution-circuits/{circuitId}/transfer", new
         {
             targetSectionId = sectionId,
@@ -46,7 +37,7 @@ public sealed class AppealForwardFlowTests : IAsyncLifetime
 
     private async Task<int> CreateFileAsync(string token, int circuitId, string borrower)
     {
-        var client = _factory.ClientWithToken(token);
+        var client = Factory.ClientWithToken(token);
         var response = await client.PostAsJsonAsync("/api/documents", new
         {
             documentType = "بيان دعوى",
@@ -68,7 +59,7 @@ public sealed class AppealForwardFlowTests : IAsyncLifetime
 
     private async Task<int> CreateAppealAsync(string token, int docId)
     {
-        var client = _factory.ClientWithToken(token);
+        var client = Factory.ClientWithToken(token);
         var response = await client.PostAsJsonAsync($"/api/documents/{docId}/appeals", new
         {
             direction = "against-us",
@@ -100,15 +91,15 @@ public sealed class AppealForwardFlowTests : IAsyncLifetime
     [Fact]
     public async Task ForwardFlow_HeadGainsVisibility_ThenRecallRevokesIt()
     {
-        var sectionId = await _factory.CreateSectionAsync(UniqueName("شعبة"));
+        var sectionId = await Factory.CreateSectionAsync(UniqueName("شعبة"));
         var circuitId = await CreateCircuitAsync(UniqueName("دائرة"));
         await TransferCircuitAsync(circuitId, sectionId);
-        var subToken = await _factory.CreateSubHeadTokenAsync(sectionId);
-        var subClient = _factory.ClientWithToken(subToken);
-        var (_, lawyerToken) = await _factory.NewLawyerAsync();
+        var subToken = await Factory.CreateSubHeadTokenAsync(sectionId);
+        var subClient = Factory.ClientWithToken(subToken);
+        var (_, lawyerToken) = await Factory.NewLawyerAsync();
         var fileId = await CreateFileAsync(lawyerToken, circuitId, UniqueName("مقترض"));
         var appealId = await CreateAppealAsync(lawyerToken, fileId);
-        var head = _factory.AuthorizedClient("head1");
+        var head = Factory.AuthorizedClient("head1");
 
         // قبل الإحالة: القسم لا يرى استئناف الشعبة ولا ملفه ولا تفاصيله.
         Assert.DoesNotContain(appealId, await SearchAppealIdsAsync(head));
@@ -140,15 +131,15 @@ public sealed class AppealForwardFlowTests : IAsyncLifetime
     [Fact]
     public async Task ForwardFlow_HeadReturnForward_RestoresOwned()
     {
-        var sectionId = await _factory.CreateSectionAsync(UniqueName("شعبة"));
+        var sectionId = await Factory.CreateSectionAsync(UniqueName("شعبة"));
         var circuitId = await CreateCircuitAsync(UniqueName("دائرة"));
         await TransferCircuitAsync(circuitId, sectionId);
-        var subToken = await _factory.CreateSubHeadTokenAsync(sectionId);
-        var subClient = _factory.ClientWithToken(subToken);
-        var (_, lawyerToken) = await _factory.NewLawyerAsync();
+        var subToken = await Factory.CreateSubHeadTokenAsync(sectionId);
+        var subClient = Factory.ClientWithToken(subToken);
+        var (_, lawyerToken) = await Factory.NewLawyerAsync();
         var fileId = await CreateFileAsync(lawyerToken, circuitId, UniqueName("مقترض"));
         var appealId = await CreateAppealAsync(lawyerToken, fileId);
-        var head = _factory.AuthorizedClient("head1");
+        var head = Factory.AuthorizedClient("head1");
 
         var forward = await subClient.PostAsJsonAsync($"/api/appeals/{appealId}/forward", new
         {
@@ -169,23 +160,23 @@ public sealed class AppealForwardFlowTests : IAsyncLifetime
     public async Task ForwardFlow_DecidedForwarded_HeadLosesException()
     {
         // الاستثناء القرائي حتى الحسم فقط (22′): بعد الحسم يعود العزل الدائري.
-        var sectionId = await _factory.CreateSectionAsync(UniqueName("شعبة"));
+        var sectionId = await Factory.CreateSectionAsync(UniqueName("شعبة"));
         var circuitId = await CreateCircuitAsync(UniqueName("دائرة"));
         await TransferCircuitAsync(circuitId, sectionId);
-        var subToken = await _factory.CreateSubHeadTokenAsync(sectionId);
-        var subClient = _factory.ClientWithToken(subToken);
-        var (_, lawyerToken) = await _factory.NewLawyerAsync();
-        var (targetId, targetToken) = await _factory.NewLawyerAsync();
+        var subToken = await Factory.CreateSubHeadTokenAsync(sectionId);
+        var subClient = Factory.ClientWithToken(subToken);
+        var (_, lawyerToken) = await Factory.NewLawyerAsync();
+        var (targetId, targetToken) = await Factory.NewLawyerAsync();
         var fileId = await CreateFileAsync(lawyerToken, circuitId, UniqueName("مقترض"));
         var appealId = await CreateAppealAsync(lawyerToken, fileId);
-        var head = _factory.AuthorizedClient("head1");
+        var head = Factory.AuthorizedClient("head1");
 
         Assert.Equal(HttpStatusCode.OK,
             (await subClient.PostAsJsonAsync($"/api/appeals/{appealId}/forward", new { reason = "يرجى التفضل بالإسناد" })).StatusCode);
         Assert.Contains(appealId, await SearchAppealIdsAsync(head));
 
         // إسناد الاستثناء (القسم يسند رغم الدائرة) ثم حسم المتابع.
-        var targetClient = _factory.ClientWithToken(targetToken);
+        var targetClient = Factory.ClientWithToken(targetToken);
         Assert.Equal(HttpStatusCode.OK,
             (await head.PostAsJsonAsync($"/api/appeals/{appealId}/assign", new { assignedLawyerId = targetId })).StatusCode);
         Assert.Equal(HttpStatusCode.OK,

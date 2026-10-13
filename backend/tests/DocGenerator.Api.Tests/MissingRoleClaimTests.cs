@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Security.Claims;
 using System.Text;
+using DocGenerator.Api.Tests.TestHelpers;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,29 +15,22 @@ namespace DocGenerator.Api.Tests;
 /// دور افتراضي ولا ينفجر 500. يُسكّ الرمز بنفس سرعة الإصدار/الجمهور في
 /// `ApiFactory` مع إسقاط `ClaimTypes.Role` وحدها.
 /// </summary>
-public sealed class MissingRoleClaimTests : IAsyncLifetime
+public sealed class MissingRoleClaimTests : IsolatedApiTestBase
 {
-    private readonly ApiFactory _factory = new();
     private int _lawyerId;
 
-    public async Task InitializeAsync()
+    public override async Task InitializeAsync()
     {
         // الفرع لازم للمحامي (قيد القاعدة) — منطق مطالبة الدور محايد الفرع،
         // والنطاق user-scoped فيبقى الضابط الإيجابي (200 فارغة) صالحًا.
         int damascusId;
-        using (var scope = _factory.Services.CreateScope())
+        using (var scope = Factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
             damascusId = db.Branches.Single(b => b.Code == "DAM").Id;
         }
-        var user = await _factory.CreateUserAsync("norole_lawyer", UserRole.Lawyer, branchId: damascusId);
+        var user = await Factory.CreateUserAsync("norole_lawyer", UserRole.Lawyer, branchId: damascusId);
         _lawyerId = user.Id;
-    }
-
-    public Task DisposeAsync()
-    {
-        _factory.Dispose();
-        return Task.CompletedTask;
     }
 
     private static string MintToken(int userId, string username, string? role)
@@ -62,7 +56,7 @@ public sealed class MissingRoleClaimTests : IAsyncLifetime
 
     private HttpClient ClientWithRoleClaim(string? role)
     {
-        var client = _factory.CreateClient();
+        var client = Factory.CreateClient();
         client.SetAuthCookie(MintToken(_lawyerId, "norole_lawyer", role));
         return client;
     }

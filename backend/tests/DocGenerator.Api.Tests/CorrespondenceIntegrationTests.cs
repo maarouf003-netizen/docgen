@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using DocGenerator.Api.Tests.TestHelpers;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Domain.Entities;
@@ -16,9 +17,8 @@ namespace DocGenerator.Api.Tests;
 /// الرئيسي (الحارس)، كتابته عبر البوابة، الرد/اللاحق للأطراف فقط، وتوثيق المشاهدة
 /// مع انطفاء جرس العاجل — ويثبت تركيب حقن الخدمة الجديدة في حاوية الإنتاج.
 /// </summary>
-public sealed class CorrespondenceIntegrationTests : IAsyncLifetime
+public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
 {
-    private readonly ApiFactory _factory = new();
     private int _branchId;
     private int _lawyerId;
     private int _lawyer2Id;
@@ -26,9 +26,9 @@ public sealed class CorrespondenceIntegrationTests : IAsyncLifetime
     private int _delegateId;
     private int _documentId;
 
-    public async Task InitializeAsync()
+    public override async Task InitializeAsync()
     {
-        using var scope = _factory.Services.CreateScope();
+        using var scope = Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
 
@@ -110,15 +110,9 @@ public sealed class CorrespondenceIntegrationTests : IAsyncLifetime
         _documentId = document.Id;
     }
 
-    public Task DisposeAsync()
-    {
-        _factory.Dispose();
-        return Task.CompletedTask;
-    }
-
-    private HttpClient Lawyer() => _factory.AuthorizedClient("corrlawyer");
-    private HttpClient Head() => _factory.AuthorizedClient("head1");
-    private HttpClient Delegate() => _factory.AuthorizedClient("corrdelegate");
+    private HttpClient Lawyer() => Factory.AuthorizedClient("corrlawyer");
+    private HttpClient Head() => Factory.AuthorizedClient("head1");
+    private HttpClient Delegate() => Factory.AuthorizedClient("corrdelegate");
 
     private static StringContent Json(object body) => new(
         JsonSerializer.Serialize(body),
@@ -355,7 +349,7 @@ public sealed class CorrespondenceIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Anonymous_CannotAccessCorrespondence()
     {
-        var response = await _factory.CreateClient().GetAsync("/api/correspondence");
+        var response = await Factory.CreateClient().GetAsync("/api/correspondence");
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 

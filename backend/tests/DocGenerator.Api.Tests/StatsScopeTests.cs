@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using DocGenerator.Api.Tests.TestHelpers;
 using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
@@ -15,40 +16,31 @@ namespace DocGenerator.Api.Tests;
 /// القسم لقسمه، والشعبة لشعبتها، والإدارة للكل، وقراءة التنبيهات بالمستلم.
 /// قاعدة معزولة لكل صنف (مصنع خاص) — بلا تلوث متبادل.
 /// </summary>
-public sealed class StatsScopeTests : IAsyncLifetime
+public sealed class StatsScopeTests : IsolatedApiTestBase
 {
-    private readonly ApiFactory _factory = new();
-
-    public Task InitializeAsync() => Task.CompletedTask;
-
-    public Task DisposeAsync()
-    {
-        _factory.Dispose();
-        return Task.CompletedTask;
-    }
 
     private async Task<(string Token, int Id)> CreateSubHeadAsync(int sectionId)
     {
-        var admin = _factory.AuthorizedClient("admin");
+        var admin = Factory.AuthorizedClient("admin");
         var username = UniqueName("sub");
         var created = await admin.PostAsJsonAsync("/api/users", new
         {
             username,
             fullName = username,
             role = "subhead",
-            branchId = await _factory.GetDamascusIdAsync(),
+            branchId = await Factory.GetDamascusIdAsync(),
             password = "123456",
             sectionId,
         });
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         using var createdDoc = await created.Content.ReadFromJsonAsync<JsonDocument>();
-        var token = (await _factory.LoginAsync(username, "123456"))!.Token!;
+        var token = (await Factory.LoginAsync(username, "123456"))!.Token!;
         return (token, createdDoc!.RootElement.GetProperty("id").GetInt32());
     }
 
     private async Task<int> CreateCircuitAsync(string name)
     {
-        var head = _factory.AuthorizedClient("head1");
+        var head = Factory.AuthorizedClient("head1");
         var response = await head.PostAsJsonAsync("/api/execution-circuits", new { name });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         using var doc = await response.Content.ReadFromJsonAsync<JsonDocument>();
@@ -57,7 +49,7 @@ public sealed class StatsScopeTests : IAsyncLifetime
 
     private async Task TransferCircuitAsync(int circuitId, int? sectionId)
     {
-        var manager = _factory.AuthorizedClient("manager");
+        var manager = Factory.AuthorizedClient("manager");
         var response = await manager.PostAsJsonAsync($"/api/execution-circuits/{circuitId}/transfer", new
         {
             targetSectionId = sectionId,
@@ -67,7 +59,7 @@ public sealed class StatsScopeTests : IAsyncLifetime
 
     private async Task<int> CreateFileAsync(string token, int circuitId)
     {
-        var client = _factory.ClientWithToken(token);
+        var client = Factory.ClientWithToken(token);
         var response = await client.PostAsJsonAsync("/api/documents", new
         {
             documentType = "بيان دعوى",
@@ -111,11 +103,11 @@ public sealed class StatsScopeTests : IAsyncLifetime
     [Fact]
     public async Task CircuitPickers_SubHeadAllowed_HeadScoped()
     {
-        var sectionId = await _factory.CreateSectionAsync(UniqueName("شعبة"));
+        var sectionId = await Factory.CreateSectionAsync(UniqueName("شعبة"));
         var sectionCircuit = await CreateCircuitAsync(UniqueName("شعبة-دائرة"));
         await TransferCircuitAsync(sectionCircuit, sectionId);
         var (subToken, _) = await CreateSubHeadAsync(sectionId);
-        var subClient = _factory.ClientWithToken(subToken);
+        var subClient = Factory.ClientWithToken(subToken);
 
         // كانت 403 قبل فتح السمات للشعبة (§8 مراجعة).
         Assert.Equal(HttpStatusCode.OK, (await subClient.GetAsync("/api/execution-circuits/for-lawyer")).StatusCode);
@@ -125,17 +117,17 @@ public sealed class StatsScopeTests : IAsyncLifetime
     [Fact]
     public async Task ManagerStats_HeadDivision_SubSection_ManagerAll()
     {
-        var sectionId = await _factory.CreateSectionAsync(UniqueName("شعبة"));
+        var sectionId = await Factory.CreateSectionAsync(UniqueName("شعبة"));
         var divisionCircuit = await CreateCircuitAsync(UniqueName("قسم"));
         var sectionCircuit = await CreateCircuitAsync(UniqueName("شعبة-دائرة"));
         await TransferCircuitAsync(sectionCircuit, sectionId);
         var (subToken, _) = await CreateSubHeadAsync(sectionId);
-        var subClient = _factory.ClientWithToken(subToken);
-        var (_, lawyerToken) = await _factory.NewLawyerAsync();
+        var subClient = Factory.ClientWithToken(subToken);
+        var (_, lawyerToken) = await Factory.NewLawyerAsync();
         await CreateFileAsync(lawyerToken, divisionCircuit);
         await CreateFileAsync(lawyerToken, sectionCircuit);
-        var head = _factory.AuthorizedClient("head1");
-        var manager = _factory.AuthorizedClient("manager");
+        var head = Factory.AuthorizedClient("head1");
+        var manager = Factory.AuthorizedClient("manager");
 
         // قرار 27: القسم لقسمه (1)، والشعبة لشعبتها (1)، والإدارة للكل (2).
         Assert.Equal(1, await ManagerTotalAsync(head));
@@ -146,10 +138,10 @@ public sealed class StatsScopeTests : IAsyncLifetime
     [Fact]
     public async Task CircuitStats_CarriesSection_AndExportsIt()
     {
-        var sectionId = await _factory.CreateSectionAsync(UniqueName("شعبة"));
+        var sectionId = await Factory.CreateSectionAsync(UniqueName("شعبة"));
         var sectionCircuit = await CreateCircuitAsync(UniqueName("شعبة-دائرة"));
         await TransferCircuitAsync(sectionCircuit, sectionId);
-        var manager = _factory.AuthorizedClient("manager");
+        var manager = Factory.AuthorizedClient("manager");
 
         var stats = await manager.GetAsync("/api/execution-circuits/stats");
         Assert.Equal(HttpStatusCode.OK, stats.StatusCode);
@@ -177,10 +169,10 @@ public sealed class StatsScopeTests : IAsyncLifetime
     public async Task DocumentsExport_HasSectionColumn_WithDivisionDefault()
     {
         var divisionCircuit = await CreateCircuitAsync(UniqueName("قسم"));
-        var (_, lawyerToken) = await _factory.NewLawyerAsync();
+        var (_, lawyerToken) = await Factory.NewLawyerAsync();
         await CreateFileAsync(lawyerToken, divisionCircuit);
 
-        var lawyer = _factory.ClientWithToken(lawyerToken);
+        var lawyer = Factory.ClientWithToken(lawyerToken);
         var export = await lawyer.GetAsync("/api/documents/export");
         Assert.Equal(HttpStatusCode.OK, export.StatusCode);
         var bytes = await export.Content.ReadAsByteArrayAsync();
@@ -194,10 +186,10 @@ public sealed class StatsScopeTests : IAsyncLifetime
     [Fact]
     public async Task Alerts_HeadAndSub_SeeOnlyOwn()
     {
-        var sectionId = await _factory.CreateSectionAsync(UniqueName("شعبة"));
+        var sectionId = await Factory.CreateSectionAsync(UniqueName("شعبة"));
         var (subToken, subId) = await CreateSubHeadAsync(sectionId);
-        var subClient = _factory.ClientWithToken(subToken);
-        var head = _factory.AuthorizedClient("head1");
+        var subClient = Factory.ClientWithToken(subToken);
+        var head = Factory.AuthorizedClient("head1");
 
         var subAlert = await (await head.PostAsJsonAsync("/api/alerts", new
         {
@@ -213,7 +205,7 @@ public sealed class StatsScopeTests : IAsyncLifetime
             documentId = (int?)null,
             targetLawyerId = (int?)null,
             message = UniqueName("للقسم"),
-            recipientUserId = await _factory.UserIdAsync("head1"),
+            recipientUserId = await Factory.UserIdAsync("head1"),
         })).Content.ReadFromJsonAsync<JsonDocument>();
 
         async Task<List<int>> AlertIdsAsync(HttpClient client)
