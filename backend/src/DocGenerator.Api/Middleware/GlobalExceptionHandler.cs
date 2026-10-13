@@ -48,14 +48,25 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
 
         // الترابط: المعرّف والهوية يُسجَّلان صراحة من HttpContext لأن وسيط الإثراء
         // أسفل معالج الاستثناءات في السلسلة (نطاق LogContext يُغلق أثناء تفكيك الاستثناء).
+        // رفض النطاق متوقع تشغيليًا (R0-6: المتحكمات لم تعد تبتلعه) فيُسجَّل Warning
+        // لا Error — الأخطاء الحقيقية وحدها تستحق الأحمر والتنبيه.
         var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous";
-        _logger.LogError(exception,
-            "استثناء غير معالج ({Type}) أثناء {Method} {Path} [TraceId={TraceId}, UserId={UserId}]",
-            exception.GetType().Name,
-            httpContext.Request.Method,
-            httpContext.Request.Path,
-            httpContext.TraceIdentifier,
-            userId);
+        if (exception is UnauthorizedAccessException)
+            _logger.LogWarning(exception,
+                "رفض نطاق ({Type}) أثناء {Method} {Path} [TraceId={TraceId}, UserId={UserId}]",
+                exception.GetType().Name,
+                httpContext.Request.Method,
+                httpContext.Request.Path,
+                httpContext.TraceIdentifier,
+                userId);
+        else
+            _logger.LogError(exception,
+                "استثناء غير معالج ({Type}) أثناء {Method} {Path} [TraceId={TraceId}, UserId={UserId}]",
+                exception.GetType().Name,
+                httpContext.Request.Method,
+                httpContext.Request.Path,
+                httpContext.TraceIdentifier,
+                userId);
 
         var message = exception switch
         {
