@@ -43,12 +43,13 @@ public class TokenService : ITokenService
         // نسخة التوكن لإبطال الرموز القديمة عند تغيير كلمة المرور/تعطيل الحساب
         claims.Add(new Claim("token_version", user.TokenVersion.ToString()));
 
+        var now = _clock.GetUtcNow().UtcDateTime;
         var token = new JwtSecurityToken(
             issuer: _options.Issuer,
             audience: _options.Audience,
             claims: claims,
-            notBefore: _clock.GetUtcNow().UtcDateTime,
-            expires: _clock.GetUtcNow().UtcDateTime.AddMinutes(_options.ExpiryMinutes),
+            notBefore: now,
+            expires: now.AddMinutes(_options.ExpiryMinutes),
             signingCredentials: creds);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
