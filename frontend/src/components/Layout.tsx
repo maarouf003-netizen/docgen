@@ -118,6 +118,10 @@ export default function Layout() {
   // `BQ-001د`: المدير يدير المستخدمين عدا المشرف — إدارة الفروع مشرف ومدير (قرار §2.15).
   const canManageUsers = user?.role === 'admin' || user?.role === 'manager';
   const canManageBranches = user?.role === 'admin' || user?.role === 'manager';
+  // صندوق اقتراحات التطوير — مشرف ومدير (`BQ-001`): يطابق `CanViewAppSuggestions`
+  // خلفيًا وشرط مسار `/suggestions` في `App.tsx` — متغير مستقل عمدًا (لا إعادة
+  // استخدام `canManageUsers`) حتى لا ينكسر عند افتراق الصلاحيتين مستقبلًا.
+  const canViewSuggestions = user?.role === 'admin' || user?.role === 'manager';
   const canManageDelegates = hasFullAccess;
   // مندوب الجهة: الإحصائيات + الملفات التنفيذية + المراسلات دون باقي البنود (بوابة قرائية).
   const isEntityManager = user?.role === 'entitymanager';
@@ -170,6 +174,10 @@ export default function Layout() {
       label: 'المنتدى',
       badge: forumBadge,
     });
+    // أول بنود الإدارة بعد المشترك: صندوق الاقتراحات ظاهر للمشرف والمدير
+    // (خلف «المزيد» على الجوال كبقية بنود الصلاحيات — بلا شارة: لا endpoint
+    // عدّ خفيف مخصص، وحقل `badge` في `NavItem` جاهز لأي عدّاد لاحق بلا ريفاكتور).
+    if (canViewSuggestions) navItems.push({ to: '/suggestions', label: 'اقتراحات التطوير' });
     if (canManageBranchLawyers) navItems.push({ to: '/branch-lawyers', label: 'محامو الفرع' });
     if (hasFullAccess) navItems.push({ to: '/entities/review-management', label: 'مراجعة سجل الجهات العامة' });
     if (canManageDelegates) navItems.push({ to: '/delegates', label: 'مندوبو الجهات' });
