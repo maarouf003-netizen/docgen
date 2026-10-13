@@ -83,10 +83,6 @@ public class CorrespondencesController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     /// <summary>عدد مراسلات المستخدم العاجلة بلا تأكيد مشاهدة — جرس المراسلات.</summary>
@@ -117,10 +113,6 @@ public class CorrespondencesController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     /// <summary>تسطير مراسلة لطرف معيَّن — محامٍ/رئيس قسم أو شعبة (المندوب عبر البوابة).</summary>
@@ -144,10 +136,6 @@ public class CorrespondencesController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     [HttpGet("{id:int}")]
@@ -165,10 +153,6 @@ public class CorrespondencesController : ControllerBase
         catch (ArgumentException e)
         {
             return BadRequest(new { message = e.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
         }
     }
 
@@ -193,10 +177,6 @@ public class CorrespondencesController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     /// <summary>رد الطرف المستلم على المراسلة — المستلم المعيَّن فقط.</summary>
@@ -219,10 +199,6 @@ public class CorrespondencesController : ControllerBase
         catch (ArgumentException e)
         {
             return BadRequest(new { message = e.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
         }
     }
 
@@ -247,10 +223,6 @@ public class CorrespondencesController : ControllerBase
         catch (ArgumentException e)
         {
             return BadRequest(new { message = e.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
         }
     }
 }

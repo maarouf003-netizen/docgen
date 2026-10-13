@@ -158,4 +158,82 @@ public sealed class ForbiddenShapeContractTests : IAsyncLifetime
         Assert.False(string.IsNullOrWhiteSpace(await ReadMessageAsync(response)));
         Assert.True(damId != alpId);
     }
+
+    /// <summary>
+    /// عقد الدفعة B — منتدى: تعديل رسالة من غير كاتبها يبلغ مسار الخدمة الرامي
+    /// (`تعديل الرسالة متاح لكاتبها فقط`) لا الحارس الاستباقي، فيُرد 403 بجسم
+    /// `{ message }` غير فارغ.
+    /// </summary>
+    [Fact]
+    public async Task Forum_Update_ByNonAuthor_Returns403WithMessage()
+    {
+        var author = _factory.AuthorizedClient(_lawyer1);
+        var post = await author.PostAsJsonAsync("/api/forum/messages", new { body = "رسالة الكاتب الأصلي" });
+        post.EnsureSuccessStatusCode();
+        using var doc = await post.Content.ReadFromJsonAsync<JsonDocument>();
+        var id = doc!.RootElement.GetProperty("id").GetInt32();
+
+        var other = _factory.AuthorizedClient(_lawyer2);
+        var response = await other.PutAsJsonAsync($"/api/forum/messages/{id}", new { body = "تعديل دخيل" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.False(string.IsNullOrWhiteSpace(await ReadMessageAsync(response)));
+    }
+
+    /// <summary>
+    /// عقد الدفعة B — مراسلات: اطلاع محامٍ ثالث (لا منشئ ولا مستلم) على مراسلة
+    /// خاصة يبلغ `CanViewAsync` الرامي (`لا تملك صلاحية الاطلاع`)، فيُرد 403 بجسم.
+    /// </summary>
+    [Fact]
+    public async Task Correspondence_Get_ByThirdParty_Returns403WithMessage()
+    {
+        var lawyer3 = UniqueName("law3");
+        await _factory.CreateUserAsync(lawyer3, UserRole.Lawyer, await _factory.GetDamascusIdAsync());
+
+        var creator = _factory.AuthorizedClient(_lawyer1);
+        int targetId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+            targetId = await db.Users.Where(u => u.Username == _lawyer2).Select(u => u.Id).SingleAsync();
+        }
+
+        var created = await creator.PostAsJsonAsync("/api/correspondence", new
+        {
+            documentId = (int?)null,
+            targetUserId = targetId,
+            importance = "normal",
+            bodyHtml = "<p>مراسلة خاصة للعقد</p>",
+        });
+        created.EnsureSuccessStatusCode();
+        using var createdDoc = await created.Content.ReadFromJsonAsync<JsonDocument>();
+        var letterId = createdDoc!.RootElement.GetProperty("id").GetInt32();
+
+        var third = _factory.AuthorizedClient(lawyer3);
+        var response = await third.GetAsync($"/api/correspondence/{letterId}");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.False(string.IsNullOrWhiteSpace(await ReadMessageAsync(response)));
+    }
+
+    /// <summary>
+    /// عقد الدفعة B — إدارة المستخدمين: إنشاء المدير لحساب مشرف يبلغ حد
+    /// (`BQ-001د` — `حسابات المشرف يديرها مشرف فقط`)، فيُرد 403 بجسم.
+    /// </summary>
+    [Fact]
+    public async Task UserManagement_ManagerCreateAdmin_Returns403WithMessage()
+    {
+        var manager = _factory.AuthorizedClient("manager");
+        var response = await manager.PostAsJsonAsync("/api/users", new
+        {
+            username = UniqueName("adm"),
+            fullName = UniqueName("adm"),
+            role = "Admin",
+            branchId = (int?)null,
+            password = "123456",
+        });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.False(string.IsNullOrWhiteSpace(await ReadMessageAsync(response)));
+    }
 }

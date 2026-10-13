@@ -40,8 +40,9 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
             // يُردّ 409 لا 500.
             DbUpdateConcurrencyException => StatusCodes.Status409Conflict,
             // الرفض الصريح وصولًا (لا خطأ خادم): أي `UnauthorizedAccessException`
-            // يفلت من الخدمة يُردّ 403 بجسم `{ message }` لا 500 (R0-6: `Portal`+
-            // `ReviewLetters`+`EntityRegistry` لم تعد تبتلعه؛ البقية لاحقًا) —
+            // يفلت من الخدمة يُردّ 403 بجسم `{ message }` لا 500 (R0-6 مكتمل:
+            // `Portal`+`ReviewLetters`+`EntityRegistry`+`Forum`+`Correspondences`+
+            // `UserManagement` لم تعد تبتلعه؛ الإبقاء الوحيد تمويه `Portal:296` الوجودي) —
             // الحراس الاستباقية (`if (...) return Forbid();`) ترد 403 فارغًا مباشرة
             // (مقبول صراحة — الواجهة تحجب الشكلين `client.ts:17`).
             UnauthorizedAccessException => StatusCodes.Status403Forbidden,
