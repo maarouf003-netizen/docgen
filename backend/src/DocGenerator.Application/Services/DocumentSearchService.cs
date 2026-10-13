@@ -1,3 +1,4 @@
+using System.Globalization;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
@@ -172,7 +173,7 @@ public sealed class DocumentSearchService : IDocumentSearchService
         {
             var latest = EffectiveFileIdentity.LatestFrom(row.BaseNumbers, currentYear);
             row.DisplayFileNumber = latest?.BaseNumber ?? row.FileNumber;
-            row.DisplayFileYear = latest?.Year.ToString() ?? row.FileYear;
+            row.DisplayFileYear = latest?.Year.ToString(CultureInfo.InvariantCulture) ?? row.FileYear;
         }
         // RF-017 (SEC-002): التصدير قراءة بلا كتابة عمل — تدقيقه حفظة واحدة بلا معاملة
         // (بالفلاتر والعدد الفعلي؛ الفلاتر الفارغة تُحذَف من النص).

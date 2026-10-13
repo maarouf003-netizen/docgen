@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Audit;
@@ -505,7 +506,7 @@ public sealed class DocumentStatusService : IDocumentStatusService
             CopyDetail(details, "renewalFileNumber", doc.RenewalFileNumber);
             CopyDetail(details, "renewalFileType", doc.RenewalFileType);
             CopyDetail(details, "renewalDate", FreeDateParser.ToResponse(doc.RenewalDate));
-            CopyDetail(details, "renewalYear", request?.RenewalYear?.ToString());
+            CopyDetail(details, "renewalYear", request?.RenewalYear?.ToString(CultureInfo.InvariantCulture));
         }
 
         var returned = await _writeGuard.WithConcurrencyGuardAsync(() => _tx.RunAsync(async token =>
@@ -834,8 +835,8 @@ public sealed class DocumentStatusService : IDocumentStatusService
             await _writeGuard.EnsureNumberUniqueByCircuitAsync(doc.Id, doc.ExecutionCircuitId, doc.CourtNorm,
                 doc.RenewalFileNumber, doc.RenewalFileType,
                 executedLike
-                    ? ServerClock.CurrentYear(_clock, _timeZone).ToString()
-                    : renewal?.RenewalYear?.ToString(), token);
+                    ? ServerClock.CurrentYear(_clock, _timeZone).ToString(CultureInfo.InvariantCulture)
+                    : renewal?.RenewalYear?.ToString(CultureInfo.InvariantCulture), token);
             doc.UpdatedAt = DateTime.UtcNow;
             _documents.Update(doc);
             await _uow.SaveChangesAsync(token);

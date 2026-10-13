@@ -108,10 +108,6 @@ public class ReviewLettersController : ControllerBase
         {
             return NotFound(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     /// <summary>كتب ملف محدد — لمالك الملف ورئيس نطاقه والإدارة ومتابعيه.</summary>
@@ -126,10 +122,6 @@ public class ReviewLettersController : ControllerBase
         catch (ArgumentException e)
         {
             return NotFound(new { message = e.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
         }
     }
 
@@ -152,10 +144,6 @@ public class ReviewLettersController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     [HttpGet("{id:int}")]
@@ -169,10 +157,6 @@ public class ReviewLettersController : ControllerBase
         catch (ArgumentException e)
         {
             return NotFound(new { message = e.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
         }
     }
 
@@ -192,10 +176,6 @@ public class ReviewLettersController : ControllerBase
         catch (ArgumentException e)
         {
             return NotFound(new { message = e.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
         }
     }
 
@@ -219,10 +199,6 @@ public class ReviewLettersController : ControllerBase
         catch (ArgumentException e)
         {
             return NotFound(new { message = e.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
         }
     }
 }

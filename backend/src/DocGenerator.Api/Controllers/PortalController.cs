@@ -59,10 +59,6 @@ public class PortalController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     /// <summary>تفاصيل ملف قراءةً — 404 عند الخروج عن النطاق دون كشف الوجود.</summary>
@@ -118,14 +114,7 @@ public class PortalController : ControllerBase
     [EnableRateLimiting(RateLimitingSetup.ExpensivePolicy)]
     public async Task<IActionResult> Stats([FromQuery] int? entryId = null, CancellationToken ct = default)
     {
-        try
-        {
-            return Ok(await _portal.GetStatsAsync(UserId, ct, entryId));
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
+        return Ok(await _portal.GetStatsAsync(UserId, ct, entryId));
     }
 
     /// <summary>تصدير Excel لملفات النطاق وفق نفس الفلاتر وبسقف صفوف التصدير.</summary>
@@ -148,10 +137,6 @@ public class PortalController : ControllerBase
         catch (ArgumentException e)
         {
             return BadRequest(new { message = e.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
         }
     }
 
@@ -194,10 +179,6 @@ public class PortalController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     /// <summary>عدد مراسلات المندوب العاجلة بلا تأكيد مشاهدة — جرس البوابة.</summary>
@@ -222,10 +203,6 @@ public class PortalController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     /// <summary>تسطير مراسلة من المندوب لطرف معيَّن بالاسم.</summary>
@@ -242,10 +219,6 @@ public class PortalController : ControllerBase
         catch (ArgumentException e)
         {
             return BadRequest(new { message = e.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
         }
     }
 
@@ -266,10 +239,6 @@ public class PortalController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     /// <summary>رد المندوب المستلم على المراسلة — المستلم المعيَّن فقط.</summary>
@@ -289,10 +258,6 @@ public class PortalController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
     }
 
     /// <summary>تأكيد مشاهدة المندوب — زر «تمت المشاهدة».</summary>
@@ -311,10 +276,6 @@ public class PortalController : ControllerBase
         catch (ArgumentException e)
         {
             return BadRequest(new { message = e.Message });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
         }
     }
 

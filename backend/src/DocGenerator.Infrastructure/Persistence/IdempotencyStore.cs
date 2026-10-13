@@ -13,15 +13,20 @@ namespace DocGenerator.Infrastructure.Persistence;
 public class IdempotencyStore : IIdempotencyStore
 {
     private readonly DocGeneratorDbContext _db;
+    private readonly TimeProvider _clock;
     private readonly DbExceptionClassifier _errors = new();
 
-    public IdempotencyStore(DocGeneratorDbContext db) => _db = db;
+    public IdempotencyStore(DocGeneratorDbContext db, TimeProvider? clock = null)
+    {
+        _db = db;
+        _clock = clock ?? TimeProvider.System;
+    }
 
     public async Task<IdempotencyBegin> BeginAsync(
         string key, string operation, int userId, string fingerprint, DateTime expiresAt,
         CancellationToken ct = default)
     {
-        var now = DateTime.UtcNow;
+        var now = _clock.GetUtcNow().UtcDateTime;
         var existing = await _db.IdempotencyKeys
             .AsNoTracking()
             .FirstOrDefaultAsync(k => k.Key == key && k.Operation == operation && k.UserId == userId, ct);
@@ -48,7 +53,7 @@ public class IdempotencyStore : IIdempotencyStore
                     .SetProperty(k => k.ResponseBody, (string?)null)
                     .SetProperty(k => k.CreatedAt, now)
                     .SetProperty(k => k.ExpiresAt, expiresAt), ct);
-            await CleanupExpiredAsync(ct);
+            await CleanupExpiredAsync(now, ct);
             return new IdempotencyBegin(new IdempotencyTicket(key, operation, userId), null, false);
         }
 
@@ -86,7 +91,7 @@ public class IdempotencyStore : IIdempotencyStore
             var winner = await _db.IdempotencyKeys
                 .AsNoTracking()
                 .FirstOrDefaultAsync(k => k.Key == key && k.Operation == operation && k.UserId == userId, ct);
-            if (winner is not null && winner.ExpiresAt > DateTime.UtcNow)
+            if (winner is not null && winner.ExpiresAt > now)
             {
                 if (winner.ResponseBody is not null)
                     return new IdempotencyBegin(null, winner.ResponseBody, false);
@@ -96,7 +101,7 @@ public class IdempotencyStore : IIdempotencyStore
             return new IdempotencyBegin(null, null, true);
         }
 
-        await CleanupExpiredAsync(ct);
+        await CleanupExpiredAsync(now, ct);
         return new IdempotencyBegin(new IdempotencyTicket(key, operation, userId), null, false);
     }
 
@@ -123,11 +128,10 @@ public class IdempotencyStore : IIdempotencyStore
     }
 
     /// <summary>كنس انتهازي للمنتهية عند كل حجز — بلا مهمة خلفية.</summary>
-    private async Task CleanupExpiredAsync(CancellationToken ct)
+    private async Task CleanupExpiredAsync(DateTime now, CancellationToken ct)
     {
         try
         {
-            var now = DateTime.UtcNow;
             await _db.IdempotencyKeys
                 .Where(k => k.ExpiresAt <= now)
                 .ExecuteDeleteAsync(ct);

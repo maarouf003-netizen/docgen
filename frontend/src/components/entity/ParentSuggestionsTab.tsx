@@ -447,12 +447,11 @@ export default function ParentSuggestionsTab() {
 function ModalShell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overscroll-contain"
       dir="rtl"
       role="dialog"
       aria-modal="true"
       aria-label={title}
-      style={{ overscrollBehavior: 'contain' }}
     >
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[85vh] overflow-y-auto overscroll-contain p-5">
         <div className="flex items-center justify-between mb-3">

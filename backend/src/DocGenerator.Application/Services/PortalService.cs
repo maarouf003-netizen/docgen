@@ -1,3 +1,4 @@
+using System.Globalization;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Audit;
 using DocGenerator.Application.Common.Interfaces;
@@ -571,7 +572,7 @@ public sealed class PortalService : IPortalService
         // دون قوائم المحامين؛ مثبّت باختبار سنة مستقبلية قصدًا لا سهوًا.
         var latestBase = EffectiveFileIdentity.LatestFrom(d.BaseNumbers, int.MaxValue);
         var displayNumber = latestBase?.BaseNumber ?? d.FileNumber;
-        var displayYear = latestBase is not null ? latestBase.Year.ToString() : d.FileYear;
+        var displayYear = latestBase is not null ? latestBase.Year.ToString(CultureInfo.InvariantCulture) : d.FileYear;
         return new(
             d.Id,
             d.DocumentType ?? string.Empty,

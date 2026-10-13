@@ -1,3 +1,4 @@
+using System.Globalization;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
@@ -927,7 +928,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
                             || d.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted))
                     && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff)
             .Where(d => !d.BaseNumbers.Any(b => b.Year == currentYear))
-            .Where(d => d.FileYear != currentYear.ToString());
+            .Where(d => d.FileYear != currentYear.ToString(CultureInfo.InvariantCulture));
 
         var total = await q.CountAsync(ct);
 

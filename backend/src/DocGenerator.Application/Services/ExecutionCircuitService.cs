@@ -1,3 +1,4 @@
+using System.Globalization;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Audit;
 using DocGenerator.Application.Common.Interfaces;
@@ -820,7 +821,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                 d.BorrowerName,
                 lastReferred?.FileNumber ?? d.FileNumber,
                 lastReferred?.FileType ?? d.FileType,
-                lastReferred?.Year?.ToString() ?? d.FileYear);
+                lastReferred?.Year?.ToString(CultureInfo.InvariantCulture) ?? d.FileYear);
         }).ToList();
     }
 

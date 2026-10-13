@@ -3687,6 +3687,23 @@ public class PublicEntityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task PreviewBranchAction_Merge_CanceledToken_ThrowsOperationCanceled()
+    {
+        // انحدار R0-1: مسار المعاينة (بما فيه ValidateMergeablePairAsync) يجب أن
+        // ينشر الإلغاء عبر ct بدل الحجب المتزامن — رمز ملغى مسبقًا = رمي حتمي.
+        var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
+        var target = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "فرع التجهيز"), ManagerActor());
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            _service.PreviewBranchActionAsync(
+                source.GroupId,
+                new PreviewBranchActionRequest(ActionKindCatalog.Merge, source.Id, TargetId: target.Id),
+                HeadDamascusActor(),
+                cts.Token));
+    }
+
+    [Fact]
     public async Task PreviewBranchAction_Merge_NeedsReview_ReportsError()
     {
         var source = await _service.CreateAsync(new CreatePublicEntityRequest("وزارة النقل", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());

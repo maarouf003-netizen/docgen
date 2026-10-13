@@ -1,3 +1,4 @@
+using System.Globalization;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
@@ -1070,7 +1071,7 @@ public sealed class DocumentService : IDocumentService
                 // منفذ ولا مشطوب) وبشرط وجود رقم أساس من سنة سابقة — التدوير فيهما استمرار لدوران
                 // سبق أن بدأ، ولا تُعدُّ حالة نظام «طالبة تنفيذ» (ExecStatus/ExecSubStatus) ذات
                 // فائدة فيهما. أما نظام «طالبة تنفيذ» فشرطه القديم نفسه.
-                if (doc.IsDraft || doc.FileYear == year.ToString())
+                if (doc.IsDraft || doc.FileYear == year.ToString(CultureInfo.InvariantCulture))
                     throw new ArgumentException($"الملف (رقم {doc.Id}) غير مؤهل للتدوير");
 
                 // حارس التدوير للمعلق (البند 53): يُستبعد المعلق من التدوير دائمًا —
@@ -1105,7 +1106,7 @@ public sealed class DocumentService : IDocumentService
 
                 // RF-009 بتوقيع الدائرة (البند 34): مطابقة FK مباشرة — قبل إدراجه.
                 await _writeGuard.EnsureNumberUniqueByCircuitAsync(doc.Id, doc.ExecutionCircuitId, doc.CourtNorm,
-                    normalized, doc.FileType, year.ToString(), token);
+                    normalized, doc.FileType, year.ToString(CultureInfo.InvariantCulture), token);
 
                 // سجل جديد دائمًا: كل تدوير يلحق سجلًا بسنة التدوير، والأحدث (Year ثم CreatedAt) هو المعتبر.
                 var record = new DocumentBaseNumber

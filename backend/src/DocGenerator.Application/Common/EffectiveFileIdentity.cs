@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using DocGenerator.Domain.Entities;
 
 namespace DocGenerator.Application.Common;
@@ -38,7 +39,7 @@ public static class EffectiveFileIdentity
 
     /// <summary>سنة الرقم الفعّال لملف: سنة سجل الأساس المختار، وإلا سنة قيد الملف الأصلية.</summary>
     public static string? Year(Document? doc, int asOfYear)
-        => Latest(doc, asOfYear)?.Year.ToString() ?? doc?.FileYear;
+        => Latest(doc, asOfYear)?.Year.ToString(CultureInfo.InvariantCulture) ?? doc?.FileYear;
 
     /// <summary>
     /// الانتخاب المشترك: أحدث سجل بسنة ≤ سنة الفحص مرتبًا بالسنة ثم CreatedAt تنازليًا.
