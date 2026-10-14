@@ -95,6 +95,7 @@ public sealed partial class DocumentDelegationService
         RequireSame(errors, "رقم الإلحاق", r.AnnexNumber, doc.AnnexNumber);
         RequireSame(errors, "تاريخ الإلحاق", r.AnnexDate, doc.AnnexDate);
         RequireSame(errors, "نص الإدراج", r.InclusionText, doc.InclusionText);
+        RequireSame(errors, "ملاحظات السند (القرارات الأخرى)", r.InclusionNotes, doc.InclusionNotes);
         RequireSameNumeric(errors, "المبلغ (الأول)", r.AmountNumeric, doc.AmountNumeric);
         RequireSame(errors, "مبلغ العقد كتابة", r.AmountWords, doc.AmountWords);
         RequireSame(errors, "عملة المبلغ الأول", r.Currency, doc.Currency);
@@ -654,6 +655,7 @@ public sealed partial class DocumentDelegationService
         changed |= CopyField(source.AnnexNumber, target.AnnexNumber, v => target.AnnexNumber = v);
         changed |= CopyField(source.AnnexDate, target.AnnexDate, v => target.AnnexDate = v);
         changed |= CopyField(source.InclusionText, target.InclusionText, v => target.InclusionText = v);
+        changed |= CopyField(source.InclusionNotes, target.InclusionNotes, v => target.InclusionNotes = v);
         changed |= CopyNumeric(source.AmountNumeric, target.AmountNumeric, v => target.AmountNumeric = v);
         changed |= CopyField(source.AmountWords, target.AmountWords, v => target.AmountWords = v);
         changed |= CopyField(source.Currency, target.Currency, v => target.Currency = v);

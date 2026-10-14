@@ -951,6 +951,10 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("InclusionNotes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("InclusionText")
                         .HasMaxLength(1000)
                         .HasColumnType("TEXT");

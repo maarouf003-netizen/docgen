@@ -75,6 +75,12 @@ public class Document : IDocumentExecutionState
     public string? AnnexNumber { get; set; }
     public string? AnnexDate { get; set; }
     public string? InclusionText { get; set; }
+    /// <summary>
+    /// ملاحظات السند التنفيذي (القرارات الأخرى): نص حر اختياري يُعرض تحت حقل «المتضمن»
+    /// في أقسام السند (طالبة تنفيذ/منفذ عليها/عرض وايداع)، ويُحفظ ويُعرض مع الملف
+    /// دون طباعته في المستندات المولدة.
+    /// </summary>
+    public string? InclusionNotes { get; set; }
 
     public decimal AmountNumeric { get; set; }
     public string? AmountWords { get; set; }

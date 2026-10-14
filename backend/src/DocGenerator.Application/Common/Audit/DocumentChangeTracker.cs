@@ -64,6 +64,7 @@ public static class DocumentChangeTracker
         [nameof(Document.AnnexNumber)] = "رقم الملحق",
         [nameof(Document.AnnexDate)] = "تاريخ الملحق",
         [nameof(Document.InclusionText)] = "نص التضمين",
+        [nameof(Document.InclusionNotes)] = "ملاحظات السند (القرارات الأخرى)",
         [nameof(Document.AmountNumeric)] = "المبلغ",
         [nameof(Document.AmountWords)] = "المبلغ كتابةً",
         [nameof(Document.Currency)] = "عملة المبلغ",

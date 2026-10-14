@@ -581,6 +581,7 @@ public sealed class DocumentService : IDocumentService
         doc.AnnexNumber = r.AnnexNumber;
         doc.AnnexDate = r.AnnexDate;
         doc.InclusionText = r.InclusionText;
+        doc.InclusionNotes = r.InclusionNotes;
         doc.AmountNumeric = r.AmountNumeric ?? 0;
         doc.AmountWords = r.AmountWords;
         doc.Currency = r.Currency;

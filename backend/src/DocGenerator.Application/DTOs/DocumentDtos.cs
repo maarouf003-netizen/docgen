@@ -54,6 +54,8 @@ public class DocumentResponse : IDocumentSheetFields
     public string? AnnexNumber { get; set; }
     public string? AnnexDate { get; set; }
     public string? InclusionText { get; set; }
+    /// <summary>ملاحظات السند التنفيذي (القرارات الأخرى) تحت «المتضمن» — نص حر اختياري.</summary>
+    public string? InclusionNotes { get; set; }
     public decimal AmountNumeric { get; set; }
     public string? AmountWords { get; set; }
     public string? Currency { get; set; }
@@ -268,6 +270,7 @@ public class DocumentResponse : IDocumentSheetFields
         AnnexNumber = d.AnnexNumber,
         AnnexDate = d.AnnexDate,
         InclusionText = d.InclusionText,
+        InclusionNotes = d.InclusionNotes,
         AmountNumeric = d.AmountNumeric,
         AmountWords = d.AmountWords,
         Currency = d.Currency,

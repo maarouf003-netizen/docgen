@@ -43,6 +43,11 @@ export function ExecutoryDocumentCard({ doc, isMirror }: { doc: DocumentResponse
           <FieldCell label="خلاصة الحكم" value={doc.inclusionText} showEmpty />
         </div>
       )}
+      {(doc.inclusionNotes ?? '').trim() && (
+        <div className="mt-2.5">
+          <FieldCell label="ملاحظات" value={doc.inclusionNotes} />
+        </div>
+      )}
       {isExecuted ? (
         <div className="mt-2.5">
           <FieldCell
