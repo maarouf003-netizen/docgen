@@ -268,6 +268,7 @@ export function toUpsert(d: DocumentResponse): DocumentUpsertRequest {
     annexNumber: d.annexNumber ?? '',
     annexDate: d.annexDate ?? '',
     inclusionText: d.inclusionText ?? '',
+    inclusionNotes: d.inclusionNotes ?? '',
     amountNumeric: d.amountNumeric,
     amountWords: d.amountWords ?? '',
     currency: d.currency ?? 'ليرة سورية',

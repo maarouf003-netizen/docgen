@@ -1431,6 +1431,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         target.AnnexNumber = source.AnnexNumber;
         target.AnnexDate = source.AnnexDate;
         target.InclusionText = source.InclusionText;
+        target.InclusionNotes = source.InclusionNotes;
 
         target.AmountNumeric = source.AmountNumeric;
         target.AmountWords = source.AmountWords;

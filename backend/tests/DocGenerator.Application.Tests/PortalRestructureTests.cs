@@ -726,7 +726,7 @@ public class PortalRestructureTests : IDisposable
             "BorrowerRepresentativeAddressType", "BorrowerRepresentativeAddress",
             "BorrowerNature", "BorrowerRegistrationNumber", "BorrowerRepresentedBy",
             "ContractType", "ContractTypeSelector", "ContractNumber", "ContractDate",
-            "AnnexType", "AnnexNumber", "AnnexDate", "InclusionText",
+            "AnnexType", "AnnexNumber", "AnnexDate", "InclusionText", "InclusionNotes",
             "AmountNumeric", "AmountWords", "Currency",
             "Amount2Numeric", "Amount2Words", "Currency2",
             "Amount3Numeric", "Amount3Words", "Currency3",

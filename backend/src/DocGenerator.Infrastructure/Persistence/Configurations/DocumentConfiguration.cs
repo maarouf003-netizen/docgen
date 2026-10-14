@@ -60,6 +60,7 @@ public class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.AnnexNumber).HasMaxLength(100);
         builder.Property(d => d.AnnexDate).HasMaxLength(50);
         builder.Property(d => d.InclusionText).HasMaxLength(1000);
+        builder.Property(d => d.InclusionNotes).HasMaxLength(2000);
 
         builder.Property(d => d.AmountNumeric).HasColumnType("decimal(20,2)");
         builder.Property(d => d.Amount2Numeric).HasColumnType("decimal(20,2)");
