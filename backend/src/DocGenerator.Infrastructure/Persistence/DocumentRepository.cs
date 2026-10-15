@@ -95,10 +95,14 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             .AsSplitQuery()
             .Select(d => new DocumentExportRow
             {
-                AdministrativeBranchName = d.Branch.Name,
+                AdministrativeBranchName = d.Branch != null ? d.Branch.Name : null,
                 BranchName = d.BranchName,
                 Court = d.Court,
-                SectionName = d.ExecutionCircuit.Section.Name,
+                // FR-013: فحص صريح للقيم الفارغة بدل تحذير `CS8602` — الدلالة مطابقة في `SQL`
+                // (انتشار `NULL` في الإسقاط) ولا تغيير سلوكي.
+                SectionName = d.ExecutionCircuit != null && d.ExecutionCircuit.Section != null
+                    ? d.ExecutionCircuit.Section.Name
+                    : null,
                 IsDraft = d.IsDraft,
                 FileNumber = d.FileNumber,
                 FileType = d.FileType,

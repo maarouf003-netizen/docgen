@@ -15,6 +15,12 @@ public record BranchDto(
     int UserCount,
     int DocumentCount);
 
+/// <summary>
+/// إحصاء اللوحة القديم (`GET /api/dashboard` — غير مستهلك من الواجهة الحالية التي تستخدم
+/// `/stats/manager`): `TotalAmount`/`TotalCollectedAmount` يجمعان كل العملات في رقم واحد
+/// (دلالة قديمة مختلطة العملات — تُبقى للتوافق حتى قرار الإزالة/الإصلاح). العدادات متوافقة
+/// مع دلالات القوائم (`ExecSubStatus` الفارغ = منفذ كامل).
+/// </summary>
 public record DashboardStatsDto(
     int TotalDocuments,
     int TotalDrafts,

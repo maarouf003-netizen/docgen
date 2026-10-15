@@ -80,3 +80,57 @@ jobs:
       - name: npm audit (high+)
         working-directory: frontend
         run: npm audit --audit-level=high
+
+  # حارس سكربت هجرات Postgres (FR-001/FR-002): توليد غير متصل + منع أنواع SQL-Server
+  # (`datetime2` وأخواتها) في DDL قبل أن تصل أي قاعدة. لا يتصل بأي قاعدة —
+  # سلسلة الاتصال الوهمية لتلبية مصنع وقت التصميم فقط.
+  migration-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Install EF tool
+        run: dotnet tool install --global dotnet-ef
+      - name: Generate Postgres migration script (offline)
+        env:
+          POSTGRES_CONNECTION: "Host=localhost;Port=5432;Database=docgen;Username=x;Password=x"
+        run: export PATH="$PATH:$HOME/.dotnet/tools"; dotnet ef migrations script --context DocGeneratorPostgresDbContext --project backend/src/DocGenerator.Infrastructure --startup-project backend/src/DocGenerator.Api -o /tmp/pg_migrations.sql
+      - name: Forbid SQL-Server-only types in Postgres DDL
+        run: |
+          if grep -qi 'datetime2' /tmp/pg_migrations.sql; then
+            echo "FORBIDDEN: 'datetime2' in Postgres migration script (see FR-001)"; exit 1;
+          fi
+
+  # اختبارات البوابة الحية لـ Postgres (FR-002): الاختبارات المبوبة بـ
+  # DOCGEN_TEST_POSTGRES (مهاجرة + مسح) تعمل هنا فعليًا بدل تخطيها الصامت محليًا.
+  backend-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    env:
+      DOCGEN_TEST_POSTGRES: "Host=localhost;Port=5432;Database=docgen_test;Username=postgres;Password=postgres"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Test (application, incl. Postgres-gated)
+        run: dotnet test backend/tests/DocGenerator.Application.Tests/DocGenerator.Application.Tests.csproj --nologo -v q
+      - name: Test (api, incl. Postgres-gated, parallelizable)
+        run: dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --nologo -v q --filter "Category!=Sequential"
+      - name: Test (api, sequential)
+        run: dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build --nologo -v q --filter "Category=Sequential"

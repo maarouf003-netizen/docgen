@@ -42,8 +42,24 @@ public sealed class SecurityHeadersMiddleware
         headers["Cross-Origin-Resource-Policy"] = "same-origin";
         headers[_security.CspReportOnly
             ? "Content-Security-Policy-Report-Only"
-            : "Content-Security-Policy"] = CspValue;
+            : "Content-Security-Policy"] = BuildCspValue();
 
         await _next(context);
+    }
+
+    /// <summary>
+    /// FR-010: إلحاق `report-uri` عند ضبطه لبدء الجمع المركزي قبل الفرض.
+    /// قيمة غير نظيفة (بياض/تحكم/غير قابلة للتحليل) تُتجاهل بصمت حفاظًا على سلامة الترويسة.
+    /// </summary>
+    private string BuildCspValue()
+    {
+        var uri = _security.CspReportUri?.Trim();
+        if (string.IsNullOrEmpty(uri))
+            return CspValue;
+        if (uri.Any(c => char.IsWhiteSpace(c) || char.IsControl(c)))
+            return CspValue;
+        if (!Uri.TryCreate(uri, UriKind.RelativeOrAbsolute, out _))
+            return CspValue;
+        return CspValue + "; report-uri " + uri;
     }
 }

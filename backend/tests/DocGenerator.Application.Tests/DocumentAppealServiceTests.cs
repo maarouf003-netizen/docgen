@@ -636,6 +636,39 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Empty(await _service.GetActionsAsync(created.Id));
     }
 
+    [Fact]
+    public async Task Actions_SanitizeHtmlOnWrite_StripsDisallowedTags()
+    {
+        // FR-009: نص الإجراء يُعرض كـ HTML فيُخزَّن معقّمًا خادميًا (القائمة البيضاء المركزية).
+        var appealId = await CreateAppealWithAssigneeAsync();
+
+        var action = await _service.AddActionAsync(appealId,
+            new AddAppealActionRequest("action", "<b>نص</b><script>alert(1)</script>", "3/8/2026", null, null),
+            _lawyer2.Id, "lawyer2");
+
+        Assert.DoesNotContain("<script", action.Text);
+        Assert.Contains("نص", action.Text);
+    }
+
+    [Fact]
+    public async Task Actions_ScriptOnlyText_NeverStoredRaw()
+    {
+        // نص لا يحمل إلا وسومًا مرفوضة: يُخزَّن بلا أي وسم (أو يُرفض لفراغه بعد التعقيم).
+        var appealId = await CreateAppealWithAssigneeAsync();
+
+        try
+        {
+            var action = await _service.AddActionAsync(appealId,
+                new AddAppealActionRequest("action", "<script>alert(1)</script>", "3/8/2026", null, null),
+                _lawyer2.Id, "lawyer2");
+            Assert.DoesNotContain("<", action.Text);
+        }
+        catch (ArgumentException)
+        {
+            // مقبول أيضًا: الرفض لفراغ النص بعد التعقيم.
+        }
+    }
+
     private async Task<int> CreateAppealWithAssigneeAsync()
     {
         var doc = await CreateApplicantDocAsync();

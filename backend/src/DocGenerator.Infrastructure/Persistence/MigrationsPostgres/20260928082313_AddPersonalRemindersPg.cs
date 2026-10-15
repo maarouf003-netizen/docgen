@@ -21,10 +21,10 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     LawyerId = table.Column<int>(type: "integer", nullable: false),
                     Title = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     Notes = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: true),
-                    DueDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    DueDate = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     Color = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: true),
                     Recurrence = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
-                    RecurrenceEnd = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    RecurrenceEnd = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     IsArchived = table.Column<bool>(type: "boolean", nullable: false),
                     CompletedOccurrenceKeys = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)

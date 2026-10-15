@@ -1,6 +1,7 @@
 using System.Globalization;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common.Security;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -760,7 +761,9 @@ public sealed class DocumentAppealService : IDocumentAppealService
         {
             AppealId = appeal.Id,
             Type = Bounded(request.Type, 20, "نوع الإجراء") ?? "action",
-            Text = RequireText(request.Text, "نص الإجراء"),
+            // FR-009: تعقيم خادمي عند الكتابة (القائمة البيضاء المركزية) — النص المعروض
+            // كـ HTML يُخزَّن معقّمًا أصلًا، وتعقيم العرض يبقى طبقة ثانية.
+            Text = RequireText(HtmlInputSanitizer.Sanitize(request.Text), "نص الإجراء"),
             ActionDate = Bounded(request.ActionDate, 50, "تاريخ الإجراء"),
             ReminderDuration = Bounded(request.ReminderDuration, 20, "مدة التذكير"),
             ReminderColor = Bounded(request.ReminderColor, 20, "لون التذكير"),
@@ -802,8 +805,11 @@ public sealed class DocumentAppealService : IDocumentAppealService
         ActionReminderCalculator.ValidateActionDate(request.ActionDate, "تاريخ الإجراء");
         ActionReminderCalculator.ValidateReminder(request.ReminderDuration, request.ReminderColor);
 
-        action.Type = Bounded(request.Type, 20, "نوع الإجراء") ?? action.Type;
-        action.Text = RequireText(request.Text, "نص الإجراء");
+        // FR-013: إبقاء القديم عند الغياب بصيغة صريحة بلا تحذير `CS8601` (الدلالة مطابقة تمامًا).
+        var newType = Bounded(request.Type, 20, "نوع الإجراء");
+        if (newType is not null)
+            action.Type = newType;
+        action.Text = RequireText(HtmlInputSanitizer.Sanitize(request.Text), "نص الإجراء");
         action.ActionDate = Bounded(request.ActionDate, 50, "تاريخ الإجراء");
         action.ReminderDuration = Bounded(request.ReminderDuration, 20, "مدة التذكير");
         action.ReminderColor = Bounded(request.ReminderColor, 20, "لون التذكير");

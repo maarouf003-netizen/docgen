@@ -919,10 +919,10 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
             ValidateSourceForDelegation(source);
         }
 
-        var fileNumber = DigitNormalizer.NormalizeDigits(Normalize(request.FileNumber));
+        var fileNumber = DigitNormalizer.NormalizeDigitsOrNull(Normalize(request.FileNumber));
         if (string.IsNullOrWhiteSpace(fileNumber))
             throw new ArgumentException("رقم أساس الإنابة مطلوب");
-        var fileYear = DigitNormalizer.NormalizeDigits(Normalize(request.FileYear));
+        var fileYear = DigitNormalizer.NormalizeDigitsOrNull(Normalize(request.FileYear));
         if (string.IsNullOrWhiteSpace(fileYear))
             throw new ArgumentException("سنة قيد الإنابة مطلوبة");
         var registrationDate = FreeDateParser.Parse(request.FileRegistrationDate, "تاريخ قيد الإنابة");

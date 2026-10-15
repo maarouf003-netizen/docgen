@@ -15,4 +15,15 @@ public static class DigitNormalizer
             return value;
         return ArabicDigitNormalizer.Normalize(value).Trim();
     }
+
+    /// <summary>
+    /// تطبيع الأرقام مع توحيد الفارغ إلى null — لأعمدة أرقام الملفات المشمولة بفهارس
+    /// فريدة جزئية تستثني NULL فقط: الصف بلا رقم يجب ألا يدخل نطاق الفهرس أصلًا
+    /// (وإلا عومل `''` رقمًا فعليًا وخاطر برفض `409` كاذب).
+    /// </summary>
+    public static string? NormalizeDigitsOrNull(string? value)
+    {
+        var normalized = NormalizeDigits(value);
+        return string.IsNullOrEmpty(normalized) ? null : normalized;
+    }
 }

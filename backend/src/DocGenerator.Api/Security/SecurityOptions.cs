@@ -18,4 +18,10 @@ public sealed class SecurityOptions
 
     /// <summary>وضع مراقبة <c>CSP</c> (ترويسة <c>Report-Only</c>) قبل الفرض — <c>true</c> افتراضيًا.</summary>
     public bool CspReportOnly { get; set; } = true;
+
+    /// <summary>
+    /// عنوان استقبال تقارير <c>CSP</c> (توجيه <c>report-uri</c>) — فارغ = بلا جمع مركزي.
+    /// يُلحَق بالسياسة فقط إن كان مسارًا/رابطًا نظيفًا (بلا بياض ولا محارف تحكم) لمنع حقن الترويسات.
+    /// </summary>
+    public string? CspReportUri { get; set; }
 }
