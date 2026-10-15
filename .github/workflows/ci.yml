@@ -92,8 +92,9 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
+      # مثبت برقم دقيق: الأحدث (11.x) يتطلب Runtime أحدث ويفشل على SDK ‏10 — ‏الرئيسي يجب أن يطابق الـSDK.
       - name: Install EF tool
-        run: dotnet tool install --global dotnet-ef
+        run: dotnet tool install --global dotnet-ef --version 10.0.10
       - name: Generate Postgres migration script (offline)
         env:
           POSTGRES_CONNECTION: "Host=localhost;Port=5432;Database=docgen;Username=x;Password=x"
