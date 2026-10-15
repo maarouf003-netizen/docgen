@@ -129,8 +129,8 @@ public class DatabaseInitializerTests
             // إدراج المستخدم بـ SQL خام بالأعمدة الموجودة في القاعدة القديمة فقط،
             // لأن نموذج EF الحالي يحمل أعمدة بوابة المندوب غير الموجودة في هذه السكيمة.
             await db.Database.ExecuteSqlRawAsync(
-                "INSERT INTO \"Users\" (\"Username\", \"FullName\", \"Role\", \"PasswordHash\", \"FailedLoginCount\", \"IsActive\", \"TokenVersion\", \"CreatedAt\", \"UpdatedAt\") VALUES ({0}, {1}, {2}, {3}, 0, 1, 0, {4}, {4})",
-                "admin", "المشرف العام", "admin", new FastTestPasswordHasher().Hash("123456"), DateTime.UtcNow);
+                "INSERT INTO \"Users\" (\"Username\", \"FullName\", \"Role\", \"PasswordHash\", \"FailedLoginCount\", \"IsActive\", \"TokenVersion\", \"CreatedAt\", \"UpdatedAt\") VALUES ({0}, {1}, {2}, {3}, 0, {4}, 0, {5}, {5})",
+                "admin", "المشرف العام", "admin", new FastTestPasswordHasher().Hash("123456"), true, DateTime.UtcNow);
             // إدراج المستند بـ SQL خام بالأعمدة الموجودة في القاعدة القديمة فقط،
             // لأن نموذج EF الحالي يحمل أعمدة وضع «منفذ عليه» غير الموجودة في هذا السكيمة.
             await db.Database.ExecuteSqlRawAsync(
@@ -169,8 +169,8 @@ public class DatabaseInitializerTests
             // إدراج المستخدم بـ SQL خام بالأعمدة الموجودة في القاعدة القديمة فقط،
             // لأن نموذج EF الحالي يحمل أعمدة بوابة المندوب غير الموجودة في هذه السكيمة.
             await db.Database.ExecuteSqlRawAsync(
-                "INSERT INTO \"Users\" (\"Username\", \"FullName\", \"Role\", \"PasswordHash\", \"FailedLoginCount\", \"IsActive\", \"TokenVersion\", \"CreatedAt\", \"UpdatedAt\") VALUES ({0}, {1}, {2}, {3}, 0, 1, 0, {4}, {4})",
-                "admin", "المشرف العام", "admin", new FastTestPasswordHasher().Hash("123456"), DateTime.UtcNow);
+                "INSERT INTO \"Users\" (\"Username\", \"FullName\", \"Role\", \"PasswordHash\", \"FailedLoginCount\", \"IsActive\", \"TokenVersion\", \"CreatedAt\", \"UpdatedAt\") VALUES ({0}, {1}, {2}, {3}, 0, {4}, 0, {5}, {5})",
+                "admin", "المشرف العام", "admin", new FastTestPasswordHasher().Hash("123456"), true, DateTime.UtcNow);
 
             // ملف مشطوب فقط.
             var struckId = InsertLegacyExecutedDocumentAsync(
@@ -238,8 +238,8 @@ public class DatabaseInitializerTests
             // إدراج المستخدم بـ SQL خام بالأعمدة الموجودة في القاعدة القديمة فقط،
             // لأن نموذج EF الحالي يحمل أعمدة بوابة المندوب غير الموجودة في هذه السكيمة.
             await db.Database.ExecuteSqlRawAsync(
-                "INSERT INTO \"Users\" (\"Username\", \"FullName\", \"Role\", \"PasswordHash\", \"FailedLoginCount\", \"IsActive\", \"TokenVersion\", \"CreatedAt\", \"UpdatedAt\") VALUES ({0}, {1}, {2}, {3}, 0, 1, 0, {4}, {4})",
-                "admin", "المشرف العام", "admin", new FastTestPasswordHasher().Hash("123456"), DateTime.UtcNow);
+                "INSERT INTO \"Users\" (\"Username\", \"FullName\", \"Role\", \"PasswordHash\", \"FailedLoginCount\", \"IsActive\", \"TokenVersion\", \"CreatedAt\", \"UpdatedAt\") VALUES ({0}, {1}, {2}, {3}, 0, {4}, 0, {5}, {5})",
+                "admin", "المشرف العام", "admin", new FastTestPasswordHasher().Hash("123456"), true, DateTime.UtcNow);
             // إدراج مستند قديم يحمل «طالب التنفيذ» نصيًا (Applicant) كما كان قبل الهجرة.
             await db.Database.ExecuteSqlRawAsync(
                 "INSERT INTO \"Documents\" (\"CreatedAt\", \"UpdatedAt\", \"CreatedById\", \"IsDraft\", \"DocumentType\", \"Applicant\", \"AmountNumeric\", \"Amount2Numeric\", \"InclusionAmountNumeric\", \"ViewCount\", \"PrintCount\") VALUES ({0}, {0}, {1}, {2}, {3}, {4}, 0, 0, 0, 0, 0)",
@@ -295,8 +295,8 @@ public class DatabaseInitializerTests
             // إدراج المستخدم بـ SQL خام بالأعمدة الموجودة في القاعدة القديمة فقط،
             // لأن نموذج EF الحالي يحمل أعمدة بوابة المندوب غير الموجودة في هذه السكيمة.
             await db.Database.ExecuteSqlRawAsync(
-                "INSERT INTO \"Users\" (\"Username\", \"FullName\", \"Role\", \"PasswordHash\", \"FailedLoginCount\", \"IsActive\", \"TokenVersion\", \"CreatedAt\", \"UpdatedAt\") VALUES ({0}, {1}, {2}, {3}, 0, 1, 0, {4}, {4})",
-                "admin", "المشرف العام", "admin", new FastTestPasswordHasher().Hash("123456"), DateTime.UtcNow);
+                "INSERT INTO \"Users\" (\"Username\", \"FullName\", \"Role\", \"PasswordHash\", \"FailedLoginCount\", \"IsActive\", \"TokenVersion\", \"CreatedAt\", \"UpdatedAt\") VALUES ({0}, {1}, {2}, {3}, 0, {4}, 0, {5}, {5})",
+                "admin", "المشرف العام", "admin", new FastTestPasswordHasher().Hash("123456"), true, DateTime.UtcNow);
             // إدراج المستند بـ SQL خام بالأعمدة الموجودة في القاعدة القديمة فقط،
             // لأن نموذج EF الحالي يحمل أعمدة وضع «منفذ عليه» غير الموجودة في هذا السكيمة.
             await db.Database.ExecuteSqlRawAsync(
@@ -345,8 +345,8 @@ public class DatabaseInitializerTests
             // إدراج المستخدم بـ SQL خام بالأعمدة الموجودة في القاعدة القديمة فقط،
             // لأن نموذج EF الحالي يحمل أعمدة بوابة المندوب غير الموجودة في هذه السكيمة.
             await db.Database.ExecuteSqlRawAsync(
-                "INSERT INTO \"Users\" (\"Username\", \"FullName\", \"Role\", \"PasswordHash\", \"FailedLoginCount\", \"IsActive\", \"TokenVersion\", \"CreatedAt\", \"UpdatedAt\") VALUES ({0}, {1}, {2}, {3}, 0, 1, 0, {4}, {4})",
-                "admin", "المشرف العام", "admin", new FastTestPasswordHasher().Hash("123456"), DateTime.UtcNow);
+                "INSERT INTO \"Users\" (\"Username\", \"FullName\", \"Role\", \"PasswordHash\", \"FailedLoginCount\", \"IsActive\", \"TokenVersion\", \"CreatedAt\", \"UpdatedAt\") VALUES ({0}, {1}, {2}, {3}, 0, {4}, 0, {5}, {5})",
+                "admin", "المشرف العام", "admin", new FastTestPasswordHasher().Hash("123456"), true, DateTime.UtcNow);
 
             var samples = new (string? Date, DateTime? Expected)[]
             {
@@ -446,8 +446,8 @@ public class DatabaseInitializerTests
             // إدراج المستخدم بـ SQL خام بالأعمدة الموجودة في القاعدة القديمة فقط،
             // لأن نموذج EF الحالي يحمل أعمدة بوابة المندوب غير الموجودة في هذه السكيمة.
             await db.Database.ExecuteSqlRawAsync(
-                "INSERT INTO \"Users\" (\"Username\", \"FullName\", \"Role\", \"PasswordHash\", \"FailedLoginCount\", \"IsActive\", \"TokenVersion\", \"CreatedAt\", \"UpdatedAt\") VALUES ({0}, {1}, {2}, {3}, 0, 1, 0, {4}, {4})",
-                "admin", "المشرف العام", "admin", new FastTestPasswordHasher().Hash("123456"), DateTime.UtcNow);
+                "INSERT INTO \"Users\" (\"Username\", \"FullName\", \"Role\", \"PasswordHash\", \"FailedLoginCount\", \"IsActive\", \"TokenVersion\", \"CreatedAt\", \"UpdatedAt\") VALUES ({0}, {1}, {2}, {3}, 0, {4}, 0, {5}, {5})",
+                "admin", "المشرف العام", "admin", new FastTestPasswordHasher().Hash("123456"), true, DateTime.UtcNow);
 
             var samples = new (string? Date, DateTime? Expected)[]
             {
