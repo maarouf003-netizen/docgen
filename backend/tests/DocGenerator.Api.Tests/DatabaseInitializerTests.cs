@@ -322,13 +322,25 @@ public class DatabaseInitializerTests
         }
     }
 
-    private static async Task<int> InsertLegacyDocumentAsync(DocGeneratorDbContext db)
+    private static async Task<int> InsertLegacyDocumentAsync(DocGeneratorDbContext db, string? generalEntitySide = null)
     {
         // إدراج المستند بـ SQL خام بالأعمدة الموجودة في القاعدة القديمة فقط،
-        // لأن نموذج EF الحالي يحمل أعمدة وضع «منفذ عليه» غير الموجودة في هذا السكيمة.
-        await db.Database.ExecuteSqlRawAsync(
-            "INSERT INTO \"Documents\" (\"CreatedAt\", \"UpdatedAt\", \"CreatedById\", \"IsDraft\", \"DocumentType\", \"AmountNumeric\", \"Amount2Numeric\", \"InclusionAmountNumeric\", \"ViewCount\", \"PrintCount\") VALUES ({0}, {0}, {1}, {2}, {3}, 0, 0, 0, 0, 0)",
-            DateTime.UtcNow, 1, true, "بيان");
+        // لأن نموذج EF الحالي يحمل أعمدة وضع «منفذ عليه» غير الموجودة في هذه السكيمة.
+        // generalEntitySide تُمرَّر فقط حيث يشترطها الشكل القديم: PG تقدّم GeneralEntitySide
+        // غير فارغة بلا افتراضي (بينما SQLite القديمة تملؤها افتراضيًا) — والقيمة يجب أن
+        // تجتاز فحص PB002 اللاحق (`IN applicant/executed/deposit`).
+        if (generalEntitySide is null)
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "INSERT INTO \"Documents\" (\"CreatedAt\", \"UpdatedAt\", \"CreatedById\", \"IsDraft\", \"DocumentType\", \"AmountNumeric\", \"Amount2Numeric\", \"InclusionAmountNumeric\", \"ViewCount\", \"PrintCount\") VALUES ({0}, {0}, {1}, {2}, {3}, 0, 0, 0, 0, 0)",
+                DateTime.UtcNow, 1, true, "بيان");
+        }
+        else
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "INSERT INTO \"Documents\" (\"CreatedAt\", \"UpdatedAt\", \"CreatedById\", \"IsDraft\", \"DocumentType\", \"AmountNumeric\", \"Amount2Numeric\", \"InclusionAmountNumeric\", \"ViewCount\", \"PrintCount\", \"GeneralEntitySide\") VALUES ({0}, {0}, {1}, {2}, {3}, 0, 0, 0, 0, 0, {4})",
+                DateTime.UtcNow, 1, true, "بيان", generalEntitySide);
+        }
         return await db.Documents.Select(d => d.Id).MaxAsync();
     }
 
@@ -466,11 +478,7 @@ public class DatabaseInitializerTests
             };
             foreach (var (text, _) in samples)
             {
-                var docId = await InsertLegacyDocumentAsync(db);
-                // شكل PG القديم وحده: GeneralEntitySide غير فارغة بلا افتراضي (عكس SQLite) —
-                // قيمة محايدة صالحة تجتاز فحص PB002 اللاحق (`IN applicant/executed/deposit`).
-                await db.Database.ExecuteSqlRawAsync(
-                    "UPDATE \"Documents\" SET \"GeneralEntitySide\" = 'applicant' WHERE \"Id\" = {0}", docId);
+                var docId = await InsertLegacyDocumentAsync(db, GeneralEntitySideCatalog.Applicant);
                 await db.Database.ExecuteSqlRawAsync(
                     "INSERT INTO \"DocumentRegistrationDates\" (\"DocumentId\", \"Date\") VALUES ({0}, {1})",
                     docId, (object)text!);
