@@ -458,6 +458,7 @@ public class DatabaseInitializerTests
                 ("1/8/26", new DateTime(2026, 8, 1)),
                 ("1/8/99", new DateTime(1999, 8, 1)),
                 ("5/8/49", new DateTime(2049, 8, 5)), // عتبة الخانتين (< 50 → 2000+)
+                ("29/2/2026", null),
                 ("29/2/2024", new DateTime(2024, 2, 29)),
                 ("31/02/2026", null),
                 ("غير صالح", null),
@@ -466,6 +467,10 @@ public class DatabaseInitializerTests
             foreach (var (text, _) in samples)
             {
                 var docId = await InsertLegacyDocumentAsync(db);
+                // شكل PG القديم وحده: GeneralEntitySide غير فارغة بلا افتراضي (عكس SQLite) —
+                // قيمة محايدة صالحة تجتاز فحص PB002 اللاحق (`IN applicant/executed/deposit`).
+                await db.Database.ExecuteSqlRawAsync(
+                    "UPDATE \"Documents\" SET \"GeneralEntitySide\" = 'applicant' WHERE \"Id\" = {0}", docId);
                 await db.Database.ExecuteSqlRawAsync(
                     "INSERT INTO \"DocumentRegistrationDates\" (\"DocumentId\", \"Date\") VALUES ({0}, {1})",
                     docId, (object)text!);
