@@ -2610,7 +2610,9 @@ public class DocumentServiceTests : IDisposable
             userId: 1, actorName: "lawyer1");
 
         Assert.Equal("note", note.Type);
-        Assert.Equal(DateTime.Today.ToString("yyyy-MM-dd"), note.ActionDate);
+        // توقيت دمشق الجداري حصرًا (لا DateTime.Today الخادمي): بين 21:00 و00:00 UTC
+        // يكون تاريخ دمشق تاليًا لتاريخ الخادم فينكسر الادعاء — نفس مصدر الإنتاج.
+        Assert.Equal(ServerClock.TodayString(TimeProvider.System, TestClock.TimeZone, "yyyy-MM-dd"), note.ActionDate);
     }
 
     [Fact]
@@ -2771,7 +2773,9 @@ public class DocumentServiceTests : IDisposable
         Assert.Equal("1/8/2026", action.ActionDate);
         var note = list.Single(a => a.Type == "note");
         Assert.Equal("ملاحظة افتتاحية", note.Text);
-        Assert.Equal(DateTime.Today.ToString("yyyy-MM-dd"), note.ActionDate);
+        // توقيت دمشق الجداري حصرًا (لا DateTime.Today الخادمي): بين 21:00 و00:00 UTC
+        // يكون تاريخ دمشق تاليًا لتاريخ الخادم فينكسر الادعاء — نفس مصدر الإنتاج.
+        Assert.Equal(ServerClock.TodayString(TimeProvider.System, TestClock.TimeZone, "yyyy-MM-dd"), note.ActionDate);
         Assert.Contains("action", _audit.Actions);
     }
 
