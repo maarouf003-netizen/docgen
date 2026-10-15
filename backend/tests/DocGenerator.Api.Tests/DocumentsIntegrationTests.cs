@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using System.Text.Json;
+using DocGenerator.Application.Common;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -1114,7 +1115,10 @@ public class DocumentsIntegrationTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var action = await response.Content.ReadFromJsonAsync<JsonDocument>();
         Assert.Equal("note", action!.RootElement.GetProperty("type").GetString());
-        Assert.Equal(DateTime.Today.ToString("yyyy-MM-dd"), action.RootElement.GetProperty("actionDate").GetString());
+        // توقيت دمشق الجداري حصرًا (لا DateTime.Today الخادمي): بين 21:00 و00:00 UTC
+        // يكون تاريخ دمشق تاليًا لتاريخ الخادم فينكسر الادعاء — نفس مصدر الإنتاج.
+        var damascusToday = ServerClock.TodayString(TimeProvider.System, ServerClock.ResolveTimeZone("Asia/Damascus"), "yyyy-MM-dd");
+        Assert.Equal(damascusToday, action.RootElement.GetProperty("actionDate").GetString());
     }
 
     [Fact]
