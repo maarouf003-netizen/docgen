@@ -438,7 +438,10 @@ public class DatabaseInitializerTests
         try
         {
             await db.Database.EnsureDeletedAsync();
-            await db.Database.MigrateAsync();
+            // مرآة اختبار SQLite: الترحيل حتى المهاجرة السابقة (قبل عمود DateParsed)
+            // ثم حقن الصفوف القديمة، ثم الترحيل الكامل لتشغيل التعبئة فعلًا —
+            // الترحيل الكامل أولًا يجعل التعبئة لاغية (لا صفوف بعد) فيفشل الاختبار دائمًا.
+            await db.GetService<IMigrator>().MigrateAsync("20260809073905_MakeUsernameUniqueForBranchlessUsers");
 
             // إدراج المستخدم بـ SQL خام بالأعمدة الموجودة في القاعدة القديمة فقط،
             // لأن نموذج EF الحالي يحمل أعمدة بوابة المندوب غير الموجودة في هذه السكيمة.
@@ -454,6 +457,7 @@ public class DatabaseInitializerTests
                 ("2026-12-31", new DateTime(2026, 12, 31)),
                 ("1/8/26", new DateTime(2026, 8, 1)),
                 ("1/8/99", new DateTime(1999, 8, 1)),
+                ("5/8/49", new DateTime(2049, 8, 5)), // عتبة الخانتين (< 50 → 2000+)
                 ("29/2/2024", new DateTime(2024, 2, 29)),
                 ("31/02/2026", null),
                 ("غير صالح", null),
@@ -467,6 +471,7 @@ public class DatabaseInitializerTests
                     docId, (object)text!);
             }
 
+            // تطبيق المهاجرات المتبقية: يجب ملء DateParsed من النص (تعبئة الترحيل).
             await db.Database.MigrateAsync();
 
             var rows = await db.DocumentRegistrationDates.AsNoTracking()
