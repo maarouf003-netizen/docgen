@@ -4,8 +4,10 @@ namespace DocGenerator.Application.Common.Interfaces;
 
 /// <summary>
 /// استعلام سجل التدقيق مع ترقيم صفحات على مستوى قاعدة البيانات.
+/// FR-011: قراءة فقط عمدًا — لا ترث `IRepository&lt;AuditLog&gt;` فلا تعرض
+/// `Update`/`Remove` لعزل الكتابة (الكتابة عبر `IAuditLogger`، والتنقية دفتر خارجي).
 /// </summary>
-public interface IAuditLogRepository : IRepository<AuditLog>
+public interface IAuditLogRepository
 {
     Task<(int TotalCount, List<AuditLog> Items)> SearchAsync(
         string? userName,

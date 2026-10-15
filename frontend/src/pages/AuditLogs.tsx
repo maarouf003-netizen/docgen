@@ -25,6 +25,7 @@ const ACTION_LABELS: Record<string, string> = {
   login: 'تسجيل دخول',
   login_failed: 'محاولة دخول فاشلة',
   login_locked: 'قفل الحساب',
+  lockout_released: 'انتهاء مدة القفل',
   change_password: 'تغيير كلمة مرور',
   create: 'إنشاء مستند',
   update: 'تعديل مستند',

@@ -111,6 +111,31 @@ public class StatisticsRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task Dashboard_NullExecSubStatusForcibly_CountsAsExecuted()
+    {
+        // FR-004: مرآة القوائم (H4) — «منفذ جبريا» بلا حالة فرعية (صفوف قديمة) منفذ كامل
+        // لا متداول، بصيغة صريحة لا تعتمد على منطق SQL الثلاثي المتفاوت بين المزودين.
+        _db.Documents.Add(new Document
+        {
+            BranchId = 1,
+            CreatedById = 1,
+            IsDraft = false,
+            BorrowerName = "قديم",
+            BorrowerFamily = "س",
+            AmountNumeric = 100,
+            ExecStatus = ExecutionStatusCatalog.ExecutedForcibly,
+            ExecSubStatus = null,
+        });
+        _db.SaveChanges();
+
+        var s = await _stats.GetDashboardStatsAsync(1);
+
+        Assert.Equal(4, s.TotalDocuments);
+        Assert.Equal(2, s.TotalExecuted);
+        Assert.Equal(0, s.TotalActive);
+    }
+
+    [Fact]
     public async Task Dashboard_ExcludesStruckOffExecutedFiles()
     {
         // الملفات المشطوبة (وضع «منفذ عليه») مستثناة من عدادات اللوحة مثل القوائم والتصدير:

@@ -111,8 +111,14 @@ public sealed class AuthService : IAuthService
         {
             user.LockoutEndUtc = null;
             user.UpdatedAt = now;
-            _users.Update(user);
-            await _uow.SaveChangesAsync(ct);
+            // FR-007: التحرير والتدقيق في معاملة واحدة — لا تحرير صامت خارج المعاملة.
+            await _tx.RunAsync(async token =>
+            {
+                _users.Update(user);
+                await _uow.SaveChangesAsync(token);
+                await _audit.LogAsync(username, "lockout_released",
+                    details: "انتهاء مدة القفل — تحرير الحساب", ct: token);
+            }, ct);
         }
 
         // رئيس القسم أو رئيس الشعبة أو المحامي بلا فرع: حالة محرّمة — تُرفض الجلسة أصلًا بدل

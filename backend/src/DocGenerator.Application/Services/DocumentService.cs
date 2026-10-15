@@ -603,9 +603,9 @@ public sealed class DocumentService : IDocumentService
         // العقد: الخادم يشتق Court/CourtNorm من الدائرة ويتجاهل نص العميل دائمًا (لا 400) —
         // يُضبط في Create/Update عبر ApplyCircuitDerivation بعد ApplyRequest.
         // التطبيع الرقمي مركزيًا: الثقب 123 مقابل ١٢٣ يُغلق هنا للإنشاء/التعديل.
-        doc.FileNumber = DigitNormalizer.NormalizeDigits(r.FileNumber);
+        doc.FileNumber = DigitNormalizer.NormalizeDigitsOrNull(r.FileNumber);
         doc.FileType = r.FileType;
-        doc.FileYear = DigitNormalizer.NormalizeDigits(r.FileYear);
+        doc.FileYear = DigitNormalizer.NormalizeDigitsOrNull(r.FileYear);
         doc.FileIncoming = r.FileIncoming;
         doc.FileIncomingDate = r.FileIncomingDate;
         doc.UnderFilingNumber = r.UnderFilingNumber;

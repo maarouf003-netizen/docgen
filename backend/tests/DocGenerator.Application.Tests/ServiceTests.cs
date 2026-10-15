@@ -4861,6 +4861,8 @@ public class AuthServiceTests : IDisposable
         Assert.NotNull(result.Response);
         Assert.Equal(0, _db.Users.First().FailedLoginCount);
         Assert.Null(_db.Users.First().LockoutEndUtc);
+        // FR-007: تحرير القفل المنتهي حدث مدقق (لا صامت).
+        Assert.Contains("lockout_released", _audit.Actions);
     }
 
     [Fact]

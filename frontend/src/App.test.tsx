@@ -1,8 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, configure } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import App from './App';
 import { stubMobile } from './test/stubMobile';
+
+// FR-012: تثبيت هشاشة التحميل الكسول تحت التوازي — نفس مهلة 5000ms المعتمدة في هذا الملف
+// (قيس 1710ms محليًا لصفحة واحدة). `findBy*` تحسم مبكرًا عند الظهور فلا تباطؤ عند النجاح.
+configure({ asyncUtilTimeout: 5000 });
 
 const useAuthMock = vi.hoisted(() => vi.fn());
 

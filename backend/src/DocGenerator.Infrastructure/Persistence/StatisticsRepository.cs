@@ -48,7 +48,10 @@ public class StatisticsRepository : IStatisticsRepository
                     || d.ExecStatus == ExecutionStatusCatalog.DelegationExecuted
                     || d.ExecStatus == ExecutionStatusCatalog.Recovered
                     || (d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly
-                        && d.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted)),
+                        // FR-004: صيغة صريحة آمنة لـ NULL (مرآة القوائم H4) — الجزئي مطابقة
+                        // تامة فقط، وNULL منفذ كامل؛ بلا اعتماد على منطق SQL الثلاثي المتفاوت بين المزودين.
+                        && (d.ExecSubStatus == null
+                            || d.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted))),
                 Deferred = g.Count(d => d.ExecStatus == ExecutionStatusCatalog.Deferred),
                 Active = g.Count(d => (string.IsNullOrEmpty(d.ExecStatus) && !d.IsDraft)
                     || (d.ExecStatus == ExecutionStatusCatalog.ExecutedForcibly

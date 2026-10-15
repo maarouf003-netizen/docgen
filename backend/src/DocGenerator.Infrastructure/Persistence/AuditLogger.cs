@@ -57,6 +57,8 @@ public class AuditLogger : IAuditLogger
             return;
         }
 
+        // حفظ واحد: التغييرات تُعلَّق على التنقل فيُصلح EF المفتاح الأجنبي
+        // عند الحفظ (بلا حاجة لمعرف مسبق ولا لحفظتين متتاليتين).
         var log = new AuditLog
         {
             Timestamp = DateTime.UtcNow,
@@ -66,15 +68,12 @@ public class AuditLogger : IAuditLogger
             DocumentType = documentType,
             Details = details,
         };
-        _db.AuditLogs.Add(log);
-        await _db.SaveChangesAsync(ct);
-
         foreach (var change in changes)
         {
-            change.AuditLogId = log.Id;
             change.DocumentId = documentId;
-            _db.DocumentFieldChanges.Add(change);
+            log.FieldChanges.Add(change);
         }
+        _db.AuditLogs.Add(log);
         await _db.SaveChangesAsync(ct);
     }
 }
