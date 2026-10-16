@@ -408,7 +408,12 @@ public class AlertsIntegrationTests
         // المدير يرى عبر الفروع؛ محامي فرع آخر لا يرى.
         var manager = _factory.AuthorizedClient("manager");
         var list = await (await manager.GetAsync("/api/alerts")).Content.ReadFromJsonAsync<List<HeadAlertDto>>();
-        Assert.Contains(list!, a => a.Message == "تنبيه إشرافي خاص");
+        var item = Assert.Single(list!, a => a.Message == "تنبيه إشرافي خاص");
+        // الإسقاط العرضي: العدّادات محسوبة قاعديًا دون تحميل المستلمين،
+        // وحالة القراءة فارغة (مستلم-محددة أصلًا).
+        Assert.Equal(1, item.RecipientCount);
+        Assert.Equal(1, item.UnreadCount);
+        Assert.Null(item.IsRead);
 
         var lawyerDam = _factory.AuthorizedClient("lawyer1");
         var scoped = await (await lawyerDam.GetAsync("/api/alerts")).Content.ReadFromJsonAsync<List<HeadAlertDto>>();
