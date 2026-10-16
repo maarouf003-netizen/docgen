@@ -15,7 +15,7 @@ namespace DocGenerator.Api.Tests;
 /// <summary>
 /// WebApplicationFactory بقاعدة SQLite مؤقتة معزولة لكل مجموعة اختبارات،
 /// مع إعدادات صريحة (Secret، RateLimiting، Swagger) — تطبيق حقيقي من Program.cs.
-/// يُستبدل مشتّق كلمات المرور الثقيل (PBKDF2 200k) بنسخة سريعة مكافئة للسلوك
+/// يُستبدل مشتّق كلمات المرور الثقيل (PBKDF2-SHA256 بـ600k تكرار حاليًا) بنسخة سريعة مكافئة للسلوك
 /// (<see cref="FastTestPasswordHasher"/>) لأن تكلفته تُدفع عند كل تسجيل دخول/إنشاء مستخدم.
 /// </summary>
 public sealed class ApiFactory : WebApplicationFactory<Program>

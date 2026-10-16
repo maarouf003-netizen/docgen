@@ -27,13 +27,13 @@ public class TokenRevocationIntegrationTests
         var client = _factory.CreateClient();
         client.SetAuthCookie(firstLogin.Token!);
         var change = await client.PostAsJsonAsync("/api/auth/change-password",
-            new { oldPassword = "123456", newPassword = "654321" });
+            new { oldPassword = "123456", newPassword = "TestPass1234" });
         Assert.Equal(HttpStatusCode.OK, change.StatusCode);
 
         var revoked = await client.GetAsync("/api/auth/me");
         Assert.Equal(HttpStatusCode.Unauthorized, revoked.StatusCode);
 
-        var newLogin = await _factory.LoginAsync(username, "654321");
+        var newLogin = await _factory.LoginAsync(username, "TestPass1234");
         Assert.Equal(HttpStatusCode.OK, (HttpStatusCode)newLogin!.StatusCode);
 
         var freshClient = _factory.CreateClient();

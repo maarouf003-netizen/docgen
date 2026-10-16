@@ -69,7 +69,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
         await _factory.CreateUserAsync(username, UserRole.Lawyer, branchId: await _factory.GetBranchIdAsync("DAM"), password: "123456");
 
         var client = _factory.AuthorizedClient(username);
-        var changeBody = JsonSerializer.Serialize(new { oldPassword = "123456", newPassword = "654321" });
+        var changeBody = JsonSerializer.Serialize(new { oldPassword = "123456", newPassword = "TestPass1234" });
         var change = await client.PostAsync("/api/auth/change-password",
             new StringContent(changeBody, Encoding.UTF8, "application/json"));
         Assert.Equal(HttpStatusCode.OK, change.StatusCode);
@@ -77,7 +77,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
         var oldLogin = await _factory.LoginAsync(username, "123456");
         Assert.Equal(HttpStatusCode.Unauthorized, (HttpStatusCode)oldLogin!.StatusCode);
 
-        var newLogin = await _factory.LoginAsync(username, "654321");
+        var newLogin = await _factory.LoginAsync(username, "TestPass1234");
         Assert.Equal(HttpStatusCode.OK, (HttpStatusCode)newLogin!.StatusCode);
     }
 
@@ -101,7 +101,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
         bare.DefaultRequestHeaders.Add("Cookie", $"docgen_token={token}");
 
         var response = await bare.PostAsJsonAsync("/api/auth/change-password",
-            new { oldPassword = "123456", newPassword = "654321" });
+            new { oldPassword = "123456", newPassword = "TestPass1234" });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -115,7 +115,7 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
         bare.DefaultRequestHeaders.Add("X-CSRF-Token", "different-value");
 
         var response = await bare.PostAsJsonAsync("/api/auth/change-password",
-            new { oldPassword = "123456", newPassword = "654321" });
+            new { oldPassword = "123456", newPassword = "TestPass1234" });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }

@@ -72,7 +72,9 @@ public sealed class EntityDelegateService : IEntityDelegateService
     public async Task<DelegateDto> CreateAsync(CreateDelegateRequest request, string? actorName, CancellationToken ct = default, EntityRegistryActor? actor = null)
     {
         var username = NormalizeUsername(request.Username);
-        ValidateCredentials(username, request.Password, request.FullName);
+        // M-02: ما يُفحَص هو ما يُخزَّن — نقصّ قبل التحقق والتخزين معًا.
+        var candidatePassword = request.Password?.Trim() ?? string.Empty;
+        ValidateCredentials(username, candidatePassword, request.FullName);
         var (groupId, entryId) = await ResolveScopeAsync(request.PortalGroupId, request.PortalEntryId, ct);
         await EnsureHeadGovernorateAsync(actor, groupId, entryId, ct);
 
@@ -90,7 +92,7 @@ public sealed class EntityDelegateService : IEntityDelegateService
                 IsActive = true,
                 PortalGroupId = groupId,
                 PortalEntryId = entryId,
-                PasswordHash = _hasher.Hash(request.Password),
+                PasswordHash = _hasher.Hash(candidatePassword),
             };
             await _users.AddAsync(user, token);
             await _uow.SaveChangesAsync(token);
@@ -124,9 +126,10 @@ public sealed class EntityDelegateService : IEntityDelegateService
 
         if (!string.IsNullOrWhiteSpace(request.NewPassword))
         {
-            if (request.NewPassword!.Trim().Length < 6)
-                throw new ArgumentException("كلمة المرور يجب أن تكون 6 أحرف على الأقل");
-            user.PasswordHash = _hasher.Hash(request.NewPassword.Trim());
+            // M-02: ما يُفحَص هو ما يُخزَّن — نقصّ قبل التحقق والتخزين معًا.
+            var candidatePassword = request.NewPassword.Trim();
+            PasswordPolicy.EnsureValid(candidatePassword, user.Username);
+            user.PasswordHash = _hasher.Hash(candidatePassword);
             // إبطال الجلسات القائمة بعد تغيير كلمة المرور.
             user.TokenVersion++;
         }
@@ -267,8 +270,8 @@ public sealed class EntityDelegateService : IEntityDelegateService
             throw new ArgumentException("اسم الدخول مطلوب");
         if (username.Length > MaxUsernameLength)
             throw new ArgumentException($"اسم الدخول أطول من المسموح ({MaxUsernameLength} حرفاً)");
-        if (string.IsNullOrWhiteSpace(password) || password.Trim().Length < 6)
-            throw new ArgumentException("كلمة المرور يجب أن تكون 6 أحرف على الأقل");
+        // M-02: نفس السياسة الموحدة (لا باب خلفي بحد أضعف للمندوبين).
+        PasswordPolicy.EnsureValid(password, username);
     }
 
     private static string NormalizeUsername(string? value)

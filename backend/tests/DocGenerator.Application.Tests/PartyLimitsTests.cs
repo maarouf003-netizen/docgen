@@ -156,13 +156,13 @@ public class PartyLimitsTests : IDisposable
         Assert.Equal("وصي الكفيل", last.RepresentativeName);
         Assert.Equal("وصي", last.RepresentativeCapacity);
         Assert.Equal("اللاذقية", last.RepresentativeAddress);
-        var guarantorHeir = Assert.Single(last.Heirs);
+        var guarantorHeir = Assert.Single(last.Heirs ?? []);
         Assert.Equal("وريث الكفيل", guarantorHeir.Name);
         Assert.Equal("إضافة لتركة", guarantorHeir.Capacity);
         Assert.Equal("طرطوس", guarantorHeir.Address);
 
         // ربط الورثة بالأرقام لا يختلط: وريث المقترض (null) منفصل عن وريث الكفيل 49.
         Assert.All(loaded.Guarantors.Take(PartyLimitsCatalog.MaxGuarantors - 1),
-            g => Assert.Empty(g.Heirs));
+            g => Assert.Empty(g.Heirs ?? []));
     }
 }

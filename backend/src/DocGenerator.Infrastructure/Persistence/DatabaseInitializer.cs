@@ -24,6 +24,10 @@ public sealed class DatabaseInitializer : IDatabaseInitializer
         CancellationToken ct = default,
         string? devSeedPassword = null)
     {
+        // H-02: لا قفل استشاري مخصص هنا. `MigrateAsync` في `EF Core 9+` يؤمّن
+        // تنفيذ الهجرات بقفل على مستوى قاعدة البيانات، والقفل المخصص حوله
+        // تكرار يضيف سطح فشل دون حماية إضافية. النسخة الاحتياطية قبل النشر
+        // تبقى إلزامية لأن الهجرة نفسها قد تسقط.
         await _db.Database.MigrateAsync(ct);
 
         if (development)

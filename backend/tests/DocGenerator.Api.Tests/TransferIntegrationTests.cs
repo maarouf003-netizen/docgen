@@ -25,7 +25,7 @@ public class TransferIntegrationTests
         {
             username,
             fullName,
-            password = "123456",
+            password = "TestPass1234",
             branchId = await _factory.GetBranchIdAsync(branchCode),
         });
         response.EnsureSuccessStatusCode();
@@ -106,12 +106,12 @@ public class TransferIntegrationTests
         {
             username,
             fullName = "محامي حلب",
-            password = "123456",
+            password = "TestPass1234",
             branchId = await _factory.GetBranchIdAsync("ALP"),
         });
         var aleppoLawyer = (await created.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
 
-        var aleppoToken = (await _factory.LoginAsync(username, "123456"))!.Token!;
+        var aleppoToken = (await _factory.LoginAsync(username, "TestPass1234"))!.Token!;
         var docId = await _factory.CreateDocumentAsync(aleppoToken, borrowerName: "ملف حلب");
 
         var head = _factory.AuthorizedClient("head1");
@@ -151,7 +151,7 @@ public class TransferIntegrationTests
     public async Task TransferAll_Count_ByHead_ReturnsFileCount()
     {
         var source = await CreateLawyerAsync("DAM", "محامي العد");
-        var token = (await _factory.LoginAsync(source.Username, "123456"))!.Token!;
+        var token = (await _factory.LoginAsync(source.Username, "TestPass1234"))!.Token!;
         await _factory.CreateDocumentAsync(token);
         await _factory.CreateDocumentAsync(token);
 
@@ -167,7 +167,7 @@ public class TransferIntegrationTests
     public async Task TransferAll_Count_FromAnotherBranch_BadRequest()
     {
         var aleppoLawyer = await CreateLawyerAsync("ALP", "محامي حلب الجماعي");
-        var aleppoToken = (await _factory.LoginAsync(aleppoLawyer.Username, "123456"))!.Token!;
+        var aleppoToken = (await _factory.LoginAsync(aleppoLawyer.Username, "TestPass1234"))!.Token!;
         await _factory.CreateDocumentAsync(aleppoToken, borrowerName: "ملف حلب جماعي");
 
         var head = _factory.AuthorizedClient("head1");
@@ -179,7 +179,7 @@ public class TransferIntegrationTests
     public async Task TransferAll_ByHead_Succeeds()
     {
         var source = await CreateLawyerAsync("DAM", "محامي النقل الجماعي");
-        var token = (await _factory.LoginAsync(source.Username, "123456"))!.Token!;
+        var token = (await _factory.LoginAsync(source.Username, "TestPass1234"))!.Token!;
         var doc1 = await _factory.CreateDocumentAsync(token, borrowerName: "نقل جماعي 1");
         var doc2 = await _factory.CreateDocumentAsync(token, borrowerName: "نقل جماعي 2");
         var target = await CreateLawyerAsync("DAM", "محامي الهدف الجماعي");
@@ -251,7 +251,7 @@ public class TransferIntegrationTests
     public async Task TransferAll_SourceFromAnotherBranch_BadRequest()
     {
         var aleppoLawyer = await CreateLawyerAsync("ALP", "محامي حلب الجماعي");
-        var aleppoToken = (await _factory.LoginAsync(aleppoLawyer.Username, "123456"))!.Token!;
+        var aleppoToken = (await _factory.LoginAsync(aleppoLawyer.Username, "TestPass1234"))!.Token!;
         await _factory.CreateDocumentAsync(aleppoToken, borrowerName: "ملف حلب جماعي");
         var target = await CreateLawyerAsync("DAM", "محامي النقل الجماعي");
 

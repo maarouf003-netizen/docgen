@@ -32,8 +32,6 @@ public interface IUserManagementService
 /// </summary>
 public sealed class UserManagementService : IUserManagementService
 {
-    private const int MinPasswordLength = 6;
-
     private static readonly UserRole[] BranchRoles = { UserRole.Lawyer, UserRole.Head, UserRole.SubHead };
 
     private readonly IUserRepository _users;
@@ -144,7 +142,7 @@ public sealed class UserManagementService : IUserManagementService
     {
         var username = NormalizeUsername(request.Username);
         ValidateUsername(username);
-        ValidatePassword(request.Password);
+        var candidatePassword = NormalizePassword(request.Password, username);
         if (string.IsNullOrWhiteSpace(request.FullName))
             throw new ArgumentException("الاسم الكامل مطلوب");
 
@@ -164,7 +162,7 @@ public sealed class UserManagementService : IUserManagementService
             IsActive = true,
             // منشئ المحامي (قرار §2.10): مباشَرة محامي الصفر ملفات — القدامى `null`.
             CreatedById = actorUserId,
-            PasswordHash = _hasher.Hash(request.Password),
+            PasswordHash = _hasher.Hash(candidatePassword),
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };
@@ -214,8 +212,8 @@ public sealed class UserManagementService : IUserManagementService
         {
             if (!string.IsNullOrWhiteSpace(request.Password))
             {
-                ValidatePassword(request.Password);
-                user.PasswordHash = _hasher.Hash(request.Password);
+                var candidatePassword = NormalizePassword(request.Password, user.Username);
+                user.PasswordHash = _hasher.Hash(candidatePassword);
                 // إبطال الرموز الصادرة سابقاً عند تغيير كلمة المرور.
                 user.TokenVersion++;
             }
@@ -266,7 +264,7 @@ public sealed class UserManagementService : IUserManagementService
     {
         var username = NormalizeUsername(request.Username);
         ValidateUsername(username);
-        ValidatePassword(request.Password);
+        var candidatePassword = NormalizePassword(request.Password, username);
         if (string.IsNullOrWhiteSpace(request.FullName))
             throw new ArgumentException("الاسم الكامل مطلوب");
 
@@ -290,7 +288,7 @@ public sealed class UserManagementService : IUserManagementService
             // منشئ المحامي فقط (§2.10) — الرؤساء يُتبعون بسجل التعاقب.
             CreatedById = role == UserRole.Lawyer ? actorUserId : null,
             IsActive = true,
-            PasswordHash = _hasher.Hash(request.Password),
+            PasswordHash = _hasher.Hash(candidatePassword),
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };
@@ -411,8 +409,8 @@ public sealed class UserManagementService : IUserManagementService
 
             if (!string.IsNullOrWhiteSpace(request.Password))
             {
-                ValidatePassword(request.Password);
-                user.PasswordHash = _hasher.Hash(request.Password);
+                var candidatePassword = NormalizePassword(request.Password, user.Username);
+                user.PasswordHash = _hasher.Hash(candidatePassword);
                 user.TokenVersion++;
             }
 
@@ -660,10 +658,13 @@ public sealed class UserManagementService : IUserManagementService
         ? "يوجد مستخدم بنفس الاسم الثلاثي، يرجى اختيار اسم مختلف"
         : "يوجد مستخدم بنفس الاسم الثلاثي في نفس الفرع، يرجى اختيار اسم مختلف";
 
-    private static void ValidatePassword(string password)
+    /// <summary>M-02: القاعدة المعيارية — ما يُفحَص هو ما يُخزَّن. تُقصّ المسافات
+    /// الطرفية قبل التحقق، ويجب تخزين القيمة المقصوصة نفسها في كل مسار.</summary>
+    private static string NormalizePassword(string? password, string? username = null)
     {
-        if (string.IsNullOrWhiteSpace(password) || password.Length < MinPasswordLength)
-            throw new ArgumentException($"كلمة المرور يجب أن تكون {MinPasswordLength} أحرف على الأقل");
+        var candidate = password?.Trim() ?? string.Empty;
+        PasswordPolicy.EnsureValid(candidate, username);
+        return candidate;
     }
 
     private static LawyerListItemDto ToLawyerDto(User user) => new(

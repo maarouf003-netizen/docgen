@@ -16,8 +16,6 @@ public interface IAuthService
 
 public sealed class AuthService : IAuthService
 {
-    private const int MinPasswordLength = 6;
-
     private readonly IUserRepository _users;
     private readonly IUnitOfWork _uow;
     private readonly IPasswordHasher _hasher;
@@ -194,16 +192,21 @@ public sealed class AuthService : IAuthService
 
     public async Task<bool> ChangePasswordAsync(int userId, string oldPassword, string newPassword, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < MinPasswordLength)
-            throw new ArgumentException($"كلمة المرور يجب أن تكون {MinPasswordLength} أحرف على الأقل");
+        // M-02: القاعدة المعيارية — ما يُفحَص هو ما يُخزَّن. نقصّ أولًا ثم نتحقق ثم نخزّن
+        // المقصوص نفسه، وبنفس ترتيب الأخطاء السابق (400 قبل فشل التحقق من القديمة).
+        var candidate = newPassword?.Trim() ?? string.Empty;
+        PasswordPolicy.EnsureValid(candidate);
 
         var user = await _users.GetByIdAsync(userId, ct);
         if (user is null || !_hasher.Verify(oldPassword, user.PasswordHash))
             return false;
 
+        if (PasswordPolicy.Validate(candidate, user.Username) is { } usernameError)
+            throw new ArgumentException(usernameError);
+
         return await _tx.RunAsync(async token =>
         {
-            user.PasswordHash = _hasher.Hash(newPassword);
+            user.PasswordHash = _hasher.Hash(candidate);
             user.TokenVersion++;
             user.UpdatedAt = DateTime.UtcNow;
             _users.Update(user);

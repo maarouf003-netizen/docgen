@@ -166,13 +166,13 @@ public class RF003AuthzProofTests
         {
             username = UniqueName("l"),
             fullName = "محامي النافذة",
-            password = "123456",
+            password = "TestPass1234",
             branchId = await _factory.GetBranchIdAsync("DAM"),
         });
         created.EnsureSuccessStatusCode();
         var lawyer = (await created.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
 
-        var staleToken = (await _factory.LoginAsync(lawyer.Username, "123456"))!.Token!;
+        var staleToken = (await _factory.LoginAsync(lawyer.Username, "TestPass1234"))!.Token!;
         var staleClient = _factory.ClientWithToken(staleToken);
         Assert.Equal(HttpStatusCode.OK, (await staleClient.GetAsync("/api/documents?perPage=1")).StatusCode);
 

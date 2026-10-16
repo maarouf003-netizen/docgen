@@ -9,7 +9,9 @@ namespace DocGenerator.Api.Controllers;
 
 [ApiController]
 [Route("api/alerts")]
-[Authorize(Roles = "lawyer,head,subhead")]
+// قرار المالك 2026-10-16: قراءة إشرافية للمدير/المشرف (القائمة والمفرد فقط) —
+// الكتابة (إصدار) والعدّادات والقراءة-تعليم تبقى مستلم-محددة (تُرفض لهما أدناه).
+[Authorize(Roles = "lawyer,head,subhead,manager,admin")]
 public class AlertsController : ControllerBase
 {
     private readonly IHeadAlertService _alerts;
@@ -26,11 +28,12 @@ public class AlertsController : ControllerBase
     private UserRole Role => User.GetRoleEnum();
     private bool IsLawyer => Role == UserRole.Lawyer;
     private bool IsHeadOrSubHead => RolePermissions.IsHeadOrSubHead(Role);
+    private bool IsManagerOrAdmin => Role is UserRole.Manager or UserRole.Admin;
     private bool CanCreateAlerts => RolePermissions.CanCreateAlerts(Role);
 
     /// <summary>
     /// قائمة التنبيهات (§8: قراءة بالمستلم): المحامي تنبيهاته، ورئيس القسم/الشعبة
-    /// ما استلمه في فرعه فقط. المدير/المشرف خارج نطاق التنبيهات.
+    /// ما استلمه في فرعه فقط، والمدير/المشرف قائمة الإشراف عبر الفروع (قراءة فقط).
     /// </summary>
     [HttpGet]
     public async Task<IActionResult> List(CancellationToken ct)
@@ -45,6 +48,9 @@ public class AlertsController : ControllerBase
                 return Forbid();
             return Ok(await _alerts.ListForHeadAsync(User.GetUserId(), branchId.Value, ct));
         }
+
+        if (IsManagerOrAdmin)
+            return Ok(await _alerts.ListForOversightAsync(ct));
 
         return Forbid();
     }
@@ -116,6 +122,12 @@ public class AlertsController : ControllerBase
             var list = await _alerts.ListForHeadAsync(User.GetUserId(), branchId.Value, ct);
             var alert = list.FirstOrDefault(a => a.Id == id);
             return alert is null ? NotFound() : Ok(alert);
+        }
+
+        if (IsManagerOrAdmin)
+        {
+            var single = await _alerts.GetByIdAsync(id, ct);
+            return single is null ? NotFound() : Ok(single);
         }
 
         return Forbid();

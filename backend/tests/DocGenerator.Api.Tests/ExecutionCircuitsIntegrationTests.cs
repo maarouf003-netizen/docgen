@@ -318,11 +318,11 @@ public class ExecutionCircuitsIntegrationTests
             fullName = username,
             role = "subhead",
             branchId,
-            password = "123456",
+            password = "TestPass1234",
             sectionId,
         });
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        var token = (await _factory.LoginAsync(username, "123456"))!.Token!;
+        var token = (await _factory.LoginAsync(username, "TestPass1234"))!.Token!;
         return (sectionId, _factory.ClientWithToken(token));
     }
 

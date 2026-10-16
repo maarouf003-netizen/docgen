@@ -4905,10 +4905,10 @@ public class AuthServiceTests : IDisposable
     {
         var service = CreateService();
         var user = _db.Users.First();
-        var ok = await service.ChangePasswordAsync(user.Id, "123456", "newpass");
+        var ok = await service.ChangePasswordAsync(user.Id, "123456", "TestPass1234");
         Assert.True(ok);
 
-        var login = await service.LoginAsync(new LoginRequest("lawyer1", "newpass"));
+        var login = await service.LoginAsync(new LoginRequest("lawyer1", "TestPass1234"));
         Assert.Equal(LoginStatus.Success, login.Status);
         Assert.NotNull(login.Response);
     }
@@ -4920,7 +4920,7 @@ public class AuthServiceTests : IDisposable
         var user = _db.Users.First();
         var initial = user.TokenVersion;
 
-        var ok = await service.ChangePasswordAsync(user.Id, "123456", "newpass");
+        var ok = await service.ChangePasswordAsync(user.Id, "123456", "TestPass1234");
 
         Assert.True(ok);
         Assert.Equal(initial + 1, _db.Users.First().TokenVersion);

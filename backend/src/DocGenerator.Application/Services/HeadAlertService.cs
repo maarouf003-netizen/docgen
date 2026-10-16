@@ -17,6 +17,13 @@ public interface IHeadAlertService
     /// تعليم مقروء (المُرسِل ليس مستلمًا) وبلا أثر في العدّادات والتعاقب.
     /// </summary>
     Task<List<HeadAlertDto>> ListSentAsync(int userId, int branchId, CancellationToken ct = default);
+    /// <summary>
+    /// قائمة الإشراف (المدير/المشرف — قرار المالك 2026-10-16): كل التنبيهات عبر
+    /// الفروع، قراءة فقط، وحالة القراءة فارغة (الحالة مستلم-محددة أصلًا).
+    /// </summary>
+    Task<List<HeadAlertDto>> ListForOversightAsync(CancellationToken ct = default);
+    /// <summary>تنبيه مفرد للإشراف (المدير/المشرف) — بلا فلترة مستلم.</summary>
+    Task<HeadAlertDto?> GetByIdAsync(int id, CancellationToken ct = default);
     Task<int> CountUnreadAsync(int userId, CancellationToken ct = default);
     Task<HeadAlertDto> CreateAsync(CreateHeadAlertRequest request, int actorUserId, int actorBranchId, string? actorName, CancellationToken ct = default);
     Task<bool> MarkReadAsync(int alertId, int userId, CancellationToken ct = default);
@@ -88,6 +95,18 @@ public sealed class HeadAlertService : IHeadAlertService
     {
         var alerts = await _alerts.ListSentAsync(userId, branchId, ct);
         return alerts.Select(a => ToHeadDto(a, userId)).ToList();
+    }
+
+    public async Task<List<HeadAlertDto>> ListForOversightAsync(CancellationToken ct = default)
+    {
+        var alerts = await _alerts.ListForOversightAsync(ct);
+        return alerts.Select(a => ToHeadDto(a)).ToList();
+    }
+
+    public async Task<HeadAlertDto?> GetByIdAsync(int id, CancellationToken ct = default)
+    {
+        var alert = await _alerts.GetByIdWithRecipientsAsync(id, ct);
+        return alert is null ? null : ToHeadDto(alert);
     }
 
     public Task<int> CountUnreadAsync(int userId, CancellationToken ct = default)

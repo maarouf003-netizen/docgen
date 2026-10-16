@@ -54,7 +54,7 @@ public class SubHeadFoundationTests : IDisposable
     public async Task CreateUser_UndefinedNumericRole_Throws(string role)
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateUserAsync(new CreateUserRequest("x", "مستخدم", role, null, "123456"), "admin"));
+            _service.CreateUserAsync(new CreateUserRequest("x", "مستخدم", role, null, "TestPass1234"), "admin"));
     }
 
     [Theory]
@@ -70,7 +70,7 @@ public class SubHeadFoundationTests : IDisposable
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateUserAsync(
-                new CreateUserRequest("sub_tmp", "رئيس شعبة مؤقت", role, branchId, "123456"), "admin"));
+                new CreateUserRequest("sub_tmp", "رئيس شعبة مؤقت", role, branchId, "TestPass1234"), "admin"));
         Assert.Contains("الشعبة إلزامية", ex.Message);
     }
 
@@ -85,7 +85,7 @@ public class SubHeadFoundationTests : IDisposable
         await _db.SaveChangesAsync();
 
         var user = await _service.CreateUserAsync(
-            new CreateUserRequest("sub_tmp", "رئيس شعبة مؤقت", "subhead", branchId, "123456", section.Id), "admin");
+            new CreateUserRequest("sub_tmp", "رئيس شعبة مؤقت", "subhead", branchId, "TestPass1234", section.Id), "admin");
 
         Assert.Equal("subhead", user.Role);
         Assert.Equal(branchId, user.BranchId);
@@ -100,6 +100,6 @@ public class SubHeadFoundationTests : IDisposable
         // برسالة واضحة قبل أي كتابة (وقيد القاعدة ظهرًا للكتابة المباشرة).
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateUserAsync(
-                new CreateUserRequest("sub_non", "رئيس شعبة شاذ", "subhead", null, "123456"), "admin"));
+                new CreateUserRequest("sub_non", "رئيس شعبة شاذ", "subhead", null, "TestPass1234"), "admin"));
     }
 }

@@ -73,7 +73,7 @@ describe('UsersManagement', () => {
     await user.type(screen.getByPlaceholderText('مثال: محمد أحمد علي'), 'رئيس جديد');
     await user.selectOptions(screen.getByLabelText('الدور'), 'head');
     await user.selectOptions(screen.getByLabelText('الفرع'), '1');
-    await user.type(screen.getByLabelText(/كلمة المرور/), '123456');
+    await user.type(screen.getByLabelText(/كلمة المرور/), 'TestPass1234');
     await user.click(screen.getByRole('button', { name: 'إنشاء المستخدم' }));
 
     await waitFor(() => {
@@ -83,7 +83,7 @@ describe('UsersManagement', () => {
         role: 'head',
         branchId: 1,
         sectionId: null,
-        password: '123456',
+        password: 'TestPass1234',
       });
     });
   });
@@ -96,7 +96,7 @@ describe('UsersManagement', () => {
     await user.type(screen.getByPlaceholderText('مثال: محمد أحمد علي'), 'رئيس جديد');
     await user.selectOptions(screen.getByLabelText('الدور'), 'head');
     await user.selectOptions(screen.getByLabelText('الفرع'), '');
-    await user.type(screen.getByLabelText(/كلمة المرور/), '123456');
+    await user.type(screen.getByLabelText(/كلمة المرور/), 'TestPass1234');
     await user.click(screen.getByRole('button', { name: 'إنشاء المستخدم' }));
 
     expect(await screen.findByText(/يجب تحديد الفرع/)).toBeInTheDocument();
@@ -112,7 +112,7 @@ describe('UsersManagement', () => {
 
     await user.clear(screen.getByLabelText(/الاسم الثلاثي/));
     await user.type(screen.getByLabelText(/الاسم الثلاثي/), 'محامي معدل');
-    await user.type(screen.getByLabelText(/كلمة مرور جديدة/), '654321');
+    await user.type(screen.getByLabelText(/كلمة مرور جديدة/), 'TestPass5678');
     await user.click(screen.getByRole('button', { name: 'حفظ التعديل' }));
 
     await waitFor(() => {
@@ -123,7 +123,7 @@ describe('UsersManagement', () => {
         sectionId: null,
         isActive: true,
         successorId: null,
-        password: '654321',
+        password: 'TestPass5678',
       });
     });
   });
@@ -183,7 +183,7 @@ describe('UsersManagement', () => {
     expect(await screen.findByLabelText(/الشعبة/)).toBeInTheDocument();
 
     await user.type(screen.getByPlaceholderText('مثال: محمد أحمد علي'), 'رئيس شعبة');
-    await user.type(screen.getByLabelText(/كلمة المرور/), '123456');
+    await user.type(screen.getByLabelText(/كلمة المرور/), 'TestPass1234');
     await user.click(screen.getByRole('button', { name: 'إنشاء المستخدم' }));
     expect(await screen.findByText(/الشعبة إلزامية/)).toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
@@ -197,7 +197,7 @@ describe('UsersManagement', () => {
         role: 'subhead',
         branchId: 1,
         sectionId: 3,
-        password: '123456',
+        password: 'TestPass1234',
       });
     });
   });

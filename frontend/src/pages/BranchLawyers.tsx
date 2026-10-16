@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import { MIN_PASSWORD_LENGTH } from '../utils/passwordPolicy';
 import TransferAllFilesModal from '../components/TransferAllFilesModal';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import type { BranchDto, LawyerListItem } from '../types';
@@ -75,8 +76,8 @@ export default function BranchLawyers() {
       setFormError('الاسم الثلاثي مطلوب');
       return;
     }
-    if (password.length < 6) {
-      setFormError('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setFormError(`كلمة المرور يجب أن تكون ${MIN_PASSWORD_LENGTH} أحرف على الأقل`);
       return;
     }
 
@@ -134,8 +135,8 @@ export default function BranchLawyers() {
       setEditError('الاسم الثلاثي مطلوب');
       return;
     }
-    if (editPassword && editPassword.length < 6) {
-      setEditError('كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل');
+    if (editPassword && editPassword.length < MIN_PASSWORD_LENGTH) {
+      setEditError(`كلمة المرور الجديدة يجب أن تكون ${MIN_PASSWORD_LENGTH} أحرف على الأقل`);
       return;
     }
 
@@ -203,7 +204,7 @@ export default function BranchLawyers() {
             />
           </div>
           <div className="sm:col-span-2">
-            <label htmlFor="lawyer-password" className="block text-xs font-medium text-gray-600 mb-1">كلمة المرور (6 أحرف على الأقل)</label>
+            <label htmlFor="lawyer-password" className="block text-xs font-medium text-gray-600 mb-1">كلمة المرور ({MIN_PASSWORD_LENGTH} أحرف على الأقل)</label>
             <input
               id="lawyer-password"
               type="password"

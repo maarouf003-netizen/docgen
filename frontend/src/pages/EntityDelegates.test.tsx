@@ -61,7 +61,7 @@ describe('EntityDelegates', () => {
     await user.click(await screen.findByRole('button', { name: '+ إضافة مندوب' }));
     await user.type(screen.getByLabelText('اسم الدخول'), 'new.delegate');
     await user.type(screen.getByLabelText('الاسم الكامل'), 'مندوب جديد');
-    await user.type(screen.getByLabelText('كلمة المرور'), 'secret6');
+    await user.type(screen.getByLabelText('كلمة المرور'), 'TestPass1234');
     // اختيار «قيد بعينه» بلا قيد فعلي → خطأ تحقق محلي.
     const entryRadio = screen.getByRole('radio', { name: /قيد بعينه/ });
     await user.click(entryRadio);
@@ -78,7 +78,7 @@ describe('EntityDelegates', () => {
     await user.click(await screen.findByRole('button', { name: '+ إضافة مندوب' }));
     await user.type(screen.getByLabelText('اسم الدخول'), 'new.delegate');
     await user.type(screen.getByLabelText('الاسم الكامل'), 'مندوب جديد');
-    await user.type(screen.getByLabelText('كلمة المرور'), 'secret6');
+    await user.type(screen.getByLabelText('كلمة المرور'), 'TestPass1234');
     await user.selectOptions(screen.getByLabelText('الهوية الأم'), '5');
     await user.click(screen.getByRole('button', { name: 'إنشاء المندوب' }));
 
@@ -86,7 +86,7 @@ describe('EntityDelegates', () => {
       expect(api.post).toHaveBeenCalledWith('/entity-portal/delegates', {
         username: 'new.delegate',
         fullName: 'مندوب جديد',
-        password: 'secret6',
+        password: 'TestPass1234',
         portalGroupId: 5,
         portalEntryId: null,
       });

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import { MIN_PASSWORD_LENGTH } from '../utils/passwordPolicy';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import type { BranchDto, Role, SectionDto, UserListItem } from '../types';
 import { ROLE_LABELS } from '../auth/roleLabels';
@@ -135,7 +136,7 @@ export default function UsersManagement() {
 
   const validate = (pw: string): string => {
     if (!fullName.trim()) return 'الاسم الثلاثي مطلوب';
-    if (pw.length < 6) return 'كلمة المرور يجب أن تكون 6 أحرف على الأقل';
+    if (pw.length < MIN_PASSWORD_LENGTH) return `كلمة المرور يجب أن تكون ${MIN_PASSWORD_LENGTH} أحرف على الأقل`;
     return '';
   };
 
@@ -225,8 +226,8 @@ export default function UsersManagement() {
       setEditError('التعطيل يتطلب خلفًا إجباريًا — حدد الخلف');
       return;
     }
-    if (editPassword && editPassword.length < 6) {
-      setEditError('كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل');
+    if (editPassword && editPassword.length < MIN_PASSWORD_LENGTH) {
+      setEditError(`كلمة المرور الجديدة يجب أن تكون ${MIN_PASSWORD_LENGTH} أحرف على الأقل`);
       return;
     }
 
@@ -334,7 +335,7 @@ export default function UsersManagement() {
             </div>
           )}
           <div className="sm:col-span-2">
-            <label htmlFor="user-password" className="block text-xs font-medium text-gray-600 mb-1">كلمة المرور (6 أحرف على الأقل)</label>
+            <label htmlFor="user-password" className="block text-xs font-medium text-gray-600 mb-1">كلمة المرور ({MIN_PASSWORD_LENGTH} أحرف على الأقل)</label>
             <input
               id="user-password"
               type="password"

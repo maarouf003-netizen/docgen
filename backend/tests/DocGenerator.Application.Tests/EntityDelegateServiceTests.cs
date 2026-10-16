@@ -69,7 +69,7 @@ public class EntityDelegateServiceTests : IDisposable
     public async Task Create_HashesPassword_BindsScope_AndAudits()
     {
         var dto = await _service.CreateAsync(
-            new CreateDelegateRequest("delegate.one", "مندوب الوزارة", "secret6", _groupId, null), "المدير");
+            new CreateDelegateRequest("delegate.one", "مندوب الوزارة", "TestPass1234", _groupId, null), "المدير");
 
         Assert.True(dto.IsActive);
         Assert.Equal(_groupId, dto.PortalGroupId);
@@ -78,7 +78,7 @@ public class EntityDelegateServiceTests : IDisposable
         var stored = await _db.Users.AsNoTracking().SingleAsync(u => u.Username == "delegate.one");
         Assert.Equal(UserRole.EntityManager, stored.Role);
         Assert.Null(stored.BranchId);
-        Assert.NotEqual("secret6", stored.PasswordHash);
+        Assert.NotEqual("TestPass1234", stored.PasswordHash);
         Assert.Contains("create_delegate", _audit.Actions);
     }
 
@@ -86,10 +86,10 @@ public class EntityDelegateServiceTests : IDisposable
     public async Task Create_RequiresExactlyOneScope()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateDelegateRequest("d1", "مندوب", "secret6", null, null), "مدير"));
+            _service.CreateAsync(new CreateDelegateRequest("d1", "مندوب", "TestPass1234", null, null), "مدير"));
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateDelegateRequest("d1", "مندوب", "secret6", _groupId, _entryId), "مدير"));
+            _service.CreateAsync(new CreateDelegateRequest("d1", "مندوب", "TestPass1234", _groupId, _entryId), "مدير"));
 
         Assert.Empty(_audit.Actions);
     }
@@ -97,10 +97,10 @@ public class EntityDelegateServiceTests : IDisposable
     [Fact]
     public async Task Create_DuplicateUsername_FailsFriendly()
     {
-        await _service.CreateAsync(new CreateDelegateRequest("delegate.dup", "أول", "secret6", _groupId, null), "مدير");
+        await _service.CreateAsync(new CreateDelegateRequest("delegate.dup", "أول", "TestPass1234", _groupId, null), "مدير");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateDelegateRequest("DELEGATE.DUP", "ثانٍ", "secret6", _groupId, null), "مدير"));
+            _service.CreateAsync(new CreateDelegateRequest("DELEGATE.DUP", "ثانٍ", "TestPass1234", _groupId, null), "مدير"));
 
         // التطبيع يوحّد حالة الأحرف فيكشف التكرار.
         Assert.Contains("بنفس اسم الدخول", ex.Message);
@@ -111,7 +111,7 @@ public class EntityDelegateServiceTests : IDisposable
     public async Task Create_UnknownEntry_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateDelegateRequest("delegate.x", "مندوب", "secret6", null, 999), "مدير"));
+            _service.CreateAsync(new CreateDelegateRequest("delegate.x", "مندوب", "TestPass1234", null, 999), "مدير"));
     }
 
     [Fact]
@@ -120,7 +120,7 @@ public class EntityDelegateServiceTests : IDisposable
         var pendingId = await AddEntryAsync("فرع معلق", status: EntityStatusCatalog.Pending);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateDelegateRequest("delegate.pend", "مندوب", "secret6", null, pendingId), "مدير"));
+            _service.CreateAsync(new CreateDelegateRequest("delegate.pend", "مندوب", "TestPass1234", null, pendingId), "مدير"));
 
         Assert.Contains("بانتظار الاعتماد", ex.Message);
         Assert.Empty(await _service.ListAsync());
@@ -133,7 +133,7 @@ public class EntityDelegateServiceTests : IDisposable
         var reviewId = await AddEntryAsync("فرع مراجعة", needsReview: true);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateDelegateRequest("delegate.rev", "مندوب", "secret6", null, reviewId), "مدير"));
+            _service.CreateAsync(new CreateDelegateRequest("delegate.rev", "مندوب", "TestPass1234", null, reviewId), "مدير"));
 
         Assert.Contains("بانتظار المراجعة", ex.Message);
         Assert.Empty(await _service.ListAsync());
@@ -145,7 +145,7 @@ public class EntityDelegateServiceTests : IDisposable
         var offId = await AddEntryAsync("فرع موقوف", isActive: false);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateDelegateRequest("delegate.stop", "مندوب", "secret6", null, offId), "مدير"));
+            _service.CreateAsync(new CreateDelegateRequest("delegate.stop", "مندوب", "TestPass1234", null, offId), "مدير"));
 
         Assert.Contains("غير نشط", ex.Message);
         Assert.Empty(await _service.ListAsync());
@@ -161,7 +161,7 @@ public class EntityDelegateServiceTests : IDisposable
         _db.ChangeTracker.Clear();
 
         var dto = await _service.CreateAsync(
-            new CreateDelegateRequest("delegate.entry", "مندوب القيد", "secret6", null, _entryId), "مدير");
+            new CreateDelegateRequest("delegate.entry", "مندوب القيد", "TestPass1234", null, _entryId), "مدير");
 
         Assert.Null(dto.PortalGroupId);
         Assert.Equal(_entryId, dto.PortalEntryId);
@@ -171,7 +171,7 @@ public class EntityDelegateServiceTests : IDisposable
     [Fact]
     public async Task Update_ToEntryScope_AfterDetach_ResolvesLabel()
     {
-        var created = await _service.CreateAsync(new CreateDelegateRequest("delegate.move", "مندوب", "old1234", _groupId, null), "مدير");
+        var created = await _service.CreateAsync(new CreateDelegateRequest("delegate.move", "مندوب", "TestPass1234", _groupId, null), "مدير");
         _db.ChangeTracker.Clear();
 
         var updated = await _service.UpdateAsync(created.Id,
@@ -187,7 +187,7 @@ public class EntityDelegateServiceTests : IDisposable
     [Fact]
     public async Task Update_ToIneligibleEntry_Rejected()
     {
-        var created = await _service.CreateAsync(new CreateDelegateRequest("delegate.keep", "مندوب", "old1234", _groupId, null), "مدير");
+        var created = await _service.CreateAsync(new CreateDelegateRequest("delegate.keep", "مندوب", "TestPass1234", _groupId, null), "مدير");
         var pendingId = await AddEntryAsync("فرع معلق", status: EntityStatusCatalog.Pending);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -206,11 +206,11 @@ public class EntityDelegateServiceTests : IDisposable
     [Fact]
     public async Task Update_RebindsScope_ResetsPassword_AndBumpsTokenVersion()
     {
-        var created = await _service.CreateAsync(new CreateDelegateRequest("delegate.re", "مندوب", "old1234", _groupId, null), "مدير");
+        var created = await _service.CreateAsync(new CreateDelegateRequest("delegate.re", "مندوب", "TestPass1234", _groupId, null), "مدير");
         var hashBefore = (await _db.Users.AsNoTracking().SingleAsync(u => u.Id == created.Id)).PasswordHash;
 
         var updated = await _service.UpdateAsync(created.Id,
-            new UpdateDelegateRequest("الاسم الجديد", IsActive: false, NewPassword: "new9876", PortalGroupId: null, PortalEntryId: _entryId),
+            new UpdateDelegateRequest("الاسم الجديد", IsActive: false, NewPassword: "TestPass5678", PortalGroupId: null, PortalEntryId: _entryId),
             "المدير");
 
         Assert.NotNull(updated);
@@ -242,19 +242,19 @@ public class EntityDelegateServiceTests : IDisposable
     [Fact]
     public async Task Update_ShortPassword_Rejected()
     {
-        var created = await _service.CreateAsync(new CreateDelegateRequest("delegate.pw", "مندوب", "old1234", _groupId, null), "مدير");
+        var created = await _service.CreateAsync(new CreateDelegateRequest("delegate.pw", "مندوب", "TestPass1234", _groupId, null), "مدير");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.UpdateAsync(created.Id,
                 new UpdateDelegateRequest(null, null, "123", _groupId, null), "مدير"));
 
-        Assert.Contains("6 أحرف", ex.Message);
+        Assert.Contains("10 أحرف", ex.Message);
     }
 
     [Fact]
     public async Task Deactivate_WithoutPasswordChange_BumpsTokenVersion_ToRevokeSessions()
     {
-        var created = await _service.CreateAsync(new CreateDelegateRequest("delegate.off", "مندوب", "old1234", _groupId, null), "مدير");
+        var created = await _service.CreateAsync(new CreateDelegateRequest("delegate.off", "مندوب", "TestPass1234", _groupId, null), "مدير");
         var before = await _db.Users.AsNoTracking().SingleAsync(u => u.Id == created.Id);
 
         await _service.UpdateAsync(created.Id,
@@ -284,11 +284,11 @@ public class EntityDelegateServiceTests : IDisposable
 
         // خارج محافظة فرعه مرفوض إنشاءً...
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.CreateAsync(
-            new CreateDelegateRequest("delegate.alp", "مندوب حلب", "secret6", null, aleppoEntryId), "رئيس شعبة", default, actor));
+            new CreateDelegateRequest("delegate.alp", "مندوب حلب", "TestPass1234", null, aleppoEntryId), "رئيس شعبة", default, actor));
 
         // ...وداخلها مسموح.
         var dto = await _service.CreateAsync(
-            new CreateDelegateRequest("delegate.dam", "مندوب دمشق", "secret6", null, _entryId), "رئيس شعبة", default, actor);
+            new CreateDelegateRequest("delegate.dam", "مندوب دمشق", "TestPass1234", null, _entryId), "رئيس شعبة", default, actor);
         Assert.Equal("delegate.dam", dto.Username);
 
         // والقائمة محجوبة عن خارج المحافظة.

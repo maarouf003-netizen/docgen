@@ -31,6 +31,8 @@ public sealed class SwaggerDisabledFactory : WebApplicationFactory<Program>
         builder.UseEnvironment("Production");
         builder.UseSetting("ConnectionStrings:DefaultConnection", $"Data Source={_dbPath}");
         builder.UseSetting("Database:UsePostgres", "false");
+        // قرار صريح مقصود: التحقق من قيود الإنتاج (Swagger مغلق) على عقدة SQLite مؤقتة.
+        builder.UseSetting("Database:AllowSqliteInProduction", "true");
         builder.UseSetting("Swagger:Enabled", "false");
         builder.UseSetting("Jwt:Secret", "integration-test-secret-0123456789-0123456789-0123456789");
         builder.UseSetting("Bootstrap:AdminPassword", "test-bootstrap-password");

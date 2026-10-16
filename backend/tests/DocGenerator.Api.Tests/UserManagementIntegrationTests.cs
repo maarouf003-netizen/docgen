@@ -62,7 +62,7 @@ public class UserManagementIntegrationTests
             fullName = "رئيس قسم جديد",
             role = "head",
             branchId,
-            password = "123456",
+            password = "TestPass1234",
         });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
@@ -71,7 +71,7 @@ public class UserManagementIntegrationTests
         Assert.Equal(username, created.Username);
         Assert.Equal("head", created.Role);
 
-        var login = await _factory.LoginAsync(username, "123456");
+        var login = await _factory.LoginAsync(username, "TestPass1234");
         Assert.Equal(HttpStatusCode.OK, (HttpStatusCode)login!.StatusCode);
     }
 
@@ -88,7 +88,7 @@ public class UserManagementIntegrationTests
             fullName = "رئيس أول",
             role = "head",
             branchId,
-            password = "123456",
+            password = "TestPass1234",
         });
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
 
@@ -98,7 +98,7 @@ public class UserManagementIntegrationTests
             fullName = "رئيس ثان",
             role = "head",
             branchId,
-            password = "123456",
+            password = "TestPass1234",
         });
         Assert.Equal(HttpStatusCode.BadRequest, second.StatusCode);
         Assert.Contains("الفرع لا يقبل رئيسي قسم", await second.Content.ReadAsStringAsync());
@@ -158,7 +158,7 @@ public class UserManagementIntegrationTests
             fullName = "مستخدم",
             role = "king",
             branchId = (int?)null,
-            password = "123456",
+            password = "TestPass1234",
         });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -184,7 +184,7 @@ public class UserManagementIntegrationTests
         {
             username = UniqueName("l"),
             fullName = "محامي جديد",
-            password = "123456",
+            password = "TestPass1234",
             branchId = await _factory.GetBranchIdAsync("ALP"),
         });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -201,7 +201,7 @@ public class UserManagementIntegrationTests
         {
             username = UniqueName("l"),
             fullName = "محامي حلب",
-            password = "123456",
+            password = "TestPass1234",
             branchId = await _factory.GetBranchIdAsync("ALP"),
         });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -218,7 +218,7 @@ public class UserManagementIntegrationTests
         {
             username = UniqueName("l"),
             fullName = "محامي",
-            password = "123456",
+            password = "TestPass1234",
             branchId = (int?)null,
         });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -232,7 +232,7 @@ public class UserManagementIntegrationTests
         {
             username = UniqueName("l"),
             fullName = "محامي حلب",
-            password = "123456",
+            password = "TestPass1234",
             branchId = await _factory.GetBranchIdAsync("ALP"),
         });
         var aleppoLawyer = (await created.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
@@ -250,18 +250,18 @@ public class UserManagementIntegrationTests
         {
             username = UniqueName("l"),
             fullName = "محامي دمشق",
-            password = "123456",
+            password = "TestPass1234",
             branchId = await _factory.GetBranchIdAsync("DAM"),
         });
         var lawyer = (await created.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
-        var token = (await _factory.LoginAsync(lawyer.Username, "123456"))!.Token;
+        var token = (await _factory.LoginAsync(lawyer.Username, "TestPass1234"))!.Token;
         Assert.False(string.IsNullOrWhiteSpace(token));
 
         var head = _factory.AuthorizedClient("head1");
         var response = await head.PatchAsJsonAsync($"/api/users/{lawyer.Id}/active", new { isActive = false });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var login = await _factory.LoginAsync(lawyer.Username, "123456");
+        var login = await _factory.LoginAsync(lawyer.Username, "TestPass1234");
         Assert.Equal(HttpStatusCode.Unauthorized, (HttpStatusCode)login!.StatusCode);
     }
 
@@ -277,7 +277,7 @@ public class UserManagementIntegrationTests
             fullName = name,
             role = "head",
             branchId,
-            password = "123456",
+            password = "TestPass1234",
         });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var created = await response.Content.ReadFromJsonAsync<UserListItemDto>();
@@ -286,7 +286,7 @@ public class UserManagementIntegrationTests
         Assert.Equal("احمد خالد العلي", created!.Username);
 
         // الدخول بالنسخة ذات الهمزة يعمل لأن التطبيع على الطرفين.
-        var login = await _factory.LoginAsync("أحمد خالد العلي", "123456");
+        var login = await _factory.LoginAsync("أحمد خالد العلي", "TestPass1234");
         Assert.Equal(HttpStatusCode.OK, (HttpStatusCode)login!.StatusCode);
     }
 
@@ -302,7 +302,7 @@ public class UserManagementIntegrationTests
             fullName = name,
             role = "head",
             branchId,
-            password = "123456",
+            password = "TestPass1234",
         });
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
 
@@ -312,7 +312,7 @@ public class UserManagementIntegrationTests
             fullName = name,
             role = "lawyer",
             branchId,
-            password = "123456",
+            password = "TestPass1234",
         });
         Assert.Equal(HttpStatusCode.BadRequest, second.StatusCode);
         var body = await second.Content.ReadAsStringAsync();
@@ -332,7 +332,7 @@ public class UserManagementIntegrationTests
             fullName = name,
             role = "head",
             branchId = branchA,
-            password = "123456",
+            password = "TestPass1234",
         });
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
 
@@ -342,7 +342,7 @@ public class UserManagementIntegrationTests
             fullName = name,
             role = "head",
             branchId = branchB,
-            password = "123456",
+            password = "TestPass1234",
         });
         Assert.Equal(HttpStatusCode.Created, second.StatusCode);
     }
@@ -377,7 +377,7 @@ public class UserManagementIntegrationTests
         {
             username,
             fullName = "محامي دمشق",
-            password = "123456",
+            password = "TestPass1234",
             branchId = await _factory.GetBranchIdAsync("DAM"),
         });
         var lawyer = (await created.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
@@ -387,7 +387,7 @@ public class UserManagementIntegrationTests
         var update = await head.PutAsJsonAsync($"/api/users/lawyers/{lawyer.Id}", new
         {
             fullName = "محامي محدث للاختبار",
-            password = "654321",
+            password = "TestPass5678",
         });
         Assert.Equal(HttpStatusCode.OK, update.StatusCode);
         var updated = await update.Content.ReadFromJsonAsync<LawyerListItemDto>();
@@ -395,10 +395,10 @@ public class UserManagementIntegrationTests
         Assert.Equal("محامي محدث للاختبار", updated.Username);
 
         // الدخول بالاسم القديم مرفوض (تغيّر اسم الدخول) وبكلمة المرور القديمة مرفوض (إبطال الرموز).
-        var oldLogin = await _factory.LoginAsync(username, "123456");
+        var oldLogin = await _factory.LoginAsync(username, "TestPass1234");
         Assert.Equal(HttpStatusCode.Unauthorized, (HttpStatusCode)oldLogin!.StatusCode);
 
-        var newLogin = await _factory.LoginAsync("محامي محدث للاختبار", "654321");
+        var newLogin = await _factory.LoginAsync("محامي محدث للاختبار", "TestPass5678");
         Assert.Equal(HttpStatusCode.OK, (HttpStatusCode)newLogin!.StatusCode);
     }
 
@@ -410,7 +410,7 @@ public class UserManagementIntegrationTests
         {
             username = UniqueName("l"),
             fullName = "محامي حلب",
-            password = "123456",
+            password = "TestPass1234",
             branchId = await _factory.GetBranchIdAsync("ALP"),
         });
         var aleppoLawyer = (await created.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
@@ -431,7 +431,7 @@ public class UserManagementIntegrationTests
         {
             username = UniqueName("l"),
             fullName = "محامي حلب",
-            password = "123456",
+            password = "TestPass1234",
             branchId = await _factory.GetBranchIdAsync("ALP"),
         });
         var aleppoLawyer = (await created.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
@@ -467,7 +467,7 @@ public class UserManagementIntegrationTests
         {
             username = UniqueName("l"),
             fullName = "محامي دمشق",
-            password = "123456",
+            password = "TestPass1234",
             branchId = await _factory.GetBranchIdAsync("DAM"),
         });
         var lawyer = (await created.Content.ReadFromJsonAsync<LawyerListItemDto>())!;
@@ -491,7 +491,7 @@ public class UserManagementIntegrationTests
         {
             username = "مروان سعيد",
             fullName = "مروان سعيد",
-            password = "123456",
+            password = "TestPass1234",
             branchId = await _factory.GetBranchIdAsync("DAM"),
         });
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
@@ -500,7 +500,7 @@ public class UserManagementIntegrationTests
         {
             username = "قاسم علي",
             fullName = "قاسم علي",
-            password = "123456",
+            password = "TestPass1234",
             branchId = await _factory.GetBranchIdAsync("DAM"),
         });
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
@@ -526,7 +526,7 @@ public class UserManagementIntegrationTests
             fullName = "رئيس شعبة التكامل",
             role = "subhead",
             branchId,
-            password = "123456",
+            password = "TestPass1234",
             sectionId,
         });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
@@ -537,7 +537,7 @@ public class UserManagementIntegrationTests
 
         // الدخول يعمل (بوابة الفرع) — ونقاط الدوائر مفتوحة للسياسة منذ المرحلة 3
         // لكن مفلترة بالنطاق (شعبته فقط — هنا فارغة).
-        var login = await _factory.LoginAsync(username, "123456");
+        var login = await _factory.LoginAsync(username, "TestPass1234");
         Assert.Equal(HttpStatusCode.OK, (HttpStatusCode)login!.StatusCode);
         var client = _factory.CreateClient();
         client.SetAuthCookie(login.Token!);
@@ -557,7 +557,7 @@ public class UserManagementIntegrationTests
             fullName = "رئيس شعبة بلا",
             role = "subhead",
             branchId = await _factory.GetBranchIdAsync("DAM"),
-            password = "123456",
+            password = "TestPass1234",
         });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Contains("الشعبة إلزامية", await response.Content.ReadAsStringAsync());
@@ -575,7 +575,7 @@ public class UserManagementIntegrationTests
             fullName = "رئيس أول",
             role = "subhead",
             branchId,
-            password = "123456",
+            password = "TestPass1234",
             sectionId,
         });
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
@@ -586,7 +586,7 @@ public class UserManagementIntegrationTests
             fullName = "رئيس ثان",
             role = "subhead",
             branchId,
-            password = "123456",
+            password = "TestPass1234",
             sectionId,
         });
         Assert.Equal(HttpStatusCode.BadRequest, second.StatusCode);
@@ -604,7 +604,7 @@ public class UserManagementIntegrationTests
             fullName = "رئيس شعبة خطأ",
             role = "subhead",
             branchId = await _factory.GetBranchIdAsync("DAM"),
-            password = "123456",
+            password = "TestPass1234",
             sectionId,
         });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -622,7 +622,7 @@ public class UserManagementIntegrationTests
             fullName = "رئيس شعبة محل",
             role = "subhead",
             branchId,
-            password = "123456",
+            password = "TestPass1234",
             sectionId,
         });
         Assert.Equal(HttpStatusCode.Created, head.StatusCode);
@@ -631,7 +631,7 @@ public class UserManagementIntegrationTests
         {
             username = UniqueName("sl"),
             fullName = "محامي الخلف",
-            password = "123456",
+            password = "TestPass1234",
             branchId,
         });
         Assert.Equal(HttpStatusCode.OK, lawyer.StatusCode);
@@ -688,7 +688,7 @@ public class UserManagementIntegrationTests
             fullName = "رئيس بلا خلف",
             role = "subhead",
             branchId,
-            password = "123456",
+            password = "TestPass1234",
             sectionId,
         });
         var headDto = await head.Content.ReadFromJsonAsync<UserListItemDto>();
