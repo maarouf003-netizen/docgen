@@ -6,7 +6,8 @@ namespace DocGenerator.Application.Common.Options;
 public class LoggingOptions
 {
     public string Path { get; set; } = "logs/logs-.txt";
-    public int RetainedDays { get; set; } = 31;
+    /// <summary>قرار المالك 2026-10-16: احتفاظ ملفات التشخيص 60 يومًا (M-03).</summary>
+    public int RetainedDays { get; set; } = 60;
     public long FileSizeLimitBytes { get; set; } = 50 * 1024 * 1024;
     public int ClientErrorPerMinuteLimit { get; set; } = 30;
     public int ClientErrorPayloadSizeLimit { get; set; } = 2048;

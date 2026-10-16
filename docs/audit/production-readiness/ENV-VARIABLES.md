@@ -75,7 +75,7 @@
 | `WordTemplates__Path` | `WordTemplates` | مسار قوالب `Word` — يجب أن تحوي ملفات `.docx` فعليًا عند النشر. |
 | `Logging__LogLevel__Default` | `Warning` | مستوى Serilog. |
 | `Logging__File__Path` | `logs/logs-.txt` | **يجب أن يكون قابلًا للكتابة** (`Dockerfile:25` يهيّئ `/app/logs` ومالكه `app`). |
-| `Logging__File__RetainedDays` | `31` | أيام الاحتفاظ. |
+| `Logging__File__RetainedDays` | `60` | أيام احتفاظ ملفات التشخيص (قرار المالك 2026-10-16). |
 | `Logging__File__FileSizeLimitBytes` | `52428800` | سقف الملف (`50MB`). |
 
 ## 7) متغيرات الاختبار (CI/فحص `Postgres` — ليست للنشر)

@@ -1,4 +1,5 @@
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -54,21 +55,85 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             .ToListAsync(ct);
     }
 
-    public async Task<List<HeadAlert>> ListForOversightAsync(CancellationToken ct = default)
+    public async Task<List<HeadAlertDto>> ListForOversightAsync(CancellationToken ct = default)
     {
-        // قائمة إشرافية محدودة: ترتيب حتمي عند تساوي الطوابع، واستعلامات منفصلة
-        // لتفادي تضخم الجداء الديكارتي مع تضمين مجموعة المستلمين.
-        return await Db.HeadAlerts
+        // قائمة إشرافية محدودة بإسقاط عرضي: ترتيب حتمي عند تساوي الطوابع،
+        // والعدّادات استعلامات فرعية في قاعدة البيانات — لا تُحمَّل صفوف
+        // المستلمين أصلًا. التحويلات غير القابلة للترجمة (نوع الهدف/العنوان)
+        // تتم في الذاكرة على الصفوف المسقطة فقط.
+        var rows = await Db.HeadAlerts
             .AsNoTracking()
-            .AsSplitQuery()
             .OrderByDescending(a => a.CreatedAt)
             .ThenByDescending(a => a.Id)
             .Take(500)
-            .Include(a => a.CreatedBy)
-            .Include(a => a.Document)
-            .Include(a => a.TargetLawyer)
-            .Include(a => a.Recipients)
+            .Select(a => new OversightAlertRow(
+                a.Id,
+                a.Message,
+                a.TargetType,
+                a.DocumentId,
+                a.Document != null ? a.Document.BorrowerName : null,
+                a.Document != null ? a.Document.BorrowerFather : null,
+                a.Document != null ? a.Document.BorrowerFamily : null,
+                a.Document != null ? a.Document.DocumentType : null,
+                a.TargetLawyerId,
+                a.TargetLawyer != null ? a.TargetLawyer.FullName : null,
+                a.Recipients.Count(),
+                a.Recipients.Count(r => !r.IsRead),
+                a.CreatedAt,
+                a.CreatedBy != null ? a.CreatedBy.FullName : null,
+                a.AppealId,
+                a.ReviewLetterId,
+                a.DelegationId))
             .ToListAsync(ct);
+
+        return rows.Select(r => new HeadAlertDto(
+            r.Id,
+            r.Message,
+            r.TargetType.ToString().ToLowerInvariant(),
+            r.DocumentId,
+            OversightDocumentTitle(r),
+            r.TargetLawyerId,
+            r.TargetLawyerName,
+            null,
+            r.RecipientCount,
+            r.UnreadCount,
+            r.CreatedAt,
+            r.CreatedByName,
+            r.AppealId,
+            r.ReviewLetterId,
+            r.DelegationId)).ToList();
+    }
+
+    /// <summary>صف وسيط مسقط لقائمة الإشراف — نفس منطق عنوان المستند المطبق في الخدمة.</summary>
+    private sealed record OversightAlertRow(
+        int Id,
+        string Message,
+        HeadAlertTargetType TargetType,
+        int? DocumentId,
+        string? BorrowerName,
+        string? BorrowerFather,
+        string? BorrowerFamily,
+        string? DocumentType,
+        int? TargetLawyerId,
+        string? TargetLawyerName,
+        int RecipientCount,
+        int UnreadCount,
+        DateTime CreatedAt,
+        string? CreatedByName,
+        int? AppealId,
+        int? ReviewLetterId,
+        int? DelegationId);
+
+    private static string OversightDocumentTitle(OversightAlertRow row)
+    {
+        if (row.BorrowerName is null && row.BorrowerFather is null
+            && row.BorrowerFamily is null && row.DocumentType is null)
+            return row.DocumentId is null ? string.Empty : "مستند محذوف";
+
+        var parts = new[] { row.BorrowerName, row.BorrowerFather, row.BorrowerFamily }
+            .Where(x => !string.IsNullOrWhiteSpace(x));
+        var name = parts.Any() ? string.Join(" ", parts) : row.DocumentType;
+        return string.IsNullOrWhiteSpace(name) ? $"مستند {row.DocumentId}" : name!;
     }
 
     public Task<int> CountUnreadAsync(int userId, CancellationToken ct = default)

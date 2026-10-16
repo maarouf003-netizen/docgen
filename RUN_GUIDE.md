@@ -130,7 +130,7 @@ npm test
 - `Logging:File` — مجلد `logs/` (تحت جذر الخلفية `backend/src/DocGenerator.Api/`) **يجب أن يكون قابلًا للكتابة
   على المضيف**، وإلا تعذّر إنشاء ملف السجل اليومي (`logs/logs-YYYYMMDD.txt`) وبقيت الأخطاء على `stdout`
   فقط. في الحاويات ثبّت المجلد عبر `mount`/`volume`، أو غيّر `Logging:File:Path` إلى مسار قابل للكتابة
-  (الاحتفاظ 31 يومًا بحد 50MB للملف عبر `RetainedDays` / `FileSizeLimitBytes`). المجلد مُتجاهَل في `git`
+  (الاحتفاظ 60 يومًا بقرار المالك 2026-10-16، وبحد 50MB للملف عبر `RetainedDays` / `FileSizeLimitBytes`). المجلد مُتجاهَل في `git`
   (`backend/src/DocGenerator.Api/.gitignore`) فلا يُرفع مع الكود — أنشئه بأذونات كتابة عند النشر.
 
 ### قائمة النشر الملزمة (بوابات — صالحة لأي مضيف)

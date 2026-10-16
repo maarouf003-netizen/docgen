@@ -1,3 +1,4 @@
+using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
 
 namespace DocGenerator.Application.Common.Interfaces;
@@ -24,9 +25,10 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
 
     /// <summary>
     /// كل التنبيهات عبر الفروع لقائمة الإشراف (المدير/المشرف — قرار المالك 2026-10-16):
-    /// الأحدث أولًا بسقف 500. القراءة فقط — لا عدّادات ولا تعليم مقروء هنا.
+    /// الأحدث أولًا بسقف 500. إسقاط عرضي — العدّادات تُحسَب في قاعدة البيانات
+    /// دون تحميل صفوف المستلمين، وحالة القراءة فارغة (مستلم-محددة أصلًا).
     /// </summary>
-    Task<List<HeadAlert>> ListForOversightAsync(CancellationToken ct = default);
+    Task<List<HeadAlertDto>> ListForOversightAsync(CancellationToken ct = default);
 
     /// <summary>عدد تنبيهات المحامي غير المقروءة.</summary>
     Task<int> CountUnreadAsync(int userId, CancellationToken ct = default);

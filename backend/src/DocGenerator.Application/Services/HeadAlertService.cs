@@ -97,11 +97,10 @@ public sealed class HeadAlertService : IHeadAlertService
         return alerts.Select(a => ToHeadDto(a, userId)).ToList();
     }
 
-    public async Task<List<HeadAlertDto>> ListForOversightAsync(CancellationToken ct = default)
-    {
-        var alerts = await _alerts.ListForOversightAsync(ct);
-        return alerts.Select(a => ToHeadDto(a)).ToList();
-    }
+    public Task<List<HeadAlertDto>> ListForOversightAsync(CancellationToken ct = default)
+        // المستودع يسقط مباشرة إلى `HeadAlertDto` (عدّادات محسوبة قاعديًا) —
+        // لا تحويل هنا حتى لا يُعاد تحميل أي تنقل.
+        => _alerts.ListForOversightAsync(ct);
 
     public async Task<HeadAlertDto?> GetByIdAsync(int id, CancellationToken ct = default)
     {
