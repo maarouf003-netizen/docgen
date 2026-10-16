@@ -74,12 +74,12 @@ export default function Login() {
         aria-label="الجمهورية العربية السورية — وزارة العدل — إدارة قضايا الدولة"
         className="relative hidden overflow-hidden lg:flex lg:min-h-screen lg:flex-col"
       >
-        {/* طبقة الصورة الاختيارية: ضع الصورة الأولى باسم public/login-hero.jpg لتظهر تلقائياً، وإلا يبقى التدرج الرسمي */}
+        {/* طبقة الصورة: public/login-hero.avif فوق تدرج رسمي يبقى كاحتياط إن تعذّر تحميلها */}
         <div aria-hidden="true" className="absolute inset-0 bg-emerald-950" />
         <div
           aria-hidden="true"
           className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: "url('/login-hero.jpg')" }}
+          style={{ backgroundImage: "url('/login-hero.avif')" }}
         />
         <div
           aria-hidden="true"
