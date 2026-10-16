@@ -11,6 +11,8 @@ import {
   addressLabelOf,
   bankingAmountKeys,
   bankingCurrencyKeys,
+  guarantorAddState,
+  hasHeirName,
   hasRepresentative,
   ordinaryAmountKeys,
   ordinaryCurrencyKeys,
@@ -40,7 +42,6 @@ export interface ApplicantSideSectionsProps {
    * مع بقاء ورثة/ممثل الملف المحليين (والممثل/الورثة الجدد) قابلين للتحرير. */
   isMirror?: boolean;
   guarantorLabel: string;
-  remainingGuarantors: number;
   showInclusionAmount: boolean;
   setShowInclusionAmount: Dispatch<SetStateAction<boolean>>;
   ordinaryAmountSlots: number;
@@ -81,7 +82,6 @@ export function ApplicantSideSections({
   isOrdinary,
   isMirror = false,
   guarantorLabel,
-  remainingGuarantors,
   showInclusionAmount,
   setShowInclusionAmount,
   ordinaryAmountSlots,
@@ -132,7 +132,11 @@ export function ApplicantSideSections({
     }
   };
 
-  const borrowerHasHeirs = borrowerHeirs.length > 0;
+  // إظهار حقول العنوان يتبع المخزَّن فعليًا (كقرارات الحمولة): صف وريث فارغ
+  // الاسم الثلاثي ليس وريثًا فيُبقي الحقول ظاهرة وقيمها محفوظة عند الحفظ.
+  const borrowerHasHeirs = borrowerHeirs.some(hasHeirName);
+  // حالة زر الإضافة (عددًا ورقمًا) تُحسب مرة واحدة: تُستخدم في الزرين والنص.
+  const guarantorAdd = guarantorAddState(guarantors, isOrdinary);
   const borrowerHasRep = hasRepresentative({
     representativeName: form.borrowerRepresentativeName,
     representativeFather: form.borrowerRepresentativeFather,
@@ -354,7 +358,8 @@ export function ApplicantSideSections({
         </div>
       )}
       {guarantors.map((g, i) => {
-        const gHasHeirs = (g.heirs ?? []).length > 0;
+        // كالمقترض أعلاه: الفارغ من الاسم الثلاثي ليس وريثًا مخزَّنًا.
+        const gHasHeirs = (g.heirs ?? []).some(hasHeirName);
         const gHasRep = hasRepresentative(g);
         const gIsLegal = g.nature === 'legal';
         const cardKey = cardKeyOf(g, i);
@@ -500,21 +505,23 @@ export function ApplicantSideSections({
           <button
             type="button"
             onClick={() => onGuarantorAdd('natural')}
-            disabled={guarantors.length >= MAX_GUARANTORS}
+            disabled={!guarantorAdd.canAdd}
             className="bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
           >
-            {guarantors.length >= MAX_GUARANTORS ? '🛑 الحد الأقصى' : `➕ إضافة ${guarantorLabel} (شخص طبيعي)`}
+            {!guarantorAdd.canAdd ? '🛑 الحد الأقصى' : `➕ إضافة ${guarantorLabel} (شخص طبيعي)`}
           </button>
           <button
             type="button"
             onClick={() => onGuarantorAdd('legal')}
-            disabled={guarantors.length >= MAX_GUARANTORS}
+            disabled={!guarantorAdd.canAdd}
             className="bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
           >
-            {guarantors.length >= MAX_GUARANTORS ? '🛑 الحد الأقصى' : `➕ إضافة ${guarantorLabel} (شخص اعتباري)`}
+            {!guarantorAdd.canAdd ? '🛑 الحد الأقصى' : `➕ إضافة ${guarantorLabel} (شخص اعتباري)`}
           </button>
           <span className="text-xs text-gray-500">
-            {remainingGuarantors > 0 ? `متبقي: ${remainingGuarantors} من ${MAX_GUARANTORS}` : 'وصلت الحد الأقصى'}
+            {guarantorAdd.canAdd
+              ? `متبقي: ${guarantorAdd.remaining} من ${MAX_GUARANTORS}`
+              : 'وصلت الحد الأقصى'}
           </span>
         </div>
       )}

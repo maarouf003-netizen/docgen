@@ -10,7 +10,6 @@ import {
   emptyAsset,
   FILE_YEARS,
   MAX_ASSETS_PER_KIND,
-  MAX_GUARANTORS,
   SHAREABLE_ASSET_KINDS,
   bankingCurrencyKeys,
   emptyExecutedNaturalPerson,
@@ -22,6 +21,8 @@ import {
   emptyHeir,
   hasHeirName,
   hasStoredRepresentative,
+  guarantorAddState,
+  nextGuarantorNumber,
   ordinaryCurrencyKeys,
   requiredCurrencyKeys,
   toUpsert,
@@ -684,10 +685,12 @@ export default function DocumentForm() {
     );
 
   const addGuarantor = (nature: PartyNature = 'natural') => {
-    if (guarantors.length >= MAX_GUARANTORS) return;
+    // العدد والرقم معًا ضمن النطاق (العادي موضعي، والمصرفي قد تُستنفَد أرقامه
+    // بالحذف الأوسط قبل الصفوف — ورقم بلا خانة يرفضه الخلفي لاحقًا).
+    if (!guarantorAddState(guarantors, isOrdinary).canAdd) return;
     // رقم الكفيل هوية مستقرة تُحفظ في الصف (قرار 10/F1): الجديد = max + 1، والحذف
     // الأوسط يترك فجوة دون إزاحة — لا ترقيم موضعي عند الحفظ ولا إعادة أرقام.
-    const nextNumber = guarantors.reduce((max, g) => Math.max(max, g.guarantorNumber ?? 1), 0) + 1;
+    const nextNumber = nextGuarantorNumber(guarantors);
     setGuarantors((gs) => [...gs, { ...emptyGuarantor(), nature, guarantorNumber: nextNumber }]);
   };
 
@@ -955,7 +958,6 @@ export default function DocumentForm() {
       ? 'الجهة العامة منفذ عليها'
       : 'الجهة العامة طالبة التنفيذ';
   const guarantorLabel = isOrdinary ? 'منفذ عليه' : 'كفيل';
-  const remainingGuarantors = MAX_GUARANTORS - guarantors.length;
 
   // قائمة الملاك المرشحة (حتى 50 طرفًا + ورثتهم): تُحسب مرة واحدة لكل تغيير أطراف
   // بدل إعادة البناء مع كل أصل عند كل ضغطة — الاسم الثلاثي يطابق المخزَّن والمعروض.
@@ -1103,9 +1105,6 @@ export default function DocumentForm() {
                 </button>
               </div>
             </div>
-            {form.executionCircuitId == null && !isMirror && (branchCircuits?.length ?? 0) > 0 && (
-              <p className="text-xs text-red-600 mt-1">دائرة التنفيذ مطلوبة — اختر من السجل</p>
-            )}
           </div>
           {field('رقم الملف', 'fileNumber', 'رقم الملف...')}
           {selectField('سنة الملف', 'fileYear', ['', ...FILE_YEARS], form.fileYear ?? '', (v) => set('fileYear', v))}
@@ -1260,7 +1259,6 @@ export default function DocumentForm() {
             isOrdinary={isOrdinary}
             isMirror={isMirror}
             guarantorLabel={guarantorLabel}
-            remainingGuarantors={remainingGuarantors}
             showInclusionAmount={showInclusionAmount}
             setShowInclusionAmount={setShowInclusionAmount}
             ordinaryAmountSlots={ordinaryAmountSlots}

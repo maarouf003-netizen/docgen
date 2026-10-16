@@ -72,13 +72,23 @@ public static class DocumentValidator
     /// سقف أطراف الملف في صفة «الجهة العامة طالبة التنفيذ» (مصرفي/عادي):
     /// إجمالي المنفذ عليهم 50 شاملًا المقترض، أي حتى 49 صف كفلاء/منفذ عليهم آخرين
     /// (قرار المالك — `PartyLimitsCatalog`). ورثة الكفلاء والممثلون بلا سقف.
-    /// رقم الكفيل هوية مستقرة فلا يقبل التكرار (يُفسد ربط الورثة والمقارنات).
+    /// رقم الكفيل هوية مستقرة فلا يقبل التكرار (يُفسد ربط الورثة والمقارنات)،
+    /// ولا يتجاوز نطاق خانات القالب (1–49) وإلا سقط صامتًا من التوليد.
     /// </summary>
     public static void ValidateGuarantorCount(DocumentUpsertRequest request)
     {
         if (request.Guarantors.Count > PartyLimitsCatalog.MaxGuarantors)
             throw new ArgumentException(
                 $"عدد الكفلاء/المنفذ عليهم الآخرين يتجاوز الحد الأقصى ({PartyLimitsCatalog.MaxGuarantors}) — الإجمالي مع المقترض {PartyLimitsCatalog.MaxTotalDebtors}");
+
+        var outOfRange = request.Guarantors
+            .Select(g => g.GuarantorNumber)
+            .Where(n => n < 1 || n > PartyLimitsCatalog.MaxGuarantors)
+            .Distinct()
+            .ToList();
+        if (outOfRange.Count > 0)
+            throw new ArgumentException(
+                $"أرقام الكفلاء خارج النطاق (1–{PartyLimitsCatalog.MaxGuarantors}): {string.Join("، ", outOfRange)} — لا خانات لها في القالب");
 
         var duplicates = request.Guarantors
             .GroupBy(g => g.GuarantorNumber)

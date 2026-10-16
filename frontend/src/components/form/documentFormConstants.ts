@@ -94,6 +94,29 @@ export const MAX_GUARANTORS = 49;
 /** إجمالي المنفذ عليهم في الملف شاملًا المقترض (1 مقترض + حتى 49 كفيلًا). */
 export const MAX_TOTAL_DEBTORS = MAX_GUARANTORS + 1;
 
+/** الرقم التالي للكفيل (هوية مستقرة = max + 1، والحذف الأوسط يترك فجوة) —
+ * مشترك بين حارس الإضافة وحالة الزر فلا يفترقان. */
+export function nextGuarantorNumber(guarantors: { guarantorNumber?: number | null }[]): number {
+  return guarantors.reduce((max, g) => Math.max(max, g.guarantorNumber ?? 1), 0) + 1;
+}
+
+/** حالة زر الإضافة: العدد والرقم معًا ضمن النطاق (العادي يُرقَّم موضعيًا عند
+ * الحفظ فيُكتفى بالعدد، والمصرفي مستقر الأرقام فقد تُستنفَد الأرقام قبل الصفوف
+ * بعد حذف أوسط — وإلا وُلد رقم بلا خانة في القالب فيرفضه الخلفي لاحقًا).
+ * المتبقي الحقيقي = min(الصفوف، الأرقام) لأن كل إضافة تستهلك واحدًا من كلٍّ منهما. */
+export function guarantorAddState(
+  guarantors: { guarantorNumber?: number | null }[],
+  isOrdinary: boolean,
+): { canAdd: boolean; remaining: number } {
+  const byCount = MAX_GUARANTORS - guarantors.length;
+  if (isOrdinary) {
+    return { canAdd: byCount > 0, remaining: Math.max(0, byCount) };
+  }
+  const byNumber = MAX_GUARANTORS - (nextGuarantorNumber(guarantors) - 1);
+  const remaining = Math.min(byCount, byNumber);
+  return { canAdd: remaining > 0, remaining: Math.max(0, remaining) };
+}
+
 /** أنواع الأموال التي تُعرض في «منفذ جبريا» (كفالة الرواتب مستثناة). */
 export function isAuctionableKind(kind: string | undefined): boolean {
   return Boolean(kind && kind !== ASSET_KINDS.salaryGuarantee);

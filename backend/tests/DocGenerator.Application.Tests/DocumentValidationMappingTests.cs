@@ -201,6 +201,21 @@ public class DocumentValidatorTests
     }
 
     [Fact]
+    public void ValidateGuarantorCount_NumberOutOfRange_Throws()
+    {
+        // الرقم هوية مستقرة بلا خانة فوق 49 في القالب — يُرفض بدل السقوط الصامت.
+        foreach (var bad in new[] { 0, -3, PartyLimitsCatalog.MaxGuarantors + 1, 100 })
+        {
+            var request = NewRequest(side: "applicant");
+            request.Guarantors = new List<GuarantorDto> { NewGuarantor(bad) };
+
+            var ex = Assert.Throws<ArgumentException>(
+                () => DocumentValidator.ValidateGuarantorCount(request));
+            Assert.Contains("خارج النطاق", ex.Message);
+        }
+    }
+
+    [Fact]
     public void NormalizeCollections_NullLists_BecomeEmpty()
     {
         // `null` صريح في JSON يُبطل مُهيَّئات `= new()` — كان NRE (500) قبل التطبيع.
