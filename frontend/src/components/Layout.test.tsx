@@ -86,11 +86,14 @@ describe('Layout', () => {
     expect(screen.queryByRole('button', { name: 'فتح القائمة' })).not.toBeInTheDocument();
   });
 
-  it('يعرض النسر والهوية وبطاقة الحساب للمحامي دون خروج/كلمة مرور في التذييل', () => {
+  it('يعرض شعار الإدارة والهوية وبطاقة الحساب للمحامي دون خروج/كلمة مرور في التذييل', () => {
     stubMatchMedia(false);
     render(<Layout />);
 
-    expect(screen.getByAltText('شعار نسر صلاح الدين')).toBeInTheDocument();
+    expect(
+      screen.getByAltText('شعار إدارة قضايا الدولة — الجمهورية العربية السورية'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('منصة إدارة الملفات التنفيذية المدعومة بمولد مستندات آلي')).toBeInTheDocument();
     expect(screen.queryByAltText('علم الجمهورية العربية السورية')).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'مسار' })).toBeInTheDocument();
     // بطاقة التذييل المضغوطة تنقل إلى الحساب الشخصي بدل بندي الخروج وكلمة المرور.
