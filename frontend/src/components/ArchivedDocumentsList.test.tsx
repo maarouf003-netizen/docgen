@@ -225,6 +225,24 @@ describe('ArchivedDocumentsList', () => {
     });
   });
 
+  it('يرفض سنة إعادة مستقبلية أماميًا ولا يرسل', async () => {
+    const user = userEvent.setup();
+    mockPage([makeDocument({ id: 3, borrowerName: 'أحمد' })]);
+    (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });
+
+    render(<ArchivedDocumentsList config={baseConfig({ requiresRenewal: true })} />);
+    const table = await screen.findByRole('table');
+
+    await user.click(within(table).getByRole('button', { name: 'استعادة' }));
+    const dialog = screen.getByRole('dialog', { name: 'إعادة الملف إلى المتداول' });
+    await user.type(within(dialog).getByLabelText(/رقم الملف الجديد/), '999');
+    await user.type(within(dialog).getByLabelText(/سنة الإعادة/), String(new Date().getFullYear() + 1));
+    await user.click(within(dialog).getByRole('button', { name: 'تأكيد' }));
+
+    expect(api.post).not.toHaveBeenCalled();
+    expect(within(dialog).getByText('سنة الملف لا يمكن أن تكون سنة مستقبلية')).toBeInTheDocument();
+  });
+
   it('لا يطلب حقول التجديد عند غياب requiresRenewal ويستعيد دون جسم إضافي', async () => {
     const user = userEvent.setup();
     mockPage([makeDocument({ id: 3, borrowerName: 'أحمد' })]);

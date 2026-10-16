@@ -1,6 +1,8 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { api, getApiErrorMessage } from '../../api/client';
 import { normalizeArabicDigits } from '../../utils/arabicDigits';
+import { useCurrentYear } from '../../hooks/useCurrentYear';
+import { FUTURE_FILE_YEAR_MESSAGE, isFutureFileYear } from '../form/documentFormConstants';
 import type { DelegationDto, RegisterDelegationRequest } from '../../types';
 import { DelegationDetails } from './DelegationDetails';
 
@@ -27,10 +29,14 @@ export default function RegisterDelegationModal({
   const numberRef = useRef<HTMLInputElement>(null);
   const yearRef = useRef<HTMLInputElement>(null);
   const dateRef = useRef<HTMLInputElement>(null);
+  // سقف سنة القيد (تصبح سنة الملف): الجارية خادميًا — المستقبل مرفوض خلفيةً أيضًا.
+  const { currentYear } = useCurrentYear();
 
   const validate = (): { message: string; ref: HTMLInputElement | null } => {
     if (!fileNumber.trim()) return { message: 'رقم أساس الإنابة مطلوب', ref: numberRef.current };
     if (!fileYear.trim()) return { message: 'سنة قيد الإنابة مطلوبة', ref: yearRef.current };
+    if (isFutureFileYear(normalizeArabicDigits(fileYear).trim(), currentYear))
+      return { message: FUTURE_FILE_YEAR_MESSAGE, ref: yearRef.current };
     if (!fileRegistrationDate.trim()) return { message: 'تاريخ قيد الإنابة مطلوب', ref: dateRef.current };
     return { message: '', ref: null };
   };

@@ -868,6 +868,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                         throw new ArgumentException($"النوع إلزامي للملف ({e.DocumentId})");
                     if (string.IsNullOrWhiteSpace(year))
                         throw new ArgumentException($"السنة إلزامية للملف ({e.DocumentId})");
+                    DocumentValidator.ValidateFileYearNotFuture(year, ServerClock.CurrentYear(_clock, _timeZone));
                     if (doc.ExecutionCircuitId is null)
                         throw new ArgumentException($"الملف ({e.DocumentId}) بلا دائرة");
                     // وحدانية (circuitId): فحص خدمي داخل المعاملة + قيد فريد ظهرًا للسباق.

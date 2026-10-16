@@ -116,6 +116,7 @@ public sealed class DocumentService : IDocumentService
         DocumentValidator.ValidateExecutedRequest(request);
         DocumentValidator.ValidateGuarantorCount(request);
         DocumentValidator.ValidateRegistrationDate(request);
+        DocumentValidator.ValidateFileYearNotFuture(request.FileYear, CurrentYear());
 
         // المحامي المختص هو الذي سجّل الدخول وأنشأ الملف: يُسنَد الملف إليه تلقائياً
         // باسمه الكامل (وليس من الطلب)، ويبقى محصّناً من أي كتابة عبر نموذج التعديل.
@@ -198,6 +199,7 @@ public sealed class DocumentService : IDocumentService
         DocumentValidator.ValidateExecutedRequest(request);
         DocumentValidator.ValidateGuarantorCount(request);
         DocumentValidator.ValidateRegistrationDate(request);
+        DocumentValidator.ValidateFileYearNotFuture(request.FileYear, CurrentYear());
 
         // لقطة ما قبل التعديل — لتوليد صفوف «حقل/قبل/بعد» في سجل التعديلات.
         var before = Common.Audit.DocumentChangeTracker.Capture(doc);

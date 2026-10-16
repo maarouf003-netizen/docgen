@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
 import { useCurrentYear } from '../hooks/useCurrentYear';
+import { FUTURE_FILE_YEAR_MESSAGE, isFutureFileYear } from './form/documentFormConstants';
 import { displayFileNumber, isExecutedLike } from '../utils/documentDisplay';
 import { trimNull } from '../utils/serialization';
 import type { DocumentResponse } from '../types';
@@ -60,6 +61,11 @@ export default function RenewalModal({
     // نظام «طالبة تنفيذ»: سنة الإعادة إلزامية أيضًا عند إعادة الملف المشطوب.
     if (!isExecutedLike(doc.generalEntitySide) && renewal.renewalYear == null) {
       setError('سنة الإعادة مطلوبة عند إعادة ملف «طالبة تنفيذ» المشطوب');
+      return;
+    }
+    // سنة الإعادة تصبح سنة الملف: المستقبل مرفوض (الخلفية ترفضه أيضًا).
+    if (!isExecutedLike(doc.generalEntitySide) && isFutureFileYear(renewal.renewalYear, currentYear)) {
+      setError(FUTURE_FILE_YEAR_MESSAGE);
       return;
     }
     setBusy(true);

@@ -880,6 +880,7 @@ public sealed class DocumentStatusService : IDocumentStatusService
                 throw new ArgumentException("سنة الإعادة مطلوبة عند إعادة الملف المشطوب");
             if (enteredYear < 1900 || enteredYear > 2100)
                 throw new ArgumentException("سنة الإعادة غير صالحة");
+            DocumentValidator.ValidateFileYearNotFuture(enteredYear.ToString(CultureInfo.InvariantCulture), ServerClock.CurrentYear(_clock, _timeZone));
             year = enteredYear;
         }
 
