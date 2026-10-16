@@ -9,47 +9,56 @@ import { formatNumber } from '../components/dashboard/dashboardFormat';
 import type { AppSuggestionDto, HeadAlertDto, ManagerStatsDto, PersonalReminderDto } from '../types';
 
 /**
- * الحساب الشخصي (`/account` — محامٍ ورئيس قسم/شعبة):
+ * الحساب الشخصي (`/account` — محامٍ ورئيس قسم/شعبة ومدير/مشرف نظام):
  * بطاقة الملف + تغيير كلمة المرور + تسجيل الخروج + ملخص إحصائي +
- * اقتراحات التطوير وسجلها.
+ * اقتراحات التطوير وسجلها (لمن يرسلها فقط).
  *
  * الملخص حسب الدور (الاستعلامات المحامية `403` لغيره — تُغلق صراحةً):
  * - المحامي: ملفاتي هذه السنة + تذكيراتي النشطة + تنبيهات غير مقروءة.
  * - رئيس القسم/الشعبة: ملفات نطاقه هذه السنة (`/stats/manager` — نطاقه إجباري خلفيًا) +
  *   مجموع مستلمي تنبيهات نطاقه غير القارئين (مجموع `unreadCount` عبر التنبيهات —
  *   أزواج (تنبيه × مستلم) لا أشخاصًا مميزين، وأبدًا `isRead` فهو `null` في عرض الرئيس) + اقتراحاتي.
+ * - المدير/مشرف النظام: ملفات هذه السنة (`/stats/manager` العام) فقط —
+ *   بلا تذكيرات (محامٍ فقط خلفيًا) ولا عدّادات تنبيهات (مستلم-محددة خلفيًا) ولا
+ *   قسم اقتراحات (يستقبلانها في `/suggestions`، والإرسال محظور خلفيًا `403`).
  */
 export default function AccountPage() {
   const { user, logout } = useAuth();
   const userReady = Boolean(user);
   const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
+  const isManager = user?.role === 'manager' || user?.role === 'admin';
+  const isLawyer = user?.role === 'lawyer';
   const [dialogOpen, setDialogOpen] = useState(false);
   const [sentFlash, setSentFlash] = useState(false);
 
   const statsQuery = useCancellableRequest<ManagerStatsDto>(
-    (signal) => api.get(isHeadOrSubHead ? '/stats/manager' : '/stats/me', { signal }).then((r) => r.data),
-    [isHeadOrSubHead],
+    (signal) =>
+      api.get(isHeadOrSubHead || isManager ? '/stats/manager' : '/stats/me', { signal }).then((r) => r.data),
+    [isHeadOrSubHead, isManager],
     { enabled: userReady },
   );
   const personalQuery = useCancellableRequest<PersonalReminderDto[]>(
     (signal) => api.get('/personal-reminders', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
     [],
-    { enabled: userReady && !isHeadOrSubHead },
+    { enabled: userReady && isLawyer },
   );
   const unreadQuery = useCancellableRequest<{ count: number }>(
     (signal) => api.get('/alerts/unread-count', { signal }).then((r) => r.data),
     [],
-    { enabled: userReady && !isHeadOrSubHead },
+    { enabled: userReady && isLawyer },
   );
   const headAlertsQuery = useCancellableRequest<HeadAlertDto[]>(
     (signal) => api.get('/alerts', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
     [],
     { enabled: userReady && isHeadOrSubHead },
   );
+  // سجل «اقتراحاتي» للمرسلين فقط (محامٍ ورئيس) — شكل الاستجابة مصفوفة.
+  // المدير/المشرف يستقبلان الصندوق المرقّم في `/suggestions` (شكل `PagedResult`
+  // لا يطابق هذا السجل)، فلا يُجلب هنا أصلًا ويُخفى القسم كله أدناه.
   const suggestionsQuery = useCancellableRequest<AppSuggestionDto[]>(
     (signal) => api.get('/app-suggestions', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
     [],
-    { enabled: userReady },
+    { enabled: userReady && !isManager },
   );
 
   const suggestions = suggestionsQuery.data ?? [];
@@ -58,9 +67,11 @@ export default function AccountPage() {
     (sum, a) => sum + Math.max(0, Number(a.unreadCount) || 0),
     0,
   );
-  const summaryError = isHeadOrSubHead
-    ? (statsQuery.error ?? headAlertsQuery.error)
-    : (statsQuery.error ?? personalQuery.error ?? unreadQuery.error);
+  const summaryError = isManager
+    ? statsQuery.error
+    : isHeadOrSubHead
+      ? (statsQuery.error ?? headAlertsQuery.error)
+      : (statsQuery.error ?? personalQuery.error ?? unreadQuery.error);
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -114,12 +125,12 @@ export default function AccountPage() {
           ) : (
             <dl className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
               <div className="rounded-xl bg-gray-50 px-2 py-3">
-                <dt className="text-xs text-gray-500 mb-1">{isHeadOrSubHead ? 'ملفات النطاق هذه السنة' : 'ملفاتي هذه السنة'}</dt>
+                <dt className="text-xs text-gray-500 mb-1">{isHeadOrSubHead ? 'ملفات النطاق هذه السنة' : isManager ? 'ملفات هذه السنة' : 'ملفاتي هذه السنة'}</dt>
                 <dd className="text-xl font-bold text-gray-900 tabular-nums" dir="ltr">
                   {statsQuery.data ? formatNumber(statsQuery.data.totalFiles) : '…'}
                 </dd>
               </div>
-              {isHeadOrSubHead ? (
+              {isManager ? null : isHeadOrSubHead ? (
                 <div className="rounded-xl bg-gray-50 px-2 py-3">
                   <dt className="text-xs text-gray-500 mb-1">مجموع مستلمي تنبيهات النطاق غير القارئين</dt>
                   <dd className="text-xl font-bold text-gray-900 tabular-nums" dir="ltr">
@@ -134,7 +145,7 @@ export default function AccountPage() {
                   </dd>
                 </div>
               )}
-              {isHeadOrSubHead ? (
+              {isManager ? null : isHeadOrSubHead ? (
                 <div className="rounded-xl bg-gray-50 px-2 py-3">
                   <dt className="text-xs text-gray-500 mb-1">اقتراحاتي</dt>
                   <dd className="text-xl font-bold text-gray-900 tabular-nums" dir="ltr">
@@ -153,6 +164,9 @@ export default function AccountPage() {
           )}
         </section>
 
+        {/* قسم الاقتراحات للمرسلين فقط — المدير/المشرف يستقبلانها في
+            `/suggestions` (والإرسال محظور خلفيًا)، فلا زر إرسال ولا سجل هنا. */}
+        {isManager ? null : (
         <section aria-label="اقتراحات التطوير" className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
           <div className="flex items-center justify-between gap-3 mb-3">
             <h3 className="font-bold text-gray-900">اقتراحات التطوير</h3>
@@ -193,6 +207,7 @@ export default function AccountPage() {
             </ul>
           )}
         </section>
+        )}
       </div>
 
       {dialogOpen ? (

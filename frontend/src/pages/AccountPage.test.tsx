@@ -136,4 +136,31 @@ describe('AccountPage', () => {
     expect(urls).not.toContain('/personal-reminders');
     expect(urls).not.toContain('/alerts/unread-count');
   });
+
+  it('يعرض للمدير الملف والملخص بلا قسم اقتراحات (يستقبلها في صندوق المشرف)', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 3, username: 'manager1', fullName: 'مدير النظام', role: 'manager', branchName: 'كل الفروع' },
+      logout: vi.fn(),
+    });
+    render(<AccountPage />);
+
+    expect(await screen.findByRole('heading', { name: 'الحساب الشخصي' })).toBeInTheDocument();
+    expect(screen.getByText('مدير النظام')).toBeInTheDocument();
+    expect(screen.getByText('مدير — كل الفروع')).toBeInTheDocument();
+
+    await waitFor(() => expect(screen.getByText('ملفات هذه السنة')).toBeInTheDocument());
+    // بلا زر إرسال ولا سجل اقتراحات — الإرسال محظور خلفيًا والمشرف يستقبل في `/suggestions`.
+    expect(screen.queryByRole('button', { name: 'إرسال اقتراح لتطوير التطبيق' })).not.toBeInTheDocument();
+    expect(screen.queryByText('اقتراحاتي')).not.toBeInTheDocument();
+    expect(screen.queryByText('تذكيراتي النشطة')).not.toBeInTheDocument();
+    expect(screen.queryByText('تنبيهات غير مقروءة')).not.toBeInTheDocument();
+
+    const urls = (api.get as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
+    expect(urls).toContain('/stats/manager');
+    expect(urls).not.toContain('/stats/me');
+    expect(urls).not.toContain('/personal-reminders');
+    expect(urls).not.toContain('/alerts/unread-count');
+    expect(urls).not.toContain('/alerts');
+    expect(urls).not.toContain('/app-suggestions');
+  });
 });

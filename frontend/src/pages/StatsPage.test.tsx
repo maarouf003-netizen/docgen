@@ -63,6 +63,13 @@ beforeEach(() => {
     user: { id: 1, username: 'lawyer1', fullName: 'محامي', role: 'lawyer', branchId: 1 },
   });
   (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+    if (url === '/branches')
+      return Promise.resolve({
+        data: [
+          { id: 1, name: 'الفرع الرئيسي - دمشق', code: 'DAM' },
+          { id: 2, name: 'فرع حلب', code: 'ALP' },
+        ],
+      });
     if (url === '/stats/periods') return Promise.resolve({ data: PERIODS });
     if (url === '/stats/me') return Promise.resolve({ data: STATS });
     if (url === '/stats/manager') return Promise.resolve({ data: STATS });
@@ -195,5 +202,36 @@ describe('StatsPage', () => {
 
     expect(await screen.findByText('لا يوجد فرع مرتبط بحسابك — تواصل مع المشرف لتعيين فرعك')).toBeInTheDocument();
     expect(vi.mocked(api.get).mock.calls).toHaveLength(0);
+  });
+
+  it('يعرض للمدير إحصاءات عامة مع منتقي الفرع بلا روابط تعمّق', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 1, username: 'manager1', fullName: 'مدير', role: 'manager', branchId: null },
+    });
+
+    render(<StatsPage />);
+
+    expect(await screen.findByRole('heading', { name: 'الإحصائيات' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'إجمالي الملفات' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'عرض الملفات ←' })).not.toBeInTheDocument();
+    // بلا فرع مختار: رسالة اختيار الفرع بدل الجدول.
+    expect(await screen.findByText('اختر فرعًا لعرض إحصائيات محامي الفرع')).toBeInTheDocument();
+
+    const urls = vi.mocked(api.get).mock.calls.map(([url]) => url);
+    expect(urls).toContain('/branches');
+    expect(urls).toContain('/stats/periods');
+    expect(urls).toContain('/stats/manager');
+    expect(urls).not.toContain('/stats/me');
+  });
+
+  it('يعرض للمشرف إحصاءات المدير أيضًا', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 1, username: 'admin1', fullName: 'مشرف', role: 'admin', branchId: null },
+    });
+
+    render(<StatsPage />);
+
+    expect(await screen.findByRole('heading', { name: 'إجمالي الملفات' })).toBeInTheDocument();
+    expect(vi.mocked(api.get).mock.calls.map(([url]) => url)).toContain('/stats/manager');
   });
 });

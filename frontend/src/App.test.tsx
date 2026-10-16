@@ -93,7 +93,7 @@ describe('توجيه الجذر حسب الدور (انحدار: المندوب 
     expect(screen.getByRole('navigation', { name: 'أقسام لوحة المحامي' })).toBeInTheDocument();
   });
 
-  it('المحامي ورئيس القسم على /account يريان حسابيهما، وغيرهما يُرتد إلى وطنه', async () => {
+  it('المحامي ورئيس القسم والمدير والمشرف على /account يرون حساباتهم، وغيرهم يُرتد إلى وطنه', async () => {
     useAuthMock.mockReturnValue(authState('lawyer'));
     const { unmount } = renderAt('/account');
     expect(await screen.findByRole('heading', { name: 'الحساب الشخصي' })).toBeInTheDocument();
@@ -105,12 +105,19 @@ describe('توجيه الجذر حسب الدور (انحدار: المندوب 
     unmount2();
 
     useAuthMock.mockReturnValue(authState('manager'));
-    renderAt('/account');
-    expect(await screen.findByRole('heading', { name: 'لوحة التحكم' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'الحساب الشخصي' })).not.toBeInTheDocument();
+    const { unmount: unmount3 } = renderAt('/account');
+    expect(await screen.findByRole('heading', { name: 'الحساب الشخصي' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'إرسال اقتراح لتطوير التطبيق' })).not.toBeInTheDocument();
+    unmount3();
+
+    useAuthMock.mockReturnValue(authState('admin'));
+    const { unmount: unmount4 } = renderAt('/account');
+    expect(await screen.findByRole('heading', { name: 'الحساب الشخصي' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'إرسال اقتراح لتطوير التطبيق' })).not.toBeInTheDocument();
+    unmount4();
   });
 
-  it('المحامي على /stats و/calendar يرى الصفحتين، ورئيس القسم على /stats يرى فرعه، وغيرهما يُرتد', async () => {
+  it('المحامي ورئيس القسم والمدير والمشرف على /stats يرون الصفحة، وغيرهم يُرتد', async () => {
     useAuthMock.mockReturnValue(authState('lawyer'));
     const { unmount } = renderAt('/stats');
     expect(await screen.findByRole('heading', { name: 'الإحصائيات' })).toBeInTheDocument();
@@ -127,9 +134,14 @@ describe('توجيه الجذر حسب الدور (انحدار: المندوب 
     unmount3();
 
     useAuthMock.mockReturnValue(authState('manager'));
-    renderAt('/stats');
-    expect(await screen.findByRole('heading', { name: 'لوحة التحكم' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'الإحصائيات' })).not.toBeInTheDocument();
+    const { unmount: unmount4 } = renderAt('/stats');
+    expect(await screen.findByRole('heading', { name: 'الإحصائيات' })).toBeInTheDocument();
+    unmount4();
+
+    useAuthMock.mockReturnValue(authState('admin'));
+    const { unmount: unmount5 } = renderAt('/stats');
+    expect(await screen.findByRole('heading', { name: 'الإحصائيات' })).toBeInTheDocument();
+    unmount5();
   });
 
   it('المشرف والمدير على /suggestions يريان الصندوق، والمحامي يُرتد إلى لوحته (`BQ-001`)', async () => {
@@ -225,9 +237,10 @@ describe('توجيه الجذر حسب الدور (انحدار: المندوب 
   // المسموح يرى عنوان الصفحة؛ المرفوض يُرتد لوطنه (لوحته/بوابته) بلا عنوانها.
   // أي مسار جديد أو بوابة معدلة يجب تسجيلها هنا — وإلا فشلت المصفوفة عمدًا.
   // مستثنى عمدًا: صفحات التفاصيل المفردة وصفحات تُخفي عنوانها عند فشل الجلب
-  // (`/documents/:id`، `/documents/:id/edit`، `/documents/:id/correspondence`،
-  // `/users`) — بواباتها نفس آلية `RequireRole` المغطاة هنا، وعناوينها
+  // (`/documents/:id`، `/documents/:id/edit`، `/documents/:id/correspondence`)
+  // — بواباتها نفس آلية `RequireRole` المغطاة هنا، وعناوينها
   // غير صالحة كمؤشر سماح تحت `rejectAllApi`.
+  // ملاحظة: مسار `/users` (نشاط المستخدمين) محذوف نهائيًا — لا بند ولا مسار.
   const ALL_ROLES = ['lawyer', 'head', 'subhead', 'manager', 'admin', 'entitymanager'];
   const INTERNAL = ['lawyer', 'head', 'subhead', 'manager', 'admin'];
   const MATRIX: Array<{ path: string; allowed: string[]; heading: (role: string) => string }> = [
@@ -250,8 +263,8 @@ describe('توجيه الجذر حسب الدور (انحدار: المندوب 
     { path: '/entities/review', allowed: ['head', 'subhead', 'manager', 'admin'], heading: () => 'مراجعة سجل الجهات العامة الممثلة' },
     { path: '/delegates', allowed: ['head', 'subhead', 'manager', 'admin'], heading: () => 'مندوبو الجهات' },
     { path: '/audit-logs', allowed: ['head', 'subhead', 'manager', 'admin'], heading: () => 'سجل التدقيق' },
-    { path: '/account', allowed: ['lawyer', 'head', 'subhead'], heading: () => 'الحساب الشخصي' },
-    { path: '/stats', allowed: ['lawyer', 'head', 'subhead'], heading: () => 'الإحصائيات' },
+    { path: '/account', allowed: INTERNAL, heading: () => 'الحساب الشخصي' },
+    { path: '/stats', allowed: INTERNAL, heading: () => 'الإحصائيات' },
     { path: '/calendar', allowed: ['lawyer'], heading: () => 'التقويم' },
     { path: '/documents/rotate', allowed: ['lawyer'], heading: () => 'تدوير أرقام الأساس' },
     { path: '/pending-registrations', allowed: ['lawyer'], heading: () => 'ملفات محالة حديثًا' },
@@ -262,9 +275,10 @@ describe('توجيه الجذر حسب الدور (انحدار: المندوب 
   ];
 
   // عنوان الوطن لكل دور عند الارتداد (لوحة الدور نفسه لا عنوان الصفحة).
+  // المدير/المشرف: لوحته ترحيب («مرحبًا، مستخدم») مثل المحامي ورئيس القسم —
+  // لا عنوان «لوحة التحكم» منذ توحيد اللوحات.
   function homeMarker(role: string): string {
     if (role === 'entitymanager') return 'الإحصائيات';
-    if (role === 'manager' || role === 'admin') return 'لوحة التحكم';
     return 'مرحبًا، مستخدم';
   }
 

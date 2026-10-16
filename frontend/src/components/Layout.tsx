@@ -26,7 +26,7 @@ interface NavItem {
 }
 
 export default function Layout() {
-  const { user, logout, hasFullAccess } = useAuth();
+  const { user, logout } = useAuth();
   // مشتق من الدور مباشرة (لا من راية السياق) — فيبقى صحيحًا مع أي `mock` قديم
   // يوفّر `user.role` بلا الرايات الجديدة.
   const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
@@ -36,6 +36,7 @@ export default function Layout() {
   const drawerTriggerRef = useRef<HTMLButtonElement>(null);
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
   const isLawyerUser = user?.role === 'lawyer';
+  const isManager = user?.role === 'manager' || user?.role === 'admin';
   // رئيس القسم يجلب عدّاده من لوحته (بطاقة المراسلات) — هذا الاستطلاع للمحامي والمندوب فقط.
   const canHaveCorrespondenceUrgent =
     user?.role === 'lawyer' || user?.role === 'entitymanager';
@@ -111,18 +112,9 @@ export default function Layout() {
     };
   }, [isMobile, drawerOpen]);
 
-  // الفرع الأخير يخدم المدير/المشرف فقط (المحامي ورئيس القسم والمندوب فُرزوا أعلاه) —
-  // فلا شروط أدوار أخرى هنا عمدًا.
-  const canViewAuditLogs = hasFullAccess;
-  const canManageBranchLawyers = user?.role === 'admin';
-  // `BQ-001د`: المدير يدير المستخدمين عدا المشرف — إدارة الفروع مشرف ومدير (قرار §2.15).
-  const canManageUsers = user?.role === 'admin' || user?.role === 'manager';
-  const canManageBranches = user?.role === 'admin' || user?.role === 'manager';
-  // صندوق اقتراحات التطوير — مشرف ومدير (`BQ-001`): يطابق `CanViewAppSuggestions`
-  // خلفيًا وشرط مسار `/suggestions` في `App.tsx` — متغير مستقل عمدًا (لا إعادة
-  // استخدام `canManageUsers`) حتى لا ينكسر عند افتراق الصلاحيتين مستقبلًا.
-  const canViewSuggestions = user?.role === 'admin' || user?.role === 'manager';
-  const canManageDelegates = hasFullAccess;
+  // المدير/المشرف والمحامي ورئيس القسم والشعبة: نفس البنود الأربعة عمدًا —
+  // بقية الأقسام تُفتح من بطاقات اللوحة (صف الأيقونات)، وصفحة «نشاط المستخدمين»
+  // محذوفة نهائيًا (لا بند ولا مسار).
   // مندوب الجهة: الإحصائيات + الملفات التنفيذية + المراسلات دون باقي البنود (بوابة قرائية).
   const isEntityManager = user?.role === 'entitymanager';
 
@@ -147,9 +139,10 @@ export default function Layout() {
       label: 'المراسلات',
       badge: urgentCorrespondence > 0 ? urgentCorrespondence : undefined,
     });
-  } else if (isLawyerUser || isHeadOrSubHead) {
-    // المحامي ورئيس القسم والشعبة: نفس البنود الأربعة عمدًا (لوحة + ملفات + قيد البناء) —
-    // شرط واحد حتى لا تنحرف عن بعضها؛ بقية الأقسام تُفتح من بطاقات اللوحة.
+  } else if (isLawyerUser || isHeadOrSubHead || isManager) {
+    // المحامي ورئيس القسم والشعبة والمدير ومشرف النظام: نفس البنود الأربعة عمدًا
+    // (لوحة + ملفات + منتدى + مكتبة قيد البناء) — شرط واحد حتى لا تنحرف عن بعضها؛
+    // بقية الأقسام تُفتح من بطاقات اللوحة.
     navItems.push(
       { to: '/', label: 'لوحة التحكم', end: true, icon: ICONS.home },
       { to: '/documents', label: 'الملفات التنفيذية', icon: ICONS.documents },
@@ -157,34 +150,11 @@ export default function Layout() {
       { to: '/library', label: 'المكتبة', icon: ICONS.library, comingSoon: true },
     );
   } else {
+    // احتياطي للأدوار غير المعروفة: لوحة + ملفات فقط.
     navItems.push(
       { to: '/', label: 'لوحة التحكم', end: true },
       { to: '/documents', label: 'الملفات التنفيذية' },
     );
-    navItems.push({
-      to: '/reviews',
-      label: 'كتب المطالعات',
-    });
-    navItems.push({
-      to: '/correspondence',
-      label: 'المراسلات',
-    });
-    navItems.push({
-      to: '/forum',
-      label: 'المنتدى',
-      badge: forumBadge,
-    });
-    // أول بنود الإدارة بعد المشترك: صندوق الاقتراحات ظاهر للمشرف والمدير
-    // (خلف «المزيد» على الجوال كبقية بنود الصلاحيات — بلا شارة: لا endpoint
-    // عدّ خفيف مخصص، وحقل `badge` في `NavItem` جاهز لأي عدّاد لاحق بلا ريفاكتور).
-    if (canViewSuggestions) navItems.push({ to: '/suggestions', label: 'اقتراحات التطوير' });
-    if (canManageBranchLawyers) navItems.push({ to: '/branch-lawyers', label: 'محامو الفرع' });
-    if (hasFullAccess) navItems.push({ to: '/entities/review-management', label: 'مراجعة سجل الجهات العامة' });
-    if (canManageDelegates) navItems.push({ to: '/delegates', label: 'مندوبو الجهات' });
-    if (canManageUsers) navItems.push({ to: '/users/manage', label: 'إدارة المستخدمين' });
-    if (canManageBranches) navItems.push({ to: '/branches/manage', label: 'إدارة الفروع' });
-    if (hasFullAccess) navItems.push({ to: '/users', label: 'نشاط المستخدمين' });
-    if (canViewAuditLogs) navItems.push({ to: '/audit-logs', label: 'سجل التدقيق' });
   }
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
@@ -271,7 +241,7 @@ export default function Layout() {
         {navItems.map((item) => renderNavItem(item, linkClass, onNavigate))}
       </nav>
       <div className="p-4 border-t border-emerald-700 text-sm">
-        {isLawyerUser || isHeadOrSubHead ? (
+        {isLawyerUser || isHeadOrSubHead || isManager ? (
           <NavLink
             to="/account"
             onClick={onNavigate}

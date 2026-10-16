@@ -6,18 +6,13 @@ import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { useReminderCancellation } from '../hooks/useReminderCancellation';
 import type {
   AppealReminderDto,
-  BranchDto,
   ExecutionCircuitDto,
   HeadAlertDto,
   HeadAlertTargetType,
   LawyerListItem,
-  ManagerLawyerStatDto,
-  ManagerStatsDto,
-  MonthlyStatDto,
   PendingRegistrationDto,
   PersonalReminderDto,
   ReminderDto,
-  StatsPeriod,
 } from '../types';
 import { AlertsPanel } from '../components/dashboard/AlertsPanel';
 import { CreateAlertForm, type AlertFormError } from '../components/dashboard/CreateAlertForm';
@@ -26,17 +21,12 @@ import { GreetingHeader } from '../components/dashboard/GreetingHeader';
 import { HeadIconRow } from '../components/dashboard/HeadIconRow';
 import { LawyerCalendar } from '../components/dashboard/LawyerCalendar';
 import { LawyerIconRow } from '../components/dashboard/LawyerIconRow';
-import {
-  isDueTodayOrOverdue,
-  mostRecentSelection,
-  previousSelection,
-} from '../components/dashboard/dashboardFormat';
+import { ManagerIconRow } from '../components/dashboard/ManagerIconRow';
+import { isDueTodayOrOverdue } from '../components/dashboard/dashboardFormat';
 import { currentWeekRange, dayKeyOf, expandPersonalReminder, groupRemindersByDay, hasPendingOccurrenceOnOrBefore, parseDayKey } from '../components/dashboard/personalReminders';
 import { CORRESPONDENCE_UNSEEN_EVENT } from '../components/correspondence/correspondenceDisplay';
 import { REVIEWS_UNSEEN_EVENT } from '../components/review/reviewDisplay';
 import { useBadgeCount } from '../hooks/useBadgeCount';
-import type { PeriodSelection } from '../components/dashboard/dashboardTypes';
-import { ManagerStatsSection } from '../components/dashboard/ManagerStatsSection';
 import { ReminderList } from '../components/dashboard/ReminderList';
 
 export default function Dashboard() {
@@ -55,9 +45,6 @@ export default function Dashboard() {
   const [alertMessage, setAlertMessage] = useState('');
   const [alertSubmitting, setAlertSubmitting] = useState(false);
   const [alertFormError, setAlertFormError] = useState<AlertFormError>({ field: null, text: '' });
-  const [period, setPeriod] = useState<StatsPeriod>('yearly');
-  const [selection, setSelection] = useState<PeriodSelection | null>(null);
-  const [branchId, setBranchId] = useState<number | null>(null);
 
   const userReady = Boolean(user);
   // رئيس بلا فرع (ورئيس شعبة برمز بلا شعبة): عدّادات شاراته مرفوضة (`400`/`403`) أو صفرية خلفيًا —
@@ -65,13 +52,7 @@ export default function Dashboard() {
   const headBadgesEnabled =
     userReady && isHeadOrSubHead && (user?.branchId ?? null) != null && (isSubHead ? (user?.sectionId ?? null) != null : true);
 
-  const branchesQuery = useCancellableRequest<BranchDto[]>(
-    (signal) => api.get('/branches', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
-    [isManager],
-    { enabled: userReady && isManager },
-  );
-
-  // التذكيرات خاصة بالمحامي فقط؛ لا تُجلب لرئيس القسم.
+  // التذكيرات خاصة بالمحامي فقط؛ لا تُجلب لرئيس القسم ولا للمدير/المشرف.
   const remindersQuery = useCancellableRequest<ReminderDto[]>(
     (signal) => api.get('/reminders', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
     [isLawyer],
@@ -132,41 +113,6 @@ export default function Dashboard() {
     shape: 'count',
   });
 
-  const availableQuery = useCancellableRequest<MonthlyStatDto[]>(
-    (signal) => {
-      const params: Record<string, unknown> = {};
-      if (isManager && branchId) params.branchId = branchId;
-      return api
-        .get('/stats/periods', { params, signal })
-        .then((r) => (Array.isArray(r.data) ? r.data : []));
-    },
-    [isManager, branchId],
-    // الإحصائيات في صفحة `/stats` للمدير/المشرف — اللوحة لا تجلب الفترات لغيرهما.
-    { enabled: userReady && isManager },
-  );
-
-  const statsQuery = useCancellableRequest<ManagerStatsDto>((signal) => {
-    const params: Record<string, unknown> = { period };
-    if (selection) {
-      params.year = selection.year;
-      if (selection.month != null) params.month = selection.month;
-      if (selection.quarter != null) params.quarter = selection.quarter;
-    }
-    if (isManager && branchId) params.branchId = branchId;
-    return api.get<ManagerStatsDto>('/stats/manager', { params, signal }).then((r) => r.data);
-  }, [isManager, period, selection, branchId], { enabled: userReady && isManager });
-
-  // إحصائيات الفترة السابقة للدلتا (المدير/المشرف فقط — اللوحة لا تجلبها لغيرهما).
-  const prevSelection = useMemo(() => previousSelection(selection, period), [selection, period]);
-  const prevStatsQuery = useCancellableRequest<ManagerStatsDto | null>((signal) => {
-    if (!prevSelection) return Promise.resolve(null);
-    const params: Record<string, unknown> = { period, year: prevSelection.year };
-    if (prevSelection.month != null) params.month = prevSelection.month;
-    if (prevSelection.quarter != null) params.quarter = prevSelection.quarter;
-    if (branchId) params.branchId = branchId;
-    return api.get<ManagerStatsDto>('/stats/manager', { params, signal }).then((r) => r.data);
-  }, [isManager, period, prevSelection, branchId], { enabled: userReady && isManager && prevSelection != null });
-
   // عدّادا بطاقتي المطالعات/المراسلات للمحامي: جلب واحد عند التركيب + تحديث
   // فور حدث المشاهدة — بلا استطلاع دوري مكرر (الاستطلاع الدوري في `Layout` وحده).
   const unseenRepliesQuery = useCancellableRequest<{ count: number }>(
@@ -190,20 +136,6 @@ export default function Dashboard() {
       window.removeEventListener(CORRESPONDENCE_UNSEEN_EVENT, refetchUrgent);
     };
   }, [isLawyer, refetchReplies, refetchUrgent]);
-
-  const lawyersBranch = isManager ? branchId : (user?.branchId ?? null);
-  const lawyerStatsQuery = useCancellableRequest<ManagerLawyerStatDto[]>((signal) => {
-    const params: Record<string, unknown> = { period };
-    if (selection) {
-      params.year = selection.year;
-      if (selection.month != null) params.month = selection.month;
-      if (selection.quarter != null) params.quarter = selection.quarter;
-    }
-    if (isManager && branchId) params.branchId = branchId;
-    return api
-      .get('/stats/manager/lawyers', { params: { ...params, branchId: lawyersBranch }, signal })
-      .then((r) => (Array.isArray(r.data) ? r.data : []));
-  }, [isLawyer, isManager, period, selection, branchId, lawyersBranch], { enabled: userReady && isManager && lawyersBranch != null });
 
   // عدّادات بطاقات رئيس القسم: جلب عند التركيب + استطلاع كل دقيقة (إيقاع الأجراس
   // السابقة) + تحديث حدثي للمراسلات — بلا استطلاع مكرر في `Layout` له.
@@ -252,14 +184,7 @@ export default function Dashboard() {
   const appealReminders = useMemo(() => appealRemindersQuery.data ?? [], [appealRemindersQuery.data]);
   const personalReminders = useMemo(() => personalQuery.data ?? [], [personalQuery.data]);
   const alerts = useMemo(() => alertsQuery.data ?? [], [alertsQuery.data]);
-  const branches = useMemo(() => branchesQuery.data ?? [], [branchesQuery.data]);
   const branchLawyers = useMemo(() => branchLawyersQuery.data ?? [], [branchLawyersQuery.data]);
-  const available = useMemo(() => availableQuery.data ?? [], [availableQuery.data]);
-  const managerStats = statsQuery.data;
-  const lawyerStats = useMemo(
-    () => (lawyersBranch != null ? (lawyerStatsQuery.data ?? []) : []),
-    [lawyersBranch, lawyerStatsQuery.data],
-  );
   const unreadCount = Math.max(0, Number(unreadQuery.data?.count) || 0);
   const unseenReplies = isLawyer ? Math.max(0, Number(unseenRepliesQuery.data?.count) || 0) : 0;
   const urgentCorrespondence = isLawyer ? Math.max(0, Number(urgentQuery.data?.count) || 0) : 0;
@@ -366,30 +291,16 @@ export default function Dashboard() {
     }
   };
 
-  useEffect(() => {
-    const recent = mostRecentSelection(available, period);
-    setSelection(recent);
-  }, [available, period]);
-
   if (isManager) {
+    // المدير/مشرف النظام: نفس نمط المحامي ورئيس القسم — ترحيب + صف أيقونات،
+    // والإحصائيات تُفتح من بطاقة «الإحصائيات» في `/stats` (لا عرض مباشر في اللوحة).
+    const isAdmin = user?.role === 'admin';
     return (
       <div className="max-w-7xl mx-auto">
-        <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-6">لوحة التحكم</h2>
-        <ManagerStatsSection
-          period={period}
-          onPeriodChange={setPeriod}
-          availablePeriods={available}
-          selection={selection}
-          onSelectionChange={setSelection}
-          branches={branches}
-          branchId={branchId}
-          onBranchChange={setBranchId}
-          stats={managerStats}
-          prevStats={prevStatsQuery.data ?? null}
-          lawyers={lawyerStats}
-          lawyersError={lawyerStatsQuery.error ?? ''}
-          error={statsQuery.error ?? ''}
-        />
+        <GreetingHeader fullName={user?.fullName} />
+        <div className="mt-4">
+          <ManagerIconRow isAdmin={isAdmin} />
+        </div>
       </div>
     );
   }
