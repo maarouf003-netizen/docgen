@@ -230,7 +230,7 @@ public sealed class ForbiddenShapeContractTests : IAsyncLifetime
             fullName = UniqueName("adm"),
             role = "Admin",
             branchId = (int?)null,
-            password = "123456",
+            password = "TestPass1234",
         });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);

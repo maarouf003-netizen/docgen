@@ -70,11 +70,11 @@ public static class ApiFixtureExtensions
             fullName = username,
             role = "subhead",
             branchId = branchId ?? await factory.GetDamascusIdAsync(),
-            password = "123456",
+            password = "TestPass1234",
             sectionId,
         });
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        return (await factory.LoginAsync(username, "123456"))!.Token!;
+        return (await factory.LoginAsync(username, "TestPass1234"))!.Token!;
     }
 
     /// <summary>إنشاء فرع مباشرة في القاعدة برمز فريد — بلا مرور بالـ API.</summary>
@@ -107,12 +107,12 @@ public static class ApiFixtureExtensions
         {
             username,
             fullName = username,
-            password = "123456",
+            password = "TestPass1234",
             branchId = branchId ?? await factory.GetDamascusIdAsync(),
         });
         Assert.Equal(HttpStatusCode.OK, created.StatusCode);
         using var doc = await created.Content.ReadFromJsonAsync<JsonDocument>();
-        var token = (await factory.LoginAsync(username, "123456"))!.Token!;
+        var token = (await factory.LoginAsync(username, "TestPass1234"))!.Token!;
         return (doc!.RootElement.GetProperty("id").GetInt32(), token);
     }
 

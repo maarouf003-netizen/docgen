@@ -42,7 +42,7 @@ public class RF001DuplicateRequestCharacterizationTests
         {
             username,
             fullName,
-            password = "123456",
+            password = "TestPass1234",
             branchId = await _factory.GetBranchIdAsync(branchCode),
         });
         response.EnsureSuccessStatusCode();
@@ -82,7 +82,7 @@ public class RF001DuplicateRequestCharacterizationTests
         // فرع معزول بمحامييه ورئيسه (لا دمشق — عزل النطاق والتدقيق معًا).
         var branchCode = await CreateBranchCodeAsync();
         var source = await CreateLawyerAsync(branchCode, "محامي المصدر المكرر");
-        var token = (await _factory.LoginAsync(source.Username, "123456"))!.Token!;
+        var token = (await _factory.LoginAsync(source.Username, "TestPass1234"))!.Token!;
         await _factory.CreateDocumentAsync(token, borrowerName: "نقل مكرر 1");
         await _factory.CreateDocumentAsync(token, borrowerName: "نقل مكرر 2");
         var target = await CreateLawyerAsync(branchCode, "محامي الهدف المكرر");

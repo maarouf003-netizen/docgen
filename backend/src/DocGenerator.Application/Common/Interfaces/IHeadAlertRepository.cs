@@ -22,6 +22,12 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
     /// </summary>
     Task<List<HeadAlert>> ListSentAsync(int userId, int branchId, CancellationToken ct = default);
 
+    /// <summary>
+    /// كل التنبيهات عبر الفروع لقائمة الإشراف (المدير/المشرف — قرار المالك 2026-10-16):
+    /// الأحدث أولًا بسقف 500. القراءة فقط — لا عدّادات ولا تعليم مقروء هنا.
+    /// </summary>
+    Task<List<HeadAlert>> ListForOversightAsync(CancellationToken ct = default);
+
     /// <summary>عدد تنبيهات المحامي غير المقروءة.</summary>
     Task<int> CountUnreadAsync(int userId, CancellationToken ct = default);
 

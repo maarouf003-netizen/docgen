@@ -10,6 +10,7 @@ using DocGenerator.Application.Common.Options;
 using DocGenerator.Infrastructure;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Npgsql;
@@ -40,9 +41,26 @@ builder.Services.Configure<Microsoft.AspNetCore.Http.Json.JsonOptions>(o =>
 
 // يدعم المضيفون السحابيون ربط قاعدة Postgres فيحقنون DATABASE_URL تلقائيًا بصيغة postgres://؛
 // وهو مصدر موثوق يغني عن اللصق اليدوي لسلسلة الاتصال.
+// H-01b: قيمة فارغة/بيضاء تُعامَل كغائبة — وإلا فازت "" على سلسلة الاتصال عبر ??
+// فسقط التطبيق على قاعدة SQLite شبح بلا ملف (ترحيل ينجح ثم كل استعلام يفشل).
 var databaseUrl = builder.Configuration["DATABASE_URL"];
+if (string.IsNullOrWhiteSpace(databaseUrl))
+    databaseUrl = null;
 var usePostgres = builder.Configuration.GetValue<bool>("Database:UsePostgres")
     || !string.IsNullOrWhiteSpace(databaseUrl);
+
+// H-01 (جاهزية الإنتاج): لا وقوع صامت على SQLite خارج التطوير — الإنتاج يتطلب
+// Postgres صراحة، ما لم يُسمَح بـ SQLite عبر Database:AllowSqliteInProduction=true
+// (قرار نشر صريح لعقدة داخلية صغيرة). يمنع فقدان البيانات على قرص مؤقت عند نسيان الضبط.
+var allowSqliteInProduction = builder.Configuration.GetValue<bool>("Database:AllowSqliteInProduction");
+if (!usePostgres && !builder.Environment.IsDevelopment() && !allowSqliteInProduction)
+{
+    throw new InvalidOperationException(
+        "Refusing to start outside Development on SQLite (Database:UsePostgres=false and no DATABASE_URL). "
+        + "Production requires PostgreSQL: set Database__UsePostgres=true with a valid Postgres connection string "
+        + "(ConnectionStrings__DefaultConnection or DATABASE_URL). For an explicit small single-node SQLite "
+        + "deployment, set Database__AllowSqliteInProduction=true.");
+}
 
 var rawConn = databaseUrl
     ?? builder.Configuration.GetConnectionString("DefaultConnection")
@@ -344,15 +362,23 @@ app.UseRateLimiter();
 // المعرّف والهوية صراحة من HttpContext ولا يعتمد على نطاق LogContext هنا.
 app.UseMiddleware<RequestLoggingEnricherMiddleware>();
 
-app.MapControllers();
+// M-01 (جاهزية الإنتاج — دفاع عمقي): كل إجراءات المتحكمات تتطلب مصادقة افتراضيًا، فأي
+// متحكم/إجراء جديد يُكتب بلا [Authorize] يبقى محميًا تلقائيًا. الاستثناءات صريحة بـ
+// [AllowAnonymous] على الإجراء نفسه (الدخول/الخروج/سنة الخادم) وهي تتقدّم على هذا الافتراضي.
+// قرار: تعمّدنا عدم استخدام AuthorizationOptions.FallbackPolicy لأنه يُطبَّق أيضًا على الطلبات
+// بلا نقطة مطابقة (بفضل قيد `:nonfile` في احتياطي SPA) فيحوّل كل 404 إلى 401؛ وهذا الافتراضي
+// على المتحكمات يحقق الهدف نفسه مع إبقاء دلالة «غير موجود» سليمة للعميل والموزّع.
+app.MapControllers().RequireAuthorization();
 
 // RF-016: نقطة الصحة قبل احتياطي SPA — لا تُبتلَع بواسطة index.html في الإنتاج.
-app.MapHealthChecks("/healthz");
+// نقطة بنية عامة عمدًا (المنسّق/الموازن غير مصادقين) — نُثبّت [AllowAnonymous] صراحةً.
+app.MapHealthChecks("/healthz").AllowAnonymous();
 
 // كل مسارات SPA غير المعروفة تعود إلى index.html (تُستخدم مع خدمة الملفات الثابتة أعلاه).
+// مسار عميل مجهول عمدًا (صفحة الدخول) — نُثبّت [AllowAnonymous] صراحةً.
 if (!builder.Environment.IsDevelopment())
 {
-    app.MapFallbackToFile("index.html");
+    app.MapFallbackToFile("index.html").AllowAnonymous();
 }
 
     app.Run();

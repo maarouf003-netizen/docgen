@@ -56,7 +56,7 @@ public class UserManagementServiceTests : IDisposable
             Role = role,
             BranchId = branchId,
             IsActive = isActive,
-            PasswordHash = _hasher.Hash("123456"),        };
+            PasswordHash = _hasher.Hash("TestPass1234"),        };
         _db.Users.Add(user);
         await _db.SaveChangesAsync();
         return user;
@@ -66,7 +66,7 @@ public class UserManagementServiceTests : IDisposable
     public async Task CreateLawyer_AddsActiveLawyerToBranch()
     {
         var lawyer = await _service.CreateLawyerAsync(DamascusId,
-            new CreateLawyerRequest("lawyer_x", "محامي جديد", "123456"), "head1");
+            new CreateLawyerRequest("lawyer_x", "محامي جديد", "TestPass1234"), "head1");
 
         Assert.Equal("lawyer_x", lawyer.Username);
         Assert.Equal("محامي جديد", lawyer.FullName);
@@ -81,7 +81,7 @@ public class UserManagementServiceTests : IDisposable
         await AddUserAsync("duplicate", "محامي موجود", UserRole.Lawyer, DamascusId);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateLawyerAsync(DamascusId, new CreateLawyerRequest("duplicate", "محامي", "123456"), "head1"));
+            _service.CreateLawyerAsync(DamascusId, new CreateLawyerRequest("duplicate", "محامي", "TestPass1234"), "head1"));
     }
 
     [Fact]
@@ -141,7 +141,7 @@ public class UserManagementServiceTests : IDisposable
     public async Task CreateUser_WithManagerRole_NoBranchRequired()
     {
         var user = await _service.CreateUserAsync(
-            new CreateUserRequest("mgr_new", "مدير جديد", "manager", null, "123456"), "admin");
+            new CreateUserRequest("mgr_new", "مدير جديد", "manager", null, "TestPass1234"), "admin");
 
         Assert.Equal("manager", user.Role);
         Assert.Null(user.BranchId);
@@ -152,14 +152,14 @@ public class UserManagementServiceTests : IDisposable
     public async Task CreateUser_LawyerWithoutBranch_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateUserAsync(new CreateUserRequest("law", "محامي", "lawyer", null, "123456"), "admin"));
+            _service.CreateUserAsync(new CreateUserRequest("law", "محامي", "lawyer", null, "TestPass1234"), "admin"));
     }
 
     [Fact]
     public async Task CreateUser_HeadWithoutBranch_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateUserAsync(new CreateUserRequest("head_nob", "رئيس بلا فرع", "head", null, "123456"), "admin"));
+            _service.CreateUserAsync(new CreateUserRequest("head_nob", "رئيس بلا فرع", "head", null, "TestPass1234"), "admin"));
     }
 
     [Fact]
@@ -178,7 +178,7 @@ public class UserManagementServiceTests : IDisposable
     public async Task CreateUser_InvalidRole_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateUserAsync(new CreateUserRequest("x", "مستخدم", "مشرف", null, "123456"), "admin"));
+            _service.CreateUserAsync(new CreateUserRequest("x", "مستخدم", "مشرف", null, "TestPass1234"), "admin"));
     }
 
     [Fact]
@@ -196,13 +196,13 @@ public class UserManagementServiceTests : IDisposable
         var user = await AddUserAsync("reset", "مستخدم", UserRole.Lawyer, DamascusId);
 
         var updated = await _service.UpdateUserAsync(
-            user.Id, new UpdateUserRequest("مستخدم", "lawyer", DamascusId, true, "654321"), 999, "admin");
+            user.Id, new UpdateUserRequest("مستخدم", "lawyer", DamascusId, true, "TestPass5678"), 999, "admin");
 
         Assert.NotNull(updated);
         var reloaded = await _db.Users.FindAsync(user.Id);
         // (R2) الطلب يغيّر اسم الدخول ("reset" ← "مستخدم") وكلمة المرور معًا: +1 لكلٍّ منهما.
         Assert.Equal(2, reloaded!.TokenVersion);
-        Assert.True(_hasher.Verify("654321", reloaded.PasswordHash));
+        Assert.True(_hasher.Verify("TestPass5678", reloaded.PasswordHash));
     }
 
     [Fact]
@@ -218,7 +218,7 @@ public class UserManagementServiceTests : IDisposable
     public async Task UpdateLawyer_Rename_SyncsUsernameAndFullName()
     {
         var lawyer = await _service.CreateLawyerAsync(DamascusId,
-            new CreateLawyerRequest("محمود علي", "محمود علي", "123456"), "head1");
+            new CreateLawyerRequest("محمود علي", "محمود علي", "TestPass1234"), "head1");
 
         var updated = await _service.UpdateLawyerAsync(
             lawyer.Id, new UpdateLawyerRequest("محمود علي حسن"), DamascusId, "head1");
@@ -235,15 +235,15 @@ public class UserManagementServiceTests : IDisposable
     public async Task UpdateLawyer_ResetPassword_IncrementsTokenVersion()
     {
         var lawyer = await _service.CreateLawyerAsync(DamascusId,
-            new CreateLawyerRequest("lawyer_pw", "محامي كلمة المرور", "123456"), "head1");
+            new CreateLawyerRequest("lawyer_pw", "محامي كلمة المرور", "TestPass1234"), "head1");
 
         var updated = await _service.UpdateLawyerAsync(
-            lawyer.Id, new UpdateLawyerRequest(null, "654321"), DamascusId, "head1");
+            lawyer.Id, new UpdateLawyerRequest(null, "TestPass5678"), DamascusId, "head1");
 
         Assert.NotNull(updated);
         var reloaded = await _db.Users.FindAsync(lawyer.Id);
         Assert.Equal(1, reloaded!.TokenVersion);
-        Assert.True(_hasher.Verify("654321", reloaded.PasswordHash));
+        Assert.True(_hasher.Verify("TestPass5678", reloaded.PasswordHash));
         Assert.Equal("lawyer_pw", reloaded.Username);
     }
 
@@ -282,9 +282,9 @@ public class UserManagementServiceTests : IDisposable
     public async Task UpdateLawyer_DuplicateNameSameBranch_Throws()
     {
         await _service.CreateLawyerAsync(DamascusId,
-            new CreateLawyerRequest("مروان سعيد", "مروان سعيد", "123456"), "head1");
+            new CreateLawyerRequest("مروان سعيد", "مروان سعيد", "TestPass1234"), "head1");
         var lawyer = await _service.CreateLawyerAsync(DamascusId,
-            new CreateLawyerRequest("قاسم علي", "قاسم علي", "123456"), "head1");
+            new CreateLawyerRequest("قاسم علي", "قاسم علي", "TestPass1234"), "head1");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.UpdateLawyerAsync(lawyer.Id, new UpdateLawyerRequest("مروان سعيد"), DamascusId, "head1"));
@@ -296,17 +296,28 @@ public class UserManagementServiceTests : IDisposable
     public async Task UpdateLawyer_WeakPassword_Throws()
     {
         var lawyer = await _service.CreateLawyerAsync(DamascusId,
-            new CreateLawyerRequest("lawyer_wp", "محامي", "123456"), "head1");
+            new CreateLawyerRequest("lawyer_wp", "محامي", "TestPass1234"), "head1");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.UpdateLawyerAsync(lawyer.Id, new UpdateLawyerRequest(null, "123"), DamascusId, "head1"));
     }
 
     [Fact]
+    public async Task CreateLawyer_PaddedPassword_StoresTrimmedValue()
+    {
+        var lawyer = await _service.CreateLawyerAsync(DamascusId,
+            new CreateLawyerRequest("lawyer_trim", "محامي القص", "  TestPass1234  "), "head1");
+
+        var reloaded = await _db.Users.FindAsync(lawyer.Id);
+        Assert.True(_hasher.Verify("TestPass1234", reloaded!.PasswordHash));
+        Assert.False(_hasher.Verify("  TestPass1234  ", reloaded.PasswordHash));
+    }
+
+    [Fact]
     public async Task UpdateLawyer_NoChanges_Throws()
     {
         var lawyer = await _service.CreateLawyerAsync(DamascusId,
-            new CreateLawyerRequest("lawyer_nc", "محامي", "123456"), "head1");
+            new CreateLawyerRequest("lawyer_nc", "محامي", "TestPass1234"), "head1");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.UpdateLawyerAsync(lawyer.Id, new UpdateLawyerRequest(null, null), DamascusId, "head1"));
@@ -318,7 +329,7 @@ public class UserManagementServiceTests : IDisposable
     public async Task UpdateLawyer_EquivalentSpelling_PresentationChange_Allowed()
     {
         var lawyer = await _service.CreateLawyerAsync(DamascusId,
-            new CreateLawyerRequest("محمد احمد علي", "محمد احمد علي", "123456"), "head1");
+            new CreateLawyerRequest("محمد احمد علي", "محمد احمد علي", "TestPass1234"), "head1");
 
         // النسخة ذات الهمزة تُطبَّع إلى اسم الدخول نفسه فلا تكون تكراراً — يُحدَّث العرض فقط.
         var updated = await _service.UpdateLawyerAsync(
@@ -335,7 +346,7 @@ public class UserManagementServiceTests : IDisposable
         await AddUserAsync("محمد احمد علي", "محمد أحمد علي", UserRole.Lawyer, DamascusId);
 
         var lawyer = await _service.CreateLawyerAsync(AleppoId,
-            new CreateLawyerRequest("محمد أحمد علي", "محمد أحمد علي", "123456"), "admin");
+            new CreateLawyerRequest("محمد أحمد علي", "محمد أحمد علي", "TestPass1234"), "admin");
 
         Assert.Equal("محمد احمد علي", lawyer.Username);
         Assert.Equal(AleppoId, lawyer.BranchId);
@@ -345,7 +356,7 @@ public class UserManagementServiceTests : IDisposable
     public async Task CreateLawyer_ArabicNameWithSpaces_AcceptedAndNormalized()
     {
         var lawyer = await _service.CreateLawyerAsync(DamascusId,
-            new CreateLawyerRequest("محمد أحمد علي", "محمد أحمد علي", "123456"), "head1");
+            new CreateLawyerRequest("محمد أحمد علي", "محمد أحمد علي", "TestPass1234"), "head1");
 
         // تُخزَّن النسخة المطبّعة (أ/إ/آ → ا) لتكون معياراً موحداً للدخول والتفرد.
         Assert.Equal("محمد احمد علي", lawyer.Username);
@@ -356,11 +367,11 @@ public class UserManagementServiceTests : IDisposable
     public async Task CreateLawyer_EquivalentArabicSpelling_SameBranch_Throws()
     {
         await _service.CreateLawyerAsync(DamascusId,
-            new CreateLawyerRequest("محمد أحمد علي", "محمد أحمد علي", "123456"), "head1");
+            new CreateLawyerRequest("محمد أحمد علي", "محمد أحمد علي", "TestPass1234"), "head1");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateLawyerAsync(DamascusId,
-                new CreateLawyerRequest("محمد احمد علي", "محمد أحمد علي", "123456"), "head1"));
+                new CreateLawyerRequest("محمد احمد علي", "محمد أحمد علي", "TestPass1234"), "head1"));
 
         Assert.Contains("نفس الفرع", ex.Message);
     }
@@ -369,11 +380,11 @@ public class UserManagementServiceTests : IDisposable
     public async Task CreateUser_SameNameSameBranch_Throws()
     {
         await _service.CreateUserAsync(
-            new CreateUserRequest("خالد حسن", "خالد حسن", "head", DamascusId, "123456"), "admin");
+            new CreateUserRequest("خالد حسن", "خالد حسن", "head", DamascusId, "TestPass1234"), "admin");
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateUserAsync(
-                new CreateUserRequest("خالد حسن", "خالد حسن", "lawyer", DamascusId, "123456"), "admin"));
+                new CreateUserRequest("خالد حسن", "خالد حسن", "lawyer", DamascusId, "TestPass1234"), "admin"));
     }
 
     [Fact]
@@ -381,7 +392,7 @@ public class UserManagementServiceTests : IDisposable
     {
         var user = await AddUserAsync("قاسم علي", "قاسم علي", UserRole.Lawyer, DamascusId);
         await _service.CreateLawyerAsync(DamascusId,
-            new CreateLawyerRequest("مروان سعيد", "مروان سعيد", "123456"), "head1");
+            new CreateLawyerRequest("مروان سعيد", "مروان سعيد", "TestPass1234"), "head1");
 
         // تغيير الاسم يحدّث اسم الدخول ليبقى مساوياً للاسم الثلاثي.
         var renamed = await _service.UpdateUserAsync(
@@ -422,11 +433,11 @@ public class UserManagementServiceTests : IDisposable
     public async Task CreateUser_SecondActiveHeadSameBranch_ThrowsWithApprovedMessage()
     {
         await _service.CreateUserAsync(
-            new CreateUserRequest("رئيس أول", "رئيس أول", "head", DamascusId, "123456"), "admin");
+            new CreateUserRequest("رئيس أول", "رئيس أول", "head", DamascusId, "TestPass1234"), "admin");
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateUserAsync(
-                new CreateUserRequest("رئيس ثان", "رئيس ثان", "head", DamascusId, "123456"), "admin"));
+                new CreateUserRequest("رئيس ثان", "رئيس ثان", "head", DamascusId, "TestPass1234"), "admin"));
         Assert.Equal("الفرع لا يقبل رئيسي قسم", ex.Message);
     }
 
@@ -434,9 +445,9 @@ public class UserManagementServiceTests : IDisposable
     public async Task CreateUser_HeadDifferentBranch_Allowed()
     {
         await _service.CreateUserAsync(
-            new CreateUserRequest("رئيس دمشق", "رئيس دمشق", "head", DamascusId, "123456"), "admin");
+            new CreateUserRequest("رئيس دمشق", "رئيس دمشق", "head", DamascusId, "TestPass1234"), "admin");
         var other = await _service.CreateUserAsync(
-            new CreateUserRequest("رئيس حلب", "رئيس حلب", "head", AleppoId, "123456"), "admin");
+            new CreateUserRequest("رئيس حلب", "رئيس حلب", "head", AleppoId, "TestPass1234"), "admin");
 
         Assert.Equal(AleppoId, other.BranchId);
     }
@@ -445,13 +456,13 @@ public class UserManagementServiceTests : IDisposable
     public async Task CreateUser_SecondHeadAfterDeactivation_Allowed()
     {
         var first = await _service.CreateUserAsync(
-            new CreateUserRequest("رئيس سابق", "رئيس سابق", "head", DamascusId, "123456"), "admin");
+            new CreateUserRequest("رئيس سابق", "رئيس سابق", "head", DamascusId, "TestPass1234"), "admin");
         var stored = await _db.Users.SingleAsync(u => u.Id == first.Id);
         stored.IsActive = false;
         await _db.SaveChangesAsync();
 
         var second = await _service.CreateUserAsync(
-            new CreateUserRequest("رئيس لاحق", "رئيس لاحق", "head", DamascusId, "123456"), "admin");
+            new CreateUserRequest("رئيس لاحق", "رئيس لاحق", "head", DamascusId, "TestPass1234"), "admin");
         Assert.NotNull(second);
     }
 
@@ -459,7 +470,7 @@ public class UserManagementServiceTests : IDisposable
     public async Task UpdateUser_PromoteLawyerToHeadWithExistingHead_Throws()
     {
         await _service.CreateUserAsync(
-            new CreateUserRequest("رئيس قائم", "رئيس قائم", "head", DamascusId, "123456"), "admin");
+            new CreateUserRequest("رئيس قائم", "رئيس قائم", "head", DamascusId, "TestPass1234"), "admin");
         var lawyer = await AddUserAsync("محام مرشح", "محام مرشح", UserRole.Lawyer, DamascusId);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -471,7 +482,7 @@ public class UserManagementServiceTests : IDisposable
     public async Task UpdateUser_SelfHeadUpdate_Allowed()
     {
         var head = await _service.CreateUserAsync(
-            new CreateUserRequest("رئيس ذاتي", "رئيس ذاتي", "head", DamascusId, "123456"), "admin");
+            new CreateUserRequest("رئيس ذاتي", "رئيس ذاتي", "head", DamascusId, "TestPass1234"), "admin");
         var stored = await _db.Users.SingleAsync(u => u.Id == head.Id);
 
         var updated = await _service.UpdateUserAsync(
@@ -629,7 +640,7 @@ public class UserManagementServiceTests : IDisposable
     {
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateUserAsync(
-                new CreateUserRequest("شعبة بلا", "شعبة بلا", "subhead", DamascusId, "123456"), "admin"));
+                new CreateUserRequest("شعبة بلا", "شعبة بلا", "subhead", DamascusId, "TestPass1234"), "admin"));
         Assert.Contains("الشعبة إلزامية", ex.Message);
     }
 
@@ -639,14 +650,14 @@ public class UserManagementServiceTests : IDisposable
         var sectionId = await AddSectionAsync("شعبة مصياف", DamascusId);
 
         var created = await _service.CreateUserAsync(
-            new CreateUserRequest("رئيس شعبة", "رئيس شعبة", "subhead", DamascusId, "123456", sectionId), "admin");
+            new CreateUserRequest("رئيس شعبة", "رئيس شعبة", "subhead", DamascusId, "TestPass1234", sectionId), "admin");
 
         Assert.Equal(sectionId, created.SectionId);
         Assert.Equal("شعبة مصياف", created.SectionName);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateUserAsync(
-                new CreateUserRequest("شعبة ثان", "شعبة ثان", "subhead", DamascusId, "123456", sectionId), "admin"));
+                new CreateUserRequest("شعبة ثان", "شعبة ثان", "subhead", DamascusId, "TestPass1234", sectionId), "admin"));
         Assert.Equal("الشعبة مشغولة برئيس مفعّل", ex.Message);
     }
 
@@ -657,7 +668,7 @@ public class UserManagementServiceTests : IDisposable
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateUserAsync(
-                new CreateUserRequest("شعبة خطأ", "شعبة خطأ", "subhead", DamascusId, "123456", foreignSection), "admin"));
+                new CreateUserRequest("شعبة خطأ", "شعبة خطأ", "subhead", DamascusId, "TestPass1234", foreignSection), "admin"));
         Assert.Contains("ليست ضمن فرع الحساب", ex.Message);
     }
 
@@ -668,7 +679,7 @@ public class UserManagementServiceTests : IDisposable
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateUserAsync(
-                new CreateUserRequest("رئيس قسم", "رئيس قسم", "head", DamascusId, "123456", sectionId), "admin"));
+                new CreateUserRequest("رئيس قسم", "رئيس قسم", "head", DamascusId, "TestPass1234", sectionId), "admin"));
         Assert.Contains("مخصصة لرئيس الشعبة", ex.Message);
     }
 
@@ -678,7 +689,7 @@ public class UserManagementServiceTests : IDisposable
         var creator = await AddUserAsync("منشئ", "منشئ", UserRole.Head, DamascusId);
 
         var created = await _service.CreateUserAsync(
-            new CreateUserRequest("محام جديد", "محام جديد", "lawyer", DamascusId, "123456"), "admin", ct: default, actorUserId: creator.Id);
+            new CreateUserRequest("محام جديد", "محام جديد", "lawyer", DamascusId, "TestPass1234"), "admin", ct: default, actorUserId: creator.Id);
 
         Assert.Equal(creator.Id, (await _db.Users.SingleAsync(u => u.Id == created.Id)).CreatedById);
     }
@@ -689,7 +700,7 @@ public class UserManagementServiceTests : IDisposable
         var creator = await AddUserAsync("منشئ", "منشئ", UserRole.Head, DamascusId);
 
         var lawyer = await _service.CreateLawyerAsync(DamascusId,
-            new CreateLawyerRequest("محام ميداني", "محام ميداني", "123456"), "head1", ct: default, actorUserId: creator.Id);
+            new CreateLawyerRequest("محام ميداني", "محام ميداني", "TestPass1234"), "head1", ct: default, actorUserId: creator.Id);
 
         Assert.Equal(creator.Id, (await _db.Users.SingleAsync(u => u.Username == lawyer.Username)).CreatedById);
     }
@@ -700,7 +711,7 @@ public class UserManagementServiceTests : IDisposable
         var first = await AddSectionAsync("شعبة أولى", DamascusId);
         var second = await AddSectionAsync("شعبة ثانية", DamascusId);
         var created = await _service.CreateUserAsync(
-            new CreateUserRequest("رئيس شعبة", "رئيس شعبة", "subhead", DamascusId, "123456", first), "admin");
+            new CreateUserRequest("رئيس شعبة", "رئيس شعبة", "subhead", DamascusId, "TestPass1234", first), "admin");
         var before = (await _db.Users.AsNoTracking().SingleAsync(u => u.Id == created.Id)).TokenVersion;
 
         var updated = await _service.UpdateUserAsync(
@@ -716,7 +727,7 @@ public class UserManagementServiceTests : IDisposable
     {
         var sectionId = await AddSectionAsync("شعبة مصياف", DamascusId);
         var created = await _service.CreateUserAsync(
-            new CreateUserRequest("رئيس شعبة", "رئيس شعبة", "subhead", DamascusId, "123456", sectionId), "admin");
+            new CreateUserRequest("رئيس شعبة", "رئيس شعبة", "subhead", DamascusId, "TestPass1234", sectionId), "admin");
 
         var updated = await _service.UpdateUserAsync(
             created.Id, new UpdateUserRequest(null, "lawyer", null, true, null), 999, "admin");
@@ -740,14 +751,14 @@ public class UserManagementServiceTests : IDisposable
     private async Task<User> AddHeadWithSectionAsync(string username, int branchId, int sectionId)
     {
         var created = await _service.CreateUserAsync(
-            new CreateUserRequest(username, username, "subhead", branchId, "123456", sectionId), "admin");
+            new CreateUserRequest(username, username, "subhead", branchId, "TestPass1234", sectionId), "admin");
         return await _db.Users.SingleAsync(u => u.Id == created.Id);
     }
 
     private async Task<User> AddLawyerViaServiceAsync(string username, int branchId, int? creatorId)
     {
         var created = await _service.CreateUserAsync(
-            new CreateUserRequest(username, username, "lawyer", branchId, "123456"), "admin",
+            new CreateUserRequest(username, username, "lawyer", branchId, "TestPass1234"), "admin",
             ct: default, actorUserId: creatorId);
         return await _db.Users.SingleAsync(u => u.Id == created.Id);
     }

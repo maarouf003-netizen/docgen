@@ -85,7 +85,7 @@ public class RF004AuthzTests
             fullName = UniqueName("محام"),
             role = "Lawyer",
             branchId = await _factory.GetBranchIdAsync("DAM"),
-            password = "123456",
+            password = "TestPass1234",
         });
         Assert.True(response.StatusCode is HttpStatusCode.OK or HttpStatusCode.Created,
             $"unexpected {(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
@@ -102,7 +102,7 @@ public class RF004AuthzTests
             fullName = UniqueName("مشرف"),
             role = "Admin",
             branchId = (int?)null,
-            password = "123456",
+            password = "TestPass1234",
         });
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -139,7 +139,7 @@ public class RF004AuthzTests
         {
             username = UniqueName("مندوب"),
             fullName = UniqueName("مندوب"),
-            password = "123456",
+            password = "TestPass1234",
             portalGroupId = (int?)null,
             portalEntryId = entryId,
         });
@@ -156,7 +156,7 @@ public class RF004AuthzTests
         {
             username = UniqueName("مندوب"),
             fullName = UniqueName("مندوب"),
-            password = "123456",
+            password = "TestPass1234",
             portalGroupId = (int?)null,
             portalEntryId = entryId,
         });

@@ -32,7 +32,7 @@ describe('ChangePasswordForm', () => {
     render(<ChangePasswordForm />);
 
     await user.type(screen.getByLabelText('كلمة المرور الحالية'), 'old1234');
-    await user.type(screen.getByLabelText('كلمة المرور الجديدة'), 'new1234');
+    await user.type(screen.getByLabelText('كلمة المرور الجديدة'), 'newpass1234');
     await user.type(screen.getByLabelText('تأكيد كلمة المرور'), 'different');
     await user.click(screen.getByRole('button', { name: 'حفظ' }));
 
@@ -50,7 +50,7 @@ describe('ChangePasswordForm', () => {
     await user.type(screen.getByLabelText('تأكيد كلمة المرور'), '123');
     await user.click(screen.getByRole('button', { name: 'حفظ' }));
 
-    expect(screen.getByRole('alert')).toHaveTextContent('6 أحرف');
+    expect(screen.getByRole('alert')).toHaveTextContent('10 أحرف');
     expect(screen.getByLabelText('كلمة المرور الجديدة')).toHaveFocus();
   });
 
@@ -60,13 +60,13 @@ describe('ChangePasswordForm', () => {
     render(<ChangePasswordForm />);
 
     await user.type(screen.getByLabelText('كلمة المرور الحالية'), 'old1234');
-    await user.type(screen.getByLabelText('كلمة المرور الجديدة'), 'new1234');
-    await user.type(screen.getByLabelText('تأكيد كلمة المرور'), 'new1234');
+    await user.type(screen.getByLabelText('كلمة المرور الجديدة'), 'newpass1234');
+    await user.type(screen.getByLabelText('تأكيد كلمة المرور'), 'newpass1234');
     await user.click(screen.getByRole('button', { name: 'حفظ' }));
 
     expect(api.post).toHaveBeenCalledWith('/auth/change-password', {
       oldPassword: 'old1234',
-      newPassword: 'new1234',
+      newPassword: 'newpass1234',
     });
     expect(screen.getByRole('status')).toHaveTextContent('تم تغيير كلمة المرور بنجاح');
     expect(screen.getByLabelText('كلمة المرور الحالية')).toHaveValue('');
@@ -80,8 +80,8 @@ describe('ChangePasswordForm', () => {
     render(<ChangePasswordForm />);
 
     await user.type(screen.getByLabelText('كلمة المرور الحالية'), 'wrong');
-    await user.type(screen.getByLabelText('كلمة المرور الجديدة'), 'new1234');
-    await user.type(screen.getByLabelText('تأكيد كلمة المرور'), 'new1234');
+    await user.type(screen.getByLabelText('كلمة المرور الجديدة'), 'newpass1234');
+    await user.type(screen.getByLabelText('تأكيد كلمة المرور'), 'newpass1234');
     await user.click(screen.getByRole('button', { name: 'حفظ' }));
 
     expect(screen.getByRole('alert')).toHaveTextContent('الحالية غير صحيحة');

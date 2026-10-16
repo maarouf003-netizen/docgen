@@ -1,10 +1,11 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { api } from '../api/client';
+import { MIN_PASSWORD_LENGTH } from '../utils/passwordPolicy';
 
 /**
  * نموذج تغيير كلمة المرور المشترك — يُستخدم في صفحة `ChangePassword`
  * وبطاقة `/account` (لا تكرار للمنطق):
- * تطابق الجديدتين + طول ≥ 6 + `POST /auth/change-password`، مع
+ * تطابق الجديدتين + طول ≥ 10 + `POST /auth/change-password`، مع
  * `autocomplete`/`name` صحيحة، وملصقات قابلة للنقر، وتركيز أول خطأ.
  */
 export function ChangePasswordForm() {
@@ -22,9 +23,9 @@ export function ChangePasswordForm() {
     setMessage(null);
     setFieldError(null);
 
-    if (newPassword.length < 6) {
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
       setFieldError('new');
-      setMessage({ ok: false, text: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' });
+      setMessage({ ok: false, text: `كلمة المرور يجب أن تكون ${MIN_PASSWORD_LENGTH} أحرف على الأقل` });
       newRef.current?.focus();
       return;
     }

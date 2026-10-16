@@ -57,6 +57,21 @@ public class DbSeederTests
             DbSeeder.BootstrapAsync(db, hasher, password));
     }
 
+    [Theory]
+    [InlineData("short")]
+    [InlineData("  short  ")]
+    [InlineData("password123")]
+    public async Task BootstrapAsync_WithoutUsersAndWeakPassword_Throws(string password)
+    {
+        using var db = TestDb.Create();
+        var hasher = new PasswordHasher();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            DbSeeder.BootstrapAsync(db, hasher, password));
+        Assert.Contains("كلمة المرور", ex.Message);
+        Assert.Empty(db.Users);
+    }
+
     [Fact]
     public async Task SeedAsync_WhenEmpty_CreatesBranchesAndDevUsers()
     {

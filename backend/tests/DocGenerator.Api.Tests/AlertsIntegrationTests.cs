@@ -364,11 +364,55 @@ public class AlertsIntegrationTests
     }
 
     [Fact]
-    public async Task Get_Alert_Manager_Forbidden()
+    public async Task Get_Alert_Manager_ReturnsIt_Missing_ReturnsNotFound()
     {
+        // قرار المالك 2026-10-16: قراءة إشرافية للمدير/المشرف (المفرد والقائمة فقط).
+        var docId = await CreateDocumentForLawyerAsync(_factory, "lawyer1");
+        var head = _factory.AuthorizedClient("head1");
+        var created = await (await head.PostAsJsonAsync("/api/alerts", new
+        {
+            targetType = "document",
+            documentId = docId,
+            targetLawyerId = (int?)null,
+            message = "تنبيه للإشراف",
+        })).Content.ReadFromJsonAsync<HeadAlertDto>();
+
+        foreach (var username in new[] { "manager", "admin" })
+        {
+            var client = _factory.AuthorizedClient(username);
+            var response = await client.GetAsync($"/api/alerts/{created!.Id}");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var alert = await response.Content.ReadFromJsonAsync<HeadAlertDto>();
+            Assert.Equal("تنبيه للإشراف", alert!.Message);
+            Assert.Equal(HttpStatusCode.NotFound,
+                (await client.GetAsync("/api/alerts/999999")).StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task Manager_ListsAlerts_SeesCrossBranchAlert_LawyerDoesNot()
+    {
+        var branchId = await _factory.CreateBranchAsync("حمص-إشراف");
+        var alpLawyer = await _factory.CreateUserAsync(UniqueName("lawyer_ov"), UserRole.Lawyer, branchId);
+        var headName = (await _factory.CreateUserAsync(UniqueName("head_ov"), UserRole.Head, branchId)).Username;
+        var headAlp = _factory.AuthorizedClient(headName);
+
+        await headAlp.PostAsJsonAsync("/api/alerts", new
+        {
+            targetType = "lawyer",
+            documentId = (int?)null,
+            targetLawyerId = alpLawyer.Id,
+            message = "تنبيه إشرافي خاص",
+        });
+
+        // المدير يرى عبر الفروع؛ محامي فرع آخر لا يرى.
         var manager = _factory.AuthorizedClient("manager");
-        var response = await manager.GetAsync("/api/alerts/1");
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var list = await (await manager.GetAsync("/api/alerts")).Content.ReadFromJsonAsync<List<HeadAlertDto>>();
+        Assert.Contains(list!, a => a.Message == "تنبيه إشرافي خاص");
+
+        var lawyerDam = _factory.AuthorizedClient("lawyer1");
+        var scoped = await (await lawyerDam.GetAsync("/api/alerts")).Content.ReadFromJsonAsync<List<HeadAlertDto>>();
+        Assert.DoesNotContain(scoped!, a => a.Message == "تنبيه إشرافي خاص");
     }
 
     [Fact]

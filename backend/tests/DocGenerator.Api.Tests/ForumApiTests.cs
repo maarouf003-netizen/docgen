@@ -87,6 +87,9 @@ public class ForumApiTests
     public async Task UsersLookup_ReturnsIdentityParts_DelegateForbidden_AnonymousUnauthorized()
     {
         var lawyer = await NewUserAsync("flaw", UserRole.Lawyer);
+        // زميل مطابق بالبادئة: يجعل الفحص مكتفيًا بذاته (البحث يستبعد الذات،
+        // فبدونه كان ينجح فقط بفضل بقايا اختبارات أخرى في القاعدة المشتركة).
+        await NewUserAsync("flaw", UserRole.Lawyer);
         var lawyerClient = ClientFor(lawyer);
 
         var ok = await lawyerClient.GetAsync("/api/forum/users/lookup?q=" + Uri.EscapeDataString("flaw"));

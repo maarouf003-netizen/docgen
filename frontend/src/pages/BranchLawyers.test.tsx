@@ -88,14 +88,14 @@ describe('BranchLawyers', () => {
 
     await user.click(screen.getByRole('button', { name: '+ إضافة محامٍ' }));
     await user.type(screen.getByPlaceholderText('مثال: محمد أحمد علي'), 'محامي جديد');
-    await user.type(screen.getByLabelText(/كلمة المرور/), '123456');
+    await user.type(screen.getByLabelText(/كلمة المرور/), 'TestPass1234');
     await user.click(screen.getByRole('button', { name: 'حفظ المحامي' }));
 
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith('/users/lawyers', {
         username: 'محامي جديد',
         fullName: 'محامي جديد',
-        password: '123456',
+        password: 'TestPass1234',
         branchId: 1,
       });
     });
@@ -107,14 +107,14 @@ describe('BranchLawyers', () => {
 
     await user.click(await screen.findByRole('button', { name: '+ إضافة محامٍ' }));
     await user.type(screen.getByPlaceholderText('مثال: محمد أحمد علي'), 'محامي جديد');
-    await user.type(screen.getByLabelText(/كلمة المرور/), '123456');
+    await user.type(screen.getByLabelText(/كلمة المرور/), 'TestPass1234');
     await user.click(screen.getByRole('button', { name: 'حفظ المحامي' }));
 
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith('/users/lawyers', {
         username: 'محامي جديد',
         fullName: 'محامي جديد',
-        password: '123456',
+        password: 'TestPass1234',
         branchId: null,
       });
     });
@@ -155,13 +155,13 @@ describe('BranchLawyers', () => {
     render(<BranchLawyers />);
 
     await user.click(await screen.findByRole('button', { name: 'تعديل' }));
-    await user.type(screen.getByLabelText(/كلمة مرور جديدة/), '654321');
+    await user.type(screen.getByLabelText(/كلمة مرور جديدة/), 'TestPass5678');
     await user.click(screen.getByRole('button', { name: 'حفظ التعديل' }));
 
     await waitFor(() => {
       expect(api.put).toHaveBeenCalledWith('/users/lawyers/1', {
         fullName: 'محامي دمشق',
-        password: '654321',
+        password: 'TestPass5678',
       });
     });
   });
@@ -174,7 +174,7 @@ describe('BranchLawyers', () => {
     await user.type(screen.getByLabelText(/كلمة مرور جديدة/), '123');
     await user.click(screen.getByRole('button', { name: 'حفظ التعديل' }));
 
-    expect(await screen.findByText(/كلمة المرور الجديدة يجب أن تكون 6 أحرف/)).toBeInTheDocument();
+    expect(await screen.findByText(/كلمة المرور الجديدة يجب أن تكون 10 أحرف/)).toBeInTheDocument();
     expect(api.put).not.toHaveBeenCalled();
   });
 
@@ -200,7 +200,7 @@ describe('BranchLawyers', () => {
     await user.type(screen.getByLabelText(/كلمة المرور/), '123');
     await user.click(screen.getByRole('button', { name: 'حفظ المحامي' }));
 
-    expect(await screen.findByText(/يجب أن تكون 6 أحرف/)).toBeInTheDocument();
+    expect(await screen.findByText(/يجب أن تكون 10 أحرف/)).toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
   });
 

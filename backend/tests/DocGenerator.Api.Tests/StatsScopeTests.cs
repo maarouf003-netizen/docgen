@@ -29,12 +29,12 @@ public sealed class StatsScopeTests : IsolatedApiTestBase
             fullName = username,
             role = "subhead",
             branchId = await Factory.GetDamascusIdAsync(),
-            password = "123456",
+            password = "TestPass1234",
             sectionId,
         });
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         using var createdDoc = await created.Content.ReadFromJsonAsync<JsonDocument>();
-        var token = (await Factory.LoginAsync(username, "123456"))!.Token!;
+        var token = (await Factory.LoginAsync(username, "TestPass1234"))!.Token!;
         return (token, createdDoc!.RootElement.GetProperty("id").GetInt32());
     }
 

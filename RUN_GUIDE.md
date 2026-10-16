@@ -8,14 +8,14 @@
 2. ينتظر ~15 ثانية ثم يفتح المتصفح تلقائياً على `http://localhost:5173`.
 3. بعد التجربة انقر `stop-app.bat` لإيقاف الخدمتين.
 
-> يتطلب `.NET SDK 8` و`Node.js 20+` في المسارات الافتراضية (`C:\Program Files\dotnet` و`C:\Program Files\nodejs`).
+> يتطلب `.NET SDK 10` و`Node.js 20+` في المسارات الافتراضية (`C:\Program Files\dotnet` و`C:\Program Files\nodejs`).
 > يمكنك إيقاف التشغيل يدوياً أيضاً بالطريقة اليدوية في القسم 8.
 
 ## 1) المتطلبات
 
 | الأداة | الإصدار | ملاحظة |
 |--------|---------|--------|
-| .NET SDK | 8.x | مطلوب للخلفية |
+| .NET SDK | 10.x | مطلوب للخلفية |
 | Node.js | 20+ | مطلوب للواجهة |
 
 > ⚠️ في هذا الجهاز الأدوات ليست على `PATH`، لذا في كل نافذة PowerShell جديدة نفّذ أولاً:
@@ -83,7 +83,7 @@ cd "C:\Users\pc\Desktop\document_generator\working 3.8 32b\backend"
 dotnet test DocGenerator.sln
 ```
 
-النتيجة المتوقعة: `61` اختباراً (39 وحدة + 22 تكامل عبر `WebApplicationFactory` بقاعدة مؤقتة معزولة — لن تلمس `docgen.db`).
+النتيجة المتوقعة: ما يزيد على `2500` اختبار (نحو `1850` وحدة/خدمة + `650` تكامل عبر `WebApplicationFactory` بقاعدة مؤقتة معزولة — لن تلمس `docgen.db`). الأرقام تقريبية بتاريخ 2026-10-16 وتكبر مع كل ميزة.
 
 > بوابة التسلسل: اختبارات وسيط الإثراء (`EnricherMiddlewareTests`) موسومة
 > `Category=Sequential` لأنها تستبدل `Log.Logger` العام — عند أي فشل عابر فيها
@@ -101,7 +101,7 @@ cd "C:\Users\pc\Desktop\document_generator\working 3.8 32b\frontend"
 npm test
 ```
 
-النتيجة المتوقعة: `5` اختبارات (Vitest + Testing Library) تغطي منطق نموذج إدخال الملف (عادي/مصرفي، الحقول، ترقيم الكفلاء).
+النتيجة المتوقعة: ما يزيد على `1500` اختبار (Vitest + Testing Library) تغطي النماذج والصفحات والمنطق (الرقم تقريبي بتاريخ 2026-10-16).
 
 ## 7) Swagger (توثيق API)
 
@@ -118,7 +118,12 @@ npm test
 ## 9) ملاحظات الإنتاج
 
 - فعّل `Database:UsePostgres = true` واضبط `ConnectionStrings:DefaultConnection` على PostgreSQL.
+  خارج التطوير بلا `Postgres` (ولا `DATABASE_URL`) يرفض التطبيق الإقلاع عمدًا (لا وقوع صامت على `SQLite`) —
+  والاستثناء الوحيد عقدة داخلية صغيرة بقرار صريح: `Database:AllowSqliteInProduction = true`.
+  `DATABASE_URL` فارغة تُعامَل كغائبة.
 - عيّن `Jwt:Secret` قوياً (إلزامي خارج بيئة التطوير).
+- الإقلاع المتزامن لنسخ عدة على `Postgres` يعتمد قفل الهجرات المدمج في `EF Core` — يمنع التسابق على
+  الهجرات دون قفل استشاري مخصص، لكنه لا يغني عن النسخة الاحتياطية قبل النشر (الهجرة نفسها قد تسقط).
 - `Swagger:Enabled` مغلق افتراضياً خارج التطوير؛ فعّله صراحةً عند الحاجة.
 - `RateLimiting:MaxLoginAttempts` / `RateLimiting:WindowMinutes` — إعدادات تحديد محاولات الدخول
   (مخزّنة في جدول `LoginAttempts` لتكون مشتركة بين عقد النشر).

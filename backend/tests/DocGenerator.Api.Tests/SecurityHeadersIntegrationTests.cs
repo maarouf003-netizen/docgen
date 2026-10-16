@@ -98,6 +98,8 @@ public class SecurityHeadersIntegrationTests
             builder.UseSetting("ConnectionStrings:DefaultConnection", $"Data Source={_dbPath}");
             builder.UseSetting("Logging:File:Path", Path.Combine(_logDir, "logs-.txt"));
             builder.UseSetting("Database:UsePostgres", "false");
+            // قرار صريح مقصود: هذا المضيف يتحقق من سلوك الإنتاج (بلا CORS) على عقدة SQLite مؤقتة.
+            builder.UseSetting("Database:AllowSqliteInProduction", "true");
             builder.UseSetting("Swagger:Enabled", "false");
             builder.UseSetting("Jwt:Secret", "production-test-secret-0123456789-0123456789-0123456789");
             builder.UseSetting("Bootstrap:AdminPassword", "ProdTest123456!");

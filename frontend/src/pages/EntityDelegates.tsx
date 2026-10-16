@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
 import { formatEntityCoverage } from '../utils/entityRegistry';
+import { MIN_PASSWORD_LENGTH } from '../utils/passwordPolicy';
 import type { DelegateDto, PublicEntityEntryDto } from '../types';
 
 interface ScopeDraft {
@@ -59,7 +60,7 @@ export default function EntityDelegates() {
   const submitForm = async () => {
     if (!username.trim()) return setFormError('اسم الدخول مطلوب');
     if (!fullName.trim()) return setFormError('الاسم الكامل مطلوب');
-    if (password.length < 6) return setFormError('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+    if (password.length < MIN_PASSWORD_LENGTH) return setFormError(`كلمة المرور يجب أن تكون ${MIN_PASSWORD_LENGTH} أحرف على الأقل`);
     if (scope.mode === 'group' && !scope.groupId) return setFormError('اختر هوية الجهة');
     if (scope.mode === 'entry' && !scope.entryId) return setFormError('اختر قيد الجهة');
 
@@ -232,7 +233,7 @@ export default function EntityDelegates() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="6 أحرف على الأقل…"
+              placeholder={`${MIN_PASSWORD_LENGTH} أحرف على الأقل…`}
               autoComplete="new-password"
               className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />

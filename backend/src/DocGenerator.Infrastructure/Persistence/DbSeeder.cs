@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -82,12 +83,17 @@ public static class DbSeeder
                 "لا يوجد مستخدمون في قاعدة البيانات، ولم يُضبط Bootstrap__AdminPassword. " +
                 "عيّن كلمة مرور قوية لمدير النظام الأول عبر متغير البيئة ثم أعد التشغيل.");
 
+        // M-02: مسار التأسيس ليس استثناءً — تُفرَض السياسة الموحدة نفسها على كلمة
+        // مدير النظام الأول، وما يُفحَص مقصوصًا هو ما يُخزَّن.
+        var candidatePassword = adminPassword.Trim();
+        PasswordPolicy.EnsureValid(candidatePassword, "admin");
+
         db.Users.Add(new User
         {
             Username = "admin",
             FullName = "مشرف النظام",
             Role = UserRole.Admin,
-            PasswordHash = hasher.Hash(adminPassword),
+            PasswordHash = hasher.Hash(candidatePassword),
         });
         await db.SaveChangesAsync(ct);
     }

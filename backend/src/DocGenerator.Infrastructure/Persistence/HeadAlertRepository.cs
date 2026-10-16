@@ -54,6 +54,23 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             .ToListAsync(ct);
     }
 
+    public async Task<List<HeadAlert>> ListForOversightAsync(CancellationToken ct = default)
+    {
+        // قائمة إشرافية محدودة: ترتيب حتمي عند تساوي الطوابع، واستعلامات منفصلة
+        // لتفادي تضخم الجداء الديكارتي مع تضمين مجموعة المستلمين.
+        return await Db.HeadAlerts
+            .AsNoTracking()
+            .AsSplitQuery()
+            .OrderByDescending(a => a.CreatedAt)
+            .ThenByDescending(a => a.Id)
+            .Take(500)
+            .Include(a => a.CreatedBy)
+            .Include(a => a.Document)
+            .Include(a => a.TargetLawyer)
+            .Include(a => a.Recipients)
+            .ToListAsync(ct);
+    }
+
     public Task<int> CountUnreadAsync(int userId, CancellationToken ct = default)
         => Db.HeadAlertRecipients.CountAsync(r => r.UserId == userId && !r.IsRead, ct);
 
