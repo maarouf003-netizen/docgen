@@ -21,7 +21,6 @@ const Rotation = lazy(() => import('./pages/Rotation'));
 const DocumentForm = lazy(() => import('./pages/DocumentForm'));
 const DocumentView = lazy(() => import('./pages/DocumentView'));
 const FileCorrespondence = lazy(() => import('./pages/FileCorrespondence'));
-const UsersActivity = lazy(() => import('./pages/UsersActivity'));
 const BranchLawyers = lazy(() => import('./pages/BranchLawyers'));
 const DelegationRequests = lazy(() => import('./pages/DelegationRequests'));
 const UsersManagement = lazy(() => import('./pages/UsersManagement'));
@@ -417,14 +416,6 @@ export default function App() {
               }
             />
             <Route
-              path="/users"
-              element={
-                <RequireRole allowed={(_role, hasFullAccess) => hasFullAccess}>
-                  <UsersActivity />
-                </RequireRole>
-              }
-            />
-            <Route
               path="/audit-logs"
               element={
                 <RequireRole allowed={(_role, hasFullAccess, isHead, isSubHead) => hasFullAccess || isHead || isSubHead === true /* النطاق الدائري للشعبة (§2.23) مطبَّق خلفيًا عبر ownerSectionId — F6 */}>
@@ -447,7 +438,7 @@ export default function App() {
             <Route
               path="/account"
               element={
-                <RequireRole allowed={(role) => role === 'lawyer' || role === 'head' || role === 'subhead'}>
+                <RequireRole allowed={allowInternal}>
                   <AccountPage />
                 </RequireRole>
               }
@@ -455,7 +446,7 @@ export default function App() {
             <Route
               path="/stats"
               element={
-                <RequireRole allowed={(role) => role === 'lawyer' || role === 'head' || role === 'subhead'}>
+                <RequireRole allowed={allowInternal}>
                   <StatsPage />
                 </RequireRole>
               }

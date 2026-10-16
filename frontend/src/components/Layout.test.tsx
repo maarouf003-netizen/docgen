@@ -104,18 +104,21 @@ describe('Layout', () => {
     expect(screen.queryByRole('link', { name: 'تغيير كلمة المرور' })).not.toBeInTheDocument();
   });
 
-  it('يبقي تسجيل الخروج وتغيير كلمة المرور في التذييل للمدير/المشرف لا لرئيس القسم', () => {
-    useAuthMock.mockReturnValue({
-      ...baseUser(),
-      user: { ...baseUser().user, role: 'manager' },
-      hasFullAccess: true,
-    });
-    stubMatchMedia(false);
-    render(<Layout />);
+  it('يعرض للمدير/المشرف بطاقة حساب في التذييل بلا خروج/كلمة مرور (كالمحامي ورئيس القسم)', () => {
+    for (const role of ['manager', 'admin'] as const) {
+      useAuthMock.mockReturnValue({
+        ...baseUser(),
+        user: { ...baseUser().user, role },
+        hasFullAccess: true,
+      });
+      stubMatchMedia(false);
+      const { unmount } = render(<Layout />);
 
-    expect(screen.getByRole('button', { name: 'تسجيل الخروج' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'تغيير كلمة المرور' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /الحساب الشخصي/ })).not.toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /الحساب الشخصي/ })).toHaveAttribute('href', '/account');
+      expect(screen.queryByRole('button', { name: 'تسجيل الخروج' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'تغيير كلمة المرور' })).not.toBeInTheDocument();
+      unmount();
+    }
   });
 
   it('يعرض لرئيس القسم بطاقة حساب في التذييل بلا خروج/كلمة مرور (كالمحامي)', () => {
@@ -234,7 +237,7 @@ describe('Layout', () => {
     expect(within(bottomNav).queryByRole('button', { name: /المزيد/ })).not.toBeInTheDocument();
   });
 
-  it('يبقي كل بنود الصلاحيات ظاهرة كروابط في الشريط الجانبي المكتبية للمدير', () => {
+  it('يعرض للمدير 4 بنود فقط مثل المحامي: اللوحة والملفات والمنتدى والمكتبة (بلا بنود صلاحيات)', () => {
     useAuthMock.mockReturnValue({
       ...baseUser(),
       user: { ...baseUser().user, role: 'manager' },
@@ -244,22 +247,52 @@ describe('Layout', () => {
     render(<Layout />);
 
     const sidebar = screen.getByRole('navigation', { name: 'القائمة الرئيسية' });
-    expect(within(sidebar).getAllByRole('link').length).toBeGreaterThan(4);
+    expect(within(sidebar).getByRole('link', { name: 'لوحة التحكم' })).toHaveAttribute('href', '/');
+    expect(within(sidebar).getByRole('link', { name: 'الملفات التنفيذية' })).toHaveAttribute(
+      'href',
+      '/documents',
+    );
+    expect(within(sidebar).getByRole('link', { name: /المنتدى/ })).toHaveAttribute('href', '/forum');
+    expect(within(sidebar).getByRole('button', { name: /المكتبة/ })).toBeInTheDocument();
+    expect(within(sidebar).queryByRole('link', { name: 'كتب المطالعات' })).not.toBeInTheDocument();
+    expect(within(sidebar).queryByRole('link', { name: 'المراسلات' })).not.toBeInTheDocument();
+    expect(within(sidebar).queryByRole('link', { name: 'إدارة المستخدمين' })).not.toBeInTheDocument();
+    expect(within(sidebar).queryByRole('link', { name: 'سجل التدقيق' })).not.toBeInTheDocument();
   });
 
-  it('يعرض روابط صلاحية خاصة فقط: نشاط المستخدمين للمدير (لا بنود صلاحيات لرئيس القسم)', async () => {
+  it('يعرض للمشرف 4 بنود فقط مثل المحامي (بلا بنود صلاحيات)', () => {
     useAuthMock.mockReturnValue({
       ...baseUser(),
-      user: { ...baseUser().user, role: 'manager' },
+      user: { ...baseUser().user, role: 'admin' },
       hasFullAccess: true,
     });
-    stubMatchMedia(true);
+    stubMatchMedia(false);
     render(<Layout />);
 
-    // على الجوال البنود المتأخرة خلف زر «المزيد» الذي يفتح درج التنقل.
-    await userEvent.setup().click(screen.getByRole('button', { name: /المزيد/ }));
-    const dialog = screen.getByRole('dialog', { name: 'قائمة التنقل' });
-    expect(within(dialog).getByRole('link', { name: 'نشاط المستخدمين' })).toBeInTheDocument();
+    const sidebar = screen.getByRole('navigation', { name: 'القائمة الرئيسية' });
+    expect(within(sidebar).getByRole('link', { name: 'لوحة التحكم' })).toHaveAttribute('href', '/');
+    expect(within(sidebar).getByRole('link', { name: 'الملفات التنفيذية' })).toHaveAttribute(
+      'href',
+      '/documents',
+    );
+    expect(within(sidebar).getByRole('link', { name: /المنتدى/ })).toHaveAttribute('href', '/forum');
+    expect(within(sidebar).getByRole('button', { name: /المكتبة/ })).toBeInTheDocument();
+  });
+
+  it('لا يعرض «نشاط المستخدمين» المحذوف لأي دور (الصفحة والمسار محذوفان نهائيًا)', async () => {
+    for (const role of ['manager', 'admin', 'head', 'lawyer'] as const) {
+      useAuthMock.mockReturnValue({
+        ...baseUser(),
+        user: { ...baseUser().user, role },
+        hasFullAccess: role === 'manager' || role === 'admin',
+        isHead: role === 'head',
+      });
+      stubMatchMedia(false);
+      const { unmount } = render(<Layout />);
+      const sidebar = screen.getByRole('navigation', { name: 'القائمة الرئيسية' });
+      expect(within(sidebar).queryByRole('link', { name: 'نشاط المستخدمين' })).not.toBeInTheDocument();
+      unmount();
+    }
   });
 
   it('لا يعرض رابط «الملفات المحذوفة» في الشريط الجانبي لأي دور (انتقل داخل الملفات التنفيذية)', () => {
@@ -297,40 +330,20 @@ describe('Layout', () => {
     expect(screen.queryByRole('link', { name: 'إدارة المستخدمين' })).not.toBeInTheDocument();
   });
 
-  it('يعرض «محامو الفرع» للمشرف في الشريط ولا يعرضه لرئيس القسم (بطاقة لوحة) ولا للمدير', async () => {
-    // المشرف: البند في الشريط (خلف «المزيد» على الجوال).
-    useAuthMock.mockReturnValue({
-      ...baseUser(),
-      user: { ...baseUser().user, role: 'admin' },
-    });
-    stubMatchMedia(true);
-    const { unmount } = render(<Layout />);
-    await userEvent.setup().click(screen.getByRole('button', { name: /المزيد/ }));
-    const dialog = screen.getByRole('dialog', { name: 'قائمة التنقل' });
-    expect(within(dialog).getByRole('link', { name: 'محامو الفرع' })).toHaveAttribute(
-      'href',
-      '/branch-lawyers',
-    );
-    unmount();
-
-    // رئيس القسم: لا بند في الشريط إطلاقًا — يُفتح من بطاقة اللوحة.
-    useAuthMock.mockReturnValue({
-      ...baseUser(),
-      user: { ...baseUser().user, role: 'head' },
-      isHead: true,
-    });
-    stubMatchMedia(false);
-    const second = render(<Layout />);
-    const sidebar = screen.getByRole('navigation', { name: 'القائمة الرئيسية' });
-    expect(within(sidebar).queryByRole('link', { name: 'محامو الفرع' })).not.toBeInTheDocument();
-    second.unmount();
-
-    useAuthMock.mockReturnValue({
-      ...baseUser(),
-      user: { ...baseUser().user, role: 'manager' },
-    });
-    render(<Layout />);
-    expect(screen.queryByRole('link', { name: 'محامو الفرع' })).not.toBeInTheDocument();
+  it('لا يعرض «محامو الفرع» في الشريط لأي دور (يُفتح من بطاقة لوحة المشرف)', async () => {
+    for (const role of ['admin', 'manager', 'head', 'lawyer'] as const) {
+      useAuthMock.mockReturnValue({
+        ...baseUser(),
+        user: { ...baseUser().user, role },
+        isHead: role === 'head',
+        hasFullAccess: role === 'admin' || role === 'manager',
+      });
+      stubMatchMedia(false);
+      const { unmount } = render(<Layout />);
+      const sidebar = screen.getByRole('navigation', { name: 'القائمة الرئيسية' });
+      expect(within(sidebar).queryByRole('link', { name: 'محامو الفرع' })).not.toBeInTheDocument();
+      unmount();
+    }
   });
 
   it('يُخفي بند «المراسلات» عن المحامي ورئيس القسم (تُفتح من بطاقة اللوحة) ويُبقيه للمندوب', async () => {
@@ -382,60 +395,28 @@ describe('Layout', () => {
     }
   });
 
-  it('يعرض «إدارة المستخدمين» للمشرف والمدير (`BQ-001د`) لا لغيرهما', async () => {
-    for (const role of ['admin', 'manager'] as const) {
+  it('لا يعرض «إدارة المستخدمين» في الشريط لأي دور (تُفتح من بطاقة اللوحة)', async () => {
+    for (const role of ['admin', 'manager', 'head', 'lawyer'] as const) {
       useAuthMock.mockReturnValue({
         ...baseUser(),
         user: { ...baseUser().user, role },
+        isHead: role === 'head',
       });
-      stubMatchMedia(true);
+      stubMatchMedia(false);
       const { unmount } = render(<Layout />);
-
-      // بند متأخر على الجوال: خلف زر «المزيد».
-      await userEvent.setup().click(screen.getByRole('button', { name: /المزيد/ }));
-      const dialog = screen.getByRole('dialog', { name: 'قائمة التنقل' });
-      expect(within(dialog).getByRole('link', { name: 'إدارة المستخدمين' })).toHaveAttribute(
-        'href',
-        '/users/manage',
-      );
-      unmount();
-    }
-
-    for (const [role, flags] of [
-      ['head', { isHead: true }],
-      ['lawyer', {}],
-    ] as const) {
-      useAuthMock.mockReturnValue({ ...baseUser(), user: { ...baseUser().user, role }, ...flags });
-      const { unmount } = render(<Layout />);
-      expect(screen.queryByRole('link', { name: 'إدارة المستخدمين' })).not.toBeInTheDocument();
+      const sidebar = screen.getByRole('navigation', { name: 'القائمة الرئيسية' });
+      expect(within(sidebar).queryByRole('link', { name: 'إدارة المستخدمين' })).not.toBeInTheDocument();
       unmount();
     }
   });
 
-  it('يعرض «اقتراحات التطوير» للمشرف والمدير (`BQ-001`) لا لغيرهما', async () => {
-    for (const role of ['admin', 'manager'] as const) {
+  it('لا يعرض «اقتراحات التطوير» في الشريط لأي دور داخلي (تُفتح من بطاقة اللوحة)', async () => {
+    for (const role of ['admin', 'manager', 'head', 'lawyer'] as const) {
       useAuthMock.mockReturnValue({
         ...baseUser(),
         user: { ...baseUser().user, role },
+        isHead: role === 'head',
       });
-      stubMatchMedia(false);
-      const { unmount } = render(<Layout />);
-
-      const sidebar = screen.getByRole('navigation', { name: 'القائمة الرئيسية' });
-      expect(within(sidebar).getByRole('link', { name: 'اقتراحات التطوير' })).toHaveAttribute(
-        'href',
-        '/suggestions',
-      );
-      unmount();
-    }
-
-    for (const [role, flags] of [
-      ['head', { isHead: true }],
-      ['subhead', {}],
-      ['lawyer', {}],
-      ['entitymanager', {}],
-    ] as const) {
-      useAuthMock.mockReturnValue({ ...baseUser(), user: { ...baseUser().user, role }, ...flags });
       stubMatchMedia(false);
       const { unmount } = render(<Layout />);
       const sidebar = screen.getByRole('navigation', { name: 'القائمة الرئيسية' });
@@ -446,30 +427,22 @@ describe('Layout', () => {
     }
   });
 
-  it('يعرض «إدارة الفروع» للمشرف فقط (لا للمدير)', async () => {
-    useAuthMock.mockReturnValue({
-      ...baseUser(),
-      user: { ...baseUser().user, role: 'admin' },
-    });
-    stubMatchMedia(true);
-    const { unmount: unmountAdmin } = render(<Layout />);
-    await userEvent.setup().click(screen.getByRole('button', { name: /المزيد/ }));
-    expect(
-      within(screen.getByRole('dialog', { name: 'قائمة التنقل' })).getByRole('link', { name: 'إدارة الفروع' }),
-    ).toHaveAttribute('href', '/branches/manage');
-    unmountAdmin();
-
-    useAuthMock.mockReturnValue({
-      ...baseUser(),
-      user: { ...baseUser().user, role: 'manager' },
-      hasFullAccess: true,
-    });
-    const { unmount } = render(<Layout />);
-    expect(screen.queryByRole('link', { name: 'إدارة الفروع' })).not.toBeInTheDocument();
-    unmount();
+  it('لا يعرض «إدارة الفروع» في الشريط لأي دور (تُفتح من بطاقة اللوحة)', async () => {
+    for (const role of ['admin', 'manager'] as const) {
+      useAuthMock.mockReturnValue({
+        ...baseUser(),
+        user: { ...baseUser().user, role },
+        hasFullAccess: true,
+      });
+      stubMatchMedia(false);
+      const { unmount } = render(<Layout />);
+      const sidebar = screen.getByRole('navigation', { name: 'القائمة الرئيسية' });
+      expect(within(sidebar).queryByRole('link', { name: 'إدارة الفروع' })).not.toBeInTheDocument();
+      unmount();
+    }
   });
 
-  it('يعرض «اقتراحات التطوير» خلف «المزيد» على الجوال للمشرف والمدير', async () => {
+  it('يعرض بنود المدير والمشرف الأربعة في الشريط السفلي بلا زر «المزيد» على الجوال', () => {
     for (const role of ['admin', 'manager'] as const) {
       useAuthMock.mockReturnValue({
         ...baseUser(),
@@ -477,12 +450,10 @@ describe('Layout', () => {
       });
       stubMatchMedia(true);
       const { unmount } = render(<Layout />);
-      await userEvent.setup().click(screen.getByRole('button', { name: /المزيد/ }));
-      expect(
-        within(screen.getByRole('dialog', { name: 'قائمة التنقل' })).getByRole('link', {
-          name: 'اقتراحات التطوير',
-        }),
-      ).toHaveAttribute('href', '/suggestions');
+      const bottomNav = screen.getByRole('navigation', { name: 'التنقل السفلي' });
+      expect(within(bottomNav).getAllByRole('link')).toHaveLength(3);
+      expect(within(bottomNav).getAllByRole('button')).toHaveLength(1);
+      expect(within(bottomNav).queryByRole('button', { name: /المزيد/ })).not.toBeInTheDocument();
       unmount();
     }
   });

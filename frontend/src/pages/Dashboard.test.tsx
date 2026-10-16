@@ -918,7 +918,7 @@ describe('Dashboard لرئيس القسم', () => {
 });
 
 describe('Dashboard للمدير/المشرف', () => {
-  it('يعرض بطاقات إحصاءات المدير الجديدة (بطل + مؤشرات) ومحدد الفترة والفرع بلا روابط تعمّق', async () => {
+  it('يعرض للمدير ترحيبًا وصف أيقونات (10 بطاقات) بلا إحصائيات مباشرة في اللوحة', async () => {
     useAuthMock.mockReturnValue({
       user: { id: 1, username: 'manager1', fullName: 'مدير', role: 'manager', branchId: null },
     });
@@ -926,147 +926,59 @@ describe('Dashboard للمدير/المشرف', () => {
 
     render(<Dashboard />);
 
-    expect(await screen.findByRole('heading', { name: /متداولة ضمن/ })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'إجمالي الملفات' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'تحت رفع' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'تريث' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'منفذ' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'محال الى البداية' })).toBeInTheDocument();
-    // بلا روابط تعمّق للمدير.
-    expect(screen.queryByRole('link', { name: 'عرض الملفات ←' })).not.toBeInTheDocument();
-    // الرسم المصغّر للمسجَّلة شهريًا حاضر بوصفه.
-    expect(screen.getByText(/الملفات المسجَّلة شهريًا/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'شهري' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'ربعي' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'سنوي' })).toBeInTheDocument();
-    expect(await screen.findAllByText('السنة 2026')).not.toHaveLength(0);
-    // بلا فرع مختار: رسالة اختيار الفرع بدل الجدول.
-    expect(screen.getByText('اختر فرعًا لعرض إحصائيات محامي الفرع')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'مرحبًا، مدير' })).toBeInTheDocument();
 
-    expect(api.get).toHaveBeenCalledWith('/branches', expect.any(Object));
-    expect(api.get).toHaveBeenCalledWith('/stats/periods', expect.any(Object));
-    expect(api.get).toHaveBeenCalledWith(
-      '/stats/manager',
-      expect.objectContaining({ params: expect.objectContaining({ period: 'yearly' }) }),
+    const quickNav = screen.getByRole('navigation', { name: 'أقسام لوحة المدير' });
+    expect(within(quickNav).getAllByRole('link')).toHaveLength(10);
+    expect(within(quickNav).getByRole('link', { name: 'الإحصائيات' })).toHaveAttribute('href', '/stats');
+    expect(within(quickNav).getByRole('link', { name: 'كتب المطالعات' })).toHaveAttribute('href', '/reviews');
+    expect(within(quickNav).getByRole('link', { name: 'المراسلات' })).toHaveAttribute('href', '/correspondence');
+    expect(within(quickNav).getByRole('link', { name: 'اقتراحات التطوير' })).toHaveAttribute(
+      'href',
+      '/suggestions',
     );
-    expect(api.get).not.toHaveBeenCalledWith('/stats/manager/lawyers');
-    expect(api.get).not.toHaveBeenCalledWith('/dashboard');
-    expect(api.get).not.toHaveBeenCalledWith('/monthly-stats');
-    expect(api.get).not.toHaveBeenCalledWith('/reminders', expect.any(Object));
+    expect(within(quickNav).getByRole('link', { name: 'مراجعة سجل الجهات العامة' })).toHaveAttribute(
+      'href',
+      '/entities/review-management',
+    );
+    expect(within(quickNav).getByRole('link', { name: 'مندوبو الجهات' })).toHaveAttribute(
+      'href',
+      '/delegates',
+    );
+    expect(within(quickNav).getByRole('link', { name: 'إدارة المستخدمين' })).toHaveAttribute(
+      'href',
+      '/users/manage',
+    );
+    expect(within(quickNav).getByRole('link', { name: 'إدارة الفروع' })).toHaveAttribute(
+      'href',
+      '/branches/manage',
+    );
+    expect(within(quickNav).getByRole('link', { name: 'سجل التدقيق' })).toHaveAttribute(
+      'href',
+      '/audit-logs',
+    );
+    expect(within(quickNav).getByRole('link', { name: 'الحساب الشخصي' })).toHaveAttribute(
+      'href',
+      '/account',
+    );
+    // المدير بلا بطاقة «محامو الفرع» (للمشرف وحده).
+    expect(within(quickNav).queryByRole('link', { name: 'محامو الفرع' })).not.toBeInTheDocument();
+
+    // لا إحصائيات مباشرة في اللوحة — تُفتح من بطاقة الإحصائيات في `/stats`.
+    expect(screen.queryByRole('heading', { name: /متداولة ضمن/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'إجمالي الملفات' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'شهري' })).not.toBeInTheDocument();
+
+    // اللوحة لا تجلب الإحصائيات ولا الفروع ولا التنبيهات.
+    expect(api.get).not.toHaveBeenCalledWith('/stats/manager', expect.any(Object));
+    expect(api.get).not.toHaveBeenCalledWith('/stats/periods', expect.any(Object));
+    expect(api.get).not.toHaveBeenCalledWith('/stats/manager/lawyers', expect.any(Object));
+    expect(api.get).not.toHaveBeenCalledWith('/branches', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/alerts', expect.any(Object));
-    expect(api.get).not.toHaveBeenCalledWith('/users/lawyers', expect.any(Object));
-    expect(screen.queryByText('المستندات شهرياً')).not.toBeInTheDocument();
-    expect(screen.queryByText('عدد المقترضين')).not.toBeInTheDocument();
-    expect(screen.getByText(/عرض الفترة/)).toBeInTheDocument();
+    expect(api.get).not.toHaveBeenCalledWith('/reminders', expect.any(Object));
   });
 
-  it('يجمع إحصائيات المنفذ في بطاقة واحدة: للصالح (بالتسوية + جبريا + عرض وايداع) وللضد بعدد الملفات والمبالغ', async () => {
-    const user = userEvent.setup();
-    useAuthMock.mockReturnValue({
-      user: { id: 1, username: 'manager1', fullName: 'مدير', role: 'manager', branchId: null },
-    });
-    mockApi();
-
-    render(<Dashboard />);
-
-    await screen.findByRole('heading', { name: 'منفذ' });
-
-    const card = screen.getByRole('heading', { name: 'منفذ' }).closest('article') as HTMLElement;
-    expect(card).toBeTruthy();
-
-    expect(within(card).getByText('5')).toBeInTheDocument();
-    await user.click(within(card).getByRole('button', { name: 'عرض التفاصيل' }));
-    expect(within(card).getByText('منفذ للصالح')).toBeInTheDocument();
-    expect(within(card).getByText('منفذ بالتسوية')).toBeInTheDocument();
-    expect(within(card).getByText('منفذ جبريا')).toBeInTheDocument();
-    expect(within(card).getByText('عرض وايداع')).toBeInTheDocument();
-    expect(within(card).getByText('منفذ للضد')).toBeInTheDocument();
-    expect(within(card).getByText('1,500 ل.س')).toBeInTheDocument();
-    expect(within(card).getByText('500 ل.س')).toBeInTheDocument();
-    expect(within(card).getByText('750 ل.س')).toBeInTheDocument();
-    expect(within(card).getByText('0 ل.س')).toBeInTheDocument();
-    expect(screen.queryByText('المبلغ المحصل')).not.toBeInTheDocument();
-  });
-
-  it('يثبّت عداد الملفات يسارًا بأرقام جدولية في جميع بطاقات الإحصائيات', async () => {
-    useAuthMock.mockReturnValue({
-      user: { id: 1, username: 'manager1', fullName: 'مدير', role: 'manager', branchId: null },
-    });
-    mockApi();
-
-    render(<Dashboard />);
-
-    await screen.findByRole('heading', { name: 'إجمالي الملفات' });
-
-    const titles = [/متداولة ضمن/, 'إجمالي الملفات', 'تحت رفع', 'منفذ', 'تريث', 'محال الى البداية'];
-    expect(titles).toHaveLength(6);
-    for (const name of titles) {
-      const card = screen.getByRole('heading', { name }).closest('article') as HTMLElement;
-      expect(card).toBeTruthy();
-      const value = card.querySelector('[dir="ltr"].tabular-nums');
-      expect(value).not.toBeNull();
-    }
-  });
-
-  it('يعرض ملفات «عرض وايداع» المتداولة كسطر فرعي داخل بطاقة البطل', async () => {
-    const user = userEvent.setup();
-    useAuthMock.mockReturnValue({
-      user: { id: 1, username: 'manager1', fullName: 'مدير', role: 'manager', branchId: null },
-    });
-    mockApi();
-
-    render(<Dashboard />);
-
-    await screen.findByRole('heading', { name: /متداولة ضمن/ });
-
-    const card = screen.getByRole('heading', { name: /متداولة ضمن/ }).closest('article') as HTMLElement;
-    expect(card).toBeTruthy();
-
-    await user.click(within(card).getByRole('button', { name: 'عرض التفاصيل' }));
-    expect(within(card).getByText('متداول للصالح')).toBeInTheDocument();
-    expect(within(card).getByText('عرض وايداع')).toBeInTheDocument();
-    expect(within(card).getByText('متداول للضد')).toBeInTheDocument();
-  });
-
-  it('تغيير الفترة يعيد الجلب بالفترة الجديدة', async () => {
-    useAuthMock.mockReturnValue({
-      user: { id: 1, username: 'manager1', fullName: 'مدير', role: 'manager', branchId: null },
-    });
-    const user = userEvent.setup();
-    mockApi();
-
-    render(<Dashboard />);
-
-    await user.click(await screen.findByRole('button', { name: 'ربعي' }));
-
-    expect(api.get).toHaveBeenCalledWith(
-      '/stats/manager',
-      expect.objectContaining({ params: expect.objectContaining({ period: 'quarterly' }) }),
-    );
-    expect((await screen.findAllByText('الربع الثالث 2026')).length).toBeGreaterThanOrEqual(1);
-  });
-
-  it('اختيار فرع يجلب جدول محامي الفرع ويعرضه', async () => {
-    useAuthMock.mockReturnValue({
-      user: { id: 1, username: 'manager1', fullName: 'مدير', role: 'manager', branchId: null },
-    });
-    const user = userEvent.setup();
-    mockApi();
-
-    render(<Dashboard />);
-
-    const select = await screen.findByLabelText('الفرع');
-    await user.selectOptions(select, '1');
-
-    expect(api.get).toHaveBeenCalledWith(
-      '/stats/manager/lawyers',
-      expect.objectContaining({ params: expect.objectContaining({ branchId: 1, period: 'yearly' }) }),
-    );
-    expect(await screen.findByText('إحصائيات محامي الفرع')).toBeInTheDocument();
-    expect(screen.getByText('محامي دمشق')).toBeInTheDocument();
-  });
-
-  it('المشرف يرى إحصاءات المدير أيضًا', async () => {
+  it('يعرض للمشرف 11 بطاقة مع «محامو الفرع» و«الحساب الشخصي»', async () => {
     useAuthMock.mockReturnValue({
       user: { id: 1, username: 'admin1', fullName: 'مشرف', role: 'admin', branchId: null },
     });
@@ -1074,8 +986,20 @@ describe('Dashboard للمدير/المشرف', () => {
 
     render(<Dashboard />);
 
-    expect(await screen.findByText('إجمالي الملفات')).toBeInTheDocument();
-    expect(api.get).toHaveBeenCalledWith('/stats/manager', expect.any(Object));
+    expect(await screen.findByRole('heading', { name: 'مرحبًا، مشرف' })).toBeInTheDocument();
+
+    const quickNav = screen.getByRole('navigation', { name: 'أقسام لوحة مشرف النظام' });
+    expect(within(quickNav).getAllByRole('link')).toHaveLength(11);
+    expect(within(quickNav).getByRole('link', { name: 'محامو الفرع' })).toHaveAttribute(
+      'href',
+      '/branch-lawyers',
+    );
+    expect(within(quickNav).getByRole('link', { name: 'الحساب الشخصي' })).toHaveAttribute(
+      'href',
+      '/account',
+    );
+    expect(within(quickNav).getByRole('link', { name: 'الإحصائيات' })).toHaveAttribute('href', '/stats');
+    expect(api.get).not.toHaveBeenCalledWith('/stats/manager', expect.any(Object));
   });
 
   it.each(['manager', 'admin'] as const)(
@@ -1088,8 +1012,8 @@ describe('Dashboard للمدير/المشرف', () => {
 
       render(<Dashboard />);
 
-      // انتظر اكتمال لوحة المدير أولًا — الغياب قبل الاكتمال قد يكون تحميلًا لا منعًا.
-      expect(await screen.findByText('إجمالي الملفات')).toBeInTheDocument();
+      // انتظر اكتمال صف الأيقونات أولًا — الغياب قبل الاكتمال قد يكون تحميلًا لا منعًا.
+      expect(await screen.findByRole('navigation', { name: /أقسام لوحة/ })).toBeInTheDocument();
       expect(screen.queryByRole('heading', { name: 'تنبيهات رئيس القسم' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: '+ إصدار تنبيه' })).not.toBeInTheDocument();
       expect(api.get).not.toHaveBeenCalledWith('/alerts', expect.any(Object));
