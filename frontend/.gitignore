@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Playwright end-to-end (auth sessions hold dev cookies — never commit)
+e2e/.auth
+test-results
+playwright-report
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
