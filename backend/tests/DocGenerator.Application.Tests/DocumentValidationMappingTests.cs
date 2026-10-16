@@ -1,5 +1,6 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
+using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Tests;
 
@@ -141,6 +142,107 @@ public class DocumentValidatorTests
         var ex = Assert.Throws<ArgumentException>(
             () => DocumentValidator.RequireField(fields, "k", "التسمية"));
         Assert.Contains("التسمية", ex.Message);
+    }
+
+    private static GuarantorDto NewGuarantor(int number) => new(
+        Id: null,
+        GuarantorNumber: number,
+        Name: $"كفيل {number}",
+        Father: null,
+        Family: null,
+        Mother: null,
+        Birth: null,
+        Register: null,
+        NationalId: null,
+        Address: null,
+        AddressType: null,
+        RepresentativeName: null,
+        RepresentativeFather: null,
+        RepresentativeFamily: null,
+        RepresentativeCapacity: null,
+        RepresentativeAddressType: null,
+        RepresentativeAddress: null);
+
+    [Fact]
+    public void ValidateGuarantorCount_MaxGuarantors_Passes()
+    {
+        // السقف: 49 كفيلًا + المقترض = 50 مدينًا (قرار المالك).
+        var request = NewRequest(side: "applicant");
+        request.Guarantors = Enumerable.Range(1, PartyLimitsCatalog.MaxGuarantors)
+            .Select(NewGuarantor)
+            .ToList();
+
+        DocumentValidator.ValidateGuarantorCount(request);
+    }
+
+    [Fact]
+    public void ValidateGuarantorCount_AboveMax_ThrowsWithLimitMessage()
+    {
+        var request = NewRequest(side: "applicant");
+        request.Guarantors = Enumerable.Range(1, PartyLimitsCatalog.MaxGuarantors + 1)
+            .Select(NewGuarantor)
+            .ToList();
+
+        var ex = Assert.Throws<ArgumentException>(
+            () => DocumentValidator.ValidateGuarantorCount(request));
+        Assert.Contains(PartyLimitsCatalog.MaxGuarantors.ToString(), ex.Message);
+        Assert.Contains(PartyLimitsCatalog.MaxTotalDebtors.ToString(), ex.Message);
+    }
+
+    [Fact]
+    public void ValidateGuarantorCount_DuplicateNumber_Throws()
+    {
+        var request = NewRequest(side: "applicant");
+        request.Guarantors = new List<GuarantorDto> { NewGuarantor(1), NewGuarantor(1) };
+
+        var ex = Assert.Throws<ArgumentException>(
+            () => DocumentValidator.ValidateGuarantorCount(request));
+        Assert.Contains("مكرر", ex.Message);
+    }
+
+    [Fact]
+    public void ValidateGuarantorCount_NumberOutOfRange_Throws()
+    {
+        // الرقم هوية مستقرة بلا خانة فوق 49 في القالب — يُرفض بدل السقوط الصامت.
+        foreach (var bad in new[] { 0, -3, PartyLimitsCatalog.MaxGuarantors + 1, 100 })
+        {
+            var request = NewRequest(side: "applicant");
+            request.Guarantors = new List<GuarantorDto> { NewGuarantor(bad) };
+
+            var ex = Assert.Throws<ArgumentException>(
+                () => DocumentValidator.ValidateGuarantorCount(request));
+            Assert.Contains("خارج النطاق", ex.Message);
+        }
+    }
+
+    [Fact]
+    public void NormalizeCollections_NullLists_BecomeEmpty()
+    {
+        // `null` صريح في JSON يُبطل مُهيَّئات `= new()` — كان NRE (500) قبل التطبيع.
+        var request = NewRequest(side: "applicant");
+        request.Guarantors = null!;
+        request.Assets = null!;
+        request.BorrowerHeirs = null!;
+
+        DocumentValidator.NormalizeCollections(request);
+
+        Assert.Empty(request.Guarantors);
+        Assert.Empty(request.Assets);
+        Assert.Empty(request.BorrowerHeirs);
+        // والتحققات اللاحقة لا تنكسر:
+        DocumentValidator.ValidateExecutedRequest(request);
+        DocumentValidator.ValidateGuarantorCount(request);
+    }
+
+    [Fact]
+    public void NormalizeCollections_NullElements_AreDropped()
+    {
+        var request = NewRequest(side: "applicant");
+        request.Guarantors = new List<GuarantorDto> { null!, NewGuarantor(1) };
+
+        DocumentValidator.NormalizeCollections(request);
+
+        Assert.Single(request.Guarantors);
     }
 }
 

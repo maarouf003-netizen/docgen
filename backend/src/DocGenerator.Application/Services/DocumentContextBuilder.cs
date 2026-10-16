@@ -164,10 +164,11 @@ public class DocumentContextBuilder : IDocumentContextBuilder
             context["amount_words_notice"] = containValue;
         }
 
-        // الكفلاء (1 إلى 5)
+        // الكفلاء (حتى سقف PartyLimitsCatalog — تُولَّد خانات مرقمة لكل رقم محتمل،
+        // والفارغ يُصفَّر ليبقى القالب الصامت متوافقًا؛ قالب 004 يحوي مقاطع حتى السقف).
         var guarantors = doc.Guarantors.OrderBy(g => g.GuarantorNumber).ToList();
         var heirs = doc.Heirs.ToList();
-        for (var i = 1; i <= 5; i++)
+        for (var i = 1; i <= PartyLimitsCatalog.MaxGuarantors; i++)
         {
             var guarantor = guarantors.FirstOrDefault(g => g.GuarantorNumber == i);
             var name = guarantor?.GuarantorName ?? string.Empty;
@@ -320,9 +321,18 @@ public class DocumentContextBuilder : IDocumentContextBuilder
                 : $"{szPrefix}\nتاريخ القرار: {seizureDate}";
             var courtPrefix = (string)context["court_with_prefix"];
 
-            for (var n = 1; n <= 5; n++)
+            // مقطع قرار/دائرة لكل مدين (المقترض + الكفلاء حتى سقف PartyLimitsCatalog).
+            // رقم الكفيل هوية مستقرة فقد يحمل فراغات (حذف أوسط مصرفي لا يُرقِّم من جديد):
+            // المقطع n يُملأ برقم الكفيل n-1 نفسه لا بالموضع التسلسلي، وإلا ظهر سطر
+            // قرار/دائرة يتيم تحت كتلة الاسم الفارغة في قالب 004.
+            var namedNumbers = guarantors
+                .Where(g => !string.IsNullOrWhiteSpace(g.GuarantorName))
+                .Select(g => g.GuarantorNumber)
+                .ToHashSet();
+            for (var n = 1; n <= PartyLimitsCatalog.MaxTotalDebtors; n++)
             {
-                if (n <= totalDebtors)
+                var filled = n == 1 ? n <= totalDebtors : namedNumbers.Contains(n - 1);
+                if (filled)
                 {
                     context[$"seizure_date{n}"] = szValue;
                     context[$"court_with_prefix{n}"] = courtPrefix;
@@ -498,18 +508,18 @@ public class DocumentContextBuilder : IDocumentContextBuilder
             items.Add((borrowerFull, address));
         }
 
-        for (var i = 1; i <= 5; i++)
+        // كل الكفلاء المخزنين بترتيب أرقامهم المستقرة (بلا سقف مرقم ثابت).
+        foreach (var guarantor in guarantors.OrderBy(g => g.GuarantorNumber))
         {
-            var guarantor = guarantors.FirstOrDefault(g => g.GuarantorNumber == i);
             var name = string.Join(' ', new[]
             {
-                guarantor?.GuarantorName, guarantor?.GuarantorFather, guarantor?.GuarantorFamily
+                guarantor.GuarantorName, guarantor.GuarantorFather, guarantor.GuarantorFamily
             }.Where(v => !string.IsNullOrWhiteSpace(v)));
 
             if (string.IsNullOrWhiteSpace(name))
                 continue;
 
-            var guarantorHeirs = HeirsOf(heirs, i);
+            var guarantorHeirs = HeirsOf(heirs, guarantor.GuarantorNumber);
             if (guarantorHeirs.Count > 0)
             {
                 items.Add(BuildHeirsRichItem(name, guarantorHeirs));
@@ -517,7 +527,7 @@ public class DocumentContextBuilder : IDocumentContextBuilder
             }
 
             var address = string.Empty;
-            if (!string.IsNullOrWhiteSpace(guarantor?.GuarantorAddress))
+            if (!string.IsNullOrWhiteSpace(guarantor.GuarantorAddress))
                 address = AddressPhraseOf(guarantor.AddressType, guarantor.GuarantorAddress, withColon: false);
             items.Add((name, address));
         }

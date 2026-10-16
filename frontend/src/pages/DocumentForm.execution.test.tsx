@@ -188,6 +188,31 @@ render(<DocumentForm />);
   });
 
 
+  it('يحفظ «الوكيل القانوني» لطالب التنفيذ عند تفعيل ممثل بلا اسم', async () => {
+    const user = userEvent.setup();
+    await renderExecutedEdit({
+      generalEntitySide: 'executed',
+      fileNumber: '55',
+      fileYear: '2026',
+      executionApplicants: [{ name: 'أحمد', father: 'خالد', family: 'الخطيب', nature: 'natural' }],
+      executedNaturalPersons: [],
+      executedPublicEntities: [],
+    });
+
+    const applicantCard = screen.getByText('طالب التنفيذ 1').closest('.rounded-xl') as HTMLElement;
+    const boxes = within(applicantCard).getAllByRole('textbox');
+    await user.type(boxes[3], 'المحامي فلان');
+    // تفعيل الممثل يضبط الصفة فقط — بلا اسم لا يُحفظ فلا يُمسح الوكيل القانوني.
+    await user.click(within(applicantCard).getByText('＋ إضافة ممثل شرعي'));
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    const [, payload] = vi.mocked(api.put).mock.calls[0] as [string, Record<string, unknown>];
+    const applicants = payload.executionApplicants as { legalRepresentative?: string }[];
+    expect(applicants[0].legalRepresentative).toBe('المحامي فلان');
+  });
+
+
   it('يعطّل منتقي الطبيعة للجهة المنفذ عليها المرتبطة بالسجل', async () => {
     await renderExecutedEdit({
       generalEntitySide: 'executed',

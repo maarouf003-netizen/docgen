@@ -11,6 +11,8 @@ import {
   addressLabelOf,
   bankingAmountKeys,
   bankingCurrencyKeys,
+  guarantorAddState,
+  hasHeirName,
   hasRepresentative,
   ordinaryAmountKeys,
   ordinaryCurrencyKeys,
@@ -40,7 +42,6 @@ export interface ApplicantSideSectionsProps {
    * مع بقاء ورثة/ممثل الملف المحليين (والممثل/الورثة الجدد) قابلين للتحرير. */
   isMirror?: boolean;
   guarantorLabel: string;
-  remainingGuarantors: number;
   showInclusionAmount: boolean;
   setShowInclusionAmount: Dispatch<SetStateAction<boolean>>;
   ordinaryAmountSlots: number;
@@ -81,7 +82,6 @@ export function ApplicantSideSections({
   isOrdinary,
   isMirror = false,
   guarantorLabel,
-  remainingGuarantors,
   showInclusionAmount,
   setShowInclusionAmount,
   ordinaryAmountSlots,
@@ -132,13 +132,32 @@ export function ApplicantSideSections({
     }
   };
 
-  const borrowerHasHeirs = borrowerHeirs.length > 0;
+  // إظهار حقول العنوان يتبع المخزَّن فعليًا (كقرارات الحمولة): صف وريث فارغ
+  // الاسم الثلاثي ليس وريثًا فيُبقي الحقول ظاهرة وقيمها محفوظة عند الحفظ.
+  const borrowerHasHeirs = borrowerHeirs.some(hasHeirName);
+  // حالة زر الإضافة (عددًا ورقمًا) تُحسب مرة واحدة: تُستخدم في الزرين والنص.
+  const guarantorAdd = guarantorAddState(guarantors, isOrdinary);
   const borrowerHasRep = hasRepresentative({
     representativeName: form.borrowerRepresentativeName,
     representativeFather: form.borrowerRepresentativeFather,
     representativeFamily: form.borrowerRepresentativeFamily,
     representativeCapacity: form.borrowerRepresentativeCapacity,
   });
+
+  // طيّ بطاقات الكفلاء (أكورديون): مع حتى 49 بطاقة تُطوى الأجسام لتخفيف التخطيط
+  // على الجوال، وتبقى البيانات في حالة الأب فلا يفقد الطي أي إدخال. المفتاح كهوية البطاقة.
+  const cardKeyOf = (g: GuarantorDto, i: number) => (isOrdinary ? `o-${i}` : `b-${g.guarantorNumber ?? i + 1}`);
+  const guarantorSummary = (g: GuarantorDto) =>
+    [g.name, g.father, g.family].map((s) => (s ?? '').trim()).filter(Boolean).join(' ');
+  const [collapsedCards, setCollapsedCards] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleCard = (k: string) =>
+    setCollapsedCards((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+  const allCollapsed = guarantors.length > 0 && guarantors.every((g, i) => collapsedCards.has(cardKeyOf(g, i)));
 
   return (
     <>
@@ -327,22 +346,50 @@ export function ApplicantSideSections({
       )}
 
       <FormSectionTitle title={isOrdinary ? '👥 المنفذ عليهم الآخرون' : '👥 الكفلاء'} />
+      {guarantors.length > 1 && (
+        <div className="flex justify-end mb-2">
+          <button
+            type="button"
+            onClick={() => setCollapsedCards(allCollapsed ? new Set() : new Set(guarantors.map((g, i) => cardKeyOf(g, i))))}
+            className="text-emerald-800 text-xs font-bold hover:underline min-h-11 px-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+          >
+            {allCollapsed ? 'فتح الكل' : 'طي الكل'}
+          </button>
+        </div>
+      )}
       {guarantors.map((g, i) => {
-        const gHasHeirs = (g.heirs ?? []).length > 0;
+        // كالمقترض أعلاه: الفارغ من الاسم الثلاثي ليس وريثًا مخزَّنًا.
+        const gHasHeirs = (g.heirs ?? []).some(hasHeirName);
         const gHasRep = hasRepresentative(g);
         const gIsLegal = g.nature === 'legal';
+        const cardKey = cardKeyOf(g, i);
+        const isCollapsed = collapsedCards.has(cardKey);
         return (
           <div key={isOrdinary ? i : g.guarantorNumber ?? i + 1} className="border border-gray-200 rounded-xl p-4 mb-4">
-            <div className="flex justify-between items-center mb-3">
-              <span className="font-medium text-gray-700 text-sm">
-                {guarantorLabel} {isOrdinary ? i + 2 : g.guarantorNumber ?? i + 1}
-              </span>
+            <div className="flex justify-between items-center gap-2 mb-3">
+              <button
+                type="button"
+                onClick={() => toggleCard(cardKey)}
+                aria-expanded={!isCollapsed}
+                aria-controls={`guarantor-body-${cardKey}`}
+                className="flex min-w-0 flex-1 items-center gap-2 text-right font-medium text-gray-700 text-sm min-h-11 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              >
+                <span aria-hidden="true" className="shrink-0 text-gray-400">{isCollapsed ? '◀' : '▼'}</span>
+                <span className="shrink-0">
+                  {guarantorLabel} {isOrdinary ? i + 2 : g.guarantorNumber ?? i + 1}
+                </span>
+                {guarantorSummary(g) ? (
+                  <span className="min-w-0 flex-1 truncate text-xs font-normal text-gray-400">— {guarantorSummary(g)}</span>
+                ) : null}
+              </button>
               {!lock && guarantors.length > 1 && (
-                <button type="button" onClick={() => onGuarantorRemove(i)} className="text-red-500 text-xs hover:underline min-h-11">
+                <button type="button" onClick={() => onGuarantorRemove(i)} aria-label={`حذف ${guarantorLabel} ${isOrdinary ? i + 2 : g.guarantorNumber ?? i + 1}`} className="shrink-0 text-red-500 text-xs hover:underline min-h-11 px-1 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500">
                   ✖ حذف
                 </button>
               )}
             </div>
+            {!isCollapsed && (
+            <div id={`guarantor-body-${cardKey}`}>
             <div className="grid md:grid-cols-3 gap-3 mb-3">
               <select
                 aria-label="نوع الطرف"
@@ -448,6 +495,8 @@ export function ApplicantSideSections({
                 )}
               </>
             )}
+            </div>
+            )}
           </div>
         );
       })}
@@ -456,21 +505,23 @@ export function ApplicantSideSections({
           <button
             type="button"
             onClick={() => onGuarantorAdd('natural')}
-            disabled={guarantors.length >= MAX_GUARANTORS}
+            disabled={!guarantorAdd.canAdd}
             className="bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
           >
-            {guarantors.length >= MAX_GUARANTORS ? '🛑 الحد الأقصى' : `➕ إضافة ${guarantorLabel} (شخص طبيعي)`}
+            {!guarantorAdd.canAdd ? '🛑 الحد الأقصى' : `➕ إضافة ${guarantorLabel} (شخص طبيعي)`}
           </button>
           <button
             type="button"
             onClick={() => onGuarantorAdd('legal')}
-            disabled={guarantors.length >= MAX_GUARANTORS}
+            disabled={!guarantorAdd.canAdd}
             className="bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
           >
-            {guarantors.length >= MAX_GUARANTORS ? '🛑 الحد الأقصى' : `➕ إضافة ${guarantorLabel} (شخص اعتباري)`}
+            {!guarantorAdd.canAdd ? '🛑 الحد الأقصى' : `➕ إضافة ${guarantorLabel} (شخص اعتباري)`}
           </button>
           <span className="text-xs text-gray-500">
-            {remainingGuarantors > 0 ? `متبقي: ${remainingGuarantors} من ${MAX_GUARANTORS}` : 'وصلت الحد الأقصى'}
+            {guarantorAdd.canAdd
+              ? `متبقي: ${guarantorAdd.remaining} من ${MAX_GUARANTORS}`
+              : 'وصلت الحد الأقصى'}
           </span>
         </div>
       )}

@@ -172,9 +172,102 @@ public class DocumentContextBuilderTests : IDisposable
     }
 
     [Fact]
+    public async Task BuildContext_Seizure_GappedNumbers_AlignsCourtLinesByNumber()
+    {
+        // أرقام الكفلاء هوية مستقرة: حذف أوسط (مصرفي) يترك فراغًا (1، 3) —
+        // مقطع القرار/الدائرة n يتبع رقم الكفيل n-1 لا الموضع التسلسلي،
+        // وإلا ظهر سطر قرار يتيم تحت كتلة الاسم الفارغة.
+        var id = await AddAsync(new Document
+        {
+            Court = "دمشق",
+            BorrowerName = "أحمد",
+            BorrowerFather = "خالد",
+            BorrowerFamily = "الخطيب",
+            BorrowerAddress = "المزة",
+            BorrowerAddressType = "موطن مختار",
+            FileNumber = "520",
+            FileType = "أساس",
+            SeizureDate = "15/03/2025",
+            Guarantors = new List<Guarantor>
+            {
+                new()
+                {
+                    GuarantorNumber = 1,
+                    GuarantorName = "سمير",
+                    GuarantorFather = "حسن",
+                    GuarantorFamily = "علي",
+                    GuarantorAddress = "حلب",
+                    AddressType = "موطن مختار",
+                },
+                new()
+                {
+                    GuarantorNumber = 3,
+                    GuarantorName = "كريم",
+                    GuarantorFather = "ناصر",
+                    GuarantorFamily = "سالم",
+                    GuarantorAddress = "حمص",
+                    AddressType = "موطن مختار",
+                },
+            },
+        });
+
+        var ctx = await _builder.BuildContextAsync(id, "004");
+
+        Assert.Equal("520 أساس\nتاريخ القرار: 15/03/2025", ctx["seizure_date1"]);
+        Assert.Equal("520 أساس\nتاريخ القرار: 15/03/2025", ctx["seizure_date2"]);
+        Assert.Equal(string.Empty, ctx["seizure_date3"]);
+        Assert.Equal("520 أساس\nتاريخ القرار: 15/03/2025", ctx["seizure_date4"]);
+        Assert.Equal(string.Empty, ctx["seizure_date5"]);
+        Assert.Equal(string.Empty, ctx["guarantor_2_name"]);
+        Assert.Equal("كريم", ctx["guarantor_3_name"]);
+        Assert.Equal(string.Empty, ctx["court_with_prefix3"]);
+        Assert.Equal("دائرة تنفيذ دمشق", ctx["court_with_prefix4"]);
+    }
+
+    [Fact]
     public async Task BuildContext_NotFound_ThrowsKeyNotFound()
     {
         await Assert.ThrowsAsync<KeyNotFoundException>(() => _builder.BuildContextAsync(999, "001"));
+    }
+
+    [Fact]
+    public async Task BuildContext_ManyGuarantors_FillsDynamicSlotsBeyondFive()
+    {
+        // انحدار السقف القديم (1..5): 6 كفلاء يملؤون الخانة السادسة ومقطعها.
+        var guarantors = Enumerable.Range(1, 6).Select(n => new Guarantor
+        {
+            GuarantorNumber = n,
+            GuarantorName = $"كفيل{n}",
+            GuarantorFather = "أب",
+            GuarantorFamily = "عائلة",
+            GuarantorAddress = "حلب",
+            AddressType = "موطن مختار",
+        }).ToList();
+        var id = await AddAsync(new Document
+        {
+            Court = "دمشق",
+            BorrowerName = "أحمد",
+            BorrowerFather = "خالد",
+            BorrowerFamily = "الخطيب",
+            BorrowerAddress = "المزة",
+            BorrowerAddressType = "موطن مختار",
+            ContractTypeSelector = "مصرفي",
+            AmountWords = "مئة ألف ليرة سورية",
+            FileNumber = "520",
+            FileType = "أساس",
+            SeizureDate = "15/03/2025",
+            Guarantors = guarantors,
+        });
+
+        var ctx = await _builder.BuildContextAsync(id, "004");
+
+        Assert.Equal("كفيل6", ctx["guarantor_6_name"]);
+        Assert.Equal("520 أساس\nتاريخ القرار: 15/03/2025", ctx["seizure_date7"]);
+        Assert.Equal("دائرة تنفيذ دمشق", ctx["court_with_prefix7"]);
+        var rich = (string)ctx["execution_debtors_and_its_adresses"];
+        Assert.Contains("كفيل6", rich);
+        var plain = (string)ctx["execution_debtors"];
+        Assert.Contains("كفيل6", plain);
     }
 
     [Fact]

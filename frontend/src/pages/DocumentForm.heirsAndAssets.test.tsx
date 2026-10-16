@@ -361,7 +361,7 @@ render(<DocumentForm />);
   });
 
 
-  it('يخفي حقل عنوان المقترض عند إضافة وريث', async () => {
+  it('يُبقي حقل عنوان المقترض ظاهرًا مع صف وريث فارغ ويخفيه عند تسميته', async () => {
     const user = userEvent.setup();
     const { container } = render(<DocumentForm />);
 
@@ -369,7 +369,34 @@ render(<DocumentForm />);
 
     await user.click(screen.getAllByRole('button', { name: '＋ إضافة وريث' })[0]);
 
+    // صف بلا اسم ثلاثي ليس وريثًا مخزَّنًا — الحقل يبقى وقيمته تُحفظ عند الحفظ.
+    expect(container.querySelector('#borrowerAddress')).toBeTruthy();
+
+    await user.type(screen.getByLabelText('اسم الوريث'), 'محمود');
+
     expect(container.querySelector('#borrowerAddress')).toBeNull();
+  });
+
+
+  it('يُبقي حقل عنوان الكفيل ظاهرًا مع صف وريث فارغ ويخفيه عند تسميته', async () => {
+    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    await user.type(screen.getByLabelText('الاسم'), 'مقترض تجربة');
+    const card = screen.getByText('كفيل 1').closest('.rounded-xl') as HTMLElement;
+    // عنوان الكفيل نفسه: حقل بلا id (حقول الوريث تحمل id مسبوقًا) يسبقه ملصق «العنوان».
+    const addrInput = () => Array.from(card.querySelectorAll('input')).find(
+      (el) => !el.id && el.previousElementSibling?.textContent === 'العنوان',
+    );
+    expect(addrInput()).toBeTruthy();
+
+    await user.click(within(card).getByRole('button', { name: '＋ إضافة وريث' }));
+
+    expect(addrInput()).toBeTruthy();
+
+    await user.type(within(card).getByLabelText('اسم الوريث'), 'وريث سمير');
+
+    expect(addrInput()).toBeFalsy();
   });
 
 

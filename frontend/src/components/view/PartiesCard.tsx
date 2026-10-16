@@ -40,8 +40,8 @@ function PartyRow({
     >
       <span className="min-w-0 flex-1">
         <span className="block text-xs text-gray-500">{label}</span>
-        <span className="block font-medium text-gray-800 text-sm">{name}</span>
-        {subtitle ? <span className="block text-xs text-gray-500 mt-0.5">{subtitle}</span> : null}
+        <span className="block font-medium text-gray-800 text-sm break-words">{name}</span>
+        {subtitle ? <span className="block text-xs text-gray-500 mt-0.5 break-words">{subtitle}</span> : null}
       </span>
       {onClick ? <span className="text-gray-400 text-sm shrink-0" aria-hidden="true">←</span> : null}
     </button>
