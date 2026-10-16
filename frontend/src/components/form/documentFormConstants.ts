@@ -10,8 +10,39 @@ import type {
   GuarantorDto,
   HeirDto,
 } from '../../types';
+import { normalizeArabicDigits } from '../../utils/arabicDigits';
 
-export const FILE_YEARS = ['2026', '2027', '2028', '2029', '2030'];
+/**
+ * قاعدة عامة تسري على كل الكود: سنة الملف لا تكون سنة مستقبلية — الحد الأقصى
+ * السنة الجارية (تتبدل تلقائيًا كل سنة)، والماضي مفتوح منذ هذا الحد الأدنى.
+ * الخلفية (`DocumentValidator.ValidateFileYearNotFuture`) هي مصدر الحقيقة
+ * (توقيت دمشق)؛ هذه القائمة للعرض فقط.
+ */
+export const FILE_YEAR_FLOOR = 2000;
+
+/** سنوات الملف المتاحة حتى سنة معطاة (عادة الجارية خادميًا): من الحد الأدنى صعودًا — لا مستقبل أبدًا. */
+export function fileYearsUpto(currentYear: number): string[] {
+  const top = Number.isFinite(currentYear) ? Math.trunc(currentYear) : FILE_YEAR_FLOOR;
+  const years: string[] = [];
+  for (let y = FILE_YEAR_FLOOR; y <= Math.max(top, FILE_YEAR_FLOOR); y++) years.push(String(y));
+  return years;
+}
+
+/** تحليل سنة حرة (عربية/لاتينية الأرقام) إلى رقم — null عند الفراغ أو غير الرقمي. */
+export function parseFileYear(value: string | null | undefined): number | null {
+  const digits = normalizeArabicDigits(value ?? '').trim();
+  if (!digits) return null;
+  return /^\d+$/.test(digits) ? Number(digits) : null;
+}
+
+/** هل السنة مستقبلية بالنسبة لسنة معطاة؟ غير الرقمي والفارغ ليسا مستقبليين (مسار تحقق آخر). */
+export function isFutureFileYear(value: string | number | null | undefined, currentYear: number): boolean {
+  const year = typeof value === 'number' ? value : parseFileYear(typeof value === 'string' ? value : null);
+  return year != null && year > currentYear;
+}
+
+/** رسالة الرفض الأمامية الموحدة (الخلفية ترد بصياغتها الديناميكية عند التجاوز المباشر). */
+export const FUTURE_FILE_YEAR_MESSAGE = 'سنة الملف لا يمكن أن تكون سنة مستقبلية';
 
 /** خيار قائمة منسدلة يحمل قيمة مخزنة وتسمية عرض (لتغيير التسمية دون كسر القيمة المخزنة). */
 export type LabelValueOption = { value: string; label: string };

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
 import { normalizeArabicDigits } from '../utils/arabicDigits';
+import { useCurrentYear } from '../hooks/useCurrentYear';
+import { FUTURE_FILE_YEAR_MESSAGE, isFutureFileYear } from '../components/form/documentFormConstants';
 import type { PendingRegistrationDto } from '../types';
 
 interface RowState {
@@ -22,6 +24,8 @@ export default function PendingRegistrationsPage() {
   const [rows, setRows] = useState<Record<number, RowState>>({});
   const [saving, setSaving] = useState(false);
   const [savedMessage, setSavedMessage] = useState('');
+  // سنة اليوم المعتمدة من الخادم — سقف سنوات إعادة القيد (المستقبل مرفوض خلفيةً أيضًا).
+  const { currentYear } = useCurrentYear();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -86,6 +90,7 @@ export default function PendingRegistrationsPage() {
       const problems: string[] = [];
       if (!e.fileNumber) problems.push('الرقم الجديد إلزامي');
       if (!e.fileYear) problems.push('السنة إلزامية');
+      else if (isFutureFileYear(e.fileYear, currentYear)) problems.push(FUTURE_FILE_YEAR_MESSAGE);
       if (problems.length > 0 && firstBad === null) firstBad = e.documentId;
       nextRows[e.documentId] = { ...(nextRows[e.documentId] ?? { fileNumber: '', fileType: '', fileYear: '' }), error: problems.join(' — ') };
     }

@@ -1,3 +1,4 @@
+using System.Globalization;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Enums;
 
@@ -132,6 +133,22 @@ public static class DocumentValidator
         }
         date = default;
         return false;
+    }
+
+    /// <summary>
+    /// قاعدة عامة تسري على كل الكود: سنة الملف (رقم القيد/الأساس/الإعادة) لا تكون
+    /// سنة مستقبلية — الحد الأقصى السنة الجارية بتوقيت دمشق. الفارغ مباح (مسودة/
+    /// حقل اختياري)، وغير الرقمي يُترك لمساره القائم (لا تشديد جديد هنا).
+    /// التطبيع الرقمي (عربية/فارسية ← لاتينية) قبل التحليل ليُمسك «٢٠٢٧» أيضًا.
+    /// </summary>
+    public static void ValidateFileYearNotFuture(string? fileYear, int currentYear)
+    {
+        var normalized = DigitNormalizer.NormalizeDigitsOrNull(fileYear);
+        if (string.IsNullOrEmpty(normalized))
+            return;
+        if (int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out var year)
+            && year > currentYear)
+            throw new ArgumentException($"سنة الملف ({normalized}) لم تأتِ بعد — الحد الأقصى السنة الجارية ({currentYear})");
     }
 
     /// <summary>

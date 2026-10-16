@@ -303,6 +303,21 @@ describe('StatusChangeModal', () => {
     expect(api.post).not.toHaveBeenCalled();
   });
 
+  it('يرفض العودة مع سنة إعادة مستقبلية ولا يرسل', async () => {
+    const user = userEvent.setup();
+    renderModal({ isDraft: false, execStatus: 'محال الى البداية', execSubStatus: '' });
+
+    await user.type(screen.getByLabelText('رقم الملف الجديد (اختياري)'), '777');
+    await user.type(screen.getByLabelText('سنة الإعادة (اختياري)'), String(new Date().getFullYear() + 1));
+    await user.type(screen.getByLabelText('تاريخ التجديد (اختياري)'), '3/3/2026');
+    await user.click(screen.getByRole('button', { name: 'حفظ الحالة' }));
+
+    expect(
+      screen.getByText('سنة الملف لا يمكن أن تكون سنة مستقبلية'),
+    ).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
   it('يعرض وضع «محال الى البداية» مع جزئيته في الحالة الحالية', () => {
     renderModal({ isDraft: false, execStatus: 'محال الى البداية', execSubStatus: 'منفذ جزئيا' });
 

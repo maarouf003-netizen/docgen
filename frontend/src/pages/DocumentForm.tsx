@@ -8,7 +8,9 @@ import { ApplicantSideSections } from '../components/form/ApplicantSideSections'
 import {
   ASSET_KINDS,
   emptyAsset,
-  FILE_YEARS,
+  fileYearsUpto,
+  FUTURE_FILE_YEAR_MESSAGE,
+  isFutureFileYear,
   MAX_ASSETS_PER_KIND,
   SHAREABLE_ASSET_KINDS,
   bankingCurrencyKeys,
@@ -142,6 +144,9 @@ export default function DocumentForm() {
     contractTypeSelector: 'مصرفي',
     borrowerAddressType: 'موطن مختار',
     borrowerNature: 'natural',
+    // سنة الملف الافتراضية للملف الجديد هي السنة الجارية (خادميًا عند توفرها) —
+    // الماضي متاح من القائمة والمستقبل مستحيل واجهةً ومرفوض خلفيةً.
+    fileYear: String(currentYear),
     // «فرع الملف» قيمة نظامية مشتقة من فرع المحامي المنشئ — لا يُكتب يدويًا.
     branchName: user?.branchName ?? '',
     generalEntitySide: 'applicant',
@@ -164,6 +169,8 @@ export default function DocumentForm() {
       contractTypeSelector: 'مصرفي',
       borrowerAddressType: 'موطن مختار',
       borrowerNature: 'natural',
+      // إعادة الضبط تعيد الافتراضي (السنة الجارية) كالنموذج الجديد.
+      fileYear: String(currentYear),
       // «فرع الملف» قيمة نظامية مشتقة من فرع المحامي المنشئ — لا يُكتب يدويًا.
       branchName: user?.branchName ?? '',
       generalEntitySide: 'applicant',
@@ -188,7 +195,7 @@ export default function DocumentForm() {
     setIsMirror(false);
     setWasOriginallyStruckOff(false);
     setOriginalExecutedStatus('');
-  }, [user?.branchName]);
+  }, [user?.branchName, currentYear]);
 
   const loadDocument = useCallback(() => {
     if (id === undefined) return undefined;
@@ -766,6 +773,13 @@ export default function DocumentForm() {
       return;
     }
 
+    // سنة الملف لا تكون مستقبلية في أي وضع (القائمة تمنعها عادةً — وهذا حارس
+    // لقيمة قديمة مخزنة أو عبث؛ الخلفية ترفضها أيضًا برسالتها).
+    if (isFutureFileYear((form.fileYear ?? '').trim(), currentYear)) {
+      setError(FUTURE_FILE_YEAR_MESSAGE);
+      return;
+    }
+
     // العودة من مشطوب إلى متداول تستلزم رقم الملف الجديد (تجديد) — يتحقق مسبقًا
     // قبل إرسال النموذج ليطابق اشتراط الخلفية (رقم الملف الجديد إلزامي).
     if (isEdit && wasOriginallyStruckOff && !(form.executedStatus ?? '') && !(form.renewalFileNumber ?? '').trim()) {
@@ -1107,7 +1121,7 @@ export default function DocumentForm() {
             </div>
           </div>
           {field('رقم الملف', 'fileNumber', 'رقم الملف...')}
-          {selectField('سنة الملف', 'fileYear', ['', ...FILE_YEARS], form.fileYear ?? '', (v) => set('fileYear', v))}
+          {selectField('سنة الملف', 'fileYear', ['', ...fileYearsUpto(currentYear)], form.fileYear ?? '', (v) => set('fileYear', v))}
           {field('نوع الملف', 'fileType', 'نوع الملف...')}
           {isExecuted ? (
             <>

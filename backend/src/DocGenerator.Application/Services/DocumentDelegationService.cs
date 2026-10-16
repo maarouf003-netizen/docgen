@@ -925,6 +925,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         var fileYear = DigitNormalizer.NormalizeDigitsOrNull(Normalize(request.FileYear));
         if (string.IsNullOrWhiteSpace(fileYear))
             throw new ArgumentException("سنة قيد الإنابة مطلوبة");
+        DocumentValidator.ValidateFileYearNotFuture(fileYear, ServerClock.CurrentYear(_clock, _timeZone));
         var registrationDate = FreeDateParser.Parse(request.FileRegistrationDate, "تاريخ قيد الإنابة");
         if (registrationDate is null)
             throw new ArgumentException("تاريخ قيد الإنابة مطلوب");

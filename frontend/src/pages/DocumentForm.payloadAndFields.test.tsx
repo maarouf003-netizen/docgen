@@ -125,6 +125,28 @@ render(<DocumentForm />);
   });
 
 
+  it('قائمة سنة الملف بلا مستقبل وافتراضيها السنة الجارية', () => {
+    render(<DocumentForm />);
+
+    const select = screen.getByLabelText('سنة الملف') as HTMLSelectElement;
+    const options = Array.from(select.options).map((o) => o.value).filter(Boolean);
+    const currentYear = new Date().getFullYear();
+    expect(options).toContain(String(currentYear));
+    expect(options.every((y) => Number(y) <= currentYear)).toBe(true);
+    expect(select).toHaveValue(String(currentYear));
+  });
+
+  it('يرفض الحفظ بسنة مستقبلية مخزنة (تعديل ملف قديم) ولا يرسل', async () => {
+    const user = userEvent.setup();
+    const futureYear = String(new Date().getFullYear() + 1);
+    await renderEdit({ ...mockDoc, fileYear: futureYear });
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    expect(screen.getByText('سنة الملف لا يمكن أن تكون سنة مستقبلية')).toBeInTheDocument();
+    expect(api.put).not.toHaveBeenCalled();
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
   it('يرسل تاريخ إلقاء حجز المنظومة مع بيانات الملف عند الحفظ', async () => {
     const user = userEvent.setup();
     render(<DocumentForm />);

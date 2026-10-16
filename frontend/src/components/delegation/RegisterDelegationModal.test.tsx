@@ -103,6 +103,22 @@ describe('RegisterDelegationModal', () => {
     expect(onRegistered).toHaveBeenCalled();
   });
 
+  it('يرفض سنة مستقبلية أماميًا ولا يرسل', async () => {
+    const user = userEvent.setup();
+    render(
+      <RegisterDelegationModal delegation={assignedDelegation()} onClose={noop} onRegistered={noop} />,
+    );
+
+    const futureYear = new Date().getFullYear() + 1;
+    await user.type(screen.getByLabelText('رقم أساس الإنابة'), '890');
+    await user.type(screen.getByLabelText('سنة قيد الإنابة'), String(futureYear));
+    await user.type(screen.getByLabelText('تاريخ قيد الإنابة'), '5/8/2026');
+    await user.click(screen.getByRole('button', { name: 'تسجيل أصولًا' }));
+
+    expect(screen.getByRole('alert').textContent).toBe('سنة الملف لا يمكن أن تكون سنة مستقبلية');
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
   it('يعرض رسالة خطأ الخادم عند فشل التسجيل', async () => {
     const user = userEvent.setup();
     (api.post as unknown as ReturnType<typeof vi.fn>).mockRejectedValue({

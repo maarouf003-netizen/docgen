@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
 import { normalizeArabicDigits } from '../utils/arabicDigits';
+import { useCurrentYear } from '../hooks/useCurrentYear';
 import { assetDisplayName } from '../utils/assetDisplay';
-import { isAuctionableKind } from './form/documentFormConstants';
+import { FUTURE_FILE_YEAR_MESSAGE, isFutureFileYear, isAuctionableKind } from './form/documentFormConstants';
 import type { AssetDto, DocumentResponse } from '../types';
 import { FieldInput, SelectInput } from './form/FormInputs';
 import MultiAmountEditor from './MultiAmountEditor';
@@ -138,6 +139,8 @@ export default function StatusChangeModal({
   };
 
   const normalize = (s: string) => normalizeArabicDigits(s);
+  // سقف سنة الإعادة (تصبح سنة الملف): الجارية خادميًا — المستقبل مرفوض خلفيةً أيضًا.
+  const { currentYear } = useCurrentYear();
 
   const buildPayload = (): Record<string, string> => {
     const payload: Record<string, string> = {};
@@ -222,6 +225,9 @@ export default function StatusChangeModal({
       if (renewalNumber) {
         if (!fields.renewalDate.trim() || !fields.renewalYear.trim()) {
           throw new Error('عند إدخال رقم ملف جديد يجب إدخال تاريخ التجديد وسنة الإعادة معًا');
+        }
+        if (isFutureFileYear(normalize(fields.renewalYear), currentYear)) {
+          throw new Error(FUTURE_FILE_YEAR_MESSAGE);
         }
         payload.renewalFileNumber = normalize(renewalNumber);
         payload.renewalDate = normalize(fields.renewalDate);

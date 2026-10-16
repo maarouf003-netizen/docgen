@@ -70,4 +70,17 @@ describe('PendingRegistrationsPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('الرقم الجديد إلزامي');
     expect(api.post).not.toHaveBeenCalled();
   });
+
+  it('يرفض سنة مستقبلية أماميًا ولا يرسل (تشمل الأرقام العربية)', async () => {
+    const user = userEvent.setup();
+    render(<PendingRegistrationsPage />);
+    await screen.findByText('دائرة: دائرة الهدف');
+    const futureYear = new Date().getFullYear() + 1;
+    await user.type(screen.getByLabelText('الرقم الجديد للملف 7'), '123');
+    await user.clear(screen.getByLabelText('سنة الملف 7'));
+    await user.type(screen.getByLabelText('سنة الملف 7'), String(futureYear));
+    await user.click(screen.getByRole('button', { name: 'حفظ الكل (ذري)' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('سنة الملف لا يمكن أن تكون سنة مستقبلية');
+    expect(api.post).not.toHaveBeenCalled();
+  });
 });
