@@ -40,4 +40,14 @@ public class RF014DateAcceptanceTests
         // كانت رهن ثقافة الخادم؛ بعد القرار مرفوضة حتميًا في كل بيئة.
         Assert.Null(ActionDateParser.TryParse(input));
     }
+
+    [Theory]
+    // صيغة شهر/يوم أمريكية خالصة (لا تصح يومًا أولًا): يجب رفضها صراحة —
+    // العقد يوم/شهر/سنة دائمًا، فـ `01/13` ليست 13 كانون الثاني بل مدخل مرفوض.
+    [InlineData("01/13/2026")]
+    [InlineData("12-25-2026")]
+    public void TryParse_MonthFirstOnly_Rejected(string input)
+    {
+        Assert.Null(ActionDateParser.TryParse(input));
+    }
 }
