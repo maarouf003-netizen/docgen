@@ -40,13 +40,29 @@ beforeEach(() => {
 });
 
 describe('Login', () => {
-  it('يعرض شعار النسر والعلم في ترويسة الدخول', () => {
+  it('يعرض شعار الإدارة والعلم والهوية الرسمية في صفحة الدخول المقسومة', () => {
     render(<Login />);
 
-    expect(screen.getByAltText('شعار نسر صلاح الدين')).toBeInTheDocument();
+    expect(
+      screen.getAllByAltText('شعار إدارة قضايا الدولة — الجمهورية العربية السورية').length,
+    ).toBeGreaterThanOrEqual(2);
     expect(screen.getByAltText('علم الجمهورية العربية السورية')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'مسار' })).toBeInTheDocument();
-    expect(screen.getByText('مساعد محامي الدولة الذكي في إدارة الملفات التنفيذية')).toBeInTheDocument();
+    expect(
+      screen.getAllByText('منصة إدارة الملفات التنفيذية المدعومة بمولد مستندات آلي').length,
+    ).toBeGreaterThanOrEqual(2);
+  });
+
+  it('يعرض التسلسل الرسمي: الجمهورية ثم الوزارة ثم الإدارة في لوحة الهوية', () => {
+    render(<Login />);
+
+    const branding = screen.getByRole('region', {
+      name: 'الجمهورية العربية السورية — وزارة العدل — إدارة قضايا الدولة',
+    });
+    expect(branding).toBeInTheDocument();
+    expect(branding).toHaveTextContent('الجمهورية العربية السورية');
+    expect(branding).toHaveTextContent('وزارة العدل');
+    expect(branding).toHaveTextContent('إدارة قضايا الدولة');
   });
 
   it('ينجح الدخول العادي ويوجّه للرئيسية', async () => {

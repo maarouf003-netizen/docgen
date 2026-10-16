@@ -252,12 +252,14 @@ export default function Layout() {
       <div className="p-4 border-b border-emerald-700 text-center">
         <img
           src={nationalEmblem}
-          alt="شعار نسر صلاح الدين"
-          className="w-14 h-14 mx-auto mb-1 drop-shadow-md"
+          alt="شعار إدارة قضايا الدولة — الجمهورية العربية السورية"
+          width={56}
+          height={56}
+          className="w-14 h-14 mx-auto mb-1 rounded-full bg-white p-0.5 object-cover ring-1 ring-white/30 drop-shadow-md"
         />
         <h1 className="text-xl font-bold">مسار</h1>
         <p className="text-xs text-emerald-300 mt-1">
-          مساعد محامي الدولة الذكي في إدارة الملفات التنفيذية
+          منصة إدارة الملفات التنفيذية المدعومة بمولد مستندات آلي
         </p>
         {canHaveCorrespondenceUrgent && (
           <div className="flex justify-center mt-2">
@@ -366,7 +368,9 @@ export default function Layout() {
                 src={nationalEmblem}
                 alt=""
                 aria-hidden="true"
-                className="w-9 h-9 shrink-0"
+                width={36}
+                height={36}
+                className="w-9 h-9 shrink-0 rounded-full bg-white object-cover"
               />
               <h1 className="text-lg font-bold text-emerald-900">مسار</h1>
               {canHaveCorrespondenceUrgent && (
