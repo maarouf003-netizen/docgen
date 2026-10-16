@@ -597,7 +597,7 @@ public sealed partial class DocumentDelegationService
                 target.CreatedById,
                 recipientBranch ?? 0,
                 source.CreatedById,
-                $"تم تحديث نسخة الملف المناب لمواكبة الملف المنيب: {string.Join("، ", labels)}"));
+                BoundAlertMessage($"تم تحديث نسخة الملف المناب لمواكبة الملف المنيب: {string.Join("، ", labels)}")));
         }
 
         return intents;
@@ -1034,7 +1034,24 @@ public sealed partial class DocumentDelegationService
             parts.Add($"أُضيف الوريث {h.Name}{suffix}");
         }
         parts.AddRange(report.NewRepresentativeLabels.Select(label => $"أُضيف {label}"));
-        return $"تم تعديل بيانات الملف المناب بإضافة محلية — {string.Join("؛ ", parts)}";
+        return BoundAlertMessage($"تم تعديل بيانات الملف المناب بإضافة محلية — {string.Join("؛ ", parts)}");
+    }
+
+    /// <summary>
+    /// حد رسالة تنبيه المرآة (عمود HeadAlert.Message (2000)): مع حتى 49 كفيلًا قد يضم
+    /// النص كل الأسماء المحذوفة/المضافة دفعة واحدة فيُقصّ بدل ضياع التنبيه كاملًا
+    /// عند الحفظ على Postgres — بذات نمط قصّ الرسائل القائم، مع تجنّب قصّ منتصف
+    /// زوج بديل UTF-16.
+    /// </summary>
+    private static string BoundAlertMessage(string message)
+    {
+        if (message.Length <= 2000)
+            return message;
+
+        var end = 2000;
+        if (char.IsHighSurrogate(message[end - 1]) && end < message.Length && char.IsLowSurrogate(message[end]))
+            end--;
+        return message[..end];
     }
 
     /// <summary>

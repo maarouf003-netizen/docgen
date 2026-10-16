@@ -55,6 +55,42 @@ public static class DocumentValidator
     }
 
     /// <summary>
+    /// تطبيع القوائم القابلة للفراغ قبل أي تحقق: مُهيَّئات `= new()` لا تحمي من
+    /// `null` صريح في JSON (ولا من عناصر `null` داخل المصفوفة) فينكسر `.Count`
+    /// والترتيب والتكرار بـ `NullReferenceException` (500) بدل رفض 400 — تُستبدل
+    /// بالفارغ وتُسقَط العناصر الفارغة (كـ`NormalizeHeirs` وسائر المطبِّعات).
+    /// القوائم الأخرى تُستهلَك عبر مطبِّعات آمنة للفراغ فلا حاجة لها هنا.
+    /// </summary>
+    public static void NormalizeCollections(DocumentUpsertRequest request)
+    {
+        request.Guarantors = request.Guarantors?.Where(g => g is not null).ToList() ?? new();
+        request.Assets = request.Assets?.Where(a => a is not null).ToList() ?? new();
+        request.BorrowerHeirs = request.BorrowerHeirs?.Where(h => h is not null).ToList() ?? new();
+    }
+
+    /// <summary>
+    /// سقف أطراف الملف في صفة «الجهة العامة طالبة التنفيذ» (مصرفي/عادي):
+    /// إجمالي المنفذ عليهم 50 شاملًا المقترض، أي حتى 49 صف كفلاء/منفذ عليهم آخرين
+    /// (قرار المالك — `PartyLimitsCatalog`). ورثة الكفلاء والممثلون بلا سقف.
+    /// رقم الكفيل هوية مستقرة فلا يقبل التكرار (يُفسد ربط الورثة والمقارنات).
+    /// </summary>
+    public static void ValidateGuarantorCount(DocumentUpsertRequest request)
+    {
+        if (request.Guarantors.Count > PartyLimitsCatalog.MaxGuarantors)
+            throw new ArgumentException(
+                $"عدد الكفلاء/المنفذ عليهم الآخرين يتجاوز الحد الأقصى ({PartyLimitsCatalog.MaxGuarantors}) — الإجمالي مع المقترض {PartyLimitsCatalog.MaxTotalDebtors}");
+
+        var duplicates = request.Guarantors
+            .GroupBy(g => g.GuarantorNumber)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+        if (duplicates.Count > 0)
+            throw new ArgumentException(
+                $"أرقام الكفلاء مكررة: {string.Join("، ", duplicates)} — يجب أن يكون رقم كل كفيل فريدًا");
+    }
+
+    /// <summary>
     /// الملف المقيّد (بعد إدخال رقم الملف وسنة الملف) لا بد أن يحمل تاريخ قيد صالحًا،
     /// لأنه المعيار الوحيد في إحصاءات المتداول. وتُستثنى عائلة وضع «الجهة العامة منفذ عليها»
     /// لأن ملفها يقيده الخصم لا محامي الدولة، فتاريخ ورود الاخطار يغني عن تاريخ القيد.

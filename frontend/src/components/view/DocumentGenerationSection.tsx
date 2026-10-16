@@ -20,6 +20,7 @@ export function DocumentGenerationSection({ doc, id }: { doc: DocumentResponse; 
   const [noticeSel, setNoticeSel] = useState<number[]>([]);
   const [estateSel, setEstateSel] = useState<number[]>([]);
   const [generating, setGenerating] = useState('');
+  const [noticeProgress, setNoticeProgress] = useState('');
   const [downloadError, setDownloadError] = useState('');
   const [downloadSuccess, setDownloadSuccess] = useState('');
 
@@ -119,9 +120,17 @@ export function DocumentGenerationSection({ doc, id }: { doc: DocumentResponse; 
     await runGeneration(
       code,
       async () => {
-        for (const person of noticePersons) {
-          if (!noticeSel.includes(person.number)) continue;
-          await downloadOne(code, person.heirId != null ? 0 : person.number, [], person.heirId);
+        try {
+          let done = 0;
+          for (const person of noticePersons) {
+            if (!noticeSel.includes(person.number)) continue;
+            await downloadOne(code, person.heirId != null ? 0 : person.number, [], person.heirId);
+            done += 1;
+            // مع حتى 50 إخطارًا يُعرض التقدم بدل زر صامت أثناء التنزيلات المتتالية.
+            setNoticeProgress(`جارِ التوليد... ${done}/${noticeSel.length}`);
+          }
+        } finally {
+          setNoticeProgress('');
         }
       },
       code === '007'
@@ -284,19 +293,30 @@ export function DocumentGenerationSection({ doc, id }: { doc: DocumentResponse; 
                 disabled={generating !== ''}
                 className="bg-red-800 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg px-4 py-2 text-sm min-h-11"
               >
-                {generating === '003' ? 'جارِ التوليد...' : 'توليد إخطار تنفيذي'}
+                {generating === '003' ? noticeProgress || 'جارِ التوليد...' : 'توليد إخطار تنفيذي'}
               </button>
               <button
                 onClick={() => generateNotice('007')}
                 disabled={generating !== ''}
                 className="bg-red-800 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg px-4 py-2 text-sm min-h-11"
               >
-                {generating === '007' ? 'جارِ التوليد...' : 'توليد إخطار بالصحف'}
+                {generating === '007' ? noticeProgress || 'جارِ التوليد...' : 'توليد إخطار بالصحف'}
               </button>
             </div>
             <div className="flex-1">
-              <p className="text-gray-600 text-sm">اختر المنفَّذ عليهم الذين تريد تسطير إخطار تنفيذي لهم :</p>
-              <div className="mt-2 border border-gray-200 rounded-lg p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-gray-600 text-sm">اختر المنفَّذ عليهم الذين تريد تسطير إخطار تنفيذي لهم :</p>
+                {noticePersons.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setNoticeSel(noticeSel.length === noticePersons.length ? [] : noticePersons.map((p) => p.number))}
+                    className="shrink-0 text-emerald-800 text-xs font-bold hover:underline min-h-11 px-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                  >
+                    {noticeSel.length === noticePersons.length ? 'إلغاء التحديد' : `تحديد الكل (${noticePersons.length})`}
+                  </button>
+                )}
+              </div>
+              <div className="mt-2 border border-gray-200 rounded-lg p-3 space-y-2 max-h-72 overflow-y-auto overscroll-contain">
                 {noticePersons.length === 0 ? (
                   <p className="text-gray-400 text-sm">لا يوجد أشخاص — أدخل المقترض والكفلاء أولاً</p>
                 ) : (

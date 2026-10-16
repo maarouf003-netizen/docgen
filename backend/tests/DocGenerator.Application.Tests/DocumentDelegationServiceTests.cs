@@ -2677,6 +2677,54 @@ public class DocumentDelegationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task MirrorSync_MassGuarantorRemoval_BoundsAlertMessageToColumnLimit()
+    {
+        // مع 49 كفيلًا بأسماء طويلة: حذفهم دفعة من المنيب يُزامَن للمناب، ورسالة
+        // التنبيه المدمجة (كل الأسماء المحذوفة) تُقصّ لحد العمود (2000) بدل ضياع
+        // التنبيه كاملًا عند الحفظ على Postgres.
+        var source = await CreateSourceAsync();
+        for (var n = 1; n <= PartyLimitsCatalog.MaxGuarantors; n++)
+        {
+            _db.Guarantors.Add(new Guarantor
+            {
+                DocumentId = source.Id, GuarantorNumber = n,
+                GuarantorName = new string('ك', 60),
+                GuarantorFather = new string('ف', 10),
+                GuarantorFamily = new string('ع', 10),
+                GuarantorNature = PartyNatureCatalog.Natural,
+            });
+        }
+        await _db.SaveChangesAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        // حذف الكفلاء الـ49 من المنيب دفعة واحدة (0 كفلاء حد أدنى مسموح).
+        var loaded = await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .Include(d => d.Guarantors)
+            .Include(d => d.Heirs)
+            .Include(d => d.Assets).ThenInclude(a => a.Owners)
+            .SingleAsync(d => d.Id == source.Id);
+        var edit = MirrorRequestWithParties(loaded);
+        edit.Assets = MirrorAssets(loaded);
+        edit.Guarantors = new List<GuarantorDto>();
+        // المزامنة للمناب وإطلاق التنبيه يتمّان داخل UpdateAsync نفسه.
+        await _documentService.UpdateAsync(source.Id, edit, _lawyer1.FullName, _lawyer1.Id);
+
+        var alert = await _db.HeadAlerts
+            .Where(a => a.DelegationId == created.Id)
+            .OrderByDescending(a => a.Id)
+            .FirstAsync();
+        Assert.Contains("الكفلاء", alert.Message);
+        Assert.True(alert.Message.Length <= 2000);
+    }
+
+    [Fact]
     public async Task Update_TargetMirror_RejectsHeirsOrRepresentativeOnLegalEntity()
     {
         // B3/قرار 12 و16: لا ورثة ولا ممثل على طرف اعتباري (ApplyRequest يُسقطها بصمت فتُرفض صراحةً).

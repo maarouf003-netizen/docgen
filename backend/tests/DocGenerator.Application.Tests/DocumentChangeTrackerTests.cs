@@ -130,4 +130,40 @@ public class DocumentChangeTrackerTests
             CultureInfo.CurrentUICulture = currentUi;
         }
     }
+
+    [Fact]
+    public void Capture_ManyGuarantors_TruncatesSignatureToColumnLimit()
+    {
+        // مع 49 كفيلًا بأسماء طويلة يتجاوز الربط حد العمود (2000) فيُرفض الحفظ
+        // على Postgres — فيُقصّ بعلامة استمرار بدل الانهيار عند الحفظ.
+        var doc = NewDocument();
+        for (var n = 1; n <= PartyLimitsCatalog.MaxGuarantors; n++)
+        {
+            doc.Guarantors.Add(new Guarantor
+            {
+                GuarantorNumber = n,
+                GuarantorName = new string('ك', 60),
+                GuarantorFather = new string('ف', 60),
+                GuarantorFamily = new string('ع', 60),
+            });
+        }
+
+        var snapshot = DocumentChangeTracker.Capture(doc);
+        var signature = snapshot["__Col_Guarantors"];
+
+        Assert.NotNull(signature);
+        Assert.True(signature.Length <= DocumentChangeTracker.MaxSignatureLength);
+        Assert.EndsWith("…", signature);
+    }
+
+    [Fact]
+    public void Capture_ShortSignature_NotTruncated()
+    {
+        var doc = NewDocument();
+        doc.Guarantors.Add(new Guarantor { GuarantorName = "خالد", GuarantorFamily = "زكي" });
+
+        var snapshot = DocumentChangeTracker.Capture(doc);
+
+        Assert.Equal("خالد زكي", snapshot["__Col_Guarantors"]);
+    }
 }

@@ -205,17 +205,57 @@ render(<DocumentForm />);
   });
 
 
-  it('يحدّ ترقيم الكفلاء إلى 4', async () => {
-    const user = userEvent.setup();
-    render(<DocumentForm />);
+  it('يحدّ عدد الكفلاء إلى 49 (50 مدينًا مع المقترض) ويعطّل الإضافة عند السقف', async () => {
+    const full: DocumentResponse = {
+      ...mockDoc,
+      guarantors: Array.from({ length: 49 }, (_, i) => ({
+        guarantorNumber: i + 1,
+        name: `كفيل${i + 1}`,
+        father: 'أب',
+        family: 'عائلة',
+      })),
+    };
+    await renderEdit(full);
 
-    for (let i = 1; i < 4; i++) {
-      await user.click(screen.getByText('➕ إضافة كفيل (شخص طبيعي)'));
-    }
-
+    expect(screen.getByText('كفيل 49')).toBeInTheDocument();
+    expect(screen.getByText('وصلت الحد الأقصى')).toBeInTheDocument();
     const buttons = screen.getAllByRole('button', { name: /🛑 الحد الأقصى/ });
     expect(buttons.length).toBeGreaterThan(0);
     buttons.forEach((b) => expect(b).toBeDisabled());
+    expect(screen.queryByRole('button', { name: /➕ إضافة كفيل/ })).not.toBeInTheDocument();
+  });
+
+
+  it('يطوي بطاقات الكفلاء ويعيد فتحها مع بقاء البيانات (أكورديون)', async () => {    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    // بطاقة واحدة: لا زر طي الكل.
+    expect(screen.queryByRole('button', { name: 'طي الكل' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByText('➕ إضافة كفيل (شخص طبيعي)'));
+    expect(screen.getByRole('button', { name: 'طي الكل' })).toBeInTheDocument();
+
+    // طي الكل يخفي أجسام الكفلاء ويبقي جسم المقترض.
+    await user.click(screen.getByRole('button', { name: 'طي الكل' }));
+    expect(screen.getByRole('button', { name: 'فتح الكل' })).toBeInTheDocument();
+    expect(screen.queryByText('كفيل 1')).toBeInTheDocument();
+    expect(screen.queryByText('كفيل 2')).toBeInTheDocument();
+
+    // فتح الكل يعيد الأجسام.
+    await user.click(screen.getByRole('button', { name: 'فتح الكل' }));
+    expect(screen.getByRole('button', { name: 'طي الكل' })).toBeInTheDocument();
+
+    // طي بطاقة واحدة يحفظ بياناتها: الاسم يبقى ملخصًا في الترويسة ويعود للحقل عند الفتح.
+    const firstCard = screen.getByText('كفيل 1').closest('.rounded-xl') as HTMLElement;
+    const nameInput = firstCard.querySelector('input') as HTMLInputElement;
+    await user.type(nameInput, 'سمير');
+    expect(screen.getByText('— سمير')).toBeInTheDocument();
+    const headers = screen.getAllByRole('button', { expanded: true });
+    await user.click(headers[0]);
+    expect(firstCard.querySelector('input')).not.toBeInTheDocument();
+    const collapsed = screen.getAllByRole('button', { expanded: false });
+    await user.click(collapsed[0]);
+    expect(firstCard.querySelector('input') as HTMLInputElement).toHaveValue('سمير');
   });
 
 
@@ -266,6 +306,78 @@ render(<DocumentForm />);
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
     const [, , config] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>, { headers?: Record<string, string> }];
     expect(config?.headers?.['X-Idempotency-Key']).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+
+  it('يحفظ عنوان المقترض عند تفعيل ممثل بلا اسم (الصفة وحدها لا تُخزَّن)', async () => {
+    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    await user.type(screen.getByLabelText('الاسم'), 'مقترض تجربة');
+    await user.type(screen.getByLabelText('العنوان'), 'المزة');
+    // تفعيل الممثل يضبط الصفة «ولي» فقط — بلا اسم لا يُحفظ فلا يُصفَّر العنوان.
+    await user.click(screen.getAllByText('＋ إضافة ممثل شرعي')[0]);
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.borrowerAddress).toBe('المزة');
+  });
+
+
+  it('يحفظ عنوان الكفيل عند تفعيل ممثل بلا اسم (الصفة وحدها لا تُخزَّن)', async () => {
+    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    await user.type(screen.getByLabelText('الاسم'), 'مقترض تجربة');
+    const card = screen.getByText('كفيل 1').closest('.rounded-xl') as HTMLElement;
+    const boxes = within(card).getAllByRole('textbox');
+    await user.type(boxes[0], 'سمير');
+    await user.type(boxes[7], 'حمص');
+    await user.click(within(card).getByText('＋ إضافة ممثل شرعي'));
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
+    const guarantors = payload.guarantors as { address?: string }[];
+    expect(guarantors[0].address).toBe('حمص');
+  });
+
+
+  it('يحفظ عنوان المقترض عند وجود صف وريث فارغ (لا اسم ⇒ لا وريث مخزَّن)', async () => {
+    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    await user.type(screen.getByLabelText('الاسم'), 'مقترض تجربة');
+    await user.type(screen.getByLabelText('العنوان'), 'المزة');
+    // صف وريث مضاف دون تعبئة اسمه: يُتجاهل في الحفظ فلا يُصفَّر العنوان.
+    await user.click(screen.getAllByRole('button', { name: '＋ إضافة وريث' })[0]);
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.borrowerAddress).toBe('المزة');
+    expect(payload.borrowerHeirs).toEqual([]);
+  });
+
+
+  it('يحفظ عنوان الكفيل عند وجود صف وريث فارغ (لا اسم ⇒ لا وريث مخزَّن)', async () => {
+    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    await user.type(screen.getByLabelText('الاسم'), 'مقترض تجربة');
+    const card = screen.getByText('كفيل 1').closest('.rounded-xl') as HTMLElement;
+    const boxes = within(card).getAllByRole('textbox');
+    await user.type(boxes[0], 'سمير');
+    await user.type(boxes[7], 'حمص');
+    await user.click(within(card).getByRole('button', { name: '＋ إضافة وريث' }));
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
+    const guarantors = payload.guarantors as { address?: string; heirs?: unknown[] }[];
+    expect(guarantors[0].address).toBe('حمص');
+    expect(guarantors[0].heirs).toEqual([]);
   });
 
 
@@ -584,7 +696,7 @@ render(<DocumentForm />);
 
     // الحذف الأوسط (الكفيل 2) يترك فجوة بلا إزاحة أرقام
     const second = screen.getByText('كفيل 2').closest('.rounded-xl') as HTMLElement;
-    await user.click(within(second).getByRole('button', { name: '✖ حذف' }));
+    await user.click(within(second).getByRole('button', { name: 'حذف كفيل 2' }));
     expect(screen.queryByText('كفيل 2')).not.toBeInTheDocument();
     expect(screen.getByText('كفيل 3')).toBeInTheDocument();
 

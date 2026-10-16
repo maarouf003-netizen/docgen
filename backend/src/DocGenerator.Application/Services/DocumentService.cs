@@ -111,8 +111,10 @@ public sealed class DocumentService : IDocumentService
                 || string.IsNullOrEmpty(request.GeneralEntitySide)))
             throw new ArgumentException("اسم المقترض مطلوب");
 
+        DocumentValidator.NormalizeCollections(request);
         DocumentValidator.ValidateSide(request);
         DocumentValidator.ValidateExecutedRequest(request);
+        DocumentValidator.ValidateGuarantorCount(request);
         DocumentValidator.ValidateRegistrationDate(request);
 
         // المحامي المختص هو الذي سجّل الدخول وأنشأ الملف: يُسنَد الملف إليه تلقائياً
@@ -191,8 +193,10 @@ public sealed class DocumentService : IDocumentService
         if (doc is null)
             return null;
 
+        DocumentValidator.NormalizeCollections(request);
         DocumentValidator.ValidateSide(request);
         DocumentValidator.ValidateExecutedRequest(request);
+        DocumentValidator.ValidateGuarantorCount(request);
         DocumentValidator.ValidateRegistrationDate(request);
 
         // لقطة ما قبل التعديل — لتوليد صفوف «حقل/قبل/بعد» في سجل التعديلات.

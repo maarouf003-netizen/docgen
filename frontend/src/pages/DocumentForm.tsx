@@ -21,7 +21,7 @@ import {
   emptyGuarantor,
   emptyHeir,
   hasHeirName,
-  hasRepresentative,
+  hasStoredRepresentative,
   ordinaryCurrencyKeys,
   requiredCurrencyKeys,
   toUpsert,
@@ -806,12 +806,15 @@ export default function DocumentForm() {
           ? [{ type: 'note' as const, text: (form.notes ?? '').trim() }]
           : []),
       ];
-      const borrowerHasHeirs = borrowerHeirs.length > 0;
-      const borrowerHasRep = hasRepresentative({
+      // قرار التصفير يتبع المخزَّن فعليًا فقط: صف وريث فارغ الاسم الثلاثي
+      // يُتجاهل في الحفظ (هنا وفي NormalizeHeirs خلفيًا) فلا يُصفَّر له العنوان.
+      const borrowerHasHeirs = borrowerHeirs.some(hasHeirName);
+      // قرار التصفير في الحمولة يتبع المخزَّن فعليًا (الاسم الثلاثي) لا الظاهر واجهةً:
+      // صفة بلا اسم (تفعيل الزر وحده) لا يحفظها الخلفي، فتصفير العنوان لها فقدان صامت.
+      const borrowerHasRep = hasStoredRepresentative({
         representativeName: form.borrowerRepresentativeName,
         representativeFather: form.borrowerRepresentativeFather,
         representativeFamily: form.borrowerRepresentativeFamily,
-        representativeCapacity: form.borrowerRepresentativeCapacity,
       });
       const payload: DocumentUpsertRequest = {
         ...form,
@@ -854,8 +857,10 @@ export default function DocumentForm() {
         guarantors: isExecutedSubmit ? [] : guarantors
           .filter((g) => g.name?.trim())
           .map((g, i) => {
-            const gHasRep = hasRepresentative(g);
-            const gHasHeirs = (g.heirs ?? []).length > 0;
+            // كالسابق: المخزَّن فعليًا فقط يُصفّر العناوين (انظر borrowerHasRep أعلاه).
+            const gHasRep = hasStoredRepresentative(g);
+            // كالمعامل أعلاه: الفارغ من الاسم الثلاثي ليس وريثًا مخزَّنًا.
+            const gHasHeirs = (g.heirs ?? []).some(hasHeirName);
             return {
               ...g,
               // رقم الكفيل من الصف نفسه (القيم المخزنة المستقرة — قرار 10) لا من الموضع؛
@@ -902,7 +907,9 @@ export default function DocumentForm() {
               .filter((a) => (a.name ?? '').trim())
               .map((a) => ({
                 ...a,
-                legalRepresentative: hasRepresentative(a) ? '' : a.legalRepresentative,
+                // الوكيل القانوني يُمسح فقط لممثل مخزَّن فعليًا (تعارضهما حصري) —
+                // صفة بلا اسم لا تُحفظ فمسح النص لها فقدان صامت.
+                legalRepresentative: hasStoredRepresentative(a) ? '' : a.legalRepresentative,
                 heirs: (a.heirs ?? []).filter((h) => (h.heirName ?? '').trim()),
               }))
           : [],
@@ -950,7 +957,9 @@ export default function DocumentForm() {
   const guarantorLabel = isOrdinary ? 'منفذ عليه' : 'كفيل';
   const remainingGuarantors = MAX_GUARANTORS - guarantors.length;
 
-  const ownerOptions = () => {
+  // قائمة الملاك المرشحة (حتى 50 طرفًا + ورثتهم): تُحسب مرة واحدة لكل تغيير أطراف
+  // بدل إعادة البناء مع كل أصل عند كل ضغطة — الاسم الثلاثي يطابق المخزَّن والمعروض.
+  const ownerOptionsList = useMemo(() => {
     const opts: string[] = [];
     // الاسم الثلاثي الكامل للمقترض والكفيل يطابق ما يحفظه الخلفية ويعرضه العرض،
     // وبه تتطابق مطابقة الورثة (ورثة المتوفى) في توليد 005/006.
@@ -969,7 +978,9 @@ export default function DocumentForm() {
       });
     });
     return opts;
-  };
+  }, [form.borrowerName, form.borrowerFather, form.borrowerFamily, borrowerHeirs, guarantors]);
+
+  const ownerOptions = useCallback(() => ownerOptionsList, [ownerOptionsList]);
 
   const debtorFullName = tripleName(form.borrowerName, form.borrowerFather, form.borrowerFamily);
 

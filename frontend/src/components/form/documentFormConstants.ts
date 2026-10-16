@@ -86,8 +86,13 @@ export function shareTypesFor(kind: string | undefined): string[] {
 /** سقف عدد الأصول من كل نوع على حدة. */
 export const MAX_ASSETS_PER_KIND = 20;
 
-/** سقف عدد الكفلاء. */
-export const MAX_GUARANTORS = 4;
+/** سقف عدد الكفلاء/المنفذ عليهم الآخرين (قرار المالك: إجمالي 50 شاملًا المقترض).
+ * يطابق `PartyLimitsCatalog.MaxGuarantors` في الخلفية — أي تغيير يستلزم تغييرًا
+ * مقابلًا هناك (وقد يستلزم تحديث قالب `Seizure.docx` إن تجاوز 50). */
+export const MAX_GUARANTORS = 49;
+
+/** إجمالي المنفذ عليهم في الملف شاملًا المقترض (1 مقترض + حتى 49 كفيلًا). */
+export const MAX_TOTAL_DEBTORS = MAX_GUARANTORS + 1;
 
 /** أنواع الأموال التي تُعرض في «منفذ جبريا» (كفالة الرواتب مستثناة). */
 export function isAuctionableKind(kind: string | undefined): boolean {
@@ -132,7 +137,8 @@ export function representativeAddressLabelOf(addressType: string | undefined): s
   return 'العنوان';
 }
 
-/** هل الممثل الشرعي حاضر (أي حقل من اسمه الثلاثي أو صفته غير فارغ)؟ */
+/** هل الممثل الشرعي حاضر واجهةً (أي حقل من اسمه الثلاثي أو صفته غير فارغ)؟
+ * للعرض فقط (إظهار المحرر/إخفاء العنوان) — لا يُستخدم لقرارات الحمولة. */
 export function hasRepresentative(rep: {
   representativeName?: string;
   representativeFather?: string;
@@ -144,6 +150,22 @@ export function hasRepresentative(rep: {
     || (rep.representativeFather ?? '').trim()
     || (rep.representativeFamily ?? '').trim()
     || (rep.representativeCapacity ?? '').trim(),
+  );
+}
+
+/** هل الممثل الشرعي مخزَّن فعليًا في القاعدة (يتوافق مع IsEmptyRepresentative الخلفي:
+ * الاسم الثلاثي فقط — الصفة وحدها (زر «إضافة ممثل شرعي» يضبط «ولي» بلا اسم) لا تُخزَّن.
+ * يُستخدم حصرًا عند بناء الحمولة: تصفير العناوين لممثل لن يُحفظ يُفقد بيانات،
+ * بينما إبقاؤها يحفظها والخلفية تُصفّر الشبح تلقائيًا فيعيد التحميل نظيفًا. */
+export function hasStoredRepresentative(rep: {
+  representativeName?: string;
+  representativeFather?: string;
+  representativeFamily?: string;
+}): boolean {
+  return Boolean(
+    (rep.representativeName ?? '').trim()
+    || (rep.representativeFather ?? '').trim()
+    || (rep.representativeFamily ?? '').trim(),
   );
 }
 

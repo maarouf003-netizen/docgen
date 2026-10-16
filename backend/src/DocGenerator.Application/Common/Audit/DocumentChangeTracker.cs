@@ -289,7 +289,10 @@ public static class DocumentChangeTracker
     /// <summary>
     /// موقّعات المجموعات: قائمة أوصاف مختصرة لكل مجموعة؛ أي اختلاف في الترتيب
     /// أو العدد أو المحتوى يظهر كتغيير واحد مفهوم مؤسسيًا.
+    /// الحد الأقصى لطول التوقيع (مطابق عمود OldValue/NewValue) — ما تجاوزه يُقصّ
+    /// بعلامة استمرار في Signature (حماية حفظ Postgres مع 49 كفيلًا).
     /// </summary>
+    public const int MaxSignatureLength = 2000;
     private static readonly Dictionary<string, Func<Document, string?>> CollectionSignatures =
         new(StringComparer.Ordinal)
         {
@@ -316,7 +319,20 @@ public static class DocumentChangeTracker
             .Select(describe)
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .ToList();
-        return descriptors.Count == 0 ? null : string.Join("؛ ", descriptors);
+        if (descriptors.Count == 0)
+            return null;
+
+        var joined = string.Join("؛ ", descriptors);
+        if (joined.Length <= MaxSignatureLength)
+            return joined;
+
+        // مع حتى 49 كفيلًا (وورثة بلا سقف) يتجاوز الربط حد العمود (2000) فيُرفض
+        // الحفظ على Postgres بينما SQLite يتجاهل الطول — فيُقصّ بعلامة استمرار
+        // بذات نمط قصّ نص البحث، وتجنّب قصّ منتصف زوج بديل UTF-16.
+        var end = MaxSignatureLength - 1;
+        if (end > 0 && char.IsHighSurrogate(joined[end - 1]) && end < joined.Length && char.IsLowSurrogate(joined[end]))
+            end--;
+        return joined[..end] + "…";
     }
 
     private static string Join(params string?[] parts)
