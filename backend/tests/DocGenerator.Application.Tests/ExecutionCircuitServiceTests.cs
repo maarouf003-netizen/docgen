@@ -988,6 +988,45 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Equal(sectionCircuit, Assert.Single(subView).Id);
     }
 
+    [Fact]
+    public async Task ListFiles_ReturnsHiddenStatusDocs_ScopedToOwner()
+    {
+        var circuitId = await CreateCircuitAsync("دائرة الإفراغ");
+        var normalId = await CreateDocAsync(circuitId, _lawyer1Id, "101", "2026");
+        var hiddenId = await CreateDocAsync(circuitId, _lawyer1Id, "102", "2026");
+        var hidden = await _db.Documents.SingleAsync(d => d.Id == hiddenId);
+        hidden.ExecStatus = ExecutionStatusCatalog.DelegationExecuted; // «منفذ إنابة» — مخفية عن قوائم البحث
+        hidden.IsDraft = false;
+        await _db.SaveChangesAsync();
+        // ملف في سلة المحذوفات داخل الدائرة: الفلتر العام يخفيه تلقائيًا عن النافذة.
+        var deletedId = await CreateDocAsync(circuitId, _lawyer1Id, "103", "2026");
+        var deleted = await _db.Documents.SingleAsync(d => d.Id == deletedId);
+        deleted.IsDeleted = true;
+        deleted.DeletedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        var files = await _circuits.ListFilesAsync(circuitId, _branchId, null);
+
+        Assert.Equal(new[] { normalId, hiddenId }, files.Select(f => f.Id).ToArray());
+        var hiddenRow = files.Single(f => f.Id == hiddenId);
+        Assert.Equal("102", hiddenRow.FileNumber);
+        Assert.Equal("صلح", hiddenRow.FileType);
+        Assert.Equal("2026", hiddenRow.FileYear);
+        Assert.Equal("محامي أول", hiddenRow.Lawyer);
+        Assert.Contains("مقترض", hiddenRow!.BorrowerName);
+        Assert.DoesNotContain(files, f => f.Id == deletedId);
+
+        // نطاق دخيل (رئيس شعبة بشعبة لا تملك الدائرة) → دائرة الشعبة المرفوضة.
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _circuits.ListFilesAsync(circuitId, _branchId, 999));
+        Assert.Contains("ليست ضمن نطاقك", ex.Message);
+
+        // فرع غير موجود → بوابة المحافظة الأولى ترفض قبل فحص الدائرة.
+        var exBranch = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _circuits.ListFilesAsync(circuitId, 999999, null));
+        Assert.Contains("الفرع غير موجود", exBranch.Message);
+    }
+
     private IExecutionCircuitService BuildServiceWithIdempotency()
     {
         var documents = new DocumentRepository(_db);

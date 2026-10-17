@@ -11,6 +11,13 @@ namespace DocGenerator.Application.Services;
 public interface IExecutionCircuitService
 {
     Task<List<ExecutionCircuitDto>> ListMineAsync(int branchId, int? ownerSectionId, CancellationToken ct = default);
+
+    /// <summary>
+    /// كل ملفات الدائرة (غير المحذوفة) أيًا كانت حالتها — لمعالج الإفراغ:
+    /// المخفية عن فلتر البحث العام («منفذ إنابة» وغيرها) شاملة. نطاق المالك إلزامي.
+    /// </summary>
+    Task<List<CircuitFileDto>> ListFilesAsync(int circuitId, int branchId, int? ownerSectionId, CancellationToken ct = default);
+
     Task<ExecutionCircuitDto> CreateAsync(int branchId, int actorUserId, string? actorName, string name, CancellationToken ct = default);
     Task<ExecutionCircuitDto> RenameAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, string name, long? version, CancellationToken ct = default, int? actorUserId = null);
     Task<ExecutionCircuitDto> SetActiveAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, bool isActive, long? version, CancellationToken ct = default);
@@ -191,6 +198,21 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
     {
         var sections = await _sections.ListAsync(ct);
         return sections.ToDictionary(s => s.Id, s => s.Name);
+    }
+
+    /// <summary>
+    /// نافذة الإفراغ (حزمة A): كل ملفات الدائرة غير المحذوفة — المخفية عن «القوائم» شاملة
+    /// (إخفاء الحالات المتقدمة من ApplySearchFilters مقصود في القوائم، والمسار هنا مخصص
+    /// يلتفّ عليه) — بلا حدّ صفحات (العطل القديم: perPage:100 كان يقطع الدوائر الكبيرة).
+    /// البوابات اتساقًا مع ListMineAsync/DeleteAsync: فرع المحافظة → النطاق من GetOwnedAsync.
+    /// </summary>
+    public async Task<List<CircuitFileDto>> ListFilesAsync(int circuitId, int branchId, int? ownerSectionId, CancellationToken ct = default)
+    {
+        await RequireBranchWithGovernorateAsync(branchId, ct);
+        _ = await GetOwnedAsync(circuitId, branchId, ownerSectionId, ct);
+        var docs = await _documents.ListCircuitFileSummariesAsync(circuitId, ct);
+        return docs.Select(d => new CircuitFileDto(
+            d.Id, d.BorrowerName, d.FileNumber, d.FileType, d.FileYear, d.Lawyer)).ToList();
     }
 
     public async Task<ExecutionCircuitDto> CreateAsync(int branchId, int actorUserId, string? actorName, string name, CancellationToken ct = default)

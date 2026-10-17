@@ -223,6 +223,12 @@ public interface IDocumentRepository : IRepository<Document>
     Task<List<Document>> ListByCircuitAsync(int circuitId, bool includeDeleted, CancellationToken ct = default);
 
     /// <summary>
+    /// ملفات الدائرة غير المحذوفة بترتيب ثابت (للعرض فقط — بلا شمول ولا تتبع).
+    /// نافذة الإفراغ تعرض كل الحالات أيًا كانت — فلتر البحث العام يُلتفّ عليه (حزمة A).
+    /// </summary>
+    Task<List<Document>> ListCircuitFileSummariesAsync(int circuitId, CancellationToken ct = default);
+
+    /// <summary>
     /// ملفات بمعرفاتها (متتبعة مع أرقام الأساس) لعمليات الإحالة/إعادة القيد داخل المعاملة.
     /// </summary>
     Task<List<Document>> ListByIdsForUpdateAsync(List<int> ids, CancellationToken ct = default);

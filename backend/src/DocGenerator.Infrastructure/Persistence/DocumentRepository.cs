@@ -763,6 +763,18 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         return await q.Where(d => d.ExecutionCircuitId == circuitId).ToListAsync(ct);
     }
 
+    public async Task<List<Document>> ListCircuitFileSummariesAsync(int circuitId, CancellationToken ct = default)
+    {
+        // إسقاط خفيف لنافذة الإفراغ: الحقول المعروضة كلها أعمدة مباشرة على Document —
+        // بلا WithStandardIncludes عمدًا (لا إعادة بناء مشتقات هنا)، والفلتر العام
+        // يخفي المحذوفة منطقيًا تلقائيًا، وترتيب ثابت بالمعرف لعرض مستقر.
+        return await Db.Documents
+            .AsNoTracking()
+            .Where(d => d.ExecutionCircuitId == circuitId)
+            .OrderBy(d => d.Id)
+            .ToListAsync(ct);
+    }
+
     public async Task<List<Document>> ListByIdsForUpdateAsync(List<int> ids, CancellationToken ct = default)
     {
         // شمول كامل لذات سبب ListByCircuitAsync: الإحالة/إعادة القيد تعيدان بناء

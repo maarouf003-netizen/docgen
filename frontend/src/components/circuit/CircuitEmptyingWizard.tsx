@@ -2,21 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, getApiErrorMessage } from '../../api/client';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
 import { idempotencyHeaders, newIdempotencyKey } from '../../utils/idempotency';
-import type { DocumentResponse, ExecutionCircuitDto } from '../../types';
-
-interface CircuitFileRow {
-  id: number;
-  borrowerName?: string | null;
-  fileNumber?: string | null;
-  fileType?: string | null;
-  fileYear?: string | null;
-  lawyer?: string | null;
-}
+import type { CircuitFileDto, ExecutionCircuitDto } from '../../types';
 
 /**
  * معالج إفراغ الدائرة (التدفق المركزي): اختيار الهدف الثابت (نفس الفرع، نشطة، غير الذات)
  * ← إحالة الدفعات بمربعات الاختيار + شريط تقدم المتبقي + «إلغاء الإفراغ» يعيد التفعيل.
  * البانر الحرفي في شاشة التأكيد النهائية.
+ * ملفات الدائرة تُجلب من المسار المخصص `/execution-circuits/{id}/files` (كل الحالات —
+ * لا فلتر البحث العام ولا حدّ صفحات).
  */
 export default function CircuitEmptyingWizard({
   source,
@@ -30,7 +23,7 @@ export default function CircuitEmptyingWizard({
   onCancel: () => void;
 }) {
   const [targetId, setTargetId] = useState<number | ''>('');
-  const [files, setFiles] = useState<CircuitFileRow[]>([]);
+  const [files, setFiles] = useState<CircuitFileDto[]>([]);
   const [totalCount, setTotalCount] = useState<number | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [targetLawyerId, setTargetLawyerId] = useState<number | ''>('');
@@ -52,26 +45,14 @@ export default function CircuitEmptyingWizard({
 
   useEffect(() => {
     let cancelled = false;
-    // ملفات الدائرة الملغاة: Court مُزامن نصًا فيُفلتر به (العقد ثابت).
+    // ملفات الدائرة الملغاة: المسار المخصص (كل الحالات — المخفية عن القوائم شاملة)
+    // بلا فلتر بحث ولا حدّ صفحات (حزمة A من خطة الإفراغ).
     api
-      .get<{ items?: DocumentResponse[] } | DocumentResponse[]>('/documents', {
-        params: { court: source.name, perPage: 100 },
-      })
+      .get<CircuitFileDto[]>(`/execution-circuits/${source.id}/files`)
       .then((r) => {
         if (cancelled) return;
-        const raw = r.data as { items?: DocumentResponse[] } | DocumentResponse[];
-        const items = Array.isArray(raw) ? raw : (raw.items ?? []);
-        setFiles(
-          items.map((d) => ({
-            id: d.id,
-            borrowerName: d.borrowerName,
-            fileNumber: d.fileNumber,
-            fileType: d.fileType,
-            fileYear: d.fileYear,
-            lawyer: d.lawyer,
-          })),
-        );
-        setTotalCount(items.length);
+        setFiles(r.data ?? []);
+        setTotalCount((r.data ?? []).length);
       })
       .catch(() => {
         if (!cancelled) setError('تعذّر تحميل ملفات الدائرة');
@@ -87,7 +68,7 @@ export default function CircuitEmptyingWizard({
     return () => {
       cancelled = true;
     };
-  }, [source.name]);
+  }, [source.id]);
 
   // S6.e: `Escape` يسلّح التراجع أولًا (إلغاء تسليح الحذف)، ثم يغلق المعالج.
   useEffect(() => {
@@ -133,22 +114,10 @@ export default function CircuitEmptyingWizard({
       const data = r.data as { referredCount: number; skippedCount: number; remainingCount: number };
       setResult(data);
       setSelected(new Set());
-      // تُعاد القائمة بالمتبقي حتى الصفر.
-      const remaining = await api.get<{ items?: DocumentResponse[] } | DocumentResponse[]>('/documents', {
-        params: { court: source.name, perPage: 100 },
-      });
-      const raw = remaining.data as { items?: DocumentResponse[] } | DocumentResponse[];
-      const items = Array.isArray(raw) ? raw : (raw.items ?? []);
-      setFiles(
-        items.map((d) => ({
-          id: d.id,
-          borrowerName: d.borrowerName,
-          fileNumber: d.fileNumber,
-          fileType: d.fileType,
-          fileYear: d.fileYear,
-          lawyer: d.lawyer,
-        })),
-      );
+      // تُعاد القائمة بالمتبقي حتى الصفر (المسار المخصص — كل الحالات).
+      const remaining = await api.get<CircuitFileDto[]>(`/execution-circuits/${source.id}/files`);
+      const items = remaining.data ?? [];
+      setFiles(items);
       setTotalCount(items.length);
       if (data.remainingCount === 0) setStep(2);
     } catch (err) {

@@ -17,6 +17,7 @@ public sealed class ExecutionCircuitsBranchGuardTests
     private sealed class FakeCircuitService : IExecutionCircuitService
     {
         public Task<List<ExecutionCircuitDto>> ListMineAsync(int branchId, int? ownerSectionId, CancellationToken ct = default) => throw new NotImplementedException();
+        public Task<List<CircuitFileDto>> ListFilesAsync(int circuitId, int branchId, int? ownerSectionId, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<ExecutionCircuitDto> CreateAsync(int branchId, int actorUserId, string? actorName, string name, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<ExecutionCircuitDto> RenameAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, string name, long? version, CancellationToken ct = default, int? actorUserId = null) => throw new NotImplementedException();
         public Task<ExecutionCircuitDto> SetActiveAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, bool isActive, long? version, CancellationToken ct = default) => throw new NotImplementedException();

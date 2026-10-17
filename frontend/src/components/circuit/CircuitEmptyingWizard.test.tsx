@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import CircuitEmptyingWizard from './CircuitEmptyingWizard';
-import type { ExecutionCircuitDto } from '../../types';
+import type { CircuitFileDto, ExecutionCircuitDto } from '../../types';
 
 vi.mock('../../api/client', () => ({
   api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() },
@@ -17,16 +17,33 @@ function circuit(id: number, name: string, isActive = true, fileCount = 1): Exec
   return { id, branchId: 1, name, isActive, fileCount, pendingCount: 0, version: 0 };
 }
 
+const regularFile: CircuitFileDto = {
+  id: 11,
+  borrowerName: 'مقترض',
+  fileNumber: '100',
+  fileType: 'صلح',
+  fileYear: '2026',
+  lawyer: 'محامي أول',
+};
+const hiddenFile: CircuitFileDto = {
+  id: 12,
+  borrowerName: 'مقترض خفي',
+  fileNumber: '150',
+  fileType: 'صلح',
+  fileYear: '2026',
+  lawyer: 'محامي أول',
+};
+
 describe('CircuitEmptyingWizard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // جلب الملفات من المسار المخصص (كل الحالات): أول نداء يعيد الملفين
+    // (قياسي + مخفي عن قوائم البحث)، ونداءات إعادة التحميل اللاحقة تعيد المتبقي.
+    let filesCall = 0;
     (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
-      if (url === '/documents') {
-        return Promise.resolve({
-          data: {
-            items: [{ id: 11, borrowerName: 'مقترض', fileNumber: '100', fileType: 'صلح', fileYear: '2026', lawyer: 'محامي أول' }],
-          },
-        });
+      if (url === '/execution-circuits/1/files') {
+        filesCall += 1;
+        return Promise.resolve({ data: filesCall === 1 ? [regularFile, hiddenFile] : [regularFile] });
       }
       if (url === '/users/lawyers') {
         return Promise.resolve({
@@ -38,6 +55,23 @@ describe('CircuitEmptyingWizard', () => {
       }
       return Promise.reject(new Error('unknown'));
     });
+  });
+
+  it('يعرض ملفًا بحالة منفذ إنابة ضمن القائمة (تكملة مسار الملفات المخصص)', async () => {
+    render(
+      <CircuitEmptyingWizard
+        source={circuit(1, 'دائرة المصدر')}
+        circuits={[circuit(1, 'دائرة المصدر'), circuit(2, 'دائرة الهدف')]}
+        onDone={noop}
+        onCancel={noop}
+      />,
+    );
+
+    // الملفان معًا ظاهران — أبرزهم المخفي عن فلتر البحث العام (العطل A).
+    expect(api.get).toHaveBeenCalledWith('/execution-circuits/1/files');
+    expect(await screen.findByText(/#12 · مقترض خفي/)).toBeInTheDocument();
+    expect(screen.getByText(/#11 · مقترض/)).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /إحالة ملف 12/ })).toBeInTheDocument();
   });
 
   it('يُظهر البانر الحرفي عند اكتمال الإفراغ ويُرشّح المحامين المعطلين', async () => {
@@ -68,6 +102,8 @@ describe('CircuitEmptyingWizard', () => {
         expect.any(Object),
       ),
     );
+    // re-fetch بعد الإرسال: على المسار المخصص نفسه (وليس /documents).
+    await waitFor(() => expect(api.get).toHaveBeenNthCalledWith(3, '/execution-circuits/1/files'));
     expect(
       await screen.findByText('لا تنسى نقل ملفات هذه الدائرة لمحامي أو محامين اخرين ان كان لذلك مقتضى'),
     ).toBeInTheDocument();

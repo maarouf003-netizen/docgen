@@ -16,6 +16,16 @@ export interface ExecutionCircuitDto {
   sectionName?: string | null;
 }
 
+/** صف ملف الدائرة في معالج الإفراغ — المعرّف والحقول الخمسة المعروضة فقط (إسقاط خفيف). */
+export interface CircuitFileDto {
+  id: number;
+  borrowerName?: string | null;
+  fileNumber?: string | null;
+  fileType?: string | null;
+  fileYear?: string | null;
+  lawyer?: string | null;
+}
+
 /** إدخال/تسمية دائرة (الاسم فقط — الفرع من سياق رئيس القسم). */
 export interface UpsertExecutionCircuitRequest {
   name?: string | null;

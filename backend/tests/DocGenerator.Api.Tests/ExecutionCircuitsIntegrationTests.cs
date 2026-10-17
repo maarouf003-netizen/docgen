@@ -443,4 +443,51 @@ public class ExecutionCircuitsIntegrationTests
         Assert.Contains(divisionCircuit, ownIds);
         Assert.DoesNotContain(subCircuit, ownIds);
     }
+
+    [Fact]
+    public async Task GetFiles_ReturnsMirrorHiddenBySearch()
+    {
+        // العطل A (معالج الإفراغ كان يمرّ بفلتر البحث العام): ملف بحالة «منفذ إنابة»
+        // يُخفى من /api/documents?court=.. — ولا بد أن يظهر في /files أيًا كانت حالته.
+        await HeadBranchIdAsync();
+        var head = _factory.AuthorizedClient("head1");
+        var lawyer = _factory.AuthorizedClient("lawyer1");
+        var sourceName = UniqueName("دائرة فعفراغة");
+        var source = await CreateCircuitAsync(head, sourceName);
+        var docId = await CreateDocumentAsync(lawyer, source, $"6{Guid.NewGuid():N}"[..7]);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+            var entity = await db.Documents.SingleAsync(d => d.Id == docId);
+            entity.ExecStatus = ExecutionStatusCatalog.DelegationExecuted; // «منفذ إنابة»
+            entity.IsDraft = false;
+            await db.SaveChangesAsync();
+        }
+
+        var files = await head.GetAsync($"/api/execution-circuits/{source}/files");
+        Assert.Equal(HttpStatusCode.OK, files.StatusCode);
+        using (var filesDoc = await files.Content.ReadFromJsonAsync<JsonDocument>())
+        {
+            var row = filesDoc!.RootElement.EnumerateArray()
+                .Single(e => e.GetProperty("id").GetInt32() == docId);
+            Assert.Contains("صلح", row.GetProperty("fileType").GetString());
+        }
+
+        var search = await head.GetAsync("/api/documents?court=" + Uri.EscapeDataString(sourceName) + "&perPage=100");
+        Assert.Equal(HttpStatusCode.OK, search.StatusCode);
+        using (var searchDoc = await search.Content.ReadFromJsonAsync<JsonDocument>())
+        {
+            // يثبت أن المسار القديم كان يخفيه فعلًا: مصفوفة items بلا معه.
+            var searchIds = searchDoc!.RootElement.GetProperty("items").EnumerateArray()
+                .Select(e => e.GetProperty("id").GetInt32()).ToList();
+            Assert.DoesNotContain(docId, searchIds);
+        }
+
+        // نطاق دخيل: رئيس الشعبة بشعبة أخرى لا يملك الدائرة → ليس ضمن نطاقك.
+        var (_, sub) = await NewSectionHeadAsync(UniqueName("شعبة-مخل-بملفات"));
+        var intruder = await sub.GetAsync($"/api/execution-circuits/{source}/files");
+        Assert.Equal(HttpStatusCode.BadRequest, intruder.StatusCode);
+        Assert.Contains("ليست ضمن نطاقك", await intruder.Content.ReadAsStringAsync());
+    }
 }
