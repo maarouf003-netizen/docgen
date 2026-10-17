@@ -252,6 +252,13 @@ public interface IDocumentRepository : IRepository<Document>
     Task<List<Document>> ListDeletedByCircuitAsync(int circuitId, CancellationToken ct = default);
 
     /// <summary>
+    /// خريطة «معرّف الإنابة → معرّف الملف المناب» عبر SourceDelegationId (فريد 1:1
+    /// — فهرس وحيد). تُستخدم عند نقل ملف منيب لإبلاغ مناباته؛ إنابة بلا مناب
+    /// مسجّل بعد تُتخطى طبيعيًا (غي الخريطة).
+    /// </summary>
+    Task<Dictionary<int, int>> MapMirrorsBySourceDelegationIdsAsync(List<int> delegationIds, CancellationToken ct = default);
+
+    /// <summary>
     /// آخر وقوعّة إحالة (circuit-referred) لكل ملف — لعرض «المعروض حاليًا (قديم)» دفعة واحدة بلا N+1.
     /// </summary>
     Task<List<DocumentOccurrence>> ListLastCircuitReferralsAsync(List<int> documentIds, CancellationToken ct = default);

@@ -269,4 +269,129 @@ describe('OccurrencesModal', () => {
     expect(screen.getByText('تاريخ شطب الملف السابق')).toBeInTheDocument();
     expect(screen.queryByText('رقم كتاب الجهة العامة بالسير بالملف')).not.toBeInTheDocument();
   });
+
+  it('يعرض تفاصيل الإحالة الجماعية: الدائرتان والأرقام القديمة وذيل إنابة المنيب عند وجوده', () => {
+    render(
+      <OccurrencesModal
+        documentTitle="الملف 77"
+        occurrences={[
+          makeOccurrence({
+            id: 2,
+            occurrenceType: 'circuit-referred',
+            occurrenceTypeLabel: 'إحالة نقل دائرة',
+            source: 'system',
+            eventDate: '2026-01-05',
+            fileNumber: '66',
+            fileType: 'صلح',
+            year: 2026,
+            fromCircuitName: 'دائرة المصدر',
+            toCircuitName: 'دائرة الوجهة',
+            details: {
+              fromCircuit: 'دائرة المصدر',
+              toCircuit: 'دائرة الوجهة',
+              oldNumber: '66',
+              oldType: 'صلح',
+              oldYear: '2026',
+              delegationCircuitChange: 'من «دائرة أ» إلى «دائرة ب»',
+            },
+          }),
+        ]}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const section = screen.getByRole('region', { name: 'تغييرات الحالة' });
+    expect(within(section).getByText('الدائرة المصدر')).toBeInTheDocument();
+    expect(within(section).getByText('دائرة المصدر')).toBeInTheDocument();
+    expect(within(section).getByText('الدائرة الهدف')).toBeInTheDocument();
+    expect(within(section).getByText('دائرة الوجهة')).toBeInTheDocument();
+    expect(within(section).getByText('الرقم القديم')).toBeInTheDocument();
+    expect(within(section).getByText('66')).toBeInTheDocument();
+    expect(within(section).getByText('النوع القديم')).toBeInTheDocument();
+    expect(within(section).getByText('صلح')).toBeInTheDocument();
+    expect(within(section).getByText('السنة القديمة')).toBeInTheDocument();
+    expect(within(section).getByText('2026')).toBeInTheDocument();
+    expect(within(section).getByText('تغيّر دائرة إنابة الملف المنيب')).toBeInTheDocument();
+    expect(within(section).getByText('من «دائرة أ» إلى «دائرة ب»')).toBeInTheDocument();
+    expect(within(section).getByText('تم نقل هذا الملف رقم 66 نوع صلح لعام 2026 من دائرة «دائرة المصدر» إلى دائرة «دائرة الوجهة» — وتغيّرت بذلك دائرة إنابة الملف المنيب: من «دائرة أ» إلى «دائرة ب»')).toBeInTheDocument();
+  });
+
+  it('يعرض تفاصيل التبديل من التعديل العادي (via=edit) بمسمّى «رقم الملف عند التبديل»', () => {
+    render(
+      <OccurrencesModal
+        documentTitle="الملف 77"
+        occurrences={[
+          makeOccurrence({
+            id: 2,
+            occurrenceType: 'circuit-referred',
+            occurrenceTypeLabel: 'إحالة نقل دائرة',
+            source: 'system',
+            fileNumber: '101',
+            fileType: 'حقوق',
+            year: 2026,
+            fromCircuitName: 'دائرة السابق',
+            toCircuitName: 'دائرة الجديد',
+            details: { fromCircuit: 'دائرة السابق', toCircuit: 'دائرة الجديد', via: 'edit' },
+          }),
+        ]}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const section = screen.getByRole('region', { name: 'تغييرات الحالة' });
+    expect(within(section).getByText('رقم الملف عند التبديل')).toBeInTheDocument();
+    expect(within(section).getByText('101')).toBeInTheDocument();
+    expect(within(section).getByText('نوع الملف عند التبديل')).toBeInTheDocument();
+    expect(within(section).getByText('سنة التبديل')).toBeInTheDocument();
+    expect(within(section).queryByText('الرقم القديم')).not.toBeInTheDocument();
+    expect(within(section).queryByText('تغيّر دائرة إنابة الملف المنيب')).not.toBeInTheDocument();
+  });
+
+  it('يعرض تفاصيل نقلي الطرف المقابل بمسمّيات الأرقام المخصصة', () => {
+    render(
+      <OccurrencesModal
+        documentTitle="الملف 77"
+        occurrences={[
+          makeOccurrence({
+            id: 2,
+            occurrenceType: 'source-file-moved',
+            occurrenceTypeLabel: 'نقل الملف المنيب',
+            source: 'system',
+            fileNumber: '66',
+            fileType: 'صلح',
+            year: 2026,
+            fromCircuitName: 'دائرة المصدر',
+            toCircuitName: 'دائرة الوجهة',
+            details: { fromCircuit: 'دائرة المصدر', toCircuit: 'دائرة الوجهة' },
+          }),
+          makeOccurrence({
+            id: 3,
+            occurrenceType: 'mirror-file-moved',
+            occurrenceTypeLabel: 'نقل الملف المناب',
+            source: 'system',
+            fileNumber: '150',
+            fileType: 'حقوق',
+            year: 2025,
+            fromCircuitName: 'دائرة الوجهة',
+            toCircuitName: 'دائرة الجديدة',
+            details: { fromCircuit: 'دائرة الوجهة', toCircuit: 'دائرة الجديدة' },
+          }),
+        ]}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const section = screen.getByRole('region', { name: 'تغييرات الحالة' });
+    expect(within(section).getByText('رقم الملف المنيب')).toBeInTheDocument();
+    expect(within(section).getByText('66')).toBeInTheDocument();
+    // التسميتان المشتركتان بين البطاقتين (كل بطاقة تحمل النوعين)
+    expect(within(section).getAllByText('نوعه')).toHaveLength(2);
+    expect(within(section).getAllByText('سنة قيده')).toHaveLength(2);
+    expect(within(section).getByText('رقم الملف المناب')).toBeInTheDocument();
+    expect(within(section).getByText('150')).toBeInTheDocument();
+    expect(within(section).getAllByText('الدائرة المصدر')).toHaveLength(2);
+    expect(within(section).getAllByText('الدائرة الهدف')).toHaveLength(2);
+    expect(within(section).getByText('تم نقل الملف المنيب رقم 66 نوع صلح لعام 2026 من دائرة «دائرة المصدر» إلى دائرة «دائرة الوجهة»')).toBeInTheDocument();
+    expect(within(section).getByText('تم نقل الملف المناب رقم 150 نوع حقوق لعام 2025 من دائرة «دائرة الوجهة» إلى دائرة «دائرة الجديدة»')).toBeInTheDocument();
+  });
 });

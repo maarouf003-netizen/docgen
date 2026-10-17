@@ -454,6 +454,55 @@ export function occurrenceLine(occurrence: DocumentOccurrenceDto): string {
       const narrative = occurrence.detailsText?.trim();
       return narrative ? narrative : occurrence.occurrenceTypeLabel;
     }
+    case 'circuit-referred': {
+      // السطر الثابت لتبديل الدائرة من التعديل العادي (via=edit) بإرقام الملف الحالية؛
+      // أما الإحالة الجماعية (تفريغ الدائرة) فسطر موحّد بالأرقام القديمة الملتقطة وقتها،
+      // وذيل تغيّر دائرة إنابة المنيب يُلحق عند وجوده فقط (C2 قاعدة 3).
+      const from = occurrence.fromCircuitName?.trim();
+      const to = occurrence.toCircuitName?.trim();
+      if (d.via === 'edit') {
+        const parts = ['تم تبديل دائرة الملف'];
+        if (from && to) parts.push(`من دائرة «${from}» إلى دائرة «${to}»`);
+        else if (to) parts.push(`إلى دائرة «${to}»`);
+        const number = occurrence.fileNumber?.trim();
+        if (number) {
+          const tail = [`الرقم ${number}`];
+          const type = occurrence.fileType?.trim();
+          if (type) tail.push(type);
+          if (occurrence.year) tail.push(String(occurrence.year));
+          parts.push(`— على ${tail.join(' ')}`);
+        }
+        return parts.filter(Boolean).join(' ');
+      }
+      const parts = ['تم نقل هذا الملف'];
+      const referralNumber = occurrence.fileNumber?.trim();
+      if (referralNumber) parts.push(`رقم ${referralNumber}`);
+      const referralType = occurrence.fileType?.trim();
+      if (referralType) parts.push(`نوع ${referralType}`);
+      if (occurrence.year) parts.push(`لعام ${occurrence.year}`);
+      if (from && to) parts.push(`من دائرة «${from}» إلى دائرة «${to}»`);
+      const line = parts.filter(Boolean).join(' ');
+      const delegationChange = d.delegationCircuitChange?.trim();
+      return delegationChange
+        ? `${line} — وتغيّرت بذلك دائرة إنابة الملف المنيب: ${delegationChange}`
+        : line;
+    }
+    case 'source-file-moved':
+    case 'mirror-file-moved': {
+      // نقل الطرف المقابل (C2): المنيب المنقول يُبلّغ مناباته، والمناب المنقول يوثق نقلته
+      // على منيبه — أرقام الملف المُنقل نفسها وقتها مع مسار الدائرتين.
+      const subject = occurrence.occurrenceType === 'source-file-moved' ? 'الملف المنيب' : 'الملف المناب';
+      const from = occurrence.fromCircuitName?.trim();
+      const to = occurrence.toCircuitName?.trim();
+      const parts = [`تم نقل ${subject}`];
+      const number = occurrence.fileNumber?.trim();
+      if (number) parts.push(`رقم ${number}`);
+      const type = occurrence.fileType?.trim();
+      if (type) parts.push(`نوع ${type}`);
+      if (occurrence.year) parts.push(`لعام ${occurrence.year}`);
+      if (from && to) parts.push(`من دائرة «${from}» إلى دائرة «${to}»`);
+      return parts.filter(Boolean).join(' ');
+    }
     default:
       return occurrence.occurrenceTypeLabel;
   }

@@ -830,6 +830,23 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             .ToListAsync(ct);
     }
 
+    public async Task<Dictionary<int, int>> MapMirrorsBySourceDelegationIdsAsync(List<int> delegationIds, CancellationToken ct = default)
+    {
+        var ids = (delegationIds ?? new List<int>()).Distinct().ToList();
+        if (ids.Count == 0) return new Dictionary<int, int>();
+        // المناب صف واحد لكل إنابة (فهرس SourceDelegationId الوحيد) — الفلتر العام
+        // `!IsDeleted` يخفي منابًا محذوفًا منطقيًا (غير مرئي أصلًا فلا توثيق نقله)؛
+        // ولتكرار حدوث ما يمكن (احترازًا نظريًا فقط) يُختار أقدم Id.
+        var rows = await Db.Documents
+            .AsNoTracking()
+            .Where(d => d.SourceDelegationId != null && ids.Contains(d.SourceDelegationId.Value))
+            .Select(d => new { DelegationId = d.SourceDelegationId!.Value, MirrorId = d.Id })
+            .ToListAsync(ct);
+        return rows
+            .GroupBy(r => r.DelegationId)
+            .ToDictionary(g => g.Key, g => g.First().MirrorId);
+    }
+
     public async Task<List<DocumentOccurrence>> ListLastCircuitReferralsAsync(List<int> documentIds, CancellationToken ct = default)
     {
         if (documentIds.Count == 0) return new List<DocumentOccurrence>();

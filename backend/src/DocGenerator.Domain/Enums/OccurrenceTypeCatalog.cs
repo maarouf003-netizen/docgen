@@ -66,10 +66,25 @@ public static class OccurrenceTypeCatalog
     /// </summary>
     public const string CircuitRenamed = "circuit-renamed";
 
+    /// <summary>
+    /// نقل الملف المنيب (من تفريغ دائرة): تُسجَّل على كل ملف مناب مرتبط بإنابة صادرة
+    /// من المنيب المنقول، بالأرقام القديمة للمنيب — معزول عن <see cref="CircuitReferred"/>
+    /// حرفيًا (مستهلكاه يفلترونه حرفيًا فلا تلوث من إعادة استخدامه).
+    /// </summary>
+    public const string SourceFileMoved = "source-file-moved";
+
+    /// <summary>
+    /// نقل الملف المناب (من تفريغ دائرة): تُسجَّل على المنيب صاحب الإنابة عندما تُحدَّث
+    /// وجهة إنابته ضمن الإحالة، بالأرقام القديمة للمناب — معزول عن
+    /// <see cref="CircuitReferred"/> حرفيًا نفس السبب.
+    /// </summary>
+    public const string MirrorFileMoved = "mirror-file-moved";
+
     public static readonly IReadOnlySet<string> ValidTypes = new HashSet<string>
     {
         StruckOff, Renewal, Deferred, Settled, Forcible, Revert, EntityChange, Recovered,
         ReferredToStart, CircuitReferred, CircuitReregistered, CircuitRenamed,
+        SourceFileMoved, MirrorFileMoved,
     };
 
     /// <summary>
@@ -90,6 +105,8 @@ public static class OccurrenceTypeCatalog
         CircuitReferred => "إحالة نقل دائرة",
         CircuitReregistered => "إعادة قيد بدائرة جديدة",
         CircuitRenamed => "إعادة تسمية دائرة",
+        SourceFileMoved => "نقل الملف المنيب",
+        MirrorFileMoved => "نقل الملف المناب",
         _ => type,
     };
 

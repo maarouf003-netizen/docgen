@@ -702,30 +702,17 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                 doc.FullData = DocumentSearchTextBuilder.BuildFullData(doc);
                 _documents.Update(doc);
 
-                var occ = new DocumentOccurrence
+                // وقعة الإحالة تُبنى بقاموس Details متغيرًا (يدخل الذيل عند نقل إنابة المناب)
+                // وتُضاف في النهاية بتمريرة تسلسل واحدة — القاعدتان 2/3 (C2) تليانيان بلا استبعاد.
+                var occDetails = new Dictionary<string, string>
                 {
-                    DocumentId = doc.Id,
-                    OccurrenceType = OccurrenceTypeCatalog.CircuitReferred,
-                    Source = OccurrenceSourceCatalog.System,
-                    EventDate = now,
-                    FileNumber = oldNumber,
-                    FileType = oldType,
-                    Year = int.TryParse(oldYear, out var oy) ? oy : null,
-                    FromCircuitName = sourceName,
-                    ToCircuitName = targetName,
-                    Details = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, string>
-                    {
-                        ["fromCircuit"] = sourceName,
-                        ["toCircuit"] = targetName,
-                        ["oldNumber"] = oldNumber ?? string.Empty,
-                        ["oldType"] = oldType ?? string.Empty,
-                        ["oldYear"] = oldYear ?? string.Empty,
-                    }),
-                    CreatedById = actorUserId,
-                    CreatedAt = now,
-                    UpdatedAt = now,
+                    ["fromCircuit"] = sourceName ?? string.Empty,
+                    ["toCircuit"] = targetName ?? string.Empty,
+                    ["oldNumber"] = oldNumber ?? string.Empty,
+                    ["oldType"] = oldType ?? string.Empty,
+                    ["oldYear"] = oldYear ?? string.Empty,
                 };
-                await _occurrences.AddAsync(occ, token);
+                int? oldYearNum = int.TryParse(oldYear, out var oy) ? oy : null;
 
                 // الإنابات تتبع ملفاتها: المنيب المنقول يسحب إناباته كما هي؛ المناب المنقول يُحدَّث DelegatedCourt لوجهته.
                 var outgoing = await _delegations.ListBySourceAsync(doc.Id, token);
@@ -734,19 +721,94 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                     g.UpdatedAt = now;
                     _delegations.Update(g);
                 }
-                // إن كان الملف منابًا (له SourceDelegationId) وإنابته داخلية تستهدف دائرة المصدر، تُحدَّث للوجهة.
+                // قاعدة 2 (C2): المنيب المنقول يبلّغ مناباته الجاهزة — وقعة source-file-moved
+                // على كل مناب مرتبط بإنابة صادرة، بأرقام المنيب القديمة. إنابة بلا مناب بعد → تُتخطى.
+                if (outgoing.Count > 0)
+                {
+                    var mirrorMap = await _documents.MapMirrorsBySourceDelegationIdsAsync(
+                        outgoing.Select(g => g.Id).ToList(), token);
+                    foreach (var g in outgoing)
+                    {
+                        if (!mirrorMap.TryGetValue(g.Id, out var mirrorId)) continue;
+                        await _occurrences.AddAsync(new DocumentOccurrence
+                        {
+                            DocumentId = mirrorId,
+                            OccurrenceType = OccurrenceTypeCatalog.SourceFileMoved,
+                            Source = OccurrenceSourceCatalog.System,
+                            EventDate = now,
+                            FileNumber = oldNumber,
+                            FileType = oldType,
+                            Year = oldYearNum,
+                            FromCircuitName = sourceName,
+                            ToCircuitName = targetName,
+                            Details = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, string>
+                            {
+                                ["fromCircuit"] = sourceName ?? string.Empty,
+                                ["toCircuit"] = targetName ?? string.Empty,
+                            }),
+                            CreatedById = actorUserId,
+                            CreatedAt = now,
+                            UpdatedAt = now,
+                        }, token);
+                    }
+                }
+                // قاعدة 3 (C2): إن كان الملف المنقول منابًا (له SourceDelegationId) وإنابته
+                // داخلية تستهدف دائرة المصدر، تُحدَّث للوجهة — وذيل تغيّر الوجهة يُدوَّن على
+                // وقعة إحالة المناب، ووقعة متناظرة mirror-file-moved تُكتب على المنيب
+                // (بأرقام المناب القديمة — لا تحميل للمنيب: FK فقط، وحارس حذف الملفات
+                // يمنع حذف أي ملف له إنابة فبقاؤه مضمون).
                 if (doc.SourceDelegationId is not null)
                 {
                     var src = await _delegations.GetByIdAsync(doc.SourceDelegationId.Value, token);
                     if (src is not null && !src.IsExternal && src.DelegatedCircuitId == sourceCircuitId)
                     {
+                        // oldCourt يُلتقط قبل الطفرات مع سقوط احتياطي إلى اسم دائرة المصدر عند الشذوذ.
+                        var oldCourt = string.IsNullOrWhiteSpace(src.DelegatedCourt) ? sourceName : src.DelegatedCourt;
                         src.DelegatedCircuitId = request.TargetCircuitId;
                         src.DelegatedCourt = target.Name;
                         src.DelegatedCourtNorm = ArabicNameNormalizer.Normalize(target.Name);
                         src.UpdatedAt = now;
                         _delegations.Update(src);
+                        occDetails["delegationCircuitChange"] = $"من «{oldCourt}» إلى «{targetName}»";
+                        await _occurrences.AddAsync(new DocumentOccurrence
+                        {
+                            DocumentId = src.SourceDocumentId,
+                            OccurrenceType = OccurrenceTypeCatalog.MirrorFileMoved,
+                            Source = OccurrenceSourceCatalog.System,
+                            EventDate = now,
+                            FileNumber = oldNumber,
+                            FileType = oldType,
+                            Year = oldYearNum,
+                            FromCircuitName = sourceName,
+                            ToCircuitName = targetName,
+                            Details = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, string>
+                            {
+                                ["fromCircuit"] = sourceName ?? string.Empty,
+                                ["toCircuit"] = targetName ?? string.Empty,
+                            }),
+                            CreatedById = actorUserId,
+                            CreatedAt = now,
+                            UpdatedAt = now,
+                        }, token);
                     }
                 }
+                var occ = new DocumentOccurrence
+                {
+                    DocumentId = doc.Id,
+                    OccurrenceType = OccurrenceTypeCatalog.CircuitReferred,
+                    Source = OccurrenceSourceCatalog.System,
+                    EventDate = now,
+                    FileNumber = oldNumber,
+                    FileType = oldType,
+                    Year = oldYearNum,
+                    FromCircuitName = sourceName,
+                    ToCircuitName = targetName,
+                    Details = System.Text.Json.JsonSerializer.Serialize(occDetails),
+                    CreatedById = actorUserId,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                };
+                await _occurrences.AddAsync(occ, token);
                 referredAudit.Add((doc, before));
                 referred++;
             }

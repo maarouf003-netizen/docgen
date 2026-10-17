@@ -48,13 +48,15 @@ public class DocumentOccurrence
     public string? Details { get; set; }
 
     /// <summary>
-    /// اسم دائرة المصدر نصًا مجمدًا للتاريخ (يُملأ عند الإحالة — circuit-referred).
+    /// اسم دائرة المصدر نصًا مجمدًا للتاريخ (يُملأ عند الإحالة — circuit-referred — وعند
+    /// نقل الطرف المقابل — source-file-moved/mirror-file-moved).
     /// مبدأ التاريخ المجمد: إنابات مكتملة تستهدف دائرة محذوفة تبقي عرض اسمها القديم عمدًا.
     /// </summary>
     public string? FromCircuitName { get; set; }
 
     /// <summary>
-    /// اسم دائرة الوجهة نصًا مجمدًا للتاريخ (يُملأ عند الإحالة — circuit-referred).
+    /// اسم دائرة الوجهة نصًا مجمدًا للتاريخ (يُملأ عند الإحالة — circuit-referred — وعند
+    /// نقل الطرف المقابل — source-file-moved/mirror-file-moved).
     /// </summary>
     public string? ToCircuitName { get; set; }
 
