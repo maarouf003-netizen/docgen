@@ -363,7 +363,9 @@ public sealed class DocumentService : IDocumentService
 
         // RF-009 (INT-008): الاستعادة تفحص تعارض المفتاح الفعّال (قد أُعيد استعمال رقمه
         // أثناء حذفه) — 409 بدل تكرار ظاهري. بتوقيع الدائرة (البند 34).
-        // مسار إفراغ المحذوفة منطقيًا الوحيد: استعادة ثم إحالة — Restore يفحص بالرقم الجديد.
+        // مسار إفراغ المحذوفة (بند 41 معدَّل — قرار المالك 2026-10-17): التطهير النهائي
+        // ضمن معاملة حذف الدائرة نفسها (ExecutionCircuitService.DeleteAsync).
+        // الاستعادة العامة تبقى لسياقها خارج الإفراغ — سلوك ما يلي (فحص الرقم) لم يتغير.
         var currentYear = CurrentYear();
         await _writeGuard.EnsureNumberUniqueByCircuitAsync(documentId, doc.ExecutionCircuitId, doc.CourtNorm,
             Common.EffectiveFileIdentity.Number(doc, currentYear), doc.FileType,

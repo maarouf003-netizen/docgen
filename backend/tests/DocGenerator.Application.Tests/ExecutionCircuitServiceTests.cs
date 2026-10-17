@@ -179,11 +179,26 @@ public class ExecutionCircuitServiceTests : IDisposable
     [Fact]
     public async Task Delete_BlockedByFiles_ConflictWithCount()
     {
+        // تعديل البند 41: الحارس يعدّ الأحياء فقط — المحذوفة لا ترفع العدد ولا تمنع.
         var a = await CreateCircuitAsync("دائرة أ");
         await CreateDocAsync(a, _lawyer1Id);
         var ex = await Assert.ThrowsAsync<DocumentConflictException>(() =>
             _circuits.DeleteAsync(a, _branchId, null, "head1"));
         Assert.Contains("أفرغها أولًا", ex.Message);
+        Assert.Contains("1 ملفًا", ex.Message);
+
+        // ملف محذوف منطقيًا في الدائرة: العدد يبقى حيًا واحدًا (لا 2).
+        var delId = await CreateDocAsync(a, _lawyer1Id, "811", "2026");
+        var del = await _db.Documents.FindAsync(delId);
+        del!.IsDeleted = true;
+        del.DeletedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        var ex2 = await Assert.ThrowsAsync<DocumentConflictException>(() =>
+            _circuits.DeleteAsync(a, _branchId, null, "head1"));
+        Assert.Contains("1 ملفًا", ex2.Message);
+        Assert.DoesNotContain("2", ex2.Message.Replace("2026", "").Replace("811", ""));
     }
 
     [Fact]
@@ -351,6 +366,96 @@ public class ExecutionCircuitServiceTests : IDisposable
         var ex = await Assert.ThrowsAsync<DocumentConflictException>(() =>
             _circuits.DeleteAsync(target, _branchId, null, "head1"));
         Assert.Contains("معلقة", ex.Message);
+    }
+
+    [Fact]
+    public async Task Delete_PurgesSoftDeletedFiles_AndAudits()
+    {
+        // تعديل البند 41: سلة المحذوفات تُطهَّر نهائيًا ضمن معاملة الحذف — بلا استعادة ولا نقل.
+        var a = await CreateCircuitAsync("دائرة المطبّر");
+        var delId = await CreateDocAsync(a, _lawyer1Id, "820", "2026");
+        var del = await _db.Documents.FindAsync(delId);
+        del!.IsDeleted = true;
+        del.DeletedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await _circuits.DeleteAsync(a, _branchId, null, "head1");
+
+        Assert.Null(await _db.ExecutionCircuits.FindAsync(a));
+        // إثبات الحذف الفيزيائي: حتى بـ IgnoreQueryFilters لا صف بقي.
+        var survivors = _db.Documents.IgnoreQueryFilters().Count(d => d.ExecutionCircuitId == a);
+        Assert.Equal(0, survivors);
+        var idx = _audit.Actions.LastIndexOf("delete_circuit");
+        Assert.True(idx >= 0);
+        Assert.Contains("طُهِّر نهائيًا 1 ملفًا محذوفًا", _audit.Details[idx]);
+    }
+
+    [Fact]
+    public async Task Delete_CascadeRemovesDelegationOfPurgedDoc()
+    {
+        // حالة اختبارية يدوية (غير متاحة إنتاجيًا — حارس DocumentService.DeleteAsync
+        // يمنع حذف ملف له إنابة): إنابة مصدرها صف محذوف داخل الدائرة بلا ملف مناب مرتبط
+        // (المناب لم يُسجَّل بعد — Documents.SourceDelegationId فريد على الكيان المرفوع حاليًا).
+        // الخارجية (IsExternal=true) بلا DelegatedCircuitId فلا تدخل حلقة فصل الوارد
+        // — والتطهير يحذفها تسلسليًا (CASCADE) بلا انفجار FK.
+        var a = await CreateCircuitAsync("دائرة المطبّر بإنابة");
+        var delId = await CreateDocAsync(a, _lawyer1Id, "821", "2026");
+        var del = await _db.Documents.FindAsync(delId);
+        del!.IsDeleted = true;
+        del.DeletedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        _db.DocumentDelegations.Add(new DocumentDelegation
+        {
+            SourceDocumentId = delId,
+            DelegatedCourt = "دائرة خارجية",
+            IsExternal = true,
+            Status = DelegationStatusCatalog.Executed,
+            CreatedById = _headId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        });
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await _circuits.DeleteAsync(a, _branchId, null, "head1");
+
+        Assert.Null(await _db.ExecutionCircuits.FindAsync(a));
+        Assert.Equal(0, _db.Documents.IgnoreQueryFilters().Count(d => d.ExecutionCircuitId == a));
+        Assert.Equal(0, _db.DocumentDelegations.Count(g => g.SourceDocumentId == delId));
+        var idx = _audit.Actions.LastIndexOf("delete_circuit");
+        Assert.True(idx >= 0);
+        Assert.Contains("طُهِّر نهائيًا", _audit.Details[idx]);
+    }
+
+    [Fact]
+    public async Task ListMine_ReportsDeletedFileCount()
+    {
+        // عدادات مزدوجة في نفس الاستجابة: fileCount=الأحياء و deletedFileCount=المحذوفة.
+        var a = await CreateCircuitAsync("دائرة العدّادين");
+        await CreateDocAsync(a, _lawyer1Id, "831", "2026");
+        await CreateDocAsync(a, _lawyer1Id, "832", "2026");
+        var delIds = new[] { "833", "834", "835" };
+        foreach (var n in delIds)
+        {
+            var delId = await CreateDocAsync(a, _lawyer1Id, n, "2026");
+            var del = await _db.Documents.FindAsync(delId);
+            del!.IsDeleted = true;
+            del.DeletedAt = DateTime.UtcNow;
+        }
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        var circuits = await _circuits.ListMineAsync(_branchId, null);
+        var mine = Assert.Single(circuits.Where(c => c.Id == a));
+        Assert.Equal(2, mine.FileCount);
+        Assert.Equal(3, mine.DeletedFileCount);
+        Assert.Equal(0, mine.PendingCount);
+
+        // ToDtoAsync نفس العقلية (مثال: Rename يعيد DTO المعيد بناءً).
+        var renamed = await _circuits.RenameAsync(a, _branchId, null, "head1", "دائرة العدّادين ٢", null, actorUserId: _headId);
+        Assert.Equal(3, renamed.DeletedFileCount);
+        Assert.Equal(2, renamed.FileCount);
     }
 
     [Fact]

@@ -13,8 +13,8 @@ vi.mock('../api/client', () => ({
 
 import { api } from '../api/client';
 
-function circuit(id: number, name: string, fileCount = 0) {
-  return { id, branchId: 1, name, isActive: true, fileCount, pendingCount: 0, version: 3 };
+function circuit(id: number, name: string, fileCount = 0, deletedFileCount = 0) {
+  return { id, branchId: 1, name, isActive: true, fileCount, pendingCount: 0, version: 3, deletedFileCount };
 }
 
 describe('ExecutionCircuitsPage', () => {
@@ -22,7 +22,7 @@ describe('ExecutionCircuitsPage', () => {
     vi.clearAllMocks();
     (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
       if (url === '/execution-circuits/mine') {
-        return Promise.resolve({ data: [circuit(1, 'دائرة أ', 2), circuit(2, 'دائرة ب', 0)] });
+        return Promise.resolve({ data: [circuit(1, 'دائرة أ', 2, 41), circuit(2, 'دائرة ب', 0, 7)] });
       }
       if (url === '/documents') {
         return Promise.resolve({ data: { items: [] } });
@@ -56,5 +56,25 @@ describe('ExecutionCircuitsPage', () => {
     expect(screen.getByRole('button', { name: 'إفراغ دائرة أ' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'حذف دائرة أ' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'حذف دائرة ب' })).toBeInTheDocument();
+  });
+
+  it('يعرض عدد محذوفات الدائرة بجانب عدّاد الملفات (شفافية قبل الحذف)', async () => {
+    render(<ExecutionCircuitsPage />);
+    await screen.findByText('دائرة ب');
+    expect(screen.getByText('(41 محذوف)')).toBeInTheDocument();
+    expect(screen.getByText('(7 محذوف)')).toBeInTheDocument();
+  });
+
+  it('تأكيد الحذف يصرّح بعدد الملفات القابلة للتطهير النهائي ويُلغي عند الرفض', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    render(<ExecutionCircuitsPage />);
+    await screen.findByText('دائرة ب');
+    await user.click(screen.getByRole('button', { name: 'حذف دائرة ب' }));
+    expect(confirmSpy).toHaveBeenCalledWith(
+      'حذف دائرة «دائرة ب» نهائيًا؟ سيُحذف نهائيًا معها 7 ملفًا من سلة محذوفاتها.',
+    );
+    expect(api.delete).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
   });
 });

@@ -239,14 +239,17 @@ public interface IDocumentRepository : IRepository<Document>
     Task<List<Document>> ListPendingForLawyerAsync(int lawyerId, int? circuitId, CancellationToken ct = default);
 
     /// <summary>
-    /// عدادات الدوائر (ملفات + معلقات) لغير المحذوفة — لقائمتي الإدارة والإحصاءات.
+    /// عدادات الدوائر (ملفات + معلقات + محذوفات) — الاستعلام بـ IgnoreQueryFilters
+    /// دفعة واحدة يصنّف الصفوف: حية/معلقة/محذوفة — لقائمتي الإدارة والإحصاءات
+    /// ولنافذة الإفراغ (عدد سلة المحذوفات يُطهَّر نهائيًا عند حذف الدائرة).
     /// </summary>
-    Task<Dictionary<int, (int FileCount, int PendingCount)>> CountByCircuitsAsync(List<int> circuitIds, CancellationToken ct = default);
+    Task<Dictionary<int, (int FileCount, int PendingCount, int DeletedCount)>> CountByCircuitsAsync(List<int> circuitIds, CancellationToken ct = default);
 
     /// <summary>
-    /// عدد كل الصفوف غير المطهّرة لدائرة (بما فيها المحذوفة منطقيًا) — حارس الحذف.
+    /// صفوف سلة المحذوفات لدائرة (المتتبَّعة قصدًا لتحذف عبر Remove — بلا نوافيجيشن:
+    /// الحذف التسلسلي تكفله قيود FK نفسها).
     /// </summary>
-    Task<int> CountAllByCircuitAsync(int circuitId, CancellationToken ct = default);
+    Task<List<Document>> ListDeletedByCircuitAsync(int circuitId, CancellationToken ct = default);
 
     /// <summary>
     /// آخر وقوعّة إحالة (circuit-referred) لكل ملف — لعرض «المعروض حاليًا (قديم)» دفعة واحدة بلا N+1.

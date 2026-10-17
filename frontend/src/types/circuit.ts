@@ -14,6 +14,8 @@ export interface ExecutionCircuitDto {
   sectionId?: number | null;
   /** اسم الشعبة المالكة — للعرض فقط. */
   sectionName?: string | null;
+  /** عدد صفوف سلة محذوفات الدائرة (تُطهَّر نهائيًا عند حذف الدائرة — قرار المالك). */
+  deletedFileCount: number;
 }
 
 /** صف ملف الدائرة في معالج الإفراغ — المعرّف والحقول الخمسة المعروضة فقط (إسقاط خفيف). */

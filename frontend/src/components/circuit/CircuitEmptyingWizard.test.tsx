@@ -13,8 +13,14 @@ import { api } from '../../api/client';
 
 const noop = () => {};
 
-function circuit(id: number, name: string, isActive = true, fileCount = 1): ExecutionCircuitDto {
-  return { id, branchId: 1, name, isActive, fileCount, pendingCount: 0, version: 0 };
+function circuit(
+  id: number,
+  name: string,
+  isActive = true,
+  fileCount = 1,
+  deletedFileCount = 0,
+): ExecutionCircuitDto {
+  return { id, branchId: 1, name, isActive, fileCount, pendingCount: 0, version: 0, deletedFileCount };
 }
 
 const regularFile: CircuitFileDto = {
@@ -172,6 +178,34 @@ describe('CircuitEmptyingWizard', () => {
     // S6.e: Escape يغلق المعالج (بعد إلغاء التسليح لم يعد مسلّحًا).
     await user.keyboard('{Escape}');
     expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('تأكيد الحذف يصرّح بعدد صفوف سلة المحذوفات التي ستُطهَّر نهائيًا', async () => {
+    // تعديل البند 41: التسليح يُعلن صراحةً عن التطهير النهائي للصفوف المحذوفة سلفًا.
+    const user = userEvent.setup();
+    (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { referredCount: 1, skippedCount: 0, remainingCount: 0 },
+    });
+    render(
+      <CircuitEmptyingWizard
+        source={circuit(1, 'دائرة المصدر', true, 1, 9)}
+        circuits={[circuit(1, 'دائرة المصدر', true, 1, 9), circuit(2, 'دائرة الهدف')]}
+        onDone={noop}
+        onCancel={noop}
+      />,
+    );
+
+    await user.selectOptions(screen.getByLabelText(/الدائرة الهدف/), '2');
+    await user.selectOptions(screen.getByLabelText(/المحامي الهدف/), '3');
+    await user.click(screen.getByRole('checkbox', { name: /إحالة ملف 11/ }));
+    await user.click(screen.getByRole('button', { name: 'إحالة (1)' }));
+    await screen.findByText('لا تنسى نقل ملفات هذه الدائرة لمحامي أو محامين اخرين ان كان لذلك مقتضى');
+
+    await user.click(screen.getByRole('button', { name: 'حذف الدائرة' }));
+    expect(
+      await screen.findByText('سيُحذف نهائيًا أيضًا 9 ملفًا محذوفًا في هذه الدائرة.'),
+    ).toBeInTheDocument();
+    expect(api.delete).not.toHaveBeenCalled();
   });
 
   it('يعرض «أنشئ دائرة بديلة أولًا» عند غياب هدف متاح', async () => {

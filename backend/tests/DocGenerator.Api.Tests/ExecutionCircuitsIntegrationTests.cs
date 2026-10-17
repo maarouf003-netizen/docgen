@@ -490,4 +490,38 @@ public class ExecutionCircuitsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, intruder.StatusCode);
         Assert.Contains("ليست ضمن نطاقك", await intruder.Content.ReadAsStringAsync());
     }
+
+    [Fact]
+    public async Task Delete_PurgesSoftDeletedFiles_EndToEnd()
+    {
+        // تعديل البند 41: حذف منطقي عبر API ثم حذف الدائرة — الصف غائب فيزيائيًا من القاعدة.
+        await HeadBranchIdAsync();
+        var head = _factory.AuthorizedClient("head1");
+        var lawyer = _factory.AuthorizedClient("lawyer1");
+        var sourceName = UniqueName("دائرة مسح نهائي");
+        var source = await CreateCircuitAsync(head, sourceName);
+        var docId = await CreateDocumentAsync(lawyer, source, $"5{Guid.NewGuid():N}"[..7]);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+            var entity = await db.Documents.SingleAsync(d => d.Id == docId);
+            entity.IsDeleted = true;
+            entity.DeletedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        var del = await head.DeleteAsync($"/api/execution-circuits/{source}");
+        Assert.Equal(HttpStatusCode.NoContent, del.StatusCode);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+            var stillThere = await db.Documents.IgnoreQueryFilters().AnyAsync(d => d.Id == docId);
+            Assert.False(stillThere);
+            var audit = await db.AuditLogs.Where(a => a.ActionType == "delete_circuit")
+                .OrderByDescending(a => a.Id).FirstAsync(a => a.Details.Contains(sourceName));
+            Assert.Contains("طُهِّر نهائيًا 1 ملفًا محذوفًا", audit.Details);
+        }
+    }
 }

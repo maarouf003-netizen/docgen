@@ -191,7 +191,8 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
             counts.TryGetValue(c.Id, out var v) ? v.FileCount : 0,
             counts.TryGetValue(c.Id, out var v2) ? v2.PendingCount : 0,
             c.Version, c.SectionId,
-            c.SectionId.HasValue ? sectionNames.GetValueOrDefault(c.SectionId.Value) : null)).ToList();
+            c.SectionId.HasValue ? sectionNames.GetValueOrDefault(c.SectionId.Value) : null,
+            counts.TryGetValue(c.Id, out var v3) ? v3.DeletedCount : 0)).ToList();
     }
 
     private async Task<Dictionary<int, string>> SectionNamesAsync(CancellationToken ct)
@@ -372,16 +373,28 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         return result;
     }
 
+    /// <summary>
+    /// حذف الدائرة نهائيًا (تعديل البند 41 — قرار المالك 2026-10-17): الترتيب
+    /// **الحارس ← الوارد المعلقة ← فصل الوارد ← التطهير ← إزالة الدائرة ← الحفظ ← التدقيق**.
+    /// العلة التقنية: فصل الوارد قبل التطهير يمنع تعارض أثر التتبّع مع صفوف الإنابة
+    /// المحذوفة تسلسليًا ضمن التطهير (الإنتاج محصّن أصلًا بحارس
+    /// DocumentService.DeleteAsync: يمنع حذف أي ملف له إنابة صادرة أو مناب أو استئناف —
+    /// فلا صف محذوف يحمل إنابة/مناب/استئنافًا، والمناب بالقيد Restrict غير قابل للتحقق إنتاجيًا).
+    /// الحارس يعدّ الأحياء فقط (محتسبين المعلقين منها)؛ سلة المحذوفات تُطهَّر نهائيًا
+    /// (CASCADE يزيل توابعها، SET NULL يفك مراجعها، وAuditLogs/DocumentFieldChanges
+    /// بلا FK فيبقيان تاريخًا كاملًا — إعلان صريح لا سهو).
+    /// </summary>
     public async Task DeleteAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, CancellationToken ct = default)
     {
         await RequireBranchWithGovernorateAsync(branchId, ct);
         await _tx.RunAsync(async token =>
         {
             var circuit = await GetOwnedAsync(circuitId, branchId, ownerSectionId, token);
-            // حارس الحذف: كل الصفوف غير المطهّرة بما فيها المحذوفة منطقيًا + الإنابات الواردة المعلقة.
-            var fileCount = await _documents.CountAllByCircuitAsync(circuitId, token);
-            if (fileCount > 0)
-                throw new DocumentConflictException($"لا يمكن حذف الدائرة — أفرغها أولًا (بها {fileCount} ملفًا)");
+            // حارس الحذف: الأحياء فقط (تعديل البند 41) + الإنابات الواردة المعلقة.
+            var counts = await _documents.CountByCircuitsAsync(new List<int> { circuitId }, token);
+            counts.TryGetValue(circuitId, out var v);
+            if (v.FileCount > 0)
+                throw new DocumentConflictException($"لا يمكن حذف الدائرة — أفرغها أولًا (بها {v.FileCount} ملفًا)");
             // C1: متجاوزًا فلتر المصدر المحذوف — المعلقة تحظر أيًا كان حال مصدرها.
             var pendingIncoming = await _delegations.CountPendingIncomingByCircuitIncludingDeletedAsync(circuitId, token);
             if (pendingIncoming > 0)
@@ -390,6 +403,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
             // عن المرجع (DelegatedCircuitId=null) مع إبقاء الاسم النصي — وإلا انفجر الحذف
             // بانتهاك FK (Restrict) رغم اجتياز الحارس. المعلقة محظورة أعلاه فلا تصل هنا.
             // C1: متجاوزًا الفلتر أيضًا — إنابة مصدرها محذوف ما زال صفها يشير للدائرة.
+            // فصل الوارد قبل التطهير (علة الترتيب المذكورة أعلاه).
             var incoming = await _delegations.ListByDelegatedCircuitIncludingDeletedAsync(circuitId, token);
             var detached = 0;
             var now = DateTime.UtcNow;
@@ -402,10 +416,24 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                 _delegations.Update(g);
                 detached++;
             }
+            // تطهير سلة المحذوفات نهائيًا (قرار المالك — تعديل البند 41): حذف فيزيائي
+            // ضمن معاملة الحذف نفسها؛ والتسلسل الموثوق به: CASCADE للتوابع (الوقوعات/
+            // أرقام الأساس/الإسنادات/الأطراف/الكفلاء/الورثة/الأموال/الاستئنافات/إنابات
+            // الملف المحذوف)، SET NULL للتنبيهات/المرسلات/خطابات المراجعة — والعلة
+            // تسهل اختبارها: أي صف شاذ يفشل بصوت عالٍ داخل المعاملة مع rollback.
+            var purged = 0;
+            var deletedDocs = await _documents.ListDeletedByCircuitAsync(circuitId, token);
+            foreach (var d in deletedDocs)
+            {
+                _documents.Remove(d);
+                purged++;
+            }
             _circuits.Remove(circuit);
             await _uow.SaveChangesAsync(token);
+            // عبارة التطهير تُلحق للتدقيق فقط عند purged > 0 (لا «مع» مكررة ولا «تطهير 0»).
+            var purgeClause = purged > 0 ? $"، وطُهِّر نهائيًا {purged} ملفًا محذوفًا" : string.Empty;
             await _audit.LogAsync(actorName, "delete_circuit", null, null,
-                $"حذف دائرة التنفيذ «{circuit.Name}» مع فك {detached} إنابة مكتملة عن مرجعها (الاسم محفوظ)", token);
+                $"حذف دائرة التنفيذ «{circuit.Name}» مع فك {detached} إنابة مكتملة عن مرجعها (الاسم محفوظ){purgeClause}", token);
         }, ct);
     }
 
@@ -1046,7 +1074,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         if (c.SectionId.HasValue)
             sectionName = (await _sections.GetByIdAsync(c.SectionId.Value, token))?.Name;
         return new ExecutionCircuitDto(c.Id, c.BranchId, null, c.Name, c.IsActive, v.FileCount, v.PendingCount, c.Version,
-            c.SectionId, sectionName);
+            c.SectionId, sectionName, v.DeletedCount);
     }
 
     /// <summary>

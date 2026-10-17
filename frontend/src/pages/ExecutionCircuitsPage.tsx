@@ -92,7 +92,13 @@ export default function ExecutionCircuitsPage() {
       setError('لا يمكن حذف الدائرة — أفرغها أولًا');
       return;
     }
-    if (!window.confirm(`حذف دائرة «${c.name}» نهائيًا؟`)) return;
+    // تعديل البند 41: تسليح التأكيد يصرّح بعدد صفوف سلة المحذوفات القابلة للتطهير نهائيًا.
+    const purgeCount = c.deletedFileCount;
+    const message =
+      purgeCount > 0
+        ? `حذف دائرة «${c.name}» نهائيًا؟ سيُحذف نهائيًا معها ${purgeCount} ملفًا من سلة محذوفاتها.`
+        : `حذف دائرة «${c.name}» نهائيًا؟`;
+    if (!window.confirm(message)) return;
     try {
       await api.delete(`/execution-circuits/${c.id}`);
       await load();
@@ -139,7 +145,9 @@ export default function ExecutionCircuitsPage() {
                 )}
               </div>
               <p className="text-sm text-gray-600 mt-1 tabular-nums">
-                {c.fileCount} ملفًا · {c.pendingCount} بانتظار إعادة القيد
+                {c.fileCount} ملفًا
+                {c.deletedFileCount > 0 && <span className="text-gray-500"> ({c.deletedFileCount} محذوف)</span>}
+                {' · '}{c.pendingCount} بانتظار إعادة القيد
               </p>
               <p className="text-xs text-gray-500 mt-1 break-words">
                 {c.sectionName ? `شعبة ${c.sectionName}` : 'قسم الفرع'}
@@ -206,6 +214,7 @@ export default function ExecutionCircuitsPage() {
                   <td className="px-4 py-3 break-words">{c.sectionName ?? 'القسم'}</td>
                   <td className="px-4 py-3 tabular-nums">
                     {c.fileCount}
+                    {c.deletedFileCount > 0 && <span className="text-gray-500"> ({c.deletedFileCount} محذوف)</span>}
                     {c.pendingCount > 0 && <span className="text-amber-700"> ({c.pendingCount} معلق)</span>}
                   </td>
                   <td className="px-4 py-3">

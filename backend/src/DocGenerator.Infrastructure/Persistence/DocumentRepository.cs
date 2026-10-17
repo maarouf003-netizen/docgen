@@ -795,26 +795,39 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         return await q.OrderBy(d => d.Id).ToListAsync(ct);
     }
 
-    public async Task<Dictionary<int, (int FileCount, int PendingCount)>> CountByCircuitsAsync(List<int> circuitIds, CancellationToken ct = default)
+    public async Task<Dictionary<int, (int FileCount, int PendingCount, int DeletedCount)>> CountByCircuitsAsync(List<int> circuitIds, CancellationToken ct = default)
     {
-        var result = circuitIds.Distinct().ToDictionary(id => id, _ => (FileCount: 0, PendingCount: 0));
+        var result = circuitIds.Distinct().ToDictionary(id => id, _ => (FileCount: 0, PendingCount: 0, DeletedCount: 0));
         if (result.Count == 0) return result;
         var ids = result.Keys.ToList();
+        // IgnoreQueryFilters دفعة واحدة ثم تصنيف في الذاكرة: حار/معلق/محذوف —
+        // حجم حالة الاستعلام واحدة وعدد الصفوف = صفوف الدوائر فقط.
         var rows = await Db.Documents
             .AsNoTracking()
-            .Where(d => d.ExecutionCircuitId != null && ids.Contains(d.ExecutionCircuitId.Value) && !d.IsDeleted)
-            .Select(d => new { d.ExecutionCircuitId, d.NeedsRegistration })
+            .IgnoreQueryFilters()
+            .Where(d => d.ExecutionCircuitId != null && ids.Contains(d.ExecutionCircuitId.Value))
+            .Select(d => new { d.ExecutionCircuitId, d.NeedsRegistration, d.IsDeleted })
             .ToListAsync(ct);
         foreach (var g in rows.GroupBy(r => r.ExecutionCircuitId!.Value))
-            result[g.Key] = (g.Count(), g.Count(r => r.NeedsRegistration));
+        {
+            result[g.Key] = (
+                g.Count(r => !r.IsDeleted),
+                g.Count(r => !r.IsDeleted && r.NeedsRegistration),
+                g.Count(r => r.IsDeleted));
+        }
         return result;
     }
 
-    public async Task<int> CountAllByCircuitAsync(int circuitId, CancellationToken ct = default)
+    public async Task<List<Document>> ListDeletedByCircuitAsync(int circuitId, CancellationToken ct = default)
     {
+        // صفوف سلة المحذوفات لدائرة (بترتيب ثابت) — متتبَّعة قصدًا (بلا AsNoTracking)
+        // كي تُحذف عبر Remove، وبلا WithStandardIncludes: الحذف التسلسلي تكفله
+        // قيود FK في القاعدة (CASCADE/SET NULL) والكيان المحمَّل لا يحتاج نوافيجيشن.
         return await Db.Documents
             .IgnoreQueryFilters()
-            .CountAsync(d => d.ExecutionCircuitId == circuitId, ct);
+            .Where(d => d.ExecutionCircuitId == circuitId && d.IsDeleted)
+            .OrderBy(d => d.Id)
+            .ToListAsync(ct);
     }
 
     public async Task<List<DocumentOccurrence>> ListLastCircuitReferralsAsync(List<int> documentIds, CancellationToken ct = default)

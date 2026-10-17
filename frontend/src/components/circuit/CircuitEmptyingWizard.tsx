@@ -273,9 +273,12 @@ export default function CircuitEmptyingWizard({
               أُحيل {result?.referredCount ?? 0} ملفًا{result?.skippedCount ? ` (تُخطي ${result.skippedCount})` : ''} — الدائرة فارغة الآن.
             </p>
             {confirmingDelete && (
-              <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2" role="alert">
-                حذف الدائرة نهائي ولا يمكن التراجع عنه — سيُحرَّر اسمها داخل الفرع. هل أنت متأكد؟
-              </p>
+              <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 space-y-1" role="alert">
+                <p>حذف الدائرة نهائي ولا يمكن التراجع عنه — سيُحرَّر اسمها داخل الفرع. هل أنت متأكد؟</p>
+                {source.deletedFileCount > 0 && (
+                  <p>سيُحذف نهائيًا أيضًا {source.deletedFileCount} ملفًا محذوفًا في هذه الدائرة.</p>
+                )}
+              </div>
             )}
             <div className="flex flex-wrap justify-end gap-2">
               {confirmingDelete ? (
