@@ -520,7 +520,7 @@ public class ExecutionCircuitsIntegrationTests
             var stillThere = await db.Documents.IgnoreQueryFilters().AnyAsync(d => d.Id == docId);
             Assert.False(stillThere);
             var audit = await db.AuditLogs.Where(a => a.ActionType == "delete_circuit")
-                .OrderByDescending(a => a.Id).FirstAsync(a => a.Details.Contains(sourceName));
+                .OrderByDescending(a => a.Id).FirstAsync(a => a.Details != null && a.Details.Contains(sourceName));
             Assert.Contains("طُهِّر نهائيًا 1 ملفًا محذوفًا", audit.Details);
         }
     }

@@ -844,7 +844,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             .ToListAsync(ct);
         return rows
             .GroupBy(r => r.DelegationId)
-            .ToDictionary(g => g.Key, g => g.First().MirrorId);
+            .ToDictionary(g => g.Key, g => g.Min(r => r.MirrorId));
     }
 
     public async Task<List<DocumentOccurrence>> ListLastCircuitReferralsAsync(List<int> documentIds, CancellationToken ct = default)
