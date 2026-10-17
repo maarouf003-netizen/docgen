@@ -1,6 +1,6 @@
-/* â”€â”€ ط§ظ„ط³ط¬ظ„ ط§ظ„ظ…ط±ط¬ط¹ظٹ ظ„ظ„ط¬ظ‡ط§طھ ط§ظ„ط¹ط§ظ…ط© (ط¨ظˆط§ط¨ط© ط§ظ„ط¬ظ‡ط§طھ â€” ط§ظ„ظ…ط±ط­ظ„ط© 1) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── السجل المرجعي للجهات العامة (بوابة الجهات — المرحلة 1) ───────────── */
 
-/** ظ†ظˆط¹ ط§ظ„ط¬ظ‡ط© (ظƒطھط§ظ„ظˆط¬ ط§ظ„ط£ط­ط¯ ط¹ط´ط± ظ†ظˆط¹ظ‹ط§ ط§ظ„ظ…ط¹طھظ…ط¯). */
+/** نوع الجهة (كتالوج الأحد عشر نوعًا المعتمد). */
 export type PublicEntityType =
   | 'ministry'
   | 'administration'
@@ -14,13 +14,13 @@ export type PublicEntityType =
   | 'city-council'
   | 'town-council';
 
-/** ط­ط§ظ„ط© ظ‚ظٹط¯ ط§ظ„ط¬ظ‡ط©: ظ†ظ‡ط§ط¦ظٹ (ظٹط¸ظ‡ط± ظ„ظ„ظ…ظ†ط¯ظˆط¨ظٹظ†) ط£ظˆ ط¨ط§ظ†طھط¸ط§ط± ط§ظ„ظ…ط±ط§ط¬ط¹ط©. */
+/** حالة قيد الجهة: نهائي (يظهر للمندوبين) أو بانتظار المراجعة. */
 export type PublicEntityStatus = 'final' | 'pending';
 
-/** طµظٹط؛ط© ظ…ظ†ط§ط¯ط§ط© ظ…ظ…ط«ظ„ ط§ظ„ط¬ظ‡ط© ط§ظ„ظ‚ط§ظ†ظˆظ†ظٹط©: ط¥ط¶ط§ظپط© ظ„ظˆط¸ظٹظپطھظ‡ / ط¥ط¶ط§ظپط© ظ„ظ…ظ†طµط¨ظ‡. */
+/** صيغة مناداة ممثل الجهة القانونية: إضافة لوظيفته / إضافة لمنصبه. */
 export type CitationFormula = 'add-to-job' | 'add-to-position';
 
-/** ظ‚ظٹط¯ ط¬ظ‡ط© ظپظٹ ط§ظ„ط³ط¬ظ„ ط¨ظ…ط³طھظˆظ‰ ظ…ط­ط§ظپط¸ط© + ظپط±ط¹. */
+/** قيد جهة في السجل بمستوى محافظة + فرع. */
 export interface PublicEntityEntryDto {
   id: number;
   groupId: number;
@@ -34,15 +34,15 @@ export interface PublicEntityEntryDto {
   createdAt: string;
   aliases: string[];
   createdByName?: string | null;
-  /** ط£ط¯ط®ظ„ظ‡ط§ ظ…ط­ط§ظ…ظچ ظˆظ‡ظٹ ط¨ط§ظ†طھط¸ط§ط± ظ…ط±ط§ط¬ط¹ط© ط±ط¦ظٹط³ ط§ظ„ظ‚ط³ظ… (ظ†ظ…ظˆط°ط¬ ط§ظ„ط­ظˆظƒظ…ط© ط§ظ„ط¬ط¯ظٹط¯). */
+  /** أدخلها محامٍ وهي بانتظار مراجعة رئيس القسم (نموذج الحوكمة الجديد). */
   needsReview?: boolean;
-  /** طھط³ظ…ظٹط© ط§ظ„طھط؛ط·ظٹط© ط§ظ„ط¬ط؛ط±ط§ظپظٹط© (طھط¸ظ‡ط± ط¨ط¯ظ„ ط§ظ„ظ…ط­ط§ظپط¸ط© ظپظٹ ط§ظ„ط¨ط·ط§ظ‚ط§طھ ظˆط§ظ„ط¨ط­ط«). */
+  /** تسمية التغطية الجغرافية (تظهر بدل المحافظة في البطاقات والبحث). */
   coverageLabel?: string | null;
-  /** ظ‚ظٹط¯ آ«ط§ظ„ط¬ظ‡ط© ط§ظ„ط£ظ…آ» (ط¨ظ„ط§ ظپط±ط¹): ظٹط؛ط·ظٹ ظƒظ„ ط§ظ„ظ…ط­ط§ظپط¸ط§طھ ظˆظٹط¸ظ‡ط± ظ…ط±ط© ظˆط§ط­ط¯ط© â€” ظˆظپط±ظˆط¹ظ‡ طھط­طھظ‡. */
+  /** قيد «الجهة الأم» (بلا فرع): يغطي كل المحافظات ويظهر مرة واحدة — وفروعه تحته. */
   isParentEntity?: boolean;
 }
 
-/** ظ†طھظٹط¬ط© ظ‚ط§ط¦ظ…ط©/ط¨ط­ط« ط§ظ„ط³ط¬ظ„ ط§ظ„ظ…طµط¯ظ‘ط±ط©. */
+/** نتيجة قائمة/بحث السجل المصدّرة. */
 export interface PublicEntityListResponse {
   items: PublicEntityEntryDto[];
   page: number;
@@ -59,11 +59,11 @@ export interface CreatePublicEntityRequest {
   citationFormula?: CitationFormula | null;
   aliases?: string[] | null;
   coverageLabel?: string | null;
-  /** ط¬ط¹ظ„ ط§ظ„ظ‚ظٹط¯ ظ‚ظٹط¯ آ«ط§ظ„ط¬ظ‡ط© ط§ظ„ط£ظ…آ» (ط¨ظ„ط§ ظپط±ط¹) â€” ظٹظڈط®ط²ظژظ‘ظ† ظ…ط±ط© ظˆط§ط­ط¯ط© ظˆظٹط؛ط·ظٹ ظƒظ„ ط§ظ„ظ…ط­ط§ظپط¸ط§طھ. */
+  /** جعل القيد قيد «الجهة الأم» (بلا فرع) — يُخزَّن مرة واحدة ويغطي كل المحافظات. */
   isParentEntity?: boolean;
 }
 
-/** ط£ظٹ ط­ظ‚ظ„ ظٹظڈطھط±ظƒ undefined ظٹط¨ظ‚ظ‰ ظƒظ…ط§ ظ‡ظˆط› canonicalName ظٹط¹ظ†ظٹ ط¥ط¹ط§ط¯ط© طھط³ظ…ظٹط© ط¬ظ…ط§ط¹ظٹط©. ط­ظ‚ظˆظ„ ط§ظ„ظ…ط±ط³ظˆظ… ظ„ظ„طھط¹ط¯ظٹظ„ط§طھ ط§ظ„ط¹ط§ظ…ط© ط¨ظ…ط±ط³ظˆظ…. */
+/** أي حقل يُترك undefined يبقى كما هو؛ canonicalName يعني إعادة تسمية جماعية. حقول المرسوم للتعديلات العامة بمرسوم. */
 export interface UpdatePublicEntityRequest {
   canonicalName?: string | null;
   entityType?: PublicEntityType | null;
@@ -93,16 +93,16 @@ export interface ProposeEditRequest {
   isParentEntity?: boolean | null;
 }
 
-/** ظƒطھط§ط¨ط© ظ…طھظ…ط§ظٹط²ط© ظˆط§ط­ط¯ط© ظ„ظ†طµ ط¬ظ‡ط© ظپظٹ ط§ظ„ط§ط³طھظٹط±ط§ط¯ ظ…ط¹ ط¹ط¯ظ‘ط§ط¯ ظ…ظ„ظپط§طھظ‡ط§. */
+/** كتابة متمايزة واحدة لنص جهة في الاستيراد مع عدّاد ملفاتها. */
 export interface ImportVariantDto {
   text: string;
-  /** ظ…طµط¯ط± ط§ظ„ظƒطھط§ط¨ط©: applicant = ط·ط§ظ„ط¨ طھظ†ظپظٹط°طŒ executed = ظ…ظ†ظپط° ط¹ظ„ظٹظ‡ط§. */
+  /** مصدر الكتابة: applicant = طالب تنفيذ، executed = منفذ عليها. */
   side: 'applicant' | 'executed';
   governorate?: string | null;
   documentCount: number;
 }
 
-/** ظ…ط±ط´ظ‘ط­ ط§ط³طھظٹط±ط§ط¯ ظٹط¬ظ…ط¹ ظƒطھط§ط¨ط§طھ ظ…طھط·ط§ط¨ظ‚ط© ط¨ط¹ط¯ ط§ظ„طھط·ط¨ظٹط¹ طھط­طھ ط§ط³ظ… ظ…ظ‚طھط±ط­. */
+/** مرشّح استيراد يجمع كتابات متطابقة بعد التطبيع تحت اسم مقترح. */
 export interface ImportPreviewItemDto {
   normalizedName: string;
   suggestedCanonicalName: string;
@@ -136,9 +136,9 @@ export interface ImportCommitResultDto {
   aliasesAdded: number;
 }
 
-/* â”€â”€ ط§ظ„ظ†ظ‚ظ„ (MoveEntry) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── النقل (MoveEntry) ──────────────────────────────────────────────── */
 
-/** ط·ظ„ط¨ ظ†ظ‚ظ„ ظ‚ظٹط¯ ط¬ظ‡ط© ظ…ظ† ظ‡ظˆظٹط© ط¥ظ„ظ‰ ط£ط®ط±ظ‰ ط£ظˆ ط·ظٹظ‘ظ‡ ظپظٹ ظ‚ظٹط¯ ظ‚ط§ط¦ظ…. */
+/** طلب نقل قيد جهة من هوية إلى أخرى أو طيّه في قيد قائم. */
 export interface MoveEntryRequest {
   targetGroupId?: number | null;
   targetEntryId?: number | null;
@@ -148,7 +148,7 @@ export interface MoveEntryRequest {
   note?: string | null;
 }
 
-/** ط·ظ„ط¨ ظ†ظ‚ظ„ ط¬ظ…ظٹط¹ ظ‚ظٹظˆط¯ ظ…ط¬ظ…ظˆط¹ط© ط¥ظ„ظ‰ ظ…ط¬ظ…ظˆط¹ط© ط£ط®ط±ظ‰ (طھط¨ط¹ظٹط© ظƒط§ظ…ظ„ط©). */
+/** طلب نقل جميع قيود مجموعة إلى مجموعة أخرى (تبعية كاملة). */
 export interface MoveAllEntriesRequest {
   sourceGroupId: number;
   targetGroupId: number;
@@ -158,7 +158,7 @@ export interface MoveAllEntriesRequest {
   note?: string | null;
 }
 
-/** ظ†طھظٹط¬ط© ظ†ظ‚ظ„ ظ‚ظٹط¯ ظˆط§ط­ط¯. */
+/** نتيجة نقل قيد واحد. */
 export interface MoveEntryResponse {
   entryId: number;
   fromGroupId: number;
@@ -167,7 +167,7 @@ export interface MoveEntryResponse {
   changeEventId: number;
 }
 
-/** ظ†طھظٹط¬ط© ظ†ظ‚ظ„ ط¬ظ…ظٹط¹ ظ‚ظٹظˆط¯ ظ…ط¬ظ…ظˆط¹ط©. */
+/** نتيجة نقل جميع قيود مجموعة. */
 export interface MoveAllEntriesResponse {
   sourceGroupId: number;
   targetGroupId: number;
@@ -176,15 +176,15 @@ export interface MoveAllEntriesResponse {
   changeEventId: number;
 }
 
-/* â”€â”€ ط§ظ„ط¯ظ…ط¬ Nâ†گ1 (ط¯5 آ§4) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── الدمج N←1 (د5 §4) ─────────────────────────────────────────── */
 
-/** ط·ظ„ط¨ ظ…ط¹ط§ظٹظ†ط© ط§ظ„ط¯ظ…ط¬ ظ‚ط¨ظ„ ط§ظ„ط§ط¹طھظ…ط§ط¯. */
+/** طلب معاينة الدمج قبل الاعتماد. */
 export interface MergePreviewRequest {
   survivorGroupId: number;
   absorbedGroupIds: number[];
 }
 
-/** ظ‚ظٹط¯ ظ…ظڈظ‡ظ…ظژظ„ ظپظٹ ط§ظ„ظ…ط¹ط§ظٹظ†ط© ظ…ط¹ ظ…ط³ط§ط± ط§ظ…طھطµط§طµظ‡. */
+/** قيد مُهمَل في المعاينة مع مسار امتصاصه. */
 export interface AbsorbedEntryPreviewDto {
   entryId: number;
   governorate: string;
@@ -194,7 +194,7 @@ export interface AbsorbedEntryPreviewDto {
   conflictsWithSurvivor: boolean;
 }
 
-/** ظ‡ظˆظٹط© ط£ظ… ظ…ظڈظ‡ظ…ظژظ„ط© ظپظٹ ط§ظ„ظ…ط¹ط§ظٹظ†ط©. */
+/** هوية أم مُهمَلة في المعاينة. */
 export interface AbsorbedGroupPreviewDto {
   groupId: number;
   name: string;
@@ -203,7 +203,7 @@ export interface AbsorbedGroupPreviewDto {
   aliases: string[];
 }
 
-/** ظ†طھظٹط¬ط© ظ…ط¹ط§ظٹظ†ط© ط§ظ„ط¯ظ…ط¬. */
+/** نتيجة معاينة الدمج. */
 export interface MergePreviewResponse {
   survivorName: string;
   absorbedGroups: AbsorbedGroupPreviewDto[];
@@ -211,7 +211,7 @@ export interface MergePreviewResponse {
   warnings: string[];
 }
 
-/** ط·ظ„ط¨ ط§ط¹طھظ…ط§ط¯ ط§ظ„ط¯ظ…ط¬. */
+/** طلب اعتماد الدمج. */
 export interface MergeCommitRequest {
   survivorGroupId: number;
   absorbedGroupIds: number[];
@@ -222,7 +222,7 @@ export interface MergeCommitRequest {
   decreeDate?: string;
 }
 
-/** ظ†طھظٹط¬ط© ط§ظ„ط¯ظ…ط¬. */
+/** نتيجة الدمج. */
 export interface MergeCommitResponse {
   absorbedGroupsCount: number;
   entriesMigrated: number;
@@ -231,15 +231,15 @@ export interface MergeCommitResponse {
   changeEventId: number;
 }
 
-/* â”€â”€ ط¥ط¹ط§ط¯ط© طھط³ظ…ظٹط© ظ‡ظˆظٹط© ط£ظ… (ط§ظ„ظ…ط¯ظٹط±/ط§ظ„ظ…ط´ط±ظپ) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── إعادة تسمية هوية أم (المدير/المشرف) ─────────────────────────────── */
 
-/** ط·ظ„ط¨ ظ…ط¹ط§ظٹظ†ط© ط¥ط¹ط§ط¯ط© طھط³ظ…ظٹط© ظ‡ظˆظٹط© ط£ظ… ظ‚ط¨ظ„ ط§ظ„ط§ط¹طھظ…ط§ط¯. */
+/** طلب معاينة إعادة تسمية هوية أم قبل الاعتماد. */
 export interface RenameGroupPreviewRequest {
   groupId: number;
   newCanonicalName: string;
 }
 
-/** ظ†طھظٹط¬ط© ظ…ط¹ط§ظٹظ†ط© ط¥ط¹ط§ط¯ط© ط§ظ„طھط³ظ…ظٹط©. */
+/** نتيجة معاينة إعادة التسمية. */
 export interface RenameGroupPreviewResponse {
   oldCanonicalName: string;
   newCanonicalName: string;
@@ -247,7 +247,7 @@ export interface RenameGroupPreviewResponse {
   branches: string[];
 }
 
-/** ط·ظ„ط¨ ط¥ط¹ط§ط¯ط© طھط³ظ…ظٹط© ظ‡ظˆظٹط© ط£ظ… ظˆط§ط­ط¯ط© ط¨ظ…ظˆط¬ط¨ ظ…ط±ط¬ط¹ (ظ‚ط±ط§ط±/ظ‚ط§ظ†ظˆظ†/ظ…ط±ط³ظˆظ…). */
+/** طلب إعادة تسمية هوية أم واحدة بموجب مرجع (قرار/قانون/مرسوم). */
 export interface RenameGroupRequest {
   groupId: number;
   newCanonicalName: string;
@@ -256,7 +256,7 @@ export interface RenameGroupRequest {
   decreeDate: string;
 }
 
-/** ظ†طھظٹط¬ط© ط¥ط¹ط§ط¯ط© طھط³ظ…ظٹط© ط§ظ„ظ‡ظˆظٹط© ط§ظ„ط£ظ…. */
+/** نتيجة إعادة تسمية الهوية الأم. */
 export interface RenameGroupResponse {
   groupId: number;
   oldCanonicalName: string;
@@ -265,14 +265,14 @@ export interface RenameGroupResponse {
   changeEventId: number;
 }
 
-/* â”€â”€ ط§ظ„ط­ظ„ظˆظ„: ط¥ظ„ط؛ط§ط، ظ‡ظˆظٹط§طھ ط£ظ… ظˆط§ط³طھط¨ط¯ط§ظ„ظ‡ط§ ط¨ظ‡ظˆظٹط© ط¬ط¯ظٹط¯ط© â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── الحلول: إلغاء هويات أم واستبدالها بهوية جديدة ─────────────────────── */
 
-/** ط·ظ„ط¨ ظ…ط¹ط§ظٹظ†ط© ط§ظ„ط¥ظ„ط؛ط§ط، ظˆط§ظ„ط§ط³طھط¨ط¯ط§ظ„ ظ‚ط¨ظ„ ط§ظ„ط§ط¹طھظ…ط§ط¯. */
+/** طلب معاينة الإلغاء والاستبدال قبل الاعتماد. */
 export interface AbolishReplacePreviewRequest {
   abolishedGroupIds: number[];
 }
 
-/** ظ†طھظٹط¬ط© ظ…ط¹ط§ظٹظ†ط© ط§ظ„ط¥ظ„ط؛ط§ط، ظˆط§ظ„ط§ط³طھط¨ط¯ط§ظ„. */
+/** نتيجة معاينة الإلغاء والاستبدال. */
 export interface AbolishReplacePreviewResponse {
   abolishedNames: string[];
   abolishedGroups: number;
@@ -282,7 +282,7 @@ export interface AbolishReplacePreviewResponse {
   branches: string[];
 }
 
-/** ط·ظ„ط¨ ط¥ظ„ط؛ط§ط، ط¹ط¯ط© ظ‡ظˆظٹط§طھ ط£ظ… ظˆط§ط³طھط¨ط¯ط§ظ„ظ‡ط§ ط¨ظ‡ظˆظٹط© ط£ظ… ط¬ط¯ظٹط¯ط© طھط­ظ„ظ‘ ظ…ط­ظ„ظ‡ط§. */
+/** طلب إلغاء عدة هويات أم واستبدالها بهوية أم جديدة تحلّ محلها. */
 export interface AbolishAndReplaceRequest {
   abolishedGroupIds: number[];
   newCanonicalName: string;
@@ -296,7 +296,7 @@ export interface AbolishAndReplaceRequest {
   decreeDate: string;
 }
 
-/** ظ†طھظٹط¬ط© ط§ظ„ط¥ظ„ط؛ط§ط، ظˆط§ظ„ط§ط³طھط¨ط¯ط§ظ„. */
+/** نتيجة الإلغاء والاستبدال. */
 export interface AbolishAndReplaceResponse {
   newGroupId: number;
   newCanonicalName: string;
@@ -306,7 +306,7 @@ export interface AbolishAndReplaceResponse {
   changeEventId: number;
 }
 
-/* â”€â”€ ظ‚ط§ط¦ظ…ط© ط§ظ„ظ…ط¬ظ…ظˆط¹ط§طھ (ط§ظ„ظ‡ظˆظٹط§طھ ط§ظ„ط£ظ…) ظˆطھظˆط­ظٹط¯ ط§ظ„طھط³ظ…ظٹط© Nâ†گ1 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── قائمة المجموعات (الهويات الأم) وتوحيد التسمية N←1 ───────────────── */
 
 export interface PublicEntityGroupDto {
   groupId: number;
@@ -372,7 +372,7 @@ export interface UnifyResponse {
   changeEventId: number;
 }
 
-/* â”€â”€ ظ…ط´ط§ط¨ظ‡ط§طھ ط¬ظ‡ط© ظ…ط­ط¯ط¯ط© (طھظˆط­ظٹط¯ ط§ظ„طھط³ظ…ظٹط©) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── مشابهات جهة محددة (توحيد التسمية) ───────────────────────────────── */
 
 export interface SimilarToItemDto {
   groupId: number;
@@ -390,7 +390,7 @@ export interface SimilarToResponse {
   threshold: number;
 }
 
-/* â”€â”€ ط³ط¬ظ„ طھط؛ظٹظٹط±ط§طھ ط§ظ„ط¬ظ‡ط§طھ (ط¯5 آ§7) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── سجل تغييرات الجهات (د5 §7) ───────────────────────────────────── */
 
 export interface EntityChangeEventDto {
   id: number;
@@ -402,7 +402,7 @@ export interface EntityChangeEventDto {
   decreeNumber?: string | null;
   decreeDate?: string | null;
   summaryAr: string;
-  /** ظˆط³ظ… ط¬ظˆط¯ط© ط§ظ„ظ…ظ„ط®ظ‘طµ: ط­ظ…ظ„ ط؛ظٹط± ظپط§ط±ط؛ ظ„ط§ ظٹظڈظ†طھط¬ طھظپط§طµظٹظ„ ظپط³ظ‚ط· ط¥ظ„ظ‰ ط§ظ„طھط³ظ…ظٹط© â€” ظٹظڈط¹ط±ط¶ ظ…ظˆط³ظˆظ…ظ‹ط§. */
+  /** وسم جودة الملخّص: حمل غير فارغ لا يُنتج تفاصيل فسقط إلى التسمية — يُعرض موسومًا. */
   summaryDegraded: boolean;
   actorUserId: number;
   actorName?: string | null;
@@ -421,9 +421,9 @@ export interface EntityChangeEventQuery {
   perPage?: number;
 }
 
-/* â”€â”€ ط¨ظˆط§ط¨ط© ظ…ظ†ط¯ظˆط¨ ط§ظ„ط¬ظ‡ط© ط§ظ„ط¹ط§ظ…ط© (ط§ظ„ظ…ط±ط­ظ„ط© 3) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── بوابة مندوب الجهة العامة (المرحلة 3) ────────────────────────────── */
 
-/* â”€â”€ ط¥ط¯ط§ط±ط© ظپط±ظˆط¹ ط±ط¦ظٹط³ ط§ظ„ظ‚ط³ظ… (ط¶ظ…ظ† ظ…ط­ط§ظپط¸طھظ‡ â€” ط¨ظ„ط§ ظ…ط±ط³ظˆظ…) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── إدارة فروع رئيس القسم (ضمن محافظته — بلا مرسوم) ─────────────────── */
 
 export interface RenameBranchRequest {
   newBranchName: string;
@@ -449,7 +449,7 @@ export type BranchActionKind = 'rename' | 'merge' | 'abolish' | 'unify';
 
 export interface PreviewBranchActionRequest {
   action: BranchActionKind;
-  /** ط§ظ„ظپط±ط¹ ط§ظ„ظ…ط¹ط§ظ„ظژط¬ (ط§ظ„ظ…ط¹ط§ط¯ طھط³ظ…ظٹطھظ‡ / ط§ظ„ظ…طµط¯ط± ظپظٹ ط§ظ„ط¯ظ…ط¬ / ط§ظ„ظ…ظڈظ„ط؛ظ‰ / ط§ظ„ظ†ط§ط¬ظٹ ظپظٹ ط§ظ„طھظˆط­ظٹط¯). */
+  /** الفرع المعالَج (المعاد تسميته / المصدر في الدمج / المُلغى / الناجي في التوحيد). */
   entryId: number;
   targetId?: number | null;
   absorbedIds?: number[] | null;
@@ -503,7 +503,7 @@ export interface UnifyBranchesResponse {
   changeEventId: number;
 }
 
-/* â”€â”€ ط§ظ‚طھط±ط§ط­ طھط¹ط¯ظٹظ„ ط§ظ„ط¬ظ‡ط© ط§ظ„ط£ظ… (ط±ط¦ظٹط³ ط§ظ„ظ‚ط³ظ… â†’ ظ…ط¯ظٹط±/ظ…ط´ط±ظپ) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── اقتراح تعديل الجهة الأم (رئيس القسم → مدير/مشرف) ────────────────── */
 
 export type ParentEditSuggestionStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn';
 

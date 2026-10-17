@@ -1,13 +1,13 @@
-/* â”€â”€ ط§ظ„ظ…ط±ط§ط³ظ„ط§طھ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── المراسلات ─────────────────────────────────────────────────────────── */
 
 export type CorrespondenceMessageKind = 'letter' | 'addendum' | 'reply';
 
 export type CorrespondenceImportance = 'normal' | 'important' | 'urgent';
 
-/** ط­ط§ظ„ط© ط§ط·ظ„ط§ط¹ ط§ظ„ط·ط±ظپ ط§ظ„ظ…ط³طھظ„ظ… ظƒظ…ط§ ظٹظ‚ط±ظ‘ط±ظ‡ط§ ط§ظ„ط®ط§ط¯ظ… â€” ظ„ط§ طھظڈط´طھظ‚ظ‘ ظپظٹ ط§ظ„ظˆط§ط¬ظ‡ط©. */
+/** حالة اطلاع الطرف المستلم كما يقرّرها الخادم — لا تُشتقّ في الواجهة. */
 export type CorrespondenceViewStatus = 'seen' | 'pending';
 
-/** ط³ظٹط§ظ‚ ط§ظ„ظ…ظ„ظپ ط§ظ„ظ…ط±طھط¨ط· ط¨طµظٹط؛ط© ط§ظ„ط¹ط±ط¶: ظ…ط±ط§ط³ظ„ط© ط¨ظ…ظ„ظپ (ط§ظ„ط§ط³ظ… ط§ظ„ط«ظ„ط§ط«ظٹ) ط±ظ‚ظ….. ظ†ظˆط¹.. ظ„ط¹ط§ظ….. ط¯ط§ط¦ط±ط© طھظ†ظپظٹط°.. */
+/** سياق الملف المرتبط بصيغة العرض: مراسلة بملف (الاسم الثلاثي) رقم.. نوع.. لعام.. دائرة تنفيذ.. */
 export interface CorrespondenceFileContext {
   executedName: string;
   fileNumber: string | null;
@@ -16,7 +16,7 @@ export interface CorrespondenceFileContext {
   court: string | null;
 }
 
-/** ط±ط³ط§ظ„ط© ظˆط§ط­ط¯ط© ط¶ظ…ظ† ظ…ط±ط§ط³ظ„ط© (ط§ظ„ط£طµظ„ letter ط£ظˆ ظ„ط§ط­ظ‚ addendum ط£ظˆ ط±ط¯ reply) â€” ط§ظ„ظƒط§طھط¨ ظ‚ط¯ ظٹظƒظˆظ† ط±ط¦ظٹط³ ط´ط¹ط¨ط© ظƒظ…ط³طھظ„ظ…. */
+/** رسالة واحدة ضمن مراسلة (الأصل letter أو لاحق addendum أو رد reply) — الكاتب قد يكون رئيس شعبة كمستلم. */
 export interface CorrespondenceMessageDto {
   id: number;
   kind: CorrespondenceMessageKind;
@@ -28,14 +28,14 @@ export interface CorrespondenceMessageDto {
   authorRole: 'lawyer' | 'head' | 'subhead' | 'entitymanager';
 }
 
-/** طھظˆط«ظٹظ‚ ظ…ط´ط§ظ‡ط¯ط© ظˆط§ط­ط¯ط©: ظ…ظ† ط´ط§ظ‡ط¯ ظˆظ…طھظ‰. */
+/** توثيق مشاهدة واحدة: من شاهد ومتى. */
 export interface CorrespondenceReceiptDto {
   userId: number;
   userName: string;
   seenAt: string;
 }
 
-/** ط³ط·ط± ظ…ط±ط§ط³ظ„ط© ظپظٹ ط§ظ„ظ‚ط§ط¦ظ…ط©ط› fileContext ظپط§ط±ط؛ ظ„ظ„ظ…ط±ط§ط³ظ„ط© ط§ظ„ط¹ط§ظ…ط© ط؛ظٹط± ط§ظ„ظ…ط±طھط¨ط·ط© ط¨ظ…ظ„ظپ. */
+/** سطر مراسلة في القائمة؛ fileContext فارغ للمراسلة العامة غير المرتبطة بملف. */
 export interface CorrespondenceListItemDto {
   id: number;
   correspondenceNumber: string;
@@ -47,14 +47,14 @@ export interface CorrespondenceListItemDto {
   targetName: string;
   snippet: string;
   lastKind: CorrespondenceMessageKind;
-  /** ط­ط§ظ„ط© ط§ط·ظ„ط§ط¹ ط§ظ„ط·ط±ظپ ط§ظ„ظ…ط³طھظ„ظ…: 'seen' ط£ظˆ 'pending'. */
+  /** حالة اطلاع الطرف المستلم: 'seen' أو 'pending'. */
   viewStatus: CorrespondenceViewStatus;
-  /** ظ‡ظ„ ظ„ظ‡ط°ط§ ط§ظ„ظ‚ط§ط±ط¦ ط­ظ‚ ط§ظ„طھظˆط«ظٹظ‚طں (ط§ظ„ظ…ط³طھظ„ظ… ظˆط­ط¯ظ‡). */
+  /** هل لهذا القارئ حق التوثيق؟ (المستلم وحده). */
   canMarkSeen: boolean;
-  /** ظ‡ظ„ ظ„ظ‡ط°ط§ ط§ظ„ظ‚ط§ط±ط¦ ط­ظ‚ ط§ظ„ط±ط¯طں (ط§ظ„ظ…ط³طھظ„ظ… ظˆط­ط¯ظ‡ â€” ظ…ظ† ط§ظ„ط®ط§ط¯ظ…). */
+  /** هل لهذا القارئ حق الرد؟ (المستلم وحده — من الخادم). */
   canReply: boolean;
   messagesCount: number;
-  /** ط§ط³ظ… ظپط±ط¹ ط§ظ„ط¥ط¯ط§ط±ط© â€” ظٹظڈط¹ط±ط¶ ظ„ظ„ظ…ط¯ظٹط±/ط§ظ„ظ…ط´ط±ظپ ظپظ‚ط·. */
+  /** اسم فرع الإدارة — يُعرض للمدير/المشرف فقط. */
   administrativeBranchName: string | null;
   governorate: string;
   updatedAt: string;
@@ -69,7 +69,7 @@ export interface CorrespondenceDto {
   fileContext: CorrespondenceFileContext | null;
   branchId: number | null;
   governorate: string;
-  /** ط§ط³ظ… ظپط±ط¹ ط§ظ„ط¥ط¯ط§ط±ط© â€” ظٹظڈط¹ط±ط¶ ظ„ظ„ظ…ط¯ظٹط±/ط§ظ„ظ…ط´ط±ظپ ظپظ‚ط·. */
+  /** اسم فرع الإدارة — يُعرض للمدير/المشرف فقط. */
   administrativeBranchName: string | null;
   creatorId: number;
   creatorName: string;
@@ -77,17 +77,17 @@ export interface CorrespondenceDto {
   targetUserId: number;
   targetName: string;
   targetRole: string;
-  /** ط­ط§ظ„ط© ط§ط·ظ„ط§ط¹ ط§ظ„ط·ط±ظپ ط§ظ„ظ…ط³طھظ„ظ…: 'seen' ط£ظˆ 'pending'. */
+  /** حالة اطلاع الطرف المستلم: 'seen' أو 'pending'. */
   viewStatus: CorrespondenceViewStatus;
-  /** ظ‡ظ„ ظ„ظ‡ط°ط§ ط§ظ„ظ‚ط§ط±ط¦ ط­ظ‚ ط§ظ„طھظˆط«ظٹظ‚طں (ط§ظ„ظ…ط³طھظ„ظ… ظˆط­ط¯ظ‡ â€” ظ…ظ† ط§ظ„ط®ط§ط¯ظ…). */
+  /** هل لهذا القارئ حق التوثيق؟ (المستلم وحده — من الخادم). */
   canMarkSeen: boolean;
-  /** ظ‡ظ„ ظ„ظ‡ط°ط§ ط§ظ„ظ‚ط§ط±ط¦ ط­ظ‚ ط§ظ„ط±ط¯طں (ط§ظ„ظ…ط³طھظ„ظ… ظˆط­ط¯ظ‡ â€” ظ…ظ† ط§ظ„ط®ط§ط¯ظ…). */
+  /** هل لهذا القارئ حق الرد؟ (المستلم وحده — من الخادم). */
   canReply: boolean;
   messages: CorrespondenceMessageDto[];
-  /** طھظˆط«ظٹظ‚ ظ…ط´ط§ظ‡ط¯ط© ط§ظ„ظ…ط³طھظ„ظ… ظˆط­ط¯ظ‡. */
+  /** توثيق مشاهدة المستلم وحده. */
   receipts: CorrespondenceReceiptDto[];
   createdAt: string;
-  /** ط§ظ„ط´ط¹ط¨ط© ط§ظ„ظ…ط¬ظ…ط¯ط© ظ„ظ„ظ…ط³طھظ„ظ… ط§ظ„ط±ط¦ظٹط³ (آ§10.2) â€” ط؛ط§ط¦ط¨ ظ„ط؛ظٹط±ظ‡. */
+  /** الشعبة المجمدة للمستلم الرئيس (§10.2) — غائب لغيره. */
   recipientSectionId?: number | null;
 }
 
@@ -96,11 +96,11 @@ export interface CreateCorrespondenceRequest {
   targetUserId: number;
   importance: CorrespondenceImportance;
   bodyHtml: string;
-  /** ط¹ظ‚ط¯ ط§ظ„ظ…ط³طھظ„ظ… ط§ظ„ط±ط¦ظٹط³ (آ§10.2): ط´ط¹ط¨ط© ظ…ط¬ظ…ط¯ط© â€” ط؛ط§ط¦ط¨ ظٹط¹ظ†ظٹ ط±ط¦ظٹط³ ط§ظ„ظ‚ط³ظ…ط› ظ„ط؛ظٹط± ط§ظ„ط±ط¦ظٹط³ طھظڈط±ظپط¶. */
+  /** عقد المستلم الرئيس (§10.2): شعبة مجمدة — غائب يعني رئيس القسم؛ لغير الرئيس تُرفض. */
   recipientSectionId?: number | null;
 }
 
-/** ظ…ط³طھظ„ظ… ظ…ط±ط´ط­ ظ„ظ…ط±ط§ط³ظ„ط© ط¬ط¯ظٹط¯ط© (ط¨ط­ط« ط¨ط§ظ„ط§ط³ظ…). */
+/** مستلم مرشح لمراسلة جديدة (بحث بالاسم). */
 export interface CorrespondenceTargetDto {
   userId: number;
   fullName: string;

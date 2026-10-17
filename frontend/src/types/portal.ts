@@ -1,7 +1,7 @@
 import type { PagedResult } from './common';
 import type { PublicEntityType } from './entity';
 
-/** ظ†ط·ط§ظ‚ ط§ظ„ظ…ظ†ط¯ظˆط¨: ظ‡ظˆظٹط© ط£ظ… ط¨ظƒظ„ ظ‚ظٹظˆط¯ظ‡ط§ ط£ظˆ ظ‚ظٹط¯ ط¨ط¹ظٹظ†ظ‡. */
+/** نطاق المندوب: هوية أم بكل قيودها أو قيد بعينه. */
 export interface PortalScopeDto {
   scopeType: 'group' | 'entry';
   groupId: number;
@@ -17,7 +17,7 @@ export interface PortalScopeEntryDto {
   isActive: boolean;
 }
 
-/** ظ…ظ„ظپ ظپظٹ ظ‚ط§ط¦ظ…ط© ط§ظ„ط¨ظˆط§ط¨ط© â€” ظ‚ط±ط§ط،ط© ظپظ‚ط· ط¨ظ„ط§ ط­ظ‚ظˆظ„ ط¯ط§ط®ظ„ظٹط© ظ„ظ„ظ…ط­ط§ظ…ظٹظ†. */
+/** ملف في قائمة البوابة — قراءة فقط بلا حقول داخلية للمحامين. */
 export interface PortalFileListItemDto {
   id: number;
   documentType: string;
@@ -30,26 +30,26 @@ export interface PortalFileListItemDto {
   execStatus?: string | null;
   createdAt: string;
   updatedAt: string;
-  /** ظ…ظƒظˆظ‘ظ†ط§ ط§ظ„ط§ط³ظ… ط§ظ„ط«ظ„ط§ط«ظٹ ظ„ظ„ظ…ظ†ظپط° ط¹ظ„ظٹظ‡. */
+  /** مكوّنا الاسم الثلاثي للمنفذ عليه. */
   borrowerFather?: string | null;
   borrowerFamily?: string | null;
-  /** ظ†ظˆط¹ ط§ظ„ظ…ظ„ظپ (FileType: ط³ظ†ط¯ ظ…طµط§ط±ظپطŒ طھط£ظ…ظٹظ†طŒ â€¦). */
+  /** نوع الملف (FileType: سند مصارف، تأمين، …). */
   fileType?: string | null;
-  /** ط¯ط§ط¦ط±ط© ط§ظ„طھظ†ظپظٹط° ط§ظ„ظ…ط®طھطµط© â€” طھظڈط®ظپظ‰ ط¹ط±ط¶ظٹظ‹ط§ ط¹ظ†ط¯ ظپط±ط§ط؛ظ‡ط§. */
+  /** دائرة التنفيذ المختصة — تُخفى عرضيًا عند فراغها. */
   court?: string | null;
-  /** ط£ط­ط¯ط« ط±ظ‚ظ… ط£ط³ط§ط³ ط¯ط§ط¦ظ…ظ‹ط§ ظˆط¥ظ„ط§ ط±ظ‚ظ… ط§ظ„ظ…ظ„ظپ ط§ظ„ط£طµظ„ظٹ. */
+  /** أحدث رقم أساس دائمًا وإلا رقم الملف الأصلي. */
   displayBaseNumber?: string | null;
-  /** ط³ظ†ط© ط±ظ‚ظ… ط§ظ„ط£ط³ط§ط³ ط§ظ„ظ…ط¹ط±ظˆط¶ ظˆط¥ظ„ط§ ط³ظ†ط© ظ‚ظٹط¯ ط§ظ„ظ…ظ„ظپ ط§ظ„ط£طµظ„ظٹط©. */
+  /** سنة رقم الأساس المعروض وإلا سنة قيد الملف الأصلية. */
   displayBaseYear?: string | null;
-  /** ظ‚ظٹظˆط¯ ط§ظ„ظ†ط·ط§ظ‚ ط§ظ„ظ…ط·ط§ط¨ظ‚ط© ظ„ظ‡ط°ط§ ط§ظ„ظ…ظ„ظپ (ظ„ظ„ط³ط·ط± ط§ظ„ط«ط§ظ†ظٹ آ«ظپط±ط¹ ط§ظ„ط¬ظ‡ط© ط§ظ„ط¹ط§ظ…ط©آ»). */
+  /** قيود النطاق المطابقة لهذا الملف (للسطر الثاني «فرع الجهة العامة»). */
   matchedEntries?: PortalScopeEntryDto[] | null;
-  /** ط­ط§ظ„ط© ط§ظ„ط¹ط±ط¶ ظ…ظ† ط§ظ„ط®ط§ط¯ظ… (`DocumentStatusResolver`) â€” طھط´طھظ‚ ظ…ظ†ظ‡ط§ ط§ظ„ط´ط§ط±ط© ظ…ط¨ط§ط´ط±ط© ط¨ظ„ط§ ط¥ط¹ط§ط¯ط© طھطµظ†ظٹظپ. */
+  /** حالة العرض من الخادم (`DocumentStatusResolver`) — تشتق منها الشارة مباشرة بلا إعادة تصنيف. */
   displayStatus?: string | null;
 }
 
 export type PortalFilesResponse = PagedResult<PortalFileListItemDto>;
 
-/** ط§ط³طھط¦ظ†ط§ظپ ظ‚ط±ط§ط¦ظٹ ط¹ظ„ظ‰ ط¨ط·ط§ظ‚ط© ط§ط³طھط¦ظ†ط§ظپط§طھ ط§ظ„ط¨ظˆط§ط¨ط©. */
+/** استئناف قرائي على بطاقة استئنافات البوابة. */
 export interface PortalAppealDto {
   id: number;
   direction: string;
@@ -62,14 +62,14 @@ export interface PortalAppealDto {
   decisionRuling?: string | null;
 }
 
-/** ط¥ط¬ط±ط§ط، طھظ†ظپظٹط°ظٹ ظ‚ط±ط§ط¦ظٹ ط¹ظ„ظ‰ ط¨ط·ط§ظ‚ط© آ«ط§ظ„ط¥ط¬ط±ط§ط،ط§طھ ط§ظ„طھظ†ظپظٹط°ظٹط©آ» â€” ظ†ظˆط¹ action ظپظ‚ط·طŒ ط¨ظ„ط§ ط´ط§ط±ط© طھط°ظƒظٹط± (ظ‚7). */
+/** إجراء تنفيذي قرائي على بطاقة «الإجراءات التنفيذية» — نوع action فقط، بلا شارة تذكير (ق7). */
 export interface PortalExecutionActionDto {
   id: number;
-  /** ظ†طµ ط§ظ„ط¥ط¬ط±ط§ط، ط§ظ„ط؛ظ†ظٹ â€” ظٹظڈط¹ظ‚ظژظ‘ظ… ط¹ط¨ط± sanitizeRichText ظ‚ط¨ظ„ ط§ظ„ط¹ط±ط¶. */
+  /** نص الإجراء الغني — يُعقَّم عبر sanitizeRichText قبل العرض. */
   text: string;
-  /** طھط§ط±ظٹط® ط§ظ„ط¥ط¬ط±ط§ط، (ظ†طµ ط­ط± ظٹظڈط¹ط±ط¶ ظƒظ…ط§ ظ‡ظˆ). */
+  /** تاريخ الإجراء (نص حر يُعرض كما هو). */
   actionDate?: string;
-  /** ط§ظ„ظ…ط­ط§ظ…ظٹ ط§ظ„ط°ظٹ ط£ط¯ط®ظ„ ط§ظ„ط¥ط¬ط±ط§ط،. */
+  /** المحامي الذي أدخل الإجراء. */
   createdByName?: string;
   createdAt: string;
 }
@@ -102,7 +102,7 @@ export interface DelegateDto {
   createdAt: string;
 }
 
-/* â”€â”€ ط¥ط­طµط§ط،ط§طھ ط§ظ„ط¬ظ‡ط© (ط§ظ„ظ…ط±ط­ظ„ط© 4) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── إحصاءات الجهة (المرحلة 4) ───────────────────────────────────────── */
 
 export interface PortalMonthlyCountDto {
   year: number;
@@ -110,7 +110,7 @@ export interface PortalMonthlyCountDto {
   files: number;
 }
 
-/** طھظˆط²ظٹط¹ ط§ظ„ط§ط±طھط¨ط§ط· ط¹ظ„ظ‰ ظ‚ظٹظˆط¯ ط§ظ„ظ†ط·ط§ظ‚ط› ظ‚ط¯ ظٹظڈط­طھط³ط¨ ط§ظ„ظ…ظ„ظپ طھط­طھ ط£ظƒط«ط± ظ…ظ† ظ‚ظٹط¯. */
+/** توزيع الارتباط على قيود النطاق؛ قد يُحتسب الملف تحت أكثر من قيد. */
 export interface PortalEntryStatDto {
   entryId: number;
   governorate: string;
@@ -124,7 +124,7 @@ export interface PortalCurrencyStatDto {
   totalAmount: number;
 }
 
-/** ظ…ط¨ط§ظ„ط؛ ط³ظ„ظ‘ط© ط­ط§ظ„ط© ظˆط§ط­ط¯ط© ظ…ظƒط³ظ‘ط±ط© ط­ط³ط¨ ط§ظ„ط¹ظ…ظ„ط© (ظ„ط§ ط®ظ„ط· ط¨ظٹظ† ط§ظ„ط¹ظ…ظ„ط§طھ). */
+/** مبالغ سلّة حالة واحدة مكسّرة حسب العملة (لا خلط بين العملات). */
 export interface PortalStatusAmountDto {
   status: string;
   files: number;
@@ -137,16 +137,16 @@ export interface PortalStatsDto {
   circulatingFiles: number;
   executedFiles: number;
   deferredFiles: number;
-  /** ط¹ط¯ط¯ ظ…ظ„ظپط§طھ آ«ظ…ط­ط§ظ„ ط§ظ„ظ‰ ط§ظ„ط¨ط¯ط§ظٹط©آ» ظپظٹ ط§ظ„ظ†ط·ط§ظ‚ (ظپظ„طھط± ظ…ط³طھظ‚ظ„ â€” ظ„ط§ ظٹط´ظ…ظ„ظ‡ط§ ظپظ„طھط± آ«ظ…ظ†ظپط°آ»). */
+  /** عدد ملفات «محال الى البداية» في النطاق (فلتر مستقل — لا يشملها فلتر «منفذ»). */
   referredToStartFiles?: number;
   pendingAppeals: number;
   closedAppeals: number;
-  /** ط¢ط®ط± 12 ط´ظ‡ط±ظ‹ط§ ظ…طھطµظ„ط© ط­طھظ‰ ط§ظ„ط´ظ‡ط± ط§ظ„ط­ط§ظ„ظٹ ط´ط§ظ…ظ„ط© ط§ظ„ط£ط´ظ‡ط± ط§ظ„طµظپط±ظٹط©. */
+  /** آخر 12 شهرًا متصلة حتى الشهر الحالي شاملة الأشهر الصفرية. */
   monthly: PortalMonthlyCountDto[];
   perEntry: PortalEntryStatDto[];
   topCurrencies: PortalCurrencyStatDto[];
-  /** ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„ظ…ط¨ط§ظ„ط؛ ظ…ظƒط³ظ‘ط±ظ‹ط§ ط­ط³ط¨ ط§ظ„ط¹ظ…ظ„ط©. */
+  /** إجمالي المبالغ مكسّرًا حسب العملة. */
   amountTotals?: PortalCurrencyStatDto[] | null;
-  /** ط§ظ„ظ…ط¨ط§ظ„ط؛ ظ„ظƒظ„ ط³ظ„ظ‘ط© ط­ط§ظ„ط© ظ…ظƒط³ظ‘ط±ط© ط­ط³ط¨ ط§ظ„ط¹ظ…ظ„ط©. */
+  /** المبالغ لكل سلّة حالة مكسّرة حسب العملة. */
   amountByStatus?: PortalStatusAmountDto[] | null;
 }
