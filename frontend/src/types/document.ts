@@ -250,7 +250,7 @@ documentType?: string;
   annexNumber?: string;
   annexDate?: string;
   inclusionText?: string;
-  /** ������� ����� �������� (�������� ������) ��� �������� � �� �� �������. */
+  /** ملاحظات السند التنفيذي (القرارات الأخرى) تحت «المتضمن» — نص حر اختياري. */
   inclusionNotes?: string;
   amountNumeric: number;
   amountWords?: string;
@@ -449,7 +449,7 @@ export interface DocumentUpsertRequest {
   annexNumber?: string;
   annexDate?: string;
   inclusionText?: string;
-  /** ������� ����� �������� (�������� ������) ��� �������� � �� �� �������. */
+  /** ملاحظات السند التنفيذي (القرارات الأخرى) تحت «المتضمن» — نص حر اختياري. */
   inclusionNotes?: string;
   amountNumeric?: number;
   amountWords?: string;

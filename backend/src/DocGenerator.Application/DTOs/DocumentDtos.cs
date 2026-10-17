@@ -54,7 +54,7 @@ public class DocumentResponse : IDocumentSheetFields
     public string? AnnexNumber { get; set; }
     public string? AnnexDate { get; set; }
     public string? InclusionText { get; set; }
-    /// <summary>������� ����� �������� (�������� ������) ��� �������� � �� �� �������.</summary>
+    /// <summary>ملاحظات السند التنفيذي (القرارات الأخرى) تحت «المتضمن» — نص حر اختياري.</summary>
     public string? InclusionNotes { get; set; }
     public decimal AmountNumeric { get; set; }
     public string? AmountWords { get; set; }
