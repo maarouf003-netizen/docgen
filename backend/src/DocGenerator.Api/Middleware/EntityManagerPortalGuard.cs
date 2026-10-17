@@ -30,6 +30,9 @@ public sealed class EntityManagerPortalGuard
                 path.StartsWithSegments("/api/portal")
                 || path.StartsWithSegments("/api/auth/me")
                 || path.StartsWithSegments("/api/auth/logout")
+                // «تغيير كلمة المرور» مسار آمن لكل الأدوار — كلمة قديمة + PasswordPolicy
+                // + إبطال الجلسات عبر TokenVersion (M-08, 2026-10-17).
+                || path.StartsWithSegments("/api/auth/change-password")
                 // الدور القرائي يجب أن يُبلغ عن الأعطال: نقطة client-errors موثقة ومخنوقة لكل مستخدم.
                 || path.StartsWithSegments("/api/client-errors")
                 // «سنة النظام» قرائية عامة للواجهة (سنة التدوير/الإعادة تظهر منها لجميع الأدوار).

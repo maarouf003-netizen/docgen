@@ -8,8 +8,9 @@ namespace DocGenerator.Infrastructure.Persistence;
 
 /// <summary>
 /// بذر الفروع والمستخدمين لبيئة التطوير فقط؛ أما الإنتاج فلا يُنشئ حسابات افتراضية بكلمة معروفة.
-/// كلمة مرور التطوير عشوائية عند كل بذر (تُطبَع على الكونسول المحلي لمرة واحدة) ما لم تُمرَّر
-/// صراحة عبر <c>Bootstrap:DevSeedPassword</c> (تجاوز للاختبارات المعزولة فقط) — RF-006 (SEC-004).
+/// كلمة مرور التطوير عشوائية عند كل بذر (تُطبَع على الكونسول المحلي عند إنشاء الحسابات
+/// فعليًا فقط) ما لم تُمرَّر صراحة عبر <c>Bootstrap:DevSeedPassword</c> (تجاوز للاختبارات
+/// المعزولة فقط) — RF-006 (SEC-004).
 /// </summary>
 public static class DbSeeder
 {
@@ -24,11 +25,6 @@ public static class DbSeeder
         string? devPassword = null)
     {
         var password = string.IsNullOrWhiteSpace(devPassword) ? GenerateDevPassword() : devPassword;
-        if (string.IsNullOrWhiteSpace(devPassword))
-        {
-            // كونسول محلي فقط (لا Serilog ولا ملفات): بيئة التطوير وحدها تصل هنا.
-            Console.WriteLine($"[DbSeeder] Development accounts seeded. One-time password: {password}");
-        }
         if (!db.Branches.Any())
         {
             db.Branches.AddRange(
@@ -42,6 +38,10 @@ public static class DbSeeder
 
         if (!db.Users.Any())
         {
+            // كونسول محلي فقط (لا Serilog ولا ملفات): بيئة التطوير وحدها تصل هنا،
+            // ويُطبع عند إنشاء الحسابات فعليًا فقط — إقلاع على قاعدة مسبوكة لا يُطبع.
+            if (string.IsNullOrWhiteSpace(devPassword))
+                Console.WriteLine($"[DbSeeder] Development accounts seeded. One-time password: {password}");
             var damascus = db.Branches.FirstOrDefault(b => b.Code == "DAM");
             db.Users.AddRange(
                 new User { Username = "admin", FullName = "مشرف النظام", Role = UserRole.Admin, PasswordHash = hasher.Hash(password) },

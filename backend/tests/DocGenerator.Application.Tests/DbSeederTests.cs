@@ -107,3 +107,61 @@ public class DbSeederTests
         Assert.Equal("custom", user.Username);
     }
 }
+
+/// <summary>
+/// حارس عقد الطباعة (RF-006): سطر كلمة البذر يُطبع عند إنشاء الحسابات فعليًا فقط —
+/// إقلاع التطوير على قاعدة مسبوكة لا يُطبع كلمة جديدة لا تصح لشيء (مراجعة 2026-10-17).
+/// الكونسول حالة مشتركة عالمية — مجموعة تتابعية لتجنب التزاحم مع طبقات سجلات أخرى.
+/// </summary>
+[Collection("Sequential")]
+public class DbSeederPrintTests
+{
+    [Fact]
+    public async Task SeedAsync_PrintsPasswordOnlyWhenAccountsActuallyCreated()
+    {
+        using var db = TestDb.Create();
+        var hasher = new PasswordHasher();
+        var originalOut = Console.Out;
+        try
+        {
+            var firstCapture = new StringWriter();
+            Console.SetOut(firstCapture);
+
+            var seedPassword = await DbSeeder.SeedAsync(db, hasher);
+            var firstOutput = firstCapture.ToString();
+            Assert.Contains("[DbSeeder] Development accounts seeded. One-time password:", firstOutput);
+            Assert.Contains(seedPassword, firstOutput);
+
+            var secondCapture = new StringWriter();
+            Console.SetOut(secondCapture);
+
+            await DbSeeder.SeedAsync(db, hasher);
+            Assert.DoesNotContain("One-time password", secondCapture.ToString());
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+        }
+    }
+
+    [Fact]
+    public async Task SeedAsync_WithExplicitDevPassword_PrintsNothing()
+    {
+        using var db = TestDb.Create();
+        var hasher = new PasswordHasher();
+        var originalOut = Console.Out;
+        try
+        {
+            var capture = new StringWriter();
+            Console.SetOut(capture);
+
+            var used = await DbSeeder.SeedAsync(db, hasher, devPassword: "123456");
+            Assert.Equal("123456", used);
+            Assert.DoesNotContain("One-time password", capture.ToString());
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+        }
+    }
+}

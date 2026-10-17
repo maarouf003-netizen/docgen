@@ -96,6 +96,16 @@ for (const file of walk(ROOT)) {
       }
     });
   }
+
+  // 5) استيراد CSS خارجي عبر شبكة (خطوط غير مستضافة) — قاعدة CSP تمنع الروابط الخارجية
+  // عند الفرض (M-07 السجل 2026-10-17). أي مُثال جديد يجب استضافته محليًا تحت public/.
+  if (/^frontend\/src\/.+\.css$/.test(rel)) {
+    lines.forEach((line, i) => {
+      if (/@import\s+(?:url\()?['"]?https?:/i.test(line)) {
+        failures.push(`${rel}:${i + 1}: استيراد CSS من مصدر خارجي ممنوع (استضف الأصل تحت public/)`);
+      }
+    });
+  }
 }
 
 if (failures.length > 0) {

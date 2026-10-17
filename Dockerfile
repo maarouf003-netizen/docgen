@@ -1,5 +1,5 @@
-# ---- 1) Frontend build (Vite/React) ----
-FROM node:20-alpine AS frontend
+# ---- 1) Frontend build (Vite/React) — Node ≥ 22 (L-07: توحيد الإصدار مع CI) ----
+FROM node:24-alpine AS frontend
 WORKDIR /src/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci

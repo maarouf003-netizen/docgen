@@ -82,6 +82,29 @@ public class AuthIntegrationTests : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task ChangePassword_EntityManager_FullFlow_Works()
+    {
+        // M-08 (2026-10-17): مسار تغيير الكلمة مفتوح للمندوب عبر حارس البوابة —
+        // يُختبر هنا الطرف الكامل (بوابة الدخول + CSRF + الحارس + Authorize + الخدمة)
+        // لحماية العقد لو تغيّرت قائمة أدوار النقطة لاحقًا.
+        var username = $"cpe_{Guid.NewGuid():N}"[..16];
+        // المندوب بلا فرع بالتصميم (قيد القاعدة يشترط الفرع لأدوار الفروع فقط).
+        await _factory.CreateUserAsync(username, UserRole.EntityManager);
+
+        var client = _factory.AuthorizedClient(username);
+        var changeBody = JsonSerializer.Serialize(new { oldPassword = "123456", newPassword = "TestPass1234" });
+        var change = await client.PostAsync("/api/auth/change-password",
+            new StringContent(changeBody, Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.OK, change.StatusCode);
+
+        var oldLogin = await _factory.LoginAsync(username, "123456");
+        Assert.Equal(HttpStatusCode.Unauthorized, (HttpStatusCode)oldLogin!.StatusCode);
+
+        var newLogin = await _factory.LoginAsync(username, "TestPass1234");
+        Assert.Equal(HttpStatusCode.OK, (HttpStatusCode)newLogin!.StatusCode);
+    }
+
+    [Fact]
     public async Task ChangePassword_WithShortPassword_ReturnsBadRequest()
     {
         var client = _factory.AuthorizedClient("head1");
