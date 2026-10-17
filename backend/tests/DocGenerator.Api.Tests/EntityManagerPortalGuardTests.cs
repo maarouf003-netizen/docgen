@@ -60,6 +60,11 @@ public class EntityManagerPortalGuardTests
     [InlineData("/api/portal/correspondence/1/mark-seen")]
     [InlineData("/api/portal/my-scope")]
     [InlineData("/api/auth/me")]
+    [InlineData("/api/auth/logout")]
+    // M-08 (2026-10-17): تغيير الكلمة مسار آمن موحّد لكل الأدوار — كلمة قديمة +
+    // PasswordPolicy + إبطال جلسات عبر TokenVersion؛ والمندوب لا يبقى معتمدًا على
+    // المشرف في كل تغيير كلمة سر.
+    [InlineData("/api/auth/change-password")]
     [InlineData("/api/meta/current-year")]
     public async Task EntityManager_OnPortalAndAuthPaths_PassesThrough(string path)
     {

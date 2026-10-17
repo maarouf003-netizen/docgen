@@ -30,7 +30,10 @@ public class AuditLogsController : ControllerBase
         // F6: ورئيس الشعبة على تدقيق شعبته الدائري (قرار 23) — مستندات دوائر شعبته
         // أو فاعلو شعبته. شعبة برمز بلا شعبة مرفوضة (قرار §2.16) بدل التدهور لنطاق الفرع.
         // المدير/المشرف بلا نطاق كما قبل. نفس نمط scopeBranchId في UserManagementController.
+        // L-05 (2026-10-17): رئيس قسم بلا رمز فرع مرفوض صريحًا بدل النطاق الإجمالي —
+        // تحوّط دفاعي موازٍ لمانع القاعدة (CK_Users_BranchRequiredForBranchRoles) وحارس الدخول.
         var scopeBranchId = Role == UserRole.Head ? User.GetBranchId() : null;
+        if (Role == UserRole.Head && scopeBranchId is null) return Forbid();
         int? scopeSectionId = null;
         if (Role == UserRole.SubHead)
         {

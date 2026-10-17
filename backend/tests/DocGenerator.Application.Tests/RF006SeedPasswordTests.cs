@@ -6,7 +6,11 @@ namespace DocGenerator.Application.Tests;
 /// <summary>
 /// اختبارات إظهار RF-006 (SEC-004): كلمة البذر الملتزمة يجب ألا تعمل.
 /// الأول يفشل قبل الإصلاح ويخضر بعده؛ البقية للعقد الجديد.
+/// مجموعة تتابعية: أثنان هنا يُبذران قاعِدة فارغة بلا تجاوز فتُطبع كلمة البذر على
+/// <c>Console</c> (الحالة العامة للعملية) — التتابع يمنع تزاحمها مع
+/// <c>DbSeederPrintTests</c> التي تلتقط المخرجات (مراجعة 2026-10-17).
 /// </summary>
+[Collection("Sequential")]
 public class RF006SeedPasswordTests
 {
     [Fact]
