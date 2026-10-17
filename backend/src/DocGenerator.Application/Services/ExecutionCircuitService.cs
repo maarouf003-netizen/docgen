@@ -706,8 +706,8 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                 // وتُضاف في النهاية بتمريرة تسلسل واحدة — القاعدتان 2/3 (C2) تليانيان بلا استبعاد.
                 var occDetails = new Dictionary<string, string>
                 {
-                    ["fromCircuit"] = sourceName ?? string.Empty,
-                    ["toCircuit"] = targetName ?? string.Empty,
+                    ["fromCircuit"] = sourceName,
+                    ["toCircuit"] = targetName,
                     ["oldNumber"] = oldNumber ?? string.Empty,
                     ["oldType"] = oldType ?? string.Empty,
                     ["oldYear"] = oldYear ?? string.Empty,
@@ -743,8 +743,8 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                             ToCircuitName = targetName,
                             Details = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, string>
                             {
-                                ["fromCircuit"] = sourceName ?? string.Empty,
-                                ["toCircuit"] = targetName ?? string.Empty,
+                                ["fromCircuit"] = sourceName,
+                                ["toCircuit"] = targetName,
                             }),
                             CreatedById = actorUserId,
                             CreatedAt = now,
@@ -783,8 +783,8 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                             ToCircuitName = targetName,
                             Details = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, string>
                             {
-                                ["fromCircuit"] = sourceName ?? string.Empty,
-                                ["toCircuit"] = targetName ?? string.Empty,
+                                ["fromCircuit"] = sourceName,
+                                ["toCircuit"] = targetName,
                             }),
                             CreatedById = actorUserId,
                             CreatedAt = now,
