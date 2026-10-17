@@ -168,6 +168,117 @@ describe('occurrenceLine (referred-to-start و revert — B3/B4)', () => {
   });
 });
 
+describe('occurrenceLine (إحالة نقل دوائر — C3)', () => {
+  it('يسرد الإحالة الجماعية بالأرقام القديمة ومسار الدائرتين', () => {
+    expect(
+      occurrenceLine(
+        occurrence({
+          occurrenceType: 'circuit-referred',
+          occurrenceTypeLabel: 'إحالة نقل دائرة',
+          fileNumber: '66',
+          fileType: 'صلح',
+          year: 2026,
+          fromCircuitName: 'دائرة المصدر',
+          toCircuitName: 'دائرة الوجهة',
+          details: { fromCircuit: 'دائرة المصدر', toCircuit: 'دائرة الوجهة', oldNumber: '66' },
+        }),
+      ),
+    ).toBe('تم نقل هذا الملف رقم 66 نوع صلح لعام 2026 من دائرة «دائرة المصدر» إلى دائرة «دائرة الوجهة»');
+  });
+
+  it('يلحق ذيل تغيّر دائرة إنابة المنيب عند وجوده', () => {
+    expect(
+      occurrenceLine(
+        occurrence({
+          occurrenceType: 'circuit-referred',
+          occurrenceTypeLabel: 'إحالة نقل دائرة',
+          fileNumber: '66',
+          fileType: 'صلح',
+          year: 2026,
+          fromCircuitName: 'دائرة المصدر',
+          toCircuitName: 'دائرة الوجهة',
+          details: { fromCircuit: 'دائرة المصدر', toCircuit: 'دائرة الوجهة', delegationCircuitChange: 'من «دائرة أ» إلى «دائرة ب»' },
+        }),
+      ),
+    ).toBe(
+      'تم نقل هذا الملف رقم 66 نوع صلح لعام 2026 من دائرة «دائرة المصدر» إلى دائرة «دائرة الوجهة» — وتغيّرت بذلك دائرة إنابة الملف المنيب: من «دائرة أ» إلى «دائرة ب»',
+    );
+  });
+
+  it('يسرد تبديل الدائرة من التعديل العادي (via=edit) بالأرقام الحالية', () => {
+    expect(
+      occurrenceLine(
+        occurrence({
+          occurrenceType: 'circuit-referred',
+          occurrenceTypeLabel: 'إحالة نقل دائرة',
+          fileNumber: '101',
+          fileType: 'حقوق',
+          year: 2026,
+          fromCircuitName: 'دائرة السابق',
+          toCircuitName: 'دائرة الجديد',
+          details: { fromCircuit: 'دائرة السابق', toCircuit: 'دائرة الجديد', via: 'edit' },
+        }),
+      ),
+    ).toBe('تم تبديل دائرة الملف من دائرة «دائرة السابق» إلى دائرة «دائرة الجديد» — على الرقم 101 حقوق 2026');
+  });
+
+  it('يسرد وقعتي الطرف المقابل (منيب→مناب ومناب→منيب) بنمط متجانس', () => {
+    expect(
+      occurrenceLine(
+        occurrence({
+          occurrenceType: 'source-file-moved',
+          occurrenceTypeLabel: 'نقل الملف المنيب',
+          fileNumber: '66',
+          fileType: 'صلح',
+          year: 2026,
+          fromCircuitName: 'دائرة المصدر',
+          toCircuitName: 'دائرة الوجهة',
+          details: { fromCircuit: 'دائرة المصدر', toCircuit: 'دائرة الوجهة' },
+        }),
+      ),
+    ).toBe('تم نقل الملف المنيب رقم 66 نوع صلح لعام 2026 من دائرة «دائرة المصدر» إلى دائرة «دائرة الوجهة»');
+    expect(
+      occurrenceLine(
+        occurrence({
+          occurrenceType: 'mirror-file-moved',
+          occurrenceTypeLabel: 'نقل الملف المناب',
+          fileNumber: '66',
+          fileType: 'صلح',
+          year: 2026,
+          fromCircuitName: 'دائرة المصدر',
+          toCircuitName: 'دائرة الوجهة',
+          details: { fromCircuit: 'دائرة المصدر', toCircuit: 'دائرة الوجهة' },
+        }),
+      ),
+    ).toBe('تم نقل الملف المناب رقم 66 نوع صلح لعام 2026 من دائرة «دائرة المصدر» إلى دائرة «دائرة الوجهة»');
+  });
+
+  it('يتجاوز الحقول الناقصة بلا فراغات زائدة', () => {
+    expect(
+      occurrenceLine(
+        occurrence({
+          occurrenceType: 'source-file-moved',
+          occurrenceTypeLabel: 'نقل الملف المنيب',
+          fromCircuitName: 'دائرة المصدر',
+          toCircuitName: 'دائرة الوجهة',
+        }),
+      ),
+    ).toBe('تم نقل الملف المنيب من دائرة «دائرة المصدر» إلى دائرة «دائرة الوجهة»');
+  });
+
+  it('صف الإرث (بلا details ولا حقول الوقعة) يبقى على السرْد الموحّد بلا انفجار', () => {
+    // F1: صف وقعة قديمة وصل قبل تعريف أي مفاتيح (لا details ولا آثار) — يسقط
+    // إلى مقطع الافتتاح وحده من السطر الموحّد (صفر أثر جانبي على التسمية/البطاقات).
+    expect(
+      occurrenceLine({
+        id: 1,
+        occurrenceType: 'circuit-referred',
+        occurrenceTypeLabel: 'إحالة نقل دائرة',
+      }),
+    ).toBe('تم نقل هذا الملف');
+  });
+});
+
 describe('identityFileNumber (بطاقة «رقم الملف والسنة» المدمجة)', () => {
   it('يدمج الرقم والسنة بصيغة «66 / 2026»', () => {
     expect(identityFileNumber(targetDoc({ fileNumber: '66', fileYear: '2026' }))).toBe('66 / 2026');

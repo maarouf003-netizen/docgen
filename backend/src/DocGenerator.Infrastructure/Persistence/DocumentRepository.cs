@@ -763,6 +763,18 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         return await q.Where(d => d.ExecutionCircuitId == circuitId).ToListAsync(ct);
     }
 
+    public async Task<List<Document>> ListCircuitFileSummariesAsync(int circuitId, CancellationToken ct = default)
+    {
+        // إسقاط خفيف لنافذة الإفراغ: الحقول المعروضة كلها أعمدة مباشرة على Document —
+        // بلا WithStandardIncludes عمدًا (لا إعادة بناء مشتقات هنا)، والفلتر العام
+        // يخفي المحذوفة منطقيًا تلقائيًا، وترتيب ثابت بالمعرف لعرض مستقر.
+        return await Db.Documents
+            .AsNoTracking()
+            .Where(d => d.ExecutionCircuitId == circuitId)
+            .OrderBy(d => d.Id)
+            .ToListAsync(ct);
+    }
+
     public async Task<List<Document>> ListByIdsForUpdateAsync(List<int> ids, CancellationToken ct = default)
     {
         // شمول كامل لذات سبب ListByCircuitAsync: الإحالة/إعادة القيد تعيدان بناء
@@ -783,26 +795,56 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
         return await q.OrderBy(d => d.Id).ToListAsync(ct);
     }
 
-    public async Task<Dictionary<int, (int FileCount, int PendingCount)>> CountByCircuitsAsync(List<int> circuitIds, CancellationToken ct = default)
+    public async Task<Dictionary<int, (int FileCount, int PendingCount, int DeletedCount)>> CountByCircuitsAsync(List<int> circuitIds, CancellationToken ct = default)
     {
-        var result = circuitIds.Distinct().ToDictionary(id => id, _ => (FileCount: 0, PendingCount: 0));
+        var result = circuitIds.Distinct().ToDictionary(id => id, _ => (FileCount: 0, PendingCount: 0, DeletedCount: 0));
         if (result.Count == 0) return result;
         var ids = result.Keys.ToList();
+        // IgnoreQueryFilters دفعة واحدة ثم تصنيف في الذاكرة: حار/معلق/محذوف —
+        // حجم حالة الاستعلام واحدة وعدد الصفوف = صفوف الدوائر فقط.
         var rows = await Db.Documents
             .AsNoTracking()
-            .Where(d => d.ExecutionCircuitId != null && ids.Contains(d.ExecutionCircuitId.Value) && !d.IsDeleted)
-            .Select(d => new { d.ExecutionCircuitId, d.NeedsRegistration })
+            .IgnoreQueryFilters()
+            .Where(d => d.ExecutionCircuitId != null && ids.Contains(d.ExecutionCircuitId.Value))
+            .Select(d => new { d.ExecutionCircuitId, d.NeedsRegistration, d.IsDeleted })
             .ToListAsync(ct);
         foreach (var g in rows.GroupBy(r => r.ExecutionCircuitId!.Value))
-            result[g.Key] = (g.Count(), g.Count(r => r.NeedsRegistration));
+        {
+            result[g.Key] = (
+                g.Count(r => !r.IsDeleted),
+                g.Count(r => !r.IsDeleted && r.NeedsRegistration),
+                g.Count(r => r.IsDeleted));
+        }
         return result;
     }
 
-    public async Task<int> CountAllByCircuitAsync(int circuitId, CancellationToken ct = default)
+    public async Task<List<Document>> ListDeletedByCircuitAsync(int circuitId, CancellationToken ct = default)
     {
+        // صفوف سلة المحذوفات لدائرة (بترتيب ثابت) — متتبَّعة قصدًا (بلا AsNoTracking)
+        // كي تُحذف عبر Remove، وبلا WithStandardIncludes: الحذف التسلسلي تكفله
+        // قيود FK في القاعدة (CASCADE/SET NULL) والكيان المحمَّل لا يحتاج نوافيجيشن.
         return await Db.Documents
             .IgnoreQueryFilters()
-            .CountAsync(d => d.ExecutionCircuitId == circuitId, ct);
+            .Where(d => d.ExecutionCircuitId == circuitId && d.IsDeleted)
+            .OrderBy(d => d.Id)
+            .ToListAsync(ct);
+    }
+
+    public async Task<Dictionary<int, int>> MapMirrorsBySourceDelegationIdsAsync(List<int> delegationIds, CancellationToken ct = default)
+    {
+        var ids = (delegationIds ?? new List<int>()).Distinct().ToList();
+        if (ids.Count == 0) return new Dictionary<int, int>();
+        // المناب صف واحد لكل إنابة (فهرس SourceDelegationId الوحيد) — الفلتر العام
+        // `!IsDeleted` يخفي منابًا محذوفًا منطقيًا (غير مرئي أصلًا فلا توثيق نقله)؛
+        // ولتكرار حدوث ما يمكن (احترازًا نظريًا فقط) يُختار أقدم Id.
+        var rows = await Db.Documents
+            .AsNoTracking()
+            .Where(d => d.SourceDelegationId != null && ids.Contains(d.SourceDelegationId.Value))
+            .Select(d => new { DelegationId = d.SourceDelegationId!.Value, MirrorId = d.Id })
+            .ToListAsync(ct);
+        return rows
+            .GroupBy(r => r.DelegationId)
+            .ToDictionary(g => g.Key, g => g.First().MirrorId);
     }
 
     public async Task<List<DocumentOccurrence>> ListLastCircuitReferralsAsync(List<int> documentIds, CancellationToken ct = default)

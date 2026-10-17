@@ -239,6 +239,38 @@ function StatusChangeOccurrenceDetails({ occurrence }: { occurrence: DocumentOcc
       // وهنا تاريخ التغيير التشغيلي فقط — بمرآة «تاريخ الشطب» لوقعة الشطب.
       pushIf(pairs, 'تاريخ التغيير', formatDate(occurrence.eventDate));
       break;
+    case 'circuit-referred': {
+      // إحالة نقل دائرة (تفريغ الدائرة): الدائرتان المجمدتان + الرقم/النوع/السنة القديمة
+      // الملتقطة وقت الإحالة؛ وعند التبديل من التعديل العادي (via=edit) بلا أرقام قديمة
+      // فتُسمّى «رقم الملف عند التبديل» من حقول الوقعة. وذيل الوجهة يظهر عند وجوده.
+      pushIf(pairs, 'الدائرة المصدر', occurrence.fromCircuitName ?? undefined);
+      pushIf(pairs, 'الدائرة الهدف', occurrence.toCircuitName ?? undefined);
+      if (d.via === 'edit') {
+        pushIf(pairs, 'رقم الملف عند التبديل', occurrence.fileNumber ?? undefined);
+        pushIf(pairs, 'نوع الملف عند التبديل', occurrence.fileType ?? undefined);
+        pushIf(pairs, 'سنة التبديل', occurrence.year ? String(occurrence.year) : undefined);
+      } else {
+        pushIf(pairs, 'الرقم القديم', d.oldNumber);
+        pushIf(pairs, 'النوع القديم', d.oldType);
+        pushIf(pairs, 'السنة القديمة', d.oldYear);
+      }
+      if (d.delegationCircuitChange) {
+        pushIf(pairs, 'تغيّر دائرة إنابة الملف المنيب', d.delegationCircuitChange);
+      }
+      break;
+    }
+    case 'source-file-moved':
+    case 'mirror-file-moved': {
+      // نقل الطرف المقابل (C2): أرقام المُنب/المنيب القديمة من حقول الوقعة بتمييز المسمّى.
+      const numberLabel =
+        occurrence.occurrenceType === 'source-file-moved' ? 'رقم الملف المنيب' : 'رقم الملف المناب';
+      pushIf(pairs, numberLabel, occurrence.fileNumber ?? undefined);
+      pushIf(pairs, 'نوعه', occurrence.fileType ?? undefined);
+      pushIf(pairs, 'سنة قيده', occurrence.year ? String(occurrence.year) : undefined);
+      pushIf(pairs, 'الدائرة المصدر', occurrence.fromCircuitName ?? undefined);
+      pushIf(pairs, 'الدائرة الهدف', occurrence.toCircuitName ?? undefined);
+      break;
+    }
   }
   if (pairs.length === 0) return <p className="text-gray-400 text-sm">لا توجد تفاصيل مسجلة</p>;
   return (

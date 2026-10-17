@@ -1,6 +1,6 @@
-/* â”€â”€ ط³ط¬ظ„ ط¯ظˆط§ط¦ط± ط§ظ„طھظ†ظپظٹط° (BQ-004) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── سجل دوائر التنفيذ (BQ-004) ─────────────────────────────────────── */
 
-/** ط¯ط§ط¦ط±ط© طھظ†ظپظٹط° ظˆط§ط­ط¯ط© ظ…ط¹ ط¹ط¯ط§ط¯ط§طھظ‡ط§ (ظ…ظ„ظپط§طھ + ظ…ط¹ظ„ظ‚ط§طھ). */
+/** دائرة تنفيذ واحدة مع عداداتها (ملفات + معلقات). */
 export interface ExecutionCircuitDto {
   id: number;
   branchId: number;
@@ -10,32 +10,44 @@ export interface ExecutionCircuitDto {
   fileCount: number;
   pendingCount: number;
   version: number;
-  /** ظ…ط¹ط±ظ‘ظپ ط§ظ„ط´ط¹ط¨ط© ط§ظ„ظ…ط§ظ„ظƒط© â€” ط؛ط§ط¦ط¨/`null` ظٹط¹ظ†ظٹ ظ‚ط³ظ… ط§ظ„ظپط±ط¹ (آ§8). */
+  /** معرّف الشعبة المالكة — غائب/`null` يعني قسم الفرع (§8). */
   sectionId?: number | null;
-  /** ط§ط³ظ… ط§ظ„ط´ط¹ط¨ط© ط§ظ„ظ…ط§ظ„ظƒط© â€” ظ„ظ„ط¹ط±ط¶ ظپظ‚ط·. */
+  /** اسم الشعبة المالكة — للعرض فقط. */
   sectionName?: string | null;
+  /** عدد صفوف سلة محذوفات الدائرة (تُطهَّر نهائيًا عند حذف الدائرة — قرار المالك). */
+  deletedFileCount: number;
 }
 
-/** ط¥ط¯ط®ط§ظ„/طھط³ظ…ظٹط© ط¯ط§ط¦ط±ط© (ط§ظ„ط§ط³ظ… ظپظ‚ط· â€” ط§ظ„ظپط±ط¹ ظ…ظ† ط³ظٹط§ظ‚ ط±ط¦ظٹط³ ط§ظ„ظ‚ط³ظ…). */
+/** صف ملف الدائرة في معالج الإفراغ — المعرّف والحقول الخمسة المعروضة فقط (إسقاط خفيف). */
+export interface CircuitFileDto {
+  id: number;
+  borrowerName?: string | null;
+  fileNumber?: string | null;
+  fileType?: string | null;
+  fileYear?: string | null;
+  lawyer?: string | null;
+}
+
+/** إدخال/تسمية دائرة (الاسم فقط — الفرع من سياق رئيس القسم). */
 export interface UpsertExecutionCircuitRequest {
   name?: string | null;
   version?: number | null;
 }
 
-/** طھط¹ط·ظٹظ„/طھظپط¹ظٹظ„ ط¯ط§ط¦ط±ط©. */
+/** تعطيل/تفعيل دائرة. */
 export interface SetCircuitActiveRequest {
   isActive: boolean;
   version?: number | null;
 }
 
-/** ط¥ط­ط§ظ„ط© ط¯ظپط¹ط© ظ…ظ„ظپط§طھ ظ…ظ† ط¯ط§ط¦ط±ط© ط¥ظ„ظ‰ ظ…ط­ط§ظ…ظچ (ظ†ظپط³ ط§ظ„ظپط±ط¹طŒ ط°ط±ظٹ). */
+/** إحالة دفعة ملفات من دائرة إلى محامٍ (نفس الفرع، ذري). */
 export interface ReferCircuitFilesRequest {
   fileIds: number[];
   targetLawyerId: number;
   targetCircuitId: number;
 }
 
-/** طµظپ ظ…ظ„ظپ ط¨ط§ظ†طھط¸ط§ط± ط¥ط¹ط§ط¯ط© ط§ظ„ظ‚ظٹط¯ (ط§ظ„ظ…ط¹ط±ظˆط¶ ط­ط§ظ„ظٹظ‹ط§ ظ‚ط¯ظٹظ… ظ…ظ† EffectiveFileIdentity). */
+/** صف ملف بانتظار إعادة القيد (المعروض حاليًا قديم من EffectiveFileIdentity). */
 export interface PendingRegistrationDto {
   documentId: number;
   circuitId: number;
@@ -46,7 +58,7 @@ export interface PendingRegistrationDto {
   oldFileYear?: string | null;
 }
 
-/** ط­ظپط¸ ط°ط±ظٹ ظ„ط¥ط¹ط§ط¯ط© ط§ظ„ظ‚ظٹط¯ (ظ…ظ„ظƒ ط§ظ„ظ…ط­ط§ظ…ظٹ ظپظ‚ط· + ظˆط­ط¯ط§ظ†ظٹط©). */
+/** حفظ ذري لإعادة القيد (ملك المحامي فقط + وحدانية). */
 export interface CompleteRegistrationsRequest {
   entries: Array<{
     documentId: number;
@@ -56,7 +68,7 @@ export interface CompleteRegistrationsRequest {
   }>;
 }
 
-/** طµظپ ط¥ط­طµط§ط¦ظٹط© ط¯ط§ط¦ط±ط© (ط§ظ„ط¯ط§ط¦ط±ط© أ— ظ…ظ„ظپط§طھظ‡ط§ أ— ظ…ط­ط§ظ…ظˆظ† ظ†ط´ط·ظˆظ† أ— ظ…ط¹ظ„ظ‚ط§طھ) â€” ظ…ط¹ ط¹ظ…ظˆط¯ ط§ظ„ط´ط¹ط¨ط© (آ§12). */
+/** صف إحصائية دائرة (الدائرة × ملفاتها × محامون نشطون × معلقات) — مع عمود الشعبة (§12). */
 export interface CircuitStatsDto {
   circuitId: number;
   circuitName: string;
@@ -66,10 +78,10 @@ export interface CircuitStatsDto {
   fileCount: number;
   lawyerCount: number;
   pendingCount: number;
-  /** ط´ط¹ط¨ط© ط§ظ„ط¯ط§ط¦ط±ط© ط§ظ„ظ…ط§ظ„ظƒط© â€” ط؛ط§ط¦ط¨ ظٹط¹ظ†ظٹ ط§ظ„ظ‚ط³ظ…. */
+  /** شعبة الدائرة المالكة — غائب يعني القسم. */
   sectionId?: number | null;
-  /** ط§ط³ظ… ط§ظ„ط´ط¹ط¨ط© ط§ظ„ظ…ط§ظ„ظƒط© â€” ظ„ظ„ط¹ط±ط¶ ظپظ‚ط·. */
+  /** اسم الشعبة المالكة — للعرض فقط. */
   sectionName?: string | null;
-  /** ط±ظ…ط² ط§ظ„طھط²ط§ظ…ظ† ط§ظ„طھظپط§ط¤ظ„ظٹ â€” ظٹظڈط±ط³ظژظ„ ظپظٹ ظ†ظ‚ظ„ ط§ظ„ط¯ط§ط¦ط±ط© ظ„ظƒط´ظپ ط§ظ„ط³ط¨ط§ظ‚. */
+  /** رمز التزامن التفاؤلي — يُرسَل في نقل الدائرة لكشف السباق. */
   version?: number | null;
 }

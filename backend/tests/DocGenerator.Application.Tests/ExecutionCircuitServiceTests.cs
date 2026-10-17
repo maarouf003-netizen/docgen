@@ -179,11 +179,26 @@ public class ExecutionCircuitServiceTests : IDisposable
     [Fact]
     public async Task Delete_BlockedByFiles_ConflictWithCount()
     {
+        // تعديل البند 41: الحارس يعدّ الأحياء فقط — المحذوفة لا ترفع العدد ولا تمنع.
         var a = await CreateCircuitAsync("دائرة أ");
         await CreateDocAsync(a, _lawyer1Id);
         var ex = await Assert.ThrowsAsync<DocumentConflictException>(() =>
             _circuits.DeleteAsync(a, _branchId, null, "head1"));
         Assert.Contains("أفرغها أولًا", ex.Message);
+        Assert.Contains("1 ملفًا", ex.Message);
+
+        // ملف محذوف منطقيًا في الدائرة: العدد يبقى حيًا واحدًا (لا 2).
+        var delId = await CreateDocAsync(a, _lawyer1Id, "811", "2026");
+        var del = await _db.Documents.FindAsync(delId);
+        del!.IsDeleted = true;
+        del.DeletedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        var ex2 = await Assert.ThrowsAsync<DocumentConflictException>(() =>
+            _circuits.DeleteAsync(a, _branchId, null, "head1"));
+        Assert.Contains("1 ملفًا", ex2.Message);
+        Assert.DoesNotContain("2", ex2.Message.Replace("2026", "").Replace("811", ""));
     }
 
     [Fact]
@@ -354,6 +369,96 @@ public class ExecutionCircuitServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Delete_PurgesSoftDeletedFiles_AndAudits()
+    {
+        // تعديل البند 41: سلة المحذوفات تُطهَّر نهائيًا ضمن معاملة الحذف — بلا استعادة ولا نقل.
+        var a = await CreateCircuitAsync("دائرة المطبّر");
+        var delId = await CreateDocAsync(a, _lawyer1Id, "820", "2026");
+        var del = await _db.Documents.FindAsync(delId);
+        del!.IsDeleted = true;
+        del.DeletedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await _circuits.DeleteAsync(a, _branchId, null, "head1");
+
+        Assert.Null(await _db.ExecutionCircuits.FindAsync(a));
+        // إثبات الحذف الفيزيائي: حتى بـ IgnoreQueryFilters لا صف بقي.
+        var survivors = _db.Documents.IgnoreQueryFilters().Count(d => d.ExecutionCircuitId == a);
+        Assert.Equal(0, survivors);
+        var idx = _audit.Actions.LastIndexOf("delete_circuit");
+        Assert.True(idx >= 0);
+        Assert.Contains("طُهِّر نهائيًا 1 ملفًا محذوفًا", _audit.Details[idx]);
+    }
+
+    [Fact]
+    public async Task Delete_CascadeRemovesDelegationOfPurgedDoc()
+    {
+        // حالة اختبارية يدوية (غير متاحة إنتاجيًا — حارس DocumentService.DeleteAsync
+        // يمنع حذف ملف له إنابة): إنابة مصدرها صف محذوف داخل الدائرة بلا ملف مناب مرتبط
+        // (المناب لم يُسجَّل بعد — Documents.SourceDelegationId فريد على الكيان المرفوع حاليًا).
+        // الخارجية (IsExternal=true) بلا DelegatedCircuitId فلا تدخل حلقة فصل الوارد
+        // — والتطهير يحذفها تسلسليًا (CASCADE) بلا انفجار FK.
+        var a = await CreateCircuitAsync("دائرة المطبّر بإنابة");
+        var delId = await CreateDocAsync(a, _lawyer1Id, "821", "2026");
+        var del = await _db.Documents.FindAsync(delId);
+        del!.IsDeleted = true;
+        del.DeletedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        _db.DocumentDelegations.Add(new DocumentDelegation
+        {
+            SourceDocumentId = delId,
+            DelegatedCourt = "دائرة خارجية",
+            IsExternal = true,
+            Status = DelegationStatusCatalog.Executed,
+            CreatedById = _headId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        });
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await _circuits.DeleteAsync(a, _branchId, null, "head1");
+
+        Assert.Null(await _db.ExecutionCircuits.FindAsync(a));
+        Assert.Equal(0, _db.Documents.IgnoreQueryFilters().Count(d => d.ExecutionCircuitId == a));
+        Assert.Equal(0, _db.DocumentDelegations.Count(g => g.SourceDocumentId == delId));
+        var idx = _audit.Actions.LastIndexOf("delete_circuit");
+        Assert.True(idx >= 0);
+        Assert.Contains("طُهِّر نهائيًا", _audit.Details[idx]);
+    }
+
+    [Fact]
+    public async Task ListMine_ReportsDeletedFileCount()
+    {
+        // عدادات مزدوجة في نفس الاستجابة: fileCount=الأحياء و deletedFileCount=المحذوفة.
+        var a = await CreateCircuitAsync("دائرة العدّادين");
+        await CreateDocAsync(a, _lawyer1Id, "831", "2026");
+        await CreateDocAsync(a, _lawyer1Id, "832", "2026");
+        var delIds = new[] { "833", "834", "835" };
+        foreach (var n in delIds)
+        {
+            var delId = await CreateDocAsync(a, _lawyer1Id, n, "2026");
+            var del = await _db.Documents.FindAsync(delId);
+            del!.IsDeleted = true;
+            del.DeletedAt = DateTime.UtcNow;
+        }
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        var circuits = await _circuits.ListMineAsync(_branchId, null);
+        var mine = Assert.Single(circuits.Where(c => c.Id == a));
+        Assert.Equal(2, mine.FileCount);
+        Assert.Equal(3, mine.DeletedFileCount);
+        Assert.Equal(0, mine.PendingCount);
+
+        // ToDtoAsync نفس العقلية (مثال: Rename يعيد DTO المعيد بناءً).
+        var renamed = await _circuits.RenameAsync(a, _branchId, null, "head1", "دائرة العدّادين ٢", null, actorUserId: _headId);
+        Assert.Equal(3, renamed.DeletedFileCount);
+        Assert.Equal(2, renamed.FileCount);
+    }
+
+    [Fact]
     public async Task Rename_CreatesOccurrencesPerDoc_AndMigratesAlertMessages()
     {
         // M1+M6: وقوعّة تسمية لكل ملف + ترحيل نص التنبيه المدمج (المفتاح النصي هش).
@@ -373,6 +478,192 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Equal("دائرة جديدة", occ[0].ToCircuitName);
         var alert = Assert.Single(_db.HeadAlerts.Where(a => a.TargetLawyerId == _lawyer2Id));
         Assert.Equal(ExecutionCircuitService.BuildPendingMessage("دائرة جديدة"), alert.Message);
+    }
+
+    [Fact]
+    public async Task Refer_SourceDocWithDelegation_NotifiesMirrors()
+    {
+        // قاعدة 2 (C2): نقل ملف منيب له إنابة صادرة → وقعة source-file-moved واحدة على
+        // كل مناب مرتبط (بأرقام المنيب القديمة)؛ إنابة بلا مناب مسجّل بعد → تُتخطى.
+        var source = await CreateCircuitAsync("دائرة المصدر المنمّقة");
+        var target = await CreateCircuitAsync("دائرة الهدف المنمّقة");
+        var sourceId = await CreateDocAsync(source, _lawyer1Id, "840", "2026");
+        var delegation = new DocumentDelegation
+        {
+            SourceDocumentId = sourceId,
+            DelegatedCourt = "دائرة منابة",
+            Status = DelegationStatusCatalog.Registered,
+            CreatedById = _headId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        var delegation2 = new DocumentDelegation
+        {
+            SourceDocumentId = sourceId,
+            DelegatedCourt = "دائرة بلا مناب",
+            Status = DelegationStatusCatalog.Registered,
+            CreatedById = _headId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        _db.DocumentDelegations.AddRange(delegation, delegation2);
+        await _db.SaveChangesAsync();
+        var mirrorId = await CreateDocAsync(target, _lawyer1Id, "841", "2026");
+        var mirror = await _db.Documents.FindAsync(mirrorId);
+        mirror!.SourceDelegationId = delegation.Id;
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
+            new ReferCircuitFilesRequest { FileIds = new List<int> { sourceId }, TargetLawyerId = _lawyer2Id, TargetCircuitId = target });
+
+        var moved = _db.DocumentOccurrences
+            .Where(o => o.OccurrenceType == OccurrenceTypeCatalog.SourceFileMoved).ToList();
+        Assert.Single(moved); // إنابة بلا مناب مسجَّل → تُستبعد من الخريطة
+        var occ = Assert.Single(moved);
+        Assert.Equal(mirrorId, occ.DocumentId);
+        Assert.Equal(OccurrenceSourceCatalog.System, occ.Source);
+        Assert.Equal(_headId, occ.CreatedById); // الفاعل الحقيقي بمصدر النظام
+        Assert.Equal("840", occ.FileNumber);    // أرقام المنيب القديمة
+        Assert.Equal("صلح", occ.FileType);
+        Assert.Equal(2026, occ.Year);
+        Assert.Equal("دائرة المصدر المنمّقة", occ.FromCircuitName);
+        Assert.Equal("دائرة الهدف المنمّقة", occ.ToCircuitName);
+        Assert.Contains("fromCircuit", occ.Details!);
+        Assert.Contains("toCircuit", occ.Details!);
+
+        // وقعة الإحالة الذاتية على المنيب كما هي — القاعدة 2 لا تحذفها ولا تغيّرها.
+        var selfOcc = _db.DocumentOccurrences.Single(o =>
+            o.DocumentId == sourceId && o.OccurrenceType == OccurrenceTypeCatalog.CircuitReferred);
+        Assert.Equal("840", selfOcc.FileNumber);
+        Assert.DoesNotContain("delegationCircuitChange", selfOcc.Details!);
+    }
+
+    [Fact]
+    public async Task Refer_MirrorDoc_UpdatesDelegationAndNotesOccurrence()
+    {
+        // قاعدة 3 (C2): نقل ملف مناب له إنابة داخلية تستهدف دائرة المصدر → تحديث الوجهة
+        // (سلوك قائم) + ذيل delegationCircuitChange على وقعة المناب + وقعة mirror-file-moved
+        // واحدة على المنيب (بأرقام المناب القديمة). الإجابة الخارجية أو الشاذة → لا مفتاح ولا وقعة.
+        var source = await CreateCircuitAsync("دائرة متناظرة أ");
+        var target = await CreateCircuitAsync("دائرة متناظرة ب");
+        var mirrorId = await CreateDocAsync(source, _lawyer1Id, "850", "2026");
+        var externalMirrorId = await CreateDocAsync(source, _lawyer1Id, "852", "2026");
+        var principalId = await CreateDocAsync(target, _lawyer1Id, "851", "2026");
+        var externalPrincipalId = await CreateDocAsync(target, _lawyer1Id, "853", "2026");
+        var delegation = new DocumentDelegation
+        {
+            SourceDocumentId = principalId,
+            DelegatedCourt = "دائرة متناظرة أ",
+            DelegatedCircuitId = source,
+            Status = DelegationStatusCatalog.Registered,
+            CreatedById = _headId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        var external = new DocumentDelegation
+        {
+            SourceDocumentId = externalPrincipalId,
+            DelegatedCourt = "دائرة خارجية العاملة",
+            IsExternal = true,
+            Status = DelegationStatusCatalog.Registered,
+            CreatedById = _headId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        _db.DocumentDelegations.AddRange(delegation, external);
+        await _db.SaveChangesAsync();
+        (await _db.Documents.FindAsync(mirrorId))!.SourceDelegationId = delegation.Id;
+        (await _db.Documents.FindAsync(externalMirrorId))!.SourceDelegationId = external.Id;
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
+            new ReferCircuitFilesRequest { FileIds = new List<int> { mirrorId, externalMirrorId }, TargetLawyerId = _lawyer2Id, TargetCircuitId = target });
+
+        var src2 = await _db.DocumentDelegations.FindAsync(delegation.Id);
+        Assert.Equal(target, src2!.DelegatedCircuitId);
+        Assert.Equal("دائرة متناظرة ب", src2.DelegatedCourt);
+
+        var mirrorOcc = _db.DocumentOccurrences.Single(o =>
+            o.DocumentId == mirrorId && o.OccurrenceType == OccurrenceTypeCatalog.CircuitReferred);
+        Assert.Contains("delegationCircuitChange", mirrorOcc.Details!);
+        // المُسلسِل الافتراضي يُهرّب العربية إلى \uXXXX — نُفكك JSON للتحقق اللفظي.
+        using var mirrorDoc = System.Text.Json.JsonDocument.Parse(mirrorOcc.Details!);
+        Assert.Equal(
+            "من «دائرة متناظرة أ» إلى «دائرة متناظرة ب»",
+            mirrorDoc.RootElement.GetProperty("delegationCircuitChange").GetString());
+
+        var principalOcc = _db.DocumentOccurrences
+            .Single(o => o.OccurrenceType == OccurrenceTypeCatalog.MirrorFileMoved);
+        Assert.Equal(principalId, principalOcc.DocumentId);
+        Assert.Equal(OccurrenceSourceCatalog.System, principalOcc.Source);
+        Assert.Equal("850", principalOcc.FileNumber); // أرقام المناب القديمة
+        Assert.Equal("دائرة متناظرة أ", principalOcc.FromCircuitName);
+        Assert.Equal("دائرة متناظرة ب", principalOcc.ToCircuitName);
+
+        // الإنابة الخارجية: بلا تحديث وجهة ولا ذيل ولا وقعة متناظرة.
+        var externalSrc = await _db.DocumentDelegations.FindAsync(external.Id);
+        Assert.Null(externalSrc!.DelegatedCircuitId);
+        Assert.Equal("دائرة خارجية العاملة", externalSrc.DelegatedCourt);
+        var externalMirrorOcc = _db.DocumentOccurrences.Single(o =>
+            o.DocumentId == externalMirrorId && o.OccurrenceType == OccurrenceTypeCatalog.CircuitReferred);
+        Assert.DoesNotContain("delegationCircuitChange", externalMirrorOcc.Details!);
+        Assert.False(_db.DocumentOccurrences.Any(o =>
+            o.OccurrenceType == OccurrenceTypeCatalog.MirrorFileMoved && o.FileNumber == "852"));
+    }
+
+    [Fact]
+    public async Task Refer_DoubleRole_BothRulesApplyTogether()
+    {
+        // حدّ مزدوج (C2): ملف منيب (له إنابة صادرة بمناب) وهو نفسه مناب (إنابته الداخلية
+        // تستهدف دائرة المصدر) — القاعدتان تنسحبان معًا في الإحالة نفسها بلا استبعاد.
+        var source = await CreateCircuitAsync("دائرة المزدوج");
+        var target = await CreateCircuitAsync("دائرة وجهة المزدوج");
+        var doubleId = await CreateDocAsync(source, _lawyer1Id, "860", "2026");
+        var principalId = await CreateDocAsync(target, _lawyer1Id, "862", "2026");
+        var incomingDelegation = new DocumentDelegation
+        {
+            SourceDocumentId = principalId,
+            DelegatedCourt = "دائرة المزدوج",
+            DelegatedCircuitId = source,
+            Status = DelegationStatusCatalog.Registered,
+            CreatedById = _headId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        var outgoingDelegation = new DocumentDelegation
+        {
+            SourceDocumentId = doubleId,
+            DelegatedCourt = "دائرة متوسطة",
+            Status = DelegationStatusCatalog.Registered,
+            CreatedById = _headId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        _db.DocumentDelegations.AddRange(incomingDelegation, outgoingDelegation);
+        await _db.SaveChangesAsync();
+        var mirrorId = await CreateDocAsync(target, _lawyer1Id, "861", "2026");
+        (await _db.Documents.FindAsync(mirrorId))!.SourceDelegationId = outgoingDelegation.Id;
+        (await _db.Documents.FindAsync(doubleId))!.SourceDelegationId = incomingDelegation.Id;
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
+            new ReferCircuitFilesRequest { FileIds = new List<int> { doubleId }, TargetLawyerId = _lawyer2Id, TargetCircuitId = target });
+
+        // قاعدة 2: وقعة على مناب المنيب المنقول بمضامينه القديمة.
+        Assert.True(_db.DocumentOccurrences.Any(o =>
+            o.DocumentId == mirrorId && o.OccurrenceType == OccurrenceTypeCatalog.SourceFileMoved
+            && o.FileNumber == "860"));
+        // قاعدة 3: وقعة متناظرة على منيب المناب المنقول بمضامينه القديمة نفسها.
+        Assert.True(_db.DocumentOccurrences.Any(o =>
+            o.DocumentId == principalId && o.OccurrenceType == OccurrenceTypeCatalog.MirrorFileMoved
+            && o.FileNumber == "860"));
+        // ووقعة الإحالة الذاتية للملف المزدوج تحمل ذيل تغيّر إنابته الداخلية.
+        var doubleOcc = _db.DocumentOccurrences.Single(o =>
+            o.DocumentId == doubleId && o.OccurrenceType == OccurrenceTypeCatalog.CircuitReferred);
+        Assert.Contains("delegationCircuitChange", doubleOcc.Details!);
     }
 
     [Fact]
@@ -986,6 +1277,45 @@ public class ExecutionCircuitServiceTests : IDisposable
 
         var subView = await _circuits.ListForLawyerAsync(_branchId, sectionId, true);
         Assert.Equal(sectionCircuit, Assert.Single(subView).Id);
+    }
+
+    [Fact]
+    public async Task ListFiles_ReturnsHiddenStatusDocs_ScopedToOwner()
+    {
+        var circuitId = await CreateCircuitAsync("دائرة الإفراغ");
+        var normalId = await CreateDocAsync(circuitId, _lawyer1Id, "101", "2026");
+        var hiddenId = await CreateDocAsync(circuitId, _lawyer1Id, "102", "2026");
+        var hidden = await _db.Documents.SingleAsync(d => d.Id == hiddenId);
+        hidden.ExecStatus = ExecutionStatusCatalog.DelegationExecuted; // «منفذ إنابة» — مخفية عن قوائم البحث
+        hidden.IsDraft = false;
+        await _db.SaveChangesAsync();
+        // ملف في سلة المحذوفات داخل الدائرة: الفلتر العام يخفيه تلقائيًا عن النافذة.
+        var deletedId = await CreateDocAsync(circuitId, _lawyer1Id, "103", "2026");
+        var deleted = await _db.Documents.SingleAsync(d => d.Id == deletedId);
+        deleted.IsDeleted = true;
+        deleted.DeletedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        var files = await _circuits.ListFilesAsync(circuitId, _branchId, null);
+
+        Assert.Equal(new[] { normalId, hiddenId }, files.Select(f => f.Id).ToArray());
+        var hiddenRow = files.Single(f => f.Id == hiddenId);
+        Assert.Equal("102", hiddenRow.FileNumber);
+        Assert.Equal("صلح", hiddenRow.FileType);
+        Assert.Equal("2026", hiddenRow.FileYear);
+        Assert.Equal("محامي أول", hiddenRow.Lawyer);
+        Assert.Contains("مقترض", hiddenRow!.BorrowerName);
+        Assert.DoesNotContain(files, f => f.Id == deletedId);
+
+        // نطاق دخيل (رئيس شعبة بشعبة لا تملك الدائرة) → دائرة الشعبة المرفوضة.
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _circuits.ListFilesAsync(circuitId, _branchId, 999));
+        Assert.Contains("ليست ضمن نطاقك", ex.Message);
+
+        // فرع غير موجود → بوابة المحافظة الأولى ترفض قبل فحص الدائرة.
+        var exBranch = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _circuits.ListFilesAsync(circuitId, 999999, null));
+        Assert.Contains("الفرع غير موجود", exBranch.Message);
     }
 
     private IExecutionCircuitService BuildServiceWithIdempotency()

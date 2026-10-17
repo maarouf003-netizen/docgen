@@ -11,7 +11,19 @@ public record ExecutionCircuitDto(
     int PendingCount,
     long Version,
     int? SectionId = null,
-    string? SectionName = null);
+    string? SectionName = null,
+    // عدد صفوف سلة محذوفات الدائرة (تُطهَّر نهائيًا عند حذف الدائرة — قرار المالك 2026-10-17).
+    // تعليق عادي لا `///` داخل قائمة معاملات record — تفادي CS1587.
+    int DeletedFileCount = 0);
+
+/// <summary>صف ملف الدائرة في معالج الإفراغ — المعرّف والحقول الخمسة المعروضة فقط (إسقاط خفيف).</summary>
+public record CircuitFileDto(
+    int Id,
+    string? BorrowerName,
+    string? FileNumber,
+    string? FileType,
+    string? FileYear,
+    string? Lawyer);
 
 /// <summary>إدخال/تسمية دائرة (الاسم فقط — الفرع من سياق رئيس القسم).</summary>
 public class UpsertExecutionCircuitRequest

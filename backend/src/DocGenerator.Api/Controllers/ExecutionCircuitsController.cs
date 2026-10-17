@@ -80,6 +80,23 @@ public class ExecutionCircuitsController : ControllerBase
         }
     }
 
+    /// <summary>نافذة الإفراغ (حزمة A): كل ملفات الدائرة غير المحذوفة أيًا كانت حالتها — نطاق المالك إلزامي.</summary>
+    [HttpGet("{id:int}/files")]
+    [Authorize(Policy = "HeadOrSubHead")]
+    public async Task<IActionResult> Files(int id, CancellationToken ct)
+    {
+        var error = RequireOwnerScope(out var branchId, out var ownerSectionId);
+        if (error is not null) return error;
+        try
+        {
+            return Ok(await _circuits.ListFilesAsync(id, branchId, ownerSectionId, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+    }
+
     [HttpPost]
     [Authorize(Policy = "HeadOrSubHead")]
     public async Task<IActionResult> Create([FromBody] UpsertExecutionCircuitRequest request, CancellationToken ct)

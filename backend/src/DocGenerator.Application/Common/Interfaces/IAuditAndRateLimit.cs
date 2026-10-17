@@ -223,6 +223,12 @@ public interface IDocumentRepository : IRepository<Document>
     Task<List<Document>> ListByCircuitAsync(int circuitId, bool includeDeleted, CancellationToken ct = default);
 
     /// <summary>
+    /// ملفات الدائرة غير المحذوفة بترتيب ثابت (للعرض فقط — بلا شمول ولا تتبع).
+    /// نافذة الإفراغ تعرض كل الحالات أيًا كانت — فلتر البحث العام يُلتفّ عليه (حزمة A).
+    /// </summary>
+    Task<List<Document>> ListCircuitFileSummariesAsync(int circuitId, CancellationToken ct = default);
+
+    /// <summary>
     /// ملفات بمعرفاتها (متتبعة مع أرقام الأساس) لعمليات الإحالة/إعادة القيد داخل المعاملة.
     /// </summary>
     Task<List<Document>> ListByIdsForUpdateAsync(List<int> ids, CancellationToken ct = default);
@@ -233,14 +239,24 @@ public interface IDocumentRepository : IRepository<Document>
     Task<List<Document>> ListPendingForLawyerAsync(int lawyerId, int? circuitId, CancellationToken ct = default);
 
     /// <summary>
-    /// عدادات الدوائر (ملفات + معلقات) لغير المحذوفة — لقائمتي الإدارة والإحصاءات.
+    /// عدادات الدوائر (ملفات + معلقات + محذوفات) — الاستعلام بـ IgnoreQueryFilters
+    /// دفعة واحدة يصنّف الصفوف: حية/معلقة/محذوفة — لقائمتي الإدارة والإحصاءات
+    /// ولنافذة الإفراغ (عدد سلة المحذوفات يُطهَّر نهائيًا عند حذف الدائرة).
     /// </summary>
-    Task<Dictionary<int, (int FileCount, int PendingCount)>> CountByCircuitsAsync(List<int> circuitIds, CancellationToken ct = default);
+    Task<Dictionary<int, (int FileCount, int PendingCount, int DeletedCount)>> CountByCircuitsAsync(List<int> circuitIds, CancellationToken ct = default);
 
     /// <summary>
-    /// عدد كل الصفوف غير المطهّرة لدائرة (بما فيها المحذوفة منطقيًا) — حارس الحذف.
+    /// صفوف سلة المحذوفات لدائرة (المتتبَّعة قصدًا لتحذف عبر Remove — بلا نوافيجيشن:
+    /// الحذف التسلسلي تكفله قيود FK نفسها).
     /// </summary>
-    Task<int> CountAllByCircuitAsync(int circuitId, CancellationToken ct = default);
+    Task<List<Document>> ListDeletedByCircuitAsync(int circuitId, CancellationToken ct = default);
+
+    /// <summary>
+    /// خريطة «معرّف الإنابة → معرّف الملف المناب» عبر SourceDelegationId (فريد 1:1
+    /// — فهرس وحيد). تُستخدم عند نقل ملف منيب لإبلاغ مناباته؛ إنابة بلا مناب
+    /// مسجّل بعد تُتخطى طبيعيًا (غي الخريطة).
+    /// </summary>
+    Task<Dictionary<int, int>> MapMirrorsBySourceDelegationIdsAsync(List<int> delegationIds, CancellationToken ct = default);
 
     /// <summary>
     /// آخر وقوعّة إحالة (circuit-referred) لكل ملف — لعرض «المعروض حاليًا (قديم)» دفعة واحدة بلا N+1.

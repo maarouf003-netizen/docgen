@@ -11,6 +11,13 @@ namespace DocGenerator.Application.Services;
 public interface IExecutionCircuitService
 {
     Task<List<ExecutionCircuitDto>> ListMineAsync(int branchId, int? ownerSectionId, CancellationToken ct = default);
+
+    /// <summary>
+    /// كل ملفات الدائرة (غير المحذوفة) أيًا كانت حالتها — لمعالج الإفراغ:
+    /// المخفية عن فلتر البحث العام («منفذ إنابة» وغيرها) شاملة. نطاق المالك إلزامي.
+    /// </summary>
+    Task<List<CircuitFileDto>> ListFilesAsync(int circuitId, int branchId, int? ownerSectionId, CancellationToken ct = default);
+
     Task<ExecutionCircuitDto> CreateAsync(int branchId, int actorUserId, string? actorName, string name, CancellationToken ct = default);
     Task<ExecutionCircuitDto> RenameAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, string name, long? version, CancellationToken ct = default, int? actorUserId = null);
     Task<ExecutionCircuitDto> SetActiveAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, bool isActive, long? version, CancellationToken ct = default);
@@ -184,13 +191,29 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
             counts.TryGetValue(c.Id, out var v) ? v.FileCount : 0,
             counts.TryGetValue(c.Id, out var v2) ? v2.PendingCount : 0,
             c.Version, c.SectionId,
-            c.SectionId.HasValue ? sectionNames.GetValueOrDefault(c.SectionId.Value) : null)).ToList();
+            c.SectionId.HasValue ? sectionNames.GetValueOrDefault(c.SectionId.Value) : null,
+            counts.TryGetValue(c.Id, out var v3) ? v3.DeletedCount : 0)).ToList();
     }
 
     private async Task<Dictionary<int, string>> SectionNamesAsync(CancellationToken ct)
     {
         var sections = await _sections.ListAsync(ct);
         return sections.ToDictionary(s => s.Id, s => s.Name);
+    }
+
+    /// <summary>
+    /// نافذة الإفراغ (حزمة A): كل ملفات الدائرة غير المحذوفة — المخفية عن «القوائم» شاملة
+    /// (إخفاء الحالات المتقدمة من ApplySearchFilters مقصود في القوائم، والمسار هنا مخصص
+    /// يلتفّ عليه) — بلا حدّ صفحات (العطل القديم: perPage:100 كان يقطع الدوائر الكبيرة).
+    /// البوابات اتساقًا مع ListMineAsync/DeleteAsync: فرع المحافظة → النطاق من GetOwnedAsync.
+    /// </summary>
+    public async Task<List<CircuitFileDto>> ListFilesAsync(int circuitId, int branchId, int? ownerSectionId, CancellationToken ct = default)
+    {
+        await RequireBranchWithGovernorateAsync(branchId, ct);
+        _ = await GetOwnedAsync(circuitId, branchId, ownerSectionId, ct);
+        var docs = await _documents.ListCircuitFileSummariesAsync(circuitId, ct);
+        return docs.Select(d => new CircuitFileDto(
+            d.Id, d.BorrowerName, d.FileNumber, d.FileType, d.FileYear, d.Lawyer)).ToList();
     }
 
     public async Task<ExecutionCircuitDto> CreateAsync(int branchId, int actorUserId, string? actorName, string name, CancellationToken ct = default)
@@ -350,16 +373,28 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         return result;
     }
 
+    /// <summary>
+    /// حذف الدائرة نهائيًا (تعديل البند 41 — قرار المالك 2026-10-17): الترتيب
+    /// **الحارس ← الوارد المعلقة ← فصل الوارد ← التطهير ← إزالة الدائرة ← الحفظ ← التدقيق**.
+    /// العلة التقنية: فصل الوارد قبل التطهير يمنع تعارض أثر التتبّع مع صفوف الإنابة
+    /// المحذوفة تسلسليًا ضمن التطهير (الإنتاج محصّن أصلًا بحارس
+    /// DocumentService.DeleteAsync: يمنع حذف أي ملف له إنابة صادرة أو مناب أو استئناف —
+    /// فلا صف محذوف يحمل إنابة/مناب/استئنافًا، والمناب بالقيد Restrict غير قابل للتحقق إنتاجيًا).
+    /// الحارس يعدّ الأحياء فقط (محتسبين المعلقين منها)؛ سلة المحذوفات تُطهَّر نهائيًا
+    /// (CASCADE يزيل توابعها، SET NULL يفك مراجعها، وAuditLogs/DocumentFieldChanges
+    /// بلا FK فيبقيان تاريخًا كاملًا — إعلان صريح لا سهو).
+    /// </summary>
     public async Task DeleteAsync(int circuitId, int branchId, int? ownerSectionId, string? actorName, CancellationToken ct = default)
     {
         await RequireBranchWithGovernorateAsync(branchId, ct);
         await _tx.RunAsync(async token =>
         {
             var circuit = await GetOwnedAsync(circuitId, branchId, ownerSectionId, token);
-            // حارس الحذف: كل الصفوف غير المطهّرة بما فيها المحذوفة منطقيًا + الإنابات الواردة المعلقة.
-            var fileCount = await _documents.CountAllByCircuitAsync(circuitId, token);
-            if (fileCount > 0)
-                throw new DocumentConflictException($"لا يمكن حذف الدائرة — أفرغها أولًا (بها {fileCount} ملفًا)");
+            // حارس الحذف: الأحياء فقط (تعديل البند 41) + الإنابات الواردة المعلقة.
+            var counts = await _documents.CountByCircuitsAsync(new List<int> { circuitId }, token);
+            counts.TryGetValue(circuitId, out var v);
+            if (v.FileCount > 0)
+                throw new DocumentConflictException($"لا يمكن حذف الدائرة — أفرغها أولًا (بها {v.FileCount} ملفًا)");
             // C1: متجاوزًا فلتر المصدر المحذوف — المعلقة تحظر أيًا كان حال مصدرها.
             var pendingIncoming = await _delegations.CountPendingIncomingByCircuitIncludingDeletedAsync(circuitId, token);
             if (pendingIncoming > 0)
@@ -368,6 +403,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
             // عن المرجع (DelegatedCircuitId=null) مع إبقاء الاسم النصي — وإلا انفجر الحذف
             // بانتهاك FK (Restrict) رغم اجتياز الحارس. المعلقة محظورة أعلاه فلا تصل هنا.
             // C1: متجاوزًا الفلتر أيضًا — إنابة مصدرها محذوف ما زال صفها يشير للدائرة.
+            // فصل الوارد قبل التطهير (علة الترتيب المذكورة أعلاه).
             var incoming = await _delegations.ListByDelegatedCircuitIncludingDeletedAsync(circuitId, token);
             var detached = 0;
             var now = DateTime.UtcNow;
@@ -380,10 +416,24 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                 _delegations.Update(g);
                 detached++;
             }
+            // تطهير سلة المحذوفات نهائيًا (قرار المالك — تعديل البند 41): حذف فيزيائي
+            // ضمن معاملة الحذف نفسها؛ والتسلسل الموثوق به: CASCADE للتوابع (الوقوعات/
+            // أرقام الأساس/الإسنادات/الأطراف/الكفلاء/الورثة/الأموال/الاستئنافات/إنابات
+            // الملف المحذوف)، SET NULL للتنبيهات/المرسلات/خطابات المراجعة — والعلة
+            // تسهل اختبارها: أي صف شاذ يفشل بصوت عالٍ داخل المعاملة مع rollback.
+            var purged = 0;
+            var deletedDocs = await _documents.ListDeletedByCircuitAsync(circuitId, token);
+            foreach (var d in deletedDocs)
+            {
+                _documents.Remove(d);
+                purged++;
+            }
             _circuits.Remove(circuit);
             await _uow.SaveChangesAsync(token);
+            // عبارة التطهير تُلحق للتدقيق فقط عند purged > 0 (لا «مع» مكررة ولا «تطهير 0»).
+            var purgeClause = purged > 0 ? $"، وطُهِّر نهائيًا {purged} ملفًا محذوفًا" : string.Empty;
             await _audit.LogAsync(actorName, "delete_circuit", null, null,
-                $"حذف دائرة التنفيذ «{circuit.Name}» مع فك {detached} إنابة مكتملة عن مرجعها (الاسم محفوظ)", token);
+                $"حذف دائرة التنفيذ «{circuit.Name}» مع فك {detached} إنابة مكتملة عن مرجعها (الاسم محفوظ){purgeClause}", token);
         }, ct);
     }
 
@@ -652,30 +702,17 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                 doc.FullData = DocumentSearchTextBuilder.BuildFullData(doc);
                 _documents.Update(doc);
 
-                var occ = new DocumentOccurrence
+                // وقعة الإحالة تُبنى بقاموس Details متغيرًا (يدخل الذيل عند نقل إنابة المناب)
+                // وتُضاف في النهاية بتمريرة تسلسل واحدة — القاعدتان 2/3 (C2) تليانيان بلا استبعاد.
+                var occDetails = new Dictionary<string, string>
                 {
-                    DocumentId = doc.Id,
-                    OccurrenceType = OccurrenceTypeCatalog.CircuitReferred,
-                    Source = OccurrenceSourceCatalog.System,
-                    EventDate = now,
-                    FileNumber = oldNumber,
-                    FileType = oldType,
-                    Year = int.TryParse(oldYear, out var oy) ? oy : null,
-                    FromCircuitName = sourceName,
-                    ToCircuitName = targetName,
-                    Details = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, string>
-                    {
-                        ["fromCircuit"] = sourceName,
-                        ["toCircuit"] = targetName,
-                        ["oldNumber"] = oldNumber ?? string.Empty,
-                        ["oldType"] = oldType ?? string.Empty,
-                        ["oldYear"] = oldYear ?? string.Empty,
-                    }),
-                    CreatedById = actorUserId,
-                    CreatedAt = now,
-                    UpdatedAt = now,
+                    ["fromCircuit"] = sourceName ?? string.Empty,
+                    ["toCircuit"] = targetName ?? string.Empty,
+                    ["oldNumber"] = oldNumber ?? string.Empty,
+                    ["oldType"] = oldType ?? string.Empty,
+                    ["oldYear"] = oldYear ?? string.Empty,
                 };
-                await _occurrences.AddAsync(occ, token);
+                int? oldYearNum = int.TryParse(oldYear, out var oy) ? oy : null;
 
                 // الإنابات تتبع ملفاتها: المنيب المنقول يسحب إناباته كما هي؛ المناب المنقول يُحدَّث DelegatedCourt لوجهته.
                 var outgoing = await _delegations.ListBySourceAsync(doc.Id, token);
@@ -684,19 +721,94 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                     g.UpdatedAt = now;
                     _delegations.Update(g);
                 }
-                // إن كان الملف منابًا (له SourceDelegationId) وإنابته داخلية تستهدف دائرة المصدر، تُحدَّث للوجهة.
+                // قاعدة 2 (C2): المنيب المنقول يبلّغ مناباته الجاهزة — وقعة source-file-moved
+                // على كل مناب مرتبط بإنابة صادرة، بأرقام المنيب القديمة. إنابة بلا مناب بعد → تُتخطى.
+                if (outgoing.Count > 0)
+                {
+                    var mirrorMap = await _documents.MapMirrorsBySourceDelegationIdsAsync(
+                        outgoing.Select(g => g.Id).ToList(), token);
+                    foreach (var g in outgoing)
+                    {
+                        if (!mirrorMap.TryGetValue(g.Id, out var mirrorId)) continue;
+                        await _occurrences.AddAsync(new DocumentOccurrence
+                        {
+                            DocumentId = mirrorId,
+                            OccurrenceType = OccurrenceTypeCatalog.SourceFileMoved,
+                            Source = OccurrenceSourceCatalog.System,
+                            EventDate = now,
+                            FileNumber = oldNumber,
+                            FileType = oldType,
+                            Year = oldYearNum,
+                            FromCircuitName = sourceName,
+                            ToCircuitName = targetName,
+                            Details = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, string>
+                            {
+                                ["fromCircuit"] = sourceName ?? string.Empty,
+                                ["toCircuit"] = targetName ?? string.Empty,
+                            }),
+                            CreatedById = actorUserId,
+                            CreatedAt = now,
+                            UpdatedAt = now,
+                        }, token);
+                    }
+                }
+                // قاعدة 3 (C2): إن كان الملف المنقول منابًا (له SourceDelegationId) وإنابته
+                // داخلية تستهدف دائرة المصدر، تُحدَّث للوجهة — وذيل تغيّر الوجهة يُدوَّن على
+                // وقعة إحالة المناب، ووقعة متناظرة mirror-file-moved تُكتب على المنيب
+                // (بأرقام المناب القديمة — لا تحميل للمنيب: FK فقط، وحارس حذف الملفات
+                // يمنع حذف أي ملف له إنابة فبقاؤه مضمون).
                 if (doc.SourceDelegationId is not null)
                 {
                     var src = await _delegations.GetByIdAsync(doc.SourceDelegationId.Value, token);
                     if (src is not null && !src.IsExternal && src.DelegatedCircuitId == sourceCircuitId)
                     {
+                        // oldCourt يُلتقط قبل الطفرات مع سقوط احتياطي إلى اسم دائرة المصدر عند الشذوذ.
+                        var oldCourt = string.IsNullOrWhiteSpace(src.DelegatedCourt) ? sourceName : src.DelegatedCourt;
                         src.DelegatedCircuitId = request.TargetCircuitId;
                         src.DelegatedCourt = target.Name;
                         src.DelegatedCourtNorm = ArabicNameNormalizer.Normalize(target.Name);
                         src.UpdatedAt = now;
                         _delegations.Update(src);
+                        occDetails["delegationCircuitChange"] = $"من «{oldCourt}» إلى «{targetName}»";
+                        await _occurrences.AddAsync(new DocumentOccurrence
+                        {
+                            DocumentId = src.SourceDocumentId,
+                            OccurrenceType = OccurrenceTypeCatalog.MirrorFileMoved,
+                            Source = OccurrenceSourceCatalog.System,
+                            EventDate = now,
+                            FileNumber = oldNumber,
+                            FileType = oldType,
+                            Year = oldYearNum,
+                            FromCircuitName = sourceName,
+                            ToCircuitName = targetName,
+                            Details = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, string>
+                            {
+                                ["fromCircuit"] = sourceName ?? string.Empty,
+                                ["toCircuit"] = targetName ?? string.Empty,
+                            }),
+                            CreatedById = actorUserId,
+                            CreatedAt = now,
+                            UpdatedAt = now,
+                        }, token);
                     }
                 }
+                var occ = new DocumentOccurrence
+                {
+                    DocumentId = doc.Id,
+                    OccurrenceType = OccurrenceTypeCatalog.CircuitReferred,
+                    Source = OccurrenceSourceCatalog.System,
+                    EventDate = now,
+                    FileNumber = oldNumber,
+                    FileType = oldType,
+                    Year = oldYearNum,
+                    FromCircuitName = sourceName,
+                    ToCircuitName = targetName,
+                    Details = System.Text.Json.JsonSerializer.Serialize(occDetails),
+                    CreatedById = actorUserId,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                };
+                await _occurrences.AddAsync(occ, token);
                 referredAudit.Add((doc, before));
                 referred++;
             }
@@ -1024,7 +1136,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         if (c.SectionId.HasValue)
             sectionName = (await _sections.GetByIdAsync(c.SectionId.Value, token))?.Name;
         return new ExecutionCircuitDto(c.Id, c.BranchId, null, c.Name, c.IsActive, v.FileCount, v.PendingCount, c.Version,
-            c.SectionId, sectionName);
+            c.SectionId, sectionName, v.DeletedCount);
     }
 
     /// <summary>
