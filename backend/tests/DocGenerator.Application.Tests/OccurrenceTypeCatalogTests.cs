@@ -36,16 +36,28 @@ public class OccurrenceTypeCatalogTests
     }
 
     [Fact]
-    public void EveryCatalogConstant_HasMappedLabel()
+    public void EveryCatalogConstant_HasDistinctNonBlankLabel()
     {
         // القاعدة الملزمة: «نوع جديد ⇐ الثابت + ValidTypes + ToLabel». اختبار التكافؤ
-        // أعلاه يفرض أول اثنين، وهذا يفرض الثالث: أي ثابت بلا ذراع في ToLabel يعود
-        // خامًا بالإنجليزية في الواجهة.
-        var unlabeled = GetCatalogConstants()
-            .Where(t => OccurrenceTypeCatalog.ToLabel(t) == t)
+        // أعلاه يفرض أول اثنين، وهذا يفرض الثالث بثلاث دعاوى: التسمية موجودة (غير خامة
+        // بالإنجليزية)، وغير فارغة، وفريدة — نسخ ذراع تسمية بلا تعديلها يوحّد نصّي
+        // نوعين في الواجهة فيتعذّر تمييزهما.
+        var labels = GetCatalogConstants()
+            .Select(t => (Type: t, Label: OccurrenceTypeCatalog.ToLabel(t)))
             .ToList();
-        Assert.True(unlabeled.Count == 0,
-            $"ثوابت بلا تسمية عربية في ToLabel (تظهر خامة في الواجهة): {string.Join(", ", unlabeled)}");
+        Assert.NotEmpty(labels);
+
+        var blank = labels.Where(l => string.IsNullOrWhiteSpace(l.Label)).Select(l => l.Type).ToList();
+        Assert.True(blank.Count == 0,
+            $"ثوابت بتسمية فارغة في ToLabel: {string.Join(", ", blank)}");
+
+        var raw = labels.Where(l => l.Label == l.Type).Select(l => l.Type).ToList();
+        Assert.True(raw.Count == 0,
+            $"ثوابت بلا تسمية عربية في ToLabel (تظهر خامة في الواجهة): {string.Join(", ", raw)}");
+
+        var duplicated = labels.GroupBy(l => l.Label).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+        Assert.True(duplicated.Count == 0,
+            $"تسمية واحدة لأنواع متعددة في ToLabel (خطأ نسخ محتمل): {string.Join(", ", duplicated)}");
     }
 
     [Fact]
