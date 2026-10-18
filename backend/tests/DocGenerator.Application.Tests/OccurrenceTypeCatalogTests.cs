@@ -1,3 +1,4 @@
+using System.Reflection;
 using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Tests;
@@ -13,9 +14,29 @@ public class OccurrenceTypeCatalogTests
     }
 
     [Fact]
-    public void ValidTypes_IncludeReferredToStart()
+    public void ValidTypes_ExactlyMirrorCatalogConstants()
     {
-        Assert.Contains(OccurrenceTypeCatalog.ReferredToStart, OccurrenceTypeCatalog.ValidTypes);
+        // لا شيء كان يضمن أن ثابتًا جديدًا في الكتالوج دخل ValidTypes، فيفلت
+        // من حارس حد العمود (S3) — هذا الاختبار يفرض المطابقة في الاتجاهين.
+        var constants = typeof(OccurrenceTypeCatalog)
+            .GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(f => f.IsLiteral && f.FieldType == typeof(string))
+            .Select(f => (string)f.GetRawConstantValue()!)
+            .ToList();
+
+        Assert.NotEmpty(constants);
+
+        var missing = constants
+            .Where(t => !OccurrenceTypeCatalog.ValidTypes.Contains(t))
+            .ToList();
+        Assert.True(missing.Count == 0,
+            $"ثوابت في الكتالوج غير مدرجة في ValidTypes (تفلت من حارس حد العمود): {string.Join(", ", missing)}");
+
+        var stray = OccurrenceTypeCatalog.ValidTypes
+            .Where(t => !constants.Contains(t))
+            .ToList();
+        Assert.True(stray.Count == 0,
+            $"أنواع في ValidTypes بلا ثابت مقابل في الكتالوج (خطأ مطبعي محتمل): {string.Join(", ", stray)}");
     }
 
     [Fact]

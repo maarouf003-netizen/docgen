@@ -81,8 +81,10 @@ public static class OccurrenceTypeCatalog
     public const string MirrorFileMoved = "mirror-file-moved";
 
     /// <summary>
-    /// المجموعة المغلقة للأنواع الصالحة (مصدر إغلاق مركزي): أي نوع جديد يُضاف إليها مع
-    /// ثابته و<see cref="ToLabel"/>، ويحرص عليها اختباران (الاكتمال، وحد عمود 30 محرفًا).
+    /// مرآة عقدية للاختبارات (لا مستهلك إنتاجي): تضم ثوابت الكتالوج — الأنواع الصالحة —
+    /// كلها دون سواها. أي نوع جديد يُدخل الكتالوج يُضاف إليها مع ثابته و<see cref="ToLabel"/>،
+    /// ويفرض اختبار التكافؤ الانعكاسي هذه المطابقة، فيسري على الثوابت كلها حارسُ حد عمود
+    /// OccurrenceType (30 محرفًا — قيد Postgres وحده؛ SQLite يتجاهل الطول).
     /// </summary>
     public static readonly IReadOnlySet<string> ValidTypes = new HashSet<string>
     {
