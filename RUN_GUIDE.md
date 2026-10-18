@@ -172,6 +172,10 @@ npm test
   dotnet ef database update --context DocGeneratorPostgresDbContext   # قاعدة PostgreSQL في الإنتاج
   ```
 - تتصل الأوامر بسلسلة الاتصال الموجودة في `appsettings.json` لبيئة الخادم (مع `Database:UsePostgres = true` لقاعدة الإنتاج). إن لم يكن `dotnet-ef` مثبتًا عالميًا: `dotnet tool install --global dotnet-ef`.
+- **سياسة «صفر تحذيرات» تسري على هذين الأمرين** (وهما يبنيان الخلفية وقت التصميم): أي تحذير مترجم/محلل/NuGet
+  أو من محرك MSBuild في مرحلة البناء يُفشِلهما برسالة `Build failed. Use dotnet build to see the errors.` —
+  أصلح التحذير أو وثّق `NoWarn` مضيقة في الـ`PR` (المصدر: `backend/Directory.Build.props`؛ وتُغطّى تحذيرات
+  تقييم المشروع المبكرة في بوابة CI بمفتاح `-warnaserror`).
 - **هجرات معلّقة من دفعة `l-main-page` (2026-09-28) — طبّقها في النشر القادم ثم احذف هذا البند:**
   - SQLite (`Persistence\Migrations\`): `20260928082242_AddPersonalReminders` (جدول `PersonalReminders`)، `20260928085246_AddAppSuggestions` (جدول `AppSuggestions`).
   - PostgreSQL (`Persistence\MigrationsPostgres\`): `20260928082313_AddPersonalRemindersPg`، `20260928085307_AddAppSuggestionsPg`.
