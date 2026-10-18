@@ -80,6 +80,10 @@ public static class OccurrenceTypeCatalog
     /// </summary>
     public const string MirrorFileMoved = "mirror-file-moved";
 
+    /// <summary>
+    /// المجموعة المغلقة للأنواع الصالحة (مصدر إغلاق مركزي): أي نوع جديد يُضاف إليها مع
+    /// ثابته و<see cref="ToLabel"/>، ويحرص عليها اختباران (الاكتمال، وحد عمود 30 محرفًا).
+    /// </summary>
     public static readonly IReadOnlySet<string> ValidTypes = new HashSet<string>
     {
         StruckOff, Renewal, Deferred, Settled, Forcible, Revert, EntityChange, Recovered,
