@@ -18,11 +18,7 @@ public class OccurrenceTypeCatalogTests
     {
         // لا شيء كان يضمن أن ثابتًا جديدًا في الكتالوج دخل ValidTypes، فيفلت
         // من حارس حد العمود (S3) — هذا الاختبار يفرض المطابقة في الاتجاهين.
-        var constants = typeof(OccurrenceTypeCatalog)
-            .GetFields(BindingFlags.Public | BindingFlags.Static)
-            .Where(f => f.IsLiteral && f.FieldType == typeof(string))
-            .Select(f => (string)f.GetRawConstantValue()!)
-            .ToList();
+        var constants = GetCatalogConstants();
 
         Assert.NotEmpty(constants);
 
@@ -37,6 +33,31 @@ public class OccurrenceTypeCatalogTests
             .ToList();
         Assert.True(stray.Count == 0,
             $"أنواع في ValidTypes بلا ثابت مقابل في الكتالوج (خطأ مطبعي محتمل): {string.Join(", ", stray)}");
+    }
+
+    [Fact]
+    public void EveryCatalogConstant_HasDistinctNonBlankLabel()
+    {
+        // القاعدة الملزمة: «نوع جديد ⇐ الثابت + ValidTypes + ToLabel». اختبار التكافؤ
+        // أعلاه يفرض أول اثنين، وهذا يفرض الثالث بثلاث دعاوى: التسمية موجودة (غير خامة
+        // بالإنجليزية)، وغير فارغة، وفريدة — نسخ ذراع تسمية بلا تعديلها يوحّد نصّي
+        // نوعين في الواجهة فيتعذّر تمييزهما.
+        var labels = GetCatalogConstants()
+            .Select(t => (Type: t, Label: OccurrenceTypeCatalog.ToLabel(t)))
+            .ToList();
+        Assert.NotEmpty(labels);
+
+        var blank = labels.Where(l => string.IsNullOrWhiteSpace(l.Label)).Select(l => l.Type).ToList();
+        Assert.True(blank.Count == 0,
+            $"ثوابت بتسمية فارغة في ToLabel: {string.Join(", ", blank)}");
+
+        var raw = labels.Where(l => l.Label == l.Type).Select(l => l.Type).ToList();
+        Assert.True(raw.Count == 0,
+            $"ثوابت بلا تسمية عربية في ToLabel (تظهر خامة في الواجهة): {string.Join(", ", raw)}");
+
+        var duplicated = labels.GroupBy(l => l.Label).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+        Assert.True(duplicated.Count == 0,
+            $"تسمية واحدة لأنواع متعددة في ToLabel (خطأ نسخ محتمل): {string.Join(", ", duplicated)}");
     }
 
     [Fact]
@@ -63,4 +84,11 @@ public class OccurrenceTypeCatalogTests
     {
         Assert.Equal(expected, OccurrenceTypeCatalog.IsStatusChange(type));
     }
+
+    private static List<string> GetCatalogConstants() =>
+        typeof(OccurrenceTypeCatalog)
+            .GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(f => f.IsLiteral && f.FieldType == typeof(string))
+            .Select(f => (string)f.GetRawConstantValue()!)
+            .ToList();
 }
