@@ -1,11 +1,15 @@
 <Project>
 
-  <!-- سياسة «صفر تحذيرات» مُلزِمة على كل مشاريع backend (src + tests).
+  <!-- سياسة «صفر تحذيرات» مُلزِمة على كل مشاريع backend (src + tests):
+       أي تحذير مترجم/محلل/NuGet — أو من محرك MSBuild في مرحلة البناء — خطأ يسقط البناء.
+       تحذيرات تقييم المشروع المبكرة (نحو MSB4011) لا تُرقّيها أي خاصية (مُدحَض عمليًا)،
+       فتُغطى في بوابة CI بمفتاح -warnaserror على خطوة البناء.
        السبب: ارتدادات تحذيرية سابقة (CS8604/CS8602) مرّت دون أن تُسقط أي بوابة.
        ملفات الهجرات المُولَّدة تحمل #nullable disable و#pragma 612/618 فلا حاجة
        لأي NoWarn؛ أي استثناء مستقبلي يكون مضيقًا وموثّقًا في نص الـPR. -->
   <PropertyGroup>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <MSBuildTreatWarningsAsErrors>true</MSBuildTreatWarningsAsErrors>
   </PropertyGroup>
 
 </Project>
