@@ -150,6 +150,7 @@ builder.Services
     .AddSingleton(jwt)
     .Configure<DocGenerator.Application.Common.ExportOptions>(builder.Configuration.GetSection("Export"))
     .Configure<DocGenerator.Application.Common.ForumOptions>(builder.Configuration.GetSection("Forum"))
+    .Configure<DocGenerator.Application.Common.DatabaseOptions>(builder.Configuration.GetSection("Database"))
     .Configure<RateLimitOptions>(builder.Configuration.GetSection("RateLimiting"))
     .Configure<SecurityOptions>(builder.Configuration.GetSection("Security"))
     .Configure<LockoutOptions>(builder.Configuration.GetSection("Lockout"))
@@ -333,7 +334,11 @@ using (var scope = app.Services.CreateScope())
 
 // سطر إقلاع واحد يثبت في السجلات أي محرك قاعدة اشتغل فعلًا (مفيد في الاستضافة حيث لا فحص للآلة).
 // يُطبع اسم المحرك فقط عمدًا — سلسلة الاتصال تحوي كلمة سر ولا تُسجَّل أبدًا.
-Log.Information("Database provider active: {DbProvider} (migrations applied at startup)", usePostgres ? "postgres" : "sqlite");
+var autoMigrate = builder.Configuration.GetValue("Database:AutoMigrate", builder.Environment.IsDevelopment());
+Log.Information(
+    "Database provider active: {DbProvider} (auto-migrate at startup: {AutoMigrate})",
+    usePostgres ? "postgres" : "sqlite",
+    autoMigrate);
 
 if (swaggerEnabled)
 {

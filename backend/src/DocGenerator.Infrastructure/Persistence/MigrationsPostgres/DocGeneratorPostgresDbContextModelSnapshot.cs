@@ -2252,6 +2252,9 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Property<int?>("AppealId")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("ArchivedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("BranchId")
                         .HasColumnType("integer");
 
@@ -2261,16 +2264,34 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Property<int>("CreatedById")
                         .HasColumnType("integer");
 
+                    b.Property<string>("DedupeKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<int?>("DelegationId")
                         .HasColumnType("integer");
 
                     b.Property<int?>("DocumentId")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("ExecutionCircuitId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsArchived")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("Kind")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("LastContentChangedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Message")
                         .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
+                        .HasColumnType("text");
 
                     b.Property<int?>("PublicEntityId")
                         .HasColumnType("integer");
@@ -2305,6 +2326,87 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.HasIndex("TargetLawyerId");
 
                     b.ToTable("HeadAlerts", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.HeadAlertOutboxMessage", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Kind")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("LastError")
+                        .HasColumnType("text");
+
+                    b.Property<string>("LockedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime?>("LockedUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Operation")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("PayloadVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ProcessedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<int?>("TargetUserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status", "LockedUntil");
+
+                    b.HasIndex("Status", "ProcessedAt");
+
+                    b.HasIndex("Status", "TargetUserId");
+
+                    b.HasIndex("Status", "NextAttemptAt", "Id");
+
+                    b.ToTable("HeadAlertOutboxMessages", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_HeadAlertOutbox_Attempts", "\"Attempts\" >= 0");
+
+                            t.HasCheckConstraint("CK_HeadAlertOutbox_Kind_Operation", "(\"Operation\" = 'upsert' AND \"Kind\" IS NOT NULL) OR (\"Operation\" = 'circuit_renamed' AND \"Kind\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_HeadAlertOutbox_Operation", "\"Operation\" IN ('upsert','circuit_renamed')");
+
+                            t.HasCheckConstraint("CK_HeadAlertOutbox_PayloadVersion", "\"PayloadVersion\" > 0");
+
+                            t.HasCheckConstraint("CK_HeadAlertOutbox_Status", "\"Status\" IN ('pending','processing','processed','skipped','failed')");
+                        });
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.HeadAlertRecipient", b =>

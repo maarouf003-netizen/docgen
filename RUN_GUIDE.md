@@ -135,6 +135,20 @@ npm test
   فقط. في الحاويات ثبّت المجلد عبر `mount`/`volume`، أو غيّر `Logging:File:Path` إلى مسار قابل للكتابة
   (الاحتفاظ 60 يومًا بقرار المالك 2026-10-16، وبحد 50MB للملف عبر `RetainedDays` / `FileSizeLimitBytes`). المجلد مُتجاهَل في `git`
   (`backend/src/DocGenerator.Api/.gitignore`) فلا يُرفع مع الكود — أنشئه بأذونات كتابة عند النشر.
+- `Database:AutoMigrate` — **مغلق افتراضيًا** (`false`) في `appsettings.json` (قاعدة الإنتاج) ومفتوح
+  (`true`) في `appsettings.Development.json` (تطوير/اختبار). مع الإغلاق **لا يطبّق التطبيق الهجرات عند
+  الإقلاع**، بل يتحقق من مطابقة المخطط لنسخة التطبيق: فإن وُجدت هجرات معلّقة **يرفض الإقلاع** برسالة
+  تحمل أوامر التطبيق (§ «تطبيق هجرات قاعدة البيانات عند النشر» أدناه). فالتطبيق الصريح يسبق تشغيل النسخة.
+  - **الترتيب الإلزامي في النافذة:** (1) نسخة احتياطية + استعادة مجرَّبة، (2) تطبيق الهجرات على القاعدة
+    الحية، (3) التحقق من `__EFMigrationsHistory`، (4) **ثم** تشغيل النسخة الجديدة. تطبيق النسخة قبل
+    الهجرات = رفض إقلاع مقصود (لا «no such column» عند أول طلب).
+  - في `SQLite` تُعطَّل المفاتيح الأجنبية قبل الترحيل وتُفحص بعده (`PRAGMA foreign_keys=OFF` قبل
+    `BEGIN`، ثم `foreign_key_check` و`integrity_check`) — يتولاها `DatabaseInitializer` تلقائيًا في
+    التطوير/الاختبار؛ وفي الإنتاج يُطبَّق السكربت الصريح:
+    ```powershell
+    dotnet ef migrations script --context DocGeneratorDbContext --idempotent
+    ```
+    مع `PRAGMA foreign_keys=OFF` قبل `BEGIN` صراحةً.
 
 ### قائمة النشر الملزمة (بوابات — صالحة لأي مضيف)
 
@@ -366,4 +380,15 @@ npm test
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261006084556_AddSubHeadSections.cs` — نفسه (`integer/bigint/character varying` + `timestamp with time zone` لـ`ForwardedAt/At`). نص SQL في `docs/audit/migrations/SUBHEAD_postgres.sql`.
   - ⚠️ القيدان الجديدان يتحققان من الصفوف القائمة لحظة التطبيق — نفّذ أولًا استعلامي التدقيق (يجب أن يكونا فارغين، والصياغة تعمل على المزوّدين): `SELECT "BranchId", COUNT(*) FROM "Users" WHERE "IsActive" AND "Role" = 'Head' GROUP BY "BranchId" HAVING COUNT(*) > 1;` (رئيسا قسم مفعّلان في نفس الفرع — نظّف بالتعطيل قبل التطبيق، قرار §2.26)، واستعلام `RequireBranchForBranchRoles` السابق للصفوف بلا فرع. الصفوف المخالفة تُسقط الهجرة.
   - بدون التطبيق تفشل أي كتابة/قراءة لحقول الشعب الجديدة فعليًا برسائل `no such column: u.SectionId` ونحوها رغم نجاح الاختبارات محليًا.
+- [ ] **2026-10-20 — `HeadAlertTaxonomy_Expand` / `HeadAlertTaxonomy_Expand_Pg`** (المرحلة 1 من خطة إعادة هيكلة التنبيهات `docs/HEAD_ALERTS_RESTRUCTURE_PLAN.md` — «توسّع» بلا كسر للتوافق):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261020202259_HeadAlertTaxonomy_Expand.cs` — يضيف إلى `HeadAlerts` الأعمدة `Kind` (64، nullable)، `DedupeKey` (200، nullable)، `ExecutionCircuitId` (nullable)، `LastContentChangedAt` (nullable)، `ArchivedAt` (nullable)، و`IsArchived` (`NOT NULL DEFAULT 0`).
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261020202452_HeadAlertTaxonomy_Expand_Pg.cs` — نفسه + توسيع `HeadAlerts.Message` من `character varying(2000)` إلى `text` (بلا فقد بيانات).
+  - **إضافة بحتة**: بلا_backfill وبلا قيد `Kind` وبلا فهرس فريد وبلا تعديل صفوف — الكود القديم يعمل معها، والصفوف القائمة تبقى كما هي (`Kind = NULL` و`LastContentChangedAt = NULL` حتى مرحلة الترحيل).
+  - ⚠️ في `PostgreSQL` الـ`Down` لا يُعيد `Message` إلى `character varying(2000)` (التضييق يفقد بيانات) — التراجع التطبيقي فقط.
+- [ ] **2026-10-20 — `HeadAlertOutbox_Create` / `HeadAlertOutbox_Create_Pg`** (صندوق الصادر لتسليم التنبيهات النظامية — المرحلة 1 من الخطة نفسها):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261020202554_HeadAlertOutbox_Create.cs` — جدول `HeadAlertOutboxMessages` + 4 فهارس + 5 قيود `Check`.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261020202700_HeadAlertOutbox_Create_Pg.cs` — نفسه (`bigint identity`).
+  - **يجب تطبيقه قبل أي كود يسجّل رسائل Outbox** (المرحلة 2 من الخطة) — وإلا فشل الإدراج بـ `no such table: HeadAlertOutboxMessages`.
+  - ⚠️ الـ`Down` **يرفض إسقاط الجدول** إن وُجدت رسائل `pending`/`processing`/`failed` غير محسومة (حارس صريح) — عالجها أو صدّرها أولًا.
+  - **تطبيق هجرات التنبيهات بالترتيب** (لا تُطبَّق `database update` على اسم متأخر فتُطبَّق ما قبله ضمنًا): `HeadAlertTaxonomy_Expand` ← `HeadAlertOutbox_Create` ← (لاحقًا) `HeadAlertTaxonomy_Backfill` ← (لاحقًا) `HeadAlertTaxonomy_Contract`.
 

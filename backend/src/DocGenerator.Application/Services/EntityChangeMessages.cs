@@ -47,11 +47,11 @@ public static class EntityChangeMessages
 
     /// <summary>التنبيه العام لكل المحامين (إعادة تسمية).</summary>
     public static string RenameLawyersAlert(string oldCanonical, string newCanonical, string decreeKind, string decreeNumber, DateTime? decreeDate)
-        => Compose($"يرجى ملاحظة أنه تم تعديل اسم \"{oldCanonical}\" الى \"{newCanonical}\"", decreeKind, decreeNumber, decreeDate);
+        => Compose($"يرجى ملاحظة أنه تم تعديل اسم «{oldCanonical}» إلى «{newCanonical}»", decreeKind, decreeNumber, decreeDate);
 
     /// <summary>تنبيه رؤساء الأقسام (إعادة تسمية).</summary>
     public static string RenameHeadsAlert(string oldCanonical, string newCanonical, string decreeKind, string decreeNumber, DateTime? decreeDate)
-        => Compose($"تم تعديل اسم الجهة \"{oldCanonical}\" الى \"{newCanonical}\"", decreeKind, decreeNumber, decreeDate);
+        => Compose($"تم تعديل اسم الجهة «{oldCanonical}» إلى «{newCanonical}»", decreeKind, decreeNumber, decreeDate);
 
     // ── النقل ──
 
@@ -71,11 +71,11 @@ public static class EntityChangeMessages
 
     /// <summary>التنبيه العام لكل المحامين (دمج).</summary>
     public static string MergeLawyersAlert(string absorbedNames, string survivorName, string decreeKind, string decreeNumber, DateTime? decreeDate)
-        => Compose($"يرجى ملاحظة أنه تم دمج \"{absorbedNames}\" مع \"{survivorName}\"", decreeKind, decreeNumber, decreeDate);
+        => Compose($"يرجى ملاحظة أنه تم دمج «{absorbedNames}» مع «{survivorName}»", decreeKind, decreeNumber, decreeDate);
 
     /// <summary>تنبيه رؤساء الأقسام (دمج).</summary>
     public static string MergeHeadsAlert(string absorbedNames, string survivorName, string decreeKind, string decreeNumber, DateTime? decreeDate)
-        => Compose($"تم دمج \"{absorbedNames}\" مع \"{survivorName}\"", decreeKind, decreeNumber, decreeDate);
+        => Compose($"تم دمج «{absorbedNames}» مع «{survivorName}»", decreeKind, decreeNumber, decreeDate);
 
     // ── توحيد التسمية (N←1) ──
 
@@ -85,11 +85,11 @@ public static class EntityChangeMessages
 
     /// <summary>التنبيه العام لكل المحامين (توحيد تسمية).</summary>
     public static string UnifyLawyersAlert(string unifiedNames, string canonicalName, string decreeKind, string decreeNumber, DateTime? decreeDate)
-        => Compose($"يرجى ملاحظة أنه تم توحيد تسمية \"{unifiedNames}\" إلى «{canonicalName}»", decreeKind, decreeNumber, decreeDate);
+        => Compose($"يرجى ملاحظة أنه تم توحيد تسمية «{unifiedNames}» إلى «{canonicalName}»", decreeKind, decreeNumber, decreeDate);
 
     /// <summary>تنبيه رؤساء الأقسام (توحيد تسمية).</summary>
     public static string UnifyHeadsAlert(string unifiedNames, string canonicalName, string decreeKind, string decreeNumber, DateTime? decreeDate)
-        => Compose($"تم توحيد تسمية \"{unifiedNames}\" إلى «{canonicalName}»", decreeKind, decreeNumber, decreeDate);
+        => Compose($"تم توحيد تسمية «{unifiedNames}» إلى «{canonicalName}»", decreeKind, decreeNumber, decreeDate);
 
     // ── حلول (الإلغاء والاستبدال) ──
 
@@ -99,9 +99,9 @@ public static class EntityChangeMessages
 
     /// <summary>التنبيه العام لكل المحامين (حلول).</summary>
     public static string AbolishLawyersAlert(string newCanonical, string abolishedNames, string decreeKind, string decreeNumber, DateTime? decreeDate)
-        => Compose($"يرجى ملاحظة أنه تم حلول \"{newCanonical}\" محل \"{abolishedNames}\"", decreeKind, decreeNumber, decreeDate);
+        => Compose($"يرجى ملاحظة أنه تم حلول «{newCanonical}» محل «{abolishedNames}»", decreeKind, decreeNumber, decreeDate);
 
     /// <summary>تنبيه رؤساء الأقسام (حلول).</summary>
     public static string AbolishHeadsAlert(string newCanonical, string abolishedNames, string decreeKind, string decreeNumber, DateTime? decreeDate)
-        => Compose($"تم حلول \"{newCanonical}\" محل \"{abolishedNames}\"", decreeKind, decreeNumber, decreeDate);
+        => Compose($"تم حلول «{newCanonical}» محل «{abolishedNames}»", decreeKind, decreeNumber, decreeDate);
 }

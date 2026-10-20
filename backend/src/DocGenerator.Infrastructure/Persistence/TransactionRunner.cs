@@ -3,11 +3,21 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DocGenerator.Infrastructure.Persistence;
 
-public sealed class TransactionRunner : ITransactionRunner
+/// <summary>
+/// يشغّل الإجراء ضمن معاملة واحدة على <c>DbContext</c> المسجّل في النطاق نفسه، ويعرض
+/// حالة المعاملة الجارية عبر <see cref="ITransactionContext"/> (الخطة §0.1-18).
+/// </summary>
+public sealed class TransactionRunner : ITransactionRunner, ITransactionContext
 {
     private readonly DocGeneratorDbContext _db;
 
     public TransactionRunner(DocGeneratorDbContext db) => _db = db;
+
+    /// <summary>هلThere معاملة نشطة على هذا النطاق؟</summary>
+    public bool HasActiveTransaction => _db.Database.CurrentTransaction is not null;
+
+    /// <summary>معرّف المعاملة النشطة (إن وُجدت) — للتشخيص فقط.</summary>
+    public Guid? TransactionId => _db.Database.CurrentTransaction?.TransactionId;
 
     public Task<T> RunAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct = default)
         => RunInTransactionAsync(ct, action);

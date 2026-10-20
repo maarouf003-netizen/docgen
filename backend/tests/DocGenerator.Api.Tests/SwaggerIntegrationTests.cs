@@ -31,6 +31,9 @@ public sealed class SwaggerDisabledFactory : WebApplicationFactory<Program>
         builder.UseEnvironment("Production");
         builder.UseSetting("ConnectionStrings:DefaultConnection", $"Data Source={_dbPath}");
         builder.UseSetting("Database:UsePostgres", "false");
+    // بيئة الإنتاج لا ترحّل تلقائيًا (Database:AutoMigrate=false افتراضيًا):
+    // الاختبار يبني قاعدة مؤقتة جديدة، فيُفعّل الترحيل صراحةً لنطاق الاختبار.
+    builder.UseSetting("Database:AutoMigrate", "true");
         // قرار صريح مقصود: التحقق من قيود الإنتاج (Swagger مغلق) على عقدة SQLite مؤقتة.
         builder.UseSetting("Database:AllowSqliteInProduction", "true");
         builder.UseSetting("Swagger:Enabled", "false");

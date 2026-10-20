@@ -1,17 +1,40 @@
 using DocGenerator.Domain.Entities;
-using DocGenerator.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace DocGenerator.Infrastructure.Persistence.Configurations;
 
+/// <summary>
+/// إعدادات جدول التنبيهات.
+///
+/// **مرحلة التوسّع (PR-1 / M1):** الأعمدة الجديدة nullable للتوافق الخلفي مع الكود
+/// القديم، و<code>Message</code> نص بلا سقف، و<code>IsArchived</code> بقيمة افتراضية
+/// <c>false</c>. بلا قيد <c>Kind</c> وبلا فهرس فريد وبلا فهرس القائمة — تُضاف في
+/// مرحلة الترحيل (PR-2) و<code>Contract</code> (PR-3) وفق الخطة §6.2/§6.3.
+/// </summary>
 public class HeadAlertConfiguration : IEntityTypeConfiguration<HeadAlert>
 {
     public void Configure(EntityTypeBuilder<HeadAlert> builder)
     {
         builder.ToTable("HeadAlerts");
         builder.HasKey(a => a.Id);
-        builder.Property(a => a.Message).HasMaxLength(2000).IsRequired();
+
+        // النص بلا سقف عمود: «text»/«TEXT» بلا قصّ صامت (الخطة §6.2/§7.3).
+        builder.Property(a => a.Message).IsRequired();
+
+        // الأنواع الجديدة nullable في مرحلة التوسّع؛ ويفرضها «Contract» غير قابلة للفراغ.
+        builder.Property(a => a.Kind).HasMaxLength(64);
+        builder.Property(a => a.DedupeKey).HasMaxLength(200);
+        builder.Property(a => a.LastContentChangedAt);
+
+        // الأرشفة المنطقية: عمود NOT NULL بقيمة افتراضية false (لا يفصل الصفوف القديمة).
+        builder.Property(a => a.IsArchived).HasDefaultValue(false);
+        builder.Property(a => a.ArchivedAt);
+
+        // الربط الدلالي بدائرة التنفيذ (بديل مطابقة النص). العلاقة (FK) تُضاف في
+        // مرحلة الترحيل بعد تعبئة العمود، فتبقى مرحلة التوسّع بلا قيد مرجعي جديد.
+        builder.Property(a => a.ExecutionCircuitId);
+
         builder.HasIndex(a => a.BranchId);
         builder.HasIndex(a => a.CreatedAt);
         builder.HasIndex(a => a.DelegationId);
@@ -45,7 +68,7 @@ public class HeadAlertConfiguration : IEntityTypeConfiguration<HeadAlert>
             .HasForeignKey(a => a.AppealId)
             .OnDelete(DeleteBehavior.SetNull);
 
-// كتاب المطالعة المرتبط (تنبيه الرد): الكتاب سجل رسمي لا يُحذف،
+        // كتاب المطالعة المرتبط (تنبيه الرد): الكتاب سجل رسمي لا يُحذف،
         // ويبقى السلوك نفسه بحكم الحماية عند أي تطور مستقبلي.
         builder.HasOne(a => a.ReviewLetter)
             .WithMany()
