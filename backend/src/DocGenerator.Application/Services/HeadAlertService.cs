@@ -1,3 +1,4 @@
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
@@ -42,9 +43,46 @@ public interface IHeadAlertService
     Task<bool> DeleteByAppealAsync(int appealId, CancellationToken ct = default);
     /// <summary>
     /// حذف انتقائي لمستلم واحد من تنبيهات استئناف (§6.2/§6.5 — إحالة/تراجع) —
-    /// بلا مساس بباقي المستلمين.
+    /// بلا مساس بباقي المستلمين. أفضل جهد للمتصل (لا يرمي).
     /// </summary>
     Task<int> RemoveAppealRecipientAsync(int appealId, int userId, CancellationToken ct = default);
+
+    // ── المسار النظامي (الخطة §8.1) ──
+
+    /// <summary>
+    /// معالجة تنبيه نظامي — **معالج داخلي يعمل داخل معاملة مشغّل Outbox فقط**.
+    ///
+    /// ينشئ/يحدّث التنبيه بمفتاح منع التكرار المركزي، ويعيد ضبط القراءة عند تغيّر النص
+    /// فقط، ولا يعدّل <c>CreatedAt</c> أبدًا. يرفض العمل بلا معاملة نشطة.
+    /// </summary>
+    Task<HeadAlertWriteResult> CreateSystemAsync(
+        CreateSystemHeadAlertRequest request,
+        DateTime occurredAt,
+        HeadAlertSupersedePlan? supersedePlan,
+        int? targetUserIdOverride,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// معالجة إعادة تسمية دائرة — **معالج داخلي لمشغّل Outbox** (يتطلب معاملة نشطة).
+    /// يحدّث التنبيهات النشطة <c>circuit_pending_documents</c> المرتبطة بالدائرة فقط،
+    /// ولا ينشئ تنبيهًا جديدًا ولا يغيّر مفتاح منع التكرار.
+    /// </summary>
+    Task<int> ApplyCircuitRenamedAsync(
+        int circuitId, string message, DateTime occurredAt, CancellationToken ct = default);
+
+    /// <summary>
+    /// أرشفة (لا حذف) تنبيهات الإنابة ضمن مجموعة أنواع صريحة. إن وُجدت معاملة نشطة
+    /// تُنفَّذ بلا معاملة متداخلة؛ وإلا تفتح المعاملة بنفسها.
+    /// </summary>
+    Task<int> ArchiveByDelegationAsync(
+        int delegationId, IReadOnlySet<string> archiveKinds, string reason, CancellationToken ct = default);
+
+    /// <summary>
+    /// أرشفة (لا حذف) تنبيهات الاستئناف ضمن مجموعة أنواع صريحة — بقواعد
+    /// <see cref="ArchiveByDelegationAsync"/>.
+    /// </summary>
+    Task<int> ArchiveByAppealAsync(
+        int appealId, IReadOnlySet<string> archiveKinds, string reason, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -60,6 +98,7 @@ public sealed class HeadAlertService : IHeadAlertService
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
+    private readonly ITransactionContext _transactions;
 
     public HeadAlertService(
         IHeadAlertRepository alerts,
@@ -68,7 +107,8 @@ public sealed class HeadAlertService : IHeadAlertService
         IRepository<Branch> branches,
         IUnitOfWork uow,
         ITransactionRunner tx,
-        IAuditLogger audit)
+        IAuditLogger audit,
+        ITransactionContext? transactions = null)
     {
         _alerts = alerts;
         _documents = documents;
@@ -77,6 +117,8 @@ public sealed class HeadAlertService : IHeadAlertService
         _uow = uow;
         _tx = tx;
         _audit = audit;
+        // الحارس يفشل مغلقًا بلا سياق: أي مسار يفرض معاملة نشطة يرمي بدل أن يعمل بلا ذرّية.
+        _transactions = transactions ?? NullTransactionContext.Instance;
     }
 
     public async Task<List<HeadAlertDto>> ListForLawyerAsync(int userId, CancellationToken ct = default)
@@ -310,6 +352,399 @@ public sealed class HeadAlertService : IHeadAlertService
             await _uow.SaveChangesAsync(token);
         }, ct);
         return removed;
+    }
+
+    // ── المسار النظامي (الخطة §8.1) ──
+
+    public async Task<HeadAlertWriteResult> CreateSystemAsync(
+        CreateSystemHeadAlertRequest request,
+        DateTime occurredAt,
+        HeadAlertSupersedePlan? supersedePlan,
+        int? targetUserIdOverride,
+        CancellationToken ct = default)
+    {
+        // حارس المعاملة: المعالج يعمل داخل معاملة المشغّل فقط (لا يبدأ معاملة ولا
+        // ينهيها، ولا يستدعي ITransactionRunner) — فلا يتداخل مع معاملة عمل.
+        if (!_transactions.HasActiveTransaction)
+            throw new InvalidOperationException("معالجة التنبيه النظامي تتطلب معاملة نشطة");
+
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (!HeadAlertKindCatalog.IsWritable(request.Kind))
+            throw new ArgumentException($"نوع التنبيه غير قابل للكتابة: {request.Kind}", nameof(request));
+        if (!HeadAlertKindCatalog.AllowedAudiences(request.Kind).Contains(request.Audience))
+            throw new ArgumentException(
+                $"الجمهور {request.Audience} غير مسموح للنوع {request.Kind}", nameof(request));
+
+        var message = HeadAlertTextLimits.EnsureWithinSafety(request.Message);
+        if (string.IsNullOrWhiteSpace(message))
+            throw new ArgumentException("نص التنبيه مطلوب", nameof(request));
+
+        var creator = await _users.GetByIdAsync(request.CreatedById, ct);
+        if (creator is null || !creator.IsActive)
+            throw new ArgumentException("منشئ التنبيه النظامي غير موجود أو غير فعّال", nameof(request));
+
+        var effective = ApplyTargetUserOverride(request, targetUserIdOverride);
+        var (targetType, recipients) = await ResolveSystemRecipientsAsync(effective, ct);
+        if (recipients.Count == 0)
+            throw new HeadAlertNoRecipientsException("لا يوجد مستلمون مؤهّلون للتنبيه");
+
+        var dedupeKey = HeadAlertDedupe.Build(BuildDedupeScope(effective));
+        var existing = await _alerts.FindLatestActiveByDedupeKeyAsync(dedupeKey, ct);
+
+        HeadAlert alert;
+        HeadAlertWriteResult result;
+
+        if (existing is null)
+        {
+            alert = new HeadAlert
+            {
+                BranchId = request.BranchId,
+                CreatedById = request.CreatedById,
+                TargetType = targetType,
+                Kind = request.Kind,
+                DedupeKey = dedupeKey,
+                DocumentId = request.DocumentId,
+                TargetLawyerId = request.TargetLawyerId,
+                DelegationId = request.DelegationId,
+                AppealId = request.AppealId,
+                ReviewLetterId = request.ReviewLetterId,
+                PublicEntityId = request.PublicEntityId,
+                ExecutionCircuitId = request.ExecutionCircuitId,
+                Message = message,
+                CreatedAt = occurredAt,
+                LastContentChangedAt = occurredAt,
+                IsArchived = false,
+                Recipients = recipients.Select(u => new HeadAlertRecipient { UserId = u.Id }).ToList(),
+            };
+            await _alerts.AddAsync(alert, ct);
+            result = HeadAlertWriteResult.Created;
+        }
+        else
+        {
+            alert = existing;
+
+            // حارس الحداثة: رسالة أقدم من آخر تغيير محتوى لا تمحو الأحدث.
+            var lastChanged = alert.LastContentChangedAt ?? alert.CreatedAt;
+            if (occurredAt < lastChanged)
+                return HeadAlertWriteResult.Stale;
+
+            if (string.Equals(alert.Message, message, StringComparison.Ordinal))
+            {
+                result = HeadAlertWriteResult.Unchanged;
+            }
+            else
+            {
+                alert.Message = message;
+                alert.LastContentChangedAt = lastChanged > occurredAt ? lastChanged : occurredAt;
+                foreach (var recipient in alert.Recipients)
+                {
+                    recipient.IsRead = false;
+                    recipient.ReadAt = null;
+                }
+                result = HeadAlertWriteResult.Updated;
+            }
+
+            MatchRecipients(alert, recipients);
+        }
+
+        // خطة الاستبدال: تُطبَّق بعد الإنشاء/التحديث **وأيضًا عند Unchanged**، وفي
+        // المعاملة نفسها، مع استثناء التنبيه الحالي (لا يُؤرشف البديل).
+        if (supersedePlan is not null)
+            await ApplySupersedePlanAsync(alert, supersedePlan, ct);
+
+        await _uow.SaveChangesAsync(ct);
+
+        await _audit.LogAsync(
+            creator.FullName,
+            result == HeadAlertWriteResult.Created ? "create_alert" : "update_alert",
+            details: $"{HeadAlertKindCatalog.ToLabel(request.Kind)}: {HeadAlertTextLimits.PreviewForAudit(message)}",
+            ct: ct);
+
+        return result;
+    }
+
+    public async Task<int> ApplyCircuitRenamedAsync(
+        int circuitId, string message, DateTime occurredAt, CancellationToken ct = default)
+    {
+        if (!_transactions.HasActiveTransaction)
+            throw new InvalidOperationException("معالجة إعادة التسمية تتطلب معاملة نشطة");
+
+        var text = HeadAlertTextLimits.EnsureWithinSafety(message);
+        if (string.IsNullOrWhiteSpace(text))
+            throw new ArgumentException("نص إعادة التسمية مطلوب", nameof(message));
+
+        var pending = await _alerts.ListActivePendingByCircuitAndKindAsync(
+            circuitId, HeadAlertKindCatalog.CircuitPendingDocuments, ct);
+
+        var updated = 0;
+        foreach (var alert in pending)
+        {
+            var lastChanged = alert.LastContentChangedAt ?? alert.CreatedAt;
+            if (occurredAt < lastChanged)
+                continue;
+
+            if (!string.Equals(alert.Message, text, StringComparison.Ordinal))
+            {
+                alert.Message = text;
+                alert.LastContentChangedAt = lastChanged > occurredAt ? lastChanged : occurredAt;
+                foreach (var recipient in alert.Recipients)
+                {
+                    recipient.IsRead = false;
+                    recipient.ReadAt = null;
+                }
+            }
+
+            updated++;
+        }
+
+        await _uow.SaveChangesAsync(ct);
+        return updated;
+    }
+
+    public Task<int> ArchiveByDelegationAsync(
+        int delegationId, IReadOnlySet<string> archiveKinds, string reason, CancellationToken ct = default)
+    {
+        ValidateArchiveArguments(archiveKinds, reason);
+
+        // معاملة محيطة: إن وُجدت معاملة نشطة فلا تُفتح معاملة متداخلة.
+        if (_transactions.HasActiveTransaction)
+            return ArchiveByDelegationCoreAsync(delegationId, archiveKinds, null, reason, ct);
+
+        return _tx.RunAsync(
+            token => ArchiveByDelegationCoreAsync(delegationId, archiveKinds, null, reason, token),
+            ct);
+    }
+
+    public Task<int> ArchiveByAppealAsync(
+        int appealId, IReadOnlySet<string> archiveKinds, string reason, CancellationToken ct = default)
+    {
+        ValidateArchiveArguments(archiveKinds, reason);
+
+        if (_transactions.HasActiveTransaction)
+            return ArchiveByAppealCoreAsync(appealId, archiveKinds, null, reason, ct);
+
+        return _tx.RunAsync(
+            token => ArchiveByAppealCoreAsync(appealId, archiveKinds, null, reason, token),
+            ct);
+    }
+
+    /// <summary>
+    /// الأرشفة الأساسية — بلا <c>ITransactionRunner</c> (تعمل داخل معاملة المتصل).
+    /// </summary>
+    internal async Task<int> ArchiveByDelegationCoreAsync(
+        int delegationId,
+        IReadOnlySet<string> archiveKinds,
+        int? excludeAlertId,
+        string reason,
+        CancellationToken ct)
+    {
+        var archived = await _alerts.ArchiveByScopeAndKindsAsync(
+            delegationId, HeadAlertScopeKind.Delegation, archiveKinds, excludeAlertId, ct);
+
+        if (archived > 0)
+            await _audit.LogAsync(null, "archive_alert",
+                details: $"أُرشفت {archived} تنبيه إنابة ({reason})", ct: ct);
+
+        return archived;
+    }
+
+    /// <summary>الأرشفة الأساسية للاستئناف — بلا <c>ITransactionRunner</c>.</summary>
+    internal async Task<int> ArchiveByAppealCoreAsync(
+        int appealId,
+        IReadOnlySet<string> archiveKinds,
+        int? excludeAlertId,
+        string reason,
+        CancellationToken ct)
+    {
+        var archived = await _alerts.ArchiveByScopeAndKindsAsync(
+            appealId, HeadAlertScopeKind.Appeal, archiveKinds, excludeAlertId, ct);
+
+        if (archived > 0)
+            await _audit.LogAsync(null, "archive_alert",
+                details: $"أُرشفت {archived} تنبيه استئناف ({reason})", ct: ct);
+
+        return archived;
+    }
+
+    private static void ValidateArchiveArguments(IReadOnlySet<string> archiveKinds, string reason)
+    {
+        if (archiveKinds is null || archiveKinds.Count == 0)
+            throw new ArgumentException("مجموعة أنواع الأرشفة إلزامية", nameof(archiveKinds));
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new ArgumentException("سبب الأرشفة إلزامي", nameof(reason));
+    }
+
+    private async Task ApplySupersedePlanAsync(
+        HeadAlert current,
+        HeadAlertSupersedePlan plan,
+        CancellationToken ct)
+    {
+        if (plan.DelegationId is not null)
+        {
+            await ArchiveByDelegationCoreAsync(
+                plan.DelegationId.Value, plan.ArchiveKinds, current.Id, plan.Reason, ct);
+        }
+        else if (plan.AppealId is not null)
+        {
+            await ArchiveByAppealCoreAsync(
+                plan.AppealId.Value, plan.ArchiveKinds, current.Id, plan.Reason, ct);
+        }
+    }
+
+    /// <summary>
+    /// يطبّق تجاوز المستلم (عند التعاقب) — يحل محل <c>RecipientUserId</c>/
+    /// <c>TargetLawyerId</c> في الجمهور الأحادي فقط.
+    /// </summary>
+    private static CreateSystemHeadAlertRequest ApplyTargetUserOverride(
+        CreateSystemHeadAlertRequest request,
+        int? targetUserIdOverride)
+    {
+        if (targetUserIdOverride is null)
+            return request;
+
+        if (request.Audience is not (HeadAlertAudience.SingleLawyer or HeadAlertAudience.SingleHead))
+            throw new ArgumentException("تجاوز المستلم يقتصر على الجمهور الأحادي", nameof(targetUserIdOverride));
+
+        return request with
+        {
+            RecipientUserId = targetUserIdOverride.Value,
+            TargetLawyerId = request.Audience == HeadAlertAudience.SingleLawyer
+                ? targetUserIdOverride.Value
+                : null,
+        };
+    }
+
+    /// <summary>يبني نطاقAudience من الطلب — الجمهور هو المرجع لا <c>TargetType</c>.</summary>
+    private static HeadAlertDedupeScope BuildDedupeScope(CreateSystemHeadAlertRequest request)
+        => new()
+        {
+            Kind = request.Kind,
+            Audience = request.Audience,
+            BranchId = request.BranchId,
+            RecipientUserId = request.Audience == HeadAlertAudience.SingleHead
+                ? request.RecipientUserId
+                : request.RecipientUserId ?? request.TargetLawyerId,
+            DelegationId = request.DelegationId,
+            AppealId = request.AppealId,
+            ReviewLetterId = request.ReviewLetterId,
+            DocumentId = request.DocumentId,
+            PublicEntityId = request.PublicEntityId,
+            ExecutionCircuitId = request.ExecutionCircuitId,
+        };
+
+    /// <summary>
+    /// يحدّد <c>TargetType</c> المخزَّن من <c>Audience</c> (لا العكس) ويحسب المستلمين:
+    /// الجمهور الأحادي من الطلب، والجمهور المتعدد من المستخدمين النشطين وقت المعالجة.
+    /// </summary>
+    private async Task<(HeadAlertTargetType TargetType, List<User> Recipients)> ResolveSystemRecipientsAsync(
+        CreateSystemHeadAlertRequest request,
+        CancellationToken ct)
+    {
+        switch (request.Audience)
+        {
+            case HeadAlertAudience.SingleLawyer:
+            {
+                var lawyerId = request.RecipientUserId ?? request.TargetLawyerId;
+                if (lawyerId is null)
+                    throw new ArgumentException("الجمهور الأحادي يحتاج مستلمًا صريحًا", nameof(request));
+                if (request.RecipientUserId is not null
+                    && request.TargetLawyerId is not null
+                    && request.RecipientUserId != request.TargetLawyerId)
+                    throw new ArgumentException("المستلم المحدد يختلف عن المحامي الهدف", nameof(request));
+
+                var lawyer = await _users.GetByIdAsync(lawyerId.Value, ct);
+                if (lawyer is null || !lawyer.IsActive || lawyer.Role != UserRole.Lawyer)
+                    throw new HeadAlertNoRecipientsException("المحامي المستلم غير موجود أو غير فعّال");
+
+                return (HeadAlertTargetType.Lawyer, new List<User> { lawyer });
+            }
+
+            case HeadAlertAudience.SingleHead:
+            {
+                if (request.RecipientUserId is null)
+                    throw new ArgumentException("الجمهور الأحادي يحتاج مستلمًا صريحًا", nameof(request));
+                if (request.TargetLawyerId is not null)
+                    throw new ArgumentException("الجمهور «رئيس» لا يقبل محاميًا هدفًا", nameof(request));
+
+                var head = await _users.GetByIdAsync(request.RecipientUserId.Value, ct);
+                if (head is null || !head.IsActive || head.Role is not (UserRole.Head or UserRole.SubHead))
+                    throw new HeadAlertNoRecipientsException("الرئيس المستلم غير موجود أو غير فعّال");
+
+                return (HeadAlertTargetType.Head, new List<User> { head });
+            }
+
+            case HeadAlertAudience.DocumentCreator:
+            {
+                if (request.TargetLawyerId is not null)
+                    throw new ArgumentException("الجمهور «منشئ الملف» لا يقبل محاميًا هدفًا", nameof(request));
+
+                User? creator = null;
+                if (request.RecipientUserId is not null)
+                {
+                    creator = await _users.GetByIdAsync(request.RecipientUserId.Value, ct);
+                }
+                else if (request.DocumentId is not null)
+                {
+                    var document = await _documents.GetByIdAsync(request.DocumentId.Value, ct);
+                    creator = document?.CreatedBy;
+                }
+                else
+                {
+                    throw new ArgumentException(
+                        "جمهور «منشئ الملف» يحتاج مستلمًا صريحًا أو ملفًا صالحًا", nameof(request));
+                }
+
+                if (creator is null || !creator.IsActive || creator.Role != UserRole.Lawyer)
+                    throw new HeadAlertNoRecipientsException("منشئ الملف غير موجود أو غير فعّال");
+
+                if (request.DocumentId is not null && request.RecipientUserId is not null)
+                {
+                    var document = await _documents.GetByIdAsync(request.DocumentId.Value, ct);
+                    if (document?.CreatedById != creator.Id)
+                        throw new ArgumentException("المستلم لا يطابق منشئ الملف", nameof(request));
+                }
+
+                return (HeadAlertTargetType.Document, new List<User> { creator });
+            }
+
+            case HeadAlertAudience.BranchLawyers:
+            {
+                if (request.RecipientUserId is not null || request.TargetLawyerId is not null)
+                    throw new ArgumentException("البث لا يقبل مستلمًا صريحًا", nameof(request));
+
+                var lawyers = await _alerts.ListActiveLawyersAsync(request.BranchId, ct);
+                return (HeadAlertTargetType.Lawyer, lawyers);
+            }
+
+            case HeadAlertAudience.BranchHeads:
+            {
+                if (request.RecipientUserId is not null || request.TargetLawyerId is not null)
+                    throw new ArgumentException("البث لا يقبل مستلمًا صريحًا", nameof(request));
+
+                var heads = await _alerts.ListActiveHeadsAsync(request.BranchId, ct);
+                return (HeadAlertTargetType.Head, heads);
+            }
+
+            default:
+                throw new ArgumentException("جمهور التنبيه غير معروف", nameof(request));
+        }
+    }
+
+    /// <summary>
+    /// مطابقة المستلمين: يُضاف المستلم الجديد بـ<code>IsRead=false</code>، ويُحافظ على
+    /// حالة قراءة الموجودين، ولا يُحذف مستلم قديم إلا في مسار تعاقب/حذف صريح.
+    /// </summary>
+    private static void MatchRecipients(HeadAlert alert, IReadOnlyCollection<User> recipients)
+    {
+        var existing = alert.Recipients.Select(r => r.UserId).ToHashSet();
+        foreach (var user in recipients)
+        {
+            if (existing.Contains(user.Id))
+                continue;
+
+            alert.Recipients.Add(new HeadAlertRecipient { UserId = user.Id, IsRead = false });
+        }
     }
 
     private async Task<List<User>> ResolveRecipientsAsync(

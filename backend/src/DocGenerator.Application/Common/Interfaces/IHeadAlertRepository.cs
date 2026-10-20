@@ -108,4 +108,54 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
     /// </summary>
     Task<HeadAlert?> FindLatestUnseenByReviewLetterAsync(
         int reviewLetterId, int recipientUserId, CancellationToken ct = default);
+
+    // ── مسارات النوع الدلالي (الخطة §6.4/§8.1) ──
+
+    /// <summary>
+    /// التنبيه النشط بنفس مفتاح منع التكرار — بحث داخل معاملة المعالج. الفهرس الفريد
+    /// الجزئي هو الحكم النهائي للPrevented التكرار.
+    /// </summary>
+    Task<HeadAlert?> FindLatestActiveByDedupeKeyAsync(string dedupeKey, CancellationToken ct = default);
+
+    /// <summary>
+    /// التنبيهات النشطة لدورة (إنابة/استئناف) ضمن مجموعة أنواع صريحة — أساس الأرشفة
+    /// المقيدة بالنوع (لا «أرشفة الكل»).
+    /// </summary>
+    Task<List<HeadAlert>> ListActiveByScopeAndKindsAsync(
+        int scopeId, HeadAlertScopeKind scopeKind, IReadOnlySet<string> kinds, CancellationToken ct = default);
+
+    /// <summary>مستلمو تنبيه بعينه مع حالة قراءتهم (نافذة «المستلمون»).</summary>
+    Task<List<HeadAlertRecipient>> ListRecipientsAsync(int alertId, CancellationToken ct = default);
+
+    /// <summary>
+    /// أرشفة (لا حذف) التنبيهات النشطة لدورة ضمن مجموعة أنواع صريحة، مع استثناء
+    /// اختياري للتنبيه البديل. النداء بلا حفظ (ضمن معاملة المتصل).
+    /// </summary>
+    Task<int> ArchiveByScopeAndKindsAsync(
+        int scopeId, HeadAlertScopeKind scopeKind, IReadOnlySet<string> kinds, int? excludeAlertId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// تنبيهات المعلقات النشطة لمحامٍ ضمن نوع واحد — أساس التنظيف اليومي
+    /// (<c>circuit_pending_documents</c> فقط؛ لا يمسّ <c>legacy</c>).
+    /// </summary>
+    Task<List<HeadAlert>> ListActivePendingByLawyerAndKindAsync(
+        int lawyerId, string kind, CancellationToken ct = default);
+
+    /// <summary>
+    /// تنبيهات المعلقات النشطة لدائرة ضمن نوع واحد — أساس إعادة التسمية: تُحدَّث
+    /// التنبيهات المرتبطة بالدائرة بالنص الجديد دون مطابقة النص.
+    /// </summary>
+    Task<List<HeadAlert>> ListActivePendingByCircuitAndKindAsync(
+        int circuitId, string kind, CancellationToken ct = default);
+}
+
+/// <summary>نطاق دورة الحياة الذي تُرشَّف ضمنه التنبيهات.</summary>
+public enum HeadAlertScopeKind
+{
+    /// <summary>دورة إنابة (<c>DelegationId</c>).</summary>
+    Delegation = 0,
+
+    /// <summary>دورة استئناف (<c>AppealId</c>).</summary>
+    Appeal = 1
 }

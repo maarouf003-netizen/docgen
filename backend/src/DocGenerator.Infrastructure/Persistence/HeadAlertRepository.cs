@@ -350,4 +350,102 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             .OrderByDescending(a => a.CreatedAt)
             .FirstOrDefaultAsync(a => a.Recipients.Any(r => r.UserId == recipientUserId && !r.IsRead), ct);
     }
+
+    // ── مسارات النوع الدلالي (الخطة §6.4/§8.1) ──
+
+    public async Task<HeadAlert?> FindLatestActiveByDedupeKeyAsync(string dedupeKey, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(dedupeKey))
+            return null;
+
+        // متتبَّعة: المعالج يحدّث الصف (النص وزمن آخر تغيير) داخل معاملته.
+        return await Db.HeadAlerts
+            .Include(a => a.Recipients)
+            .Where(a => a.DedupeKey == dedupeKey && !a.IsArchived)
+            .OrderByDescending(a => a.LastContentChangedAt)
+            .ThenByDescending(a => a.Id)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<List<HeadAlert>> ListActiveByScopeAndKindsAsync(
+        int scopeId, HeadAlertScopeKind scopeKind, IReadOnlySet<string> kinds, CancellationToken ct = default)
+    {
+        if (kinds is null || kinds.Count == 0)
+            return new List<HeadAlert>();
+
+        var query = scopeKind == HeadAlertScopeKind.Delegation
+            ? Db.HeadAlerts.Where(a => a.DelegationId == scopeId)
+            : Db.HeadAlerts.Where(a => a.AppealId == scopeId);
+
+        var kindList = kinds.ToList();
+        return await query
+            .Where(a => !a.IsArchived && a.Kind != null && kindList.Contains(a.Kind))
+            .OrderBy(a => a.Id)
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<HeadAlertRecipient>> ListRecipientsAsync(int alertId, CancellationToken ct = default)
+    {
+        return await Db.HeadAlertRecipients
+            .AsNoTracking()
+            .Where(r => r.HeadAlertId == alertId)
+            .OrderBy(r => r.Id)
+            .ToListAsync(ct);
+    }
+
+    public async Task<int> ArchiveByScopeAndKindsAsync(
+        int scopeId, HeadAlertScopeKind scopeKind, IReadOnlySet<string> kinds, int? excludeAlertId,
+        CancellationToken ct = default)
+    {
+        if (kinds is null || kinds.Count == 0)
+            throw new ArgumentException("مجموعة أنواع الأرشفة إلزامية", nameof(kinds));
+
+        var query = scopeKind == HeadAlertScopeKind.Delegation
+            ? Db.HeadAlerts.Where(a => a.DelegationId == scopeId)
+            : Db.HeadAlerts.Where(a => a.AppealId == scopeId);
+
+        var kindList = kinds.ToList();
+        var candidates = await query
+            .Where(a => !a.IsArchived && a.Kind != null && kindList.Contains(a.Kind))
+            .ToListAsync(ct);
+
+        var now = DateTime.UtcNow;
+        var archived = 0;
+        foreach (var alert in candidates)
+        {
+            if (excludeAlertId.HasValue && alert.Id == excludeAlertId.Value)
+                continue;
+
+            alert.IsArchived = true;
+            alert.ArchivedAt = now;
+            archived++;
+        }
+
+        if (archived > 0)
+            await Db.SaveChangesAsync(ct);
+
+        return archived;
+    }
+
+    public async Task<List<HeadAlert>> ListActivePendingByLawyerAndKindAsync(
+        int lawyerId, string kind, CancellationToken ct = default)
+    {
+        return await Db.HeadAlerts
+            .AsNoTracking()
+            .Where(a => !a.IsArchived && a.Kind == kind
+                     && a.Recipients.Any(r => r.UserId == lawyerId))
+            .OrderBy(a => a.Id)
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<HeadAlert>> ListActivePendingByCircuitAndKindAsync(
+        int circuitId, string kind, CancellationToken ct = default)
+    {
+        // متتبَّعة: تُحدَّث نصوصها داخل معاملة المعالجة (إعادة التسمية).
+        return await Db.HeadAlerts
+            .Include(a => a.Recipients)
+            .Where(a => !a.IsArchived && a.Kind == kind && a.ExecutionCircuitId == circuitId)
+            .OrderBy(a => a.Id)
+            .ToListAsync(ct);
+    }
 }

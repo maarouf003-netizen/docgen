@@ -4,6 +4,7 @@ using DocGenerator.Infrastructure.Persistence;
 using DocGenerator.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace DocGenerator.Infrastructure;
 
@@ -52,6 +53,11 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IDatabaseInitializer, DatabaseInitializer>();
         services.AddScoped<ITransactionRunner, TransactionRunner>();
+        // حالة المعاملة: نفس مُنفِّذ ITransactionRunner (نفس النطاق ونفس DbContext)
+        // فيرى الحارس المعاملة النشطة فعلًا.
+        services.AddScoped<ITransactionContext>(sp => (ITransactionContext)sp.GetRequiredService<ITransactionRunner>());
+        services.AddScoped<IHeadAlertOutboxStore, HeadAlertOutboxStore>();
+        services.AddSingleton(sp => new HeadAlertOutboxLock(connectionString, usePostgres, sp.GetRequiredService<ILogger<HeadAlertOutboxLock>>()));
         services.AddScoped<ITokenService, TokenService>();
         return services;
     }

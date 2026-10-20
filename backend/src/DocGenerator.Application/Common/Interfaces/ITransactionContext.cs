@@ -10,9 +10,23 @@ namespace DocGenerator.Application.Common.Interfaces;
 /// </summary>
 public interface ITransactionContext
 {
-    /// <summary>هلThere معاملة نشطة على هذا النطاق؟</summary>
+    /// <summary>هل هناك معاملة نشطة على هذا النطاق؟</summary>
     bool HasActiveTransaction { get; }
 
     /// <summary>معرّف المعاملة النشطة (إن وُجدت) — للتشخيص فقط.</summary>
     Guid? TransactionId { get; }
+}
+
+/// <summary>
+/// تنفيذ «بلا معاملة» — يُستخدم حين لا يُوفَّر سياق (مثل بناء الخدمة يدويًا في
+/// الاختبارات). يجعل حارس المعاملة **يفشل مغلقًا**: أي مسار يفرض معاملة نشطة يرمي
+/// بدل أن يعمل بلا ذرّية.
+/// </summary>
+public sealed class NullTransactionContext : ITransactionContext
+{
+    public static readonly NullTransactionContext Instance = new();
+
+    public bool HasActiveTransaction => false;
+
+    public Guid? TransactionId => null;
 }

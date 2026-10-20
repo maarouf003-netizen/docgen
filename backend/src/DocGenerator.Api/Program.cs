@@ -151,6 +151,8 @@ builder.Services
     .Configure<DocGenerator.Application.Common.ExportOptions>(builder.Configuration.GetSection("Export"))
     .Configure<DocGenerator.Application.Common.ForumOptions>(builder.Configuration.GetSection("Forum"))
     .Configure<DocGenerator.Application.Common.DatabaseOptions>(builder.Configuration.GetSection("Database"))
+    .Configure<DocGenerator.Application.Common.HeadAlertOutboxOptions>(builder.Configuration.GetSection(DocGenerator.Application.Common.HeadAlertOutboxOptions.SectionName))
+    .Configure<DocGenerator.Application.Common.HeadAlertLegacyBridgeOptions>(builder.Configuration.GetSection(DocGenerator.Application.Common.HeadAlertLegacyBridgeOptions.SectionName))
     .Configure<RateLimitOptions>(builder.Configuration.GetSection("RateLimiting"))
     .Configure<SecurityOptions>(builder.Configuration.GetSection("Security"))
     .Configure<LockoutOptions>(builder.Configuration.GetSection("Lockout"))
@@ -178,6 +180,9 @@ if (forumRetentionMonths < 0)
         "Forum:RetentionMonths must be 0 (disabled) or a positive number of months. "
         + "Negative retention is rejected at startup to prevent deleting the whole forum history.");
 builder.Services.AddHostedService<DocGenerator.Api.Background.ForumRetentionHostedService>();
+// مشغّل صندوق الصادر: delivers التنبيهات النظامية المرصودة داخل معاملة العمل.
+// خدمة واحدة نشطة (قفل «نسخة واحدة»)، وصف واحد لكل دورة.
+builder.Services.AddHostedService<DocGenerator.Infrastructure.Outbox.HeadAlertOutboxDispatcher>();
 // RF-016: فحص صحة القاعدة — خارج /api فلا مصادقة ولا حارس بوابة؛ بلا حزم جديدة.
 builder.Services.AddHealthChecks()
     .AddCheck<DocGenerator.Api.Health.DatabaseHealthCheck>("database");
