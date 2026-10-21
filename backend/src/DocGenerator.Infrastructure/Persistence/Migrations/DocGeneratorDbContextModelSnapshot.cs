@@ -2187,6 +2187,9 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Property<int?>("AppealId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTime?>("ArchivedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("BranchId")
                         .HasColumnType("INTEGER");
 
@@ -2196,15 +2199,33 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Property<int>("CreatedById")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("DedupeKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("DelegationId")
                         .HasColumnType("INTEGER");
 
                     b.Property<int?>("DocumentId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("ExecutionCircuitId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsArchived")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("Kind")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastContentChangedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Message")
                         .IsRequired()
-                        .HasMaxLength(2000)
                         .HasColumnType("TEXT");
 
                     b.Property<int?>("PublicEntityId")
@@ -2240,6 +2261,85 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.HasIndex("TargetLawyerId");
 
                     b.ToTable("HeadAlerts", (string)null);
+                });
+
+            modelBuilder.Entity("DocGenerator.Domain.Entities.HeadAlertOutboxMessage", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastError")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LockedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LockedUntil")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("NextAttemptAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Operation")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PayloadVersion")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("ProcessedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("TargetUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status", "LockedUntil");
+
+                    b.HasIndex("Status", "ProcessedAt");
+
+                    b.HasIndex("Status", "TargetUserId");
+
+                    b.HasIndex("Status", "NextAttemptAt", "Id");
+
+                    b.ToTable("HeadAlertOutboxMessages", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_HeadAlertOutbox_Attempts", "\"Attempts\" >= 0");
+
+                            t.HasCheckConstraint("CK_HeadAlertOutbox_Kind_Operation", "(\"Operation\" = 'upsert' AND \"Kind\" IS NOT NULL) OR (\"Operation\" = 'circuit_renamed' AND \"Kind\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_HeadAlertOutbox_Operation", "\"Operation\" IN ('upsert','circuit_renamed')");
+
+                            t.HasCheckConstraint("CK_HeadAlertOutbox_PayloadVersion", "\"PayloadVersion\" > 0");
+
+                            t.HasCheckConstraint("CK_HeadAlertOutbox_Status", "\"Status\" IN ('pending','processing','processed','skipped','failed')");
+                        });
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.HeadAlertRecipient", b =>

@@ -62,6 +62,9 @@ public sealed class ProductionDatabaseGuardTests : IDisposable
             builder.UseEnvironment("Production");
             builder.UseSetting("Database:UsePostgres", "false");
             builder.UseSetting("Database:AllowSqliteInProduction", "true");
+            // بيئة الإنتاج لا ترحّل تلقائيًا (Database:AutoMigrate=false افتراضيًا):
+            // الاختبار يبني قاعدة مؤقتة جديدة، فيُفعّل الترحيل صراحةً لنطاق الاختبار.
+            builder.UseSetting("Database:AutoMigrate", "true");
             builder.UseSetting("ConnectionStrings:DefaultConnection", $"Data Source={dbPath}");
             builder.UseSetting("Bootstrap:AdminPassword", "GuardAdminPass123");
             builder.UseSetting("Jwt:Secret", ApiFactory.TestJwtSecret);

@@ -4,6 +4,7 @@ using DocGenerator.Infrastructure.Persistence;
 using DocGenerator.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace DocGenerator.Infrastructure;
 
@@ -42,7 +43,9 @@ public static class DependencyInjection
         services.AddScoped<IForumRepository, ForumRepository>();
         services.AddScoped<IDelegationRepository, DelegationRepository>();
         services.AddScoped<IDelegationReservationRepository, DelegationReservationRepository>();
-        services.AddScoped<IDbExceptionClassifier, DbExceptionClassifier>();
+        // المصنِّف بلا حالة (بلا حقول ولا تبعيات) ⇒ يُسجَّل كـsingleton ليبتلعه
+        // مشغّل صندوق الصادر (BackgroundService = singleton) دون «اعتماد محتجز».
+        services.AddSingleton<IDbExceptionClassifier, DbExceptionClassifier>();
         services.AddScoped<IIdempotencyStore, IdempotencyStore>();
         services.AddScoped<IAppealRepository, AppealRepository>();
         services.AddScoped<IStatisticsRepository, StatisticsRepository>();
@@ -52,6 +55,11 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IDatabaseInitializer, DatabaseInitializer>();
         services.AddScoped<ITransactionRunner, TransactionRunner>();
+        // حالة المعاملة: نفس مُنفِّذ ITransactionRunner (نفس النطاق ونفس DbContext)
+        // فيرى الحارس المعاملة النشطة فعلًا.
+        services.AddScoped<ITransactionContext>(sp => (ITransactionContext)sp.GetRequiredService<ITransactionRunner>());
+        services.AddScoped<IHeadAlertOutboxStore, HeadAlertOutboxStore>();
+        services.AddSingleton(sp => new HeadAlertOutboxLock(connectionString, usePostgres, sp.GetRequiredService<ILogger<HeadAlertOutboxLock>>()));
         services.AddScoped<ITokenService, TokenService>();
         return services;
     }

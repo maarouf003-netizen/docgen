@@ -1,3 +1,4 @@
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Api.Tests.TestServices;
 using DocGenerator.Domain.Entities;
@@ -6,20 +7,23 @@ using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.Extensions.Options;
 using Npgsql.EntityFrameworkCore.PostgreSQL;
 
 namespace DocGenerator.Api.Tests;
 
 public class DatabaseInitializerTests
 {
-    private static (string Path, DocGeneratorDbContext Db, IDatabaseInitializer Initializer) CreateInitializer()
+    private static (string Path, DocGeneratorDbContext Db, IDatabaseInitializer Initializer) CreateInitializer(
+        bool autoMigrate = true)
     {
         var path = Path.Combine(Path.GetTempPath(), $"docgen_init_{Guid.NewGuid():N}.db");
         var options = new DbContextOptionsBuilder<DocGeneratorDbContext>()
             .UseSqlite($"Data Source={path}")
             .Options;
         var db = new DocGeneratorDbContext(options);
-        return (path, db, new DatabaseInitializer(db, new FastTestPasswordHasher()));
+        var databaseOptions = Options.Create(new DatabaseOptions { AutoMigrate = autoMigrate });
+        return (path, db, new DatabaseInitializer(db, new FastTestPasswordHasher(), databaseOptions));
     }
 
     private static void Cleanup(string path)
@@ -52,8 +56,47 @@ public class DatabaseInitializerTests
     }
 
     [Fact]
-    public async Task InitializeAsync_Production_WithAdminPassword_CreatesOnlyAdmin()
+    public async Task InitializeAsync_AutoMigrateDisabled_WithPendingMigrations_ThrowsWithActionableMessage()
     {
+        // الإنتاج: الترحيل التلقائي معطَّل — يجب أن يرفض الإقلاع على مخطط غير مطابق
+        // برسالة تحمل أوامر التطبيق (لا «no such column» عند أول طلب).
+        var (path, db, initializer) = CreateInitializer(autoMigrate: false);
+        try
+        {
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => initializer.InitializeAsync(development: false, bootstrapAdminPassword: null));
+
+            Assert.Contains("AutoMigrate=false", ex.Message);
+            Assert.Contains("dotnet ef database update", ex.Message);
+        }
+        finally
+        {
+            await db.DisposeAsync();
+            Cleanup(path);
+        }
+    }
+
+    [Fact]
+    public async Task InitializeAsync_AutoMigrateDisabled_WithUpToDateSchema_Proceeds()
+    {
+        var (path, db, initializer) = CreateInitializer(autoMigrate: false);
+        try
+        {
+            await db.Database.MigrateAsync();
+
+            await initializer.InitializeAsync(development: false, bootstrapAdminPassword: "Strong!Pass123");
+
+            Assert.Equal(1, await db.Users.CountAsync());
+        }
+        finally
+        {
+            await db.DisposeAsync();
+            Cleanup(path);
+        }
+    }
+
+    [Fact]
+    public async Task InitializeAsync_Production_WithAdminPassword_CreatesOnlyAdmin()    {
         var (path, db, initializer) = CreateInitializer();
         try
         {

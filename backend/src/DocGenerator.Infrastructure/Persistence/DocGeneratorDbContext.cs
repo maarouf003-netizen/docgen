@@ -30,6 +30,7 @@ public class DocGeneratorDbContext : DbContext
     public DbSet<DocumentRegistrationDate> DocumentRegistrationDates => Set<DocumentRegistrationDate>();
     public DbSet<HeadAlert> HeadAlerts => Set<HeadAlert>();
     public DbSet<HeadAlertRecipient> HeadAlertRecipients => Set<HeadAlertRecipient>();
+    public DbSet<HeadAlertOutboxMessage> HeadAlertOutboxMessages => Set<HeadAlertOutboxMessage>();
     public DbSet<ExecutionApplicant> ExecutionApplicants => Set<ExecutionApplicant>();
     public DbSet<ExecutedPublicEntity> ExecutedPublicEntities => Set<ExecutedPublicEntity>();
     public DbSet<ExecutedNaturalPerson> ExecutedNaturalPersons => Set<ExecutedNaturalPerson>();

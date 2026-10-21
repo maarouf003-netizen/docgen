@@ -98,6 +98,9 @@ public class SecurityHeadersIntegrationTests
             builder.UseSetting("ConnectionStrings:DefaultConnection", $"Data Source={_dbPath}");
             builder.UseSetting("Logging:File:Path", Path.Combine(_logDir, "logs-.txt"));
             builder.UseSetting("Database:UsePostgres", "false");
+    // بيئة الإنتاج لا ترحّل تلقائيًا (Database:AutoMigrate=false افتراضيًا):
+    // الاختبار يبني قاعدة مؤقتة جديدة، فيُفعّل الترحيل صراحةً لنطاق الاختبار.
+    builder.UseSetting("Database:AutoMigrate", "true");
             // قرار صريح مقصود: هذا المضيف يتحقق من سلوك الإنتاج (بلا CORS) على عقدة SQLite مؤقتة.
             builder.UseSetting("Database:AllowSqliteInProduction", "true");
             builder.UseSetting("Swagger:Enabled", "false");
