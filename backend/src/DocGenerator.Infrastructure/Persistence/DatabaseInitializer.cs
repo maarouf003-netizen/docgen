@@ -81,9 +81,18 @@ public sealed class DatabaseInitializer : IDatabaseInitializer
         }
         finally
         {
-            // تُعاد المفاتيح الأجنبية إلى حالتها الأولى عند الفشل حتى لا تُترك معطلة.
-            if (!wasOpen)
+            // تُعاد المفاتيح الأجنبية إلى حالتها الأولى عند الفشل حتى لا تُترك معطلة:
+            // إن كان الاتصال مفتوحًا مسبقًا فنعيد تفعيلها عليه صراحةً (إغلاق الاتصال
+            // يكفي في الحالة الأخرى لأن الإعداد على مستوى الاتصال).
+            if (wasOpen)
+            {
+                try { await ExecutePragmaAsync(connection, "PRAGMA foreign_keys=ON;", CancellationToken.None); }
+                catch { /* best effort: لا يُفشِل الإقلاع بسبب إعادة التفعيل */ }
+            }
+            else
+            {
                 await connection.CloseAsync();
+            }
         }
     }
 
