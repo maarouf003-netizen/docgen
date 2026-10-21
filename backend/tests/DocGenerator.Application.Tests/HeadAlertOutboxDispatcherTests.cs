@@ -56,6 +56,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
             _provider.GetRequiredService<IServiceScopeFactory>(),
             Options.Create(new HeadAlertOutboxOptions { Enabled = true, MaxAttempts = 3 }),
             new HeadAlertOutboxLock("Data Source=:memory:", false, NullLogger<HeadAlertOutboxLock>.Instance),
+            new DbExceptionClassifier(),
             NullLogger<HeadAlertOutboxDispatcher>.Instance);
     }
 
@@ -244,6 +245,24 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         Assert.Single(await _db.HeadAlerts.ToListAsync());
         var alert = await _db.HeadAlerts.AsNoTracking().SingleAsync();
         Assert.Equal(occurredAt, alert.LastContentChangedAt);
+    }
+
+    [Fact]
+    public async Task ProcessNext_CircuitRenamedWithoutActiveAlerts_IsSkipped()
+    {
+        // لا تنبيهات نشطة مرتبطة بالدائرة ⇒ تخطٍّ صريح (لا «نجاح» فارغ).
+        var outbox = Outbox();
+        await Tx().RunAsync(async token =>
+        {
+            await outbox.EnqueueCircuitRenamedAsync(4242, "أُعيدت تسمية الدائرة", DateTime.UtcNow, token);
+            await _provider.GetRequiredService<IUnitOfWork>().SaveChangesAsync(token);
+        });
+
+        Assert.True(await _dispatcher.ProcessNextAsync(CancellationToken.None));
+
+        var message = await _db.HeadAlertOutboxMessages.AsNoTracking().SingleAsync();
+        Assert.Equal(HeadAlertOutboxStatus.Skipped, message.Status);
+        Assert.Equal(HeadAlertOutboxSkipReasons.NoActiveAlerts, message.LastError);
     }
 
     [Fact]

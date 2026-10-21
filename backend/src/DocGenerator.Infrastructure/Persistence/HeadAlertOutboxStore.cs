@@ -19,6 +19,15 @@ public sealed class HeadAlertOutboxStore : IHeadAlertOutboxStore
 
     public void Enqueue(HeadAlertOutboxMessage message) => _db.HeadAlertOutboxMessages.Add(message);
 
+    public async Task<bool> HasClaimableAsync(DateTime now, CancellationToken ct = default)
+        => await _db.HeadAlertOutboxMessages
+            .AsNoTracking()
+            .AnyAsync(
+                m => (m.Status == HeadAlertOutboxStatus.Pending && m.NextAttemptAt <= now)
+                     || (m.Status == HeadAlertOutboxStatus.Processing
+                         && m.LockedUntil != null && m.LockedUntil <= now),
+                ct);
+
     public async Task<HeadAlertOutboxMessage?> ClaimNextAsync(
         string workerId,
         TimeSpan leaseDuration,

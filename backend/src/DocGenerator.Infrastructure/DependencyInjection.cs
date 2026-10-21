@@ -43,7 +43,9 @@ public static class DependencyInjection
         services.AddScoped<IForumRepository, ForumRepository>();
         services.AddScoped<IDelegationRepository, DelegationRepository>();
         services.AddScoped<IDelegationReservationRepository, DelegationReservationRepository>();
-        services.AddScoped<IDbExceptionClassifier, DbExceptionClassifier>();
+        // المصنِّف بلا حالة (بلا حقول ولا تبعيات) ⇒ يُسجَّل كـsingleton ليبتلعه
+        // مشغّل صندوق الصادر (BackgroundService = singleton) دون «اعتماد محتجز».
+        services.AddSingleton<IDbExceptionClassifier, DbExceptionClassifier>();
         services.AddScoped<IIdempotencyStore, IdempotencyStore>();
         services.AddScoped<IAppealRepository, AppealRepository>();
         services.AddScoped<IStatisticsRepository, StatisticsRepository>();

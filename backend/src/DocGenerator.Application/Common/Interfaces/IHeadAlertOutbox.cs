@@ -58,6 +58,12 @@ public interface IHeadAlertOutboxStore
         TimeSpan leaseDuration,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// هل توجد رسالة قابلة للالتقاط الآن؟ — فحص قراءة فقط بلا معاملة، فيتفادى
+    /// فتح معاملة كتابة كل دورة استطلاع على قائمة فارغة (تنافس القفل على SQLite).
+    /// </summary>
+    Task<bool> HasClaimableAsync(DateTime now, CancellationToken ct = default);
+
     /// <summary>يضع الرسالة <c>processed</c> ويضبط <c>ProcessedAt</c> (ضمن معاملة المعالجة).</summary>
     Task MarkProcessedAsync(long id, CancellationToken ct = default);
 

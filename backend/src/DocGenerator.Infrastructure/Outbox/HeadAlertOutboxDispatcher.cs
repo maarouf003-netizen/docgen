@@ -36,6 +36,7 @@ public sealed class HeadAlertOutboxDispatcher : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly HeadAlertOutboxOptions _options;
     private readonly HeadAlertOutboxLock _lock;
+    private readonly IDbExceptionClassifier _classifier;
     private readonly ILogger<HeadAlertOutboxDispatcher> _logger;
     private readonly string _workerId = $"{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
 
@@ -43,11 +44,13 @@ public sealed class HeadAlertOutboxDispatcher : BackgroundService
         IServiceScopeFactory scopeFactory,
         IOptions<HeadAlertOutboxOptions> options,
         HeadAlertOutboxLock outboxLock,
+        IDbExceptionClassifier classifier,
         ILogger<HeadAlertOutboxDispatcher> logger)
     {
         _scopeFactory = scopeFactory;
         _options = options.Value;
         _lock = outboxLock;
+        _classifier = classifier;
         _logger = logger;
     }
 
@@ -120,9 +123,20 @@ public sealed class HeadAlertOutboxDispatcher : BackgroundService
         {
             await HandleConflictAsync(claimed, ex, ct).ConfigureAwait(false);
         }
-        catch (JsonException ex)
+        catch (JsonException)
         {
-            await MarkFailedAsync(claimed.Id, $"invalid_payload: {ex.Message}", ct).ConfigureAwait(false);
+            // حمالة تالفة: سبب قصير ثابت — **لا تُخزَّن رسالة الاستثناء** لأنها قد
+            // تحوي جزءًا من الحمولة (نص التنبيه) — تسريب بيانات.
+            await MarkFailedAsync(claimed.Id, "invalid_payload", ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (IsDedupeKeyConflict(ex))
+        {
+            // سباق الفهرس الفريد الجزئي على DedupeKey: يُعامَل كتعارض (إعادة واحدة
+            // ثم failed) لا كخطأ عابر — الخطة §6.4.
+            await HandleConflictAsync(
+                claimed,
+                new HeadAlertConflictException("تعارض على مفتاح منع التكرار (فهرس فريد جزئي)"),
+                ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -132,11 +146,36 @@ public sealed class HeadAlertOutboxDispatcher : BackgroundService
         return true;
     }
 
+    /// <summary>
+    /// هل الاستثناء تعارض على الفهرس الفريد الجزئي لـ<code>DedupeKey</code>؟
+    /// يُميَّز عن بقية تعارضات القيد الفريد (مثل قيد المستلم) بالنص: اسم العمود
+    /// SQLite هو <c>HeadAlerts.DedupeKey</c> واسم فهرس PostgreSQL يحوي
+    /// <c>DedupeKey</c> كذلك.
+    /// </summary>
+    private bool IsDedupeKeyConflict(Exception exception)
+    {
+        if (!_classifier.IsUniqueViolation(exception))
+            return false;
+
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current.Message.Contains("DedupeKey", StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
+
     /// <summary>يلتقط صفًا واحدًا في معاملة قصيرة (نطاق جديد).</summary>
     private async Task<HeadAlertOutboxMessage?> ClaimAsync(CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
         var store = scope.ServiceProvider.GetRequiredService<IHeadAlertOutboxStore>();
+
+        // فحص قراءة أولًا: على قائمة فارغة لا نفتح معاملة كتابة كل دورة استطلاع
+        // (تفادي تنافس القفل على SQLite تحت الحمل).
+        if (!await store.HasClaimableAsync(DateTime.UtcNow, ct).ConfigureAwait(false))
+            return null;
 
         return await store.ExecuteInTransactionAsync(
             token => store.ClaimNextAsync(_workerId, TimeSpan.FromMinutes(Math.Max(1, _options.LeaseDurationMinutes)), token),
@@ -169,16 +208,37 @@ public sealed class HeadAlertOutboxDispatcher : BackgroundService
 
             var outcome = await DispatchAsync(alerts, payload, message, token).ConfigureAwait(false);
 
-            if (outcome == HeadAlertWriteResult.Stale)
-                await store.MarkSkippedAsync(message.Id, HeadAlertOutboxSkipReasons.StaleEvent, token).ConfigureAwait(false);
-            else
-                await store.MarkProcessedAsync(message.Id, token).ConfigureAwait(false);
+            switch (outcome)
+            {
+                case DispatchOutcome.SkippedStale:
+                    await store.MarkSkippedAsync(message.Id, HeadAlertOutboxSkipReasons.StaleEvent, token).ConfigureAwait(false);
+                    break;
+                case DispatchOutcome.SkippedNoActiveAlerts:
+                    await store.MarkSkippedAsync(message.Id, HeadAlertOutboxSkipReasons.NoActiveAlerts, token).ConfigureAwait(false);
+                    break;
+                default:
+                    await store.MarkProcessedAsync(message.Id, token).ConfigureAwait(false);
+                    break;
+            }
 
             return true;
         }, ct).ConfigureAwait(false);
     }
 
-    private static async Task<HeadAlertWriteResult> DispatchAsync(
+    /// <summary>نتيجة معالجة رسالة واحدة.</summary>
+    private enum DispatchOutcome
+    {
+        /// <summary>عُولجت (أو لم يتغيّر شيء) — تُوسم <c>processed</c>.</summary>
+        Processed = 0,
+
+        /// <summary>الحدث أقدم من آخر تغيير محتوى — تُتخطّى <c>stale_event</c>.</summary>
+        SkippedStale = 1,
+
+        /// <summary>لا تنبيهات نشطة مرتبطة بالحدث — تُتخطّى <c>no_active_alerts</c>.</summary>
+        SkippedNoActiveAlerts = 2
+    }
+
+    private static async Task<DispatchOutcome> DispatchAsync(
         IHeadAlertService alerts,
         HeadAlertOutboxPayloadV1 payload,
         HeadAlertOutboxMessage message,
@@ -189,9 +249,13 @@ public sealed class HeadAlertOutboxDispatcher : BackgroundService
             if (payload.CircuitId is null)
                 throw new JsonException("حمالة إعادة التسمية بلا معرّف دائرة");
 
-            await alerts.ApplyCircuitRenamedAsync(
+            var affected = await alerts.ApplyCircuitRenamedAsync(
                 payload.CircuitId.Value, payload.Message ?? string.Empty, payload.OccurredAt, ct).ConfigureAwait(false);
-            return HeadAlertWriteResult.Updated;
+
+            // لا صفوف نشطة مرتبطة بالدائرة ⇒ تخطٍّ صريح (لا «نجاح» فارغ).
+            return affected == 0
+                ? DispatchOutcome.SkippedNoActiveAlerts
+                : DispatchOutcome.Processed;
         }
 
         if (payload.Request is null)
@@ -205,12 +269,16 @@ public sealed class HeadAlertOutboxDispatcher : BackgroundService
                 new HashSet<string>(payload.SupersedePlan.ArchiveKinds, StringComparer.Ordinal),
                 payload.SupersedePlan.Reason);
 
-        return await alerts.CreateSystemAsync(
+        var result = await alerts.CreateSystemAsync(
             payload.Request,
             payload.OccurredAt,
             supersede,
             payload.TargetUserId,
             ct).ConfigureAwait(false);
+
+        return result == HeadAlertWriteResult.Stale
+            ? DispatchOutcome.SkippedStale
+            : DispatchOutcome.Processed;
     }
 
     /// <summary>يتحقق من تطابق العملية والنوع بين العمود والحمولة (يُرفض التعارض).</summary>
@@ -273,7 +341,17 @@ public sealed class HeadAlertOutboxDispatcher : BackgroundService
     };
 
     private static string Describe(Exception exception)
-        => $"{exception.GetType().Name}: {exception.Message}";
+        => exception switch
+        {
+            // رسائلنا هي وحدها من تعني (نصٌّ من تأليفنا لا يحوي بيانات مستخدم).
+            ArgumentException => $"{exception.GetType().Name}: {exception.Message}",
+            InvalidOperationException => $"{exception.GetType().Name}: {exception.Message}",
+            HeadAlertConflictException => exception.GetType().Name,
+            HeadAlertNoRecipientsException => exception.GetType().Name,
+            // بقية الاستثناءات: **نوع الاستثناء فقط** — قد تحوي الرسالة حمولةً
+            // (نص التنبيه) أو قيم أعمدة، فلا تُخزَّن (تسريب بيانات).
+            _ => exception.GetType().Name,
+        };
 
     private async Task MarkSkippedAsync(long id, string reason, CancellationToken ct)
     {

@@ -400,6 +400,17 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
         if (kinds is null || kinds.Count == 0)
             throw new ArgumentException("مجموعة أنواع الأرشفة إلزامية", nameof(kinds));
 
+        // حارس الاستثناء (الخطة §8.1): معرّف مستثنًى غير موجود أو مؤرشف = خطأ
+        // استدعاء — يُرفض بدل الأرشفة الجماعية الصامتة.
+        if (excludeAlertId.HasValue)
+        {
+            var excludedIsActive = await Db.HeadAlerts
+                .AnyAsync(a => a.Id == excludeAlertId.Value && !a.IsArchived, ct);
+            if (!excludedIsActive)
+                throw new InvalidOperationException(
+                    $"التنبيه المستثنى من الأرشفة ({excludeAlertId.Value}) غير موجود أو مؤرشف.");
+        }
+
         var query = scopeKind == HeadAlertScopeKind.Delegation
             ? Db.HeadAlerts.Where(a => a.DelegationId == scopeId)
             : Db.HeadAlerts.Where(a => a.AppealId == scopeId);

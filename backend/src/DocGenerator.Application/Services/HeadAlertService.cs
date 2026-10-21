@@ -385,11 +385,15 @@ public sealed class HeadAlertService : IHeadAlertService
             throw new ArgumentException("منشئ التنبيه النظامي غير موجود أو غير فعّال", nameof(request));
 
         var effective = ApplyTargetUserOverride(request, targetUserIdOverride);
+        var overrideApplied = targetUserIdOverride is not null;
         var (targetType, recipients) = await ResolveSystemRecipientsAsync(effective, ct);
         if (recipients.Count == 0)
             throw new HeadAlertNoRecipientsException("لا يوجد مستلمون مؤهّلون للتنبيه");
 
-        var dedupeKey = HeadAlertDedupe.Build(BuildDedupeScope(effective));
+        // نطاق المفتاح مبنيٌّ من **المستلِم المُحلّول** لا من الطلب الخام: جمهور
+        // «منشئ الملف» قد يُشتق من الملف وحده (بلا RecipientUserId) — فبناء النطاق
+        // من الطلب الخام يفشل بلا مستلم.
+        var dedupeKey = HeadAlertDedupe.Build(BuildDedupeScope(effective, recipients));
         var existing = await _alerts.FindLatestActiveByDedupeKeyAsync(dedupeKey, ct);
 
         HeadAlert alert;
@@ -405,7 +409,7 @@ public sealed class HeadAlertService : IHeadAlertService
                 Kind = request.Kind,
                 DedupeKey = dedupeKey,
                 DocumentId = request.DocumentId,
-                TargetLawyerId = request.TargetLawyerId,
+                TargetLawyerId = effective.TargetLawyerId,
                 DelegationId = request.DelegationId,
                 AppealId = request.AppealId,
                 ReviewLetterId = request.ReviewLetterId,
@@ -445,8 +449,20 @@ public sealed class HeadAlertService : IHeadAlertService
                 result = HeadAlertWriteResult.Updated;
             }
 
-            MatchRecipients(alert, recipients);
+            // المحامي الفعلي يُثبَّت في الصف (لا يبقى السلف بعد التعاقب).
+            if (targetType == HeadAlertTargetType.Lawyer
+                && effective.TargetLawyerId != alert.TargetLawyerId)
+            {
+                alert.TargetLawyerId = effective.TargetLawyerId;
+            }
+
+            MatchRecipients(alert, recipients, overrideApplied);
         }
+
+        // ترتيب الخطة §8.6: (1) إنشاء/تحديث البديل **وحفظه** للحصول على معرّفه،
+        // (2) أرشفة التنبيهات القديمة مع استثناء هذا المعرّف، (3) حفظ ثانٍ.
+        // بلا الحفظ الأول يكون `excludeAlertId` صفرًا فلا استثناء — فيؤرشف البديل نفسه.
+        await _uow.SaveChangesAsync(ct);
 
         // خطة الاستبدال: تُطبَّق بعد الإنشاء/التحديث **وأيضًا عند Unchanged**، وفي
         // المعاملة نفسها، مع استثناء التنبيه الحالي (لا يُؤرشف البديل).
@@ -615,16 +631,27 @@ public sealed class HeadAlertService : IHeadAlertService
         };
     }
 
-    /// <summary>يبني نطاقAudience من الطلب — الجمهور هو المرجع لا <c>TargetType</c>.</summary>
-    private static HeadAlertDedupeScope BuildDedupeScope(CreateSystemHeadAlertRequest request)
-        => new()
+    /// <summary>يبني نطاق الجمهور من الطلب والمستلِم المُحلّول — الجمهور هو المرجع لا <c>TargetType</c>.</summary>
+    private static HeadAlertDedupeScope BuildDedupeScope(
+        CreateSystemHeadAlertRequest request,
+        IReadOnlyCollection<User> recipients)
+    {
+        var resolvedRecipient = request.Audience switch
+        {
+            HeadAlertAudience.SingleLawyer => request.RecipientUserId ?? request.TargetLawyerId,
+            HeadAlertAudience.SingleHead => request.RecipientUserId,
+            // «منشئ الملف»: يُشتق من الملف عند غياب RecipientUserId — والمستلِم
+            // المُحلول هو المرجع في بناء المفتاح.
+            HeadAlertAudience.DocumentCreator => recipients.FirstOrDefault()?.Id,
+            _ => null,
+        };
+
+        return new HeadAlertDedupeScope
         {
             Kind = request.Kind,
             Audience = request.Audience,
             BranchId = request.BranchId,
-            RecipientUserId = request.Audience == HeadAlertAudience.SingleHead
-                ? request.RecipientUserId
-                : request.RecipientUserId ?? request.TargetLawyerId,
+            RecipientUserId = resolvedRecipient,
             DelegationId = request.DelegationId,
             AppealId = request.AppealId,
             ReviewLetterId = request.ReviewLetterId,
@@ -632,6 +659,7 @@ public sealed class HeadAlertService : IHeadAlertService
             PublicEntityId = request.PublicEntityId,
             ExecutionCircuitId = request.ExecutionCircuitId,
         };
+    }
 
     /// <summary>
     /// يحدّد <c>TargetType</c> المخزَّن من <c>Audience</c> (لا العكس) ويحسب المستلمين:
@@ -733,10 +761,46 @@ public sealed class HeadAlertService : IHeadAlertService
 
     /// <summary>
     /// مطابقة المستلمين: يُضاف المستلم الجديد بـ<code>IsRead=false</code>، ويُحافظ على
-    /// حالة قراءة الموجودين، ولا يُحذف مستلم قديم إلا في مسار تعاقب/حذف صريح.
+    /// حالة قراءة الموجودين، ولا يُحذف مستلم قديم إلا في مسار تعاقب/حذف مستخدم صريح.
+    ///
+    /// عند تعاقب (تجاوز مستلم) يُستبدل السلف بالبديل: «لا يبقى السلف في التنبيه»،
+    /// وتُنقل حالة القراءة بالدمج (§8.5: المقروء = المقروء ∪ المقروء، والقراءة الأقدم).
     /// </summary>
-    private static void MatchRecipients(HeadAlert alert, IReadOnlyCollection<User> recipients)
+    private static void MatchRecipients(
+        HeadAlert alert,
+        IReadOnlyCollection<User> recipients,
+        bool overrideApplied)
     {
+        if (overrideApplied)
+        {
+            var keep = recipients.Select(u => u.Id).ToHashSet();
+            var removed = alert.Recipients.Where(r => !keep.Contains(r.UserId)).ToList();
+
+            foreach (var recipient in removed)
+                alert.Recipients.Remove(recipient);
+
+            if (removed.Count > 0)
+            {
+                var successor = alert.Recipients.FirstOrDefault(r => keep.Contains(r.UserId));
+                if (successor is not null)
+                {
+                    var readTimes = removed
+                        .Where(r => r.ReadAt.HasValue)
+                        .Select(r => r.ReadAt!.Value)
+                        .ToList();
+
+                    successor.IsRead = successor.IsRead || removed.Any(r => r.IsRead);
+                    if (readTimes.Count > 0)
+                    {
+                        var earliest = readTimes.Min();
+                        successor.ReadAt = successor.ReadAt is null || successor.ReadAt > earliest
+                            ? earliest
+                            : successor.ReadAt;
+                    }
+                }
+            }
+        }
+
         var existing = alert.Recipients.Select(r => r.UserId).ToHashSet();
         foreach (var user in recipients)
         {
