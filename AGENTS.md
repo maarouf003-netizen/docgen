@@ -75,6 +75,20 @@
 - عدم اعتبار المهمة «منجزة» قبل أن يُقرّ هذا التنبيه في التقرير، لأن نسيان التطبيق يؤدي لفشل تشغيل فعلي («no such column: …») رغم نجاح الاختبارات محليًا.
 - المرجع العملي للمستخدم: `RUN_GUIDE.md` §9 «تطبيق هجرات قاعدة البيانات عند النشر».
 
+## ⚠️ تذكير الهجرات المعلّقة (Migration Watchlist — راجعه قبل كل نشر)
+
+**قائمة تراكمية في `RUN_GUIDE.md` §9 «هجرات بانتظار التطبيق (قائمة تراكمية — تُشطب بعد التطبيق)».**
+كل هجرة تُضاف إليها فور إنشاءها، وتُشطب بعلامة `[x]` فقط بعد `dotnet ef database update` ناجح في النشر.
+
+- **قبل أي نشر**: افتح `RUN_GUIDE.md` §9 واقرأ القائمة التراكمية، ثم طبّق كل سطر غير مشطوب.
+- **عند إنشاء هجرة جديدة في هذه الجلسة**: أضِف سطرها إلى تلك القائمة **في نفس التغيير** (لا في تغيير لاحق).
+- **للإصدار الحالي (2026-10-20) — 4 هجرات معلّقة** من خطة إعادة هيكلة التنبيهات:
+  - SQLite: `HeadAlertTaxonomy_Expand`، `HeadAlertOutbox_Create`
+  - PostgreSQL: `HeadAlertTaxonomy_Expand_Pg`، `HeadAlertOutbox_Create_Pg`
+  - **الترتيب الإلزامي**: `HeadAlertTaxonomy_Expand` ← `HeadAlertOutbox_Create` ← (لاحقًا) `HeadAlertTaxonomy_Backfill` ← (لاحقًا) `HeadAlertTaxonomy_Contract`.
+  - **⚠️生产工艺**: `Database:AutoMigrate=false` في الإنتاج ⇒ التطبيق **يرفض الإقلاع** إن كانت الهجرات غير مطبّقة. **طبّق قبل نشر النسخة، وإلا انقطاع إقلاع مقصود.**
+
+
 # Branch Protection (Mandatory — applies to every session)
 
 الفرع الحي الوحيد هو `master` (الفرع `main` متقادم ومحذوف من البعيد — محتواه محفوظ بوسم `archive/main-20261004`).
