@@ -1,4 +1,4 @@
-using DocGenerator.Domain.Entities;
+﻿using DocGenerator.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -9,8 +9,8 @@ namespace DocGenerator.Infrastructure.Persistence.Configurations;
 ///
 /// **مرحلة التوسّع (PR-1 / M1):** الأعمدة الجديدة nullable للتوافق الخلفي مع الكود
 /// القديم، و<code>Message</code> نص بلا سقف، و<code>IsArchived</code> بقيمة افتراضية
-/// <c>false</c>. بلا قيد <c>Kind</c> وبلا فهرس فريد وبلا فهرس القائمة — تُضاف في
-/// مرحلة الترحيل (PR-2) و<code>Contract</code> (PR-3) وفق الخطة §6.2/§6.3.
+/// <c>false</c>. بلا قيد <c>Kind</c>؛ والفهرس الفريد الجزئي لمفتاح المنع مُعرَّف
+/// في النموذج والهجرة (M2) وفق الخطة §6.2/§6.3.
 /// </summary>
 public class HeadAlertConfiguration : IEntityTypeConfiguration<HeadAlert>
 {
@@ -40,6 +40,19 @@ public class HeadAlertConfiguration : IEntityTypeConfiguration<HeadAlert>
         builder.HasIndex(a => a.DelegationId);
         builder.HasIndex(a => a.AppealId);
         builder.HasIndex(a => a.ReviewLetterId);
+
+        builder.HasIndex(a => new { a.IsArchived, a.LastContentChangedAt, a.Id })
+            .HasDatabaseName("IX_HeadAlerts_IsArchived_LastContentChangedAt_Id");
+        builder.HasIndex(a => new { a.Kind, a.IsArchived, a.LastContentChangedAt, a.Id })
+            .HasDatabaseName("IX_HeadAlerts_Kind_Active_LastChanged");
+        builder.HasIndex(a => new { a.TargetLawyerId, a.Kind, a.IsArchived })
+            .HasDatabaseName("IX_HeadAlerts_TargetLawyerId_Kind_IsArchived");
+        builder.HasIndex(a => new { a.ExecutionCircuitId, a.Kind, a.IsArchived })
+            .HasDatabaseName("IX_HeadAlerts_ExecutionCircuitId_Kind_IsArchived");
+        builder.HasIndex(a => new { a.BranchId, a.IsArchived, a.LastContentChangedAt, a.Id })
+            .HasDatabaseName("IX_HeadAlerts_BranchId_IsArchived_LastContentChangedAt_Id");
+        builder.HasIndex(a => new { a.BranchId, a.CreatedById, a.IsArchived, a.LastContentChangedAt, a.Id })
+            .HasDatabaseName("IX_HeadAlerts_BranchId_CreatedById_Active_List");
 
         builder.HasOne(a => a.Branch)
             .WithMany()
@@ -76,10 +89,17 @@ public class HeadAlertConfiguration : IEntityTypeConfiguration<HeadAlert>
             .OnDelete(DeleteBehavior.SetNull);
 
         // الجهة العامة المرتبطة (تنبيه اقتراح التعديل/المراجعة): تبقى سجلات التنبيهات
-        // التاريخية سليمة عند حذف القيد فيُفكّ الرابط (SetNull) دون حذف التنبيه.
+        // بعد حذف الجهة (SetNull) بدل فقدانها.
         builder.HasOne(a => a.PublicEntity)
             .WithMany()
             .HasForeignKey(a => a.PublicEntityId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // دائرة التنفيذ المرتبطة: أرشفة التنبيهات تسبق حذف الدائرة في الخدمة، ويبقى
+        // SetNull شبكة أمان تمنع فقدان التنبيه عند حذف الدائرة من مسار آخر.
+        builder.HasOne(a => a.ExecutionCircuit)
+            .WithMany()
+            .HasForeignKey(a => a.ExecutionCircuitId)
             .OnDelete(DeleteBehavior.SetNull);
     }
 }

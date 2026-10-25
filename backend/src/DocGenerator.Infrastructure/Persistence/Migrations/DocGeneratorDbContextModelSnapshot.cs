@@ -2250,6 +2250,11 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CreatedById");
 
+                    b.HasIndex("DedupeKey")
+                        .IsUnique()
+                        .HasDatabaseName("UX_HeadAlerts_DedupeKey_Active")
+                        .HasFilter("\"DedupeKey\" IS NOT NULL AND \"IsArchived\" = 0");
+
                     b.HasIndex("DelegationId");
 
                     b.HasIndex("DocumentId");
@@ -2258,7 +2263,23 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ReviewLetterId");
 
-                    b.HasIndex("TargetLawyerId");
+                    b.HasIndex("ExecutionCircuitId", "Kind", "IsArchived")
+                        .HasDatabaseName("IX_HeadAlerts_ExecutionCircuitId_Kind_IsArchived");
+
+                    b.HasIndex("IsArchived", "LastContentChangedAt", "Id")
+                        .HasDatabaseName("IX_HeadAlerts_IsArchived_LastContentChangedAt_Id");
+
+                    b.HasIndex("TargetLawyerId", "Kind", "IsArchived")
+                        .HasDatabaseName("IX_HeadAlerts_TargetLawyerId_Kind_IsArchived");
+
+                    b.HasIndex("BranchId", "IsArchived", "LastContentChangedAt", "Id")
+                        .HasDatabaseName("IX_HeadAlerts_BranchId_IsArchived_LastContentChangedAt_Id");
+
+                    b.HasIndex("Kind", "IsArchived", "LastContentChangedAt", "Id")
+                        .HasDatabaseName("IX_HeadAlerts_Kind_Active_LastChanged");
+
+                    b.HasIndex("BranchId", "CreatedById", "IsArchived", "LastContentChangedAt", "Id")
+                        .HasDatabaseName("IX_HeadAlerts_BranchId_CreatedById_Active_List");
 
                     b.ToTable("HeadAlerts", (string)null);
                 });
@@ -2365,6 +2386,14 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.HasIndex("HeadAlertId");
 
                     b.HasIndex("UserId");
+
+                    b.HasIndex("HeadAlertId", "IsRead");
+
+                    b.HasIndex("HeadAlertId", "UserId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_HeadAlertRecipients_HeadAlertId_UserId");
+
+                    b.HasIndex("UserId", "IsRead");
 
                     b.ToTable("HeadAlertRecipients", (string)null);
                 });
@@ -3628,6 +3657,11 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("DocGenerator.Domain.Entities.ExecutionCircuit", "ExecutionCircuit")
+                        .WithMany()
+                        .HasForeignKey("ExecutionCircuitId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("DocGenerator.Domain.Entities.PublicEntity", "PublicEntity")
                         .WithMany()
                         .HasForeignKey("PublicEntityId")
@@ -3650,6 +3684,8 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Navigation("CreatedBy");
 
                     b.Navigation("Document");
+
+                    b.Navigation("ExecutionCircuit");
 
                     b.Navigation("PublicEntity");
 
