@@ -41,9 +41,8 @@ public sealed class UserManagementService : IUserManagementService
     private readonly IRepository<HeadSuccession> _successions;
     private readonly IRepository<Correspondence> _correspondences;
     private readonly IRepository<CorrespondenceMessage> _messages;
-    private readonly IRepository<HeadAlert> _alerts;
-    private readonly IRepository<HeadAlertRecipient> _recipients;
     private readonly IDocumentRepository _documents;
+    private readonly IHeadAlertSuccessionService _alertSuccession;
     private readonly IUnitOfWork _uow;
     private readonly IPasswordHasher _hasher;
     private readonly ITransactionRunner _tx;
@@ -57,9 +56,8 @@ public sealed class UserManagementService : IUserManagementService
         IRepository<HeadSuccession> successions,
         IRepository<Correspondence> correspondences,
         IRepository<CorrespondenceMessage> messages,
-        IRepository<HeadAlert> alerts,
-        IRepository<HeadAlertRecipient> recipients,
         IDocumentRepository documents,
+        IHeadAlertSuccessionService alertSuccession,
         IUnitOfWork uow,
         IPasswordHasher hasher,
         ITransactionRunner tx,
@@ -72,9 +70,8 @@ public sealed class UserManagementService : IUserManagementService
         _successions = successions;
         _correspondences = correspondences;
         _messages = messages;
-        _alerts = alerts;
-        _recipients = recipients;
         _documents = documents;
+        _alertSuccession = alertSuccession;
         _uow = uow;
         _hasher = hasher;
         _tx = tx;
@@ -538,21 +535,6 @@ public sealed class UserManagementService : IUserManagementService
             _users.Update(lawyer);
         }
 
-        // التنبيهات المعلقة: مستلمو السلف غير المقروءة → الخلف (المقروءة تاريخ
-        // مكتمل لا يُرحَّل). `TargetLawyerId` مؤشر عمل مفتوح يُنقَل كما هو.
-        var recipients = await _recipients.ListAsync(ct);
-        foreach (var r in recipients.Where(r => r.UserId == predecessor.Id && !r.IsRead))
-        {
-            r.UserId = successor.Id;
-            _recipients.Update(r);
-        }
-        var alerts = await _alerts.ListAsync(ct);
-        foreach (var a in alerts.Where(a => a.TargetLawyerId == predecessor.Id))
-        {
-            a.TargetLawyerId = successor.Id;
-            _alerts.Update(a);
-        }
-
         // الكتب المعلقة (غير المجابة — بلا رد من المستلم) تُنقَل للخلف (§2.24).
         var messages = await _messages.ListAsync(ct);
         var repliedByPredecessor = messages
@@ -568,7 +550,18 @@ public sealed class UserManagementService : IUserManagementService
             _correspondences.Update(c);
         }
 
+        // تُحفظ تغييرات المستخدم/الملفات/الكتب أولًا، ثم تُنقل التنبيهات في خدمة
+        // مستقلة قد تعيد المحاولة بعد تعارض فريد (فتفصل ChangeTracker) — بذلك لا
+        // تُفقد تعديلات التعاقب غير التنبيهية عند إعادة المحاولة.
         await _uow.SaveChangesAsync(ct);
+        await _alertSuccession.ApplyAsync(
+            predecessor.Id,
+            successor.Id,
+            predecessor.FullName,
+            successor.FullName,
+            actorName,
+            ct);
+
         var successionAt = DateTime.UtcNow;
         await _successions.AddAsync(new HeadSuccession
         {

@@ -182,22 +182,25 @@ public sealed partial class PublicEntityService
                 }
             }
 
-            // تنبيه رئيس الهوية الجديدة
+            // تنبيه رؤساء الهوية الجديدة — صف Outbox واحد لكل فرع
+            var occurredAt = DateTime.UtcNow;
+            var message = HeadAlertMessages.EntityEntryMoved(
+                new(entry.Group.CanonicalName, entry.Governorate, entry.BranchName));
             var heads = await _entities.ListActiveHeadsByGovernorateAsync(entry.Governorate, token);
-            var targetHeads = heads.Where(h => h.BranchId.HasValue);
-            foreach (var head in targetHeads)
+            foreach (var branch in heads.Where(h => h.BranchId.HasValue).GroupBy(h => h.BranchId!.Value))
             {
-                var msg = $"أُلحق بقيدكم فرع من هيئة أخرى: «{entry.Group.CanonicalName}» — {entry.Governorate}/{entry.BranchName}";
-                var alert = new HeadAlert
-                {
-                    BranchId = head.BranchId!.Value,
-                    CreatedById = actor.UserId,
-                    TargetType = HeadAlertTargetType.Branch,
-                    Message = msg.Length > 2000 ? msg[..2000] : msg,
-                    CreatedAt = DateTime.UtcNow,
-                    Recipients = { new HeadAlertRecipient { UserId = head.Id } },
-                };
-                await _headAlerts.AddAsync(alert, token);
+                await _alertOutbox.EnqueueSystemAsync(
+                    new CreateSystemHeadAlertRequest(
+                        HeadAlertKindCatalog.EntityEntryMoved,
+                        message,
+                        HeadAlertAudience.BranchHeads,
+                        branch.Key,
+                        actor.UserId,
+                        PublicEntityId: entry.Id,
+                        EntityOperation: ActionKindCatalog.Move),
+                    supersedePlan: null,
+                    occurredAt: occurredAt,
+                    ct: token);
             }
 
             await _uow.SaveChangesAsync(token);
@@ -304,23 +307,28 @@ public sealed partial class PublicEntityService
             }
 
             await _uow.SaveChangesAsync(token);
+            var occurredAt = DateTime.UtcNow;
+            var entityGroupKey = sourceGroup.Id.ToString(CultureInfo.InvariantCulture);
             var affectedGovernorates = sourceEntries.Select(e => e.Governorate).Distinct().ToList();
             foreach (var gov in affectedGovernorates)
             {
+                var message = HeadAlertMessages.EntityEntriesMovedAll(
+                    new(sourceGroup.CanonicalName, gov, targetGroup.CanonicalName));
                 var heads = await _entities.ListActiveHeadsByGovernorateAsync(gov, token);
-                foreach (var head in heads.Where(h => h.BranchId.HasValue))
+                foreach (var branch in heads.Where(h => h.BranchId.HasValue).GroupBy(h => h.BranchId!.Value))
                 {
-                    var msg = $"تم نقل جميع قيود «{sourceGroup.CanonicalName}» ({gov}) إلى «{targetGroup.CanonicalName}»";
-                    var alert = new HeadAlert
-                    {
-                        BranchId = head.BranchId!.Value,
-                        CreatedById = actor.UserId,
-                        TargetType = HeadAlertTargetType.Branch,
-                        Message = msg.Length > 2000 ? msg[..2000] : msg,
-                        CreatedAt = DateTime.UtcNow,
-                        Recipients = { new HeadAlertRecipient { UserId = head.Id } },
-                    };
-                    await _headAlerts.AddAsync(alert, token);
+                    await _alertOutbox.EnqueueSystemAsync(
+                        new CreateSystemHeadAlertRequest(
+                            HeadAlertKindCatalog.EntityEntriesMovedAll,
+                            message,
+                            HeadAlertAudience.BranchHeads,
+                            branch.Key,
+                            actor.UserId,
+                            EntityOperation: ActionKindCatalog.Move,
+                            EntityGroupKey: entityGroupKey),
+                        supersedePlan: null,
+                        occurredAt: occurredAt,
+                        ct: token);
                 }
             }
 

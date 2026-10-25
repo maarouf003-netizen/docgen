@@ -1,4 +1,4 @@
-using DocGenerator.Application.Common;
+﻿using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -52,7 +52,7 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
             new BranchRepository(_db),
             new AppealRepository(_db),
             new DelegationRepository(_db),
-            new HeadAlertRepository(_db),
+            new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
             new DbExceptionClassifier(),
             uow,
             tx,
@@ -214,16 +214,17 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
     {
         // سباق الترقيم: أول حفظ يصطدم بالقيد الفريد فيُعاد التوليد بدل 500.
         var uow = new FailCountingUnitOfWork(new UnitOfWork(_db), failTimes: 1);
+        var tx = new TransactionRunner(_db);
         var service = new ReviewLetterService(
             new ReviewLetterRepository(_db),
             new DocumentRepository(_db),
             new BranchRepository(_db),
             new AppealRepository(_db),
             new DelegationRepository(_db),
-            new HeadAlertRepository(_db),
+            new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
             new DbExceptionClassifier(),
             uow,
-            new TransactionRunner(_db),
+            tx,
             _audit,
             TimeProvider.System,
             TestClock.TimeZone,
@@ -255,6 +256,8 @@ public class SubHeadReviewCorrespondenceTests : IDisposable
             _inner = inner;
             _failTimes = failTimes;
         }
+
+        public void ClearChanges() => _inner.ClearChanges();
 
         public async Task<int> SaveChangesAsync(CancellationToken ct = default)
         {

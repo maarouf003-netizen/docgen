@@ -126,12 +126,15 @@ public sealed partial class PublicEntityService
             }
 
             // تنبيه عام لكل المحامين + تنبيه خاص لرؤساء الأقسام
+            var entityGroupKey = group.Id.ToString(CultureInfo.InvariantCulture);
             await BroadcastEntityChangeToAllLawyersAsync(
-                EntityChangeMessages.RenameLawyersAlert(oldCanonical, group.CanonicalName, decreeKind, decreeNumber, decreeDate),
-                actor.UserId, token);
+                HeadAlertKindCatalog.EntityRenameLawyers,
+                HeadAlertMessages.EntityRenameLawyers(oldCanonical, group.CanonicalName, decreeKind, decreeNumber, decreeDate),
+                ActionKindCatalog.Rename, entityGroupKey, actor.UserId, token);
             await BroadcastToAllHeadsAsync(
-                EntityChangeMessages.RenameHeadsAlert(oldCanonical, group.CanonicalName, decreeKind, decreeNumber, decreeDate),
-                actor.UserId, token);
+                HeadAlertKindCatalog.EntityRenameHeads,
+                HeadAlertMessages.EntityRenameHeads(oldCanonical, group.CanonicalName, decreeKind, decreeNumber, decreeDate),
+                ActionKindCatalog.Rename, entityGroupKey, actor.UserId, token);
 
             await _uow.SaveChangesAsync(token);
 
@@ -358,12 +361,15 @@ public sealed partial class PublicEntityService
 
             // 8) تنبيه عام لكل المحامين + رؤساء الأقسام
             var abolishedNamesJoined = string.Join('،', abolishedNames);
+            var entityGroupKey = newGroup.Id.ToString(CultureInfo.InvariantCulture);
             await BroadcastEntityChangeToAllLawyersAsync(
-                EntityChangeMessages.AbolishLawyersAlert(newGroup.CanonicalName, abolishedNamesJoined, decreeKind, decreeNumber, decreeDate),
-                actor.UserId, token);
+                HeadAlertKindCatalog.EntityAbolishLawyers,
+                HeadAlertMessages.EntityAbolishLawyers(newGroup.CanonicalName, abolishedNamesJoined, decreeKind, decreeNumber, decreeDate),
+                ActionKindCatalog.Abolish, entityGroupKey, actor.UserId, token);
             await BroadcastToAllHeadsAsync(
-                EntityChangeMessages.AbolishHeadsAlert(newGroup.CanonicalName, abolishedNamesJoined, decreeKind, decreeNumber, decreeDate),
-                actor.UserId, token);
+                HeadAlertKindCatalog.EntityAbolishHeads,
+                HeadAlertMessages.EntityAbolishHeads(newGroup.CanonicalName, abolishedNamesJoined, decreeKind, decreeNumber, decreeDate),
+                ActionKindCatalog.Abolish, entityGroupKey, actor.UserId, token);
 
             await _uow.SaveChangesAsync(token);
 

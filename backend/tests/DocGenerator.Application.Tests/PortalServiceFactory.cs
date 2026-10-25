@@ -32,6 +32,7 @@ public static class PortalServiceFactory
             uow,
             tx,
             audit);
+        var headAlertsOutbox = new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx);
 
         var appeals = new DocumentAppealService(
             new AppealRepository(db),
@@ -41,6 +42,7 @@ public static class PortalServiceFactory
             tx,
             audit,
             headAlerts,
+            headAlertsOutbox,
             TimeProvider.System,
             TestClock.TimeZone);
 
@@ -57,6 +59,7 @@ public static class PortalServiceFactory
             tx,
             audit,
             headAlerts,
+            headAlertsOutbox,
             TimeProvider.System,
             TestClock.TimeZone);
 

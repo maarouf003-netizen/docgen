@@ -1,4 +1,4 @@
-using DocGenerator.Application.Common;
+﻿using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -316,5 +316,41 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         Assert.Equal(occurredAt.AddMinutes(5), updated.LastContentChangedAt);
         Assert.Equal(occurredAt, updated.CreatedAt);
         Assert.False(Assert.Single(updated.Recipients).IsRead);
+    }
+
+    private static HeadAlertOutboxMessage Terminal(
+        HeadAlertOutboxStatus status,
+        DateTime createdAt,
+        DateTime processedAt)
+        => new()
+        {
+            Operation = HeadAlertOutboxOperation.Upsert,
+            Status = status,
+            Kind = HeadAlertKindCatalog.DelegationPendingApproval,
+            Payload = "{}",
+            PayloadVersion = 1,
+            OccurredAt = createdAt,
+            CreatedAt = createdAt,
+            NextAttemptAt = createdAt,
+            ProcessedAt = status is HeadAlertOutboxStatus.Processed or HeadAlertOutboxStatus.Skipped ? processedAt : null,
+        };
+
+    [Fact]
+    public async Task RunMaintenanceAsync_CleansExpiredTerminalRows_AndReturnsHealth()
+    {
+        var now = new DateTime(2026, 10, 23, 12, 0, 0, DateTimeKind.Utc);
+        var expired = Terminal(HeadAlertOutboxStatus.Processed, now.AddDays(-9), now.AddDays(-8));
+        var pending = Terminal(HeadAlertOutboxStatus.Pending, now.AddMinutes(-10), default);
+        var failed = Terminal(HeadAlertOutboxStatus.Failed, now.AddDays(-1), default);
+
+        _db.HeadAlertOutboxMessages.AddRange(expired, pending, failed);
+        await _db.SaveChangesAsync();
+
+        var health = await _dispatcher.RunMaintenanceAsync(now, CancellationToken.None);
+
+        Assert.Equal(0, await _db.HeadAlertOutboxMessages.CountAsync(m => m.Id == expired.Id));
+        Assert.Equal(1, health.PendingCount);
+        Assert.Equal(pending.CreatedAt, health.OldestPendingAt);
+        Assert.Equal(1, health.FailedCount);
     }
 }

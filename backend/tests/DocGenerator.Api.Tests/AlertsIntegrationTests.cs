@@ -1,7 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
+using DocGenerator.Api.Tests.TestHelpers;
 using DocGenerator.Application.DTOs;
+using DocGenerator.Application.Services;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
@@ -39,6 +41,20 @@ public class AlertsIntegrationTests
     }
 
     [Fact]
+    public async Task CreateAlert_HeadTarget_Rejected()
+    {
+        var head = _factory.AuthorizedClient("head1");
+        var response = await head.PostAsJsonAsync("/api/alerts", new
+        {
+            targetType = "head",
+            documentId = (int?)null,
+            targetLawyerId = (int?)null,
+            message = "تنبيه موجّه لرئيس",
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Head_CreatesDocumentAlert_LawyerReceivesIt()
     {
         var docId = await CreateDocumentForLawyerAsync(_factory, "lawyer1");
@@ -61,7 +77,8 @@ public class AlertsIntegrationTests
         var lawyer = _factory.AuthorizedClient("lawyer1");
         var list = await (await lawyer.GetAsync("/api/alerts")).Content.ReadFromJsonAsync<List<HeadAlertDto>>();
         Assert.NotNull(list);
-        Assert.Contains(list, a => a.Id == created.Id && a.Message == "راجع ملف القرض هذا");
+        Assert.Contains(list, a => a.Id == created.Id
+            && a.Message == HeadAlertMessages.ManualMessage(UserRole.Head, "راجع ملف القرض هذا"));
     }
 
     [Fact]
@@ -105,7 +122,8 @@ public class AlertsIntegrationTests
 
         var otherClient = _factory.AuthorizedClient("lawyer1");
         var otherList = await (await otherClient.GetAsync("/api/alerts")).Content.ReadFromJsonAsync<List<HeadAlertDto>>();
-        Assert.DoesNotContain(otherList!, a => a.Message == "رسالة خاصة لك");
+        Assert.DoesNotContain(otherList!,
+            a => a.Message == HeadAlertMessages.ManualMessage(UserRole.Head, "رسالة خاصة لك"));
     }
 
     [Fact]
@@ -133,7 +151,8 @@ public class AlertsIntegrationTests
         {
             var client = _factory.AuthorizedClient(lawyer.Username);
             var list = await (await client.GetAsync("/api/alerts")).Content.ReadFromJsonAsync<List<HeadAlertDto>>();
-            Assert.Contains(list!, a => a.Message == "اجتماع الفرع يوم الأحد");
+            Assert.Contains(list!,
+                a => a.Message == HeadAlertMessages.ManualMessage(UserRole.Head, "اجتماع الفرع يوم الأحد"));
         }
     }
 
@@ -163,25 +182,20 @@ public class AlertsIntegrationTests
             targetLawyerId = (int?)null,
             message = "تعميم",
         });
-        var own = await (await head.PostAsJsonAsync("/api/alerts", new
-        {
-            targetType = "head",
-            documentId = (int?)null,
-            targetLawyerId = (int?)null,
-            message = "لرئيس القسم",
-            recipientUserId = await _factory.UserIdAsync(headName),
-        })).Content.ReadFromJsonAsync<HeadAlertDto>();
+        var headId = await _factory.UserIdAsync(headName);
+        var ownId = await HeadAlertTestSeed.SeedSingleHeadAsync(
+            _factory, branchId, headId, headId, "لرئيس القسم");
 
         // قراءة بالمستلم (§8): الرئيس يرى تنبيهه فقط — لا تنبيهات المحامين ولا التعميم.
         var list = await (await head.GetAsync("/api/alerts")).Content.ReadFromJsonAsync<List<HeadAlertDto>>();
 
         Assert.NotNull(list);
         var single = Assert.Single(list!);
+        Assert.Equal(ownId, single.Id);
         Assert.Equal("لرئيس القسم", single.Message);
         Assert.False(single.IsRead);
         Assert.Equal(1, single.RecipientCount);
         Assert.Equal(1, single.UnreadCount);
-        _ = own;
     }
 
     [Fact]
@@ -219,14 +233,9 @@ public class AlertsIntegrationTests
         var lawyer = await _factory.CreateUserAsync(UniqueName("lawyer_rd"), UserRole.Lawyer, branchId);
         var head = _factory.AuthorizedClient(headName);
 
-        var own = await (await head.PostAsJsonAsync("/api/alerts", new
-        {
-            targetType = "head",
-            documentId = (int?)null,
-            targetLawyerId = (int?)null,
-            message = "تنبيه الرئيس الخاص",
-            recipientUserId = await _factory.UserIdAsync(headName),
-        })).Content.ReadFromJsonAsync<HeadAlertDto>();
+        var ownId = await HeadAlertTestSeed.SeedSingleHeadAsync(
+            _factory, branchId, await _factory.UserIdAsync(headName), await _factory.UserIdAsync(headName),
+            "تنبيه الرئيس الخاص");
         var others = await (await head.PostAsJsonAsync("/api/alerts", new
         {
             targetType = "lawyer",
@@ -237,7 +246,7 @@ public class AlertsIntegrationTests
 
         // المستلم (ولو رئيسًا) يعلّم تنبيهه مقروءًا؛ وغير المستلم 404.
         Assert.Equal(HttpStatusCode.NoContent,
-            (await head.PatchAsJsonAsync($"/api/alerts/{own!.Id}/read", new { })).StatusCode);
+            (await head.PatchAsJsonAsync($"/api/alerts/{ownId}/read", new { })).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound,
             (await head.PatchAsJsonAsync($"/api/alerts/{others!.Id}/read", new { })).StatusCode);
 
@@ -320,14 +329,9 @@ public class AlertsIntegrationTests
         var lawyer = await _factory.CreateUserAsync(UniqueName("lawyer_g3"), UserRole.Lawyer, branchId);
         var head = _factory.AuthorizedClient(headName);
 
-        var own = await (await head.PostAsJsonAsync("/api/alerts", new
-        {
-            targetType = "head",
-            documentId = (int?)null,
-            targetLawyerId = (int?)null,
-            message = "جلب رئيس",
-            recipientUserId = await _factory.UserIdAsync(headName),
-        })).Content.ReadFromJsonAsync<HeadAlertDto>();
+        var ownId = await HeadAlertTestSeed.SeedSingleHeadAsync(
+            _factory, branchId, await _factory.UserIdAsync(headName), await _factory.UserIdAsync(headName),
+            "جلب رئيس");
         var others = await (await head.PostAsJsonAsync("/api/alerts", new
         {
             targetType = "lawyer",
@@ -336,7 +340,7 @@ public class AlertsIntegrationTests
             message = "خاص بالمحامي",
         })).Content.ReadFromJsonAsync<HeadAlertDto>();
 
-        Assert.Equal(HttpStatusCode.OK, (await head.GetAsync($"/api/alerts/{own!.Id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await head.GetAsync($"/api/alerts/{ownId}")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await head.GetAsync($"/api/alerts/{others!.Id}")).StatusCode);
     }
 
@@ -383,7 +387,7 @@ public class AlertsIntegrationTests
             var response = await client.GetAsync($"/api/alerts/{created!.Id}");
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             var alert = await response.Content.ReadFromJsonAsync<HeadAlertDto>();
-            Assert.Equal("تنبيه للإشراف", alert!.Message);
+            Assert.Equal(HeadAlertMessages.ManualMessage(UserRole.Head, "تنبيه للإشراف"), alert!.Message);
             Assert.Equal(HttpStatusCode.NotFound,
                 (await client.GetAsync("/api/alerts/999999")).StatusCode);
         }
@@ -408,7 +412,8 @@ public class AlertsIntegrationTests
         // المدير يرى عبر الفروع؛ محامي فرع آخر لا يرى.
         var manager = _factory.AuthorizedClient("manager");
         var list = await (await manager.GetAsync("/api/alerts")).Content.ReadFromJsonAsync<List<HeadAlertDto>>();
-        var item = Assert.Single(list!, a => a.Message == "تنبيه إشرافي خاص");
+        var expectedMessage = HeadAlertMessages.ManualMessage(UserRole.Head, "تنبيه إشرافي خاص");
+        var item = Assert.Single(list!, a => a.Message == expectedMessage);
         // الإسقاط العرضي: العدّادات محسوبة قاعديًا دون تحميل المستلمين،
         // وحالة القراءة فارغة (مستلم-محددة أصلًا).
         Assert.Equal(1, item.RecipientCount);
@@ -417,7 +422,7 @@ public class AlertsIntegrationTests
 
         var lawyerDam = _factory.AuthorizedClient("lawyer1");
         var scoped = await (await lawyerDam.GetAsync("/api/alerts")).Content.ReadFromJsonAsync<List<HeadAlertDto>>();
-        Assert.DoesNotContain(scoped!, a => a.Message == "تنبيه إشرافي خاص");
+        Assert.DoesNotContain(scoped!, a => a.Message == expectedMessage);
     }
 
     [Fact]
@@ -438,7 +443,8 @@ public class AlertsIntegrationTests
 
         var lawyerDam = _factory.AuthorizedClient("lawyer1");
         var list = await (await lawyerDam.GetAsync("/api/alerts")).Content.ReadFromJsonAsync<List<HeadAlertDto>>();
-        Assert.DoesNotContain(list!, a => a.Message == "تنبيه خاص بحلب");
+        Assert.DoesNotContain(list!,
+            a => a.Message == HeadAlertMessages.ManualMessage(UserRole.Head, "تنبيه خاص بحلب"));
     }
 
     [Fact]
@@ -458,12 +464,13 @@ public class AlertsIntegrationTests
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
 
         var sent = await (await head.GetAsync("/api/alerts/sent")).Content.ReadFromJsonAsync<List<HeadAlertDto>>();
-        var item = Assert.Single(sent!, a => a.Message == "تعميم صادر");
+        var expectedMessage = HeadAlertMessages.ManualMessage(UserRole.Head, "تعميم صادر");
+        var item = Assert.Single(sent!, a => a.Message == expectedMessage);
         Assert.Equal(1, item.RecipientCount);
 
         // قائمة المستلَمات لا تشمله (قراءة المستلم لا تضم المُرسِل).
         var received = await (await head.GetAsync("/api/alerts")).Content.ReadFromJsonAsync<List<HeadAlertDto>>();
-        Assert.DoesNotContain(received!, a => a.Message == "تعميم صادر");
+        Assert.DoesNotContain(received!, a => a.Message == expectedMessage);
 
         foreach (var username in new[] { "lawyer1", "manager", "admin" })
         {

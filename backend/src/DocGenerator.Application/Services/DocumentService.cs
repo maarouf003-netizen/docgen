@@ -15,14 +15,14 @@ public interface IDocumentService
     Task<DocumentResponse?> UpdateAsync(int documentId, DocumentUpsertRequest request, string? actorName, int? userId = null, CancellationToken ct = default);
     Task<bool> DeleteAsync(int documentId, string? actorName, CancellationToken ct = default);
     Task<bool> RestoreAsync(int documentId, string? actorName, CancellationToken ct = default);
-    Task<DocumentResponse> TransferAsync(int documentId, int targetLawyerId, string? actorName, CancellationToken ct = default);
+    Task<DocumentResponse> TransferAsync(int documentId, int targetLawyerId, string? actorName, CancellationToken ct = default, int? actorUserId = null);
     /// <summary>عدد ملفات المحامي غير المحذوفة (للمعاينة قبل النقل الجماعي).</summary>
     Task<int> CountFilesByOwnerAsync(int ownerId, int? scopeBranchId, CancellationToken ct = default, int? ownerSectionId = null);
     /// <summary>
     /// نقل كامل ملفات محامٍ إلى محامٍ آخر بجميع الحالات — رئيس القسم (ضمن فرعه) فقط.
     /// scopeBranchId يُقيّد النطاق بفرع رئيس القسم ويُرجع عدد الملفات المنقولة.
     /// </summary>
-    Task<int> TransferAllAsync(int sourceLawyerId, int targetLawyerId, int? scopeBranchId, string? actorName, CancellationToken ct = default, string? idempotencyKey = null, int? ownerSectionId = null);
+    Task<int> TransferAllAsync(int sourceLawyerId, int targetLawyerId, int? scopeBranchId, string? actorName, CancellationToken ct = default, string? idempotencyKey = null, int? ownerSectionId = null, int? actorUserId = null);
     Task IncrementViewCountAsync(int documentId, CancellationToken ct = default);
     /// <summary>جدول تدوير أرقام الأساس للمحامي (ترحّلي): ملفاته المؤهلة مع رقم أساس السنة الحالية إن وُجد.</summary>
     Task<PagedResult<RotationDocumentDto>> GetRotationListAsync(int userId, int page, int perPage, CancellationToken ct = default);
@@ -55,6 +55,7 @@ public sealed class DocumentService : IDocumentService
     private readonly TimeZoneInfo _timeZone;
     private readonly IIdempotencyStore? _idempotency;
     private readonly IRepository<ExecutionCircuit> _circuits;
+    private readonly IExecutionCircuitService? _executionCircuits;
 
     public DocumentService(
         IDocumentRepository documents,
@@ -72,9 +73,11 @@ public sealed class DocumentService : IDocumentService
         IDocumentStatusService statusService,
         IDocumentWriteGuard writeGuard,
         IIdempotencyStore? idempotency = null,
-        IRepository<ExecutionCircuit>? circuits = null)
+        IRepository<ExecutionCircuit>? circuits = null,
+        IExecutionCircuitService? executionCircuits = null)
     {
         _circuits = circuits ?? new UnconfiguredCircuitRepository();
+        _executionCircuits = executionCircuits;
         _documents = documents;
         _users = users;
         _baseNumbers = baseNumbers;
@@ -280,16 +283,15 @@ public sealed class DocumentService : IDocumentService
             mirrorNotifications = await _delegationService.MirrorSourceEditsAsync(doc, token);
             await _writeGuard.LogDocumentChangesAsync(before, doc, actorName, "update",
                 $"عدّل المستند (رقم {doc.Id})", token);
+            // التنبيهات تُسجَّل في Outbox داخل معاملة الحفظ نفسها:
+            // (1) تنبيهات المرآة إلى المحامين المنابين بتحديث نسخة الملف،
+            // (2) تنبيه المنيب بالإضافات المحلية المضافة على الملف المناب (ورثة/ممثل شرعي).
+            await _delegationService.FireMirrorNotificationsAsync(mirrorNotifications, token);
+            if (targetEditReport.HasAdditions)
+                await _delegationService.FireTargetEditReportAsync(doc, targetEditReport, token);
             await _actionService.SeedInitialActionsAsync(doc, request.InitialActions, userId, actorName, token);
             return DocumentResponse.FromEntity(doc, CurrentYear());
         }, ct), doc.FileNumber));
-
-        // تُطلق التنبيهات بعد نجاح المعاملة ولا تفشل الحفظ أبدًا:
-        // (1) تنبيهات المرآة إلى المحامين المنابين بتحديث نسخة الملف،
-        // (2) تنبيه المنيب بالإضافات المحلية المضافة على الملف المناب (ورثة/ممثل شرعي).
-        await _delegationService.FireMirrorNotificationsAsync(mirrorNotifications, ct);
-        if (targetEditReport.HasAdditions)
-            await _delegationService.FireTargetEditReportAsync(doc, targetEditReport, ct);
 
         return result;
     }
@@ -397,7 +399,7 @@ public sealed class DocumentService : IDocumentService
         }, ct), doc.FileNumber);
     }
 
-    public async Task<DocumentResponse> TransferAsync(int documentId, int targetLawyerId, string? actorName, CancellationToken ct = default)
+    public async Task<DocumentResponse> TransferAsync(int documentId, int targetLawyerId, string? actorName, CancellationToken ct = default, int? actorUserId = null)
     {
         return await _tx.RunAsync(async token =>
         {
@@ -419,6 +421,7 @@ public sealed class DocumentService : IDocumentService
             if (target.BranchId != doc.BranchId)
                 throw new ArgumentException("لا يمكن نقل الملف إلى محامٍ من فرع آخر");
 
+            var sourceOwnerId = doc.CreatedById;
             var transferred = await _documents.TransferOwnerAsync(
                 documentId, doc.CreatedById, target.Id, target.FullName,
                 doc.Lawyer ?? doc.CreatedBy?.FullName ?? string.Empty, token);
@@ -431,6 +434,11 @@ public sealed class DocumentService : IDocumentService
 
             await _audit.LogAsync(actorName, "transfer", documentId, doc.DocumentType,
                 DocumentText.AuditWithActor($"نقل الملف إلى المحامي: {target.FullName}", doc), token);
+
+            // H2: التنبيه يتبع المالك — داخل معاملة النقل كي لا يبقى تنبيه قديم بلا مالك.
+            if (_executionCircuits is not null && actorUserId.HasValue)
+                await _executionCircuits.SyncPendingAlertsAfterTransferAsync(
+                    sourceOwnerId, target.Id, doc.BranchId ?? target.BranchId ?? 0, actorUserId.Value, token);
 
             return DocumentResponse.FromEntity(transferred, CurrentYear());
         }, ct);
@@ -447,7 +455,7 @@ public sealed class DocumentService : IDocumentService
         return await _documents.CountByOwnerInScopeAsync(ownerId, scopeBranchId, ownerSectionId, ct);
     }
 
-    public async Task<int> TransferAllAsync(int sourceLawyerId, int targetLawyerId, int? scopeBranchId, string? actorName, CancellationToken ct = default, string? idempotencyKey = null, int? ownerSectionId = null)
+    public async Task<int> TransferAllAsync(int sourceLawyerId, int targetLawyerId, int? scopeBranchId, string? actorName, CancellationToken ct = default, string? idempotencyKey = null, int? ownerSectionId = null, int? actorUserId = null)
     {
         // RF-011: حجز المفتاح أولًا (لا تحقق مسبق يستحق `400` هنا — التحققات داخل
         // المعاملة عمدًا ضد `TOCTOU`) — النطاق محامي المصدر (النية = نقل ملفاته) —
@@ -459,7 +467,8 @@ public sealed class DocumentService : IDocumentService
         int transferred;
         try
         {
-            transferred = await TransferAllCoreAsync(sourceLawyerId, targetLawyerId, scopeBranchId, ownerSectionId, actorName, ct);
+            transferred = await TransferAllCoreAsync(
+                sourceLawyerId, targetLawyerId, scopeBranchId, ownerSectionId, actorName, actorUserId, ct);
         }
         catch
         {
@@ -475,7 +484,8 @@ public sealed class DocumentService : IDocumentService
 
     /// <summary>نواة النقل الجماعي (تحققات + نقل + تدقيق) — تُستدعى بعد حجز مفتاح عدم التكرار.</summary>
     private async Task<int> TransferAllCoreAsync(
-        int sourceLawyerId, int targetLawyerId, int? scopeBranchId, int? ownerSectionId, string? actorName, CancellationToken ct)
+        int sourceLawyerId, int targetLawyerId, int? scopeBranchId, int? ownerSectionId, string? actorName,
+        int? actorUserId, CancellationToken ct)
     {
         return await _tx.RunAsync(async token =>
         {
@@ -515,6 +525,11 @@ public sealed class DocumentService : IDocumentService
                 await _audit.LogAsync(actorName, "transfer", file.Id, file.DocumentType,
                     $"تم إحالة هذا الملف إلى المحامي: {target.FullName} بتاريخ {now:d/M/yyyy} — المنفذ عليه: {DocumentText.ActorFullName(file)}", token);
             }
+
+            // H2: التنبيه يتبع المالك — داخل معاملة النقل الجماعي كي لا يبقى تنبيه قديم بلا مالك.
+            if (_executionCircuits is not null && actorUserId.HasValue)
+                await _executionCircuits.SyncPendingAlertsAfterTransferAsync(
+                    sourceLawyerId, target.Id, target.BranchId ?? scopeBranchId ?? 0, actorUserId.Value, token);
 
             return moved;
         }, ct);

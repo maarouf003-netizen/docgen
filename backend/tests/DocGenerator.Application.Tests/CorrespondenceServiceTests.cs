@@ -1,4 +1,4 @@
-using DocGenerator.Application.Common;
+﻿using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Tests.TestHelpers;
@@ -815,6 +815,8 @@ var names = targets.Select(t => t.FullName).ToList();
             _failTimes = failTimes;
             _failureFactory = failureFactory ?? BuildRealUniqueViolation;
         }
+
+        public void ClearChanges() => _inner.ClearChanges();
 
         public async Task<int> SaveChangesAsync(CancellationToken ct = default)
         {

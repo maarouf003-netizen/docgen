@@ -186,6 +186,19 @@ public class HeadAlertDedupeTests
     }
 
     [Fact]
+    public void Build_EntityGroupKeyWithoutPublicEntityId_UsesGroupScope()
+    {
+        var key = HeadAlertDedupe.Build(Scope(
+            HeadAlertKindCatalog.EntityRenameLawyers,
+            HeadAlertAudience.BranchLawyers,
+            branchId: 6,
+            entityOperation: "rename",
+            entityGroupKey: "group-7"));
+
+        Assert.Equal("entity:rename:group-7:branch:6:audience:lawyers:entity_rename_lawyers", key);
+    }
+
+    [Fact]
     public void Build_EverySystemKeyContainsTheKindExplicitly()
     {
         var kinds = HeadAlertKindCatalog.All.Where(k => !HeadAlertKindCatalog.ManualKinds.Contains(k));

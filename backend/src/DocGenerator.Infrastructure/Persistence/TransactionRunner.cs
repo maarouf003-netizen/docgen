@@ -19,6 +19,20 @@ public sealed class TransactionRunner : ITransactionRunner, ITransactionContext
     /// <summary>معرّف المعاملة النشطة (إن وُجدت) — للتشخيص فقط.</summary>
     public Guid? TransactionId => _db.Database.CurrentTransaction?.TransactionId;
 
+    public Task CreateSavepointAsync(string name, CancellationToken ct = default)
+    {
+        var transaction = _db.Database.CurrentTransaction
+            ?? throw new InvalidOperationException("لا توجد معاملة نشطة لإنشاء نقطة حفظ");
+        return transaction.CreateSavepointAsync(name, ct);
+    }
+
+    public Task RollbackToSavepointAsync(string name, CancellationToken ct = default)
+    {
+        var transaction = _db.Database.CurrentTransaction
+            ?? throw new InvalidOperationException("لا توجد معاملة نشطة للتراجع إلى نقطة حفظ");
+        return transaction.RollbackToSavepointAsync(name, ct);
+    }
+
     public Task<T> RunAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct = default)
         => RunInTransactionAsync(ct, action);
 

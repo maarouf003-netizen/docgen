@@ -163,7 +163,8 @@ public record MirrorNotification(
     int RecipientLawyerId,
     int RecipientBranchId,
     int ActorUserId,
-    string Message);
+    string Message,
+    string Kind);
 
 /// <summary>وريث مضاف محليًا على الملف المناب (لتنبيه المنيب العكسي): الاسم المعروض ورقم الكفيل.</summary>
 public record AddedHeirEntry(

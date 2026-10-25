@@ -1,4 +1,4 @@
-using DocGenerator.Application.Common;
+﻿using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -437,6 +437,8 @@ public class ForumServiceTests : IDisposable
         private Exception? _failure;
 
         public FailOncePinConflictUnitOfWork(IUnitOfWork inner) => _inner = inner;
+
+        public void ClearChanges() => _inner.ClearChanges();
 
         public async Task<int> SaveChangesAsync(CancellationToken ct = default)
         {

@@ -63,6 +63,7 @@ public class PortalFileDetailTests : IDisposable
             new HeadAlertRepository(_db), documents, users, branches, uow, tx, _audit);
         _appealService = new DocumentAppealService(
             new AppealRepository(_db), documents, users, uow, tx, _audit, headAlerts,
+            new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
             TimeProvider.System, TestClock.TimeZone);
     }
 

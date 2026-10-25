@@ -149,15 +149,18 @@ public class SearchServerYearTests : IDisposable
             new Domain.Entities.AppealBaseNumber { AppealId = appeal2.Id, Year = 2025, BaseNumber = "A-25-2", CreatedById = userId, CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc) });
         _db.SaveChanges();
 
+        var tx = new TransactionRunner(_db);
+        var alerts = new HeadAlertService(new HeadAlertRepository(_db), new DocumentRepository(_db),
+            new UserRepository(_db), new Repository<Branch>(_db), new UnitOfWork(_db), tx, _audit);
         var service = new DocumentAppealService(
             new AppealRepository(_db),
             new DocumentRepository(_db),
             new UserRepository(_db),
             new UnitOfWork(_db),
-            new TransactionRunner(_db),
+            tx,
             _audit,
-            new HeadAlertService(new HeadAlertRepository(_db), new DocumentRepository(_db), new UserRepository(_db),
-                new Repository<Branch>(_db), new UnitOfWork(_db), new TransactionRunner(_db), _audit),
+            alerts,
+            new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
             Clock,
             TestClock.TimeZone);
 

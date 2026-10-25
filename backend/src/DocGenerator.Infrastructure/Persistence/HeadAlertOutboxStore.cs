@@ -1,3 +1,4 @@
+using System.Text.Json;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Domain.Entities;
@@ -135,20 +136,81 @@ public sealed class HeadAlertOutboxStore : IHeadAlertOutboxStore
         int successorId,
         CancellationToken ct = default)
     {
-        // صفوف `pending` فقط: صف `processing` جارٍ معالجته فإعادة توجيهه تسبّب تعارضًا،
-        // و`processed`/`failed` انتهت فلا معنى لإعادة توجيهها.
         var rows = await _db.HeadAlertOutboxMessages
-            .Where(m => m.Status == HeadAlertOutboxStatus.Pending && m.TargetUserId == predecessorId)
+            .Where(m => m.Status == HeadAlertOutboxStatus.Pending)
             .ToListAsync(ct);
 
         if (rows.Count == 0)
             return 0;
 
+        var updated = 0;
         foreach (var row in rows)
+        {
+            HeadAlertOutboxPayloadV1 payload;
+            try
+            {
+                payload = HeadAlertOutboxPayloadSerializer.Deserialize(row.Payload);
+            }
+            catch (JsonException)
+            {
+                continue;
+            }
+
+            var changed = false;
+            var payloadChanged = payload.TargetUserId == predecessorId;
+            if (payloadChanged)
+                payload = payload with { TargetUserId = successorId };
+
+            if (payload.Request is not null)
+            {
+                var request = payload.Request;
+                var requestChanged = false;
+                if (request.Audience == HeadAlertAudience.SingleHead
+                    && request.RecipientUserId == predecessorId)
+                {
+                    request = request with { RecipientUserId = successorId };
+                    requestChanged = true;
+                }
+                else if (request.Audience == HeadAlertAudience.SingleLawyer)
+                {
+                    if (request.RecipientUserId == predecessorId)
+                    {
+                        request = request with { RecipientUserId = successorId };
+                        requestChanged = true;
+                    }
+                    if (request.TargetLawyerId == predecessorId)
+                    {
+                        request = request with { TargetLawyerId = successorId };
+                        requestChanged = true;
+                    }
+                }
+
+                if (requestChanged)
+                {
+                    payload = payload with { Request = request };
+                    payloadChanged = true;
+                }
+            }
+
+            if (payloadChanged)
+                row.Payload = HeadAlertOutboxPayloadSerializer.Serialize(payload);
+            changed = payloadChanged;
+
+            if (row.TargetUserId == predecessorId)
+                changed = true;
+
+            if (!changed)
+                continue;
+
             row.TargetUserId = successorId;
+            updated++;
+        }
+
+        if (updated == 0)
+            return 0;
 
         await _db.SaveChangesAsync(ct);
-        return rows.Count;
+        return updated;
     }
 
     public async Task<int> CleanupAsync(
@@ -173,6 +235,28 @@ public sealed class HeadAlertOutboxStore : IHeadAlertOutboxStore
         _db.HeadAlertOutboxMessages.RemoveRange(expired);
         await _db.SaveChangesAsync(ct);
         return expired.Count;
+    }
+
+    public async Task<HeadAlertOutboxHealth> GetHealthAsync(CancellationToken ct = default)
+    {
+        var pending = _db.HeadAlertOutboxMessages
+            .AsNoTracking()
+            .Where(m => m.Status == HeadAlertOutboxStatus.Pending);
+
+        var pendingCount = await pending.CountAsync(ct);
+        var oldest = pendingCount == 0
+            ? null
+            : await pending
+                .OrderBy(m => m.CreatedAt)
+                .ThenBy(m => m.Id)
+                .Select(m => (DateTime?)m.CreatedAt)
+                .FirstAsync(ct);
+
+        var failed = await _db.HeadAlertOutboxMessages
+            .AsNoTracking()
+            .CountAsync(m => m.Status == HeadAlertOutboxStatus.Failed, ct);
+
+        return new HeadAlertOutboxHealth(pendingCount, oldest, failed);
     }
 
     public async Task<T> ExecuteInTransactionAsync<T>(

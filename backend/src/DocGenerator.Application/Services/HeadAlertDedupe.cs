@@ -178,14 +178,16 @@ public static class HeadAlertDedupe
             return $"review:{scope.ReviewLetterId.Value.ToString(CultureInfo.InvariantCulture)}";
         if (scope.ExecutionCircuitId.HasValue)
             return $"circuit:{scope.ExecutionCircuitId.Value.ToString(CultureInfo.InvariantCulture)}";
-        if (scope.PublicEntityId.HasValue)
+        if (scope.PublicEntityId.HasValue || !string.IsNullOrWhiteSpace(scope.EntityGroupKey))
         {
             var operation = NormalizeToken(scope.EntityOperation);
             if (string.IsNullOrEmpty(operation))
                 throw new ArgumentException("حدث الجهة يحتاج نوع عملية صريحًا", nameof(scope));
             var entityToken = string.IsNullOrWhiteSpace(freeText)
-                ? scope.PublicEntityId.Value.ToString(CultureInfo.InvariantCulture)
+                ? scope.PublicEntityId?.ToString(CultureInfo.InvariantCulture)
                 : NormalizeToken(freeText);
+            if (string.IsNullOrEmpty(entityToken))
+                throw new ArgumentException("حدث الجهة يحتاج معرّفًا أو مفتاح مجموعة", nameof(scope));
             return $"entity:{operation}:{entityToken}";
         }
         if (scope.DocumentId.HasValue)

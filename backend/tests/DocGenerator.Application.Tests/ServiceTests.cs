@@ -5056,6 +5056,8 @@ public class ConsiderDelegationExecutedTests : IDisposable
     private readonly DocGeneratorDbContext _db;
     private readonly IDocumentService _service;
     private readonly IDocumentStatusService _status;
+    private readonly IHeadAlertService _alerts;
+    private readonly ITransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
 
     public ConsiderDelegationExecutedTests()
@@ -5064,12 +5066,23 @@ public class ConsiderDelegationExecutedTests : IDisposable
         _db.Branches.Add(new Branch { Name = "دمشق", Code = "DAM" });
         _db.Users.Add(new User { Username = "lawyer1", FullName = "محامي", Role = UserRole.Lawyer, BranchId = 1, PasswordHash = new PasswordHasher().Hash("123456") });
         _db.SaveChanges();
-        var considerBundle = DocumentServiceFactory.Create(_db, _audit);
+        _tx = new TransactionRunner(_db);
+        _alerts = new HeadAlertService(
+            new HeadAlertRepository(_db),
+            new DocumentRepository(_db),
+            new UserRepository(_db),
+            new Repository<Branch>(_db),
+            new UnitOfWork(_db),
+            _tx,
+            _audit);
+        var considerBundle = DocumentServiceFactory.Create(_db, _audit, alertService: _alerts, tx: _tx);
         _service = considerBundle.Documents;
         _status = considerBundle.Status;
     }
 
     public void Dispose() => _db.Dispose();
+
+    private Task FlushAlertsAsync() => HeadAlertOutboxFlush.AllAsync(_db, _alerts, _tx);
 
     private async Task<Document> CreateSourceAsync(string? fileNumber = null)
     {
@@ -5806,6 +5819,8 @@ public class ConsiderDelegationExecutedTests : IDisposable
         Assert.True(await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.StateStruckOff,
             new Dictionary<string, string?> { ["struckOffDate"] = "1/9/2026" }, "lawyer1"));
 
+        await FlushAlertsAsync();
+
         Assert.False(await _db.HeadAlerts.AnyAsync());
     }
 
@@ -5820,14 +5835,16 @@ public class ConsiderDelegationExecutedTests : IDisposable
         var delegationId = (await _db.DocumentDelegations.SingleAsync(d => d.Id == target.SourceDelegationId)).Id;
 
         await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement, SettlementFields(), "lawyer1");
-        var before = await _db.HeadAlerts.SingleAsync(a => a.DelegationId == delegationId);
-        Assert.Contains("منفذ بالتسوية", before.Message);
+        await FlushAlertsAsync();
+        var before = await _db.HeadAlerts.SingleAsync(a => a.DelegationId == delegationId && !a.IsArchived);
+        Assert.Contains("منفذًا بالتسوية", before.Message);
 
         Assert.True(await _status.RevertStatusAsync(source.Id, SayerFields(), "lawyer1"));
+        await FlushAlertsAsync();
 
-        var alert = await _db.HeadAlerts.SingleAsync(a => a.DelegationId == delegationId);
+        var alert = await _db.HeadAlerts.SingleAsync(a => a.DelegationId == delegationId && !a.IsArchived);
         Assert.DoesNotContain("انتهاء حالة التريث", alert.Message);
-        Assert.Contains("منفذ بالتسوية", alert.Message);
+        Assert.Contains("منفذًا بالتسوية", alert.Message);
     }
 
     // ── ب5: تنبيهات الحالة المخصصة T2-T5 (المنفذ عليه/رقم أساسه/دائرته من وثيقة المناب) ──
@@ -5840,11 +5857,12 @@ public class ConsiderDelegationExecutedTests : IDisposable
         var delegationId = (await _db.DocumentDelegations.SingleAsync(d => d.Id == target.SourceDelegationId)).Id;
 
         Assert.True(await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1"));
+        await FlushAlertsAsync();
 
-        var alert = await _db.HeadAlerts.SingleAsync(a => a.DelegationId == delegationId);
+        var alert = await _db.HeadAlerts.SingleAsync(a => a.DelegationId == delegationId && !a.IsArchived);
         Assert.Equal(target.CreatedById, alert.TargetLawyerId);
-        Assert.Contains("ورد كتاب تريث بملف الانابة للمنفذ عليه أحمد خالد الخطيب رقم اساس 890 دائرة تنفيذ دمشق", alert.Message);
-        Assert.Contains("يرجى وقف اجراءات الانابة", alert.Message);
+        Assert.Contains("ورد كتاب تريث بملف الإنابة للمنفذ عليه أحمد خالد الخطيب رقم أساس 890 دائرة تنفيذ دمشق", alert.Message);
+        Assert.Contains("يرجى وقف إجراءات الإنابة", alert.Message);
     }
 
     [Fact]
@@ -5855,10 +5873,11 @@ public class ConsiderDelegationExecutedTests : IDisposable
         var delegationId = (await _db.DocumentDelegations.SingleAsync(d => d.Id == target.SourceDelegationId)).Id;
 
         Assert.True(await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.ExecutedBySettlement, SettlementFields(), "lawyer1"));
+        await FlushAlertsAsync();
 
-        var alert = await _db.HeadAlerts.SingleAsync(a => a.DelegationId == delegationId);
-        Assert.Contains("يرجى وقف اجراءات الانابة في ملف المنفذ عليه أحمد خالد الخطيب رقم اساس 890 دائرة تنفيذ دمشق", alert.Message);
-        Assert.Contains("تبعا لاعتبار الملف المنيب منفذ بالتسوية، واعادته لمرجعه الأصلي", alert.Message);
+        var alert = await _db.HeadAlerts.SingleAsync(a => a.DelegationId == delegationId && !a.IsArchived);
+        Assert.Contains("يرجى وقف إجراءات الإنابة في ملف المنفذ عليه أحمد خالد الخطيب رقم أساس 890 دائرة تنفيذ دمشق", alert.Message);
+        Assert.Contains("تبعًا لاعتبار الملف المنيب منفذًا بالتسوية، وإعادته لمرجعه الأصلي", alert.Message);
     }
 
     [Fact]
@@ -5868,13 +5887,15 @@ public class ConsiderDelegationExecutedTests : IDisposable
         var target = await AddDelegatedTargetForAsync(source.Id, fileNumber: "890");
         var delegationId = (await _db.DocumentDelegations.SingleAsync(d => d.Id == target.SourceDelegationId)).Id;
         await _status.UpdateStatusAsync(source.Id, ExecutionStatusCatalog.Deferred, DeferredFields(), "lawyer1");
+        await FlushAlertsAsync();
 
         Assert.True(await _status.RevertStatusAsync(source.Id, SayerFields(), "lawyer1"));
+        await FlushAlertsAsync();
 
         // الاستبدال (upsert) يُبدّل آخر رسالة للإنابة والمستلم ذاته — فتعود T3 محل T2.
-        var alert = await _db.HeadAlerts.SingleAsync(a => a.DelegationId == delegationId);
-        Assert.Contains("يرجى متابعة السير بملف المنفذ عليه أحمد خالد الخطيب رقم اساس 890 دائرة تنفيذ دمشق", alert.Message);
-        Assert.Contains("تبعا لكتاب الجهة العامة للسير بالملف وانتهاء حالة التريث", alert.Message);
+        var alert = await _db.HeadAlerts.SingleAsync(a => a.DelegationId == delegationId && !a.IsArchived);
+        Assert.Contains("يرجى متابعة السير بملف المنفذ عليه أحمد خالد الخطيب رقم أساس 890 دائرة تنفيذ دمشق", alert.Message);
+        Assert.Contains("تبعًا لكتاب الجهة العامة للسير بالملف وانتهاء حالة التريث", alert.Message);
     }
 
     [Fact]
@@ -5894,6 +5915,8 @@ public class ConsiderDelegationExecutedTests : IDisposable
                 ["soldAssetIds"] = asset.Id.ToString(),
             }, "lawyer1");
 
+        await FlushAlertsAsync();
+
         Assert.False(await _db.HeadAlerts.AnyAsync(a => a.DelegationId == delegationId));
     }
 
@@ -5911,8 +5934,9 @@ public class ConsiderDelegationExecutedTests : IDisposable
                 ["forcedTransferDate"] = "15/8/2026",
                 ["forcedTransferNoticeNumber"] = "77/2026",
             }, "lawyer1"));
+        await FlushAlertsAsync();
 
-        var alert = await _db.HeadAlerts.SingleAsync(a => a.DelegationId == delegationId);
+        var alert = await _db.HeadAlerts.SingleAsync(a => a.DelegationId == delegationId && !a.IsArchived);
         Assert.Contains("استُرد ملفك المناب رقم أساس 890 لاعتبار الملف المنيب 900 منفذًا", alert.Message);
         Assert.Contains("بتحصيل المبلغ المطالب به جبريًا في الملف المنيب", alert.Message);
     }

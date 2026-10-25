@@ -21,6 +21,8 @@ public class SubHeadDelegationTests : IDisposable
 {
     private readonly DocGeneratorDbContext _db;
     private readonly IDocumentDelegationService _service;
+    private readonly HeadAlertService _headAlerts;
+    private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
 
     private readonly Branch _branch;
@@ -54,14 +56,14 @@ public class SubHeadDelegationTests : IDisposable
         var registrationDates = new Repository<DocumentRegistrationDate>(_db);
         var occurrences = new Repository<DocumentOccurrence>(_db);
         var uow = new UnitOfWork(_db);
-        var tx = new TransactionRunner(_db);
-        var headAlerts = new HeadAlertService(
+        _tx = new TransactionRunner(_db);
+        _headAlerts = new HeadAlertService(
             new HeadAlertRepository(_db),
             documents,
             users,
             branches,
             uow,
-            tx,
+            _tx,
             _audit);
 
         _service = new DocumentDelegationService(
@@ -74,9 +76,10 @@ public class SubHeadDelegationTests : IDisposable
             registrationDates,
             occurrences,
             uow,
-            tx,
+            _tx,
             _audit,
-            headAlerts,
+            _headAlerts,
+            new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx),
             TimeProvider.System,
             TestClock.TimeZone,
             circuits: new Repository<ExecutionCircuit>(_db),
@@ -84,6 +87,9 @@ public class SubHeadDelegationTests : IDisposable
     }
 
     public void Dispose() => _db.Dispose();
+
+    private Task FlushAlertsAsync()
+        => HeadAlertOutboxFlush.AllAsync(_db, _headAlerts, _tx);
 
     private static User User(int? branchId, string username, string fullName, UserRole role = UserRole.Lawyer) => new()
     {
@@ -380,9 +386,10 @@ public class SubHeadDelegationTests : IDisposable
         var circuitId = await AddCircuitAsync("دائرة اللاذقية", _otherBranch.Id, null, _otherHead.Id);
         var (doc, assetId) = await CreateSourceAsync();
         var created = await _service.CreateAsync(doc.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
+        await FlushAlertsAsync();
 
         var alert = await _db.HeadAlerts.Include(a => a.Recipients)
-            .SingleAsync(a => a.DelegationId == created.Id);
+            .SingleAsync(a => a.DelegationId == created.Id && a.ArchivedAt == null);
         Assert.Equal(_otherBranch.Id, alert.BranchId);
         Assert.Equal(_otherHead.Id, Assert.Single(alert.Recipients).UserId);
     }
@@ -398,9 +405,10 @@ public class SubHeadDelegationTests : IDisposable
             _lawyer1.Id, "lawyer1");
         await _service.RedirectToSectionAsync(created.Id, new RedirectDelegationRequest(sectionId), _otherHead.Id, "head2");
         await _service.RecallRedirectAsync(created.Id, _otherHead.Id, "head2");
+        await FlushAlertsAsync();
 
         var alert = await _db.HeadAlerts.Include(a => a.Recipients)
-            .SingleAsync(a => a.DelegationId == created.Id);
+            .SingleAsync(a => a.DelegationId == created.Id && a.ArchivedAt == null);
         Assert.Equal(_otherHead.Id, Assert.Single(alert.Recipients).UserId);
     }
 
@@ -420,10 +428,11 @@ public class SubHeadDelegationTests : IDisposable
         var updated = await _service.UpdateAsync(created.Id,
             new UpsertDelegationRequest("دائرة خارجية", true, _otherBranch.Id, "1/8/2026", "نص معدّل", "كتاب-1", "2/8/2026", new List<int> { assetId }),
             _lawyer1.Id, "lawyer1");
+        await FlushAlertsAsync();
 
         Assert.Null(updated!.RedirectedToSectionId);
         var alert = await _db.HeadAlerts.Include(a => a.Recipients)
-            .SingleAsync(a => a.DelegationId == created.Id);
+            .SingleAsync(a => a.DelegationId == created.Id && a.ArchivedAt == null);
         Assert.Equal(_otherHead.Id, Assert.Single(alert.Recipients).UserId);
         Assert.Contains("بانتظار اعتماد الإنابة", alert.Message);
     }
@@ -437,10 +446,11 @@ public class SubHeadDelegationTests : IDisposable
         await _service.RejectAsync(created.Id, new RejectDelegationRequest("الدائرة غير مختصة"), _head1.Id, "head1");
 
         var updated = await _service.UpdateAsync(created.Id, CircuitRequest(circuitId, assetId), _lawyer1.Id, "lawyer1");
+        await FlushAlertsAsync();
 
         Assert.Null(updated!.RejectReason);
         var alerts = await _db.HeadAlerts.Include(a => a.Recipients)
-            .Where(a => a.DelegationId == created.Id).ToListAsync();
+            .Where(a => a.DelegationId == created.Id && a.ArchivedAt == null).ToListAsync();
         var alert = Assert.Single(alerts);
         Assert.Equal(HeadAlertTargetType.Head, alert.TargetType);
         Assert.Contains("بانتظار اعتماد الإنابة", alert.Message);

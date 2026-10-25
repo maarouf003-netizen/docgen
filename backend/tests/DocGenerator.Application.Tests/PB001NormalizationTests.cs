@@ -40,15 +40,17 @@ public class PB001NormalizationTests : IDisposable
         _managerId = mgr.Id;
         _lawyerId = lawyer.Id;
 
+        var tx = new TransactionRunner(_db);
         _registry = new PublicEntityService(
             new PublicEntityRepository(_db),
             new Repository<Branch>(_db),
             new HeadAlertRepository(_db),
+            new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
             new Repository<PublicEntityChangeEvent>(_db),
             new Repository<DocumentOccurrence>(_db),
             new Repository<ParentEditSuggestion>(_db),
             new UnitOfWork(_db),
-            new TransactionRunner(_db),
+            tx,
             _audit,
             new UserRepository(_db),
             new AppealRepository(_db));

@@ -1,4 +1,4 @@
-using DocGenerator.Application.Common;
+﻿using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -21,6 +21,7 @@ public class SubHeadStatsTests : IDisposable
     private readonly IStatisticsRepository _stats;
     private readonly IExecutionCircuitService _circuits;
     private readonly IHeadAlertService _alerts;
+    private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
 
     private readonly Branch _branch;
@@ -44,6 +45,7 @@ public class SubHeadStatsTests : IDisposable
 
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
+        _tx = tx;
         _stats = new StatisticsRepository(_db, TimeProvider.System, TestClock.TimeZone);
         _circuits = new ExecutionCircuitService(
             new Repository<ExecutionCircuit>(_db),
@@ -60,6 +62,7 @@ public class SubHeadStatsTests : IDisposable
             uow,
             tx,
             _audit,
+            new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
             new DbExceptionClassifier(),
             TimeProvider.System,
             TestClock.TimeZone);
@@ -70,7 +73,8 @@ public class SubHeadStatsTests : IDisposable
             new Repository<Branch>(_db),
             uow,
             tx,
-            _audit);
+            _audit,
+            tx);
     }
 
     public void Dispose() => _db.Dispose();
@@ -264,16 +268,30 @@ public class SubHeadStatsTests : IDisposable
         await _db.SaveChangesAsync();
 
         // تنبيه موجَّه لرئيس الشعبة وتنبيه لرئيس القسم.
-        await _alerts.CreateAsync(new DocGenerator.Application.DTOs.CreateHeadAlertRequest(
-            "head", null, null, "للشعبة", RecipientUserId: sub.Id), _head1.Id, _branch.Id, "head1");
-        await _alerts.CreateAsync(new DocGenerator.Application.DTOs.CreateHeadAlertRequest(
-            "head", null, null, "للقسم", RecipientUserId: _head1.Id), _head1.Id, _branch.Id, "head1");
+        await _tx.RunAsync(token => _alerts.CreateSystemAsync(
+            new CreateSystemHeadAlertRequest(
+                HeadAlertKindCatalog.DelegationPendingApproval,
+                "sub",
+                HeadAlertAudience.SingleHead,
+                _branch.Id,
+                _head1.Id,
+                RecipientUserId: sub.Id),
+            DateTime.UtcNow, null, null, token));
+        await _tx.RunAsync(token => _alerts.CreateSystemAsync(
+            new CreateSystemHeadAlertRequest(
+                HeadAlertKindCatalog.DelegationPendingApproval,
+                "head",
+                HeadAlertAudience.SingleHead,
+                _branch.Id,
+                _head1.Id,
+                RecipientUserId: _head1.Id),
+            DateTime.UtcNow, null, null, token));
 
         // قراءة بالمستلم (§8): كلٌّ يرى تنبيهه فقط.
         var subList = await _alerts.ListForHeadAsync(sub.Id, _branch.Id);
-        Assert.Equal("للشعبة", Assert.Single(subList).Message);
+        Assert.Equal("sub", Assert.Single(subList).Message);
         var headList = await _alerts.ListForHeadAsync(_head1.Id, _branch.Id);
-        Assert.Equal("للقسم", Assert.Single(headList).Message);
+        Assert.Equal("head", Assert.Single(headList).Message);
 
         // تعليم القراءة يعمل للمستلم الرئيس.
         var own = Assert.Single(headList);

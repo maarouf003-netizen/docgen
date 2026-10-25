@@ -275,13 +275,14 @@ public sealed partial class PublicEntityService
             await InsertBranchOccurrencesAsync(affectedDocs,
                 $"تم تغيير اسم فرع «{oldCanonical}» من «{oldBranch}» إلى «{newBranch}»", actor, token);
             await InsertBranchChangeAlertAsync(entry,
-                $"تم تغيير اسم فرع جهة «{oldCanonical}» ({entry.Governorate}): من «{oldBranch}» إلى «{newBranch}»", actor, token);
+                HeadAlertMessages.EntityBranchRenamed(new(oldCanonical, entry.Governorate, oldBranch, newBranch)),
+                ActionKindCatalog.Rename, actor, token);
+            if (wasNeedsReview && createdByLawyer)
+                await InsertRenameNoticeToCreatorAsync(entry, oldCanonical, entry.Group.CanonicalName, token);
             await _uow.SaveChangesAsync(token);
 
             await _audit.LogAsync(actor.Name, "rename_branch",
-                details: $"أعاد تسمية فرع: «{oldCanonical}» ({entry.Governorate}/{oldBranch}) → «{newBranch}» — مزامنة {affected} ملفًا", ct: token);
-            if (wasNeedsReview && createdByLawyer)
-                await InsertRenameNoticeToCreatorAsync(entry, oldCanonical, entry.Group.CanonicalName, token);
+                details: $"أعاد تسمية فرع جهة: «{oldCanonical}» ({entry.Governorate}/{oldBranch}) ← «{newBranch}» — تغطية {affected} ملفًا", ct: token);
         }, ct);
 
         return new RenameBranchResponse(entry.Id, oldBranch, newBranch, affected, changeEventId);
@@ -361,8 +362,8 @@ public sealed partial class PublicEntityService
                 $"تم دمج فرع «{source.Group.CanonicalName}» ({target.Governorate}/{source.BranchName}) في ({target.Governorate}/{target.BranchName})",
                 actor, token);
             await InsertBranchChangeAlertAsync(target,
-                $"تم دمج فرع جهة «{source.Group.CanonicalName}» ({target.Governorate}/{source.BranchName}) في ({target.Governorate}/{target.BranchName})",
-                actor, token);
+                HeadAlertMessages.EntityBranchMerged(new(source.Group.CanonicalName, target.Governorate, source.BranchName, target.BranchName)),
+                ActionKindCatalog.Merge, actor, token);
             await _uow.SaveChangesAsync(token);
 
             await _audit.LogAsync(actor.Name, "merge_branches",
@@ -462,8 +463,8 @@ public sealed partial class PublicEntityService
                     $"تم دمج فرع «{entry.Group.CanonicalName}» ({target.Governorate}/{entry.BranchName}) في ({target.Governorate}/{target.BranchName})",
                     actor, token);
                 await InsertBranchChangeAlertAsync(target,
-                    $"تم دمج فرع جهة «{entry.Group.CanonicalName}» ({target.Governorate}/{entry.BranchName}) في ({target.Governorate}/{target.BranchName})",
-                    actor, token);
+                    HeadAlertMessages.EntityBranchMerged(new(entry.Group.CanonicalName, target.Governorate, entry.BranchName, target.BranchName)),
+                    ActionKindCatalog.Merge, actor, token);
             }
             else
             {
@@ -496,8 +497,8 @@ public sealed partial class PublicEntityService
                 changeEventId = changeEvent.Id;
 
                 await InsertBranchChangeAlertAsync(entry,
-                    $"تم إلغاء فرع جهة «{entry.Group.CanonicalName}» ({entry.Governorate}/{entry.BranchName}) بلا ملفات مرتبطة",
-                    actor, token);
+                    HeadAlertMessages.EntityBranchAbolished(new(entry.Group.CanonicalName, entry.Governorate, entry.BranchName)),
+                    ActionKindCatalog.Abolish, actor, token);
             }
 
             await _uow.SaveChangesAsync(token);
@@ -615,7 +616,8 @@ public sealed partial class PublicEntityService
             await InsertBranchOccurrencesAsync(docsList,
                 $"تم توحيد تسميات فروع «{target.Group.CanonicalName}» ({target.Governorate}/{target.BranchName})", actor, token);
             await InsertBranchChangeAlertAsync(target,
-                $"تم توحيد تسميات فروع جهة «{target.Group.CanonicalName}» ({target.Governorate}/{target.BranchName})", actor, token);
+                HeadAlertMessages.EntityBranchUnified(new(target.Group.CanonicalName, target.Governorate, target.BranchName)),
+                ActionKindCatalog.Unify, actor, token);
             await _uow.SaveChangesAsync(token);
 
             await _audit.LogAsync(actor.Name, "unify_branches",
@@ -700,23 +702,26 @@ public sealed partial class PublicEntityService
     private async Task InsertBranchChangeAlertAsync(
         PublicEntity entry,
         string message,
+        string entityOperation,
         EntityRegistryActor actor,
         CancellationToken token)
     {
+        var occurredAt = DateTime.UtcNow;
         var heads = await _entities.ListActiveHeadsByGovernorateAsync(entry.Governorate, token);
-        foreach (var head in heads.Where(h => h.BranchId.HasValue))
+        foreach (var branch in heads.Where(h => h.BranchId.HasValue).GroupBy(h => h.BranchId!.Value))
         {
-            var alert = new HeadAlert
-            {
-                BranchId = head.BranchId!.Value,
-                CreatedById = actor.UserId,
-                PublicEntityId = entry.Id,
-                TargetType = HeadAlertTargetType.Branch,
-                Message = message.Length > 2000 ? message[..2000] : message,
-                CreatedAt = DateTime.UtcNow,
-                Recipients = { new HeadAlertRecipient { UserId = head.Id } },
-            };
-            await _headAlerts.AddAsync(alert, token);
+            await _alertOutbox.EnqueueSystemAsync(
+                new CreateSystemHeadAlertRequest(
+                    HeadAlertKindCatalog.EntityBranchChanged,
+                    message,
+                    HeadAlertAudience.BranchHeads,
+                    branch.Key,
+                    actor.UserId,
+                    PublicEntityId: entry.Id,
+                    EntityOperation: entityOperation),
+                supersedePlan: null,
+                occurredAt: occurredAt,
+                ct: token);
         }
     }
     /// <summary>اسم بديل «للبحث فقط» على قيد: الاسم الكامل القديم (المعتمد — المحافظة / الفرع).</summary>

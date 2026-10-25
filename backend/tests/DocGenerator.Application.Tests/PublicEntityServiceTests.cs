@@ -20,6 +20,8 @@ public class PublicEntityServiceTests : IDisposable
 {
     private readonly DocGeneratorDbContext _db;
     private readonly IPublicEntityService _service;
+    private readonly IHeadAlertService _headAlerts;
+    private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _damascusId;
     private readonly int _aleppoId;
@@ -50,21 +52,31 @@ public class PublicEntityServiceTests : IDisposable
         _headAleppoId = headAlp.Id;
         _lawyerId = lawyer.Id;
 
+        var alertsRepo = new HeadAlertRepository(_db);
+        var branches = new Repository<Branch>(_db);
+        var users = new UserRepository(_db);
+        var uow = new UnitOfWork(_db);
+        _tx = new TransactionRunner(_db);
+        _headAlerts = new HeadAlertService(alertsRepo, new DocumentRepository(_db), users,
+            branches, uow, _tx, _audit, _tx);
         _service = new PublicEntityService(
             new PublicEntityRepository(_db),
-            new Repository<Branch>(_db),
-            new HeadAlertRepository(_db),
+            branches,
+            alertsRepo,
+            new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx),
             new Repository<PublicEntityChangeEvent>(_db),
             new Repository<DocumentOccurrence>(_db),
             new Repository<ParentEditSuggestion>(_db),
-            new UnitOfWork(_db),
-            new TransactionRunner(_db),
+            uow,
+            _tx,
             _audit,
-            new UserRepository(_db),
+            users,
             new AppealRepository(_db));
     }
 
     public void Dispose() => _db.Dispose();
+
+    private Task FlushAlertsAsync() => HeadAlertOutboxFlush.AllAsync(_db, _headAlerts, _tx);
 
     private EntityRegistryActor ManagerActor() => new(_managerId, "المدير", UserRole.Manager, null);
 
@@ -504,7 +516,7 @@ public class PublicEntityServiceTests : IDisposable
     // ── نموذج الحوكمة الجديد: دخول فوري + مراجعة لاحقة ──
 
     [Fact]
-    public async Task Create_ByLawyer_IsFinalImmediately_NeedsReview_AndNotifiesGovernorateHead()
+    public async Task Create_ByLawyer_IsFinalImmediately_NeedsReview_WithoutReviewAlert()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
             "هيئة التفتيش", "authority", "دمشق", "الفرع الرئيسي", CitationFormulaCatalog.AddToJob),
@@ -518,29 +530,20 @@ public class PublicEntityServiceTests : IDisposable
         var stored = await _db.PublicEntities.AsNoTracking().SingleAsync(e => e.Id == dto.Id);
         Assert.True(stored.NeedsReview);
 
-        // تنبيه رئيس فرع المُدخِل (دمشق)، ولا تنبيه لرئيس حلب.
-        var alerts = await _db.HeadAlerts.AsNoTracking().Include(a => a.Recipients).ToListAsync();
-        var alert = Assert.Single(alerts);
-        Assert.Equal(_headDamascusId, alert.Recipients.Single().UserId);
-        Assert.Contains("محامي دمشق", alert.Message);
-        Assert.Contains("هيئة التفتيش", alert.Message);
-        Assert.Contains("يرجى مراجعتها", alert.Message);
+        // R1 متقاعد: لا تنبيه مراجعة عند الإنشاء.
+        Assert.Empty(await _db.HeadAlerts.AsNoTracking().ToListAsync());
     }
 
     [Fact]
-    public async Task Create_ByLawyer_InAnotherGovernorate_NotifiesHeadOfLawyerBranch_NotGovernorateHead()
+    public async Task Create_ByLawyer_InAnotherGovernorate_KeepsNeedsReviewWithoutReviewAlert()
     {
-        // محامٍ من فرع دمشق يُدخل جهة تتبع محافظة حلب — التنبيه يذهب لرئيس دمشق (فرع المُدخِل)
-        // وليس لرئيس حلب، لأن نطاق المراجعة هو ما أدخله محامو فرعه.
+        // محامٍ من فرع دمشق يُدخل جهة تتبع محافظة حلب — تبقى بحاجة مراجعة بلا تنبيه مراجعة (R1 متقاعد).
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest(
             "هيئة حلبية", "authority", "حلب", "فرع حلب", CitationFormulaCatalog.AddToJob),
             LawyerActor());
 
         Assert.True(dto.NeedsReview);
-        var alerts = await _db.HeadAlerts.AsNoTracking().Include(a => a.Recipients).ToListAsync();
-        var alert = Assert.Single(alerts);
-        Assert.Equal(_headDamascusId, alert.Recipients.Single().UserId);
-        Assert.DoesNotContain(_headAleppoId.ToString(), string.Join(",", alerts.SelectMany(a => a.Recipients.Select(r => r.UserId.ToString()))));
+        Assert.Empty(await _db.HeadAlerts.AsNoTracking().ToListAsync());
     }
 
     [Fact]
@@ -559,8 +562,8 @@ public class PublicEntityServiceTests : IDisposable
         Assert.False(stored.NeedsReview);
         Assert.NotNull(stored.ReviewedAtUtc);
         Assert.Equal(_headDamascusId, stored.ReviewedById);
-        // الاعتماد كما هو بلا أي تعديل: لا إشعار للمُدخِل (حسب القرار).
-        Assert.Equal(1, await _db.HeadAlerts.CountAsync(a => a.TargetType == HeadAlertTargetType.Branch));
+        // الاعتماد كما هو بلا أي تعديل: لا إشعار للمُدخِل ولا تنبيه مراجعة (R1 متقاعد).
+        Assert.Equal(0, await _db.HeadAlerts.CountAsync(a => a.TargetType == HeadAlertTargetType.Branch));
         Assert.Equal(0, await _db.HeadAlerts.CountAsync(a => a.TargetType == HeadAlertTargetType.Lawyer));
         Assert.Contains("approve_entity_review", _audit.Actions);
     }
@@ -622,7 +625,6 @@ public class PublicEntityServiceTests : IDisposable
             "هيئة السوق", "authority", "دمشق", "الفرع الرئيسي", CitationFormulaCatalog.AddToJob),
             LawyerActor());
         var headDamascus = new EntityRegistryActor(_headDamascusId, "رئيس قسم دمشق", UserRole.Head, _damascusId);
-        var alertsBefore = await _db.HeadAlerts.CountAsync();
 
         var edited = await _service.UpdateAsync(dto.Id,
             new UpdatePublicEntityRequest("هيئة السوق المركزية", null, null, null, null, null, null), headDamascus);
@@ -635,8 +637,9 @@ public class PublicEntityServiceTests : IDisposable
         Assert.False(stored.NeedsReview);
         Assert.NotNull(stored.ReviewedAtUtc);
 
-        // تنبيهان: تنبيه المراجعة الأول لرئيس القسم + إشعار تعديل الاسم للمحامي.
-        Assert.Equal(alertsBefore + 1, await _db.HeadAlerts.CountAsync());
+        // إشعار واحد فقط: تعديل الاسم للمحامي (لا تنبيه مراجعة أولًا — R1 متقاعد).
+        await FlushAlertsAsync();
+        Assert.Equal(1, await _db.HeadAlerts.CountAsync());
         var notice = await _db.HeadAlerts.AsNoTracking()
             .Include(a => a.Recipients)
             .SingleAsync(a => a.TargetType == HeadAlertTargetType.Lawyer);
@@ -867,6 +870,7 @@ public class PublicEntityServiceTests : IDisposable
     {
         var (g1, e1, g2, _) = await SeedTwoGroupsForMoveAsync();
         await _service.MoveEntryAsync(e1, new MoveEntryRequest(g2, null, null, null, null, null), ManagerActor());
+        await FlushAlertsAsync();
 
         var alert = await _db.HeadAlerts.Include(h => h.Recipients).SingleAsync();
         Assert.Contains("أُلحق بقيدكم فرع", alert.Message);
@@ -1278,6 +1282,7 @@ public class PublicEntityServiceTests : IDisposable
         await _service.CommitMergeAsync(
             new MergeCommitRequest(sg, new[] { ag1 },
                 DecreeKind: "قرار", DecreeNumber: "123", DecreeDate: "1/8/2026"), ManagerActor());
+        await FlushAlertsAsync();
 
         var alerts = await _db.HeadAlerts.Include(h => h.Recipients).ToListAsync();
         Assert.Contains(alerts, a => a.Message.Contains("دمج"));
@@ -2555,7 +2560,7 @@ public class PublicEntityServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task ProposeEdit_ByLawyer_SucceedsAndNotifiesHead()
+    public async Task ProposeEdit_ByLawyer_SucceedsWithoutAlert()
     {
         var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة قابلة للاقتراح", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
         var proposed = await _service.ProposeEditAsync(dto.Id, new ProposeEditRequest(CanonicalName: "جهة مقترحة جديدة"), LawyerActor());
@@ -2565,10 +2570,8 @@ public class PublicEntityServiceTests : IDisposable
         var evt = await _db.PublicEntityChangeEvents.OrderByDescending(e => e.Id).FirstAsync();
         Assert.Equal(ActionKindCatalog.Propose, evt.ActionKind);
         Assert.Equal(dto.Id, evt.EntryId);
-        var alert = await _db.HeadAlerts.OrderByDescending(h => h.Id).FirstAsync();
-        Assert.Contains("اقترح", alert.Message);
-        Assert.Equal(dto.Id, alert.PublicEntityId);
-        Assert.Contains(alert.Recipients, r => r.UserId == _headDamascusId);
+        // R2 متقاعد: لا تنبيه اقتراح تعديل.
+        Assert.Empty(await _db.HeadAlerts.AsNoTracking().ToListAsync());
     }
 
     [Fact]
@@ -2584,52 +2587,6 @@ public class PublicEntityServiceTests : IDisposable
         var dto1 = await _service.CreateAsync(new CreatePublicEntityRequest("جهة مكررة فروع", "ministry", "دمشق", "فرع 1"), ManagerActor());
         await _service.CreateAsync(new CreatePublicEntityRequest("جهة مكررة فروع", "ministry", "دمشق", "فرع 2"), ManagerActor());
         await Assert.ThrowsAsync<ArgumentException>(() => _service.ProposeEditAsync(dto1.Id, new ProposeEditRequest(BranchName: "فرع 2"), LawyerActor()));
-    }
-
-    [Fact]
-    public async Task ProposeEdit_MultipleProposalsOnSameEntityBeforeApproval_MergeIntoSingleAlertWithLatestEdit()
-    {
-        // تعديلان متتاليان على الجهة نفسها قبل الاعتماد يدمجان في تنبيه واحد بآخر تعديل.
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة الادماج", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        await _service.ProposeEditAsync(dto.Id, new ProposeEditRequest(CanonicalName: "جهة الادماج (تعديل أول)"), LawyerActor());
-        await _service.ProposeEditAsync(dto.Id, new ProposeEditRequest(CanonicalName: "جهة الادماج (التعديل الأخير)"), LawyerActor());
-
-        var alerts = await _db.HeadAlerts.AsNoTracking()
-            .Include(a => a.Recipients)
-            .Where(a => a.PublicEntityId == dto.Id)
-            .ToListAsync();
-        // تنبيه واحد فقط — لا تراكم على كل اقتراح.
-        Assert.Single(alerts);
-        var alert = alerts[0];
-        // كثير الأهداف هو التعديل الأخير (لا التعديل الأول).
-        Assert.Contains("→ «جهة الادماج (التعديل الأخير)»", alert.Message);
-        Assert.DoesNotContain("→ «جهة الادماج (تعديل أول)»", alert.Message);
-        // موجّه لرئيس محافظة القيد.
-        Assert.Contains(alert.Recipients, r => r.UserId == _headDamascusId);
-    }
-
-    [Fact]
-    public async Task ProposeEdit_AfterHeadReadsAlert_NextProposalCreatesNewAlert()
-    {
-        // بعد قراءة الرئيس للتنبيه يبدأ تنبيه جديد بأحدث تعديل (نطاق «قبل الاعتماد» فقط يدمج).
-        var dto = await _service.CreateAsync(new CreatePublicEntityRequest("جهة القراءة", "ministry", "دمشق", "الفرع الرئيسي"), ManagerActor());
-        await _service.ProposeEditAsync(dto.Id, new ProposeEditRequest(CanonicalName: "جهة القراءة (أول)"), LawyerActor());
-
-        var firstAlert = await _db.HeadAlerts
-            .Include(a => a.Recipients)
-            .SingleAsync(a => a.PublicEntityId == dto.Id);
-        firstAlert.Recipients.Single(r => r.UserId == _headDamascusId).IsRead = true;
-        await _db.SaveChangesAsync();
-
-        await _service.ProposeEditAsync(dto.Id, new ProposeEditRequest(CanonicalName: "جهة القراءة (ثانٍ)"), LawyerActor());
-
-        var alerts = await _db.HeadAlerts.AsNoTracking()
-            .Where(a => a.PublicEntityId == dto.Id)
-            .ToListAsync();
-        // تنبيهان: الأول المقروء يبقى سجلًا، والجديد يحمل التعديل الأخير.
-        Assert.Equal(2, alerts.Count);
-        var latest = alerts.OrderByDescending(a => a.Id).First();
-        Assert.Contains("جهة القراءة (ثانٍ)", latest.Message);
     }
 
     [Fact]
@@ -4222,7 +4179,7 @@ public class PublicEntityServiceTests : IDisposable
     // ── F3: تماثل إشعار الجهات العامة لرؤساء الشعب (قرار أ — بالنطاق حسب الاستعلام) ──
 
     [Fact]
-    public async Task Create_ByLawyer_NotifiesBranchSubHead_WithOwnBranchId()
+    public async Task Create_ByLawyer_DoesNotCreateReviewAlert_ForAnyHead()
     {
         var subDam = new User { Username = "sub_dam", FullName = "رئيس شعبة دمشق", Role = UserRole.SubHead, BranchId = _damascusId, IsActive = true, PasswordHash = "x" };
         var subAlp = new User { Username = "sub_alp", FullName = "رئيس شعبة حلب", Role = UserRole.SubHead, BranchId = _aleppoId, IsActive = true, PasswordHash = "x" };
@@ -4233,16 +4190,8 @@ public class PublicEntityServiceTests : IDisposable
             "هيئة الشعبة", "authority", "دمشق", "الفرع الرئيسي", CitationFormulaCatalog.AddToJob),
             LawyerActor());
 
-        // فرع المُدخِل (دمشق): الرئيس + رئيس الشعبة يستلمان، كلٌّ بتنبيه على فرعه حصرًا.
-        var alerts = await _db.HeadAlerts.AsNoTracking().Include(a => a.Recipients).ToListAsync();
-        Assert.Equal(2, alerts.Count);
-        var recipients = alerts.Select(a => a.Recipients.Single().UserId).ToList();
-        Assert.Contains(_headDamascusId, recipients);
-        Assert.Contains(subDam.Id, recipients);
-        Assert.All(alerts, a => Assert.Equal(_damascusId, a.BranchId));
-        // شعبة فرع آخر (حلب) لا تستلم — بلا تسريب عبر الفروع.
-        Assert.DoesNotContain(subAlp.Id, recipients);
-        Assert.DoesNotContain(_headAleppoId, recipients);
+        // R1 متقاعد: لا تنبيه مراجعة لأي رئيس أو رئيس شعبة عند إنشاء محامٍ لجهة.
+        Assert.Empty(await _db.HeadAlerts.AsNoTracking().Include(a => a.Recipients).ToListAsync());
     }
 
     [Fact]

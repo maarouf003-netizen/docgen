@@ -36,9 +36,14 @@ public class UserManagementServiceTests : IDisposable
             new Repository<HeadSuccession>(_db),
             new Repository<Correspondence>(_db),
             new Repository<CorrespondenceMessage>(_db),
-            new Repository<HeadAlert>(_db),
-            new Repository<HeadAlertRecipient>(_db),
             new DocumentRepository(_db),
+            new HeadAlertSuccessionService(
+                new HeadAlertRepository(_db),
+                new HeadAlertOutboxStore(_db),
+                uow,
+                _audit,
+                new DbExceptionClassifier(),
+                tx),
             uow, _hasher, tx, _audit);
     }
 

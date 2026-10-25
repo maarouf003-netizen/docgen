@@ -32,9 +32,14 @@ public class SubHeadFoundationTests : IDisposable
             new Repository<HeadSuccession>(_db),
             new Repository<Correspondence>(_db),
             new Repository<CorrespondenceMessage>(_db),
-            new Repository<HeadAlert>(_db),
-            new Repository<HeadAlertRecipient>(_db),
             new DocumentRepository(_db),
+            new HeadAlertSuccessionService(
+                new HeadAlertRepository(_db),
+                new HeadAlertOutboxStore(_db),
+                uow,
+                new FakeAuditLogger(),
+                new DbExceptionClassifier(),
+                tx),
             uow, new PasswordHasher(), tx, new FakeAuditLogger());
     }
 

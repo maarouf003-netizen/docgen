@@ -9,4 +9,6 @@ public class UnitOfWork : IUnitOfWork
     public UnitOfWork(DocGeneratorDbContext db) => _db = db;
 
     public Task<int> SaveChangesAsync(CancellationToken ct = default) => _db.SaveChangesAsync(ct);
+
+    public void ClearChanges() => _db.ChangeTracker.Clear();
 }

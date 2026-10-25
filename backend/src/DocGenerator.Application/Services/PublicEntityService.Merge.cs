@@ -336,12 +336,15 @@ public sealed partial class PublicEntityService
             }
 
             // تنبيه عام لكل المحامين + تنبيه خاص لرؤساء الأقسام
+            var entityGroupKey = survivorGroup.Id.ToString(CultureInfo.InvariantCulture);
             await BroadcastEntityChangeToAllLawyersAsync(
-                EntityChangeMessages.MergeLawyersAlert(absorbedNamesJoined, survivorGroup.CanonicalName, decreeKind, decreeNumber, decreeDate),
-                actor.UserId, token);
+                HeadAlertKindCatalog.EntityMergeLawyers,
+                HeadAlertMessages.EntityMergeLawyers(absorbedNamesJoined, survivorGroup.CanonicalName, decreeKind, decreeNumber, decreeDate),
+                ActionKindCatalog.Merge, entityGroupKey, actor.UserId, token);
             await BroadcastToAllHeadsAsync(
-                EntityChangeMessages.MergeHeadsAlert(absorbedNamesJoined, survivorGroup.CanonicalName, decreeKind, decreeNumber, decreeDate),
-                actor.UserId, token);
+                HeadAlertKindCatalog.EntityMergeHeads,
+                HeadAlertMessages.EntityMergeHeads(absorbedNamesJoined, survivorGroup.CanonicalName, decreeKind, decreeNumber, decreeDate),
+                ActionKindCatalog.Merge, entityGroupKey, actor.UserId, token);
 
             await _uow.SaveChangesAsync(token);
 

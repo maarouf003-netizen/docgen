@@ -23,7 +23,9 @@ public record CreateSystemHeadAlertRequest(
     int? ReviewLetterId = null,
     int? PublicEntityId = null,
     int? ExecutionCircuitId = null,
-    int? RecipientUserId = null);
+    int? RecipientUserId = null,
+    string? EntityOperation = null,
+    string? EntityGroupKey = null);
 
 /// <summary>
 /// خطة استبدال التنبيه (الخطة §9.2) — تُمرَّر إلى معالج التنبيه النظامي فقط، ولا تُقبل

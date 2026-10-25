@@ -59,6 +59,7 @@ public class AppealTransferAllConcurrencyTests : IDisposable
             new DocumentRepository(db),
             new UserRepository(db),
             uow, tx, audit, alerts,
+            new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
             TimeProvider.System, TestClock.TimeZone);
     }
 

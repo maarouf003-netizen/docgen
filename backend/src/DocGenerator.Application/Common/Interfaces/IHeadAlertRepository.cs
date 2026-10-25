@@ -36,6 +36,13 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
     /// <summary>تنبيه مع مستلميه ومنشئه وملفه (لتعليم القراءة أو العرض).</summary>
     Task<HeadAlert?> GetByIdWithRecipientsAsync(int id, CancellationToken ct = default);
 
+    /// <summary>
+    /// التنبيهات النشطة التي للمستخدم فيها استلام غير مقروء — مع كل مستلميها
+    /// (متتبَّعة: التعاقب يحرّك/يدمج صفوف الاستلام داخلها).
+    /// </summary>
+    Task<List<HeadAlert>> ListActiveUnreadByRecipientWithRecipientsAsync(
+        int userId, CancellationToken ct = default);
+
     /// <summary>محامو الفرع المفعلون (مستلمو التعميم).</summary>
     Task<List<User>> ListActiveLawyersAsync(int branchId, CancellationToken ct = default);
 
@@ -80,35 +87,6 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
     /// </summary>
     Task<int> RemoveAppealRecipientAsync(int appealId, int userId, CancellationToken ct = default);
 
-    /// <summary>
-    /// تنبيه معلق (إعادة قيد) بعينه لمحامٍ (مدمج لكل محامٍ × دائرة برسالة ثابتة) — للإحالة المدمجة.
-    /// </summary>
-    Task<HeadAlert?> FindPendingAlertAsync(int lawyerId, string message, CancellationToken ct = default);
-
-    /// <summary>كل تنبيهات إعادة القيد لمحامٍ (بادئة ثابتة) — للتنظيف التلقائي عند الصفر.</summary>
-    Task<List<HeadAlert>> ListPendingAlertsForLawyerAsync(int lawyerId, string prefix, CancellationToken ct = default);
-
-    /// <summary>
-    /// تنبيهات الرسالة نفسها مقيدةً بالفرع في SQL (S4) — لترحيل التسمية؛
-    /// الوحدانية الاسمية داخل الفرع فقط، فلا يُسحب أي تنبيه من فرع آخر أصلًا.
-    /// </summary>
-    Task<List<HeadAlert>> FindByMessageAndBranchAsync(string message, int branchId, CancellationToken ct = default);
-
-    /// <summary>
-    /// أحدث تنبيه تعديل غير مقروء مرتبط بجهة عامة معينة لمستلم محدد — تستخدمه
-    /// الاقتراحات المتلاحقة لتعديل الجهة نفسها قبل الاعتماد لدمجها في تنبيه واحد
-    /// بآخر تعديل بدل تراكم تنبيهات متعددة.
-    /// </summary>
-    Task<HeadAlert?> FindLatestPendingByEntityAsync(
-        int publicEntityId, int recipientUserId, CancellationToken ct = default);
-
-    /// <summary>
-    /// أحدث تنبيه تعديل غير مقروء مرتبط بكتاب مطالعة محدد لمستلم محدد — يُحدَّث
-    /// نُصّه وزمنه لدمج الردود المتتالية في تنبيه واحد بدل تراكم التنبيهات.
-    /// </summary>
-    Task<HeadAlert?> FindLatestUnseenByReviewLetterAsync(
-        int reviewLetterId, int recipientUserId, CancellationToken ct = default);
-
     // ── مسارات النوع الدلالي (الخطة §6.4/§8.1) ──
 
     /// <summary>
@@ -148,6 +126,20 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
     /// </summary>
     Task<List<HeadAlert>> ListActivePendingByCircuitAndKindAsync(
         int circuitId, string kind, CancellationToken ct = default);
+
+    /// <summary>
+    /// التنبيهات النشطة المرتبطة بدائرة أو بملفاتها (متتبَّعة) — تُؤرشف قبل حذف
+    /// الدائرة/تطهير ملفاتها حتى لا تبقى إشارات إلى كيانات محذوفة.
+    /// </summary>
+    Task<List<HeadAlert>> ListActiveByCircuitOrDocumentsAsync(
+        int circuitId, IReadOnlyCollection<int> documentIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// أرشفة تنبيهات إعادة القيد النشطة للمحامي التي لم تعد مفاتيحها ضمن المعلقات
+    /// الحالية (متتبَّعة، بلا حفظ). تُستخدم في خطاف التصفية بعد اكتمال/نقل المعلقات.
+    /// </summary>
+    Task<int> ArchiveStalePendingByLawyerAsync(
+        int lawyerId, IReadOnlySet<string> activeDedupeKeys, DateTime archivedAt, CancellationToken ct = default);
 }
 
 /// <summary>نطاق دورة الحياة الذي تُرشَّف ضمنه التنبيهات.</summary>

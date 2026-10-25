@@ -23,6 +23,8 @@ public class ExecutionCircuitServiceTests : IDisposable
     private readonly IExecutionCircuitService _circuits;
     private readonly IDocumentService _documents;
     private readonly IDocumentStatusService _documentStatus;
+    private readonly IHeadAlertService _headAlerts;
+    private readonly TransactionRunner _tx;
     private readonly FakeAuditLogger _audit = new();
     private readonly int _branchId;
     private readonly int _headId;
@@ -49,24 +51,27 @@ public class ExecutionCircuitServiceTests : IDisposable
         var documents = new DocumentRepository(_db);
         var users = new UserRepository(_db);
         var uow = new UnitOfWork(_db);
-        var tx = new TransactionRunner(_db);
+        _tx = new TransactionRunner(_db);
         var classifier = new DbExceptionClassifier();
         var circuitsRepo = new Repository<ExecutionCircuit>(_db);
         var branchesRepo = new Repository<Branch>(_db);
         var occurrences = new Repository<DocumentOccurrence>(_db);
         var baseNumbers = new Repository<DocumentBaseNumber>(_db);
         var alertsRepo = new HeadAlertRepository(_db);
+        var outbox = new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx);
         _circuits = new ExecutionCircuitService(
             circuitsRepo, branchesRepo, new Repository<Section>(_db), documents, new DelegationRepository(_db),
             new AppealRepository(_db),
             occurrences, baseNumbers, new Repository<HeadSuccession>(_db), alertsRepo, users,
-            uow, tx, _audit, classifier, TimeProvider.System, TestClock.TimeZone);
-        var alertService = new HeadAlertService(alertsRepo, documents, users,
-            branchesRepo, uow, tx, _audit);
-        var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, baseNumbers: baseNumbers, occurrences: occurrences, uow: uow, tx: tx, alertService: alertService, dbErrors: classifier, circuits: circuitsRepo, branches: branchesRepo);
+            uow, _tx, _audit, outbox, classifier, TimeProvider.System, TestClock.TimeZone);
+        _headAlerts = new HeadAlertService(alertsRepo, documents, users,
+            branchesRepo, uow, _tx, _audit, _tx);
+        var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, baseNumbers: baseNumbers, occurrences: occurrences, uow: uow, tx: _tx, alertService: _headAlerts, dbErrors: classifier, circuits: circuitsRepo, branches: branchesRepo);
         _documents = docBundle.Documents;
         _documentStatus = docBundle.Status;
     }
+
+    private Task FlushAlertsAsync() => HeadAlertOutboxFlush.AllAsync(_db, _headAlerts, _tx);
 
     public void Dispose() => _db.Dispose();
 
@@ -392,6 +397,35 @@ public class ExecutionCircuitServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Delete_ArchivesCircuitAlertsBeforePurge()
+    {
+        var source = await CreateCircuitAsync("دائرة مصدر");
+        var target = await CreateCircuitAsync("دائرة مؤرشفة");
+        var docId = await CreateDocAsync(source, _lawyer1Id, "822", "2026");
+        await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
+            new ReferCircuitFilesRequest
+            {
+                FileIds = new List<int> { docId },
+                TargetLawyerId = _lawyer2Id,
+                TargetCircuitId = target,
+            });
+        await FlushAlertsAsync();
+
+        var active = Assert.Single(_db.HeadAlerts.Where(a => a.ExecutionCircuitId == target && !a.IsArchived));
+        var doc = await _db.Documents.FindAsync(docId);
+        doc!.IsDeleted = true;
+        doc.DeletedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await _circuits.DeleteAsync(target, _branchId, null, "head1");
+
+        var archived = await _db.HeadAlerts.SingleAsync(a => a.Id == active.Id);
+        Assert.True(archived.IsArchived);
+        Assert.NotNull(archived.ArchivedAt);
+    }
+
+    [Fact]
     public async Task Delete_CascadeRemovesDelegationOfPurgedDoc()
     {
         // حالة اختبارية يدوية (غير متاحة إنتاجيًا — حارس DocumentService.DeleteAsync
@@ -459,9 +493,9 @@ public class ExecutionCircuitServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Rename_CreatesOccurrencesPerDoc_AndMigratesAlertMessages()
+    public async Task Rename_CreatesOccurrencesPerDoc_AndUpdatesCircuitAlertMessage()
     {
-        // M1+M6: وقوعّة تسمية لكل ملف + ترحيل نص التنبيه المدمج (المفتاح النصي هش).
+        // M1+M6: وقوعّة تسمية لكل ملف + تحديث نص تنبيه الدائرة عبر Outbox.
         var source = await CreateCircuitAsync("دائرة المصدر");
         var target = await CreateCircuitAsync("دائرة الهدف");
         var docId = await CreateDocAsync(source, _lawyer1Id, "720", "2026");
@@ -469,6 +503,7 @@ public class ExecutionCircuitServiceTests : IDisposable
             new ReferCircuitFilesRequest { FileIds = new List<int> { docId }, TargetLawyerId = _lawyer2Id, TargetCircuitId = target });
 
         await _circuits.RenameAsync(target, _branchId, null, "head1", "دائرة جديدة", null, actorUserId: _headId);
+        await FlushAlertsAsync();
 
         var occ = _db.DocumentOccurrences
             .Where(o => o.DocumentId == docId && o.OccurrenceType == OccurrenceTypeCatalog.CircuitRenamed)
@@ -477,7 +512,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Equal("دائرة الهدف", occ[0].FromCircuitName);
         Assert.Equal("دائرة جديدة", occ[0].ToCircuitName);
         var alert = Assert.Single(_db.HeadAlerts.Where(a => a.TargetLawyerId == _lawyer2Id));
-        Assert.Equal(ExecutionCircuitService.BuildPendingMessage("دائرة جديدة"), alert.Message);
+        Assert.Equal(HeadAlertMessages.CircuitPendingDocuments(new("دائرة جديدة")), alert.Message);
     }
 
     [Fact]
@@ -701,14 +736,16 @@ public class ExecutionCircuitServiceTests : IDisposable
         var docId = await CreateDocAsync(source, _lawyer1Id, "740", "2026");
         await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
             new ReferCircuitFilesRequest { FileIds = new List<int> { docId }, TargetLawyerId = _lawyer1Id, TargetCircuitId = target });
-        Assert.Single(_db.HeadAlerts.Where(a => a.TargetLawyerId == _lawyer1Id));
+        await FlushAlertsAsync();
+        Assert.Single(_db.HeadAlerts.Where(a => a.TargetLawyerId == _lawyer1Id && !a.IsArchived));
 
         await _documents.TransferAsync(docId, _lawyer2Id, "head1");
         await _circuits.SyncPendingAlertsAfterTransferAsync(_lawyer1Id, _lawyer2Id, _branchId, _headId);
+        await FlushAlertsAsync();
 
-        Assert.Empty(_db.HeadAlerts.Where(a => a.TargetLawyerId == _lawyer1Id));
-        var moved = Assert.Single(_db.HeadAlerts.Where(a => a.TargetLawyerId == _lawyer2Id));
-        Assert.Equal(ExecutionCircuitService.BuildPendingMessage("دائرة الهدف"), moved.Message);
+        Assert.Empty(_db.HeadAlerts.Where(a => a.TargetLawyerId == _lawyer1Id && !a.IsArchived));
+        var moved = Assert.Single(_db.HeadAlerts.Where(a => a.TargetLawyerId == _lawyer2Id && !a.IsArchived));
+        Assert.Equal(HeadAlertMessages.CircuitPendingDocuments(new("دائرة الهدف")), moved.Message);
     }
 
     [Fact]
@@ -736,7 +773,7 @@ public class ExecutionCircuitServiceTests : IDisposable
     [Fact]
     public async Task Rename_DoesNotMigrateOtherBranchAlerts()
     {
-        // C2: اسمان متطابقان في فرعين — التسمية تُرحّل تنبيهات فرعها فقط.
+        // C2: اسمان متطابقان في فرعين — التسمية تُحدّث تنبيه دائرة فرعها فقط.
         var branch2 = new Branch { Name = "ريف دمشق", Code = "RIF", Governorate = "دمشق" };
         _db.Branches.Add(branch2);
         await _db.SaveChangesAsync();
@@ -753,25 +790,37 @@ public class ExecutionCircuitServiceTests : IDisposable
         await _circuits.ReferFilesAsync(source, _branchId, null, _headId, "head1",
             new ReferCircuitFilesRequest { FileIds = new List<int> { docId }, TargetLawyerId = _lawyer1Id, TargetCircuitId = circuitA });
 
-        var otherMessage = ExecutionCircuitService.BuildPendingMessage("دائرة موحدة");
+        var otherMessage = HeadAlertMessages.CircuitPendingDocuments(new("دائرة موحدة"));
         _db.HeadAlerts.Add(new HeadAlert
         {
             BranchId = branch2.Id,
             CreatedById = head2.Id,
             TargetType = HeadAlertTargetType.Lawyer,
+            Kind = HeadAlertKindCatalog.CircuitPendingDocuments,
+            DedupeKey = HeadAlertDedupe.Build(new HeadAlertDedupeScope
+            {
+                Kind = HeadAlertKindCatalog.CircuitPendingDocuments,
+                Audience = HeadAlertAudience.SingleLawyer,
+                BranchId = branch2.Id,
+                RecipientUserId = lawyer3.Id,
+                ExecutionCircuitId = circuitB,
+            }),
+            ExecutionCircuitId = circuitB,
             TargetLawyerId = lawyer3.Id,
             Message = otherMessage,
             CreatedAt = DateTime.UtcNow,
+            LastContentChangedAt = DateTime.UtcNow,
+            Recipients = new List<HeadAlertRecipient> { new() { UserId = lawyer3.Id } },
         });
         await _db.SaveChangesAsync();
 
         await _circuits.RenameAsync(circuitA, _branchId, null, "head1", "دائرة جديدة", null, actorUserId: _headId);
+        await FlushAlertsAsync();
 
         var migrated = Assert.Single(_db.HeadAlerts.Where(a => a.TargetLawyerId == _lawyer1Id));
-        Assert.Equal(ExecutionCircuitService.BuildPendingMessage("دائرة جديدة"), migrated.Message);
+        Assert.Equal(HeadAlertMessages.CircuitPendingDocuments(new("دائرة جديدة")), migrated.Message);
         var untouched = Assert.Single(_db.HeadAlerts.Where(a => a.TargetLawyerId == lawyer3.Id));
         Assert.Equal(otherMessage, untouched.Message);
-        _ = circuitB;
     }
 
     [Fact]
@@ -1078,6 +1127,7 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Equal(HeadSuccessionEventCatalog.CircuitTransferred, succession.Event);
         Assert.Equal(subId, succession.UserId);
         Assert.Equal(sectionId, succession.SectionId);
+        await FlushAlertsAsync();
         var alert = Assert.Single(_db.HeadAlerts.Include(a => a.Recipients).ToList());
         Assert.Contains("نُقلت إليك", alert.Message);
         Assert.Contains("1 إنابة معلقة", alert.Message);
@@ -1332,7 +1382,8 @@ public class ExecutionCircuitServiceTests : IDisposable
             new AppealRepository(_db),
             new Repository<DocumentOccurrence>(_db), new Repository<DocumentBaseNumber>(_db),
             new Repository<HeadSuccession>(_db), new HeadAlertRepository(_db), users,
-            uow, tx, _audit, classifier, TimeProvider.System, TestClock.TimeZone,
+            uow, tx, _audit, new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
+            classifier, TimeProvider.System, TestClock.TimeZone,
             new IdempotencyStore(_db));
     }
 }

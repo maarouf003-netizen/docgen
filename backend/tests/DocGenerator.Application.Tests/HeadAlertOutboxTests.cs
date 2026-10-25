@@ -1,4 +1,4 @@
-using DocGenerator.Application.Common;
+﻿using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -72,6 +72,8 @@ public class HeadAlertOutboxTests : IDisposable
     }
 
     private IHeadAlertOutbox Outbox() => _provider.GetRequiredService<IHeadAlertOutbox>();
+
+    private IHeadAlertOutboxStore Store() => _provider.GetRequiredService<IHeadAlertOutboxStore>();
 
     private ITransactionRunner Tx() => _provider.GetRequiredService<ITransactionRunner>();
 
@@ -241,5 +243,76 @@ public class HeadAlertOutboxTests : IDisposable
 
         // الرسالة لم تُحفظ: التراجع شملها (ذرّية واحدة).
         Assert.Empty(await _db.HeadAlertOutboxMessages.ToListAsync());
+    }
+
+    private static HeadAlertOutboxMessage Terminal(
+        HeadAlertOutboxStatus status,
+        DateTime createdAt,
+        DateTime processedAt)
+        => new()
+        {
+            Operation = HeadAlertOutboxOperation.Upsert,
+            Status = status,
+            Kind = HeadAlertKindCatalog.DelegationPendingApproval,
+            Payload = "{}",
+            PayloadVersion = 1,
+            OccurredAt = createdAt,
+            CreatedAt = createdAt,
+            NextAttemptAt = createdAt,
+            ProcessedAt = status is HeadAlertOutboxStatus.Processed or HeadAlertOutboxStatus.Skipped ? processedAt : null,
+        };
+
+    [Fact]
+    public async Task CleanupAsync_DeletesOnlyExpiredProcessedAndSkipped()
+    {
+        var now = new DateTime(2026, 10, 23, 12, 0, 0, DateTimeKind.Utc);
+        var expiredProcessed = Terminal(HeadAlertOutboxStatus.Processed, now.AddDays(-9), now.AddDays(-8));
+        var expiredSkipped = Terminal(HeadAlertOutboxStatus.Skipped, now.AddDays(-40), now.AddDays(-31));
+        var recentProcessed = Terminal(HeadAlertOutboxStatus.Processed, now.AddDays(-2), now.AddDays(-1));
+        var recentSkipped = Terminal(HeadAlertOutboxStatus.Skipped, now.AddDays(-10), now.AddDays(-5));
+        var pending = Terminal(HeadAlertOutboxStatus.Pending, now.AddDays(-30), default);
+        var failed = Terminal(HeadAlertOutboxStatus.Failed, now.AddDays(-30), default);
+
+        _db.HeadAlertOutboxMessages.AddRange(
+            expiredProcessed, expiredSkipped, recentProcessed, recentSkipped, pending, failed);
+        await _db.SaveChangesAsync();
+
+        var removed = await Store().CleanupAsync(now, processedRetentionDays: 7, skippedRetentionDays: 30);
+
+        Assert.Equal(2, removed);
+        var remaining = await _db.HeadAlertOutboxMessages.AsNoTracking()
+            .OrderBy(m => m.Id).ToListAsync();
+        Assert.Equal(
+            new[] { recentProcessed.Id, recentSkipped.Id, pending.Id, failed.Id },
+            remaining.Select(m => m.Id));
+    }
+
+    [Fact]
+    public async Task GetHealthAsync_ReturnsPendingCountOldestAndFailedCount()
+    {
+        var now = new DateTime(2026, 10, 23, 12, 0, 0, DateTimeKind.Utc);
+        var oldest = Terminal(HeadAlertOutboxStatus.Pending, now.AddMinutes(-10), default);
+        var newer = Terminal(HeadAlertOutboxStatus.Pending, now.AddMinutes(-1), default);
+        var processed = Terminal(HeadAlertOutboxStatus.Processed, now.AddDays(-1), now.AddDays(-1));
+        var failed = Terminal(HeadAlertOutboxStatus.Failed, now.AddDays(-1), default);
+
+        _db.HeadAlertOutboxMessages.AddRange(oldest, newer, processed, failed);
+        await _db.SaveChangesAsync();
+
+        var health = await Store().GetHealthAsync();
+
+        Assert.Equal(2, health.PendingCount);
+        Assert.Equal(oldest.CreatedAt, health.OldestPendingAt);
+        Assert.Equal(1, health.FailedCount);
+    }
+
+    [Fact]
+    public async Task GetHealthAsync_NoPending_ReturnsNullOldest()
+    {
+        var health = await Store().GetHealthAsync();
+
+        Assert.Equal(0, health.PendingCount);
+        Assert.Null(health.OldestPendingAt);
+        Assert.Equal(0, health.FailedCount);
     }
 }

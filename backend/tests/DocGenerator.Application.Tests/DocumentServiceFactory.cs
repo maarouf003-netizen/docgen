@@ -85,6 +85,9 @@ public static class DocumentServiceFactory
             occurrencesValue,
             uowValue,
             circuits);
+        var txContext = txValue as ITransactionContext
+            ?? throw new InvalidOperationException(
+                "DocumentServiceFactory يتطلب ITransactionRunner يُنفّذ ITransactionContext.");
         var delegationService = new DocumentDelegationService(
             delegationsValue,
             new DelegationReservationRepository(db),
@@ -98,6 +101,7 @@ public static class DocumentServiceFactory
             txValue,
             audit,
             alertServiceValue,
+            new HeadAlertOutbox(new HeadAlertOutboxStore(db), txContext),
             clockValue,
             timeZoneValue);
 
@@ -105,7 +109,6 @@ public static class DocumentServiceFactory
             documentsValue,
             occurrencesValue,
             baseNumbersValue,
-            audit,
             alertServiceValue,
             delegationsValue,
             txValue,
