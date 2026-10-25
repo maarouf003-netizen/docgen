@@ -13,6 +13,8 @@
 | الاتصال | Pooler — `aws-1-eu-central-1.pooler.supabase.com:5432` — **Session mode** (لا Transaction `6543` ولا Direct — الأخير IPv6 فقط) |
 | الهجرات | 59/59 مطبّقة، آخرها `20261014181050_AddInclusionNotesPg` |
 
+> **تحديث 2026‑10‑25:** بند «الهجرات» أعلاه أصبح **62/62** بعد نشر PR‑2b — انظر الملحق §7.
+
 ## 2. متغيرات بيئة Render (أسماء فقط)
 
 | المتغير | القيمة/الغرض |
@@ -77,3 +79,22 @@ DELETE FROM "Users";
 - تأكيد الدخول بعد تغيير كلمة `admin` (إن استمر الفشل: مسار الاسترجاع في §3).
 - إنشاء فرع + ملف تجريبي والتحقق من دورة (حفظ ← تعديل ← طباعة).
 - قبل أي استخدام حقيقي: استيفاء `DEPLOY-CHECKLIST-final.md` بندًا بندًا، وإصلاح `M-07` قبل فرض `CSP`، وترقية البنية إلى خطة مدفوعة/خادم حكومي مع نسخ احتياطي.
+
+## 7. ملحق 2026‑10‑25 — نشر PR‑2b وهجرات التنبيهات
+
+> §1–§6 أعلاه **محفوظة كما هي بتاريخ 2026‑10‑18**. هذا الملحق يسجّل الوضع بعد النشر اللاحق.
+
+| البند | الحالة في 2026‑10‑25 |
+|---|---|
+| الهجرات على Supabase | **62/62** · آخرها `20261021232825_HeadAlertTaxonomy_Backfill_Pg` · **0** معلّقة فعليًا (تطابق الاسم `AddPostgresPendingSchema` ليس معلّقة) |
+| الكود المنشور | `ec278c0` (دمج PR #50) — Render `docgen-1-tt3j` · `auto-migrate at startup: False` |
+| `HeadAlertOutboxMessages` | موجود · أول دورة كاملة `pending → processed` في `2026‑10‑25T18:38:48Z` · `Attempts = 1` |
+| `HeadAlerts` / `HeadAlertRecipients` | 28 / 28 بعد الفحص الدخاني (كانا 26/26) |
+| `HeadAlerts:LegacyBridge:Enabled` | `false` (لم يُمسّ) |
+
+- **التفاصيل والأدلة الكاملة:** `docs/audit/10-head-alerts-pr2b-deploy-20261025.md`.
+- ⚠️ **ما زال معلّقًا:** ثلاث هجرات `SQLite` (`HeadAlertTaxonomy_Expand` ← `HeadAlertOutbox_Create`
+  ← `HeadAlertTaxonomy_Backfill`) تُطبَّق قبل تشغيل الكود الحالي على سياق `SQLite`،
+  و`HeadAlertTaxonomy_Contract(_Pg)` في PR‑3.
+- 🔐 **أمني:** رابط قاعدة البيانات وُضع في ملف مؤقت خارج المستودع وحُذف بعد التحقق؛
+  يُنصح بتدوير كلمة مرور القاعدة.

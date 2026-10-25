@@ -4,9 +4,11 @@
 >
 > 1. **افتح §9 «تطبيق هجرات قاعدة البيانات عند النشر»** واقرأ **قائمة المهجرات المعلّقة**
 >    (قائمة تراكمية في نهاية §9) — كل سطر غير مشطوب **يجب** تطبيقه في نافذة النشر.
-> 2. **الهجرات المعلّقة حاليًا (2026-10-21) — 6 هجرات من خطة إعادة هيكلة التنبيهات:**
->    SQLite: `HeadAlertTaxonomy_Expand` ثم `HeadAlertOutbox_Create` ثم `HeadAlertTaxonomy_Backfill`؛
->    PostgreSQL: `HeadAlertTaxonomy_Expand_Pg` ثم `HeadAlertOutbox_Create_Pg` ثم `HeadAlertTaxonomy_Backfill_Pg`.
+> 2. **الهجرات المعلّقة حاليًا (2026-10-25):** سياق `PostgreSQL` **مكتمل** — طُبِّقت
+>    `HeadAlertTaxonomy_Expand_Pg` ثم `HeadAlertOutbox_Create_Pg` ثم `HeadAlertTaxonomy_Backfill_Pg`
+>    على `Supabase` حيًا (`docs/audit/10-head-alerts-pr2b-deploy-20261025.md`). تبقى **3 هجرات
+>    `SQLite`** معلّقة: `HeadAlertTaxonomy_Expand` ثم `HeadAlertOutbox_Create` ثم
+>    `HeadAlertTaxonomy_Backfill`. و`HeadAlertTaxonomy_Contract(_Pg)` لم تُنشأ بعد (PR‑3).
 > 3. **⚠️ `Database:AutoMigrate=false` في الإنتاج** ⇒ التطبيق **يرفض الإقلاع** إن كانت الهجرات
 >    غير مطبّقة على القاعدة الحية. **طبّق الهجرات قبل نشر النسخة، وإلا انقطاع إقلاع مقصود.**
 > 4. **نسخة احتياطية + استعادة مجرَّبة قبل النافذة** — لا «نسخة لم تُجرَّب استعادتها ليست نسخة».
@@ -251,6 +253,11 @@ npm test
 ### هجرات بانتظار التطبيق (قائمة تراكمية — تُشطب بعد التطبيق)
 
 > ضع هنا أي هجرة جديدة لم تُطبَّق على قواعد البيانات بعد، واشطب السطر بعد `dotnet ef database update` الناجح في النشر.
+>
+> **حالة 2026‑10‑25:** هجرات التنبيهات الثلاث طُبِّقت على `PostgreSQL` (Supabase) — سجلها في
+> `docs/audit/10-head-alerts-pr2b-deploy-20261025.md`. تبقى الثلاث المقابلة في `SQLite` معلّقة،
+> و`HeadAlertTaxonomy_Contract(_Pg)` في PR‑3. علامة `[ ]` على زوج الهجرتين تعني أن **أحد السياقين**
+> على الأقل لم يُطبَّق بعد؛ والحالة التفصيلية في أول سطر تحت كل عنوان.
 
 - [ ] **2026-08-19 — `AddHeadAlertDelegationLink`** (ربط تنبيهات رؤساء الأقسام بالمندوبية):
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260819124219_AddHeadAlertDelegationLink.cs` — يضيف عمود `DelegationId` إلى `HeadAlerts` (FK SetNull + فهرس).
@@ -394,20 +401,26 @@ npm test
   - ⚠️ القيدان الجديدان يتحققان من الصفوف القائمة لحظة التطبيق — نفّذ أولًا استعلامي التدقيق (يجب أن يكونا فارغين، والصياغة تعمل على المزوّدين): `SELECT "BranchId", COUNT(*) FROM "Users" WHERE "IsActive" AND "Role" = 'Head' GROUP BY "BranchId" HAVING COUNT(*) > 1;` (رئيسا قسم مفعّلان في نفس الفرع — نظّف بالتعطيل قبل التطبيق، قرار §2.26)، واستعلام `RequireBranchForBranchRoles` السابق للصفوف بلا فرع. الصفوف المخالفة تُسقط الهجرة.
   - بدون التطبيق تفشل أي كتابة/قراءة لحقول الشعب الجديدة فعليًا برسائل `no such column: u.SectionId` ونحوها رغم نجاح الاختبارات محليًا.
 - [ ] **2026-10-20 — `HeadAlertTaxonomy_Expand` / `HeadAlertTaxonomy_Expand_Pg`** (المرحلة 1 من خطة إعادة هيكلة التنبيهات `docs/HEAD_ALERTS_RESTRUCTURE_PLAN.md` — «توسّع» بلا كسر للتوافق):
+  > **الحالة:** `PostgreSQL` ✅ مطبَّقة على Supabase في 2026‑10‑25 (`20261020202452_HeadAlertTaxonomy_Expand_Pg`) · `SQLite` ⏳ معلّقة.
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261020202259_HeadAlertTaxonomy_Expand.cs` — يضيف إلى `HeadAlerts` الأعمدة `Kind` (64، nullable)، `DedupeKey` (200، nullable)، `ExecutionCircuitId` (nullable)، `LastContentChangedAt` (nullable)، `ArchivedAt` (nullable)، و`IsArchived` (`NOT NULL DEFAULT 0`).
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261020202452_HeadAlertTaxonomy_Expand_Pg.cs` — نفسه + توسيع `HeadAlerts.Message` من `character varying(2000)` إلى `text` (بلا فقد بيانات).
   - **إضافة بحتة**: بلا_backfill وبلا قيد `Kind` وبلا فهرس فريد وبلا تعديل صفوف — الكود القديم يعمل معها، والصفوف القائمة تبقى كما هي (`Kind = NULL` و`LastContentChangedAt = NULL` حتى مرحلة الترحيل).
   - ⚠️ في `PostgreSQL` الـ`Down` لا يُعيد `Message` إلى `character varying(2000)` (التضييق يفقد بيانات) — التراجع التطبيقي فقط.
 - [ ] **2026-10-20 — `HeadAlertOutbox_Create` / `HeadAlertOutbox_Create_Pg`** (صندوق الصادر لتسليم التنبيهات النظامية — المرحلة 1 من الخطة نفسها):
+  > **الحالة:** `PostgreSQL` ✅ مطبَّقة على Supabase في 2026‑10‑25 (`20261020202700_HeadAlertOutbox_Create_Pg`) · `SQLite` ⏳ معلّقة.
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261020202554_HeadAlertOutbox_Create.cs` — جدول `HeadAlertOutboxMessages` + 4 فهارس + 5 قيود `Check`.
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261020202700_HeadAlertOutbox_Create_Pg.cs` — نفسه (`bigint identity`).
   - **يجب تطبيقه قبل أي كود يسجّل رسائل Outbox** (المرحلة 2 من الخطة) — وإلا فشل الإدراج بـ `no such table: HeadAlertOutboxMessages`.
   - ⚠️ الـ`Down` **يرفض إسقاط الجدول** إن وُجدت رسائل `pending`/`processing`/`failed` غير محسومة (حارس صريح) — عالجها أو صدّرها أولًا.
 - [ ] **2026-10-21 — `HeadAlertTaxonomy_Backfill` / `HeadAlertTaxonomy_Backfill_Pg`** (M2: ترحيل التصنيفات القديمة وبناء المفاتيح — المرحلة 2 من الخطة):
+  > **الحالة:** `PostgreSQL` ✅ مطبَّقة على Supabase في 2026‑10‑25 (`20261021232825_HeadAlertTaxonomy_Backfill_Pg`) · `SQLite` ⏳ معلّقة.
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261021232824_HeadAlertTaxonomy_Backfill.cs` — تعبئة `legacy` فقط، تصنيف التدفقات المفتوحة، بناء `DedupeKey`، أرشفة المراجعة المتقاعدة، حل تصادم المفاتيح ودمج المستلمين، ثم FK `ExecutionCircuitId` + الفهارس + `UX_HeadAlerts_DedupeKey_Active`.
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261021232825_HeadAlertTaxonomy_Backfill_Pg.cs` — نفسه مع `BOOL_OR` و`CURRENT_TIMESTAMP` وفلتر `"IsArchived" = false`.
   - **يجب تطبيقه قبل نشر كود `PR-2`** الذي يعتمد على `DedupeKey` والفهرس الفريد؛ وتعطيل `AutoMigrate` في الإنتاج يعني أن نسخ الكود لا تطبّقه تلقائيًا.
   - ⚠️ الهجرة تعيد بناء جدول `HeadAlerts` على SQLite لإضافة الـFK (سلوك EF متوقع). خذ نسخة احتياطية واستعدها تجريبيًا قبل النافذة.
   - الـ`Down` يزيل الـFK والفهارس فقط، **ولا يعكس بيانات الـbackfill** (المفاتيح/التصنيفات/الأرشفة تبقى).
   - **تطبيق هجرات التنبيهات بالترتيب** (لا تُطبَّق `database update` على اسم متأخر فتُطبَّق ما قبله ضمنًا): `HeadAlertTaxonomy_Expand` ← `HeadAlertOutbox_Create` ← `HeadAlertTaxonomy_Backfill` ← (لاحقًا) `HeadAlertTaxonomy_Contract`.
+  - **حالة 2026‑10‑25:** تمّ الترتيب كاملًا على `PostgreSQL` (Supabase) — 62 هجرة، صفر معلّقة
+    (`docs/audit/10-head-alerts-pr2b-deploy-20261025.md`). المتبقّي: تطبيق الثلاث على `SQLite`،
+    ثم `HeadAlertTaxonomy_Contract(_Pg)` في PR‑3 بعد استيفاء بواباته.
 
