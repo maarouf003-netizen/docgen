@@ -82,9 +82,10 @@
 
 - **قبل أي نشر**: افتح `RUN_GUIDE.md` §9 واقرأ القائمة التراكمية، ثم طبّق كل سطر غير مشطوب.
 - **عند إنشاء هجرة جديدة في هذه الجلسة**: أضِف سطرها إلى تلك القائمة **في نفس التغيير** (لا في تغيير لاحق).
-- **للإصدار الحالي (2026-10-21) — 6 هجرات معلّقة** من خطة إعادة هيكلة التنبيهات:
-  - SQLite: `HeadAlertTaxonomy_Expand`، `HeadAlertOutbox_Create`، `HeadAlertTaxonomy_Backfill`
-  - PostgreSQL: `HeadAlertTaxonomy_Expand_Pg`، `HeadAlertOutbox_Create_Pg`، `HeadAlertTaxonomy_Backfill_Pg`
+- **للإصدار الحالي (2026-10-25):** سياق `PostgreSQL` **مكتمل** — طُبِّقت الهجرات الثلاث على
+  `Supabase` حيًا (`docs/audit/10-head-alerts-pr2b-deploy-20261025.md`). المتبقّي:
+  - SQLite: `HeadAlertTaxonomy_Expand`، `HeadAlertOutbox_Create`، `HeadAlertTaxonomy_Backfill` (**3 معلّقة**).
+  - PostgreSQL: **لا شيء معلّق فعليًا** (62 هجرة).
   - **الترتيب الإلزامي**: `HeadAlertTaxonomy_Expand` ← `HeadAlertOutbox_Create` ← `HeadAlertTaxonomy_Backfill` ← (لاحقًا) `HeadAlertTaxonomy_Contract`.
   - **⚠️生产工艺**: `Database:AutoMigrate=false` في الإنتاج ⇒ التطبيق **يرفض الإقلاع** إن كانت الهجرات غير مطبّقة. **طبّق قبل نشر النسخة، وإلا انقطاع إقلاع مقصود.**
 
