@@ -68,6 +68,7 @@ public class HeadAlert
     public User? CreatedBy { get; set; }
     public Document? Document { get; set; }
     public User? TargetLawyer { get; set; }
+    public ExecutionCircuit? ExecutionCircuit { get; set; }
     public DocumentAppeal? Appeal { get; set; }
     /// <summary>كتاب المطالعة المرتبط بالتنبيه (لتنبيهات الرد على المحامي).</summary>
     public ReviewLetter? ReviewLetter { get; set; }

@@ -20,6 +20,8 @@ public class DocumentDelegationServiceTests : IDisposable
     private readonly IDocumentSearchService _documentSearch;
     private readonly IDocumentStatusService _documentStatus;
     private readonly FakeAuditLogger _audit = new();
+    private readonly HeadAlertService _headAlerts;
+    private readonly TransactionRunner _tx;
 
     private readonly Branch _branch;
     private readonly Branch _otherBranch;
@@ -52,14 +54,14 @@ public class DocumentDelegationServiceTests : IDisposable
         var registrationDates = new Repository<DocumentRegistrationDate>(_db);
         var occurrences = new Repository<DocumentOccurrence>(_db);
         var uow = new UnitOfWork(_db);
-        var tx = new TransactionRunner(_db);
-        var headAlerts = new HeadAlertService(
+        _tx = new TransactionRunner(_db);
+        _headAlerts = new HeadAlertService(
             new HeadAlertRepository(_db),
             documents,
             users,
             branches,
             uow,
-            tx,
+            _tx,
             _audit);
 
         _service = new DocumentDelegationService(
@@ -72,13 +74,14 @@ public class DocumentDelegationServiceTests : IDisposable
             registrationDates,
             occurrences,
             uow,
-            tx,
+            _tx,
             _audit,
-            headAlerts,
+            _headAlerts,
+            new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx),
             TimeProvider.System,
             TestClock.TimeZone);
 
-        var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: tx, alertService: headAlerts);
+        var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, registrationDates: registrationDates, occurrences: occurrences, uow: uow, tx: _tx, alertService: _headAlerts);
         _documentService = docBundle.Documents;
         _documentSearch = docBundle.Search;
         _documentStatus = docBundle.Status;
@@ -1375,6 +1378,7 @@ public class DocumentDelegationServiceTests : IDisposable
         sourceRequest.BorrowerName = "أحمد مُحدَّث من المنيب";
 
         await _documentService.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
+        await FlushAlertsAsync();
 
         var target = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == targetId);
         Assert.Equal("أحمد مُحدَّث من المنيب", target.BorrowerName);
@@ -1434,6 +1438,7 @@ public class DocumentDelegationServiceTests : IDisposable
 
         var updated = await _documentService.UpdateAsync(targetId, targetRequest, _lawyer2.FullName, _lawyer2.Id);
         Assert.NotNull(updated);
+        await FlushAlertsAsync();
 
         var target = await _db.Documents.Include(d => d.Heirs).AsNoTracking().SingleAsync(d => d.Id == targetId);
         var heir = Assert.Single(target.Heirs);
@@ -1486,6 +1491,7 @@ public class DocumentDelegationServiceTests : IDisposable
 
         var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
+        await FlushAlertsAsync();
 
         // تنبيه بموجب نظام تنبيهات رئيس القسم: يُخبر المحامي المختص بإحالة ملف الإنابة عليه
         // (يصل محاميه)، مرتبط بالملف المناب المولّد (ينقله من لوحة التنبيهات إلى صفحة الملف).
@@ -1512,6 +1518,7 @@ public class DocumentDelegationServiceTests : IDisposable
 
         var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_externalLawyer.Id),
             _head2.Id, _otherBranch.Id, "head2");
+        await FlushAlertsAsync();
 
         // التنبيه في فرع اللاذقية (الفرع المناب) لرؤية محامي الفرع المناب فقط.
         var alert = await _db.HeadAlerts.SingleAsync(a => a.DocumentId == dto!.TargetDocumentId);
@@ -1666,20 +1673,22 @@ public class DocumentDelegationServiceTests : IDisposable
         await _service.CompleteAsync(created.Id,
             new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }, "12/8/2026", true),
             _lawyer2.Id, "lawyer2");
+        await FlushAlertsAsync();
 
         // إشعار محامي المنيب بإتمام الإنابة: تنبيه مرتبط بالملف المنيب في فرعه،
         // يصل صاحبه (lawyer1) ويراه رئيس قسمه.
         var alert = await _db.HeadAlerts
             .Include(a => a.Recipients)
-            .SingleAsync(a => a.DocumentId == source.Id);
+            .SingleAsync(a => a.DocumentId == source.Id && a.ArchivedAt == null);
         Assert.Equal(_branch.Id, alert.BranchId);
         Assert.Equal(_lawyer2.Id, alert.CreatedById);
         Assert.Null(alert.TargetLawyerId);
         Assert.Contains(_lawyer1.Id, alert.Recipients.Select(r => r.UserId));
-        Assert.Contains("أُعيدت الإنابة المسطرة", alert.Message);
-        Assert.Contains("البدل غطى كامل المديونية", alert.Message);
-        Assert.Contains("يرجى تغيير حالة الملف", alert.Message);
-        Assert.Contains("المناب ملف 890/2026 للتنفيذ على عقار رقم 77", alert.Message);
+        Assert.Contains("أُعيدت الإنابة المسطرة إلى دائرة تنفيذ حلب", alert.Message);
+        Assert.Contains("غطى كامل المديونية", alert.Message);
+        Assert.Contains("يرجى تحديث حالة الملف", alert.Message);
+        Assert.Contains("المناب: ملف 890/2026", alert.Message);
+        Assert.Contains("عقار رقم 77", alert.Message);
     }
 
     [Fact]
@@ -1699,16 +1708,17 @@ public class DocumentDelegationServiceTests : IDisposable
         await _service.CompleteAsync(created.Id,
             new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }, "12/8/2026", false),
             _externalLawyer.Id, "externalLawyer");
+        await FlushAlertsAsync();
 
         // على الرغم من أن التنفيذ جرى في فرع اللاذقية، يُنشأ تنبيه الإتمام في فرع الملف المنيب
         // (دمشق) ليكون مرئيًا لمحاميه المختص ورئيس قسمه.
         var alert = await _db.HeadAlerts
             .Include(a => a.Recipients)
-            .SingleAsync(a => a.DocumentId == source.Id);
+            .SingleAsync(a => a.DocumentId == source.Id && a.ArchivedAt == null);
         Assert.Equal(_branch.Id, alert.BranchId);
         Assert.Contains(_lawyer1.Id, alert.Recipients.Select(r => r.UserId));
-        Assert.Contains("أُعيدت الإنابة المسطرة", alert.Message);
-        Assert.Contains("البدل لم يغطِ كامل المديونية", alert.Message);
+        Assert.Contains("أُعيدت الإنابة المسطرة إلى دائرة تنفيذ حلب", alert.Message);
+        Assert.Contains("لم يغطِ كامل المديونية", alert.Message);
         Assert.Contains("للتنفيذ على عقار رقم 77", alert.Message);
     }
 
@@ -1952,8 +1962,22 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.False(dto.BlocksAssets);
     }
 
+    private Task FlushAlertsAsync()
+        => HeadAlertOutboxFlush.AllAsync(_db, _headAlerts, _tx);
+
     private Task<List<HeadAlert>> PendingCompletionAlertsAsync(int delegationId) =>
-        _db.HeadAlerts.Where(a => a.DelegationId == delegationId && a.Message == "بانتظار الإتمام").ToListAsync();
+        _db.HeadAlerts
+            .Where(a => a.DelegationId == delegationId
+                && a.Kind == HeadAlertKindCatalog.DelegationPendingCompletion
+                && !a.IsArchived)
+            .ToListAsync();
+
+    private Task<List<HeadAlert>> ArchivedPendingCompletionAlertsAsync(int delegationId) =>
+        _db.HeadAlerts
+            .Where(a => a.DelegationId == delegationId
+                && a.Kind == HeadAlertKindCatalog.DelegationPendingCompletion
+                && a.IsArchived)
+            .ToListAsync();
 
     private async Task<(Document Source, DelegationDto Created, int TargetId)> RegisteredDelegationAsync()
     {
@@ -1964,6 +1988,7 @@ public class DocumentDelegationServiceTests : IDisposable
             _head1.Id, _branch.Id, "head1");
         await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
             _lawyer2.Id, "lawyer2");
+        await FlushAlertsAsync();
         return (source, created, assigned!.TargetDocumentId!.Value);
     }
 
@@ -1978,6 +2003,8 @@ public class DocumentDelegationServiceTests : IDisposable
             new Dictionary<string, string?> { ["baraetNumber"] = "7", ["baraetDate"] = "3/7/2026" }, "lawyer1"));
 
         Assert.Empty(await PendingCompletionAlertsAsync(created.Id));
+        var archivedAlert = Assert.Single(await ArchivedPendingCompletionAlertsAsync(created.Id));
+        Assert.NotNull(archivedAlert.ArchivedAt);
     }
 
     [Fact]
@@ -1997,6 +2024,8 @@ public class DocumentDelegationServiceTests : IDisposable
             }, "lawyer1"));
 
         Assert.Empty(await PendingCompletionAlertsAsync(created.Id));
+        var archivedAlert = Assert.Single(await ArchivedPendingCompletionAlertsAsync(created.Id));
+        Assert.NotNull(archivedAlert.ArchivedAt);
     }
 
     [Fact]
@@ -2010,6 +2039,8 @@ public class DocumentDelegationServiceTests : IDisposable
             new Dictionary<string, string?> { ["struckOffDate"] = "1/9/2026" }, "lawyer2"));
 
         Assert.Empty(await PendingCompletionAlertsAsync(created.Id));
+        var archivedAlert = Assert.Single(await ArchivedPendingCompletionAlertsAsync(created.Id));
+        Assert.NotNull(archivedAlert.ArchivedAt);
     }
 
     [Fact]
@@ -2027,6 +2058,8 @@ public class DocumentDelegationServiceTests : IDisposable
             new Dictionary<string, string?> { ["baraetNumber"] = "7", ["baraetDate"] = "3/7/2026" }, "lawyer1"));
 
         Assert.Empty(await PendingCompletionAlertsAsync(created.Id));
+        var archivedAlert = Assert.Single(await ArchivedPendingCompletionAlertsAsync(created.Id));
+        Assert.NotNull(archivedAlert.ArchivedAt);
     }
 
     [Fact]
@@ -2210,6 +2243,7 @@ public class DocumentDelegationServiceTests : IDisposable
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
 
         var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        await FlushAlertsAsync();
 
         // تنبيه نظامي لرئيس القسم: «بانتظار اعتماد الإنابة» في فرع الاعتماد (فرع المنيب
         // للداخلية)، مرتبط بالإنابة نفسها (DelegationId) لتصفيته/تحديثه آليًا.
@@ -2232,6 +2266,7 @@ public class DocumentDelegationServiceTests : IDisposable
         var created = await _service.CreateAsync(source.Id,
             SampleRequest(assetId) with { IsExternal = true, ExternalBranchId = _otherBranch.Id },
             _lawyer1.Id, "lawyer1");
+        await FlushAlertsAsync();
 
         // الإنابة الخارجية: تنبيه الاعتماد في فرع الجهة المعنية بالاعتماد (الفرع المناب).
         var alert = await _db.HeadAlerts.Include(a => a.Recipients).SingleAsync(a => a.DelegationId == created.Id);
@@ -2249,6 +2284,7 @@ public class DocumentDelegationServiceTests : IDisposable
         await _service.UpdateAsync(created.Id,
             SampleRequest(assetId) with { DelegatedCourt = "دائرة تنفيذ حماة" },
             _lawyer1.Id, "lawyer1");
+        await FlushAlertsAsync();
 
         // رسالة التنبيه تتحدث بلا تكرار (تبقى واحدة وللمستلم نفسه).
         var alert = await _db.HeadAlerts.Include(a => a.Recipients).SingleAsync(a => a.DelegationId == created.Id);
@@ -2263,10 +2299,11 @@ public class DocumentDelegationServiceTests : IDisposable
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        await FlushAlertsAsync();
 
         Assert.True(await _service.DeleteAsync(created.Id, _lawyer1.Id, "lawyer1"));
 
-        Assert.Empty(_db.HeadAlerts.Where(a => a.DelegationId == created.Id));
+        Assert.Empty(_db.HeadAlerts.Where(a => a.DelegationId == created.Id && a.ArchivedAt == null));
     }
 
     [Fact]
@@ -2278,9 +2315,14 @@ public class DocumentDelegationServiceTests : IDisposable
 
         var dto = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
             _head1.Id, _branch.Id, "head1");
+        await FlushAlertsAsync();
 
-        // بعد الاعتماد: لا تنبيه راتق لرئيس القسم، ويبقى تنبيه الملف المناب للمحامي المختص.
-        Assert.Empty(_db.HeadAlerts.Where(a => a.DelegationId == created.Id));
+        // بعد الاعتماد: لا تنبيه معلّق لرئيس القسم، ويبقى تنبيه الملف المناب للمحامي المختص.
+        Assert.DoesNotContain(
+            _db.HeadAlerts,
+            a => a.DelegationId == created.Id
+                && a.ArchivedAt == null
+                && a.Kind == HeadAlertKindCatalog.DelegationPendingApproval);
         var targetAlert = await _db.HeadAlerts.Include(a => a.Recipients)
             .SingleAsync(a => a.DocumentId == dto!.TargetDocumentId);
         Assert.Contains(_lawyer2.Id, targetAlert.Recipients.Select(r => r.UserId));
@@ -2298,14 +2340,17 @@ public class DocumentDelegationServiceTests : IDisposable
 
         await _service.RegisterAsync(created.Id,
             new RegisterDelegationRequest("890", "2026", "5/8/2026"), _lawyer2.Id, "lawyer2");
+        await FlushAlertsAsync();
 
         // «بانتظار الإتمام» في فرع الملف المناب (فرع متابعة الإتمام)، مرتبط بالملف المناب.
-        var alert = await _db.HeadAlerts.Include(a => a.Recipients).SingleAsync(a => a.DelegationId == created.Id);
+        var alert = await _db.HeadAlerts.Include(a => a.Recipients)
+            .SingleAsync(a => a.DelegationId == created.Id && a.ArchivedAt == null);
         Assert.Equal(HeadAlertTargetType.Head, alert.TargetType);
         Assert.Equal(_branch.Id, alert.BranchId);
         Assert.Equal(targetId, alert.DocumentId);
         Assert.Contains(_head1.Id, alert.Recipients.Select(r => r.UserId));
-        Assert.Equal("بانتظار الإتمام", alert.Message);
+        Assert.Equal(HeadAlertKindCatalog.DelegationPendingCompletion, alert.Kind);
+        Assert.Contains("بانتظار", alert.Message);
     }
 
     [Fact]
@@ -2323,10 +2368,15 @@ public class DocumentDelegationServiceTests : IDisposable
         await _service.CompleteAsync(created.Id,
             new CompleteDelegationRequest("10/8/2026", new List<DelegationSaleDto> { new(assetDto.Id, 750_000m) }, "12/8/2026", true),
             _lawyer2.Id, "lawyer2");
+        await FlushAlertsAsync();
 
         // بعد الإتمام: لا تنبيهات مرحلية للإنابة، ويبقى إشعار «أُعيدت الإنابة… منفذة» لمحامي المنيب.
-        Assert.Empty(_db.HeadAlerts.Where(a => a.DelegationId == created.Id));
-        var done = await _db.HeadAlerts.SingleAsync(a => a.DocumentId == source.Id);
+        Assert.DoesNotContain(
+            _db.HeadAlerts,
+            a => a.DelegationId == created.Id
+                && a.ArchivedAt == null
+                && a.Kind == HeadAlertKindCatalog.DelegationPendingCompletion);
+        var done = await _db.HeadAlerts.SingleAsync(a => a.DocumentId == source.Id && a.ArchivedAt == null);
         Assert.Contains("أُعيدت الإنابة المسطرة", done.Message);
     }
 
@@ -2520,6 +2570,7 @@ public class DocumentDelegationServiceTests : IDisposable
         sourceRequest.Guarantors = sourceRequest.Guarantors.Where(g => g.GuarantorNumber != 2).ToList();
 
         await _documentService.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
+        await FlushAlertsAsync();
 
         var target = await _db.Documents
             .Include(d => d.Guarantors).Include(d => d.Heirs)
@@ -2562,6 +2613,7 @@ public class DocumentDelegationServiceTests : IDisposable
         addRep.BorrowerRepresentativeAddressType = "عنوان";
         addRep.BorrowerRepresentativeAddress = "عنوان-الممثل";
         await _documentService.UpdateAsync(targetId, addRep, _lawyer2.FullName, _lawyer2.Id);
+        await FlushAlertsAsync();
 
         var before = await _db.HeadAlerts.CountAsync(a => a.DelegationId == created.Id);
 
@@ -2569,6 +2621,7 @@ public class DocumentDelegationServiceTests : IDisposable
         var sourceRequest = await SourceEditRequestAsync(source.Id);
         sourceRequest.BorrowerAddress = "عنوان-المصدر-الجديد";
         await _documentService.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
+        await FlushAlertsAsync();
 
         var target = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == targetId);
         Assert.Equal("عنوان-المصدر", target.BorrowerAddress);
@@ -2677,11 +2730,10 @@ public class DocumentDelegationServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task MirrorSync_MassGuarantorRemoval_BoundsAlertMessageToColumnLimit()
+    public async Task MirrorSync_MassGuarantorRemoval_KeepsFullAlertMessage()
     {
         // مع 49 كفيلًا بأسماء طويلة: حذفهم دفعة من المنيب يُزامَن للمناب، ورسالة
-        // التنبيه المدمجة (كل الأسماء المحذوفة) تُقصّ لحد العمود (2000) بدل ضياع
-        // التنبيه كاملًا عند الحفظ على Postgres.
+        // التنبيه المدمجة تحتفظ بكل الأسماء المحذوفة (لا قصّ عند حد العمود القديم).
         var source = await CreateSourceAsync();
         for (var n = 1; n <= PartyLimitsCatalog.MaxGuarantors; n++)
         {
@@ -2715,13 +2767,14 @@ public class DocumentDelegationServiceTests : IDisposable
         edit.Guarantors = new List<GuarantorDto>();
         // المزامنة للمناب وإطلاق التنبيه يتمّان داخل UpdateAsync نفسه.
         await _documentService.UpdateAsync(source.Id, edit, _lawyer1.FullName, _lawyer1.Id);
+        await FlushAlertsAsync();
 
         var alert = await _db.HeadAlerts
             .Where(a => a.DelegationId == created.Id)
             .OrderByDescending(a => a.Id)
             .FirstAsync();
         Assert.Contains("الكفلاء", alert.Message);
-        Assert.True(alert.Message.Length <= 2000);
+        Assert.True(alert.Message.Length > 2000);
     }
 
     [Fact]
@@ -2957,6 +3010,7 @@ public class DocumentDelegationServiceTests : IDisposable
         };
 
         await _documentService.UpdateAsync(targetId, request, _lawyer2.FullName, _lawyer2.Id);
+        await FlushAlertsAsync();
 
         var target = await _db.Documents.Include(d => d.Heirs).AsNoTracking().SingleAsync(d => d.Id == targetId);
         Assert.Equal(2, target.Heirs.Count);
@@ -2984,6 +3038,7 @@ public class DocumentDelegationServiceTests : IDisposable
         var restored = await _documentStatus.RestoreStruckOffAsync(source.Id,
             new RenewalRequest { RenewalFileNumber = "899", RenewalYear = 2026 }, "lawyer1");
         Assert.True(restored);
+        await FlushAlertsAsync();
 
         var alert = await _db.HeadAlerts
             .SingleAsync(a => a.DelegationId == created.Id && a.TargetLawyerId == _lawyer2.Id);
@@ -3064,6 +3119,7 @@ public class DocumentDelegationServiceTests : IDisposable
 
         var updated = await _documentService.UpdateAsync(targetId, addRep, _lawyer2.FullName, _lawyer2.Id);
         Assert.NotNull(updated);
+        await FlushAlertsAsync();
 
         var stored = await _db.Documents.Include(d => d.Heirs).AsNoTracking().SingleAsync(d => d.Id == targetId);
         Assert.Equal(2, stored.Heirs.Count);

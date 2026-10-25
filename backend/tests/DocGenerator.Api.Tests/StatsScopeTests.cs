@@ -190,23 +190,12 @@ public sealed class StatsScopeTests : IsolatedApiTestBase
         var (subToken, subId) = await CreateSubHeadAsync(sectionId);
         var subClient = Factory.ClientWithToken(subToken);
         var head = Factory.AuthorizedClient("head1");
-
-        var subAlert = await (await head.PostAsJsonAsync("/api/alerts", new
-        {
-            targetType = "head",
-            documentId = (int?)null,
-            targetLawyerId = (int?)null,
-            message = UniqueName("للشعبة"),
-            recipientUserId = subId,
-        })).Content.ReadFromJsonAsync<JsonDocument>();
-        var headAlert = await (await head.PostAsJsonAsync("/api/alerts", new
-        {
-            targetType = "head",
-            documentId = (int?)null,
-            targetLawyerId = (int?)null,
-            message = UniqueName("للقسم"),
-            recipientUserId = await Factory.UserIdAsync("head1"),
-        })).Content.ReadFromJsonAsync<JsonDocument>();
+        var branchId = await Factory.GetDamascusIdAsync();
+        var headId = await Factory.UserIdAsync("head1");
+        var subAlertId = await HeadAlertTestSeed.SeedSingleHeadAsync(
+            Factory, branchId, headId, subId, UniqueName("للشعبة"));
+        var headAlertId = await HeadAlertTestSeed.SeedSingleHeadAsync(
+            Factory, branchId, headId, headId, UniqueName("للقسم"));
 
         async Task<List<int>> AlertIdsAsync(HttpClient client)
         {
@@ -215,16 +204,15 @@ public sealed class StatsScopeTests : IsolatedApiTestBase
         }
 
         var subIds = await AlertIdsAsync(subClient);
-        Assert.Contains(subAlert!.RootElement.GetProperty("id").GetInt32(), subIds);
-        Assert.DoesNotContain(headAlert!.RootElement.GetProperty("id").GetInt32(), subIds);
+        Assert.Contains(subAlertId, subIds);
+        Assert.DoesNotContain(headAlertId, subIds);
 
         var headIds = await AlertIdsAsync(head);
-        Assert.Contains(headAlert.RootElement.GetProperty("id").GetInt32(), headIds);
-        Assert.DoesNotContain(subAlert.RootElement.GetProperty("id").GetInt32(), headIds);
+        Assert.Contains(headAlertId, headIds);
+        Assert.DoesNotContain(subAlertId, headIds);
 
         // تعليم القراءة يعمل للمستلم الرئيس.
-        var mark = await subClient.PatchAsJsonAsync(
-            $"/api/alerts/{subAlert.RootElement.GetProperty("id").GetInt32()}/read", new { });
+        var mark = await subClient.PatchAsJsonAsync($"/api/alerts/{subAlertId}/read", new { });
         Assert.Equal(HttpStatusCode.NoContent, mark.StatusCode);
     }
 }

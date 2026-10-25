@@ -48,6 +48,9 @@ public class HeadAlertSystemWriteTests : IDisposable
         seed.Users.AddRange(_head, _lawyer, _otherLawyer);
         seed.SaveChanges();
 
+        // الإنابة بلا مفتاح أجنبي في المخطط؛ فحص المراجع يحتاج صفوفًا فعلية.
+        HeadAlertReferences.SeedDelegations(seed, _branchId, _head.Id, 42, 77, 88, 99);
+
         _provider = BuildProvider();
     }
 
@@ -127,6 +130,115 @@ public class HeadAlertSystemWriteTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateSystemAsync_MissingCreator_ThrowsMissingReference()
+    {
+        var request = new CreateSystemHeadAlertRequest(
+            HeadAlertKindCatalog.AppealReferralToHead,
+            "رسالة بلا منشئ",
+            HeadAlertAudience.SingleHead,
+            _branchId,
+            CreatedById: 9999,
+            RecipientUserId: _head.Id);
+
+        var exception = await Assert.ThrowsAsync<HeadAlertMissingReferenceException>(() =>
+            Tx().RunAsync(token =>
+                Alerts().CreateSystemAsync(request, DateTime.UtcNow, null, null, token)));
+
+        Assert.Contains("منشئ", exception.Message, StringComparison.Ordinal);
+        using var db = NewDb();
+        Assert.Empty(await db.HeadAlerts.ToListAsync());
+    }
+
+    [Fact]
+    public async Task CreateSystemAsync_MissingBranch_ThrowsMissingReference()
+    {
+        var request = new CreateSystemHeadAlertRequest(
+            HeadAlertKindCatalog.AppealReferralToHead,
+            "رسالة لفرع محذوف",
+            HeadAlertAudience.SingleHead,
+            9999,
+            _head.Id,
+            RecipientUserId: _head.Id);
+
+        var exception = await Assert.ThrowsAsync<HeadAlertMissingReferenceException>(() =>
+            Tx().RunAsync(token =>
+                Alerts().CreateSystemAsync(request, DateTime.UtcNow, null, null, token)));
+
+        Assert.Contains("الفرع", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CreateSystemAsync_DocumentCreatorWithMissingDocument_ThrowsMissingReference()
+    {
+        var request = new CreateSystemHeadAlertRequest(
+            HeadAlertKindCatalog.DelegationAssignedToLawyer,
+            "إسناد لملف محذوف",
+            HeadAlertAudience.DocumentCreator,
+            _branchId,
+            _head.Id,
+            DocumentId: 9999,
+            DelegationId: 42);
+
+        var exception = await Assert.ThrowsAsync<HeadAlertMissingReferenceException>(() =>
+            Tx().RunAsync(token =>
+                Alerts().CreateSystemAsync(request, DateTime.UtcNow, null, null, token)));
+
+        Assert.Contains("الملف", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CreateSystemAsync_SoftDeletedDocument_ThrowsMissingReference()
+    {
+        var document = await AddDocumentAsync(_lawyer);
+        using (var db = NewDb())
+        {
+            var tracked = await db.Documents.SingleAsync(d => d.Id == document.Id);
+            tracked.IsDeleted = true;
+            await db.SaveChangesAsync();
+        }
+
+        var request = new CreateSystemHeadAlertRequest(
+            HeadAlertKindCatalog.DelegationAssignedToLawyer,
+            "إسناد لملف محذوف منطقيًا",
+            HeadAlertAudience.DocumentCreator,
+            _branchId,
+            _head.Id,
+            DocumentId: document.Id,
+            DelegationId: 42);
+
+        var exception = await Assert.ThrowsAsync<HeadAlertMissingReferenceException>(() =>
+            Tx().RunAsync(token =>
+                Alerts().CreateSystemAsync(request, DateTime.UtcNow, null, null, token)));
+
+        Assert.Contains("الملف", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CreateSystemAsync_EntityGroupKeyWithoutPublicEntityId_UsesGroupScope()
+    {
+        // أحداث المجموعة (بث P2/P3) لا تحمل PublicEntityId — المفتاح يُبنى من EntityGroupKey.
+        var request = new CreateSystemHeadAlertRequest(
+            HeadAlertKindCatalog.EntityRenameLawyers,
+            "أُعيدت تسمية جهة",
+            HeadAlertAudience.BranchLawyers,
+            _branchId,
+            _head.Id,
+            EntityOperation: ActionKindCatalog.Rename,
+            EntityGroupKey: "77");
+
+        var result = await Tx().RunAsync(token =>
+            Alerts().CreateSystemAsync(request, DateTime.UtcNow, null, null, token));
+
+        Assert.Equal(HeadAlertWriteResult.Created, result);
+
+        using var db = NewDb();
+        var alert = await db.HeadAlerts.AsNoTracking().SingleAsync();
+        Assert.Equal(
+            $"entity:rename:77:branch:{_branchId}:audience:lawyers:{HeadAlertKindCatalog.EntityRenameLawyers}",
+            alert.DedupeKey);
+    }
+
+    [Fact]
     public async Task CreateSystemAsync_SupersedePlan_DoesNotArchiveTheNewAlert()
     {
         // تنبيه قديم بنفس الإنابة ونفس النوع — يُؤرشف بالبديل، والبديل نفسه يبقى نشطًا.
@@ -199,6 +311,64 @@ public class HeadAlertSystemWriteTests : IDisposable
         Assert.Equal(_otherLawyer.Id, Assert.Single(successorAlert.Recipients).UserId);
         Assert.Equal(_otherLawyer.Id, successorAlert.TargetLawyerId);
         Assert.Contains($"recipient:{_otherLawyer.Id}", successorAlert.DedupeKey!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CreateSystemAsync_SuccessionOverride_NewRecipientInheritsPredecessorReadState()
+    {
+        // دفاعي (§8.5): صف قائم بمفتاح الخلف لكن مستلمه السلف (حالة تعاقب غير مكتملة).
+        // عند وصول حدث الخلف يُضاف الخلف الجديد بحالة قراءة السلف بدل فقدانها.
+        var occurredAt = new DateTime(2026, 10, 20, 10, 0, 0, DateTimeKind.Utc);
+        var readAt = occurredAt.AddMinutes(-5);
+        var key = $"delegation:88:recipient:{_otherLawyer.Id}:{HeadAlertKindCatalog.DelegationMirrorUpdated}";
+
+        int alertId;
+        using (var seed = NewDb())
+        {
+            var alert = new HeadAlert
+            {
+                BranchId = _branchId,
+                CreatedById = _head.Id,
+                TargetType = HeadAlertTargetType.Lawyer,
+                Kind = HeadAlertKindCatalog.DelegationMirrorUpdated,
+                DedupeKey = key,
+                Message = "تحديث نسخة المناب",
+                TargetLawyerId = _lawyer.Id,
+                CreatedAt = occurredAt.AddMinutes(-10),
+                LastContentChangedAt = occurredAt.AddMinutes(-10),
+                Recipients = new List<HeadAlertRecipient>
+                {
+                    new() { UserId = _lawyer.Id, IsRead = true, ReadAt = readAt },
+                },
+            };
+            seed.HeadAlerts.Add(alert);
+            await seed.SaveChangesAsync();
+            alertId = alert.Id;
+        }
+
+        var request = new CreateSystemHeadAlertRequest(
+            HeadAlertKindCatalog.DelegationMirrorUpdated,
+            "تحديث نسخة المناب",
+            HeadAlertAudience.SingleLawyer,
+            _branchId,
+            _head.Id,
+            RecipientUserId: _lawyer.Id,
+            TargetLawyerId: _lawyer.Id,
+            DelegationId: 88);
+
+        var result = await Tx().RunAsync(token =>
+            Alerts().CreateSystemAsync(request, occurredAt, null, _otherLawyer.Id, token));
+
+        Assert.Equal(HeadAlertWriteResult.Unchanged, result);
+
+        using var db = NewDb();
+        var stored = await db.HeadAlerts.Include(a => a.Recipients)
+            .AsNoTracking().SingleAsync(a => a.Id == alertId);
+        Assert.Equal(_otherLawyer.Id, stored.TargetLawyerId);
+        var recipient = Assert.Single(stored.Recipients);
+        Assert.Equal(_otherLawyer.Id, recipient.UserId);
+        Assert.True(recipient.IsRead);
+        Assert.Equal(readAt, recipient.ReadAt);
     }
 
     [Fact]

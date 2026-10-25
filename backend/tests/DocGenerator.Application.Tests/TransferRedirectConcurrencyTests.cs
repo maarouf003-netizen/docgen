@@ -48,6 +48,7 @@ public class TransferRedirectConcurrencyTests : IDisposable
     private static ExecutionCircuitService CircuitService(DocGeneratorDbContext db)
     {
         var uow = new UnitOfWork(db);
+        var tx = new TransactionRunner(db);
         return new ExecutionCircuitService(
             new Repository<ExecutionCircuit>(db),
             new Repository<Branch>(db),
@@ -61,8 +62,9 @@ public class TransferRedirectConcurrencyTests : IDisposable
             new HeadAlertRepository(db),
             new UserRepository(db),
             uow,
-            new TransactionRunner(db),
+            tx,
             new FakeAuditLogger(),
+            new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
             new DbExceptionClassifier(),
             TimeProvider.System,
             TestClock.TimeZone);
@@ -193,8 +195,9 @@ public class TransferRedirectConcurrencyTests : IDisposable
         var branches = new Repository<Branch>(db);
         var uow = new UnitOfWork(db);
         var audit = new FakeAuditLogger();
+        var tx = new TransactionRunner(db);
         var headAlerts = new HeadAlertService(
-            new HeadAlertRepository(db), documents, users, branches, uow, new TransactionRunner(db), audit);
+            new HeadAlertRepository(db), documents, users, branches, uow, tx, audit);
         return new DocumentDelegationService(
             new DelegationRepository(db),
             new DelegationReservationRepository(db),
@@ -205,9 +208,10 @@ public class TransferRedirectConcurrencyTests : IDisposable
             new Repository<DocumentRegistrationDate>(db),
             new Repository<DocumentOccurrence>(db),
             uow,
-            new TransactionRunner(db),
+            tx,
             audit,
             headAlerts,
+            new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
             TimeProvider.System,
             TestClock.TimeZone,
             new Repository<ExecutionCircuit>(db),

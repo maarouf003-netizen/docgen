@@ -597,7 +597,8 @@ public sealed partial class DocumentDelegationService
                 target.CreatedById,
                 recipientBranch ?? 0,
                 source.CreatedById,
-                BoundAlertMessage($"تم تحديث نسخة الملف المناب لمواكبة الملف المنيب: {string.Join("، ", labels)}")));
+                HeadAlertMessages.DelegationMirrorUpdated(new(string.Join("، ", labels))),
+                HeadAlertKindCatalog.DelegationMirrorUpdated));
         }
 
         return intents;
@@ -905,111 +906,112 @@ public sealed partial class DocumentDelegationService
         return true;
     }
 
-    // ── إطلاق التنبيهات (بعد نجاح المعاملة — عزل الفشل بنمط head_alert_failed) ──────
+    // ── إطلاق التنبيهات عبر Outbox (داخل معاملة العمل إن وُجدت) ─────────────────────
 
-    /// <summary>إطلاق تنبيهات المرآة المجمعة — بعد تثبيت معاملة الحفظ حصرًا
-    /// (كل فشل معزول ولا يُفشل الحفظ).</summary>
+    /// <summary>إطلاق تنبيهات المرآة المجمعة عبر Outbox. تُسجَّل داخل معاملة العمل إن كانت
+    /// قائمة، وإلا تُفتح معاملة قصيرة لضمان ثبات رسائل Outbox.</summary>
     public async Task FireMirrorNotificationsAsync(IReadOnlyList<MirrorNotification> intents, CancellationToken ct)
     {
-        foreach (var intent in intents)
-            await FireDelegationAlertAsync(intent, ct);
+        if (intents.Count == 0)
+            return;
+
+        if (_tx is ITransactionContext { HasActiveTransaction: true })
+        {
+            foreach (var intent in intents)
+                await EnqueueMirrorAlertAsync(intent, ct);
+            await _uow.SaveChangesAsync(ct);
+            return;
+        }
+
+        await _tx.RunAsync(async token =>
+        {
+            foreach (var intent in intents)
+                await EnqueueMirrorAlertAsync(intent, token);
+            await _uow.SaveChangesAsync(token);
+        }, ct);
     }
 
-    /// <summary>تنبيه المرآة الفردي معزولًا: فشله يقع في سجل التدقيق ولا يمسّ نتيجة الحفظ.</summary>
-    private async Task FireDelegationAlertAsync(MirrorNotification intent, CancellationToken ct)
-    {
-        try
-        {
-            await _alerts.UpsertDelegationMessageAsync(
-                intent.DelegationId, intent.RecipientLawyerId,
-                intent.ActorUserId, intent.RecipientBranchId, intent.Message, ct);
-        }
-        catch (Exception ex)
-        {
-            await _audit.LogAsync(null, "head_alert_failed", intent.DelegationId, null,
-                $"فشل تنبيه المرآة للمحامي {intent.RecipientLawyerId}: {ex.Message}", ct);
-        }
-    }
+    private Task EnqueueMirrorAlertAsync(MirrorNotification intent, CancellationToken ct)
+        => _alertOutbox.EnqueueSystemAsync(
+            new CreateSystemHeadAlertRequest(
+                intent.Kind,
+                intent.Message,
+                HeadAlertAudience.SingleLawyer,
+                intent.RecipientBranchId,
+                intent.ActorUserId,
+                DelegationId: intent.DelegationId,
+                RecipientUserId: intent.RecipientLawyerId),
+            new HeadAlertSupersedePlan(
+                intent.DelegationId,
+                AppealId: null,
+                HeadAlertKindCatalog.DelegationMirrorKinds,
+                "delegation_mirror_updated"),
+            occurredAt: DateTime.UtcNow,
+            ct: ct);
 
     /// <summary>تنبيه تغيّر حالة المنيب إلى مناباته المعلقة (مسار StatusChangeModal المنفصل عن التعديل).
     /// الصيغ T2-T5 بصياغات المستخدم المقفلة؛ المشطوب (N7) والجزئيا (N1) لا يصلان هنا أصلًا
     /// (نوع فارغ في تغيير الحالة) — ومسار فك الشطب يبقي الصيغة العامة القديمة.
-    /// يُستدعى بعد تثبيت معاملة الحالة حصرًا.</summary>
+    /// يُستدعى داخل معاملة تغيير الحالة حصرًا.</summary>
     public async Task FireStatusChangeAlertsAsync(Document doc, DelegationStatusAlertKind kind, CancellationToken ct)
     {
-        List<DocumentDelegation> delegations;
-        try
-        {
-            delegations = await _delegations.ListPendingBySourceWithTargetsAsync(doc.Id, ct);
-        }
-        catch (Exception ex)
-        {
-            await _audit.LogAsync(null, "head_alert_failed", doc.Id, doc.DocumentType, ex.Message, ct);
-            return;
-        }
+        var delegations = await _delegations.ListPendingBySourceWithTargetsAsync(doc.Id, ct);
 
         var recipientBranch = doc.BranchId;
+        var intents = new List<MirrorNotification>();
         foreach (var delegation in delegations)
         {
             var target = delegation.TargetDocument;
             if (target is null)
                 continue;
-            var intent = new MirrorNotification(
+            var (message, alertKind) = BuildDelegationStatusChangeAlert(kind, doc, target);
+            intents.Add(new MirrorNotification(
                 delegation.Id,
                 target.CreatedById,
                 target.BranchId ?? recipientBranch ?? delegation.ExternalBranchId ?? 0,
                 doc.CreatedById,
-                BuildDelegationStatusChangeMessage(kind, doc, target));
-            await FireDelegationAlertAsync(intent, ct);
+                message,
+                alertKind));
         }
+
+        await FireMirrorNotificationsAsync(intents, ct);
     }
 
-    /// <summary>بناء رسالة تنبيه حالة المنيب: الصيغ T2-T5 (بصياغة المستخدم حرفيًا) بحقول المناب
-    /// (اسم المنفذ عليه/رقم أساسه/دائرته) والمنيب (الكتب/رقمه) — تُعبَّأ runtime من الوثيقتين.</summary>
-    private string BuildDelegationStatusChangeMessage(DelegationStatusAlertKind kind, Document doc, Document target)
+    /// <summary>بناء رسالة تنبيه حالة المنيب ونوعه: الصيغ T2-T5 (بصياغة المستخدم حرفيًا) بحقول
+    /// المناب (اسم المنفذ عليه/رقم أساسه/دائرته) والمنيب (الكتب/رقمه) — تُعبَّأ runtime.</summary>
+    private (string Message, string Kind) BuildDelegationStatusChangeAlert(
+        DelegationStatusAlertKind kind, Document doc, Document target)
     {
         var executedOn = DocumentText.ActorFullName(target);
-        var baseNumber = EffectiveFileIdentity.Number(target, ServerClock.CurrentYear(_clock, _timeZone));
-        var court = target.Court;
+        var baseNumber = EffectiveFileIdentity.Number(target, ServerClock.CurrentYear(_clock, _timeZone)) ?? string.Empty;
+        var court = AlertCourtBare(target.Court);
 
         return kind switch
         {
-            // T2 (تريث): ورد كتاب تريث بملف الإنابة — يرجى وقف إجراءات الإنابة.
-            DelegationStatusAlertKind.Deferred =>
-                $"ورد كتاب تريث بملف الانابة للمنفذ عليه {executedOn} رقم اساس {baseNumber} " +
-                $"دائرة تنفيذ {court}، يرجى وقف اجراءات الانابة",
-            // T3 (عودة): متابعة السير بملف المنفذ عليه بانتهاء حالة التريث.
-            DelegationStatusAlertKind.Returned =>
-                $"يرجى متابعة السير بملف المنفذ عليه {executedOn} رقم اساس {baseNumber} " +
-                $"دائرة تنفيذ {court} تبعا لكتاب الجهة العامة للسير بالملف وانتهاء حالة التريث",
-            // T4 (استرداد-تسوية): وقف إجراءات الإنابة وعودة المناب لمرجعه الأصلي.
-            DelegationStatusAlertKind.Settled =>
-                $"يرجى وقف اجراءات الانابة في ملف المنفذ عليه {executedOn} رقم اساس {baseNumber} " +
-                $"دائرة تنفيذ {court}، تبعا لاعتبار الملف المنيب منفذ بالتسوية، واعادته لمرجعه الأصلي",
-            // T5 (استرداد-جبري): استُرد ملفك المناب بتحصيل المبلغ المطالب به جبريًا في الملف المنيب.
-            DelegationStatusAlertKind.FullyForcibly =>
-                $"استُرد ملفك المناب رقم أساس {baseNumber} لاعتبار الملف المنيب " +
-                $"{EffectiveFileIdentity.Number(doc, ServerClock.CurrentYear(_clock, _timeZone))} منفذًا — بتحصيل المبلغ المطالب به جبريًا في الملف المنيب",
-            // المسار العام (فك الشطب): الصيغة القديمة بلا تغيير — محفوظة للتسلسل التاريخي.
-            _ => $"تغيّرت حالة الملف المنيب إلى «{DocumentStatusResolver.Resolve(doc)}»",
+            DelegationStatusAlertKind.Deferred => (
+                HeadAlertMessages.DelegationMirrorDeferred(new(executedOn, baseNumber, court)),
+                HeadAlertKindCatalog.DelegationMirrorDeferred),
+            DelegationStatusAlertKind.Returned => (
+                HeadAlertMessages.DelegationMirrorReturned(new(executedOn, baseNumber, court)),
+                HeadAlertKindCatalog.DelegationMirrorReturned),
+            DelegationStatusAlertKind.Settled => (
+                HeadAlertMessages.DelegationMirrorSettled(new(executedOn, baseNumber, court)),
+                HeadAlertKindCatalog.DelegationMirrorSettled),
+            DelegationStatusAlertKind.FullyForcibly => (
+                HeadAlertMessages.DelegationMirrorFullyForcibly(new(
+                    baseNumber,
+                    EffectiveFileIdentity.Number(doc, ServerClock.CurrentYear(_clock, _timeZone)) ?? string.Empty)),
+                HeadAlertKindCatalog.DelegationMirrorFullyForcibly),
+            _ => (
+                HeadAlertMessages.DelegationMirrorStatusChanged(new(DocumentStatusResolver.Resolve(doc))),
+                HeadAlertKindCatalog.DelegationMirrorStatusChanged),
         };
     }
 
-    /// <summary>إطلاق تنبيه المنيب عند الإضافات المحلية (وريث/ممثل) على الملف المناب معزولًا —
-    /// بعد تثبيت معاملة التعديل حصرًا.</summary>
+    /// <summary>إطلاق تنبيه المنيب عند الإضافات المحلية (وريث/ممثل) على الملف المناب.</summary>
     public async Task FireTargetEditReportAsync(Document target, TargetEditReport report, CancellationToken ct)
     {
-        DocumentDelegation? delegation = null;
-        try
-        {
-            delegation = await _delegations.FindByTargetAsync(target.Id, ct);
-        }
-        catch (Exception ex)
-        {
-            await _audit.LogAsync(null, "head_alert_failed", target.Id, null, ex.Message, ct);
-            return;
-        }
-
+        var delegation = await _delegations.FindByTargetAsync(target.Id, ct);
         if (delegation?.SourceDocument is null)
             return;
 
@@ -1019,8 +1021,9 @@ public sealed partial class DocumentDelegationService
             source.CreatedById,
             source.BranchId ?? target.BranchId ?? 0,
             target.CreatedById,
-            ReverseAdditionsMessage(report));
-        await FireDelegationAlertAsync(intent, ct);
+            ReverseAdditionsMessage(report),
+            HeadAlertKindCatalog.DelegationMirrorLocalAddition);
+        await FireMirrorNotificationsAsync([intent], ct);
     }
 
     private static string ReverseAdditionsMessage(TargetEditReport report)
@@ -1034,24 +1037,7 @@ public sealed partial class DocumentDelegationService
             parts.Add($"أُضيف الوريث {h.Name}{suffix}");
         }
         parts.AddRange(report.NewRepresentativeLabels.Select(label => $"أُضيف {label}"));
-        return BoundAlertMessage($"تم تعديل بيانات الملف المناب بإضافة محلية — {string.Join("؛ ", parts)}");
-    }
-
-    /// <summary>
-    /// حد رسالة تنبيه المرآة (عمود HeadAlert.Message (2000)): مع حتى 49 كفيلًا قد يضم
-    /// النص كل الأسماء المحذوفة/المضافة دفعة واحدة فيُقصّ بدل ضياع التنبيه كاملًا
-    /// عند الحفظ على Postgres — بذات نمط قصّ الرسائل القائم، مع تجنّب قصّ منتصف
-    /// زوج بديل UTF-16.
-    /// </summary>
-    private static string BoundAlertMessage(string message)
-    {
-        if (message.Length <= 2000)
-            return message;
-
-        var end = 2000;
-        if (char.IsHighSurrogate(message[end - 1]) && end < message.Length && char.IsLowSurrogate(message[end]))
-            end--;
-        return message[..end];
+        return HeadAlertMessages.DelegationMirrorLocalAddition(new(string.Join("؛ ", parts)));
     }
 
     /// <summary>

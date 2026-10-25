@@ -280,18 +280,6 @@ public sealed partial class PublicEntityService
             await TrackChangeEventAsync(changeEvent, token);
             await _uow.SaveChangesAsync(token);
 
-            // تنبيه رؤساء محافظة القيد — يُدمج اقتراح تعديل الجهة الواحدة قبل الاعتماد
-            // في تنبيه واحد بآخر تعديل (لا يُنشأ تنبيه جديد على كل اقتراح متلاحق).
-            var heads = await _entities.ListActiveHeadsByGovernorateAsync(entry.Governorate, token);
-            if (heads.Count == 0 && actor.BranchId.HasValue)
-                heads = await _entities.ListActiveHeadsByBranchAsync(actor.BranchId.Value, token);
-            foreach (var head in heads.Where(h => h.BranchId.HasValue))
-            {
-                var msg = $"المحامي {actor.Name ?? "محامٍ"} اقترح تعديل جهة «{oldCanonical}» → «{group.CanonicalName}» ({entry.Governorate}/{entry.BranchName}) — بانتظار المراجعة";
-                await UpsertEditProposalAlertAsync(entry.Id, head.Id, head.BranchId!.Value, actor.UserId, msg, token);
-            }
-            await _uow.SaveChangesAsync(token);
-
             await _audit.LogAsync(actor.Name, "propose_public_entity_edit",
                 details: $"اقترح تعديل جهة: «{oldCanonical}» → «{group.CanonicalName}» ({entry.Governorate}/{entry.BranchName})", ct: token);
 
@@ -350,9 +338,6 @@ public sealed partial class PublicEntityService
             await _entities.AddEntryAsync(entry, token);
             await _uow.SaveChangesAsync(token);
 
-            if (entry.NeedsReview)
-                await InsertEntryReviewAlertsAsync(entry, actor.Name, token);
-
             await _audit.LogAsync(actor.Name, "create_public_entity",
                 details: $"أضاف قيد جهة: {canonical} ({governorate} / {branchName})"
                     + (entry.NeedsReview ? " — بانتظار مراجعة رئيس القسم" : string.Empty),
@@ -360,72 +345,6 @@ public sealed partial class PublicEntityService
         }, ct);
 
         return ToEntryDto(group, entry);
-    }
-    /// <summary>
-    /// تنبيه رئيس فرع المُدخِل (ومحافظة القيد كاحتياط): «المحامي فلان أدخل جهة عامة
-    /// جديدة يرجى مراجعتها». نطاق المراجعة الآن هو ما أدخله محامو فرع الرئيس
-    /// بغض النظر عن محافظة الجهة، لذا يُوجَّه التنبيه أولًا إلى رؤساء فرع المُدخِل؛
-    /// وإن لم يوجد رئيس لفرعه يُحتاط بإرساله إلى رؤساء محافظة القيد.
-    /// </summary>
-    private async Task InsertEntryReviewAlertsAsync(PublicEntity entry, string? actorName, CancellationToken token)
-    {
-        var creator = await _entities.GetEntryWithDetailsAsync(entry.Id, token);
-        var creatorFullName = creator?.CreatedBy?.FullName ?? actorName ?? "محامٍ";
-        var creatorBranchId = creator?.CreatedBy?.BranchId;
-        List<User> heads;
-        if (creatorBranchId.HasValue)
-            heads = await _entities.ListActiveHeadsByBranchAsync(creatorBranchId.Value, token);
-        else
-            heads = await _entities.ListActiveHeadsByGovernorateAsync(entry.Governorate, token);
-        if (heads.Count == 0 && creatorBranchId.HasValue)
-            heads = await _entities.ListActiveHeadsByGovernorateAsync(entry.Governorate, token);
-        if (heads.Count == 0)
-            return;
-
-        var message = $"المحامي {creatorFullName} أدخل جهة عامة جديدة «{entry.Group.CanonicalName}» "
-            + $"({entry.Governorate} / {entry.BranchName}) — يرجى مراجعتها";
-
-        foreach (var head in heads)
-        {
-            var alert = new HeadAlert
-            {
-                BranchId = head.BranchId!.Value,
-                CreatedById = head.Id,
-                TargetType = HeadAlertTargetType.Branch,
-                Message = message.Length > 2000 ? message[..2000] : message,
-                CreatedAt = DateTime.UtcNow,
-                Recipients = { new HeadAlertRecipient { UserId = head.Id } },
-            };
-            await _headAlerts.AddAsync(alert, token);
-        }
-        await _uow.SaveChangesAsync(token);
-    }
-    /// <summary>
-    /// إدراج — أو دمج — تنبيه اقتراح تعديل لرئيس قسم: إن وُجد تنبيه قائم (غير مقروء)
-    /// لنفس القيد والمستلم، يُحدَّث نصّه بآخر تعديل وزمنه بدل إنشاء تنبيه إضافي،
-    /// فيبقى لمنتظر المراجعة تنبيه واحد بآخر تعديل بدل تراكم التنبيهات المتلاحقة.
-    /// </summary>
-    private async Task UpsertEditProposalAlertAsync(int entryId, int headId, int branchId, int actorUserId, string message, CancellationToken token)
-    {
-        var latest = await _headAlerts.FindLatestPendingByEntityAsync(entryId, headId, token);
-        if (latest is not null)
-        {
-            latest.Message = message.Length > 2000 ? message[..2000] : message;
-            latest.CreatedAt = DateTime.UtcNow;
-            return;
-        }
-
-        var alert = new HeadAlert
-        {
-            BranchId = branchId,
-            CreatedById = actorUserId,
-            PublicEntityId = entryId,
-            TargetType = HeadAlertTargetType.Branch,
-            Message = message.Length > 2000 ? message[..2000] : message,
-            CreatedAt = DateTime.UtcNow,
-            Recipients = { new HeadAlertRecipient { UserId = headId } },
-        };
-        await _headAlerts.AddAsync(alert, token);
     }
     // ── تعديل قيد / إعادة تسمية جماعية (د5) ──
 

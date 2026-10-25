@@ -27,3 +27,32 @@ public sealed class HeadAlertNoRecipientsException : Exception
     {
     }
 }
+
+/// <summary>
+/// مرجع مرتبط بالتنبيه (ملف/إنابة/استئناف/دائرة/فرع/منشئ) لم يعد موجودًا وقت المعالجة —
+/// حُذف بين التسجيل والمعالجة، أو كان غير صالح أصلًا.
+///
+/// استثناء **داخلي**: لا يترجم إلى HTTP. المشغّل يعامله كـ<code>skipped</code>
+/// (<c>missing_reference</c>) بلا إعادة ولا <c>failed</c> (الخطة §8.1).
+/// </summary>
+public sealed class HeadAlertMissingReferenceException : Exception
+{
+    public HeadAlertMissingReferenceException(string message)
+        : base(message)
+    {
+    }
+}
+
+/// <summary>
+/// مستلم التعاقب (تجاوز <c>TargetUserId</c>) غير فعّال أو مفقود ولا خلف معروف له.
+///
+/// استثناء **داخلي**: المشغّل يعامله كـ<code>skipped</code> (<c>recipient_inactive</c>)
+/// بدل التخمين أو الإعادة (الخطة §8.1).
+/// </summary>
+public sealed class HeadAlertRecipientInactiveException : Exception
+{
+    public HeadAlertRecipientInactiveException(string message)
+        : base(message)
+    {
+    }
+}

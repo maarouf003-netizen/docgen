@@ -16,6 +16,8 @@ public class DocumentAppealServiceTests : IDisposable
     private readonly DocGeneratorDbContext _db;
     private readonly IDocumentAppealService _service;
     private readonly IHeadAlertService _alertService;
+    private readonly TransactionRunner _tx;
+    private readonly HeadAlertOutbox _outbox;
     private readonly FakeAuditLogger _audit = new();
 
     private readonly Branch _branch;
@@ -41,28 +43,33 @@ public class DocumentAppealServiceTests : IDisposable
         _db.Users.AddRange(_lawyer1, _lawyer2, _head1, _head2);
         _db.SaveChanges();
 
+        _tx = new TransactionRunner(_db);
         _alertService = new HeadAlertService(
             new HeadAlertRepository(_db),
             new DocumentRepository(_db),
             new UserRepository(_db),
             new Repository<Branch>(_db),
             new UnitOfWork(_db),
-            new TransactionRunner(_db),
+            _tx,
             _audit);
+        _outbox = new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx);
 
         _service = new DocumentAppealService(
             new AppealRepository(_db),
             new DocumentRepository(_db),
             new UserRepository(_db),
             new UnitOfWork(_db),
-            new TransactionRunner(_db),
+            _tx,
             _audit,
             _alertService,
+            _outbox,
             TimeProvider.System,
             TestClock.TimeZone);
     }
 
     public void Dispose() => _db.Dispose();
+
+    private Task FlushAlertsAsync() => HeadAlertOutboxFlush.AllAsync(_db, _alertService, _tx);
 
     private static User User(int? branchId, string username, string fullName, UserRole role = UserRole.Lawyer) => new()
     {
@@ -165,8 +172,9 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Contains(dto.Appellees, p => p.Name == "أحمد خالد الخطيب");
         Assert.DoesNotContain(dto.Appellees, p => p.Name == "المؤسسة العامة للكهرباء");
 
+        await FlushAlertsAsync();
         var headAlerts = await _alertService.ListForHeadAsync(_head1.Id, _branch.Id);
-        Assert.Contains(headAlerts, a => a.TargetType == "head" && a.Message.Contains("يرجى اختيار محامي"));
+        Assert.Contains(headAlerts, a => a.TargetType == "head" && a.Message.Contains("يرجى اختيار محامٍ لمتابعة الاستئناف"));
     }
 
     [Fact]
@@ -329,8 +337,9 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.NotNull(assigned);
         Assert.Equal(_lawyer2.Id, assigned!.AssignedLawyerId);
         // تنبيه الرئيس المعلّق صُفّي، ووصل المحامي تنبيه الإحالة.
+        await FlushAlertsAsync();
         var headAlerts = await _alertService.ListForHeadAsync(_head1.Id, _branch.Id);
-        Assert.DoesNotContain(headAlerts, a => a.Message.Contains("يرجى اختيار محامي"));
+        Assert.DoesNotContain(headAlerts, a => a.Message.Contains("يرجى اختيار محامٍ لمتابعة الاستئناف"));
         var lawyerAlerts = await _alertService.ListForLawyerAsync(_lawyer2.Id);
         Assert.Contains(lawyerAlerts, a => a.Message.Contains("أحال إليك رئيس القسم استئناف"));
 
@@ -359,6 +368,7 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Equal("للصالح", decided.OutcomeLabel);
 
         // إشعار محامي الملف الأساس (مختلف عن المتابع) بالحسم.
+        await FlushAlertsAsync();
         var baseLawyerAlerts = await _alertService.ListForLawyerAsync(_lawyer1.Id);
         Assert.Contains(baseLawyerAlerts, a => a.Message.Contains("محسومًا"));
 
@@ -1030,7 +1040,9 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Equal(sectionId, forwarded.SectionId);
         Assert.Equal(circuitId, forwarded.ExecutionCircuitId);
         Assert.Contains("forward_appeal", _audit.Actions);
-        var alerts = await _db.HeadAlerts.Include(a => a.Recipients).Where(a => a.AppealId == appeal.Id).ToListAsync();
+        await FlushAlertsAsync();
+        var alerts = await _db.HeadAlerts.Include(a => a.Recipients)
+            .Where(a => a.AppealId == appeal.Id && a.ArchivedAt == null).ToListAsync();
         var headAlert = Assert.Single(alerts);
         Assert.Equal(_head1.Id, Assert.Single(headAlert.Recipients).UserId);
     }
@@ -1130,8 +1142,9 @@ public class DocumentAppealServiceTests : IDisposable
             var callerId = byHead ? _head1.Id : sub.Id;
             await _service.RecallForwardAsync(appeal.Id, callerId, byHead ? "head1" : "sub");
 
+            await FlushAlertsAsync();
             var alerts = await _db.HeadAlerts.Include(a => a.Recipients)
-                .Where(a => a.AppealId == appeal.Id).ToListAsync();
+                .Where(a => a.AppealId == appeal.Id && a.ArchivedAt == null).ToListAsync();
             var alert = Assert.Single(alerts);
             Assert.Equal(sub.Id, Assert.Single(alert.Recipients).UserId);
         }
@@ -1276,7 +1289,9 @@ public class DocumentAppealServiceTests : IDisposable
         var doc = await CreateApplicantDocAsync();
         await CreatePendingAppealAsync(doc.Id, circuitId);
 
-        var alerts = await _db.HeadAlerts.Include(a => a.Recipients).Where(a => a.AppealId != null).ToListAsync();
+        await FlushAlertsAsync();
+        var alerts = await _db.HeadAlerts.Include(a => a.Recipients)
+            .Where(a => a.AppealId != null && a.ArchivedAt == null).ToListAsync();
         var creation = Assert.Single(alerts);
         Assert.Equal(sub.Id, Assert.Single(creation.Recipients).UserId);
     }

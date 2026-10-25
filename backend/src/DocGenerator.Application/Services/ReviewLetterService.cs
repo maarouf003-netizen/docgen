@@ -76,7 +76,7 @@ public sealed class ReviewLetterService : IReviewLetterService
     private readonly IRepository<ExecutionCircuit> _circuits;
     private readonly IAppealRepository _appeals;
     private readonly IDelegationRepository _delegations;
-    private readonly IHeadAlertRepository _headAlerts;
+    private readonly IHeadAlertOutbox _alertOutbox;
     private readonly IDbExceptionClassifier _dbErrors;
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
@@ -90,7 +90,7 @@ public sealed class ReviewLetterService : IReviewLetterService
         IBranchRepository branches,
         IAppealRepository appeals,
         IDelegationRepository delegations,
-        IHeadAlertRepository headAlerts,
+        IHeadAlertOutbox alertOutbox,
         IDbExceptionClassifier dbErrors,
         IUnitOfWork uow,
         ITransactionRunner tx,
@@ -109,7 +109,7 @@ public sealed class ReviewLetterService : IReviewLetterService
         _circuits = circuits;
         _appeals = appeals;
         _delegations = delegations;
-        _headAlerts = headAlerts;
+        _alertOutbox = alertOutbox;
         _dbErrors = dbErrors;
         _uow = uow;
         _tx = tx;
@@ -383,37 +383,31 @@ public sealed class ReviewLetterService : IReviewLetterService
     }
 
     /// <summary>
-    /// تجهيز تنبيه الرد لمحامي الكتاب (TargetType=lawyer): يُحدَّث آخر تنبيه ردٍّ غير مقروء
-    /// للكتاب نفسه إن وُجد، وإلا أُنشئ تنبيه جديد برابط مباشر إلى الكتاب.
+    /// تجهيز تنبيه الرد لصاحب الكتاب (لا لمنفّذ الرد): الجمهور حسب دوره (محامٍ أو رئيس)،
+    /// والنص الكامل للرد بلا قصّ، عبر Outbox ليُدمج مع أي تنبيه نشط لنفس الكتاب.
     /// </summary>
     private async Task StageReplyAlertAsync(ReviewLetter letter, ReviewLetterMessage reply,
         int headUserId, string? headName, CancellationToken token)
     {
-        var snippet = reply.BodyPlainText.Length > 80
-            ? reply.BodyPlainText[..80] + "…"
-            : reply.BodyPlainText;
-        var message = $"{headName ?? "رئيس القسم"} ردّ على كتاب مطالعتك رقم {letter.LetterNumber}: {snippet}";
+        var owner = await _users.GetByIdAsync(letter.CreatedById, token);
+        var audience = owner?.Role is UserRole.Head or UserRole.SubHead
+            ? HeadAlertAudience.SingleHead
+            : HeadAlertAudience.SingleLawyer;
 
-        var existing = await _headAlerts.FindLatestUnseenByReviewLetterAsync(letter.Id, letter.CreatedById, token);
-        if (existing is not null)
-        {
-            existing.Message = message;
-            existing.CreatedAt = DateTime.UtcNow;
-            return;
-        }
-
-        await _headAlerts.AddAsync(new HeadAlert
-        {
-            BranchId = letter.BranchId,
-            CreatedById = headUserId,
-            TargetType = HeadAlertTargetType.Lawyer,
-            TargetLawyerId = letter.CreatedById,
-            DocumentId = letter.DocumentId,
-            ReviewLetterId = letter.Id,
-            Message = message,
-            CreatedAt = DateTime.UtcNow,
-            Recipients = [new HeadAlertRecipient { UserId = letter.CreatedById }],
-        }, token);
+        await _alertOutbox.EnqueueSystemAsync(
+            new CreateSystemHeadAlertRequest(
+                HeadAlertKindCatalog.ReviewLetterReply,
+                HeadAlertMessages.ReviewLetterReply(new(
+                    headName ?? "رئيس القسم", letter.LetterNumber, reply.BodyPlainText)),
+                audience,
+                letter.BranchId,
+                headUserId,
+                DocumentId: letter.DocumentId,
+                ReviewLetterId: letter.Id,
+                RecipientUserId: letter.CreatedById),
+            supersedePlan: null,
+            occurredAt: DateTime.UtcNow,
+            ct: token);
     }
 
     public Task<int> CountUnseenRepliesForLawyerAsync(int actorUserId, CancellationToken ct = default)

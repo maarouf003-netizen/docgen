@@ -43,6 +43,12 @@ public interface IHeadAlertOutbox
 /// معاملتها عبر <see cref="ExecuteInTransactionAsync"/> (عضو صريح في المخزن)، لا عبر
 /// <c>ITransactionRunner</c> التجاري، فلا تتداخل معاملة عمل.
 /// </summary>
+/// <summary>صحة صندوق الصادر — تُستخدم للتحذير التشغيلي بلا endpoint جديد.</summary>
+public sealed record HeadAlertOutboxHealth(
+    int PendingCount,
+    DateTime? OldestPendingAt,
+    int FailedCount);
+
 public interface IHeadAlertOutboxStore
 {
     /// <summary>يسجّل رسالة في الصندوق (بلا حفظ — يحفظه المُنتِج ضمن معاملته).</summary>
@@ -84,6 +90,9 @@ public interface IHeadAlertOutboxStore
 
     /// <summary>ينظّف الرسائل المنتهية: <c>processed</c> بعد 7 أيام و<code>skipped</code> بعد 30.</summary>
     Task<int> CleanupAsync(DateTime now, int processedRetentionDays, int skippedRetentionDays, CancellationToken ct = default);
+
+    /// <summary>لقطة صحة الصندوق: عدد/أقدم المعلّق وعدد الفاشل (الخطة §6.4 — مراقبة).</summary>
+    Task<HeadAlertOutboxHealth> GetHealthAsync(CancellationToken ct = default);
 
     /// <summary>
     /// يفتح معاملة على <c>DbContext</c> النطاق نفسه (معاملة المعالجة) — لا يستدعي

@@ -16,20 +16,19 @@ namespace DocGenerator.Application.Services;
 /// آلة حالات نظام «طالبة تنفيذ» + حالات وضع «منفذ عليه»/«عرض وايداع» + التجديد/الشطب
 /// + توريث/استرداد المناب. الاسم الموحّد `IDocumentStatusService
 /// (تقاعُد اسم `StatusTransitionService` المؤجل).
-/// الاعتمادات الدقيقة: `_documents` و`_occurrences` و`_baseNumbers` و`_audit`
+/// الاعتمادات الدقيقة: `_documents` و`_occurrences` و`_baseNumbers`
 /// و`_alertService` (استثناء البنية التحتية — القاعدة 4) و`_delegations` و`_tx` و`_uow`
 /// والساعة/المنطقة + `IDocumentDelegationService` (تنبيهات الإنابة) + `IDocumentWriteGuard`
 /// (الحراس المشتركة — أي حاجة عكسية تُحل بنقل المساعد لا بنداء خدمة).
 /// ثابت ملكية المعاملة: معاملة `_tx.RunAsync` واحدة لكل نقطة دخول عامة —
 /// المساعدات (`ApplyRenewalAsync`، `AddStruckOffOccurrenceAsync`، المزامنة) تنضم
-/// لمعاملة المستدعي، وإطلاق التنبيهات بعد التثبيت (تُحفَظ المواضع حرفيًا).
+/// لمعاملة المستدعي، وأرشفة/إطلاق التنبيهات داخل معاملة الحالة نفسها (ذرّية مع الحدث).
 /// </summary>
 public sealed class DocumentStatusService : IDocumentStatusService
 {
     private readonly IDocumentRepository _documents;
     private readonly IRepository<DocumentOccurrence> _occurrences;
     private readonly IRepository<DocumentBaseNumber> _baseNumbers;
-    private readonly IAuditLogger _audit;
     private readonly IHeadAlertService _alertService;
     private readonly IDelegationRepository _delegations;
     private readonly ITransactionRunner _tx;
@@ -43,7 +42,6 @@ public sealed class DocumentStatusService : IDocumentStatusService
         IDocumentRepository documents,
         IRepository<DocumentOccurrence> occurrences,
         IRepository<DocumentBaseNumber> baseNumbers,
-        IAuditLogger audit,
         IHeadAlertService alertService,
         IDelegationRepository delegations,
         ITransactionRunner tx,
@@ -56,7 +54,6 @@ public sealed class DocumentStatusService : IDocumentStatusService
         _documents = documents;
         _occurrences = occurrences;
         _baseNumbers = baseNumbers;
-        _audit = audit;
         _alertService = alertService;
         _delegations = delegations;
         _tx = tx;
@@ -68,41 +65,38 @@ public sealed class DocumentStatusService : IDocumentStatusService
     }
 
     /// <summary>
-    /// D3: تنظيف تنبيه «بانتظار الإتمام» لكل مسار يجعل مناب مسجلة أصولًا نهائيًا —
-    /// استرداد (تسوية/جبرية كاملة → «مسترد») أو شطب يدوي للمناب. لاحق الالتزام
-    /// best-effort بنفس محمول CompleteAsync (الحذف بالإنابة)، وidempotent (إعادة
-    /// التنظيف آمنة). البوابة Registered حصرًا: DeleteByDelegationAsync يحذف كل
-    /// تنبيهات الإنابة، والمعلّقة/المحالة لها تنبيهات اعتماد لا تُمس.
+    /// D3: أرشفة تنبيهات الإنابة لكل مسار يجعل مناب مسجلة أصولًا نهائيًا —
+    /// استرداد (تسوية/جبرية كاملة → «مسترد») أو شطب يدوي للمناب. تعمل داخل
+    /// معاملة المتصل، وidempotent (إعادة الأرشفة آمنة). البوابة Registered حصرًا:
+    /// المعلّقة/المحالة لها تنبيهات اعتماد لا تُمس.
     /// </summary>
-    private async Task CleanupPendingCompletionAlertsAsync(int documentId, string? actorName, CancellationToken ct)
+    private async Task CleanupPendingCompletionAlertsAsync(int documentId, CancellationToken ct)
     {
-        try
+        // (1) المنيب: إناباته المسجلة التي صار منابها نهائيًا (أي فرع من IsTargetTerminal —
+        // مشطوب بجهتيه/مسترد/منفذ إنابة — لا إعادة تعريف جزئية هنا).
+        var recovered = (await _delegations.ListBySourceAsync(documentId, ct))
+            .Where(d => d.Status == DelegationStatusCatalog.Registered
+                && d.TargetDocument is not null
+                && DelegationActivityPolicy.IsTargetTerminal(d.TargetDocument))
+            .Select(d => d.Id)
+            .ToList();
+        foreach (var id in recovered)
+            await _alertService.ArchiveByDelegationAsync(
+                id,
+                HeadAlertKindCatalog.DelegationKinds,
+                "delegation_target_terminal",
+                ct);
+        // (2) الملف نفسه مناب صار نهائيًا يدويًا: إنابته المسجلة تحررت.
+        var own = await _delegations.FindByTargetAsync(documentId, ct);
+        if (own is not null && own.Status == DelegationStatusCatalog.Registered)
         {
-            // (1) المنيب: إناباته المسجلة التي صار منابها نهائيًا (أي فرع من IsTargetTerminal —
-            // مشطوب بجهتيه/مسترد/منفذ إنابة — لا إعادة تعريف جزئية هنا).
-            var recovered = (await _delegations.ListBySourceAsync(documentId, ct))
-                .Where(d => d.Status == DelegationStatusCatalog.Registered
-                    && d.TargetDocument is not null
-                    && DelegationActivityPolicy.IsTargetTerminal(d.TargetDocument))
-                .Select(d => d.Id)
-                .ToList();
-            foreach (var id in recovered)
-                await _alertService.DeleteByDelegationAsync(id, ct);
-            // (2) الملف نفسه مناب صار نهائيًا يدويًا: إنابته المسجلة تحررت.
-            var own = await _delegations.FindByTargetAsync(documentId, ct);
-            if (own is not null && own.Status == DelegationStatusCatalog.Registered)
-            {
-                var targetDoc = await _documents.GetByIdAsync(documentId, ct);
-                if (targetDoc is not null && DelegationActivityPolicy.IsTargetTerminal(targetDoc))
-                    await _alertService.DeleteByDelegationAsync(own.Id, ct);
-            }
-        }
-        catch (Exception ex)
-        {
-            var doc = await _documents.GetByIdAsync(documentId, ct);
-            await _audit.LogAsync(actorName, "head_alert_failed",
-                documentId, doc?.DocumentType,
-                $"تعذّر تنظيف تنبيه الإنابة بانتظار الإتمام بعد نهائية المناب: {ex.Message}", ct);
+            var targetDoc = await _documents.GetByIdAsync(documentId, ct);
+            if (targetDoc is not null && DelegationActivityPolicy.IsTargetTerminal(targetDoc))
+                await _alertService.ArchiveByDelegationAsync(
+                    own.Id,
+                    HeadAlertKindCatalog.DelegationKinds,
+                    "delegation_target_terminal",
+                    ct);
         }
     }
 
@@ -323,17 +317,16 @@ public sealed class DocumentStatusService : IDocumentStatusService
             await _writeGuard.LogDocumentChangesAsync(statusBefore, doc, actorName, "status", auditDetail, token);
             // ب4: توريث «تريث»/استرداد المناب يتبَع حالة المنيب الجديدة — داخل معاملة الحالة نفسها.
             await ApplyDelegationInheritanceOrRecoveryAsync(doc, token);
+            // D3: نهائية مناب (استرداد/شطب يدوي) تؤرشف تنبيهات الإنابة العالقة —
+            // قبل إطلاق تنبيهات الحالة الجديدة كي لا تُؤرشف التنبيهات الجديدة.
+            await CleanupPendingCompletionAlertsAsync(documentId, token);
+            // مرآة: تغيّر حالة المنيب يُنبه مناباته المعلقة.
+            // الصيغ T2/T4/T5 فقط؛ جزئيا (N1) ومشطوب (N7) وسواها كبت بلا تنبيه.
+            var statusAlertKind = DocumentDelegationService.DelegationStatusAlertKindFor(doc);
+            if (statusAlertKind is not null)
+                await _delegationService.FireStatusChangeAlertsAsync(doc, statusAlertKind.Value, token);
             return true;
         }, ct));
-
-        // D3: نهائية مناب (استرداد/شطب يدوي) تُنظّف تنبيه «بانتظار الإتمام» العالق —
-        // قبل إطلاق تنبيهات الحالة الجديدة (الحذف شامل بالإنابة فيمحو ما أُطلق للتو).
-        await CleanupPendingCompletionAlertsAsync(documentId, actorName, ct);
-        // مرآة: تغيّر حالة المنيب يُنبه مناباته المعلقة (بعد نجاح المعاملة — عزل فشل التنبيه).
-        // الصيغ T2/T4/T5 فقط؛ جزئيا (N1) ومشطوب (N7) وسواها كبت بلا تنبيه.
-        var statusAlertKind = DocumentDelegationService.DelegationStatusAlertKindFor(doc);
-        if (statusAlertKind is not null)
-            await _delegationService.FireStatusChangeAlertsAsync(doc, statusAlertKind.Value, ct);
         return statusUpdated;
     }
 
@@ -388,7 +381,6 @@ public sealed class DocumentStatusService : IDocumentStatusService
         ClearForcibleTransferFields(doc);
         doc.SoldAssetIds = null;
 
-        var targetsReverted = false;
         var reverted = await _writeGuard.WithConcurrencyGuardAsync(() => _tx.RunAsync(async token =>
         {
             doc.UpdatedAt = DateTime.UtcNow;
@@ -409,15 +401,14 @@ public sealed class DocumentStatusService : IDocumentStatusService
             await _writeGuard.LogDocumentChangesAsync(revertBefore, doc, actorName, "status",
                 "تراجع عن الحالة وعاد الملف إلى المتداول", token);
             // ب4: عودة المناب الموروث-تريث تلقائيًا عند تراجع المنيب من «تريث» (D3).
-            targetsReverted = await ApplyDelegationInheritanceOrRecoveryAsync(doc, token);
+            var targetsReverted = await ApplyDelegationInheritanceOrRecoveryAsync(doc, token);
+            // مرآة: عودة المناب الفعلية تُنبه (T3 — متابعة السير بالملف). أما التراجع من
+            // تسوية/جبريا فلا يُرجع منابًا (المسترد لا يُرجع — C1)، فلا يُطلق تنبيه
+            // «انتهاء حالة التريث» على مناب مسترد (ضلال).
+            if (targetsReverted)
+                await _delegationService.FireStatusChangeAlertsAsync(doc, DelegationStatusAlertKind.Returned, token);
             return true;
         }, ct));
-
-        // مرآة: عودة المناب الفعلية تُنبه (T3 — متابعة السير بالملف). أما التراجع من
-        // تسوية/جبريا فلا يُرجع منابًا (المسترد لا يُرجع — C1)، فلا يُطلق تنبيه
-        // «انتهاء حالة التريث» على مناب مسترد (ضلال).
-        if (targetsReverted)
-            await _delegationService.FireStatusChangeAlertsAsync(doc, DelegationStatusAlertKind.Returned, ct);
         return reverted;
     }
 
@@ -618,14 +609,12 @@ public sealed class DocumentStatusService : IDocumentStatusService
                 "اعتُبر الملف منفذًا كاملًا بهذا البيع (منفذ جبريا — منفذ كاملا)", token);
             // ب4: استرداد المناب لاعتبار المنيب منفذًا كاملًا (وقف إجراءات الإنابة).
             await ApplyDelegationInheritanceOrRecoveryAsync(doc, token);
+            // D3: المنابات المستردة هنا تحررت — أرشِف تنبيهاتها العالقة قبل إطلاق تنبيه الاسترداد.
+            await CleanupPendingCompletionAlertsAsync(documentId, token);
+            // مرآة: اكتمال تنفيذ المنيب يُنبه مناباته المعلقة (T5 — استرداد جبري).
+            await _delegationService.FireStatusChangeAlertsAsync(doc, DelegationStatusAlertKind.FullyForcibly, token);
             return true;
         }, ct));
-
-        // D3: المنابات المستردة هنا تحررت — نظّف تنبيه «بانتظار الإتمام» العالق
-        // قبل إطلاق تنبيه الاسترداد (الحذف شامل بالإنابة).
-        await CleanupPendingCompletionAlertsAsync(documentId, actorName, ct);
-        // مرآة: اكتمال تنفيذ المنيب يُنبه مناباته المعلقة (T5 — استرداد جبري).
-        await _delegationService.FireStatusChangeAlertsAsync(doc, DelegationStatusAlertKind.FullyForcibly, ct);
         return considered;
     }
 
@@ -842,12 +831,11 @@ public sealed class DocumentStatusService : IDocumentStatusService
             await _uow.SaveChangesAsync(token);
             await _writeGuard.LogDocumentChangesAsync(restoreBefore, doc, actorName, "restore-struck-off",
                 "أعاد ملفًا مشطوبًا إلى المتداول مع تجديد رقم الملف", token);
+            // مرآة: فك الشطب «تغيّر حالة المنيب» يُنبه مناباته المعلقة بالصيغة العامة.
+            // S1 يجعل وجود إنابات معلقة على مصدر مشطوب شبه معدوم — الاحتفاظ عام.
+            await _delegationService.FireStatusChangeAlertsAsync(doc, DelegationStatusAlertKind.Generic, token);
             return true;
         }, ct), renewal?.RenewalFileNumber));
-
-        // مرآة: فك الشطب «تغيّر حالة المنيب» يُنبه مناباته المعلقة بالصيغة العامة (بعد نجاح المعاملة —
-        // عزل فشل التنبيه). S1 يجعل وجود إنابات معلقة على مصدر مشطوب شبه معدوم — الاحتفاظ عام.
-        await _delegationService.FireStatusChangeAlertsAsync(doc, DelegationStatusAlertKind.Generic, ct);
         return restored;
     }
 

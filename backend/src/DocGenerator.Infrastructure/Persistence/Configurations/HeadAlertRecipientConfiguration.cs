@@ -19,6 +19,11 @@ public class HeadAlertRecipientConfiguration : IEntityTypeConfiguration<HeadAler
         builder.HasKey(r => r.Id);
         builder.HasIndex(r => r.HeadAlertId);
         builder.HasIndex(r => r.UserId);
+        builder.HasIndex(r => new { r.UserId, r.IsRead });
+        builder.HasIndex(r => new { r.HeadAlertId, r.IsRead });
+        builder.HasIndex(r => new { r.HeadAlertId, r.UserId })
+            .IsUnique()
+            .HasDatabaseName("UX_HeadAlertRecipients_HeadAlertId_UserId");
 
         builder.HasOne(r => r.HeadAlert)
             .WithMany(a => a.Recipients)

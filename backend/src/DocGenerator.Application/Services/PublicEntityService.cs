@@ -25,6 +25,7 @@ public sealed partial class PublicEntityService : IPublicEntityService
     private readonly IPublicEntityRepository _entities;
     private readonly IRepository<Branch> _branches;
     private readonly IHeadAlertRepository _headAlerts;
+    private readonly IHeadAlertOutbox _alertOutbox;
     private readonly IRepository<PublicEntityChangeEvent> _changeEvents;
     private readonly IRepository<DocumentOccurrence> _occurrences;
     private readonly IRepository<ParentEditSuggestion> _suggestions;
@@ -39,6 +40,7 @@ public sealed partial class PublicEntityService : IPublicEntityService
         IPublicEntityRepository entities,
         IRepository<Branch> branches,
         IHeadAlertRepository headAlerts,
+        IHeadAlertOutbox alertOutbox,
         IRepository<PublicEntityChangeEvent> changeEvents,
         IRepository<DocumentOccurrence> occurrences,
         IRepository<ParentEditSuggestion> suggestions,
@@ -52,6 +54,7 @@ public sealed partial class PublicEntityService : IPublicEntityService
         _entities = entities;
         _branches = branches;
         _headAlerts = headAlerts;
+        _alertOutbox = alertOutbox;
         _changeEvents = changeEvents;
         _occurrences = occurrences;
         _suggestions = suggestions;
@@ -72,18 +75,28 @@ public sealed partial class PublicEntityService : IPublicEntityService
         if (creator is null || creator.BranchId is null)
             return;
 
-        var message = $"تم تعديل اسم الجهة العامة التي أدخلتها من «{oldName}» إلى «{newName}»";
-        var alert = new HeadAlert
+        var audience = creator.Role switch
         {
-            BranchId = creator.BranchId.Value,
-            CreatedById = entry.ReviewedById ?? creator.Id,
-            TargetType = HeadAlertTargetType.Lawyer,
-            TargetLawyerId = creator.Id,
-            Message = message.Length > 2000 ? message[..2000] : message,
-            CreatedAt = DateTime.UtcNow,
-            Recipients = { new HeadAlertRecipient { UserId = creator.Id } },
+            UserRole.Lawyer => HeadAlertAudience.SingleLawyer,
+            UserRole.Head or UserRole.SubHead => HeadAlertAudience.SingleHead,
+            _ => (HeadAlertAudience?)null,
         };
-        await _headAlerts.AddAsync(alert, token);
+        if (audience is null)
+            return;
+
+        await _alertOutbox.EnqueueSystemAsync(
+            new CreateSystemHeadAlertRequest(
+                HeadAlertKindCatalog.EntityRenameNoticeToCreator,
+                HeadAlertMessages.EntityRenameNoticeToCreator(new(oldName, newName)),
+                audience.Value,
+                creator.BranchId.Value,
+                entry.ReviewedById ?? creator.Id,
+                PublicEntityId: entry.Id,
+                RecipientUserId: creator.Id,
+                EntityOperation: ActionKindCatalog.Rename),
+            supersedePlan: null,
+            occurredAt: DateTime.UtcNow,
+            ct: token);
     }
     /// <summary>
     /// نقطة الخنق الوحيدة لكتابة أحداث سجل التغييرات: ترفض صنفًا خارج الكتالوج
@@ -588,50 +601,64 @@ public sealed partial class PublicEntityService : IPublicEntityService
     }
     // ── مساعدات البث العام لكل الفروع (أ1) ──
 
-    /// <summary>تنبيه تعميم لكل المحامين في كل الفروع النشطة — كل تنبيه برسالة مُقصّرة عند 2000.</summary>
+    /// <summary>تعميم تغيير جهة على محامي كل فرع نشط — صف Outbox واحد لكل فرع.</summary>
     /// <remarks>يُلتحم بالمعاملة الخارجية الواحدة التي يفتحها <see cref="TransactionRunner"/>، فيُثبَّت الكل أو يُتراجع الكل مع سائر التغييرات.</remarks>
-    private async Task BroadcastEntityChangeToAllLawyersAsync(string message, int actorUserId, CancellationToken token)
+    private async Task BroadcastEntityChangeToAllLawyersAsync(
+        string kind,
+        string message,
+        string entityOperation,
+        string entityGroupKey,
+        int actorUserId,
+        CancellationToken token)
     {
+        var occurredAt = DateTime.UtcNow;
         var grouped = await _headAlerts.ListAllActiveLawyersGroupedByBranchAsync(token);
         foreach (var (branchId, lawyers) in grouped)
         {
             if (lawyers.Count == 0)
                 continue;
-            var alert = new HeadAlert
-            {
-                BranchId = branchId,
-                CreatedById = actorUserId,
-                TargetType = HeadAlertTargetType.Branch,
-                Message = message.Length > 2000 ? message[..2000] : message,
-                CreatedAt = DateTime.UtcNow,
-                Recipients = { },
-            };
-            foreach (var lawyer in lawyers)
-                alert.Recipients.Add(new HeadAlertRecipient { UserId = lawyer.Id });
-            await _headAlerts.AddAsync(alert, token);
+            await _alertOutbox.EnqueueSystemAsync(
+                new CreateSystemHeadAlertRequest(
+                    kind,
+                    message,
+                    HeadAlertAudience.BranchLawyers,
+                    branchId,
+                    actorUserId,
+                    EntityOperation: entityOperation,
+                    EntityGroupKey: entityGroupKey),
+                supersedePlan: null,
+                occurredAt: occurredAt,
+                ct: token);
         }
     }
-    /// <summary>تنبيه لكل رؤساء الأقسام في كل الفروع النشطة.</summary>
+    /// <summary>تعميم تغيير جهة على رؤساء كل فرع نشط — صف Outbox واحد لكل فرع.</summary>
     /// <remarks>يُلتحم بالمعاملة الخارجية الواحدة التي يفتحها <see cref="TransactionRunner"/>، فيُثبَّت الكل أو يُتراجع الكل مع سائر التغييرات.</remarks>
-    private async Task BroadcastToAllHeadsAsync(string message, int actorUserId, CancellationToken token)
+    private async Task BroadcastToAllHeadsAsync(
+        string kind,
+        string message,
+        string entityOperation,
+        string entityGroupKey,
+        int actorUserId,
+        CancellationToken token)
     {
+        var occurredAt = DateTime.UtcNow;
         var grouped = await _headAlerts.ListAllActiveHeadsGroupedByBranchAsync(token);
         foreach (var (branchId, heads) in grouped)
         {
             if (heads.Count == 0)
                 continue;
-            var alert = new HeadAlert
-            {
-                BranchId = branchId,
-                CreatedById = actorUserId,
-                TargetType = HeadAlertTargetType.Branch,
-                Message = message.Length > 2000 ? message[..2000] : message,
-                CreatedAt = DateTime.UtcNow,
-                Recipients = { },
-            };
-            foreach (var head in heads)
-                alert.Recipients.Add(new HeadAlertRecipient { UserId = head.Id });
-            await _headAlerts.AddAsync(alert, token);
+            await _alertOutbox.EnqueueSystemAsync(
+                new CreateSystemHeadAlertRequest(
+                    kind,
+                    message,
+                    HeadAlertAudience.BranchHeads,
+                    branchId,
+                    actorUserId,
+                    EntityOperation: entityOperation,
+                    EntityGroupKey: entityGroupKey),
+                supersedePlan: null,
+                occurredAt: occurredAt,
+                ct: token);
         }
     }
     // ── مساعدات مشتركة ──

@@ -68,15 +68,17 @@ public class PortalScopingTests : IDisposable
 
         _portal = PortalServiceFactory.Create(_db, _audit);
 
+        var tx = new TransactionRunner(_db);
         _entities = new PublicEntityService(
             new PublicEntityRepository(_db),
             new Repository<Branch>(_db),
             new HeadAlertRepository(_db),
+            new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
             new Repository<PublicEntityChangeEvent>(_db),
             new Repository<DocumentOccurrence>(_db),
             new Repository<ParentEditSuggestion>(_db),
             new UnitOfWork(_db),
-            new TransactionRunner(_db),
+            tx,
             _audit,
             new UserRepository(_db),
             new AppealRepository(_db));

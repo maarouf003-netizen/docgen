@@ -1,3 +1,4 @@
+using System.Text.Json;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Domain.Entities;
@@ -135,20 +136,46 @@ public sealed class HeadAlertOutboxStore : IHeadAlertOutboxStore
         int successorId,
         CancellationToken ct = default)
     {
-        // صفوف `pending` فقط: صف `processing` جارٍ معالجته فإعادة توجيهه تسبّب تعارضًا،
-        // و`processed`/`failed` انتهت فلا معنى لإعادة توجيهها.
+        // الفلترة على العمود المفهرس (Status, TargetUserId) — لا تُقرأ كل الرسائل
+        // المعلّقة ولا تُفكّ حمولاتها. العمود مرآة الحمولة عند التسجيل، فهو مرجع
+        // الاختيار؛ وتُفرض المطابقة مجددًا عند الكتابة.
         var rows = await _db.HeadAlertOutboxMessages
-            .Where(m => m.Status == HeadAlertOutboxStatus.Pending && m.TargetUserId == predecessorId)
+            .Where(m => m.Status == HeadAlertOutboxStatus.Pending
+                        && m.TargetUserId == predecessorId)
             .ToListAsync(ct);
 
         if (rows.Count == 0)
             return 0;
 
+        var updated = 0;
         foreach (var row in rows)
+        {
+            HeadAlertOutboxPayloadV1 payload;
+            try
+            {
+                payload = HeadAlertOutboxPayloadSerializer.Deserialize(row.Payload);
+            }
+            catch (JsonException)
+            {
+                // حمولة تالفة: يبقى الصف كما هو (يتولاه المشغّل كـinvalid_payload)
+                // حتى لا يُفصل العمود عن الحمولة ويُوجَّه التنبيه إلى شخص خطأ.
+                continue;
+            }
+
+            // لا يُعاد كتابة مستلم الطلب الأصلي عمدًا: بقاؤه على السلف هو ما يمكّن
+            // المعالج من تمييز تجاوز التعاقب (TargetUserId ≠ مستلم الطلب) عن مستلم
+            // صريح غير موجود، فيُسجَّل الأول recipient_inactive والثاني no_recipients.
+            row.Payload = HeadAlertOutboxPayloadSerializer.Serialize(
+                payload with { TargetUserId = successorId });
             row.TargetUserId = successorId;
+            updated++;
+        }
+
+        if (updated == 0)
+            return 0;
 
         await _db.SaveChangesAsync(ct);
-        return rows.Count;
+        return updated;
     }
 
     public async Task<int> CleanupAsync(
@@ -173,6 +200,28 @@ public sealed class HeadAlertOutboxStore : IHeadAlertOutboxStore
         _db.HeadAlertOutboxMessages.RemoveRange(expired);
         await _db.SaveChangesAsync(ct);
         return expired.Count;
+    }
+
+    public async Task<HeadAlertOutboxHealth> GetHealthAsync(CancellationToken ct = default)
+    {
+        var pending = _db.HeadAlertOutboxMessages
+            .AsNoTracking()
+            .Where(m => m.Status == HeadAlertOutboxStatus.Pending);
+
+        var pendingCount = await pending.CountAsync(ct);
+        var oldest = pendingCount == 0
+            ? null
+            : await pending
+                .OrderBy(m => m.CreatedAt)
+                .ThenBy(m => m.Id)
+                .Select(m => (DateTime?)m.CreatedAt)
+                .FirstAsync(ct);
+
+        var failed = await _db.HeadAlertOutboxMessages
+            .AsNoTracking()
+            .CountAsync(m => m.Status == HeadAlertOutboxStatus.Failed, ct);
+
+        return new HeadAlertOutboxHealth(pendingCount, oldest, failed);
     }
 
     public async Task<T> ExecuteInTransactionAsync<T>(

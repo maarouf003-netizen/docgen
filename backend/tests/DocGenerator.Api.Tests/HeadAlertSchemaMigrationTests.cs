@@ -1,10 +1,16 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
+using DocGenerator.Infrastructure.Persistence.Migrations;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations.Operations;
 
 namespace DocGenerator.Api.Tests;
 
@@ -19,6 +25,9 @@ public class HeadAlertSchemaMigrationTests
 
     /// <summary>اسم هجرة Outbox (SQLite) — مرجع اختباري ملزم.</summary>
     private const string OutboxMigration = "20261020202554_HeadAlertOutbox_Create";
+
+    /// <summary>اسم هجرة M2 (SQLite) — مرجع اختباري ملزم.</summary>
+    private const string BackfillMigration = "20261021232824_HeadAlertTaxonomy_Backfill";
 
     private static (string Path, DocGeneratorDbContext Db) CreateDb()
     {
@@ -372,5 +381,1440 @@ public class HeadAlertSchemaMigrationTests
             await db.DisposeAsync();
             Cleanup(path);
         }
+    }
+
+    /// <summary>
+    /// M2 لا تلمس صفوف PR-2 غير الفارغة، وتعبّئ القديمة فقط، وتؤرشف تنبيهات
+    /// مراجعة الجهات المتقاعدة.
+    /// </summary>
+    [Fact]
+    public async Task Migration_Backfill_LegacyOnlyDoesNotOverwriteNewRows()
+    {
+        var (path, db) = CreateDb();
+        try
+        {
+            await db.GetService<IMigrator>().MigrateAsync(OutboxMigration);
+            var (branch, user) = await SeedBranchAndUserAsync(db);
+
+            var legacyCreatedAt = new DateTime(2026, 10, 1, 8, 0, 0, DateTimeKind.Utc);
+            var newLastChangedAt = new DateTime(2026, 10, 21, 9, 0, 0, DateTimeKind.Utc);
+            var legacy = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Branch,
+                Message = "تنبيه قديم بلا تصنيف",
+                CreatedAt = legacyCreatedAt,
+            };
+            var newRow = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Lawyer,
+                TargetLawyerId = user.Id,
+                Kind = HeadAlertKindCatalog.DelegationMirrorUpdated,
+                DedupeKey = "preserve:key",
+                Message = "تنبيه جديد لا يُمس",
+                CreatedAt = new DateTime(2026, 10, 20, 8, 0, 0, DateTimeKind.Utc),
+                LastContentChangedAt = newLastChangedAt,
+            };
+            var retiredReview = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Branch,
+                Message = "المحامي فلان أدخل جهة عامة جديدة «جهة» (دمشق / أول) — يرجى مراجعتها",
+                CreatedAt = legacyCreatedAt.AddMinutes(5),
+            };
+            db.HeadAlerts.AddRange(legacy, newRow, retiredReview);
+            await db.SaveChangesAsync();
+
+            await db.GetService<IMigrator>().MigrateAsync(BackfillMigration);
+            db.ChangeTracker.Clear();
+
+            var storedLegacy = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.Id == legacy.Id);
+            Assert.Equal(HeadAlertKindCatalog.Legacy, storedLegacy.Kind);
+            Assert.Equal(legacyCreatedAt, storedLegacy.LastContentChangedAt);
+            Assert.Null(storedLegacy.DedupeKey);
+
+            var storedNew = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.Id == newRow.Id);
+            Assert.Equal(HeadAlertKindCatalog.DelegationMirrorUpdated, storedNew.Kind);
+            Assert.Equal("preserve:key", storedNew.DedupeKey);
+            Assert.Equal("تنبيه جديد لا يُمس", storedNew.Message);
+            Assert.Equal(newLastChangedAt, storedNew.LastContentChangedAt);
+            Assert.False(storedNew.IsArchived);
+
+            var storedRetired = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.Id == retiredReview.Id);
+            Assert.True(storedRetired.IsArchived);
+            Assert.NotNull(storedRetired.ArchivedAt);
+            Assert.Null(storedRetired.DedupeKey);
+        }
+        finally
+        {
+            await db.DisposeAsync();
+            Cleanup(path);
+        }
+    }
+
+    /// <summary>دمج تكرارات (HeadAlertId, UserId) قبل إنشاء القيد الفريد.</summary>
+    [Fact]
+    public async Task Migration_DuplicateRecipientRows_MergedBeforeUniqueConstraint()
+    {
+        var (path, db) = CreateDb();
+        try
+        {
+            await db.GetService<IMigrator>().MigrateAsync(OutboxMigration);
+            var (branch, user) = await SeedBranchAndUserAsync(db);
+
+            var alert = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Lawyer,
+                TargetLawyerId = user.Id,
+                Message = "تنبيه لتكرار المستلم",
+                CreatedAt = new DateTime(2026, 10, 20, 10, 0, 0, DateTimeKind.Utc),
+            };
+            db.HeadAlerts.Add(alert);
+            await db.SaveChangesAsync();
+
+            var earliestRead = new DateTime(2026, 10, 20, 11, 0, 0, DateTimeKind.Utc);
+            db.HeadAlertRecipients.AddRange(
+                new HeadAlertRecipient { HeadAlertId = alert.Id, UserId = user.Id, IsRead = false },
+                new HeadAlertRecipient { HeadAlertId = alert.Id, UserId = user.Id, IsRead = true, ReadAt = earliestRead.AddHours(1) },
+                new HeadAlertRecipient { HeadAlertId = alert.Id, UserId = user.Id, IsRead = true, ReadAt = earliestRead });
+            await db.SaveChangesAsync();
+
+            await db.GetService<IMigrator>().MigrateAsync(BackfillMigration);
+            db.ChangeTracker.Clear();
+
+            var recipients = await db.HeadAlertRecipients.AsNoTracking()
+                .Where(r => r.HeadAlertId == alert.Id)
+                .ToListAsync();
+            var recipient = Assert.Single(recipients);
+            Assert.True(recipient.IsRead);
+            Assert.Equal(earliestRead, recipient.ReadAt);
+
+            var indexes = await db.Database
+                .SqlQueryRaw<string>("SELECT name AS Value FROM sqlite_master WHERE type = 'index' AND tbl_name = 'HeadAlertRecipients'")
+                .ToListAsync();
+            Assert.Contains("UX_HeadAlertRecipients_HeadAlertId_UserId", indexes);
+        }
+        finally
+        {
+            await db.DisposeAsync();
+            Cleanup(path);
+        }
+    }
+
+    /// <summary>حل تصادم DedupeKey: حامل واحد نشط، والخاسر مؤرشف بلا مفتاح.</summary>
+    [Fact]
+    public async Task Migration_DuplicateDedupeKeyCollision_ResolvedBeforeUniqueIndex()
+    {
+        var (path, db) = CreateDb();
+        try
+        {
+            await db.GetService<IMigrator>().MigrateAsync(OutboxMigration);
+            var (branch, user) = await SeedBranchAndUserAsync(db);
+
+            const string key = "delegation:1:recipient:1:delegation_mirror_updated";
+            var older = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Lawyer,
+                TargetLawyerId = user.Id,
+                Kind = HeadAlertKindCatalog.DelegationMirrorUpdated,
+                DedupeKey = key,
+                Message = "النسخة الأقدم",
+                CreatedAt = new DateTime(2026, 10, 20, 8, 0, 0, DateTimeKind.Utc),
+                LastContentChangedAt = new DateTime(2026, 10, 20, 8, 0, 0, DateTimeKind.Utc),
+            };
+            var newer = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Lawyer,
+                TargetLawyerId = user.Id,
+                Kind = HeadAlertKindCatalog.DelegationMirrorUpdated,
+                DedupeKey = key,
+                Message = "النسخة الأحدث",
+                CreatedAt = new DateTime(2026, 10, 20, 9, 0, 0, DateTimeKind.Utc),
+                LastContentChangedAt = new DateTime(2026, 10, 20, 9, 0, 0, DateTimeKind.Utc),
+            };
+            db.HeadAlerts.AddRange(older, newer);
+            await db.SaveChangesAsync();
+
+            db.HeadAlertRecipients.AddRange(
+                new HeadAlertRecipient { HeadAlertId = older.Id, UserId = user.Id, IsRead = true, ReadAt = new DateTime(2026, 10, 20, 10, 0, 0, DateTimeKind.Utc) },
+                new HeadAlertRecipient { HeadAlertId = newer.Id, UserId = user.Id, IsRead = false });
+            await db.SaveChangesAsync();
+
+            await db.GetService<IMigrator>().MigrateAsync(BackfillMigration);
+            db.ChangeTracker.Clear();
+
+            var holder = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.DedupeKey == key);
+            Assert.Equal(newer.Id, holder.Id);
+            Assert.False(holder.IsArchived);
+
+            var loser = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.Id == older.Id);
+            Assert.True(loser.IsArchived);
+            Assert.Equal(HeadAlertKindCatalog.Legacy, loser.Kind);
+            Assert.Null(loser.DedupeKey);
+            Assert.NotNull(loser.ArchivedAt);
+
+            var recipient = Assert.Single(await db.HeadAlertRecipients.AsNoTracking()
+                .Where(r => r.HeadAlertId == holder.Id)
+                .ToListAsync());
+            Assert.True(recipient.IsRead);
+            Assert.Equal(new DateTime(2026, 10, 20, 10, 0, 0, DateTimeKind.Utc), recipient.ReadAt);
+
+            var indexes = await db.Database
+                .SqlQueryRaw<string>("SELECT name AS Value FROM sqlite_master WHERE type = 'index' AND tbl_name = 'HeadAlerts'")
+                .ToListAsync();
+            Assert.Contains("UX_HeadAlerts_DedupeKey_Active", indexes);
+        }
+        finally
+        {
+            await db.DisposeAsync();
+            Cleanup(path);
+        }
+    }
+
+    /// <summary>الفهرس الجزئي الفريد يرفض مفتاحًا نشطًا مكررًا، ويقبله بعد أرشفة الصف الحالي.</summary>
+    [Fact]
+    public async Task Migration_PartialUniqueIndex_BlocksDuplicateActiveKey_AllowsAfterArchive()
+    {
+        var (path, db) = CreateDb();
+        try
+        {
+            await db.GetService<IMigrator>().MigrateAsync(BackfillMigration);
+            var (branch, user) = await SeedBranchAndUserAsync(db);
+
+            var activeKey = "delegation:7:recipient:9:delegation_pending_approval";
+            var first = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Lawyer,
+                TargetLawyerId = user.Id,
+                Kind = HeadAlertKindCatalog.DelegationPendingApproval,
+                DedupeKey = activeKey,
+                Message = "الأول",
+                CreatedAt = new DateTime(2026, 10, 20, 8, 0, 0, DateTimeKind.Utc),
+                LastContentChangedAt = new DateTime(2026, 10, 20, 8, 0, 0, DateTimeKind.Utc),
+            };
+            db.HeadAlerts.Add(first);
+            await db.SaveChangesAsync();
+
+            var duplicate = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Lawyer,
+                TargetLawyerId = user.Id,
+                Kind = HeadAlertKindCatalog.DelegationPendingApproval,
+                DedupeKey = activeKey,
+                Message = "المكرر النشط",
+                CreatedAt = new DateTime(2026, 10, 20, 9, 0, 0, DateTimeKind.Utc),
+                LastContentChangedAt = new DateTime(2026, 10, 20, 9, 0, 0, DateTimeKind.Utc),
+            };
+            db.HeadAlerts.Add(duplicate);
+
+            var ex = await Assert.ThrowsAsync<DbUpdateException>(async () => await db.SaveChangesAsync());
+            Assert.IsType<SqliteException>(ex.InnerException);
+
+            db.ChangeTracker.Clear();
+            var storedFirst = await db.HeadAlerts.SingleAsync(a => a.Id == first.Id);
+            storedFirst.IsArchived = true;
+            storedFirst.ArchivedAt = new DateTime(2026, 10, 20, 10, 0, 0, DateTimeKind.Utc);
+            storedFirst.DedupeKey = null;
+            await db.SaveChangesAsync();
+
+            var duplicate2 = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Lawyer,
+                TargetLawyerId = user.Id,
+                Kind = HeadAlertKindCatalog.DelegationPendingApproval,
+                DedupeKey = activeKey,
+                Message = "المكرر النشط بعد الأرشفة",
+                CreatedAt = new DateTime(2026, 10, 20, 11, 0, 0, DateTimeKind.Utc),
+                LastContentChangedAt = new DateTime(2026, 10, 20, 11, 0, 0, DateTimeKind.Utc),
+            };
+            db.HeadAlerts.Add(duplicate2);
+            await db.SaveChangesAsync();
+
+            var storedDuplicate = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.DedupeKey == activeKey && !a.IsArchived);
+            Assert.Equal(duplicate2.Message, storedDuplicate.Message);
+
+            var indexes = await db.Database
+                .SqlQueryRaw<string>("SELECT name AS Value FROM sqlite_master WHERE type = 'index' AND tbl_name = 'HeadAlerts'")
+                .ToListAsync();
+            Assert.Contains("UX_HeadAlerts_DedupeKey_Active", indexes);
+        }
+        finally
+        {
+            await db.DisposeAsync();
+            Cleanup(path);
+        }
+    }
+
+    /// <summary>تصنيف المعلقات القديمة وربط ExecutionCircuitId من المستند.</summary>
+    [Fact]
+    public async Task Migration_Backfill_SetsLastContentChangedAndCircuit()
+    {
+        var (path, db) = CreateDb();
+        try
+        {
+            await db.GetService<IMigrator>().MigrateAsync(OutboxMigration);
+            var (branch, user) = await SeedBranchAndUserAsync(db);
+
+            var circuit = new ExecutionCircuit
+            {
+                BranchId = branch.Id,
+                Name = "دائرة التنفيذ الأولى",
+                NameNorm = "دائرة التنفيذ الاولى",
+                CreatedById = user.Id,
+            };
+            db.ExecutionCircuits.Add(circuit);
+            await db.SaveChangesAsync();
+
+            var document = new Document
+            {
+                CreatedById = user.Id,
+                BranchId = branch.Id,
+                ExecutionCircuitId = circuit.Id,
+            };
+            db.Documents.Add(document);
+            await db.SaveChangesAsync();
+
+            var createdAt = new DateTime(2026, 10, 20, 12, 0, 0, DateTimeKind.Utc);
+            var alert = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Lawyer,
+                TargetLawyerId = user.Id,
+                DocumentId = document.Id,
+                Message = $"{ExecutionCircuitPendingPrefix}{circuit.Name} — يرجى تحديث معلوماتها",
+                CreatedAt = createdAt,
+            };
+            db.HeadAlerts.Add(alert);
+            await db.SaveChangesAsync();
+            db.HeadAlertRecipients.Add(new HeadAlertRecipient { HeadAlertId = alert.Id, UserId = user.Id });
+            await db.SaveChangesAsync();
+
+            await db.GetService<IMigrator>().MigrateAsync(BackfillMigration);
+            db.ChangeTracker.Clear();
+
+            var stored = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.Id == alert.Id);
+            Assert.Equal(HeadAlertKindCatalog.CircuitPendingDocuments, stored.Kind);
+            Assert.Equal(circuit.Id, stored.ExecutionCircuitId);
+            Assert.Equal(createdAt, stored.LastContentChangedAt);
+            Assert.Equal(
+                $"circuit-pending:{branch.Id}:{circuit.Id}:recipient:{user.Id}:circuit_pending_documents",
+                stored.DedupeKey);
+        }
+        finally
+        {
+            await db.DisposeAsync();
+            Cleanup(path);
+        }
+    }
+
+    /// <summary>
+    /// تصنيف تدفقات الإنابة والاستئناف وكتاب المطالعة القديمة وتوليد مفاتيحها
+    /// وفق §6.5، مع بقاء الصفوف غير المطابقة نصيًا legacy.
+    /// </summary>
+    [Fact]
+    public async Task Migration_LegacyDelegationAppealReview_ClassifiedWithKeys()
+    {
+        var (path, db) = CreateDb();
+        try
+        {
+            await db.GetService<IMigrator>().MigrateAsync(OutboxMigration);
+            var (branch, user) = await SeedBranchAndUserAsync(db);
+
+            var document = new Document
+            {
+                CreatedById = user.Id,
+                BranchId = branch.Id,
+            };
+            db.Documents.Add(document);
+            await db.SaveChangesAsync();
+
+            var delegation = new DocumentDelegation
+            {
+                SourceDocumentId = document.Id,
+                SourceDocument = document,
+                CreatedById = user.Id,
+                CreatedBy = user,
+            };
+            db.DocumentDelegations.Add(delegation);
+            await db.SaveChangesAsync();
+
+            var appeal = new DocumentAppeal
+            {
+                DocumentId = document.Id,
+                Document = document,
+                CreatedById = user.Id,
+                CreatedBy = user,
+            };
+            db.DocumentAppeals.Add(appeal);
+            await db.SaveChangesAsync();
+
+            var review = new ReviewLetter
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                LetterNumber = "R-1",
+                CreatedBy = user,
+            };
+            db.ReviewLetters.Add(review);
+            await db.SaveChangesAsync();
+
+            var createdAt = new DateTime(2026, 10, 20, 13, 0, 0, DateTimeKind.Utc);
+            var delegationAlert = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Head,
+                DelegationId = delegation.Id,
+                Message = "بانتظار اعتماد الإنابة — سطّر المحامي فلان إنابة",
+                CreatedAt = createdAt,
+            };
+            var appealAlert = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Head,
+                AppealId = appeal.Id,
+                Message = "يرجى التفضل بإسناد الاستئناف (ملف 1 — محال من فلان)",
+                CreatedAt = createdAt.AddMinutes(1),
+            };
+            var reviewAlert = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Lawyer,
+                TargetLawyerId = user.Id,
+                ReviewLetterId = review.Id,
+                Message = "رئيس القسم ردّ على كتاب مطالعتك رقم R-1: تم",
+                CreatedAt = createdAt.AddMinutes(2),
+            };
+            db.HeadAlerts.AddRange(delegationAlert, appealAlert, reviewAlert);
+            await db.SaveChangesAsync();
+
+            db.HeadAlertRecipients.AddRange(
+                new HeadAlertRecipient { HeadAlertId = delegationAlert.Id, UserId = user.Id },
+                new HeadAlertRecipient { HeadAlertId = appealAlert.Id, UserId = user.Id });
+            await db.SaveChangesAsync();
+
+            await db.GetService<IMigrator>().MigrateAsync(BackfillMigration);
+            db.ChangeTracker.Clear();
+
+            var storedDelegation = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.Id == delegationAlert.Id);
+            Assert.Equal(HeadAlertKindCatalog.DelegationPendingApproval, storedDelegation.Kind);
+            Assert.Equal(
+                $"delegation:{delegation.Id}:recipient:{user.Id}:delegation_pending_approval",
+                storedDelegation.DedupeKey);
+            Assert.Equal(createdAt, storedDelegation.LastContentChangedAt);
+
+            var storedAppeal = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.Id == appealAlert.Id);
+            Assert.Equal(HeadAlertKindCatalog.AppealReferralToHead, storedAppeal.Kind);
+            Assert.Equal(
+                $"appeal:{appeal.Id}:recipient:{user.Id}:appeal_referral_to_head",
+                storedAppeal.DedupeKey);
+
+            var storedReview = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.Id == reviewAlert.Id);
+            Assert.Equal(HeadAlertKindCatalog.ReviewLetterReply, storedReview.Kind);
+            Assert.Equal(
+                $"review:{review.Id}:recipient:{user.Id}:review_letter_reply",
+                storedReview.DedupeKey);
+        }
+        finally
+        {
+            await db.DisposeAsync();
+            Cleanup(path);
+        }
+    }
+
+    /// <summary>
+    /// §14.1: صفوف منشئ الملف النظامية القديمة تُصنَّف بمفتاح المستند/المنشئ،
+    /// بينما التنبيه اليدوي وصاحب النص نفسه على نوع هدف خاطئ يبقيان legacy.
+    /// </summary>
+    [Fact]
+    public async Task Migration_LegacyDocumentCreator_ClassifiedOrExcludedManual()
+    {
+        var (path, db) = CreateDb();
+        try
+        {
+            await db.GetService<IMigrator>().MigrateAsync(OutboxMigration);
+            var (branch, user) = await SeedBranchAndUserAsync(db);
+
+            var document = new Document
+            {
+                CreatedById = user.Id,
+                BranchId = branch.Id,
+            };
+            db.Documents.Add(document);
+            await db.SaveChangesAsync();
+
+            var delegation = new DocumentDelegation
+            {
+                SourceDocumentId = document.Id,
+                SourceDocument = document,
+                CreatedById = user.Id,
+                CreatedBy = user,
+            };
+            db.DocumentDelegations.Add(delegation);
+            await db.SaveChangesAsync();
+
+            var createdAt = new DateTime(2026, 10, 20, 13, 3, 0, DateTimeKind.Utc);
+            var manualAlert = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Document,
+                DocumentId = document.Id,
+                Message = "تنبيه من رئيس القسم: أحال إليك رئيس القسم ملف إنابة لقيده أصولًا",
+                CreatedAt = createdAt,
+            };
+            var creatorAssigned = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Document,
+                DocumentId = document.Id,
+                Message = "أحال إليك رئيس القسم ملف إنابة لقيده أصولًا في محكمة دمشق (ملف 1)",
+                CreatedAt = createdAt.AddMinutes(1),
+            };
+            var creatorRejected = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Document,
+                DocumentId = document.Id,
+                DelegationId = delegation.Id,
+                Message = "رُفضت الإنابة (رقم 1) للدائرة الخطأ — سبب — صحّح الدائرة من بطاقة تشعبات الملف",
+                CreatedAt = createdAt.AddMinutes(2),
+            };
+            var creatorCompleted = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Document,
+                DocumentId = document.Id,
+                Message = "أُعيدت الإنابة المسطرة إلى دائرة محكمة دمشق في ملف 1 منفذة — البدل غطى كامل المديونية",
+                CreatedAt = createdAt.AddMinutes(3),
+            };
+            var sameTextWrongTarget = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Lawyer,
+                TargetLawyerId = user.Id,
+                DocumentId = document.Id,
+                Message = "أحال إليك رئيس القسم ملف إنابة لقيده أصولًا في محكمة دمشق (ملف 1)",
+                CreatedAt = createdAt.AddMinutes(4),
+            };
+            db.HeadAlerts.AddRange(
+                manualAlert,
+                creatorAssigned,
+                creatorRejected,
+                creatorCompleted,
+                sameTextWrongTarget);
+            await db.SaveChangesAsync();
+
+            await db.GetService<IMigrator>().MigrateAsync(BackfillMigration);
+            db.ChangeTracker.Clear();
+
+            var storedManual = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.Id == manualAlert.Id);
+            Assert.Equal(HeadAlertKindCatalog.Legacy, storedManual.Kind);
+            Assert.Null(storedManual.DedupeKey);
+            Assert.False(storedManual.IsArchived);
+
+            foreach (var (alert, kind) in new[]
+                     {
+                         (creatorAssigned, HeadAlertKindCatalog.DelegationAssignedToLawyer),
+                         (creatorRejected, HeadAlertKindCatalog.DelegationRejectedWrongCourt),
+                         (creatorCompleted, HeadAlertKindCatalog.DelegationCompletedReturned),
+                     })
+            {
+                var stored = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.Id == alert.Id);
+                Assert.Equal(kind, stored.Kind);
+                Assert.Equal($"document:{document.Id}:recipient:{user.Id}:{kind}", stored.DedupeKey);
+            }
+
+            // النص نفسه على TargetType=Lawyer لا يُصنَّف كتنبيه منشئ ملف.
+            var storedWrongTarget = await db.HeadAlerts.AsNoTracking()
+                .SingleAsync(a => a.Id == sameTextWrongTarget.Id);
+            Assert.Equal(HeadAlertKindCatalog.Legacy, storedWrongTarget.Kind);
+            Assert.Null(storedWrongTarget.DedupeKey);
+        }
+        finally
+        {
+            await db.DisposeAsync();
+            Cleanup(path);
+        }
+    }
+
+    /// <summary>تراجع M2 يعيد مخطط ما قبلها بلا عكس بيانات الـbackfill.</summary>
+    [Fact]
+    public async Task Migration_Backfill_Down_RestoresPreBackfillIndexes()
+    {
+        var (path, db) = CreateDb();
+        try
+        {
+            await db.GetService<IMigrator>().MigrateAsync(OutboxMigration);
+            var (branch, user) = await SeedBranchAndUserAsync(db);
+            db.HeadAlerts.Add(new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Branch,
+                Message = "صف يبقى بعد التراجع",
+            });
+            await db.SaveChangesAsync();
+
+            await db.GetService<IMigrator>().MigrateAsync(BackfillMigration);
+            await db.GetService<IMigrator>().MigrateAsync(OutboxMigration);
+            db.ChangeTracker.Clear();
+
+            var indexes = await db.Database
+                .SqlQueryRaw<string>("SELECT name AS Value FROM sqlite_master WHERE type = 'index' AND tbl_name = 'HeadAlerts'")
+                .ToListAsync();
+            Assert.Contains("IX_HeadAlerts_TargetLawyerId", indexes);
+            Assert.DoesNotContain("UX_HeadAlerts_DedupeKey_Active", indexes);
+
+            var columns = await db.Database
+                .SqlQueryRaw<string>("SELECT name AS Value FROM pragma_table_info('HeadAlerts')")
+                .ToListAsync();
+            Assert.Contains("Kind", columns);
+            Assert.Contains("DedupeKey", columns);
+            Assert.Contains("ExecutionCircuitId", columns);
+
+            var foreignKeys = await db.Database
+                .SqlQueryRaw<string>("SELECT \"table\" AS Value FROM pragma_foreign_key_list('HeadAlerts')")
+                .ToListAsync();
+            Assert.DoesNotContain("ExecutionCircuits", foreignKeys);
+        }
+        finally
+        {
+            await db.DisposeAsync();
+            Cleanup(path);
+        }
+    }
+
+    /// <summary>
+    /// §6.5/§14.1: صفوف التيار الواحد القديمة تُرقّى بمفتاح واحد، والازدواج داخل
+    /// التيار يُحسم بحامل نشط واحد ودمج قراءة المستلمين وأرشفة الباقي.
+    /// </summary>
+    [Fact]
+    public async Task Migration_LegacyBackfill_SingleActiveRowPerStream()
+    {
+        var (path, db) = CreateDb();
+        try
+        {
+            await db.GetService<IMigrator>().MigrateAsync(OutboxMigration);
+            var (branch, user) = await SeedBranchAndUserAsync(db);
+
+            var document = new Document
+            {
+                CreatedById = user.Id,
+                BranchId = branch.Id,
+            };
+            db.Documents.Add(document);
+            await db.SaveChangesAsync();
+
+            var delegation = new DocumentDelegation
+            {
+                SourceDocumentId = document.Id,
+                CreatedById = user.Id,
+            };
+            var appeal = new DocumentAppeal
+            {
+                DocumentId = document.Id,
+                CreatedById = user.Id,
+            };
+            db.DocumentDelegations.Add(delegation);
+            db.DocumentAppeals.Add(appeal);
+            await db.SaveChangesAsync();
+
+            var olderCreatedAt = new DateTime(2026, 10, 20, 8, 0, 0, DateTimeKind.Utc);
+            var newerCreatedAt = olderCreatedAt.AddHours(2);
+            var olderDelegation = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Head,
+                DelegationId = delegation.Id,
+                Message = "بانتظار اعتماد الإنابة — سطّر المحامي فلان إنابة",
+                CreatedAt = olderCreatedAt,
+            };
+            var newerDelegation = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Head,
+                DelegationId = delegation.Id,
+                Message = "بانتظار اعتماد الإنابة — سطّر المحامي فلان إنابة",
+                CreatedAt = newerCreatedAt,
+            };
+            var appealAlert = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Head,
+                AppealId = appeal.Id,
+                Message = "يرجى التفضل بإسناد الاستئناف (ملف 1 — محال من فلان)",
+                CreatedAt = olderCreatedAt.AddMinutes(30),
+            };
+            db.HeadAlerts.AddRange(olderDelegation, newerDelegation, appealAlert);
+            await db.SaveChangesAsync();
+
+            db.HeadAlertRecipients.AddRange(
+                new HeadAlertRecipient
+                {
+                    HeadAlertId = olderDelegation.Id,
+                    UserId = user.Id,
+                    IsRead = true,
+                    ReadAt = olderCreatedAt.AddHours(1),
+                },
+                new HeadAlertRecipient { HeadAlertId = newerDelegation.Id, UserId = user.Id },
+                new HeadAlertRecipient { HeadAlertId = appealAlert.Id, UserId = user.Id });
+            await db.SaveChangesAsync();
+
+            await db.GetService<IMigrator>().MigrateAsync(BackfillMigration);
+            db.ChangeTracker.Clear();
+
+            // لا صفان نشطان بالمفتاح نفسه — ما يفرضه الفهرس الفريد الجزئي.
+            var duplicateActiveKeys = await db.Database.SqlQueryRaw<int>(
+                """
+                SELECT COUNT(*) AS Value
+                FROM (
+                    SELECT "DedupeKey"
+                    FROM "HeadAlerts"
+                    WHERE NOT "IsArchived" AND "DedupeKey" IS NOT NULL
+                    GROUP BY "DedupeKey"
+                    HAVING COUNT(*) > 1)
+                """).SingleAsync();
+            Assert.Equal(0, duplicateActiveKeys);
+
+            var delegationKey =
+                $"delegation:{delegation.Id}:recipient:{user.Id}:delegation_pending_approval";
+            var holder = await db.HeadAlerts.AsNoTracking()
+                .SingleAsync(a => a.DedupeKey == delegationKey);
+            Assert.Equal(newerDelegation.Id, holder.Id);
+            Assert.Equal(HeadAlertKindCatalog.DelegationPendingApproval, holder.Kind);
+            Assert.False(holder.IsArchived);
+
+            // قراءة النُسخ المدموجة تُحفظ: الأقدم كان مقروءًا، والحامل أحدث نسخة.
+            var mergedRecipient = Assert.Single(await db.HeadAlertRecipients.AsNoTracking()
+                .Where(r => r.HeadAlertId == holder.Id)
+                .ToListAsync());
+            Assert.True(mergedRecipient.IsRead);
+            Assert.Equal(olderCreatedAt.AddHours(1), mergedRecipient.ReadAt);
+
+            var loser = await db.HeadAlerts.AsNoTracking()
+                .SingleAsync(a => a.Id == olderDelegation.Id);
+            Assert.True(loser.IsArchived);
+            Assert.Equal(HeadAlertKindCatalog.Legacy, loser.Kind);
+            Assert.Null(loser.DedupeKey);
+            Assert.NotNull(loser.ArchivedAt);
+
+            // تيار ثانٍ مستقل: صف نشط واحد بمفتاح الاستئناف.
+            var appealKey = $"appeal:{appeal.Id}:recipient:{user.Id}:appeal_referral_to_head";
+            var appealHolder = await db.HeadAlerts.AsNoTracking()
+                .SingleAsync(a => a.DedupeKey == appealKey);
+            Assert.Equal(appealAlert.Id, appealHolder.Id);
+            Assert.Equal(HeadAlertKindCatalog.AppealReferralToHead, appealHolder.Kind);
+
+            Assert.Equal(
+                2,
+                await db.HeadAlerts.CountAsync(a => !a.IsArchived && a.DedupeKey != null));
+        }
+        finally
+        {
+            await db.DisposeAsync();
+            Cleanup(path);
+        }
+    }
+
+    /// <summary>
+    /// §6.5/§14.1: بادئة المعلقات القديمة لا تبقى نشطة بلا تصنيف؛ إما تُربط بدائرة
+    /// وتُصنَّف <c>circuit_pending_documents</c>، أو تبقى/تُؤرشف ويُغطيها تقرير §16.
+    /// </summary>
+    [Fact]
+    public async Task Migration_LegacyPendingPrefix_AllClassifiedOrReported()
+    {
+        var (path, db) = CreateDb();
+        try
+        {
+            await db.GetService<IMigrator>().MigrateAsync(OutboxMigration);
+            var (branch, user) = await SeedBranchAndUserAsync(db);
+
+            var circuitByDocument = new ExecutionCircuit
+            {
+                BranchId = branch.Id,
+                Name = "دائرة التنفيذ الأولى",
+                NameNorm = "دائرة التنفيذ الاولى",
+                CreatedById = user.Id,
+            };
+            var circuitByName = new ExecutionCircuit
+            {
+                BranchId = branch.Id,
+                Name = "دائرة التنفيذ الثانية",
+                NameNorm = "دائرة التنفيذ الثانية",
+                CreatedById = user.Id,
+            };
+            db.ExecutionCircuits.AddRange(circuitByDocument, circuitByName);
+            await db.SaveChangesAsync();
+
+            var document = new Document
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                ExecutionCircuitId = circuitByDocument.Id,
+            };
+            db.Documents.Add(document);
+            await db.SaveChangesAsync();
+
+            var createdAt = new DateTime(2026, 10, 20, 14, 0, 0, DateTimeKind.Utc);
+            var byDocument = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Lawyer,
+                TargetLawyerId = user.Id,
+                DocumentId = document.Id,
+                Message = $"{ExecutionCircuitPendingPrefix}{circuitByDocument.Name} — يرجى تحديث معلوماتها",
+                CreatedAt = createdAt,
+            };
+            var byName = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Lawyer,
+                TargetLawyerId = user.Id,
+                Message = $"{ExecutionCircuitPendingPrefix}{circuitByName.Name} — يرجى تحديث معلوماتها",
+                CreatedAt = createdAt.AddMinutes(1),
+            };
+            // شاذ: بادئة معلقات قديمة بلا مستند ولا دائرة مطابقة للاسم.
+            var orphan = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Lawyer,
+                TargetLawyerId = user.Id,
+                Message = $"{ExecutionCircuitPendingPrefix}دائرة غير مسجلة — يرجى تحديث معلوماتها",
+                CreatedAt = createdAt.AddMinutes(2),
+            };
+            var archived = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Lawyer,
+                TargetLawyerId = user.Id,
+                Message = $"{ExecutionCircuitPendingPrefix}{circuitByName.Name} — يرجى تحديث معلوماتها",
+                CreatedAt = createdAt.AddMinutes(3),
+                IsArchived = true,
+                ArchivedAt = createdAt.AddMinutes(4),
+            };
+            db.HeadAlerts.AddRange(byDocument, byName, orphan, archived);
+            await db.SaveChangesAsync();
+
+            await db.GetService<IMigrator>().MigrateAsync(BackfillMigration);
+            db.ChangeTracker.Clear();
+
+            var storedByDocument = await db.HeadAlerts.AsNoTracking()
+                .SingleAsync(a => a.Id == byDocument.Id);
+            Assert.Equal(HeadAlertKindCatalog.CircuitPendingDocuments, storedByDocument.Kind);
+            Assert.Equal(circuitByDocument.Id, storedByDocument.ExecutionCircuitId);
+            Assert.Equal(
+                $"circuit-pending:{branch.Id}:{circuitByDocument.Id}:recipient:{user.Id}:circuit_pending_documents",
+                storedByDocument.DedupeKey);
+
+            var storedByName = await db.HeadAlerts.AsNoTracking()
+                .SingleAsync(a => a.Id == byName.Id);
+            Assert.Equal(HeadAlertKindCatalog.CircuitPendingDocuments, storedByName.Kind);
+            Assert.Equal(circuitByName.Id, storedByName.ExecutionCircuitId);
+            Assert.Equal(
+                $"circuit-pending:{branch.Id}:{circuitByName.Id}:recipient:{user.Id}:circuit_pending_documents",
+                storedByName.DedupeKey);
+
+            var storedOrphan = await db.HeadAlerts.AsNoTracking()
+                .SingleAsync(a => a.Id == orphan.Id);
+            Assert.Equal(HeadAlertKindCatalog.Legacy, storedOrphan.Kind);
+            Assert.Null(storedOrphan.ExecutionCircuitId);
+            Assert.Null(storedOrphan.DedupeKey);
+
+            var storedArchived = await db.HeadAlerts.AsNoTracking()
+                .SingleAsync(a => a.Id == archived.Id);
+            Assert.True(storedArchived.IsArchived);
+            Assert.Equal(HeadAlertKindCatalog.Legacy, storedArchived.Kind);
+            Assert.Null(storedArchived.ExecutionCircuitId);
+            Assert.Null(storedArchived.DedupeKey);
+
+            // تقرير §16 للمعلقات المتبقية بلا مطابقة: الشاذ وحده.
+            var reportedIds = await db.Database.SqlQueryRaw<int>(
+                """
+                SELECT "Id" AS Value
+                FROM "HeadAlerts"
+                WHERE "Kind" = 'legacy' AND "IsArchived" = 0 AND "TargetType" = 2
+                  AND "DelegationId" IS NULL AND "AppealId" IS NULL
+                  AND "ReviewLetterId" IS NULL AND "PublicEntityId" IS NULL
+                  AND "ExecutionCircuitId" IS NULL
+                  AND "Message" LIKE 'أحال لك رئيس القسم ملفات من دائرة %'
+                ORDER BY "Id"
+                """).ToListAsync();
+            Assert.Equal(new[] { orphan.Id }, reportedIds);
+
+            // لا صف بادئة معلقات نشط خارج التصنيف أو التقرير المفسَّر.
+            var unexplained = await db.Database.SqlQueryRaw<int>(
+                """
+                SELECT COUNT(*) AS Value
+                FROM "HeadAlerts"
+                WHERE "IsArchived" = 0 AND "TargetType" = 2
+                  AND "Message" LIKE 'أحال لك رئيس القسم ملفات من دائرة %'
+                  AND "Kind" <> 'circuit_pending_documents'
+                  AND NOT ("Kind" = 'legacy'
+                           AND "DelegationId" IS NULL AND "AppealId" IS NULL
+                           AND "ReviewLetterId" IS NULL AND "PublicEntityId" IS NULL
+                           AND "ExecutionCircuitId" IS NULL)
+                """).SingleAsync();
+            Assert.Equal(0, unexplained);
+        }
+        finally
+        {
+            await db.DisposeAsync();
+            Cleanup(path);
+        }
+    }
+
+    /// <summary>
+    /// §14.1: إعادة بناء SQLite في M2 تحافظ على الصفوف والمستلمين والفهارس
+    /// والمفاتيح الأجنبية (مع استبدال فهرس <c>TargetLawyerId</c> المقصود).
+    /// </summary>
+    [Fact]
+    public async Task Migration_Sqlite_RebuildPreservesRowsIndexesAndForeignKeys()
+    {
+        var (path, db) = CreateDb();
+        try
+        {
+            await db.GetService<IMigrator>().MigrateAsync(OutboxMigration);
+            var (branch, user) = await SeedBranchAndUserAsync(db);
+
+            var circuit = new ExecutionCircuit
+            {
+                BranchId = branch.Id,
+                Name = "دائرة التنفيذ الأولى",
+                NameNorm = "دائرة التنفيذ الاولى",
+                CreatedById = user.Id,
+            };
+            db.ExecutionCircuits.Add(circuit);
+            await db.SaveChangesAsync();
+
+            var document = new Document
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+            };
+            db.Documents.Add(document);
+            await db.SaveChangesAsync();
+
+            var delegation = new DocumentDelegation
+            {
+                SourceDocumentId = document.Id,
+                CreatedById = user.Id,
+            };
+            db.DocumentDelegations.Add(delegation);
+            await db.SaveChangesAsync();
+
+            var createdAt = new DateTime(2026, 10, 20, 15, 0, 0, DateTimeKind.Utc);
+            var circuitAlert = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Lawyer,
+                TargetLawyerId = user.Id,
+                ExecutionCircuitId = circuit.Id,
+                Kind = HeadAlertKindCatalog.CircuitPendingDocuments,
+                DedupeKey =
+                    $"circuit-pending:{branch.Id}:{circuit.Id}:recipient:{user.Id}:circuit_pending_documents",
+                Message = "أحال لك رئيس القسم ملفات من دائرة التنفيذ الأولى — يرجى تحديث معلوماتها",
+                CreatedAt = createdAt,
+                LastContentChangedAt = createdAt,
+            };
+            var mirrorAlert = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Lawyer,
+                TargetLawyerId = user.Id,
+                DocumentId = document.Id,
+                DelegationId = delegation.Id,
+                Kind = HeadAlertKindCatalog.DelegationMirrorUpdated,
+                DedupeKey =
+                    $"delegation:{delegation.Id}:recipient:{user.Id}:delegation_mirror_updated",
+                Message = "تم تحديث نسخة الملف المناب",
+                CreatedAt = createdAt.AddMinutes(1),
+                LastContentChangedAt = createdAt.AddMinutes(1),
+            };
+            var manualAlert = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Branch,
+                Kind = HeadAlertKindCatalog.ManualToBranch,
+                Message = "تعميم يدوي يبقى كما هو",
+                CreatedAt = createdAt.AddMinutes(2),
+            };
+            db.HeadAlerts.AddRange(circuitAlert, mirrorAlert, manualAlert);
+            await db.SaveChangesAsync();
+
+            db.HeadAlertRecipients.AddRange(
+                new HeadAlertRecipient
+                {
+                    HeadAlertId = circuitAlert.Id,
+                    UserId = user.Id,
+                    IsRead = true,
+                    ReadAt = createdAt.AddHours(1),
+                },
+                new HeadAlertRecipient { HeadAlertId = mirrorAlert.Id, UserId = user.Id });
+            await db.SaveChangesAsync();
+
+            var alertsBefore = await db.HeadAlerts.AsNoTracking()
+                .OrderBy(a => a.Id)
+                .Select(a => new
+                {
+                    a.Id,
+                    a.BranchId,
+                    a.CreatedById,
+                    a.TargetType,
+                    a.Kind,
+                    a.DedupeKey,
+                    a.ExecutionCircuitId,
+                    a.DocumentId,
+                    a.TargetLawyerId,
+                    a.Message,
+                    a.CreatedAt,
+                    a.LastContentChangedAt,
+                    a.IsArchived,
+                    a.ArchivedAt,
+                })
+                .ToListAsync();
+            var recipientsBefore = await db.HeadAlertRecipients.AsNoTracking()
+                .OrderBy(r => r.Id)
+                .Select(r => new { r.Id, r.HeadAlertId, r.UserId, r.IsRead, r.ReadAt })
+                .ToListAsync();
+            var indexesBefore = await GetSqliteIndexNamesAsync(db, "HeadAlerts");
+            var foreignKeysBefore = await GetSqliteForeignKeyTablesAsync(db, "HeadAlerts");
+
+            await db.GetService<IMigrator>().MigrateAsync(BackfillMigration);
+            db.ChangeTracker.Clear();
+
+            var alertsAfter = await db.HeadAlerts.AsNoTracking()
+                .OrderBy(a => a.Id)
+                .Select(a => new
+                {
+                    a.Id,
+                    a.BranchId,
+                    a.CreatedById,
+                    a.TargetType,
+                    a.Kind,
+                    a.DedupeKey,
+                    a.ExecutionCircuitId,
+                    a.DocumentId,
+                    a.TargetLawyerId,
+                    a.Message,
+                    a.CreatedAt,
+                    a.LastContentChangedAt,
+                    a.IsArchived,
+                    a.ArchivedAt,
+                })
+                .ToListAsync();
+            Assert.Equal(alertsBefore, alertsAfter);
+
+            var recipientsAfter = await db.HeadAlertRecipients.AsNoTracking()
+                .OrderBy(r => r.Id)
+                .Select(r => new { r.Id, r.HeadAlertId, r.UserId, r.IsRead, r.ReadAt })
+                .ToListAsync();
+            Assert.Equal(recipientsBefore, recipientsAfter);
+
+            var integrity = await db.Database
+                .SqlQueryRaw<string>("SELECT integrity_check AS Value FROM pragma_integrity_check")
+                .SingleAsync();
+            Assert.Equal("ok", integrity);
+
+            var foreignKeyViolations = await db.Database
+                .SqlQueryRaw<int>("SELECT COUNT(*) AS Value FROM pragma_foreign_key_check")
+                .SingleAsync();
+            Assert.Equal(0, foreignKeyViolations);
+
+            var indexesAfter = await GetSqliteIndexNamesAsync(db, "HeadAlerts");
+            foreach (var index in indexesBefore.Where(i => i != "IX_HeadAlerts_TargetLawyerId"))
+                Assert.Contains(index, indexesAfter);
+            Assert.DoesNotContain("IX_HeadAlerts_TargetLawyerId", indexesAfter);
+            Assert.Contains("IX_HeadAlerts_TargetLawyerId_Kind_IsArchived", indexesAfter);
+            Assert.Contains("UX_HeadAlerts_DedupeKey_Active", indexesAfter);
+
+            var foreignKeysAfter = await GetSqliteForeignKeyTablesAsync(db, "HeadAlerts");
+            foreach (var table in foreignKeysBefore)
+                Assert.Contains(table, foreignKeysAfter);
+            Assert.Contains("ExecutionCircuits", foreignKeysAfter);
+        }
+        finally
+        {
+            await db.DisposeAsync();
+            Cleanup(path);
+        }
+    }
+
+    /// <summary>
+    /// §14.1: بعد إعادة البناء <c>integrity_check</c> = ok و<c>foreign_key_check</c>
+    /// بلا صفوف، وبصمة الأعمدة الثابتة مطابقة؛ الصفوف المصنفة سابقًا لا تتغير
+    /// قيمها الدلالية (صفوف legacy تتغير عمدًا وفق backfill).
+    /// </summary>
+    [Fact]
+    public async Task Migration_Sqlite_IntegrityAndFingerprint_PostRebuild()
+    {
+        var (path, db) = CreateDb();
+        try
+        {
+            await db.GetService<IMigrator>().MigrateAsync(OutboxMigration);
+            var (branch, user) = await SeedBranchAndUserAsync(db);
+
+            var document = new Document
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+            };
+            db.Documents.Add(document);
+            await db.SaveChangesAsync();
+
+            var delegation = new DocumentDelegation
+            {
+                SourceDocumentId = document.Id,
+                CreatedById = user.Id,
+            };
+            db.DocumentDelegations.Add(delegation);
+            await db.SaveChangesAsync();
+
+            var createdAt = new DateTime(2026, 10, 20, 16, 0, 0, DateTimeKind.Utc);
+            var lastChangedAt = createdAt.AddMinutes(5);
+            var classified = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Lawyer,
+                TargetLawyerId = user.Id,
+                DelegationId = delegation.Id,
+                Kind = HeadAlertKindCatalog.DelegationMirrorUpdated,
+                DedupeKey =
+                    $"delegation:{delegation.Id}:recipient:{user.Id}:delegation_mirror_updated",
+                Message = "تم تحديث نسخة الملف المناب",
+                CreatedAt = createdAt,
+                LastContentChangedAt = lastChangedAt,
+            };
+            var legacy = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Branch,
+                Message = "تنبيه قديم بلا تصنيف",
+                CreatedAt = createdAt.AddMinutes(10),
+            };
+            var archivedLegacy = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Branch,
+                Message = "تنبيه قديم مؤرشف",
+                CreatedAt = createdAt.AddMinutes(20),
+                IsArchived = true,
+                ArchivedAt = createdAt.AddMinutes(21),
+            };
+            db.HeadAlerts.AddRange(classified, legacy, archivedLegacy);
+            await db.SaveChangesAsync();
+
+            var classifiedIds = new[] { classified.Id };
+            var structuralBefore = await StructuralFingerprintAsync(db);
+            var semanticBefore = await SemanticFingerprintAsync(db, classifiedIds);
+
+            await db.GetService<IMigrator>().MigrateAsync(BackfillMigration);
+            db.ChangeTracker.Clear();
+
+            Assert.Equal(structuralBefore, await StructuralFingerprintAsync(db));
+            Assert.Equal(semanticBefore, await SemanticFingerprintAsync(db, classifiedIds));
+
+            var storedLegacy = await db.HeadAlerts.AsNoTracking()
+                .SingleAsync(a => a.Id == legacy.Id);
+            Assert.Equal(HeadAlertKindCatalog.Legacy, storedLegacy.Kind);
+            Assert.Equal(legacy.CreatedAt, storedLegacy.LastContentChangedAt);
+            Assert.False(storedLegacy.IsArchived);
+
+            var storedArchived = await db.HeadAlerts.AsNoTracking()
+                .SingleAsync(a => a.Id == archivedLegacy.Id);
+            Assert.True(storedArchived.IsArchived);
+            Assert.Equal(HeadAlertKindCatalog.Legacy, storedArchived.Kind);
+            Assert.Equal(archivedLegacy.CreatedAt, storedArchived.LastContentChangedAt);
+
+            var integrity = await db.Database
+                .SqlQueryRaw<string>("SELECT integrity_check AS Value FROM pragma_integrity_check")
+                .SingleAsync();
+            Assert.Equal("ok", integrity);
+
+            var foreignKeyViolations = await db.Database
+                .SqlQueryRaw<int>("SELECT COUNT(*) AS Value FROM pragma_foreign_key_check")
+                .SingleAsync();
+            Assert.Equal(0, foreignKeyViolations);
+        }
+        finally
+        {
+            await db.DisposeAsync();
+            Cleanup(path);
+        }
+    }
+
+    /// <summary>
+    /// إعادة تنفيذ أوامر البيانات في M2 (لا أوامر المخطط؛ EF يسجّل الهجرة مرة واحدة)
+    /// لا تغيّر أي صف أو مستلم — شرط أمان إعادة التشغيل اليدوية الموثقة.
+    /// </summary>
+    [Fact]
+    public async Task Migration_Backfill_RerunIsIdempotent()
+    {
+        var (path, db) = CreateDb();
+        try
+        {
+            await db.GetService<IMigrator>().MigrateAsync(OutboxMigration);
+            var (branch, user) = await SeedBranchAndUserAsync(db);
+
+            var document = new Document
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+            };
+            db.Documents.Add(document);
+            await db.SaveChangesAsync();
+
+            var delegation = new DocumentDelegation
+            {
+                SourceDocumentId = document.Id,
+                CreatedById = user.Id,
+            };
+            db.DocumentDelegations.Add(delegation);
+            await db.SaveChangesAsync();
+
+            var createdAt = new DateTime(2026, 10, 20, 17, 0, 0, DateTimeKind.Utc);
+            var legacyClassified = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Head,
+                DelegationId = delegation.Id,
+                Message = "بانتظار اعتماد الإنابة — سطّر المحامي فلان إنابة",
+                CreatedAt = createdAt,
+            };
+            var legacyPendingOrphan = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Lawyer,
+                TargetLawyerId = user.Id,
+                Message = "أحال لك رئيس القسم ملفات من دائرة غير مسجلة — يرجى تحديث معلوماتها",
+                CreatedAt = createdAt.AddMinutes(5),
+            };
+            var newRow = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Lawyer,
+                TargetLawyerId = user.Id,
+                DelegationId = delegation.Id,
+                Kind = HeadAlertKindCatalog.DelegationMirrorUpdated,
+                DedupeKey =
+                    $"delegation:{delegation.Id}:recipient:{user.Id}:delegation_mirror_updated",
+                Message = "تم تحديث نسخة الملف المناب",
+                CreatedAt = createdAt.AddMinutes(10),
+                LastContentChangedAt = createdAt.AddMinutes(11),
+            };
+            db.HeadAlerts.AddRange(legacyClassified, legacyPendingOrphan, newRow);
+            await db.SaveChangesAsync();
+
+            db.HeadAlertRecipients.Add(new HeadAlertRecipient
+            {
+                HeadAlertId = legacyClassified.Id,
+                UserId = user.Id,
+            });
+            await db.SaveChangesAsync();
+
+            await db.GetService<IMigrator>().MigrateAsync(BackfillMigration);
+            db.ChangeTracker.Clear();
+
+            var before = await FullStateFingerprintAsync(db);
+
+            var builder = new MigrationBuilder("Microsoft.EntityFrameworkCore.Sqlite");
+            new RerunnableBackfillMigration().ApplyDataOperations(builder);
+            await using (var transaction = await db.Database.BeginTransactionAsync())
+            {
+                foreach (var operation in builder.Operations.OfType<SqlOperation>())
+                    await db.Database.ExecuteSqlRawAsync(operation.Sql);
+                await transaction.CommitAsync();
+            }
+
+            db.ChangeTracker.Clear();
+            Assert.Equal(before, await FullStateFingerprintAsync(db));
+        }
+        finally
+        {
+            await db.DisposeAsync();
+            Cleanup(path);
+        }
+    }
+
+    /// <summary>تنفيذ أوامر بيانات M2 وحدها دون أوامر المخطط — لاختبار إعادة التشغيل.</summary>
+    private sealed class RerunnableBackfillMigration : HeadAlertTaxonomy_Backfill
+    {
+        public void ApplyDataOperations(MigrationBuilder builder) => Up(builder);
+    }
+
+    private static async Task<List<string>> GetSqliteIndexNamesAsync(
+        DocGeneratorDbContext db, string table)
+        => await db.Database
+            .SqlQueryRaw<string>(
+                """
+                SELECT name AS Value
+                FROM sqlite_master
+                WHERE type = 'index' AND tbl_name = {0}
+                  AND name NOT LIKE 'sqlite_autoindex_%'
+                ORDER BY name
+                """,
+                table)
+            .ToListAsync();
+
+    private static async Task<List<string>> GetSqliteForeignKeyTablesAsync(
+        DocGeneratorDbContext db, string table)
+        => await db.Database
+            .SqlQueryRaw<string>(
+                "SELECT \"table\" AS Value FROM pragma_foreign_key_list({0}) ORDER BY \"table\"",
+                table)
+            .ToListAsync();
+
+    private static async Task<string> StructuralFingerprintAsync(DocGeneratorDbContext db)
+    {
+        var rows = await db.HeadAlerts.AsNoTracking()
+            .OrderBy(a => a.Id)
+            .Select(a => new { a.Id, a.BranchId, a.CreatedAt })
+            .ToListAsync();
+
+        var lines = rows.Select(row => string.Create(
+            CultureInfo.InvariantCulture,
+            $"alert|{row.Id}|{row.BranchId}|{row.CreatedAt:O}"));
+        return Sha256(string.Join('\n', lines));
+    }
+
+    private static async Task<string> SemanticFingerprintAsync(
+        DocGeneratorDbContext db, int[] alertIds)
+    {
+        var rows = await db.HeadAlerts.AsNoTracking()
+            .Where(a => alertIds.Contains(a.Id))
+            .OrderBy(a => a.Id)
+            .Select(a => new
+            {
+                a.Id,
+                a.BranchId,
+                a.Kind,
+                a.DedupeKey,
+                a.CreatedAt,
+                a.LastContentChangedAt,
+            })
+            .ToListAsync();
+
+        var lines = rows.Select(row => string.Create(
+            CultureInfo.InvariantCulture,
+            $"alert|{row.Id}|{row.BranchId}|{row.Kind ?? "<null>"}|{row.DedupeKey ?? "<null>"}|{row.CreatedAt:O}|{Format(row.LastContentChangedAt)}"));
+        return Sha256(string.Join('\n', lines));
+    }
+
+    private static async Task<string> FullStateFingerprintAsync(DocGeneratorDbContext db)
+    {
+        var alerts = await db.HeadAlerts.AsNoTracking()
+            .OrderBy(a => a.Id)
+            .Select(a => new
+            {
+                a.Id,
+                a.BranchId,
+                a.CreatedById,
+                a.TargetType,
+                a.Kind,
+                a.DedupeKey,
+                a.ExecutionCircuitId,
+                a.DocumentId,
+                a.TargetLawyerId,
+                a.DelegationId,
+                a.AppealId,
+                a.ReviewLetterId,
+                a.PublicEntityId,
+                a.Message,
+                a.CreatedAt,
+                a.LastContentChangedAt,
+                a.IsArchived,
+                a.ArchivedAt,
+            })
+            .ToListAsync();
+        var recipients = await db.HeadAlertRecipients.AsNoTracking()
+            .OrderBy(r => r.Id)
+            .Select(r => new { r.Id, r.HeadAlertId, r.UserId, r.IsRead, r.ReadAt })
+            .ToListAsync();
+
+        static string Number(int? value)
+            => value?.ToString(CultureInfo.InvariantCulture) ?? "<null>";
+
+        var lines = new List<string>(alerts.Count + recipients.Count);
+        foreach (var alert in alerts)
+        {
+            lines.Add(string.Create(
+                CultureInfo.InvariantCulture,
+                $"alert|{alert.Id}|{alert.BranchId}|{alert.CreatedById}|{(int)alert.TargetType}|{alert.Kind ?? "<null>"}|{alert.DedupeKey ?? "<null>"}|{Number(alert.ExecutionCircuitId)}|{Number(alert.DocumentId)}|{Number(alert.TargetLawyerId)}|{Number(alert.DelegationId)}|{Number(alert.AppealId)}|{Number(alert.ReviewLetterId)}|{Number(alert.PublicEntityId)}|{alert.Message}|{alert.CreatedAt:O}|{Format(alert.LastContentChangedAt)}|{alert.IsArchived}|{Format(alert.ArchivedAt)}"));
+        }
+
+        foreach (var recipient in recipients)
+        {
+            lines.Add(string.Create(
+                CultureInfo.InvariantCulture,
+                $"recipient|{recipient.Id}|{recipient.HeadAlertId}|{recipient.UserId}|{recipient.IsRead}|{Format(recipient.ReadAt)}"));
+        }
+
+        return string.Join('\n', lines);
+    }
+
+    private static string Format(DateTime? value)
+        => value?.ToString("O", CultureInfo.InvariantCulture) ?? "<null>";
+
+    private static string Sha256(string value)
+        => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+
+    private const string ExecutionCircuitPendingPrefix = "أحال لك رئيس القسم ملفات من دائرة ";
+
+    private static async Task<(Branch Branch, User User)> SeedBranchAndUserAsync(DocGeneratorDbContext db)
+    {
+        var branch = new Branch { Name = "دمشق", Code = "DAM-" + Guid.NewGuid().ToString("N")[..8] };
+        db.Branches.Add(branch);
+        await db.SaveChangesAsync();
+
+        var user = new User
+        {
+            Username = "lawyer-" + Guid.NewGuid().ToString("N")[..8],
+            FullName = "المحامي فلان",
+            Role = UserRole.Lawyer,
+            BranchId = branch.Id,
+            PasswordHash = "x",
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+        return (branch, user);
     }
 }

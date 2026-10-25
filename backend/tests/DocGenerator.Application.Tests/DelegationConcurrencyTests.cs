@@ -66,6 +66,7 @@ public class DelegationConcurrencyTests : IDisposable
             tx,
             audit,
             headAlerts,
+            new HeadAlertOutbox(new HeadAlertOutboxStore(db), tx),
             TimeProvider.System,
             TestClock.TimeZone);
     }

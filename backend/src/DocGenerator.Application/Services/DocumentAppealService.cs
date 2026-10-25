@@ -11,7 +11,7 @@ namespace DocGenerator.Application.Services;
 /// <summary>
 /// تنفيذ خدمة الاستئنافات: دورة حياة الاستئناف من التسطير حتى الحسم أو الشطب،
 /// مع الإسناد والنقل والتدوير والإجراءات المستقلة. كل كتابة ضمن معاملة واحدة مع
-/// سجل التدقيق، والتنبيهات إشعارات فرعية لا تُفشل العملية الأصلية عند تعذرها.
+/// سجل التدقيق وتسجيل التنبيهات في صندوق الصادر — فشل التسجيل يُرجع المعاملة كاملة.
 /// </summary>
 public sealed class DocumentAppealService : IDocumentAppealService
 {
@@ -22,6 +22,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
     private readonly IHeadAlertService _alerts;
+    private readonly IHeadAlertOutbox _alertOutbox;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
     private readonly IDbExceptionClassifier? _dbErrors;
@@ -34,6 +35,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
         ITransactionRunner tx,
         IAuditLogger audit,
         IHeadAlertService alerts,
+        IHeadAlertOutbox alertOutbox,
         TimeProvider clock,
         TimeZoneInfo timeZone,
         IDbExceptionClassifier? dbErrors = null)
@@ -45,6 +47,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
         _tx = tx;
         _audit = audit;
         _alerts = alerts;
+        _alertOutbox = alertOutbox;
         _clock = clock;
         _timeZone = timeZone;
         _dbErrors = dbErrors;
@@ -88,12 +91,13 @@ public sealed class DocumentAppealService : IDocumentAppealService
         {
             await _appeals.AddAsync(appeal, token);
             await _uow.SaveChangesAsync(token);
+            await EnqueueAppealPendingAsync(appeal, source, userId, DateTime.UtcNow, token);
+            await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "create_appeal",
                 source.Id, source.DocumentType,
-                $"سطّر استئنافًا ({AppealDirectionCatalog.ToLabel(direction)}) على الملف (رقم {source.Id})", token);
+                $"تسطير الاستئناف ({AppealDirectionCatalog.ToLabel(direction)}) على الملف (رقم {source.Id})", token);
         }, ct);
 
-        await NotifyHeadPendingAsync(appeal.Id, source, userId, actorName, ct);
         return ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
     }
 
@@ -141,23 +145,17 @@ public sealed class DocumentAppealService : IDocumentAppealService
 
         await _tx.RunAsync(async token =>
         {
+            await _alerts.ArchiveByAppealAsync(
+                appeal.Id,
+                HeadAlertKindCatalog.AppealKinds,
+                "appeal_deleted",
+                token);
             _appeals.Remove(appeal);
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "delete_appeal",
                 source.Id, source.DocumentType,
-                $"حذف الاستئناف (رقم {appeal.Id}) على الملف (رقم {source.Id})", token);
+                $"حذف الاستئناف (رقم {appeal.Id}) من الملف (رقم {source.Id})", token);
         }, ct);
-
-        try
-        {
-            await _alerts.DeleteByAppealAsync(appealId, ct);
-        }
-        catch (Exception ex)
-        {
-            await _audit.LogAsync(actorName, "head_alert_failed",
-                source.Id, source.DocumentType,
-                $"تعذّر حذف تنبيهات الاستئناف المحذوف (رقم {appealId}): {ex.Message}", ct);
-        }
 
         return true;
     }
@@ -277,13 +275,14 @@ public sealed class DocumentAppealService : IDocumentAppealService
         await _tx.RunAsync(async token =>
         {
             _appeals.Update(appeal);
+            await EnqueueAppealFinalAsync(appeal, decided: true, appeal.AssignedLawyerId ?? appeal.Document.CreatedById,
+                DateTime.UtcNow, token);
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "decide_appeal",
                 appeal.DocumentId, appeal.Document.DocumentType,
                 $"حسم الاستئناف (رقم {appeal.Id}) بالقرار {decisionNumber} — النتيجة: {AppealOutcomeCatalog.ToLabel(outcome)}", token);
         }, ct);
 
-        await NotifyBaseLawyerFinalAsync(appeal, decided: true, actorName, ct);
         return ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
     }
 
@@ -315,13 +314,14 @@ public sealed class DocumentAppealService : IDocumentAppealService
         await _tx.RunAsync(async token =>
         {
             _appeals.Update(appeal);
+            await EnqueueAppealFinalAsync(appeal, decided: false, appeal.AssignedLawyerId ?? appeal.Document.CreatedById,
+                DateTime.UtcNow, token);
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "strike_appeal",
                 appeal.DocumentId, appeal.Document.DocumentType,
                 $"شطب الاستئناف (رقم {appeal.Id}) بقرار رقم {decisionNumber}", token);
         }, ct);
 
-        await NotifyBaseLawyerFinalAsync(appeal, decided: false, actorName, ct);
         return ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
     }
 
@@ -352,25 +352,13 @@ public sealed class DocumentAppealService : IDocumentAppealService
         await _tx.RunAsync(async token =>
         {
             _appeals.Update(appeal);
+            await EnqueueAppealAssignedAsync(appeal, lawyer, userId, DateTime.UtcNow, token);
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "assign_appeal",
                 appeal.DocumentId, appeal.Document.DocumentType,
                 $"أسند الاستئناف (رقم {appeal.Id}) إلى المحامي {lawyer.FullName}", token);
         }, ct);
 
-        // تصفية تنبيه «اختيار محامٍ للاستئناف» بعد الإسناد (أنجز مهمّته).
-        try
-        {
-            await _alerts.DeleteByAppealAsync(appeal.Id, ct);
-        }
-        catch (Exception ex)
-        {
-            await _audit.LogAsync(actorName, "head_alert_failed",
-                appeal.DocumentId, appeal.Document.DocumentType,
-                $"تعذّر حذف تنبيه الاستئناف المعلّق (رقم {appeal.Id}) بعد إسناده: {ex.Message}", ct);
-        }
-
-        await NotifyFollowLawyerAssignedAsync(appeal, lawyer, userId, actorName, ct);
         return ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
     }
 
@@ -397,13 +385,13 @@ public sealed class DocumentAppealService : IDocumentAppealService
         await _tx.RunAsync(async token =>
         {
             _appeals.Update(appeal);
+            await EnqueueAppealAssignedAsync(appeal, lawyer, userId, DateTime.UtcNow, token);
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "transfer_appeal",
                 appeal.DocumentId, appeal.Document.DocumentType,
                 $"نقل الاستئناف (رقم {appeal.Id}) إلى المحامي {lawyer.FullName}", token);
         }, ct);
 
-        await NotifyFollowLawyerAssignedAsync(appeal, lawyer, userId, actorName, ct);
         return ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
     }
 
@@ -513,6 +501,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
                 appeal.UpdatedAt = now;
                 appeal.Version++;
                 _appeals.Update(appeal);
+                await EnqueueAppealForwardedAsync(appeal, doc, caller, head, now, token);
                 await _uow.SaveChangesAsync(token);
                 await _audit.LogAsync(actorName, "forward_appeal",
                     appeal.DocumentId, appeal.Document.DocumentType,
@@ -524,36 +513,6 @@ public sealed class DocumentAppealService : IDocumentAppealService
         {
             // إحالتان متزامنتان حقيقيتان — 409 ودية بدل 500 خام.
             throw new DocumentConflictException("تعارض تزامن — أعد تحميل الاستئناف وحاول مجددًا", ex);
-        }
-
-        // جراحة التنبيهات (§6.2): حذف انتقائي لتنبيه المحيل + تنبيه موجَّه لرئيس
-        // القسم — أفضل جهد (لا تُفشل الإحالة الثابتة).
-        try
-        {
-            await _alerts.RemoveAppealRecipientAsync(appeal.Id, caller.Id, ct);
-        }
-        catch (Exception ex)
-        {
-            await _audit.LogAsync(actorName, "head_alert_failed",
-                appeal.DocumentId, appeal.Document.DocumentType,
-                $"تعذّر تصفية تنبيه المحيل بعد الإحالة (رقم {appeal.Id}): {ex.Message}", ct);
-        }
-        try
-        {
-            await _alerts.CreateAsync(new CreateHeadAlertRequest(
-                TargetType: "head",
-                DocumentId: appeal.DocumentId,
-                TargetLawyerId: null,
-                Message: $"يرجى التفضل بإسناد الاستئناف (ملف {appeal.DocumentId} — محال من {caller.FullName})",
-                AppealId: appeal.Id,
-                RecipientUserId: head.Id),
-                caller.Id, doc.BranchId.Value, actorName, ct);
-        }
-        catch (Exception ex)
-        {
-            await _audit.LogAsync(actorName, "head_alert_failed",
-                appeal.DocumentId, appeal.Document.DocumentType,
-                $"تعذّر إشعار رئيس القسم بالإحالة (رقم {appeal.Id}): {ex.Message}", ct);
         }
 
         return ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
@@ -587,6 +546,8 @@ public sealed class DocumentAppealService : IDocumentAppealService
         if (!isForwarder && !isDivisionHead)
             throw new ArgumentException("التراجع للمحيل أو لرئيس قسم الفرع فقط");
         var forwarderId = appeal.ForwardedById.Value;
+        var forwarder = await _users.GetByIdAsync(forwarderId, ct);
+        var now = DateTime.UtcNow;
 
         try
         {
@@ -596,9 +557,10 @@ public sealed class DocumentAppealService : IDocumentAppealService
                 appeal.ForwardedById = null;
                 appeal.ForwardedAt = null;
                 appeal.ForwardReason = null;
-                appeal.UpdatedAt = DateTime.UtcNow;
+                appeal.UpdatedAt = now;
                 appeal.Version++;
                 _appeals.Update(appeal);
+                await EnqueueAppealRecalledAsync(appeal, doc, caller, forwarder, now, token);
                 await _uow.SaveChangesAsync(token);
                 await _audit.LogAsync(actorName, "recall_forward",
                     appeal.DocumentId, appeal.Document.DocumentType,
@@ -611,33 +573,6 @@ public sealed class DocumentAppealService : IDocumentAppealService
         {
             // تراجعان متزامنان حقيقيان — 409 ودية بدل 500 خام.
             throw new DocumentConflictException("تعارض تزامن — أعد تحميل الاستئناف وحاول مجددًا", ex);
-        }
-
-        // بدائل المحيل (§6.6): حذف تنبيهات الإحالة المعلقة ثم تنبيه معلّق جديد
-        // له — الحذف شامل لنطاق الاستئناف لأنه لحظة التراجع لا يملك أي تنبيه
-        // لهذا الاستئناف إلا تنبيه الإحالة لرئيس القسم (تنبيه المحيل الأصلي
-        // أُزيل وقت الإحالة)، فيعمل صحيحًا بفرعيه: استرجاع المحيل وإعادة الرئيس.
-        try
-        {
-            var forwarder = await _users.GetByIdAsync(forwarderId, ct);
-            if (forwarder is not null && doc.BranchId.HasValue)
-            {
-                await _alerts.DeleteByAppealAsync(appeal.Id, ct);
-                await _alerts.CreateAsync(new CreateHeadAlertRequest(
-                    TargetType: "head",
-                    DocumentId: appeal.DocumentId,
-                    TargetLawyerId: null,
-                    Message: $"أُعيد الاستئناف (ملف {appeal.DocumentId}) لنطاقك — يرجى اختيار محامي لمتابعته",
-                    AppealId: appeal.Id,
-                    RecipientUserId: forwarder.Id),
-                    caller.Id, doc.BranchId.Value, actorName, ct);
-            }
-        }
-        catch (Exception ex)
-        {
-            await _audit.LogAsync(actorName, "head_alert_failed",
-                appeal.DocumentId, appeal.Document.DocumentType,
-                $"تعذّر ترتيب تنبيهات التراجع (رقم {appeal.Id}): {ex.Message}", ct);
         }
 
         return ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
@@ -1189,99 +1124,182 @@ public sealed class DocumentAppealService : IDocumentAppealService
         appeal.UpdatedAt = DateTime.UtcNow;
     }
 
-    // ── التنبيهات (إشعارات فرعية لا تُفشل العملية) ────────────────────────
+    // ── تسجيل التنبيهات في صندوق الصادر داخل المعاملة ──────────────────────
 
-    private async Task NotifyHeadPendingAsync(int appealId, Document source, int userId, string? actorName, CancellationToken ct)
+    private async Task EnqueueAppealPendingAsync(
+        DocumentAppeal appeal, Document source, int actorUserId, DateTime occurredAt, CancellationToken ct)
     {
-        if (source.BranchId is null)
-        {
-            await _audit.LogAsync(actorName, "head_alert_failed",
-                source.Id, source.DocumentType,
-                $"تعذّر إشعار رئيس القسم بالاستئناف المعلّق (رقم {appealId}): الملف بلا فرع", ct);
-            return;
-        }
-        try
-        {
-            // الإشعار الأولي لمالك واحد حسب دائرة الملف (§6.1): رئيس شعبته،
-            // وإلا رئيس القسم — لا بث لفرع (قرار §2 + §17/5).
-            var sectionId = source.ExecutionCircuit?.SectionId;
-            var owner = sectionId.HasValue
-                ? await _users.FindActiveHeadAsync(UserRole.SubHead, source.BranchId, sectionId, ct)
-                    ?? await _users.FindActiveHeadAsync(UserRole.Head, source.BranchId, null, ct)
-                : await _users.FindActiveHeadAsync(UserRole.Head, source.BranchId, null, ct);
-            if (owner is null)
-            {
-                await _audit.LogAsync(actorName, "head_alert_failed",
-                    source.Id, source.DocumentType,
-                    $"تعذّر إشعار الرئيس بالاستئناف المعلّق (رقم {appealId}): لا رئيس مفعّل للنطاق", ct);
-                return;
-            }
-            await _alerts.CreateAsync(new CreateHeadAlertRequest(
-                TargetType: "head",
-                DocumentId: source.Id,
-                TargetLawyerId: null,
-                Message: $"وقع استئناف بملف {DocumentTitle(source)} رقم {EffectiveFileIdentity.Number(source, ServerClock.CurrentYear(_clock, _timeZone)) ?? "—"} نوع {source.FileType ?? "—"} دائرة تنفيذ {source.Court ?? "—"}، يرجى اختيار محامي لمتابعة الاستئناف",
-                AppealId: appealId,
-                RecipientUserId: owner.Id),
-                userId, source.BranchId.Value, actorName, ct);
-        }
-        catch (Exception ex)
-        {
-            await _audit.LogAsync(actorName, "head_alert_failed",
-                source.Id, source.DocumentType,
-                $"تعذّر إشعار الرئيس بالاستئناف المعلّق (رقم {appealId}): {ex.Message}", ct);
-        }
-    }
-
-    private async Task NotifyFollowLawyerAssignedAsync(DocumentAppeal appeal, User lawyer, int userId, string? actorName, CancellationToken ct)
-    {
-        var branchId = appeal.Document.BranchId;
+        var branchId = source.BranchId;
         if (branchId is null)
             return;
-        try
-        {
-            await _alerts.CreateAsync(new CreateHeadAlertRequest(
-                TargetType: "lawyer",
-                DocumentId: appeal.DocumentId,
-                TargetLawyerId: lawyer.Id,
-                Message: $"أحال إليك رئيس القسم استئناف لمتابعته أصولًا (ملف {DocumentTitle(appeal.Document)})",
-                AppealId: appeal.Id),
-                userId, branchId.Value, actorName, ct);
-        }
-        catch (Exception ex)
-        {
-            await _audit.LogAsync(actorName, "head_alert_failed",
-                appeal.DocumentId, appeal.Document.DocumentType,
-                $"تعذّر إشعار المحامي {lawyer.FullName} بإسناد الاستئناف (رقم {appeal.Id}): {ex.Message}", ct);
-        }
+
+        // الإشعار الأولي لمالك واحد حسب دائرة الملف (§6.1): رئيس شعبته،
+        // وإلا رئيس القسم — لا بث لفرع (قرار §2 + §17/5).
+        var sectionId = source.ExecutionCircuit?.SectionId;
+        var owner = sectionId.HasValue
+            ? await _users.FindActiveHeadAsync(UserRole.SubHead, branchId, sectionId, ct)
+                ?? await _users.FindActiveHeadAsync(UserRole.Head, branchId, null, ct)
+            : await _users.FindActiveHeadAsync(UserRole.Head, branchId, null, ct);
+        if (owner is null)
+            return;
+
+        await _alertOutbox.EnqueueSystemAsync(
+            new CreateSystemHeadAlertRequest(
+                Kind: HeadAlertKindCatalog.AppealPendingToOwner,
+                Message: HeadAlertMessages.AppealPendingToOwner(new(
+                    DocumentTitle(source),
+                    AppealDocumentNumber(source),
+                    source.FileType ?? "—",
+                    AppealCourtBare(source.Court))),
+                Audience: HeadAlertAudience.SingleHead,
+                BranchId: branchId.Value,
+                CreatedById: actorUserId,
+                DocumentId: source.Id,
+                AppealId: appeal.Id,
+                RecipientUserId: owner.Id),
+            supersedePlan: null,
+            occurredAt,
+            ct);
     }
 
-    private async Task NotifyBaseLawyerFinalAsync(DocumentAppeal appeal, bool decided, string? actorName, CancellationToken ct)
+    private Task EnqueueAppealForwardedAsync(
+        DocumentAppeal appeal, Document source, User caller, User head,
+        DateTime occurredAt, CancellationToken ct)
+    {
+        return _alertOutbox.EnqueueSystemAsync(
+            new CreateSystemHeadAlertRequest(
+                Kind: HeadAlertKindCatalog.AppealReferralToHead,
+                Message: HeadAlertMessages.AppealReferralToHead(new(
+                    DocumentTitle(source),
+                    AppealDocumentNumber(source),
+                    caller.FullName)),
+                Audience: HeadAlertAudience.SingleHead,
+                BranchId: source.BranchId!.Value,
+                CreatedById: caller.Id,
+                DocumentId: source.Id,
+                AppealId: appeal.Id,
+                RecipientUserId: head.Id),
+            new HeadAlertSupersedePlan(
+                DelegationId: null,
+                AppealId: appeal.Id,
+                ArchiveKinds: HeadAlertKindCatalog.AppealKinds,
+                Reason: "appeal_forwarded"),
+            occurredAt,
+            ct);
+    }
+
+    private async Task EnqueueAppealRecalledAsync(
+        DocumentAppeal appeal, Document source, User caller, User? forwarder,
+        DateTime occurredAt, CancellationToken ct)
+    {
+        if (forwarder is null || source.BranchId is null)
+        {
+            await _alerts.ArchiveByAppealAsync(
+                appeal.Id,
+                HeadAlertKindCatalog.AppealKinds,
+                "appeal_recalled_no_recipient",
+                ct);
+            return;
+        }
+
+        await _alertOutbox.EnqueueSystemAsync(
+            new CreateSystemHeadAlertRequest(
+                Kind: HeadAlertKindCatalog.AppealReturnedToHead,
+                Message: HeadAlertMessages.AppealReturnedToHead(new(
+                    DocumentTitle(source),
+                    AppealDocumentNumber(source))),
+                Audience: HeadAlertAudience.SingleHead,
+                BranchId: source.BranchId.Value,
+                CreatedById: caller.Id,
+                DocumentId: source.Id,
+                AppealId: appeal.Id,
+                RecipientUserId: forwarder.Id),
+            new HeadAlertSupersedePlan(
+                DelegationId: null,
+                AppealId: appeal.Id,
+                ArchiveKinds: HeadAlertKindCatalog.AppealKinds,
+                Reason: "appeal_recalled"),
+            occurredAt,
+            ct);
+    }
+
+    private Task EnqueueAppealAssignedAsync(
+        DocumentAppeal appeal, User lawyer, int actorUserId,
+        DateTime occurredAt, CancellationToken ct)
     {
         var source = appeal.Document;
-        var branchId = source.BranchId;
-        if (branchId is null || source.CreatedById == appeal.AssignedLawyerId)
-            return; // لا إشعار ذاتيًا عندما المتابع هو نفسه محامي الملف الأساس.
-        try
-        {
-            var outcomePart = decided && appeal.Outcome is not null
-                ? $" — النتيجة: {AppealOutcomeCatalog.ToLabel(appeal.Outcome)}"
-                : string.Empty;
-            var state = decided ? "محسومًا" : "مشطوبًا";
-            await _alerts.CreateAsync(new CreateHeadAlertRequest(
-                TargetType: "document",
+        if (source.BranchId is null)
+            return Task.CompletedTask;
+
+        return _alertOutbox.EnqueueSystemAsync(
+            new CreateSystemHeadAlertRequest(
+                Kind: HeadAlertKindCatalog.AppealAssignedToLawyer,
+                Message: HeadAlertMessages.AppealAssignedToLawyer(new(
+                    DocumentTitle(source),
+                    AppealDocumentNumber(source))),
+                Audience: HeadAlertAudience.SingleLawyer,
+                BranchId: source.BranchId.Value,
+                CreatedById: actorUserId,
                 DocumentId: source.Id,
-                TargetLawyerId: null,
-                Message: $"أصبح استئناف قرار رئيس التنفيذ في الملف ({DocumentTitle(source)}) {state}{outcomePart}",
+                AppealId: appeal.Id,
+                TargetLawyerId: lawyer.Id),
+            new HeadAlertSupersedePlan(
+                DelegationId: null,
+                AppealId: appeal.Id,
+                ArchiveKinds: HeadAlertKindCatalog.AppealKinds,
+                Reason: "appeal_assigned"),
+            occurredAt,
+            ct);
+    }
+
+    private Task EnqueueAppealFinalAsync(
+        DocumentAppeal appeal, bool decided, int actorUserId,
+        DateTime occurredAt, CancellationToken ct)
+    {
+        var source = appeal.Document;
+        if (source.BranchId is null || source.CreatedById == appeal.AssignedLawyerId)
+            return Task.CompletedTask; // لا إشعار ذاتيًا عندما المتابع هو نفسه محامي الملف الأساس.
+
+        var outcomePart = decided && appeal.Outcome is not null
+            ? $" — النتيجة: {AppealOutcomeCatalog.ToLabel(appeal.Outcome)}"
+            : string.Empty;
+
+        return _alertOutbox.EnqueueSystemAsync(
+            new CreateSystemHeadAlertRequest(
+                Kind: HeadAlertKindCatalog.AppealFinalToBaseLawyer,
+                Message: HeadAlertMessages.AppealFinalToBaseLawyer(new(
+                    DocumentTitle(source),
+                    AppealDocumentNumber(source),
+                    decided ? "محسومًا" : "مشطوبًا",
+                    outcomePart)),
+                Audience: HeadAlertAudience.DocumentCreator,
+                BranchId: source.BranchId.Value,
+                CreatedById: actorUserId,
+                DocumentId: source.Id,
                 AppealId: appeal.Id),
-                appeal.AssignedLawyerId ?? source.CreatedById, branchId.Value, actorName, ct);
-        }
-        catch (Exception ex)
-        {
-            await _audit.LogAsync(actorName, "head_alert_failed",
-                source.Id, source.DocumentType,
-                $"تعذّر إشعار محامي الملف الأساس بحالة الاستئناف (رقم {appeal.Id}): {ex.Message}", ct);
-        }
+            supersedePlan: null,
+            occurredAt,
+            ct);
+    }
+
+    private string AppealDocumentNumber(Document source) =>
+        EffectiveFileIdentity.Number(source, ServerClock.CurrentYear(_clock, _timeZone)) ?? "—";
+
+    /// <summary>يجهّز اسم الدائرة للقالب الذي يضيف «دائرة تنفيذ » قبل الحقل.</summary>
+    private static string AppealCourtBare(string? court)
+    {
+        var value = Normalize(court);
+        if (value is null)
+            return string.Empty;
+
+        const string circuitPrefix = "دائرة ";
+        if (value.StartsWith(circuitPrefix, StringComparison.Ordinal))
+            value = value[circuitPrefix.Length..];
+
+        const string executionPrefix = "تنفيذ ";
+        return value.StartsWith(executionPrefix, StringComparison.Ordinal)
+            ? value[executionPrefix.Length..]
+            : value;
     }
 
     // ── أدوات مساعدة ──────────────────────────────────────────────────────

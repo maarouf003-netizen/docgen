@@ -1,3 +1,4 @@
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -15,6 +16,7 @@ public class HeadAlertServiceTests : IDisposable
     private readonly DocGeneratorDbContext _db;
     private readonly IHeadAlertService _service;
     private readonly FakeAuditLogger _audit = new();
+    private readonly TransactionRunner _tx;
     private readonly int _branchId;
     private readonly User _head;
     private readonly User _lawyer1;
@@ -55,16 +57,50 @@ public class HeadAlertServiceTests : IDisposable
         _db.Users.AddRange(_head, _lawyer1, _lawyer2);
         _db.SaveChanges();
 
+        // الإنابة بلا مفتاح أجنبي في المخطط؛ فحص المراجع يحتاج صفًا فعليًا (77).
+        HeadAlertReferences.SeedDelegations(_db, _branchId, _head.Id, 77);
+
         var documents = new DocumentRepository(_db);
         var users = new UserRepository(_db);
         var alerts = new HeadAlertRepository(_db);
         var branches = new Repository<Branch>(_db);
         var uow = new UnitOfWork(_db);
-        var tx = new TransactionRunner(_db);
-        _service = new HeadAlertService(alerts, documents, users, branches, uow, tx, _audit);
+        _tx = new TransactionRunner(_db);
+        _service = new HeadAlertService(alerts, documents, users, branches, uow, _tx, _audit);
     }
 
     public void Dispose() => _db.Dispose();
+
+    private async Task<int> CreateSystemHeadAlertAsync(
+        string message,
+        HeadAlertAudience audience,
+        int? recipientUserId = null,
+        int? delegationId = null,
+        int? createdById = null)
+    {
+        var id = 0;
+        await _tx.RunAsync(async token =>
+        {
+            await _service.CreateSystemAsync(
+                new CreateSystemHeadAlertRequest(
+                    HeadAlertKindCatalog.DelegationPendingApproval,
+                    message,
+                    audience,
+                    _branchId,
+                    createdById ?? _head.Id,
+                    DelegationId: delegationId,
+                    RecipientUserId: recipientUserId),
+                DateTime.UtcNow,
+                null,
+                null,
+                token);
+            id = await _db.HeadAlerts
+                .OrderByDescending(a => a.Id)
+                .Select(a => a.Id)
+                .FirstAsync(token);
+        });
+        return id;
+    }
 
     private async Task<Document> AddDocumentAsync(User owner, int? branchId = null)
     {
@@ -97,7 +133,9 @@ public class HeadAlertServiceTests : IDisposable
 
         var lawyerList = await _service.ListForLawyerAsync(_lawyer1.Id);
         var lawyerAlert = Assert.Single(lawyerList);
-        Assert.Equal("راجع هذا الملف", lawyerAlert.Message);
+        Assert.Equal(
+            HeadAlertMessages.ManualMessage(UserRole.Head, "راجع هذا الملف"),
+            lawyerAlert.Message);
         Assert.Equal("أحمد العلي", lawyerAlert.DocumentTitle);
     }
 
@@ -206,28 +244,27 @@ public class HeadAlertServiceTests : IDisposable
             new CreateHeadAlertRequest("document", doc.Id, null, "تنبيه أول"), _head.Id, _branchId, "head_x");
         await _service.CreateAsync(
             new CreateHeadAlertRequest("branch", null, null, "تعميم"), _head.Id, _branchId, "head_x");
-        var own = await _service.CreateAsync(
-            new CreateHeadAlertRequest("head", null, null, "لرئيس القسم", RecipientUserId: _head.Id),
-            _head.Id, _branchId, "head_x");
+        var ownId = await CreateSystemHeadAlertAsync(
+            "تنبيه نظامي للرئيس", HeadAlertAudience.SingleHead, recipientUserId: _head.Id);
 
         // قراءة بالمستلم (§8): الرئيس يرى تنبيهه فقط — لا تنبيهات المحامين ولا التعميم.
         var list = await _service.ListForHeadAsync(_head.Id, _branchId);
 
         var single = Assert.Single(list);
-        Assert.Equal(own.Id, single.Id);
+        Assert.Equal(ownId, single.Id);
         Assert.False(single.IsRead);
         Assert.Equal(1, single.RecipientCount);
         Assert.Equal(1, single.UnreadCount);
 
         // تعليم القراءة يعمل للمستلم الرئيس ويُرى أثره.
-        Assert.True(await _service.MarkReadAsync(own.Id, _head.Id));
+        Assert.True(await _service.MarkReadAsync(ownId, _head.Id));
         list = await _service.ListForHeadAsync(_head.Id, _branchId);
         Assert.True(Assert.Single(list).IsRead);
 
         // محامٍ غير مستلم لا يرى تنبيه الرئيس.
         Assert.DoesNotContain(
             await _service.ListForLawyerAsync(_lawyer2.Id),
-            a => a.Id == own.Id);
+            a => a.Id == ownId);
     }
 
     [Fact]
@@ -266,116 +303,52 @@ public class HeadAlertServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Create_HeadTargeted_ReachesAllActiveHeads()
+    public async Task Create_ManualHeadTarget_Rejected()
     {
-        // رئيس فرع موقوف لا يستقبل تنبيهات النظام المرحلية (نطاق «head»).
-        _db.Users.Add(new User
-        {
-            Username = "head_stopped",
-            FullName = "رئيس قسم موقوف",
-            Role = UserRole.Head,
-            BranchId = _branchId,
-            IsActive = false,
-            PasswordHash = new PasswordHasher().Hash("123456"),
-        });
-        await _db.SaveChangesAsync();
-
-        var alert = await _service.CreateAsync(
-            new CreateHeadAlertRequest("head", null, null, "بانتظار اعتماد الإنابة — ثمّة إنابة معلّقة", DelegationId: 77),
-            _head.Id, _branchId, "head_x");
-
-        Assert.Equal("head", alert.TargetType);
-        Assert.Equal(1, alert.RecipientCount); // الرأس المفعل فقط
-
-        var stored = await _db.HeadAlerts.Include(a => a.Recipients).SingleAsync(a => a.Id == alert.Id);
-        Assert.Equal(77, stored.DelegationId);
-        Assert.Contains(_head.Id, stored.Recipients.Select(r => r.UserId));
-
-        var headList = await _service.ListForLawyerAsync(_head.Id);
-        Assert.Contains(headList, a => a.Id == alert.Id);
-    }
-
-    [Fact]
-    public async Task Create_HeadTargeted_NoActiveHeads_Throws()
-    {
-        var blocked = _db.Users.Single(u => u.Id == _head.Id);
-        blocked.IsActive = false;
-        await _db.SaveChangesAsync();
-
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateHeadAlertRequest("head", null, null, "رسالة بلا مستلم", DelegationId: 1),
+            _service.CreateAsync(
+                new CreateHeadAlertRequest("head", null, null, "manual head"),
                 _head.Id, _branchId, "head_x"));
     }
 
     [Fact]
-    public async Task Create_HeadTargeted_IncludesActiveSubHead_OnlySubHeadActive_NoThrow()
+    public async Task CreateSystem_SingleHead_MissingRecipient_ThrowsNoRecipients()
     {
-        // (هـ/F3 — قرار أ): بثّ «head» يشمل رؤساء الشعب المفعّلين — فبوجود شعبة
-        // مفعّلة وحدها لا يُرفض الإنشاء (عتبة الرفض: غياب الرئيس والشعبة معًا).
-        _db.Users.Add(new User
+        // لا رئيس نشط في الفرع: حالة عمل بلا مستلمين — تُترجم لدى المشغّل إلى
+        // skipped/no_recipients، لا إلى إعادة ثم failed.
+        await Assert.ThrowsAsync<HeadAlertNoRecipientsException>(() =>
+            CreateSystemHeadAlertAsync("system head", HeadAlertAudience.SingleHead));
+    }
+
+    [Fact]
+    public async Task CreateSystem_HeadTargeted_ReachesExplicitActiveRecipient()
+    {
+        var sub = new User
         {
             Username = "sub_y",
-            FullName = "رئيس شعبة",
+            FullName = "sub head",
             Role = UserRole.SubHead,
             BranchId = _branchId,
             IsActive = true,
             PasswordHash = new PasswordHasher().Hash("123456"),
-        });
+        };
+        _db.Users.Add(sub);
         var blocked = _db.Users.Single(u => u.Id == _head.Id);
         blocked.IsActive = false;
         await _db.SaveChangesAsync();
 
-        var alert = await _service.CreateAsync(
-            new CreateHeadAlertRequest("head", null, null, "بثّ للشعبة وحدها", DelegationId: 9),
-            _head.Id, _branchId, "head_x");
+        var alertId = await CreateSystemHeadAlertAsync(
+            "system head",
+            HeadAlertAudience.SingleHead,
+            recipientUserId: sub.Id,
+            delegationId: 77,
+            createdById: sub.Id);
 
-        Assert.Equal(1, alert.RecipientCount);
-        var stored = await _db.HeadAlerts.Include(a => a.Recipients).SingleAsync(a => a.Id == alert.Id);
-        var subId = _db.Users.Single(u => u.Username == "sub_y").Id;
-        Assert.Equal(subId, Assert.Single(stored.Recipients).UserId);
+        var stored = await _db.HeadAlerts.Include(a => a.Recipients).SingleAsync(a => a.Id == alertId);
+        Assert.Equal(HeadAlertTargetType.Head, stored.TargetType);
+        Assert.Equal(sub.Id, Assert.Single(stored.Recipients).UserId);
+        Assert.Equal(77, stored.DelegationId);
     }
-
-    [Fact]
-    public async Task UpdateDelegationAlert_UpdatesLatestMessageKeepingRecipients()
-    {
-        var alert = await _service.CreateAsync(
-            new CreateHeadAlertRequest("head", null, null, "بانتظار اعتماد الإنابة — رسالة أولى", DelegationId: 5),
-            _head.Id, _branchId, "head_x");
-        await _service.MarkReadAsync(alert.Id, _head.Id);
-
-        var updated = await _service.UpdateDelegationAlertAsync(5, "بانتظار اعتماد الإنابة — رسالة معدّلة");
-
-        Assert.NotNull(updated);
-        Assert.Equal("بانتظار اعتماد الإنابة — رسالة معدّلة", updated!.Message);
-
-        // المستلمون وعلامات القراءة صامدة بعد التحديث.
-        var stored = await _db.HeadAlerts.Include(a => a.Recipients).SingleAsync(a => a.Id == alert.Id);
-        var recipient = Assert.Single(stored.Recipients);
-        Assert.True(recipient.IsRead);
-    }
-
-    [Fact]
-    public async Task UpdateDelegationAlert_WithoutExistingAlert_ReturnsNull()
-    {
-        var updated = await _service.UpdateDelegationAlertAsync(999, "رسالة");
-        Assert.Null(updated);
-    }
-
-    [Fact]
-    public async Task DeleteByDelegation_RemovesOnlyThatDelegationsAlerts()
-    {
-        var first = await _service.CreateAsync(
-            new CreateHeadAlertRequest("head", null, null, "إنابة أولى", DelegationId: 1), _head.Id, _branchId, "head_x");
-        var second = await _service.CreateAsync(
-            new CreateHeadAlertRequest("head", null, null, "إنابة ثانية", DelegationId: 2), _head.Id, _branchId, "head_x");
-
-        Assert.True(await _service.DeleteByDelegationAsync(1));
-        Assert.False(await _service.DeleteByDelegationAsync(1)); // لا شيء متبقٍ للإنابة الأولى
-
-        Assert.Null(await _db.HeadAlerts.FindAsync(first.Id));
-        Assert.NotNull(await _db.HeadAlerts.FindAsync(second.Id));
-    }
-
     [Fact]
     public async Task Sent_ListsOwnIssued_AndReceivedExcludesThem()
     {
@@ -419,8 +392,12 @@ public class HeadAlertServiceTests : IDisposable
             new CreateHeadAlertRequest("lawyer", null, _lawyer2.Id, "من القسم"), _head.Id, _branchId, "head_x");
 
         var subSent = await _service.ListSentAsync(sub.Id, _branchId);
-        Assert.Equal("من الشعبة", Assert.Single(subSent).Message);
+        Assert.Equal(
+            HeadAlertMessages.ManualMessage(UserRole.SubHead, "من الشعبة"),
+            Assert.Single(subSent).Message);
         var headSent = await _service.ListSentAsync(_head.Id, _branchId);
-        Assert.Equal("من القسم", Assert.Single(headSent).Message);
+        Assert.Equal(
+            HeadAlertMessages.ManualMessage(UserRole.Head, "من القسم"),
+            Assert.Single(headSent).Message);
     }
 }

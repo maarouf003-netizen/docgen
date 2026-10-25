@@ -163,6 +163,18 @@ public static class HeadAlertKindCatalog
         DelegationMirrorStatusChanged,
     };
 
+    /// <summary>عائلة تنبيهات مرايا الإنابة — يُستبدل بعضها ببعض عند تغيّر الحالة.</summary>
+    public static readonly IReadOnlySet<string> DelegationMirrorKinds = new HashSet<string>(StringComparer.Ordinal)
+    {
+        DelegationMirrorDeferred,
+        DelegationMirrorReturned,
+        DelegationMirrorSettled,
+        DelegationMirrorFullyForcibly,
+        DelegationMirrorUpdated,
+        DelegationMirrorLocalAddition,
+        DelegationMirrorStatusChanged,
+    };
+
     /// <summary>عائلة تنبيهات الاستئناف — تُستخدم في <c>ArchiveByAppealAsync</c>.</summary>
     public static readonly IReadOnlySet<string> AppealKinds = new HashSet<string>(StringComparer.Ordinal)
     {

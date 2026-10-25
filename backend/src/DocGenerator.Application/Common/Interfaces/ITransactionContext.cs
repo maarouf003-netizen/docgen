@@ -15,6 +15,12 @@ public interface ITransactionContext
 
     /// <summary>معرّف المعاملة النشطة (إن وُجدت) — للتشخيص فقط.</summary>
     Guid? TransactionId { get; }
+
+    /// <summary>إنشاء نقطة حفظ ضمن المعاملة النشطة للإعادة الآمنة عند التعارض.</summary>
+    Task CreateSavepointAsync(string name, CancellationToken ct = default);
+
+    /// <summary>التراجع إلى نقطة حفظ سابقة ضمن المعاملة ذاتها (لا تُغلق المعاملة).</summary>
+    Task RollbackToSavepointAsync(string name, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -29,4 +35,10 @@ public sealed class NullTransactionContext : ITransactionContext
     public bool HasActiveTransaction => false;
 
     public Guid? TransactionId => null;
+
+    public Task CreateSavepointAsync(string name, CancellationToken ct = default)
+        => throw new InvalidOperationException("لا توجد معاملة نشطة لإنشاء نقطة حفظ");
+
+    public Task RollbackToSavepointAsync(string name, CancellationToken ct = default)
+        => throw new InvalidOperationException("لا توجد معاملة نشطة للتراجع إلى نقطة حفظ");
 }

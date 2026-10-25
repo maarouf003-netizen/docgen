@@ -40,6 +40,14 @@ public sealed class HeadAlertOutboxDispatcher : BackgroundService
     private readonly ILogger<HeadAlertOutboxDispatcher> _logger;
     private readonly string _workerId = $"{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
 
+    private static readonly TimeSpan MaintenanceInterval = TimeSpan.FromHours(24);
+    private static readonly TimeSpan HealthWarningInterval = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan PendingAgeWarningThreshold = TimeSpan.FromMinutes(5);
+
+    private DateTime _lastHealthWarningAt = DateTime.MinValue;
+    private DateTime _lastLockWarningAt = DateTime.MinValue;
+    private DateTime? _lastMaintenanceAt;
+
     public HeadAlertOutboxDispatcher(
         IServiceScopeFactory scopeFactory,
         IOptions<HeadAlertOutboxOptions> options,
@@ -70,13 +78,17 @@ public sealed class HeadAlertOutboxDispatcher : BackgroundService
             {
                 if (!await _lock.TryAcquireAsync(stoppingToken).ConfigureAwait(false))
                 {
+                    WarnIfLockUnavailable();
                     await Task.Delay(poll, stoppingToken).ConfigureAwait(false);
                     continue;
                 }
 
                 try
                 {
+                    await RunScheduledMaintenanceAsync(stoppingToken).ConfigureAwait(false);
+
                     var processed = await ProcessNextAsync(stoppingToken).ConfigureAwait(false);
+                    await WarnIfHealthDegradedAsync(stoppingToken).ConfigureAwait(false);
                     if (!processed)
                         await Task.Delay(poll, stoppingToken).ConfigureAwait(false);
                 }
@@ -98,7 +110,73 @@ public sealed class HeadAlertOutboxDispatcher : BackgroundService
         }
     }
 
-    /// <summary>يعالج رسالة واحدة؛ يُرجع <c>false</c> حين لا توجد رسالة جاهزة.</summary>
+    private async Task RunScheduledMaintenanceAsync(CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        if (_lastMaintenanceAt is not null && now - _lastMaintenanceAt.Value < MaintenanceInterval)
+            return;
+
+        await RunMaintenanceAsync(now, ct).ConfigureAwait(false);
+        _lastMaintenanceAt = now;
+    }
+
+    /// <summary>
+    /// Daily outbox maintenance (plan section 6.4): deletes terminal rows past retention,
+    /// then returns current health. Public so tests can drive it deterministically.
+    /// </summary>
+    public async Task<HeadAlertOutboxHealth> RunMaintenanceAsync(DateTime now, CancellationToken ct)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var store = scope.ServiceProvider.GetRequiredService<IHeadAlertOutboxStore>();
+
+        var removed = await store.CleanupAsync(
+            now,
+            _options.ProcessedRetentionDays,
+            _options.SkippedRetentionDays,
+            ct).ConfigureAwait(false);
+
+        if (removed > 0)
+            _logger.LogInformation("Head alert outbox cleanup removed {Count} terminal rows.", removed);
+
+        return await store.GetHealthAsync(ct).ConfigureAwait(false);
+    }
+
+    private async Task WarnIfHealthDegradedAsync(CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        if (now - _lastHealthWarningAt < HealthWarningInterval)
+            return;
+
+        using var scope = _scopeFactory.CreateScope();
+        var store = scope.ServiceProvider.GetRequiredService<IHeadAlertOutboxStore>();
+        var health = await store.GetHealthAsync(ct).ConfigureAwait(false);
+
+        // The interval rate-limits the health query itself, not only repeated warnings.
+        _lastHealthWarningAt = now;
+
+        var stalePending = health.OldestPendingAt is not null
+            && now - health.OldestPendingAt.Value >= PendingAgeWarningThreshold;
+
+        if (!stalePending && health.FailedCount == 0)
+            return;
+
+        _logger.LogWarning(
+            "Head alert outbox degraded: pending={Pending}, oldestPendingAt={OldestPendingAt}, failed={Failed}.",
+            health.PendingCount,
+            health.OldestPendingAt,
+            health.FailedCount);
+    }
+
+    private void WarnIfLockUnavailable()
+    {
+        var now = DateTime.UtcNow;
+        if (now - _lastLockWarningAt < HealthWarningInterval)
+            return;
+
+        _logger.LogWarning("Head alert outbox lock is unavailable; another worker may be active.");
+        _lastLockWarningAt = now;
+    }
+
     public async Task<bool> ProcessNextAsync(CancellationToken ct)
     {
         var claimed = await ClaimAsync(ct).ConfigureAwait(false);
@@ -118,6 +196,25 @@ public sealed class HeadAlertOutboxDispatcher : BackgroundService
         {
             await MarkSkippedAsync(claimed.Id, HeadAlertOutboxSkipReasons.NoRecipients, ct).ConfigureAwait(false);
             _logger.LogInformation("قُطعت رسالة صندوق الصادر (لا مستلمين): {Message}", ex.Message);
+        }
+        catch (HeadAlertMissingReferenceException ex)
+        {
+            // مرجع محذوف/غير صالح وقت المعالجة — تخطٍّ بلا إعادة (الخطة §8.1).
+            await MarkSkippedAsync(claimed.Id, HeadAlertOutboxSkipReasons.MissingReference, ct).ConfigureAwait(false);
+            _logger.LogInformation("قُطعت رسالة صندوق الصادر (مرجع مفقود): {Message}", ex.Message);
+        }
+        catch (HeadAlertRecipientInactiveException ex)
+        {
+            // مستلم التعاقب غير فعّال ولا خلف معروف — لا تخمين (الخطة §8.1).
+            await MarkSkippedAsync(claimed.Id, HeadAlertOutboxSkipReasons.RecipientInactive, ct).ConfigureAwait(false);
+            _logger.LogInformation("قُطعت رسالة صندوق الصادر (مستلم غير فعّال): {Message}", ex.Message);
+        }
+        catch (Exception ex) when (_classifier.IsForeignKeyViolation(ex))
+        {
+            // مرجع حُذف بين التسجيل والمعالجة: المفتاح الأجنبي يرفض الإدراج —
+            // تخطٍّ صريح بدل إعادة حتى MaxAttempts ثم failed.
+            await MarkSkippedAsync(claimed.Id, HeadAlertOutboxSkipReasons.MissingReference, ct).ConfigureAwait(false);
+            _logger.LogInformation("قُطعت رسالة صندوق الصادر (مرجع محذوف أثناء المعالجة).");
         }
         catch (HeadAlertConflictException ex)
         {
@@ -290,6 +387,16 @@ public sealed class HeadAlertOutboxDispatcher : BackgroundService
 
         if (message.Operation == HeadAlertOutboxOperation.Upsert && string.IsNullOrWhiteSpace(message.Kind))
             throw new JsonException("رسالة الإنشاء بلا نوع");
+
+        if (message.Operation == HeadAlertOutboxOperation.Upsert
+            && payload.Request is { } request
+            && !string.Equals(message.Kind, request.Kind, StringComparison.Ordinal))
+        {
+            // العمود والحمولة مرآتان لنفس الحدث؛ الاختلاف يعني صفًا مُفسَدًا أو خطأ
+            // تسجيل — يُرفض بدل الاعتماد على أحدهما (§6.4: لا تعارض صامت).
+            throw new JsonException(
+                $"تعارض بين نوع الصف ({message.Kind}) ونوع الحمولة ({request.Kind})");
+        }
     }
 
     /// <summary>
@@ -321,7 +428,7 @@ public sealed class HeadAlertOutboxDispatcher : BackgroundService
         if (message.Attempts >= _options.MaxAttempts)
         {
             await MarkFailedAsync(message.Id, Describe(exception), ct).ConfigureAwait(false);
-            _logger.LogError(exception, "فشل معالجة رسالة صندوقihara بعد {Attempts} محاولة.", message.Attempts);
+            _logger.LogError(exception, "فشل معالجة رسالة صندوق الصادر بعد {Attempts} محاولة.", message.Attempts);
             return;
         }
 

@@ -1,25 +1,17 @@
 namespace DocGenerator.Application.DTOs;
 
 /// <summary>
-/// إنشاء تنبيه — رئيس القسم لفرعه فقط.
-/// TargetType: "document" (مع DocumentId) / "lawyer" (مع TargetLawyerId) / "branch" (تعميم للفرع) /
-/// "head" (تنبيهات النظام لرئيس القسم، مثل مراحل الإنابة والاستئناف — مع DelegationId/AppealId لتصفيتها تلقائيًا).
-/// `RecipientUserId` (اختياري): توجيه لمالك واحد بدل البث — يُتحقق أنه رئيس مفعّل في الفرع.
-///
-/// ملاحظة تسلسل (خطة إعادة الهيكلة §15): تنظيف هذا العقد من حقوله الداخلية
-/// (`DelegationId`/`AppealId`/`RecipientUserId`) ينتقل إلى **PR-2** مع ترحيل
-/// نداءات النظام الـ13 إلى العقد الداخلي `CreateSystemHeadAlertRequest` — فالمواضع
-/// القابلة للتنظيف قبلها كانت ستبقى في العقد العام وتسمح للعميل بتعليق تنبيه
-/// على دورة حياة لا يملكها (قاعدة §5.3).
+/// إنشاء تنبيه يدوي — رئيس القسم/الشعبة لفرعه فقط.
+/// TargetType: <c>document</c> (مع DocumentId) / <c>lawyer</c> (مع TargetLawyerId) /
+/// <c>branch</c> (تعميم للفرع). لا يقبل هذا العقد أي ربط بدورة حياة نظامية
+/// (`DelegationId`/`AppealId`) ولا مستلمًا داخليًا (`RecipientUserId`)؛ تلك
+/// للمسار النظامي الداخلي <see cref="CreateSystemHeadAlertRequest"/> فقط (الخطة §5.3/§9.2).
 /// </summary>
 public record CreateHeadAlertRequest(
     string TargetType,
     int? DocumentId,
     int? TargetLawyerId,
-    string Message,
-    int? DelegationId = null,
-    int? AppealId = null,
-    int? RecipientUserId = null);
+    string Message);
 
 /// <summary>
 /// تنبيه لعرض المحامي أو الرئيس (IsRead لحالة القارئ نفسه — §8: قراءة بالمستلم).

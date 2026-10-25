@@ -57,8 +57,6 @@ public interface IExecutionCircuitService
 /// </summary>
 public sealed class ExecutionCircuitService : IExecutionCircuitService
 {
-    public const string PendingAlertPrefix = "أحال لك رئيس القسم ملفات من دائرة ";
-    public const string PendingAlertSuffix = " — يرجى تحديث معلوماتها";
     public const string EmptyingReminderBanner = "لا تنسى نقل ملفات هذه الدائرة لمحامي أو محامين اخرين ان كان لذلك مقتضى";
 
     private readonly IRepository<ExecutionCircuit> _circuits;
@@ -75,6 +73,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
+    private readonly IHeadAlertOutbox _alertOutbox;
     private readonly IDbExceptionClassifier _dbErrors;
     private readonly IIdempotencyStore? _idempotency;
     private readonly TimeProvider _clock;
@@ -95,6 +94,7 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         IUnitOfWork uow,
         ITransactionRunner tx,
         IAuditLogger audit,
+        IHeadAlertOutbox alertOutbox,
         IDbExceptionClassifier dbErrors,
         TimeProvider clock,
         TimeZoneInfo timeZone,
@@ -114,14 +114,12 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         _uow = uow;
         _tx = tx;
         _audit = audit;
+        _alertOutbox = alertOutbox;
         _dbErrors = dbErrors;
         _idempotency = idempotency;
         _clock = clock;
         _timeZone = timeZone;
     }
-
-    public static string BuildPendingMessage(string circuitName) =>
-        $"{PendingAlertPrefix}{circuitName}{PendingAlertSuffix}";
 
     private async Task<Branch> RequireBranchWithGovernorateAsync(int branchId, CancellationToken ct)
     {
@@ -322,17 +320,14 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                         g.UpdatedAt = now;
                         _delegations.Update(g);
                     }
-                    // ترحيل نص التنبيهات المدمجة (المفتاح النصي هش — يُرحَّل مع التسمية نفسها
-                    // وإلا يتمت معلقات الاسم الجديد بلا تنبيه وبقي القديم شبحًا).
-                    // نطاق الفرع في SQL نفسه (C2+S4): الوحدانية الاسمية داخل الفرع فقط،
-                    // فاسمان متطابقان في فرعين يتشاركان الرسالة — ولا يُسحب تنبيه
-                    // الفرع الآخر أصلًا (لا تصفية لاحقة قابلة للنسيان).
-                    var staleAlerts = await _alerts.FindByMessageAndBranchAsync(BuildPendingMessage(oldName), branchId, token);
-                    foreach (var a in staleAlerts)
-                    {
-                        a.Message = BuildPendingMessage(trimmed);
-                        _alerts.Update(a);
-                    }
+                    // ترحيل نص التنبيهات المدمجة عبر Outbox داخل المعاملة نفسها:
+                    // المفتاح الدلالي (الدائرة) هو ما يربط التنبيهات، فلا حاجة
+                    // للبحث النصي الهش في صفوف HeadAlerts.
+                    await _alertOutbox.EnqueueCircuitRenamedAsync(
+                        circuitId,
+                        HeadAlertMessages.CircuitPendingDocuments(new(circuit.Name)),
+                        now,
+                        token);
                     _circuits.Update(circuit);
                     await _uow.SaveChangesAsync(token);
                     // تدقيق حقلي لكل ملف (S5) — داخل المعاملة بعد الحفظ الرئيسي.
@@ -423,6 +418,13 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
             // تسهل اختبارها: أي صف شاذ يفشل بصوت عالٍ داخل المعاملة مع rollback.
             var purged = 0;
             var deletedDocs = await _documents.ListDeletedByCircuitAsync(circuitId, token);
+            var deletedDocIds = deletedDocs.Select(d => d.Id).ToList();
+            var linkedAlerts = await _alerts.ListActiveByCircuitOrDocumentsAsync(circuitId, deletedDocIds, token);
+            foreach (var alert in linkedAlerts)
+            {
+                alert.IsArchived = true;
+                alert.ArchivedAt = now;
+            }
             foreach (var d in deletedDocs)
             {
                 _documents.Remove(d);
@@ -523,15 +525,19 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                         .Count(a => a.Status == AppealStatusCatalog.Pending && a.AssignedLawyerId == null);
                 }
 
-                await _alerts.AddAsync(new HeadAlert
-                {
-                    BranchId = circuit.BranchId,
-                    CreatedById = actorUserId,
-                    TargetType = HeadAlertTargetType.Head,
-                    Message = $"نُقلت إليك دائرة «{circuit.Name}» — {fileIds.Count} ملفًا، {pendingDelegations} إنابة معلقة، {pendingAppeals} استئنافًا بانتظار الإسناد",
-                    CreatedAt = DateTime.UtcNow,
-                    Recipients = new List<HeadAlertRecipient> { new() { UserId = newHead.Id } },
-                }, token);
+                await _alertOutbox.EnqueueSystemAsync(
+                    new CreateSystemHeadAlertRequest(
+                        HeadAlertKindCatalog.CircuitTransferred,
+                        HeadAlertMessages.CircuitTransferred(new(
+                            circuit.Name, fileIds.Count, pendingDelegations, pendingAppeals)),
+                        HeadAlertAudience.SingleHead,
+                        circuit.BranchId,
+                        actorUserId,
+                        ExecutionCircuitId: circuit.Id,
+                        RecipientUserId: newHead.Id),
+                    supersedePlan: null,
+                    occurredAt: DateTime.UtcNow,
+                    ct: token);
                 await _uow.SaveChangesAsync(token);
             }, ct);
         }
@@ -835,8 +841,15 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
             await _audit.LogAsync(actorName, "refer_circuit_files", null, null,
                 $"أحال {referred} ملفًا من دائرة «{sourceName}» إلى دائرة «{targetName}» للمحامي {targetFullName} (متخطى {skipped})", token);
 
-            // تنبيه المحامي المدمج (لكل محامٍ × دائرة): يُنشأ/يُحدَّث.
-            await UpsertPendingAlertAsync(request.TargetLawyerId, branchId, actorUserId, targetName, docs.FirstOrDefault()?.Id, token);
+            // تنبيه المحامي المدمج (لكل محامٍ × دائرة) عبر Outbox داخل المعاملة.
+            await EnqueuePendingAlertAsync(
+                request.TargetLawyerId,
+                branchId,
+                actorUserId,
+                request.TargetCircuitId,
+                target.Name,
+                now,
+                token);
             await _uow.SaveChangesAsync(token);
 
             var counts = await _documents.CountByCircuitsAsync(new List<int> { sourceCircuitId }, token);
@@ -846,67 +859,72 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         return new ReferCircuitFilesResult(referred, skipped, remaining);
     }
 
-    private async Task UpsertPendingAlertAsync(int lawyerId, int branchId, int actorUserId, string circuitName, int? sampleDocumentId, CancellationToken token)
-    {
-        var message = BuildPendingMessage(circuitName);
-        var existing = await _alerts.FindPendingAlertAsync(lawyerId, message, token);
-        if (existing is not null)
-        {
-            existing.CreatedAt = DateTime.UtcNow;
-            if (existing.DocumentId is null && sampleDocumentId is not null)
-                existing.DocumentId = sampleDocumentId;
-            _alerts.Update(existing);
-            return;
-        }
-        await CreatePendingAlertAsync(lawyerId, branchId, actorUserId, message, sampleDocumentId, token);
-    }
-
     /// <summary>
-    /// ضمان تنبيه معلق (إنشاء عند الغياب فقط — بلا لمس الموجود): تُستخدم بعد النقل
-    /// حتى لا تُقفز التنبيهات القائمة زمنيًا بلا حدث جديد.
+    /// تسجيل تنبيه إعادة القيد عبر Outbox داخل معاملة العمل — المفتاح الدلالي
+    /// (محامٍ × دائرة) يضمن إنشاءً أو تحديثًا واحدًا بلا بحث نصي.
     /// </summary>
-    private async Task EnsurePendingAlertAsync(int lawyerId, int branchId, int actorUserId, string circuitName, int? sampleDocumentId, CancellationToken token)
-    {
-        var message = BuildPendingMessage(circuitName);
-        var existing = await _alerts.FindPendingAlertAsync(lawyerId, message, token);
-        if (existing is not null)
-            return;
-        await CreatePendingAlertAsync(lawyerId, branchId, actorUserId, message, sampleDocumentId, token);
-    }
-
-    private async Task CreatePendingAlertAsync(int lawyerId, int branchId, int actorUserId, string message, int? sampleDocumentId, CancellationToken token)
-    {
-        var alert = new HeadAlert
-        {
-            BranchId = branchId,
-            CreatedById = actorUserId,
-            TargetType = HeadAlertTargetType.Lawyer,
-            DocumentId = sampleDocumentId,
-            TargetLawyerId = lawyerId,
-            Message = message,
-            CreatedAt = DateTime.UtcNow,
-            Recipients = new List<HeadAlertRecipient> { new() { UserId = lawyerId } },
-        };
-        await _alerts.AddAsync(alert, token);
-    }
+    private Task EnqueuePendingAlertAsync(
+        int lawyerId,
+        int branchId,
+        int actorUserId,
+        int circuitId,
+        string circuitName,
+        DateTime occurredAt,
+        CancellationToken token)
+        => _alertOutbox.EnqueueSystemAsync(
+            new CreateSystemHeadAlertRequest(
+                HeadAlertKindCatalog.CircuitPendingDocuments,
+                HeadAlertMessages.CircuitPendingDocuments(new(circuitName)),
+                HeadAlertAudience.SingleLawyer,
+                branchId,
+                actorUserId,
+                ExecutionCircuitId: circuitId,
+                RecipientUserId: lawyerId),
+            supersedePlan: null,
+            occurredAt: occurredAt,
+            ct: token);
 
     public async Task SyncPendingAlertsAfterTransferAsync(int sourceOwnerId, int targetOwnerId, int branchId, int actorUserId, CancellationToken ct = default)
     {
-        // تنسيق من المتحكم بعد نجاح النقل (مفرد/جماعي): التنبيه يتبع المالك —
-        // تُنشأ تنبيهات المالك الجديد لدوائر معلقاته الحالية، وتُصفَّى تنبيهات
-        // القديم التي لم يعد لها معلقات. فشلها لا يُفشل النقل (تُستدعى بعده).
-        await _tx.RunAsync(async token =>
+        // التنبيه يتبع المالك — تُنشأ تنبيهات المالك الجديد لدوائر معلقاته الحالية،
+        // وتُصفَّى تنبيهات القديم التي لم يعد لها معلقات. تُنفَّذ داخل معاملة النقل
+        // إن وُجدت (ذرّية مع تغيير الملكية)، وإلا تُفتح معاملة مستقلة.
+        if (_tx is ITransactionContext { HasActiveTransaction: true })
         {
-            var targetPending = await _documents.ListPendingForLawyerAsync(targetOwnerId, null, token);
-            foreach (var g in targetPending.GroupBy(d => d.ExecutionCircuit?.Name ?? d.Court ?? string.Empty))
-            {
-                if (string.IsNullOrWhiteSpace(g.Key))
-                    continue;
-                await EnsurePendingAlertAsync(targetOwnerId, branchId, actorUserId, g.Key, g.FirstOrDefault()?.Id, token);
-            }
-            await CleanupPendingAlertsAsync(sourceOwnerId, token);
-            await _uow.SaveChangesAsync(token);
-        }, ct);
+            await SyncPendingAlertsAfterTransferCoreAsync(
+                sourceOwnerId, targetOwnerId, branchId, actorUserId, ct);
+            return;
+        }
+
+        await _tx.RunAsync(token => SyncPendingAlertsAfterTransferCoreAsync(
+            sourceOwnerId, targetOwnerId, branchId, actorUserId, token), ct);
+    }
+
+    private async Task SyncPendingAlertsAfterTransferCoreAsync(
+        int sourceOwnerId, int targetOwnerId, int branchId, int actorUserId, CancellationToken token)
+    {
+        var targetPending = await _documents.ListPendingForLawyerAsync(targetOwnerId, null, token);
+        foreach (var g in targetPending
+                     .Where(d => d.ExecutionCircuitId.HasValue)
+                     .GroupBy(d => d.ExecutionCircuitId!.Value))
+        {
+            var circuitName = g.Select(d => d.ExecutionCircuit?.Name)
+                .FirstOrDefault(n => !string.IsNullOrWhiteSpace(n))
+                ?? g.Select(d => d.Court)
+                    .FirstOrDefault(n => !string.IsNullOrWhiteSpace(n));
+            if (string.IsNullOrWhiteSpace(circuitName))
+                continue;
+            await EnqueuePendingAlertAsync(
+                targetOwnerId,
+                branchId,
+                actorUserId,
+                g.Key,
+                circuitName!,
+                DateTime.UtcNow,
+                token);
+        }
+        await CleanupPendingAlertsAsync(sourceOwnerId, token);
+        await _uow.SaveChangesAsync(token);
     }
 
     public async Task<List<PendingRegistrationDto>> MyPendingRegistrationsAsync(int lawyerId, int? circuitId, CancellationToken ct = default)
@@ -1058,29 +1076,29 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
 
     private async Task<bool> CleanupPendingAlertsAsync(int lawyerId, CancellationToken token)
     {
-        var alerts = await _alerts.ListPendingAlertsForLawyerAsync(lawyerId, PendingAlertPrefix, token);
-        if (alerts.Count == 0) return false;
         var pending = await _documents.ListPendingForLawyerAsync(lawyerId, null, token);
-        var circuits = await _circuits.ListAsync(token);
-        var circuitNames = circuits.ToDictionary(c => c.Id, c => c.Name);
-        var pendingMessages = new HashSet<string>(pending.Select(d =>
+        var lawyer = await _users.GetByIdAsync(lawyerId, token);
+        var activeKeys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var doc in pending)
         {
-            string? n = null;
-            if (d.ExecutionCircuitId is not null)
-                circuitNames.TryGetValue(d.ExecutionCircuitId.Value, out n);
-            n ??= d.Court ?? string.Empty;
-            return BuildPendingMessage(n);
-        }).Where(m => m != BuildPendingMessage(string.Empty)));
-        var removedAny = false;
-        foreach (var alert in alerts)
-        {
-            if (!pendingMessages.Contains(alert.Message))
+            if (doc.ExecutionCircuitId is null)
+                continue;
+            var docBranchId = doc.BranchId ?? lawyer?.BranchId;
+            if (docBranchId is null)
+                continue;
+            activeKeys.Add(HeadAlertDedupe.Build(new HeadAlertDedupeScope
             {
-                _alerts.Remove(alert);
-                removedAny = true;
-            }
+                Kind = HeadAlertKindCatalog.CircuitPendingDocuments,
+                Audience = HeadAlertAudience.SingleLawyer,
+                BranchId = docBranchId.Value,
+                RecipientUserId = lawyerId,
+                ExecutionCircuitId = doc.ExecutionCircuitId,
+            }));
         }
-        return removedAny;
+
+        var archived = await _alerts.ArchiveStalePendingByLawyerAsync(
+            lawyerId, activeKeys, DateTime.UtcNow, token);
+        return archived > 0;
     }
 
     /// <summary>

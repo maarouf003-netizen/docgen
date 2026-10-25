@@ -21,6 +21,8 @@ public class ReviewLetterServiceTests : IDisposable
     private readonly User _lawyer1;
     private readonly User _lawyer2;
     private readonly User _otherBranchHead;
+    private IHeadAlertService _headAlerts = null!;
+    private TransactionRunner _tx = null!;
 
     public ReviewLetterServiceTests()
     {
@@ -51,17 +53,22 @@ public class ReviewLetterServiceTests : IDisposable
         var branches = new BranchRepository(_db);
         var appeals = new AppealRepository(_db);
         var delegations = new DelegationRepository(_db);
-        var headAlerts = new HeadAlertRepository(_db);
+        var alerts = new HeadAlertRepository(_db);
+        var users = new UserRepository(_db);
         var uow = new UnitOfWork(_db);
-        var tx = new TransactionRunner(_db);
+        _tx = new TransactionRunner(_db);
+        _headAlerts = new HeadAlertService(alerts, documents, users, branches, uow, _tx, _audit, _tx);
         return new ReviewLetterService(
-            letters, documents, branches, appeals, delegations, headAlerts,
-            new DbExceptionClassifier(), uow, tx, _audit,
+            letters, documents, branches, appeals, delegations,
+            new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx),
+            new DbExceptionClassifier(), uow, _tx, _audit,
             TimeProvider.System, TestClock.TimeZone,
-            new UserRepository(_db),
+            users,
             new Repository<Section>(_db),
             new Repository<ExecutionCircuit>(_db));
     }
+
+    private Task FlushAlertsAsync() => HeadAlertOutboxFlush.AllAsync(_db, _headAlerts, _tx);
 
 
     private static int s_docSeq;
@@ -359,6 +366,13 @@ public class ReviewLetterServiceTests : IDisposable
             _head.Id, "رئيس القسم", _branchId);
         await _service.ReplyAsync(letter.Id, new ReplyReviewLetterRequest("<p>رد ثانٍ قبل الاطلاع</p>"),
             _head.Id, "رئيس القسم", _branchId);
+        await FlushAlertsAsync();
+
+        var alert = await _db.HeadAlerts.Include(a => a.Recipients).SingleAsync();
+        Assert.Equal(HeadAlertTargetType.Lawyer, alert.TargetType);
+        Assert.Equal(letter.Id, alert.ReviewLetterId);
+        Assert.Equal(_lawyer1.Id, alert.Recipients.Single().UserId);
+        Assert.Contains("رد ثانٍ قبل الاطلاع", alert.Message);
 
         // قائمة المحامي تعرض الكتاب مع علم «رد غير مطّلع عليه»
         var list = await _service.SearchAsync(_lawyer1.Id, UserRole.Lawyer, _branchId, null, 1, 20, null);
@@ -373,6 +387,23 @@ public class ReviewLetterServiceTests : IDisposable
 
         // رئيس قسم آخر لا يتأثر بعدّاد محامٍ غير صاحب الكتاب
         Assert.Equal(0, await _service.CountUnseenRepliesForLawyerAsync(_lawyer2.Id));
+    }
+
+    [Fact]
+    public async Task Reply_AlertCarriesFullBody_WithoutTruncation()
+    {
+        var letter = await _service.CreateAsync(
+            new CreateReviewLetterRequest(null, "<p>الأصل</p>"),
+            _lawyer1.Id, "المحامي الأول", _branchId);
+        var fullReply = string.Concat(Enumerable.Repeat("تفصيل الرد الكامل ", 20)).Trim();
+
+        await _service.ReplyAsync(letter.Id, new ReplyReviewLetterRequest($"<p>{fullReply}</p>"),
+            _head.Id, "رئيس القسم", _branchId);
+        await FlushAlertsAsync();
+
+        var alert = await _db.HeadAlerts.SingleAsync();
+        Assert.Contains(fullReply, alert.Message);
+        Assert.DoesNotContain("…", alert.Message);
     }
 
     [Fact]

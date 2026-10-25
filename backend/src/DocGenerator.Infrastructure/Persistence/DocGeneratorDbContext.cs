@@ -79,13 +79,38 @@ public class DocGeneratorDbContext : DbContext
         base.OnModelCreating(modelBuilder);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(DocGeneratorDbContext).Assembly);
 
-        // كل ملف يُنشأ بواسطة مستخدم حقيقي: العلاقة إلزامية (NOT NULL) لمنع الملفات اليتيمة،
-        // مع منع الحذف المتسلسل لمنشئ السجل.
+        // لا يتم ربط علاقة المستخدم بالوثائق: المالك إلزامي (NOT NULL) ولا يجوز حذف
+        // أي مستخدم يملك ملفات؛ لا تعيين مبدئي ولا مسح تلقائي.
         modelBuilder.Entity<Document>()
             .HasOne(d => d.CreatedBy)
             .WithMany(u => u.Documents)
             .HasForeignKey(d => d.CreatedById)
             .IsRequired()
             .OnDelete(DeleteBehavior.Restrict);
+
+        ConfigureHeadAlertProviderSpecific(modelBuilder);
+    }
+
+    /// <summary>
+    /// فروق مزوّد قاعدة البيانات لعقد التنبيهات (الخطة §6.2): الفهرس الفريد الجزئي
+    /// على <c>DedupeKey</c> يحتاج صياغة منطقية مختلفة بين SQLite وPostgreSQL.
+    /// يُستدعى من <see cref="OnModelCreating"/> بعد التكوينات المشتركة حصرًا.
+    /// </summary>
+    private void ConfigureHeadAlertProviderSpecific(ModelBuilder modelBuilder)
+    {
+        var isPostgres = string.Equals(
+            Database.ProviderName,
+            "Npgsql.EntityFrameworkCore.PostgreSQL",
+            StringComparison.Ordinal);
+
+        var activeDedupeFilter = isPostgres
+            ? "\"DedupeKey\" IS NOT NULL AND \"IsArchived\" = false"
+            : "\"DedupeKey\" IS NOT NULL AND \"IsArchived\" = 0";
+
+        modelBuilder.Entity<HeadAlert>()
+            .HasIndex(a => a.DedupeKey)
+            .HasDatabaseName("UX_HeadAlerts_DedupeKey_Active")
+            .IsUnique()
+            .HasFilter(activeDedupeFilter);
     }
 }

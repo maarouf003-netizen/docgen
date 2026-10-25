@@ -1,3 +1,4 @@
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
@@ -17,7 +18,7 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
     {
         return await Db.HeadAlerts
             .AsNoTracking()
-            .Where(a => a.Recipients.Any(r => r.UserId == userId))
+            .Where(a => !a.IsArchived && a.Recipients.Any(r => r.UserId == userId))
             .OrderByDescending(a => a.CreatedAt)
             .Include(a => a.CreatedBy)
             .Include(a => a.Document)
@@ -33,7 +34,7 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
     {
         return await Db.HeadAlerts
             .AsNoTracking()
-            .Where(a => a.BranchId == branchId && a.Recipients.Any(r => r.UserId == userId))
+            .Where(a => !a.IsArchived && a.BranchId == branchId && a.Recipients.Any(r => r.UserId == userId))
             .OrderByDescending(a => a.CreatedAt)
             .Include(a => a.CreatedBy)
             .Include(a => a.Document)
@@ -46,7 +47,7 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
     {
         return await Db.HeadAlerts
             .AsNoTracking()
-            .Where(a => a.BranchId == branchId && a.CreatedById == userId)
+            .Where(a => !a.IsArchived && a.BranchId == branchId && a.CreatedById == userId)
             .OrderByDescending(a => a.CreatedAt)
             .Include(a => a.CreatedBy)
             .Include(a => a.Document)
@@ -63,6 +64,7 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
         // تتم في الذاكرة على الصفوف المسقطة فقط.
         var rows = await Db.HeadAlerts
             .AsNoTracking()
+            .Where(a => !a.IsArchived)
             .OrderByDescending(a => a.CreatedAt)
             .ThenByDescending(a => a.Id)
             .Take(500)
@@ -137,7 +139,8 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
     }
 
     public Task<int> CountUnreadAsync(int userId, CancellationToken ct = default)
-        => Db.HeadAlertRecipients.CountAsync(r => r.UserId == userId && !r.IsRead, ct);
+        => Db.HeadAlertRecipients.CountAsync(
+            r => r.UserId == userId && !r.IsRead && !r.HeadAlert!.IsArchived, ct);
 
     public async Task<HeadAlert?> GetByIdWithRecipientsAsync(int id, CancellationToken ct = default)
     {
@@ -147,6 +150,18 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             .Include(a => a.Document)
             .Include(a => a.TargetLawyer)
             .FirstOrDefaultAsync(a => a.Id == id, ct);
+    }
+
+    public async Task<List<HeadAlert>> ListActiveUnreadByRecipientWithRecipientsAsync(
+        int userId, CancellationToken ct = default)
+    {
+        // متتبَّعة: التعاقب يعدّل صفوف الاستلام ومفاتيح المنع داخل معاملة المستخدم.
+        // الفلترة على مستوى الاستعلام تُبقي المؤرشف والمقروء خارج النقل التاريخي.
+        return await Db.HeadAlerts
+            .Where(a => !a.IsArchived && a.Recipients.Any(r => r.UserId == userId && !r.IsRead))
+            .Include(a => a.Recipients)
+            .OrderBy(a => a.Id)
+            .ToListAsync(ct);
     }
 
     public async Task<List<User>> ListActiveLawyersAsync(int branchId, CancellationToken ct = default)
@@ -248,7 +263,7 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
         int delegationId, int recipientLawyerId, CancellationToken ct = default)
     {
         // متتبَّعة عمدًا: يُحدَّث نُصّها وزمنها لدمج تغييرات المرآة المتعاقبة في تنبيه واحد
-        // للمستلم نفسه (نمط FindLatestUnseenByReviewLetterAsync).
+        // للمستلم نفسه.
         return await Db.HeadAlerts
             .Where(a => a.DelegationId == delegationId && a.TargetLawyerId == recipientLawyerId)
             .OrderByDescending(a => a.CreatedAt)
@@ -259,7 +274,7 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
     {
         return await Db.HeadAlerts
             .AsNoTracking()
-            .Where(a => a.DelegationId == delegationId)
+            .Where(a => a.DelegationId == delegationId && !a.IsArchived)
             .OrderByDescending(a => a.CreatedAt)
             .Include(a => a.CreatedBy)
             .Include(a => a.TargetLawyer)
@@ -304,54 +319,46 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
         return removed;
     }
 
-    public async Task<HeadAlert?> FindPendingAlertAsync(int lawyerId, string message, CancellationToken ct = default)
-    {
-        return await Db.HeadAlerts
-            .Where(a => a.TargetLawyerId == lawyerId && a.Message == message)
-            .OrderByDescending(a => a.CreatedAt)
-            .FirstOrDefaultAsync(ct);
-    }
-
-    public async Task<List<HeadAlert>> ListPendingAlertsForLawyerAsync(int lawyerId, string prefix, CancellationToken ct = default)
-    {
-        return await Db.HeadAlerts
-            .Where(a => a.TargetLawyerId == lawyerId && a.Message.StartsWith(prefix))
-            .OrderByDescending(a => a.CreatedAt)
-            .ToListAsync(ct);
-    }
-
-    public async Task<List<HeadAlert>> FindByMessageAndBranchAsync(string message, int branchId, CancellationToken ct = default)
-    {
-        // S4: النطاق الفرعي في SQL نفسه — متتبَّعة للترحيل داخل التسمية فقط.
-        return await Db.HeadAlerts
-            .Where(a => a.Message == message && a.BranchId == branchId)
-            .ToListAsync(ct);
-    }
-
-    public async Task<HeadAlert?> FindLatestUnseenByReviewLetterAsync(
-        int reviewLetterId, int recipientUserId, CancellationToken ct = default)
-    {
-        // متتبَّعة عمدًا: ستُحدَّث رسالتها وزمنها لدمج الردود المتتالية في تنبيه واحد.
-        return await Db.HeadAlerts
-            .Include(a => a.Recipients)
-            .Where(a => a.ReviewLetterId == reviewLetterId)
-            .OrderByDescending(a => a.CreatedAt)
-            .FirstOrDefaultAsync(a => a.Recipients.Any(r => r.UserId == recipientUserId && !r.IsRead), ct);
-    }
-
-    public async Task<HeadAlert?> FindLatestPendingByEntityAsync(
-        int publicEntityId, int recipientUserId, CancellationToken ct = default)
-    {
-        // متتبَّعة عمدًا: ستُحدَّث رسالتها وزمنها لدمج اقتراحات تعديل الجهة المتلاحقة
-        // قبل الاعتماد في تنبيه واحد بآخر تعديل.
-        return await Db.HeadAlerts
-            .Include(a => a.Recipients)
-            .Where(a => a.PublicEntityId == publicEntityId)
-            .OrderByDescending(a => a.CreatedAt)
-            .FirstOrDefaultAsync(a => a.Recipients.Any(r => r.UserId == recipientUserId && !r.IsRead), ct);
-    }
-
     // ── مسارات النوع الدلالي (الخطة §6.4/§8.1) ──
+
+    /// <inheritdoc />
+    public async Task<HeadAlertReferenceKind?> FindMissingReferenceAsync(
+        CreateSystemHeadAlertRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        // الفرع إلزامي في كل تنبيه نظامي (مفتاح أجنبي في المخطط).
+        if (!await Db.Branches.AsNoTracking().AnyAsync(b => b.Id == request.BranchId, ct))
+            return HeadAlertReferenceKind.Branch;
+
+        // مرشّحات الاستعلام العامة تُسقط الملفات المحذوفة (حذفًا ناعمًا) والإنابات
+        // والاستئنافات التابعة لملف محذوف — فيُعدّ المرجع حينها مفقودًا.
+        if (request.DocumentId is int documentId
+            && !await Db.Documents.AsNoTracking().AnyAsync(d => d.Id == documentId, ct))
+            return HeadAlertReferenceKind.Document;
+
+        if (request.DelegationId is int delegationId
+            && !await Db.DocumentDelegations.AsNoTracking().AnyAsync(d => d.Id == delegationId, ct))
+            return HeadAlertReferenceKind.Delegation;
+
+        if (request.AppealId is int appealId
+            && !await Db.DocumentAppeals.AsNoTracking().AnyAsync(a => a.Id == appealId, ct))
+            return HeadAlertReferenceKind.Appeal;
+
+        if (request.ReviewLetterId is int reviewLetterId
+            && !await Db.ReviewLetters.AsNoTracking().AnyAsync(l => l.Id == reviewLetterId, ct))
+            return HeadAlertReferenceKind.ReviewLetter;
+
+        if (request.PublicEntityId is int publicEntityId
+            && !await Db.PublicEntities.AsNoTracking().AnyAsync(e => e.Id == publicEntityId, ct))
+            return HeadAlertReferenceKind.PublicEntity;
+
+        if (request.ExecutionCircuitId is int executionCircuitId
+            && !await Db.ExecutionCircuits.AsNoTracking().AnyAsync(c => c.Id == executionCircuitId, ct))
+            return HeadAlertReferenceKind.ExecutionCircuit;
+
+        return null;
+    }
 
     public async Task<HeadAlert?> FindLatestActiveByDedupeKeyAsync(string dedupeKey, CancellationToken ct = default)
     {
@@ -458,5 +465,37 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             .Where(a => !a.IsArchived && a.Kind == kind && a.ExecutionCircuitId == circuitId)
             .OrderBy(a => a.Id)
             .ToListAsync(ct);
+    }
+
+    public async Task<List<HeadAlert>> ListActiveByCircuitOrDocumentsAsync(
+        int circuitId, IReadOnlyCollection<int> documentIds, CancellationToken ct = default)
+    {
+        var ids = documentIds.Distinct().ToList();
+        return await Db.HeadAlerts
+            .Where(a => !a.IsArchived
+                     && (a.ExecutionCircuitId == circuitId
+                         || (a.DocumentId != null && ids.Contains(a.DocumentId.Value))))
+            .OrderBy(a => a.Id)
+            .ToListAsync(ct);
+    }
+
+    public async Task<int> ArchiveStalePendingByLawyerAsync(
+        int lawyerId, IReadOnlySet<string> activeDedupeKeys, DateTime archivedAt, CancellationToken ct = default)
+    {
+        var keep = activeDedupeKeys ?? new HashSet<string>(StringComparer.Ordinal);
+        var alerts = await Db.HeadAlerts
+            .Where(a => !a.IsArchived
+                     && a.Kind == HeadAlertKindCatalog.CircuitPendingDocuments
+                     && a.Recipients.Any(r => r.UserId == lawyerId)
+                     && (a.DedupeKey == null || !keep.Contains(a.DedupeKey)))
+            .ToListAsync(ct);
+
+        foreach (var alert in alerts)
+        {
+            alert.IsArchived = true;
+            alert.ArchivedAt = archivedAt;
+        }
+
+        return alerts.Count;
     }
 }

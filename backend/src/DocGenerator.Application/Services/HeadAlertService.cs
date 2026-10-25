@@ -28,19 +28,8 @@ public interface IHeadAlertService
     Task<int> CountUnreadAsync(int userId, CancellationToken ct = default);
     Task<HeadAlertDto> CreateAsync(CreateHeadAlertRequest request, int actorUserId, int actorBranchId, string? actorName, CancellationToken ct = default);
     Task<bool> MarkReadAsync(int alertId, int userId, CancellationToken ct = default);
-    Task<HeadAlertDto?> UpdateDelegationAlertAsync(int delegationId, string message, CancellationToken ct = default);
-    /// <summary>
-    /// دمج تنبيه المرآة (منيب ↔ مناب) لمستلمٍ بعينه: يحدّث أحدث تنبيهٍ بنفس
-    /// (DelegationId + المستلم) ورسالته، أو يُنشئ تنبيهًا من نوع lawyer للمستلم الصريح —
-    /// بلا قيد تطابق الفرع (يناسب الإنابات الخارجية). يُرجِعه لغرض العرض بعد التحديث/الإنشاء.
-    /// </summary>
-    Task<HeadAlertDto?> UpsertDelegationMessageAsync(
-        int delegationId, int recipientLawyerId, int actorUserId, int actorBranchId, string message, CancellationToken ct = default);
     /// <summary>تنبيهات إنابةٍ معيّنة («معلومات الملف المنيب»/«تشعبات الملف») بعلامة قراءة بحسب المستخدم.</summary>
     Task<List<HeadAlertDto>> ListByDelegationAsync(int delegationId, int userId, CancellationToken ct = default);
-    Task<bool> DeleteByDelegationAsync(int delegationId, CancellationToken ct = default);
-    /// <summary>حذف كل تنبيهات الاستئناف (تصفية تنبيه «اختيار المحامي» بعد الإسناد).</summary>
-    Task<bool> DeleteByAppealAsync(int appealId, CancellationToken ct = default);
     /// <summary>
     /// حذف انتقائي لمستلم واحد من تنبيهات استئناف (§6.2/§6.5 — إحالة/تراجع) —
     /// بلا مساس بباقي المستلمين. أفضل جهد للمتصل (لا يرمي).
@@ -118,7 +107,9 @@ public sealed class HeadAlertService : IHeadAlertService
         _tx = tx;
         _audit = audit;
         // الحارس يفشل مغلقًا بلا سياق: أي مسار يفرض معاملة نشطة يرمي بدل أن يعمل بلا ذرّية.
-        _transactions = transactions ?? NullTransactionContext.Instance;
+        // عند تمرير TransactionRunner (وهو ITransactionContext) نستعمل سياقه نفسه لتفادي
+        // فتح معاملة متداخلة عند الأرشفة داخل معاملة العمل.
+        _transactions = transactions ?? tx as ITransactionContext ?? NullTransactionContext.Instance;
     }
 
     public async Task<List<HeadAlertDto>> ListForLawyerAsync(int userId, CancellationToken ct = default)
@@ -160,7 +151,22 @@ public sealed class HeadAlertService : IHeadAlertService
         string? actorName,
         CancellationToken ct = default)
     {
-        var message = request.Message?.Trim() ?? string.Empty;
+        ArgumentNullException.ThrowIfNull(request);
+
+        var actor = await _users.GetByIdAsync(actorUserId, ct);
+        if (actor is null || !actor.IsActive
+            || actor.Role is not (UserRole.Head or UserRole.SubHead)
+            || actor.BranchId != actorBranchId)
+            throw new ArgumentException("الإصدار اليدوي مخصص لرئيس قسم/شعبة مفعّل في فرعه");
+
+        var rawMessage = request.Message?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(rawMessage))
+            throw new ArgumentException("نص التنبيه مطلوب");
+
+        // الحدّ على نص المستخدم قبل البادئة، ثم سقف الأمان على النص النهائي.
+        var withinLimit = HeadAlertTextLimits.EnsureWithinManualLimit(rawMessage);
+        var message = HeadAlertTextLimits.EnsureWithinSafety(
+            HeadAlertMessages.ManualMessage(actor.Role, withinLimit));
         if (string.IsNullOrWhiteSpace(message))
             throw new ArgumentException("نص التنبيه مطلوب");
 
@@ -168,22 +174,24 @@ public sealed class HeadAlertService : IHeadAlertService
         if (branch is null)
             throw new ArgumentException("الفرع غير موجود");
 
-        var targetType = ParseTargetType(request.TargetType);
+        var targetType = ParseManualTargetType(request.TargetType);
         var recipients = await ResolveRecipientsAsync(targetType, request, actorBranchId, ct);
         if (recipients.Count == 0)
             throw new ArgumentException("لا يوجد مستلمون للتنبيه");
 
+        var now = DateTime.UtcNow;
         var alert = new HeadAlert
         {
             BranchId = actorBranchId,
             CreatedById = actorUserId,
             TargetType = targetType,
-            DocumentId = targetType == HeadAlertTargetType.Lawyer ? null : request.DocumentId,
+            Kind = ManualKindFor(targetType),
+            DedupeKey = null,
+            DocumentId = targetType == HeadAlertTargetType.Document ? request.DocumentId : null,
             TargetLawyerId = targetType == HeadAlertTargetType.Lawyer ? request.TargetLawyerId : null,
-            DelegationId = request.DelegationId,
-            AppealId = request.AppealId,
             Message = message,
-            CreatedAt = DateTime.UtcNow,
+            CreatedAt = now,
+            LastContentChangedAt = now,
             Recipients = recipients.Select(u => new HeadAlertRecipient { UserId = u.Id }).ToList(),
         };
 
@@ -192,7 +200,8 @@ public sealed class HeadAlertService : IHeadAlertService
             await _alerts.AddAsync(alert, token);
             await _uow.SaveChangesAsync(token);
             await _audit.LogAsync(actorName, "create_alert",
-                details: $"أصدر تنبيهاً في فرع {branch.Name} بنطاق {targetType}: {message[..Math.Min(message.Length, 80)]}",
+                details: $"أصدر تنبيهاً يدوياً في فرع {branch.Name} بنطاق {targetType}: "
+                    + HeadAlertTextLimits.PreviewForAudit(message),
                 ct: token);
         }, ct);
 
@@ -221,122 +230,11 @@ public sealed class HeadAlertService : IHeadAlertService
         return true;
     }
 
-    /// <summary>
-    /// تحديث رسالة آخر تنبيه لإنابة معلّقة (بانتظار الاعتماد) بعد تعديل الإنابة —
-    /// يعيد null عندما لا يوجد تنبيه للإنابة (لم يُنشأ حينها)، ويُبقي المستلمين وعلامات القراءة.
-    /// </summary>
-    public async Task<HeadAlertDto?> UpdateDelegationAlertAsync(int delegationId, string message, CancellationToken ct = default)
-    {
-        var alert = await _alerts.FindLatestByDelegationAsync(delegationId, ct);
-        if (alert is null)
-            return null;
-
-        var trimmed = message?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(trimmed))
-            throw new ArgumentException("نص التنبيه مطلوب");
-        if (alert.Message == trimmed)
-            return ToHeadDto(alert);
-
-        alert.Message = trimmed;
-        await _tx.RunAsync(async token =>
-        {
-            _alerts.Update(alert);
-            await _uow.SaveChangesAsync(token);
-        }, ct);
-        return ToHeadDto(alert);
-    }
-
-    /// <summary>
-    /// دمج تنبيه المرآة (منيب ↔ مناب) لمستلمٍ بعينه: يحدّث أحدث تنبيهٍ بنفس
-    /// (DelegationId + المستلم) ورسالته (ويُحدَّث زمنه ليقفز للصدارة)، أو يُنشئ تنبيهًا
-    /// من نوع lawyer للمستلم الصريح بلا قيد تطابق الفرع (يناسب الإنابات الخارجية).
-    /// سجل التعديلات يحمل التاريخ الكامل — التنبيه ملخص آخر تغيّر فقط.
-    /// </summary>
-    public async Task<HeadAlertDto?> UpsertDelegationMessageAsync(
-        int delegationId, int recipientLawyerId, int actorUserId, int actorBranchId, string message, CancellationToken ct = default)
-    {
-        var trimmed = message?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(trimmed))
-            throw new ArgumentException("نص التنبيه مطلوب");
-
-        var existing = await _alerts.FindLatestByDelegationAndRecipientAsync(delegationId, recipientLawyerId, ct);
-        if (existing is not null)
-        {
-            if (existing.Message == trimmed)
-                return ToLawyerDto(existing, recipientLawyerId);
-
-            existing.Message = trimmed;
-            existing.CreatedAt = DateTime.UtcNow;
-            await _tx.RunAsync(async token =>
-            {
-                _alerts.Update(existing);
-                await _uow.SaveChangesAsync(token);
-            }, ct);
-            return ToLawyerDto(existing, recipientLawyerId);
-        }
-
-        var lawyer = await _users.GetByIdAsync(recipientLawyerId, ct);
-        if (lawyer is null || lawyer.Role != UserRole.Lawyer)
-            throw new ArgumentException("المحامي المستلم غير موجود");
-
-        var alert = new HeadAlert
-        {
-            BranchId = actorBranchId,
-            CreatedById = actorUserId,
-            TargetType = HeadAlertTargetType.Lawyer,
-            DocumentId = null,
-            TargetLawyerId = recipientLawyerId,
-            DelegationId = delegationId,
-            Message = trimmed,
-            CreatedAt = DateTime.UtcNow,
-            Recipients = new List<HeadAlertRecipient> { new() { UserId = recipientLawyerId } },
-        };
-
-        await _tx.RunAsync(async token =>
-        {
-            await _alerts.AddAsync(alert, token);
-            await _uow.SaveChangesAsync(token);
-        }, ct);
-        return ToLawyerDto(alert, recipientLawyerId);
-    }
-
     /// <summary>تنبيهات إنابةٍ معيّنة («معلومات الملف المنيب»/«تشعبات الملف») بعلامة قراءة بحسب المستخدم.</summary>
     public async Task<List<HeadAlertDto>> ListByDelegationAsync(int delegationId, int userId, CancellationToken ct = default)
     {
         var alerts = await _alerts.ListByDelegationWithRecipientsAsync(delegationId, ct);
         return alerts.Select(a => ToLawyerDto(a, userId)).ToList();
-    }
-
-    /// <summary>حذف كل تنبيهات الإنابة (تصفية المرحلية منها عند الاعتماد أو الإتمام أو حذف الإنابة).</summary>
-    public async Task<bool> DeleteByDelegationAsync(int delegationId, CancellationToken ct = default)
-    {
-        var alerts = await _alerts.ListByDelegationAsync(delegationId, ct);
-        if (alerts.Count == 0)
-            return false;
-
-        await _tx.RunAsync(async token =>
-        {
-            foreach (var alert in alerts)
-                _alerts.Remove(alert);
-            await _uow.SaveChangesAsync(token);
-        }, ct);
-        return true;
-    }
-
-    /// <summary>حذف كل تنبيهات الاستئناف (تصفية تنبيه «اختيار المحامي» بعد إسناد الاستئناف).</summary>
-    public async Task<bool> DeleteByAppealAsync(int appealId, CancellationToken ct = default)
-    {
-        var alerts = await _alerts.ListByAppealAsync(appealId, ct);
-        if (alerts.Count == 0)
-            return false;
-
-        await _tx.RunAsync(async token =>
-        {
-            foreach (var alert in alerts)
-                _alerts.Remove(alert);
-            await _uow.SaveChangesAsync(token);
-        }, ct);
-        return true;
     }
 
     /// <summary>
@@ -380,13 +278,27 @@ public sealed class HeadAlertService : IHeadAlertService
         if (string.IsNullOrWhiteSpace(message))
             throw new ArgumentException("نص التنبيه مطلوب", nameof(request));
 
+        // فحص المراجع قبل الإدراج (الخطة §8.1): مرجع محذوف بين التسجيل والمعالجة
+        // يُنهي الرسالة كـ skipped: missing_reference، لا failed ولا إعادة لا نهائية.
+        var missingReference = await _alerts.FindMissingReferenceAsync(request, ct);
+        if (missingReference is not null)
+            throw new HeadAlertMissingReferenceException(
+                DescribeMissingReference(request, missingReference.Value));
+
         var creator = await _users.GetByIdAsync(request.CreatedById, ct);
         if (creator is null || !creator.IsActive)
-            throw new ArgumentException("منشئ التنبيه النظامي غير موجود أو غير فعّال", nameof(request));
+            throw new HeadAlertMissingReferenceException("منشئ التنبيه النظامي غير موجود أو غير فعّال");
 
         var effective = ApplyTargetUserOverride(request, targetUserIdOverride);
-        var overrideApplied = targetUserIdOverride is not null;
-        var (targetType, recipients) = await ResolveSystemRecipientsAsync(effective, ct);
+
+        // «تجاوز التعاقب» ليس مجرد وجود TargetUserId في الحمولة (المشغّل يمرّره
+        // دائمًا للجمهور الأحادي)، بل اختلافه عن مستلم الحدث الأصلي. هذا الفرق هو
+        // ما يجعل تعذّر الخلف `recipient_inactive` لا `no_recipients` (الخطة §8.1).
+        var overrideApplied = targetUserIdOverride is not null
+            && targetUserIdOverride != request.RecipientUserId
+            && targetUserIdOverride != request.TargetLawyerId;
+
+        var (targetType, recipients) = await ResolveSystemRecipientsAsync(effective, overrideApplied, ct);
         if (recipients.Count == 0)
             throw new HeadAlertNoRecipientsException("لا يوجد مستلمون مؤهّلون للتنبيه");
 
@@ -493,9 +405,12 @@ public sealed class HeadAlertService : IHeadAlertService
         var pending = await _alerts.ListActivePendingByCircuitAndKindAsync(
             circuitId, HeadAlertKindCatalog.CircuitPendingDocuments, ct);
 
-        var updated = 0;
+        var active = 0;
         foreach (var alert in pending)
         {
+            // الرسالة الأقدم من آخر تغيير محتوى لا تمحو الأحدث؛ لكن الصف نشط
+            // فتُعدّ الرسالة معالَجة، لا «لا تنبيهات نشطة» (الخطة §6.4).
+            active++;
             var lastChanged = alert.LastContentChangedAt ?? alert.CreatedAt;
             if (occurredAt < lastChanged)
                 continue;
@@ -510,12 +425,10 @@ public sealed class HeadAlertService : IHeadAlertService
                     recipient.ReadAt = null;
                 }
             }
-
-            updated++;
         }
 
         await _uow.SaveChangesAsync(ct);
-        return updated;
+        return active;
     }
 
     public Task<int> ArchiveByDelegationAsync(
@@ -658,6 +571,34 @@ public sealed class HeadAlertService : IHeadAlertService
             DocumentId = request.DocumentId,
             PublicEntityId = request.PublicEntityId,
             ExecutionCircuitId = request.ExecutionCircuitId,
+            EntityOperation = request.EntityOperation,
+            EntityGroupKey = request.EntityGroupKey,
+        };
+    }
+
+    /// <summary>
+    /// وصف عربي مختصر للمرجع المفقود — يُسجَّل مع رسالة التخطي للتشخيص.
+    /// </summary>
+    private static string DescribeMissingReference(
+        CreateSystemHeadAlertRequest request, HeadAlertReferenceKind kind)
+    {
+        return kind switch
+        {
+            HeadAlertReferenceKind.Branch =>
+                $"مرجع التنبيه النظامي مفقود: الفرع ({request.BranchId})",
+            HeadAlertReferenceKind.Document =>
+                $"مرجع التنبيه النظامي مفقود: الملف ({request.DocumentId})",
+            HeadAlertReferenceKind.Delegation =>
+                $"مرجع التنبيه النظامي مفقود: الإنابة ({request.DelegationId})",
+            HeadAlertReferenceKind.Appeal =>
+                $"مرجع التنبيه النظامي مفقود: الاستئناف ({request.AppealId})",
+            HeadAlertReferenceKind.ReviewLetter =>
+                $"مرجع التنبيه النظامي مفقود: كتاب المطالعة ({request.ReviewLetterId})",
+            HeadAlertReferenceKind.PublicEntity =>
+                $"مرجع التنبيه النظامي مفقود: الجهة العامة ({request.PublicEntityId})",
+            HeadAlertReferenceKind.ExecutionCircuit =>
+                $"مرجع التنبيه النظامي مفقود: دائرة التنفيذ ({request.ExecutionCircuitId})",
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "نوع مرجع غير معروف"),
         };
     }
 
@@ -667,6 +608,7 @@ public sealed class HeadAlertService : IHeadAlertService
     /// </summary>
     private async Task<(HeadAlertTargetType TargetType, List<User> Recipients)> ResolveSystemRecipientsAsync(
         CreateSystemHeadAlertRequest request,
+        bool overrideApplied,
         CancellationToken ct)
     {
         switch (request.Audience)
@@ -683,21 +625,32 @@ public sealed class HeadAlertService : IHeadAlertService
 
                 var lawyer = await _users.GetByIdAsync(lawyerId.Value, ct);
                 if (lawyer is null || !lawyer.IsActive || lawyer.Role != UserRole.Lawyer)
+                {
+                    if (overrideApplied)
+                        throw new HeadAlertRecipientInactiveException("المحامي الخلف غير موجود أو غير فعّال");
                     throw new HeadAlertNoRecipientsException("المحامي المستلم غير موجود أو غير فعّال");
+                }
 
                 return (HeadAlertTargetType.Lawyer, new List<User> { lawyer });
             }
 
             case HeadAlertAudience.SingleHead:
             {
+                // غياب المستلم هنا ليس خطأ برمجيًا: مسارات الإنابة تُسجّل الرسالة حتى
+                // عند غياب رئيس نشط للفرع/القسم، فتُعامل حالة عمل بلا مستلمين (تخطٍّ)
+                // لا استثناءً عامًا يُعاد ثم يفشل بعد استنفاد المحاولات.
                 if (request.RecipientUserId is null)
-                    throw new ArgumentException("الجمهور الأحادي يحتاج مستلمًا صريحًا", nameof(request));
+                    throw new HeadAlertNoRecipientsException("لا يوجد رئيس مستلم للتنبيه");
                 if (request.TargetLawyerId is not null)
                     throw new ArgumentException("الجمهور «رئيس» لا يقبل محاميًا هدفًا", nameof(request));
 
                 var head = await _users.GetByIdAsync(request.RecipientUserId.Value, ct);
                 if (head is null || !head.IsActive || head.Role is not (UserRole.Head or UserRole.SubHead))
+                {
+                    if (overrideApplied)
+                        throw new HeadAlertRecipientInactiveException("الرئيس الخلف غير موجود أو غير فعّال");
                     throw new HeadAlertNoRecipientsException("الرئيس المستلم غير موجود أو غير فعّال");
+                }
 
                 return (HeadAlertTargetType.Head, new List<User> { head });
             }
@@ -771,9 +724,14 @@ public sealed class HeadAlertService : IHeadAlertService
         IReadOnlyCollection<User> recipients,
         bool overrideApplied)
     {
+        var inheritedRead = false;
+        DateTime? inheritedReadAt = null;
+        int? overrideRecipientId = null;
+
         if (overrideApplied)
         {
             var keep = recipients.Select(u => u.Id).ToHashSet();
+            overrideRecipientId = recipients.FirstOrDefault()?.Id;
             var removed = alert.Recipients.Where(r => !keep.Contains(r.UserId)).ToList();
 
             foreach (var recipient in removed)
@@ -781,34 +739,49 @@ public sealed class HeadAlertService : IHeadAlertService
 
             if (removed.Count > 0)
             {
-                var successor = alert.Recipients.FirstOrDefault(r => keep.Contains(r.UserId));
-                if (successor is not null)
-                {
-                    var readTimes = removed
-                        .Where(r => r.ReadAt.HasValue)
-                        .Select(r => r.ReadAt!.Value)
-                        .ToList();
+                inheritedRead = removed.Any(r => r.IsRead);
+                var readTimes = removed
+                    .Where(r => r.ReadAt.HasValue)
+                    .Select(r => r.ReadAt!.Value)
+                    .ToList();
+                if (readTimes.Count > 0)
+                    inheritedReadAt = readTimes.Min();
 
-                    successor.IsRead = successor.IsRead || removed.Any(r => r.IsRead);
-                    if (readTimes.Count > 0)
-                    {
-                        var earliest = readTimes.Min();
-                        successor.ReadAt = successor.ReadAt is null || successor.ReadAt > earliest
-                            ? earliest
-                            : successor.ReadAt;
-                    }
+                // الخلف موجود مسبقًا: يُدمج الآن. وإن لم يكن موجودًا فسيُضاف
+                // أدناه بحالة السلف الموروثة — لا تُفقد القراءة لأن الترتيب
+                // السابق كان يحذف السلف قبل إضافة الخلف.
+                var existing = alert.Recipients.FirstOrDefault(r => keep.Contains(r.UserId));
+                if (existing is not null)
+                {
+                    existing.IsRead = existing.IsRead || inheritedRead;
+                    existing.ReadAt = EarliestReadAt(existing.ReadAt, inheritedReadAt);
                 }
             }
         }
 
-        var existing = alert.Recipients.Select(r => r.UserId).ToHashSet();
+        var present = alert.Recipients.Select(r => r.UserId).ToHashSet();
         foreach (var user in recipients)
         {
-            if (existing.Contains(user.Id))
+            if (present.Contains(user.Id))
                 continue;
 
-            alert.Recipients.Add(new HeadAlertRecipient { UserId = user.Id, IsRead = false });
+            var isInherited = overrideApplied && user.Id == overrideRecipientId && inheritedRead;
+            alert.Recipients.Add(new HeadAlertRecipient
+            {
+                UserId = user.Id,
+                IsRead = isInherited,
+                ReadAt = isInherited ? inheritedReadAt : null,
+            });
         }
+    }
+
+    private static DateTime? EarliestReadAt(DateTime? first, DateTime? second)
+    {
+        if (first is null)
+            return second;
+        if (second is null)
+            return first;
+        return first <= second ? first : second;
     }
 
     private async Task<List<User>> ResolveRecipientsAsync(
@@ -847,32 +820,30 @@ public sealed class HeadAlertService : IHeadAlertService
             }
             case HeadAlertTargetType.Branch:
                 return await _alerts.ListActiveLawyersAsync(branchId, ct);
-            case HeadAlertTargetType.Head:
-                // تنبيهات النظام لروّاد القسم (مراحل الإنابة): تصل لرؤساء أقسام الفرع المفعلين،
-                // وعند غياب أي رئيس يُرفض الإنشاء ويُسجَّل فشل الإشعار في سجل التدقيق.
-                // التوجيه لمالك واحد (§6.1 — قرار §2.21): `RecipientUserId` يقيّد
-                // المستلمين به حصرًا بعد التحقق (رئيس مفعّل في الفرع).
-                if (request.RecipientUserId.HasValue)
-                {
-                    var directed = await _users.GetByIdAsync(request.RecipientUserId.Value, ct);
-                    if (directed is null || !directed.IsActive
-                        || directed.Role is not (UserRole.Head or UserRole.SubHead)
-                        || directed.BranchId != branchId)
-                        throw new ArgumentException("المستلم الموجَّه ليس رئيسًا مفعّلًا في الفرع");
-                    return new List<User> { directed };
-                }
-                return await _alerts.ListActiveHeadsAsync(branchId, ct);
             default:
                 throw new ArgumentException("نوع التنبيه غير صالح");
         }
     }
 
-    private static HeadAlertTargetType ParseTargetType(string? value)
+    /// <summary>
+    /// تحليل صريح لنطاق الإصدار اليدوي — لا <c>Enum.TryParse</c> (يرفض الأرقام)
+    /// ولا النطاق النظامي <c>head</c> (لا يملك العميل دورة حياته).
+    /// </summary>
+    private static HeadAlertTargetType ParseManualTargetType(string? value) => value?.Trim().ToLowerInvariant() switch
     {
-        if (Enum.TryParse<HeadAlertTargetType>(value?.Trim(), ignoreCase: true, out var parsed))
-            return parsed;
-        throw new ArgumentException("نوع التنبيه غير صالح");
-    }
+        "document" => HeadAlertTargetType.Document,
+        "lawyer" => HeadAlertTargetType.Lawyer,
+        "branch" => HeadAlertTargetType.Branch,
+        _ => throw new ArgumentException("نوع التنبيه غير صالح"),
+    };
+
+    private static string ManualKindFor(HeadAlertTargetType targetType) => targetType switch
+    {
+        HeadAlertTargetType.Document => HeadAlertKindCatalog.ManualToDocument,
+        HeadAlertTargetType.Lawyer => HeadAlertKindCatalog.ManualToLawyer,
+        HeadAlertTargetType.Branch => HeadAlertKindCatalog.ManualToBranch,
+        _ => throw new ArgumentException("نوع التنبيه غير صالح"),
+    };
 
     private static string DocumentTitle(HeadAlert alert)
     {

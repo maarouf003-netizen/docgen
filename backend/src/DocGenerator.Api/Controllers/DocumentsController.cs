@@ -30,7 +30,6 @@ public class DocumentsController : ControllerBase
     private readonly IAuditLogger _audit;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
-    private readonly IExecutionCircuitService? _circuits;
 
     public DocumentsController(
         IDocumentService documents,
@@ -43,8 +42,7 @@ public class DocumentsController : ControllerBase
         IAuditLogService auditLogs,
         IAuditLogger audit,
         TimeProvider clock,
-        TimeZoneInfo timeZone,
-        IExecutionCircuitService? circuits = null)
+        TimeZoneInfo timeZone)
     {
         _documents = documents;
         _executionActions = executionActions;
@@ -57,7 +55,6 @@ public class DocumentsController : ControllerBase
         _audit = audit;
         _clock = clock;
         _timeZone = timeZone;
-        _circuits = circuits;
     }
 
     private string? ActorName => User.Identity?.Name;
@@ -656,11 +653,7 @@ public class DocumentsController : ControllerBase
             // RF-011: التكرار بنفس المفتاح يُعيد العدد المخزن نفسه.
             var transferredCount = await _documents.TransferAllAsync(
                 request.SourceLawyerId, request.TargetLawyerId, scopeBranchId, ActorName, ct,
-                IdempotencyKeyHeader(), ownerSectionId);
-            // سجل الدوائر (H2): التنبيه يتبع المالك — مزامنة تنبيهات إعادة القيد بعد
-            // النقل (إشعار فرعي: فشلها يُسجَّل ولا يُفشل النقل الناجح).
-            await SyncCircuitAlertsAfterTransferAsync(
-                request.SourceLawyerId, request.TargetLawyerId, scopeBranchId.Value, ct);
+                IdempotencyKeyHeader(), ownerSectionId, User.GetUserId());
             return Ok(new { transferredCount });
         }
         catch (IdempotentReplayException r)
@@ -695,10 +688,8 @@ public class DocumentsController : ControllerBase
 
         try
         {
-            var updated = await _documents.TransferAsync(id, request.TargetLawyerId, ActorName, ct);
-            // سجل الدوائر (H2): التنبيه يتبع المالك (إشعار فرعي — انظر أعلاه).
-            await SyncCircuitAlertsAfterTransferAsync(
-                doc.CreatedById, request.TargetLawyerId, doc.BranchId ?? User.GetBranchId() ?? 0, ct);
+            var updated = await _documents.TransferAsync(
+                id, request.TargetLawyerId, ActorName, ct, User.GetUserId());
             return Ok(updated);
         }
         catch (KeyNotFoundException)
@@ -840,24 +831,4 @@ public class DocumentsController : ControllerBase
             ? values.ToString()
             : null;
 
-    /// <summary>
-    /// سجل الدوائر (H2): مزامنة تنبيهات إعادة القيد بعد نقل ملكية ناجح — إشعار فرعي
-    /// (أفضل جهد): أي فشل يُسجَّل في التدقيق ولا يُفشل النقل الذي تمّ فعلًا.
-    /// </summary>
-    private async Task SyncCircuitAlertsAfterTransferAsync(
-        int sourceOwnerId, int targetOwnerId, int branchId, CancellationToken ct)
-    {
-        if (_circuits is null)
-            return;
-        try
-        {
-            await _circuits.SyncPendingAlertsAfterTransferAsync(
-                sourceOwnerId, targetOwnerId, branchId, User.GetUserId(), ct);
-        }
-        catch (Exception ex)
-        {
-            await _audit.LogAsync(ActorName, "head_alert_failed",
-                details: $"تعذّر مزامنة تنبيهات إعادة القيد بعد نقل الملكية: {ex.Message}", ct: ct);
-        }
-    }
 }

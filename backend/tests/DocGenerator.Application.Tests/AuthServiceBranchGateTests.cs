@@ -1,4 +1,4 @@
-using DocGenerator.Application.Common;
+﻿using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -60,6 +60,7 @@ public class AuthServiceBranchGateTests
     private sealed class FakeUnitOfWork : IUnitOfWork
     {
         public Task<int> SaveChangesAsync(CancellationToken ct = default) => Task.FromResult(0);
+        public void ClearChanges() { }
     }
 
     private sealed class FakeTransactionRunner : ITransactionRunner

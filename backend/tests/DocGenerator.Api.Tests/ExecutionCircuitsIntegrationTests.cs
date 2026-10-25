@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
+using DocGenerator.Api.Tests.TestHelpers;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -188,16 +189,55 @@ public class ExecutionCircuitsIntegrationTests
             targetCircuitId = target,
         });
         Assert.Equal(HttpStatusCode.OK, refer.StatusCode);
+        await HeadAlertOutboxFlush.AllAsync(_factory.Services);
 
         // نقل فردي للمالك الجديد → التنبيه يتبعه ويُصفَّى عن القديم.
         var transfer = await head.PostAsJsonAsync($"/api/documents/{docId}/transfer",
             new { targetLawyerId = otherId });
         Assert.Equal(HttpStatusCode.OK, transfer.StatusCode);
+        await HeadAlertOutboxFlush.AllAsync(_factory.Services);
 
         var newAlerts = await otherClient.GetAsync("/api/alerts");
         Assert.Contains(targetName, await newAlerts.Content.ReadAsStringAsync());
 
         var oldAlerts = await lawyer1.GetAsync("/api/alerts");
+        Assert.DoesNotContain(targetName, await oldAlerts.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task TransferAll_PendingAlertFollowsNewOwner()
+    {
+        await HeadBranchIdAsync();
+        var head = _factory.AuthorizedClient("head1");
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+        var branchId = (await db.Users.SingleAsync(u => u.Username == "head1")).BranchId!.Value;
+        var (sourceId, sourceClient) = await _factory.NewLawyerClientAsync(branchId);
+        var targetName = UniqueName("دائرة هدف جماعي");
+        var source = await CreateCircuitAsync(head, UniqueName("دائرة مصدر جماعي"));
+        var target = await CreateCircuitAsync(head, targetName);
+        var number = $"4{Guid.NewGuid():N}"[..7];
+        var docId = await CreateDocumentAsync(sourceClient, source, number);
+        var (otherId, otherClient) = await _factory.NewLawyerClientAsync(branchId);
+
+        var refer = await head.PostAsJsonAsync($"/api/execution-circuits/{source}/refer-files", new
+        {
+            fileIds = new[] { docId },
+            targetLawyerId = sourceId,
+            targetCircuitId = target,
+        });
+        Assert.Equal(HttpStatusCode.OK, refer.StatusCode);
+        await HeadAlertOutboxFlush.AllAsync(_factory.Services);
+
+        var transfer = await head.PostAsJsonAsync("/api/documents/transfer-all",
+            new { sourceLawyerId = sourceId, targetLawyerId = otherId });
+        Assert.Equal(HttpStatusCode.OK, transfer.StatusCode);
+        await HeadAlertOutboxFlush.AllAsync(_factory.Services);
+
+        var newAlerts = await otherClient.GetAsync("/api/alerts");
+        Assert.Contains(targetName, await newAlerts.Content.ReadAsStringAsync());
+
+        var oldAlerts = await sourceClient.GetAsync("/api/alerts");
         Assert.DoesNotContain(targetName, await oldAlerts.Content.ReadAsStringAsync());
     }
 
