@@ -405,9 +405,12 @@ public sealed class HeadAlertService : IHeadAlertService
         var pending = await _alerts.ListActivePendingByCircuitAndKindAsync(
             circuitId, HeadAlertKindCatalog.CircuitPendingDocuments, ct);
 
-        var updated = 0;
+        var active = 0;
         foreach (var alert in pending)
         {
+            // الرسالة الأقدم من آخر تغيير محتوى لا تمحو الأحدث؛ لكن الصف نشط
+            // فتُعدّ الرسالة معالَجة، لا «لا تنبيهات نشطة» (الخطة §6.4).
+            active++;
             var lastChanged = alert.LastContentChangedAt ?? alert.CreatedAt;
             if (occurredAt < lastChanged)
                 continue;
@@ -422,12 +425,10 @@ public sealed class HeadAlertService : IHeadAlertService
                     recipient.ReadAt = null;
                 }
             }
-
-            updated++;
         }
 
         await _uow.SaveChangesAsync(ct);
-        return updated;
+        return active;
     }
 
     public Task<int> ArchiveByDelegationAsync(
@@ -635,8 +636,11 @@ public sealed class HeadAlertService : IHeadAlertService
 
             case HeadAlertAudience.SingleHead:
             {
+                // غياب المستلم هنا ليس خطأ برمجيًا: مسارات الإنابة تُسجّل الرسالة حتى
+                // عند غياب رئيس نشط للفرع/القسم، فتُعامل حالة عمل بلا مستلمين (تخطٍّ)
+                // لا استثناءً عامًا يُعاد ثم يفشل بعد استنفاد المحاولات.
                 if (request.RecipientUserId is null)
-                    throw new ArgumentException("الجمهور الأحادي يحتاج مستلمًا صريحًا", nameof(request));
+                    throw new HeadAlertNoRecipientsException("لا يوجد رئيس مستلم للتنبيه");
                 if (request.TargetLawyerId is not null)
                     throw new ArgumentException("الجمهور «رئيس» لا يقبل محاميًا هدفًا", nameof(request));
 

@@ -915,55 +915,55 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         {
             await _tx.RunAsync(async token =>
             {
-            target.FileNumber = fileNumber;
-            target.FileYear = fileYear;
-            target.IsDraft = false;
-            target.UpdatedAt = DateTime.UtcNow;
-            await ApplyRegistrationDateAsync(target, registrationDate.Value, token);
-            _documents.Update(target);
+                target.FileNumber = fileNumber;
+                target.FileYear = fileYear;
+                target.IsDraft = false;
+                target.UpdatedAt = DateTime.UtcNow;
+                await ApplyRegistrationDateAsync(target, registrationDate.Value, token);
+                _documents.Update(target);
 
-            delegation.Status = DelegationStatusCatalog.Registered;
-            delegation.UpdatedAt = DateTime.UtcNow;
-            // تحوّل الحالة يرفع الرمز — تسجيل مزدوج متزامن يفشل برمز التزامن (409).
-            delegation.Version++;
-            _delegations.Update(delegation);
+                delegation.Status = DelegationStatusCatalog.Registered;
+                delegation.UpdatedAt = DateTime.UtcNow;
+                // تحوّل الحالة يرفع الرمز — تسجيل مزدوج متزامن يفشل برمز التزامن (409).
+                delegation.Version++;
+                _delegations.Update(delegation);
 
-            if (hasCompletionBranch)
-            {
-                await _alertOutbox.EnqueueSystemAsync(
-                    new CreateSystemHeadAlertRequest(
-                        HeadAlertKindCatalog.DelegationPendingCompletion,
-                        HeadAlertMessages.DelegationPendingCompletion(new(
-                            delegation.Id, SourceLabel(delegation.SourceDocument))),
-                        HeadAlertAudience.SingleHead,
-                        completionOwnerBranch,
-                        userId,
-                        DocumentId: target.Id,
-                        DelegationId: delegation.Id,
-                        RecipientUserId: completionOwnerId),
-                    new HeadAlertSupersedePlan(
+                if (hasCompletionBranch)
+                {
+                    await _alertOutbox.EnqueueSystemAsync(
+                        new CreateSystemHeadAlertRequest(
+                            HeadAlertKindCatalog.DelegationPendingCompletion,
+                            HeadAlertMessages.DelegationPendingCompletion(new(
+                                delegation.Id, SourceLabel(delegation.SourceDocument))),
+                            HeadAlertAudience.SingleHead,
+                            completionOwnerBranch,
+                            userId,
+                            DocumentId: target.Id,
+                            DelegationId: delegation.Id,
+                            RecipientUserId: completionOwnerId),
+                        new HeadAlertSupersedePlan(
+                            delegation.Id,
+                            AppealId: null,
+                            HeadAlertKindCatalog.DelegationKinds,
+                            "delegation_registered"),
+                        occurredAt: DateTime.UtcNow,
+                        ct: token);
+                }
+                else
+                {
+                    await _alerts.ArchiveByDelegationAsync(
                         delegation.Id,
-                        AppealId: null,
                         HeadAlertKindCatalog.DelegationKinds,
-                        "delegation_registered"),
-                    occurredAt: DateTime.UtcNow,
-                    ct: token);
-            }
-            else
-            {
-                await _alerts.ArchiveByDelegationAsync(
-                    delegation.Id,
-                    HeadAlertKindCatalog.DelegationKinds,
-                    "delegation_registered_no_branch",
-                    token);
-            }
+                        "delegation_registered_no_branch",
+                        token);
+                }
 
-            await _uow.SaveChangesAsync(token);
+                await _uow.SaveChangesAsync(token);
 
-            await _audit.LogAsync(actorName, "register_delegation",
-                delegation.SourceDocumentId, delegation.SourceDocument.DocumentType,
-                $"سجّل إنابة (رقم {delegation.Id}) أصولًا برقم أساس {fileNumber}", token);
-        }, ct);
+                await _audit.LogAsync(actorName, "register_delegation",
+                    delegation.SourceDocumentId, delegation.SourceDocument.DocumentType,
+                    $"سجّل إنابة (رقم {delegation.Id}) أصولًا برقم أساس {fileNumber}", token);
+            }, ct);
         }
         catch (Exception ex) when (_dbErrors.IsUniqueViolation(ex))
         {

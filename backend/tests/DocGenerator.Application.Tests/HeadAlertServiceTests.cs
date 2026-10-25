@@ -1,4 +1,5 @@
-﻿using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
@@ -244,7 +245,7 @@ public class HeadAlertServiceTests : IDisposable
         await _service.CreateAsync(
             new CreateHeadAlertRequest("branch", null, null, "تعميم"), _head.Id, _branchId, "head_x");
         var ownId = await CreateSystemHeadAlertAsync(
-            "驞� ����", HeadAlertAudience.SingleHead, recipientUserId: _head.Id);
+            "تنبيه نظامي للرئيس", HeadAlertAudience.SingleHead, recipientUserId: _head.Id);
 
         // قراءة بالمستلم (§8): الرئيس يرى تنبيهه فقط — لا تنبيهات المحامين ولا التعميم.
         var list = await _service.ListForHeadAsync(_head.Id, _branchId);
@@ -311,9 +312,11 @@ public class HeadAlertServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task CreateSystem_SingleHead_MissingRecipient_Throws()
+    public async Task CreateSystem_SingleHead_MissingRecipient_ThrowsNoRecipients()
     {
-        await Assert.ThrowsAsync<ArgumentException>(() =>
+        // لا رئيس نشط في الفرع: حالة عمل بلا مستلمين — تُترجم لدى المشغّل إلى
+        // skipped/no_recipients، لا إلى إعادة ثم failed.
+        await Assert.ThrowsAsync<HeadAlertNoRecipientsException>(() =>
             CreateSystemHeadAlertAsync("system head", HeadAlertAudience.SingleHead));
     }
 

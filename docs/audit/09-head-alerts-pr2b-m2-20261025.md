@@ -77,17 +77,18 @@
 
 ## 2) ترحيل مواقع الكتابة إلى Outbox
 
-- كل نقاط الكتابة النظامية (23 استدعاء `CreateSystemHeadAlertRequest` في 7 خدمات و8 ملفات
-  مصدر) صارت تُسجّل رسالة Outbox **داخل معاملة العمل الأصلية** بدل نداء الخدمة المباشر:
-  `DocumentDelegationService` (+`Mirror`)، `DocumentAppealService`، `ReviewLetterService`،
+- كل نقاط الكتابة النظامية (23 استدعاء `CreateSystemHeadAlertRequest` في خمس خدمات نظامية
+  وثمانية ملفات مصدر) صارت تُسجّل رسالة Outbox **داخل معاملة العمل الأصلية** بدل نداء الخدمة
+  المباشر: `DocumentDelegationService` (+`Mirror`)، `DocumentAppealService`، `ReviewLetterService`،
   `PublicEntityService` (+`Branches`/`Moves`/`Groups`/`Merge`/`Registry`/`Unify`)،
-  `ExecutionCircuitService`، و`HeadAlertSuccessionService`.
+  و`ExecutionCircuitService`. ويضاف إليها `HeadAlertSuccessionService` الذي لا ينشئ تنبيهًا،
+  بل يحدّث `TargetUserId` في رسائل Outbox المعلّقة.
 - اختفت مسارات `catch` التي كانت تبتلع فشل التنبيه (`head_alert_failed`) من مسارات الكتابة
   النظامية؛ الفشل أصبح حالة رسالة صريحة (`failed`/`skipped`) يراقبها المشغّل.
 - النداءات المباشرة المتبقية على `IHeadAlertService` هي **الأرشفة فقط**
   (`ArchiveByDelegationAsync`/`ArchiveByAppealAsync`)، وهي ليست كتابة تنبيه جديد.
-- `HeadAlertSuccessionService` يستهلك `IHeadAlertOutboxStore.UpdateTargetUserForPendingAsync`
-  لتحديث `TargetUserId` للرسائل المعلّقة فقط.
+- `HeadAlertSuccessionService` يستهلك `IHeadAlertOutboxStore.UpdateTargetUserForSuccessionAsync`
+  لتحديث `TargetUserId` (العمود والحمولة معًا) للرسائل المعلّقة فقط.
 
 ---
 
@@ -104,8 +105,14 @@
 | مرجع محذوف/غير صالح قبل الإدراج | `HeadAlertMissingReferenceException` | `skipped: missing_reference` | لا |
 | مرجع حُذف بين الفحص والإدراج (خرق FK) | `DbUpdateException` يصنّفه `IsForeignKeyViolation` | `skipped: missing_reference` | لا |
 | مستلم صريح غير موجود/غير فعّال | `HeadAlertNoRecipientsException` | `skipped: no_recipients` | لا |
+| **غياب مستلم في جمهور أحادي** (لا رئيس نشط للفرع/القسم) | `HeadAlertNoRecipientsException` | `skipped: no_recipients` | لا |
 | **خلف تعاقب** غير موجود/غير فعّال | `HeadAlertRecipientInactiveException` | `skipped: recipient_inactive` | لا |
 | مستخدم غير فعّال في بثّ | لا مستلمون مؤهّلون | `skipped: no_recipients` | لا |
+
+**غياب مستلم الجمهور الأحادي (`SingleHead`) حالة عمل لا خطأ برمجي:** مسارات الإنابة تسجّل
+الرسالة حتى عند غياب رئيس نشط (`ownerId = null` من `ResolvePendingAlertTargetAsync`)، فتُعامَل
+`no_recipients` وتُتخطّى. (قبل التصحيح كان `ArgumentException` عامًا يُصنَّف عابرًا فيُعاد حتى
+`MaxAttempts` ثم `failed` — انظر §8.)
 
 **التمييز الحرج:** المشغّل يمرّر `TargetUserId` دائمًا للجمهور الأحادي، فوجوده وحده لا يعني
 «تعاقبًا». لذلك:
@@ -167,13 +174,17 @@ A3 في `HeadAlertOutboxDispatcherTests`/`HeadAlertSystemWriteTests`، واخت�
 
 | البوابة | النتيجة |
 |---|---|
-| `dotnet test backend/DocGenerator.sln` | ✔ **Application 2055/2055** · **Api 690/690** |
+| `dotnet test` — Application ثم Api منفصلين | ✔ **Application 2060/2060** · **Api 691/691** |
 | `npx oxlint src` · `npx tsc -b` | ✔ 0/0 |
 | `npx vitest run` | ✔ **1599/1599** (152 ملفًا) |
 | `npm run build` | ✔ |
 | بناء الالتزامات المعزولة (M2 + Outbox) | ✔ 0 Warning / 0 Error |
 | `dotnet ef migrations script` (SQLite + PostgreSQL) | ✔ سكربتان كاملان بلا أخطاء |
 | بناء الحل كاملًا | ✔ 0 Warning / 0 Error |
+
+> **ملاحظة تشغيل البوابات:** تشغيل مشروعَي الاختبار معًا (`dotnet test` على الحل) قد يوقعهما
+> في تنافس على قاعدة SQLite المؤقتة (`database is locked` أثناء تهيئة اختبار تكاملي) — ليست
+> علاقة لها بهذا التغيير. لذلك تُشغَّل البوابتان منفصلتين، وأُعيد الاختبار المتأثر منفردًا ونجح.
 
 **سكربتا التحقق** (مولّدان محليًا وغير مضمومين إلى Git لأن `backend/build-verify/` مستثنى):
 `full-sqlite.sql` (197,072 بايت) و`full-postgres.sql` (101,687 بايت)، وكلاهما يحتوي
@@ -196,6 +207,15 @@ A3 في `HeadAlertOutboxDispatcherTests`/`HeadAlertSystemWriteTests`، واخت�
    ليبقى الاسم الملزم في الخطة
    (`Migration_LegacyDocumentCreator_ClassifiedOrExcludedManual`) موجودًا، مع اختبار مستقل
    للتدفقات (`Migration_LegacyDelegationAppealReview_ClassifiedWithKeys`).
+6. **إعادة ترتيب رسائل مختلفة المفتاح (خطر متبقٍّ موثّق):** الالتقاط `Id ASC` مع تأجيل
+   الرسالة العابرة بـbackoff يسمح لرسالة أحدث بتجاوز رسالة أقدم (الخطة تمنع حجب الصفوف
+   برسالة عابرة). حارس `occurredAt` يحمي فقط التنبيهات ذات `DedupeKey` نفسه. فإذا حملت
+   الرسالة الأحدث خطة استبدال أرشفت تنبيه المفتاح القديم (تغيّر مستلم الإنابة مثلًا)، ثم
+   عولجت الأقدم بعد انتهاء تأجيلها، فقد تُنشئ تنبيهًا نشطًا من حالة سابقة. يتطلب وقوعه فشلًا
+   عابرًا وتغيّر حالة داخل نافذة backoff، والأثر تنبيه قديم يزول بالحدث التالي أو التنظيف.
+   **المعالجة في PR‑3:** وسم رسائل Outbox بهوية التجمّع (نوع + معرّف) وإسقاط الرسائل
+   المعلّقة الأقدم عند تسجيل رسالة استبدال — يحتاج عمودين وفهرسًا وهجرة، وليس في نطاق هذا
+   الـPR. رُصد هذا الخطر في المراجعة النقدية ولم يُخفَ.
 
 ---
 
@@ -211,6 +231,24 @@ A3 في `HeadAlertOutboxDispatcherTests`/`HeadAlertSystemWriteTests`، واخت�
   واحد فيفشل FK قبل الهجرة؛ فُصل الحفظان ليختبر الهجرة لا ترتيب البذور.
 - **تغطية الحالات الحدّية:** مرجع مفقود لكل نوع، مستند محذوف ناعمًا، خلف غير فعّال،
   مستلم صريح مفقود، إعادة تشغيل البيانات، وتكرار المستلمين/المفاتيح.
+- **تعاقب Outbox (المراجعة النقدية):** كان `UpdateTargetUserForSuccessionAsync` يحدّث
+  العمود `TargetUserId` دون الحمولة (أو العكس) فيقع التعارض بينهما عند المعالجة. صار يفلتر
+  `Status = pending` و`TargetUserId = predecessorId`، ويحدّث **العمود والحمولة معًا** إلى
+  الخلف، ويترك الرسائل الأخرى دون مساس. يثبته
+  `HeadAlertSuccessionTests.ApplyAsync_OutboxColumnPayloadMismatch_ForcesBothToSuccessor` و
+  `ApplyAsync_OutboxMessagesTargetingOthers_AreUntouched`.
+- **غياب مستلم `SingleHead`:** كان `ArgumentException` عامًا يُصنَّف عابرًا (إعادة ×10 ثم
+  `failed`) رغم أنه حالة عمل (لا رئيس نشط). صار `HeadAlertNoRecipientsException` ←
+  `skipped: no_recipients`، مع اختبار مشغّل يثبت `Attempts = 1` ولا تنبيه مُنشأ.
+- **تطابق `Kind` بين العمود والحمولة:** كان التحقق يقتصر على `operation` ووجود النوع؛ صار
+  يرفض اختلاف نوع الصف عن نوع الطلب في الحمولة (`invalid_payload`) بدل الاعتماد على أحدهما،
+  مع اختبار `ProcessNext_KindMismatchBetweenColumnAndPayload_FailsWithoutRetry`.
+- **تصنيف `circuit_renamed`:** الصفوف النشطة الأحدث من الرسالة تُترك كما هي لكنها تُعدّ
+  معالَجة، لا `no_active_alerts`؛ صار `ApplyCircuitRenamedAsync` يعيد عدد الصفوف النشطة لا
+  المحدَّثة، مع اختبار `ProcessNext_CircuitRenamedWithOnlyNewerAlerts_IsProcessedNotSkipped`.
+- **الحارس المعماري:** يفحص الآن البواني والباني الساكن (`TypeInitializer`) لا الدوال فقط،
+  مع نوعين فحصيين يثبتان كشف `.ctor`/`.cctor` — كان الفحص السابق يفوّت إنشاءً في باني.
+- **تنظيف نص اختباري:** أُزيل نص مشوّه (mojibake) وBOM من `HeadAlertServiceTests.cs`.
 
 ---
 

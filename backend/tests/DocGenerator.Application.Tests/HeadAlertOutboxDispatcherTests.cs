@@ -1,4 +1,4 @@
-﻿using DocGenerator.Application.Common;
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -201,6 +201,30 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task ProcessNext_SingleHeadWithoutRecipient_SkipsAsNoRecipientsWithoutRetry()
+    {
+        // مسارات الإنابة تُسجّل الرسالة حتى عند غياب رئيس نشط (ownerId = null)؛
+        // غياب المستلم حالة عمل تُتخطّى بلا إعادة، لا خطأ عام يُستهلك فيه رصيد المحاولات.
+        var request = new CreateSystemHeadAlertRequest(
+            HeadAlertKindCatalog.DelegationPendingApproval,
+            "رسالة بلا رئيس",
+            HeadAlertAudience.SingleHead,
+            _branchId,
+            _head.Id,
+            DelegationId: 7);
+
+        await EnqueueAsync(request);
+
+        Assert.True(await _dispatcher.ProcessNextAsync(CancellationToken.None));
+
+        var message = await _db.HeadAlertOutboxMessages.AsNoTracking().SingleAsync();
+        Assert.Equal(HeadAlertOutboxStatus.Skipped, message.Status);
+        Assert.Equal(HeadAlertOutboxSkipReasons.NoRecipients, message.LastError);
+        Assert.Equal(1, message.Attempts);
+        Assert.Empty(await _db.HeadAlerts.ToListAsync());
+    }
+
+    [Fact]
     public async Task ProcessNext_MissingDelegation_SkipsAsMissingReferenceWithoutRetry()
     {
         // إنابة محذوفة بين التسجيل والمعالجة: لا مفتاح أجنبي على DelegationId،
@@ -309,6 +333,29 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task ProcessNext_KindMismatchBetweenColumnAndPayload_FailsWithoutRetry()
+    {
+        var message = await EnqueueAsync();
+        var payload = HeadAlertOutboxPayloadSerializer.Deserialize(message.Payload);
+        await _db.Database.ExecuteSqlRawAsync(
+            "UPDATE \"HeadAlertOutboxMessages\" SET \"Payload\" = {0} WHERE \"Id\" = {1}",
+            HeadAlertOutboxPayloadSerializer.Serialize(payload with
+            {
+                Request = payload.Request! with { Kind = HeadAlertKindCatalog.CircuitPendingDocuments },
+            }),
+            message.Id);
+        _db.ChangeTracker.Clear();
+
+        Assert.True(await _dispatcher.ProcessNextAsync(CancellationToken.None));
+
+        var reloaded = await _db.HeadAlertOutboxMessages.AsNoTracking().SingleAsync();
+        Assert.Equal(HeadAlertOutboxStatus.Failed, reloaded.Status);
+        Assert.Contains("invalid_payload", reloaded.LastError!, StringComparison.Ordinal);
+        Assert.Equal(1, reloaded.Attempts);
+        Assert.Empty(await _db.HeadAlerts.ToListAsync());
+    }
+
+    [Fact]
     public async Task ProcessNext_UnknownPayloadVersion_FailsWithoutRetry()
     {
         var message = await EnqueueAsync();
@@ -322,6 +369,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         var reloaded = await _db.HeadAlertOutboxMessages.AsNoTracking().SingleAsync();
         Assert.Equal(HeadAlertOutboxStatus.Failed, reloaded.Status);
         Assert.Contains("invalid_payload", reloaded.LastError!, StringComparison.Ordinal);
+        Assert.Equal(1, reloaded.Attempts);
     }
 
     [Fact]
@@ -358,6 +406,53 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         var message = await _db.HeadAlertOutboxMessages.AsNoTracking().SingleAsync();
         Assert.Equal(HeadAlertOutboxStatus.Skipped, message.Status);
         Assert.Equal(HeadAlertOutboxSkipReasons.NoActiveAlerts, message.LastError);
+    }
+
+    [Fact]
+    public async Task ProcessNext_CircuitRenamedWithOnlyNewerAlerts_IsProcessedNotSkipped()
+    {
+        var circuit = new ExecutionCircuit
+        {
+            BranchId = _branchId,
+            Name = "دائرة التنفيذ",
+            NameNorm = "دائرة التنفيذ",
+            CreatedById = _head.Id,
+        };
+        _db.ExecutionCircuits.Add(circuit);
+        await _db.SaveChangesAsync();
+
+        var occurredAt = new DateTime(2026, 10, 20, 10, 0, 0, DateTimeKind.Utc);
+        await EnqueueAsync(
+            new CreateSystemHeadAlertRequest(
+                HeadAlertKindCatalog.CircuitPendingDocuments,
+                "تنبيه دائرة",
+                HeadAlertAudience.SingleLawyer,
+                _branchId,
+                _head.Id,
+                ExecutionCircuitId: circuit.Id,
+                RecipientUserId: _lawyer.Id),
+            occurredAt);
+        Assert.True(await _dispatcher.ProcessNextAsync(CancellationToken.None));
+
+        // إعادة تسمية أقدم من آخر تغيير محتوى: لا تمحو النص الأحدث، لكن وجود صف
+        // نشط يعني «معالَجة» لا «no_active_alerts».
+        var outbox = Outbox();
+        await Tx().RunAsync(async token =>
+        {
+            await outbox.EnqueueCircuitRenamedAsync(
+                circuit.Id, "اسم قديم", occurredAt.AddMinutes(-5), token);
+            await _provider.GetRequiredService<IUnitOfWork>().SaveChangesAsync(token);
+        });
+
+        Assert.True(await _dispatcher.ProcessNextAsync(CancellationToken.None));
+
+        var message = await _db.HeadAlertOutboxMessages.AsNoTracking()
+            .OrderByDescending(m => m.Id)
+            .FirstAsync();
+        Assert.Equal(HeadAlertOutboxStatus.Processed, message.Status);
+        var alert = await _db.HeadAlerts.AsNoTracking().SingleAsync();
+        Assert.Equal("تنبيه دائرة", alert.Message);
+        Assert.Equal(occurredAt, alert.LastContentChangedAt);
     }
 
     [Fact]

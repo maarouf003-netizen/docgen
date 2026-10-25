@@ -39,84 +39,146 @@ public class HeadAlertArchitectureTests
             typeof(global::Program).Assembly,
         }.Distinct();
 
+        var result = Scan(assemblies.SelectMany(GetLoadableTypes));
+
+        Assert.Empty(result.Violations);
+
+        // إثبات أن الفحص رأى المسارات المشروعة فعلًا، لا أنه مرّ على IL فارغ.
+        Assert.True(result.SawConstruction, "لم يُرصد إنشاء HeadAlert في الخدمة — الفحص لم يقرأ الـIL كما ينبغي.");
+        Assert.True(result.SawRepositoryAdd, "لم يُرصد AddAsync للمستودع في الخدمة — الفحص لم يقرأ الـIL كما ينبغي.");
+        Assert.True(result.SawSystemProcessing, "لم يُرصد استدعاء CreateSystemAsync في المشغّل — الفحص لم يقرأ الـIL كما ينبغي.");
+    }
+
+    /// <summary>
+    /// اختبار انحدار للحارس نفسه: يكشف الإنشاء داخل الباني والباني الساكن، لا داخل
+    /// الدوال فقط. النوعان فحصيان (في تجميعة الاختبارات) ولا يدخلان الفحص الإنتاجي.
+    /// </summary>
+    [Fact]
+    public void HeadAlert_GuardDetectsConstructionInsideConstructors()
+    {
+        var result = Scan([typeof(ConstructorProbe), typeof(StaticConstructorProbe)]);
+
+        Assert.Equal(2, result.Violations.Count);
+        Assert.All(
+            result.Violations,
+            violation => Assert.Contains("new HeadAlert", violation, StringComparison.Ordinal));
+        Assert.Contains(result.Violations, violation => violation.Contains(".ctor", StringComparison.Ordinal));
+        Assert.Contains(result.Violations, violation => violation.Contains(".cctor", StringComparison.Ordinal));
+    }
+
+    private static ScanResult Scan(IEnumerable<Type> types)
+    {
         var violations = new List<string>();
         var sawConstruction = false;
         var sawRepositoryAdd = false;
         var sawSystemProcessing = false;
 
-        foreach (var assembly in assemblies)
+        foreach (var type in types)
         {
-            foreach (var type in GetLoadableTypes(assembly))
+            foreach (var method in GetCodeBodies(type))
             {
-                foreach (var method in type.GetMethods(
-                    BindingFlags.Public | BindingFlags.NonPublic
-                    | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly))
+                var body = method.GetMethodBody();
+                var il = body?.GetILAsByteArray();
+                if (il is null || il.Length == 0)
+                    continue;
+
+                foreach (var (opCode, token) in ReadInstructions(il))
                 {
-                    var body = method.GetMethodBody();
-                    var il = body?.GetILAsByteArray();
-                    if (il is null || il.Length == 0)
+                    if (opCode.OperandType != OperandType.InlineMethod)
                         continue;
 
-                    foreach (var (opCode, token) in ReadInstructions(il))
+                    MethodBase? target;
+                    try
                     {
-                        if (opCode.OperandType != OperandType.InlineMethod)
-                            continue;
-
-                        MethodBase? target;
-                        try
-                        {
-                            target = method.Module.ResolveMethod(
-                                token,
-                                type.IsGenericType ? type.GetGenericArguments() : null,
-                                method.IsGenericMethod ? method.GetGenericArguments() : null);
-                        }
-                        catch (ArgumentException)
-                        {
-                            continue;
-                        }
-
-                        if (target is null)
-                            continue;
-
-                        var constructsAlert = opCode == OpCodes.Newobj
-                            && target is ConstructorInfo
-                            && target.DeclaringType == typeof(HeadAlert);
-                        var addsAlert = IsHeadAlertAddAsync(target);
-                        var processesSystemAlert = IsCreateSystemAsync(target);
-
-                        if (!constructsAlert && !addsAlert && !processesSystemAlert)
-                            continue;
-
-                        var owner = type;
-                        while (owner.DeclaringType is not null)
-                            owner = owner.DeclaringType;
-
-                        var ownerName = owner.FullName ?? owner.Name;
-                        if (AllowedOwners.Contains(ownerName))
-                        {
-                            sawConstruction |= constructsAlert;
-                            sawRepositoryAdd |= addsAlert;
-                            sawSystemProcessing |= processesSystemAlert;
-                            continue;
-                        }
-
-                        var operation = constructsAlert
-                            ? "new HeadAlert"
-                            : addsAlert
-                                ? "IHeadAlertRepository.AddAsync"
-                                : "IHeadAlertService.CreateSystemAsync";
-                        violations.Add($"{ownerName}.{method.Name} → {operation}");
+                        target = method.Module.ResolveMethod(
+                            token,
+                            type.IsGenericType ? type.GetGenericArguments() : null,
+                            method.IsGenericMethod ? method.GetGenericArguments() : null);
                     }
+                    catch (ArgumentException)
+                    {
+                        continue;
+                    }
+
+                    if (target is null)
+                        continue;
+
+                    var constructsAlert = opCode == OpCodes.Newobj
+                        && target is ConstructorInfo
+                        && target.DeclaringType == typeof(HeadAlert);
+                    var addsAlert = IsHeadAlertAddAsync(target);
+                    var processesSystemAlert = IsCreateSystemAsync(target);
+
+                    if (!constructsAlert && !addsAlert && !processesSystemAlert)
+                        continue;
+
+                    var owner = type;
+                    while (owner.DeclaringType is not null)
+                        owner = owner.DeclaringType;
+
+                    var ownerName = owner.FullName ?? owner.Name;
+                    if (AllowedOwners.Contains(ownerName))
+                    {
+                        sawConstruction |= constructsAlert;
+                        sawRepositoryAdd |= addsAlert;
+                        sawSystemProcessing |= processesSystemAlert;
+                        continue;
+                    }
+
+                    var operation = constructsAlert
+                        ? "new HeadAlert"
+                        : addsAlert
+                            ? "IHeadAlertRepository.AddAsync"
+                            : "IHeadAlertService.CreateSystemAsync";
+                    violations.Add($"{ownerName}.{method.Name} → {operation}");
                 }
             }
         }
 
-        Assert.Empty(violations);
+        return new ScanResult(violations, sawConstruction, sawRepositoryAdd, sawSystemProcessing);
+    }
 
-        // إثبات أن الفحص رأى المسارات المشروعة فعلًا، لا أنه مرّ على IL فارغ.
-        Assert.True(sawConstruction, "لم يُرصد إنشاء HeadAlert في الخدمة — الفحص لم يقرأ الـIL كما ينبغي.");
-        Assert.True(sawRepositoryAdd, "لم يُرصد AddAsync للمستودع في الخدمة — الفحص لم يقرأ الـIL كما ينبغي.");
-        Assert.True(sawSystemProcessing, "لم يُرصد استدعاء CreateSystemAsync في المشغّل — الفحص لم يقرأ الـIL كما ينبغي.");
+    /// <summary>
+    /// كل مواضع الشيفرة القابلة للتنفيذ في النوع: الدوال (بما فيها الدوال المحلية
+    /// واللامبدا المترجمة دوالَّ) + البواني + الباني الساكن.
+    /// </summary>
+    private static IEnumerable<MethodBase> GetCodeBodies(Type type)
+    {
+        var methods = type.GetMethods(
+                BindingFlags.Public | BindingFlags.NonPublic
+                | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
+            .Cast<MethodBase>();
+
+        var constructors = type.GetConstructors(
+                BindingFlags.Public | BindingFlags.NonPublic
+                | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Cast<MethodBase>();
+
+        var typeInitializer = type.TypeInitializer is { } initializer
+            ? new[] { (MethodBase)initializer }
+            : Array.Empty<MethodBase>();
+
+        return methods.Concat(constructors).Concat(typeInitializer);
+    }
+
+    private sealed record ScanResult(
+        List<string> Violations,
+        bool SawConstruction,
+        bool SawRepositoryAdd,
+        bool SawSystemProcessing);
+
+    /// <summary>نوع فحصي: إنشاء <see cref="HeadAlert"/> داخل باني عادي (يُنتج <c>.ctor</c>).</summary>
+    private sealed class ConstructorProbe
+    {
+        public ConstructorProbe() => Alert = new HeadAlert { Message = "probe" };
+
+        public HeadAlert? Alert { get; }
+    }
+
+    /// <summary>نوع فحصي: إنشاء <see cref="HeadAlert"/> داخل باني ساكن (يُنتج <c>.cctor</c>).</summary>
+    private sealed class StaticConstructorProbe
+    {
+        public static HeadAlert? Alert { get; } = new HeadAlert { Message = "probe" };
     }
 
     private static bool IsHeadAlertAddAsync(MethodBase target)

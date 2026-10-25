@@ -387,6 +387,16 @@ public sealed class HeadAlertOutboxDispatcher : BackgroundService
 
         if (message.Operation == HeadAlertOutboxOperation.Upsert && string.IsNullOrWhiteSpace(message.Kind))
             throw new JsonException("رسالة الإنشاء بلا نوع");
+
+        if (message.Operation == HeadAlertOutboxOperation.Upsert
+            && payload.Request is { } request
+            && !string.Equals(message.Kind, request.Kind, StringComparison.Ordinal))
+        {
+            // العمود والحمولة مرآتان لنفس الحدث؛ الاختلاف يعني صفًا مُفسَدًا أو خطأ
+            // تسجيل — يُرفض بدل الاعتماد على أحدهما (§6.4: لا تعارض صامت).
+            throw new JsonException(
+                $"تعارض بين نوع الصف ({message.Kind}) ونوع الحمولة ({request.Kind})");
+        }
     }
 
     /// <summary>

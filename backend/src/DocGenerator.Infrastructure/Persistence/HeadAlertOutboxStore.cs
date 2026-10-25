@@ -136,8 +136,12 @@ public sealed class HeadAlertOutboxStore : IHeadAlertOutboxStore
         int successorId,
         CancellationToken ct = default)
     {
+        // الفلترة على العمود المفهرس (Status, TargetUserId) — لا تُقرأ كل الرسائل
+        // المعلّقة ولا تُفكّ حمولاتها. العمود مرآة الحمولة عند التسجيل، فهو مرجع
+        // الاختيار؛ وتُفرض المطابقة مجددًا عند الكتابة.
         var rows = await _db.HeadAlertOutboxMessages
-            .Where(m => m.Status == HeadAlertOutboxStatus.Pending)
+            .Where(m => m.Status == HeadAlertOutboxStatus.Pending
+                        && m.TargetUserId == predecessorId)
             .ToListAsync(ct);
 
         if (rows.Count == 0)
@@ -153,27 +157,16 @@ public sealed class HeadAlertOutboxStore : IHeadAlertOutboxStore
             }
             catch (JsonException)
             {
+                // حمولة تالفة: يبقى الصف كما هو (يتولاه المشغّل كـinvalid_payload)
+                // حتى لا يُفصل العمود عن الحمولة ويُوجَّه التنبيه إلى شخص خطأ.
                 continue;
             }
-
-            var changed = false;
-            var payloadChanged = payload.TargetUserId == predecessorId;
-            if (payloadChanged)
-                payload = payload with { TargetUserId = successorId };
 
             // لا يُعاد كتابة مستلم الطلب الأصلي عمدًا: بقاؤه على السلف هو ما يمكّن
             // المعالج من تمييز تجاوز التعاقب (TargetUserId ≠ مستلم الطلب) عن مستلم
             // صريح غير موجود، فيُسجَّل الأول recipient_inactive والثاني no_recipients.
-            if (payloadChanged)
-                row.Payload = HeadAlertOutboxPayloadSerializer.Serialize(payload);
-            changed = payloadChanged;
-
-            if (row.TargetUserId == predecessorId)
-                changed = true;
-
-            if (!changed)
-                continue;
-
+            row.Payload = HeadAlertOutboxPayloadSerializer.Serialize(
+                payload with { TargetUserId = successorId });
             row.TargetUserId = successorId;
             updated++;
         }

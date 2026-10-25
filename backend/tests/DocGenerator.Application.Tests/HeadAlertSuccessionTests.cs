@@ -281,6 +281,105 @@ public class HeadAlertSuccessionTests : IDisposable
     }
 
     [Fact]
+    public async Task ApplyAsync_OutboxColumnPayloadMismatch_ForcesBothToSuccessor()
+    {
+        var occurredAt = new DateTime(2026, 10, 22, 6, 0, 0, DateTimeKind.Utc);
+        var request = new CreateSystemHeadAlertRequest(
+            HeadAlertKindCatalog.DelegationPendingApproval,
+            "رسالة معلّقة",
+            HeadAlertAudience.SingleHead,
+            _branchId,
+            _predecessor.Id,
+            DelegationId: 77,
+            RecipientUserId: _predecessor.Id);
+        var payload = new HeadAlertOutboxPayloadV1
+        {
+            Operation = "upsert",
+            OccurredAt = occurredAt,
+            // حمولة شاذة لا تطابق العمود: العمود هو مرجع الاختيار، وتُفرض المطابقة عند الكتابة.
+            TargetUserId = _other.Id,
+            Request = request,
+        };
+
+        var pending = new HeadAlertOutboxMessage
+        {
+            Operation = HeadAlertOutboxOperation.Upsert,
+            Status = HeadAlertOutboxStatus.Pending,
+            Kind = HeadAlertKindCatalog.DelegationPendingApproval,
+            Payload = HeadAlertOutboxPayloadSerializer.Serialize(payload),
+            PayloadVersion = 1,
+            OccurredAt = occurredAt,
+            CreatedAt = occurredAt,
+            NextAttemptAt = occurredAt,
+            TargetUserId = _predecessor.Id,
+        };
+        _db.HeadAlertOutboxMessages.Add(pending);
+        _db.SaveChanges();
+
+        var result = await ApplyAsync();
+
+        Assert.Equal(1, result.UpdatedOutboxMessages);
+
+        var stored = await _db.HeadAlertOutboxMessages.AsNoTracking()
+            .SingleAsync(m => m.Id == pending.Id);
+        Assert.Equal(_successor.Id, stored.TargetUserId);
+        var storedPayload = HeadAlertOutboxPayloadSerializer.Deserialize(stored.Payload);
+        Assert.Equal(_successor.Id, storedPayload.TargetUserId);
+        Assert.Equal(_predecessor.Id, storedPayload.Request!.RecipientUserId);
+    }
+
+    [Fact]
+    public async Task ApplyAsync_OutboxMessagesTargetingOthers_AreUntouched()
+    {
+        var occurredAt = new DateTime(2026, 10, 22, 6, 0, 0, DateTimeKind.Utc);
+
+        HeadAlertOutboxMessage NewMessage(int targetUserId) => new()
+        {
+            Operation = HeadAlertOutboxOperation.Upsert,
+            Status = HeadAlertOutboxStatus.Pending,
+            Kind = HeadAlertKindCatalog.DelegationPendingApproval,
+            Payload = HeadAlertOutboxPayloadSerializer.Serialize(new HeadAlertOutboxPayloadV1
+            {
+                Operation = "upsert",
+                OccurredAt = occurredAt,
+                TargetUserId = targetUserId,
+                Request = new CreateSystemHeadAlertRequest(
+                    HeadAlertKindCatalog.DelegationPendingApproval,
+                    "رسالة معلّقة",
+                    HeadAlertAudience.SingleLawyer,
+                    _branchId,
+                    targetUserId,
+                    DelegationId: 77,
+                    RecipientUserId: targetUserId),
+            }),
+            PayloadVersion = 1,
+            OccurredAt = occurredAt,
+            CreatedAt = occurredAt,
+            NextAttemptAt = occurredAt,
+            TargetUserId = targetUserId,
+        };
+
+        var matching = NewMessage(_predecessor.Id);
+        var unrelated = NewMessage(_other.Id);
+        _db.HeadAlertOutboxMessages.AddRange(matching, unrelated);
+        _db.SaveChanges();
+
+        var result = await ApplyAsync();
+
+        Assert.Equal(1, result.UpdatedOutboxMessages);
+
+        var storedUnrelated = await _db.HeadAlertOutboxMessages.AsNoTracking()
+            .SingleAsync(m => m.Id == unrelated.Id);
+        Assert.Equal(_other.Id, storedUnrelated.TargetUserId);
+        var unrelatedPayload = HeadAlertOutboxPayloadSerializer.Deserialize(storedUnrelated.Payload);
+        Assert.Equal(_other.Id, unrelatedPayload.TargetUserId);
+
+        var storedMatching = await _db.HeadAlertOutboxMessages.AsNoTracking()
+            .SingleAsync(m => m.Id == matching.Id);
+        Assert.Equal(_successor.Id, storedMatching.TargetUserId);
+    }
+
+    [Fact]
     public async Task ApplyAsync_InvalidOutboxPayload_LeavesRowUntouched()
     {
         var occurredAt = new DateTime(2026, 10, 22, 6, 0, 0, DateTimeKind.Utc);
