@@ -268,7 +268,10 @@ public class HeadAlertSuccessionTests : IDisposable
         Assert.Equal(_successor.Id, storedPending.TargetUserId);
         var pendingPayload = HeadAlertOutboxPayloadSerializer.Deserialize(storedPending.Payload);
         Assert.Equal(_successor.Id, pendingPayload.TargetUserId);
-        Assert.Equal(_successor.Id, pendingPayload.Request!.RecipientUserId);
+
+        // الطلب الأصلي يبقى على السلف: التجاوز يُحمل في TargetUserId وحده حتى
+        // يميّز المعالج تجاوز التعاقب عن مستلم صريح غير موجود (الخطة §8.1).
+        Assert.Equal(_predecessor.Id, pendingPayload.Request!.RecipientUserId);
 
         var storedProcessed = await _db.HeadAlertOutboxMessages.AsNoTracking()
             .SingleAsync(m => m.Id == processed.Id);

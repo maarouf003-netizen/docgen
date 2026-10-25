@@ -121,6 +121,15 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
         int lawyerId, string kind, CancellationToken ct = default);
 
     /// <summary>
+    /// يفحص وجود المراجع التي يستند إليها التنبيه النظامي قبل الإدراج (الخطة §8.1):
+    /// يُعاد أول مرجع مفقود، أو <c>null</c> إذا كانت كل المراجع المحددة موجودة.
+    /// الفحص للوجود فقط (لا لحالة التفعيل): غياب الصف هو ما يمنع الإدراج، أما
+    /// التفعيل فشأن دلالي يعالجه محلّل المستلمين.
+    /// </summary>
+    Task<HeadAlertReferenceKind?> FindMissingReferenceAsync(
+        CreateSystemHeadAlertRequest request, CancellationToken ct = default);
+
+    /// <summary>
     /// تنبيهات المعلقات النشطة لدائرة ضمن نوع واحد — أساس إعادة التسمية: تُحدَّث
     /// التنبيهات المرتبطة بالدائرة بالنص الجديد دون مطابقة النص.
     /// </summary>

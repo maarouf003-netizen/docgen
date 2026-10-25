@@ -12,4 +12,11 @@ public interface IDbExceptionClassifier
 
     /// <summary>هل هذا الاستثناء (أو سببه الداخلي) تعارض تزامن متفائل؟</summary>
     bool IsConcurrencyViolation(Exception ex);
+
+    /// <summary>
+    /// هل هذا الاستثناء (أو سببه الداخلي) خرق مفتاح أجنبي — أي مرجع محذوف/غير موجود؟
+    /// يُستخدم لتحويل رسالة صندوق الصادر إلى <c>skipped: missing_reference</c> بدل
+    /// إعادة لا نهائية (الخطة §8.1).
+    /// </summary>
+    bool IsForeignKeyViolation(Exception ex);
 }

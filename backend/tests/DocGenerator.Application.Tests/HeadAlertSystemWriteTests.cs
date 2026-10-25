@@ -48,6 +48,9 @@ public class HeadAlertSystemWriteTests : IDisposable
         seed.Users.AddRange(_head, _lawyer, _otherLawyer);
         seed.SaveChanges();
 
+        // الإنابة بلا مفتاح أجنبي في المخطط؛ فحص المراجع يحتاج صفوفًا فعلية.
+        HeadAlertReferences.SeedDelegations(seed, _branchId, _head.Id, 42, 77, 88, 99);
+
         _provider = BuildProvider();
     }
 
@@ -124,6 +127,90 @@ public class HeadAlertSystemWriteTests : IDisposable
         var alert = await db.HeadAlerts.Include(a => a.Recipients).AsNoTracking().SingleAsync();
         Assert.Equal(_lawyer.Id, Assert.Single(alert.Recipients).UserId);
         Assert.Contains($"document:{document.Id}:recipient:{_lawyer.Id}", alert.DedupeKey!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CreateSystemAsync_MissingCreator_ThrowsMissingReference()
+    {
+        var request = new CreateSystemHeadAlertRequest(
+            HeadAlertKindCatalog.AppealReferralToHead,
+            "رسالة بلا منشئ",
+            HeadAlertAudience.SingleHead,
+            _branchId,
+            CreatedById: 9999,
+            RecipientUserId: _head.Id);
+
+        var exception = await Assert.ThrowsAsync<HeadAlertMissingReferenceException>(() =>
+            Tx().RunAsync(token =>
+                Alerts().CreateSystemAsync(request, DateTime.UtcNow, null, null, token)));
+
+        Assert.Contains("منشئ", exception.Message, StringComparison.Ordinal);
+        using var db = NewDb();
+        Assert.Empty(await db.HeadAlerts.ToListAsync());
+    }
+
+    [Fact]
+    public async Task CreateSystemAsync_MissingBranch_ThrowsMissingReference()
+    {
+        var request = new CreateSystemHeadAlertRequest(
+            HeadAlertKindCatalog.AppealReferralToHead,
+            "رسالة لفرع محذوف",
+            HeadAlertAudience.SingleHead,
+            9999,
+            _head.Id,
+            RecipientUserId: _head.Id);
+
+        var exception = await Assert.ThrowsAsync<HeadAlertMissingReferenceException>(() =>
+            Tx().RunAsync(token =>
+                Alerts().CreateSystemAsync(request, DateTime.UtcNow, null, null, token)));
+
+        Assert.Contains("الفرع", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CreateSystemAsync_DocumentCreatorWithMissingDocument_ThrowsMissingReference()
+    {
+        var request = new CreateSystemHeadAlertRequest(
+            HeadAlertKindCatalog.DelegationAssignedToLawyer,
+            "إسناد لملف محذوف",
+            HeadAlertAudience.DocumentCreator,
+            _branchId,
+            _head.Id,
+            DocumentId: 9999,
+            DelegationId: 42);
+
+        var exception = await Assert.ThrowsAsync<HeadAlertMissingReferenceException>(() =>
+            Tx().RunAsync(token =>
+                Alerts().CreateSystemAsync(request, DateTime.UtcNow, null, null, token)));
+
+        Assert.Contains("الملف", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CreateSystemAsync_SoftDeletedDocument_ThrowsMissingReference()
+    {
+        var document = await AddDocumentAsync(_lawyer);
+        using (var db = NewDb())
+        {
+            var tracked = await db.Documents.SingleAsync(d => d.Id == document.Id);
+            tracked.IsDeleted = true;
+            await db.SaveChangesAsync();
+        }
+
+        var request = new CreateSystemHeadAlertRequest(
+            HeadAlertKindCatalog.DelegationAssignedToLawyer,
+            "إسناد لملف محذوف منطقيًا",
+            HeadAlertAudience.DocumentCreator,
+            _branchId,
+            _head.Id,
+            DocumentId: document.Id,
+            DelegationId: 42);
+
+        var exception = await Assert.ThrowsAsync<HeadAlertMissingReferenceException>(() =>
+            Tx().RunAsync(token =>
+                Alerts().CreateSystemAsync(request, DateTime.UtcNow, null, null, token)));
+
+        Assert.Contains("الملف", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

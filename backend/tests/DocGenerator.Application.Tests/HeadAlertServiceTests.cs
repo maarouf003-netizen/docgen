@@ -56,6 +56,9 @@ public class HeadAlertServiceTests : IDisposable
         _db.Users.AddRange(_head, _lawyer1, _lawyer2);
         _db.SaveChanges();
 
+        // الإنابة بلا مفتاح أجنبي في المخطط؛ فحص المراجع يحتاج صفًا فعليًا (77).
+        HeadAlertReferences.SeedDelegations(_db, _branchId, _head.Id, 77);
+
         var documents = new DocumentRepository(_db);
         var users = new UserRepository(_db);
         var alerts = new HeadAlertRepository(_db);

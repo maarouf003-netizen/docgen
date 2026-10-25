@@ -197,6 +197,25 @@ public sealed class HeadAlertOutboxDispatcher : BackgroundService
             await MarkSkippedAsync(claimed.Id, HeadAlertOutboxSkipReasons.NoRecipients, ct).ConfigureAwait(false);
             _logger.LogInformation("قُطعت رسالة صندوق الصادر (لا مستلمين): {Message}", ex.Message);
         }
+        catch (HeadAlertMissingReferenceException ex)
+        {
+            // مرجع محذوف/غير صالح وقت المعالجة — تخطٍّ بلا إعادة (الخطة §8.1).
+            await MarkSkippedAsync(claimed.Id, HeadAlertOutboxSkipReasons.MissingReference, ct).ConfigureAwait(false);
+            _logger.LogInformation("قُطعت رسالة صندوق الصادر (مرجع مفقود): {Message}", ex.Message);
+        }
+        catch (HeadAlertRecipientInactiveException ex)
+        {
+            // مستلم التعاقب غير فعّال ولا خلف معروف — لا تخمين (الخطة §8.1).
+            await MarkSkippedAsync(claimed.Id, HeadAlertOutboxSkipReasons.RecipientInactive, ct).ConfigureAwait(false);
+            _logger.LogInformation("قُطعت رسالة صندوق الصادر (مستلم غير فعّال): {Message}", ex.Message);
+        }
+        catch (Exception ex) when (_classifier.IsForeignKeyViolation(ex))
+        {
+            // مرجع حُذف بين التسجيل والمعالجة: المفتاح الأجنبي يرفض الإدراج —
+            // تخطٍّ صريح بدل إعادة حتى MaxAttempts ثم failed.
+            await MarkSkippedAsync(claimed.Id, HeadAlertOutboxSkipReasons.MissingReference, ct).ConfigureAwait(false);
+            _logger.LogInformation("قُطعت رسالة صندوق الصادر (مرجع محذوف أثناء المعالجة).");
+        }
         catch (HeadAlertConflictException ex)
         {
             await HandleConflictAsync(claimed, ex, ct).ConfigureAwait(false);

@@ -1,3 +1,4 @@
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Entities;
@@ -319,6 +320,45 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
     }
 
     // ── مسارات النوع الدلالي (الخطة §6.4/§8.1) ──
+
+    /// <inheritdoc />
+    public async Task<HeadAlertReferenceKind?> FindMissingReferenceAsync(
+        CreateSystemHeadAlertRequest request, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        // الفرع إلزامي في كل تنبيه نظامي (مفتاح أجنبي في المخطط).
+        if (!await Db.Branches.AsNoTracking().AnyAsync(b => b.Id == request.BranchId, ct))
+            return HeadAlertReferenceKind.Branch;
+
+        // مرشّحات الاستعلام العامة تُسقط الملفات المحذوفة (حذفًا ناعمًا) والإنابات
+        // والاستئنافات التابعة لملف محذوف — فيُعدّ المرجع حينها مفقودًا.
+        if (request.DocumentId is int documentId
+            && !await Db.Documents.AsNoTracking().AnyAsync(d => d.Id == documentId, ct))
+            return HeadAlertReferenceKind.Document;
+
+        if (request.DelegationId is int delegationId
+            && !await Db.DocumentDelegations.AsNoTracking().AnyAsync(d => d.Id == delegationId, ct))
+            return HeadAlertReferenceKind.Delegation;
+
+        if (request.AppealId is int appealId
+            && !await Db.DocumentAppeals.AsNoTracking().AnyAsync(a => a.Id == appealId, ct))
+            return HeadAlertReferenceKind.Appeal;
+
+        if (request.ReviewLetterId is int reviewLetterId
+            && !await Db.ReviewLetters.AsNoTracking().AnyAsync(l => l.Id == reviewLetterId, ct))
+            return HeadAlertReferenceKind.ReviewLetter;
+
+        if (request.PublicEntityId is int publicEntityId
+            && !await Db.PublicEntities.AsNoTracking().AnyAsync(e => e.Id == publicEntityId, ct))
+            return HeadAlertReferenceKind.PublicEntity;
+
+        if (request.ExecutionCircuitId is int executionCircuitId
+            && !await Db.ExecutionCircuits.AsNoTracking().AnyAsync(c => c.Id == executionCircuitId, ct))
+            return HeadAlertReferenceKind.ExecutionCircuit;
+
+        return null;
+    }
 
     public async Task<HeadAlert?> FindLatestActiveByDedupeKeyAsync(string dedupeKey, CancellationToken ct = default)
     {

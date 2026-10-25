@@ -161,37 +161,9 @@ public sealed class HeadAlertOutboxStore : IHeadAlertOutboxStore
             if (payloadChanged)
                 payload = payload with { TargetUserId = successorId };
 
-            if (payload.Request is not null)
-            {
-                var request = payload.Request;
-                var requestChanged = false;
-                if (request.Audience == HeadAlertAudience.SingleHead
-                    && request.RecipientUserId == predecessorId)
-                {
-                    request = request with { RecipientUserId = successorId };
-                    requestChanged = true;
-                }
-                else if (request.Audience == HeadAlertAudience.SingleLawyer)
-                {
-                    if (request.RecipientUserId == predecessorId)
-                    {
-                        request = request with { RecipientUserId = successorId };
-                        requestChanged = true;
-                    }
-                    if (request.TargetLawyerId == predecessorId)
-                    {
-                        request = request with { TargetLawyerId = successorId };
-                        requestChanged = true;
-                    }
-                }
-
-                if (requestChanged)
-                {
-                    payload = payload with { Request = request };
-                    payloadChanged = true;
-                }
-            }
-
+            // لا يُعاد كتابة مستلم الطلب الأصلي عمدًا: بقاؤه على السلف هو ما يمكّن
+            // المعالج من تمييز تجاوز التعاقب (TargetUserId ≠ مستلم الطلب) عن مستلم
+            // صريح غير موجود، فيُسجَّل الأول recipient_inactive والثاني no_recipients.
             if (payloadChanged)
                 row.Payload = HeadAlertOutboxPayloadSerializer.Serialize(payload);
             changed = payloadChanged;

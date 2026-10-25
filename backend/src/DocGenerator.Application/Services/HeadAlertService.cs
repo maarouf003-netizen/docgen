@@ -278,13 +278,27 @@ public sealed class HeadAlertService : IHeadAlertService
         if (string.IsNullOrWhiteSpace(message))
             throw new ArgumentException("نص التنبيه مطلوب", nameof(request));
 
+        // فحص المراجع قبل الإدراج (الخطة §8.1): مرجع محذوف بين التسجيل والمعالجة
+        // يُنهي الرسالة كـ skipped: missing_reference، لا failed ولا إعادة لا نهائية.
+        var missingReference = await _alerts.FindMissingReferenceAsync(request, ct);
+        if (missingReference is not null)
+            throw new HeadAlertMissingReferenceException(
+                DescribeMissingReference(request, missingReference.Value));
+
         var creator = await _users.GetByIdAsync(request.CreatedById, ct);
         if (creator is null || !creator.IsActive)
-            throw new ArgumentException("منشئ التنبيه النظامي غير موجود أو غير فعّال", nameof(request));
+            throw new HeadAlertMissingReferenceException("منشئ التنبيه النظامي غير موجود أو غير فعّال");
 
         var effective = ApplyTargetUserOverride(request, targetUserIdOverride);
-        var overrideApplied = targetUserIdOverride is not null;
-        var (targetType, recipients) = await ResolveSystemRecipientsAsync(effective, ct);
+
+        // «تجاوز التعاقب» ليس مجرد وجود TargetUserId في الحمولة (المشغّل يمرّره
+        // دائمًا للجمهور الأحادي)، بل اختلافه عن مستلم الحدث الأصلي. هذا الفرق هو
+        // ما يجعل تعذّر الخلف `recipient_inactive` لا `no_recipients` (الخطة §8.1).
+        var overrideApplied = targetUserIdOverride is not null
+            && targetUserIdOverride != request.RecipientUserId
+            && targetUserIdOverride != request.TargetLawyerId;
+
+        var (targetType, recipients) = await ResolveSystemRecipientsAsync(effective, overrideApplied, ct);
         if (recipients.Count == 0)
             throw new HeadAlertNoRecipientsException("لا يوجد مستلمون مؤهّلون للتنبيه");
 
@@ -562,11 +576,38 @@ public sealed class HeadAlertService : IHeadAlertService
     }
 
     /// <summary>
+    /// وصف عربي مختصر للمرجع المفقود — يُسجَّل مع رسالة التخطي للتشخيص.
+    /// </summary>
+    private static string DescribeMissingReference(
+        CreateSystemHeadAlertRequest request, HeadAlertReferenceKind kind)
+    {
+        return kind switch
+        {
+            HeadAlertReferenceKind.Branch =>
+                $"مرجع التنبيه النظامي مفقود: الفرع ({request.BranchId})",
+            HeadAlertReferenceKind.Document =>
+                $"مرجع التنبيه النظامي مفقود: الملف ({request.DocumentId})",
+            HeadAlertReferenceKind.Delegation =>
+                $"مرجع التنبيه النظامي مفقود: الإنابة ({request.DelegationId})",
+            HeadAlertReferenceKind.Appeal =>
+                $"مرجع التنبيه النظامي مفقود: الاستئناف ({request.AppealId})",
+            HeadAlertReferenceKind.ReviewLetter =>
+                $"مرجع التنبيه النظامي مفقود: كتاب المطالعة ({request.ReviewLetterId})",
+            HeadAlertReferenceKind.PublicEntity =>
+                $"مرجع التنبيه النظامي مفقود: الجهة العامة ({request.PublicEntityId})",
+            HeadAlertReferenceKind.ExecutionCircuit =>
+                $"مرجع التنبيه النظامي مفقود: دائرة التنفيذ ({request.ExecutionCircuitId})",
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "نوع مرجع غير معروف"),
+        };
+    }
+
+    /// <summary>
     /// يحدّد <c>TargetType</c> المخزَّن من <c>Audience</c> (لا العكس) ويحسب المستلمين:
     /// الجمهور الأحادي من الطلب، والجمهور المتعدد من المستخدمين النشطين وقت المعالجة.
     /// </summary>
     private async Task<(HeadAlertTargetType TargetType, List<User> Recipients)> ResolveSystemRecipientsAsync(
         CreateSystemHeadAlertRequest request,
+        bool overrideApplied,
         CancellationToken ct)
     {
         switch (request.Audience)
@@ -583,7 +624,11 @@ public sealed class HeadAlertService : IHeadAlertService
 
                 var lawyer = await _users.GetByIdAsync(lawyerId.Value, ct);
                 if (lawyer is null || !lawyer.IsActive || lawyer.Role != UserRole.Lawyer)
+                {
+                    if (overrideApplied)
+                        throw new HeadAlertRecipientInactiveException("المحامي الخلف غير موجود أو غير فعّال");
                     throw new HeadAlertNoRecipientsException("المحامي المستلم غير موجود أو غير فعّال");
+                }
 
                 return (HeadAlertTargetType.Lawyer, new List<User> { lawyer });
             }
@@ -597,7 +642,11 @@ public sealed class HeadAlertService : IHeadAlertService
 
                 var head = await _users.GetByIdAsync(request.RecipientUserId.Value, ct);
                 if (head is null || !head.IsActive || head.Role is not (UserRole.Head or UserRole.SubHead))
+                {
+                    if (overrideApplied)
+                        throw new HeadAlertRecipientInactiveException("الرئيس الخلف غير موجود أو غير فعّال");
                     throw new HeadAlertNoRecipientsException("الرئيس المستلم غير موجود أو غير فعّال");
+                }
 
                 return (HeadAlertTargetType.Head, new List<User> { head });
             }

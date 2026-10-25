@@ -26,6 +26,24 @@ public class DbExceptionClassifier : IDbExceptionClassifier
     }
 
     /// <summary>
+    /// خرق مفتاح أجنبي: SQLite (19 قيْد / 787 FOREIGN KEY موسّع) وPostgreSQL
+    /// (23503 foreign_key_violation) — مرجع محذوف بين التسجيل والمعالجة.
+    /// </summary>
+    public bool IsForeignKeyViolation(Exception ex)
+    {
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            if (current is SqliteException sqlite
+                && sqlite.SqliteErrorCode == 19
+                && sqlite.SqliteExtendedErrorCode == 787)
+                return true;
+            if (current is PostgresException postgres && postgres.SqlState == "23503")
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
     /// تعارض التزامن المتفائل (RF-010): `EF` ترفع `DbUpdateConcurrencyException` عند
     /// فشل `WHERE` رمز التزامن (`Document.Version`) — تُكتشَف عبر كامل السلسلة.
     /// إضافة المرحلة 9: انشغال/قفل التخزين المتزامن (SQLite `BUSY/LOCKED` وPostgres
