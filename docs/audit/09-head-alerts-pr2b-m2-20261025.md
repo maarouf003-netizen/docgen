@@ -2,7 +2,8 @@
 
 > **الفرع:** `feature/head-alerts-pr2b-migrate-sites`
 > **التاريخ:** 2026‑10‑25
-> **الالتزامات:** `fd4747b` (M2) ← `45fe78a` (Outbox) ← `ffdfb1b` (A3) ← توثيق.
+> **الالتزامات:** `fd4747b` (M2) ← `45fe78a` (Outbox) ← `ffdfb1b` (A3) ← `710f18c` (توثيق) ←
+> `15ccc8e` (تصحيحات المراجعة النقدية).
 > **الهدف:** إكمال المرحلة `M2` وترحيل كل الكتابات النظامية إلى `Outbox`، مع معالجة المراجع
 > المفقودة وقت المعالجة (`A3`) وحارس معماري يمنع العودة إلى الإنشاء المباشر.
 > **المرجع:** `docs/HEAD_ALERTS_RESTRUCTURE_PLAN.md` (§6.5، §8.1، §14.1، §16) و
@@ -174,7 +175,7 @@ A3 في `HeadAlertOutboxDispatcherTests`/`HeadAlertSystemWriteTests`، واخت�
 
 | البوابة | النتيجة |
 |---|---|
-| `dotnet test` — Application ثم Api منفصلين | ✔ **Application 2060/2060** · **Api 691/691** |
+| `dotnet test` — Application ثم Api منفصلين | ✔ **Application 2060/2060** · **Api 691/691** بعد إعادة الاختبار العابر منفردًا |
 | `npx oxlint src` · `npx tsc -b` | ✔ 0/0 |
 | `npx vitest run` | ✔ **1599/1599** (152 ملفًا) |
 | `npm run build` | ✔ |
@@ -185,6 +186,9 @@ A3 في `HeadAlertOutboxDispatcherTests`/`HeadAlertSystemWriteTests`، واخت�
 > **ملاحظة تشغيل البوابات:** تشغيل مشروعَي الاختبار معًا (`dotnet test` على الحل) قد يوقعهما
 > في تنافس على قاعدة SQLite المؤقتة (`database is locked` أثناء تهيئة اختبار تكاملي) — ليست
 > علاقة لها بهذا التغيير. لذلك تُشغَّل البوابتان منفصلتين، وأُعيد الاختبار المتأثر منفردًا ونجح.
+> كذلك ظهر في تشغيل Api الكامل فشل عابر واحد في
+> `EnricherMiddlewareTests.Anonymous_PushesAnonymousFallbacks` (يعتمد `ActivityListener` عامًا)،
+> ونجح منفردًا؛ لا علاقة له بتغييرات التنبيهات.
 
 **سكربتا التحقق** (مولّدان محليًا وغير مضمومين إلى Git لأن `backend/build-verify/` مستثنى):
 `full-sqlite.sql` (197,072 بايت) و`full-postgres.sql` (101,687 بايت)، وكلاهما يحتوي
