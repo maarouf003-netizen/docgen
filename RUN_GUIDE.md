@@ -4,9 +4,9 @@
 >
 > 1. **افتح §9 «تطبيق هجرات قاعدة البيانات عند النشر»** واقرأ **قائمة المهجرات المعلّقة**
 >    (قائمة تراكمية في نهاية §9) — كل سطر غير مشطوب **يجب** تطبيقه في نافذة النشر.
-> 2. **الهجرات المعلّقة حاليًا (2026-10-20) — 4 هجرات من خطة إعادة هيكلة التنبيهات:**
->    SQLite: `HeadAlertTaxonomy_Expand` ثم `HeadAlertOutbox_Create`؛
->    PostgreSQL: `HeadAlertTaxonomy_Expand_Pg` ثم `HeadAlertOutbox_Create_Pg`.
+> 2. **الهجرات المعلّقة حاليًا (2026-10-21) — 6 هجرات من خطة إعادة هيكلة التنبيهات:**
+>    SQLite: `HeadAlertTaxonomy_Expand` ثم `HeadAlertOutbox_Create` ثم `HeadAlertTaxonomy_Backfill`؛
+>    PostgreSQL: `HeadAlertTaxonomy_Expand_Pg` ثم `HeadAlertOutbox_Create_Pg` ثم `HeadAlertTaxonomy_Backfill_Pg`.
 > 3. **⚠️ `Database:AutoMigrate=false` في الإنتاج** ⇒ التطبيق **يرفض الإقلاع** إن كانت الهجرات
 >    غير مطبّقة على القاعدة الحية. **طبّق الهجرات قبل نشر النسخة، وإلا انقطاع إقلاع مقصود.**
 > 4. **نسخة احتياطية + استعادة مجرَّبة قبل النافذة** — لا «نسخة لم تُجرَّب استعادتها ليست نسخة».
@@ -403,5 +403,11 @@ npm test
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261020202700_HeadAlertOutbox_Create_Pg.cs` — نفسه (`bigint identity`).
   - **يجب تطبيقه قبل أي كود يسجّل رسائل Outbox** (المرحلة 2 من الخطة) — وإلا فشل الإدراج بـ `no such table: HeadAlertOutboxMessages`.
   - ⚠️ الـ`Down` **يرفض إسقاط الجدول** إن وُجدت رسائل `pending`/`processing`/`failed` غير محسومة (حارس صريح) — عالجها أو صدّرها أولًا.
-  - **تطبيق هجرات التنبيهات بالترتيب** (لا تُطبَّق `database update` على اسم متأخر فتُطبَّق ما قبله ضمنًا): `HeadAlertTaxonomy_Expand` ← `HeadAlertOutbox_Create` ← (لاحقًا) `HeadAlertTaxonomy_Backfill` ← (لاحقًا) `HeadAlertTaxonomy_Contract`.
+- [ ] **2026-10-21 — `HeadAlertTaxonomy_Backfill` / `HeadAlertTaxonomy_Backfill_Pg`** (M2: ترحيل التصنيفات القديمة وبناء المفاتيح — المرحلة 2 من الخطة):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261021232824_HeadAlertTaxonomy_Backfill.cs` — تعبئة `legacy` فقط، تصنيف التدفقات المفتوحة، بناء `DedupeKey`، أرشفة المراجعة المتقاعدة، حل تصادم المفاتيح ودمج المستلمين، ثم FK `ExecutionCircuitId` + الفهارس + `UX_HeadAlerts_DedupeKey_Active`.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261021232825_HeadAlertTaxonomy_Backfill_Pg.cs` — نفسه مع `BOOL_OR` و`CURRENT_TIMESTAMP` وفلتر `"IsArchived" = false`.
+  - **يجب تطبيقه قبل نشر كود `PR-2`** الذي يعتمد على `DedupeKey` والفهرس الفريد؛ وتعطيل `AutoMigrate` في الإنتاج يعني أن نسخ الكود لا تطبّقه تلقائيًا.
+  - ⚠️ الهجرة تعيد بناء جدول `HeadAlerts` على SQLite لإضافة الـFK (سلوك EF متوقع). خذ نسخة احتياطية واستعدها تجريبيًا قبل النافذة.
+  - الـ`Down` يزيل الـFK والفهارس فقط، **ولا يعكس بيانات الـbackfill** (المفاتيح/التصنيفات/الأرشفة تبقى).
+  - **تطبيق هجرات التنبيهات بالترتيب** (لا تُطبَّق `database update` على اسم متأخر فتُطبَّق ما قبله ضمنًا): `HeadAlertTaxonomy_Expand` ← `HeadAlertOutbox_Create` ← `HeadAlertTaxonomy_Backfill` ← (لاحقًا) `HeadAlertTaxonomy_Contract`.
 

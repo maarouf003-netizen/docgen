@@ -36,6 +36,9 @@ logs/
 *.snk
 *.jks
 
+# Security audit outputs (تقارير مولَّدة محليًا — لا تُرفع)
+snyk-audit/
+
 # OS / editor junk
 .DS_Store
 Thumbs.db
