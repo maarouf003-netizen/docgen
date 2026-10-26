@@ -100,7 +100,7 @@
 | `Migration_Contract_RejectsNullAndEmptyKind` (`[Theory]` × 4) | بعد `Backfill`، إدخال `Kind = NULL` / `LastContentChangedAt = NULL` / `Kind = ''` / `Kind = '   '` يُفشل `Contract`، ويظهر **اسم القيد المتوقع** في الخطأ، ولا يُسجَّل المعرّف في `__EFMigrationsHistory`، ويبقى المخطط nullable بلا القيد، وبيانات الصف المخالف كما هي (لا تحويل صامت، ولا جدول إعادة بناء مؤقت). |
 | `Migration_Contract_EnforcesNonNullAndPreservesSchema` | بعد `Contract`: `notnull = 1` للعمودين، `dflt_value = NULL` (لا Default)، القيد يرفض `''`/`'   '` (وأيضًا عبر مسار الكيان `SaveChanges`، لا SQL خام فقط)، الكتابة الصحيحة تمر، ومجموعة أسماء الفهارس ومجموعة جداول الـFK **مطابقة تمامًا** لما قبل الهجرة (ومنها `UX_HeadAlerts_DedupeKey_Active` و`IX_HeadAlerts_Kind_Active_LastChanged` و`IX_HeadAlerts_ExecutionCircuitId_Kind_IsArchived`)، **ونص فلتر الفهرس الجزئي** (`DedupeKey IS NOT NULL AND IsArchived = 0`) محفوظ، و`PRAGMA integrity_check = ok` و`foreign_key_check` فارغ. |
 | `Migration_Contract_Down_RestoresNullableColumns` | `Down` يعيد `notnull = 0` ويسقط القيد، مع بقاء الصف وقيمه (`Kind`/`LastContentChangedAt`/`Message`). |
-| `HeadAlertContractPostgresTests.Contract_RejectsNullKind_ThenAppliesCleanly` | **Postgres حيّ (مبوَّب بـ`DOCGEN_TEST_POSTGRES`):** هجرة إلى `Backfill_Pg` ← صف بـ`Kind = NULL` ← رفض `Contract_Pg` بـ`P0001` ورسالة الحارس، مع بقاء العمودين `nullable` بلا قيد ولا سجل هجرة وبلا تحويل للقيمة ← إصلاح الصف ← تطبيق ناجح ← `NOT NULL` للعمودين + القيد، ورفض `Kind = ''` بـ`23514` و`NULL` بـ`23502`. ينشئ قاعدة معزولة خاصة به (`docgen_pr3_*`) ويسقطها، فلا يتعارض مع اختبار Postgres المشترك الذي ينفّذ `EnsureDeleted`. |
+| `HeadAlertContractPostgresTests.Contract_RejectsNullKind_ThenAppliesCleanly` | **Postgres حيّ (مبوَّب بـ`DOCGEN_TEST_POSTGRES`):** هجرة إلى `Backfill_Pg` ← صف بـ`Kind = NULL` و`LastContentChangedAt = NULL` ← رفض `Contract_Pg` بـ`P0001` ورسالة الحارس، مع بقاء العمودين `nullable` بلا قيد ولا سجل هجرة وبلا تحويل للقيمتين ← **إصلاح تدريجي يثبت الفروع الثلاثة:** بعد إصلاح `Kind` يبقى الرفض على `LastContentChangedAt = NULL`، وبعد إصلاح الطابع (`= CreatedAt`، نفس بديل `PR-2`) يبقى الرفض على النوع الأبيض ← إصلاح النوع ← تطبيق ناجح ← `NOT NULL` للعمودين + القيد، ورفض `Kind = ''` بـ`23514` و`NULL` بـ`23502`. ينشئ قاعدة معزولة خاصة به (`docgen_pr3_*`) ويسقطها، فلا يتعارض مع اختبار Postgres المشترك الذي ينفّذ `EnsureDeleted`. |
 
 كما أُضيف مساعد `InsertLegacyAlertAsync` (إدراج `SQL` خام) للاختبارات التي تحتاج صفوفًا سابقة لـ`M2`؛ لأن كيان `PR-3` لم يعد يمثّل `Kind = NULL`.
 
@@ -114,7 +114,7 @@
 | البوابة | النتيجة |
 |---|---|
 | `dotnet test` (Application.Tests) | ✅ 2060/2060 — 14m46s |
-| `dotnet test` (Api.Tests) | ✅ 698/698 — 3m33s |
+| `dotnet test` (Api.Tests) | ✅ 698/698 — 4m40s |
 | `dotnet test` الكامل | ✅ 2757/2757 (2060 + 697) قبل إضافة اختبار Postgres؛ وبعده أُعيد تشغيل `Api.Tests` وحده: 698/698 ⇒ **إجمالي 2758** (2060 + 698) |
 
 ---
@@ -298,7 +298,7 @@ EF ينفّذ هجرة SQLite في **ثلاث معاملات** وسجل الهج
 | # | الخطورة | الملاحظة | القرار / الحالة |
 |---|---|---|---|
 | 1 | مرتفع | هجرة SQLite غير ذرّية (3 معاملات + سجل الهجرة خارج معاملة): انهيار وسطي يترك حالة غير متسقة. | ✅ موثّق: إيقاف الكتابة إلزامي + مسار استعادة §6.3.1 + تحذير `RUN_GUIDE` §9. لا حل برمجي آمن داخل هجرة EF. |
-| 2 | مرتفع | مسار **رفض** الحارس على PostgreSQL بلا تغطية آلية (لا Postgres محليًا). | ✅ أُصلح: `HeadAlertContractPostgresTests` حيّ في CI (`backend-postgres`) يثبت الرفض (`P0001`) وعدم تغيّر المخطط/البيانات، ثم التطبيق الناجح وقيد القاعدة. |
+| 2 | مرتفع | مسار **رفض** الحارس على PostgreSQL بلا تغطية آلية (لا Postgres محليًا). | ✅ أُصلح: `HeadAlertContractPostgresTests` حيّ في CI (`backend-postgres`) يثبت الرفض (`P0001`) وعدم تغيّر المخطط/البيانات، ثم التطبيق الناجح وقيد القاعدة. وقد كشف أول تشغيل حيّ أن الحارس يرفض أيضًا `LastContentChangedAt = NULL` بعد إصلاح `Kind` وحده، فأُعيد ترتيب الاختبار ليثبت **الفروع الثلاثة بالتدريج**: `Kind = NULL` ← إصلاحه فيبقى رفض الطابع ← إصلاح الطابع فيبقى رفض النوع الأبيض ← ثم التطبيق الناجح. |
 | 3 | متوسط | `sqlite_sequence` يتراجع بعد إعادة البناء (في `Up` و`Down`) فيُعاد استخدام `Id` محذوف. | ✅ موثّق + خطوة تسجيل/إعادة رفع في G2 (§2.3، §6.2–§6.3). |
 | 4 | متوسط | `TRIM` يزيل U+0020 فقط، ولا يرفض نوعًا صالحًا محاطًا بمسافات (`' legacy '`). | ✅ موثّق بحدّه ومسار تشديده (§2.1)؛ مقبول لأن الأنواع من كتالوج مغلق بلا مصدر خارجي. |
 | 5 | متوسط | تهيئة `Kind = string.Empty` و`LastContentChangedAt = DateTime.UtcNow` قد تُخفي نسيان إسناد. | ✅ تحقّق: مسارا الإنشاء الوحيدان في `HeadAlertService` يُسندان الحقلين صراحةً؛ أي مسار جديد إمّا يفشل عند الحفظ (قيد `Kind`) أو يُراجع. |

@@ -9,16 +9,18 @@ using Npgsql;
 namespace DocGenerator.Api.Tests;
 
 /// <summary>
-/// تغطية حيّة لفرع الرفض في <c>M3</c> على PostgreSQL — الفرع الذي لا يغطيه أي
-/// اختبار محلي (لا قاعدة Postgres على أجهزة التطوير) ولا خطوة SQLite.
+/// تغطية حيّة لفروع الرفض الثلاثة في <c>M3</c> على PostgreSQL — الفرع الذي لا يغطيه
+/// أي اختبار محلي (لا قاعدة Postgres على أجهزة التطوير) ولا خطوة SQLite.
 ///
 /// يُشغَّل فقط عند تعريف <c>DOCGEN_TEST_POSTGRES</c> (كاختبار Postgres القائم في
 /// <see cref="DatabaseInitializerTests"/>). ينشئ قاعدة **معزولة خاصة به** بدل
 /// استعمال قاعدة الاختبار المشتركة: اختبار Postgres الآخر ينفّذ
 /// <c>EnsureDeleted</c> وقد يعمل بالتوازي (فئات xUnit تتوازى).
 ///
-/// المسار المثبت: هجرة إلى <c>Backfill_Pg</c> ← إدخال صف بـ<c>Kind = NULL</c> ←
-/// رفض <c>Contract_Pg</c> برسالة الحارس مع بقاء المخطط/البيانات ← إصلاح الصف ←
+/// المسار المثبت: هجرة إلى <c>Backfill_Pg</c> ← إدخال صف بـ<c>Kind = NULL</c>
+/// و<c>LastContentChangedAt = NULL</c> ← رفض <c>Contract_Pg</c> برسالة الحارس مع بقاء
+/// المخطط/البيانات ← إصلاح تدريجي يثبت الفروع الثلاثة (بعد إصلاح <c>Kind</c> يبقى
+/// رفض <c>LastContentChangedAt = NULL</c>، وبعد إصلاح الطابع يبقى رفض النوع الأبيض) ←
 /// تطبيق ناجح ← قيد القاعدة يرفض الفارغ والـ<c>NULL</c> بعد التشديد.
 /// </summary>
 public sealed class HeadAlertContractPostgresTests
@@ -76,15 +78,47 @@ public sealed class HeadAlertContractPostgresTests
             Assert.False(await CheckConstraintExistsAsync(db));
             Assert.False(await MigrationAppliedAsync(db, ContractMigration));
 
-            // لا تحويل صامت: القيمة المخالفة كما هي.
+            // لا تحويل صامت: القيمتان المخالفتان كما هما (الإدراج الخام لم يضبط أياً منهما).
             var storedKind = await db.Database
                 .SqlQueryRaw<string?>("SELECT \"Kind\" AS \"Value\" FROM \"HeadAlerts\" WHERE \"Id\" = {0}", alertId)
                 .SingleAsync();
             Assert.Null(storedKind);
+            var nullTimestampRows = await db.Database
+                .SqlQueryRaw<long>(
+                    """
+                    SELECT COUNT(*)::bigint AS "Value"
+                    FROM "HeadAlerts"
+                    WHERE "Id" = {0} AND "LastContentChangedAt" IS NULL
+                    """,
+                    alertId)
+                .SingleAsync();
+            Assert.Equal(1L, nullTimestampRows);
 
+            // المرحلة 1: إصلاح Kind وحده — يبقى الرفض قائمًا على LastContentChangedAt = NULL،
+            // فيثبت الاختبار فرع الحارس الثاني بعد الأول.
             await db.Database.ExecuteSqlRawAsync(
                 "UPDATE \"HeadAlerts\" SET \"Kind\" = 'legacy' WHERE \"Id\" = {0}", alertId);
+            var timestampFailure = await Assert.ThrowsAsync<PostgresException>(
+                () => db.Database.MigrateAsync(ContractMigration));
+            Assert.Equal("P0001", timestampFailure.SqlState);
+            Assert.Contains("LastContentChangedAt = NULL", timestampFailure.MessageText, StringComparison.Ordinal);
+            Assert.False(await MigrationAppliedAsync(db, ContractMigration));
 
+            // المرحلة 2: إصلاح الطابع (بنفس بديل PR-2 الدلالي: ?? CreatedAt) وإبقاء نوع
+            // أبيض — يثبت فرع الحارس الثالث.
+            await db.Database.ExecuteSqlRawAsync(
+                "UPDATE \"HeadAlerts\" SET \"LastContentChangedAt\" = \"CreatedAt\", \"Kind\" = '   '"
+                + " WHERE \"Id\" = {0}",
+                alertId);
+            var emptyKindFailure = await Assert.ThrowsAsync<PostgresException>(
+                () => db.Database.MigrateAsync(ContractMigration));
+            Assert.Equal("P0001", emptyKindFailure.SqlState);
+            Assert.Contains("فارغ أو أبيض", emptyKindFailure.MessageText, StringComparison.Ordinal);
+            Assert.False(await MigrationAppliedAsync(db, ContractMigration));
+
+            // المرحلة 3: النوع الصحيح والطابع مضبوط — يمرّ التشديد.
+            await db.Database.ExecuteSqlRawAsync(
+                "UPDATE \"HeadAlerts\" SET \"Kind\" = 'legacy' WHERE \"Id\" = {0}", alertId);
             await db.Database.MigrateAsync(ContractMigration);
 
             Assert.Equal("NO", await ColumnNullabilityAsync(db, "Kind"));
@@ -111,7 +145,10 @@ public sealed class HeadAlertContractPostgresTests
         }
     }
 
-    /// <summary>إدراج صف بالشكل القديم (بلا <c>Kind</c>) عبر SQL خام — كما في اختبار SQLite.</summary>
+    /// <summary>
+    /// إدراج صف بالشكل القديم (بلا <c>Kind</c> ولا <c>LastContentChangedAt</c>) عبر SQL خام —
+    /// كما في اختبار SQLite.
+    /// </summary>
     private static async Task<int> InsertLegacyAlertAsync(
         DocGeneratorPostgresDbContext db, int branchId, int createdById)
     {
