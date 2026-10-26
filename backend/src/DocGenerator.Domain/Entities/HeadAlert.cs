@@ -20,7 +20,7 @@ public class HeadAlert
 
     /// <summary>
     /// النوع الدلالي للتنبيه من <see cref="HeadAlertKindCatalog"/> — بلا قيمة افتراضية صامتة
-    /// في القاعدة؛ أي مسار لا يضبطه يفشل عند التحقق/الحفظ بدل أن يصبح <c>legacy</c> ضمنًا.
+    /// في القاعدة؛ أي مسار لا يضبطه يفشل عند الحفظ (قيد القاعدة) بدل أن يصبح <c>legacy</c> ضمنًا.
     /// </summary>
     public string Kind { get; set; } = string.Empty;
 

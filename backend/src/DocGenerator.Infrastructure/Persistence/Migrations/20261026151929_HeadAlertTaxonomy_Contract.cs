@@ -21,7 +21,10 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
     ///
     /// ملاحظة SQLite: إعادة بناء الجدول التي يولّدها EF تحافظ على الفهارس
     /// (بما فيها الفهرس الفريد الجزئي) والمفاتيح الأجنبية، ويغطيها اختبار
-    /// <c>Migration_Contract_*</c>.
+    /// <c>Migration_Contract_*</c>. لكنها تعيد ضبط <c>sqlite_sequence</c> على
+    /// أعلى <c>Id</c> موجود؛ لذلك تتضمن بوابة G2 خطوة تسجيل/إعادة رفع يدوية
+    /// (لا يمكن إصلاحها داخل الهجرة: EF يصدر أوامر SQL بعد <c>AlterColumn</c>
+    /// قبل إعادة البناء المعلّقة، مع تحذير <c>TableRebuildPendingWarning</c>).
     /// </summary>
     public partial class HeadAlertTaxonomy_Contract : Migration
     {

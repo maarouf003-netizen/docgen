@@ -1676,7 +1676,7 @@ public class HeadAlertSchemaMigrationTests
             await db.GetService<IMigrator>().MigrateAsync(BackfillMigration);
             var (branch, user) = await SeedBranchAndUserAsync(db);
             var createdAt = new DateTime(2026, 10, 20, 8, 0, 0, DateTimeKind.Utc);
-            db.HeadAlerts.Add(new HeadAlert
+            var alert = new HeadAlert
             {
                 BranchId = branch.Id,
                 CreatedById = user.Id,
@@ -1685,8 +1685,10 @@ public class HeadAlertSchemaMigrationTests
                 Message = "صف اختبار حارس M3",
                 CreatedAt = createdAt,
                 LastContentChangedAt = createdAt,
-            });
+            };
+            db.HeadAlerts.Add(alert);
             await db.SaveChangesAsync();
+            var alertId = alert.Id;
             db.ChangeTracker.Clear();
 
             var sql = violation switch
@@ -1709,6 +1711,44 @@ public class HeadAlertSchemaMigrationTests
                 .SqlQueryRaw<string>("SELECT \"MigrationId\" AS Value FROM \"__EFMigrationsHistory\"")
                 .ToListAsync();
             Assert.DoesNotContain(ContractMigration, applied);
+
+            // الفشل يترك المخطط والبيانات كما كانا: لا NOT NULL ولا قيد، ولا جدول
+            // إعادة بناء مؤقت، والقيم المخالفة نفسها محفوظة (لا تحويل صامت).
+            var kindNotNull = await db.Database.SqlQueryRaw<int>(
+                "SELECT \"notnull\" AS Value FROM pragma_table_info('HeadAlerts') WHERE name = 'Kind'").SingleAsync();
+            var lastChangedNotNull = await db.Database.SqlQueryRaw<int>(
+                "SELECT \"notnull\" AS Value FROM pragma_table_info('HeadAlerts') WHERE name = 'LastContentChangedAt'").SingleAsync();
+            Assert.Equal(0, kindNotNull);
+            Assert.Equal(0, lastChangedNotNull);
+
+            var tableSql = await db.Database
+                .SqlQueryRaw<string>("SELECT sql AS Value FROM sqlite_master WHERE type = 'table' AND name = 'HeadAlerts'")
+                .SingleAsync();
+            Assert.DoesNotContain("CK_HeadAlerts_Kind_NotEmpty", tableSql, StringComparison.Ordinal);
+
+            var tempTables = await db.Database
+                .SqlQueryRaw<string>("SELECT name AS Value FROM sqlite_master WHERE type = 'table' AND name = 'ef_temp_HeadAlerts'")
+                .ToListAsync();
+            Assert.Empty(tempTables);
+
+            var storedKind = await db.Database.SqlQueryRaw<string?>(
+                "SELECT \"Kind\" AS Value FROM \"HeadAlerts\" WHERE \"Id\" = {0}", alertId).SingleAsync();
+            var storedLastChanged = await db.Database.SqlQueryRaw<DateTime?>(
+                "SELECT \"LastContentChangedAt\" AS Value FROM \"HeadAlerts\" WHERE \"Id\" = {0}", alertId).SingleAsync();
+            var expectedKind = violation switch
+            {
+                "null_kind" => null,
+                "empty_kind" => string.Empty,
+                "whitespace_kind" => "   ",
+                _ => HeadAlertKindCatalog.Legacy,
+            };
+            var expectedLastChanged = violation == "null_last_changed" ? null : (DateTime?)createdAt;
+            Assert.Equal(expectedKind, storedKind);
+            Assert.Equal(expectedLastChanged, storedLastChanged);
+
+            var storedMessage = await db.Database.SqlQueryRaw<string>(
+                "SELECT \"Message\" AS Value FROM \"HeadAlerts\" WHERE \"Id\" = {0}", alertId).SingleAsync();
+            Assert.Equal("صف اختبار حارس M3", storedMessage);
         }
         finally
         {
@@ -1743,6 +1783,9 @@ public class HeadAlertSchemaMigrationTests
             await db.SaveChangesAsync();
             db.ChangeTracker.Clear();
 
+            var indexesBefore = await GetSqliteIndexNamesAsync(db, "HeadAlerts");
+            var foreignKeyTablesBefore = await GetSqliteForeignKeyTablesAsync(db, "HeadAlerts");
+
             await db.GetService<IMigrator>().MigrateAsync(ContractMigration);
 
             var kindNotNull = await db.Database.SqlQueryRaw<int>(
@@ -1763,10 +1806,19 @@ public class HeadAlertSchemaMigrationTests
             Assert.Contains("UX_HeadAlerts_DedupeKey_Active", indexes);
             Assert.Contains("IX_HeadAlerts_Kind_Active_LastChanged", indexes);
             Assert.Contains("IX_HeadAlerts_ExecutionCircuitId_Kind_IsArchived", indexes);
+            // لا يكفي وجود ثلاثة أسماء: إعادة البناء يجب ألا تُسقط أي فهرس من M2.
+            Assert.Equal(indexesBefore, indexes);
+
+            // الفهرسة الجزئية ليست مجرد اسم: الفلتر نفسه يجب أن يبقى بعد إعادة البناء.
+            var dedupeIndexSql = await db.Database.SqlQueryRaw<string>(
+                "SELECT sql AS Value FROM sqlite_master WHERE type = 'index' AND name = 'UX_HeadAlerts_DedupeKey_Active'").SingleAsync();
+            Assert.Contains("\"DedupeKey\" IS NOT NULL", dedupeIndexSql, StringComparison.Ordinal);
+            Assert.Contains("\"IsArchived\" = 0", dedupeIndexSql, StringComparison.Ordinal);
 
             var foreignKeyTables = await GetSqliteForeignKeyTablesAsync(db, "HeadAlerts");
             Assert.Contains("Branches", foreignKeyTables);
             Assert.Contains("ExecutionCircuits", foreignKeyTables);
+            Assert.Equal(foreignKeyTablesBefore, foreignKeyTables);
 
             var integrity = await db.Database
                 .SqlQueryRaw<string>("SELECT integrity_check AS Value FROM pragma_integrity_check()")
@@ -1789,6 +1841,20 @@ public class HeadAlertSchemaMigrationTests
                 "UPDATE \"HeadAlerts\" SET \"Kind\" = NULL WHERE \"Id\" = {0}", 1));
             await Assert.ThrowsAsync<SqliteException>(() => db.Database.ExecuteSqlRawAsync(
                 "UPDATE \"HeadAlerts\" SET \"LastContentChangedAt\" = NULL WHERE \"Id\" = {0}", 1));
+
+            // مسار الكيان أيضًا: القيمة الافتراضية string.Empty لا تمرّ من القيد.
+            db.HeadAlerts.Add(new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Branch,
+                Kind = string.Empty,
+                Message = "صف بنوع فارغ",
+                CreatedAt = createdAt.AddMinutes(2),
+                LastContentChangedAt = createdAt.AddMinutes(2),
+            });
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+            db.ChangeTracker.Clear();
 
             // الكتابة الصحيحة تمر، والصف القديم محفوظ بنصه ونوعه.
             db.HeadAlerts.Add(new HeadAlert

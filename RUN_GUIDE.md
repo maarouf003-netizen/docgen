@@ -425,21 +425,22 @@ npm test
   - الـ`Down` يزيل الـFK والفهارس فقط، **ولا يعكس بيانات الـbackfill** (المفاتيح/التصنيفات/الأرشفة تبقى).
 - [ ] **2026-10-26 — `HeadAlertTaxonomy_Contract` / `HeadAlertTaxonomy_Contract_Pg`** (M3: تشديد `Kind` و`LastContentChangedAt` — المرحلة 3 من خطة التنبيهات، PR‑3):
   > **الحالة:** ⏳ **غير مطبَّقة على السياقين** (`SQLite` و`PostgreSQL`) — تنتظر نافذة النشر.
-  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261026151929_HeadAlertTaxonomy_Contract.cs` — حارس صريح يرفض `NULL`/فراغ، ثم إعادة بناء الجدول بـ`Kind TEXT NOT NULL` و`LastContentChangedAt TEXT NOT NULL` **بلا Default دائم**، وقيد `CK_HeadAlerts_Kind_NotEmpty` (`TRIM("Kind") <> ''`)؛ يحافظ على الفهرس الفريد الجزئي `UX_HeadAlerts_DedupeKey_Active` وكل الـFK والفهارس.
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261026151929_HeadAlertTaxonomy_Contract.cs` — حارس صريح يرفض `NULL`/فراغ، ثم إعادة بناء الجدول بـ`Kind TEXT NOT NULL` و`LastContentChangedAt TEXT NOT NULL` **بلا Default دائم**، وقيد `CK_HeadAlerts_Kind_NotEmpty` (`TRIM("Kind") <> ''`)؛ يحافظ على الفهرس الفريد الجزئي `UX_HeadAlerts_DedupeKey_Active` وكل الـFK والفهارس. **⛔ أوقف الخدمة/الكتابة قبل التطبيق** (إعادة البناء تنسخ الصفوف ثم تُسقط الجدول القديم؛ أي كتابة بينهما تُفقد). ⚠️ إعادة بناء SQLite تعيد ضبط `sqlite_sequence` على أعلى `Id` موجود؛ سجّل `SELECT seq FROM sqlite_sequence WHERE name='HeadAlerts';` قبل `Contract` وأعد رفعه بعده إن تراجع (التفاصيل في `docs/audit/11-head-alerts-pr3-20261026.md` §6.2–§6.3).
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261026152238_HeadAlertTaxonomy_Contract_Pg.cs` — حارس `DO $$ … RAISE EXCEPTION` ثم `SET NOT NULL` للعمودين وقيد `CK_HeadAlerts_Kind_NotEmpty`.
   - نص SQL المولّد والمُراجَع (G1): `docs/audit/migrations/HEADALERT_PR3_sqlite.sql` و`docs/audit/migrations/HEADALERT_PR3_postgres.sql`.
   - **⛔ بوابتا ما قبل التطبيق (إلزامي):** (1) **G2** — dry-run على نسخة إنتاجية مستعادة: تطبيق `Expand`/`Outbox_Create`/`Backfill`/`Contract` بالترتيب مع `PRAGMA integrity_check` و`foreign_key_check` وفحص الفهارس وأعداد الصفوف ثم إقلاع التطبيق وفحص الدخان؛ (2) تأكيد أن **كل النسخ** تعمل بكود `PR‑2` و**صفر** صفوف `NULL` في العمودين و**صفر** `Kind` فارغ/أبيض. الهجرة **ترفض** التطبيق برسالة صريحة عند أي مخالفة (لا `IFNULL`/`Default` صامت) — التفاصيل في `docs/audit/11-head-alerts-pr3-20261026.md`.
   - فحص ما قبل النافذة (يجب أن يعيد `0 0 0`):
     ```sql
-    -- SQLite
-    SELECT SUM("Kind" IS NULL), SUM("LastContentChangedAt" IS NULL),
-           SUM("Kind" IS NOT NULL AND TRIM("Kind") = '') FROM "HeadAlerts";
+    -- SQLite (COALESCE: SUM على جدول فارغ يعيد NULL لا 0)
+    SELECT COALESCE(SUM("Kind" IS NULL), 0), COALESCE(SUM("LastContentChangedAt" IS NULL), 0),
+           COALESCE(SUM("Kind" IS NOT NULL AND TRIM("Kind") = ''), 0) FROM "HeadAlerts";
     -- PostgreSQL
     SELECT COUNT(*) FILTER (WHERE "Kind" IS NULL),
            COUNT(*) FILTER (WHERE "LastContentChangedAt" IS NULL),
            COUNT(*) FILTER (WHERE "Kind" IS NOT NULL AND TRIM("Kind") = '')
     FROM "HeadAlerts";
     ```
+  - **ترتيب النشر:** طبّق الهجرة أولًا ثم انشر كود `PR‑3`؛ الكيان يقرأ `LastContentChangedAt` كـ`DateTime` غير قابل للفراغ، وأي صف قديم بـ`NULL` يفشل عند القراءة. لا تنشر الكود قبل تطبيق `Contract` على القاعدة الحية.
   - الـ`Down` تطبيقي فقط: يعيد العمودين nullable ويسقط القيد دون إعادة أي قيمة إلى `NULL` (الخطة §16.2).
   - بدون التطبيق يبقى المخطط أوسع من النموذج: العمودان يقبلان `NULL` ولا قيد يمنع `Kind` الفارغ، فأي مسار كتابة غير محمي يستطيع إدخال نوع فارغ رغم أن كود `PR‑3` يفترض عدم nullable.
   - **تطبيق هجرات التنبيهات بالترتيب** (لا تُطبَّق `database update` على اسم متأخر فتُطبَّق ما قبله ضمنًا): `HeadAlertTaxonomy_Expand` ← `HeadAlertOutbox_Create` ← `HeadAlertTaxonomy_Backfill` ← `HeadAlertTaxonomy_Contract` (وكذلك أزواج `_Pg`، و`Contract` **أخيرًا دائمًا** وبعد G2 وكل النسخ على `PR‑2`).

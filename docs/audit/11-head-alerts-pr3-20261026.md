@@ -4,6 +4,8 @@
 > **التاريخ:** 2026-10-26 · **الفرع:** `feature/head-alerts-pr3-contract` · **الأساس:** `master` = `aa1e50c`.
 > **المرجع الحاكم:** `docs/HEAD_ALERTS_RESTRUCTURE_PLAN.md` §0.2 (G1/G2)، §6.3 (M3)، §15 (المرحلة 3)، §16.
 > **النطاق:** `M3` + الكيان النهائي + إزالة معالجة `nullable` + اختبارات الهجرة/الخدمة. **لا تغيير في API أو الواجهة** (وفق قيد تقسيم الـ`PRs`).
+>
+> **ملاحظة تحرير (2026-10-26، قبل التجميد):** صُححت في §6.1–§6.3 مفاتيح بيئة `dotnet ef` (`ConnectionStrings__DefaultConnection` و`POSTGRES_CONNECTION`)، واستعلام فحص الصفر على جدول فارغ (`COALESCE`)، وخطوات نسخ WAL وتسلسل `sqlite_sequence`، بعد مراجعة نقدية. لا تغيير على نطاق `M3`.
 
 ---
 
@@ -53,6 +55,7 @@
 - لا تحذف أي عمود.
 - لا تضيف `Default` على `Kind`/`LastContentChangedAt` (لا يوجد افتراضي دائم — الإدراج بلا نوع يفشل).
 - لا تعيد بناء أي جدول في PostgreSQL؛ أما SQLite فإعادة بناء الجدول سلوك EF متوقع، وقد تحقق الاختبار من حفظ كل الفهارس والـ`FK`.
+- لا تحافظ تلقائيًا على `sqlite_sequence` بعد إعادة بناء SQLite: EF ينسخ الصفوف إلى جدول جديد فيُضبط التسلسل على أعلى `Id` **موجود**؛ إن كان الأعلى محذوفًا يتراجع التسلسل. لذلك أُضيفت خطوة تسجيل/إعادة رفع يدوية في G2 (§6.2–§6.3) بدل حل ملتوٍ داخل الهجرة.
 - لا تمسّ بيانات الصفوف (لا تحويل ولا حذف).
 
 ### 2.3 الـ`Down`
@@ -87,8 +90,8 @@
 
 | الاختبار | ما يثبته |
 |---|---|
-| `Migration_Contract_RejectsNullAndEmptyKind` (`[Theory]` × 4) | بعد `Backfill`، إدخال `Kind = NULL` / `LastContentChangedAt = NULL` / `Kind = ''` / `Kind = '   '` يُفشل `Contract`، ويظهر **اسم القيد المتوقع** في الخطأ، ولا يُسجَّل المعرّف في `__EFMigrationsHistory`. |
-| `Migration_Contract_EnforcesNonNullAndPreservesSchema` | بعد `Contract`: `notnull = 1` للعمودين، `dflt_value = NULL` (لا Default)، القيد يرفض `''`/`'   '`، الكتابة الصحيحة تمر، والفهرس الفريد الجزئي `UX_HeadAlerts_DedupeKey_Active` و`IX_HeadAlerts_Kind_Active_LastChanged` و`IX_HeadAlerts_ExecutionCircuitId_Kind_IsArchived` والفهارس الأجنبية باقية، و`PRAGMA integrity_check = ok` و`foreign_key_check` فارغ. |
+| `Migration_Contract_RejectsNullAndEmptyKind` (`[Theory]` × 4) | بعد `Backfill`، إدخال `Kind = NULL` / `LastContentChangedAt = NULL` / `Kind = ''` / `Kind = '   '` يُفشل `Contract`، ويظهر **اسم القيد المتوقع** في الخطأ، ولا يُسجَّل المعرّف في `__EFMigrationsHistory`، ويبقى المخطط nullable بلا القيد، وبيانات الصف المخالف كما هي (لا تحويل صامت، ولا جدول إعادة بناء مؤقت). |
+| `Migration_Contract_EnforcesNonNullAndPreservesSchema` | بعد `Contract`: `notnull = 1` للعمودين، `dflt_value = NULL` (لا Default)، القيد يرفض `''`/`'   '` (وأيضًا عبر مسار الكيان `SaveChanges`، لا SQL خام فقط)، الكتابة الصحيحة تمر، ومجموعة أسماء الفهارس ومجموعة جداول الـFK **مطابقة تمامًا** لما قبل الهجرة (ومنها `UX_HeadAlerts_DedupeKey_Active` و`IX_HeadAlerts_Kind_Active_LastChanged` و`IX_HeadAlerts_ExecutionCircuitId_Kind_IsArchived`)، **ونص فلتر الفهرس الجزئي** (`DedupeKey IS NOT NULL AND IsArchived = 0`) محفوظ، و`PRAGMA integrity_check = ok` و`foreign_key_check` فارغ. |
 | `Migration_Contract_Down_RestoresNullableColumns` | `Down` يعيد `notnull = 0` ويسقط القيد، مع بقاء الصف وقيمه (`Kind`/`LastContentChangedAt`/`Message`). |
 
 كما أُضيف مساعد `InsertLegacyAlertAsync` (إدراج `SQL` خام) للاختبارات التي تحتاج صفوفًا سابقة لـ`M2`؛ لأن كيان `PR-3` لم يعد يمثّل `Kind = NULL`.
@@ -129,15 +132,17 @@
 
 ### 6.1 الشروط المسبقة
 
-- [ ] نسخة احتياطية حديثة ومُتحقَّق منها (SQLite: نسخ الملف · PostgreSQL: `pg_dump`) — §16.1.
+- [ ] نسخة احتياطية حديثة ومُتحقَّق منها (PostgreSQL: `pg_dump`). **SQLite:** أوقف الخدمة أولًا، ثم انسخ `docgen.db` **مع** `docgen.db-wal` و`docgen.db-shm` (أو نفّذ `PRAGMA wal_checkpoint(TRUNCATE)` قبل النسخ)؛ نسخ الملف الرئيسي وحده مع WAL غير مُفرَّغ قد يُفقد أحدث المعاملات. — §16.1.
 - [ ] استعادة النسخة على بيئة معزولة وقياس زمن الاستعادة (لا نافذة بلا استعادة مجرَّبة).
 - [ ] تأكيد أن **كل النسخ** تعمل بكود `PR-2` (لا نسخة قديمة تكتب `Kind = NULL`).
 - [ ] فحص الصفر:
 
   ```sql
-  -- SQLite
-  SELECT SUM("Kind" IS NULL), SUM("LastContentChangedAt" IS NULL),
-         SUM("Kind" IS NOT NULL AND TRIM("Kind") = '') FROM "HeadAlerts";
+  -- SQLite (COALESCE ضروري: SUM على جدول فارغ يعيد NULL لا 0)
+  SELECT COALESCE(SUM("Kind" IS NULL), 0),
+         COALESCE(SUM("LastContentChangedAt" IS NULL), 0),
+         COALESCE(SUM("Kind" IS NOT NULL AND TRIM("Kind") = ''), 0)
+  FROM "HeadAlerts";
 
   -- PostgreSQL
   SELECT COUNT(*) FILTER (WHERE "Kind" IS NULL),
@@ -146,34 +151,54 @@
   FROM "HeadAlerts";
   ```
 
-  النتيجة المطلوبة: `0 | 0 | 0`. أي قيمة غير صفرية توقف النشر (لا تُعالج بـ`UPDATE` عشوائي — راجع §6.5).
+  النتيجة المطلوبة: `0 | 0 | 0` (حتى على جدول فارغ). أي قيمة غير صفرية توقف النشر (لا تُعالج بـ`UPDATE` عشوائي — راجع §6.5).
 
 ### 6.2 تطبيق الهجرات بالترتيب على النسخة المستعادة
 
-```powershell
-# SQLite (نسخة مستعادة في ملف منفصل — لا docgen.db الحقيقي)
-$env:ConnectionStrings__Default="Data Source=C:\temp\pr3-dryrun.db"
-dotnet ef database update HeadAlertTaxonomy_Expand --context DocGeneratorDbContext
-dotnet ef database update HeadAlertOutbox_Create --context DocGeneratorDbContext
-dotnet ef database update HeadAlertTaxonomy_Backfill --context DocGeneratorDbContext
-dotnet ef database update HeadAlertTaxonomy_Contract --context DocGeneratorDbContext
+> **تصحيح 2026-10-26 (قبل التجميد):** المفتاح الفعلي لـSQLite هو `ConnectionStrings__DefaultConnection` وليس `ConnectionStrings__Default` (الأخير يُهمَل بصمت، فيسقط الأمر على `docgen.db` الحقيقي). ومصنع Postgres زمن-التصميم يقرأ `POSTGRES_CONNECTION` **حصرًا**؛ `Database__UsePostgres` لا يوجّه `dotnet ef`. نفّذ من مجلد `backend`، وتأكد قبل كل أمر أن `Data Source`/`Database` يشيران إلى النسخة المستعادة.
 
-# PostgreSQL (قاعدة مرحلية مستعادة)
-$env:ConnectionStrings__Default="Host=...;Port=5432;Database=pr3_dryrun;Username=...;Password=..."
-$env:Database__UsePostgres="true"
-dotnet ef database update HeadAlertTaxonomy_Expand_Pg --context DocGeneratorPostgresDbContext
-dotnet ef database update HeadAlertOutbox_Create_Pg --context DocGeneratorPostgresDbContext
-dotnet ef database update HeadAlertTaxonomy_Backfill_Pg --context DocGeneratorPostgresDbContext
-dotnet ef database update HeadAlertTaxonomy_Contract_Pg --context DocGeneratorPostgresDbContext
+```powershell
+# نفّذ من مجلد backend؛ splatting لخيارات المشروع في كل أمر.
+$efArgs = @("--project", "src/DocGenerator.Infrastructure", "--startup-project", "src/DocGenerator.Api")
+
+# SQLite (نسخة مستعادة في ملف منفصل — لا docgen.db الحقيقي)
+$env:DATABASE_URL = $null
+$env:Database__UsePostgres = "false"
+$env:ConnectionStrings__DefaultConnection = "Data Source=C:\temp\pr3-dryrun.db"
+$env:ASPNETCORE_ENVIRONMENT = "Development"   # لتجاوز حارس Program.cs في dry-run فقط، لا في الإنتاج
+dotnet ef database update HeadAlertTaxonomy_Expand --context DocGeneratorDbContext @efArgs
+dotnet ef database update HeadAlertOutbox_Create --context DocGeneratorDbContext @efArgs
+dotnet ef database update HeadAlertTaxonomy_Backfill --context DocGeneratorDbContext @efArgs
+dotnet ef database update HeadAlertTaxonomy_Contract --context DocGeneratorDbContext @efArgs
+
+# PostgreSQL (قاعدة مرحلية مستعادة) — المصنع يقرأ POSTGRES_CONNECTION فقط
+$env:POSTGRES_CONNECTION = "Host=...;Port=5432;Database=pr3_dryrun;Username=...;Password=..."
+dotnet ef database update HeadAlertTaxonomy_Expand_Pg --context DocGeneratorPostgresDbContext @efArgs
+dotnet ef database update HeadAlertOutbox_Create_Pg --context DocGeneratorPostgresDbContext @efArgs
+dotnet ef database update HeadAlertTaxonomy_Backfill_Pg --context DocGeneratorPostgresDbContext @efArgs
+dotnet ef database update HeadAlertTaxonomy_Contract_Pg --context DocGeneratorPostgresDbContext @efArgs
 ```
 
 > الأسماء بلا `--no-build` تُطبِّق كل ما قبلها ضمنًا؛ ومع ذلك يُذكر كل اسم صراحةً لتوثيق الترتيب. `Contract` **آخرًا دائمًا**.
+> **⚠️ قبل `Contract` على SQLite:** سجّل `SELECT seq FROM sqlite_sequence WHERE name = 'HeadAlerts';` — إعادة بناء الجدول التي يولّدها EF تعيد ضبط التسلسل على أعلى `Id` **موجود**، فإن كان أعلى `Id` محذوفًا تراجع التسلسل. أعِد القيمة المسجلة بعد `Contract` (الخطوة في §6.3).
 
 ### 6.3 التحقق بعد التطبيق على النسخة المستعادة
 
 - [ ] SQLite: `PRAGMA integrity_check;` = `ok` و`PRAGMA foreign_key_check;` فارغ.
 - [ ] `pragma_table_info('HeadAlerts')`: `notnull = 1` للعمودين و`dflt_value IS NULL`.
 - [ ] وجود `CK_HeadAlerts_Kind_NotEmpty` في `sqlite_master`/`information_schema`، ووجود `UX_HeadAlerts_DedupeKey_Active` والفهارس الزمنية/النوعية.
+- [ ] **SQLite — تسلسل `AUTOINCREMENT`:** القيمة المسجلة قبل `Contract` لم تتراجع بعد إعادة البناء. إن تراجعت، أعد رفعها بأمان (لا تُنقص القيمة الحالية):
+  ```sql
+  UPDATE sqlite_sequence
+  SET seq = MAX(seq, <القيمة_المسجلة>)
+  WHERE name = 'HeadAlerts';
+
+  -- إن لم يكن هناك صف (جدول فارغ) أدرجه بالقيمة المسجلة إن كانت أكبر من صفر:
+  INSERT INTO sqlite_sequence (name, seq)
+  SELECT 'HeadAlerts', <القيمة_المسجلة>
+  WHERE <القيمة_المسجلة> > 0
+    AND NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = 'HeadAlerts');
+  ```
 - [ ] تطابق أعداد الصفوف وبصمة الأعمدة المفتاحية `(Id, BranchId, Kind, DedupeKey, CreatedAt, LastContentChangedAt)` مع ما قبل الهجرة، مع تقرير مفسَّر لكل فرق مقصود من `M2`.
 - [ ] محاولة إدراج `Kind = ''`/`NULL` تفشل على مستوى القاعدة (اختبار سلبي واحد لكل سياق).
 - [ ] إقلاع التطبيق على النسخة المستعادة + فحص دخان: تسجيل دخول كل دور، فتح `/alerts`، إنشاء تنبيه يدوي، تعليم قراءة، فتح تفاصيل نص طويل (12,000 حرف)، عدّاد الشارة، `/alerts/sent`.
@@ -183,7 +208,8 @@ dotnet ef database update HeadAlertTaxonomy_Contract_Pg --context DocGeneratorPo
 1. إيقاف الكتابة/الخدمة (نافذة صيانة قصيرة — SQLite يعيد بناء الجدول).
 2. تطبيق الثلاث المعلّقة على SQLite بالترتيب ثم `Contract`، وعلى PostgreSQL `Contract_Pg` فقط (الثلاث مطبَّقة).
 3. تنفيذ §6.3 على القاعدة الحقيقية قبل فتح الكتابة.
-4. توثيق المخرجات في ملحق `12-…` (لا تُحرَّر هذه الوثيقة بعد التجميد).
+4. **لا تنشر كود `PR-3` قبل نجاح الهجرة:** الكيان يقرأ `LastContentChangedAt` كـ`DateTime` غير قابل للفراغ؛ أي صف قديم بـ`NULL` يفشل عند القراءة. الترتيب: هجرة ← تحقق §6.3 ← نشر الكود ← فحص الدخان.
+5. توثيق المخرجات في ملحق `12-…` (لا تُحرَّر هذه الوثيقة بعد التجميد).
 
 ### 6.5 عند وجود صفوف مخالفة
 
