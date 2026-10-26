@@ -386,7 +386,7 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
 
         var kindList = kinds.ToList();
         return await query
-            .Where(a => !a.IsArchived && a.Kind != null && kindList.Contains(a.Kind))
+            .Where(a => !a.IsArchived && kindList.Contains(a.Kind))
             .OrderBy(a => a.Id)
             .ToListAsync(ct);
     }
@@ -424,7 +424,7 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
 
         var kindList = kinds.ToList();
         var candidates = await query
-            .Where(a => !a.IsArchived && a.Kind != null && kindList.Contains(a.Kind))
+            .Where(a => !a.IsArchived && kindList.Contains(a.Kind))
             .ToListAsync(ct);
 
         var now = DateTime.UtcNow;

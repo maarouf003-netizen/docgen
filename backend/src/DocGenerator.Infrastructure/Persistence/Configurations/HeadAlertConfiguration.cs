@@ -7,25 +7,28 @@ namespace DocGenerator.Infrastructure.Persistence.Configurations;
 /// <summary>
 /// إعدادات جدول التنبيهات.
 ///
-/// **مرحلة التوسّع (PR-1 / M1):** الأعمدة الجديدة nullable للتوافق الخلفي مع الكود
-/// القديم، و<code>Message</code> نص بلا سقف، و<code>IsArchived</code> بقيمة افتراضية
-/// <c>false</c>. بلا قيد <c>Kind</c>؛ والفهرس الفريد الجزئي لمفتاح المنع مُعرَّف
-/// في النموذج والهجرة (M2) وفق الخطة §6.2/§6.3.
+/// **مرحلة التشديد (PR-3 / M3):** <code>Kind</code> و<code>LastContentChangedAt</code>
+/// غير قابلين للفراغ في النموذج، وقيد <c>CK_HeadAlerts_Kind_NotEmpty</c> يرفض
+/// النوع الفارغ/الأبيض. الفهرس الفريد الجزئي لمفتاح المنع مُعرَّف في
+/// <see cref="DocGeneratorDbContext.ConfigureHeadAlertProviderSpecific"/> وفق §6.2/§6.3.
 /// </summary>
 public class HeadAlertConfiguration : IEntityTypeConfiguration<HeadAlert>
 {
     public void Configure(EntityTypeBuilder<HeadAlert> builder)
     {
-        builder.ToTable("HeadAlerts");
+        builder.ToTable("HeadAlerts", table =>
+            table.HasCheckConstraint(
+                "CK_HeadAlerts_Kind_NotEmpty",
+                "TRIM(\"Kind\") <> ''"));
         builder.HasKey(a => a.Id);
 
         // النص بلا سقف عمود: «text»/«TEXT» بلا قصّ صامت (الخطة §6.2/§7.3).
         builder.Property(a => a.Message).IsRequired();
 
-        // الأنواع الجديدة nullable في مرحلة التوسّع؛ ويفرضها «Contract» غير قابلة للفراغ.
-        builder.Property(a => a.Kind).HasMaxLength(64);
+        // بعد «Contract»: النوع وزمن آخر تغيّر إلزاميان، وقيد يرفض النوع الفارغ.
+        builder.Property(a => a.Kind).HasMaxLength(64).IsRequired();
         builder.Property(a => a.DedupeKey).HasMaxLength(200);
-        builder.Property(a => a.LastContentChangedAt);
+        builder.Property(a => a.LastContentChangedAt).IsRequired();
 
         // الأرشفة المنطقية: عمود NOT NULL بقيمة افتراضية false (لا يفصل الصفوف القديمة).
         builder.Property(a => a.IsArchived).HasDefaultValue(false);
