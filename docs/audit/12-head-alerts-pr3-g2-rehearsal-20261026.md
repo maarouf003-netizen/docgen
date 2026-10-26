@@ -18,7 +18,7 @@
 | المعزولية | نسخة في `%TEMP%\opencode\g2-dryrun\`؛ لم تُلمَس القاعدة الأصلية (تحقق: بصمة `SHA-256` أدناه). |
 | ما لم يُنفَّذ | `PostgreSQL` (لا خادم/اتصال متاح محليًا)، وإقلاع التطبيق وفحص الدخان (يتطلب بيانات دخول حقيقية لكل دور). |
 
-بصمة النسخة الأصلية قبل أي تشغيل:
+بصمة النسخة الأصلية قبل أي تشغيل (وأُعيد حسابها بعد الانتهاء وطابقت — القاعدة الأصلية لم تُلمَس):
 
 ```
 SHA-256(pr3-pre.db) = 8933E3EF2BBFC4DE66751028CC981BD1214F92E813843EA733E86533CC3ECAA6
@@ -26,7 +26,7 @@ SHA-256(pr3-pre.db) = 8933E3EF2BBFC4DE66751028CC981BD1214F92E813843EA733E86533CC
 
 > **قيد جوهري على الاستدلال:** بيانات التطوير لا تحوي الحالات التاريخية التي تُقلق الإنتاج
 > (صفوف `Kind` مضبوط مع `LastContentChangedAt = NULL`، أو أنواع قديمة غير معروفة). لذلك أُضيفت
-> تلك الحالات **صناعيًا** في نسخ منفصلة لاختبار الحارس (ال§5)، ولا تُغني عن فحص `0 | 0 | 0`
+> تلك الحالات **صناعيًا** في نسخ منفصلة لاختبار الحارس (§4)، ولا تُغني عن فحص `0 | 0 | 0`
 > على نسخة الإنتاج.
 
 ---
@@ -57,6 +57,7 @@ SHA-256(pr3-pre.db) = 8933E3EF2BBFC4DE66751028CC981BD1214F92E813843EA733E86533CC
 ```powershell
 $env:ASPNETCORE_ENVIRONMENT = "Development"
 $env:Database__UsePostgres = "false"
+$env:Jwt__Secret = "<قيمة وهمية 32+ حرفًا>"   # المضيف يتحقق من الإعداد عند الإقلاع؛ لا صلة له بقاعدة البيانات
 $env:ConnectionStrings__DefaultConnection = "Data Source=<g2-dryrun>\pr3-dryrun.db;Pooling=False"
 dotnet ef database update <Migration> --context DocGeneratorDbContext `
   --project src/DocGenerator.Infrastructure --startup-project src/DocGenerator.Api --no-build
@@ -206,6 +207,8 @@ WHERE :recorded_seq > 0
 `integrity_check = ok`، `foreign_key_check` فارغ، في 24.3 ث.
 
 هذا يثبت تماسك السلسلة من الصفر، ولا علاقة له بتراجع التسلسل (لا صفوف ولا `sqlite_sequence` عند الإنشاء).
+ويثبت كذلك أن **حارس `M3` يمرّ على جدول فارغ** (`COALESCE(SUM(...), 0)` يعيد `0` لا `NULL`)، وهو
+الشرط المنصوص عليه في §6.1 من الوثيقة 11.
 
 ---
 
