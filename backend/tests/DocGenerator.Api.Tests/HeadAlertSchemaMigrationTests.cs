@@ -1770,7 +1770,7 @@ public class HeadAlertSchemaMigrationTests
             await db.GetService<IMigrator>().MigrateAsync(BackfillMigration);
             var (branch, user) = await SeedBranchAndUserAsync(db);
             var createdAt = new DateTime(2026, 10, 20, 8, 0, 0, DateTimeKind.Utc);
-            db.HeadAlerts.Add(new HeadAlert
+            var seeded = new HeadAlert
             {
                 BranchId = branch.Id,
                 CreatedById = user.Id,
@@ -1779,8 +1779,10 @@ public class HeadAlertSchemaMigrationTests
                 Message = "صف مشروع قبل M3",
                 CreatedAt = createdAt,
                 LastContentChangedAt = createdAt,
-            });
+            };
+            db.HeadAlerts.Add(seeded);
             await db.SaveChangesAsync();
+            var seededId = seeded.Id;
             db.ChangeTracker.Clear();
 
             var indexesBefore = await GetSqliteIndexNamesAsync(db, "HeadAlerts");
@@ -1838,9 +1840,9 @@ public class HeadAlertSchemaMigrationTests
             }
 
             await Assert.ThrowsAsync<SqliteException>(() => db.Database.ExecuteSqlRawAsync(
-                "UPDATE \"HeadAlerts\" SET \"Kind\" = NULL WHERE \"Id\" = {0}", 1));
+                "UPDATE \"HeadAlerts\" SET \"Kind\" = NULL WHERE \"Id\" = {0}", seededId));
             await Assert.ThrowsAsync<SqliteException>(() => db.Database.ExecuteSqlRawAsync(
-                "UPDATE \"HeadAlerts\" SET \"LastContentChangedAt\" = NULL WHERE \"Id\" = {0}", 1));
+                "UPDATE \"HeadAlerts\" SET \"LastContentChangedAt\" = NULL WHERE \"Id\" = {0}", seededId));
 
             // مسار الكيان أيضًا: القيمة الافتراضية string.Empty لا تمرّ من القيد.
             db.HeadAlerts.Add(new HeadAlert

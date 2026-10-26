@@ -102,6 +102,19 @@ jobs:
         run: dotnet tool install --global dotnet-ef --version 10.0.10
       - name: Restore (EF tool does not restore implicitly)
         run: dotnet restore backend/DocGenerator.sln
+      # G1 دائم بدل فحص يدوي: يفشل إن تغيّر النموذج بلا هجرة مطابقة (exit 1).
+      # سياق SQLite يبني المضيف زمن التصميم، وProgram.cs يرفض SQLite خارج Development —
+      # لذلك Development هنا فقط؛ لا اتصال بقاعدة في هذا الأمر.
+      - name: SQLite model matches snapshot (G1)
+        env:
+          ASPNETCORE_ENVIRONMENT: Development
+          ConnectionStrings__DefaultConnection: "Data Source=/tmp/migration-guard.db"
+        run: export PATH="$PATH:$HOME/.dotnet/tools"; dotnet ef migrations has-pending-model-changes --context DocGeneratorDbContext --project backend/src/DocGenerator.Infrastructure --startup-project backend/src/DocGenerator.Api
+      # سياق Postgres يستخدم مصنعاً زمن التصميم يقرأ POSTGRES_CONNECTION حصراً (بلا اتصال).
+      - name: Postgres model matches snapshot (G1)
+        env:
+          POSTGRES_CONNECTION: "Host=localhost;Port=5432;Database=docgen;Username=x;Password=x"
+        run: export PATH="$PATH:$HOME/.dotnet/tools"; dotnet ef migrations has-pending-model-changes --context DocGeneratorPostgresDbContext --project backend/src/DocGenerator.Infrastructure --startup-project backend/src/DocGenerator.Api
       - name: Generate Postgres migration script (offline)
         env:
           POSTGRES_CONNECTION: "Host=localhost;Port=5432;Database=docgen;Username=x;Password=x"
