@@ -82,13 +82,13 @@
 
 - **قبل أي نشر**: افتح `RUN_GUIDE.md` §9 واقرأ القائمة التراكمية، ثم طبّق كل سطر غير مشطوب.
 - **عند إنشاء هجرة جديدة في هذه الجلسة**: أضِف سطرها إلى تلك القائمة **في نفس التغيير** (لا في تغيير لاحق).
-- **للإصدار الحالي (2026-10-26):** سياق `PostgreSQL` — هجرات التنبيهات الثلاث (`Expand`/`Outbox_Create`/
-  `Backfill`) طُبِّقت على `Supabase` حيًا (`docs/audit/10-head-alerts-pr2b-deploy-20261025.md`).
-  المتبقّي:
+- **للإصدار الحالي (2026-10-26):** سياق `PostgreSQL` **مكتمل** — الهجرات الأربع (`Expand`/`Outbox_Create`/
+  `Backfill`) طُبِّقت على `Supabase` حيًا (`docs/audit/10-head-alerts-pr2b-deploy-20261025.md`)، ثم
+  `HeadAlertTaxonomy_Contract_Pg` (`docs/audit/13-head-alerts-pr3-live-apply-20261026.md`) ⇒ **63 هجرة،
+  صفر معلّقة**. المتبقّي:
   - SQLite: `HeadAlertTaxonomy_Expand`، `HeadAlertOutbox_Create`، `HeadAlertTaxonomy_Backfill`،
     `HeadAlertTaxonomy_Contract` (**4 معلّقة**).
-  - PostgreSQL: `HeadAlertTaxonomy_Contract_Pg` (**1 معلّقة** — تصبح 63 هجرة بعدها).
-  - **⛔ لا تُطبَّق `HeadAlertTaxonomy_Contract(_Pg)`** قبل G2 (dry-run على نسخة إنتاجية مستعادة)
+  - **⛔ لا تُطبَّق `HeadAlertTaxonomy_Contract` (SQLite)** قبل G2 (dry-run على نسخة إنتاجية مستعادة)
     وتأكيد أن **كل النسخ** على كود `PR‑2` وصفر قيم `NULL`/`Kind` فارغ — الهجرة ترفض التطبيق صراحةً
     عند أي مخالفة (`docs/audit/11-head-alerts-pr3-20261026.md`).
   - **الترتيب الإلزامي**: `HeadAlertTaxonomy_Expand` ← `HeadAlertOutbox_Create` ← `HeadAlertTaxonomy_Backfill` ← `HeadAlertTaxonomy_Contract` (وكذلك أزواج `_Pg` — `Contract` **أخيرًا دائمًا**).
