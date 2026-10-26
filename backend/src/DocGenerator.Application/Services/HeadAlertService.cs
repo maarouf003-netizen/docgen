@@ -341,7 +341,7 @@ public sealed class HeadAlertService : IHeadAlertService
             alert = existing;
 
             // حارس الحداثة: رسالة أقدم من آخر تغيير محتوى لا تمحو الأحدث.
-            var lastChanged = alert.LastContentChangedAt ?? alert.CreatedAt;
+            var lastChanged = alert.LastContentChangedAt;
             if (occurredAt < lastChanged)
                 return HeadAlertWriteResult.Stale;
 
@@ -411,7 +411,7 @@ public sealed class HeadAlertService : IHeadAlertService
             // الرسالة الأقدم من آخر تغيير محتوى لا تمحو الأحدث؛ لكن الصف نشط
             // فتُعدّ الرسالة معالَجة، لا «لا تنبيهات نشطة» (الخطة §6.4).
             active++;
-            var lastChanged = alert.LastContentChangedAt ?? alert.CreatedAt;
+            var lastChanged = alert.LastContentChangedAt;
             if (occurredAt < lastChanged)
                 continue;
 

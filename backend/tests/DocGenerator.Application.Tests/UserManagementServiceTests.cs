@@ -801,6 +801,7 @@ public class UserManagementServiceTests : IDisposable
         var alert = new HeadAlert
         {
             BranchId = DamascusId, CreatedById = head.Id, TargetType = HeadAlertTargetType.Head,
+            Kind = HeadAlertKindCatalog.Legacy,
             Message = "تنبيه معلق", Recipients = new List<HeadAlertRecipient> { recipient },
         };
         _db.HeadAlerts.Add(alert);
@@ -852,6 +853,7 @@ public class UserManagementServiceTests : IDisposable
         var alert = new HeadAlert
         {
             BranchId = DamascusId, CreatedById = head.Id, TargetType = HeadAlertTargetType.Head,
+            Kind = HeadAlertKindCatalog.Legacy,
             Message = "مقروء", Recipients = new List<HeadAlertRecipient> { new() { UserId = head.Id, IsRead = true } },
         };
         _db.HeadAlerts.Add(alert);

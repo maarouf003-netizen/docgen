@@ -7,9 +7,9 @@ namespace DocGenerator.Domain.Entities;
 /// مرتبط بملف، أو رسالة خاصة لمحامٍ، أو تعميم لكل محامي الفرع.
 /// الاستلام الفردي لكل محامٍ مسجّل في <see cref="HeadAlertRecipient"/>.
 ///
-/// في إطار «التوسيع» (<c>M1</c>) تكون الحقول الجديدة nullable للتوافق الخلفي مع
-/// الكود القديم؛ ويفرضها <c>M3</c> غير قابلة للفراغ. الوظائف الجديدة موضّحة
-/// في سطورها.
+/// بعد اكتمال مرحلة «التشديد» (<c>M3</c>) صار <see cref="Kind"/> و<see cref="LastContentChangedAt"/>
+/// غير قابلين للفراغ في النموذج والقاعدة، مع قيد يرفض النوع الفارغ/الأبيض.
+/// الوظائف الجديدة موضّحة في سطورها.
 /// </summary>
 public class HeadAlert
 {
@@ -19,10 +19,10 @@ public class HeadAlert
     public HeadAlertTargetType TargetType { get; set; }
 
     /// <summary>
-    /// النوع الدلالي للتنبيه من <see cref="HeadAlertKindCatalog"/> — بلا قيمة افتراضية صامتة.
-    /// في <c>M1/M2</c> يبقى nullable للتوافق الخلفي؛ ويفرضه <c>M3</c> غير قابل للفراغ.
+    /// النوع الدلالي للتنبيه من <see cref="HeadAlertKindCatalog"/> — بلا قيمة افتراضية صامتة
+    /// في القاعدة؛ أي مسار لا يضبطه يفشل عند الحفظ (قيد القاعدة) بدل أن يصبح <c>legacy</c> ضمنًا.
     /// </summary>
-    public string? Kind { get; set; }
+    public string Kind { get; set; } = string.Empty;
 
     /// <summary>
     /// مفتاح منع التكرار/الدمج — nullable للتنبيهات اليدوية فقط، وإلزامي في كل تنبيه
@@ -54,9 +54,8 @@ public class HeadAlert
 
     /// <summary>
     /// زمن آخر تغيّر في المحتوى — للترتيب ولإعادة ضبط القراءة. يُحدَّث فقط عند تغيّر النص.
-    /// في <c>M1/M2</c> يبقى nullable؛ ويفرضه <c>M3</c> غير قابل للفراغ.
     /// </summary>
-    public DateTime? LastContentChangedAt { get; set; }
+    public DateTime LastContentChangedAt { get; set; } = DateTime.UtcNow;
 
     /// <summary>أرشفة منطقية بدل الحذف النهائي — يستبعد الصف من القوائم والعدادات الافتراضية.</summary>
     public bool IsArchived { get; set; }

@@ -2218,10 +2218,11 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasDefaultValue(false);
 
                     b.Property<string>("Kind")
+                        .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTime?>("LastContentChangedAt")
+                    b.Property<DateTime>("LastContentChangedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Message")
@@ -2281,7 +2282,10 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.HasIndex("BranchId", "CreatedById", "IsArchived", "LastContentChangedAt", "Id")
                         .HasDatabaseName("IX_HeadAlerts_BranchId_CreatedById_Active_List");
 
-                    b.ToTable("HeadAlerts", (string)null);
+                    b.ToTable("HeadAlerts", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_HeadAlerts_Kind_NotEmpty", "TRIM(\"Kind\") <> ''");
+                        });
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.HeadAlertOutboxMessage", b =>

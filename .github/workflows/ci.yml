@@ -19,16 +19,18 @@ jobs:
       # وهذا المفتاح يرقّيها على مستوى المحرك (مُدحَض أيضًا: warning ← error).
       - name: Build (backend)
         run: dotnet build backend/DocGenerator.sln --nologo -v q -warnaserror
+      # `-v q` يخص MSBuild فقط ويكتم تفاصيل فشل الاختبارات (رسالة/تتبّع)؛
+      # `--logger console;verbosity=normal` يعيدها مع إبقاء البناء صامتًا.
       - name: Test (application)
-        run: dotnet test backend/tests/DocGenerator.Application.Tests/DocGenerator.Application.Tests.csproj --no-build --nologo -v q
+        run: dotnet test backend/tests/DocGenerator.Application.Tests/DocGenerator.Application.Tests.csproj --no-build --nologo -v q --logger "console;verbosity=normal"
       # عزل إجباري عن التوازي: فئة EnricherMiddlewareTests (Trait Category=Sequential)
       # تستبدل Log.Logger العام للعملية، وأي إقلاع ApiFactory في خيط موازٍ يستبدله
       # فيضيع حدث المسبار (فشل عابر). تُشغَّل الفئة تسلسليًا وحدها بعد البقية —
       # كما تنص remarks الفئة نفسها (كانت موثقة بلا إنفاذ، فكان الـflake حتميًا).
       - name: Test (api, parallelizable)
-        run: dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build --nologo -v q --filter "Category!=Sequential"
+        run: dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build --nologo -v q --logger "console;verbosity=normal" --filter "Category!=Sequential"
       - name: Test (api, sequential)
-        run: dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build --nologo -v q --filter "Category=Sequential"
+        run: dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build --nologo -v q --logger "console;verbosity=normal" --filter "Category=Sequential"
 
   frontend:
     runs-on: ubuntu-latest
@@ -100,6 +102,23 @@ jobs:
         run: dotnet tool install --global dotnet-ef --version 10.0.10
       - name: Restore (EF tool does not restore implicitly)
         run: dotnet restore backend/DocGenerator.sln
+      # G1 دائم بدل فحص يدوي: يفشل إن تغيّر النموذج بلا هجرة مطابقة (exit 1).
+      # سياق SQLite يبني المضيف زمن التصميم، وProgram.cs يرفض SQLite خارج Development —
+      # لذلك Development هنا فقط؛ لا اتصال بقاعدة في هذا الأمر.
+      # Jwt__Secret وهمي (42 حرفًا): Program.cs يتحقق من طول السر عند الإقلاع حتى في
+      # Development، بلا قيمة افتراضية في المستودع. ليس سرًا حقيقيًا ولا يُستخدم لأي مصادقة.
+      - name: SQLite model matches snapshot (G1)
+        env:
+          ASPNETCORE_ENVIRONMENT: Development
+          ConnectionStrings__DefaultConnection: "Data Source=/tmp/migration-guard.db"
+          Database__AutoMigrate: "false"
+          Jwt__Secret: "ci-migration-guard-dummy-secret-0123456789"
+        run: export PATH="$PATH:$HOME/.dotnet/tools"; dotnet ef migrations has-pending-model-changes --context DocGeneratorDbContext --project backend/src/DocGenerator.Infrastructure --startup-project backend/src/DocGenerator.Api
+      # سياق Postgres يستخدم مصنعاً زمن التصميم يقرأ POSTGRES_CONNECTION حصراً (بلا اتصال).
+      - name: Postgres model matches snapshot (G1)
+        env:
+          POSTGRES_CONNECTION: "Host=localhost;Port=5432;Database=docgen;Username=x;Password=x"
+        run: export PATH="$PATH:$HOME/.dotnet/tools"; dotnet ef migrations has-pending-model-changes --context DocGeneratorPostgresDbContext --project backend/src/DocGenerator.Infrastructure --startup-project backend/src/DocGenerator.Api
       - name: Generate Postgres migration script (offline)
         env:
           POSTGRES_CONNECTION: "Host=localhost;Port=5432;Database=docgen;Username=x;Password=x"
@@ -135,8 +154,8 @@ jobs:
         with:
           dotnet-version: "10.0.x"
       - name: Test (application, incl. Postgres-gated)
-        run: dotnet test backend/tests/DocGenerator.Application.Tests/DocGenerator.Application.Tests.csproj --nologo -v q
+        run: dotnet test backend/tests/DocGenerator.Application.Tests/DocGenerator.Application.Tests.csproj --nologo -v q --logger "console;verbosity=normal"
       - name: Test (api, incl. Postgres-gated, parallelizable)
-        run: dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --nologo -v q --filter "Category!=Sequential"
+        run: dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --nologo -v q --logger "console;verbosity=normal" --filter "Category!=Sequential"
       - name: Test (api, sequential)
-        run: dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build --nologo -v q --filter "Category=Sequential"
+        run: dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build --nologo -v q --logger "console;verbosity=normal" --filter "Category=Sequential"

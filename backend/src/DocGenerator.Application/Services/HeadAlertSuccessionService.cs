@@ -231,8 +231,8 @@ public sealed class HeadAlertSuccessionService : IHeadAlertSuccessionService
 
     private static HeadAlert ChooseHolder(HeadAlert current, HeadAlert existing)
     {
-        var currentStamp = current.LastContentChangedAt ?? current.CreatedAt;
-        var existingStamp = existing.LastContentChangedAt ?? existing.CreatedAt;
+        var currentStamp = current.LastContentChangedAt;
+        var existingStamp = existing.LastContentChangedAt;
         if (currentStamp != existingStamp)
             return currentStamp > existingStamp ? current : existing;
         if (current.CreatedAt != existing.CreatedAt)

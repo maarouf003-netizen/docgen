@@ -29,6 +29,9 @@ public class HeadAlertSchemaMigrationTests
     /// <summary>اسم هجرة M2 (SQLite) — مرجع اختباري ملزم.</summary>
     private const string BackfillMigration = "20261021232824_HeadAlertTaxonomy_Backfill";
 
+    /// <summary>اسم هجرة M3 (SQLite) — مرجع اختباري ملزم.</summary>
+    private const string ContractMigration = "20261026151929_HeadAlertTaxonomy_Contract";
+
     private static (string Path, DocGeneratorDbContext Db) CreateDb()
     {
         var path = Path.Combine(Path.GetTempPath(), $"docgen_headalert_{Guid.NewGuid():N}.db");
@@ -70,24 +73,30 @@ public class HeadAlertSchemaMigrationTests
             db.Users.Add(creator);
             await db.SaveChangesAsync();
 
-            // كتابة بالشكل القديم: بلا Kind وبلا LastContentChangedAt وبلا DedupeKey.
-            var alert = new HeadAlert
-            {
-                BranchId = branch.Id,
-                CreatedById = creator.Id,
-                TargetType = HeadAlertTargetType.Branch,
-                Message = "تنبيه قديم بلا نوع",
-                CreatedAt = DateTime.UtcNow,
-            };
-            db.HeadAlerts.Add(alert);
-            await db.SaveChangesAsync();
+            // كتابة بالشكل القديم عبر SQL خام: الكيان الحالي بعد M3 لا يمثّل NULL،
+            // لكن قاعدة M1 يجب أن تبقى متوافقة مع الكتابة القديمة.
+            await db.Database.ExecuteSqlRawAsync(
+                "INSERT INTO \"HeadAlerts\" (\"BranchId\", \"CreatedById\", \"TargetType\", \"Message\", \"CreatedAt\") VALUES ({0}, {1}, {2}, {3}, '2026-10-20 00:00:00')",
+                branch.Id, creator.Id, (int)HeadAlertTargetType.Branch, "تنبيه قديم بلا نوع");
+            var legacyId = await db.Database.SqlQueryRaw<int>(
+                "SELECT MAX(\"Id\") AS Value FROM \"HeadAlerts\"").SingleAsync();
 
-            var stored = await db.HeadAlerts.SingleAsync();
-            Assert.Null(stored.Kind);
-            Assert.Null(stored.LastContentChangedAt);
-            Assert.Null(stored.DedupeKey);
-            Assert.False(stored.IsArchived);
-            Assert.Null(stored.ArchivedAt);
+            var storedKind = await db.Database.SqlQueryRaw<string?>(
+                "SELECT \"Kind\" AS Value FROM \"HeadAlerts\" WHERE \"Id\" = {0}", legacyId).SingleAsync();
+            var storedLastChanged = await db.Database.SqlQueryRaw<DateTime?>(
+                "SELECT \"LastContentChangedAt\" AS Value FROM \"HeadAlerts\" WHERE \"Id\" = {0}", legacyId).SingleAsync();
+            var storedDedupeKey = await db.Database.SqlQueryRaw<string?>(
+                "SELECT \"DedupeKey\" AS Value FROM \"HeadAlerts\" WHERE \"Id\" = {0}", legacyId).SingleAsync();
+            var storedIsArchived = await db.Database.SqlQueryRaw<int>(
+                "SELECT \"IsArchived\" AS Value FROM \"HeadAlerts\" WHERE \"Id\" = {0}", legacyId).SingleAsync();
+            var storedArchivedAt = await db.Database.SqlQueryRaw<DateTime?>(
+                "SELECT \"ArchivedAt\" AS Value FROM \"HeadAlerts\" WHERE \"Id\" = {0}", legacyId).SingleAsync();
+
+            Assert.Null(storedKind);
+            Assert.Null(storedLastChanged);
+            Assert.Null(storedDedupeKey);
+            Assert.Equal(0, storedIsArchived);
+            Assert.Null(storedArchivedAt);
 
             // لا قيد Kind (القيمة الفارغة مقبولة بعد M1).
             var withoutKind = new HeadAlert
@@ -167,13 +176,25 @@ public class HeadAlertSchemaMigrationTests
             // تطبيق مرحلة التوسّع: تُضاف الأعمدة الجديدة ولا يُمس النص.
             await db.GetService<IMigrator>().MigrateAsync(ExpandMigration);
 
-            var stored = await db.HeadAlerts.AsNoTracking().SingleAsync();
-            Assert.Equal(longMessage, stored.Message);
-            Assert.Null(stored.Kind);
-            Assert.Null(stored.LastContentChangedAt);
-            Assert.Null(stored.DedupeKey);
-            Assert.False(stored.IsArchived);
-            Assert.Null(stored.ArchivedAt);
+            var storedMessage = await db.Database.SqlQueryRaw<string>(
+                "SELECT \"Message\" AS Value FROM \"HeadAlerts\" LIMIT 1").SingleAsync();
+            var storedKind = await db.Database.SqlQueryRaw<string?>(
+                "SELECT \"Kind\" AS Value FROM \"HeadAlerts\" LIMIT 1").SingleAsync();
+            var storedLastChanged = await db.Database.SqlQueryRaw<DateTime?>(
+                "SELECT \"LastContentChangedAt\" AS Value FROM \"HeadAlerts\" LIMIT 1").SingleAsync();
+            var storedDedupeKey = await db.Database.SqlQueryRaw<string?>(
+                "SELECT \"DedupeKey\" AS Value FROM \"HeadAlerts\" LIMIT 1").SingleAsync();
+            var storedIsArchived = await db.Database.SqlQueryRaw<int>(
+                "SELECT \"IsArchived\" AS Value FROM \"HeadAlerts\" LIMIT 1").SingleAsync();
+            var storedArchivedAt = await db.Database.SqlQueryRaw<DateTime?>(
+                "SELECT \"ArchivedAt\" AS Value FROM \"HeadAlerts\" LIMIT 1").SingleAsync();
+
+            Assert.Equal(longMessage, storedMessage);
+            Assert.Null(storedKind);
+            Assert.Null(storedLastChanged);
+            Assert.Null(storedDedupeKey);
+            Assert.Equal(0, storedIsArchived);
+            Assert.Null(storedArchivedAt);
         }
         finally
         {
@@ -398,14 +419,13 @@ public class HeadAlertSchemaMigrationTests
 
             var legacyCreatedAt = new DateTime(2026, 10, 1, 8, 0, 0, DateTimeKind.Utc);
             var newLastChangedAt = new DateTime(2026, 10, 21, 9, 0, 0, DateTimeKind.Utc);
-            var legacy = new HeadAlert
-            {
-                BranchId = branch.Id,
-                CreatedById = user.Id,
-                TargetType = HeadAlertTargetType.Branch,
-                Message = "تنبيه قديم بلا تصنيف",
-                CreatedAt = legacyCreatedAt,
-            };
+            var legacyId = await InsertLegacyAlertAsync(
+                db, branch.Id, user.Id, HeadAlertTargetType.Branch,
+                "تنبيه قديم بلا تصنيف", legacyCreatedAt);
+            var retiredReviewId = await InsertLegacyAlertAsync(
+                db, branch.Id, user.Id, HeadAlertTargetType.Branch,
+                "المحامي فلان أدخل جهة عامة جديدة «جهة» (دمشق / أول) — يرجى مراجعتها",
+                legacyCreatedAt.AddMinutes(5));
             var newRow = new HeadAlert
             {
                 BranchId = branch.Id,
@@ -418,21 +438,13 @@ public class HeadAlertSchemaMigrationTests
                 CreatedAt = new DateTime(2026, 10, 20, 8, 0, 0, DateTimeKind.Utc),
                 LastContentChangedAt = newLastChangedAt,
             };
-            var retiredReview = new HeadAlert
-            {
-                BranchId = branch.Id,
-                CreatedById = user.Id,
-                TargetType = HeadAlertTargetType.Branch,
-                Message = "المحامي فلان أدخل جهة عامة جديدة «جهة» (دمشق / أول) — يرجى مراجعتها",
-                CreatedAt = legacyCreatedAt.AddMinutes(5),
-            };
-            db.HeadAlerts.AddRange(legacy, newRow, retiredReview);
+            db.HeadAlerts.Add(newRow);
             await db.SaveChangesAsync();
 
             await db.GetService<IMigrator>().MigrateAsync(BackfillMigration);
             db.ChangeTracker.Clear();
 
-            var storedLegacy = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.Id == legacy.Id);
+            var storedLegacy = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.Id == legacyId);
             Assert.Equal(HeadAlertKindCatalog.Legacy, storedLegacy.Kind);
             Assert.Equal(legacyCreatedAt, storedLegacy.LastContentChangedAt);
             Assert.Null(storedLegacy.DedupeKey);
@@ -444,7 +456,7 @@ public class HeadAlertSchemaMigrationTests
             Assert.Equal(newLastChangedAt, storedNew.LastContentChangedAt);
             Assert.False(storedNew.IsArchived);
 
-            var storedRetired = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.Id == retiredReview.Id);
+            var storedRetired = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.Id == retiredReviewId);
             Assert.True(storedRetired.IsArchived);
             Assert.NotNull(storedRetired.ArchivedAt);
             Assert.Null(storedRetired.DedupeKey);
@@ -691,25 +703,19 @@ public class HeadAlertSchemaMigrationTests
             await db.SaveChangesAsync();
 
             var createdAt = new DateTime(2026, 10, 20, 12, 0, 0, DateTimeKind.Utc);
-            var alert = new HeadAlert
-            {
-                BranchId = branch.Id,
-                CreatedById = user.Id,
-                TargetType = HeadAlertTargetType.Lawyer,
-                TargetLawyerId = user.Id,
-                DocumentId = document.Id,
-                Message = $"{ExecutionCircuitPendingPrefix}{circuit.Name} — يرجى تحديث معلوماتها",
-                CreatedAt = createdAt,
-            };
-            db.HeadAlerts.Add(alert);
-            await db.SaveChangesAsync();
-            db.HeadAlertRecipients.Add(new HeadAlertRecipient { HeadAlertId = alert.Id, UserId = user.Id });
+            var alertId = await InsertLegacyAlertAsync(
+                db, branch.Id, user.Id, HeadAlertTargetType.Lawyer,
+                $"{ExecutionCircuitPendingPrefix}{circuit.Name} — يرجى تحديث معلوماتها",
+                createdAt,
+                documentId: document.Id,
+                targetLawyerId: user.Id);
+            db.HeadAlertRecipients.Add(new HeadAlertRecipient { HeadAlertId = alertId, UserId = user.Id });
             await db.SaveChangesAsync();
 
             await db.GetService<IMigrator>().MigrateAsync(BackfillMigration);
             db.ChangeTracker.Clear();
 
-            var stored = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.Id == alert.Id);
+            var stored = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.Id == alertId);
             Assert.Equal(HeadAlertKindCatalog.CircuitPendingDocuments, stored.Kind);
             Assert.Equal(circuit.Id, stored.ExecutionCircuitId);
             Assert.Equal(createdAt, stored.LastContentChangedAt);
@@ -776,59 +782,45 @@ public class HeadAlertSchemaMigrationTests
             await db.SaveChangesAsync();
 
             var createdAt = new DateTime(2026, 10, 20, 13, 0, 0, DateTimeKind.Utc);
-            var delegationAlert = new HeadAlert
-            {
-                BranchId = branch.Id,
-                CreatedById = user.Id,
-                TargetType = HeadAlertTargetType.Head,
-                DelegationId = delegation.Id,
-                Message = "بانتظار اعتماد الإنابة — سطّر المحامي فلان إنابة",
-                CreatedAt = createdAt,
-            };
-            var appealAlert = new HeadAlert
-            {
-                BranchId = branch.Id,
-                CreatedById = user.Id,
-                TargetType = HeadAlertTargetType.Head,
-                AppealId = appeal.Id,
-                Message = "يرجى التفضل بإسناد الاستئناف (ملف 1 — محال من فلان)",
-                CreatedAt = createdAt.AddMinutes(1),
-            };
-            var reviewAlert = new HeadAlert
-            {
-                BranchId = branch.Id,
-                CreatedById = user.Id,
-                TargetType = HeadAlertTargetType.Lawyer,
-                TargetLawyerId = user.Id,
-                ReviewLetterId = review.Id,
-                Message = "رئيس القسم ردّ على كتاب مطالعتك رقم R-1: تم",
-                CreatedAt = createdAt.AddMinutes(2),
-            };
-            db.HeadAlerts.AddRange(delegationAlert, appealAlert, reviewAlert);
-            await db.SaveChangesAsync();
+            var delegationAlertId = await InsertLegacyAlertAsync(
+                db, branch.Id, user.Id, HeadAlertTargetType.Head,
+                "بانتظار اعتماد الإنابة — سطّر المحامي فلان إنابة",
+                createdAt,
+                delegationId: delegation.Id);
+            var appealAlertId = await InsertLegacyAlertAsync(
+                db, branch.Id, user.Id, HeadAlertTargetType.Head,
+                "يرجى التفضل بإسناد الاستئناف (ملف 1 — محال من فلان)",
+                createdAt.AddMinutes(1),
+                appealId: appeal.Id);
+            var reviewAlertId = await InsertLegacyAlertAsync(
+                db, branch.Id, user.Id, HeadAlertTargetType.Lawyer,
+                "رئيس القسم ردّ على كتاب مطالعتك رقم R-1: تم",
+                createdAt.AddMinutes(2),
+                targetLawyerId: user.Id,
+                reviewLetterId: review.Id);
 
             db.HeadAlertRecipients.AddRange(
-                new HeadAlertRecipient { HeadAlertId = delegationAlert.Id, UserId = user.Id },
-                new HeadAlertRecipient { HeadAlertId = appealAlert.Id, UserId = user.Id });
+                new HeadAlertRecipient { HeadAlertId = delegationAlertId, UserId = user.Id },
+                new HeadAlertRecipient { HeadAlertId = appealAlertId, UserId = user.Id });
             await db.SaveChangesAsync();
 
             await db.GetService<IMigrator>().MigrateAsync(BackfillMigration);
             db.ChangeTracker.Clear();
 
-            var storedDelegation = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.Id == delegationAlert.Id);
+            var storedDelegation = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.Id == delegationAlertId);
             Assert.Equal(HeadAlertKindCatalog.DelegationPendingApproval, storedDelegation.Kind);
             Assert.Equal(
                 $"delegation:{delegation.Id}:recipient:{user.Id}:delegation_pending_approval",
                 storedDelegation.DedupeKey);
             Assert.Equal(createdAt, storedDelegation.LastContentChangedAt);
 
-            var storedAppeal = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.Id == appealAlert.Id);
+            var storedAppeal = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.Id == appealAlertId);
             Assert.Equal(HeadAlertKindCatalog.AppealReferralToHead, storedAppeal.Kind);
             Assert.Equal(
                 $"appeal:{appeal.Id}:recipient:{user.Id}:appeal_referral_to_head",
                 storedAppeal.DedupeKey);
 
-            var storedReview = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.Id == reviewAlert.Id);
+            var storedReview = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.Id == reviewAlertId);
             Assert.Equal(HeadAlertKindCatalog.ReviewLetterReply, storedReview.Kind);
             Assert.Equal(
                 $"review:{review.Id}:recipient:{user.Id}:review_letter_reply",
@@ -1519,25 +1511,16 @@ public class HeadAlertSchemaMigrationTests
                 CreatedAt = createdAt,
                 LastContentChangedAt = lastChangedAt,
             };
-            var legacy = new HeadAlert
-            {
-                BranchId = branch.Id,
-                CreatedById = user.Id,
-                TargetType = HeadAlertTargetType.Branch,
-                Message = "تنبيه قديم بلا تصنيف",
-                CreatedAt = createdAt.AddMinutes(10),
-            };
-            var archivedLegacy = new HeadAlert
-            {
-                BranchId = branch.Id,
-                CreatedById = user.Id,
-                TargetType = HeadAlertTargetType.Branch,
-                Message = "تنبيه قديم مؤرشف",
-                CreatedAt = createdAt.AddMinutes(20),
-                IsArchived = true,
-                ArchivedAt = createdAt.AddMinutes(21),
-            };
-            db.HeadAlerts.AddRange(classified, legacy, archivedLegacy);
+            var legacyCreatedAt = createdAt.AddMinutes(10);
+            var archivedCreatedAt = createdAt.AddMinutes(20);
+            var legacyId = await InsertLegacyAlertAsync(
+                db, branch.Id, user.Id, HeadAlertTargetType.Branch,
+                "تنبيه قديم بلا تصنيف", legacyCreatedAt);
+            var archivedLegacyId = await InsertLegacyAlertAsync(
+                db, branch.Id, user.Id, HeadAlertTargetType.Branch,
+                "تنبيه قديم مؤرشف", archivedCreatedAt,
+                isArchived: true, archivedAt: createdAt.AddMinutes(21));
+            db.HeadAlerts.Add(classified);
             await db.SaveChangesAsync();
 
             var classifiedIds = new[] { classified.Id };
@@ -1551,16 +1534,16 @@ public class HeadAlertSchemaMigrationTests
             Assert.Equal(semanticBefore, await SemanticFingerprintAsync(db, classifiedIds));
 
             var storedLegacy = await db.HeadAlerts.AsNoTracking()
-                .SingleAsync(a => a.Id == legacy.Id);
+                .SingleAsync(a => a.Id == legacyId);
             Assert.Equal(HeadAlertKindCatalog.Legacy, storedLegacy.Kind);
-            Assert.Equal(legacy.CreatedAt, storedLegacy.LastContentChangedAt);
+            Assert.Equal(legacyCreatedAt, storedLegacy.LastContentChangedAt);
             Assert.False(storedLegacy.IsArchived);
 
             var storedArchived = await db.HeadAlerts.AsNoTracking()
-                .SingleAsync(a => a.Id == archivedLegacy.Id);
+                .SingleAsync(a => a.Id == archivedLegacyId);
             Assert.True(storedArchived.IsArchived);
             Assert.Equal(HeadAlertKindCatalog.Legacy, storedArchived.Kind);
-            Assert.Equal(archivedLegacy.CreatedAt, storedArchived.LastContentChangedAt);
+            Assert.Equal(archivedCreatedAt, storedArchived.LastContentChangedAt);
 
             var integrity = await db.Database
                 .SqlQueryRaw<string>("SELECT integrity_check AS Value FROM pragma_integrity_check")
@@ -1675,6 +1658,281 @@ public class HeadAlertSchemaMigrationTests
         }
     }
 
+    /// <summary>
+    /// M3 ترفض التشديد إذا بقيت قيم <c>NULL</c> أو نوع فارغ/أبيض — قبل إعادة بناء
+    /// الجدول وعبر حارس صريح قابل للتشخيص (الخطة §6.3/§16.2).
+    /// </summary>
+    [Theory]
+    [InlineData("null_kind", "CK_HeadAlertContractGuard_NullKind")]
+    [InlineData("null_last_changed", "CK_HeadAlertContractGuard_NullLastChanged")]
+    [InlineData("empty_kind", "CK_HeadAlertContractGuard_EmptyKind")]
+    [InlineData("whitespace_kind", "CK_HeadAlertContractGuard_EmptyKind")]
+    public async Task Migration_Contract_RejectsNullAndEmptyKind(
+        string violation, string expectedConstraint)
+    {
+        var (path, db) = CreateDb();
+        try
+        {
+            await db.GetService<IMigrator>().MigrateAsync(BackfillMigration);
+            var (branch, user) = await SeedBranchAndUserAsync(db);
+            var createdAt = new DateTime(2026, 10, 20, 8, 0, 0, DateTimeKind.Utc);
+            var alert = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Branch,
+                Kind = HeadAlertKindCatalog.Legacy,
+                Message = "صف اختبار حارس M3",
+                CreatedAt = createdAt,
+                LastContentChangedAt = createdAt,
+            };
+            db.HeadAlerts.Add(alert);
+            await db.SaveChangesAsync();
+            var alertId = alert.Id;
+            db.ChangeTracker.Clear();
+
+            var sql = violation switch
+            {
+                "null_kind" => "UPDATE \"HeadAlerts\" SET \"Kind\" = NULL",
+                "null_last_changed" => "UPDATE \"HeadAlerts\" SET \"LastContentChangedAt\" = NULL",
+                "empty_kind" => "UPDATE \"HeadAlerts\" SET \"Kind\" = ''",
+                "whitespace_kind" => "UPDATE \"HeadAlerts\" SET \"Kind\" = '   '",
+                _ => throw new ArgumentOutOfRangeException(nameof(violation)),
+            };
+            await db.Database.ExecuteSqlRawAsync(sql);
+
+            var exception = await Assert.ThrowsAnyAsync<Exception>(
+                () => db.GetService<IMigrator>().MigrateAsync(ContractMigration));
+
+            // رسالة التشخيص تحمل اسم القيد لا خطأ NULL عامًا — فيُعرف أي فحص فشل.
+            Assert.Contains(expectedConstraint, exception.ToString(), StringComparison.Ordinal);
+
+            var applied = await db.Database
+                .SqlQueryRaw<string>("SELECT \"MigrationId\" AS Value FROM \"__EFMigrationsHistory\"")
+                .ToListAsync();
+            Assert.DoesNotContain(ContractMigration, applied);
+
+            // الفشل يترك المخطط والبيانات كما كانا: لا NOT NULL ولا قيد، ولا جدول
+            // إعادة بناء مؤقت، والقيم المخالفة نفسها محفوظة (لا تحويل صامت).
+            var kindNotNull = await db.Database.SqlQueryRaw<int>(
+                "SELECT \"notnull\" AS Value FROM pragma_table_info('HeadAlerts') WHERE name = 'Kind'").SingleAsync();
+            var lastChangedNotNull = await db.Database.SqlQueryRaw<int>(
+                "SELECT \"notnull\" AS Value FROM pragma_table_info('HeadAlerts') WHERE name = 'LastContentChangedAt'").SingleAsync();
+            Assert.Equal(0, kindNotNull);
+            Assert.Equal(0, lastChangedNotNull);
+
+            var tableSql = await db.Database
+                .SqlQueryRaw<string>("SELECT sql AS Value FROM sqlite_master WHERE type = 'table' AND name = 'HeadAlerts'")
+                .SingleAsync();
+            Assert.DoesNotContain("CK_HeadAlerts_Kind_NotEmpty", tableSql, StringComparison.Ordinal);
+
+            var tempTables = await db.Database
+                .SqlQueryRaw<string>("SELECT name AS Value FROM sqlite_master WHERE type = 'table' AND name = 'ef_temp_HeadAlerts'")
+                .ToListAsync();
+            Assert.Empty(tempTables);
+
+            var storedKind = await db.Database.SqlQueryRaw<string?>(
+                "SELECT \"Kind\" AS Value FROM \"HeadAlerts\" WHERE \"Id\" = {0}", alertId).SingleAsync();
+            var storedLastChanged = await db.Database.SqlQueryRaw<DateTime?>(
+                "SELECT \"LastContentChangedAt\" AS Value FROM \"HeadAlerts\" WHERE \"Id\" = {0}", alertId).SingleAsync();
+            var expectedKind = violation switch
+            {
+                "null_kind" => null,
+                "empty_kind" => string.Empty,
+                "whitespace_kind" => "   ",
+                _ => HeadAlertKindCatalog.Legacy,
+            };
+            var expectedLastChanged = violation == "null_last_changed" ? null : (DateTime?)createdAt;
+            Assert.Equal(expectedKind, storedKind);
+            Assert.Equal(expectedLastChanged, storedLastChanged);
+
+            var storedMessage = await db.Database.SqlQueryRaw<string>(
+                "SELECT \"Message\" AS Value FROM \"HeadAlerts\" WHERE \"Id\" = {0}", alertId).SingleAsync();
+            Assert.Equal("صف اختبار حارس M3", storedMessage);
+        }
+        finally
+        {
+            await db.DisposeAsync();
+            Cleanup(path);
+        }
+    }
+
+    /// <summary>
+    /// بعد M3: العمودان NOT NULL بلا Default دائم، والقيد يرفض النوع الفارغ/الأبيض،
+    /// مع بقاء الفهارس (ومنها الفريد الجزئي) والمفاتيح الأجنبية سليمة.
+    /// </summary>
+    [Fact]
+    public async Task Migration_Contract_EnforcesNonNullAndPreservesSchema()
+    {
+        var (path, db) = CreateDb();
+        try
+        {
+            await db.GetService<IMigrator>().MigrateAsync(BackfillMigration);
+            var (branch, user) = await SeedBranchAndUserAsync(db);
+            var createdAt = new DateTime(2026, 10, 20, 8, 0, 0, DateTimeKind.Utc);
+            var seeded = new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Branch,
+                Kind = HeadAlertKindCatalog.Legacy,
+                Message = "صف مشروع قبل M3",
+                CreatedAt = createdAt,
+                LastContentChangedAt = createdAt,
+            };
+            db.HeadAlerts.Add(seeded);
+            await db.SaveChangesAsync();
+            var seededId = seeded.Id;
+            db.ChangeTracker.Clear();
+
+            var indexesBefore = await GetSqliteIndexNamesAsync(db, "HeadAlerts");
+            var foreignKeyTablesBefore = await GetSqliteForeignKeyTablesAsync(db, "HeadAlerts");
+
+            await db.GetService<IMigrator>().MigrateAsync(ContractMigration);
+
+            var kindNotNull = await db.Database.SqlQueryRaw<int>(
+                "SELECT \"notnull\" AS Value FROM pragma_table_info('HeadAlerts') WHERE name = 'Kind'").SingleAsync();
+            var lastChangedNotNull = await db.Database.SqlQueryRaw<int>(
+                "SELECT \"notnull\" AS Value FROM pragma_table_info('HeadAlerts') WHERE name = 'LastContentChangedAt'").SingleAsync();
+            var kindDefault = await db.Database.SqlQueryRaw<string?>(
+                "SELECT dflt_value AS Value FROM pragma_table_info('HeadAlerts') WHERE name = 'Kind'").SingleAsync();
+            var lastChangedDefault = await db.Database.SqlQueryRaw<string?>(
+                "SELECT dflt_value AS Value FROM pragma_table_info('HeadAlerts') WHERE name = 'LastContentChangedAt'").SingleAsync();
+
+            Assert.Equal(1, kindNotNull);
+            Assert.Equal(1, lastChangedNotNull);
+            Assert.Null(kindDefault);
+            Assert.Null(lastChangedDefault);
+
+            var indexes = await GetSqliteIndexNamesAsync(db, "HeadAlerts");
+            Assert.Contains("UX_HeadAlerts_DedupeKey_Active", indexes);
+            Assert.Contains("IX_HeadAlerts_Kind_Active_LastChanged", indexes);
+            Assert.Contains("IX_HeadAlerts_ExecutionCircuitId_Kind_IsArchived", indexes);
+            // لا يكفي وجود ثلاثة أسماء: إعادة البناء يجب ألا تُسقط أي فهرس من M2.
+            Assert.Equal(indexesBefore, indexes);
+
+            // الفهرسة الجزئية ليست مجرد اسم: الفلتر نفسه يجب أن يبقى بعد إعادة البناء.
+            var dedupeIndexSql = await db.Database.SqlQueryRaw<string>(
+                "SELECT sql AS Value FROM sqlite_master WHERE type = 'index' AND name = 'UX_HeadAlerts_DedupeKey_Active'").SingleAsync();
+            Assert.Contains("\"DedupeKey\" IS NOT NULL", dedupeIndexSql, StringComparison.Ordinal);
+            Assert.Contains("\"IsArchived\" = 0", dedupeIndexSql, StringComparison.Ordinal);
+
+            var foreignKeyTables = await GetSqliteForeignKeyTablesAsync(db, "HeadAlerts");
+            Assert.Contains("Branches", foreignKeyTables);
+            Assert.Contains("ExecutionCircuits", foreignKeyTables);
+            Assert.Equal(foreignKeyTablesBefore, foreignKeyTables);
+
+            var integrity = await db.Database
+                .SqlQueryRaw<string>("SELECT integrity_check AS Value FROM pragma_integrity_check()")
+                .SingleAsync();
+            Assert.Equal("ok", integrity);
+            var foreignKeyViolations = await db.Database
+                .SqlQueryRaw<string>("SELECT \"table\" AS Value FROM pragma_foreign_key_check()")
+                .ToListAsync();
+            Assert.Empty(foreignKeyViolations);
+
+            // القيد يرفض الفراغ والأبيض، وقاعدة NOT NULL ترفض NULL.
+            foreach (var invalidKind in new[] { "", "   " })
+            {
+                await Assert.ThrowsAsync<SqliteException>(() => db.Database.ExecuteSqlRawAsync(
+                    "INSERT INTO \"HeadAlerts\" (\"BranchId\", \"CreatedById\", \"TargetType\", \"Kind\", \"Message\", \"CreatedAt\", \"LastContentChangedAt\") VALUES ({0}, {1}, 3, {2}, 'x', '2026-10-20 00:00:00', '2026-10-20 00:00:00')",
+                    branch.Id, user.Id, invalidKind));
+            }
+
+            await Assert.ThrowsAsync<SqliteException>(() => db.Database.ExecuteSqlRawAsync(
+                "UPDATE \"HeadAlerts\" SET \"Kind\" = NULL WHERE \"Id\" = {0}", seededId));
+            await Assert.ThrowsAsync<SqliteException>(() => db.Database.ExecuteSqlRawAsync(
+                "UPDATE \"HeadAlerts\" SET \"LastContentChangedAt\" = NULL WHERE \"Id\" = {0}", seededId));
+
+            // مسار الكيان أيضًا: القيمة الافتراضية string.Empty لا تمرّ من القيد.
+            db.HeadAlerts.Add(new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Branch,
+                Kind = string.Empty,
+                Message = "صف بنوع فارغ",
+                CreatedAt = createdAt.AddMinutes(2),
+                LastContentChangedAt = createdAt.AddMinutes(2),
+            });
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+            db.ChangeTracker.Clear();
+
+            // الكتابة الصحيحة تمر، والصف القديم محفوظ بنصه ونوعه.
+            db.HeadAlerts.Add(new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Branch,
+                Kind = HeadAlertKindCatalog.Legacy,
+                Message = "صف بعد M3",
+                CreatedAt = createdAt.AddMinutes(1),
+                LastContentChangedAt = createdAt.AddMinutes(1),
+            });
+            await db.SaveChangesAsync();
+            Assert.Equal(2, await db.HeadAlerts.CountAsync());
+        }
+        finally
+        {
+            await db.DisposeAsync();
+            Cleanup(path);
+        }
+    }
+
+    /// <summary>
+    /// الـDown يعيد العمودين nullable ويسقط القيد فقط، مع الحفاظ على البيانات
+    /// (لا تحويل قيم إلى NULL ولا حذف صفوف — الخطة §16.2).
+    /// </summary>
+    [Fact]
+    public async Task Migration_Contract_Down_RestoresNullableColumns()
+    {
+        var (path, db) = CreateDb();
+        try
+        {
+            await db.GetService<IMigrator>().MigrateAsync(BackfillMigration);
+            var (branch, user) = await SeedBranchAndUserAsync(db);
+            var createdAt = new DateTime(2026, 10, 20, 8, 0, 0, DateTimeKind.Utc);
+            db.HeadAlerts.Add(new HeadAlert
+            {
+                BranchId = branch.Id,
+                CreatedById = user.Id,
+                TargetType = HeadAlertTargetType.Branch,
+                Kind = HeadAlertKindCatalog.Legacy,
+                Message = "صف يبقى بعد Down",
+                CreatedAt = createdAt,
+                LastContentChangedAt = createdAt,
+            });
+            await db.SaveChangesAsync();
+            db.ChangeTracker.Clear();
+
+            await db.GetService<IMigrator>().MigrateAsync(ContractMigration);
+            await db.GetService<IMigrator>().MigrateAsync(BackfillMigration);
+            db.ChangeTracker.Clear();
+
+            var kindNotNull = await db.Database.SqlQueryRaw<int>(
+                "SELECT \"notnull\" AS Value FROM pragma_table_info('HeadAlerts') WHERE name = 'Kind'").SingleAsync();
+            var lastChangedNotNull = await db.Database.SqlQueryRaw<int>(
+                "SELECT \"notnull\" AS Value FROM pragma_table_info('HeadAlerts') WHERE name = 'LastContentChangedAt'").SingleAsync();
+            Assert.Equal(0, kindNotNull);
+            Assert.Equal(0, lastChangedNotNull);
+
+            var tableSql = await db.Database
+                .SqlQueryRaw<string>("SELECT sql AS Value FROM sqlite_master WHERE type = 'table' AND name = 'HeadAlerts'")
+                .SingleAsync();
+            Assert.DoesNotContain("CK_HeadAlerts_Kind_NotEmpty", tableSql, StringComparison.Ordinal);
+
+            var stored = await db.HeadAlerts.AsNoTracking().SingleAsync();
+            Assert.Equal(HeadAlertKindCatalog.Legacy, stored.Kind);
+            Assert.Equal(createdAt, stored.LastContentChangedAt);
+            Assert.Equal("صف يبقى بعد Down", stored.Message);
+        }
+        finally
+        {
+            await db.DisposeAsync();
+            Cleanup(path);
+        }
+    }
+
     /// <summary>تنفيذ أوامر بيانات M2 وحدها دون أوامر المخطط — لاختبار إعادة التشغيل.</summary>
     private sealed class RerunnableBackfillMigration : HeadAlertTaxonomy_Backfill
     {
@@ -1735,7 +1993,7 @@ public class HeadAlertSchemaMigrationTests
 
         var lines = rows.Select(row => string.Create(
             CultureInfo.InvariantCulture,
-            $"alert|{row.Id}|{row.BranchId}|{row.Kind ?? "<null>"}|{row.DedupeKey ?? "<null>"}|{row.CreatedAt:O}|{Format(row.LastContentChangedAt)}"));
+            $"alert|{row.Id}|{row.BranchId}|{row.Kind}|{row.DedupeKey ?? "<null>"}|{row.CreatedAt:O}|{Format(row.LastContentChangedAt)}"));
         return Sha256(string.Join('\n', lines));
     }
 
@@ -1778,7 +2036,7 @@ public class HeadAlertSchemaMigrationTests
         {
             lines.Add(string.Create(
                 CultureInfo.InvariantCulture,
-                $"alert|{alert.Id}|{alert.BranchId}|{alert.CreatedById}|{(int)alert.TargetType}|{alert.Kind ?? "<null>"}|{alert.DedupeKey ?? "<null>"}|{Number(alert.ExecutionCircuitId)}|{Number(alert.DocumentId)}|{Number(alert.TargetLawyerId)}|{Number(alert.DelegationId)}|{Number(alert.AppealId)}|{Number(alert.ReviewLetterId)}|{Number(alert.PublicEntityId)}|{alert.Message}|{alert.CreatedAt:O}|{Format(alert.LastContentChangedAt)}|{alert.IsArchived}|{Format(alert.ArchivedAt)}"));
+                $"alert|{alert.Id}|{alert.BranchId}|{alert.CreatedById}|{(int)alert.TargetType}|{alert.Kind}|{alert.DedupeKey ?? "<null>"}|{Number(alert.ExecutionCircuitId)}|{Number(alert.DocumentId)}|{Number(alert.TargetLawyerId)}|{Number(alert.DelegationId)}|{Number(alert.AppealId)}|{Number(alert.ReviewLetterId)}|{Number(alert.PublicEntityId)}|{alert.Message}|{alert.CreatedAt:O}|{Format(alert.LastContentChangedAt)}|{alert.IsArchived}|{Format(alert.ArchivedAt)}"));
         }
 
         foreach (var recipient in recipients)
@@ -1798,6 +2056,74 @@ public class HeadAlertSchemaMigrationTests
         => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 
     private const string ExecutionCircuitPendingPrefix = "أحال لك رئيس القسم ملفات من دائرة ";
+
+    /// <summary>
+    /// يُدرج صفًا بالشكل القديم عبر SQL خام (بلا <c>Kind</c>/<c>LastContentChangedAt</c>)
+    /// لاختبار مرحلة الـbackfill على قاعدة M1، لأن الكيان الحالي بعد M3 لا يمثّل NULL.
+    /// </summary>
+    private static async Task<int> InsertLegacyAlertAsync(
+        DocGeneratorDbContext db,
+        int branchId,
+        int createdById,
+        HeadAlertTargetType targetType,
+        string message,
+        DateTime createdAt,
+        int? documentId = null,
+        int? targetLawyerId = null,
+        int? delegationId = null,
+        int? appealId = null,
+        int? reviewLetterId = null,
+        int? publicEntityId = null,
+        int? executionCircuitId = null,
+        bool isArchived = false,
+        DateTime? archivedAt = null)
+    {
+        var connection = (SqliteConnection)db.Database.GetDbConnection();
+        await db.Database.OpenConnectionAsync();
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                INSERT INTO "HeadAlerts"
+                    ("BranchId", "CreatedById", "TargetType", "Message", "CreatedAt",
+                     "DocumentId", "TargetLawyerId", "DelegationId", "AppealId",
+                     "ReviewLetterId", "PublicEntityId", "ExecutionCircuitId",
+                     "IsArchived", "ArchivedAt")
+                VALUES ($branchId, $createdById, $targetType, $message, $createdAt,
+                        $documentId, $targetLawyerId, $delegationId, $appealId,
+                        $reviewLetterId, $publicEntityId, $executionCircuitId,
+                        $isArchived, $archivedAt);
+                """;
+
+            command.Parameters.AddWithValue("$branchId", branchId);
+            command.Parameters.AddWithValue("$createdById", createdById);
+            command.Parameters.AddWithValue("$targetType", (int)targetType);
+            command.Parameters.AddWithValue("$message", message);
+            command.Parameters.AddWithValue("$createdAt", createdAt.ToString("yyyy-MM-dd HH:mm:ss.FFFFFFF", CultureInfo.InvariantCulture));
+            command.Parameters.AddWithValue("$documentId", (object?)documentId ?? DBNull.Value);
+            command.Parameters.AddWithValue("$targetLawyerId", (object?)targetLawyerId ?? DBNull.Value);
+            command.Parameters.AddWithValue("$delegationId", (object?)delegationId ?? DBNull.Value);
+            command.Parameters.AddWithValue("$appealId", (object?)appealId ?? DBNull.Value);
+            command.Parameters.AddWithValue("$reviewLetterId", (object?)reviewLetterId ?? DBNull.Value);
+            command.Parameters.AddWithValue("$publicEntityId", (object?)publicEntityId ?? DBNull.Value);
+            command.Parameters.AddWithValue("$executionCircuitId", (object?)executionCircuitId ?? DBNull.Value);
+            command.Parameters.AddWithValue("$isArchived", isArchived ? 1 : 0);
+            command.Parameters.AddWithValue("$archivedAt", archivedAt is null
+                ? DBNull.Value
+                : archivedAt.Value.ToString("yyyy-MM-dd HH:mm:ss.FFFFFFF", CultureInfo.InvariantCulture));
+            await command.ExecuteNonQueryAsync();
+
+            await using var idCommand = connection.CreateCommand();
+            idCommand.CommandText = "SELECT last_insert_rowid();";
+            var id = await idCommand.ExecuteScalarAsync();
+            return Convert.ToInt32(id, CultureInfo.InvariantCulture);
+        }
+        finally
+        {
+            await db.Database.CloseConnectionAsync();
+        }
+    }
 
     private static async Task<(Branch Branch, User User)> SeedBranchAndUserAsync(DocGeneratorDbContext db)
     {
