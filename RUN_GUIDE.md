@@ -4,14 +4,15 @@
 >
 > 1. **افتح §9 «تطبيق هجرات قاعدة البيانات عند النشر»** واقرأ **قائمة المهجرات المعلّقة**
 >    (قائمة تراكمية في نهاية §9) — كل سطر غير مشطوب **يجب** تطبيقه في نافذة النشر.
-> 2. **الهجرات المعلّقة حاليًا (2026-10-26):** سياق `PostgreSQL` — طُبِّقت هجرات التنبيهات الثلاث
->    (`HeadAlertTaxonomy_Expand_Pg` ثم `HeadAlertOutbox_Create_Pg` ثم `HeadAlertTaxonomy_Backfill_Pg`)
->    على `Supabase` حيًا (`docs/audit/10-head-alerts-pr2b-deploy-20261025.md`)، وتبقى **هجرة واحدة**
->    معلّقة: `HeadAlertTaxonomy_Contract_Pg` (PR‑3 — تصبح 63 هجرة بعدها). أما **`SQLite`** فتبقى
->    **4 هجرات** معلّقة: `HeadAlertTaxonomy_Expand` ثم `HeadAlertOutbox_Create` ثم
+> 2. **الهجرات المعلّقة حاليًا (2026-10-26):** سياق `PostgreSQL` = **صفر معلّقة** — طُبِّقت هجرات
+>    التنبيهات الأربع (`HeadAlertTaxonomy_Expand_Pg` ثم `HeadAlertOutbox_Create_Pg` ثم
+>    `HeadAlertTaxonomy_Backfill_Pg` ثم `HeadAlertTaxonomy_Contract_Pg`) على `Supabase` حيًا،
+>    وسجل `__EFMigrationsHistory` = **63** هجرة (`docs/audit/10-head-alerts-pr2b-deploy-20261025.md`
+>    و`docs/audit/13-head-alerts-pr3-live-apply-20261026.md`). أما **`SQLite`** فتبقى **4 هجرات**
+>    معلّقة: `HeadAlertTaxonomy_Expand` ثم `HeadAlertOutbox_Create` ثم
 >    `HeadAlertTaxonomy_Backfill` ثم `HeadAlertTaxonomy_Contract`.
->    **⛔ لا تُطبَّق `HeadAlertTaxonomy_Contract(_Pg)` قبل استيفاء G1/G2 وتأكيد أن كل النسخ تعمل بكود
->    `PR‑2` وصفر قيم `NULL`** — راجع `docs/audit/11-head-alerts-pr3-20261026.md`.
+>    **⛔ لا تُطبَّق `HeadAlertTaxonomy_Contract` (SQLite) قبل استيفاء G1/G2 وتأكيد أن كل النسخ تعمل
+>    بكود `PR‑2` وصفر قيم `NULL`** — راجع `docs/audit/11-head-alerts-pr3-20261026.md`.
 > 3. **⚠️ `Database:AutoMigrate=false` في الإنتاج** ⇒ التطبيق **يرفض الإقلاع** إن كانت الهجرات
 >    غير مطبّقة على القاعدة الحية. **طبّق الهجرات قبل نشر النسخة، وإلا انقطاع إقلاع مقصود.**
 > 4. **نسخة احتياطية + استعادة مجرَّبة قبل النافذة** — لا «نسخة لم تُجرَّب استعادتها ليست نسخة».
@@ -257,10 +258,10 @@ npm test
 
 > ضع هنا أي هجرة جديدة لم تُطبَّق على قواعد البيانات بعد، واشطب السطر بعد `dotnet ef database update` الناجح في النشر.
 >
-> **حالة 2026‑10‑26:** هجرات التنبيهات الثلاث (`Expand`/`Outbox_Create`/`Backfill`) طُبِّقت على
-> `PostgreSQL` (Supabase) — سجلها في `docs/audit/10-head-alerts-pr2b-deploy-20261025.md`. تبقى الثلاث
-> المقابلة في `SQLite` معلّقة، وأُضيفت هجرتا PR‑3: `HeadAlertTaxonomy_Contract` (SQLite، غير مطبَّقة)
-> و`HeadAlertTaxonomy_Contract_Pg` (PostgreSQL، غير مطبَّقة). علامة `[ ]` على زوج الهجرتين تعني أن
+> **حالة 2026‑10‑26:** اكتمل سياق `PostgreSQL` — الهجرات الأربع (`Expand`/`Outbox_Create`/`Backfill`/
+> `Contract`) مطبَّقة على `Supabase` (**63** هجرة)؛ سجلها في `docs/audit/10-head-alerts-pr2b-deploy-20261025.md`
+> و`docs/audit/13-head-alerts-pr3-live-apply-20261026.md`. تبقى **4 هجرات** في `SQLite`:
+> `Expand`/`Outbox_Create`/`Backfill` ثم `Contract`. علامة `[ ]` على زوج الهجرتين تعني أن
 > **أحد السياقين** على الأقل لم يُطبَّق بعد؛ والحالة التفصيلية في أول سطر تحت كل عنوان.
 
 - [ ] **2026-08-19 — `AddHeadAlertDelegationLink`** (ربط تنبيهات رؤساء الأقسام بالمندوبية):
@@ -424,7 +425,7 @@ npm test
   - ⚠️ الهجرة تعيد بناء جدول `HeadAlerts` على SQLite لإضافة الـFK (سلوك EF متوقع). خذ نسخة احتياطية واستعدها تجريبيًا قبل النافذة. **وهي أول إعادة بناء**، فتُعيد ضبط `sqlite_sequence` على أعلى `Id` موجود: سجّل `SELECT seq FROM sqlite_sequence WHERE name='HeadAlerts';` **قبل هذه الهجرة** (لا قبل `Contract` فقط)، وأعد رفعه بعد `Contract` — القياس والأثر في `docs/audit/12-head-alerts-pr3-g2-rehearsal-20261026.md` §6.
   - الـ`Down` يزيل الـFK والفهارس فقط، **ولا يعكس بيانات الـbackfill** (المفاتيح/التصنيفات/الأرشفة تبقى).
 - [ ] **2026-10-26 — `HeadAlertTaxonomy_Contract` / `HeadAlertTaxonomy_Contract_Pg`** (M3: تشديد `Kind` و`LastContentChangedAt` — المرحلة 3 من خطة التنبيهات، PR‑3):
-  > **الحالة:** ⏳ **غير مطبَّقة على السياقين** (`SQLite` و`PostgreSQL`) — تنتظر نافذة النشر.
+  > **الحالة:** `PostgreSQL` ✅ مطبَّقة على `Supabase` في 2026‑10‑26 (`20261026152238_HeadAlertTaxonomy_Contract_Pg` — **63** هجرة، `docs/audit/13-head-alerts-pr3-live-apply-20261026.md`) · `SQLite` ⏳ معلّقة.
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261026151929_HeadAlertTaxonomy_Contract.cs` — حارس صريح يرفض `NULL`/فراغ، ثم إعادة بناء الجدول بـ`Kind TEXT NOT NULL` و`LastContentChangedAt TEXT NOT NULL` **بلا Default دائم**، وقيد `CK_HeadAlerts_Kind_NotEmpty` (`TRIM("Kind") <> ''`)؛ يحافظ على الفهرس الفريد الجزئي `UX_HeadAlerts_DedupeKey_Active` وكل الـFK والفهارس. **⛔ أوقف الخدمة/الكتابة قبل التطبيق** (إعادة البناء تنسخ الصفوف ثم تُسقط الجدول القديم؛ أي كتابة بينهما تُفقد). ⚠️ الهجرة تُنفَّذ في **ثلاث معاملات منفصلة** (حارس+نسخ ← `DROP`/`RENAME` ← فهارس) وسجل الهجرة بعدها؛ انهيار بينها يترك حالة وسيطة — مسار الاستعادة في `docs/audit/11-head-alerts-pr3-20261026.md` §6.3.1. ⚠️ إعادة بناء SQLite تعيد ضبط `sqlite_sequence` على أعلى `Id` موجود — في `Up` و`Down` معًا، **وهي تبدأ فعليًا من `HeadAlertTaxonomy_Backfill` (M2) لا من `Contract`**: قِس `SELECT seq FROM sqlite_sequence WHERE name='HeadAlerts';` **قبل `Backfill`**، ثم أعد الرفع بعد `Contract` (وقبل `Down`/بعد أي إعادة `Up`) إن تراجع. تسجيلها قبل `Contract` فقط يسجّل القيمة المراجعة أصلًا فيضيع الفرق بصمت. القياس المثبت والتصحيح الكامل في `docs/audit/12-head-alerts-pr3-g2-rehearsal-20261026.md` §6 (والتفاصيل الأصلية في `docs/audit/11-head-alerts-pr3-20261026.md` §2.3 و§6.2–§6.3).
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261026152238_HeadAlertTaxonomy_Contract_Pg.cs` — حارس `DO $$ … RAISE EXCEPTION` ثم `SET NOT NULL` للعمودين وقيد `CK_HeadAlerts_Kind_NotEmpty`.
   - نص SQL المولّد والمُراجَع (G1): `docs/audit/migrations/HEADALERT_PR3_sqlite.sql` و`docs/audit/migrations/HEADALERT_PR3_postgres.sql`.
@@ -445,7 +446,10 @@ npm test
   - بدون التطبيق يبقى المخطط أوسع من النموذج: العمودان يقبلان `NULL` ولا قيد يمنع `Kind` الفارغ، فأي مسار كتابة غير محمي يستطيع إدخال نوع فارغ رغم أن كود `PR‑3` يفترض عدم nullable.
   - **تطبيق هجرات التنبيهات بالترتيب** (لا تُطبَّق `database update` على اسم متأخر فتُطبَّق ما قبله ضمنًا): `HeadAlertTaxonomy_Expand` ← `HeadAlertOutbox_Create` ← `HeadAlertTaxonomy_Backfill` ← `HeadAlertTaxonomy_Contract` (وكذلك أزواج `_Pg`، و`Contract` **أخيرًا دائمًا** وبعد G2 وكل النسخ على `PR‑2`).
   - **حالة 2026‑10‑25:** تمّ تطبيق الهجرات الثلاث الأولى كاملة على `PostgreSQL` (Supabase) — 62 هجرة، صفر معلّقة منها (`docs/audit/10-head-alerts-pr2b-deploy-20261025.md`).
-  - **حالة 2026‑10‑26 (PR‑3):** المتبقّي: تطبيق الثلاث على `SQLite`، ثم `HeadAlertTaxonomy_Contract`
-    (SQLite) و`HeadAlertTaxonomy_Contract_Pg` (PostgreSQL — 63 هجرة بعدها) بعد استيفاء G1/G2 وتأكيد
-    كل النسخ على `PR‑2` وصفر `NULL` — راجع `docs/audit/11-head-alerts-pr3-20261026.md`.
+  - **حالة 2026‑10‑26 (PR‑3):** `PostgreSQL` **مكتمل حيًا** — طُبِّقت `HeadAlertTaxonomy_Contract_Pg`
+    (`63` هجرة، صفر معلّقة) قبل نشر الكود، ثم نُشر `0acdfe3` على `Render` واجتاز الفحص الدخاني
+    (`docs/audit/13-head-alerts-pr3-live-apply-20261026.md`). **المتبقّي: `SQLite` فقط** — تطبيق
+    `Expand`/`Outbox_Create`/`Backfill`/`Contract` بالترتيب بعد استيفاء G1/G2 على قاعدة `SQLite`
+    حقيقية، مع قيد `sqlite_sequence` (يبدأ التراجع من `Backfill` لا من `Contract`)
+    — راجع `docs/audit/12-head-alerts-pr3-g2-rehearsal-20261026.md` §6.
 
