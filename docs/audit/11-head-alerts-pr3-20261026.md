@@ -161,6 +161,8 @@
 
   النتيجة المطلوبة: `0 | 0 | 0` (حتى على جدول فارغ). أي قيمة غير صفرية توقف النشر (لا تُعالج بـ`UPDATE` عشوائي — راجع §6.5).
 
+> **حدّ معروف في `Backfill` (M2):** شرط الإصلاح فيه هو `WHERE "Kind" IS NULL OR TRIM("Kind") = ''`، فصفٌّ بـ`Kind` مضبوط و`LastContentChangedAt = NULL` **لا يصلحه M2**. هذا مقصود ومقبول لأن فحص `0 | 0 | 0` أعلاه يكشفه قبل التطبيق، وحارس `M3` يرفض الهجرة برسالة صريحة إن فات الفحص. المعالجة المعتمدة بعد مراجعة الصف: `UPDATE "HeadAlerts" SET "LastContentChangedAt" = "CreatedAt" WHERE "LastContentChangedAt" IS NULL;` — وهي القيمة نفسها التي كان كود `PR-2` يستخدمها بديلًا (`?? CreatedAt`)، فلا تغيير دلالي.
+
 ### 6.2 تطبيق الهجرات بالترتيب على النسخة المستعادة
 
 > **تصحيح 2026-10-26 (قبل التجميد):** المفتاح الفعلي لـSQLite هو `ConnectionStrings__DefaultConnection` وليس `ConnectionStrings__Default` (الأخير يُهمَل بصمت، فيسقط الأمر على `docgen.db` الحقيقي). ومصنع Postgres زمن-التصميم يقرأ `POSTGRES_CONNECTION` **حصرًا**؛ `Database__UsePostgres` لا يوجّه `dotnet ef`. نفّذ من مجلد `backend`، وتأكد قبل كل أمر أن `Data Source`/`Database` يشيران إلى النسخة المستعادة.
@@ -309,5 +311,9 @@ EF ينفّذ هجرة SQLite في **ثلاث معاملات** وسجل الهج
 **تدقيق العقود (نموذج ← هجرة ← قاعدة):** `Kind` نص (`64`) غير قابل للفراغ و`LastContentChangedAt` زمن غير قابل للفراغ في `ModelSnapshot` و`Designer` والهجرتين والإعدادات — لا `nullable` ولا `Default` دائم في أي منها؛ والعقود العامة (`HeadAlertSummaryDto` غير المستخدم في PR‑3) بقيت كما هي، فلا تغيير API.
 
 **تدقيق بقايا `nullable`:** لا بقايا `LastContentChangedAt ?? …` أو `Kind != null` في `src` بعد التعديل (بحث شامل)؛ و`HeadAlertRepository` يفلتر بالنوع مباشرةً.
+
+**تكافؤ الدلالة مع `PR-2`:** إزالة البديل `?? CreatedAt` لا تغيّر السلوك لأن `Backfill` (M2) يسند `LastContentChangedAt = COALESCE(LastContentChangedAt, CreatedAt)` — أي القيمة نفسها. وصفٌّ شاذ بـ`Kind` مضبوط و`LastContentChangedAt = NULL` لا يصلحه M2 (شرطه مرتبط بـ`Kind`)، لكن حارس `M3` يرفضه وفحص G2 يكشفه (§6.1).
+
+**سلامة مسار صندوق الصادر أثناء الترقية:** `HeadAlertOutboxMessage.Kind` يبقى `string?` (خارج نطاق M3)، لكن `HeadAlertOutboxDispatcher` يرفض أي رسالة `Upsert` بنوع فارغ/غائب **قبل** استدعاء الخدمة (سطر 388)، ويرفض تعارض نوع الرسالة مع نوع الطلب (سطر 392). فرسالة معلّقة قديمة لا تصل إلى قاعدة مشدّدة بلا نوع، ولا تُفشل النشر.
 
 **حدود التغطية المعلنة:** الاختبار الحيّ لـPostgres لا يعمل محليًا بلا `DOCGEN_TEST_POSTGRES` (نجاح صامت مقصود، مطابق لنمط المشروع)، وG2 تبقى إلزامية لأنها تثبت السلوك على بيانات الإنتاج المستعادة لا على قاعدة نظيفة.

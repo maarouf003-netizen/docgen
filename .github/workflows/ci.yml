@@ -105,10 +105,14 @@ jobs:
       # G1 دائم بدل فحص يدوي: يفشل إن تغيّر النموذج بلا هجرة مطابقة (exit 1).
       # سياق SQLite يبني المضيف زمن التصميم، وProgram.cs يرفض SQLite خارج Development —
       # لذلك Development هنا فقط؛ لا اتصال بقاعدة في هذا الأمر.
+      # Jwt__Secret وهمي (42 حرفًا): Program.cs يتحقق من طول السر عند الإقلاع حتى في
+      # Development، بلا قيمة افتراضية في المستودع. ليس سرًا حقيقيًا ولا يُستخدم لأي مصادقة.
       - name: SQLite model matches snapshot (G1)
         env:
           ASPNETCORE_ENVIRONMENT: Development
           ConnectionStrings__DefaultConnection: "Data Source=/tmp/migration-guard.db"
+          Database__AutoMigrate: "false"
+          Jwt__Secret: "ci-migration-guard-dummy-secret-0123456789"
         run: export PATH="$PATH:$HOME/.dotnet/tools"; dotnet ef migrations has-pending-model-changes --context DocGeneratorDbContext --project backend/src/DocGenerator.Infrastructure --startup-project backend/src/DocGenerator.Api
       # سياق Postgres يستخدم مصنعاً زمن التصميم يقرأ POSTGRES_CONNECTION حصراً (بلا اتصال).
       - name: Postgres model matches snapshot (G1)
