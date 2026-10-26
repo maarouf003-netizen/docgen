@@ -7,6 +7,7 @@
 >
 > **ملاحظة تحرير (2026-10-26، قبل التجميد):** صُححت في §6.1–§6.3 مفاتيح بيئة `dotnet ef` (`ConnectionStrings__DefaultConnection` و`POSTGRES_CONNECTION`)، واستعلام فحص الصفر على جدول فارغ (`COALESCE`)، وخطوات نسخ WAL وتسلسل `sqlite_sequence`، بعد مراجعة نقدية.
 > وفي مراجعة ثانية (قبل التجميد أيضًا) صُحح وصف ذرّية هجرة SQLite (§2.2/§5.3)، وأُضيف مسار استعادة الحالة الوسيطة (§6.3.1)، وحُدِّد حدّ `TRIM` (§2.1) ومعالجة `sqlite_sequence` في `Down` (§2.3)، وأُضيف اختبار Postgres حيّ (§4.1/§7/§8). لا تغيير على نطاق `M3`.
+> وفي 2026-10-26 (قبل التجميد، بعد تمرين `G2` المحلي في `docs/audit/12-head-alerts-pr3-g2-rehearsal-20261026.md`) صُحح **موضع تسجيل `sqlite_sequence`**: التراجع يبدأ من `HeadAlertTaxonomy_Backfill` (`M2`، أول إعادة بناء) لا من `Contract` — §6.2/§6.3.
 
 ---
 
@@ -190,7 +191,7 @@ dotnet ef database update HeadAlertTaxonomy_Contract_Pg --context DocGeneratorPo
 ```
 
 > الأسماء بلا `--no-build` تُطبِّق كل ما قبلها ضمنًا؛ ومع ذلك يُذكر كل اسم صراحةً لتوثيق الترتيب. `Contract` **آخرًا دائمًا**.
-> **⚠️ قبل `Contract` على SQLite:** سجّل `SELECT seq FROM sqlite_sequence WHERE name = 'HeadAlerts';` — إعادة بناء الجدول التي يولّدها EF تعيد ضبط التسلسل على أعلى `Id` **موجود**، فإن كان أعلى `Id` محذوفًا تراجع التسلسل. أعِد القيمة المسجلة بعد `Contract` (الخطوة في §6.3).
+> **⚠️ قبل `HeadAlertTaxonomy_Backfill` (M2) على SQLite — لا قبل `Contract` فقط:** سجّل `SELECT seq FROM sqlite_sequence WHERE name = 'HeadAlerts';` — **أول** إعادة بناء للجدول تحدث في `Backfill` (لإضافة FK `ExecutionCircuitId`)، و`Contract` يعيد البناء ثانية؛ كلتاهما تضبط التسلسل على أعلى `Id` **موجود**، فإن كان الأعلى محذوفًا تراجع التسلسل. أعِد القيمة المسجلة بعد `Contract` (الخطوة في §6.3). القياس المثبت في `docs/audit/12-head-alerts-pr3-g2-rehearsal-20261026.md` §6.
 
 ### 6.3 التحقق بعد التطبيق على النسخة المستعادة
 
@@ -284,7 +285,7 @@ EF ينفّذ هجرة SQLite في **ثلاث معاملات** وسجل الهج
 - [ ] كل النسخ على `PR-2`.
 - [ ] فحص الصفر `0 | 0 | 0` على القاعدة الحقيقية.
 - [ ] نسخة احتياطية + استعادة مجرَّبة.
-- [ ] تسجيل `SELECT seq FROM sqlite_sequence WHERE name = 'HeadAlerts';` قبل `Contract` (وأيضًا قبل `Down` إن لزم)، والتحقق من عدم تراجعه بعده (§6.2–§6.3).
+- [ ] تسجيل `SELECT seq FROM sqlite_sequence WHERE name = 'HeadAlerts';` **قبل `HeadAlertTaxonomy_Backfill`** (أول إعادة بناء) — لا قبل `Contract` فقط — وأيضًا قبل `Down` إن لزم، والتحقق من عدم تراجعه بعد `Contract` وإعادة رفعه (§6.2–§6.3، و`docs/audit/12-head-alerts-pr3-g2-rehearsal-20261026.md` §6).
 - [ ] تطبيق `HeadAlertTaxonomy_Contract` (SQLite) و`HeadAlertTaxonomy_Contract_Pg` (PostgreSQL) بالترتيب.
 - [ ] تحقق §6.3 + فحص دخان، وعدم بقاء `ef_temp_HeadAlerts` (§6.3.1).
 - [ ] شطب أسطر الهجرات المطبَّقة من قائمة `RUN_GUIDE.md` §9 التراكمية بعد النجاح (في نافذة النشر هذه: 4 لهجرات SQLite + 1 لـPostgreSQL).
