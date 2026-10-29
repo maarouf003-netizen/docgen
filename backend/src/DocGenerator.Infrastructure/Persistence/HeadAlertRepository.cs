@@ -1,6 +1,7 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
+using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -14,63 +15,141 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
 {
     public HeadAlertRepository(DocGeneratorDbContext db) : base(db) { }
 
-    public async Task<List<HeadAlert>> ListForRecipientAsync(int userId, CancellationToken ct = default)
+    public async Task<HeadAlertSummaryPage> ListSummariesForRecipientAsync(
+        int userId,
+        int? branchId,
+        AlertArchiveFilter archive,
+        bool unreadOnly,
+        int? delegationId,
+        int skip,
+        int take,
+        bool includeCounters,
+        CancellationToken ct = default)
     {
-        return await Db.HeadAlerts
+        ValidatePaging(skip, take);
+
+        // قراءة بالمستلم (§8): المحامي بلا قيد فرع، والرئيس/الشعبة بفرعه فقط.
+        var query = Db.HeadAlerts
             .AsNoTracking()
-            .Where(a => !a.IsArchived && a.Recipients.Any(r => r.UserId == userId))
-            .OrderByDescending(a => a.CreatedAt)
-            .Include(a => a.CreatedBy)
-            .Include(a => a.Document)
-            .Include(a => a.TargetLawyer)
-            .Include(a => a.Recipients)
-            .ToListAsync(ct);
+            .Where(a => a.Recipients.Any(r => r.UserId == userId));
+
+        if (branchId.HasValue)
+            query = query.Where(a => a.BranchId == branchId.Value);
+        if (unreadOnly)
+            query = query.Where(a => a.Recipients.Any(r => r.UserId == userId && !r.IsRead));
+        if (delegationId.HasValue)
+            query = query.Where(a => a.DelegationId == delegationId.Value);
+
+        return await ProjectSummariesAsync(
+            ApplyArchiveFilter(query, archive), userId, includeCounters, skip, take, ct);
     }
+
+    public Task<HeadAlertSummaryPage> ListSummariesSentAsync(
+        int userId,
+        int branchId,
+        AlertArchiveFilter archive,
+        int skip,
+        int take,
+        CancellationToken ct = default)
+    {
+        ValidatePaging(skip, take);
+
+        var query = Db.HeadAlerts
+            .AsNoTracking()
+            .Where(a => a.BranchId == branchId && a.CreatedById == userId);
+
+        return ProjectSummariesAsync(
+            ApplyArchiveFilter(query, archive), userId, includeCounters: true, skip, take, ct);
+    }
+
+    public Task<HeadAlertSummaryPage> ListSummariesForOversightAsync(
+        AlertArchiveFilter archive,
+        int? delegationId,
+        int skip,
+        int take,
+        CancellationToken ct = default)
+    {
+        ValidatePaging(skip, take);
+
+        var query = Db.HeadAlerts.AsNoTracking();
+        if (delegationId.HasValue)
+            query = query.Where(a => a.DelegationId == delegationId.Value);
+
+        // حالة القراءة null (مستلم-محددة أصلًا)، والعدّادات تُحسب في القاعدة.
+        return ProjectSummariesAsync(
+            ApplyArchiveFilter(query, archive),
+            recipientUserId: null,
+            includeCounters: true,
+            skip,
+            take,
+            ct);
+    }
+
+    public Task<HeadAlertSummaryPage> ListSummariesByDelegationAsync(
+        int delegationId,
+        int userId,
+        int skip,
+        int take,
+        CancellationToken ct = default)
+    {
+        ValidatePaging(skip, take);
+
+        // شريط النشاط: نشط فقط، وحالة القراءة بحسب المستخدم، والعدّادات غير معروضة
+        // (قائمة محامٍ لا تكشف أعداد المستلمين — §9.2).
+        var query = Db.HeadAlerts
+            .AsNoTracking()
+            .Where(a => a.DelegationId == delegationId && !a.IsArchived);
+
+        return ProjectSummariesAsync(
+            query, userId, includeCounters: false, skip, take, ct);
+    }
+
+    private static void ValidatePaging(int skip, int take)
+    {
+        if (skip < 0)
+            throw new ArgumentOutOfRangeException(nameof(skip), "الإزاحة لا تكون سالبة");
+        if (take < 1 || take > AlertPageRequest.MaxPageSize)
+            throw new ArgumentOutOfRangeException(
+                nameof(take), $"حجم الصفحة يجب أن يكون بين 1 و{AlertPageRequest.MaxPageSize}");
+    }
+
+    private static IQueryable<HeadAlert> ApplyArchiveFilter(
+        IQueryable<HeadAlert> query, AlertArchiveFilter archive) => archive switch
+        {
+            AlertArchiveFilter.Active => query.Where(a => !a.IsArchived),
+            AlertArchiveFilter.All => query,
+            AlertArchiveFilter.OnlyArchived => query.Where(a => a.IsArchived),
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(archive), archive, "فلتر أرشفة غير معروف"),
+        };
 
     /// <summary>
-    /// تنبيهات مستلم في فرع (§8: قراءة بالمستلم لا بالفرع) — لرؤساء النطاق.
+    /// الإسقاط الواحد لكل القوائم (الخطة §8.2/§13): يجلب بادئة 561 نقطة Unicode
+    /// و<paramref name="messageLength"/> من <c>length()</c> في القاعدة — لا
+    /// <c>Include(Recipients)</c> ولا <c>Message</c> كاملًا. المعاينة تُبنى في الذاكرة
+    /// عبر <see cref="HeadAlertTextLimits.BuildPreview"/> على البادئة وحدها.
     /// </summary>
-    public async Task<List<HeadAlert>> ListByRecipientInBranchAsync(int userId, int branchId, CancellationToken ct = default)
+    private async Task<HeadAlertSummaryPage> ProjectSummariesAsync(
+        IQueryable<HeadAlert> query,
+        int? recipientUserId,
+        bool includeCounters,
+        int skip,
+        int take,
+        CancellationToken ct)
     {
-        return await Db.HeadAlerts
-            .AsNoTracking()
-            .Where(a => !a.IsArchived && a.BranchId == branchId && a.Recipients.Any(r => r.UserId == userId))
-            .OrderByDescending(a => a.CreatedAt)
-            .Include(a => a.CreatedBy)
-            .Include(a => a.Document)
-            .Include(a => a.TargetLawyer)
-            .Include(a => a.Recipients)
-            .ToListAsync(ct);
-    }
+        // COUNT منفصل بنفس الفلاتر قبل Skip/Take — لا Count() بعد الصفحة (§13).
+        var totalCount = await query.CountAsync(ct);
 
-    public async Task<List<HeadAlert>> ListSentAsync(int userId, int branchId, CancellationToken ct = default)
-    {
-        return await Db.HeadAlerts
-            .AsNoTracking()
-            .Where(a => !a.IsArchived && a.BranchId == branchId && a.CreatedById == userId)
-            .OrderByDescending(a => a.CreatedAt)
-            .Include(a => a.CreatedBy)
-            .Include(a => a.Document)
-            .Include(a => a.TargetLawyer)
-            .Include(a => a.Recipients)
-            .ToListAsync(ct);
-    }
-
-    public async Task<List<HeadAlertDto>> ListForOversightAsync(CancellationToken ct = default)
-    {
-        // قائمة إشرافية محدودة بإسقاط عرضي: ترتيب حتمي عند تساوي الطوابع،
-        // والعدّادات استعلامات فرعية في قاعدة البيانات — لا تُحمَّل صفوف
-        // المستلمين أصلًا. التحويلات غير القابلة للترجمة (نوع الهدف/العنوان)
-        // تتم في الذاكرة على الصفوف المسقطة فقط.
-        var rows = await Db.HeadAlerts
-            .AsNoTracking()
-            .Where(a => !a.IsArchived)
-            .OrderByDescending(a => a.CreatedAt)
+        var rows = await query
+            .OrderByDescending(a => a.LastContentChangedAt)
             .ThenByDescending(a => a.Id)
-            .Take(500)
-            .Select(a => new OversightAlertRow(
+            .Skip(skip)
+            .Take(take)
+            .Select(a => new SummaryRow(
                 a.Id,
-                a.Message,
+                a.Kind,
+                a.Message.Substring(0, HeadAlertTextLimits.SqlPrefixLength),
+                a.Message.Length,
                 a.TargetType,
                 a.DocumentId,
                 a.Document != null ? a.Document.BorrowerName : null,
@@ -79,37 +158,32 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
                 a.Document != null ? a.Document.DocumentType : null,
                 a.TargetLawyerId,
                 a.TargetLawyer != null ? a.TargetLawyer.FullName : null,
-                a.Recipients.Count(),
-                a.Recipients.Count(r => !r.IsRead),
+                a.Recipients
+                    .Where(r => r.UserId == recipientUserId)
+                    .Select(r => (bool?)r.IsRead)
+                    .FirstOrDefault(),
+                includeCounters ? a.Recipients.Count() : (int?)null,
+                includeCounters ? a.Recipients.Count(r => !r.IsRead) : (int?)null,
                 a.CreatedAt,
+                a.LastContentChangedAt,
                 a.CreatedBy != null ? a.CreatedBy.FullName : null,
                 a.AppealId,
                 a.ReviewLetterId,
-                a.DelegationId))
+                a.DelegationId,
+                a.ExecutionCircuitId,
+                a.IsArchived,
+                a.ArchivedAt))
             .ToListAsync(ct);
 
-        return rows.Select(r => new HeadAlertDto(
-            r.Id,
-            r.Message,
-            r.TargetType.ToString().ToLowerInvariant(),
-            r.DocumentId,
-            OversightDocumentTitle(r),
-            r.TargetLawyerId,
-            r.TargetLawyerName,
-            null,
-            r.RecipientCount,
-            r.UnreadCount,
-            r.CreatedAt,
-            r.CreatedByName,
-            r.AppealId,
-            r.ReviewLetterId,
-            r.DelegationId)).ToList();
+        return new HeadAlertSummaryPage(rows.Select(ToSummaryDto).ToList(), totalCount);
     }
 
-    /// <summary>صف وسيط مسقط لقائمة الإشراف — نفس منطق عنوان المستند المطبق في الخدمة.</summary>
-    private sealed record OversightAlertRow(
+    /// <summary>صف وسيط مسقط في SQL — التحويلات غير القابلة للترجمة تتم في الذاكرة.</summary>
+    private sealed record SummaryRow(
         int Id,
-        string Message,
+        string Kind,
+        string MessagePrefix,
+        int MessageLength,
         HeadAlertTargetType TargetType,
         int? DocumentId,
         string? BorrowerName,
@@ -118,24 +192,64 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
         string? DocumentType,
         int? TargetLawyerId,
         string? TargetLawyerName,
-        int RecipientCount,
-        int UnreadCount,
+        bool? IsRead,
+        int? RecipientCount,
+        int? UnreadCount,
         DateTime CreatedAt,
+        DateTime LastContentChangedAt,
         string? CreatedByName,
         int? AppealId,
         int? ReviewLetterId,
-        int? DelegationId);
+        int? DelegationId,
+        int? ExecutionCircuitId,
+        bool IsArchived,
+        DateTime? ArchivedAt);
 
-    private static string OversightDocumentTitle(OversightAlertRow row)
+    private static HeadAlertSummaryDto ToSummaryDto(SummaryRow row)
     {
-        if (row.BorrowerName is null && row.BorrowerFather is null
-            && row.BorrowerFamily is null && row.DocumentType is null)
-            return row.DocumentId is null ? string.Empty : "مستند محذوف";
+        var preview = HeadAlertTextLimits.BuildPreview(row.MessagePrefix).Preview;
+        var previewLength = HeadAlertTextLimits.CountCodePoints(preview);
 
-        var parts = new[] { row.BorrowerName, row.BorrowerFather, row.BorrowerFamily }
+        return new HeadAlertSummaryDto(
+            row.Id,
+            row.Kind,
+            preview,
+            row.MessageLength,
+            row.MessageLength > previewLength,
+            row.TargetType.ToString().ToLowerInvariant(),
+            row.DocumentId,
+            DocumentTitle(row.DocumentId, row.BorrowerName, row.BorrowerFather, row.BorrowerFamily, row.DocumentType),
+            row.TargetLawyerId,
+            row.TargetLawyerName,
+            row.IsRead,
+            row.RecipientCount,
+            row.UnreadCount,
+            row.CreatedAt,
+            row.LastContentChangedAt,
+            row.CreatedByName,
+            row.AppealId,
+            row.ReviewLetterId,
+            row.DelegationId,
+            row.ExecutionCircuitId,
+            row.IsArchived,
+            row.ArchivedAt);
+    }
+
+    private static string DocumentTitle(
+        int? documentId,
+        string? borrowerName,
+        string? borrowerFather,
+        string? borrowerFamily,
+        string? documentType)
+    {
+        if (borrowerName is null && borrowerFather is null
+            && borrowerFamily is null && documentType is null)
+            return documentId is null ? string.Empty : "مستند محذوف";
+
+        var parts = new[] { borrowerName, borrowerFather, borrowerFamily }
             .Where(x => !string.IsNullOrWhiteSpace(x));
-        var name = parts.Any() ? string.Join(" ", parts) : row.DocumentType;
-        return string.IsNullOrWhiteSpace(name) ? $"مستند {row.DocumentId}" : name!;
+        var name = parts.Any() ? string.Join(" ", parts) : documentType;
+        return string.IsNullOrWhiteSpace(name) ? $"مستند {documentId}" : name!;
     }
 
     public Task<int> CountUnreadAsync(int userId, CancellationToken ct = default)
@@ -388,6 +502,17 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
         return await query
             .Where(a => !a.IsArchived && kindList.Contains(a.Kind))
             .OrderBy(a => a.Id)
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<HeadAlertRecipient>> ListRecipientsWithUserAsync(
+        int alertId, CancellationToken ct = default)
+    {
+        return await Db.HeadAlertRecipients
+            .AsNoTracking()
+            .Where(r => r.HeadAlertId == alertId)
+            .Include(r => r.User)
+            .OrderBy(r => r.Id)
             .ToListAsync(ct);
     }
 

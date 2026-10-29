@@ -79,6 +79,12 @@ public class SubHeadStatsTests : IDisposable
 
     public void Dispose() => _db.Dispose();
 
+    /// <summary>قائمة المستلَم حسب دور المستخدم — صفحة كاملة للاختبار (PR-4: <c>ListForActorAsync</c>).</summary>
+    private Task<PagedResult<HeadAlertSummaryDto>> ReceivedAlertsAsync(User user) =>
+        _alerts.ListForActorAsync(
+            new HeadAlertActor(user.Id, user.Role, user.BranchId),
+            new HeadAlertListQuery { Page = new AlertPageRequest { Page = 1, PageSize = AlertPageRequest.MaxPageSize } });
+
     private static User User(int? branchId, string username, string fullName, UserRole role = UserRole.Lawyer) => new()
     {
         Username = username,
@@ -288,15 +294,16 @@ public class SubHeadStatsTests : IDisposable
             DateTime.UtcNow, null, null, token));
 
         // قراءة بالمستلم (§8): كلٌّ يرى تنبيهه فقط.
-        var subList = await _alerts.ListForHeadAsync(sub.Id, _branch.Id);
-        Assert.Equal("sub", Assert.Single(subList).Message);
-        var headList = await _alerts.ListForHeadAsync(_head1.Id, _branch.Id);
-        Assert.Equal("head", Assert.Single(headList).Message);
+        var subList = (await ReceivedAlertsAsync(sub)).Items;
+        Assert.Equal("sub", Assert.Single(subList).MessagePreview);
+        var headList = (await ReceivedAlertsAsync(_head1)).Items;
+        Assert.Equal("head", Assert.Single(headList).MessagePreview);
 
         // تعليم القراءة يعمل للمستلم الرئيس.
         var own = Assert.Single(headList);
         Assert.False(own.IsRead);
         Assert.True(await _alerts.MarkReadAsync(own.Id, _head1.Id));
-        Assert.True(Assert.Single(await _alerts.ListForHeadAsync(_head1.Id, _branch.Id)).IsRead);
+        var afterRead = (await ReceivedAlertsAsync(_head1)).Items;
+        Assert.True(Assert.Single(afterRead).IsRead);
     }
 }

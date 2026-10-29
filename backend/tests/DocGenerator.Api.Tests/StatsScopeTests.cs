@@ -199,8 +199,9 @@ public sealed class StatsScopeTests : IsolatedApiTestBase
 
         async Task<List<int>> AlertIdsAsync(HttpClient client)
         {
-            using var doc = await (await client.GetAsync("/api/alerts")).Content.ReadFromJsonAsync<JsonDocument>();
-            return doc!.RootElement.EnumerateArray().Select(e => e.GetProperty("id").GetInt32()).ToList();
+            using var doc = await (await client.GetAsync("/api/alerts?pageSize=100")).Content.ReadFromJsonAsync<JsonDocument>();
+            return doc!.RootElement.GetProperty("items").EnumerateArray()
+                .Select(e => e.GetProperty("id").GetInt32()).ToList();
         }
 
         var subIds = await AlertIdsAsync(subClient);

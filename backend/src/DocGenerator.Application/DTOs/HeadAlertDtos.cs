@@ -14,32 +14,46 @@ public record CreateHeadAlertRequest(
     string Message);
 
 /// <summary>
-/// تنبيه لعرض المحامي أو الرئيس (IsRead لحالة القارئ نفسه — §8: قراءة بالمستلم).
-/// RecipientCount/UnreadCount عدّادات صف التنبيه.
+/// عقد **التفاصيل** الوحيد الذي يحمل <see cref="Message"/> كاملًا (الخطة §9.2) —
+/// يُعاد من <c>GET /api/alerts/{id}</c> فقط. القوائم تستخدم <see cref="HeadAlertSummaryDto"/>.
 ///
-/// ملاحظة تسلسل: هذا هو عقد **القوائم** الحالي. في **PR-4** يُستبدل بعقد القائمة
-/// `HeadAlertSummaryDto` (معاينة بلا نص كامل) وعقد التفاصيل `HeadAlertDto` الكامل،
-/// ضمن نافذة إصدار واحدة مع PR-5 (§15 — اقتران نشر PR-4/PR-5).
+/// <para><c>IsRead</c> هي حالة القارئ نفسه (أو <c>null</c> لمن ليس مستلمًا)،
+/// و<c>CanViewRecipients</c> قرار خادم (<c>CreatedById == actorUserId</c> أو مدير/مشرف)
+/// لا يملك العميل تعيينه. لا يحمل هذا العقد <c>Recipients</c> أبدًا؛ قائمة المستلمين
+/// تُطلب من <c>GET /api/alerts/{id}/recipients</c> وحدها (§9.2).</para>
+///
+/// <para><c>RecipientCount</c>/<c>UnreadCount</c> محتفظ بهما مؤقتًا من العقد السابق
+/// (ورقة انطلاق PR-4 §3.2: لا حذف في هذه المرحلة) ويُزالان في PR-6 بعد توقف الواجهة
+/// عن عقد التفاصيل القديم.</para>
 /// </summary>
 public record HeadAlertDto(
     int Id,
+    string Kind,
     string Message,
     string TargetType,
     int? DocumentId,
     string? DocumentTitle,
     int? TargetLawyerId,
     string? TargetLawyerName,
-    bool? IsRead,
-    int? RecipientCount,
-    int? UnreadCount,
-    DateTime CreatedAt,
-    string? CreatedByName,
-    /// <summary>الاستئناف المرتبط بالتنبيه — للانتقال المباشر إلى تفاصيله من الواجهة.</summary>
-    int? AppealId = null,
-    /// <summary>كتاب المطالعة المرتبط (تنبيه الرد) — للانتقال المباشر إلى صفحة الكتاب.</summary>
-    int? ReviewLetterId = null,
     /// <summary>الإنابة المرتبطة بالتنبيه (تنبيهات المرآة/المتابعة) — لشريطي نشاط بطاقتي الإنابة.</summary>
-    int? DelegationId = null);
+    int? DelegationId,
+    /// <summary>الاستئناف المرتبط بالتنبيه — للانتقال المباشر إلى تفاصيله من الواجهة.</summary>
+    int? AppealId,
+    /// <summary>كتاب المطالعة المرتبط (تنبيه الرد) — للانتقال المباشر إلى صفحة الكتاب.</summary>
+    int? ReviewLetterId,
+    int? PublicEntityId,
+    int? ExecutionCircuitId,
+    DateTime CreatedAt,
+    DateTime LastContentChangedAt,
+    bool IsArchived,
+    DateTime? ArchivedAt,
+    string? CreatedByName,
+    bool? IsRead,
+    bool CanViewRecipients,
+    /// <summary>محتفظ به مؤقتًا (PR-6) — عدّاد مستلمي الصف كما في العقد السابق.</summary>
+    int? RecipientCount = null,
+    /// <summary>محتفظ به مؤقتًا (PR-6) — عدّاد غير المقروء كما في العقد السابق.</summary>
+    int? UnreadCount = null);
 
 /// <summary>
 /// ملخّص تنبيه للقوائم — لا يحمل النص الكامل أبدًا (الخطة §9.2/§13).

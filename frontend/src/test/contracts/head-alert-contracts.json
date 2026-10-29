@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "head-alert-contracts",
+  "description": "مصدر الحقيقة لعقود التنبيهات على السلك (camelCase) وفق docs/HEAD_ALERTS_RESTRUCTURE_PLAN.md §9.2. يستهلكه اختبار الخلفية HeadAlertContractTests (يعكس أعضاء سجلات C# وPagedResult) واختبار الواجهة contract_sync_alerts.test.ts في PR-5. أي حقل جديد/محذوف/مُعاد تسميته في أي طرف يُفشل الحارس عمدًا. الحقلان retainedHeadAlertDetail محتفظ بهما مؤقتًا من عقد ما قبل PR-4 (قرار ورقة الانطلاق §3.2: لا حذف في هذه المرحلة) ويُزالان في PR-6 بعد توقف الواجهة عن عقد التفاصيل القديم.",
+  "version": 1,
+  "source": "docs/HEAD_ALERTS_RESTRUCTURE_PLAN.md §9.2",
+  "headAlertSummary": [
+    "id",
+    "kind",
+    "messagePreview",
+    "messageLength",
+    "previewTruncated",
+    "targetType",
+    "documentId",
+    "documentTitle",
+    "targetLawyerId",
+    "targetLawyerName",
+    "isRead",
+    "recipientCount",
+    "unreadCount",
+    "createdAt",
+    "lastContentChangedAt",
+    "createdByName",
+    "appealId",
+    "reviewLetterId",
+    "delegationId",
+    "executionCircuitId",
+    "isArchived",
+    "archivedAt"
+  ],
+  "headAlertDetail": [
+    "id",
+    "kind",
+    "message",
+    "targetType",
+    "documentId",
+    "documentTitle",
+    "targetLawyerId",
+    "targetLawyerName",
+    "delegationId",
+    "appealId",
+    "reviewLetterId",
+    "publicEntityId",
+    "executionCircuitId",
+    "createdAt",
+    "lastContentChangedAt",
+    "isArchived",
+    "archivedAt",
+    "createdByName",
+    "isRead",
+    "canViewRecipients"
+  ],
+  "retainedHeadAlertDetail": [
+    "recipientCount",
+    "unreadCount"
+  ],
+  "headAlertRecipient": [
+    "id",
+    "userId",
+    "fullName",
+    "role",
+    "isRead",
+    "readAt"
+  ],
+  "createHeadAlertRequest": [
+    "targetType",
+    "documentId",
+    "targetLawyerId",
+    "message"
+  ],
+  "pagedResult": [
+    "items",
+    "page",
+    "perPage",
+    "totalCount",
+    "totalPages"
+  ],
+  "forbidden": {
+    "headAlertSummary": [
+      "message",
+      "hasFullMessage"
+    ],
+    "headAlertDetail": [
+      "recipients"
+    ],
+    "pagedResult": [
+      "hasNextPage",
+      "pageSize"
+    ]
+  }
+}

@@ -9,32 +9,64 @@ namespace DocGenerator.Application.Common.Interfaces;
 /// </summary>
 public interface IHeadAlertRepository : IRepository<HeadAlert>
 {
-    /// <summary>تنبيهات المحامي المستلم، الأحدث أولاً، مع بيانات منشئ التنبيه والملف.</summary>
-    Task<List<HeadAlert>> ListForRecipientAsync(int userId, CancellationToken ct = default);
+    /// <summary>
+    /// صفحة ملخصات المستلَم: المحامي بلا قيد فرع (استلام شخصي)، ورئيس القسم/الشعبة
+    /// بفرعه (§9.3). الإسقاط في SQL بلا <c>Message</c> كامل وبلا صفوف مستلمين،
+    /// والعدد الكلي باستعلام منفصل. ترتيب حتمي <c>LastContentChangedAt DESC, Id DESC</c>.
+    /// </summary>
+    Task<HeadAlertSummaryPage> ListSummariesForRecipientAsync(
+        int userId,
+        int? branchId,
+        AlertArchiveFilter archive,
+        bool unreadOnly,
+        int? delegationId,
+        int skip,
+        int take,
+        bool includeCounters,
+        CancellationToken ct = default);
+
+    /// <summary>صفحة ملخصات الصادر (رئيس/شعبة بفرعه) — بلا نص كامل، والعدّادات محسوبة قاعديًا.</summary>
+    Task<HeadAlertSummaryPage> ListSummariesSentAsync(
+        int userId,
+        int branchId,
+        AlertArchiveFilter archive,
+        int skip,
+        int take,
+        CancellationToken ct = default);
 
     /// <summary>
-    /// تنبيهات مستلم في فرع (§8: قراءة بالمستلم لا بالفرع) — لرؤساء النطاق.
+    /// صفحة ملخصات الإشراف عبر الفروع (المدير/المشرف) — بلا سقف 500، وبلا
+    /// <c>Include(Recipients)</c>؛ حالة القراءة <c>null</c> والعدّادات محسوبة قاعديًا.
     /// </summary>
-    Task<List<HeadAlert>> ListByRecipientInBranchAsync(int userId, int branchId, CancellationToken ct = default);
+    Task<HeadAlertSummaryPage> ListSummariesForOversightAsync(
+        AlertArchiveFilter archive,
+        int? delegationId,
+        int skip,
+        int take,
+        CancellationToken ct = default);
 
     /// <summary>
-    /// ما أصدره الرئيس في فرعه (صندوق الصادر — تبويب «أرسلتها»): لا يدخل نطاق
-    /// المستلمين، فلا يؤثر في العدّادات ولا يُرحَّل عند التعاقب.
+    /// صفحة ملخصات تنبيهات إنابةٍ محددة — نشطة فقط (شريط نشاط البطاقتين)،
+    /// وحالة القراءة بحسب المستخدم. النص الكامل غير محمول.
     /// </summary>
-    Task<List<HeadAlert>> ListSentAsync(int userId, int branchId, CancellationToken ct = default);
+    Task<HeadAlertSummaryPage> ListSummariesByDelegationAsync(
+        int delegationId,
+        int userId,
+        int skip,
+        int take,
+        CancellationToken ct = default);
 
     /// <summary>
-    /// كل التنبيهات عبر الفروع لقائمة الإشراف (المدير/المشرف — قرار المالك 2026-10-16):
-    /// الأحدث أولًا بسقف 500. إسقاط عرضي — العدّادات تُحسَب في قاعدة البيانات
-    /// دون تحميل صفوف المستلمين، وحالة القراءة فارغة (مستلم-محددة أصلًا).
+    /// تنبيه مع مستلميه ومنشئه وملفه (لتعليم القراءة أو عرض التفاصيل الداخلية).
+    /// ليست مسار عرض <c>GET /{id}</c> العام بعد PR-4.
     /// </summary>
-    Task<List<HeadAlertDto>> ListForOversightAsync(CancellationToken ct = default);
+    Task<HeadAlert?> GetByIdWithRecipientsAsync(int id, CancellationToken ct = default);
 
-    /// <summary>عدد تنبيهات المحامي غير المقروءة.</summary>
+    /// <summary>عدد تنبيهات المستخدم غير المقروءة (يستبعد المؤرشف).</summary>
     Task<int> CountUnreadAsync(int userId, CancellationToken ct = default);
 
-    /// <summary>تنبيه مع مستلميه ومنشئه وملفه (لتعليم القراءة أو العرض).</summary>
-    Task<HeadAlert?> GetByIdWithRecipientsAsync(int id, CancellationToken ct = default);
+    /// <summary>مستلمو تنبيه بعينه مع بيانات المستخدم — لقائمة المستلمين.</summary>
+    Task<List<HeadAlertRecipient>> ListRecipientsWithUserAsync(int alertId, CancellationToken ct = default);
 
     /// <summary>
     /// التنبيهات النشطة التي للمستخدم فيها استلام غير مقروء — مع كل مستلميها
