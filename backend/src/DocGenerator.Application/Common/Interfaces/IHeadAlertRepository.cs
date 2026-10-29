@@ -57,8 +57,19 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
         CancellationToken ct = default);
 
     /// <summary>
-    /// تنبيه مع مستلميه ومنشئه وملفه (لتعليم القراءة أو عرض التفاصيل الداخلية).
-    /// ليست مسار عرض <c>GET /{id}</c> العام بعد PR-4.
+    /// ملخّص صفٍّ واحد بالإسقاط نفسه الذي تبنيه القوائم — لجسم <c>201</c> بعد الإنشاء
+    /// بلا تحميل <c>Recipients</c> ولا <c>Message</c> كامل، و<b>بلا <c>COUNT</c> إضافي</b>
+    /// (العدّادات تُحسب داخل الإسقاط نفسه عند طلبها). <c>null</c> إن لم يوجد التنبيه.
+    /// </summary>
+    Task<HeadAlertSummaryDto?> GetSummaryAsync(
+        int alertId,
+        int? recipientUserId,
+        bool includeCounters,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// تنبيه مع مستلميه ومنشئه وملفه — لتعليم القراءة وعرض التفاصيل حتى استبدالها
+    /// بإسقاط التفاصيل الأحادي (ورقة إصلاح PR-4 §6، المرحلة 2).
     /// </summary>
     Task<HeadAlert?> GetByIdWithRecipientsAsync(int id, CancellationToken ct = default);
 
@@ -93,9 +104,6 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
     /// </summary>
     Task<List<(int BranchId, List<User> Heads)>> ListAllActiveHeadsGroupedByBranchAsync(CancellationToken ct = default);
 
-    /// <summary>كل تنبيهات الإنابة المحددة (لتصفيتها عند اعتمادها/إتمامها أو حذفها).</summary>
-    Task<List<HeadAlert>> ListByDelegationAsync(int delegationId, CancellationToken ct = default);
-
     /// <summary>أحدث تنبيه للإنابة (لتحديث رسالته عند تعديل الإنابة).</summary>
     Task<HeadAlert?> FindLatestByDelegationAsync(int delegationId, CancellationToken ct = default);
 
@@ -106,9 +114,6 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
     /// </summary>
     Task<HeadAlert?> FindLatestByDelegationAndRecipientAsync(
         int delegationId, int recipientLawyerId, CancellationToken ct = default);
-
-    /// <summary>تنبيهات الإنابة مع مستلميها ومنشئيها (لعرض «معلومات الملف المنيب»/«تشعبات الملف»).</summary>
-    Task<List<HeadAlert>> ListByDelegationWithRecipientsAsync(int delegationId, CancellationToken ct = default);
 
     /// <summary>كل تنبيهات الاستئناف المحدد (لتصفية تنبيه «اختيار المحامي» عند الإسناد).</summary>
     Task<List<HeadAlert>> ListByAppealAsync(int appealId, CancellationToken ct = default);
@@ -133,9 +138,6 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
     /// </summary>
     Task<List<HeadAlert>> ListActiveByScopeAndKindsAsync(
         int scopeId, HeadAlertScopeKind scopeKind, IReadOnlySet<string> kinds, CancellationToken ct = default);
-
-    /// <summary>مستلمو تنبيه بعينه مع حالة قراءتهم (نافذة «المستلمون»).</summary>
-    Task<List<HeadAlertRecipient>> ListRecipientsAsync(int alertId, CancellationToken ct = default);
 
     /// <summary>
     /// أرشفة (لا حذف) التنبيهات النشطة لدورة ضمن مجموعة أنواع صريحة، مع استثناء

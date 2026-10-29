@@ -338,10 +338,8 @@ public sealed class HeadAlertService : IHeadAlertService
             Recipients = recipients.Select(u => new HeadAlertRecipient { UserId = u.Id }).ToList(),
         };
 
-        // جسم 201 (D3) يجب أن يطابق صفَّ القائمة لاحقًا حقلًا بحقل: الكيان المُنشأ
-        // لا يحمل Document/CreatedBy/TargetLawyer محمّلة، فلو حُوّل مباشرة لعاد
-        // documentTitle خطأً «مستند محذوف» وcreatedByName فارغًا. نعيد القراءة
-        // بالتحميلات نفسها التي يستعملها مسار التفاصيل/القوائم — **داخل المعاملة**
+        // جسم 201 (D3) يجب أن يطابق صفَّ القائمة لاحقًا حقلًا بحقل، ولذلك يُعاد قراءته
+        // بالإسقاط الواحد نفسه الذي تبنيه القوائم (لا تحويل الكيان)، **داخل المعاملة**
         // كي لا يبقى صفٌّ مثبَّت يعقبه 500 إن فشل الجلب (فيتكرر الإنشاء من العميل).
         var created = await _tx.RunAsync(async token =>
         {
@@ -352,11 +350,12 @@ public sealed class HeadAlertService : IHeadAlertService
                     + HeadAlertTextLimits.PreviewForAudit(message),
                 ct: token);
 
-            return await _alerts.GetByIdWithRecipientsAsync(alert.Id, token)
-                ?? throw new InvalidOperationException("تعذّر جلب التنبيه بعد إنشائه");
+            return await _alerts.GetSummaryAsync(
+                    alert.Id, recipientUserId: null, includeCounters: true, token)
+                ?? throw new InvalidOperationException("تعذّر جلب ملخص التنبيه بعد إنشائه");
         }, ct);
 
-        return ToSummaryDto(created, recipientUserId: null, includeCounters: true);
+        return created;
     }
 
     public async Task<bool> MarkReadAsync(int alertId, int userId, CancellationToken ct = default)
@@ -989,51 +988,13 @@ public sealed class HeadAlertService : IHeadAlertService
         _ => throw new ArgumentException("نوع التنبيه غير صالح"),
     };
 
-    private static string DocumentTitle(HeadAlert alert)
-    {
-        var doc = alert.Document;
-        if (doc is null)
-            return alert.DocumentId is null ? string.Empty : "مستند محذوف";
-
-        var parts = new[] { doc.BorrowerName, doc.BorrowerFather, doc.BorrowerFamily }
-            .Where(x => !string.IsNullOrWhiteSpace(x));
-        var name = parts.Any() ? string.Join(" ", parts) : doc.DocumentType;
-        return string.IsNullOrWhiteSpace(name) ? $"مستند {doc.Id}" : name;
-    }
-
-    private static HeadAlertSummaryDto ToSummaryDto(
-        HeadAlert a, int? recipientUserId, bool includeCounters)
-    {
-        var messageLength = HeadAlertTextLimits.CountCodePoints(a.Message);
-        var preview = HeadAlertTextLimits.BuildPreview(a.Message).Preview;
-        var previewLength = HeadAlertTextLimits.CountCodePoints(preview);
-
-        return new HeadAlertSummaryDto(
-            a.Id,
-            a.Kind,
-            preview,
-            messageLength,
-            messageLength > previewLength,
-            a.TargetType.ToString().ToLowerInvariant(),
-            a.DocumentId,
-            DocumentTitle(a),
-            a.TargetLawyerId,
-            a.TargetLawyer?.FullName,
-            recipientUserId is null
-                ? null
-                : a.Recipients.FirstOrDefault(r => r.UserId == recipientUserId.Value)?.IsRead,
-            includeCounters ? a.Recipients.Count : null,
-            includeCounters ? a.Recipients.Count(r => !r.IsRead) : null,
-            a.CreatedAt,
-            a.LastContentChangedAt,
-            a.CreatedBy?.FullName,
-            a.AppealId,
-            a.ReviewLetterId,
-            a.DelegationId,
-            a.ExecutionCircuitId,
-            a.IsArchived,
-            a.ArchivedAt);
-    }
+    private static string DocumentTitle(HeadAlert alert) =>
+        HeadAlertTitle.Build(
+            alert.DocumentId,
+            alert.Document?.BorrowerName,
+            alert.Document?.BorrowerFather,
+            alert.Document?.BorrowerFamily,
+            alert.Document?.DocumentType);
 
     private static PagedResult<HeadAlertSummaryDto> ToPagedResult(
         HeadAlertSummaryPage page, AlertPageRequest request) => new()

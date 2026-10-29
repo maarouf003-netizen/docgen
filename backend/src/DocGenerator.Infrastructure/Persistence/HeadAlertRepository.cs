@@ -1,7 +1,6 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
-using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -42,6 +41,26 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
 
         return await ProjectSummariesAsync(
             ApplyArchiveFilter(query, archive), userId, includeCounters, skip, take, ct);
+    }
+
+    /// <summary>
+    /// ملخّص صفٍّ واحد بالإسقاط نفسه الذي تبنيه القوائم (بلا <c>Include</c> ولا
+    /// <c>Message</c> كامل)، ويُستعمل لجسم <c>201</c> بعد الإنشاء كي يطابق
+    /// ما سيعيده صفُّ القائمة لاحقًا حقلًا بحقل.
+    /// </summary>
+    public async Task<HeadAlertSummaryDto?> GetSummaryAsync(
+        int alertId,
+        int? recipientUserId,
+        bool includeCounters,
+        CancellationToken ct = default)
+    {
+        var row = await SummaryRows(
+                Db.HeadAlerts.AsNoTracking().Where(a => a.Id == alertId),
+                recipientUserId,
+                includeCounters)
+            .FirstOrDefaultAsync(ct);
+
+        return row is null ? null : ToSummaryDto(row);
     }
 
     public Task<HeadAlertSummaryPage> ListSummariesSentAsync(
@@ -140,43 +159,55 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
         // COUNT منفصل بنفس الفلاتر قبل Skip/Take — لا Count() بعد الصفحة (§13).
         var totalCount = await query.CountAsync(ct);
 
-        var rows = await query
-            .OrderByDescending(a => a.LastContentChangedAt)
-            .ThenByDescending(a => a.Id)
-            .Skip(skip)
-            .Take(take)
-            .Select(a => new SummaryRow(
-                a.Id,
-                a.Kind,
-                a.Message.Substring(0, HeadAlertTextLimits.SqlPrefixLength),
-                a.Message.Length,
-                a.TargetType,
-                a.DocumentId,
-                a.Document != null ? a.Document.BorrowerName : null,
-                a.Document != null ? a.Document.BorrowerFather : null,
-                a.Document != null ? a.Document.BorrowerFamily : null,
-                a.Document != null ? a.Document.DocumentType : null,
-                a.TargetLawyerId,
-                a.TargetLawyer != null ? a.TargetLawyer.FullName : null,
-                a.Recipients
-                    .Where(r => r.UserId == recipientUserId)
-                    .Select(r => (bool?)r.IsRead)
-                    .FirstOrDefault(),
-                includeCounters ? a.Recipients.Count() : (int?)null,
-                includeCounters ? a.Recipients.Count(r => !r.IsRead) : (int?)null,
-                a.CreatedAt,
-                a.LastContentChangedAt,
-                a.CreatedBy != null ? a.CreatedBy.FullName : null,
-                a.AppealId,
-                a.ReviewLetterId,
-                a.DelegationId,
-                a.ExecutionCircuitId,
-                a.IsArchived,
-                a.ArchivedAt))
+        var rows = await SummaryRows(
+                query
+                    .OrderByDescending(a => a.LastContentChangedAt)
+                    .ThenByDescending(a => a.Id)
+                    .Skip(skip)
+                    .Take(take),
+                recipientUserId,
+                includeCounters)
             .ToListAsync(ct);
 
         return new HeadAlertSummaryPage(rows.Select(ToSummaryDto).ToList(), totalCount);
     }
+
+    /// <summary>
+    /// مصدر الإسقاط الواحد لكل الملخصات (القوائم وقراءة صفٍّ منفرد): Select على
+    /// SQL ببادئة النص و<code>length()</code> والعدّادات — لا كيانات ولا مستلمين محمَّلين.
+    /// </summary>
+    private static IQueryable<SummaryRow> SummaryRows(
+        IQueryable<HeadAlert> query,
+        int? recipientUserId,
+        bool includeCounters) =>
+        query.Select(a => new SummaryRow(
+            a.Id,
+            a.Kind,
+            a.Message.Substring(0, HeadAlertTextLimits.SqlPrefixLength),
+            a.Message.Length,
+            a.TargetType,
+            a.DocumentId,
+            a.Document != null ? a.Document.BorrowerName : null,
+            a.Document != null ? a.Document.BorrowerFather : null,
+            a.Document != null ? a.Document.BorrowerFamily : null,
+            a.Document != null ? a.Document.DocumentType : null,
+            a.TargetLawyerId,
+            a.TargetLawyer != null ? a.TargetLawyer.FullName : null,
+            a.Recipients
+                .Where(r => r.UserId == recipientUserId)
+                .Select(r => (bool?)r.IsRead)
+                .FirstOrDefault(),
+            includeCounters ? a.Recipients.Count() : (int?)null,
+            includeCounters ? a.Recipients.Count(r => !r.IsRead) : (int?)null,
+            a.CreatedAt,
+            a.LastContentChangedAt,
+            a.CreatedBy != null ? a.CreatedBy.FullName : null,
+            a.AppealId,
+            a.ReviewLetterId,
+            a.DelegationId,
+            a.ExecutionCircuitId,
+            a.IsArchived,
+            a.ArchivedAt));
 
     /// <summary>صف وسيط مسقط في SQL — التحويلات غير القابلة للترجمة تتم في الذاكرة.</summary>
     private sealed record SummaryRow(
@@ -218,7 +249,8 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             row.MessageLength > previewLength,
             row.TargetType.ToString().ToLowerInvariant(),
             row.DocumentId,
-            DocumentTitle(row.DocumentId, row.BorrowerName, row.BorrowerFather, row.BorrowerFamily, row.DocumentType),
+            HeadAlertTitle.Build(
+                row.DocumentId, row.BorrowerName, row.BorrowerFather, row.BorrowerFamily, row.DocumentType),
             row.TargetLawyerId,
             row.TargetLawyerName,
             row.IsRead,
@@ -233,23 +265,6 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             row.ExecutionCircuitId,
             row.IsArchived,
             row.ArchivedAt);
-    }
-
-    private static string DocumentTitle(
-        int? documentId,
-        string? borrowerName,
-        string? borrowerFather,
-        string? borrowerFamily,
-        string? documentType)
-    {
-        if (borrowerName is null && borrowerFather is null
-            && borrowerFamily is null && documentType is null)
-            return documentId is null ? string.Empty : "مستند محذوف";
-
-        var parts = new[] { borrowerName, borrowerFather, borrowerFamily }
-            .Where(x => !string.IsNullOrWhiteSpace(x));
-        var name = parts.Any() ? string.Join(" ", parts) : documentType;
-        return string.IsNullOrWhiteSpace(name) ? $"مستند {documentId}" : name!;
     }
 
     public Task<int> CountUnreadAsync(int userId, CancellationToken ct = default)
@@ -355,16 +370,6 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
         return result;
     }
 
-    public async Task<List<HeadAlert>> ListByDelegationAsync(int delegationId, CancellationToken ct = default)
-    {
-        // تتبُّع مفعّل: تُحذف هذه الكيانات عبر Remove فتُعاد للمُغيّر ذاتها (لا نسخًا منفصلة
-        // تصطدم مع النسخ المتتبعة في ChangeTracker).
-        return await Db.HeadAlerts
-            .Where(a => a.DelegationId == delegationId)
-            .OrderByDescending(a => a.CreatedAt)
-            .ToListAsync(ct);
-    }
-
     public async Task<HeadAlert?> FindLatestByDelegationAsync(int delegationId, CancellationToken ct = default)
     {
         return await Db.HeadAlerts
@@ -384,21 +389,10 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             .FirstOrDefaultAsync(ct);
     }
 
-    public async Task<List<HeadAlert>> ListByDelegationWithRecipientsAsync(int delegationId, CancellationToken ct = default)
-    {
-        return await Db.HeadAlerts
-            .AsNoTracking()
-            .Where(a => a.DelegationId == delegationId && !a.IsArchived)
-            .OrderByDescending(a => a.CreatedAt)
-            .Include(a => a.CreatedBy)
-            .Include(a => a.TargetLawyer)
-            .Include(a => a.Recipients)
-            .ToListAsync(ct);
-    }
-
     public async Task<List<HeadAlert>> ListByAppealAsync(int appealId, CancellationToken ct = default)
     {
-        // تتبُّع مفعّل: تُحذف هذه الكيانات عبر Remove فتُعاد للمُغيّر ذاتها (نمط ListByDelegationAsync).
+        // تتبُّع مفعّل: تُحذف هذه الكيانات عبر Remove فتُعاد للمُغيّر ذاتها (لا نسخًا منفصلة
+        // تصطدم مع النسخ المتتبعة في ChangeTracker).
         return await Db.HeadAlerts
             .Where(a => a.AppealId == appealId)
             .OrderByDescending(a => a.CreatedAt)
@@ -512,15 +506,6 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             .AsNoTracking()
             .Where(r => r.HeadAlertId == alertId)
             .Include(r => r.User)
-            .OrderBy(r => r.Id)
-            .ToListAsync(ct);
-    }
-
-    public async Task<List<HeadAlertRecipient>> ListRecipientsAsync(int alertId, CancellationToken ct = default)
-    {
-        return await Db.HeadAlertRecipients
-            .AsNoTracking()
-            .Where(r => r.HeadAlertId == alertId)
             .OrderBy(r => r.Id)
             .ToListAsync(ct);
     }
