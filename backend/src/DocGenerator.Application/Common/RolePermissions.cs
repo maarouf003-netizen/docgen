@@ -80,20 +80,25 @@ public static class RolePermissions
     public static bool CanReceiveAlerts(UserRole role) =>
         role == UserRole.Lawyer || IsHeadOrSubHead(role);
 
-    /// <summary>قراءة إشرافية على التنبيهات (القوائم/التفاصيل/المستلمون) — مدير/مشرف.</summary>
-    public static bool CanReadAllAlerts(UserRole role) => role is UserRole.Manager or UserRole.Admin;
+    /// <summary>
+    /// قراءة إشرافية على التنبيهات (القوائم/التفاصيل/المستلمون) — مدير/مشرف.
+    /// تفوّض إلى <see cref="HasFullAccess"/> كي لا تتكرر قاعدة الدور في تعريفين
+    /// ينحرفان عند أول تعديل (مراجعة المرحلة 3 `ح‑14`).
+    /// </summary>
+    public static bool CanReadAllAlerts(UserRole role) => HasFullAccess(role);
 
     /// <summary>
-    /// قراءة تنبيهات إنابةٍ معيّنة — محامٍ فقط، وطرفٌ فيها (الطرفية تُفحص في الخدمة
-    /// عبر <c>DelegationParties.IsParty</c>، فهذه دلالة دور لا دلالة نطاق).
+    /// قراءة تنبيهات إنابةٍ معيّنة — محامٍ فقط (تفويض إلى <see cref="IsLawyer"/>)،
+    /// وطرفٌ فيها (الطرفية تُفحص في الخدمة عبر <c>DelegationParties.IsParty</c>،
+    /// فهذه دلالة دور لا دلالة نطاق).
     /// </summary>
-    public static bool CanReadDelegationAlerts(UserRole role) => role == UserRole.Lawyer;
+    public static bool CanReadDelegationAlerts(UserRole role) => IsLawyer(role);
 
     /// <summary>
     /// تسطير/تعديل/حذف الإنابات على ملف يملكه المحامي (الملف المنيب) — المحامي فقط،
-    /// وقبل اعتماد رئيس القسم.
+    /// وقبل اعتماد رئيس القسم (تفويض إلى <see cref="IsLawyer"/>).
     /// </summary>
-    public static bool CanManageDelegations(UserRole role) => role == UserRole.Lawyer;
+    public static bool CanManageDelegations(UserRole role) => IsLawyer(role);
 
     /// <summary>
     /// اعتماد الإنابات واختيار المحامي المختص (نافذة «طلبات الإنابة») — رئيس

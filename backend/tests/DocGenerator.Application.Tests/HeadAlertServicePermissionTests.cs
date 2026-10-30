@@ -305,6 +305,18 @@ public class HeadAlertServicePermissionTests : IDisposable
                 new CreateHeadAlertRequest("branch", null, null, "رسالة"), actor, "head_a"));
     }
 
+    [Fact]
+    public async Task Create_DatabaseRoleMismatch_IsRejected_AsDefenseInDepth()
+    {
+        // رمز بدور رئيس لحساب صار محاميًا في القاعدة (تعديل مباشر بلا رفع TokenVersion):
+        // فحص دور التوكن يمرّ، ودفاع القاعدة يرفض — لا يُصدر محامٍ تنبيهًا باسم رئيس.
+        var actor = new HeadAlertActor(_lawyerA.Id, UserRole.Head, _branchA);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(
+                new CreateHeadAlertRequest("branch", null, null, "رسالة"), actor, "law_a"));
+    }
+
     [Theory]
     [InlineData(UserRole.Manager)]
     [InlineData(UserRole.Admin)]

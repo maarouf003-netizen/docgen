@@ -76,11 +76,14 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
         int alertId, int actorUserId, CancellationToken ct = default);
 
     /// <summary>
-    /// صف استلام مستخدمٍ بعينه على تنبيه — <b>متتبَّع</b> لأن تعليم القراءة يعدّله
-    /// ويحفظه داخل معاملة الخدمة. <c>null</c> إن لم يكن مستلمًا.
+    /// تعليم صف استلام المستخدم مقروءًا **ذرّيًا**: <c>UPDATE … WHERE IsRead = false</c>
+    /// ثم فحص وجود الصف عند عدم التحديث (لتمييز «مقروء سلفًا» من «غير مستلم»).
+    /// يعيد <c>false</c> فقط إن لم يكن المستخدم مستلمًا، وإعادة التعليم لا تغيّر
+    /// <c>ReadAt</c> المحفوظ (idempotent). بلا كيان متتبَّع ولا معاملة في الخدمة،
+    /// فلا نافذة <c>TOCTOU</c> ولا تعارض مع إعادة محاولة مزوّد القاعدة.
     /// </summary>
-    Task<HeadAlertRecipient?> GetRecipientAsync(
-        int alertId, int userId, CancellationToken ct = default);
+    Task<bool> TryMarkReadAsync(
+        int alertId, int userId, DateTime readAt, CancellationToken ct = default);
 
     /// <summary>عدد تنبيهات المستخدم غير المقروءة (يستبعد المؤرشف).</summary>
     Task<int> CountUnreadAsync(int userId, CancellationToken ct = default);

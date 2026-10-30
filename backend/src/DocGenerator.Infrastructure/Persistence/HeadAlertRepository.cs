@@ -319,10 +319,24 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             .FirstOrDefaultAsync(ct);
     }
 
-    public Task<HeadAlertRecipient?> GetRecipientAsync(
-        int alertId, int userId, CancellationToken ct = default)
-        => Db.HeadAlertRecipients
-            .FirstOrDefaultAsync(r => r.HeadAlertId == alertId && r.UserId == userId, ct);
+    public async Task<bool> TryMarkReadAsync(
+        int alertId, int userId, DateTime readAt, CancellationToken ct = default)
+    {
+        // تعبير SET واحد يترجم إلى UPDATE ذرّي (SQLite/PostgreSQL) ويترك أي كيان
+        // متتبَّع في السياق على حاله — لا يُعتمد عليه في قرار القراءة.
+        var updated = await Db.HeadAlertRecipients
+            .Where(r => r.HeadAlertId == alertId && r.UserId == userId && !r.IsRead)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(r => r.IsRead, true)
+                .SetProperty(r => r.ReadAt, readAt), ct);
+        if (updated > 0)
+            return true;
+
+        // صفر صفوف = إما مقروء سلفًا (نجاح idempotent) أو غير مستلم (404) — الفرق
+        // يقتضي فحص الوجود، والسباق الوحيد المتبقي هو حذف الصف بينهما (يُرد 404).
+        return await Db.HeadAlertRecipients
+            .AnyAsync(r => r.HeadAlertId == alertId && r.UserId == userId, ct);
+    }
 
     public async Task<List<HeadAlert>> ListActiveUnreadByRecipientWithRecipientsAsync(
         int userId, CancellationToken ct = default)

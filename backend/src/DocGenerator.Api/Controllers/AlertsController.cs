@@ -160,8 +160,8 @@ public class AlertsController : ControllerBase
         try
         {
             // قرار D1: الافتراضي للشريط صفحة واحدة بحد أقصى 100 — والترقيم صارم.
+            // التحقق نفسه في الخدمة (بعد فحص الدور) كي لا يسبق 400 رفضَ الصلاحية.
             var request = BuildPageRequest(page, pageSize, AlertPageRequest.MaxPageSize);
-            request.Validate();
             return Ok(await _alerts.ListByDelegationAsync(delegationId, Actor, request, ct));
         }
         catch (ArgumentException e)

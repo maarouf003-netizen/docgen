@@ -449,7 +449,10 @@ public class HeadAlertServiceTests : IDisposable
 
         Assert.True(await _service.MarkReadAsync(created.Id, ActorFor(_lawyer1)));
 
+        // قراءة حالة القاعدة فعليًا (لا الكيانات المتتبَّعة من الإنشاء): التعليم صار
+        // تحديثًا ذرّيًا في المستودع لا يمرّ بمتتبِّع التغييرات.
         var rows = await _db.HeadAlertRecipients
+            .AsNoTracking()
             .Where(r => r.HeadAlertId == created.Id)
             .ToListAsync();
         var mine = Assert.Single(rows, r => r.UserId == _lawyer1.Id);

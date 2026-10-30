@@ -711,17 +711,31 @@ public class AlertsIntegrationTests
         {
             var response = await _factory.AuthorizedClient(username).GetAsync("/api/alerts/sent");
             Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+
+            // التفويض يسبق التحقق من الشكل: ترقيم غير صالح لا يحوّل 403 إلى 400
+            // (مراجعة المرحلة 3 `ح‑13`).
+            Assert.Equal(HttpStatusCode.Forbidden,
+                (await _factory.AuthorizedClient(username)
+                    .GetAsync("/api/alerts/sent?page=0")).StatusCode);
         }
     }
 
     [Fact]
     public async Task List_ManagerOrAdminUnreadOnly_BadRequest()
     {
+        const string expected = "خيار «غير المقروء» غير متاح للمدير/المشرف";
+
         foreach (var username in new[] { "manager", "admin" })
         {
-            var response = await _factory.AuthorizedClient(username).GetAsync("/api/alerts?unreadOnly=true");
+            // الترقيم غير الصالح لا يسبق رسالة «غير المقروء» (تفويض ← قاعدة ← شكل).
+            var response = await _factory.AuthorizedClient(username)
+                .GetAsync("/api/alerts?unreadOnly=true&page=0");
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-            Assert.Contains("غير المقروء", await response.Content.ReadAsStringAsync());
+
+            // النص عربي نظيف: لا تُلحق رسالة `ArgumentException` اسم المعامل الإنجليزي
+            // (مراجعة المرحلة 3 `ح‑12`).
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Equal(expected, json.RootElement.GetProperty("message").GetString());
         }
     }
 
@@ -794,7 +808,18 @@ public class AlertsIntegrationTests
             Assert.Equal(HttpStatusCode.Forbidden,
                 (await _factory.AuthorizedClient(username)
                     .GetAsync($"/api/alerts/by-delegation/{delegationId}")).StatusCode);
+
+            // الدور غير المخوّل يبقى 403 حتى مع ترقيم غير صالح: الدور ← الشكل ← الطرفية.
+            Assert.Equal(HttpStatusCode.Forbidden,
+                (await _factory.AuthorizedClient(username)
+                    .GetAsync($"/api/alerts/by-delegation/{delegationId}?page=0")).StatusCode);
         }
+
+        // محامٍ غير طرف + ترقيم غير صالح ⇒ 400: التحقق من الشكل يسبق الطرفية عمدًا
+        // (عقد `InvalidPaging_IsRejected`، الخطة §5 — لا تسريب نتيجة القائمة).
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _factory.AuthorizedClient(outsider.Username)
+                .GetAsync($"/api/alerts/by-delegation/{delegationId}?page=0")).StatusCode);
     }
 
     [Fact]
@@ -807,6 +832,10 @@ public class AlertsIntegrationTests
         // الحالة غير قابلة للتجسيد عبر EF (قيد `CK_Users_BranchRequiredForBranchRoles`)،
         // فتُسكّ جلسة شاذة صريحة من نسخة كيان حقيقي بلا فرع — نفس نمط
         // `ClientForUser` في حراس النقاط الأخرى، والتحقق من `TokenVersion` يبقى قائمًا.
+        //
+        // حدّ التغطية (مراجعة المرحلة 3 `ح‑17`): هذا يُثبت حارس **التوكن** في الخدمة؛
+        // فرع «دفاع القاعدة» (`user.BranchId != branchId`) لا يُبلَغ هنا لأن
+        // `RequireBranchForWrite` يرمي قبله — ويُغطّى باختبار تعارض الدور في الوحدة.
         User branchlessHead;
         using (var scope = _factory.Services.CreateScope())
         {
@@ -837,6 +866,13 @@ public class AlertsIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, create.StatusCode);
 
         foreach (var path in new[] { "/api/alerts", "/api/alerts/sent", "/api/alerts/unread-count" })
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync(path)).StatusCode);
+        }
+
+        // التفويض يسبق التحقق من الشكل: حتى الترقيم غير الصالح يبقى 403 لرئيس بلا فرع
+        // (مراجعة المرحلة 3 `ح‑13` — كانت الخدمة تتحقق من الترقيم أولًا).
+        foreach (var path in new[] { "/api/alerts?page=0", "/api/alerts/sent?pageSize=101" })
         {
             Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync(path)).StatusCode);
         }

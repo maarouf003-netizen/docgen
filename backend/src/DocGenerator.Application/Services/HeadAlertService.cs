@@ -177,14 +177,22 @@ public sealed class HeadAlertService : IHeadAlertService
     {
         ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(query);
+
+        // التفويض قبل التحقق من الشكل (عقد ما قبل توحيد الصلاحيات): دور غير مخوّل أو
+        // رئيس بلا فرع يُرفض 403 حتى مع ترقيم غير صالح، و«غير المقروء» للمدير/المشرف
+        // 400 برسالته الخاصة قبل أي تحقق آخر — لا انعكاس 403/400 غير مقصود.
+        if (!actor.IsManagerOrAdmin && !actor.IsLawyer && !actor.IsHeadOrSubHead)
+            throw new UnauthorizedAccessException("الدور غير مخوّل لقوائم التنبيهات");
+
+        if (actor.IsManagerOrAdmin && query.UnreadOnly)
+            throw new ArgumentException("خيار «غير المقروء» غير متاح للمدير/المشرف");
+
+        var branchId = actor.IsHeadOrSubHead ? RequireBranch(actor) : (int?)null;
+
         query.Page.Validate();
 
         if (actor.IsManagerOrAdmin)
         {
-            // الإشراف لا يدعم «غير المقروء»: الحالة مستلم-محددة لا إشرافية (§9.1).
-            if (query.UnreadOnly)
-                throw new ArgumentException("خيار «غير المقروء» غير متاح للمدير/المشرف", nameof(query));
-
             var page = await _alerts.ListSummariesForOversightAsync(
                 query.Archive, query.DelegationId, query.Page.Skip, query.Page.PageSize, ct);
             return ToPagedResult(page, query.Page);
@@ -205,23 +213,17 @@ public sealed class HeadAlertService : IHeadAlertService
             return ToPagedResult(page, query.Page);
         }
 
-        if (actor.IsHeadOrSubHead)
-        {
-            var branchId = RequireBranch(actor);
-            var page = await _alerts.ListSummariesForRecipientAsync(
-                actor.UserId,
-                branchId,
-                query.Archive,
-                query.UnreadOnly,
-                query.DelegationId,
-                query.Page.Skip,
-                query.Page.PageSize,
-                includeCounters: true,
-                ct);
-            return ToPagedResult(page, query.Page);
-        }
-
-        throw new UnauthorizedAccessException("الدور غير مخوّل لقوائم التنبيهات");
+        var headPage = await _alerts.ListSummariesForRecipientAsync(
+            actor.UserId,
+            branchId,
+            query.Archive,
+            query.UnreadOnly,
+            query.DelegationId,
+            query.Page.Skip,
+            query.Page.PageSize,
+            includeCounters: true,
+            ct);
+        return ToPagedResult(headPage, query.Page);
     }
 
     public async Task<PagedResult<HeadAlertSummaryDto>> ListSentAsync(
@@ -229,12 +231,16 @@ public sealed class HeadAlertService : IHeadAlertService
     {
         ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(page);
-        page.Validate();
 
+        // الدور والفرع قبل التحقق من الشكل: مدير/غير رئيس ⇒ 403، ورئيس بلا فرع ⇒ 403
+        // (عقد ما قبل التوحيد)، ثم الترقيم غير الصالح ⇒ 400.
         if (!actor.IsHeadOrSubHead)
             throw new UnauthorizedAccessException("قائمة الصادر مخصصة لرئيس القسم/الشعبة");
 
         var branchId = RequireBranch(actor);
+
+        page.Validate();
+
         var result = await _alerts.ListSummariesSentAsync(
             actor.UserId, branchId, archive, page.Skip, page.PageSize, ct);
         return ToPagedResult(result, page);
@@ -245,13 +251,15 @@ public sealed class HeadAlertService : IHeadAlertService
     {
         ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(page);
-        page.Validate();
 
         // الدور ثم الطرفية — قرار الخدمة وحده (D8/`ح‑1`): المستودع لا يقيّد النتيجة
         // بالمستخدم، فلو بقي الفحص في المتحكم لكان أي متصل آخر يقرأ تنبيهات إنابةٍ
-        // لا يخصّه. الترتيب هنا يحفظ عقد التحقق من الترقيم أولًا.
+        // لا تخصّه. الترتيب: دور (403) ← ترقيم (400) ← طرفية (403)، فالدور غير المخوّل
+        // لا يتلقى 400 عن شكل طلب قبل رفض صلاحيته، ويبقى عقد التحقق من الترقيم محفوظًا.
         if (!RolePermissions.CanReadDelegationAlerts(actor.Role))
             throw new UnauthorizedAccessException("تنبيهات الإنابة متاحة لطرفها المحامي فقط");
+
+        page.Validate();
 
         var delegation = await _delegations.GetByIdWithDetailsAsync(delegationId, ct);
         if (delegation is null || !DelegationParties.IsParty(delegation, actor.UserId))
@@ -336,10 +344,12 @@ public sealed class HeadAlertService : IHeadAlertService
         // D11: الكتابة بلا فرع ⇒ 400 (عقد `POST` القائم) لا 403.
         var branchId = RequireBranchForWrite(actor);
 
-        // تحقّق القاعدة يبقى دفاعًا ثانيًا: حساب معطّل أو رمز بفرع متقادم يُرفض 400
-        // كما كان قبل نقل الصلاحية (لا تغيير عقد).
+        // تحقّق القاعدة يبقى دفاعًا ثانيًا: حساب معطّل، أو صار دوره غير مخوّل، أو رمز
+        // بفرع متقادم — يُرفض 400 كما كان قبل نقل الصلاحية (لا تغيير عقد).
         var user = await _users.GetByIdAsync(actor.UserId, ct);
-        if (user is null || !user.IsActive || user.BranchId != branchId)
+        if (user is null || !user.IsActive
+            || !RolePermissions.CanCreateAlerts(user.Role)
+            || user.BranchId != branchId)
             throw new ArgumentException("الإصدار اليدوي مخصص لرئيس قسم/شعبة مفعّل في فرعه");
 
         var rawMessage = request.Message?.Trim() ?? string.Empty;
@@ -405,23 +415,11 @@ public sealed class HeadAlertService : IHeadAlertService
         if (!RolePermissions.CanReceiveAlerts(actor.Role))
             throw new UnauthorizedAccessException("تعليم القراءة مخصص للمستلمين (محامٍ أو رئيس نطاق)");
 
-        // القراءة والحفظ داخل المعاملة نفسها (مراجعة PR-4 `ح‑2`): القراءة خارجها كانت
-        // تفتح نافذة TOCTOU تُنتج DbUpdateConcurrencyException (500) عند حذف الصف بينهما.
-        return await _tx.RunAsync(async token =>
-        {
-            // صف الاستلام وحده (متتبَّع) — لا تحميل التنبيه ولا بقية المستلمين.
-            var recipient = await _alerts.GetRecipientAsync(alertId, actor.UserId, token);
-            if (recipient is null)
-                return false;
-
-            if (recipient.IsRead)
-                return true;
-
-            recipient.IsRead = true;
-            recipient.ReadAt = DateTime.UtcNow;
-            await _uow.SaveChangesAsync(token);
-            return true;
-        }, ct);
+        // تعليم ذرّي في المستودع (مراجعة PR-4: `ح‑2` ثم ملاحظة المرحلة 3 `ح‑10`):
+        // قراءة ثم حفظ داخل معاملة الخدمة كانت تُبقي نافذة TOCTOU، وتُبطل ضمان إعادة
+        // المحاولة لأن الكيان المتتبَّع يختصر الحفظ بعد فشل عابر. التحديث الشرطي
+        // الواحد يُغلق النافذتين، ويُبقي إعادة التعليم idempotent (لا يمسّ `ReadAt`).
+        return await _alerts.TryMarkReadAsync(alertId, actor.UserId, DateTime.UtcNow, ct);
     }
 
     /// <summary>
