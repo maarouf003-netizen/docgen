@@ -53,6 +53,7 @@ public class AppealTransferAllConcurrencyTests : IDisposable
             new DocumentRepository(db),
             new UserRepository(db),
             new Repository<Branch>(db),
+            new DelegationRepository(db),
             uow, tx, audit);
         return new DocumentAppealService(
             new AppealRepository(db),

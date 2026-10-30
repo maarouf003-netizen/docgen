@@ -5072,6 +5072,7 @@ public class ConsiderDelegationExecutedTests : IDisposable
             new DocumentRepository(_db),
             new UserRepository(_db),
             new Repository<Branch>(_db),
+            new DelegationRepository(_db),
             new UnitOfWork(_db),
             _tx,
             _audit);

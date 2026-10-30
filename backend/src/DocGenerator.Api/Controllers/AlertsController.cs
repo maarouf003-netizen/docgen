@@ -1,7 +1,6 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
-using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -10,28 +9,23 @@ namespace DocGenerator.Api.Controllers;
 [ApiController]
 [Route("api/alerts")]
 // قرار المالك 2026-10-16: قراءة إشرافية للمدير/المشرف (القوائم والتفاصيل والمستلمون) —
-// الكتابة (إصدار) والعدّادات والقراءة-تعليم تبقى مستلم-محددة (تُرفض لهما أدناه).
+// الكتابة (إصدار) والعدّادات والقراءة-تعليم تبقى مستلم-محددة.
+//
+// قرار `D8` (مراجعة PR-4 `ح‑1`): هذا المتحكم يترجم HTTP فقط — لا فحص دور/فرع/طرف هنا
+// إطلاقًا، فالقرار كله في `HeadAlertService`: `ArgumentException` ⇒ 400،
+// `UnauthorizedAccessException` ⇒ 403. تكرار الفحص في الطبقتين هو ما جعل
+// `ListByDelegationAsync` آمنًا بحرس خارجي لا بعقده.
 [Authorize(Roles = "lawyer,head,subhead,manager,admin")]
 public class AlertsController : ControllerBase
 {
     private readonly IHeadAlertService _alerts;
-    private readonly IDocumentDelegationService _delegationParties;
 
-    public AlertsController(IHeadAlertService alerts, IDocumentDelegationService delegationParties)
-    {
-        _alerts = alerts;
-        _delegationParties = delegationParties;
-    }
+    public AlertsController(IHeadAlertService alerts) => _alerts = alerts;
 
     private string? ActorName => User.Identity?.Name;
 
-    private UserRole Role => User.GetRoleEnum();
-    private bool IsLawyer => Role == UserRole.Lawyer;
-    private bool IsHeadOrSubHead => RolePermissions.IsHeadOrSubHead(Role);
-    private bool IsManagerOrAdmin => Role is UserRole.Manager or UserRole.Admin;
-    private bool CanCreateAlerts => RolePermissions.CanCreateAlerts(Role);
-
-    private HeadAlertActor Actor => new(User.GetUserId(), Role, User.GetBranchId());
+    /// <summary>سياق الفاعل من التوكن — تمرير بيانات فقط، لا قرار صلاحية.</summary>
+    private HeadAlertActor Actor => new(User.GetUserId(), User.GetRoleEnum(), User.GetBranchId());
 
     /// <summary>
     /// قائمة التنبيهات (§8: قراءة بالمستلم): المحامي تنبيهاته، ورئيس القسم/الشعبة
@@ -47,12 +41,6 @@ public class AlertsController : ControllerBase
         [FromQuery] int? pageSize,
         CancellationToken ct)
     {
-        if (IsManagerOrAdmin && unreadOnly)
-            return BadRequest(new { message = "خيار «غير المقروء» غير متاح للمدير/المشرف" });
-
-        if (IsHeadOrSubHead && User.GetBranchId() is null)
-            return Forbid();
-
         try
         {
             var query = new HeadAlertListQuery
@@ -74,16 +62,21 @@ public class AlertsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// عدّاد غير المقروء للفاعل نفسه — المستلمون فقط (محامٍ أو رئيس نطاق)؛
+    /// المدير/المشرف ورئيس بلا فرع يُرفضون في الخدمة (<c>403</c>).
+    /// </summary>
     [HttpGet("unread-count")]
     public async Task<IActionResult> UnreadCount(CancellationToken ct)
     {
-        // عدّاد غير المقروء خاص بالمستلم (محامٍ أو رئيس نطاق)؛ يُحسب على صفوفه.
-        if (IsLawyer || IsHeadOrSubHead)
+        try
         {
-            var count = await _alerts.CountUnreadAsync(User.GetUserId(), ct);
-            return Ok(new { count });
+            return Ok(new { count = await _alerts.CountUnreadAsync(Actor, ct) });
         }
-        return Forbid();
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
     }
 
     /// <summary>
@@ -97,11 +90,6 @@ public class AlertsController : ControllerBase
         [FromQuery] int? pageSize,
         CancellationToken ct)
     {
-        if (!IsHeadOrSubHead)
-            return Forbid();
-        if (User.GetBranchId() is null)
-            return Forbid();
-
         try
         {
             return Ok(await _alerts.ListSentAsync(
@@ -111,27 +99,28 @@ public class AlertsController : ControllerBase
         {
             return BadRequest(new { message = e.Message });
         }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
     }
 
     /// <summary>إصدار تنبيه — رئيس القسم/الشعبة لفرعه فقط. يعيد <c>201</c> بملخص الصف (D3).</summary>
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateHeadAlertRequest request, CancellationToken ct)
     {
-        if (!CanCreateAlerts)
-            return Forbid();
-
-        var branchId = User.GetBranchId();
-        if (branchId is null)
-            return BadRequest(new { message = "رئيس القسم دون فرع لا يمكنه إصدار تنبيهات" });
-
         try
         {
-            var alert = await _alerts.CreateAsync(request, User.GetUserId(), branchId.Value, ActorName, ct);
+            var alert = await _alerts.CreateAsync(request, Actor, ActorName, ct);
             return CreatedAtAction(nameof(Get), new { id = alert.Id }, alert);
         }
         catch (ArgumentException e)
         {
             return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
         }
     }
 
@@ -168,12 +157,6 @@ public class AlertsController : ControllerBase
         [FromQuery] int? pageSize,
         CancellationToken ct)
     {
-        if (!IsLawyer)
-            return Forbid();
-        var userId = User.GetUserId();
-        if (!await _delegationParties.IsPartyAsync(delegationId, userId, ct))
-            return Forbid();
-
         try
         {
             // قرار D1: الافتراضي للشريط صفحة واحدة بحد أقصى 100 — والترقيم صارم.
@@ -198,10 +181,15 @@ public class AlertsController : ControllerBase
     [HttpPatch("{id:int}/read")]
     public async Task<IActionResult> MarkRead(int id, CancellationToken ct)
     {
-        if (!IsLawyer && !IsHeadOrSubHead)
+        try
+        {
+            var ok = await _alerts.MarkReadAsync(id, Actor, ct);
+            return ok ? NoContent() : NotFound();
+        }
+        catch (UnauthorizedAccessException)
+        {
             return Forbid();
-        var ok = await _alerts.MarkReadAsync(id, User.GetUserId(), ct);
-        return ok ? NoContent() : NotFound();
+        }
     }
 
     /// <summary>يقرأ فلتر الأرشفة من الاستعلام: <c>active|all|only</c> (الفارغ = active).</summary>

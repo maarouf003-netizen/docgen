@@ -27,7 +27,6 @@ public sealed class DelegationPendingCountBranchGuardTests
         public Task<DelegationDto?> RedirectToSectionAsync(int delegationId, RedirectDelegationRequest request, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<DelegationDto?> RecallRedirectAsync(int delegationId, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<DelegationDto?> RejectAsync(int delegationId, RejectDelegationRequest request, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task<bool> IsPartyAsync(int delegationId, int userId, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<DelegationDto?> AssignAsync(int delegationId, AssignDelegationRequest request, int userId, int? headBranchId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<DelegationDto?> RegisterAsync(int delegationId, RegisterDelegationRequest request, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<DelegationDto?> CompleteAsync(int delegationId, CompleteDelegationRequest request, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();

@@ -56,6 +56,11 @@ public class HeadAlertServicePermissionTests : IDisposable
         _db.Users.AddRange(_headA, _headB, _subA, _lawyerA, _lawyerB, _manager, _admin);
         _db.SaveChanges();
 
+        // إنابات مسار by-delegation: 77 مالك مصدرها headA (فمحامي دمشق ليس طرفًا)،
+        // و88 مالك مصدرها lawyerA (فهو طرف). المعرّفان صريحان كما في مسار الإنتاج.
+        HeadAlertReferences.SeedDelegations(_db, _branchA, _headA.Id, 77);
+        HeadAlertReferences.SeedDelegations(_db, _branchA, _lawyerA.Id, 88);
+
         // A: منشئ headA ومستلمه lawyerA فقط.
         _alertA = AddAlert(_branchA, _headA.Id, "تنبيه دمشق", _lawyerA.Id, _lawyerA.Id);
         // B: رئيس حلب ينشئ ومحامي دمشق يستلم — الاستلام الشخصي لا يقيده الفرع.
@@ -73,6 +78,7 @@ public class HeadAlertServicePermissionTests : IDisposable
             new DocumentRepository(_db),
             users,
             new Repository<Branch>(_db),
+            new DelegationRepository(_db),
             new UnitOfWork(_db),
             new TransactionRunner(_db),
             new FakeAuditLogger());
@@ -154,23 +160,32 @@ public class HeadAlertServicePermissionTests : IDisposable
     }
 
     [Theory]
-    [InlineData(UserRole.Lawyer, true)]
-    [InlineData(UserRole.Head, false)]
-    [InlineData(UserRole.SubHead, false)]
-    [InlineData(UserRole.Manager, false)]
-    [InlineData(UserRole.Admin, false)]
-    public async Task ByDelegation_IsAllowedOnlyForLawyer(UserRole role, bool allowed)
+    [InlineData(UserRole.Head)]
+    [InlineData(UserRole.SubHead)]
+    [InlineData(UserRole.Manager)]
+    [InlineData(UserRole.Admin)]
+    public async Task ByDelegation_NonLawyerRoles_AreRejected(UserRole role)
     {
         var actor = new HeadAlertActor(_lawyerA.Id, role, _branchA);
 
-        if (!allowed)
-        {
-            await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-                _service.ListByDelegationAsync(77, actor, FullPage()));
-            return;
-        }
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.ListByDelegationAsync(88, actor, FullPage()));
+    }
 
-        var page = await _service.ListByDelegationAsync(77, actor, FullPage());
+    [Fact]
+    public async Task ByDelegation_LawyerMustBeParty_AndMissingDelegationIsRejected()
+    {
+        // 77 مالك مصدرها headA ⇒ محامي دمشق ليس طرفًا: الرفض من الخدمة لا من المتحكم
+        // (مراجعة PR-4 `ح‑1`: المستودع لا يقيّد النتيجة بالمستخدم).
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.ListByDelegationAsync(77, ActorFor(_lawyerA), FullPage()));
+
+        // إنابة غير موجودة ⇒ الرفض نفسه، بلا تسريب وجود.
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.ListByDelegationAsync(999_999, ActorFor(_lawyerA), FullPage()));
+
+        // 88 مالك مصدرها محامي دمشق ⇒ طرف، وتُقبل القائمة (فارغة هنا).
+        var page = await _service.ListByDelegationAsync(88, ActorFor(_lawyerA), FullPage());
         Assert.Empty(page.Items);
         Assert.Equal(0, page.TotalCount);
     }
@@ -263,6 +278,70 @@ public class HeadAlertServicePermissionTests : IDisposable
                 ActorFor(_headA), AlertArchiveFilter.Active, request));
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
             _service.ListByDelegationAsync(77, ActorFor(_lawyerA), request));
+    }
+
+    [Theory]
+    [InlineData(UserRole.Lawyer)]
+    [InlineData(UserRole.Manager)]
+    [InlineData(UserRole.Admin)]
+    public async Task Create_NonHeadRoles_AreRejectedWithUnauthorized(UserRole role)
+    {
+        // الدور قرار الخدمة (D8): المتحكم لم يعد يفحصه، فالرفض هنا هو ما يُترجم 403.
+        var actor = new HeadAlertActor(_lawyerA.Id, role, _branchA);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.CreateAsync(
+                new CreateHeadAlertRequest("branch", null, null, "رسالة"), actor, "actor"));
+    }
+
+    [Fact]
+    public async Task Create_BranchlessHead_IsArgumentError_NotAuthorization()
+    {
+        // D11: الكتابة بلا فرع 400 (عقد POST القائم) لا 403.
+        var actor = new HeadAlertActor(_headA.Id, UserRole.Head, null);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(
+                new CreateHeadAlertRequest("branch", null, null, "رسالة"), actor, "head_a"));
+    }
+
+    [Theory]
+    [InlineData(UserRole.Manager)]
+    [InlineData(UserRole.Admin)]
+    public async Task MarkRead_OversightRoles_AreRejected(UserRole role)
+    {
+        var actor = new HeadAlertActor(_manager.Id, role, null);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.MarkReadAsync(_alertA.Id, actor));
+    }
+
+    [Fact]
+    public async Task MarkRead_NonRecipientInRecipientRole_ReturnsFalse()
+    {
+        // دور يملك استلامًا لكنه ليس مستلم هذا الصف ⇒ false (يُترجم 404)، لا استثناء.
+        Assert.False(await _service.MarkReadAsync(_alertOther.Id, ActorFor(_lawyerA)));
+    }
+
+    [Theory]
+    [InlineData(UserRole.Manager)]
+    [InlineData(UserRole.Admin)]
+    public async Task CountUnread_OversightRoles_AreRejected(UserRole role)
+    {
+        var actor = new HeadAlertActor(_manager.Id, role, null);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.CountUnreadAsync(actor));
+    }
+
+    [Fact]
+    public async Task CountUnread_BranchlessHead_IsRejected_LawyerCountsOwnRows()
+    {
+        // D11: رئيس بلا فرع حساب غير صالح للقراءة ⇒ 403 (كان 200 قبل التوحيد).
+        var branchlessHead = new HeadAlertActor(_headA.Id, UserRole.Head, null);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.CountUnreadAsync(branchlessHead));
+
+        // المحامي بلا قيد فرع أصلًا: تنبيهان غير مقروءين له في الفرعين.
+        Assert.Equal(2, await _service.CountUnreadAsync(ActorFor(_lawyerA)));
     }
 
     private HeadAlert AddAlert(

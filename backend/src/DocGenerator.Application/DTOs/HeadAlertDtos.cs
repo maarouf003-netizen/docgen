@@ -19,7 +19,10 @@ public record CreateHeadAlertRequest(
 ///
 /// <para><c>IsRead</c> هي حالة القارئ نفسه (أو <c>null</c> لمن ليس مستلمًا)،
 /// و<c>CanViewRecipients</c> قرار خادم (<c>CreatedById == actorUserId</c> أو مدير/مشرف)
-/// لا يملك العميل تعيينه. لا يحمل هذا العقد <c>Recipients</c> أبدًا؛ قائمة المستلمين
+/// لا يملك العميل تعيينه. **دلالته محصورة بقائمة المستلمين** وحدها (زر «عرض المستلمين»)،
+/// ولا تحكم <c>RecipientCount</c>/<c>UnreadCount</c> — العدّادان يُرسَلان دائمًا في هذا
+/// العقد (مؤقتًا حتى PR-6)، فلا يجوز للواجهة استنتاج غيابهما من <c>false</c>.
+/// لا يحمل هذا العقد <c>Recipients</c> أبدًا؛ قائمة المستلمين
 /// تُطلب من <c>GET /api/alerts/{id}/recipients</c> وحدها (§9.2).</para>
 ///
 /// <para><c>RecipientCount</c>/<c>UnreadCount</c> محتفظ بهما مؤقتًا من العقد السابق

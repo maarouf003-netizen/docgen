@@ -66,7 +66,8 @@ public class HeadAlertServiceTests : IDisposable
         var branches = new Repository<Branch>(_db);
         var uow = new UnitOfWork(_db);
         _tx = new TransactionRunner(_db);
-        _service = new HeadAlertService(alerts, documents, users, branches, uow, _tx, _audit);
+        _service = new HeadAlertService(alerts, documents, users, branches,
+            new DelegationRepository(_db), uow, _tx, _audit);
     }
 
     public void Dispose() => _db.Dispose();
@@ -138,7 +139,7 @@ public class HeadAlertServiceTests : IDisposable
         var doc = await AddDocumentAsync(_lawyer1);
 
         var alert = await _service.CreateAsync(
-            new CreateHeadAlertRequest("document", doc.Id, null, "راجع هذا الملف"), _head.Id, _branchId, "head_x");
+            new CreateHeadAlertRequest("document", doc.Id, null, "راجع هذا الملف"), ActorFor(_head), "head_x");
 
         Assert.Equal(HeadAlertTargetType.Document.ToString().ToLowerInvariant(), alert.TargetType);
         Assert.Equal(doc.Id, alert.DocumentId);
@@ -157,7 +158,7 @@ public class HeadAlertServiceTests : IDisposable
     public async Task Create_LawyerTargeted_RecipientIsThatLawyerOnly()
     {
         var alert = await _service.CreateAsync(
-            new CreateHeadAlertRequest("lawyer", null, _lawyer2.Id, "رسالة خاصة"), _head.Id, _branchId, "head_x");
+            new CreateHeadAlertRequest("lawyer", null, _lawyer2.Id, "رسالة خاصة"), ActorFor(_head), "head_x");
 
         Assert.Equal(_lawyer2.Id, alert.TargetLawyerId);
 
@@ -182,7 +183,7 @@ public class HeadAlertServiceTests : IDisposable
         await _db.SaveChangesAsync();
 
         var alert = await _service.CreateAsync(
-            new CreateHeadAlertRequest("branch", null, null, "تعميم لجميع المحامين"), _head.Id, _branchId, "head_x");
+            new CreateHeadAlertRequest("branch", null, null, "تعميم لجميع المحامين"), ActorFor(_head), "head_x");
 
         Assert.Equal(2, alert.RecipientCount);
         Assert.Equal(2, (await ReceivedAsync(_lawyer1)).Count
@@ -193,7 +194,7 @@ public class HeadAlertServiceTests : IDisposable
     public async Task Create_EmptyMessage_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateHeadAlertRequest("branch", null, null, "  "), _head.Id, _branchId, "head_x"));
+            _service.CreateAsync(new CreateHeadAlertRequest("branch", null, null, "  "), ActorFor(_head), "head_x"));
     }
 
     [Fact]
@@ -215,7 +216,7 @@ public class HeadAlertServiceTests : IDisposable
         var doc = await AddDocumentAsync(lawyerOther, branchId: other.Id);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateHeadAlertRequest("document", doc.Id, null, "خارج الفرع"), _head.Id, _branchId, "head_x"));
+            _service.CreateAsync(new CreateHeadAlertRequest("document", doc.Id, null, "خارج الفرع"), ActorFor(_head), "head_x"));
 
         Assert.Contains("فرعك", ex.Message);
     }
@@ -238,7 +239,7 @@ public class HeadAlertServiceTests : IDisposable
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateHeadAlertRequest("lawyer", null, lawyerOther.Id, "خارج الفرع"), _head.Id, _branchId, "head_x"));
+            _service.CreateAsync(new CreateHeadAlertRequest("lawyer", null, lawyerOther.Id, "خارج الفرع"), ActorFor(_head), "head_x"));
 
         Assert.Contains("فرعك", ex.Message);
     }
@@ -247,7 +248,7 @@ public class HeadAlertServiceTests : IDisposable
     public async Task Create_InvalidTargetType_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateHeadAlertRequest("anyone", null, null, "رسالة"), _head.Id, _branchId, "head_x"));
+            _service.CreateAsync(new CreateHeadAlertRequest("anyone", null, null, "رسالة"), ActorFor(_head), "head_x"));
     }
 
     [Fact]
@@ -255,9 +256,9 @@ public class HeadAlertServiceTests : IDisposable
     {
         var doc = await AddDocumentAsync(_lawyer1);
         await _service.CreateAsync(
-            new CreateHeadAlertRequest("document", doc.Id, null, "تنبيه أول"), _head.Id, _branchId, "head_x");
+            new CreateHeadAlertRequest("document", doc.Id, null, "تنبيه أول"), ActorFor(_head), "head_x");
         await _service.CreateAsync(
-            new CreateHeadAlertRequest("branch", null, null, "تعميم"), _head.Id, _branchId, "head_x");
+            new CreateHeadAlertRequest("branch", null, null, "تعميم"), ActorFor(_head), "head_x");
         var ownId = await CreateSystemHeadAlertAsync(
             "تنبيه نظامي للرئيس", HeadAlertAudience.SingleHead, recipientUserId: _head.Id);
 
@@ -271,7 +272,7 @@ public class HeadAlertServiceTests : IDisposable
         Assert.Equal(1, single.UnreadCount);
 
         // تعليم القراءة يعمل للمستلم الرئيس ويُرى أثره.
-        Assert.True(await _service.MarkReadAsync(ownId, _head.Id));
+        Assert.True(await _service.MarkReadAsync(ownId, ActorFor(_head)));
         list = await ReceivedAsync(_head);
         Assert.True(Assert.Single(list).IsRead);
 
@@ -285,14 +286,14 @@ public class HeadAlertServiceTests : IDisposable
     public async Task MarkRead_SetsRead_AndDecrementsUnread()
     {
         var alert = await _service.CreateAsync(
-            new CreateHeadAlertRequest("lawyer", null, _lawyer1.Id, "خاص"), _head.Id, _branchId, "head_x");
+            new CreateHeadAlertRequest("lawyer", null, _lawyer1.Id, "خاص"), ActorFor(_head), "head_x");
 
-        Assert.Equal(1, await _service.CountUnreadAsync(_lawyer1.Id));
+        Assert.Equal(1, await _service.CountUnreadAsync(ActorFor(_lawyer1)));
 
-        var ok = await _service.MarkReadAsync(alert.Id, _lawyer1.Id);
+        var ok = await _service.MarkReadAsync(alert.Id, ActorFor(_lawyer1));
 
         Assert.True(ok);
-        Assert.Equal(0, await _service.CountUnreadAsync(_lawyer1.Id));
+        Assert.Equal(0, await _service.CountUnreadAsync(ActorFor(_lawyer1)));
 
         var dto = Assert.Single(await ReceivedAsync(_lawyer1));
         Assert.True(dto.IsRead);
@@ -301,7 +302,7 @@ public class HeadAlertServiceTests : IDisposable
     [Fact]
     public async Task MarkRead_NotFound_ReturnsFalse()
     {
-        var ok = await _service.MarkReadAsync(999, _lawyer1.Id);
+        var ok = await _service.MarkReadAsync(999, ActorFor(_lawyer1));
         Assert.False(ok);
     }
 
@@ -309,9 +310,9 @@ public class HeadAlertServiceTests : IDisposable
     public async Task MarkRead_NonRecipient_ReturnsFalse()
     {
         var alert = await _service.CreateAsync(
-            new CreateHeadAlertRequest("lawyer", null, _lawyer1.Id, "خاص"), _head.Id, _branchId, "head_x");
+            new CreateHeadAlertRequest("lawyer", null, _lawyer1.Id, "خاص"), ActorFor(_head), "head_x");
 
-        var ok = await _service.MarkReadAsync(alert.Id, _lawyer2.Id);
+        var ok = await _service.MarkReadAsync(alert.Id, ActorFor(_lawyer2));
 
         Assert.False(ok);
     }
@@ -322,7 +323,7 @@ public class HeadAlertServiceTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateAsync(
                 new CreateHeadAlertRequest("head", null, null, "manual head"),
-                _head.Id, _branchId, "head_x"));
+                ActorFor(_head), "head_x"));
     }
 
     [Fact]
@@ -369,7 +370,7 @@ public class HeadAlertServiceTests : IDisposable
         var doc = await AddDocumentAsync(_lawyer1);
 
         var created = await _service.CreateAsync(
-            new CreateHeadAlertRequest("document", doc.Id, null, "نص كامل للتفاصيل"), _head.Id, _branchId, "head_x");
+            new CreateHeadAlertRequest("document", doc.Id, null, "نص كامل للتفاصيل"), ActorFor(_head), "head_x");
 
         Assert.Equal(HeadAlertKindCatalog.ManualToDocument, created.Kind);
         // D3: ملخص الإنشاء يطابق صف القائمة في الحقول المشتقة من العلاقات — لا «مستند محذوف»
@@ -422,7 +423,7 @@ public class HeadAlertServiceTests : IDisposable
         await _db.SaveChangesAsync();
 
         var created = await _service.CreateAsync(
-            new CreateHeadAlertRequest("branch", null, null, "تعميم"), _head.Id, _branchId, "head_x");
+            new CreateHeadAlertRequest("branch", null, null, "تعميم"), ActorFor(_head), "head_x");
 
         // المنشئ ليس مستلمًا: IsRead فارغة، والعدّادان محتفظ بهما في التفاصيل (D5).
         var detail = await _service.GetDetailsAsync(created.Id, ActorFor(_head));
@@ -444,9 +445,9 @@ public class HeadAlertServiceTests : IDisposable
     public async Task MarkRead_UpdatesOnlyActorRow_AndDetailReflectsIt()
     {
         var created = await _service.CreateAsync(
-            new CreateHeadAlertRequest("branch", null, null, "تعميم"), _head.Id, _branchId, "head_x");
+            new CreateHeadAlertRequest("branch", null, null, "تعميم"), ActorFor(_head), "head_x");
 
-        Assert.True(await _service.MarkReadAsync(created.Id, _lawyer1.Id));
+        Assert.True(await _service.MarkReadAsync(created.Id, ActorFor(_lawyer1)));
 
         var rows = await _db.HeadAlertRecipients
             .Where(r => r.HeadAlertId == created.Id)
@@ -462,7 +463,7 @@ public class HeadAlertServiceTests : IDisposable
 
         // إعادة التعليم idempotent: لا تُغيّر زمن القراءة المحفوظ.
         var readAt = mine.ReadAt;
-        Assert.True(await _service.MarkReadAsync(created.Id, _lawyer1.Id));
+        Assert.True(await _service.MarkReadAsync(created.Id, ActorFor(_lawyer1)));
         _db.ChangeTracker.Clear();
         Assert.Equal(readAt, (await _db.HeadAlertRecipients.SingleAsync(r => r.Id == mine.Id)).ReadAt);
 
@@ -518,7 +519,7 @@ public class HeadAlertServiceTests : IDisposable
     public async Task Sent_ListsOwnIssued_AndReceivedExcludesThem()
     {
         var sent = await _service.CreateAsync(
-            new CreateHeadAlertRequest("lawyer", null, _lawyer2.Id, "رسالة خاصة"), _head.Id, _branchId, "head_x");
+            new CreateHeadAlertRequest("lawyer", null, _lawyer2.Id, "رسالة خاصة"), ActorFor(_head), "head_x");
 
         // الصادر: يراه مُصدِره بفرعه مع عدّادات المستلمين...
         var sentList = await SentAsync(_head);
@@ -556,9 +557,9 @@ public class HeadAlertServiceTests : IDisposable
         await _db.SaveChangesAsync();
 
         await _service.CreateAsync(
-            new CreateHeadAlertRequest("lawyer", null, _lawyer1.Id, "من الشعبة"), sub.Id, _branchId, "sub_x");
+            new CreateHeadAlertRequest("lawyer", null, _lawyer1.Id, "من الشعبة"), ActorFor(sub), "sub_x");
         await _service.CreateAsync(
-            new CreateHeadAlertRequest("lawyer", null, _lawyer2.Id, "من القسم"), _head.Id, _branchId, "head_x");
+            new CreateHeadAlertRequest("lawyer", null, _lawyer2.Id, "من القسم"), ActorFor(_head), "head_x");
 
         var subSent = await SentAsync(sub);
         Assert.Equal(

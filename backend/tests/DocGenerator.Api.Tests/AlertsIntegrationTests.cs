@@ -797,5 +797,50 @@ public class AlertsIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task BranchlessHead_CreateIs400_AndReadsAre403()
+    {
+        // D11 (المرحلة 3): حارس الفرع انتقل من المتحكم إلى الخدمة، فأصبحت الحالات:
+        // الكتابة بحساب رئيس بلا فرع 400 (عقد `POST /api/alerts` القائم)، وأسطح
+        // القراءة/العدّ 403 — قبل التوحيد كان العدّاد يعيد 200 بلا أي نطاق.
+        //
+        // الحالة غير قابلة للتجسيد عبر EF (قيد `CK_Users_BranchRequiredForBranchRoles`)،
+        // فتُسكّ جلسة شاذة صريحة من نسخة كيان حقيقي بلا فرع — نفس نمط
+        // `ClientForUser` في حراس النقاط الأخرى، والتحقق من `TokenVersion` يبقى قائمًا.
+        User branchlessHead;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+            var head = await db.Users.AsNoTracking().SingleAsync(u => u.Username == "head1");
+            branchlessHead = new User
+            {
+                Id = head.Id,
+                Username = head.Username,
+                FullName = head.FullName,
+                Role = UserRole.Head,
+                BranchId = null,
+                SectionId = head.SectionId,
+                TokenVersion = head.TokenVersion,
+                IsActive = true,
+            };
+        }
+
+        var client = _factory.ClientForUser(branchlessHead);
+
+        var create = await client.PostAsJsonAsync("/api/alerts", new
+        {
+            targetType = "branch",
+            documentId = (int?)null,
+            targetLawyerId = (int?)null,
+            message = "تنبيه من رئيس بلا فرع",
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, create.StatusCode);
+
+        foreach (var path in new[] { "/api/alerts", "/api/alerts/sent", "/api/alerts/unread-count" })
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync(path)).StatusCode);
+        }
+    }
+
     private sealed record UnreadCountDto(int Count);
 }

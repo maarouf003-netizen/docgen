@@ -310,15 +310,15 @@ Task<HeadAlertSummaryDto?> GetSummaryAsync(
 **التغييرات:**
 
 1. `CreateAsync(CreateHeadAlertRequest request, HeadAlertActor actor, string? actorName, CancellationToken)`:
-   - `if (!actor.IsHeadOrSubHead) throw new UnauthorizedAccessException(...)`.
+   - `if (!RolePermissions.CanCreateAlerts(actor.Role)) throw new UnauthorizedAccessException(...)` (تعادل `IsHeadOrSubHead`).
    - `var branchId = RequireBranchForWrite(actor)`: `BranchId is null` → `ArgumentException("رئيس القسم دون فرع لا يمكنه إصدار تنبيهات")` — والمتحكم يحوّل `ArgumentException` إلى `400` أصلًا (`AlertsController.cs:133-136`)، فالعقد الحالي محفوظ بلا تكرار.
    - بقية المنطق كما هو.
-   - **مصدر واحد (`D11`):** يُحذف فحص الفرع من `Create` في المتحكم؛ الحالة نفسها تُنتج `400` من الخدمة، و`403` في أسطح القراءة/العدّ عبر `RequireBranchForRead(actor)` → `UnauthorizedAccessException` (`D7`).
+   - **مصدر واحد (`D11`):** يُحذف فحص الفرع من `Create` في المتحكم؛ الحالة نفسها تُنتج `400` من الخدمة، و`403` في أسطح القراءة/العدّ عبر `RequireBranch(actor)` → `UnauthorizedAccessException` (`D7`).
 2. `MarkReadAsync(int alertId, HeadAlertActor actor, CancellationToken)`:
-   - `if (!actor.IsLawyer && !actor.IsHeadOrSubHead) throw ...`.
+   - `if (!RolePermissions.CanReceiveAlerts(actor.Role)) throw ...` (تعادل `!IsLawyer && !IsHeadOrSubHead`).
    - ثم فحص صف الاستلام للمستخدم.
 3. `ListByDelegationAsync`:
-   - `if (!actor.IsLawyer) throw ...`.
+   - `if (!RolePermissions.CanReadDelegationAlerts(actor.Role)) throw ...` (تعادل `!IsLawyer`).
    - `var delegation = await _delegations.GetByIdWithDetailsAsync(...)`؛ إن `null` أو `!DelegationParties.IsParty(delegation, actor.UserId)` → `UnauthorizedAccessException`.
    - حقن `IDelegationRepository` في `HeadAlertService` (لا دورة اعتماد).
 4. `DelegationParties.IsParty(DocumentDelegation, int)` مساعد نقي في `Application/Common/` يعيد استخدام منطق `IsPartyAsync` نفسه (منشئ المصدر/الهدف، ثم الأطراف)، ويُفحص به الكيان المجلوب في الخطوة 3 — **بلا استعلام إضافي ولا استدعاء خدمة أخرى**.
@@ -499,7 +499,7 @@ Task<HeadAlertSummaryDto?> GetSummaryAsync(
 | `P2-1` مُسقِطان | 1 | `HeadAlertTitleTests` (7) + تمييز المحذوف/القائم الفارغ + 2100/706 | `[x]` |
 | `P2-2` انحراف طبقي | 1 | `rg` صفر على `Application.Services` داخل المستودع | `[x]` |
 | `P2-3` شارة الفرع | 4 + 8 | `UnreadCount_ReceivedScope_*` + اختبار واجهة | `[ ]` |
-| `P3-1` صلاحية الخدمة | 3 | `CreateAsync/MarkRead/ByDelegation` خدمةً | `[ ]` |
+| `P3-1` صلاحية الخدمة | 3 | `HeadAlertActor` هو مدخل القرار: `CreateAsync`/`MarkReadAsync`/`CountUnreadAsync`/`ListByDelegationAsync` تفحص الدور/الفرع/الطرف داخل `HeadAlertService`، والمتحكم يترجم HTTP فقط؛ `HeadAlertServicePermissionTests` + `DelegationPartiesTests` + بناء بلا تحذيرات | `[x]` |
 | `P3-2` شيفرة ميتة | 1 + 2 | بناء بلا تحذيرات + `rg` | `[x]` |
 | `P3-3` فجوات التغطية | 6 | الحقول المتميزة + `404` + العدّادات | `[ ]` |
 | `P3-4` عدّاد غير مقيّد | 4 | `CountUnread_UserScope_HeadBranch` | `[ ]` |
@@ -511,7 +511,7 @@ Task<HeadAlertSummaryDto?> GetSummaryAsync(
 | `P3-10` هشاشة `StatsScope` | 6 | `AllAlertIdsAsync` متعدد الصفحات | `[ ]` |
 | `P3-11` تحميل المستلمين | 2 | إسقاط واحد (مراجعة كود) + تغطية سلوكية للتفاصيل وتعليم القراءة — **بلا عدّ استعلامات** (لا أداة عدّ في المستودع؛ تصحيح 2026-10-30) | `[x]` |
 | `P3-12` تعرّض محتفظ | 7 | اختبار `UntilPR6` + بند `PR-6` | `[ ]` |
-| `R-1` (`D11`) حالة «رئيس بلا فرع» | 3 | `HeadWithoutBranch_WriteIs400_ReadIs403` | `[ ]` |
+| `R-1` (`D11`) حالة «رئيس بلا فرع» | 3 | `BranchlessHead_CreateIs400_AndReadsAre403` (تكامل `Api`) + `Create_BranchlessHead_IsArgumentError_NotAuthorization`/`CountUnread_BranchlessHead_IsRejected_LawyerCountsOwnRows` (وحدة) | `[x]` |
 | `R-2` فهارس عدّاد `received` | 4 | مراجعة مخطط موثّقة (لا هجرة) | `[ ]` |
 | `R-3` سقف الترقيم | 5 | `Paging_OverflowRejected_ExtremePageWithSize1Allowed` | `[ ]` |
 | `R-4` حرس `Postgres` | 6 | تنفيذ فعلي > 0 اختبار في وظيفة CI | `[ ]` |
@@ -604,6 +604,7 @@ npm run build
 | 2026-10-30 | المرحلة 2: `HeadAlertDetailRow` + `GetDetailRowAsync` بإسقاط واحد، `GetRecipientAsync` متتبَّع، وحذف `GetByIdWithRecipientsAsync` و`DocumentTitle(HeadAlert)` | إزالة تحميل المستلمين من مساري التفاصيل وتعليم القراءة (`P3-11`/`P3-2`) |
 | 2026-10-30 | مراجعة نقدية للمرحلتين 1–2 على الكود: تثبيت الملاحظات `ح‑1`…`ح‑9` في §5، تصحيح خلية إثبات `P3-11` (لا أداة عدّ استعلامات)، وتسجيل حقل `IsRecipient` وتوقيع `ToDetailDto(HeadAlertDetailRow)` كانحرافين موثّقين عن نص الخطة | منع «خضرة» توثيقية لا يقابلها دليل، وتحديد ترتيب المرحلة 3 على أساس العيب الفعلي |
 | 2026-10-30 | توضيح دلالة `CanViewRecipients` في عقد التفاصيل: يحكم قائمة المستلمين لا `RecipientCount`/`UnreadCount` (محتفظ بهما مؤقتًا حتى `PR-6`) | واجهة `PR-5` كانت ستستنتج من `false` أن العدّادات غائبة، والواقع أنها تُرسَل دائمًا |
+| 2026-10-30 | المرحلة 3: `HeadAlertActor` مصدر القرار (دور/فرع/طرف) في `CreateAsync`/`MarkReadAsync`/`ListByDelegationAsync`/`CountUnreadAsync`، `DelegationParties.IsParty` بديل `IDocumentDelegationService.IsPartyAsync` المحذوف، `RequireBranchForWrite` لـ`400` الكتابة، `IDelegationRepository` حقنًا إلزاميًا | تنفيذ `ح‑1`+`D8` قبل `ح‑4`: `ListSummariesByDelegationAsync` لا يقيّد بالمستخدم، فالعقد صار آمنًا بذاته لا بحرس المتحكم؛ و`R-1`/`D11` مغلقان باختبار تكامل صريح |
 
 ---
 

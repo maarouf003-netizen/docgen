@@ -45,12 +45,6 @@ public interface IDocumentDelegationService
     Task<DelegationDto?> RejectAsync(int delegationId, RejectDelegationRequest request, int userId, string? actorName, CancellationToken ct = default);
 
     /// <summary>
-    /// هل المستخدم طرفٌ في الإنابة؟ (محامي الملف المنيب، محامي الملف المناب، المحامي المختص،
-    /// أو أحد محتلفيها بالنقل) — لترخيص قراءة تنبيهات الإنابة المدموجة عبر by-delegation.
-    /// </summary>
-    Task<bool> IsPartyAsync(int delegationId, int userId, CancellationToken ct = default);
-
-    /// <summary>
     /// اعتماد الإنابة (§7.1): الاعتماد لمالك الدائرة المنابة لا المنيب — داخلية
     /// بدائرة ذات شعبة لرئيس شعبته، وبدائرة قسم (أو بلا دائرة انتقاليًا) لرئيس
     /// قسم فرع الدائرة، وخارجية غير موجَّهة لرئيس قسم الفرع المناب، وخارجية

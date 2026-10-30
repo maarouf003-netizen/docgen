@@ -71,6 +71,7 @@ public class SubHeadStatsTests : IDisposable
             new DocumentRepository(_db),
             new UserRepository(_db),
             new Repository<Branch>(_db),
+            new DelegationRepository(_db),
             uow,
             tx,
             _audit,
@@ -302,7 +303,8 @@ public class SubHeadStatsTests : IDisposable
         // تعليم القراءة يعمل للمستلم الرئيس.
         var own = Assert.Single(headList);
         Assert.False(own.IsRead);
-        Assert.True(await _alerts.MarkReadAsync(own.Id, _head1.Id));
+        Assert.True(await _alerts.MarkReadAsync(
+            own.Id, new HeadAlertActor(_head1.Id, _head1.Role, _head1.BranchId)));
         var afterRead = (await ReceivedAlertsAsync(_head1)).Items;
         Assert.True(Assert.Single(afterRead).IsRead);
     }

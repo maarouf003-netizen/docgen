@@ -60,6 +60,7 @@ public class DocumentDelegationServiceTests : IDisposable
             documents,
             users,
             branches,
+            new DelegationRepository(_db),
             uow,
             _tx,
             _audit);
