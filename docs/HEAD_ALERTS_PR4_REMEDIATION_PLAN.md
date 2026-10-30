@@ -302,6 +302,11 @@ Task<HeadAlertSummaryDto?> GetSummaryAsync(
 
 **المبدأ:** `HeadAlertService` هو مصدر الحقيقة للدور/الفرع/الطرف.
 
+**الترتيب المعدّل بعد المراجعة النقدية للمرحلتين 1–2 (2026-10-30):** بندان يُنفَّذان **قبل** البنود المرقّمة، لأن المراجعة أثبتت أنهما أصل العيب لا زينته:
+
+1. **`ح‑1` (إلزامي أولًا):** `ListSummariesByDelegationAsync` لا يقيّد النتيجة بالمستخدم إطلاقًا (`HeadAlertRepository.cs:107-122`)، فالحارس الوحيد هو `AlertsController.cs:172-176` — أي أن عقد `IHeadAlertService.ListByDelegationAsync` غير آمن بذاته، وأي متصل جديد بلا حرس خارجي يتجاوز الفحص. لذلك يُنقل فحص الطرفية وفحص دور `Create`/`MarkRead`/`CountUnread` إلى الخدمة، وتُحذف من المتحكم.
+2. **`ح‑4` (ثانيًا):** نقل `RolePermissions` إلى `DocGenerator.Application.Common` ليكون كتالوجًا واحدًا يستهلكه `HeadAlertActor` والمتحكمات معًا؛ الوضع الحالي مصفوفتان (`Api` والخدمة) تنحرفان عند أي قرار جديد.
+
 **التغييرات:**
 
 1. `CreateAsync(CreateHeadAlertRequest request, HeadAlertActor actor, string? actorName, CancellationToken)`:
@@ -326,6 +331,9 @@ Task<HeadAlertSummaryDto?> GetSummaryAsync(
    - **يبقى:** `ParseArchiveFilter`، `BuildPageRequest`، وتحويل الاستثناءات (`ArgumentException` → `400`، `UnauthorizedAccessException` → `403`). لا فحص دور/فرع في المتحكم إطلاقًا.
 7. تحديث **22 موضع** `new HeadAlertService(...)` في الاختبارات (ميكانيكي).
 8. تحديث التعليقات المتقادمة في `HeadAlertService.cs:232-233` و`IHeadAlertService` XML.
+9. **`ح‑2` (إغلاق نافذة معروفة):** تُنقل قراءة صف الاستلام في `MarkReadAsync` إلى **داخل** `_tx.RunAsync` (كانت خارجها) — يمنع `DbUpdateConcurrencyException` (500) عند حذف الصف بين القراءة والكتابة، ويُبقي العملية idempotent.
+10. **`CountUnreadAsync`:** التوقيع يصبح `CountUnreadAsync(HeadAlertActor actor, CancellationToken)` في هذه المرحلة لجانب الصلاحية، وتضيف المرحلة 4 `scope` فقط. البديل (تأجيل الصلاحية إلى المرحلة 4) كان يترك السطح بلا أي حرس بعد حذف فحص المتحكم، ويحوّل `403` المدير/المشرف إلى `200` خلافًا للاختبار القائم `UnreadCount_ManagerAdmin_Forbidden_HeadAllowed`.
+11. **قواعد مركزية جديدة في الكتالوج:** `CanReceiveAlerts` (محامٍ/رئيس/شعبة)، `CanReadAllAlerts` (مدير/مشرف)، `CanReadDelegationAlerts` (محامٍ) — ويستهلكها `HeadAlertActor` بدل تكرار الشروط (`HeadAlertService.cs:15-17`).
 
 **اختبارات:**
 - خدمة: `CreateAsync` بمحامٍ/مدير → `UnauthorizedAccessException`.
@@ -334,7 +342,7 @@ Task<HeadAlertSummaryDto?> GetSummaryAsync(
 - متحكم: 403 لكل ما سبق؛ `Create` بلا فرع → 400 (من الخدمة)؛ `unread-count` لرئيس بلا فرع → 403 (`D11`، تغيير موثّق من 200 إلى 403 لحساب في حالة غير صالحة).
 - تحديث 19 اختبار صلاحيات قائم.
 
-**القبول:** `rg "IsPartyAsync" backend/src` = صفر؛ `rg "RolePermissions|IsLawyer|IsManagerOrAdmin|IsHeadOrSubHead" AlertsController.cs` = صفر (يبقى فقط بناء `Actor` من `User.GetRoleEnum()` لتمرير الدور إلى الخدمة).
+**القبول:** `rg "IsPartyAsync" backend/src` = صفر؛ `rg "RolePermissions|IsLawyer|IsManagerOrAdmin|IsHeadOrSubHead" AlertsController.cs` = صفر (يبقى فقط بناء `Actor` من `User.GetRoleEnum()` لتمرير الدور إلى الخدمة)؛ `rg "Role (==|is) UserRole" HeadAlertService.cs` لا يطابق إلا تحقّق المستلمين (`ResolveRecipientsAsync` وما شابهه: تحقق بيانات لا صلاحيات) — `HeadAlertActor` بلا أي مقارنة دور مباشرة.
 **الحجم:** كبير.
 
 ---
@@ -501,7 +509,7 @@ Task<HeadAlertSummaryDto?> GetSummaryAsync(
 | `P3-8` غياب `Postgres` | 6 | `HeadAlertSummaryPostgresTests` في CI | `[ ]` |
 | `P3-9` بيان العقد | 6 | `Contract_ForbiddenFromManifest_*` | `[ ]` |
 | `P3-10` هشاشة `StatsScope` | 6 | `AllAlertIdsAsync` متعدد الصفحات | `[ ]` |
-| `P3-11` تحميل المستلمين | 2 | إسقاط واحد + عدّ استعلامات | `[x]` |
+| `P3-11` تحميل المستلمين | 2 | إسقاط واحد (مراجعة كود) + تغطية سلوكية للتفاصيل وتعليم القراءة — **بلا عدّ استعلامات** (لا أداة عدّ في المستودع؛ تصحيح 2026-10-30) | `[x]` |
 | `P3-12` تعرّض محتفظ | 7 | اختبار `UntilPR6` + بند `PR-6` | `[ ]` |
 | `R-1` (`D11`) حالة «رئيس بلا فرع» | 3 | `HeadWithoutBranch_WriteIs400_ReadIs403` | `[ ]` |
 | `R-2` فهارس عدّاد `received` | 4 | مراجعة مخطط موثّقة (لا هجرة) | `[ ]` |
@@ -594,6 +602,8 @@ npm run build
 | 2026-10-29 | مراجعة نقدية للمرحلتين 0 و1: تثبيت حالات §3، فصل `documentExists` في عنوان الملف (محذوف ≠ قائم بلا حقول)، حذف `using` زائد من اختبار المستودع، وتصحيح عدّ الاختبارات في §7 | إغلاق قبول المرحلة 0 ومنع انحراف دلالي صامت في التفاصيل/`201` |
 | 2026-10-29 | انحراف موثّق عن 1ب: `HeadAlertRepository.DocumentTitle` حُذف واستُدعي المساعد مباشرة في `ToSummaryDto` بدل غلاف تفويض | لا أثر سلوكي؛ مبدأ «مصدر عنوان واحد» محقَّق |
 | 2026-10-30 | المرحلة 2: `HeadAlertDetailRow` + `GetDetailRowAsync` بإسقاط واحد، `GetRecipientAsync` متتبَّع، وحذف `GetByIdWithRecipientsAsync` و`DocumentTitle(HeadAlert)` | إزالة تحميل المستلمين من مساري التفاصيل وتعليم القراءة (`P3-11`/`P3-2`) |
+| 2026-10-30 | مراجعة نقدية للمرحلتين 1–2 على الكود: تثبيت الملاحظات `ح‑1`…`ح‑9` في §5، تصحيح خلية إثبات `P3-11` (لا أداة عدّ استعلامات)، وتسجيل حقل `IsRecipient` وتوقيع `ToDetailDto(HeadAlertDetailRow)` كانحرافين موثّقين عن نص الخطة | منع «خضرة» توثيقية لا يقابلها دليل، وتحديد ترتيب المرحلة 3 على أساس العيب الفعلي |
+| 2026-10-30 | توضيح دلالة `CanViewRecipients` في عقد التفاصيل: يحكم قائمة المستلمين لا `RecipientCount`/`UnreadCount` (محتفظ بهما مؤقتًا حتى `PR-6`) | واجهة `PR-5` كانت ستستنتج من `false` أن العدّادات غائبة، والواقع أنها تُرسَل دائمًا |
 
 ---
 
