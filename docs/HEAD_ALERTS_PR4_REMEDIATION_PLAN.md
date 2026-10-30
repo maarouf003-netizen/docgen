@@ -492,7 +492,7 @@ Task<HeadAlertSummaryDto?> GetSummaryAsync(
 | `P2-2` انحراف طبقي | 1 | `rg` صفر على `Application.Services` داخل المستودع | `[x]` |
 | `P2-3` شارة الفرع | 4 + 8 | `UnreadCount_ReceivedScope_*` + اختبار واجهة | `[ ]` |
 | `P3-1` صلاحية الخدمة | 3 | `CreateAsync/MarkRead/ByDelegation` خدمةً | `[ ]` |
-| `P3-2` شيفرة ميتة | 1 + 2 | بناء بلا تحذيرات + `rg` | `[ ]` |
+| `P3-2` شيفرة ميتة | 1 + 2 | بناء بلا تحذيرات + `rg` | `[x]` |
 | `P3-3` فجوات التغطية | 6 | الحقول المتميزة + `404` + العدّادات | `[ ]` |
 | `P3-4` عدّاد غير مقيّد | 4 | `CountUnread_UserScope_HeadBranch` | `[ ]` |
 | `P3-5` تحقق المستلمين | 5 | `InactiveLawyer/Creator` + نص موحّد | `[ ]` |
@@ -501,7 +501,7 @@ Task<HeadAlertSummaryDto?> GetSummaryAsync(
 | `P3-8` غياب `Postgres` | 6 | `HeadAlertSummaryPostgresTests` في CI | `[ ]` |
 | `P3-9` بيان العقد | 6 | `Contract_ForbiddenFromManifest_*` | `[ ]` |
 | `P3-10` هشاشة `StatsScope` | 6 | `AllAlertIdsAsync` متعدد الصفحات | `[ ]` |
-| `P3-11` تحميل المستلمين | 2 | إسقاط واحد + عدّ استعلامات | `[ ]` |
+| `P3-11` تحميل المستلمين | 2 | إسقاط واحد + عدّ استعلامات | `[x]` |
 | `P3-12` تعرّض محتفظ | 7 | اختبار `UntilPR6` + بند `PR-6` | `[ ]` |
 | `R-1` (`D11`) حالة «رئيس بلا فرع» | 3 | `HeadWithoutBranch_WriteIs400_ReadIs403` | `[ ]` |
 | `R-2` فهارس عدّاد `received` | 4 | مراجعة مخطط موثّقة (لا هجرة) | `[ ]` |
@@ -593,6 +593,7 @@ npm run build
 | 2026-10-29 | تنفيذ المرحلة 1: نقل `HeadAlertTextLimits` إلى `Common`، مساعد `HeadAlertTitle`، `GetSummaryAsync` بالإسقاط الواحد، وحذف المستودع الميت | البدء بالتنفيذ بعد خط الأساس `pr4-baseline` |
 | 2026-10-29 | مراجعة نقدية للمرحلتين 0 و1: تثبيت حالات §3، فصل `documentExists` في عنوان الملف (محذوف ≠ قائم بلا حقول)، حذف `using` زائد من اختبار المستودع، وتصحيح عدّ الاختبارات في §7 | إغلاق قبول المرحلة 0 ومنع انحراف دلالي صامت في التفاصيل/`201` |
 | 2026-10-29 | انحراف موثّق عن 1ب: `HeadAlertRepository.DocumentTitle` حُذف واستُدعي المساعد مباشرة في `ToSummaryDto` بدل غلاف تفويض | لا أثر سلوكي؛ مبدأ «مصدر عنوان واحد» محقَّق |
+| 2026-10-30 | المرحلة 2: `HeadAlertDetailRow` + `GetDetailRowAsync` بإسقاط واحد، `GetRecipientAsync` متتبَّع، وحذف `GetByIdWithRecipientsAsync` و`DocumentTitle(HeadAlert)` | إزالة تحميل المستلمين من مساري التفاصيل وتعليم القراءة (`P3-11`/`P3-2`) |
 
 ---
 

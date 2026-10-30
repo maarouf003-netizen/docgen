@@ -68,10 +68,19 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
         CancellationToken ct = default);
 
     /// <summary>
-    /// تنبيه مع مستلميه ومنشئه وملفه — لتعليم القراءة وعرض التفاصيل حتى استبدالها
-    /// بإسقاط التفاصيل الأحادي (ورقة إصلاح PR-4 §6، المرحلة 2).
+    /// صف تفاصيل واحد بالإسقاط المسقط في SQL (ورقة إصلاح PR-4 §6، المرحلة 2): النص
+    /// الكامل وحقول العرض وعدّادا المستلمين وحالة قراءة الفاعل — بلا <c>Include</c>
+    /// وبلا كيانات محمَّلة. <c>null</c> إن لم يوجد التنبيه.
     /// </summary>
-    Task<HeadAlert?> GetByIdWithRecipientsAsync(int id, CancellationToken ct = default);
+    Task<HeadAlertDetailRow?> GetDetailRowAsync(
+        int alertId, int actorUserId, CancellationToken ct = default);
+
+    /// <summary>
+    /// صف استلام مستخدمٍ بعينه على تنبيه — <b>متتبَّع</b> لأن تعليم القراءة يعدّله
+    /// ويحفظه داخل معاملة الخدمة. <c>null</c> إن لم يكن مستلمًا.
+    /// </summary>
+    Task<HeadAlertRecipient?> GetRecipientAsync(
+        int alertId, int userId, CancellationToken ct = default);
 
     /// <summary>عدد تنبيهات المستخدم غير المقروءة (يستبعد المؤرشف).</summary>
     Task<int> CountUnreadAsync(int userId, CancellationToken ct = default);

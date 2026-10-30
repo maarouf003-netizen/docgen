@@ -244,21 +244,20 @@ public sealed class HeadAlertService : IHeadAlertService
     {
         ArgumentNullException.ThrowIfNull(actor);
 
-        // جلب مفرد بالمعرّف — لا «اجلب القائمة وابحث فيها» (§9.2).
-        var alert = await _alerts.GetByIdWithRecipientsAsync(id, ct);
-        if (alert is null)
+        // صف واحد مسقط في SQL — لا «اجلب القائمة وابحث فيها» ولا كيانات محمَّلة (§9.2).
+        var row = await _alerts.GetDetailRowAsync(id, actor.UserId, ct);
+        if (row is null)
             return null;
 
-        var isRecipient = alert.Recipients.Any(r => r.UserId == actor.UserId);
-        var isCreator = alert.CreatedById == actor.UserId;
+        var isCreator = row.CreatedById == actor.UserId;
         var isOversight = actor.IsManagerOrAdmin;
 
         // المستلم أولًا بأولوية مطلقة (بلا شرط فرع — إنابات خارجية)، ثم المنشئ،
         // ثم الإشراف؛ غير ذلك 404 بلا كشف وجود (D2/§12).
-        if (!isRecipient && !isCreator && !isOversight)
+        if (!row.IsRecipient && !isCreator && !isOversight)
             return null;
 
-        return ToDetailDto(alert, actor.UserId, isOversight);
+        return ToDetailDto(row, canViewRecipients: isOversight || isCreator);
     }
 
     public async Task<List<HeadAlertRecipientDto>?> GetRecipientsAsync(
@@ -360,17 +359,15 @@ public sealed class HeadAlertService : IHeadAlertService
 
     public async Task<bool> MarkReadAsync(int alertId, int userId, CancellationToken ct = default)
     {
-        var alert = await _alerts.GetByIdWithRecipientsAsync(alertId, ct);
-        if (alert is null)
-            return false;
-
-        var recipient = alert.Recipients.FirstOrDefault(r => r.UserId == userId);
+        // صف الاستلام وحده (متتبَّع) — لا تحميل التنبيه ولا بقية المستلمين.
+        var recipient = await _alerts.GetRecipientAsync(alertId, userId, ct);
         if (recipient is null)
             return false;
 
         if (recipient.IsRead)
             return true;
 
+        // اصطلاح كل كتابات الخدمة: التعديل والحفظ داخل _tx.RunAsync (§6، المرحلة 2).
         await _tx.RunAsync(async token =>
         {
             recipient.IsRead = true;
@@ -988,15 +985,6 @@ public sealed class HeadAlertService : IHeadAlertService
         _ => throw new ArgumentException("نوع التنبيه غير صالح"),
     };
 
-    private static string DocumentTitle(HeadAlert alert) =>
-        HeadAlertTitle.Build(
-            alert.DocumentId,
-            alert.Document is not null,
-            alert.Document?.BorrowerName,
-            alert.Document?.BorrowerFather,
-            alert.Document?.BorrowerFamily,
-            alert.Document?.DocumentType);
-
     private static PagedResult<HeadAlertSummaryDto> ToPagedResult(
         HeadAlertSummaryPage page, AlertPageRequest request) => new()
         {
@@ -1011,31 +999,37 @@ public sealed class HeadAlertService : IHeadAlertService
         actor.BranchId ?? throw new UnauthorizedAccessException("حساب رئيس القسم/الشعبة غير مرتبط بفرع");
 
     /// <summary>
-    /// تحويل عقد التفاصيل الكامل (الخطة §9.2): النص الكامل هنا وحده، و<c>IsRead</c> حالة
-    /// القارئ نفسه (أو <c>null</c> لغير المستلم)، و<c>CanViewRecipients</c> قرار خادم:
-    /// المنشئ أو المدير/المشرف — لا يملك العميل تعيينه.
+    /// تحويل صف التفاصيل المسقط إلى العقد الكامل (الخطة §9.2): النص الكامل هنا وحده،
+    /// و<c>IsRead</c> حالة القارئ نفسه (أو <c>null</c> لغير المستلم)، و<c>CanViewRecipients</c>
+    /// قرار خادم — لا يملك العميل تعيينه.
     /// </summary>
-    private static HeadAlertDto ToDetailDto(HeadAlert a, int actorUserId, bool hasFullAccess) => new(
-        a.Id,
-        a.Kind,
-        a.Message,
-        a.TargetType.ToString().ToLowerInvariant(),
-        a.DocumentId,
-        DocumentTitle(a),
-        a.TargetLawyerId,
-        a.TargetLawyer?.FullName,
-        a.DelegationId,
-        a.AppealId,
-        a.ReviewLetterId,
-        a.PublicEntityId,
-        a.ExecutionCircuitId,
-        a.CreatedAt,
-        a.LastContentChangedAt,
-        a.IsArchived,
-        a.ArchivedAt,
-        a.CreatedBy?.FullName,
-        a.Recipients.FirstOrDefault(r => r.UserId == actorUserId)?.IsRead,
-        hasFullAccess || a.CreatedById == actorUserId,
-        a.Recipients.Count,
-        a.Recipients.Count(r => !r.IsRead));
+    private static HeadAlertDto ToDetailDto(HeadAlertDetailRow row, bool canViewRecipients) => new(
+        row.Id,
+        row.Kind,
+        row.Message,
+        row.TargetType.ToString().ToLowerInvariant(),
+        row.DocumentId,
+        HeadAlertTitle.Build(
+            row.DocumentId,
+            row.DocumentExists,
+            row.BorrowerName,
+            row.BorrowerFather,
+            row.BorrowerFamily,
+            row.DocumentType),
+        row.TargetLawyerId,
+        row.TargetLawyerName,
+        row.DelegationId,
+        row.AppealId,
+        row.ReviewLetterId,
+        row.PublicEntityId,
+        row.ExecutionCircuitId,
+        row.CreatedAt,
+        row.LastContentChangedAt,
+        row.IsArchived,
+        row.ArchivedAt,
+        row.CreatedByName,
+        row.IsRead,
+        canViewRecipients,
+        row.RecipientCount,
+        row.UnreadCount);
 }

@@ -278,15 +278,51 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
         => Db.HeadAlertRecipients.CountAsync(
             r => r.UserId == userId && !r.IsRead && !r.HeadAlert!.IsArchived, ct);
 
-    public async Task<HeadAlert?> GetByIdWithRecipientsAsync(int id, CancellationToken ct = default)
+    public async Task<HeadAlertDetailRow?> GetDetailRowAsync(
+        int alertId, int actorUserId, CancellationToken ct = default)
     {
+        // إسقاط واحد: لا Include(Recipients) ولا تحميل كيانات (الخطة §9.2).
         return await Db.HeadAlerts
-            .Include(a => a.Recipients)
-            .Include(a => a.CreatedBy)
-            .Include(a => a.Document)
-            .Include(a => a.TargetLawyer)
-            .FirstOrDefaultAsync(a => a.Id == id, ct);
+            .AsNoTracking()
+            .Where(a => a.Id == alertId)
+            .Select(a => new HeadAlertDetailRow(
+                a.Id,
+                a.Kind,
+                a.Message,
+                a.TargetType,
+                a.DocumentId,
+                a.Document != null,
+                a.Document != null ? a.Document.BorrowerName : null,
+                a.Document != null ? a.Document.BorrowerFather : null,
+                a.Document != null ? a.Document.BorrowerFamily : null,
+                a.Document != null ? a.Document.DocumentType : null,
+                a.TargetLawyerId,
+                a.TargetLawyer != null ? a.TargetLawyer.FullName : null,
+                a.DelegationId,
+                a.AppealId,
+                a.ReviewLetterId,
+                a.PublicEntityId,
+                a.ExecutionCircuitId,
+                a.CreatedAt,
+                a.LastContentChangedAt,
+                a.IsArchived,
+                a.ArchivedAt,
+                a.CreatedBy != null ? a.CreatedBy.FullName : null,
+                a.CreatedById,
+                a.Recipients.Any(r => r.UserId == actorUserId),
+                a.Recipients
+                    .Where(r => r.UserId == actorUserId)
+                    .Select(r => (bool?)r.IsRead)
+                    .FirstOrDefault(),
+                a.Recipients.Count(),
+                a.Recipients.Count(r => !r.IsRead)))
+            .FirstOrDefaultAsync(ct);
     }
+
+    public Task<HeadAlertRecipient?> GetRecipientAsync(
+        int alertId, int userId, CancellationToken ct = default)
+        => Db.HeadAlertRecipients
+            .FirstOrDefaultAsync(r => r.HeadAlertId == alertId && r.UserId == userId, ct);
 
     public async Task<List<HeadAlert>> ListActiveUnreadByRecipientWithRecipientsAsync(
         int userId, CancellationToken ct = default)

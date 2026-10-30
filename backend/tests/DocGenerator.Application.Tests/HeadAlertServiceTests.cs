@@ -408,6 +408,73 @@ public class HeadAlertServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Detail_CreatorWithThreeRecipients_GetsCounters_AndNullIsRead()
+    {
+        var lawyer3 = new User
+        {
+            Username = "law3",
+            FullName = "محامي دمشق 3",
+            Role = UserRole.Lawyer,
+            BranchId = _branchId,
+            PasswordHash = new PasswordHasher().Hash("123456"),
+        };
+        _db.Users.Add(lawyer3);
+        await _db.SaveChangesAsync();
+
+        var created = await _service.CreateAsync(
+            new CreateHeadAlertRequest("branch", null, null, "تعميم"), _head.Id, _branchId, "head_x");
+
+        // المنشئ ليس مستلمًا: IsRead فارغة، والعدّادان محتفظ بهما في التفاصيل (D5).
+        var detail = await _service.GetDetailsAsync(created.Id, ActorFor(_head));
+        Assert.NotNull(detail);
+        Assert.True(detail!.CanViewRecipients);
+        Assert.Null(detail.IsRead);
+        Assert.Equal(3, detail.RecipientCount);
+        Assert.Equal(3, detail.UnreadCount);
+
+        // مستلم غير الفاعل: حالته تخصّه (غير مقروء) ولا يرى المستلمين.
+        var recipientDetail = await _service.GetDetailsAsync(created.Id, ActorFor(lawyer3));
+        Assert.NotNull(recipientDetail);
+        Assert.False(recipientDetail!.IsRead);
+        Assert.False(recipientDetail.CanViewRecipients);
+        Assert.Equal(3, recipientDetail.RecipientCount);
+    }
+
+    [Fact]
+    public async Task MarkRead_UpdatesOnlyActorRow_AndDetailReflectsIt()
+    {
+        var created = await _service.CreateAsync(
+            new CreateHeadAlertRequest("branch", null, null, "تعميم"), _head.Id, _branchId, "head_x");
+
+        Assert.True(await _service.MarkReadAsync(created.Id, _lawyer1.Id));
+
+        var rows = await _db.HeadAlertRecipients
+            .Where(r => r.HeadAlertId == created.Id)
+            .ToListAsync();
+        var mine = Assert.Single(rows, r => r.UserId == _lawyer1.Id);
+        Assert.True(mine.IsRead);
+        Assert.NotNull(mine.ReadAt);
+        Assert.All(rows.Where(r => r.UserId != _lawyer1.Id), r =>
+        {
+            Assert.False(r.IsRead);
+            Assert.Null(r.ReadAt);
+        });
+
+        // إعادة التعليم idempotent: لا تُغيّر زمن القراءة المحفوظ.
+        var readAt = mine.ReadAt;
+        Assert.True(await _service.MarkReadAsync(created.Id, _lawyer1.Id));
+        _db.ChangeTracker.Clear();
+        Assert.Equal(readAt, (await _db.HeadAlertRecipients.SingleAsync(r => r.Id == mine.Id)).ReadAt);
+
+        // التفاصيل تعكس حالة القارئ والعدّاد المحتفظ به (D5) بدقة.
+        var detail = await _service.GetDetailsAsync(created.Id, ActorFor(_lawyer1));
+        Assert.NotNull(detail);
+        Assert.True(detail!.IsRead);
+        Assert.Equal(2, detail.RecipientCount);
+        Assert.Equal(1, detail.UnreadCount);
+    }
+
+    [Fact]
     public async Task GetDetails_MapsArchivedAndReferenceFields_ForOversight()
     {
         var createdAt = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
