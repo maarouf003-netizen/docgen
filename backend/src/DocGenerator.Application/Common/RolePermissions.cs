@@ -1,10 +1,14 @@
 using DocGenerator.Domain.Enums;
 
-namespace DocGenerator.Api.Authorization;
+namespace DocGenerator.Application.Common;
 
 /// <summary>
 /// مصفوفة الصلاحيات المركزية: كل تحقق من الصلاحيات يمر عبر هذا الكتالوج
 /// حتى لا تتفرق القواعد بين المتحكمات، ويكون أي تعديل لاحق في مكان واحد.
+///
+/// <para>موضعه في <c>Application.Common</c> لا في <c>Api</c> مقصود (مراجعة PR-4 `ح‑4`):
+/// القرارات تُتخذ في الخدمة أيضًا، فلو بقي الكتالوج في طبقة الواجهة لَما استطاعت
+/// <c>HeadAlertService</c> الرجوع إليه، فتنشأ نسخة ثانية تنحرف عند أول قرار جديد.</para>
 /// </summary>
 /// <remarks>
 /// رئيس الشعبة (`SubHead`) يرث صلاحيات رئيس القسم الخمس عشرة بنطاق شعبته
@@ -21,6 +25,10 @@ public static class RolePermissions
     /// </summary>
     public static bool IsHeadOrSubHead(UserRole role) =>
         role is UserRole.Head or UserRole.SubHead;
+
+    /// <summary>محامٍ — الدور الذي يملك مستنداته ويستلم تنبيهات ملفاته.</summary>
+    public static bool IsLawyer(UserRole role) => role == UserRole.Lawyer;
+
     /// <summary>إدخال/تعديل مستند جديد — المحامي فقط (للملفات التي يملكها).</summary>
     public static bool CanEditDocuments(UserRole role) => role == UserRole.Lawyer;
 
@@ -64,6 +72,22 @@ public static class RolePermissions
 
     /// <summary>إصدار تنبيهات للمحامين — رئيس القسم والشعبة (نطاقه) فقط.</summary>
     public static bool CanCreateAlerts(UserRole role) => IsHeadOrSubHead(role);
+
+    /// <summary>
+    /// استلام التنبيهات وتعليمها مقروءة — المحامي ورئيس القسم/الشعبة (المستلمون الفعليون).
+    /// المدير/المشرف يقرأ إشرافيًا ولا يملك صفّ استلام، فلا عدّاد له ولا تعليم قراءة.
+    /// </summary>
+    public static bool CanReceiveAlerts(UserRole role) =>
+        role == UserRole.Lawyer || IsHeadOrSubHead(role);
+
+    /// <summary>قراءة إشرافية على التنبيهات (القوائم/التفاصيل/المستلمون) — مدير/مشرف.</summary>
+    public static bool CanReadAllAlerts(UserRole role) => role is UserRole.Manager or UserRole.Admin;
+
+    /// <summary>
+    /// قراءة تنبيهات إنابةٍ معيّنة — محامٍ فقط، وطرفٌ فيها (الطرفية تُفحص في الخدمة
+    /// عبر <c>DelegationParties.IsParty</c>، فهذه دلالة دور لا دلالة نطاق).
+    /// </summary>
+    public static bool CanReadDelegationAlerts(UserRole role) => role == UserRole.Lawyer;
 
     /// <summary>
     /// تسطير/تعديل/حذف الإنابات على ملف يملكه المحامي (الملف المنيب) — المحامي فقط،

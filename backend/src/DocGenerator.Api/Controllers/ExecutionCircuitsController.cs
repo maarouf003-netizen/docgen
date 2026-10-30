@@ -1,4 +1,3 @@
-using DocGenerator.Api.Authorization;
 using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
