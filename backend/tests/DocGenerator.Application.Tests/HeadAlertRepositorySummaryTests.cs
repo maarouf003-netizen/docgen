@@ -1,6 +1,5 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
-using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
@@ -216,6 +215,35 @@ public class HeadAlertRepositorySummaryTests : IDisposable
         Assert.Empty(recipient.Items);
     }
 
+    [Fact]
+    public async Task Summary_TitleDistinguishesBlankExistingDocumentFromDeleted_AndMatchesSingleRow()
+    {
+        // صف قديم بلا حقول عرض لكن الملف قائم ⇒ «مستند {id}» لا «مستند محذوف».
+        var existing = AddBlankDocument(isDeleted: false);
+        var existingAlert = AddDocumentAlert(existing.Id, "قائم بلا حقول", At(0));
+
+        // ملف محذوف منطقيًا: مُستثنى بـQuery Filter ⇒ «مستند محذوف».
+        var deleted = AddBlankDocument(isDeleted: true);
+        var deletedAlert = AddDocumentAlert(deleted.Id, "محذوف", At(1));
+
+        // تنبيه بلا مرجع ملف ⇒ عنوان فارغ (ليس «محذوفًا»).
+        var branchAlert = AddAlert(_branchA, _head.Id, "تعميم", At(2));
+
+        var page = await _repository.ListSummariesForOversightAsync(
+            AlertArchiveFilter.Active, delegationId: null, skip: 0, take: 10);
+
+        var existingItem = Assert.Single(page.Items, i => i.Id == existingAlert.Id);
+        Assert.Equal($"مستند {existing.Id}", existingItem.DocumentTitle);
+        Assert.Equal("مستند محذوف", Assert.Single(page.Items, i => i.Id == deletedAlert.Id).DocumentTitle);
+        Assert.Equal(string.Empty, Assert.Single(page.Items, i => i.Id == branchAlert.Id).DocumentTitle);
+
+        // القراءة الفردية (مسار جسم 201) تعطي عنوان الصف نفسه حقلًا بحقل.
+        var single = await _repository.GetSummaryAsync(
+            existingAlert.Id, recipientUserId: null, includeCounters: true);
+        Assert.NotNull(single);
+        Assert.Equal(existingItem.DocumentTitle, single!.DocumentTitle);
+    }
+
     private HeadAlert AddAlert(
         int branchId,
         int createdById,
@@ -243,6 +271,48 @@ public class HeadAlertRepositorySummaryTests : IDisposable
         };
         _db.HeadAlerts.Add(alert);
         _db.SaveChanges();
+        return alert;
+    }
+
+    /// <summary>
+    /// ملف بكل حقول العرض الفارغة — محاكاة صفوف قديمة/مستوردة سبقت اشتقاق
+    /// <c>DocumentType</c> في <c>DocumentText.FillDerivedFields</c>.
+    /// </summary>
+    private Document AddBlankDocument(bool isDeleted)
+    {
+        var document = new Document
+        {
+            BranchId = _branchA,
+            CreatedById = _head.Id,
+            DocumentType = null,
+            BorrowerName = null,
+            BorrowerFather = null,
+            BorrowerFamily = null,
+            IsDeleted = isDeleted,
+            DeletedAt = isDeleted ? At(0) : null,
+        };
+        _db.Documents.Add(document);
+        _db.SaveChanges();
+        _db.ChangeTracker.Clear();
+        return document;
+    }
+
+    private HeadAlert AddDocumentAlert(int documentId, string message, DateTime changedAt)
+    {
+        var alert = new HeadAlert
+        {
+            BranchId = _branchA,
+            CreatedById = _head.Id,
+            TargetType = HeadAlertTargetType.Document,
+            Kind = HeadAlertKindCatalog.ManualToDocument,
+            DocumentId = documentId,
+            Message = message,
+            CreatedAt = changedAt,
+            LastContentChangedAt = changedAt,
+        };
+        _db.HeadAlerts.Add(alert);
+        _db.SaveChanges();
+        _db.ChangeTracker.Clear();
         return alert;
     }
 

@@ -4,8 +4,9 @@ namespace DocGenerator.Application.Tests;
 
 /// <summary>
 /// اختبارات مساعد عنوان الملف الموحّد (ورقة إصلاح PR-4 §6.1ب): الترتيب، وتجاهل
-/// الأجزاء الفارغة، والتدرّج إلى نوع الملف ثم رقم المستند، وحالتا «مستند محذوف»
-/// و«لا ملف» — وهي نفس القواعد التي كانت مكررة بين المستودع والخدمة.
+/// الأجزاء الفارغة، والتدرّج إلى نوع الملف ثم رقم المستند، والفصل الصريح بين
+/// «مستند محذوف» (مرجع بلا صف مرئي) و«مستند قائم بلا حقول عرض» (يُعرض برقمه)،
+/// وحالة التنبيه بلا مرجع ملف (عنوان فارغ).
 /// </summary>
 public class HeadAlertTitleTests
 {
@@ -14,6 +15,7 @@ public class HeadAlertTitleTests
     {
         var title = HeadAlertTitle.Build(
             documentId: 12,
+            documentExists: true,
             borrowerName: "محمد",
             borrowerFather: "أحمد",
             borrowerFamily: "العلي",
@@ -27,6 +29,7 @@ public class HeadAlertTitleTests
     {
         var title = HeadAlertTitle.Build(
             documentId: 12,
+            documentExists: true,
             borrowerName: "محمد",
             borrowerFather: "   ",
             borrowerFamily: "العلي",
@@ -40,6 +43,7 @@ public class HeadAlertTitleTests
     {
         var title = HeadAlertTitle.Build(
             documentId: 12,
+            documentExists: true,
             borrowerName: null,
             borrowerFather: " ",
             borrowerFamily: null,
@@ -49,10 +53,11 @@ public class HeadAlertTitleTests
     }
 
     [Fact]
-    public void Build_ReturnsDeletedDocumentMarker_WhenFieldsMissingButIdPresent()
+    public void Build_ReturnsDeletedMarker_WhenDocumentReferenceHasNoVisibleRow()
     {
         var title = HeadAlertTitle.Build(
             documentId: 42,
+            documentExists: false,
             borrowerName: null,
             borrowerFather: null,
             borrowerFamily: null,
@@ -62,22 +67,46 @@ public class HeadAlertTitleTests
     }
 
     [Fact]
-    public void Build_WithoutUsableFields_UsesDocumentFallbackOrEmpty()
+    public void Build_ExistingBlankDocument_UsesIdFallback_NotDeletedMarker()
     {
-        var withId = HeadAlertTitle.Build(
+        // صف قديم/مستورد: الملف قائم لكن DocumentType وكل حقول الاسم فارغة.
+        var title = HeadAlertTitle.Build(
             documentId: 42,
-            borrowerName: " ",
-            borrowerFather: null,
-            borrowerFamily: null,
-            documentType: null);
-        var withoutDocument = HeadAlertTitle.Build(
-            documentId: null,
+            documentExists: true,
             borrowerName: null,
             borrowerFather: null,
             borrowerFamily: null,
             documentType: null);
 
-        Assert.Equal("مستند 42", withId);
-        Assert.Equal(string.Empty, withoutDocument);
+        Assert.Equal("مستند 42", title);
+        Assert.NotEqual("مستند محذوف", title);
+    }
+
+    [Fact]
+    public void Build_WithoutDocumentReference_ReturnsEmpty_EvenIfNameFieldsPresent()
+    {
+        var title = HeadAlertTitle.Build(
+            documentId: null,
+            documentExists: false,
+            borrowerName: "محمد",
+            borrowerFather: null,
+            borrowerFamily: null,
+            documentType: null);
+
+        Assert.Equal(string.Empty, title);
+    }
+
+    [Fact]
+    public void Build_WhitespaceOnlyFieldsOnExistingDocument_UsesIdFallback()
+    {
+        var title = HeadAlertTitle.Build(
+            documentId: 42,
+            documentExists: true,
+            borrowerName: " ",
+            borrowerFather: null,
+            borrowerFamily: null,
+            documentType: null);
+
+        Assert.Equal("مستند 42", title);
     }
 }

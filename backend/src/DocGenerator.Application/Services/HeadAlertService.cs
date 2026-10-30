@@ -991,6 +991,7 @@ public sealed class HeadAlertService : IHeadAlertService
     private static string DocumentTitle(HeadAlert alert) =>
         HeadAlertTitle.Build(
             alert.DocumentId,
+            alert.Document is not null,
             alert.Document?.BorrowerName,
             alert.Document?.BorrowerFather,
             alert.Document?.BorrowerFamily,

@@ -11,6 +11,7 @@ using DocGenerator.Application.Services;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace DocGenerator.Api.Tests;
@@ -169,6 +170,46 @@ public class AlertsIntegrationTests
         Assert.NotEqual("مستند محذوف", created.DocumentTitle);
         Assert.Equal(detail.CreatedByName, created.CreatedByName);
         Assert.False(string.IsNullOrWhiteSpace(created.CreatedByName));
+    }
+
+    [Fact]
+    public async Task CreateAlert_BlankExistingDocument_UsesIdFallback_In201DetailAndSentList()
+    {
+        var docId = await CreateDocumentForLawyerAsync(_factory, "lawyer1");
+
+        // محاكاة صف قديم سبق اشتقاق DocumentType (الخدمة تضبطه دائمًا اليوم):
+        // الحقول الأربعة NULL والملف قائم ⇒ «مستند {id}» لا «مستند محذوف».
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+            await db.Documents
+                .Where(d => d.Id == docId)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(d => d.DocumentType, (string?)null)
+                    .SetProperty(d => d.BorrowerName, (string?)null)
+                    .SetProperty(d => d.BorrowerFather, (string?)null)
+                    .SetProperty(d => d.BorrowerFamily, (string?)null));
+        }
+
+        var head = _factory.AuthorizedClient("head1");
+        var created = await CreateAlertAsync(head, new
+        {
+            targetType = "document",
+            documentId = docId,
+            targetLawyerId = (int?)null,
+            message = "راجع هذا الملف",
+        });
+
+        var expected = $"مستند {docId}";
+        Assert.Equal(expected, created.DocumentTitle);
+
+        var detailResponse = await head.GetAsync($"/api/alerts/{created.Id}");
+        Assert.Equal(HttpStatusCode.OK, detailResponse.StatusCode);
+        var detail = await detailResponse.Content.ReadFromJsonAsync<HeadAlertDto>();
+        Assert.Equal(expected, detail!.DocumentTitle);
+
+        var sent = await ReadPageAsync<HeadAlertSummaryDto>(await head.GetAsync("/api/alerts/sent"));
+        Assert.Equal(expected, Assert.Single(sent.Items, a => a.Id == created.Id).DocumentTitle);
     }
 
     [Fact]
