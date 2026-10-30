@@ -353,7 +353,7 @@ Task<HeadAlertSummaryDto?> GetSummaryAsync(
 | `ح‑12` | رسالة `unreadOnly` صارت تحمل اسم معامل إنجليزيًا | **أُغلقت**: إسقاط `nameof(query)` + اختبار يثبّت النص كاملًا |
 | `ح‑13` | التحقق من الترقيم سبق التفويض في `List`/`Sent`/`ByDelegation` ⇒ `403` صارت `400` | **أُغلقت**: الترتيب دور/فرع ← شكل ← طرفية في الأسطح الثلاثة، وإزالة `Validate` المكرر من المتحكم + اختبارات تركيبات |
 | `ح‑14` | قاعدة «مدير/مشرف» معرّفة 3 مرات، و`User.HasFullAccess` ميت | **أُغلقت**: `CanReadAllAlerts => HasFullAccess`، `CanReadDelegationAlerts/CanManageDelegations => IsLawyer`، وحذف `User.HasFullAccess` |
-| `ح‑15` | عدّاد الرئيس لا يقيّد بالفرع (قائمة مقيّدة) | **مجدولة**: جوهر المرحلة 4 (`P3-4`/`P2-3`)، مع اختبار «عدّاد = طول القائمة» إلزاميًا |
+| `ح‑15` | عدّاد الرئيس لا يقيّد بالفرع (قائمة مقيّدة) | **أُغلقت في المرحلة 4**: `CountUnreadForUserAsync(userId, branchId)` + اختبار «العدّاد = طول القائمة»، و`received` يعيد مجموع قائمته بلا سقف صفحة |
 | `ح‑16` | `MarkRead` لرئيس بلا فرع ينجح بينما `D11` يعتبره غير صالح | **أُغلقت توثيقيًا**: استثناء صريح في `D11` + تعليق على الدالة |
 | `ح‑17` | اختبار `D11` التكاملي يُثبت حارس التوكن لا «دفاع القاعدة» | **أُغلقت توثيقيًا**: وصف الاختبار يصرّح بالحد |
 | `ح‑18` | عدد الاختبارات في §5 («19») لا يطابق الواقع | **أُغلقت**: الاستبدال أعلاه بالتفصيل الدقيق |
@@ -369,7 +369,7 @@ Task<HeadAlertSummaryDto?> GetSummaryAsync(
 
 1. `enum AlertUnreadScope { User, Received }` في `Application/Common/`.
 2. `IHeadAlertService.CountUnreadAsync(HeadAlertActor actor, AlertUnreadScope scope, CancellationToken)`:
-   - `User`: محامٍ → `branchId = null`؛ رئيس/شعبة → `RequireBranchForRead` (403 عند غياب الفرع، `D11`)؛ مدير/مشرف → استثناء.
+   - `User`: محامٍ → `branchId = null`؛ رئيس/شعبة → `RequireBranch` (403 عند غياب الفرع، `D11`)؛ مدير/مشرف → استثناء.
    - `Received`: رئيس/شعبة فقط + فرع إلزامي.
 3. المستودع:
    - `CountUnreadForUserAsync(int userId, int? branchId, CancellationToken)`.
@@ -391,6 +391,8 @@ Task<HeadAlertSummaryDto?> GetSummaryAsync(
 - مدير/مشرف: `403`.
 - `scope=received` لمحامٍ: `403`.
 - `scope=xxx`: `400`.
+- **إضافي (`ح‑15`):** «العدّاد = طول القائمة» لرئيس مستلم في فرعين (وحدات + تكامل).
+- **إضافي:** قراءة صف محامٍ تخفض `received` ولا تمس `user`؛ والافتراضي بلا `scope` يبقى `user`.
 
 **الحجم:** متوسط.
 
@@ -514,11 +516,11 @@ Task<HeadAlertSummaryDto?> GetSummaryAsync(
 | `P1-1` اقتران النشر | 8 + 5 | اختبارات الشكلين + فحص بصري | `[ ]` |
 | `P2-1` مُسقِطان | 1 | `HeadAlertTitleTests` (7) + تمييز المحذوف/القائم الفارغ + 2100/706 | `[x]` |
 | `P2-2` انحراف طبقي | 1 | `rg` صفر على `Application.Services` داخل المستودع | `[x]` |
-| `P2-3` شارة الفرع | 4 + 8 | `UnreadCount_ReceivedScope_*` + اختبار واجهة | `[ ]` |
+| `P2-3` شارة الفرع | 4 + 8 | `UnreadCount_ReceivedScope_*` (خلفية ✅) + اختبار واجهة (`PR-5` متبقٍ) | `[ ]` |
 | `P3-1` صلاحية الخدمة | 3 | `HeadAlertActor` هو مدخل القرار: `CreateAsync`/`MarkReadAsync`/`CountUnreadAsync`/`ListByDelegationAsync` تفحص الدور/الفرع/الطرف داخل `HeadAlertService`، والمتحكم يترجم HTTP فقط؛ `HeadAlertServicePermissionTests` + `DelegationPartiesTests` + بناء بلا تحذيرات | `[x]` |
 | `P3-2` شيفرة ميتة | 1 + 2 | بناء بلا تحذيرات + `rg` | `[x]` |
 | `P3-3` فجوات التغطية | 6 | الحقول المتميزة + `404` + العدّادات | `[ ]` |
-| `P3-4` عدّاد غير مقيّد | 4 | `CountUnread_UserScope_HeadBranch` | `[ ]` |
+| `P3-4` عدّاد غير مقيّد | 4 | `CountUnread_UserScope_ForHeadMatchesHisBranchList` + `CountUnread_ReceivedScope_*` + `Scopes_UserIsBranchBound_ReceivedCoversReceivedAlerts` (تكامل معزول) | `[x]` |
 | `P3-5` تحقق المستلمين | 5 | `InactiveLawyer/Creator` + نص موحّد | `[ ]` |
 | `P3-6` فيضان `Skip` | 5 | `InvalidPaging_RejectsHugePage` | `[ ]` |
 | `P3-7` انحراف التوثيق | 7 | مراجعة يدوية موثّقة | `[ ]` |
@@ -623,6 +625,7 @@ npm run build
 | 2026-10-30 | المرحلة 3: `HeadAlertActor` مصدر القرار (دور/فرع/طرف) في `CreateAsync`/`MarkReadAsync`/`ListByDelegationAsync`/`CountUnreadAsync`، `DelegationParties.IsParty` بديل `IDocumentDelegationService.IsPartyAsync` المحذوف، `RequireBranchForWrite` لـ`400` الكتابة، `IDelegationRepository` حقنًا إلزاميًا | تنفيذ `ح‑1`+`D8` قبل `ح‑4`: `ListSummariesByDelegationAsync` لا يقيّد بالمستخدم، فالعقد صار آمنًا بذاته لا بحرس المتحكم؛ و`R-1`/`D11` مغلقان باختبار تكامل صريح |
 | 2026-10-30 | مراجعة نقدية لما بعد تنفيذ المرحلة 3: تسجيل `ح‑10`…`ح‑18` (كسر ضمان إعادة المحاولة في `MarkRead`، فقدان فحص دور القاعدة في `Create`، انحراف نص رسالة، انعكاس `403/400`، تكرار تعريف القاعدة) | منع «إغلاق شكلي»: المراجعة أثبتت ثلاث ملاحظات تمسّ عقدًا/ضمانًا مكتوبًا رغم خضرة الاختبارات |
 | 2026-10-30 | إغلاق ملاحظات المراجعة: `TryMarkReadAsync` ذرّي، فحص دور القاعدة في `Create`، إسقاط `nameof(query)`، ترتيب «دور/فرع ← شكل ← طرفية» وإزالة `Validate` المكرر من المتحكم، توحيد مسندات الكتالوج وحذف `User.HasFullAccess` الميت | جعل الكود مطابقًا للعقد والضمان المكتوبين لا للاختبارات فقط؛ `ح‑15` تبقى للمرحلة 4 بالتصميم |
+| 2026-10-30 | المرحلة 4: `AlertUnreadScope` + `scope` صريح في `GET /alerts/unread-count`، `CountUnreadForUserAsync` (فرع اختياري للرئيس) و`CountUnreadForReceivedAsync` (كل غير المقروء على تنبيهات استلمها الرئيس في فرعه)، وحذف `CountUnreadAsync(int userId)` | تنفيذ `D6`/`D7` وإغلاق `ح‑15`: العدّاد الشخصي صار مطابقًا للقائمة، والافتراضي بلا `scope` يبقى `user` فلا كسر للواجهة المنشورة؛ لا هجرة (الفهارس القائمة تخدم الاستعلامين) |
 
 ---
 

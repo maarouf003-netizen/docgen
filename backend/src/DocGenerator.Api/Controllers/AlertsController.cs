@@ -63,15 +63,22 @@ public class AlertsController : ControllerBase
     }
 
     /// <summary>
-    /// عدّاد غير المقروء للفاعل نفسه — المستلمون فقط (محامٍ أو رئيس نطاق)؛
-    /// المدير/المشرف ورئيس بلا فرع يُرفضون في الخدمة (<c>403</c>).
+    /// عدّاد غير المقروء (`D6`/`D7`): <c>scope=user</c> (الافتراضي) لصفوف الفاعل نفسه —
+    /// المحامي بلا قيد فرع، ورئيس/شعبة داخل فرعه؛ و<c>scope=received</c> لرئيس/شعبة:
+    /// مجموع غير المقروء على التنبيهات التي استلمها في فرعه. المدير/المشرف ورئيس بلا
+    /// فرع يُرفضون في الخدمة (<c>403</c>)، وقيمة نطاق غير معروفة <c>400</c>.
     /// </summary>
     [HttpGet("unread-count")]
-    public async Task<IActionResult> UnreadCount(CancellationToken ct)
+    public async Task<IActionResult> UnreadCount(
+        [FromQuery] string? scope, CancellationToken ct)
     {
         try
         {
-            return Ok(new { count = await _alerts.CountUnreadAsync(Actor, ct) });
+            return Ok(new { count = await _alerts.CountUnreadAsync(Actor, ParseUnreadScope(scope), ct) });
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
         }
         catch (UnauthorizedAccessException)
         {
@@ -199,6 +206,18 @@ public class AlertsController : ControllerBase
         "all" => AlertArchiveFilter.All,
         "only" => AlertArchiveFilter.OnlyArchived,
         _ => throw new ArgumentException("قيمة archived غير صالحة — استخدم active أو all أو only"),
+    };
+
+    /// <summary>
+    /// يقرأ نطاق عدّاد غير المقروء: الفارغ/<c>user</c> ⇒ <see cref="AlertUnreadScope.User"/>،
+    /// و<c>received</c> ⇒ <see cref="AlertUnreadScope.Received"/>؛ أي قيمة أخرى <c>400</c>
+    /// (لا تحليل ضمني ولا سقوط إلى الافتراضي — يخفي أخطاء العميل).
+    /// </summary>
+    private static AlertUnreadScope ParseUnreadScope(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        null or "" or "user" => AlertUnreadScope.User,
+        "received" => AlertUnreadScope.Received,
+        _ => throw new ArgumentException("قيمة scope غير صالحة — استخدم user أو received"),
     };
 
     /// <summary>

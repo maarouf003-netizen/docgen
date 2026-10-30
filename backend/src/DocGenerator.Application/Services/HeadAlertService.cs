@@ -70,10 +70,13 @@ public interface IHeadAlertService
         int id, HeadAlertActor actor, CancellationToken ct = default);
 
     /// <summary>
-    /// عدّاد غير المقروء للفاعل نفسه — المستلمون فقط (محامٍ أو رئيس قسم/شعبة)،
-    /// ورئيس بلا فرع يُرفض <c>403</c> (`D11`: حساب في حالة غير صالحة).
+    /// عدّاد غير المقروء بنطاقه الصريح (`D6`/`D7`): <see cref="AlertUnreadScope.User"/>
+    /// لصفوف الفاعل نفسه (المحامي بلا قيد فرع، ورئيس/شعبة داخل فرعه)، و
+    /// <see cref="AlertUnreadScope.Received"/> لتنبيهات استلمها الرئيس في فرعه.
+    /// المدير/المشرف يُرفضون <c>403</c>، ورئيس بلا فرع كذلك (`D11`).
     /// </summary>
-    Task<int> CountUnreadAsync(HeadAlertActor actor, CancellationToken ct = default);
+    Task<int> CountUnreadAsync(
+        HeadAlertActor actor, AlertUnreadScope scope, CancellationToken ct = default);
 
     /// <summary>
     /// إصدار يدوي (رئيس/شعبة لفرعه) — يعيد ملخص الصف المنشأ (D3: جسم 201).
@@ -314,18 +317,29 @@ public sealed class HeadAlertService : IHeadAlertService
             r.ReadAt)).ToList();
     }
 
-    public async Task<int> CountUnreadAsync(HeadAlertActor actor, CancellationToken ct = default)
+    public async Task<int> CountUnreadAsync(
+        HeadAlertActor actor, AlertUnreadScope scope, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(actor);
+
+        // D6: نطاق «المستلَم» مخصص للرئيس/الشعبة وحده — المحامي لا يملك تنبيهات
+        // «مستلمة» بمعنى مجموع مستلميها، والمدير/المشرف لا يملك صف استلام أصلًا.
+        if (scope == AlertUnreadScope.Received)
+        {
+            if (!actor.IsHeadOrSubHead)
+                throw new UnauthorizedAccessException("نطاق «المستلَم» مخصص لرئيس القسم/الشعبة");
+
+            // D11: رئيس بلا فرع حساب غير صالح للقراءة ⇒ 403 (لا نطاق مفتوح).
+            var receivedBranchId = RequireBranch(actor);
+            return await _alerts.CountUnreadForReceivedAsync(actor.UserId, receivedBranchId, ct);
+        }
 
         if (!RolePermissions.CanReceiveAlerts(actor.Role))
             throw new UnauthorizedAccessException("عدّاد غير المقروء مخصص للمستلمين (محامٍ أو رئيس نطاق)");
 
-        // D11: رئيس بلا فرع حساب غير صالح للقراءة ⇒ 403 (كان 200 قبل التوحيد، تغيير موثّق).
-        if (actor.IsHeadOrSubHead)
-            RequireBranch(actor);
-
-        return await _alerts.CountUnreadAsync(actor.UserId, ct);
+        // D7: رئيس/شعبة مقيد بفرعه كي يطابق العدّاد قائمته؛ المحامي بلا قيد فرع.
+        var branchId = actor.IsHeadOrSubHead ? RequireBranch(actor) : (int?)null;
+        return await _alerts.CountUnreadForUserAsync(actor.UserId, branchId, ct);
     }
 
     public async Task<HeadAlertSummaryDto> CreateAsync(

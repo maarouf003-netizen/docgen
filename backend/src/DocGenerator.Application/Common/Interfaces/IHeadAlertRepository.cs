@@ -85,8 +85,19 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
     Task<bool> TryMarkReadAsync(
         int alertId, int userId, DateTime readAt, CancellationToken ct = default);
 
-    /// <summary>عدد تنبيهات المستخدم غير المقروءة (يستبعد المؤرشف).</summary>
-    Task<int> CountUnreadAsync(int userId, CancellationToken ct = default);
+    /// <summary>
+    /// عدّ صفوف الاستلام غير المقروءة **للفاعل نفسه** (`scope=user`)، مع تقييد فرعي
+    /// اختياري لمطابقة قائمة الرئيس (`D7`)، واستبعاد المؤرشف. يقابل الفهرسين
+    /// `(UserId, IsRead)` في صفوف الاستلام و`(BranchId, IsArchived, …)` في التنبيهات.
+    /// </summary>
+    Task<int> CountUnreadForUserAsync(int userId, int? branchId, CancellationToken ct = default);
+
+    /// <summary>
+    /// عدّ صفوف غير المقروءة على **التنبيهات التي استلمها الرئيس** في فرعه
+    /// (`scope=received`، `D6`): كل مستلمي تلك التنبيهات لا صفّه وحده — مطابقةً
+    /// لمجموع `unreadCount` في قائمته القديمة، بلا كشف تنبيهات لا يستلمها.
+    /// </summary>
+    Task<int> CountUnreadForReceivedAsync(int userId, int branchId, CancellationToken ct = default);
 
     /// <summary>مستلمو تنبيه بعينه مع بيانات المستخدم — لقائمة المستلمين.</summary>
     Task<List<HeadAlertRecipient>> ListRecipientsWithUserAsync(int alertId, CancellationToken ct = default);

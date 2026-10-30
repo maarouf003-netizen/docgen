@@ -288,12 +288,12 @@ public class HeadAlertServiceTests : IDisposable
         var alert = await _service.CreateAsync(
             new CreateHeadAlertRequest("lawyer", null, _lawyer1.Id, "خاص"), ActorFor(_head), "head_x");
 
-        Assert.Equal(1, await _service.CountUnreadAsync(ActorFor(_lawyer1)));
+        Assert.Equal(1, await _service.CountUnreadAsync(ActorFor(_lawyer1), AlertUnreadScope.User));
 
         var ok = await _service.MarkReadAsync(alert.Id, ActorFor(_lawyer1));
 
         Assert.True(ok);
-        Assert.Equal(0, await _service.CountUnreadAsync(ActorFor(_lawyer1)));
+        Assert.Equal(0, await _service.CountUnreadAsync(ActorFor(_lawyer1), AlertUnreadScope.User));
 
         var dto = Assert.Single(await ReceivedAsync(_lawyer1));
         Assert.True(dto.IsRead);

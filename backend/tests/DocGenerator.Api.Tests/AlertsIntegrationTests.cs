@@ -865,7 +865,14 @@ public class AlertsIntegrationTests
         });
         Assert.Equal(HttpStatusCode.BadRequest, create.StatusCode);
 
-        foreach (var path in new[] { "/api/alerts", "/api/alerts/sent", "/api/alerts/unread-count" })
+        foreach (var path in new[]
+                 {
+                     "/api/alerts",
+                     "/api/alerts/sent",
+                     "/api/alerts/unread-count",
+                     "/api/alerts/unread-count?scope=user",
+                     "/api/alerts/unread-count?scope=received",
+                 })
         {
             Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync(path)).StatusCode);
         }
