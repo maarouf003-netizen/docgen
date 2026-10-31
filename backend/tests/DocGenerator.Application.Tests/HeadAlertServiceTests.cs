@@ -218,7 +218,43 @@ public class HeadAlertServiceTests : IDisposable
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateAsync(new CreateHeadAlertRequest("document", doc.Id, null, "خارج الفرع"), ActorFor(_head), "head_x"));
 
-        Assert.Contains("فرعك", ex.Message);
+        Assert.Equal("الملف غير متاح", ex.Message);
+    }
+
+    [Fact]
+    public async Task Create_MissingDocument_UsesSameUnavailableMessage()
+    {
+        // P3-5: الملف غير الموجود والملف خارج الفرع برسالة واحدة — لا يُكشف وجود
+        // ملف فرع آخر عبر اختلاف النص.
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(new CreateHeadAlertRequest("document", int.MaxValue, null, "ملف وهمي"), ActorFor(_head), "head_x"));
+
+        Assert.Equal("الملف غير متاح", ex.Message);
+    }
+
+    [Fact]
+    public async Task Create_InactiveDocumentCreator_Throws()
+    {
+        var doc = await AddDocumentAsync(_lawyer1);
+        _lawyer1.IsActive = false;
+        await _db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(new CreateHeadAlertRequest("document", doc.Id, null, "منشئ معطّل"), ActorFor(_head), "head_x"));
+
+        Assert.Equal("لا يوجد محامٍ مختص نشط لهذا الملف", ex.Message);
+    }
+
+    [Fact]
+    public async Task Create_InactiveLawyerTarget_Throws()
+    {
+        _lawyer2.IsActive = false;
+        await _db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(new CreateHeadAlertRequest("lawyer", null, _lawyer2.Id, "محامٍ معطّل"), ActorFor(_head), "head_x"));
+
+        Assert.Equal("المحامي غير موجود ضمن فرعك", ex.Message);
     }
 
     [Fact]
@@ -241,7 +277,7 @@ public class HeadAlertServiceTests : IDisposable
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateAsync(new CreateHeadAlertRequest("lawyer", null, lawyerOther.Id, "خارج الفرع"), ActorFor(_head), "head_x"));
 
-        Assert.Contains("فرعك", ex.Message);
+        Assert.Equal("المحامي غير موجود ضمن فرعك", ex.Message);
     }
 
     [Fact]

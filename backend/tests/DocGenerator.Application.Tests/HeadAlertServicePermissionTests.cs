@@ -280,6 +280,37 @@ public class HeadAlertServicePermissionTests : IDisposable
             _service.ListByDelegationAsync(77, ActorFor(_lawyerA), request));
     }
 
+    [Fact]
+    public async Task InvalidPaging_RejectsHugePage()
+    {
+        // P3-6: فيضان الإزاحة رفض صريح من العقد (اسم المعامل `Page`)، لا التفاف
+        // `int` يعتمد على حارس المستودع. الأسطح الثلاثة تمرّ بالتحقق نفسه.
+        var request = new AlertPageRequest { Page = int.MaxValue, PageSize = AlertPageRequest.MaxPageSize };
+
+        var listEx = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            _service.ListForActorAsync(
+                ActorFor(_manager), new HeadAlertListQuery { Page = request }));
+        Assert.Equal("Page", listEx.ParamName);
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            _service.ListSentAsync(ActorFor(_headA), AlertArchiveFilter.Active, request));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            _service.ListByDelegationAsync(77, ActorFor(_lawyerA), request));
+    }
+
+    [Fact]
+    public async Task Paging_ExtremePageWithSize1_IsAllowed()
+    {
+        // السقف يرفض الفيضان لا كِبَر رقم الصفحة: الإزاحة 2,147,483,646 ≤ int.MaxValue.
+        var page = await _service.ListForActorAsync(
+            ActorFor(_manager),
+            new HeadAlertListQuery { Page = new() { Page = int.MaxValue, PageSize = 1 } });
+
+        Assert.Empty(page.Items);
+        Assert.Equal(int.MaxValue, page.Page);
+        Assert.Equal(1, page.PerPage);
+    }
+
     [Theory]
     [InlineData(UserRole.Lawyer)]
     [InlineData(UserRole.Manager)]

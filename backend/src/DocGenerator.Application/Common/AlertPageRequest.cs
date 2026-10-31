@@ -31,8 +31,9 @@ public sealed record AlertPageRequest
     public int PageSize { get; init; } = DefaultPageSize;
 
     /// <summary>
-    /// يتحقق من صحة القيم: الصفحة ≥ 1، وحجم الصفحة بين 1 و100. أي قيمة خارج ذلك
-    /// تُرفض برسالة صريحة (لا سقف صامت ولا تسريب صفحة ضخمة).
+    /// يتحقق من صحة القيم: الصفحة ≥ 1، وحجم الصفحة بين 1 و100، والإزاحة الناتجة لا
+    /// تتجاوز <see cref="int.MaxValue"/>. أي قيمة خارج ذلك تُرفض برسالة صريحة
+    /// (لا سقف صامت ولا تسريب صفحة ضخمة، ولا التفاف حسابي في <see cref="Skip"/>).
     /// </summary>
     public void Validate()
     {
@@ -42,8 +43,15 @@ public sealed record AlertPageRequest
             throw new ArgumentOutOfRangeException(
                 nameof(PageSize),
                 $"حجم الصفحة يجب أن يكون بين 1 و{MaxPageSize}");
+
+        // الحساب في `long` قبل المقارنة: ضرب `int` هنا كان يلتفّ (مثلًا
+        // (int.MaxValue-1)*3 يصبح موجبًا خاطئًا) فيمرّر صفحة غير المطلوبة بصمت.
+        if ((long)(Page - 1) * PageSize > int.MaxValue)
+            throw new ArgumentOutOfRangeException(
+                nameof(Page),
+                "رقم الصفحة كبير جدًا — الإزاحة الناتجة تتجاوز الحد الأقصى المسموح");
     }
 
-    /// <summary>الإزاحة داخل الاستعلام.</summary>
-    public int Skip => (Page - 1) * PageSize;
+    /// <summary>الإزاحة داخل الاستعلام — حساب موسّع ثم تحويل آمن بعد <see cref="Validate"/>.</summary>
+    public int Skip => (int)((long)(Page - 1) * PageSize);
 }

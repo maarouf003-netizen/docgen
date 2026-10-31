@@ -2,7 +2,7 @@
 
 > **تاريخ الوثيقة:** 2026-10-28
 > **الفرع:** `feature/head-alerts-pr4-api` · **الأساس:** `e0d8384`
-> **الحالة:** المراحل 0–4 ✅ (آخر التزام `a9bcb7a`) · التالية: المرحلة 5 — مرساة التسليم في §0.1
+> **الحالة:** المراحل 0–5 ✅ (آخر التزام مرحلي `0b3bcf2`) · التالية: المرحلة 6 — مرساة التسليم في §0.1
 > **القاعدة:** لا هجرات قاعدة بيانات في هذا العمل بالكامل.
 
 ---
@@ -25,10 +25,10 @@
 
 | البند | الحالة المثبتة |
 |---|---|
-| الفرع | `feature/head-alerts-pr4-api` — `HEAD` = `origin` = **`a9bcb7a`**، وشجرة العمل نظيفة |
-| سلسلة الالتزامات | `bd4f8c1` (وسم `pr4-baseline`) → … → `f6d01a1` (المرحلة 4) → `0788b6c` (إغلاق `ح‑19`…`ح‑26`) → `a9bcb7a` (تبعية `follow-redirects`) |
+| الفرع | `feature/head-alerts-pr4-api` — `HEAD` = `origin` = **`0b3bcf2`**، وشجرة العمل نظيفة (تحديث 2026-10-31: التزام توثيقي فوق `a9bcb7a`، لا كود) |
+| سلسلة الالتزامات | `bd4f8c1` (وسم `pr4-baseline`) → … → `f6d01a1` (المرحلة 4) → `0788b6c` (إغلاق `ح‑19`…`ح‑26`) → `a9bcb7a` (تبعية `follow-redirects`) → `0b3bcf2` (تثبيت مرساة التسليم للمرحلة 5) |
 | `PR #54` | مفتوح و`MERGEABLE`، و`CI` **12/12** (ستة فحوص × تشغيلين). **لا يُدمج قبل `PR-5`**: نقاط القائمة تُرجع `PagedResult` بينما الواجهة المنشورة تتوقع مصفوفة |
-| البوابات المحلية | `dotnet build` 0/0 · `Application` **2130/2130** · `Api` **719** + **2** تتابعية · `oxlint`/`tsc -b` صفر · `vitest` 152 ملفًا/1599 اختبارًا · `npm run build` ناجح |
+| البوابات المحلية | `dotnet build` 0/0 · `Application` **2130/2130** عند التسليم (و**2145/2145** بعد المرحلة 5) · `Api` **718** + **2** تتابعية عند التسليم (و**720** + **2** بعد المرحلة 5؛ رقم **719** في المرساة السابقة كان غير دقيق — أُثبت بـ`--list-tests` على `a9bcb7a`) · `oxlint`/`tsc -b` صفر · `vitest` 152 ملفًا/1599 اختبارًا · `npm run build` ناجح |
 | أمر اختبار `Api` | `--filter "Category!=Sequential"` ثم `--filter "Category=Sequential"` — وإلا يفشل `EnricherMiddlewareTests` فشلًا زائفًا عند التوازي |
 | قيد تقني حاكم | `EnableRetryOnFailure` **غير مفعّل** في تسجيل `DbContext` ⇒ `MarkReadAsync` عبر `TryMarkReadAsync` (تحديث ذرّي بلا كيان متتبَّع ولا معاملة) |
 | الهجرات | لا هجرات في هذا العمل كله. `RUN_GUIDE.md` §9 كما هو: `SQLite` **4 معلّقة** بالترتيب `Expand` ← `Outbox_Create` ← `Backfill` ← `Contract` (و`Contract` محظورة قبل `G2`)، و`PostgreSQL` **63 / صفر معلّقة** |
@@ -431,7 +431,7 @@ Task<HeadAlertSummaryDto?> GetSummaryAsync(
 
 ---
 
-### المرحلة 5 — تحقق المستلمين والترقيم (`P3-5`، `P3-6`)
+### المرحلة 5 — تحقق المستلمين والترقيم (`P3-5`، `P3-6`) ✅
 
 **التغييرات:**
 
@@ -554,8 +554,8 @@ Task<HeadAlertSummaryDto?> GetSummaryAsync(
 | `P3-2` شيفرة ميتة | 1 + 2 | بناء بلا تحذيرات + `rg` | `[x]` |
 | `P3-3` فجوات التغطية | 6 | الحقول المتميزة + `404` + العدّادات | `[ ]` |
 | `P3-4` عدّاد غير مقيّد | 4 | `CountUnread_UserScope_EqualsUnreadOnlyListTotal_ForHead` + `CountUnread_ReceivedScope_*` + `CountUnread_HeadMarkingOwnRowRead_DecrementsUserOnly` + `Scopes_UserIsBranchBound_ReceivedCoversReceivedAlerts` (تكامل معزول) | `[x]` |
-| `P3-5` تحقق المستلمين | 5 | `InactiveLawyer/Creator` + نص موحّد | `[ ]` |
-| `P3-6` فيضان `Skip` | 5 | `InvalidPaging_RejectsHugePage` | `[ ]` |
+| `P3-5` تحقق المستلمين | 5 | `Create_InactiveDocumentCreator_Throws` + `Create_InactiveLawyerTarget_Throws` + `Create_MissingDocument_UsesSameUnavailableMessage` (خدمة) و`Head_CreatesAlert_InactiveLawyerAndInactiveDocumentCreator_BadRequest` + `Head_CreatesDocumentAlert_OutsideBranch_BadRequest` (HTTP، نص موحّد) | `[x]` |
+| `P3-6` فيضان `Skip` | 5 | `InvalidPaging_RejectsHugePage` + `Validate_RejectsSkipOverflow_WithPageParameter` + `Skip_ExtremePageWithSizeOne_IsIntMaxValueMinusOne` | `[x]` |
 | `P3-7` انحراف التوثيق | 7 | مراجعة يدوية موثّقة | `[ ]` |
 | `P3-8` غياب `Postgres` | 6 | `HeadAlertSummaryPostgresTests` في CI | `[ ]` |
 | `P3-9` بيان العقد | 6 | `Contract_ForbiddenFromManifest_*` | `[ ]` |
@@ -564,7 +564,7 @@ Task<HeadAlertSummaryDto?> GetSummaryAsync(
 | `P3-12` تعرّض محتفظ | 7 | اختبار `UntilPR6` + بند `PR-6` | `[ ]` |
 | `R-1` (`D11`) حالة «رئيس بلا فرع» | 3 | `BranchlessHead_CreateIs400_AndReadsAre403` (تكامل `Api`) + `Create_BranchlessHead_IsArgumentError_NotAuthorization`/`CountUnread_BranchlessHead_IsRejected_LawyerCountsOwnRows` (وحدة) | `[x]` |
 | `R-2` فهارس عدّاد `received` | 4 | مراجعة مخطط موثّقة (لا هجرة) | `[ ]` |
-| `R-3` سقف الترقيم | 5 | `Paging_OverflowRejected_ExtremePageWithSize1Allowed` | `[ ]` |
+| `R-3` سقف الترقيم | 5 | `Paging_OverflowRejected_ExtremePageWithSize1Allowed` (HTTP) + `Paging_ExtremePageWithSize1_IsAllowed` (خدمة) | `[x]` |
 | `R-4` حرس `Postgres` | 6 | تنفيذ فعلي > 0 اختبار في وظيفة CI | `[ ]` |
 | `R-5` (`D12`) فقدان النص الكامل | 8 | `AlertDetails.test.tsx` (جلب عند الفتح فقط) | `[ ]` |
 | `R-6` قصّ 50 صامت | 8 | اختبار `pageSize: 100` + مؤشر «المزيد» | `[ ]` |
@@ -661,6 +661,8 @@ npm run build
 | 2026-10-30 | المرحلة 4: `AlertUnreadScope` + `scope` صريح في `GET /alerts/unread-count`، `CountUnreadForUserAsync` (فرع اختياري للرئيس) و`CountUnreadForReceivedAsync` (كل غير المقروء على تنبيهات استلمها الرئيس في فرعه)، وحذف `CountUnreadAsync(int userId)` | تنفيذ `D6`/`D7` وإغلاق `ح‑15`: العدّاد الشخصي صار مطابقًا للقائمة، والافتراضي بلا `scope` يبقى `user` فلا كسر للواجهة المنشورة؛ لا هجرة (الفهارس القائمة تخدم الاستعلامين) |
 | 2026-10-31 | مراجعة نقدية للمرحلة 4 على الكود مع فحص SQL فعلي (`ToQueryString`): تثبيت `ح‑19`…`ح‑26` وإغلاقها — ثبات «العدّاد = `TotalCount` لقائمة غير المقروء»، توثيق تغيير عقد الافتراضي (`D7`/`ح‑20`)، تغطية `SubHead` وقراءة الرئيس، `switch` مغلق لقيمة `enum` غير معروفة، `CanUseReceivedScope` وثابت `received ⊆ user`، وتحديث التوثيق والعدّ | رفع جودة الإثبات إلى مستوى الكود: لا اختبار ينجح مصادفةً، ولا سطح مؤقت بلا بند إزالة (`D6`)، ولا قاعدة دور مكررة (`ح‑23`) |
 | 2026-10-31 | إغلاق المرحلة 4 نهائيًا وتثبيت **مرساة التسليم §0.1** (الفرع و`HEAD`، حالة `PR #54` و`CI` 12/12، أرقام البوابات، أمر الاختبار التتابعي، قيد `EnableRetryOnFailure`، حالة الهجرات، البنود المفتوحة) | بدء المرحلة 5 في محادثة جديدة دون الاعتماد على ذاكرة الجلسة السابقة، ومنع تسرّب أرقام بوابات قديمة كما حدث في جسم `PR #54` (2126/712 مقابل الواقع 2130/719) |
+| 2026-10-31 | **انحرافات المرحلة 5 قبل التنفيذ:** (1) `HEAD` الفعلي `0b3bcf2` لا `a9bcb7a` (تحديث §0.1)؛ (2) نص «الملف ليس ضمن فرعك» لا يظهر في `frontend/src` ولا في الاختبارات — موضع واحد فقط `HeadAlertService.cs:1024`، فالبند الثالث في §5 عمليًا خدمة فقط (الظهور الوحيد «ليست ضمن فرعك» في الواجهة يخص اعتماد الإنابة وخارج النطاق)؛ (3) توحيد رسالة الملف: «الملف غير متاح» للملف غير الموجود **وللملف خارج الفرع** معًا، مع إبقاء فحص الفرع قبل فحص المنشئ (سلوك قائم يمنع تسريب وجود المنشئ، والخطة لا تحدد ترتيب القاعدتين)؛ (4) الفيضان الحالي: `Skip` يُحسب في `int` غير محروس — `(int.MaxValue-1)*100` ينقلب `-200` فيرفضه حارس المستودع 400 عرضًا، و`(int.MaxValue-1)*3` يصبح `2,147,483,642` (موجب خاطئ) فيمرّ 200 بصفحة غير المطلوبة | تثبيت الدليل من الكود قبل الكتابة: لا تغيير واجهة أو عقد غير المنصوص، والحدّ الصريح للفيضان في `AlertPageRequest.Validate` يلغي الاعتماد على حارس المستودع |
+| 2026-10-31 | المرحلة 5: `ResolveRecipientsAsync` يرفض المحامي/منشئ الملف المعطّل ويوحّد رسالة الملف، و`AlertPageRequest` يرفض فيضان `Skip` بحساب `long`؛ مع اختبارات خدمة + HTTP. البوابات: `build` 0/0 · `Application` 2145/2145 · `Api` 720 + 2 تتابعية · `oxlint`/`tsc` صفر · `vitest` 152/1599 · `npm run build` ناجح | تنفيذ `P3-5`/`P3-6` وإغلاق `R-3` وتحديث §7 |
 
 ---
 

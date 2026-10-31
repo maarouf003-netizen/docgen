@@ -1018,12 +1018,12 @@ public sealed class HeadAlertService : IHeadAlertService
                     throw new ArgumentException("يجب تحديد الملف المرتبط بالتنبيه");
 
                 var doc = await _documents.GetByIdAsync(request.DocumentId.Value, ct);
-                if (doc is null)
-                    throw new ArgumentException("الملف غير موجود");
-                if (doc.BranchId != branchId)
-                    throw new ArgumentException("الملف ليس ضمن فرعك");
-                if (doc.CreatedBy is null || doc.CreatedBy.Role != UserRole.Lawyer)
-                    throw new ArgumentException("لا يوجد محامٍ مختص لهذا الملف");
+                // رسالة واحدة للملف غير الموجود وللملف خارج الفرع (§5، `P3-5`):
+                // لا يُكشف وجود ملف فرع آخر عبر اختلاف النص.
+                if (doc is null || doc.BranchId != branchId)
+                    throw new ArgumentException("الملف غير متاح");
+                if (doc.CreatedBy is null || doc.CreatedBy.Role != UserRole.Lawyer || !doc.CreatedBy.IsActive)
+                    throw new ArgumentException("لا يوجد محامٍ مختص نشط لهذا الملف");
 
                 return new List<User> { doc.CreatedBy };
             }
@@ -1033,7 +1033,8 @@ public sealed class HeadAlertService : IHeadAlertService
                     throw new ArgumentException("يجب تحديد المحامي المستلم");
 
                 var lawyer = await _users.GetByIdAsync(request.TargetLawyerId.Value, ct);
-                if (lawyer is null || lawyer.Role != UserRole.Lawyer || lawyer.BranchId != branchId)
+                if (lawyer is null || lawyer.Role != UserRole.Lawyer
+                    || lawyer.BranchId != branchId || !lawyer.IsActive)
                     throw new ArgumentException("المحامي غير موجود ضمن فرعك");
 
                 return new List<User> { lawyer };
