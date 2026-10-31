@@ -2,7 +2,7 @@
 
 > **تاريخ الوثيقة:** 2026-10-28
 > **الفرع:** `feature/head-alerts-pr4-api` · **الأساس:** `e0d8384`
-> **الحالة:** المراحل 0–5 ✅ (آخر التزام مرحلي `0b3bcf2`) · التالية: المرحلة 6 — مرساة التسليم في §0.1
+> **الحالة:** المراحل 0–6 ✅ (آخر التزام كود `902598c`) · التالية: المرحلة 7 — مرساة التسليم في §0.1
 > **القاعدة:** لا هجرات قاعدة بيانات في هذا العمل بالكامل.
 
 ---
@@ -30,6 +30,7 @@
 | `PR #54` | مفتوح و`MERGEABLE`، و`CI` **12/12** (ستة فحوص × تشغيلين). **لا يُدمج قبل `PR-5`**: نقاط القائمة تُرجع `PagedResult` بينما الواجهة المنشورة تتوقع مصفوفة |
 | البوابات عند التسليم (`a9bcb7a`) | `dotnet build` 0/0 · `Application` **2130/2130** · `Api` **718** + **2** تتابعية (رقم **719** في المرساة السابقة كان غير دقيق — أُثبت بـ`--list-tests` على `a9bcb7a`) · `oxlint`/`tsc -b` صفر · `vitest` 152 ملفًا/1599 اختبارًا · `npm run build` ناجح |
 | البوابات بعد المرحلة 5 (ورقعة المراجعة) | `dotnet build` 0/0 · `Application` **2147/2147** · `Api` **721** + **2** تتابعية · `oxlint`/`tsc -b` صفر · `vitest` 152/1599 · `npm run build` ناجح (التفصيل في §12) |
+| البوابات بعد المرحلة 6 | `dotnet build` 0/0 · `Application` **2149/2149** · `Api` **724** + **2** تتابعية · `oxlint`/`tsc -b` صفر · `vitest` 152/1599 · `npm run build` ناجح · `CI` **12/12** و`backend-postgres` شغّل اختبار الإسقاط الحيّ وأثبتت خطوة `trx` عدّه > 0 |
 | أمر اختبار `Api` | `--filter "Category!=Sequential"` ثم `--filter "Category=Sequential"` — وإلا يفشل `EnricherMiddlewareTests` فشلًا زائفًا عند التوازي |
 | قيد تقني حاكم | `EnableRetryOnFailure` **غير مفعّل** في تسجيل `DbContext` ⇒ `MarkReadAsync` عبر `TryMarkReadAsync` (تحديث ذرّي بلا كيان متتبَّع ولا معاملة) |
 | الهجرات | لا هجرات في هذا العمل كله. `RUN_GUIDE.md` §9 كما هو: `SQLite` **4 معلّقة** بالترتيب `Expand` ← `Outbox_Create` ← `Backfill` ← `Contract` (و`Contract` محظورة قبل `G2`)، و`PostgreSQL` **63 / صفر معلّقة** |
@@ -558,7 +559,7 @@ Task<HeadAlertSummaryDto?> GetSummaryAsync(
 | `P3-5` تحقق المستلمين | 5 | `Create_InactiveDocumentCreator_Throws` + `Create_InactiveLawyerTarget_Throws` + `Create_MissingDocument_UsesSameUnavailableMessage` + `Create_OutsideBranchDocumentWithInactiveCreator_ReportsUnavailableOnly` (خدمة) و`Head_CreatesLawyerAlert_InactiveTarget_BadRequest` + `Head_CreatesDocumentAlert_InactiveCreator_BadRequest` + `Head_CreatesDocumentAlert_OutsideBranch_BadRequest` (HTTP، نص موحّد) | `[x]` |
 | `P3-6` فيضان `Skip` | 5 | `InvalidPaging_RejectsHugePage` + `Validate_RejectsSkipOverflow_WithCleanArabicMessage` + `Validate_RejectsPageBelowOne_WithoutNarrowingArithmetic` + `Skip_ExtremePageWithSizeOne_IsIntMaxValueMinusOne` | `[x]` |
 | `P3-7` انحراف التوثيق | 7 | مراجعة يدوية موثّقة | `[ ]` |
-| `P3-8` غياب `Postgres` | 6 | `HeadAlertSummaryPostgresTests` في CI (قاعدة معزولة + مقارنة حرفية بـ`SQLite`) | `[ ]` بانتظار تشغيل `CI` الفعلي |
+| `P3-8` غياب `Postgres` | 6 | `HeadAlertSummaryPostgresTests` في CI (قاعدة معزولة + مقارنة حرفية بـ`SQLite`؛ `backend-postgres` أخضر وخطوة عدّ `trx` أثبتت التنفيذ) | `[x]` |
 | `P3-9` بيان العقد | 6 | `SummaryContract_MatchesManifest_WithoutFullMessage` + `DetailContract_MatchesManifest_PlusExplicitlyRetainedFields` + `PagedResultContract_MatchesManifest_WithoutHasNextPage` (تقرأ كتلة `forbidden` من البيان) + `Nullability_MatchesSmallContractList` | `[x]` |
 | `P3-10` هشاشة `StatsScope` | 6 | `Alerts_HeadAndSub_SeeOnlyOwn` عبر `AllAlertIdsAsync` (حلقة حتى `totalPages` + عدم تكرار) | `[x]` |
 | `P3-11` تحميل المستلمين | 2 | إسقاط واحد (مراجعة كود) + تغطية سلوكية للتفاصيل وتعليم القراءة — **بلا عدّ استعلامات** (لا أداة عدّ في المستودع؛ تصحيح 2026-10-30) | `[x]` |
@@ -566,7 +567,7 @@ Task<HeadAlertSummaryDto?> GetSummaryAsync(
 | `R-1` (`D11`) حالة «رئيس بلا فرع» | 3 | `BranchlessHead_CreateIs400_AndReadsAre403` (تكامل `Api`) + `Create_BranchlessHead_IsArgumentError_NotAuthorization`/`CountUnread_BranchlessHead_IsRejected_LawyerCountsOwnRows` (وحدة) | `[x]` |
 | `R-2` فهارس عدّاد `received` | 4 | مراجعة مخطط موثّقة (لا هجرة) | `[ ]` |
 | `R-3` سقف الترقيم | 5 | `Paging_OverflowRejected_ExtremePageWithSize1Allowed` (HTTP) + `Paging_ExtremePageWithSize1_IsAllowed` (خدمة) | `[x]` |
-| `R-4` حرس `Postgres` | 6 | تنفيذ فعلي > 0 اختبار في وظيفة CI (`DOCGEN_REQUIRE_POSTGRES=1` + خطوة `trx` تثبت العدّ) | `[ ]` بانتظار `CI` |
+| `R-4` حرس `Postgres` | 6 | تنفيذ فعلي > 0 اختبار في وظيفة CI (`DOCGEN_REQUIRE_POSTGRES=1` + خطوة `trx` أثبتت العدّ) | `[x]` |
 | `R-5` (`D12`) فقدان النص الكامل | 8 | `AlertDetails.test.tsx` (جلب عند الفتح فقط) | `[ ]` |
 | `R-6` قصّ 50 صامت | 8 | اختبار `pageSize: 100` + مؤشر «المزيد» | `[ ]` |
 | `R-7` ازدواج `PagedResult` | 8 | استيراد من `types/common.ts` فقط | `[ ]` |
@@ -667,6 +668,7 @@ npm run build
 | 2026-10-31 | **إصلاح ملاحظات المراجعة النقدية للمرحلة 5 (قبل المرحلة 6):** (ف‑1) `((long)Page - 1) * PageSize` بدل `(long)(Page - 1)` لتفادي التفاف الطرح في `int` (مكافئ للمدخلات الصحيحة، وأسلم لاستدعاء بلا `Validate`)؛ (ف‑2) استثناء صريح `AlertPagingException : ArgumentException` بدل `ArgumentOutOfRangeException(nameof(...))` — السبب أن `.NET` يُلحق «Parameter name: Page» الإنجليزي بـ`Message` فيظهر للمستخدم عبر `{ message }`، والبديل يُبقي `400` (لأن المتحكم يلتقط `ArgumentException`) ورسالة عربية نظيفة؛ (ف‑3) فصل اختبار HTTP المركّب إلى اختبارين؛ (ف‑4) اختبار يجمّد ترتيب «فرع ← منشئ» لملف فرع آخر بمنشئ معطّل؛ (ف‑8) فصل صف بوابات §0.1 إلى «عند التسليم» و«بعد المرحلة 5» | الالتزام بالمعايير: لا رسالة إنجليزية في عقد `400`، ولا أمان بالترتيب، واختبار واحد لكل سلوك، وتجميد قواعد عدم التسريب. **بندان مفتوحان بلا كود (قرار عمل خارج §5):** (ف‑6) منشئ ملف انتقل لفرع آخر بعد إنشائه — التنبيه يبقى في فرع الملف ويُستلم عند منشئ خارج الفرع؛ (ف‑7) مسار `CreateSystemAsync`/`DocumentCreator` لا يفحص فرع الملف (سلوك سابق مقصود جزئيًا) — يُحسمان في `PR‑6` أو وثيقة السياق |
 | 2026-10-31 | **بوابات رقعة المراجعة (مُثبتة فعليًا):** `build` 0/0 · `Application` **2147/2147** · `Api` **721** + **2** تتابعية · `oxlint`/`tsc` صفر · `vitest` 152/1599 · `npm run build` ناجح | إثبات أن الإصلاحات (استثناء الترقيم + فصل الاختبارات + اختبار الترتيب) لم تخفض أي بوابة، وأن `400` صار برسالة عربية نظيفة بلا «Parameter name» |
 | 2026-10-31 | **المرحلة 6 (تحصين الاختبارات):** (1) `Detail_MapsDistinctLinkIds_InPositionalOrder` بقيم `11/22/33/44/55` لتفكيك أي إزاحة موضعية في `ToDetailDto`؛ (2) `Detail_RetainsCounters_ForLawyerRecipient_UntilPR6` (HTTP: العدّادان يُرسَلان للمحامي قبل وبعد القراءة، مع `CanViewRecipients=false`)؛ (3) `Get_SameBranchNonRecipientHead_NotFound` عبر `HeadAlertTestSeed.SeedSingleHeadAsync` بمنشئ مختلف (لا `POST`)؛ (4) `HeadAlertContractTests` يقرأ كتلة `forbidden` من البيان بدل قائمة مكتوبة، ويضيف قائمة nullability صغيرة عبر `NullabilityInfoContext`؛ (5) `StatsScopeTests` يجلب كل الصفحات عبر `AllAlertIdsAsync` (حلقة حتى `totalPages`) ويثبت عدم التكرار؛ (6) `HeadAlertSummaryPostgresTests` جديد: قاعدة معزولة + `MigrateAsync` + بذور (إيموجي 600، مؤرشف، مقروء/غير مقروء، ترتيب `LastContentChangedAt` معاكس لـ`Id`) ومقارنة حرفية مع `SQLite`، وحرس `DOCGEN_REQUIRE_POSTGRES=1`، وخطوة `CI` تثبت تنفيذ > 0 اختبار. **انحرافات أثناء التنفيذ:** (أ) اختبار المراجع يستخدم صفوفًا مرجعية حقيقية بمعرّفات صريحة `11/22/44/55` و`DelegationId=33` (بلا FK) لأن SQLite في الاختبارات يفعّل المفاتيح الأجنبية؛ `PublicEntityId`/`ExecutionCircuitId` لم يُغطَّيا هنا (يحتاجان تجهيز مجموعة/دائرة، وقيمهما المميزة يغطيها اختبار المستودع)؛ (ب) «رئيس نفس الفرع» لا يمكن إنشاء رئيس ثانٍ مفعّل فيه (فهرس فريد `BranchId` حيث `Role=Head AND IsActive`)، فالفاعل هو رئيس الفرع والمنشئ محامٍ والمستلم شعبة؛ (ج) بذور صفحات `StatsScope` تحتاج أنواعًا **مختلفة** لأن مفتاح `DedupeKey` يدمج تكرار النوع نفسه فتنهار ثلاث بذور إلى واحدة | تنفيذ `P3-3`/`P3-9`/`P3-10` وبناء `P3-8`؛ البوابات المحلية: `build` 0/0 · `Application` 2149/2149 · `Api` 724 + 2 · `oxlint`/`tsc` صفر · `vitest` 152/1599 · `npm run build` ناجح. `Postgres` الحيّ لا خادم له محليًا ⇒ الإثبات النهائي في `CI` |
+| 2026-10-31 | **إغلاق المرحلة 6:** `CI` **12/12** على `902598c` — `backend-postgres` pass في التشغيلين (7m19s/7m26s)، وخطوة `Assert Postgres summary projection test actually executed` **pass** (عدّ `trx` > 0)، فـ`P3-8`/`R-4` مغلقان بدليل تنفيذ فعلي لا بخضرة خطوة | إغلاق §7 (`P3-3`/`P3-8`/`P3-9`/`P3-10`/`R-4`) وتثبيت أرقام التسليم للمرحلة 7 |
 
 ---
 
