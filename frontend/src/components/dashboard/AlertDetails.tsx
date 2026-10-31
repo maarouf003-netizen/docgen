@@ -37,15 +37,19 @@ export function AlertDetails({
 
   return (
     <div className="mt-1.5">
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        aria-expanded={open}
-        aria-controls={panelId}
-        className="min-h-11 px-2 -mx-2 rounded-lg text-xs font-medium text-emerald-800 hover:bg-emerald-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-      >
-        {open ? 'إخفاء النص الكامل' : 'عرض النص الكامل'}
-      </button>
+      {/* الزر لاصق داخل قائمة التنبيهات القابلة للتمرير (`max-h-[420px]`): يبقى
+          «إخفاء النص الكامل» في المشهد حتى مع رسالة طويلة جدًا، فلا يضيع المخرج. */}
+      <div className="sticky top-0 z-10 bg-white py-0.5">
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          aria-expanded={open}
+          aria-controls={panelId}
+          className="min-h-11 px-2 -mx-2 rounded-lg text-xs font-medium text-emerald-800 hover:bg-emerald-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+        >
+          {open ? 'إخفاء النص الكامل' : 'عرض النص الكامل'}
+        </button>
+      </div>
       {/* الحاوية تبقى في الشجرة كي يظل `aria-controls` صالحًا في الحالتين،
           لكن لا يُرسَم أي نص قبل الفتح (فلا ظهور لمعاينة ناقصة أو مؤشر كاذب). */}
       <div id={panelId}>

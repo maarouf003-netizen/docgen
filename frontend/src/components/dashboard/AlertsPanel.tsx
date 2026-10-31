@@ -5,6 +5,8 @@ import { AlertRow } from './AlertRow';
 export interface AlertsPanelProps {
   /** شارة العدّاد بجانب العنوان (حمراء للمحامي، خضراء للإجمالي عند الرئيس). */
   badge: ReactNode;
+  /** سطر توضيحي تحت العنوان — يحدد دلالة الشارة (نحو «غير المقروء في تنبيهاتك» للرئيس). */
+  subtitle?: ReactNode;
   /** الطرف الأيمن للترويسة («الأحدث أولاً» للمحامي، زر الإصدار للرئيس). */
   headerExtra?: ReactNode;
   /** نموذج الإصدار — للرئيس فقط، يُعرض بين الترويسة وكتلة الخطأ. */
@@ -28,6 +30,7 @@ export interface AlertsPanelProps {
  */
 export function AlertsPanel({
   badge,
+  subtitle,
   headerExtra,
   form,
   footer,
@@ -40,9 +43,12 @@ export function AlertsPanel({
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden mt-8">
       <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-4 border-b border-gray-100">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-red-500" aria-hidden="true" />
-          <h3 className="font-bold text-gray-900">تنبيهات رئيس القسم</h3>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="w-2 h-2 shrink-0 rounded-full bg-red-500" aria-hidden="true" />
+          <div className="min-w-0">
+            <h3 className="font-bold text-gray-900">تنبيهات رئيس القسم</h3>
+            {subtitle ? <p className="text-[11px] text-gray-500">{subtitle}</p> : null}
+          </div>
           {badge}
         </div>
         {headerExtra}

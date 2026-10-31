@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
-import { ALERTS_PAGE_SIZE, readAlertsPage } from '../api/alerts';
 import { useAuth } from '../auth/useAuth';
+import { useAlertsFeed, type AlertsFeed } from '../hooks/useAlertsFeed';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { useReminderCancellation } from '../hooks/useReminderCancellation';
 import type {
@@ -11,7 +11,6 @@ import type {
   HeadAlertSummaryDto,
   HeadAlertTargetType,
   LawyerListItem,
-  PagedResult,
   PendingRegistrationDto,
   PersonalReminderDto,
   ReminderDto,
@@ -32,16 +31,43 @@ import { useBadgeCount } from '../hooks/useBadgeCount';
 import { ReminderList } from '../components/dashboard/ReminderList';
 
 /**
- * سطر «المزيد» أسفل قائمة التنبيهات: يظهر عندما يتجاوز `totalCount` ما حُمّل في
- * الصفحة الواحدة (`pageSize=100`) — فلا قصّ صامت بعد تحويل الأسطح إلى `PagedResult`.
- * بلا تكرار «الأحدث أولًا» (موجود في ترويسة اللوحة للمحامي) وبلا أي زر: المؤشر
- * إخباري فقط في هذه المرحلة، وأي تنقّل بين الصفحات قرار منتج في `PR-6`.
+ * تذييل قائمة التنبيهات: يمنع القصّ الصامت (`pageSize=100`) بلا زر فقط —
+ * «تحميل المزيد» يجلب الصفحة التالية ويُلحقها، وإذا فشلت الصفحة الأولى يعرض
+ * «إعادة المحاولة» بدل شاشة خطأ بلا مخرج. النصوص أرقام فقط بلا تكرار لوصف الترتيب.
  */
-function AlertsMoreRow({ shown, total }: { shown: number; total: number }) {
+function AlertsFeedFooter({ feed }: { feed: AlertsFeed }) {
+  if (feed.error && feed.items.length === 0) {
+    return (
+      <div className="px-4 sm:px-5 py-3 border-t border-gray-100">
+        <button
+          type="button"
+          onClick={feed.reload}
+          className="min-h-11 px-3 rounded-lg border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+        >
+          إعادة المحاولة
+        </button>
+      </div>
+    );
+  }
+
+  if (!feed.hasMore && !feed.isLoadingMore) return null;
+
   return (
-    <p className="px-4 sm:px-5 py-3 text-xs text-gray-500 tabular-nums border-t border-gray-100">
-      يُعرض {shown} من أصل {total} تنبيهًا
-    </p>
+    <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-5 py-3 border-t border-gray-100">
+      <span className="text-xs text-gray-500 tabular-nums">
+        يُعرض {feed.items.length} من أصل {feed.totalCount} تنبيهًا
+      </span>
+      {feed.hasMore ? (
+        <button
+          type="button"
+          onClick={feed.loadMore}
+          disabled={feed.isLoadingMore}
+          className="min-h-11 px-3 rounded-lg border border-gray-200 text-xs font-medium text-emerald-800 hover:bg-emerald-50 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+        >
+          {feed.isLoadingMore ? 'جارٍ التحميل…' : 'تحميل المزيد'}
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -92,30 +118,21 @@ export default function Dashboard() {
   const { cancellingKey, actionError, cancelReminder, cancelAppealReminder } =
     useReminderCancellation(remindersQuery, appealRemindersQuery);
 
-  // قوائم التنبيهات مرقّمة (`PagedResult<HeadAlertSummaryDto>`) — معاينة فقط بلا نص كامل.
-  // `pageSize=100` صريح: الافتراضي الخلفي `50` كان يقصّ القائمة صامتًا، و`totalCount`
-  // يغذّي سطر «المزيد» فلا قصّ صامت فوق الصفحة الواحدة (الخطة §4.2 البند 16).
-  const alertsQuery = useCancellableRequest<PagedResult<HeadAlertSummaryDto>>(
-    (signal) =>
-      api
-        .get('/alerts', { signal, params: { pageSize: ALERTS_PAGE_SIZE } })
-        .then((r) => readAlertsPage(r.data)),
-    [],
-    { enabled: userReady && !isManager },
-  );
+  // نطاق التنبيهات لرئيس القسم/الشعبة يشترط **الفرع** فقط (`RequireBranch` خلفيًا)،
+  // لا الشعبة — فاشتراط الشعبة هنا كان يحجب قائمة مشروعة ويُبقي 403 لرئيس بلا فرع.
+  const headAlertsScopeEnabled = userReady && isHeadOrSubHead && (user?.branchId ?? null) != null;
+
+  // قوائم التنبيهات مرقّمة (`PagedResult<HeadAlertSummaryDto>`) — معاينة فقط بلا نص كامل،
+  // و`pageSize=100` صريح مع «تحميل المزيد» فلا قصّ صامت فوق الصفحة الواحدة.
+  const receivedFeed = useAlertsFeed('/alerts', {
+    enabled: userReady && !isManager && (!isHeadOrSubHead || headAlertsScopeEnabled),
+  });
 
   // صندوق الصادر («أرسلتها» — قراءة فقط): ما أصدره الرئيس في فرعه، منفصل عن
   // المستلَمات حتى لا يختلط المُرسَل بالمستلَم ولا يُطالب بتعليم مقروء.
   const [alertsTab, setAlertsTab] = useState<'received' | 'sent'>('received');
   const [sentFlash, setSentFlash] = useState('');
-  const sentQuery = useCancellableRequest<PagedResult<HeadAlertSummaryDto>>(
-    (signal) =>
-      api
-        .get('/alerts/sent', { signal, params: { pageSize: ALERTS_PAGE_SIZE } })
-        .then((r) => readAlertsPage(r.data)),
-    [isHeadOrSubHead],
-    { enabled: headBadgesEnabled },
-  );
+  const sentFeed = useAlertsFeed('/alerts/sent', { enabled: headAlertsScopeEnabled });
 
   // شارة غير المقروء بنطاق صريح (`D6`/`D7`): المحامي صفوفه الشخصية (`user`) بلا قيد
   // فرع، والرئيس/الشعبة ما استلمه في فرعه (`received`) — القاعدة نفسها في `AccountPage`
@@ -127,7 +144,7 @@ export default function Dashboard() {
         .get('/alerts/unread-count', { signal, params: { scope: unreadScope } })
         .then((r) => r.data),
     [unreadScope],
-    { enabled: userReady && !isManager && (isLawyer || headBadgesEnabled) },
+    { enabled: userReady && !isManager && (isLawyer || headAlertsScopeEnabled) },
   );
 
   const branchLawyersQuery = useCancellableRequest<LawyerListItem[]>(
@@ -215,19 +232,18 @@ export default function Dashboard() {
   const reminders = useMemo(() => remindersQuery.data ?? [], [remindersQuery.data]);
   const appealReminders = useMemo(() => appealRemindersQuery.data ?? [], [appealRemindersQuery.data]);
   const personalReminders = useMemo(() => personalQuery.data ?? [], [personalQuery.data]);
-  const alerts = useMemo(() => alertsQuery.data?.items ?? [], [alertsQuery.data]);
-  const sentAlerts = useMemo(() => sentQuery.data?.items ?? [], [sentQuery.data]);
-  const alertsTotal = alertsQuery.data?.totalCount ?? 0;
-  const sentTotal = sentQuery.data?.totalCount ?? 0;
-  // التبويب الظاهر وحده يحدد المعروض والإجمالي وسطر «المزيد» (لا قصّ صامت فوق 100).
-  const activeAlerts = alertsTab === 'received' ? alerts : sentAlerts;
-  const activeTotal = alertsTab === 'received' ? alertsTotal : sentTotal;
+  // التبويب الظاهر وحده يحدد المعروض والإجمالي وتذييل «المزيد».
+  const activeFeed = alertsTab === 'received' ? receivedFeed : sentFeed;
   const branchLawyers = useMemo(() => branchLawyersQuery.data ?? [], [branchLawyersQuery.data]);
   const unreadCount = Math.max(0, Number(unreadQuery.data?.count) || 0);
   // شارة لوحة الرئيس: غير المقروء بنطاقه (`received` — `D6`/`D7`) في تبويب «مستلمة»،
-  // وإجمالي ما أصدره في فرعه في تبويب «أرسلتها».
+  // وإجمالي ما أصدره في فرعه في تبويب «أرسلتها» (مع عنوان توضيحي تحت العنوان).
   const headBadgeText =
-    alertsTab === 'received' ? (unreadCount > 0 ? `${unreadCount} غير مقروء` : null) : String(sentTotal);
+    alertsTab === 'received'
+      ? unreadCount > 0
+        ? `${unreadCount} غير مقروء`
+        : null
+      : String(sentFeed.totalCount);
   const unseenReplies = isLawyer ? Math.max(0, Number(unseenRepliesQuery.data?.count) || 0) : 0;
   const urgentCorrespondence = isLawyer ? Math.max(0, Number(urgentQuery.data?.count) || 0) : 0;
   // بطاقة التذكيرات في اللوحة: الأسبوع الحالي فقط (من الأحد إلى السبت) —
@@ -282,8 +298,8 @@ export default function Dashboard() {
     setAlertsError('');
     try {
       await api.patch(`/alerts/${a.id}/read`);
-      alertsQuery.setData((prev) =>
-        prev ? { ...prev, items: prev.items.map((x) => (x.id === a.id ? { ...x, isRead: true } : x)) } : prev,
+      receivedFeed.updateItems((prev) =>
+        prev.map((x) => (x.id === a.id ? { ...x, isRead: true } : x)),
       );
       unreadQuery.setData((prev) => (prev ? { count: Math.max(0, prev.count - 1) } : prev));
     } catch (err) {
@@ -327,7 +343,7 @@ export default function Dashboard() {
       setAlertMessage('');
       setAlertLawyerId('');
       setSentFlash('تم إصدار التنبيه — تجده في تبويب «أرسلتها»');
-      sentQuery.refetch();
+      sentFeed.reload();
     } catch (err) {
       // خطأ الإرسال الخادمي بلا حقل مخالف — يُعلن وحده دون تعليم أي حقل.
       setAlertFormError({ field: null, text: getApiErrorMessage(err) });
@@ -473,13 +489,21 @@ export default function Dashboard() {
               ) : null
             }
             headerExtra={<span className="text-xs text-gray-400">الأحدث أولاً</span>}
-            footer={alertsTotal > alerts.length ? <AlertsMoreRow shown={alerts.length} total={alertsTotal} /> : null}
-            error={alertsError || alertsQuery.error || ''}
-            alerts={alerts}
+            footer={<AlertsFeedFooter feed={receivedFeed} />}
+            error={alertsError || receivedFeed.error || ''}
+            alerts={receivedFeed.items}
             onMarkRead={markAlertRead}
             markingKey={markingKey}
           />
         </>
+      ) : !headAlertsScopeEnabled ? (
+        // رئيس/شعبة بلا فرع: النطاق مرفوض خلفيًا (`403` — `D11`) فلا نُطلق طلبات
+        // محكومة بالفشل ولا نُظهر قائمة فارغة كاذبة — بل حالة صريحة قابلة للمعالجة.
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mt-8 text-center">
+          <p className="text-sm text-gray-600">
+            حسابك غير مرتبط بفرع، فلا يمكن عرض تنبيهات القسم. راجع مدير النظام لربط حسابك بفرع.
+          </p>
+        </div>
       ) : (
         <>
           {sentFlash ? (
@@ -511,6 +535,9 @@ export default function Dashboard() {
                 </span>
               )
             }
+            // دلالة الشارة صريحة: `received` مجموع غير المقروء في تنبيهات القسم
+            // (أزواج تنبيه × مستلم) لا صفوف الرئيس الشخصية — فلا تُقرأ «غير مقروءة لي».
+            subtitle={alertsTab === 'received' ? 'غير المقروء في تنبيهاتك' : null}
             headerExtra={
               <button
                 type="button"
@@ -537,13 +564,9 @@ export default function Dashboard() {
                 />
               ) : null
             }
-            error={alertsError || alertsQuery.error || sentQuery.error || ''}
-            footer={
-              activeTotal > activeAlerts.length ? (
-                <AlertsMoreRow shown={activeAlerts.length} total={activeTotal} />
-              ) : null
-            }
-            alerts={activeAlerts}
+            error={alertsError || activeFeed.error || ''}
+            footer={<AlertsFeedFooter feed={activeFeed} />}
+            alerts={activeFeed.items}
             sentView={alertsTab === 'sent'}
           />
         </>

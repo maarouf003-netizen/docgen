@@ -186,10 +186,10 @@ function managerStatsFor(period?: string): ManagerStatsDto {
 }
 
 /** `PagedResult` كما يصل على السلك (`pageSize=100`) — الشكل الوحيد المقبول (`D10=atomic`). */
-function pageResult<T>(items: T[], totalCount = items.length) {
+function pageResult<T>(items: T[], totalCount = items.length, page = 1) {
   return {
     items,
-    page: 1,
+    page,
     perPage: 100,
     totalCount,
     totalPages: Math.ceil(totalCount / 100),
@@ -200,9 +200,13 @@ function mockApi(overrides?: {
   reminders?: ReminderDto[];
   monthly?: [];
   alerts?: HeadAlertSummaryDto[];
+  /** عناصر الصفحة الثانية (اختبار «تحميل المزيد»). */
+  alertsPage2?: HeadAlertSummaryDto[];
+  /** يفشل أول طلب لقائمة المستلمات — اختبار «إعادة المحاولة». */
+  alertsFailFirst?: boolean;
   /** إجمالي غير المقروء في التنبيهات (`scope` حسب الدور في الطلب نفسه). */
   unreadCount?: number;
-  /** إجمالي صفوف قائمة المستلمات عند تجاوزه لعناصر الصفحة (اختبار «المزيد»). */
+  /** إجمالي صفوف قائمة المستلمات عند تجاوزه لعناصر الصفحة (اختبار «تحميل المزيد»). */
   alertsTotal?: number;
   lawyers?: Array<{ id: number; fullName: string; isActive?: boolean }>;
   personal?: PersonalReminderDto[];
@@ -218,6 +222,7 @@ function mockApi(overrides?: {
   const reminders = overrides?.reminders ?? [];
   const monthly = overrides?.monthly ?? [];
   const alerts = overrides?.alerts ?? [];
+  const alertsPage2 = overrides?.alertsPage2 ?? [];
   const alertsTotal = overrides?.alertsTotal;
   const unreadCount = overrides?.unreadCount ?? 0;
   const lawyers = overrides?.lawyers ?? [];
@@ -230,14 +235,26 @@ function mockApi(overrides?: {
   const pendingRegistrations = overrides?.pendingRegistrations ?? [];
   const sent = overrides?.sent ?? [];
   const sentTotal = overrides?.sentTotal;
+  let alertsAttempts = 0;
   (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation(
     (url: string, config?: { params?: Record<string, unknown> }) => {
+      const requestedPage = typeof config?.params?.page === 'number' ? config.params.page : 1;
       if (url === '/dashboard') return Promise.resolve({ data: STATS });
       if (url === '/reminders') return Promise.resolve({ data: reminders });
       if (url === '/appeals/reminders') return Promise.resolve({ data: [] });
       if (url === '/personal-reminders') return Promise.resolve({ data: personal });
-      if (url === '/alerts') return Promise.resolve({ data: pageResult(alerts, alertsTotal) });
-      if (url === '/alerts/sent') return Promise.resolve({ data: pageResult(sent, sentTotal) });
+      if (url === '/alerts') {
+        alertsAttempts += 1;
+        if (overrides?.alertsFailFirst && alertsAttempts === 1) {
+          return Promise.reject(new Error('تعذّر جلب التنبيهات'));
+        }
+        const rows = requestedPage === 1 ? alerts : alertsPage2;
+        return Promise.resolve({ data: pageResult(rows, alertsTotal, requestedPage) });
+      }
+      if (url === '/alerts/sent') {
+        const rows = requestedPage === 1 ? sent : [];
+        return Promise.resolve({ data: pageResult(rows, sentTotal, requestedPage) });
+      }
       if (url === '/alerts/unread-count') return Promise.resolve({ data: { count: unreadCount } });
       if (url === '/users/lawyers') return Promise.resolve({ data: lawyers });
       if (url === '/monthly-stats') return Promise.resolve({ data: monthly });
@@ -310,7 +327,10 @@ describe('Dashboard للمحامي', () => {
     expect(api.get).toHaveBeenCalledWith('/review-letters/unseen-replies-count', expect.any(Object));
     expect(api.get).toHaveBeenCalledWith('/correspondence/urgent-unseen-count', expect.any(Object));
     expect(api.get).toHaveBeenCalledWith('/reminders', expect.any(Object));
-    expect(api.get).toHaveBeenCalledWith('/alerts', expect.objectContaining({ params: { pageSize: 100 } }));
+    expect(api.get).toHaveBeenCalledWith(
+      '/alerts',
+      expect.objectContaining({ params: expect.objectContaining({ page: 1, pageSize: 100 }) }),
+    );
     expect(api.get).toHaveBeenCalledWith(
       '/alerts/unread-count',
       expect.objectContaining({ params: { scope: 'user' } }),
@@ -548,8 +568,8 @@ describe('Dashboard للمحامي', () => {
     render(<Dashboard />);
 
     expect(await screen.findByText('تنبيهات رئيس القسم')).toBeInTheDocument();
-    expect(screen.getByText('1 غير مقروء')).toBeInTheDocument();
-    expect(screen.getByText('راجع ملف القرض')).toBeInTheDocument();
+    expect(await screen.findByText('1 غير مقروء')).toBeInTheDocument();
+    expect(await screen.findByText('راجع ملف القرض')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'راجع ملف القرض' })).toHaveAttribute('href', '/documents/5');
     expect(screen.getByText('تعميم اجتماع الفرع')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'تمت القراءة' })).toBeInTheDocument();
@@ -559,20 +579,56 @@ describe('Dashboard للمحامي', () => {
     expect(api.get).not.toHaveBeenCalledWith('/alerts/2', expect.anything());
   });
 
-  it('يطلب صفحة 100 ويعرض سطر «المزيد» عند تجاوز الإجمالي حدود الصفحة', async () => {
+  it('يطلب صفحة 100 ويعرض «تحميل المزيد» عند تجاوز الإجمالي حدود الصفحة', async () => {
     mockApi({ alerts: LAWYER_ALERTS, alertsTotal: 137 });
 
     render(<Dashboard />);
 
-    expect(
-      await screen.findByText('يُعرض 2 من أصل 137 تنبيهًا'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('يُعرض 2 من أصل 137 تنبيهًا')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'تحميل المزيد' })).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith(
       '/alerts',
-      expect.objectContaining({ params: { pageSize: 100 } }),
+      expect.objectContaining({ params: { page: 1, pageSize: 100 } }),
     );
-    // بلا تجاوز لا سطر «المزيد» (لا مؤشر كاذب).
-    expect(screen.queryByText(/من أصل 2 تنبيهًا/)).not.toBeInTheDocument();
+  });
+
+  it('«تحميل المزيد» يجلب الصفحة التالية ويُلحقها ويُخفي الزر عند اكتمال التحميل', async () => {
+    const user = userEvent.setup();
+    mockApi({
+      alerts: LAWYER_ALERTS,
+      alertsTotal: 3,
+      alertsPage2: [makeHeadAlertSummary({ id: 3, messagePreview: 'تنبيه الصفحة الثانية', isRead: true })],
+    });
+
+    render(<Dashboard />);
+
+    expect(await screen.findByText('يُعرض 2 من أصل 3 تنبيهًا')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'تحميل المزيد' }));
+
+    // الإلحاق لا الاستبدال: عناصر الصفحة الأولى باقية مع الجديدة.
+    expect(await screen.findByText('تنبيه الصفحة الثانية')).toBeInTheDocument();
+    expect(screen.getByText('راجع ملف القرض')).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith(
+      '/alerts',
+      expect.objectContaining({ params: { page: 2, pageSize: 100 } }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'تحميل المزيد' })).not.toBeInTheDocument(),
+    );
+  });
+
+  it('فشل تحميل القائمة يعرض «إعادة المحاولة» ويستعيد القائمة بلا كسر', async () => {
+    const user = userEvent.setup();
+    mockApi({ alerts: LAWYER_ALERTS, alertsFailFirst: true });
+
+    render(<Dashboard />);
+
+    // خطأ عام (الفشل ليس استجابة خادم) معلن بجانب القائمة، مع مخرج صريح.
+    expect(await screen.findByText('حدث خطأ غير متوقع')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'إعادة المحاولة' }));
+
+    expect(await screen.findByText('راجع ملف القرض')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'إعادة المحاولة' })).not.toBeInTheDocument();
   });
 
   it('يعلم المحامي التنبيه كمقروء ويخفض العداد', async () => {
@@ -644,7 +700,10 @@ describe('Dashboard لرئيس القسم', () => {
     expect(api.get).toHaveBeenCalledWith('/entity-registry/pending-review-count');
     expect(api.get).not.toHaveBeenCalledWith('/delegations/pending', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/entity-registry/pending-review', expect.any(Object));
-    expect(api.get).toHaveBeenCalledWith('/alerts', expect.objectContaining({ params: { pageSize: 100 } }));
+    expect(api.get).toHaveBeenCalledWith(
+      '/alerts',
+      expect.objectContaining({ params: expect.objectContaining({ page: 1, pageSize: 100 }) }),
+    );
     expect(api.get).toHaveBeenCalledWith('/users/lawyers', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/stats/manager', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/stats/periods', expect.any(Object));
@@ -680,14 +739,15 @@ describe('Dashboard لرئيس القسم', () => {
 
       // الشارة تجميعية غير مرقّمة (5) لا طول الصفحة (2) ولا إجمالي القائمة (250).
       expect(await screen.findByText('5 غير مقروء')).toBeInTheDocument();
+      // دلالة الشارة صريحة تحتها (لا «غير مقروءة لي») — نفس نص `AccountPage`.
+      expect(screen.getByText('غير المقروء في تنبيهاتك')).toBeInTheDocument();
       expect(api.get).toHaveBeenCalledWith(
         '/alerts/unread-count',
         expect.objectContaining({ params: { scope: 'received' } }),
       );
-      // ولا قصّ صامت: الإجمالي يظهر في سطر «المزيد».
-      expect(
-        await screen.findByText('يُعرض 2 من أصل 250 تنبيهًا'),
-      ).toBeInTheDocument();
+      // ولا قصّ صامت: الإجمالي يظهر في تذييل «تحميل المزيد».
+      expect(await screen.findByText('يُعرض 2 من أصل 250 تنبيهًا')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'تحميل المزيد' })).toBeInTheDocument();
     },
   );
 
@@ -920,20 +980,25 @@ describe('Dashboard لرئيس القسم', () => {
     render(<Dashboard />);
 
     expect(await screen.findByRole('tab', { name: 'مستلمة' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByText('وارد من النظام')).toBeInTheDocument();
+    expect(await screen.findByText('وارد من النظام')).toBeInTheDocument();
     expect(screen.queryByText('تعميم صادر مني')).not.toBeInTheDocument();
+    // الشارة في تبويب «مستلمة» بدلالتها الصريحة (`received`).
+    expect(screen.getByText('غير المقروء في تنبيهاتك')).toBeInTheDocument();
 
     await user.click(screen.getByRole('tab', { name: 'أرسلتها' }));
     expect(await screen.findByText('تعميم صادر مني')).toBeInTheDocument();
     expect(screen.queryByText('وارد من النظام')).not.toBeInTheDocument();
+    // الدلالة التوضيحية تخص «مستلمة» وحدها — لا تُعرض مع تبويب الصادر.
+    expect(screen.queryByText('غير المقروء في تنبيهاتك')).not.toBeInTheDocument();
     // الصادر قراءة فقط: لا زر «تمت القراءة» (تعليمه 404 خلفيًا).
     expect(screen.queryByRole('button', { name: 'تمت القراءة' })).not.toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith(
       '/alerts/sent',
-      expect.objectContaining({ params: { pageSize: 100 } }),
+      expect.objectContaining({ params: expect.objectContaining({ page: 1, pageSize: 100 }) }),
     );
-    // سطر «المزيد» يتبع إجمالي التبويب الظاهر (3 صادر) لا إجمالي المستلمات.
+    // تذييل «تحميل المزيد» يتبع إجمالي التبويب الظاهر (3 صادر) لا إجمالي المستلمات.
     expect(screen.getByText('يُعرض 1 من أصل 3 تنبيهًا')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'تحميل المزيد' })).toBeInTheDocument();
     // الكل قرأ: شارة صريحة بدل العدّاد الصفري المضلل.
     expect(screen.getByText('مقروء من الجميع')).toBeInTheDocument();
   });
@@ -959,12 +1024,11 @@ describe('Dashboard لرئيس القسم', () => {
     );
   });
 
-  it('رئيس بلا فرع: الشارات صفر بلا كسر ولا طلبات عدّادات أو إحصائيات', async () => {
+  it('رئيس بلا فرع: حالة صريحة قابلة للمعالجة ولا طلبات تنبيهات أو عدّادات', async () => {
     useAuthMock.mockReturnValue({
       user: { id: 1, username: 'head1', fullName: 'رئيس', role: 'head', branchId: null },
     });
     (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
-      if (url === '/alerts') return Promise.resolve({ data: pageResult([]) });
       if (url === '/users/lawyers') return Promise.resolve({ data: [] });
       return Promise.reject(new Error('400 رئيس القسم دون فرع'));
     });
@@ -977,8 +1041,18 @@ describe('Dashboard لرئيس القسم', () => {
     expect(api.get).not.toHaveBeenCalledWith('/correspondence/urgent-unseen-count', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/delegations/pending-count', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/entity-registry/pending-review-count', expect.any(Object));
-    // رئيس بلا فرع مرفوض خلفيًا في `received` (`403` — `D11`): لا طلب عدّاد أصلًا.
+    // النطاق مرفوض خلفيًا (`403` — `D11`): لا طلب قائمة ولا صادر ولا عدّاد أصلًا.
+    expect(api.get).not.toHaveBeenCalledWith('/alerts', expect.any(Object));
+    expect(api.get).not.toHaveBeenCalledWith('/alerts/sent', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/alerts/unread-count', expect.any(Object));
+    // لا قائمة فارغة كاذبة: حالة صريحة تقول السبب والعلاج.
+    expect(
+      screen.getByText(
+        'حسابك غير مرتبط بفرع، فلا يمكن عرض تنبيهات القسم. راجع مدير النظام لربط حسابك بفرع.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'تنبيهات رئيس القسم' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'المطالعات' })).toHaveAttribute('href', '/reviews');
     expect(screen.getByRole('link', { name: 'المراسلات' })).toHaveAttribute('href', '/correspondence');
     expect(screen.getByRole('link', { name: 'طلبات الإنابة' })).toHaveAttribute(
@@ -989,7 +1063,6 @@ describe('Dashboard لرئيس القسم', () => {
       'href',
       '/entities/review',
     );
-    expect(screen.getByText('تنبيهات رئيس القسم')).toBeInTheDocument();
     expect(api.get).not.toHaveBeenCalledWith('/stats/manager', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/stats/periods', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/stats/manager/lawyers', expect.any(Object));

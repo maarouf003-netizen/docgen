@@ -44,6 +44,15 @@ describe('AlertsPanel', () => {
     expect(screen.getByText('لا توجد تنبيهات حالياً')).toBeInTheDocument();
   });
 
+  it('يعرض العنوان الفرعي (دلالة الشارة) عند توفره فقط', () => {
+    const { unmount } = renderPanel({ subtitle: 'غير المقروء في تنبيهاتك' });
+    expect(screen.getByText('غير المقروء في تنبيهاتك')).toBeInTheDocument();
+    unmount();
+
+    renderPanel();
+    expect(screen.queryByText('غير المقروء في تنبيهاتك')).not.toBeInTheDocument();
+  });
+
   it('يعرض التذييل (سطر «المزيد») داخل البطاقة بعد القائمة', () => {
     renderPanel({ footer: <p>يُعرض 2 من أصل 7 تنبيهًا</p> });
 

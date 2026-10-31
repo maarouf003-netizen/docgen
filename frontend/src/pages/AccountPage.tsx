@@ -32,12 +32,10 @@ export default function AccountPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [sentFlash, setSentFlash] = useState(false);
 
-  // رئيس بلا فرع (ورئيس شعبة بلا شعبة): `scope=received` مرفوض خلفيًا (`403` — `D11`)،
-  // فلا يُطلق الطلب أصلًا وتبقى البطاقة صفرًا بدل خطأ دائم في الملخص (نفس قاعدة `Dashboard`).
-  const headUnreadEnabled =
-    isHeadOrSubHead &&
-    (user?.branchId ?? null) != null &&
-    (user?.role !== 'subhead' || (user?.sectionId ?? null) != null);
+  // نطاق عدّاد `received` يشترط **الفرع** فقط (يُفرَض خلفيًا بـ`RequireBranch` — `D11`)،
+  // لا الشعبة؛ فرئيس شعبة بفرع بلا شعبة ما زال يحق له العدّاد. ورئيس بلا فرع لا يُطلق
+  // له طلب (مردود `403`) وتبقى البطاقة صفرًا بدل خطأ دائم في الملخص (نفس قاعدة `Dashboard`).
+  const headUnreadEnabled = isHeadOrSubHead && (user?.branchId ?? null) != null;
 
   const statsQuery = useCancellableRequest<ManagerStatsDto>(
     (signal) =>

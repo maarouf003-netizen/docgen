@@ -10,7 +10,11 @@ import { formatDateTime } from '../../utils/dates';
  * كل حالاته مغطاة هناك بالشارة والسطر والأزرار)؛ ويُغذّى من
  * GET /alerts/by-delegation/{id} المتاح لأطراف الإنابة فقط، ويعيد `PagedResult`
  * (`D1`) بملخصات بلا نص كامل — فالمعروض `messagePreview` وحدها.
- * الأحدث في الصدارة (بحد أقصى ثلاثة)، والخطأ/الفراغ لا يظهر شيئًا.
+ * الأحدث في الصدارة (بحد أقصى ثلاثة)، والفراغ لا يظهر شيئًا.
+ *
+ * **الخطأ لا يُكتَم:** فشل الجلب يُعلن في الشريط نفسه بخطابٍ صريح وزر «إعادة المحاولة»،
+ * لأن الشريط ملحق اختياري في البطاقة — فإخفاؤه الصامت يُفقد المستخدم معلومة إنابة
+ * بلا أي إشارة (خلاف مبدأ «لا صمت»).
  */
 export function DelegationActivityStrip({ delegationId }: { delegationId: number }) {
   const query = useCancellableRequest<PagedResult<HeadAlertSummaryDto>>(
@@ -21,8 +25,26 @@ export function DelegationActivityStrip({ delegationId }: { delegationId: number
     [delegationId],
   );
 
+  if (query.error) {
+    return (
+      <div className="mt-3 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
+        <span className="block text-[11px] font-bold text-red-800 mb-1">حالة الإنابة</span>
+        <p role="alert" className="text-[11px] text-red-700">
+          {query.error}
+        </p>
+        <button
+          type="button"
+          onClick={query.refetch}
+          className="min-h-11 px-1 -mx-1 text-[11px] font-medium text-emerald-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+        >
+          إعادة المحاولة
+        </button>
+      </div>
+    );
+  }
+
   const alerts = (query.data?.items ?? []).slice(0, 3);
-  if (query.error || alerts.length === 0) return null;
+  if (alerts.length === 0) return null;
 
   return (
     <div className="mt-3 rounded-lg bg-amber-50/70 border border-amber-200 px-3 py-2">
