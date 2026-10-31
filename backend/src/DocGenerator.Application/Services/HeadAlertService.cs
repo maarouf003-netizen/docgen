@@ -72,8 +72,10 @@ public interface IHeadAlertService
     /// <summary>
     /// عدّاد غير المقروء بنطاقه الصريح (`D6`/`D7`): <see cref="AlertUnreadScope.User"/>
     /// لصفوف الفاعل نفسه (المحامي بلا قيد فرع، ورئيس/شعبة داخل فرعه)، و
-    /// <see cref="AlertUnreadScope.Received"/> لتنبيهات استلمها الرئيس في فرعه.
-    /// المدير/المشرف يُرفضون <c>403</c>، ورئيس بلا فرع كذلك (`D11`).
+    /// <see cref="AlertUnreadScope.Received"/> لتنبيهات استلمها الرئيس في فرعه
+    /// (رئيس/شعبة فقط؛ المحامي يُرفض <c>403</c>).
+    /// المدير/المشرف يُرفضون <c>403</c> في النطاقين، ورئيس بلا فرع كذلك (`D11`)،
+    /// وقيمة نطاق غير معروفة <c>400</c>.
     /// </summary>
     Task<int> CountUnreadAsync(
         HeadAlertActor actor, AlertUnreadScope scope, CancellationToken ct = default);
@@ -322,22 +324,41 @@ public sealed class HeadAlertService : IHeadAlertService
     {
         ArgumentNullException.ThrowIfNull(actor);
 
-        // D6: نطاق «المستلَم» مخصص للرئيس/الشعبة وحده — المحامي لا يملك تنبيهات
-        // «مستلمة» بمعنى مجموع مستلميها، والمدير/المشرف لا يملك صف استلام أصلًا.
-        if (scope == AlertUnreadScope.Received)
+        // مفتاح صريح مغلق (مراجعة المرحلة 4 `ح‑22`): قيمة enum غير معروفة من مستدعٍ
+        // داخلي تُرفض 400 بدل السقوط الصامت إلى النطاق الشخصي.
+        return scope switch
         {
-            if (!actor.IsHeadOrSubHead)
-                throw new UnauthorizedAccessException("نطاق «المستلَم» مخصص لرئيس القسم/الشعبة");
+            AlertUnreadScope.Received => await CountReceivedScopeAsync(actor, ct),
+            AlertUnreadScope.User => await CountUserScopeAsync(actor, ct),
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(scope), scope, "نطاق عدّاد غير معروف — استخدم user أو received"),
+        };
+    }
 
-            // D11: رئيس بلا فرع حساب غير صالح للقراءة ⇒ 403 (لا نطاق مفتوح).
-            var receivedBranchId = RequireBranch(actor);
-            return await _alerts.CountUnreadForReceivedAsync(actor.UserId, receivedBranchId, ct);
-        }
+    /// <summary>
+    /// `scope=received` (`D6`): رئيس/شعبة فقط — المحامي لا يملك تنبيهات «مستلمة»
+    /// بمعنى مجموع مستلميها، والمدير/المشرف لا يملك صف استلام أصلًا.
+    /// </summary>
+    private async Task<int> CountReceivedScopeAsync(HeadAlertActor actor, CancellationToken ct)
+    {
+        // ح‑23: مسند كتالوج واحد بدل مقارنة دور مباشرة، فلا ينحرف النطاقان عند تعديله.
+        if (!RolePermissions.CanUseReceivedScope(actor.Role))
+            throw new UnauthorizedAccessException("نطاق «المستلَم» مخصص لرئيس القسم/الشعبة");
 
+        // D11: رئيس بلا فرع حساب غير صالح للقراءة ⇒ 403 (لا نطاق مفتوح).
+        var branchId = RequireBranch(actor);
+        return await _alerts.CountUnreadForReceivedAsync(actor.UserId, branchId, ct);
+    }
+
+    /// <summary>
+    /// `scope=user` (الافتراضي، `D7`): صفوف الفاعل نفسه؛ المحامي بلا قيد فرع،
+    /// والرئيس/الشعبة داخل فرعه كي يطابق العدّاد قائمته.
+    /// </summary>
+    private async Task<int> CountUserScopeAsync(HeadAlertActor actor, CancellationToken ct)
+    {
         if (!RolePermissions.CanReceiveAlerts(actor.Role))
             throw new UnauthorizedAccessException("عدّاد غير المقروء مخصص للمستلمين (محامٍ أو رئيس نطاق)");
 
-        // D7: رئيس/شعبة مقيد بفرعه كي يطابق العدّاد قائمته؛ المحامي بلا قيد فرع.
         var branchId = actor.IsHeadOrSubHead ? RequireBranch(actor) : (int?)null;
         return await _alerts.CountUnreadForUserAsync(actor.UserId, branchId, ct);
     }

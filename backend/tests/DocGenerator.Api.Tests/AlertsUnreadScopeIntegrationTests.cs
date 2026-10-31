@@ -83,17 +83,27 @@ public sealed class AlertsUnreadScopeIntegrationTests : IsolatedApiTestBase
         Assert.Equal(1, await CountAsync(head, "user"));
         Assert.Equal(3, await CountAsync(head, "received"));
 
-        // الافتراضي (بلا scope) هو user — عقد ما قبل المرحلة 4 محفوظ.
+        // الافتراضي (بلا scope) هو user — تغيير عقد مقصود للرئيس (`D7`/`ح‑20`):
+        // التنبيه C في فرع آخر مستبعد، فالقيمة 1 لا 2.
         Assert.Equal(1, await CountAsync(head, null));
 
-        // D7: العدّاد الشخصي = عدد صفوف قائمته (لا عدّاد أكبر من القائمة).
+        // D7 + ح‑19: الثبات هو «العدّاد = TotalCount لقائمة غير المقروء» (يصمد أمام
+        // الترقيم)، لا طول الصفحة. القائمة العامة تبقى أطول لأنها تشمل المقروء.
+        var unreadListResponse = await head.GetAsync("/api/alerts?unreadOnly=true&pageSize=100");
+        Assert.Equal(HttpStatusCode.OK, unreadListResponse.StatusCode);
+        var unreadPage = await unreadListResponse.Content
+            .ReadFromJsonAsync<PagedResult<HeadAlertSummaryDto>>();
+        Assert.NotNull(unreadPage);
+        Assert.Equal(unreadPage!.TotalCount, await CountAsync(head, "user"));
+
         var listResponse = await head.GetAsync("/api/alerts?pageSize=100");
         Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
         var page = await listResponse.Content.ReadFromJsonAsync<PagedResult<HeadAlertSummaryDto>>();
         Assert.NotNull(page);
-        Assert.Equal(page!.Items.Count, await CountAsync(head, "user"));
+        Assert.True(page!.Items.Count >= unreadPage.TotalCount);
 
         // D6: `received` = مجموع `unreadCount` لتنبيهات قائمته (السلوك القديم حرفيًا).
+        // المقارنة صالحة لأن العيّنة كلها في صفحة واحدة (ح‑19).
         Assert.Equal(page.Items.Sum(a => a.UnreadCount ?? 0), await CountAsync(head, "received"));
 
         // قراءة صف محامٍ من A تخفض «المستلَم» وحده، ولا تمس صف الرئيس.
@@ -102,6 +112,13 @@ public sealed class AlertsUnreadScopeIntegrationTests : IsolatedApiTestBase
             (await lawyer.PatchAsJsonAsync($"/api/alerts/{collectiveId}/read", new { })).StatusCode);
         Assert.Equal(2, await CountAsync(head, "received"));
         Assert.Equal(1, await CountAsync(head, "user"));
+
+        // ح‑21: قراءة الرئيس صفّه تخفض `user` إلى صفر ولا تُسقط «المستلَم» كليًا
+        // (يبقى صف المحامي الثالث غير المقروء).
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await head.PatchAsJsonAsync($"/api/alerts/{collectiveId}/read", new { })).StatusCode);
+        Assert.Equal(1, await CountAsync(head, "received"));
+        Assert.Equal(0, await CountAsync(head, "user"));
     }
 
     [Fact]

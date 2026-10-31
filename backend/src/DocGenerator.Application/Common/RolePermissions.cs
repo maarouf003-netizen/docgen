@@ -81,6 +81,14 @@ public static class RolePermissions
         role == UserRole.Lawyer || IsHeadOrSubHead(role);
 
     /// <summary>
+    /// نطاق عدّاد «المستلَم» (`scope=received`) — رئيس القسم/الشعبة فقط، لأنه عدّاد
+    /// تجميعي على تنبيهاتهم في فرعهم. **يفوّض إلى <see cref="IsHeadOrSubHead"/> صراحةً**
+    /// كي لا ينحرف النطاقان عن <see cref="CanReceiveAlerts"/> عند أول تعديل كتالوج
+    /// (مراجعة المرحلة 4 `ح‑23`؛ والقاعدة الثابتة: `received` ⊆ `user`).
+    /// </summary>
+    public static bool CanUseReceivedScope(UserRole role) => IsHeadOrSubHead(role);
+
+    /// <summary>
     /// قراءة إشرافية على التنبيهات (القوائم/التفاصيل/المستلمون) — مدير/مشرف.
     /// تفوّض إلى <see cref="HasFullAccess"/> كي لا تتكرر قاعدة الدور في تعريفين
     /// ينحرفان عند أول تعديل (مراجعة المرحلة 3 `ح‑14`).

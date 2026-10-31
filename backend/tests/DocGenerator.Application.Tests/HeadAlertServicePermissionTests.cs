@@ -370,17 +370,76 @@ public class HeadAlertServicePermissionTests : IDisposable
     }
 
     [Fact]
-    public async Task CountUnread_UserScope_ForHeadMatchesHisBranchList()
+    public async Task CountUnread_UserScope_EqualsUnreadOnlyListTotal_ForHead()
     {
-        // D7: العدّاد الشخصي للرئيس مقيّد بفرعه كي يطابق قائمته.
-        var received = await _service.ListForActorAsync(
-            ActorFor(_headA), new HeadAlertListQuery { Page = FullPage() });
+        // D7 + ح‑19: الثبات الحقيقي هو «العدّاد = TotalCount لقائمة غير المقروء»
+        // (يصمد أمام الترقيم)، لا «طول الصفحة» الذي ينجح مصادفةً حين تكون كل الصفوف غير مقروءة.
+        var unreadList = await _service.ListForActorAsync(
+            ActorFor(_headA), new HeadAlertListQuery { UnreadOnly = true, Page = FullPage() });
 
         var count = await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.User);
 
-        Assert.Equal(received.Items.Count, count);
+        Assert.Equal(unreadList.TotalCount, count);
         // تنبيه واحد في فرعه؛ تنبيه فرع حلب (رغم أنه مستلمه) مستبعد.
         Assert.Equal(1, count);
+    }
+
+    [Fact]
+    public async Task CountUnread_UserScope_ExcludesReadRow_WhileListStillContainsIt()
+    {
+        // ح‑19: العدّاد «غير المقروء» لا «طول القائمة» — القائمة تبقى بطولها بعد القراءة.
+        var before = await _service.ListForActorAsync(
+            ActorFor(_headA), new HeadAlertListQuery { Page = FullPage() });
+        Assert.Single(before.Items);
+
+        Assert.True(await _service.MarkReadAsync(_alertHead.Id, ActorFor(_headA)));
+
+        var after = await _service.ListForActorAsync(
+            ActorFor(_headA), new HeadAlertListQuery { Page = FullPage() });
+        Assert.Single(after.Items);
+        Assert.Equal(0, await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.User));
+    }
+
+    [Fact]
+    public async Task CountUnread_HeadMarkingOwnRowRead_DecrementsUserOnly()
+    {
+        // ح‑21: الفرق العملي بين النطاقين — قراءة الرئيس صفّه تخفض `user`،
+        // ولا تُسقط `received` إلا بمقدار صفّه (يبقى صف المحامي غير المقروء).
+        var collective = AddAlert(_branchA, _headB.Id, "استلام جماعي", _lawyerA.Id,
+            _headA.Id, _lawyerA.Id);
+
+        // received = 1 (`_alertHead`) + 2 (collective) = 3، وuser = 2.
+        Assert.Equal(3, await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.Received));
+        Assert.Equal(2, await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.User));
+
+        Assert.True(await _service.MarkReadAsync(collective.Id, ActorFor(_headA)));
+
+        Assert.Equal(2, await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.Received));
+        Assert.Equal(1, await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.User));
+    }
+
+    [Fact]
+    public async Task CountUnread_ReceivedScope_IsAvailableToSubHead_InHisBranch()
+    {
+        // ح‑21: الشعبة دور مستقل بعقد قراءة — النطاقان متاحان لها داخل فرعها.
+        var collective = AddAlert(_branchA, _headB.Id, "استلام شعبة", _lawyerA.Id,
+            _subA.Id, _lawyerA.Id);
+
+        var user = await _service.CountUnreadAsync(ActorFor(_subA), AlertUnreadScope.User);
+        var received = await _service.CountUnreadAsync(ActorFor(_subA), AlertUnreadScope.Received);
+
+        Assert.Equal(1, user);
+        Assert.Equal(2, received);
+        // ح‑23: الثابت البنيوي — `received` ⊇ `user` لكل دور مستلم.
+        Assert.True(received >= user);
+    }
+
+    [Fact]
+    public async Task CountUnread_UndefinedScope_IsRejected_FailClosed()
+    {
+        // ح‑22: قيمة enum غير معروفة (مستدعٍ داخلي) تُرفض 400 ولا تسقط صامتةً إلى `user`.
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            _service.CountUnreadAsync(ActorFor(_lawyerA), (AlertUnreadScope)42));
     }
 
     [Fact]
