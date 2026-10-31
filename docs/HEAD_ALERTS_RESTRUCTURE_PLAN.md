@@ -1,6 +1,7 @@
 # خطة إعادة هيكلة نظام التنبيهات `HeadAlert`
 
-> **الحالة:** خطة معتمدة بعد مراجعات نقدية متعددة وقرارات معمارية (آخرها 2026-10-20). **التنفيذ جارٍ:**
+> **الحالة:** خطة معتمدة بعد مراجعات نقدية متعددة وقرارات معمارية (آخر قرار معماري 2026-10-20؛
+> آخر تحديث توثيقي 2026-10-31). **التنفيذ جارٍ:**
 > `PR-1`–`PR-4` منفَّذة (`PR-4` على `feature/head-alerts-pr4-api`، غير مدموج)، والمرحلة 7 التوثيقية
 > مغلقة في 2026-10-31؛ متبقٍ: `PR-5` (الواجهة) و`PR-6` (التنظيف — بند ملزم في §15).
 >
@@ -100,7 +101,9 @@
     والتفاصيل 20 + 2 محتفظ بهما = 22)؛ (هـ) **§9.5 جديد «قرارات `PR-4`» مؤرَّخ:** `D1`–`D12` وأدلتها
     في الكود، وتوثيق `RecipientCount`/`UnreadCount` ونطاق `received` كاحتفاظ مؤقت حتى `PR-6`؛
     (و) بند `PR-6` صريح بثلاثة مطالب (§15)؛ (ز) `RUN_GUIDE.md` §9: اقتران نشر `PR-4`+`PR-5` وترتيبه
-    حسب `D10` ووحدة التراجع. **لا تغيير في كود الإنتاج ولا هجرات.**
+    حسب `D10` ووحدة التراجع؛ (ح) **بعد مراجعة نقدية للتنفيذ:** نطاق شارة غير المقروء صار ملزمًا في
+    `Dashboard` و`AccountPage` معًا (§9.1/§10.7/§14.2/§18)، وإحالة `§9.5` إلى `§9.4` لقاعدة الترتيب
+    وعدّ الحقول، وتنقية الصيغة الميتة من `§8.2`. **لا تغيير في كود الإنتاج ولا هجرات.**
 
 ---
 
@@ -1385,17 +1388,15 @@ entity_abolish_heads:
 - `FindByMessageAndBranchAsync` يُحذف.
 - `FindLatestPendingByEntityAsync` يُحذف بعد إزالة تنبيهات الجهات.
 - `ListRecipientsWithUserAsync(alertId)` (الاسم المنفَّذ؛ بدل `ListRecipientsAsync`).
-- `CountUnreadForUserAsync(userId, branchId?)` و`CountUnreadForReceivedAsync(userId, branchId)`:
-  ```csharp
-  // الخطة §8.2 الأصلية: CountUnreadAsync(userId) بلا فرع — استُبدل في PR-4 (§9.4/§9.5)
-  Db.HeadAlertRecipients.CountAsync(r =>
-      r.UserId == userId && !r.IsRead && !r.HeadAlert!.IsArchived)
-  ```
-  - `user`: صفوف المستخدم نفسه؛ `branchId` يُقيّد صفوف الرئيس/الشعبة بفرعهم (`D7`) ويُسقط الشرط للمحامي.
-  - `received`: صفوف غير المقروءة على تنبيهات استلمها الرئيس في فرعه، مع `EXISTS` على صفّه (`D6`).
+- `CountUnreadForUserAsync(int userId, int? branchId, ...)` — `COUNT` على صفوف غير المقروءة غير المؤرشفة
+  للمستخدم، مع قيد `HeadAlert.BranchId == branchId` عند وجود فرع (يُسقط الشرط للمحامي — `D7`).
+- `CountUnreadForReceivedAsync(int userId, int branchId, ...)` — `COUNT` على صفوف غير المقروءة غير
+  المؤرشفة في الفرع، مع `EXISTS` على صف استلام للرئيس كي لا تُحتسب تنبيهات لا يستلمها (`D6`).
+  **لا صيغة `CountUnreadAsync(userId)` بلا فرع في الكود** — حُذفت في `PR-4`.
 - `ListSummariesForRecipientAsync` و`ListSummariesSentAsync` (الاسمان المنفَّذان):
-  - فلترة `!IsArchived` أو `IsArchived` حسب الفلتر، مع `page`/`pageSize` (افتراضي 50، أقصى 100)
-    و`TotalCount` من استعلام منفصل.
+  - فلترة `!IsArchived` أو `IsArchived` حسب الفلتر، مع `page`/`pageSize` تصل محسوبة من
+    `AlertPageRequest` (`DefaultPageSize=50`، و`MaxPageSize=100` — والتحقق في `Validate`) و`TotalCount`
+    من استعلام منفصل.
   - ترتيب حتمي `LastContentChangedAt DESC, Id DESC`.
   - إسقاط عرضي (`Select`) إلى `HeadAlertSummaryDto` بدل تحميل الكيانات أو صفوف المستلمين:
     - `IsRead` للمستخدم الحالي.
@@ -1621,6 +1622,9 @@ entity_abolish_heads:
 - `scope` في `unread-count`: الفارغ/`user` ⇒ العدّاد الشخصي (المحامي بلا قيد فرع، والرئيس/الشعبة داخل
   فرعه)، و`received` ⇒ مجموع غير المقروء على التنبيهات التي استلمها الرئيس في فرعه (رئيس/شعبة فقط).
   أي قيمة أخرى → `400` برسالة عربية؛ والمدير/المشرف ورئيس بلا فرع → `403` في النطاقين (`D6`/`D7`/`D11`).
+- **نطاق شارة غير المقروء (ملزم للواجهة):** المحامي `scope=user`، والرئيس/الشعبة `scope=received` —
+  في `AccountPage` **ولوحة التحكم** معًا؛ فلا يظهر رقمان مختلفان للمستخدم نفسه، والمدير/المشرف بلا شارة.
+  هذا هو سبب وجود السطح التجميعي (`D6`)، وأي شارة تُضاف لاحقًا تلتزم النطاق نفسه.
 - `delegationId` فلتر اختياري في `/alerts` (وليس بديلًا عن `/by-delegation`) لربط
   «عرض كل التنبيهات» في `DelegationActivityStrip`.
 - `by-delegation` يعيد ملخصات، لا نصًا كاملًا، لأن الشريط لا يعرض النص الكامل في DOM.
@@ -1881,12 +1885,18 @@ public sealed record HeadAlertSupersedePlan(
 
 **د) تناقضات نُصِّحت في هذه المرحلة:** شرط فرع `GET /{id}` في §9.3 و§12 (أُبدل بـ`D2`)، وتسمية شارة
 الرئيس في §10.7/§18 («عدّاد شخصي/تنبيهاتك غير المقروءة») — تصبح `scope=received` بنص «غير المقروء في
-تنبيهاتك» وفق `D6`، مع بقاء `user` افتراضيًا للسطح نفسه.
+تنبيهاتك» وفق `D6`، مع بقاء `user` افتراضيًا للسطح نفسه. **وتُطبَّق قاعدة النطاق نفسها على شارة لوحة
+التحكم** (§10.7) لا على صفحة الحساب وحدها.
+
+**هـ) الإحالة المتبادلة:** ترتيب القرار (أ) وعدّ الحقول (ب) هما بندا §6 التوثيقيان، و`D1–D12` في §9.5.
 
 ### 9.5 قرارات `PR-4` (`D1`–`D12`)
 
 > **مؤرَّخة 2026-10-31** — المرجع التفصيلي: `docs/HEAD_ALERTS_PR4_REMEDIATION_PLAN.md` §3 (نفس القرارات
 > بلا تغيير؛ أي تعديل فيها يحتاج موافقة المالك الصريحة أولًا).
+>
+> **قاعدة الترتيب وعدّ الحقول** (المطلوبان في وثيقة الإصلاح §6 بجانب القرارات) مُثبتان في **§9.4**؛
+> هذا القسم يجمع `D1–D12` وأدلتها فقط.
 
 | المعرّف | القرار المنفَّذ | الدليل في الكود |
 |---|---|---|
@@ -2092,13 +2102,15 @@ frontend/src/
 - `Dashboard.tsx`:
   - حذف `alertsQuery` و`sentQuery` و`branchLawyersQuery` و`alertsError` و`markingKey`.
   - حذف حالة نموذج التنبيه و`CreateAlertForm` و`AlertsPanel`.
-  - إبقاء/إضافة شارة عدّاد من `useBadgeCount('/alerts/unread-count')`.
+  - إبقاء/إضافة شارة عدّاد من `useBadgeCount('/alerts/unread-count?scope=…')`:
+    المحامي `scope=user`، والرئيس/الشعبة `scope=received` (`D6`/§9.1) — **لا تُترك بلا `scope`**،
+    كي لا تعرض اللوحة رقمًا يخالف `AccountPage`/الشارة القديمة.
 - `LawyerIconRow`:
-  - إضافة `alertsUnread` إلى `LawyerIconCounts`.
+  - إضافة `alertsUnread` إلى `LawyerIconCounts` (من `scope=user`).
   - بطاقة «التنبيهات» → `/alerts`.
   - الشارة عند > 0، والنص «x غير مقروء» أو «لا جديد».
 - `HeadIconRow`:
-  - إضافة `alertsUnread` إلى `HeadIconCounts`.
+  - إضافة `alertsUnread` إلى `HeadIconCounts` (من `scope=received`).
   - بطاقة «التنبيهات» → `/alerts`.
   - نفس الشارة/النص.
 - `ManagerIconRow`:
@@ -2579,6 +2591,8 @@ frontend/src/
   - عدم وجود `AlertsPanel`.
   - وجود بطاقة التنبيهات/العداد للمحامي/الرئيس، وعدم طلب `/users/lawyers` من لوحة التحكم.
   - عدم طلب `/alerts/sent` أو `/alerts` القديمين من `Dashboard`.
+  - **نطاق العدّاد:** `scope=user` للمحامي و`scope=received` للرئيس/الشعبة — نفس نطاق `AccountPage`
+    (`D6`)، واختبار يمنع أي طلب بلا `scope` للرئيس.
 - `DelegationActivityStrip.test.tsx` **(يُنشأ؛ لا يوجد حاليًا)** أو توسيع `DocumentView.test.tsx`:
   - يعرض معاينات فقط ولا يحمل النص الكامل في DOM.
   - زر «عرض» يفتح التفاصيل بالمعرّف.
@@ -2732,8 +2746,9 @@ frontend/src/
 **بنود ملزمة صريحة من `PR-4` (لا تُترك مفتوحة — مصدرها `D5`/`D6`/`D9`/`P3-12`):**
 
 1. **إزالة العدّادين من التفاصيل:** حذف `RecipientCount`/`UnreadCount` من `HeadAlertDto` (والوسم
-   «محتفظ مؤقتًا») بعد أن تتوقف الواجهة عن عقد التفاصيل القديم، مع تحديث `head-alert-contracts.json`
-   (نقل الحقلين من `retainedHeadAlertDetail`) واختبار العقد. اختبار `Detail_RetainsCounters_…_UntilPR6`
+   «محتفظ مؤقتًا») بعد أن تتوقف الواجهة عن عقد التفاصيل القديم، مع **حذف الكتلة `retainedHeadAlertDetail`
+   من `head-alert-contracts.json`**، وتبسيط `DetailContract_MatchesManifest_PlusExplicitlyRetainedFields`
+   إلى مطابقة مباشرة بين عقد التفاصيل والبيان. اختبار `Detail_RetainsCounters_…_UntilPR6`
    يُستبدل باختبار يثبت غيابهما — لا يبقى `UntilPR6` بعد `PR-6`.
 2. **إزالة `normalizer` إن وُجد:** إن اختير `D10=normalizer` فيُحذف مع اختبار يثبت أن الواجهة لا تقبل
    الشكل القديم بعد الإزالة (وإن اختير `atomic` فلا يُنشأ أصلًا).
@@ -3008,6 +3023,8 @@ frontend/src/
       بلا `Take(500)`، مع `TotalCount` وإسقاط ملخصات.
 - [ ] `AccountPage` يعرض «غير المقروء في تنبيهاتك» من `/alerts/unread-count` للمحامي (`scope=user`) وللرئيس/
       الشعبة (`scope=received` — `D6`)، ولا يعرض عدّادًا للمدير/المشرف، ويعرض لهما رابط `/alerts`.
+- [ ] شارة لوحة التحكم تطلب **النطاق نفسه** (`user` للمحامي، `received` للرئيس/الشعبة) فلا يظهر رقمان
+      مختلفان لرئيس واحد بين `Dashboard` و`AccountPage` (§9.1، §10.7، §14.2).
 - [ ] النص الطويل (12,000 حرف) يُقرأ كاملًا في `AlertDetailsSheet` على الجوال بلا قصّ/تمرير أفقي.
 - [ ] كل أهداف اللمس `min-h-11`، وحوارات الوصول تعمل (ESC/تركيز/قفل تمرير).
 - [ ] تعميمات الجهات الثمانية معتمدة ومختبرة.

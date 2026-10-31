@@ -186,7 +186,8 @@ npm test
   - `GET /alerts` و`/alerts/sent` و`/alerts/by-delegation/{id}` → `{items,page,perPage,totalCount,totalPages}`.
   - `POST /alerts` → `201` بجسم ملخص + `Location`.
   - `PATCH /alerts/{id}/read` → `204` بلا جسم.
-  - شارة الرئيس = `GET /alerts/unread-count?scope=received` (وليست مجموع الصفحة المعروضة).
+  - شارة غير المقروء: المحامي `?scope=user`، والرئيس/الشعبة `?scope=received` — في لوحة التحكم
+    وصفحة الحساب **معًا** (رقم واحد)، وليست مجموع الصفحة المعروضة.
   - `GET /alerts/{id}` يعيد `message` كاملًا، والقوائم لا تحمله.
   - أي فشل ⇒ تراجع للزوج، أو للواجهة أولًا في وضع `normalizer`.
 

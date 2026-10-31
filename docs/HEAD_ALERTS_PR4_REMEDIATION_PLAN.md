@@ -121,13 +121,15 @@ WHERE NOT IsRead
   AND EXISTS (HeadAlert.Recipients WHERE UserId = @headUserId)
 ```
 
-هذا يعيد **نفس رقم** الواجهة القديمة، لكن دون الاعتماد على تحميل صفحة واحدة.
+هذا يعيد **نفس رقم** الواجهة القديمة **ما دامت قائمتها ≤ 50 صفًا** (الافتراضي القديم بلا `pageSize`)،
+فهو مطابق داخل هذه الحدود **وأدقّ** لما يتجاوزها — لأن العدّاد الجديد غير مرقّم أصلًا، والقديم كان يقصّ
+عند صفحة واحدة بلا إعلان. اتجاه التغيير: إصلاح قصّ صامت لا انحراف دلالي.
 
 **تمييز لازم بين النطاقين (يمنع التباسًا في الواجهة):**
 
 | النطاق | ما يعنيه | مثال |
 |---|---|---|
-| `received` | كل صفوف غير المقروءة على التنبيهات التي استلمها الرئيس — أي مجموع `unreadCount` لكل تنبيه في قائمته (السلوك القديم حرفيًا) | تنبيه وصل الرئيس و3 محامين، 2 منهم لم يقرأوا → `2` |
+| `received` | كل صفوف غير المقروءة على التنبيهات التي استلمها الرئيس — أي مجموع `unreadCount` لكل تنبيه في قائمته (مطابق للسلوك القديم ما دامت القائمة ≤ 50؛ وأدقّ فوقها لأن العدّاد غير مرقّم) | تنبيه وصل الرئيس و3 محامين، 2 منهم لم يقرأوا → `2` |
 | `user` | صفوف غير المقروءة **العائدة للرئيس نفسه** فقط، مقيّدة بفرعه (`D7`) | نفس المثال → `0` إن كان الرئيس قد قرأ |
 
 ⇒ `AccountPage` في `PR-5` يستخدم `received` حفاظًا على مطابقة الشارة، ويُوسم نصًا صريحًا («غير المقروء في تنبيهاتك») لا «غير المقروءة لي». ويُسجَّل في `PR-6` قرار: هل تبقى الشارة تجميعية أم تتحول إلى `user` بعد إزالة عدّادات التفاصيل.
@@ -500,10 +502,10 @@ Task<HeadAlertSummaryDto?> GetSummaryAsync(
    - توثيق `RecipientCount/UnreadCount` كاحتفاظ مؤقت حتى `PR-6`.
 2. `RUN_GUIDE.md` §9: قسم «اقتران نشر `PR-4` + `PR-5`» وترتيبه حسب `D10` + وحدة التراجع + فحص دخاني.
 3. وصف الـPR: الانحرافات، وحدة التراجع، **لا هجرات**، وأرقام البوابات الفعلية.
-4. بند `PR-6` صريح (منقول إلى `HEAD_ALERTS_RESTRUCTURE_PLAN.md` §15 المرحلة 6):
-   - [x] إزالة `RecipientCount`/`UnreadCount` من `HeadAlertDto` + تحديث البيان واختبار العقد.
-   - [x] إزالة `normalizer` إن وُجد + اختبار يثبت رفض الشكل القديم.
-   - [x] حسم نطاق شارة الرئيس (`received` أم `user`) وحذف النطاق الآخر مع اختبار رفضه.
+4. بند `PR-6` صريح (منقول إلى `HEAD_ALERTS_RESTRUCTURE_PLAN.md` §15 المرحلة 6 — **غير منفَّذ هنا**):
+   - إزالة `RecipientCount`/`UnreadCount` من `HeadAlertDto` + حذف كتلة البيان المحتفظة + اختبار العقد.
+   - إزالة `normalizer` إن وُجد + اختبار يثبت رفض الشكل القديم.
+   - حسم نطاق شارة الرئيس (`received` أم `user`) وحذف النطاق الآخر مع اختبار رفضه.
 
 **الحجم:** صغير.
 
@@ -514,7 +516,7 @@ Task<HeadAlertSummaryDto?> GetSummaryAsync(
 **ملفات الإنتاج:**
 - `frontend/src/types/management.ts`: إضافة `HeadAlertSummaryDto` **مطابقًا لمفاتيح `headAlertSummary` في البيان**؛ توسيع `HeadAlertDto` بالحقول السلكية الناقصة (`kind`, `lastContentChangedAt`, `isArchived`, `archivedAt`, `publicEntityId`, `executionCircuitId`, `canViewRecipients`) بحيث يكون مرآةً لعقد التفاصيل. **لا تُضف `PagedResult<T>`**: موجود في `types/common.ts:28` ويُستورد منه.
 - `frontend/src/lib/alertsNormalize.ts` (إن اختير `normalizer`): يفكّ الغلاف ويحوّل `message → messagePreview` و`previewTruncated` و`messageLength`.
-- `frontend/src/pages/Dashboard.tsx`: `PagedResult<HeadAlertSummaryDto>` للاستدعاءين، **`params: { pageSize: 100 }`**، فكّ `r.data.items` بحارس مصفوفة، ومعالجة `totalCount > items.length` (مؤشر «المزيد» أو ترقيم — لا قصّ صامت)، وأنواع `markAlertRead`/`submitAlert`.
+- `frontend/src/pages/Dashboard.tsx`: `PagedResult<HeadAlertSummaryDto>` للاستدعاءين، **`params: { pageSize: 100 }`**، فكّ `r.data.items` بحارس مصفوفة، ومعالجة `totalCount > items.length` (مؤشر «المزيد» أو ترقيم — لا قصّ صامت)، وأنواع `markAlertRead`/`submitAlert` — **بما فيها تصحيح النوع العام القديم `api.post<HeadAlertDto>` في `submitAlert` إلى `HeadAlertSummaryDto`** (الخادم يعيد ملخصًا منذ `PR-4`، والنوع الحالي كاذب وإن كان الجسم مُتجاهَلًا وقت التشغيل)، وشارة العدّاد بنطاقها الصريح (`user` للمحامي، `received` للرئيس/الشعبة).
 - `frontend/src/components/dashboard/AlertsPanel.tsx`: `HeadAlertSummaryDto[]` + `onMarkRead`.
 - `frontend/src/components/dashboard/AlertRow.tsx`: `messagePreview` + `previewTruncated` بدل `message`، وتوجيه تنبيه الدوائر بـ`kind === "circuit_pending_documents"` بدل بادئة النص (`:34`).
 - `frontend/src/components/dashboard/AlertDetails.tsx` (جديد، `D12`): يفكّ خيار «عرض النص الكامل» بجلب `GET /alerts/{id}` عند الطلب فقط، ويعرض `message` كاملًا؛ القائمة لا تجلبه.
@@ -574,7 +576,7 @@ Task<HeadAlertSummaryDto?> GetSummaryAsync(
 | `P3-11` تحميل المستلمين | 2 | إسقاط واحد (مراجعة كود) + تغطية سلوكية للتفاصيل وتعليم القراءة — **بلا عدّ استعلامات** (لا أداة عدّ في المستودع؛ تصحيح 2026-10-30) | `[x]` |
 | `P3-12` تعرّض محتفظ | 7 | اختبار `UntilPR6` + بند `PR-6` صريح بثلاثة مطالب (`HEAD_ALERTS_RESTRUCTURE_PLAN` §15) + توثيق «محتفظ مؤقت» في `§9.2`/`§9.5` | `[x]` |
 | `R-1` (`D11`) حالة «رئيس بلا فرع» | 3 | `BranchlessHead_CreateIs400_AndReadsAre403` (تكامل `Api`) + `Create_BranchlessHead_IsArgumentError_NotAuthorization`/`CountUnread_BranchlessHead_IsRejected_LawyerCountsOwnRows` (وحدة) | `[x]` |
-| `R-2` فهارس عدّاد `received` | 4 | مراجعة مخطط موثّقة (لا هجرة) | `[ ]` |
+| `R-2` فهارس عدّاد `received` | 4 | مراجعة مخطط موثّقة (لا هجرة): `HeadAlertConfiguration.cs:55-56` `(BranchId, IsArchived, LastContentChangedAt, Id)`، و`HeadAlertRecipientConfiguration.cs:22,24` `(UserId, IsRead)` و`(HeadAlertId, UserId)` — كافية للنطاقين | `[x]` |
 | `R-3` سقف الترقيم | 5 | `Paging_OverflowRejected_ExtremePageWithSize1Allowed` (HTTP) + `Paging_ExtremePageWithSize1_IsAllowed` (خدمة) | `[x]` |
 | `R-4` حرس `Postgres` | 6 | تنفيذ فعلي > 0 اختبار في وظيفة CI (`DOCGEN_REQUIRE_POSTGRES=1` + خطوة `trx` أثبتت العدّ) | `[x]` |
 | `R-5` (`D12`) فقدان النص الكامل | 8 | `AlertDetails.test.tsx` (جلب عند الفتح فقط) | `[ ]` |
@@ -683,7 +685,8 @@ npm run build
 | 2026-10-31 | **انحرافات المرحلة 7 قبل التنفيذ:** (1) لا يوجد `§9.4` في خطة إعادة الهيكلة (الترقيم يقفز من `§9.3` إلى `§10`)، فأُنشئ **`§9.4`** لقاعدة الترتيب وخطأ عدّ الحقول، و**`§9.5`** لبطاقة `D1–D12` كما ينص §6 — بلا فجوة ترقيم؛ (2) **خطأ عدّ الحقول المثبت:** عقد التفاصيل الفعلي `HeadAlertDto` = **22** حقلًا (20 معلنًا في `§9.2` + `RecipientCount`/`UnreadCount` المحتفظ بهما)، والبيان يفصل `headAlertDetail` (20) عن `retainedHeadAlertDetail` (2)، والملخص = 22 أيضًا؛ نصّ `§9.2` («قائمة الحقول كاملة») كان يعدّ 20 فقط؛ (3) **توسيع تنظيف الأسماء الميتة** خارج `§8.1`: `§8.2` (أسماء المستودع)، `§14.1`، `§18`، `§12` — الأسماء المنفَّذة هي `ListForActorAsync`/`ListSentAsync`/`ListSummariesForRecipientAsync`/`ListSummariesSentAsync`/`ListSummariesForOversightAsync`/`ListSummariesByDelegationAsync`/`GetDetailRowAsync`، والمذكور سابقًا (`ListForLawyerAsync`/`ListForHeadAsync`/`ListForOversightAsync`/`ListByDelegationSummariesAsync`/`GetByIdForActorAsync`/`GetByIdWithRecipientsAsync`) غير موجود؛ (4) **تناقض `D2` في `§12`** (شرط فرع لغير المستلم) و**تناقض تسمية الشارة مع `D6` في `§10.7`/`§18`** («عدّاد شخصي/تنبيهاتك غير المقروءة») — صُحّحا نصًّا إلى قرار المالك: `received` لشارة الرئيس بنص «غير المقروء في تنبيهاتك»، و`user` هو الافتراضي للسطح؛ (5) `RUN_GUIDE.md`: قسم فرعي جديد داخل `§9` للاقتران، **وقائمة الهجرات التراكمية لم تُمسّ** (لا هجرات)؛ (6) وصف `PR #54` يُحدَّث في مكانه (مسوّدة غير مدموجة) بأرقام البوابات الفعلية `2149`/`724 + 2` | تسجيل الانحراف قبل التنفيذ كما يفرض §0.5، ومنع «توثيق يخالف الكود» بدل إنتاجه: كل تصحيح قابل للتحقق من كود `4e0d3ae` |
 | 2026-10-31 | **تثبيت مرساة المرحلة 7 (§0.1):** حالة الكود `4e0d3ae` + التزام هذه المرساة · `CI` 12/12 على `f01c74d` و`4e0d3ae` · `backend-postgres` نفّذ اختبار الإسقاط (`Passed ...: 1`, `Skipped: 0`) · البوابات 2149/724+2 · نقل البنود المفتوحة `ف‑6`/`ف‑7`/`D10`/`D6` إلى المرساة · نطاق المرحلتين 7 و8 على فرع `PR-4` بلا فرع جديد | بدء المرحلة 7 في محادثة جديدة دون الاعتماد على ذاكرة الجلسة الطويلة، ومنع تكرار خطأ أرقام البوابات القديمة |
 | 2026-10-31 | **المرحلة 7 منفَّذة (توثيقية):** `HEAD_ALERTS_RESTRUCTURE_PLAN.md` — `§9.1` (`PATCH`→`204`، `scope=user\|received`، افتراضي `by-delegation=100`، قاعدة الترتيب)، `§9.3`+`§12` (`D2` بلا شرط فرع)، `§8.1`/`§8.2` (سطح الخدمة/المستودع المنفَّذ: `ListForActorAsync`/`ListSentAsync`/`ListSummariesForRecipientAsync`/`ListSummariesSentAsync`/`ListSummariesForOversightAsync`/`ListSummariesByDelegationAsync`/`GetDetailRowAsync`)، **`§9.4`** (ترتيب القرار + عدّ الحقول 22/22 + تناقضات `§10.7`/`§14.2`/`§18`)، **`§9.5`** (`D1–D12` بأدلة الكود + احتفاظ مؤقت حتى `PR-6`)، بند `PR-6` الصريح في `§15`؛ `RUN_GUIDE.md` §9 — قسم اقتران النشر وترتيبه حسب `D10` ووحدة التراجع والفحص الدخاني؛ وصف `PR #54` — أرقام البوابات الفعلية والانحرافات ووحدة التراجع ولا هجرات. **البوابات بعد التغيير:** `build` 0/0 · `Application` **2149/2149** · `Api` **724** + **2** تتابعية · `oxlint`/`tsc -b` صفر · `vitest` 152/1599 · `npm run build` ناجح | إغلاق `P3-7`/`P3-12` (§7) وإزالة انحراف التوثيق قبل بدء `PR-5`: لا كود إنتاج ولا اختبارات ولا هجرات، والبنود المفتوحة (`ف‑6`/`ف‑7`/`D10`/`D6`) منقولة كما هي |
-| 2026-10-31 | **إثبات `CI` للمرحلة 7:** `CI` **12/12** (ستة فحوص × تشغيلان: `backend`، `backend-postgres`، `frontend`، `guards`، `audit`، `migration-guard`) على التزام توثيق المرحلة 7 — و`backend-postgres` أخضر مع خطوة عدّ `trx`، فلا خضرة كاذبة | إثبات أن التغيير التوثيقي لم يكسر أي بوابة على الفرع، وأن `PR #54` يبقى `MERGEABLE` وغير مدموج (ينتظر `PR-5`) |
+| 2026-10-31 | **إثبات `CI` للمرحلة 7:** `CI` **12/12** (ستة فحوص × تشغيلان: `backend`، `backend-postgres`، `frontend`، `guards`، `audit`، `migration-guard`) على التزامات التوثيق `66a52a8` و`67c0caf` و`f4fd8f3` — و`backend-postgres` أخضر مع خطوة عدّ `trx`، فلا خضرة كاذبة | إثبات أن التغيير التوثيقي لم يكسر أي بوابة على الفرع، وأن `PR #54` يبقى `MERGEABLE` وغير مدموج (ينتظر `PR-5`) |
+| 2026-10-31 | **مراجعة نقدية بعد التنفيذ وإغلاق ملاحظاتها:** (H‑1) نطاق شارة غير المقروء صار ملزمًا وصريحًا في §9.1/§10.7/§14.2/§18 — `user` للمحامي و`received` للرئيس/الشعبة في `Dashboard` و`AccountPage` معًا (كان §10.7 يضيف الشارة بلا `scope` فتُنتج رقمين مختلفين)؛ (H‑2) §9.5 يحيل صراحةً إلى §9.4 لقاعدة الترتيب وعدّ الحقول، وعكسها؛ (M‑1) تصحيح ادعاء «نفس الرقم/السلوك القديم حرفيًا» إلى «مطابق ≤ 50 وأدقّ فوقها»؛ (M‑2) حذف الصيغة الميتة `CountUnreadAsync(userId)` من §8.2 واستبدالها بتوقيعي الدالتين؛ (M‑4) تثبيت هاشات `CI` في §12، وتصحيح وصف تغطية `PublicEntityId`/`ExecutionCircuitId` (اختبار المعرّفات) ووصف `D6`؛ (M‑5) إزالة مربّعات `[x]` عن مهام `PR‑6`؛ (P3) إغلاق `R‑2` بدليل الإعدادات، وتصحيح نوع `api.post<HeadAlertDto>` في خطة المرحلة 8، وتحديث ترويسة التواريخ، وتدقيق صياغة حذف `retainedHeadAlertDetail`. **انحراف عملية مُوثَّق:** سطر انحرافات المرحلة 7 أُودع مع التغيير نفسه (`66a52a8`) فلا يثبت سبقه زمنيًا؛ وثلاث دفعات أنتجت ثلاث دورات `CI` إحداها لإصلاح `\|` غير مهروب — يُعتمد مستقبلًا التزام «انحرافات» مستقل ومعاينة جداول قبل الدفع | لا كود إنتاج ولا اختبارات ولا هجرات؛ البوابات المحلية نفسها (2149/724+2/152×1599) ويعاد `CI` على التزام التصحيح |
 
 ---
 
