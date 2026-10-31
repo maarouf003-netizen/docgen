@@ -551,6 +551,66 @@ public class AlertsIntegrationTests
     }
 
     [Fact]
+    public async Task Detail_RetainsCounters_ForLawyerRecipient_UntilPR6()
+    {
+        // D5/D9/P3-3: عدّادا التفاصيل محتفظ بهما للمحامي أيضًا قبل PR-6،
+        // و`CanViewRecipients=false` لا يعني غيابهما (توضيح عقد 2026-10-30).
+        var branchId = await _factory.CreateBranchAsync("عدّادات تفاصيل");
+        var headName = (await _factory.CreateUserAsync(UniqueName("head_ct"), UserRole.Head, branchId)).Username;
+        var lawyer = await _factory.CreateUserAsync(UniqueName("lawyer_ct"), UserRole.Lawyer, branchId);
+        var head = _factory.AuthorizedClient(headName);
+        var created = await CreateAlertAsync(head, new
+        {
+            targetType = "lawyer",
+            documentId = (int?)null,
+            targetLawyerId = lawyer.Id,
+            message = "عدّادات محفوظة",
+        });
+
+        var lawyerClient = _factory.AuthorizedClient(lawyer.Username);
+        var before = await (await lawyerClient.GetAsync($"/api/alerts/{created.Id}"))
+            .Content.ReadFromJsonAsync<HeadAlertDto>();
+        Assert.NotNull(before);
+        Assert.False(before!.CanViewRecipients);
+        Assert.False(before.IsRead);
+        Assert.Equal(1, before.RecipientCount);
+        Assert.Equal(1, before.UnreadCount);
+
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await lawyerClient.PatchAsJsonAsync($"/api/alerts/{created.Id}/read", new { })).StatusCode);
+
+        var after = await (await lawyerClient.GetAsync($"/api/alerts/{created.Id}"))
+            .Content.ReadFromJsonAsync<HeadAlertDto>();
+        Assert.NotNull(after);
+        Assert.True(after!.IsRead);
+        Assert.Equal(1, after.RecipientCount);
+        Assert.Equal(0, after.UnreadCount);
+    }
+
+    [Fact]
+    public async Task Get_SameBranchNonRecipientHead_NotFound()
+    {
+        // P3-3: رئيس الفرع نفسه ليس مستلمًا ولا منشئًا ⇒ 404 (D2) بلا تسريب وجود.
+        // البذر عبر CreateSystemAsync بمنشئ مختلف (محامٍ) — لا POST (لأن المنشئ سيكون
+        // الفاعل). لا يُنشأ رئيس ثانٍ في الفرع: قيد «رئيس مفعّل واحد لكل فرع».
+        var branchId = await _factory.CreateBranchAsync("رئيس غير مستلم");
+        var headName = (await _factory.CreateUserAsync(UniqueName("head_own"), UserRole.Head, branchId)).Username;
+        var creator = await _factory.CreateUserAsync(UniqueName("law_creator"), UserRole.Lawyer, branchId);
+        var sub = await _factory.CreateUserAsync(UniqueName("sub_same"), UserRole.SubHead, branchId);
+
+        var alertId = await HeadAlertTestSeed.SeedSingleHeadAsync(
+            _factory, branchId, creator.Id, sub.Id, "تنبيه شعبة في الفرع");
+
+        // المنشئ يرى التفاصيل (إثبات أن التنبيه موجود فعلًا).
+        Assert.Equal(HttpStatusCode.OK,
+            (await _factory.AuthorizedClient(creator.Username).GetAsync($"/api/alerts/{alertId}")).StatusCode);
+
+        // رئيس الفرع نفسه، غير مستلم وغير منشئ ⇒ 404.
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await _factory.AuthorizedClient(headName).GetAsync($"/api/alerts/{alertId}")).StatusCode);
+    }
+
+    [Fact]
     public async Task Get_Alert_RecipientOutsideBranch_IsAllowed_ByAbsolutePriority()
     {
         // قرار D2: المستلم بأولوية مطلقة بلا شرط فرع (تنبيهات الإنابة الخارجية).

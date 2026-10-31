@@ -582,6 +582,81 @@ public class HeadAlertServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Detail_MapsDistinctLinkIds_InPositionalOrder()
+    {
+        // P3-3: قيم مميزة لكل مرجع تكشف أي إزاحة موضعية في وسائط `ToDetailDto`
+        // (اختبار القيم المتشابهة ينجح مصادفةً حتى مع تبديل حقلين).
+        var document = new Document
+        {
+            Id = 11,
+            BranchId = _branchId,
+            CreatedById = _lawyer1.Id,
+            IsDraft = false,
+            BorrowerName = "أحمد",
+            BorrowerFamily = "العلي",
+            AmountNumeric = 0,
+            ExecStatus = string.Empty,
+        };
+        _db.Documents.Add(document);
+        await _db.SaveChangesAsync();
+
+        var target = new User
+        {
+            Id = 22,
+            Username = "law_link",
+            FullName = "محامي مراجع",
+            Role = UserRole.Lawyer,
+            BranchId = _branchId,
+            PasswordHash = new PasswordHasher().Hash("123456"),
+        };
+        _db.Users.Add(target);
+        await _db.SaveChangesAsync();
+
+        _db.DocumentAppeals.Add(new DocumentAppeal
+        {
+            Id = 44,
+            DocumentId = document.Id,
+            CreatedById = _head.Id,
+        });
+        _db.ReviewLetters.Add(new ReviewLetter
+        {
+            Id = 55,
+            BranchId = _branchId,
+            CreatedById = _head.Id,
+            DocumentId = document.Id,
+        });
+        await _db.SaveChangesAsync();
+
+        var alert = new HeadAlert
+        {
+            BranchId = _branchId,
+            CreatedById = _head.Id,
+            TargetType = HeadAlertTargetType.Lawyer,
+            Kind = HeadAlertKindCatalog.ManualToLawyer,
+            DocumentId = 11,
+            TargetLawyerId = 22,
+            DelegationId = 33,
+            AppealId = 44,
+            ReviewLetterId = 55,
+            Message = "مراجع متميزة",
+            CreatedAt = new DateTime(2026, 5, 6, 7, 8, 9, DateTimeKind.Utc),
+            LastContentChangedAt = new DateTime(2026, 5, 7, 8, 9, 10, DateTimeKind.Utc),
+        };
+        _db.HeadAlerts.Add(alert);
+        await _db.SaveChangesAsync();
+
+        var dto = await _service.GetDetailsAsync(
+            alert.Id, new HeadAlertActor(int.MaxValue, UserRole.Manager, null));
+
+        Assert.NotNull(dto);
+        Assert.Equal(11, dto!.DocumentId);
+        Assert.Equal(22, dto.TargetLawyerId);
+        Assert.Equal(33, dto.DelegationId);
+        Assert.Equal(44, dto.AppealId);
+        Assert.Equal(55, dto.ReviewLetterId);
+    }
+
+    [Fact]
     public async Task Sent_ListsOwnIssued_AndReceivedExcludesThem()
     {
         var sent = await _service.CreateAsync(

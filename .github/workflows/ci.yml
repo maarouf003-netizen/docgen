@@ -148,6 +148,8 @@ jobs:
           - 5432:5432
     env:
       DOCGEN_TEST_POSTGRES: "Host=localhost;Port=5432;Database=docgen_test;Username=postgres;Password=postgres"
+      # يمنع «الخضرة الكاذبة»: غياب السلسلة أو تعذّر الاتصال = فشل صريح لا Skip.
+      DOCGEN_REQUIRE_POSTGRES: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -159,3 +161,13 @@ jobs:
         run: dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --nologo -v q --logger "console;verbosity=normal" --filter "Category!=Sequential"
       - name: Test (api, sequential)
         run: dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build --nologo -v q --logger "console;verbosity=normal" --filter "Category=Sequential"
+      - name: Assert Postgres summary projection test actually executed
+        run: |
+          dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build --nologo -v q \
+            --filter "FullyQualifiedName~HeadAlertSummaryPostgresTests" \
+            --logger "trx;LogFileName=postgres-summary.trx"
+          trx=$(find . -name postgres-summary.trx -print -quit)
+          test -n "$trx"
+          count=$(grep -o '<UnitTestResult ' "$trx" | wc -l)
+          echo "Executed HeadAlertSummaryPostgresTests: $count"
+          test "$count" -gt 0

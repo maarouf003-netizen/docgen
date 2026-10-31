@@ -42,6 +42,40 @@ public class HeadAlertContractTests
             expected.OrderBy(n => n, StringComparer.Ordinal),
             actual.OrderBy(n => n, StringComparer.Ordinal));
 
+    /// <summary>
+    /// قائمة الحقول الممنوعة تُقرأ من البيان نفسه (P3-9) بدل تكرارها في الكود،
+    /// فلا تنحرف قائمتان عند تعديل العقد.
+    /// </summary>
+    private static void AssertNoForbidden(JsonElement manifest, string block, IEnumerable<string> actual)
+    {
+        var forbidden = Array(manifest.GetProperty("forbidden"), block);
+        foreach (var name in forbidden)
+            Assert.DoesNotContain(name, actual);
+    }
+
+    /// <summary>
+    /// قائمة nullability **صغيرة ومقصودة**: الحقول التي يعتمد عليها العميل في تمييز
+    /// «غائب» عن «صفر/فراغ». لا خريطة أنواع كاملة (تجنّب صيانة 50 مدخلًا).
+    /// </summary>
+    private static bool IsNullableWire(Type type, string wireName)
+    {
+        var property = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Single(p => JsonNamingPolicy.CamelCase.ConvertName(p.Name) == wireName);
+        return new NullabilityInfoContext().Create(property).ReadState == NullabilityState.Nullable;
+    }
+
+    private static void AssertNullable(Type type, params string[] wireNames)
+    {
+        foreach (var name in wireNames)
+            Assert.True(IsNullableWire(type, name), $"{type.Name}.{name} يجب أن يكون nullable");
+    }
+
+    private static void AssertNotNullable(Type type, params string[] wireNames)
+    {
+        foreach (var name in wireNames)
+            Assert.False(IsNullableWire(type, name), $"{type.Name}.{name} يجب ألا يكون nullable");
+    }
+
     [Fact]
     public void SummaryContract_MatchesManifest_WithoutFullMessage()
     {
@@ -49,13 +83,12 @@ public class HeadAlertContractTests
         var actual = WireNames(typeof(HeadAlertSummaryDto));
 
         AssertSameMembers(Array(manifest, "headAlertSummary"), actual);
+        AssertNoForbidden(manifest, "headAlertSummary", actual);
 
-        // القائمة تعيد معاينة صريحة لا النص الكامل، ولا حقل مشتق مرفوض (§7.3/§9.2).
+        // القائمة تعيد معاينة صريحة لا النص الكامل (§7.3/§9.2).
         Assert.Contains("messagePreview", actual);
         Assert.Contains("messageLength", actual);
         Assert.Contains("previewTruncated", actual);
-        Assert.DoesNotContain("message", actual);
-        Assert.DoesNotContain("hasFullMessage", actual);
     }
 
     [Fact]
@@ -66,11 +99,11 @@ public class HeadAlertContractTests
             .Concat(Array(manifest, "retainedHeadAlertDetail"));
 
         AssertSameMembers(expected, WireNames(typeof(HeadAlertDto)));
+        AssertNoForbidden(manifest, "headAlertDetail", WireNames(typeof(HeadAlertDto)));
 
-        // النص الكامل في التفاصيل وحدها، ولا قائمة مستلمين في جسم التفاصيل (§9.2).
+        // النص الكامل في التفاصيل وحدها، وقائمة المستلمين تُطلب من سطحها (§9.2).
         var actual = WireNames(typeof(HeadAlertDto));
         Assert.Contains("message", actual);
-        Assert.DoesNotContain("recipients", actual);
         Assert.Contains("canViewRecipients", actual);
     }
 
@@ -108,7 +141,36 @@ public class HeadAlertContractTests
         var actual = WireNames(typeof(PagedResult<>));
 
         AssertSameMembers(Array(manifest, "pagedResult"), actual);
-        Assert.DoesNotContain("hasNextPage", actual);
-        Assert.DoesNotContain("pageSize", actual);
+        AssertNoForbidden(manifest, "pagedResult", actual);
+    }
+
+    [Fact]
+    public void Nullability_MatchesSmallContractList()
+    {
+        // الحقول القابلة للفراغ التي يميّز بها العميل «غائب» عن «0/فراغ»:
+        // مراجع اختيارية، حالة قراءة غير المستلم، عدّادات غير محسوبة، واسم منشئ محذوف.
+        AssertNullable(
+            typeof(HeadAlertSummaryDto),
+            "documentId", "documentTitle", "targetLawyerId", "targetLawyerName",
+            "isRead", "recipientCount", "unreadCount", "createdByName",
+            "appealId", "reviewLetterId", "delegationId", "executionCircuitId", "archivedAt");
+        AssertNotNullable(
+            typeof(HeadAlertSummaryDto),
+            "id", "kind", "messagePreview", "messageLength", "previewTruncated",
+            "targetType", "createdAt", "lastContentChangedAt", "isArchived");
+
+        AssertNullable(
+            typeof(HeadAlertDto),
+            "documentId", "documentTitle", "targetLawyerId", "targetLawyerName",
+            "delegationId", "appealId", "reviewLetterId", "publicEntityId",
+            "executionCircuitId", "archivedAt", "createdByName", "isRead",
+            "recipientCount", "unreadCount");
+        AssertNotNullable(
+            typeof(HeadAlertDto),
+            "id", "kind", "message", "targetType", "createdAt",
+            "lastContentChangedAt", "isArchived", "canViewRecipients");
+
+        AssertNullable(typeof(HeadAlertRecipientDto), "readAt");
+        AssertNotNullable(typeof(HeadAlertRecipientDto), "id", "userId", "fullName", "role", "isRead");
     }
 }
