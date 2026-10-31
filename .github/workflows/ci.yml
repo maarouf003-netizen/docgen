@@ -158,16 +158,13 @@ jobs:
       - name: Test (application, incl. Postgres-gated)
         run: dotnet test backend/tests/DocGenerator.Application.Tests/DocGenerator.Application.Tests.csproj --nologo -v q --logger "console;verbosity=normal"
       - name: Test (api, incl. Postgres-gated, parallelizable)
-        run: dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --nologo -v q --logger "console;verbosity=normal" --filter "Category!=Sequential"
+        run: dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --nologo -v q --logger "console;verbosity=normal" --logger "trx;LogFileName=api-postgres.trx" --filter "Category!=Sequential"
       - name: Test (api, sequential)
         run: dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build --nologo -v q --logger "console;verbosity=normal" --filter "Category=Sequential"
       - name: Assert Postgres summary projection test actually executed
         run: |
-          dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build --nologo -v q \
-            --filter "FullyQualifiedName~HeadAlertSummaryPostgresTests" \
-            --logger "trx;LogFileName=postgres-summary.trx"
-          trx=$(find . -name postgres-summary.trx -print -quit)
+          trx=$(find . -name api-postgres.trx -print -quit)
           test -n "$trx"
-          count=$(grep -o '<UnitTestResult ' "$trx" | wc -l)
-          echo "Executed HeadAlertSummaryPostgresTests: $count"
+          count=$(grep -o 'testName="[^"]*HeadAlertSummaryPostgresTests[^"]*"[^>]*outcome="Passed"' "$trx" | wc -l)
+          echo "Passed HeadAlertSummaryPostgresTests: $count"
           test "$count" -gt 0

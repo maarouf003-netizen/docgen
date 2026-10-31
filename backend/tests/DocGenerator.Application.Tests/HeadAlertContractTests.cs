@@ -123,15 +123,8 @@ public class HeadAlertContractTests
         AssertSameMembers(Array(manifest, "createHeadAlertRequest"), actual);
 
         // العقد اليدوي لا يحمل — بنيويًا — أي حقل تحكم داخلي (§9.2/§12).
-        Assert.Equal(4, actual.Count);
-        foreach (var forbidden in new[]
-                 {
-                     "kind", "dedupeKey", "executionCircuitId", "delegationId",
-                     "appealId", "recipientUserId", "reviewLetterId", "publicEntityId",
-                 })
-        {
-            Assert.DoesNotContain(forbidden, actual);
-        }
+        // القائمة تُقرأ من البيان (P3-9) بدل تكرارها في الكود.
+        AssertNoForbidden(manifest, "createHeadAlertRequest", actual);
     }
 
     [Fact]

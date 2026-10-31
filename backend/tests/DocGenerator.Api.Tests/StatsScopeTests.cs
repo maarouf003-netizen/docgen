@@ -19,6 +19,8 @@ namespace DocGenerator.Api.Tests;
 /// </summary>
 public sealed class StatsScopeTests : IsolatedApiTestBase
 {
+    /// <summary>سقف أمان لحلقة الصفحات: أي `totalPages` أكبر منه انحراف يوقف الاختبار لا يُغرقه.</summary>
+    private const int MaxAlertPages = 50;
 
     private async Task<(string Token, int Id)> CreateSubHeadAsync(int sectionId)
     {
@@ -116,6 +118,9 @@ public sealed class StatsScopeTests : IsolatedApiTestBase
             using var doc = await response.Content.ReadFromJsonAsync<JsonDocument>();
             var root = doc!.RootElement;
             var totalPages = root.GetProperty("totalPages").GetInt32();
+            Assert.True(
+                totalPages <= MaxAlertPages,
+                $"totalPages غير متوقع ({totalPages}) — قد يكون ترقيم الخادم انحرف");
             ids.AddRange(root.GetProperty("items").EnumerateArray()
                 .Select(e => e.GetProperty("id").GetInt32()));
             if (page >= totalPages)

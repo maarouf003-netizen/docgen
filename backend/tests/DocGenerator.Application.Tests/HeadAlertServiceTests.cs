@@ -627,6 +627,27 @@ public class HeadAlertServiceTests : IDisposable
         });
         await _db.SaveChangesAsync();
 
+        var group = new PublicEntityGroup { CanonicalName = "وزارة العدل" };
+        _db.PublicEntityGroups.Add(group);
+        await _db.SaveChangesAsync();
+        _db.PublicEntities.Add(new PublicEntity
+        {
+            Id = 66,
+            GroupId = group.Id,
+            Governorate = "دمشق",
+            BranchName = "دمشق",
+            CreatedById = _head.Id,
+        });
+        _db.ExecutionCircuits.Add(new ExecutionCircuit
+        {
+            Id = 77,
+            BranchId = _branchId,
+            CreatedById = _head.Id,
+            Name = "دائرة مراجع",
+            NameNorm = "دائرة مراجع",
+        });
+        await _db.SaveChangesAsync();
+
         var alert = new HeadAlert
         {
             BranchId = _branchId,
@@ -638,6 +659,8 @@ public class HeadAlertServiceTests : IDisposable
             DelegationId = 33,
             AppealId = 44,
             ReviewLetterId = 55,
+            PublicEntityId = 66,
+            ExecutionCircuitId = 77,
             Message = "مراجع متميزة",
             CreatedAt = new DateTime(2026, 5, 6, 7, 8, 9, DateTimeKind.Utc),
             LastContentChangedAt = new DateTime(2026, 5, 7, 8, 9, 10, DateTimeKind.Utc),
@@ -654,6 +677,8 @@ public class HeadAlertServiceTests : IDisposable
         Assert.Equal(33, dto.DelegationId);
         Assert.Equal(44, dto.AppealId);
         Assert.Equal(55, dto.ReviewLetterId);
+        Assert.Equal(66, dto.PublicEntityId);
+        Assert.Equal(77, dto.ExecutionCircuitId);
     }
 
     [Fact]

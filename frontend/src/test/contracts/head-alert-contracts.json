@@ -83,6 +83,16 @@
     "headAlertDetail": [
       "recipients"
     ],
+    "createHeadAlertRequest": [
+      "kind",
+      "dedupeKey",
+      "executionCircuitId",
+      "delegationId",
+      "appealId",
+      "recipientUserId",
+      "reviewLetterId",
+      "publicEntityId"
+    ],
     "pagedResult": [
       "hasNextPage",
       "pageSize"

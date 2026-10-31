@@ -6,6 +6,8 @@ using DocGenerator.Infrastructure.Persistence;
 
 using Microsoft.EntityFrameworkCore;
 
+using System.Text;
+
 namespace DocGenerator.Api.Tests;
 
 /// <summary>
@@ -28,6 +30,9 @@ public sealed class HeadAlertSummaryPostgresTests
 {
     private const int EmojiMessageLength = 600;
     private const string Emoji = "😀";
+
+    /// <summary>معرّف إنابة اصطلاحي (لا FK على `HeadAlerts.DelegationId`) لاختبار فلتر الشريط.</summary>
+    private const int DelegationId = 99;
 
     [Fact]
     public async Task Summary_Projection_MatchesSqlite_OnLivePostgres()
@@ -76,15 +81,19 @@ public sealed class HeadAlertSummaryPostgresTests
             var first = Assert.Single(postgresOversight.Items, i => i.Id == sqliteSeed.FirstAlertId);
             Assert.True(first.PreviewTruncated);
             Assert.Equal(EmojiMessageLength, first.MessageLength);
+            Assert.Equal(HeadAlertTextLimits.PreviewMaxElements, first.MessagePreview.EnumerateRunes().Count());
+            Assert.EndsWith(HeadAlertTextLimits.Ellipsis, first.MessagePreview);
+            Assert.False(string.IsNullOrEmpty(first.MessagePreview));
             Assert.Equal(1, first.RecipientCount);
             Assert.Equal(1, first.UnreadCount);
             Assert.Equal("أحمد محمد العلي", first.DocumentTitle);
 
-            // الأرشيف: يُقارن أيضًا عند طلب الكل (حقول ArchivedAt).
+            // الأرشيف: يُقارن أيضًا عند طلب الكل (حقول ArchivedAt وTotalCount).
             var sqliteAll = await sqliteRepository.ListSummariesForOversightAsync(
                 AlertArchiveFilter.All, delegationId: null, skip: 0, take: AlertPageRequest.MaxPageSize);
             var postgresAll = await postgresRepository.ListSummariesForOversightAsync(
                 AlertArchiveFilter.All, delegationId: null, skip: 0, take: AlertPageRequest.MaxPageSize);
+            Assert.Equal(sqliteAll.TotalCount, postgresAll.TotalCount);
             Assert.Equal(sqliteAll.Items, postgresAll.Items);
             Assert.Contains(
                 postgresAll.Items,
@@ -101,12 +110,43 @@ public sealed class HeadAlertSummaryPostgresTests
                 take: AlertPageRequest.MaxPageSize, includeCounters: false);
 
             Assert.Equal(sqliteRecipient.Items, postgresRecipient.Items);
+            Assert.Equal(sqliteRecipient.TotalCount, postgresRecipient.TotalCount);
             var unread = Assert.Single(postgresRecipient.Items, i => i.Id == sqliteSeed.FirstAlertId);
             Assert.False(unread.IsRead);
             Assert.Null(unread.RecipientCount);
             var read = Assert.Single(postgresRecipient.Items, i => i.Id == sqliteSeed.SecondAlertId);
             Assert.True(read.IsRead);
             Assert.Null(read.UnreadCount);
+
+            // الإسقاط المفرد (جسم 201) — المسار الرابع المشترك في SummaryRows.
+            var sqliteSummary = await sqliteRepository.GetSummaryAsync(
+                sqliteSeed.SecondAlertId, sqliteSeed.LawyerId, includeCounters: true);
+            var postgresSummary = await postgresRepository.GetSummaryAsync(
+                sqliteSeed.SecondAlertId, sqliteSeed.LawyerId, includeCounters: true);
+            Assert.Equal(sqliteSummary, postgresSummary);
+            Assert.NotNull(postgresSummary);
+            Assert.Equal(1, postgresSummary!.RecipientCount);
+            Assert.Equal(0, postgresSummary.UnreadCount);
+
+            // الصادر: مرشّح المنشئ + الفرع (كلا التنبيهين أنشأهما الرئيس).
+            var sqliteSent = await sqliteRepository.ListSummariesSentAsync(
+                sqliteSeed.HeadId, sqliteSeed.BranchId, AlertArchiveFilter.Active,
+                skip: 0, take: AlertPageRequest.MaxPageSize);
+            var postgresSent = await postgresRepository.ListSummariesSentAsync(
+                sqliteSeed.HeadId, sqliteSeed.BranchId, AlertArchiveFilter.Active,
+                skip: 0, take: AlertPageRequest.MaxPageSize);
+            Assert.Equal(sqliteSent.TotalCount, postgresSent.TotalCount);
+            Assert.Equal(sqliteSent.Items, postgresSent.Items);
+
+            // شريط الإنابة: التنبيه الثاني مرتبط بإنابة (بلا FK) — الفلتر نفسه.
+            var sqliteDelegation = await sqliteRepository.ListSummariesByDelegationAsync(
+                DelegationId, sqliteSeed.LawyerId, skip: 0, take: AlertPageRequest.MaxPageSize);
+            var postgresDelegation = await postgresRepository.ListSummariesByDelegationAsync(
+                DelegationId, sqliteSeed.LawyerId, skip: 0, take: AlertPageRequest.MaxPageSize);
+            Assert.Equal(sqliteDelegation.Items, postgresDelegation.Items);
+            Assert.Equal(
+                sqliteSeed.SecondAlertId,
+                Assert.Single(postgresDelegation.Items).Id);
         }
         finally
         {
@@ -196,6 +236,7 @@ public sealed class HeadAlertSummaryPostgresTests
             TargetType = HeadAlertTargetType.Lawyer,
             Kind = HeadAlertKindCatalog.ManualToLawyer,
             TargetLawyerId = lawyer.Id,
+            DelegationId = DelegationId,
             Message = "رسالة قصيرة",
             CreatedAt = earlier,
             LastContentChangedAt = earlier,
@@ -220,11 +261,12 @@ public sealed class HeadAlertSummaryPostgresTests
         db.HeadAlerts.AddRange(first, second, archived);
         await db.SaveChangesAsync();
 
-        return new Seed(branch.Id, lawyer.Id, first.Id, second.Id, archived.Id);
+        return new Seed(branch.Id, head.Id, lawyer.Id, first.Id, second.Id, archived.Id);
     }
 
     private sealed record Seed(
         int BranchId,
+        int HeadId,
         int LawyerId,
         int FirstAlertId,
         int SecondAlertId,
