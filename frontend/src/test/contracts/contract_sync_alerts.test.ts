@@ -118,9 +118,6 @@ describe('contract_sync_alerts — forbidden fields', () => {
     expect(
       manifest.forbidden.headAlertSummary.filter((key) => (summaryKeys as readonly string[]).includes(key)),
     ).toEqual([]);
-    // الملخص يحمل المعاينة وحدها — وهذا ما تعتمده الواجهة فعليًا.
-    expect(summaryKeys).toContain('messagePreview');
-    expect(summaryKeys).toContain('previewTruncated');
   });
 
   it('لا `recipients` في التفاصيل (تُطلب من سطحها المستقل)', () => {

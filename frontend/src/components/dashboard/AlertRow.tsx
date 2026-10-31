@@ -17,6 +17,11 @@ const CIRCUIT_PENDING_DOCUMENTS = 'circuit_pending_documents';
  * للمحامي فقط عبر onMarkRead، وتظهر العدادات (غير مقروء/المجموع) لرئيس القسم فقط.
  * في عرض الصادر (`sentView` — تبويب «أرسلتها») تُستبدل شارة «مقروء» بالعدّاد الصفري
  * حتى لا يُقرأ «غير مقروء: 0» كغير مقروء.
+ *
+ * **لا `truncate` على نص التنبيه:** قصّ CSS لسطر واحد كان يخفي نهاية أي معاينة
+ * غير مقطوعة من الخادم (`previewTruncated=false`) بلا أي زر «عرض النص الكامل» —
+ * أي قصًّا صامتًا من نوع العيب الذي تُصلحه هذه المرحلة. المعاينة تُلَفّ كاملة
+ * (`break-words`)، والمرجع الوحيد لـ«يوجد نص أطول» هو `previewTruncated` من الخادم.
  */
 export function AlertRow({
   alert,
@@ -41,28 +46,28 @@ export function AlertRow({
           {alert.kind === CIRCUIT_PENDING_DOCUMENTS ? (
             <Link
               to="/pending-registrations"
-              className="block font-medium text-gray-800 hover:text-emerald-700 truncate"
+              className="block font-medium text-gray-800 hover:text-emerald-700 break-words"
             >
               {alert.messagePreview}
             </Link>
           ) : alert.reviewLetterId ? (
             <Link
               to={`/reviews/${alert.reviewLetterId}`}
-              className="block font-medium text-gray-800 hover:text-emerald-700 truncate"
+              className="block font-medium text-gray-800 hover:text-emerald-700 break-words"
             >
               {alert.messagePreview}
             </Link>
           ) : alert.appealId ? (
             <Link
               to={`/appeals/${alert.appealId}`}
-              className="block font-medium text-gray-800 hover:text-emerald-700 truncate"
+              className="block font-medium text-gray-800 hover:text-emerald-700 break-words"
             >
               {alert.messagePreview}
             </Link>
           ) : alert.documentId ? (
             <Link
               to={`/documents/${alert.documentId}`}
-              className="block font-medium text-gray-800 hover:text-emerald-700 truncate"
+              className="block font-medium text-gray-800 hover:text-emerald-700 break-words"
             >
               {alert.messagePreview}
             </Link>
@@ -86,7 +91,11 @@ export function AlertRow({
               </span>
             ) : null}
           </div>
-          <AlertDetails alertId={alert.id} previewTruncated={alert.previewTruncated} />
+          {/* يُركَّب الفتح عن الطلب فقط للمعاينات المقطوعة — فلا 100 نسخة هوك
+              (أثر/حالة) لكل صف في القوائم الطويلة. الحارس داخل المكوّن يبقى دفاعيًا. */}
+          {alert.previewTruncated ? (
+            <AlertDetails alertId={alert.id} previewTruncated />
+          ) : null}
         </div>
         <div className="shrink-0 flex flex-col items-end gap-1.5">
           {onMarkRead && !alert.isRead ? (

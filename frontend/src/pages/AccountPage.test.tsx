@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import AccountPage from './AccountPage';
@@ -25,6 +25,11 @@ vi.mock('../api/client', () => ({
 }));
 
 import { api } from '../api/client';
+
+/** أرقام بطاقة «ملخص سريع» وحدها — لا يطابق الرقم عرضًا آخر في الصفحة (تاريخ/عدّاد). */
+function summary() {
+  return within(screen.getByRole('region', { name: 'ملخص إحصائي' }));
+}
 
 function mockApi() {
   (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
@@ -67,9 +72,9 @@ describe('AccountPage', () => {
   it('يعرض الملخص السريع بالأرقام الحقيقية', async () => {
     render(<AccountPage />);
 
-    await waitFor(() => expect(screen.getByText('12')).toBeInTheDocument());
-    expect(screen.getByText('2')).toBeInTheDocument();
-    expect(screen.getByText('3')).toBeInTheDocument();
+    await waitFor(() => expect(summary().getByText('12')).toBeInTheDocument());
+    expect(summary().getByText('2')).toBeInTheDocument();
+    expect(summary().getByText('3')).toBeInTheDocument();
     // المحامي: نطاق الشارة `user` (صفوفه الشخصية) — مطابق لـ`Dashboard`.
     expect(api.get).toHaveBeenCalledWith(
       '/alerts/unread-count',
@@ -116,12 +121,12 @@ describe('AccountPage', () => {
     expect(screen.getByText('رئيس قسم — دمشق')).toBeInTheDocument();
     expect(screen.queryByText('محامي — دمشق')).not.toBeInTheDocument();
 
-    await waitFor(() => expect(screen.getByText('42')).toBeInTheDocument());
-    expect(screen.getByText('ملفات النطاق هذه السنة')).toBeInTheDocument();
+    await waitFor(() => expect(summary().getByText('42')).toBeInTheDocument());
+    expect(summary().getByText('ملفات النطاق هذه السنة')).toBeInTheDocument();
     // الشارة من `unread-count?scope=received` مباشرة (تجميعية بلا سقف صفحة)،
     // ووسمها صريح: «غير المقروء في تنبيهاتك» لا «غير المقروءة لي».
-    expect(screen.getByText('غير المقروء في تنبيهاتك')).toBeInTheDocument();
-    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(summary().getByText('غير المقروء في تنبيهاتك')).toBeInTheDocument();
+    expect(summary().getByText('3')).toBeInTheDocument();
     expect(screen.getAllByText('اقتراحاتي').length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText('تذكيراتي النشطة')).not.toBeInTheDocument();
     expect(screen.queryByText('ملفاتي هذه السنة')).not.toBeInTheDocument();
@@ -148,9 +153,9 @@ describe('AccountPage', () => {
     });
     render(<AccountPage />);
 
-    await waitFor(() => expect(screen.getByText('42')).toBeInTheDocument());
-    expect(screen.getByText('غير المقروء في تنبيهاتك')).toBeInTheDocument();
-    expect(screen.getByText('0')).toBeInTheDocument();
+    await waitFor(() => expect(summary().getByText('42')).toBeInTheDocument());
+    expect(summary().getByText('غير المقروء في تنبيهاتك')).toBeInTheDocument();
+    expect(summary().getByText('0')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(api.get).not.toHaveBeenCalledWith('/alerts/unread-count', expect.any(Object));
   });

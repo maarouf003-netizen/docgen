@@ -67,15 +67,22 @@ describe('AlertDetails (D12)', () => {
     ).toHaveAttribute('aria-expanded', 'false');
   });
 
-  it('يعرض خطأ الجلب بجانب التنبيه بلا كسر الصف', async () => {
+  it('يعرض خطأ الجلب مع «إعادة المحاولة» ويستعيد النص عند النجاح', async () => {
     const user = userEvent.setup();
-    (api.get as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('تعذّر جلب النص'));
+    const get = api.get as unknown as ReturnType<typeof vi.fn>;
+    get.mockRejectedValueOnce(new Error('تعذّر جلب النص'));
+    get.mockResolvedValueOnce({ data: makeHeadAlertDetail({ id: 7, message: FULL_MESSAGE }) });
 
     render(<AlertDetails alertId={7} previewTruncated />);
     await user.click(screen.getByRole('button', { name: 'عرض النص الكامل' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('تعذّر جلب النص');
-    expect(screen.getByRole('button', { name: 'إخفاء النص الكامل' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'إعادة المحاولة' }));
+
+    expect(api.get).toHaveBeenCalledTimes(2);
+    expect(await screen.findByText(FULL_MESSAGE)).toBeInTheDocument();
+    // الخطأ السابق لا يبقى معلنًا بعد النجاح.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('لا يعرض زر الجلب عندما تكون المعاينة كاملة (النص الكامل موجود أصلًا)', () => {

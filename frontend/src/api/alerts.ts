@@ -8,11 +8,13 @@ import type { HeadAlertSummaryDto, PagedResult } from '../types';
 export const ALERTS_PAGE_SIZE = 100;
 
 function readCount(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback;
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : fallback;
 }
 
 function readPositive(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 1 ? Math.floor(value) : fallback;
+  return typeof value === 'number' && Number.isFinite(value) && value >= 1
+    ? Math.max(1, Math.floor(value))
+    : fallback;
 }
 
 /**

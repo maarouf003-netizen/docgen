@@ -554,6 +554,9 @@ describe('Dashboard للمحامي', () => {
     expect(screen.getByText('تعميم اجتماع الفرع')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'تمت القراءة' })).toBeInTheDocument();
     expect(screen.getByText('مقروء')).toBeInTheDocument();
+    // القائمة لا تحمل النص الكامل ولا تطلبه: لا استدعاء لتفاصيل أي تنبيه قبل فتحه.
+    expect(api.get).not.toHaveBeenCalledWith('/alerts/1', expect.anything());
+    expect(api.get).not.toHaveBeenCalledWith('/alerts/2', expect.anything());
   });
 
   it('يطلب صفحة 100 ويعرض سطر «المزيد» عند تجاوز الإجمالي حدود الصفحة', async () => {
@@ -562,7 +565,7 @@ describe('Dashboard للمحامي', () => {
     render(<Dashboard />);
 
     expect(
-      await screen.findByText('يُعرض 2 من أصل 137 تنبيهًا — الأحدث أولًا'),
+      await screen.findByText('يُعرض 2 من أصل 137 تنبيهًا'),
     ).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith(
       '/alerts',
@@ -683,7 +686,7 @@ describe('Dashboard لرئيس القسم', () => {
       );
       // ولا قصّ صامت: الإجمالي يظهر في سطر «المزيد».
       expect(
-        await screen.findByText('يُعرض 2 من أصل 250 تنبيهًا — الأحدث أولًا'),
+        await screen.findByText('يُعرض 2 من أصل 250 تنبيهًا'),
       ).toBeInTheDocument();
     },
   );
@@ -910,6 +913,8 @@ describe('Dashboard لرئيس القسم', () => {
           createdByName: 'رئيس',
         }),
       ],
+      // إجمالي الصادر أكبر من عناصر الصفحة ⇒ سطر «المزيد» يتبع التبويب الظاهر.
+      sentTotal: 3,
     });
 
     render(<Dashboard />);
@@ -927,6 +932,8 @@ describe('Dashboard لرئيس القسم', () => {
       '/alerts/sent',
       expect.objectContaining({ params: { pageSize: 100 } }),
     );
+    // سطر «المزيد» يتبع إجمالي التبويب الظاهر (3 صادر) لا إجمالي المستلمات.
+    expect(screen.getByText('يُعرض 1 من أصل 3 تنبيهًا')).toBeInTheDocument();
     // الكل قرأ: شارة صريحة بدل العدّاد الصفري المضلل.
     expect(screen.getByText('مقروء من الجميع')).toBeInTheDocument();
   });

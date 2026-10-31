@@ -34,11 +34,13 @@ import { ReminderList } from '../components/dashboard/ReminderList';
 /**
  * سطر «المزيد» أسفل قائمة التنبيهات: يظهر عندما يتجاوز `totalCount` ما حُمّل في
  * الصفحة الواحدة (`pageSize=100`) — فلا قصّ صامت بعد تحويل الأسطح إلى `PagedResult`.
+ * بلا تكرار «الأحدث أولًا» (موجود في ترويسة اللوحة للمحامي) وبلا أي زر: المؤشر
+ * إخباري فقط في هذه المرحلة، وأي تنقّل بين الصفحات قرار منتج في `PR-6`.
  */
 function AlertsMoreRow({ shown, total }: { shown: number; total: number }) {
   return (
     <p className="px-4 sm:px-5 py-3 text-xs text-gray-500 tabular-nums border-t border-gray-100">
-      يُعرض {shown} من أصل {total} تنبيهًا — الأحدث أولًا
+      يُعرض {shown} من أصل {total} تنبيهًا
     </p>
   );
 }
