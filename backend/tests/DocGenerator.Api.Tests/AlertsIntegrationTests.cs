@@ -310,39 +310,47 @@ public class AlertsIntegrationTests
     }
 
     [Fact]
-    public async Task Head_CreatesAlert_InactiveLawyerAndInactiveDocumentCreator_BadRequest()
+    public async Task Head_CreatesLawyerAlert_InactiveTarget_BadRequest()
     {
+        // ف‑3: سلوك واحد لكل اختبار — محامٍ هدف معطّل ضمن الفرع نفسه.
         var damId = await _factory.GetBranchIdAsync("DAM");
         var head = _factory.AuthorizedClient("head1");
-
-        // محامٍ هدف معطّل ضمن الفرع نفسه ⇒ 400 برسالة «غير موجود».
         var inactive = await _factory.CreateUserAsync(
             UniqueName("lawyer_off"), UserRole.Lawyer, damId, isActive: false);
-        var lawyerResponse = await head.PostAsJsonAsync("/api/alerts", new
+
+        var response = await head.PostAsJsonAsync("/api/alerts", new
         {
             targetType = "lawyer",
             documentId = (int?)null,
             targetLawyerId = inactive.Id,
             message = "إلى محامٍ معطّل",
         });
-        Assert.Equal(HttpStatusCode.BadRequest, lawyerResponse.StatusCode);
-        Assert.Equal("المحامي غير موجود ضمن فرعك", await ReadMessageAsync(lawyerResponse));
 
-        // منشئ ملف صار معطّلًا بعد إنشاء الملف ⇒ 400 برسالة «لا يوجد محامٍ مختص نشط».
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("المحامي غير موجود ضمن فرعك", await ReadMessageAsync(response));
+    }
+
+    [Fact]
+    public async Task Head_CreatesDocumentAlert_InactiveCreator_BadRequest()
+    {
+        // ف‑3: سلوك واحد لكل اختبار — منشئ الملف صار معطّلًا بعد إنشاء الملف.
+        var damId = await _factory.GetBranchIdAsync("DAM");
+        var head = _factory.AuthorizedClient("head1");
         var creator = await _factory.CreateUserAsync(UniqueName("lawyer_cr"), UserRole.Lawyer, damId);
         var creatorLogin = await _factory.LoginAsync(creator.Username, "123456");
         var docId = await _factory.CreateDocumentAsync(creatorLogin!.Token!, borrowerName: "مقترض معطّل");
         await DeactivateUserAsync(creator.Id);
 
-        var documentResponse = await head.PostAsJsonAsync("/api/alerts", new
+        var response = await head.PostAsJsonAsync("/api/alerts", new
         {
             targetType = "document",
             documentId = docId,
             targetLawyerId = (int?)null,
             message = "إلى منشئ معطّل",
         });
-        Assert.Equal(HttpStatusCode.BadRequest, documentResponse.StatusCode);
-        Assert.Equal("لا يوجد محامٍ مختص نشط لهذا الملف", await ReadMessageAsync(documentResponse));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("لا يوجد محامٍ مختص نشط لهذا الملف", await ReadMessageAsync(response));
     }
 
     [Fact]
@@ -820,14 +828,23 @@ public class AlertsIntegrationTests
     public async Task Paging_OverflowRejected_ExtremePageWithSize1Allowed()
     {
         // R-3/P3-6: الفيضان (page=int.MaxValue × pageSize=100) كان يلتفّ في `int`
-        // (-200) فيرفضه حارس المستودع عرضًا؛ صار رفضًا صريحًا من العقد (400).
+        // (-200) فيرفضه حارس المستودع عرضًا؛ صار رفضًا صريحًا من العقد (400)
+        // برسالة عربية نظيفة — لا «Parameter name» إنجليزي في جسم الاستجابة.
+        const string overflowMessage =
+            "رقم الصفحة كبير جدًا — الإزاحة الناتجة تتجاوز الحد الأقصى المسموح";
         var overflowQuery = $"?page={int.MaxValue}&pageSize={AlertPageRequest.MaxPageSize}";
 
         var manager = _factory.AuthorizedClient("manager");
-        Assert.Equal(HttpStatusCode.BadRequest, (await manager.GetAsync("/api/alerts" + overflowQuery)).StatusCode);
+        var overflow = await manager.GetAsync("/api/alerts" + overflowQuery);
+        Assert.Equal(HttpStatusCode.BadRequest, overflow.StatusCode);
+        var overflowBody = await ReadMessageAsync(overflow);
+        Assert.Equal(overflowMessage, overflowBody);
+        Assert.DoesNotContain("Parameter", overflowBody);
 
         var head = _factory.AuthorizedClient("head1");
-        Assert.Equal(HttpStatusCode.BadRequest, (await head.GetAsync("/api/alerts/sent" + overflowQuery)).StatusCode);
+        var sentOverflow = await head.GetAsync("/api/alerts/sent" + overflowQuery);
+        Assert.Equal(HttpStatusCode.BadRequest, sentOverflow.StatusCode);
+        Assert.Equal(overflowMessage, await ReadMessageAsync(sentOverflow));
 
         // كِبَر رقم الصفحة وحده ليس فيضانًا: Skip = 2,147,483,646 ≤ int.MaxValue
         // ⇒ 200 بعناصر فارغة (لا تغيير لسلوك صفحة بعيدة قائمة).

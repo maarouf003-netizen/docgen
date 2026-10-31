@@ -270,31 +270,31 @@ public class HeadAlertServicePermissionTests : IDisposable
     public async Task InvalidPaging_IsRejected(int page, int pageSize)
     {
         var request = new AlertPageRequest { Page = page, PageSize = pageSize };
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+        await Assert.ThrowsAsync<AlertPagingException>(() =>
             _service.ListForActorAsync(
                 ActorFor(_manager), new HeadAlertListQuery { Page = request }));
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+        await Assert.ThrowsAsync<AlertPagingException>(() =>
             _service.ListSentAsync(
                 ActorFor(_headA), AlertArchiveFilter.Active, request));
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+        await Assert.ThrowsAsync<AlertPagingException>(() =>
             _service.ListByDelegationAsync(77, ActorFor(_lawyerA), request));
     }
 
     [Fact]
     public async Task InvalidPaging_RejectsHugePage()
     {
-        // P3-6: فيضان الإزاحة رفض صريح من العقد (اسم المعامل `Page`)، لا التفاف
+        // P3-6: فيضان الإزاحة رفض صريح من العقد برسالة عربية نظيفة، لا التفاف
         // `int` يعتمد على حارس المستودع. الأسطح الثلاثة تمرّ بالتحقق نفسه.
         var request = new AlertPageRequest { Page = int.MaxValue, PageSize = AlertPageRequest.MaxPageSize };
 
-        var listEx = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+        var listEx = await Assert.ThrowsAsync<AlertPagingException>(() =>
             _service.ListForActorAsync(
                 ActorFor(_manager), new HeadAlertListQuery { Page = request }));
-        Assert.Equal("Page", listEx.ParamName);
+        Assert.DoesNotContain("Parameter", listEx.Message);
 
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+        await Assert.ThrowsAsync<AlertPagingException>(() =>
             _service.ListSentAsync(ActorFor(_headA), AlertArchiveFilter.Active, request));
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+        await Assert.ThrowsAsync<AlertPagingException>(() =>
             _service.ListByDelegationAsync(77, ActorFor(_lawyerA), request));
     }
 

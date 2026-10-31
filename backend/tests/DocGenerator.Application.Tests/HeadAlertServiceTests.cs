@@ -222,6 +222,33 @@ public class HeadAlertServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Create_OutsideBranchDocumentWithInactiveCreator_ReportsUnavailableOnly()
+    {
+        // ف‑4: فحص الفرع يسبق فحص المنشئ عمدًا — وجود حساب في فرع آخر لا يُكشف
+        // ولو كان منشئ الملف معطّلًا. هذا الاختبار يجمّد الترتيب أمام أي «تنظيف».
+        var other = new Branch { Name = "حلب", Code = "ALP" };
+        _db.Branches.Add(other);
+        _db.SaveChanges();
+        var lawyerOther = new User
+        {
+            Username = "law_alp_off",
+            FullName = "محامي حلب معطّل",
+            Role = UserRole.Lawyer,
+            BranchId = other.Id,
+            IsActive = false,
+            PasswordHash = new PasswordHasher().Hash("123456"),
+        };
+        _db.Users.Add(lawyerOther);
+        await _db.SaveChangesAsync();
+        var doc = await AddDocumentAsync(lawyerOther, branchId: other.Id);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(new CreateHeadAlertRequest("document", doc.Id, null, "خارج الفرع"), ActorFor(_head), "head_x"));
+
+        Assert.Equal("الملف غير متاح", ex.Message);
+    }
+
+    [Fact]
     public async Task Create_MissingDocument_UsesSameUnavailableMessage()
     {
         // P3-5: الملف غير الموجود والملف خارج الفرع برسالة واحدة — لا يُكشف وجود
