@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
-import { useAlertsFeed, type AlertsFeed } from '../hooks/useAlertsFeed';
+import { useAlertsFeed } from '../hooks/useAlertsFeed';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { useReminderCancellation } from '../hooks/useReminderCancellation';
 import type {
@@ -16,6 +16,7 @@ import type {
   ReminderDto,
 } from '../types';
 import { AlertsPanel } from '../components/dashboard/AlertsPanel';
+import { AlertsFeedFooter } from '../components/dashboard/AlertsFeedFooter';
 import { CreateAlertForm, type AlertFormError } from '../components/dashboard/CreateAlertForm';
 import { DayRemindersModal } from '../components/dashboard/DayRemindersModal';
 import { GreetingHeader } from '../components/dashboard/GreetingHeader';
@@ -29,47 +30,6 @@ import { CORRESPONDENCE_UNSEEN_EVENT } from '../components/correspondence/corres
 import { REVIEWS_UNSEEN_EVENT } from '../components/review/reviewDisplay';
 import { useBadgeCount } from '../hooks/useBadgeCount';
 import { ReminderList } from '../components/dashboard/ReminderList';
-
-/**
- * تذييل قائمة التنبيهات: يمنع القصّ الصامت (`pageSize=100`) بلا زر فقط —
- * «تحميل المزيد» يجلب الصفحة التالية ويُلحقها، وإذا فشلت الصفحة الأولى يعرض
- * «إعادة المحاولة» بدل شاشة خطأ بلا مخرج. النصوص أرقام فقط بلا تكرار لوصف الترتيب.
- */
-function AlertsFeedFooter({ feed }: { feed: AlertsFeed }) {
-  if (feed.error && feed.items.length === 0) {
-    return (
-      <div className="px-4 sm:px-5 py-3 border-t border-gray-100">
-        <button
-          type="button"
-          onClick={feed.reload}
-          className="min-h-11 px-3 rounded-lg border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-        >
-          إعادة المحاولة
-        </button>
-      </div>
-    );
-  }
-
-  if (!feed.hasMore && !feed.isLoadingMore) return null;
-
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-5 py-3 border-t border-gray-100">
-      <span className="text-xs text-gray-500 tabular-nums">
-        يُعرض {feed.items.length} من أصل {feed.totalCount} تنبيهًا
-      </span>
-      {feed.hasMore ? (
-        <button
-          type="button"
-          onClick={feed.loadMore}
-          disabled={feed.isLoadingMore}
-          className="min-h-11 px-3 rounded-lg border border-gray-200 text-xs font-medium text-emerald-800 hover:bg-emerald-50 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-        >
-          {feed.isLoadingMore ? 'جارٍ التحميل…' : 'تحميل المزيد'}
-        </button>
-      ) : null}
-    </div>
-  );
-}
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -237,13 +197,17 @@ export default function Dashboard() {
   const branchLawyers = useMemo(() => branchLawyersQuery.data ?? [], [branchLawyersQuery.data]);
   const unreadCount = Math.max(0, Number(unreadQuery.data?.count) || 0);
   // شارة لوحة الرئيس: غير المقروء بنطاقه (`received` — `D6`/`D7`) في تبويب «مستلمة»،
-  // وإجمالي ما أصدره في فرعه في تبويب «أرسلتها» (مع عنوان توضيحي تحت العنوان).
-  const headBadgeText =
+  // وإجمالي ما أصدره في فرعه في «أرسلتها». الإجمالي لا يُعرض قبل أن يُعرَف: أثناء التحميل
+  // أو بعد فشل الصادر لا شارة «0» كاذبة. ورقم الصادر وحده بلا سياق للقارئ الصوتي،
+  // فيسبقه نص مخفي (`sr-only`) يسمّيه — لا `aria-label` على `span` عام (لا يُنطق أصلًا).
+  const headBadge =
     alertsTab === 'received'
       ? unreadCount > 0
-        ? `${unreadCount} غير مقروء`
+        ? { text: `${unreadCount} غير مقروء`, srPrefix: '' }
         : null
-      : String(sentFeed.totalCount);
+      : sentFeed.isLoading || sentFeed.error
+        ? null
+        : { text: String(sentFeed.totalCount), srPrefix: 'إجمالي الصادر: ' };
   const unseenReplies = isLawyer ? Math.max(0, Number(unseenRepliesQuery.data?.count) || 0) : 0;
   const urgentCorrespondence = isLawyer ? Math.max(0, Number(urgentQuery.data?.count) || 0) : 0;
   // بطاقة التذكيرات في اللوحة: الأسبوع الحالي فقط (من الأحد إلى السبت) —
@@ -483,7 +447,7 @@ export default function Dashboard() {
           <AlertsPanel
             badge={
               unreadCount > 0 ? (
-                <span className="text-xs bg-red-100 text-red-800 rounded-full px-2 py-0.5 font-medium tabular-nums">
+                <span className="shrink-0 whitespace-nowrap text-xs bg-red-100 text-red-800 rounded-full px-2 py-0.5 font-medium tabular-nums">
                   {unreadCount} غير مقروء
                 </span>
               ) : null
@@ -491,6 +455,7 @@ export default function Dashboard() {
             headerExtra={<span className="text-xs text-gray-400">الأحدث أولاً</span>}
             footer={<AlertsFeedFooter feed={receivedFeed} />}
             error={alertsError || receivedFeed.error || ''}
+            isLoading={receivedFeed.isLoading}
             alerts={receivedFeed.items}
             onMarkRead={markAlertRead}
             markingKey={markingKey}
@@ -529,9 +494,10 @@ export default function Dashboard() {
           </div>
           <AlertsPanel
             badge={
-              headBadgeText === null ? null : (
-                <span className="text-xs bg-emerald-100 text-emerald-800 rounded-full px-2 py-0.5 font-medium tabular-nums">
-                  {headBadgeText}
+              headBadge === null ? null : (
+                <span className="shrink-0 whitespace-nowrap text-xs bg-emerald-100 text-emerald-800 rounded-full px-2 py-0.5 font-medium tabular-nums">
+                  {headBadge.srPrefix ? <span className="sr-only">{headBadge.srPrefix}</span> : null}
+                  {headBadge.text}
                 </span>
               )
             }
@@ -566,6 +532,7 @@ export default function Dashboard() {
             }
             error={alertsError || activeFeed.error || ''}
             footer={<AlertsFeedFooter feed={activeFeed} />}
+            isLoading={activeFeed.isLoading}
             alerts={activeFeed.items}
             sentView={alertsTab === 'sent'}
           />

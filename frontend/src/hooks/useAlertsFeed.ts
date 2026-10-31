@@ -57,10 +57,17 @@ export function useAlertsFeed(url: string, { enabled }: { enabled: boolean }): A
   const { isLoading: queryIsLoading, error: queryError, refetch } = query;
 
   // التخزين بمفتاح الصفحة الواردة نفسها: مفتاح لا يتغيّر مع تغيّر `page`.
+  // ووصول الصفحة الأولى يعني بداية سلسلة جديدة (إعادة تحميل/إصدار تنبيه): تُستبدل الخريطة
+  // كلها بها فتُسقَط الصفحات اللاحقة التي أزاحها التغيير — بلا تفريغ القائمة أثناء الجلب.
   useEffect(() => {
     const data = query.data;
     if (!data) return;
     setLoaded((prev) => {
+      if (data.page === 1) {
+        const existing = prev.get(1);
+        if (prev.size === 1 && existing === data.result.items) return prev;
+        return new Map([[1, data.result.items]]);
+      }
       const existing = prev.get(data.page);
       if (existing === data.result.items) return prev;
       const next = new Map(prev);
@@ -69,10 +76,21 @@ export function useAlertsFeed(url: string, { enabled }: { enabled: boolean }): A
     });
   }, [query.data]);
 
+  // الدمج يُزيل التكرار بالمعرّف: إصدار/أرشفة تنبيه بين صفحتين يُزيح الترقيم فيظهر
+  // الصف نفسه في صفحتين — ومفتاح React المكرر يُنتج تحذيرًا وصفّين متطابقين.
   const items = useMemo(() => {
     if (loaded.size === 0) return [];
     const pages = [...loaded.keys()].sort((a, b) => a - b);
-    return pages.flatMap((pageNumber) => loaded.get(pageNumber) ?? []);
+    const seen = new Set<number>();
+    const merged: HeadAlertSummaryDto[] = [];
+    for (const pageNumber of pages) {
+      for (const alert of loaded.get(pageNumber) ?? []) {
+        if (seen.has(alert.id)) continue;
+        seen.add(alert.id);
+        merged.push(alert);
+      }
+    }
+    return merged;
   }, [loaded]);
 
   const totalCount = query.data?.result.totalCount ?? 0;
@@ -84,8 +102,10 @@ export function useAlertsFeed(url: string, { enabled }: { enabled: boolean }): A
 
   const loadMore = useCallback(() => {
     if (queryIsLoading) return;
-    // فشل الصفحة الحالية (رقمها > 1): إعادة المحاولة لنفسها لا للتي بعدها.
-    if (queryError && page > 1) {
+    // أي فشل (الصفحة الأولى أثناء إعادة التحميل أو صفحة تالية) ⇒ إعادة محاولة
+    // **الصفحة الحالية** نفسها، لا الانتقال إلى التي بعدها (وإلا صار الزر بلا أثر
+    // حين لا يوجد «مزيد» أصلًا، أو تخطّى صفحة لم تُحمّل).
+    if (queryError) {
       refetch();
       return;
     }
@@ -95,7 +115,8 @@ export function useAlertsFeed(url: string, { enabled }: { enabled: boolean }): A
   }, [hasMore, lastLoadedPage, page, queryError, queryIsLoading, refetch]);
 
   const reload = useCallback(() => {
-    setLoaded(new Map());
+    // لا تفريغ للعناصر هنا: القائمة المعروضة تبقى حتى تصل الصفحة الأولى الجديدة
+    // (وإلا وميض «لا توجد تنبيهات» عند إعادة التحميل أمام المستخدم).
     setPage(1);
     refetch();
   }, [refetch]);

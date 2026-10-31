@@ -70,17 +70,38 @@ export default function AccountPage() {
 
   const suggestions = suggestionsQuery.data ?? [];
   const initials = (user?.fullName ?? '').trim().slice(0, 2) || '؟';
-  // رئيس بلا فرع: صفر مؤكد بدل `…` أبدي أو خطأ `403` متوقع.
-  const headUnread = headUnreadEnabled
-    ? unreadQuery.data
-      ? Number(unreadQuery.data.count) || 0
-      : null
-    : 0;
-  const summaryError = isManager
-    ? statsQuery.error
-    : isHeadOrSubHead
-      ? (statsQuery.error ?? unreadQuery.error)
-      : (statsQuery.error ?? personalQuery.error ?? unreadQuery.error);
+  // عزل الفشل الجزئي: انقطاع استعلام واحد يُعلَن في سطر، وتُعرض «—» في بطاقته وحدها،
+  // وتبقى بقية الأرقام المعروفة ظاهرة — بدل إسقاط الملخص كله بسبب عدّاد واحد.
+  // ورئيس بلا فرع: «—» لا صفر كاذب (فالعدّاد غير متاح له أصلًا — `D11`، ونفس منطق `Dashboard`).
+  const summaryError =
+    statsQuery.error ??
+    (isManager
+      ? null
+      : isHeadOrSubHead
+        ? (unreadQuery.error ?? suggestionsQuery.error)
+        : (personalQuery.error ?? unreadQuery.error));
+  const filesValue = statsQuery.error ? '—' : statsQuery.data ? formatNumber(statsQuery.data.totalFiles) : '…';
+  const headUnreadValue =
+    !headUnreadEnabled || unreadQuery.error
+      ? '—'
+      : unreadQuery.data
+        ? formatNumber(Number(unreadQuery.data.count) || 0)
+        : '…';
+  const suggestionsValue = suggestionsQuery.error
+    ? '—'
+    : suggestionsQuery.data
+      ? formatNumber(suggestions.length)
+      : '…';
+  const personalValue = personalQuery.error
+    ? '—'
+    : personalQuery.data
+      ? formatNumber(personalQuery.data.length)
+      : '…';
+  const personalUnreadValue = unreadQuery.error
+    ? '—'
+    : unreadQuery.data
+      ? formatNumber(Number(unreadQuery.data.count) || 0)
+      : '…';
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -127,50 +148,50 @@ export default function AccountPage() {
 
         <section aria-label="ملخص إحصائي" className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
           <h3 className="font-bold text-gray-900 mb-3">ملخص سريع</h3>
+          {/* الخطأ معلن، لكنه لا يُسقط الأرقام المتاحة: كل بطاقة تُظهر «—» عند فشل استعلامها. */}
           {summaryError ? (
-            <p role="alert" className="text-red-700 text-sm">
+            <p role="alert" className="text-red-700 text-sm mb-3">
               {summaryError}
             </p>
-          ) : (
-            <dl className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
+          ) : null}
+          <dl className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
+            <div className="rounded-xl bg-gray-50 px-2 py-3">
+              <dt className="text-xs text-gray-500 mb-1">{isHeadOrSubHead ? 'ملفات النطاق هذه السنة' : isManager ? 'ملفات هذه السنة' : 'ملفاتي هذه السنة'}</dt>
+              <dd className="text-xl font-bold text-gray-900 tabular-nums" dir="ltr">
+                {filesValue}
+              </dd>
+            </div>
+            {isManager ? null : isHeadOrSubHead ? (
               <div className="rounded-xl bg-gray-50 px-2 py-3">
-                <dt className="text-xs text-gray-500 mb-1">{isHeadOrSubHead ? 'ملفات النطاق هذه السنة' : isManager ? 'ملفات هذه السنة' : 'ملفاتي هذه السنة'}</dt>
+                <dt className="text-xs text-gray-500 mb-1">غير المقروء في تنبيهاتك</dt>
                 <dd className="text-xl font-bold text-gray-900 tabular-nums" dir="ltr">
-                  {statsQuery.data ? formatNumber(statsQuery.data.totalFiles) : '…'}
+                  {headUnreadValue}
                 </dd>
               </div>
-              {isManager ? null : isHeadOrSubHead ? (
-                <div className="rounded-xl bg-gray-50 px-2 py-3">
-                  <dt className="text-xs text-gray-500 mb-1">غير المقروء في تنبيهاتك</dt>
-                  <dd className="text-xl font-bold text-gray-900 tabular-nums" dir="ltr">
-                    {headUnread == null ? '…' : formatNumber(headUnread)}
-                  </dd>
-                </div>
-              ) : (
-                <div className="rounded-xl bg-gray-50 px-2 py-3">
-                  <dt className="text-xs text-gray-500 mb-1">تذكيراتي النشطة</dt>
-                  <dd className="text-xl font-bold text-gray-900 tabular-nums" dir="ltr">
-                    {personalQuery.data ? formatNumber(personalQuery.data.length) : '…'}
-                  </dd>
-                </div>
-              )}
-              {isManager ? null : isHeadOrSubHead ? (
-                <div className="rounded-xl bg-gray-50 px-2 py-3">
-                  <dt className="text-xs text-gray-500 mb-1">اقتراحاتي</dt>
-                  <dd className="text-xl font-bold text-gray-900 tabular-nums" dir="ltr">
-                    {suggestionsQuery.data ? formatNumber(suggestions.length) : '…'}
-                  </dd>
-                </div>
-              ) : (
-                <div className="rounded-xl bg-gray-50 px-2 py-3">
-                  <dt className="text-xs text-gray-500 mb-1">تنبيهات غير مقروءة</dt>
-                  <dd className="text-xl font-bold text-gray-900 tabular-nums" dir="ltr">
-                    {unreadQuery.data ? formatNumber(Number(unreadQuery.data.count) || 0) : '…'}
-                  </dd>
-                </div>
-              )}
-            </dl>
-          )}
+            ) : (
+              <div className="rounded-xl bg-gray-50 px-2 py-3">
+                <dt className="text-xs text-gray-500 mb-1">تذكيراتي النشطة</dt>
+                <dd className="text-xl font-bold text-gray-900 tabular-nums" dir="ltr">
+                  {personalValue}
+                </dd>
+              </div>
+            )}
+            {isManager ? null : isHeadOrSubHead ? (
+              <div className="rounded-xl bg-gray-50 px-2 py-3">
+                <dt className="text-xs text-gray-500 mb-1">اقتراحاتي</dt>
+                <dd className="text-xl font-bold text-gray-900 tabular-nums" dir="ltr">
+                  {suggestionsValue}
+                </dd>
+              </div>
+            ) : (
+              <div className="rounded-xl bg-gray-50 px-2 py-3">
+                <dt className="text-xs text-gray-500 mb-1">تنبيهات غير مقروءة</dt>
+                <dd className="text-xl font-bold text-gray-900 tabular-nums" dir="ltr">
+                  {personalUnreadValue}
+                </dd>
+              </div>
+            )}
+          </dl>
         </section>
 
         {/* قسم الاقتراحات للمرسلين فقط — المدير/المشرف يستقبلانها في

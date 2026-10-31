@@ -36,7 +36,7 @@ export function AlertRow({
 }) {
   const isMarking = markingKey === String(alert.id);
   return (
-    <li key={alert.id}>
+    <li>
       <div className="flex items-start gap-3 px-4 sm:px-5 py-3">
         <span
           className={`shrink-0 w-2 h-2 mt-2 rounded-full ${alert.isRead ? 'bg-gray-300' : 'bg-red-500'}`}

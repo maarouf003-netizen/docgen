@@ -204,6 +204,10 @@ function mockApi(overrides?: {
   alertsPage2?: HeadAlertSummaryDto[];
   /** يفشل أول طلب لقائمة المستلمات — اختبار «إعادة المحاولة». */
   alertsFailFirst?: boolean;
+  /** رقم صفحة يفشل طلبها (اختبار فشل «تحميل المزيد»). */
+  alertsFailPage?: number;
+  /** يفشل أول طلب لقائمة الصادر — اختبار شارة الإجمالي المجهول. */
+  sentFailFirst?: boolean;
   /** إجمالي غير المقروء في التنبيهات (`scope` حسب الدور في الطلب نفسه). */
   unreadCount?: number;
   /** إجمالي صفوف قائمة المستلمات عند تجاوزه لعناصر الصفحة (اختبار «تحميل المزيد»). */
@@ -236,6 +240,7 @@ function mockApi(overrides?: {
   const sent = overrides?.sent ?? [];
   const sentTotal = overrides?.sentTotal;
   let alertsAttempts = 0;
+  let sentAttempts = 0;
   (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation(
     (url: string, config?: { params?: Record<string, unknown> }) => {
       const requestedPage = typeof config?.params?.page === 'number' ? config.params.page : 1;
@@ -249,9 +254,16 @@ function mockApi(overrides?: {
           return Promise.reject(new Error('تعذّر جلب التنبيهات'));
         }
         const rows = requestedPage === 1 ? alerts : alertsPage2;
+        if (overrides?.alertsFailPage === requestedPage) {
+          return Promise.reject(new Error('تعذّر جلب الصفحة'));
+        }
         return Promise.resolve({ data: pageResult(rows, alertsTotal, requestedPage) });
       }
       if (url === '/alerts/sent') {
+        sentAttempts += 1;
+        if (overrides?.sentFailFirst && sentAttempts === 1) {
+          return Promise.reject(new Error('تعذّر جلب الصادر'));
+        }
         const rows = requestedPage === 1 ? sent : [];
         return Promise.resolve({ data: pageResult(rows, sentTotal, requestedPage) });
       }
@@ -631,6 +643,27 @@ describe('Dashboard للمحامي', () => {
     expect(screen.queryByRole('button', { name: 'إعادة المحاولة' })).not.toBeInTheDocument();
   });
 
+  it('فشل الصفحة التالية يُبقي المعروض ويعيد التذييل إلى «إعادة المحاولة»', async () => {
+    const user = userEvent.setup();
+    mockApi({
+      alerts: LAWYER_ALERTS,
+      alertsTotal: 3,
+      alertsPage2: [makeHeadAlertSummary({ id: 3, messagePreview: 'تنبيه ثالث', isRead: true })],
+      alertsFailPage: 2,
+    });
+
+    render(<Dashboard />);
+
+    expect(await screen.findByText('يُعرض 2 من أصل 3 تنبيهًا')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'تحميل المزيد' }));
+
+    // الفشل لا يُسقط المعروض، والزر يصبح إعادة محاولة واضحة لا «تحميل المزيد».
+    expect(await screen.findByText('حدث خطأ غير متوقع')).toBeInTheDocument();
+    expect(screen.getByText('راجع ملف القرض')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'إعادة المحاولة' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'تحميل المزيد' })).not.toBeInTheDocument();
+  });
+
   it('يعلم المحامي التنبيه كمقروء ويخفض العداد', async () => {
     const user = userEvent.setup();
     mockApi({ alerts: LAWYER_ALERTS, unreadCount: 1 });
@@ -999,8 +1032,27 @@ describe('Dashboard لرئيس القسم', () => {
     // تذييل «تحميل المزيد» يتبع إجمالي التبويب الظاهر (3 صادر) لا إجمالي المستلمات.
     expect(screen.getByText('يُعرض 1 من أصل 3 تنبيهًا')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'تحميل المزيد' })).toBeInTheDocument();
+    // الرقم وحده بلا سياق للقارئ الصوتي: يسبقه نص مخفي يسمّيه.
+    expect(screen.getByText('إجمالي الصادر:')).toBeInTheDocument();
     // الكل قرأ: شارة صريحة بدل العدّاد الصفري المضلل.
     expect(screen.getByText('مقروء من الجميع')).toBeInTheDocument();
+  });
+
+  it('تعذّر الصادر: لا شارة «0» كاذبة بل خطأ ظاهر مع «إعادة المحاولة»', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({
+      user: { id: 1, username: 'head1', fullName: 'رئيس', role: 'head', branchId: 1 },
+    });
+    mockApi({ alerts: HEAD_ALERTS, lawyers: BRANCH_LAWYERS, sentFailFirst: true });
+
+    render(<Dashboard />);
+
+    await user.click(await screen.findByRole('tab', { name: 'أرسلتها' }));
+
+    expect(await screen.findByText('حدث خطأ غير متوقع')).toBeInTheDocument();
+    // الإجمالي مجهول ⇒ لا شارة رقمية (0) في الترويسة، ومسار استعادة صريح.
+    expect(screen.queryByText('إجمالي الصادر:')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'إعادة المحاولة' })).toBeInTheDocument();
   });
 
   it('لا يعرض خيار «مرتبط بملف» في نموذج إصدار التنبيه', async () => {

@@ -118,6 +118,63 @@ describe('useAlertsFeed', () => {
     );
   });
 
+  it('reload لا يُفرغ القائمة المعروضة قبل وصول الصفحة الأولى الجديدة', async () => {
+    get.mockResolvedValueOnce(pageBody([row(1), row(2)], 3));
+    const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+
+    let resolveReload: ((value: unknown) => void) | undefined;
+    get.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveReload = resolve;
+      }),
+    );
+
+    act(() => result.current.reload());
+    // أثناء الجلب: القائمة القديمة باقية — لا وميض «لا توجد تنبيهات».
+    expect(result.current.items).toHaveLength(2);
+    expect(result.current.isLoading).toBe(true);
+
+    await act(async () => {
+      resolveReload?.(pageBody([row(9)], 1));
+    });
+    await waitFor(() => expect(result.current.items.map((alert) => alert.id)).toEqual([9]));
+  });
+
+  it('فشل إعادة تحميل الصفحة الأولى: «إعادة المحاولة» تعيد جلبها لا تتجاهلها', async () => {
+    get.mockResolvedValueOnce(pageBody([row(1), row(2)], 2));
+    const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+    // لا «مزيد» أصلًا (2 من 2): الزر في التذييل إعادة محاولة لا تحميل صفحة تالية.
+    expect(result.current.hasMore).toBe(false);
+
+    get.mockRejectedValueOnce(new Error('تعذّر الجلب'));
+    act(() => result.current.reload());
+    await waitFor(() => expect(result.current.error).toBe('تعذّر الجلب'));
+    expect(result.current.items).toHaveLength(2);
+
+    get.mockResolvedValueOnce(pageBody([row(9)], 1));
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(result.current.items.map((alert) => alert.id)).toEqual([9]));
+    expect(get).toHaveBeenLastCalledWith(
+      '/alerts',
+      expect.objectContaining({ params: { page: 1, pageSize: 100 } }),
+    );
+  });
+
+  it('يُزيل التكرار عند إزاحة الترقيم بين صفحتين (تنبيه جديد في الأعلى)', async () => {
+    get.mockResolvedValueOnce(pageBody([row(1), row(2)], 4));
+    const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+
+    // إزاحة: الصف 2 ظهر في الصفحة الأولى ثم تكرر في الثانية.
+    get.mockResolvedValueOnce(pageBody([row(2), row(3)], 4, 2));
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(result.current.items).toHaveLength(3));
+
+    expect(result.current.items.map((alert) => alert.id)).toEqual([1, 2, 3]);
+  });
+
   it('updateItems يعدّل المحمّل محليًا بلا طلب جديد', async () => {
     get.mockResolvedValueOnce(pageBody([row(1), row(2)], 2));
     const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));

@@ -15,6 +15,8 @@ export interface AlertsPanelProps {
   footer?: ReactNode;
   /** نص الخطأ (يُدمج خطأ الإجراء مع خطأ الاستعلام في اللوحة). */
   error: string;
+  /** تحميل الصفحة الأولى: تُعرض حالة تحميل بدل «لا توجد تنبيهات» الكاذبة. */
+  isLoading?: boolean;
   alerts: HeadAlertSummaryDto[];
   /** تعليم المقروء — للمحامي فقط (غيابه يُخفي الزر كما في صف الرئيس). */
   onMarkRead?: (a: HeadAlertSummaryDto) => void;
@@ -35,6 +37,7 @@ export function AlertsPanel({
   form,
   footer,
   error,
+  isLoading = false,
   alerts,
   onMarkRead,
   markingKey,
@@ -62,7 +65,13 @@ export function AlertsPanel({
         </div>
       ) : null}
 
-      {alerts.length === 0 ? (
+      {alerts.length === 0 && isLoading ? (
+        <div className="p-10 text-center">
+          <p className="text-gray-500 text-sm" role="status">
+            جارٍ تحميل التنبيهات…
+          </p>
+        </div>
+      ) : alerts.length === 0 ? (
         <div className="p-10 text-center">
           <p className="text-gray-400 text-sm">لا توجد تنبيهات حالياً</p>
         </div>

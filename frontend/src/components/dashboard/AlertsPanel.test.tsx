@@ -35,6 +35,13 @@ describe('AlertsPanel', () => {
     expect(screen.queryByText('لا توجد تنبيهات حالياً')).not.toBeInTheDocument();
   });
 
+  it('يعرض حالة تحميل بدل «لا توجد تنبيهات» قبل وصول الصفحة الأولى', () => {
+    renderPanel({ alerts: [], isLoading: true });
+
+    expect(screen.getByRole('status')).toHaveTextContent('جارٍ تحميل التنبيهات…');
+    expect(screen.queryByText('لا توجد تنبيهات حالياً')).not.toBeInTheDocument();
+  });
+
   it('يعرض النموذج والخطأ والحالة الفارغة عند غياب التنبيهات', () => {
     renderPanel({ alerts: [], form: <form aria-label="نموذج" />, error: 'تعذّر الجلب' });
 

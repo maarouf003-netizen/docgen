@@ -155,9 +155,32 @@ describe('AccountPage', () => {
 
     await waitFor(() => expect(summary().getByText('42')).toBeInTheDocument());
     expect(summary().getByText('غير المقروء في تنبيهاتك')).toBeInTheDocument();
-    expect(summary().getByText('0')).toBeInTheDocument();
+    // «—» لا صفر كاذب: العدّاد غير متاح لرئيس بلا فرع (`D11`).
+    expect(summary().getByText('—')).toBeInTheDocument();
+    expect(screen.queryByText('0')).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(api.get).not.toHaveBeenCalledWith('/alerts/unread-count', expect.any(Object));
+  });
+
+  it('فشل العدّاد لا يُسقط الملخص: خطأ معلن و«—» في بطاقته وبقية الأرقام ظاهرة', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 2, username: 'head1', fullName: 'رئيس القسم', role: 'head', branchName: 'دمشق', branchId: 1 },
+      logout: vi.fn(),
+    });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/stats/manager') return Promise.resolve({ data: { totalFiles: 42 } });
+      if (url === '/alerts/unread-count') return Promise.reject(new Error('تعذّر جلب العدّاد'));
+      if (url === '/app-suggestions') return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<AccountPage />);
+
+    // الملفات معروفة فتُعرض رغم فشل العدّاد، والخطأ معلن مرة واحدة.
+    await waitFor(() => expect(summary().getByText('42')).toBeInTheDocument());
+    expect(await screen.findByRole('alert')).toHaveTextContent('تعذّر جلب العدّاد');
+    expect(summary().getByText('غير المقروء في تنبيهاتك')).toBeInTheDocument();
+    expect(summary().getByText('—')).toBeInTheDocument();
   });
 
   it('يعرض للمدير الملف والملخص بلا قسم اقتراحات (يستقبلها في صندوق المشرف)', async () => {
