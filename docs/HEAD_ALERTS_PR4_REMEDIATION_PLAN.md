@@ -2,7 +2,7 @@
 
 > **تاريخ الوثيقة:** 2026-10-28
 > **الفرع:** `feature/head-alerts-pr4-api` · **الأساس:** `e0d8384`
-> **الحالة:** المراحل 0–6 ✅ (حالة الكود المثبتة `4e0d3ae`) · التالية: المرحلة 7 — مرساة التسليم في §0.1
+> **الحالة:** المراحل 0–7 ✅ (حالة الكود المثبتة `4e0d3ae`؛ 7 توثيقية في 2026-10-31) · التالية: المرحلة 8 (`PR-5`) بعد حسم `D10`
 > **القاعدة:** لا هجرات قاعدة بيانات في هذا العمل بالكامل.
 
 ---
@@ -36,7 +36,12 @@
 | الهجرات | لا هجرات في هذا العمل كله. `RUN_GUIDE.md` §9 كما هو: `SQLite` **4 معلّقة** بالترتيب `Expand` ← `Outbox_Create` ← `Backfill` ← `Contract` (و`Contract` محظورة قبل `G2`)، و`PostgreSQL` **63 / صفر معلّقة** |
 | بنود مفتوحة موثقة | `ح‑3`/`ح‑5`/`ح‑8` (كما هي، لا تُعاد بلا سبب)، **`ف‑6`** (منشئ ملف انتقل لفرع آخر — قرار عمل)، **`ف‑7`** (تفاوت `CreateSystemAsync`/`DocumentCreator`)، **`D10`** (اختيار `atomic`/`normalizer` مستحق **قبل المرحلة 8**)، **`D6`** (سطح `received` مؤقت يُحسم في `PR‑6`) |
 | نطاق المرحلتين 7 و8 | يبقيان على هذا الفرع، لأن §5 ينص أن `PR‑5` يُبنى على فرع `PR‑4` لا على `master` — لا فرع خلفية جديد |
-| المرحلة التالية | **7 توثيقية** (`P3-7`/`P3-12`): §9.1/§9.3/§8.1/§9.5 في خطة إعادة الهيكلة + `RUN_GUIDE` + وصف `PR #54` + بند `PR‑6`؛ لا كود إنتاج ولا هجرات |
+| المرحلة التالية | **8 (الواجهة `PR-5`)** — يُحسم `D10` (`atomic`/`normalizer`) قبلها. المرحلة 7 أُغلقت في 2026-10-31 دون تغيير كود إنتاج ولا هجرات |
+
+> **تحديث بعد إغلاق المرحلة 7 (2026-10-31):** حالة الكود لم تتغيّر ولا تزال `4e0d3ae`؛ فالالتزامات
+> اللاحقة للمرساة توثيقية فقط. أُغلقت `P3-7`/`P3-12`، وأُضيف `§9.4`/`§9.5` وبند `PR-6` في خطة إعادة
+> الهيكلة، وقسم اقتران النشر في `RUN_GUIDE.md` §9. **البنود المفتوحة كما هي:** `ف‑6`، `ف‑7`، `D10`
+> (يُحسم قبل المرحلة 8)، و`D6` (سطح `received` المؤقت). لا تُعاد المراحل 0–6 ولا الملاحظات `ح‑1…ح‑26`.
 
 ---
 
@@ -485,17 +490,20 @@ Task<HeadAlertSummaryDto?> GetSummaryAsync(
 
 ---
 
-### المرحلة 7 — التوثيق والقرارات (`P3-7`، `P3-12`)
+### المرحلة 7 — التوثيق والقرارات (`P3-7`، `P3-12`) ✅
 
 1. `docs/HEAD_ALERTS_RESTRUCTURE_PLAN.md`:
    - §9.1: `PATCH` → `204`، إضافة `scope=user|received`، توضيح افتراضي `by-delegation=100`.
-   - §9.3: إحالة `GET /{id}` إلى `D2` بدل شرط الفرع.
-   - §8.1/§9: أسماء `ListForActorAsync/ListSentAsync`.
-   - **§9.5 جديد «قرارات PR-4»** مؤرَّخ: `D1–D12` + قاعدة الترتيب + خطأ عدّ الحقول.
+   - §9.3: إحالة `GET /{id}` إلى `D2` بدل شرط الفرع (ومثله §12).
+   - §8.1/§8.2/§9: أسماء `ListForActorAsync/ListSentAsync` وسطح المستودع المنفَّذ.
+   - **§9.4 جديد** لقاعدة الترتيب + خطأ عدّ الحقول، و**§9.5 جديد «قرارات PR-4»** مؤرَّخ: `D1–D12`.
    - توثيق `RecipientCount/UnreadCount` كاحتفاظ مؤقت حتى `PR-6`.
-2. `RUN_GUIDE.md`: اقتران النشر وترتيبه (حسب `D10`).
-3. وصف الـPR: الانحرافات، وحدة التراجع، **لا هجرات**.
-4. بند `PR-6` صريح: إزالة العدّادين من التفاصيل + إزالة `normalizer` (إن وُجد).
+2. `RUN_GUIDE.md` §9: قسم «اقتران نشر `PR-4` + `PR-5`» وترتيبه حسب `D10` + وحدة التراجع + فحص دخاني.
+3. وصف الـPR: الانحرافات، وحدة التراجع، **لا هجرات**، وأرقام البوابات الفعلية.
+4. بند `PR-6` صريح (منقول إلى `HEAD_ALERTS_RESTRUCTURE_PLAN.md` §15 المرحلة 6):
+   - [x] إزالة `RecipientCount`/`UnreadCount` من `HeadAlertDto` + تحديث البيان واختبار العقد.
+   - [x] إزالة `normalizer` إن وُجد + اختبار يثبت رفض الشكل القديم.
+   - [x] حسم نطاق شارة الرئيس (`received` أم `user`) وحذف النطاق الآخر مع اختبار رفضه.
 
 **الحجم:** صغير.
 
@@ -559,12 +567,12 @@ Task<HeadAlertSummaryDto?> GetSummaryAsync(
 | `P3-4` عدّاد غير مقيّد | 4 | `CountUnread_UserScope_EqualsUnreadOnlyListTotal_ForHead` + `CountUnread_ReceivedScope_*` + `CountUnread_HeadMarkingOwnRowRead_DecrementsUserOnly` + `Scopes_UserIsBranchBound_ReceivedCoversReceivedAlerts` (تكامل معزول) | `[x]` |
 | `P3-5` تحقق المستلمين | 5 | `Create_InactiveDocumentCreator_Throws` + `Create_InactiveLawyerTarget_Throws` + `Create_MissingDocument_UsesSameUnavailableMessage` + `Create_OutsideBranchDocumentWithInactiveCreator_ReportsUnavailableOnly` (خدمة) و`Head_CreatesLawyerAlert_InactiveTarget_BadRequest` + `Head_CreatesDocumentAlert_InactiveCreator_BadRequest` + `Head_CreatesDocumentAlert_OutsideBranch_BadRequest` (HTTP، نص موحّد) | `[x]` |
 | `P3-6` فيضان `Skip` | 5 | `InvalidPaging_RejectsHugePage` + `Validate_RejectsSkipOverflow_WithCleanArabicMessage` + `Validate_RejectsPageBelowOne_WithoutNarrowingArithmetic` + `Skip_ExtremePageWithSizeOne_IsIntMaxValueMinusOne` | `[x]` |
-| `P3-7` انحراف التوثيق | 7 | مراجعة يدوية موثّقة | `[ ]` |
+| `P3-7` انحراف التوثيق | 7 | مراجعة يدوية موثّقة — `§9.1` (`204`/`scope`/افتراضي `100`)، `§9.3`+`§12` (`D2`)، `§8.1`/`§8.2`/`§9.4` (الأسماء المنفَّذة)، `§9.4` (ترتيب القرار + عدّ الحقول 22/22)، `RUN_GUIDE` §9 | `[x]` |
 | `P3-8` غياب `Postgres` | 6 | `HeadAlertSummaryPostgresTests` في CI (قاعدة معزولة + مقارنة حرفية بـ`SQLite`؛ `backend-postgres` أخضر وخطوة عدّ `trx` أثبتت التنفيذ) | `[x]` |
 | `P3-9` بيان العقد | 6 | `SummaryContract_MatchesManifest_WithoutFullMessage` + `DetailContract_MatchesManifest_PlusExplicitlyRetainedFields` + `PagedResultContract_MatchesManifest_WithoutHasNextPage` (تقرأ كتلة `forbidden` من البيان) + `Nullability_MatchesSmallContractList` | `[x]` |
 | `P3-10` هشاشة `StatsScope` | 6 | `Alerts_HeadAndSub_SeeOnlyOwn` عبر `AllAlertIdsAsync` (حلقة حتى `totalPages` + عدم تكرار) | `[x]` |
 | `P3-11` تحميل المستلمين | 2 | إسقاط واحد (مراجعة كود) + تغطية سلوكية للتفاصيل وتعليم القراءة — **بلا عدّ استعلامات** (لا أداة عدّ في المستودع؛ تصحيح 2026-10-30) | `[x]` |
-| `P3-12` تعرّض محتفظ | 7 | اختبار `UntilPR6` + بند `PR-6` | `[ ]` |
+| `P3-12` تعرّض محتفظ | 7 | اختبار `UntilPR6` + بند `PR-6` صريح بثلاثة مطالب (`HEAD_ALERTS_RESTRUCTURE_PLAN` §15) + توثيق «محتفظ مؤقت» في `§9.2`/`§9.5` | `[x]` |
 | `R-1` (`D11`) حالة «رئيس بلا فرع» | 3 | `BranchlessHead_CreateIs400_AndReadsAre403` (تكامل `Api`) + `Create_BranchlessHead_IsArgumentError_NotAuthorization`/`CountUnread_BranchlessHead_IsRejected_LawyerCountsOwnRows` (وحدة) | `[x]` |
 | `R-2` فهارس عدّاد `received` | 4 | مراجعة مخطط موثّقة (لا هجرة) | `[ ]` |
 | `R-3` سقف الترقيم | 5 | `Paging_OverflowRejected_ExtremePageWithSize1Allowed` (HTTP) + `Paging_ExtremePageWithSize1_IsAllowed` (خدمة) | `[x]` |
@@ -672,7 +680,9 @@ npm run build
 | 2026-10-31 | **إغلاق المرحلة 6:** `CI` **12/12** على `902598c` — `backend-postgres` pass في التشغيلين (7m19s/7m26s)، وخطوة `Assert Postgres summary projection test actually executed` **pass** (عدّ `trx` > 0)، فـ`P3-8`/`R-4` مغلقان بدليل تنفيذ فعلي لا بخضرة خطوة | إغلاق §7 (`P3-3`/`P3-8`/`P3-9`/`P3-10`/`R-4`) وتثبيت أرقام التسليم للمرحلة 7 |
 | 2026-10-31 | **إصلاح ملاحظات المراجعة النقدية للمرحلة 6:** (م‑1) تعطيل احتفاظ المنتدى في `ApiFactory` (`Forum:RetentionMonths=0`) وإضافة `Default Timeout=30` لسلسلة SQLite — بعد فشل متقلب `SQLite database is locked` في `ForbiddenShapeContractTests.InitializeAsync` على التزام توثيقي (نفس الكود نجح في تشغيل موازٍ)؛ (م‑2) تثبيت عقد المعاينة في اختبار `Postgres` (طول 280 نقطة + علامة `…` + غير فارغة)؛ (م‑3) مقارنة `TotalCount` للأرشيف ومنظور المستلم؛ (م‑4) سقف صريح لدورات `AllAlertIdsAsync`؛ (م‑5) قراءة `trx` من تشغيل الـAPI الأساسي بدل إعادة تنفيذ اختبار Postgres؛ (م‑6) نقل حقول `createHeadAlertRequest` الممنوعة إلى كتلة `forbidden` في البيان؛ (م‑7) استخدام `PostgresTestEnvironment.RequireOrSkip` في `DatabaseInitializerTests` (لا تخطّي صامت)؛ (م‑8) تغطية `PublicEntityId`/`ExecutionCircuitId` في اختبار المعرّفات، وإضافة تغطية `GetSummaryAsync`/`Sent`/`ByDelegation` في تكافؤ `Postgres` | إغلاق كل ملاحظات المراجعة بلا تغيير سلوك إنتاجي: التعديلات اختبارات + `ci.yml` + البيان فقط، ومعالجة تقلّب `CI` بجذر بنية الاختبار |
 | 2026-10-31 | البوابات بعد رقعة المراجعة: `build` 0/0 · `Application` 2149/2149 · `Api` 724 + 2 تتابعية · `oxlint`/`tsc` صفر · `vitest` 152/1599 · `npm run build` ناجح؛ `CI` **12/12** على `f01c74d` (تشغيلان) وخطوة `trx` الجديدة: `Passed HeadAlertSummaryPostgresTests: 1` — والتقلّب السابق لم يتكرر | إثبات أن إصلاحات المتانة لم تخفض أي بوابة وأغلقت تقلّب SQLite |
+| 2026-10-31 | **انحرافات المرحلة 7 قبل التنفيذ:** (1) لا يوجد `§9.4` في خطة إعادة الهيكلة (الترقيم يقفز من `§9.3` إلى `§10`)، فأُنشئ **`§9.4`** لقاعدة الترتيب وخطأ عدّ الحقول، و**`§9.5`** لبطاقة `D1–D12` كما ينص §6 — بلا فجوة ترقيم؛ (2) **خطأ عدّ الحقول المثبت:** عقد التفاصيل الفعلي `HeadAlertDto` = **22** حقلًا (20 معلنًا في `§9.2` + `RecipientCount`/`UnreadCount` المحتفظ بهما)، والبيان يفصل `headAlertDetail` (20) عن `retainedHeadAlertDetail` (2)، والملخص = 22 أيضًا؛ نصّ `§9.2` («قائمة الحقول كاملة») كان يعدّ 20 فقط؛ (3) **توسيع تنظيف الأسماء الميتة** خارج `§8.1`: `§8.2` (أسماء المستودع)، `§14.1`، `§18`، `§12` — الأسماء المنفَّذة هي `ListForActorAsync`/`ListSentAsync`/`ListSummariesForRecipientAsync`/`ListSummariesSentAsync`/`ListSummariesForOversightAsync`/`ListSummariesByDelegationAsync`/`GetDetailRowAsync`، والمذكور سابقًا (`ListForLawyerAsync`/`ListForHeadAsync`/`ListForOversightAsync`/`ListByDelegationSummariesAsync`/`GetByIdForActorAsync`/`GetByIdWithRecipientsAsync`) غير موجود؛ (4) **تناقض `D2` في `§12`** (شرط فرع لغير المستلم) و**تناقض تسمية الشارة مع `D6` في `§10.7`/`§18`** («عدّاد شخصي/تنبيهاتك غير المقروءة») — صُحّحا نصًّا إلى قرار المالك: `received` لشارة الرئيس بنص «غير المقروء في تنبيهاتك»، و`user` هو الافتراضي للسطح؛ (5) `RUN_GUIDE.md`: قسم فرعي جديد داخل `§9` للاقتران، **وقائمة الهجرات التراكمية لم تُمسّ** (لا هجرات)؛ (6) وصف `PR #54` يُحدَّث في مكانه (مسوّدة غير مدموجة) بأرقام البوابات الفعلية `2149`/`724 + 2` | تسجيل الانحراف قبل التنفيذ كما يفرض §0.5، ومنع «توثيق يخالف الكود» بدل إنتاجه: كل تصحيح قابل للتحقق من كود `4e0d3ae` |
 | 2026-10-31 | **تثبيت مرساة المرحلة 7 (§0.1):** حالة الكود `4e0d3ae` + التزام هذه المرساة · `CI` 12/12 على `f01c74d` و`4e0d3ae` · `backend-postgres` نفّذ اختبار الإسقاط (`Passed ...: 1`, `Skipped: 0`) · البوابات 2149/724+2 · نقل البنود المفتوحة `ف‑6`/`ف‑7`/`D10`/`D6` إلى المرساة · نطاق المرحلتين 7 و8 على فرع `PR-4` بلا فرع جديد | بدء المرحلة 7 في محادثة جديدة دون الاعتماد على ذاكرة الجلسة الطويلة، ومنع تكرار خطأ أرقام البوابات القديمة |
+| 2026-10-31 | **المرحلة 7 منفَّذة (توثيقية):** `HEAD_ALERTS_RESTRUCTURE_PLAN.md` — `§9.1` (`PATCH`→`204`، `scope=user|received`، افتراضي `by-delegation=100`، قاعدة الترتيب)، `§9.3`+`§12` (`D2` بلا شرط فرع)، `§8.1`/`§8.2` (سطح الخدمة/المستودع المنفَّذ: `ListForActorAsync`/`ListSentAsync`/`ListSummariesForRecipientAsync`/`ListSummariesSentAsync`/`ListSummariesForOversightAsync`/`ListSummariesByDelegationAsync`/`GetDetailRowAsync`)، **`§9.4`** (ترتيب القرار + عدّ الحقول 22/22 + تناقضات `§10.7`/`§14.2`/`§18`)، **`§9.5`** (`D1–D12` بأدلة الكود + احتفاظ مؤقت حتى `PR-6`)، بند `PR-6` الصريح في `§15`؛ `RUN_GUIDE.md` §9 — قسم اقتران النشر وترتيبه حسب `D10` ووحدة التراجع والفحص الدخاني؛ وصف `PR #54` — أرقام البوابات الفعلية والانحرافات ووحدة التراجع ولا هجرات. **البوابات بعد التغيير:** `build` 0/0 · `Application` **2149/2149** · `Api` **724** + **2** تتابعية · `oxlint`/`tsc -b` صفر · `vitest` 152/1599 · `npm run build` ناجح | إغلاق `P3-7`/`P3-12` (§7) وإزالة انحراف التوثيق قبل بدء `PR-5`: لا كود إنتاج ولا اختبارات ولا هجرات، والبنود المفتوحة (`ف‑6`/`ف‑7`/`D10`/`D6`) منقولة كما هي |
 
 ---
 

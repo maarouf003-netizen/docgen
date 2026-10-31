@@ -1,6 +1,8 @@
 # خطة إعادة هيكلة نظام التنبيهات `HeadAlert`
 
-> **الحالة:** خطة معتمدة بعد مراجعات نقدية متعددة وقرارات معمارية (آخرها 2026-10-20) — **اعتماد الخطة فقط؛ لا تنفيذ حتى قرار بدء منفصل**.
+> **الحالة:** خطة معتمدة بعد مراجعات نقدية متعددة وقرارات معمارية (آخرها 2026-10-20). **التنفيذ جارٍ:**
+> `PR-1`–`PR-4` منفَّذة (`PR-4` على `feature/head-alerts-pr4-api`، غير مدموج)، والمرحلة 7 التوثيقية
+> مغلقة في 2026-10-31؛ متبقٍ: `PR-5` (الواجهة) و`PR-6` (التنظيف — بند ملزم في §15).
 >
 > **النطاق:** `backend/` + `frontend/` + أربع هجرات لكل مزوّد (`Expand`/`Backfill`/`Contract` + `Outbox`) + الاختبارات.
 >
@@ -89,6 +91,16 @@
     الموجود `apiFetch` من وصف اختبار مزامنة العقود (§14.2)؛ (د) إعلان رموز الحالة وتغيير جسم
     `POST /alerts` صراحةً (§9.1، §9.2، §15)؛ (هـ) قيد `EnableRetryOnFailure` المستقبلي في سجل
     المخاطر (§17).
+19. **إغلاق انحراف التوثيق بعد تنفيذ `PR-4` (2026-10-31 — المرحلة 7 من خطة الإصلاح، `P3-7`/`P3-12`):**
+    (أ) `§9.1`: `PATCH /{id}/read` → `204`، و`scope=user|received` في `unread-count`، وتوضيح أن الافتراضي
+    العام `pageSize=50` وافتراضي `by-delegation=100` (`D1`)؛ (ب) `§9.3`/`§12`: `GET /{id}` بقرار `D2`
+    — لا شرط فرع لأي دور (المستلم ← المنشئ ← الإشراف ← `404`)؛ (ج) أسماء الخدمة/المستودع المنفَّذة
+    (`ListForActorAsync`/`ListSentAsync` وما يكافئها) بدل الأسماء التصميمية، مع جدول السطح الفعلي؛
+    (د) **§9.4 جديد:** قاعدة ترتيب القرار (دور/فرع ← شكل ← طرفية) وتصحيح عدّ الحقول (الملخص 22،
+    والتفاصيل 20 + 2 محتفظ بهما = 22)؛ (هـ) **§9.5 جديد «قرارات `PR-4`» مؤرَّخ:** `D1`–`D12` وأدلتها
+    في الكود، وتوثيق `RecipientCount`/`UnreadCount` ونطاق `received` كاحتفاظ مؤقت حتى `PR-6`؛
+    (و) بند `PR-6` صريح بثلاثة مطالب (§15)؛ (ز) `RUN_GUIDE.md` §9: اقتران نشر `PR-4`+`PR-5` وترتيبه
+    حسب `D10` ووحدة التراجع. **لا تغيير في كود الإنتاج ولا هجرات.**
 
 ---
 
@@ -1051,7 +1063,7 @@ public class HeadAlert
      1. صفر عمليات ترقية جسرية وصفر أرشفة بسبب `superseded_legacy` في `AuditLog` خلال النافذة.
      2. صفر صفوف نشطة `Kind = 'legacy'` قابلة للمطابقة البنيوية (إنابة/استئناف/كتاب مطالعة/معلقات)
         وفق استعلام المراقبة في §16.
-     3. تقرير يثبت أن القوائم و`GetByIdForActorAsync` لا تعتمد على أي حقل من الجسر.
+     3. تقرير يثبت أن القوائم و`GetDetailsAsync` لا تعتمد على أي حقل من الجسر.
      عندها يُحذف كود الجسر، وتبقى تسمية العرض `legacy` للصفوف التاريخية فقط.
 
 **معيار القبول:** إعداد قاعدة اختبار فيها صفوف نشطة قديمة لكل تدفق (بما فيها تدفق الرؤساء الذي
@@ -1293,11 +1305,11 @@ entity_abolish_heads:
   النجاح بعد فشل `Enqueue`. تُنقل الاستدعاءات الحالية بعد `_tx` (`DocumentService.UpdateAsync`،
   `DocumentStatusService`، `DocumentsController` بعد النقل) إلى داخل معاملة العمل أو تُحوّل إلى
   Outbox صريح؛ وإلا فسيرفضها الحارس وتُبتلع في الـcatch الحالي.
-- `GetByIdForActorAsync(int alertId, int actorUserId, UserRole actorRole, int? branchId)`:
+- `GetDetailsAsync(int alertId, HeadAlertActor actor, ...)` (**الاسم المنفَّذ؛ بدل `GetByIdForActorAsync`**):
   - يُسمح للمستلم **دون شرط فرع** (قد يكون مستلمًا خارجيًا في إنابة)، أو للمنشئ
-    (`CreatedById == actorUserId`) بقراءة نصه المُرسل — مع تقييد الفرع لغير المستلم/المنشئ من
-    الرئيس/الشعبة/المحامي — أو للمدير/المشرف (قراءة إشراف).
-  - غير ذلك `404` بلا كشف وجود.
+    (`CreatedById == actorUserId`) بقراءة نصه المُرسل، أو للمدير/المشرف (قراءة إشراف).
+  - **لا تقييد فرع لأي دور** (`D2`): غير المستلم/المنشئ/الإشراف `404` بلا كشف وجود — ولو كان التنبيه
+    في فرعه (تصحيح 2026-10-31، §9.3/§9.4).
   - تُستخدم في `GET /api/alerts/{id}` بدل تحميل القائمة كاملة. هذا يمنع 404 على زر «عرض النص كاملًا»
     في تبويب «أرسلتها» للمنشئ. تعيد `IsRead` للقارئ المستلم و`CanViewRecipients` للمنشئ/الإشراف،
     ولا تعيد `Recipients` (تُطلب من `/{id}/recipients`).
@@ -1337,17 +1349,25 @@ entity_abolish_heads:
 - `RemoveAppealRecipientAsync`:
   - يحذف صفوف المستلم المحدد فقط.
   - إن لم يبق مستلمون: يؤرشف التنبيه بدل حذفه.
-- `ListForLawyerAsync/ListForHeadAsync/ListSentAsync`:
-  - تقبل `AlertArchiveFilter` (`Active`, `All`, `OnlyArchived`) و`AlertPageRequest` (`page`, `pageSize`).
-  - تعيد `HeadAlertSummaryDto`، لا `HeadAlertDto` الكامل.
-- `CountUnreadAsync`: يستبعد المؤرشف.
-- `GetRecipientsAsync(alertId, actorUserId, actorRole, branchId)`:
+- **`ListForActorAsync`/`ListSentAsync`** (الاسم المنفَّذ فعليًا — لا `ListForLawyerAsync`/`ListForHeadAsync`):
+  - `ListForActorAsync(actor, query, ct)`: نقطة دخول **واحدة** للقوائم تقرأ الدور من `HeadAlertActor`
+    وتقرر النطاق داخلها — المحامي استلامه الشخصي، والرئيس/الشعبة ما استلمه في فرعه، والمدير/المشرف
+    قائمة الإشراف (`IsRead=null` وبلا `unreadOnly`) — ثم تفوض إلى المستودع المناسب
+    (`ListSummariesForRecipientAsync` أو `ListSummariesForOversightAsync`).
+  - `ListSentAsync(actor, archive, page, ct)`: رئيس/شعبة بفرعه فقط.
+  - كلتاهما تقبل `AlertPageRequest` (`page`, `pageSize`) و`AlertArchiveFilter` (`Active`, `All`, `OnlyArchived`)
+    حيث ينطبق، وتعيد `PagedResult<HeadAlertSummaryDto>` لا `HeadAlertDto` الكامل، مع `TotalCount`
+    وترتيب `LastContentChangedAt DESC, Id DESC`؛ **لا `Take(500)` ولا تحميل كامل**، والترقيم صارم (1..100).
+- **ترتيب القرار الملزم داخل هذه الأسطح:** دور ← فرع ← شكل الطلب (`unreadOnly` ثم الترقيم) ← طرفية
+  (للإنابة). فالدور غير المخوّل يتلقى `403` ولو كان الترقيم غير صالح، ولا ينقلب `403` إلى `400`
+  (`ح‑13`، وتفصيله في §9.4).
+- `CountUnreadAsync(actor, scope, ct)`: يستبعد المؤرشف، ويقرأ نطاقه الصريح `user|received` (`D6`/`D7`) —
+  الافتراضي `user`، وتفصيله في §9.4/§9.5.
+- `GetRecipientsAsync(id, actor, ct)`:
   - للمنشئ أو المدير/المشرف؛ رئيس/شعبة من فرع آخر → `404`.
   - يعيد `HeadAlertRecipientDto` مع الاسم/الدور/`IsRead`/`ReadAt`.
-- `ListByDelegationSummariesAsync`: يستبعد المؤرشف افتراضيًا، ويعيد ملخصات لا نصوصًا كاملة.
-- `ListForOversightAsync`: يستبعد المؤرشف افتراضيًا مع `AlertArchiveFilter`، ويقبل `AlertPageRequest`
-  ويعيد `PagedResult<HeadAlertSummaryDto>` مع `TotalCount`؛ **لا `Take(500)` ولا تحميل كامل**،
-  وترتيب `LastContentChangedAt DESC, Id DESC`. `unreadOnly` غير مدعوم لهذا المسار (API يرفضه `400`).
+- `ListByDelegationAsync(delegationId, actor, page, ct)`: يستبعد المؤرشف، ويعيد ملخصات لا نصوصًا كاملة،
+  ويفحص الدور والطرفية في الخدمة (`D8`).
 
 ### 8.2 المستودع
 
@@ -1364,13 +1384,16 @@ entity_abolish_heads:
 - `ListPendingAlertsForLawyerAsync(int lawyerId, string kind, ...)` — بلا بادئة نصية.
 - `FindByMessageAndBranchAsync` يُحذف.
 - `FindLatestPendingByEntityAsync` يُحذف بعد إزالة تنبيهات الجهات.
-- `ListRecipientsAsync(alertId)`.
-- `CountUnreadAsync`:
+- `ListRecipientsWithUserAsync(alertId)` (الاسم المنفَّذ؛ بدل `ListRecipientsAsync`).
+- `CountUnreadForUserAsync(userId, branchId?)` و`CountUnreadForReceivedAsync(userId, branchId)`:
   ```csharp
+  // الخطة §8.2 الأصلية: CountUnreadAsync(userId) بلا فرع — استُبدل في PR-4 (§9.4/§9.5)
   Db.HeadAlertRecipients.CountAsync(r =>
       r.UserId == userId && !r.IsRead && !r.HeadAlert!.IsArchived)
   ```
-- `ListForRecipientAsync` و`ListSentAsync`:
+  - `user`: صفوف المستخدم نفسه؛ `branchId` يُقيّد صفوف الرئيس/الشعبة بفرعهم (`D7`) ويُسقط الشرط للمحامي.
+  - `received`: صفوف غير المقروءة على تنبيهات استلمها الرئيس في فرعه، مع `EXISTS` على صفّه (`D6`).
+- `ListSummariesForRecipientAsync` و`ListSummariesSentAsync` (الاسمان المنفَّذان):
   - فلترة `!IsArchived` أو `IsArchived` حسب الفلتر، مع `page`/`pageSize` (افتراضي 50، أقصى 100)
     و`TotalCount` من استعلام منفصل.
   - ترتيب حتمي `LastContentChangedAt DESC, Id DESC`.
@@ -1385,16 +1408,20 @@ entity_abolish_heads:
       يُعيد النص الكامل ولا يخزّنه.
     - بيانات المنشئ/الملف/المحامي الهدف و`Kind`.
   - هذا يمنع تضخّم الذاكرة والـDOM عند التعميمات الكبيرة.
-- `GetByIdWithRecipientsAsync`:
+- `GetByIdWithRecipientsAsync` (**محذوف في `PR-4`** — حلّ محله `GetDetailRowAsync`/`ListRecipientsWithUserAsync`):
   - `Include(a => a.Recipients).ThenInclude(r => r.User)` عند الحاجة للمستلمين.
   - لا تُستخدم لعرض `GET /{id}` العام؛ تُستخدم للمستلمين أو التفاصيل الداخلية.
-- `GetByIdForActorAsync`:
-  - استعلام مفرد يتحقق من المستلم **أو المنشئ** أو الإشراف، ويعيد `HeadAlertDto` كاملًا عند التصريح
-    فقط. المستلم يُقبل بلا شرط فرع؛ تقييد الفرع للمنشئ/الرئيس/الشعبة/المحامي غير المستلم.
-- `ListForOversightAsync`: إسقاط SQL إلى `HeadAlertSummaryDto` (بما فيه `MessagePreview`/`MessageLength`/
-  `PreviewTruncated`/العدّادات)، مع `page`/`pageSize` و`TotalCount`، وترتيب `LastContentChangedAt DESC,
-  Id DESC`، وبلا `Include` للمستلمين أو تحميل `Message` الكامل.
-- `ListByDelegationSummariesAsync`: يستبعد المؤرشف، ويعيد `HeadAlertSummaryDto` للشريط (بلا `Recipients`).
+- `GetDetailRowAsync` (الاسم المنفَّذ؛ بدل `GetByIdForActorAsync`):
+  - صف `HeadAlertDetailRow` واحد مسقط في `SQL` (`AsNoTracking` + `Select`، بلا `Include` وبلا كيانات)
+    يحمل حقول العرض + `CreatedById` + `IsRecipient` + `IsRead` + `RecipientCount`/`UnreadCount`.
+  - قرار الرؤية في الخدمة (`GetDetailsAsync`): مستلم بأولوية مطلقة بلا شرط فرع، ثم منشئ، ثم
+    مدير/مشرف، وإلا `null` ⇒ `404` بلا كشف وجود (`D2` — لا تقييد فرع لأي دور).
+- `ListSummariesForOversightAsync` (الاسم المنفَّذ؛ بدل `ListForOversightAsync`): إسقاط SQL إلى
+  `HeadAlertSummaryDto` (بما فيه `MessagePreview`/`MessageLength`/`PreviewTruncated`/العدّادات)، مع
+  `page`/`pageSize` و`TotalCount`، وترتيب `LastContentChangedAt DESC, Id DESC`، وبلا `Include`
+  للمستلمين أو تحميل `Message` الكامل.
+- `ListSummariesByDelegationAsync` (الاسم المنفَّذ؛ بدل `ListByDelegationSummariesAsync`): يستبعد
+  المؤرشف، ويعيد `HeadAlertSummaryDto` للشريط (بلا `Recipients`).
 - `RemoveAppealRecipientAsync`: عند موت التنبيه يؤرشف بدل `Remove`؛ ويُسجل `ArchivedAt` وسبب
   `no_recipients` في التدقيق.
 
@@ -1577,23 +1604,30 @@ entity_abolish_heads:
 |---|---|---|---|
 | `GET` | `/api/alerts?archived=active\|all\|only&unreadOnly=true\|false&delegationId=&page=1&pageSize=50` | محامٍ/رئيس/شعبة/مدير/مشرف | قائمة المستلمة، ملخصات مرقّمة |
 | `GET` | `/api/alerts/sent?archived=active\|all\|only&page=1&pageSize=50` | رئيس/شعبة | قائمة الصادر، ملخصات مرقّمة |
-| `GET` | `/api/alerts/unread-count` | محامٍ/رئيس/شعبة | عدّاد غير المقروء النشط |
+| `GET` | `/api/alerts/unread-count?scope=user\|received` | محامٍ/رئيس/شعبة | عدّاد غير المقروء النشط (`user` افتراضي، `received` للرئيس/الشعبة فقط — `D6`/`D7`) |
 | `POST` | `/api/alerts` | رئيس/شعبة | إصدار يدوي فقط |
 | `GET` | `/api/alerts/{id}` | مستلم/منشئ/مدير/مشرف حسب المصفوفة | تفاصيل كاملة مع `Message` |
 | `GET` | `/api/alerts/{id}/recipients` | منشئ/مدير/مشرف | مستلمو التنبيه وحالة قراءتهم |
-| `GET` | `/api/alerts/by-delegation/{delegationId}` | طرف في الإنابة | ملخصات تنبيهات الإنابة النشطة |
-| `PATCH` | `/api/alerts/{id}/read` | المستلم فقط | تعليم مقروء |
+| `GET` | `/api/alerts/by-delegation/{delegationId}?page=1&pageSize=100` | طرف في الإنابة | ملخصات تنبيهات الإنابة النشطة (الافتراضي للشريط `100` — `D1`) |
+| `PATCH` | `/api/alerts/{id}/read` | المستلم فقط | تعليم مقروء — `204` بلا جسم |
 
 **قواعد الاستعلام:**
 
-- `page` يبدأ من 1، و`pageSize` بين 1 و100 (الافتراضي 50). أي قيمة خارج ذلك → `400`.
+- `page` يبدأ من 1، و`pageSize` بين 1 و100 (الافتراضي **العام** 50، والافتراضي في `by-delegation` **100**
+  — `D1`، لأن الشريط يعرض صفحة واحدة). أي قيمة خارج ذلك → `400`، وفيضان `Skip` يُرفض صريحًا
+  (`AlertPageRequest.Validate` بحساب `long`) لا بالتواء حسابي.
 - الاستجابة `PagedResult<HeadAlertSummaryDto>` **بحقول النوع القائم `backend/src/DocGenerator.Application/Common/PagedResult.cs` وحدها**: `items`, `page`, `perPage`, `totalCount`, `totalPages`. لا يُضاف `hasNextPage` إلى الخادم ولا تُعاد تسمية `perPage` إلى `pageSize`؛ الواجهة تشتق `hasNextPage = page < totalPages`. أي تعديل على `PagedResult<T>` يتطلب قرارًا صريحًا + اختبار تسلسل في §14.1 + تحديث نوع الواجهة معًا.
 - `unreadOnly=true` مسموح للمحامي/الرئيس/الشعبة فقط؛ للمدير/المشرف → `400`.
+- `scope` في `unread-count`: الفارغ/`user` ⇒ العدّاد الشخصي (المحامي بلا قيد فرع، والرئيس/الشعبة داخل
+  فرعه)، و`received` ⇒ مجموع غير المقروء على التنبيهات التي استلمها الرئيس في فرعه (رئيس/شعبة فقط).
+  أي قيمة أخرى → `400` برسالة عربية؛ والمدير/المشرف ورئيس بلا فرع → `403` في النطاقين (`D6`/`D7`/`D11`).
 - `delegationId` فلتر اختياري في `/alerts` (وليس بديلًا عن `/by-delegation`) لربط
   «عرض كل التنبيهات» في `DelegationActivityStrip`.
 - `by-delegation` يعيد ملخصات، لا نصًا كاملًا، لأن الشريط لا يعرض النص الكامل في DOM.
-- **رموز الحالة:** `200` لكل `GET`/`PATCH` ناجح، و`201` لـ`POST` (بجسم `HeadAlertSummaryDto` أو
-  `Location` فقط — §9.2)؛ لا `409` في أي مسار.
+- **ترتيب القرار (ملزم):** دور/فرع ← شكل الطلب ← طرفية. فلا ينقلب `403` إلى `400` بترقيم غير صالح،
+  وتفصيله في §9.4.
+- **رموز الحالة:** `200` لكل `GET` ناجح، و`204` لـ`PATCH /{id}/read` الناجح (بلا جسم — العقد المنفَّذ)،
+  و`201` لـ`POST` (بجسم `HeadAlertSummaryDto` أو `Location` فقط — §9.2)؛ لا `409` في أي مسار.
 
 ### 9.2 عقد الاستجابة
 
@@ -1648,8 +1682,17 @@ public record HeadAlertDto(
     DateTime? ArchivedAt,
     string? CreatedByName,
     bool? IsRead,
-    bool CanViewRecipients);
+    bool CanViewRecipients,
+    // محتفظ بهما مؤقتًا من العقد السابق — يُزالان في PR-6 (§9.5)
+    int? RecipientCount = null,
+    int? UnreadCount = null);
 ```
+
+> **عدّ الحقول (مُثبت في `PR-4`):** `HeadAlertDto` = **22** حقلًا = 20 حقلًا معلنًا أعلاه (قبل
+> `RecipientCount`/`UnreadCount`) + **2 محتفظ بهما مؤقتًا**، ويُطابق `HeadAlertSummaryDto` في العدد
+> (22). البيان المشترك يفصل بينهما صراحةً: `headAlertDetail` (20) + `retainedHeadAlertDetail` (2).
+> كان نصّ سابق في هذه الوثيقة يعدّ التفاصيل 20 حقلًا فقط مع وصفها بـ«قائمة الحقول كاملة» — تصحيح
+> مؤرَّخ في §9.4/§9.5، لا حذف حقل ولا إعادة تسمية (قاعدة §2.3).
 
 - `HeadAlertDto` هو العقد الوحيد الذي يحمل `Message` كاملًا، ويُعاد فقط من
   `GET /api/alerts/{id}`. لا يُعاد من أي قائمة. لذلك `POST /api/alerts` يعيد **`201` بجسم
@@ -1661,6 +1704,8 @@ public record HeadAlertDto(
   لا يعرض المستلمين أصلًا) ويمنع توسيعها من حيث لا يُحتاج.
 - **عدادات القوائم حسب الدور:** `RecipientCount`/`UnreadCount` تبقى `null` للمحامي المستلم (كما
   اليوم) وتُعرض للرئيس/الشعبة/الصادر/الإشراف. لا تُضاف أعداد المستلمين إلى قائمة المحامي.
+  **أما في عقد التفاصيل** فيُرسَل العدّادان دائمًا لكل قارئ مُصرَّح (محتفظ بهما مؤقتًا — `D5`/`D9`)،
+  ولا تُستنتج غيابهما من `CanViewRecipients=false` (دلالته محصورة بقائمة المستلمين).
 
 `HeadAlertRecipientDto`:
 
@@ -1775,23 +1820,92 @@ public sealed record HeadAlertSupersedePlan(
     جزئيًا في `AlertsController` الحالي (قائمة/مفرد)، والجديد هو الترقيم/الملخصات/المستلمون/واجهة
     الوصول، لا إنشاء الوضع من الصفر.
 - `GET /alerts/sent`: رئيس/شعبة فقط، مقيد بالفرع؛ المدير/المشرف → `403`.
-- `GET /alerts/{id}`:
+- `GET /alerts/{id}` (قرار `D2` — **لا شرط فرع إطلاقًا**):
   - المستلم (`HeadAlertRecipient.UserId == actorUserId`) مسموح **بأولوية مطلقة**، حتى لو اختلف
     `BranchId` (الإنابات الخارجية) — الاستلام هو الحاكم لا فرع التنبيه.
   - المنشئ (`CreatedById == actorUserId`) مسموح — يلزم لعرض نص ما أرسله من تبويب «أرسلتها».
-  - رئيس/شعبة/محامٍ غير مستلم وغير منشئ: يجب أن يكون التنبيه في فرعه (حسب الدور)، وإلا `404`.
-  - مدير/مشرف: مسموح.
-  - غير ذلك → `403` أو `404` بلا كشف وجود.
+  - مدير/مشرف: مسموح (قراءة إشرافية).
+  - غير ذلك → `404` بلا كشف وجود — ولو كان التنبيه في فرع الفاعل: لا يوجد مسار «رئيس/شعبة/محامٍ من
+    الفرع نفسه» للتنبيه الذي لم يستلمه ولم يصدره (هذا هو الفرق عن الصياغة السابقة التي اشترطت الفرع).
+  - التفاصيل تُبنى من صف إسقاط واحد (`GetDetailRowAsync`) بلا `Include` وبلا كيانات محمَّلة.
 - `GET /{id}/recipients`:
   - المنشئ (`CreatedById == actorUserId`) أو مدير/مشرف.
-  - رئيس/شعبة من فرع آخر → `404` (لا تسريب وجود).
-  - محامٍ عادي → `403`/`404`.
+  - غير ذلك (بما فيه رئيس/شعبة من فرع آخر، ومحامٍ عادي) → `404` (لا تسريب وجود) — القرار في
+    `GetRecipientsAsync` بلا فحص دور في المتحكم (`D8`).
   - المدير/المشرف يرى المستلمين حتى للتنبيهات النظامية.
 - `PATCH /{id}/read`: المستلم فقط؛ غير المستلم `404`؛ المؤرشف يمكن تعليمه لكن الواجهة لا تعرضه.
 - `POST /alerts`: `CanCreateAlerts` فقط؛ الحقول الداخلية (`Kind`, `DedupeKey`, `ExecutionCircuitId`,
   `DelegationId`, `AppealId`, `RecipientUserId`) غير موجودة في العقد فتُتجاهل ولا تؤثر، وأي
   `TargetType` خارج `document|lawyer|branch` يُرفض `400`.
 - `by-delegation`: طرف في الإنابة فقط (كما هو)، ويعيد ملخصات نشطة فقط.
+
+---
+
+### 9.4 قواعد ملزمة مستخلصة من تنفيذ `PR-4`
+
+> **مؤرَّخة 2026-10-31.** أُثبتت من كود `4e0d3ae` (الوسم المرجعي للمرحلة 7)، وتُقرأ مع §9.1/§9.3/§9.5.
+> الغرض: منع «توثيق يخالف الكود» كما وقع في `P3-7`.
+
+**أ) ترتيب القرار في كل سطح (ملزم):**
+
+| السطح | الترتيب المنفَّذ | الأثر |
+|---|---|---|
+| `GET /alerts` | دور (غير مخوّل `403`) ← `unreadOnly` للمدير/المشرف (`400`) ← فرع الرئيس (`403`) ← ترقيم (`400`) | ترقيم غير صالح لا يحوّل `403` إلى `400` |
+| `GET /alerts/sent` | دور (`403`) ← فرع (`403`) ← ترقيم (`400`) | كذلك |
+| `GET /alerts/by-delegation/{id}` | دور (`403`، محامٍ فقط) ← ترقيم (`400`) ← طرفية (`403`) | لا تسريب وجود إنابةٍ لغير طرفها |
+| `POST /alerts` | دور (`403`) ← فرع (`400` — `D11`) ← دفاع القاعدة (`400`) | الكتابة تبقى `400` لا `403` |
+| `PATCH /{id}/read` | دور (`403`) ← صف الاستلام (`404`) — **بلا شرط فرع** | `MarkRead` مستثنى من `D11` عمدًا |
+| `GET /alerts/unread-count` | نطاق (`400` لقيمة غير معروفة) ← دور (`403`) ← فرع (`403`) | `received` للرئيس/الشعبة فقط |
+
+**ب) عدّ الحقول (تصحيح):** `HeadAlertSummaryDto` = **22** حقلًا، و`HeadAlertDto` = **22** حقلًا =
+20 معلنًا + `RecipientCount`/`UnreadCount` المحتفظ بهما (§9.5/`D5`/`D9`). لا حقل زائد غير هذه
+الاثنين، ولا `Recipients` ولا `HasFullMessage` في أي سطح (البيان: `headAlertSummary`/`headAlertDetail`/
+`retainedHeadAlertDetail`).
+
+**ج) سطح الخدمة/المستودع المنفَّذ** (يلغي الأسماء التصميمية القديمة في §8.1/§8.2):
+
+| الخدمة (`IHeadAlertService`) | المستودع (`IHeadAlertRepository`) |
+|---|---|
+| `ListForActorAsync` | `ListSummariesForRecipientAsync` / `ListSummariesForOversightAsync` |
+| `ListSentAsync` | `ListSummariesSentAsync` |
+| `ListByDelegationAsync` | `ListSummariesByDelegationAsync` |
+| `GetDetailsAsync` | `GetDetailRowAsync` |
+| `GetRecipientsAsync` | `ListRecipientsWithUserAsync` |
+| `CountUnreadAsync(actor, scope)` | `CountUnreadForUserAsync` / `CountUnreadForReceivedAsync` |
+| `CreateAsync` | `GetSummaryAsync` (جسم `201` داخل المعاملة) |
+| `MarkReadAsync` | `TryMarkReadAsync` (تحديث ذرّي بلا كيان متتبَّع) |
+
+⇒ الأسماء `ListForLawyerAsync`/`ListForHeadAsync`/`ListForOversightAsync`/`ListByDelegationSummariesAsync`/
+`GetByIdForActorAsync`/`GetByIdWithRecipientsAsync`/`CountUnreadAsync(userId)`/`ListRecipientsAsync`
+**غير موجودة**، ولا يُبنى عليها أي عمل لاحق (`PR-5`/`PR-6`).
+
+**د) تناقضات نُصِّحت في هذه المرحلة:** شرط فرع `GET /{id}` في §9.3 و§12 (أُبدل بـ`D2`)، وتسمية شارة
+الرئيس في §10.7/§18 («عدّاد شخصي/تنبيهاتك غير المقروءة») — تصبح `scope=received` بنص «غير المقروء في
+تنبيهاتك» وفق `D6`، مع بقاء `user` افتراضيًا للسطح نفسه.
+
+### 9.5 قرارات `PR-4` (`D1`–`D12`)
+
+> **مؤرَّخة 2026-10-31** — المرجع التفصيلي: `docs/HEAD_ALERTS_PR4_REMEDIATION_PLAN.md` §3 (نفس القرارات
+> بلا تغيير؛ أي تعديل فيها يحتاج موافقة المالك الصريحة أولًا).
+
+| المعرّف | القرار المنفَّذ | الدليل في الكود |
+|---|---|---|
+| `D1` | `by-delegation` يعيد `PagedResult<Summary>`، افتراضي `page=1&pageSize=100` | `AlertsController.ByDelegation` + `AlertPageRequest.MaxPageSize` |
+| `D2` | `GET /{id}`: مستلم بأولوية مطلقة (بلا فرع) ← منشئ ← إدارة/إشراف ← `404` | `HeadAlertService.GetDetailsAsync` |
+| `D3` | `POST /alerts` → `201` + `Summary` + `Location` | `AlertsController.Create` (`CreatedAtAction`) |
+| `D4` | `RepoRootLocator` يصعد حتى `AGENTS.md` ويفشل برسالة صريحة | بنية الاختبارات (`RepoRootLocator`) |
+| `D5` | إبقاء `RecipientCount`/`UnreadCount` في التفاصيل **حتى `PR-6`** | `HeadAlertDtos.cs` (وسم «محتفظ مؤقتًا») |
+| `D6` | `unread-count?scope=received`: مجموع غير المقروء على ما استلمه الرئيس في فرعه. **سطح مؤقت** يُحسم في `PR-6` | `CountUnreadForReceivedAsync` |
+| `D7` | العدّاد الشخصي (`scope=user`) للرئيس مقيّد بفرعه — **تغيير عقد مقصود** (كان كل الفروع) | `CountUnreadForUserAsync(userId, branchId?)` |
+| `D8` | كل الصلاحيات في الخدمة؛ المتحكم يترجم HTTP فقط | `AlertsController` (بلا فحص دور/فرع) |
+| `D9` | إبقاء عدّادي التفاصيل للمحامي مع اختبار `UntilPR6` | `Detail_RetainsCounters_ForLawyerRecipient_UntilPR6` |
+| `D10` | `atomic` أو `normalizer` — **يُحسم قبل المرحلة 8** (لا يزال مفتوحًا) | — (قرار إصدار) |
+| `D11` | رئيس بلا فرع: `400` في الكتابة، `403` في القراءة/العدّ؛ `MarkRead` مستثنى | `RequireBranchForWrite`/`RequireBranch` |
+| `D12` | النص الكامل في `PR-5` عبر `GET /alerts/{id}` عند الطلب فقط | `HeadAlertDto.Message` وحده |
+
+**احتفاظ مؤقت (يُزال في `PR-6`):** `RecipientCount`/`UnreadCount` في عقد التفاصيل + نطاق
+`scope=received` — كلاهما مسجّل كسطح مؤقت، و`P3-12` لا يُغلق نهائيًا إلا ببند `PR-6` الصريح (§15 في هذه
+الوثيقة + §9 من وثيقة الإصلاح). **لا هجرات في هذا العمل كله.**
 
 ---
 
@@ -1996,10 +2110,12 @@ frontend/src/
   - `eventName: ALERTS_UNREAD_EVENT`.
   - `pauseWhenHidden: true`.
 - `AccountPage`:
-  - استبدال جلب قائمة `/alerts` بعدّاد `/alerts/unread-count` لكل من المحامي/الرئيس/الشعبة.
+  - استبدال جلب قائمة `/alerts` بعدّاد `/alerts/unread-count` لكل من المحامي/الرئيس/الشعبة:
+    المحامي بـ`scope=user` (النطاق الوحيد المتاح له)، والرئيس/الشعبة بـ`scope=received` (`D6` — يحفظ
+    رقم الشارة القديم بلا تحميل صفحة قائمة).
   - إزالة `headAlertsQuery`/`branchUnread` وربط `summaryError` بالعدّاد الجديد بدل القائمة المحذوفة.
-  - **تغيير التسمية** من «مجموع مستلمي تنبيهات النطاق غير القارئين» إلى «تنبيهاتك غير المقروءة»؛
-    عدّاد `/alerts/unread-count` شخصي، وليس مجموع مستلمي النطاق.
+  - **تغيير التسمية** من «مجموع مستلمي تنبيهات النطاق غير القارئين» إلى **«غير المقروء في تنبيهاتك»**؛
+    فـ`received` يعدّ صفوف غير المقروءة على التنبيهات التي استلمها الرئيس، لا صفوفه الشخصية ولا كل الفرع.
   - المدير/المشرف: لا يطلب `/alerts/unread-count` (غير مصرح)؛ يُعرض رابط «التنبيهات» فقط.
 
 ### 10.8 الشريط الجانبي
@@ -2073,8 +2189,8 @@ frontend/src/
 - لا تغيير على صلاحية الإصدار اليدوي: رئيس قسم/شعبة فقط.
 - المدير/المشرف: قراءة إشراف فقط (قوائم + تفاصيل + مستلمون)، بلا إصدار وبلا تعليم قراءة.
 - `GET /{id}`: المستلم — بأولوية مطلقة وبلا شرط فرع (إنابة خارجية) — أو المنشئ (لنص ما أرسله) أو
-  مدير/مشرف؛ تقييد الفرع يطبق على الرئيس/الشعبة/المحامي **غير المستلم وغير المنشئ** فقط؛ غير ذلك `404`
-  بلا تسريب وجود.
+  مدير/مشرف؛ **ولا مسار فرعٍ لغير المستلم/المنشئ**: غيرهم `404` بلا تسريب وجود ولو كان التنبيه في فرعه
+  (`D2`/§9.3/§9.4).
 - `GET /{id}/recipients`: منشئ أو مدير/مشرف؛ غير ذلك `404`.
 - `PATCH /{id}/read`: المستلم فقط.
 - `GET /alerts/sent`: رئيس/شعبة بفرعه فقط؛ المدير/المشرف مرفوض.
@@ -2187,10 +2303,10 @@ frontend/src/
     `excludeAlertId` غير نشط (اختبار داخلي للدالة) → `InvalidOperationException`. لا يوجد استدعاء
     تجاري يجمع `CreateSystemAsync` مع `ArchiveBy...` منفصلة.
   - `CountUnreadAsync` يستبعد المؤرشف.
-  - `ListForHeadAsync` يعرض المستلم فقط، ويعيد ملخصات بلا `Message`.
+  - `ListForActorAsync` (بصفة رئيس/شعبة) يعرض المستلم فقط، ويعيد ملخصات بلا `Message`.
   - `ListSentAsync` يعيد العدّادات.
-  - `GetByIdForActorAsync`: المستلم يرى حتى لو اختلف فرعه (إنابة خارجية)، والمنشئ يرى نص ما أرسله،
-    وغير المستلم/فرع آخر `404`، والإشراف يرى.
+  - `GetDetailsAsync`: المستلم يرى حتى لو اختلف فرعه (إنابة خارجية)، والمنشئ يرى نص ما أرسله،
+    وغير المستلم/المنشئ/الإشراف `404` — ولو كان التنبيه في فرعه (`D2`: لا مسار فرعي)، والإشراف يرى.
   - `GetRecipientsAsync` صلاحيات وسلامة البيانات؛ المستلم العادي لا يرى قائمة المستلمين.
   - الجسر الانتقالي (تُشغَّل هذه الاختبارات عند `HeadAlerts:LegacyBridge:Enabled=true` فقط):
     - صف `legacy` نشط بنص مطابق + حدث جديد → يُرقّى في الحقول الدلالية فقط، لا يُنشأ توأم، وتبقى
@@ -2485,7 +2601,8 @@ frontend/src/
     (`targetLawyerId: null`).
   - يُحدَّث mock `/alerts/by-delegation/9` إلى `HeadAlertSummaryDto` مع `kind`/`messagePreview`.
 - `AccountPage.test.tsx`:
-  - رئيس/شعبة: يطلب `/alerts/unread-count` ولا يطلب `/alerts`، ويعرض «تنبيهاتك غير المقروءة».
+  - رئيس/شعبة: يطلب `/alerts/unread-count?scope=received` ولا يطلب `/alerts`، ويعرض «غير المقروء في
+    تنبيهاتك»؛ ومحامٍ: يطلب `scope=user` (`D6`).
   - مدير/مشرف: لا يطلب `/alerts` ولا `/alerts/unread-count`، ويعرض رابط «التنبيهات».
 - `App.test.tsx`:
   - المسار `/alerts` محمي بالأدوار الخمسة، وغير موجود في الشريط الجانبي.
@@ -2538,7 +2655,7 @@ frontend/src/
 ### المرحلة 2 — الكود والبيانات (PR-2: `Backfill` + Outbox Code)
 
 - تعديل `HeadAlertService` (Manual/System، `ManualKindFor`, `LastContentChangedAt`, أرشفة عبر
-  `archiveKinds` و`HeadAlertSupersedePlan`, reset read, recipients, `GetByIdForActorAsync` مع المنشئ).
+  `archiveKinds` و`HeadAlertSupersedePlan`, reset read, recipients, `GetDetailsAsync` مع المنشئ).
 - **`CreateSystemAsync` معالج Outbox فقط**: يتطلب `ITransactionContext.HasActiveTransaction`، يضبط
   `CreatedById` من الطلب، ينشئ/يحدّث التنبيه ويحدّث صف Outbox في المعاملة نفسها، ويعيد
   `Created|Updated|Unchanged|Stale`. لا معاملة مستقلة ولا استدعاء من خدمة.
@@ -2612,6 +2729,20 @@ frontend/src/
 
 ### المرحلة 6 — التنظيف (PR-6)
 
+**بنود ملزمة صريحة من `PR-4` (لا تُترك مفتوحة — مصدرها `D5`/`D6`/`D9`/`P3-12`):**
+
+1. **إزالة العدّادين من التفاصيل:** حذف `RecipientCount`/`UnreadCount` من `HeadAlertDto` (والوسم
+   «محتفظ مؤقتًا») بعد أن تتوقف الواجهة عن عقد التفاصيل القديم، مع تحديث `head-alert-contracts.json`
+   (نقل الحقلين من `retainedHeadAlertDetail`) واختبار العقد. اختبار `Detail_RetainsCounters_…_UntilPR6`
+   يُستبدل باختبار يثبت غيابهما — لا يبقى `UntilPR6` بعد `PR-6`.
+2. **إزالة `normalizer` إن وُجد:** إن اختير `D10=normalizer` فيُحذف مع اختبار يثبت أن الواجهة لا تقبل
+   الشكل القديم بعد الإزالة (وإن اختير `atomic` فلا يُنشأ أصلًا).
+3. **حسم نطاق شارة الرئيس:** هل تبقى تجميعية (`scope=received`) أم تصير `user` بعد إزالة عدّادات
+   التفاصيل؟ وعند التحول إلى `user` في القائمة يكون `unreadOnly=true`: يُحذف النطاق `received` من
+   `AlertUnreadScope` والمتحكم والخدمة والمستودع، مع اختبار يثبت رفضه (`400`) — `D6`/`ح‑26`.
+
+**بقية بنود التنظيف:**
+
 - إزالة الجسر الانتقالي بعد تحقق معيار §6.5 (إطفاء `Flag` أولًا ثم حذف الكود).
 - إزالة الكود الميت والمساعدات التي لم تعد مستخدمة، وتحديث `docs/`.
 - `dotnet test`، `npx oxlint src`، `npx tsc -b`، `npx vitest run`، `npm run build`.
@@ -2642,6 +2773,13 @@ frontend/src/
 العقد القديم حتى نشر `PR-5`. ويشمل الاقتران تغيير جسم `POST /alerts` من `HeadAlertDto` إلى
 `HeadAlertSummaryDto` (المستدعيان الحاليان يتجاهلان الجسم، لكنه سطح عقد رابع يُعلَن صراحةً). لا يُعتمد
 على «سيُحدَّث الواجهة قريبًا».
+
+**ترتيب النشر ووحدة التراجع (حسب `D10` — يُحسم قبل المرحلة 8):**
+
+- `D10=normalizer`: تُنشر **الواجهة أولًا** (تتحمل الشكلين)، ثم الخلفية؛ والتراجع بالعكس.
+- `D10=atomic`: نشر واحد متزامن (الخادم ثم الواجهة فورًا، بلا نافذة بينهما)؛ **وحدة التراجع = الزوج**.
+  تراجع الواجهة وحدها أو الخلفية وحدها يكسر القائمة/النص.
+- لا يُدمج `PR-4` قبل جهوزية `PR-5`، ولا يُنشر بينهما بفاصل. التفصيل التشغيلي في `RUN_GUIDE.md` §9.
 
 أي PR يخلط مرحلتين، أو يتجاوز حدوده، يُرفض في المراجعة ولو كان «أسرع». كل PR يمر ببوابات الجودة
 كاملة قبل الدمج (`dotnet test`، `npx oxlint src`، `npx tsc -b`، `npx vitest run`، `npm run build`).
@@ -2866,10 +3004,10 @@ frontend/src/
 - [ ] قوائم `/alerts` و`/sent` و`by-delegation` تعيد `messagePreview` و`messageLength` و
       `previewTruncated` فقط، ولا تحمل `Message` كاملًا ولا `hasFullMessage`.
 - [ ] `GET /alerts/{id}` يعيد النص الكامل للمستلم أو المنشئ أو الإشراف فقط، و`404` لغير المصرح.
-- [ ] ترقيم الصفحات إلزامي، و`pageSize` لا يتجاوز 100؛ ويشمل `ListForOversightAsync` للمدير/المشرف
+- [ ] ترقيم الصفحات إلزامي، و`pageSize` لا يتجاوز 100؛ ويشمل `ListSummariesForOversightAsync` للمدير/المشرف
       بلا `Take(500)`، مع `TotalCount` وإسقاط ملخصات.
-- [ ] `AccountPage` يعرض «تنبيهاتك غير المقروءة» من `/alerts/unread-count` (عدّاد شخصي) للمحامي/الرئيس/
-      الشعبة، ولا يعرض عدّادًا للمدير/المشرف، ويعرض لهما رابط `/alerts`.
+- [ ] `AccountPage` يعرض «غير المقروء في تنبيهاتك» من `/alerts/unread-count` للمحامي (`scope=user`) وللرئيس/
+      الشعبة (`scope=received` — `D6`)، ولا يعرض عدّادًا للمدير/المشرف، ويعرض لهما رابط `/alerts`.
 - [ ] النص الطويل (12,000 حرف) يُقرأ كاملًا في `AlertDetailsSheet` على الجوال بلا قصّ/تمرير أفقي.
 - [ ] كل أهداف اللمس `min-h-11`، وحوارات الوصول تعمل (ESC/تركيز/قفل تمرير).
 - [ ] تعميمات الجهات الثمانية معتمدة ومختبرة.
