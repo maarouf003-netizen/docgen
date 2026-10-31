@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { DelegationStatusCard } from './DelegationStatusCard';
 import type { DocumentResponse } from '../../types';
+import { makeHeadAlertSummary } from '../../test/factories';
 
 vi.mock('../../api/client', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/client')>();
@@ -38,9 +39,21 @@ describe('DelegationStatusCard', () => {
     expect(screen.getByText('تريث')).toBeInTheDocument();
   });
 
-  it('يعرض تنبيهات المرآة داخل البطاقة', async () => {
+  it('يعرض تنبيهات المرآة داخل البطاقة من `PagedResult` بمعاينتها', async () => {
     vi.mocked(api.get).mockResolvedValue({
-      data: [{ id: 1, message: 'حدّث المنيب بيانات السند', createdAt: '2026-08-02T10:00:00Z' }],
+      data: {
+        items: [
+          makeHeadAlertSummary({
+            id: 1,
+            kind: 'delegation_mirror_updated',
+            messagePreview: 'حدّث المنيب بيانات السند',
+          }),
+        ],
+        page: 1,
+        perPage: 100,
+        totalCount: 1,
+        totalPages: 1,
+      },
     });
     render(<DelegationStatusCard doc={doc('تريث')} delegationId={9} />);
 

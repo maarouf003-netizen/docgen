@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
+import { ALERTS_PAGE_SIZE, readAlertsPage } from '../api/alerts';
 import { useAuth } from '../auth/useAuth';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { useReminderCancellation } from '../hooks/useReminderCancellation';
 import type {
   AppealReminderDto,
   ExecutionCircuitDto,
-  HeadAlertDto,
+  HeadAlertSummaryDto,
   HeadAlertTargetType,
   LawyerListItem,
+  PagedResult,
   PendingRegistrationDto,
   PersonalReminderDto,
   ReminderDto,
@@ -28,6 +30,18 @@ import { CORRESPONDENCE_UNSEEN_EVENT } from '../components/correspondence/corres
 import { REVIEWS_UNSEEN_EVENT } from '../components/review/reviewDisplay';
 import { useBadgeCount } from '../hooks/useBadgeCount';
 import { ReminderList } from '../components/dashboard/ReminderList';
+
+/**
+ * سطر «المزيد» أسفل قائمة التنبيهات: يظهر عندما يتجاوز `totalCount` ما حُمّل في
+ * الصفحة الواحدة (`pageSize=100`) — فلا قصّ صامت بعد تحويل الأسطح إلى `PagedResult`.
+ */
+function AlertsMoreRow({ shown, total }: { shown: number; total: number }) {
+  return (
+    <p className="px-4 sm:px-5 py-3 text-xs text-gray-500 tabular-nums border-t border-gray-100">
+      يُعرض {shown} من أصل {total} تنبيهًا — الأحدث أولًا
+    </p>
+  );
+}
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -76,8 +90,14 @@ export default function Dashboard() {
   const { cancellingKey, actionError, cancelReminder, cancelAppealReminder } =
     useReminderCancellation(remindersQuery, appealRemindersQuery);
 
-  const alertsQuery = useCancellableRequest<HeadAlertDto[]>(
-    (signal) => api.get('/alerts', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
+  // قوائم التنبيهات مرقّمة (`PagedResult<HeadAlertSummaryDto>`) — معاينة فقط بلا نص كامل.
+  // `pageSize=100` صريح: الافتراضي الخلفي `50` كان يقصّ القائمة صامتًا، و`totalCount`
+  // يغذّي سطر «المزيد» فلا قصّ صامت فوق الصفحة الواحدة (الخطة §4.2 البند 16).
+  const alertsQuery = useCancellableRequest<PagedResult<HeadAlertSummaryDto>>(
+    (signal) =>
+      api
+        .get('/alerts', { signal, params: { pageSize: ALERTS_PAGE_SIZE } })
+        .then((r) => readAlertsPage(r.data)),
     [],
     { enabled: userReady && !isManager },
   );
@@ -86,16 +106,26 @@ export default function Dashboard() {
   // المستلَمات حتى لا يختلط المُرسَل بالمستلَم ولا يُطالب بتعليم مقروء.
   const [alertsTab, setAlertsTab] = useState<'received' | 'sent'>('received');
   const [sentFlash, setSentFlash] = useState('');
-  const sentQuery = useCancellableRequest<HeadAlertDto[]>(
-    (signal) => api.get('/alerts/sent', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
+  const sentQuery = useCancellableRequest<PagedResult<HeadAlertSummaryDto>>(
+    (signal) =>
+      api
+        .get('/alerts/sent', { signal, params: { pageSize: ALERTS_PAGE_SIZE } })
+        .then((r) => readAlertsPage(r.data)),
     [isHeadOrSubHead],
     { enabled: headBadgesEnabled },
   );
 
+  // شارة غير المقروء بنطاق صريح (`D6`/`D7`): المحامي صفوفه الشخصية (`user`) بلا قيد
+  // فرع، والرئيس/الشعبة ما استلمه في فرعه (`received`) — القاعدة نفسها في `AccountPage`
+  // فلا تُنتج الشاشتان رقمين مختلفين لنفس الدور.
+  const unreadScope = isHeadOrSubHead ? 'received' : 'user';
   const unreadQuery = useCancellableRequest<{ count: number }>(
-    (signal) => api.get('/alerts/unread-count', { signal }).then((r) => r.data),
-    [isLawyer],
-    { enabled: userReady && !isManager && isLawyer },
+    (signal) =>
+      api
+        .get('/alerts/unread-count', { signal, params: { scope: unreadScope } })
+        .then((r) => r.data),
+    [unreadScope],
+    { enabled: userReady && !isManager && (isLawyer || headBadgesEnabled) },
   );
 
   const branchLawyersQuery = useCancellableRequest<LawyerListItem[]>(
@@ -183,9 +213,19 @@ export default function Dashboard() {
   const reminders = useMemo(() => remindersQuery.data ?? [], [remindersQuery.data]);
   const appealReminders = useMemo(() => appealRemindersQuery.data ?? [], [appealRemindersQuery.data]);
   const personalReminders = useMemo(() => personalQuery.data ?? [], [personalQuery.data]);
-  const alerts = useMemo(() => alertsQuery.data ?? [], [alertsQuery.data]);
+  const alerts = useMemo(() => alertsQuery.data?.items ?? [], [alertsQuery.data]);
+  const sentAlerts = useMemo(() => sentQuery.data?.items ?? [], [sentQuery.data]);
+  const alertsTotal = alertsQuery.data?.totalCount ?? 0;
+  const sentTotal = sentQuery.data?.totalCount ?? 0;
+  // التبويب الظاهر وحده يحدد المعروض والإجمالي وسطر «المزيد» (لا قصّ صامت فوق 100).
+  const activeAlerts = alertsTab === 'received' ? alerts : sentAlerts;
+  const activeTotal = alertsTab === 'received' ? alertsTotal : sentTotal;
   const branchLawyers = useMemo(() => branchLawyersQuery.data ?? [], [branchLawyersQuery.data]);
   const unreadCount = Math.max(0, Number(unreadQuery.data?.count) || 0);
+  // شارة لوحة الرئيس: غير المقروء بنطاقه (`received` — `D6`/`D7`) في تبويب «مستلمة»،
+  // وإجمالي ما أصدره في فرعه في تبويب «أرسلتها».
+  const headBadgeText =
+    alertsTab === 'received' ? (unreadCount > 0 ? `${unreadCount} غير مقروء` : null) : String(sentTotal);
   const unseenReplies = isLawyer ? Math.max(0, Number(unseenRepliesQuery.data?.count) || 0) : 0;
   const urgentCorrespondence = isLawyer ? Math.max(0, Number(urgentQuery.data?.count) || 0) : 0;
   // بطاقة التذكيرات في اللوحة: الأسبوع الحالي فقط (من الأحد إلى السبت) —
@@ -234,13 +274,15 @@ export default function Dashboard() {
     personalQuery.refetch();
   };
 
-  const markAlertRead = async (a: HeadAlertDto) => {
+  const markAlertRead = async (a: HeadAlertSummaryDto) => {
     const key = String(a.id);
     setMarkingKey(key);
     setAlertsError('');
     try {
       await api.patch(`/alerts/${a.id}/read`);
-      alertsQuery.setData((prev) => (prev ?? []).map((x) => (x.id === a.id ? { ...x, isRead: true } : x)));
+      alertsQuery.setData((prev) =>
+        prev ? { ...prev, items: prev.items.map((x) => (x.id === a.id ? { ...x, isRead: true } : x)) } : prev,
+      );
       unreadQuery.setData((prev) => (prev ? { count: Math.max(0, prev.count - 1) } : prev));
     } catch (err) {
       setAlertsError(getApiErrorMessage(err));
@@ -271,7 +313,8 @@ export default function Dashboard() {
     setAlertSubmitting(true);
     setAlertFormError({ field: null, text: '' });
     try {
-      await api.post<HeadAlertDto>('/alerts', {
+      // عقد `POST /alerts` = `201` بجسم الملخص (D3) — النوع مرآة السلك لا `HeadAlertDto`.
+      await api.post<HeadAlertSummaryDto>('/alerts', {
         targetType: alertTargetType,
         documentId: null,
         targetLawyerId,
@@ -422,12 +465,13 @@ export default function Dashboard() {
           <AlertsPanel
             badge={
               unreadCount > 0 ? (
-                <span className="text-xs bg-red-100 text-red-800 rounded-full px-2 py-0.5 font-medium">
+                <span className="text-xs bg-red-100 text-red-800 rounded-full px-2 py-0.5 font-medium tabular-nums">
                   {unreadCount} غير مقروء
                 </span>
               ) : null
             }
             headerExtra={<span className="text-xs text-gray-400">الأحدث أولاً</span>}
+            footer={alertsTotal > alerts.length ? <AlertsMoreRow shown={alerts.length} total={alertsTotal} /> : null}
             error={alertsError || alertsQuery.error || ''}
             alerts={alerts}
             onMarkRead={markAlertRead}
@@ -459,9 +503,11 @@ export default function Dashboard() {
           </div>
           <AlertsPanel
             badge={
-              <span className="text-xs bg-emerald-100 text-emerald-800 rounded-full px-2 py-0.5 font-medium tabular-nums">
-                {alertsTab === 'received' ? alerts.length : (sentQuery.data ?? []).length}
-              </span>
+              headBadgeText === null ? null : (
+                <span className="text-xs bg-emerald-100 text-emerald-800 rounded-full px-2 py-0.5 font-medium tabular-nums">
+                  {headBadgeText}
+                </span>
+              )
             }
             headerExtra={
               <button
@@ -490,7 +536,12 @@ export default function Dashboard() {
               ) : null
             }
             error={alertsError || alertsQuery.error || sentQuery.error || ''}
-            alerts={alertsTab === 'received' ? alerts : (sentQuery.data ?? [])}
+            footer={
+              activeTotal > activeAlerts.length ? (
+                <AlertsMoreRow shown={activeAlerts.length} total={activeTotal} />
+              ) : null
+            }
+            alerts={activeAlerts}
             sentView={alertsTab === 'sent'}
           />
         </>

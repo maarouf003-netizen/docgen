@@ -6,7 +6,7 @@ import { formatRoleScope } from '../auth/roleLabels';
 import { ChangePasswordForm } from '../components/ChangePasswordForm';
 import { SuggestionDialog } from '../components/SuggestionDialog';
 import { formatNumber } from '../components/dashboard/dashboardFormat';
-import type { AppSuggestionDto, HeadAlertDto, ManagerStatsDto, PersonalReminderDto } from '../types';
+import type { AppSuggestionDto, ManagerStatsDto, PersonalReminderDto } from '../types';
 
 /**
  * الحساب الشخصي (`/account` — محامٍ ورئيس قسم/شعبة ومدير/مشرف نظام):
@@ -14,10 +14,11 @@ import type { AppSuggestionDto, HeadAlertDto, ManagerStatsDto, PersonalReminderD
  * اقتراحات التطوير وسجلها (لمن يرسلها فقط).
  *
  * الملخص حسب الدور (الاستعلامات المحامية `403` لغيره — تُغلق صراحةً):
- * - المحامي: ملفاتي هذه السنة + تذكيراتي النشطة + تنبيهات غير مقروءة.
+ * - المحامي: ملفاتي هذه السنة + تذكيراتي النشطة + تنبيهات غير مقروءة (`scope=user`).
  * - رئيس القسم/الشعبة: ملفات نطاقه هذه السنة (`/stats/manager` — نطاقه إجباري خلفيًا) +
- *   مجموع مستلمي تنبيهات نطاقه غير القارئين (مجموع `unreadCount` عبر التنبيهات —
- *   أزواج (تنبيه × مستلم) لا أشخاصًا مميزين، وأبدًا `isRead` فهو `null` في عرض الرئيس) + اقتراحاتي.
+ *   غير المقروء في تنبيهاته (`unread-count?scope=received` — `D6`: مجموع صفوف
+ *   المستلمين غير القارئين على التنبيهات التي استلمها في فرعه، غير مرقّم، وأدقّ من
+ *   القائمة المعروضة لأنها صفحة واحدة) + اقتراحاتي.
  * - المدير/مشرف النظام: ملفات هذه السنة (`/stats/manager` العام) فقط —
  *   بلا تذكيرات (محامٍ فقط خلفيًا) ولا عدّادات تنبيهات (مستلم-محددة خلفيًا) ولا
  *   قسم اقتراحات (يستقبلانها في `/suggestions`، والإرسال محظور خلفيًا `403`).
@@ -31,6 +32,13 @@ export default function AccountPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [sentFlash, setSentFlash] = useState(false);
 
+  // رئيس بلا فرع (ورئيس شعبة بلا شعبة): `scope=received` مرفوض خلفيًا (`403` — `D11`)،
+  // فلا يُطلق الطلب أصلًا وتبقى البطاقة صفرًا بدل خطأ دائم في الملخص (نفس قاعدة `Dashboard`).
+  const headUnreadEnabled =
+    isHeadOrSubHead &&
+    (user?.branchId ?? null) != null &&
+    (user?.role !== 'subhead' || (user?.sectionId ?? null) != null);
+
   const statsQuery = useCancellableRequest<ManagerStatsDto>(
     (signal) =>
       api.get(isHeadOrSubHead || isManager ? '/stats/manager' : '/stats/me', { signal }).then((r) => r.data),
@@ -42,15 +50,16 @@ export default function AccountPage() {
     [],
     { enabled: userReady && isLawyer },
   );
+  // شارة غير المقروء بنطاق صريح (`D6`/`D7`): المحامي صفوفه (`user`)، والرئيس/الشعبة
+  // ما استلمه في فرعه (`received`) — النطاق نفسه في `Dashboard` (قاعدة المرحلة 8).
+  const unreadScope = isHeadOrSubHead ? 'received' : 'user';
   const unreadQuery = useCancellableRequest<{ count: number }>(
-    (signal) => api.get('/alerts/unread-count', { signal }).then((r) => r.data),
-    [],
-    { enabled: userReady && isLawyer },
-  );
-  const headAlertsQuery = useCancellableRequest<HeadAlertDto[]>(
-    (signal) => api.get('/alerts', { signal }).then((r) => (Array.isArray(r.data) ? r.data : [])),
-    [],
-    { enabled: userReady && isHeadOrSubHead },
+    (signal) =>
+      api
+        .get('/alerts/unread-count', { signal, params: { scope: unreadScope } })
+        .then((r) => r.data),
+    [unreadScope],
+    { enabled: userReady && !isManager && (isLawyer || headUnreadEnabled) },
   );
   // سجل «اقتراحاتي» للمرسلين فقط (محامٍ ورئيس) — شكل الاستجابة مصفوفة.
   // المدير/المشرف يستقبلان الصندوق المرقّم في `/suggestions` (شكل `PagedResult`
@@ -63,14 +72,16 @@ export default function AccountPage() {
 
   const suggestions = suggestionsQuery.data ?? [];
   const initials = (user?.fullName ?? '').trim().slice(0, 2) || '؟';
-  const branchUnread = (headAlertsQuery.data ?? []).reduce(
-    (sum, a) => sum + Math.max(0, Number(a.unreadCount) || 0),
-    0,
-  );
+  // رئيس بلا فرع: صفر مؤكد بدل `…` أبدي أو خطأ `403` متوقع.
+  const headUnread = headUnreadEnabled
+    ? unreadQuery.data
+      ? Number(unreadQuery.data.count) || 0
+      : null
+    : 0;
   const summaryError = isManager
     ? statsQuery.error
     : isHeadOrSubHead
-      ? (statsQuery.error ?? headAlertsQuery.error)
+      ? (statsQuery.error ?? unreadQuery.error)
       : (statsQuery.error ?? personalQuery.error ?? unreadQuery.error);
 
   return (
@@ -132,9 +143,9 @@ export default function AccountPage() {
               </div>
               {isManager ? null : isHeadOrSubHead ? (
                 <div className="rounded-xl bg-gray-50 px-2 py-3">
-                  <dt className="text-xs text-gray-500 mb-1">مجموع مستلمي تنبيهات النطاق غير القارئين</dt>
+                  <dt className="text-xs text-gray-500 mb-1">غير المقروء في تنبيهاتك</dt>
                   <dd className="text-xl font-bold text-gray-900 tabular-nums" dir="ltr">
-                    {headAlertsQuery.data ? formatNumber(branchUnread) : '…'}
+                    {headUnread == null ? '…' : formatNumber(headUnread)}
                   </dd>
                 </div>
               ) : (

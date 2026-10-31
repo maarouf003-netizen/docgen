@@ -1,13 +1,22 @@
 import { Link } from 'react-router-dom';
-import type { HeadAlertDto } from '../../types';
+import type { HeadAlertSummaryDto } from '../../types';
 import { TARGET_TYPE_BADGES, appealAwareTypeLabel } from './dashboardFormat';
 import { formatDateTime } from '../../utils/dates';
+import { AlertDetails } from './AlertDetails';
 
 /**
- * صف تنبيه واحد. يظهر زر «تمت القراءة» للمحامي فقط عبر onMarkRead،
- * وتظهر العدادات (غير مقروء/المجموع) لرئيس القسم فقط عند توفرها.
- * في عرض الصادر (`sentView` — تبويب «أرسلتها») تُستبدل شارة «مقروء»
- * بالعدّاد الصفري حتى لا يُقرأ «غير مقروء: 0» كغير مقروء.
+ * ملاحظة إعادة القيد (`HeadAlertKindCatalog.CircuitPendingDocuments`): كل محامٍ ×
+ * كل دائرة، مدمجة — تفتح صفحة معلقاته كاملة مجموعةً بالدوائر، لا ملفات بعينها.
+ * التوجيه بـ`kind` الدلالي لا ببادئة النص: `messagePreview` قد تُبتر ويتغيّر نصها.
+ */
+const CIRCUIT_PENDING_DOCUMENTS = 'circuit_pending_documents';
+
+/**
+ * صف تنبيه واحد من عقد الملخص (`HeadAlertSummaryDto`): يعرض `messagePreview` وحدها،
+ * والنص الكامل يُجلب عند الطلب من `AlertDetails` (`D12`). يظهر زر «تمت القراءة»
+ * للمحامي فقط عبر onMarkRead، وتظهر العدادات (غير مقروء/المجموع) لرئيس القسم فقط.
+ * في عرض الصادر (`sentView` — تبويب «أرسلتها») تُستبدل شارة «مقروء» بالعدّاد الصفري
+ * حتى لا يُقرأ «غير مقروء: 0» كغير مقروء.
  */
 export function AlertRow({
   alert,
@@ -15,52 +24,50 @@ export function AlertRow({
   markingKey,
   sentView = false,
 }: {
-  alert: HeadAlertDto;
-  onMarkRead?: (a: HeadAlertDto) => void;
+  alert: HeadAlertSummaryDto;
+  onMarkRead?: (a: HeadAlertSummaryDto) => void;
   markingKey?: string | null;
   sentView?: boolean;
 }) {
   const isMarking = markingKey === String(alert.id);
   return (
     <li key={alert.id}>
-      <div className="flex items-center gap-3 px-4 sm:px-5 py-3">
+      <div className="flex items-start gap-3 px-4 sm:px-5 py-3">
         <span
-          className={`shrink-0 w-2 h-2 rounded-full ${alert.isRead ? 'bg-gray-300' : 'bg-red-500'}`}
+          className={`shrink-0 w-2 h-2 mt-2 rounded-full ${alert.isRead ? 'bg-gray-300' : 'bg-red-500'}`}
           aria-hidden="true"
         />
         <div className="min-w-0 flex-1">
-          {/* تنبيه إعادة القيد (لكل محامٍ × دائرة، مدمج) يفتح صفحة معلقاته كلها
-              مجموعةً بالدوائر — لا ملفات بعينها. */}
-          {alert.message.startsWith('أحال لك رئيس القسم ملفات من دائرة ') ? (
+          {alert.kind === CIRCUIT_PENDING_DOCUMENTS ? (
             <Link
               to="/pending-registrations"
               className="block font-medium text-gray-800 hover:text-emerald-700 truncate"
             >
-              {alert.message}
+              {alert.messagePreview}
             </Link>
           ) : alert.reviewLetterId ? (
             <Link
               to={`/reviews/${alert.reviewLetterId}`}
               className="block font-medium text-gray-800 hover:text-emerald-700 truncate"
             >
-              {alert.message}
+              {alert.messagePreview}
             </Link>
           ) : alert.appealId ? (
             <Link
               to={`/appeals/${alert.appealId}`}
               className="block font-medium text-gray-800 hover:text-emerald-700 truncate"
             >
-              {alert.message}
+              {alert.messagePreview}
             </Link>
           ) : alert.documentId ? (
             <Link
               to={`/documents/${alert.documentId}`}
               className="block font-medium text-gray-800 hover:text-emerald-700 truncate"
             >
-              {alert.message}
+              {alert.messagePreview}
             </Link>
           ) : (
-            <p className="font-medium text-gray-800 leading-snug">{alert.message}</p>
+            <p className="font-medium text-gray-800 leading-snug break-words">{alert.messagePreview}</p>
           )}
           <p className="text-sm text-gray-500 mt-0.5 truncate">
             {alert.createdByName ?? 'رئيس القسم'} · {formatDateTime(alert.createdAt)}
@@ -79,6 +86,7 @@ export function AlertRow({
               </span>
             ) : null}
           </div>
+          <AlertDetails alertId={alert.id} previewTruncated={alert.previewTruncated} />
         </div>
         <div className="shrink-0 flex flex-col items-end gap-1.5">
           {onMarkRead && !alert.isRead ? (

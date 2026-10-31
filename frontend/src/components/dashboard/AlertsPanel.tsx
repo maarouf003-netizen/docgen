@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { HeadAlertDto } from '../../types';
+import type { HeadAlertSummaryDto } from '../../types';
 import { AlertRow } from './AlertRow';
 
 export interface AlertsPanelProps {
@@ -9,11 +9,13 @@ export interface AlertsPanelProps {
   headerExtra?: ReactNode;
   /** نموذج الإصدار — للرئيس فقط، يُعرض بين الترويسة وكتلة الخطأ. */
   form?: ReactNode;
+  /** تذييل أسفل القائمة — سطر «المزيد» عند تجاوز `totalCount` حدود الصفحة الواحدة. */
+  footer?: ReactNode;
   /** نص الخطأ (يُدمج خطأ الإجراء مع خطأ الاستعلام في اللوحة). */
   error: string;
-  alerts: HeadAlertDto[];
+  alerts: HeadAlertSummaryDto[];
   /** تعليم المقروء — للمحامي فقط (غيابه يُخفي الزر كما في صف الرئيس). */
-  onMarkRead?: (a: HeadAlertDto) => void;
+  onMarkRead?: (a: HeadAlertSummaryDto) => void;
   markingKey?: string | null;
   /** عرض الصادر (تبويب «أرسلتها»): يُظهر شارة «مقروء من الجميع» بدل العدّاد الصفري. */
   sentView?: boolean;
@@ -22,11 +24,13 @@ export interface AlertsPanelProps {
 /**
  * لوحة «تنبيهات رئيس القسم» المشتركة (محامٍ/رئيس): نفس الهيكل والنصوص
  * والأصناف — الاختلاف كله في الشارة والطرف الأيمن والنموذج وزر القراءة.
+ * الصفوف من عقد الملخص (`HeadAlertSummaryDto`): معاينة فقط، والنص الكامل عند الطلب.
  */
 export function AlertsPanel({
   badge,
   headerExtra,
   form,
+  footer,
   error,
   alerts,
   onMarkRead,
@@ -63,6 +67,8 @@ export function AlertsPanel({
           ))}
         </ul>
       )}
+
+      {footer}
     </div>
   );
 }

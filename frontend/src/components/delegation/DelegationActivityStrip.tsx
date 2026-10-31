@@ -1,25 +1,27 @@
 import { api } from '../../api/client';
+import { readAlertsPage } from '../../api/alerts';
 import { useCancellableRequest } from '../../hooks/useCancellableRequest';
-import type { HeadAlertDto } from '../../types';
+import type { HeadAlertSummaryDto, PagedResult } from '../../types';
 import { formatDateTime } from '../../utils/dates';
 
 /**
  * شريط حالة الإنابة (تنبيهات المرآة/المتابعة): يُعرض في بطاقة «حالة الإنابة» للمناب
  * فقط (حُذف من بطاقة «تشعبات الملف» للمنيب توحيدًا مع سطر «بانتظار الإتمام» البنفسجي —
  * كل حالاته مغطاة هناك بالشارة والسطر والأزرار)؛ ويُغذّى من
- * GET /alerts/by-delegation/{id} المتاح لأطراف الإنابة فقط.
+ * GET /alerts/by-delegation/{id} المتاح لأطراف الإنابة فقط، ويعيد `PagedResult`
+ * (`D1`) بملخصات بلا نص كامل — فالمعروض `messagePreview` وحدها.
  * الأحدث في الصدارة (بحد أقصى ثلاثة)، والخطأ/الفراغ لا يظهر شيئًا.
  */
 export function DelegationActivityStrip({ delegationId }: { delegationId: number }) {
-  const query = useCancellableRequest<HeadAlertDto[]>(
+  const query = useCancellableRequest<PagedResult<HeadAlertSummaryDto>>(
     (signal) =>
       api
-        .get<HeadAlertDto[]>(`/alerts/by-delegation/${delegationId}`, { signal })
-        .then((r) => (Array.isArray(r.data) ? r.data : [])),
+        .get(`/alerts/by-delegation/${delegationId}`, { signal })
+        .then((r) => readAlertsPage(r.data)),
     [delegationId],
   );
 
-  const alerts = (query.data ?? []).slice(0, 3);
+  const alerts = (query.data?.items ?? []).slice(0, 3);
   if (query.error || alerts.length === 0) return null;
 
   return (
@@ -28,7 +30,7 @@ export function DelegationActivityStrip({ delegationId }: { delegationId: number
       <ul className="space-y-1">
         {alerts.map((a) => (
           <li key={a.id} className="flex items-start justify-between gap-2 text-xs text-amber-900">
-            <span className="min-w-0 break-words">{a.message}</span>
+            <span className="min-w-0 break-words">{a.messagePreview}</span>
             <span className="shrink-0 text-[10px] text-amber-700 tabular-nums whitespace-nowrap">
               {formatDateTime(a.createdAt)}
             </span>

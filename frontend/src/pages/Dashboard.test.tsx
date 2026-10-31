@@ -5,8 +5,7 @@ import type { ReactNode } from 'react';
 import Dashboard from './Dashboard';
 import type {
   DashboardStatsDto,
-  HeadAlertDto,
-  HeadAlertTargetType,
+  HeadAlertSummaryDto,
   LawyerListItem,
   ManagerLawyerStatDto,
   ManagerStatsDto,
@@ -40,6 +39,7 @@ vi.mock('../api/client', async (importOriginal) => {
 import { api } from '../api/client';
 import { currentWeekRange } from '../components/dashboard/personalReminders';
 import { dueLabel } from '../components/dashboard/dashboardFormat';
+import { makeHeadAlertSummary } from '../test/factories';
 
 /**
  * تاريخ `yyyy-MM-dd` (بتوقيت الظهيرة المحلي — ثابت اليوم في كل المناطق)
@@ -138,46 +138,41 @@ const BRANCH_LAWYERS: LawyerListItem[] = [
   { id: 2, username: 'lawyer2', fullName: 'محامي دمشق', isActive: true, branchId: 1, branchName: 'الفرع الرئيسي - دمشق' },
 ];
 
-const LAWYER_ALERTS: HeadAlertDto[] = [
-  {
+const LAWYER_ALERTS: HeadAlertSummaryDto[] = [
+  makeHeadAlertSummary({
     id: 1,
-    message: 'راجع ملف القرض',
+    kind: 'manual_to_document',
+    messagePreview: 'راجع ملف القرض',
     targetType: 'document',
     documentId: 5,
     isRead: false,
     createdAt: '2026-08-01T10:00:00Z',
-    createdByName: 'رئيس القسم',
-  },
-  {
+  }),
+  makeHeadAlertSummary({
     id: 2,
-    message: 'تعميم اجتماع الفرع',
-    targetType: 'branch',
+    messagePreview: 'تعميم اجتماع الفرع',
     isRead: true,
     createdAt: '2026-07-20T10:00:00Z',
-    createdByName: 'رئيس القسم',
-  },
+  }),
 ];
 
-const HEAD_ALERTS: HeadAlertDto[] = [
-  {
+const HEAD_ALERTS: HeadAlertSummaryDto[] = [
+  makeHeadAlertSummary({
     id: 3,
-    message: 'تعميم يوم الأحد',
-    targetType: 'branch',
+    messagePreview: 'تعميم يوم الأحد',
     recipientCount: 2,
     unreadCount: 2,
-    createdAt: '2026-08-02T10:00:00Z',
-    createdByName: 'رئيس القسم',
-  },
-  {
+  }),
+  makeHeadAlertSummary({
     id: 1,
-    message: 'راجع ملف القرض',
+    kind: 'manual_to_document',
+    messagePreview: 'راجع ملف القرض',
     targetType: 'document',
     documentId: 5,
     recipientCount: 1,
     unreadCount: 0,
     createdAt: '2026-08-01T10:00:00Z',
-    createdByName: 'رئيس القسم',
-  },
+  }),
 ];
 
 function managerStatsFor(period?: string): ManagerStatsDto {
@@ -190,11 +185,25 @@ function managerStatsFor(period?: string): ManagerStatsDto {
   return MANAGER_STATS;
 }
 
+/** `PagedResult` كما يصل على السلك (`pageSize=100`) — الشكل الوحيد المقبول (`D10=atomic`). */
+function pageResult<T>(items: T[], totalCount = items.length) {
+  return {
+    items,
+    page: 1,
+    perPage: 100,
+    totalCount,
+    totalPages: Math.ceil(totalCount / 100),
+  };
+}
+
 function mockApi(overrides?: {
   reminders?: ReminderDto[];
   monthly?: [];
-  alerts?: HeadAlertDto[];
+  alerts?: HeadAlertSummaryDto[];
+  /** إجمالي غير المقروء في التنبيهات (`scope` حسب الدور في الطلب نفسه). */
   unreadCount?: number;
+  /** إجمالي صفوف قائمة المستلمات عند تجاوزه لعناصر الصفحة (اختبار «المزيد»). */
+  alertsTotal?: number;
   lawyers?: Array<{ id: number; fullName: string; isActive?: boolean }>;
   personal?: PersonalReminderDto[];
   pendingReviews?: number;
@@ -203,11 +212,13 @@ function mockApi(overrides?: {
   entityReviewCount?: number;
   circuits?: Array<{ id: number; name: string; pendingCount: number }>;
   pendingRegistrations?: Array<{ documentId: number }>;
-  sent?: Array<{ id: number; message: string; targetType: HeadAlertTargetType; recipientCount?: number; unreadCount?: number; createdAt: string; createdByName?: string }>;
+  sent?: HeadAlertSummaryDto[];
+  sentTotal?: number;
 }) {
   const reminders = overrides?.reminders ?? [];
   const monthly = overrides?.monthly ?? [];
   const alerts = overrides?.alerts ?? [];
+  const alertsTotal = overrides?.alertsTotal;
   const unreadCount = overrides?.unreadCount ?? 0;
   const lawyers = overrides?.lawyers ?? [];
   const personal = overrides?.personal ?? [];
@@ -218,14 +229,15 @@ function mockApi(overrides?: {
   const circuits = overrides?.circuits ?? [];
   const pendingRegistrations = overrides?.pendingRegistrations ?? [];
   const sent = overrides?.sent ?? [];
+  const sentTotal = overrides?.sentTotal;
   (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation(
     (url: string, config?: { params?: Record<string, unknown> }) => {
       if (url === '/dashboard') return Promise.resolve({ data: STATS });
       if (url === '/reminders') return Promise.resolve({ data: reminders });
       if (url === '/appeals/reminders') return Promise.resolve({ data: [] });
       if (url === '/personal-reminders') return Promise.resolve({ data: personal });
-      if (url === '/alerts') return Promise.resolve({ data: alerts });
-      if (url === '/alerts/sent') return Promise.resolve({ data: sent });
+      if (url === '/alerts') return Promise.resolve({ data: pageResult(alerts, alertsTotal) });
+      if (url === '/alerts/sent') return Promise.resolve({ data: pageResult(sent, sentTotal) });
       if (url === '/alerts/unread-count') return Promise.resolve({ data: { count: unreadCount } });
       if (url === '/users/lawyers') return Promise.resolve({ data: lawyers });
       if (url === '/monthly-stats') return Promise.resolve({ data: monthly });
@@ -298,8 +310,11 @@ describe('Dashboard للمحامي', () => {
     expect(api.get).toHaveBeenCalledWith('/review-letters/unseen-replies-count', expect.any(Object));
     expect(api.get).toHaveBeenCalledWith('/correspondence/urgent-unseen-count', expect.any(Object));
     expect(api.get).toHaveBeenCalledWith('/reminders', expect.any(Object));
-    expect(api.get).toHaveBeenCalledWith('/alerts', expect.any(Object));
-    expect(api.get).toHaveBeenCalledWith('/alerts/unread-count', expect.any(Object));
+    expect(api.get).toHaveBeenCalledWith('/alerts', expect.objectContaining({ params: { pageSize: 100 } }));
+    expect(api.get).toHaveBeenCalledWith(
+      '/alerts/unread-count',
+      expect.objectContaining({ params: { scope: 'user' } }),
+    );
     expect(api.get).not.toHaveBeenCalledWith('/users/lawyers', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/dashboard');
     expect(api.get).not.toHaveBeenCalledWith('/monthly-stats');
@@ -541,6 +556,22 @@ describe('Dashboard للمحامي', () => {
     expect(screen.getByText('مقروء')).toBeInTheDocument();
   });
 
+  it('يطلب صفحة 100 ويعرض سطر «المزيد» عند تجاوز الإجمالي حدود الصفحة', async () => {
+    mockApi({ alerts: LAWYER_ALERTS, alertsTotal: 137 });
+
+    render(<Dashboard />);
+
+    expect(
+      await screen.findByText('يُعرض 2 من أصل 137 تنبيهًا — الأحدث أولًا'),
+    ).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith(
+      '/alerts',
+      expect.objectContaining({ params: { pageSize: 100 } }),
+    );
+    // بلا تجاوز لا سطر «المزيد» (لا مؤشر كاذب).
+    expect(screen.queryByText(/من أصل 2 تنبيهًا/)).not.toBeInTheDocument();
+  });
+
   it('يعلم المحامي التنبيه كمقروء ويخفض العداد', async () => {
     const user = userEvent.setup();
     mockApi({ alerts: LAWYER_ALERTS, unreadCount: 1 });
@@ -610,7 +641,7 @@ describe('Dashboard لرئيس القسم', () => {
     expect(api.get).toHaveBeenCalledWith('/entity-registry/pending-review-count');
     expect(api.get).not.toHaveBeenCalledWith('/delegations/pending', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/entity-registry/pending-review', expect.any(Object));
-    expect(api.get).toHaveBeenCalledWith('/alerts', expect.any(Object));
+    expect(api.get).toHaveBeenCalledWith('/alerts', expect.objectContaining({ params: { pageSize: 100 } }));
     expect(api.get).toHaveBeenCalledWith('/users/lawyers', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/stats/manager', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/stats/periods', expect.any(Object));
@@ -618,9 +649,44 @@ describe('Dashboard لرئيس القسم', () => {
     expect(api.get).not.toHaveBeenCalledWith('/reminders', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/branches', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/dashboard');
-    expect(api.get).not.toHaveBeenCalledWith('/alerts/unread-count', expect.any(Object));
+    // الشارة بنطاق الرئيس الصريح (`received`) — لا الافتراضي `user` ولا جمع فروعه.
+    expect(api.get).toHaveBeenCalledWith(
+      '/alerts/unread-count',
+      expect.objectContaining({ params: { scope: 'received' } }),
+    );
     expect(screen.queryByText('عدد المقترضين')).not.toBeInTheDocument();
   });
+
+  it.each([
+    { role: 'head', sectionId: undefined },
+    { role: 'subhead', sectionId: 4 },
+  ] as const)(
+    'شارة غير المقروء لدور $role من `scope=received` وليست عدد عناصر الصفحة',
+    async ({ role, sectionId }) => {
+      useAuthMock.mockReturnValue({
+        user: { id: 1, username: 'head1', fullName: 'رئيس', role, branchId: 1, sectionId },
+      });
+      mockApi({
+        alerts: HEAD_ALERTS,
+        alertsTotal: 250,
+        unreadCount: 5,
+        lawyers: BRANCH_LAWYERS,
+      });
+
+      render(<Dashboard />);
+
+      // الشارة تجميعية غير مرقّمة (5) لا طول الصفحة (2) ولا إجمالي القائمة (250).
+      expect(await screen.findByText('5 غير مقروء')).toBeInTheDocument();
+      expect(api.get).toHaveBeenCalledWith(
+        '/alerts/unread-count',
+        expect.objectContaining({ params: { scope: 'received' } }),
+      );
+      // ولا قصّ صامت: الإجمالي يظهر في سطر «المزيد».
+      expect(
+        await screen.findByText('يُعرض 2 من أصل 250 تنبيهًا — الأحدث أولًا'),
+      ).toBeInTheDocument();
+    },
+  );
 
   it('يُظهر شارة معلقات الدوائر لرئيس القسم بعدّادها', async () => {
     useAuthMock.mockReturnValue({
@@ -821,27 +887,28 @@ describe('Dashboard لرئيس القسم', () => {
     });
     mockApi({
       alerts: [
-        {
+        makeHeadAlertSummary({
           id: 1,
-          message: 'وارد من النظام',
+          kind: 'delegation_pending_approval',
+          messagePreview: 'وارد من النظام',
           targetType: 'head',
           recipientCount: 1,
           unreadCount: 1,
           createdAt: '2026-08-03T10:00:00Z',
           createdByName: 'النظام',
-        },
+        }),
       ],
       lawyers: BRANCH_LAWYERS,
       sent: [
-        {
+        makeHeadAlertSummary({
           id: 9,
-          message: 'تعميم صادر مني',
-          targetType: 'branch',
+          kind: 'manual_to_branch',
+          messagePreview: 'تعميم صادر مني',
           recipientCount: 2,
           unreadCount: 0,
           createdAt: '2026-08-04T10:00:00Z',
           createdByName: 'رئيس',
-        },
+        }),
       ],
     });
 
@@ -856,7 +923,10 @@ describe('Dashboard لرئيس القسم', () => {
     expect(screen.queryByText('وارد من النظام')).not.toBeInTheDocument();
     // الصادر قراءة فقط: لا زر «تمت القراءة» (تعليمه 404 خلفيًا).
     expect(screen.queryByRole('button', { name: 'تمت القراءة' })).not.toBeInTheDocument();
-    expect(api.get).toHaveBeenCalledWith('/alerts/sent', expect.any(Object));
+    expect(api.get).toHaveBeenCalledWith(
+      '/alerts/sent',
+      expect.objectContaining({ params: { pageSize: 100 } }),
+    );
     // الكل قرأ: شارة صريحة بدل العدّاد الصفري المضلل.
     expect(screen.getByText('مقروء من الجميع')).toBeInTheDocument();
   });
@@ -887,7 +957,7 @@ describe('Dashboard لرئيس القسم', () => {
       user: { id: 1, username: 'head1', fullName: 'رئيس', role: 'head', branchId: null },
     });
     (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
-      if (url === '/alerts') return Promise.resolve({ data: [] });
+      if (url === '/alerts') return Promise.resolve({ data: pageResult([]) });
       if (url === '/users/lawyers') return Promise.resolve({ data: [] });
       return Promise.reject(new Error('400 رئيس القسم دون فرع'));
     });
@@ -900,6 +970,8 @@ describe('Dashboard لرئيس القسم', () => {
     expect(api.get).not.toHaveBeenCalledWith('/correspondence/urgent-unseen-count', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/delegations/pending-count', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/entity-registry/pending-review-count', expect.any(Object));
+    // رئيس بلا فرع مرفوض خلفيًا في `received` (`403` — `D11`): لا طلب عدّاد أصلًا.
+    expect(api.get).not.toHaveBeenCalledWith('/alerts/unread-count', expect.any(Object));
     expect(screen.getByRole('link', { name: 'المطالعات' })).toHaveAttribute('href', '/reviews');
     expect(screen.getByRole('link', { name: 'المراسلات' })).toHaveAttribute('href', '/correspondence');
     expect(screen.getByRole('link', { name: 'طلبات الإنابة' })).toHaveAttribute(

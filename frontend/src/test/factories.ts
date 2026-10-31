@@ -1,4 +1,37 @@
-import type { DocumentResponse } from '../types';
+import type { DocumentResponse, HeadAlertDto, HeadAlertSummaryDto } from '../types';
+
+/**
+ * ملخّص تنبيه افتراضي مطابق لعقد الملخص (`headAlertSummary` في البيان المشترك):
+ * معاينة فقط بلا نص كامل، وكل حقل قابل للتجاوز. يُستخدم في اختبارات اللوحة
+ * والحساب وشريط الإنابة بدل تكرار 22 حقلًا في كل مِثال.
+ */
+export function makeHeadAlertSummary(overrides: Partial<HeadAlertSummaryDto> = {}): HeadAlertSummaryDto {
+  return {
+    id: 1,
+    kind: 'manual_to_branch',
+    messagePreview: 'تعميم اجتماع الفرع',
+    messageLength: 20,
+    previewTruncated: false,
+    targetType: 'branch',
+    documentId: null,
+    documentTitle: null,
+    targetLawyerId: null,
+    targetLawyerName: null,
+    isRead: null,
+    recipientCount: null,
+    unreadCount: null,
+    createdAt: '2026-08-02T10:00:00Z',
+    lastContentChangedAt: '2026-08-02T10:00:00Z',
+    createdByName: 'رئيس القسم',
+    appealId: null,
+    reviewLetterId: null,
+    delegationId: null,
+    executionCircuitId: null,
+    isArchived: false,
+    archivedAt: null,
+    ...overrides,
+  };
+}
 
 /** وثيقة افتراضية صالحة لاختبارات صفحات القوائم؛ كل حقل قابل للتجاوز جزئيًا أو كليًا. */
 export function makeDocument(overrides: Partial<DocumentResponse> = {}): DocumentResponse {
@@ -60,4 +93,36 @@ export function makeExecutedDocument(overrides: Partial<DocumentResponse> = {}):
     executedNaturalPersons: [{ name: 'محمود', father: 'علي', family: 'حسن' }],
     ...overrides,
   });
+}
+
+/**
+ * تفاصيل تنبيه افتراضية مطابقة لعقد التفاصيل (`headAlertDetail` + `retainedHeadAlertDetail`):
+ * العقد الوحيد الذي يحمل `message` كاملًا (`GET /alerts/{id}`)، وكل حقل قابل للتجاوز.
+ */
+export function makeHeadAlertDetail(overrides: Partial<HeadAlertDto> = {}): HeadAlertDto {
+  return {
+    id: 1,
+    kind: 'manual_to_branch',
+    message: 'نص التنبيه الكامل',
+    targetType: 'branch',
+    documentId: null,
+    documentTitle: null,
+    targetLawyerId: null,
+    targetLawyerName: null,
+    delegationId: null,
+    appealId: null,
+    reviewLetterId: null,
+    publicEntityId: null,
+    executionCircuitId: null,
+    createdAt: '2026-08-02T10:00:00Z',
+    lastContentChangedAt: '2026-08-02T10:00:00Z',
+    isArchived: false,
+    archivedAt: null,
+    createdByName: 'رئيس القسم',
+    isRead: null,
+    canViewRecipients: false,
+    recipientCount: null,
+    unreadCount: null,
+    ...overrides,
+  };
 }

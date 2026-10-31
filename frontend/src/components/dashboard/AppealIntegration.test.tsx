@@ -6,8 +6,8 @@ import { FileNumber } from '../../pages/DocumentsList';
 import { ReminderList } from './ReminderList';
 import { AlertRow } from './AlertRow';
 import { appealAwareTypeLabel } from './dashboardFormat';
-import { makeDocument } from '../../test/factories';
-import type { AppealReminderDto, DocumentResponse, HeadAlertDto, ReminderDto } from '../../types';
+import { makeDocument, makeHeadAlertSummary } from '../../test/factories';
+import type { AppealReminderDto, DocumentResponse, ReminderDto } from '../../types';
 
 describe('تكامل الاستئنافات مع اللوحة والقائمة', () => {
   it('شارة «استئناف» تظهر للملف المستأنف وتربط بتفاصيل استئنافه، ولا تظهر لغيره', () => {
@@ -70,14 +70,15 @@ describe('تكامل الاستئنافات مع اللوحة والقائمة',
   });
 
   it('AlertRow المرتبط باستئناف يفتح تفاصيل الاستئناف لا الملف', () => {
-    const alert = {
+    const alert = makeHeadAlertSummary({
       id: 3,
-      message: 'أحال إليك رئيس القسم استئناف لمتابعته أصولًا (ملف أحمد)',
+      kind: 'appeal_assigned_to_lawyer',
+      messagePreview: 'أحال إليك رئيس القسم استئناف لمتابعته أصولًا (ملف أحمد)',
       targetType: 'lawyer',
       documentId: 100,
       appealId: 12,
       createdAt: '2026-08-01T00:00:00Z',
-    } as unknown as HeadAlertDto;
+    });
 
     render(
       <MemoryRouter>

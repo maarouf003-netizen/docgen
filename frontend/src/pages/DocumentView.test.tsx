@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import DocumentView from './DocumentView';
 import type { DocumentResponse } from '../types';
+import { makeHeadAlertSummary } from '../test/factories';
 
 const useAuthMock = vi.hoisted(() => vi.fn());
 
@@ -2495,9 +2496,22 @@ await screen.findByText('بيانات الملف');
       }
       if (url === '/alerts/by-delegation/9') {
         return Promise.resolve({
-          data: [
-            { id: 1, message: 'حدّث المنيب بيانات السند', createdAt: '2026-08-02T10:00:00Z', delegationId: 9 },
-          ],
+          // `D1`: شريط الإنابة مرقّم يعيد `PagedResult` بملخصات (معاينة بلا نص كامل).
+          data: {
+            items: [
+              makeHeadAlertSummary({
+                id: 1,
+                kind: 'delegation_mirror_updated',
+                messagePreview: 'حدّث المنيب بيانات السند',
+                delegationId: 9,
+                createdAt: '2026-08-02T10:00:00Z',
+              }),
+            ],
+            page: 1,
+            perPage: 100,
+            totalCount: 1,
+            totalPages: 1,
+          },
         });
       }
       return Promise.resolve({ data: { ...mockDoc, createdById: 7 } });

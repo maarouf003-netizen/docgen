@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { AlertRow } from './AlertRow';
-import type { HeadAlertDto } from '../../types';
+import { makeHeadAlertSummary } from '../../test/factories';
 
 vi.mock('react-router-dom', () => ({
   Link: ({ children, to, ...rest }: { children: React.ReactNode; to: string } & Record<string, unknown>) => (
@@ -11,35 +11,68 @@ vi.mock('react-router-dom', () => ({
   ),
 }));
 
-function pendingAlert(): HeadAlertDto {
-  return {
+// `AlertDetails` لا يُستدعى هنا (المعاينة غير مقطوعة في الأمثلة) — والجلب عند الطلب
+// له اختباره المستقل، فلا حاجة لتهيئة `api` في هذا الملف.
+const PENDING_PREVIEW = 'أحال لك رئيس القسم ملفات من دائرة دمشق الأولى — يرجى تحديث معلوماتها';
+
+function pendingAlert() {
+  return makeHeadAlertSummary({
     id: 5,
-    message: 'أحال لك رئيس القسم ملفات من دائرة دمشق الأولى — يرجى تحديث معلوماتها',
+    kind: 'circuit_pending_documents',
+    messagePreview: PENDING_PREVIEW,
     targetType: 'lawyer',
     documentId: 7,
-    documentTitle: null,
     targetLawyerId: 3,
-    targetLawyerName: undefined,
     isRead: false,
-    recipientCount: undefined,
-    unreadCount: undefined,
-    createdAt: '2026-08-02T10:00:00Z',
-    createdByName: 'رئيس القسم',
-  };
+  });
 }
 
 describe('AlertRow', () => {
-  it('تنبيه إعادة القيد يفتح صفحة المعلقات لا الملف المفرد', async () => {
+  it('تنبيه إعادة القيد يفتح صفحة المعلقات لا الملف المفرد — بالدلالة `kind` لا بالنص', async () => {
     render(<AlertRow alert={pendingAlert()} />);
 
     // رغم وجود documentId، تنبيه (محامٍ × دائرة) المدمج يفتح صفحة معلقاته كلها.
-    expect(
-      screen.getByRole('link', { name: pendingAlert().message }),
-    ).toHaveAttribute('href', '/pending-registrations');
+    expect(screen.getByRole('link', { name: PENDING_PREVIEW })).toHaveAttribute(
+      'href',
+      '/pending-registrations',
+    );
+  });
+
+  it('نص يبدأ ببادئة «أحال لك…» بدون `kind` الدوائر لا يُوجّه إلى المعلقات', () => {
+    render(
+      <AlertRow
+        alert={makeHeadAlertSummary({
+          kind: 'manual_to_lawyer',
+          messagePreview: PENDING_PREVIEW,
+          targetType: 'lawyer',
+          documentId: null,
+        })}
+      />,
+    );
+
+    // التوجيه بالدلالة لا ببادئة نص قد تُبتر أو تتغيّر صياغتها.
+    expect(screen.queryByRole('link', { name: PENDING_PREVIEW })).not.toBeInTheDocument();
+    expect(screen.getByText(PENDING_PREVIEW)).toBeInTheDocument();
+  });
+
+  it('يعرض `messagePreview` وحدها ولا زر «عرض النص الكامل» عندما تكون المعاينة كاملة', () => {
+    render(<AlertRow alert={pendingAlert()} />);
+
+    expect(screen.getByText(PENDING_PREVIEW)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'عرض النص الكامل' })).not.toBeInTheDocument();
+  });
+
+  it('يعرض «عرض النص الكامل» عند `previewTruncated` فقط', () => {
+    render(<AlertRow alert={makeHeadAlertSummary({ previewTruncated: true })} />);
+
+    expect(screen.getByRole('button', { name: 'عرض النص الكامل' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
   });
 
   it('عرض الصادر: عدّاد صفري يظهر «مقروء من الجميع» بدل «غير مقروء: 0»', () => {
-    const sent = { ...pendingAlert(), isRead: undefined, recipientCount: 1, unreadCount: 0 };
+    const sent = { ...pendingAlert(), isRead: null, recipientCount: 1, unreadCount: 0 };
     const { rerender } = render(<AlertRow alert={sent} sentView />);
     expect(screen.getByText('مقروء من الجميع')).toBeInTheDocument();
     expect(screen.queryByText(/غير مقروء/)).not.toBeInTheDocument();

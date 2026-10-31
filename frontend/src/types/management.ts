@@ -255,25 +255,76 @@ export interface TransferAllRequest {
 
 export type HeadAlertTargetType = 'document' | 'lawyer' | 'branch' | 'head';
 
+/**
+ * عقد **التفاصيل** على السلك (`GET /api/alerts/{id}` — مرآة `HeadAlertDto` الخلفي،
+ * `docs/HEAD_ALERTS_RESTRUCTURE_PLAN.md` §9.2): العقد الوحيد الذي يحمل `message` كاملًا.
+ * `recipientCount`/`unreadCount` محتفظ بهما مؤقتًا حتى `PR-6`، و`canViewRecipients`
+ * يحكم قائمة المستلمين وحدها لا العدّادين.
+ *
+ * المفاتيح هنا ملزمة بالبيان المشترك `src/test/contracts/head-alert-contracts.json`
+ * (كُتلة `headAlertDetail` + `retainedHeadAlertDetail`) ويحرسها `contract_sync_alerts.test.ts`.
+ */
 export interface HeadAlertDto {
   id: number;
+  kind: string;
   message: string;
   targetType: HeadAlertTargetType;
-  documentId?: number | null;
-  documentTitle?: string | null;
-  targetLawyerId?: number | null;
-  targetLawyerName?: string | null;
-  isRead?: boolean;
-  recipientCount?: number;
-  unreadCount?: number;
-  /** الاستئناف المرتبط بالتنبيه — للانتقال المباشر إلى تفاصيله. */
-  appealId?: number;
+  documentId: number | null;
+  documentTitle: string | null;
+  targetLawyerId: number | null;
+  targetLawyerName: string | null;
   /** الإنابة المرتبطة بالتنبيه (تنبيهات المرآة/المتابعة) — لشريطي نشاط بطاقتي الإنابة. */
-  delegationId?: number | null;
+  delegationId: number | null;
+  /** الاستئناف المرتبط بالتنبيه — للانتقال المباشر إلى تفاصيله. */
+  appealId: number | null;
   /** كتاب المطالعة المرتبط (تنبيه الرد) — للانتقال المباشر إلى صفحة الكتاب. */
-  reviewLetterId?: number | null;
+  reviewLetterId: number | null;
+  publicEntityId: number | null;
+  executionCircuitId: number | null;
   createdAt: string;
-  createdByName?: string;
+  lastContentChangedAt: string;
+  isArchived: boolean;
+  archivedAt: string | null;
+  createdByName: string | null;
+  isRead: boolean | null;
+  canViewRecipients: boolean;
+  /** محتفظ به مؤقتًا (PR-6) — عدّاد مستلمي الصف كما في العقد السابق. */
+  recipientCount: number | null;
+  /** محتفظ به مؤقتًا (PR-6) — عدّاد غير المقروء كما في العقد السابق. */
+  unreadCount: number | null;
+}
+
+/**
+ * ملخّص تنبيه للقوائم (`GET /api/alerts`، `/sent`، `/by-delegation/{id}`) — لا يحمل
+ * النص الكامل أبدًا: `messagePreview` معاينة عرض واعية بـUnicode، و`previewTruncated`
+ * محسوب في الخادم (لا مقارنة أطوال في الواجهة)، والنص الكامل يُجلب عند الطلب
+ * من `GET /api/alerts/{id}` (`D12`).
+ *
+ * المفاتيح ملزمة بكتلة `headAlertSummary` في البيان المشترك ويحرسها `contract_sync_alerts.test.ts`.
+ */
+export interface HeadAlertSummaryDto {
+  id: number;
+  kind: string;
+  messagePreview: string;
+  messageLength: number;
+  previewTruncated: boolean;
+  targetType: HeadAlertTargetType;
+  documentId: number | null;
+  documentTitle: string | null;
+  targetLawyerId: number | null;
+  targetLawyerName: string | null;
+  isRead: boolean | null;
+  recipientCount: number | null;
+  unreadCount: number | null;
+  createdAt: string;
+  lastContentChangedAt: string;
+  createdByName: string | null;
+  appealId: number | null;
+  reviewLetterId: number | null;
+  delegationId: number | null;
+  executionCircuitId: number | null;
+  isArchived: boolean;
+  archivedAt: string | null;
 }
 
 /** تذكير إجراء على استئناف يتابعه المحامي (بطاقة التذكيرات). */
