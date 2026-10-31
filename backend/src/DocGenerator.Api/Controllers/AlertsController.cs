@@ -1,7 +1,6 @@
-using DocGenerator.Api.Authorization;
+using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
-using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -9,62 +8,82 @@ namespace DocGenerator.Api.Controllers;
 
 [ApiController]
 [Route("api/alerts")]
-// قرار المالك 2026-10-16: قراءة إشرافية للمدير/المشرف (القائمة والمفرد فقط) —
-// الكتابة (إصدار) والعدّادات والقراءة-تعليم تبقى مستلم-محددة (تُرفض لهما أدناه).
+// قرار المالك 2026-10-16: قراءة إشرافية للمدير/المشرف (القوائم والتفاصيل والمستلمون) —
+// الكتابة (إصدار) والعدّادات والقراءة-تعليم تبقى مستلم-محددة.
+//
+// قرار `D8` (مراجعة PR-4 `ح‑1`): هذا المتحكم يترجم HTTP فقط — لا فحص دور/فرع/طرف هنا
+// إطلاقًا، فالقرار كله في `HeadAlertService`: `ArgumentException` ⇒ 400،
+// `UnauthorizedAccessException` ⇒ 403. تكرار الفحص في الطبقتين هو ما جعل
+// `ListByDelegationAsync` آمنًا بحرس خارجي لا بعقده.
 [Authorize(Roles = "lawyer,head,subhead,manager,admin")]
 public class AlertsController : ControllerBase
 {
     private readonly IHeadAlertService _alerts;
-    private readonly IDocumentDelegationService _delegationParties;
 
-    public AlertsController(IHeadAlertService alerts, IDocumentDelegationService delegationParties)
-    {
-        _alerts = alerts;
-        _delegationParties = delegationParties;
-    }
+    public AlertsController(IHeadAlertService alerts) => _alerts = alerts;
 
     private string? ActorName => User.Identity?.Name;
 
-    private UserRole Role => User.GetRoleEnum();
-    private bool IsLawyer => Role == UserRole.Lawyer;
-    private bool IsHeadOrSubHead => RolePermissions.IsHeadOrSubHead(Role);
-    private bool IsManagerOrAdmin => Role is UserRole.Manager or UserRole.Admin;
-    private bool CanCreateAlerts => RolePermissions.CanCreateAlerts(Role);
+    /// <summary>سياق الفاعل من التوكن — تمرير بيانات فقط، لا قرار صلاحية.</summary>
+    private HeadAlertActor Actor => new(User.GetUserId(), User.GetRoleEnum(), User.GetBranchId());
 
     /// <summary>
     /// قائمة التنبيهات (§8: قراءة بالمستلم): المحامي تنبيهاته، ورئيس القسم/الشعبة
     /// ما استلمه في فرعه فقط، والمدير/المشرف قائمة الإشراف عبر الفروع (قراءة فقط).
+    /// ملخصات مرقّمة بلا نص كامل — النص الكامل عبر <c>GET /{id}</c> وحده.
     /// </summary>
     [HttpGet]
-    public async Task<IActionResult> List(CancellationToken ct)
+    public async Task<IActionResult> List(
+        [FromQuery] string? archived,
+        [FromQuery] bool unreadOnly,
+        [FromQuery] int? delegationId,
+        [FromQuery] int? page,
+        [FromQuery] int? pageSize,
+        CancellationToken ct)
     {
-        if (IsLawyer)
-            return Ok(await _alerts.ListForLawyerAsync(User.GetUserId(), ct));
-
-        if (IsHeadOrSubHead)
+        try
         {
-            var branchId = User.GetBranchId();
-            if (branchId is null)
-                return Forbid();
-            return Ok(await _alerts.ListForHeadAsync(User.GetUserId(), branchId.Value, ct));
+            var query = new HeadAlertListQuery
+            {
+                Archive = ParseArchiveFilter(archived),
+                UnreadOnly = unreadOnly,
+                DelegationId = delegationId,
+                Page = BuildPageRequest(page, pageSize),
+            };
+            return Ok(await _alerts.ListForActorAsync(Actor, query, ct));
         }
-
-        if (IsManagerOrAdmin)
-            return Ok(await _alerts.ListForOversightAsync(ct));
-
-        return Forbid();
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
     }
 
+    /// <summary>
+    /// عدّاد غير المقروء (`D6`/`D7`): <c>scope=user</c> (الافتراضي) لصفوف الفاعل نفسه —
+    /// المحامي بلا قيد فرع، ورئيس/شعبة داخل فرعه؛ و<c>scope=received</c> لرئيس/شعبة:
+    /// مجموع غير المقروء على التنبيهات التي استلمها في فرعه. المدير/المشرف ورئيس بلا
+    /// فرع يُرفضون في الخدمة (<c>403</c>)، وقيمة نطاق غير معروفة <c>400</c>.
+    /// </summary>
     [HttpGet("unread-count")]
-    public async Task<IActionResult> UnreadCount(CancellationToken ct)
+    public async Task<IActionResult> UnreadCount(
+        [FromQuery] string? scope, CancellationToken ct)
     {
-        // عدّاد غير المقروء خاص بالمستلم (محامٍ أو رئيس نطاق)؛ يُحسب على صفوفه.
-        if (IsLawyer || IsHeadOrSubHead)
+        try
         {
-            var count = await _alerts.CountUnreadAsync(User.GetUserId(), ct);
-            return Ok(new { count });
+            return Ok(new { count = await _alerts.CountUnreadAsync(Actor, ParseUnreadScope(scope), ct) });
         }
-        return Forbid();
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
     }
 
     /// <summary>
@@ -72,65 +91,66 @@ public class AlertsController : ControllerBase
     /// والشعبة بفرع — بلا زر تعليم مقروء (المُرسِل ليس مستلمًا).
     /// </summary>
     [HttpGet("sent")]
-    public async Task<IActionResult> Sent(CancellationToken ct)
+    public async Task<IActionResult> Sent(
+        [FromQuery] string? archived,
+        [FromQuery] int? page,
+        [FromQuery] int? pageSize,
+        CancellationToken ct)
     {
-        if (!IsHeadOrSubHead)
+        try
+        {
+            return Ok(await _alerts.ListSentAsync(
+                Actor, ParseArchiveFilter(archived), BuildPageRequest(page, pageSize), ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
             return Forbid();
-        var branchId = User.GetBranchId();
-        if (branchId is null)
-            return Forbid();
-        return Ok(await _alerts.ListSentAsync(User.GetUserId(), branchId.Value, ct));
+        }
     }
 
-    /// <summary>إصدار تنبيه — رئيس القسم لفرعه فقط.</summary>
+    /// <summary>إصدار تنبيه — رئيس القسم/الشعبة لفرعه فقط. يعيد <c>201</c> بملخص الصف (D3).</summary>
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateHeadAlertRequest request, CancellationToken ct)
     {
-        if (!CanCreateAlerts)
-            return Forbid();
-
-        var branchId = User.GetBranchId();
-        if (branchId is null)
-            return BadRequest(new { message = "رئيس القسم دون فرع لا يمكنه إصدار تنبيهات" });
-
         try
         {
-            var alert = await _alerts.CreateAsync(request, User.GetUserId(), branchId.Value, ActorName, ct);
+            var alert = await _alerts.CreateAsync(request, Actor, ActorName, ct);
             return CreatedAtAction(nameof(Get), new { id = alert.Id }, alert);
         }
         catch (ArgumentException e)
         {
             return BadRequest(new { message = e.Message });
         }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
     }
 
+    /// <summary>
+    /// تفاصيل كاملة للنص — المستلم بأولوية مطلقة (بلا شرط فرع)، ثم المنشئ، ثم
+    /// المدير/المشرف؛ غير ذلك <c>404</c> بلا تسريب وجود (D2/§12).
+    /// </summary>
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Get(int id, CancellationToken ct)
     {
-        if (IsLawyer)
-        {
-            var list = await _alerts.ListForLawyerAsync(User.GetUserId(), ct);
-            var alert = list.FirstOrDefault(a => a.Id == id);
-            return alert is null ? NotFound() : Ok(alert);
-        }
+        var alert = await _alerts.GetDetailsAsync(id, Actor, ct);
+        return alert is null ? NotFound() : Ok(alert);
+    }
 
-        if (IsHeadOrSubHead)
-        {
-            var branchId = User.GetBranchId();
-            if (branchId is null)
-                return Forbid();
-            var list = await _alerts.ListForHeadAsync(User.GetUserId(), branchId.Value, ct);
-            var alert = list.FirstOrDefault(a => a.Id == id);
-            return alert is null ? NotFound() : Ok(alert);
-        }
-
-        if (IsManagerOrAdmin)
-        {
-            var single = await _alerts.GetByIdAsync(id, ct);
-            return single is null ? NotFound() : Ok(single);
-        }
-
-        return Forbid();
+    /// <summary>
+    /// مستلمو التنبيه وحالة قراءتهم — للمنشئ أو المدير/المشرف فقط؛ غير ذلك
+    /// <c>404</c> بلا تسريب وجود (§9.3/§12).
+    /// </summary>
+    [HttpGet("{id:int}/recipients")]
+    public async Task<IActionResult> Recipients(int id, CancellationToken ct)
+    {
+        var recipients = await _alerts.GetRecipientsAsync(id, Actor, ct);
+        return recipients is null ? NotFound() : Ok(recipients);
     }
 
     /// <summary>
@@ -138,14 +158,27 @@ public class AlertsController : ControllerBase
     /// و«تشعبات الملف» بعلامة قراءةٍ بحسب المستخدم. محامي طرفٌ في الإنابة فقط.
     /// </summary>
     [HttpGet("by-delegation/{delegationId:int}")]
-    public async Task<IActionResult> ByDelegation(int delegationId, CancellationToken ct)
+    public async Task<IActionResult> ByDelegation(
+        int delegationId,
+        [FromQuery] int? page,
+        [FromQuery] int? pageSize,
+        CancellationToken ct)
     {
-        if (!IsLawyer)
+        try
+        {
+            // قرار D1: الافتراضي للشريط صفحة واحدة بحد أقصى 100 — والترقيم صارم.
+            // التحقق نفسه في الخدمة (بعد فحص الدور) كي لا يسبق 400 رفضَ الصلاحية.
+            var request = BuildPageRequest(page, pageSize, AlertPageRequest.MaxPageSize);
+            return Ok(await _alerts.ListByDelegationAsync(delegationId, Actor, request, ct));
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(new { message = e.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
             return Forbid();
-        var userId = User.GetUserId();
-        if (!await _delegationParties.IsPartyAsync(delegationId, userId, ct))
-            return Forbid();
-        return Ok(await _alerts.ListByDelegationAsync(delegationId, userId, ct));
+        }
     }
 
     /// <summary>
@@ -155,9 +188,47 @@ public class AlertsController : ControllerBase
     [HttpPatch("{id:int}/read")]
     public async Task<IActionResult> MarkRead(int id, CancellationToken ct)
     {
-        if (!IsLawyer && !IsHeadOrSubHead)
+        try
+        {
+            var ok = await _alerts.MarkReadAsync(id, Actor, ct);
+            return ok ? NoContent() : NotFound();
+        }
+        catch (UnauthorizedAccessException)
+        {
             return Forbid();
-        var ok = await _alerts.MarkReadAsync(id, User.GetUserId(), ct);
-        return ok ? NoContent() : NotFound();
+        }
     }
+
+    /// <summary>يقرأ فلتر الأرشفة من الاستعلام: <c>active|all|only</c> (الفارغ = active).</summary>
+    private static AlertArchiveFilter ParseArchiveFilter(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        null or "" or "active" => AlertArchiveFilter.Active,
+        "all" => AlertArchiveFilter.All,
+        "only" => AlertArchiveFilter.OnlyArchived,
+        _ => throw new ArgumentException("قيمة archived غير صالحة — استخدم active أو all أو only"),
+    };
+
+    /// <summary>
+    /// يقرأ نطاق عدّاد غير المقروء: الفارغ/<c>user</c> ⇒ <see cref="AlertUnreadScope.User"/>،
+    /// و<c>received</c> ⇒ <see cref="AlertUnreadScope.Received"/>؛ أي قيمة أخرى <c>400</c>
+    /// (لا تحليل ضمني ولا سقوط إلى الافتراضي — يخفي أخطاء العميل).
+    /// </summary>
+    private static AlertUnreadScope ParseUnreadScope(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        null or "" or "user" => AlertUnreadScope.User,
+        "received" => AlertUnreadScope.Received,
+        _ => throw new ArgumentException("قيمة scope غير صالحة — استخدم user أو received"),
+    };
+
+    /// <summary>
+    /// يبني طلب الصفحة بالافتراضيات المعلنة (page=1، pageSize=50، أو
+    /// <paramref name="defaultPageSize"/> لمسار الشريط) — والتحقق النهائي
+    /// (1..100) في <see cref="AlertPageRequest.Validate"/>، فلا يُستبدل 0 صامتًا.
+    /// </summary>
+    private static AlertPageRequest BuildPageRequest(
+        int? page, int? pageSize, int defaultPageSize = AlertPageRequest.DefaultPageSize) => new()
+        {
+            Page = page ?? 1,
+            PageSize = pageSize ?? defaultPageSize,
+        };
 }

@@ -5,6 +5,7 @@ using DocGenerator.Api.Tests.TestHelpers;
 using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
+using DocGenerator.Domain.Enums;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,6 +19,8 @@ namespace DocGenerator.Api.Tests;
 /// </summary>
 public sealed class StatsScopeTests : IsolatedApiTestBase
 {
+    /// <summary>سقف أمان لحلقة الصفحات: أي `totalPages` أكبر منه انحراف يوقف الاختبار لا يُغرقه.</summary>
+    private const int MaxAlertPages = 50;
 
     private async Task<(string Token, int Id)> CreateSubHeadAsync(int sectionId)
     {
@@ -98,6 +101,33 @@ public sealed class StatsScopeTests : IsolatedApiTestBase
         var sheetData = doc.WorkbookPart!.WorksheetParts.First().Worksheet.GetFirstChild<SheetData>()!;
         return sheetData.Elements<Row>().Skip(1)
             .Select(r => r.Elements<Cell>().ElementAt(index).InlineString?.Text?.Text ?? string.Empty).ToList();
+    }
+
+    /// <summary>
+    /// يجلب معرّفات كل الصفحات حتى <c>totalPages</c> (P3-10): صفحة واحدة كانت
+    /// تُخفي أي صف يتجاوز سقفها، وكانت التغطية تنجح بحجم بيانات صغير مصادفةً.
+    /// </summary>
+    private static async Task<List<int>> AllAlertIdsAsync(HttpClient client, int pageSize)
+    {
+        var ids = new List<int>();
+        var page = 1;
+        while (true)
+        {
+            var response = await client.GetAsync($"/api/alerts?page={page}&pageSize={pageSize}");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var doc = await response.Content.ReadFromJsonAsync<JsonDocument>();
+            var root = doc!.RootElement;
+            var totalPages = root.GetProperty("totalPages").GetInt32();
+            Assert.True(
+                totalPages <= MaxAlertPages,
+                $"totalPages غير متوقع ({totalPages}) — قد يكون ترقيم الخادم انحرف");
+            ids.AddRange(root.GetProperty("items").EnumerateArray()
+                .Select(e => e.GetProperty("id").GetInt32()));
+            if (page >= totalPages)
+                break;
+            page++;
+        }
+        return ids;
     }
 
     [Fact]
@@ -192,27 +222,39 @@ public sealed class StatsScopeTests : IsolatedApiTestBase
         var head = Factory.AuthorizedClient("head1");
         var branchId = await Factory.GetDamascusIdAsync();
         var headId = await Factory.UserIdAsync("head1");
-        var subAlertId = await HeadAlertTestSeed.SeedSingleHeadAsync(
-            Factory, branchId, headId, subId, UniqueName("للشعبة"));
+
+        // ثلاثة تنبيهات للشعبة بأنواع مختلفة (المفتاح الدلالي يمنع التكرار بالنوع
+        // نفسه) + واحد للقسم: حجم يتجاوز صفحة `pageSize=2` فيُثبت الجلب المتعدد.
+        var subKinds = new[]
+        {
+            HeadAlertKindCatalog.DelegationPendingApproval,
+            HeadAlertKindCatalog.AppealReferralToHead,
+            HeadAlertKindCatalog.CircuitTransferred,
+        };
+        var subAlertIds = new List<int>();
+        for (var i = 0; i < subKinds.Length; i++)
+        {
+            subAlertIds.Add(await HeadAlertTestSeed.SeedSingleHeadAsync(
+                Factory, branchId, headId, subId, UniqueName($"للشعبة{i}"), subKinds[i]));
+        }
         var headAlertId = await HeadAlertTestSeed.SeedSingleHeadAsync(
             Factory, branchId, headId, headId, UniqueName("للقسم"));
 
-        async Task<List<int>> AlertIdsAsync(HttpClient client)
-        {
-            using var doc = await (await client.GetAsync("/api/alerts")).Content.ReadFromJsonAsync<JsonDocument>();
-            return doc!.RootElement.EnumerateArray().Select(e => e.GetProperty("id").GetInt32()).ToList();
-        }
-
-        var subIds = await AlertIdsAsync(subClient);
-        Assert.Contains(subAlertId, subIds);
+        var subIds = await AllAlertIdsAsync(subClient, pageSize: 2);
+        Assert.True(subIds.Count >= 3, "التغطية تحتاج أكثر من صفحة واحدة");
+        Assert.Equal(subIds.Count, subIds.Distinct().Count());
+        foreach (var id in subAlertIds)
+            Assert.Contains(id, subIds);
         Assert.DoesNotContain(headAlertId, subIds);
 
-        var headIds = await AlertIdsAsync(head);
+        var headIds = await AllAlertIdsAsync(head, pageSize: 2);
+        Assert.Equal(headIds.Count, headIds.Distinct().Count());
         Assert.Contains(headAlertId, headIds);
-        Assert.DoesNotContain(subAlertId, headIds);
+        foreach (var id in subAlertIds)
+            Assert.DoesNotContain(id, headIds);
 
         // تعليم القراءة يعمل للمستلم الرئيس.
-        var mark = await subClient.PatchAsJsonAsync($"/api/alerts/{subAlertId}/read", new { });
+        var mark = await subClient.PatchAsJsonAsync($"/api/alerts/{subAlertIds[0]}/read", new { });
         Assert.Equal(HttpStatusCode.NoContent, mark.StatusCode);
     }
 }

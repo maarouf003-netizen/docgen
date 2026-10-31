@@ -6,6 +6,8 @@ using Microsoft.EntityFrameworkCore;
 
 using Npgsql;
 
+using DocGenerator.Api.Tests.TestHelpers;
+
 namespace DocGenerator.Api.Tests;
 
 /// <summary>
@@ -34,12 +36,12 @@ public sealed class HeadAlertContractPostgresTests
     [Fact]
     public async Task Contract_RejectsNullKind_ThenAppliesCleanly()
     {
-        var baseConnectionString = Environment.GetEnvironmentVariable("DOCGEN_TEST_POSTGRES");
-        if (string.IsNullOrWhiteSpace(baseConnectionString))
+        var baseConnectionString = PostgresTestEnvironment.RequireOrSkip();
+        if (baseConnectionString is null)
             return;
 
         var databaseName = "docgen_pr3_" + Guid.NewGuid().ToString("N")[..12];
-        var connectionString = await CreateDatabaseAsync(baseConnectionString, databaseName);
+        var connectionString = await PostgresTestDatabase.CreateAsync(baseConnectionString, databaseName);
         try
         {
             var options = new DbContextOptionsBuilder<DocGeneratorPostgresDbContext>()
@@ -141,7 +143,7 @@ public sealed class HeadAlertContractPostgresTests
         }
         finally
         {
-            await DropDatabaseAsync(baseConnectionString, databaseName);
+            await PostgresTestDatabase.DropAsync(baseConnectionString, databaseName);
         }
     }
 
@@ -202,39 +204,5 @@ public sealed class HeadAlertContractPostgresTests
                 migrationId)
             .SingleAsync();
         return count > 0;
-    }
-
-    /// <summary>
-    /// ينشئ قاعدة معزولة باسم عشوائي ويعيد سلسلة اتصالها. <c>Pooling=false</c> مقصود:
-    /// إسقاط القاعدة في النهاية يتطلب ألا تبقى اتصالات خاملة مفتوحة، وبديله
-    /// <c>NpgsqlConnection.ClearAllPools()</c> يمسّ مجمّعات **كل** الاختبارات
-    /// المتوازية (ومنها <see cref="DatabaseInitializerTests"/>) — أثر عام غير مقبول.
-    /// </summary>
-    private static async Task<string> CreateDatabaseAsync(
-        string baseConnectionString, string databaseName)
-    {
-        var builder = new NpgsqlConnectionStringBuilder(baseConnectionString) { Pooling = false };
-        var maintenance = new NpgsqlConnectionStringBuilder(baseConnectionString) { Database = "postgres" };
-        await using (var connection = new NpgsqlConnection(maintenance.ConnectionString))
-        {
-            await connection.OpenAsync();
-            await using var command = connection.CreateCommand();
-            command.CommandText = $"CREATE DATABASE \"{databaseName}\"";
-            await command.ExecuteNonQueryAsync();
-        }
-
-        builder.Database = databaseName;
-        return builder.ConnectionString;
-    }
-
-    /// <summary>يُسقط القاعدة المعزولة (الاتصالات مغلقة فعليًا لأن التجميع معطّل).</summary>
-    private static async Task DropDatabaseAsync(string baseConnectionString, string databaseName)
-    {
-        var maintenance = new NpgsqlConnectionStringBuilder(baseConnectionString) { Database = "postgres" };
-        await using var connection = new NpgsqlConnection(maintenance.ConnectionString);
-        await connection.OpenAsync();
-        await using var command = connection.CreateCommand();
-        command.CommandText = $"DROP DATABASE IF EXISTS \"{databaseName}\"";
-        await command.ExecuteNonQueryAsync();
     }
 }

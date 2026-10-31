@@ -1,5 +1,5 @@
 using System.Security.Claims;
-using DocGenerator.Api.Authorization;
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Domain.Enums;
 using Microsoft.AspNetCore.Http;

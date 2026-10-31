@@ -58,9 +58,6 @@ public class User
 
     public PublicEntity? PortalEntry { get; set; }
 
-    public bool HasFullAccess =>
-        Role is UserRole.Manager or UserRole.Admin;
-
     /// <summary>
     /// الحذف والاستعادة المنطقيان للملفات من اختصاص المحامي صاحب الملف.
     /// </summary>

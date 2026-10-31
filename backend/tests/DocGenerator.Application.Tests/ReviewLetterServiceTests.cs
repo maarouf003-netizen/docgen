@@ -57,7 +57,8 @@ public class ReviewLetterServiceTests : IDisposable
         var users = new UserRepository(_db);
         var uow = new UnitOfWork(_db);
         _tx = new TransactionRunner(_db);
-        _headAlerts = new HeadAlertService(alerts, documents, users, branches, uow, _tx, _audit, _tx);
+        _headAlerts = new HeadAlertService(alerts, documents, users, branches,
+            new DelegationRepository(_db), uow, _tx, _audit, _tx);
         return new ReviewLetterService(
             letters, documents, branches, appeals, delegations,
             new HeadAlertOutbox(new HeadAlertOutboxStore(_db), _tx),

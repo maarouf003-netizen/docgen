@@ -16,6 +16,7 @@ internal static class HeadAlertTestSeed
         int createdById,
         int recipientUserId,
         string message,
+        string kind = HeadAlertKindCatalog.AppealReferralToHead,
         CancellationToken ct = default)
     {
         using var scope = factory.Services.CreateScope();
@@ -27,7 +28,7 @@ internal static class HeadAlertTestSeed
         {
             await alerts.CreateSystemAsync(
                 new CreateSystemHeadAlertRequest(
-                    HeadAlertKindCatalog.AppealReferralToHead,
+                    kind,
                     message,
                     HeadAlertAudience.SingleHead,
                     branchId,
@@ -42,7 +43,7 @@ internal static class HeadAlertTestSeed
         return await db.HeadAlerts
             .AsNoTracking()
             .Where(a => a.BranchId == branchId
-                && a.Kind == HeadAlertKindCatalog.AppealReferralToHead
+                && a.Kind == kind
                 && a.Message == message)
             .OrderByDescending(a => a.Id)
             .Select(a => a.Id)
