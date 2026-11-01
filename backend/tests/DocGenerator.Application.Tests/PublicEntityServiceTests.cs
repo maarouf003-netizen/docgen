@@ -58,7 +58,7 @@ public class PublicEntityServiceTests : IDisposable
         var uow = new UnitOfWork(_db);
         _tx = new TransactionRunner(_db);
         _headAlerts = new HeadAlertService(alertsRepo, new DocumentRepository(_db), users,
-            branches, uow, _tx, _audit, _tx);
+            branches, new DelegationRepository(_db), uow, _tx, _audit, _tx);
         _service = new PublicEntityService(
             new PublicEntityRepository(_db),
             branches,

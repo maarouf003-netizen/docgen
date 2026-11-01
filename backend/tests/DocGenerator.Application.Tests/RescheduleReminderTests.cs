@@ -242,6 +242,7 @@ public class RescheduleAppealReminderTests : IDisposable
             new DocumentRepository(_db),
             new UserRepository(_db),
             new Repository<Branch>(_db),
+            new DelegationRepository(_db),
             uow, tx, _audit);
 
         _service = new DocumentAppealService(

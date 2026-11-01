@@ -197,7 +197,8 @@ public class TransferRedirectConcurrencyTests : IDisposable
         var audit = new FakeAuditLogger();
         var tx = new TransactionRunner(db);
         var headAlerts = new HeadAlertService(
-            new HeadAlertRepository(db), documents, users, branches, uow, tx, audit);
+            new HeadAlertRepository(db), documents, users, branches,
+            new DelegationRepository(db), uow, tx, audit);
         return new DocumentDelegationService(
             new DelegationRepository(db),
             new DelegationReservationRepository(db),

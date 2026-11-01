@@ -1,6 +1,6 @@
 using System.Globalization;
 using System.Text;
-using DocGenerator.Application.Services;
+using DocGenerator.Application.Common;
 using Microsoft.Data.Sqlite;
 
 namespace DocGenerator.Application.Tests;

@@ -65,7 +65,7 @@ public class ExecutionCircuitServiceTests : IDisposable
             occurrences, baseNumbers, new Repository<HeadSuccession>(_db), alertsRepo, users,
             uow, _tx, _audit, outbox, classifier, TimeProvider.System, TestClock.TimeZone);
         _headAlerts = new HeadAlertService(alertsRepo, documents, users,
-            branchesRepo, uow, _tx, _audit, _tx);
+            branchesRepo, new DelegationRepository(_db), uow, _tx, _audit, _tx);
         var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, baseNumbers: baseNumbers, occurrences: occurrences, uow: uow, tx: _tx, alertService: _headAlerts, dbErrors: classifier, circuits: circuitsRepo, branches: branchesRepo);
         _documents = docBundle.Documents;
         _documentStatus = docBundle.Status;

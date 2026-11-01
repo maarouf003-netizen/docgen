@@ -1,5 +1,6 @@
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Api.Tests.TestHelpers;
 using DocGenerator.Api.Tests.TestServices;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
@@ -479,11 +480,12 @@ public class DatabaseInitializerTests
     [Fact]
     public async Task AddRegistrationDateParsedMigration_Postgres_BackfillsWhenServerConfigured()
     {
-        // اختبار تكامل يتطلب خادم Postgres حقيقيًا؛ يُشغَّل فقط عند تعريف المتغير:
+        // اختبار تكامل يتطلب خادم Postgres حقيقيًا؛ يُشغَّل عند تعريف المتغير:
         //   DOCGEN_TEST_POSTGRES="Host=...;Port=5432;Database=...;Username=...;Password=..."
         // يطابق سلوك اختبار SQLite أعلاه (الحقن المسبق + الهجرة + التحقق من DateParsed).
-        var connectionString = Environment.GetEnvironmentVariable("DOCGEN_TEST_POSTGRES");
-        if (string.IsNullOrWhiteSpace(connectionString))
+        // لا تخطّي صامت في CI: مع `DOCGEN_REQUIRE_POSTGRES=1` يرمي بوضوح عند غياب السلسلة.
+        var connectionString = PostgresTestEnvironment.RequireOrSkip();
+        if (connectionString is null)
             return;
 
         var options = new DbContextOptionsBuilder<DocGeneratorPostgresDbContext>()

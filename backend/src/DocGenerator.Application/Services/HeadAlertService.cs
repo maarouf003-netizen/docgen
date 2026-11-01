@@ -6,30 +6,92 @@ using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.Services;
 
+/// <summary>
+/// سياق الفاعل في مسارات التنبيهات — يمرره المتحكم من التوكن، وتُبنى عليه قرارات
+/// النطاق والصلاحيات في الخدمة وحدها (الخطة §9.3/§12، `D8`).
+///
+/// <para>كل مسند هنا يفوض إلى <see cref="RolePermissions"/> — لا مقارنة دور مباشرة —
+/// كي يبقى الكتالوج مصدرًا واحدًا يستهلكه المتحكم والخدمة معًا (مراجعة PR-4 `ح‑4`).</para>
+/// </summary>
+public sealed record HeadAlertActor(int UserId, UserRole Role, int? BranchId)
+{
+    public bool IsLawyer => RolePermissions.IsLawyer(Role);
+    public bool IsHeadOrSubHead => RolePermissions.IsHeadOrSubHead(Role);
+    public bool IsManagerOrAdmin => RolePermissions.CanReadAllAlerts(Role);
+}
+
+/// <summary>
+/// فلاتر قوائم التنبيهات (الخطة §9.1): الأرشفة، غير المقروء، وربط الإنابة.
+/// الترقيم يحمله <see cref="AlertPageRequest"/> المستقل (page/pageSize بحدود صارمة).
+/// </summary>
+public sealed record HeadAlertListQuery
+{
+    public AlertArchiveFilter Archive { get; init; } = AlertArchiveFilter.Active;
+    public bool UnreadOnly { get; init; }
+    public int? DelegationId { get; init; }
+    public AlertPageRequest Page { get; init; } = new();
+}
+
 public interface IHeadAlertService
 {
-    Task<List<HeadAlertDto>> ListForLawyerAsync(int userId, CancellationToken ct = default);
     /// <summary>
-    /// تنبيهات الرئيس (§8: قراءة بالمستلم لا بالفرع) — ما استلمه في فرعه فقط.
+    /// قائمة المستلَم حسب الدور (الخطة §9.3): المحامي استلامه الشخصي بلا قيد فرع،
+    /// ورئيس القسم/الشعبة ما استلمه في فرعه، والمدير/المشرف إشراف كل الفروع
+    /// (<c>IsRead=null</c> وبلا <c>unreadOnly</c>). ملخصات مرقّمة بلا نص كامل.
     /// </summary>
-    Task<List<HeadAlertDto>> ListForHeadAsync(int userId, int branchId, CancellationToken ct = default);
+    Task<PagedResult<HeadAlertSummaryDto>> ListForActorAsync(
+        HeadAlertActor actor, HeadAlertListQuery query, CancellationToken ct = default);
+
     /// <summary>
-    /// ما أصدره الرئيس في فرعه (تبويب «أرسلتها»): يُعرض للقراءة فقط — بلا زر
-    /// تعليم مقروء (المُرسِل ليس مستلمًا) وبلا أثر في العدّادات والتعاقب.
+    /// ما أصدره رئيس القسم/الشعبة في فرعه (تبويب «أرسلتها»): قراءة فقط —
+    /// بلا زر تعليم مقروء (المُرسِل ليس مستلمًا) وبلا أثر في العدّادات.
     /// </summary>
-    Task<List<HeadAlertDto>> ListSentAsync(int userId, int branchId, CancellationToken ct = default);
+    Task<PagedResult<HeadAlertSummaryDto>> ListSentAsync(
+        HeadAlertActor actor, AlertArchiveFilter archive, AlertPageRequest page, CancellationToken ct = default);
+
     /// <summary>
-    /// قائمة الإشراف (المدير/المشرف — قرار المالك 2026-10-16): كل التنبيهات عبر
-    /// الفروع، قراءة فقط، وحالة القراءة فارغة (الحالة مستلم-محددة أصلًا).
+    /// تنبيهات إنابةٍ معيّنة («معلومات الملف المنيب»/«تشعبات الملف») — نشطة فقط،
+    /// بعلامة قراءة بحسب المستخدم، وملخصات مرقّمة (قرار D1: page=1/pageSize=100 للشريط).
     /// </summary>
-    Task<List<HeadAlertDto>> ListForOversightAsync(CancellationToken ct = default);
-    /// <summary>تنبيه مفرد للإشراف (المدير/المشرف) — بلا فلترة مستلم.</summary>
-    Task<HeadAlertDto?> GetByIdAsync(int id, CancellationToken ct = default);
-    Task<int> CountUnreadAsync(int userId, CancellationToken ct = default);
-    Task<HeadAlertDto> CreateAsync(CreateHeadAlertRequest request, int actorUserId, int actorBranchId, string? actorName, CancellationToken ct = default);
-    Task<bool> MarkReadAsync(int alertId, int userId, CancellationToken ct = default);
-    /// <summary>تنبيهات إنابةٍ معيّنة («معلومات الملف المنيب»/«تشعبات الملف») بعلامة قراءة بحسب المستخدم.</summary>
-    Task<List<HeadAlertDto>> ListByDelegationAsync(int delegationId, int userId, CancellationToken ct = default);
+    Task<PagedResult<HeadAlertSummaryDto>> ListByDelegationAsync(
+        int delegationId, HeadAlertActor actor, AlertPageRequest page, CancellationToken ct = default);
+
+    /// <summary>
+    /// تفاصيل كاملة (الخطة §9.2): المستلم بأولوية مطلقة بلا شرط فرع، ثم المنشئ،
+    /// ثم المدير/المشرف؛ غير ذلك <c>null</c> (يُترجم إلى 404 بلا تسريب وجود).
+    /// </summary>
+    Task<HeadAlertDto?> GetDetailsAsync(int id, HeadAlertActor actor, CancellationToken ct = default);
+
+    /// <summary>
+    /// مستلمو التنبيه وحالة قراءتهم — للمنشئ أو المدير/المشرف فقط؛
+    /// غير ذلك <c>null</c> (يُترجم إلى 404).
+    /// </summary>
+    Task<List<HeadAlertRecipientDto>?> GetRecipientsAsync(
+        int id, HeadAlertActor actor, CancellationToken ct = default);
+
+    /// <summary>
+    /// عدّاد غير المقروء بنطاقه الصريح (`D6`/`D7`): <see cref="AlertUnreadScope.User"/>
+    /// لصفوف الفاعل نفسه (المحامي بلا قيد فرع، ورئيس/شعبة داخل فرعه)، و
+    /// <see cref="AlertUnreadScope.Received"/> لتنبيهات استلمها الرئيس في فرعه
+    /// (رئيس/شعبة فقط؛ المحامي يُرفض <c>403</c>).
+    /// المدير/المشرف يُرفضون <c>403</c> في النطاقين، ورئيس بلا فرع كذلك (`D11`)،
+    /// وقيمة نطاق غير معروفة <c>400</c>.
+    /// </summary>
+    Task<int> CountUnreadAsync(
+        HeadAlertActor actor, AlertUnreadScope scope, CancellationToken ct = default);
+
+    /// <summary>
+    /// إصدار يدوي (رئيس/شعبة لفرعه) — يعيد ملخص الصف المنشأ (D3: جسم 201).
+    /// الدور والفرع قرار الخدمة: غير المخوّل <c>403</c>، ورئيس بلا فرع <c>400</c>.
+    /// </summary>
+    Task<HeadAlertSummaryDto> CreateAsync(
+        CreateHeadAlertRequest request, HeadAlertActor actor, string? actorName, CancellationToken ct = default);
+
+    /// <summary>
+    /// تعليم تنبيه كمقروء لصاحب صفّ الاستلام وحده — <c>false</c> لغير المستلم (يُترجم 404)،
+    /// و<see cref="UnauthorizedAccessException"/> لدور لا يملك استلامًا أصلًا (403).
+    /// </summary>
+    Task<bool> MarkReadAsync(int alertId, HeadAlertActor actor, CancellationToken ct = default);
     /// <summary>
     /// حذف انتقائي لمستلم واحد من تنبيهات استئناف (§6.2/§6.5 — إحالة/تراجع) —
     /// بلا مساس بباقي المستلمين. أفضل جهد للمتصل (لا يرمي).
@@ -84,6 +146,7 @@ public sealed class HeadAlertService : IHeadAlertService
     private readonly IDocumentRepository _documents;
     private readonly IUserRepository _users;
     private readonly IRepository<Branch> _branches;
+    private readonly IDelegationRepository _delegations;
     private readonly IUnitOfWork _uow;
     private readonly ITransactionRunner _tx;
     private readonly IAuditLogger _audit;
@@ -94,6 +157,7 @@ public sealed class HeadAlertService : IHeadAlertService
         IDocumentRepository documents,
         IUserRepository users,
         IRepository<Branch> branches,
+        IDelegationRepository delegations,
         IUnitOfWork uow,
         ITransactionRunner tx,
         IAuditLogger audit,
@@ -103,6 +167,7 @@ public sealed class HeadAlertService : IHeadAlertService
         _documents = documents;
         _users = users;
         _branches = branches;
+        _delegations = delegations;
         _uow = uow;
         _tx = tx;
         _audit = audit;
@@ -112,51 +177,214 @@ public sealed class HeadAlertService : IHeadAlertService
         _transactions = transactions ?? tx as ITransactionContext ?? NullTransactionContext.Instance;
     }
 
-    public async Task<List<HeadAlertDto>> ListForLawyerAsync(int userId, CancellationToken ct = default)
+    public async Task<PagedResult<HeadAlertSummaryDto>> ListForActorAsync(
+        HeadAlertActor actor, HeadAlertListQuery query, CancellationToken ct = default)
     {
-        var alerts = await _alerts.ListForRecipientAsync(userId, ct);
-        return alerts.Select(a => ToLawyerDto(a, userId)).ToList();
+        ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(query);
+
+        // التفويض قبل التحقق من الشكل (عقد ما قبل توحيد الصلاحيات): دور غير مخوّل أو
+        // رئيس بلا فرع يُرفض 403 حتى مع ترقيم غير صالح، و«غير المقروء» للمدير/المشرف
+        // 400 برسالته الخاصة قبل أي تحقق آخر — لا انعكاس 403/400 غير مقصود.
+        if (!actor.IsManagerOrAdmin && !actor.IsLawyer && !actor.IsHeadOrSubHead)
+            throw new UnauthorizedAccessException("الدور غير مخوّل لقوائم التنبيهات");
+
+        if (actor.IsManagerOrAdmin && query.UnreadOnly)
+            throw new ArgumentException("خيار «غير المقروء» غير متاح للمدير/المشرف");
+
+        var branchId = actor.IsHeadOrSubHead ? RequireBranch(actor) : (int?)null;
+
+        query.Page.Validate();
+
+        if (actor.IsManagerOrAdmin)
+        {
+            var page = await _alerts.ListSummariesForOversightAsync(
+                query.Archive, query.DelegationId, query.Page.Skip, query.Page.PageSize, ct);
+            return ToPagedResult(page, query.Page);
+        }
+
+        if (actor.IsLawyer)
+        {
+            var page = await _alerts.ListSummariesForRecipientAsync(
+                actor.UserId,
+                branchId: null,
+                query.Archive,
+                query.UnreadOnly,
+                query.DelegationId,
+                query.Page.Skip,
+                query.Page.PageSize,
+                includeCounters: false,
+                ct);
+            return ToPagedResult(page, query.Page);
+        }
+
+        var headPage = await _alerts.ListSummariesForRecipientAsync(
+            actor.UserId,
+            branchId,
+            query.Archive,
+            query.UnreadOnly,
+            query.DelegationId,
+            query.Page.Skip,
+            query.Page.PageSize,
+            includeCounters: true,
+            ct);
+        return ToPagedResult(headPage, query.Page);
     }
 
-    public async Task<List<HeadAlertDto>> ListForHeadAsync(int userId, int branchId, CancellationToken ct = default)
+    public async Task<PagedResult<HeadAlertSummaryDto>> ListSentAsync(
+        HeadAlertActor actor, AlertArchiveFilter archive, AlertPageRequest page, CancellationToken ct = default)
     {
-        var alerts = await _alerts.ListByRecipientInBranchAsync(userId, branchId, ct);
-        return alerts.Select(a => ToHeadDto(a, userId)).ToList();
+        ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(page);
+
+        // الدور والفرع قبل التحقق من الشكل: مدير/غير رئيس ⇒ 403، ورئيس بلا فرع ⇒ 403
+        // (عقد ما قبل التوحيد)، ثم الترقيم غير الصالح ⇒ 400.
+        if (!actor.IsHeadOrSubHead)
+            throw new UnauthorizedAccessException("قائمة الصادر مخصصة لرئيس القسم/الشعبة");
+
+        var branchId = RequireBranch(actor);
+
+        page.Validate();
+
+        var result = await _alerts.ListSummariesSentAsync(
+            actor.UserId, branchId, archive, page.Skip, page.PageSize, ct);
+        return ToPagedResult(result, page);
     }
 
-    public async Task<List<HeadAlertDto>> ListSentAsync(int userId, int branchId, CancellationToken ct = default)
+    public async Task<PagedResult<HeadAlertSummaryDto>> ListByDelegationAsync(
+        int delegationId, HeadAlertActor actor, AlertPageRequest page, CancellationToken ct = default)
     {
-        var alerts = await _alerts.ListSentAsync(userId, branchId, ct);
-        return alerts.Select(a => ToHeadDto(a, userId)).ToList();
+        ArgumentNullException.ThrowIfNull(actor);
+        ArgumentNullException.ThrowIfNull(page);
+
+        // الدور ثم الطرفية — قرار الخدمة وحده (D8/`ح‑1`): المستودع لا يقيّد النتيجة
+        // بالمستخدم، فلو بقي الفحص في المتحكم لكان أي متصل آخر يقرأ تنبيهات إنابةٍ
+        // لا تخصّه. الترتيب: دور (403) ← ترقيم (400) ← طرفية (403)، فالدور غير المخوّل
+        // لا يتلقى 400 عن شكل طلب قبل رفض صلاحيته، ويبقى عقد التحقق من الترقيم محفوظًا.
+        if (!RolePermissions.CanReadDelegationAlerts(actor.Role))
+            throw new UnauthorizedAccessException("تنبيهات الإنابة متاحة لطرفها المحامي فقط");
+
+        page.Validate();
+
+        var delegation = await _delegations.GetByIdWithDetailsAsync(delegationId, ct);
+        if (delegation is null || !DelegationParties.IsParty(delegation, actor.UserId))
+            throw new UnauthorizedAccessException("لست طرفًا في هذه الإنابة");
+
+        var result = await _alerts.ListSummariesByDelegationAsync(
+            delegationId, actor.UserId, page.Skip, page.PageSize, ct);
+        return ToPagedResult(result, page);
     }
 
-    public Task<List<HeadAlertDto>> ListForOversightAsync(CancellationToken ct = default)
-        // المستودع يسقط مباشرة إلى `HeadAlertDto` (عدّادات محسوبة قاعديًا) —
-        // لا تحويل هنا حتى لا يُعاد تحميل أي تنقل.
-        => _alerts.ListForOversightAsync(ct);
-
-    public async Task<HeadAlertDto?> GetByIdAsync(int id, CancellationToken ct = default)
+    public async Task<HeadAlertDto?> GetDetailsAsync(
+        int id, HeadAlertActor actor, CancellationToken ct = default)
     {
-        var alert = await _alerts.GetByIdWithRecipientsAsync(id, ct);
-        return alert is null ? null : ToHeadDto(alert);
+        ArgumentNullException.ThrowIfNull(actor);
+
+        // صف واحد مسقط في SQL — لا «اجلب القائمة وابحث فيها» ولا كيانات محمَّلة (§9.2).
+        var row = await _alerts.GetDetailRowAsync(id, actor.UserId, ct);
+        if (row is null)
+            return null;
+
+        var isCreator = row.CreatedById == actor.UserId;
+        var isOversight = actor.IsManagerOrAdmin;
+
+        // المستلم أولًا بأولوية مطلقة (بلا شرط فرع — إنابات خارجية)، ثم المنشئ،
+        // ثم الإشراف؛ غير ذلك 404 بلا كشف وجود (D2/§12).
+        if (!row.IsRecipient && !isCreator && !isOversight)
+            return null;
+
+        return ToDetailDto(row, canViewRecipients: isOversight || isCreator);
     }
 
-    public Task<int> CountUnreadAsync(int userId, CancellationToken ct = default)
-        => _alerts.CountUnreadAsync(userId, ct);
+    public async Task<List<HeadAlertRecipientDto>?> GetRecipientsAsync(
+        int id, HeadAlertActor actor, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
 
-    public async Task<HeadAlertDto> CreateAsync(
+        var alert = await _alerts.GetByIdAsync(id, ct);
+        if (alert is null)
+            return null;
+
+        // منشئ أو مدير/مشرف فقط؛ أي دور آخر 404 بلا تسريب وجود (§9.3/§12).
+        if (alert.CreatedById != actor.UserId && !actor.IsManagerOrAdmin)
+            return null;
+
+        var recipients = await _alerts.ListRecipientsWithUserAsync(id, ct);
+        return recipients.Select(r => new HeadAlertRecipientDto(
+            r.Id,
+            r.UserId,
+            r.User?.FullName ?? string.Empty,
+            r.User?.Role.ToString().ToLowerInvariant() ?? string.Empty,
+            r.IsRead,
+            r.ReadAt)).ToList();
+    }
+
+    public async Task<int> CountUnreadAsync(
+        HeadAlertActor actor, AlertUnreadScope scope, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+
+        // مفتاح صريح مغلق (مراجعة المرحلة 4 `ح‑22`): قيمة enum غير معروفة من مستدعٍ
+        // داخلي تُرفض 400 بدل السقوط الصامت إلى النطاق الشخصي.
+        return scope switch
+        {
+            AlertUnreadScope.Received => await CountReceivedScopeAsync(actor, ct),
+            AlertUnreadScope.User => await CountUserScopeAsync(actor, ct),
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(scope), scope, "نطاق عدّاد غير معروف — استخدم user أو received"),
+        };
+    }
+
+    /// <summary>
+    /// `scope=received` (`D6`): رئيس/شعبة فقط — المحامي لا يملك تنبيهات «مستلمة»
+    /// بمعنى مجموع مستلميها، والمدير/المشرف لا يملك صف استلام أصلًا.
+    /// </summary>
+    private async Task<int> CountReceivedScopeAsync(HeadAlertActor actor, CancellationToken ct)
+    {
+        // ح‑23: مسند كتالوج واحد بدل مقارنة دور مباشرة، فلا ينحرف النطاقان عند تعديله.
+        if (!RolePermissions.CanUseReceivedScope(actor.Role))
+            throw new UnauthorizedAccessException("نطاق «المستلَم» مخصص لرئيس القسم/الشعبة");
+
+        // D11: رئيس بلا فرع حساب غير صالح للقراءة ⇒ 403 (لا نطاق مفتوح).
+        var branchId = RequireBranch(actor);
+        return await _alerts.CountUnreadForReceivedAsync(actor.UserId, branchId, ct);
+    }
+
+    /// <summary>
+    /// `scope=user` (الافتراضي، `D7`): صفوف الفاعل نفسه؛ المحامي بلا قيد فرع،
+    /// والرئيس/الشعبة داخل فرعه كي يطابق العدّاد قائمته.
+    /// </summary>
+    private async Task<int> CountUserScopeAsync(HeadAlertActor actor, CancellationToken ct)
+    {
+        if (!RolePermissions.CanReceiveAlerts(actor.Role))
+            throw new UnauthorizedAccessException("عدّاد غير المقروء مخصص للمستلمين (محامٍ أو رئيس نطاق)");
+
+        var branchId = actor.IsHeadOrSubHead ? RequireBranch(actor) : (int?)null;
+        return await _alerts.CountUnreadForUserAsync(actor.UserId, branchId, ct);
+    }
+
+    public async Task<HeadAlertSummaryDto> CreateAsync(
         CreateHeadAlertRequest request,
-        int actorUserId,
-        int actorBranchId,
+        HeadAlertActor actor,
         string? actorName,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(actor);
 
-        var actor = await _users.GetByIdAsync(actorUserId, ct);
-        if (actor is null || !actor.IsActive
-            || actor.Role is not (UserRole.Head or UserRole.SubHead)
-            || actor.BranchId != actorBranchId)
+        // الدور قرار خدمة (D8): المتحكم لم يعد يفحصه.
+        if (!RolePermissions.CanCreateAlerts(actor.Role))
+            throw new UnauthorizedAccessException("الإصدار اليدوي مخصص لرئيس قسم/شعبة");
+
+        // D11: الكتابة بلا فرع ⇒ 400 (عقد `POST` القائم) لا 403.
+        var branchId = RequireBranchForWrite(actor);
+
+        // تحقّق القاعدة يبقى دفاعًا ثانيًا: حساب معطّل، أو صار دوره غير مخوّل، أو رمز
+        // بفرع متقادم — يُرفض 400 كما كان قبل نقل الصلاحية (لا تغيير عقد).
+        var user = await _users.GetByIdAsync(actor.UserId, ct);
+        if (user is null || !user.IsActive
+            || !RolePermissions.CanCreateAlerts(user.Role)
+            || user.BranchId != branchId)
             throw new ArgumentException("الإصدار اليدوي مخصص لرئيس قسم/شعبة مفعّل في فرعه");
 
         var rawMessage = request.Message?.Trim() ?? string.Empty;
@@ -166,24 +394,24 @@ public sealed class HeadAlertService : IHeadAlertService
         // الحدّ على نص المستخدم قبل البادئة، ثم سقف الأمان على النص النهائي.
         var withinLimit = HeadAlertTextLimits.EnsureWithinManualLimit(rawMessage);
         var message = HeadAlertTextLimits.EnsureWithinSafety(
-            HeadAlertMessages.ManualMessage(actor.Role, withinLimit));
+            HeadAlertMessages.ManualMessage(user.Role, withinLimit));
         if (string.IsNullOrWhiteSpace(message))
             throw new ArgumentException("نص التنبيه مطلوب");
 
-        var branch = await _branches.GetByIdAsync(actorBranchId, ct);
+        var branch = await _branches.GetByIdAsync(branchId, ct);
         if (branch is null)
             throw new ArgumentException("الفرع غير موجود");
 
         var targetType = ParseManualTargetType(request.TargetType);
-        var recipients = await ResolveRecipientsAsync(targetType, request, actorBranchId, ct);
+        var recipients = await ResolveRecipientsAsync(targetType, request, branchId, ct);
         if (recipients.Count == 0)
             throw new ArgumentException("لا يوجد مستلمون للتنبيه");
 
         var now = DateTime.UtcNow;
         var alert = new HeadAlert
         {
-            BranchId = actorBranchId,
-            CreatedById = actorUserId,
+            BranchId = branchId,
+            CreatedById = actor.UserId,
             TargetType = targetType,
             Kind = ManualKindFor(targetType),
             DedupeKey = null,
@@ -195,7 +423,10 @@ public sealed class HeadAlertService : IHeadAlertService
             Recipients = recipients.Select(u => new HeadAlertRecipient { UserId = u.Id }).ToList(),
         };
 
-        await _tx.RunAsync(async token =>
+        // جسم 201 (D3) يجب أن يطابق صفَّ القائمة لاحقًا حقلًا بحقل، ولذلك يُعاد قراءته
+        // بالإسقاط الواحد نفسه الذي تبنيه القوائم (لا تحويل الكيان)، **داخل المعاملة**
+        // كي لا يبقى صفٌّ مثبَّت يعقبه 500 إن فشل الجلب (فيتكرر الإنشاء من العميل).
+        var created = await _tx.RunAsync(async token =>
         {
             await _alerts.AddAsync(alert, token);
             await _uow.SaveChangesAsync(token);
@@ -203,38 +434,27 @@ public sealed class HeadAlertService : IHeadAlertService
                 details: $"أصدر تنبيهاً يدوياً في فرع {branch.Name} بنطاق {targetType}: "
                     + HeadAlertTextLimits.PreviewForAudit(message),
                 ct: token);
+
+            return await _alerts.GetSummaryAsync(
+                    alert.Id, recipientUserId: null, includeCounters: true, token)
+                ?? throw new InvalidOperationException("تعذّر جلب ملخص التنبيه بعد إنشائه");
         }, ct);
 
-        return ToHeadDto(alert);
+        return created;
     }
 
-    public async Task<bool> MarkReadAsync(int alertId, int userId, CancellationToken ct = default)
+    public async Task<bool> MarkReadAsync(int alertId, HeadAlertActor actor, CancellationToken ct = default)
     {
-        var alert = await _alerts.GetByIdWithRecipientsAsync(alertId, ct);
-        if (alert is null)
-            return false;
+        ArgumentNullException.ThrowIfNull(actor);
 
-        var recipient = alert.Recipients.FirstOrDefault(r => r.UserId == userId);
-        if (recipient is null)
-            return false;
+        if (!RolePermissions.CanReceiveAlerts(actor.Role))
+            throw new UnauthorizedAccessException("تعليم القراءة مخصص للمستلمين (محامٍ أو رئيس نطاق)");
 
-        if (recipient.IsRead)
-            return true;
-
-        await _tx.RunAsync(async token =>
-        {
-            recipient.IsRead = true;
-            recipient.ReadAt = DateTime.UtcNow;
-            await _uow.SaveChangesAsync(token);
-        }, ct);
-        return true;
-    }
-
-    /// <summary>تنبيهات إنابةٍ معيّنة («معلومات الملف المنيب»/«تشعبات الملف») بعلامة قراءة بحسب المستخدم.</summary>
-    public async Task<List<HeadAlertDto>> ListByDelegationAsync(int delegationId, int userId, CancellationToken ct = default)
-    {
-        var alerts = await _alerts.ListByDelegationWithRecipientsAsync(delegationId, ct);
-        return alerts.Select(a => ToLawyerDto(a, userId)).ToList();
+        // تعليم ذرّي في المستودع (مراجعة PR-4: `ح‑2` ثم ملاحظة المرحلة 3 `ح‑10`):
+        // قراءة ثم حفظ داخل معاملة الخدمة كانت تُبقي نافذة TOCTOU، وتُبطل ضمان إعادة
+        // المحاولة لأن الكيان المتتبَّع يختصر الحفظ بعد فشل عابر. التحديث الشرطي
+        // الواحد يُغلق النافذتين، ويُبقي إعادة التعليم idempotent (لا يمسّ `ReadAt`).
+        return await _alerts.TryMarkReadAsync(alertId, actor.UserId, DateTime.UtcNow, ct);
     }
 
     /// <summary>
@@ -798,12 +1018,12 @@ public sealed class HeadAlertService : IHeadAlertService
                     throw new ArgumentException("يجب تحديد الملف المرتبط بالتنبيه");
 
                 var doc = await _documents.GetByIdAsync(request.DocumentId.Value, ct);
-                if (doc is null)
-                    throw new ArgumentException("الملف غير موجود");
-                if (doc.BranchId != branchId)
-                    throw new ArgumentException("الملف ليس ضمن فرعك");
-                if (doc.CreatedBy is null || doc.CreatedBy.Role != UserRole.Lawyer)
-                    throw new ArgumentException("لا يوجد محامٍ مختص لهذا الملف");
+                // رسالة واحدة للملف غير الموجود وللملف خارج الفرع (§5، `P3-5`):
+                // لا يُكشف وجود ملف فرع آخر عبر اختلاف النص.
+                if (doc is null || doc.BranchId != branchId)
+                    throw new ArgumentException("الملف غير متاح");
+                if (doc.CreatedBy is null || doc.CreatedBy.Role != UserRole.Lawyer || !doc.CreatedBy.IsActive)
+                    throw new ArgumentException("لا يوجد محامٍ مختص نشط لهذا الملف");
 
                 return new List<User> { doc.CreatedBy };
             }
@@ -813,7 +1033,8 @@ public sealed class HeadAlertService : IHeadAlertService
                     throw new ArgumentException("يجب تحديد المحامي المستلم");
 
                 var lawyer = await _users.GetByIdAsync(request.TargetLawyerId.Value, ct);
-                if (lawyer is null || lawyer.Role != UserRole.Lawyer || lawyer.BranchId != branchId)
+                if (lawyer is null || lawyer.Role != UserRole.Lawyer
+                    || lawyer.BranchId != branchId || !lawyer.IsActive)
                     throw new ArgumentException("المحامي غير موجود ضمن فرعك");
 
                 return new List<User> { lawyer };
@@ -845,52 +1066,58 @@ public sealed class HeadAlertService : IHeadAlertService
         _ => throw new ArgumentException("نوع التنبيه غير صالح"),
     };
 
-    private static string DocumentTitle(HeadAlert alert)
-    {
-        var doc = alert.Document;
-        if (doc is null)
-            return alert.DocumentId is null ? string.Empty : "مستند محذوف";
+    private static PagedResult<HeadAlertSummaryDto> ToPagedResult(
+        HeadAlertSummaryPage page, AlertPageRequest request) => new()
+        {
+            Items = page.Items.ToList(),
+            Page = request.Page,
+            PerPage = request.PageSize,
+            TotalCount = page.TotalCount,
+        };
 
-        var parts = new[] { doc.BorrowerName, doc.BorrowerFather, doc.BorrowerFamily }
-            .Where(x => !string.IsNullOrWhiteSpace(x));
-        var name = parts.Any() ? string.Join(" ", parts) : doc.DocumentType;
-        return string.IsNullOrWhiteSpace(name) ? $"مستند {doc.Id}" : name;
-    }
+    /// <summary>الفرع إلزامي لرئيس القسم/الشعبة — وإلا فالحساب غير صالح للاستخدام.</summary>
+    private static int RequireBranch(HeadAlertActor actor) =>
+        actor.BranchId ?? throw new UnauthorizedAccessException("حساب رئيس القسم/الشعبة غير مرتبط بفرع");
 
-    private static HeadAlertDto ToLawyerDto(HeadAlert a, int userId) => new(
-        a.Id,
-        a.Message,
-        a.TargetType.ToString().ToLowerInvariant(),
-        a.DocumentId,
-        DocumentTitle(a),
-        a.TargetLawyerId,
-        a.TargetLawyer?.FullName,
-        a.Recipients.FirstOrDefault(r => r.UserId == userId)?.IsRead,
-        null,
-        null,
-        a.CreatedAt,
-        a.CreatedBy?.FullName,
-        a.AppealId,
-        a.ReviewLetterId,
-        a.DelegationId);
+    /// <summary>
+    /// الفرع إلزامي للكتابة، لكن عقده <c>400</c> لا <c>403</c> (D11): طلب كتابة بحساب
+    /// ناقص فرعًا خطأ إدخال في الطلب لا رفض صلاحية — ويُترجم في المتحكم إلى <c>400</c>.
+    /// </summary>
+    private static int RequireBranchForWrite(HeadAlertActor actor) =>
+        actor.BranchId ?? throw new ArgumentException("رئيس القسم دون فرع لا يمكنه إصدار تنبيهات");
 
-    /// <summary>عرض الإنشاء/التحديث (بلا قارئ معيَّن — حالة القراءة فارغة).</summary>
-    private static HeadAlertDto ToHeadDto(HeadAlert a) => ToHeadDto(a, -1);
-
-    private static HeadAlertDto ToHeadDto(HeadAlert a, int userId) => new(
-        a.Id,
-        a.Message,
-        a.TargetType.ToString().ToLowerInvariant(),
-        a.DocumentId,
-        DocumentTitle(a),
-        a.TargetLawyerId,
-        a.TargetLawyer?.FullName,
-        a.Recipients.FirstOrDefault(r => r.UserId == userId)?.IsRead,
-        a.Recipients.Count,
-        a.Recipients.Count(r => !r.IsRead),
-        a.CreatedAt,
-        a.CreatedBy?.FullName,
-        a.AppealId,
-        a.ReviewLetterId,
-        a.DelegationId);
+    /// <summary>
+    /// تحويل صف التفاصيل المسقط إلى العقد الكامل (الخطة §9.2): النص الكامل هنا وحده،
+    /// و<c>IsRead</c> حالة القارئ نفسه (أو <c>null</c> لغير المستلم)، و<c>CanViewRecipients</c>
+    /// قرار خادم — لا يملك العميل تعيينه.
+    /// </summary>
+    private static HeadAlertDto ToDetailDto(HeadAlertDetailRow row, bool canViewRecipients) => new(
+        row.Id,
+        row.Kind,
+        row.Message,
+        row.TargetType.ToString().ToLowerInvariant(),
+        row.DocumentId,
+        HeadAlertTitle.Build(
+            row.DocumentId,
+            row.DocumentExists,
+            row.BorrowerName,
+            row.BorrowerFather,
+            row.BorrowerFamily,
+            row.DocumentType),
+        row.TargetLawyerId,
+        row.TargetLawyerName,
+        row.DelegationId,
+        row.AppealId,
+        row.ReviewLetterId,
+        row.PublicEntityId,
+        row.ExecutionCircuitId,
+        row.CreatedAt,
+        row.LastContentChangedAt,
+        row.IsArchived,
+        row.ArchivedAt,
+        row.CreatedByName,
+        row.IsRead,
+        canViewRecipients,
+        row.RecipientCount,
+        row.UnreadCount);
 }

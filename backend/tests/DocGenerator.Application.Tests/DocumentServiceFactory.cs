@@ -52,6 +52,7 @@ public static class DocumentServiceFactory
             documentsValue,
             usersValue,
             branches ?? new Repository<Branch>(db),
+            new DelegationRepository(db),
             uowValue,
             txValue,
             audit);

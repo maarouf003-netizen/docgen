@@ -56,3 +56,19 @@ public sealed class HeadAlertRecipientInactiveException : Exception
     {
     }
 }
+
+/// <summary>
+/// ترقيم صفحات غير صالح في أسطح التنبيهات (`P3-6`): يترجمه المتحكم إلى <c>400</c>
+/// عبر <see cref="ArgumentException"/>، ورسالته عربية **نظيفة** بلا ذيل معامل.
+///
+/// يُستخدم بدل <see cref="ArgumentOutOfRangeException"/> مع اسم معامل، لأن .NET
+/// يُلحق بـ<see cref="Exception.Message"/> سطرًا إنجليزيًا (<c>Parameter name: Page</c>)
+/// يصل المستخدم عبر <c>{ message }</c>، وهو ما يخالف عرف الرسائل العربية في هذا المستودع.
+/// </summary>
+public sealed class AlertPagingException : ArgumentException
+{
+    public AlertPagingException(string message)
+        : base(message)
+    {
+    }
+}

@@ -60,7 +60,8 @@ public class PortalFileDetailTests : IDisposable
         var uow = new UnitOfWork(_db);
         var tx = new TransactionRunner(_db);
         var headAlerts = new HeadAlertService(
-            new HeadAlertRepository(_db), documents, users, branches, uow, tx, _audit);
+            new HeadAlertRepository(_db), documents, users, branches,
+            new DelegationRepository(_db), uow, tx, _audit);
         _appealService = new DocumentAppealService(
             new AppealRepository(_db), documents, users, uow, tx, _audit, headAlerts,
             new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),

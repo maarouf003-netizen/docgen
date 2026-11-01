@@ -1,4 +1,4 @@
-using DocGenerator.Api.Authorization;
+using DocGenerator.Application.Common;
 using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Api.Tests;
@@ -54,6 +54,23 @@ public sealed class SubHeadRolePermissionsTests
     [InlineData(UserRole.EntityManager, false)]
     public void IsHeadOrSubHead_MatchesDecisionMatrix(UserRole role, bool expected)
         => Assert.Equal(expected, RolePermissions.IsHeadOrSubHead(role));
+
+    [Theory]
+    [InlineData(UserRole.Head, true, true)]
+    [InlineData(UserRole.SubHead, true, true)]
+    [InlineData(UserRole.Lawyer, true, false)]
+    [InlineData(UserRole.Manager, false, false)]
+    [InlineData(UserRole.Admin, false, false)]
+    [InlineData(UserRole.EntityManager, false, false)]
+    public void AlertScopes_AreNested_ReceivedSubsetOfReceiving(
+        UserRole role, bool canReceive, bool canUseReceived)
+    {
+        // ح‑23: مصدر حقيقة واحد — أي دور يملك «المستلَم» يملك «الشخصي» بالضرورة.
+        Assert.Equal(canReceive, RolePermissions.CanReceiveAlerts(role));
+        Assert.Equal(canUseReceived, RolePermissions.CanUseReceivedScope(role));
+        if (canUseReceived)
+            Assert.True(canReceive);
+    }
 
     [Theory]
     [InlineData(UserRole.Admin, true)]

@@ -336,21 +336,6 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         int branchId, int? ownerSectionId = null, bool rejectedOnly = false, CancellationToken ct = default)
         => _delegations.CountPendingByBranchAsync(branchId, ownerSectionId, rejectedOnly, ct);
 
-    public async Task<bool> IsPartyAsync(int delegationId, int userId, CancellationToken ct = default)
-    {
-        var delegation = await _delegations.GetByIdWithDetailsAsync(delegationId, ct);
-        if (delegation is null)
-            return false;
-
-        // أطراف الإنابة: محامي المنيب (مالك المصدر)، محامي المناب (مالك الهدف)،
-        // أو المحامي المختص الحالي — وأي محتلفٍ بعده لا يملك أحد الملفين.
-        if (delegation.SourceDocument?.CreatedById == userId)
-            return true;
-        if (delegation.TargetDocument?.CreatedById == userId)
-            return true;
-        return delegation.AssignedLawyerId == userId;
-    }
-
     public async Task<DelegationDto?> AssignAsync(
         int delegationId,
         AssignDelegationRequest request,

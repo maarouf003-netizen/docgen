@@ -52,7 +52,8 @@ public class DelegationConcurrencyTests : IDisposable
         var tx = new TransactionRunner(db);
         var audit = new FakeAuditLogger();
         var headAlerts = new HeadAlertService(
-            new HeadAlertRepository(db), documents, users, branches, uow, new TransactionRunner(db), audit);
+            new HeadAlertRepository(db), documents, users, branches, new DelegationRepository(db),
+            uow, new TransactionRunner(db), audit);
         return new DocumentDelegationService(
             new DelegationRepository(db),
             new DelegationReservationRepository(db),

@@ -47,7 +47,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
-        builder.UseSetting("ConnectionStrings:DefaultConnection", $"Data Source={_dbPath}");
+        builder.UseSetting("ConnectionStrings:DefaultConnection", $"Data Source={_dbPath};Default Timeout=30");
         // عزل ملف سجل Serilog عن المستودع: كل مصنع يكتب في مجلد مؤقت خاص به.
         builder.UseSetting("Logging:File:Path", Path.Combine(_logDir, "logs-.txt"));
         builder.UseSetting("Database:UsePostgres", "false");
@@ -60,6 +60,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         // فيتنافس مع معاملات الاختبار على قفل SQLite (تشويش/تذبذب)، ومشغّله
         // مغطّى باختبارات وحدة مستقلة.
         builder.UseSetting("HeadAlerts:Outbox:Enabled", "false");
+        // احتفاظ المنتدى معطَّل: تمريرة الإقلاع الفورية كانت تكتب على قاعدة SQLite
+        // بالتوازي مع تهيئة الاختبار، فتُنتج `database is locked` متقلبًا (مراجعة المرحلة 6).
+        builder.UseSetting("Forum:RetentionMonths", "0");
         // تجاوز كلمة بذر التطوير بقيمة اختبارية ثابتة (RF-006): القاعدة هنا ملف SQLite مؤقت
         // معزول يُحذَف في Dispose، فلا يصل هذا التجاوز لأي بيئة حقيقية.
         builder.UseSetting("Bootstrap:DevSeedPassword", "123456");

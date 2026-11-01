@@ -1,4 +1,4 @@
-using DocGenerator.Api.Authorization;
+using DocGenerator.Application.Common;
 using DocGenerator.Domain.Enums;
 using Xunit;
 

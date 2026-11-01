@@ -29,6 +29,7 @@ public static class PortalServiceFactory
             documents,
             users,
             branches,
+            new DelegationRepository(db),
             uow,
             tx,
             audit);

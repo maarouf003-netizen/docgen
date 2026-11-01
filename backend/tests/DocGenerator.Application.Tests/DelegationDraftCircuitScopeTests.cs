@@ -56,6 +56,7 @@ public class DelegationDraftCircuitScopeTests : IDisposable
             documents,
             users,
             branches,
+            new DelegationRepository(_db),
             uow,
             tx,
             _audit);

@@ -1,10 +1,14 @@
 using DocGenerator.Domain.Enums;
 
-namespace DocGenerator.Api.Authorization;
+namespace DocGenerator.Application.Common;
 
 /// <summary>
 /// مصفوفة الصلاحيات المركزية: كل تحقق من الصلاحيات يمر عبر هذا الكتالوج
 /// حتى لا تتفرق القواعد بين المتحكمات، ويكون أي تعديل لاحق في مكان واحد.
+///
+/// <para>موضعه في <c>Application.Common</c> لا في <c>Api</c> مقصود (مراجعة PR-4 `ح‑4`):
+/// القرارات تُتخذ في الخدمة أيضًا، فلو بقي الكتالوج في طبقة الواجهة لَما استطاعت
+/// <c>HeadAlertService</c> الرجوع إليه، فتنشأ نسخة ثانية تنحرف عند أول قرار جديد.</para>
 /// </summary>
 /// <remarks>
 /// رئيس الشعبة (`SubHead`) يرث صلاحيات رئيس القسم الخمس عشرة بنطاق شعبته
@@ -21,6 +25,10 @@ public static class RolePermissions
     /// </summary>
     public static bool IsHeadOrSubHead(UserRole role) =>
         role is UserRole.Head or UserRole.SubHead;
+
+    /// <summary>محامٍ — الدور الذي يملك مستنداته ويستلم تنبيهات ملفاته.</summary>
+    public static bool IsLawyer(UserRole role) => role == UserRole.Lawyer;
+
     /// <summary>إدخال/تعديل مستند جديد — المحامي فقط (للملفات التي يملكها).</summary>
     public static bool CanEditDocuments(UserRole role) => role == UserRole.Lawyer;
 
@@ -66,10 +74,39 @@ public static class RolePermissions
     public static bool CanCreateAlerts(UserRole role) => IsHeadOrSubHead(role);
 
     /// <summary>
-    /// تسطير/تعديل/حذف الإنابات على ملف يملكه المحامي (الملف المنيب) — المحامي فقط،
-    /// وقبل اعتماد رئيس القسم.
+    /// استلام التنبيهات وتعليمها مقروءة — المحامي ورئيس القسم/الشعبة (المستلمون الفعليون).
+    /// المدير/المشرف يقرأ إشرافيًا ولا يملك صفّ استلام، فلا عدّاد له ولا تعليم قراءة.
     /// </summary>
-    public static bool CanManageDelegations(UserRole role) => role == UserRole.Lawyer;
+    public static bool CanReceiveAlerts(UserRole role) =>
+        role == UserRole.Lawyer || IsHeadOrSubHead(role);
+
+    /// <summary>
+    /// نطاق عدّاد «المستلَم» (`scope=received`) — رئيس القسم/الشعبة فقط، لأنه عدّاد
+    /// تجميعي على تنبيهاتهم في فرعهم. **يفوّض إلى <see cref="IsHeadOrSubHead"/> صراحةً**
+    /// كي لا ينحرف النطاقان عن <see cref="CanReceiveAlerts"/> عند أول تعديل كتالوج
+    /// (مراجعة المرحلة 4 `ح‑23`؛ والقاعدة الثابتة: `received` ⊆ `user`).
+    /// </summary>
+    public static bool CanUseReceivedScope(UserRole role) => IsHeadOrSubHead(role);
+
+    /// <summary>
+    /// قراءة إشرافية على التنبيهات (القوائم/التفاصيل/المستلمون) — مدير/مشرف.
+    /// تفوّض إلى <see cref="HasFullAccess"/> كي لا تتكرر قاعدة الدور في تعريفين
+    /// ينحرفان عند أول تعديل (مراجعة المرحلة 3 `ح‑14`).
+    /// </summary>
+    public static bool CanReadAllAlerts(UserRole role) => HasFullAccess(role);
+
+    /// <summary>
+    /// قراءة تنبيهات إنابةٍ معيّنة — محامٍ فقط (تفويض إلى <see cref="IsLawyer"/>)،
+    /// وطرفٌ فيها (الطرفية تُفحص في الخدمة عبر <c>DelegationParties.IsParty</c>،
+    /// فهذه دلالة دور لا دلالة نطاق).
+    /// </summary>
+    public static bool CanReadDelegationAlerts(UserRole role) => IsLawyer(role);
+
+    /// <summary>
+    /// تسطير/تعديل/حذف الإنابات على ملف يملكه المحامي (الملف المنيب) — المحامي فقط،
+    /// وقبل اعتماد رئيس القسم (تفويض إلى <see cref="IsLawyer"/>).
+    /// </summary>
+    public static bool CanManageDelegations(UserRole role) => IsLawyer(role);
 
     /// <summary>
     /// اعتماد الإنابات واختيار المحامي المختص (نافذة «طلبات الإنابة») — رئيس

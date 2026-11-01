@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace DocGenerator.Application.Services;
+namespace DocGenerator.Application.Common;
 
 /// <summary>
 /// سياسة طول نصوص التنبيهات ومعالجتها — مركزية وواعية بـUnicode (الخطة §7.3).

@@ -151,7 +151,8 @@ public class SearchServerYearTests : IDisposable
 
         var tx = new TransactionRunner(_db);
         var alerts = new HeadAlertService(new HeadAlertRepository(_db), new DocumentRepository(_db),
-            new UserRepository(_db), new Repository<Branch>(_db), new UnitOfWork(_db), tx, _audit);
+            new UserRepository(_db), new Repository<Branch>(_db), new DelegationRepository(_db),
+            new UnitOfWork(_db), tx, _audit);
         var service = new DocumentAppealService(
             new AppealRepository(_db),
             new DocumentRepository(_db),

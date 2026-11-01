@@ -49,6 +49,7 @@ public class DocumentAppealServiceTests : IDisposable
             new DocumentRepository(_db),
             new UserRepository(_db),
             new Repository<Branch>(_db),
+            new DelegationRepository(_db),
             new UnitOfWork(_db),
             _tx,
             _audit);
@@ -70,6 +71,12 @@ public class DocumentAppealServiceTests : IDisposable
     public void Dispose() => _db.Dispose();
 
     private Task FlushAlertsAsync() => HeadAlertOutboxFlush.AllAsync(_db, _alertService, _tx);
+
+    /// <summary>قائمة المستلَم حسب دور المستخدم — صفحة كاملة للاختبار (PR-4: <c>ListForActorAsync</c>).</summary>
+    private Task<PagedResult<HeadAlertSummaryDto>> ReceivedAlertsAsync(User user) =>
+        _alertService.ListForActorAsync(
+            new HeadAlertActor(user.Id, user.Role, user.BranchId),
+            new HeadAlertListQuery { Page = new AlertPageRequest { Page = 1, PageSize = AlertPageRequest.MaxPageSize } });
 
     private static User User(int? branchId, string username, string fullName, UserRole role = UserRole.Lawyer) => new()
     {
@@ -173,8 +180,8 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.DoesNotContain(dto.Appellees, p => p.Name == "المؤسسة العامة للكهرباء");
 
         await FlushAlertsAsync();
-        var headAlerts = await _alertService.ListForHeadAsync(_head1.Id, _branch.Id);
-        Assert.Contains(headAlerts, a => a.TargetType == "head" && a.Message.Contains("يرجى اختيار محامٍ لمتابعة الاستئناف"));
+        var headAlerts = (await ReceivedAlertsAsync(_head1)).Items;
+        Assert.Contains(headAlerts, a => a.TargetType == "head" && a.MessagePreview.Contains("يرجى اختيار محامٍ لمتابعة الاستئناف"));
     }
 
     [Fact]
@@ -338,10 +345,10 @@ public class DocumentAppealServiceTests : IDisposable
         Assert.Equal(_lawyer2.Id, assigned!.AssignedLawyerId);
         // تنبيه الرئيس المعلّق صُفّي، ووصل المحامي تنبيه الإحالة.
         await FlushAlertsAsync();
-        var headAlerts = await _alertService.ListForHeadAsync(_head1.Id, _branch.Id);
-        Assert.DoesNotContain(headAlerts, a => a.Message.Contains("يرجى اختيار محامٍ لمتابعة الاستئناف"));
-        var lawyerAlerts = await _alertService.ListForLawyerAsync(_lawyer2.Id);
-        Assert.Contains(lawyerAlerts, a => a.Message.Contains("أحال إليك رئيس القسم استئناف"));
+        var headAlerts = (await ReceivedAlertsAsync(_head1)).Items;
+        Assert.DoesNotContain(headAlerts, a => a.MessagePreview.Contains("يرجى اختيار محامٍ لمتابعة الاستئناف"));
+        var lawyerAlerts = (await ReceivedAlertsAsync(_lawyer2)).Items;
+        Assert.Contains(lawyerAlerts, a => a.MessagePreview.Contains("أحال إليك رئيس القسم استئناف"));
 
         // إسناد مكرر مرفوض.
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -369,8 +376,8 @@ public class DocumentAppealServiceTests : IDisposable
 
         // إشعار محامي الملف الأساس (مختلف عن المتابع) بالحسم.
         await FlushAlertsAsync();
-        var baseLawyerAlerts = await _alertService.ListForLawyerAsync(_lawyer1.Id);
-        Assert.Contains(baseLawyerAlerts, a => a.Message.Contains("محسومًا"));
+        var baseLawyerAlerts = (await ReceivedAlertsAsync(_lawyer1)).Items;
+        Assert.Contains(baseLawyerAlerts, a => a.MessagePreview.Contains("محسومًا"));
 
         // حسم مكرر مرفوض، وحسم من غير المتابع مرفوض.
         await Assert.ThrowsAsync<ArgumentException>(() =>

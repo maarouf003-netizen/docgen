@@ -66,10 +66,24 @@ public class HeadAlertServiceTests : IDisposable
         var branches = new Repository<Branch>(_db);
         var uow = new UnitOfWork(_db);
         _tx = new TransactionRunner(_db);
-        _service = new HeadAlertService(alerts, documents, users, branches, uow, _tx, _audit);
+        _service = new HeadAlertService(alerts, documents, users, branches,
+            new DelegationRepository(_db), uow, _tx, _audit);
     }
 
     public void Dispose() => _db.Dispose();
+
+    private static AlertPageRequest FullPage() => new() { Page = 1, PageSize = AlertPageRequest.MaxPageSize };
+
+    private static HeadAlertActor ActorFor(User user) => new(user.Id, user.Role, user.BranchId);
+
+    private async Task<List<HeadAlertSummaryDto>> ReceivedAsync(User user) =>
+        (await _service.ListForActorAsync(
+            ActorFor(user),
+            new HeadAlertListQuery { Page = FullPage() })).Items.ToList();
+
+    private async Task<List<HeadAlertSummaryDto>> SentAsync(User user) =>
+        (await _service.ListSentAsync(
+            ActorFor(user), AlertArchiveFilter.Active, FullPage())).Items.ToList();
 
     private async Task<int> CreateSystemHeadAlertAsync(
         string message,
@@ -125,17 +139,18 @@ public class HeadAlertServiceTests : IDisposable
         var doc = await AddDocumentAsync(_lawyer1);
 
         var alert = await _service.CreateAsync(
-            new CreateHeadAlertRequest("document", doc.Id, null, "راجع هذا الملف"), _head.Id, _branchId, "head_x");
+            new CreateHeadAlertRequest("document", doc.Id, null, "راجع هذا الملف"), ActorFor(_head), "head_x");
 
         Assert.Equal(HeadAlertTargetType.Document.ToString().ToLowerInvariant(), alert.TargetType);
         Assert.Equal(doc.Id, alert.DocumentId);
         Assert.Contains("create_alert", _audit.Actions);
 
-        var lawyerList = await _service.ListForLawyerAsync(_lawyer1.Id);
+        var lawyerList = await ReceivedAsync(_lawyer1);
         var lawyerAlert = Assert.Single(lawyerList);
+        // القائمة تحمل معاينة فقط؛ النص الكامل للتفاصيل وحدها (§9.2). النص هنا أقصر من حدّ المعاينة.
         Assert.Equal(
             HeadAlertMessages.ManualMessage(UserRole.Head, "راجع هذا الملف"),
-            lawyerAlert.Message);
+            lawyerAlert.MessagePreview);
         Assert.Equal("أحمد العلي", lawyerAlert.DocumentTitle);
     }
 
@@ -143,12 +158,12 @@ public class HeadAlertServiceTests : IDisposable
     public async Task Create_LawyerTargeted_RecipientIsThatLawyerOnly()
     {
         var alert = await _service.CreateAsync(
-            new CreateHeadAlertRequest("lawyer", null, _lawyer2.Id, "رسالة خاصة"), _head.Id, _branchId, "head_x");
+            new CreateHeadAlertRequest("lawyer", null, _lawyer2.Id, "رسالة خاصة"), ActorFor(_head), "head_x");
 
         Assert.Equal(_lawyer2.Id, alert.TargetLawyerId);
 
-        var list1 = await _service.ListForLawyerAsync(_lawyer1.Id);
-        var list2 = await _service.ListForLawyerAsync(_lawyer2.Id);
+        var list1 = await ReceivedAsync(_lawyer1);
+        var list2 = await ReceivedAsync(_lawyer2);
         Assert.Empty(list1);
         Assert.Single(list2);
     }
@@ -168,18 +183,18 @@ public class HeadAlertServiceTests : IDisposable
         await _db.SaveChangesAsync();
 
         var alert = await _service.CreateAsync(
-            new CreateHeadAlertRequest("branch", null, null, "تعميم لجميع المحامين"), _head.Id, _branchId, "head_x");
+            new CreateHeadAlertRequest("branch", null, null, "تعميم لجميع المحامين"), ActorFor(_head), "head_x");
 
         Assert.Equal(2, alert.RecipientCount);
-        Assert.Equal(2, (await _service.ListForLawyerAsync(_lawyer1.Id)).Count
-            + (await _service.ListForLawyerAsync(_lawyer2.Id)).Count);
+        Assert.Equal(2, (await ReceivedAsync(_lawyer1)).Count
+            + (await ReceivedAsync(_lawyer2)).Count);
     }
 
     [Fact]
     public async Task Create_EmptyMessage_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateHeadAlertRequest("branch", null, null, "  "), _head.Id, _branchId, "head_x"));
+            _service.CreateAsync(new CreateHeadAlertRequest("branch", null, null, "  "), ActorFor(_head), "head_x"));
     }
 
     [Fact]
@@ -201,9 +216,72 @@ public class HeadAlertServiceTests : IDisposable
         var doc = await AddDocumentAsync(lawyerOther, branchId: other.Id);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateHeadAlertRequest("document", doc.Id, null, "خارج الفرع"), _head.Id, _branchId, "head_x"));
+            _service.CreateAsync(new CreateHeadAlertRequest("document", doc.Id, null, "خارج الفرع"), ActorFor(_head), "head_x"));
 
-        Assert.Contains("فرعك", ex.Message);
+        Assert.Equal("الملف غير متاح", ex.Message);
+    }
+
+    [Fact]
+    public async Task Create_OutsideBranchDocumentWithInactiveCreator_ReportsUnavailableOnly()
+    {
+        // ف‑4: فحص الفرع يسبق فحص المنشئ عمدًا — وجود حساب في فرع آخر لا يُكشف
+        // ولو كان منشئ الملف معطّلًا. هذا الاختبار يجمّد الترتيب أمام أي «تنظيف».
+        var other = new Branch { Name = "حلب", Code = "ALP" };
+        _db.Branches.Add(other);
+        _db.SaveChanges();
+        var lawyerOther = new User
+        {
+            Username = "law_alp_off",
+            FullName = "محامي حلب معطّل",
+            Role = UserRole.Lawyer,
+            BranchId = other.Id,
+            IsActive = false,
+            PasswordHash = new PasswordHasher().Hash("123456"),
+        };
+        _db.Users.Add(lawyerOther);
+        await _db.SaveChangesAsync();
+        var doc = await AddDocumentAsync(lawyerOther, branchId: other.Id);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(new CreateHeadAlertRequest("document", doc.Id, null, "خارج الفرع"), ActorFor(_head), "head_x"));
+
+        Assert.Equal("الملف غير متاح", ex.Message);
+    }
+
+    [Fact]
+    public async Task Create_MissingDocument_UsesSameUnavailableMessage()
+    {
+        // P3-5: الملف غير الموجود والملف خارج الفرع برسالة واحدة — لا يُكشف وجود
+        // ملف فرع آخر عبر اختلاف النص.
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(new CreateHeadAlertRequest("document", int.MaxValue, null, "ملف وهمي"), ActorFor(_head), "head_x"));
+
+        Assert.Equal("الملف غير متاح", ex.Message);
+    }
+
+    [Fact]
+    public async Task Create_InactiveDocumentCreator_Throws()
+    {
+        var doc = await AddDocumentAsync(_lawyer1);
+        _lawyer1.IsActive = false;
+        await _db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(new CreateHeadAlertRequest("document", doc.Id, null, "منشئ معطّل"), ActorFor(_head), "head_x"));
+
+        Assert.Equal("لا يوجد محامٍ مختص نشط لهذا الملف", ex.Message);
+    }
+
+    [Fact]
+    public async Task Create_InactiveLawyerTarget_Throws()
+    {
+        _lawyer2.IsActive = false;
+        await _db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(new CreateHeadAlertRequest("lawyer", null, _lawyer2.Id, "محامٍ معطّل"), ActorFor(_head), "head_x"));
+
+        Assert.Equal("المحامي غير موجود ضمن فرعك", ex.Message);
     }
 
     [Fact]
@@ -224,16 +302,16 @@ public class HeadAlertServiceTests : IDisposable
         await _db.SaveChangesAsync();
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateHeadAlertRequest("lawyer", null, lawyerOther.Id, "خارج الفرع"), _head.Id, _branchId, "head_x"));
+            _service.CreateAsync(new CreateHeadAlertRequest("lawyer", null, lawyerOther.Id, "خارج الفرع"), ActorFor(_head), "head_x"));
 
-        Assert.Contains("فرعك", ex.Message);
+        Assert.Equal("المحامي غير موجود ضمن فرعك", ex.Message);
     }
 
     [Fact]
     public async Task Create_InvalidTargetType_Throws()
     {
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            _service.CreateAsync(new CreateHeadAlertRequest("anyone", null, null, "رسالة"), _head.Id, _branchId, "head_x"));
+            _service.CreateAsync(new CreateHeadAlertRequest("anyone", null, null, "رسالة"), ActorFor(_head), "head_x"));
     }
 
     [Fact]
@@ -241,14 +319,14 @@ public class HeadAlertServiceTests : IDisposable
     {
         var doc = await AddDocumentAsync(_lawyer1);
         await _service.CreateAsync(
-            new CreateHeadAlertRequest("document", doc.Id, null, "تنبيه أول"), _head.Id, _branchId, "head_x");
+            new CreateHeadAlertRequest("document", doc.Id, null, "تنبيه أول"), ActorFor(_head), "head_x");
         await _service.CreateAsync(
-            new CreateHeadAlertRequest("branch", null, null, "تعميم"), _head.Id, _branchId, "head_x");
+            new CreateHeadAlertRequest("branch", null, null, "تعميم"), ActorFor(_head), "head_x");
         var ownId = await CreateSystemHeadAlertAsync(
             "تنبيه نظامي للرئيس", HeadAlertAudience.SingleHead, recipientUserId: _head.Id);
 
         // قراءة بالمستلم (§8): الرئيس يرى تنبيهه فقط — لا تنبيهات المحامين ولا التعميم.
-        var list = await _service.ListForHeadAsync(_head.Id, _branchId);
+        var list = await ReceivedAsync(_head);
 
         var single = Assert.Single(list);
         Assert.Equal(ownId, single.Id);
@@ -257,13 +335,13 @@ public class HeadAlertServiceTests : IDisposable
         Assert.Equal(1, single.UnreadCount);
 
         // تعليم القراءة يعمل للمستلم الرئيس ويُرى أثره.
-        Assert.True(await _service.MarkReadAsync(ownId, _head.Id));
-        list = await _service.ListForHeadAsync(_head.Id, _branchId);
+        Assert.True(await _service.MarkReadAsync(ownId, ActorFor(_head)));
+        list = await ReceivedAsync(_head);
         Assert.True(Assert.Single(list).IsRead);
 
         // محامٍ غير مستلم لا يرى تنبيه الرئيس.
         Assert.DoesNotContain(
-            await _service.ListForLawyerAsync(_lawyer2.Id),
+            await ReceivedAsync(_lawyer2),
             a => a.Id == ownId);
     }
 
@@ -271,23 +349,23 @@ public class HeadAlertServiceTests : IDisposable
     public async Task MarkRead_SetsRead_AndDecrementsUnread()
     {
         var alert = await _service.CreateAsync(
-            new CreateHeadAlertRequest("lawyer", null, _lawyer1.Id, "خاص"), _head.Id, _branchId, "head_x");
+            new CreateHeadAlertRequest("lawyer", null, _lawyer1.Id, "خاص"), ActorFor(_head), "head_x");
 
-        Assert.Equal(1, await _service.CountUnreadAsync(_lawyer1.Id));
+        Assert.Equal(1, await _service.CountUnreadAsync(ActorFor(_lawyer1), AlertUnreadScope.User));
 
-        var ok = await _service.MarkReadAsync(alert.Id, _lawyer1.Id);
+        var ok = await _service.MarkReadAsync(alert.Id, ActorFor(_lawyer1));
 
         Assert.True(ok);
-        Assert.Equal(0, await _service.CountUnreadAsync(_lawyer1.Id));
+        Assert.Equal(0, await _service.CountUnreadAsync(ActorFor(_lawyer1), AlertUnreadScope.User));
 
-        var dto = Assert.Single(await _service.ListForLawyerAsync(_lawyer1.Id));
+        var dto = Assert.Single(await ReceivedAsync(_lawyer1));
         Assert.True(dto.IsRead);
     }
 
     [Fact]
     public async Task MarkRead_NotFound_ReturnsFalse()
     {
-        var ok = await _service.MarkReadAsync(999, _lawyer1.Id);
+        var ok = await _service.MarkReadAsync(999, ActorFor(_lawyer1));
         Assert.False(ok);
     }
 
@@ -295,9 +373,9 @@ public class HeadAlertServiceTests : IDisposable
     public async Task MarkRead_NonRecipient_ReturnsFalse()
     {
         var alert = await _service.CreateAsync(
-            new CreateHeadAlertRequest("lawyer", null, _lawyer1.Id, "خاص"), _head.Id, _branchId, "head_x");
+            new CreateHeadAlertRequest("lawyer", null, _lawyer1.Id, "خاص"), ActorFor(_head), "head_x");
 
-        var ok = await _service.MarkReadAsync(alert.Id, _lawyer2.Id);
+        var ok = await _service.MarkReadAsync(alert.Id, ActorFor(_lawyer2));
 
         Assert.False(ok);
     }
@@ -308,7 +386,7 @@ public class HeadAlertServiceTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.CreateAsync(
                 new CreateHeadAlertRequest("head", null, null, "manual head"),
-                _head.Id, _branchId, "head_x"));
+                ActorFor(_head), "head_x"));
     }
 
     [Fact]
@@ -350,26 +428,284 @@ public class HeadAlertServiceTests : IDisposable
         Assert.Equal(77, stored.DelegationId);
     }
     [Fact]
+    public async Task DetailContract_CarriesAllFields_AndCanViewRecipientsIsServerComputed()
+    {
+        var doc = await AddDocumentAsync(_lawyer1);
+
+        var created = await _service.CreateAsync(
+            new CreateHeadAlertRequest("document", doc.Id, null, "نص كامل للتفاصيل"), ActorFor(_head), "head_x");
+
+        Assert.Equal(HeadAlertKindCatalog.ManualToDocument, created.Kind);
+        // D3: ملخص الإنشاء يطابق صف القائمة في الحقول المشتقة من العلاقات — لا «مستند محذوف»
+        // ولا اسم منشئ فارغ لكيان أُنشئ للتو.
+        Assert.Equal("أحمد العلي", created.DocumentTitle);
+        Assert.Equal(_head.FullName, created.CreatedByName);
+
+        // عقد التفاصيل (§9.2): الحقول السبعة المضافة كلها موجودة، والنص الكامل هنا وحده.
+        var fullMessage = HeadAlertMessages.ManualMessage(UserRole.Head, "نص كامل للتفاصيل");
+        var detail = await _service.GetDetailsAsync(created.Id, ActorFor(_head));
+        Assert.NotNull(detail);
+        Assert.Equal(fullMessage, detail!.Message);
+        Assert.Equal(created.Kind, detail.Kind);
+        Assert.Equal(created.CreatedAt, detail.LastContentChangedAt);
+        Assert.False(detail.IsArchived);
+        Assert.Null(detail.ArchivedAt);
+        Assert.Null(detail.PublicEntityId);
+        Assert.Null(detail.ExecutionCircuitId);
+        // المنشئ يرى المستلمين دائمًا، وهو ليس مستلمًا فلا حالة قراءة له.
+        Assert.True(detail.CanViewRecipients);
+        Assert.Null(detail.IsRead);
+        Assert.Equal(1, detail.RecipientCount);
+
+        // المستلم غير المنشئ: يرى التفاصيل لكنه لا يرى المستلمين، وحالة القراءة تخصّه.
+        var recipientDetail = await _service.GetDetailsAsync(created.Id, ActorFor(_lawyer1));
+        Assert.NotNull(recipientDetail);
+        Assert.False(recipientDetail!.CanViewRecipients);
+        Assert.False(recipientDetail.IsRead);
+        Assert.Equal(created.Kind, recipientDetail.Kind);
+
+        // وفي القائمة: معاينة بلا عدّادات مستلمين (قاعدة المحامي — §9.2).
+        var recipientView = Assert.Single(await ReceivedAsync(_lawyer1));
+        Assert.False(recipientView.IsRead);
+        Assert.Null(recipientView.RecipientCount);
+        Assert.Equal(created.Kind, recipientView.Kind);
+    }
+
+    [Fact]
+    public async Task Detail_CreatorWithThreeRecipients_GetsCounters_AndNullIsRead()
+    {
+        var lawyer3 = new User
+        {
+            Username = "law3",
+            FullName = "محامي دمشق 3",
+            Role = UserRole.Lawyer,
+            BranchId = _branchId,
+            PasswordHash = new PasswordHasher().Hash("123456"),
+        };
+        _db.Users.Add(lawyer3);
+        await _db.SaveChangesAsync();
+
+        var created = await _service.CreateAsync(
+            new CreateHeadAlertRequest("branch", null, null, "تعميم"), ActorFor(_head), "head_x");
+
+        // المنشئ ليس مستلمًا: IsRead فارغة، والعدّادان محتفظ بهما في التفاصيل (D5).
+        var detail = await _service.GetDetailsAsync(created.Id, ActorFor(_head));
+        Assert.NotNull(detail);
+        Assert.True(detail!.CanViewRecipients);
+        Assert.Null(detail.IsRead);
+        Assert.Equal(3, detail.RecipientCount);
+        Assert.Equal(3, detail.UnreadCount);
+
+        // مستلم غير الفاعل: حالته تخصّه (غير مقروء) ولا يرى المستلمين.
+        var recipientDetail = await _service.GetDetailsAsync(created.Id, ActorFor(lawyer3));
+        Assert.NotNull(recipientDetail);
+        Assert.False(recipientDetail!.IsRead);
+        Assert.False(recipientDetail.CanViewRecipients);
+        Assert.Equal(3, recipientDetail.RecipientCount);
+    }
+
+    [Fact]
+    public async Task MarkRead_UpdatesOnlyActorRow_AndDetailReflectsIt()
+    {
+        var created = await _service.CreateAsync(
+            new CreateHeadAlertRequest("branch", null, null, "تعميم"), ActorFor(_head), "head_x");
+
+        Assert.True(await _service.MarkReadAsync(created.Id, ActorFor(_lawyer1)));
+
+        // قراءة حالة القاعدة فعليًا (لا الكيانات المتتبَّعة من الإنشاء): التعليم صار
+        // تحديثًا ذرّيًا في المستودع لا يمرّ بمتتبِّع التغييرات.
+        var rows = await _db.HeadAlertRecipients
+            .AsNoTracking()
+            .Where(r => r.HeadAlertId == created.Id)
+            .ToListAsync();
+        var mine = Assert.Single(rows, r => r.UserId == _lawyer1.Id);
+        Assert.True(mine.IsRead);
+        Assert.NotNull(mine.ReadAt);
+        Assert.All(rows.Where(r => r.UserId != _lawyer1.Id), r =>
+        {
+            Assert.False(r.IsRead);
+            Assert.Null(r.ReadAt);
+        });
+
+        // إعادة التعليم idempotent: لا تُغيّر زمن القراءة المحفوظ.
+        var readAt = mine.ReadAt;
+        Assert.True(await _service.MarkReadAsync(created.Id, ActorFor(_lawyer1)));
+        _db.ChangeTracker.Clear();
+        Assert.Equal(readAt, (await _db.HeadAlertRecipients.SingleAsync(r => r.Id == mine.Id)).ReadAt);
+
+        // التفاصيل تعكس حالة القارئ والعدّاد المحتفظ به (D5) بدقة.
+        var detail = await _service.GetDetailsAsync(created.Id, ActorFor(_lawyer1));
+        Assert.NotNull(detail);
+        Assert.True(detail!.IsRead);
+        Assert.Equal(2, detail.RecipientCount);
+        Assert.Equal(1, detail.UnreadCount);
+    }
+
+    [Fact]
+    public async Task GetDetails_MapsArchivedAndReferenceFields_ForOversight()
+    {
+        var createdAt = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        var changedAt = new DateTime(2026, 2, 3, 4, 5, 6, DateTimeKind.Utc);
+        var archivedAt = new DateTime(2026, 3, 4, 5, 6, 7, DateTimeKind.Utc);
+        var alert = new HeadAlert
+        {
+            BranchId = _branchId,
+            CreatedById = _head.Id,
+            TargetType = HeadAlertTargetType.Lawyer,
+            Kind = HeadAlertKindCatalog.ManualToLawyer,
+            TargetLawyerId = _lawyer1.Id,
+            Message = "نص مؤرشف",
+            CreatedAt = createdAt,
+            LastContentChangedAt = changedAt,
+            IsArchived = true,
+            ArchivedAt = archivedAt,
+            DelegationId = 77,
+        };
+        _db.HeadAlerts.Add(alert);
+        await _db.SaveChangesAsync();
+
+        // مدير غير منشئ وغير مستلم: يصل عبر الإشراف (D2).
+        var dto = await _service.GetDetailsAsync(alert.Id, new HeadAlertActor(int.MaxValue, UserRole.Manager, null));
+
+        Assert.NotNull(dto);
+        Assert.Equal(HeadAlertKindCatalog.ManualToLawyer, dto!.Kind);
+        Assert.Equal("نص مؤرشف", dto.Message);
+        Assert.Equal(createdAt, dto.CreatedAt);
+        Assert.Equal(changedAt, dto.LastContentChangedAt);
+        Assert.True(dto.IsArchived);
+        Assert.Equal(archivedAt, dto.ArchivedAt);
+        Assert.Null(dto.PublicEntityId);
+        Assert.Equal(77, dto.DelegationId);
+        // الإشراف يرى المستلمين دائمًا، وحالة القراءة فارغة لأنه ليس مستلمًا.
+        Assert.True(dto.CanViewRecipients);
+        Assert.Null(dto.IsRead);
+    }
+
+    [Fact]
+    public async Task Detail_MapsDistinctLinkIds_InPositionalOrder()
+    {
+        // P3-3: قيم مميزة لكل مرجع تكشف أي إزاحة موضعية في وسائط `ToDetailDto`
+        // (اختبار القيم المتشابهة ينجح مصادفةً حتى مع تبديل حقلين).
+        var document = new Document
+        {
+            Id = 11,
+            BranchId = _branchId,
+            CreatedById = _lawyer1.Id,
+            IsDraft = false,
+            BorrowerName = "أحمد",
+            BorrowerFamily = "العلي",
+            AmountNumeric = 0,
+            ExecStatus = string.Empty,
+        };
+        _db.Documents.Add(document);
+        await _db.SaveChangesAsync();
+
+        var target = new User
+        {
+            Id = 22,
+            Username = "law_link",
+            FullName = "محامي مراجع",
+            Role = UserRole.Lawyer,
+            BranchId = _branchId,
+            PasswordHash = new PasswordHasher().Hash("123456"),
+        };
+        _db.Users.Add(target);
+        await _db.SaveChangesAsync();
+
+        _db.DocumentAppeals.Add(new DocumentAppeal
+        {
+            Id = 44,
+            DocumentId = document.Id,
+            CreatedById = _head.Id,
+        });
+        _db.ReviewLetters.Add(new ReviewLetter
+        {
+            Id = 55,
+            BranchId = _branchId,
+            CreatedById = _head.Id,
+            DocumentId = document.Id,
+        });
+        await _db.SaveChangesAsync();
+
+        var group = new PublicEntityGroup { CanonicalName = "وزارة العدل" };
+        _db.PublicEntityGroups.Add(group);
+        await _db.SaveChangesAsync();
+        _db.PublicEntities.Add(new PublicEntity
+        {
+            Id = 66,
+            GroupId = group.Id,
+            Governorate = "دمشق",
+            BranchName = "دمشق",
+            CreatedById = _head.Id,
+        });
+        _db.ExecutionCircuits.Add(new ExecutionCircuit
+        {
+            Id = 77,
+            BranchId = _branchId,
+            CreatedById = _head.Id,
+            Name = "دائرة مراجع",
+            NameNorm = "دائرة مراجع",
+        });
+        await _db.SaveChangesAsync();
+
+        var alert = new HeadAlert
+        {
+            BranchId = _branchId,
+            CreatedById = _head.Id,
+            TargetType = HeadAlertTargetType.Lawyer,
+            Kind = HeadAlertKindCatalog.ManualToLawyer,
+            DocumentId = 11,
+            TargetLawyerId = 22,
+            DelegationId = 33,
+            AppealId = 44,
+            ReviewLetterId = 55,
+            PublicEntityId = 66,
+            ExecutionCircuitId = 77,
+            Message = "مراجع متميزة",
+            CreatedAt = new DateTime(2026, 5, 6, 7, 8, 9, DateTimeKind.Utc),
+            LastContentChangedAt = new DateTime(2026, 5, 7, 8, 9, 10, DateTimeKind.Utc),
+        };
+        _db.HeadAlerts.Add(alert);
+        await _db.SaveChangesAsync();
+
+        var dto = await _service.GetDetailsAsync(
+            alert.Id, new HeadAlertActor(int.MaxValue, UserRole.Manager, null));
+
+        Assert.NotNull(dto);
+        Assert.Equal(11, dto!.DocumentId);
+        Assert.Equal(22, dto.TargetLawyerId);
+        Assert.Equal(33, dto.DelegationId);
+        Assert.Equal(44, dto.AppealId);
+        Assert.Equal(55, dto.ReviewLetterId);
+        Assert.Equal(66, dto.PublicEntityId);
+        Assert.Equal(77, dto.ExecutionCircuitId);
+    }
+
+    [Fact]
     public async Task Sent_ListsOwnIssued_AndReceivedExcludesThem()
     {
         var sent = await _service.CreateAsync(
-            new CreateHeadAlertRequest("lawyer", null, _lawyer2.Id, "رسالة خاصة"), _head.Id, _branchId, "head_x");
+            new CreateHeadAlertRequest("lawyer", null, _lawyer2.Id, "رسالة خاصة"), ActorFor(_head), "head_x");
 
         // الصادر: يراه مُصدِره بفرعه مع عدّادات المستلمين...
-        var sentList = await _service.ListSentAsync(_head.Id, _branchId);
+        var sentList = await SentAsync(_head);
         var item = Assert.Single(sentList);
         Assert.Equal(sent.Id, item.Id);
         Assert.Equal(1, item.RecipientCount);
 
         // ...ولا يظهر في مستلَماته (قراءة المستلم لا تشمل المُرسِل).
-        var received = await _service.ListForHeadAsync(_head.Id, _branchId);
+        var received = await ReceivedAsync(_head);
         Assert.DoesNotContain(received, a => a.Id == sent.Id);
 
         // وفرع آخر لا يراه.
         var otherBranch = new Branch { Name = "حلب", Code = "ALP" };
         _db.Branches.Add(otherBranch);
         await _db.SaveChangesAsync();
-        Assert.Empty(await _service.ListSentAsync(_head.Id, otherBranch.Id));
+        var otherBranchSent = await _service.ListSentAsync(
+            new HeadAlertActor(_head.Id, _head.Role, otherBranch.Id),
+            AlertArchiveFilter.Active,
+            FullPage());
+        Assert.Empty(otherBranchSent.Items);
     }
 
     [Fact]
@@ -387,17 +723,17 @@ public class HeadAlertServiceTests : IDisposable
         await _db.SaveChangesAsync();
 
         await _service.CreateAsync(
-            new CreateHeadAlertRequest("lawyer", null, _lawyer1.Id, "من الشعبة"), sub.Id, _branchId, "sub_x");
+            new CreateHeadAlertRequest("lawyer", null, _lawyer1.Id, "من الشعبة"), ActorFor(sub), "sub_x");
         await _service.CreateAsync(
-            new CreateHeadAlertRequest("lawyer", null, _lawyer2.Id, "من القسم"), _head.Id, _branchId, "head_x");
+            new CreateHeadAlertRequest("lawyer", null, _lawyer2.Id, "من القسم"), ActorFor(_head), "head_x");
 
-        var subSent = await _service.ListSentAsync(sub.Id, _branchId);
+        var subSent = await SentAsync(sub);
         Assert.Equal(
             HeadAlertMessages.ManualMessage(UserRole.SubHead, "من الشعبة"),
-            Assert.Single(subSent).Message);
-        var headSent = await _service.ListSentAsync(_head.Id, _branchId);
+            Assert.Single(subSent).MessagePreview);
+        var headSent = await SentAsync(_head);
         Assert.Equal(
             HeadAlertMessages.ManualMessage(UserRole.Head, "من القسم"),
-            Assert.Single(headSent).Message);
+            Assert.Single(headSent).MessagePreview);
     }
 }
