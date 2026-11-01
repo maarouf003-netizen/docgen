@@ -9,14 +9,23 @@ export interface AlertsFeed {
   items: HeadAlertSummaryDto[];
   /** الإجمالي من الخادم لقائمة النطاق كله (لا لعناصر الصفحة). */
   totalCount: number;
-  /** يوجد ما لم يُحمَّل بعد (`totalCount > items.length`). */
+  /** يوجد ما لم يُحمَّل بعد ويمكن الوصول إليه (`totalCount > items.length` بلا انقطاع). */
   hasMore: boolean;
+  /**
+   * انقطع الترقيم قبل نهاية القائمة: صفحة ملحقة لم تُضف أي صف جديد (كلها مكررات
+   * أو فارغة) لأن `offset` أُزيح بصدور/أرشفة تنبيه بين الجلبين — أي أن الإجمالي
+   * ما زال يتجاوز المعروض ولا يمكن بلوغ الباقي بطلب صفحات أبعد.
+   *
+   * عندها `hasMore = false` (لا طلبات عقيمة) والمسار الوحيد `reload`، ويُصفَّر
+   * تلقائيًا بوصول الصفحة الأولى (إعادة التحميل تستبدل الخريطة كلها).
+   */
+  stalled: boolean;
   /** تحميل الصفحة الأولى (القائمة فارغة حتى تصل). */
   isLoading: boolean;
   /** تحميل صفحة إضافية (القائمة المعروضة تبقى ظاهرة). */
   isLoadingMore: boolean;
   error: string | null;
-  /** يجلب الصفحة التالية، أو يعيد محاولة الصفحة الفاشلة نفسها. */
+  /** يجلب الصفحة التالية، أو يعيد محاولة الصفحة الفاشلة نفسها (ولا يطلب شيئًا عند انقطاع الترقيم). */
   loadMore: () => void;
   /** يعيد التحميل من الصفحة الأولى (بعد إصدار تنبيه مثلًا). */
   reload: () => void;
@@ -38,6 +47,13 @@ interface LoadedPage {
  * والصفحة تُقرأ من نتيجة الجلب نفسها لا من حالة الصفحة الحالية (فلا تُنسب بيانات
  * صفحة سابقة إلى صفحة لم تصل بعد). فشل صفحة إضافية يُبقي المعروض ويُعلن الخطأ،
  * وإعادة الضغط تعيد محاولة **الصفحة نفسها** لا التي بعدها.
+ *
+ * **انقطاع الإزاحة (`stalled`):** `offset` يفترض قائمة ثابتة بين الجلبين. إصدار
+ * تنبيه جديد في الأعلى بعد الصفحة الأولى يُزيح النافذة، فقد تعود الصفحة التالية
+ * كلها مكررات أو فارغة بينما `totalCount` ما زال أكبر من المعروض — وهنا يتوقف
+ * الطلب (`hasMore = false`) ويُعلن الانقطاع بدل وعد ترقيم لا يُغلق وطلبات عقيمة،
+ * ويبقى `reload` هو المخرج. الحل الجذري (مؤشر `(LastContentChangedAt, Id)`)
+ * قرار معماري في `PR-6`.
  */
 export function useAlertsFeed(url: string, { enabled }: { enabled: boolean }): AlertsFeed {
   const [page, setPage] = useState(1);
@@ -78,23 +94,34 @@ export function useAlertsFeed(url: string, { enabled }: { enabled: boolean }): A
 
   // الدمج يُزيل التكرار بالمعرّف: إصدار/أرشفة تنبيه بين صفحتين يُزيح الترقيم فيظهر
   // الصف نفسه في صفحتين — ومفتاح React المكرر يُنتج تحذيرًا وصفّين متطابقين.
-  const items = useMemo(() => {
-    if (loaded.size === 0) return [];
+  // وصفحة ملحقة لا تُضيف صفًا جديدًا (`added === 0`) دليل أن الإزاحة أخلّت النافذة:
+  // الباقي في أعلى النطاق ولا يُبلغ بطلب صفحات أبعد ⇒ تُعلَّم انقطاعًا.
+  const merged = useMemo(() => {
+    if (loaded.size === 0) return { items: [] as HeadAlertSummaryDto[], stalledPage: false };
     const pages = [...loaded.keys()].sort((a, b) => a - b);
     const seen = new Set<number>();
-    const merged: HeadAlertSummaryDto[] = [];
+    const items: HeadAlertSummaryDto[] = [];
+    let stalledPage = false;
     for (const pageNumber of pages) {
+      let added = 0;
       for (const alert of loaded.get(pageNumber) ?? []) {
         if (seen.has(alert.id)) continue;
         seen.add(alert.id);
-        merged.push(alert);
+        items.push(alert);
+        added += 1;
       }
+      if (pageNumber > 1 && added === 0) stalledPage = true;
     }
-    return merged;
+    return { items, stalledPage };
   }, [loaded]);
+  const items = merged.items;
 
   const totalCount = query.data?.result.totalCount ?? 0;
-  const hasMore = totalCount > items.length;
+  // «انقطاع» فعلي حين تبقى فجوة بين الإجمالي والمعروض مع صفحة ملحقة بلا صف جديد.
+  // أما صفحة ملحقة فارغة والإجمالي مساوٍ للمعروض (حذف/أرشفة بين الجلبين) فقائمة
+  // مكتملة لا انقطاع — فلا رسالة مضللة.
+  const stalled = merged.stalledPage && totalCount > items.length;
+  const hasMore = totalCount > items.length && !stalled;
   const isLoading = queryIsLoading && page === 1;
   const isLoadingMore = queryIsLoading && page > 1;
   // آخر صفحة وصلت فعلًا — يمنع طلب صفحة تتجاوز التي لم تُحمّل بعد.
@@ -137,5 +164,16 @@ export function useAlertsFeed(url: string, { enabled }: { enabled: boolean }): A
     [],
   );
 
-  return { items, totalCount, hasMore, isLoading, isLoadingMore, error: queryError, loadMore, reload, updateItems };
+  return {
+    items,
+    totalCount,
+    hasMore,
+    stalled,
+    isLoading,
+    isLoadingMore,
+    error: queryError,
+    loadMore,
+    reload,
+    updateItems,
+  };
 }

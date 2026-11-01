@@ -679,6 +679,39 @@ describe('Dashboard للمحامي', () => {
     expect(screen.queryByText('1 غير مقروء')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'تمت القراءة' })).not.toBeInTheDocument();
   });
+
+  it('تعليم التنبيه مقروءًا يُنقص عدّاد الصف أيضًا (عدّادات PR-4 المحتفظ بها)', async () => {
+    const user = userEvent.setup();
+    // العدّادان المحتفظ بهما حتى `PR-6` يصلان لمنظور المستلم، فصف المحامي قد
+    // يحمل «غير مقروء: N / M» — وتعليمه مقروءًا يجب أن يُنقص الرقمين معًا،
+    // وإلا بقي «2 / 2» بعد قراءته حتى إعادة التركيب.
+    mockApi({
+      alerts: [
+        makeHeadAlertSummary({
+          id: 1,
+          messagePreview: 'راجع ملف القرض',
+          recipientCount: 2,
+          unreadCount: 2,
+          isRead: false,
+        }),
+      ],
+      unreadCount: 1,
+    });
+    (api.patch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+    render(<Dashboard />);
+
+    expect(await screen.findByText('غير مقروء: 2 / 2')).toBeInTheDocument();
+    expect(screen.getByText('1 غير مقروء')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'تمت القراءة' }));
+
+    expect(api.patch).toHaveBeenCalledWith('/alerts/1/read');
+    expect(await screen.findByText('غير مقروء: 1 / 2')).toBeInTheDocument();
+    expect(screen.getByText('مقروء')).toBeInTheDocument();
+    // وشارة الترويسة تنزل إلى الصفر فتختفي (لا رقم مجهول/قديم).
+    expect(screen.queryByText('1 غير مقروء')).not.toBeInTheDocument();
+  });
 });
 
 describe('Dashboard لرئيس القسم', () => {
@@ -831,6 +864,68 @@ describe('Dashboard لرئيس القسم', () => {
     expect(screen.getByRole('link', { name: 'راجع ملف القرض' })).toHaveAttribute('href', '/documents/5');
     expect(screen.getAllByText('مرتبط بملف').length).toBeGreaterThan(0);
     expect(screen.getAllByText('تعميم للفرع').length).toBeGreaterThan(0);
+  });
+
+  it('إزاحة الترقيم بين صفحتين: يتوقف «المزيد» ويظهر «تحديث» بلا طلبات صفحات فارغة', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({
+      user: { id: 1, username: 'head1', fullName: 'رئيس', role: 'head', branchId: 1 },
+    });
+    mockApi({
+      alerts: HEAD_ALERTS,
+      alertsTotal: 3,
+      // الإزاحة: الصف الثاني من الصفحة الأولى يعود وحده في الصفحة الثانية.
+      alertsPage2: [makeHeadAlertSummary({ id: 1, messagePreview: 'راجع ملف القرض', documentId: 5 })],
+      lawyers: BRANCH_LAWYERS,
+    });
+
+    render(<Dashboard />);
+
+    expect(await screen.findByText('يُعرض 2 من أصل 3 تنبيهًا')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'تحميل المزيد' }));
+
+    // لا وعد ترقيم لا يُغلق: الانقطاع معلن والمخرج «تحديث» بدل صفحات فارغة.
+    expect(
+      await screen.findByText(/تغيّرت القائمة أثناء التصفّح فتعذّر تحميل البقية/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'تحميل المزيد' })).not.toBeInTheDocument();
+    const alertPages = (api.get as unknown as ReturnType<typeof vi.fn>).mock.calls
+      .filter((call) => call[0] === '/alerts')
+      .map((call) => (call[1] as { params?: { page?: number } } | undefined)?.params?.page);
+    expect(alertPages).toEqual([1, 2]);
+
+    // «تحديث» يعيد من الصفحة الأولى فيستعيد المتابعة الطبيعية.
+    await user.click(screen.getByRole('button', { name: 'تحديث' }));
+    expect(await screen.findByRole('button', { name: 'تحميل المزيد' })).toBeInTheDocument();
+    expect(screen.queryByText(/تغيّرت القائمة أثناء التصفّح/)).not.toBeInTheDocument();
+  });
+
+  it('ربط التبويب بلوحته: `aria-controls` يشير إلى لوحة موجودة بدورها واسمها', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({
+      user: { id: 1, username: 'head1', fullName: 'رئيس', role: 'head', branchId: 1 },
+    });
+    mockApi({ alerts: HEAD_ALERTS, lawyers: BRANCH_LAWYERS });
+
+    render(<Dashboard />);
+
+    const receivedTab = await screen.findByRole('tab', { name: 'مستلمة' });
+    expect(receivedTab).toHaveAttribute('id', 'alerts-tab-received');
+    expect(receivedTab).toHaveAttribute('aria-controls', 'alerts-panel-received');
+
+    const receivedPanel = document.getElementById('alerts-panel-received');
+    expect(receivedPanel).toHaveAttribute('role', 'tabpanel');
+    expect(receivedPanel).toHaveAttribute('aria-labelledby', 'alerts-tab-received');
+
+    await user.click(screen.getByRole('tab', { name: 'أرسلتها' }));
+
+    const sentTab = document.getElementById('alerts-tab-sent');
+    expect(sentTab).toHaveAttribute('aria-controls', 'alerts-panel-sent');
+    const sentPanel = document.getElementById('alerts-panel-sent');
+    expect(sentPanel).toHaveAttribute('role', 'tabpanel');
+    expect(sentPanel).toHaveAttribute('aria-labelledby', 'alerts-tab-sent');
+    // اللوحة الحاوية تتبع التبويب الظاهر وحده (لا لوحة معلّقة للتبويب السابق).
+    expect(document.getElementById('alerts-panel-received')).toBeNull();
   });
 
   it('يصدر تعميماً للفرع فيضاف التنبيه للقائمة', async () => {

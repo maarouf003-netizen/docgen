@@ -146,7 +146,7 @@ describe('AccountPage', () => {
     );
   });
 
-  it('رئيس بلا فرع: لا يطلب عدّاد `received` (مرفوض خلفيًا) ويعرض صفرًا بلا خطأ', async () => {
+  it('رئيس بلا فرع: لا يطلب عدّاد `received` (مرفوض خلفيًا) ويعرض «—» بلا خطأ ولا طلب', async () => {
     useAuthMock.mockReturnValue({
       user: { id: 2, username: 'head1', fullName: 'رئيس القسم', role: 'head', branchName: 'دمشق', branchId: null },
       logout: vi.fn(),

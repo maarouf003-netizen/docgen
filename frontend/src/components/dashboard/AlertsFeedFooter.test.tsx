@@ -10,6 +10,7 @@ function feed(overrides: Partial<AlertsFeed> = {}): AlertsFeed {
     items: [makeHeadAlertSummary({ id: 1 })],
     totalCount: 1,
     hasMore: false,
+    stalled: false,
     isLoading: false,
     isLoadingMore: false,
     error: null,
@@ -78,5 +79,44 @@ describe('AlertsFeedFooter', () => {
     render(<AlertsFeedFooter feed={feed({ totalCount: 3, hasMore: true, isLoadingMore: true })} />);
 
     expect(screen.getByRole('button', { name: 'جارٍ التحميل…' })).toBeDisabled();
+  });
+
+  it('انقطاع الترقيم: يعلن تعذّر البقية و«تحديث» يعيد من الأولى بلا «تحميل المزيد»', async () => {
+    const user = userEvent.setup();
+    const reload = vi.fn();
+    const loadMore = vi.fn();
+    render(
+      <AlertsFeedFooter
+        feed={feed({
+          items: [makeHeadAlertSummary({ id: 1 }), makeHeadAlertSummary({ id: 2 })],
+          totalCount: 3,
+          hasMore: false,
+          stalled: true,
+          reload,
+          loadMore,
+        })}
+      />,
+    );
+
+    // لا وعد ترقيم لا يُغلق: العدد الحقيقي مصرَّح به مع سبب التوقف.
+    expect(screen.getByText(/يُعرض 2 من أصل 3 تنبيهًا/)).toBeInTheDocument();
+    expect(screen.getByText(/تغيّرت القائمة أثناء التصفّح فتعذّر تحميل البقية/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'تحميل المزيد' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'تحديث' }));
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(loadMore).not.toHaveBeenCalled();
+  });
+
+  it('انقطاع مع خطأ: الخطأ أولى فيُعرض «إعادة المحاولة» لا رسالة الانقطاع', async () => {
+    const loadMore = vi.fn();
+    render(
+      <AlertsFeedFooter
+        feed={feed({ totalCount: 3, hasMore: false, stalled: true, error: 'تعذّر الجلب', loadMore })}
+      />,
+    );
+
+    expect(screen.queryByText(/تغيّرت القائمة أثناء التصفّح/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'إعادة المحاولة' })).toBeInTheDocument();
   });
 });

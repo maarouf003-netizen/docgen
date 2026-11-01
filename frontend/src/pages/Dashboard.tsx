@@ -263,7 +263,18 @@ export default function Dashboard() {
     try {
       await api.patch(`/alerts/${a.id}/read`);
       receivedFeed.updateItems((prev) =>
-        prev.map((x) => (x.id === a.id ? { ...x, isRead: true } : x)),
+        prev.map((x) => {
+          if (x.id !== a.id || x.isRead) return x;
+          // عدّاد الصف عند الرئيس/الشعبة = غير المقروء من مستلمي هذا الصف (`D6`)،
+          // وتعليمه مقروءًا يُنقصه بمقدار واحد — وإلا بقي «غير مقروء: 2 / 2» بعد أن
+          // قرأه المستخدم نفسه، حتى إعادة التركيب. صفوف المحامي (`unreadCount = null`)
+          // بلا عدّاد فلا تُمس.
+          return {
+            ...x,
+            isRead: true,
+            unreadCount: x.unreadCount == null ? x.unreadCount : Math.max(0, x.unreadCount - 1),
+          };
+        }),
       );
       unreadQuery.setData((prev) => (prev ? { count: Math.max(0, prev.count - 1) } : prev));
     } catch (err) {
@@ -482,7 +493,9 @@ export default function Dashboard() {
                 key={t}
                 type="button"
                 role="tab"
+                id={`alerts-tab-${t}`}
                 aria-selected={alertsTab === t}
+                aria-controls={`alerts-panel-${t}`}
                 onClick={() => setAlertsTab(t)}
                 className={`min-h-11 rounded-lg px-4 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                   alertsTab === t ? 'bg-emerald-800 text-white' : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
@@ -492,50 +505,59 @@ export default function Dashboard() {
               </button>
             ))}
           </div>
-          <AlertsPanel
-            badge={
-              headBadge === null ? null : (
-                <span className="shrink-0 whitespace-nowrap text-xs bg-emerald-100 text-emerald-800 rounded-full px-2 py-0.5 font-medium tabular-nums">
-                  {headBadge.srPrefix ? <span className="sr-only">{headBadge.srPrefix}</span> : null}
-                  {headBadge.text}
-                </span>
-              )
-            }
-            // دلالة الشارة صريحة: `received` مجموع غير المقروء في تنبيهات القسم
-            // (أزواج تنبيه × مستلم) لا صفوف الرئيس الشخصية — فلا تُقرأ «غير مقروءة لي».
-            subtitle={alertsTab === 'received' ? 'غير المقروء في تنبيهاتك' : null}
-            headerExtra={
-              <button
-                type="button"
-                onClick={() => setShowAlertForm((v) => !v)}
-                className="min-h-11 px-4 rounded-lg bg-emerald-800 hover:bg-emerald-700 text-white text-sm font-medium"
-              >
-                {showAlertForm ? 'إلغاء' : '+ إصدار تنبيه'}
-              </button>
-            }
-            form={
-              showAlertForm ? (
-                <CreateAlertForm
-                  targetType={alertTargetType}
-                  onTargetTypeChange={setAlertTargetType}
-                  lawyers={branchLawyers}
-                  lawyerId={alertLawyerId}
-                  onLawyerIdChange={setAlertLawyerId}
-                  message={alertMessage}
-                  onMessageChange={setAlertMessage}
-                  submitting={alertSubmitting}
-                  error={alertFormError}
-                  onSubmit={submitAlert}
-                  onCancel={() => setShowAlertForm(false)}
-                />
-              ) : null
-            }
-            error={alertsError || activeFeed.error || ''}
-            footer={<AlertsFeedFooter feed={activeFeed} />}
-            isLoading={activeFeed.isLoading}
-            alerts={activeFeed.items}
-            sentView={alertsTab === 'sent'}
-          />
+          {/* اللوحة الحاوية للتبويب الظاهر: `aria-controls` في الأزرار يشير إلى
+              `alerts-panel-{tab}`، واللوحة تُسمّى بتبويبها (النمط نفسه في
+              `DocumentView`/`PortalFileDetail`). */}
+          <div
+            role="tabpanel"
+            id={`alerts-panel-${alertsTab}`}
+            aria-labelledby={`alerts-tab-${alertsTab}`}
+          >
+            <AlertsPanel
+              badge={
+                headBadge === null ? null : (
+                  <span className="shrink-0 whitespace-nowrap text-xs bg-emerald-100 text-emerald-800 rounded-full px-2 py-0.5 font-medium tabular-nums">
+                    {headBadge.srPrefix ? <span className="sr-only">{headBadge.srPrefix}</span> : null}
+                    {headBadge.text}
+                  </span>
+                )
+              }
+              // دلالة الشارة صريحة: `received` مجموع غير المقروء في تنبيهات القسم
+              // (أزواج تنبيه × مستلم) لا صفوف الرئيس الشخصية — فلا تُقرأ «غير مقروءة لي».
+              subtitle={alertsTab === 'received' ? 'غير المقروء في تنبيهاتك' : null}
+              headerExtra={
+                <button
+                  type="button"
+                  onClick={() => setShowAlertForm((v) => !v)}
+                  className="min-h-11 px-4 rounded-lg bg-emerald-800 hover:bg-emerald-700 text-white text-sm font-medium"
+                >
+                  {showAlertForm ? 'إلغاء' : '+ إصدار تنبيه'}
+                </button>
+              }
+              form={
+                showAlertForm ? (
+                  <CreateAlertForm
+                    targetType={alertTargetType}
+                    onTargetTypeChange={setAlertTargetType}
+                    lawyers={branchLawyers}
+                    lawyerId={alertLawyerId}
+                    onLawyerIdChange={setAlertLawyerId}
+                    message={alertMessage}
+                    onMessageChange={setAlertMessage}
+                    submitting={alertSubmitting}
+                    error={alertFormError}
+                    onSubmit={submitAlert}
+                    onCancel={() => setShowAlertForm(false)}
+                  />
+                ) : null
+              }
+              error={alertsError || activeFeed.error || ''}
+              footer={<AlertsFeedFooter feed={activeFeed} />}
+              isLoading={activeFeed.isLoading}
+              alerts={activeFeed.items}
+              sentView={alertsTab === 'sent'}
+            />
+          </div>
         </>
       )}
     </div>

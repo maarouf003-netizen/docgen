@@ -195,4 +195,114 @@ describe('useAlertsFeed', () => {
     expect(result.current.items).toEqual([]);
     expect(result.current.totalCount).toBe(0);
   });
+
+  it('تمكين النطاق بعد تعطيله يستأنف الجلب مرة واحدة من الصفحة الأولى', async () => {
+    get.mockResolvedValueOnce(pageBody([row(1)], 1));
+
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) => useAlertsFeed('/alerts', { enabled }),
+      { initialProps: { enabled: false } },
+    );
+    expect(get).not.toHaveBeenCalled();
+
+    rerender({ enabled: true });
+
+    await waitFor(() => expect(result.current.items.map((alert) => alert.id)).toEqual([1]));
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(get).toHaveBeenCalledWith(
+      '/alerts',
+      expect.objectContaining({ params: { page: 1, pageSize: 100 } }),
+    );
+  });
+
+  it('تعطيل النطاق أثناء الجلب يُبطل الطلب بلا خطأ ولا بيانات', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    get.mockImplementationOnce((_url: string, config: { signal?: AbortSignal }) => {
+      capturedSignal = config.signal;
+      // وعد لا يُحلّ أبدًا: الإلغاء هو ما يُنهي الطلب لا الاستجابة.
+      return new Promise(() => {});
+    });
+
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) => useAlertsFeed('/alerts', { enabled }),
+      { initialProps: { enabled: true } },
+    );
+    await waitFor(() => expect(capturedSignal).toBeDefined());
+
+    rerender({ enabled: false });
+
+    await waitFor(() => expect(capturedSignal?.aborted).toBe(true));
+    expect(result.current.error).toBeNull();
+    expect(result.current.items).toEqual([]);
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  it('إزاحة بين صفحتين: صفحة ملحقة كلها مكررات تُعلن الانقطاع وتوقف الطلبات', async () => {
+    get.mockResolvedValueOnce(pageBody([row(1), row(2), row(3)], 4));
+    const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
+    await waitFor(() => expect(result.current.items).toHaveLength(3));
+    expect(result.current.hasMore).toBe(true);
+    expect(result.current.stalled).toBe(false);
+
+    // تنبيه جديد أُدرج في الأعلى ⇒ الإجمالي 5 والنافذة أُزيحت، فالصفحة الثانية
+    // تعيد الصف الأخير من الأولى («3») وحده: تقدم صفري.
+    get.mockResolvedValueOnce(pageBody([row(3)], 5, 2));
+    act(() => result.current.loadMore());
+
+    await waitFor(() => expect(result.current.stalled).toBe(true));
+    expect(result.current.hasMore).toBe(false);
+    expect(result.current.items.map((alert) => alert.id)).toEqual([1, 2, 3]);
+
+    // لا صفحة ثالثة: زر «تحميل المزيد» صار بلا معنى، والمخرج `reload`.
+    act(() => result.current.loadMore());
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+
+  it('صفحة ملحقة فارغة مع إجمالي أكبر تُعلن الانقطاع لا صفحة «لا مزيد» كاذبة', async () => {
+    get.mockResolvedValueOnce(pageBody([row(1), row(2)], 3));
+    const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+
+    get.mockResolvedValueOnce(pageBody([], 3, 2));
+    act(() => result.current.loadMore());
+
+    await waitFor(() => expect(result.current.stalled).toBe(true));
+    expect(result.current.hasMore).toBe(false);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('صفحة ملحقة فارغة والإجمالي مساوٍ للمعروض: اكتمال لا انقطاع', async () => {
+    get.mockResolvedValueOnce(pageBody([row(1), row(2)], 3));
+    const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+
+    // حُذف/أُرشف تنبيه بين الجلبين فانكمش الإجمالي إلى المعروض نفسه.
+    get.mockResolvedValueOnce(pageBody([], 2, 2));
+    act(() => result.current.loadMore());
+
+    await waitFor(() => expect(result.current.totalCount).toBe(2));
+    expect(result.current.stalled).toBe(false);
+    expect(result.current.hasMore).toBe(false);
+  });
+
+  it('reload يُصفّر الانقطاع ويعيد المتابعة من الصفحة الأولى', async () => {
+    get.mockResolvedValueOnce(pageBody([row(1), row(2)], 3));
+    const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+
+    get.mockResolvedValueOnce(pageBody([row(2)], 4, 2));
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(result.current.stalled).toBe(true));
+
+    get.mockResolvedValueOnce(pageBody([row(9), row(2), row(1)], 5));
+    act(() => result.current.reload());
+    await waitFor(() => expect(result.current.items.map((alert) => alert.id)).toEqual([9, 2, 1]));
+    expect(result.current.stalled).toBe(false);
+    expect(result.current.hasMore).toBe(true);
+
+    get.mockResolvedValueOnce(pageBody([row(4), row(5)], 5, 2));
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(result.current.items).toHaveLength(5));
+    expect(result.current.stalled).toBe(false);
+  });
 });
