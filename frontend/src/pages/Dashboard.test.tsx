@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
@@ -734,7 +734,7 @@ describe('Dashboard لرئيس القسم', () => {
     expect(await screen.findByRole('heading', { name: 'مرحبًا، رئيس' })).toBeInTheDocument();
 
     const quickNav = screen.getByRole('navigation', { name: 'أقسام لوحة رئيس القسم' });
-    expect(within(quickNav).getAllByRole('link')).toHaveLength(10);
+    expect(within(quickNav).getAllByRole('link')).toHaveLength(11);
     expect(
       within(quickNav).getByRole('link', { name: 'إدارة دوائر التنفيذ' }),
     ).toHaveAttribute('href', '/execution-circuits');

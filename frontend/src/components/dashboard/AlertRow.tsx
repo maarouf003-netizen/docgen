@@ -23,11 +23,20 @@ export function AlertRow({
   onMarkRead,
   markingKey,
   sentView = false,
+  onOpen,
+  onOpenRecipients,
 }: {
   alert: HeadAlertSummaryDto;
   onMarkRead?: (a: HeadAlertSummaryDto) => void;
   markingKey?: string | null;
   sentView?: boolean;
+  /**
+   * فتح النص الكامل في حوار (صفحة `/alerts`). تمريره يُلغي الكشف السطري
+   * (`AlertDetails`): وظيفة واحدة بمسار واحد، والحوار هو المسار على الصفحة.
+   */
+  onOpen?: (a: HeadAlertSummaryDto) => void;
+  /** فتح قائمة المستلمين وحالة قراءتهم — في عرض الصادر فقط. */
+  onOpenRecipients?: (a: HeadAlertSummaryDto) => void;
 }) {
   const isMarking = markingKey === String(alert.id);
   // الوجهة من الكتالوج الدلالي، ثم سلسلة احتياط المعرّفات (AlertKinds.alertRoute).
@@ -76,13 +85,31 @@ export function AlertRow({
               </span>
             ) : null}
           </div>
-          {/* يُركَّب الفتح عن الطلب فقط للمعاينات المقطوعة — فلا 100 نسخة هوك
-              (أثر/حالة) لكل صف في القوائم الطويلة. الحارس داخل المكوّن يبقى دفاعيًا. */}
-          {alert.previewTruncated ? (
+          {/* الكشف السطري للمعاينات المقطوعة — داخل اللوحة القديمة. على الصفحة
+              يُمرَّر `onOpen` فيُستبدل بالحوار كي لا تتكرر الوظيفة بمسارين. */}
+          {alert.previewTruncated && !onOpen ? (
             <AlertDetails alertId={alert.id} previewTruncated />
           ) : null}
         </div>
         <div className="shrink-0 flex flex-col items-end gap-1.5">
+          {onOpen ? (
+            <button
+              type="button"
+              onClick={() => onOpen(alert)}
+              className="min-h-11 px-3 rounded-lg text-xs font-medium border border-gray-200 text-gray-600 hover:text-emerald-700 hover:border-emerald-200 hover:bg-emerald-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+            >
+              عرض التنبيه
+            </button>
+          ) : null}
+          {onOpenRecipients && alert.recipientCount != null ? (
+            <button
+              type="button"
+              onClick={() => onOpenRecipients(alert)}
+              className="min-h-11 px-3 rounded-lg text-xs font-medium border border-gray-200 text-gray-600 hover:text-emerald-700 hover:border-emerald-200 hover:bg-emerald-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+            >
+              المستلمون
+            </button>
+          ) : null}
           {onMarkRead && !alert.isRead ? (
             <button
               type="button"

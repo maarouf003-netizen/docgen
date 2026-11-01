@@ -348,7 +348,7 @@ export default function Dashboard() {
           <GreetingHeader fullName={user?.fullName} />
           <div className="mt-4">
             <LawyerIconRow
-              counts={{ unseenReplies, urgentCorrespondence, calendarAlerts, pendingRegistrations }}
+              counts={{ unseenReplies, urgentCorrespondence, calendarAlerts, pendingRegistrations, alertUnread: unreadCount }}
               showReferredFiles={showReferredFiles}
               pendingState={
                 pendingRegistrationsQuery.isLoading
@@ -396,6 +396,7 @@ export default function Dashboard() {
                 delegationsPending,
                 entityPending,
                 circuitsPending,
+                alertUnread: unreadCount,
               }}
               scopeLabel={isSubHead ? 'مؤشرات الشعبة' : 'مؤشرات الفرع'}
               isSubHead={isSubHead}

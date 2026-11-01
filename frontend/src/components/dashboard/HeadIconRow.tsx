@@ -9,6 +9,8 @@ export interface HeadIconCounts {
   entityPending: number;
   /** ملفات بانتظار إعادة القيد في دوائر الفرع (شارة بطاقة الدوائر — B44). */
   circuitsPending: number;
+  /** غير المقروء في نطاق الرئيس/الشعبة (`received` — `D6`/`D7`) لبطاقة التنبيهات. */
+  alertUnread: number;
 }
 
 /**
@@ -140,6 +142,22 @@ export function HeadIconRow({
       subtitle: 'تتبع الإجراءات',
       tone: 'bg-rose-100 text-rose-700',
       to: '/audit-logs',
+    },
+    {
+      key: 'alerts',
+      icon: ICONS.forum,
+      title: 'التنبيهات',
+      subtitle:
+        counts.alertUnread > 0 ? `${counts.alertUnread} جديد` : 'لا جديد',
+      tone: 'bg-red-100 text-red-700',
+      badge:
+        counts.alertUnread > 0
+          ? {
+              count: counts.alertUnread,
+              label: arabicCount(counts.alertUnread, 'تنبيه واحد غير مقروء', 'تنبيهات غير مقروءة'),
+            }
+          : undefined,
+      to: '/alerts',
     },
     {
       key: 'account',
