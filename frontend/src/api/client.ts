@@ -1,5 +1,6 @@
 import axios, { type AxiosRequestConfig } from 'axios';
 import { reportClientError } from '../utils/errorReporting';
+import { ContractError } from './contractError';
 
 const CSRF_COOKIE = 'docgen_csrf';
 const CSRF_HEADER = 'X-CSRF-Token';
@@ -10,6 +11,9 @@ const CSRF_HEADER = 'X-CSRF-Token';
 /// المختصرة من الوسطاء — فغياب `message` يُترجم لرسالة عربية ثابتة حسب الحالة.
 /// حقلا `errors` و`title` الإطاريان لا يُقرآن أبدًا عمدًا (إنجليزية إطارية).
 export function getApiErrorMessage(error: unknown): string {
+  // مخالفة عقد سلكي: الرسالة من كودنا ومصوغة للعرض، فتُعاد كما هي — بخلاف أي
+  // `Error` عائم تبقى رسالته مستورة خلف النص العام أدناه.
+  if (error instanceof ContractError) return error.message;
   if (axios.isAxiosError(error)) {
     const status = error.response?.status;
     if (!error.response) return 'تعذر الاتصال بالخادم. تحقق من الاتصال وأعد المحاولة';

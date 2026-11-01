@@ -567,6 +567,13 @@ describe('DocumentView', () => {
           ? Promise.resolve({ data: [delegation] })
           : Promise.reject(new Error('انقطع الاتصال'));
       }
+      // شريط نشاط الإنابة يطلب قائمة مرقّمة (`PagedResult`، `D1`): صفحة فارغة
+      // مشروعة هنا — والردّ بمستند (كما يفعل الاحتياطي أدناه) خرق عقد يُعلن خطأً.
+      if (url === '/alerts/by-delegation/9') {
+        return Promise.resolve({
+          data: { items: [], page: 1, perPage: 100, totalCount: 0, totalPages: 0 },
+        });
+      }
       return Promise.resolve({ data: { ...mockDoc } });
     });
     renderView();

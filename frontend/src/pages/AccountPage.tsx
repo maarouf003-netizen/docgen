@@ -34,7 +34,7 @@ export default function AccountPage() {
 
   // نطاق عدّاد `received` يشترط **الفرع** فقط (يُفرَض خلفيًا بـ`RequireBranch` — `D11`)،
   // لا الشعبة؛ فرئيس شعبة بفرع بلا شعبة ما زال يحق له العدّاد. ورئيس بلا فرع لا يُطلق
-  // له طلب (مردود `403`) وتبقى البطاقة صفرًا بدل خطأ دائم في الملخص (نفس قاعدة `Dashboard`).
+  // له طلب (مردود `403`) وتُعرض «—» في بطاقته (لا صفر كاذب، نفس قاعدة `Dashboard`).
   const headUnreadEnabled = isHeadOrSubHead && (user?.branchId ?? null) != null;
 
   const statsQuery = useCancellableRequest<ManagerStatsDto>(

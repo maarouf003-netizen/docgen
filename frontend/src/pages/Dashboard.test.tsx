@@ -680,12 +680,12 @@ describe('Dashboard للمحامي', () => {
     expect(screen.queryByRole('button', { name: 'تمت القراءة' })).not.toBeInTheDocument();
   });
 
-  it('تعليم التنبيه مقروءًا يُنقص عدّاد الصف أيضًا (دفاعي — عقد النوع يسمح بعدّادَي الصف)', async () => {
+  it('تعليم التنبيه مقروءًا يُنقص عدّاد الصف أيضًا (حارس المُحدِّث المشترك)', async () => {
     const user = userEvent.setup();
-    // دفاعي: عقد النوع يسمح بعدّادَي الصف على أي ملخص (الخلفية ترسلهما لرئيس
-    // القسم/الشعبة، وتعليم المقروء للمحامي)، فلا يجوز أن يُبقي المُحدِّث عدّادًا
-    // قديمًا لو اجتمعا في مسار لاحق. لا مسار إنتاجي يجمع الاثنين اليوم (خلفيًا:
-    // `includeCounters: false` لملخّص المحامي، وصفوف الرئيس بلا زر تعليم).
+    // عقد النوع يسمح بعدّادَي الصف على أي ملخص، والمسار الإنتاجي الذي يجمع العدّادين
+    // مع زر التعليم هو **رئيس القسم/الشعبة** (عدّادات مستلمين + زر في «مستلمة» — انظر
+    // اختبار الرئيس أدناه). يبقى هذا على جلسة محامٍ ليثبت أن الحارس مشترك لا يعتمد على
+    // هوية الدور: أي صفٍّ ذي عدّاد يُنقصه التعليم بمقدار واحد بلا تكرار.
     mockApi({
       alerts: [
         makeHeadAlertSummary({
@@ -1132,6 +1132,60 @@ describe('Dashboard لرئيس القسم', () => {
     expect(screen.getByText('إجمالي الصادر:')).toBeInTheDocument();
     // الكل قرأ: شارة صريحة بدل العدّاد الصفري المضلل.
     expect(screen.getByText('مقروء من الجميع')).toBeInTheDocument();
+  });
+
+  it('رئيس القسم يعلّم تنبيهه مقروءًا: الزر في «مستلمة» وحده وينقص الشارة وعدّاد الصف', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({
+      user: { id: 1, username: 'head1', fullName: 'رئيس', role: 'head', branchId: 1 },
+    });
+    mockApi({
+      alerts: [
+        makeHeadAlertSummary({
+          id: 4,
+          kind: 'manual_to_branch',
+          messagePreview: 'تعميم إلى رؤساء الفرع',
+          targetType: 'head',
+          recipientCount: 2,
+          unreadCount: 2,
+          isRead: false,
+        }),
+      ],
+      lawyers: BRANCH_LAWYERS,
+      unreadCount: 2,
+      sent: [
+        makeHeadAlertSummary({
+          id: 9,
+          kind: 'manual_to_branch',
+          messagePreview: 'تعميم أصدرته',
+          recipientCount: 2,
+          unreadCount: 0,
+          createdByName: 'رئيس',
+        }),
+      ],
+    });
+    (api.patch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({});
+
+    render(<Dashboard />);
+
+    // رئيس/شعبة يستلم تنبيهات نطاق `head` فعلًا (بث/رئيس محدد): له صف استلام وزر
+    // تعليم، وإلا بقيت شارة `received` معلّقة أبدًا على هذه التنبيهات.
+    expect(await screen.findByText('2 غير مقروء')).toBeInTheDocument();
+    expect(await screen.findByText('غير مقروء: 2 / 2')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'تمت القراءة' }));
+
+    expect(api.patch).toHaveBeenCalledWith('/alerts/4/read');
+    expect(screen.getByText('مقروء')).toBeInTheDocument();
+    // عدّاد الصف = غير المقروء من مستلمي التنبيه كله، وتعليم صفّ الرئيس يُنقص واحدًا.
+    expect(await screen.findByText('غير مقروء: 1 / 2')).toBeInTheDocument();
+    // وشارة الترويسة (نطاق `received`) تنزل بالقدر نفسه.
+    expect(screen.getByText('1 غير مقروء')).toBeInTheDocument();
+
+    // و«أرسلتها» يبقى قراءة فقط: لا زر تعليم للمُرسل (وهو ليس مستلمًا).
+    await user.click(screen.getByRole('tab', { name: 'أرسلتها' }));
+    expect(await screen.findByText('تعميم أصدرته')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'تمت القراءة' })).not.toBeInTheDocument();
   });
 
   it('تعذّر الصادر: لا شارة «0» كاذبة بل خطأ ظاهر مع «إعادة المحاولة»', async () => {

@@ -555,6 +555,12 @@ export default function Dashboard() {
               footer={<AlertsFeedFooter feed={activeFeed} />}
               isLoading={activeFeed.isLoading}
               alerts={activeFeed.items}
+              // تعليم المقروء **للمستلم** في تبويب «مستلمة» وحده: `isRead` حالة استلام
+              // المستخدم نفسه (وللرئيس/الشعبة تنبيهات نطاق `head` تستلمها فعليًا)،
+              // والخلفية تسمح لهم بـ`PATCH /alerts/{id}/read`. وفي «أرسلتها» لا يُمرَّر
+              // أصلًا (`isRead = null` للمُرسل، وكان الزر سيظهر لأن `!null` صحيح).
+              onMarkRead={alertsTab === 'received' ? markAlertRead : undefined}
+              markingKey={alertsTab === 'received' ? markingKey : null}
               sentView={alertsTab === 'sent'}
             />
           </div>

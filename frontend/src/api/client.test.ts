@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { api, getApiErrorMessage, getCsrfToken } from './client';
+import { ContractError } from './contractError';
 
 describe('getApiErrorMessage', () => {
   it('يعيد رسالة تعذر الاتصال عند خطأ شبكة دون استجابة', () => {
@@ -82,6 +83,12 @@ describe('getApiErrorMessage', () => {
 
   it('يعيد رسالة عامة عند خطأ غير معروف', () => {
     expect(getApiErrorMessage(new Error('something'))).toBe('حدث خطأ غير متوقع');
+  });
+
+  it('يعيد رسالة `ContractError` كما هي (نصّ من كودنا مصوغ للعرض)', () => {
+    expect(getApiErrorMessage(new ContractError('تعذّر قراءة قائمة التنبيهات'))).toBe(
+      'تعذّر قراءة قائمة التنبيهات',
+    );
   });
 });
 

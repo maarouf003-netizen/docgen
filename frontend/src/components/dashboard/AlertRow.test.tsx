@@ -87,4 +87,21 @@ describe('AlertRow', () => {
     expect(screen.getByText(/غير مقروء/)).toBeInTheDocument();
     expect(screen.queryByText('مقروء من الجميع')).not.toBeInTheDocument();
   });
+
+  it('نقطة القراءة: حمراء لغير المقروء في «مستلمة»، ولا تُرسم إطلاقًا في «أرسلتها»', () => {
+    // «أرسلتها» بلا نقطة أصلًا (لا شفافة تحجز فراغًا): `isRead` حالة المستلم وهي
+    // `null` للمُرسل، فرسمها حمراء يقرأ «غير مقروء» كاذبًا على تنبيه أرسله هو.
+    const unread = { ...pendingAlert(), isRead: false };
+    const sent = { ...pendingAlert(), isRead: null, recipientCount: 3, unreadCount: 2 };
+
+    const receivedView = render(<AlertRow alert={unread} />);
+    expect(receivedView.container.querySelector('.bg-red-500')).not.toBeNull();
+    receivedView.unmount();
+
+    const sentView = render(<AlertRow alert={sent} sentView />);
+    expect(sentView.container.querySelector('.bg-red-500')).toBeNull();
+    expect(sentView.container.querySelector('.bg-gray-300')).toBeNull();
+    // حالة المستلمين تُعلن بالعدّاد وحده (ولا نقطة).
+    expect(screen.getByText(/غير مقروء/)).toBeInTheDocument();
+  });
 });

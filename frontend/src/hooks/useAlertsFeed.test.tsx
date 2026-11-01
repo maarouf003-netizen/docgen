@@ -188,6 +188,23 @@ describe('useAlertsFeed', () => {
     expect(get).toHaveBeenCalledTimes(1);
   });
 
+  it('جسم مخالف لعقد `PagedResult` يُعلن خطأً صريحًا لا قائمة فارغة كاذبة', async () => {
+    // الشكل القديم (مصفوفة مجرّدة): سابقًا كان يُترجم صفحة فارغة، فتُعرض
+    // «لا توجد تنبيهات» ويُخفى أن العطل في العقد لا في البيانات.
+    get.mockResolvedValueOnce({ data: [row(1), row(2)] });
+
+    const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
+
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(result.current.error).toBe(
+      'تعذّر قراءة قائمة التنبيهات — أعِد تحميل الصفحة، وإن استمر الخطأ فأبلغ الدعم',
+    );
+    expect(result.current.items).toEqual([]);
+    expect(result.current.hasMore).toBe(false);
+    expect(result.current.stalled).toBe(false);
+    expect(result.current.isLoading).toBe(false);
+  });
+
   it('لا يطلب شيئًا وهو معطّل (نطاق غير متاح)', () => {
     const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: false }));
 

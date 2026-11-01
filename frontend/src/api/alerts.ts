@@ -1,4 +1,5 @@
 import type { HeadAlertSummaryDto, PagedResult } from '../types';
+import { ContractError } from './contractError';
 
 /**
  * حدّ صفحة قوائم التنبيهات: الخادم يقبل `1..100` (`AlertPageRequest.MaxPageSize`).
@@ -7,34 +8,55 @@ import type { HeadAlertSummaryDto, PagedResult } from '../types';
  */
 export const ALERTS_PAGE_SIZE = 100;
 
-function readCount(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : fallback;
+/**
+ * رسالة مخالفة عقد القوائم. صياغتها للعرض المباشر: تُثبت للمستخدم أن الخلل في
+ * القراءة لا في وجود تنبيهات، وتدعوه لمحاولة واحدة ثم الإبلاغ — بدل «حدث خطأ غير
+ * متوقع» المبهم أو، أسوأ، صفحة فارغة تُقرأ «لا توجد تنبيهات».
+ */
+const CONTRACT_ERROR_MESSAGE =
+  'تعذّر قراءة قائمة التنبيهات — أعِد تحميل الصفحة، وإن استمر الخطأ فأبلغ الدعم';
+
+/** عدد صحيح غير سالب في السلك (`totalCount`). */
+function isNonNegativeInt(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
 
-function readPositive(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 1
-    ? Math.max(1, Math.floor(value))
-    : fallback;
+/** عدد صحيح موجب في السلك (`page`/`perPage`). */
+function isPositiveInt(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1;
 }
 
 /**
- * يفكّ `PagedResult<HeadAlertSummaryDto>` القادم من السلك بحارس مصفوفة صريح.
+ * يفكّ `PagedResult<HeadAlertSummaryDto>` القادم من السلك بحارس شكل صريح.
  *
- * الشكل الوحيد المقبول هو `{ items, page, perPage, totalCount, totalPages }`
- * (قرار `D10=atomic`: لا طبقة توافق للشكل القديم). أي جسم غير مطابق — أو `items`
- * غير مصفوفة — يعطي صفحة فارغة صريحة بدل انهيار `items.map` في العرض، و`totalCount`
- * يسقط إلى عدد العناصر الفعلي كي لا يُعرض مؤشر «المزيد» بلا أساس.
+ * الشكل الوحيد المقبول هو `{ items, page, perPage, totalCount }` (قرار `D10=atomic`:
+ * لا طبقة توافق للشكل القديم). أي جسم مخالف — جسم ليس كائنًا، أو `items` غير مصفوفة
+ * (ومنها الشكل القديم: مصفوفة مجرّدة)، أو عدّاد مفقود/فاسد — **يُرمى** بـ`ContractError`
+ * صريح فيصل إلى مسار الخطأ القائم (لافتة + إعادة محاولة).
+ *
+ * سابقًا كانت المخالفة تُترجم صفحةً فارغة صامتة، وهو أسوأ من الخطأ: يُخفي عطلًا
+ * سلكيًا (نحو نشر خلفي بلا نشر واجهي) ويُظهر «لا توجد تنبيهات» كاذبة. والمخالفة
+ * ليست حالة بيانات (قائمة فارغة مشروعة) بل خرق عقد.
+ *
+ * `totalPages` **لا تُقرأ من السلك**: قيمة مشتقة من `totalCount`/`perPage`، فتُحسب
+ * هنا لتبقى صحيحة ولو أرسلها الخادم قديمة.
  */
 export function readAlertsPage(data: unknown): PagedResult<HeadAlertSummaryDto> {
-  const body = (data ?? {}) as Partial<Record<keyof PagedResult<HeadAlertSummaryDto>, unknown>>;
-  const items = Array.isArray(body.items) ? (body.items as HeadAlertSummaryDto[]) : [];
-  const totalCount = readCount(body.totalCount, items.length);
-  const perPage = readPositive(body.perPage, ALERTS_PAGE_SIZE);
+  const body = (typeof data === 'object' && data !== null ? data : {}) as Record<string, unknown>;
+  const { items, page, perPage, totalCount } = body;
+  if (
+    !Array.isArray(items) ||
+    !isPositiveInt(page) ||
+    !isPositiveInt(perPage) ||
+    !isNonNegativeInt(totalCount)
+  ) {
+    throw new ContractError(CONTRACT_ERROR_MESSAGE);
+  }
   return {
-    items,
-    page: readPositive(body.page, 1),
+    items: items as HeadAlertSummaryDto[],
+    page,
     perPage,
     totalCount,
-    totalPages: readCount(body.totalPages, Math.ceil(totalCount / perPage)),
+    totalPages: Math.ceil(totalCount / perPage),
   };
 }

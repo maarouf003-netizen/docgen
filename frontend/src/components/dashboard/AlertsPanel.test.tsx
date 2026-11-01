@@ -42,13 +42,22 @@ describe('AlertsPanel', () => {
     expect(screen.queryByText('لا توجد تنبيهات حالياً')).not.toBeInTheDocument();
   });
 
-  it('يعرض النموذج والخطأ والحالة الفارغة عند غياب التنبيهات', () => {
+  it('يعرض النموذج والخطأ، ولا يُعلن «لا توجد تنبيهات» تحت لافتة خطأ', () => {
     renderPanel({ alerts: [], form: <form aria-label="نموذج" />, error: 'تعذّر الجلب' });
 
     expect(screen.getByRole('form', { name: 'نموذج' })).toBeInTheDocument();
     // الخطأ معلن لقارئ الشاشة.
     expect(screen.getByRole('alert')).toHaveTextContent('تعذّر الجلب');
+    // الفشل ليس فراغًا: «لا توجد تنبيهات» تحته تناقض اللافتة وتوهم المستخدم بأن
+    // القائمة فارغة بينما الطلب لم ينجح أصلًا (المخرج: إعادة المحاولة في التذييل).
+    expect(screen.queryByText('لا توجد تنبيهات حالياً')).not.toBeInTheDocument();
+  });
+
+  it('الفراغ المشروع (بلا خطأ) يُعلن «لا توجد تنبيهات حالياً»', () => {
+    renderPanel({ alerts: [] });
+
     expect(screen.getByText('لا توجد تنبيهات حالياً')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('يعرض العنوان الفرعي (دلالة الشارة) عند توفره فقط', () => {

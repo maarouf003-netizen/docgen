@@ -43,6 +43,34 @@ export function AlertsPanel({
   markingKey,
   sentView = false,
 }: AlertsPanelProps) {
+  // جسم اللوحة بحالاته الثلاث: تحميل الصفحة الأولى، فراغ مشروع، أو القائمة.
+  // و«الفراغ» لا يُعلن تحت خطأ: الفشل لا يعني أن للمستخدم صفر تنبيهات، ورسالة
+  // «لا توجد تنبيهات» تحته تناقض اللافتة وتُخفي أن الخلل في الجلب لا في البيانات.
+  let body: ReactNode;
+  if (alerts.length === 0 && isLoading) {
+    body = (
+      <div className="p-10 text-center">
+        <p className="text-gray-500 text-sm" role="status">
+          جارٍ تحميل التنبيهات…
+        </p>
+      </div>
+    );
+  } else if (alerts.length === 0) {
+    body = error ? null : (
+      <div className="p-10 text-center">
+        <p className="text-gray-400 text-sm">لا توجد تنبيهات حالياً</p>
+      </div>
+    );
+  } else {
+    body = (
+      <ul className="divide-y divide-gray-100 max-h-[420px] overflow-y-auto">
+        {alerts.map((a) => (
+          <AlertRow key={a.id} alert={a} onMarkRead={onMarkRead} markingKey={markingKey} sentView={sentView} />
+        ))}
+      </ul>
+    );
+  }
+
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden mt-8">
       <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-4 border-b border-gray-100">
@@ -65,23 +93,7 @@ export function AlertsPanel({
         </div>
       ) : null}
 
-      {alerts.length === 0 && isLoading ? (
-        <div className="p-10 text-center">
-          <p className="text-gray-500 text-sm" role="status">
-            جارٍ تحميل التنبيهات…
-          </p>
-        </div>
-      ) : alerts.length === 0 ? (
-        <div className="p-10 text-center">
-          <p className="text-gray-400 text-sm">لا توجد تنبيهات حالياً</p>
-        </div>
-      ) : (
-        <ul className="divide-y divide-gray-100 max-h-[420px] overflow-y-auto">
-          {alerts.map((a) => (
-            <AlertRow key={a.id} alert={a} onMarkRead={onMarkRead} markingKey={markingKey} sentView={sentView} />
-          ))}
-        </ul>
-      )}
+      {body}
 
       {footer}
     </div>

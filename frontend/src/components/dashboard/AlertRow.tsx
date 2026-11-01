@@ -16,7 +16,8 @@ const CIRCUIT_PENDING_DOCUMENTS = 'circuit_pending_documents';
  * والنص الكامل يُجلب عند الطلب من `AlertDetails` (`D12`). يظهر زر «تمت القراءة»
  * للمحامي فقط عبر onMarkRead، وتظهر العدادات (غير مقروء/المجموع) لرئيس القسم فقط.
  * في عرض الصادر (`sentView` — تبويب «أرسلتها») تُستبدل شارة «مقروء» بالعدّاد الصفري
- * حتى لا يُقرأ «غير مقروء: 0» كغير مقروء.
+ * حتى لا يُقرأ «غير مقروء: 0» كغير مقروء، وتُحذف نقطة القراءة كليًا لأن `isRead`
+ * حالة **المستلم** لا المُرسل (قيمتها `null` هنا).
  *
  * **لا `truncate` على نص التنبيه:** قصّ CSS لسطر واحد كان يخفي نهاية أي معاينة
  * غير مقطوعة من الخادم (`previewTruncated=false`) بلا أي زر «عرض النص الكامل» —
@@ -38,10 +39,15 @@ export function AlertRow({
   return (
     <li>
       <div className="flex items-start gap-3 px-4 sm:px-5 py-3">
-        <span
-          className={`shrink-0 w-2 h-2 mt-2 rounded-full ${alert.isRead ? 'bg-gray-300' : 'bg-red-500'}`}
-          aria-hidden="true"
-        />
+        {/* نقطة القراءة **تُحذف** في عرض الصادر: `isRead` حالة المستلم وهي `null` للمُرسل،
+            فرسمها حمراء يقرأ «غير مقروء» كاذبًا، وإبقاؤها شفافة يحجز فراغًا بلا معنى.
+            حالة المستلمين يعلنها عدّاد الصف («غير مقروء: N / M» / «مقروء من الجميع»). */}
+        {sentView ? null : (
+          <span
+            className={`shrink-0 w-2 h-2 mt-2 rounded-full ${alert.isRead ? 'bg-gray-300' : 'bg-red-500'}`}
+            aria-hidden="true"
+          />
+        )}
         <div className="min-w-0 flex-1">
           {alert.kind === CIRCUIT_PENDING_DOCUMENTS ? (
             <Link

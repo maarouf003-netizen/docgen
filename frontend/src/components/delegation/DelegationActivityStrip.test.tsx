@@ -63,4 +63,16 @@ describe('DelegationActivityStrip', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(get).toHaveBeenCalledTimes(2);
   });
+
+  it('جسم مخالف للعقد يُعلن خطأً صريحًا لا شريطًا صامتًا فارغًا', async () => {
+    // الشكل القديم (مصفوفة مجرّدة، بلا `PagedResult`) — خادم لم يُحدَّث مثلًا.
+    // سابقًا كان يُترجم فراغًا صامتًا فيختفي الشريط كأن لا تنبيهات إنابة أصلًا.
+    get.mockResolvedValueOnce({ data: [row(1)] });
+
+    const { container } = render(<DelegationActivityStrip delegationId={9} />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('تعذّر قراءة قائمة التنبيهات');
+    expect(container).not.toBeEmptyDOMElement();
+    expect(screen.getByRole('button', { name: 'إعادة المحاولة' })).toBeInTheDocument();
+  });
 });
