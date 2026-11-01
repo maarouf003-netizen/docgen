@@ -108,8 +108,39 @@ for (const file of walk(ROOT)) {
   }
 }
 
+// 6) كتالوج أنواع التنبيهات في الواجهة يجب أن يطابق ثوابت الكتالوج الخلفي حرفيًا:
+// عميل يعرف نوعًا لا يعرفه الخادم (أو العكس) يعني تسمية/توجيهًا مفقودًا أو رمزًا
+// ميتًا. الاختبار يغطي السلوك، وهذا الحارس يمنع الانحراف الصامت بين القائمتين.
+{
+  const backendRel = 'backend/src/DocGenerator.Domain/Enums/HeadAlertKindCatalog.cs';
+  const frontendRel = 'frontend/src/components/dashboard/alertKinds.ts';
+  const backendText = readFileSync(join(ROOT, backendRel), 'utf8');
+  const frontendText = readFileSync(join(ROOT, frontendRel), 'utf8');
+  const backendKinds = new Set(
+    [...backendText.matchAll(/public const string \w+ = "([a-z0-9_]+)";/g)].map((m) => m[1]),
+  );
+  const start = frontendText.indexOf('export const ALERT_KINDS');
+  const end = frontendText.indexOf('export const UNKNOWN_ALERT_KIND');
+  if (start < 0 || end < 0) {
+    failures.push(`${frontendRel}: كتالوج ALERT_KINDS غير موجود أو تغيّر شكله`);
+  } else {
+    const frontendKinds = new Set(
+      [...frontendText.slice(start, end).matchAll(/^ {2}([a-z0-9_]+):/gm)].map((m) => m[1]),
+    );
+    for (const kind of backendKinds) {
+      if (!frontendKinds.has(kind)) {
+        failures.push(`${frontendRel}: الرمز "${kind}" معروف خلفيًا وغائب عن كتالوج الواجهة`);
+      }
+    }
+    for (const kind of frontendKinds) {
+      if (!backendKinds.has(kind)) {
+        failures.push(`${frontendRel}: الرمز "${kind}" غير معروف خلفيًا (${backendRel})`);
+      }
+    }
+  }
+}
+
 if (failures.length > 0) {
   console.error(`subhead-guards: ${failures.length} مخالفة:\n- ${failures.join('\n- ')}`);
   process.exit(1);
-}
-console.log('subhead-guards: نظيف — لا تضييق منسي.');
+}console.log('subhead-guards: نظيف — لا تضييق منسي.');

@@ -3,13 +3,7 @@ import type { HeadAlertSummaryDto } from '../../types';
 import { TARGET_TYPE_BADGES, appealAwareTypeLabel } from './dashboardFormat';
 import { formatDateTime } from '../../utils/dates';
 import { AlertDetails } from './AlertDetails';
-
-/**
- * ملاحظة إعادة القيد (`HeadAlertKindCatalog.CircuitPendingDocuments`): كل محامٍ ×
- * كل دائرة، مدمجة — تفتح صفحة معلقاته كاملة مجموعةً بالدوائر، لا ملفات بعينها.
- * التوجيه بـ`kind` الدلالي لا ببادئة النص: `messagePreview` قد تُبتر ويتغيّر نصها.
- */
-const CIRCUIT_PENDING_DOCUMENTS = 'circuit_pending_documents';
+import { alertKindLabel, alertRoute, isKnownAlertKind } from './alertKinds';
 
 /**
  * صف تنبيه واحد من عقد الملخص (`HeadAlertSummaryDto`): يعرض `messagePreview` وحدها،
@@ -36,6 +30,8 @@ export function AlertRow({
   sentView?: boolean;
 }) {
   const isMarking = markingKey === String(alert.id);
+  // الوجهة من الكتالوج الدلالي، ثم سلسلة احتياط المعرّفات (AlertKinds.alertRoute).
+  const href = alertRoute(alert);
   return (
     <li>
       <div className="flex items-start gap-3 px-4 sm:px-5 py-3">
@@ -49,32 +45,8 @@ export function AlertRow({
           />
         )}
         <div className="min-w-0 flex-1">
-          {alert.kind === CIRCUIT_PENDING_DOCUMENTS ? (
-            <Link
-              to="/pending-registrations"
-              className="block font-medium text-gray-800 hover:text-emerald-700 break-words"
-            >
-              {alert.messagePreview}
-            </Link>
-          ) : alert.reviewLetterId ? (
-            <Link
-              to={`/reviews/${alert.reviewLetterId}`}
-              className="block font-medium text-gray-800 hover:text-emerald-700 break-words"
-            >
-              {alert.messagePreview}
-            </Link>
-          ) : alert.appealId ? (
-            <Link
-              to={`/appeals/${alert.appealId}`}
-              className="block font-medium text-gray-800 hover:text-emerald-700 break-words"
-            >
-              {alert.messagePreview}
-            </Link>
-          ) : alert.documentId ? (
-            <Link
-              to={`/documents/${alert.documentId}`}
-              className="block font-medium text-gray-800 hover:text-emerald-700 break-words"
-            >
+          {href ? (
+            <Link to={href} className="block font-medium text-gray-800 hover:text-emerald-700 break-words">
               {alert.messagePreview}
             </Link>
           ) : (
@@ -91,6 +63,13 @@ export function AlertRow({
             >
               {appealAwareTypeLabel(alert)}
             </span>
+            {/* تسمية النوع من الكتالوج — تُعرض للمعروف فقط: الرمز المجهول بلا تسمية
+                صادقة، وإظهار «تنبيه» العامة لكل صف تاريخي لا يضيف معلومة. */}
+            {isKnownAlertKind(alert.kind) ? (
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-200 break-words">
+                {alertKindLabel(alert.kind)}
+              </span>
+            ) : null}
             {alert.targetLawyerName ? (
               <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200">
                 إلى: {alert.targetLawyerName}

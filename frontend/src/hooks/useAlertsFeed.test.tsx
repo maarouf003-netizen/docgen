@@ -322,4 +322,50 @@ describe('useAlertsFeed', () => {
     await waitFor(() => expect(result.current.items).toHaveLength(5));
     expect(result.current.stalled).toBe(false);
   });
+
+  it('تغيّر النطاق (تبويب/تصفية) يعيد الترقيم إلى الأولى ولا يطلب صفحة متقدمة على قائمة جديدة', async () => {
+    get.mockResolvedValueOnce(pageBody([row(1), row(2)], 300));
+    const { result, rerender } = renderHook(
+      ({ url }: { url: string }) => useAlertsFeed(url, { enabled: true }),
+      { initialProps: { url: '/alerts' } },
+    );
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+
+    // ننتقل إلى صفحة ثانية قبل تغيير النطاق — هذا هو مصدر العيب: بقاء `page=2`
+    // يجعل النطاق الجديد يبدأ من صفحته الثانية (قائمة ناقصة بلا سبب).
+    get.mockResolvedValueOnce(pageBody([row(3)], 300, 2));
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(result.current.items).toHaveLength(3));
+
+    get.mockResolvedValueOnce(pageBody([row(9)], 40));
+    rerender({ url: '/alerts?archived=all' });
+
+    await waitFor(() => expect(result.current.items.map((alert) => alert.id)).toEqual([9]));
+    expect(get).toHaveBeenLastCalledWith(
+      '/alerts?archived=all',
+      expect.objectContaining({ params: { page: 1, pageSize: 100 } }),
+    );
+    expect(result.current.totalCount).toBe(40);
+  });
+
+  it('لا يعرض عناصر النطاق السابق أثناء جلب النطاق الجديد', async () => {
+    get.mockResolvedValueOnce(pageBody([row(1)], 1));
+    const { result, rerender } = renderHook(
+      ({ url }: { url: string }) => useAlertsFeed(url, { enabled: true }),
+      { initialProps: { url: '/alerts' } },
+    );
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+
+    let resolveNext: (value: unknown) => void = () => {};
+    get.mockReturnValueOnce(new Promise((resolve) => { resolveNext = resolve; }));
+    rerender({ url: '/alerts/sent' });
+
+    // النطاق الجديد يبدأ فارغًا مع تحميل صريح، لا بقائمة النطاق السابق وإجماليه.
+    await waitFor(() => expect(result.current.items).toHaveLength(0));
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.totalCount).toBe(0);
+
+    resolveNext(pageBody([row(5)], 1));
+    await waitFor(() => expect(result.current.items.map((alert) => alert.id)).toEqual([5]));
+  });
 });
