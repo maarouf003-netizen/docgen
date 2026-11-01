@@ -32,9 +32,9 @@
 |---|---|
 | `master` | `e0d8384` (آخر `PR` مدموج: #53) |
 | فرع `PR-4` | `feature/head-alerts-pr4-api` @ `3d38052` — 26 التزامًا أمام `master`، و`master` غير متقدّم عليه |
-| فرع `PR-5` | `feature/head-alerts-pr5-ui` @ `923ac84` (قاعدته `feature/head-alerts-pr4-api`) |
+| فرع `PR-5` | `feature/head-alerts-pr5-ui` — **رأس الكود المختبَر `27dcb39`**، ثم التزامات توثيقية لاحقة (رأس الفرع الحالي يُقرأ حيًّا بـ`git ls-remote origin refs/heads/feature/head-alerts-pr5-ui`) |
 | `PR` #54 | `PR-4 API` → `master` · `OPEN` · `MERGEABLE`/`CLEAN` · `CI` أخضر على `3d38052` |
-| `PR` #55 | `PR-5 UI` → `feature/head-alerts-pr4-api` · `OPEN` · `MERGEABLE`/`CLEAN` · `CI` **12/12** على `27dcb39` و`923ac84` |
+| `PR` #55 | `PR-5 UI` → `feature/head-alerts-pr4-api` · `OPEN` · `MERGEABLE`/`CLEAN` · `CI` **12/12** على `27dcb39` وعلى الالتزامات التوثيقية التي تليه |
 | الفحوص المطلوبة على `master` | `backend`، `frontend`، `guards`، `audit` (غير صارمة: `strict=false`) |
 | فحوص `CI` العاملة | ستة: `backend`، `backend-postgres`، `frontend`، `guards`، `audit`، `migration-guard` × تشغيلان (`push` + `pull_request`) |
 | بوابات `PR-5` المحلية | `oxlint`/`tsc -b` صفر · `vitest` **158 ملفًا/1666 اختبارًا** · `npm run build` ناجح · خلفي: `build` 0/0، `Application` 2149/2149، `Api` 724 + 2 تتابعية |
