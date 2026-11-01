@@ -26,20 +26,20 @@
 
 ---
 
-## 1. الحالة المثبتة (Snapshot — 2026-11-01)
+## 1. الحالة المثبتة (Snapshot — محدَّثة 2026-11-01 بعد دمج الزوج)
 
 | البند | القيمة |
 |---|---|
-| `master` | `e0d8384` (آخر `PR` مدموج: #53) |
-| فرع `PR-4` | `feature/head-alerts-pr4-api` @ `3d38052` — 26 التزامًا أمام `master`، و`master` غير متقدّم عليه |
-| فرع `PR-5` | `feature/head-alerts-pr5-ui` — **رأس الكود المختبَر `27dcb39`**، ثم التزامات توثيقية لاحقة (رأس الفرع الحالي يُقرأ حيًّا بـ`git ls-remote origin refs/heads/feature/head-alerts-pr5-ui`) |
-| `PR` #54 | `PR-4 API` → `master` · `OPEN` · **مسودّة (`isDraft=true` — تحتاج `Ready for review` قبل ب‑1)** · `MERGEABLE`/`CLEAN` · `CI` أخضر 12/12 على `3d38052` |
-| `PR` #55 | `PR-5 UI` → `feature/head-alerts-pr4-api` · `OPEN` · `MERGEABLE`/`CLEAN` · `CI` **12/12** على `27dcb39` وعلى الالتزامات التوثيقية التي تليه |
+| `master` | **`4e421f4`** (دمج `#55`) فوق **`97a4a93`** (دمج `#54`) — دُمج الزوج 2026-11-01 |
+| فرع `PR-4` | `feature/head-alerts-pr4-api` — **محذوف بعد الدمج** (@ `3d38052`) |
+| فرع `PR-5` | `feature/head-alerts-pr5-ui` — **محذوف بعد الدمج** (آخر رأس: `31c1153`؛ رأس الكود المختبَر `27dcb39`) |
+| `PR` #54 | `PR-4 API` → `master` · **`MERGED`** في `97a4a93` · `CI` 12/12 على `3d38052` |
+| `PR` #55 | `PR-5 UI` → `master` · **`MERGED`** في `4e421f4` · `CI` **12/12** على `31c1153` بعد إعادة التوجيه |
 | الفحوص المطلوبة على `master` | `backend`، `frontend`، `guards`، `audit` (غير صارمة: `strict=false`) |
 | فحوص `CI` العاملة | ستة: `backend`، `backend-postgres`، `frontend`، `guards`، `audit`، `migration-guard` × تشغيلان (`push` + `pull_request`) |
 | بوابات `PR-5` المحلية | `oxlint`/`tsc -b` صفر · `vitest` **158 ملفًا/1666 اختبارًا** · `npm run build` ناجح · خلفي: `build` 0/0، `Application` 2149/2149، `Api` 724 + 2 تتابعية |
 | الهجرات | `PostgreSQL`: 63، صفر معلّقة · `SQLite`: **4 معلّقة** (`HeadAlertTaxonomy_Expand`، `HeadAlertOutbox_Create`، `HeadAlertTaxonomy_Backfill`، `HeadAlertTaxonomy_Contract`) |
-| ما تبقّى من المراحل | بقية `PR-5` (صفحة `/alerts`، `alertKinds.ts`، شارات الأيقونات، حذف `AlertsPanel`) + `PR-6` (تنظيف) |
+| ما تبقّى من المراحل | **نافذة النشر** (د‑1…د‑4) ثم بقية `PR-5` (صفحة `/alerts`، `alertKinds.ts`، شارات الأيقونات، حذف `AlertsPanel` = `PR-5b`) + `PR-6` (تنظيف) |
 
 **نطاق `PR-5` الحالي (المنفَّذ):** عقود `HeadAlertSummaryDto`/`HeadAlertDto`، معاينات `AlertRow`/`AlertsPanel`،
 `AlertDetails` عند الطلب (`D12`)، ترقيم `pageSize=100` + «تحميل المزيد» + `stalled`، نطاق الشارة
@@ -109,23 +109,34 @@ gh pr merge 54 --merge --delete-branch
 ```
 
 - استخدم **merge commit** (لا squash) ليبقى تاريخ الزوج واضحًا، على نمط الدمج القائم في المستودع.
-- `--delete-branch` يحذف `feature/head-alerts-pr4-api` — وهي قاعدة `#55`، فيعيد `GitHub` توجيه `#55`
-  إلى `master` تلقائيًا.
+- `--delete-branch` يحذف `feature/head-alerts-pr4-api` — وهي قاعدة `#55`. **`GitHub` لا يعيد التوجيه
+  تلقائيًا كما كان مفترضًا سابقًا: بل يُغلق `#55` فورًا** (تحقُّق 2026-11-01: أُغلق بعد 3 ثوانٍ).
+  الإصلاح في ب‑2، ولا يُعد هذا فشلًا ما دام الفرع ورأسه سليمين.
 
-**معيار القبول:** `#54` أصبح `MERGED`، و`master` تقدّم، و`#55` قاعدته صارت `master`.
+**معيار القبول:** `#54` أصبح `MERGED` (تحقّق: `gh pr view 54 --json state,mergeCommit`)، و`master` تقدّم.
 
-### ب‑2) تثبيت إعادة توجيه `#55` وانتظار فحوصه على القاعدة الجديدة
+### ب‑2) إعادة توجيه `#55` إلى `master` وانتظار فحوصه على القاعدة الجديدة
+
+إن أُغلق `#55` (الحالة الفعلية): أعد إنشاء القاعدة مؤقتًا عند **التزام دمج `#54`** ثم أعد فتحه ثم أعد
+توجيهه — `GitHub` يرفض `reopen`/`updateBase` على `PR` مغلق قاعدته غير موجودة:
 
 ```powershell
-gh pr view 55 --json baseRefName,mergeable,mergeStateStatus
-gh pr edit 55 --base master        # فقط إن لم يتغيّر تلقائيًا
+$merge54 = gh pr view 54 --json mergeCommit -q .mergeCommit.oid
+git push origin "${merge54}:refs/heads/feature/head-alerts-pr4-api"   # قاعدة مؤقتة = رأس master الجديد
+gh pr reopen 55
+gh pr edit 55 --base master
+git push origin --delete feature/head-alerts-pr4-api                  # تنظيف بعد التوجيه
 git fetch origin --prune
-gh pr checks 55                    # أو راقب التشغيل الجديد عبر gh run list
+
+gh pr view 55 --json state,baseRefName,mergeable,mergeStateStatus
+gh pr checks 55                        # أو راقب التشغيل الجديد عبر gh run list --branch <head>
 ```
 
-- تغيير القاعدة يُطلق تشغيل `pull_request` جديدًا. **لا تدمج قبل اخضرار الفحوص الأربعة على القاعدة الجديدة**؛
+- **لا تعتمد على `gh pr checks` وحدها** لتحديد التشغيل الجديد: قارن `createdAt` / `databaseId`
+  من `gh run list --branch feature/head-alerts-pr5-ui --limit 4` بأنه بعد إعادة التوجيه.
+- تغيير القاعدة يُطلق تشغيل `pull_request` جديدًا. **لا تدمج قبل اخضرار الفحوص الستة على القاعدة الجديدة**؛
   هذا هو الفحص الذي يثبت سلامة الدمج مع `master` الجديد (لا تعتمد على تشغيل قديم).
-- تحقّق أن `#55` ما زال يحتوي فقط: `frontend/` + `docs/` (أعد فحص أ‑1).
+- تحقّق أن `#55` ما زال يحتوي فقط: `frontend/` + `docs/` + `RUN_GUIDE.md` (أعد فحص أ‑1 بقاعدة `master` الآن).
 
 ### ب‑3) دمج `#55`
 
@@ -133,8 +144,9 @@ gh pr checks 55                    # أو راقب التشغيل الجديد �
 gh pr merge 55 --merge --delete-branch
 ```
 
-**معيار القبول:** `master` يحوي دمج `#54` ثم `#55` بالترتيب، و`CI` على رأس `master` أخضر 12/12
-(تحقّق: `gh run list --branch master --limit 2`).
+**معيار القبول:** `master` يحوي دمج `#54` ثم `#55` بالترتيب، و`CI` على رأس `master` أخضر **6/6** في
+تشغيل `push` (أما «12/12» فهي لرأس الفرع قبل الدمج: ستة فحوص × `push`+`pull_request`) —
+تحقّق: `gh run list --branch master --limit 2` ثم `gh run view <id> --json jobs`.
 
 ### ب‑4) ماذا لو فشل شيء أثناء الدمج؟
 
@@ -387,9 +399,10 @@ npm run build
 | 2026-11-01 | أ‑1 | ✅ لا خلفية ولا هجرات: مقابل قاعدة `#55` الفعلية (`feature/head-alerts-pr4-api`) = 28 `frontend/` + 3 `docs/` + `RUN_GUIDE.md`، صفر ملفات `backend/`. (أمر الدليل القديم كان يقيس مقابل `master` فيُظهر 74 ملف `backend/` — صُحّح ليقيس مقابل `baseRefName`) | — |
 | 2026-11-01 | أ‑2 | ✅ الزوج وحدة واحدة: الخلفية تُرجع `HeadAlertSummaryPage`، والواجهة تقرأ `{items,page,perPage,totalCount}` بحارس صارم يُعلن `ContractError` عند الانحراف (لا فشل صامت). الهجرات الأربع المعلّقة موجودة على `master` ولا هجرة جديدة في الزوج | — |
 | 2026-11-01 | أ (توثيق) | ✅ صُحّح أمر أ‑1 ليَقيس مقابل `baseRefName` (كان يُنتج 74 نتيجة `backend/` كاذبة)، وأُضيف `isDraft` كشرط قبول وكشرط توقف في §10، وعُبِّئ هذا السجل. `CI` أخضر **12/12** على رأس الفرع بعد التصحيح | `8d045d0` |
-|  | ب‑1 دمج `#54` |  |  |
-|  | ب‑3 دمج `#55` |  |  |
-|  | ج تثبيت المرساة |  |  |
+| 2026-11-01 | ب‑1 دمج `#54` | ✅ حُوّل `#54` إلى جاهز (`gh pr ready 54`) ثم دُمج بـ`--merge --delete-branch` (Merge commit، لا squash). **انحراف:** حذف القاعدة **أغلق `#55`** بدل إعادة توجيهه — عُولج فورًا في ب‑2 | `97a4a93` |
+| 2026-11-01 | ب‑2 إعادة توجيه `#55` | ✅ أُعيد إنشاء `feature/head-alerts-pr4-api` عند `97a4a93` ← `gh pr reopen 55` ← `gh pr edit 55 --base master` ← حُذف الفرع المؤقت. النطاق بعد التوجيه: 28 `frontend/` + 3 `docs/` + `RUN_GUIDE.md`، صفر `backend/`. `CI` الجديد (تشغيل `41338240077`) 6/6 `success` على `31c1153` | `31c1153` |
+| 2026-11-01 | ب‑3 دمج `#55` | ✅ دُمج بـ`--merge --delete-branch`. `CI` على `master` @ `4e421f4`: الفحوص الستة `success`، و`CI` على `97a4a93` (رأس `#54` المدموج) 6/6 أيضًا | `4e421f4` |
+| 2026-11-01 | ج تثبيت المرساة | ✅ فُتح فرع `docs/head-alerts-merge-anchor`: §0.3 محدَّثة (الفرع/الالتزامات/`CI`/`PR`ان/المتبقي)، وإشارات «محدَّث» في §0.1/§0.2، وترويسة خطة إعادة الهيكلة (§0) صارت «`PR-1`–`PR-5` مدموجة»، وتصحيح ب‑1/ب‑2 في هذا الدليل، وسجل §12 في خطة الإصلاح | `docs/head-alerts-merge-anchor` |
 |  | د‑1 `G2` |  |  |
 |  | د‑2 هجرات `SQLite` |  |  |
 |  | د‑3 النشر |  |  |
