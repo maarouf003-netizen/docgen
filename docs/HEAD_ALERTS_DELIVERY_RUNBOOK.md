@@ -33,7 +33,7 @@
 | `master` | `e0d8384` (آخر `PR` مدموج: #53) |
 | فرع `PR-4` | `feature/head-alerts-pr4-api` @ `3d38052` — 26 التزامًا أمام `master`، و`master` غير متقدّم عليه |
 | فرع `PR-5` | `feature/head-alerts-pr5-ui` — **رأس الكود المختبَر `27dcb39`**، ثم التزامات توثيقية لاحقة (رأس الفرع الحالي يُقرأ حيًّا بـ`git ls-remote origin refs/heads/feature/head-alerts-pr5-ui`) |
-| `PR` #54 | `PR-4 API` → `master` · `OPEN` · `MERGEABLE`/`CLEAN` · `CI` أخضر على `3d38052` |
+| `PR` #54 | `PR-4 API` → `master` · `OPEN` · **مسودّة (`isDraft=true` — تحتاج `Ready for review` قبل ب‑1)** · `MERGEABLE`/`CLEAN` · `CI` أخضر 12/12 على `3d38052` |
 | `PR` #55 | `PR-5 UI` → `feature/head-alerts-pr4-api` · `OPEN` · `MERGEABLE`/`CLEAN` · `CI` **12/12** على `27dcb39` وعلى الالتزامات التوثيقية التي تليه |
 | الفحوص المطلوبة على `master` | `backend`، `frontend`، `guards`، `audit` (غير صارمة: `strict=false`) |
 | فحوص `CI` العاملة | ستة: `backend`، `backend-postgres`، `frontend`، `guards`، `audit`، `migration-guard` × تشغيلان (`push` + `pull_request`) |
@@ -58,27 +58,39 @@ git status --porcelain                              # يجب أن يكون فا�
 git log --oneline -3 origin/master
 git rev-list --count origin/master..origin/feature/head-alerts-pr4-api   # 26 (أو أكثر)
 git rev-list --count origin/feature/head-alerts-pr4-api..origin/master   # يجب أن يكون 0
-gh pr view 54 --json state,mergeable,mergeStateStatus,headRefOid,baseRefName
-gh pr view 55 --json state,mergeable,mergeStateStatus,headRefOid,baseRefName
+gh pr view 54 --json state,isDraft,mergeable,mergeStateStatus,headRefOid,baseRefName
+gh pr view 55 --json state,isDraft,mergeable,mergeStateStatus,headRefOid,baseRefName
 gh pr checks 54
 gh pr checks 55
 ```
 
-**معيار القبول:** `#54` و`#55` كلاهما `OPEN` + `MERGEABLE`، و`#54` بلا انحراف عن `master`
-(`ahead_of_master ≥ 26` و`behind = 0`)، وفحوصهما خضراء.
+**معيار القبول:** `#54` و`#55` كلاهما `OPEN` + `MERGEABLE` + **`isDraft=false`**، و`#54` بلا انحراف عن
+`master` (`ahead_of_master ≥ 26` و`behind = 0`)، وفحوصهما خضراء (12/12 لكلٍّ على رأسه الحالي).
+
+- **`isDraft=true` = شرط توقف قبل ب‑1:** `GitHub` يرفض دمج المسودّة، فلا بد من تحويلها إلى
+  `Ready for review` (`gh pr ready 54`) **بموافقة المالك** — لأنه فعل ظاهر على الـ`PR` لا يغطيه هذا الدليل.
+- **تحقّق أن الرأس المختبَر هو الرأس الحالي** (لا تعتمد على `gh pr checks` وحدها بعد التزام توثيقي):
+  `gh run list --branch <branch> --limit 4 --json headSha,conclusion` وقارن `headSha` بـ`headRefOid`.
 
 **إن ظهر انحراف (`behind > 0`) أو تعارض:** أعد دمج `origin/master` في فرع `PR-4`، حلّ التعارضات،
 شغّل البوابات كاملة (§8)، ثم انتظر `CI` قبل المتابعة.
 
 ### أ‑1) تأكيد نطاق `#55` (لا خلفية ولا هجرات)
 
+**القاعدة:** قِس مقابل **قاعدة الـ`PR` نفسها** (`baseRefName`)، لا مقابل `master` دائمًا: قبل دمج `#54`
+قاعدة `#55` هي `feature/head-alerts-pr4-api`، فمقارنتها بـ`master` تُدخل التزامات `PR‑4` كاملة
+(≈74 ملف `backend/`) وتُنتج **إنذارًا كاذبًا**.
+
 ```powershell
-git diff --stat origin/master..origin/feature/head-alerts-pr5-ui
-git diff --name-only origin/master..origin/feature/head-alerts-pr5-ui | Select-String "backend/|Migrations|MigrationsPostgres"
+$base55 = gh pr view 55 --json baseRefName -q .baseRefName
+git diff --stat "origin/${base55}..origin/feature/head-alerts-pr5-ui"
+git diff --name-only "origin/${base55}..origin/feature/head-alerts-pr5-ui" |
+  Select-String "backend/|Migrations|MigrationsPostgres"
 ```
 
-**معيار القبول:** لا سطر ناتج من الأمر الثاني (لا ملفات `backend/` ولا هجرات). أي ناتج ⇒ **توقف**:
-النطاق خرج عن «واجهة + توثيق» ويجب مراجعة الفرق قبل الدمج.
+**معيار القبول:** لا سطر ناتج من الأمر الثالث (لا ملفات `backend/` ولا هجرات)، و`--stat` لا يُظهر إلا
+`frontend/` + `docs/` + `RUN_GUIDE.md`. أي ناتج ⇒ **توقف**: النطاق خرج عن «واجهة + توثيق» ويجب مراجعة
+الفرق قبل الدمج. (بعد ب‑1 تصبح `$base55` = `master` تلقائيًا، فيصبح الأمر هو المقارنة المعتادة.)
 
 ### أ‑2) تأكيد أن الزوج هو وحدة النشر
 
@@ -363,6 +375,7 @@ npm run build
 | اختبار «أخضر» بعد تعطيل تأكيد | ضمانة زائفة | أعد التأكيد؛ لا تُعدّل اختبارًا ليمرّ |
 | نص عربي مُشوَّه في ملفات/تعليقات `PR` | `PowerShell` لا يقرأ/يكتب UTF‑8 بشكل موثوق | استخدم أدوات `edit`/`write`، و`node` لبناء JSON UTF‑8 (`gh api --input`) |
 | `git push` يُرجع رمز خروج `1` في `PowerShell` رغم النجاح | مخرجات التقدّم على `stderr` | تحقّق من سطر `old..new  HEAD -> branch` |
+| `#54` مسودّة عند بدء ب‑1 | `gh pr merge 54` يرفض الدمج | `gh pr ready 54` **بموافقة المالك**، ثم أعد أ‑0 |
 
 ---
 
@@ -370,7 +383,9 @@ npm run build
 
 | التاريخ | المرحلة | النتيجة | الهاش/الرابط |
 |---|---|---|---|
-|  | أ‑0 |  |  |
+| 2026-11-01 | أ‑0 | ✅ مطابق للقطة: `master` = `e0d8384`، `PR-4` ahead 26 / behind 0، شجرة العمل نظيفة، `#55` رأسه `648b7d7` و`CI` 12/12. **انحراف واحد:** `#54` مسودّة (`isDraft=true`) ⇒ يمنع ب‑1 حتى `Ready for review` | `3d38052` / `648b7d7` |
+| 2026-11-01 | أ‑1 | ✅ لا خلفية ولا هجرات: مقابل قاعدة `#55` الفعلية (`feature/head-alerts-pr4-api`) = 28 `frontend/` + 3 `docs/` + `RUN_GUIDE.md`، صفر ملفات `backend/`. (أمر الدليل القديم كان يقيس مقابل `master` فيُظهر 74 ملف `backend/` — صُحّح ليقيس مقابل `baseRefName`) | — |
+| 2026-11-01 | أ‑2 | ✅ الزوج وحدة واحدة: الخلفية تُرجع `HeadAlertSummaryPage`، والواجهة تقرأ `{items,page,perPage,totalCount}` بحارس صارم يُعلن `ContractError` عند الانحراف (لا فشل صامت). الهجرات الأربع المعلّقة موجودة على `master` ولا هجرة جديدة في الزوج | — |
 |  | ب‑1 دمج `#54` |  |  |
 |  | ب‑3 دمج `#55` |  |  |
 |  | ج تثبيت المرساة |  |  |
