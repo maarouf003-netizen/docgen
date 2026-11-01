@@ -1,23 +1,16 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, getApiErrorMessage } from '../api/client';
+import { api } from '../api/client';
 import { useAuth } from '../auth/useAuth';
-import { useAlertsFeed } from '../hooks/useAlertsFeed';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { useReminderCancellation } from '../hooks/useReminderCancellation';
 import type {
   AppealReminderDto,
   ExecutionCircuitDto,
-  HeadAlertSummaryDto,
-  HeadAlertTargetType,
-  LawyerListItem,
   PendingRegistrationDto,
   PersonalReminderDto,
   ReminderDto,
 } from '../types';
-import { AlertsPanel } from '../components/dashboard/AlertsPanel';
-import { AlertsFeedFooter } from '../components/dashboard/AlertsFeedFooter';
-import { CreateAlertForm, type AlertFormError } from '../components/dashboard/CreateAlertForm';
 import { DayRemindersModal } from '../components/dashboard/DayRemindersModal';
 import { GreetingHeader } from '../components/dashboard/GreetingHeader';
 import { HeadIconRow } from '../components/dashboard/HeadIconRow';
@@ -37,16 +30,6 @@ export default function Dashboard() {
   const isManager = user?.role === 'manager' || user?.role === 'admin';
   const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
   const isSubHead = user?.role === 'subhead';
-
-  const [alertsError, setAlertsError] = useState('');
-  const [markingKey, setMarkingKey] = useState<string | null>(null);
-
-  const [showAlertForm, setShowAlertForm] = useState(false);
-  const [alertTargetType, setAlertTargetType] = useState<HeadAlertTargetType>('branch');
-  const [alertLawyerId, setAlertLawyerId] = useState('');
-  const [alertMessage, setAlertMessage] = useState('');
-  const [alertSubmitting, setAlertSubmitting] = useState(false);
-  const [alertFormError, setAlertFormError] = useState<AlertFormError>({ field: null, text: '' });
 
   const userReady = Boolean(user);
   // رئيس بلا فرع (ورئيس شعبة برمز بلا شعبة): عدّادات شاراته مرفوضة (`400`/`403`) أو صفرية خلفيًا —
@@ -78,25 +61,14 @@ export default function Dashboard() {
   const { cancellingKey, actionError, cancelReminder, cancelAppealReminder } =
     useReminderCancellation(remindersQuery, appealRemindersQuery);
 
-  // نطاق التنبيهات لرئيس القسم/الشعبة يشترط **الفرع** فقط (`RequireBranch` خلفيًا)،
-  // لا الشعبة — فاشتراط الشعبة هنا كان يحجب قائمة مشروعة ويُبقي 403 لرئيس بلا فرع.
+  // نطاق شارة غير المقروء لرئيس القسم/الشعبة يشترط **الفرع** فقط (`RequireBranch` خلفيًا)،
+  // لا الشعبة — فاشتراط الشعبة هنا كان يحجب عدّادًا مشروعًا ويُبقي 403 لرئيس بلا فرع.
   const headAlertsScopeEnabled = userReady && isHeadOrSubHead && (user?.branchId ?? null) != null;
-
-  // قوائم التنبيهات مرقّمة (`PagedResult<HeadAlertSummaryDto>`) — معاينة فقط بلا نص كامل،
-  // و`pageSize=100` صريح مع «تحميل المزيد» فلا قصّ صامت فوق الصفحة الواحدة.
-  const receivedFeed = useAlertsFeed('/alerts', {
-    enabled: userReady && !isManager && (!isHeadOrSubHead || headAlertsScopeEnabled),
-  });
-
-  // صندوق الصادر («أرسلتها» — قراءة فقط): ما أصدره الرئيس في فرعه، منفصل عن
-  // المستلَمات حتى لا يختلط المُرسَل بالمستلَم ولا يُطالب بتعليم مقروء.
-  const [alertsTab, setAlertsTab] = useState<'received' | 'sent'>('received');
-  const [sentFlash, setSentFlash] = useState('');
-  const sentFeed = useAlertsFeed('/alerts/sent', { enabled: headAlertsScopeEnabled });
 
   // شارة غير المقروء بنطاق صريح (`D6`/`D7`): المحامي صفوفه الشخصية (`user`) بلا قيد
   // فرع، والرئيس/الشعبة ما استلمه في فرعه (`received`) — القاعدة نفسها في `AccountPage`
-  // فلا تُنتج الشاشتان رقمين مختلفين لنفس الدور.
+  // وفي صفحة `/alerts`، فلا تُنتج الشاشات الثلاث أرقامًا مختلفة لنفس الدور.
+  // القائمة نفسها لم تعد تُعرض في اللوحة: بطاقة «التنبيهات» تفتح `/alerts` وحدها.
   const unreadScope = isHeadOrSubHead ? 'received' : 'user';
   const unreadQuery = useCancellableRequest<{ count: number }>(
     (signal) =>
@@ -105,13 +77,6 @@ export default function Dashboard() {
         .then((r) => r.data),
     [unreadScope],
     { enabled: userReady && !isManager && (isLawyer || headAlertsScopeEnabled) },
-  );
-
-  const branchLawyersQuery = useCancellableRequest<LawyerListItem[]>(
-    // قائمة التنبيهات: كل محامي النطاق (الجدد بلا ملفات مشمولون — `mode=branch`).
-    (signal) => api.get('/users/lawyers', { signal, params: { mode: 'branch' } }).then((r) => (Array.isArray(r.data) ? r.data : [])),
-    [isHeadOrSubHead],
-    { enabled: userReady && isHeadOrSubHead },
   );
 
   // عدّاد بطاقة سجل الجهات: جهات أدخلها المحامون وبانتظار مراجعة رئيس القسم —
@@ -192,22 +157,7 @@ export default function Dashboard() {
   const reminders = useMemo(() => remindersQuery.data ?? [], [remindersQuery.data]);
   const appealReminders = useMemo(() => appealRemindersQuery.data ?? [], [appealRemindersQuery.data]);
   const personalReminders = useMemo(() => personalQuery.data ?? [], [personalQuery.data]);
-  // التبويب الظاهر وحده يحدد المعروض والإجمالي وتذييل «المزيد».
-  const activeFeed = alertsTab === 'received' ? receivedFeed : sentFeed;
-  const branchLawyers = useMemo(() => branchLawyersQuery.data ?? [], [branchLawyersQuery.data]);
   const unreadCount = Math.max(0, Number(unreadQuery.data?.count) || 0);
-  // شارة لوحة الرئيس: غير المقروء بنطاقه (`received` — `D6`/`D7`) في تبويب «مستلمة»،
-  // وإجمالي ما أصدره في فرعه في «أرسلتها». الإجمالي لا يُعرض قبل أن يُعرَف: أثناء التحميل
-  // أو بعد فشل الصادر لا شارة «0» كاذبة. ورقم الصادر وحده بلا سياق للقارئ الصوتي،
-  // فيسبقه نص مخفي (`sr-only`) يسمّيه — لا `aria-label` على `span` عام (لا يُنطق أصلًا).
-  const headBadge =
-    alertsTab === 'received'
-      ? unreadCount > 0
-        ? { text: `${unreadCount} غير مقروء`, srPrefix: '' }
-        : null
-      : sentFeed.isLoading || sentFeed.error
-        ? null
-        : { text: String(sentFeed.totalCount), srPrefix: 'إجمالي الصادر: ' };
   const unseenReplies = isLawyer ? Math.max(0, Number(unseenRepliesQuery.data?.count) || 0) : 0;
   const urgentCorrespondence = isLawyer ? Math.max(0, Number(urgentQuery.data?.count) || 0) : 0;
   // بطاقة التذكيرات في اللوحة: الأسبوع الحالي فقط (من الأحد إلى السبت) —
@@ -256,76 +206,6 @@ export default function Dashboard() {
     personalQuery.refetch();
   };
 
-  const markAlertRead = async (a: HeadAlertSummaryDto) => {
-    const key = String(a.id);
-    setMarkingKey(key);
-    setAlertsError('');
-    try {
-      await api.patch(`/alerts/${a.id}/read`);
-      receivedFeed.updateItems((prev) =>
-        prev.map((x) => {
-          if (x.id !== a.id || x.isRead) return x;
-          // عدّاد الصف عند الرئيس/الشعبة = غير المقروء من مستلمي هذا الصف (`D6`)،
-          // وتعليمه مقروءًا يُنقصه بمقدار واحد — وإلا بقي «غير مقروء: 2 / 2» بعد أن
-          // قرأه المستخدم نفسه، حتى إعادة التركيب. صفوف المحامي (`unreadCount = null`)
-          // بلا عدّاد فلا تُمس.
-          return {
-            ...x,
-            isRead: true,
-            unreadCount: x.unreadCount == null ? x.unreadCount : Math.max(0, x.unreadCount - 1),
-          };
-        }),
-      );
-      unreadQuery.setData((prev) => (prev ? { count: Math.max(0, prev.count - 1) } : prev));
-    } catch (err) {
-      setAlertsError(getApiErrorMessage(err));
-    } finally {
-      setMarkingKey(null);
-    }
-  };
-
-  const submitAlert = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!alertMessage.trim()) {
-      setAlertFormError({ field: 'message', text: 'نص التنبيه مطلوب' });
-      // تركيز أول حقل خاطئ عند الإرسال (قاعدة AGENTS.md) — عبر المعرف الثابت
-      // لأن الحقل داخل `CreateAlertForm` ولا مرجع مباشر له هنا.
-      document.getElementById('alert-message')?.focus();
-      return;
-    }
-    let targetLawyerId: number | null = null;
-    if (alertTargetType === 'lawyer') {
-      targetLawyerId = alertLawyerId ? Number(alertLawyerId) : null;
-      if (!targetLawyerId) {
-        setAlertFormError({ field: 'lawyer', text: 'اختر المحامي المستلم' });
-        document.getElementById('alert-lawyer')?.focus();
-        return;
-      }
-    }
-
-    setAlertSubmitting(true);
-    setAlertFormError({ field: null, text: '' });
-    try {
-      // عقد `POST /alerts` = `201` بجسم الملخص (D3) — النوع مرآة السلك لا `HeadAlertDto`.
-      await api.post<HeadAlertSummaryDto>('/alerts', {
-        targetType: alertTargetType,
-        documentId: null,
-        targetLawyerId,
-        message: alertMessage.trim(),
-      });
-      // بلا إلحاق تفاؤلي عمدًا: القائمة مستلَمات فقط، والمُرسَل في تبويب «أرسلتها».
-      setShowAlertForm(false);
-      setAlertMessage('');
-      setAlertLawyerId('');
-      setSentFlash('تم إصدار التنبيه — تجده في تبويب «أرسلتها»');
-      sentFeed.reload();
-    } catch (err) {
-      // خطأ الإرسال الخادمي بلا حقل مخالف — يُعلن وحده دون تعليم أي حقل.
-      setAlertFormError({ field: null, text: getApiErrorMessage(err) });
-    } finally {
-      setAlertSubmitting(false);
-    }
-  };
 
   if (isManager) {
     // المدير/مشرف النظام: نفس نمط المحامي ورئيس القسم — ترحيب + صف أيقونات،
@@ -456,117 +336,8 @@ export default function Dashboard() {
             )}
           </div>
 
-          <AlertsPanel
-            badge={
-              unreadCount > 0 ? (
-                <span className="shrink-0 whitespace-nowrap text-xs bg-red-100 text-red-800 rounded-full px-2 py-0.5 font-medium tabular-nums">
-                  {unreadCount} غير مقروء
-                </span>
-              ) : null
-            }
-            headerExtra={<span className="text-xs text-gray-400">الأحدث أولاً</span>}
-            footer={<AlertsFeedFooter feed={receivedFeed} />}
-            error={alertsError || receivedFeed.error || ''}
-            isLoading={receivedFeed.isLoading}
-            alerts={receivedFeed.items}
-            onMarkRead={markAlertRead}
-            markingKey={markingKey}
-          />
         </>
-      ) : !headAlertsScopeEnabled ? (
-        // رئيس/شعبة بلا فرع: النطاق مرفوض خلفيًا (`403` — `D11`) فلا نُطلق طلبات
-        // محكومة بالفشل ولا نُظهر قائمة فارغة كاذبة — بل حالة صريحة قابلة للمعالجة.
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mt-8 text-center">
-          <p className="text-sm text-gray-600">
-            حسابك غير مرتبط بفرع، فلا يمكن عرض تنبيهات القسم. راجع مدير النظام لربط حسابك بفرع.
-          </p>
-        </div>
-      ) : (
-        <>
-          {sentFlash ? (
-            <p role="status" className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 mb-4">
-              {sentFlash}
-            </p>
-          ) : null}
-          <div className="flex gap-2 mb-4" role="tablist" aria-label="تبويبات التنبيهات">
-            {(['received', 'sent'] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                role="tab"
-                id={`alerts-tab-${t}`}
-                aria-selected={alertsTab === t}
-                aria-controls={`alerts-panel-${t}`}
-                onClick={() => setAlertsTab(t)}
-                className={`min-h-11 rounded-lg px-4 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
-                  alertsTab === t ? 'bg-emerald-800 text-white' : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                {t === 'received' ? 'مستلمة' : 'أرسلتها'}
-              </button>
-            ))}
-          </div>
-          {/* اللوحة الحاوية للتبويب الظاهر: `aria-controls` في الأزرار يشير إلى
-              `alerts-panel-{tab}`، واللوحة تُسمّى بتبويبها (النمط نفسه في
-              `DocumentView`/`PortalFileDetail`). */}
-          <div
-            role="tabpanel"
-            id={`alerts-panel-${alertsTab}`}
-            aria-labelledby={`alerts-tab-${alertsTab}`}
-          >
-            <AlertsPanel
-              badge={
-                headBadge === null ? null : (
-                  <span className="shrink-0 whitespace-nowrap text-xs bg-emerald-100 text-emerald-800 rounded-full px-2 py-0.5 font-medium tabular-nums">
-                    {headBadge.srPrefix ? <span className="sr-only">{headBadge.srPrefix}</span> : null}
-                    {headBadge.text}
-                  </span>
-                )
-              }
-              // دلالة الشارة صريحة: `received` مجموع غير المقروء في تنبيهات القسم
-              // (أزواج تنبيه × مستلم) لا صفوف الرئيس الشخصية — فلا تُقرأ «غير مقروءة لي».
-              subtitle={alertsTab === 'received' ? 'غير المقروء في تنبيهاتك' : null}
-              headerExtra={
-                <button
-                  type="button"
-                  onClick={() => setShowAlertForm((v) => !v)}
-                  className="min-h-11 px-4 rounded-lg bg-emerald-800 hover:bg-emerald-700 text-white text-sm font-medium"
-                >
-                  {showAlertForm ? 'إلغاء' : '+ إصدار تنبيه'}
-                </button>
-              }
-              form={
-                showAlertForm ? (
-                  <CreateAlertForm
-                    targetType={alertTargetType}
-                    onTargetTypeChange={setAlertTargetType}
-                    lawyers={branchLawyers}
-                    lawyerId={alertLawyerId}
-                    onLawyerIdChange={setAlertLawyerId}
-                    message={alertMessage}
-                    onMessageChange={setAlertMessage}
-                    submitting={alertSubmitting}
-                    error={alertFormError}
-                    onSubmit={submitAlert}
-                    onCancel={() => setShowAlertForm(false)}
-                  />
-                ) : null
-              }
-              error={alertsError || activeFeed.error || ''}
-              footer={<AlertsFeedFooter feed={activeFeed} />}
-              isLoading={activeFeed.isLoading}
-              alerts={activeFeed.items}
-              // تعليم المقروء **للمستلم** في تبويب «مستلمة» وحده: `isRead` حالة استلام
-              // المستخدم نفسه (وللرئيس/الشعبة تنبيهات نطاق `head` تستلمها فعليًا)،
-              // والخلفية تسمح لهم بـ`PATCH /alerts/{id}/read`. وفي «أرسلتها» لا يُمرَّر
-              // أصلًا (`isRead = null` للمُرسل، وكان الزر سيظهر لأن `!null` صحيح).
-              onMarkRead={alertsTab === 'received' ? markAlertRead : undefined}
-              markingKey={alertsTab === 'received' ? markingKey : null}
-              sentView={alertsTab === 'sent'}
-            />
-          </div>
-        </>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -207,4 +207,96 @@ describe('AlertsPage — رئيس القسم/الشعبة', () => {
     const alertCalls = get.mock.calls.filter(([url]) => String(url).startsWith('/alerts'));
     expect(alertCalls).toHaveLength(0);
   });
+
+  it('تعليم صف الرئيس/الشعبة مقروءًا يُنقص شارة التبويب وعدّاد الصف معًا', async () => {
+    get.mockImplementation((url: string) => {
+      if (url === '/alerts?archived=active') {
+        return Promise.resolve(
+          pageBody([
+            makeHeadAlertSummary({
+              id: 4,
+              kind: 'manual_to_branch',
+              messagePreview: 'تعميم إلى رؤساء الفرع',
+              targetType: 'head',
+              recipientCount: 2,
+              unreadCount: 2,
+              isRead: false,
+            }),
+          ]),
+        );
+      }
+      if (url === '/alerts/unread-count') return Promise.resolve({ data: { count: 2 } });
+      if (url === '/users/lawyers') return Promise.resolve({ data: [] });
+      return Promise.resolve(pageBody([]));
+    });
+    patch.mockResolvedValue({});
+    const user = userEvent.setup();
+    render(<AlertsPage />);
+
+    const tab = await screen.findByRole('tab', { name: /مستلمة/ });
+    await within(tab).findByText('2', { exact: false });
+    expect(await screen.findByText('غير مقروء: 2 / 2')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'تمت القراءة' }));
+
+    expect(patch).toHaveBeenCalledWith('/alerts/4/read');
+    // عدّاد الصف ينقص واحدًا وشارة `received` تنقص بالمقدار نفسه.
+    expect(await screen.findByText('غير مقروء: 1 / 2')).toBeInTheDocument();
+    expect(within(screen.getByRole('tab', { name: /مستلمة/ })).getByText('1')).toBeInTheDocument();
+  });
+
+  it('يصدر تعميماً للفرع: `POST /alerts` ثم رسالة نجاح وإعادة تحميل الصادر', async () => {
+    get.mockImplementation((url: string) => {
+      if (url === '/alerts?archived=active') return Promise.resolve(pageBody([receivedAlert()]));
+      if (url === '/alerts/sent?archived=active') return Promise.resolve(pageBody([]));
+      if (url === '/alerts/unread-count') return Promise.resolve({ data: { count: 0 } });
+      if (url === '/users/lawyers') return Promise.resolve({ data: [] });
+      return Promise.resolve(pageBody([]));
+    });
+    const post = api.post as unknown as ReturnType<typeof vi.fn>;
+    post.mockResolvedValue({ data: { id: 9 } });
+    const user = userEvent.setup();
+    render(<AlertsPage />);
+
+    await user.click(await screen.findByRole('button', { name: '+ إصدار تنبيه' }));
+    await user.type(await screen.findByLabelText('نص التنبيه'), 'اجتماع الفرع يوم الأحد');
+    await user.click(screen.getByRole('button', { name: 'إرسال التنبيه' }));
+
+    expect(post).toHaveBeenCalledWith('/alerts', {
+      targetType: 'branch',
+      documentId: null,
+      targetLawyerId: null,
+      message: 'اجتماع الفرع يوم الأحد',
+    });
+    expect(await screen.findByRole('status')).toHaveTextContent(/تم إصدار التنبيه/);
+    expect(screen.queryByLabelText('نص التنبيه')).not.toBeInTheDocument();
+  });
+
+  it('إصدار بلا نص: خطأ منسوب للحقل وتركيز عليه بلا إرسال', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    render(<AlertsPage />);
+
+    await user.click(await screen.findByRole('button', { name: '+ إصدار تنبيه' }));
+    await user.click(screen.getByRole('button', { name: 'إرسال التنبيه' }));
+
+    const error = await screen.findByRole('alert');
+    expect(error).toHaveTextContent('نص التنبيه مطلوب');
+    const textarea = screen.getByLabelText('نص التنبيه');
+    expect(textarea).toHaveAttribute('aria-invalid', 'true');
+    expect(document.activeElement).toBe(textarea);
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('ربط التبويب بلوحته: `aria-controls` يشير إلى لوحة موجودة باسمها', async () => {
+    mockApi();
+    render(<AlertsPage />);
+
+    const receivedTab = await screen.findByRole('tab', { name: /مستلمة/ });
+    expect(receivedTab).toHaveAttribute('id', 'alerts-tab-received');
+    expect(receivedTab).toHaveAttribute('aria-controls', 'alerts-panel-received');
+    const panel = document.getElementById('alerts-panel-received');
+    expect(panel).toHaveAttribute('role', 'tabpanel');
+    expect(panel).toHaveAttribute('aria-labelledby', 'alerts-tab-received');
+  });
 });
