@@ -21,7 +21,7 @@ export const TARGET_TYPE_BADGES: Record<HeadAlertTargetType, string> = {
  * تحصل على تسميات مرحلتها الخاصة بدل تسميات الإنابة/الرسائل العامة —
  * والبقية تبقى على التسميات الأصلية كما هي.
  */
-export function appealAwareTypeLabel(alert: { targetType: string; appealId?: number }): string {
+export function appealAwareTypeLabel(alert: { targetType: string; appealId?: number | null }): string {
   if (alert.appealId) {
     switch (alert.targetType) {
       case 'head':

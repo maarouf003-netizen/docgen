@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import AccountPage from './AccountPage';
@@ -26,6 +26,11 @@ vi.mock('../api/client', () => ({
 
 import { api } from '../api/client';
 
+/** أرقام بطاقة «ملخص سريع» وحدها — لا يطابق الرقم عرضًا آخر في الصفحة (تاريخ/عدّاد). */
+function summary() {
+  return within(screen.getByRole('region', { name: 'ملخص إحصائي' }));
+}
+
 function mockApi() {
   (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
     if (url === '/stats/me') return Promise.resolve({ data: { totalFiles: 12 } });
@@ -33,13 +38,6 @@ function mockApi() {
     if (url === '/personal-reminders')
       return Promise.resolve({ data: [{ id: 1 }, { id: 2 }] });
     if (url === '/alerts/unread-count') return Promise.resolve({ data: { count: 3 } });
-    if (url === '/alerts')
-      return Promise.resolve({
-        data: [
-          { id: 1, recipientCount: 2, unreadCount: 2 },
-          { id: 2, recipientCount: 3, unreadCount: 1 },
-        ],
-      });
     if (url === '/app-suggestions')
       return Promise.resolve({
         data: [{ id: 9, message: 'اقتراحي', createdAt: '2026-08-08T10:00:00', isRead: false }],
@@ -74,9 +72,14 @@ describe('AccountPage', () => {
   it('يعرض الملخص السريع بالأرقام الحقيقية', async () => {
     render(<AccountPage />);
 
-    await waitFor(() => expect(screen.getByText('12')).toBeInTheDocument());
-    expect(screen.getByText('2')).toBeInTheDocument();
-    expect(screen.getByText('3')).toBeInTheDocument();
+    await waitFor(() => expect(summary().getByText('12')).toBeInTheDocument());
+    expect(summary().getByText('2')).toBeInTheDocument();
+    expect(summary().getByText('3')).toBeInTheDocument();
+    // المحامي: نطاق الشارة `user` (صفوفه الشخصية) — مطابق لـ`Dashboard`.
+    expect(api.get).toHaveBeenCalledWith(
+      '/alerts/unread-count',
+      expect.objectContaining({ params: { scope: 'user' } }),
+    );
   });
 
   it('يرسل الاقتراح من الحوار ويعرض سجل القراءة', async () => {
@@ -107,9 +110,9 @@ describe('AccountPage', () => {
     expect(api.post).not.toHaveBeenCalled();
   });
 
-  it('يعرض لرئيس القسم ملخص الفرع (ملفات + غير مقروءة + اقتراحاتي) بلا استعلامات المحامي', async () => {
+  it('يعرض لرئيس القسم ملخص الفرع (ملفات + غير المقروء + اقتراحاتي) بلا استعلامات المحامي', async () => {
     useAuthMock.mockReturnValue({
-      user: { id: 2, username: 'head1', fullName: 'رئيس القسم', role: 'head', branchName: 'دمشق' },
+      user: { id: 2, username: 'head1', fullName: 'رئيس القسم', role: 'head', branchName: 'دمشق', branchId: 1 },
       logout: vi.fn(),
     });
     render(<AccountPage />);
@@ -118,23 +121,66 @@ describe('AccountPage', () => {
     expect(screen.getByText('رئيس قسم — دمشق')).toBeInTheDocument();
     expect(screen.queryByText('محامي — دمشق')).not.toBeInTheDocument();
 
-    await waitFor(() => expect(screen.getByText('42')).toBeInTheDocument());
-    expect(screen.getByText('ملفات النطاق هذه السنة')).toBeInTheDocument();
-    // الدلالة مجموع المستلمين غير القارئين عبر التنبيهات (2+1=3) لا عدد التنبيهات (2)
-    // ولا عدد الأشخاص المميزين — الوسم يصرّح بالمجموع عمدًا.
-    expect(screen.getByText('مجموع مستلمي تنبيهات النطاق غير القارئين')).toBeInTheDocument();
-    expect(screen.getByText('3')).toBeInTheDocument();
+    await waitFor(() => expect(summary().getByText('42')).toBeInTheDocument());
+    expect(summary().getByText('ملفات النطاق هذه السنة')).toBeInTheDocument();
+    // الشارة من `unread-count?scope=received` مباشرة (تجميعية بلا سقف صفحة)،
+    // ووسمها صريح: «غير المقروء في تنبيهاتك» لا «غير المقروءة لي».
+    expect(summary().getByText('غير المقروء في تنبيهاتك')).toBeInTheDocument();
+    expect(summary().getByText('3')).toBeInTheDocument();
     expect(screen.getAllByText('اقتراحاتي').length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText('تذكيراتي النشطة')).not.toBeInTheDocument();
     expect(screen.queryByText('ملفاتي هذه السنة')).not.toBeInTheDocument();
 
     const urls = (api.get as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
     expect(urls).toContain('/stats/manager');
-    expect(urls).toContain('/alerts');
     expect(urls).toContain('/app-suggestions');
+    expect(urls).toContain('/alerts/unread-count');
+    // الصفحة لا تجلب قائمة التنبيهات إطلاقًا (`headAlertsQuery` محذوف —
+    // القائمة تعيش في `Dashboard` وحدها، والملخص يعتمد العدّاد غير المرقّم).
+    expect(urls).not.toContain('/alerts');
     expect(urls).not.toContain('/stats/me');
     expect(urls).not.toContain('/personal-reminders');
-    expect(urls).not.toContain('/alerts/unread-count');
+    expect(api.get).toHaveBeenCalledWith(
+      '/alerts/unread-count',
+      expect.objectContaining({ params: { scope: 'received' } }),
+    );
+  });
+
+  it('رئيس بلا فرع: لا يطلب عدّاد `received` (مرفوض خلفيًا) ويعرض «—» بلا خطأ ولا طلب', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 2, username: 'head1', fullName: 'رئيس القسم', role: 'head', branchName: 'دمشق', branchId: null },
+      logout: vi.fn(),
+    });
+    render(<AccountPage />);
+
+    await waitFor(() => expect(summary().getByText('42')).toBeInTheDocument());
+    expect(summary().getByText('غير المقروء في تنبيهاتك')).toBeInTheDocument();
+    // «—» لا صفر كاذب: العدّاد غير متاح لرئيس بلا فرع (`D11`).
+    expect(summary().getByText('—')).toBeInTheDocument();
+    expect(screen.queryByText('0')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(api.get).not.toHaveBeenCalledWith('/alerts/unread-count', expect.any(Object));
+  });
+
+  it('فشل العدّاد لا يُسقط الملخص: خطأ معلن و«—» في بطاقته وبقية الأرقام ظاهرة', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 2, username: 'head1', fullName: 'رئيس القسم', role: 'head', branchName: 'دمشق', branchId: 1 },
+      logout: vi.fn(),
+    });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/stats/manager') return Promise.resolve({ data: { totalFiles: 42 } });
+      if (url === '/alerts/unread-count') return Promise.reject(new Error('تعذّر جلب العدّاد'));
+      if (url === '/app-suggestions') return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<AccountPage />);
+
+    // الملفات معروفة فتُعرض رغم فشل العدّاد، والخطأ معلن مرة واحدة.
+    await waitFor(() => expect(summary().getByText('42')).toBeInTheDocument());
+    expect(await screen.findByRole('alert')).toHaveTextContent('تعذّر جلب العدّاد');
+    expect(summary().getByText('غير المقروء في تنبيهاتك')).toBeInTheDocument();
+    expect(summary().getByText('—')).toBeInTheDocument();
   });
 
   it('يعرض للمدير الملف والملخص بلا قسم اقتراحات (يستقبلها في صندوق المشرف)', async () => {
