@@ -5,7 +5,6 @@ import type { ReactNode } from 'react';
 import Dashboard from './Dashboard';
 import type {
   DashboardStatsDto,
-  HeadAlertSummaryDto,
   LawyerListItem,
   ManagerLawyerStatDto,
   ManagerStatsDto,
@@ -39,7 +38,6 @@ vi.mock('../api/client', async (importOriginal) => {
 import { api } from '../api/client';
 import { currentWeekRange } from '../components/dashboard/personalReminders';
 import { dueLabel } from '../components/dashboard/dashboardFormat';
-import { makeHeadAlertSummary } from '../test/factories';
 
 /**
  * تاريخ `yyyy-MM-dd` (بتوقيت الظهيرة المحلي — ثابت اليوم في كل المناطق)
@@ -138,24 +136,6 @@ const BRANCH_LAWYERS: LawyerListItem[] = [
   { id: 2, username: 'lawyer2', fullName: 'محامي دمشق', isActive: true, branchId: 1, branchName: 'الفرع الرئيسي - دمشق' },
 ];
 
-const HEAD_ALERTS: HeadAlertSummaryDto[] = [
-  makeHeadAlertSummary({
-    id: 3,
-    messagePreview: 'تعميم يوم الأحد',
-    recipientCount: 2,
-    unreadCount: 2,
-  }),
-  makeHeadAlertSummary({
-    id: 1,
-    kind: 'manual_to_document',
-    messagePreview: 'راجع ملف القرض',
-    targetType: 'document',
-    documentId: 5,
-    recipientCount: 1,
-    unreadCount: 0,
-    createdAt: '2026-08-01T10:00:00Z',
-  }),
-];
 
 function managerStatsFor(period?: string): ManagerStatsDto {
   if (period === 'quarterly') {
@@ -167,33 +147,11 @@ function managerStatsFor(period?: string): ManagerStatsDto {
   return MANAGER_STATS;
 }
 
-/** `PagedResult` كما يصل على السلك (`pageSize=100`) — الشكل الوحيد المقبول (`D10=atomic`). */
-function pageResult<T>(items: T[], totalCount = items.length, page = 1) {
-  return {
-    items,
-    page,
-    perPage: 100,
-    totalCount,
-    totalPages: Math.ceil(totalCount / 100),
-  };
-}
-
 function mockApi(overrides?: {
   reminders?: ReminderDto[];
   monthly?: [];
-  alerts?: HeadAlertSummaryDto[];
-  /** عناصر الصفحة الثانية (اختبار «تحميل المزيد»). */
-  alertsPage2?: HeadAlertSummaryDto[];
-  /** يفشل أول طلب لقائمة المستلمات — اختبار «إعادة المحاولة». */
-  alertsFailFirst?: boolean;
-  /** رقم صفحة يفشل طلبها (اختبار فشل «تحميل المزيد»). */
-  alertsFailPage?: number;
-  /** يفشل أول طلب لقائمة الصادر — اختبار شارة الإجمالي المجهول. */
-  sentFailFirst?: boolean;
   /** إجمالي غير المقروء في التنبيهات (`scope` حسب الدور في الطلب نفسه). */
   unreadCount?: number;
-  /** إجمالي صفوف قائمة المستلمات عند تجاوزه لعناصر الصفحة (اختبار «تحميل المزيد»). */
-  alertsTotal?: number;
   lawyers?: Array<{ id: number; fullName: string; isActive?: boolean }>;
   personal?: PersonalReminderDto[];
   pendingReviews?: number;
@@ -202,14 +160,9 @@ function mockApi(overrides?: {
   entityReviewCount?: number;
   circuits?: Array<{ id: number; name: string; pendingCount: number }>;
   pendingRegistrations?: Array<{ documentId: number }>;
-  sent?: HeadAlertSummaryDto[];
-  sentTotal?: number;
 }) {
   const reminders = overrides?.reminders ?? [];
   const monthly = overrides?.monthly ?? [];
-  const alerts = overrides?.alerts ?? [];
-  const alertsPage2 = overrides?.alertsPage2 ?? [];
-  const alertsTotal = overrides?.alertsTotal;
   const unreadCount = overrides?.unreadCount ?? 0;
   const lawyers = overrides?.lawyers ?? [];
   const personal = overrides?.personal ?? [];
@@ -219,36 +172,13 @@ function mockApi(overrides?: {
   const entityReviewCount = overrides?.entityReviewCount ?? 0;
   const circuits = overrides?.circuits ?? [];
   const pendingRegistrations = overrides?.pendingRegistrations ?? [];
-  const sent = overrides?.sent ?? [];
-  const sentTotal = overrides?.sentTotal;
-  let alertsAttempts = 0;
-  let sentAttempts = 0;
   (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation(
     (url: string, config?: { params?: Record<string, unknown> }) => {
-      const requestedPage = typeof config?.params?.page === 'number' ? config.params.page : 1;
+      const params = config?.params ?? {};
       if (url === '/dashboard') return Promise.resolve({ data: STATS });
       if (url === '/reminders') return Promise.resolve({ data: reminders });
       if (url === '/appeals/reminders') return Promise.resolve({ data: [] });
       if (url === '/personal-reminders') return Promise.resolve({ data: personal });
-      if (url === '/alerts') {
-        alertsAttempts += 1;
-        if (overrides?.alertsFailFirst && alertsAttempts === 1) {
-          return Promise.reject(new Error('تعذّر جلب التنبيهات'));
-        }
-        const rows = requestedPage === 1 ? alerts : alertsPage2;
-        if (overrides?.alertsFailPage === requestedPage) {
-          return Promise.reject(new Error('تعذّر جلب الصفحة'));
-        }
-        return Promise.resolve({ data: pageResult(rows, alertsTotal, requestedPage) });
-      }
-      if (url === '/alerts/sent') {
-        sentAttempts += 1;
-        if (overrides?.sentFailFirst && sentAttempts === 1) {
-          return Promise.reject(new Error('تعذّر جلب الصادر'));
-        }
-        const rows = requestedPage === 1 ? sent : [];
-        return Promise.resolve({ data: pageResult(rows, sentTotal, requestedPage) });
-      }
       if (url === '/alerts/unread-count') return Promise.resolve({ data: { count: unreadCount } });
       if (url === '/users/lawyers') return Promise.resolve({ data: lawyers });
       if (url === '/monthly-stats') return Promise.resolve({ data: monthly });
@@ -268,7 +198,7 @@ function mockApi(overrides?: {
         });
       }
       if (url === '/stats/manager') {
-        const period = typeof config?.params?.period === 'string' ? config.params.period : 'yearly';
+        const period = typeof params.period === 'string' ? params.period : 'yearly';
         return Promise.resolve({ data: managerStatsFor(period) });
       }
       if (url === '/stats/manager/lawyers') return Promise.resolve({ data: MANAGER_LAWYERS });
@@ -553,7 +483,6 @@ describe('Dashboard لرئيس القسم', () => {
       user: { id: 1, username: 'head1', fullName: 'رئيس', role: 'head', branchId: 1 },
     });
     mockApi({
-      alerts: HEAD_ALERTS,
       lawyers: BRANCH_LAWYERS,
       pendingReviews: 2,
       urgentCount: 1,
@@ -630,8 +559,6 @@ describe('Dashboard لرئيس القسم', () => {
         user: { id: 1, username: 'head1', fullName: 'رئيس', role, branchId: 1, sectionId },
       });
       mockApi({
-        alerts: HEAD_ALERTS,
-        alertsTotal: 250,
         unreadCount: 5,
         lawyers: BRANCH_LAWYERS,
       });
@@ -661,7 +588,6 @@ describe('Dashboard لرئيس القسم', () => {
       user: { id: 1, username: 'head1', fullName: 'رئيس', role: 'head', branchId: 1 },
     });
     mockApi({
-      alerts: HEAD_ALERTS,
       lawyers: BRANCH_LAWYERS,
       circuits: [{ id: 1, name: 'دائرة أ', pendingCount: 2 }],
     });
@@ -679,7 +605,6 @@ describe('Dashboard لرئيس القسم', () => {
     useAuthMock.mockReturnValue({
       user: { id: 1, username: 'head1', fullName: 'رئيس', role: 'head', branchId: 1 },
     });
-    mockApi({ alerts: HEAD_ALERTS, lawyers: BRANCH_LAWYERS });
 
     render(<Dashboard />);
 
