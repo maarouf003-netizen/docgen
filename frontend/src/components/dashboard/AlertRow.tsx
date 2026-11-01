@@ -41,6 +41,13 @@ export function AlertRow({
   const isMarking = markingKey === String(alert.id);
   // الوجهة من الكتالوج الدلالي، ثم سلسلة احتياط المعرّفات (AlertKinds.alertRoute).
   const href = alertRoute(alert);
+  const typeLabel = appealAwareTypeLabel(alert);
+  // تسمية النوع من الكتالوج للمعروف فقط، وبلا تكرار: بعض الأنواع تسميتها هي
+  // تسمية نوع الهدف نفسها (نحو «إسناد استئناف»)، وإعادة عرضها مرتين تشوّش الصف
+  // وتُربك قارئ الشاشة.
+  const kindLabel = isKnownAlertKind(alert.kind) && alertKindLabel(alert.kind) !== typeLabel
+    ? alertKindLabel(alert.kind)
+    : null;
   return (
     <li>
       <div className="flex items-start gap-3 px-4 sm:px-5 py-3">
@@ -70,13 +77,13 @@ export function AlertRow({
                 TARGET_TYPE_BADGES[alert.targetType] ?? 'bg-gray-100 text-gray-700 border-gray-200'
               }`}
             >
-              {appealAwareTypeLabel(alert)}
+              {typeLabel}
             </span>
             {/* تسمية النوع من الكتالوج — تُعرض للمعروف فقط: الرمز المجهول بلا تسمية
                 صادقة، وإظهار «تنبيه» العامة لكل صف تاريخي لا يضيف معلومة. */}
-            {isKnownAlertKind(alert.kind) ? (
+            {kindLabel ? (
               <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-200 break-words">
-                {alertKindLabel(alert.kind)}
+                {kindLabel}
               </span>
             ) : null}
             {alert.targetLawyerName ? (
