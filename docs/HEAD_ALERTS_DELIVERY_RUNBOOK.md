@@ -380,7 +380,8 @@ npm run build
    (`cursor` يتجاوزهما، و`page` في استجابة المؤشر = `1`). `stalled` **أُزيل** من عقد `useAlertsFeed`
    ومن التذييل: المؤشر يثبّت النافذة على آخر صف معروض فلا انقطاع إزاحة بنيويًا. أي صيغة غير صالحة
    (ومنها وقت بلا منطقة UTC صريحة) ⇒ `400` برسالة عربية (`AlertCursor.Parse`)، والواجهة تبني المؤشر
-   عبر `buildAlertsCursor` وتشتق `hasMore` من امتلاء الصفحة الأخيرة.
+   عبر `buildAlertsCursor` وتشتق `hasMore` من امتلاء الصفحة الأخيرة. **وحارس تقدّم (من `PR‑6c`):** صفحة
+   مؤشر بلا صف جديد تُعلن وتُتيح إعادة التحميل من الأولى، ولا يبقى زر يكرّر طلبًا فاشلًا حتمًا.
 5. ✅ **تحققات نصية إلزامية (§15) — نُفِّذت في `PR‑6a`:**
    - لا `hasFullMessage` في أي عقد، ولا `hasNextPage` في `PagedResult` (حارس البيان والاختبارات).
    - لا تحديث لـ`CreatedAt` عند تعليم المقروء/الأرشفة (يُحدَّث `LastContentChangedAt` وحده).
@@ -460,6 +461,7 @@ npm run build
 | 2026-11-02 | قرار نطاق `PR‑6b` | ✅ **حسم المالك:** قاعدة الإنتاج **تجريبية وتُطلق فارغة** (لا استيراد تنبيهات قديمة) ⇒ **نافذة الـ14 يومًا للجسر مُسقطة بانحراف موثّق** ويُزال كود الجسر (البند 3) بلا انتظار، ويبقى `legacy` للعرض التاريخي. **البند 4** (مؤشر `cursor`) يبقى بعد قياس الاستقرار. سُجِّل الإسقاط في `HEAD_ALERTS_RESTRUCTURE_PLAN.md` §6.5.3/§19.6/§20 وسطر §7 أعلاه. **لا هجرة** | — |
 |  | و `PR-6b` | ✅ البند 3 — [#65](https://github.com/maarouf003-netizen/docgen/pull/65): حُذف سطح إعدادات الجسر غير المستخدم (`HeadAlertLegacyBridgeOptions` + `HeadAlerts:LegacyBridge` + ربط `DI`)، ولم يكن هناك مسار جسر في الكود أصلًا. البوابات: `dotnet test` 2871/0 · `oxlint`/`tsc` صفر · `vitest` 159/1662 · `build` ناجح · `guards` نظيف · **لا هجرة** | — |
 | 2026-11-02 | `PR‑6b` البند 4 — مؤشر `cursor` | ✅ **منفَّذ** ([#66](https://github.com/maarouf003-netizen/docgen/pull/66)، دُمج في `5e1c289`): `AlertCursor` (`TryParse`/`Parse`/`Format`، رفض الوقت المحلي/الغامض) · شرط keyset في `HeadAlertRepository.ProjectSummariesAsync` · معامل `cursor` في قوائم المستلم/الصادر/الإشراف + `HeadAlertListQuery.Cursor` (خام) · `AlertCursor.ParseOptional` في الخدمة بعد فحص الدور/الفرع (`403` قبل `400`) ⇒ `400` عربي · `page = 1` عند المؤشر · الواجهة: `buildAlertsCursor` وإعادة بناء `useAlertsFeed` على المؤشر وإزالة `stalled` من العقد والتذييل · اختبارات: `AlertCursorTests` 30 + `AlertsCursorPagingTests` 16. البوابات: `dotnet test` 2917/0 (2175 + 742) · `oxlint`/`tsc` صفر · `vitest` 159/1665 · `build` ناجح · `guards` نظيف · **لا هجرة** | `5e1c289` |
+| 2026-11-02 | `PR‑6c` — معالجة المراجعة النقدية لـ`PR‑6b` | ✅ **منفَّذ:** (1) خطأ المؤشر صار **مربوطًا بالنطاق** فلا يلتصق خطأ تصفية سابقة بقائمة نطاق جديد؛ (2) **مخرج الفشل الحتمي:** زر «إعادة المحاولة» يعيد التحميل من الأولى عند خرق عقد المؤشر، بدل تكرار طلب سيفشل حتمًا؛ (3) **حارس تقدّم:** صفحة مؤشر بلا صف جديد تُعلن («توقّف تحميل بقية التنبيهات») وتوقف الطلبات، فلا زر صامت؛ (4) **تطهير رسائل الأخطاء** مركزيًا: `ApiErrorMessages.From` يزيل `(Parameter 'x')`/`Actual value was …` ويُطبَّق على **169** موضع جسم استجابة في المتحكمات + اختبار مصدري يمنع `message = e.Message`؛ و`AlertCursorException` بلا `paramName` (نمط `AlertPagingException` القائم)؛ (5) **وسم رصد** `CursorPaging` في `RequestLoggingEnricherMiddleware`؛ (6) **تغطية:** تكافؤ المؤشر على `PostgreSQL` (اختبار التكافؤ الموجود)، تساوي `LastContentChangedAt` مع المؤشر، فلاتر الأرشيف/الإنابة مع المؤشر، `cursor` + `page=0` ⇒ `400`. البوابات: `dotnet test` **2935/0** (2177 + 758) · `oxlint`/`tsc` صفر · `vitest` 159/1668 · `build` ناجح · `guards` نظيف · **لا هجرة** | — |
 
 ---
 
