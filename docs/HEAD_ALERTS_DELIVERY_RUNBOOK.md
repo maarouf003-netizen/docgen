@@ -400,13 +400,14 @@ npm run build
 | البوابة | الأمر | المتوقع |
 |---|---|---|
 | بناء الخلفية | `dotnet build backend/DocGenerator.sln --nologo -v q -warnaserror` | 0 تحذير/0 خطأ |
-| اختبارات التطبيق | `dotnet test backend/tests/DocGenerator.Application.Tests/DocGenerator.Application.Tests.csproj --no-build --nologo -v q` | 2149/2149 (أو أكثر) |
-| اختبارات `API` المتوازية | `dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build --nologo -v q --filter "Category!=Sequential"` | 724 (أو أكثر) |
+| اختبارات التطبيق | `dotnet test backend/tests/DocGenerator.Application.Tests/DocGenerator.Application.Tests.csproj --no-build --nologo -v q` | 2177/2177 (أو أكثر) |
+| اختبارات `API` المتوازية | `dotnet test backend/tests/DocGenerator.Api.Tests/DocGenerator.Api.Tests.csproj --no-build --nologo -v q --filter "Category!=Sequential"` | 756 (أو أكثر) |
 | اختبارات `API` التتابعية | نفس الأمر بـ`--filter "Category=Sequential"` | 2 |
 | `lint` واجهة | `cd frontend; npx oxlint src` | صفر |
 | أنواع واجهة | `npx tsc -b` | صفر |
-| اختبارات واجهة | `npx vitest run` | 158 ملفًا/1666 اختبارًا (أو أكثر) |
+| اختبارات واجهة | `npx vitest run` | 159 ملفًا/1668 اختبارًا (أو أكثر) |
 | بناء واجهة | `npm run build` | ناجح |
+| دخان حيّ (قراءة فقط) | `python scripts/alerts-live-smoke.py --username <حساب رئيس>` | كل الفحوص `PASS` (لا كتابة على القاعدة) |
 | `CI` | `gh run list --branch <branch> --limit 4` | 12/12 `success` على رأس الفرع |
 
 **قاعدة:** أي بوابة حمراء = المهمة غير منجزة؛ لا «نجاح جزئي»، ولا تعطيل اختبار لتجاوزه.
@@ -462,6 +463,7 @@ npm run build
 |  | و `PR-6b` | ✅ البند 3 — [#65](https://github.com/maarouf003-netizen/docgen/pull/65): حُذف سطح إعدادات الجسر غير المستخدم (`HeadAlertLegacyBridgeOptions` + `HeadAlerts:LegacyBridge` + ربط `DI`)، ولم يكن هناك مسار جسر في الكود أصلًا. البوابات: `dotnet test` 2871/0 · `oxlint`/`tsc` صفر · `vitest` 159/1662 · `build` ناجح · `guards` نظيف · **لا هجرة** | — |
 | 2026-11-02 | `PR‑6b` البند 4 — مؤشر `cursor` | ✅ **منفَّذ** ([#66](https://github.com/maarouf003-netizen/docgen/pull/66)، دُمج في `5e1c289`): `AlertCursor` (`TryParse`/`Parse`/`Format`، رفض الوقت المحلي/الغامض) · شرط keyset في `HeadAlertRepository.ProjectSummariesAsync` · معامل `cursor` في قوائم المستلم/الصادر/الإشراف + `HeadAlertListQuery.Cursor` (خام) · `AlertCursor.ParseOptional` في الخدمة بعد فحص الدور/الفرع (`403` قبل `400`) ⇒ `400` عربي · `page = 1` عند المؤشر · الواجهة: `buildAlertsCursor` وإعادة بناء `useAlertsFeed` على المؤشر وإزالة `stalled` من العقد والتذييل · اختبارات: `AlertCursorTests` 30 + `AlertsCursorPagingTests` 16. البوابات: `dotnet test` 2917/0 (2175 + 742) · `oxlint`/`tsc` صفر · `vitest` 159/1665 · `build` ناجح · `guards` نظيف · **لا هجرة** | `5e1c289` |
 | 2026-11-02 | `PR‑6c` — معالجة المراجعة النقدية لـ`PR‑6b` | ✅ **منفَّذ** ([#68](https://github.com/maarouf003-netizen/docgen/pull/68)، دُمج في `70b96eb`): (1) خطأ المؤشر صار **مربوطًا بالنطاق** فلا يلتصق خطأ تصفية سابقة بقائمة نطاق جديد؛ (2) **مخرج الفشل الحتمي:** زر «إعادة المحاولة» يعيد التحميل من الأولى عند خرق عقد المؤشر، بدل تكرار طلب سيفشل حتمًا؛ (3) **حارس تقدّم:** صفحة مؤشر بلا صف جديد تُعلن («توقّف تحميل بقية التنبيهات») وتوقف الطلبات، فلا زر صامت؛ (4) **تطهير رسائل الأخطاء** مركزيًا: `ApiErrorMessages.From` يزيل `(Parameter 'x')`/`Actual value was …` ويُطبَّق على **169** موضع جسم استجابة في المتحكمات + اختبار مصدري يمنع `message = e.Message`؛ و`AlertCursorException` بلا `paramName` (نمط `AlertPagingException` القائم)؛ (5) **وسم رصد** `CursorPaging` في `RequestLoggingEnricherMiddleware`؛ (6) **تغطية:** تكافؤ المؤشر على `PostgreSQL` (اختبار التكافؤ الموجود)، تساوي `LastContentChangedAt` مع المؤشر، فلاتر الأرشيف/الإنابة مع المؤشر، `cursor` + `page=0` ⇒ `400`. البوابات: `dotnet test` **2935/0** (2177 + 758) · `oxlint`/`tsc` صفر · `vitest` 159/1668 · `build` ناجح · `guards` نظيف · **لا هجرة** | `70b96eb` |
+| 2026-11-02 | دخان حيّ بعد `PR‑6c` | ✅ **`18/18` ناجح على الإنتاج** بأداة جديدة `scripts/alerts-live-smoke.py` (**قراءة فقط**، كلمة المرور من `getpass`/بيئة لا من سطر الأمر): (أ) عام: `/healthz`=200 · SPA=200 · `/api/alerts`=401 · (ب) مُصادق: دخول + `/me` · `pageSize=2` بعقد `PagedResult` · **المؤشر**: `page=1`، `totalCount` ثابت، صفر تكرار بين الصفحتين على `PostgreSQL` الحيّ · `cursor=garbage` ⇒ **400** بالرسالة العربية المتوقعة **بلا `Parameter`** · `cursor` + `page=0` ⇒ **400** «رقم الصفحة يبدأ من 1» · `unread-count?scope=user` · `/sent` للرئيس. (ج) **متصفح حقيقي** (Chromium): `/alerts` يجلب `?archived=active&pageSize=100` (نمط المؤشر بلا `page`)، وتبديل الفلتر يطلق `archived=all` **بلا لافتة خطأ عالقة**، و«مرسلة» تعرض عدّادات الصفوف و`المستلمون`، وصفر أخطاء تطبيق في الـconsole، ولا تجاوز أفقي. **حدّان معروفان:** زر «تحميل المزيد» لا يظهر لأن نطاقات الحساب أقل من حجم الصفحة، وفحص `375px` يحتاج وضع الجهاز في DevTools (لا تُحاكي الأداة العرض) | — |
 
 ---
 
