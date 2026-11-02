@@ -80,22 +80,6 @@ public sealed class HeadAlertOutboxOptions
 }
 
 /// <summary>
-/// إعدادات الجسر الانتقالي للصفوف <c>legacy</c> (الخطة §6.5) — القسم
-/// <c>HeadAlerts:LegacyBridge</c>.
-///
-/// **مغلق افتراضيًا:** الجسر لا يُفعَّل إلا بقرار بوابة G0 على بيانات الإنتاج
-/// (الخطة §2.3)، فتبقى كل الصفوف القديمة <c>legacy</c> للعرض التاريخي.
-/// </summary>
-public sealed class HeadAlertLegacyBridgeOptions
-{
-    /// <summary>اسم القسم في الإعدادات.</summary>
-    public const string SectionName = "HeadAlerts:LegacyBridge";
-
-    /// <summary>هل يعمل الجسر الانتقالي؟</summary>
-    public bool Enabled { get; set; }
-}
-
-/// <summary>
 ///Reasons موحّدة لتخطي رسالة — قيم قصيرة لا استثناءات (الخطة §6.4).
 /// </summary>
 public static class HeadAlertOutboxSkipReasons

@@ -152,7 +152,6 @@ builder.Services
     .Configure<DocGenerator.Application.Common.ForumOptions>(builder.Configuration.GetSection("Forum"))
     .Configure<DocGenerator.Application.Common.DatabaseOptions>(builder.Configuration.GetSection("Database"))
     .Configure<DocGenerator.Application.Common.HeadAlertOutboxOptions>(builder.Configuration.GetSection(DocGenerator.Application.Common.HeadAlertOutboxOptions.SectionName))
-    .Configure<DocGenerator.Application.Common.HeadAlertLegacyBridgeOptions>(builder.Configuration.GetSection(DocGenerator.Application.Common.HeadAlertLegacyBridgeOptions.SectionName))
     .Configure<RateLimitOptions>(builder.Configuration.GetSection("RateLimiting"))
     .Configure<SecurityOptions>(builder.Configuration.GetSection("Security"))
     .Configure<LockoutOptions>(builder.Configuration.GetSection("Lockout"))
