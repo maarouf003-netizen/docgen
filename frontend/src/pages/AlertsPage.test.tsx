@@ -97,7 +97,7 @@ beforeEach(() => {
 });
 
 describe('AlertsPage — المحامي', () => {
-  it('يعرض تنبيهاته المستلمة بطلب النطاق النشط دون تبويب «أرسلتها»', async () => {
+  it('يعرض تنبيهاته المستلمة بطلب النطاق النشط دون تبويب «مرسلة»', async () => {
     mockApi();
     render(<AlertsPage />);
 
@@ -106,7 +106,7 @@ describe('AlertsPage — المحامي', () => {
       '/alerts?archived=active',
       expect.objectContaining({ params: { page: 1, pageSize: 100 } }),
     );
-    expect(screen.queryByRole('tab', { name: /أرسلتها/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /مرسلة/ })).not.toBeInTheDocument();
   });
 
   it('لا يجلب النص الكامل قبل فتح التنبيه، ثم يجلبه من `GET /alerts/{id}`', async () => {
@@ -163,13 +163,13 @@ describe('AlertsPage — رئيس القسم/الشعبة', () => {
     });
   });
 
-  it('يعرض التبويبين ويجلب «أرسلتها» بنطاقه المستقل', async () => {
+  it('يعرض التبويبين ويجلب «مرسلة» بنطاقه المستقل', async () => {
     mockApi();
     const user = userEvent.setup();
     render(<AlertsPage />);
 
     await screen.findByText('تعميم للفرع بخصوص الدوام');
-    await user.click(screen.getByRole('tab', { name: /أرسلتها/ }));
+    await user.click(screen.getByRole('tab', { name: /مرسلة/ }));
 
     expect(await screen.findByText('تنبيه صادر للفرع')).toBeInTheDocument();
     expect(get).toHaveBeenCalledWith(
@@ -178,7 +178,7 @@ describe('AlertsPage — رئيس القسم/الشعبة', () => {
     );
   });
 
-  it('المستلمون متاحون في «أرسلتها» فقط وبالعقد القائم', async () => {
+  it('المستلمون متاحون في «مرسلة» فقط وبالعقد القائم', async () => {
     mockApi();
     const user = userEvent.setup();
     render(<AlertsPage />);
@@ -187,7 +187,7 @@ describe('AlertsPage — رئيس القسم/الشعبة', () => {
     // في «مستلمة» لا زر مستلمين (الحالة حالة المستخدم نفسه، لا قائمة مُرسلة).
     expect(screen.queryByRole('button', { name: 'المستلمون' })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('tab', { name: /أرسلتها/ }));
+    await user.click(screen.getByRole('tab', { name: /مرسلة/ }));
     await screen.findByText('تنبيه صادر للفرع');
     await user.click(screen.getByRole('button', { name: 'المستلمون' }));
 

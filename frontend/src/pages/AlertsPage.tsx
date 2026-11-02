@@ -31,8 +31,8 @@ const ARCHIVE_OPTIONS: ReadonlyArray<{ value: ArchiveFilter; label: string }> = 
  *
  * الأدوار (مطابقة الخلفية):
  * - المحامي: «مستلمة» فقط (`/alerts`)، وتعليم المقروء متاح.
- * - رئيس القسم/الشعبة: «مستلمة» + «أرسلتها» + إصدار تنبيه، وتعليم المقروء في
- *   «مستلمة» فقط (في «أرسلتها» `isRead` حالة المستلم لا المُرسل).
+ * - رئيس القسم/الشعبة: «مستلمة» + «مرسلة» + إصدار تنبيه، وتعليم المقروء في
+ *   «مستلمة» فقط (في «مرسلة» `isRead` حالة المستلم لا المُرسل).
  * - المدير/مشرف النظام: «مستلمة» إشرافية للقراءة فقط.
  * - رئيس/شعبة بلا فرع: حالة صريحة بلا طلبات محكومة بالفشل (`D11`).
  */
@@ -62,9 +62,10 @@ export default function AlertsPage() {
 
   const activeFeed = activeTab === 'received' ? receivedFeed : sentFeed;
 
-  // شارة غير المقروء بنفس نطاق الدليل (`D6`/`D7`): المحامي `user`، والرئيس/الشعبة
-  // `received`. لا تُطلب للمدير/المشرف (لا نطاق شخصي لهم) ولا لرئيس بلا فرع.
-  const unreadScope = isHeadOrSubHead ? 'received' : 'user';
+  // شارة غير المقروء بنطاق **شخصي موحّد** (`user`) لكل الأدوار — «غير المقروء لي».
+  // حُسم 2026-11-02 بعد اعتراض المالك: `received` للرئيس/الشعبة كان يجمع غير المقروء
+  // لدى كل مستلمي التنبيهات، فيبقى رقمًا واحدًا بعد قراءة صاحب الحساب لكل تنبيهاته.
+  const unreadScope = 'user';
   const unreadQuery = useCancellableRequest<{ count: number }>(
     (signal) =>
       api.get('/alerts/unread-count', { signal, params: { scope: unreadScope } }).then((r) => r.data),
@@ -153,7 +154,7 @@ export default function AlertsPage() {
       setShowForm(false);
       setMessage('');
       setLawyerId('');
-      setFlash('تم إصدار التنبيه — تجده في تبويب «أرسلتها»');
+      setFlash('تم إصدار التنبيه — تجده في تبويب «مرسلة»');
       sentFeed.reload();
     } catch (err) {
       setFormError({ field: null, text: getApiErrorMessage(err) });
@@ -220,7 +221,7 @@ export default function AlertsPage() {
                     : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
                 }`}
               >
-                {value === 'received' ? 'مستلمة' : 'أرسلتها'}
+                {value === 'received' ? 'مستلمة' : 'مرسلة'}
                 {value === 'received' && unreadCount > 0 ? (
                   <span className="ms-1.5 inline-flex min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white tabular-nums">
                     {unreadCount > 99 ? '+99' : unreadCount}
