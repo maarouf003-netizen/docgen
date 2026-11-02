@@ -541,10 +541,10 @@ describe('Dashboard لرئيس القسم', () => {
     expect(api.get).not.toHaveBeenCalledWith('/reminders', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/branches', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/dashboard');
-    // الشارة بنطاق الرئيس الصريح (`received`) — لا الافتراضي `user` ولا جمع فروعه.
+    // الشارة بالنطاق الشخصي (`user`) لكل الأدوار — «غير المقروء لي» (حُسم 2026-11-02).
     expect(api.get).toHaveBeenCalledWith(
       '/alerts/unread-count',
-      expect.objectContaining({ params: { scope: 'received' } }),
+      expect.objectContaining({ params: { scope: 'user' } }),
     );
     expect(screen.queryByText('عدد المقترضين')).not.toBeInTheDocument();
   });
@@ -553,7 +553,7 @@ describe('Dashboard لرئيس القسم', () => {
     { role: 'head', sectionId: undefined },
     { role: 'subhead', sectionId: 4 },
   ] as const)(
-    'شارة غير المقروء لدور $role من `scope=received` وليست عدد عناصر الصفحة',
+    'شارة غير المقروء لدور $role من `scope=user` وليست عدد عناصر الصفحة',
     async ({ role, sectionId }) => {
       useAuthMock.mockReturnValue({
         user: { id: 1, username: 'head1', fullName: 'رئيس', role, branchId: 1, sectionId },
@@ -568,14 +568,14 @@ describe('Dashboard لرئيس القسم', () => {
       const quickNav = await screen.findByRole('navigation', {
         name: role === 'subhead' ? 'أقسام لوحة رئيس الشعبة' : 'أقسام لوحة رئيس القسم',
       });
-      // الشارة تجميعية من العدّاد (5) لا طول الصفحة ولا إجمالي أي قائمة، ومصدرها
-      // `received` الصريح — لا الافتراضي `user`.
+      // الشارة من العدّاد الخفيف (5) لا من طول أي صفحة، وبالنطاق الشخصي `user`:
+      // «غير المقروء لي» — لا `received` التجميعي الذي أبقى رقمًا بعد قراءة الكل.
       expect(
         within(quickNav).getByRole('link', { name: 'التنبيهات — 5 تنبيهات غير مقروءة' }),
       ).toHaveAttribute('href', '/alerts');
       expect(api.get).toHaveBeenCalledWith(
         '/alerts/unread-count',
-        expect.objectContaining({ params: { scope: 'received' } }),
+        expect.objectContaining({ params: { scope: 'user' } }),
       );
       // ولا تُنزل اللوحة قائمة تنبيهات أصلًا (لا قصّ صامت ولا ترقيم مزدوج).
       expect(api.get).not.toHaveBeenCalledWith('/alerts', expect.any(Object));

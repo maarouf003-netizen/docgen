@@ -123,8 +123,8 @@ describe('AccountPage', () => {
 
     await waitFor(() => expect(summary().getByText('42')).toBeInTheDocument());
     expect(summary().getByText('ملفات النطاق هذه السنة')).toBeInTheDocument();
-    // الشارة من `unread-count?scope=received` مباشرة (تجميعية بلا سقف صفحة)،
-    // ووسمها صريح: «غير المقروء في تنبيهاتك» لا «غير المقروءة لي».
+    // الشارة من `unread-count?scope=user` (النطاق الشخصي الموحّد — حُسم 2026-11-02)،
+    // ووسمها صريح: «غير المقروء في تنبيهاتك» = غير المقروء لي.
     expect(summary().getByText('غير المقروء في تنبيهاتك')).toBeInTheDocument();
     expect(summary().getByText('3')).toBeInTheDocument();
     expect(screen.getAllByText('اقتراحاتي').length).toBeGreaterThanOrEqual(1);
@@ -136,13 +136,13 @@ describe('AccountPage', () => {
     expect(urls).toContain('/app-suggestions');
     expect(urls).toContain('/alerts/unread-count');
     // الصفحة لا تجلب قائمة التنبيهات إطلاقًا (`headAlertsQuery` محذوف —
-    // القائمة تعيش في `Dashboard` وحدها، والملخص يعتمد العدّاد غير المرقّم).
+    // القائمة تعيش في `/alerts` وحدها، والملخص يعتمد العدّاد غير المرقّم).
     expect(urls).not.toContain('/alerts');
     expect(urls).not.toContain('/stats/me');
     expect(urls).not.toContain('/personal-reminders');
     expect(api.get).toHaveBeenCalledWith(
       '/alerts/unread-count',
-      expect.objectContaining({ params: { scope: 'received' } }),
+      expect.objectContaining({ params: { scope: 'user' } }),
     );
   });
 
