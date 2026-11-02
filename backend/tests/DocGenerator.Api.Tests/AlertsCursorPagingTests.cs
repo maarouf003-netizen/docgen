@@ -210,14 +210,84 @@ public class AlertsCursorPagingTests
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var message = await ReadProblemMessageAsync(response);
-        Assert.Contains("cursor غير صالحة", message, StringComparison.Ordinal);
+        // الرسالة عربية كاملة بلا ذيل إطار العمل الإنجليزي (Parameter 'cursor').
+        Assert.Equal(
+            "قيمة cursor غير صالحة — أعِد تحميل القائمة ثم أعد المحاولة",
+            message);
+        Assert.DoesNotContain("Parameter", message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task PageNumber_IsStillValidated_EvenThoughCursorOverridesWindow(int page)
+    {
+        // §9.1: المؤشر يلغي **أثر** `page` في النافذة، لا التحقق منه — فيبقى
+        // الطلب المشوّه مرفوضًا، ورسالته عربية نظيفة.
+        var branchId = await _factory.GetBranchIdAsync("DAM");
+        var (lawyerId, client) = await _factory.NewLawyerClientAsync(branchId);
+        var createdById = await _factory.UserIdAsync("head1");
+        await SeedAlertsAsync(branchId, lawyerId, createdById, count: 3);
+
+        var first = await ReadPageAsync(await client.GetAsync("/api/alerts?pageSize=2"));
+        var cursor = Uri.EscapeDataString(Wire(first.Items[^1]));
+
+        var response = await client.GetAsync($"/api/alerts?cursor={cursor}&page={page}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var message = await ReadProblemMessageAsync(response);
+        Assert.Equal("رقم الصفحة يبدأ من 1", message);
+        Assert.DoesNotContain("Parameter", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CursorPaging_WithArchivedAllAndOnly_WalksTheFilteredSet()
+    {
+        var branchId = await _factory.GetBranchIdAsync("DAM");
+        var (lawyerId, client) = await _factory.NewLawyerClientAsync(branchId);
+        var createdById = await _factory.UserIdAsync("head1");
+        var seeded = await SeedAlertsAsync(branchId, lawyerId, createdById, count: 3);
+
+        // أرشفة الأحدث: يخرج من «النشط» ويبقى في «الكل» و«المؤرشف فقط».
+        var archivedId = seeded[^1];
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+            var alert = await db.HeadAlerts.SingleAsync(a => a.Id == archivedId);
+            alert.IsArchived = true;
+            alert.ArchivedAt = Anchor.AddHours(1);
+            await db.SaveChangesAsync();
+        }
+
+        var allFirst = await ReadPageAsync(
+            await client.GetAsync("/api/alerts?archived=all&pageSize=2"));
+        Assert.Equal(3, allFirst.TotalCount);
+        Assert.Equal(new[] { archivedId, seeded[1] }, allFirst.Items.Select(i => i.Id));
+
+        var allSecond = await ReadPageAsync(
+            await client.GetAsync(
+                $"/api/alerts?archived=all&pageSize=2&cursor={Uri.EscapeDataString(Wire(allFirst.Items[^1]))}"));
+        Assert.Equal(3, allSecond.TotalCount);
+        Assert.Equal(new[] { seeded[0] }, allSecond.Items.Select(i => i.Id));
+
+        var onlyArchived = await ReadPageAsync(
+            await client.GetAsync("/api/alerts?archived=only&pageSize=2"));
+        Assert.Equal(archivedId, Assert.Single(onlyArchived.Items).Id);
+
+        // بعد الصف المؤرشف الوحيد: نافذة فارغة (المؤشر لا يتجاوز الفلتر).
+        var onlyArchivedNext = await ReadPageAsync(
+            await client.GetAsync(
+                $"/api/alerts?archived=only&pageSize=2&cursor={Uri.EscapeDataString(Wire(onlyArchived.Items[^1]))}"));
+        Assert.Empty(onlyArchivedNext.Items);
+        Assert.Equal(1, onlyArchivedNext.TotalCount);
     }
 
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
     [InlineData(AlertPageRequest.MaxPageSize + 1)]
-    public async Task InvalidPageSize_WithCursor_Returns400(int pageSize)    {
+    public async Task InvalidPageSize_WithCursor_Returns400(int pageSize)
+    {
         var branchId = await _factory.GetBranchIdAsync("DAM");
         var (lawyerId, client) = await _factory.NewLawyerClientAsync(branchId);
         var createdById = await _factory.UserIdAsync("head1");

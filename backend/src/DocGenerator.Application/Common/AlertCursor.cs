@@ -9,7 +9,9 @@ namespace DocGenerator.Application.Common;
 /// <para>**لماذا keyset لا <c>offset</c>:** الإزاحة تفترض قائمة ثابتة بين الجلبين؛
 /// إصدار تنبيه جديد في الأعلى يزيح النافذة فتعود الصفحة التالية مكررات أو فارغة
 /// (جذر <c>stalled</c> في <c>useAlertsFeed</c> قبل هذا التغيير). المؤشر يثبّت الموضع
-/// على آخر صف رأيته فعليًا، فلا يظهر الصف مرتين ولا يُفقد صف أقدم.</para>
+/// على آخر صف رأيته فعليًا، فلا يتكرر صف **أبدًا**، ولا يُفقد صف لم يتغيّر مفتاح
+/// ترتيبه. (صف يُعدَّل محتواه أثناء التصفّح يرتفع <c>LastContentChangedAt</c>
+/// فوق المؤشر فيخرج من بقية الجولة حتى إعادة التحميل — فقدان مؤقت معلوم، لا تعليق.)</para>
 ///
 /// <para>**الصيغة السلكية:** <c>{ISO-8601-UTC}|{id}</c> — تُبنى في الواجهة من حقلي
 /// الصف نفسه (<c>lastContentChangedAt</c> و<c>id</c>) وتُرسل كما هي، والخادم يعيد
@@ -80,14 +82,15 @@ public sealed record AlertCursor(DateTime LastContentChangedAt, int Id)
     }
 
     /// <summary>
-    /// يحلل المؤشر أو يرمي <see cref="ArgumentException"/> برسالة عربية تُترجم
-    /// <c>400</c> في المتحكم (لا استثناء خام ولا رسالة إطار عمل إنجليزية).
+    /// يحلل المؤشر أو يرمي <see cref="AlertCursorException"/> برسالة عربية تُترجم
+    /// <c>400</c> في المتحكم (لا استثناء خام ولا رسالة إطار عمل إنجليزية، ولا اسم
+    /// معامل يُلحق ذيلًا إنجليزيًا — انظر <see cref="AlertCursorException"/>).
     /// </summary>
-    public static AlertCursor Parse(string value, string paramName = "cursor") =>
+    public static AlertCursor Parse(string value) =>
         TryParse(value, out var cursor)
             ? cursor!
-            : throw new ArgumentException(
-                "قيمة cursor غير صالحة — أعِد تحميل القائمة ثم أعد المحاولة", paramName);
+            : throw new AlertCursorException(
+                "قيمة cursor غير صالحة — أعِد تحميل القائمة ثم أعد المحاولة");
 
     /// <summary>
     /// يحلل المؤشر **إن وُجد**: الفارغ/الأبيض ⇒ <c>null</c> (ترقيم بالإزاحة)،

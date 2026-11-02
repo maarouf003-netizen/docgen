@@ -244,6 +244,90 @@ public class HeadAlertRepositorySummaryTests : IDisposable
         Assert.Equal(existingItem.DocumentTitle, single!.DocumentTitle);
     }
 
+    /// <summary>
+    /// مؤشر keyset عند **تساوي** <c>LastContentChangedAt</c>: الجزء الثاني من الشرط
+    /// (<c>= C AND Id &lt; C.Id</c>) هو ما يمنع تكرار الصف الحدّي أو فقدان توائم الزمن.
+    /// وحجم الصفحة يتغيّر بين الجلبين (لا يفترض ثباته).
+    /// </summary>
+    [Fact]
+    public async Task Cursor_WalksEqualTimestampsByDescendingId_WithoutDuplicatesOrGaps()
+    {
+        var first = AddAlert(_branchA, _head.Id, "أول", At(5));
+        var second = AddAlert(_branchA, _head.Id, "ثاني", At(5));
+        var third = AddAlert(_branchA, _head.Id, "ثالث", At(5));
+
+        var page1 = await _repository.ListSummariesForOversightAsync(
+            AlertArchiveFilter.Active, delegationId: null, cursor: null, skip: 0, take: 2);
+        Assert.Equal(new[] { third.Id, second.Id }, page1.Items.Select(i => i.Id));
+
+        // المؤشر من آخر صف معروض (زمنه يساوي الصفين الآخرين) ⇒ الأقدم معرّفًا وحده.
+        var tail = page1.Items[^1];
+        var page2 = await _repository.ListSummariesForOversightAsync(
+            AlertArchiveFilter.Active,
+            delegationId: null,
+            new AlertCursor(tail.LastContentChangedAt, tail.Id),
+            skip: 0,
+            take: 1);
+
+        Assert.Equal(new[] { first.Id }, page2.Items.Select(i => i.Id));
+        Assert.Equal(3, page2.TotalCount);
+
+        // ما بعد الأقدم: نافذة فارغة، والإجمالي يبقى إجمالي القائمة.
+        var page3 = await _repository.ListSummariesForOversightAsync(
+            AlertArchiveFilter.Active,
+            delegationId: null,
+            new AlertCursor(first.LastContentChangedAt, first.Id),
+            skip: 0,
+            take: 2);
+
+        Assert.Empty(page3.Items);
+        Assert.Equal(3, page3.TotalCount);
+        Assert.Equal(
+            new[] { third.Id, second.Id, first.Id },
+            page1.Items.Concat(page2.Items).Select(i => i.Id));
+    }
+
+    /// <summary>
+    /// المؤشر يُطبَّق **بعد** الفلاتر، فلا يتجاوزها: الأرشيف والإنابة يحدّان النتيجة
+    /// كما في مسار الإزاحة، ومؤشر أحدث من كل الصفوف يعيد القائمة كاملة بلا اقتطاع.
+    /// </summary>
+    [Fact]
+    public async Task Cursor_RespectsArchiveAndDelegationFilters_AndNewerCursorReturnsAll()
+    {
+        var active = AddAlert(_branchA, _head.Id, "نشط", At(1));
+        var archived = AddAlert(_branchA, _head.Id, "مؤرشف", At(2), archived: true);
+        var delegated = AddAlert(_branchA, _head.Id, "إنابة 88", At(3), delegationId: 88);
+
+        // مؤشر أحدث من كل الصفوف: يعيد الكل (لا يُسقط صفًا لكونه «أقدم من المؤشر»).
+        var newer = new AlertCursor(At(120), int.MaxValue);
+        var allFromTop = await _repository.ListSummariesForOversightAsync(
+            AlertArchiveFilter.All, delegationId: null, newer, skip: 0, take: 10);
+        Assert.Equal(
+            new[] { delegated.Id, archived.Id, active.Id },
+            allFromTop.Items.Select(i => i.Id));
+
+        // المؤرشف فقط + المؤشر: الأرشيف يحدّ النتيجة قبل الشرط.
+        var onlyArchived = await _repository.ListSummariesForOversightAsync(
+            AlertArchiveFilter.OnlyArchived, delegationId: null, newer, skip: 0, take: 10);
+        Assert.Equal(archived.Id, Assert.Single(onlyArchived.Items).Id);
+        Assert.Equal(1, onlyArchived.TotalCount);
+
+        // بعد الأرشيف (الأحدث في «الكل»): يبقى النشط والإنابة فقط.
+        var afterArchived = await _repository.ListSummariesForOversightAsync(
+            AlertArchiveFilter.All,
+            delegationId: null,
+            new AlertCursor(archived.LastContentChangedAt, archived.Id),
+            skip: 0,
+            take: 10);
+        Assert.Equal(new[] { active.Id }, afterArchived.Items.Select(i => i.Id));
+
+        // فلتر الإنابة + المؤشر: صف الإنابة وحده.
+        var delegationPage = await _repository.ListSummariesForOversightAsync(
+            AlertArchiveFilter.Active, delegationId: 88, newer, skip: 0, take: 10);
+        Assert.Equal(delegated.Id, Assert.Single(delegationPage.Items).Id);
+        Assert.Equal(88, delegationPage.Items[0].DelegationId);
+    }
+
     private HeadAlert AddAlert(
         int branchId,
         int createdById,

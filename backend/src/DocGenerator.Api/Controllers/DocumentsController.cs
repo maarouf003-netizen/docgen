@@ -345,7 +345,7 @@ public class DocumentsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -387,7 +387,7 @@ public class DocumentsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -438,7 +438,7 @@ public class DocumentsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -460,7 +460,7 @@ public class DocumentsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -483,7 +483,7 @@ public class DocumentsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -506,7 +506,7 @@ public class DocumentsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -528,7 +528,7 @@ public class DocumentsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -551,7 +551,7 @@ public class DocumentsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -597,7 +597,7 @@ public class DocumentsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
         catch (FileNotFoundException)
         {
@@ -628,7 +628,7 @@ public class DocumentsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -665,11 +665,11 @@ public class DocumentsController : ControllerBase
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = e.Message });
+            return Conflict(new { message = ApiErrorMessages.From(e) });
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -697,11 +697,11 @@ public class DocumentsController : ControllerBase
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = e.Message });
+            return Conflict(new { message = ApiErrorMessages.From(e) });
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -734,7 +734,7 @@ public class DocumentsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -757,7 +757,7 @@ public class DocumentsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -780,7 +780,7 @@ public class DocumentsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
