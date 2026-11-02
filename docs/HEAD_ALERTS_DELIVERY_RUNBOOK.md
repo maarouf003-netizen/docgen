@@ -41,9 +41,9 @@
 | فحوص `CI` العاملة | ستة × تشغيلان: `backend`، `backend-postgres`، `frontend`، `guards`، `audit`، `migration-guard` — 6/6 على `db7aefd` |
 | البوابات المحلية (رأس `PR‑5b`) | `oxlint`/`tsc -b` صفر · `vitest` **159 ملفًا/1662 اختبارًا** · `npm run build` ناجح · `guards` نظيف · بصري 375px خالٍ من التجاوز |
 | الهجرات | `PostgreSQL`: 63، صفر معلّقة (خارج معادلة النشر) · `SQLite`: **4 معلّقة** لبيئات `SQLite` فقط |
-| ما تبقّى | **`PR‑6b`**: إزالة الجسر ✅ **منجزة** ([#65](https://github.com/maarouf003-netizen/docgen/pull/65)) + مؤشر `cursor` (البند الأخير) بعد قياس الاستقرار. **`PR‑6a` منجز ومنشور** — عدّادا التفاصيل و`scope=received` حُذفا بلا هجرة |
+| ما تبقّى | **صفر** — `PR‑6b` مكتمل: إزالة الجسر ([#65](https://github.com/maarouf003-netizen/docgen/pull/65)) + مؤشر `cursor`. **`PR‑6a` منجز ومنشور** — عدّادا التفاصيل و`scope=received` حُذفا بلا هجرة |
 
-**نطاق `PR‑5` و`PR‑5b` (المنفَّذ والحيّ):** عقود الملخصات، `PagedResult` + «تحميل المزيد» + `stalled`،
+**نطاق `PR‑5` و`PR‑5b` (المنفَّذ والحيّ):** عقود الملخصات، `PagedResult` + «تحميل المزيد»،
 `AlertDetails` عند الطلب (`D12`)، نطاق الشارة (`user`/`received`)، حارس عقد صارم (`ContractError`)،
 ثم **صفحة `/alerts`** (`alertKinds.ts` · `AlertsPage`/`AlertList` · `AlertDetailsSheet` · `RecipientsModal` ·
 بطاقة التنبيهات بشارتها) و**حذف `AlertsPanel` وقسم التنبيهات من اللوحة**.
@@ -375,8 +375,12 @@ npm run build
    جسر في معالج `Outbox` أصلًا، فلا مسار ولا اختبارات جسر). ويبقى `legacy` للصفوف التاريخية فقط
    (لا يُكتب من أي مسار). **شرط العودة:** تغيّر قرار الإطلاق إلى استيراد بيانات قديمة ⇒ يتوقف الحذف
    ويُعاد المعيار ويُعاد بناء الجسر وفق §6.5.2.
-4. **مؤشر `cursor` جذريًا** لإزاحة `offset` (جذر `stalled`): مؤشر `(LastContentChangedAt, Id)` + ترقيم
-   بلا إزاحة، مع إبقاء `stalled`/«تحديث» كشبكة أمان حتى إثبات الاستقرار، ثم إزالتهما إن لم يبقَ لهما معنى.
+4. ✅ **مؤشر `cursor` جذريًا — نُفِّذ في `PR‑6b`:** مؤشر keyset `(LastContentChangedAt, Id)` بصيغة سلكية
+   `{ISO-8601-UTC}|{id}` على `GET /alerts` و`GET /alerts/sent`، مع إبقاء `page`/`pageSize` متوافقين
+   (`cursor` يتجاوزهما، و`page` في استجابة المؤشر = `1`). `stalled` **أُزيل** من عقد `useAlertsFeed`
+   ومن التذييل: المؤشر يثبّت النافذة على آخر صف معروض فلا انقطاع إزاحة بنيويًا. أي صيغة غير صالحة
+   (ومنها وقت بلا منطقة UTC صريحة) ⇒ `400` برسالة عربية (`AlertCursor.Parse`)، والواجهة تبني المؤشر
+   عبر `buildAlertsCursor` وتشتق `hasMore` من امتلاء الصفحة الأخيرة.
 5. ✅ **تحققات نصية إلزامية (§15) — نُفِّذت في `PR‑6a`:**
    - لا `hasFullMessage` في أي عقد، ولا `hasNextPage` في `PagedResult` (حارس البيان والاختبارات).
    - لا تحديث لـ`CreatedAt` عند تعليم المقروء/الأرشفة (يُحدَّث `LastContentChangedAt` وحده).
@@ -454,7 +458,8 @@ npm run build
 | 2026-11-02 | إصلاح شارة غير المقروء + تسمية «مرسلة» | ✅ بعد بلاغ المالك وقياس حيّ بالجلسة نفسها: `scope=received`=1 مقابل `scope=user`=0، والتنبيه `41` مستلماه اثنان (حالته مقروءة، والآخر لا). وُحِّد النطاق إلى `user` في `Dashboard`/`AccountPage`/`/alerts`، وأُعيدت تسمية تبويب الصادر إلى «مرسلة»، وحُدِّثت اختبارات النطاق. المجموع التجميعي يبقى في عدّاد الصف داخل «مرسلة» | — |
 | 2026-11-02 | و `PR-6a` | ✅ [#62](https://github.com/maarouf003-netizen/docgen/pull/62): حُذف `RecipientCount`/`UnreadCount` من `HeadAlertDto` وحده (بقيا في `HeadAlertSummaryDto` لإبقاء «غير مقروء: 1 / 2» في «مرسلة»)، وحُذف `AlertUnreadScope.Received` وكل توابعه ⇒ `?scope=received` يُعيد **400** برسالة `قيمة scope غير صالحة — استخدم user`، وحُقِّقت التحققات النصية §15 (لا `hasFullMessage`/`hasNextPage`، ولا تحديث `CreatedAt` عند القراءة/الأرشفة، والفهرس الجزئي كما هو). `CI` 12/12 على `1e8de45` ← دُمج في `eceec8c` ونُشر تلقائيًا (بناء `10:59:11Z`). البوابات: `dotnet test` **2871 ناجح/0 فاشل** · `oxlint`/`tsc` صفر · `vitest` 159/1662 · `build` ناجح · `guards` نظيف · **لا هجرة**. **الدخان الحيّ بعد النشر:** `/healthz`=200 · `/alerts`=200 (SPA) · `/api/alerts` و`/api/alerts/unread-count` = **401** (محمية)، والتحقق بجلسة رئيس قسم المُصادق لم يُعَد في هذه الجلسة (لا بيانات اعتماد) — مُغطّى بدخان `PR‑5b` المُصادق نفسه | `eceec8c` |
 | 2026-11-02 | قرار نطاق `PR‑6b` | ✅ **حسم المالك:** قاعدة الإنتاج **تجريبية وتُطلق فارغة** (لا استيراد تنبيهات قديمة) ⇒ **نافذة الـ14 يومًا للجسر مُسقطة بانحراف موثّق** ويُزال كود الجسر (البند 3) بلا انتظار، ويبقى `legacy` للعرض التاريخي. **البند 4** (مؤشر `cursor`) يبقى بعد قياس الاستقرار. سُجِّل الإسقاط في `HEAD_ALERTS_RESTRUCTURE_PLAN.md` §6.5.3/§19.6/§20 وسطر §7 أعلاه. **لا هجرة** | — |
-|  | و `PR-6b` | ✅ البند 3 — [#65](https://github.com/maarouf003-netizen/docgen/pull/65): حُذف سطح إعدادات الجسر غير المستخدم (`HeadAlertLegacyBridgeOptions` + `HeadAlerts:LegacyBridge` + ربط `DI`)، ولم يكن هناك مسار جسر في الكود أصلًا. البوابات: `dotnet test` 2871/0 · `oxlint`/`tsc` صفر · `vitest` 159/1662 · `build` ناجح · `guards` نظيف · **لا هجرة**. **البند 4** (مؤشر `cursor`) ما زال مفتوحًا | — |
+|  | و `PR-6b` | ✅ البند 3 — [#65](https://github.com/maarouf003-netizen/docgen/pull/65): حُذف سطح إعدادات الجسر غير المستخدم (`HeadAlertLegacyBridgeOptions` + `HeadAlerts:LegacyBridge` + ربط `DI`)، ولم يكن هناك مسار جسر في الكود أصلًا. البوابات: `dotnet test` 2871/0 · `oxlint`/`tsc` صفر · `vitest` 159/1662 · `build` ناجح · `guards` نظيف · **لا هجرة** | — |
+| 2026-11-02 | `PR‑6b` البند 4 — مؤشر `cursor` | ✅ **منفَّذ:** `AlertCursor` (`TryParse`/`Parse`/`Format`، رفض الوقت المحلي/الغامض) · شرط keyset في `HeadAlertRepository.ProjectSummariesAsync` · معامل `cursor` في قوائم المستلم/الصادر/الإشراف + `HeadAlertListQuery.Cursor` (خام) · `AlertCursor.ParseOptional` في الخدمة بعد فحص الدور/الفرع (`403` قبل `400`) ⇒ `400` عربي · `page = 1` عند المؤشر · الواجهة: `buildAlertsCursor` وإعادة بناء `useAlertsFeed` على المؤشر وإزالة `stalled` من العقد والتذييل · اختبارات: `AlertCursorTests` 30 + `AlertsCursorPagingTests` 16. البوابات: `dotnet test` 2917/0 (2175 + 742) · `oxlint`/`tsc` صفر · `vitest` 159/1665 · `build` ناجح · `guards` نظيف · **لا هجرة** | — |
 
 ---
 

@@ -64,9 +64,9 @@ public sealed class HeadAlertSummaryPostgresTests
 
             // النشط فقط: البذور الثلاث مرتّبة بعكس الـId، والصف المؤرشف مستبعد.
             var sqliteOversight = await sqliteRepository.ListSummariesForOversightAsync(
-                AlertArchiveFilter.Active, delegationId: null, skip: 0, take: AlertPageRequest.MaxPageSize);
+                AlertArchiveFilter.Active, delegationId: null, cursor: null, skip: 0, take: AlertPageRequest.MaxPageSize);
             var postgresOversight = await postgresRepository.ListSummariesForOversightAsync(
-                AlertArchiveFilter.Active, delegationId: null, skip: 0, take: AlertPageRequest.MaxPageSize);
+                AlertArchiveFilter.Active, delegationId: null, cursor: null, skip: 0, take: AlertPageRequest.MaxPageSize);
 
             Assert.Equal(sqliteOversight.TotalCount, postgresOversight.TotalCount);
             Assert.Equal(
@@ -90,9 +90,9 @@ public sealed class HeadAlertSummaryPostgresTests
 
             // الأرشيف: يُقارن أيضًا عند طلب الكل (حقول ArchivedAt وTotalCount).
             var sqliteAll = await sqliteRepository.ListSummariesForOversightAsync(
-                AlertArchiveFilter.All, delegationId: null, skip: 0, take: AlertPageRequest.MaxPageSize);
+                AlertArchiveFilter.All, delegationId: null, cursor: null, skip: 0, take: AlertPageRequest.MaxPageSize);
             var postgresAll = await postgresRepository.ListSummariesForOversightAsync(
-                AlertArchiveFilter.All, delegationId: null, skip: 0, take: AlertPageRequest.MaxPageSize);
+                AlertArchiveFilter.All, delegationId: null, cursor: null, skip: 0, take: AlertPageRequest.MaxPageSize);
             Assert.Equal(sqliteAll.TotalCount, postgresAll.TotalCount);
             Assert.Equal(sqliteAll.Items, postgresAll.Items);
             Assert.Contains(
@@ -102,11 +102,11 @@ public sealed class HeadAlertSummaryPostgresTests
             // منظور المستلم: معاينة/طول/ترتيب/حالة قراءة، والعدّادات غير محسوبة.
             var sqliteRecipient = await sqliteRepository.ListSummariesForRecipientAsync(
                 sqliteSeed.LawyerId, branchId: null, AlertArchiveFilter.Active,
-                unreadOnly: false, delegationId: null, skip: 0,
+                unreadOnly: false, delegationId: null, cursor: null, skip: 0,
                 take: AlertPageRequest.MaxPageSize, includeCounters: false);
             var postgresRecipient = await postgresRepository.ListSummariesForRecipientAsync(
                 sqliteSeed.LawyerId, branchId: null, AlertArchiveFilter.Active,
-                unreadOnly: false, delegationId: null, skip: 0,
+                unreadOnly: false, delegationId: null, cursor: null, skip: 0,
                 take: AlertPageRequest.MaxPageSize, includeCounters: false);
 
             Assert.Equal(sqliteRecipient.Items, postgresRecipient.Items);
@@ -131,10 +131,10 @@ public sealed class HeadAlertSummaryPostgresTests
             // الصادر: مرشّح المنشئ + الفرع (كلا التنبيهين أنشأهما الرئيس).
             var sqliteSent = await sqliteRepository.ListSummariesSentAsync(
                 sqliteSeed.HeadId, sqliteSeed.BranchId, AlertArchiveFilter.Active,
-                skip: 0, take: AlertPageRequest.MaxPageSize);
+                cursor: null, skip: 0, take: AlertPageRequest.MaxPageSize);
             var postgresSent = await postgresRepository.ListSummariesSentAsync(
                 sqliteSeed.HeadId, sqliteSeed.BranchId, AlertArchiveFilter.Active,
-                skip: 0, take: AlertPageRequest.MaxPageSize);
+                cursor: null, skip: 0, take: AlertPageRequest.MaxPageSize);
             Assert.Equal(sqliteSent.TotalCount, postgresSent.TotalCount);
             Assert.Equal(sqliteSent.Items, postgresSent.Items);
 

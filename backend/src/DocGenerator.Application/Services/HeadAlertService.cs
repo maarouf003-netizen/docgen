@@ -22,7 +22,9 @@ public sealed record HeadAlertActor(int UserId, UserRole Role, int? BranchId)
 
 /// <summary>
 /// فلاتر قوائم التنبيهات (الخطة §9.1): الأرشفة، غير المقروء، وربط الإنابة.
-/// الترقيم يحمله <see cref="AlertPageRequest"/> المستقل (page/pageSize بحدود صارمة).
+/// الترقيم يحمله <see cref="AlertPageRequest"/> المستقل (page/pageSize بحدود صارمة)،
+/// و<see cref="Cursor"/> اختياري: عند وجوده يثبّت موضع الصفحة (keyset) ويُلغي
+/// <c>page</c> بلا كسر للطلبات القديمة.
 /// </summary>
 public sealed record HeadAlertListQuery
 {
@@ -30,6 +32,13 @@ public sealed record HeadAlertListQuery
     public bool UnreadOnly { get; init; }
     public int? DelegationId { get; init; }
     public AlertPageRequest Page { get; init; } = new();
+
+    /// <summary>
+    /// مؤشر آخر صف معروض **كما وصل سلكيًا** (<c>{ISO-8601-UTC}|{id}</c>)؛ <c>null</c>
+    /// يعني الترقيم بالإزاحة (<c>page</c>). يُحلَّل في الخدمة بعد فحص الدور/الفرع
+    /// ليبقى <c>403</c> قبل <c>400</c> (ترتيب القرار §9.4) — لا في المتحكم.
+    /// </summary>
+    public string? Cursor { get; init; }
 }
 
 public interface IHeadAlertService
@@ -45,9 +54,15 @@ public interface IHeadAlertService
     /// <summary>
     /// ما أصدره رئيس القسم/الشعبة في فرعه (تبويب «أرسلتها»): قراءة فقط —
     /// بلا زر تعليم مقروء (المُرسِل ليس مستلمًا) وبلا أثر في العدّادات.
+    /// <paramref name="cursor"/> غير الفارغ يثبّت موضع الصفحة (keyset)، ويُحلَّل
+    /// بعد فحص الدور/الفرع (403 قبل 400).
     /// </summary>
     Task<PagedResult<HeadAlertSummaryDto>> ListSentAsync(
-        HeadAlertActor actor, AlertArchiveFilter archive, AlertPageRequest page, CancellationToken ct = default);
+        HeadAlertActor actor,
+        AlertArchiveFilter archive,
+        AlertPageRequest page,
+        string? cursor,
+        CancellationToken ct = default);
 
     /// <summary>
     /// تنبيهات إنابةٍ معيّنة («معلومات الملف المنيب»/«تشعبات الملف») — نشطة فقط،
@@ -193,12 +208,19 @@ public sealed class HeadAlertService : IHeadAlertService
         var branchId = actor.IsHeadOrSubHead ? RequireBranch(actor) : (int?)null;
 
         query.Page.Validate();
+        // شكل المؤشر يُفحص بعد الدور/الفرع أيضًا (403 قبل 400)، ويُحلَّل مرة واحدة.
+        var cursor = AlertCursor.ParseOptional(query.Cursor);
 
         if (actor.IsManagerOrAdmin)
         {
             var page = await _alerts.ListSummariesForOversightAsync(
-                query.Archive, query.DelegationId, query.Page.Skip, query.Page.PageSize, ct);
-            return ToPagedResult(page, query.Page);
+                query.Archive,
+                query.DelegationId,
+                cursor,
+                query.Page.Skip,
+                query.Page.PageSize,
+                ct);
+            return ToPagedResult(page, query.Page, cursor);
         }
 
         if (actor.IsLawyer)
@@ -209,11 +231,12 @@ public sealed class HeadAlertService : IHeadAlertService
                 query.Archive,
                 query.UnreadOnly,
                 query.DelegationId,
+                cursor,
                 query.Page.Skip,
                 query.Page.PageSize,
                 includeCounters: false,
                 ct);
-            return ToPagedResult(page, query.Page);
+            return ToPagedResult(page, query.Page, cursor);
         }
 
         var headPage = await _alerts.ListSummariesForRecipientAsync(
@@ -222,31 +245,37 @@ public sealed class HeadAlertService : IHeadAlertService
             query.Archive,
             query.UnreadOnly,
             query.DelegationId,
+            cursor,
             query.Page.Skip,
             query.Page.PageSize,
             includeCounters: true,
             ct);
-        return ToPagedResult(headPage, query.Page);
+        return ToPagedResult(headPage, query.Page, cursor);
     }
 
     public async Task<PagedResult<HeadAlertSummaryDto>> ListSentAsync(
-        HeadAlertActor actor, AlertArchiveFilter archive, AlertPageRequest page, CancellationToken ct = default)
+        HeadAlertActor actor,
+        AlertArchiveFilter archive,
+        AlertPageRequest page,
+        string? cursor,
+        CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(page);
 
         // الدور والفرع قبل التحقق من الشكل: مدير/غير رئيس ⇒ 403، ورئيس بلا فرع ⇒ 403
-        // (عقد ما قبل التوحيد)، ثم الترقيم غير الصالح ⇒ 400.
+        // (عقد ما قبل التوحيد)، ثم الترقيم/المؤشر غير الصالح ⇒ 400.
         if (!actor.IsHeadOrSubHead)
             throw new UnauthorizedAccessException("قائمة الصادر مخصصة لرئيس القسم/الشعبة");
 
         var branchId = RequireBranch(actor);
 
         page.Validate();
+        var parsedCursor = AlertCursor.ParseOptional(cursor);
 
         var result = await _alerts.ListSummariesSentAsync(
-            actor.UserId, branchId, archive, page.Skip, page.PageSize, ct);
-        return ToPagedResult(result, page);
+            actor.UserId, branchId, archive, parsedCursor, page.Skip, page.PageSize, ct);
+        return ToPagedResult(result, page, parsedCursor);
     }
 
     public async Task<PagedResult<HeadAlertSummaryDto>> ListByDelegationAsync(
@@ -1048,11 +1077,16 @@ public sealed class HeadAlertService : IHeadAlertService
         _ => throw new ArgumentException("نوع التنبيه غير صالح"),
     };
 
+    /// <summary>
+    /// يبني العقد القائم <see cref="PagedResult{T}"/> بلا حقول جديدة. عند طلب
+    /// المؤشر (<paramref name="cursor"/> غير <c>null</c>) لا معنى لرقم الصفحة
+    /// المزاح، فيُعاد <c>page = 1</c> صراحةً بدل صدق رقم لا يصف النافذة.
+    /// </summary>
     private static PagedResult<HeadAlertSummaryDto> ToPagedResult(
-        HeadAlertSummaryPage page, AlertPageRequest request) => new()
+        HeadAlertSummaryPage page, AlertPageRequest request, AlertCursor? cursor = null) => new()
         {
             Items = page.Items.ToList(),
-            Page = request.Page,
+            Page = cursor is null ? request.Page : 1,
             PerPage = request.PageSize,
             TotalCount = page.TotalCount,
         };

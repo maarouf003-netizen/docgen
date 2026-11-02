@@ -59,7 +59,7 @@ public class HeadAlertRepositorySummaryTests : IDisposable
         var exactAlert = AddAlert(_branchA, _head.Id, exact, At(1), recipientIds: new[] { _lawyer1.Id });
 
         var page = await _repository.ListSummariesForOversightAsync(
-            AlertArchiveFilter.Active, delegationId: null, skip: 0, take: 10);
+            AlertArchiveFilter.Active, delegationId: null, cursor: null, skip: 0, take: 10);
 
         Assert.Equal(2, page.TotalCount);
         var astralItem = Assert.Single(page.Items, i => i.Id == astralAlert.Id);
@@ -87,9 +87,9 @@ public class HeadAlertRepositorySummaryTests : IDisposable
         var third = AddAlert(_branchA, _head.Id, "ثالث", At(5));
 
         var page1 = await _repository.ListSummariesForOversightAsync(
-            AlertArchiveFilter.Active, delegationId: null, skip: 0, take: 2);
+            AlertArchiveFilter.Active, delegationId: null, cursor: null, skip: 0, take: 2);
         var page2 = await _repository.ListSummariesForOversightAsync(
-            AlertArchiveFilter.Active, delegationId: null, skip: 2, take: 2);
+            AlertArchiveFilter.Active, delegationId: null, cursor: null, skip: 2, take: 2);
 
         Assert.Equal(3, page1.TotalCount);
         Assert.Equal(3, page2.TotalCount);
@@ -98,12 +98,12 @@ public class HeadAlertRepositorySummaryTests : IDisposable
 
         // حدود الترقيم صريحة: لا Take سالب/صفر ولا تجاوز السقف.
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
-            _repository.ListSummariesForOversightAsync(AlertArchiveFilter.Active, null, skip: -1, take: 10));
+            _repository.ListSummariesForOversightAsync(AlertArchiveFilter.Active, null, cursor: null, skip: -1, take: 10));
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
-            _repository.ListSummariesForOversightAsync(AlertArchiveFilter.Active, null, skip: 0, take: 0));
+            _repository.ListSummariesForOversightAsync(AlertArchiveFilter.Active, null, cursor: null, skip: 0, take: 0));
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
             _repository.ListSummariesForOversightAsync(
-                AlertArchiveFilter.Active, null, skip: 0, take: AlertPageRequest.MaxPageSize + 1));
+                AlertArchiveFilter.Active, null, cursor: null, skip: 0, take: AlertPageRequest.MaxPageSize + 1));
     }
 
     [Fact]
@@ -113,11 +113,11 @@ public class HeadAlertRepositorySummaryTests : IDisposable
         var archived = AddAlert(_branchA, _head.Id, "مؤرشف", At(1), archived: true);
 
         var onlyActive = await _repository.ListSummariesForOversightAsync(
-            AlertArchiveFilter.Active, null, 0, 10);
+            AlertArchiveFilter.Active, null, cursor: null, 0, 10);
         var all = await _repository.ListSummariesForOversightAsync(
-            AlertArchiveFilter.All, null, 0, 10);
+            AlertArchiveFilter.All, null, cursor: null, 0, 10);
         var onlyArchived = await _repository.ListSummariesForOversightAsync(
-            AlertArchiveFilter.OnlyArchived, null, 0, 10);
+            AlertArchiveFilter.OnlyArchived, null, cursor: null, 0, 10);
 
         Assert.Equal(1, onlyActive.TotalCount);
         Assert.Equal(active.Id, Assert.Single(onlyActive.Items).Id);
@@ -147,7 +147,7 @@ public class HeadAlertRepositorySummaryTests : IDisposable
 
         var lawyerPage = await _repository.ListSummariesForRecipientAsync(
             _lawyer1.Id, branchId: null, AlertArchiveFilter.Active, unreadOnly: false,
-            delegationId: null, skip: 0, take: 10, includeCounters: false);
+            delegationId: null, cursor: null, skip: 0, take: 10, includeCounters: false);
 
         Assert.Equal(3, lawyerPage.TotalCount);
         Assert.Equal(new[] { unreadInB.Id, unreadInA.Id, readInA.Id }, lawyerPage.Items.Select(i => i.Id));
@@ -159,13 +159,13 @@ public class HeadAlertRepositorySummaryTests : IDisposable
 
         var lawyerUnread = await _repository.ListSummariesForRecipientAsync(
             _lawyer1.Id, branchId: null, AlertArchiveFilter.Active, unreadOnly: true,
-            delegationId: null, skip: 0, take: 10, includeCounters: false);
+            delegationId: null, cursor: null, skip: 0, take: 10, includeCounters: false);
         Assert.Equal(2, lawyerUnread.TotalCount);
         Assert.DoesNotContain(lawyerUnread.Items, i => i.Id == readInA.Id);
 
         var headPage = await _repository.ListSummariesForRecipientAsync(
             _head.Id, branchId: _branchA, AlertArchiveFilter.Active, unreadOnly: false,
-            delegationId: null, skip: 0, take: 10, includeCounters: true);
+            delegationId: null, cursor: null, skip: 0, take: 10, includeCounters: true);
         Assert.Equal(headInA.Id, Assert.Single(headPage.Items).Id);
 
         // رئيس النطاق يرى عدّادَي المستلمين محسوبين في القاعدة.
@@ -185,7 +185,7 @@ public class HeadAlertRepositorySummaryTests : IDisposable
         MarkRead(sent.Id, _lawyer1.Id, At(9));
 
         var page = await _repository.ListSummariesSentAsync(
-            _head.Id, _branchA, AlertArchiveFilter.Active, skip: 0, take: 10);
+            _head.Id, _branchA, AlertArchiveFilter.Active, cursor: null, skip: 0, take: 10);
 
         Assert.Equal(1, page.TotalCount);
         var item = Assert.Single(page.Items);
@@ -204,13 +204,13 @@ public class HeadAlertRepositorySummaryTests : IDisposable
         AddAlert(_branchA, _head.Id, "بلا إنابة", At(2));
 
         var oversight = await _repository.ListSummariesForOversightAsync(
-            AlertArchiveFilter.Active, delegationId: 77, skip: 0, take: 10);
+            AlertArchiveFilter.Active, delegationId: 77, cursor: null, skip: 0, take: 10);
         Assert.Equal(1, oversight.TotalCount);
         Assert.Equal(77, Assert.Single(oversight.Items).DelegationId);
 
         var recipient = await _repository.ListSummariesForRecipientAsync(
             _head.Id, branchId: null, AlertArchiveFilter.Active, unreadOnly: false,
-            delegationId: 88, skip: 0, take: 10, includeCounters: false);
+            delegationId: 88, cursor: null, skip: 0, take: 10, includeCounters: false);
         Assert.Equal(0, recipient.TotalCount);
         Assert.Empty(recipient.Items);
     }
@@ -230,7 +230,7 @@ public class HeadAlertRepositorySummaryTests : IDisposable
         var branchAlert = AddAlert(_branchA, _head.Id, "تعميم", At(2));
 
         var page = await _repository.ListSummariesForOversightAsync(
-            AlertArchiveFilter.Active, delegationId: null, skip: 0, take: 10);
+            AlertArchiveFilter.Active, delegationId: null, cursor: null, skip: 0, take: 10);
 
         var existingItem = Assert.Single(page.Items, i => i.Id == existingAlert.Id);
         Assert.Equal($"مستند {existing.Id}", existingItem.DocumentTitle);

@@ -62,6 +62,42 @@ export function readAlertsPage(data: unknown): PagedResult<HeadAlertSummaryDto> 
 }
 
 /**
+ * صيغة الطابع الزمني المقبولة في المؤشر السلكي: ISO-8601 بمنطقة UTC صريحة
+ * (`Z` أو `+00:00`) — مطابقة لما يبنيه `AlertCursor.Format` في الخادم ويقبله
+ * `AlertCursor.TryParse`. أي شكل آخر (بلا منطقة، أو منطقة محلية) يرفضه الخادم
+ * `400`، فنعلنه هنا أولًا.
+ */
+const UTC_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?(?:Z|\+00:00)$/;
+
+const CURSOR_CONTRACT_ERROR_MESSAGE =
+  'تعذّر تحميل بقية التنبيهات — أعِد تحميل القائمة، وإن استمر الخطأ فأبلغ الدعم';
+
+/**
+ * يبني مؤشر الصفحة التالية بصيغته السلكية `{lastContentChangedAt}|{id}`
+ * (الخطة §9.1، الدليل §7 البند 4).
+ *
+ * **لا تحويل زمني هنا عمدًا:** القيمة تُرسل كما وصلت من الخادم. تمريرها عبر
+ * `new Date(...)` كان سيُسقِط كسور الثواني فوق الميلي ثانية ويخلط الصفوف
+ * المتقاربة زمنيًا عند حدّ الصفحة، ويُنتج صيغة قد تُفسَّر بمنطقة محلية.
+ *
+ * الصف الذي لا يحمل معرّفًا صحيحًا أو طابعًا زمنيًا UTC صريحًا خرق عقد
+ * (`ContractError` برسالة عربية للعرض) — لا مؤشر ملفّق يُرسل إلى الخادم
+ * فيعود `400` بلا سبب مفهوم للمستخدم.
+ */
+export function buildAlertsCursor(
+  row: Pick<HeadAlertSummaryDto, 'id' | 'lastContentChangedAt'>,
+): string {
+  if (
+    !isPositiveInt(row.id) ||
+    typeof row.lastContentChangedAt !== 'string' ||
+    !UTC_TIMESTAMP_PATTERN.test(row.lastContentChangedAt)
+  ) {
+    throw new ContractError(CURSOR_CONTRACT_ERROR_MESSAGE);
+  }
+  return `${row.lastContentChangedAt}|${row.id}`;
+}
+
+/**
  * رسالة مخالفة عقد التفاصيل/المستلمين — صياغة عرض مباشرة مثل رسالة القوائم:
  * العطل في القراءة لا في وجود البيانات، والمستخدم يُدعى لمحاولة واحدة ثم الإبلاغ.
  */
