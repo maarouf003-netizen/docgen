@@ -65,9 +65,6 @@ const detailKeys = [
   'createdByName',
   'isRead',
   'canViewRecipients',
-  // محتفظ بهما مؤقتًا حتى PR-6 (كتلة `retainedHeadAlertDetail` في البيان).
-  'recipientCount',
-  'unreadCount',
 ] as const satisfies readonly (keyof HeadAlertDto)[];
 
 const pagedKeys = [
@@ -94,11 +91,9 @@ describe('contract_sync_alerts — type contract', () => {
     expect([...summaryKeys].sort()).toEqual([...manifest.headAlertSummary].sort());
   });
 
-  it('مفاتيح `HeadAlertDto` = `headAlertDetail` + `retainedHeadAlertDetail` حرفيًا', () => {
+  it('مفاتيح `HeadAlertDto` = `headAlertDetail` حرفيًا (بلا عدّادي المستلمين)', () => {
     expectTypeOf<Exclude<DetailKey, (typeof detailKeys)[number]>>().toEqualTypeOf<never>();
-    expect([...detailKeys].sort()).toEqual(
-      [...manifest.headAlertDetail, ...manifest.retainedHeadAlertDetail].sort(),
-    );
+    expect([...detailKeys].sort()).toEqual([...manifest.headAlertDetail].sort());
   });
 
   it('`PagedResult<T>` يُستورد من `types/common.ts` ومفاتيحه = بيان `pagedResult`', () => {

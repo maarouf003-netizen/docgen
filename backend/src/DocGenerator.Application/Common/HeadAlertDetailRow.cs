@@ -4,8 +4,9 @@ namespace DocGenerator.Application.Common;
 
 /// <summary>
 /// صف التفاصيل المسقط في SQL (ورقة إصلاح PR-4 §6، المرحلة 2): حقول العرض كلها +
-/// <c>CreatedById</c> لقرار الرؤية (D2) + عدّادي المستلمين المحتفظ بهما حتى <c>PR-6</c>
-/// (D5) + حالة قراءة الفاعل — في استعلام واحد بلا <c>Include</c> ولا كيانات محمَّلة.
+/// <c>CreatedById</c> لقرار الرؤية (D2) + حالة قراءة الفاعل — في استعلام واحد بلا
+/// <c>Include</c> ولا كيانات محمَّلة. لا يحمل عدّادي المستلمين (أُزيلا في <c>PR-6a</c>):
+/// العدّادان في ملخّص القوائم وحده.
 ///
 /// <para><paramref name="IsRecipient"/> صريح ولا يُستنتج من <paramref name="IsRead"/>:
 /// الأول قرار صلاحية، والثاني حالة قراءة قد تكون <c>false</c> لصف استلام قائم.</para>
@@ -35,6 +36,4 @@ public sealed record HeadAlertDetailRow(
     string? CreatedByName,
     int CreatedById,
     bool IsRecipient,
-    bool? IsRead,
-    int RecipientCount,
-    int UnreadCount);
+    bool? IsRead);

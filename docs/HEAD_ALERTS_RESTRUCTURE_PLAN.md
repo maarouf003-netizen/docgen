@@ -1610,7 +1610,7 @@ entity_abolish_heads:
 |---|---|---|---|
 | `GET` | `/api/alerts?archived=active\|all\|only&unreadOnly=true\|false&delegationId=&page=1&pageSize=50` | محامٍ/رئيس/شعبة/مدير/مشرف | قائمة المستلمة، ملخصات مرقّمة |
 | `GET` | `/api/alerts/sent?archived=active\|all\|only&page=1&pageSize=50` | رئيس/شعبة | قائمة الصادر، ملخصات مرقّمة |
-| `GET` | `/api/alerts/unread-count?scope=user\|received` | محامٍ/رئيس/شعبة | عدّاد غير المقروء النشط (`user` افتراضي، `received` للرئيس/الشعبة فقط — `D6`/`D7`) |
+| `GET` | `/api/alerts/unread-count?scope=user` | محامٍ/رئيس/شعبة | عدّاد غير المقروء النشط لصفوف الفاعل نفسه (`user` هو النطاق الوحيد بعد `PR‑6a` — `D6`/`D7`) |
 | `POST` | `/api/alerts` | رئيس/شعبة | إصدار يدوي فقط |
 | `GET` | `/api/alerts/{id}` | مستلم/منشئ/مدير/مشرف حسب المصفوفة | تفاصيل كاملة مع `Message` |
 | `GET` | `/api/alerts/{id}/recipients` | منشئ/مدير/مشرف | مستلمو التنبيه وحالة قراءتهم |
@@ -1625,11 +1625,11 @@ entity_abolish_heads:
 - الاستجابة `PagedResult<HeadAlertSummaryDto>` **بحقول النوع القائم `backend/src/DocGenerator.Application/Common/PagedResult.cs` وحدها**: `items`, `page`, `perPage`, `totalCount`, `totalPages`. لا يُضاف `hasNextPage` إلى الخادم ولا تُعاد تسمية `perPage` إلى `pageSize`؛ الواجهة تشتق `hasNextPage = page < totalPages`. أي تعديل على `PagedResult<T>` يتطلب قرارًا صريحًا + اختبار تسلسل في §14.1 + تحديث نوع الواجهة معًا.
 - `unreadOnly=true` مسموح للمحامي/الرئيس/الشعبة فقط؛ للمدير/المشرف → `400`.
 - `scope` في `unread-count`: الفارغ/`user` ⇒ العدّاد الشخصي (المحامي بلا قيد فرع، والرئيس/الشعبة داخل
-  فرعه)، و`received` ⇒ مجموع غير المقروء على التنبيهات التي استلمها الرئيس في فرعه (رئيس/شعبة فقط).
-  أي قيمة أخرى → `400` برسالة عربية؛ والمدير/المشرف ورئيس بلا فرع → `403` في النطاقين (`D6`/`D7`/`D11`).
-- **نطاق شارة غير المقروء (ملزم للواجهة):** المحامي `scope=user`، والرئيس/الشعبة `scope=received` —
-  في `AccountPage` **ولوحة التحكم** معًا؛ فلا يظهر رقمان مختلفان للمستخدم نفسه، والمدير/المشرف بلا شارة.
-  هذا هو سبب وجود السطح التجميعي (`D6`)، وأي شارة تُضاف لاحقًا تلتزم النطاق نفسه.
+  فرعه). أي قيمة أخرى — ومنها `received` المحذوفة في `PR‑6a` — → `400` برسالة عربية؛ والمدير/المشرف
+  ورئيس بلا فرع → `403` (`D6`/`D7`/`D11`).
+- **نطاق شارة غير المقروء (ملزم للواجهة):** `scope=user` لكل الأدوار («غير المقروء لي») —
+  في `AccountPage` **ولوحة التحكم** وصفحة `/alerts` معًا؛ فلا يظهر رقمان مختلفان للمستخدم نفسه،
+  والمدير/المشرف بلا شارة. (حُسم 2026-11-02، وحُذف السطح التجميعي `received` في `PR‑6a`.)
 - `delegationId` فلتر اختياري في `/alerts` (وليس بديلًا عن `/by-delegation`) لربط
   «عرض كل التنبيهات» في `DelegationActivityStrip`.
 - `by-delegation` يعيد ملخصات، لا نصًا كاملًا، لأن الشريط لا يعرض النص الكامل في DOM.
@@ -1691,17 +1691,13 @@ public record HeadAlertDto(
     DateTime? ArchivedAt,
     string? CreatedByName,
     bool? IsRead,
-    bool CanViewRecipients,
-    // محتفظ بهما مؤقتًا من العقد السابق — يُزالان في PR-6 (§9.5)
-    int? RecipientCount = null,
-    int? UnreadCount = null);
+    bool CanViewRecipients);
 ```
 
-> **عدّ الحقول (مُثبت في `PR-4`):** `HeadAlertDto` = **22** حقلًا = 20 حقلًا معلنًا أعلاه (قبل
-> `RecipientCount`/`UnreadCount`) + **2 محتفظ بهما مؤقتًا**، ويُطابق `HeadAlertSummaryDto` في العدد
-> (22). البيان المشترك يفصل بينهما صراحةً: `headAlertDetail` (20) + `retainedHeadAlertDetail` (2).
-> كان نصّ سابق في هذه الوثيقة يعدّ التفاصيل 20 حقلًا فقط مع وصفها بـ«قائمة الحقول كاملة» — تصحيح
-> مؤرَّخ في §9.4/§9.5، لا حذف حقل ولا إعادة تسمية (قاعدة §2.3).
+> **عدّ الحقول بعد `PR‑6a`:** `HeadAlertDto` = **20** حقلًا ويطابق كتلة `headAlertDetail` في
+> البيان المشترك حرفيًا. أُزيل `RecipientCount`/`UnreadCount` منه في `PR‑6a` (كانا محتفظ بهما
+> مؤقتًا حتى `PR‑6` — `D5`/`D9`)، وحُذفت كتلة `retainedHeadAlertDetail` من البيان. **الملخّص
+> (`HeadAlertSummaryDto`) بقي 22 حقلًا** — العدّادان فيه وحدهما (عقدان لا عقد واحد).
 
 - `HeadAlertDto` هو العقد الوحيد الذي يحمل `Message` كاملًا، ويُعاد فقط من
   `GET /api/alerts/{id}`. لا يُعاد من أي قائمة. لذلك `POST /api/alerts` يعيد **`201` بجسم
@@ -1713,8 +1709,7 @@ public record HeadAlertDto(
   لا يعرض المستلمين أصلًا) ويمنع توسيعها من حيث لا يُحتاج.
 - **عدادات القوائم حسب الدور:** `RecipientCount`/`UnreadCount` تبقى `null` للمحامي المستلم (كما
   اليوم) وتُعرض للرئيس/الشعبة/الصادر/الإشراف. لا تُضاف أعداد المستلمين إلى قائمة المحامي.
-  **أما في عقد التفاصيل** فيُرسَل العدّادان دائمًا لكل قارئ مُصرَّح (محتفظ بهما مؤقتًا — `D5`/`D9`)،
-  ولا تُستنتج غيابهما من `CanViewRecipients=false` (دلالته محصورة بقائمة المستلمين).
+  **وهي في عقد الملخّص وحده** — لا يحملها عقد التفاصيل بعد `PR‑6a`.
 
 `HeadAlertRecipientDto`:
 
@@ -2769,16 +2764,17 @@ frontend/src/
 
 **بنود ملزمة صريحة من `PR-4` (لا تُترك مفتوحة — مصدرها `D5`/`D6`/`D9`/`P3-12`):**
 
-1. **إزالة العدّادين من التفاصيل:** حذف `RecipientCount`/`UnreadCount` من `HeadAlertDto` (والوسم
-   «محتفظ مؤقتًا») بعد أن تتوقف الواجهة عن عقد التفاصيل القديم، مع **حذف الكتلة `retainedHeadAlertDetail`
-   من `head-alert-contracts.json`**، وتبسيط `DetailContract_MatchesManifest_PlusExplicitlyRetainedFields`
-   إلى مطابقة مباشرة بين عقد التفاصيل والبيان. اختبار `Detail_RetainsCounters_…_UntilPR6`
-   يُستبدل باختبار يثبت غيابهما — لا يبقى `UntilPR6` بعد `PR-6`.
+1. ✅ **إزالة العدّادين من التفاصيل — نُفِّذت في `PR‑6a`:** حُذف `RecipientCount`/`UnreadCount`
+   من `HeadAlertDto` و`HeadAlertDetailRow` والإسقاط، وحُذفت الكتلة `retainedHeadAlertDetail`
+   من `head-alert-contracts.json`، وبُسِّط `DetailContract_MatchesManifest_PlusExplicitlyRetainedFields`
+   إلى `DetailContract_MatchesManifest`. اختبار `Detail_RetainsCounters_…_UntilPR6` استُبدل
+   باختبار يثبت غيابهما — لم يبقَ `UntilPR6` بعد `PR-6`. **الملخّص (`HeadAlertSummaryDto`) بقي
+   حاملًا العدّادين** لقوائم «مستلمة»/«مرسلة» (عقدان لا عقد واحد).
 2. **إزالة `normalizer` إن وُجد:** **ملغى حاليًا** — `D10=atomic` فلا تُنشأ طبقة توافق. يُنفَّذ فقط إن
    غُيّر القرار لاحقًا، مع اختبار يثبت أن الواجهة لا تقبل الشكل القديم بعد الإزالة.
-3. **حسم نطاق شارة الرئيس:** هل تبقى تجميعية (`scope=received`) أم تصير `user` بعد إزالة عدّادات
-   التفاصيل؟ وعند التحول إلى `user` في القائمة يكون `unreadOnly=true`: يُحذف النطاق `received` من
-   `AlertUnreadScope` والمتحكم والخدمة والمستودع، مع اختبار يثبت رفضه (`400`) — `D6`/`ح‑26`.
+3. ✅ **حسم نطاق شارة الرئيس — `user` (2026-11-02) ونُفِّذ حذف `received` في `PR‑6a`:** حُذف النطاق
+   `received` من `AlertUnreadScope` والمتحكم والخدمة والمستودع و`RolePermissions`، مع اختبار
+   يثبت رفضه (`400` برسالة عربية) — `D6`/`ح‑26`. النطاق المعتمد الوحيد: `scope=user` («غير المقروء لي»).
 
 **بقية بنود التنظيف:**
 

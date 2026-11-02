@@ -70,12 +70,10 @@ public interface IHeadAlertService
         int id, HeadAlertActor actor, CancellationToken ct = default);
 
     /// <summary>
-    /// عدّاد غير المقروء بنطاقه الصريح (`D6`/`D7`): <see cref="AlertUnreadScope.User"/>
-    /// لصفوف الفاعل نفسه (المحامي بلا قيد فرع، ورئيس/شعبة داخل فرعه)، و
-    /// <see cref="AlertUnreadScope.Received"/> لتنبيهات استلمها الرئيس في فرعه
-    /// (رئيس/شعبة فقط؛ المحامي يُرفض <c>403</c>).
-    /// المدير/المشرف يُرفضون <c>403</c> في النطاقين، ورئيس بلا فرع كذلك (`D11`)،
-    /// وقيمة نطاق غير معروفة <c>400</c>.
+    /// عدّاد غير المقروء لصفوف الفاعل نفسه (`D6`/`D7`): المحامي بلا قيد فرع،
+    /// ورئيس/شعبة داخل فرعه. المدير/المشرف يُرفضون <c>403</c>، ورئيس بلا فرع كذلك
+    /// (`D11`)، وقيمة نطاق غير معروفة <c>400</c>. (حُذف نطاق <c>received</c> في
+    /// <c>PR-6a</c> فلم يبقَ إلا <see cref="AlertUnreadScope.User"/>.)
     /// </summary>
     Task<int> CountUnreadAsync(
         HeadAlertActor actor, AlertUnreadScope scope, CancellationToken ct = default);
@@ -328,26 +326,10 @@ public sealed class HeadAlertService : IHeadAlertService
         // داخلي تُرفض 400 بدل السقوط الصامت إلى النطاق الشخصي.
         return scope switch
         {
-            AlertUnreadScope.Received => await CountReceivedScopeAsync(actor, ct),
             AlertUnreadScope.User => await CountUserScopeAsync(actor, ct),
             _ => throw new ArgumentOutOfRangeException(
-                nameof(scope), scope, "نطاق عدّاد غير معروف — استخدم user أو received"),
+                nameof(scope), scope, "نطاق عدّاد غير معروف — استخدم user"),
         };
-    }
-
-    /// <summary>
-    /// `scope=received` (`D6`): رئيس/شعبة فقط — المحامي لا يملك تنبيهات «مستلمة»
-    /// بمعنى مجموع مستلميها، والمدير/المشرف لا يملك صف استلام أصلًا.
-    /// </summary>
-    private async Task<int> CountReceivedScopeAsync(HeadAlertActor actor, CancellationToken ct)
-    {
-        // ح‑23: مسند كتالوج واحد بدل مقارنة دور مباشرة، فلا ينحرف النطاقان عند تعديله.
-        if (!RolePermissions.CanUseReceivedScope(actor.Role))
-            throw new UnauthorizedAccessException("نطاق «المستلَم» مخصص لرئيس القسم/الشعبة");
-
-        // D11: رئيس بلا فرع حساب غير صالح للقراءة ⇒ 403 (لا نطاق مفتوح).
-        var branchId = RequireBranch(actor);
-        return await _alerts.CountUnreadForReceivedAsync(actor.UserId, branchId, ct);
     }
 
     /// <summary>
@@ -1117,7 +1099,5 @@ public sealed class HeadAlertService : IHeadAlertService
         row.ArchivedAt,
         row.CreatedByName,
         row.IsRead,
-        canViewRecipients,
-        row.RecipientCount,
-        row.UnreadCount);
+        canViewRecipients);
 }

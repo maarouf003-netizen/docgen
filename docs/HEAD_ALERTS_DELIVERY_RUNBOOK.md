@@ -336,19 +336,24 @@ npm run build
 ## 7. المرحلة و — `PR-6`: التنظيف (بلا إضافات وظيفية)
 
 > بنود ملزمة صراحةً في خطة إعادة الهيكلة §15 (مصدرها `D5`/`D6`/`D9`/`P3-12`) — لا تُترك مفتوحة.
+>
+> **حالة 2026-11-02 — `PR‑6a` منجز:** البند 1 (إزالة العدّادين من عقد التفاصيل) والبند 2
+> (حذف نطاق `received`) والبند 5 (التحققات النصية) — بلا هجرة. **المتبقي (`PR‑6b`):** البند 3
+> (إزالة الجسر الانتقالي بعد نافذة §16.2) والبند 4 (مؤشر `cursor` بدل `offset`).
 
 ### و‑1) البنود
 
-1. **إزالة العدّادين من عقد التفاصيل:** حذف `RecipientCount`/`UnreadCount` من `HeadAlertDto`
-   (ووسم «محتفظ مؤقتًا»)، وحذف الكتلة `retainedHeadAlertDetail` من
-   `frontend/src/test/contracts/head-alert-contracts.json`، وتبسيط
-   `DetailContract_MatchesManifest_PlusExplicitlyRetainedFields`، واستبدال
-   `Detail_RetainsCounters_…_UntilPR6` باختبار يثبت غيابهما.
-2. **نطاق شارة الرئيس — حُسم `user` (2026-11-02، دليل استخدام حيّ):** كان `received` يجمع غير
+1. ✅ **إزالة العدّادين من عقد التفاصيل (نُفِّذ في `PR‑6a`):** حُذف `RecipientCount`/`UnreadCount`
+   من `HeadAlertDto` و`HeadAlertDetailRow` والإسقاط في `HeadAlertRepository`، وحُذفت الكتلة
+   `retainedHeadAlertDetail` من `frontend/src/test/contracts/head-alert-contracts.json`،
+   وبُسِّط `DetailContract_MatchesManifest`، واستُبدل `Detail_RetainsCounters_…_UntilPR6`
+   باختبار يثبت غياب المفتاحين من جسم التفاصيل. **الملخّص (`HeadAlertSummaryDto`) بقي حاملًا
+   العدّادين** — لقوائم «مستلمة»/«مرسلة» (عقدان لا عقد واحد).
+2. ✅ **نطاق شارة الرئيس — حُسم `user` (2026-11-02، دليل استخدام حيّ):** كان `received` يجمع غير
    المقروء لدى كل مستلمي التنبيهات، فبقي «1» عند رئيس قرأ كل تنبيهاته لأن مستلمًا آخر لم يقرأ.
    **نُفِّذ التحوّل** إلى `user` في `Dashboard` و`AccountPage` و`/alerts` (مع إعادة تسمية التبويب إلى
-   «مرسلة»). **المتبقي في `PR‑6`:** حذف النطاق `received` من `AlertUnreadScope` والمتحكم والخدمة
-   والمستودع + اختبار يثبت رفضه (`400`)، وتحديث `RUN_GUIDE.md` §9.
+   «مرسلة»)، ثم في `PR‑6a` **حُذف النطاق `received`** من `AlertUnreadScope` والمتحكم والخدمة
+   والمستودع و`RolePermissions`، وصار `?scope=received` ← `400` برسالة عربية، مع اختبار يثبته.
 3. **إزالة الجسر الانتقالي** بعد أن يعيد استعلام §16.2 صفرًا خلال نافذة 14 يومًا:
    ```sql
    SELECT COUNT(*) FROM "HeadAlerts"
@@ -362,9 +367,10 @@ npm run build
    (إطفاء أي `Flag` أولًا ثم حذف الكود، مع إبقاء `legacy` للصفوف التاريخية غير القابلة للتصنيف.)
 4. **مؤشر `cursor` جذريًا** لإزاحة `offset` (جذر `stalled`): مؤشر `(LastContentChangedAt, Id)` + ترقيم
    بلا إزاحة، مع إبقاء `stalled`/«تحديث» كشبكة أمان حتى إثبات الاستقرار، ثم إزالتهما إن لم يبقَ لهما معنى.
-5. **تحققات نصية إلزامية (§15):**
-   - لا `hasFullMessage`/`hasNextPage` في أي استجابة `PagedResult`.
-   - لا تحديث لـ`CreatedAt` بعد الإنشاء (كتابة `DateTime.UtcNow` حصرًا).
+5. ✅ **تحققات نصية إلزامية (§15) — نُفِّذت في `PR‑6a`:**
+   - لا `hasFullMessage` في أي عقد، ولا `hasNextPage` في `PagedResult` (حارس البيان والاختبارات).
+   - لا تحديث لـ`CreatedAt` عند تعليم المقروء/الأرشفة (يُحدَّث `LastContentChangedAt` وحده).
+   - الفهرس الجزئي لغير المقروء قائم كما هو (لا حاجة لهجرة).
    - لا فهرس فريد على `(DedupeKey, IsArchived)` بدل الجزئي.
 
 ### و‑2) البوابات

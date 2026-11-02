@@ -14,9 +14,9 @@ using Microsoft.Extensions.DependencyInjection;
 namespace DocGenerator.Api.Tests;
 
 /// <summary>
-/// نطاقا عدّاد غير المقروء (`D6`/`D7`، الخطة §5/المرحلة 4) على **قاعدة معزولة لكل اختبار**،
-/// فالأعداد المطلقة حاسمة: <c>user</c> = صفوف الفاعل نفسه (الرئيس مقيّد بفرعه)،
-/// و<c>received</c> = كل غير المقروء على التنبيهات التي استلمها الرئيس في فرعه.
+/// نطاق عدّاد غير المقروء (`D6`/`D7`، الخطة §5/المرحلة 4) على **قاعدة معزولة لكل اختبار**،
+/// فالأعداد المطلقة حاسمة: <c>user</c> = صفوف الفاعل نفسه (الرئيس مقيّد بفرعه).
+/// حُذف نطاق <c>received</c> في <c>PR-6a</c>، فصار <c>?scope=received</c> <c>400</c> عربيًا صريحًا.
 /// </summary>
 public sealed class AlertsUnreadScopeIntegrationTests : IsolatedApiTestBase
 {
@@ -59,7 +59,7 @@ public sealed class AlertsUnreadScopeIntegrationTests : IsolatedApiTestBase
     }
 
     [Fact]
-    public async Task Scopes_UserIsBranchBound_ReceivedCoversReceivedAlerts()
+    public async Task UserScope_IsBranchBound_AndEqualsUnreadOnlyListTotal()
     {
         var damId = await Factory.GetBranchIdAsync("DAM");
         var aleppoId = await Factory.GetBranchIdAsync("ALP");
@@ -67,24 +67,22 @@ public sealed class AlertsUnreadScopeIntegrationTests : IsolatedApiTestBase
         var lawyerId = await Factory.UserIdAsync("lawyer1");
         var extra = await Factory.CreateUserAsync(UniqueName("lawyer_scope"), UserRole.Lawyer, damId);
 
-        // A في فرعه ومستلم فيه مع محاميين ⇒ 3 صفوف غير مقروءة.
+        // A في فرعه ومستلم فيه مع محاميين ⇒ صفّ غير مقروء واحد لصاحب الحساب.
         var collectiveId = await SeedAlertAsync(
             damId, headId, "جماعي", archived: false, headId, lawyerId, extra.Id);
-        // B في فرعه لكنه ليس مستلمًا ⇒ لا يُحتسب في أي نطاق.
+        // B في فرعه لكنه ليس مستلمًا ⇒ لا يُحتسب.
         await SeedAlertAsync(damId, headId, "لمحامٍ فقط", archived: false, lawyerId);
-        // C استلمه في فرع آخر ⇒ خارج نطاق الرئيس.
+        // C استلمه في فرع آخر ⇒ خارج نطاق الرئيس (قيد الفرع).
         await SeedAlertAsync(aleppoId, headId, "فرع آخر", archived: false, headId);
-        // D مؤرشف في فرعه ومستلم فيه ⇒ مستبعد من النطاقين.
+        // D مؤرشف في فرعه ومستلم فيه ⇒ مستبعد.
         await SeedAlertAsync(damId, headId, "مؤرشف", archived: true, headId, lawyerId);
 
         var head = Factory.AuthorizedClient("head1");
 
-        // user: صفّه وحده في A ⇒ 1. received: كل غير المقروء على تنبيهاته في فرعه ⇒ 3.
+        // user: صفّه وحده في A ⇒ 1.
         Assert.Equal(1, await CountAsync(head, "user"));
-        Assert.Equal(3, await CountAsync(head, "received"));
 
-        // الافتراضي (بلا scope) هو user — تغيير عقد مقصود للرئيس (`D7`/`ح‑20`):
-        // التنبيه C في فرع آخر مستبعد، فالقيمة 1 لا 2.
+        // الافتراضي (بلا scope) هو user — التنبيه C في فرع آخر مستبعد، فالقيمة 1 لا 2.
         Assert.Equal(1, await CountAsync(head, null));
 
         // D7 + ح‑19: الثبات هو «العدّاد = TotalCount لقائمة غير المقروء» (يصمد أمام
@@ -102,43 +100,44 @@ public sealed class AlertsUnreadScopeIntegrationTests : IsolatedApiTestBase
         Assert.NotNull(page);
         Assert.True(page!.Items.Count >= unreadPage.TotalCount);
 
-        // D6: `received` = مجموع `unreadCount` لتنبيهات قائمته (السلوك القديم حرفيًا).
-        // المقارنة صالحة لأن العيّنة كلها في صفحة واحدة (ح‑19).
-        Assert.Equal(page.Items.Sum(a => a.UnreadCount ?? 0), await CountAsync(head, "received"));
-
-        // قراءة صف محامٍ من A تخفض «المستلَم» وحده، ولا تمس صف الرئيس.
+        // قراءة صف محامٍ من A لا تمس صف الرئيس (العدّاد «لي» لا مجموع المستلمين).
         var lawyer = Factory.AuthorizedClient("lawyer1");
         Assert.Equal(HttpStatusCode.NoContent,
             (await lawyer.PatchAsJsonAsync($"/api/alerts/{collectiveId}/read", new { })).StatusCode);
-        Assert.Equal(2, await CountAsync(head, "received"));
         Assert.Equal(1, await CountAsync(head, "user"));
 
-        // ح‑21: قراءة الرئيس صفّه تخفض `user` إلى صفر ولا تُسقط «المستلَم» كليًا
-        // (يبقى صف المحامي الثالث غير المقروء).
+        // ح‑21: قراءة الرئيس صفّه تخفض `user` إلى صفر.
         Assert.Equal(HttpStatusCode.NoContent,
             (await head.PatchAsJsonAsync($"/api/alerts/{collectiveId}/read", new { })).StatusCode);
-        Assert.Equal(1, await CountAsync(head, "received"));
         Assert.Equal(0, await CountAsync(head, "user"));
     }
 
     [Fact]
-    public async Task ReceivedScope_IsRejectedForLawyerAndOversight()
+    public async Task ReceivedScope_IsRejectedAsBadRequest_ForAllRoles_WithCleanArabicMessage()
     {
-        var lawyer = Factory.AuthorizedClient("lawyer1");
-        Assert.Equal(HttpStatusCode.Forbidden,
-            (await lawyer.GetAsync("/api/alerts/unread-count?scope=received")).StatusCode);
-        // المحامي يملك النطاق الشخصي (وإن كان صفرًا هنا).
-        Assert.Equal(HttpStatusCode.OK,
-            (await lawyer.GetAsync("/api/alerts/unread-count?scope=user")).StatusCode);
+        // PR-6a: `received` محذوف — 400 عربي صريح لكل دور، لا 500 ولا سقوط صامت إلى user.
+        foreach (var username in new[] { "head1", "lawyer1", "manager", "admin" })
+        {
+            var response = await Factory.AuthorizedClient(username)
+                .GetAsync("/api/alerts/unread-count?scope=received");
 
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            using var json = System.Text.Json.JsonDocument.Parse(
+                await response.Content.ReadAsStringAsync());
+            Assert.Equal(
+                "قيمة scope غير صالحة — استخدم user",
+                json.RootElement.GetProperty("message").GetString());
+        }
+
+        // النطاق المعتمد `user` بلا تغيير: 200 للمستلمين و403 للإشراف.
+        Assert.Equal(HttpStatusCode.OK, (await Factory.AuthorizedClient("head1")
+            .GetAsync("/api/alerts/unread-count?scope=user")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Factory.AuthorizedClient("lawyer1")
+            .GetAsync("/api/alerts/unread-count?scope=user")).StatusCode);
         foreach (var username in new[] { "manager", "admin" })
         {
-            foreach (var scope in new[] { "user", "received" })
-            {
-                Assert.Equal(HttpStatusCode.Forbidden,
-                    (await Factory.AuthorizedClient(username)
-                        .GetAsync($"/api/alerts/unread-count?scope={scope}")).StatusCode);
-            }
+            Assert.Equal(HttpStatusCode.Forbidden, (await Factory.AuthorizedClient(username)
+                .GetAsync("/api/alerts/unread-count?scope=user")).StatusCode);
         }
     }
 
@@ -155,6 +154,6 @@ public sealed class AlertsUnreadScopeIntegrationTests : IsolatedApiTestBase
         using var json = System.Text.Json.JsonDocument.Parse(
             await response.Content.ReadAsStringAsync());
         var message = json.RootElement.GetProperty("message").GetString();
-        Assert.Equal("قيمة scope غير صالحة — استخدم user أو received", message);
+        Assert.Equal("قيمة scope غير صالحة — استخدم user", message);
     }
 }

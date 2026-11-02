@@ -96,7 +96,7 @@ export function makeExecutedDocument(overrides: Partial<DocumentResponse> = {}):
 }
 
 /**
- * تفاصيل تنبيه افتراضية مطابقة لعقد التفاصيل (`headAlertDetail` + `retainedHeadAlertDetail`):
+ * تفاصيل تنبيه افتراضية مطابقة لعقد التفاصيل (`headAlertDetail` — بلا عدّادي المستلمين):
  * العقد الوحيد الذي يحمل `message` كاملًا (`GET /alerts/{id}`)، وكل حقل قابل للتجاوز.
  */
 export function makeHeadAlertDetail(overrides: Partial<HeadAlertDto> = {}): HeadAlertDto {
@@ -121,8 +121,6 @@ export function makeHeadAlertDetail(overrides: Partial<HeadAlertDto> = {}): Head
     createdByName: 'رئيس القسم',
     isRead: null,
     canViewRecipients: false,
-    recipientCount: null,
-    unreadCount: null,
     ...overrides,
   };
 }
