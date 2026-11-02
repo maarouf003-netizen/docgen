@@ -138,6 +138,30 @@ public sealed class HeadAlertSummaryPostgresTests
             Assert.Equal(sqliteSent.TotalCount, postgresSent.TotalCount);
             Assert.Equal(sqliteSent.Items, postgresSent.Items);
 
+            // المؤشر: نفس شرط keyset ونفس الترتيب على المزوّدين — ترجمة `OR` على
+            // `timestamptz` في PostgreSQL يجب أن تعطي النتيجة نفسها التي تعطيها SQLite.
+            var sqliteFirstPage = await sqliteRepository.ListSummariesForOversightAsync(
+                AlertArchiveFilter.Active, delegationId: null, cursor: null, skip: 0, take: 1);
+            var postgresFirstPage = await postgresRepository.ListSummariesForOversightAsync(
+                AlertArchiveFilter.Active, delegationId: null, cursor: null, skip: 0, take: 1);
+            Assert.Equal(
+                sqliteFirstPage.Items.Select(i => i.Id),
+                postgresFirstPage.Items.Select(i => i.Id));
+
+            var tail = Assert.Single(postgresFirstPage.Items);
+            var cursor = new AlertCursor(tail.LastContentChangedAt, tail.Id);
+            var sqliteNext = await sqliteRepository.ListSummariesForOversightAsync(
+                AlertArchiveFilter.Active, delegationId: null, cursor, skip: 0, take: 1);
+            var postgresNext = await postgresRepository.ListSummariesForOversightAsync(
+                AlertArchiveFilter.Active, delegationId: null, cursor, skip: 0, take: 1);
+
+            // الجولة فعّالة فعلًا: صفحة تالية غير فارغة ومختلفة عن الأولى.
+            Assert.NotEmpty(postgresNext.Items);
+            Assert.DoesNotContain(postgresNext.Items, i => i.Id == tail.Id);
+            Assert.Equal(sqliteNext.Items, postgresNext.Items);
+            Assert.Equal(sqliteNext.Items.Select(i => i.Id), postgresNext.Items.Select(i => i.Id));
+            Assert.Equal(sqliteNext.TotalCount, postgresNext.TotalCount);
+
             // شريط الإنابة: التنبيه الثاني مرتبط بإنابة (بلا FK) — الفلتر نفسه.
             var sqliteDelegation = await sqliteRepository.ListSummariesByDelegationAsync(
                 DelegationId, sqliteSeed.LawyerId, skip: 0, take: AlertPageRequest.MaxPageSize);

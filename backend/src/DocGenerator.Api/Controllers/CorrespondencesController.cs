@@ -49,7 +49,7 @@ public class CorrespondencesController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -80,7 +80,7 @@ public class CorrespondencesController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -106,11 +106,11 @@ public class CorrespondencesController : ControllerBase
         }
         catch (KeyNotFoundException e)
         {
-            return NotFound(new { message = e.Message });
+            return NotFound(new { message = ApiErrorMessages.From(e) });
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -133,7 +133,7 @@ public class CorrespondencesController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -147,11 +147,11 @@ public class CorrespondencesController : ControllerBase
         }
         catch (KeyNotFoundException e)
         {
-            return NotFound(new { message = e.Message });
+            return NotFound(new { message = ApiErrorMessages.From(e) });
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -170,11 +170,11 @@ public class CorrespondencesController : ControllerBase
         }
         catch (KeyNotFoundException e)
         {
-            return NotFound(new { message = e.Message });
+            return NotFound(new { message = ApiErrorMessages.From(e) });
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -193,11 +193,11 @@ public class CorrespondencesController : ControllerBase
         }
         catch (KeyNotFoundException e)
         {
-            return NotFound(new { message = e.Message });
+            return NotFound(new { message = ApiErrorMessages.From(e) });
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -217,11 +217,11 @@ public class CorrespondencesController : ControllerBase
         }
         catch (KeyNotFoundException e)
         {
-            return NotFound(new { message = e.Message });
+            return NotFound(new { message = ApiErrorMessages.From(e) });
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 }

@@ -106,7 +106,7 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return NotFound(new { message = e.Message });
+            return NotFound(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -123,7 +123,7 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -181,7 +181,7 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -198,7 +198,7 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -217,7 +217,7 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -234,7 +234,7 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -251,7 +251,7 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -270,11 +270,11 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = e.Message });
+            return Conflict(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -291,11 +291,11 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = e.Message });
+            return Conflict(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -322,7 +322,7 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -348,7 +348,7 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -365,11 +365,11 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = e.Message });
+            return Conflict(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -384,11 +384,11 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = e.Message });
+            return Conflict(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -403,11 +403,11 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
         catch (DocumentConflictException e)
         {
-            return Conflict(new { message = e.Message });
+            return Conflict(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -425,7 +425,7 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return NotFound(new { message = e.Message });
+            return NotFound(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -442,7 +442,7 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -460,7 +460,7 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return NotFound(new { message = e.Message });
+            return NotFound(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -476,7 +476,7 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -493,7 +493,7 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -510,7 +510,7 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -527,7 +527,7 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -544,7 +544,7 @@ public class AppealsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 

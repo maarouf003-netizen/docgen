@@ -65,7 +65,7 @@ public class AppSuggestionsController : ControllerBase
         }
         catch (ArgumentException e)
         {
-            return BadRequest(new { message = e.Message });
+            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 

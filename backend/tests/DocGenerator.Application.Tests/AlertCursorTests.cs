@@ -117,20 +117,22 @@ public class AlertCursorTests
     [Fact]
     public void ParseOptional_InvalidWire_Throws_SoShapeIsRejectedNotIgnored()
     {
-        var error = Assert.Throws<ArgumentException>(() => AlertCursor.ParseOptional("garbage"));
+        var error = Assert.Throws<AlertCursorException>(() => AlertCursor.ParseOptional("garbage"));
 
         Assert.Contains("cursor غير صالحة", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void Parse_InvalidWire_ThrowsArabicArgumentExceptionWithParamName()
+    public void Parse_InvalidWire_ThrowsArabicExceptionWithoutFrameworkSuffix()
     {
-        var error = Assert.Throws<ArgumentException>(() => AlertCursor.Parse("bad|0", "cursor"));
+        var error = Assert.Throws<AlertCursorException>(() => AlertCursor.Parse("bad|0"));
 
-        Assert.Equal("cursor", error.ParamName);
         Assert.Contains("cursor غير صالحة", error.Message, StringComparison.Ordinal);
-        // الرسالة للعرض المباشر: لا نص إطار عمل إنجليزي.
+        // لا ذيل إطار عمل إنجليزي: الرسالة تُعرض للمستخدم مباشرة.
+        Assert.DoesNotContain("Parameter", error.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("was not recognized", error.Message, StringComparison.OrdinalIgnoreCase);
+        // التوقيع الخالي من `paramName` يجعل إلحاق الذيل مستحيلًا من هذا المسار.
+        Assert.Null(error.ParamName);
     }
 
     [Fact]

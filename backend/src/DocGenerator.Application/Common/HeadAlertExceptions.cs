@@ -72,3 +72,20 @@ public sealed class AlertPagingException : ArgumentException
     {
     }
 }
+
+/// <summary>
+/// مؤشر ترقيم غير صالح في أسطح التنبيهات (`PR‑6b`): يترجمه المتحكم إلى <c>400</c>
+/// عبر <see cref="ArgumentException"/>، ورسالته عربية **نظيفة** بلا ذيل معامل —
+/// لنفس سبب <see cref="AlertPagingException"/>: .NET يُلحق بـ<see cref="Exception.Message"/>
+/// نصًا إنجليزيًا (<c>(Parameter 'cursor')</c>) يصل المستخدم عبر <c>{ message }</c>.
+///
+/// **لا يقبل اسم معامل عمدًا:** التوقيع الخالي من <c>paramName</c> يجعل تكرار
+/// التسريب مستحيلًا من هذا المسار بدل الاعتماد على انتباه كاتب النداء.
+/// </summary>
+public sealed class AlertCursorException : ArgumentException
+{
+    public AlertCursorException(string message)
+        : base(message)
+    {
+    }
+}
