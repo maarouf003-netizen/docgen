@@ -10,7 +10,8 @@
 > **تحديث 2026‑11‑02 (إتمام `PR‑6b`):** حُذف سطح الجسر غير المستخدم (`#65`)، ثم **نُفِّذ مؤشر `cursor`**
 > (keyset على `LastContentChangedAt, Id`) في `GET /alerts` و`GET /alerts/sent` مع إبقاء `page`/`pageSize`
 > متوافقين، وأُزيلت حالة `stalled` من الواجهة لأن المؤشر يجعل انقطاع الإزاحة مستحيلًا بنيويًا.
-> **المتبقي: صفر بنود** — كل بنود `PR‑1`…`PR‑6b` منفَّذة.
+> **المتبقي: صفر بنود** — كل بنود `PR‑1`…`PR‑6b` منفَّذة (`PR‑6b` = [#65](https://github.com/maarouf003-netizen/docgen/pull/65)
+> = `0beb755` لإزالة الجسر، ثم [#66](https://github.com/maarouf003-netizen/docgen/pull/66) = `5e1c289` للمؤشر).
 > **خطوات الدمج والنشر والمراحل المتبقية بالتفصيل:** `docs/HEAD_ALERTS_DELIVERY_RUNBOOK.md`.
 >
 > **النطاق:** `backend/` + `frontend/` + أربع هجرات لكل مزوّد (`Expand`/`Backfill`/`Contract` + `Outbox`) + الاختبارات.
