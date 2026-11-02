@@ -9,9 +9,9 @@ namespace DocGenerator.Api.Tests;
 
 /// <summary>
 /// وسيط إثراء <c>LogContext</c>: يضغط <c>TraceId</c>/<c>UserId</c>/<c>UserRole</c> لكل طلب،
-/// و<c>anonymous</c>/<c>none</c> للمجهول — يُتحقق عبر مصرف ذاكرة يلتقط حدثًا يُسجَّل داخل
-/// النطاق (<c>FromLogContext</c>)، مع إعادة <c>Log.Logger</c> العام في <c>finally</c> حتى لا
-/// يتسرب الإعداد لاختبارات متوازية.
+/// و<c>anonymous</c>/<c>none</c> للمجهول، ويوسم طلبات المؤشر بـ<c>CursorPaging</c> —
+/// يُتحقق عبر مصرف ذاكرة يلتقط حدثًا يُسجَّل داخل النطاق (<c>FromLogContext</c>)، مع
+/// إعادة <c>Log.Logger</c> العام في <c>finally</c> حتى لا يتسرب الإعداد لاختبارات متوازية.
 /// </summary>
 /// <remarks>
 /// عزل إجباري عن التوازي: الاختبار يستبدل `Log.Logger` العام للعملية، وأي إقلاع
@@ -94,5 +94,43 @@ public class EnricherMiddlewareTests
         Assert.Equal(context.TraceIdentifier, props["TraceId"]);
         Assert.Equal("anonymous", props["UserId"]);
         Assert.Equal("none", props["UserRole"]);
+    }
+
+    [Fact]
+    public void CursorQuery_PushesCursorPagingTrue()
+    {
+        // وسم `PR‑6c` للرصد: يميّز طلب المؤشر من طلب الإزاحة في السجلات.
+        var context = BuildContext(authenticated: true);
+        context.Request.QueryString = new QueryString("?cursor=2026-11-02T09%3A30%3A15Z%7C5");
+
+        var props = EmitInsideMiddleware(context);
+
+        Assert.Equal("True", props["CursorPaging"]);
+        // الحقول القائمة لم تتأثر بالوسم الجديد.
+        Assert.Equal(context.TraceIdentifier, props["TraceId"]);
+        Assert.Equal("7", props["UserId"]);
+    }
+
+    [Fact]
+    public void OffsetQuery_DoesNotPushCursorPaging()
+    {
+        var context = BuildContext(authenticated: true);
+        context.Request.QueryString = new QueryString("?page=2&pageSize=100");
+
+        var props = EmitInsideMiddleware(context);
+
+        Assert.False(props.ContainsKey("CursorPaging"));
+    }
+
+    [Fact]
+    public void IsCursorPaging_DetectsCursorKeyOnly()
+    {
+        var withCursor = new DefaultHttpContext();
+        withCursor.Request.QueryString = new QueryString("?cursor=abc");
+        var withoutCursor = new DefaultHttpContext();
+        withoutCursor.Request.QueryString = new QueryString("?page=1");
+
+        Assert.True(RequestLoggingEnricherMiddleware.IsCursorPaging(withCursor.Request));
+        Assert.False(RequestLoggingEnricherMiddleware.IsCursorPaging(withoutCursor.Request));
     }
 }
