@@ -13,6 +13,10 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
     /// صفحة ملخصات المستلَم: المحامي بلا قيد فرع (استلام شخصي)، ورئيس القسم/الشعبة
     /// بفرعه (§9.3). الإسقاط في SQL بلا <c>Message</c> كامل وبلا صفوف مستلمين،
     /// والعدد الكلي باستعلام منفصل. ترتيب حتمي <c>LastContentChangedAt DESC, Id DESC</c>.
+    ///
+    /// <para><paramref name="cursor"/> غير الفارغ يثبّت موضع الصفحة (keyset) ويُلغي
+    /// أثر <paramref name="skip"/>؛ و<paramref name="skip"/> يبقى مسارًا متوافقًا
+    /// للطلبات القديمة (<c>page</c>/<c>offset</c>).</para>
     /// </summary>
     Task<HeadAlertSummaryPage> ListSummariesForRecipientAsync(
         int userId,
@@ -20,6 +24,7 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
         AlertArchiveFilter archive,
         bool unreadOnly,
         int? delegationId,
+        AlertCursor? cursor,
         int skip,
         int take,
         bool includeCounters,
@@ -30,6 +35,7 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
         int userId,
         int branchId,
         AlertArchiveFilter archive,
+        AlertCursor? cursor,
         int skip,
         int take,
         CancellationToken ct = default);
@@ -41,6 +47,7 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
     Task<HeadAlertSummaryPage> ListSummariesForOversightAsync(
         AlertArchiveFilter archive,
         int? delegationId,
+        AlertCursor? cursor,
         int skip,
         int take,
         CancellationToken ct = default);

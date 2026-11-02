@@ -1040,8 +1040,15 @@ public class AlertsIntegrationTests
         }
 
         // التفويض يسبق التحقق من الشكل: حتى الترقيم غير الصالح يبقى 403 لرئيس بلا فرع
-        // (مراجعة المرحلة 3 `ح‑13` — كانت الخدمة تتحقق من الترقيم أولًا).
-        foreach (var path in new[] { "/api/alerts?page=0", "/api/alerts/sent?pageSize=101" })
+        // (مراجعة المرحلة 3 `ح‑13` — كانت الخدمة تتحقق من الترقيم أولًا)، وكذلك المؤشر
+        // غير الصالح بعد نقل تحليله إلى الخدمة (`PR‑6b`).
+        foreach (var path in new[]
+                 {
+                     "/api/alerts?page=0",
+                     "/api/alerts/sent?pageSize=101",
+                     "/api/alerts?cursor=garbage",
+                     "/api/alerts/sent?cursor=garbage",
+                 })
         {
             Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync(path)).StatusCode);
         }

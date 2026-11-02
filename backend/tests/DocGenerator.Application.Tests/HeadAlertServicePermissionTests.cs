@@ -150,11 +150,11 @@ public class HeadAlertServicePermissionTests : IDisposable
         if (!allowed)
         {
             await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-                _service.ListSentAsync(actor, AlertArchiveFilter.Active, FullPage()));
+                _service.ListSentAsync(actor, AlertArchiveFilter.Active, FullPage(), cursor: null));
             return;
         }
 
-        var page = await _service.ListSentAsync(actor, AlertArchiveFilter.Active, FullPage());
+        var page = await _service.ListSentAsync(actor, AlertArchiveFilter.Active, FullPage(), cursor: null);
         Assert.Equal(2, page.TotalCount); // alertA + alertOther صادر headA في فرعه
         Assert.All(page.Items, i => Assert.Equal(_headA.FullName, i.CreatedByName));
     }
@@ -257,7 +257,7 @@ public class HeadAlertServicePermissionTests : IDisposable
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             _service.ListForActorAsync(actor, new HeadAlertListQuery { Page = FullPage() }));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.ListSentAsync(actor, AlertArchiveFilter.Active, FullPage()));
+            _service.ListSentAsync(actor, AlertArchiveFilter.Active, FullPage(), cursor: null));
 
         // التفاصيل لا تحتاج فرعًا: غير المستلم/المنشئ/الإشراف → null، لا استثناء.
         Assert.Null(await _service.GetDetailsAsync(_alertB.Id, actor));
@@ -275,7 +275,7 @@ public class HeadAlertServicePermissionTests : IDisposable
                 ActorFor(_manager), new HeadAlertListQuery { Page = request }));
         await Assert.ThrowsAsync<AlertPagingException>(() =>
             _service.ListSentAsync(
-                ActorFor(_headA), AlertArchiveFilter.Active, request));
+                ActorFor(_headA), AlertArchiveFilter.Active, request, cursor: null));
         await Assert.ThrowsAsync<AlertPagingException>(() =>
             _service.ListByDelegationAsync(77, ActorFor(_lawyerA), request));
     }
@@ -293,7 +293,7 @@ public class HeadAlertServicePermissionTests : IDisposable
         Assert.DoesNotContain("Parameter", listEx.Message);
 
         await Assert.ThrowsAsync<AlertPagingException>(() =>
-            _service.ListSentAsync(ActorFor(_headA), AlertArchiveFilter.Active, request));
+            _service.ListSentAsync(ActorFor(_headA), AlertArchiveFilter.Active, request, cursor: null));
         await Assert.ThrowsAsync<AlertPagingException>(() =>
             _service.ListByDelegationAsync(77, ActorFor(_lawyerA), request));
     }

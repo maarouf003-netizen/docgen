@@ -83,7 +83,7 @@ public class HeadAlertServiceTests : IDisposable
 
     private async Task<List<HeadAlertSummaryDto>> SentAsync(User user) =>
         (await _service.ListSentAsync(
-            ActorFor(user), AlertArchiveFilter.Active, FullPage())).Items.ToList();
+            ActorFor(user), AlertArchiveFilter.Active, FullPage(), cursor: null)).Items.ToList();
 
     private async Task<int> CreateSystemHeadAlertAsync(
         string message,
@@ -698,7 +698,8 @@ public class HeadAlertServiceTests : IDisposable
         var otherBranchSent = await _service.ListSentAsync(
             new HeadAlertActor(_head.Id, _head.Role, otherBranch.Id),
             AlertArchiveFilter.Active,
-            FullPage());
+            FullPage(),
+            cursor: null);
         Assert.Empty(otherBranchSent.Items);
     }
 

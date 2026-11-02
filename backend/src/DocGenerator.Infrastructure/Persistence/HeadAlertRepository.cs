@@ -20,6 +20,7 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
         AlertArchiveFilter archive,
         bool unreadOnly,
         int? delegationId,
+        AlertCursor? cursor,
         int skip,
         int take,
         bool includeCounters,
@@ -40,7 +41,7 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             query = query.Where(a => a.DelegationId == delegationId.Value);
 
         return await ProjectSummariesAsync(
-            ApplyArchiveFilter(query, archive), userId, includeCounters, skip, take, ct);
+            ApplyArchiveFilter(query, archive), userId, includeCounters, cursor, skip, take, ct);
     }
 
     /// <summary>
@@ -67,6 +68,7 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
         int userId,
         int branchId,
         AlertArchiveFilter archive,
+        AlertCursor? cursor,
         int skip,
         int take,
         CancellationToken ct = default)
@@ -78,12 +80,13 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             .Where(a => a.BranchId == branchId && a.CreatedById == userId);
 
         return ProjectSummariesAsync(
-            ApplyArchiveFilter(query, archive), userId, includeCounters: true, skip, take, ct);
+            ApplyArchiveFilter(query, archive), userId, includeCounters: true, cursor, skip, take, ct);
     }
 
     public Task<HeadAlertSummaryPage> ListSummariesForOversightAsync(
         AlertArchiveFilter archive,
         int? delegationId,
+        AlertCursor? cursor,
         int skip,
         int take,
         CancellationToken ct = default)
@@ -99,6 +102,7 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             ApplyArchiveFilter(query, archive),
             recipientUserId: null,
             includeCounters: true,
+            cursor,
             skip,
             take,
             ct);
@@ -120,7 +124,7 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             .Where(a => a.DelegationId == delegationId && !a.IsArchived);
 
         return ProjectSummariesAsync(
-            query, userId, includeCounters: false, skip, take, ct);
+            query, userId, includeCounters: false, cursor: null, skip, take, ct);
     }
 
     private static void ValidatePaging(int skip, int take)
@@ -147,23 +151,35 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
     /// و<paramref name="messageLength"/> من <c>length()</c> في القاعدة — لا
     /// <c>Include(Recipients)</c> ولا <c>Message</c> كاملًا. المعاينة تُبنى في الذاكرة
     /// عبر <see cref="HeadAlertTextLimits.BuildPreview"/> على البادئة وحدها.
+    ///
+    /// <para><paramref name="cursor"/> غير الفارغ يستبدل <c>Skip</c> بشرط keyset على
+    /// الترتيب نفسه (<c>LastContentChangedAt DESC, Id DESC</c>): يُقبل الصف الأقدم
+    /// زمنيًا، أو الأقدم معرّفًا عند تساوي الزمن. و<paramref name="totalCount"/> يبقى
+    /// عدد القائمة كلها بنفس الفلاتر (لا المتبقي بعد المؤشر) — العقد لا يتغير.</para>
     /// </summary>
     private async Task<HeadAlertSummaryPage> ProjectSummariesAsync(
         IQueryable<HeadAlert> query,
         int? recipientUserId,
         bool includeCounters,
+        AlertCursor? cursor,
         int skip,
         int take,
         CancellationToken ct)
     {
-        // COUNT منفصل بنفس الفلاتر قبل Skip/Take — لا Count() بعد الصفحة (§13).
+        // COUNT منفصل بنفس الفلاتر قبل نافذة الصفحة — لا Count() بعد Skip/Take (§13).
         var totalCount = await query.CountAsync(ct);
 
+        var window = cursor is null
+            ? query
+            : query.Where(a =>
+                a.LastContentChangedAt < cursor.LastContentChangedAt
+                || (a.LastContentChangedAt == cursor.LastContentChangedAt && a.Id < cursor.Id));
+
         var rows = await SummaryRows(
-                query
+                window
                     .OrderByDescending(a => a.LastContentChangedAt)
                     .ThenByDescending(a => a.Id)
-                    .Skip(skip)
+                    .Skip(cursor is null ? skip : 0)
                     .Take(take),
                 recipientUserId,
                 includeCounters)

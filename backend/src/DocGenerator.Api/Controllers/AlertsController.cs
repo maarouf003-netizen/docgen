@@ -31,12 +31,18 @@ public class AlertsController : ControllerBase
     /// قائمة التنبيهات (§8: قراءة بالمستلم): المحامي تنبيهاته، ورئيس القسم/الشعبة
     /// ما استلمه في فرعه فقط، والمدير/المشرف قائمة الإشراف عبر الفروع (قراءة فقط).
     /// ملخصات مرقّمة بلا نص كامل — النص الكامل عبر <c>GET /{id}</c> وحده.
+    ///
+    /// <para><c>cursor</c> اختياري بصيغة <c>{lastContentChangedAt}|{id}</c>: عند وجوده
+    /// تُجلب الصفحة التالية بعد آخر صف معروض (keyset) وتُهمَل <c>page</c>، فلا تكرار
+    /// ولا فجوة عند إصدار تنبيه بين الجلبين. و<c>page</c>/<c>pageSize</c> يبقيان
+    /// مدعومين للطلبات القديمة. أي صيغة مؤشر غير صالحة ⇒ <c>400</c>.</para>
     /// </summary>
     [HttpGet]
     public async Task<IActionResult> List(
         [FromQuery] string? archived,
         [FromQuery] bool unreadOnly,
         [FromQuery] int? delegationId,
+        [FromQuery] string? cursor,
         [FromQuery] int? page,
         [FromQuery] int? pageSize,
         CancellationToken ct)
@@ -49,6 +55,7 @@ public class AlertsController : ControllerBase
                 UnreadOnly = unreadOnly,
                 DelegationId = delegationId,
                 Page = BuildPageRequest(page, pageSize),
+                Cursor = cursor,
             };
             return Ok(await _alerts.ListForActorAsync(Actor, query, ct));
         }
@@ -89,10 +96,12 @@ public class AlertsController : ControllerBase
     /// <summary>
     /// ما أصدره الرئيس في فرعه (تبويب «أرسلتها» — قراءة فقط): رئيس القسم
     /// والشعبة بفرع — بلا زر تعليم مقروء (المُرسِل ليس مستلمًا).
+    /// <c>cursor</c> اختياري كما في <see cref="List"/>.
     /// </summary>
     [HttpGet("sent")]
     public async Task<IActionResult> Sent(
         [FromQuery] string? archived,
+        [FromQuery] string? cursor,
         [FromQuery] int? page,
         [FromQuery] int? pageSize,
         CancellationToken ct)
@@ -100,7 +109,11 @@ public class AlertsController : ControllerBase
         try
         {
             return Ok(await _alerts.ListSentAsync(
-                Actor, ParseArchiveFilter(archived), BuildPageRequest(page, pageSize), ct));
+                Actor,
+                ParseArchiveFilter(archived),
+                BuildPageRequest(page, pageSize),
+                cursor,
+                ct));
         }
         catch (ArgumentException e)
         {
