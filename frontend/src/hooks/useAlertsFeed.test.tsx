@@ -273,6 +273,67 @@ describe('useAlertsFeed', () => {
     expect(get).toHaveBeenCalledTimes(1);
   });
 
+  it('فشل المؤشر الحتمي: الضغط التالي يعيد التحميل من الأولى لا تكرار الطلب الفاشل', async () => {
+    get.mockResolvedValueOnce(pageBody([row(2), row(1, '2026-08-02T10:00:00')], 5));
+    const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+
+    // إعادة المحاولة الحتمية = إعادة تحميل من الأولى (بلا مؤشر).
+    get.mockResolvedValueOnce(pageBody([row(9)], 1));
+    act(() => result.current.loadMore());
+
+    await waitFor(() => expect(result.current.items.map((alert) => alert.id)).toEqual([9]));
+    expect(result.current.error).toBeNull();
+    expect(get).toHaveBeenLastCalledWith(
+      '/alerts',
+      expect.objectContaining({ params: { pageSize: 100 } }),
+    );
+  });
+
+  it('صفحة مؤشر بلا أي صف جديد: توقّف معلن لا زر صامت، والمخرج إعادة التحميل', async () => {
+    get.mockResolvedValueOnce(pageBody([row(1), row(2)], 4));
+    const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+
+    // الخادم يعيد الصفين نفسيهما (خلل مؤشر): لا تقدّم ⇒ لا «مزيد» ولا طلب آخر.
+    get.mockResolvedValueOnce(pageBody([row(2), row(1)], 4));
+    act(() => result.current.loadMore());
+
+    await waitFor(() => expect(result.current.error).toContain('توقّف تحميل بقية التنبيهات'));
+    expect(result.current.hasMore).toBe(false);
+    expect(result.current.items.map((alert) => alert.id)).toEqual([1, 2]);
+
+    get.mockResolvedValueOnce(pageBody([row(9)], 4));
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(result.current.items.map((alert) => alert.id)).toEqual([9]));
+    expect(result.current.error).toBeNull();
+  });
+
+  it('خطأ المؤشر لا يلتصق بنطاق آخر: تغيير التصفية يصفي الخطأ ويجلب من الأولى', async () => {
+    get.mockResolvedValueOnce(pageBody([row(2), row(1, '2026-08-02T10:00:00')], 5));
+    const { result, rerender } = renderHook(
+      ({ url }: { url: string }) => useAlertsFeed(url, { enabled: true }),
+      { initialProps: { url: '/alerts?archived=active' } },
+    );
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+
+    get.mockResolvedValueOnce(pageBody([row(7)], 1));
+    rerender({ url: '/alerts?archived=all' });
+
+    await waitFor(() => expect(result.current.items.map((alert) => alert.id)).toEqual([7]));
+    expect(result.current.error).toBeNull();
+    expect(get).toHaveBeenLastCalledWith(
+      '/alerts?archived=all',
+      expect.objectContaining({ params: { pageSize: 100 } }),
+    );
+  });
+
   it('لا يطلب شيئًا وهو معطّل (نطاق غير متاح)', () => {
     const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: false }));
 

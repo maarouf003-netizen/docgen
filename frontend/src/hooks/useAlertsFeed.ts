@@ -16,7 +16,11 @@ export interface AlertsFeed {
   /** تحميل صفحة إضافية (القائمة المعروضة تبقى ظاهرة). */
   isLoadingMore: boolean;
   error: string | null;
-  /** يجلب الصفحة التالية، أو يعيد محاولة الصفحة الفاشلة نفسها. */
+  /**
+   * الإجراء الموحّد للتذييل: يجلب الصفحة التالية عند وجود مزيد، ويعيد محاولة
+   * الطلب الفاشل، أو يعيد التحميل من الأولى حين يكون الفشل حتميًا (خرق عقد
+   * المؤشر، أو صفحة لم تُضف صفًا).
+   */
   loadMore: () => void;
   /** يعيد التحميل من الصفحة الأولى (بعد إصدار تنبيه مثلًا). */
   reload: () => void;
@@ -28,6 +32,12 @@ export interface AlertsFeed {
 interface CursorState {
   url: string;
   cursor: string | null;
+}
+
+/** رسالة مرتبطة بنطاقها — فلا يلتصق خطأ نطاق بنطاق آخر بعد تبديل التبويب/التصفية. */
+interface ScopedMessage {
+  url: string;
+  message: string | null;
 }
 
 /** الصفحة الواردة مع المؤشر الذي طلبتها به — يمنع نسبة صفحة إلى نطاق آخر. */
@@ -43,11 +53,29 @@ interface FeedState {
   items: HeadAlertSummaryDto[];
   totalCount: number;
   hasMore: boolean;
+  /**
+   * صفحة مؤشر لم تُضف أي صف جديد: المؤشر لن يتقدّم، فأي محاولة أخرى تعيد نفس
+   * النتيجة. تُعلن للمستخدم ويُتاح لها `reload` وحده (حارس التقدّم).
+   */
+  stuck: boolean;
 }
 
 const EMPTY_ITEMS: HeadAlertSummaryDto[] = [];
 
-const EMPTY_FEED: FeedState = { url: '', items: EMPTY_ITEMS, totalCount: 0, hasMore: false };
+const EMPTY_FEED: FeedState = {
+  url: '',
+  items: EMPTY_ITEMS,
+  totalCount: 0,
+  hasMore: false,
+  stuck: false,
+};
+
+/**
+ * نص إعلان توقّف التقدّم. صياغته للعرض المباشر وتذكر المخرج الفعلي (إعادة
+ * التحميل) الذي يوفّره زر التذييل — لا رسالة تطلب إجراءً غير معروض.
+ */
+const STUCK_MESSAGE =
+  'توقّف تحميل بقية التنبيهات — أعِد تحميل القائمة، وإن استمر الخطأ فأبلغ الدعم';
 
 /**
  * يُلحق صفحة بالمحمّل ويُسقط المكررات بالمعرّف.
@@ -55,7 +83,7 @@ const EMPTY_FEED: FeedState = { url: '', items: EMPTY_ITEMS, totalCount: 0, hasM
  * التكرار غير متوقع مع مؤشر keyset (الشرط `<` صارم على `(time, id)`)، لكن
  * الإبقاء على الإسقاط يمنع مفاتيح React المكررة وصفوفًا متطابقة لو تغيّر
  * سلوك الخادم مستقبلًا. وإن لم تُضف الصفحة شيئًا تُعاد المصفوفة نفسها
- * (هوية ثابتة) بلا رندر زائد.
+ * (هوية ثابتة) بلا رندر زائد — ويقرأ المستدعي ذلك كـ«توقّف تقدّم».
  */
 function appendUniqueRows(
   existing: HeadAlertSummaryDto[],
@@ -77,8 +105,9 @@ function appendUniqueRows(
  * **لماذا:** `offset` يفترض قائمة ثابتة بين الجلبين؛ إصدار تنبيه جديد في
  * الأعلى يُزيح النافذة فتعود الصفحة التالية مكررات أو فارغة (جذر `stalled`
  * السابق). المؤشر يثبّت الموضع على **آخر صف معروض فعليًا**
- * (`{lastContentChangedAt}|{id}` — `buildAlertsCursor`)، فيكمل من الأقدم منه
- * بلا تكرار ولا فجوة مهما تغيّرت القائمة.
+ * (`{lastContentChangedAt}|{id}` — `buildAlertsCursor`)، فلا يتكرر صف **أبدًا**،
+ * ولا يُفقد صف لم يتغيّر مفتاح ترتيبه. (صف يُعدَّل محتواه أثناء التصفّح يرتفع
+ * فوق المؤشر فيخرج من بقية الجولة حتى إعادة التحميل — فقدان مؤقت معلوم.)
  *
  * **الحالة:**
  * - الصفحة الأولى (مؤشر `null`) تستبدل المحمّل، فهي بداية سلسلة جديدة
@@ -87,9 +116,12 @@ function appendUniqueRows(
  * - `hasMore` يُشتق من **امتلاء الصفحة الأخيرة** ومن بقاء صفوف في الإجمالي:
  *   مؤشر keyset لا يملك عدد صفحات ثابتًا، وصفحة غير ممتلئة تعني نهاية القائمة.
  * - فشل صفحة إضافية يُبقي المعروض، ويعيد الزر محاولة **المؤشر نفسه**.
+ * - **فشل حتمي** (خرق عقد صف يمنع بناء المؤشر، أو صفحة بلا أي صف جديد) لا
+ *   يُعاد معه الطلب نفسه لأنه سيفشل بالنتيجة ذاتها؛ يتحول الزر إلى إعادة
+ *   تحميل من الأولى، وهي المخرج الوحيد الذي يصلح الحالة.
  *
- * **لا يوجد انقطاع ترقيم بنيويًا** هنا: المؤشر لا يزيح النافذة، فحالة
- * `stalled` أُزيلت من العقد مع سببها.
+ * **لا يوجد انقطاع ترقيم بنيويًا** هنا (المؤشر لا يزيح النافذة)، لكن يبقى
+ * حارس **تقدّم** واحد: صفحة بلا صف جديد تُعلن وتوقف الطلبات.
  */
 export function useAlertsFeed(url: string, { enabled }: { enabled: boolean }): AlertsFeed {
   // المؤشر والنطاق في حالة واحدة: تغيّر `url` (تبويب/تصفية) يبدأ من الأولى
@@ -102,8 +134,10 @@ export function useAlertsFeed(url: string, { enabled }: { enabled: boolean }): A
   const feed = feedState.url === url ? feedState : EMPTY_FEED;
 
   // خطأ المؤشر (خرق عقد الصف) منفصل عن خطأ الطلب حتى لا يمحوه جلب ناجح لاحق
-  // قبل إصلاح الصف نفسه — ويُعرض في المسار القائم (لافتة + إعادة محاولة).
-  const [cursorError, setCursorError] = useState<string | null>(null);
+  // قبل إصلاح الصف نفسه — **ومربوط بالنطاق** كبقية الحالات، فلا يظهر خطأ
+  // تصفية/تبويب سابق فوق قائمة نطاق جديد سليمة.
+  const [cursorErrorState, setCursorErrorState] = useState<ScopedMessage>({ url, message: null });
+  const cursorError = cursorErrorState.url === url ? cursorErrorState.message : null;
 
   const query = useCancellableRequest<LoadedPage>(
     async (signal) => {
@@ -129,20 +163,25 @@ export function useAlertsFeed(url: string, { enabled }: { enabled: boolean }): A
     setFeedState((prev) => {
       const sameScope = prev.url === data.url;
       const baseItems = sameScope ? prev.items : EMPTY_ITEMS;
-      const items =
-        data.cursor === null ? data.result.items : appendUniqueRows(baseItems, data.result.items);
-      // صفحة كاملة + صفوف باقية في الإجمالي ⇒ يمكن طلب ما بعد آخر صف.
-      const hasMore =
-        data.result.items.length === data.result.perPage && items.length < data.result.totalCount;
+      const isFirstPage = data.cursor === null;
+      const items = isFirstPage
+        ? data.result.items
+        : appendUniqueRows(baseItems, data.result.items);
+      // صفحة ممتلئة ⇔ قد يوجد ما بعدها؛ وصفحة مؤشر بلا صف جديد ⇔ المؤشر لا
+      // يتقدّم (لا فائدة من طلب آخر) ⇒ تُعلن الحالة بدل زر صامت.
+      const pageWasFull = data.result.items.length === data.result.perPage;
+      const stuck = !isFirstPage && data.result.items.length > 0 && items === baseItems;
+      const hasMore = pageWasFull && !stuck && items.length < data.result.totalCount;
       if (
         sameScope &&
         prev.items === items &&
         prev.totalCount === data.result.totalCount &&
-        prev.hasMore === hasMore
+        prev.hasMore === hasMore &&
+        prev.stuck === stuck
       ) {
         return prev;
       }
-      return { url: data.url, items, totalCount: data.result.totalCount, hasMore };
+      return { url: data.url, items, totalCount: data.result.totalCount, hasMore, stuck };
     });
   }, [query.data]);
 
@@ -151,7 +190,9 @@ export function useAlertsFeed(url: string, { enabled }: { enabled: boolean }): A
   const hasMore = feed.hasMore;
   const isLoading = queryIsLoading && cursor === null;
   const isLoadingMore = queryIsLoading && cursor !== null;
-  const error = cursorError ?? queryError;
+  const stuck = feed.stuck;
+  // الأولوية: خرق عقد المؤشر ← فشل طلب (قابل لإعادة المحاولة) ← توقّف تقدّم.
+  const error = cursorError ?? queryError ?? (stuck ? STUCK_MESSAGE : null);
 
   const setCursor = useCallback(
     (next: string | null) => {
@@ -162,10 +203,32 @@ export function useAlertsFeed(url: string, { enabled }: { enabled: boolean }): A
     [url],
   );
 
+  const setCursorError = useCallback(
+    (message: string | null) => {
+      setCursorErrorState((prev) =>
+        prev.url === url && prev.message === message ? prev : { url, message },
+      );
+    },
+    [url],
+  );
+
+  const reload = useCallback(() => {
+    // لا تفريغ للعناصر هنا: القائمة المعروضة تبقى حتى تصل الصفحة الأولى الجديدة
+    // (وإلا وميض «لا توجد تنبيهات» عند إعادة التحميل أمام المستخدم).
+    setCursorError(null);
+    setCursor(null);
+    refetch();
+  }, [refetch, setCursor, setCursorError]);
+
   const loadMore = useCallback(() => {
     if (queryIsLoading) return;
-    // أي فشل (الصفحة الأولى أثناء إعادة التحميل أو صفحة تالية) ⇒ إعادة محاولة
-    // **الطلب الحالي** نفسه: المؤشر لم يتغيّر، فلا تخطّي لصفوف لم تُحمّل.
+    // فشل حتمي (لا يتغيّر بتكرار الطلب نفسه): إعادة التحميل من الأولى هي المخرج.
+    if (cursorError || stuck) {
+      reload();
+      return;
+    }
+    // فشل طلب عابر: إعادة محاولة **الطلب الحالي** نفسه — المؤشر لم يتغيّر، فلا
+    // تخطّي لصفوف لم تُحمّل.
     if (queryError) {
       refetch();
       return;
@@ -180,15 +243,18 @@ export function useAlertsFeed(url: string, { enabled }: { enabled: boolean }): A
       // خرق عقد الصف: يُعلن بدل إرسال مؤشر ملفّق يعود 400 بلا سبب مفهوم.
       setCursorError(getApiErrorMessage(cause));
     }
-  }, [hasMore, items, queryError, queryIsLoading, refetch, setCursor]);
-
-  const reload = useCallback(() => {
-    // لا تفريغ للعناصر هنا: القائمة المعروضة تبقى حتى تصل الصفحة الأولى الجديدة
-    // (وإلا وميض «لا توجد تنبيهات» عند إعادة التحميل أمام المستخدم).
-    setCursorError(null);
-    setCursor(null);
-    refetch();
-  }, [refetch, setCursor]);
+  }, [
+    cursorError,
+    hasMore,
+    items,
+    queryError,
+    queryIsLoading,
+    refetch,
+    reload,
+    setCursor,
+    setCursorError,
+    stuck,
+  ]);
 
   const updateItems = useCallback(
     (updater: (prev: HeadAlertSummaryDto[]) => HeadAlertSummaryDto[]) => {
