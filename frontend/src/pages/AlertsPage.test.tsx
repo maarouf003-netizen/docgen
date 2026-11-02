@@ -104,7 +104,7 @@ describe('AlertsPage — المحامي', () => {
     expect(await screen.findByText('تعميم للفرع بخصوص الدوام')).toBeInTheDocument();
     expect(get).toHaveBeenCalledWith(
       '/alerts?archived=active',
-      expect.objectContaining({ params: { page: 1, pageSize: 100 } }),
+      expect.objectContaining({ params: { pageSize: 100 } }),
     );
     expect(screen.queryByRole('tab', { name: /مرسلة/ })).not.toBeInTheDocument();
   });
@@ -150,7 +150,7 @@ describe('AlertsPage — المحامي', () => {
     await waitFor(() =>
       expect(get).toHaveBeenCalledWith(
         '/alerts?archived=only',
-        expect.objectContaining({ params: { page: 1, pageSize: 100 } }),
+        expect.objectContaining({ params: { pageSize: 100 } }),
       ),
     );
   });
@@ -174,7 +174,7 @@ describe('AlertsPage — رئيس القسم/الشعبة', () => {
     expect(await screen.findByText('تنبيه صادر للفرع')).toBeInTheDocument();
     expect(get).toHaveBeenCalledWith(
       '/alerts/sent?archived=active',
-      expect.objectContaining({ params: { page: 1, pageSize: 100 } }),
+      expect.objectContaining({ params: { pageSize: 100 } }),
     );
   });
 

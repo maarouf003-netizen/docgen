@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ALERTS_PAGE_SIZE, readAlertsPage } from './alerts';
+import { ALERTS_PAGE_SIZE, buildAlertsCursor, readAlertsPage } from './alerts';
 import { ContractError } from './contractError';
 import { makeHeadAlertSummary } from '../test/factories';
 
@@ -67,5 +67,51 @@ describe('readAlertsPage', () => {
 
     expect(readAlertsPage({ items, page: 1, perPage: 100, totalCount: 250, totalPages: 1 }).totalPages).toBe(3);
     expect(readAlertsPage({ items, page: 1, perPage: 100, totalCount: 0 }).totalPages).toBe(0);
+  });
+});
+
+/**
+ * بناء مؤشر الصفحة التالية (`{lastContentChangedAt}|{id}`): الصيغة تُرسل كما
+ * وصلت (بلا `new Date` يقتطع كسور الثواني أو يزيح المنطقة)، وأي صف لا يحمل
+ * طابعًا UTC صريحًا خرق عقد يُعلن برسالة عربية.
+ */
+describe('buildAlertsCursor', () => {
+  it('يبني الصيغة السلكية من الحقلين كما وصلا', () => {
+    const row = makeHeadAlertSummary({ id: 42, lastContentChangedAt: '2026-11-02T09:30:15.1234567Z' });
+
+    expect(buildAlertsCursor(row)).toBe('2026-11-02T09:30:15.1234567Z|42');
+  });
+
+  it('يقبل الإزاحة الصفرية الصريحة `+00:00` كما يقبلها الخادم', () => {
+    const row = makeHeadAlertSummary({ id: 1, lastContentChangedAt: '2026-11-02T09:30:15+00:00' });
+
+    expect(buildAlertsCursor(row)).toBe('2026-11-02T09:30:15+00:00|1');
+  });
+
+  it('يرفض الطابع بلا منطقة UTC صريحة — خرق عقد لا مؤشر ملفّق', () => {
+    const rows = [
+      makeHeadAlertSummary({ id: 1, lastContentChangedAt: '2026-11-02T09:30:15' }),
+      makeHeadAlertSummary({ id: 1, lastContentChangedAt: '2026-11-02T09:30:15+03:00' }),
+      makeHeadAlertSummary({ id: 1, lastContentChangedAt: '2026-11-02' }),
+      makeHeadAlertSummary({ id: 1, lastContentChangedAt: '' }),
+    ];
+
+    for (const row of rows) {
+      expect(() => buildAlertsCursor(row)).toThrow(ContractError);
+    }
+  });
+
+  it('يرفض المعرّف غير الصحيح', () => {
+    for (const id of [0, -1, 1.5, Number.NaN]) {
+      expect(() =>
+        buildAlertsCursor(makeHeadAlertSummary({ id, lastContentChangedAt: '2026-11-02T09:30:15Z' })),
+      ).toThrow(ContractError);
+    }
+  });
+
+  it('رسالة المخالفة عربية وقابلة للعرض', () => {
+    expect(() =>
+      buildAlertsCursor(makeHeadAlertSummary({ id: 1, lastContentChangedAt: 'غير صالح' })),
+    ).toThrow('تعذّر تحميل بقية التنبيهات — أعِد تحميل القائمة، وإن استمر الخطأ فأبلغ الدعم');
   });
 });

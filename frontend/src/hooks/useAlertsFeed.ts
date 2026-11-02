@@ -1,31 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { api } from '../api/client';
-import { ALERTS_PAGE_SIZE, readAlertsPage } from '../api/alerts';
+import { api, getApiErrorMessage } from '../api/client';
+import { ALERTS_PAGE_SIZE, buildAlertsCursor, readAlertsPage } from '../api/alerts';
 import { useCancellableRequest } from './useCancellableRequest';
 import type { HeadAlertSummaryDto, PagedResult } from '../types';
 
 export interface AlertsFeed {
-  /** الصفحات المحمّلة بالترتيب (صفحة 1 ثم 2 …) — بلا تكرار عند إعادة الجلب. */
+  /** التنبيهات المحمّلة بالترتيب (الأحدث أولًا) — بلا تكرار. */
   items: HeadAlertSummaryDto[];
-  /** الإجمالي من الخادم لقائمة النطاق كله (لا لعناصر الصفحة). */
+  /** الإجمالي من الخادم لقائمة النطاق كله (لا لعدد الصفحات المحمّلة). */
   totalCount: number;
-  /** يوجد ما لم يُحمَّل بعد ويمكن الوصول إليه (`totalCount > items.length` بلا انقطاع). */
+  /** آخر صفحة وصلت كانت ممتلئة وهناك صفوف لم تُحمّل بعد. */
   hasMore: boolean;
-  /**
-   * انقطع الترقيم قبل نهاية القائمة: صفحة ملحقة لم تُضف أي صف جديد (كلها مكررات
-   * أو فارغة) لأن `offset` أُزيح بصدور/أرشفة تنبيه بين الجلبين — أي أن الإجمالي
-   * ما زال يتجاوز المعروض ولا يمكن بلوغ الباقي بطلب صفحات أبعد.
-   *
-   * عندها `hasMore = false` (لا طلبات عقيمة) والمسار الوحيد `reload`، ويُصفَّر
-   * تلقائيًا بوصول الصفحة الأولى (إعادة التحميل تستبدل الخريطة كلها).
-   */
-  stalled: boolean;
   /** تحميل الصفحة الأولى (القائمة فارغة حتى تصل). */
   isLoading: boolean;
   /** تحميل صفحة إضافية (القائمة المعروضة تبقى ظاهرة). */
   isLoadingMore: boolean;
   error: string | null;
-  /** يجلب الصفحة التالية، أو يعيد محاولة الصفحة الفاشلة نفسها (ولا يطلب شيئًا عند انقطاع الترقيم). */
+  /** يجلب الصفحة التالية، أو يعيد محاولة الصفحة الفاشلة نفسها. */
   loadMore: () => void;
   /** يعيد التحميل من الصفحة الأولى (بعد إصدار تنبيه مثلًا). */
   reload: () => void;
@@ -33,181 +24,197 @@ export interface AlertsFeed {
   updateItems: (updater: (prev: HeadAlertSummaryDto[]) => HeadAlertSummaryDto[]) => void;
 }
 
-/** نتيجة صفحة واحدة مع رقمها ونطاقها — يمنع نسبة بيانات صفحة/مرشّح قديم إلى آخر. */
+/** نطاق التحميل الحالي: المؤشر `null` يعني الصفحة الأولى. */
+interface CursorState {
+  url: string;
+  cursor: string | null;
+}
+
+/** الصفحة الواردة مع المؤشر الذي طلبتها به — يمنع نسبة صفحة إلى نطاق آخر. */
 interface LoadedPage {
   url: string;
-  page: number;
+  cursor: string | null;
   result: PagedResult<HeadAlertSummaryDto>;
 }
 
-/** حالة الصفحة المطلوبة، مربوطة بالنطاق: تغيّر النطاق يبدأ من الصفحة الأولى. */
-interface PageState {
+/** التراكم المحلي لنطاق واحد. */
+interface FeedState {
   url: string;
-  page: number;
+  items: HeadAlertSummaryDto[];
+  totalCount: number;
+  hasMore: boolean;
 }
 
-/** صفحات محمّلة لنطاق واحد — فصل البيانات بين المرشّحات يمنع عرض قائمة سابقة. */
-interface LoadedPages {
-  url: string;
-  pages: ReadonlyMap<number, HeadAlertSummaryDto[]>;
-}
+const EMPTY_ITEMS: HeadAlertSummaryDto[] = [];
 
-const EMPTY_PAGES: ReadonlyMap<number, HeadAlertSummaryDto[]> = new Map();
+const EMPTY_FEED: FeedState = { url: '', items: EMPTY_ITEMS, totalCount: 0, hasMore: false };
 
 /**
- * تغذية قائمة تنبيهات مرقّمة بلا قصّ صامت: تجلب الصفحة الأولى (`pageSize=100`)،
- * و`loadMore` يجلب التالية ويُلحقها، و`reload` يعيد من الأولى.
+ * يُلحق صفحة بالمحمّل ويُسقط المكررات بالمعرّف.
  *
- * التراكم بمفتاح رقم الصفحة (`Map`): إعادة جلب صفحة تستبدلها ولا تُضاعف عناصرها،
- * والصفحة تُقرأ من نتيجة الجلب نفسها لا من حالة الصفحة الحالية (فلا تُنسب بيانات
- * صفحة سابقة إلى صفحة لم تصل بعد). فشل صفحة إضافية يُبقي المعروض ويُعلن الخطأ،
- * وإعادة الضغط تعيد محاولة **الصفحة نفسها** لا التي بعدها.
+ * التكرار غير متوقع مع مؤشر keyset (الشرط `<` صارم على `(time, id)`)، لكن
+ * الإبقاء على الإسقاط يمنع مفاتيح React المكررة وصفوفًا متطابقة لو تغيّر
+ * سلوك الخادم مستقبلًا. وإن لم تُضف الصفحة شيئًا تُعاد المصفوفة نفسها
+ * (هوية ثابتة) بلا رندر زائد.
+ */
+function appendUniqueRows(
+  existing: HeadAlertSummaryDto[],
+  incoming: HeadAlertSummaryDto[],
+): HeadAlertSummaryDto[] {
+  if (incoming.length === 0) return existing;
+  const seen = new Set(existing.map((row) => row.id));
+  const unique = incoming.filter((row) => {
+    if (seen.has(row.id)) return false;
+    seen.add(row.id);
+    return true;
+  });
+  return unique.length === 0 ? existing : [...existing, ...unique];
+}
+
+/**
+ * تغذية قائمة تنبيهات بترقيم **مؤشر** (keyset) بدل الإزاحة (`offset`).
  *
- * **انقطاع الإزاحة (`stalled`):** `offset` يفترض قائمة ثابتة بين الجلبين. إصدار
- * تنبيه جديد في الأعلى بعد الصفحة الأولى يُزيح النافذة، فقد تعود الصفحة التالية
- * كلها مكررات أو فارغة بينما `totalCount` ما زال أكبر من المعروض — وهنا يتوقف
- * الطلب (`hasMore = false`) ويُعلن الانقطاع بدل وعد ترقيم لا يُغلق وطلبات عقيمة،
- * ويبقى `reload` هو المخرج. الحل الجذري (مؤشر `(LastContentChangedAt, Id)`)
- * قرار معماري في `PR-6`.
+ * **لماذا:** `offset` يفترض قائمة ثابتة بين الجلبين؛ إصدار تنبيه جديد في
+ * الأعلى يُزيح النافذة فتعود الصفحة التالية مكررات أو فارغة (جذر `stalled`
+ * السابق). المؤشر يثبّت الموضع على **آخر صف معروض فعليًا**
+ * (`{lastContentChangedAt}|{id}` — `buildAlertsCursor`)، فيكمل من الأقدم منه
+ * بلا تكرار ولا فجوة مهما تغيّرت القائمة.
+ *
+ * **الحالة:**
+ * - الصفحة الأولى (مؤشر `null`) تستبدل المحمّل، فهي بداية سلسلة جديدة
+ *   (إعادة تحميل/تغيير نطاق) — بلا تفريغ أثناء الجلب (لا وميض «لا توجد تنبيهات»).
+ * - `loadMore` يطلب ما بعد آخر صف ويُلحق النتيجة.
+ * - `hasMore` يُشتق من **امتلاء الصفحة الأخيرة** ومن بقاء صفوف في الإجمالي:
+ *   مؤشر keyset لا يملك عدد صفحات ثابتًا، وصفحة غير ممتلئة تعني نهاية القائمة.
+ * - فشل صفحة إضافية يُبقي المعروض، ويعيد الزر محاولة **المؤشر نفسه**.
+ *
+ * **لا يوجد انقطاع ترقيم بنيويًا** هنا: المؤشر لا يزيح النافذة، فحالة
+ * `stalled` أُزيلت من العقد مع سببها.
  */
 export function useAlertsFeed(url: string, { enabled }: { enabled: boolean }): AlertsFeed {
-  // الصفحة والنطاق في حالة واحدة: تغيّر `url` (تبويب/تصفية) يُعيد الترقيم إلى
-  // الأولى تلقائيًا بلا طلب صفحة ثالثة على قائمة جديدة، وبلا تفريغ يدوي للعناصر.
-  const [pageState, setPageState] = useState<PageState>({ url, page: 1 });
-  const page = pageState.url === url ? pageState.page : 1;
-  const setPage = useCallback(
-    (updater: (current: number) => number) => {
-      setPageState((prev) => ({ url, page: updater(prev.url === url ? prev.page : 1) }));
-    },
-    [url],
-  );
+  // المؤشر والنطاق في حالة واحدة: تغيّر `url` (تبويب/تصفية) يبدأ من الأولى
+  // تلقائيًا بلا طلب صفحة متقدمة على قائمة جديدة.
+  const [cursorState, setCursorState] = useState<CursorState>({ url, cursor: null });
+  const cursor = cursorState.url === url ? cursorState.cursor : null;
 
-  const [loadedState, setLoadedState] = useState<LoadedPages>({ url, pages: EMPTY_PAGES });
-  // بيانات نطاق سابق لا تُعرض على نطاق جديد: الصفحة تبدأ تحميلًا نظيفًا.
-  const loaded = loadedState.url === url ? loadedState.pages : EMPTY_PAGES;
+  const [feedState, setFeedState] = useState<FeedState>(EMPTY_FEED);
+  // بيانات نطاق سابق لا تُعرض على نطاق جديد.
+  const feed = feedState.url === url ? feedState : EMPTY_FEED;
+
+  // خطأ المؤشر (خرق عقد الصف) منفصل عن خطأ الطلب حتى لا يمحوه جلب ناجح لاحق
+  // قبل إصلاح الصف نفسه — ويُعرض في المسار القائم (لافتة + إعادة محاولة).
+  const [cursorError, setCursorError] = useState<string | null>(null);
 
   const query = useCancellableRequest<LoadedPage>(
     async (signal) => {
       const response = await api.get(url, {
         signal,
-        params: { page, pageSize: ALERTS_PAGE_SIZE },
+        params:
+          cursor === null
+            ? { pageSize: ALERTS_PAGE_SIZE }
+            : { pageSize: ALERTS_PAGE_SIZE, cursor },
       });
-      return { url, page, result: readAlertsPage(response.data) };
+      return { url, cursor, result: readAlertsPage(response.data) };
     },
-    [url, page],
+    [url, cursor],
     { enabled },
   );
   const { isLoading: queryIsLoading, error: queryError, refetch } = query;
 
-  // التخزين بمفتاح الصفحة الواردة نفسها: مفتاح لا يتغيّر مع تغيّر `page`.
-  // ووصول الصفحة الأولى يعني بداية سلسلة جديدة (إعادة تحميل/إصدار تنبيه): تُستبدل الخريطة
-  // كلها بها فتُسقَط الصفحات اللاحقة التي أزاحها التغيير — بلا تفريغ القائمة أثناء الجلب.
+  // الصفحة الأولى تستبدل المحمّل، والصفحات التالية تُلحق. والاستبدال يتم عند
+  // وصول الاستجابة فقط، فلا تفرغ القائمة أثناء إعادة التحميل.
   useEffect(() => {
     const data = query.data;
     if (!data) return;
-    setLoadedState((prev) => {
-      const pages = prev.url === data.url ? prev.pages : EMPTY_PAGES;
-      if (data.page === 1) {
-        const existing = pages.get(1);
-        if (prev.url === data.url && pages.size === 1 && existing === data.result.items) return prev;
-        return { url: data.url, pages: new Map([[1, data.result.items]]) };
+    setFeedState((prev) => {
+      const sameScope = prev.url === data.url;
+      const baseItems = sameScope ? prev.items : EMPTY_ITEMS;
+      const items =
+        data.cursor === null ? data.result.items : appendUniqueRows(baseItems, data.result.items);
+      // صفحة كاملة + صفوف باقية في الإجمالي ⇒ يمكن طلب ما بعد آخر صف.
+      const hasMore =
+        data.result.items.length === data.result.perPage && items.length < data.result.totalCount;
+      if (
+        sameScope &&
+        prev.items === items &&
+        prev.totalCount === data.result.totalCount &&
+        prev.hasMore === hasMore
+      ) {
+        return prev;
       }
-      const existing = pages.get(data.page);
-      if (existing === data.result.items) return prev;
-      const next = new Map(pages);
-      next.set(data.page, data.result.items);
-      return { url: data.url, pages: next };
+      return { url: data.url, items, totalCount: data.result.totalCount, hasMore };
     });
   }, [query.data]);
 
-  // الدمج يُزيل التكرار بالمعرّف: إصدار/أرشفة تنبيه بين صفحتين يُزيح الترقيم فيظهر
-  // الصف نفسه في صفحتين — ومفتاح React المكرر يُنتج تحذيرًا وصفّين متطابقين.
-  // وصفحة ملحقة لا تُضيف صفًا جديدًا (`added === 0`) دليل أن الإزاحة أخلّت النافذة:
-  // الباقي في أعلى النطاق ولا يُبلغ بطلب صفحات أبعد ⇒ تُعلَّم انقطاعًا.
-  const merged = useMemo(() => {
-    if (loaded.size === 0) return { items: [] as HeadAlertSummaryDto[], stalledPage: false };
-    const pages = [...loaded.keys()].sort((a, b) => a - b);
-    const seen = new Set<number>();
-    const items: HeadAlertSummaryDto[] = [];
-    let stalledPage = false;
-    for (const pageNumber of pages) {
-      let added = 0;
-      for (const alert of loaded.get(pageNumber) ?? []) {
-        if (seen.has(alert.id)) continue;
-        seen.add(alert.id);
-        items.push(alert);
-        added += 1;
-      }
-      if (pageNumber > 1 && added === 0) stalledPage = true;
-    }
-    return { items, stalledPage };
-  }, [loaded]);
-  const items = merged.items;
+  const items = feed.items;
+  const totalCount = feed.totalCount;
+  const hasMore = feed.hasMore;
+  const isLoading = queryIsLoading && cursor === null;
+  const isLoadingMore = queryIsLoading && cursor !== null;
+  const error = cursorError ?? queryError;
 
-  // بيانات النطاق الحالي وحدها تُقرأ: نتيجة نطاق سابق لا تُنسَب إلى نطاق جديد
-  // (وإلا ظهر إجمالي المرشّح السابق تحت قائمة فارغة أثناء جلب الجديد).
-  const currentData = query.data && query.data.url === url ? query.data : null;
-  const totalCount = currentData?.result.totalCount ?? 0;
-  // «انقطاع» فعلي حين تبقى فجوة بين الإجمالي والمعروض مع صفحة ملحقة بلا صف جديد.
-  // أما صفحة ملحقة فارغة والإجمالي مساوٍ للمعروض (حذف/أرشفة بين الجلبين) فقائمة
-  // مكتملة لا انقطاع — فلا رسالة مضللة.
-  const stalled = merged.stalledPage && totalCount > items.length;
-  const hasMore = totalCount > items.length && !stalled;
-  const isLoading = queryIsLoading && page === 1;
-  const isLoadingMore = queryIsLoading && page > 1;
-  // آخر صفحة وصلت فعلًا في هذا النطاق — يمنع طلب صفحة تتجاوز التي لم تُحمّل بعد.
-  const lastLoadedPage = currentData?.page ?? 0;
+  const setCursor = useCallback(
+    (next: string | null) => {
+      setCursorState((prev) =>
+        prev.url === url && prev.cursor === next ? prev : { url, cursor: next },
+      );
+    },
+    [url],
+  );
 
   const loadMore = useCallback(() => {
     if (queryIsLoading) return;
     // أي فشل (الصفحة الأولى أثناء إعادة التحميل أو صفحة تالية) ⇒ إعادة محاولة
-    // **الصفحة الحالية** نفسها، لا الانتقال إلى التي بعدها (وإلا صار الزر بلا أثر
-    // حين لا يوجد «مزيد» أصلًا، أو تخطّى صفحة لم تُحمّل).
+    // **الطلب الحالي** نفسه: المؤشر لم يتغيّر، فلا تخطّي لصفوف لم تُحمّل.
     if (queryError) {
       refetch();
       return;
     }
     if (!hasMore) return;
-    if (page > lastLoadedPage) return;
-    setPage((current) => current + 1);
-  }, [hasMore, lastLoadedPage, page, queryError, queryIsLoading, refetch, setPage]);
+    const tail = items[items.length - 1];
+    if (!tail) return;
+    try {
+      setCursorError(null);
+      setCursor(buildAlertsCursor(tail));
+    } catch (cause) {
+      // خرق عقد الصف: يُعلن بدل إرسال مؤشر ملفّق يعود 400 بلا سبب مفهوم.
+      setCursorError(getApiErrorMessage(cause));
+    }
+  }, [hasMore, items, queryError, queryIsLoading, refetch, setCursor]);
 
   const reload = useCallback(() => {
     // لا تفريغ للعناصر هنا: القائمة المعروضة تبقى حتى تصل الصفحة الأولى الجديدة
     // (وإلا وميض «لا توجد تنبيهات» عند إعادة التحميل أمام المستخدم).
-    setPage(() => 1);
+    setCursorError(null);
+    setCursor(null);
     refetch();
-  }, [refetch, setPage]);
+  }, [refetch, setCursor]);
 
   const updateItems = useCallback(
     (updater: (prev: HeadAlertSummaryDto[]) => HeadAlertSummaryDto[]) => {
-      setLoadedState((prev) => {
+      setFeedState((prev) => {
         // تحديث نطاق آخر (تبويب لم يعد ظاهرًا) يُتجاهل: لا تُزرع فيه تعديلات
         // نطاق لم يُقرأ بعد.
         if (prev.url !== url) return prev;
-        let changed = false;
-        const next = new Map<number, HeadAlertSummaryDto[]>();
-        for (const [pageNumber, rows] of prev.pages) {
-          const updated = updater(rows);
-          if (updated !== rows) changed = true;
-          next.set(pageNumber, updated);
-        }
-        return changed ? { url: prev.url, pages: next } : prev;
+        const next = updater(prev.items);
+        return next === prev.items ? prev : { ...prev, items: next };
       });
     },
     [url],
   );
 
-  return {
-    items,
-    totalCount,
-    hasMore,
-    stalled,
-    isLoading,
-    isLoadingMore,
-    error: queryError,
-    loadMore,
-    reload,
-    updateItems,
-  };
+  return useMemo(
+    () => ({
+      items,
+      totalCount,
+      hasMore,
+      isLoading,
+      isLoadingMore,
+      error,
+      loadMore,
+      reload,
+      updateItems,
+    }),
+    [items, totalCount, hasMore, isLoading, isLoadingMore, error, loadMore, reload, updateItems],
+  );
 }

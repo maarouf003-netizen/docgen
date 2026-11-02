@@ -13,21 +13,37 @@ import { api } from '../api/client';
 
 const get = api.get as unknown as ReturnType<typeof vi.fn>;
 
-function row(id: number) {
-  return makeHeadAlertSummary({ id, messagePreview: `تنبيه ${id}` });
+/**
+ * حجم صفحة اختباري صغير: `perPage` في الجسم هو ما يعكسه الخادم، والحارس يشتق
+ * «مزيد» من امتلاء الصفحة **كما وردت** لا من ثابت الواجهة — فصفحة من صفين
+ * بـ`perPage=2` تسلك سلوك صفحة ممتلئة بلا توليد 100 صف في كل اختبار.
+ */
+const PAGE = 2;
+
+function row(id: number, lastContentChangedAt?: string) {
+  return makeHeadAlertSummary({
+    id,
+    messagePreview: `تنبيه ${id}`,
+    ...(lastContentChangedAt ? { lastContentChangedAt } : {}),
+  });
 }
 
-/** جسم `PagedResult` كما يصل على السلك (`perPage=100`). */
-function pageBody(items: ReturnType<typeof row>[], totalCount: number, page = 1) {
+/** جسم `PagedResult` كما يصل على السلك في طلب مؤشر (`page` يعيده الخادم 1). */
+function pageBody(items: ReturnType<typeof row>[], totalCount: number, perPage = PAGE) {
   return {
     data: {
       items,
-      page,
-      perPage: 100,
+      page: 1,
+      perPage,
       totalCount,
-      totalPages: Math.ceil(totalCount / 100),
+      totalPages: perPage <= 0 ? 0 : Math.ceil(totalCount / perPage),
     },
   };
+}
+
+/** مؤشر الصف كما يبنيه الخادم ويُرسل في `params.cursor`. */
+function cursorOf(id: number) {
+  return `2026-08-02T10:00:00Z|${id}`;
 }
 
 beforeEach(() => {
@@ -35,7 +51,7 @@ beforeEach(() => {
 });
 
 describe('useAlertsFeed', () => {
-  it('يجلب الصفحة الأولى بـ pageSize=100 ويحسب hasMore من الإجمالي', async () => {
+  it('الصفحة الأولى: بلا `page` وبلا مؤشر، و`hasMore` من امتلاء الصفحة والإجمالي', async () => {
     get.mockResolvedValueOnce(pageBody([row(1), row(2)], 137));
 
     const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
@@ -44,18 +60,19 @@ describe('useAlertsFeed', () => {
     expect(result.current.totalCount).toBe(137);
     expect(result.current.hasMore).toBe(true);
     expect(result.current.error).toBeNull();
+    expect(result.current.isLoading).toBe(false);
     expect(get).toHaveBeenCalledWith(
       '/alerts',
-      expect.objectContaining({ params: { page: 1, pageSize: 100 } }),
+      expect.objectContaining({ params: { pageSize: 100 } }),
     );
   });
 
-  it('loadMore يجلب الصفحة التالية ويُلحقها بالترتيب بلا تكرار', async () => {
+  it('loadMore يطلب ما بعد آخر صف بالمؤشر ويُلحق النتيجة', async () => {
     get.mockResolvedValueOnce(pageBody([row(1), row(2)], 3));
     const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
     await waitFor(() => expect(result.current.items).toHaveLength(2));
 
-    get.mockResolvedValueOnce(pageBody([row(3)], 3, 2));
+    get.mockResolvedValueOnce(pageBody([row(3)], 3));
     act(() => result.current.loadMore());
 
     await waitFor(() => expect(result.current.items).toHaveLength(3));
@@ -63,11 +80,11 @@ describe('useAlertsFeed', () => {
     expect(result.current.hasMore).toBe(false);
     expect(get).toHaveBeenLastCalledWith(
       '/alerts',
-      expect.objectContaining({ params: { page: 2, pageSize: 100 } }),
+      expect.objectContaining({ params: { pageSize: 100, cursor: cursorOf(2) } }),
     );
   });
 
-  it('لا يطلب صفحة إضافية حين لا يوجد مزيد', async () => {
+  it('لا يطلب صفحة إضافية حين لم تكن الصفحة ممتلئة', async () => {
     get.mockResolvedValueOnce(pageBody([row(1)], 1));
     const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
     await waitFor(() => expect(result.current.items).toHaveLength(1));
@@ -77,7 +94,17 @@ describe('useAlertsFeed', () => {
     expect(get).toHaveBeenCalledTimes(1);
   });
 
-  it('فشل صفحة إضافية يُبقي المعروض ويعلن الخطأ ويعيد المحاولة لنفس الصفحة', async () => {
+  it('صفحة ممتلئة والإجمالي مساوٍ للمعروض: اكتمال بلا طلب زائد', async () => {
+    get.mockResolvedValueOnce(pageBody([row(1), row(2)], 2));
+    const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+
+    expect(result.current.hasMore).toBe(false);
+    act(() => result.current.loadMore());
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
+  it('فشل صفحة إضافية يُبقي المعروض ويعلن الخطأ ويعيد المحاولة للمؤشر نفسه', async () => {
     get.mockResolvedValueOnce(pageBody([row(1), row(2)], 3));
     const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
     await waitFor(() => expect(result.current.items).toHaveLength(2));
@@ -88,15 +115,57 @@ describe('useAlertsFeed', () => {
     // المعروض لا يسقط عند فشل الصفحة التالية.
     expect(result.current.items).toHaveLength(2);
 
-    get.mockResolvedValueOnce(pageBody([row(3)], 3, 2));
+    get.mockResolvedValueOnce(pageBody([row(3)], 3));
     act(() => result.current.loadMore());
     await waitFor(() => expect(result.current.items).toHaveLength(3));
     expect(result.current.error).toBeNull();
-    // إعادة المحاولة كانت للصفحة 2 نفسها، لا للصفحة 3.
+    // إعادة المحاولة كانت للمؤشر نفسه لا لموضع أبعد.
     expect(get).toHaveBeenLastCalledWith(
       '/alerts',
-      expect.objectContaining({ params: { page: 2, pageSize: 100 } }),
+      expect.objectContaining({ params: { pageSize: 100, cursor: cursorOf(2) } }),
     );
+  });
+
+  it('تنبيه جديد بين الجلبين لا يُكرر صفًا ولا يُسقط صفًا (ميزة المؤشر)', async () => {
+    get.mockResolvedValueOnce(pageBody([row(1), row(2)], 4));
+    const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+
+    // أُصدر تنبيه 99 في الأعلى: الإزاحة كانت ستُعيد [2,3] أو تُفقد صفًا،
+    // والمؤشر يكمل من بعد الصف 2 فيعطي [3,4] والإجمالي صار 5.
+    get.mockResolvedValueOnce(pageBody([row(3), row(4)], 5));
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(result.current.items).toHaveLength(4));
+    expect(result.current.items.map((alert) => alert.id)).toEqual([1, 2, 3, 4]);
+
+    // صفحة كاملة والإجمالي أكبر ⇒ صف واحد باقٍ (الصف الجديد ليس منه: هو أعلى المؤشر).
+    expect(result.current.hasMore).toBe(true);
+    get.mockResolvedValueOnce(pageBody([row(5)], 5));
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(result.current.items).toHaveLength(5));
+    expect(result.current.items.map((alert) => alert.id)).toEqual([1, 2, 3, 4, 5]);
+    expect(result.current.hasMore).toBe(false);
+
+    // الصف الجديد يظهر بإعادة التحميل من الأولى فقط.
+    get.mockResolvedValueOnce(pageBody([row(99), row(1)], 6));
+    act(() => result.current.reload());
+    await waitFor(() => expect(result.current.items.map((alert) => alert.id)).toEqual([99, 1]));
+    expect(get).toHaveBeenLastCalledWith(
+      '/alerts',
+      expect.objectContaining({ params: { pageSize: 100 } }),
+    );
+  });
+
+  it('يُسقط أي تكرار بالمعرّف لو أعاده الخادم في صفحة لاحقة', async () => {
+    get.mockResolvedValueOnce(pageBody([row(1), row(2)], 4));
+    const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+
+    get.mockResolvedValueOnce(pageBody([row(2), row(3)], 4));
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(result.current.items).toHaveLength(3));
+
+    expect(result.current.items.map((alert) => alert.id)).toEqual([1, 2, 3]);
   });
 
   it('reload يعيد من الصفحة الأولى ويستبدل ولا يُضيف', async () => {
@@ -104,7 +173,7 @@ describe('useAlertsFeed', () => {
     const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
     await waitFor(() => expect(result.current.items).toHaveLength(2));
 
-    get.mockResolvedValueOnce(pageBody([row(3)], 3, 2));
+    get.mockResolvedValueOnce(pageBody([row(3)], 3));
     act(() => result.current.loadMore());
     await waitFor(() => expect(result.current.items).toHaveLength(3));
 
@@ -114,7 +183,7 @@ describe('useAlertsFeed', () => {
     expect(result.current.totalCount).toBe(1);
     expect(get).toHaveBeenLastCalledWith(
       '/alerts',
-      expect.objectContaining({ params: { page: 1, pageSize: 100 } }),
+      expect.objectContaining({ params: { pageSize: 100 } }),
     );
   });
 
@@ -145,7 +214,6 @@ describe('useAlertsFeed', () => {
     get.mockResolvedValueOnce(pageBody([row(1), row(2)], 2));
     const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
     await waitFor(() => expect(result.current.items).toHaveLength(2));
-    // لا «مزيد» أصلًا (2 من 2): الزر في التذييل إعادة محاولة لا تحميل صفحة تالية.
     expect(result.current.hasMore).toBe(false);
 
     get.mockRejectedValueOnce(new Error('تعذّر الجلب'));
@@ -158,21 +226,8 @@ describe('useAlertsFeed', () => {
     await waitFor(() => expect(result.current.items.map((alert) => alert.id)).toEqual([9]));
     expect(get).toHaveBeenLastCalledWith(
       '/alerts',
-      expect.objectContaining({ params: { page: 1, pageSize: 100 } }),
+      expect.objectContaining({ params: { pageSize: 100 } }),
     );
-  });
-
-  it('يُزيل التكرار عند إزاحة الترقيم بين صفحتين (تنبيه جديد في الأعلى)', async () => {
-    get.mockResolvedValueOnce(pageBody([row(1), row(2)], 4));
-    const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
-    await waitFor(() => expect(result.current.items).toHaveLength(2));
-
-    // إزاحة: الصف 2 ظهر في الصفحة الأولى ثم تكرر في الثانية.
-    get.mockResolvedValueOnce(pageBody([row(2), row(3)], 4, 2));
-    act(() => result.current.loadMore());
-    await waitFor(() => expect(result.current.items).toHaveLength(3));
-
-    expect(result.current.items.map((alert) => alert.id)).toEqual([1, 2, 3]);
   });
 
   it('updateItems يعدّل المحمّل محليًا بلا طلب جديد', async () => {
@@ -201,8 +256,21 @@ describe('useAlertsFeed', () => {
     );
     expect(result.current.items).toEqual([]);
     expect(result.current.hasMore).toBe(false);
-    expect(result.current.stalled).toBe(false);
     expect(result.current.isLoading).toBe(false);
+  });
+
+  it('صف بطابع زمني غير UTC صريح: يُعلن خرق العقد ولا يُرسل مؤشرًا ملفّقًا', async () => {
+    // الصف الأخير هو أساس المؤشر، فطابعه الزمني الغامض يمنع بناء أي مؤشر.
+    get.mockResolvedValueOnce(pageBody([row(2), row(1, '2026-08-02T10:00:00')], 5));
+    const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+    expect(result.current.hasMore).toBe(true);
+
+    act(() => result.current.loadMore());
+
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(result.current.error).toContain('تعذّر تحميل بقية التنبيهات');
+    expect(get).toHaveBeenCalledTimes(1);
   });
 
   it('لا يطلب شيئًا وهو معطّل (نطاق غير متاح)', () => {
@@ -228,7 +296,7 @@ describe('useAlertsFeed', () => {
     expect(get).toHaveBeenCalledTimes(1);
     expect(get).toHaveBeenCalledWith(
       '/alerts',
-      expect.objectContaining({ params: { page: 1, pageSize: 100 } }),
+      expect.objectContaining({ params: { pageSize: 100 } }),
     );
   });
 
@@ -254,76 +322,7 @@ describe('useAlertsFeed', () => {
     expect(result.current.isLoading).toBe(false);
   });
 
-  it('إزاحة بين صفحتين: صفحة ملحقة كلها مكررات تُعلن الانقطاع وتوقف الطلبات', async () => {
-    get.mockResolvedValueOnce(pageBody([row(1), row(2), row(3)], 4));
-    const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
-    await waitFor(() => expect(result.current.items).toHaveLength(3));
-    expect(result.current.hasMore).toBe(true);
-    expect(result.current.stalled).toBe(false);
-
-    // تنبيه جديد أُدرج في الأعلى ⇒ الإجمالي 5 والنافذة أُزيحت، فالصفحة الثانية
-    // تعيد الصف الأخير من الأولى («3») وحده: تقدم صفري.
-    get.mockResolvedValueOnce(pageBody([row(3)], 5, 2));
-    act(() => result.current.loadMore());
-
-    await waitFor(() => expect(result.current.stalled).toBe(true));
-    expect(result.current.hasMore).toBe(false);
-    expect(result.current.items.map((alert) => alert.id)).toEqual([1, 2, 3]);
-
-    // لا صفحة ثالثة: زر «تحميل المزيد» صار بلا معنى، والمخرج `reload`.
-    act(() => result.current.loadMore());
-    expect(get).toHaveBeenCalledTimes(2);
-  });
-
-  it('صفحة ملحقة فارغة مع إجمالي أكبر تُعلن الانقطاع لا صفحة «لا مزيد» كاذبة', async () => {
-    get.mockResolvedValueOnce(pageBody([row(1), row(2)], 3));
-    const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
-    await waitFor(() => expect(result.current.items).toHaveLength(2));
-
-    get.mockResolvedValueOnce(pageBody([], 3, 2));
-    act(() => result.current.loadMore());
-
-    await waitFor(() => expect(result.current.stalled).toBe(true));
-    expect(result.current.hasMore).toBe(false);
-    expect(result.current.error).toBeNull();
-  });
-
-  it('صفحة ملحقة فارغة والإجمالي مساوٍ للمعروض: اكتمال لا انقطاع', async () => {
-    get.mockResolvedValueOnce(pageBody([row(1), row(2)], 3));
-    const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
-    await waitFor(() => expect(result.current.items).toHaveLength(2));
-
-    // حُذف/أُرشف تنبيه بين الجلبين فانكمش الإجمالي إلى المعروض نفسه.
-    get.mockResolvedValueOnce(pageBody([], 2, 2));
-    act(() => result.current.loadMore());
-
-    await waitFor(() => expect(result.current.totalCount).toBe(2));
-    expect(result.current.stalled).toBe(false);
-    expect(result.current.hasMore).toBe(false);
-  });
-
-  it('reload يُصفّر الانقطاع ويعيد المتابعة من الصفحة الأولى', async () => {
-    get.mockResolvedValueOnce(pageBody([row(1), row(2)], 3));
-    const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
-    await waitFor(() => expect(result.current.items).toHaveLength(2));
-
-    get.mockResolvedValueOnce(pageBody([row(2)], 4, 2));
-    act(() => result.current.loadMore());
-    await waitFor(() => expect(result.current.stalled).toBe(true));
-
-    get.mockResolvedValueOnce(pageBody([row(9), row(2), row(1)], 5));
-    act(() => result.current.reload());
-    await waitFor(() => expect(result.current.items.map((alert) => alert.id)).toEqual([9, 2, 1]));
-    expect(result.current.stalled).toBe(false);
-    expect(result.current.hasMore).toBe(true);
-
-    get.mockResolvedValueOnce(pageBody([row(4), row(5)], 5, 2));
-    act(() => result.current.loadMore());
-    await waitFor(() => expect(result.current.items).toHaveLength(5));
-    expect(result.current.stalled).toBe(false);
-  });
-
-  it('تغيّر النطاق (تبويب/تصفية) يعيد الترقيم إلى الأولى ولا يطلب صفحة متقدمة على قائمة جديدة', async () => {
+  it('تغيّر النطاق (تبويب/تصفية) يعيد من الأولى ولا يحمل مؤشر النطاق السابق', async () => {
     get.mockResolvedValueOnce(pageBody([row(1), row(2)], 300));
     const { result, rerender } = renderHook(
       ({ url }: { url: string }) => useAlertsFeed(url, { enabled: true }),
@@ -331,9 +330,8 @@ describe('useAlertsFeed', () => {
     );
     await waitFor(() => expect(result.current.items).toHaveLength(2));
 
-    // ننتقل إلى صفحة ثانية قبل تغيير النطاق — هذا هو مصدر العيب: بقاء `page=2`
-    // يجعل النطاق الجديد يبدأ من صفحته الثانية (قائمة ناقصة بلا سبب).
-    get.mockResolvedValueOnce(pageBody([row(3)], 300, 2));
+    // ننتقل إلى الصفحة الثانية قبل تغيير النطاق — المؤشر يجب ألا يرافقه.
+    get.mockResolvedValueOnce(pageBody([row(3)], 300));
     act(() => result.current.loadMore());
     await waitFor(() => expect(result.current.items).toHaveLength(3));
 
@@ -343,7 +341,7 @@ describe('useAlertsFeed', () => {
     await waitFor(() => expect(result.current.items.map((alert) => alert.id)).toEqual([9]));
     expect(get).toHaveBeenLastCalledWith(
       '/alerts?archived=all',
-      expect.objectContaining({ params: { page: 1, pageSize: 100 } }),
+      expect.objectContaining({ params: { pageSize: 100 } }),
     );
     expect(result.current.totalCount).toBe(40);
   });
