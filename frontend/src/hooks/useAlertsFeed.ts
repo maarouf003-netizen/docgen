@@ -33,11 +33,26 @@ export interface AlertsFeed {
   updateItems: (updater: (prev: HeadAlertSummaryDto[]) => HeadAlertSummaryDto[]) => void;
 }
 
-/** نتيجة صفحة واحدة مع رقمها — يمنع نسبة بيانات صفحة قديمة إلى صفحة جديدة. */
+/** نتيجة صفحة واحدة مع رقمها ونطاقها — يمنع نسبة بيانات صفحة/مرشّح قديم إلى آخر. */
 interface LoadedPage {
+  url: string;
   page: number;
   result: PagedResult<HeadAlertSummaryDto>;
 }
+
+/** حالة الصفحة المطلوبة، مربوطة بالنطاق: تغيّر النطاق يبدأ من الصفحة الأولى. */
+interface PageState {
+  url: string;
+  page: number;
+}
+
+/** صفحات محمّلة لنطاق واحد — فصل البيانات بين المرشّحات يمنع عرض قائمة سابقة. */
+interface LoadedPages {
+  url: string;
+  pages: ReadonlyMap<number, HeadAlertSummaryDto[]>;
+}
+
+const EMPTY_PAGES: ReadonlyMap<number, HeadAlertSummaryDto[]> = new Map();
 
 /**
  * تغذية قائمة تنبيهات مرقّمة بلا قصّ صامت: تجلب الصفحة الأولى (`pageSize=100`)،
@@ -56,8 +71,20 @@ interface LoadedPage {
  * قرار معماري في `PR-6`.
  */
 export function useAlertsFeed(url: string, { enabled }: { enabled: boolean }): AlertsFeed {
-  const [page, setPage] = useState(1);
-  const [loaded, setLoaded] = useState<ReadonlyMap<number, HeadAlertSummaryDto[]>>(new Map());
+  // الصفحة والنطاق في حالة واحدة: تغيّر `url` (تبويب/تصفية) يُعيد الترقيم إلى
+  // الأولى تلقائيًا بلا طلب صفحة ثالثة على قائمة جديدة، وبلا تفريغ يدوي للعناصر.
+  const [pageState, setPageState] = useState<PageState>({ url, page: 1 });
+  const page = pageState.url === url ? pageState.page : 1;
+  const setPage = useCallback(
+    (updater: (current: number) => number) => {
+      setPageState((prev) => ({ url, page: updater(prev.url === url ? prev.page : 1) }));
+    },
+    [url],
+  );
+
+  const [loadedState, setLoadedState] = useState<LoadedPages>({ url, pages: EMPTY_PAGES });
+  // بيانات نطاق سابق لا تُعرض على نطاق جديد: الصفحة تبدأ تحميلًا نظيفًا.
+  const loaded = loadedState.url === url ? loadedState.pages : EMPTY_PAGES;
 
   const query = useCancellableRequest<LoadedPage>(
     async (signal) => {
@@ -65,7 +92,7 @@ export function useAlertsFeed(url: string, { enabled }: { enabled: boolean }): A
         signal,
         params: { page, pageSize: ALERTS_PAGE_SIZE },
       });
-      return { page, result: readAlertsPage(response.data) };
+      return { url, page, result: readAlertsPage(response.data) };
     },
     [url, page],
     { enabled },
@@ -78,17 +105,18 @@ export function useAlertsFeed(url: string, { enabled }: { enabled: boolean }): A
   useEffect(() => {
     const data = query.data;
     if (!data) return;
-    setLoaded((prev) => {
+    setLoadedState((prev) => {
+      const pages = prev.url === data.url ? prev.pages : EMPTY_PAGES;
       if (data.page === 1) {
-        const existing = prev.get(1);
-        if (prev.size === 1 && existing === data.result.items) return prev;
-        return new Map([[1, data.result.items]]);
+        const existing = pages.get(1);
+        if (prev.url === data.url && pages.size === 1 && existing === data.result.items) return prev;
+        return { url: data.url, pages: new Map([[1, data.result.items]]) };
       }
-      const existing = prev.get(data.page);
+      const existing = pages.get(data.page);
       if (existing === data.result.items) return prev;
-      const next = new Map(prev);
+      const next = new Map(pages);
       next.set(data.page, data.result.items);
-      return next;
+      return { url: data.url, pages: next };
     });
   }, [query.data]);
 
@@ -116,7 +144,10 @@ export function useAlertsFeed(url: string, { enabled }: { enabled: boolean }): A
   }, [loaded]);
   const items = merged.items;
 
-  const totalCount = query.data?.result.totalCount ?? 0;
+  // بيانات النطاق الحالي وحدها تُقرأ: نتيجة نطاق سابق لا تُنسَب إلى نطاق جديد
+  // (وإلا ظهر إجمالي المرشّح السابق تحت قائمة فارغة أثناء جلب الجديد).
+  const currentData = query.data && query.data.url === url ? query.data : null;
+  const totalCount = currentData?.result.totalCount ?? 0;
   // «انقطاع» فعلي حين تبقى فجوة بين الإجمالي والمعروض مع صفحة ملحقة بلا صف جديد.
   // أما صفحة ملحقة فارغة والإجمالي مساوٍ للمعروض (حذف/أرشفة بين الجلبين) فقائمة
   // مكتملة لا انقطاع — فلا رسالة مضللة.
@@ -124,8 +155,8 @@ export function useAlertsFeed(url: string, { enabled }: { enabled: boolean }): A
   const hasMore = totalCount > items.length && !stalled;
   const isLoading = queryIsLoading && page === 1;
   const isLoadingMore = queryIsLoading && page > 1;
-  // آخر صفحة وصلت فعلًا — يمنع طلب صفحة تتجاوز التي لم تُحمّل بعد.
-  const lastLoadedPage = query.data?.page ?? 0;
+  // آخر صفحة وصلت فعلًا في هذا النطاق — يمنع طلب صفحة تتجاوز التي لم تُحمّل بعد.
+  const lastLoadedPage = currentData?.page ?? 0;
 
   const loadMore = useCallback(() => {
     if (queryIsLoading) return;
@@ -139,29 +170,32 @@ export function useAlertsFeed(url: string, { enabled }: { enabled: boolean }): A
     if (!hasMore) return;
     if (page > lastLoadedPage) return;
     setPage((current) => current + 1);
-  }, [hasMore, lastLoadedPage, page, queryError, queryIsLoading, refetch]);
+  }, [hasMore, lastLoadedPage, page, queryError, queryIsLoading, refetch, setPage]);
 
   const reload = useCallback(() => {
     // لا تفريغ للعناصر هنا: القائمة المعروضة تبقى حتى تصل الصفحة الأولى الجديدة
     // (وإلا وميض «لا توجد تنبيهات» عند إعادة التحميل أمام المستخدم).
-    setPage(1);
+    setPage(() => 1);
     refetch();
-  }, [refetch]);
+  }, [refetch, setPage]);
 
   const updateItems = useCallback(
     (updater: (prev: HeadAlertSummaryDto[]) => HeadAlertSummaryDto[]) => {
-      setLoaded((prev) => {
+      setLoadedState((prev) => {
+        // تحديث نطاق آخر (تبويب لم يعد ظاهرًا) يُتجاهل: لا تُزرع فيه تعديلات
+        // نطاق لم يُقرأ بعد.
+        if (prev.url !== url) return prev;
         let changed = false;
         const next = new Map<number, HeadAlertSummaryDto[]>();
-        for (const [pageNumber, rows] of prev) {
+        for (const [pageNumber, rows] of prev.pages) {
           const updated = updater(rows);
           if (updated !== rows) changed = true;
           next.set(pageNumber, updated);
         }
-        return changed ? next : prev;
+        return changed ? { url: prev.url, pages: next } : prev;
       });
     },
-    [],
+    [url],
   );
 
   return {

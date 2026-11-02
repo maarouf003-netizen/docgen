@@ -256,6 +256,20 @@ export interface TransferAllRequest {
 export type HeadAlertTargetType = 'document' | 'lawyer' | 'branch' | 'head';
 
 /**
+ * مستلم تنبيه مع حالة قراءته (`GET /api/alerts/{id}/recipients`) — مرآة
+ * `HeadAlertRecipientDto` الخلفي. متاح للمنشئ أو المدير/المشرف فقط، وغير ذلك
+ * `404` بلا تسريب وجود (الخطة §9.3/§12).
+ */
+export interface HeadAlertRecipientDto {
+  id: number;
+  userId: number;
+  fullName: string;
+  role: string;
+  isRead: boolean;
+  readAt: string | null;
+}
+
+/**
  * عقد **التفاصيل** على السلك (`GET /api/alerts/{id}` — مرآة `HeadAlertDto` الخلفي،
  * `docs/HEAD_ALERTS_RESTRUCTURE_PLAN.md` §9.2): العقد الوحيد الذي يحمل `message` كاملًا.
  * `recipientCount`/`unreadCount` محتفظ بهما مؤقتًا حتى `PR-6`، و`canViewRecipients`

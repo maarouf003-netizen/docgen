@@ -104,4 +104,24 @@ describe('AlertRow', () => {
     // حالة المستلمين تُعلن بالعدّاد وحده (ولا نقطة).
     expect(screen.getByText(/غير مقروء/)).toBeInTheDocument();
   });
+
+  it('يعرض تسمية النوع من الكتالوج للرمز المعروف، ولا يخترع تسمية للرمز المجهول', () => {
+    const { unmount } = render(<AlertRow alert={pendingAlert()} />);
+    expect(screen.getByText('ملفات دائرة بانتظار التحديث')).toBeInTheDocument();
+    unmount();
+
+    // رمز لم يُزامَن بعد: لا تسمية عامة تُوهم المستخدم بنوع معروف.
+    render(<AlertRow alert={makeHeadAlertSummary({ kind: 'kind_added_later' })} />);
+    expect(screen.queryByText('تنبيه')).not.toBeInTheDocument();
+  });
+
+  it('الرمز المجهول لا يمنع فتح الوجهة الاحتياطية للملف المرتبط', () => {
+    render(
+      <AlertRow
+        alert={makeHeadAlertSummary({ kind: 'kind_added_later', messagePreview: 'مرجع قديم', documentId: 5 })}
+      />,
+    );
+
+    expect(screen.getByRole('link', { name: 'مرجع قديم' })).toHaveAttribute('href', '/documents/5');
+  });
 });

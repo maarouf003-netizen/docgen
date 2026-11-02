@@ -8,6 +8,8 @@ export interface LawyerIconCounts {
   calendarAlerts: number;
   /** ملفات المحامي المحالة بانتظار تحديث بياناتها (بطاقة تفتح صفحة المعلقات — B19). */
   pendingRegistrations: number;
+  /** غير المقروء الشخصي (`scope=user` — `D6`) لبطاقة التنبيهات. */
+  alertUnread: number;
 }
 
 /**
@@ -102,6 +104,22 @@ export function LawyerIconRow({
       subtitle: 'الملف والتفضيلات',
       tone: 'bg-slate-100 text-slate-700',
       to: '/account',
+    },
+    {
+      key: 'alerts',
+      icon: ICONS.forum,
+      title: 'التنبيهات',
+      subtitle:
+        counts.alertUnread > 0 ? `${counts.alertUnread} جديد` : 'لا جديد',
+      tone: 'bg-red-100 text-red-700',
+      badge:
+        counts.alertUnread > 0
+          ? {
+              count: counts.alertUnread,
+              label: arabicCount(counts.alertUnread, 'تنبيه واحد غير مقروء', 'تنبيهات غير مقروءة'),
+            }
+          : undefined,
+      to: '/alerts',
     },
     {
       key: REFERRED_CARD_KEY,

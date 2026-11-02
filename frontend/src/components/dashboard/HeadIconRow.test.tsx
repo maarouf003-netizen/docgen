@@ -10,14 +10,15 @@ vi.mock('react-router-dom', () => ({
   ),
 }));
 
-const zero = { reviewsPending: 0, urgentCorrespondence: 0, delegationsPending: 0, entityPending: 0, circuitsPending: 0 };
+const zero = { reviewsPending: 0, urgentCorrespondence: 0, delegationsPending: 0, entityPending: 0, circuitsPending: 0, alertUnread: 0 };
 
 describe('HeadIconRow', () => {
-  it('يعرض البطاقات العشر بروابطها الصحيحة', () => {
+  it('يعرض البطاقات الإحدى عشرة بروابطها الصحيحة', () => {
     render(<HeadIconRow counts={zero} />);
 
     const nav = screen.getByRole('navigation', { name: 'أقسام لوحة رئيس القسم' });
-    expect(nav.querySelectorAll('a')).toHaveLength(10);
+    expect(nav.querySelectorAll('a')).toHaveLength(11);
+    expect(screen.getByRole('link', { name: 'التنبيهات' })).toHaveAttribute('href', '/alerts');
     expect(screen.getByRole('link', { name: 'الإحصائيات' })).toHaveAttribute('href', '/stats');
     expect(screen.getByRole('link', { name: 'المطالعات' })).toHaveAttribute('href', '/reviews');
     expect(screen.getByRole('link', { name: 'المراسلات' })).toHaveAttribute('href', '/correspondence');
@@ -43,7 +44,7 @@ describe('HeadIconRow', () => {
   it('يُظهر الأجراس الأربعة بعدّاداتها في التسمية عند وجود تنبيه فقط', () => {
     render(
       <HeadIconRow
-        counts={{ reviewsPending: 2, urgentCorrespondence: 0, delegationsPending: 5, entityPending: 1, circuitsPending: 0 }}
+        counts={{ reviewsPending: 2, urgentCorrespondence: 0, delegationsPending: 5, entityPending: 1, circuitsPending: 0, alertUnread: 0 }}
       />,
     );
 
@@ -68,7 +69,7 @@ describe('HeadIconRow', () => {
   it('يُظهر شارة معلقات الدوائر على بطاقة الإدارة عند وجود انتظار', () => {
     render(
       <HeadIconRow
-        counts={{ reviewsPending: 0, urgentCorrespondence: 0, delegationsPending: 0, entityPending: 0, circuitsPending: 3 }}
+        counts={{ reviewsPending: 0, urgentCorrespondence: 0, delegationsPending: 0, entityPending: 0, circuitsPending: 3, alertUnread: 0 }}
       />,
     );
 
@@ -80,7 +81,7 @@ describe('HeadIconRow', () => {
   it('يستخدم المفرد التام عند العدّ 1 (لا «1 جهات» ولا «1 كتب»)', () => {
     render(
       <HeadIconRow
-        counts={{ reviewsPending: 1, urgentCorrespondence: 0, delegationsPending: 1, entityPending: 0, circuitsPending: 0 }}
+        counts={{ reviewsPending: 1, urgentCorrespondence: 0, delegationsPending: 1, entityPending: 0, circuitsPending: 0, alertUnread: 0 }}
       />,
     );
 
@@ -96,7 +97,7 @@ describe('HeadIconRow', () => {
     render(<HeadIconRow counts={zero} scopeLabel="مؤشرات الشعبة" isSubHead />);
 
     const nav = screen.getByRole('navigation', { name: 'أقسام لوحة رئيس الشعبة' });
-    expect(nav.querySelectorAll('a')).toHaveLength(10);
+    expect(nav.querySelectorAll('a')).toHaveLength(11);
     expect(screen.getByRole('link', { name: 'سجل التدقيق' })).toHaveAttribute('href', '/audit-logs');
     expect(screen.getByText('مؤشرات الشعبة')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'الإحصائيات' })).toHaveAttribute('href', '/stats');

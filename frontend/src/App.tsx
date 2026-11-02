@@ -10,6 +10,7 @@ import LegacyRouteBanner from './components/LegacyRouteBanner';
 
 const Login = lazy(() => import('./pages/Login'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const AlertsPage = lazy(() => import('./pages/AlertsPage'));
 const DocumentsList = lazy(() => import('./pages/DocumentsList'));
 const AppealsList = lazy(() => import('./pages/AppealsList'));
 const AppealDetail = lazy(() => import('./pages/AppealDetail'));
@@ -289,6 +290,14 @@ export default function App() {
               element={
                 <RequireRole allowed={(_role, _full, _head, _sub, both) => Boolean(both)}>
                   <ExecutionCircuitsPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/alerts"
+              element={
+                <RequireRole allowed={allowInternal}>
+                  <AlertsPage />
                 </RequireRole>
               }
             />

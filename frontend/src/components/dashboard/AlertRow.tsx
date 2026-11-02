@@ -3,13 +3,7 @@ import type { HeadAlertSummaryDto } from '../../types';
 import { TARGET_TYPE_BADGES, appealAwareTypeLabel } from './dashboardFormat';
 import { formatDateTime } from '../../utils/dates';
 import { AlertDetails } from './AlertDetails';
-
-/**
- * ملاحظة إعادة القيد (`HeadAlertKindCatalog.CircuitPendingDocuments`): كل محامٍ ×
- * كل دائرة، مدمجة — تفتح صفحة معلقاته كاملة مجموعةً بالدوائر، لا ملفات بعينها.
- * التوجيه بـ`kind` الدلالي لا ببادئة النص: `messagePreview` قد تُبتر ويتغيّر نصها.
- */
-const CIRCUIT_PENDING_DOCUMENTS = 'circuit_pending_documents';
+import { alertKindLabel, alertRoute, isKnownAlertKind } from './alertKinds';
 
 /**
  * صف تنبيه واحد من عقد الملخص (`HeadAlertSummaryDto`): يعرض `messagePreview` وحدها،
@@ -29,13 +23,31 @@ export function AlertRow({
   onMarkRead,
   markingKey,
   sentView = false,
+  onOpen,
+  onOpenRecipients,
 }: {
   alert: HeadAlertSummaryDto;
   onMarkRead?: (a: HeadAlertSummaryDto) => void;
   markingKey?: string | null;
   sentView?: boolean;
+  /**
+   * فتح النص الكامل في حوار (صفحة `/alerts`). تمريره يُلغي الكشف السطري
+   * (`AlertDetails`): وظيفة واحدة بمسار واحد، والحوار هو المسار على الصفحة.
+   */
+  onOpen?: (a: HeadAlertSummaryDto) => void;
+  /** فتح قائمة المستلمين وحالة قراءتهم — في عرض الصادر فقط. */
+  onOpenRecipients?: (a: HeadAlertSummaryDto) => void;
 }) {
   const isMarking = markingKey === String(alert.id);
+  // الوجهة من الكتالوج الدلالي، ثم سلسلة احتياط المعرّفات (AlertKinds.alertRoute).
+  const href = alertRoute(alert);
+  const typeLabel = appealAwareTypeLabel(alert);
+  // تسمية النوع من الكتالوج للمعروف فقط، وبلا تكرار: بعض الأنواع تسميتها هي
+  // تسمية نوع الهدف نفسها (نحو «إسناد استئناف»)، وإعادة عرضها مرتين تشوّش الصف
+  // وتُربك قارئ الشاشة.
+  const kindLabel = isKnownAlertKind(alert.kind) && alertKindLabel(alert.kind) !== typeLabel
+    ? alertKindLabel(alert.kind)
+    : null;
   return (
     <li>
       <div className="flex items-start gap-3 px-4 sm:px-5 py-3">
@@ -49,32 +61,8 @@ export function AlertRow({
           />
         )}
         <div className="min-w-0 flex-1">
-          {alert.kind === CIRCUIT_PENDING_DOCUMENTS ? (
-            <Link
-              to="/pending-registrations"
-              className="block font-medium text-gray-800 hover:text-emerald-700 break-words"
-            >
-              {alert.messagePreview}
-            </Link>
-          ) : alert.reviewLetterId ? (
-            <Link
-              to={`/reviews/${alert.reviewLetterId}`}
-              className="block font-medium text-gray-800 hover:text-emerald-700 break-words"
-            >
-              {alert.messagePreview}
-            </Link>
-          ) : alert.appealId ? (
-            <Link
-              to={`/appeals/${alert.appealId}`}
-              className="block font-medium text-gray-800 hover:text-emerald-700 break-words"
-            >
-              {alert.messagePreview}
-            </Link>
-          ) : alert.documentId ? (
-            <Link
-              to={`/documents/${alert.documentId}`}
-              className="block font-medium text-gray-800 hover:text-emerald-700 break-words"
-            >
+          {href ? (
+            <Link to={href} className="block font-medium text-gray-800 hover:text-emerald-700 break-words">
               {alert.messagePreview}
             </Link>
           ) : (
@@ -89,21 +77,46 @@ export function AlertRow({
                 TARGET_TYPE_BADGES[alert.targetType] ?? 'bg-gray-100 text-gray-700 border-gray-200'
               }`}
             >
-              {appealAwareTypeLabel(alert)}
+              {typeLabel}
             </span>
+            {/* تسمية النوع من الكتالوج — تُعرض للمعروف فقط: الرمز المجهول بلا تسمية
+                صادقة، وإظهار «تنبيه» العامة لكل صف تاريخي لا يضيف معلومة. */}
+            {kindLabel ? (
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-200 break-words">
+                {kindLabel}
+              </span>
+            ) : null}
             {alert.targetLawyerName ? (
               <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200">
                 إلى: {alert.targetLawyerName}
               </span>
             ) : null}
           </div>
-          {/* يُركَّب الفتح عن الطلب فقط للمعاينات المقطوعة — فلا 100 نسخة هوك
-              (أثر/حالة) لكل صف في القوائم الطويلة. الحارس داخل المكوّن يبقى دفاعيًا. */}
-          {alert.previewTruncated ? (
+          {/* الكشف السطري للمعاينات المقطوعة — داخل اللوحة القديمة. على الصفحة
+              يُمرَّر `onOpen` فيُستبدل بالحوار كي لا تتكرر الوظيفة بمسارين. */}
+          {alert.previewTruncated && !onOpen ? (
             <AlertDetails alertId={alert.id} previewTruncated />
           ) : null}
         </div>
         <div className="shrink-0 flex flex-col items-end gap-1.5">
+          {onOpen ? (
+            <button
+              type="button"
+              onClick={() => onOpen(alert)}
+              className="min-h-11 px-3 rounded-lg text-xs font-medium border border-gray-200 text-gray-600 hover:text-emerald-700 hover:border-emerald-200 hover:bg-emerald-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+            >
+              عرض التنبيه
+            </button>
+          ) : null}
+          {onOpenRecipients && alert.recipientCount != null ? (
+            <button
+              type="button"
+              onClick={() => onOpenRecipients(alert)}
+              className="min-h-11 px-3 rounded-lg text-xs font-medium border border-gray-200 text-gray-600 hover:text-emerald-700 hover:border-emerald-200 hover:bg-emerald-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+            >
+              المستلمون
+            </button>
+          ) : null}
           {onMarkRead && !alert.isRead ? (
             <button
               type="button"

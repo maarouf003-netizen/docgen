@@ -1,4 +1,4 @@
-import type { HeadAlertSummaryDto, PagedResult } from '../types';
+import type { HeadAlertDto, HeadAlertRecipientDto, HeadAlertSummaryDto, PagedResult } from '../types';
 import { ContractError } from './contractError';
 
 /**
@@ -59,4 +59,37 @@ export function readAlertsPage(data: unknown): PagedResult<HeadAlertSummaryDto> 
     totalCount,
     totalPages: Math.ceil(totalCount / perPage),
   };
+}
+
+/**
+ * رسالة مخالفة عقد التفاصيل/المستلمين — صياغة عرض مباشرة مثل رسالة القوائم:
+ * العطل في القراءة لا في وجود البيانات، والمستخدم يُدعى لمحاولة واحدة ثم الإبلاغ.
+ */
+const DETAIL_CONTRACT_ERROR_MESSAGE =
+  'تعذّر قراءة نص التنبيه — أعِد المحاولة، وإن استمر الخطأ فأبلغ الدعم';
+const RECIPIENTS_CONTRACT_ERROR_MESSAGE =
+  'تعذّر قراءة قائمة المستلمين — أعِد المحاولة، وإن استمر الخطأ فأبلغ الدعم';
+
+/**
+ * يفكّ `HeadAlertDto` القادم من `GET /alerts/{id}` بحارس شكل أدنى: كائن يحمل
+ * `id` صحيحًا و`message` نصًا و`kind` نصًا. لا نُعيد بناء العقد كله هنا (الأنواع
+ * تحرسه وقت الترجمة عبر `contract_sync_alerts.test.ts`)، لكن جسمًا غير متوقع
+ * (صفحة HTML، `null`، جسم قائمة) يجب أن يُعلن لا أن يُعرض كنص فارغ.
+ */
+export function readAlertDetail(data: unknown): HeadAlertDto {
+  const body = (typeof data === 'object' && data !== null ? data : {}) as Record<string, unknown>;
+  if (
+    typeof body.id !== 'number' ||
+    typeof body.message !== 'string' ||
+    typeof body.kind !== 'string'
+  ) {
+    throw new ContractError(DETAIL_CONTRACT_ERROR_MESSAGE);
+  }
+  return data as HeadAlertDto;
+}
+
+/** يفكّ مستلمي التنبيه — المصفوفة هي الشكل الوحيد المقبول، وغيره خرق عقد. */
+export function readAlertRecipients(data: unknown): HeadAlertRecipientDto[] {
+  if (!Array.isArray(data)) throw new ContractError(RECIPIENTS_CONTRACT_ERROR_MESSAGE);
+  return data as HeadAlertRecipientDto[];
 }

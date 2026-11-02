@@ -10,14 +10,15 @@ vi.mock('react-router-dom', () => ({
   ),
 }));
 
-const zero = { unseenReplies: 0, urgentCorrespondence: 0, calendarAlerts: 0, pendingRegistrations: 0 };
+const zero = { unseenReplies: 0, urgentCorrespondence: 0, calendarAlerts: 0, pendingRegistrations: 0, alertUnread: 0 };
 
 describe('LawyerIconRow', () => {
-  it('يعرض البطاقات الست بروابطها الصحيحة', () => {
+  it('يعرض البطاقات السبع بروابطها الصحيحة', () => {
     render(<LawyerIconRow counts={zero} showReferredFiles />);
 
     const nav = screen.getByRole('navigation', { name: 'أقسام لوحة المحامي' });
-    expect(nav.querySelectorAll('a')).toHaveLength(6);
+    expect(nav.querySelectorAll('a')).toHaveLength(7);
+    expect(screen.getByRole('link', { name: 'التنبيهات' })).toHaveAttribute('href', '/alerts');
     expect(screen.getByRole('link', { name: 'الإحصائيات' })).toHaveAttribute('href', '/stats');
     expect(screen.getByRole('link', { name: 'المطالعات' })).toHaveAttribute('href', '/reviews');
     expect(screen.getByRole('link', { name: 'المراسلات' })).toHaveAttribute('href', '/correspondence');
@@ -29,7 +30,7 @@ describe('LawyerIconRow', () => {
   it('يُظهر الأجراس الحمراء بعدّاداتها في التسمية عند وجود تنبيه', () => {
     render(
       <LawyerIconRow
-        counts={{ unseenReplies: 3, urgentCorrespondence: 0, calendarAlerts: 2, pendingRegistrations: 0 }}
+        counts={{ unseenReplies: 3, urgentCorrespondence: 0, calendarAlerts: 2, pendingRegistrations: 0, alertUnread: 0 }}
         showReferredFiles
       />,
     );
@@ -44,7 +45,7 @@ describe('LawyerIconRow', () => {
   it('يُظهر شارة الملفات المحالة بعدّادها عند وجود معلقات', () => {
     render(
       <LawyerIconRow
-        counts={{ unseenReplies: 0, urgentCorrespondence: 0, calendarAlerts: 0, pendingRegistrations: 2 }}
+        counts={{ unseenReplies: 0, urgentCorrespondence: 0, calendarAlerts: 0, pendingRegistrations: 2, alertUnread: 0 }}
         showReferredFiles
       />,
     );
@@ -57,7 +58,7 @@ describe('LawyerIconRow', () => {
   it('يستخدم المفرد التام عند العدّ 1 (لا «1 مراسلات» ولا «1 ردود»)', () => {
     render(
       <LawyerIconRow
-        counts={{ unseenReplies: 1, urgentCorrespondence: 1, calendarAlerts: 1, pendingRegistrations: 1 }}
+        counts={{ unseenReplies: 1, urgentCorrespondence: 1, calendarAlerts: 1, pendingRegistrations: 1, alertUnread: 0 }}
         showReferredFiles
       />,
     );
@@ -76,7 +77,7 @@ describe('LawyerIconRow', () => {
     render(<LawyerIconRow counts={zero} showReferredFiles={false} />);
 
     const nav = screen.getByRole('navigation', { name: 'أقسام لوحة المحامي' });
-    expect(nav.querySelectorAll('a')).toHaveLength(5);
+    expect(nav.querySelectorAll('a')).toHaveLength(6);
     expect(screen.queryByRole('link', { name: 'ملفات معلقة' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'لا معلقات' })).not.toBeInTheDocument();
   });
