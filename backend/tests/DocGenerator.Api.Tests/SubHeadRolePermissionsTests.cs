@@ -56,20 +56,16 @@ public sealed class SubHeadRolePermissionsTests
         => Assert.Equal(expected, RolePermissions.IsHeadOrSubHead(role));
 
     [Theory]
-    [InlineData(UserRole.Head, true, true)]
-    [InlineData(UserRole.SubHead, true, true)]
-    [InlineData(UserRole.Lawyer, true, false)]
-    [InlineData(UserRole.Manager, false, false)]
-    [InlineData(UserRole.Admin, false, false)]
-    [InlineData(UserRole.EntityManager, false, false)]
-    public void AlertScopes_AreNested_ReceivedSubsetOfReceiving(
-        UserRole role, bool canReceive, bool canUseReceived)
+    [InlineData(UserRole.Head, true)]
+    [InlineData(UserRole.SubHead, true)]
+    [InlineData(UserRole.Lawyer, true)]
+    [InlineData(UserRole.Manager, false)]
+    [InlineData(UserRole.Admin, false)]
+    [InlineData(UserRole.EntityManager, false)]
+    public void CanReceiveAlerts_MatchesDecisionMatrix(UserRole role, bool expected)
     {
-        // ح‑23: مصدر حقيقة واحد — أي دور يملك «المستلَم» يملك «الشخصي» بالضرورة.
-        Assert.Equal(canReceive, RolePermissions.CanReceiveAlerts(role));
-        Assert.Equal(canUseReceived, RolePermissions.CanUseReceivedScope(role));
-        if (canUseReceived)
-            Assert.True(canReceive);
+        // ح‑23 (بعد PR-6a): مصدر حقيقة واحد لاستلام التنبيهات — لا سطح `received` ميتًا.
+        Assert.Equal(expected, RolePermissions.CanReceiveAlerts(role));
     }
 
     [Theory]

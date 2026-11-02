@@ -455,7 +455,6 @@ public class HeadAlertServiceTests : IDisposable
         // المنشئ يرى المستلمين دائمًا، وهو ليس مستلمًا فلا حالة قراءة له.
         Assert.True(detail.CanViewRecipients);
         Assert.Null(detail.IsRead);
-        Assert.Equal(1, detail.RecipientCount);
 
         // المستلم غير المنشئ: يرى التفاصيل لكنه لا يرى المستلمين، وحالة القراءة تخصّه.
         var recipientDetail = await _service.GetDetailsAsync(created.Id, ActorFor(_lawyer1));
@@ -472,7 +471,7 @@ public class HeadAlertServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Detail_CreatorWithThreeRecipients_GetsCounters_AndNullIsRead()
+    public async Task Detail_CreatorWithThreeRecipients_HasNullIsRead_AndNoCounters()
     {
         var lawyer3 = new User
         {
@@ -488,20 +487,17 @@ public class HeadAlertServiceTests : IDisposable
         var created = await _service.CreateAsync(
             new CreateHeadAlertRequest("branch", null, null, "تعميم"), ActorFor(_head), "head_x");
 
-        // المنشئ ليس مستلمًا: IsRead فارغة، والعدّادان محتفظ بهما في التفاصيل (D5).
+        // المنشئ ليس مستلمًا: IsRead فارغة، وعقد التفاصيل بلا عدّادي المستلمين (PR-6a).
         var detail = await _service.GetDetailsAsync(created.Id, ActorFor(_head));
         Assert.NotNull(detail);
         Assert.True(detail!.CanViewRecipients);
         Assert.Null(detail.IsRead);
-        Assert.Equal(3, detail.RecipientCount);
-        Assert.Equal(3, detail.UnreadCount);
 
         // مستلم غير الفاعل: حالته تخصّه (غير مقروء) ولا يرى المستلمين.
         var recipientDetail = await _service.GetDetailsAsync(created.Id, ActorFor(lawyer3));
         Assert.NotNull(recipientDetail);
         Assert.False(recipientDetail!.IsRead);
         Assert.False(recipientDetail.CanViewRecipients);
-        Assert.Equal(3, recipientDetail.RecipientCount);
     }
 
     [Fact]
@@ -533,12 +529,10 @@ public class HeadAlertServiceTests : IDisposable
         _db.ChangeTracker.Clear();
         Assert.Equal(readAt, (await _db.HeadAlertRecipients.SingleAsync(r => r.Id == mine.Id)).ReadAt);
 
-        // التفاصيل تعكس حالة القارئ والعدّاد المحتفظ به (D5) بدقة.
+        // التفاصيل تعكس حالة القارئ بدقة، بلا عدّادي مستلمين (PR-6a).
         var detail = await _service.GetDetailsAsync(created.Id, ActorFor(_lawyer1));
         Assert.NotNull(detail);
         Assert.True(detail!.IsRead);
-        Assert.Equal(2, detail.RecipientCount);
-        Assert.Equal(1, detail.UnreadCount);
     }
 
     [Fact]

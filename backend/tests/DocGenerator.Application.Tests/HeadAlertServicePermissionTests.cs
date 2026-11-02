@@ -367,37 +367,30 @@ public class HeadAlertServicePermissionTests : IDisposable
     }
 
     [Theory]
-    [InlineData(UserRole.Manager, AlertUnreadScope.User)]
-    [InlineData(UserRole.Manager, AlertUnreadScope.Received)]
-    [InlineData(UserRole.Admin, AlertUnreadScope.User)]
-    [InlineData(UserRole.Admin, AlertUnreadScope.Received)]
-    public async Task CountUnread_OversightRoles_AreRejectedInBothScopes(
-        UserRole role, AlertUnreadScope scope)
+    [InlineData(UserRole.Manager)]
+    [InlineData(UserRole.Admin)]
+    public async Task CountUnread_OversightRoles_AreRejected(UserRole role)
     {
         var actor = new HeadAlertActor(_manager.Id, role, null);
 
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.CountUnreadAsync(actor, scope));
-    }
-
-    [Theory]
-    [InlineData(AlertUnreadScope.User)]
-    [InlineData(AlertUnreadScope.Received)]
-    public async Task CountUnread_BranchlessHead_IsRejectedInBothScopes(AlertUnreadScope scope)
-    {
-        // D11: رئيس بلا فرع حساب غير صالح للقراءة ⇒ 403 في النطاقين.
-        var branchlessHead = new HeadAlertActor(_headA.Id, UserRole.Head, null);
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.CountUnreadAsync(branchlessHead, scope));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.CountUnreadAsync(actor, AlertUnreadScope.User));
     }
 
     [Fact]
-    public async Task CountUnread_LawyerIsBranchless_ButReceivedScopeIsForHeadsOnly()
+    public async Task CountUnread_BranchlessHead_IsRejected()
+    {
+        // D11: رئيس بلا فرع حساب غير صالح للقراءة ⇒ 403.
+        var branchlessHead = new HeadAlertActor(_headA.Id, UserRole.Head, null);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            _service.CountUnreadAsync(branchlessHead, AlertUnreadScope.User));
+    }
+
+    [Fact]
+    public async Task CountUnread_LawyerIsBranchless()
     {
         // المحامي بلا قيد فرع أصلًا: تنبيهان غير مقروءين له في الفرعين.
         Assert.Equal(2, await _service.CountUnreadAsync(ActorFor(_lawyerA), AlertUnreadScope.User));
-
-        // «المستلَم» مجموع مستلمي تنبيهات الرئيس — لا معنى له لمحامٍ ⇒ 403.
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            _service.CountUnreadAsync(ActorFor(_lawyerA), AlertUnreadScope.Received));
     }
 
     [Fact]
@@ -432,37 +425,27 @@ public class HeadAlertServicePermissionTests : IDisposable
     }
 
     [Fact]
-    public async Task CountUnread_HeadMarkingOwnRowRead_DecrementsUserOnly()
+    public async Task CountUnread_HeadMarkingOwnRowRead_DecrementsUserScope()
     {
-        // ح‑21: الفرق العملي بين النطاقين — قراءة الرئيس صفّه تخفض `user`،
-        // ولا تُسقط `received` إلا بمقدار صفّه (يبقى صف المحامي غير المقروء).
+        // ح‑21: قراءة الرئيس صفّه تخفض `user` بمقدار واحد.
         var collective = AddAlert(_branchA, _headB.Id, "استلام جماعي", _lawyerA.Id,
             _headA.Id, _lawyerA.Id);
 
-        // received = 1 (`_alertHead`) + 2 (collective) = 3، وuser = 2.
-        Assert.Equal(3, await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.Received));
         Assert.Equal(2, await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.User));
 
         Assert.True(await _service.MarkReadAsync(collective.Id, ActorFor(_headA)));
 
-        Assert.Equal(2, await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.Received));
         Assert.Equal(1, await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.User));
     }
 
     [Fact]
-    public async Task CountUnread_ReceivedScope_IsAvailableToSubHead_InHisBranch()
+    public async Task CountUnread_UserScope_IsAvailableToSubHead_InHisBranch()
     {
-        // ح‑21: الشعبة دور مستقل بعقد قراءة — النطاقان متاحان لها داخل فرعها.
-        var collective = AddAlert(_branchA, _headB.Id, "استلام شعبة", _lawyerA.Id,
+        // ح‑21: الشعبة دور مستقل بعقد قراءة — النطاق متاح لها داخل فرعها.
+        AddAlert(_branchA, _headB.Id, "استلام شعبة", _lawyerA.Id,
             _subA.Id, _lawyerA.Id);
 
-        var user = await _service.CountUnreadAsync(ActorFor(_subA), AlertUnreadScope.User);
-        var received = await _service.CountUnreadAsync(ActorFor(_subA), AlertUnreadScope.Received);
-
-        Assert.Equal(1, user);
-        Assert.Equal(2, received);
-        // ح‑23: الثابت البنيوي — `received` ⊇ `user` لكل دور مستلم.
-        Assert.True(received >= user);
+        Assert.Equal(1, await _service.CountUnreadAsync(ActorFor(_subA), AlertUnreadScope.User));
     }
 
     [Fact]
@@ -474,34 +457,16 @@ public class HeadAlertServicePermissionTests : IDisposable
     }
 
     [Fact]
-    public async Task CountUnread_ReceivedScope_CountsAllUnreadRecipientsOfReceivedAlerts()
+    public async Task CountUnread_ArchivedAndOtherBranch_AreExcluded()
     {
-        // تنبيه جماعي في فرع الرئيس: هو مستلم فيه مع محاميين، والثلاثة لم يقرأوا.
-        var collective = AddAlert(_branchA, _headB.Id, "استلام جماعي", _lawyerA.Id,
-            _headA.Id, _lawyerA.Id, _lawyerB.Id);
-
-        // D6: كل صفوف غير المقروءة على التنبيهات التي استلمها (3 + 1 في `_alertHead`)
-        // — لا صفّه وحده (2)، ولا تنبيهات لا يستلمها (`_alertA` و`_alertOther`).
-        Assert.Equal(4, await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.Received));
-        Assert.Equal(2, await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.User));
-
-        // قراءة محامٍ من التنبيه تخفض «المستلَم» وحده، ولا تمس صف الرئيس.
-        Assert.True(await _service.MarkReadAsync(collective.Id, ActorFor(_lawyerA)));
-        Assert.Equal(3, await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.Received));
-        Assert.Equal(2, await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.User));
-    }
-
-    [Fact]
-    public async Task CountUnread_ArchivedAndOtherBranch_AreExcludedInBothScopes()
-    {
-        // مؤرشف في فرعه ومستلم فيه: لو حُسب لأضاف 1 إلى `user` و2 إلى `received`.
+        // مؤرشف في فرعه ومستلم فيه: لو حُسب لأضاف 1 إلى `user`.
         var archived = AddAlert(_branchA, _headB.Id, "مؤرشف", _lawyerA.Id,
             _headA.Id, _lawyerA.Id);
         archived.IsArchived = true;
         _db.SaveChanges();
 
+        // تنبيه فرع حلب (`_alertHeadInB`) مستبعد رغم أن الرئيس مستلمه — قيد الفرع.
         Assert.Equal(1, await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.User));
-        Assert.Equal(1, await _service.CountUnreadAsync(ActorFor(_headA), AlertUnreadScope.Received));
     }
 
     private HeadAlert AddAlert(

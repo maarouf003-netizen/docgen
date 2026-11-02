@@ -283,18 +283,6 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
                 && (branchId == null || r.HeadAlert!.BranchId == branchId),
             ct);
 
-    public Task<int> CountUnreadForReceivedAsync(
-        int userId, int branchId, CancellationToken ct = default)
-        // D6 حرفيًا: صفوف غير المقروءة على تنبيهات استلمها الرئيس في فرعه — أي مجموع
-        // غير المقروء لكل تنبيه في قائمته، لا صفّه وحده. شرط EXISTS يمنع كشف تنبيهات
-        // لا يستلمها، ويُخدم بفهرس `(HeadAlertId, UserId)`.
-        => Db.HeadAlertRecipients.CountAsync(
-            r => !r.IsRead
-                && !r.HeadAlert!.IsArchived
-                && r.HeadAlert!.BranchId == branchId
-                && r.HeadAlert!.Recipients.Any(x => x.UserId == userId),
-            ct);
-
     public async Task<HeadAlertDetailRow?> GetDetailRowAsync(
         int alertId, int actorUserId, CancellationToken ct = default)
     {
@@ -330,9 +318,7 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
                 a.Recipients
                     .Where(r => r.UserId == actorUserId)
                     .Select(r => (bool?)r.IsRead)
-                    .FirstOrDefault(),
-                a.Recipients.Count(),
-                a.Recipients.Count(r => !r.IsRead)))
+                    .FirstOrDefault()))
             .FirstOrDefaultAsync(ct);
     }
 

@@ -272,11 +272,11 @@ export interface HeadAlertRecipientDto {
 /**
  * عقد **التفاصيل** على السلك (`GET /api/alerts/{id}` — مرآة `HeadAlertDto` الخلفي،
  * `docs/HEAD_ALERTS_RESTRUCTURE_PLAN.md` §9.2): العقد الوحيد الذي يحمل `message` كاملًا.
- * `recipientCount`/`unreadCount` محتفظ بهما مؤقتًا حتى `PR-6`، و`canViewRecipients`
- * يحكم قائمة المستلمين وحدها لا العدّادين.
+ * لا يحمل عدّادي `recipientCount`/`unreadCount` (أُزيلا في `PR-6a`) — العدّادان في
+ * `HeadAlertSummaryDto` وحده، و`canViewRecipients` يحكم قائمة المستلمين وحدها.
  *
  * المفاتيح هنا ملزمة بالبيان المشترك `src/test/contracts/head-alert-contracts.json`
- * (كُتلة `headAlertDetail` + `retainedHeadAlertDetail`) ويحرسها `contract_sync_alerts.test.ts`.
+ * (كُتلة `headAlertDetail`) ويحرسها `contract_sync_alerts.test.ts`.
  */
 export interface HeadAlertDto {
   id: number;
@@ -302,10 +302,6 @@ export interface HeadAlertDto {
   createdByName: string | null;
   isRead: boolean | null;
   canViewRecipients: boolean;
-  /** محتفظ به مؤقتًا (PR-6) — عدّاد مستلمي الصف كما في العقد السابق. */
-  recipientCount: number | null;
-  /** محتفظ به مؤقتًا (PR-6) — عدّاد غير المقروء كما في العقد السابق. */
-  unreadCount: number | null;
 }
 
 /**

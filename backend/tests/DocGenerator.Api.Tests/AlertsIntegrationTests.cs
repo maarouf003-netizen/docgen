@@ -551,10 +551,10 @@ public class AlertsIntegrationTests
     }
 
     [Fact]
-    public async Task Detail_RetainsCounters_ForLawyerRecipient_UntilPR6()
+    public async Task Detail_OmitsRecipientAndUnreadCounters_WhileSummaryRetainsThem()
     {
-        // D5/D9/P3-3: عدّادا التفاصيل محتفظ بهما للمحامي أيضًا قبل PR-6،
-        // و`CanViewRecipients=false` لا يعني غيابهما (توضيح عقد 2026-10-30).
+        // PR-6a: عقدان لا عقد واحد — العدّادان في الملخّص (قائمة «مرسلة») وحدهما،
+        // ومحذوفان من جسم التفاصيل حذفًا فعليًا لا `null` أو صفرًا.
         var branchId = await _factory.CreateBranchAsync("عدّادات تفاصيل");
         var headName = (await _factory.CreateUserAsync(UniqueName("head_ct"), UserRole.Head, branchId)).Username;
         var lawyer = await _factory.CreateUserAsync(UniqueName("lawyer_ct"), UserRole.Lawyer, branchId);
@@ -564,27 +564,27 @@ public class AlertsIntegrationTests
             targetType = "lawyer",
             documentId = (int?)null,
             targetLawyerId = lawyer.Id,
-            message = "عدّادات محفوظة",
+            message = "عدّادات محذوفة",
         });
 
         var lawyerClient = _factory.AuthorizedClient(lawyer.Username);
-        var before = await (await lawyerClient.GetAsync($"/api/alerts/{created.Id}"))
-            .Content.ReadFromJsonAsync<HeadAlertDto>();
-        Assert.NotNull(before);
-        Assert.False(before!.CanViewRecipients);
-        Assert.False(before.IsRead);
-        Assert.Equal(1, before.RecipientCount);
-        Assert.Equal(1, before.UnreadCount);
+        var response = await lawyerClient.GetAsync($"/api/alerts/{created.Id}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        Assert.Equal(HttpStatusCode.NoContent,
-            (await lawyerClient.PatchAsJsonAsync($"/api/alerts/{created.Id}/read", new { })).StatusCode);
+        var detail = await response.Content.ReadFromJsonAsync<HeadAlertDto>();
+        Assert.NotNull(detail);
+        Assert.False(detail!.CanViewRecipients);
+        Assert.False(detail.IsRead);
 
-        var after = await (await lawyerClient.GetAsync($"/api/alerts/{created.Id}"))
-            .Content.ReadFromJsonAsync<HeadAlertDto>();
-        Assert.NotNull(after);
-        Assert.True(after!.IsRead);
-        Assert.Equal(1, after.RecipientCount);
-        Assert.Equal(0, after.UnreadCount);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.False(json.RootElement.TryGetProperty("recipientCount", out _));
+        Assert.False(json.RootElement.TryGetProperty("unreadCount", out _));
+
+        // الملخّص في «مرسلة» يبقى حاملًا العدّادين (المجموع التجميعي المعتمد).
+        var sent = await GetAlertsAsync(head, "/sent?pageSize=100");
+        var item = Assert.Single(sent.Items, a => a.Id == created.Id);
+        Assert.Equal(1, item.RecipientCount);
+        Assert.Equal(1, item.UnreadCount);
     }
 
     [Fact]
@@ -1034,7 +1034,6 @@ public class AlertsIntegrationTests
                      "/api/alerts/sent",
                      "/api/alerts/unread-count",
                      "/api/alerts/unread-count?scope=user",
-                     "/api/alerts/unread-count?scope=received",
                  })
         {
             Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync(path)).StatusCode);

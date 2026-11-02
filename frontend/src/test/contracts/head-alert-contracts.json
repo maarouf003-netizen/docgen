@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "head-alert-contracts",
-  "description": "مصدر الحقيقة لعقود التنبيهات على السلك (camelCase) وفق docs/HEAD_ALERTS_RESTRUCTURE_PLAN.md §9.2. يستهلكه اختبار الخلفية HeadAlertContractTests (يعكس أعضاء سجلات C# وPagedResult) واختبار الواجهة contract_sync_alerts.test.ts في PR-5. أي حقل جديد/محذوف/مُعاد تسميته في أي طرف يُفشل الحارس عمدًا. الحقلان retainedHeadAlertDetail محتفظ بهما مؤقتًا من عقد ما قبل PR-4 (قرار ورقة الانطلاق §3.2: لا حذف في هذه المرحلة) ويُزالان في PR-6 بعد توقف الواجهة عن عقد التفاصيل القديم.",
+  "description": "مصدر الحقيقة لعقود التنبيهات على السلك (camelCase) وفق docs/HEAD_ALERTS_RESTRUCTURE_PLAN.md §9.2. يستهلكه اختبار الخلفية HeadAlertContractTests (يعكس أعضاء سجلات C# وPagedResult) واختبار الواجهة contract_sync_alerts.test.ts في PR-5. أي حقل جديد/محذوف/مُعاد تسميته في أي طرف يُفشل الحارس عمدًا. العدّادان recipientCount/unreadCount في كتلة الملخّص وحدها؛ أُزيلا من كتلة التفاصيل في PR-6a (عقدان لا عقد واحد).",
   "version": 1,
   "source": "docs/HEAD_ALERTS_RESTRUCTURE_PLAN.md §9.2",
   "headAlertSummary": [
@@ -49,10 +49,6 @@
     "createdByName",
     "isRead",
     "canViewRecipients"
-  ],
-  "retainedHeadAlertDetail": [
-    "recipientCount",
-    "unreadCount"
   ],
   "headAlertRecipient": [
     "id",

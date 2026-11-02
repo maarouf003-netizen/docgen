@@ -19,15 +19,13 @@ public record CreateHeadAlertRequest(
 ///
 /// <para><c>IsRead</c> هي حالة القارئ نفسه (أو <c>null</c> لمن ليس مستلمًا)،
 /// و<c>CanViewRecipients</c> قرار خادم (<c>CreatedById == actorUserId</c> أو مدير/مشرف)
-/// لا يملك العميل تعيينه. **دلالته محصورة بقائمة المستلمين** وحدها (زر «عرض المستلمين»)،
-/// ولا تحكم <c>RecipientCount</c>/<c>UnreadCount</c> — العدّادان يُرسَلان دائمًا في هذا
-/// العقد (مؤقتًا حتى PR-6)، فلا يجوز للواجهة استنتاج غيابهما من <c>false</c>.
+/// لا يملك العميل تعيينه. **دلالته محصورة بقائمة المستلمين** وحدها (زر «عرض المستلمين»).
 /// لا يحمل هذا العقد <c>Recipients</c> أبدًا؛ قائمة المستلمين
 /// تُطلب من <c>GET /api/alerts/{id}/recipients</c> وحدها (§9.2).</para>
 ///
-/// <para><c>RecipientCount</c>/<c>UnreadCount</c> محتفظ بهما مؤقتًا من العقد السابق
-/// (ورقة انطلاق PR-4 §3.2: لا حذف في هذه المرحلة) ويُزالان في PR-6 بعد توقف الواجهة
-/// عن عقد التفاصيل القديم.</para>
+/// <para>لا يحمل هذا العقد عدّادي <c>RecipientCount</c>/<c>UnreadCount</c> (أُزيلا في
+/// <c>PR-6a</c>)؛ العدّادان في <see cref="HeadAlertSummaryDto"/> وحده — لقوائم
+/// «مستلمة»/«مرسلة» — ولا يُستنتج وجودهما هنا من <c>CanViewRecipients</c>.</para>
 /// </summary>
 public record HeadAlertDto(
     int Id,
@@ -52,11 +50,7 @@ public record HeadAlertDto(
     DateTime? ArchivedAt,
     string? CreatedByName,
     bool? IsRead,
-    bool CanViewRecipients,
-    /// <summary>محتفظ به مؤقتًا (PR-6) — عدّاد مستلمي الصف كما في العقد السابق.</summary>
-    int? RecipientCount = null,
-    /// <summary>محتفظ به مؤقتًا (PR-6) — عدّاد غير المقروء كما في العقد السابق.</summary>
-    int? UnreadCount = null);
+    bool CanViewRecipients);
 
 /// <summary>
 /// ملخّص تنبيه للقوائم — لا يحمل النص الكامل أبدًا (الخطة §9.2/§13).

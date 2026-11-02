@@ -92,19 +92,21 @@ public class HeadAlertContractTests
     }
 
     [Fact]
-    public void DetailContract_MatchesManifest_PlusExplicitlyRetainedFields()
+    public void DetailContract_MatchesManifest()
     {
         var manifest = LoadManifest();
-        var expected = Array(manifest, "headAlertDetail")
-            .Concat(Array(manifest, "retainedHeadAlertDetail"));
+        var actual = WireNames(typeof(HeadAlertDto));
 
-        AssertSameMembers(expected, WireNames(typeof(HeadAlertDto)));
-        AssertNoForbidden(manifest, "headAlertDetail", WireNames(typeof(HeadAlertDto)));
+        AssertSameMembers(Array(manifest, "headAlertDetail"), actual);
+        AssertNoForbidden(manifest, "headAlertDetail", actual);
 
         // النص الكامل في التفاصيل وحدها، وقائمة المستلمين تُطلب من سطحها (§9.2).
-        var actual = WireNames(typeof(HeadAlertDto));
         Assert.Contains("message", actual);
         Assert.Contains("canViewRecipients", actual);
+
+        // PR-6a: العدّادان في الملخّص وحدهما — لا في عقد التفاصيل.
+        Assert.DoesNotContain("recipientCount", actual);
+        Assert.DoesNotContain("unreadCount", actual);
     }
 
     [Fact]
@@ -156,8 +158,7 @@ public class HeadAlertContractTests
             typeof(HeadAlertDto),
             "documentId", "documentTitle", "targetLawyerId", "targetLawyerName",
             "delegationId", "appealId", "reviewLetterId", "publicEntityId",
-            "executionCircuitId", "archivedAt", "createdByName", "isRead",
-            "recipientCount", "unreadCount");
+            "executionCircuitId", "archivedAt", "createdByName", "isRead");
         AssertNotNullable(
             typeof(HeadAlertDto),
             "id", "kind", "message", "targetType", "createdAt",
