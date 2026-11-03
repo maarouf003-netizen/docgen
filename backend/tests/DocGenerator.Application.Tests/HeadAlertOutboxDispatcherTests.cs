@@ -1,4 +1,5 @@
 using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Audit;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -56,12 +57,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         HeadAlertReferences.SeedDelegations(_db, _branchId, _head.Id, 7, 8, 101, 102);
 
         _provider = BuildProvider();
-        _dispatcher = new HeadAlertOutboxDispatcher(
-            _provider.GetRequiredService<IServiceScopeFactory>(),
-            Options.Create(new HeadAlertOutboxOptions { Enabled = true, MaxAttempts = 3 }),
-            new HeadAlertOutboxLock("Data Source=:memory:", false, NullLogger<HeadAlertOutboxLock>.Instance),
-            new DbExceptionClassifier(),
-            NullLogger<HeadAlertOutboxDispatcher>.Instance);
+        _dispatcher = CreateDispatcher(_provider);
     }
 
     public void Dispose()
@@ -71,7 +67,9 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         _connection.Dispose();
     }
 
-    private ServiceProvider BuildProvider()
+    private ServiceProvider BuildProvider(
+        IAuditLogger? audit = null,
+        ConflictGate? conflictGate = null)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -81,19 +79,34 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IHeadAlertOutboxStore, HeadAlertOutboxStore>();
         services.AddScoped<IHeadAlertOutbox, HeadAlertOutbox>();
-        services.AddScoped<IHeadAlertService>(sp => new HeadAlertService(
-            new HeadAlertRepository(sp.GetRequiredService<DocGeneratorDbContext>()),
-            new DocumentRepository(sp.GetRequiredService<DocGeneratorDbContext>()),
-            new UserRepository(sp.GetRequiredService<DocGeneratorDbContext>()),
-            new Repository<Branch>(sp.GetRequiredService<DocGeneratorDbContext>()),
-            new DelegationRepository(sp.GetRequiredService<DocGeneratorDbContext>()),
-            new UnitOfWork(sp.GetRequiredService<DocGeneratorDbContext>()),
-            sp.GetRequiredService<ITransactionRunner>(),
-            new FakeAuditLogger(),
-            sp.GetRequiredService<ITransactionContext>()));
+        services.AddScoped<IHeadAlertService>(sp =>
+        {
+            var service = new HeadAlertService(
+                new HeadAlertRepository(sp.GetRequiredService<DocGeneratorDbContext>()),
+                new DocumentRepository(sp.GetRequiredService<DocGeneratorDbContext>()),
+                new UserRepository(sp.GetRequiredService<DocGeneratorDbContext>()),
+                new Repository<Branch>(sp.GetRequiredService<DocGeneratorDbContext>()),
+                new DelegationRepository(sp.GetRequiredService<DocGeneratorDbContext>()),
+                new UnitOfWork(sp.GetRequiredService<DocGeneratorDbContext>()),
+                sp.GetRequiredService<ITransactionRunner>(),
+                audit ?? new FakeAuditLogger(),
+                sp.GetRequiredService<ITransactionContext>());
+
+            return conflictGate is null
+                ? service
+                : new ConflictInjectingAlertService(service, conflictGate);
+        });
 
         return services.BuildServiceProvider();
     }
+
+    /// <summary>مشغّل على مزوّد بديل — للاختبارات التي تحتاج حقن فشل في مسار المعالجة.</summary>
+    private static HeadAlertOutboxDispatcher CreateDispatcher(IServiceProvider provider) => new(
+        provider.GetRequiredService<IServiceScopeFactory>(),
+        Options.Create(new HeadAlertOutboxOptions { Enabled = true, MaxAttempts = 3 }),
+        new HeadAlertOutboxLock("Data Source=:memory:", false, NullLogger<HeadAlertOutboxLock>.Instance),
+        new DbExceptionClassifier(),
+        NullLogger<HeadAlertOutboxDispatcher>.Instance);
 
     private IHeadAlertOutbox Outbox() => _provider.GetRequiredService<IHeadAlertOutbox>();
 
@@ -509,6 +522,83 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         Assert.False(Assert.Single(updated.Recipients).IsRead);
     }
 
+    // ── سياسة الإرجاع بعد الفشل (الخطة §6.4 و§18:3081) ──
+
+    [Fact]
+    public async Task ProcessNext_BusinessTransactionFails_RollsBackAlertAndReturnsRowToPending()
+    {
+        // فشل داخل معاملة المعالجة بعد إدراج التنبيه (تسجيل التدقيق) يجب أن يُرجع
+        // المعاملة كاملة: لا تنبيه جزئي ولا مستلمين، والصف يعود pending بمحاولة واحدة.
+        await EnqueueAsync();
+
+        using var provider = BuildProvider(new ThrowingAuditLogger());
+        var dispatcher = CreateDispatcher(provider);
+
+        Assert.True(await dispatcher.ProcessNextAsync(CancellationToken.None));
+
+        Assert.Empty(await _db.HeadAlerts.AsNoTracking().ToListAsync());
+        Assert.Empty(await _db.HeadAlertRecipients.AsNoTracking().ToListAsync());
+
+        var message = await _db.HeadAlertOutboxMessages.AsNoTracking().SingleAsync();
+        Assert.Equal(HeadAlertOutboxStatus.Pending, message.Status);
+        Assert.Equal(1, message.Attempts);
+        Assert.Null(message.ProcessedAt);
+        Assert.Null(message.LockedUntil);
+        Assert.Contains("فشل تسجيل التدقيق", message.LastError!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ProcessNext_DedupeConflict_RetriesOnceWithMarkerThenSucceeds()
+    {
+        await EnqueueAsync();
+        var gate = new ConflictGate(remainingConflicts: 1);
+
+        using var provider = BuildProvider(conflictGate: gate);
+        var dispatcher = CreateDispatcher(provider);
+
+        // المحاولة الأولى: تعارض ⇒ pending فورًا بعلامة conflict_retry (لا failed،
+        // ولا استهلاك عدّاد MaxAttempts)، وبلا تنبيه محفوظ من المحاولة الفاشلة.
+        Assert.True(await dispatcher.ProcessNextAsync(CancellationToken.None));
+
+        var retried = await _db.HeadAlertOutboxMessages.AsNoTracking().SingleAsync();
+        Assert.Equal(HeadAlertOutboxStatus.Pending, retried.Status);
+        Assert.Equal(1, retried.Attempts);
+        Assert.Equal("conflict_retry", retried.LastError);
+        Assert.Null(retried.ProcessedAt);
+        Assert.Null(retried.LockedUntil);
+        Assert.Empty(await _db.HeadAlerts.AsNoTracking().ToListAsync());
+
+        // المحاولة الثانية (بعد زوال التعارض) تنجح: processed وتنبيه واحد.
+        Assert.True(await dispatcher.ProcessNextAsync(CancellationToken.None));
+
+        var processed = await _db.HeadAlertOutboxMessages.AsNoTracking().SingleAsync();
+        Assert.Equal(HeadAlertOutboxStatus.Processed, processed.Status);
+        Assert.Equal(2, processed.Attempts);
+        Assert.Null(processed.LastError);
+        Assert.Single(await _db.HeadAlerts.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task ProcessNext_RepeatedDedupeConflict_FailsWithConflictRetryPrefix()
+    {
+        // التعارض المتكرر لا يعيد إلى ما لا نهاية: المحاولة الثانية تُسجَّل failed
+        // ببادئة العلامة نفسها (عقد §6.4)، ولا يُحفظ تنبيه.
+        await EnqueueAsync();
+        var gate = new ConflictGate(remainingConflicts: 2);
+
+        using var provider = BuildProvider(conflictGate: gate);
+        var dispatcher = CreateDispatcher(provider);
+
+        Assert.True(await dispatcher.ProcessNextAsync(CancellationToken.None));
+        Assert.True(await dispatcher.ProcessNextAsync(CancellationToken.None));
+
+        var failed = await _db.HeadAlertOutboxMessages.AsNoTracking().SingleAsync();
+        Assert.Equal(HeadAlertOutboxStatus.Failed, failed.Status);
+        Assert.Equal(2, failed.Attempts);
+        Assert.StartsWith("conflict_retry:", failed.LastError!, StringComparison.Ordinal);
+        Assert.Empty(await _db.HeadAlerts.AsNoTracking().ToListAsync());
+    }
+
     private static HeadAlertOutboxMessage Terminal(
         HeadAlertOutboxStatus status,
         DateTime createdAt,
@@ -543,5 +633,108 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         Assert.Equal(1, health.PendingCount);
         Assert.Equal(pending.CreatedAt, health.OldestPendingAt);
         Assert.Equal(1, health.FailedCount);
+    }
+
+    /// <summary>
+    /// مُحقِّن تعارض على مفتاح منع التكرار: يرمي <see cref="HeadAlertConflictException"/>
+    /// قبل التفويض بعدد محدد من المرات ثم يمرّر للخدمة الحقيقية — يحاكي سباق الفهرس
+    /// الفريد الجزئي (لا يرميه مسار الخدمة أحادي الخيط).
+    /// </summary>
+    private sealed class ConflictInjectingAlertService : IHeadAlertService
+    {
+        private readonly IHeadAlertService _inner;
+        private readonly ConflictGate _gate;
+
+        public ConflictInjectingAlertService(IHeadAlertService inner, ConflictGate gate)
+        {
+            _inner = inner;
+            _gate = gate;
+        }
+
+        public Task<HeadAlertWriteResult> CreateSystemAsync(
+            CreateSystemHeadAlertRequest request,
+            DateTime occurredAt,
+            HeadAlertSupersedePlan? supersedePlan,
+            int? targetUserIdOverride,
+            CancellationToken ct = default)
+        {
+            if (_gate.TryConsumeConflict())
+                throw new HeadAlertConflictException("تعارض محاكى على مفتاح منع التكرار");
+
+            return _inner.CreateSystemAsync(request, occurredAt, supersedePlan, targetUserIdOverride, ct);
+        }
+
+        // بقية الأعضاء تمرير مباشر: الاختبار يستهدف مسار CreateSystemAsync وحده.
+        public Task<PagedResult<HeadAlertSummaryDto>> ListForActorAsync(
+            HeadAlertActor actor, HeadAlertListQuery query, CancellationToken ct = default)
+            => _inner.ListForActorAsync(actor, query, ct);
+
+        public Task<PagedResult<HeadAlertSummaryDto>> ListSentAsync(
+            HeadAlertActor actor, AlertArchiveFilter archive, AlertPageRequest page, string? cursor,
+            CancellationToken ct = default)
+            => _inner.ListSentAsync(actor, archive, page, cursor, ct);
+
+        public Task<PagedResult<HeadAlertSummaryDto>> ListByDelegationAsync(
+            int delegationId, HeadAlertActor actor, AlertPageRequest page, CancellationToken ct = default)
+            => _inner.ListByDelegationAsync(delegationId, actor, page, ct);
+
+        public Task<HeadAlertDto?> GetDetailsAsync(int id, HeadAlertActor actor, CancellationToken ct = default)
+            => _inner.GetDetailsAsync(id, actor, ct);
+
+        public Task<List<HeadAlertRecipientDto>?> GetRecipientsAsync(
+            int id, HeadAlertActor actor, CancellationToken ct = default)
+            => _inner.GetRecipientsAsync(id, actor, ct);
+
+        public Task<int> CountUnreadAsync(
+            HeadAlertActor actor, AlertUnreadScope scope, CancellationToken ct = default)
+            => _inner.CountUnreadAsync(actor, scope, ct);
+
+        public Task<HeadAlertSummaryDto> CreateAsync(
+            CreateHeadAlertRequest request, HeadAlertActor actor, string? actorName, CancellationToken ct = default)
+            => _inner.CreateAsync(request, actor, actorName, ct);
+
+        public Task<bool> MarkReadAsync(int alertId, HeadAlertActor actor, CancellationToken ct = default)
+            => _inner.MarkReadAsync(alertId, actor, ct);
+
+        public Task<int> RemoveAppealRecipientAsync(int appealId, int userId, CancellationToken ct = default)
+            => _inner.RemoveAppealRecipientAsync(appealId, userId, ct);
+
+        public Task<int> ApplyCircuitRenamedAsync(
+            int circuitId, string message, DateTime occurredAt, CancellationToken ct = default)
+            => _inner.ApplyCircuitRenamedAsync(circuitId, message, occurredAt, ct);
+
+        public Task<int> ArchiveByDelegationAsync(
+            int delegationId, IReadOnlySet<string> archiveKinds, string reason, CancellationToken ct = default)
+            => _inner.ArchiveByDelegationAsync(delegationId, archiveKinds, reason, ct);
+
+        public Task<int> ArchiveByAppealAsync(
+            int appealId, IReadOnlySet<string> archiveKinds, string reason, CancellationToken ct = default)
+            => _inner.ArchiveByAppealAsync(appealId, archiveKinds, reason, ct);
+    }
+
+    /// <summary>بوابة تعارض مشتركة بين النطاقات (الخدمة مسجّلة Scoped والمشغّل ينشئ نطاقًا لكل دورة).</summary>
+    private sealed class ConflictGate
+    {
+        private int _remaining;
+
+        public ConflictGate(int remainingConflicts) => _remaining = remainingConflicts;
+
+        public bool TryConsumeConflict() => Interlocked.Decrement(ref _remaining) >= 0;
+    }
+
+    /// <summary>مسجّل تدقيق يفشل دائمًا — يحاكي فشلًا داخل معاملة المعالجة بعد إدراج التنبيه.</summary>
+    private sealed class ThrowingAuditLogger : IAuditLogger
+    {
+        public Task LogAsync(string? userName, string actionType, int? documentId = null,
+            string? documentType = null, string? details = null, CancellationToken ct = default)
+            => throw new InvalidOperationException("فشل تسجيل التدقيق (محاكى)");
+
+        public Task LogManyAsync(IReadOnlyList<AuditLogEntry> entries, CancellationToken ct = default)
+            => throw new InvalidOperationException("فشل تسجيل التدقيق (محاكى)");
+
+        public Task LogDocumentChangeAsync(string? userName, string actionType, int documentId,
+            string? documentType, string details, IReadOnlyList<DocumentFieldChange> changes,
+            CancellationToken ct = default)
+            => throw new InvalidOperationException("فشل تسجيل التدقيق (محاكى)");
     }
 }
