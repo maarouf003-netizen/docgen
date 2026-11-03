@@ -107,8 +107,11 @@ describe('AlertDetailsSheet (D12)', () => {
     expect(scroll).toHaveClass('flex-1');
 
     // لا قصّ/تمرير أفقي: لا عنصر داخل الحوار يفرض `overflow-x`.
+    // ملاحظة دليل: هذا حارس أصناف لا قياس تخطيط (`jsdom` بلا تخطيط)، و`overflow-auto`
+    // و`overflow-scroll` يفرضان المحورين أيضًا فيُمنعان صراحةً. القياس الفعلي للجوال
+    // (`scrollWidth <= clientWidth`) يحتاج متصفحًا حقيقيًا.
     for (const element of dialog.querySelectorAll<HTMLElement>('*')) {
-      expect(element.className).not.toMatch(/overflow-x-(auto|scroll)/);
+      expect(element.className).not.toMatch(/overflow-(x-)?(auto|scroll)/);
     }
   });
 
@@ -141,5 +144,102 @@ describe('AlertDetailsSheet (D12)', () => {
 
     expect(api.get).toHaveBeenCalledTimes(2);
     expect(await screen.findByText(MESSAGE)).toBeInTheDocument();
+  });
+
+  // ── إمكانية الوصول الفعلية (لا الموثَّقة): تركيز، حصر، قفل تمرير، مخارج ──
+
+  it('ينقل التركيز إلى زر الإغلاق عند الفتح ويعيده إلى المشغّل عند الإغلاق', async () => {
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.textContent = 'فتح التنبيه';
+    document.body.appendChild(trigger);
+    trigger.focus();
+
+    mockDetail();
+    const { rerender } = render(<AlertDetailsSheet alertId={null} onClose={vi.fn()} />);
+    rerender(<AlertDetailsSheet alertId={7} onClose={vi.fn()} />);
+
+    await screen.findByText(MESSAGE);
+    expect(screen.getByRole('button', { name: 'إغلاق' })).toHaveFocus();
+
+    rerender(<AlertDetailsSheet alertId={null} onClose={vi.fn()} />);
+    expect(trigger).toHaveFocus();
+
+    trigger.remove();
+  });
+
+  it('يحصر Tab داخل الحوار: من الأخير إلى الأول وبالعكس', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('تعذّر الجلب'));
+
+    render(<AlertDetailsSheet alertId={7} onClose={vi.fn()} />);
+
+    const close = screen.getByRole('button', { name: 'إغلاق' });
+    const retry = await screen.findByRole('button', { name: 'إعادة المحاولة' });
+    const dialog = screen.getByRole('dialog');
+
+    retry.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(close).toHaveFocus();
+
+    fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
+    expect(retry).toHaveFocus();
+  });
+
+  it('يقفل تمرير الصفحة الخلفية أثناء الفتح ويعيد الحالة عند الإغلاق', async () => {
+    mockDetail();
+    const { rerender } = render(<AlertDetailsSheet alertId={7} onClose={vi.fn()} />);
+
+    await screen.findByText(MESSAGE);
+    expect(document.body.style.overflow).toBe('hidden');
+
+    rerender(<AlertDetailsSheet alertId={null} onClose={vi.fn()} />);
+    expect(document.body.style.overflow).toBe('');
+  });
+
+  it('النقر على الغلاف يغلق، والنقر داخل البطاقة لا يغلق', async () => {
+    mockDetail();
+    const onClose = vi.fn();
+
+    render(<AlertDetailsSheet alertId={7} onClose={onClose} />);
+    await screen.findByText(MESSAGE);
+
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(dialog);
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.click(dialog.parentElement!);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('يزيل مستمع Escape عند إزالة المكوّن', async () => {
+    mockDetail();
+    const onClose = vi.fn();
+
+    const { unmount } = render(<AlertDetailsSheet alertId={7} onClose={onClose} />);
+    await screen.findByText(MESSAGE);
+
+    unmount();
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('تبديل المعرّف لا يعرض نص التنبيه السابق', async () => {
+    const get = api.get as unknown as ReturnType<typeof vi.fn>;
+    get.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: makeHeadAlertDetail({
+          id: Number(url.split('/').pop()),
+          message: url.endsWith('/7') ? 'نص التنبيه الأول' : 'نص التنبيه الثاني',
+        }),
+      }),
+    );
+
+    const { rerender } = render(<AlertDetailsSheet alertId={7} onClose={vi.fn()} />);
+    expect(await screen.findByText('نص التنبيه الأول')).toBeInTheDocument();
+
+    rerender(<AlertDetailsSheet alertId={8} onClose={vi.fn()} />);
+    expect(await screen.findByText('نص التنبيه الثاني')).toBeInTheDocument();
+    expect(screen.queryByText('نص التنبيه الأول')).not.toBeInTheDocument();
   });
 });
