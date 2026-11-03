@@ -332,7 +332,9 @@ public class HeadAlertSchemaMigrationTests
         var (path, db) = CreateDb();
         try
         {
-            await db.GetService<IMigrator>().MigrateAsync(OutboxMigration);
+            // أحدث هجرة (لا `Outbox_Create` وحدها): الاختبار يقيس عقد EF الحالي مقابل
+            // المخطط الحالي، فأي عمود جديد في الجدول يجب أن يكون موجودًا في القاعدة.
+            await db.GetService<IMigrator>().MigrateAsync();
 
             var message = new HeadAlertOutboxMessage
             {
@@ -380,18 +382,16 @@ public class HeadAlertSchemaMigrationTests
         {
             await db.GetService<IMigrator>().MigrateAsync(OutboxMigration);
 
-            db.HeadAlertOutboxMessages.Add(new HeadAlertOutboxMessage
-            {
-                Operation = HeadAlertOutboxOperation.Upsert,
-                Status = HeadAlertOutboxStatus.Pending,
-                Kind = HeadAlertKindCatalog.DelegationPendingApproval,
-                Payload = "{}",
-                PayloadVersion = 1,
-                OccurredAt = DateTime.UtcNow,
-                CreatedAt = DateTime.UtcNow,
-                NextAttemptAt = DateTime.UtcNow,
-            });
-            await db.SaveChangesAsync();
+            // إدراج خام (لا كيان EF): القاعدة على مخطط `Outbox_Create` وحده، والكيان
+            // الحالي يحمل أعمدة لاحقة (مثل `ConflictRetries`) لا وجود لها بعد.
+            await db.Database.ExecuteSqlRawAsync(
+                """
+                INSERT INTO "HeadAlertOutboxMessages"
+                    ("Operation", "Status", "Kind", "Payload", "PayloadVersion",
+                     "OccurredAt", "CreatedAt", "NextAttemptAt", "Attempts")
+                VALUES ('upsert', 'pending', 'kind', 'payload', 1,
+                        '2026-10-20 00:00:00', '2026-10-20 00:00:00', '2026-10-20 00:00:00', 0)
+                """);
 
             // التراجع إلى ما قبل هجرة Outbox يجب أن يُرفض لوجود رسالة غير محسومة.
             await Assert.ThrowsAnyAsync<Exception>(async () =>

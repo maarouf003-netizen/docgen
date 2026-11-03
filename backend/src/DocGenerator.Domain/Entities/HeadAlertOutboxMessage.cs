@@ -54,6 +54,14 @@ public class HeadAlertOutboxMessage
     /// <summary>عدد المحاولات — يُستخدم لجدولة التباعد التصاعدي (وليس لتقرير «إعادة واحدة»).</summary>
     public int Attempts { get; set; }
 
+    /// <summary>
+    /// عدد إعادات **التعارض** على مفتاح منع التكرار — حالة صريحة لسياسة «إعادة واحدة»
+    /// (الخطة §6.4): يزيدها المشغّل عند تحويل التعارض إلى <c>pending</c>، ويُفشل الرسالة
+    /// عند تجاوزها. لا تُستخدم <see cref="LastError"/> (عمود تشخيصي) ذاكرةً للحالة،
+    /// فلا يطمسها خطأ عابر بين تعارضين.
+    /// </summary>
+    public int ConflictRetries { get; set; }
+
     /// <summary>سبب آخر فشل أو تخطٍّ (مُنقّى، بلا نص التنبيه الكامل).</summary>
     public string? LastError { get; set; }
 
