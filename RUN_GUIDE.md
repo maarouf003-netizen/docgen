@@ -319,12 +319,13 @@ npm test
 > **أحد السياقين** على الأقل لم يُطبَّق بعد؛ والحالة التفصيلية في أول سطر تحت كل عنوان.
 >
 > **جديد 2026‑11‑03:** هجرتان (`SQLite` + `PostgreSQL`) لعمود `ConflictRetries` في
-> `HeadAlertOutboxMessages` — **معلّقتان على القاعدتين** حتى نافذة النشر. هما مستقلتان
-> **دلاليًا** عن هجرات التنبيهات الأربع، لكن `database update` يطبّق كل ما قبل الهدف ضمنًا:
-> على `SQLite` (رأسه `Expand`) ستسحب `Outbox_Create`/`Backfill`/`Contract` ⇒ **مرهونة بـ`G2`**،
-> بخلاف `PostgreSQL` (رأسه `Contract_Pg` المطبَّق) حيث تُطبَّق وحدها.
+> `HeadAlertOutboxMessages`. **`PostgreSQL` ✅ مطبَّقة حيًا** (2026‑11‑03 — **64** هجرة، صفر معلّقة،
+> `docs/audit/14-head-alerts-conflict-retries-live-apply-20261103.md`)، و**`SQLite` ⏳ معلّقة** (5).
+> مستقلتان **دلاليًا** عن هجرات التنبيهات الأربع، لكن `database update` يطبّق كل ما قبل الهدف ضمنًا:
+> على `SQLite` (رأسه `Expand`) ستسحب `Outbox_Create`/`Backfill`/`Contract` ⇒ **مرهونة بـ`G2`**.
 
 - [ ] **2026-11-03 — `HeadAlertOutbox_ConflictRetries` / `HeadAlertOutbox_ConflictRetries_Pg`** (حالة سياسة «إعادة واحدة» لتعارض `DedupeKey`):
+  - **الحالة:** `PostgreSQL` ✅ مطبَّقة حيًا (`20261103172448`) — 64 هجرة، صفر معلّقة · `SQLite` ⏳ **معلّقة** (5 مع الأربع السابقة).
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261103172359_HeadAlertOutbox_ConflictRetries.cs` — يضيف `ConflictRetries` (`INTEGER NOT NULL DEFAULT 0`) + قيد `CK_HeadAlertOutbox_ConflictRetries`، **ويعبّئ** `ConflictRetries = 1` للصفوف التي `LastError = 'conflict_retry'` (كيلا تُمنح إعادة ثانية بعد النشر).
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261103172448_HeadAlertOutbox_ConflictRetries_Pg.cs` — نفسه (`integer NOT NULL DEFAULT 0` + القيد + التعبئة).
   - **إجراء `SQLite`:** لا تُطبَّق وحدها. إما استكمال السلسلة (`Contract` بعد `G2`) ثم تطبيقها، أو — على قاعدة عند `Contract` فعلًا — سكربت فرقي:
