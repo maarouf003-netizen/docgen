@@ -719,6 +719,46 @@ public class AlertsIntegrationTests
     }
 
     [Fact]
+    public async Task ExistingButUnauthorizedAlert_NotFoundBody_EqualsMissingAlertBody()
+    {
+        // قرار المالك 2026-11-03 (ب): الرسالة نفسها للموجود غير المصرّح ولغير الموجود —
+        // تُثبَت على مستوى **الجسم** (لا رمز الحالة وحده) للأسطح الثلاثة، فلا يُكشف وجود.
+        const string expected = "التنبيه غير موجود أو لا تملك صلاحية عرضه";
+
+        var otherBranch = await _factory.CreateBranchAsync("فرع غير مصرّح");
+        var otherHead = await _factory.CreateUserAsync(UniqueName("head_other"), UserRole.Head, otherBranch);
+        var otherLawyer = await _factory.CreateUserAsync(UniqueName("law_other"), UserRole.Lawyer, otherBranch);
+        var hiddenId = await SeedAlertDirectlyAsync(
+            otherBranch, otherHead.Id, otherLawyer.Id, "تنبيه خارج نطاق المحامي");
+
+        // إثبات أن التنبيه موجود فعلًا (المستلم يراه) قبل قياس سلوك غير المصرّح.
+        Assert.Equal(HttpStatusCode.OK,
+            (await _factory.AuthorizedClient(otherLawyer.Username).GetAsync($"/api/alerts/{hiddenId}")).StatusCode);
+
+        var lawyer = _factory.AuthorizedClient("lawyer1");
+        var unauthorized = new[]
+        {
+            await lawyer.GetAsync($"/api/alerts/{hiddenId}"),
+            await lawyer.GetAsync($"/api/alerts/{hiddenId}/recipients"),
+            await lawyer.PatchAsJsonAsync($"/api/alerts/{hiddenId}/read", new { }),
+        };
+        var missing = new[]
+        {
+            await lawyer.GetAsync("/api/alerts/999999"),
+            await lawyer.GetAsync("/api/alerts/999999/recipients"),
+            await lawyer.PatchAsJsonAsync("/api/alerts/999999/read", new { }),
+        };
+
+        for (var index = 0; index < unauthorized.Length; index++)
+        {
+            Assert.Equal(HttpStatusCode.NotFound, unauthorized[index].StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, missing[index].StatusCode);
+            Assert.Equal(expected, await ReadMessageAsync(unauthorized[index]));
+            Assert.Equal(expected, await ReadMessageAsync(missing[index]));
+        }
+    }
+
+    [Fact]
     public async Task Get_Alert_Manager_ReturnsIt_Missing_ReturnsNotFound()
     {
         // قرار المالك 2026-10-16: قراءة إشرافية للمدير/المشرف (المفرد والقائمة فقط).
