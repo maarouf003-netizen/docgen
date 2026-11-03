@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { api } from '../../api/client';
 import { readAlertDetail } from '../../api/alerts';
 import { useCancellableRequest } from '../../hooks/useCancellableRequest';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 import type { HeadAlertDto } from '../../types';
 import { formatDateTime } from '../../utils/dates';
 import { alertKindLabel, isKnownAlertKind } from './alertKinds';
@@ -15,8 +16,13 @@ import { alertKindLabel, isKnownAlertKind } from './alertKinds';
  *
  * **لماذا حوار لا كشف سطري؟** صفحة `/alerts` تعرض قوائم طويلة على الجوال،
  * والكشف السطري كان يدفع الصفوف ويُخرج زر الإخفاء من المشهد. الحوار قابل
- * للتمرير داخليًا (`overscroll-contain`) وبلا اقتصاص، ويُغلق بـ`Escape` أو
- * بالزر، ويُعيد التركيز إلى الصفحة طبيعيًا بإزالته من الشجرة.
+ * للتمرير داخليًا (`overscroll-contain`) وبلا اقتصاص.
+ *
+ * **إمكانية الوصول (مطبَّقة لا موثَّقة):** `role="dialog"` على البطاقة نفسها
+ * (لا على الغلاف) مع `aria-modal` و`aria-labelledby`، وحصر تركيز عبر
+ * `useFocusTrap` (مخرج `Tab`/`Shift+Tab`)، وتركيز أولي على زر الإغلاق،
+ * وإعادة التركيز إلى المشغّل عند الإزالة، وقفل تمرير الصفحة الخلفية،
+ * وأربعة مخارج: `Escape`، وزر الإغلاق، والنقر على الغلاف، وإزالة المكوّن.
  */
 export function AlertDetailsSheet({
   alertId,
@@ -26,24 +32,55 @@ export function AlertDetailsSheet({
   alertId: number | null;
   onClose: () => void;
 }) {
+  if (alertId == null) return null;
+
+  // إعادة التركيب عند تبديل المعرّف: لا نص تنبيه سابق تحت عنوان جديد، وحالة
+  // تركيز/تمرير/طلب نظيفة بلا تصفير يدوي.
+  return <AlertDetailsDialog key={alertId} alertId={alertId} onClose={onClose} />;
+}
+
+function AlertDetailsDialog({
+  alertId,
+  onClose,
+}: {
+  alertId: number;
+  onClose: () => void;
+}) {
+  const dialogRef = useFocusTrap<HTMLDivElement>();
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+
   const detailsQuery = useCancellableRequest<HeadAlertDto>(
     (signal) => api.get(`/alerts/${alertId}`, { signal }).then((response) => readAlertDetail(response.data)),
     [alertId],
-    // تصفير عند تبديل التنبيه: لا يظهر نص تنبيه سابق تحت عنوان جديد.
-    { enabled: alertId != null, resetOnDepsChange: true },
   );
 
   // مخرج لوحة مفاتيح: `Escape` يغلق الحوار (قاعدة إمكانية الوصول).
   useEffect(() => {
-    if (alertId == null) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [alertId, onClose]);
+  }, [onClose]);
 
-  if (alertId == null) return null;
+  // قفل تمرير الصفحة الخلفية + تركيز أولي داخل الحوار + إعادة التركيز إلى
+  // المشغّل عند الإزالة. `overscroll-contain` وحدها تمنع تسلسل التمرير ولا تقفل
+  // تمرير الصفحة، فالقفل هنا صريح على `body`.
+  useEffect(() => {
+    const trigger = document.activeElement;
+    restoreFocusRef.current = trigger instanceof HTMLElement ? trigger : null;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    closeButtonRef.current?.focus();
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      restoreFocusRef.current?.focus();
+      restoreFocusRef.current = null;
+    };
+  }, []);
 
   const headingId = `alert-details-title-${alertId}`;
   const detail = detailsQuery.data;
@@ -51,11 +88,18 @@ export function AlertDetailsSheet({
   return (
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={headingId}
+      // الغلاف ليس الحوار: النقر عليه (لا داخل البطاقة) مخرج ثالث متعارف عليه.
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
     >
-      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:rounded-2xl">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={headingId}
+        className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:rounded-2xl"
+      >
         <div className="flex items-start justify-between gap-3 border-b border-gray-200 px-4 py-3 sm:px-5">
           <div className="min-w-0">
             <h2 id={headingId} className="text-base font-bold text-gray-900">
@@ -66,6 +110,7 @@ export function AlertDetailsSheet({
             ) : null}
           </div>
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={onClose}
             aria-label="إغلاق"

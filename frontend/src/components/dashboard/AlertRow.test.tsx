@@ -62,13 +62,10 @@ describe('AlertRow', () => {
     expect(screen.queryByRole('button', { name: 'عرض النص الكامل' })).not.toBeInTheDocument();
   });
 
-  it('يعرض «عرض النص الكامل» عند `previewTruncated` فقط', () => {
+  it('لا يعرض كاشفًا سطريًا للنص الكامل — الفتح عبر الحوار من `onOpen`', () => {
     render(<AlertRow alert={makeHeadAlertSummary({ previewTruncated: true })} />);
 
-    expect(screen.getByRole('button', { name: 'عرض النص الكامل' })).toHaveAttribute(
-      'aria-expanded',
-      'false',
-    );
+    expect(screen.queryByRole('button', { name: 'عرض النص الكامل' })).not.toBeInTheDocument();
   });
 
   it('عرض الصادر: عدّاد صفري يظهر «مقروء من الجميع» بدل «غير مقروء: 0»', () => {

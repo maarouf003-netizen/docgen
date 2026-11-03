@@ -68,8 +68,9 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
     }
 
     private ServiceProvider BuildProvider(
-        IAuditLogger? audit = null,
-        ConflictGate? conflictGate = null)
+        Func<IServiceProvider, IAuditLogger>? auditFactory = null,
+        ConflictGate? conflictGate = null,
+        Func<Exception>? createFailure = null)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -89,12 +90,13 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
                 new DelegationRepository(sp.GetRequiredService<DocGeneratorDbContext>()),
                 new UnitOfWork(sp.GetRequiredService<DocGeneratorDbContext>()),
                 sp.GetRequiredService<ITransactionRunner>(),
-                audit ?? new FakeAuditLogger(),
+                auditFactory?.Invoke(sp) ?? new FakeAuditLogger(),
                 sp.GetRequiredService<ITransactionContext>());
 
-            return conflictGate is null
-                ? service
-                : new ConflictInjectingAlertService(service, conflictGate);
+            if (conflictGate is not null || createFailure is not null)
+                return new CreateFailureAlertService(service, conflictGate, createFailure);
+
+            return service;
         });
 
         return services.BuildServiceProvider();
@@ -529,9 +531,12 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
     {
         // فشل داخل معاملة المعالجة بعد إدراج التنبيه (تسجيل التدقيق) يجب أن يُرجع
         // المعاملة كاملة: لا تنبيه جزئي ولا مستلمين، والصف يعود pending بمحاولة واحدة.
+        // `ThrowingAuditLogger` يتحقق أولًا أن الصف أُدرج فعلًا، فلا يمرّ الاختبار
+        // لو صار الفشل قبل الإدراج (كان يعني «لا كتابة» لا «تراجعًا»).
         await EnqueueAsync();
 
-        using var provider = BuildProvider(new ThrowingAuditLogger());
+        using var provider = BuildProvider(
+            auditFactory: sp => new ThrowingAuditLogger(sp.GetRequiredService<DocGeneratorDbContext>()));
         var dispatcher = CreateDispatcher(provider);
 
         Assert.True(await dispatcher.ProcessNextAsync(CancellationToken.None));
@@ -599,6 +604,37 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         Assert.Empty(await _db.HeadAlerts.AsNoTracking().ToListAsync());
     }
 
+    [Fact]
+    public async Task ProcessNext_DedupeKeyUniqueViolation_UsesConflictPolicyNotTransientBackoff()
+    {
+        // سباق الفهرس الفريد الجزئي يصل من `SaveChangesAsync` كـ`DbUpdateException`
+        // (لا كـ`HeadAlertConflictException` من الخدمة)، فيمرّ بالفرع الإنتاجي
+        // `IsDedupeKeyConflict` — وهذا ما لا يغطيه محقن التعارض في الاختبارات أعلاه.
+        await EnqueueAsync();
+
+        using var provider = BuildProvider(createFailure: BuildDedupeKeyUniqueViolation);
+        var dispatcher = CreateDispatcher(provider);
+
+        Assert.True(await dispatcher.ProcessNextAsync(CancellationToken.None));
+
+        var retried = await _db.HeadAlertOutboxMessages.AsNoTracking().SingleAsync();
+        Assert.Equal(HeadAlertOutboxStatus.Pending, retried.Status);
+        Assert.Equal(1, retried.Attempts);
+        // العلامة وحدها (لا وصف استثناء عابر ولا backoff) — دليل أن التصنيف تعارض لا عابر.
+        Assert.Equal("conflict_retry", retried.LastError);
+        Assert.Null(retried.ProcessedAt);
+        Assert.Null(retried.LockedUntil);
+        Assert.Empty(await _db.HeadAlerts.AsNoTracking().ToListAsync());
+
+        // التعارض المتكرر عبر المسار نفسه ⇒ failed ببادئة العلامة (إعادة واحدة فقط).
+        Assert.True(await dispatcher.ProcessNextAsync(CancellationToken.None));
+
+        var failed = await _db.HeadAlertOutboxMessages.AsNoTracking().SingleAsync();
+        Assert.Equal(HeadAlertOutboxStatus.Failed, failed.Status);
+        Assert.Equal(2, failed.Attempts);
+        Assert.StartsWith("conflict_retry:", failed.LastError!, StringComparison.Ordinal);
+    }
+
     private static HeadAlertOutboxMessage Terminal(
         HeadAlertOutboxStatus status,
         DateTime createdAt,
@@ -636,19 +672,30 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
     }
 
     /// <summary>
-    /// مُحقِّن تعارض على مفتاح منع التكرار: يرمي <see cref="HeadAlertConflictException"/>
-    /// قبل التفويض بعدد محدد من المرات ثم يمرّر للخدمة الحقيقية — يحاكي سباق الفهرس
-    /// الفريد الجزئي (لا يرميه مسار الخدمة أحادي الخيط).
+    /// بديل اختباري يحقن فشلًا في <see cref="IHeadAlertService.CreateSystemAsync"/> قبل
+    /// التفويض، بلا تكرار تمرير بقية الأعضاء:
+    /// <list type="bullet">
+    /// <item><b>بوابة تعارض</b> (<see cref="ConflictGate"/>): ترمي
+    /// <see cref="HeadAlertConflictException"/> — مسار استثناء الخدمة.</item>
+    /// <item><b>استثناء محدد</b> (<c>failure</c>): يرمي استثناءً جاهزًا — يُستخدم
+    /// لتمرير <see cref="DbUpdateException"/> حقيقي يحمل تعارض الفهرس الفريد، وهو
+    /// المسار الإنتاجي الفعلي لسباق <c>DedupeKey</c>.</item>
+    /// </list>
     /// </summary>
-    private sealed class ConflictInjectingAlertService : IHeadAlertService
+    private sealed class CreateFailureAlertService : IHeadAlertService
     {
         private readonly IHeadAlertService _inner;
-        private readonly ConflictGate _gate;
+        private readonly ConflictGate? _gate;
+        private readonly Func<Exception>? _failure;
 
-        public ConflictInjectingAlertService(IHeadAlertService inner, ConflictGate gate)
+        public CreateFailureAlertService(
+            IHeadAlertService inner,
+            ConflictGate? gate = null,
+            Func<Exception>? failure = null)
         {
             _inner = inner;
             _gate = gate;
+            _failure = failure;
         }
 
         public Task<HeadAlertWriteResult> CreateSystemAsync(
@@ -658,7 +705,10 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
             int? targetUserIdOverride,
             CancellationToken ct = default)
         {
-            if (_gate.TryConsumeConflict())
+            if (_failure is not null)
+                throw _failure();
+
+            if (_gate?.TryConsumeConflict() == true)
                 throw new HeadAlertConflictException("تعارض محاكى على مفتاح منع التكرار");
 
             return _inner.CreateSystemAsync(request, occurredAt, supersedePlan, targetUserIdOverride, ct);
@@ -722,12 +772,28 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         public bool TryConsumeConflict() => Interlocked.Decrement(ref _remaining) >= 0;
     }
 
-    /// <summary>مسجّل تدقيق يفشل دائمًا — يحاكي فشلًا داخل معاملة المعالجة بعد إدراج التنبيه.</summary>
+    /// <summary>
+    /// مُدقِّق يفشل دائمًا داخل معاملة المعالجة — لكنه يتحقق أولًا أن التنبيه ومستلميه
+    /// أُدرجا فعلًا في القاعدة (نفس نطاق المعاملة)، فلا يمرّ الاختبار لو صار الفشل قبل
+    /// الإدراج: كان يعني «لا كتابة» لا «تراجعًا».
+    /// </summary>
     private sealed class ThrowingAuditLogger : IAuditLogger
     {
-        public Task LogAsync(string? userName, string actionType, int? documentId = null,
+        private readonly DocGeneratorDbContext _db;
+
+        public ThrowingAuditLogger(DocGeneratorDbContext db) => _db = db;
+
+        public async Task LogAsync(string? userName, string actionType, int? documentId = null,
             string? documentType = null, string? details = null, CancellationToken ct = default)
-            => throw new InvalidOperationException("فشل تسجيل التدقيق (محاكى)");
+        {
+            var alerts = await _db.HeadAlerts.AsNoTracking().CountAsync(ct);
+            var recipients = await _db.HeadAlertRecipients.AsNoTracking().CountAsync(ct);
+            if (alerts != 1 || recipients == 0)
+                throw new InvalidOperationException(
+                    $"لم يُدرج التنبيه قبل التدقيق (alerts={alerts}, recipients={recipients}) — لا يثبت الاختبار تراجعًا");
+
+            throw new InvalidOperationException("فشل تسجيل التدقيق (محاكى)");
+        }
 
         public Task LogManyAsync(IReadOnlyList<AuditLogEntry> entries, CancellationToken ct = default)
             => throw new InvalidOperationException("فشل تسجيل التدقيق (محاكى)");
@@ -736,5 +802,58 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
             string? documentType, string details, IReadOnlyList<DocumentFieldChange> changes,
             CancellationToken ct = default)
             => throw new InvalidOperationException("فشل تسجيل التدقيق (محاكى)");
+    }
+
+    /// <summary>
+    /// يولّد <see cref="DbUpdateException"/> حقيقيًا من تعارض الفهرس الفريد الجزئي على
+    /// <c>DedupeKey</c> (SQLite 19/2067، ونصّه يحوي اسم العمود) — كما يحدث في الإنتاج
+    /// عند سباق إدراجين متزامنين، بدل تلفيق استثناء لا يشبه الواقع.
+    /// </summary>
+    private static DbUpdateException BuildDedupeKeyUniqueViolation()
+    {
+        using var db = TestDb.Create();
+
+        var branch = db.Branches.Add(new Branch { Name = "حلب", Code = "ALP" }).Entity;
+        db.SaveChanges();
+
+        var head = new User
+        {
+            Username = "dedupe_racer",
+            FullName = "رئيس متسابق",
+            Role = UserRole.Head,
+            BranchId = branch.Id,
+            PasswordHash = "x",
+        };
+        db.Users.Add(head);
+        db.SaveChanges();
+
+        var occurredAt = new DateTime(2026, 11, 3, 0, 0, 0, DateTimeKind.Utc);
+        HeadAlert Row() => new()
+        {
+            BranchId = branch.Id,
+            CreatedById = head.Id,
+            TargetType = HeadAlertTargetType.Head,
+            Kind = HeadAlertKindCatalog.DelegationPendingApproval,
+            DedupeKey = "race:dedupe-key",
+            Message = "نص متسابق",
+            CreatedAt = occurredAt,
+            LastContentChangedAt = occurredAt,
+        };
+
+        db.HeadAlerts.Add(Row());
+        db.SaveChanges();
+
+        db.HeadAlerts.Add(Row());
+        try
+        {
+            db.SaveChanges();
+        }
+        catch (DbUpdateException ex)
+        {
+            return ex;
+        }
+
+        throw new InvalidOperationException(
+            "لم يُولَّد تعارض فريد على DedupeKey — تحقق من الفهرس الجزئي UX_HeadAlerts_DedupeKey_Active");
     }
 }
