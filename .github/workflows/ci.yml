@@ -110,6 +110,8 @@ jobs:
       - name: SQLite model matches snapshot (G1)
         env:
           ASPNETCORE_ENVIRONMENT: Development
+          # الحارس H-02: بيئة Development في Program.cs تشترط راية صريحة (لا تُضبط في الإنتاج).
+          Security__AllowDevelopmentEnvironment: "true"
           ConnectionStrings__DefaultConnection: "Data Source=/tmp/migration-guard.db"
           Database__AutoMigrate: "false"
           Jwt__Secret: "ci-migration-guard-dummy-secret-0123456789"

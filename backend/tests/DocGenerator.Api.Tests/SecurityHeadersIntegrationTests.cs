@@ -58,6 +58,16 @@ public class SecurityHeadersIntegrationTests
     }
 
     [Fact]
+    public async Task ApiResponse_IsNotCacheable()
+    {
+        var client = _factory.CreateClient();
+        var response = await client.GetAsync("/api/meta/current-year");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("no-store", Single(response, "Cache-Control"));
+    }
+
+    [Fact]
     public async Task Development_AllowsViteOrigin()
     {
         var client = _factory.CreateClient();

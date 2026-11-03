@@ -44,6 +44,12 @@ public sealed class SecurityHeadersMiddleware
             ? "Content-Security-Policy-Report-Only"
             : "Content-Security-Policy"] = BuildCspValue();
 
+        // ردود API بيانات قانونية بعد المصادقة: لا تُخزَّن في متصفح مشترك ولا في وسيط
+        // تخزين أمامي. تُضبط قبل `_next`، فمتحكم يضع `Cache-Control` صراحةً يتقدّم عليها
+        // (كـ`ClientErrorsController` الذي يطلب `NoStore` أصلًا).
+        if (context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase))
+            headers["Cache-Control"] = "no-store";
+
         await _next(context);
     }
 
