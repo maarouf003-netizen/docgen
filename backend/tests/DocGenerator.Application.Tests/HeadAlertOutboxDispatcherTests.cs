@@ -680,6 +680,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         Assert.True(await dispatcher.ProcessNextAsync(CancellationToken.None));
         var failed = await _db.HeadAlertOutboxMessages.AsNoTracking().SingleAsync();
         Assert.Equal(HeadAlertOutboxStatus.Failed, failed.Status);
+        Assert.Equal(3, failed.Attempts);
         Assert.Equal(1, failed.ConflictRetries);
         Assert.StartsWith("conflict_retry:", failed.LastError!, StringComparison.Ordinal);
         Assert.Empty(await _db.HeadAlerts.AsNoTracking().ToListAsync());

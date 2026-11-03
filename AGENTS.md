@@ -90,8 +90,9 @@
     `HeadAlertTaxonomy_Contract` (**4 معلّقة**).
   - **جديد 2026‑11‑03:** هجرتان لعمود `ConflictRetries` في `HeadAlertOutboxMessages`
     (`HeadAlertOutbox_ConflictRetries` لـ`SQLite` و`HeadAlertOutbox_ConflictRetries_Pg`
-    لـ`PostgreSQL`) — **معلّقتان على القاعدتين**، ومستقلتان عن ترتيب الأربع أعلاه
-    (التفاصيل وسبب التعبئة في `RUN_GUIDE.md` §9 و`docs/audit/head-alerts-18-evidence-map-20261103-addendum6.md`).
+    لـ`PostgreSQL`) — **معلّقتان على القاعدتين**. مستقلتان **دلاليًا** عن الأربع أعلاه،
+    لكن على `SQLite` لا تُطبَّقان وحدها: `database update` يسحب `Outbox_Create`/`Backfill`/
+    `Contract` ⇒ **مرهونة بـ`G2`** (الإجراء والسكربت الفرقي في `RUN_GUIDE.md` §9).
   - **⛔ لا تُطبَّق `HeadAlertTaxonomy_Contract` (SQLite)** قبل G2 (dry-run على نسخة إنتاجية مستعادة)
     وتأكيد أن **كل النسخ** على كود `PR‑2` وصفر قيم `NULL`/`Kind` فارغ — الهجرة ترفض التطبيق صراحةً
     عند أي مخالفة (`docs/audit/11-head-alerts-pr3-20261026.md`).

@@ -33,6 +33,12 @@ public sealed class HeadAlertOutboxDispatcher : BackgroundService
     /// <summary>علامة «إعادة واحدة» عند التعارض — تُميّزها عن عدّاد المحاولات.</summary>
     private const string ConflictRetryMarker = "conflict_retry";
 
+    /// <summary>
+    /// سقف إعادات التعارض المسموح بها لكل رسالة (الخطة §6.4: إعادة واحدة ثم <c>failed</c>).
+    /// مقارنة بالعدّاد الصريح <c>ConflictRetries</c> لا بنص <c>LastError</c> التشخيصي.
+    /// </summary>
+    private const int MaxConflictRetries = 1;
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly HeadAlertOutboxOptions _options;
     private readonly HeadAlertOutboxLock _lock;
@@ -409,7 +415,7 @@ public sealed class HeadAlertOutboxDispatcher : BackgroundService
         HeadAlertConflictException exception,
         CancellationToken ct)
     {
-        if (message.ConflictRetries >= 1)
+        if (message.ConflictRetries >= MaxConflictRetries)
         {
             await MarkFailedAsync(message.Id, $"{ConflictRetryMarker}: {exception.Message}", ct).ConfigureAwait(false);
             _logger.LogWarning("تعارض متكرر على مفتاح منع التكرار — الرسالة فاشلة: {Message}", exception.Message);

@@ -405,6 +405,77 @@ public class HeadAlertSchemaMigrationTests
     }
 
     /// <summary>
+    /// هجرة `ConflictRetries` تعبّئ العدّ من العلامة المخزَّنة فقط: صف استهلك إعادته
+    /// (بعلامة `conflict_retry` في `pending`/`processing`) يُثبَّت على 1، وصف طُمس
+    /// بخطأ عابر يبقى 0 — فلا إعادة ثانية ولا منع زائد.
+    /// </summary>
+    [Fact]
+    public async Task Migration_ConflictRetries_BackfillsConsumedMarkerOnly()
+    {
+        var (path, db) = CreateDb();
+        try
+        {
+            // الرأس السابق للهجرة (Contract) — الجدول موجود بلا العمود الجديد.
+            await db.GetService<IMigrator>().MigrateAsync(ContractMigration);
+
+            await db.Database.ExecuteSqlRawAsync(
+                """
+                INSERT INTO "HeadAlertOutboxMessages"
+                    ("Operation", "Status", "Kind", "Payload", "PayloadVersion",
+                     "OccurredAt", "CreatedAt", "NextAttemptAt", "Attempts", "LastError")
+                VALUES
+                    ('upsert', 'pending', 'kind', 'payload', 1,
+                     '2026-11-03 00:00:00', '2026-11-03 00:00:00', '2026-11-03 00:00:00', 1, 'conflict_retry'),
+                    ('upsert', 'pending', 'kind', 'payload', 1,
+                     '2026-11-03 00:00:00', '2026-11-03 00:00:00', '2026-11-03 00:00:00', 2, 'SqliteException: database is locked'),
+                    ('upsert', 'processing', 'kind', 'payload', 1,
+                     '2026-11-03 00:00:00', '2026-11-03 00:00:00', '2026-11-03 00:00:00', 1, 'conflict_retry');
+                """);
+
+            await db.GetService<IMigrator>().MigrateAsync();
+
+            var counters = await db.HeadAlertOutboxMessages
+                .AsNoTracking()
+                .OrderBy(m => m.Id)
+                .Select(m => m.ConflictRetries)
+                .ToListAsync();
+
+            Assert.Equal(new[] { 1, 0, 1 }, counters);
+        }
+        finally
+        {
+            await db.DisposeAsync();
+            Cleanup(path);
+        }
+    }
+
+    /// <summary>قيد `CK_HeadAlertOutbox_ConflictRetries` يرفض القيم السالبة (مثل قيد `Attempts`).</summary>
+    [Fact]
+    public async Task Outbox_ConflictRetries_NegativeRejected()
+    {
+        var (path, db) = CreateDb();
+        try
+        {
+            await db.GetService<IMigrator>().MigrateAsync();
+
+            await Assert.ThrowsAsync<SqliteException>(async () =>
+                await db.Database.ExecuteSqlRawAsync(
+                    """
+                    INSERT INTO "HeadAlertOutboxMessages"
+                        ("Operation", "Status", "Kind", "Payload", "PayloadVersion",
+                         "OccurredAt", "CreatedAt", "NextAttemptAt", "Attempts", "LastError", "ConflictRetries")
+                    VALUES ('upsert', 'pending', 'kind', 'payload', 1,
+                            '2026-11-03 00:00:00', '2026-11-03 00:00:00', '2026-11-03 00:00:00', 0, NULL, -1)
+                    """));
+        }
+        finally
+        {
+            await db.DisposeAsync();
+            Cleanup(path);
+        }
+    }
+
+    /// <summary>
     /// M2 لا تلمس صفوف PR-2 غير الفارغة، وتعبّئ القديمة فقط، وتؤرشف تنبيهات
     /// مراجعة الجهات المتقاعدة.
     /// </summary>
