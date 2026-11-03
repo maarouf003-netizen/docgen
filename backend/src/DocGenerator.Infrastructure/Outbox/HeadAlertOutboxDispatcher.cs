@@ -401,21 +401,22 @@ public sealed class HeadAlertOutboxDispatcher : BackgroundService
 
     /// <summary>
     /// سياسة التعارض: إعادة واحدة فورية (بلا backoff) بعلامة <c>conflict_retry</c> صريحة،
-    /// ثم <c>failed</c> إن تكرر. لا تعتمد على عدّاد <c>Attempts</c>.
+    /// ثم <c>failed</c> إن تكرر. القرار من **عدّاد مخصّص** (<c>ConflictRetries</c>) لا من
+    /// نص <c>LastError</c> التشخيصي، فلا يُصفَّر العدّ إذا وقع خطأ عابر بين تعارضين.
     /// </summary>
     private async Task HandleConflictAsync(
         HeadAlertOutboxMessage message,
         HeadAlertConflictException exception,
         CancellationToken ct)
     {
-        if (string.Equals(message.LastError, ConflictRetryMarker, StringComparison.Ordinal))
+        if (message.ConflictRetries >= 1)
         {
             await MarkFailedAsync(message.Id, $"{ConflictRetryMarker}: {exception.Message}", ct).ConfigureAwait(false);
             _logger.LogWarning("تعارض متكرر على مفتاح منع التكرار — الرسالة فاشلة: {Message}", exception.Message);
             return;
         }
 
-        await MarkRetryAsync(message.Id, DateTime.UtcNow, ConflictRetryMarker, ct).ConfigureAwait(false);
+        await MarkConflictRetryAsync(message.Id, ConflictRetryMarker, ct).ConfigureAwait(false);
         _logger.LogInformation("تعارض على مفتاح منع التكرار — إعادة واحدة فورية: {Message}", exception.Message);
     }
 
@@ -479,5 +480,12 @@ public sealed class HeadAlertOutboxDispatcher : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var store = scope.ServiceProvider.GetRequiredService<IHeadAlertOutboxStore>();
         await store.MarkRetryAsync(id, nextAttemptAt, error, ct).ConfigureAwait(false);
+    }
+
+    private async Task MarkConflictRetryAsync(long id, string? error, CancellationToken ct)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var store = scope.ServiceProvider.GetRequiredService<IHeadAlertOutboxStore>();
+        await store.MarkConflictRetryAsync(id, error, ct).ConfigureAwait(false);
     }
 }

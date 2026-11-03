@@ -70,7 +70,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
     private ServiceProvider BuildProvider(
         Func<IServiceProvider, IAuditLogger>? auditFactory = null,
         ConflictGate? conflictGate = null,
-        Func<Exception>? createFailure = null)
+        Func<Exception?>? interceptCreate = null)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -93,8 +93,8 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
                 auditFactory?.Invoke(sp) ?? new FakeAuditLogger(),
                 sp.GetRequiredService<ITransactionContext>());
 
-            if (conflictGate is not null || createFailure is not null)
-                return new CreateFailureAlertService(service, conflictGate, createFailure);
+            if (conflictGate is not null || interceptCreate is not null)
+                return new CreateFailureAlertService(service, conflictGate, interceptCreate);
 
             return service;
         });
@@ -568,6 +568,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         var retried = await _db.HeadAlertOutboxMessages.AsNoTracking().SingleAsync();
         Assert.Equal(HeadAlertOutboxStatus.Pending, retried.Status);
         Assert.Equal(1, retried.Attempts);
+        Assert.Equal(1, retried.ConflictRetries);
         Assert.Equal("conflict_retry", retried.LastError);
         Assert.Null(retried.ProcessedAt);
         Assert.Null(retried.LockedUntil);
@@ -579,6 +580,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         var processed = await _db.HeadAlertOutboxMessages.AsNoTracking().SingleAsync();
         Assert.Equal(HeadAlertOutboxStatus.Processed, processed.Status);
         Assert.Equal(2, processed.Attempts);
+        Assert.Equal(1, processed.ConflictRetries);
         Assert.Null(processed.LastError);
         Assert.Single(await _db.HeadAlerts.AsNoTracking().ToListAsync());
     }
@@ -600,6 +602,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         var failed = await _db.HeadAlertOutboxMessages.AsNoTracking().SingleAsync();
         Assert.Equal(HeadAlertOutboxStatus.Failed, failed.Status);
         Assert.Equal(2, failed.Attempts);
+        Assert.Equal(1, failed.ConflictRetries);
         Assert.StartsWith("conflict_retry:", failed.LastError!, StringComparison.Ordinal);
         Assert.Empty(await _db.HeadAlerts.AsNoTracking().ToListAsync());
     }
@@ -612,7 +615,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         // `IsDedupeKeyConflict` — وهذا ما لا يغطيه محقن التعارض في الاختبارات أعلاه.
         await EnqueueAsync();
 
-        using var provider = BuildProvider(createFailure: BuildDedupeKeyUniqueViolation);
+        using var provider = BuildProvider(interceptCreate: BuildDedupeKeyUniqueViolation);
         var dispatcher = CreateDispatcher(provider);
 
         Assert.True(await dispatcher.ProcessNextAsync(CancellationToken.None));
@@ -620,6 +623,7 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         var retried = await _db.HeadAlertOutboxMessages.AsNoTracking().SingleAsync();
         Assert.Equal(HeadAlertOutboxStatus.Pending, retried.Status);
         Assert.Equal(1, retried.Attempts);
+        Assert.Equal(1, retried.ConflictRetries);
         // العلامة وحدها (لا وصف استثناء عابر ولا backoff) — دليل أن التصنيف تعارض لا عابر.
         Assert.Equal("conflict_retry", retried.LastError);
         Assert.Null(retried.ProcessedAt);
@@ -632,7 +636,53 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
         var failed = await _db.HeadAlertOutboxMessages.AsNoTracking().SingleAsync();
         Assert.Equal(HeadAlertOutboxStatus.Failed, failed.Status);
         Assert.Equal(2, failed.Attempts);
+        Assert.Equal(1, failed.ConflictRetries);
         Assert.StartsWith("conflict_retry:", failed.LastError!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ProcessNext_ConflictThenTransientThenConflict_StillFailsAfterOneRetry()
+    {
+        // العقد: «إعادة واحدة» تعني واحدة **عبر كل أنواع الفشل**، لا واحدة بين كل خطأين
+        // عابرين. العمود `ConflictRetries` هو الحالة، فلا يطمسها خطأ عابر في `LastError`.
+        await EnqueueAsync();
+
+        var attempts = new Queue<Exception?>(new Exception?[]
+        {
+            new HeadAlertConflictException("تعارض أول"),
+            new InvalidOperationException("فشل عابر بين التعارضين"),
+            new HeadAlertConflictException("تعارض ثانٍ"),
+        });
+
+        using var provider = BuildProvider(interceptCreate: () => attempts.Dequeue());
+        var dispatcher = CreateDispatcher(provider);
+
+        // 1) تعارض ⇒ pending + ConflictRetries=1.
+        Assert.True(await dispatcher.ProcessNextAsync(CancellationToken.None));
+        var afterConflict = await _db.HeadAlertOutboxMessages.AsNoTracking().SingleAsync();
+        Assert.Equal(HeadAlertOutboxStatus.Pending, afterConflict.Status);
+        Assert.Equal(1, afterConflict.ConflictRetries);
+        Assert.Equal("conflict_retry", afterConflict.LastError);
+
+        // 2) خطأ عابر ⇒ pending بتباعد، و`LastError` صار وصفًا (طمس العلامة) لكن العدّ بقي.
+        Assert.True(await dispatcher.ProcessNextAsync(CancellationToken.None));
+        var afterTransient = await _db.HeadAlertOutboxMessages.AsNoTracking().SingleAsync();
+        Assert.Equal(HeadAlertOutboxStatus.Pending, afterTransient.Status);
+        Assert.Equal(1, afterTransient.ConflictRetries);
+        Assert.NotEqual("conflict_retry", afterTransient.LastError);
+
+        // تجاوز التباعد التصاعدي: نُقدّم موعد المحاولة بدل انتظار 30 ثانية.
+        var row = await _db.HeadAlertOutboxMessages.SingleAsync();
+        row.NextAttemptAt = DateTime.UtcNow.AddMinutes(-1);
+        await _db.SaveChangesAsync();
+
+        // 3) تعارض ثانٍ ⇒ failed، رغم أن `LastError` لم يعد يحمل العلامة.
+        Assert.True(await dispatcher.ProcessNextAsync(CancellationToken.None));
+        var failed = await _db.HeadAlertOutboxMessages.AsNoTracking().SingleAsync();
+        Assert.Equal(HeadAlertOutboxStatus.Failed, failed.Status);
+        Assert.Equal(1, failed.ConflictRetries);
+        Assert.StartsWith("conflict_retry:", failed.LastError!, StringComparison.Ordinal);
+        Assert.Empty(await _db.HeadAlerts.AsNoTracking().ToListAsync());
     }
 
     private static HeadAlertOutboxMessage Terminal(
@@ -677,25 +727,24 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
     /// <list type="bullet">
     /// <item><b>بوابة تعارض</b> (<see cref="ConflictGate"/>): ترمي
     /// <see cref="HeadAlertConflictException"/> — مسار استثناء الخدمة.</item>
-    /// <item><b>استثناء محدد</b> (<c>failure</c>): يرمي استثناءً جاهزًا — يُستخدم
-    /// لتمرير <see cref="DbUpdateException"/> حقيقي يحمل تعارض الفهرس الفريد، وهو
-    /// المسار الإنتاجي الفعلي لسباق <c>DedupeKey</c>.</item>
+    /// <item><b>مُعترِض</b> (<c>intercept</c>): يعيد استثناءً جاهزًا ليرميه، أو <c>null</c>
+    /// للمرور للخدمة الحقيقية — يسمح بتسلسل فشل متغيّر بين المحاولات (تعارض/عابر).</item>
     /// </list>
     /// </summary>
     private sealed class CreateFailureAlertService : IHeadAlertService
     {
         private readonly IHeadAlertService _inner;
         private readonly ConflictGate? _gate;
-        private readonly Func<Exception>? _failure;
+        private readonly Func<Exception?>? _intercept;
 
         public CreateFailureAlertService(
             IHeadAlertService inner,
             ConflictGate? gate = null,
-            Func<Exception>? failure = null)
+            Func<Exception?>? intercept = null)
         {
             _inner = inner;
             _gate = gate;
-            _failure = failure;
+            _intercept = intercept;
         }
 
         public Task<HeadAlertWriteResult> CreateSystemAsync(
@@ -705,8 +754,8 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
             int? targetUserIdOverride,
             CancellationToken ct = default)
         {
-            if (_failure is not null)
-                throw _failure();
+            if (_intercept?.Invoke() is { } intercepted)
+                throw intercepted;
 
             if (_gate?.TryConsumeConflict() == true)
                 throw new HeadAlertConflictException("تعارض محاكى على مفتاح منع التكرار");
