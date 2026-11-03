@@ -12,14 +12,16 @@ vi.mock('react-router-dom', () => ({
 }));
 
 describe('ManagerIconRow', () => {
-  it('يعرض للمدير 10 بطاقات بلا «محامو الفرع» ومع «الحساب الشخصي»', () => {
+  it('يعرض للمدير 11 بطاقة بلا «محامو الفرع» ومع «الحساب الشخصي»', () => {
     render(<ManagerIconRow isAdmin={false} />);
 
     const nav = screen.getByRole('navigation', { name: 'أقسام لوحة المدير' });
-    expect(within(nav).getAllByRole('link')).toHaveLength(10);
+    expect(within(nav).getAllByRole('link')).toHaveLength(11);
     expect(within(nav).getByRole('link', { name: 'الإحصائيات' })).toHaveAttribute('href', '/stats');
     expect(within(nav).getByRole('link', { name: 'كتب المطالعات' })).toHaveAttribute('href', '/reviews');
     expect(within(nav).getByRole('link', { name: 'المراسلات' })).toHaveAttribute('href', '/correspondence');
+    // وصول إشرافي للتنبيهات — §18:3044 (كان مفقودًا للمدير/المشرف).
+    expect(within(nav).getByRole('link', { name: 'التنبيهات' })).toHaveAttribute('href', '/alerts');
     expect(within(nav).getByRole('link', { name: 'اقتراحات التطوير' })).toHaveAttribute(
       'href',
       '/suggestions',
@@ -51,11 +53,12 @@ describe('ManagerIconRow', () => {
     expect(within(nav).queryByRole('link', { name: 'محامو الفرع' })).not.toBeInTheDocument();
   });
 
-  it('يعرض للمشرف 11 بطاقة مع «محامو الفرع» و«الحساب الشخصي»', () => {
+  it('يعرض للمشرف 12 بطاقة مع «محامو الفرع» و«الحساب الشخصي»', () => {
     render(<ManagerIconRow isAdmin />);
 
     const nav = screen.getByRole('navigation', { name: 'أقسام لوحة مشرف النظام' });
-    expect(within(nav).getAllByRole('link')).toHaveLength(11);
+    expect(within(nav).getAllByRole('link')).toHaveLength(12);
+    expect(within(nav).getByRole('link', { name: 'التنبيهات' })).toHaveAttribute('href', '/alerts');
     expect(within(nav).getByRole('link', { name: 'محامو الفرع' })).toHaveAttribute(
       'href',
       '/branch-lawyers',

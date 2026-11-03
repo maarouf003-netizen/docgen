@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { api } from '../api/client';
 import { useAuth } from '../auth/useAuth';
@@ -18,9 +19,10 @@ import type { AppSuggestionDto, ManagerStatsDto, PersonalReminderDto } from '../
  * - رئيس القسم/الشعبة: ملفات نطاقه هذه السنة (`/stats/manager` — نطاقه إجباري خلفيًا) +
  *   غير المقروء **له** (`unread-count?scope=user` — حُسم 2026-11-02: «غير المقروء لي»،
  *   بدل `received` التجميعي الذي أبقى رقمًا بعد قراءة صاحب الحساب لكل تنبيهاته) + اقتراحاتي.
- * - المدير/مشرف النظام: ملفات هذه السنة (`/stats/manager` العام) فقط —
- *   بلا تذكيرات (محامٍ فقط خلفيًا) ولا عدّادات تنبيهات (مستلم-محددة خلفيًا) ولا
- *   قسم اقتراحات (يستقبلانها في `/suggestions`، والإرسال محظور خلفيًا `403`).
+ * - المدير/مشرف النظام: ملفات هذه السنة (`/stats/manager` العام) + **رابط التنبيهات**
+ *   (قراءة إشرافية عبر الفروع — §18:3044) فقط — بلا تذكيرات (محامٍ فقط خلفيًا)
+ *   ولا عدّادات تنبيهات (مستلم-محددة خلفيًا) ولا قسم اقتراحات (يستقبلانها في
+ *   `/suggestions`، والإرسال محظور خلفيًا `403`).
  */
 export default function AccountPage() {
   const { user, logout } = useAuth();
@@ -194,6 +196,31 @@ export default function AccountPage() {
             )}
           </dl>
         </section>
+
+        {/* وصول إشرافي للتنبيهات (§18:3044): المدير/المشرف يفتحان القائمة للقراءة عبر
+            الفروع. رابط لا زر (تنقّل)، وبهذا الحجم (`min-h-11`) هدف لمس صحيح على الجوال.
+            بلا عدّاد عمدًا: العدّاد مستلم-محدد خلفيًا ولا يُطلب لهما (انظر `unreadQuery`). */}
+        {isManager ? (
+          <section
+            aria-label="التنبيهات (قراءة إشرافية)"
+            className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="font-bold text-gray-900">التنبيهات</h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  قراءة إشرافية عبر الفروع — بلا تعليم مقروء ولا عدّاد.
+                </p>
+              </div>
+              <Link
+                to="/alerts"
+                className="inline-flex items-center justify-center min-h-11 px-4 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-sm font-medium focus-visible:ring-2 focus-visible:ring-emerald-600"
+              >
+                عرض التنبيهات
+              </Link>
+            </div>
+          </section>
+        ) : null}
 
         {/* قسم الاقتراحات للمرسلين فقط — المدير/المشرف يستقبلانها في
             `/suggestions` (والإرسال محظور خلفيًا)، فلا زر إرسال ولا سجل هنا. */}
