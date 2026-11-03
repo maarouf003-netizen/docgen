@@ -1,0 +1,72 @@
+using DocGenerator.Application.Tests.TestHelpers;
+using DocGenerator.Domain.Entities;
+using DocGenerator.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+
+namespace DocGenerator.Application.Tests;
+
+/// <summary>
+/// فرق المزوّدين في نموذج تنبيهات رئيس القسم (الخطة §6.2/§14.1، البند §18:3143):
+/// الفهرس الفريد **الجزئي** على <c>DedupeKey</c> يحتاج صياغة منطقية مختلفة —
+/// <c>"IsArchived" = false</c> في `PostgreSQL` و<c>= 0</c> في `SQLite` — بينما يبقى
+/// الدلالي واحدًا (المفتاح غير فارغ والصف غير مؤرشف). واختلاف الصياغة الخطأ لا يظهر
+/// في الاختبارات السلوكية لأن كلًّا منهما يعمل على مزوّده؛ لذلك يُثبَّت على **النموذج/DDL**
+/// لكل مزوّد بلا قاعدة حيّة (بناء النموذج وتوليد `CREATE` لا يحتاجان اتصالًا).
+///
+/// ملاحظة مقصودة: قيد <c>CK_HeadAlerts_Kind_NotEmpty</c> نصّه واحد على المزوّدين
+/// (<c>TRIM("Kind") &lt;&gt; ''</c>) — اختلافه الوحيد في تهريب المعرّفات الذي يتولاه
+/// المزوّد؛ لذلك يُتحقق من ظهوره في `DDL` المزوّدين لا من اختلافه.
+/// </summary>
+public class HeadAlertModelProviderTests
+{
+    private const string PartialIndexName = "UX_HeadAlerts_DedupeKey_Active";
+
+    [Fact]
+    public void PartialUniqueDedupeIndex_UsesProviderSpecificBooleanLiteral()
+    {
+        using var sqlite = TestDb.Create();
+        using var postgres = NewPostgresContext();
+
+        var sqliteFilter = PartialIndexFilter(sqlite);
+        var postgresFilter = PartialIndexFilter(postgres);
+
+        Assert.Equal("\"DedupeKey\" IS NOT NULL AND \"IsArchived\" = 0", sqliteFilter);
+        Assert.Equal("\"DedupeKey\" IS NOT NULL AND \"IsArchived\" = false", postgresFilter);
+
+        // الفرق مقصود: الفلتر المترجم إلى المزوّد الخاطئ يُسقط القيد أو يعطّله.
+        Assert.NotEqual(sqliteFilter, postgresFilter);
+    }
+
+    [Fact]
+    public void GeneratedDdl_CarriesTheProviderSpecificFilter_AndTheSameKindConstraint()
+    {
+        using var sqlite = TestDb.Create();
+        using var postgres = NewPostgresContext();
+
+        var sqliteDdl = sqlite.Database.GenerateCreateScript();
+        var postgresDdl = postgres.Database.GenerateCreateScript();
+
+        // الفهرس الفريد الجزئي: اسم واحد، وصياغة منطقية بحسب المزوّد.
+        Assert.Contains(PartialIndexName, sqliteDdl, StringComparison.Ordinal);
+        Assert.Contains(PartialIndexName, postgresDdl, StringComparison.Ordinal);
+        Assert.Contains("\"IsArchived\" = 0", sqliteDdl, StringComparison.Ordinal);
+        Assert.Contains("\"IsArchived\" = false", postgresDdl, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"IsArchived\" = false", sqliteDdl, StringComparison.Ordinal);
+
+        // قيد النوع غير الفارغ موجود على المزوّدين (نصّه موحّد).
+        Assert.Contains("CK_HeadAlerts_Kind_NotEmpty", sqliteDdl, StringComparison.Ordinal);
+        Assert.Contains("CK_HeadAlerts_Kind_NotEmpty", postgresDdl, StringComparison.Ordinal);
+    }
+
+    private static DocGeneratorPostgresDbContext NewPostgresContext() =>
+        new(new DbContextOptionsBuilder<DocGeneratorPostgresDbContext>()
+            .UseNpgsql("Host=localhost;Port=5432;Database=unused;Username=unused;Password=unused")
+            .Options);
+
+    private static string? PartialIndexFilter(DbContext context) =>
+        context.Model
+            .FindEntityType(typeof(HeadAlert))!
+            .GetIndexes()
+            .Single(index => index.GetDatabaseName() == PartialIndexName)
+            .GetFilter();
+}
