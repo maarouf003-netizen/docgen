@@ -370,6 +370,42 @@ public class AlertsCursorPagingTests
     }
 
     /// <summary>
+    /// وضع الإشراف (مدير/مشرف): القائمة عبر الفروع بحالة قراءة `null` وعدّادات
+    /// مستلمين محسوبة قاعديًا، وتعمل مع المؤشر، والعدّاد الشخصي مرفوض `403`.
+    /// (كان الترقيم الإشرافي بالمؤشر غير مُختبر عبر `HTTP` — كشفته مراجعة وضع الإشراف.)
+    /// </summary>
+    [Fact]
+    public async Task OversightRole_ListIsSupervisionShaped_AndPagesWithCursor()
+    {
+        var branchId = await _factory.GetBranchIdAsync("DAM");
+        var createdById = await _factory.UserIdAsync("head1");
+        var recipientId = await _factory.UserIdAsync("lawyer1");
+        await SeedAlertsAsync(branchId, recipientId, createdById, count: 3);
+
+        var manager = _factory.AuthorizedClient("manager");
+        var first = await ReadPageAsync(await manager.GetAsync("/api/alerts?pageSize=2"));
+
+        Assert.Equal(1, first.Page);
+        Assert.True(first.TotalCount >= 3);
+        Assert.All(first.Items, item => Assert.Null(item.IsRead));
+        Assert.All(first.Items, item => Assert.NotNull(item.RecipientCount));
+
+        if (first.Items.Count == 0)
+            return;
+
+        var second = await ReadPageAsync(
+            await manager.GetAsync(
+                $"/api/alerts?pageSize=2&cursor={Uri.EscapeDataString(Wire(first.Items[^1]))}"));
+
+        Assert.Equal(1, second.Page);
+        Assert.Empty(second.Items.Select(i => i.Id).Intersect(first.Items.Select(i => i.Id)));
+
+        // العدّاد الشخصي «غير المقروء لي» لا معنى له للإشراف (مستلم-محدد خلفيًا).
+        var unread = await manager.GetAsync("/api/alerts/unread-count?scope=user");
+        Assert.Equal(HttpStatusCode.Forbidden, unread.StatusCode);
+    }
+
+    /// <summary>
     /// ترتيب القرار (§9.4): الدور يسبق شكل الطلب، فلا ينقلب <c>403</c> إلى <c>400</c>
     /// بسبب مؤشر غير صالح. تحليل المؤشر في الخدمة بعد فحص الدور/الفرع هو ما يحفظ هذا
     /// (والحالة الكاملة لرئيس بلا فرع في <c>AlertsIntegrationTests</c>).

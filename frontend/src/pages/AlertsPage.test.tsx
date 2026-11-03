@@ -300,3 +300,74 @@ describe('AlertsPage — رئيس القسم/الشعبة', () => {
     expect(panel).toHaveAttribute('aria-labelledby', 'alerts-tab-received');
   });
 });
+
+/**
+ * وضع الإشراف (مدير/مشرف النظام) على `/alerts`: قراءة فقط عبر الفروع.
+ * العقود الخلفية مغطّاة في `HeadAlertServicePermissionTests`؛ هذه الاختبارات
+ * تحرس **الواجهة**: لا تبويبات/إصدار/تعليم مقروء/طلب عدّاد، وعدّادات الصف
+ * الإشرافية معروضة، والمستلمون متاحون، ولا ادّعاء «لا تنبيهات غير مقروءة».
+ */
+describe('AlertsPage — المدير/المشرف (إشراف قرائي)', () => {
+  function oversightAlert() {
+    return makeHeadAlertSummary({
+      id: 1,
+      kind: 'manual_to_branch',
+      messagePreview: 'تعميم عبر الفروع',
+      isRead: null,
+      recipientCount: 2,
+      unreadCount: 1,
+      previewTruncated: true,
+    });
+  }
+
+  beforeEach(() => {
+    useAuthMock.mockReturnValue({
+      user: { id: 9, username: 'manager1', fullName: 'مدير النظام', role: 'manager', branchId: null },
+    });
+  });
+
+  it('قراءة فقط: بلا تبويبات ولا إصدار ولا تعليم مقروء ولا طلب عدّاد', async () => {
+    mockApi({ received: [oversightAlert()] });
+    render(<AlertsPage />);
+
+    expect(await screen.findByText('تعميم عبر الفروع')).toBeInTheDocument();
+
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '+ إصدار تنبيه' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'تمت القراءة' })).not.toBeInTheDocument();
+
+    const urls = get.mock.calls.map((call) => String(call[0]));
+    expect(urls).not.toContain('/alerts/unread-count');
+    expect(urls).not.toContain('/alerts/sent?archived=active');
+
+    // عدّاد الصف الإشرافي (مجموع المستلمين) معروض، والوصف لا يدّعي انعدام غير المقروء.
+    expect(screen.getByText('غير مقروء: 1 / 2')).toBeInTheDocument();
+    expect(screen.getByText('قراءة إشرافية عبر الفروع')).toBeInTheDocument();
+    expect(screen.queryByText('لا تنبيهات غير مقروءة')).not.toBeInTheDocument();
+  });
+
+  it('يفتح المستلمين من القائمة الإشرافية (صلاحية إشرافية خلفية)', async () => {
+    const user = userEvent.setup();
+    mockApi({ received: [oversightAlert()] });
+    render(<AlertsPage />);
+
+    await screen.findByText('تعميم عبر الفروع');
+    await user.click(screen.getByRole('button', { name: 'المستلمون' }));
+
+    expect(get).toHaveBeenCalledWith('/alerts/1/recipients', expect.anything());
+  });
+
+  it('يفتح النص الكامل للقراءة فقط (بلا تعليم مقروء)', async () => {
+    const user = userEvent.setup();
+    mockApi({ received: [oversightAlert()] });
+    render(<AlertsPage />);
+
+    await screen.findByText('تعميم عبر الفروع');
+    await user.click(screen.getByRole('button', { name: 'عرض التنبيه' }));
+
+    expect(
+      await screen.findByText('النص الكامل للتعميم الذي لا تحمله القائمة'),
+    ).toBeInTheDocument();
+    expect(patch).not.toHaveBeenCalled();
+  });
+});

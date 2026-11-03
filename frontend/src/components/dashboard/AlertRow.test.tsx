@@ -105,6 +105,17 @@ describe('AlertRow', () => {
     expect(screen.getByText(/غير مقروء/)).toBeInTheDocument();
   });
 
+  it('نقطة القراءة لا تُرسم لحالة غير منطبقة (`isRead = null`) خارج «مرسلة» أيضًا', () => {
+    // صف الإشراف (مدير/مشرف): `isRead = null` لأنه ليس مستلمًا، والعدّاد يعلن
+    // مجموع المستلمين — فرسم نقطة حمراء يقرأ «غير مقروء» كاذبًا (§18:3045).
+    const oversight = { ...pendingAlert(), isRead: null, recipientCount: 2, unreadCount: 1 };
+    const { container } = render(<AlertRow alert={oversight} />);
+
+    expect(container.querySelector('.bg-red-500')).toBeNull();
+    expect(container.querySelector('.bg-gray-300')).toBeNull();
+    expect(screen.getByText('غير مقروء: 1 / 2')).toBeInTheDocument();
+  });
+
   it('يعرض تسمية النوع من الكتالوج للرمز المعروف، ولا يخترع تسمية للرمز المجهول', () => {
     const { unmount } = render(<AlertRow alert={pendingAlert()} />);
     expect(screen.getByText('ملفات دائرة بانتظار التحديث')).toBeInTheDocument();

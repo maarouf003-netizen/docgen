@@ -59,7 +59,7 @@ export function AlertList({
           onMarkRead={onMarkRead}
           markingKey={markingKey}
           onOpen={onOpen}
-          onOpenRecipients={sentView ? onOpenRecipients : undefined}
+          onOpenRecipients={onOpenRecipients}
         />
       ))}
     </ul>

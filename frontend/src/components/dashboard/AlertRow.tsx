@@ -35,7 +35,7 @@ export function AlertRow({
    * (`AlertDetails`): وظيفة واحدة بمسار واحد، والحوار هو المسار على الصفحة.
    */
   onOpen?: (a: HeadAlertSummaryDto) => void;
-  /** فتح قائمة المستلمين وحالة قراءتهم — في عرض الصادر فقط. */
+  /** فتح قائمة المستلمين وحالة قراءتهم — تُمرَّر من الصفحة حسب الدور/التبويب (سياسة في مكان واحد). */
   onOpenRecipients?: (a: HeadAlertSummaryDto) => void;
 }) {
   const isMarking = markingKey === String(alert.id);
@@ -51,10 +51,10 @@ export function AlertRow({
   return (
     <li>
       <div className="flex items-start gap-3 px-4 sm:px-5 py-3">
-        {/* نقطة القراءة **تُحذف** في عرض الصادر: `isRead` حالة المستلم وهي `null` للمُرسل،
-            فرسمها حمراء يقرأ «غير مقروء» كاذبًا، وإبقاؤها شفافة يحجز فراغًا بلا معنى.
-            حالة المستلمين يعلنها عدّاد الصف («غير مقروء: N / M» / «مقروء من الجميع»). */}
-        {sentView ? null : (
+        {/* نقطة القراءة **تُحذف** حين لا تنطبق حالة القراءة: في عرض الصادر (`sentView`)
+            لأن `isRead` حالة المستلم، وعند `isRead = null` عمومًا (المدير/المشرف ليس
+            مستلمًا). رسمها حمراء كان يقرأ «غير مقروء» كاذبًا لصف إشرافي. */}
+        {sentView || alert.isRead == null ? null : (
           <span
             className={`shrink-0 w-2 h-2 mt-2 rounded-full ${alert.isRead ? 'bg-gray-300' : 'bg-red-500'}`}
             aria-hidden="true"

@@ -233,7 +233,11 @@ export default function AlertsPage() {
           </div>
         ) : (
           <span className="text-sm text-gray-500">
-            {unreadCount > 0 ? (
+            {/* المدير/المشرف: حالة القراءة غير منطبقة (`isRead = null` — ليس مستلمًا)،
+                فلا يُعرض «لا تنبيهات غير مقروءة» كاذبًا ولا رقم عدّاد (§18:3045). */}
+            {isManager ? (
+              'قراءة إشرافية عبر الفروع'
+            ) : unreadCount > 0 ? (
               <>
                 <span className="tabular-nums">{unreadCount}</span> غير مقروء
               </>
@@ -311,7 +315,11 @@ export default function AlertsPage() {
           onMarkRead={canMarkRead && activeTab === 'received' ? markAlertRead : undefined}
           markingKey={activeTab === 'received' ? markingKey : null}
           onOpen={(alert) => setDetailsId(alert.id)}
-          onOpenRecipients={(alert) => setRecipientsId(alert.id)}
+          onOpenRecipients={
+            // المستلمون: للمُصدِر في «مرسلة»، وللمدير/المشرف في قائمته الإشرافية
+            // (لا تبويب «مرسلة» له، والخادم يمنحه `GET /{id}/recipients` — D3).
+            activeTab === 'sent' || isManager ? (alert) => setRecipientsId(alert.id) : undefined
+          }
           emptyText={
             archive === 'only'
               ? 'لا توجد تنبيهات مؤرشفة في هذا النطاق'
