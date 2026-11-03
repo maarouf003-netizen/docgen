@@ -3096,11 +3096,15 @@ frontend/src/
       (تدقيق) يُرجع المعاملة كاملة (صفر تنبيه/مستلم) ويُعيد الصف `pending` بمحاولة واحدة؛ وأن
       تعارض `DedupeKey` يُعيده `pending` بعلامة `conflict_retry` ثم ينجح، أو يُسجَّل `failed`
       ببادئة العلامة عند التكرار.
+      **المرساة:** [#79](https://github.com/maarouf003-netizen/docgen/pull/79) ← `b7997eb`
+      (ملحق 4 في `docs/audit/head-alerts-18-evidence-map-20261103-addendum4.md`).
 - [ ] المراجع المحذوفة/غير الصالحة عند المعالجة → `skipped` (`missing_reference`)، لا `failed` ولا إعادة.
 - [x] `HeadAlertSupersedePlan` يُطبق أيضًا عند `Unchanged`، و`ArchiveBy...Core` لا تبدأ معاملة متداخلة.
       **أُغلق 2026‑11‑03:** `CreateSystemAsync_SupersedePlanOnUnchanged_ArchivesOldAndKeepsCurrent`
       يثبت عند `Unchanged` أرشفة القديم وفق `archiveKinds`، وبقاء البديل نشطًا بلا `ArchivedAt`،
       ولا صف توأم (صفّان فقط).
+      **المرساة:** [#79](https://github.com/maarouf003-netizen/docgen/pull/79) ← `b7997eb`
+      (ملحق 4 في `docs/audit/head-alerts-18-evidence-map-20261103-addendum4.md`).
 - [ ] أرشفة الإنابة/الاستئناف وفق الخيار المعتمد (داخل معاملة العمل أو Outbox أرشفة)، بلا `best-effort`.
 - [ ] `Outbox.Payload` يستخدم `JsonStringEnumConverter`، ويتحقق من تطابق `operation`/`Kind`، و`CreateSystemAsync`
       يسجل `create_alert`/`update_alert` في التدقيق.
@@ -3140,12 +3144,16 @@ frontend/src/
       ببادئة/لاحقة مميزتين)، ويعرضه كاملًا (`textContent` بطول 12,000) مع `break-words` و
       `whitespace-pre-wrap` وبلا `overflow-x` في أي سلف؛ و`AlertDetailsSheet.test.tsx` يثبت
       عرض 12,000 حرف كاملة في الحوار بالخصائص نفسها.
+      **المرساة:** [#79](https://github.com/maarouf003-netizen/docgen/pull/79) ← `b7997eb`
+      (ملحق 4 في `docs/audit/head-alerts-18-evidence-map-20261103-addendum4.md`).
 - [x] كل أهداف اللمس `min-h-11`، وحوارات الوصول تعمل (ESC/تركيز/قفل تمرير).
       **أُغلق 2026‑11‑03 (شقّ حوار التفاصيل):** `AlertDetailsSheet.test.tsx` يثبت `Escape`
       ⇒ `onClose`، وزر إغلاق `aria-label` بارتفاع/عرض `min-h-11`/`min-w-11`، و
       `role="dialog"` + `aria-modal="true"` + `aria-labelledby` إلى عنوان موجود، وحاوية
       تمرير داخلية `overscroll-contain` بلا `overflow-x` في الحوار. **لا «حبس تركيز»
       منفّذ في المكوّن، فلا يُدّعى في الاختبار.**
+      **المرساة:** [#79](https://github.com/maarouf003-netizen/docgen/pull/79) ← `b7997eb`
+      (ملحق 4 في `docs/audit/head-alerts-18-evidence-map-20261103-addendum4.md`).
 - [ ] تعميمات الجهات الثمانية معتمدة ومختبرة.
 - [ ] التعاقب ينقل غير المقروء النشط فقط، ولا ينقل المقروء أو المؤرشف، **ويدمج صف المستلم عند كون
       الخلف مستلمًا مسبقًا للتنبيه نفسه بلا كسر القيد `(HeadAlertId, UserId)`**، ويعالج تصادم المفتاح
