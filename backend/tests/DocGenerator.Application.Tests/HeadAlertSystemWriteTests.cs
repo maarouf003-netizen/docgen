@@ -275,6 +275,63 @@ public class HeadAlertSystemWriteTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateSystemAsync_SupersedePlanOnUnchanged_ArchivesOldAndKeepsCurrent()
+    {
+        // البند §18:3083: الخطة تُطبَّق أيضًا عند Unchanged — لا يُؤرشف البديل
+        // (الصف الحالي)، ويُؤرشف القديم وفق archiveKinds، وبلا صف توأم.
+        var occurredAt = new DateTime(2026, 10, 20, 9, 0, 0, DateTimeKind.Utc);
+
+        var pending = new CreateSystemHeadAlertRequest(
+            HeadAlertKindCatalog.DelegationPendingApproval,
+            "بانتظار اعتماد الإنابة",
+            HeadAlertAudience.SingleHead,
+            _branchId,
+            _head.Id,
+            RecipientUserId: _head.Id,
+            DelegationId: 77);
+
+        await Tx().RunAsync(token =>
+            Alerts().CreateSystemAsync(pending, occurredAt, null, null, token));
+
+        var mirror = new CreateSystemHeadAlertRequest(
+            HeadAlertKindCatalog.DelegationMirrorUpdated,
+            "تحديث نسخة المناب",
+            HeadAlertAudience.SingleLawyer,
+            _branchId,
+            _head.Id,
+            RecipientUserId: _lawyer.Id,
+            TargetLawyerId: _lawyer.Id,
+            DelegationId: 77);
+
+        await Tx().RunAsync(token =>
+            Alerts().CreateSystemAsync(mirror, occurredAt, null, null, token));
+
+        var plan = new HeadAlertSupersedePlan(
+            77, null, HeadAlertKindCatalog.DelegationKinds, "delegation_completed");
+
+        // الحدث نفسه (نص مطابق وزمن أحدث) ⇒ Unchanged، ومع ذلك تُطبَّق خطة الاستبدال.
+        var result = await Tx().RunAsync(token =>
+            Alerts().CreateSystemAsync(mirror, occurredAt.AddMinutes(1), plan, null, token));
+
+        Assert.Equal(HeadAlertWriteResult.Unchanged, result);
+
+        using var db = NewDb();
+        var alerts = await db.HeadAlerts.AsNoTracking().OrderBy(a => a.Id).ToListAsync();
+
+        // لا صف توأم: صفّان فقط (القديم المؤرشف والبديل النشط).
+        Assert.Equal(2, alerts.Count);
+
+        var archived = Assert.Single(alerts.Where(a => a.IsArchived));
+        Assert.Equal(HeadAlertKindCatalog.DelegationPendingApproval, archived.Kind);
+        Assert.NotNull(archived.ArchivedAt);
+
+        var kept = Assert.Single(alerts.Where(a => !a.IsArchived));
+        Assert.Equal(HeadAlertKindCatalog.DelegationMirrorUpdated, kept.Kind);
+        Assert.Equal("تحديث نسخة المناب", kept.Message);
+        Assert.Null(kept.ArchivedAt);
+    }
+
+    [Fact]
     public async Task CreateSystemAsync_SuccessionOverride_ReplacesPredecessorRecipient()
     {
         var request = new CreateSystemHeadAlertRequest(

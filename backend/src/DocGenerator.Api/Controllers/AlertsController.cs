@@ -20,6 +20,14 @@ public class AlertsController : ControllerBase
 {
     private readonly IHeadAlertService _alerts;
 
+    /// <summary>
+    /// رسالة 404 الموحّدة لمسارات التنبيهات (قرار المالك 2026-11-03): جسم عربي واحد
+    /// لـ<see cref="Get"/>/<see cref="Recipients"/>/<see cref="MarkRead"/>، بلا
+    /// `title`/`detail` إنجليزيين من `ProblemDetails` الافتراضي، وبلا تسريب وجود
+    /// (الرسالة نفسها لغير الموجود ولغير المصرّح).
+    /// </summary>
+    private const string NotFoundMessage = "التنبيه غير موجود أو لا تملك صلاحية عرضه";
+
     public AlertsController(IHeadAlertService alerts) => _alerts = alerts;
 
     private string? ActorName => User.Identity?.Name;
@@ -152,7 +160,7 @@ public class AlertsController : ControllerBase
     public async Task<IActionResult> Get(int id, CancellationToken ct)
     {
         var alert = await _alerts.GetDetailsAsync(id, Actor, ct);
-        return alert is null ? NotFound() : Ok(alert);
+        return alert is null ? NotFound(new { message = NotFoundMessage }) : Ok(alert);
     }
 
     /// <summary>
@@ -163,7 +171,7 @@ public class AlertsController : ControllerBase
     public async Task<IActionResult> Recipients(int id, CancellationToken ct)
     {
         var recipients = await _alerts.GetRecipientsAsync(id, Actor, ct);
-        return recipients is null ? NotFound() : Ok(recipients);
+        return recipients is null ? NotFound(new { message = NotFoundMessage }) : Ok(recipients);
     }
 
     /// <summary>
@@ -204,7 +212,7 @@ public class AlertsController : ControllerBase
         try
         {
             var ok = await _alerts.MarkReadAsync(id, Actor, ct);
-            return ok ? NoContent() : NotFound();
+            return ok ? NoContent() : NotFound(new { message = NotFoundMessage });
         }
         catch (UnauthorizedAccessException)
         {

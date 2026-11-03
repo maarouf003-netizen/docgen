@@ -693,6 +693,32 @@ public class AlertsIntegrationTests
     }
 
     [Fact]
+    public async Task MissingAlert_NotFoundBody_IsArabicMessageWithoutEnglishTitle()
+    {
+        // قرار المالك 2026-11-03 (ب): جسم 404 عربي موحّد لمسارات التنبيهات الثلاثة،
+        // بلا `title`/`detail` إنجليزيين من ProblemDetails الافتراضي.
+        var lawyer = _factory.AuthorizedClient("lawyer1");
+        const string expected = "التنبيه غير موجود أو لا تملك صلاحية عرضه";
+
+        var responses = new[]
+        {
+            await lawyer.GetAsync("/api/alerts/999999"),
+            await lawyer.GetAsync("/api/alerts/999999/recipients"),
+            await lawyer.PatchAsJsonAsync("/api/alerts/999999/read", new { }),
+        };
+
+        foreach (var response in responses)
+        {
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+            Assert.Equal(expected, await ReadMessageAsync(response));
+
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.False(json.RootElement.TryGetProperty("title", out _));
+            Assert.False(json.RootElement.TryGetProperty("detail", out _));
+        }
+    }
+
+    [Fact]
     public async Task Get_Alert_Manager_ReturnsIt_Missing_ReturnsNotFound()
     {
         // قرار المالك 2026-10-16: قراءة إشرافية للمدير/المشرف (المفرد والقائمة فقط).

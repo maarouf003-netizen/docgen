@@ -12,7 +12,12 @@ vi.mock('../../api/client', () => ({
 
 import { api } from '../../api/client';
 
-const FULL_MESSAGE = `${'تفصيل التنبيه '.repeat(40)}— نهاية النص الكامل التي لا تظهر في المعاينة.`;
+const FULL_MESSAGE_HEAD = 'بداية النص الكامل — ';
+const FULL_MESSAGE_TAIL = ' — نهاية النص الكامل التي لا تظهر في المعاينة.';
+// البند §18:3118: النص الطويل الفعلي 12,000 حرف (لا معاينة قصيرة مُكبَّرة).
+const FULL_MESSAGE = `${FULL_MESSAGE_HEAD}${'ا'.repeat(
+  12_000 - FULL_MESSAGE_HEAD.length - FULL_MESSAGE_TAIL.length,
+)}${FULL_MESSAGE_TAIL}`;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -42,8 +47,20 @@ describe('AlertDetails (D12)', () => {
 
     expect(api.get).toHaveBeenCalledTimes(1);
     expect(api.get).toHaveBeenCalledWith('/alerts/7', expect.any(Object));
-    // الفشل لو عُرضت المعاينة وحدها: النص الكامل (بطوله) مطلوب حرفيًا.
-    expect(await screen.findByText(FULL_MESSAGE)).toBeInTheDocument();
+    // الفشل لو عُرضت المعاينة وحدها: النص الكامل (بطوله الحقيقي) مطلوب حرفيًا.
+    const message = await screen.findByText(FULL_MESSAGE);
+    expect(message).toBeInTheDocument();
+    expect(FULL_MESSAGE).toHaveLength(12_000);
+    expect(message.textContent).toHaveLength(12_000);
+
+    // لا قصّ ولا تمرير أفقي: النص يلتف داخل الحاوية (`break-words`) ويحفظ
+    // الأسطر (`whitespace-pre-wrap`)، ولا سلف يفرض `overflow-x`.
+    expect(message).toHaveClass('break-words');
+    expect(message).toHaveClass('whitespace-pre-wrap');
+    for (let node = message.parentElement; node; node = node.parentElement) {
+      expect(node.className).not.toMatch(/overflow-x-(auto|scroll)/);
+    }
+
     expect(screen.getByRole('button', { name: 'إخفاء النص الكامل' })).toHaveAttribute(
       'aria-expanded',
       'true',

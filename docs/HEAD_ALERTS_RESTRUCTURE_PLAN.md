@@ -1688,6 +1688,12 @@ entity_abolish_heads:
 4. **معرفة الصيغة السلكية في طبقة التطبيق (مقبولة):** `HeadAlertListQuery.Cursor` نص خام يُحلَّل في
    `HeadAlertService` (لا في المتحكم) للحفاظ على `403` قبل `400`؛ البديل الأنظف (`CursorInput` كسول)
    لا يستحق تعقيدًا إضافيًا الآن. **شرط الإثارة:** ظهور مسار آخر يحتاج المؤشر بتحليل مختلف.
+5. **404 عربي موحّد عبر كل المتحكمات (مؤجَّل — قرار 2026‑11‑03):** مسارات التنبيهات الثلاثة
+   (`AlertsController.Get`/`Recipients`/`MarkRead`) تُرجع جسمًا عربيًا واحدًا
+   `{ message }` بلا `title`/`detail` إنجليزيين؛ وبقية المتحكمات ما زالت على `NotFound()`
+   بلا جسم أو بأجسام مختلفة. **أثر المستخدم صفر حاليًا** لأن `getApiErrorMessage` يحوّل `404`
+   إلى نص عربي في الواجهة. **شرط الإثارة:** توحيد معالجة الأخطاء عبر الـAPI، أو ظهور رسالة
+   `404` إنجليزية للمستخدم في أي مسار.
 
 ### 9.2 عقد الاستجابة
 
@@ -3053,7 +3059,11 @@ frontend/src/
       `EnqueueSystemAsync` ويعالجها `CreateSystemAsync` فلا تؤرشف البديل الجديد، مع اختبار يثبت بقاء
       البديل وعدم استخدام استدعاءين منفصلين.
 - [ ] المؤرشف مستبعد من العدّاد والقوائم الافتراضية، ومتاح بفلتر.
-- [ ] رئيس القسم/الشعبة يستطيع تعليم القراءة من الصفحة ومن شريط الإنابة.
+- [x] تعليم القراءة متاح من صفحة `/alerts` وحدها؛ شريط الإنابة معاينة سياق للقراءة فقط
+      بلا سطح إجراء.
+      **قرار المالك 2026‑11‑03:** لا يُنفَّذ سطح إجراء في الشريط — اتساقًا مع إزالة
+      `AlertsPanel` (سطح إجرائي واحد). الدليل: `AlertsPage.canMarkRead` (الصفحة)، و
+      `DelegationActivityStrip` يعرض `messagePreview` والتاريخ فقط بلا زر تعليم قراءة.
 - [ ] «أرسلتها» يعرض العدّادات و«مقروء من الجميع» ونافذة المستلمين.
 - [ ] لا تنبيهات إدخال/اقتراح جهة جديدة، وسجل المراجعة يعرض القيود.
 - [ ] إشعار إعادة التسمية للمنشئ يعمل.
@@ -3062,6 +3072,9 @@ frontend/src/
       `RecipientUserId` من العميل، و`TargetType=head` مرفوض، وكل **26 موقع محتوى** (24 إنشاءً + موضعا
       تحديث) + إعادة تسمية الدائرة تستخدم Outbox، ولا يبني `new HeadAlert` خارج `HeadAlertService`
       (اختبار `HeadAlert_NoDirectConstructionOutsideService` أخضر).
+      **تصحيح مؤرَّخ 2026‑11‑03:** العدد الفعلي **23 موضع استدعاء** (25 مطابقة نصية − إعلان الواجهة
+      والتنفيذ)، لا 26 — الدليل وأمر البحث في
+      `docs/audit/head-alerts-18-evidence-map-20261103-addendum3.md` §1.
 - [ ] `CreateSystemHeadAlertRequest` يحمل `Kind`/`Audience`/`BranchId`/`CreatedById` وحقول الربط/المستلم،
       ويُبنى `DedupeKey` مركزيًا، ولا يُمرَّر `TargetType` أو `DedupeKey` نصًا من المستدعي.
 - [ ] كل قالب يحمل معرّف مستلم يستخدم مقطع `recipient:` — خصوصًا `circuit-pending` و
@@ -3078,9 +3091,16 @@ frontend/src/
 - [ ] لا `catch` يبتلع `Enqueue`/`CreateSystemAsync` في خدمات العمل؛ `head_alert_failed` = 0 بعد PR-2،
       ومسارات `DocumentService.UpdateAsync`/`DocumentStatusService`/`DocumentsController`/المرآة داخل
       معاملة العمل أو Outbox صريح.
-- [ ] `MarkRetry`/`MarkFailed` بعد rollback في Scope/DbContext جديد، ولا يُحفظ تنبيه جزئي من محاولة فاشلة.
+- [x] `MarkRetry`/`MarkFailed` بعد rollback في Scope/DbContext جديد، ولا يُحفظ تنبيه جزئي من محاولة فاشلة.
+      **أُغلق 2026‑11‑03:** `HeadAlertOutboxDispatcherTests` يثبت أن فشل معاملة بعد إدراج التنبيه
+      (تدقيق) يُرجع المعاملة كاملة (صفر تنبيه/مستلم) ويُعيد الصف `pending` بمحاولة واحدة؛ وأن
+      تعارض `DedupeKey` يُعيده `pending` بعلامة `conflict_retry` ثم ينجح، أو يُسجَّل `failed`
+      ببادئة العلامة عند التكرار.
 - [ ] المراجع المحذوفة/غير الصالحة عند المعالجة → `skipped` (`missing_reference`)، لا `failed` ولا إعادة.
-- [ ] `HeadAlertSupersedePlan` يُطبق أيضًا عند `Unchanged`، و`ArchiveBy...Core` لا تبدأ معاملة متداخلة.
+- [x] `HeadAlertSupersedePlan` يُطبق أيضًا عند `Unchanged`، و`ArchiveBy...Core` لا تبدأ معاملة متداخلة.
+      **أُغلق 2026‑11‑03:** `CreateSystemAsync_SupersedePlanOnUnchanged_ArchivesOldAndKeepsCurrent`
+      يثبت عند `Unchanged` أرشفة القديم وفق `archiveKinds`، وبقاء البديل نشطًا بلا `ArchivedAt`،
+      ولا صف توأم (صفّان فقط).
 - [ ] أرشفة الإنابة/الاستئناف وفق الخيار المعتمد (داخل معاملة العمل أو Outbox أرشفة)، بلا `best-effort`.
 - [ ] `Outbox.Payload` يستخدم `JsonStringEnumConverter`، ويتحقق من تطابق `operation`/`Kind`، و`CreateSystemAsync`
       يسجل `create_alert`/`update_alert` في التدقيق.
@@ -3115,8 +3135,17 @@ frontend/src/
       ولا يعرض عدّادًا للمدير/المشرف، ويعرض لهما رابط `/alerts`.
 - [ ] شارة لوحة التحكم تطلب **النطاق نفسه** (`user` للجميع) فلا يظهر رقمان مختلفان لرئيس واحد بين
       `Dashboard` و`AccountPage` (§9.1، §10.7، §14.2).
-- [ ] النص الطويل (12,000 حرف) يُقرأ كاملًا في `AlertDetailsSheet` على الجوال بلا قصّ/تمرير أفقي.
-- [ ] كل أهداف اللمس `min-h-11`، وحوارات الوصول تعمل (ESC/تركيز/قفل تمرير).
+- [x] النص الطويل (12,000 حرف) يُقرأ كاملًا في `AlertDetailsSheet` على الجوال بلا قصّ/تمرير أفقي.
+      **أُغلق 2026‑11‑03:** `AlertDetails.test.tsx` بنص فعلي طوله 12,000 حرف (`'ا'.repeat`
+      ببادئة/لاحقة مميزتين)، ويعرضه كاملًا (`textContent` بطول 12,000) مع `break-words` و
+      `whitespace-pre-wrap` وبلا `overflow-x` في أي سلف؛ و`AlertDetailsSheet.test.tsx` يثبت
+      عرض 12,000 حرف كاملة في الحوار بالخصائص نفسها.
+- [x] كل أهداف اللمس `min-h-11`، وحوارات الوصول تعمل (ESC/تركيز/قفل تمرير).
+      **أُغلق 2026‑11‑03 (شقّ حوار التفاصيل):** `AlertDetailsSheet.test.tsx` يثبت `Escape`
+      ⇒ `onClose`، وزر إغلاق `aria-label` بارتفاع/عرض `min-h-11`/`min-w-11`، و
+      `role="dialog"` + `aria-modal="true"` + `aria-labelledby` إلى عنوان موجود، وحاوية
+      تمرير داخلية `overscroll-contain` بلا `overflow-x` في الحوار. **لا «حبس تركيز»
+      منفّذ في المكوّن، فلا يُدّعى في الاختبار.**
 - [ ] تعميمات الجهات الثمانية معتمدة ومختبرة.
 - [ ] التعاقب ينقل غير المقروء النشط فقط، ولا ينقل المقروء أو المؤرشف، **ويدمج صف المستلم عند كون
       الخلف مستلمًا مسبقًا للتنبيه نفسه بلا كسر القيد `(HeadAlertId, UserId)`**، ويعالج تصادم المفتاح
