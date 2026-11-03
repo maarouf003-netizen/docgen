@@ -2,12 +2,11 @@ import { Link } from 'react-router-dom';
 import type { HeadAlertSummaryDto } from '../../types';
 import { TARGET_TYPE_BADGES, appealAwareTypeLabel } from './dashboardFormat';
 import { formatDateTime } from '../../utils/dates';
-import { AlertDetails } from './AlertDetails';
 import { alertKindLabel, alertRoute, isKnownAlertKind } from './alertKinds';
 
 /**
  * صف تنبيه واحد من عقد الملخص (`HeadAlertSummaryDto`): يعرض `messagePreview` وحدها،
- * والنص الكامل يُجلب عند الطلب من `AlertDetails` (`D12`). يظهر زر «تمت القراءة»
+ * والنص الكامل يُفتح من `AlertDetailsSheet` عبر `onOpen` (`D12`). يظهر زر «تمت القراءة»
  * للمحامي فقط عبر onMarkRead، وتظهر العدادات (غير مقروء/المجموع) لرئيس القسم فقط.
  * في عرض الصادر (`sentView` — تبويب «مرسلة») تُستبدل شارة «مقروء» بالعدّاد الصفري
  * حتى لا يُقرأ «غير مقروء: 0» كغير مقروء، وتُحذف نقطة القراءة كليًا لأن `isRead`
@@ -92,11 +91,6 @@ export function AlertRow({
               </span>
             ) : null}
           </div>
-          {/* الكشف السطري للمعاينات المقطوعة — داخل اللوحة القديمة. على الصفحة
-              يُمرَّر `onOpen` فيُستبدل بالحوار كي لا تتكرر الوظيفة بمسارين. */}
-          {alert.previewTruncated && !onOpen ? (
-            <AlertDetails alertId={alert.id} previewTruncated />
-          ) : null}
         </div>
         <div className="shrink-0 flex flex-col items-end gap-1.5">
           {onOpen ? (
