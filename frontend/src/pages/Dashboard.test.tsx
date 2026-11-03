@@ -656,7 +656,7 @@ describe('Dashboard لرئيس القسم', () => {
 });
 
 describe('Dashboard للمدير/المشرف', () => {
-  it('يعرض للمدير ترحيبًا وصف أيقونات (10 بطاقات) بلا إحصائيات مباشرة في اللوحة', async () => {
+  it('يعرض للمدير ترحيبًا وصف أيقونات (11 بطاقة) بلا إحصائيات مباشرة في اللوحة', async () => {
     useAuthMock.mockReturnValue({
       user: { id: 1, username: 'manager1', fullName: 'مدير', role: 'manager', branchId: null },
     });
@@ -667,7 +667,12 @@ describe('Dashboard للمدير/المشرف', () => {
     expect(await screen.findByRole('heading', { name: 'مرحبًا، مدير' })).toBeInTheDocument();
 
     const quickNav = screen.getByRole('navigation', { name: 'أقسام لوحة المدير' });
-    expect(within(quickNav).getAllByRole('link')).toHaveLength(10);
+    expect(within(quickNav).getAllByRole('link')).toHaveLength(11);
+    // وصول إشرافي للتنبيهات (§18:3044) — بلا شارة عدّاد.
+    expect(within(quickNav).getByRole('link', { name: 'التنبيهات' })).toHaveAttribute(
+      'href',
+      '/alerts',
+    );
     expect(within(quickNav).getByRole('link', { name: 'الإحصائيات' })).toHaveAttribute('href', '/stats');
     expect(within(quickNav).getByRole('link', { name: 'كتب المطالعات' })).toHaveAttribute('href', '/reviews');
     expect(within(quickNav).getByRole('link', { name: 'المراسلات' })).toHaveAttribute('href', '/correspondence');
@@ -716,7 +721,7 @@ describe('Dashboard للمدير/المشرف', () => {
     expect(api.get).not.toHaveBeenCalledWith('/reminders', expect.any(Object));
   });
 
-  it('يعرض للمشرف 11 بطاقة مع «محامو الفرع» و«الحساب الشخصي»', async () => {
+  it('يعرض للمشرف 12 بطاقة مع «محامو الفرع» و«الحساب الشخصي»', async () => {
     useAuthMock.mockReturnValue({
       user: { id: 1, username: 'admin1', fullName: 'مشرف', role: 'admin', branchId: null },
     });
@@ -727,7 +732,11 @@ describe('Dashboard للمدير/المشرف', () => {
     expect(await screen.findByRole('heading', { name: 'مرحبًا، مشرف' })).toBeInTheDocument();
 
     const quickNav = screen.getByRole('navigation', { name: 'أقسام لوحة مشرف النظام' });
-    expect(within(quickNav).getAllByRole('link')).toHaveLength(11);
+    expect(within(quickNav).getAllByRole('link')).toHaveLength(12);
+    expect(within(quickNav).getByRole('link', { name: 'التنبيهات' })).toHaveAttribute(
+      'href',
+      '/alerts',
+    );
     expect(within(quickNav).getByRole('link', { name: 'محامو الفرع' })).toHaveAttribute(
       'href',
       '/branch-lawyers',

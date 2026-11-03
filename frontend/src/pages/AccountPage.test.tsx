@@ -67,6 +67,8 @@ describe('AccountPage', () => {
 
     await userEvent.setup().click(screen.getByRole('button', { name: 'تسجيل الخروج' }));
     expect(useAuthMock().logout).toHaveBeenCalledTimes(1);
+    // رابط التنبيهات الإشرافي للمدير/المشرف وحده (§18:3044) — لا يظهر للمحامي.
+    expect(screen.queryByRole('link', { name: 'عرض التنبيهات' })).not.toBeInTheDocument();
   });
 
   it('يعرض الملخص السريع بالأرقام الحقيقية', async () => {
@@ -207,6 +209,15 @@ describe('AccountPage', () => {
     expect(urls).not.toContain('/personal-reminders');
     expect(urls).not.toContain('/alerts/unread-count');
     expect(urls).not.toContain('/alerts');
+
+    // لكن الوصول الإشرافي إلى القائمة متاح برابط (§18:3044) — بلا طلب بيانات.
+    const alertsLink = screen.getByRole('link', { name: 'عرض التنبيهات' });
+    expect(alertsLink).toHaveAttribute('href', '/alerts');
+    expect(
+      within(screen.getByRole('region', { name: 'التنبيهات (قراءة إشرافية)' })).getByText(
+        /بلا تعليم مقروء ولا عدّاد/,
+      ),
+    ).toBeInTheDocument();
     expect(urls).not.toContain('/app-suggestions');
   });
 });
