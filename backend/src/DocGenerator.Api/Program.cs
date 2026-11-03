@@ -336,8 +336,12 @@ if (!isDevelopmentHost)
             + "Set Security__KnownProxies to the reverse proxy address.");
     }
 
+    // `AllowedHosts` يقبل أنماط نطاقات فرعية (`*.gov.sy`) وهي تضييق مشروع لا تعطيل؛
+    // التحذير يخصّ الفراغ أو المدخل `*` وحده (الذي يُلغي الفلترة فعليًا).
     var allowedHosts = builder.Configuration["AllowedHosts"];
-    if (string.IsNullOrWhiteSpace(allowedHosts) || allowedHosts.Contains('*'))
+    var hostEntries = (allowedHosts ?? string.Empty)
+        .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    if (hostEntries.Length == 0 || hostEntries.Contains("*", StringComparer.Ordinal))
     {
         app.Logger.LogWarning(
             "AllowedHosts is '{AllowedHosts}': host filtering is disabled. Set it to the final host plus the "
