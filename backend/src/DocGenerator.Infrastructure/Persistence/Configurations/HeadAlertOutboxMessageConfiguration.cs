@@ -26,6 +26,8 @@ public class HeadAlertOutboxMessageConfiguration : IEntityTypeConfiguration<Head
                 "(\"Operation\" = 'upsert' AND \"Kind\" IS NOT NULL) OR (\"Operation\" = 'circuit_renamed' AND \"Kind\" IS NULL)");
             table.HasCheckConstraint("CK_HeadAlertOutbox_PayloadVersion", "\"PayloadVersion\" > 0");
             table.HasCheckConstraint("CK_HeadAlertOutbox_Attempts", "\"Attempts\" >= 0");
+            table.HasCheckConstraint(
+                "CK_HeadAlertOutbox_ConflictRetries", "\"ConflictRetries\" >= 0");
         });
 
         builder.HasKey(m => m.Id);
@@ -56,6 +58,7 @@ public class HeadAlertOutboxMessageConfiguration : IEntityTypeConfiguration<Head
         builder.Property(m => m.LockedUntil);
         builder.Property(m => m.LockedBy).HasMaxLength(100);
         builder.Property(m => m.Attempts).IsRequired();
+        builder.Property(m => m.ConflictRetries).IsRequired();
         builder.Property(m => m.LastError);
         builder.Property(m => m.TargetUserId);
 

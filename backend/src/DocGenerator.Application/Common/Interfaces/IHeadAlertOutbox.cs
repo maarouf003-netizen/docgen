@@ -79,6 +79,13 @@ public interface IHeadAlertOutboxStore
     /// <summary>يعيد الرسالة إلى <c>pending</c> بموعد لاحق وسبب مختصر (بلا حدّ المحاولات).</summary>
     Task MarkRetryAsync(long id, DateTime nextAttemptAt, string? error, CancellationToken ct = default);
 
+    /// <summary>
+    /// يعيد الرسالة إلى <c>pending</c> **فورًا** بعد تعارض على مفتاح منع التكرار،
+    /// ويزيد <c>ConflictRetries</c> (حالة سياسة «إعادة واحدة») مع تسجيل العلامة
+    /// التشخيصية في <c>LastError</c>.
+    /// </summary>
+    Task MarkConflictRetryAsync(long id, string? error, CancellationToken ct = default);
+
     /// <summary>يضع الرسالة <c>failed</c> مع سبب مختصر — تبقى للمراجعة اليدوية.</summary>
     Task MarkFailedAsync(long id, string error, CancellationToken ct = default);
 

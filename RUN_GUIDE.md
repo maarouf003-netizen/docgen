@@ -317,6 +317,15 @@ npm test
 > و`docs/audit/13-head-alerts-pr3-live-apply-20261026.md`. تبقى **4 هجرات** في `SQLite`:
 > `Expand`/`Outbox_Create`/`Backfill` ثم `Contract`. علامة `[ ]` على زوج الهجرتين تعني أن
 > **أحد السياقين** على الأقل لم يُطبَّق بعد؛ والحالة التفصيلية في أول سطر تحت كل عنوان.
+>
+> **جديد 2026‑11‑03:** هجرتان (`SQLite` + `PostgreSQL`) لعمود `ConflictRetries` في
+> `HeadAlertOutboxMessages` — **معلّقتان على القاعدتين** حتى نافذة النشر، ولا علاقة لهما
+> بترتيب هجرات التنبيهات الأربع (مستقلتان عنه).
+
+- [ ] **2026-11-03 — `HeadAlertOutbox_ConflictRetries` / `HeadAlertOutbox_ConflictRetries_Pg`** (حالة سياسة «إعادة واحدة» لتعارض `DedupeKey`):
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261103172359_HeadAlertOutbox_ConflictRetries.cs` — يضيف `ConflictRetries` (`INTEGER NOT NULL DEFAULT 0`) + قيد `CK_HeadAlertOutbox_ConflictRetries`، **ويعبّئ** `ConflictRetries = 1` للصفوف التي `LastError = 'conflict_retry'` (كيلا تُمنح إعادة ثانية بعد النشر).
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261103172448_HeadAlertOutbox_ConflictRetries_Pg.cs` — نفسه (`integer NOT NULL DEFAULT 0` + القيد + التعبئة).
+  - بدون التطبيق يفشل المشغّل عند الالتقاط/التحديث (`no such column: m.ConflictRetries` في `SQLite`، أو `column "ConflictRetries" does not exist` في `PostgreSQL`)، و`Database:AutoMigrate=false` في الإنتاج يمنع الإقلاع أصلًا.
 
 - [ ] **2026-08-19 — `AddHeadAlertDelegationLink`** (ربط تنبيهات رؤساء الأقسام بالمندوبية):
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20260819124219_AddHeadAlertDelegationLink.cs` — يضيف عمود `DelegationId` إلى `HeadAlerts` (FK SetNull + فهرس).

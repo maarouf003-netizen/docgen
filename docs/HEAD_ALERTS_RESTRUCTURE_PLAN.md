@@ -3118,9 +3118,15 @@ frontend/src/
       keyset على `(LastContentChangedAt DESC, Id DESC)`، والمؤشر يتجاوز `page` (استجابة `page = 1`)،
       والصيغة غير الصالحة (ومنها وقت غير UTC) ⇒ `400` عربي. الواجهة تبني المؤشر من حقلي الصف
       (`buildAlertsCursor`) وتشتق `hasMore` من امتلاء الصفحة، و`stalled` مُزال من العقد.
-- [ ] استثناء التزامن `HeadAlertConflictException` بلا رمز HTTP داخل `Application`؛ لا يُترجم إلى
+- [x] استثناء التزامن `HeadAlertConflictException` بلا رمز HTTP داخل `Application`؛ لا يُترجم إلى
       `409`؛ المشغّل يعيد المحاولة مرة واحدة بعلامة `conflict_retry` ثم يسجّل `failed`؛ وفشل المعالجة
       لا يمسّ العملية التجارية الملتزمة.
+      **أُغلق 2026‑11‑03:** «مرة واحدة» صارت **حالة صريحة** في عمود `HeadAlertOutboxMessages.ConflictRetries`
+      (هجرتان: `HeadAlertOutbox_ConflictRetries` + `_Pg`) بدل استخدام `LastError` التشخيصي ذاكرةً
+      للحالة؛ فيثبت العدّ ولو وقع خطأ عابر بين تعارضين. اختبار التداخل
+      `ProcessNext_ConflictThenTransientThenConflict_StillFailsAfterOneRetry` يثبته، و`ConflictRetries`
+      مُتحقَّق في اختبارات التعارض الثلاثة، وتراجع المعاملة مُثبت بـ`ThrowingAuditLogger`.
+      **المرساة:** ملحق 6 في `docs/audit/head-alerts-18-evidence-map-20261103-addendum6.md`.
 - [ ] Outbox: صف واحد لكل `(حدث، فرع، جمهور)`، `TargetUserId` للجمهور الأحادي، `circuit_renamed` بلا إنشاء،
       `stale_event` لا يمحو الأحدث، `no_recipients` → `skipped`، و`processed/skipped` يُنظّفان وفق
       المدد المحددة.

@@ -2364,6 +2364,9 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Property<int>("Attempts")
                         .HasColumnType("integer");
 
+                    b.Property<int>("ConflictRetries")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -2423,6 +2426,8 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.ToTable("HeadAlertOutboxMessages", null, t =>
                         {
                             t.HasCheckConstraint("CK_HeadAlertOutbox_Attempts", "\"Attempts\" >= 0");
+
+                            t.HasCheckConstraint("CK_HeadAlertOutbox_ConflictRetries", "\"ConflictRetries\" >= 0");
 
                             t.HasCheckConstraint("CK_HeadAlertOutbox_Kind_Operation", "(\"Operation\" = 'upsert' AND \"Kind\" IS NOT NULL) OR (\"Operation\" = 'circuit_renamed' AND \"Kind\" IS NULL)");
 

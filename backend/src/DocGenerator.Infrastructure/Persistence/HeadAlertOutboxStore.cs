@@ -119,6 +119,21 @@ public sealed class HeadAlertOutboxStore : IHeadAlertOutboxStore
         await _db.SaveChangesAsync(ct);
     }
 
+    public async Task MarkConflictRetryAsync(long id, string? error, CancellationToken ct = default)
+    {
+        var message = await FindAsync(id, ct);
+        if (message is null)
+            return;
+
+        // الحالة صريحة في عمودها: لا تعتمد على بقاء `LastError` (قد يطمسه خطأ عابر).
+        message.Status = HeadAlertOutboxStatus.Pending;
+        message.NextAttemptAt = DateTime.UtcNow;
+        message.LockedUntil = null;
+        message.ConflictRetries += 1;
+        message.LastError = Truncate(error);
+        await _db.SaveChangesAsync(ct);
+    }
+
     public async Task MarkFailedAsync(long id, string error, CancellationToken ct = default)
     {
         var message = await FindAsync(id, ct);
