@@ -68,6 +68,9 @@ public sealed partial class PublicEntityService
             .Where(e => from is null || e.CreatedAtUtc >= from)
             .Where(e => to is null || e.CreatedAtUtc <= to)
             .OrderByDescending(e => e.CreatedAtUtc)
+            // فاصل حتمي: أحداث الدفعة الواحدة تتساوى في `CreatedAtUtc`، وبلا `Id` تتكرر
+            // صفوف أو تُفقد عند حدود الصفحات.
+            .ThenByDescending(e => e.Id)
             .ToList();
     }
     /// <summary>

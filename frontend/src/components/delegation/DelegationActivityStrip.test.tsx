@@ -18,9 +18,9 @@ function row(id: number) {
   return makeHeadAlertSummary({ id, messagePreview: `معاينة ${id}`, delegationId: 9 });
 }
 
-function pageBody(items: ReturnType<typeof row>[]) {
+function pageBody(items: ReturnType<typeof row>[], totalCount = items.length) {
   return {
-    data: { items, page: 1, perPage: 100, totalCount: items.length, totalPages: 1 },
+    data: { items, page: 1, perPage: 100, totalCount, totalPages: Math.ceil(totalCount / 100) },
   };
 }
 
@@ -29,7 +29,7 @@ beforeEach(() => {
 });
 
 describe('DelegationActivityStrip', () => {
-  it('يعرض آخر ثلاث معاينات فقط من `PagedResult` (بلا نص كامل)', async () => {
+  it('يعرض آخر ثلاث معاينات ابتداءً من `PagedResult` (بلا نص كامل) مع زر كشف البقية', async () => {
     get.mockResolvedValue(pageBody([row(1), row(2), row(3), row(4)]));
 
     render(<DelegationActivityStrip delegationId={9} />);
@@ -37,7 +37,36 @@ describe('DelegationActivityStrip', () => {
     expect(await screen.findByText('معاينة 1')).toBeInTheDocument();
     expect(screen.getAllByRole('listitem')).toHaveLength(3);
     expect(screen.queryByText('معاينة 4')).not.toBeInTheDocument();
+    // الكشف صريح لا صامت: زر ظاهر يدل على وجود بقية.
+    expect(screen.getByRole('button', { name: 'عرض المزيد' })).toBeInTheDocument();
     expect(get).toHaveBeenCalledWith('/alerts/by-delegation/9', expect.any(Object));
+  });
+
+  it('«عرض المزيد» يكشف بقية الصفحة المحمّلة خطوةً خطوة (بلا طلب جديد)', async () => {
+    const user = userEvent.setup();
+    const items = Array.from({ length: 25 }, (_, index) => row(index + 1));
+    get.mockResolvedValue(pageBody(items));
+
+    render(<DelegationActivityStrip delegationId={9} />);
+    await screen.findByText('معاينة 1');
+    expect(screen.getAllByRole('listitem')).toHaveLength(3);
+
+    await user.click(screen.getByRole('button', { name: 'عرض المزيد' }));
+    expect(screen.getAllByRole('listitem')).toHaveLength(23);
+
+    await user.click(screen.getByRole('button', { name: 'عرض المزيد' }));
+    expect(screen.getAllByRole('listitem')).toHaveLength(25);
+    expect(screen.queryByRole('button', { name: 'عرض المزيد' })).not.toBeInTheDocument();
+    // لا طلب جديد: التوسيع من الصفحة المحمّلة وحدها.
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
+  it('إجمالي يتجاوز الصفحة المحمّلة (سقف 100) مُعلَن نصًا لا مخفيًا', async () => {
+    get.mockResolvedValue(pageBody([row(1), row(2)], 250));
+
+    render(<DelegationActivityStrip delegationId={9} />);
+
+    expect(await screen.findByText('تُعرض أحدث 2 من أصل 250 تنبيهًا')).toBeInTheDocument();
   });
 
   it('الفراغ لا يعرض شيئًا (ملحق اختياري في البطاقة)', async () => {

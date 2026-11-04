@@ -9,7 +9,7 @@ export interface HeadIconCounts {
   entityPending: number;
   /** ملفات بانتظار إعادة القيد في دوائر الفرع (شارة بطاقة الدوائر — B44). */
   circuitsPending: number;
-  /** غير المقروء في نطاق الرئيس/الشعبة (`received` — `D6`/`D7`) لبطاقة التنبيهات. */
+  /** غير المقروء الشخصي (`scope=user` — حُسم 2026-11-02 بدل `received` المحذوف) لبطاقة التنبيهات. */
   alertUnread: number;
 }
 

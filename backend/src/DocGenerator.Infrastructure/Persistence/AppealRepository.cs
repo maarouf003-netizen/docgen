@@ -85,6 +85,8 @@ public class AppealRepository : Repository<DocumentAppeal>, IAppealRepository
         var total = await q.CountAsync(ct);
         var items = await q
             .OrderByDescending(a => a.CreatedAt)
+            // فاصل حتمي لحدود الصفحات الإزاحية عند تساوي `CreatedAt`.
+            .ThenByDescending(a => a.Id)
             .Skip((page - 1) * perPage)
             .Take(perPage)
             .ToListAsync(ct);

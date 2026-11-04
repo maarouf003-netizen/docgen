@@ -10,6 +10,7 @@ function feed(overrides: Partial<AlertsFeed> = {}): AlertsFeed {
     items: [makeHeadAlertSummary({ id: 1 })],
     totalCount: 1,
     hasMore: false,
+    scopeDrift: false,
     isLoading: false,
     isLoadingMore: false,
     error: null,
@@ -21,10 +22,39 @@ function feed(overrides: Partial<AlertsFeed> = {}): AlertsFeed {
 }
 
 describe('AlertsFeedFooter', () => {
-  it('لا يعرض شيئًا عند اكتمال التحميل', () => {
-    const { container } = render(<AlertsFeedFooter feed={feed()} />);
+  it('عند اكتمال التحميل: سطر اكتمال صادق بعدد المحمّل (لا اختفاء يُخفي قصًّا)', () => {
+    render(<AlertsFeedFooter feed={feed()} />);
+
+    expect(screen.getByText('اكتمل — يُعرض 1 تنبيهًا')).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('قائمة فارغة مكتملة: لا تذييل (حالة الفراغ لـ`AlertList` وحدها)', () => {
+    const { container } = render(<AlertsFeedFooter feed={feed({ items: [], totalCount: 0 })} />);
 
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('تغيّر القائمة أثناء التصفح: إعلان صريح و«تحديث القائمة» يعيد التحميل من الأولى', async () => {
+    const user = userEvent.setup();
+    const reload = vi.fn();
+    render(
+      <AlertsFeedFooter
+        feed={feed({
+          items: [makeHeadAlertSummary({ id: 1 }), makeHeadAlertSummary({ id: 2 })],
+          totalCount: 4,
+          hasMore: false,
+          scopeDrift: true,
+          reload,
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByText('تغيّرت القائمة أثناء التصفح — أعِد التحميل لعرض الحالة الأخيرة'),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'تحديث القائمة' }));
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it('يعرض العدّاد و«تحميل المزيد» عند وجود مزيد', async () => {
@@ -44,6 +74,25 @@ describe('AlertsFeedFooter', () => {
     expect(screen.getByText('يُعرض 2 من أصل 3 تنبيهًا')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'تحميل المزيد' }));
     expect(loadMore).toHaveBeenCalledTimes(1);
+  });
+
+  it('المحمّل يسبق الإجمالي (تقلّص القائمة): لا يُعرض «N من أصل M» معكوسًا', () => {
+    render(
+      <AlertsFeedFooter
+        feed={feed({
+          items: [
+            makeHeadAlertSummary({ id: 1 }),
+            makeHeadAlertSummary({ id: 2 }),
+            makeHeadAlertSummary({ id: 3 }),
+          ],
+          totalCount: 2,
+          hasMore: true,
+        })}
+      />,
+    );
+
+    // «3 من أصل 2» كان يُقرأ كعطل؛ يُسقط «من أصل» ويبقى العدّاد صادقًا.
+    expect(screen.getByText('يُعرض 3 تنبيهًا')).toBeInTheDocument();
   });
 
   it('فشل بلا عناصر: «إعادة المحاولة» يعيد التحميل من الأولى لا «تحميل المزيد»', async () => {

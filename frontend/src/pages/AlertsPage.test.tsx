@@ -240,7 +240,7 @@ describe('AlertsPage — رئيس القسم/الشعبة', () => {
     await user.click(screen.getByRole('button', { name: 'تمت القراءة' }));
 
     expect(patch).toHaveBeenCalledWith('/alerts/4/read');
-    // عدّاد الصف ينقص واحدًا وشارة `received` تنقص بالمقدار نفسه.
+    // عدّاد الصف ينقص واحدًا وشارة العدّاد الشخصي (`scope=user`) تنقص بالمقدار نفسه.
     expect(await screen.findByText('غير مقروء: 1 / 2')).toBeInTheDocument();
     expect(within(screen.getByRole('tab', { name: /مستلمة/ })).getByText('1')).toBeInTheDocument();
   });

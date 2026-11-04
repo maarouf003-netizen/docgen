@@ -35,6 +35,9 @@ public sealed partial class PublicEntityService
             .OrderBy(x => x.Group.CanonicalName, StringComparer.Ordinal)
             .ThenBy(x => x.Entry.Governorate, StringComparer.Ordinal)
             .ThenBy(x => x.Entry.BranchName, StringComparer.Ordinal)
+            // فاصل حتمي: مجموعتان بالاسم/المحافظة/الفرع نفسهما (أو حقول فارغة) تترك
+            // حدود الصفحات غير حتمية بلا هذا الفاصل.
+            .ThenBy(x => x.Entry.Id)
             .ToList();
 
         var result = new PagedResult<PublicEntityEntryDto>
@@ -90,6 +93,8 @@ public sealed partial class PublicEntityService
                 || ArabicNameNormalizer.Normalize(g.CanonicalName).Contains(qNorm)
                 || g.Entries.Any(e => e.IsActive && e.Aliases.Any(a => ArabicNameNormalizer.Normalize(a.AliasText).Contains(qNorm))))
             .OrderBy(g => g.CanonicalName, StringComparer.Ordinal)
+            // فاصل حتمي لحدود الصفحات الإزاحية عند تساوي الاسم القانوني.
+            .ThenBy(g => g.Id)
             .ToList();
 
         var totalCount = filtered.Count;

@@ -57,8 +57,12 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
 
         var total = await q.CountAsync(ct);
 
+        // فاصل حتمي `ThenByDescending(Id)`: الترتيب بـ`CreatedAt` وحده غير حتمي عند التساوي
+        // (إدخال دفعي/استيراد)، فتصبح حدود الصفحات الإزاحية قابلة للتكرار أو للفقدان بين
+        // الجلبين — العيب نفسه الذي دفع قوائم التنبيهات إلى keyset (§9.1).
         var items = await WithStandardIncludes(
             q.OrderByDescending(d => d.CreatedAt)
+                .ThenByDescending(d => d.Id)
                 .Skip((page - 1) * perPage)
                 .Take(perPage))
             .ToListAsync(ct);
@@ -574,8 +578,10 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
 
         var total = await q.CountAsync(ct);
 
+        // فاصل حتمي كما في `SearchAsync`: حذف جماعي في اللحظة نفسها يجعل `DeletedAt` متساويًا.
         var items = await WithStandardIncludes(
             q.OrderByDescending(d => d.DeletedAt)
+                .ThenByDescending(d => d.Id)
                 .Skip((page - 1) * perPage)
                 .Take(perPage))
             .ToListAsync(ct);
