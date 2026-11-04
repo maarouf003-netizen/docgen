@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import { isHeadOrSubHeadRole } from '../auth/roles';
 import { formatDate } from '../utils/dates';
 import type {
   CorrespondenceImportance,
@@ -25,7 +26,7 @@ const PER_PAGE = 20;
  */
 export default function CorrespondencesList({ portal = false }: { portal?: boolean }) {
   const { user, hasFullAccess } = useAuth();
-  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
+  const isHeadOrSubHead = isHeadOrSubHeadRole(user?.role);
   const base = portal ? '/portal/correspondence' : '/correspondence';
   const detailBase = portal ? '/portal/correspondence' : '/correspondence';
   const [items, setItems] = useState<CorrespondenceListItemDto[]>([]);

@@ -2,6 +2,7 @@ import { Fragment, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import { hasFullAccessRole, isHeadOrSubHeadRole } from '../auth/roles';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { formatDate } from '../utils/dates';
@@ -64,8 +65,8 @@ export default function AppealsList() {
   const { user } = useAuth();
   const isMobile = useIsMobile();
   const role = user?.role;
-  const hasFullAccess = role === 'manager' || role === 'admin';
-  const isHeadOrSubHead = role === 'head' || role === 'subhead';
+  const hasFullAccess = hasFullAccessRole(role);
+  const isHeadOrSubHead = isHeadOrSubHeadRole(role);
   const canSeeAssigned = hasFullAccess || isHeadOrSubHead;
   /** عدد أعمدة الجدول المعروضة فعلًا — يُشتق من HEAD_CELLS (+ المشروط) لصف الإجراءات (C17). */
   const colCount = HEAD_CELLS.length + (canSeeAssigned ? 1 : 0);

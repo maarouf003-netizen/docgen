@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { isAxiosError } from 'axios';
 import { api, getDownloadErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import { isHeadOrSubHeadRole } from '../auth/roles';
 import SpinnerIcon from '../components/SpinnerIcon';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
@@ -321,7 +322,7 @@ function ActionsCell({ d, onClick }: { d: DocumentResponse; onClick: () => void 
 
 export default function DocumentsList() {
   const { hasFullAccess, user } = useAuth();
-  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
+  const isHeadOrSubHead = isHeadOrSubHeadRole(user?.role);
   const isMobile = useIsMobile();
   // استعادة موضع القائمة (البحث/الفلاتر/الصفحة) وملف «آخر ما فُتح» من جلسة المتصفح عند العودة
   // من صفحة ملف، فيعود المستخدم إلى مكانه ويُميَّز الملف الذي كان يعمل عليه.

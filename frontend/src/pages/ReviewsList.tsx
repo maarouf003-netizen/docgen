@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import { isHeadOrSubHeadRole } from '../auth/roles';
 import { formatDate } from '../utils/dates';
 import type { PagedResult, ReviewLetterListItemDto } from '../types';
 import CreateReviewLetterModal from '../components/review/CreateReviewLetterModal';
@@ -12,7 +13,7 @@ const PER_PAGE = 20;
 
 export default function ReviewsList() {
   const { user, hasFullAccess } = useAuth();
-  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
+  const isHeadOrSubHead = isHeadOrSubHeadRole(user?.role);
   const [items, setItems] = useState<ReviewLetterListItemDto[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);

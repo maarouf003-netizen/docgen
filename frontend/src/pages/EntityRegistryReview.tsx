@@ -1,6 +1,7 @@
 ﻿import { useCallback, useEffect, useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import { isHeadOrSubHeadRole } from '../auth/roles';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { GOVERNORATES } from '../utils/governorate';
 import {
@@ -25,7 +26,7 @@ const HEAD_ACCURACY_NOTE =
   'يرجى التأكد من صحة البيانات وادخالها بدقة لأن تعديل قيود الجهات العامة مكلف ويتتطلب موافقات عدة';
 export default function EntityRegistryReview() {
   const { user } = useAuth();
-  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
+  const isHeadOrSubHead = isHeadOrSubHeadRole(user?.role);
 
   const [items, setItems] = useState<PublicEntityEntryDto[] | null>(null);
   const [loading, setLoading] = useState(true);

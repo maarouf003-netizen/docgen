@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import { isHeadOrSubHeadRole } from '../auth/roles';
 import { MIN_PASSWORD_LENGTH } from '../utils/passwordPolicy';
 import TransferAllFilesModal from '../components/TransferAllFilesModal';
 import { useIsMobile } from '../hooks/useMediaQuery';
@@ -9,7 +10,7 @@ import type { BranchDto, LawyerListItem } from '../types';
 export default function BranchLawyers() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
-  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
+  const isHeadOrSubHead = isHeadOrSubHeadRole(user?.role);
   const isMobile = useIsMobile();
 
   const [branches, setBranches] = useState<BranchDto[]>([]);

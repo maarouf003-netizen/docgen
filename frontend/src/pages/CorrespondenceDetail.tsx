@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import { isHeadOrSubHeadRole } from '../auth/roles';
 import { formatDateTime } from '../utils/dates';
 import { sanitizeRichText } from '../utils/richText';
 import type {
@@ -73,7 +74,7 @@ function MessageCard({ message }: { message: CorrespondenceMessageDto }) {
 export default function CorrespondenceDetail({ portal = false }: { portal?: boolean }) {
   const { id } = useParams();
   const { user, hasFullAccess } = useAuth();
-  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
+  const isHeadOrSubHead = isHeadOrSubHeadRole(user?.role);
   const base = portal ? '/portal/correspondence' : '/correspondence';
   const backTo = portal ? '/portal/correspondence' : '/correspondence';
   const backLabel = 'عودة إلى المراسلات';

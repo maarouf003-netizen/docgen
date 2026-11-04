@@ -1,7 +1,9 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import { hasFullAccessRole, isHeadOrSubHeadRole } from '../auth/roles';
 import { useAlertsFeed } from '../hooks/useAlertsFeed';
+import { useUnreadAlertCount } from '../hooks/useUnreadAlertCount';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import type { HeadAlertSummaryDto, HeadAlertTargetType, LawyerListItem } from '../types';
 import { AlertList } from '../components/dashboard/AlertList';
@@ -39,8 +41,8 @@ const ARCHIVE_OPTIONS: ReadonlyArray<{ value: ArchiveFilter; label: string }> = 
 export default function AlertsPage() {
   const { user } = useAuth();
   const isLawyer = user?.role === 'lawyer';
-  const isManager = user?.role === 'manager' || user?.role === 'admin';
-  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
+  const isManager = hasFullAccessRole(user?.role);
+  const isHeadOrSubHead = isHeadOrSubHeadRole(user?.role);
   const userReady = Boolean(user);
 
   // نطاق رئيس القسم/الشعبة يشترط **الفرع** فقط (`RequireBranch` خلفيًا) لا الشعبة.
@@ -62,16 +64,8 @@ export default function AlertsPage() {
 
   const activeFeed = activeTab === 'received' ? receivedFeed : sentFeed;
 
-  // شارة غير المقروء بنطاق **شخصي موحّد** (`user`) لكل الأدوار — «غير المقروء لي».
-  // حُسم 2026-11-02 بعد اعتراض المالك: `received` للرئيس/الشعبة كان يجمع غير المقروء
-  // لدى كل مستلمي التنبيهات، فيبقى رقمًا واحدًا بعد قراءة صاحب الحساب لكل تنبيهاته.
-  const unreadScope = 'user';
-  const unreadQuery = useCancellableRequest<{ count: number }>(
-    (signal) =>
-      api.get('/alerts/unread-count', { signal, params: { scope: unreadScope } }).then((r) => r.data),
-    [unreadScope],
-    { enabled: userReady && (isLawyer || headScopeEnabled) },
-  );
+  // عدّاد غير المقروء الشخصي الموحّد — شرح النطاق `user` في `useUnreadAlertCount`.
+  const unreadQuery = useUnreadAlertCount(userReady && (isLawyer || headScopeEnabled));
   const unreadCount = Math.max(0, Number(unreadQuery.data?.count) || 0);
 
   const [markingKey, setMarkingKey] = useState<string | null>(null);

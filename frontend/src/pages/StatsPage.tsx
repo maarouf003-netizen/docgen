@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import { isHeadOrSubHeadRole } from '../auth/roles';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { LawyerStatsSection } from '../components/dashboard/LawyerStatsSection';
 import { ManagerStatsSection } from '../components/dashboard/ManagerStatsSection';
@@ -22,7 +23,7 @@ import type { BranchDto, ManagerLawyerStatDto, ManagerStatsDto, MonthlyStatDto, 
 export default function StatsPage() {
   const { user } = useAuth();
   const userReady = Boolean(user);
-  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
+  const isHeadOrSubHead = isHeadOrSubHeadRole(user?.role);
   const isManager = user?.role === 'manager' || user?.role === 'admin';
   const isSubHead = user?.role === 'subhead';
   const [period, setPeriod] = useState<StatsPeriod>('yearly');

@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import { hasFullAccessRole, isHeadOrSubHeadRole } from '../auth/roles';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
+import { useUnreadAlertCount } from '../hooks/useUnreadAlertCount';
 import { useReminderCancellation } from '../hooks/useReminderCancellation';
 import type {
   AppealReminderDto,
@@ -27,8 +29,8 @@ import { ReminderList } from '../components/dashboard/ReminderList';
 export default function Dashboard() {
   const { user } = useAuth();
   const isLawyer = user?.role === 'lawyer';
-  const isManager = user?.role === 'manager' || user?.role === 'admin';
-  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
+  const isManager = hasFullAccessRole(user?.role);
+  const isHeadOrSubHead = isHeadOrSubHeadRole(user?.role);
   const isSubHead = user?.role === 'subhead';
 
   const userReady = Boolean(user);
@@ -65,20 +67,9 @@ export default function Dashboard() {
   // لا الشعبة — فاشتراط الشعبة هنا كان يحجب عدّادًا مشروعًا ويُبقي 403 لرئيس بلا فرع.
   const headAlertsScopeEnabled = userReady && isHeadOrSubHead && (user?.branchId ?? null) != null;
 
-  // شارة غير المقروء بنطاق **شخصي موحّد**: `user` لكل الأدوار — تعني «غير المقروء لي».
-  // كان الرئيس/الشعبة يقرأ `received` (مجموع غير المقروء لدى كل مستلمي التنبيهات التي
-  // استلمها في فرعه)، فبقي الرقم 1 بعد أن قرأ كل تنبيهاته لأن مستلمًا آخر لم يقرأ —
-  // وهذا ما اعترض عليه المالك في الاستخدام الحيّ (2026-11-02) فحُسم النطاق إلى `user`
-  // في `Dashboard` و`AccountPage` و`/alerts` معًا. المجموع التجميعي يبقى ظاهرًا بدقّة
-  // في عدّاد كل صف داخل «مرسلة» («غير مقروء: 1 / 2»).
-  const unreadScope = 'user';
-  const unreadQuery = useCancellableRequest<{ count: number }>(
-    (signal) =>
-      api
-        .get('/alerts/unread-count', { signal, params: { scope: unreadScope } })
-        .then((r) => r.data),
-    [unreadScope],
-    { enabled: userReady && !isManager && (isLawyer || headAlertsScopeEnabled) },
+  // عدّاد غير المقروء الشخصي الموحّد — شرح النطاق `user` في `useUnreadAlertCount`.
+  const unreadQuery = useUnreadAlertCount(
+    userReady && !isManager && (isLawyer || headAlertsScopeEnabled),
   );
 
   // عدّاد بطاقة سجل الجهات: جهات أدخلها المحامون وبانتظار مراجعة رئيس القسم —

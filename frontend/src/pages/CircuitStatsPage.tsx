@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, getApiErrorMessage, getDownloadErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import { isHeadOrSubHeadRole } from '../auth/roles';
 import SpinnerIcon from '../components/SpinnerIcon';
 import { downloadBlob } from '../utils/download';
 import type { BranchDto, CircuitStatsDto } from '../types';
@@ -12,7 +13,7 @@ import type { BranchDto, CircuitStatsDto } from '../types';
  */
 export default function CircuitStatsPage() {
   const { user } = useAuth();
-  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
+  const isHeadOrSubHead = isHeadOrSubHeadRole(user?.role);
   const isSubHead = user?.role === 'subhead';
   const [branches, setBranches] = useState<BranchDto[]>([]);
   const [branchId, setBranchId] = useState<number | ''>('');
