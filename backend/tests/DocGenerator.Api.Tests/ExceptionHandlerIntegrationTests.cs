@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using DocGenerator.Api.Middleware;
 using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
 using Microsoft.AspNetCore.Hosting;
@@ -110,7 +111,8 @@ public class ExceptionHandlerIntegrationTests
         await aborted.CancelAsync();
         var handler = new GlobalExceptionHandler(
             NullLogger<GlobalExceptionHandler>.Instance,
-            new FakeEnvironment { EnvironmentName = "Production" });
+            new FakeEnvironment { EnvironmentName = "Production" },
+            new FakeDbErrors());
         var ctx = new DefaultHttpContext();
         ctx.Request.Method = "GET";
         ctx.Request.Path = "/api/test";
@@ -187,6 +189,23 @@ public class ExceptionHandlerIntegrationTests
     }
 
     [Fact]
+    public async Task DbUpdateException_UniqueViolation_MapsTo409WithGenericMessage()
+    {
+        // W1-7: حتى في Development لا تُعكس تفاصيل القيد للمستخدم — التفاصيل في السجل.
+        var ex = new DbUpdateException(
+            "An error occurred while saving the entity changes.",
+            new InvalidOperationException("SQLite Error 19: 'UNIQUE constraint failed: Users.Email'"));
+
+        var (status, body) = await HandleAsync(
+            ex, environment: "Development", uniqueViolation: true);
+
+        Assert.Equal(StatusCodes.Status409Conflict, status);
+        Assert.Equal("تعارض في البيانات — القيمة مكررة، حدّث الصفحة وحاول مجددًا", ReadMessage(body));
+        Assert.DoesNotContain("UNIQUE", body);
+        Assert.DoesNotContain("SQLite", body);
+    }
+
+    [Fact]
     public async Task DocumentConflictException_MapsTo409AndEchoesMessage()
     {
         var (status, body) = await HandleAsync(
@@ -221,7 +240,8 @@ public class ExceptionHandlerIntegrationTests
     {
         var handler = new GlobalExceptionHandler(
             NullLogger<GlobalExceptionHandler>.Instance,
-            new FakeEnvironment { EnvironmentName = "Production" });
+            new FakeEnvironment { EnvironmentName = "Production" },
+            new FakeDbErrors());
         var ctx = new DefaultHttpContext();
         ctx.Features.Set<IHttpResponseFeature>(new StartedResponseFeature());
         ctx.Request.Method = "GET";
@@ -233,11 +253,12 @@ public class ExceptionHandlerIntegrationTests
     }
 
     private static async Task<(int Status, string Body)> HandleAsync(
-        Exception exception, string environment = "Production")
+        Exception exception, string environment = "Production", bool uniqueViolation = false)
     {
         var handler = new GlobalExceptionHandler(
             NullLogger<GlobalExceptionHandler>.Instance,
-            new FakeEnvironment { EnvironmentName = environment });
+            new FakeEnvironment { EnvironmentName = environment },
+            new FakeDbErrors(uniqueViolation));
         var ctx = new DefaultHttpContext();
         ctx.Request.Method = "GET";
         ctx.Request.Path = "/api/test";
@@ -259,6 +280,13 @@ public class ExceptionHandlerIntegrationTests
         public string ApplicationName { get; set; } = "Tests";
         public string ContentRootPath { get; set; } = Directory.GetCurrentDirectory();
         public IFileProvider ContentRootFileProvider { get; set; } = null!;
+    }
+
+    private sealed class FakeDbErrors(bool uniqueViolation = false) : IDbExceptionClassifier
+    {
+        public bool IsUniqueViolation(Exception ex) => uniqueViolation;
+        public bool IsConcurrencyViolation(Exception ex) => false;
+        public bool IsForeignKeyViolation(Exception ex) => false;
     }
 
     private sealed class StartedResponseFeature : IHttpResponseFeature

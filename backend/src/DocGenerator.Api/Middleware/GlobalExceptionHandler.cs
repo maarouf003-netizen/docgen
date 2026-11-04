@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using DocGenerator.Application.Common;
+using DocGenerator.Application.Common.Interfaces;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,6 +11,8 @@ namespace DocGenerator.Api.Middleware;
 /// يردّ استجابة JSON بصيغة <c>{ message }</c> المتوافقة مع الواجهة
 /// (<c>frontend/src/api/client.ts</c>)، ويسجّل التفاصيل كاملة في السجلات،
 /// دون كشف أي تفاصيل داخلية للمستخدم في بيئة الإنتاج.
+/// يشمل شبكة أمان لتعارض القيد الفريد غير الملتقط (W1-7) عبر
+/// <see cref="IDbExceptionClassifier"/>: 409 ورسالة عربية عامة بدل 500.
 /// </summary>
 public sealed class GlobalExceptionHandler : IExceptionHandler
 {
@@ -22,11 +25,16 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
 
     private readonly ILogger<GlobalExceptionHandler> _logger;
     private readonly IHostEnvironment _environment;
+    private readonly IDbExceptionClassifier _dbErrors;
 
-    public GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger, IHostEnvironment environment)
+    public GlobalExceptionHandler(
+        ILogger<GlobalExceptionHandler> logger,
+        IHostEnvironment environment,
+        IDbExceptionClassifier dbErrors)
     {
         _logger = logger;
         _environment = environment;
+        _dbErrors = dbErrors;
     }
 
     public async ValueTask<bool> TryHandleAsync(
@@ -37,6 +45,12 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         if (httpContext.Response.HasStarted)
             return false;
 
+        // يُحسب مرة واحدة: يُستخدم للتصنيف والرسالة والتسجيل (لا استدعاء متكرر للمصنّف).
+        // `DbUpdateConcurrencyException` مشتق من `DbUpdateException`، لكنه يُعامل أولًا
+        // في فرع مستقل (رسالة «أعد التحميل» لا رسالة «قيمة مكررة»).
+        var isUniqueViolation = exception is DbUpdateException dbFailure
+            && _dbErrors.IsUniqueViolation(dbFailure);
+
         var statusCode = exception switch
         {
             ArgumentException => StatusCodes.Status400BadRequest,
@@ -46,6 +60,10 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
             // (رموز التزامن `Document.Version` و`DocumentAppeal.Version`)
             // يُردّ 409 لا 500.
             DbUpdateConcurrencyException => StatusCodes.Status409Conflict,
+            // W1-7: تفرد غير ملتقط (سباق على قيد فريد لم يغطّه حارس خدمي) = تعارض بيانات
+            // لا عطل خادم. التصنيف من رموز المزود في `DbExceptionClassifier` (SQLite
+            // 19/2067 وPostgreSQL 23505) عبر `IDbExceptionClassifier`.
+            DbUpdateException when isUniqueViolation => StatusCodes.Status409Conflict,
             // الرفض الصريح وصولًا (لا خطأ خادم): أي `UnauthorizedAccessException`
             // يفلت من الخدمة يُردّ 403 بجسم `{ message }` لا 500 (R0-6 مكتمل:
             // `Portal`+`ReviewLetters`+`EntityRegistry`+`Forum`+`Correspondences`+
@@ -83,6 +101,16 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
                 httpContext.Request.Path,
                 httpContext.TraceIdentifier,
                 userId);
+        else if (isUniqueViolation)
+            // سباق على قيد فريد متوقع تشغيليًا (المستخدم/الطلب الصحيح أعاد المحاولة) —
+            // Warning مع التفاصيل الكاملة في السجل، لا Error.
+            _logger.LogWarning(exception,
+                "تعارض قيد فريد ({Type}) أثناء {Method} {Path} [TraceId={TraceId}, UserId={UserId}]",
+                exception.GetType().Name,
+                httpContext.Request.Method,
+                httpContext.Request.Path,
+                httpContext.TraceIdentifier,
+                userId);
         else
             _logger.LogError(exception,
                 "استثناء غير معالج ({Type}) أثناء {Method} {Path} [TraceId={TraceId}, UserId={UserId}]",
@@ -109,6 +137,9 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
             // (تسطيح/تجريد/قصّ) قبل الرد — التفاصيل الكاملة تبقى في السجل التشخيصي أعلاه.
             ArgumentException or KeyNotFoundException or DocumentConflictException
                 or UnauthorizedAccessException => LogSanitizer.SanitizeForResponse(exception.Message),
+            // W1-7: رسالة عامة لا تكشف اسم القيد/الجدول/المزود — التفاصيل في السجل أعلاه.
+            DbUpdateException when isUniqueViolation =>
+                "تعارض في البيانات — القيمة مكررة، حدّث الصفحة وحاول مجددًا",
             DbUpdateException ex when _environment.IsDevelopment() => DescribeDbUpdateException(ex),
             DbUpdateException => "فشل حفظ التغييرات في قاعدة البيانات",
             // حتى رسالة التطوير لا تُعكس خامًا: التسطيح/التجريد/القصّ يمنعان تزوير

@@ -174,6 +174,9 @@ public class RF004AuthzTests
             ("AuthController", "Login"),
             ("AuthController", "Logout"),
             ("MetaController", "CurrentYear"),
+            // W1: جامع تقارير CSP يرسله المتصفح تلقائيًا بلا جلسة (محدود المعدل
+            // وبسقف حجم، ومسار CSRF مستثنى صراحةً في `CsrfMiddleware`).
+            ("CspReportsController", "Report"),
         };
         var bare = new List<string>();
         var controllers = typeof(Program).Assembly.GetTypes()

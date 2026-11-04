@@ -310,6 +310,9 @@ var security = builder.Configuration.GetSection("Security").Get<SecurityOptions>
 // التحقق دائم (لا عند التفعيل فقط): `preload` بلا `HstsEnabled` يُتجاهَل بصمت، وقيم
 // `HstsMaxAgeDays` غير الموجبة أو التي تتجاوز السقف خطأ إعداد يُكتشف عند الإقلاع لا في المتصفح.
 HstsSetup.Validate(security);
+// التحقق من سياسة جمع تقارير CSP عند الإقلاع أيضًا: القيمة الخاطئة لم تعد تُتجاهل
+// بصمت (كانت التقارير تُفقد بلا أثر)، بل تمنع الإقلاع برسالة تسمّي المفتاح والمثال.
+CspSetup.Validate(security);
 if (security.HstsEnabled)
 {
     // المدة و`preload` مستقلان عن التفعيل: `preload` التزام شبه دائم في قوائم المتصفحات،

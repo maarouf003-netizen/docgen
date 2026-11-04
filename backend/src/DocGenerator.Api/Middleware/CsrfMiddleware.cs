@@ -29,7 +29,13 @@ public sealed class CsrfMiddleware
             var path = context.Request.Path.Value ?? string.Empty;
             var isLogin = path.EndsWith("/api/auth/login", StringComparison.OrdinalIgnoreCase);
             var isLogout = path.EndsWith("/api/auth/logout", StringComparison.OrdinalIgnoreCase);
-            if (!isLogin && !isLogout)
+            // تقارير CSP يرسلها المتصفح تلقائيًا بلا جلسة/كوكي CSRF (وقد لا يرسل أي كوكي)،
+            // والنقطة عامة/محدودة المعدل/بلا أثر كتابي خارج السجل — فتُستثنى حصرًا بمسارها
+            // الدقيق (مع شرطة أخيرة اختيارية) حتى لا يفتح الاستثناء أي مسار آخر.
+            var isCspReport =
+                string.Equals(path, "/api/csp-report", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(path, "/api/csp-report/", StringComparison.OrdinalIgnoreCase);
+            if (!isLogin && !isLogout && !isCspReport)
             {
                 var cookie = context.Request.Cookies[CookieName];
                 var header = context.Request.Headers[HeaderName].ToString();

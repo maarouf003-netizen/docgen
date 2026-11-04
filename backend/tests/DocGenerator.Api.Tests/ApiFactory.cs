@@ -81,6 +81,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("RateLimiting:GeneralAuthPerMinute", "100000");
         builder.UseSetting("RateLimiting:ExpensivePerMinute", "100000");
         builder.UseSetting("RateLimiting:PasswordPerMinute", "100000");
+        builder.UseSetting("RateLimiting:CspReportPerMinute", "100000");
 
         builder.ConfigureServices(services =>
         {

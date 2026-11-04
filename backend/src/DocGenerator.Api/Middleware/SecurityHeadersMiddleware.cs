@@ -27,11 +27,15 @@ public sealed class SecurityHeadersMiddleware
 
     private readonly RequestDelegate _next;
     private readonly SecurityOptions _security;
+    private readonly string? _cspReportUri;
 
     public SecurityHeadersMiddleware(RequestDelegate next, IOptions<SecurityOptions> security)
     {
         _next = next;
         _security = security.Value;
+        // التحقق النهائي عند الإقلاع في `CspSetup.Validate`؛ هنا تطبيع دفاعي فقط
+        // (اختبارات الوحدة قد تُنشئ الوسيط بقيمة غير صالحة مباشرةً).
+        CspReportUriPolicy.TryNormalize(_security.CspReportUri, out _cspReportUri, out _);
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -47,6 +51,11 @@ public sealed class SecurityHeadersMiddleware
             ? "Content-Security-Policy-Report-Only"
             : "Content-Security-Policy"] = BuildCspValue();
 
+        // FR-010: تعريف جامع التقارير على الأصل نفسه. `report-to` هو البديل الحديث
+        // لـ`report-uri` (المتقاعد في CSP Level 3) ويشترط هذه الترويسة المقتبسة.
+        if (_cspReportUri is not null)
+            headers["Reporting-Endpoints"] = $"csp=\"{_cspReportUri}\"";
+
         // ردود API بيانات قانونية بعد المصادقة: لا تُخزَّن في متصفح مشترك ولا في وسيط
         // تخزين أمامي. تُضبط قبل `_next`، فمتحكم يضع `Cache-Control` صراحةً يتقدّم عليها
         // (كـ`ClientErrorsController` الذي يطلب `NoStore` أصلًا).
@@ -57,24 +66,12 @@ public sealed class SecurityHeadersMiddleware
     }
 
     /// <summary>
-    /// FR-010: إلحاق `report-uri` عند ضبطه لبدء الجمع المركزي قبل الفرض.
-    /// تُقبل **مسارات جذرية-نسبية فقط** تبدأ بـ`/` (لا رابط مطلق ولا `//host` بروتوكول-نسبي):
-    /// `report-uri` يخصّ الأصل نفسه، وقبول عنوان خارجي يجعل المتصفح يرسل مسارات الصفحات
-    /// وتفاصيل المخالفات إلى طرف ثالث. أي قيمة أخرى تُتجاهل بصمت حفاظًا على السلامة.
+    /// FR-010: إلحاق <c>report-uri</c> (احتياط المتصفحات الأقدم) و<c>report-to</c> (الحديث)
+    /// عند ضبط مسار صالح. القيمة طُبِّعت في المنشئ عبر <see cref="CspReportUriPolicy"/>،
+    /// والتحقق القاطع عند الإقلاع في <see cref="CspSetup.Validate"/>.
     /// </summary>
-    private string BuildCspValue()
-    {
-        var uri = _security.CspReportUri?.Trim();
-        if (string.IsNullOrEmpty(uri))
-            return CspValue;
-        if (uri.Any(c => char.IsWhiteSpace(c) || char.IsControl(c)))
-            return CspValue;
-        // `StartsWith("/")` يمنع المخططات المطلقة، و`StartsWith("//")` يمنع المراجع
-        // البروتوكول-نسبية التي يقبلها `Uri.TryCreate(..., Relative)` أيضًا.
-        if (!uri.StartsWith('/') || uri.StartsWith("//", StringComparison.Ordinal))
-            return CspValue;
-        if (!Uri.TryCreate(uri, UriKind.Relative, out _))
-            return CspValue;
-        return CspValue + "; report-uri " + uri;
-    }
+    private string BuildCspValue() =>
+        _cspReportUri is null
+            ? CspValue
+            : CspValue + "; report-uri " + _cspReportUri + "; report-to csp";
 }

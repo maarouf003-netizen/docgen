@@ -1,6 +1,8 @@
 using System.Text.Json;
 using DocGenerator.Api.Middleware;
+using DocGenerator.Application.Common.Interfaces;
 using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -21,9 +23,17 @@ public sealed class GlobalExceptionHandlerTests
         public IFileProvider ContentRootFileProvider { get; set; } = new PhysicalFileProvider(AppContext.BaseDirectory);
     }
 
-    private static GlobalExceptionHandler Handler()
+    private static GlobalExceptionHandler Handler(IDbExceptionClassifier? dbErrors = null)
         => new(LoggerFactory.Create(_ => { }).CreateLogger<GlobalExceptionHandler>(),
-            new StubEnvironment());
+            new StubEnvironment(),
+            dbErrors ?? new StubDbErrors());
+
+    private sealed class StubDbErrors(bool unique = false) : IDbExceptionClassifier
+    {
+        public bool IsUniqueViolation(Exception ex) => unique;
+        public bool IsConcurrencyViolation(Exception ex) => false;
+        public bool IsForeignKeyViolation(Exception ex) => false;
+    }
 
     [Fact]
     public async Task UnauthorizedAccess_ReturnsForbidden_WithReason()
@@ -126,6 +136,43 @@ public sealed class GlobalExceptionHandlerTests
 
         await Handler().TryHandleAsync(
             context, new OperationCanceledException("انتهت المهلة"), CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status500InternalServerError, context.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UniqueViolation_MapsTo409WithGenericMessage()
+    {
+        // W1-7: تفرد غير ملتقط = تعارض بيانات 409 لا 500، وبلا كشف اسم القيد/الجدول.
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+        var ex = new DbUpdateException(
+            "فشل حفظ التغييرات",
+            new InvalidOperationException(
+                "SQLite Error 19: 'UNIQUE constraint failed: PublicEntities.BranchName'"));
+
+        await Handler(new StubDbErrors(unique: true)).TryHandleAsync(
+            context, ex, CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status409Conflict, context.Response.StatusCode);
+        var message = JsonDocument.Parse(await ReadBodyAsync(context))
+            .RootElement.GetProperty("message").GetString();
+        Assert.Equal("تعارض في البيانات — القيمة مكررة، حدّث الصفحة وحاول مجددًا", message);
+        Assert.DoesNotContain("UNIQUE", message);
+        Assert.DoesNotContain("SQLite", message);
+    }
+
+    [Fact]
+    public async Task NonUniqueDbUpdateException_Stays500()
+    {
+        // التصنيف الدقيق: أي عطل حفظ غير تفرد يبقى 500 (لا تُخفى الأعطال الحقيقية).
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+
+        await Handler(new StubDbErrors(unique: false)).TryHandleAsync(
+            context,
+            new DbUpdateException("فشل حفظ", new InvalidOperationException("انقطاع اتصال")),
+            CancellationToken.None);
 
         Assert.Equal(StatusCodes.Status500InternalServerError, context.Response.StatusCode);
     }
