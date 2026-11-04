@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Domain.Enums;
@@ -35,6 +36,9 @@ public sealed class EntityManagerPortalGuard
                 || path.StartsWithSegments("/api/auth/change-password")
                 // الدور القرائي يجب أن يُبلغ عن الأعطال: نقطة client-errors موثقة ومخنوقة لكل مستخدم.
                 || path.StartsWithSegments("/api/client-errors")
+                // جامع تقارير CSP عام بلا جلسة/CSRF؛ لا يجوز أن يحجبه حارس الدور
+                // وإلا فُقدت تقارير متصفح مندوب الجهة بلا سبب.
+                || path.StartsWithSegments(CspReportUriPolicy.RequiredPath)
                 // «سنة النظام» قرائية عامة للواجهة (سنة التدوير/الإعادة تظهر منها لجميع الأدوار).
                 || path.StartsWithSegments("/api/meta");
 

@@ -6,9 +6,9 @@ using Microsoft.Extensions.Options;
 namespace DocGenerator.Api.Tests;
 
 /// <summary>
-/// FR-010: ترويسة `CSP` مراقبة افتراضيًا، و`report-uri` يُلحَق فقط عند ضبطه **مسارًا
-/// جذريًا-نسبيًا** يبدأ بـ`/` (لا رابط مطلق ولا `//host`)، وقيمة ملوثة تُتجاهل حفاظًا
-/// على سلامة الترويسة من الحقن ومن إرسال التقارير لطرف ثالث.
+/// FR-010: ترويسة `CSP` مراقبة افتراضيًا، و`report-uri`/`report-to` يُلحقان فقط عند ضبط
+/// المسار المدمج `/api/csp-report` حرفيًا؛ أي قيمة أخرى تُتجاهل في الوسيط (وتمنع الإقلاع
+/// عبر `CspSetup.Validate` في المضيف الحقيقي).
 /// H-03: ردود `/api` تحمل `Cache-Control: no-store` حتى لا تُخزَّن بيانات ما بعد المصادقة،
 /// وما عداها (الصحة/الأصول الثابتة) لا يحمله.
 /// W0-CSP: السياسة لا تحمل `upgrade-insecure-requests` (تُبيّض التطبيق على خادم `HTTP`)،
@@ -69,18 +69,22 @@ public class SecurityHeadersMiddlewareTests
 
     [Theory]
     [InlineData("/csp-report\r\nX-Injected: 1")]
-    [InlineData("/csp report")]
+    [InlineData("/api/csp report")]
     [InlineData("   ")]
     [InlineData("https://evil.example/csp-report")]
     [InlineData("http://evil.example/csp-report")]
     [InlineData("//evil.example/csp-report")]
     [InlineData("csp-report")]
+    [InlineData("/csp-report")]
+    [InlineData("/api/csp-report/")]
+    [InlineData("/api/csp-reports")]
+    [InlineData("/api/csp-report?source=csp")]
     [InlineData("\\\\evil.example\\csp-report")]
-    [InlineData("/csp-report\"")]
-    [InlineData("/csp-report,other")]
-    [InlineData("/csp-report;other")]
+    [InlineData("/api/csp-report\"")]
+    [InlineData("/api/csp-report,other")]
+    [InlineData("/api/csp-report;other")]
     [InlineData("/تقرير")]
-    public async Task ReportUri_Ignored_WhenUnsafe(string uri)
+    public async Task ReportUri_Ignored_WhenUnsafeOrNotBuiltIn(string uri)
     {
         var headers = await InvokeAsync(new SecurityOptions { CspReportUri = uri });
 
@@ -90,18 +94,18 @@ public class SecurityHeadersMiddlewareTests
         Assert.False(headers.ContainsKey("Reporting-Endpoints"));
     }
 
-    [Theory]
-    [InlineData("/csp-report")]
-    [InlineData("/api/csp-report?source=csp")]
-    [InlineData("/")]
-    public async Task ReportUri_Appended_WhenRootRelative(string uri)
+    [Fact]
+    public async Task ReportUri_Appended_ForBuiltInCollector()
     {
-        var headers = await InvokeAsync(new SecurityOptions { CspReportUri = uri });
+        var headers = await InvokeAsync(
+            new SecurityOptions { CspReportUri = CspReportUriPolicy.RequiredPath });
 
         var csp = headers["Content-Security-Policy-Report-Only"].ToString();
-        Assert.Contains($"report-uri {uri}", csp);
+        Assert.Contains($"report-uri {CspReportUriPolicy.RequiredPath}", csp);
         Assert.Contains("report-to csp", csp);
-        Assert.Equal($"csp=\"{uri}\"", headers["Reporting-Endpoints"].ToString());
+        Assert.Equal(
+            $"csp=\"{CspReportUriPolicy.RequiredPath}\"",
+            headers["Reporting-Endpoints"].ToString());
     }
 
     [Fact]

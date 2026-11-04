@@ -47,9 +47,9 @@ public sealed class SecurityOptions
     /// <summary>
     /// مسار استقبال تقارير <c>CSP</c> (يُلحَق كـ<c>report-uri</c> احتياطًا و<c>report-to</c>
     /// حديثًا، مع ترويسة <c>Reporting-Endpoints</c>) — فارغ = بلا جمع مركزي.
-    /// يُقبل **مسار جذري-نسبي فقط** يبدأ بـ<c>/</c> وليس <c>//</c>، بلا بياض/تحكم/محارف
-    /// تكسر الترويسة. القيمة غير الصالحة **تمنع الإقلاع** برسالة تسمّي المفتاح (<see cref="CspSetup.Validate"/>)
-    /// بدل التجاهل الصامت. مثال: <c>/api/csp-report</c>.
+    /// يُقبل **المسار المدمج <c>/api/csp-report</c> حرفيًا فقط** (مطابق لـ<c>CspReportsController</c>)؛
+    /// أي قيمة أخرى **تمنع الإقلاع** برسالة تسمّي المفتاح (<see cref="CspSetup.Validate"/>)
+    /// بدل التجاهل الصامت أو توجيه التقارير إلى مسار غير جامع.
     /// </summary>
     public string? CspReportUri { get; set; }
 

@@ -51,7 +51,7 @@ public class ClientErrorsController : ControllerBase
         // فيُجرَّد عبر `LogSanitizer` قبل التسجيل — الأرقام والأسماء لا تُمسّ (تشخيص/رسائل عربية).
         report.Message = LogSanitizer.SanitizeForLog(report.Message, _options.ClientErrorPayloadSizeLimit)!;
         report.Stack = LogSanitizer.SanitizeForLog(report.Stack, _options.ClientErrorStackLimit);
-        report.Url = LogSanitizer.SanitizeForLog(StripQuery(report.Url ?? ""), 500);
+        report.Url = LogSanitizer.SanitizeForLog(LogSanitizer.StripQueryAndFragment(report.Url ?? ""), 500);
         report.Component = LogSanitizer.SanitizeForLog(report.Component ?? "", 100);
 
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
@@ -74,12 +74,6 @@ public class ClientErrorsController : ControllerBase
             report.Stack ?? "");
 
         return Accepted(new { ok = true });
-    }
-
-    private static string StripQuery(string url)
-    {
-        var cut = url.IndexOfAny(['?', '#']);
-        return cut < 0 ? url : url[..cut];
     }
 }
 

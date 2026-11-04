@@ -1,6 +1,7 @@
 using System.Text.Json;
 using DocGenerator.Api.Middleware;
 using DocGenerator.Application.Common.Interfaces;
+using DocGenerator.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
@@ -173,6 +174,37 @@ public sealed class GlobalExceptionHandlerTests
             context,
             new DbUpdateException("فشل حفظ", new InvalidOperationException("انقطاع اتصال")),
             CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status500InternalServerError, context.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SqliteUniqueViolation_WithRealClassifier_MapsTo409()
+    {
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+        var ex = new DbUpdateException(
+            "فشل حفظ",
+            new Microsoft.Data.Sqlite.SqliteException("UNIQUE constraint failed", 19, 2067));
+
+        await Handler(new DbExceptionClassifier()).TryHandleAsync(
+            context, ex, CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status409Conflict, context.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SqliteForeignKeyViolation_WithRealClassifier_Stays500()
+    {
+        // H-1: الرمز الأساسي 19 عام — خرق المفتاح الأجنبي ليس تفردًا.
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+        var ex = new DbUpdateException(
+            "فشل حفظ",
+            new Microsoft.Data.Sqlite.SqliteException("FOREIGN KEY constraint failed", 19, 787));
+
+        await Handler(new DbExceptionClassifier()).TryHandleAsync(
+            context, ex, CancellationToken.None);
 
         Assert.Equal(StatusCodes.Status500InternalServerError, context.Response.StatusCode);
     }

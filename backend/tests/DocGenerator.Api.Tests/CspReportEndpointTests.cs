@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Api.Tests;
 
@@ -13,6 +14,9 @@ public class CspReportEndpointTests
     private readonly ApiFactory _factory;
 
     public CspReportEndpointTests(ApiFactory factory) => _factory = factory;
+
+    private static StringContent CspBody(string json) =>
+        new(json, Encoding.UTF8, "application/csp-report");
 
     [Fact]
     public async Task LegacyReport_AnonymousPostWithoutCsrf_Returns204()
@@ -91,5 +95,32 @@ public class CspReportEndpointTests
             new StringContent("{}", Encoding.UTF8, "text/plain"));
 
         Assert.Equal(HttpStatusCode.UnsupportedMediaType, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AuthenticatedEntityManager_CanPostReport()
+    {
+        // حارس مندوب الجهة لا يجوز أن يحجب الجامع العام (M-1).
+        var username = $"csp_entity_{Guid.NewGuid():N}"[..20];
+        var user = await _factory.CreateUserAsync(username, UserRole.EntityManager);
+        var client = _factory.ClientForUser(user);
+
+        var response = await client.PostAsync("/api/csp-report", CspBody("""{"csp-report":{}}"""));
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("/api/csp-reportXYZ")]
+    [InlineData("/api/csp-report/extra")]
+    [InlineData("/api/other")]
+    public async Task CsrfExemption_DoesNotCoverOtherPaths(string path)
+    {
+        // الاستثناء في `CsrfMiddleware` مسار دقيق؛ أي مسار آخر يبقى محميًا (403 قبل التوجيه).
+        var client = _factory.CreateClient();
+
+        var response = await client.PostAsync(path, CspBody("{}"));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 }
