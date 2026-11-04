@@ -92,6 +92,7 @@ public class SecurityHeadersMiddlewareTests
         Assert.DoesNotContain("report-uri", csp);
         Assert.DoesNotContain("report-to", csp);
         Assert.False(headers.ContainsKey("Reporting-Endpoints"));
+        Assert.False(headers.ContainsKey("Report-To"));
     }
 
     [Fact]
@@ -106,6 +107,9 @@ public class SecurityHeadersMiddlewareTests
         Assert.Equal(
             $"csp=\"{CspReportUriPolicy.RequiredPath}\"",
             headers["Reporting-Endpoints"].ToString());
+        Assert.Equal(
+            "{\"group\":\"csp\",\"max_age\":31536000,\"endpoints\":[{\"url\":\"/api/csp-report\"}]}",
+            headers["Report-To"].ToString());
     }
 
     [Fact]
@@ -114,6 +118,7 @@ public class SecurityHeadersMiddlewareTests
         var headers = await InvokeAsync(new SecurityOptions());
 
         Assert.False(headers.ContainsKey("Reporting-Endpoints"));
+        Assert.False(headers.ContainsKey("Report-To"));
         Assert.DoesNotContain("report-to", headers["Content-Security-Policy-Report-Only"].ToString());
     }
 
