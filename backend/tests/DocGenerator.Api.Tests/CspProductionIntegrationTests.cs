@@ -91,6 +91,9 @@ public class CspProductionIntegrationTests : IClassFixture<ProductionSpaFactory>
         Assert.Equal(
             "csp=\"/api/csp-report\"",
             Assert.Single(response.Headers.GetValues("Reporting-Endpoints")));
+        Assert.Equal(
+            "{\"group\":\"csp\",\"max_age\":31536000,\"endpoints\":[{\"url\":\"/api/csp-report\"}]}",
+            Assert.Single(response.Headers.GetValues("Report-To")));
     }
 
     private WebApplicationFactory<Program> WithSettings(params (string Key, string Value)[] settings)

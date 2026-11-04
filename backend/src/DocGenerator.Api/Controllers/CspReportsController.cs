@@ -16,7 +16,9 @@ namespace DocGenerator.Api.Controllers;
 /// <c>CSRF</c>؛ لذلك تُستثنى من <see cref="CsrfMiddleware"/> بمسارها الدقيق. الحماية
 /// من الإغراق: حد معدل لكل <c>IP</c> + سقف حجم الجسم + سقف عدد التقارير + قصّ الحقول.
 /// **لا تُسجَّل الحمولة الخام** ولا <c>script-sample</c> (قد يحمل كودًا/بيانات)، وتُجرَّد
-/// الاستعلامات/المقاطع من العناوين (<see cref="LogSanitizer"/>).
+/// الاستعلامات/المقاطع من العناوين (<see cref="LogSanitizer"/>). ويُسجَّل **سطر ملخص واحد
+/// لكل طلب** (العدد + التوجيهات + أول عيّنة) بدل سطر لكل تقرير — لا يغرق السجل عند
+/// اجتماع عشرات المخالفات في صفحة واحدة.
 /// </summary>
 [ApiController]
 [Route(CspReportUriPolicy.ReportRoute)]
@@ -25,6 +27,8 @@ public sealed class CspReportsController : ControllerBase
     private const int MaxBodyBytes = 16 * 1024;
     private const int MaxReports = 20;
     private const int MaxFieldLength = 500;
+    private const int MaxDirectives = 5;
+    private const int MaxDirectiveSummaryLength = 300;
 
     private readonly ILogger<CspReportsController> _logger;
 
@@ -54,23 +58,19 @@ public sealed class CspReportsController : ControllerBase
         using (document)
         {
             var reports = ExtractReports(document.RootElement);
-            var logged = 0;
+            var cspReports = new List<JsonElement>(Math.Min(reports.Count, MaxReports + 1));
             foreach (var report in reports)
             {
-                if (logged == MaxReports)
-                    break;
                 if (!IsCspViolation(report))
                     continue;
 
-                LogViolation(report);
-                logged++;
+                cspReports.Add(report);
+                if (cspReports.Count == MaxReports + 1)
+                    break;
             }
 
-            if (reports.Count > MaxReports)
-                _logger.LogWarning(
-                    "CSP report batch truncated: received {Received}, logged {Logged}",
-                    reports.Count,
-                    logged);
+            if (cspReports.Count > 0)
+                LogSummary(cspReports);
         }
 
         return NoContent();
@@ -104,26 +104,60 @@ public sealed class CspReportsController : ControllerBase
         || type.ValueKind != JsonValueKind.String
         || string.Equals(type.GetString(), "csp-violation", StringComparison.OrdinalIgnoreCase);
 
-    private void LogViolation(JsonElement report)
+    /// <summary>
+    /// سطر واحد لكل طلب: العدد (بعد سقف <see cref="MaxReports"/>)، وهل قُصَّت الدفعة،
+    /// وأول 5 توجيهات مختلفة، وأول عيّنة تشخيصية بعد التطهير. لا تُسجَّل بقية العيّنات
+    /// عمدًا — السطر الملخص يكفي للرصد، والتفاصيل الكاملة تبقى في المتصفح للمطوّر.
+    /// </summary>
+    private void LogSummary(List<JsonElement> reports)
     {
-        var body = report.TryGetProperty("body", out var payload)
+        var truncated = reports.Count > MaxReports;
+        if (truncated)
+            reports.RemoveAt(reports.Count - 1);
+
+        var directives = new List<string>();
+        foreach (var report in reports)
+        {
+            var directive = DirectiveOf(ReportBody(report));
+            if (directive == "-" || directives.Contains(directive, StringComparer.Ordinal))
+                continue;
+
+            directives.Add(directive);
+            if (directives.Count == MaxDirectives)
+                break;
+        }
+
+        var directiveSummary = directives.Count == 0
+            ? "-"
+            : LogSanitizer.Clip(string.Join(", ", directives), MaxDirectiveSummaryLength);
+
+        var first = ReportBody(reports[0]);
+        _logger.LogWarning(
+            "CSP violations: Count={Count}, Truncated={Truncated}, Directives={Directives}, " +
+            "FirstBlocked={BlockedUri}, FirstDocument={DocumentUri}, FirstDisposition={Disposition}, " +
+            "FirstStatus={StatusCode}, FirstSource={SourceFile}",
+            reports.Count,
+            truncated,
+            directiveSummary,
+            Field(first, "blocked-uri", "blockedURL"),
+            Field(first, "document-uri", "documentURL"),
+            Field(first, "disposition"),
+            Field(first, "status-code", "statusCode"),
+            Field(first, "source-file", "sourceFile"));
+    }
+
+    private static JsonElement ReportBody(JsonElement report) =>
+        report.TryGetProperty("body", out var payload)
             && payload.ValueKind == JsonValueKind.Object
                 ? payload
                 : report;
 
+    private static string DirectiveOf(JsonElement body)
+    {
         var directive = Field(body, "effective-directive", "effectiveDirective");
-        if (directive == "-")
-            directive = Field(body, "violated-directive", "violatedDirective");
-
-        _logger.LogWarning(
-            "CSP violation: Directive={Directive}, Blocked={BlockedUri}, Document={DocumentUri}, " +
-            "Disposition={Disposition}, Status={StatusCode}, Source={SourceFile}",
-            directive,
-            Field(body, "blocked-uri", "blockedURL"),
-            Field(body, "document-uri", "documentURL"),
-            Field(body, "disposition"),
-            Field(body, "status-code", "statusCode"),
-            Field(body, "source-file", "sourceFile"));
+        return directive == "-"
+            ? Field(body, "violated-directive", "violatedDirective")
+            : directive;
     }
 
     /// <summary>يقرأ أول حقل موجود من الأسماء المدعومة، ويطهّره ويقصّه؛ الغائب = <c>-</c>.</summary>

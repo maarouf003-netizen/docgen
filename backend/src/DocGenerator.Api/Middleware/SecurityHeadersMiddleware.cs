@@ -52,9 +52,14 @@ public sealed class SecurityHeadersMiddleware
             : "Content-Security-Policy"] = BuildCspValue();
 
         // FR-010: تعريف جامع التقارير على الأصل نفسه. `report-to` هو البديل الحديث
-        // لـ`report-uri` (المتقاعد في CSP Level 3) ويشترط هذه الترويسة المقتبسة.
+        // لـ`report-uri` (المتقاعد في CSP Level 3) ويشترط ترويسة `Reporting-Endpoints`
+        // المقتبسة؛ وتُضاف `Report-To` القديمة (JSON) للمتصفحات التي لم تدعم الجديدة.
         if (_cspReportUri is not null)
+        {
             headers["Reporting-Endpoints"] = $"csp=\"{_cspReportUri}\"";
+            headers["Report-To"] =
+                $"{{\"group\":\"csp\",\"max_age\":31536000,\"endpoints\":[{{\"url\":\"{_cspReportUri}\"}}]}}";
+        }
 
         // ردود API بيانات قانونية بعد المصادقة: لا تُخزَّن في متصفح مشترك ولا في وسيط
         // تخزين أمامي. تُضبط قبل `_next`، فمتحكم يضع `Cache-Control` صراحةً يتقدّم عليها

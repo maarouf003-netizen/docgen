@@ -284,8 +284,11 @@ npm test
     (القديم) و`application/reports+json` (الحديث)، بحد حجم `16KB` وحد
     `RateLimiting:CspReportPerMinute` (60 افتراضيًا) لكل `IP`، ويُرجع `204`.
     عند ضبطه تُضاف `report-uri` (احتياط) و`report-to csp` مع ترويسة
-    `Reporting-Endpoints: csp="/api/csp-report"`. النقطة عامة بلا مصادقة/CSRF عمدًا
-    (المتصفح يرسل التقرير تلقائيًا)، فلا تضعها خلف بوابة دخول.
+    `Reporting-Endpoints: csp="/api/csp-report"` **و**`Report-To` القديمة (JSON) للمتصفحات
+    الأقدم. النقطة عامة بلا مصادقة/CSRF عمدًا (المتصفح يرسل التقرير تلقائيًا)، فلا تضعها
+    خلف بوابة دخول.
+  - **السجل:** سطر ملخص واحد لكل طلب (`Count`/`Truncated`/أول 5 توجيهات/أول عيّنة) بدل
+    سطر لكل تقرير؛ العناوين تُجرَّد من الاستعلام/المقطع، ولا تُسجَّل الحمولة الخام.
   - `report-to` يتطلب سياقًا آمنًا (`HTTPS`)؛ على `HTTP` الداخلي يبقى `report-uri` هو
     المسار الفعلي (غير مشفّر — البيانات لا تحمل أسرارًا لكنها تحمل مسارات الصفحات).
   - الحارس: `SecurityHeadersMiddlewareTests.ReportUri_*` + `CspSetupTests` +
