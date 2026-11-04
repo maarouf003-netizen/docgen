@@ -10,6 +10,8 @@ namespace DocGenerator.Api.Tests;
 /// (قيمة ملوثة تُتجاهل حفاظًا على سلامة الترويسة من الحقن).
 /// H-03: ردود `/api` تحمل `Cache-Control: no-store` حتى لا تُخزَّن بيانات ما بعد المصادقة،
 /// وما عداها (الصحة/الأصول الثابتة) لا يحمله.
+/// W0-CSP: السياسة لا تحمل `upgrade-insecure-requests` (تُبيّض التطبيق على خادم `HTTP`)،
+/// وتُثبَّت هنا مباشرةً حتى لا تعود عبر نسخ/لصق مستقبلي.
 /// </summary>
 public class SecurityHeadersMiddlewareTests
 {
@@ -40,6 +42,28 @@ public class SecurityHeadersMiddlewareTests
 
         Assert.True(headers.ContainsKey("Content-Security-Policy"));
         Assert.False(headers.ContainsKey("Content-Security-Policy-Report-Only"));
+    }
+
+    [Fact]
+    public async Task Csp_DoesNotUpgradeInsecureRequests()
+    {
+        var headers = await InvokeAsync(new SecurityOptions());
+
+        var csp = headers["Content-Security-Policy-Report-Only"].ToString();
+        Assert.DoesNotContain("upgrade-insecure-requests", csp, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Csp_CoreDirectives_ArePresent()
+    {
+        var headers = await InvokeAsync(new SecurityOptions());
+
+        var csp = headers["Content-Security-Policy-Report-Only"].ToString();
+        Assert.Contains("default-src 'self'", csp);
+        Assert.Contains("script-src 'self'", csp);
+        Assert.Contains("object-src 'none'", csp);
+        Assert.Contains("base-uri 'self'", csp);
+        Assert.Contains("frame-ancestors 'none'", csp);
     }
 
     [Fact]

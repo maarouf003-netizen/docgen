@@ -128,7 +128,10 @@
 - **السياسة المقترحة** (أحادية الأصل — تُضبط بعد فحص `dist/index.html` المبني):
   `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:;`
   `font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self';`
-  `frame-ancestors 'none'; upgrade-insecure-requests`
+  `frame-ancestors 'none'`
+  - **لا تُضاف `upgrade-insecure-requests`**: على خادم يخدم عبر `HTTP` تُحوِّل المتصفحات كل
+    أصول الصفحة النسبية إلى `https` فتفشل ⇒ صفحة بيضاء. الترقية مسؤولية `HSTS`/
+    `HttpsRedirection` صراحةً (`W0-CSP`).
 - **لماذا `unsafe-inline` للأنماط؟** لأن المحتوى الغني المعقَّم يستخدم `span[style]` (`richText.ts`) —
   `style-src 'unsafe-inline'` لا يجيز سكربتات، فخطره محدود ومقبول هنا (وتُبقي `DOMPurify` خط الدفاع الأول).
 - **التدرّج:** `Content-Security-Policy-Report-Only` على `Render` التجريبي أولًا (راية
@@ -139,11 +142,14 @@
 ### 5.3. `HSTS` وإعادة توجيه `HTTPS` المشروطة + تضييق `CORS`
 
 - **إعداد جديد** في `appsettings.json` (افتراضي آمن لـ `Render`): `Security:HstsEnabled=false` +
-  `Security:HttpsRedirectionEnabled=false` + `Security:CspReportOnly=true`.
+  `Security:HttpsRedirectionEnabled=false` + `Security:CspReportOnly=true` + `Security:HstsMaxAgeDays=365`
+  + `Security:HstsPreload=false`.
 - **المخدّم الخاص** يفعّل عبر بيئة فقط (`Security__HstsEnabled=true` +
-  `Security__HttpsRedirectionEnabled=true` + `Security__CspReportOnly=false`) مع
-  `max-age=31536000; includeSubDomains; preload` واستثناء `localhost` — ولا يُفعَّل `preload`
-  إلا على النطاق الإنتاجي الحقيقي بعد التأكد من `HTTPS` الكامل (التزام سنة).
+  `Security__HttpsRedirectionEnabled=true` + `Security__CspReportOnly=false`).
+  - `preload` **مفتاح مستقل** (`Security__HstsPreload=true`) ولا يُفعَّل مع `HstsEnabled` ضمنيًا؛
+    يشترط `HstsMaxAgeDays ≥ 365` و`HstsEnabled=true`، وإلا رفض الإقلاع (`HstsSetup.Validate`).
+    ولا يُفعَّل إلا على النطاق الإنتاجي الحقيقي بعد التأكد من `HTTPS` الكامل (التزام سنة).
+  - المدة تُضبط بـ`Security__HstsMaxAgeDays` (افتراضي 365) بدل ثابت في الكود.
 - **`CORS`:** تغليف `app.UseCors("Vite")` (`Program.cs:276`) بشرط `if (IsDevelopment())` فقط —
   الإنتاج أحادي الأصل (`wwwroot` + `MapFallbackToFile`) لا يحتاجه، وإبقاؤه يُبقي أصلي
   `localhost` مسموحة مع `AllowCredentials` (`Program.cs:131-133`).
@@ -248,12 +254,14 @@
 | المفتاح | التطوير | `Render` (تجربة) | المخدّم الخاص (إنتاج) |
 |---|---|---|---|
 | `Security:KnownProxies` | `[]` | نطاقات `Render` إن لزم، وإلا `[]` | **عنوان/`CIDR` البروكسي العكسي حصرًا** — إلزامي (§4.1) |
-| `Security:HstsEnabled` | `false` | `false` | `true` (بعد تأكيد `HTTPS` الكامل؛ `preload` للنطاق الحقيقي فقط) |
+| `Security:HstsEnabled` | `false` | `false` | `true` (بعد تأكيد `HTTPS` الكامل) |
+| `Security:HstsMaxAgeDays` | `365` | `365` | `365` أو أكثر |
+| `Security:HstsPreload` | `false` | `false` | `false` حتى استقرار النطاق سنة كاملة، ثم `true` صراحةً |
 | `Security:HttpsRedirectionEnabled` | `false` | `false` (المنصة تتولى) | `true` |
 | `Security:CspReportOnly` | `true` | `true` | `false` بعد جولة اختبار واحدة |
 | `RateLimiting:*` | الافتراضي (§6) | الافتراضي | الافتراضي ثم ضبط بالمراقبة |
 | `Jwt__Secret` / `Bootstrap__AdminPassword` | `user-secrets` | يدوي (`sync:false` في `render.yaml:20-23`) | يدوي بإدارة أسرار المخدّم |
-| `AllowedHosts` | `*` | النطاق التجريبي | **النطاق الإنتاجي فقط** (§7) |
+| `AllowedHosts` | `*` | النطاق التجريبي | **النطاق الإنتاجي + عنوان الوكيل/الموازن** (§7) |
 
 ## 10. معايير القبول
 

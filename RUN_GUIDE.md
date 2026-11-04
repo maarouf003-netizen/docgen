@@ -235,10 +235,26 @@ npm test
   `dotnet user-secrets` فقط — **ولا تُضبط في `appsettings*.json` ولا في متغيّرات بيئة الخادم**.
   (استثناء مقصود: `dotnet ef` زمن التصميم يبني المضيف بلا راية فلا يحتاجها محليًا.)
 - `Security:HstsEnabled` / `Security:HttpsRedirectionEnabled` — `false` افتراضيًا (لـ `Render` التجريبي
-  الذي يتولى `TLS`)، و`true` على المخدّم الخاص **بعد التأكد من `HTTPS` الكامل** (مع `preload` للنطاق
-  الحقيقي فقط — التزام سنة، واستثناء `localhost` تلقائي).
+  الذي يتولى `TLS`)، و`true` على المخدّم الخاص **بعد التأكد من `HTTPS` الكامل**.
+- `Security:HstsMaxAgeDays` — مدة `HSTS` بالأيام، `365` افتراضيًا. القيمة غير الموجبة ترفض الإقلاع
+  برسالة تسمّي المفتاح (بدل ترويسة لا يعمل بها المتصفح).
+- `Security:HstsPreload` — `false` افتراضيًا، و**مستقل عن `HstsEnabled` عمدًا**: إدراج النطاق في قوائم
+  `preload` المدمجة التزام شبه دائم (إزالته تستغرق أشهرًا)، فلا يُفعَّل إلا على النطاق النهائي بعد سنة
+  من `HTTPS` كامل. يرفض الإقلاع إن فُعّل بلا `HstsEnabled` أو مع `HstsMaxAgeDays < 365` (متطلب
+  المتصفحات). الرمز: `HstsSetup.Validate`/`Configure`، والحارس: `HstsSetupTests`.
 - `Security:CspReportOnly` — `true` افتراضيًا (وضع المراقبة على التجريبي)، و`false` على المخدّم الخاص
   بعد جولة اختبار واحدة لفرض `Content-Security-Policy`.
+  - **`upgrade-insecure-requests` أُزيلت من السياسة نهائيًا (`W0-CSP`)**: على خادم يخدم عبر `HTTP`
+    (حالة النقل الأولى على الشبكة الداخلية) تُحوِّل المتصفحات كل أصول الصفحة إلى `https` فتفشل ⇒
+    **صفحة بيضاء**. تحديث البروتوكول مسؤولية `HSTS`/`HttpsRedirection` صراحةً. لا تُعِدها عند تعديل
+    `SecurityHeadersMiddleware` (الحارس: `SecurityHeadersMiddlewareTests.Csp_DoesNotUpgradeInsecureRequests`).
+  - **حارس بناء `CSP`:** `cd frontend && npm run build && node scripts/csp-guard.mjs` — يفشل عند أي
+    سكربت/معالج حدث مضمّن، أو أصل خارجي، أو `eval`/`Function`/`WebAssembly` في حزم `dist`، أو مرجع
+    `/assets/...` غير موجود. يعمل في وظيفة `frontend` بـ`CI` بعد البناء، فلا تُكتشف المخالفة أول مرة
+    في متصفح المستخدم.
+  - **بروفة إلزامية قبل الفرض** (بيئة `Production` حقيقية لا `Vite`): افتح الصفحات الرئيسية وسجّل أي
+    مخالفة في وحدة تحكم المتصفح؛ الاختبار `CspProductionIntegrationTests` يثبت أن الترويسة المفروضة
+    تصل مع مستند `index.html` فعلًا.
 - `AllowedHosts` — `*` للتطوير فقط؛ على الإنتاج النطاق الحقيقي حصرًا **مع عنوان الوكيل/الموازن**:
   مثال `"docgen.gov.sy;127.0.0.1;10.0.0.5"`. فلتر المضيف يردّ `400` لأي `Host` آخر، وفحص الصحة يصل
   عادةً بـ`Host: 127.0.0.1:8080` — وقد تحقّقنا باختبار أن **إدراج العنوان وحده يطابق `IP:port`**،
@@ -252,6 +268,10 @@ npm test
 - `Cache-Control` — ردود `/api/**` تحمل `no-store` تلقائيًا (`H-03`) فلا تُخزَّن بيانات ما بعد
   المصادقة في متصفح مشترك ولا في وسيط تخزين أمامي. تحقُّق ما بعد النشر:
   `curl -sI https://<host>/api/meta/current-year | grep -i cache-control` ⇒ `no-store`.
+- `CSP` — تحقُّق ما بعد الفرض (`CspReportOnly=false`): `curl -sI https://<host>/ | grep -i '^content-security-policy'`
+  ⇒ ترويسة `Content-Security-Policy` (لا `Report-Only`) **بلا** `upgrade-insecure-requests`، ومعها
+  `script-src 'self'`. وإن ظهرت صفحة بيضاء بعد الفرض فالسبب المعتاد أصل خارجي أو سكربت مضمّن —
+  شغّل `node frontend/scripts/csp-guard.mjs` بعد البناء لالتقاطه قبل النشر.
 
 ### تطبيق هجرات قاعدة البيانات عند النشر (إلزامي)
 

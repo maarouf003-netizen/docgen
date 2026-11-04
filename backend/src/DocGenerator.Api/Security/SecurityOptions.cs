@@ -10,8 +10,24 @@ public sealed class SecurityOptions
     /// <summary>عناوين <c>IP</c> البروكسي العكسي أو نطاقات <c>CIDR</c> الموثوقة. فارغ = مغلق ضد التزوير.</summary>
     public string[] KnownProxies { get; set; } = [];
 
-    /// <summary>تفعيل <c>HSTS</c> (سنة + <c>includeSubDomains</c> + <c>preload</c>) — المخدّم الخاص فقط.</summary>
+    /// <summary>
+    /// تفعيل <c>HSTS</c> — المخدّم الخاص فقط، وبعد تأكيد أن <c>HTTPS</c> يعمل على كل المسارات
+    /// (الترويسة تُلزِم المتصفح بالبروتوكول الآمن مدة <see cref="HstsMaxAgeDays"/>).
+    /// </summary>
     public bool HstsEnabled { get; set; }
+
+    /// <summary>
+    /// مدة <c>HSTS</c> بالأيام (افتراضيًا سنة = 365). <c>preload</c> يشترط 365 يومًا على الأقل
+    /// (متطلب قائمة المتصفحات المدمجة)، ويُرفض الإقلاع عند قيمة غير موجبة.
+    /// </summary>
+    public int HstsMaxAgeDays { get; set; } = 365;
+
+    /// <summary>
+    /// إدراج <c>preload</c> في ترويسة <c>HSTS</c> — <c>false</c> افتراضيًا. تفعيله التزام لا رجعة
+    /// فيه تقريبًا (إزالة النطاق من قوائم المتصفحات تستغرق أشهرًا)، فلا يُفعَّل إلا على النطاق
+    /// النهائي المستقر بعد سنة من <c>HTTPS</c> الكامل بما فيه النطاقات الفرعية.
+    /// </summary>
+    public bool HstsPreload { get; set; }
 
     /// <summary>إعادة توجيه <c>HTTP-&gt;HTTPS</c> داخل التطبيق — المخدّم الخاص فقط (المنصات تتولاها).</summary>
     public bool HttpsRedirectionEnabled { get; set; }
