@@ -5,6 +5,8 @@ COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
 RUN npm run build
+# W0-CSP: افحص مخرجات البناء داخل الصورة نفسها (لا في CI فقط) — مخالفة CSP تفشل البناء.
+RUN npm run guard
 
 # ---- 2) Backend publish (ASP.NET Core 10) with the built SPA in wwwroot ----
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build

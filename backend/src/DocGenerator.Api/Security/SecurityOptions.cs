@@ -18,9 +18,18 @@ public sealed class SecurityOptions
 
     /// <summary>
     /// مدة <c>HSTS</c> بالأيام (افتراضيًا سنة = 365). <c>preload</c> يشترط 365 يومًا على الأقل
-    /// (متطلب قائمة المتصفحات المدمجة)، ويُرفض الإقلاع عند قيمة غير موجبة.
+    /// (متطلب قائمة المتصفحات المدمجة)، ويُرفض الإقلاع عند قيمة غير موجبة أو تتجاوز
+    /// <see cref="HstsSetup.MaximumMaxAgeDays"/>.
     /// </summary>
     public int HstsMaxAgeDays { get; set; } = 365;
+
+    /// <summary>
+    /// إضافة <c>includeSubDomains</c> إلى ترويسة <c>HSTS</c> — <c>false</c> افتراضيًا لأن الترويسة
+    /// تفرض <c>HTTPS</c> على كل النطاقات الفرعية، فأي نطاق فرعي يخدم عبر <c>HTTP</c> فقط ينكسر
+    /// فورًا. يُفعَّل صراحةً بعد التأكد من <c>HTTPS</c> الكامل لكل النطاقات الفرعية، ويُفرَض
+    /// <c>true</c> تلقائيًا عند <see cref="HstsPreload"/> (متطلب قوائم المتصفحات).
+    /// </summary>
+    public bool HstsIncludeSubDomains { get; set; }
 
     /// <summary>
     /// إدراج <c>preload</c> في ترويسة <c>HSTS</c> — <c>false</c> افتراضيًا. تفعيله التزام لا رجعة

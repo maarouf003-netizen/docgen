@@ -14,9 +14,9 @@ namespace DocGenerator.Api.Middleware;
 /// عبر <c>HTTP</c> (حالة النقل الأولى على الشبكة الداخلية) تُحوِّل المتصفحات كل أصول
 /// الصفحة النسبية إلى <c>https</c> فتفشل ⇒ صفحة بيضاء. تحديث البروتوكول مسؤولية <c>HSTS</c>
 /// و<c>HttpsRedirection</c> صراحةً، لا سياسة <c>CSP</c>.
-/// ملاحظة بيئة التطوير: `connect-src 'self'` يحجب `ws:` الخاص بـ `Vite HMR`، لذا يبقى وضع
-/// المراقبة (`CspReportOnly=true`) إلزاميًا في التطوير — الفرض (`false`) للمخدّم الخاص
-/// (إنتاج) فقط حيث لا `HMR`.
+/// ملاحظة بيئة التطوير: `Vite` يخدم مستند `SPA` بنفسه، فلا تصل ترويسة `Kestrel` إلى الصفحة
+/// أصلًا (ولا علاقة لـ`connect-src 'self'` باتصال `HMR`). بقاء `CspReportOnly=true` افتراضيًا
+/// قرار نشر (مراقبة قبل الفرض) لا استثناء تقني لـ`HMR`؛ والفرض (`false`) للمخدّم الخاص.
 /// </summary>
 public sealed class SecurityHeadersMiddleware
 {

@@ -13,6 +13,12 @@ public static class HstsSetup
     public const int PreloadMinimumMaxAgeDays = 365;
 
     /// <summary>
+    /// سقف مدة <c>HSTS</c>: عشر سنوات. الغرض منع قيمة ضخمة تُفيض في
+    /// <see cref="TimeSpan.FromDays"/> برسالة غامضة، والإبقاء على مدة قابلة للمراجعة.
+    /// </summary>
+    public const int MaximumMaxAgeDays = 3650;
+
+    /// <summary>
     /// يتحقق من اتساق الرايات بغضّ النظر عن التفعيل: <c>preload</c> بلا <c>HstsEnabled</c>
     /// كان سيُتجاهَل بصمت (ترويسة لا تُرسَل أصلًا)، والمدة غير الموجبة لا معنى لها.
     /// يُستدعى من <c>Program.cs</c> قبل تسجيل الخدمة حتى يظهر الخطأ في سجل الإقلاع.
@@ -25,6 +31,13 @@ public static class HstsSetup
         {
             throw new InvalidOperationException(
                 $"Security:HstsMaxAgeDays must be a positive number of days (got {security.HstsMaxAgeDays}).");
+        }
+
+        if (security.HstsMaxAgeDays > MaximumMaxAgeDays)
+        {
+            throw new InvalidOperationException(
+                $"Security:HstsMaxAgeDays must not exceed {MaximumMaxAgeDays} days "
+                + $"(got {security.HstsMaxAgeDays}): a longer max-age is unverifiable and overflows TimeSpan.");
         }
 
         if (security.HstsPreload && !security.HstsEnabled)
@@ -52,8 +65,9 @@ public static class HstsSetup
         Validate(security);
 
         hsts.MaxAge = TimeSpan.FromDays(security.HstsMaxAgeDays);
-        // preload بلا includeSubDomains لا يُقبل في قائمة المتصفحات، فيُثبَّت معه دائمًا.
-        hsts.IncludeSubDomains = true;
+        // includeSubDomains راية صريحة (افتراضيًا false) لأنها تفرض HTTPS على النطاقات الفرعية كلها،
+        // لكن preload بلا includeSubDomains لا يُقبل في قوائم المتصفحات، فيُفرَض معه دائمًا.
+        hsts.IncludeSubDomains = security.HstsIncludeSubDomains || security.HstsPreload;
         hsts.Preload = security.HstsPreload;
     }
 }

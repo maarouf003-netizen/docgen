@@ -143,13 +143,19 @@
 
 - **إعداد جديد** في `appsettings.json` (افتراضي آمن لـ `Render`): `Security:HstsEnabled=false` +
   `Security:HttpsRedirectionEnabled=false` + `Security:CspReportOnly=true` + `Security:HstsMaxAgeDays=365`
-  + `Security:HstsPreload=false`.
+  + `Security:HstsPreload=false` + `Security:HstsIncludeSubDomains=false`.
 - **المخدّم الخاص** يفعّل عبر بيئة فقط (`Security__HstsEnabled=true` +
   `Security__HttpsRedirectionEnabled=true` + `Security__CspReportOnly=false`).
   - `preload` **مفتاح مستقل** (`Security__HstsPreload=true`) ولا يُفعَّل مع `HstsEnabled` ضمنيًا؛
     يشترط `HstsMaxAgeDays ≥ 365` و`HstsEnabled=true`، وإلا رفض الإقلاع (`HstsSetup.Validate`).
     ولا يُفعَّل إلا على النطاق الإنتاجي الحقيقي بعد التأكد من `HTTPS` الكامل (التزام سنة).
-  - المدة تُضبط بـ`Security__HstsMaxAgeDays` (افتراضي 365) بدل ثابت في الكود.
+    وهو **إشارة أهلية** تُقدَّم بعدها يدويًا في `https://hstspreload.org`، لا إدراج تلقائي.
+  - `includeSubDomains` راية صريحة (`Security__HstsIncludeSubDomains=true`) افتراضها `false` لأنها
+    تفرض `HTTPS` على النطاقات الفرعية كلها؛ وتُفرَض `true` تلقائيًا مع `preload`.
+  - المدة تُضبط بـ`Security__HstsMaxAgeDays` (افتراضي 365، وسقف 3650) بدل ثابت في الكود.
+  - **خلف وكيل ينهي `TLS`:** لا تُرسَل ترويسة `HSTS` إلا إذا كان الوكيل معلنًا في
+    `Security:KnownProxies` ويمرّر `X-Forwarded-Proto: https`؛ بلا ذلك الترويسة غائبة صامتًا.
+    تحقّق ما بعد النشر: `curl -sI https://<host>/ | grep -i '^strict-transport-security'`.
 - **`CORS`:** تغليف `app.UseCors("Vite")` (`Program.cs:276`) بشرط `if (IsDevelopment())` فقط —
   الإنتاج أحادي الأصل (`wwwroot` + `MapFallbackToFile`) لا يحتاجه، وإبقاؤه يُبقي أصلي
   `localhost` مسموحة مع `AllowCredentials` (`Program.cs:131-133`).
@@ -255,8 +261,9 @@
 |---|---|---|---|
 | `Security:KnownProxies` | `[]` | نطاقات `Render` إن لزم، وإلا `[]` | **عنوان/`CIDR` البروكسي العكسي حصرًا** — إلزامي (§4.1) |
 | `Security:HstsEnabled` | `false` | `false` | `true` (بعد تأكيد `HTTPS` الكامل) |
-| `Security:HstsMaxAgeDays` | `365` | `365` | `365` أو أكثر |
-| `Security:HstsPreload` | `false` | `false` | `false` حتى استقرار النطاق سنة كاملة، ثم `true` صراحةً |
+| `Security:HstsMaxAgeDays` | `365` | `365` | `365` أو أكثر (سقف `3650`) |
+| `Security:HstsIncludeSubDomains` | `false` | `false` | `true` بعد تأكيد `HTTPS` لكل النطاقات الفرعية (تُفرَض مع `preload`) |
+| `Security:HstsPreload` | `false` | `false` | `false` حتى استقرار النطاق سنة كاملة، ثم `true` صراحةً + تقديم في `hstspreload.org` |
 | `Security:HttpsRedirectionEnabled` | `false` | `false` (المنصة تتولى) | `true` |
 | `Security:CspReportOnly` | `true` | `true` | `false` بعد جولة اختبار واحدة |
 | `RateLimiting:*` | الافتراضي (§6) | الافتراضي | الافتراضي ثم ضبط بالمراقبة |
@@ -271,5 +278,6 @@
 3. فيض على `login` والتصدير و`change-password` يعيد `429` بالعرف العربي، والاستخدام الشرعي الكثيف
    (`300/min` للمصادَق) لا يُحجب.
 4. `X-Forwarded-For` مزوَّر من عميل مباشر يُتجاهَل؛ ومن بروكسي معروف يُعتمد.
-5. `dotnet test` أخضر للخلفية، و`npx oxlint src` و`npx tsc -b` و`npx vitest run` و`npm run build`
-   خضراء للواجهة، وفحص جوال `375px` بلا تجاوز أفقي، ولا هجرات جديدة (لا شيء يُطبَّق على القواعد).
+5. `dotnet test` أخضر للخلفية، و`npx oxlint src scripts` و`npx tsc -b` و`npx vitest run` و
+   `npm run build` و`npm run guard` خضراء للواجهة، وفحص جوال `375px` بلا تجاوز أفقي، ولا هجرات
+   جديدة (لا شيء يُطبَّق على القواعد).
