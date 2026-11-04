@@ -134,7 +134,7 @@ describe('useAlertsFeed', () => {
     );
   });
 
-  it('تنبيه جديد بين الجلبين لا يُكرر صفًا ولا يُسقط صفًا، والنهاية تُعلن تغيّر القائمة', async () => {
+  it('تنبيه جديد بين الجلبين لا يُكرر صفًا ولا يُسقط صفًا، والنهاية لا تُنذر كذبًا', async () => {
     get.mockResolvedValueOnce(pageBody([row(1), row(2)], 4));
     const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
     await waitFor(() => expect(result.current.items).toHaveLength(2));
@@ -153,11 +153,13 @@ describe('useAlertsFeed', () => {
     act(() => result.current.loadMore());
     await waitFor(() => expect(result.current.hasMore).toBe(false));
 
-    // النهاية هادئة: لا خطأ، لكن الإجمالي (5) يخالف المحمّل (4) ⇒ إشارة
-    // صادقة بأن صفوفًا استُجدّت فوق المؤشر بدل عرض ناقص صامت.
+    // النهاية هادئة بلا إشارة: الإجمالي الأكبر (5) يعني صفوفًا **أحدث فوق المؤشر**،
+    // وليست مفقودة تحت المؤشر — فإشعار «أعِد التحميل» هنا يصير ضجيجًا عند كل تنبيه
+    // جديد في فرع نشط. الإشارة محفوظة لاحتمال الفقدان (المحمّل يتجاوز الإجمالي) فقط.
     expect(result.current.error).toBeNull();
     expect(result.current.items.map((alert) => alert.id)).toEqual([1, 2, 3, 4]);
-    expect(result.current.scopeDrift).toBe(true);
+    expect(result.current.scopeDrift).toBe(false);
+    expect(result.current.hasMore).toBe(false);
 
     // الصف الجديد يظهر بإعادة التحميل من الأولى فقط.
     get.mockResolvedValueOnce(pageBody([row(99), row(1)], 6));

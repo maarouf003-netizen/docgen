@@ -1898,11 +1898,15 @@ it('يُسجّل الملف كآخر ما فُتح في الجلسة ليُمي�
     renderView();
 
     await screen.findByText('أطراف الملف التنفيذي');
-    expect(JSON.parse(sessionStorage.getItem('lastViewedDocument') ?? '{}')).toEqual({
-      version: 2,
-      userId: 7,
-      documentId: 1,
-    });
+    // الكتابة تحدث في `useEffect` بعد الرسم؛ التحقق المباشر كان يسابق التأثير فيفشل
+    // متقطعًا تحت تحميل تشغيل الحزمة الكاملة. `waitFor` ينتظر الأثر بدل أن يسابقه.
+    await waitFor(() =>
+      expect(JSON.parse(sessionStorage.getItem('lastViewedDocument') ?? '{}')).toEqual({
+        version: 2,
+        userId: 7,
+        documentId: 1,
+      }),
+    );
   });
 
   it('لا يُسجّل آخر ما فُتح في الجلسة عند منع الوصول إلى الملف (403)', async () => {

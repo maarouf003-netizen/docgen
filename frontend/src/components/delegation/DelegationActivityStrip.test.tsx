@@ -71,6 +71,34 @@ describe('DelegationActivityStrip', () => {
     ).toBeInTheDocument();
   });
 
+  it('الكشف الأخير ينقل التركيز إلى القائمة (لا يسقط على `body`)', async () => {
+    const user = userEvent.setup();
+    get.mockResolvedValue(pageBody(Array.from({ length: 5 }, (_, index) => row(index + 1))));
+
+    render(<DelegationActivityStrip delegationId={9} />);
+    await screen.findByText('معاينة 1');
+
+    await user.click(screen.getByRole('button', { name: 'عرض المزيد' }));
+
+    // الزر أُزيل بعد كشف آخر صف؛ التركيز انتقل إلى القائمة بدل `body`.
+    expect(screen.queryByRole('button', { name: 'عرض المزيد' })).not.toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'أحدث تنبيهات الإنابة' })).toHaveFocus();
+  });
+
+  it('الكشف غير الأخير لا يسرق التركيز من الزر', async () => {
+    const user = userEvent.setup();
+    get.mockResolvedValue(pageBody(Array.from({ length: 25 }, (_, index) => row(index + 1))));
+
+    render(<DelegationActivityStrip delegationId={9} />);
+    await screen.findByText('معاينة 1');
+
+    const button = screen.getByRole('button', { name: 'عرض المزيد' });
+    await user.click(button);
+
+    expect(button).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'عرض المزيد' })).toBeInTheDocument();
+  });
+
   it('تغيير معرّف الإنابة لا يعرض بيانات الإنابة السابقة أثناء جلب الجديدة', async () => {
     get.mockResolvedValueOnce(pageBody([row(1)]));
     const { rerender } = render(<DelegationActivityStrip delegationId={9} />);

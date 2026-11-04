@@ -26,7 +26,10 @@ export function DelegationStatusCard({
           {badge.text}
         </span>
       </div>
-      <DelegationActivityStrip delegationId={delegationId} />
+      {/* `key` بالمعرّف: إعادة تركيب كاملة عند تبديل الإنابة. `resetOnDepsChange`
+          داخل الشريط يمنع بقاء البيانات، وهذا يمنع **إطار الرسم** الذي يسبق التأثير
+          (React يرسم قبل تشغيل `useEffect`). */}
+      <DelegationActivityStrip key={delegationId} delegationId={delegationId} />
     </SectionCard>
   );
 }
