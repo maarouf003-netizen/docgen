@@ -11,6 +11,7 @@ using DocGenerator.Infrastructure;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Npgsql;
@@ -26,6 +27,22 @@ try
 {
 
 var builder = WebApplication.CreateBuilder(args);
+
+// H-02 (تشديد الإنتاج): بيئة Development تُسقط خمسة ضوابط دفعةً واحدة — تطهير رسائل
+// الاستثناء (فيعود النص الخام إلى المستخدم)، والترحيل التلقائي عند الإقلاع، وSwagger،
+// وCORS لأصول localhost مع AllowCredentials، وSecure على كوكي CSRF. متغيّر بيئة واحد
+// على خادم منشور يفتحها كلها، فتُشترط راية صريحة؛ ويُستثنى زمن تصميم EF (dotnet ef)
+// لأن المضيف يُبنى هناك بلا خدمة تُواجه المستخدمين.
+if (builder.Environment.IsDevelopment()
+    && !builder.Configuration.GetValue<bool>("Security:AllowDevelopmentEnvironment")
+    && !EF.IsDesignTime)
+{
+    throw new InvalidOperationException(
+        "Refusing to start in Development: it disables response sanitization and enables auto-migrate, "
+        + "Swagger and localhost CORS. For an intentional local run set "
+        + "Security__AllowDevelopmentEnvironment=true (launchSettings/user-secrets/environment variable). "
+        + "Never enable it on a deployed host.");
+}
 
 // لا بصمة خادم في الترويسات (S3): إخفاء `Server: Kestrel` من كل رد.
 // سقف حجم الطلب 10MB (S4): يمنع الحمولات الضخمة قبل وصولها لخدمات `PBKDF2/Excel/Word`.
@@ -303,8 +320,39 @@ if (security.HstsEnabled)
 
 var app = builder.Build();
 
+// H-02b/H-04: تحذيران إقلاع صريحان بدل تدهور صامت — يُقرآن في سجل النشر مباشرة:
+// (1) بلا وكيل معلَن تُتجاهَل `X-Forwarded-*` فيظهر كل الزوار بعنوان الوكيل (تقسيم حد المعدل
+//     وسجلات التدقيق)، (2) `AllowedHosts` فارغ أو `*` يُعطّل فلترة المضيف التي يفرضها ملحق النقل.
+// تحذير لا رفض: التعريض المباشر بلا وكيل حالة مشروعة. يُكتب عبر مسجّل المضيف (`app.Logger`)
+// لا المسجّل العام `Log.Logger` حتى لا يتأثر أي مستهلك آخر للسجل الثابت (ومنها اختبارات المسبار).
+if (!isDevelopmentHost)
+{
+    var configuredProxies = builder.Configuration.GetSection("Security:KnownProxies").Get<string[]>() ?? [];
+    if (!configuredProxies.Any(entry => !string.IsNullOrWhiteSpace(entry)))
+    {
+        app.Logger.LogWarning(
+            "Security:KnownProxies is empty outside Development: X-Forwarded-For/X-Forwarded-Proto are ignored, "
+            + "so every client appears as the proxy address (rate-limit partitions and audit logs). "
+            + "Set Security__KnownProxies to the reverse proxy address.");
+    }
+
+    // `AllowedHosts` يقبل أنماط نطاقات فرعية (`*.gov.sy`) وهي تضييق مشروع لا تعطيل؛
+    // التحذير يخصّ الفراغ أو المدخل `*` وحده (الذي يُلغي الفلترة فعليًا).
+    var allowedHosts = builder.Configuration["AllowedHosts"];
+    var hostEntries = (allowedHosts ?? string.Empty)
+        .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    if (hostEntries.Length == 0 || hostEntries.Contains("*", StringComparer.Ordinal))
+    {
+        app.Logger.LogWarning(
+            "AllowedHosts is '{AllowedHosts}': host filtering is disabled. Set it to the final host plus the "
+            + "proxy/health-check address (for example \"docgen.gov.sy;127.0.0.1\").",
+            allowedHosts ?? "(unset)");
+    }
+}
+
 // أول وسيط في السلسلة حتى تعكس Request.Scheme وRemoteIpAddress البروتوكول والعنوان الحقيقيين
-// للعميل (المعالجة تعتمد على وكلاء معروفين فقط؛ بلا وكيل تُتجاهَل كل الترويسات فتبقى الحالة مغلقة).
+// للعميل (المعالجة تعتمد على وكلاء معروفين فقط؛ وبلا وكيل معلَن تُعطَّل المعالجة كليًا
+// — `ForwardedHeaders.None` في `ForwardedHeadersSetup` — فتبقى الحالة مغلقة).
 app.UseForwardedHeaders();
 // ترويسات الأمان على كل رد (S3) — قبل معالج الاستثناءات فتبقى حتى مع الردود الاستثنائية.
 app.UseMiddleware<SecurityHeadersMiddleware>();

@@ -8,12 +8,15 @@ namespace DocGenerator.Api.Tests;
 /// <summary>
 /// FR-010: ترويسة `CSP` مراقبة افتراضيًا، و`report-uri` يُلحَق فقط عند ضبطه نظيفًا
 /// (قيمة ملوثة تُتجاهل حفاظًا على سلامة الترويسة من الحقن).
+/// H-03: ردود `/api` تحمل `Cache-Control: no-store` حتى لا تُخزَّن بيانات ما بعد المصادقة،
+/// وما عداها (الصحة/الأصول الثابتة) لا يحمله.
 /// </summary>
 public class SecurityHeadersMiddlewareTests
 {
-    private static async Task<IHeaderDictionary> InvokeAsync(SecurityOptions options)
+    private static async Task<IHeaderDictionary> InvokeAsync(SecurityOptions options, string path = "/")
     {
         var context = new DefaultHttpContext();
+        context.Request.Path = path;
         var middleware = new SecurityHeadersMiddleware(
             _ => Task.CompletedTask,
             Options.Create(options));
@@ -58,5 +61,26 @@ public class SecurityHeadersMiddlewareTests
 
         var csp = headers["Content-Security-Policy-Report-Only"].ToString();
         Assert.DoesNotContain("report-uri", csp);
+    }
+
+    [Theory]
+    [InlineData("/api/documents")]
+    [InlineData("/API/auth/login")]
+    public async Task ApiPath_CarriesNoStore(string path)
+    {
+        var headers = await InvokeAsync(new SecurityOptions(), path);
+
+        Assert.Equal("no-store", headers["Cache-Control"].ToString());
+    }
+
+    [Theory]
+    [InlineData("/healthz")]
+    [InlineData("/apixyz")]
+    [InlineData("/")]
+    public async Task NonApiPath_DoesNotCarryNoStore(string path)
+    {
+        var headers = await InvokeAsync(new SecurityOptions(), path);
+
+        Assert.False(headers.ContainsKey("Cache-Control"));
     }
 }

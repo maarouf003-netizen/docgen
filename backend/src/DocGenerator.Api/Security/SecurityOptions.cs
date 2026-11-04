@@ -24,4 +24,15 @@ public sealed class SecurityOptions
     /// يُلحَق بالسياسة فقط إن كان مسارًا/رابطًا نظيفًا (بلا بياض ولا محارف تحكم) لمنع حقن الترويسات.
     /// </summary>
     public string? CspReportUri { get; set; }
+
+    /// <summary>
+    /// سماح صريح بالتشغيل في بيئة <c>Development</c> خارج أدوات التطوير المحلية. الافتراضي
+    /// <c>false</c> لأن بيئة التطوير تُعطّل خمسة ضوابط دفعةً واحدة: تطهير رسائل الاستثناء
+    /// (<c>GlobalExceptionHandler</c>)، والترحيل التلقائي عند الإقلاع، و<c>Swagger</c>،
+    /// و<c>CORS</c> لأصول <c>localhost</c> مع <c>AllowCredentials</c>، و<c>Secure</c> على كوكي
+    /// <c>CSRF</c>. تشغيلها على خادم منشور يفتحها كلها بمتغيّر بيئة واحد، فتُشترط راية صريحة
+    /// من <c>launchSettings</c>/<c>user-secrets</c>/متغيّر بيئة — ولا تُكتب في
+    /// <c>appsettings.Development.json</c> لأنها تُحمَّل في البيئة المحمية نفسها فتُلغي الحارس.
+    /// </summary>
+    public bool AllowDevelopmentEnvironment { get; set; }
 }

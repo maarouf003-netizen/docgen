@@ -47,6 +47,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
+        // الحارس H-02 (Program.cs) يشترط راية صريحة لبيئة Development. المصنع تطويري مقصود
+        // (قاعدة SQLite مؤقتة + بذر اختباري)، فتُعلَن الراية هنا بدل تعطيل الحارس.
+        builder.UseSetting("Security:AllowDevelopmentEnvironment", "true");
         builder.UseSetting("ConnectionStrings:DefaultConnection", $"Data Source={_dbPath};Default Timeout=30");
         // عزل ملف سجل Serilog عن المستودع: كل مصنع يكتب في مجلد مؤقت خاص به.
         builder.UseSetting("Logging:File:Path", Path.Combine(_logDir, "logs-.txt"));
