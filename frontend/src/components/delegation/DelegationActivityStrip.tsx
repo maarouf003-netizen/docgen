@@ -40,6 +40,10 @@ export function DelegationActivityStrip({ delegationId }: { delegationId: number
         .get(`/alerts/by-delegation/${delegationId}`, { signal })
         .then((r) => readAlertsPage(r.data)),
     [delegationId],
+    // استعلام مفتاحه `delegationId` (كيان مفرد): بلا التصفير يبقى عرض إنابةٍ سابقة
+    // ظاهرًا تحت بطاقة إنابة أخرى أثناء جلب الجديدة — والبطاقة تُعاد استخدامها عند
+    // التنقّل بين الملفات بلا إعادة تركيب.
+    { resetOnDepsChange: true },
   );
 
   // معرّف إنابة آخر في البطاقة نفسها يبدأ من العدد الابتدائي، لا يورث كشفًا سابقًا.
@@ -101,7 +105,7 @@ export function DelegationActivityStrip({ delegationId }: { delegationId: number
 
       {unfetched > 0 ? (
         <p className="mt-2 text-[10px] text-amber-700 tabular-nums">
-          تُعرض أحدث {items.length} من أصل {totalCount} تنبيهًا
+          أحدث {items.length} من أصل {totalCount} — الأقدم غير معروض هنا
         </p>
       ) : null}
     </div>

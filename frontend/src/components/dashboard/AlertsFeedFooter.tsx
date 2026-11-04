@@ -38,7 +38,12 @@ export function AlertsFeedFooter({ feed }: { feed: AlertsFeed }) {
 
     return (
       <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-5 py-3 border-t border-gray-100">
-        <span className="text-xs text-gray-500 tabular-nums">
+        {/* `role=status` على إشارة التغيّر فقط: تظهر بعد إجراء غير متزامن (تحميل
+            صفحة) فتُعلن لقارئ الشاشة؛ أما سطر الاكتمال الثابت فلا يُعلَن تكرارًا. */}
+        <span
+          role={feed.scopeDrift ? 'status' : undefined}
+          className="text-xs text-gray-500 tabular-nums"
+        >
           {feed.scopeDrift
             ? 'تغيّرت القائمة أثناء التصفح — أعِد التحميل لعرض الحالة الأخيرة'
             : `اكتمل — يُعرض ${feed.items.length} تنبيهًا`}

@@ -66,7 +66,29 @@ describe('DelegationActivityStrip', () => {
 
     render(<DelegationActivityStrip delegationId={9} />);
 
-    expect(await screen.findByText('تُعرض أحدث 2 من أصل 250 تنبيهًا')).toBeInTheDocument();
+    expect(
+      await screen.findByText('أحدث 2 من أصل 250 — الأقدم غير معروض هنا'),
+    ).toBeInTheDocument();
+  });
+
+  it('تغيير معرّف الإنابة لا يعرض بيانات الإنابة السابقة أثناء جلب الجديدة', async () => {
+    get.mockResolvedValueOnce(pageBody([row(1)]));
+    const { rerender } = render(<DelegationActivityStrip delegationId={9} />);
+    await screen.findByText('معاينة 1');
+
+    let resolveNext: ((value: unknown) => void) | undefined;
+    get.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveNext = resolve;
+      }),
+    );
+    rerender(<DelegationActivityStrip delegationId={10} />);
+
+    // بطاقة إعادة استخدامها للإنابة الأخرى: عرضُ السابقة تحت الجديدة كذبٌ بصري.
+    await vi.waitFor(() => expect(screen.queryByText('معاينة 1')).not.toBeInTheDocument());
+
+    resolveNext?.(pageBody([row(20)]));
+    expect(await screen.findByText('معاينة 20')).toBeInTheDocument();
   });
 
   it('الفراغ لا يعرض شيئًا (ملحق اختياري في البطاقة)', async () => {

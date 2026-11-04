@@ -51,10 +51,17 @@ describe('AlertsFeedFooter', () => {
     );
 
     expect(
-      screen.getByText('تغيّرت القائمة أثناء التصفح — أعِد التحميل لعرض الحالة الأخيرة'),
-    ).toBeInTheDocument();
+      screen.getByRole('status'),
+    ).toHaveTextContent('تغيّرت القائمة أثناء التصفح — أعِد التحميل لعرض الحالة الأخيرة');
     await user.click(screen.getByRole('button', { name: 'تحديث القائمة' }));
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('سطر الاكتمال الثابت ليس منطقة حيّة (لا إعلان متكرر لقارئ الشاشة)', () => {
+    render(<AlertsFeedFooter feed={feed()} />);
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByText('اكتمل — يُعرض 1 تنبيهًا')).toBeInTheDocument();
   });
 
   it('يعرض العدّاد و«تحميل المزيد» عند وجود مزيد', async () => {
