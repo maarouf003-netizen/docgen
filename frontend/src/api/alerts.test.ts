@@ -88,6 +88,14 @@ describe('buildAlertsCursor', () => {
     expect(buildAlertsCursor(row)).toBe('2026-11-02T09:30:15+00:00|1');
   });
 
+  it('يقبل `-00:00` كما يقبلها `AlertCursor.TryParse` (تماثل عقد لا انحراف)', () => {
+    // الخادم يقبل الأشكال الثلاثة (`Z`/`+00:00`/`-00:00`) ويرفض أي إزاحة غير صفرية؛
+    // رفض العميل لأحدها كان يجعل ما يقبله الخادم يُعلَن خرق عقد في الواجهة.
+    const row = makeHeadAlertSummary({ id: 1, lastContentChangedAt: '2026-11-02T09:30:15-00:00' });
+
+    expect(buildAlertsCursor(row)).toBe('2026-11-02T09:30:15-00:00|1');
+  });
+
   it('يرفض الطابع بلا منطقة UTC صريحة — خرق عقد لا مؤشر ملفّق', () => {
     const rows = [
       makeHeadAlertSummary({ id: 1, lastContentChangedAt: '2026-11-02T09:30:15' }),

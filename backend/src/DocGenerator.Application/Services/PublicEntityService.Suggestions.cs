@@ -121,7 +121,11 @@ public sealed partial class PublicEntityService
         if (actor.Role is UserRole.Head or UserRole.SubHead)
             filtered = filtered.Where(s => s.CreatedById == actor.UserId);
 
-        var ordered = filtered.OrderByDescending(s => s.CreatedAtUtc).ToList();
+        var ordered = filtered
+            .OrderByDescending(s => s.CreatedAtUtc)
+            // فاصل حتمي لحدود الصفحات الإزاحية عند تساوي زمن الإنشاء.
+            .ThenByDescending(s => s.Id)
+            .ToList();
         var page = Math.Max(1, query.Page);
         var perPage = Math.Clamp(query.PerPage <= 0 ? 20 : query.PerPage, 1, 100);
         var total = ordered.Count;

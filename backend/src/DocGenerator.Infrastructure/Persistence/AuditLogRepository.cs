@@ -59,7 +59,11 @@ public class AuditLogRepository : Repository<AuditLog>, IAuditLogRepository
         var total = await q.CountAsync(ct);
 
         var items = await q
+            // فاصل حتمي: `DateTime.UtcNow` على Windows دقّته ~15ms، فأحداث دفعة واحدة
+            // تتساوى في `Timestamp`؛ بلا `Id` يصير ترتيب حدود الصفحات غير حتمي
+            // (تكرار/فقدان صفوف بين الصفحات) — وهو أسوأ ما يمكن في سجل تدقيق.
             .OrderByDescending(a => a.Timestamp)
+            .ThenByDescending(a => a.Id)
             .Skip((page - 1) * perPage)
             .Take(perPage)
             .ToListAsync(ct);

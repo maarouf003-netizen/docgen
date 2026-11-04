@@ -100,6 +100,8 @@ public class PortalRepository : IPortalRepository
         var total = await baseQuery.CountAsync(ct);
         var items = await baseQuery
             .OrderByDescending(d => d.CreatedAt)
+            // فاصل حتمي لحدود الصفحات الإزاحية عند تساوي `CreatedAt`.
+            .ThenByDescending(d => d.Id)
             .Skip((page - 1) * perPage)
             .Take(perPage)
             .Include(d => d.ApplicantPublicEntities)

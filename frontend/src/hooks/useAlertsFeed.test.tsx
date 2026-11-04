@@ -94,14 +94,22 @@ describe('useAlertsFeed', () => {
     expect(get).toHaveBeenCalledTimes(1);
   });
 
-  it('صفحة ممتلئة والإجمالي مساوٍ للمعروض: اكتمال بلا طلب زائد', async () => {
+  it('صفحة ممتلئة والإجمالي مساوٍ للمعروض: القرار للامتلاء لا للعدّ ⇒ طلب تحقّق واحد يُنهي السلسلة', async () => {
+    // الإجمالي قد يتقلّص بين الجلبين (أرشفة/تعاقب)، فتساوي العددين ليس دليل نهاية؛
+    // البوابة الوحيدة صفحة غير ممتلئة. الكلفة: طلب واحد زائد عند النهاية بالضبط.
     get.mockResolvedValueOnce(pageBody([row(1), row(2)], 2));
     const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
     await waitFor(() => expect(result.current.items).toHaveLength(2));
 
-    expect(result.current.hasMore).toBe(false);
+    expect(result.current.hasMore).toBe(true);
+
+    get.mockResolvedValueOnce(pageBody([], 2));
     act(() => result.current.loadMore());
-    expect(get).toHaveBeenCalledTimes(1);
+
+    await waitFor(() => expect(result.current.hasMore).toBe(false));
+    expect(result.current.scopeDrift).toBe(false);
+    expect(result.current.error).toBeNull();
+    expect(result.current.items).toHaveLength(2);
   });
 
   it('فشل صفحة إضافية يُبقي المعروض ويعلن الخطأ ويعيد المحاولة للمؤشر نفسه', async () => {
@@ -126,7 +134,7 @@ describe('useAlertsFeed', () => {
     );
   });
 
-  it('تنبيه جديد بين الجلبين لا يُكرر صفًا ولا يُسقط صفًا (ميزة المؤشر)', async () => {
+  it('تنبيه جديد بين الجلبين لا يُكرر صفًا ولا يُسقط صفًا، والنهاية لا تُنذر كذبًا', async () => {
     get.mockResolvedValueOnce(pageBody([row(1), row(2)], 4));
     const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
     await waitFor(() => expect(result.current.items).toHaveLength(2));
@@ -138,22 +146,74 @@ describe('useAlertsFeed', () => {
     await waitFor(() => expect(result.current.items).toHaveLength(4));
     expect(result.current.items.map((alert) => alert.id)).toEqual([1, 2, 3, 4]);
 
-    // صفحة كاملة والإجمالي أكبر ⇒ صف واحد باقٍ (الصف الجديد ليس منه: هو أعلى المؤشر).
+    // الصف الجديد (99) فوق المؤشر، فلا يُجلب في هذه الجولة؛ والانقطاع لا يُفترض
+    // من الإجمالي — الصفحة ممتلئة فنُكمل حتى تُثبت صفحة غير ممتلئة النهاية.
     expect(result.current.hasMore).toBe(true);
-    get.mockResolvedValueOnce(pageBody([row(5)], 5));
+    get.mockResolvedValueOnce(pageBody([], 5));
     act(() => result.current.loadMore());
-    await waitFor(() => expect(result.current.items).toHaveLength(5));
-    expect(result.current.items.map((alert) => alert.id)).toEqual([1, 2, 3, 4, 5]);
+    await waitFor(() => expect(result.current.hasMore).toBe(false));
+
+    // النهاية هادئة بلا إشارة: الإجمالي الأكبر (5) يعني صفوفًا **أحدث فوق المؤشر**،
+    // وليست مفقودة تحت المؤشر — فإشعار «أعِد التحميل» هنا يصير ضجيجًا عند كل تنبيه
+    // جديد في فرع نشط. الإشارة محفوظة لاحتمال الفقدان (المحمّل يتجاوز الإجمالي) فقط.
+    expect(result.current.error).toBeNull();
+    expect(result.current.items.map((alert) => alert.id)).toEqual([1, 2, 3, 4]);
+    expect(result.current.scopeDrift).toBe(false);
     expect(result.current.hasMore).toBe(false);
 
     // الصف الجديد يظهر بإعادة التحميل من الأولى فقط.
     get.mockResolvedValueOnce(pageBody([row(99), row(1)], 6));
     act(() => result.current.reload());
     await waitFor(() => expect(result.current.items.map((alert) => alert.id)).toEqual([99, 1]));
+    expect(result.current.scopeDrift).toBe(false);
     expect(get).toHaveBeenLastCalledWith(
       '/alerts',
       expect.objectContaining({ params: { pageSize: 100 } }),
     );
+  });
+
+  it('تقلّص القائمة بين الجلبين لا يقطع التحميل: لا صفّ صالح يُفقد بصمت', async () => {
+    // السيناريو الذي كان يُنتج إيقافًا مبكرًا: صفحة ثانية **ممتلئة** وعدد المحمّل
+    // يساوي الإجمالي الجديد تمامًا (صفوف خرجت من الفلتر مقابل صفوف لم تُجلب بعد).
+    // المقارنة القديمة `items.length < totalCount` كانت تُنهي هنا وتُخفي [5,6].
+    get.mockResolvedValueOnce(pageBody([row(1), row(2)], 6));
+    const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+    expect(result.current.hasMore).toBe(true);
+
+    // أُرشف الصفان 1 و2 (خرجا من «النشط») ⇒ الإجمالي 4 وبقيت تحت المؤشر [3,4,5,6].
+    get.mockResolvedValueOnce(pageBody([row(3), row(4)], 4));
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(result.current.items).toHaveLength(4));
+
+    // لا توقّف: الصفحة ممتلئة ⇒ قد يوجد مزيد (وكان يوجد فعلًا).
+    expect(result.current.hasMore).toBe(true);
+    get.mockResolvedValueOnce(pageBody([row(5), row(6)], 4));
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(result.current.items).toHaveLength(6));
+    expect(result.current.items.map((alert) => alert.id)).toEqual([1, 2, 3, 4, 5, 6]);
+
+    // النهاية تُعلن التغيّر (المحمّل 6 والإجمالي 4) بدل اختفاء صامت للتذييل.
+    get.mockResolvedValueOnce(pageBody([], 4));
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(result.current.hasMore).toBe(false));
+    expect(result.current.scopeDrift).toBe(true);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('صفحة مؤشر فارغة تُنهي السلسلة بهدوء: لا «توقّف» ولا خطأ ولا تغيّر مزعوم', async () => {
+    get.mockResolvedValueOnce(pageBody([row(1), row(2)], 2));
+    const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+
+    get.mockResolvedValueOnce(pageBody([], 2));
+    act(() => result.current.loadMore());
+
+    await waitFor(() => expect(result.current.hasMore).toBe(false));
+    // `stuck` مشروط بصفحة تحمل صفوفًا مكررة، فلا يُعلن هنا خطأ توقّف.
+    expect(result.current.error).toBeNull();
+    expect(result.current.scopeDrift).toBe(false);
+    expect(result.current.items.map((alert) => alert.id)).toEqual([1, 2]);
   });
 
   it('يُسقط أي تكرار بالمعرّف لو أعاده الخادم في صفحة لاحقة', async () => {
@@ -214,7 +274,8 @@ describe('useAlertsFeed', () => {
     get.mockResolvedValueOnce(pageBody([row(1), row(2)], 2));
     const { result } = renderHook(() => useAlertsFeed('/alerts', { enabled: true }));
     await waitFor(() => expect(result.current.items).toHaveLength(2));
-    expect(result.current.hasMore).toBe(false);
+    // الصفحة ممتلئة ⇒ «قد يوجد مزيد» (القرار للامتلاء لا للعدّ).
+    expect(result.current.hasMore).toBe(true);
 
     get.mockRejectedValueOnce(new Error('تعذّر الجلب'));
     act(() => result.current.reload());

@@ -9,8 +9,18 @@ export interface AlertsFeed {
   items: HeadAlertSummaryDto[];
   /** الإجمالي من الخادم لقائمة النطاق كله (لا لعدد الصفحات المحمّلة). */
   totalCount: number;
-  /** آخر صفحة وصلت كانت ممتلئة وهناك صفوف لم تُحمّل بعد. */
+  /**
+   * آخر صفحة وصلت كانت ممتلئة **ولا نعلم** أن القائمة انتهت: قد يوجد ما بعدها.
+   * (`true` لا يعني «مزيد مُثبت»، بل «قد يوجد مزيد» — والقرار النهائي لصفحة غير ممتلئة.)
+   */
   hasMore: boolean;
+  /**
+   * اكتمل التحميل وعدد المحمّل **يتجاوز** إجمالي الخادم: صفوف غادرت الفلتر
+   * (أرشفة/تعاقب/حذف) أو غيّرت مفتاح ترتيبها ⇒ قد تكون صفوف تحت المؤشر لم تُجلب.
+   * ليست خطأً — إشارة إعادة تحميل. **ولا تُطلق عند نموّ القائمة**: صفوف أحدث فوق
+   * المؤشر ليست مفقودة، وإشعارها عند كل تنبيه جديد يصير ضجيجًا يوميًا.
+   */
+  scopeDrift: boolean;
   /** تحميل الصفحة الأولى (القائمة فارغة حتى تصل). */
   isLoading: boolean;
   /** تحميل صفحة إضافية (القائمة المعروضة تبقى ظاهرة). */
@@ -58,6 +68,8 @@ interface FeedState {
    * النتيجة. تُعلن للمستخدم ويُتاح لها `reload` وحده (حارس التقدّم).
    */
   stuck: boolean;
+  /** اكتمل الطلب والمحمّل يتجاوز الإجمالي — إشارة إعادة تحميل لا خطأ (انظر `AlertsFeed`). */
+  scopeDrift: boolean;
 }
 
 const EMPTY_ITEMS: HeadAlertSummaryDto[] = [];
@@ -68,6 +80,7 @@ const EMPTY_FEED: FeedState = {
   totalCount: 0,
   hasMore: false,
   stuck: false,
+  scopeDrift: false,
 };
 
 /**
@@ -113,8 +126,15 @@ function appendUniqueRows(
  * - الصفحة الأولى (مؤشر `null`) تستبدل المحمّل، فهي بداية سلسلة جديدة
  *   (إعادة تحميل/تغيير نطاق) — بلا تفريغ أثناء الجلب (لا وميض «لا توجد تنبيهات»).
  * - `loadMore` يطلب ما بعد آخر صف ويُلحق النتيجة.
- * - `hasMore` يُشتق من **امتلاء الصفحة الأخيرة** ومن بقاء صفوف في الإجمالي:
- *   مؤشر keyset لا يملك عدد صفحات ثابتًا، وصفحة غير ممتلئة تعني نهاية القائمة.
+ * - `hasMore` يُشتق من **امتلاء الصفحة الأخيرة** وحده (مع حارس التقدّم): صفحة غير
+ *   ممتلئة تعني نهاية القائمة حتمًا في keyset، وصفحة ممتلئة تعني «قد يوجد مزيد».
+ *   **ولا يُستعمل `totalCount` بوابةً للترقيم** لأنه عدد القائمة كلها بينما `items`
+ *   تراكم تحت المؤشر فقط؛ المقارنة كانت تُوقف التحميل مبكرًا عند تقلّص القائمة
+ *   (أرشفة/تعاقب/حذف بين الجلبين ⇒ صفوف صالحة لا تُجلب أبدًا) وتطلب صفحة زائدة عند
+ *   نموّها. الكلفة المقبولة: طلب واحد زائد عند نهاية عددها مضاعف لحجم الصفحة.
+ * - `scopeDrift` يُعلن عند نهاية السلسلة إذا **تجاوز** المحمّل الإجمالي (احتمال صفوف
+ *   لم تُجلب بسبب تقلّص القائمة) — إشارة إعادة تحميل صادقة. أما نموّ الإجمالي (صفوف
+ *   أحدث فوق المؤشر) فلا إشارة: لا شيء مفقود تحت المؤشر، وإشعار كل تنبيه جديد ضجيج.
  * - فشل صفحة إضافية يُبقي المعروض، ويعيد الزر محاولة **المؤشر نفسه**.
  * - **فشل حتمي** (خرق عقد صف يمنع بناء المؤشر، أو صفحة بلا أي صف جديد) لا
  *   يُعاد معه الطلب نفسه لأنه سيفشل بالنتيجة ذاتها؛ يتحول الزر إلى إعادة
@@ -171,23 +191,39 @@ export function useAlertsFeed(url: string, { enabled }: { enabled: boolean }): A
       // يتقدّم (لا فائدة من طلب آخر) ⇒ تُعلن الحالة بدل زر صامت.
       const pageWasFull = data.result.items.length === data.result.perPage;
       const stuck = !isFirstPage && data.result.items.length > 0 && items === baseItems;
-      const hasMore = pageWasFull && !stuck && items.length < data.result.totalCount;
+      // **البوابة الوحيدة: امتلاء الصفحة.** `totalCount` عدّ القائمة كلها (فوق
+      // المؤشر وتحته) بينما `items` تراكم تحت المؤشر؛ ومقارنتهما تنهار في الحالتين:
+      // (1) تقلّص القائمة (أرشفة/تعاقب/حذف بين الجلبين) يجعل المحمّل يسبق الإجمالي
+      //     فتنقطع السلسلة وصفوف صالحة لا تُجلب أبدًا — وأسوأ صورها أن يتساوى
+      //     العددان (صفوف خرجت مقابل صفوف لم تُجلب) فيبدو «اكتمالًا» كاذبًا؛
+      // (2) نموّها (صف أُدرج فوق المؤشر) يجعل الإجمالي أكبر دائمًا فيُطلب ما لا يوجد.
+      // فتُقبل الكلفة المحدودة: طلب واحد زائد في نهاية قائمة عددها مضاعف لحجم
+      // الصفحة، بدل صف مخفي بلا إشارة. النهاية تُكتشف بامتلاء الصفحة لا بالعدّ.
+      const hasMore = pageWasFull && !stuck;
+      // نهاية السلسلة والمحمّل **يتجاوز** الإجمالي = صفوف غادرت الفلتر أو غيّرت
+      // موضعها، وقد تكون صفوف تحت المؤشر لم تُجلب ⇒ إشارة إعادة تحميل (ليست خطأً).
+      // أما الإجمالي الأكبر (نموّ) فلا إشارة: الصفوف الجديدة فوق المؤشر ليست
+      // مفقودة، والسلسلة اكتملت لما كان تحت المؤشر.
+      const scopeDrift = !isFirstPage && !stuck && !pageWasFull
+        && items.length > data.result.totalCount;
       if (
         sameScope &&
         prev.items === items &&
         prev.totalCount === data.result.totalCount &&
         prev.hasMore === hasMore &&
-        prev.stuck === stuck
+        prev.stuck === stuck &&
+        prev.scopeDrift === scopeDrift
       ) {
         return prev;
       }
-      return { url: data.url, items, totalCount: data.result.totalCount, hasMore, stuck };
+      return { url: data.url, items, totalCount: data.result.totalCount, hasMore, stuck, scopeDrift };
     });
   }, [query.data]);
 
   const items = feed.items;
   const totalCount = feed.totalCount;
   const hasMore = feed.hasMore;
+  const scopeDrift = feed.scopeDrift;
   const isLoading = queryIsLoading && cursor === null;
   const isLoadingMore = queryIsLoading && cursor !== null;
   const stuck = feed.stuck;
@@ -274,6 +310,7 @@ export function useAlertsFeed(url: string, { enabled }: { enabled: boolean }): A
       items,
       totalCount,
       hasMore,
+      scopeDrift,
       isLoading,
       isLoadingMore,
       error,
@@ -281,6 +318,17 @@ export function useAlertsFeed(url: string, { enabled }: { enabled: boolean }): A
       reload,
       updateItems,
     }),
-    [items, totalCount, hasMore, isLoading, isLoadingMore, error, loadMore, reload, updateItems],
+    [
+      items,
+      totalCount,
+      hasMore,
+      scopeDrift,
+      isLoading,
+      isLoadingMore,
+      error,
+      loadMore,
+      reload,
+      updateItems,
+    ],
   );
 }

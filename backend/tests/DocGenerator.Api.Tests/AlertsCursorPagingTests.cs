@@ -282,6 +282,57 @@ public class AlertsCursorPagingTests
         Assert.Equal(1, onlyArchivedNext.TotalCount);
     }
 
+    /// <summary>
+    /// السيناريو الذي كان يُنتج قصًّا صامتًا في الواجهة: **أرشفة صفوف بين الجلبين**
+    /// تُنقص `totalCount` حتى يصبح المحمّل مساويًا/متجاوزًا له. العقد الخادمي الذي
+    /// تبني عليه الواجهة قرارها «صفحة ممتلئة ⇒ قد يوجد مزيد»: المؤشر يواصل بعد آخر
+    /// صف معروض ويعيد بقية القائمة **دائمًا** حتى النهاية، ولا يعتمد على `totalCount`.
+    /// </summary>
+    [Fact]
+    public async Task CursorPaging_AfterArchiveBetweenFetches_StillDeliversRemainingRows()
+    {
+        var branchId = await _factory.GetBranchIdAsync("DAM");
+        var (lawyerId, client) = await _factory.NewLawyerClientAsync(branchId);
+        var createdById = await _factory.UserIdAsync("head1");
+        var seeded = await SeedAlertsAsync(branchId, lawyerId, createdById, count: 5);
+
+        var first = await ReadPageAsync(await client.GetAsync("/api/alerts?pageSize=2"));
+        Assert.Equal(5, first.TotalCount);
+        Assert.Equal(Enumerable.Reverse(seeded).Take(2), first.Items.Select(i => i.Id));
+
+        // أرشفة الصفوف المعروضة أثناء التصفح: تخرج من «النشط» ⇒ الإجمالي 3.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+            var shown = first.Items.Select(i => i.Id).ToArray();
+            foreach (var alert in await db.HeadAlerts.Where(a => shown.Contains(a.Id)).ToListAsync())
+            {
+                alert.IsArchived = true;
+                alert.ArchivedAt = Anchor.AddHours(1);
+            }
+            await db.SaveChangesAsync();
+        }
+
+        var second = await ReadPageAsync(await client.GetAsync(
+            $"/api/alerts?pageSize=2&cursor={Uri.EscapeDataString(Wire(first.Items[^1]))}"));
+
+        // صفحة ممتلئة والإجمالي 3 (أصغر من مجموع ما حُمّل 4) — وهذا بالضبط ما كان
+        // يُقنع الواجهة القديمة بالتوقف. الخادم يواصل: [3,2].
+        Assert.Equal(3, second.TotalCount);
+        Assert.Equal(Enumerable.Reverse(seeded).Skip(2).Take(2), second.Items.Select(i => i.Id));
+
+        var third = await ReadPageAsync(await client.GetAsync(
+            $"/api/alerts?pageSize=2&cursor={Uri.EscapeDataString(Wire(second.Items[^1]))}"));
+
+        // الصف الأخير الذي كان سيُفقد في الإصلاح الأول: يصل عبر صفحة ثالثة.
+        Assert.Equal(new[] { seeded[0] }, third.Items.Select(i => i.Id));
+        Assert.Equal(3, third.TotalCount);
+
+        var walked = first.Items.Concat(second.Items).Concat(third.Items)
+            .Select(i => i.Id).ToArray();
+        Assert.Equal(seeded.Count, walked.Distinct().Count());
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
