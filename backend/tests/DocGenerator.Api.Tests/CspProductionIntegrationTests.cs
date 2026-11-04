@@ -1,4 +1,6 @@
 using System.Net;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace DocGenerator.Api.Tests;
 
@@ -8,6 +10,8 @@ namespace DocGenerator.Api.Tests;
 /// حقيقيًا ويخدم <c>index.html</c> من جذر ويب مؤقت، ثم يقيس الترويسة **على مستند الصفحة**
 /// كما يراها المتصفح: مفروضة (لا <c>Report-Only</c>)، وبلا <c>upgrade-insecure-requests</c>،
 /// ومتسقة مع الأصول المحلية التي يبنيها <c>Vite</c>.
+/// W1: يضيف التحقق من ربط جامع تقارير <c>CSP</c>: فشل إقلاع القيمة غير المطابقة، ووصول
+/// <c>report-uri</c>/<c>report-to</c>/<c>Reporting-Endpoints</c> إلى المستند.
 /// </summary>
 [Collection(ApiTestCollection.Name)]
 public class CspProductionIntegrationTests : IClassFixture<ProductionSpaFactory>
@@ -45,5 +49,56 @@ public class CspProductionIntegrationTests : IClassFixture<ProductionSpaFactory>
         Assert.Equal("no-referrer", response.Headers.GetValues("Referrer-Policy").Single());
         // صفحات المستند ليست ردود API: لا تُوسم بـ`no-store` (منع التخزين للـAPI وحده).
         Assert.False(response.Headers.Contains("Cache-Control"));
+    }
+
+    [Fact]
+    public void InvalidCspReportUri_FailsHostStartup()
+    {
+        using var factory = WithSettings(
+            ("Security:CspReportUri", "https://collector.example/csp"));
+
+        var exception = Record.Exception(() => factory.CreateClient());
+
+        Assert.NotNull(exception);
+        Assert.Contains("Security:CspReportUri", exception.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TypoInCspReportUri_FailsHostStartup()
+    {
+        using var factory = WithSettings(
+            ("Security:CspReportUri", "/api/csp-reports"));
+
+        var exception = Record.Exception(() => factory.CreateClient());
+
+        Assert.NotNull(exception);
+        Assert.Contains("Security:CspReportUri", exception.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ConfiguredCollector_AddsReportingHeadersToDocument()
+    {
+        using var factory = WithSettings(
+            ("Security:CspReportUri", "/api/csp-report"));
+        var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var csp = Assert.Single(response.Headers.GetValues("Content-Security-Policy"));
+        Assert.Contains("report-uri /api/csp-report", csp, StringComparison.Ordinal);
+        Assert.Contains("report-to csp", csp, StringComparison.Ordinal);
+        Assert.Equal(
+            "csp=\"/api/csp-report\"",
+            Assert.Single(response.Headers.GetValues("Reporting-Endpoints")));
+    }
+
+    private WebApplicationFactory<Program> WithSettings(params (string Key, string Value)[] settings)
+    {
+        return _factory.WithWebHostBuilder(builder =>
+        {
+            foreach (var (key, value) in settings)
+                builder.UseSetting(key, value);
+        });
     }
 }

@@ -19,7 +19,7 @@ namespace DocGenerator.Api.Controllers;
 /// الاستعلامات/المقاطع من العناوين (<see cref="LogSanitizer"/>).
 /// </summary>
 [ApiController]
-[Route("api/csp-report")]
+[Route(CspReportUriPolicy.ReportRoute)]
 public sealed class CspReportsController : ControllerBase
 {
     private const int MaxBodyBytes = 16 * 1024;
@@ -140,17 +140,10 @@ public sealed class CspReportsController : ControllerBase
                 ? value.GetString()
                 : value.GetRawText();
             var clean = LogSanitizer.SanitizeForLog(
-                StripQueryAndFragment(raw ?? string.Empty), MaxFieldLength)?.Trim();
+                LogSanitizer.StripQueryAndFragment(raw ?? string.Empty), MaxFieldLength)?.Trim();
             return string.IsNullOrEmpty(clean) ? "-" : clean;
         }
 
         return "-";
-    }
-
-    /// <summary>يحذف الاستعلام/المقطع من العناوين (قد يحمل توكنات أو معرّفات حساسة).</summary>
-    private static string StripQueryAndFragment(string value)
-    {
-        var cut = value.IndexOfAny(['?', '#']);
-        return cut < 0 ? value : value[..cut];
     }
 }

@@ -66,6 +66,8 @@ public class EntityManagerPortalGuardTests
     // المشرف في كل تغيير كلمة سر.
     [InlineData("/api/auth/change-password")]
     [InlineData("/api/meta/current-year")]
+    // W1: جامع تقارير CSP عام؛ يجب ألا يحجبه حارس مندوب الجهة.
+    [InlineData("/api/csp-report")]
     public async Task EntityManager_OnPortalAndAuthPaths_PassesThrough(string path)
     {
         var context = BuildContext(path, authenticated: true, role: "entitymanager");

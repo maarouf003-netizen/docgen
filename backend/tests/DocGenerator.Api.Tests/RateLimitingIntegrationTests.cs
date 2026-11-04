@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -55,6 +56,27 @@ public class RateLimitingIntegrationTests
 
         var flooded = await client.PostAsJsonAsync("/api/auth/login",
             new { username = $"rl_nonexistent_{Guid.NewGuid():N}", password = "wrong" });
+        Assert.Equal((HttpStatusCode)429, flooded.StatusCode);
+        Assert.Contains("طلبات كثيرة", await flooded.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task CspReportPolicy_BlocksFloodWith429()
+    {
+        using var factory = IsolatedFactory("RateLimiting:CspReportPerMinute", "2");
+        var client = factory.CreateClient();
+
+        for (var i = 0; i < 2; i++)
+        {
+            var accepted = await client.PostAsync(
+                "/api/csp-report",
+                new StringContent("{}", Encoding.UTF8, "application/csp-report"));
+            Assert.Equal(HttpStatusCode.NoContent, accepted.StatusCode);
+        }
+
+        var flooded = await client.PostAsync(
+            "/api/csp-report",
+            new StringContent("{}", Encoding.UTF8, "application/csp-report"));
         Assert.Equal((HttpStatusCode)429, flooded.StatusCode);
         Assert.Contains("طلبات كثيرة", await flooded.Content.ReadAsStringAsync());
     }

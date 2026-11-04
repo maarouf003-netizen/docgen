@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using DocGenerator.Api.Security;
 using Microsoft.AspNetCore.Http;
 
 namespace DocGenerator.Api.Middleware;
@@ -33,8 +34,8 @@ public sealed class CsrfMiddleware
             // والنقطة عامة/محدودة المعدل/بلا أثر كتابي خارج السجل — فتُستثنى حصرًا بمسارها
             // الدقيق (مع شرطة أخيرة اختيارية) حتى لا يفتح الاستثناء أي مسار آخر.
             var isCspReport =
-                string.Equals(path, "/api/csp-report", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(path, "/api/csp-report/", StringComparison.OrdinalIgnoreCase);
+                string.Equals(path, CspReportUriPolicy.RequiredPath, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(path, CspReportUriPolicy.RequiredPath + "/", StringComparison.OrdinalIgnoreCase);
             if (!isLogin && !isLogout && !isCspReport)
             {
                 var cookie = context.Request.Cookies[CookieName];

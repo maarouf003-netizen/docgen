@@ -74,6 +74,16 @@ public static partial class LogSanitizer
         return value;
     }
 
+    /// <summary>
+    /// يحذف الاستعلام/المقطع من عنوان قبل تسجيله (قد يحمل توكنًا أو معرّفًا حساسًا).
+    /// سياسة مشتركة بين إبلاغ أخطاء الواجهة وجامع تقارير <c>CSP</c>.
+    /// </summary>
+    public static string StripQueryAndFragment(string value)
+    {
+        var cut = value.IndexOfAny(['?', '#']);
+        return cut < 0 ? value : value[..cut];
+    }
+
     /// <summary>قصّ صارم للسقف (نفس سلوك `Clip` السابق: قطع بلا علامة).</summary>
     public static string Clip(string value, int max) =>
         value.Length <= max ? value : value[..max];

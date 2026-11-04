@@ -88,6 +88,45 @@ public class DbExceptionClassifierTests : IDisposable
         Assert.False(_classifier.IsUniqueViolation(ex));
     }
 
+    [Theory]
+    [InlineData(2067)] // SQLITE_CONSTRAINT_UNIQUE
+    [InlineData(1555)] // SQLITE_CONSTRAINT_PRIMARYKEY
+    [InlineData(2579)] // SQLITE_CONSTRAINT_ROWID
+    public void IsUniqueViolation_UniqueExtendedConstraintCodes_True(int extendedCode)
+    {
+        var ex = new DbUpdateException(
+            "فشل حفظ",
+            new Microsoft.Data.Sqlite.SqliteException("constraint failed", 19, extendedCode));
+
+        Assert.True(_classifier.IsUniqueViolation(ex));
+    }
+
+    [Theory]
+    [InlineData(787)]  // SQLITE_CONSTRAINT_FOREIGNKEY
+    [InlineData(1299)] // SQLITE_CONSTRAINT_NOTNULL
+    [InlineData(275)]  // SQLITE_CONSTRAINT_CHECK
+    public void IsUniqueViolation_NonUniqueExtendedConstraintCodes_False(int extendedCode)
+    {
+        // الرمز الأساسي 19 عام؛ لا يجوز أن يُصنَّف خرق FK/NOT NULL/CHECK تفردًا
+        // وإلا تحوّل عطل بيانات حقيقي إلى 409 «قيمة مكررة» في المعالج العام.
+        var ex = new DbUpdateException(
+            "فشل حفظ",
+            new Microsoft.Data.Sqlite.SqliteException("constraint failed", 19, extendedCode));
+
+        Assert.False(_classifier.IsUniqueViolation(ex));
+    }
+
+    [Fact]
+    public void IsUniqueViolation_GenericPrimaryCodeWithoutExtendedCode_False()
+    {
+        // غياب الرمز الموسّع (مزود قديم/غلاف فقد الامتداد) يبقى 500 لا 409 — fail-safe.
+        var ex = new DbUpdateException(
+            "فشل حفظ",
+            new Microsoft.Data.Sqlite.SqliteException("UNIQUE constraint failed: X", 19, 0));
+
+        Assert.False(_classifier.IsUniqueViolation(ex));
+    }
+
     [Fact]
     public void IsUniqueViolation_PlainException_False()
     {

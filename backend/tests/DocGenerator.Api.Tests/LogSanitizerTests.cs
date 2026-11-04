@@ -99,4 +99,16 @@ public sealed class LogSanitizerTests
         Assert.True(sanitized.Length <= LogSanitizer.ResponseMessageLimit);
         Assert.StartsWith("مدخل [بريد محجوب] خاطئ", sanitized);
     }
+
+    [Theory]
+    [InlineData("/documents/12?token=secret", "/documents/12")]
+    [InlineData("/documents/12#section", "/documents/12")]
+    [InlineData("/documents/12?token=secret#section", "/documents/12")]
+    [InlineData("/documents/12", "/documents/12")]
+    [InlineData("", "")]
+    [InlineData("?token=secret", "")]
+    public void StripQueryAndFragment_RemovesSensitiveUrlParts(string input, string expected)
+    {
+        Assert.Equal(expected, LogSanitizer.StripQueryAndFragment(input));
+    }
 }
