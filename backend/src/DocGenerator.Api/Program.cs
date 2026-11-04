@@ -307,15 +307,14 @@ builder.Services.AddSwaggerGen(o =>
 // يفعّل عبر Security__HstsEnabled / Security__HttpsRedirectionEnabled (انظر RUN_GUIDE.md §9).
 // تُقرأ قبل البناء لأن AddHsts تسجيل خدمة لا يجوز بعد تجميد الحاوية.
 var security = builder.Configuration.GetSection("Security").Get<SecurityOptions>() ?? new SecurityOptions();
+// التحقق دائم (لا عند التفعيل فقط): `preload` بلا `HstsEnabled` يُتجاهَل بصمت، وقيمة
+// `HstsMaxAgeDays` غير الموجبة خطأ إعداد يُكتشف عند الإقلاع لا في المتصفح.
+HstsSetup.Validate(security);
 if (security.HstsEnabled)
 {
-    // سنة + includeSubDomains + preload؛ لا يُفعَّل preload إلا على النطاق الإنتاجي الحقيقي.
-    builder.Services.AddHsts(o =>
-    {
-        o.MaxAge = TimeSpan.FromDays(365);
-        o.IncludeSubDomains = true;
-        o.Preload = true;
-    });
+    // المدة و`preload` مستقلان عن التفعيل: `preload` التزام شبه دائم في قوائم المتصفحات،
+    // فلا يُفعَّل ضمنيًا مع `HstsEnabled`.
+    builder.Services.AddHsts(o => HstsSetup.Configure(o, security));
 }
 
 var app = builder.Build();

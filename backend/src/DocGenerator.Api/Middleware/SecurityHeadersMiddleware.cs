@@ -10,17 +10,20 @@ namespace DocGenerator.Api.Middleware;
 /// سياسة <c>CSP</c> أحادية الأصل ومحافظة: <c>style-src 'unsafe-inline'</c> لازم لأن المحتوى
 /// الغني المعقَّم يستخدم <c>span[style]</c> (لا يجيز سكربتات)، و<c>DOMPurify</c> في الواجهة
 /// خط الدفاع الأول. يُستبعد <c>COEP: require-corp</c> عمدًا حتى لا يكسر ملفات
-/// <c>wwwroot</c> الثابتة. ملاحظة بيئة التطوير: `connect-src 'self'` يحجب `ws:` الخاص
-/// بـ `Vite HMR`، لذا يبقى وضع المراقبة (`CspReportOnly=true`) إلزاميًا في التطوير —
-/// الفرض (`false`) للمخدّم الخاص (إنتاج) فقط حيث لا `HMR`.
+/// <c>wwwroot</c> الثابتة. **ولا تُضاف <c>upgrade-insecure-requests</c>**: على خادم يخدم
+/// عبر <c>HTTP</c> (حالة النقل الأولى على الشبكة الداخلية) تُحوِّل المتصفحات كل أصول
+/// الصفحة النسبية إلى <c>https</c> فتفشل ⇒ صفحة بيضاء. تحديث البروتوكول مسؤولية <c>HSTS</c>
+/// و<c>HttpsRedirection</c> صراحةً، لا سياسة <c>CSP</c>.
+/// ملاحظة بيئة التطوير: `connect-src 'self'` يحجب `ws:` الخاص بـ `Vite HMR`، لذا يبقى وضع
+/// المراقبة (`CspReportOnly=true`) إلزاميًا في التطوير — الفرض (`false`) للمخدّم الخاص
+/// (إنتاج) فقط حيث لا `HMR`.
 /// </summary>
 public sealed class SecurityHeadersMiddleware
 {
     private const string CspValue =
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
         "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; " +
-        "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; " +
-        "upgrade-insecure-requests";
+        "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 
     private readonly RequestDelegate _next;
     private readonly SecurityOptions _security;

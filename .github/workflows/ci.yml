@@ -55,6 +55,10 @@ jobs:
         run: npx vitest run
       - name: Build
         run: npm run build
+      # W0-CSP: فحص مخرجات Vite ضد السياسة المفروضة (سكربتات/معالجات مضمّنة، أصول خارجية،
+      # eval/Function/WebAssembly). يفشل هنا لا في المتصفح بعد النشر.
+      - name: CSP static guard (built dist)
+        run: node scripts/csp-guard.mjs
 
   # حراس انحدار خطة رئيس الشعبة (المرحلة 9 — بند 4): يفشل عند أي تضييق
   # منسي (نداء محامين بلا mode، فحص head منفرد، سمة بلا subhead).
