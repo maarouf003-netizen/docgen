@@ -76,12 +76,18 @@ public class SecurityHeadersMiddlewareTests
     [InlineData("//evil.example/csp-report")]
     [InlineData("csp-report")]
     [InlineData("\\\\evil.example\\csp-report")]
+    [InlineData("/csp-report\"")]
+    [InlineData("/csp-report,other")]
+    [InlineData("/csp-report;other")]
+    [InlineData("/تقرير")]
     public async Task ReportUri_Ignored_WhenUnsafe(string uri)
     {
         var headers = await InvokeAsync(new SecurityOptions { CspReportUri = uri });
 
         var csp = headers["Content-Security-Policy-Report-Only"].ToString();
         Assert.DoesNotContain("report-uri", csp);
+        Assert.DoesNotContain("report-to", csp);
+        Assert.False(headers.ContainsKey("Reporting-Endpoints"));
     }
 
     [Theory]
@@ -94,6 +100,17 @@ public class SecurityHeadersMiddlewareTests
 
         var csp = headers["Content-Security-Policy-Report-Only"].ToString();
         Assert.Contains($"report-uri {uri}", csp);
+        Assert.Contains("report-to csp", csp);
+        Assert.Equal($"csp=\"{uri}\"", headers["Reporting-Endpoints"].ToString());
+    }
+
+    [Fact]
+    public async Task ReportingEndpoints_Absent_WhenReportUriUnset()
+    {
+        var headers = await InvokeAsync(new SecurityOptions());
+
+        Assert.False(headers.ContainsKey("Reporting-Endpoints"));
+        Assert.DoesNotContain("report-to", headers["Content-Security-Policy-Report-Only"].ToString());
     }
 
     [Theory]

@@ -24,4 +24,10 @@ public class RateLimitOptions
 
     /// <summary>تغيير كلمة المرور لكل مستخدم.</summary>
     public int PasswordPerMinute { get; set; } = 5;
+
+    /// <summary>
+    /// تقارير <c>CSP</c> المجهولة لكل <c>IP</c> — النقطة عامة (المتصفح لا يملك جلسة/CSRF
+    /// عند إرسال التقرير)، فهذا الحد يمنع إغراق السجل مع سقف حجم الجسم وعدد التقارير.
+    /// </summary>
+    public int CspReportPerMinute { get; set; } = 60;
 }

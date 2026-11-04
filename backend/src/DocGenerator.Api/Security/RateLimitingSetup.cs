@@ -18,6 +18,7 @@ public static class RateLimitingSetup
     public const string LoginIpPolicy = "login-ip";
     public const string ExpensivePolicy = "expensive";
     public const string PasswordPolicy = "password";
+    public const string CspReportPolicy = "csp-report";
 
     /// <summary>نفس رسالة الواجهة لحالة 429 (<c>frontend/src/api/client.ts</c>) ليتطابق العرض.</summary>
     public const string RejectionMessage = "طلبات كثيرة في وقت قصير — انتظر قليلًا وحاول مجددًا";
@@ -49,6 +50,10 @@ public static class RateLimitingSetup
 
         options.AddPolicy(PasswordPolicy, context =>
             Partition($"pwd:{SubjectOf(context)}", LimitsOf(context).PasswordPerMinute));
+
+        // تقارير CSP مجهولة: مفتاح IP دائمًا (لا هوية)، ونافذة دقيقة.
+        options.AddPolicy(CspReportPolicy, context =>
+            Partition($"csp:{IpOf(context)}", LimitsOf(context).CspReportPerMinute));
     }
 
     private static RateLimitOptions LimitsOf(HttpContext context)
