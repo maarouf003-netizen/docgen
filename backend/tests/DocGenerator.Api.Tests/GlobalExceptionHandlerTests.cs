@@ -75,6 +75,61 @@ public sealed class GlobalExceptionHandlerTests
         Assert.True(message.Length <= LogSanitizer.ResponseMessageLimit);
     }
 
+    [Fact]
+    public async Task DevelopmentMessage_SanitizedBeforeReflection()
+    {
+        // حتى مسار التطوير لا يعكس رسالة خام: التسطيح/التجريد/القصّ يمنعان
+        // تزوير السطور وتسريب الأسرار إن شُغّل `Development` على خادم منشور بالخطأ.
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+
+        await Handler().TryHandleAsync(
+            context,
+            new InvalidOperationException(
+                "فشل الاتصال بـ user@example.com\nAuthorization: Bearer abc.def" + new string('z', 2000)),
+            CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status500InternalServerError, context.Response.StatusCode);
+        var body = JsonDocument.Parse(await ReadBodyAsync(context)).RootElement;
+        var message = body.GetProperty("message").GetString() ?? "";
+        Assert.DoesNotContain('\n', message);
+        Assert.DoesNotContain("user@example.com", message);
+        Assert.DoesNotContain("abc.def", message);
+        Assert.Contains("[بريد محجوب]", message);
+        Assert.True(message.Length <= LogSanitizer.ResponseMessageLimit);
+    }
+
+    [Fact]
+    public async Task ClientDisconnect_MapsTo499WithoutWritingBody()
+    {
+        using var aborted = new CancellationTokenSource();
+        await aborted.CancelAsync();
+
+        var context = new DefaultHttpContext();
+        context.RequestAborted = aborted.Token;
+        context.Response.Body = new MemoryStream();
+
+        var handled = await Handler().TryHandleAsync(
+            context, new OperationCanceledException(aborted.Token), CancellationToken.None);
+
+        Assert.True(handled);
+        Assert.Equal(499, context.Response.StatusCode);
+        Assert.Equal(0, context.Response.Body.Length);
+    }
+
+    [Fact]
+    public async Task ServerSideCancellation_WithoutClientAbort_Stays500()
+    {
+        // إلغاء داخلي (مهلة خادم) ليس انقطاع عميل: يبقى 500 كي لا يُخفى عطل حقيقي.
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+
+        await Handler().TryHandleAsync(
+            context, new OperationCanceledException("انتهت المهلة"), CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status500InternalServerError, context.Response.StatusCode);
+    }
+
     private static async Task<string> ReadBodyAsync(DefaultHttpContext context)
     {
         context.Response.Body.Seek(0, SeekOrigin.Begin);

@@ -89,6 +89,43 @@ public class ExceptionHandlerIntegrationTests
     }
 
     [Fact]
+    public async Task GenericException_Development_IsSanitizedLike4xx()
+    {
+        // مسار التطوير يُعرض للتشخيص لكنه ليس استثناءً من سياسة `SEC-012`.
+        var (status, body) = await HandleAsync(
+            new InvalidOperationException("اتصال user@example.com\nسطر ثانٍ"),
+            environment: "Development");
+
+        Assert.Equal(StatusCodes.Status500InternalServerError, status);
+        var message = ReadMessage(body) ?? "";
+        Assert.DoesNotContain('\n', message);
+        Assert.DoesNotContain("user@example.com", message);
+        Assert.Contains("[بريد محجوب]", message);
+    }
+
+    [Fact]
+    public async Task ClientDisconnect_Returns499WithoutBody()
+    {
+        using var aborted = new CancellationTokenSource();
+        await aborted.CancelAsync();
+        var handler = new GlobalExceptionHandler(
+            NullLogger<GlobalExceptionHandler>.Instance,
+            new FakeEnvironment { EnvironmentName = "Production" });
+        var ctx = new DefaultHttpContext();
+        ctx.Request.Method = "GET";
+        ctx.Request.Path = "/api/test";
+        ctx.RequestAborted = aborted.Token;
+        ctx.Response.Body = new MemoryStream();
+
+        var handled = await handler.TryHandleAsync(
+            ctx, new OperationCanceledException(aborted.Token), CancellationToken.None);
+
+        Assert.True(handled);
+        Assert.Equal(499, ctx.Response.StatusCode);
+        Assert.Equal(0, ctx.Response.Body.Length);
+    }
+
+    [Fact]
     public async Task DbUpdateException_Development_ReturnsRealConstraintFromInnerException()
     {
         var inner = new InvalidOperationException(
@@ -116,6 +153,23 @@ public class ExceptionHandlerIntegrationTests
         Assert.Equal(StatusCodes.Status500InternalServerError, status);
         Assert.Contains("UNIQUE constraint failed", ReadMessage(body));
         Assert.DoesNotContain("السبب الوسيط", ReadMessage(body));
+    }
+
+    [Fact]
+    public async Task DbUpdateException_Development_SanitizesDeepestMessage()
+    {
+        var deep = new InvalidOperationException(
+            "SQLite Error 19: 'UNIQUE constraint failed: Users.Email'\nuser@example.com");
+        var ex = new DbUpdateException(
+            "An error occurred while saving the entity changes. See the inner exception for details.", deep);
+
+        var (status, body) = await HandleAsync(ex, environment: "Development");
+
+        Assert.Equal(StatusCodes.Status500InternalServerError, status);
+        var message = ReadMessage(body) ?? "";
+        Assert.Contains("UNIQUE constraint failed", message);
+        Assert.DoesNotContain('\n', message);
+        Assert.DoesNotContain("user@example.com", message);
     }
 
     [Fact]

@@ -58,7 +58,9 @@ public sealed class SecurityHeadersMiddleware
 
     /// <summary>
     /// FR-010: إلحاق `report-uri` عند ضبطه لبدء الجمع المركزي قبل الفرض.
-    /// قيمة غير نظيفة (بياض/تحكم/غير قابلة للتحليل) تُتجاهل بصمت حفاظًا على سلامة الترويسة.
+    /// تُقبل **مسارات جذرية-نسبية فقط** تبدأ بـ`/` (لا رابط مطلق ولا `//host` بروتوكول-نسبي):
+    /// `report-uri` يخصّ الأصل نفسه، وقبول عنوان خارجي يجعل المتصفح يرسل مسارات الصفحات
+    /// وتفاصيل المخالفات إلى طرف ثالث. أي قيمة أخرى تُتجاهل بصمت حفاظًا على السلامة.
     /// </summary>
     private string BuildCspValue()
     {
@@ -67,7 +69,11 @@ public sealed class SecurityHeadersMiddleware
             return CspValue;
         if (uri.Any(c => char.IsWhiteSpace(c) || char.IsControl(c)))
             return CspValue;
-        if (!Uri.TryCreate(uri, UriKind.RelativeOrAbsolute, out _))
+        // `StartsWith("/")` يمنع المخططات المطلقة، و`StartsWith("//")` يمنع المراجع
+        // البروتوكول-نسبية التي يقبلها `Uri.TryCreate(..., Relative)` أيضًا.
+        if (!uri.StartsWith('/') || uri.StartsWith("//", StringComparison.Ordinal))
+            return CspValue;
+        if (!Uri.TryCreate(uri, UriKind.Relative, out _))
             return CspValue;
         return CspValue + "; report-uri " + uri;
     }

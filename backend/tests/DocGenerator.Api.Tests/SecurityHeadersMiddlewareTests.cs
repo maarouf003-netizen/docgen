@@ -6,8 +6,9 @@ using Microsoft.Extensions.Options;
 namespace DocGenerator.Api.Tests;
 
 /// <summary>
-/// FR-010: ترويسة `CSP` مراقبة افتراضيًا، و`report-uri` يُلحَق فقط عند ضبطه نظيفًا
-/// (قيمة ملوثة تُتجاهل حفاظًا على سلامة الترويسة من الحقن).
+/// FR-010: ترويسة `CSP` مراقبة افتراضيًا، و`report-uri` يُلحَق فقط عند ضبطه **مسارًا
+/// جذريًا-نسبيًا** يبدأ بـ`/` (لا رابط مطلق ولا `//host`)، وقيمة ملوثة تُتجاهل حفاظًا
+/// على سلامة الترويسة من الحقن ومن إرسال التقارير لطرف ثالث.
 /// H-03: ردود `/api` تحمل `Cache-Control: no-store` حتى لا تُخزَّن بيانات ما بعد المصادقة،
 /// وما عداها (الصحة/الأصول الثابتة) لا يحمله.
 /// W0-CSP: السياسة لا تحمل `upgrade-insecure-requests` (تُبيّض التطبيق على خادم `HTTP`)،
@@ -66,25 +67,33 @@ public class SecurityHeadersMiddlewareTests
         Assert.Contains("frame-ancestors 'none'", csp);
     }
 
-    [Fact]
-    public async Task ReportUri_Appended_WhenClean()
-    {
-        var headers = await InvokeAsync(new SecurityOptions { CspReportUri = "/csp-report" });
-
-        var csp = headers["Content-Security-Policy-Report-Only"].ToString();
-        Assert.Contains("report-uri /csp-report", csp);
-    }
-
     [Theory]
     [InlineData("/csp-report\r\nX-Injected: 1")]
     [InlineData("/csp report")]
     [InlineData("   ")]
+    [InlineData("https://evil.example/csp-report")]
+    [InlineData("http://evil.example/csp-report")]
+    [InlineData("//evil.example/csp-report")]
+    [InlineData("csp-report")]
+    [InlineData("\\\\evil.example\\csp-report")]
     public async Task ReportUri_Ignored_WhenUnsafe(string uri)
     {
         var headers = await InvokeAsync(new SecurityOptions { CspReportUri = uri });
 
         var csp = headers["Content-Security-Policy-Report-Only"].ToString();
         Assert.DoesNotContain("report-uri", csp);
+    }
+
+    [Theory]
+    [InlineData("/csp-report")]
+    [InlineData("/api/csp-report?source=csp")]
+    [InlineData("/")]
+    public async Task ReportUri_Appended_WhenRootRelative(string uri)
+    {
+        var headers = await InvokeAsync(new SecurityOptions { CspReportUri = uri });
+
+        var csp = headers["Content-Security-Policy-Report-Only"].ToString();
+        Assert.Contains($"report-uri {uri}", csp);
     }
 
     [Theory]
