@@ -118,17 +118,10 @@ public class AuthController : ControllerBase
     [EnableRateLimiting(RateLimitingSetup.PasswordPolicy)]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request, CancellationToken ct)
     {
-        try
-        {
-            var ok = await _auth.ChangePasswordAsync(User.GetUserId(), request.OldPassword, request.NewPassword, ct);
-            if (!ok)
-                return BadRequest(new { message = "كلمة المرور الحالية غير صحيحة" });
-            return Ok(new { message = "تم تغيير كلمة المرور بنجاح" });
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var ok = await _auth.ChangePasswordAsync(User.GetUserId(), request.OldPassword, request.NewPassword, ct);
+        if (!ok)
+            return BadRequest(new { message = "كلمة المرور الحالية غير صحيحة" });
+        return Ok(new { message = "تم تغيير كلمة المرور بنجاح" });
     }
 
     [HttpGet("me")]

@@ -1,5 +1,5 @@
 using System.Text.RegularExpressions;
-using DocGenerator.Api.Controllers;
+using DocGenerator.Api.Http;
 using DocGenerator.Api.Middleware;
 
 namespace DocGenerator.Api.Tests;
@@ -101,8 +101,8 @@ public class ApiErrorMessagesTests
     }
 
     /// <summary>
-    /// حارس مصدري مشدَّد: يفحص **المتحكمات والوسائط** (حيث تُبنى أجسام الردود) لا
-    /// المتحكمات وحدها، ويكشف أي تعريف لـ<c>.Message</c> يدل على استثناء — سواء أُسند
+    /// حارس مصدري مشدَّد: يفحص **المتحكمات والوسائط وحيّ `Http`** (حيث تُبنى أجسام الردود)
+    /// لا المتحكمات وحدها، ويكشف أي تعريف لـ<c>.Message</c> يدل على استثناء — سواء أُسند
     /// إلى <c>message</c> أو <c>detail</c>/<c>error</c> أو وُضع في استيفاء نصي — ما لم
     /// يكن على السطر نفسه داخل <c>LogSanitizer.SanitizeForResponse(...)</c>.
     /// </summary>
@@ -113,13 +113,50 @@ public class ApiErrorMessagesTests
             FindRepoRoot(), "backend", "src", "DocGenerator.Api");
 
         var offenders = new List<string>();
-        foreach (var folder in new[] { "Controllers", "Middleware" })
+        foreach (var folder in new[] { "Controllers", "Middleware", "Http" })
             offenders.AddRange(FindUnsanitizedMessageReflections(Path.Combine(apiRoot, folder)));
 
         Assert.True(
             offenders.Count == 0,
             "مواضع تعكس رسالة استثناء خام بلا تطهير (تسريب ذيل إنجليزي/سر/سطر): " +
             string.Join(", ", offenders));
+    }
+
+    /// <summary>
+    /// حارس البند 3: لم يبقَ في المتحكمات أي <c>catch (ArgumentException</c> يترجم إلى
+    /// <c>BadRequest</c> — الترجمة صارت في <see cref="GlobalExceptionHandler"/> وحدها.
+    /// الاستثناء الوحيد المسموح هو كتل <c>NotFound</c> التسع المضبوطة صراحةً (سلوك مقصود
+    /// لأن المورد قد يكون غير موجود أصلًا)، وأي كتلة أخرى أو أي زيادة/نقص = فشل الحارس.
+    /// </summary>
+    [Fact]
+    public void Controllers_DoNotTranslateArgumentExceptionToBadRequest()
+    {
+        var controllersRoot = Path.Combine(
+            FindRepoRoot(), "backend", "src", "DocGenerator.Api", "Controllers");
+
+        var argumentCatches = new List<string>();
+        var offenders = new List<string>();
+
+        foreach (var file in Directory.EnumerateFiles(controllersRoot, "*.cs", SearchOption.AllDirectories))
+        {
+            var lines = File.ReadAllLines(file);
+            for (var index = 0; index < lines.Length; index++)
+            {
+                if (!lines[index].TrimStart().StartsWith("catch (ArgumentException", StringComparison.Ordinal))
+                    continue;
+
+                var location = $"{Path.GetFileName(file)}:{index + 1}";
+                var window = string.Join('\n', lines.Skip(index).Take(4));
+                argumentCatches.Add(location);
+                if (window.Contains("BadRequest(", StringComparison.Ordinal))
+                    offenders.Add(location);
+            }
+        }
+
+        Assert.True(
+            offenders.Count == 0,
+            "كتل catch (ArgumentException) ما زالت تترجم إلى BadRequest: " + string.Join(", ", offenders));
+        Assert.Equal(9, argumentCatches.Count);
     }
 
     [Theory]

@@ -42,15 +42,8 @@ public class PersonalRemindersController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        try
-        {
-            var reminder = await _reminders.CreateAsync(request, User.GetUserId(), ActorName, ct);
-            return CreatedAtAction(nameof(Get), new { id = reminder.Id }, reminder);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var reminder = await _reminders.CreateAsync(request, User.GetUserId(), ActorName, ct);
+        return CreatedAtAction(nameof(Get), new { id = reminder.Id }, reminder);
     }
 
     [HttpGet("{id:int}")]
@@ -69,15 +62,8 @@ public class PersonalRemindersController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        try
-        {
-            var reminder = await _reminders.UpdateAsync(id, request, User.GetUserId(), ActorName, ct);
-            return reminder is null ? NotFound() : Ok(reminder);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var reminder = await _reminders.UpdateAsync(id, request, User.GetUserId(), ActorName, ct);
+        return reminder is null ? NotFound() : Ok(reminder);
     }
 
     /// <summary>تعليم تكرارٍ ما منجزًا أو إعادته — المالك فقط.</summary>
@@ -87,15 +73,8 @@ public class PersonalRemindersController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        try
-        {
-            var reminder = await _reminders.SetOccurrenceAsync(id, request.OccurrenceDate, request.Done, User.GetUserId(), ct);
-            return reminder is null ? NotFound() : Ok(reminder);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var reminder = await _reminders.SetOccurrenceAsync(id, request.OccurrenceDate, request.Done, User.GetUserId(), ct);
+        return reminder is null ? NotFound() : Ok(reminder);
     }
 
     /// <summary>حذف التذكير الشخصي مع كل تكراراته (فعل خطر — الواجهة تطلب تأكيدًا) — المالك فقط.</summary>

@@ -37,15 +37,8 @@ public class BranchesController : ControllerBase
     {
         if (!CanManageBranches)
             return Forbid();
-        try
-        {
-            var branch = await _branches.CreateBranchAsync(request, ActorName, ct);
-            return CreatedAtAction(nameof(Get), new { id = branch.Id }, branch);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var branch = await _branches.CreateBranchAsync(request, ActorName, ct);
+        return CreatedAtAction(nameof(Get), new { id = branch.Id }, branch);
     }
 
     [HttpGet("{id:int}")]
@@ -61,15 +54,8 @@ public class BranchesController : ControllerBase
     {
         if (!CanManageBranches)
             return Forbid();
-        try
-        {
-            var branch = await _branches.UpdateBranchAsync(id, request, ActorName, ct);
-            return branch is null ? NotFound() : Ok(branch);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var branch = await _branches.UpdateBranchAsync(id, request, ActorName, ct);
+        return branch is null ? NotFound() : Ok(branch);
     }
 
     /// <summary>
@@ -81,14 +67,7 @@ public class BranchesController : ControllerBase
     {
         if (!CanManageBranches)
             return Forbid();
-        try
-        {
-            var ok = await _branches.DeleteBranchAsync(id, ActorName, ct);
-            return ok ? NoContent() : NotFound();
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var ok = await _branches.DeleteBranchAsync(id, ActorName, ct);
+        return ok ? NoContent() : NotFound();
     }
 }

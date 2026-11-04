@@ -1,3 +1,4 @@
+using DocGenerator.Api.Http;
 using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
@@ -66,15 +67,8 @@ public class ForumController : ControllerBase
     {
         if (SubHeadSessionBroken)
             return Forbid();
-        try
-        {
-            var message = await _forum.PostAsync(request, UserId, ct);
-            return CreatedAtAction(nameof(Get), new { id = message.Id }, message);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var message = await _forum.PostAsync(request, UserId, ct);
+        return CreatedAtAction(nameof(Get), new { id = message.Id }, message);
     }
 
     /// <summary>تعديل رسالة — الكاتب فقط (يختم «عُدّل»).</summary>
@@ -90,10 +84,6 @@ public class ForumController : ControllerBase
         catch (KeyNotFoundException e)
         {
             return NotFound(new { message = ApiErrorMessages.From(e) });
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -143,15 +133,8 @@ public class ForumController : ControllerBase
     {
         if (SubHeadSessionBroken)
             return Forbid();
-        try
-        {
-            var max = await _forum.MarkReadAsync(UserId, ActorName, request.UpToMessageId, ct);
-            return Ok(new { maxReadMessageId = max });
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var max = await _forum.MarkReadAsync(UserId, ActorName, request.UpToMessageId, ct);
+        return Ok(new { maxReadMessageId = max });
     }
 
     /// <summary>نافذة «شوهدت بواسطة» — الكاتب فقط.</summary>

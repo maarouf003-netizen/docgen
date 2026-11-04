@@ -67,10 +67,6 @@ public class AlertsController : ControllerBase
             };
             return Ok(await _alerts.ListForActorAsync(Actor, query, ct));
         }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
         catch (UnauthorizedAccessException)
         {
             return Forbid();
@@ -90,10 +86,6 @@ public class AlertsController : ControllerBase
         try
         {
             return Ok(new { count = await _alerts.CountUnreadAsync(Actor, ParseUnreadScope(scope), ct) });
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
         catch (UnauthorizedAccessException)
         {
@@ -123,10 +115,6 @@ public class AlertsController : ControllerBase
                 cursor,
                 ct));
         }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
         catch (UnauthorizedAccessException)
         {
             return Forbid();
@@ -141,10 +129,6 @@ public class AlertsController : ControllerBase
         {
             var alert = await _alerts.CreateAsync(request, Actor, ActorName, ct);
             return CreatedAtAction(nameof(Get), new { id = alert.Id }, alert);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
         catch (UnauthorizedAccessException)
         {
@@ -191,10 +175,6 @@ public class AlertsController : ControllerBase
             // التحقق نفسه في الخدمة (بعد فحص الدور) كي لا يسبق 400 رفضَ الصلاحية.
             var request = BuildPageRequest(page, pageSize, AlertPageRequest.MaxPageSize);
             return Ok(await _alerts.ListByDelegationAsync(delegationId, Actor, request, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
         catch (UnauthorizedAccessException)
         {

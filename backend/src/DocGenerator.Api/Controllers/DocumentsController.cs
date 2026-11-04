@@ -1,3 +1,4 @@
+using DocGenerator.Api.Http;
 using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
@@ -350,10 +351,6 @@ public class DocumentsController : ControllerBase
         {
             return Content(r.ResponseBody, "application/json");
         }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
     }
 
     [HttpPut("{id:int}")]
@@ -387,15 +384,8 @@ public class DocumentsController : ControllerBase
         if (!CanRotate)
             return Forbid();
 
-        try
-        {
-            await _documents.SaveBaseNumbersAsync(User.GetUserId(), request.Entries, ActorName, ct);
-            return NoContent();
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        await _documents.SaveBaseNumbersAsync(User.GetUserId(), request.Entries, ActorName, ct);
+        return NoContent();
     }
 
     [HttpDelete("{id:int}")]
@@ -438,15 +428,8 @@ public class DocumentsController : ControllerBase
         if (doc is null) return NotFound();
         if (!await CanAccessAsync(doc)) return Forbid();
 
-        try
-        {
-            var ok = await _status.UpdateStatusAsync(id, request.Status, request.Fields ?? new(), ActorName, ct, request.Version);
-            return ok ? Ok(new { message = "تم تحديث الحالة" }) : DocumentNotFound();
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var ok = await _status.UpdateStatusAsync(id, request.Status, request.Fields ?? new(), ActorName, ct, request.Version);
+        return ok ? Ok(new { message = "تم تحديث الحالة" }) : DocumentNotFound();
     }
 
     [HttpPost("{id:int}/revert-status")]
@@ -460,15 +443,8 @@ public class DocumentsController : ControllerBase
         if (doc is null) return NotFound();
         if (!await CanAccessAsync(doc)) return Forbid();
 
-        try
-        {
-            var ok = await _status.RevertStatusAsync(id, request.Fields ?? new(), ActorName, ct, request.Version);
-            return ok ? Ok(new { message = "عُد الملف إلى المتداول" }) : DocumentNotFound();
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var ok = await _status.RevertStatusAsync(id, request.Fields ?? new(), ActorName, ct, request.Version);
+        return ok ? Ok(new { message = "عُد الملف إلى المتداول" }) : DocumentNotFound();
     }
 
     [HttpPost("{id:int}/return-referred-to-start")]
@@ -483,15 +459,8 @@ public class DocumentsController : ControllerBase
         if (doc is null) return NotFound();
         if (!await CanAccessAsync(doc)) return Forbid();
 
-        try
-        {
-            var ok = await _status.ReturnFromReferredToStartAsync(id, request ?? new(), ActorName, ct);
-            return ok ? Ok(new { message = "أعيد السير بالملف" }) : DocumentNotFound();
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var ok = await _status.ReturnFromReferredToStartAsync(id, request ?? new(), ActorName, ct);
+        return ok ? Ok(new { message = "أعيد السير بالملف" }) : DocumentNotFound();
     }
 
     [HttpPost("{id:int}/consider-executed-by-delegation")]
@@ -506,15 +475,8 @@ public class DocumentsController : ControllerBase
         if (doc is null) return NotFound();
         if (!await CanAccessAsync(doc)) return Forbid();
 
-        try
-        {
-            var ok = await _status.ConsiderExecutedByDelegationAsync(id, request.Fields ?? new(), ActorName, ct, request.Version);
-            return ok ? Ok(new { message = "اعتُبر الملف منفذًا كاملًا بهذا البيع" }) : DocumentNotFound();
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var ok = await _status.ConsiderExecutedByDelegationAsync(id, request.Fields ?? new(), ActorName, ct, request.Version);
+        return ok ? Ok(new { message = "اعتُبر الملف منفذًا كاملًا بهذا البيع" }) : DocumentNotFound();
     }
 
     [HttpPost("{id:int}/executed-status")]
@@ -528,15 +490,8 @@ public class DocumentsController : ControllerBase
         if (doc is null) return NotFound();
         if (!await CanAccessAsync(doc)) return Forbid();
 
-        try
-        {
-            var ok = await _status.UpdateExecutedStatusAsync(id, request.Status, request, ActorName, ct);
-            return ok ? Ok(new { message = "تم تحديث حالة وضع «الجهة العامة منفذ عليها»" }) : DocumentNotFound();
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var ok = await _status.UpdateExecutedStatusAsync(id, request.Status, request, ActorName, ct);
+        return ok ? Ok(new { message = "تم تحديث حالة وضع «الجهة العامة منفذ عليها»" }) : DocumentNotFound();
     }
 
     [HttpPost("{id:int}/restore-struck-off")]
@@ -550,16 +505,9 @@ public class DocumentsController : ControllerBase
         if (doc is null) return NotFound();
         if (!await CanAccessAsync(doc)) return Forbid();
 
-        try
-        {
-            return await _status.RestoreStruckOffAsync(id, request, ActorName, ct)
-                ? Ok(new { message = "أعيد الملف المشطوب إلى المتداول" })
-                : NotFound();
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return await _status.RestoreStruckOffAsync(id, request, ActorName, ct)
+            ? Ok(new { message = "أعيد الملف المشطوب إلى المتداول" })
+            : NotFound();
     }
 
     [HttpPost("{id:int}/view")]
@@ -602,10 +550,6 @@ public class DocumentsController : ControllerBase
         {
             return NotFound();
         }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
         catch (FileNotFoundException)
         {
             // لا يُكشف مسار قالب الخادم للمستخدم؛ تُرجع رسالة عامة.
@@ -628,15 +572,8 @@ public class DocumentsController : ControllerBase
         var scopeError = RequireOwnerScope(out var ownerSectionId);
         if (scopeError is not null) return scopeError;
 
-        try
-        {
-            var count = await _documents.CountFilesByOwnerAsync(lawyerId, scopeBranchId, ct, ownerSectionId);
-            return Ok(new { count });
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var count = await _documents.CountFilesByOwnerAsync(lawyerId, scopeBranchId, ct, ownerSectionId);
+        return Ok(new { count });
     }
 
     [HttpPost("transfer-all")]
@@ -674,10 +611,6 @@ public class DocumentsController : ControllerBase
         {
             return Conflict(new { message = ApiErrorMessages.From(e) });
         }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
     }
 
     [HttpPost("{id:int}/transfer")]
@@ -706,10 +639,6 @@ public class DocumentsController : ControllerBase
         {
             return Conflict(new { message = ApiErrorMessages.From(e) });
         }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
     }
 
     [HttpGet("{id:int}/actions")]
@@ -734,15 +663,8 @@ public class DocumentsController : ControllerBase
         if (doc is null) return NotFound();
         if (!await CanAccessAsync(doc)) return Forbid();
 
-        try
-        {
-            var action = await _executionActions.AddExecutionActionAsync(id, request, User.GetUserId(), ActorName, ct);
-            return Ok(action);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var action = await _executionActions.AddExecutionActionAsync(id, request, User.GetUserId(), ActorName, ct);
+        return Ok(action);
     }
 
     [HttpPut("{id:int}/actions/{actionId:int}")]
@@ -756,16 +678,9 @@ public class DocumentsController : ControllerBase
         if (doc is null) return NotFound();
         if (!await CanAccessAsync(doc)) return Forbid();
 
-        try
-        {
-            var action = await _executionActions.UpdateExecutionActionAsync(id, actionId, request, ActorName, ct);
-            if (action is null) return NotFound();
-            return Ok(action);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var action = await _executionActions.UpdateExecutionActionAsync(id, actionId, request, ActorName, ct);
+        if (action is null) return NotFound();
+        return Ok(action);
     }
 
     /// <summary>نقل تذكير إجراء إلى يوم استحقاق جديد من نافذة اليوم — المحامي المالك (المدخل `dueDate` نفسه).</summary>
@@ -780,15 +695,8 @@ public class DocumentsController : ControllerBase
         if (doc is null) return NotFound();
         if (!await CanAccessAsync(doc)) return Forbid();
 
-        try
-        {
-            var action = await _executionActions.RescheduleReminderAsync(id, actionId, request?.NewDueDate, ActorName, ct);
-            return Ok(action);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var action = await _executionActions.RescheduleReminderAsync(id, actionId, request?.NewDueDate, ActorName, ct);
+        return Ok(action);
     }
 
     [HttpDelete("{id:int}/actions/{actionId:int}")]

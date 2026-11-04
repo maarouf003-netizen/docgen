@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using Microsoft.AspNetCore.Diagnostics;
@@ -111,6 +112,17 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
                 httpContext.Request.Path,
                 httpContext.TraceIdentifier,
                 userId);
+        else if (statusCode is >= StatusCodes.Status400BadRequest and <= 499)
+            // بقية الردود 4xx متوقعة (تحقّق مدخلات/غياب مرجع/تعارض عمل) لا أعطال خادم —
+            // Information لا Error كي لا تلوّث لوحات المراقبة. 499 و403 وتعارض القيد
+            // الفريد معالَجة أعلاه بمستوياتها المقصودة.
+            _logger.LogInformation(
+                "رفض طلب ({Type}) أثناء {Method} {Path} [TraceId={TraceId}, UserId={UserId}]",
+                exception.GetType().Name,
+                httpContext.Request.Method,
+                httpContext.Request.Path,
+                httpContext.TraceIdentifier,
+                userId);
         else
             _logger.LogError(exception,
                 "استثناء غير معالج ({Type}) أثناء {Method} {Path} [TraceId={TraceId}, UserId={UserId}]",
@@ -134,9 +146,10 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
             DbUpdateConcurrencyException =>
                 "تغيّرت البيانات أثناء الحفظ من مستخدم آخر — أعد التحميل وحاول مجددًا",
             // رسائل `4xx` عربية مقصودة لكنها قد تعكس مدخلًا خامًا (`SEC-012`)، فتُعقَّم
-            // (تسطيح/تجريد/قصّ) قبل الرد — التفاصيل الكاملة تبقى في السجل التشخيصي أعلاه.
+            // (تسطيح/تجريد/قصّ) قبل الرد، وبالرسالة البديلة إن صار النص فارغًا — السياسة
+            // نفسها التي كانت في كتل `catch` المتحكمات، فلا فرق في الجسم بين المسارين.
             ArgumentException or KeyNotFoundException or DocumentConflictException
-                or UnauthorizedAccessException => LogSanitizer.SanitizeForResponse(exception.Message),
+                or UnauthorizedAccessException => ApiErrorMessages.From(exception),
             // W1-7: رسالة عامة لا تكشف اسم القيد/الجدول/المزود — التفاصيل في السجل أعلاه.
             DbUpdateException when isUniqueViolation =>
                 "تعارض في البيانات — القيمة مكررة، حدّث الصفحة وحاول مجددًا",

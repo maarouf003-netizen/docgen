@@ -58,15 +58,8 @@ public class AppSuggestionsController : ControllerBase
     {
         if (!RolePermissions.CanSuggestApp(Role))
             return Forbid();
-        try
-        {
-            var suggestion = await _suggestions.CreateAsync(request.Message, User.GetUserId(), ActorName, ct);
-            return CreatedAtAction(nameof(Get), new { id = suggestion.Id }, suggestion);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var suggestion = await _suggestions.CreateAsync(request.Message, User.GetUserId(), ActorName, ct);
+        return CreatedAtAction(nameof(Get), new { id = suggestion.Id }, suggestion);
     }
 
     /// <summary>تعليم الاقتراح مقروءًا — مشرف ومدير (`BQ-001`).</summary>

@@ -1,3 +1,4 @@
+using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -103,15 +104,8 @@ public class DelegationsController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        try
-        {
-            var created = await _delegations.CreateAsync(documentId, request, User.GetUserId(), ActorName, ct);
-            return CreatedAtAction(nameof(ListForDocument), new { documentId }, created);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var created = await _delegations.CreateAsync(documentId, request, User.GetUserId(), ActorName, ct);
+        return CreatedAtAction(nameof(ListForDocument), new { documentId }, created);
     }
 
     /// <summary>تعديل إنابة معلّقة — محامي الملف المنيب المالك فقط.</summary>
@@ -121,15 +115,8 @@ public class DelegationsController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        try
-        {
-            var updated = await _delegations.UpdateAsync(id, request, User.GetUserId(), ActorName, ct);
-            return updated is null ? NotFound() : Ok(updated);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var updated = await _delegations.UpdateAsync(id, request, User.GetUserId(), ActorName, ct);
+        return updated is null ? NotFound() : Ok(updated);
     }
 
     /// <summary>حذف إنابة معلّقة — محامي الملف المنيب المالك فقط.</summary>
@@ -139,15 +126,8 @@ public class DelegationsController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        try
-        {
-            var ok = await _delegations.DeleteAsync(id, User.GetUserId(), ActorName, ct);
-            return ok ? NoContent() : NotFound();
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var ok = await _delegations.DeleteAsync(id, User.GetUserId(), ActorName, ct);
+        return ok ? NoContent() : NotFound();
     }
 
     /// <summary>
@@ -205,10 +185,6 @@ public class DelegationsController : ControllerBase
             var assigned = await _delegations.AssignAsync(id, request, User.GetUserId(), User.GetBranchId(), ActorName, ct);
             return assigned is null ? NotFound() : Ok(assigned);
         }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
         catch (DocumentConflictException e)
         {
             return Conflict(new { message = ApiErrorMessages.From(e) });
@@ -226,10 +202,6 @@ public class DelegationsController : ControllerBase
         {
             var redirected = await _delegations.RedirectToSectionAsync(id, request, User.GetUserId(), ActorName, ct);
             return redirected is null ? NotFound() : Ok(redirected);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
         catch (DocumentConflictException e)
         {
@@ -249,10 +221,6 @@ public class DelegationsController : ControllerBase
             var recalled = await _delegations.RecallRedirectAsync(id, User.GetUserId(), ActorName, ct);
             return recalled is null ? NotFound() : Ok(recalled);
         }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
         catch (DocumentConflictException e)
         {
             return Conflict(new { message = ApiErrorMessages.From(e) });
@@ -271,10 +239,6 @@ public class DelegationsController : ControllerBase
             var rejected = await _delegations.RejectAsync(id, request ?? new RejectDelegationRequest(null), User.GetUserId(), ActorName, ct);
             return rejected is null ? NotFound() : Ok(rejected);
         }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
         catch (DocumentConflictException e)
         {
             return Conflict(new { message = ApiErrorMessages.From(e) });
@@ -288,15 +252,8 @@ public class DelegationsController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        try
-        {
-            var registered = await _delegations.RegisterAsync(id, request, User.GetUserId(), ActorName, ct);
-            return registered is null ? NotFound() : Ok(registered);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var registered = await _delegations.RegisterAsync(id, request, User.GetUserId(), ActorName, ct);
+        return registered is null ? NotFound() : Ok(registered);
     }
 
     /// <summary>
@@ -309,14 +266,7 @@ public class DelegationsController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        try
-        {
-            var completed = await _delegations.CompleteAsync(id, request, User.GetUserId(), ActorName, ct);
-            return completed is null ? NotFound() : Ok(completed);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var completed = await _delegations.CompleteAsync(id, request, User.GetUserId(), ActorName, ct);
+        return completed is null ? NotFound() : Ok(completed);
     }
 }

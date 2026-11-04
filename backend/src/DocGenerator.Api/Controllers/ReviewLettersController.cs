@@ -1,3 +1,4 @@
+using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -42,16 +43,9 @@ public class ReviewLettersController : ControllerBase
     {
         if (Role == UserRole.SubHead && SectionId is null)
             return Forbid();
-        try
-        {
-            var result = await _letters.SearchAsync(UserId, Role, BranchId, q, page, perPage,
-                administrativeBranch, ct, SectionId);
-            return Ok(result);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var result = await _letters.SearchAsync(UserId, Role, BranchId, q, page, perPage,
+            administrativeBranch, ct, SectionId);
+        return Ok(result);
     }
 
     /// <summary>خيارات فلتر «فرع الإدارة» المميزة — مدير/مشرف فقط.</summary>
@@ -134,15 +128,8 @@ public class ReviewLettersController : ControllerBase
         if (BranchId is null)
             return BadRequest(new { message = "المحامي دون فرع لا يمكنه تسطير مطالعات" });
 
-        try
-        {
-            var letter = await _letters.CreateAsync(request, UserId, ActorName, BranchId.Value, ct);
-            return CreatedAtAction(nameof(Get), new { id = letter.Id }, letter);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var letter = await _letters.CreateAsync(request, UserId, ActorName, BranchId.Value, ct);
+        return CreatedAtAction(nameof(Get), new { id = letter.Id }, letter);
     }
 
     [HttpGet("{id:int}")]

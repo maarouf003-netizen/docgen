@@ -1,6 +1,6 @@
 using DocGenerator.Api.Middleware;
 
-namespace DocGenerator.Api.Controllers;
+namespace DocGenerator.Api.Http;
 
 /// <summary>
 /// رسائل أخطاء العملاء على حدود HTTP: تُطهَّر من ذيول إطار العمل الإنجليزية قبل
