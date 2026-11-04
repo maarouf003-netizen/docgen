@@ -100,32 +100,114 @@ public class ApiErrorMessagesTests
         Assert.DoesNotContain("Parameter", sanitized, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// حارس مصدري مشدَّد: يفحص **المتحكمات والوسائط** (حيث تُبنى أجسام الردود) لا
+    /// المتحكمات وحدها، ويكشف أي تعريف لـ<c>.Message</c> يدل على استثناء — سواء أُسند
+    /// إلى <c>message</c> أو <c>detail</c>/<c>error</c> أو وُضع في استيفاء نصي — ما لم
+    /// يكن على السطر نفسه داخل <c>LogSanitizer.SanitizeForResponse(...)</c>.
+    /// </summary>
     [Fact]
-    public void Controllers_DoNotPutRawExceptionMessagesInResponseBodies()
+    public void ApiSources_DoNotReflectUnsanitizedExceptionMessages()
     {
-        var controllers = Path.Combine(
-            FindRepoRoot(), "backend", "src", "DocGenerator.Api", "Controllers");
+        var apiRoot = Path.Combine(
+            FindRepoRoot(), "backend", "src", "DocGenerator.Api");
 
-        Assert.True(Directory.Exists(controllers), $"مجلد المتحكمات غير موجود: {controllers}");
-
-        var rawMessage = new Regex(@"\bmessage\s*=\s*\w+\.Message\b", RegexOptions.CultureInvariant);
         var offenders = new List<string>();
-
-        foreach (var file in Directory.EnumerateFiles(controllers, "*.cs"))
-        {
-            // هذا الملف نفسه يوثّق النمط الخاطئ داخل تعليق — لا يُفحص.
-            if (Path.GetFileName(file) == "ApiErrorMessages.cs")
-                continue;
-
-            var text = File.ReadAllText(file);
-            if (rawMessage.IsMatch(text))
-                offenders.Add(Path.GetFileName(file));
-        }
+        foreach (var folder in new[] { "Controllers", "Middleware" })
+            offenders.AddRange(FindUnsanitizedMessageReflections(Path.Combine(apiRoot, folder)));
 
         Assert.True(
             offenders.Count == 0,
-            "متحكمات تضع رسالة الاستثناء الخام في الجسم (تسريب ذيل إنجليزي): " +
+            "مواضع تعكس رسالة استثناء خام بلا تطهير (تسريب ذيل إنجليزي/سر/سطر): " +
             string.Join(", ", offenders));
+    }
+
+    [Theory]
+    [InlineData("return BadRequest(new { message = e.Message });", true)]
+    [InlineData("return NotFound(new { message = ex.Message });", true)]
+    [InlineData("return StatusCode(500, new { detail = exception.Message });", true)]
+    [InlineData("var text = $\"فشل: {dbError.Message}\";", true)]
+    [InlineData("throw new InvalidOperationException(innerException.Message);", true)]
+    [InlineData("var text = httpEx.Message;", true)]
+    [InlineData("var text = index.Message;", false)]
+    [InlineData("return BadRequest(new { message = ApiErrorMessages.From(e) });", false)]
+    [InlineData("var message = LogSanitizer.SanitizeForResponse(exception.Message);", false)]
+    [InlineData("var text = LogSanitizer.SanitizeForLog(report.Message, 200);", false)]
+    [InlineData("var text = request.Message;", false)]
+    [InlineData("var text = suggestion.Message;", false)]
+    [InlineData("// e.Message في تعليق لا يُفحص", false)]
+    public void RawExceptionMessageDetector_ClassifiesSourceLines(string line, bool expected)
+    {
+        Assert.Equal(expected, HasUnsanitizedMessageReflection(line));
+    }
+
+    private static readonly Regex MessageAccess =
+        new(@"\b(?<receiver>[A-Za-z_]\w*)\.Message\b", RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// مستقبِلات <c>.Message</c> الدالة على استثناء (أو رسالة إطار/قاعدة بيانات)، لا على
+    /// خاصية DTO مشروعة مثل <c>request.Message</c> أو <c>report.Message</c>.
+    /// </summary>
+    private static bool IsExceptionReceiver(string receiver)
+    {
+        var name = receiver.ToLowerInvariant();
+        if (name is "e" or "ex" or "err" or "error"
+            or "inner" or "innerexception" or "deepest" or "deep" or "cause" or "wrapped")
+            return true;
+        if (name.EndsWith("exception", StringComparison.Ordinal) ||
+            name.EndsWith("error", StringComparison.Ordinal))
+            return true;
+        // لاحقة `Ex` الشائعة (`httpEx`/`dbEx`) — مع استبعاد كلمات إنجليزية تنتهي بها.
+        return name.EndsWith("ex", StringComparison.Ordinal)
+            && !name.EndsWith("index", StringComparison.Ordinal)
+            && !name.EndsWith("complex", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// تمرير نص تطهير على السطر نفسه: `SanitizeForResponse(e.Message)` مقبول، أما
+    /// `var m = e.Message;` ثم `SanitizeForResponse(m)` فلا — كي لا يمر التسريب عبر وسيط.
+    /// </summary>
+    private static bool IsWrappedByResponseSanitizer(string line, int messageIndex)
+    {
+        const string call = "SanitizeForResponse(";
+        var prefix = line[..messageIndex];
+        var open = prefix.LastIndexOf(call, StringComparison.Ordinal);
+        return open >= 0 && prefix.IndexOf(')', open) < 0;
+    }
+
+    private static bool HasUnsanitizedMessageReflection(string line)
+    {
+        var trimmed = line.TrimStart();
+        // تعليقات السطر/التوثيق: `.Message` فيها أمثلة توثيقية لا كود.
+        if (trimmed.StartsWith("//", StringComparison.Ordinal) ||
+            trimmed.StartsWith("*", StringComparison.Ordinal))
+            return false;
+
+        foreach (Match access in MessageAccess.Matches(line))
+        {
+            if (!IsExceptionReceiver(access.Groups["receiver"].Value))
+                continue;
+            if (IsWrappedByResponseSanitizer(line, access.Index))
+                continue;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static IEnumerable<string> FindUnsanitizedMessageReflections(string directory)
+    {
+        Assert.True(Directory.Exists(directory), $"مجلد المصدر غير موجود: {directory}");
+
+        foreach (var file in Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories))
+        {
+            var lines = File.ReadAllLines(file);
+            for (var index = 0; index < lines.Length; index++)
+            {
+                if (HasUnsanitizedMessageReflection(lines[index]))
+                    yield return $"{Path.GetFileName(file)}:{index + 1}";
+            }
+        }
     }
 
     /// <summary>يصعد من مجلد تشغيل الاختبار حتى يجد علامة الجذر (<c>AGENTS.md</c>).</summary>

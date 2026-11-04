@@ -13,6 +13,13 @@ namespace DocGenerator.Api.Middleware;
 /// </summary>
 public sealed class GlobalExceptionHandler : IExceptionHandler
 {
+    /// <summary>
+    /// رمز غير قياسي متعارف عليه (nginx) لانقطاع العميل قبل إرسال الرد. لا يُستخدم
+    /// <see cref="StatusCodes.Status500InternalServerError"/> هنا لأن الانقطاع سلوك عميل
+    /// متوقع لا عطل خادم — ويُلوّث لوحات المراقبة بأخطاء غير حقيقية.
+    /// </summary>
+    private const int ClientClosedRequestStatusCode = 499;
+
     private readonly ILogger<GlobalExceptionHandler> _logger;
     private readonly IHostEnvironment _environment;
 
@@ -46,6 +53,11 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
             // الحراس الاستباقية (`if (...) return Forbid();`) ترد 403 فارغًا مباشرة
             // (مقبول صراحة — الواجهة تحجب الشكلين `client.ts:17`).
             UnauthorizedAccessException => StatusCodes.Status403Forbidden,
+            // العميل أغلق الاتصال قبل اكتمال المعالجة (`RequestAborted`) — لا عطل خادم.
+            // يُقيَّد بـ`RequestAborted` عمدًا: `OperationCanceledException` من مهلة داخلية
+            // (إلغاء خادم) يبقى 500 لأن سببه ليس انقطاع العميل.
+            OperationCanceledException when httpContext.RequestAborted.IsCancellationRequested
+                => ClientClosedRequestStatusCode,
             _ => StatusCodes.Status500InternalServerError,
         };
 
@@ -54,7 +66,16 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         // رفض النطاق متوقع تشغيليًا (R0-6: المتحكمات لم تعد تبتلعه) فيُسجَّل Warning
         // لا Error — الأخطاء الحقيقية وحدها تستحق الأحمر والتنبيه.
         var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous";
-        if (exception is UnauthorizedAccessException)
+        if (statusCode == ClientClosedRequestStatusCode)
+            // انقطاع العميل سلوك متوقع: Information لا Error/Warning (لا تلويث لوحات الأعطال).
+            _logger.LogInformation(
+                "انقطع اتصال العميل ({Type}) أثناء {Method} {Path} [TraceId={TraceId}, UserId={UserId}]",
+                exception.GetType().Name,
+                httpContext.Request.Method,
+                httpContext.Request.Path,
+                httpContext.TraceIdentifier,
+                userId);
+        else if (exception is UnauthorizedAccessException)
             _logger.LogWarning(exception,
                 "رفض نطاق ({Type}) أثناء {Method} {Path} [TraceId={TraceId}, UserId={UserId}]",
                 exception.GetType().Name,
@@ -71,6 +92,14 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
                 httpContext.TraceIdentifier,
                 userId);
 
+        if (statusCode == ClientClosedRequestStatusCode)
+        {
+            // لا جسم ولا كتابة: القناة مغلقة أصلًا، ومحاولة `WriteAsJsonAsync` عليها
+            // بـ`RequestAborted` قد ترمي استثناءً ثانيًا أثناء معالجة الأول.
+            httpContext.Response.StatusCode = statusCode;
+            return true;
+        }
+
         var message = exception switch
         {
             // رسالة `EF` التقنية إنجليزية فتُستبدَل بعربية ودية ثابتة (التفاصيل في السجل أعلاه).
@@ -82,7 +111,9 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
                 or UnauthorizedAccessException => LogSanitizer.SanitizeForResponse(exception.Message),
             DbUpdateException ex when _environment.IsDevelopment() => DescribeDbUpdateException(ex),
             DbUpdateException => "فشل حفظ التغييرات في قاعدة البيانات",
-            _ when _environment.IsDevelopment() => exception.Message,
+            // حتى رسالة التطوير لا تُعكس خامًا: التسطيح/التجريد/القصّ يمنعان تزوير
+            // السطور وتسريب الأسرار إن شُغّل `Development` على خادم منشور بالخطأ.
+            _ when _environment.IsDevelopment() => LogSanitizer.SanitizeForResponse(exception.Message),
             _ => "حدث خطأ غير متوقع في الخادم",
         };
 
@@ -96,7 +127,8 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
     /// («An error occurred while saving the entity changes...») بلا فائدة تشخيصية، بينما
     /// يحمل الجذر الداخلي القيد المخالَف أو سبب SQL الحقيقي (مثل
     /// <c>SQLite Error 19: UNIQUE constraint failed: ...</c>)، فيُمشى نحو أعمق استثناء
-    /// داخلي. تُستخدم في بيئة التطوير فقط لتشخيص فوري دون كشف أي تفاصيل في الإنتاج.
+    /// داخلي. تُستخدم في بيئة التطوير فقط لتشخيص فوري دون كشف أي تفاصيل في الإنتاج،
+    /// وتمرّ بالسياسة نفسها (<see cref="LogSanitizer.SanitizeForResponse"/>) قبل الرد.
     /// </summary>
     private static string DescribeDbUpdateException(DbUpdateException exception)
     {
@@ -105,6 +137,6 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         var deepest = inner;
         while (deepest.InnerException is not null)
             deepest = deepest.InnerException;
-        return deepest.Message;
+        return LogSanitizer.SanitizeForResponse(deepest.Message);
     }
 }

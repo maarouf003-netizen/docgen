@@ -18,6 +18,13 @@ public class DocumentsController : ControllerBase
     private const string WordContentType =
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
+    /// <summary>
+    /// رسالة `404` الموحّدة لعمليات الحالة التي تسبقها قراءة ناجحة للمستند ثم يرفضها
+    /// التنفيذ (سباق حذف/تغيّر حالة). الشكل `{ message }` هو عقد الواجهة
+    /// (<c>frontend/src/api/client.ts</c>) بدل جسم فارغ لا يستطيع عرض سبب.
+    /// </summary>
+    private const string DocumentNotFoundMessage = "المستند غير موجود";
+
     private readonly IDocumentService _documents;
     private readonly IExecutionActionService _executionActions;
     private readonly IDocumentSearchService _search;
@@ -434,7 +441,7 @@ public class DocumentsController : ControllerBase
         try
         {
             var ok = await _status.UpdateStatusAsync(id, request.Status, request.Fields ?? new(), ActorName, ct, request.Version);
-            return ok ? Ok(new { message = "تم تحديث الحالة" }) : NotFound();
+            return ok ? Ok(new { message = "تم تحديث الحالة" }) : DocumentNotFound();
         }
         catch (ArgumentException e)
         {
@@ -456,7 +463,7 @@ public class DocumentsController : ControllerBase
         try
         {
             var ok = await _status.RevertStatusAsync(id, request.Fields ?? new(), ActorName, ct, request.Version);
-            return ok ? Ok(new { message = "عُد الملف إلى المتداول" }) : NotFound();
+            return ok ? Ok(new { message = "عُد الملف إلى المتداول" }) : DocumentNotFound();
         }
         catch (ArgumentException e)
         {
@@ -479,7 +486,7 @@ public class DocumentsController : ControllerBase
         try
         {
             var ok = await _status.ReturnFromReferredToStartAsync(id, request ?? new(), ActorName, ct);
-            return ok ? Ok(new { message = "أعيد السير بالملف" }) : NotFound();
+            return ok ? Ok(new { message = "أعيد السير بالملف" }) : DocumentNotFound();
         }
         catch (ArgumentException e)
         {
@@ -502,7 +509,7 @@ public class DocumentsController : ControllerBase
         try
         {
             var ok = await _status.ConsiderExecutedByDelegationAsync(id, request.Fields ?? new(), ActorName, ct, request.Version);
-            return ok ? Ok(new { message = "اعتُبر الملف منفذًا كاملًا بهذا البيع" }) : NotFound();
+            return ok ? Ok(new { message = "اعتُبر الملف منفذًا كاملًا بهذا البيع" }) : DocumentNotFound();
         }
         catch (ArgumentException e)
         {
@@ -524,7 +531,7 @@ public class DocumentsController : ControllerBase
         try
         {
             var ok = await _status.UpdateExecutedStatusAsync(id, request.Status, request, ActorName, ct);
-            return ok ? Ok(new { message = "تم تحديث حالة وضع «الجهة العامة منفذ عليها»" }) : NotFound();
+            return ok ? Ok(new { message = "تم تحديث حالة وضع «الجهة العامة منفذ عليها»" }) : DocumentNotFound();
         }
         catch (ArgumentException e)
         {
@@ -829,5 +836,9 @@ public class DocumentsController : ControllerBase
         Request.Headers.TryGetValue(IdempotencyGuard.HeaderName, out var values)
             ? values.ToString()
             : null;
+
+    /// <summary>`404` موحّد بالجسم العربي لعمليات الحالة (بدل جسم فارغ).</summary>
+    private NotFoundObjectResult DocumentNotFound() =>
+        NotFound(new { message = DocumentNotFoundMessage });
 
 }
