@@ -18,11 +18,25 @@ public class HstsSetupTests
     }
 
     [Fact]
-    public void Defaults_AreOneYearWithoutPreload()
+    public void Defaults_AreOneYearWithoutSubDomainsOrPreload()
     {
         var hsts = Configured(new SecurityOptions { HstsEnabled = true });
 
         Assert.Equal(TimeSpan.FromDays(365), hsts.MaxAge);
+        // includeSubDomains راية صريحة: افتراضها false حتى لا تُكسَر النطاقات الفرعية HTTP-only.
+        Assert.False(hsts.IncludeSubDomains);
+        Assert.False(hsts.Preload);
+    }
+
+    [Fact]
+    public void IncludeSubDomains_IsOptedIntoExplicitly()
+    {
+        var hsts = Configured(new SecurityOptions
+        {
+            HstsEnabled = true,
+            HstsIncludeSubDomains = true,
+        });
+
         Assert.True(hsts.IncludeSubDomains);
         Assert.False(hsts.Preload);
     }
@@ -53,12 +67,39 @@ public class HstsSetupTests
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
-    public void NonPositiveMaxAge_IsRejectedAtStartup(int days)
+    public void NonPositiveMaxAge_IsRejectedByValidation(int days)
     {
         var ex = Assert.Throws<InvalidOperationException>(
-            () => Configured(new SecurityOptions { HstsEnabled = true, HstsMaxAgeDays = days }));
+            () => HstsSetup.Validate(new SecurityOptions { HstsEnabled = true, HstsMaxAgeDays = days }));
 
         Assert.Contains("HstsMaxAgeDays", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MaxAgeAboveCap_IsRejectedWithExplicitMessage()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => HstsSetup.Validate(new SecurityOptions
+            {
+                HstsEnabled = true,
+                HstsMaxAgeDays = HstsSetup.MaximumMaxAgeDays + 1,
+            }));
+
+        Assert.Contains("HstsMaxAgeDays", ex.Message, StringComparison.Ordinal);
+        Assert.Contains(HstsSetup.MaximumMaxAgeDays.ToString(), ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MaxAgeAtCap_IsAccepted()
+    {
+        var hsts = Configured(new SecurityOptions
+        {
+            HstsEnabled = true,
+            HstsMaxAgeDays = HstsSetup.MaximumMaxAgeDays,
+        });
+
+        Assert.Equal(TimeSpan.FromDays(HstsSetup.MaximumMaxAgeDays), hsts.MaxAge);
+        Assert.False(hsts.Preload);
     }
 
     [Fact]

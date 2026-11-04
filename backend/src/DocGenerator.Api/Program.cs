@@ -307,8 +307,8 @@ builder.Services.AddSwaggerGen(o =>
 // يفعّل عبر Security__HstsEnabled / Security__HttpsRedirectionEnabled (انظر RUN_GUIDE.md §9).
 // تُقرأ قبل البناء لأن AddHsts تسجيل خدمة لا يجوز بعد تجميد الحاوية.
 var security = builder.Configuration.GetSection("Security").Get<SecurityOptions>() ?? new SecurityOptions();
-// التحقق دائم (لا عند التفعيل فقط): `preload` بلا `HstsEnabled` يُتجاهَل بصمت، وقيمة
-// `HstsMaxAgeDays` غير الموجبة خطأ إعداد يُكتشف عند الإقلاع لا في المتصفح.
+// التحقق دائم (لا عند التفعيل فقط): `preload` بلا `HstsEnabled` يُتجاهَل بصمت، وقيم
+// `HstsMaxAgeDays` غير الموجبة أو التي تتجاوز السقف خطأ إعداد يُكتشف عند الإقلاع لا في المتصفح.
 HstsSetup.Validate(security);
 if (security.HstsEnabled)
 {

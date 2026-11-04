@@ -8,9 +8,11 @@
  *  3. أصل خارجي أو `javascript:` في وسوم تحميل الموارد — محجوب بـ`default-src 'self'`.
  *  4. `eval` / `new Function` / `WebAssembly` في حزمة `JS` — محجوب بـ`script-src 'self'`
  *     (لا `'unsafe-eval'` ولا `'wasm-unsafe-eval'`).
+ *  5. `url(https://…)` أو `@import https://…` في `CSS` — محجوب بـ`style-src 'self'`
+ *     (والخطوط الخارجية خرق مباشر لسياسة الخطوط المحلية).
  *
- * يُشغَّل بعد `npm run build` (محليًا وفي وظيفة `frontend` بـ`CI`):
- *   `cd frontend && node scripts/csp-guard.mjs`
+ * يُشغَّل بعد `npm run build` (محليًا، وفي صورة `Docker`، وفي وظيفة `frontend` بـ`CI`):
+ *   `cd frontend && npm run guard`
  * الدوال التصديرية نقية لتُختبر في `csp-guard.test.mjs` بلا نظام ملفات.
  */
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
@@ -40,6 +42,13 @@ const DATA_SCHEME_ALLOWED_TAGS = new Set(['img', 'source']);
 const TAG_PATTERN = /<([a-zA-Z][\w:-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/g;
 const ATTRIBUTE_PATTERN = /([^\s"'=<>`/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
 const SCRIPT_PATTERN = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi;
+
+/**
+ * `@import` و`url(...)` في `CSS` في تعبير واحد حتى لا يُحتسب `@import url(https://…)` مرتين:
+ * البديل الأول يبتلع `url(` التابع له، فيتقدّم المطابق إلى ما بعد العنوان.
+ */
+const CSS_URL_PATTERN =
+  /@import\s+(?:url\(\s*)?(?:"([^"]*)"|'([^']*)'|([^'")\s;]+))|url\(\s*(?:"([^"]*)"|'([^']*)'|([^)'"\s]*))\s*\)/gi;
 
 function parseAttributes(raw) {
   const attributes = new Map();
@@ -103,7 +112,7 @@ export function analyzeHtml(html) {
       if (!attributes.has(attribute))
         continue;
 
-      for (const candidate of splitUrlList(attributes.get(attribute))) {
+      for (const candidate of attributeUrls(attribute, attributes.get(attribute))) {
         if (candidate === '')
           continue;
         if (DATA_SCHEME_ALLOWED_TAGS.has(tag) && /^\s*(data|blob):/i.test(candidate))
@@ -128,6 +137,38 @@ function splitUrlList(value) {
     .filter((entry) => entry !== '');
 }
 
+/** عنوان واحد في السمات المفردة (`src`/`href`/`poster`)، وقائمة في `srcset` فقط. */
+function attributeUrls(attribute, value) {
+  return attribute === 'srcset' ? splitUrlList(value) : [value.trim()].filter((url) => url !== '');
+}
+
+/**
+ * يجمع مراجع الأصول المحلية تحت `/assets/` من وسوم الموارد في المستند، بغضّ النظر عن نوع
+ * علامات التنصيص — القراءة عبر محلّل السمات نفسه تمنع تفويت `src='/assets/…'`.
+ * @param {string} html
+ * @returns {string[]}
+ */
+function collectAssetReferences(html) {
+  const references = new Set();
+  for (const tagMatch of html.matchAll(TAG_PATTERN)) {
+    const tag = tagMatch[1].toLowerCase();
+    const resourceAttributes = RESOURCE_URL_ATTRIBUTES.get(tag);
+    if (!resourceAttributes)
+      continue;
+
+    const attributes = parseAttributes(tagMatch[2]);
+    for (const attribute of resourceAttributes) {
+      if (!attributes.has(attribute))
+        continue;
+      for (const candidate of attributeUrls(attribute, attributes.get(attribute))) {
+        if (candidate.startsWith('/assets/'))
+          references.add(candidate);
+      }
+    }
+  }
+  return [...references];
+}
+
 /**
  * يفحص حزمة `JS` مبنية ضد تعليمات `CSP` التي تمنع التقييم الديناميكي.
  * @param {string} source
@@ -143,6 +184,34 @@ export function analyzeScript(source) {
     violations.push("استدعاء Function(...) كمُنشئ محجوب بـ script-src 'self'");
   if (/\bWebAssembly\s*\./.test(source))
     violations.push("WebAssembly محجوب بـ script-src 'self' (لا 'wasm-unsafe-eval')");
+  return dedupe(violations);
+}
+
+/**
+ * يفحص ورقة أنماط مبنية ضد `style-src 'self'`: أي `url(...)` أو `@import` إلى أصل خارجي
+ * يمنعه المتصفح (وقد يُبيّض أجزاء من الواجهة)، ما عدا `data:`/`blob:` المسموحين للصور والخطوط.
+ * @param {string} source
+ * @returns {string[]}
+ */
+export function analyzeCss(source) {
+  const violations = [];
+
+  for (const match of source.matchAll(CSS_URL_PATTERN)) {
+    const isImport = match[1] !== undefined || match[2] !== undefined || match[3] !== undefined;
+    const candidate = (isImport ? match[1] ?? match[2] ?? match[3] : match[4] ?? match[5] ?? match[6]) ?? '';
+    const url = candidate.trim();
+    if (url === '' || /^\s*(data|blob):/i.test(url))
+      continue;
+    if (!isExternalUrl(url))
+      continue;
+
+    violations.push(
+      isImport
+        ? `استيراد غير محلي في @import "${url}" يخالف style-src 'self'`
+        : `أصل غير محلي في url(...) "${url}" يخالف style-src 'self'`,
+    );
+  }
+
   return dedupe(violations);
 }
 
@@ -174,16 +243,16 @@ export function analyzeDist(distDir = DIST) {
 
   // أصول `/assets/...` المشار إليها يجب أن تكون موجودة فعلًا: مرجع مكسور يعني صفحة بيضاء
   // لا علاقة لها بـ`CSP`، لكنه يفشل في نفس اللحظة ويستحق نفس الحارس.
-  for (const asset of html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)) {
-    const assetPath = join(distDir, asset[1].replace(/^\/+/, '').split(/[?#]/)[0]);
+  for (const reference of collectAssetReferences(html)) {
+    const assetPath = join(distDir, reference.replace(/^\/+/, '').split(/[?#]/)[0]);
     if (!existsSync(assetPath))
-      violations.push(`dist/index.html: الملف المشار إليه ${asset[1]} غير موجود في dist`);
+      violations.push(`dist/index.html: الملف المشار إليه ${reference} غير موجود في dist`);
   }
 
   const assetsDir = join(distDir, 'assets');
-  const scriptFiles = existsSync(assetsDir)
-    ? walkFiles(assetsDir).filter((file) => file.endsWith('.js'))
-    : [];
+  const assetFiles = existsSync(assetsDir) ? walkFiles(assetsDir) : [];
+  const scriptFiles = assetFiles.filter((file) => file.endsWith('.js'));
+  const styleFiles = assetFiles.filter((file) => file.endsWith('.css'));
 
   for (const file of scriptFiles) {
     for (const violation of analyzeScript(readFileSync(file, 'utf8'))) {
@@ -191,7 +260,16 @@ export function analyzeDist(distDir = DIST) {
     }
   }
 
-  return { violations: dedupe(violations), filesChecked: scriptFiles.length + 1 };
+  for (const file of styleFiles) {
+    for (const violation of analyzeCss(readFileSync(file, 'utf8'))) {
+      violations.push(`${relative(FRONTEND_ROOT, file)}: ${violation}`);
+    }
+  }
+
+  return {
+    violations: dedupe(violations),
+    filesChecked: scriptFiles.length + styleFiles.length + 1,
+  };
 }
 
 function dedupe(items) {

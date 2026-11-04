@@ -236,25 +236,46 @@ npm test
   (استثناء مقصود: `dotnet ef` زمن التصميم يبني المضيف بلا راية فلا يحتاجها محليًا.)
 - `Security:HstsEnabled` / `Security:HttpsRedirectionEnabled` — `false` افتراضيًا (لـ `Render` التجريبي
   الذي يتولى `TLS`)، و`true` على المخدّم الخاص **بعد التأكد من `HTTPS` الكامل**.
-- `Security:HstsMaxAgeDays` — مدة `HSTS` بالأيام، `365` افتراضيًا. القيمة غير الموجبة ترفض الإقلاع
-  برسالة تسمّي المفتاح (بدل ترويسة لا يعمل بها المتصفح).
+  - **خلف وكيل ينهي `TLS`:** `UseHsts` لا يرسل الترويسة إلا إذا كان `Request.IsHttps=true`، وهذا لا
+    يتحقق إلا بـ`X-Forwarded-Proto` من وكيل **معلَن** في `Security:KnownProxies` (انظر بند الوكيل
+    أعلاه). بلا ذلك يعمل `HTTPS` للمستخدم بينما **`HSTS` غائب صامتًا** — افحصه بعد النشر بالأمر أدناه.
+- `Security:HstsMaxAgeDays` — مدة `HSTS` بالأيام، `365` افتراضيًا. القيمة غير الموجبة أو التي تتجاوز
+  السقف `3650` يومًا (عشر سنوات) ترفض الإقلاع برسالة تسمّي المفتاح (بدل ترويسة لا يعمل بها المتصفح
+  أو فيض في `TimeSpan`).
+- `Security:HstsIncludeSubDomains` — `false` افتراضيًا، و**راية صريحة**: الترويسة تفرض `HTTPS` على
+  كل النطاقات الفرعية، فأي نطاق فرعي يخدم عبر `HTTP` فقط ينكسر فورًا. يُفعَّل بعد تأكيد `HTTPS`
+  الكامل لكل النطاقات الفرعية. **يُفرَض `true` تلقائيًا عند `HstsPreload=true`** لأن قوائم المتصفحات
+  لا تقبل `preload` بدونه.
 - `Security:HstsPreload` — `false` افتراضيًا، و**مستقل عن `HstsEnabled` عمدًا**: إدراج النطاق في قوائم
   `preload` المدمجة التزام شبه دائم (إزالته تستغرق أشهرًا)، فلا يُفعَّل إلا على النطاق النهائي بعد سنة
   من `HTTPS` كامل. يرفض الإقلاع إن فُعّل بلا `HstsEnabled` أو مع `HstsMaxAgeDays < 365` (متطلب
-  المتصفحات). الرمز: `HstsSetup.Validate`/`Configure`، والحارس: `HstsSetupTests`.
+  المتصفحات). **`preload` إشارة أهلية لا إدراج تلقائي**: بعد النشر يجب تقديم النطاق يدويًا في
+  `https://hstspreload.org` وقبول مراجعته، وإلا بقيت الترويسة بلا أثر في القوائم المدمجة.
+  الرمز: `HstsSetup.Validate`/`Configure`، والحراس: `HstsSetupTests` + `HstsHeaderTests`
+  + `HstsProductionIntegrationTests`.
 - `Security:CspReportOnly` — `true` افتراضيًا (وضع المراقبة على التجريبي)، و`false` على المخدّم الخاص
   بعد جولة اختبار واحدة لفرض `Content-Security-Policy`.
   - **`upgrade-insecure-requests` أُزيلت من السياسة نهائيًا (`W0-CSP`)**: على خادم يخدم عبر `HTTP`
     (حالة النقل الأولى على الشبكة الداخلية) تُحوِّل المتصفحات كل أصول الصفحة إلى `https` فتفشل ⇒
     **صفحة بيضاء**. تحديث البروتوكول مسؤولية `HSTS`/`HttpsRedirection` صراحةً. لا تُعِدها عند تعديل
     `SecurityHeadersMiddleware` (الحارس: `SecurityHeadersMiddlewareTests.Csp_DoesNotUpgradeInsecureRequests`).
-  - **حارس بناء `CSP`:** `cd frontend && npm run build && node scripts/csp-guard.mjs` — يفشل عند أي
-    سكربت/معالج حدث مضمّن، أو أصل خارجي، أو `eval`/`Function`/`WebAssembly` في حزم `dist`، أو مرجع
-    `/assets/...` غير موجود. يعمل في وظيفة `frontend` بـ`CI` بعد البناء، فلا تُكتشف المخالفة أول مرة
-    في متصفح المستخدم.
-  - **بروفة إلزامية قبل الفرض** (بيئة `Production` حقيقية لا `Vite`): افتح الصفحات الرئيسية وسجّل أي
-    مخالفة في وحدة تحكم المتصفح؛ الاختبار `CspProductionIntegrationTests` يثبت أن الترويسة المفروضة
-    تصل مع مستند `index.html` فعلًا.
+  - **حارس بناء `CSP`:** `cd frontend && npm run build && npm run guard` — يفشل عند أي
+    سكربت/معالج حدث مضمّن، أو أصل خارجي في وسوم الموارد أو في `CSS` (`url(...)`/`@import`)،
+    أو `eval`/`Function`/`WebAssembly` في حزم `dist`، أو مرجع `/assets/...` غير موجود
+    (بعلامات تنصيص مفردة أو مزدوجة). يعمل في وظيفة `frontend` بـ`CI` بعد البناء **وفي مرحلة
+    بناء `Dockerfile`**، فلا تُكتشف المخالفة أول مرة في متصفح المستخدم.
+  - **بروفة إلزامية قبل الفرض** (بيئة `Production` حقيقية لا `Vite`): افتح الصفحات الرئيسية
+    وسجّل أي مخالفة في وحدة تحكم المتصفح، ثم مرّ على المسارات التي تعتمد أصولًا ديناميكية:
+    1. **تنزيل `Word`/`Excel`**: ملف `.docx` وملف `.xlsx` فعليان (المسار `blob:` + رابط تنزيل) —
+       لا حجب `blob:` في `default-src`.
+    2. **معاينة الصور**: صورة مرفوعة (`img-src 'self' data: blob:`) وظهورها كاملًا.
+    3. **المحرر الغني**: كتابة نص منسّق (عريض/ألوان) ثم حفظه وإعادة عرضه (`span[style]` مع
+       `style-src 'unsafe-inline'`).
+    4. **الطباعة**: `Ctrl+P` على ملف طويل — بلا عناصر مقطوعة أو أنماط مفقودة.
+    5. **روابط `SPA` العميقة**: فتح `/documents/<id>` مباشرة وتحديث الصفحة (`MapFallbackToFile`)
+       ثم مسار غير موجود للتأكد من صفحة `404` لا صفحة بيضاء.
+    الاختبار `CspProductionIntegrationTests` يثبت أن الترويسة المفروضة تصل مع مستند
+    `index.html` فعلًا، لكنه لا يغني عن هذه الجولة السلوكية.
 - `AllowedHosts` — `*` للتطوير فقط؛ على الإنتاج النطاق الحقيقي حصرًا **مع عنوان الوكيل/الموازن**:
   مثال `"docgen.gov.sy;127.0.0.1;10.0.0.5"`. فلتر المضيف يردّ `400` لأي `Host` آخر، وفحص الصحة يصل
   عادةً بـ`Host: 127.0.0.1:8080` — وقد تحقّقنا باختبار أن **إدراج العنوان وحده يطابق `IP:port`**،
@@ -271,7 +292,12 @@ npm test
 - `CSP` — تحقُّق ما بعد الفرض (`CspReportOnly=false`): `curl -sI https://<host>/ | grep -i '^content-security-policy'`
   ⇒ ترويسة `Content-Security-Policy` (لا `Report-Only`) **بلا** `upgrade-insecure-requests`، ومعها
   `script-src 'self'`. وإن ظهرت صفحة بيضاء بعد الفرض فالسبب المعتاد أصل خارجي أو سكربت مضمّن —
-  شغّل `node frontend/scripts/csp-guard.mjs` بعد البناء لالتقاطه قبل النشر.
+  شغّل `cd frontend && npm run guard` بعد البناء لالتقاطه قبل النشر.
+- `HSTS` — تحقُّق ما بعد التفعيل على المخدّم الخاص (بعد التأكد أن `KnownProxies` يمرّر
+  `X-Forwarded-Proto`): `curl -sI https://<host>/ | grep -i '^strict-transport-security'`
+  ⇒ `max-age=<HstsMaxAgeDays*86400>` مع `includeSubDomains` فقط إن فُعّلت رايته (أو مع `preload`)،
+  و`preload` فقط إن فُعّل صراحةً. **غياب الترويسة مع نجاح `HTTPS` يعني أن الوكيل غير موثوق أو لا
+  يمرّر `X-Forwarded-Proto`** — راجع `Security:KnownProxies` أولًا، ثم أعد الاختبار.
 
 ### تطبيق هجرات قاعدة البيانات عند النشر (إلزامي)
 

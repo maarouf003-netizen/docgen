@@ -1,8 +1,22 @@
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { analyzeHtml, analyzeScript } from './csp-guard.mjs';
+import { analyzeCss, analyzeDist, analyzeHtml, analyzeScript } from './csp-guard.mjs';
+
+/** يبني مجلد `dist` مؤقتًا من خريطة مسار←محتوى، ويعيد جذره. */
+function createDist(files) {
+  const root = mkdtempSync(join(tmpdir(), 'csp-guard-'));
+  for (const [relativePath, content] of Object.entries(files)) {
+    const fullPath = join(root, relativePath);
+    mkdirSync(dirname(fullPath), { recursive: true });
+    writeFileSync(fullPath, content);
+  }
+  return root;
+}
 
 /**
- * اختبارات حارس `CSP` (W0-CSP): تثبّت أن الحارس **يكشف** الأصناف الأربعة التي تُبيّض
+ * اختبارات حارس `CSP` (W0-CSP): تثبّت أن الحارس **يكشف** الأصناف الخمسة التي تُبيّض
  * الصفحة عند الفرض، وأنه **لا يعطي إيجابيات كاذبة** على شكل مخرجات `Vite` الفعلي.
  * الحارس نفسه يُشغَّل على `dist` بعد البناء في `CI`؛ هذه الاختبارات تحرس منطقه.
  */
@@ -83,5 +97,94 @@ describe('analyzeScript', () => {
 
   it('يرفض WebAssembly لأن script-src بلا wasm-unsafe-eval', () => {
     expect(analyzeScript('WebAssembly.instantiate(bytes)')).toHaveLength(1);
+  });
+});
+
+describe('analyzeCss', () => {
+  it('يقبل الأصول المحلية و data:/blob: والمعرّفات', () => {
+    const css = `
+      @import "./fonts.css";
+      @font-face { src: url(/assets/cairo.woff2) format("woff2"); }
+      .a { background: url("data:image/png;base64,AAAA"); }
+      .b { mask: url(#mask); }
+    `;
+
+    expect(analyzeCss(css)).toEqual([]);
+  });
+
+  it('يرفض url إلى أصل خارجي', () => {
+    expect(analyzeCss('.a { background: url(https://cdn.example/bg.png); }')).toHaveLength(1);
+    expect(analyzeCss('.a { background: url("//cdn.example/bg.png"); }')).toHaveLength(1);
+  });
+
+  it('يرفض @import خارجيًا مرة واحدة بلا احتساب مزدوج', () => {
+    const violations = analyzeCss('@import url("https://fonts.example/css");');
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toContain('@import');
+  });
+});
+
+describe('analyzeDist', () => {
+  it('يفشل برسالة توجيهية عند غياب dist', () => {
+    const root = mkdtempSync(join(tmpdir(), 'csp-guard-missing-'));
+    try {
+      const result = analyzeDist(join(root, 'dist'));
+
+      expect(result.violations).toHaveLength(1);
+      expect(result.violations[0]).toContain('npm run build');
+      expect(result.filesChecked).toBe(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('يقبل مخرجات dist نظيفة ويعدّ المستند والحزم', () => {
+    const root = createDist({
+      'index.html': `<!doctype html><html><head>
+        <script type="module" crossorigin src="/assets/index-a.js"></script>
+        <link rel="stylesheet" crossorigin href='/assets/index-a.css' />
+      </head><body></body></html>`,
+      'assets/index-a.js': 'export {};\n',
+      'assets/index-a.css': ':root { color-scheme: light; }\n',
+    });
+    try {
+      const result = analyzeDist(root);
+
+      expect(result.violations).toEqual([]);
+      expect(result.filesChecked).toBe(3);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('يكشف مرجع أصل غير موجود بعلامات تنصيص مفردة أيضًا', () => {
+    const root = createDist({
+      'index.html': `<script type="module" src='/assets/missing.js'></script>`,
+    });
+    try {
+      const result = analyzeDist(root);
+
+      expect(result.violations).toHaveLength(1);
+      expect(result.violations[0]).toContain('/assets/missing.js');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('يفحص أوراق CSS المبنية ضد الأصول الخارجية', () => {
+    const root = createDist({
+      'index.html': `<link rel="stylesheet" href="/assets/index-a.css" />`,
+      'assets/index-a.css': '.a { background: url(https://cdn.example/bg.png); }\n',
+    });
+    try {
+      const result = analyzeDist(root);
+
+      expect(result.violations).toHaveLength(1);
+      expect(result.violations[0]).toContain('index-a.css');
+      expect(result.filesChecked).toBe(2);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

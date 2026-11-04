@@ -10,6 +10,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "guard": "node scripts/csp-guard.mjs",
     "test": "vitest run",
     "test:ci": "vitest run --maxWorkers=4 --pool=forks",
     "preview": "vite preview"

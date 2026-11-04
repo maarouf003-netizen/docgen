@@ -1,6 +1,4 @@
 using System.Net;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace DocGenerator.Api.Tests;
 
@@ -12,7 +10,7 @@ namespace DocGenerator.Api.Tests;
 /// ومتسقة مع الأصول المحلية التي يبنيها <c>Vite</c>.
 /// </summary>
 [Collection(ApiTestCollection.Name)]
-public class CspProductionIntegrationTests : IClassFixture<CspProductionIntegrationTests.ProductionSpaFactory>
+public class CspProductionIntegrationTests : IClassFixture<ProductionSpaFactory>
 {
     private readonly ProductionSpaFactory _factory;
 
@@ -47,67 +45,5 @@ public class CspProductionIntegrationTests : IClassFixture<CspProductionIntegrat
         Assert.Equal("no-referrer", response.Headers.GetValues("Referrer-Policy").Single());
         // صفحات المستند ليست ردود API: لا تُوسم بـ`no-store` (منع التخزين للـAPI وحده).
         Assert.False(response.Headers.Contains("Cache-Control"));
-    }
-
-    /// <summary>
-    /// مضيف إنتاجي معزول بجذر ويب مؤقت يحتوي <c>index.html</c> بلا سكربتات مضمّنة —
-    /// نفس شكل مخرجات <c>Vite</c>. قاعدة SQLite مؤقتة، والحارس <c>H-02</c> لا يعنيه
-    /// لأن البيئة إنتاج.
-    /// </summary>
-    public sealed class ProductionSpaFactory : WebApplicationFactory<Program>
-    {
-        private const string IndexHtml = """
-            <!doctype html>
-            <html lang="ar" dir="rtl">
-              <head>
-                <meta charset="UTF-8" />
-                <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-                <title>بروفة CSP</title>
-                <script type="module" crossorigin src="/assets/index-test.js"></script>
-                <link rel="stylesheet" crossorigin href="/assets/index-test.css" />
-              </head>
-              <body><div id="root"></div></body>
-            </html>
-            """;
-
-        private readonly string _dbPath = Path.Combine(
-            Path.GetTempPath(), $"docgen_csp_{Guid.NewGuid():N}.db");
-        private readonly string _logDir = Path.Combine(
-            Path.GetTempPath(), $"docgen_csp_logs_{Guid.NewGuid():N}");
-        private readonly string _webRoot = Path.Combine(
-            Path.GetTempPath(), $"docgen_csp_web_{Guid.NewGuid():N}");
-
-        public ProductionSpaFactory()
-        {
-            Directory.CreateDirectory(_webRoot);
-            File.WriteAllText(Path.Combine(_webRoot, "index.html"), IndexHtml);
-        }
-
-        protected override void ConfigureWebHost(IWebHostBuilder builder)
-        {
-            builder.UseEnvironment("Production");
-            builder.UseWebRoot(_webRoot);
-            builder.UseSetting("Security:CspReportOnly", "false");
-            builder.UseSetting("Security:KnownProxies:0", "127.0.0.1");
-            builder.UseSetting("ConnectionStrings:DefaultConnection", $"Data Source={_dbPath}");
-            builder.UseSetting("Logging:File:Path", Path.Combine(_logDir, "logs-.txt"));
-            builder.UseSetting("Database:UsePostgres", "false");
-            builder.UseSetting("Database:AutoMigrate", "true");
-            builder.UseSetting("Database:AllowSqliteInProduction", "true");
-            builder.UseSetting("Swagger:Enabled", "false");
-            builder.UseSetting("Jwt:Secret", "csp-test-secret-0123456789-0123456789-0123456789");
-            builder.UseSetting("Bootstrap:AdminPassword", "CspProbe123456!");
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            base.Dispose(disposing);
-            foreach (var suffix in new[] { "", "-shm", "-wal" })
-            {
-                try { File.Delete(_dbPath + suffix); } catch { /* ignore */ }
-            }
-            try { if (Directory.Exists(_logDir)) Directory.Delete(_logDir, recursive: true); } catch { /* ignore */ }
-            try { if (Directory.Exists(_webRoot)) Directory.Delete(_webRoot, recursive: true); } catch { /* ignore */ }
-        }
     }
 }
