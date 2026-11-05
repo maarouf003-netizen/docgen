@@ -106,6 +106,8 @@ public class DelegationRepository : Repository<DocumentDelegation>, IDelegationR
         // متتبَّعة بلا Includes: الغرض تحديث المحامي المختص في معاملة النقل فقط —
         // تحميل بقية الروابط هنا كلفة بلا فائدة (وهو ما يميزها عن FindByTargetAsync القرائي).
         return await Db.DocumentDelegations
+            .Include(d => d.SourceDocument)
+            .Include(d => d.TargetDocument)
             .Where(d => d.TargetDocument != null && targetDocumentIds.Contains(d.TargetDocument.Id))
             .ToListAsync(ct);
     }

@@ -435,7 +435,7 @@ public sealed class DocumentService : IDocumentService
             // الملف المناب: يُزامَن المحامي المختص المخزّن على الإنابة مع المالك الجديد
             // في نفس المعاملة، فتعرض «تشعبات الملف» ونافذة الإتمام المتابع الحالي.
             await _delegationService.SyncTargetsTransferredAsync(
-                new[] { documentId }, target.Id, actorName, token);
+                new[] { documentId }, target.Id, actorName, actorUserId, token);
 
             await _audit.LogAsync(actorName, "transfer", documentId, doc.DocumentType,
                 DocumentText.AuditWithActor($"نقل الملف إلى المحامي: {target.FullName}", doc), token);
@@ -534,7 +534,7 @@ public sealed class DocumentService : IDocumentService
             // ملفات منابة ضمن الدفعة: يُزامَن المحامي المختص المخزّن على إناباتها
             // مع المالك الجديد (استعلام واحد + كتابة داخل نفس المعاملة).
             await _delegationService.SyncTargetsTransferredAsync(
-                files.Select(f => f.Id).ToArray(), target.Id, actorName, token);
+                files.Select(f => f.Id).ToArray(), target.Id, actorName, actorUserId, token);
 
             // H2: التنبيه يتبع المالك — داخل معاملة النقل الجماعي كي لا يبقى تنبيه قديم بلا مالك.
             if (_executionCircuits is not null && actorUserId.HasValue)

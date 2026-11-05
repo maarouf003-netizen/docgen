@@ -6,7 +6,7 @@ namespace DocGenerator.Domain.Enums;
 ///
 /// القواعد الحاكمة (خطة إعادة هيكلة التنبيهات §5):
 /// <list type="bullet">
-/// <item>39 رمزًا نظاميًا/يدويًا + الرمز المحجوز <see cref="Legacy"/>.</item>
+/// <item>40 رمزًا نظاميًا/يدويًا + الرمز المحجوز <see cref="Legacy"/>.</item>
 /// <item>لا يُكتب <see cref="Legacy"/> في أي مسار تشغيل — للصفوف التاريخية فقط.</item>
 /// <item>الرمزان <see cref="EntityRegistryEntryReview"/> و<see cref="EntityEditProposalReview"/>
 /// متقاعدان: لا كتابة جديدة لهما (نُقل أثرهما إلى سجل المراجعة).</item>
@@ -15,11 +15,13 @@ namespace DocGenerator.Domain.Enums;
 /// </summary>
 public static class HeadAlertKindCatalog
 {
-    // ── أ. الإنابة (13) ──
+    // ── أ. الإنابة (14) ──
 
     public const string DelegationPendingApproval = "delegation_pending_approval";
     public const string DelegationSentToSubhead = "delegation_sent_to_subhead";
     public const string DelegationAssignedToLawyer = "delegation_assigned_to_lawyer";
+    /// <summary>نقل ملكية ملف إنابة إلى محامٍ آخر بعد الإسناد (تنبيه المالك الجديد).</summary>
+    public const string DelegationTransferredToLawyer = "delegation_transferred_to_lawyer";
     public const string DelegationRejectedWrongCourt = "delegation_rejected_wrong_court";
     public const string DelegationPendingCompletion = "delegation_pending_completion";
     public const string DelegationCompletedReturned = "delegation_completed_returned";
@@ -78,13 +80,14 @@ public static class HeadAlertKindCatalog
     /// <summary>الرمز المحجوز للصفوف القديمة غير القابلة للتصنيف — لا يُكتب في أي مسار جديد.</summary>
     public const string Legacy = "legacy";
 
-    /// <summary>كل الرموز المعتمدة (39) — بلا الرمز المحجوز <see cref="Legacy"/>.</summary>
+    /// <summary>كل الرموز المعتمدة (40) — بلا الرمز المحجوز <see cref="Legacy"/>.</summary>
     public static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.Ordinal)
     {
         // الإنابة
         DelegationPendingApproval,
         DelegationSentToSubhead,
         DelegationAssignedToLawyer,
+        DelegationTransferredToLawyer,
         DelegationRejectedWrongCourt,
         DelegationPendingCompletion,
         DelegationCompletedReturned,
@@ -151,6 +154,7 @@ public static class HeadAlertKindCatalog
         DelegationPendingApproval,
         DelegationSentToSubhead,
         DelegationAssignedToLawyer,
+        DelegationTransferredToLawyer,
         DelegationRejectedWrongCourt,
         DelegationPendingCompletion,
         DelegationCompletedReturned,
@@ -228,6 +232,7 @@ public static class HeadAlertKindCatalog
 
             // ── DocumentCreator ──
             [DelegationAssignedToLawyer] = Set(HeadAlertAudience.DocumentCreator),
+            [DelegationTransferredToLawyer] = Set(HeadAlertAudience.DocumentCreator),
             [DelegationRejectedWrongCourt] = Set(HeadAlertAudience.DocumentCreator),
             [DelegationCompletedReturned] = Set(HeadAlertAudience.DocumentCreator),
             [AppealFinalToBaseLawyer] = Set(HeadAlertAudience.DocumentCreator),
@@ -255,7 +260,7 @@ public static class HeadAlertKindCatalog
     private static IReadOnlySet<HeadAlertAudience> Set(params HeadAlertAudience[] audiences)
         => new HashSet<HeadAlertAudience>(audiences);
 
-    /// <summary>هل الرمز معروف (من الـ39)؟ الرمز المحجوز <see cref="Legacy"/> ليس جزءًا منه.</summary>
+    /// <summary>هل الرمز معروف (من الـ40)؟ الرمز المحجوز <see cref="Legacy"/> ليس جزءًا منه.</summary>
     public static bool IsValid(string? kind) => kind is not null && All.Contains(kind);
 
     /// <summary>
@@ -293,6 +298,7 @@ public static class HeadAlertKindCatalog
         DelegationPendingApproval => "بانتظار اعتماد الإنابة",
         DelegationSentToSubhead => "إنابة من اختصاص الشعبة",
         DelegationAssignedToLawyer => "إسناد ملف إنابة",
+        DelegationTransferredToLawyer => "نقل ملف إنابة",
         DelegationRejectedWrongCourt => "رفض إنابة للدائرة الخطأ",
         DelegationPendingCompletion => "بانتظار إتمام الإنابة",
         DelegationCompletedReturned => "إعادة الإنابة المسطرة",

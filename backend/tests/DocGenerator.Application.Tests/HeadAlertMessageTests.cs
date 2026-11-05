@@ -37,6 +37,15 @@ public class HeadAlertMessageTests
     }
 
     [Fact]
+    public void DelegationTransferredToLawyer_UsesApprovedWording()
+    {
+        var text = HeadAlertMessages.DelegationTransferredToLawyer(
+            new HeadAlertMessages.DelegationTransferredToLawyerContext("أحمد خالد الخطيب"));
+
+        Assert.Equal("تم نقل ملف أحمد خالد الخطيب لك، يرجى المتابعة أصولًا", text);
+    }
+
+    [Fact]
     public void DelegationRejectedWrongCourt_UsesApprovedWording()
     {
         var text = HeadAlertMessages.DelegationRejectedWrongCourt(

@@ -728,6 +728,62 @@ public class DocumentDelegationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task DocumentTransfer_ArchivesOldAssignmentAlert_AndNotifiesNewOwner()
+    {
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await FlushAlertsAsync();
+
+        var oldAlert = await _db.HeadAlerts.Include(a => a.Recipients)
+            .SingleAsync(a => a.DelegationId == created.Id
+                && a.Kind == HeadAlertKindCatalog.DelegationAssignedToLawyer
+                && !a.IsArchived);
+        Assert.Contains(_lawyer2.Id, oldAlert.Recipients.Select(r => r.UserId));
+
+        await _documentService.TransferAsync(targetId, _lawyer1.Id, "head1", actorUserId: _head1.Id);
+        // محاكاة نطاق الصادر الإنتاجي: معالج التنبيه يعمل بسياق جديد فيرى مالك الملف الجديد.
+        _db.ChangeTracker.Clear();
+        await FlushAlertsAsync();
+
+        // تنبيه المحامي السابق يُؤرشف (لا يُحذف): يختفي من صندوقه ويبقى للأثر.
+        var archivedOld = await _db.HeadAlerts.AsNoTracking().SingleAsync(a => a.Id == oldAlert.Id);
+        Assert.True(archivedOld.IsArchived);
+
+        var transferAlert = await _db.HeadAlerts.AsNoTracking()
+            .Include(a => a.Recipients)
+            .SingleAsync(a => a.DelegationId == created.Id
+                && a.Kind == HeadAlertKindCatalog.DelegationTransferredToLawyer
+                && !a.IsArchived);
+        Assert.Contains(_lawyer1.Id, transferAlert.Recipients.Select(r => r.UserId));
+        Assert.DoesNotContain(_lawyer2.Id, transferAlert.Recipients.Select(r => r.UserId));
+        Assert.Contains("تم نقل ملف", transferAlert.Message);
+        Assert.Contains("أحمد خالد الخطيب", transferAlert.Message);
+    }
+
+    [Fact]
+    public async Task DocumentTransfer_KeepsHeadPendingCompletionAlert()
+    {
+        var (_, created, targetId) = await RegisteredDelegationAsync();
+        Assert.Single(await PendingCompletionAlertsAsync(created.Id));
+
+        await _documentService.TransferAsync(targetId, _lawyer1.Id, "head1", actorUserId: _head1.Id);
+        _db.ChangeTracker.Clear();
+        await FlushAlertsAsync();
+
+        // الأرشفة عند النقل لا تمسّ تنبيه الرئيس «بانتظار إتمام الإنابة».
+        Assert.Single(await PendingCompletionAlertsAsync(created.Id));
+        Assert.Single(await _db.HeadAlerts
+            .Where(a => a.DelegationId == created.Id
+                && a.Kind == HeadAlertKindCatalog.DelegationTransferredToLawyer
+                && !a.IsArchived)
+            .ToListAsync());
+    }
+
+    [Fact]
     public async Task TargetCourt_IsIndependent_EditableAndNotMirrored()
     {
         // الدائرة حقيقة خاصة بالمناب: قابلة للتعديل كحقل أصيل، وتعديل المنيب لا يسري عليها،

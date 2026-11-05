@@ -22,7 +22,7 @@ public sealed class DelegationPendingCountBranchGuardTests
         public Task<DelegationDto?> UpdateAsync(int delegationId, UpsertDelegationRequest request, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<bool> DeleteAsync(int delegationId, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<List<DelegationDto>> ListForDocumentAsync(int documentId, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task SyncTargetsTransferredAsync(IReadOnlyCollection<int> targetDocumentIds, int newLawyerId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
+        public Task SyncTargetsTransferredAsync(IReadOnlyCollection<int> targetDocumentIds, int newLawyerId, string? actorName, int? actorUserId = null, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<List<DelegationDto>> ListPendingForHeadAsync(int branchId, int? ownerSectionId = null, bool rejectedOnly = false, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<int> CountPendingForHeadAsync(int branchId, int? ownerSectionId = null, bool rejectedOnly = false, CancellationToken ct = default) => throw new NotImplementedException();
         public Task<DelegationDto?> RedirectToSectionAsync(int delegationId, RedirectDelegationRequest request, int userId, string? actorName, CancellationToken ct = default) => throw new NotImplementedException();
