@@ -312,6 +312,44 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         return true;
     }
 
+    public async Task SyncTargetsTransferredAsync(IReadOnlyCollection<int> targetDocumentIds,
+        int newLawyerId, string? actorName, CancellationToken ct = default)
+    {
+        if (targetDocumentIds.Count == 0)
+            return;
+
+        var delegations = await _delegations.ListByTargetDocumentIdsAsync(targetDocumentIds, ct);
+        if (delegations.Count == 0)
+            return;
+
+        var now = DateTime.UtcNow;
+        var changed = 0;
+        foreach (var delegation in delegations)
+        {
+            // الإنابة المنفذة سجل تاريخي مكتمل: نقل ملكية ملفها لاحقًا لا يعيد
+            // كتابة «من أتمّها». يُترك الحقل كما هو ويُعرض المالك التاريخي.
+            if (delegation.Status == DelegationStatusCatalog.Executed)
+                continue;
+            // النقل غير المتسلسل قد يكرر نفس الإنابة عبر معرف ملف واحد فقط عمليًا،
+            // لكن الحارس يمنع كتابة/تدقيقًا بلا تغيير ويبقي العملية idempotent.
+            if (delegation.AssignedLawyerId == newLawyerId)
+                continue;
+            delegation.AssignedLawyerId = newLawyerId;
+            delegation.UpdatedAt = now;
+            // رمز التزامن: التسجيل/الإتمام المتزامن مع النقل يُحسم بـ409 بدل كتابة عمياء.
+            delegation.Version++;
+            _delegations.Update(delegation);
+            changed++;
+        }
+
+        if (changed == 0)
+            return;
+
+        await _uow.SaveChangesAsync(ct);
+        await _audit.LogAsync(actorName, "sync_delegation_assigned_lawyer",
+            details: $"حُدِّث المحامي المختص لـ{changed} إنابة بعد نقل ملكية الملف المناب", ct: ct);
+    }
+
     public async Task<List<DelegationDto>> ListForDocumentAsync(int documentId, CancellationToken ct = default)
     {
         var doc = await _documents.GetByIdAsync(documentId, ct)

@@ -152,6 +152,27 @@ describe('DelegationsCard', () => {
     expect(screen.getByText('المحامي هشام')).toBeInTheDocument();
   });
 
+  it('يعرض مالك الملف المناب الحالي بدل المحامي الأول بعد نقله', () => {
+    render(
+      <DelegationsCard
+        delegations={[
+          delegation({
+            status: 'مسجلة أصولًا',
+            assignedLawyerName: 'المحامي الأول',
+            targetLawyerName: 'المحامي الحالي',
+          }),
+        ]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    expect(screen.getByText('المحامي الحالي')).toBeInTheDocument();
+    expect(screen.queryByText('المحامي الأول')).not.toBeInTheDocument();
+  });
+
   it('يعرض زر «تسطير إنابة» عند الإذن ويستدعي onCreate', () => {
     const onCreate = vi.fn();
     render(

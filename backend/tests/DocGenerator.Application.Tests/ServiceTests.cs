@@ -143,6 +143,27 @@ public class DocumentServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Update_NewAmountNumericWithoutClientWords_RegeneratesWords()
+    {
+        // عقد الواجهة: المبالغ رقمًا فقط، والتفقيط مشتق خادميًا. تعديل الرقم مع
+        // إغفال النص يجب أن يعيد توليده بدل الإبقاء على نص المبلغ السابق.
+        var created = await _service.CreateAsync(Sample(), userId: 1, actorName: "lawyer1", branchId: 1);
+        Assert.False(string.IsNullOrWhiteSpace(created.AmountWords));
+
+        var update = Sample(created.FileNumber);
+        update.AmountNumeric = 5000m;
+        update.AmountWords = null;
+
+        var updated = await _service.UpdateAsync(created.Id, update, "lawyer1");
+
+        Assert.NotNull(updated);
+        var words = updated!.AmountWords;
+        Assert.False(string.IsNullOrWhiteSpace(words));
+        Assert.NotEqual(created.AmountWords, words);
+        Assert.Contains("ليرة سورية", words!);
+    }
+
+    [Fact]
     public async Task Create_WithoutFileNumber_IsDraft()
     {
         var req = Sample();

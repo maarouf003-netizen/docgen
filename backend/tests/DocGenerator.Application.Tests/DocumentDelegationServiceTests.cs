@@ -686,6 +686,48 @@ public class DocumentDelegationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SyncTargetsTransferred_UpdatesAssignedLawyer()
+    {
+        // بعد نقل ملكية الملف المناب: المحامي المختص المخزّن على الإنابة يتبع
+        // المالك الجديد، فتعرض بطاقة التشعبات/نافذة الإتمام المتابع الحالي.
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+
+        await _service.SyncTargetsTransferredAsync(new[] { targetId }, _lawyer1.Id, "head1");
+        _db.ChangeTracker.Clear();
+
+        var stored = await _db.DocumentDelegations.AsNoTracking()
+            .SingleAsync(d => d.Id == created.Id);
+        Assert.Equal(_lawyer1.Id, stored.AssignedLawyerId);
+    }
+
+    [Fact]
+    public async Task DocumentTransfer_SyncsDelegationAssignedLawyer()
+    {
+        // التكامل: نقل الملف المناب عبر مسار النقل العام يقود مزامنة الإنابة
+        // نفسها داخل معاملة النقل — لا استدعاء يدوي من الواجهة.
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+
+        await _documentService.TransferAsync(targetId, _lawyer1.Id, "head1", actorUserId: _head1.Id);
+        _db.ChangeTracker.Clear();
+
+        var stored = await _db.DocumentDelegations.AsNoTracking()
+            .SingleAsync(d => d.Id == created.Id);
+        Assert.Equal(_lawyer1.Id, stored.AssignedLawyerId);
+        var target = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == targetId);
+        Assert.Equal(_lawyer1.Id, target.CreatedById);
+    }
+
+    [Fact]
     public async Task TargetCourt_IsIndependent_EditableAndNotMirrored()
     {
         // الدائرة حقيقة خاصة بالمناب: قابلة للتعديل كحقل أصيل، وتعديل المنيب لا يسري عليها،

@@ -48,6 +48,25 @@ export function formatRequiredAmounts(doc: DocumentResponse): string {
   ]);
 }
 
+/**
+ * المبلغ/المبالغ المطالب بها في الملف **رقمًا** (حتى ثلاثة بعملاتها):
+ * السند العادي يقرأ مبالغ التضمين، والمصرفي يقرأ مبالغ السند. العرض رقمي
+ * عمدًا في بطاقة «بيانات السند التنفيذي»؛ التفقيط يبقى للتوليد والطباعة.
+ */
+export function formatClaimedAmounts(doc: DocumentResponse): string {
+  return doc.contractTypeSelector === 'عادي'
+    ? combineAmountSlots([
+        [doc.inclusionAmountNumeric, doc.inclusionCurrency],
+        [doc.inclusionAmount2Numeric, doc.inclusionCurrency2],
+        [doc.inclusionAmount3Numeric, doc.inclusionCurrency3],
+      ])
+    : combineAmountSlots([
+        [doc.amountNumeric, doc.currency],
+        [doc.amount2Numeric, doc.currency2],
+        [doc.amount3Numeric, doc.currency3],
+      ]);
+}
+
 /** المبالغ المدفوعة من الجهة العامة / المبالغ المودعة (حتى ثلاثة) مجتمعةً بعملاتها. */
 export function formatPaidAmounts(doc: DocumentResponse): string {
   return combineAmountSlots([

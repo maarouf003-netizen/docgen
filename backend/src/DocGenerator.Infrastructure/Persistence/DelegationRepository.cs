@@ -97,6 +97,19 @@ public class DelegationRepository : Repository<DocumentDelegation>, IDelegationR
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<List<DocumentDelegation>> ListByTargetDocumentIdsAsync(
+        IReadOnlyCollection<int> targetDocumentIds, CancellationToken ct = default)
+    {
+        if (targetDocumentIds.Count == 0)
+            return new List<DocumentDelegation>();
+
+        // متتبَّعة بلا Includes: الغرض تحديث المحامي المختص في معاملة النقل فقط —
+        // تحميل بقية الروابط هنا كلفة بلا فائدة (وهو ما يميزها عن FindByTargetAsync القرائي).
+        return await Db.DocumentDelegations
+            .Where(d => d.TargetDocument != null && targetDocumentIds.Contains(d.TargetDocument.Id))
+            .ToListAsync(ct);
+    }
+
     /// <summary>
     /// نطاق «المعلّقة بانتظار الاعتماد» لنطاق رئيسٍ معيّن (§7.1 + §7.4) — مشترك
     /// بين القائمة والعدّاد: داخلية بدائرة لرئيس شعبته (أو قسمه إن بلا شعبة)،

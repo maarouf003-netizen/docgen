@@ -23,6 +23,14 @@ public interface IDocumentDelegationService
     Task<List<DelegationDto>> ListForDocumentAsync(int documentId, CancellationToken ct = default);
 
     /// <summary>
+    /// مزامنة المحامي المختص للإنابات المرتبطة بملفات منابة نُقلت ملكيتها (داخل معاملة
+    /// النقل): الحقل المخزّن على الإنابة يصبح المالك الجديد بدل أول محامٍ أُسندت إليه.
+    /// لا يمسّ الملف المنيب ولا التنبيهات (تلك مسؤولية مسار النقل/التنبيهات).
+    /// </summary>
+    Task SyncTargetsTransferredAsync(IReadOnlyCollection<int> targetDocumentIds, int newLawyerId,
+        string? actorName, CancellationToken ct = default);
+
+    /// <summary>
     /// طلبات الإنابة المعلّقة لنطاق الرئيس (§7.1): رئيس القسم (دوائر القسم وبلا
     /// دائرة + الخارجية غير الموجَّهة في فرعه)، ورئيس الشعبة (دوائر شعبته +
     /// الخارجية الموجَّهة لشعبته). `rejectedOnly` لفلتر «مرفوض بانتظار التصحيح» (§7.4).

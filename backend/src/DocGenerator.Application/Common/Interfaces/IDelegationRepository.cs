@@ -20,6 +20,10 @@ public interface IDelegationRepository : IRepository<DocumentDelegation>
     /// </summary>
     Task<DocumentDelegation?> FindByTargetAsync(int targetDocumentId, CancellationToken ct = default);
 
+    /// <summary>إنابات الملفات المنابة المحددة (متتبَّعة للكتابة) — لمزامنة ملكيتها عند النقل.</summary>
+    Task<List<DocumentDelegation>> ListByTargetDocumentIdsAsync(
+        IReadOnlyCollection<int> targetDocumentIds, CancellationToken ct = default);
+
     /// <summary>
     /// طلبات الإنابة المعلّقة (بانتظار الاعتماد) لنطاق رئيسٍ معيّن (§7.1 + §7.4):
     /// داخلية بدائرة لرئيس شعبته (أو قسمه إن بلا شعبة)، وداخلية بلا دائرة
