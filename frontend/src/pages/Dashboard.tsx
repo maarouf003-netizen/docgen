@@ -21,8 +21,15 @@ import { LawyerIconRow } from '../components/dashboard/LawyerIconRow';
 import { ManagerIconRow } from '../components/dashboard/ManagerIconRow';
 import { isDueTodayOrOverdue } from '../components/dashboard/dashboardFormat';
 import { currentWeekRange, dayKeyOf, expandPersonalReminder, groupRemindersByDay, hasPendingOccurrenceOnOrBefore, parseDayKey } from '../components/dashboard/personalReminders';
-import { CORRESPONDENCE_UNSEEN_EVENT } from '../components/correspondence/correspondenceDisplay';
+import {
+  CORRESPONDENCE_UNSEEN_COUNT_SUFFIX,
+  CORRESPONDENCE_UNSEEN_EVENT,
+} from '../components/correspondence/correspondenceDisplay';
 import { REVIEWS_UNSEEN_EVENT } from '../components/review/reviewDisplay';
+import {
+  SUGGESTIONS_UNREAD_ENDPOINT,
+  SUGGESTIONS_UNREAD_EVENT,
+} from '../components/suggestions/suggestionsDisplay';
 import { useBadgeCount } from '../hooks/useBadgeCount';
 import { ReminderList } from '../components/dashboard/ReminderList';
 
@@ -81,28 +88,31 @@ export default function Dashboard() {
   });
 
   // عدّادا بطاقتي المطالعات/المراسلات للمحامي: جلب واحد عند التركيب + تحديث
-  // فور حدث المشاهدة — بلا استطلاع دوري مكرر (الاستطلاع الدوري في `Layout` وحده).
+  // فور حدث المشاهدة/الرد — بلا استطلاع دوري مكرر (الاستطلاع الدوري في `Layout` وحده).
   const unseenRepliesQuery = useCancellableRequest<{ count: number }>(
     (signal) => api.get('/review-letters/unseen-replies-count', { signal }).then((r) => r.data),
     [isLawyer],
     { enabled: userReady && isLawyer },
   );
-  const urgentQuery = useCancellableRequest<{ count: number }>(
-    (signal) => api.get('/correspondence/urgent-unseen-count', { signal }).then((r) => r.data),
+  const unseenCorrespondenceQuery = useCancellableRequest<{ count: number }>(
+    (signal) =>
+      api
+        .get(`/correspondence${CORRESPONDENCE_UNSEEN_COUNT_SUFFIX}`, { signal })
+        .then((r) => r.data),
     [isLawyer],
     { enabled: userReady && isLawyer },
   );
   const { refetch: refetchReplies } = unseenRepliesQuery;
-  const { refetch: refetchUrgent } = urgentQuery;
+  const { refetch: refetchUnseenCorrespondence } = unseenCorrespondenceQuery;
   useEffect(() => {
     if (!isLawyer) return;
     window.addEventListener(REVIEWS_UNSEEN_EVENT, refetchReplies);
-    window.addEventListener(CORRESPONDENCE_UNSEEN_EVENT, refetchUrgent);
+    window.addEventListener(CORRESPONDENCE_UNSEEN_EVENT, refetchUnseenCorrespondence);
     return () => {
       window.removeEventListener(REVIEWS_UNSEEN_EVENT, refetchReplies);
-      window.removeEventListener(CORRESPONDENCE_UNSEEN_EVENT, refetchUrgent);
+      window.removeEventListener(CORRESPONDENCE_UNSEEN_EVENT, refetchUnseenCorrespondence);
     };
-  }, [isLawyer, refetchReplies, refetchUrgent]);
+  }, [isLawyer, refetchReplies, refetchUnseenCorrespondence]);
 
   // عدّادات بطاقات رئيس القسم: جلب عند التركيب + استطلاع كل دقيقة (إيقاع الأجراس
   // السابقة) + تحديث حدثي للمراسلات — بلا استطلاع مكرر في `Layout` له.
@@ -111,7 +121,7 @@ export default function Dashboard() {
     intervalMs: 60_000,
     shape: 'count',
   });
-  const headUrgentCorrespondence = useBadgeCount('/correspondence/urgent-unseen-count', {
+  const headUnseenCorrespondence = useBadgeCount(`/correspondence${CORRESPONDENCE_UNSEEN_COUNT_SUFFIX}`, {
     enabled: headBadgesEnabled,
     intervalMs: 60_000,
     shape: 'count',
@@ -121,6 +131,16 @@ export default function Dashboard() {
     enabled: headBadgesEnabled,
     intervalMs: 60_000,
     shape: 'count',
+  });
+
+  // شارة «اقتراحات التطوير» لصندوق المشرف/المدير: عدد غير المقروء، تُجلب عند
+  // التركيب ثم كل دقيقة، وتُحدَّث فورًا عند التعليم داخل صفحة الاقتراحات.
+  const suggestionsUnread = useBadgeCount(SUGGESTIONS_UNREAD_ENDPOINT, {
+    enabled: userReady && isManager,
+    intervalMs: 60_000,
+    shape: 'count',
+    eventName: SUGGESTIONS_UNREAD_EVENT,
+    pauseWhenHidden: true,
   });
 
   // شارة معلقات الدوائر لرئيس القسم (B44): مجموع pendingCount من قائمة الإدارة —
@@ -152,7 +172,7 @@ export default function Dashboard() {
   const personalReminders = useMemo(() => personalQuery.data ?? [], [personalQuery.data]);
   const unreadCount = Math.max(0, Number(unreadQuery.data?.count) || 0);
   const unseenReplies = isLawyer ? Math.max(0, Number(unseenRepliesQuery.data?.count) || 0) : 0;
-  const urgentCorrespondence = isLawyer ? Math.max(0, Number(urgentQuery.data?.count) || 0) : 0;
+  const unseenCorrespondence = isLawyer ? Math.max(0, Number(unseenCorrespondenceQuery.data?.count) || 0) : 0;
   // بطاقة التذكيرات في اللوحة: الأسبوع الحالي فقط (من الأحد إلى السبت) —
   // ملف/استئناف بتواريخها، والشخصي بتكراراته غير المنجزة (الكل في `/calendar`).
   const weekRange = useMemo(() => currentWeekRange(), []);
@@ -208,7 +228,7 @@ export default function Dashboard() {
       <div className="max-w-7xl mx-auto">
         <GreetingHeader fullName={user?.fullName} />
         <div className="mt-4">
-          <ManagerIconRow isAdmin={isAdmin} />
+          <ManagerIconRow isAdmin={isAdmin} suggestionsUnread={suggestionsUnread} />
         </div>
       </div>
     );
@@ -221,7 +241,7 @@ export default function Dashboard() {
           <GreetingHeader fullName={user?.fullName} />
           <div className="mt-4">
             <LawyerIconRow
-              counts={{ unseenReplies, urgentCorrespondence, calendarAlerts, pendingRegistrations, alertUnread: unreadCount }}
+              counts={{ unseenReplies, unseenCorrespondence, calendarAlerts, pendingRegistrations, alertUnread: unreadCount }}
               showReferredFiles={showReferredFiles}
               pendingState={
                 pendingRegistrationsQuery.isLoading
@@ -265,7 +285,7 @@ export default function Dashboard() {
             <HeadIconRow
               counts={{
                 reviewsPending,
-                urgentCorrespondence: headUrgentCorrespondence,
+                unseenCorrespondence: headUnseenCorrespondence,
                 delegationsPending,
                 entityPending,
                 circuitsPending,

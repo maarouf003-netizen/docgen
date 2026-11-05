@@ -16,7 +16,7 @@ namespace DocGenerator.Application.Services;
 public interface IForumService
 {
     /// <summary>شريحة التيار بمفتاح `Id` (الأحدث أولًا بلا مؤشر) + `readCount` لرسائلي.</summary>
-    Task<ForumMessagesPageDto> ListAsync(int actorUserId, int limit, int? before, int? after, string? q, CancellationToken ct = default);
+    Task<ForumMessagesPageDto> ListAsync(int actorUserId, int limit, int? before, int? after, CancellationToken ct = default);
 
     /// <summary>رسالة واحدة بالمعرف (`null` للغائبة — دون كشف إضافي).</summary>
     Task<ForumMessageDto?> GetByIdAsync(int id, int actorUserId, CancellationToken ct = default);
@@ -100,15 +100,15 @@ public sealed class ForumService : IForumService
         _clock = clock;
     }
 
-    public async Task<ForumMessagesPageDto> ListAsync(int actorUserId, int limit, int? before, int? after, string? q, CancellationToken ct = default)
+    public async Task<ForumMessagesPageDto> ListAsync(int actorUserId, int limit, int? before, int? after, CancellationToken ct = default)
     {
         if (limit < 1 || limit > MaxLimit)
             limit = DefaultLimit;
-        var items = await _forum.ListSliceAsync(limit, before, after, q, ct);
+        var items = await _forum.ListSliceAsync(limit, before, after, ct);
         var counts = await _forum.CountReadsAsync(
             items.Where(m => m.AuthorId == actorUserId).Select(m => m.Id).ToList(), ct);
         var dtos = items.Select(m => ToDto(m, counts.GetValueOrDefault(m.Id))).ToList();
-        var hasOlder = dtos.Count > 0 && await _forum.HasOlderAsync(dtos[0].Id, q, ct);
+        var hasOlder = dtos.Count > 0 && await _forum.HasOlderAsync(dtos[0].Id, ct);
         return new ForumMessagesPageDto(dtos, hasOlder);
     }
 

@@ -10,7 +10,7 @@ vi.mock('react-router-dom', () => ({
   ),
 }));
 
-const zero = { reviewsPending: 0, urgentCorrespondence: 0, delegationsPending: 0, entityPending: 0, circuitsPending: 0, alertUnread: 0 };
+const zero = { reviewsPending: 0, unseenCorrespondence: 0, delegationsPending: 0, entityPending: 0, circuitsPending: 0, alertUnread: 0 };
 
 describe('HeadIconRow', () => {
   it('يعرض البطاقات الإحدى عشرة بروابطها الصحيحة', () => {
@@ -44,7 +44,7 @@ describe('HeadIconRow', () => {
   it('يُظهر الأجراس الأربعة بعدّاداتها في التسمية عند وجود تنبيه فقط', () => {
     render(
       <HeadIconRow
-        counts={{ reviewsPending: 2, urgentCorrespondence: 0, delegationsPending: 5, entityPending: 1, circuitsPending: 0, alertUnread: 0 }}
+        counts={{ reviewsPending: 2, unseenCorrespondence: 0, delegationsPending: 5, entityPending: 1, circuitsPending: 0, alertUnread: 0 }}
       />,
     );
 
@@ -69,7 +69,7 @@ describe('HeadIconRow', () => {
   it('يُظهر شارة معلقات الدوائر على بطاقة الإدارة عند وجود انتظار', () => {
     render(
       <HeadIconRow
-        counts={{ reviewsPending: 0, urgentCorrespondence: 0, delegationsPending: 0, entityPending: 0, circuitsPending: 3, alertUnread: 0 }}
+        counts={{ reviewsPending: 0, unseenCorrespondence: 0, delegationsPending: 0, entityPending: 0, circuitsPending: 3, alertUnread: 0 }}
       />,
     );
 
@@ -81,7 +81,7 @@ describe('HeadIconRow', () => {
   it('يستخدم المفرد التام عند العدّ 1 (لا «1 جهات» ولا «1 كتب»)', () => {
     render(
       <HeadIconRow
-        counts={{ reviewsPending: 1, urgentCorrespondence: 0, delegationsPending: 1, entityPending: 0, circuitsPending: 0, alertUnread: 0 }}
+        counts={{ reviewsPending: 1, unseenCorrespondence: 0, delegationsPending: 1, entityPending: 0, circuitsPending: 0, alertUnread: 0 }}
       />,
     );
 

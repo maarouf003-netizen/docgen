@@ -1,5 +1,6 @@
 import { ICONS } from './dashboardIcons';
 import { IconCardGrid, type CardDef } from './IconCards';
+import { arabicCount } from './dashboardFormat';
 
 /**
  * صف أيقونات لوحة المدير/مشرف النظام (جوال أولًا: عمودان → 3 → 3):
@@ -11,11 +12,21 @@ import { IconCardGrid, type CardDef } from './IconCards';
  * - «التنبيهات» بطاقة وصول إشرافي (`/alerts` — قراءة عبر الفروع) بلا شارة عدّاد:
  *   العدّاد مستلم-محدد خلفيًا، والمدير/المشرف لا يطلبانه (§18:3044، §9.1).
  * - الإحصائيات بطاقة تفتح `/stats` مثل المحامي ورئيس القسم (لا عرض مباشر في اللوحة).
+ * - «اقتراحات التطوير» تحمل شارة حمراء بعدد الاقتراحات غير المقروءة في الصندوق.
+ * - «المراسلات» بلا شارة عمدًا: المدير/المشرف ليسا طرفًا في المراسلات، فلا
+ *   «غير مقروء» شخصي لهما.
  * - «الحساب الشخصي» بطاقة للمدير والمشرف مثل المحامي ورئيس القسم —
  *   صفحة الحساب تعرض الملف وكلمة المرور والملخص فقط، بلا إرسال اقتراحات
  *   (المشرف/المدير يستقبلانها في `/suggestions` — الإرسال محظور خلفيًا).
  */
-export function ManagerIconRow({ isAdmin = false }: { isAdmin?: boolean }) {
+export function ManagerIconRow({
+  isAdmin = false,
+  suggestionsUnread = 0,
+}: {
+  isAdmin?: boolean;
+  /** عدد الاقتراحات غير المقروءة (صندوق المشرف/المدير) — شارة البطاقة. */
+  suggestionsUnread?: number;
+}) {
   const cards: CardDef[] = [
     {
       key: 'stats',
@@ -57,6 +68,13 @@ export function ManagerIconRow({ isAdmin = false }: { isAdmin?: boolean }) {
       title: 'اقتراحات التطوير',
       subtitle: 'صندوق الاقتراحات',
       tone: 'bg-violet-100 text-violet-700',
+      badge:
+        suggestionsUnread > 0
+          ? {
+              count: suggestionsUnread,
+              label: arabicCount(suggestionsUnread, 'اقتراح واحد غير مقروء', 'اقتراحات غير مقروءة'),
+            }
+          : undefined,
       to: '/suggestions',
     },
     {

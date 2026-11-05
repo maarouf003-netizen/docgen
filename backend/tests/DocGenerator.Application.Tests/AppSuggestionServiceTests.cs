@@ -98,6 +98,22 @@ public class AppSuggestionServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CountUnread_TracksUnreadOnly()
+    {
+        Assert.Equal(0, await _service.CountUnreadAsync());
+
+        var first = await _service.CreateAsync("أول اقتراح", _lawyer.Id, "lawyer");
+        await _service.CreateAsync("ثانٍ اقتراح", _lawyer.Id, "lawyer");
+        Assert.Equal(2, await _service.CountUnreadAsync());
+
+        Assert.True(await _service.MarkReadAsync(first.Id));
+        Assert.Equal(1, await _service.CountUnreadAsync());
+        // التعليم المتكرر لا ينقص العدّاد مرتين.
+        Assert.True(await _service.MarkReadAsync(first.Id));
+        Assert.Equal(1, await _service.CountUnreadAsync());
+    }
+
+    [Fact]
     public async Task ListForAdmin_PagesAndClamps()
     {
         await _service.CreateAsync("الأول", _lawyer.Id, "lawyer");

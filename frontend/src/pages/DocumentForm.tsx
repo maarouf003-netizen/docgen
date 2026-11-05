@@ -32,6 +32,7 @@ import {
 import { ExecutedSideSections } from '../components/form/ExecutedSideSections';
 import { makeFieldHelpers } from '../components/form/formFields';
 import { FormSectionTitle } from '../components/form/FormSectionTitle';
+import FloatingFormAlert from '../components/FloatingFormAlert';
 import { PublicEntityPickerModal } from '../components/entity/PublicEntityPickerModal';
 import CircuitPickerModal from '../components/circuit/CircuitPickerModal';
 import type { ExecutionCircuitDto } from '../types';
@@ -1023,9 +1024,7 @@ export default function DocumentForm() {
         </Link>
       </div>
 
-      {error && (
-        <div className="bg-red-50 text-red-700 border border-red-200 rounded-lg p-3 mb-4">{error}</div>
-      )}
+      {error && <FloatingFormAlert message={error} onDismiss={() => setError('')} />}
 
       <form onSubmit={submit} noValidate className="bg-white rounded-xl shadow p-6">
         <FormSectionTitle title="⚖️ صفة الجهة العامة" />

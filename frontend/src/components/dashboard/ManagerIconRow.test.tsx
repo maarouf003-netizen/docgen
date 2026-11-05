@@ -53,6 +53,14 @@ describe('ManagerIconRow', () => {
     expect(within(nav).queryByRole('link', { name: 'محامو الفرع' })).not.toBeInTheDocument();
   });
 
+  it('يعرض شارة حمراء على بطاقة «اقتراحات التطوير» بعدد غير المقروء', () => {
+    render(<ManagerIconRow suggestionsUnread={3} />);
+
+    expect(
+      screen.getByRole('link', { name: 'اقتراحات التطوير — 3 اقتراحات غير مقروءة' }),
+    ).toHaveAttribute('href', '/suggestions');
+  });
+
   it('يعرض للمشرف 12 بطاقة مع «محامو الفرع» و«الحساب الشخصي»', () => {
     render(<ManagerIconRow isAdmin />);
 

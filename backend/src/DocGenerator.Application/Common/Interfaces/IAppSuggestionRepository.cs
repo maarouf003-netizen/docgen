@@ -13,4 +13,7 @@ public interface IAppSuggestionRepository : IRepository<AppSuggestion>
 
     /// <summary>اقتراح واحد مع اسم المرسل (لعرض المشرف) — `null` عند الغياب.</summary>
     Task<AppSuggestion?> GetByIdWithSenderAsync(int id, CancellationToken ct = default);
+
+    /// <summary>عدد الاقتراحات غير المقروءة في صندوق المشرف — عدّاد الشارة.</summary>
+    Task<int> CountUnreadAsync(CancellationToken ct = default);
 }

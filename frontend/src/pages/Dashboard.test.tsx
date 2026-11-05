@@ -155,11 +155,12 @@ function mockApi(overrides?: {
   lawyers?: Array<{ id: number; fullName: string; isActive?: boolean }>;
   personal?: PersonalReminderDto[];
   pendingReviews?: number;
-  urgentCount?: number;
+  unseenCorrespondenceCount?: number;
   pendingDelegationsCount?: number;
   entityReviewCount?: number;
   circuits?: Array<{ id: number; name: string; pendingCount: number }>;
   pendingRegistrations?: Array<{ documentId: number }>;
+  suggestionsUnread?: number;
 }) {
   const reminders = overrides?.reminders ?? [];
   const monthly = overrides?.monthly ?? [];
@@ -167,9 +168,10 @@ function mockApi(overrides?: {
   const lawyers = overrides?.lawyers ?? [];
   const personal = overrides?.personal ?? [];
   const pendingReviews = overrides?.pendingReviews ?? 0;
-  const urgentCount = overrides?.urgentCount ?? 0;
+  const unseenCorrespondenceCount = overrides?.unseenCorrespondenceCount ?? 0;
   const pendingDelegationsCount = overrides?.pendingDelegationsCount ?? 0;
   const entityReviewCount = overrides?.entityReviewCount ?? 0;
+  const suggestionsUnread = overrides?.suggestionsUnread ?? 0;
   const circuits = overrides?.circuits ?? [];
   const pendingRegistrations = overrides?.pendingRegistrations ?? [];
   (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation(
@@ -183,7 +185,8 @@ function mockApi(overrides?: {
       if (url === '/users/lawyers') return Promise.resolve({ data: lawyers });
       if (url === '/monthly-stats') return Promise.resolve({ data: monthly });
       if (url === '/review-letters/pending-count') return Promise.resolve({ data: { count: pendingReviews } });
-      if (url === '/correspondence/urgent-unseen-count') return Promise.resolve({ data: { count: urgentCount } });
+      if (url === '/correspondence/unseen-count') return Promise.resolve({ data: { count: unseenCorrespondenceCount } });
+      if (url === '/app-suggestions/unread-count') return Promise.resolve({ data: { count: suggestionsUnread } });
       if (url === '/delegations/pending-count') return Promise.resolve({ data: { count: pendingDelegationsCount } });
       if (url === '/entity-registry/pending-review-count') return Promise.resolve({ data: { count: entityReviewCount } });
       if (url === '/execution-circuits/mine') return Promise.resolve({ data: circuits });
@@ -249,7 +252,7 @@ describe('Dashboard للمحامي', () => {
     expect(api.get).toHaveBeenCalledWith('/appeals/reminders', expect.any(Object));
     expect(api.get).toHaveBeenCalledWith('/personal-reminders', expect.any(Object));
     expect(api.get).toHaveBeenCalledWith('/review-letters/unseen-replies-count', expect.any(Object));
-    expect(api.get).toHaveBeenCalledWith('/correspondence/urgent-unseen-count', expect.any(Object));
+    expect(api.get).toHaveBeenCalledWith('/correspondence/unseen-count', expect.any(Object));
     expect(api.get).toHaveBeenCalledWith('/reminders', expect.any(Object));
     // اللوحة لا تُنزل قائمة تنبيهات: بطاقة «التنبيهات» تفتح `/alerts`، والشارة وحدها
     // تُقرأ من العدّاد الخفيف (بلا قصّ ولا صفحة تُجلب بلا سبب).
@@ -485,7 +488,7 @@ describe('Dashboard لرئيس القسم', () => {
     mockApi({
       lawyers: BRANCH_LAWYERS,
       pendingReviews: 2,
-      urgentCount: 1,
+      unseenCorrespondenceCount: 1,
       pendingDelegationsCount: 2,
       entityReviewCount: 1,
     });
@@ -503,7 +506,7 @@ describe('Dashboard لرئيس القسم', () => {
       'href',
       '/reviews',
     );
-    expect(within(quickNav).getByRole('link', { name: 'المراسلات — مراسلة عاجلة واحدة' })).toHaveAttribute(
+    expect(within(quickNav).getByRole('link', { name: 'المراسلات — مراسلة واحدة غير مقروءة' })).toHaveAttribute(
       'href',
       '/correspondence',
     );
@@ -521,7 +524,7 @@ describe('Dashboard لرئيس القسم', () => {
     expect(screen.queryByText('مراجعة سجل الجهات العامة')).not.toBeInTheDocument();
 
     expect(api.get).toHaveBeenCalledWith('/review-letters/pending-count');
-    expect(api.get).toHaveBeenCalledWith('/correspondence/urgent-unseen-count');
+    expect(api.get).toHaveBeenCalledWith('/correspondence/unseen-count');
     // الشارات الثقيلة سابقًا صارت عدّادات خفيفة — القوائم الكاملة لا تُطلب إطلاقًا.
     expect(api.get).toHaveBeenCalledWith('/delegations/pending-count');
     expect(api.get).toHaveBeenCalledWith('/entity-registry/pending-review-count');
@@ -628,7 +631,7 @@ describe('Dashboard لرئيس القسم', () => {
     expect(await screen.findByRole('heading', { name: 'مرحبًا، رئيس' })).toBeInTheDocument();
     // الشارات صفر بلا كسر — الأسماء المجردة فقط، ونقاط العدّ لا تُستدعى أصلًا.
     expect(api.get).not.toHaveBeenCalledWith('/review-letters/pending-count', expect.any(Object));
-    expect(api.get).not.toHaveBeenCalledWith('/correspondence/urgent-unseen-count', expect.any(Object));
+    expect(api.get).not.toHaveBeenCalledWith('/correspondence/unseen-count', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/delegations/pending-count', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/entity-registry/pending-review-count', expect.any(Object));
     // النطاق مرفوض خلفيًا (`403` — `D11`): لا طلب قائمة ولا صادر ولا عدّاد أصلًا.
@@ -719,6 +722,21 @@ describe('Dashboard للمدير/المشرف', () => {
     expect(api.get).not.toHaveBeenCalledWith('/branches', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/alerts', expect.any(Object));
     expect(api.get).not.toHaveBeenCalledWith('/reminders', expect.any(Object));
+  });
+
+  it('يعرض شارة حمراء لبطاقة «اقتراحات التطوير» بعدد غير المقروء', async () => {
+    useAuthMock.mockReturnValue({
+      user: { id: 1, username: 'manager1', fullName: 'مدير', role: 'manager', branchId: null },
+    });
+    mockApi({ suggestionsUnread: 3 });
+
+    render(<Dashboard />);
+
+    const quickNav = await screen.findByRole('navigation', { name: 'أقسام لوحة المدير' });
+    expect(
+      await within(quickNav).findByRole('link', { name: 'اقتراحات التطوير — 3 اقتراحات غير مقروءة' }),
+    ).toHaveAttribute('href', '/suggestions');
+    expect(api.get).toHaveBeenCalledWith('/app-suggestions/unread-count');
   });
 
   it('يعرض للمشرف 12 بطاقة مع «محامو الفرع» و«الحساب الشخصي»', async () => {

@@ -226,7 +226,9 @@ export default function CreateCorrespondenceModal({
             ))}
           </select>
           {importance === 'urgent' && (
-            <p className="text-xs text-red-600 mt-1">المراسلة العاجلة تُظهر جرسًا للطرف المستلم حتى يؤكد مشاهدتها.</p>
+            <p className="text-xs text-red-600 mt-1">
+              العاجلة تبقى مميّزة في القائمة، وكل مراسلة غير مؤكَّدة المشاهدة تُظهر شارة حمراء للطرف المستلم.
+            </p>
           )}
 
           <label htmlFor="correspondence-body" className="block text-sm font-medium text-gray-700 mb-1.5 mt-4">

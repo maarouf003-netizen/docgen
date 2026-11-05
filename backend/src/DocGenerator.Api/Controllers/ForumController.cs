@@ -36,13 +36,13 @@ public class ForumController : ControllerBase
     /// <summary>رئيس الشعبة بلا شعبة جلسة مكسورة — تُرفض الكتابة ككل المسارات.</summary>
     private bool SubHeadSessionBroken => Role == UserRole.SubHead && SectionId is null;
 
-    /// <summary>شريحة التيار بمفتاح `Id` (الأحدث أولًا بلا مؤشر) + بحث النص.</summary>
+    /// <summary>شريحة التيار بمفتاح `Id` (الأحدث أولًا بلا مؤشر).</summary>
     [HttpGet("messages")]
     public async Task<IActionResult> List(
         [FromQuery] int limit = 30, [FromQuery] int? before = null,
-        [FromQuery] int? after = null, [FromQuery] string? q = null,
+        [FromQuery] int? after = null,
         CancellationToken ct = default)
-        => Ok(await _forum.ListAsync(UserId, limit, before, after, q, ct));
+        => Ok(await _forum.ListAsync(UserId, limit, before, after, ct));
 
     /// <summary>رسالة واحدة بالمعرف.</summary>
     [HttpGet("messages/{id:int}")]

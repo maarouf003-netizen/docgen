@@ -1,6 +1,11 @@
 import { useState } from 'react';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
+import { useBadgeCount } from '../hooks/useBadgeCount';
 import { api, getApiErrorMessage } from '../api/client';
+import {
+  SUGGESTIONS_UNREAD_ENDPOINT,
+  SUGGESTIONS_UNREAD_EVENT,
+} from '../components/suggestions/suggestionsDisplay';
 import type { AppSuggestionDto, PagedResult } from '../types';
 
 /** حجم صفحة صندوق المشرف — يطابق افتراضي الخلفية. */
@@ -26,7 +31,15 @@ export default function SuggestionsPage() {
   const suggestions = suggestionsQuery.data?.items ?? [];
   const totalPages = suggestionsQuery.data?.totalPages ?? 0;
   const currentPage = suggestionsQuery.data?.page ?? page;
-  const unread = suggestions.filter((s) => !s.isRead).length;
+  // عدّاد إجمالي غير المقروء من الخادم (لا الصفحة المعروضة وحدها) — يُحدَّث فور
+  // التعليم عبر حدث `SUGGESTIONS_UNREAD_EVENT` بدل إعادة عدّ محلي ناقص.
+  const unread = useBadgeCount(SUGGESTIONS_UNREAD_ENDPOINT, {
+    enabled: true,
+    intervalMs: 60_000,
+    eventName: SUGGESTIONS_UNREAD_EVENT,
+    shape: 'count',
+    pauseWhenHidden: true,
+  });
 
   const markRead = async (id: number) => {
     setMarkingId(id);
@@ -36,6 +49,7 @@ export default function SuggestionsPage() {
       suggestionsQuery.setData((prev) =>
         prev ? { ...prev, items: prev.items.map((s) => (s.id === id ? { ...s, isRead: true } : s)) } : prev,
       );
+      window.dispatchEvent(new Event(SUGGESTIONS_UNREAD_EVENT));
     } catch (err) {
       setError(getApiErrorMessage(err));
     } finally {

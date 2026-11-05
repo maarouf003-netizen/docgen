@@ -4,7 +4,7 @@ import { arabicCount } from './dashboardFormat';
 
 export interface HeadIconCounts {
   reviewsPending: number;
-  urgentCorrespondence: number;
+  unseenCorrespondence: number;
   delegationsPending: number;
   entityPending: number;
   /** ملفات بانتظار إعادة القيد في دوائر الفرع (شارة بطاقة الدوائر — B44). */
@@ -60,13 +60,13 @@ export function HeadIconRow({
       icon: ICONS.correspondence,
       title: 'المراسلات',
       subtitle:
-        counts.urgentCorrespondence > 0 ? `${counts.urgentCorrespondence} عاجلة تحتاج المشاهدة` : 'لا عاجل جديد',
+        counts.unseenCorrespondence > 0 ? `${counts.unseenCorrespondence} بانتظار تأكيد المشاهدة` : 'لا جديد',
       tone: 'bg-amber-100 text-amber-700',
       badge:
-        counts.urgentCorrespondence > 0
+        counts.unseenCorrespondence > 0
           ? {
-              count: counts.urgentCorrespondence,
-              label: arabicCount(counts.urgentCorrespondence, 'مراسلة عاجلة واحدة', 'مراسلات عاجلة'),
+              count: counts.unseenCorrespondence,
+              label: arabicCount(counts.unseenCorrespondence, 'مراسلة واحدة غير مقروءة', 'مراسلات غير مقروءة'),
             }
           : undefined,
       to: '/correspondence',

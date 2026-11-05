@@ -546,7 +546,7 @@ public class CorrespondenceServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task UrgentBell_CountsOnlyUrgentUnseen_ForTargetOnly()
+    public async Task UnseenCount_CountsAllUnseenForTargetOnly()
     {
         var urgent = await _service.CreateAsync(
             new CreateCorrespondenceRequest(null, _delegate.Id, "urgent", "<p>عاجل</p>"),
@@ -555,13 +555,44 @@ public class CorrespondenceServiceTests : IDisposable
             new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>عادي</p>"),
             _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
 
-        Assert.Equal(1, await _service.CountUrgentUnseenAsync(_delegate.Id));
-        // المنشئ يعرف محتواه — لا جرس له على ما سطّره.
-        Assert.Equal(0, await _service.CountUrgentUnseenAsync(_lawyer1.Id));
+        // الشارة تشمل كل غير المؤكَّد المشاهدة لا العاجل وحده.
+        Assert.Equal(2, await _service.CountUnseenAsync(_delegate.Id));
+        // المنشئ يعرف محتواه — لا تنبيه له على ما سطّره.
+        Assert.Equal(0, await _service.CountUnseenAsync(_lawyer1.Id));
 
         await _service.MarkSeenAsync(
             urgent.Id, _delegate.Id, "مندوب الجهة", UserRole.EntityManager, null);
-        Assert.Equal(0, await _service.CountUrgentUnseenAsync(_delegate.Id));
+        Assert.Equal(1, await _service.CountUnseenAsync(_delegate.Id));
+    }
+
+    [Fact]
+    public async Task Reply_RecordsSeenReceiptAutomatically()
+    {
+        var letter = await _service.CreateAsync(
+            new CreateCorrespondenceRequest(null, _delegate.Id, "normal", "<p>الأصل</p>"),
+            _lawyer1.Id, "المحامي الأول", UserRole.Lawyer, _branchId);
+        Assert.Equal(1, await _service.CountUnseenAsync(_delegate.Id));
+
+        await _service.ReplyAsync(letter.Id, new ReplyCorrespondenceRequest("<p>رد المستلم</p>"),
+            _delegate.Id, "مندوب الجهة");
+
+        // الرد يُوثّق المشاهدة تلقائيًا: الحالة «تمت المشاهدة»، وتوثيق واحد للمستلم،
+        // ويخرج من عدّاد غير المؤكَّد المشاهدة — بلا حاجة لزر «تمت المشاهدة».
+        var stored = await _service.GetByIdAsync(
+            letter.Id, _delegate.Id, UserRole.EntityManager, null);
+        Assert.Equal(Correspondence.ViewStatusSeen, stored.ViewStatus);
+        var receipt = Assert.Single(stored.Receipts);
+        Assert.Equal(_delegate.Id, receipt.UserId);
+        Assert.Equal(0, await _service.CountUnseenAsync(_delegate.Id));
+
+        // التوثيق لا يُكرَّر عند الرد مرة أخرى، ويبقى أول توثيق هو المرجع.
+        var firstSeenAt = receipt.SeenAt;
+        await _service.ReplyAsync(letter.Id, new ReplyCorrespondenceRequest("<p>رد ثانٍ</p>"),
+            _delegate.Id, "مندوب الجهة");
+        var afterSecondReply = await _service.GetByIdAsync(
+            letter.Id, _delegate.Id, UserRole.EntityManager, null);
+        var again = Assert.Single(afterSecondReply.Receipts);
+        Assert.Equal(firstSeenAt, again.SeenAt);
     }
 
     [Fact]
@@ -915,7 +946,7 @@ var names = targets.Select(t => t.FullName).ToList();
             return await _inner.NumberExistsAsync(correspondenceNumber, ct);
         }
 
-        public Task<int> CountUrgentUnseenForTargetAsync(int userId, CancellationToken ct = default) => _inner.CountUrgentUnseenForTargetAsync(userId, ct);
+        public Task<int> CountUnseenForTargetAsync(int userId, CancellationToken ct = default) => _inner.CountUnseenForTargetAsync(userId, ct);
 
         public Task<CorrespondenceReceipt?> FindReceiptAsync(int correspondenceId, int userId, CancellationToken ct = default) => _inner.FindReceiptAsync(correspondenceId, userId, ct);
 

@@ -12,12 +12,11 @@ public interface IForumRepository : IRepository<ForumMessage>
     /// <summary>
     /// شريحة التيار تصاعديًا (`CreatedAt`, `Id`): بلا مؤشر = أحدث `limit`؛
     /// `before` = أحدث `limit` قبل المعرف؛ `after` = أول `limit` بعده.
-    /// مع `q` يُتجاهل المؤشران وتُعاد أحدث المطابقات (بحث النص).
     /// </summary>
-    Task<List<ForumMessage>> ListSliceAsync(int limit, int? before, int? after, string? q, CancellationToken ct = default);
+    Task<List<ForumMessage>> ListSliceAsync(int limit, int? before, int? after, CancellationToken ct = default);
 
-    /// <summary>هل توجد رسائل أقدم من `oldestId` (مع نفس فلتر البحث)؟</summary>
-    Task<bool> HasOlderAsync(int oldestId, string? q, CancellationToken ct = default);
+    /// <summary>هل توجد رسائل أقدم من `oldestId`؟</summary>
+    Task<bool> HasOlderAsync(int oldestId, CancellationToken ct = default);
 
     /// <summary>الرسالة المثبّتة الحالية (`null` عند عدمها) — للشريط.</summary>
     Task<ForumMessage?> GetPinnedAsync(CancellationToken ct = default);

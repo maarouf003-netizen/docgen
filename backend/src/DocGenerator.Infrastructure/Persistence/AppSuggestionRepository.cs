@@ -36,4 +36,7 @@ public class AppSuggestionRepository : Repository<AppSuggestion>, IAppSuggestion
             .AsNoTracking()
             .Include(s => s.Sender)
             .FirstOrDefaultAsync(s => s.Id == id, ct);
+
+    public Task<int> CountUnreadAsync(CancellationToken ct = default)
+        => Db.AppSuggestions.CountAsync(s => !s.IsRead, ct);
 }

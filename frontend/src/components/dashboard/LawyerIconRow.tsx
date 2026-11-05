@@ -4,7 +4,7 @@ import { arabicCount } from './dashboardFormat';
 
 export interface LawyerIconCounts {
   unseenReplies: number;
-  urgentCorrespondence: number;
+  unseenCorrespondence: number;
   calendarAlerts: number;
   /** ملفات المحامي المحالة بانتظار تحديث بياناتها (بطاقة تفتح صفحة المعلقات — B19). */
   pendingRegistrations: number;
@@ -70,13 +70,13 @@ export function LawyerIconRow({
       icon: ICONS.correspondence,
       title: 'المراسلات',
       subtitle:
-        counts.urgentCorrespondence > 0 ? `${counts.urgentCorrespondence} عاجلة تحتاج المشاهدة` : 'لا عاجل جديد',
+        counts.unseenCorrespondence > 0 ? `${counts.unseenCorrespondence} بانتظار تأكيد المشاهدة` : 'لا جديد',
       tone: 'bg-amber-100 text-amber-700',
       badge:
-        counts.urgentCorrespondence > 0
+        counts.unseenCorrespondence > 0
           ? {
-              count: counts.urgentCorrespondence,
-              label: arabicCount(counts.urgentCorrespondence, 'مراسلة عاجلة واحدة', 'مراسلات عاجلة'),
+              count: counts.unseenCorrespondence,
+              label: arabicCount(counts.unseenCorrespondence, 'مراسلة واحدة غير مقروءة', 'مراسلات غير مقروءة'),
             }
           : undefined,
       to: '/correspondence',

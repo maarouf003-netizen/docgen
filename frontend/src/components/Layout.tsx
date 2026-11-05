@@ -8,7 +8,10 @@ import { useIsMobile } from '../hooks/useMediaQuery';
 import NetworkStatusBanner from './NetworkStatusBanner';
 import CurrentYearBanner from './CurrentYearBanner';
 import CorrespondenceBell from './correspondence/CorrespondenceBell';
-import { CORRESPONDENCE_UNSEEN_EVENT } from './correspondence/correspondenceDisplay';
+import {
+  CORRESPONDENCE_UNSEEN_COUNT_SUFFIX,
+  CORRESPONDENCE_UNSEEN_EVENT,
+} from './correspondence/correspondenceDisplay';
 import { ComingSoonToast } from './ComingSoonToast';
 import { ICONS } from './dashboard/dashboardIcons';
 import nationalEmblem from '../assets/national.png';
@@ -39,26 +42,26 @@ export default function Layout() {
   const isLawyerUser = user?.role === 'lawyer';
   const isManager = hasFullAccessRole(user?.role);
   // رئيس القسم يجلب عدّاده من لوحته (بطاقة المراسلات) — هذا الاستطلاع للمحامي والمندوب فقط.
-  const canHaveCorrespondenceUrgent =
+  const canHaveCorrespondenceUnseen =
     user?.role === 'lawyer' || user?.role === 'entitymanager';
-  const [urgentCorrespondence, setUrgentCorrespondence] = useState(0);
+  const [unseenCorrespondence, setUnseenCorrespondence] = useState(0);
 
-  // عدّاد المراسلات العاجلة بلا تأكيد مشاهدة — الاستطلاع الوحيد: يغذّي شارة بند
-  // المراسلات والأجراس معًا (تُمرَّر count للأجراس فلا تستطلع بنفسها)، يُحدَّث كل
-  // دقيقة وفورًا عند تأكيد المشاهدة (حدث correspondence:unseen-changed).
-  // المندوب يُغذَّى من مسار البوابة، وغيره من المسار الرئيسي.
+  // عدّاد المراسلات غير المؤكَّدة المشاهدة (بأي أهمية) — الاستطلاع الوحيد: يغذّي
+  // شارة بند المراسلات والأجراس معًا (تُمرَّر count للأجراس فلا تستطلع بنفسها)،
+  // يُحدَّث كل دقيقة وفورًا عند تأكيد المشاهدة أو الرد (حدث
+  // correspondence:unseen-changed). المندوب يُغذَّى من مسار البوابة، وغيره من
+  // المسار الرئيسي.
   useEffect(() => {
-    if (!canHaveCorrespondenceUrgent) return undefined;
+    if (!canHaveCorrespondenceUnseen) return undefined;
     const endpoint =
-      user?.role === 'entitymanager'
-        ? '/portal/correspondence/urgent-unseen-count'
-        : '/correspondence/urgent-unseen-count';
+      (user?.role === 'entitymanager' ? '/portal/correspondence' : '/correspondence') +
+      CORRESPONDENCE_UNSEEN_COUNT_SUFFIX;
     let cancelled = false;
     const fetchCount = () =>
       api
         .get<{ count: number }>(endpoint)
         .then((r) => {
-          if (!cancelled) setUrgentCorrespondence(r.data.count);
+          if (!cancelled) setUnseenCorrespondence(r.data.count);
         })
         .catch(() => {
           /* الشارة تبقى على آخر قيمة معروفة عند فشل التحديث */
@@ -72,7 +75,7 @@ export default function Layout() {
       window.clearInterval(timer);
       window.removeEventListener(CORRESPONDENCE_UNSEEN_EVENT, onSeenChanged);
     };
-  }, [canHaveCorrespondenceUrgent, user?.role]);
+  }, [canHaveCorrespondenceUnseen, user?.role]);
 
   // نمط WAI-ARIA Dialog: Escape يغلق، والتركيز محصور داخل الدرج أثناء فتحه،
   // ويعاد إلى زر الفتح عند الإغلاق — دورة تركيز كاملة لمستخدمي لوحة المفاتيح.
@@ -138,7 +141,7 @@ export default function Layout() {
     navItems.push({
       to: '/portal/correspondence',
       label: 'المراسلات',
-      badge: urgentCorrespondence > 0 ? urgentCorrespondence : undefined,
+      badge: unseenCorrespondence > 0 ? unseenCorrespondence : undefined,
     });
   } else if (isLawyerUser || isHeadOrSubHead || isManager) {
     // المحامي ورئيس القسم والشعبة والمدير ومشرف النظام: نفس البنود الأربعة عمدًا
@@ -232,9 +235,9 @@ export default function Layout() {
         <p className="text-xs text-emerald-300 mt-1">
           منصة إدارة الملفات التنفيذية المدعومة بمولد مستندات آلي
         </p>
-        {canHaveCorrespondenceUrgent && (
+        {canHaveCorrespondenceUnseen && (
           <div className="flex justify-center mt-2">
-            <CorrespondenceBell portal={isEntityManager} count={urgentCorrespondence} />
+            <CorrespondenceBell portal={isEntityManager} count={unseenCorrespondence} />
           </div>
         )}
       </div>
@@ -344,10 +347,10 @@ export default function Layout() {
                 className="w-9 h-9 shrink-0 rounded-full bg-white object-cover"
               />
               <h1 className="text-lg font-bold text-emerald-900">مسار</h1>
-              {canHaveCorrespondenceUrgent && (
+              {canHaveCorrespondenceUnseen && (
                 <CorrespondenceBell
                   portal={isEntityManager}
-                  count={urgentCorrespondence}
+                  count={unseenCorrespondence}
                   className="ms-auto"
                 />
               )}

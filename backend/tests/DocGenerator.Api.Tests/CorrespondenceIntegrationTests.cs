@@ -15,7 +15,8 @@ namespace DocGenerator.Api.Tests;
 /// <summary>
 /// تكامل المراسلات عبر التطبيق الحقيقي: تسطير برقم تلقائي، عزل المندوب عن المسار
 /// الرئيسي (الحارس)، كتابته عبر البوابة، الرد/اللاحق للأطراف فقط، وتوثيق المشاهدة
-/// مع انطفاء جرس العاجل — ويثبت تركيب حقن الخدمة الجديدة في حاوية الإنتاج.
+/// صراحةً أو تلقائيًا بالرد مع انطفاء عدّاد غير المؤكَّد المشاهدة (بأي أهمية) —
+/// ويثبت تركيب حقن الخدمة الجديدة في حاوية الإنتاج.
 /// </summary>
 public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
 {
@@ -234,6 +235,10 @@ public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
     [Fact]
     public async Task EntityManager_CreatesRepliesAndMarksSeen_ViaPortal()
     {
+        // الفرق لا القيمة المطلقة: قاعدة الاختبار مشتركة بين الفئات فقد تحمل
+        // مراسلات غير مؤكَّدة سابقة للمحامي نفسه.
+        var unseenBeforeCreate = await ReadCount(Lawyer(), "/api/correspondence/unseen-count");
+
         // تسطير من البوابة (يثبت تركيب الخدمة في مسار المندوب).
         var create = await Delegate().PostAsync("/api/portal/correspondence", Json(new
         {
@@ -247,10 +252,19 @@ public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
         var id = created.GetProperty("id").GetInt32();
         Assert.StartsWith("دمشق-", created.GetProperty("correspondenceNumber").GetString());
 
-        // المحامي المستلم يرد من المسار الرئيسي.
+        // جرس غير المؤكَّد المشاهدة قبل الرد (يشمل العاجل وغيره).
+        Assert.Equal(unseenBeforeCreate + 1, await ReadCount(Lawyer(), "/api/correspondence/unseen-count"));
+
+        // المحامي المستلم يرد من المسار الرئيسي — والرد يُوثّق مشاهدته تلقائيًا.
         var reply = await Lawyer().PostAsync($"/api/correspondence/{id}/replies",
             Json(new { bodyHtml = "<p>استلمنا، شكرًا</p>" }));
         Assert.Equal(HttpStatusCode.OK, reply.StatusCode);
+
+        Assert.Equal(unseenBeforeCreate, await ReadCount(Lawyer(), "/api/correspondence/unseen-count"));
+
+        var details = await ReadJsonAsync(await Lawyer().GetAsync($"/api/correspondence/{id}"));
+        Assert.Equal("seen", details.GetProperty("viewStatus").GetString());
+        Assert.Single(details.GetProperty("receipts").EnumerateArray());
 
         // المندوب المنشئ لا يرد على مراسلته (الرد للمستلم فقط).
         var selfReply = await Delegate().PostAsync($"/api/portal/correspondence/{id}/replies",
@@ -265,15 +279,47 @@ public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
             Json(new { bodyHtml = "<p>لاحق دخيل</p>" }));
         Assert.Equal(HttpStatusCode.Forbidden, foreignAddendum.StatusCode);
 
-        // جرس العاجل للمستلم (المحامي) ثم ينطفئ بعد التوثيق.
-        var bellBefore = await Lawyer().GetAsync("/api/correspondence/urgent-unseen-count");
-        var beforeText = await bellBefore.Content.ReadAsStringAsync();
-        Assert.Equal(1, JsonDocument.Parse(beforeText).RootElement.GetProperty("count").GetInt32());
+        // «تمت المشاهدة» الصريح يبقى متاحًا بعد الرد (لا يكرر التوثيق).
         var seen = await Lawyer().PostAsync($"/api/correspondence/{id}/mark-seen", Json(new { }));
         Assert.Equal(HttpStatusCode.OK, seen.StatusCode);
-        var bellAfter = await Lawyer().GetAsync("/api/correspondence/urgent-unseen-count");
-        var afterText = await bellAfter.Content.ReadAsStringAsync();
-        Assert.Equal(0, JsonDocument.Parse(afterText).RootElement.GetProperty("count").GetInt32());
+        Assert.Equal(unseenBeforeCreate, await ReadCount(Lawyer(), "/api/correspondence/unseen-count"));
+    }
+
+    [Fact]
+    public async Task Delegate_UnseenCount_ViaPortal_CountsNormalImportance()
+    {
+        // الشارة تشمل كل الأهميات لا العاجل وحده — مراسلة عادية تُحتسب فورًا.
+        // الفرق لا القيمة المطلقة (قاعدة مشتركة بين فئات API).
+        var lawyerBefore = await ReadCount(Lawyer(), "/api/correspondence/unseen-count");
+        var delegateBefore = await ReadCount(Delegate(), "/api/portal/correspondence/unseen-count");
+
+        var create = await Lawyer().PostAsync("/api/correspondence", Json(new
+        {
+            documentId = (int?)null,
+            targetUserId = _delegateId,
+            importance = "normal",
+            bodyHtml = "<p>عادي للمندوب</p>",
+        }));
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+
+        Assert.Equal(delegateBefore + 1,
+            await ReadCount(Delegate(), "/api/portal/correspondence/unseen-count"));
+        // كاتب المراسلة لا تتغير شارته — العدّاد للمستلم وحده.
+        Assert.Equal(lawyerBefore, await ReadCount(Lawyer(), "/api/correspondence/unseen-count"));
+
+        // توثيق المشاهدة يُنزل العدّاد (تنظيف حالة للاختبارات التالية).
+        var id = (await ReadJsonAsync(create)).GetProperty("id").GetInt32();
+        var markSeen = await Delegate().PostAsync($"/api/portal/correspondence/{id}/mark-seen", Json(new { }));
+        Assert.Equal(HttpStatusCode.OK, markSeen.StatusCode);
+        Assert.Equal(delegateBefore, await ReadCount(Delegate(), "/api/portal/correspondence/unseen-count"));
+    }
+
+    private static async Task<int> ReadCount(HttpClient client, string url)
+    {
+        using var response = await client.GetAsync(url);
+        var text = await response.Content.ReadAsStringAsync();
+        using var document = JsonDocument.Parse(text);
+        return document.RootElement.GetProperty("count").GetInt32();
     }
 
     [Fact]
