@@ -451,22 +451,17 @@ export interface DocumentUpsertRequest {
   /** ملاحظات السند التنفيذي (القرارات الأخرى) تحت «المتضمن» — نص حر اختياري. */
   inclusionNotes?: string;
   amountNumeric?: number;
-  amountWords?: string;
+  // حقول «المبلغ كتابة» ليست في عقد الطلب: التفقيط مشتقّ خادميًا من الرقم والعملة.
   currency?: string;
   amount2Numeric?: number;
-  amount2Words?: string;
   currency2?: string;
   amount3Numeric?: number;
-  amount3Words?: string;
   currency3?: string;
   inclusionAmountNumeric?: number;
-  inclusionAmountWords?: string;
   inclusionCurrency?: string;
   inclusionAmount2Numeric?: number;
-  inclusionAmount2Words?: string;
   inclusionCurrency2?: string;
   inclusionAmount3Numeric?: number;
-  inclusionAmount3Words?: string;
   inclusionCurrency3?: string;
   court?: string;
   /** دائرة التنفيذ (سجل الدوائر): إلزامية — الخادم يشتق court منها ويتجاهل النص دائمًا. */

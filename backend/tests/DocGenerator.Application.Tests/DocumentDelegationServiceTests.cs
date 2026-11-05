@@ -187,22 +187,18 @@ public class DocumentDelegationServiceTests : IDisposable
         InclusionText = doc.InclusionText,
         InclusionNotes = doc.InclusionNotes,
         AmountNumeric = doc.AmountNumeric,
-        AmountWords = doc.AmountWords,
+        // لا حقول «كتابة»: التفقيط مشتقّ خادميًا وغير موجود في عقد الطلب — وهذا هو
+        // شكل الحمولة الحقيقي من الواجهة الذي يجب أن يقبله الحارس على المناب.
         Currency = doc.Currency,
         Amount2Numeric = doc.Amount2Numeric,
-        Amount2Words = doc.Amount2Words,
         Currency2 = doc.Currency2,
         Amount3Numeric = doc.Amount3Numeric,
-        Amount3Words = doc.Amount3Words,
         Currency3 = doc.Currency3,
         InclusionAmountNumeric = doc.InclusionAmountNumeric,
-        InclusionAmountWords = doc.InclusionAmountWords,
         InclusionCurrency = doc.InclusionCurrency,
         InclusionAmount2Numeric = doc.InclusionAmount2Numeric,
-        InclusionAmount2Words = doc.InclusionAmount2Words,
         InclusionCurrency2 = doc.InclusionCurrency2,
         InclusionAmount3Numeric = doc.InclusionAmount3Numeric,
-        InclusionAmount3Words = doc.InclusionAmount3Words,
         InclusionCurrency3 = doc.InclusionCurrency3,
         Court = doc.Court,
         Applicant = doc.Applicant,
@@ -781,6 +777,74 @@ public class DocumentDelegationServiceTests : IDisposable
                 && a.Kind == HeadAlertKindCatalog.DelegationTransferredToLawyer
                 && !a.IsArchived)
             .ToListAsync());
+    }
+
+    [Fact]
+    public async Task TransferAll_SyncsEveryDelegatedTarget_AndNotifiesNewOwner()
+    {
+        // النقل الجماعي يمرّ بمسار المزامنة نفسه: كل إنابة على ملف منقول تتبع المالك
+        // الجديد، ولكل ملف تنبيهه الخاص (لا الأول فقط ولا تنبيه عام واحد).
+        for (var i = 0; i < 2; i++)
+        {
+            var source = await CreateSourceAsync();
+            var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+            var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+            await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+                _head1.Id, _branch.Id, "head1");
+        }
+        _db.ChangeTracker.Clear();
+        await FlushAlertsAsync();
+
+        var moved = await _documentService.TransferAllAsync(
+            _lawyer2.Id, _lawyer1.Id, _branch.Id, "head1", actorUserId: _head1.Id);
+        Assert.Equal(2, moved);
+
+        _db.ChangeTracker.Clear();
+        await FlushAlertsAsync();
+
+        var stored = await _db.DocumentDelegations.AsNoTracking().ToListAsync();
+        Assert.Equal(2, stored.Count);
+        Assert.All(stored, d => Assert.Equal(_lawyer1.Id, d.AssignedLawyerId));
+
+        var transferAlerts = await _db.HeadAlerts.AsNoTracking()
+            .Include(a => a.Recipients)
+            .Where(a => a.Kind == HeadAlertKindCatalog.DelegationTransferredToLawyer && !a.IsArchived)
+            .ToListAsync();
+        Assert.Equal(2, transferAlerts.Count);
+        Assert.All(transferAlerts, a => Assert.Contains(_lawyer1.Id, a.Recipients.Select(r => r.UserId)));
+        Assert.All(transferAlerts, a => Assert.DoesNotContain(_lawyer2.Id, a.Recipients.Select(r => r.UserId)));
+    }
+
+    [Fact]
+    public async Task TargetTransfer_WithoutActor_DoesNotArchiveAlertNorFakeNotification()
+    {
+        // الأرشفة والإشعار وحدة واحدة: بلا فاعل معروف لا يُؤرشف تنبيه المحامي السابق
+        // كي لا يبقى الملف بلا أي تنبيه (الترتيب القديم كان يؤرشف ثم يتخطى الإشعار).
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await FlushAlertsAsync();
+        var oldAlert = await _db.HeadAlerts.SingleAsync(a => a.DelegationId == created.Id
+            && a.Kind == HeadAlertKindCatalog.DelegationAssignedToLawyer
+            && !a.IsArchived);
+
+        await _service.SyncTargetsTransferredAsync(new[] { targetId }, _lawyer1.Id, "head1", actorUserId: null);
+        _db.ChangeTracker.Clear();
+        await FlushAlertsAsync();
+
+        Assert.False((await _db.HeadAlerts.AsNoTracking()
+            .SingleAsync(a => a.Id == oldAlert.Id)).IsArchived);
+        Assert.Empty(await _db.HeadAlerts.AsNoTracking()
+            .Where(a => a.DelegationId == created.Id
+                && a.Kind == HeadAlertKindCatalog.DelegationTransferredToLawyer)
+            .ToListAsync());
+
+        // المزامنة نفسها لم تتعطّل: المحامي المختص المخزَّن يتبع المالك الجديد.
+        var stored = await _db.DocumentDelegations.AsNoTracking().SingleAsync(d => d.Id == created.Id);
+        Assert.Equal(_lawyer1.Id, stored.AssignedLawyerId);
     }
 
     [Fact]
@@ -1516,6 +1580,49 @@ public class DocumentDelegationServiceTests : IDisposable
 
         var target = await _db.Documents.AsNoTracking().SingleAsync(d => d.Id == targetId);
         Assert.Equal("أحمد", target.BorrowerName);
+    }
+
+    [Fact]
+    public async Task Update_TargetMirror_WithDerivedWords_AcceptsRealFrontendPayloadAndKeepsAmountLocked()
+    {
+        // حمولة الواجهة الحقيقية لا تحمل حقول «كتابة» إطلاقًا (التفقيط مشتقّ خادميًا).
+        // المناب ذو مبالغ يحمل نصًا مخزَّنًا مولَّدًا: الحارس كان يقارن الغائب بالمخزَّن
+        // فيرفض كل تعديل مشروع برسالة «مبلغ العقد كتابة» — هذا اختبار الانحدار.
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        // المناب كما يخزّنه الإنتاج بعد الاشتقاق: مبلغ رقمي + تفقيط مولَّد.
+        var target = await _db.Documents.SingleAsync(d => d.Id == targetId);
+        target.AmountWords = "مليون ليرة سورية فقط لا غير";
+        await _db.SaveChangesAsync();
+
+        var targetRequest = MirrorRequest(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == targetId));
+        targetRequest.BorrowerHeirs.Add(new HeirDto(null, "مرسى", "أحمد", "الخطيب", null, null, null));
+
+        var updated = await _documentService.UpdateAsync(targetId, targetRequest, _lawyer2.FullName, _lawyer2.Id);
+
+        Assert.NotNull(updated);
+        Assert.Equal(1_000_000m, updated!.AmountNumeric);
+        Assert.False(string.IsNullOrWhiteSpace(updated.AmountWords));
+        Assert.Contains("ليرة سورية", updated.AmountWords!);
+        Assert.Single(updated.BorrowerHeirs);
+
+        // القفل لم يُفكّك: تغيير المبلغ الرقمي نفسه ما زال مرفوضًا.
+        var flip = MirrorRequest(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == targetId));
+        flip.AmountNumeric = 2_000_000m;
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.UpdateAsync(targetId, flip, _lawyer2.FullName, _lawyer2.Id));
+        Assert.Contains("المبلغ (الأول)", ex.Message);
     }
 
     [Fact]
@@ -3391,17 +3498,13 @@ public class DocumentDelegationServiceTests : IDisposable
             textCase("تاريخ الإلحاق", d => d.AnnexDate, (d, v) => d.AnnexDate = v, (r, v) => r.AnnexDate = v),
             textCase("نص الإدراج", d => d.InclusionText, (d, v) => d.InclusionText = v, (r, v) => r.InclusionText = v),
             textCase("ملاحظات السند (القرارات الأخرى)", d => d.InclusionNotes, (d, v) => d.InclusionNotes = v, (r, v) => r.InclusionNotes = v),
-            textCase("مبلغ العقد كتابة", d => d.AmountWords, (d, v) => d.AmountWords = v, (r, v) => r.AmountWords = v),
+            // «المبلغ كتابة» خارج القائمة قصدًا: مشتقّ خادميًا من الرقم والعملة، وغير موجود
+            // في عقد الطلب؛ قفله يتحقق عبر حالات المبالغ الرقمية والعملات أدناه.
             textCase("عملة المبلغ الأول", d => d.Currency, (d, v) => d.Currency = v, (r, v) => r.Currency = v),
-            textCase("المبلغ الثاني كتابة", d => d.Amount2Words, (d, v) => d.Amount2Words = v, (r, v) => r.Amount2Words = v),
             textCase("عملة المبلغ الثاني", d => d.Currency2, (d, v) => d.Currency2 = v, (r, v) => r.Currency2 = v),
-            textCase("المبلغ الثالث كتابة", d => d.Amount3Words, (d, v) => d.Amount3Words = v, (r, v) => r.Amount3Words = v),
             textCase("عملة المبلغ الثالث", d => d.Currency3, (d, v) => d.Currency3 = v, (r, v) => r.Currency3 = v),
-            textCase("المبلغ المدرج كتابة", d => d.InclusionAmountWords, (d, v) => d.InclusionAmountWords = v, (r, v) => r.InclusionAmountWords = v),
             textCase("عملة المبلغ المدرج", d => d.InclusionCurrency, (d, v) => d.InclusionCurrency = v, (r, v) => r.InclusionCurrency = v),
-            textCase("المبلغ المدرج الثاني كتابة", d => d.InclusionAmount2Words, (d, v) => d.InclusionAmount2Words = v, (r, v) => r.InclusionAmount2Words = v),
             textCase("عملة المبلغ المدرج الثاني", d => d.InclusionCurrency2, (d, v) => d.InclusionCurrency2 = v, (r, v) => r.InclusionCurrency2 = v),
-            textCase("المبلغ المدرج الثالث كتابة", d => d.InclusionAmount3Words, (d, v) => d.InclusionAmount3Words = v, (r, v) => r.InclusionAmount3Words = v),
             textCase("عملة المبلغ المدرج الثالث", d => d.InclusionCurrency3, (d, v) => d.InclusionCurrency3 = v, (r, v) => r.InclusionCurrency3 = v),
             // الدائرة خارج عقد المرآة: حقيقة مستقلة للمناب (المنابة المسجَّل فيها) —
             // لا تُنسخ عند الاعتماد ولا تُزامَن ولا يُفحص تكافؤها (يغطيها TargetCourt_IsIndependent).

@@ -97,22 +97,20 @@ public sealed partial class DocumentDelegationService
         RequireSame(errors, "نص الإدراج", r.InclusionText, doc.InclusionText);
         RequireSame(errors, "ملاحظات السند (القرارات الأخرى)", r.InclusionNotes, doc.InclusionNotes);
         RequireSameNumeric(errors, "المبلغ (الأول)", r.AmountNumeric, doc.AmountNumeric);
-        RequireSame(errors, "مبلغ العقد كتابة", r.AmountWords, doc.AmountWords);
+        // التفقيط («... كتابة») ليس حقلًا مقفولًا يُقارن: هو مشتقّ خادميًا من الرقم والعملة
+        // (`DocumentText.DeriveAmountWords`) ولا يُرسَل من العميل أصلًا، فمقارنته كانت
+        // ترفض كل تعديلٍ مشروع على منابٍ ذي مبالغ (نص الطلب `null` مقابل نص المخزَّن المولَّد).
+        // قفل المبلغ يبقى محكمًا بمقارنة الرقم (`RequireSameNumeric`) والعملة أدناه.
         RequireSame(errors, "عملة المبلغ الأول", r.Currency, doc.Currency);
         RequireSameNumeric(errors, "المبلغ (الثاني)", r.Amount2Numeric, doc.Amount2Numeric);
-        RequireSame(errors, "المبلغ الثاني كتابة", r.Amount2Words, doc.Amount2Words);
         RequireSame(errors, "عملة المبلغ الثاني", r.Currency2, doc.Currency2);
         RequireSameNumeric(errors, "المبلغ (الثالث)", r.Amount3Numeric, doc.Amount3Numeric);
-        RequireSame(errors, "المبلغ الثالث كتابة", r.Amount3Words, doc.Amount3Words);
         RequireSame(errors, "عملة المبلغ الثالث", r.Currency3, doc.Currency3);
         RequireSameNumeric(errors, "المبلغ المدرج (الأول)", r.InclusionAmountNumeric, doc.InclusionAmountNumeric);
-        RequireSame(errors, "المبلغ المدرج كتابة", r.InclusionAmountWords, doc.InclusionAmountWords);
         RequireSame(errors, "عملة المبلغ المدرج", r.InclusionCurrency, doc.InclusionCurrency);
         RequireSameNumeric(errors, "المبلغ المدرج (الثاني)", r.InclusionAmount2Numeric, doc.InclusionAmount2Numeric);
-        RequireSame(errors, "المبلغ المدرج الثاني كتابة", r.InclusionAmount2Words, doc.InclusionAmount2Words);
         RequireSame(errors, "عملة المبلغ المدرج الثاني", r.InclusionCurrency2, doc.InclusionCurrency2);
         RequireSameNumeric(errors, "المبلغ المدرج (الثالث)", r.InclusionAmount3Numeric, doc.InclusionAmount3Numeric);
-        RequireSame(errors, "المبلغ المدرج الثالث كتابة", r.InclusionAmount3Words, doc.InclusionAmount3Words);
         RequireSame(errors, "عملة المبلغ المدرج الثالث", r.InclusionCurrency3, doc.InclusionCurrency3);
         // الدائرة خارج عقد المرآة: حقيقة خاصة بالمناب (الدائرة المنابة المسجَّل فيها)،
         // تُضبط عند الاعتماد وقابلة للتعديل كحقل أصيل — لا يُفحص تكافؤها مع المنيب.

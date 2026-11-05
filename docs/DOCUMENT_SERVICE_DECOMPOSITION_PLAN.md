@@ -92,7 +92,7 @@
 
 ### المرحلة 5 — النواة النحيفة (~نصف يوم، محجوبة خلف 3 و4)
 
-- يبقى في `IDocumentService`: `Get/GetDeleted/Create/Update/Delete/Restore/Transfer/CountFilesByOwner/TransferAll` + التدوير + `IncrementViewCountAsync` + `ApplyRegistrationDate`.
+- يبقى في `IDocumentService`: `Get/GetDeleted/Create/Update/Delete/Restore/Transfer/CountFilesByOwner/TransferAll` + التدوير + `ApplyRegistrationDate`. (أُزيل `IncrementViewCountAsync` نهائيًا مع عدّاد المشاهدات — 2026-11-05.)
 - يُحذف سقال `partial` (تجميلي)، ويصغر الباني للاعتمادات الباقية فقط، وتُحدَّث المواقع الـ14 عبر المصنع.
 - يُحسم وضع `docs/audit/01-discovery.md` (أسطر 33، 61، 63 تصف «6 ملفات `partial`»): وثيقة لحظية تُترك، أم حية تُحدَّث هنا.
 

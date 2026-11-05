@@ -347,14 +347,17 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
 
         foreach (var delegation in changed)
         {
+            var target = delegation.TargetDocument;
+            // الأرشفة والإشعار وحدة واحدة لا تُجزَّأ: بلا فاعل/فرع معروف لا يُنشأ تنبيه
+            // للمالك الجديد، فلا تُؤرشف أيضًا تنبيهات المحامي السابق كي لا يبقى الملف
+            // بلا أي تنبيه (الفحص قبل الأرشفة — الترتيب المعكوس كان يؤرشف بلا إشعار).
+            if (actorUserId is null || target?.BranchId is null)
+                continue;
+
             // تنبيه المحامي السابق (إسناد/نقل سابق) يتبع الملف: يُؤرشف مع النقل،
             // ولا تُمَس تنبيهات الإنابة الأخرى (مثل «بانتظار الإتمام» الخاص بالرئيس).
             await _alerts.ArchiveByDelegationAsync(
                 delegation.Id, DelegationTransferAlertKinds, "delegation_transferred", ct);
-
-            var target = delegation.TargetDocument;
-            if (actorUserId is null || target?.BranchId is null)
-                continue;
 
             // تنبيه المالك الجديد: الجمهور «منشئ الملف» يُحلّ إلى مالك الملف المناب
             // الحالي وقت معالجة الصادر (بعد اكتمال النقل).

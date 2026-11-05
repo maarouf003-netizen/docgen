@@ -397,8 +397,9 @@ npm test
 >
 > **حالة 2026‑10‑26:** اكتمل سياق `PostgreSQL` — الهجرات الأربع (`Expand`/`Outbox_Create`/`Backfill`/
 > `Contract`) مطبَّقة على `Supabase` (**63** هجرة)؛ سجلها في `docs/audit/10-head-alerts-pr2b-deploy-20261025.md`
-> و`docs/audit/13-head-alerts-pr3-live-apply-20261026.md`. تبقى **4 هجرات** في `SQLite`:
-> `Expand`/`Outbox_Create`/`Backfill` ثم `Contract`. علامة `[ ]` على زوج الهجرتين تعني أن
+> و`docs/audit/13-head-alerts-pr3-live-apply-20261026.md`. كانت تبقى **4 هجرات** في `SQLite` آنذاك:
+> `Expand`/`Outbox_Create`/`Backfill` ثم `Contract` — وصارت **6** بعد هجرتي `ConflictRetries`
+> و`RemoveDocumentViewCount` أدناه. علامة `[ ]` على زوج الهجرتين تعني أن
 > **أحد السياقين** على الأقل لم يُطبَّق بعد؛ والحالة التفصيلية في أول سطر تحت كل عنوان.
 >
 > **جديد 2026‑11‑03:** هجرتان (`SQLite` + `PostgreSQL`) لعمود `ConflictRetries` في
