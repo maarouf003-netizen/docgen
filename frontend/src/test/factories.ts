@@ -48,7 +48,6 @@ export function makeDocument(overrides: Partial<DocumentResponse> = {}): Documen
     inclusionAmountNumeric: 0,
     inclusionAmount2Numeric: 0,
     inclusionAmount3Numeric: 0,
-    viewCount: 0,
     printCount: 0,
     borrowerName: 'أحمد',
     borrowerFather: 'خالد',

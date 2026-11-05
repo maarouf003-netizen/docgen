@@ -406,6 +406,19 @@ npm test
 > `docs/audit/14-head-alerts-conflict-retries-live-apply-20261103.md`)، و**`SQLite` ⏳ معلّقة** (5).
 > مستقلتان **دلاليًا** عن هجرات التنبيهات الأربع، لكن `database update` يطبّق كل ما قبل الهدف ضمنًا:
 > على `SQLite` (رأسه `Expand`) ستسحب `Outbox_Create`/`Backfill`/`Contract` ⇒ **مرهونة بـ`G2`**.
+>
+> **جديد 2026‑11‑05:** هجرتان (`SQLite` + `PostgreSQL`) لإزالة عدّاد المشاهدات نهائيًا
+> (`RemoveDocumentViewCount` / `RemoveDocumentViewCount_Pg`) — **معلّقتان** حتى التطبيق:
+> `PostgreSQL` (65) و`SQLite` (6 مع الخمس المعلّقة). الترتيب: بعد هجرة `ConflictRetries`
+> في كل سياق، ولا تُطبَّق `SQLite` وحدها قبل استكمال سلسلة `G2` (نفس منطق السطر أدناه).
+
+- [ ] **2026-11-05 — `RemoveDocumentViewCount` / `RemoveDocumentViewCount_Pg`** (إزالة عدّاد المشاهدات نهائيًا — قرار المالك):
+  - **الحالة:** `PostgreSQL` ⏳ **معلّقة** (65 هجرة) · `SQLite` ⏳ **معلّقة** (6 مع الخمس السابقة).
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261105104202_RemoveDocumentViewCount.cs` — يسقط عمود `ViewCount` من `Documents`.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261105104246_RemoveDocumentViewCount_Pg.cs` — نفسه.
+  - **حذف بيانات:** قيم `ViewCount` التاريخية تُفقد نهائيًا (العدّاد كان معطّلًا في الواجهة؛ لا مستهلك بعد الإزالة). `Down` يعيد العمود بقيمة `0`.
+  - **إجراء النشر:** `dotnet ef database update --context DocGeneratorDbContext` و`dotnet ef database update --context DocGeneratorPostgresDbContext` **قبل** نشر النسخة، وإلا رفض الإقلاع (`Database:AutoMigrate=false`) أو ظهر عدم تطابق مخطط.
+  - على `SQLite`: لا تُطبَّق وحدها؛ `database update` يسحب الهجرات المعلّقة السابقة ⇒ التزم بسلسلة §9 (`G2`).
 
 - [ ] **2026-11-03 — `HeadAlertOutbox_ConflictRetries` / `HeadAlertOutbox_ConflictRetries_Pg`** (حالة سياسة «إعادة واحدة» لتعارض `DedupeKey`):
   - **الحالة:** `PostgreSQL` ✅ مطبَّقة حيًا (`20261103172448`) — 64 هجرة، صفر معلّقة · `SQLite` ⏳ **معلّقة** (5 مع الأربع السابقة).

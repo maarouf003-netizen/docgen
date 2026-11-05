@@ -1115,9 +1115,6 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         .IsConcurrencyToken()
                         .HasColumnType("bigint");
 
-                    b.Property<int>("ViewCount")
-                        .HasColumnType("integer");
-
                     b.Property<bool>("WasDepositExecuted")
                         .HasColumnType("boolean");
 

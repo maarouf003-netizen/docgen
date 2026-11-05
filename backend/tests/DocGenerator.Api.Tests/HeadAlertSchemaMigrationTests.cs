@@ -41,6 +41,48 @@ public class HeadAlertSchemaMigrationTests
         return (path, new DocGeneratorDbContext(options));
     }
 
+    /// <summary>
+    /// إدراج مستند في سكيمة تاريخية (قبل هجرة إزالة <c>ViewCount</c>): العمود ما زال
+    /// <c>NOT NULL</c> بلا قيمة افتراضية بينما النموذج الحالي لم يعد يعرفه، فأي إدراج
+    /// عبر EF يفشل بـ«NOT NULL constraint failed». الإدراج هنا بـ SQL خام بالأعمدة
+    /// الإلزامية في تلك السكيمة (وهي ثابتة في كل أهداف هذه الاختبارات)، ثم يُحمَّل
+    /// الكيان بالمعرّف ليُستخدم في بقية الاختبار كأي مستند عادي.
+    /// </summary>
+    private static async Task<Document> InsertLegacyDocumentAsync(
+        DocGeneratorDbContext db,
+        int branchId,
+        int userId,
+        int? executionCircuitId = null)
+    {
+        // عمود الدائرة اختياري: يُذكر في الإدراج فقط عند تمريره (تمرير null كمعامل
+        // خام لا يدعمه EF لأن Provider لا يملك تعيين نوع لـ DBNull).
+        var circuitColumn = executionCircuitId.HasValue ? ", \"ExecutionCircuitId\"" : string.Empty;
+        var circuitValue = executionCircuitId.HasValue ? ", {3}" : string.Empty;
+        var sideValue = executionCircuitId.HasValue ? "{4}" : "{3}";
+        var sql =
+            $$"""
+            INSERT INTO "Documents"
+                ("CreatedAt", "UpdatedAt", "CreatedById", "BranchId"{{circuitColumn}},
+                 "IsDraft", "DocumentType", "AmountNumeric", "Amount2Numeric", "Amount3Numeric",
+                 "InclusionAmountNumeric", "InclusionAmount2Numeric", "InclusionAmount3Numeric",
+                 "GeneralEntitySide", "WasDepositExecuted", "Version", "ViewCount", "PrintCount")
+            VALUES ({0}, {0}, {1}, {2}{{circuitValue}}, 0, 'سند دين', 0, 0, 0, 0, 0, 0,
+                    {{sideValue}}, 0, 0, 0, 0)
+            """;
+
+        var now = new DateTime(2026, 10, 20, 12, 0, 0, DateTimeKind.Utc);
+        var parameters = executionCircuitId.HasValue
+            ? new object[] { now, userId, branchId, executionCircuitId.Value, GeneralEntitySideCatalog.Applicant }
+            : new object[] { now, userId, branchId, GeneralEntitySideCatalog.Applicant };
+
+        await db.Database.ExecuteSqlRawAsync(sql, parameters);
+
+        var id = await db.Database
+            .SqlQuery<int>($"SELECT last_insert_rowid() AS \"Value\"")
+            .SingleAsync();
+        return await db.Documents.SingleAsync(d => d.Id == id);
+    }
+
     private static void Cleanup(string path)
     {
         foreach (var suffix in new[] { "", "-shm", "-wal" })
@@ -764,14 +806,8 @@ public class HeadAlertSchemaMigrationTests
             db.ExecutionCircuits.Add(circuit);
             await db.SaveChangesAsync();
 
-            var document = new Document
-            {
-                CreatedById = user.Id,
-                BranchId = branch.Id,
-                ExecutionCircuitId = circuit.Id,
-            };
-            db.Documents.Add(document);
-            await db.SaveChangesAsync();
+            var document = await InsertLegacyDocumentAsync(
+                db, branch.Id, user.Id, executionCircuitId: circuit.Id);
 
             var createdAt = new DateTime(2026, 10, 20, 12, 0, 0, DateTimeKind.Utc);
             var alertId = await InsertLegacyAlertAsync(
@@ -814,13 +850,7 @@ public class HeadAlertSchemaMigrationTests
             await db.GetService<IMigrator>().MigrateAsync(OutboxMigration);
             var (branch, user) = await SeedBranchAndUserAsync(db);
 
-            var document = new Document
-            {
-                CreatedById = user.Id,
-                BranchId = branch.Id,
-            };
-            db.Documents.Add(document);
-            await db.SaveChangesAsync();
+            var document = await InsertLegacyDocumentAsync(db, branch.Id, user.Id);
 
             var delegation = new DocumentDelegation
             {
@@ -917,13 +947,7 @@ public class HeadAlertSchemaMigrationTests
             await db.GetService<IMigrator>().MigrateAsync(OutboxMigration);
             var (branch, user) = await SeedBranchAndUserAsync(db);
 
-            var document = new Document
-            {
-                CreatedById = user.Id,
-                BranchId = branch.Id,
-            };
-            db.Documents.Add(document);
-            await db.SaveChangesAsync();
+            var document = await InsertLegacyDocumentAsync(db, branch.Id, user.Id);
 
             var delegation = new DocumentDelegation
             {
@@ -1084,13 +1108,7 @@ public class HeadAlertSchemaMigrationTests
             await db.GetService<IMigrator>().MigrateAsync(OutboxMigration);
             var (branch, user) = await SeedBranchAndUserAsync(db);
 
-            var document = new Document
-            {
-                CreatedById = user.Id,
-                BranchId = branch.Id,
-            };
-            db.Documents.Add(document);
-            await db.SaveChangesAsync();
+            var document = await InsertLegacyDocumentAsync(db, branch.Id, user.Id);
 
             var delegation = new DocumentDelegation
             {
@@ -1236,14 +1254,8 @@ public class HeadAlertSchemaMigrationTests
             db.ExecutionCircuits.AddRange(circuitByDocument, circuitByName);
             await db.SaveChangesAsync();
 
-            var document = new Document
-            {
-                BranchId = branch.Id,
-                CreatedById = user.Id,
-                ExecutionCircuitId = circuitByDocument.Id,
-            };
-            db.Documents.Add(document);
-            await db.SaveChangesAsync();
+            var document = await InsertLegacyDocumentAsync(
+                db, branch.Id, user.Id, executionCircuitId: circuitByDocument.Id);
 
             var createdAt = new DateTime(2026, 10, 20, 14, 0, 0, DateTimeKind.Utc);
             var byDocument = new HeadAlert
@@ -1380,13 +1392,7 @@ public class HeadAlertSchemaMigrationTests
             db.ExecutionCircuits.Add(circuit);
             await db.SaveChangesAsync();
 
-            var document = new Document
-            {
-                BranchId = branch.Id,
-                CreatedById = user.Id,
-            };
-            db.Documents.Add(document);
-            await db.SaveChangesAsync();
+            var document = await InsertLegacyDocumentAsync(db, branch.Id, user.Id);
 
             var delegation = new DocumentDelegation
             {
@@ -1550,13 +1556,7 @@ public class HeadAlertSchemaMigrationTests
             await db.GetService<IMigrator>().MigrateAsync(OutboxMigration);
             var (branch, user) = await SeedBranchAndUserAsync(db);
 
-            var document = new Document
-            {
-                BranchId = branch.Id,
-                CreatedById = user.Id,
-            };
-            db.Documents.Add(document);
-            await db.SaveChangesAsync();
+            var document = await InsertLegacyDocumentAsync(db, branch.Id, user.Id);
 
             var delegation = new DocumentDelegation
             {
@@ -1646,13 +1646,7 @@ public class HeadAlertSchemaMigrationTests
             await db.GetService<IMigrator>().MigrateAsync(OutboxMigration);
             var (branch, user) = await SeedBranchAndUserAsync(db);
 
-            var document = new Document
-            {
-                BranchId = branch.Id,
-                CreatedById = user.Id,
-            };
-            db.Documents.Add(document);
-            await db.SaveChangesAsync();
+            var document = await InsertLegacyDocumentAsync(db, branch.Id, user.Id);
 
             var delegation = new DocumentDelegation
             {

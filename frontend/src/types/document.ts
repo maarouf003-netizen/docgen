@@ -329,7 +329,6 @@ fileNumber?: string;
   seizureDate?: string;
   immediateActions?: string;
   notes?: string;
-  viewCount: number;
   printCount: number;
   createdByName?: string;
   deletedAt?: string;

@@ -146,7 +146,7 @@ public sealed class PortalService : IPortalService
         // وكل المشتركات المعروضة فيه — مُدقَّق حقلًا بحقل ضد الاستهلاك الفعلي) يُحجب
         // قبل مغادرة الخادم — الواجهة ليست خط الدفاع الوحيد.
         // المحجوب: الملاحظات الداخلية (`Notes`/`ImmediateActions`)، العدّادات
-        // التشغيلية (`ViewCount`/`PrintCount`)، الهوية الإدارية (`AdministrativeBranchName`/
+        // التشغيلية (`PrintCount`)، الهوية الإدارية (`AdministrativeBranchName`/
         // `BranchId`)، هوية المنشئ (`CreatedById`/`CreatedByName`)، حقل `Lawyer` الحر،
         // وشارات قوائم المحامين (`NeedsRotation`/`HasAppeals`/`MatchedAppealId`)، ورابط
         // الإنابة الداخلي (`SourceDelegationId` — عرضه عبر نقطة التشعبات المخصصة)،
@@ -181,7 +181,6 @@ public sealed class PortalService : IPortalService
         response.Version = 0;
         response.Notes = null;
         response.ImmediateActions = null;
-        response.ViewCount = 0;
         response.PrintCount = 0;
         response.AdministrativeBranchName = null;
         response.BranchId = null;

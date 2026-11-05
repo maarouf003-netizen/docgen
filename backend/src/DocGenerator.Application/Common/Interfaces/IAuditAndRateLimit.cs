@@ -161,13 +161,6 @@ public interface IDocumentRepository : IRepository<Document>
     Task<int> CountByOwnerAsync(int ownerId, CancellationToken ct = default);
 
     /// <summary>
-    /// زيادة عداد مشاهدات الملف ذرّيًا على مستوى قاعدة البيانات (UPDATE مباشر)
-    /// بدل تحميل المستند بكامل علاقاته وتعديله ثم حفظه — أسرع وغير قابل للتعارض
-    /// المتزامن، ولا يشمل المحذوف (Query Filter مطبق تلقائيًا).
-    /// </summary>
-    Task<int> IncrementViewCountAsync(int documentId, CancellationToken ct = default);
-
-    /// <summary>
     /// ملفات المحامي غير المحذوفة ببياناتها الأساسية (رقم/نوع/اسم المنفذ عليه)
     /// لكتابة سجل تدقيق لكل ملف بعد النقل الجماعي.
     /// </summary>

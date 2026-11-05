@@ -69,7 +69,7 @@ public class DocumentsController : ControllerBase
     private UserRole Role => User.GetRoleEnum();
     private bool HasFullAccess => RolePermissions.HasFullAccess(Role);
     private bool IsHeadOrSubHead => RolePermissions.IsHeadOrSubHead(Role);
-    private bool CanViewCounters => RolePermissions.CanViewCounters(Role);
+    private bool CanViewPrintCounter => RolePermissions.CanViewPrintCounter(Role);
     private bool CanSearchByLawyer => RolePermissions.CanSearchByLawyer(Role);
     private bool CanEdit => RolePermissions.CanEditDocuments(Role);
     private bool CanChangeStatus => RolePermissions.CanChangeDocumentStatus(Role);
@@ -79,19 +79,18 @@ public class DocumentsController : ControllerBase
 
     private DocumentResponse Sanitize(DocumentResponse doc)
     {
-        if (CanViewCounters) return doc;
-        doc.ViewCount = 0;
+        if (CanViewPrintCounter) return doc;
         doc.PrintCount = 0;
         return doc;
     }
 
     /// <summary>
-    /// استجابة قائمة مع تعقيم العدادات لغير المصرَّح لهم (سياسة CanViewCounters) —
+    /// استجابة قائمة مع تعقيم عدّاد الطباعة لغير المصرَّح لهم (سياسة CanViewPrintCounter) —
     /// المصدر الوحيد لهذا النمط في نقاط القوائم الخمس (المسار (ب) من الخطة).
     /// </summary>
     private IActionResult OkSanitized(PagedResult<DocumentResponse> result)
     {
-        if (!CanViewCounters)
+        if (!CanViewPrintCounter)
             result.Items = result.Items.Select(Sanitize).ToList();
         return Ok(result);
     }
@@ -214,14 +213,12 @@ public class DocumentsController : ControllerBase
 
         var items = await _search.ExportAsync(q, status, applicant, court, lawyer, branch, administrativeBranch, executedEntity, publicEntityBranch,
             visibleBranch, visibleUser, ct, ActorName, ownerSectionId: ownerSectionId);
-        // بلا Sanitize هنا: عمود «عدد المشاهدات» محكوم أصلًا براية includeViewCount
-        // (= CanViewCounters) فلا يظهر لغير المصرَّح لهم إطلاقًا — والورقة متطابقة.
+        // بلا Sanitize هنا: ورقة التصدير لا تحمل أي عدّاد (لا مشاهدة ولا طباعة) — فلا شيء يُعقَّم.
 
         var stream = _excel.BuildDocumentsWorkbook(
             items,
             includeAdministrativeBranch: RolePermissions.CanSeeAdministrativeBranch(Role),
-            includeAssignedLawyer: RolePermissions.CanSeeAssignedLawyer(Role),
-            includeViewCount: CanViewCounters);
+            includeAssignedLawyer: RolePermissions.CanSeeAssignedLawyer(Role));
 
         return File(stream, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             $"الملفات التنفيذية {ServerClock.TodayString(_clock, _timeZone, "yyyy-MM-dd")}.xlsx");
@@ -508,16 +505,6 @@ public class DocumentsController : ControllerBase
         return await _status.RestoreStruckOffAsync(id, request, ActorName, ct)
             ? Ok(new { message = "أعيد الملف المشطوب إلى المتداول" })
             : NotFound();
-    }
-
-    [HttpPost("{id:int}/view")]
-    public async Task<IActionResult> TrackView(int id, CancellationToken ct)
-    {
-        var doc = await _documents.GetAsync(id, ct);
-        if (doc is null) return NotFound();
-        if (!await CanAccessAsync(doc)) return Forbid();
-        await _documents.IncrementViewCountAsync(id, ct);
-        return Ok();
     }
 
     [HttpGet("{id:int}/generate")]

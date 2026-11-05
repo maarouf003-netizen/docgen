@@ -113,7 +113,6 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
                 FileYear = d.FileYear,
                 AnnexNumber = d.AnnexNumber,
                 Lawyer = d.Lawyer,
-                ViewCount = d.ViewCount,
                 GeneralEntitySide = d.GeneralEntitySide,
                 ExecutedStatus = d.ExecutedStatus,
                 ExecStatus = d.ExecStatus,
@@ -724,15 +723,6 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             .Where(d => d.CreatedById == ownerId);
         q = ApplyOwnerScope(q, scopeBranchId, null, ownerSectionId);
         return await q.CountAsync(ct);
-    }
-
-    public async Task<int> IncrementViewCountAsync(int documentId, CancellationToken ct = default)
-    {
-        // تحديث ذرّي على مستوى القاعدة: ViewCount = ViewCount + 1 بدون تحميل المستند.
-        return await Db.Documents
-            .Where(d => d.Id == documentId)
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(d => d.ViewCount, d => d.ViewCount + 1), ct);
     }
 
     public async Task<List<Document>> GetByIdsAsync(List<int> ids, CancellationToken ct = default)

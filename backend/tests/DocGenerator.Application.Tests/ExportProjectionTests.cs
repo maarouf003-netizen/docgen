@@ -119,7 +119,7 @@ public class ExportProjectionTests : IDisposable
         var rows = await bundle.Search.ExportAsync(null, null, null, null, null, null, null, null, null);
         var row = Assert.Single(rows, r => r.BorrowerName == "مقترض الترتيب");
 
-        using var stream = new ExcelExportService().BuildDocumentsWorkbook(new[] { row }, false, false, false);
+        using var stream = new ExcelExportService().BuildDocumentsWorkbook(new[] { row }, false, false);
         var cells = WorkbookFirstDataRow(stream);
         // بلا رايات: 0 الحالة، 1 طالب التنفيذ، 2 الفرع، 3 المنفذ عليه، ...
         Assert.Equal("ثانٍ أب عائلة", cells[1]);
@@ -137,7 +137,7 @@ public class ExportProjectionTests : IDisposable
             Applicant = "مصرف > فرع",
             Court = "دمشق",
         };
-        using var stream = new ExcelExportService().BuildDocumentsWorkbook(new[] { row }, false, false, false);
+        using var stream = new ExcelExportService().BuildDocumentsWorkbook(new[] { row }, false, false);
         var cells = WorkbookFirstDataRow(stream);
         // بلا رايات: 1 طالب التنفيذ، 3 المنفذ عليه.
         Assert.Equal("مصرف > فرع", cells[1]);

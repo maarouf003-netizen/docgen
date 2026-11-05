@@ -23,7 +23,6 @@ public interface IDocumentService
     /// scopeBranchId يُقيّد النطاق بفرع رئيس القسم ويُرجع عدد الملفات المنقولة.
     /// </summary>
     Task<int> TransferAllAsync(int sourceLawyerId, int targetLawyerId, int? scopeBranchId, string? actorName, CancellationToken ct = default, string? idempotencyKey = null, int? ownerSectionId = null, int? actorUserId = null);
-    Task IncrementViewCountAsync(int documentId, CancellationToken ct = default);
     /// <summary>جدول تدوير أرقام الأساس للمحامي (ترحّلي): ملفاته المؤهلة مع رقم أساس السنة الحالية إن وُجد.</summary>
     Task<PagedResult<RotationDocumentDto>> GetRotationListAsync(int userId, int page, int perPage, CancellationToken ct = default);
     /// <summary>
@@ -543,11 +542,6 @@ public sealed class DocumentService : IDocumentService
 
             return moved;
         }, ct);
-    }
-
-    public async Task IncrementViewCountAsync(int documentId, CancellationToken ct = default)
-    {
-        await _documents.IncrementViewCountAsync(documentId, ct);
     }
 
     /// <summary>سنة «قرار السنة» الحالية من ساعة النظام ومنطقته — مصدر واحد لا تكرار قرار.</summary>

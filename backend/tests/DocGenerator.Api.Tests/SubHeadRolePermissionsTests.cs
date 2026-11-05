@@ -11,7 +11,7 @@ public sealed class SubHeadRolePermissionsTests
 {
     [Theory]
     [InlineData(nameof(RolePermissions.CanViewDeletedDocuments))]
-    [InlineData(nameof(RolePermissions.CanViewCounters))]
+    [InlineData(nameof(RolePermissions.CanViewPrintCounter))]
     [InlineData(nameof(RolePermissions.CanTransferDocuments))]
     [InlineData(nameof(RolePermissions.CanManageBranchLawyers))]
     [InlineData(nameof(RolePermissions.CanCreateAlerts))]

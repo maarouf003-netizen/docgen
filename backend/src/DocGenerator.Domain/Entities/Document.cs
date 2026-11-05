@@ -343,7 +343,6 @@ public class Document : IDocumentExecutionState
     public string? SearchText { get; set; }
     public string? FilePath { get; set; }
 
-    public int ViewCount { get; set; }
     public int PrintCount { get; set; }
 
     public User? CreatedBy { get; set; }

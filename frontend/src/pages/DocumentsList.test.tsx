@@ -135,7 +135,7 @@ beforeEach(() => {
 });
 
 describe('DocumentsList', () => {
-  it('يعرض الأعمدة الجديدة بالترتيب المعتمد: فرع الإدارة، الحالة، طالب التنفيذ، فرع الجهة العامة، المنفذ عليه، دائرة التنفيذ، رقم الملف، المحامي المختص، الإجراءات والملاحظات، عدد المشاهدات', async () => {
+  it('يعرض الأعمدة الجديدة بالترتيب المعتمد: فرع الإدارة، الحالة، طالب التنفيذ، فرع الجهة العامة، المنفذ عليه، دائرة التنفيذ، رقم الملف، المحامي المختص، الإجراءات والملاحظات', async () => {
     const page: PagedResult<DocumentResponse> = {
       page: 1,
       perPage: 20,
@@ -161,7 +161,6 @@ describe('DocumentsList', () => {
       'رقم الملف',
       'المحامي المختص',
       'الإجراءات والملاحظات',
-      'عدد المشاهدات',
     ];
     expect(headers.length).toBe(expected.length);
     expected.forEach((label, i) => {
@@ -385,44 +384,6 @@ describe('DocumentsList', () => {
     const table = await screen.findByRole('table');
     const fileNumberCell = within(table).getAllByRole('cell')[5];
     expect(fileNumberCell.textContent).toBe('');
-  });
-
-  it('يعرض عمود «عدد المشاهدات» للمدير', async () => {
-    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [makeDocument({ viewCount: 7 })] },
-    });
-
-    renderList();
-
-    const table = await screen.findByRole('table');
-    expect(within(table).getByText('عدد المشاهدات')).toBeInTheDocument();
-    expect(within(table).getByText('7')).toBeInTheDocument();
-  });
-
-  it('يخفي عمود «عدد المشاهدات» عن رئيس القسم', async () => {
-    useAuthMock.mockReturnValue({ hasFullAccess: false, isHead: true, user: { role: 'head' } });
-    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [makeDocument({ viewCount: 3 })] },
-    });
-
-    renderList();
-
-    const table = await screen.findByRole('table');
-    expect(within(table).queryByText('عدد المشاهدات')).not.toBeInTheDocument();
-    expect(within(table).queryByText('3')).not.toBeInTheDocument();
-  });
-
-  it('يخفي عمود «عدد المشاهدات» عن المحامي', async () => {
-    useAuthMock.mockReturnValue({ hasFullAccess: false, isHead: false });
-    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: { page: 1, perPage: 20, totalCount: 1, totalPages: 1, items: [makeDocument({ viewCount: 7 })] },
-    });
-
-    renderList();
-
-    const table = await screen.findByRole('table');
-    expect(within(table).queryByText('عدد المشاهدات')).not.toBeInTheDocument();
-    expect(within(table).queryByText('7')).not.toBeInTheDocument();
   });
 
   it('يعرض فلاتر الحالة وطالب التنفيذ ودائرة التنفيذ بجانب أعمدة الجدول على المكتبي ويُفلتر عند الاختيار', async () => {
@@ -668,7 +629,7 @@ describe('DocumentsList', () => {
         perPage: 20,
         totalCount: 1,
         totalPages: 1,
-        items: [makeDocument({ id: 5, viewCount: 7 })],
+        items: [makeDocument({ id: 5 })],
       },
     });
 
@@ -680,7 +641,6 @@ describe('DocumentsList', () => {
     );
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(screen.getByText(/99 حقوق/)).toBeInTheDocument();
-    expect(screen.getByText(/مشاهدات: 7/)).toBeInTheDocument();
   });
 
   it('يعرض بطاقة الموبايل للمحامي بصيغة «طالب التنفيذ · فرع الجهة العامة · دائرة التنفيذ»', async () => {
