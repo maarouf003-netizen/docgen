@@ -152,7 +152,6 @@ public class DocumentServiceTests : IDisposable
 
         var update = Sample(created.FileNumber);
         update.AmountNumeric = 5000m;
-        update.AmountWords = null;
 
         var updated = await _service.UpdateAsync(created.Id, update, "lawyer1");
 
@@ -161,6 +160,40 @@ public class DocumentServiceTests : IDisposable
         Assert.False(string.IsNullOrWhiteSpace(words));
         Assert.NotEqual(created.AmountWords, words);
         Assert.Contains("ليرة سورية", words!);
+    }
+
+    [Fact]
+    public async Task Update_LegacyWordsWithoutNumeric_ArePreservedOnOrdinaryEdit()
+    {
+        // إرث قديم: مبلغ مكتوب نصًا بلا رقم (كُتب قبل اشتراط المبلغ الرقمي). حفظٌ عادي
+        // بعد إزالة التفقيط من عقد الطلب يجب ألا يمحو هذا النص — وإلا فُقد مبلغ الملف.
+        var created = await _service.CreateAsync(Sample(), userId: 1, actorName: "lawyer1", branchId: 1);
+        var stored = await _db.Documents.SingleAsync(d => d.Id == created.Id);
+        stored.AmountNumeric = 0;
+        stored.AmountWords = "خمسة ملايين ليرة سورية فقط لا غير";
+        await _db.SaveChangesAsync();
+
+        var update = Sample(created.FileNumber);
+        update.AmountNumeric = 0;
+        var updated = await _service.UpdateAsync(created.Id, update, "lawyer1");
+
+        Assert.NotNull(updated);
+        Assert.Equal("خمسة ملايين ليرة سورية فقط لا غير", updated!.AmountWords);
+    }
+
+    [Fact]
+    public async Task Update_ClearingPositiveNumeric_ClearsDerivedWords()
+    {
+        // إفراغ رقمٍ كان موجبًا نية صريحة بإزالة المبلغ: لا يبقى تفقيط مبلغٍ محذوف.
+        var created = await _service.CreateAsync(Sample(), userId: 1, actorName: "lawyer1", branchId: 1);
+        Assert.False(string.IsNullOrWhiteSpace(created.AmountWords));
+
+        var update = Sample(created.FileNumber);
+        update.AmountNumeric = 0;
+        var updated = await _service.UpdateAsync(created.Id, update, "lawyer1");
+
+        Assert.NotNull(updated);
+        Assert.Null(updated!.AmountWords);
     }
 
     [Fact]

@@ -838,6 +838,92 @@ public class DocumentsIntegrationTests
     }
 
     [Fact]
+    public async Task GetStruckOff_AsLawyer_HidesPrintCounter()
+    {
+        // تعقيم القوائم يشمل «المشطوبة» أيضًا (OkSanitized على المسار نفسه)، لا البحث فقط.
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.ClientWithToken(token);
+        var id = await CreateCirculatingDocumentAsync(token);
+
+        var generate = await client.GetAsync($"/api/documents/{id}/generate?template=004");
+        Assert.Equal(HttpStatusCode.OK, generate.StatusCode);
+        var strike = await client.PostAsJsonAsync($"/api/documents/{id}/status",
+            new { status = "مشطوب", fields = new { struckOffDate = "1/2/2024" } });
+        Assert.Equal(HttpStatusCode.OK, strike.StatusCode);
+
+        var response = await client.GetAsync("/api/documents/struck-off?q=" + Uri.EscapeDataString("مقترض") + "&perPage=50");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var item = body!.RootElement.GetProperty("items").EnumerateArray()
+            .First(i => i.GetProperty("id").GetInt32() == id);
+        Assert.Equal(0, item.GetProperty("printCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task GetExecuted_AsLawyer_HidesPrintCounter()
+    {
+        // صفحة «المنفذة» مسار قوائم خامس يُعقَّم بالمساعد نفسه: المحامي يرى صفرًا.
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.ClientWithToken(token);
+        var id = await CreateExecutedDocumentAsync(token);
+
+        var run = await client.PostAsJsonAsync($"/api/documents/{id}/executed-status", new
+        {
+            status = "منفذ",
+            executedExecutionDate = "2026-06-01",
+            executedPaidAmount = 1000,
+        });
+        Assert.Equal(HttpStatusCode.OK, run.StatusCode);
+
+        // عدّاد حقيقي غير صفري (تحرير مستند منفذ لا يولّد قالبًا): يثبت أن التعقيم هو
+        // ما يُصفّر القيمة، لا أن القيمة صفر أصلًا.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocGeneratorDbContext>();
+            var stored = await db.Documents.SingleAsync(d => d.Id == id);
+            stored.PrintCount = 1;
+            await db.SaveChangesAsync();
+        }
+
+        var response = await client.GetAsync("/api/documents/executed?perPage=50");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var item = body!.RootElement.GetProperty("items").EnumerateArray()
+            .First(i => i.GetProperty("id").GetInt32() == id);
+        Assert.Equal(0, item.GetProperty("printCount").GetInt32());
+
+        // والمدير يرى القيمة الحقيقية على المسار نفسه (لم يُكسر العرض المصرَّح).
+        var managerClient = _factory.AuthorizedClient("manager");
+        var managerResponse = await managerClient.GetAsync("/api/documents/executed?perPage=50");
+        using var managerBody = await managerResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var managerItem = managerBody!.RootElement.GetProperty("items").EnumerateArray()
+            .First(i => i.GetProperty("id").GetInt32() == id);
+        Assert.Equal(1, managerItem.GetProperty("printCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task GetDeleted_AsLawyer_HidesPrintCounter()
+    {
+        // تعقيم قائمة المحذوفات أيضًا: المحامي لا يرى عدّاد الطباعة في أي مسار قوائم.
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.ClientWithToken(token);
+        var id = await _factory.CreateDocumentAsync(token, "محذوفة عدّاد طباعة محامي");
+
+        var generate = await client.GetAsync($"/api/documents/{id}/generate?template=004");
+        Assert.Equal(HttpStatusCode.OK, generate.StatusCode);
+        var deleted = await client.DeleteAsync($"/api/documents/{id}");
+        Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+
+        var response = await client.GetAsync(
+            "/api/documents/deleted?q=" + Uri.EscapeDataString("محذوفة عدّاد طباعة محامي") + "&perPage=50");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var item = body!.RootElement.GetProperty("items").EnumerateArray()
+            .First(i => i.GetProperty("id").GetInt32() == id);
+        Assert.Equal(0, item.GetProperty("printCount").GetInt32());
+    }
+
+    [Fact]
     public async Task AddAction_AsLawyer_ReturnsActionAndPersists()
     {
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;

@@ -186,23 +186,21 @@ public class DocumentUpsertRequest : RenewalRequest
     /// <summary>ملاحظات السند التنفيذي (القرارات الأخرى) تحت «المتضمن» — نص حر اختياري.</summary>
     public string? InclusionNotes { get; set; }
 
+    // المبالغ: الأرقام والعملات فقط. حقول «المبلغ كتابة» (AmountWords/Amount2Words/
+    // Amount3Words/InclusionAmountWords/InclusionAmount2Words/InclusionAmount3Words)
+    // ليست جزءًا من عقد الطلب: التفقيط مشتقّ خادميًا من (الرقم + العملة) في
+    // `DocumentText.DeriveAmountWords`، فلا يُقبل نص قديم يخالف الرقم.
     public decimal? AmountNumeric { get; set; }
-    public string? AmountWords { get; set; }
     public string? Currency { get; set; } = "ليرة سورية";
     public decimal? Amount2Numeric { get; set; }
-    public string? Amount2Words { get; set; }
     public string? Currency2 { get; set; } = "دولار أمريكي";
     public decimal? Amount3Numeric { get; set; }
-    public string? Amount3Words { get; set; }
     public string? Currency3 { get; set; } = "ليرة سورية";
     public decimal? InclusionAmountNumeric { get; set; }
-    public string? InclusionAmountWords { get; set; }
     public string? InclusionCurrency { get; set; } = "ليرة سورية";
     public decimal? InclusionAmount2Numeric { get; set; }
-    public string? InclusionAmount2Words { get; set; }
     public string? InclusionCurrency2 { get; set; } = "ليرة سورية";
     public decimal? InclusionAmount3Numeric { get; set; }
-    public string? InclusionAmount3Words { get; set; }
     public string? InclusionCurrency3 { get; set; } = "ليرة سورية";
 
     public string? Court { get; set; }

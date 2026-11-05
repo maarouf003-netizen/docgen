@@ -276,6 +276,23 @@ public static class DocumentText
         return PartyNatureCatalog.ValidNatures.Contains(value) ? value : PartyNatureCatalog.Natural;
     }
 
+    /// <summary>
+    /// تفقيط المبلغ مشتقّ خادميًا حصرًا (حقول «المبلغ كتابة» أُزيلت من عقد الطلب):
+    /// يُعاد توليده من الرقم والعملة متى كان الرقم موجبًا، ويُحفظ النص المخزَّن كما هو
+    /// ما دام الرقم صفرًا (ملفات قديمة كُتب فيها المبلغ نصًا وحده بلا رقم — حفظٌ عادي
+    /// لا يجوز أن يمحو تفقيطها)، ويُفرَّغ عند إفراغ رقمٍ كان موجبًا كي لا يبقى تفقيط
+    /// مبلغٍ أُزيل.
+    /// </summary>
+    /// <param name="previousNumeric">الرقم المخزَّن قبل تطبيق الطلب (لتمييز الإفراغ عن الفراغ التاريخي).</param>
+    /// <param name="numeric">الرقم بعد تطبيق الطلب.</param>
+    /// <param name="currency">العملة بعد تطبيق الطلب (النص القديم يبقى بعملته المخزَّنة).</param>
+    /// <param name="storedWords">النص المخزَّن قبل التطبيق.</param>
+    public static string? DeriveAmountWords(
+        decimal previousNumeric, decimal numeric, string? currency, string? storedWords)
+        => numeric > 0
+            ? FormatAmountWords(numeric, currency)
+            : previousNumeric > 0 ? null : storedWords;
+
     public static void FillDerivedFields(Document doc)
     {
         if (doc.AmountNumeric > 0 && string.IsNullOrWhiteSpace(doc.AmountWords))

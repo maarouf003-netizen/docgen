@@ -609,23 +609,25 @@ public sealed class DocumentService : IDocumentService
         doc.AnnexDate = r.AnnexDate;
         doc.InclusionText = r.InclusionText;
         doc.InclusionNotes = r.InclusionNotes;
+        // المبالغ: الأرقام والعملات من الطلب، والتفقيط مشتقّ خادميًا من الرقم الجديد
+        // (`DocumentText.DeriveAmountWords`) — لا يُقبل نص العميل أصلًا.
+        doc.AmountWords = DocumentText.DeriveAmountWords(doc.AmountNumeric, r.AmountNumeric ?? 0, r.Currency, doc.AmountWords);
         doc.AmountNumeric = r.AmountNumeric ?? 0;
-        doc.AmountWords = r.AmountWords;
         doc.Currency = r.Currency;
+        doc.Amount2Words = DocumentText.DeriveAmountWords(doc.Amount2Numeric, r.Amount2Numeric ?? 0, r.Currency2, doc.Amount2Words);
         doc.Amount2Numeric = r.Amount2Numeric ?? 0;
-        doc.Amount2Words = r.Amount2Words;
         doc.Currency2 = r.Currency2;
+        doc.Amount3Words = DocumentText.DeriveAmountWords(doc.Amount3Numeric, r.Amount3Numeric ?? 0, r.Currency3, doc.Amount3Words);
         doc.Amount3Numeric = r.Amount3Numeric ?? 0;
-        doc.Amount3Words = r.Amount3Words;
         doc.Currency3 = r.Currency3;
+        doc.InclusionAmountWords = DocumentText.DeriveAmountWords(doc.InclusionAmountNumeric, r.InclusionAmountNumeric ?? 0, r.InclusionCurrency, doc.InclusionAmountWords);
         doc.InclusionAmountNumeric = r.InclusionAmountNumeric ?? 0;
-        doc.InclusionAmountWords = r.InclusionAmountWords;
         doc.InclusionCurrency = r.InclusionCurrency;
+        doc.InclusionAmount2Words = DocumentText.DeriveAmountWords(doc.InclusionAmount2Numeric, r.InclusionAmount2Numeric ?? 0, r.InclusionCurrency2, doc.InclusionAmount2Words);
         doc.InclusionAmount2Numeric = r.InclusionAmount2Numeric ?? 0;
-        doc.InclusionAmount2Words = r.InclusionAmount2Words;
         doc.InclusionCurrency2 = r.InclusionCurrency2;
+        doc.InclusionAmount3Words = DocumentText.DeriveAmountWords(doc.InclusionAmount3Numeric, r.InclusionAmount3Numeric ?? 0, r.InclusionCurrency3, doc.InclusionAmount3Words);
         doc.InclusionAmount3Numeric = r.InclusionAmount3Numeric ?? 0;
-        doc.InclusionAmount3Words = r.InclusionAmount3Words;
         doc.InclusionCurrency3 = r.InclusionCurrency3;
         // العقد: الخادم يشتق Court/CourtNorm من الدائرة ويتجاهل نص العميل دائمًا (لا 400) —
         // يُضبط في Create/Update عبر ApplyCircuitDerivation بعد ApplyRequest.

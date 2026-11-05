@@ -128,6 +128,14 @@
 
 ## 4) المسار (ب): تعقيم العدادات في نقاط الأرشيف الثلاث
 
+> **حالة 2026-11-05 (تحديث):** نُفِّذ التعقيم عبر مساعد واحد `OkSanitized` على النقاط الخمس، ثم
+> أُزيل عدّاد المشاهدات نهائيًا (PR #106): أُعيدت تسمية الصلاحية إلى
+> `RolePermissions.CanViewPrintCounter` و`CanViewCounters` لم تعد موجودة، ولم يبق في الاستجابة
+> إلا `PrintCount`. جدول الاختبارات أدناه تاريخي (`viewCount`)؛ التغطية الفعلية الحالية هي نظيره
+> لـ`printCount`: `Get_AsManager_ShowsPrintCounter`، `Get_AsLawyer_HidesPrintCounter`،
+> `Search_AsLawyer_HidesPrintCounter`، `GetStruckOff_AsLawyer_HidesPrintCounter`،
+> `GetDeleted_AsLawyer_HidesPrintCounter`.
+
 ### 4-1) الهدف
 
 تطبيق سياسة `RolePermissions.CanViewCounters` (`RolePermissions.cs:33-35`: رئيس قسم/مدير/مشرف فقط)
