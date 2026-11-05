@@ -51,14 +51,12 @@ public class DocumentChangeTrackerTests
         var before = DocumentChangeTracker.Capture(doc);
 
         doc.UpdatedAt = DateTime.UtcNow.AddDays(3);
-        doc.ViewCount = 99;
         doc.BorrowerName = " أحمد "; // فراغ طرفي لا يعد تغييرًا بعد التطبيع
         doc.ImmediateActions = null;  // فارغ ↔ null لا يعد تغييرًا
 
         var changes = DocumentChangeTracker.Diff(before, doc);
 
         Assert.DoesNotContain(changes, c => c.FieldKey == nameof(Document.UpdatedAt));
-        Assert.DoesNotContain(changes, c => c.FieldKey == nameof(Document.ViewCount));
         Assert.DoesNotContain(changes, c => c.FieldKey == nameof(Document.BorrowerName));
         Assert.Empty(changes);
     }

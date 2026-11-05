@@ -51,8 +51,8 @@ public static class RolePermissions
     /// <summary>تدوير أرقام أساس الملفات السنوي — المحامي فقط (على ملفاته).</summary>
     public static bool CanRotate(UserRole role) => role == UserRole.Lawyer;
 
-    /// <summary>رؤية عدادات المشاهدة/الطباعة — رئيس قسم وشعبة (نطاقه)/مدير/مشرف.</summary>
-    public static bool CanViewCounters(UserRole role) =>
+    /// <summary>رؤية عدّاد الطباعة — رئيس قسم وشعبة (نطاقه)/مدير/مشرف.</summary>
+    public static bool CanViewPrintCounter(UserRole role) =>
         IsHeadOrSubHead(role) || role is UserRole.Manager or UserRole.Admin;
 
     /// <summary>وصول عام لكل الفروع (قراءة) — مدير/مشرف.</summary>

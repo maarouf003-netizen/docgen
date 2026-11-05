@@ -471,8 +471,7 @@ public class PortalRestructureTests : IDisposable
         _db.Branches.Add(branch);
         await _db.SaveChangesAsync();
         var doc = await _db.Documents.FindAsync(id);
-        doc!.ViewCount = 7;
-        doc.PrintCount = 3;
+        doc!.PrintCount = 3;
         doc.Lawyer = "محامٍ داخلي";
         doc.Branch = branch;
         doc.Version = 9;
@@ -483,7 +482,6 @@ public class PortalRestructureTests : IDisposable
         Assert.Equal(0, response.Version);
         Assert.Null(response.Notes);
         Assert.Null(response.ImmediateActions);
-        Assert.Equal(0, response.ViewCount);
         Assert.Equal(0, response.PrintCount);
         Assert.Null(response.AdministrativeBranchName);
         Assert.Null(response.BranchId);
@@ -703,7 +701,7 @@ public class PortalRestructureTests : IDisposable
         // - مقبول: غير مستهلك لكنه بلا حساسية وموثّق السبب هنا حصرًا.
         var scrubbed = new HashSet<string>(StringComparer.Ordinal)
         {
-            "Notes", "ImmediateActions", "ViewCount", "PrintCount",
+            "Notes", "ImmediateActions", "PrintCount",
             "AdministrativeBranchName", "BranchId", "CreatedById", "CreatedByName",
             "Lawyer", "NeedsRotation", "HasAppeals", "MatchedAppealId",
             "SourceDelegationId", "SoldAssetIds", "ForcedExecutionDate",

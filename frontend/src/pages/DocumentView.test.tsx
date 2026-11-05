@@ -87,7 +87,6 @@ const mockDoc: DocumentResponse = {
   seizureDate: '2026-07-29',
   immediateActions: 'إجراء عاجل',
   notes: '',
-  viewCount: 7,
   printCount: 0,
   createdByName: 'الرئيس',
   executionActions: [],
@@ -439,8 +438,6 @@ describe('DocumentView', () => {
     expect(screen.getByText('2026-08-01')).toBeInTheDocument();
     expect(screen.queryByText('الإجراءات المستعجلة')).not.toBeInTheDocument();
     expect(screen.queryByText('إجراء عاجل')).not.toBeInTheDocument();
-    expect(screen.queryByText('عدد المشاهدات')).not.toBeInTheDocument();
-    expect(screen.queryByText('7')).not.toBeInTheDocument();
   });
 
   it('يجمع حقول كتب الجهات بجانب بعضها في بطاقة بيانات الملف', async () => {

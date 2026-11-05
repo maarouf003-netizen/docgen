@@ -49,7 +49,6 @@ public interface IDocumentSheetFields : IDocumentExecutionState
     string? DisplayFileYear { get; }
     string? AnnexNumber { get; }
     string? Lawyer { get; }
-    int ViewCount { get; }
     string? Applicant { get; }
     string? BorrowerName { get; }
     string? BorrowerFather { get; }
@@ -81,7 +80,6 @@ public sealed class DocumentExportRow : IDocumentSheetFields
     public string? DisplayFileYear { get; set; }
     public string? AnnexNumber { get; set; }
     public string? Lawyer { get; set; }
-    public int ViewCount { get; set; }
     public string? GeneralEntitySide { get; set; }
     public string? ExecutedStatus { get; set; }
     public string? ExecStatus { get; set; }

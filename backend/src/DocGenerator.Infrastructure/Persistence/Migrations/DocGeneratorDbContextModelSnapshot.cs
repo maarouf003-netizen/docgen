@@ -1082,9 +1082,6 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("ViewCount")
-                        .HasColumnType("INTEGER");
-
                     b.Property<bool>("WasDepositExecuted")
                         .HasColumnType("INTEGER");
 

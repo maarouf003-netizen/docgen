@@ -181,5 +181,4 @@ public record BranchSummaryDto(
 public record UserActivityDto(
     string Username,
     string FullName,
-    int DocumentCount,
-    int ViewCount);
+    int DocumentCount);

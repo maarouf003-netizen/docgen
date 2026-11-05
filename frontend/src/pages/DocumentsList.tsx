@@ -387,8 +387,7 @@ export default function DocumentsList() {
   const [administrativeBranches, setAdministrativeBranches] = useState<string[]>([]);
   const [executedEntities, setExecutedEntities] = useState<string[]>([]);
   const [publicEntityBranches, setPublicEntityBranches] = useState<string[]>([]);
-  // عدد المشاهدات للمدير/المشرف فقط — يُخفى عن رئيس القسم بقرار المنتج (لا داعي لعرضه له).
-  const canViewCounters = hasFullAccess;
+  // عدد المشاهدات أُزيل من النظام بالكامل (قرار المالك) — لا عمود ولا عدّاد في الواجهة.
   const canSeeAdministrativeBranch = hasFullAccess;
   const canSeeAssignedLawyer = hasFullAccess || isHeadOrSubHead;
   const canSearchByLawyer = hasFullAccess || isHeadOrSubHead;
@@ -554,7 +553,7 @@ export default function DocumentsList() {
   };
 
   const colSpan =
-    (canViewCounters ? 8 : 7) +
+    7 +
     (canSeeAssignedLawyer ? 1 : 0) +
     (canSeeAdministrativeBranch ? 1 : 0);
 
@@ -735,7 +734,6 @@ export default function DocumentsList() {
                   )}
                   <div className="flex items-center justify-between mb-2">
                     <StatusBadge d={d} />
-                    {canViewCounters && <span className="text-xs text-gray-500">مشاهدات: {d.viewCount}</span>}
                   </div>
                   <Link
                     to={`/documents/${d.id}`}
@@ -852,7 +850,6 @@ export default function DocumentsList() {
                       </th>
                     )}
                     <th className="px-4 py-3 align-top w-[14%]">الإجراءات والملاحظات</th>
-                    {canViewCounters && <th className="px-4 py-3 align-top w-[5%]">عدد المشاهدات</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -894,7 +891,6 @@ export default function DocumentsList() {
                       <td className="px-4 py-3">
                         <ActionsCell d={d} onClick={() => setActionsDocId(d.id)} />
                       </td>
-                      {canViewCounters && <td className="px-4 py-3">{d.viewCount}</td>}
                     </tr>
                   ))}
                   {data.items.length === 0 && (

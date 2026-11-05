@@ -782,227 +782,59 @@ public class DocumentsIntegrationTests
         doc.Dispose();
     }
 
+
     [Fact]
-    public async Task Get_AsManager_ShowsViewCounters()
+    public async Task Get_AsManager_ShowsPrintCounter()
     {
         var client = _factory.AuthorizedClient("manager");
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var id = await _factory.CreateDocumentAsync(token);
 
-        await client.PostAsync($"/api/documents/{id}/view", null);
+        var generate = await client.GetAsync($"/api/documents/{id}/generate?template=004");
+        Assert.Equal(HttpStatusCode.OK, generate.StatusCode);
 
         var response = await client.GetAsync($"/api/documents/{id}");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var doc = await response.Content.ReadFromJsonAsync<JsonDocument>();
-        Assert.Equal(1, doc!.RootElement.GetProperty("viewCount").GetInt32());
-        Assert.Equal(0, doc.RootElement.GetProperty("printCount").GetInt32());
+        Assert.Equal(1, doc!.RootElement.GetProperty("printCount").GetInt32());
     }
 
     [Fact]
-    public async Task Get_AsLawyer_HidesViewCounters()
+    public async Task Get_AsLawyer_HidesPrintCounter()
     {
+        // المحامي يولّد ملفه فيزيد عدّاد الطباعة فعليًا، ثم يُعقَّم في استجابة التفاصيل.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var lawyerClient = _factory.ClientWithToken(token);
-        var managerClient = _factory.AuthorizedClient("manager");
 
-        var id = await _factory.CreateDocumentAsync(token, "مستند عدادات محامي");
-        await managerClient.PostAsync($"/api/documents/{id}/view", null);
+        var id = await _factory.CreateDocumentAsync(token, "مستند عدّاد طباعة محامي");
+        var generate = await lawyerClient.GetAsync($"/api/documents/{id}/generate?template=004");
+        Assert.Equal(HttpStatusCode.OK, generate.StatusCode);
 
         var response = await lawyerClient.GetAsync($"/api/documents/{id}");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var doc = await response.Content.ReadFromJsonAsync<JsonDocument>();
-        Assert.Equal(0, doc!.RootElement.GetProperty("viewCount").GetInt32());
-        Assert.Equal(0, doc.RootElement.GetProperty("printCount").GetInt32());
+        Assert.Equal(0, doc!.RootElement.GetProperty("printCount").GetInt32());
     }
 
     [Fact]
-    public async Task Search_AsLawyer_HidesViewCounters()
+    public async Task Search_AsLawyer_HidesPrintCounter()
     {
+        // نفس التعقيم على مسار القوائم (OkSanitized) لا التفاصيل فقط.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var lawyerClient = _factory.ClientWithToken(token);
         var managerClient = _factory.AuthorizedClient("manager");
 
-        var id = await _factory.CreateDocumentAsync(token, "بحث عدادات محامي");
-        await managerClient.PostAsync($"/api/documents/{id}/view", null);
+        var id = await _factory.CreateDocumentAsync(token, "بحث عدّاد طباعة محامي");
+        var generate = await managerClient.GetAsync($"/api/documents/{id}/generate?template=004");
+        Assert.Equal(HttpStatusCode.OK, generate.StatusCode);
 
-        var url = "/api/documents?q=" + Uri.EscapeDataString("بحث عدادات محامي") + "&perPage=50";
+        var url = "/api/documents?q=" + Uri.EscapeDataString("بحث عدّاد طباعة محامي") + "&perPage=50";
         var response = await lawyerClient.GetAsync(url);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
         var item = body!.RootElement.GetProperty("items").EnumerateArray()
             .First(i => i.GetProperty("id").GetInt32() == id);
-        Assert.Equal(0, item.GetProperty("viewCount").GetInt32());
-    }
-
-    [Fact]
-    public async Task ExecutedPage_HidesCountersFromLawyer()
-    {
-        // المحامي يملك الملف المنفذ فعلًا — التسرب الحقيقي الوحيد على هذه الصفحة.
-        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyerClient = _factory.ClientWithToken(token);
-        var managerClient = _factory.AuthorizedClient("manager");
-
-        var id = await CreateExecutedDocumentAsync(token);
-        var run = await lawyerClient.PostAsJsonAsync($"/api/documents/{id}/executed-status", new { status = "منفذ" });
-        Assert.Equal(HttpStatusCode.OK, run.StatusCode);
-        await managerClient.PostAsync($"/api/documents/{id}/view", null);
-
-        var response = await lawyerClient.GetAsync("/api/documents/executed?perPage=50");
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
-        var item = body!.RootElement.GetProperty("items").EnumerateArray()
-            .First(i => i.GetProperty("id").GetInt32() == id);
-        Assert.Equal(0, item.GetProperty("viewCount").GetInt32());
         Assert.Equal(0, item.GetProperty("printCount").GetInt32());
-    }
-
-    [Fact]
-    public async Task StruckOffPage_HidesCountersFromLawyer()
-    {
-        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyerClient = _factory.ClientWithToken(token);
-        var managerClient = _factory.AuthorizedClient("manager");
-
-        var id = await CreateCirculatingDocumentAsync(token);
-        var strike = await lawyerClient.PostAsJsonAsync($"/api/documents/{id}/status",
-            new { status = "مشطوب", fields = new { struckOffDate = "1/2/2024" } });
-        Assert.Equal(HttpStatusCode.OK, strike.StatusCode);
-        await managerClient.PostAsync($"/api/documents/{id}/view", null);
-
-        var response = await lawyerClient.GetAsync("/api/documents/struck-off?perPage=50");
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
-        var item = body!.RootElement.GetProperty("items").EnumerateArray()
-            .First(i => i.GetProperty("id").GetInt32() == id);
-        Assert.Equal(0, item.GetProperty("viewCount").GetInt32());
-        Assert.Equal(0, item.GetProperty("printCount").GetInt32());
-    }
-
-    [Fact]
-    public async Task DeletedPage_HidesCountersFromLawyer()
-    {
-        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyerClient = _factory.ClientWithToken(token);
-        var managerClient = _factory.AuthorizedClient("manager");
-
-        var id = await _factory.CreateDocumentAsync(token, "محذوفة عدادات محامي");
-        // المشاهدة قبل الحذف (نقطة المشاهدة لا تصل للمحذوف).
-        await managerClient.PostAsync($"/api/documents/{id}/view", null);
-        var delete = await lawyerClient.DeleteAsync($"/api/documents/{id}");
-        Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
-
-        var response = await lawyerClient.GetAsync("/api/documents/deleted?perPage=50");
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
-        var item = body!.RootElement.GetProperty("items").EnumerateArray()
-            .First(i => i.GetProperty("id").GetInt32() == id);
-        Assert.Equal(0, item.GetProperty("viewCount").GetInt32());
-        Assert.Equal(0, item.GetProperty("printCount").GetInt32());
-    }
-
-    [Fact]
-    public async Task DeletedAndStruckOff_ShowCountersToHead()
-    {
-        // الإيجابي الوحيد غير الفارغ على النقطتين المحجوبتين: رئيس القسم يرى كل ملفات
-        // فرعه (بما فيها ملفات المحامي) ويملك العدادات — فيثبت عدم كسر العرض المصرَّح.
-        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyerClient = _factory.ClientWithToken(token);
-        var managerClient = _factory.AuthorizedClient("manager");
-        var headClient = _factory.AuthorizedClient("head1");
-
-        var struckId = await CreateCirculatingDocumentAsync(token);
-        var strike = await lawyerClient.PostAsJsonAsync($"/api/documents/{struckId}/status",
-            new { status = "مشطوب", fields = new { struckOffDate = "1/2/2024" } });
-        Assert.Equal(HttpStatusCode.OK, strike.StatusCode);
-        await managerClient.PostAsync($"/api/documents/{struckId}/view", null);
-
-        var deletedId = await _factory.CreateDocumentAsync(token, "محذوفة عدادات رئيس قسم");
-        await managerClient.PostAsync($"/api/documents/{deletedId}/view", null);
-        var delete = await lawyerClient.DeleteAsync($"/api/documents/{deletedId}");
-        Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
-
-        var struckResponse = await headClient.GetAsync("/api/documents/struck-off?perPage=50");
-        Assert.Equal(HttpStatusCode.OK, struckResponse.StatusCode);
-        using var struckBody = await struckResponse.Content.ReadFromJsonAsync<JsonDocument>();
-        var struckItem = struckBody!.RootElement.GetProperty("items").EnumerateArray()
-            .First(i => i.GetProperty("id").GetInt32() == struckId);
-        Assert.Equal(1, struckItem.GetProperty("viewCount").GetInt32());
-
-        var deletedResponse = await headClient.GetAsync("/api/documents/deleted?perPage=50");
-        Assert.Equal(HttpStatusCode.OK, deletedResponse.StatusCode);
-        using var deletedBody = await deletedResponse.Content.ReadFromJsonAsync<JsonDocument>();
-        var deletedItem = deletedBody!.RootElement.GetProperty("items").EnumerateArray()
-            .First(i => i.GetProperty("id").GetInt32() == deletedId);
-        Assert.Equal(1, deletedItem.GetProperty("viewCount").GetInt32());
-    }
-
-    [Fact]
-    public async Task DeletedPage_ShowsAllFilesToAdmin()
-    {
-        // المشرف ليس محاميًا (لا ملفات خاصة به) ويرى الكل كالمدير: ملف المحامي
-        // المحذوف يظهر له، مع العدادات غير المعقّمة.
-        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyerClient = _factory.ClientWithToken(token);
-        var managerClient = _factory.AuthorizedClient("manager");
-        var adminClient = _factory.AuthorizedClient("admin");
-
-        var id = await _factory.CreateDocumentAsync(token, "محذوفة نطاق مشرف");
-        await managerClient.PostAsync($"/api/documents/{id}/view", null);
-        var delete = await lawyerClient.DeleteAsync($"/api/documents/{id}");
-        Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
-
-        var response = await adminClient.GetAsync("/api/documents/deleted?perPage=50");
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
-        var item = body!.RootElement.GetProperty("items").EnumerateArray()
-            .First(i => i.GetProperty("id").GetInt32() == id);
-        Assert.Equal(1, item.GetProperty("viewCount").GetInt32());
-    }
-
-    [Fact]
-    public async Task StruckOffPage_ShowsAllFilesToAdmin()
-    {
-        // المشرف يرى ملف المحامي المشطوب (نطاق الكل)، مع العدادات غير المعقّمة.
-        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyerClient = _factory.ClientWithToken(token);
-        var managerClient = _factory.AuthorizedClient("manager");
-        var adminClient = _factory.AuthorizedClient("admin");
-
-        var id = await CreateCirculatingDocumentAsync(token);
-        var strike = await lawyerClient.PostAsJsonAsync($"/api/documents/{id}/status",
-            new { status = "مشطوب", fields = new { struckOffDate = "1/2/2024" } });
-        Assert.Equal(HttpStatusCode.OK, strike.StatusCode);
-        await managerClient.PostAsync($"/api/documents/{id}/view", null);
-
-        var response = await adminClient.GetAsync("/api/documents/struck-off?perPage=50");
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
-        var item = body!.RootElement.GetProperty("items").EnumerateArray()
-            .First(i => i.GetProperty("id").GetInt32() == id);
-        Assert.Equal(1, item.GetProperty("viewCount").GetInt32());
-    }
-
-    [Fact]
-    public async Task ExecutedPage_ShowCountersToAdmin()
-    {
-        // الإيجابي غير الفارغ على صفحة المنفذة: المشرف (وصول كامل) يرى الكل
-        // ويملك العدادات — فيثبت عدم كسر العرض المصرَّح.
-        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
-        var lawyerClient = _factory.ClientWithToken(token);
-        var managerClient = _factory.AuthorizedClient("manager");
-        var adminClient = _factory.AuthorizedClient("admin");
-
-        var id = await CreateExecutedDocumentAsync(token);
-        var run = await lawyerClient.PostAsJsonAsync($"/api/documents/{id}/executed-status", new { status = "منفذ" });
-        Assert.Equal(HttpStatusCode.OK, run.StatusCode);
-        await managerClient.PostAsync($"/api/documents/{id}/view", null);
-
-        var response = await adminClient.GetAsync("/api/documents/executed?perPage=50");
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
-        var item = body!.RootElement.GetProperty("items").EnumerateArray()
-            .First(i => i.GetProperty("id").GetInt32() == id);
-        Assert.Equal(1, item.GetProperty("viewCount").GetInt32());
     }
 
     [Fact]

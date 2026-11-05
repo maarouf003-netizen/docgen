@@ -156,7 +156,6 @@ public class StatisticsRepository : IStatisticsRepository
             {
                 UserId = g.Key,
                 Count = g.Count(),
-                Views = g.Sum(d => d.ViewCount),
             })
             .ToListAsync(ct);
 
@@ -168,8 +167,7 @@ public class StatisticsRepository : IStatisticsRepository
             .Select(u => new UserActivityDto(
                 u.Username,
                 u.FullName,
-                grouped.FirstOrDefault(g => g.UserId == u.Id)?.Count ?? 0,
-                grouped.FirstOrDefault(g => g.UserId == u.Id)?.Views ?? 0))
+                grouped.FirstOrDefault(g => g.UserId == u.Id)?.Count ?? 0))
             .OrderByDescending(a => a.DocumentCount)
             .ToList();
     }

@@ -186,7 +186,6 @@ public class DocumentResponse : IDocumentSheetFields
     public string? SeizureDate { get; set; }
     public string? ImmediateActions { get; set; }
     public string? Notes { get; set; }
-    public int ViewCount { get; set; }
     public int PrintCount { get; set; }
     public string? CreatedByName { get; set; }
     public DateTime? DeletedAt { get; set; }
@@ -369,7 +368,6 @@ public class DocumentResponse : IDocumentSheetFields
         SeizureDate = d.SeizureDate,
         ImmediateActions = d.ImmediateActions,
         Notes = d.Notes,
-        ViewCount = d.ViewCount,
         PrintCount = d.PrintCount,
         CreatedByName = d.CreatedBy?.FullName,
         DeletedAt = d.DeletedAt,

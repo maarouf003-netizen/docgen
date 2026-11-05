@@ -8,7 +8,7 @@ namespace DocGenerator.Application.Common.Audit;
 /// محرك تتبع تغيّرات الملف التنفيذي على مستوى الحقل: يلتقط لقطة القيم القابلة
 /// للتتبع قبل التعديل، ثم يقارنها بعد الحفظ ليُنتج صفوف «حقل / قيمة قبل / قيمة بعد».
 /// يشمل كل الحقول العددية للكيان، ويتابع أيضًا تركيب المجموعات (كفالات، ورثة، أصول…)
-/// بتوقيعات نصية مكثفة. الاستثناءات التقنية فقط (أعداد مشاهدة/طوابع زمنية/حقول مشتقة).
+/// بتوقيعات نصية مكثفة. الاستثناءات التقنية فقط (عدّاد الطباعة/طوابع زمنية/حقول مشتقة).
 /// </summary>
 public static class DocumentChangeTracker
 {
@@ -17,7 +17,7 @@ public static class DocumentChangeTracker
     {
         nameof(Document.Id), nameof(Document.CreatedAt), nameof(Document.UpdatedAt),
         nameof(Document.CreatedById), nameof(Document.BranchId), nameof(Document.IsDeleted),
-        nameof(Document.DeletedAt), nameof(Document.ViewCount), nameof(Document.PrintCount),
+        nameof(Document.DeletedAt), nameof(Document.PrintCount),
         nameof(Document.FullData), nameof(Document.SearchText), nameof(Document.FilePath),
         nameof(Document.SourceDelegationId),
     };

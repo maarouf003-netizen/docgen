@@ -19,7 +19,6 @@ export const mockDoc: DocumentResponse = {
   inclusionAmountNumeric: 0,
   inclusionAmount2Numeric: 0,
   inclusionAmount3Numeric: 0,
-  viewCount: 0,
   printCount: 0,
   guarantors: [],
   assets: [],

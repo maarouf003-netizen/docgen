@@ -1,4 +1,3 @@
-using System.Globalization;
 using DocGenerator.Application.Common;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
@@ -29,8 +28,7 @@ public interface IExcelExportService
     Stream BuildDocumentsWorkbook(
         IReadOnlyList<DocumentExportRow> documents,
         bool includeAdministrativeBranch,
-        bool includeAssignedLawyer,
-        bool includeViewCount);
+        bool includeAssignedLawyer);
 
     /// <summary>
     /// مصنّف بوابة المندوب: أعمدة ثابتة لا رايات. «ملحق العقد» غير موجود فيه
@@ -75,16 +73,15 @@ public sealed class ExcelExportService : IExcelExportService
     public Stream BuildDocumentsWorkbook(
         IReadOnlyList<DocumentExportRow> documents,
         bool includeAdministrativeBranch,
-        bool includeAssignedLawyer,
-        bool includeViewCount)
+        bool includeAssignedLawyer)
     {
-        var headers = BuildHeaders(includeAdministrativeBranch, includeAssignedLawyer, includeViewCount);
+        var headers = BuildHeaders(includeAdministrativeBranch, includeAssignedLawyer);
         return WriteWorkbook(
             "الملفات التنفيذية",
             headers,
             documents.Select(doc => BuildValues(
                 doc,
-                includeAdministrativeBranch, includeAssignedLawyer, includeViewCount)).ToList());
+                includeAdministrativeBranch, includeAssignedLawyer)).ToList());
     }
 
     public Stream BuildPortalWorkbook(IReadOnlyList<PortalWorkbookRow> rows)
@@ -207,7 +204,7 @@ public sealed class ExcelExportService : IExcelExportService
         writer.WriteEndElement(); // Row
     }
 
-    private static List<string> BuildHeaders(bool includeAdministrativeBranch, bool includeAssignedLawyer, bool includeViewCount)
+    private static List<string> BuildHeaders(bool includeAdministrativeBranch, bool includeAssignedLawyer)
     {
         var headers = new List<string>();
         if (includeAdministrativeBranch)
@@ -216,16 +213,13 @@ public sealed class ExcelExportService : IExcelExportService
         if (includeAssignedLawyer)
             headers.Add("المحامي المختص");
         headers.Add("الإجراءات والملاحظات");
-        if (includeViewCount)
-            headers.Add("عدد المشاهدات");
         return headers;
     }
 
     private static List<string> BuildValues(
         IDocumentSheetFields doc,
         bool includeAdministrativeBranch,
-        bool includeAssignedLawyer,
-        bool includeViewCount)
+        bool includeAssignedLawyer)
     {
         var values = new List<string>();
         if (includeAdministrativeBranch)
@@ -243,8 +237,6 @@ public sealed class ExcelExportService : IExcelExportService
         if (includeAssignedLawyer)
             values.Add(doc.Lawyer ?? string.Empty);
         values.Add(HtmlInputSanitizer.ToPlainText(doc.ExecutionActions.FirstOrDefault()?.Text));
-        if (includeViewCount)
-            values.Add(doc.ViewCount.ToString(CultureInfo.InvariantCulture));
         return values;
     }
 
