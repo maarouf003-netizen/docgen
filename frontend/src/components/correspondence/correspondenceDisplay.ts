@@ -8,6 +8,12 @@ import type {
 /** حدث تُطلق عند تأكيد مشاهدة مراسلة، لتحديث عدّاد الجرس فورًا في Layout. */
 export const CORRESPONDENCE_UNSEEN_EVENT = 'correspondence:unseen-changed';
 
+/**
+ * ذيل عدّاد المراسلات غير المؤكَّدة المشاهدة — يُبنى على المسار الرئيسي
+ * (`/correspondence`) أو مسار البوابة (`/portal/correspondence`).
+ */
+export const CORRESPONDENCE_UNSEEN_COUNT_SUFFIX = '/unseen-count';
+
 /** تسميات أنواع رسائل المراسلة كما تظهر في الواجهة. */
 export const CORRESPONDENCE_MESSAGE_KIND_LABELS: Record<CorrespondenceMessageKind, string> = {
   letter: 'المراسلة',

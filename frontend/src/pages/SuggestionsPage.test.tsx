@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import SuggestionsPage from './SuggestionsPage';
 
@@ -11,9 +11,15 @@ vi.mock('../api/client', () => ({
 
 import { api } from '../api/client';
 
+/** عدّاد غير المقروء الخادمي — يتحول إلى صفر بعد التعليم في اختبار الشارة. */
+let unreadCount = 1;
+
 function mockList() {
   (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-    (_url: string, config?: { params?: Record<string, unknown> }) => {
+    (url: string, config?: { params?: Record<string, unknown> }) => {
+      if (url === '/app-suggestions/unread-count') {
+        return Promise.resolve({ data: { count: unreadCount } });
+      }
       if (config?.params?.page === 2) {
         return Promise.resolve({
           data: {
@@ -42,6 +48,7 @@ function mockList() {
 }
 
 beforeEach(() => {
+  unreadCount = 1;
   vi.clearAllMocks();
 });
 
@@ -53,20 +60,26 @@ describe('SuggestionsPage', () => {
     expect(await screen.findByText('أول اقتراح')).toBeInTheDocument();
     expect(screen.getByText('محامي دمشق')).toBeInTheDocument();
     expect(screen.getByText('ثانٍ مقروء')).toBeInTheDocument();
-    expect(screen.getByText('1 غير مقروء')).toBeInTheDocument();
+    expect(await screen.findByText('1 غير مقروء')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'تعليم كمقروء' })).toBeInTheDocument();
   });
 
   it('يعلّم المقروء ويحدّث الشارة', async () => {
     const user = userEvent.setup();
     mockList();
-    (api.patch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (api.patch as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      unreadCount = 0;
+      return Promise.resolve({});
+    });
     render(<SuggestionsPage />);
 
+    expect(await screen.findByText('1 غير مقروء')).toBeInTheDocument();
     await user.click(await screen.findByRole('button', { name: 'تعليم كمقروء' }));
 
     expect(api.patch).toHaveBeenCalledWith('/app-suggestions/1/read');
-    expect(screen.queryByText('1 غير مقروء')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText('1 غير مقروء')).not.toBeInTheDocument();
+    });
     expect(screen.getAllByText('مقروء').length).toBeGreaterThanOrEqual(1);
   });
 

@@ -62,6 +62,15 @@ public class AppSuggestionsController : ControllerBase
         return CreatedAtAction(nameof(Get), new { id = suggestion.Id }, suggestion);
     }
 
+    /// <summary>عدد الاقتراحات غير المقروءة — شارة بطاقة «اقتراحات التطوير» (مشرف/مدير).</summary>
+    [HttpGet("unread-count")]
+    public async Task<IActionResult> UnreadCount(CancellationToken ct)
+    {
+        if (!IsAdmin)
+            return Forbid();
+        return Ok(new { count = await _suggestions.CountUnreadAsync(ct) });
+    }
+
     /// <summary>تعليم الاقتراح مقروءًا — مشرف ومدير (`BQ-001`).</summary>
     [HttpPatch("{id:int}/read")]
     public async Task<IActionResult> MarkRead(int id, CancellationToken ct)

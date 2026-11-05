@@ -5,7 +5,7 @@ namespace DocGenerator.Application.Common.Interfaces;
 /// <summary>
 /// استعلامات المراسلات على مستوى قاعدة البيانات:
 /// قوائم الطرف/الفرع (المحافظة)/الوصول الكامل (محافظة إجبارية) مع البحث والترقيم،
-/// عدّاد العاجل غير المؤكَّد، وقراءة مراسلة برسائلها وتوثيق مشاهداتها، ومراسلات ملف محدد.
+/// عدّاد غير المؤكَّد المشاهدة، وقراءة مراسلة برسائلها وتوثيق مشاهداتها، ومراسلات ملف محدد.
 /// </summary>
 public interface ICorrespondenceRepository : IRepository<Correspondence>
 {
@@ -51,10 +51,11 @@ public interface ICorrespondenceRepository : IRepository<Correspondence>
     Task<bool> NumberExistsAsync(string correspondenceNumber, CancellationToken ct = default);
 
     /// <summary>
-    /// عدد مراسلات المستخدم العاجلة (كمستلم معيَّن) التي لم يؤكد مشاهدتها بعد —
-    /// عدّاد الجرس. المنشئ مستثنى عمدًا: الجرس تنبيه المستلم لا تذكير الكاتب.
+    /// عدد المراسلات (بأي أهمية) التي وصلت للمستخدم كمستلم معيَّن ولم يؤكد مشاهدتها
+    /// بعد — عدّاد الجرس والشارة. المنشئ مستثنى عمدًا: التنبيه للمستلم لا للكاتب،
+    /// والمراسلة التي وُثّقت مشاهدتها (أو رُدّ عليها) تخرج من العدّاد.
     /// </summary>
-    Task<int> CountUrgentUnseenForTargetAsync(int userId, CancellationToken ct = default);
+    Task<int> CountUnseenForTargetAsync(int userId, CancellationToken ct = default);
 
     /// <summary>توثيق مشاهدة مستخدم لمراسلة — قراءة احتياطية عند تعارض الإدراج المتزامن.</summary>
     Task<CorrespondenceReceipt?> FindReceiptAsync(int correspondenceId, int userId,

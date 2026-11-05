@@ -3,7 +3,10 @@ import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
 import { useAuth } from '../../auth/useAuth';
 import { MessageBellIcon } from '../MessageBellIcon';
-import { CORRESPONDENCE_UNSEEN_EVENT } from './correspondenceDisplay';
+import {
+  CORRESPONDENCE_UNSEEN_COUNT_SUFFIX,
+  CORRESPONDENCE_UNSEEN_EVENT,
+} from './correspondenceDisplay';
 
 interface CorrespondenceBellProps {
   /** مسار البوابة للمندوب (يبدأ بـ /api/portal) أم المسار الرئيسي. */
@@ -17,24 +20,25 @@ interface CorrespondenceBellProps {
 }
 
 /**
- * مؤشر المراسلات العاجلة (أيقونة رسالة حديثة): أحمر مع عدد المراسلات العاجلة
- * التي لم يؤكد المستخدم مشاهدتها، ويُحدَّث كل دقيقة وفورًا عند تأكيد المشاهدة.
- * للمحامي ورئيس القسم/الشعبة والمندوب (كلٌّ يرى عاجلَه كطرف) — لا يظهر للمدير/المشرف.
+ * مؤشر المراسلات غير المؤكَّدة المشاهدة (أيقونة رسالة حديثة): أحمر مع عدد
+ * المراسلات التي وصلت للمستخدم ولم يؤكد مشاهدتها (بأي أهمية)، ويُحدَّث كل دقيقة
+ * وفورًا عند تأكيد المشاهدة أو الرد. للمحامي ورئيس القسم/الشعبة والمندوب —
+ * لا يظهر للمدير/المشرف.
  */
 export default function CorrespondenceBell({ portal = false, className = '', count: fedCount }: CorrespondenceBellProps) {
   const { user } = useAuth();
   const [selfCount, setSelfCount] = useState(0);
 
-  const canHaveUrgent =
+  const canHaveUnseen =
     user?.role === 'lawyer' || user?.role === 'head' || user?.role === 'subhead' || user?.role === 'entitymanager';
   const base = portal ? '/portal/correspondence' : '/correspondence';
 
   useEffect(() => {
-    if (!canHaveUrgent || fedCount !== undefined) return undefined;
+    if (!canHaveUnseen || fedCount !== undefined) return undefined;
     let cancelled = false;
     const fetchCount = () =>
       api
-        .get<{ count: number }>(`${base}/urgent-unseen-count`)
+        .get<{ count: number }>(`${base}${CORRESPONDENCE_UNSEEN_COUNT_SUFFIX}`)
         .then((r) => {
           if (!cancelled) setSelfCount(r.data.count);
         })
@@ -50,22 +54,22 @@ export default function CorrespondenceBell({ portal = false, className = '', cou
       window.clearInterval(timer);
       window.removeEventListener(CORRESPONDENCE_UNSEEN_EVENT, onSeenChanged);
     };
-  }, [canHaveUrgent, base, fedCount]);
+  }, [canHaveUnseen, base, fedCount]);
 
-  if (!canHaveUrgent) return null;
+  if (!canHaveUnseen) return null;
 
   const count = fedCount ?? selfCount;
-  const hasUrgent = count > 0;
+  const hasUnseen = count > 0;
   const to = portal ? '/portal/correspondence' : '/correspondence';
 
   return (
     <Link
       to={to}
-      aria-label={hasUrgent ? `مراسلات عاجلة بلا مشاهدة: ${count}` : 'لا توجد مراسلات عاجلة بلا مشاهدة'}
+      aria-label={hasUnseen ? `مراسلات غير مقروءة: ${count}` : 'لا توجد مراسلات غير مقروءة'}
       className={`relative inline-flex items-center justify-center min-h-11 min-w-11 rounded-lg transition-colors ${className}`}
     >
-      <MessageBellIcon className={hasUrgent ? 'w-6 h-6 text-red-500' : 'w-6 h-6 text-emerald-300'} />
-      {hasUrgent && (
+      <MessageBellIcon className={hasUnseen ? 'w-6 h-6 text-red-500' : 'w-6 h-6 text-emerald-300'} />
+      {hasUnseen && (
         <span className="absolute -top-0.5 -left-0.5 min-w-5 h-5 px-1 rounded-full bg-red-600 border-2 border-emerald-900 text-white text-[11px] font-bold flex items-center justify-center tabular-nums">
           {count > 99 ? '+99' : count}
         </span>

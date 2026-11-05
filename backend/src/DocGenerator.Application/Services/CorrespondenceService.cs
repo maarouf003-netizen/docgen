@@ -38,7 +38,10 @@ public interface ICorrespondenceService
         AddCorrespondenceAddendumRequest request, int actorUserId, string? actorName,
         CancellationToken ct = default);
 
-    /// <summary>رد الطرف المستلم على المراسلة — الطرف المستلم فقط.</summary>
+    /// <summary>
+    /// رد الطرف المستلم على المراسلة — الطرف المستلم فقط. الرد يُوثّق مشاهدته
+    /// تلقائيًا (من؟ متى؟) في المعاملة نفسها إن لم يكن موثَّقًا سابقًا.
+    /// </summary>
     Task<CorrespondenceMessageDto> ReplyAsync(int correspondenceId,
         ReplyCorrespondenceRequest request, int actorUserId, string? actorName,
         CancellationToken ct = default);
@@ -54,8 +57,8 @@ public interface ICorrespondenceService
         string? actorName, UserRole role, int? actorBranchId,
         CancellationToken ct = default, int? actorSectionId = null);
 
-    /// <summary>عدد مراسلات المستخدم العاجلة (كمستلم) بلا تأكيد مشاهدة — عدّاد الجرس.</summary>
-    Task<int> CountUrgentUnseenAsync(int actorUserId, CancellationToken ct = default);
+    /// <summary>عدد المراسلات غير المؤكَّدة المشاهدة (كمستلم) — عدّاد الجرس والشارة.</summary>
+    Task<int> CountUnseenAsync(int actorUserId, CancellationToken ct = default);
 
     /// <summary>
     /// مراسلات ملف محدد: لمالك الملف ورئيس نطاقه (قسمه لدوائر القسم وبلا دائرة،
@@ -397,32 +400,61 @@ public sealed class CorrespondenceService : ICorrespondenceService
         if (letter.TargetUserId != actorUserId)
             throw new UnauthorizedAccessException("الرد متاح للطرف المستلم المعيَّن فقط");
 
+        // الرد من المستلم المعيَّن يعدّ تأكيدًا لمشاهدته (قرار المالك 2026-11-05):
+        // يُوثَّق تلقائيًا مع الرد نفسه، فلا تبقى المراسلة «بانتظار المشاهدة» بعد
+        // ردٍّ وقع بعد قراءتها. التوثيق مرة واحدة، وأول توثيق هو المرجع.
         var now = _clock.GetUtcNow().UtcDateTime;
-        var reply = new CorrespondenceMessage
-        {
-            CorrespondenceId = letter.Id,
-            Kind = CorrespondenceMessage.KindReply,
-            BodyHtml = bodyHtml,
-            BodyPlainText = bodyText,
-            MessageNumber = NextMessageNumber(letter),
-            MessageDate = now,
-            AuthorId = actorUserId,
-            AuthorName = actorName ?? string.Empty,
-            AuthorRole = (await _users.GetByIdAsync(actorUserId, ct))?.Role.ToString().ToLowerInvariant()
-                ?? "entitymanager",
-        };
-        letter.Messages.Add(reply);
-        letter.UpdatedAt = now;
+        var needsReceipt = letter.Receipts.All(r => r.UserId != actorUserId);
 
-        await _tx.RunAsync(async token =>
+        for (var attempt = 0; ; attempt++)
         {
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogAsync(actorName, "reply_correspondence",
-                details: $"رد على المراسلة رقم {letter.CorrespondenceNumber}",
-                ct: token);
-        }, ct);
+            var reply = new CorrespondenceMessage
+            {
+                CorrespondenceId = letter.Id,
+                Kind = CorrespondenceMessage.KindReply,
+                BodyHtml = bodyHtml,
+                BodyPlainText = bodyText,
+                MessageNumber = NextMessageNumber(letter),
+                MessageDate = now,
+                AuthorId = actorUserId,
+                AuthorName = actorName ?? string.Empty,
+                AuthorRole = (await _users.GetByIdAsync(actorUserId, ct))?.Role.ToString().ToLowerInvariant()
+                    ?? "entitymanager",
+            };
+            letter.Messages.Add(reply);
+            letter.UpdatedAt = now;
+            if (needsReceipt)
+            {
+                letter.Receipts.Add(new CorrespondenceReceipt
+                {
+                    CorrespondenceId = letter.Id,
+                    UserId = actorUserId,
+                    UserName = actorName ?? string.Empty,
+                    SeenAt = now,
+                });
+            }
 
-        return ToMessageDto(reply);
+            try
+            {
+                await _tx.RunAsync(async token =>
+                {
+                    await _uow.SaveChangesAsync(token);
+                    await _audit.LogAsync(actorName, "reply_correspondence",
+                        details: $"رد على المراسلة رقم {letter.CorrespondenceNumber}",
+                        ct: token);
+                }, ct);
+                return ToMessageDto(reply);
+            }
+            catch (Exception ex) when (attempt == 0 && needsReceipt && _errors.IsUniqueViolation(ex))
+            {
+                // سباق توثيق متزامن (ردّان من تبويبين): معاملة الرد تراجعت كاملةً،
+                // والتوثيق الفائز يكفي — يُعاد الرد وحده على كيان متتبَّع نظيف.
+                _uow.ClearChanges();
+                letter = await _letters.GetTrackedWithDetailsAsync(correspondenceId, ct)
+                    ?? throw new KeyNotFoundException("المراسلة غير موجودة");
+                needsReceipt = false;
+            }
+        }
     }
 
     public async Task<CorrespondenceReceiptDto> MarkSeenAsync(int correspondenceId,
@@ -475,8 +507,8 @@ public sealed class CorrespondenceService : ICorrespondenceService
         return new CorrespondenceReceiptDto(receipt.UserId, receipt.UserName, receipt.SeenAt);
     }
 
-    public Task<int> CountUrgentUnseenAsync(int actorUserId, CancellationToken ct = default)
-        => _letters.CountUrgentUnseenForTargetAsync(actorUserId, ct);
+    public Task<int> CountUnseenAsync(int actorUserId, CancellationToken ct = default)
+        => _letters.CountUnseenForTargetAsync(actorUserId, ct);
 
     public Task<List<string>> GetGovernoratesAsync(CancellationToken ct = default)
         => _letters.GetGovernoratesAsync(ct);

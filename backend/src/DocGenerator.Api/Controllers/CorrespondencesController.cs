@@ -71,14 +71,14 @@ public class CorrespondencesController : ControllerBase
         return Ok(await _letters.SearchTargetsAsync(UserId, Role, BranchId, q, documentId, ct, SectionId));
     }
 
-    /// <summary>عدد مراسلات المستخدم العاجلة بلا تأكيد مشاهدة — جرس المراسلات.</summary>
-    [HttpGet("urgent-unseen-count")]
-    public async Task<IActionResult> UrgentUnseenCount(CancellationToken ct)
+    /// <summary>عدد مراسلات المستخدم غير المؤكَّدة المشاهدة (بأي أهمية) — جرس المراسلات وشارتها.</summary>
+    [HttpGet("unseen-count")]
+    public async Task<IActionResult> UnseenCount(CancellationToken ct)
     {
         if (!RolePermissions.CanCreateCorrespondences(Role))
             return Forbid();
 
-        var count = await _letters.CountUrgentUnseenAsync(UserId, ct);
+        var count = await _letters.CountUnseenAsync(UserId, ct);
         return Ok(new { count });
     }
 

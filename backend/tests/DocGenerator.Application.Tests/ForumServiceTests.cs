@@ -210,7 +210,7 @@ public class ForumServiceTests : IDisposable
         await PostAsync(_lawyer1, "2");
         await PostAsync(_lawyer1, "3");
 
-        var page = await _service.ListAsync(_lawyer1.Id, 2, null, null, null);
+        var page = await _service.ListAsync(_lawyer1.Id, 2, null, null);
 
         Assert.Equal(new[] { "2", "3" }, page.Items.Select(m => m.Body));
         Assert.True(page.HasOlder);
@@ -222,9 +222,9 @@ public class ForumServiceTests : IDisposable
         var first = await PostAsync(_lawyer1, "1");
         await PostAsync(_lawyer1, "2");
         await PostAsync(_lawyer1, "3");
-        var tail = await _service.ListAsync(_lawyer1.Id, 2, null, null, null);
+        var tail = await _service.ListAsync(_lawyer1.Id, 2, null, null);
 
-        var older = await _service.ListAsync(_lawyer1.Id, 2, tail.Items[0].Id, null, null);
+        var older = await _service.ListAsync(_lawyer1.Id, 2, tail.Items[0].Id, null);
 
         Assert.Equal(new[] { first.Id }, older.Items.Select(m => m.Id));
         Assert.False(older.HasOlder);
@@ -235,11 +235,11 @@ public class ForumServiceTests : IDisposable
     {
         await PostAsync(_lawyer1, "1");
         await PostAsync(_lawyer1, "2");
-        var tail = await _service.ListAsync(_lawyer1.Id, 2, null, null, null);
+        var tail = await _service.ListAsync(_lawyer1.Id, 2, null, null);
         var fresh = await PostAsync(_lawyer1, "3");
 
-        var older = await _service.ListAsync(_lawyer1.Id, 2, tail.Items[0].Id, null, null);
-        var newer = await _service.ListAsync(_lawyer1.Id, 10, null, tail.Items[^1].Id, null);
+        var older = await _service.ListAsync(_lawyer1.Id, 2, tail.Items[0].Id, null);
+        var newer = await _service.ListAsync(_lawyer1.Id, 10, null, tail.Items[^1].Id);
 
         var walked = older.Items.Concat(tail.Items).Select(m => m.Id).ToList();
         Assert.Equal(walked.Count, walked.Distinct().Count());
@@ -248,35 +248,11 @@ public class ForumServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task List_Search_MatchesBodyOnly()
-    {
-        await PostAsync(_lawyer1, "تقرير الجلسة الأسبوعي");
-        await PostAsync(_lawyer1, "تحية طيبة");
-
-        var page = await _service.ListAsync(_lawyer1.Id, 30, null, null, "الجلسة");
-
-        Assert.Single(page.Items);
-        Assert.Contains("الجلسة", page.Items[0].Body);
-    }
-
-    [Fact]
-    public async Task List_Search_WithBefore_ReturnsOlderMatchesOnly()
-    {
-        var first = await PostAsync(_lawyer1, "تقرير الربع الأول");
-        var second = await PostAsync(_lawyer1, "تقرير الربع الثاني");
-        var third = await PostAsync(_lawyer1, "تقرير الربع الثالث");
-
-        var page = await _service.ListAsync(_lawyer2.Id, 30, third.Id, null, "تقرير");
-
-        Assert.Equal(new[] { first.Id, second.Id }, page.Items.Select(m => m.Id));
-    }
-
-    [Fact]
     public async Task List_IsCrossBranch_GlobalStream()
     {
         await PostAsync(_lawyer2, "من دمشق");
 
-        var page = await _service.ListAsync(_lawyer1.Id, 30, null, null, null);
+        var page = await _service.ListAsync(_lawyer1.Id, 30, null, null);
 
         Assert.Contains(page.Items, m => m.Body == "من دمشق" && m.AuthorLocation == "دمشق");
     }
@@ -644,7 +620,7 @@ public class ForumServiceTests : IDisposable
         // اطلاع الغير على رسالتي (لا اطلاعي أنا — قراءة الذات لا توثَّق).
         await _service.MarkReadAsync(_lawyer2.Id, "محامي دمشق", 100);
 
-        var page = await _service.ListAsync(_lawyer1.Id, 30, null, null, null);
+        var page = await _service.ListAsync(_lawyer1.Id, 30, null, null);
 
         var mine = page.Items.Single(m => m.AuthorId == _lawyer1.Id);
         var others = page.Items.Single(m => m.AuthorId == _lawyer2.Id);

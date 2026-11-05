@@ -69,6 +69,7 @@ function MessageCard({ message }: { message: CorrespondenceMessageDto }) {
 /**
  * تفاصيل مراسلة: رأسها (الرقم/التاريخ/الأهمية/الطرفان/سياق الملف/المحافظة) ثم
  * سلسلة الرسائل، فزر «تمت المشاهدة» الموثّق، فحقلا اللاحق (المنشئ) والرد (المستلم).
+ * الرد يُوثّق المشاهدة تلقائيًا خادميًا، ويُحدَّث الجرس/الشارة فور نجاحه.
  * تُغذَّى من المسار الرئيسي أو مسار البوابة حسب `portal`.
  */
 export default function CorrespondenceDetail({ portal = false }: { portal?: boolean }) {
@@ -135,6 +136,8 @@ export default function CorrespondenceDetail({ portal = false }: { portal?: bool
         await api.post(`${base}/${letter.id}/addenda`, { bodyHtml: draftHtml });
       } else {
         await api.post(`${base}/${letter.id}/replies`, { bodyHtml: draftHtml });
+        // الخادم يوثّق المشاهدة مع الرد — نحدّث الجرس/الشارة فورًا بلا انتظار الاستطلاع.
+        window.dispatchEvent(new Event(CORRESPONDENCE_UNSEEN_EVENT));
       }
       setComposerKind(null);
       setDraftHtml('');

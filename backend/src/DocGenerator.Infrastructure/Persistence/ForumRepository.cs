@@ -13,13 +13,9 @@ public class ForumRepository : Repository<ForumMessage>, IForumRepository
         .OrderBy(m => m.CreatedAt)
         .ThenBy(m => m.Id);
 
-    public async Task<List<ForumMessage>> ListSliceAsync(int limit, int? before, int? after, string? q, CancellationToken ct = default)
+    public async Task<List<ForumMessage>> ListSliceAsync(int limit, int? before, int? after, CancellationToken ct = default)
     {
         var query = Ordered;
-        if (!string.IsNullOrWhiteSpace(q))
-            query = query.Where(m => m.Body.Contains(q.Trim()));
-        // المفتاح مستقل عن البحث: الواجهة ترسلهما معًا في «تحميل المزيد»
-        // أثناء البحث، وتجاهل `before` هنا كان يعيد أحدث المطابقات تكرارًا.
         if (before.HasValue)
             query = query.Where(m => m.Id < before.Value);
         else if (after.HasValue)
@@ -28,7 +24,7 @@ public class ForumRepository : Repository<ForumMessage>, IForumRepository
         var items = after.HasValue
             // الجديد بعد المؤشر: الأول تصاعديًا (يُسقَف بالحد — الزر يقفز لذيل التيار).
             ? await query.Take(limit).ToListAsync(ct)
-            // الذيل الأحدث (تيار أو بحث): الأحدث أولًا ثم القلب للترتيب التصاعدي للعرض.
+            // الذيل الأحدث: الأحدث أولًا ثم القلب للترتيب التصاعدي للعرض.
             : await query.OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
                 .Take(limit).ToListAsync(ct);
         if (!after.HasValue)
@@ -36,13 +32,8 @@ public class ForumRepository : Repository<ForumMessage>, IForumRepository
         return items;
     }
 
-    public Task<bool> HasOlderAsync(int oldestId, string? q, CancellationToken ct = default)
-    {
-        var query = Db.ForumMessages.AsNoTracking().Where(m => m.Id < oldestId);
-        if (!string.IsNullOrWhiteSpace(q))
-            query = query.Where(m => m.Body.Contains(q.Trim()));
-        return query.AnyAsync(ct);
-    }
+    public Task<bool> HasOlderAsync(int oldestId, CancellationToken ct = default)
+        => Db.ForumMessages.AsNoTracking().AnyAsync(m => m.Id < oldestId, ct);
 
     public Task<ForumMessage?> GetPinnedAsync(CancellationToken ct = default)
         => Db.ForumMessages.AsNoTracking().FirstOrDefaultAsync(m => m.IsPinned, ct);

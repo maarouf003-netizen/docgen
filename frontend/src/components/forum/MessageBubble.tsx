@@ -14,6 +14,24 @@ const AVATAR_COLORS = [
   'bg-teal-700',
 ];
 
+/**
+ * ارتفاع شريط التنقل السفلي الثابت في تخطيط الجوال (`min-h-14`) + هامش أمان —
+ * لا تُفتح قائمة الإجراءات خلفه. نفس نقطة كسر `useIsMobile` (`max-width: 1023px`).
+ */
+const MOBILE_BOTTOM_NAV_CLEARANCE_PX = 64;
+
+/** ارتفاع بند القائمة (`min-h-11`) + هامش القائمة العلوي/السفلي (`py-1`). */
+const MENU_ITEM_HEIGHT_PX = 44;
+const MENU_VERTICAL_PADDING_PX = 8;
+
+function hasMobileBottomNav(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(max-width: 1023px)').matches
+  );
+}
+
 function avatarColor(authorId: number): string {
   return AVATAR_COLORS[Math.abs(authorId) % AVATAR_COLORS.length];
 }
@@ -66,6 +84,7 @@ export default function MessageBubble({
   onJumpToQuote,
 }: MessageBubbleProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPlacement, setMenuPlacement] = useState<'up' | 'down'>('down');
   const [expanded, setExpanded] = useState(false);
   // هل النص مقصوص فعليًا (يُقاس لا يُخمَّن — الطول وحده لا يكفي مع الأسطر القصيرة)؟
   const [overflows, setOverflows] = useState(false);
@@ -127,6 +146,33 @@ export default function MessageBubble({
     });
   if (mine) menuItems.push({ label: 'شوهدت بواسطة', action: () => onShowReaders(message) });
 
+  /**
+   * فتح/إغلاق قائمة الإجراءات مع اتجاه تلقائي حسب المساحة المتاحة: للأسفل إن
+   * كفت المساحة تحتها، وإلا للأعلى إن كفت تحته، وإلا نحو الجهة الأوسع — فلا
+   * تُقصّ القائمة عند أعلى/أسفل نافذة العرض.
+   */
+  const toggleMenu = () => {
+    if (menuOpen) {
+      setMenuOpen(false);
+      return;
+    }
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (rect) {
+      const estimatedHeight =
+        menuItems.length * MENU_ITEM_HEIGHT_PX + MENU_VERTICAL_PADDING_PX;
+      // المساحة القابلة للاستخدام فعليًا: شريط التنقل السفلي الثابت يحجب أسفل
+      // الشاشة على الجوال، فلا تُحسب مساحته ضمن المتاح تحت الزر.
+      const usableBottom =
+        window.innerHeight - (hasMobileBottomNav() ? MOBILE_BOTTOM_NAV_CLEARANCE_PX : 0);
+      const spaceBelow = usableBottom - rect.bottom;
+      const spaceAbove = rect.top;
+      const fitsBelow = spaceBelow >= estimatedHeight;
+      const fitsAbove = spaceAbove >= estimatedHeight;
+      setMenuPlacement(fitsBelow || (!fitsAbove && spaceBelow >= spaceAbove) ? 'down' : 'up');
+    }
+    setMenuOpen(true);
+  };
+
   return (
     <article
       id={`forum-message-${message.id}`}
@@ -141,9 +187,13 @@ export default function MessageBubble({
       >
         {initials(message.authorName)}
       </span>
-      <div className={`min-w-0 max-w-[85%] sm:max-w-[75%] ${mine ? 'items-end' : 'items-start'} flex flex-col`}>
+      <div
+        className={`flex min-w-0 max-w-[88%] gap-1 sm:max-w-[80%] ${
+          mine ? 'flex-row-reverse' : 'flex-row'
+        }`}
+      >
         <div
-          className={`min-w-0 w-full rounded-2xl px-3 py-2 shadow-sm ${
+          className={`min-w-0 rounded-2xl px-3 py-2 shadow-sm ${
             mine ? 'bg-emerald-50 border border-emerald-200' : 'bg-white border border-gray-200'
           } ${message.isPinned ? 'ring-2 ring-amber-300' : ''}`}
         >
@@ -209,25 +259,25 @@ export default function MessageBubble({
             )}
           </div>
         </div>
-        <div ref={menuRef} className="relative mt-0.5">
+        <div ref={menuRef} className="relative mt-1 shrink-0">
           <button
             ref={triggerRef}
             type="button"
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             aria-label={`إجراءات الرسالة من ${message.authorName}`}
-            onClick={() => setMenuOpen((v) => !v)}
+            onClick={toggleMenu}
             className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-emerald-600"
           >
             <span aria-hidden="true" className="text-lg leading-none">⋮</span>
           </button>
           {menuOpen && (
-            // تُفتح للأسفل عمدًا: في صفحة ممرّرة المحتوى السفلي قابل للوصول
-            // بالتمرير، بينما الفتح للأعلى قد يُقصّ عند أعلى نافذة العرض.
             <div
               role="menu"
               aria-label="إجراءات الرسالة"
-              className="absolute z-20 top-full mt-1 start-0 min-w-40 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+              className={`absolute z-20 min-w-40 rounded-lg border border-gray-200 bg-white py-1 shadow-lg ${
+                menuPlacement === 'down' ? 'top-full mt-1' : 'bottom-full mb-1'
+              } ${mine ? 'start-0' : 'end-0'}`}
             >
               {menuItems.map((item) => (
                 <button

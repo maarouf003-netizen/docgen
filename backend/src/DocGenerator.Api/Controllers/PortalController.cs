@@ -153,10 +153,10 @@ public class PortalController : ControllerBase
             DocGenerator.Domain.Enums.UserRole.EntityManager, null, q, documentId, ct));
     }
 
-    /// <summary>عدد مراسلات المندوب العاجلة بلا تأكيد مشاهدة — جرس البوابة.</summary>
-    [HttpGet("correspondence/urgent-unseen-count")]
-    public async Task<IActionResult> CorrespondenceUrgentCount(CancellationToken ct)
-        => Ok(new { count = await _correspondence.CountUrgentUnseenAsync(UserId, ct) });
+    /// <summary>عدد مراسلات المندوب غير المؤكَّدة المشاهدة (بأي أهمية) — جرس البوابة وشارتها.</summary>
+    [HttpGet("correspondence/unseen-count")]
+    public async Task<IActionResult> CorrespondenceUnseenCount(CancellationToken ct)
+        => Ok(new { count = await _correspondence.CountUnseenAsync(UserId, ct) });
 
     /// <summary>مراسلة المندوب برسائلها — مقصورة على ما هو طرف فيه.</summary>
     [HttpGet("correspondence/{id:int}")]

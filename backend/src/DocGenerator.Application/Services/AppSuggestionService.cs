@@ -11,6 +11,8 @@ public interface IAppSuggestionService
     Task<AppSuggestionDto?> GetByIdAsync(int id, int? senderId, CancellationToken ct = default);
     Task<AppSuggestionDto> CreateAsync(string message, int senderId, string? actorName, CancellationToken ct = default);
     Task<PagedResult<AppSuggestionDto>> ListForAdminAsync(int page, int perPage, CancellationToken ct = default);
+    /// <summary>عدد الاقتراحات غير المقروءة في صندوق المشرف/المدير.</summary>
+    Task<int> CountUnreadAsync(CancellationToken ct = default);
     Task<bool> MarkReadAsync(int id, CancellationToken ct = default, string? actorName = null);
 }
 
@@ -108,6 +110,9 @@ public sealed class AppSuggestionService : IAppSuggestionService
             TotalCount = paged.TotalCount,
         };
     }
+
+    public Task<int> CountUnreadAsync(CancellationToken ct = default)
+        => _suggestions.CountUnreadAsync(ct);
 
     public async Task<bool> MarkReadAsync(int id, CancellationToken ct = default, string? actorName = null)
     {

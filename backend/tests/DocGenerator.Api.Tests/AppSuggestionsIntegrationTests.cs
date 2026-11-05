@@ -170,6 +170,40 @@ public class AppSuggestionsIntegrationTests
     }
 
     [Fact]
+    public async Task UnreadCount_ManagerAndAdminOnly_TracksUnreadDelta()
+    {
+        var lawyer = _factory.AuthorizedClient("lawyer1");
+        var manager = _factory.AuthorizedClient("manager");
+        var admin = _factory.AuthorizedClient("admin");
+
+        static async Task<int> ReadCount(HttpClient client)
+        {
+            using var document = await (await client.GetAsync("/api/app-suggestions/unread-count"))
+                .Content.ReadFromJsonAsync<JsonDocument>();
+            return document!.RootElement.GetProperty("count").GetInt32();
+        }
+
+        var before = await ReadCount(admin);
+        Assert.Equal(before, await ReadCount(manager));
+
+        var created = await lawyer.PostAsJsonAsync("/api/app-suggestions", new { message = "اقتراح للعدّاد" });
+        var dto = await created.Content.ReadFromJsonAsync<AppSuggestionDto>();
+        Assert.NotNull(dto);
+
+        Assert.Equal(before + 1, await ReadCount(admin));
+        Assert.Equal(before + 1, await ReadCount(manager));
+        // غير المشرف/المدير لا يرى عدّاد الصندوق.
+        Assert.Equal(
+            HttpStatusCode.Forbidden,
+            (await lawyer.GetAsync("/api/app-suggestions/unread-count")).StatusCode);
+
+        Assert.Equal(
+            HttpStatusCode.NoContent,
+            (await admin.PatchAsync($"/api/app-suggestions/{dto.Id}/read", null)).StatusCode);
+        Assert.Equal(before, await ReadCount(admin));
+    }
+
+    [Fact]
     public async Task NonAdmin_CannotMarkRead()
     {
         var lawyer = _factory.AuthorizedClient("lawyer1");

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import CorrespondenceDetail from './CorrespondenceDetail';
+import { CORRESPONDENCE_UNSEEN_EVENT } from '../components/correspondence/correspondenceDisplay';
 import type { CorrespondenceDto } from '../types';
 
 const useAuthMock = vi.hoisted(() => vi.fn());
@@ -195,5 +196,34 @@ describe('CorrespondenceDetail', () => {
     const describedBy = editor.getAttribute('aria-describedby');
     expect(describedBy).toBeTruthy();
     expect(document.getElementById(describedBy!)?.textContent).toContain('/ 10000');
+  });
+
+  it('الرد يحدّث عدّاد غير المقروء فورًا بعد نجاح الطلب', async () => {
+    const { userEvent } = await import('@testing-library/user-event');
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({ user: { role: 'entitymanager', id: 11 }, hasFullAccess: false, isHead: false });
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: detail({ canMarkSeen: true, canReply: true }),
+    });
+    (api.post as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });
+    const onUnseenChanged = vi.fn();
+    window.addEventListener(CORRESPONDENCE_UNSEEN_EVENT, onUnseenChanged);
+    try {
+      renderDetail();
+
+      await user.click(await screen.findByRole('button', { name: 'الرد على المراسلة' }));
+      await user.type(await screen.findByLabelText('اكتب هنا…'), 'تم الاطلاع والرد');
+      await user.click(screen.getByRole('button', { name: 'حفظ وإرسال' }));
+
+      await waitFor(() => {
+        expect(api.post).toHaveBeenCalledWith('/correspondence/1/replies', {
+          bodyHtml: expect.stringContaining('تم الاطلاع والرد'),
+        });
+      });
+      // الخادم يوثّق المشاهدة مع الرد، والواجهة تُطلق الحدث بلا انتظار الاستطلاع.
+      expect(onUnseenChanged).toHaveBeenCalled();
+    } finally {
+      window.removeEventListener(CORRESPONDENCE_UNSEEN_EVENT, onUnseenChanged);
+    }
   });
 });

@@ -41,7 +41,7 @@ describe('CorrespondenceBell', () => {
   it('بالعدد المُغذَّى من الأب يعرض الشارة دون أي استطلاع ذاتي', () => {
     renderBell({ count: 3 });
 
-    expect(screen.getByRole('link', { name: /مراسلات عاجلة بلا مشاهدة: 3/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /مراسلات غير مقروءة: 3/ })).toBeInTheDocument();
     expect(screen.getByText('3')).toBeInTheDocument();
     expect(getMock()).not.toHaveBeenCalled();
   });
@@ -50,7 +50,7 @@ describe('CorrespondenceBell', () => {
     renderBell({ count: 0 });
 
     expect(
-      screen.getByRole('link', { name: 'لا توجد مراسلات عاجلة بلا مشاهدة' }),
+      screen.getByRole('link', { name: 'لا توجد مراسلات غير مقروءة' }),
     ).toBeInTheDocument();
     expect(screen.queryByText('0')).not.toBeInTheDocument();
     expect(getMock()).not.toHaveBeenCalled();
@@ -61,7 +61,7 @@ describe('CorrespondenceBell', () => {
     renderBell();
 
     await waitFor(() => {
-      expect(getMock()).toHaveBeenCalledWith('/correspondence/urgent-unseen-count');
+      expect(getMock()).toHaveBeenCalledWith('/correspondence/unseen-count');
     });
     expect(await screen.findByText('2')).toBeInTheDocument();
   });
@@ -72,9 +72,9 @@ describe('CorrespondenceBell', () => {
     renderBell({ portal: true });
 
     await waitFor(() => {
-      expect(getMock()).toHaveBeenCalledWith('/portal/correspondence/urgent-unseen-count');
+      expect(getMock()).toHaveBeenCalledWith('/portal/correspondence/unseen-count');
     });
-    expect(await screen.findByRole('link', { name: /مراسلات عاجلة بلا مشاهدة: 1/ })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: /مراسلات غير مقروءة: 1/ })).toHaveAttribute(
       'href',
       '/portal/correspondence',
     );

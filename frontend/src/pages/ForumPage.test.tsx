@@ -266,22 +266,40 @@ describe('ForumPage', () => {
     expect(within(banner).getByText('إعلان مهم')).toBeInTheDocument();
   });
 
-  it('يبحث بالنص بعد التوقف عن الكتابة', async () => {
-    const user = userEvent.setup();
+  it('لا يعرض حقل بحث في الرسائل ويُبقي المحرر حاضرًا', async () => {
     mockStream();
     renderPage();
     await screen.findByText('مرحبا بالمنتدى');
-    expect(apiGet).toHaveBeenCalledWith('/forum/messages', expect.objectContaining({ params: { limit: 30 } }));
 
-    await user.type(screen.getByLabelText(/بحث في نص الرسائل/), 'جلسة');
-    await waitFor(
-      () => {
-        expect(apiGet).toHaveBeenCalledWith(
-          '/forum/messages',
-          expect.objectContaining({ params: { limit: 30, q: 'جلسة' } }),
-        );
-      },
-      { timeout: 3000 },
-    );
+    // البحث في رسائل المنتدى أُزيل بقرار المالك (2026-11-05): لا حقل بحث في الصفحة.
+    expect(screen.queryByLabelText(/بحث في نص الرسائل/)).not.toBeInTheDocument();
+    // والمحرر حاضر دائمًا في نهاية التيار.
+    expect(screen.getByLabelText(/نص الرسالة/)).toBeInTheDocument();
+  });
+
+  it('يمرّر حاوية التمرير الفعلية حول الصفحة لا نافذة العرض', async () => {
+    mockStream();
+    const scrollTo = vi.fn();
+    const windowScroll = vi.fn();
+    window.scrollTo = windowScroll as unknown as typeof window.scrollTo;
+    const proto = Element.prototype as unknown as { scrollTo: (...args: unknown[]) => void };
+    const original = proto.scrollTo;
+    proto.scrollTo = scrollTo;
+    try {
+      render(
+        <div style={{ overflowY: 'auto' }}>
+          <MemoryRouter>
+            <ForumPage />
+          </MemoryRouter>
+        </div>,
+      );
+
+      await screen.findByText('مرحبا بالمنتدى');
+      await waitFor(() => expect(scrollTo).toHaveBeenCalled());
+      // `main` في التخطيط هي الممرِّرة؛ لا تُستدعى نافذة العرض (لا تمرّر شيئًا).
+      expect(windowScroll).not.toHaveBeenCalled();
+    } finally {
+      proto.scrollTo = original;
+    }
   });
 });

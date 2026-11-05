@@ -92,10 +92,9 @@ public class CorrespondenceRepository : Repository<Correspondence>, ICorresponde
     public Task<bool> NumberExistsAsync(string correspondenceNumber, CancellationToken ct = default)
         => Db.Correspondences.AnyAsync(c => c.CorrespondenceNumber == correspondenceNumber, ct);
 
-    public Task<int> CountUrgentUnseenForTargetAsync(int userId, CancellationToken ct = default)
+    public Task<int> CountUnseenForTargetAsync(int userId, CancellationToken ct = default)
         => Db.Correspondences.CountAsync(
             c => c.TargetUserId == userId
-                && c.Importance == Correspondence.ImportanceUrgent
                 && !c.Receipts.Any(r => r.UserId == userId),
             ct);
 
