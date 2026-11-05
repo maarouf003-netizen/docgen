@@ -313,7 +313,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
     }
 
     public async Task SyncTargetsTransferredAsync(IReadOnlyCollection<int> targetDocumentIds,
-        int newLawyerId, string? actorName, CancellationToken ct = default)
+        int newLawyerId, string? actorName, int? actorUserId = null, CancellationToken ct = default)
     {
         if (targetDocumentIds.Count == 0)
             return;
@@ -323,7 +323,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
             return;
 
         var now = DateTime.UtcNow;
-        var changed = 0;
+        var changed = new List<DocumentDelegation>();
         foreach (var delegation in delegations)
         {
             // الإنابة المنفذة سجل تاريخي مكتمل: نقل ملكية ملفها لاحقًا لا يعيد
@@ -339,16 +339,54 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
             // رمز التزامن: التسجيل/الإتمام المتزامن مع النقل يُحسم بـ409 بدل كتابة عمياء.
             delegation.Version++;
             _delegations.Update(delegation);
-            changed++;
+            changed.Add(delegation);
         }
 
-        if (changed == 0)
+        if (changed.Count == 0)
             return;
+
+        foreach (var delegation in changed)
+        {
+            // تنبيه المحامي السابق (إسناد/نقل سابق) يتبع الملف: يُؤرشف مع النقل،
+            // ولا تُمَس تنبيهات الإنابة الأخرى (مثل «بانتظار الإتمام» الخاص بالرئيس).
+            await _alerts.ArchiveByDelegationAsync(
+                delegation.Id, DelegationTransferAlertKinds, "delegation_transferred", ct);
+
+            var target = delegation.TargetDocument;
+            if (actorUserId is null || target?.BranchId is null)
+                continue;
+
+            // تنبيه المالك الجديد: الجمهور «منشئ الملف» يُحلّ إلى مالك الملف المناب
+            // الحالي وقت معالجة الصادر (بعد اكتمال النقل).
+            await _alertOutbox.EnqueueSystemAsync(
+                new CreateSystemHeadAlertRequest(
+                    HeadAlertKindCatalog.DelegationTransferredToLawyer,
+                    HeadAlertMessages.DelegationTransferredToLawyer(new(SourceLabel(delegation.SourceDocument))),
+                    HeadAlertAudience.DocumentCreator,
+                    target.BranchId.Value,
+                    actorUserId.Value,
+                    DocumentId: target.Id,
+                    DelegationId: delegation.Id),
+                supersedePlan: null,
+                occurredAt: DateTime.UtcNow,
+                ct: ct);
+        }
 
         await _uow.SaveChangesAsync(ct);
         await _audit.LogAsync(actorName, "sync_delegation_assigned_lawyer",
-            details: $"حُدِّث المحامي المختص لـ{changed} إنابة بعد نقل ملكية الملف المناب", ct: ct);
+            details: $"حُدِّث المحامي المختص لـ{changed.Count} إنابة بعد نقل ملكية الملف المناب", ct: ct);
     }
+
+    /// <summary>
+    /// أنواع تنبيهات الإنابة التي تتبع الملكية عند النقل: إسناد أول محامٍ وتنبيه نقل
+    /// سابق. تُؤرشف وحدها دون بقية عائلة الإنابة (تنبيهات الرئيس/الإتمام) حتى لا يُفقد تنبيه قائم.
+    /// </summary>
+    private static readonly IReadOnlySet<string> DelegationTransferAlertKinds =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            HeadAlertKindCatalog.DelegationAssignedToLawyer,
+            HeadAlertKindCatalog.DelegationTransferredToLawyer,
+        };
 
     public async Task<List<DelegationDto>> ListForDocumentAsync(int documentId, CancellationToken ct = default)
     {

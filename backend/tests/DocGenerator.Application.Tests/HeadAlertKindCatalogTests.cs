@@ -3,15 +3,15 @@ using DocGenerator.Domain.Enums;
 namespace DocGenerator.Application.Tests;
 
 /// <summary>
-/// حراسة كتالوج أنواع التنبيهات (الخطة §5 و§14.1): 39 رمزًا + الرمز المحجوز،
+/// حراسة كتالوج أنواع التنبيهات (الخطة §5 و§14.1): 40 رمزًا + الرمز المحجوز،
 /// ومصفوفة الجمهور لكل رمز نظامي، ومجموعات العائلات، والرموز المتقاعدة.
 /// </summary>
 public class HeadAlertKindCatalogTests
 {
     [Fact]
-    public void All_ContainsExactlyThirtyNineCodes()
+    public void All_ContainsExactlyFortyCodes()
     {
-        Assert.Equal(39, HeadAlertKindCatalog.All.Count);
+        Assert.Equal(40, HeadAlertKindCatalog.All.Count);
     }
 
     [Fact]
@@ -54,7 +54,7 @@ public class HeadAlertKindCatalogTests
             Assert.False(HeadAlertKindCatalog.IsWritable(retired));
         }
 
-        Assert.Equal(37, HeadAlertKindCatalog.All.Count - HeadAlertKindCatalog.Retired.Count);
+        Assert.Equal(38, HeadAlertKindCatalog.All.Count - HeadAlertKindCatalog.Retired.Count);
     }
 
     [Fact]
@@ -64,7 +64,7 @@ public class HeadAlertKindCatalogTests
             .Where(k => !HeadAlertKindCatalog.ManualKinds.Contains(k))
             .ToList();
 
-        Assert.Equal(35, systemCodes.Count);
+        Assert.Equal(36, systemCodes.Count);
 
         foreach (var kind in systemCodes)
         {
@@ -85,7 +85,7 @@ public class HeadAlertKindCatalogTests
                 covered.Add(kind);
         }
 
-        Assert.Equal(35, covered.Count);
+        Assert.Equal(36, covered.Count);
         Assert.Equal(
             HeadAlertKindCatalog.All.Where(k => !HeadAlertKindCatalog.ManualKinds.Contains(k)).OrderBy(k => k),
             covered.OrderBy(k => k));
@@ -124,6 +124,7 @@ public class HeadAlertKindCatalogTests
     [InlineData(HeadAlertKindCatalog.CircuitPendingDocuments, HeadAlertAudience.SingleLawyer)]
     [InlineData(HeadAlertKindCatalog.AppealAssignedToLawyer, HeadAlertAudience.SingleLawyer)]
     [InlineData(HeadAlertKindCatalog.DelegationAssignedToLawyer, HeadAlertAudience.DocumentCreator)]
+    [InlineData(HeadAlertKindCatalog.DelegationTransferredToLawyer, HeadAlertAudience.DocumentCreator)]
     [InlineData(HeadAlertKindCatalog.DelegationRejectedWrongCourt, HeadAlertAudience.DocumentCreator)]
     [InlineData(HeadAlertKindCatalog.DelegationCompletedReturned, HeadAlertAudience.DocumentCreator)]
     [InlineData(HeadAlertKindCatalog.AppealFinalToBaseLawyer, HeadAlertAudience.DocumentCreator)]
@@ -156,7 +157,7 @@ public class HeadAlertKindCatalogTests
     [Fact]
     public void FamilySets_AreSubsetsOfAll_WithExpectedCounts()
     {
-        Assert.Equal(13, HeadAlertKindCatalog.DelegationKinds.Count);
+        Assert.Equal(14, HeadAlertKindCatalog.DelegationKinds.Count);
         Assert.Equal(5, HeadAlertKindCatalog.AppealKinds.Count);
         Assert.Equal(2, HeadAlertKindCatalog.CircuitKinds.Count);
         Assert.Single(HeadAlertKindCatalog.ReviewLetterKinds);

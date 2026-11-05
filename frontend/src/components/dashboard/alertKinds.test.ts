@@ -10,10 +10,10 @@ import {
 import { makeHeadAlertSummary } from '../../test/factories';
 
 describe('alertKinds — كتالوج أنواع التنبيهات', () => {
-  it('يغطي الرموز المعتمدة الـ39 + الرمز المحجوز `legacy` (40 مدخلًا، بلا تكرار)', () => {
+  it('يغطي الرموز المعتمدة الـ40 + الرمز المحجوز `legacy` (41 مدخلًا، بلا تكرار)', () => {
     const keys = Object.keys(ALERT_KINDS);
-    expect(keys).toHaveLength(40);
-    expect(new Set(keys).size).toBe(40);
+    expect(keys).toHaveLength(41);
+    expect(new Set(keys).size).toBe(41);
     expect(keys).toContain('legacy');
     expect(keys).not.toContain('unknown_kind');
   });

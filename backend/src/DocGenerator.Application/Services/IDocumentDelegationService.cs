@@ -28,7 +28,7 @@ public interface IDocumentDelegationService
     /// لا يمسّ الملف المنيب ولا التنبيهات (تلك مسؤولية مسار النقل/التنبيهات).
     /// </summary>
     Task SyncTargetsTransferredAsync(IReadOnlyCollection<int> targetDocumentIds, int newLawyerId,
-        string? actorName, CancellationToken ct = default);
+        string? actorName, int? actorUserId = null, CancellationToken ct = default);
 
     /// <summary>
     /// طلبات الإنابة المعلّقة لنطاق الرئيس (§7.1): رئيس القسم (دوائر القسم وبلا

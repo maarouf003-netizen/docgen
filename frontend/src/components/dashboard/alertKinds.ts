@@ -49,15 +49,16 @@ const toPendingDocuments = (): string => '/pending-registrations';
 const text = (label: string): AlertKindDefinition => ({ label, route: null });
 
 /**
- * الكتالوج: 39 رمزًا نظاميًا/يدويًا + الرمز المحجوز `legacy`.
+ * الكتالوج: 40 رمزًا نظاميًا/يدويًا + الرمز المحجوز `legacy`.
  * الترتيب مطابق لتجميعات المصدر الخلفي (إنابة ← دوائر ← استئناف ← مطالعة ←
  * جهات ← يدوي ← تعميمات ← محجوز).
  */
 export const ALERT_KINDS: Readonly<Record<string, AlertKindDefinition>> = {
-  // ── أ. الإنابة (13) ──
+  // ── أ. الإنابة (14) ──
   delegation_pending_approval: text('بانتظار اعتماد الإنابة'),
   delegation_sent_to_subhead: text('إنابة من اختصاص الشعبة'),
   delegation_assigned_to_lawyer: text('إسناد ملف إنابة'),
+  delegation_transferred_to_lawyer: text('نقل ملف إنابة'),
   delegation_rejected_wrong_court: text('رفض إنابة للدائرة الخطأ'),
   delegation_pending_completion: text('بانتظار إتمام الإنابة'),
   delegation_completed_returned: text('إعادة الإنابة المسطرة'),
