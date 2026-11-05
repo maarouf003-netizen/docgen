@@ -237,7 +237,9 @@ public class DocumentDelegationServiceTests : IDisposable
                 g.RepresentativeCapacity, g.RepresentativeAddressType, g.RepresentativeAddress,
                 doc.Heirs.Where(h => h.GuarantorNumber == g.GuarantorNumber)
                     .Select(h => new HeirDto(h.Id, h.HeirName, h.HeirFather, h.HeirFamily,
-                        h.HeirCapacity, h.AddressType, h.HeirAddress)).ToList(),
+                        h.HeirCapacity, h.AddressType, h.HeirAddress,
+                        h.RepresentativeName, h.RepresentativeFather, h.RepresentativeFamily,
+                        h.RepresentativeCapacity, h.RepresentativeAddressType, h.RepresentativeAddress)).ToList(),
                 g.GuarantorNature, g.GuarantorRegistrationNumber, g.GuarantorRepresentedBy))
             .ToList();
 
@@ -245,7 +247,9 @@ public class DocumentDelegationServiceTests : IDisposable
     private static List<HeirDto> MirrorBorrowerHeirs(Document doc) =>
         doc.Heirs.Where(h => h.GuarantorNumber is null)
             .Select(h => new HeirDto(h.Id, h.HeirName, h.HeirFather, h.HeirFamily,
-                h.HeirCapacity, h.AddressType, h.HeirAddress)).ToList();
+                h.HeirCapacity, h.AddressType, h.HeirAddress,
+                h.RepresentativeName, h.RepresentativeFather, h.RepresentativeFamily,
+                h.RepresentativeCapacity, h.RepresentativeAddressType, h.RepresentativeAddress)).ToList();
 
     /// <summary>صفّ أصول المستند كـ DTO بهوياتها وتواريخها — لطلبات تعديل المنيب ذات
     /// الإنابات (قفل «الحجز بعد التسطير» يمنع إسقاط صف مرجعي أو تفريغ حجزه).</summary>
@@ -2898,6 +2902,190 @@ public class DocumentDelegationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Update_TargetMirror_AllowsFirstHeirRepresentativeAndReportsAddition()
+    {
+        // ممثل الوريث على الملف المناب: تعبئة أول مرة مسموحة، وتُبلَّغ كإضافة محلية
+        // تظهر في بطاقة «تشعبات الملف» عند المنيب.
+        var source = await CreateSourceAsync();
+        _db.Heirs.Add(new Heir
+        {
+            DocumentId = source.Id,
+            GuarantorNumber = null,
+            HeirName = "محمود",
+            HeirFather = "سامي",
+            HeirFamily = "الحلبي",
+            AddressType = "عنوان",
+            HeirAddress = "المزة",
+        });
+        await _db.SaveChangesAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        var target = await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .Include(d => d.Heirs)
+            .SingleAsync(d => d.Id == targetId);
+        var request = MirrorRequestWithParties(target);
+        request.BorrowerHeirs = new List<HeirDto>
+        {
+            request.BorrowerHeirs.Single() with
+            {
+                AddressType = "",
+                Address = "",
+                RepresentativeName = "سمير",
+                RepresentativeFather = "حسن",
+                RepresentativeFamily = "علي",
+                RepresentativeCapacity = "ولي",
+                RepresentativeAddressType = "موطن مختار",
+                RepresentativeAddress = "المزة",
+            },
+        };
+
+        await _documentService.UpdateAsync(targetId, request, _lawyer2.FullName, _lawyer2.Id);
+        await FlushAlertsAsync();
+
+        var stored = await _db.Documents
+            .AsNoTracking()
+            .Include(d => d.Heirs)
+            .SingleAsync(d => d.Id == targetId);
+        var heir = Assert.Single(stored.Heirs);
+        Assert.Equal("سمير", heir.RepresentativeName);
+        Assert.Equal("ولي", heir.RepresentativeCapacity);
+        Assert.Null(heir.HeirAddress);
+        Assert.Null(heir.AddressType);
+
+        var alert = await _db.HeadAlerts.SingleAsync(a =>
+            a.DelegationId == created.Id && a.Kind == HeadAlertKindCatalog.DelegationMirrorLocalAddition);
+        Assert.Contains("أُضيف الممثل الشرعي للوريث محمود سامي الحلبي", alert.Message);
+
+        var sourceDtos = await _service.ListForDocumentAsync(source.Id);
+        var dto = Assert.Single(sourceDtos);
+        Assert.NotNull(dto.LocalAddition);
+        Assert.Equal(1, dto.LocalAddition!.Count);
+        Assert.Contains("الممثل الشرعي للوريث", dto.LocalAddition.LastMessage);
+    }
+
+    [Fact]
+    public async Task Update_TargetMirror_RejectsHeirRepresentativeEditOrRemoval()
+    {
+        // الممثل المخزَّن للوريث على المناب مقفول: لا يُعدَّل ولا يُزال (كالمقترض/الكفيل).
+        var source = await CreateSourceAsync();
+        _db.Heirs.Add(new Heir
+        {
+            DocumentId = source.Id,
+            GuarantorNumber = null,
+            HeirName = "محمود",
+            HeirFather = "سامي",
+            HeirFamily = "الحلبي",
+            AddressType = "عنوان",
+            HeirAddress = "المزة",
+        });
+        await _db.SaveChangesAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        var target = await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .Include(d => d.Heirs)
+            .SingleAsync(d => d.Id == targetId);
+        var addRep = MirrorRequestWithParties(target);
+        addRep.BorrowerHeirs = new List<HeirDto>
+        {
+            addRep.BorrowerHeirs.Single() with
+            {
+                AddressType = "",
+                Address = "",
+                RepresentativeName = "سمير",
+                RepresentativeFather = "حسن",
+                RepresentativeFamily = "علي",
+                RepresentativeCapacity = "ولي",
+                RepresentativeAddressType = "عنوان",
+                RepresentativeAddress = "المزة",
+            },
+        };
+        await _documentService.UpdateAsync(targetId, addRep, _lawyer2.FullName, _lawyer2.Id);
+
+        var stored = await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .Include(d => d.Heirs)
+            .SingleAsync(d => d.Id == targetId);
+        var baseRequest = MirrorRequestWithParties(stored);
+
+        var edit = baseRequest;
+        edit.BorrowerHeirs = new List<HeirDto>
+        {
+            edit.BorrowerHeirs.Single() with { RepresentativeName = "ممثل آخر" },
+        };
+        var exEdit = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.UpdateAsync(targetId, edit, _lawyer2.FullName, _lawyer2.Id));
+        Assert.Contains("لا يمكن تعديل الممثل الشرعي للوريث", exEdit.Message);
+
+        var remove = baseRequest;
+        remove.BorrowerHeirs = new List<HeirDto>
+        {
+            remove.BorrowerHeirs.Single() with
+            {
+                RepresentativeName = null,
+                RepresentativeFather = null,
+                RepresentativeFamily = null,
+                RepresentativeCapacity = null,
+                RepresentativeAddressType = null,
+                RepresentativeAddress = null,
+            },
+        };
+        var exRemove = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.UpdateAsync(targetId, remove, _lawyer2.FullName, _lawyer2.Id));
+        Assert.Contains("لا يمكن إزالة الممثل الشرعي للوريث", exRemove.Message);
+    }
+
+
+    [Fact]
+    public async Task Update_Source_AddsBorrowerRepresentative_TargetHasLocalHeirs_DoesNotCopyRepresentative()
+    {
+        // تعارض المرآة: المناب أضاف ورثة محليين، ثم أضاف المنيب ممثلًا للمقترض.
+        // لا يُنسخ الممثل إلى المناب (لا يجتمعان)، ويبقى الوريث المحلي سليمًا.
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        var addHeirs = MirrorRequest(await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .SingleAsync(d => d.Id == targetId));
+        addHeirs.BorrowerHeirs.Add(new HeirDto(null, "وريث", "أب", "عائلة", "أصالة", "عنوان", "المزة"));
+        await _documentService.UpdateAsync(targetId, addHeirs, _lawyer2.FullName, _lawyer2.Id);
+
+        var sourceRequest = await SourceEditRequestAsync(source.Id);
+        sourceRequest.BorrowerRepresentativeName = "ممثل";
+        sourceRequest.BorrowerRepresentativeFather = "أب";
+        sourceRequest.BorrowerRepresentativeFamily = "عائلة";
+        sourceRequest.BorrowerRepresentativeCapacity = "ولي";
+        await _documentService.UpdateAsync(source.Id, sourceRequest, _lawyer1.FullName, _lawyer1.Id);
+
+        var target = await _db.Documents
+            .Include(d => d.Heirs)
+            .AsNoTracking()
+            .SingleAsync(d => d.Id == targetId);
+        Assert.Null(target.BorrowerRepresentativeName);
+        Assert.Single(target.Heirs);
+    }
+
+
+    [Fact]
     public async Task Update_TargetMirror_RejectsDuplicateGuarantorNumbersWithValidationError()
     {
         // متانة: رقم الكفيل مفتاح هوية للدمج والمقارنة (لا قيد فريد على (DocumentId, GuarantorNumber)
@@ -3287,10 +3475,9 @@ public class DocumentDelegationServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Update_TargetMirror_AddRepresentativeOverHeirs_AllEmptiedAddressesAccepted()
+    public async Task Update_TargetMirror_AddRepresentativeOverHeirs_Rejected()
     {
-        // T4/قرار 14: ممثل مع ورثة (ورثة قائمة بعناوين مخزَّنة من قبل) — يحميه إعفاء حضور
-        // فيُقبل التفريغ الجماعي للعناوين بلا رفض كاذب.
+        // القاعدة الصارمة: لا يجتمع ممثل الطرف مع ورثته — حتى على المناب.
         var source = await CreateSourceAsync();
         var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
         var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
@@ -3310,7 +3497,6 @@ public class DocumentDelegationServiceTests : IDisposable
         });
         await _documentService.UpdateAsync(targetId, addHeirs, _lawyer2.FullName, _lawyer2.Id);
 
-        // إضافة ممثل: النموذج يفرّغ عناوين كل الورثة — يُقبل (إعفاء حضور للجميع).
         var addRep = MirrorRequestWithParties(await _db.Documents
             .Include(d => d.RegistrationDate)
             .Include(d => d.Heirs)
@@ -3321,26 +3507,20 @@ public class DocumentDelegationServiceTests : IDisposable
         addRep.BorrowerRepresentativeCapacity = "ولي";
         addRep.BorrowerRepresentativeAddressType = "عنوان";
         addRep.BorrowerRepresentativeAddress = "عنوان-الممثل";
-        addRep.BorrowerHeirs = addRep.BorrowerHeirs.Select(h => h with { Address = null }).ToList();
 
-        var updated = await _documentService.UpdateAsync(targetId, addRep, _lawyer2.FullName, _lawyer2.Id);
-        Assert.NotNull(updated);
-        await FlushAlertsAsync();
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.UpdateAsync(targetId, addRep, _lawyer2.FullName, _lawyer2.Id));
+        Assert.Contains("لا يجتمع الممثل الشرعي مع الورثة — المقترض", ex.Message);
 
         var stored = await _db.Documents.Include(d => d.Heirs).AsNoTracking().SingleAsync(d => d.Id == targetId);
         Assert.Equal(2, stored.Heirs.Count);
-        Assert.All(stored.Heirs, h => Assert.Equal(string.Empty, h.HeirAddress));
-        Assert.Equal("ممثل", stored.BorrowerRepresentativeName);
-
-        var alert = await _db.HeadAlerts
-            .SingleAsync(a => a.DelegationId == created.Id && a.TargetLawyerId == _lawyer1.Id);
-        Assert.Contains("الممثل الشرعي للمقترض", alert.Message);
+        Assert.Null(stored.BorrowerRepresentativeName);
     }
 
     [Fact]
-    public async Task Update_TargetMirror_GuarantorRepresentativeOverStoredAddressAndHeirs_AcceptedAndEmptied()
+    public async Task Update_TargetMirror_GuarantorRepresentativeOverHeirs_Rejected()
     {
-        // T4/قرار 15: ممثل الكفيل مع عنوانه وورثته المخزَّنين — مقبول ويُصفَّر (إعفاء حضور).
+        // القاعدة نفسها للكفيل: لا ممثل مع ورثة على الطرف نفسه.
         var source = await CreateSourceAsync();
         _db.Guarantors.Add(new Guarantor
         {
@@ -3373,24 +3553,25 @@ public class DocumentDelegationServiceTests : IDisposable
         {
             existing with
             {
-                Address = null, AddressType = "عنوان",
-                RepresentativeName = "ولي", RepresentativeFather = "الكفيل", RepresentativeFamily = "المحلي",
-                RepresentativeCapacity = "ولي", RepresentativeAddressType = "عنوان", RepresentativeAddress = "عنوان-الممثل",
-                Heirs = new List<HeirDto> { existing.Heirs!.Single() with { Address = null } },
+                RepresentativeName = "ولي",
+                RepresentativeFather = "الكفيل",
+                RepresentativeFamily = "المحلي",
+                RepresentativeCapacity = "ولي",
+                RepresentativeAddressType = "عنوان",
+                RepresentativeAddress = "عنوان-الممثل",
             },
         };
 
-        var updated = await _documentService.UpdateAsync(targetId, request, _lawyer2.FullName, _lawyer2.Id);
-        Assert.NotNull(updated);
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _documentService.UpdateAsync(targetId, request, _lawyer2.FullName, _lawyer2.Id));
+        Assert.Contains("لا يجتمع الممثل الشرعي مع الورثة — الكفيل 2", ex.Message);
 
         var stored = await _db.Documents
             .Include(d => d.Guarantors).Include(d => d.Heirs)
             .AsNoTracking().SingleAsync(d => d.Id == targetId);
         var guarantor = Assert.Single(stored.Guarantors);
-        Assert.Null(guarantor.GuarantorAddress);
-        Assert.Equal("ولي", guarantor.RepresentativeName);
-        var heir = Assert.Single(stored.Heirs);
-        Assert.Equal(string.Empty, heir.HeirAddress);
+        Assert.Null(guarantor.RepresentativeName);
+        Assert.Single(stored.Heirs);
     }
 
     [Fact]

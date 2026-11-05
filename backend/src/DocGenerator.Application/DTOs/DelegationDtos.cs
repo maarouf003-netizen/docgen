@@ -151,7 +151,18 @@ public record DelegationDto(
     /// رمز التزامن التفاؤلي للصف — يُعاد في القراءة ويُرسَل في طلبات الكتابة
     /// التي تدعمه (اعتماد/توجيه/رفض) لكشف السباق مبكرًا برسالة ودية.
     /// </summary>
-    long Version = 0);
+    long Version = 0,
+    /// <summary>
+    /// ملاحظة آخر إضافة محلية على الملف المناب (وريث/ممثل شرعي) — مشتقة من تنبيهات
+    /// المرآة النشطة، وتُعرض في بطاقة «تشعبات الملف» عند المنيب لكل من يفتح الملف.
+    /// </summary>
+    DelegationLocalAdditionDto? LocalAddition = null);
+
+/// <summary>ملخص الإضافات المحلية النشطة على الملف المناب: عددها وآخر رسالة وتاريخها.</summary>
+public record DelegationLocalAdditionDto(
+    int Count,
+    string LastMessage,
+    DateTime? LastAt);
 
 /// <summary>
 /// نية تنبيه مرآة (منيب ↔ مناب) تُطلق بعد نجاح معاملة الحفظ — الرسالة ملخص آخر تغيّر.

@@ -72,6 +72,14 @@ public interface IHeadAlertService
         int delegationId, HeadAlertActor actor, AlertPageRequest page, CancellationToken ct = default);
 
     /// <summary>
+    /// ملخصات الإضافات المحلية النشطة لإنابات محددة — لبطاقة «تشعبات الملف» عند المنيب.
+    /// مسار داخلي بلا فحص طرفية: تُستدعى من خدمة الإنابات بعد فحص وصول الملف، ويُعرض
+    /// الملخص لكل من يفتح ملف المنيب (لا يقتصر على منشئه أو أطراف التنبيه).
+    /// </summary>
+    Task<IReadOnlyDictionary<int, DelegationLocalAdditionDto>> GetLocalAdditionSummariesAsync(
+        IReadOnlyCollection<int> delegationIds, CancellationToken ct = default);
+
+    /// <summary>
     /// تفاصيل كاملة (الخطة §9.2): المستلم بأولوية مطلقة بلا شرط فرع، ثم المنشئ،
     /// ثم المدير/المشرف؛ غير ذلك <c>null</c> (يُترجم إلى 404 بلا تسريب وجود).
     /// </summary>
@@ -300,6 +308,23 @@ public sealed class HeadAlertService : IHeadAlertService
         var result = await _alerts.ListSummariesByDelegationAsync(
             delegationId, actor.UserId, page.Skip, page.PageSize, ct);
         return ToPagedResult(result, page);
+    }
+
+    public async Task<IReadOnlyDictionary<int, DelegationLocalAdditionDto>> GetLocalAdditionSummariesAsync(
+        IReadOnlyCollection<int> delegationIds, CancellationToken ct = default)
+    {
+        if (delegationIds.Count == 0)
+            return new Dictionary<int, DelegationLocalAdditionDto>();
+
+        var rows = await _alerts.ListActiveLocalAdditionsAsync(delegationIds, ct);
+        return rows
+            .GroupBy(r => r.DelegationId)
+            .ToDictionary(
+                g => g.Key,
+                g => new DelegationLocalAdditionDto(
+                    g.Count(),
+                    g.OrderByDescending(r => r.LastContentChangedAt).First().Message,
+                    g.Max(r => r.LastContentChangedAt)));
     }
 
     public async Task<HeadAlertDto?> GetDetailsAsync(

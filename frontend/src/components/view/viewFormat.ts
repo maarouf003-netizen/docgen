@@ -124,7 +124,7 @@ export function buildHeirLines(heirs: HeirDto[] | undefined): HeirLine[] {
     .filter((h) => (h.name ?? '').trim() || (h.father ?? '').trim() || (h.family ?? '').trim())
     .map((h) => ({
       name: tripleName(h.name, h.father, h.family),
-      detail: heirLineDetail(h.addressType, h.address),
+      detail: heirRepresentativeDetail(h) || heirLineDetail(h.addressType, h.address),
     }));
 }
 
@@ -133,8 +133,26 @@ export function buildExecutedHeirLines(heirs: ExecutedHeirDto[] | undefined): He
     .filter((h) => (h.heirName ?? '').trim())
     .map((h) => ({
       name: tripleName(h.heirName, h.heirFather, h.heirFamily),
-      detail: heirLineDetail(h.addressType, h.heirAddress),
+      detail: heirRepresentativeDetail(h) || heirLineDetail(h.addressType, h.heirAddress),
     }));
+}
+
+/** تفصيل الممثل الشرعي للوريث: «ممثله الشرعي الولي …، عنوانه …» — أو فارغ إن غاب. */
+export function heirRepresentativeDetail(h: {
+  representativeName?: string;
+  representativeFather?: string;
+  representativeFamily?: string;
+  representativeCapacity?: string;
+  representativeAddressType?: string;
+  representativeAddress?: string;
+}): string {
+  const line = representativeLine(h);
+  if (!line) return '';
+  const address = (h.representativeAddress ?? '').trim();
+  if (!address) return line;
+  const type = (h.representativeAddressType ?? '').trim();
+  const label = type === 'موطن مختار' ? 'موطنه المختار' : type === 'وكيل قانوني' ? 'وكيله القانوني' : 'عنوانه';
+  return `${line}، ${label} ${address}`;
 }
 
 /** حقول الهوية الكاملة لمنفذ عليه طبيعي في سيناريو طالبة التنفيذ. */

@@ -1013,6 +1013,75 @@ public class DocumentContextBuilderTests : IDisposable
             ctx["execution_debtor_and_its_adress"]);
     }
 
+    private Document DeceasedBorrowerWithHeirRepresentativeDoc() => new()
+    {
+        Court = "دمشق",
+        BorrowerName = "أحمد",
+        BorrowerFather = "خالد",
+        BorrowerFamily = "الخطيب",
+        AmountWords = "مليون ليرة",
+        ContractTypeSelector = "مصرفي",
+        ContractType = "تعهد",
+        Heirs = new List<Heir>
+        {
+            new()
+            {
+                GuarantorNumber = null,
+                HeirName = "محمود",
+                HeirFather = "سامي",
+                HeirFamily = "الحلبي",
+                AddressType = "عنوان",
+                HeirAddress = string.Empty,
+                RepresentativeName = "سمير",
+                RepresentativeFather = "حسن",
+                RepresentativeFamily = "علي",
+                RepresentativeCapacity = "ولي",
+                RepresentativeAddressType = "موطن مختار",
+                RepresentativeAddress = "المزة",
+            },
+        },
+    };
+
+    [Fact]
+    public async Task BuildContext_003_HeirNotice_UsesRepresentativeWithAddress()
+    {
+        var id = await AddAsync(DeceasedBorrowerWithHeirRepresentativeDoc());
+        var heirId = _db.Heirs.Single().Id;
+
+        var ctx = await _builder.BuildContextAsync(id, "003", heirId: heirId);
+
+        Assert.Equal(
+            "محمود سامي الحلبي إضافة لتركة المتوفى (أحمد خالد الخطيب)\nممثله الشرعي الولي سمير حسن علي، موطنه المختار المزة",
+            ctx["execution_debtor_and_its_adress"]);
+    }
+
+    [Fact]
+    public async Task BuildContext_007_HeirPaperNotice_MentionsRepresentativeWithoutAddress()
+    {
+        var id = await AddAsync(DeceasedBorrowerWithHeirRepresentativeDoc());
+        var heirId = _db.Heirs.Single().Id;
+
+        var ctx = await _builder.BuildContextAsync(id, "007", heirId: heirId);
+
+        Assert.Equal(
+            "محمود سامي الحلبي إضافة لتركة المتوفى (أحمد خالد الخطيب)\nممثله الشرعي الولي سمير حسن علي",
+            ctx["execution_debtor"]);
+        Assert.Equal("محمود سامي الحلبي", ctx["recipient_name"]);
+    }
+
+    [Fact]
+    public async Task BuildContext_001_DeceasedBorrower_HeirRepresentativeInRichItem()
+    {
+        var id = await AddAsync(DeceasedBorrowerWithHeirRepresentativeDoc());
+
+        var ctx = await _builder.BuildContextAsync(id, "001");
+
+        var rich = (string)ctx["borrower_address"];
+        Assert.Contains(
+            "محمود سامي الحلبي، ممثله الشرعي الولي سمير حسن علي، موطنه المختار المزة",
+            rich);
+    }
+
     [Fact]
     public async Task BuildContext_003_GuarantorHeir_ResolvesDeceasedGuarantor()
     {

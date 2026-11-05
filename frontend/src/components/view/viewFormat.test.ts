@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { buildStatusSummary, identityFileNumber, occurrenceLine } from './viewFormat';
+import {
+  buildExecutedHeirLines,
+  buildHeirLines,
+  buildStatusSummary,
+  heirRepresentativeDetail,
+  identityFileNumber,
+  occurrenceLine,
+} from './viewFormat';
 import { formatDate } from '../../utils/dates';
 import type { DocumentOccurrenceDto, DocumentResponse } from '../../types';
 
@@ -329,5 +336,66 @@ describe('identityFileNumber (بطاقة «رقم الملف والسنة» ال
         targetDoc({ displayFileNumber: '1500', fileNumber: '99', fileYear: '2024' }),
       ),
     ).toBe('1500');
+  });
+});
+
+describe('viewFormat · سطر الممثل الشرعي للوريث', () => {
+  it('يعرض الممثل وعنوانه بدل عنوان الوريث', () => {
+    const lines = buildHeirLines([
+      {
+        name: 'محمود',
+        father: 'سامي',
+        family: 'الحلبي',
+        addressType: 'عنوان',
+        address: 'المزة',
+        representativeName: 'سمير',
+        representativeFather: 'حسن',
+        representativeFamily: 'علي',
+        representativeCapacity: 'ولي',
+        representativeAddressType: 'موطن مختار',
+        representativeAddress: 'حلب',
+      },
+    ]);
+
+    expect(lines).toEqual([
+      {
+        name: 'محمود سامي الحلبي',
+        detail: 'ممثله الشرعي الولي سمير حسن علي، موطنه المختار حلب',
+      },
+    ]);
+  });
+
+  it('يعرض الممثل بلا عنوان عند غياب عنوانه', () => {
+    expect(
+      heirRepresentativeDetail({
+        representativeName: 'سمير',
+        representativeFather: 'حسن',
+        representativeFamily: 'علي',
+        representativeCapacity: 'وصي',
+      }),
+    ).toBe('ممثله الشرعي الوصي سمير حسن علي');
+  });
+
+  it('يعمل لورثة وضع «منفذ عليه»', () => {
+    const lines = buildExecutedHeirLines([
+      {
+        heirName: 'محمود',
+        heirFather: 'سامي',
+        heirFamily: 'الحلبي',
+        representativeName: 'سمير',
+        representativeFather: 'حسن',
+        representativeFamily: 'علي',
+        representativeCapacity: 'قيم',
+        representativeAddressType: 'وكيل قانوني',
+        representativeAddress: 'المحامي سامر',
+      },
+    ]);
+
+    expect(lines).toEqual([
+      {
+        name: 'محمود سامي الحلبي',
+        detail: 'ممثله الشرعي القيم سمير حسن علي، وكيله القانوني المحامي سامر',
+      },
+    ]);
   });
 });

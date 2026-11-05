@@ -763,7 +763,6 @@ render(<DocumentForm />);
     await renderEdit({
       ...mockDoc,
       sourceDelegationId: 3,
-      borrowerHeirs: [{ id: 10, name: 'محمود الحلبي', addressType: 'عنوان', address: 'المزة' }],
       borrowerRepresentativeName: 'ممثل',
       borrowerRepresentativeFather: 'على',
       borrowerRepresentativeFamily: 'المقترض',
@@ -777,11 +776,6 @@ render(<DocumentForm />);
           address: 'حلب',
           addressType: 'موطن مختار',
           heirs: [{ id: 11, name: 'فارس الخالد', addressType: 'وكيل', address: 'المحامي سامر' }],
-          representativeName: 'وصي',
-          representativeFather: 'علي',
-          representativeFamily: 'السليم',
-          representativeAddress: 'دمشق',
-          representativeAddressType: 'موطن مختار',
         },
       ],
     });
@@ -797,9 +791,9 @@ render(<DocumentForm />);
     for (const capacity of screen.getAllByLabelText('صفة الممثل الشرعي')) {
       expect(capacity).toBeDisabled();
     }
-    for (const addressType of screen.getAllByLabelText('نوع العنوان')) {
-      expect(addressType).toBeDisabled();
-    }
+    expect(document.getElementById('borrower-rep-type')).toBeDisabled();
+    // ورثة الكفيل محليون: نوع عنوانهم قابل للتحرير (الحذف فقط مخفي).
+    expect(document.getElementById('guarantor-0-heir-type-0')).not.toBeDisabled();
 
     // ورثة محليون قابلون للتحرير (إضافة/تعديل مسموحة — الحذف فقط مخفي)
     expect(screen.getAllByLabelText(/اسم الوريث/)[0]).not.toHaveAttribute('readonly');

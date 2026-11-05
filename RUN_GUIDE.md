@@ -413,6 +413,14 @@ npm test
 > `PostgreSQL` (65) و`SQLite` (6 مع الخمس المعلّقة). الترتيب: بعد هجرة `ConflictRetries`
 > في كل سياق، ولا تُطبَّق `SQLite` وحدها قبل استكمال سلسلة `G2` (نفس منطق السطر أدناه).
 
+- [ ] **2026-11-05 — `AddHeirLegalRepresentative` / `AddHeirLegalRepresentative_Pg`** (الممثل الشرعي لكل وريث — `Heirs` و`ExecutedHeirs`):
+  - **الحالة:** `PostgreSQL` ⏳ **معلّقة** (66 هجرة) · `SQLite` ⏳ **معلّقة** (7 مع الست السابقة).
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261105201644_AddHeirLegalRepresentative.cs` — يضيف ستة أعمدة `nullable` إلى `Heirs` و`ExecutedHeirs`: `RepresentativeName/Father/Family` (100)، `RepresentativeCapacity` (30)، `RepresentativeAddressType` (50)، `RepresentativeAddress` (300).
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261105201734_AddHeirLegalRepresentative_Pg.cs` — نفسه (`character varying`).
+  - **لا بيانات تُفقد:** أعمدة جديدة `NULL` للصفوف القائمة؛ لا Backfill ولا فهارس.
+  - **إجراء النشر:** `dotnet ef database update --context DocGeneratorDbContext` و`dotnet ef database update --context DocGeneratorPostgresDbContext` **قبل** نشر النسخة، وإلا رفض الإقلاع (`Database:AutoMigrate=false`) أو ظهر عدم تطابق مخطط (`no such column: h.RepresentativeName`).
+  - على `SQLite`: لا تُطبَّق وحدها؛ `database update` يسحب الهجرات المعلّقة السابقة ⇒ التزم بسلسلة §9 (`G2`).
+
 - [ ] **2026-11-05 — `RemoveDocumentViewCount` / `RemoveDocumentViewCount_Pg`** (إزالة عدّاد المشاهدات نهائيًا — قرار المالك):
   - **الحالة:** `PostgreSQL` ⏳ **معلّقة** (65 هجرة) · `SQLite` ⏳ **معلّقة** (6 مع الخمس السابقة).
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261105104202_RemoveDocumentViewCount.cs` — يسقط عمود `ViewCount` من `Documents`.

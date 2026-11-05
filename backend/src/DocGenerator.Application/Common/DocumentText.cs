@@ -94,8 +94,11 @@ public static class DocumentText
     {
         var nature = NormalizePartyNature(g.Nature);
         var isLegalGuarantor = PartyNatureCatalog.IsLegal(nature);
-        var hasRep = !isLegalGuarantor
-            && !IsEmptyRepresentative(g.RepresentativeName, g.RepresentativeFather, g.RepresentativeFamily);
+        var rep = NormalizeRepresentativeFields(
+            g.RepresentativeName, g.RepresentativeFather, g.RepresentativeFamily,
+            g.RepresentativeCapacity, g.RepresentativeAddressType, g.RepresentativeAddress);
+        if (isLegalGuarantor)
+            rep = default;
         return new Guarantor
         {
             GuarantorNumber = g.GuarantorNumber,
@@ -111,12 +114,12 @@ public static class DocumentText
             GuarantorNature = nature,
             GuarantorRegistrationNumber = isLegalGuarantor ? (g.RegistrationNumber ?? string.Empty).Trim() : null,
             GuarantorRepresentedBy = isLegalGuarantor ? (g.RepresentedBy ?? string.Empty).Trim() : null,
-            RepresentativeName = hasRep ? (g.RepresentativeName ?? string.Empty).Trim() : null,
-            RepresentativeFather = hasRep ? (g.RepresentativeFather ?? string.Empty).Trim() : null,
-            RepresentativeFamily = hasRep ? (g.RepresentativeFamily ?? string.Empty).Trim() : null,
-            RepresentativeCapacity = hasRep ? NormalizeRepresentativeCapacity(g.RepresentativeCapacity) : null,
-            RepresentativeAddressType = hasRep ? NormalizeRepresentativeAddressType(g.RepresentativeAddressType) : null,
-            RepresentativeAddress = hasRep ? (g.RepresentativeAddress ?? string.Empty).Trim() : null,
+            RepresentativeName = rep.Name,
+            RepresentativeFather = rep.Father,
+            RepresentativeFamily = rep.Family,
+            RepresentativeCapacity = rep.Capacity,
+            RepresentativeAddressType = rep.AddressType,
+            RepresentativeAddress = rep.Address,
         };
     }
 
@@ -173,6 +176,27 @@ public static class DocumentText
     }
 
     /// <summary>
+    /// تطبيع حقول الممثل الشرعي الستة دفعةً واحدة: تُصفَّر كلها عند غياب الاسم الثلاثي
+    /// (لا ممثل بلا اسم)، وتُقيَّد الصفة ونوع العنوان بالقيم المسموح بها.
+    /// </summary>
+    public static (string? Name, string? Father, string? Family, string? Capacity, string? AddressType, string? Address)
+        NormalizeRepresentativeFields(
+            string? name, string? father, string? family,
+            string? capacity, string? addressType, string? address)
+    {
+        if (IsEmptyRepresentative(name, father, family))
+            return (null, null, null, null, null, null);
+
+        return (
+            (name ?? string.Empty).Trim(),
+            (father ?? string.Empty).Trim(),
+            (family ?? string.Empty).Trim(),
+            NormalizeRepresentativeCapacity(capacity),
+            NormalizeRepresentativeAddressType(addressType),
+            (address ?? string.Empty).Trim());
+    }
+
+    /// <summary>
     /// تطبيع قائمة الورثة: يُتجاهل من فرغ اسمه الثلاثي، وتُقصّ الحقول من الطرفين،
     /// ويُقيَّد نوع العنوان والصفة بالقيم المسموح بها.
     /// </summary>
@@ -198,6 +222,11 @@ public static class DocumentText
             if (capacity != "إضافة لتركة" && capacity != "أصالة وإضافة")
                 capacity = "أصالة";
 
+            var hasRep = !IsEmptyRepresentative(h.RepresentativeName, h.RepresentativeFather, h.RepresentativeFamily);
+            var rep = NormalizeRepresentativeFields(
+                h.RepresentativeName, h.RepresentativeFather, h.RepresentativeFamily,
+                h.RepresentativeCapacity, h.RepresentativeAddressType, h.RepresentativeAddress);
+
             result.Add(new Heir
             {
                 GuarantorNumber = guarantorNumber,
@@ -205,8 +234,59 @@ public static class DocumentText
                 HeirFather = father,
                 HeirFamily = family,
                 HeirCapacity = capacity,
-                AddressType = addressType,
-                HeirAddress = (h.Address ?? string.Empty).Trim(),
+                AddressType = hasRep ? null : addressType,
+                HeirAddress = hasRep ? null : (h.Address ?? string.Empty).Trim(),
+                RepresentativeName = rep.Name,
+                RepresentativeFather = rep.Father,
+                RepresentativeFamily = rep.Family,
+                RepresentativeCapacity = rep.Capacity,
+                RepresentativeAddressType = rep.AddressType,
+                RepresentativeAddress = rep.Address,
+            });
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// تطبيع ورثة المورث المتوفى في وضع «منفذ عليه»: يُتجاهل الوريث بلا اسم، ويُقيَّد نوع
+    /// العنوان («عنوان»/«وكيل») مع معاملة أي قيمة أخرى أو فارغة كـ«عنوان»، ويُطبَّع ممثله
+    /// الشرعي بالقواعد المشتركة (وإن غاب اسمه الثلاثي صُفِّرت حقوله كلها).
+    /// </summary>
+    public static List<ExecutedHeir> NormalizeExecutedHeirs(IEnumerable<ExecutedHeirDto>? heirs)
+    {
+        var result = new List<ExecutedHeir>();
+        if (heirs is null)
+            return result;
+
+        foreach (var h in heirs)
+        {
+            var name = (h.HeirName ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(name))
+                continue;
+
+            var addressType = (h.AddressType ?? string.Empty).Trim();
+            if (addressType != "عنوان" && addressType != "وكيل")
+                addressType = "عنوان";
+
+            var hasRep = !IsEmptyRepresentative(h.RepresentativeName, h.RepresentativeFather, h.RepresentativeFamily);
+            var rep = NormalizeRepresentativeFields(
+                h.RepresentativeName, h.RepresentativeFather, h.RepresentativeFamily,
+                h.RepresentativeCapacity, h.RepresentativeAddressType, h.RepresentativeAddress);
+
+            result.Add(new ExecutedHeir
+            {
+                HeirName = name,
+                HeirFather = (h.HeirFather ?? string.Empty).Trim(),
+                HeirFamily = (h.HeirFamily ?? string.Empty).Trim(),
+                AddressType = hasRep ? null : addressType,
+                HeirAddress = hasRep ? null : (h.HeirAddress ?? string.Empty).Trim(),
+                RepresentativeName = rep.Name,
+                RepresentativeFather = rep.Father,
+                RepresentativeFamily = rep.Family,
+                RepresentativeCapacity = rep.Capacity,
+                RepresentativeAddressType = rep.AddressType,
+                RepresentativeAddress = rep.Address,
             });
         }
 

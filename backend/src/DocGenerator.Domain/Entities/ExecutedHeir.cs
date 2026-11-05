@@ -24,6 +24,21 @@ public class ExecutedHeir
     public string? AddressType { get; set; } = "عنوان";
     public string? HeirAddress { get; set; }
 
+    /// <summary>
+    /// الممثل الشرعي للوريث (ولي/وصي/قيم) إن وُجد: اسمه الثلاثي وصفته وعنوانه.
+    /// عند وجوده يصبح عنوان الممثل هو المعتبر ويُصفَّر عنوان الوريث.
+    /// لا يجتمع الممثل الشرعي مع ورثة الشخص نفسه.
+    /// </summary>
+    public string? RepresentativeName { get; set; }
+    public string? RepresentativeFather { get; set; }
+    public string? RepresentativeFamily { get; set; }
+    /// <summary>صفة الممثل الشرعي: ولي / وصي / قيم.</summary>
+    public string? RepresentativeCapacity { get; set; }
+    /// <summary>نوع عنوان الممثل الشرعي: موطن مختار / عنوان / وكيل قانوني.</summary>
+    public string? RepresentativeAddressType { get; set; }
+    /// <summary>عنوان الممثل الشرعي أو وكيله القانوني حسب نوع العنوان.</summary>
+    public string? RepresentativeAddress { get; set; }
+
     public Document Document { get; set; } = null!;
     public ExecutionApplicant? ExecutionApplicant { get; set; }
     public ExecutedNaturalPerson? ExecutedNaturalPerson { get; set; }

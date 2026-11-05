@@ -1,5 +1,5 @@
 import type { AssetDto, DelegationDto } from '../../types';
-import { formatDate } from '../../utils/dates';
+import { formatDate, formatDateTime } from '../../utils/dates';
 import { assetDisplayName } from '../../utils/assetDisplay';
 import { delegationAssetLabel, delegationAssetsLine } from '../../utils/delegationAssets';
 import { DELEGATION_STATUS_EXECUTED, delegationStatusBadge } from '../../utils/delegationStatus';
@@ -102,6 +102,26 @@ export function DelegationDetails({ d, sourceAssets }: { d: DelegationDto; sourc
         <p className="text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
           عُدِّلت بيانات بعض الأموال في الملف المنيب بعد التسطير — حُدِّثت لقطة الإنابة تلقائيًا.
         </p>
+      )}
+
+      {d.localAddition && (
+        <div
+          className="text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 break-words"
+          role="note"
+        >
+          <span className="block font-bold">تعديل محلي على الملف المناب</span>
+          <span className="block mt-1 whitespace-pre-line">{d.localAddition.lastMessage}</span>
+          {d.localAddition.count > 1 && (
+            <span className="block mt-1 text-[10px] text-amber-700 tabular-nums">
+              {d.localAddition.count} تعديلات محلية نشطة
+            </span>
+          )}
+          {d.localAddition.lastAt && (
+            <span className="block mt-1 text-[10px] text-amber-700 tabular-nums">
+              {formatDateTime(d.localAddition.lastAt)}
+            </span>
+          )}
+        </div>
       )}
 
       {orphanLabels.length > 0 && (

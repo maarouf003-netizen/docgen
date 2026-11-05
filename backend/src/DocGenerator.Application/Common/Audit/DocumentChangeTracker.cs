@@ -299,7 +299,9 @@ public static class DocumentChangeTracker
             ["__Col_Guarantors"] = d => Signature(d.Guarantors,
                 g => Join(g.GuarantorName, g.GuarantorFather, g.GuarantorFamily)),
             ["__Col_Heirs"] = d => Signature(d.Heirs,
-                h => Join(h.HeirName, h.HeirFather, h.HeirFamily)),
+                h => Join(h.HeirName, h.HeirFather, h.HeirFamily,
+                    h.RepresentativeName, h.RepresentativeFather, h.RepresentativeFamily,
+                    h.RepresentativeCapacity, h.RepresentativeAddressType, h.RepresentativeAddress)),
             ["__Col_Assets"] = d => Signature(d.Assets,
                 a => Join(a.AssetKind,
                     FirstNonEmpty(a.Property, a.PlateNumber, a.RegisterNumber, a.LicenseNumber, a.ShopDescription))),
@@ -310,7 +312,9 @@ public static class DocumentChangeTracker
             ["__Col_ExecutedNaturalPersons"] = d => Signature(d.ExecutedNaturalPersons,
                 e => Join(e.Name, e.Family)),
             ["__Col_ExecutedHeirs"] = d => Signature(d.ExecutedHeirs,
-                e => Join(e.HeirName, e.HeirFamily)),
+                e => Join(e.HeirName, e.HeirFather, e.HeirFamily,
+                    e.RepresentativeName, e.RepresentativeFather, e.RepresentativeFamily,
+                    e.RepresentativeCapacity, e.RepresentativeAddressType, e.RepresentativeAddress)),
         };
 
     private static string? Signature<T>(IEnumerable<T>? items, Func<T, string> describe)

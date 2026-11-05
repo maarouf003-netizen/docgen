@@ -51,6 +51,45 @@ describe('DelegationsCard', () => {
     expect(screen.getByText(/كتاب الإيداع رقم K-1 بتاريخ/)).toBeInTheDocument();
   });
 
+  it('يعرض ملاحظة التعديل المحلي على المناب في تشعبات المنيب', () => {
+    render(
+      <DelegationsCard
+        delegations={[
+          delegation({
+            localAddition: {
+              count: 2,
+              lastMessage: 'تم تعديل بيانات الملف المناب بإضافة محلية — أُضيف الوريث محمود',
+              lastAt: '2026-11-05T10:00:00Z',
+            },
+          }),
+        ]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    expect(screen.getByText('تعديل محلي على الملف المناب')).toBeInTheDocument();
+    expect(screen.getByText(/أُضيف الوريث محمود/)).toBeInTheDocument();
+    expect(screen.getByText('2 تعديلات محلية نشطة')).toBeInTheDocument();
+  });
+
+  it('لا يعرض ملاحظة التعديل المحلي عند غيابها', () => {
+    render(
+      <DelegationsCard
+        delegations={[delegation()]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    expect(screen.queryByText('تعديل محلي على الملف المناب')).not.toBeInTheDocument();
+  });
+
+
   it('يعرض «الملف المناب» برقمه وسنته الفعّالين عند توافرهما', () => {
     render(
       <DelegationsCard

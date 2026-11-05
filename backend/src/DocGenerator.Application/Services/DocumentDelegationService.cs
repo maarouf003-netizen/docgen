@@ -401,7 +401,12 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
             ? await ListOfTargetAsync(doc.Id, ct)
             : await _delegations.ListBySourceAsync(doc.Id, ct);
 
-        return delegations.Select(d => ToDto(d, d.SourceDocument, ServerClock.CurrentYear(_clock, _timeZone))).ToList();
+        var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
+        var localAdditions = await _alerts.GetLocalAdditionSummariesAsync(
+            delegations.Select(d => d.Id).ToList(), ct);
+        return delegations
+            .Select(d => ToDto(d, d.SourceDocument, currentYear, localAdditions.GetValueOrDefault(d.Id)))
+            .ToList();
     }
 
     public async Task<List<DelegationDto>> ListPendingForHeadAsync(
@@ -1526,6 +1531,12 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         HeirCapacity = h.HeirCapacity,
         AddressType = h.AddressType,
         HeirAddress = h.HeirAddress,
+        RepresentativeName = h.RepresentativeName,
+        RepresentativeFather = h.RepresentativeFather,
+        RepresentativeFamily = h.RepresentativeFamily,
+        RepresentativeCapacity = h.RepresentativeCapacity,
+        RepresentativeAddressType = h.RepresentativeAddressType,
+        RepresentativeAddress = h.RepresentativeAddress,
     };
 
     /// <summary>
@@ -1594,7 +1605,9 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
                 return $"{a.AssetLabel}: {oldText} ← {newText}";
             }));
 
-    private static DelegationDto ToDto(DocumentDelegation d, Document source, int currentYear) => new(
+    private static DelegationDto ToDto(
+        DocumentDelegation d, Document source, int currentYear,
+        DelegationLocalAdditionDto? localAddition = null) => new(
         d.Id,
         d.SourceDocumentId,
         SourceLabel(source),
@@ -1632,7 +1645,8 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         RejectReason: d.RejectReason,
         RedirectedToSectionId: d.RedirectedToSectionId,
         RedirectedToSectionName: d.RedirectedToSection?.Name,
-        Version: d.Version);
+        Version: d.Version,
+        LocalAddition: localAddition);
 
     private static string SourceLabel(Document source)
     {

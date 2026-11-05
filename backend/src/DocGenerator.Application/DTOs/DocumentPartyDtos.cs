@@ -39,7 +39,13 @@ public record HeirDto(
     string? Family,
     string? Capacity,
     string? AddressType,
-    string? Address);
+    string? Address,
+    string? RepresentativeName = null,
+    string? RepresentativeFather = null,
+    string? RepresentativeFamily = null,
+    string? RepresentativeCapacity = null,
+    string? RepresentativeAddressType = null,
+    string? RepresentativeAddress = null);
 
 /// <summary>
 /// مال مرهون ضمن قائمة الأموال المرهونة (منقول أو غير منقول). الملاك قائمة أسماء (واحد أو أكثر)
@@ -100,7 +106,13 @@ public record ExecutedHeirDto(
     string? HeirFather,
     string? HeirFamily,
     string? AddressType,
-    string? HeirAddress);
+    string? HeirAddress,
+    string? RepresentativeName = null,
+    string? RepresentativeFather = null,
+    string? RepresentativeFamily = null,
+    string? RepresentativeCapacity = null,
+    string? RepresentativeAddressType = null,
+    string? RepresentativeAddress = null);
 
 /// <summary>
 /// طالب التنفيذ في وضع «منفذ عليه» مع ورثة مورثه المتوفى إن اختير «إضافة لتركة».

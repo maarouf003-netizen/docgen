@@ -35,6 +35,13 @@ export interface HeirDto {
   capacity?: string;
   addressType?: string;
   address?: string;
+  /** الممثل الشرعي للوريث (ولي/وصي/قيم): الاسم الثلاثي والصفة والعنوان. */
+  representativeName?: string;
+  representativeFather?: string;
+  representativeFamily?: string;
+  representativeCapacity?: string;
+  representativeAddressType?: string;
+  representativeAddress?: string;
 }
 
 /**
@@ -105,6 +112,13 @@ export interface ExecutedHeirDto {
   heirFamily?: string;
   addressType?: string;
   heirAddress?: string;
+  /** الممثل الشرعي للوريث (ولي/وصي/قيم): الاسم الثلاثي والصفة والعنوان. */
+  representativeName?: string;
+  representativeFather?: string;
+  representativeFamily?: string;
+  representativeCapacity?: string;
+  representativeAddressType?: string;
+  representativeAddress?: string;
 }
 
 /** طالب التنفيذ في وضع «منفذ عليه» مع ورثة مورثه المتوفى (إن اختير «إضافة لتركة» أو «أصالة وإضافة»). */

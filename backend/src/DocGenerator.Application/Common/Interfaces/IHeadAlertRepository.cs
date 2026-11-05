@@ -64,6 +64,13 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
         CancellationToken ct = default);
 
     /// <summary>
+    /// الإضافات المحلية النشطة (`delegation_mirror_local_addition`) لإنابات محددة —
+    /// استعلام دفعي واحد لبطاقة «تشعبات الملف» (لا N+1)، بلا قصّ للنص.
+    /// </summary>
+    Task<List<DelegationLocalAdditionRow>> ListActiveLocalAdditionsAsync(
+        IReadOnlyCollection<int> delegationIds, CancellationToken ct = default);
+
+    /// <summary>
     /// ملخّص صفٍّ واحد بالإسقاط نفسه الذي تبنيه القوائم — لجسم <c>201</c> بعد الإنشاء
     /// بلا تحميل <c>Recipients</c> ولا <c>Message</c> كامل، و<b>بلا <c>COUNT</c> إضافي</b>
     /// (العدّادات تُحسب داخل الإسقاط نفسه عند طلبها). <c>null</c> إن لم يوجد التنبيه.
@@ -190,3 +197,9 @@ public enum HeadAlertScopeKind
     /// <summary>دورة استئناف (<c>AppealId</c>).</summary>
     Appeal = 1
 }
+
+/// <summary>صف إضافة محلية نشطة على ملف مناب — لبناء ملخص بطاقة «تشعبات الملف».</summary>
+public sealed record DelegationLocalAdditionRow(
+    int DelegationId,
+    string Message,
+    DateTime LastContentChangedAt);
