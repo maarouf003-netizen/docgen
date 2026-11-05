@@ -1,6 +1,7 @@
 ﻿using System.Security.Claims;
 using System.Text;
 using DocGenerator.Api.Auth;
+using DocGenerator.Api.Http;
 using DocGenerator.Api.Middleware;
 using DocGenerator.Api.Security;
 using DocGenerator.Application;
@@ -371,7 +372,9 @@ app.UseMiddleware<CsrfMiddleware>();
 if (!builder.Environment.IsDevelopment())
 {
     app.UseDefaultFiles();
-    app.UseStaticFiles();
+    // ترويسات الكاش: قشرة SPA تُعيد التحقق دائمًا، والأصول المُبصَّمة تُخزَّن طويلًا —
+    // وإلا بقي المتصفح على حزمة قديمة بعد النشر رغم تحديث الخادم.
+    app.UseStaticFiles(new StaticFileOptions { OnPrepareResponse = SpaCacheHeaders.Apply });
 }
 
 using (var scope = app.Services.CreateScope())
@@ -437,7 +440,8 @@ app.MapHealthChecks("/healthz").AllowAnonymous();
 // مسار عميل مجهول عمدًا (صفحة الدخول) — نُثبّت [AllowAnonymous] صراحةً.
 if (!builder.Environment.IsDevelopment())
 {
-    app.MapFallbackToFile("index.html").AllowAnonymous();
+    app.MapFallbackToFile("index.html",
+        new StaticFileOptions { OnPrepareResponse = SpaCacheHeaders.Apply }).AllowAnonymous();
 }
 
     app.Run();
