@@ -41,6 +41,12 @@ export function DelegationDetails({ d, sourceAssets }: { d: DelegationDto; sourc
           )
           .map(delegationAssetLabel);
   const targetNumber = [d.targetFileNumber, d.targetFileYear].filter(Boolean).join('/');
+  // المالك الحالي للملف المناب هو من يتابع الإنابة فعليًا بعد أي نقل؛
+  // والإنابة المنفذة سجل تاريخي فيبقى اسمها المخزّن (من أتمّها) هو المعروض.
+  const assignedLawyerName =
+    d.status === DELEGATION_STATUS_EXECUTED
+      ? (d.assignedLawyerName ?? d.targetLawyerName)
+      : (d.targetLawyerName ?? d.assignedLawyerName);
 
   return (
     <div className="space-y-2 min-w-0">
@@ -85,10 +91,10 @@ export function DelegationDetails({ d, sourceAssets }: { d: DelegationDto; sourc
         </ul>
       )}
 
-      {d.assignedLawyerName && (
+      {assignedLawyerName && (
         <p className="text-sm text-gray-700">
           <span className="text-gray-500 text-xs block">المحامي المختص</span>
-          {d.assignedLawyerName}
+          {assignedLawyerName}
         </p>
       )}
 

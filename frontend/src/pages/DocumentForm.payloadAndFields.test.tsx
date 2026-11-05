@@ -415,6 +415,31 @@ render(<DocumentForm />);
   });
 
 
+  it('لا يرسل حقول «المبلغ كتابة» في PUT عند تعديل المبالغ (تُشتق خادميًا)', async () => {
+    const user = userEvent.setup();
+    await renderEdit({
+      ...mockDoc,
+      amountNumeric: 1000,
+      amountWords: 'ألف',
+      amount2Words: 'ألفان',
+      inclusionAmountWords: 'خمسمائة',
+    });
+
+    const amount = screen.getByLabelText('المبلغ المطالب به');
+    await user.clear(amount);
+    await user.type(amount, '2500');
+    await user.click(screen.getByRole('button', { name: 'حفظ التعديلات' }));
+
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    const [, payload] = vi.mocked(api.put).mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.amountNumeric).toBe(2500);
+    // التفقيط مشتق خادميًا من الرقم: لا يُرسل من الواجهة، وإلا بقي النص القديم.
+    expect(payload).not.toHaveProperty('amountWords');
+    expect(payload).not.toHaveProperty('amount2Words');
+    expect(payload).not.toHaveProperty('inclusionAmountWords');
+  });
+
+
   it('يرسل initialActions في PUT عند تعديل ملف مع إضافة إجراءات', async () => {
     const user = userEvent.setup();
     await renderEdit();

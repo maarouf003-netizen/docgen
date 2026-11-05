@@ -2,11 +2,7 @@ import type { DocumentResponse } from '../../types';
 import { isExecutedLike } from '../../utils/documentDisplay';
 import { FieldCell } from './FieldCell';
 import { SectionCard } from './SectionCard';
-import { formatRequiredAmounts } from './viewFormat';
-
-function joinAmountWords(...parts: Array<string | null | undefined>): string {
-  return parts.filter((p) => p && p.trim()).join(' و ');
-}
+import { formatClaimedAmounts, formatRequiredAmounts } from './viewFormat';
 
 /** بطاقة «بيانات السند التنفيذي» الموحّدة لكل الصفات: نوع السند، المحكمة/العقد، الرقم، التاريخ، والمبلغ حسب الصفة. */
 export function ExecutoryDocumentCard({ doc, isMirror }: { doc: DocumentResponse; isMirror?: boolean }) {
@@ -16,11 +12,9 @@ export function ExecutoryDocumentCard({ doc, isMirror }: { doc: DocumentResponse
   const typeLabel = isOrdinary ? 'المحكمة مصدرة القرار' : 'نوع العقد';
   const numberLabel = isOrdinary ? 'رقم القرار' : 'رقم العقد';
   const dateLabel = isOrdinary ? 'تاريخ القرار' : 'تاريخ العقد';
-  const amountWords = joinAmountWords(
-    isOrdinary ? doc.inclusionAmountWords : doc.amountWords,
-    isOrdinary ? doc.inclusionAmount2Words : doc.amount2Words,
-    isOrdinary ? doc.inclusionAmount3Words : doc.amount3Words,
-  );
+  // المبلغ رقمًا لا تفقيطًا في بطاقة العرض: التفقيط مشتق خادميًا للتوليد،
+  // وعرضه وحده كان يُخفي تعديل الرقم ويُظهر نصًا قديمًا بعد التعديل.
+  const claimedAmounts = formatClaimedAmounts(doc);
 
   return (
     <SectionCard title="بيانات السند التنفيذي">
@@ -58,9 +52,9 @@ export function ExecutoryDocumentCard({ doc, isMirror }: { doc: DocumentResponse
           />
         </div>
       ) : (
-        amountWords && (
+        claimedAmounts && (
           <div className="mt-2.5">
-            <FieldCell label="المبلغ المطالب به" value={amountWords} emphasized />
+            <FieldCell label="المبلغ المطالب به" value={claimedAmounts} emphasized />
             {isMirror && (
               <p className="mt-1 text-xs text-gray-500">
                 مُزامَن تلقائيًا من الملف المنيب (الملف المناب مرآةً للمنيب) — تعديله من الملف المنيب حصرًا.

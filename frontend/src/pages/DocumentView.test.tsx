@@ -253,8 +253,8 @@ describe('DocumentView', () => {
     expect(within(card).getByText('تاريخ العقد')).toBeInTheDocument();
     expect(within(card).getByText('2026-01-01')).toBeInTheDocument();
     expect(within(card).getByText('المبلغ المطالب به')).toBeInTheDocument();
-    expect(within(card).getByText('ألف')).toBeInTheDocument();
-    expect(within(card).queryByText('1,000 ل.س')).not.toBeInTheDocument();
+    expect(within(card).getByText('1,000 ل.س')).toBeInTheDocument();
+    expect(within(card).queryByText('ألف')).not.toBeInTheDocument();
     expect(within(card).queryByText('رقم القرار')).not.toBeInTheDocument();
     expect(within(card).queryByText('المحكمة مصدرة القرار')).not.toBeInTheDocument();
     expect(within(card).queryByText('خلاصة الحكم')).not.toBeInTheDocument();
@@ -338,8 +338,8 @@ describe('DocumentView', () => {
     expect(within(card).getByText('خلاصة الحكم')).toBeInTheDocument();
     expect(within(card).getByText('حكم بخلاصة')).toBeInTheDocument();
     expect(within(card).getByText('المبلغ المطالب به')).toBeInTheDocument();
-    expect(within(card).getByText('خمسمائة')).toBeInTheDocument();
-    expect(within(card).queryByText('500 ل.س')).not.toBeInTheDocument();
+    expect(within(card).getByText('500 ل.س')).toBeInTheDocument();
+    expect(within(card).queryByText('خمسمائة')).not.toBeInTheDocument();
     expect(within(card).queryByText('نوع العقد')).not.toBeInTheDocument();
     expect(within(card).queryByText('رقم العقد')).not.toBeInTheDocument();
     expect(within(card).queryByText('تاريخ العقد')).not.toBeInTheDocument();
@@ -386,11 +386,8 @@ describe('DocumentView', () => {
     const heading = await screen.findByText('بيانات السند التنفيذي');
     const card = heading.closest('div') as HTMLElement;
     expect(within(card).getByText('المبلغ المطالب به')).toBeInTheDocument();
-    expect(within(card).getByText('ألف و ألفان و ثلاثة آلاف')).toBeInTheDocument();
-    expect(within(card).queryByText('المبلغ الثاني')).not.toBeInTheDocument();
-    expect(within(card).queryByText('2,000 يورو')).not.toBeInTheDocument();
-    expect(within(card).queryByText('المبلغ الثالث')).not.toBeInTheDocument();
-    expect(within(card).queryByText('3,000 دولار أمريكي')).not.toBeInTheDocument();
+    expect(within(card).getByText('1,000 ل.س — 2,000 يورو — 3,000 دولار أمريكي')).toBeInTheDocument();
+    expect(within(card).queryByText('ألف و ألفان و ثلاثة آلاف')).not.toBeInTheDocument();
   });
 
   it('يعرض المبلغين الثاني والثالث للعادي بعملتيهما عند وجودهما', async () => {
@@ -420,11 +417,8 @@ describe('DocumentView', () => {
     const heading = await screen.findByText('بيانات السند التنفيذي');
     const card = heading.closest('div') as HTMLElement;
     expect(within(card).getByText('المبلغ المطالب به')).toBeInTheDocument();
-    expect(within(card).getByText('خمسمائة و ستمائة و سبعمائة')).toBeInTheDocument();
-    expect(within(card).queryByText('المبلغ الثاني')).not.toBeInTheDocument();
-    expect(within(card).queryByText('600 يورو')).not.toBeInTheDocument();
-    expect(within(card).queryByText('المبلغ الثالث')).not.toBeInTheDocument();
-    expect(within(card).queryByText('700 دولار أمريكي')).not.toBeInTheDocument();
+    expect(within(card).getByText('500 ل.س — 600 يورو — 700 دولار أمريكي')).toBeInTheDocument();
+    expect(within(card).queryByText('خمسمائة و ستمائة و سبعمائة')).not.toBeInTheDocument();
   });
 
   it('يعرض «بيانات الملف» بدائرة التنفيذ المختصة ورقم الملف دون الإجراءات المستعجلة', async () => {
