@@ -446,35 +446,6 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
         return result;
     }
 
-    public async Task<HeadAlert?> FindLatestByDelegationAsync(int delegationId, CancellationToken ct = default)
-    {
-        return await Db.HeadAlerts
-            .Where(a => a.DelegationId == delegationId)
-            .OrderByDescending(a => a.CreatedAt)
-            .FirstOrDefaultAsync(ct);
-    }
-
-    public async Task<HeadAlert?> FindLatestByDelegationAndRecipientAsync(
-        int delegationId, int recipientLawyerId, CancellationToken ct = default)
-    {
-        // متتبَّعة عمدًا: يُحدَّث نُصّها وزمنها لدمج تغييرات المرآة المتعاقبة في تنبيه واحد
-        // للمستلم نفسه.
-        return await Db.HeadAlerts
-            .Where(a => a.DelegationId == delegationId && a.TargetLawyerId == recipientLawyerId)
-            .OrderByDescending(a => a.CreatedAt)
-            .FirstOrDefaultAsync(ct);
-    }
-
-    public async Task<List<HeadAlert>> ListByAppealAsync(int appealId, CancellationToken ct = default)
-    {
-        // تتبُّع مفعّل: تُحذف هذه الكيانات عبر Remove فتُعاد للمُغيّر ذاتها (لا نسخًا منفصلة
-        // تصطدم مع النسخ المتتبعة في ChangeTracker).
-        return await Db.HeadAlerts
-            .Where(a => a.AppealId == appealId)
-            .OrderByDescending(a => a.CreatedAt)
-            .ToListAsync(ct);
-    }
-
     /// <summary>
     /// حذف انتقائي (§6.2/§6.5): صفوف استلام مستلم واحد من تنبيهات استئناف، مع
     /// حذف التنبيهات الميتة (كل مستلميها هو) — بلا مساس بباقي المستلمين، وبلا
@@ -558,23 +529,6 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             .FirstOrDefaultAsync(ct);
     }
 
-    public async Task<List<HeadAlert>> ListActiveByScopeAndKindsAsync(
-        int scopeId, HeadAlertScopeKind scopeKind, IReadOnlySet<string> kinds, CancellationToken ct = default)
-    {
-        if (kinds is null || kinds.Count == 0)
-            return new List<HeadAlert>();
-
-        var query = scopeKind == HeadAlertScopeKind.Delegation
-            ? Db.HeadAlerts.Where(a => a.DelegationId == scopeId)
-            : Db.HeadAlerts.Where(a => a.AppealId == scopeId);
-
-        var kindList = kinds.ToList();
-        return await query
-            .Where(a => !a.IsArchived && kindList.Contains(a.Kind))
-            .OrderBy(a => a.Id)
-            .ToListAsync(ct);
-    }
-
     public async Task<List<HeadAlertRecipient>> ListRecipientsWithUserAsync(
         int alertId, CancellationToken ct = default)
     {
@@ -629,17 +583,6 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             await Db.SaveChangesAsync(ct);
 
         return archived;
-    }
-
-    public async Task<List<HeadAlert>> ListActivePendingByLawyerAndKindAsync(
-        int lawyerId, string kind, CancellationToken ct = default)
-    {
-        return await Db.HeadAlerts
-            .AsNoTracking()
-            .Where(a => !a.IsArchived && a.Kind == kind
-                     && a.Recipients.Any(r => r.UserId == lawyerId))
-            .OrderBy(a => a.Id)
-            .ToListAsync(ct);
     }
 
     public async Task<List<HeadAlert>> ListActivePendingByCircuitAndKindAsync(

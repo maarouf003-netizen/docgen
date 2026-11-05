@@ -128,20 +128,6 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
     /// </summary>
     Task<List<(int BranchId, List<User> Heads)>> ListAllActiveHeadsGroupedByBranchAsync(CancellationToken ct = default);
 
-    /// <summary>أحدث تنبيه للإنابة (لتحديث رسالته عند تعديل الإنابة).</summary>
-    Task<HeadAlert?> FindLatestByDelegationAsync(int delegationId, CancellationToken ct = default);
-
-    /// <summary>
-    /// أحدث تنبيه مرآة (منيب ↔ مناب) لمستلمٍ بعينه على إنابةٍ بعينها — تدمج التنبيهات
-    /// المتعاقبة لنفس المستلم في تنبيه واحد بآخر تغيّر (لا يُستخدم تحديث الإنابة العام
-    /// الذي يلتقط أحدث تنبيهٍ للإنابة أيًّا كان جمهوره).
-    /// </summary>
-    Task<HeadAlert?> FindLatestByDelegationAndRecipientAsync(
-        int delegationId, int recipientLawyerId, CancellationToken ct = default);
-
-    /// <summary>كل تنبيهات الاستئناف المحدد (لتصفية تنبيه «اختيار المحامي» عند الإسناد).</summary>
-    Task<List<HeadAlert>> ListByAppealAsync(int appealId, CancellationToken ct = default);
-
     /// <summary>
     /// حذف انتقائي (§6.2/§6.5): صفوف استلام مستلم واحد من تنبيهات استئناف، مع
     /// حذف التنبيهات الميتة — بلا مساس بباقي المستلمين، وبلا حفظ (ضمن معاملة المتصل).
@@ -157,26 +143,12 @@ public interface IHeadAlertRepository : IRepository<HeadAlert>
     Task<HeadAlert?> FindLatestActiveByDedupeKeyAsync(string dedupeKey, CancellationToken ct = default);
 
     /// <summary>
-    /// التنبيهات النشطة لدورة (إنابة/استئناف) ضمن مجموعة أنواع صريحة — أساس الأرشفة
-    /// المقيدة بالنوع (لا «أرشفة الكل»).
-    /// </summary>
-    Task<List<HeadAlert>> ListActiveByScopeAndKindsAsync(
-        int scopeId, HeadAlertScopeKind scopeKind, IReadOnlySet<string> kinds, CancellationToken ct = default);
-
-    /// <summary>
     /// أرشفة (لا حذف) التنبيهات النشطة لدورة ضمن مجموعة أنواع صريحة، مع استثناء
     /// اختياري للتنبيه البديل. النداء بلا حفظ (ضمن معاملة المتصل).
     /// </summary>
     Task<int> ArchiveByScopeAndKindsAsync(
         int scopeId, HeadAlertScopeKind scopeKind, IReadOnlySet<string> kinds, int? excludeAlertId,
         CancellationToken ct = default);
-
-    /// <summary>
-    /// تنبيهات المعلقات النشطة لمحامٍ ضمن نوع واحد — أساس التنظيف اليومي
-    /// (<c>circuit_pending_documents</c> فقط؛ لا يمسّ <c>legacy</c>).
-    /// </summary>
-    Task<List<HeadAlert>> ListActivePendingByLawyerAndKindAsync(
-        int lawyerId, string kind, CancellationToken ct = default);
 
     /// <summary>
     /// يفحص وجود المراجع التي يستند إليها التنبيه النظامي قبل الإدراج (الخطة §8.1):
