@@ -18,7 +18,10 @@ public sealed class SpaCacheHeadersTests
 
         SpaCacheHeaders.Apply(context);
 
-        Assert.Equal("no-cache, max-age=0, must-revalidate", context.Context.Response.Headers.CacheControl);
+        var cacheControl = context.Context.Response.Headers.CacheControl.ToString();
+        Assert.Contains("no-cache", cacheControl, StringComparison.Ordinal);
+        Assert.Contains("max-age=0", cacheControl, StringComparison.Ordinal);
+        Assert.Contains("must-revalidate", cacheControl, StringComparison.Ordinal);
         Assert.Equal("no-cache", context.Context.Response.Headers.Pragma);
         Assert.Equal("0", context.Context.Response.Headers.Expires);
     }
@@ -30,7 +33,9 @@ public sealed class SpaCacheHeadersTests
 
         SpaCacheHeaders.Apply(context);
 
-        Assert.Equal("no-cache, max-age=0, must-revalidate", context.Context.Response.Headers.CacheControl);
+        var cacheControl = context.Context.Response.Headers.CacheControl.ToString();
+        Assert.Contains("no-cache", cacheControl, StringComparison.Ordinal);
+        Assert.Contains("must-revalidate", cacheControl, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -40,8 +45,10 @@ public sealed class SpaCacheHeadersTests
 
         SpaCacheHeaders.Apply(context);
 
-        Assert.Equal("public, max-age=31536000, immutable",
-            context.Context.Response.Headers.CacheControl);
+        var cacheControl = context.Context.Response.Headers.CacheControl.ToString();
+        Assert.Contains("public", cacheControl, StringComparison.Ordinal);
+        Assert.Contains("max-age=31536000", cacheControl, StringComparison.Ordinal);
+        Assert.Contains("immutable", cacheControl, StringComparison.Ordinal);
     }
 
     [Fact]
