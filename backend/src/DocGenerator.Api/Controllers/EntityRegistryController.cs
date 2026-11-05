@@ -78,14 +78,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (Role == UserRole.EntityManager)
             return Forbid();
-        try
-        {
-            return Ok(await _registry.CreateAsync(request, Actor, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _registry.CreateAsync(request, Actor, ct));
     }
 
     /// <summary>تعديل قيد/إعادة تسمية جماعية بمزامنة النصوص وتدقيق الحقول — نطاقات د5/د6.</summary>
@@ -94,15 +87,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!RolePermissions.CanManageEntityRegistry(Role))
             return Forbid();
-        try
-        {
-            var updated = await _registry.UpdateAsync(id, request, Actor, ct);
-            return updated is null ? NotFound() : Ok(updated);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var updated = await _registry.UpdateAsync(id, request, Actor, ct);
+        return updated is null ? NotFound() : Ok(updated);
     }
 
     /// <summary>إضافة اسم كتابي بديل لقيد.</summary>
@@ -111,15 +97,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!RolePermissions.CanManageEntityRegistry(Role))
             return Forbid();
-        try
-        {
-            var updated = await _registry.AddAliasAsync(id, request, Actor, ct);
-            return updated is null ? NotFound() : Ok(updated);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var updated = await _registry.AddAliasAsync(id, request, Actor, ct);
+        return updated is null ? NotFound() : Ok(updated);
     }
 
     /// <summary>اقتراح تعديل فردي من المحامي (يبقى بانتظار المراجعة — لا يزامن النصوص).</summary>
@@ -128,15 +107,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (Role != UserRole.Lawyer)
             return Forbid();
-        try
-        {
-            var updated = await _registry.ProposeEditAsync(id, request, Actor, ct);
-            return updated is null ? NotFound() : Ok(updated);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var updated = await _registry.ProposeEditAsync(id, request, Actor, ct);
+        return updated is null ? NotFound() : Ok(updated);
     }
 
     // ── مراجعة سجل الجهات العامة الممثلة (نموذج الحوكمة الجديد) ──
@@ -198,10 +170,6 @@ public class EntityRegistryController : ControllerBase
         {
             return Content(r.ResponseBody, "application/json");
         }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
     }
 
     /// <summary>نقل قيد من هوية أم إلى أخرى أو طيه في قيد مطابق (د3).</summary>
@@ -210,14 +178,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (!RolePermissions.CanManageEntityRegistry(Role))
             return Forbid();
-        try
-        {
-            return Ok(await _registry.MoveEntryAsync(id, request, Actor, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _registry.MoveEntryAsync(id, request, Actor, ct));
     }
 
     /// <summary>نقل جميع قيود هوية أم إلى هوية أم أخرى (د3 — الوضع أ فقط).</summary>
@@ -226,14 +187,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (!RolePermissions.HasFullAccess(Role))
             return Forbid();
-        try
-        {
-            return Ok(await _registry.MoveAllEntriesAsync(request, Actor, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _registry.MoveAllEntriesAsync(request, Actor, ct));
     }
 
     // ── قائمة المجموعات (الهويات الأم) وتوحيد التسمية N←1 (المدير/المشرف — بلا هجرة ملفات) ──
@@ -271,14 +225,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (!RolePermissions.CanManageEntityRegistry(Role))
             return Forbid();
-        try
-        {
-            return Ok(await _registry.ListEntriesByGroupAsync(groupId, Actor, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _registry.ListEntriesByGroupAsync(groupId, Actor, ct));
     }
 
     /// <summary>أقرب المشابهات لجهة محددة (تبويب «كافة الجهات» عند تحديد جهة واحدة) — المدير/المشرف فقط.</summary>
@@ -287,14 +234,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (!RolePermissions.HasFullAccess(Role))
             return Forbid();
-        try
-        {
-            return Ok(await _registry.FindSimilarToGroupAsync(groupId, threshold ?? 0, maxResults ?? 0, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _registry.FindSimilarToGroupAsync(groupId, threshold ?? 0, maxResults ?? 0, ct));
     }
 
     /// <summary>معاينة توحيد التسمية N←1 (المدير/المشرف — بلا هجرة ملفات).</summary>
@@ -303,14 +243,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (!RolePermissions.HasFullAccess(Role))
             return Forbid();
-        try
-        {
-            return Ok(await _registry.PreviewUnifyAsync(request, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _registry.PreviewUnifyAsync(request, ct));
     }
 
     /// <summary>تنفيذ توحيد التسمية N←1 (المدير/المشرف — ينقل القيود ويعطّل المجموعات الممتصة بلا هجرة ملفات).</summary>
@@ -329,10 +262,6 @@ public class EntityRegistryController : ControllerBase
         {
             return Content(r.ResponseBody, "application/json");
         }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
     }
 
     // ── الدمج N←1 (د5 §4) — صلاحية مخصصة: CanMergeEntities ──
@@ -343,14 +272,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (!RolePermissions.CanMergeEntities(Role))
             return Forbid();
-        try
-        {
-            return Ok(await _registry.PreviewMergeAsync(request, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _registry.PreviewMergeAsync(request, ct));
     }
 
     /// <summary>تنفيذ اعتماد الدمج (د5 §4).</summary>
@@ -369,10 +291,6 @@ public class EntityRegistryController : ControllerBase
         {
             return Content(r.ResponseBody, "application/json");
         }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
     }
 
     // ── إعادة تسمية هوية أم (المدير/المشرف — بمرسوم إلزامي) ──
@@ -385,14 +303,7 @@ public class EntityRegistryController : ControllerBase
             return Forbid();
         if (request.GroupId != groupId)
             return BadRequest(new { message = "تعارض معرف المجموعة في المسار" });
-        try
-        {
-            return Ok(await _registry.PreviewRenameGroupAsync(request, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _registry.PreviewRenameGroupAsync(request, ct));
     }
 
     /// <summary>تنفيذ إعادة تسمية هوية أم واحدة بموجب مرجع (المدير/المشرف).</summary>
@@ -403,14 +314,7 @@ public class EntityRegistryController : ControllerBase
             return Forbid();
         if (request.GroupId != groupId)
             return BadRequest(new { message = "تعارض معرف المجموعة في المسار" });
-        try
-        {
-            return Ok(await _registry.RenameGroupAsync(request, Actor, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _registry.RenameGroupAsync(request, Actor, ct));
     }
 
     // ── الحلول (إلغاء عدة هويات أم واستبدالها بهوية جديدة — المدير/المشرف) ──
@@ -421,14 +325,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (!RolePermissions.HasFullAccess(Role))
             return Forbid();
-        try
-        {
-            return Ok(await _registry.PreviewAbolishAndReplaceAsync(request, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _registry.PreviewAbolishAndReplaceAsync(request, ct));
     }
 
     /// <summary>تنفيذ الحلول: إلغاء عدة هويات أم واستبدالها بهوية أم جديدة (المدير/المشرف).</summary>
@@ -437,14 +334,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (!RolePermissions.HasFullAccess(Role))
             return Forbid();
-        try
-        {
-            return Ok(await _registry.AbolishAndReplaceAsync(request, Actor, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _registry.AbolishAndReplaceAsync(request, Actor, ct));
     }
 
     /// <summary>سجل تغييرات الجهات — مصدره PublicEntityChangeEvent فقط (د5 §7)؛ رئيس القسم يرى محافظته (جبر خادمي).</summary>
@@ -461,15 +351,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!RolePermissions.CanManageEntityRegistry(Role))
             return Forbid();
-        try
-        {
-            return Ok(await _registry.ListChangeEventsAsync(
-                new EntityChangeEventQuery(governorate, actionKind, null, from, to, page, perPage, Actor: actorUserId), Actor, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _registry.ListChangeEventsAsync(
+            new EntityChangeEventQuery(governorate, actionKind, null, from, to, page, perPage, Actor: actorUserId), Actor, ct));
     }
 
     /// <summary>تصدير سجل التغييرات إلى Excel (نفس فلاتر القائمة — رئيس القسم يرى محافظته).</summary>
@@ -485,16 +368,9 @@ public class EntityRegistryController : ControllerBase
     {
         if (!RolePermissions.CanManageEntityRegistry(Role))
             return Forbid();
-        try
-        {
-            var stream = await _registry.ExportChangeEventsAsync(
-                new EntityChangeEventQuery(governorate, actionKind, null, from, to, 1, 5000, Actor: actorUserId), Actor, ct);
-            return File(stream, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "change-events.xlsx");
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var stream = await _registry.ExportChangeEventsAsync(
+            new EntityChangeEventQuery(governorate, actionKind, null, from, to, 1, 5000, Actor: actorUserId), Actor, ct);
+        return File(stream, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "change-events.xlsx");
     }
 
     // ── عمليات فروع رئيس القسم (تعديل التسمية/دمج/إلغاء/توحيد — ضمن محافظته) ──
@@ -505,14 +381,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (!RolePermissions.CanManageEntityRegistry(Role))
             return Forbid();
-        try
-        {
-            return Ok(await _registry.PreviewBranchActionAsync(groupId, request, Actor, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _registry.PreviewBranchActionAsync(groupId, request, Actor, ct));
     }
 
     /// <summary>تعديل تسمية فرع ضمن محافظة رئيس القسم (بلا مرسوم) — يزامن لقطات الفروع (S7).</summary>
@@ -521,14 +390,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (!RolePermissions.CanManageEntityRegistry(Role))
             return Forbid();
-        try
-        {
-            return Ok(await _registry.RenameBranchAsync(groupId, entryId, request, Actor, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _registry.RenameBranchAsync(groupId, entryId, request, Actor, ct));
     }
 
     /// <summary>دمج فرعين نشطين في نفس الهوية الأم والمحافظة (ضمن نطاق رئيس القسم).</summary>
@@ -537,14 +399,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (!RolePermissions.CanManageEntityRegistry(Role))
             return Forbid();
-        try
-        {
-            return Ok(await _registry.MergeBranchesAsync(groupId, request, Actor, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _registry.MergeBranchesAsync(groupId, request, Actor, ct));
     }
 
     /// <summary>إلغاء فرع: تعطيل مباشر لصفر روابط أو دمج ضمني مع فرع هدف (S4) — ضمن نطاق رئيس القسم.</summary>
@@ -553,14 +408,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (!RolePermissions.CanManageEntityRegistry(Role))
             return Forbid();
-        try
-        {
-            return Ok(await _registry.AbolishBranchAsync(groupId, entryId, request, Actor, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _registry.AbolishBranchAsync(groupId, entryId, request, Actor, ct));
     }
 
     /// <summary>توحيد تسميات عدة فروع في فرع ناجٍ (اختياريًا مع تصحيح كتابة اسمه) — ضمن نطاق رئيس القسم.</summary>
@@ -569,14 +417,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (!RolePermissions.CanManageEntityRegistry(Role))
             return Forbid();
-        try
-        {
-            return Ok(await _registry.UnifyBranchesAsync(groupId, request, Actor, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _registry.UnifyBranchesAsync(groupId, request, Actor, ct));
     }
 
     // ── اقتراح تعديل الجهة الأم (رئيس القسم → مدير/مشرف) ──
@@ -587,14 +428,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (Role != UserRole.Head && Role != UserRole.SubHead)
             return Forbid();
-        try
-        {
-            return Ok(await _registry.SuggestParentEditAsync(entryId, request, Actor, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _registry.SuggestParentEditAsync(entryId, request, Actor, ct));
     }
 
     /// <summary>قائمة اقتراحات تعديل الجهة الأم — المدير/المشرف (الكل) ورئيس القسم (اقتراحاته فقط).</summary>
@@ -619,15 +453,8 @@ public class EntityRegistryController : ControllerBase
     {
         if (!RolePermissions.HasFullAccess(Role))
             return Forbid();
-        try
-        {
-            var dto = await _registry.ReviewParentEditSuggestionAsync(suggestionId, request, Actor, ct);
-            return dto is null ? NotFound() : Ok(dto);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var dto = await _registry.ReviewParentEditSuggestionAsync(suggestionId, request, Actor, ct);
+        return dto is null ? NotFound() : Ok(dto);
     }
 
     /// <summary>سحب ذاتي لاقتراح معلّق (رئيس القسم أو الشعبة المنشئ نفسه فقط).</summary>
@@ -636,14 +463,7 @@ public class EntityRegistryController : ControllerBase
     {
         if (Role != UserRole.Head && Role != UserRole.SubHead)
             return Forbid();
-        try
-        {
-            var dto = await _registry.WithdrawParentEditSuggestionAsync(suggestionId, Actor, ct);
-            return dto is null ? NotFound() : Ok(dto);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var dto = await _registry.WithdrawParentEditSuggestionAsync(suggestionId, Actor, ct);
+        return dto is null ? NotFound() : Ok(dto);
     }
 }

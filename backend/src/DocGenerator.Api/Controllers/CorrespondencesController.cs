@@ -1,3 +1,4 @@
+using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -41,16 +42,9 @@ public class CorrespondencesController : ControllerBase
     {
         if (Role == UserRole.SubHead && SectionId is null)
             return Forbid();
-        try
-        {
-            var result = await _letters.SearchAsync(UserId, Role, BranchId, q, governorate,
-                importance, page, perPage, ct, SectionId);
-            return Ok(result);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var result = await _letters.SearchAsync(UserId, Role, BranchId, q, governorate,
+            importance, page, perPage, ct, SectionId);
+        return Ok(result);
     }
 
     /// <summary>خيارات فلتر «المحافظة» المميزة — مدير/مشرف فقط.</summary>
@@ -74,14 +68,7 @@ public class CorrespondencesController : ControllerBase
         if (Role == UserRole.SubHead && SectionId is null)
             return Forbid();
 
-        try
-        {
-            return Ok(await _letters.SearchTargetsAsync(UserId, Role, BranchId, q, documentId, ct, SectionId));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _letters.SearchTargetsAsync(UserId, Role, BranchId, q, documentId, ct, SectionId));
     }
 
     /// <summary>عدد مراسلات المستخدم العاجلة بلا تأكيد مشاهدة — جرس المراسلات.</summary>
@@ -108,10 +95,6 @@ public class CorrespondencesController : ControllerBase
         {
             return NotFound(new { message = ApiErrorMessages.From(e) });
         }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
     }
 
     /// <summary>تسطير مراسلة لطرف معيَّن — محامٍ/رئيس قسم أو شعبة (المندوب عبر البوابة).</summary>
@@ -126,15 +109,8 @@ public class CorrespondencesController : ControllerBase
         if (Role == UserRole.SubHead && SectionId is null)
             return Forbid();
 
-        try
-        {
-            var letter = await _letters.CreateAsync(request, UserId, ActorName, Role, BranchId, ct, SectionId);
-            return CreatedAtAction(nameof(Get), new { id = letter.Id }, letter);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var letter = await _letters.CreateAsync(request, UserId, ActorName, Role, BranchId, ct, SectionId);
+        return CreatedAtAction(nameof(Get), new { id = letter.Id }, letter);
     }
 
     [HttpGet("{id:int}")]
@@ -148,10 +124,6 @@ public class CorrespondencesController : ControllerBase
         catch (KeyNotFoundException e)
         {
             return NotFound(new { message = ApiErrorMessages.From(e) });
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -172,10 +144,6 @@ public class CorrespondencesController : ControllerBase
         {
             return NotFound(new { message = ApiErrorMessages.From(e) });
         }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
     }
 
     /// <summary>رد الطرف المستلم على المراسلة — المستلم المعيَّن فقط.</summary>
@@ -194,10 +162,6 @@ public class CorrespondencesController : ControllerBase
         catch (KeyNotFoundException e)
         {
             return NotFound(new { message = ApiErrorMessages.From(e) });
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -218,10 +182,6 @@ public class CorrespondencesController : ControllerBase
         catch (KeyNotFoundException e)
         {
             return NotFound(new { message = ApiErrorMessages.From(e) });
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 }

@@ -40,16 +40,9 @@ public class UserManagementController : ControllerBase
     {
         if (!CanManageUsers)
             return Forbid();
-        try
-        {
-            // حد المشرف يُفرَض في الخدمة بمعرفة الفاعل (`BQ-001د`).
-            var user = await _users.CreateUserAsync(request, ActorName, ct, User.GetUserId());
-            return CreatedAtAction(nameof(GetUser), new { id = user.Id }, user);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        // حد المشرف يُفرَض في الخدمة بمعرفة الفاعل (`BQ-001د`).
+        var user = await _users.CreateUserAsync(request, ActorName, ct, User.GetUserId());
+        return CreatedAtAction(nameof(GetUser), new { id = user.Id }, user);
     }
 
     [HttpGet("{id:int}")]
@@ -66,15 +59,8 @@ public class UserManagementController : ControllerBase
     {
         if (!CanManageUsers)
             return Forbid();
-        try
-        {
-            var user = await _users.UpdateUserAsync(id, request, User.GetUserId(), ActorName, ct);
-            return user is null ? NotFound() : Ok(user);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var user = await _users.UpdateUserAsync(id, request, User.GetUserId(), ActorName, ct);
+        return user is null ? NotFound() : Ok(user);
     }
 
     [HttpGet("lawyers")]
@@ -101,16 +87,9 @@ public class UserManagementController : ControllerBase
             effectiveBranchId = branchId;
         }
 
-        try
-        {
-            return Ok(await _users.ListLawyersAsync(
-                effectiveBranchId, mode, User.GetUserId(), User.GetSectionId(),
-                IsHeadOrSubHead, includeInactive, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _users.ListLawyersAsync(
+            effectiveBranchId, mode, User.GetUserId(), User.GetSectionId(),
+            IsHeadOrSubHead, includeInactive, ct));
     }
 
     [HttpPost("lawyers")]
@@ -134,15 +113,8 @@ public class UserManagementController : ControllerBase
                 return BadRequest(new { message = "يجب تحديد الفرع" });
         }
 
-        try
-        {
-            var lawyer = await _users.CreateLawyerAsync(effectiveBranchId.Value, request, ActorName, ct, User.GetUserId());
-            return Ok(lawyer);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var lawyer = await _users.CreateLawyerAsync(effectiveBranchId.Value, request, ActorName, ct, User.GetUserId());
+        return Ok(lawyer);
     }
 
     [HttpPut("lawyers/{id:int}")]
@@ -156,15 +128,8 @@ public class UserManagementController : ControllerBase
         if (IsHeadOrSubHead && scopeBranchId is null)
             return Forbid();
 
-        try
-        {
-            var lawyer = await _users.UpdateLawyerAsync(id, request, scopeBranchId, ActorName, ct);
-            return lawyer is null ? NotFound() : Ok(lawyer);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var lawyer = await _users.UpdateLawyerAsync(id, request, scopeBranchId, ActorName, ct);
+        return lawyer is null ? NotFound() : Ok(lawyer);
     }
 
     [HttpPatch("{id:int}/active")]

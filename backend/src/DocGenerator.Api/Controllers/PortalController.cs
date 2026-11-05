@@ -1,3 +1,4 @@
+using DocGenerator.Api.Http;
 using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
@@ -50,14 +51,7 @@ public class PortalController : ControllerBase
         [FromQuery] int? entryId = null,
         CancellationToken ct = default)
     {
-        try
-        {
-            return Ok(await _portal.ListFilesAsync(UserId, q, status, page, perPage, ct, entryId));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _portal.ListFilesAsync(UserId, q, status, page, perPage, ct, entryId));
     }
 
     /// <summary>تفاصيل ملف قراءةً — 404 عند الخروج عن النطاق دون كشف الوجود.</summary>
@@ -126,17 +120,10 @@ public class PortalController : ControllerBase
         [FromQuery] int? entryId = null,
         CancellationToken ct = default)
     {
-        try
-        {
-            var stream = await _portal.ExportWorkbookAsync(UserId, q, status, ViewerName, ct, entryId);
-            return File(stream,
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                $"الملفات التنفيذية {ServerClock.TodayString(_clock, _timeZone, "yyyy-MM-dd")}.xlsx");
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var stream = await _portal.ExportWorkbookAsync(UserId, q, status, ViewerName, ct, entryId);
+        return File(stream,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            $"الملفات التنفيذية {ServerClock.TodayString(_clock, _timeZone, "yyyy-MM-dd")}.xlsx");
     }
 
     // ── مراسلات المندوب: الاستثناء الكتابي الوحيد في البوابة القرائية ──
@@ -152,16 +139,9 @@ public class PortalController : ControllerBase
         [FromQuery] int perPage = 20,
         CancellationToken ct = default)
     {
-        try
-        {
-            return Ok(await _correspondence.SearchAsync(UserId,
-                DocGenerator.Domain.Enums.UserRole.EntityManager, null,
-                q, null, importance, page, perPage, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _correspondence.SearchAsync(UserId,
+            DocGenerator.Domain.Enums.UserRole.EntityManager, null,
+            q, null, importance, page, perPage, ct));
     }
 
     /// <summary>مرشحو الاستلام بالاسم لمندوب الجهة — مع documentId محامو الملف فقط.</summary>
@@ -169,15 +149,8 @@ public class PortalController : ControllerBase
     public async Task<IActionResult> CorrespondenceTargets(
         [FromQuery] string? q, [FromQuery] int? documentId, CancellationToken ct)
     {
-        try
-        {
-            return Ok(await _correspondence.SearchTargetsAsync(UserId,
-                DocGenerator.Domain.Enums.UserRole.EntityManager, null, q, documentId, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _correspondence.SearchTargetsAsync(UserId,
+            DocGenerator.Domain.Enums.UserRole.EntityManager, null, q, documentId, ct));
     }
 
     /// <summary>عدد مراسلات المندوب العاجلة بلا تأكيد مشاهدة — جرس البوابة.</summary>
@@ -198,10 +171,6 @@ public class PortalController : ControllerBase
         {
             return NotFound(new { message = ApiErrorMessages.From(e) });
         }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
     }
 
     /// <summary>تسطير مراسلة من المندوب لطرف معيَّن بالاسم.</summary>
@@ -209,16 +178,9 @@ public class PortalController : ControllerBase
     public async Task<IActionResult> CorrespondenceCreate(
         [FromBody] CreateCorrespondenceRequest request, CancellationToken ct)
     {
-        try
-        {
-            var letter = await _correspondence.CreateAsync(request, UserId, ViewerName,
-                DocGenerator.Domain.Enums.UserRole.EntityManager, null, ct);
-            return CreatedAtAction(nameof(CorrespondenceGet), new { id = letter.Id }, letter);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var letter = await _correspondence.CreateAsync(request, UserId, ViewerName,
+            DocGenerator.Domain.Enums.UserRole.EntityManager, null, ct);
+        return CreatedAtAction(nameof(CorrespondenceGet), new { id = letter.Id }, letter);
     }
 
     /// <summary>إضافة لاحق — مندوب منشئ المراسلة نفسه فقط.</summary>
@@ -233,10 +195,6 @@ public class PortalController : ControllerBase
         catch (KeyNotFoundException e)
         {
             return NotFound(new { message = ApiErrorMessages.From(e) });
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -253,10 +211,6 @@ public class PortalController : ControllerBase
         {
             return NotFound(new { message = ApiErrorMessages.From(e) });
         }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
     }
 
     /// <summary>تأكيد مشاهدة المندوب — زر «تمت المشاهدة».</summary>
@@ -271,10 +225,6 @@ public class PortalController : ControllerBase
         catch (KeyNotFoundException e)
         {
             return NotFound(new { message = ApiErrorMessages.From(e) });
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -322,14 +272,7 @@ public class DelegatesController : ControllerBase
     {
         if (!RolePermissions.CanManageDelegates(User.GetRoleEnum()))
             return Forbid();
-        try
-        {
-            return Ok(await _delegates.CreateAsync(request, User.Identity?.Name, ct, Actor()));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _delegates.CreateAsync(request, User.Identity?.Name, ct, Actor()));
     }
 
     [HttpPut("{id:int}")]
@@ -337,15 +280,8 @@ public class DelegatesController : ControllerBase
     {
         if (!RolePermissions.CanManageDelegates(User.GetRoleEnum()))
             return Forbid();
-        try
-        {
-            var dto = await _delegates.UpdateAsync(id, request, User.Identity?.Name, ct, Actor());
-            return dto is null ? NotFound() : Ok(dto);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var dto = await _delegates.UpdateAsync(id, request, User.Identity?.Name, ct, Actor());
+        return dto is null ? NotFound() : Ok(dto);
     }
 
     private DocGenerator.Application.Services.EntityRegistryActor Actor() =>

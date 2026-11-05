@@ -1,3 +1,4 @@
+using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -116,15 +117,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        try
-        {
-            var created = await _appeals.CreateAsync(documentId, request, User.GetUserId(), ActorName, ct);
-            return CreatedAtAction(nameof(Get), new { id = created.Id }, created);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var created = await _appeals.CreateAsync(documentId, request, User.GetUserId(), ActorName, ct);
+        return CreatedAtAction(nameof(Get), new { id = created.Id }, created);
     }
 
     // ── صفحة «الاستئنافات» ────────────────────────────────────────────────
@@ -174,15 +168,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        try
-        {
-            var updated = await _appeals.UpdateAsync(id, request, User.GetUserId(), ActorName, ct);
-            return updated is null ? NotFound() : Ok(updated);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var updated = await _appeals.UpdateAsync(id, request, User.GetUserId(), ActorName, ct);
+        return updated is null ? NotFound() : Ok(updated);
     }
 
     /// <summary>حذف استئناف قبل الإسناد — المنشئ فقط.</summary>
@@ -191,15 +178,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        try
-        {
-            var ok = await _appeals.DeleteAsync(id, User.GetUserId(), ActorName, ct);
-            return ok ? NoContent() : NotFound();
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var ok = await _appeals.DeleteAsync(id, User.GetUserId(), ActorName, ct);
+        return ok ? NoContent() : NotFound();
     }
 
     // ── القيد والحسم والشطب (المحامي المتابع) ─────────────────────────────
@@ -210,15 +190,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        try
-        {
-            var updated = await _appeals.UpdateRegistrationAsync(id, request, User.GetUserId(), ActorName, ct);
-            return updated is null ? NotFound() : Ok(updated);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var updated = await _appeals.UpdateRegistrationAsync(id, request, User.GetUserId(), ActorName, ct);
+        return updated is null ? NotFound() : Ok(updated);
     }
 
     /// <summary>حسم الاستئناف برقم قرار الحسم وتاريخه ومنطوقه ونتيجته — المحامي المتابع.</summary>
@@ -227,15 +200,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        try
-        {
-            var updated = await _appeals.DecideAsync(id, request, User.GetUserId(), ActorName, ct);
-            return updated is null ? NotFound() : Ok(updated);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var updated = await _appeals.DecideAsync(id, request, User.GetUserId(), ActorName, ct);
+        return updated is null ? NotFound() : Ok(updated);
     }
 
     /// <summary>شطب الاستئناف بتاريخ الشطب ورقم قرار الشطب — المحامي المتابع.</summary>
@@ -244,15 +210,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        try
-        {
-            var updated = await _appeals.StrikeAsync(id, request, User.GetUserId(), ActorName, ct);
-            return updated is null ? NotFound() : Ok(updated);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var updated = await _appeals.StrikeAsync(id, request, User.GetUserId(), ActorName, ct);
+        return updated is null ? NotFound() : Ok(updated);
     }
 
     // ── الإسناد والنقل (رئيس القسم والشعبة بنطاقه) ─────────────────────────
@@ -267,10 +226,6 @@ public class AppealsController : ControllerBase
         {
             var assigned = await _appeals.AssignAsync(id, request, User.GetUserId(), ActorName, ct);
             return assigned is null ? NotFound() : Ok(assigned);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
         catch (DocumentConflictException e)
         {
@@ -289,10 +244,6 @@ public class AppealsController : ControllerBase
             var transferred = await _appeals.TransferAsync(id, request, User.GetUserId(), ActorName, ct);
             return transferred is null ? NotFound() : Ok(transferred);
         }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
         catch (DocumentConflictException e)
         {
             return Conflict(new { message = ApiErrorMessages.From(e) });
@@ -305,25 +256,18 @@ public class AppealsController : ControllerBase
     {
         if (!CanAssignAppeals)
             return Forbid();
-        try
+        var branchId = User.GetBranchId();
+        if (branchId is null)
+            return BadRequest(new { message = "الرئيس دون فرع لا يمكنه نقل الاستئنافات" });
+        int? section = null;
+        if (Role == UserRole.SubHead)
         {
-            var branchId = User.GetBranchId();
-            if (branchId is null)
-                return BadRequest(new { message = "الرئيس دون فرع لا يمكنه نقل الاستئنافات" });
-            int? section = null;
-            if (Role == UserRole.SubHead)
-            {
-                section = User.GetSectionId();
-                if (section is null)
-                    return Forbid();
-            }
-            var count = await _appeals.TransferAllAsync(request, branchId, section, ActorName, ct);
-            return Ok(new { transferredCount = count });
+            section = User.GetSectionId();
+            if (section is null)
+                return Forbid();
         }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var count = await _appeals.TransferAllAsync(request, branchId, section, ActorName, ct);
+        return Ok(new { transferredCount = count });
     }
 
     /// <summary>عدد الاستئنافات المنظورة لمحامٍ ضمن نطاق الرئيس — لمعاينة النقل الجملة (تطابق المنقول).</summary>
@@ -332,24 +276,17 @@ public class AppealsController : ControllerBase
     {
         if (!CanAssignAppeals)
             return Forbid();
-        try
+        var branchId = User.GetBranchId();
+        if (branchId is null)
+            return BadRequest(new { message = "الرئيس دون فرع لا يمكنه الاطلاع على الاستئنافات" });
+        int? section = null;
+        if (Role == UserRole.SubHead)
         {
-            var branchId = User.GetBranchId();
-            if (branchId is null)
-                return BadRequest(new { message = "الرئيس دون فرع لا يمكنه الاطلاع على الاستئنافات" });
-            int? section = null;
-            if (Role == UserRole.SubHead)
-            {
-                section = User.GetSectionId();
-                if (section is null)
-                    return Forbid();
-            }
-            return Ok(new { count = await _appeals.CountByAssigneeForHeadAsync(lawyerId, branchId, section, ct) });
+            section = User.GetSectionId();
+            if (section is null)
+                return Forbid();
         }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(new { count = await _appeals.CountByAssigneeForHeadAsync(lawyerId, branchId, section, ct) });
     }
 
     // ── الإحالة لرئيس القسم والتراجع عنها (شعبة → قسم، اتجاه واحد — §6) ────
@@ -362,10 +299,6 @@ public class AppealsController : ControllerBase
         {
             var forwarded = await _appeals.ForwardAsync(id, request ?? new ForwardAppealRequest(), User.GetUserId(), ActorName, ct);
             return forwarded is null ? NotFound() : Ok(forwarded);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
         catch (DocumentConflictException e)
         {
@@ -382,10 +315,6 @@ public class AppealsController : ControllerBase
             var recalled = await _appeals.RecallForwardAsync(id, User.GetUserId(), ActorName, ct);
             return recalled is null ? NotFound() : Ok(recalled);
         }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
         catch (DocumentConflictException e)
         {
             return Conflict(new { message = ApiErrorMessages.From(e) });
@@ -400,10 +329,6 @@ public class AppealsController : ControllerBase
         {
             var returned = await _appeals.RecallForwardAsync(id, User.GetUserId(), ActorName, ct);
             return returned is null ? NotFound() : Ok(returned);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
         catch (DocumentConflictException e)
         {
@@ -435,15 +360,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        try
-        {
-            await _appeals.SaveBaseNumbersAsync(id, request, User.GetUserId(), ActorName, ct);
-            return NoContent();
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        await _appeals.SaveBaseNumbersAsync(id, request, User.GetUserId(), ActorName, ct);
+        return NoContent();
     }
 
     // ── الإجراءات والملاحظات المستقلة للاستئناف ───────────────────────────
@@ -470,14 +388,7 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        try
-        {
-            return Ok(await _appeals.AddActionAsync(id, request, User.GetUserId(), ActorName, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _appeals.AddActionAsync(id, request, User.GetUserId(), ActorName, ct));
     }
 
     /// <summary>تعديل إجراء على الاستئناف — المحامي المتابع.</summary>
@@ -486,15 +397,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        try
-        {
-            var updated = await _appeals.UpdateActionAsync(id, actionId, request, User.GetUserId(), ActorName, ct);
-            return updated is null ? NotFound() : Ok(updated);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var updated = await _appeals.UpdateActionAsync(id, actionId, request, User.GetUserId(), ActorName, ct);
+        return updated is null ? NotFound() : Ok(updated);
     }
 
     /// <summary>نقل تذكير إجراء على الاستئناف إلى يوم استحقاق جديد من نافذة اليوم — المحامي المتابع.</summary>
@@ -503,15 +407,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        try
-        {
-            var rescheduled = await _appeals.RescheduleAppealReminderAsync(id, actionId, request?.NewDueDate, User.GetUserId(), ActorName, ct);
-            return Ok(rescheduled);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var rescheduled = await _appeals.RescheduleAppealReminderAsync(id, actionId, request?.NewDueDate, User.GetUserId(), ActorName, ct);
+        return Ok(rescheduled);
     }
 
     /// <summary>حذف إجراء من الاستئناف — المحامي المتابع.</summary>
@@ -520,15 +417,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        try
-        {
-            var ok = await _appeals.DeleteActionAsync(id, actionId, User.GetUserId(), ActorName, ct);
-            return ok ? NoContent() : NotFound();
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var ok = await _appeals.DeleteActionAsync(id, actionId, User.GetUserId(), ActorName, ct);
+        return ok ? NoContent() : NotFound();
     }
 
     /// <summary>إلغاء تذكير إجراء على الاستئناف — المحامي المتابع.</summary>
@@ -537,15 +427,8 @@ public class AppealsController : ControllerBase
     {
         if (!CanManageAppeals)
             return Forbid();
-        try
-        {
-            var ok = await _appeals.ClearReminderAsync(id, actionId, User.GetUserId(), ActorName, ct);
-            return ok ? NoContent() : NotFound();
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var ok = await _appeals.ClearReminderAsync(id, actionId, User.GetUserId(), ActorName, ct);
+        return ok ? NoContent() : NotFound();
     }
 
     /// <summary>تذكيرات إجراءات الاستئنافات التي يتابعها المحامي (بطاقة التذكيرات).</summary>

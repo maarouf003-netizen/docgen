@@ -1,3 +1,4 @@
+using DocGenerator.Api.Http;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -29,14 +30,7 @@ public class SectionsController : ControllerBase
     {
         if (branchId is null)
             return BadRequest(new { message = "حدد الفرع لعرض شعبه" });
-        try
-        {
-            return Ok(await _sections.ListSectionsAsync(branchId.Value, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _sections.ListSectionsAsync(branchId.Value, ct));
     }
 
     /// <summary>إنشاء شعبة في فرع — مشرف/مدير (قرار §2.15).</summary>
@@ -53,10 +47,6 @@ public class SectionsController : ControllerBase
         catch (DocumentConflictException e)
         {
             return Conflict(new { message = ApiErrorMessages.From(e) });
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -82,10 +72,6 @@ public class SectionsController : ControllerBase
         {
             return Conflict(new { message = ApiErrorMessages.From(e) });
         }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
     }
 
     /// <summary>تفعيل/تعطيل شعبة — مشرف/مدير (التعطيل ممنوع مع وجود دوائر).</summary>
@@ -94,15 +80,8 @@ public class SectionsController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        try
-        {
-            var section = await _sections.SetActiveAsync(id, request.IsActive, ActorName, ct);
-            return section is null ? NotFound() : Ok(section);
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        var section = await _sections.SetActiveAsync(id, request.IsActive, ActorName, ct);
+        return section is null ? NotFound() : Ok(section);
     }
 
     /// <summary>حذف شعبة — مشرف/مدير (ممنوع مع وجود دوائر أو حسابات).</summary>
@@ -111,13 +90,6 @@ public class SectionsController : ControllerBase
     {
         if (!CanManage)
             return Forbid();
-        try
-        {
-            return await _sections.DeleteSectionAsync(id, ActorName, ct) ? NoContent() : NotFound();
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return await _sections.DeleteSectionAsync(id, ActorName, ct) ? NoContent() : NotFound();
     }
 }

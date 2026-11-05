@@ -1,3 +1,4 @@
+using DocGenerator.Api.Http;
 using DocGenerator.Api.Security;
 using DocGenerator.Application.Common;
 using DocGenerator.Application.DTOs;
@@ -69,14 +70,7 @@ public class ExecutionCircuitsController : ControllerBase
     {
         var error = RequireOwnerScope(out var branchId, out var ownerSectionId);
         if (error is not null) return error;
-        try
-        {
-            return Ok(await _circuits.ListMineAsync(branchId, ownerSectionId, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _circuits.ListMineAsync(branchId, ownerSectionId, ct));
     }
 
     /// <summary>نافذة الإفراغ (حزمة A): كل ملفات الدائرة غير المحذوفة أيًا كانت حالتها — نطاق المالك إلزامي.</summary>
@@ -86,14 +80,7 @@ public class ExecutionCircuitsController : ControllerBase
     {
         var error = RequireOwnerScope(out var branchId, out var ownerSectionId);
         if (error is not null) return error;
-        try
-        {
-            return Ok(await _circuits.ListFilesAsync(id, branchId, ownerSectionId, ct));
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
+        return Ok(await _circuits.ListFilesAsync(id, branchId, ownerSectionId, ct));
     }
 
     [HttpPost]
@@ -111,10 +98,6 @@ public class ExecutionCircuitsController : ControllerBase
         {
             return Conflict(new { message = ApiErrorMessages.From(e) });
         }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
     }
 
     [HttpPut("{id:int}/rename")]
@@ -130,10 +113,6 @@ public class ExecutionCircuitsController : ControllerBase
         catch (DocumentConflictException e)
         {
             return Conflict(new { message = ApiErrorMessages.From(e) });
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -151,10 +130,6 @@ public class ExecutionCircuitsController : ControllerBase
         {
             return Conflict(new { message = ApiErrorMessages.From(e) });
         }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
     }
 
     [HttpDelete("{id:int}")]
@@ -171,10 +146,6 @@ public class ExecutionCircuitsController : ControllerBase
         catch (DocumentConflictException e)
         {
             return Conflict(new { message = ApiErrorMessages.From(e) });
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -233,10 +204,6 @@ public class ExecutionCircuitsController : ControllerBase
         {
             return Conflict(new { message = ApiErrorMessages.From(e) });
         }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
-        }
     }
 
     /// <summary>
@@ -255,10 +222,6 @@ public class ExecutionCircuitsController : ControllerBase
         catch (DocumentConflictException e)
         {
             return Conflict(new { message = ApiErrorMessages.From(e) });
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 
@@ -344,10 +307,6 @@ public class PendingRegistrationsController : ControllerBase
         catch (DocumentConflictException e)
         {
             return Conflict(new { message = ApiErrorMessages.From(e) });
-        }
-        catch (ArgumentException e)
-        {
-            return BadRequest(new { message = ApiErrorMessages.From(e) });
         }
     }
 }

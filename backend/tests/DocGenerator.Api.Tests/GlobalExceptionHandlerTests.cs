@@ -1,4 +1,5 @@
 using System.Text.Json;
+using DocGenerator.Api.Http;
 using DocGenerator.Api.Middleware;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Infrastructure.Persistence;
@@ -24,10 +25,33 @@ public sealed class GlobalExceptionHandlerTests
         public IFileProvider ContentRootFileProvider { get; set; } = new PhysicalFileProvider(AppContext.BaseDirectory);
     }
 
-    private static GlobalExceptionHandler Handler(IDbExceptionClassifier? dbErrors = null)
-        => new(LoggerFactory.Create(_ => { }).CreateLogger<GlobalExceptionHandler>(),
+    private static GlobalExceptionHandler Handler(
+        IDbExceptionClassifier? dbErrors = null,
+        ILogger<GlobalExceptionHandler>? logger = null)
+        => new(logger ?? LoggerFactory.Create(_ => { }).CreateLogger<GlobalExceptionHandler>(),
             new StubEnvironment(),
             dbErrors ?? new StubDbErrors());
+
+    /// <summary>
+    /// ملتقط سجلات المعالج: يثبت أن ردود <c>4xx</c> المتوقعة لا تُسجل <c>Error</c>
+    /// (كي لا تلوّث لوحات المراقبة) وأن الأعطال الحقيقية تبقى <c>Error</c>.
+    /// </summary>
+    private sealed class CapturingLogger : ILogger<GlobalExceptionHandler>
+    {
+        public List<(LogLevel Level, string Message)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            Entries.Add((logLevel, formatter(state, exception)));
+    }
 
     private sealed class StubDbErrors(bool unique = false) : IDbExceptionClassifier
     {
@@ -63,6 +87,55 @@ public sealed class GlobalExceptionHandlerTests
             context, new ArgumentException("مدخل خاطئ"), CancellationToken.None);
 
         Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ArgumentError_EmptyMessage_UsesArabicFallback()
+    {
+        // تكافؤ الرسالة بين مساري المتحكم والوسيط: النص الفارغ بعد التطهير يُستبدل
+        // بالرسالة البديلة نفسها، فلا يصل جسم `400` بلا `message`.
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+
+        await Handler().TryHandleAsync(
+            context, new ArgumentException(""), CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
+        var message = JsonDocument.Parse(await ReadBodyAsync(context))
+            .RootElement.GetProperty("message").GetString();
+        Assert.Equal(ApiErrorMessages.Fallback, message);
+    }
+
+    [Fact]
+    public async Task ArgumentError_LogsInformation_NotError()
+    {
+        // حذف كتل `catch` من المتحكمات لا يحوّل تحقّقًا متوقعًا إلى خطأ أحمر:
+        // كل `4xx` (غير 499/403) يُسجَّل Information.
+        var logger = new CapturingLogger();
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+
+        await Handler(logger: logger).TryHandleAsync(
+            context, new ArgumentException("مدخل خاطئ"), CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
+        Assert.DoesNotContain(logger.Entries, entry => entry.Level == LogLevel.Error);
+        Assert.Contains(logger.Entries, entry => entry.Level == LogLevel.Information);
+    }
+
+    [Fact]
+    public async Task ServerError_StillLogsError()
+    {
+        // التصنيف الجديد محصور في `4xx`: العطل الحقيقي يبقى Error.
+        var logger = new CapturingLogger();
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+
+        await Handler(logger: logger).TryHandleAsync(
+            context, new InvalidOperationException("عطل داخلي"), CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status500InternalServerError, context.Response.StatusCode);
+        Assert.Contains(logger.Entries, entry => entry.Level == LogLevel.Error);
     }
 
     [Fact]
