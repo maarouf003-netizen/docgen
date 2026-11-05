@@ -47,8 +47,14 @@ public class CspProductionIntegrationTests : IClassFixture<ProductionSpaFactory>
         Assert.Equal("nosniff", response.Headers.GetValues("X-Content-Type-Options").Single());
         Assert.Equal("DENY", response.Headers.GetValues("X-Frame-Options").Single());
         Assert.Equal("no-referrer", response.Headers.GetValues("Referrer-Policy").Single());
-        // صفحات المستند ليست ردود API: لا تُوسم بـ`no-store` (منع التخزين للـAPI وحده).
-        Assert.False(response.Headers.Contains("Cache-Control"));
+        // قشرة SPA تُعيد التحقق دائمًا: اسمها لا يحمل بصمة محتوى، فبقاؤها في كاش
+        // المتصفح يعني تشغيل حزمة قديمة بعد النشر (بخلاف ردود API الموسومة no-store).
+        // ترتيب التوجيهات غير دلالي — نتحقق من وجودها لا من نصّها الحرفي.
+        var cacheControl = Assert.Single(response.Headers.GetValues("Cache-Control"));
+        Assert.Contains("no-cache", cacheControl, StringComparison.Ordinal);
+        Assert.Contains("max-age=0", cacheControl, StringComparison.Ordinal);
+        Assert.Contains("must-revalidate", cacheControl, StringComparison.Ordinal);
+        Assert.Equal("no-cache", Assert.Single(response.Headers.GetValues("Pragma")));
     }
 
     [Fact]
