@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
+import { useUnreadAlertCount } from '../hooks/useUnreadAlertCount';
 import { api } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import { hasFullAccessRole, isHeadOrSubHeadRole } from '../auth/roles';
 import { formatRoleScope } from '../auth/roleLabels';
 import { ChangePasswordForm } from '../components/ChangePasswordForm';
 import { SuggestionDialog } from '../components/SuggestionDialog';
@@ -27,8 +29,8 @@ import type { AppSuggestionDto, ManagerStatsDto, PersonalReminderDto } from '../
 export default function AccountPage() {
   const { user, logout } = useAuth();
   const userReady = Boolean(user);
-  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
-  const isManager = user?.role === 'manager' || user?.role === 'admin';
+  const isHeadOrSubHead = isHeadOrSubHeadRole(user?.role);
+  const isManager = hasFullAccessRole(user?.role);
   const isLawyer = user?.role === 'lawyer';
   const [dialogOpen, setDialogOpen] = useState(false);
   const [sentFlash, setSentFlash] = useState(false);
@@ -49,18 +51,9 @@ export default function AccountPage() {
     [],
     { enabled: userReady && isLawyer },
   );
-  // شارة غير المقروء بنطاق **شخصي موحّد** (`user`) لكل الأدوار — «غير المقروء لي».
-  // حُسم 2026-11-02 بعد اعتراض المالك في الاستخدام الحيّ: `received` للرئيس/الشعبة
-  // كان يجمع غير المقروء لدى كل مستلمي التنبيهات، فيبقى الرقم 1 بعد قراءة صاحب
-  // الحساب لكل تنبيهاته. النطاق نفسه في `Dashboard` و`/alerts`.
-  const unreadScope = 'user';
-  const unreadQuery = useCancellableRequest<{ count: number }>(
-    (signal) =>
-      api
-        .get('/alerts/unread-count', { signal, params: { scope: unreadScope } })
-        .then((r) => r.data),
-    [unreadScope],
-    { enabled: userReady && !isManager && (isLawyer || headUnreadEnabled) },
+  // عدّاد غير المقروء الشخصي الموحّد — شرح النطاق `user` في `useUnreadAlertCount`.
+  const unreadQuery = useUnreadAlertCount(
+    userReady && !isManager && (isLawyer || headUnreadEnabled),
   );
   // سجل «اقتراحاتي» للمرسلين فقط (محامٍ ورئيس) — شكل الاستجابة مصفوفة.
   // المدير/المشرف يستقبلان الصندوق المرقّم في `/suggestions` (شكل `PagedResult`

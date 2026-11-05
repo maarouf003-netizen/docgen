@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import { isHeadOrSubHeadRole } from '../auth/roles';
 import { formatDateTime } from '../utils/dates';
 import { sanitizeRichText } from '../utils/richText';
 import type { ReviewLetterDto, ReviewLetterMessageDto, ReviewLetterMessageKind } from '../types';
@@ -59,7 +60,7 @@ function MessageCard({ message }: { message: ReviewLetterMessageDto }) {
 export default function ReviewDetail() {
   const { id } = useParams();
   const { user, hasFullAccess } = useAuth();
-  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
+  const isHeadOrSubHead = isHeadOrSubHeadRole(user?.role);
   const [letter, setLetter] = useState<ReviewLetterDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

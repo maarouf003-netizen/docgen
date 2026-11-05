@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { api } from '../api/client';
 import type { LoginBranchSelectionResponse, LoginResponse, UserDto } from '../types';
 import { AuthContext } from './auth-context';
+import { hasFullAccessRole, isHeadOrSubHeadRole } from './roles';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserDto | null>(null);
@@ -48,10 +49,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loading,
         login,
         logout,
-        hasFullAccess: user?.role === 'manager' || user?.role === 'admin',
+        // الرايات مشتقة من المساعدات النقية نفسها التي تستخدمها الصفحات — مصدر حقيقة واحد.
+        hasFullAccess: hasFullAccessRole(user?.role),
         isHead: user?.role === 'head',
         isSubHead: user?.role === 'subhead',
-        isHeadOrSubHead: user?.role === 'head' || user?.role === 'subhead',
+        isHeadOrSubHead: isHeadOrSubHeadRole(user?.role),
         sectionId: user?.sectionId ?? null,
       }}
     >

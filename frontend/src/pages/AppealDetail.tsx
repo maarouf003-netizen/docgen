@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import { isHeadOrSubHeadRole } from '../auth/roles';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { sanitizeRichText } from '../utils/richText';
 import { appealStatusBadge } from '../utils/appealStatus';
@@ -50,7 +51,7 @@ export default function AppealDetail() {
   const appeal = appealQuery.data ?? null;
   const doc = docQuery.data ?? null;
   const isFollower = user?.role === 'lawyer' && appeal?.assignedLawyerId === user.id;
-  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
+  const isHeadOrSubHead = isHeadOrSubHeadRole(user?.role);
   const isSubHead = user?.role === 'subhead';
   const isHead = user?.role === 'head';
   const isForwarded = appeal?.forwardState === 'ForwardedToHead';

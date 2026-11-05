@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../auth/useAuth';
+import { hasFullAccessRole, isHeadOrSubHeadRole } from '../auth/roles';
 import { useBadgeCount } from '../hooks/useBadgeCount';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import NetworkStatusBanner from './NetworkStatusBanner';
@@ -27,16 +28,16 @@ interface NavItem {
 
 export default function Layout() {
   const { user, logout } = useAuth();
-  // مشتق من الدور مباشرة (لا من راية السياق) — فيبقى صحيحًا مع أي `mock` قديم
-  // يوفّر `user.role` بلا الرايات الجديدة.
-  const isHeadOrSubHead = user?.role === 'head' || user?.role === 'subhead';
+  // مشتق من الدور عبر المساعد النقي (لا من راية السياق) — فيبقى صحيحًا مع أي
+  // `mock` قديم يوفّر `user.role` بلا الرايات الجديدة، ولا يتكرر الشرط الحرفي.
+  const isHeadOrSubHead = isHeadOrSubHeadRole(user?.role);
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
   const drawerTriggerRef = useRef<HTMLButtonElement>(null);
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
   const isLawyerUser = user?.role === 'lawyer';
-  const isManager = user?.role === 'manager' || user?.role === 'admin';
+  const isManager = hasFullAccessRole(user?.role);
   // رئيس القسم يجلب عدّاده من لوحته (بطاقة المراسلات) — هذا الاستطلاع للمحامي والمندوب فقط.
   const canHaveCorrespondenceUrgent =
     user?.role === 'lawyer' || user?.role === 'entitymanager';
