@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
+import { useAuth } from '../auth/useAuth';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import type { ExecutionCircuitDto } from '../types';
 import CircuitEmptyingWizard from '../components/circuit/CircuitEmptyingWizard';
@@ -12,6 +13,7 @@ import CircuitEmptyingWizard from '../components/circuit/CircuitEmptyingWizard';
  */
 export default function ExecutionCircuitsPage() {
   const isMobile = useIsMobile();
+  const { isHead } = useAuth();
   const [circuits, setCircuits] = useState<ExecutionCircuitDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -280,6 +282,11 @@ export default function ExecutionCircuitsPage() {
             <label htmlFor="new-circuit-name" className="block text-xs font-bold text-gray-600">
               اسم الدائرة
             </label>
+            <p id="new-circuit-name-hint" className="text-xs text-gray-500 leading-5">
+              {isHead
+                ? 'أدخل دوائر القسم فقط — دوائر الشعب ينشئها رئيس الشعبة أو تُنقل إليها، والاسم لا يتكرر داخل الفرع.'
+                : 'أدخل دوائر شعبتك فقط — دوائر القسم يديرها رئيس القسم، والاسم لا يتكرر داخل الفرع.'}
+            </p>
             <input
               id="new-circuit-name"
               type="text"
@@ -287,6 +294,7 @@ export default function ExecutionCircuitsPage() {
               onChange={(e) => setCreateName(e.target.value)}
               placeholder="مثال: دائرة التنفيذ الأولى…"
               autoComplete="off"
+              aria-describedby="new-circuit-name-hint"
               className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             />
             <div className="flex justify-end gap-2">
@@ -318,12 +326,16 @@ export default function ExecutionCircuitsPage() {
             <label htmlFor="edit-circuit-name" className="block text-xs font-bold text-gray-600">
               الاسم الجديد
             </label>
+            <p id="edit-circuit-name-hint" className="text-xs text-gray-500 leading-5">
+              الاسم فريد داخل الفرع — لا يمكن أن يطابق اسم دائرة أخرى (قسم أو شعبة).
+            </p>
             <input
               id="edit-circuit-name"
               type="text"
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
               autoComplete="off"
+              aria-describedby="edit-circuit-name-hint"
               className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             />
             <div className="flex justify-end gap-2">

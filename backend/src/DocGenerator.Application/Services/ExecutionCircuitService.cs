@@ -161,6 +161,39 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         return trimmed;
     }
 
+    /// <summary>
+    /// رسالة تكرار اسم الدائرة مع بيان المالك (قسم/شعبة). الاسم فريد على مستوى
+    /// الفرع (`UNIQUE(BranchId, NameNorm)`)، والرسالة العامة السابقة كانت تُخفي
+    /// على رئيس الشعبة أن الاسم محجوز لدائرة قسم أو شعبة أخرى — فيظن أن الدائرة
+    /// غير موجودة ويحاول إنشاءها مرارًا.
+    /// </summary>
+    private async Task<string> DuplicateCircuitMessageAsync(
+        ExecutionCircuit existing, int? actorSectionId, CancellationToken ct)
+    {
+        // الاسم المعروض هو اسم الدائرة القائمة (لا المدخل) — أدق عند اختلاف التطبيع
+        // (مسافات/همزات) فيرى المستخدم الدائرة التي يحجزه اسمُها فعلًا.
+        var name = existing.Name;
+        if (existing.SectionId is null)
+            return $"الدائرة «{name}» موجودة مسبقًا في فرعك ضمن دوائر القسم — لا يمكن تكرار اسم الدائرة داخل الفرع";
+        var section = await _sections.GetByIdAsync(existing.SectionId.Value, ct);
+        var sectionName = section?.Name;
+        if (string.IsNullOrWhiteSpace(sectionName))
+            return $"الدائرة «{name}» موجودة مسبقًا في فرعك ضمن دوائر إحدى الشعب — لا يمكن تكرار اسم الدائرة داخل الفرع";
+        if (actorSectionId == existing.SectionId)
+            return $"الدائرة «{name}» موجودة مسبقًا ضمن دوائر شعبتك — لا يمكن تكرار اسم الدائرة داخل الفرع";
+        return $"الدائرة «{name}» موجودة مسبقًا في فرعك ضمن دوائر شعبة «{sectionName}» — لا يمكن تكرار اسم الدائرة داخل الفرع";
+    }
+
+    /// <summary>البحث عن دائرة بنفس الاسم المعياري داخل الفرع (مع استثناء الدائرة الجاري تعديلها).</summary>
+    private async Task<ExecutionCircuit?> FindCircuitByNameAsync(
+        int branchId, string nameNorm, int? excludeCircuitId, CancellationToken ct)
+    {
+        var all = await _circuits.ListAsync(ct);
+        return all.FirstOrDefault(c => c.BranchId == branchId
+            && c.NameNorm == nameNorm
+            && (!excludeCircuitId.HasValue || c.Id != excludeCircuitId.Value));
+    }
+
     private async Task<ExecutionCircuit> GetOwnedAsync(int circuitId, int branchId, int? ownerSectionId, CancellationToken ct)
     {
         var circuit = await _circuits.GetByIdAsync(circuitId, ct)
@@ -241,6 +274,12 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         {
             await _tx.RunAsync(async token =>
             {
+                // فحص ودّي قبل الإدراج لبيان المالك في الرسالة؛ القيد الفريد في القاعدة
+                // يبقى الحارس النهائي ضد السباق (والالتقاط أدناه يغطي هذه الحالة النادرة).
+                var existing = await FindCircuitByNameAsync(branchId, norm, null, token);
+                if (existing is not null)
+                    throw new DocumentConflictException(
+                        await DuplicateCircuitMessageAsync(existing, ownerSection?.Id, token));
                 await _circuits.AddAsync(circuit, token);
                 await _uow.SaveChangesAsync(token);
                 await _audit.LogAsync(actorName, "create_circuit", null, null,
@@ -249,7 +288,9 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         }
         catch (Exception ex) when (_dbErrors.IsUniqueViolation(ex))
         {
-            throw new DocumentConflictException($"الدائرة «{trimmed}» موجودة مسبقًا في فرعك", ex);
+            // سباق حقيقي بين فحصين متزامنين: الرسالة العامة تحمل القيد الفرعي نفسه.
+            throw new DocumentConflictException(
+                $"الدائرة «{trimmed}» موجودة مسبقًا في فرعك — لا يمكن تكرار اسم الدائرة داخل الفرع", ex);
         }
         return new ExecutionCircuitDto(circuit.Id, circuit.BranchId, null, circuit.Name, circuit.IsActive, 0, 0, circuit.Version,
             circuit.SectionId, ownerSection?.Name);
@@ -269,6 +310,11 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                 var circuit = await GetOwnedAsync(circuitId, branchId, ownerSectionId, token);
                 if (version is not null && circuit.Version != version.Value)
                     throw new DocumentConflictException("تعارض تزامن — أعد تحميل الدائرة وحاول مجددًا");
+                // فحص ودّي قبل التسمية لبيان مالك الاسم المحجوز؛ القيد الفريد يبقى الحارس النهائي.
+                var conflict = await FindCircuitByNameAsync(branchId, norm, circuitId, token);
+                if (conflict is not null)
+                    throw new DocumentConflictException(
+                        await DuplicateCircuitMessageAsync(conflict, ownerSectionId, token));
                 if (circuit.Name != trimmed)
                 {
                     var oldName = circuit.Name;
@@ -342,7 +388,9 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         }
         catch (Exception ex) when (_dbErrors.IsUniqueViolation(ex))
         {
-            throw new DocumentConflictException($"الدائرة «{trimmed}» موجودة مسبقًا في فرعك", ex);
+            // سباق حقيقي بين فحصين متزامنين: الرسالة العامة تحمل القيد الفرعي نفسه.
+            throw new DocumentConflictException(
+                $"الدائرة «{trimmed}» موجودة مسبقًا في فرعك — لا يمكن تكرار اسم الدائرة داخل الفرع", ex);
         }
         return result;
     }
