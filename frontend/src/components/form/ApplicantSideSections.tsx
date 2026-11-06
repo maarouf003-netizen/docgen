@@ -139,6 +139,9 @@ export function ApplicantSideSections({
   // إظهار حقول العنوان يتبع المخزَّن فعليًا (كقرارات الحمولة): صف وريث فارغ
   // الاسم الثلاثي ليس وريثًا فيُبقي الحقول ظاهرة وقيمها محفوظة عند الحفظ.
   const borrowerHasHeirs = borrowerHeirs.some(hasHeirName);
+  // زر ممثل الطرف يختفي فور وجود أي صف وريث (حتى فارغ) — بينما إخفاء العنوان يتبع
+  // الوريث المسمّى فقط (صف فارغ ليس وريثًا فيُبقي العنوان وقيمته).
+  const borrowerHasHeirRows = borrowerHeirs.length > 0;
   // حالة زر الإضافة (عددًا ورقمًا) تُحسب مرة واحدة: تُستخدم في الزرين والنص.
   const guarantorAdd = guarantorAddState(guarantors, isOrdinary);
   // إخفاء العنوان يتبع «المخزَّن» فعلًا (كحمولة toHeirPayload)؛ تفعيل الممثل بصفة
@@ -325,9 +328,8 @@ export function ApplicantSideSections({
             onRemove={onBorrowerHeirRemove}
             locked={lock}
             allowAdd={!borrowerHasRep}
-            allowRepresentative={!borrowerHasHeirs}
           />
-          {!borrowerHasRep && !borrowerHasHeirs && (
+          {!borrowerHasRep && !borrowerHasHeirRows && (
             <div className="mt-3 flex justify-end">
               <button
                 type="button"
@@ -338,7 +340,7 @@ export function ApplicantSideSections({
               </button>
             </div>
           )}
-          {!borrowerHasRep && borrowerHasHeirs && (
+          {!borrowerHasRep && borrowerHasHeirRows && (
             <p className="mt-3 text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2" role="note">
               لا يجتمع الممثل الشرعي مع الورثة — احذف الورثة لإضافة ممثل شرعي.
             </p>
@@ -378,6 +380,7 @@ export function ApplicantSideSections({
       {guarantors.map((g, i) => {
         // كالمقترض أعلاه: الفارغ من الاسم الثلاثي ليس وريثًا مخزَّنًا.
         const gHasHeirs = (g.heirs ?? []).some(hasHeirName);
+        const gHasHeirRows = (g.heirs ?? []).length > 0;
         const gHasRep = hasRepresentative(g);
         // إخفاء العنوان يتبع المخزَّن فعلًا (كحمولة toHeirPayload) — لا مجرد التفعيل بصفة.
         const gRepStored = hasStoredRepresentative(g);
@@ -492,9 +495,8 @@ export function ApplicantSideSections({
                   onRemove={(hi) => onGuarantorHeirRemove(i, hi)}
                   locked={lock}
                   allowAdd={!gHasRep}
-                  allowRepresentative={!gHasHeirs}
                 />
-                {!gHasRep && !gHasHeirs && (
+                {!gHasRep && !gHasHeirRows && (
                   <div className="mt-3 flex justify-end">
                     <button
                       type="button"
@@ -505,7 +507,7 @@ export function ApplicantSideSections({
                     </button>
                   </div>
                 )}
-                {!gHasRep && gHasHeirs && (
+                {!gHasRep && gHasHeirRows && (
                   <p className="mt-3 text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2" role="note">
                     لا يجتمع الممثل الشرعي مع الورثة — احذف الورثة لإضافة ممثل شرعي.
                   </p>

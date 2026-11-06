@@ -9,12 +9,10 @@ import { ExecutedHeirsEditor, HeirsEditor } from './HeirsEditors';
 function HeirsHarness({
   initial,
   allowAdd = true,
-  allowRepresentative = true,
   locked = false,
 }: {
   initial: HeirDto[];
   allowAdd?: boolean;
-  allowRepresentative?: boolean;
   locked?: boolean;
 }) {
   const [heirs, setHeirs] = useState(initial);
@@ -28,7 +26,6 @@ function HeirsHarness({
       onAdd={() => setHeirs((hs) => [...hs, emptyHeir()])}
       onRemove={(i) => setHeirs((hs) => hs.filter((_, idx) => idx !== i))}
       allowAdd={allowAdd}
-      allowRepresentative={allowRepresentative}
       locked={locked}
     />
   );
@@ -37,11 +34,9 @@ function HeirsHarness({
 function ExecutedHeirsHarness({
   initial,
   allowAdd = true,
-  allowRepresentative = true,
 }: {
   initial: ExecutedHeirDto[];
   allowAdd?: boolean;
-  allowRepresentative?: boolean;
 }) {
   const [heirs, setHeirs] = useState(initial);
   return (
@@ -54,7 +49,6 @@ function ExecutedHeirsHarness({
       onAdd={() => setHeirs((hs) => [...hs, emptyExecutedHeir()])}
       onRemove={(i) => setHeirs((hs) => hs.filter((_, idx) => idx !== i))}
       allowAdd={allowAdd}
-      allowRepresentative={allowRepresentative}
     />
   );
 }
@@ -82,10 +76,9 @@ describe('HeirsEditor · الممثل الشرعي لكل وريث', () => {
     expect(screen.getByText(/الممثل الشرعي للطرف قائم/)).toBeInTheDocument();
   });
 
-  it('يمنع إضافة ممثل عند وجود ورثة للطرف', () => {
-    render(<HeirsHarness initial={[{ ...emptyHeir(), name: 'محمود' }]} allowRepresentative={false} />);
-    expect(screen.queryByRole('button', { name: 'إضافة ممثل شرعي لهذا الوريث' })).not.toBeInTheDocument();
-    expect(screen.getByText(/لا يجتمع الممثل الشرعي مع الورثة/)).toBeInTheDocument();
+  it('يُبقي زر ممثل الوريث ظاهرًا رغم وجود ورثة للطرف', () => {
+    render(<HeirsHarness initial={[{ ...emptyHeir(), name: 'محمود' }]} />);
+    expect(screen.getByRole('button', { name: 'إضافة ممثل شرعي لهذا الوريث' })).toBeInTheDocument();
   });
 
   it('يقفل ممثل الوريث المخزَّن على الملف المناب', () => {
