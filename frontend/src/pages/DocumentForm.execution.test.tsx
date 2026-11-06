@@ -204,6 +204,8 @@ render(<DocumentForm />);
     await user.type(boxes[3], 'المحامي فلان');
     // تفعيل الممثل يضبط الصفة فقط — بلا اسم لا يُحفظ فلا يُمسح الوكيل القانوني.
     await user.click(within(applicantCard).getByText('＋ إضافة ممثل شرعي'));
+    // الوكيل القانوني يبقى ظاهرًا بقيمته: الإخفاء يتبع الممثل المخزَّن لا التفعيل.
+    expect(within(applicantCard).getByDisplayValue('المحامي فلان')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /حفظ/ }));
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));

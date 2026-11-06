@@ -6,6 +6,7 @@ import {
   HEIR_CAPACITIES,
   heirAddressLabelOf,
   hasRepresentative,
+  hasStoredRepresentative,
 } from './documentFormConstants';
 import { RepresentativeEditor, type RepresentativeFields } from './RepresentativeEditor';
 
@@ -24,27 +25,50 @@ const inputCls =
 const labelCls = 'block text-xs font-bold text-gray-600 mb-1';
 
 /**
+ * مفتاح صف الوريث: هوية الوريث المخزَّن (`id`) لا موضعه — فحذف صفّ أو إعادة ترتيب لا ينقل
+ * `key` ولا `htmlFor` إلى وريث آخر (ومعهما حالة الحقل وقراءة قارئ الشاشة). الصف الجديد
+ * (بلا `id`) يبقى موضعيًا حتى يُحفظ فيأخذ هويته؛ ولا تصادم لأن معرّفات القاعدة تبدأ من 1.
+ */
+function heirRowKey(heirId: number | undefined, index: number): string {
+  return heirId != null ? `id${heirId}` : String(index);
+}
+
+/** معرّف حقل داخل صف وريث — يُبنى على مفتاح الصف المستقر لا على الموضع. */
+function heirFieldId(idPrefix: string, rowKey: string, field: string): string {
+  return `${idPrefix}-heir-${field}-${rowKey}`;
+}
+
+/**
  * حالة «ممثل جديد لم يُحفظ بعد» على الملف المناب: الممثل المخزَّن من المنيب يُعرض
  * للقراءة فقط (الحارس يرفض تعديله/إزالته)، بينما الممثل الذي يفعّله محامي المناب
  * الآن يبقى قابلًا للتحرير حتى الحفظ.
+ *
+ * المفتاح هو `id` الوريث المخزَّن لا موضعه في القائمة: حذف صفّ أو إعادة ترتيب لا ينقل
+ * القفل إلى وريث آخر. والصف الجديد (بلا `id`) غير مقفول أصلًا لأن ممثله «تعبئة أولى»
+ * مسموحة خلفيًا (الحارس يرفض فقط تعديل ممثل مخزَّن).
+ *
+ * عمر العلامة = عمر نسخة المكوّن (جلسة النموذج): بعد الحفظ يغادر النموذج الصفحة فيُنشأ
+ * المكوّن من جديد ببيانات الخادم (ممثل مخزَّن ⇒ مقفول). ولا تُنظَّف العلامات بنيويًا لأن
+ * «صارت مخزَّنة» ليست إشارة يملكها المحرر — لا يملك إلا البيانات التي بين يديه.
  */
 function useDraftRepresentatives() {
   const [drafts, setDrafts] = useState<ReadonlySet<number>>(() => new Set());
 
   return {
-    isLocked: (index: number, locked: boolean) => locked && !drafts.has(index),
-    mark: (index: number) =>
+    isLocked: (heirId: number | undefined, locked: boolean) =>
+      locked && heirId != null && !drafts.has(heirId),
+    mark: (heirId: number) =>
       setDrafts((prev) => {
-        if (prev.has(index)) return prev;
+        if (prev.has(heirId)) return prev;
         const next = new Set(prev);
-        next.add(index);
+        next.add(heirId);
         return next;
       }),
-    clear: (index: number) =>
+    clear: (heirId: number) =>
       setDrafts((prev) => {
-        if (!prev.has(index)) return prev;
+        if (!prev.has(heirId)) return prev;
         const next = new Set(prev);
-        next.delete(index);
+        next.delete(heirId);
         return next;
       }),
   };
@@ -138,14 +162,18 @@ export function HeirsEditor({
       )}
 
       {heirs.map((h, i) => {
-        const hHasRep = hasRepresentative(h);
+        // الظهور/الإخفاء يتبع المخزَّن فعلًا (كحمولة `toHeirPayload`)، بينما ظهور المحرر
+        // يتبع التفعيل (صفة/اسم) — فتفعيل الممثل بصفة وحدها لا يُخفي العنوان بلا حفظ.
+        const hHasStoredRep = hasStoredRepresentative(h);
+        const hShowsRep = hasRepresentative(h);
+        const rowKey = heirRowKey(h.id, i);
         return (
-          <div key={i} className="rounded-lg border border-gray-200 bg-white p-3 mb-3 last:mb-0">
-            <div className={hHasRep ? 'grid grid-cols-1 md:grid-cols-5 gap-3' : 'grid grid-cols-1 md:grid-cols-8 gap-3'}>
+          <div key={rowKey} className="rounded-lg border border-gray-200 bg-white p-3 mb-3 last:mb-0">
+            <div className={hHasStoredRep ? 'grid grid-cols-1 md:grid-cols-5 gap-3' : 'grid grid-cols-1 md:grid-cols-8 gap-3'}>
               <div className="md:col-span-1">
-                <label htmlFor={`${idPrefix}-heir-name-${i}`} className={labelCls}>اسم الوريث</label>
+                <label htmlFor={heirFieldId(idPrefix, rowKey, 'name')} className={labelCls}>اسم الوريث</label>
                 <input
-                  id={`${idPrefix}-heir-name-${i}`}
+                  id={heirFieldId(idPrefix, rowKey, 'name')}
                   name="heirName"
                   autoComplete="off"
                   value={h.name ?? ''}
@@ -154,9 +182,9 @@ export function HeirsEditor({
                 />
               </div>
               <div className="md:col-span-1">
-                <label htmlFor={`${idPrefix}-heir-father-${i}`} className={labelCls}>اسم أب الوريث</label>
+                <label htmlFor={heirFieldId(idPrefix, rowKey, 'father')} className={labelCls}>اسم أب الوريث</label>
                 <input
-                  id={`${idPrefix}-heir-father-${i}`}
+                  id={heirFieldId(idPrefix, rowKey, 'father')}
                   name="heirFather"
                   autoComplete="off"
                   value={h.father ?? ''}
@@ -165,9 +193,9 @@ export function HeirsEditor({
                 />
               </div>
               <div className="md:col-span-1">
-                <label htmlFor={`${idPrefix}-heir-family-${i}`} className={labelCls}>النسبة</label>
+                <label htmlFor={heirFieldId(idPrefix, rowKey, 'family')} className={labelCls}>النسبة</label>
                 <input
-                  id={`${idPrefix}-heir-family-${i}`}
+                  id={heirFieldId(idPrefix, rowKey, 'family')}
                   name="heirFamily"
                   autoComplete="off"
                   value={h.family ?? ''}
@@ -176,9 +204,9 @@ export function HeirsEditor({
                 />
               </div>
               <div className="md:col-span-1">
-                <label htmlFor={`${idPrefix}-heir-capacity-${i}`} className={labelCls}>صفة الوريث</label>
+                <label htmlFor={heirFieldId(idPrefix, rowKey, 'capacity')} className={labelCls}>صفة الوريث</label>
                 <select
-                  id={`${idPrefix}-heir-capacity-${i}`}
+                  id={heirFieldId(idPrefix, rowKey, 'capacity')}
                   name="heirCapacity"
                   value={h.capacity ?? 'أصالة'}
                   onChange={(e) => onSet(i, 'capacity', e.target.value)}
@@ -189,12 +217,12 @@ export function HeirsEditor({
                   ))}
                 </select>
               </div>
-              {!hHasRep && (
+              {!hHasStoredRep && (
                 <>
                   <div className="md:col-span-1">
-                    <label htmlFor={`${idPrefix}-heir-type-${i}`} className={labelCls}>نوع العنوان</label>
+                    <label htmlFor={heirFieldId(idPrefix, rowKey, 'type')} className={labelCls}>نوع العنوان</label>
                     <select
-                      id={`${idPrefix}-heir-type-${i}`}
+                      id={heirFieldId(idPrefix, rowKey, 'type')}
                       name="heirAddressType"
                       value={h.addressType ?? 'عنوان'}
                       onChange={(e) => onSet(i, 'addressType', e.target.value)}
@@ -206,11 +234,11 @@ export function HeirsEditor({
                     </select>
                   </div>
                   <div className="md:col-span-2">
-                    <label htmlFor={`${idPrefix}-heir-address-${i}`} className={labelCls}>
+                    <label htmlFor={heirFieldId(idPrefix, rowKey, 'address')} className={labelCls}>
                       {heirAddressLabelOf(h.addressType)}
                     </label>
                     <input
-                      id={`${idPrefix}-heir-address-${i}`}
+                      id={heirFieldId(idPrefix, rowKey, 'address')}
                       name="heirAddress"
                       autoComplete="off"
                       value={h.address ?? ''}
@@ -229,19 +257,19 @@ export function HeirsEditor({
               </div>
             </div>
 
-            {allowRepresentative || hHasRep ? (
+            {allowRepresentative || hShowsRep ? (
               <HeirRepresentativeSection
                 heir={h}
-                idPrefix={`${idPrefix}-heir-rep-${i}`}
-                locked={drafts.isLocked(i, locked)}
+                idPrefix={`${idPrefix}-heir-rep-${rowKey}`}
+                locked={drafts.isLocked(h.id, locked)}
                 onSet={(key, value) => onSet(i, key as keyof HeirDto, value)}
                 onActivate={() => {
-                  drafts.mark(i);
+                  if (h.id != null) drafts.mark(h.id);
                   onSet(i, 'representativeCapacity', 'ولي');
                   onSet(i, 'representativeAddressType', 'عنوان');
                 }}
                 onRemove={() => {
-                  drafts.clear(i);
+                  if (h.id != null) drafts.clear(h.id);
                   for (const key of REPRESENTATIVE_KEYS) onSet(i, key, '');
                 }}
               />
@@ -303,14 +331,16 @@ export function ExecutedHeirsEditor({
       )}
 
       {heirs.map((h, i) => {
-        const hHasRep = hasRepresentative(h);
+        const hHasStoredRep = hasStoredRepresentative(h);
+        const hShowsRep = hasRepresentative(h);
+        const rowKey = heirRowKey(h.id, i);
         return (
-          <div key={i} className="rounded-lg border border-gray-200 bg-white p-3 mb-3 last:mb-0">
-            <div className={hHasRep ? 'grid grid-cols-1 md:grid-cols-4 gap-3' : 'grid grid-cols-1 md:grid-cols-7 gap-3'}>
+          <div key={rowKey} className="rounded-lg border border-gray-200 bg-white p-3 mb-3 last:mb-0">
+            <div className={hHasStoredRep ? 'grid grid-cols-1 md:grid-cols-4 gap-3' : 'grid grid-cols-1 md:grid-cols-7 gap-3'}>
               <div className="md:col-span-1">
-                <label htmlFor={`${idPrefix}-heir-name-${i}`} className={labelCls}>الاسم</label>
+                <label htmlFor={heirFieldId(idPrefix, rowKey, 'name')} className={labelCls}>الاسم</label>
                 <input
-                  id={`${idPrefix}-heir-name-${i}`}
+                  id={heirFieldId(idPrefix, rowKey, 'name')}
                   name="heirName"
                   autoComplete="off"
                   value={h.heirName ?? ''}
@@ -319,9 +349,9 @@ export function ExecutedHeirsEditor({
                 />
               </div>
               <div className="md:col-span-1">
-                <label htmlFor={`${idPrefix}-heir-father-${i}`} className={labelCls}>اسم الأب</label>
+                <label htmlFor={heirFieldId(idPrefix, rowKey, 'father')} className={labelCls}>اسم الأب</label>
                 <input
-                  id={`${idPrefix}-heir-father-${i}`}
+                  id={heirFieldId(idPrefix, rowKey, 'father')}
                   name="heirFather"
                   autoComplete="off"
                   value={h.heirFather ?? ''}
@@ -330,9 +360,9 @@ export function ExecutedHeirsEditor({
                 />
               </div>
               <div className="md:col-span-1">
-                <label htmlFor={`${idPrefix}-heir-family-${i}`} className={labelCls}>النسبة</label>
+                <label htmlFor={heirFieldId(idPrefix, rowKey, 'family')} className={labelCls}>النسبة</label>
                 <input
-                  id={`${idPrefix}-heir-family-${i}`}
+                  id={heirFieldId(idPrefix, rowKey, 'family')}
                   name="heirFamily"
                   autoComplete="off"
                   value={h.heirFamily ?? ''}
@@ -340,12 +370,12 @@ export function ExecutedHeirsEditor({
                   className={inputCls}
                 />
               </div>
-              {!hHasRep && (
+              {!hHasStoredRep && (
                 <>
                   <div className="md:col-span-1">
-                    <label htmlFor={`${idPrefix}-heir-type-${i}`} className={labelCls}>نوع العنوان</label>
+                    <label htmlFor={heirFieldId(idPrefix, rowKey, 'type')} className={labelCls}>نوع العنوان</label>
                     <select
-                      id={`${idPrefix}-heir-type-${i}`}
+                      id={heirFieldId(idPrefix, rowKey, 'type')}
                       name="heirAddressType"
                       value={h.addressType ?? 'عنوان'}
                       onChange={(e) => onSet(i, 'addressType', e.target.value)}
@@ -357,11 +387,11 @@ export function ExecutedHeirsEditor({
                     </select>
                   </div>
                   <div className="md:col-span-2">
-                    <label htmlFor={`${idPrefix}-heir-address-${i}`} className={labelCls}>
+                    <label htmlFor={heirFieldId(idPrefix, rowKey, 'address')} className={labelCls}>
                       {heirAddressLabelOf(h.addressType)}
                     </label>
                     <input
-                      id={`${idPrefix}-heir-address-${i}`}
+                      id={heirFieldId(idPrefix, rowKey, 'address')}
                       name="heirAddress"
                       autoComplete="off"
                       value={h.heirAddress ?? ''}
@@ -380,19 +410,19 @@ export function ExecutedHeirsEditor({
               </div>
             </div>
 
-            {allowRepresentative || hHasRep ? (
+            {allowRepresentative || hShowsRep ? (
               <HeirRepresentativeSection
                 heir={h}
-                idPrefix={`${idPrefix}-heir-rep-${i}`}
-                locked={drafts.isLocked(i, locked)}
+                idPrefix={`${idPrefix}-heir-rep-${rowKey}`}
+                locked={drafts.isLocked(h.id, locked)}
                 onSet={(key, value) => onSet(i, key as keyof ExecutedHeirDto, value)}
                 onActivate={() => {
-                  drafts.mark(i);
+                  if (h.id != null) drafts.mark(h.id);
                   onSet(i, 'representativeCapacity', 'ولي');
                   onSet(i, 'representativeAddressType', 'عنوان');
                 }}
                 onRemove={() => {
-                  drafts.clear(i);
+                  if (h.id != null) drafts.clear(h.id);
                   for (const key of REPRESENTATIVE_KEYS) onSet(i, key, '');
                 }}
               />

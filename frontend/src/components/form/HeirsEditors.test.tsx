@@ -94,6 +94,7 @@ describe('HeirsEditor · الممثل الشرعي لكل وريث', () => {
         initial={[
           {
             ...emptyHeir(),
+            id: 7,
             name: 'محمود',
             representativeName: 'سمير',
             representativeFather: 'حسن',
@@ -108,6 +109,99 @@ describe('HeirsEditor · الممثل الشرعي لكل وريث', () => {
     expect(screen.getByLabelText('اسم الممثل الشرعي')).toHaveAttribute('readonly');
     expect(screen.queryByRole('button', { name: '✖ حذف الممثل' })).not.toBeInTheDocument();
   });
+
+  it('لا يقفل الصف الجديد (بلا id) — تعبئته الأولى مسموحة خلفيًا', () => {
+    render(<HeirsHarness initial={[{ ...emptyHeir(), name: 'سامر' }]} locked />);
+
+    expect(screen.getByLabelText('اسم الوريث')).not.toHaveAttribute('readonly');
+    expect(screen.getByRole('button', { name: 'إضافة ممثل شرعي لهذا الوريث' })).toBeInTheDocument();
+  });
+
+  it('يُبقي العنوان ظاهرًا عند تفعيل الممثل بصفة وحدها (غير مخزَّن)', () => {
+    // صفة «ولي» وحدها لا تُحفظ خلفيًا؛ إخفاء العنوان حينها يُفقد قيمة المستخدم دون أثر.
+    const { container } = render(
+      <HeirsHarness
+        initial={[{ ...emptyHeir(), id: 1, name: 'أحمد', representativeCapacity: 'ولي' }]}
+      />,
+    );
+
+    // معرّفات الحقول تتبع هوية الوريث (`id1`) لا موضعه — تبقى صحيحة بعد الحذف/إعادة الترتيب.
+    expect(container.querySelector('#test-heir-address-id1')).toBeInTheDocument();
+    expect(container.querySelector('#test-heir-type-id1')).toBeInTheDocument();
+    // محرر الممثل ظاهر بالتفعيل (صفة) — لكن العنوان لم يُخفَ بعد لأنه غير مخزَّن.
+    expect(container.querySelector('#test-heir-rep-id1-rep-name')).toBeInTheDocument();
+  });
+
+  it('يُخفي عنوان الوريث عند وجود اسم ممثل مخزَّن فعلًا', () => {
+    const { container } = render(
+      <HeirsHarness
+        initial={[{ ...emptyHeir(), id: 2, name: 'محمود', representativeName: 'سمير' }]}
+      />,
+    );
+
+    expect(container.querySelector('#test-heir-address-id2')).toBeNull();
+    expect(container.querySelector('#test-heir-type-id2')).toBeNull();
+  });
+
+  it('يعطي الصف الجديد (بلا هوية) معرّفات موضعية كالسابق', () => {
+    // بلا `id` لا توجد هوية مستقرة بعد؛ يبقى الموضع هو المفتاح حتى يُحفظ الوريث.
+    const { container } = render(<HeirsHarness initial={[{ ...emptyHeir(), name: 'سامر' }]} />);
+
+    expect(container.querySelector('#test-heir-name-0')).toBeInTheDocument();
+    expect(container.querySelector('#test-heir-name-id1')).toBeNull();
+  });
+});
+
+/** حذف صفّ من القائمة كما يحدث عند تحديثها من الخادم — لكشف قفلٍ مرتبط بالموضع لا بالهوية. */
+function LockShiftHarness() {
+  const [heirs, setHeirs] = useState<HeirDto[]>([
+    {
+      ...emptyHeir(),
+      id: 1,
+      name: 'أحمد',
+      representativeName: 'سمير',
+      representativeFather: 'حسن',
+      representativeFamily: 'علي',
+    },
+    { ...emptyHeir(), id: 2, name: 'محمود' },
+  ]);
+  return (
+    <div>
+      <button type="button" onClick={() => setHeirs((hs) => hs.filter((h) => h.id !== 1))}>
+        محاكاة حذف الصف الأول
+      </button>
+      <HeirsEditor
+        idPrefix="shift"
+        heirs={heirs}
+        onSet={(i, key, value) =>
+          setHeirs((hs) => hs.map((h, idx) => (idx === i ? { ...h, [key]: value } : h)))
+        }
+        onAdd={() => undefined}
+        onRemove={() => undefined}
+        locked
+      />
+    </div>
+  );
+}
+
+describe('HeirsEditor · ثبات قفل الممثل عبر الهوية', () => {
+  it('يبقى ممثل الصف المنشأ حديثًا قابلًا للتحرير بعد انزياح المواضع', async () => {
+    const user = userEvent.setup();
+    render(<LockShiftHarness />);
+
+    const mahmoudCard = screen.getByDisplayValue('محمود').closest('div.rounded-lg') as HTMLElement;
+    // تفعيل ممثل جديد لوريث مخزَّن: يُقفل حتى يُحفظ، ويُتابَع بـ id لا بالموضع.
+    await user.click(within(mahmoudCard).getByRole('button', { name: 'إضافة ممثل شرعي لهذا الوريث' }));
+    const draftInput = within(mahmoudCard).getByLabelText('اسم الممثل الشرعي');
+    expect(draftInput).not.toHaveAttribute('readonly');
+
+    await user.click(screen.getByRole('button', { name: 'محاكاة حذف الصف الأول' }));
+
+    const shiftedCard = screen.getByDisplayValue('محمود').closest('div.rounded-lg') as HTMLElement;
+    const shifted = within(shiftedCard).getByLabelText('اسم الممثل الشرعي');
+    expect(shifted).not.toHaveAttribute('readonly');
+    expect(shifted).not.toBeDisabled();
+  });
 });
 
 describe('ExecutedHeirsEditor · الممثل الشرعي لكل وريث', () => {
@@ -119,5 +213,22 @@ describe('ExecutedHeirsEditor · الممثل الشرعي لكل وريث', () 
     await user.click(within(heirCard).getByRole('button', { name: 'إضافة ممثل شرعي لهذا الوريث' }));
     expect(within(heirCard).getByLabelText('اسم الممثل الشرعي')).toBeInTheDocument();
     expect(within(heirCard).getByLabelText('صفة الممثل الشرعي')).toBeInTheDocument();
+  });
+
+  it('يُخفي عنوان الوريث عند اسم ممثل مخزَّن ويُبقيه عند صفة وحدها', () => {
+    const { container, unmount } = render(
+      <ExecutedHeirsHarness
+        initial={[{ ...emptyExecutedHeir(), id: 3, heirName: 'أحمد', representativeCapacity: 'ولي' }]}
+      />,
+    );
+    expect(container.querySelector('#executed-heir-address-id3')).toBeInTheDocument();
+    unmount();
+
+    const { container: stored } = render(
+      <ExecutedHeirsHarness
+        initial={[{ ...emptyExecutedHeir(), id: 4, heirName: 'محمود', representativeName: 'سمير' }]}
+      />,
+    );
+    expect(stored.querySelector('#executed-heir-address-id4')).toBeNull();
   });
 });

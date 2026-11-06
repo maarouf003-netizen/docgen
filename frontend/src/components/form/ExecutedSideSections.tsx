@@ -18,6 +18,7 @@ import {
   REPRESENTATION_TYPES,
   addressLabelOf,
   hasRepresentative,
+  hasStoredRepresentative,
   heirAddressLabelOf,
   paidAmountKeys,
   paidCurrencyKeys,
@@ -214,6 +215,9 @@ export function ExecutedSideSections({
       <FormSectionTitle title={`👤 ${applicantLabel}`} />
       {executionApplicants.map((a, i) => {
         const aHasRep = hasRepresentative(a);
+        // الحقول التي تُصفَّر في الحمولة (الوكيل القانوني) تتبع «المخزَّن» لا «المفعَّل»:
+        // صفة وحدها (بلا اسم) لا تُحفظ، فمسح/إخفاء قيمة لها فقدان صامت.
+        const aRepStored = hasStoredRepresentative(a);
         const hasEstate = a.representationType === 'إضافة لتركة' || a.representationType === 'أصالة وإضافة';
         const aHasHeirs = (a.heirs ?? []).some((h) => (h.heirName ?? '').trim());
         const aIsLegal = a.nature === 'legal';
@@ -317,13 +321,13 @@ export function ExecutedSideSections({
                   ))}
                 </div>
                 <div className="grid md:grid-cols-3 gap-3 mt-3">
-                  {!aHasRep && (
+                  {!aRepStored && (
                     <div className="md:col-span-2">
                       <label className="block text-xs font-bold text-gray-600 mb-1">الوكيل القانوني</label>
                       <input value={a.legalRepresentative ?? ''} readOnly={isMirror} aria-readonly={isMirror || undefined} onChange={(e) => onApplicantSet(i, 'legalRepresentative', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                     </div>
                   )}
-                  <div className={aHasRep ? 'md:col-span-3' : undefined}>
+                  <div className={aRepStored ? 'md:col-span-3' : undefined}>
                     <label className="block text-xs font-bold text-gray-600 mb-1">نوع التمثيل</label>
                     <div className="flex items-center gap-2">
                       <select value={a.representationType ?? 'أصالة'} disabled={isMirror} aria-readonly={isMirror || undefined} onChange={(e) => onApplicantSet(i, 'representationType', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50 disabled:cursor-not-allowed">

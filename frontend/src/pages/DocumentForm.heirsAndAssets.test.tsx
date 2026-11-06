@@ -337,11 +337,14 @@ render(<DocumentForm />);
 
     await user.click(screen.getAllByRole('button', { name: '＋ إضافة ممثل شرعي' })[0]);
 
-    expect(container.querySelector('#borrowerAddress')).toBeNull();
+    // التفعيل وحده (صفة بلا اسم) لا يُخفي العنوان: الممثل غير مخزَّن فلا يُفقد عنوان المستخدم.
+    expect(container.querySelector('#borrowerAddress')).toBeTruthy();
     expect(screen.getByLabelText('اسم الممثل الشرعي')).toBeInTheDocument();
     expect(screen.getByLabelText('صفة الممثل الشرعي')).toBeInTheDocument();
 
     await user.type(screen.getByLabelText('اسم الممثل الشرعي'), 'الولي');
+    // باسم الممثل يصبح مخزَّنًا ⇒ يُخفى عنوان المقترض (الممثل هو حامل العنوان الفعلي).
+    expect(container.querySelector('#borrowerAddress')).toBeNull();
     await user.type(screen.getByLabelText('اسم أب الممثل الشرعي'), 'أب');
     await user.selectOptions(screen.getByLabelText('صفة الممثل الشرعي'), 'ولي');
     await user.selectOptions(screen.getByLabelText('نوع العنوان'), 'وكيل قانوني');

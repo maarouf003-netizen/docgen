@@ -14,6 +14,7 @@ import {
   guarantorAddState,
   hasHeirName,
   hasRepresentative,
+  hasStoredRepresentative,
   ordinaryAmountKeys,
   ordinaryCurrencyKeys,
   shareTypesFor,
@@ -140,6 +141,13 @@ export function ApplicantSideSections({
   const borrowerHasHeirs = borrowerHeirs.some(hasHeirName);
   // حالة زر الإضافة (عددًا ورقمًا) تُحسب مرة واحدة: تُستخدم في الزرين والنص.
   const guarantorAdd = guarantorAddState(guarantors, isOrdinary);
+  // إخفاء العنوان يتبع «المخزَّن» فعلًا (كحمولة toHeirPayload)؛ تفعيل الممثل بصفة
+  // وحدها لا يُخفيه لأن الخلفية تُصفّر الشبح عند الحفظ فيعود العنوان بعد التحميل.
+  const borrowerRepStored = hasStoredRepresentative({
+    representativeName: form.borrowerRepresentativeName,
+    representativeFather: form.borrowerRepresentativeFather,
+    representativeFamily: form.borrowerRepresentativeFamily,
+  });
   const borrowerHasRep = hasRepresentative({
     representativeName: form.borrowerRepresentativeName,
     representativeFather: form.borrowerRepresentativeFather,
@@ -302,7 +310,7 @@ export function ApplicantSideSections({
             {field('مكان وتاريخ الولادة', 'borrowerBirth')}
             {field('مكان ورقم القيد', 'borrowerRegister')}
             {field('الرقم الوطني', 'borrowerNationalId')}
-            {!borrowerHasHeirs && !borrowerHasRep && (
+            {!borrowerHasHeirs && !borrowerRepStored && (
               <>
                 {optionSelectField('نوع العنوان', 'borrowerAddressType', ADDRESS_TYPE_OPTIONS, form.borrowerAddressType ?? 'موطن مختار', (v) => set('borrowerAddressType', v))}
                 <div className="md:col-span-2">{field(addressLabelOf(form.borrowerAddressType), 'borrowerAddress')}</div>
@@ -371,6 +379,8 @@ export function ApplicantSideSections({
         // كالمقترض أعلاه: الفارغ من الاسم الثلاثي ليس وريثًا مخزَّنًا.
         const gHasHeirs = (g.heirs ?? []).some(hasHeirName);
         const gHasRep = hasRepresentative(g);
+        // إخفاء العنوان يتبع المخزَّن فعلًا (كحمولة toHeirPayload) — لا مجرد التفعيل بصفة.
+        const gRepStored = hasStoredRepresentative(g);
         const gIsLegal = g.nature === 'legal';
         const cardKey = cardKeyOf(g, i);
         const isCollapsed = collapsedCards.has(cardKey);
@@ -457,7 +467,7 @@ export function ApplicantSideSections({
                       <input value={g[k] ?? ''} readOnly={lock} aria-readonly={lock || undefined} onChange={(e) => onGuarantorSet(i, k, e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                     </div>
                   ))}
-                  {!gHasHeirs && !gHasRep && (
+                  {!gHasHeirs && !gRepStored && (
                     <>
                       <div>
                         <label className="block text-xs font-bold text-gray-600 mb-1">نوع العنوان</label>
