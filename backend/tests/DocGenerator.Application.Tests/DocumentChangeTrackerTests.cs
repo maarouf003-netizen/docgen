@@ -150,8 +150,35 @@ public class DocumentChangeTrackerTests
         var signature = snapshot["__Col_Guarantors"];
 
         Assert.NotNull(signature);
-        Assert.True(signature.Length <= DocumentChangeTracker.MaxSignatureLength);
-        Assert.EndsWith("…", signature);
+        Assert.Equal(DocumentChangeTracker.MaxSignatureLength, signature.Length);
+        Assert.EndsWith("…", signature[..^DocumentChangeTracker.SignatureDigestLength]);
+        Assert.Matches("^[0-9A-F]{16}$", signature[^DocumentChangeTracker.SignatureDigestLength..]);
+    }
+
+    [Fact]
+    public void Diff_ChangeBeyondTruncationLimit_IsStillDetected()
+    {
+        // تعديل يقع بعد حد القص لا يظهر في البادئة المحفوظة؛ بلا بصمة يتطابق التوقيعان
+        // فيضيع صفّ التدقيق صامتًا. البصمة تجعله مرئيًا.
+        var doc = NewDocument();
+        for (var n = 1; n <= PartyLimitsCatalog.MaxGuarantors; n++)
+        {
+            doc.Guarantors.Add(new Guarantor
+            {
+                GuarantorNumber = n,
+                GuarantorName = new string('ك', 60),
+                GuarantorFather = new string('ف', 60),
+                GuarantorFamily = new string('ع', 60),
+            });
+        }
+
+        var before = DocumentChangeTracker.Capture(doc);
+        doc.Guarantors.Last().GuarantorFamily = new string('ع', 59) + "ى";
+        var after = DocumentChangeTracker.Capture(doc);
+
+        Assert.NotEqual(before["__Col_Guarantors"], after["__Col_Guarantors"]);
+        var changes = DocumentChangeTracker.Diff(before, doc);
+        Assert.Contains(changes, c => c.FieldKey == "__Col_Guarantors");
     }
 
     [Fact]

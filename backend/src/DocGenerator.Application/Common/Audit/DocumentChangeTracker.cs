@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 using DocGenerator.Domain.Entities;
 
 namespace DocGenerator.Application.Common.Audit;
@@ -291,8 +293,12 @@ public static class DocumentChangeTracker
     /// أو العدد أو المحتوى يظهر كتغيير واحد مفهوم مؤسسيًا.
     /// الحد الأقصى لطول التوقيع (مطابق عمود OldValue/NewValue) — ما تجاوزه يُقصّ
     /// بعلامة استمرار في Signature (حماية حفظ Postgres مع 49 كفيلًا).
+    /// القصّ يُلحق <b>بصمة</b> للنص الكامل كي لا يضيع كشف الفروق الواقعة بعد حد القص.
     /// </summary>
     public const int MaxSignatureLength = 2000;
+
+    /// <summary>طول بصمة SHA-256 (بالحروف السداسية) الملحقة بالتوقيع المقصوص — 64 بت تكفي لكشف الفرق.</summary>
+    public const int SignatureDigestLength = 16;
     private static readonly Dictionary<string, Func<Document, string?>> CollectionSignatures =
         new(StringComparer.Ordinal)
         {
@@ -333,11 +339,18 @@ public static class DocumentChangeTracker
         // مع حتى 49 كفيلًا (وورثة بلا سقف) يتجاوز الربط حد العمود (2000) فيُرفض
         // الحفظ على Postgres بينما SQLite يتجاهل الطول — فيُقصّ بعلامة استمرار
         // بذات نمط قصّ نص البحث، وتجنّب قصّ منتصف زوج بديل UTF-16.
-        var end = MaxSignatureLength - 1;
-        if (end > 0 && char.IsHighSurrogate(joined[end - 1]) && end < joined.Length && char.IsLowSurrogate(joined[end]))
+        // تُلحق بصمة النص الكامل بعد علامة القص ليكشف التوقيع أي فرق وقع بعد الحد
+        // (بدونها يتطابق توقيعان مختلفان بعد القص ⇒ تعديل بلا صفّ تدقيق).
+        var digest = SignatureDigest(joined);
+        var end = MaxSignatureLength - 1 - digest.Length;
+        if (end > 0 && char.IsHighSurrogate(joined[end - 1]) && char.IsLowSurrogate(joined[end]))
             end--;
-        return joined[..end] + "…";
+        return string.Concat(joined.AsSpan(0, end), "…", digest);
     }
+
+    /// <summary>بصمة سداسية قصيرة (أول <see cref="SignatureDigestLength"/> حرفًا من SHA-256).</summary>
+    private static string SignatureDigest(string text) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..SignatureDigestLength];
 
     private static string Join(params string?[] parts)
         => string.Join(' ', parts.Where(p => !string.IsNullOrWhiteSpace(p)));
