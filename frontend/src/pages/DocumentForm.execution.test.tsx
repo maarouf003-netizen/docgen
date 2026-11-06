@@ -204,6 +204,8 @@ render(<DocumentForm />);
     await user.type(boxes[3], 'المحامي فلان');
     // تفعيل الممثل يضبط الصفة فقط — بلا اسم لا يُحفظ فلا يُمسح الوكيل القانوني.
     await user.click(within(applicantCard).getByText('＋ إضافة ممثل شرعي'));
+    // الوكيل القانوني يبقى ظاهرًا بقيمته: الإخفاء يتبع الممثل المخزَّن لا التفعيل.
+    expect(within(applicantCard).getByDisplayValue('المحامي فلان')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /حفظ/ }));
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
@@ -589,7 +591,7 @@ render(<DocumentForm />);
   });
 
 
-  it('يعرض حقول المورث عند «أصالة وإضافة» ويظهر ممثل شرعي عند الإضافة', async () => {
+  it('يعرض حقول المورث عند «أصالة وإضافة» ويمنع الممثل مع التركة', async () => {
     const user = userEvent.setup();
     await selectExecutedSide(user);
 
@@ -597,9 +599,13 @@ render(<DocumentForm />);
 
     expect(within(applicantCard).queryByText('اسم المورث المتوفى')).not.toBeInTheDocument();
 
-    await user.selectOptions(within(applicantCard).getAllByRole('combobox')[1], 'أصالة وإضافة');
+    const representation = within(applicantCard).getAllByRole('combobox')[1];
+    await user.selectOptions(representation, 'أصالة وإضافة');
     expect(within(applicantCard).getByText('اسم المورث المتوفى')).toBeInTheDocument();
+    expect(within(applicantCard).queryByRole('button', { name: '＋ إضافة ممثل شرعي' })).not.toBeInTheDocument();
+    expect(within(applicantCard).getByText('لا يجتمع الممثل الشرعي مع الورثة/التمثيل بالتركة.')).toBeInTheDocument();
 
+    await user.selectOptions(representation, 'أصالة');
     await user.click(within(applicantCard).getByRole('button', { name: '＋ إضافة ممثل شرعي' }));
     expect(within(applicantCard).getByLabelText('اسم الممثل الشرعي')).toBeInTheDocument();
     expect(within(applicantCard).getByLabelText('صفة الممثل الشرعي')).toBeInTheDocument();

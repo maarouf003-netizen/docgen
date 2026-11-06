@@ -401,7 +401,12 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
             ? await ListOfTargetAsync(doc.Id, ct)
             : await _delegations.ListBySourceAsync(doc.Id, ct);
 
-        return delegations.Select(d => ToDto(d, d.SourceDocument, ServerClock.CurrentYear(_clock, _timeZone))).ToList();
+        var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
+        // ملاحظة الإضافات المحلية تُقرأ من صف الإنابة نفسه (سجل دائم) لا من تنبيهات المرآة
+        // النشطة — فأرشفة التنبيه أو تنظيفه لا تمحو أثر الإضافة من «تشعبات الملف».
+        return delegations
+            .Select(d => ToDto(d, d.SourceDocument, currentYear))
+            .ToList();
     }
 
     public async Task<List<DelegationDto>> ListPendingForHeadAsync(
@@ -1526,6 +1531,12 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         HeirCapacity = h.HeirCapacity,
         AddressType = h.AddressType,
         HeirAddress = h.HeirAddress,
+        RepresentativeName = h.RepresentativeName,
+        RepresentativeFather = h.RepresentativeFather,
+        RepresentativeFamily = h.RepresentativeFamily,
+        RepresentativeCapacity = h.RepresentativeCapacity,
+        RepresentativeAddressType = h.RepresentativeAddressType,
+        RepresentativeAddress = h.RepresentativeAddress,
     };
 
     /// <summary>
@@ -1594,7 +1605,8 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
                 return $"{a.AssetLabel}: {oldText} ← {newText}";
             }));
 
-    private static DelegationDto ToDto(DocumentDelegation d, Document source, int currentYear) => new(
+    private static DelegationDto ToDto(
+        DocumentDelegation d, Document source, int currentYear) => new(
         d.Id,
         d.SourceDocumentId,
         SourceLabel(source),
@@ -1632,7 +1644,17 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         RejectReason: d.RejectReason,
         RedirectedToSectionId: d.RedirectedToSectionId,
         RedirectedToSectionName: d.RedirectedToSection?.Name,
-        Version: d.Version);
+        Version: d.Version,
+        LocalAddition: ToLocalAddition(d));
+
+    /// <summary>ملخص الإضافات المحلية من سجل الإنابة (عدّاد + ملخص + وقت) — لا من التنبيهات.</summary>
+    private static DelegationLocalAdditionDto? ToLocalAddition(DocumentDelegation d) =>
+        d.LocalAdditionCount <= 0
+            ? null
+            : new DelegationLocalAdditionDto(
+                d.LocalAdditionCount,
+                d.LocalAdditionLastMessage ?? string.Empty,
+                d.LocalAdditionLastAt);
 
     private static string SourceLabel(Document source)
     {

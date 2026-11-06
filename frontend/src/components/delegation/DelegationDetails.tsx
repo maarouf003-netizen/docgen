@@ -1,8 +1,9 @@
 import type { AssetDto, DelegationDto } from '../../types';
-import { formatDate } from '../../utils/dates';
+import { formatDate, formatDateTime } from '../../utils/dates';
 import { assetDisplayName } from '../../utils/assetDisplay';
 import { delegationAssetLabel, delegationAssetsLine } from '../../utils/delegationAssets';
 import { DELEGATION_STATUS_EXECUTED, delegationStatusBadge } from '../../utils/delegationStatus';
+import { formatNumber } from '../dashboard/dashboardFormat';
 
 /** صف «كتب» اختياري: «كتاب الإيداع رقم X بتاريخ Y» (يظهر متى وُجد أحد حقلَيه). */
 function bookRow(label: string, number?: string | null, date?: string | null): string {
@@ -102,6 +103,31 @@ export function DelegationDetails({ d, sourceAssets }: { d: DelegationDto; sourc
         <p className="text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
           عُدِّلت بيانات بعض الأموال في الملف المنيب بعد التسطير — حُدِّثت لقطة الإنابة تلقائيًا.
         </p>
+      )}
+
+      {d.localAddition && d.localAddition.count > 0 && (
+        <div
+          className="text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 break-words"
+          role="note"
+        >
+          <span className="block font-bold">إضافات محلية على الملف المناب</span>
+          {/* العدّاد تراكمي (كل الإضافات) بينما النص ملخص آخر دفعة فقط — التسمية تفصل الدلالتين
+              صراحةً، وإلا قُرئ النص كتفصيل للعدد فبدا العدد ناقصًا عند القصّ أو تعدد الدفعات. */}
+          <span className="block mt-1 text-xs text-amber-700 tabular-nums">
+            {`عدد الإضافات المحلية: ${formatNumber(d.localAddition.count)}`}
+          </span>
+          {d.localAddition.lastMessage && (
+            <span className="block mt-1">
+              <span className="font-bold">آخر إضافة: </span>
+              <span className="whitespace-pre-line">{d.localAddition.lastMessage}</span>
+            </span>
+          )}
+          {d.localAddition.lastAt && (
+            <span className="block mt-1 text-xs text-amber-700 tabular-nums">
+              {formatDateTime(d.localAddition.lastAt)}
+            </span>
+          )}
+        </div>
       )}
 
       {orphanLabels.length > 0 && (

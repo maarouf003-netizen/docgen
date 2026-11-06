@@ -396,17 +396,64 @@ public class DocumentContextBuilder : IDocumentContextBuilder
     }
 
     /// <summary>
+    /// عبارة عنوان الممثل الشرعي للوريث حسب نوعه: «موطنه المختار…» أو «عنوانه…» أو
+    /// «وكيله القانوني…». تُعاد فارغة عند غياب العنوان.
+    /// </summary>
+    private static string HeirRepresentativeAddressPhrase(Heir heir)
+    {
+        var value = (heir.RepresentativeAddress ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        return (heir.RepresentativeAddressType ?? string.Empty).Trim() switch
+        {
+            "موطن مختار" => $"موطنه المختار {value}",
+            "وكيل قانوني" => $"وكيله القانوني {value}",
+            _ => $"عنوانه {value}",
+        };
+    }
+
+    /// <summary>
+    /// عبارة الممثل الشرعي للوريث: «ممثله الشرعي الولي …» مع عنوانه عند الطلب.
+    /// تُعاد فارغة عند غياب الاسم الثلاثي (فلا يُخزَّن ممثل بلا اسم).
+    /// </summary>
+    private static string HeirRepresentativePhrase(Heir heir, bool withAddress)
+    {
+        if (DocumentText.IsEmptyRepresentative(
+                heir.RepresentativeName, heir.RepresentativeFather, heir.RepresentativeFamily))
+            return string.Empty;
+
+        var name = JoinNonEmpty(new[] { heir.RepresentativeName, heir.RepresentativeFather, heir.RepresentativeFamily });
+        if (string.IsNullOrWhiteSpace(name))
+            return string.Empty;
+
+        var capacity = (heir.RepresentativeCapacity ?? string.Empty).Trim();
+        var phrase = capacity.Length > 0 ? $"ممثله الشرعي ال{capacity} {name}" : $"ممثله الشرعي {name}";
+        if (!withAddress)
+            return phrase;
+
+        var address = HeirRepresentativeAddressPhrase(heir);
+        return string.IsNullOrWhiteSpace(address) ? phrase : $"{phrase}، {address}";
+    }
+
+    /// <summary>عبارة الطرف الوريث: ممثله الشرعي إن وُجد، وإلا عنوانه/وكيله المخزَّن.</summary>
+    private static string HeirPartyPhrase(Heir heir, bool withAddress)
+    {
+        var representative = HeirRepresentativePhrase(heir, withAddress);
+        if (!string.IsNullOrWhiteSpace(representative))
+            return representative;
+        return withAddress ? HeirAddressPhrase(heir) : string.Empty;
+    }
+
+    /// <summary>
     /// سطر الوريث في الإخطارات: «[الوريث] إضافة لتركة المتوفى ([المتوفى])». مع
-    /// (withAddress) تُلحق عبارة العنوان/الوكيل في سطر تالٍ إن وُجدت — وتُهمل في
-    /// إخطارات الصحف (006/007) التي تذكر الوريث والعبارة فقط بلا عنوان ولا وكيل.
+    /// (withAddress) تُلحق عبارة العنوان/الوكيل أو الممثل الشرعي في سطر تالٍ إن وُجدت؛
+    /// وفي إخطارات الصحف (006/007) يُذكر اسم الممثل الشرعي دون عنوان.
     /// </summary>
     private static string BuildHeirLine(Heir heir, string deceasedFull, bool withAddress)
     {
         var line = $"{JoinNonEmpty(new[] { heir.HeirName, heir.HeirFather, heir.HeirFamily })} إضافة لتركة المتوفى ({deceasedFull})";
-        if (!withAddress)
-            return line;
-
-        var phrase = HeirAddressPhrase(heir);
+        var phrase = HeirPartyPhrase(heir, withAddress);
         return string.IsNullOrWhiteSpace(phrase) ? line : $"{line}\n{phrase}";
     }
 
@@ -422,7 +469,7 @@ public class DocumentContextBuilder : IDocumentContextBuilder
                 var name = JoinNonEmpty(new[] { h.HeirName, h.HeirFather, h.HeirFamily });
                 if (string.IsNullOrWhiteSpace(name))
                     return string.Empty;
-                var phrase = HeirAddressPhrase(h);
+                var phrase = HeirPartyPhrase(h, withAddress: true);
                 return string.IsNullOrWhiteSpace(phrase) ? name : $"{name}، {phrase}";
             })
             .Where(p => p.Length > 0)

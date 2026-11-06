@@ -26,7 +26,10 @@ import {
   guarantorAddState,
   nextGuarantorNumber,
   ordinaryCurrencyKeys,
+  representativeHeirConflictMessage,
   requiredCurrencyKeys,
+  toExecutedHeirPayload,
+  toHeirPayload,
   toUpsert,
 } from '../components/form/documentFormConstants';
 import { ExecutedSideSections } from '../components/form/ExecutedSideSections';
@@ -134,6 +137,9 @@ export default function DocumentForm() {
   // الملف المناب (له إنابة مصدر SourceDelegationId): الحقول الجوهرية مقفلة ومُزامنة من
   // المنيب، والهوية والورثة/الممثلون الجدد والملاحظات تبقى قابلة للتحرير (قرار 5/7).
   const [isMirror, setIsMirror] = useState(false);
+  // مفاتيح الممثلين الذين فعّلهم محامي المناب الآن (إضافة محلية) — تبقى قابلة للتحرير
+  // رغم قفل الملف المناب؛ الممثل المخزَّن من المنيب يبقى مقفولًا (الحارس يرفض تعديله).
+  const [draftPartyReps, setDraftPartyReps] = useState<ReadonlySet<string>>(() => new Set());
   const [bankingAmountSlots, setBankingAmountSlots] = useState(1);
   const [ordinaryAmountSlots, setOrdinaryAmountSlots] = useState(1);
   const [form, setForm] = useState<DocumentUpsertRequest>({
@@ -194,6 +200,7 @@ export default function DocumentForm() {
     setBankingAmountSlots(1);
     setOrdinaryAmountSlots(1);
     setIsMirror(false);
+    setDraftPartyReps(new Set());
     setWasOriginallyStruckOff(false);
     setOriginalExecutedStatus('');
   }, [user?.branchName, currentYear]);
@@ -609,10 +616,32 @@ export default function DocumentForm() {
       ),
     );
 
-  const activateBorrowerRep = () =>
-    setForm((f) => ({ ...f, borrowerRepresentativeCapacity: 'ولي', borrowerRepresentativeAddressType: 'عنوان' }));
+  const markPartyRepDraft = (key: string) =>
+    setDraftPartyReps((prev) => {
+      if (prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
 
-  const removeBorrowerRep = () =>
+  const clearPartyRepDraft = (key: string) =>
+    setDraftPartyReps((prev) => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+
+  /** قفل ممثل الطرف على الملف المناب: المخزَّن فقط، لا الإضافة المحلية الجارية. */
+  const partyRepLocked = (key: string) => isMirror && !draftPartyReps.has(key);
+
+  const activateBorrowerRep = () => {
+    markPartyRepDraft('borrower');
+    setForm((f) => ({ ...f, borrowerRepresentativeCapacity: 'ولي', borrowerRepresentativeAddressType: 'عنوان' }));
+  };
+
+  const removeBorrowerRep = () => {
+    clearPartyRepDraft('borrower');
     setForm((f) => ({
       ...f,
       borrowerRepresentativeName: '',
@@ -622,15 +651,19 @@ export default function DocumentForm() {
       borrowerRepresentativeAddressType: '',
       borrowerRepresentativeAddress: '',
     }));
+  };
 
-  const activateGuarantorRep = (i: number) =>
+  const activateGuarantorRep = (i: number) => {
+    markPartyRepDraft(`guarantor-${i}`);
     setGuarantors((gs) =>
       gs.map((g, idx) =>
         idx === i ? { ...g, representativeCapacity: 'ولي', representativeAddressType: 'عنوان' } : g,
       ),
     );
+  };
 
-  const removeGuarantorRep = (i: number) =>
+  const removeGuarantorRep = (i: number) => {
+    clearPartyRepDraft(`guarantor-${i}`);
     setGuarantors((gs) =>
       gs.map((g, idx) =>
         idx === i
@@ -646,13 +679,17 @@ export default function DocumentForm() {
           : g,
       ),
     );
+  };
 
-  const activateApplicantRep = (i: number) =>
+  const activateApplicantRep = (i: number) => {
+    markPartyRepDraft(`applicant-${i}`);
     setExecutionApplicants((xs) =>
       xs.map((x, idx) => (idx === i ? { ...x, representativeCapacity: 'ولي' } : x)),
     );
+  };
 
-  const removeApplicantRep = (i: number) =>
+  const removeApplicantRep = (i: number) => {
+    clearPartyRepDraft(`applicant-${i}`);
     setExecutionApplicants((xs) =>
       xs.map((x, idx) =>
         idx === i
@@ -667,15 +704,19 @@ export default function DocumentForm() {
           : x,
       ),
     );
+  };
 
-  const activatePersonRep = (i: number) =>
+  const activatePersonRep = (i: number) => {
+    markPartyRepDraft(`person-${i}`);
     setExecutedNaturalPersons((xs) =>
       xs.map((x, idx) =>
         idx === i ? { ...x, representativeCapacity: 'ولي', representativeAddressType: 'عنوان' } : x,
       ),
     );
+  };
 
-  const removePersonRep = (i: number) =>
+  const removePersonRep = (i: number) => {
+    clearPartyRepDraft(`person-${i}`);
     setExecutedNaturalPersons((xs) =>
       xs.map((x, idx) =>
         idx === i
@@ -691,6 +732,7 @@ export default function DocumentForm() {
           : x,
       ),
     );
+  };
 
   const addGuarantor = (nature: PartyNature = 'natural') => {
     // العدد والرقم معًا ضمن النطاق (العادي موضعي، والمصرفي قد تُستنفَد أرقامه
@@ -808,6 +850,23 @@ export default function DocumentForm() {
       return;
     }
 
+    const repConflict = representativeHeirConflictMessage({
+      borrowerNature: form.borrowerNature,
+      borrowerHasHeirs: borrowerHeirs.some(hasHeirName),
+      borrowerHasRep: hasStoredRepresentative({
+        representativeName: form.borrowerRepresentativeName,
+        representativeFather: form.borrowerRepresentativeFather,
+        representativeFamily: form.borrowerRepresentativeFamily,
+      }),
+      guarantors,
+      executionApplicants,
+      executedNaturalPersons,
+    });
+    if (repConflict) {
+      setError(repConflict);
+      return;
+    }
+
     setBusy(true);
     try {
       const initialActions = [
@@ -886,20 +945,12 @@ export default function DocumentForm() {
               guarantorNumber: isOrdinary ? i + 1 : (g.guarantorNumber ?? i + 1),
               addressType: (gHasHeirs || gHasRep) ? '' : g.addressType,
               address: (gHasHeirs || gHasRep) ? '' : g.address,
-              heirs: (g.heirs ?? []).filter(hasHeirName).map((h) => ({
-                ...h,
-                addressType: gHasRep ? '' : h.addressType,
-                address: gHasRep ? '' : h.address,
-              })),
+              heirs: (g.heirs ?? []).filter(hasHeirName).map(toHeirPayload),
             };
           }),
         borrowerHeirs: isExecutedSubmit
           ? []
-          : borrowerHeirs.filter(hasHeirName).map((h) => ({
-              ...h,
-              addressType: borrowerHasRep ? '' : h.addressType,
-              address: borrowerHasRep ? '' : h.address,
-            })),
+          : borrowerHeirs.filter(hasHeirName).map(toHeirPayload),
         assets: isExecutedSubmit ? [] : assets
           .filter((a) => {
             const kind = a.assetKind;
@@ -928,7 +979,9 @@ export default function DocumentForm() {
                 // الوكيل القانوني يُمسح فقط لممثل مخزَّن فعليًا (تعارضهما حصري) —
                 // صفة بلا اسم لا تُحفظ فمسح النص لها فقدان صامت.
                 legalRepresentative: hasStoredRepresentative(a) ? '' : a.legalRepresentative,
-                heirs: (a.heirs ?? []).filter((h) => (h.heirName ?? '').trim()),
+                heirs: (a.heirs ?? [])
+                  .filter((h) => (h.heirName ?? '').trim())
+                  .map(toExecutedHeirPayload),
               }))
           : [],
         executedPublicEntities: isExecutedSubmit
@@ -939,7 +992,9 @@ export default function DocumentForm() {
               .filter((p) => (p.name ?? '').trim())
               .map((p) => ({
                 ...p,
-                heirs: (p.heirs ?? []).filter((h) => (h.heirName ?? '').trim()),
+                heirs: (p.heirs ?? [])
+                  .filter((h) => (h.heirName ?? '').trim())
+                  .map(toExecutedHeirPayload),
               }))
           : [],
         applicantPublicEntities: isExecutedSubmit
@@ -1230,6 +1285,7 @@ export default function DocumentForm() {
             set={set}
             isEdit={isEdit}
             isMirror={isMirror}
+            partyRepLocked={partyRepLocked}
             showRequiredAmount={showRequiredAmount}
             setShowRequiredAmount={setShowRequiredAmount}
             requiredAmountSlots={requiredAmountSlots}
@@ -1271,6 +1327,7 @@ export default function DocumentForm() {
             set={set}
             isOrdinary={isOrdinary}
             isMirror={isMirror}
+            partyRepLocked={partyRepLocked}
             guarantorLabel={guarantorLabel}
             showInclusionAmount={showInclusionAmount}
             setShowInclusionAmount={setShowInclusionAmount}

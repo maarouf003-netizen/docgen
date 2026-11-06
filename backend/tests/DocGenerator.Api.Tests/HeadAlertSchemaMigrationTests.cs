@@ -83,6 +83,34 @@ public class HeadAlertSchemaMigrationTests
         return await db.Documents.SingleAsync(d => d.Id == id);
     }
 
+    /// <summary>
+    /// إدراج إنابة في سكيمة تاريخية (قبل هجرة <c>DelegationLocalAdditionSummary</c>): أعمدة
+    /// <c>LocalAddition*</c> غير موجودة بعد بينما النموذج الحالي يعرفها، فأي إدراج **أو قراءة**
+    /// عبر EF يفشل بـ«no such column: d.LocalAdditionCount». الإدراج هنا بـ SQL خام بالأعمدة
+    /// الإلزامية في تلك السكيمة (كلها أقدم من أهداف هذه الاختبارات)، ويُعاد المعرّف وحده —
+    /// وهو كل ما تستهلكه الاختبارات من الإنابة.
+    /// </summary>
+    private static async Task<int> InsertLegacyDelegationAsync(
+        DocGeneratorDbContext db,
+        int sourceDocumentId,
+        int userId)
+    {
+        var sql =
+            """
+            INSERT INTO "DocumentDelegations"
+                ("SourceDocumentId", "IsExternal", "Version", "Status", "CreatedById", "CreatedAt", "UpdatedAt")
+            VALUES ({0}, 0, 0, {1}, {2}, {3}, {3})
+            """;
+
+        var now = new DateTime(2026, 10, 20, 12, 0, 0, DateTimeKind.Utc);
+        await db.Database.ExecuteSqlRawAsync(
+            sql, sourceDocumentId, DelegationStatusCatalog.PendingHead, userId, now);
+
+        return await db.Database
+            .SqlQuery<int>($"SELECT last_insert_rowid() AS \"Value\"")
+            .SingleAsync();
+    }
+
     private static void Cleanup(string path)
     {
         foreach (var suffix in new[] { "", "-shm", "-wal" })
@@ -852,15 +880,7 @@ public class HeadAlertSchemaMigrationTests
 
             var document = await InsertLegacyDocumentAsync(db, branch.Id, user.Id);
 
-            var delegation = new DocumentDelegation
-            {
-                SourceDocumentId = document.Id,
-                SourceDocument = document,
-                CreatedById = user.Id,
-                CreatedBy = user,
-            };
-            db.DocumentDelegations.Add(delegation);
-            await db.SaveChangesAsync();
+            var delegationId = await InsertLegacyDelegationAsync(db, document.Id, user.Id);
 
             var appeal = new DocumentAppeal
             {
@@ -887,7 +907,7 @@ public class HeadAlertSchemaMigrationTests
                 db, branch.Id, user.Id, HeadAlertTargetType.Head,
                 "بانتظار اعتماد الإنابة — سطّر المحامي فلان إنابة",
                 createdAt,
-                delegationId: delegation.Id);
+                delegationId: delegationId);
             var appealAlertId = await InsertLegacyAlertAsync(
                 db, branch.Id, user.Id, HeadAlertTargetType.Head,
                 "يرجى التفضل بإسناد الاستئناف (ملف 1 — محال من فلان)",
@@ -911,7 +931,7 @@ public class HeadAlertSchemaMigrationTests
             var storedDelegation = await db.HeadAlerts.AsNoTracking().SingleAsync(a => a.Id == delegationAlertId);
             Assert.Equal(HeadAlertKindCatalog.DelegationPendingApproval, storedDelegation.Kind);
             Assert.Equal(
-                $"delegation:{delegation.Id}:recipient:{user.Id}:delegation_pending_approval",
+                $"delegation:{delegationId}:recipient:{user.Id}:delegation_pending_approval",
                 storedDelegation.DedupeKey);
             Assert.Equal(createdAt, storedDelegation.LastContentChangedAt);
 
@@ -949,15 +969,7 @@ public class HeadAlertSchemaMigrationTests
 
             var document = await InsertLegacyDocumentAsync(db, branch.Id, user.Id);
 
-            var delegation = new DocumentDelegation
-            {
-                SourceDocumentId = document.Id,
-                SourceDocument = document,
-                CreatedById = user.Id,
-                CreatedBy = user,
-            };
-            db.DocumentDelegations.Add(delegation);
-            await db.SaveChangesAsync();
+            var delegationId = await InsertLegacyDelegationAsync(db, document.Id, user.Id);
 
             var createdAt = new DateTime(2026, 10, 20, 13, 3, 0, DateTimeKind.Utc);
             var manualAlert = new HeadAlert
@@ -984,7 +996,7 @@ public class HeadAlertSchemaMigrationTests
                 CreatedById = user.Id,
                 TargetType = HeadAlertTargetType.Document,
                 DocumentId = document.Id,
-                DelegationId = delegation.Id,
+                DelegationId = delegationId,
                 Message = "رُفضت الإنابة (رقم 1) للدائرة الخطأ — سبب — صحّح الدائرة من بطاقة تشعبات الملف",
                 CreatedAt = createdAt.AddMinutes(2),
             };
@@ -1110,17 +1122,12 @@ public class HeadAlertSchemaMigrationTests
 
             var document = await InsertLegacyDocumentAsync(db, branch.Id, user.Id);
 
-            var delegation = new DocumentDelegation
-            {
-                SourceDocumentId = document.Id,
-                CreatedById = user.Id,
-            };
+            var delegationId = await InsertLegacyDelegationAsync(db, document.Id, user.Id);
             var appeal = new DocumentAppeal
             {
                 DocumentId = document.Id,
                 CreatedById = user.Id,
             };
-            db.DocumentDelegations.Add(delegation);
             db.DocumentAppeals.Add(appeal);
             await db.SaveChangesAsync();
 
@@ -1131,7 +1138,7 @@ public class HeadAlertSchemaMigrationTests
                 BranchId = branch.Id,
                 CreatedById = user.Id,
                 TargetType = HeadAlertTargetType.Head,
-                DelegationId = delegation.Id,
+                DelegationId = delegationId,
                 Message = "بانتظار اعتماد الإنابة — سطّر المحامي فلان إنابة",
                 CreatedAt = olderCreatedAt,
             };
@@ -1140,7 +1147,7 @@ public class HeadAlertSchemaMigrationTests
                 BranchId = branch.Id,
                 CreatedById = user.Id,
                 TargetType = HeadAlertTargetType.Head,
-                DelegationId = delegation.Id,
+                DelegationId = delegationId,
                 Message = "بانتظار اعتماد الإنابة — سطّر المحامي فلان إنابة",
                 CreatedAt = newerCreatedAt,
             };
@@ -1185,7 +1192,7 @@ public class HeadAlertSchemaMigrationTests
             Assert.Equal(0, duplicateActiveKeys);
 
             var delegationKey =
-                $"delegation:{delegation.Id}:recipient:{user.Id}:delegation_pending_approval";
+                $"delegation:{delegationId}:recipient:{user.Id}:delegation_pending_approval";
             var holder = await db.HeadAlerts.AsNoTracking()
                 .SingleAsync(a => a.DedupeKey == delegationKey);
             Assert.Equal(newerDelegation.Id, holder.Id);
@@ -1394,13 +1401,7 @@ public class HeadAlertSchemaMigrationTests
 
             var document = await InsertLegacyDocumentAsync(db, branch.Id, user.Id);
 
-            var delegation = new DocumentDelegation
-            {
-                SourceDocumentId = document.Id,
-                CreatedById = user.Id,
-            };
-            db.DocumentDelegations.Add(delegation);
-            await db.SaveChangesAsync();
+            var delegationId = await InsertLegacyDelegationAsync(db, document.Id, user.Id);
 
             var createdAt = new DateTime(2026, 10, 20, 15, 0, 0, DateTimeKind.Utc);
             var circuitAlert = new HeadAlert
@@ -1424,10 +1425,10 @@ public class HeadAlertSchemaMigrationTests
                 TargetType = HeadAlertTargetType.Lawyer,
                 TargetLawyerId = user.Id,
                 DocumentId = document.Id,
-                DelegationId = delegation.Id,
+                DelegationId = delegationId,
                 Kind = HeadAlertKindCatalog.DelegationMirrorUpdated,
                 DedupeKey =
-                    $"delegation:{delegation.Id}:recipient:{user.Id}:delegation_mirror_updated",
+                    $"delegation:{delegationId}:recipient:{user.Id}:delegation_mirror_updated",
                 Message = "تم تحديث نسخة الملف المناب",
                 CreatedAt = createdAt.AddMinutes(1),
                 LastContentChangedAt = createdAt.AddMinutes(1),
@@ -1558,13 +1559,7 @@ public class HeadAlertSchemaMigrationTests
 
             var document = await InsertLegacyDocumentAsync(db, branch.Id, user.Id);
 
-            var delegation = new DocumentDelegation
-            {
-                SourceDocumentId = document.Id,
-                CreatedById = user.Id,
-            };
-            db.DocumentDelegations.Add(delegation);
-            await db.SaveChangesAsync();
+            var delegationId = await InsertLegacyDelegationAsync(db, document.Id, user.Id);
 
             var createdAt = new DateTime(2026, 10, 20, 16, 0, 0, DateTimeKind.Utc);
             var lastChangedAt = createdAt.AddMinutes(5);
@@ -1574,10 +1569,10 @@ public class HeadAlertSchemaMigrationTests
                 CreatedById = user.Id,
                 TargetType = HeadAlertTargetType.Lawyer,
                 TargetLawyerId = user.Id,
-                DelegationId = delegation.Id,
+                DelegationId = delegationId,
                 Kind = HeadAlertKindCatalog.DelegationMirrorUpdated,
                 DedupeKey =
-                    $"delegation:{delegation.Id}:recipient:{user.Id}:delegation_mirror_updated",
+                    $"delegation:{delegationId}:recipient:{user.Id}:delegation_mirror_updated",
                 Message = "تم تحديث نسخة الملف المناب",
                 CreatedAt = createdAt,
                 LastContentChangedAt = lastChangedAt,
@@ -1648,13 +1643,7 @@ public class HeadAlertSchemaMigrationTests
 
             var document = await InsertLegacyDocumentAsync(db, branch.Id, user.Id);
 
-            var delegation = new DocumentDelegation
-            {
-                SourceDocumentId = document.Id,
-                CreatedById = user.Id,
-            };
-            db.DocumentDelegations.Add(delegation);
-            await db.SaveChangesAsync();
+            var delegationId = await InsertLegacyDelegationAsync(db, document.Id, user.Id);
 
             var createdAt = new DateTime(2026, 10, 20, 17, 0, 0, DateTimeKind.Utc);
             var legacyClassified = new HeadAlert
@@ -1662,7 +1651,7 @@ public class HeadAlertSchemaMigrationTests
                 BranchId = branch.Id,
                 CreatedById = user.Id,
                 TargetType = HeadAlertTargetType.Head,
-                DelegationId = delegation.Id,
+                DelegationId = delegationId,
                 Message = "بانتظار اعتماد الإنابة — سطّر المحامي فلان إنابة",
                 CreatedAt = createdAt,
             };
@@ -1681,10 +1670,10 @@ public class HeadAlertSchemaMigrationTests
                 CreatedById = user.Id,
                 TargetType = HeadAlertTargetType.Lawyer,
                 TargetLawyerId = user.Id,
-                DelegationId = delegation.Id,
+                DelegationId = delegationId,
                 Kind = HeadAlertKindCatalog.DelegationMirrorUpdated,
                 DedupeKey =
-                    $"delegation:{delegation.Id}:recipient:{user.Id}:delegation_mirror_updated",
+                    $"delegation:{delegationId}:recipient:{user.Id}:delegation_mirror_updated",
                 Message = "تم تحديث نسخة الملف المناب",
                 CreatedAt = createdAt.AddMinutes(10),
                 LastContentChangedAt = createdAt.AddMinutes(11),

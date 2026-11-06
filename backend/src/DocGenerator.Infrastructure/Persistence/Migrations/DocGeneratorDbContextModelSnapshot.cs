@@ -1420,6 +1420,16 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsExternal")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("LocalAdditionCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LocalAdditionLastAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("LocalAdditionLastMessage")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("RedirectedToSectionId")
                         .HasColumnType("INTEGER");
 
@@ -1636,6 +1646,30 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("HeirName")
                         .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeAddress")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeAddressType")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeCapacity")
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeFamily")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeFather")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeName")
+                        .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -2490,6 +2524,30 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("HeirName")
                         .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeAddress")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeAddressType")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeCapacity")
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeFamily")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeFather")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RepresentativeName")
+                        .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");

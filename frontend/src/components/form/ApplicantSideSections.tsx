@@ -14,6 +14,7 @@ import {
   guarantorAddState,
   hasHeirName,
   hasRepresentative,
+  hasStoredRepresentative,
   ordinaryAmountKeys,
   ordinaryCurrencyKeys,
   shareTypesFor,
@@ -41,6 +42,8 @@ export interface ApplicantSideSectionsProps {
   /** الملف المناب (قرار 7): تُقفل السند/المقترض/الكفلاء/الجهات وتُخفى أزرارها وأقسام الأصول،
    * مع بقاء ورثة/ممثل الملف المحليين (والممثل/الورثة الجدد) قابلين للتحرير. */
   isMirror?: boolean;
+  /** قفل ممثل الطرف على الملف المناب: المخزَّن فقط، لا الإضافة المحلية الجارية. */
+  partyRepLocked: (key: string) => boolean;
   guarantorLabel: string;
   showInclusionAmount: boolean;
   setShowInclusionAmount: Dispatch<SetStateAction<boolean>>;
@@ -81,6 +84,7 @@ export function ApplicantSideSections({
   set,
   isOrdinary,
   isMirror = false,
+  partyRepLocked,
   guarantorLabel,
   showInclusionAmount,
   setShowInclusionAmount,
@@ -137,6 +141,13 @@ export function ApplicantSideSections({
   const borrowerHasHeirs = borrowerHeirs.some(hasHeirName);
   // حالة زر الإضافة (عددًا ورقمًا) تُحسب مرة واحدة: تُستخدم في الزرين والنص.
   const guarantorAdd = guarantorAddState(guarantors, isOrdinary);
+  // إخفاء العنوان يتبع «المخزَّن» فعلًا (كحمولة toHeirPayload)؛ تفعيل الممثل بصفة
+  // وحدها لا يُخفيه لأن الخلفية تُصفّر الشبح عند الحفظ فيعود العنوان بعد التحميل.
+  const borrowerRepStored = hasStoredRepresentative({
+    representativeName: form.borrowerRepresentativeName,
+    representativeFather: form.borrowerRepresentativeFather,
+    representativeFamily: form.borrowerRepresentativeFamily,
+  });
   const borrowerHasRep = hasRepresentative({
     representativeName: form.borrowerRepresentativeName,
     representativeFather: form.borrowerRepresentativeFather,
@@ -299,7 +310,7 @@ export function ApplicantSideSections({
             {field('مكان وتاريخ الولادة', 'borrowerBirth')}
             {field('مكان ورقم القيد', 'borrowerRegister')}
             {field('الرقم الوطني', 'borrowerNationalId')}
-            {!borrowerHasHeirs && !borrowerHasRep && (
+            {!borrowerHasHeirs && !borrowerRepStored && (
               <>
                 {optionSelectField('نوع العنوان', 'borrowerAddressType', ADDRESS_TYPE_OPTIONS, form.borrowerAddressType ?? 'موطن مختار', (v) => set('borrowerAddressType', v))}
                 <div className="md:col-span-2">{field(addressLabelOf(form.borrowerAddressType), 'borrowerAddress')}</div>
@@ -312,10 +323,11 @@ export function ApplicantSideSections({
             onSet={onBorrowerHeirSet}
             onAdd={onBorrowerHeirAdd}
             onRemove={onBorrowerHeirRemove}
-            hideAddress={borrowerHasRep}
             locked={lock}
+            allowAdd={!borrowerHasRep}
+            allowRepresentative={!borrowerHasHeirs}
           />
-          {!borrowerHasRep ? (
+          {!borrowerHasRep && !borrowerHasHeirs && (
             <div className="mt-3 flex justify-end">
               <button
                 type="button"
@@ -325,7 +337,13 @@ export function ApplicantSideSections({
                 ＋ إضافة ممثل شرعي
               </button>
             </div>
-          ) : (
+          )}
+          {!borrowerHasRep && borrowerHasHeirs && (
+            <p className="mt-3 text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2" role="note">
+              لا يجتمع الممثل الشرعي مع الورثة — احذف الورثة لإضافة ممثل شرعي.
+            </p>
+          )}
+          {borrowerHasRep && (
             <RepresentativeEditor
               idPrefix="borrower"
               mode="address"
@@ -339,7 +357,7 @@ export function ApplicantSideSections({
               }}
               onSet={(key, value) => set(BORROWER_REP_KEYS[key] ?? 'borrowerRepresentativeName', value)}
               onRemove={onBorrowerRepRemove}
-              locked={lock}
+              locked={partyRepLocked('borrower')}
             />
           )}
         </>
@@ -361,6 +379,8 @@ export function ApplicantSideSections({
         // كالمقترض أعلاه: الفارغ من الاسم الثلاثي ليس وريثًا مخزَّنًا.
         const gHasHeirs = (g.heirs ?? []).some(hasHeirName);
         const gHasRep = hasRepresentative(g);
+        // إخفاء العنوان يتبع المخزَّن فعلًا (كحمولة toHeirPayload) — لا مجرد التفعيل بصفة.
+        const gRepStored = hasStoredRepresentative(g);
         const gIsLegal = g.nature === 'legal';
         const cardKey = cardKeyOf(g, i);
         const isCollapsed = collapsedCards.has(cardKey);
@@ -447,7 +467,7 @@ export function ApplicantSideSections({
                       <input value={g[k] ?? ''} readOnly={lock} aria-readonly={lock || undefined} onChange={(e) => onGuarantorSet(i, k, e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                     </div>
                   ))}
-                  {!gHasHeirs && !gHasRep && (
+                  {!gHasHeirs && !gRepStored && (
                     <>
                       <div>
                         <label className="block text-xs font-bold text-gray-600 mb-1">نوع العنوان</label>
@@ -470,10 +490,11 @@ export function ApplicantSideSections({
                   onSet={(hi, k, v) => onGuarantorHeirSet(i, hi, k, v)}
                   onAdd={() => onGuarantorHeirAdd(i)}
                   onRemove={(hi) => onGuarantorHeirRemove(i, hi)}
-                  hideAddress={gHasRep}
                   locked={lock}
+                  allowAdd={!gHasRep}
+                  allowRepresentative={!gHasHeirs}
                 />
-                {!gHasRep ? (
+                {!gHasRep && !gHasHeirs && (
                   <div className="mt-3 flex justify-end">
                     <button
                       type="button"
@@ -483,14 +504,20 @@ export function ApplicantSideSections({
                       ＋ إضافة ممثل شرعي
                     </button>
                   </div>
-                ) : (
+                )}
+                {!gHasRep && gHasHeirs && (
+                  <p className="mt-3 text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2" role="note">
+                    لا يجتمع الممثل الشرعي مع الورثة — احذف الورثة لإضافة ممثل شرعي.
+                  </p>
+                )}
+                {gHasRep && (
                   <RepresentativeEditor
                     idPrefix={`guarantor-${i}`}
                     mode="address"
                     representative={g}
                     onSet={(key, value) => onGuarantorSet(i, key as keyof GuarantorDto, value)}
                     onRemove={() => onGuarantorRepRemove(i)}
-                    locked={lock}
+                    locked={partyRepLocked(`guarantor-${i}`)}
                   />
                 )}
               </>

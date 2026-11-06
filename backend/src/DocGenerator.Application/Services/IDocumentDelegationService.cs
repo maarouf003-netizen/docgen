@@ -108,10 +108,18 @@ public interface IDocumentDelegationService
     Task FireMirrorNotificationsAsync(IReadOnlyList<MirrorNotification> notifications, CancellationToken ct);
 
     /// <summary>
-    /// إطلاق تنبيه المنيب عند الإضافات المحلية (وريث/ممثل) على الملف المناب معزولًا —
-    /// بعد تثبيت معاملة التعديل حصرًا.
+    /// تثبيت الإضافات المحلية (وريث/ممثل) في سجل الإنابة نفسه — عدّاد تراكمي + ملخص آخر دفعة +
+    /// وقت UTC — ثم إطلاق تنبيه المنيب. تُستدعى **داخل معاملة تعديل الملف المناب**: تثبيت السجل
+    /// وحجز رسالة الـOutbox يسقطان مع المعاملة عند أي فشل (لا إضافة بلا إشعار ولا العكس).
+    /// الاسم صريح في عقديه: الكتابة الدائمة (داخل المعاملة) ثم الإطلاق.
+    ///
+    /// السجل يحرّك توكن صف الإنابة (`Version`) لأنه كتابة عليه: بلا ذلك لا يكشفه EF عند
+    /// تزامن كاتبَين (شرط <c>WHERE Version = old</c> يوافق عندهما ⇒ آخر كاتب يفوز ويُفقد
+    /// تحديث بصمت). الأثر المقصود: نافذة إنابة مفتوحة على نسخة قديمة تحصل على <c>409</c>
+    /// ودّي بعد تسجيل إضافة محلية — سلوك تزامن صحيح لأن الصف تغيّر فعلًا.
     /// </summary>
-    Task FireTargetEditReportAsync(Document target, TargetEditReport report, CancellationToken ct);
+    Task RecordLocalAdditionsAndFireReportAsync(
+        Document target, TargetEditReport report, CancellationToken ct);
 
     /// <summary>
     /// تنبيه تغيّر حالة المنيب إلى مناباته المعلقة (الصيغ T2-T5 بصياغات المستخدم المقفلة؛

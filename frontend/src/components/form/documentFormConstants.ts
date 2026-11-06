@@ -170,7 +170,11 @@ export function emptyGuarantor(): GuarantorDto {
 }
 
 export function emptyHeir(): HeirDto {
-  return { name: '', father: '', family: '', capacity: 'أصالة', addressType: 'عنوان', address: '' };
+  return {
+    name: '', father: '', family: '', capacity: 'أصالة', addressType: 'عنوان', address: '',
+    representativeName: '', representativeFather: '', representativeFamily: '',
+    representativeCapacity: '', representativeAddressType: '', representativeAddress: '',
+  };
 }
 
 export function addressLabelOf(addressType: string | undefined): string {
@@ -228,8 +232,108 @@ export function hasHeirName(h: { name?: string; father?: string; family?: string
   return Boolean((h.name ?? '').trim() || (h.father ?? '').trim() || (h.family ?? '').trim());
 }
 
+/**
+ * رسالة تعارض «الممثل الشرعي + الورثة» في الواجهة — تطابق حارس الخلفية
+ * (`DocumentValidator.ValidateRepresentativeHeirExclusivity`) بلا استثناءات.
+ */
+export function representativeHeirConflictMessage(input: {
+  borrowerNature?: string;
+  borrowerHasHeirs: boolean;
+  borrowerHasRep: boolean;
+  guarantors: GuarantorDto[];
+  executionApplicants: ExecutionApplicantDto[];
+  executedNaturalPersons: ExecutedNaturalPersonDto[];
+}): string | null {
+  if ((input.borrowerNature ?? 'natural') !== 'legal' && input.borrowerHasHeirs && input.borrowerHasRep)
+    return 'لا يجتمع الممثل الشرعي مع الورثة — المقترض: احذف الممثل الشرعي أو الورثة أولًا';
+
+  for (const g of input.guarantors) {
+    if ((g.nature ?? 'natural') === 'legal') continue;
+    const hasHeirs = (g.heirs ?? []).some(hasHeirName);
+    if (hasHeirs && hasStoredRepresentative(g))
+      return `لا يجتمع الممثل الشرعي مع الورثة — الكفيل ${g.guarantorNumber}: احذف الممثل الشرعي أو الورثة أولًا`;
+  }
+
+  for (const a of input.executionApplicants) {
+    if ((a.nature ?? 'natural') === 'legal') continue;
+    const hasHeirs = (a.heirs ?? []).some((h) => (h.heirName ?? '').trim());
+    const hasEstate = a.representationType === 'إضافة لتركة' || a.representationType === 'أصالة وإضافة';
+    if ((hasEstate || hasHeirs) && hasStoredRepresentative(a))
+      return `لا يجتمع الممثل الشرعي مع الورثة — طالب التنفيذ ${(a.name ?? '').trim() || 'بدون اسم'}: احذف الممثل الشرعي أو الورثة أولًا`;
+  }
+
+  for (const p of input.executedNaturalPersons) {
+    const hasHeirs = (p.heirs ?? []).some((h) => (h.heirName ?? '').trim());
+    const hasEstate = p.representationType === 'إضافة لتركة' || p.representationType === 'أصالة وإضافة';
+    if ((hasEstate || hasHeirs) && hasStoredRepresentative(p))
+      return `لا يجتمع الممثل الشرعي مع الورثة — المنفذ عليه ${(p.name ?? '').trim() || 'بدون اسم'}: احذف الممثل الشرعي أو الورثة أولًا`;
+  }
+
+  return null;
+}
+
 export function emptyExecutedHeir(): ExecutedHeirDto {
-  return { heirName: '', heirFather: '', heirFamily: '', addressType: 'عنوان', heirAddress: '' };
+  return {
+    heirName: '', heirFather: '', heirFamily: '', addressType: 'عنوان', heirAddress: '',
+    representativeName: '', representativeFather: '', representativeFamily: '',
+    representativeCapacity: '', representativeAddressType: '', representativeAddress: '',
+  };
+}
+
+/**
+ * حمولة ورثة السند: تُرسل حقول الممثل فقط عند وجوده مخزَّنًا (اسم ثلاثي غير فارغ)،
+ * ويُصفَّر عنوان الوريث حينها لأن عنوان الممثل هو المعتبر. غياب الممثل يعني غياب
+ * مفاتيحه من الحمولة (لا ضجيج حقول فارغة).
+ */
+export function toHeirPayload(h: HeirDto): HeirDto {
+  const {
+    representativeName,
+    representativeFather,
+    representativeFamily,
+    representativeCapacity,
+    representativeAddressType,
+    representativeAddress,
+    ...core
+  } = h;
+  if (!hasStoredRepresentative(h)) return core;
+
+  return {
+    ...core,
+    addressType: '',
+    address: '',
+    representativeName,
+    representativeFather,
+    representativeFamily,
+    representativeCapacity,
+    representativeAddressType,
+    representativeAddress,
+  };
+}
+
+/** حمولة ورثة وضع «منفذ عليه» — نفس قاعدة {@link toHeirPayload} بحقول العنوان الخاصة به. */
+export function toExecutedHeirPayload(h: ExecutedHeirDto): ExecutedHeirDto {
+  const {
+    representativeName,
+    representativeFather,
+    representativeFamily,
+    representativeCapacity,
+    representativeAddressType,
+    representativeAddress,
+    ...core
+  } = h;
+  if (!hasStoredRepresentative(h)) return core;
+
+  return {
+    ...core,
+    addressType: '',
+    heirAddress: '',
+    representativeName,
+    representativeFather,
+    representativeFamily,
+    representativeCapacity,
+    representativeAddressType,
+    representativeAddress,
+  };
 }
 
 export function emptyExecutionApplicant(): ExecutionApplicantDto {

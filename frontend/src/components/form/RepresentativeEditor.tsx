@@ -52,6 +52,8 @@ export function RepresentativeEditor({
           <label htmlFor={`${idPrefix}-rep-name`} className={labelCls}>اسم الممثل الشرعي</label>
           <input
             id={`${idPrefix}-rep-name`}
+            name="representativeName"
+            autoComplete="name"
             value={representative.representativeName ?? ''}
             onChange={(e) => onSet('representativeName', e.target.value)}
             readOnly={locked}
@@ -63,6 +65,8 @@ export function RepresentativeEditor({
           <label htmlFor={`${idPrefix}-rep-father`} className={labelCls}>اسم أب الممثل الشرعي</label>
           <input
             id={`${idPrefix}-rep-father`}
+            name="representativeFather"
+            autoComplete="off"
             value={representative.representativeFather ?? ''}
             onChange={(e) => onSet('representativeFather', e.target.value)}
             readOnly={locked}
@@ -74,6 +78,8 @@ export function RepresentativeEditor({
           <label htmlFor={`${idPrefix}-rep-family`} className={labelCls}>نسبة الممثل الشرعي</label>
           <input
             id={`${idPrefix}-rep-family`}
+            name="representativeFamily"
+            autoComplete="off"
             value={representative.representativeFamily ?? ''}
             onChange={(e) => onSet('representativeFamily', e.target.value)}
             readOnly={locked}
@@ -87,6 +93,7 @@ export function RepresentativeEditor({
           <label htmlFor={`${idPrefix}-rep-capacity`} className={labelCls}>صفة الممثل الشرعي</label>
           <select
             id={`${idPrefix}-rep-capacity`}
+            name="representativeCapacity"
             value={representative.representativeCapacity ?? ''}
             onChange={(e) => onSet('representativeCapacity', e.target.value)}
             disabled={locked}
@@ -104,6 +111,7 @@ export function RepresentativeEditor({
               <label htmlFor={`${idPrefix}-rep-type`} className={labelCls}>نوع العنوان</label>
               <select
                 id={`${idPrefix}-rep-type`}
+                name="representativeAddressType"
                 value={representative.representativeAddressType ?? 'عنوان'}
                 onChange={(e) => onSet('representativeAddressType', e.target.value)}
                 disabled={locked}
@@ -121,6 +129,8 @@ export function RepresentativeEditor({
               </label>
               <input
                 id={`${idPrefix}-rep-address`}
+                name="representativeAddress"
+                autoComplete="off"
                 value={representative.representativeAddress ?? ''}
                 onChange={(e) => onSet('representativeAddress', e.target.value)}
                 readOnly={locked}
@@ -134,6 +144,8 @@ export function RepresentativeEditor({
             <label htmlFor={`${idPrefix}-rep-legal`} className={labelCls}>الوكيل القانوني</label>
             <input
               id={`${idPrefix}-rep-legal`}
+              name="representativeLegalRepresentative"
+              autoComplete="off"
               value={representative.representativeLegalRepresentative ?? ''}
               onChange={(e) => onSet('representativeLegalRepresentative', e.target.value)}
               readOnly={locked}

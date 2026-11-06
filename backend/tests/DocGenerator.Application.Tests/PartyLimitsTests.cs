@@ -110,8 +110,9 @@ public class PartyLimitsTests : IDisposable
     [Fact]
     public async Task Create_FullPartiesWithHeirsAndRepresentatives_RoundTripsExactly()
     {
-        // أمانة الحفظ على نطاق 50: المقترض + الكفيل الأخير (49) بورثة وممثل شرعي
-        // وعناوين — تُحفظ وتُسترجع حرفيًا بلا إسقاط صامت ولا خلط ربط (GuarantorNumber).
+        // أمانة الحفظ على نطاق 50: الممثل الشرعي على المقترض وكفيل، والورثة على الكفيل الأخير (49)
+        // — لا يجتمع ممثل وورثة على الطرف نفسه (قاعدة صارمة). تُحفظ وتُسترجع حرفيًا بلا إسقاط
+        // صامت ولا خلط ربط (GuarantorNumber).
         var req = Sample(PartyLimitsCatalog.MaxGuarantors);
         req.BorrowerAddress = "المزة";
         req.BorrowerRepresentativeName = "ولي المقترض";
@@ -120,11 +121,7 @@ public class PartyLimitsTests : IDisposable
         req.BorrowerRepresentativeCapacity = "ولي";
         req.BorrowerRepresentativeAddressType = "عنوان";
         req.BorrowerRepresentativeAddress = "دمشق";
-        req.BorrowerHeirs = new List<HeirDto>
-        {
-            new(null, "وريث المقترض", "أب الوريث", "عائلة الوريث", "أصالة", "عنوان", "حلب"),
-        };
-        req.Guarantors[^1] = req.Guarantors[^1] with
+        req.Guarantors[0] = req.Guarantors[0] with
         {
             Address = "حمص",
             RepresentativeName = "وصي الكفيل",
@@ -133,6 +130,10 @@ public class PartyLimitsTests : IDisposable
             RepresentativeCapacity = "وصي",
             RepresentativeAddressType = "عنوان",
             RepresentativeAddress = "اللاذقية",
+        };
+        req.Guarantors[^1] = req.Guarantors[^1] with
+        {
+            Address = "حمص",
             Heirs = new List<HeirDto>
             {
                 new(null, "وريث الكفيل", "أب وريث الكفيل", "عائلة وريث الكفيل", "إضافة لتركة", "عنوان", "طرطوس"),
@@ -146,22 +147,26 @@ public class PartyLimitsTests : IDisposable
         Assert.Equal("ولي المقترض", loaded.BorrowerRepresentativeName);
         Assert.Equal("ولي", loaded.BorrowerRepresentativeCapacity);
         Assert.Equal("دمشق", loaded.BorrowerRepresentativeAddress);
-        var borrowerHeir = Assert.Single(loaded.BorrowerHeirs);
-        Assert.Equal("وريث المقترض", borrowerHeir.Name);
-        Assert.Equal("حلب", borrowerHeir.Address);
+        Assert.Empty(loaded.BorrowerHeirs);
+
+        var first = loaded.Guarantors.OrderBy(g => g.GuarantorNumber).First();
+        Assert.Equal(1, first.GuarantorNumber);
+        Assert.Equal("حمص", first.Address);
+        Assert.Equal("وصي الكفيل", first.RepresentativeName);
+        Assert.Equal("وصي", first.RepresentativeCapacity);
+        Assert.Equal("اللاذقية", first.RepresentativeAddress);
+        Assert.Empty(first.Heirs ?? []);
 
         var last = loaded.Guarantors.OrderBy(g => g.GuarantorNumber).Last();
         Assert.Equal(PartyLimitsCatalog.MaxGuarantors, last.GuarantorNumber);
         Assert.Equal("حمص", last.Address);
-        Assert.Equal("وصي الكفيل", last.RepresentativeName);
-        Assert.Equal("وصي", last.RepresentativeCapacity);
-        Assert.Equal("اللاذقية", last.RepresentativeAddress);
+        Assert.Null(last.RepresentativeName);
         var guarantorHeir = Assert.Single(last.Heirs ?? []);
         Assert.Equal("وريث الكفيل", guarantorHeir.Name);
         Assert.Equal("إضافة لتركة", guarantorHeir.Capacity);
         Assert.Equal("طرطوس", guarantorHeir.Address);
 
-        // ربط الورثة بالأرقام لا يختلط: وريث المقترض (null) منفصل عن وريث الكفيل 49.
+        // ربط الورثة بالأرقام لا يختلط: وريث الكفيل 49 منفصل عن بقية الكفلاء.
         Assert.All(loaded.Guarantors.Take(PartyLimitsCatalog.MaxGuarantors - 1),
             g => Assert.Empty(g.Heirs ?? []));
     }

@@ -19,6 +19,12 @@ public class HeirConfiguration : IEntityTypeConfiguration<Heir>
         builder.Property(h => h.HeirCapacity).HasMaxLength(30);
         builder.Property(h => h.AddressType).HasMaxLength(50);
         builder.Property(h => h.HeirAddress).HasMaxLength(300);
+        builder.Property(h => h.RepresentativeName).HasMaxLength(100);
+        builder.Property(h => h.RepresentativeFather).HasMaxLength(100);
+        builder.Property(h => h.RepresentativeFamily).HasMaxLength(100);
+        builder.Property(h => h.RepresentativeCapacity).HasMaxLength(30);
+        builder.Property(h => h.RepresentativeAddressType).HasMaxLength(50);
+        builder.Property(h => h.RepresentativeAddress).HasMaxLength(300);
         builder.HasIndex(h => h.DocumentId);
 
         builder.HasOne(h => h.Document)

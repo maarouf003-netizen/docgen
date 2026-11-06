@@ -51,6 +51,98 @@ describe('DelegationsCard', () => {
     expect(screen.getByText(/كتاب الإيداع رقم K-1 بتاريخ/)).toBeInTheDocument();
   });
 
+  it('يعرض سجل الإضافات المحلية على المناب في تشعبات المنيب', () => {
+    render(
+      <DelegationsCard
+        delegations={[
+          delegation({
+            localAddition: {
+              count: 2,
+              lastMessage: 'أُضيف الوريث محمود سامي الحلبي',
+              lastAt: '2026-11-05T10:00:00Z',
+            },
+          }),
+        ]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    expect(screen.getByText('إضافات محلية على الملف المناب')).toBeInTheDocument();
+    expect(screen.getByText('عدد الإضافات المحلية: 2')).toBeInTheDocument();
+    // النص ملخص آخر دفعة لا تفصيل للعدّاد التراكمي — التسمية تفصل الدلالتين.
+    expect(screen.getByText('آخر إضافة:')).toBeInTheDocument();
+    expect(screen.getByText('أُضيف الوريث محمود سامي الحلبي')).toBeInTheDocument();
+  });
+
+  it('يخفي سطر «آخر إضافة» إن كان ملخصها فارغًا ويُبقي العدّاد', () => {
+    render(
+      <DelegationsCard
+        delegations={[
+          delegation({ localAddition: { count: 3, lastMessage: '', lastAt: null } }),
+        ]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    expect(screen.getByText('عدد الإضافات المحلية: 3')).toBeInTheDocument();
+    expect(screen.queryByText('آخر إضافة:')).not.toBeInTheDocument();
+  });
+
+  it('يعرض العدد حتى لإضافة واحدة (لا يُخفى عند 1)', () => {
+    render(
+      <DelegationsCard
+        delegations={[
+          delegation({
+            localAddition: { count: 1, lastMessage: 'أُضيف الممثل الشرعي للمقترض', lastAt: null },
+          }),
+        ]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    expect(screen.getByText('عدد الإضافات المحلية: 1')).toBeInTheDocument();
+  });
+
+  it('يُنسّق العدّاد عبر Intl.NumberFormat (فواصل الآلاف)', () => {
+    render(
+      <DelegationsCard
+        delegations={[
+          delegation({ localAddition: { count: 1200, lastMessage: 'أُضيف الوريث محمود', lastAt: null } }),
+        ]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    expect(screen.getByText('عدد الإضافات المحلية: 1,200')).toBeInTheDocument();
+  });
+
+  it('لا يعرض ملاحظة التعديل المحلي عند غيابها', () => {
+    render(
+      <DelegationsCard
+        delegations={[delegation()]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    expect(screen.queryByText('إضافات محلية على الملف المناب')).not.toBeInTheDocument();
+  });
+
+
   it('يعرض «الملف المناب» برقمه وسنته الفعّالين عند توافرهما', () => {
     render(
       <DelegationsCard

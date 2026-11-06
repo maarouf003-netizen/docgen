@@ -119,6 +119,7 @@ public sealed class DocumentService : IDocumentService
         DocumentValidator.ValidateGuarantorCount(request);
         DocumentValidator.ValidateRegistrationDate(request);
         DocumentValidator.ValidateFileYearNotFuture(request.FileYear, CurrentYear());
+        DocumentValidator.ValidateRepresentativeHeirExclusivity(request);
 
         // المحامي المختص هو الذي سجّل الدخول وأنشأ الملف: يُسنَد الملف إليه تلقائياً
         // باسمه الكامل (وليس من الطلب)، ويبقى محصّناً من أي كتابة عبر نموذج التعديل.
@@ -202,6 +203,7 @@ public sealed class DocumentService : IDocumentService
         DocumentValidator.ValidateGuarantorCount(request);
         DocumentValidator.ValidateRegistrationDate(request);
         DocumentValidator.ValidateFileYearNotFuture(request.FileYear, CurrentYear());
+        DocumentValidator.ValidateRepresentativeHeirExclusivity(request);
 
         // لقطة ما قبل التعديل — لتوليد صفوف «حقل/قبل/بعد» في سجل التعديلات.
         var before = Common.Audit.DocumentChangeTracker.Capture(doc);
@@ -284,10 +286,11 @@ public sealed class DocumentService : IDocumentService
                 $"عدّل المستند (رقم {doc.Id})", token);
             // التنبيهات تُسجَّل في Outbox داخل معاملة الحفظ نفسها:
             // (1) تنبيهات المرآة إلى المحامين المنابين بتحديث نسخة الملف،
-            // (2) تنبيه المنيب بالإضافات المحلية المضافة على الملف المناب (ورثة/ممثل شرعي).
+            // (2) تنبيه المنيب بالإضافات المحلية المضافة على الملف المناب (ورثة/ممثل شرعي) —
+            //     وتُثبَّت الإضافة في سجل الإنابة (عدّاد + ملخص) قبل الإطلاق.
             await _delegationService.FireMirrorNotificationsAsync(mirrorNotifications, token);
             if (targetEditReport.HasAdditions)
-                await _delegationService.FireTargetEditReportAsync(doc, targetEditReport, token);
+                await _delegationService.RecordLocalAdditionsAndFireReportAsync(doc, targetEditReport, token);
             await _actionService.SeedInitialActionsAsync(doc, request.InitialActions, userId, actorName, token);
             return DocumentResponse.FromEntity(doc, CurrentYear());
         }, ct), doc.FileNumber));
@@ -565,13 +568,15 @@ public sealed class DocumentService : IDocumentService
         doc.BorrowerAddress = r.BorrowerAddress;
         doc.BorrowerAddressType = r.BorrowerAddressType;
 
-        var borrowerHasRep = !DocumentText.IsEmptyRepresentative(r.BorrowerRepresentativeName, r.BorrowerRepresentativeFather, r.BorrowerRepresentativeFamily);
-        doc.BorrowerRepresentativeName = borrowerHasRep ? (r.BorrowerRepresentativeName ?? string.Empty).Trim() : null;
-        doc.BorrowerRepresentativeFather = borrowerHasRep ? (r.BorrowerRepresentativeFather ?? string.Empty).Trim() : null;
-        doc.BorrowerRepresentativeFamily = borrowerHasRep ? (r.BorrowerRepresentativeFamily ?? string.Empty).Trim() : null;
-        doc.BorrowerRepresentativeCapacity = borrowerHasRep ? DocumentText.NormalizeRepresentativeCapacity(r.BorrowerRepresentativeCapacity) : null;
-        doc.BorrowerRepresentativeAddressType = borrowerHasRep ? DocumentText.NormalizeRepresentativeAddressType(r.BorrowerRepresentativeAddressType) : null;
-        doc.BorrowerRepresentativeAddress = borrowerHasRep ? (r.BorrowerRepresentativeAddress ?? string.Empty).Trim() : null;
+        var rep = DocumentText.NormalizeRepresentativeFields(
+            r.BorrowerRepresentativeName, r.BorrowerRepresentativeFather, r.BorrowerRepresentativeFamily,
+            r.BorrowerRepresentativeCapacity, r.BorrowerRepresentativeAddressType, r.BorrowerRepresentativeAddress);
+        doc.BorrowerRepresentativeName = rep.Name;
+        doc.BorrowerRepresentativeFather = rep.Father;
+        doc.BorrowerRepresentativeFamily = rep.Family;
+        doc.BorrowerRepresentativeCapacity = rep.Capacity;
+        doc.BorrowerRepresentativeAddressType = rep.AddressType;
+        doc.BorrowerRepresentativeAddress = rep.Address;
 
         // طبيعة المقترض: الاعتباري يحمل اسم الشخص الاعتباري في BorrowerName وتُصفَّر حقول الهوية
         // الطبيعية والممثل الشرعي والورثة (مفاهيم تخص الشخص الطبيعي)، ويُحتفظ برقم التسجيل ومن يمثله.
@@ -838,7 +843,7 @@ public sealed class DocumentService : IDocumentService
             };
             if (!isLegal)
             {
-                foreach (var heir in NormalizeExecutedHeirs(a.Heirs))
+                foreach (var heir in DocumentText.NormalizeExecutedHeirs(a.Heirs))
                     applicant.Heirs.Add(heir);
             }
             result.Add(applicant);
@@ -912,7 +917,9 @@ public sealed class DocumentService : IDocumentService
                 representationType = "أصالة";
 
             var hasEstate = representationType is "إضافة لتركة" or "أصالة وإضافة";
-            var hasRep = !DocumentText.IsEmptyRepresentative(p.RepresentativeName, p.RepresentativeFather, p.RepresentativeFamily);
+            var rep = DocumentText.NormalizeRepresentativeFields(
+                p.RepresentativeName, p.RepresentativeFather, p.RepresentativeFamily,
+                p.RepresentativeCapacity, p.RepresentativeAddressType, p.RepresentativeAddress);
 
             var person = new ExecutedNaturalPerson
             {
@@ -925,57 +932,20 @@ public sealed class DocumentService : IDocumentService
                 DeceasedName = hasEstate ? (p.DeceasedName ?? string.Empty).Trim() : null,
                 DeceasedFather = hasEstate ? (p.DeceasedFather ?? string.Empty).Trim() : null,
                 DeceasedFamily = hasEstate ? (p.DeceasedFamily ?? string.Empty).Trim() : null,
-                RepresentativeName = hasRep ? (p.RepresentativeName ?? string.Empty).Trim() : null,
-                RepresentativeFather = hasRep ? (p.RepresentativeFather ?? string.Empty).Trim() : null,
-                RepresentativeFamily = hasRep ? (p.RepresentativeFamily ?? string.Empty).Trim() : null,
-                RepresentativeCapacity = hasRep ? DocumentText.NormalizeRepresentativeCapacity(p.RepresentativeCapacity) : null,
-                RepresentativeAddressType = hasRep ? DocumentText.NormalizeRepresentativeAddressType(p.RepresentativeAddressType) : null,
-                RepresentativeAddress = hasRep ? (p.RepresentativeAddress ?? string.Empty).Trim() : null,
+                RepresentativeName = rep.Name,
+                RepresentativeFather = rep.Father,
+                RepresentativeFamily = rep.Family,
+                RepresentativeCapacity = rep.Capacity,
+                RepresentativeAddressType = rep.AddressType,
+                RepresentativeAddress = rep.Address,
             };
-            foreach (var heir in NormalizeExecutedHeirs(p.Heirs))
+            foreach (var heir in DocumentText.NormalizeExecutedHeirs(p.Heirs))
                 person.Heirs.Add(heir);
             result.Add(person);
         }
 
         return result;
     }
-
-    /// <summary>
-    /// تصفية صفوف الورثة الصالحة: يُتجاهل الوريث بلا اسم ثلاثي، ويُقيَّد نوع العنوان
-    /// («عنوان»/«وكيل») مع معاملة أي قيمة أخرى أو فارغة كـ«عنوان».
-    /// </summary>
-    private static List<ExecutedHeir> NormalizeExecutedHeirs(IEnumerable<ExecutedHeirDto>? heirs)
-    {
-        var result = new List<ExecutedHeir>();
-        if (heirs is null)
-            return result;
-
-        foreach (var h in heirs)
-        {
-            var name = (h.HeirName ?? string.Empty).Trim();
-            if (string.IsNullOrWhiteSpace(name))
-                continue;
-
-            var addressType = (h.AddressType ?? string.Empty).Trim();
-            if (addressType != "عنوان" && addressType != "وكيل")
-                addressType = "عنوان";
-
-            result.Add(new ExecutedHeir
-            {
-                HeirName = name,
-                HeirFather = (h.HeirFather ?? string.Empty).Trim(),
-                HeirFamily = (h.HeirFamily ?? string.Empty).Trim(),
-                AddressType = addressType,
-                HeirAddress = (h.HeirAddress ?? string.Empty).Trim(),
-            });
-        }
-
-        return result;
-    }
-
-
-
-
 
     /// <summary>
     /// طبيعة المنفذ عليه الاعتباري في وضع «منفذ عليه»: جهة عامة (public) أو شخص اعتباري (legal)؛

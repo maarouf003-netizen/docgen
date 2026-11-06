@@ -49,7 +49,7 @@ public class SubHeadContractTests
         "TargetFileYear", "SourceFileType", "TargetExecStatus", "SourceCourt",
         "BlocksAssets", "TargetTerminal", "RejectReason", "RedirectedToSectionId",
         "RedirectedToSectionName", "TargetBranchId", "TargetBranchName",
-        "TargetLawyerName", "Version",
+        "TargetLawyerName", "Version", "LocalAddition",
     ];
 
     private static readonly string[] CircuitStatsMembers =

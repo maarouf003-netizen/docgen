@@ -339,6 +339,8 @@ render(<DocumentForm />);
     await user.type(screen.getByLabelText('العنوان'), 'المزة');
     // تفعيل الممثل يضبط الصفة «ولي» فقط — بلا اسم لا يُحفظ فلا يُصفَّر العنوان.
     await user.click(screen.getAllByText('＋ إضافة ممثل شرعي')[0]);
+    // حقل العنوان يبقى ظاهرًا بقيمته: الإخفاء يتبع الممثل المخزَّن لا التفعيل.
+    expect(screen.getByDisplayValue('المزة')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /حفظ/ }));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
@@ -357,6 +359,8 @@ render(<DocumentForm />);
     await user.type(boxes[0], 'سمير');
     await user.type(boxes[7], 'حمص');
     await user.click(within(card).getByText('＋ إضافة ممثل شرعي'));
+    // العنوان يبقى ظاهرًا بقيمته ما دام الممثل غير مخزَّن.
+    expect(within(card).getByDisplayValue('حمص')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /حفظ/ }));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
@@ -763,7 +767,6 @@ render(<DocumentForm />);
     await renderEdit({
       ...mockDoc,
       sourceDelegationId: 3,
-      borrowerHeirs: [{ id: 10, name: 'محمود الحلبي', addressType: 'عنوان', address: 'المزة' }],
       borrowerRepresentativeName: 'ممثل',
       borrowerRepresentativeFather: 'على',
       borrowerRepresentativeFamily: 'المقترض',
@@ -777,11 +780,6 @@ render(<DocumentForm />);
           address: 'حلب',
           addressType: 'موطن مختار',
           heirs: [{ id: 11, name: 'فارس الخالد', addressType: 'وكيل', address: 'المحامي سامر' }],
-          representativeName: 'وصي',
-          representativeFather: 'علي',
-          representativeFamily: 'السليم',
-          representativeAddress: 'دمشق',
-          representativeAddressType: 'موطن مختار',
         },
       ],
     });
@@ -797,9 +795,10 @@ render(<DocumentForm />);
     for (const capacity of screen.getAllByLabelText('صفة الممثل الشرعي')) {
       expect(capacity).toBeDisabled();
     }
-    for (const addressType of screen.getAllByLabelText('نوع العنوان')) {
-      expect(addressType).toBeDisabled();
-    }
+    expect(document.getElementById('borrower-rep-type')).toBeDisabled();
+    // ورثة الكفيل محليون: نوع عنوانهم قابل للتحرير (الحذف فقط مخفي).
+    // معرّف الحقل يتبع هوية الوريث (`id11`) لا موضعه — فلا ينزاح بعد حذف صفّ أو إعادة ترتيب.
+    expect(document.getElementById('guarantor-0-heir-type-id11')).not.toBeDisabled();
 
     // ورثة محليون قابلون للتحرير (إضافة/تعديل مسموحة — الحذف فقط مخفي)
     expect(screen.getAllByLabelText(/اسم الوريث/)[0]).not.toHaveAttribute('readonly');

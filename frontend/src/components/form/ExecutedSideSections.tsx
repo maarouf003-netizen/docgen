@@ -18,6 +18,7 @@ import {
   REPRESENTATION_TYPES,
   addressLabelOf,
   hasRepresentative,
+  hasStoredRepresentative,
   heirAddressLabelOf,
   paidAmountKeys,
   paidCurrencyKeys,
@@ -45,6 +46,8 @@ export interface ExecutedSideSectionsProps {
   /** الملف المناب (قرار 7): تُقفل السند/طلاب التنفيذ/المنفذ عليهم وتُخفى أزرارها، مع بقاء
    * ورثة/ممثلي الملف المحليين قابلين للتحرير (احترازي — الإنابة تخص «طالبة تنفيذ» حصرًا). */
   isMirror?: boolean;
+  /** قفل ممثل الطرف على الملف المناب: المخزَّن فقط، لا الإضافة المحلية الجارية. */
+  partyRepLocked: (key: string) => boolean;
   showRequiredAmount: boolean;
   setShowRequiredAmount: Dispatch<SetStateAction<boolean>>;
   requiredAmountSlots: number;
@@ -96,6 +99,7 @@ export function ExecutedSideSections({
   set,
   isEdit,
   isMirror = false,
+  partyRepLocked,
   showRequiredAmount,
   setShowRequiredAmount,
   requiredAmountSlots,
@@ -211,7 +215,11 @@ export function ExecutedSideSections({
       <FormSectionTitle title={`👤 ${applicantLabel}`} />
       {executionApplicants.map((a, i) => {
         const aHasRep = hasRepresentative(a);
+        // الحقول التي تُصفَّر في الحمولة (الوكيل القانوني) تتبع «المخزَّن» لا «المفعَّل»:
+        // صفة وحدها (بلا اسم) لا تُحفظ، فمسح/إخفاء قيمة لها فقدان صامت.
+        const aRepStored = hasStoredRepresentative(a);
         const hasEstate = a.representationType === 'إضافة لتركة' || a.representationType === 'أصالة وإضافة';
+        const aHasHeirs = (a.heirs ?? []).some((h) => (h.heirName ?? '').trim());
         const aIsLegal = a.nature === 'legal';
         return (
           <div key={i} className="border border-gray-200 rounded-xl p-4 mb-4">
@@ -313,13 +321,13 @@ export function ExecutedSideSections({
                   ))}
                 </div>
                 <div className="grid md:grid-cols-3 gap-3 mt-3">
-                  {!aHasRep && (
+                  {!aRepStored && (
                     <div className="md:col-span-2">
                       <label className="block text-xs font-bold text-gray-600 mb-1">الوكيل القانوني</label>
                       <input value={a.legalRepresentative ?? ''} readOnly={isMirror} aria-readonly={isMirror || undefined} onChange={(e) => onApplicantSet(i, 'legalRepresentative', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                     </div>
                   )}
-                  <div className={aHasRep ? 'md:col-span-3' : undefined}>
+                  <div className={aRepStored ? 'md:col-span-3' : undefined}>
                     <label className="block text-xs font-bold text-gray-600 mb-1">نوع التمثيل</label>
                     <div className="flex items-center gap-2">
                       <select value={a.representationType ?? 'أصالة'} disabled={isMirror} aria-readonly={isMirror || undefined} onChange={(e) => onApplicantSet(i, 'representationType', e.target.value)} className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50 disabled:cursor-not-allowed">
@@ -327,7 +335,7 @@ export function ExecutedSideSections({
                           <option key={o}>{o}</option>
                         ))}
                       </select>
-                      {!aHasRep && (
+                      {!aHasRep && !hasEstate && !aHasHeirs && (
                         <button
                           type="button"
                           onClick={() => onApplicantRepActivate(i)}
@@ -337,6 +345,16 @@ export function ExecutedSideSections({
                         </button>
                       )}
                     </div>
+                    {!aHasRep && (hasEstate || aHasHeirs) && (
+                      <p className="mt-2 text-xs text-amber-700" role="note">
+                        لا يجتمع الممثل الشرعي مع الورثة/التمثيل بالتركة.
+                      </p>
+                    )}
+                    {aHasRep && (hasEstate || aHasHeirs) && (
+                      <p className="mt-2 text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2" role="note">
+                        تعارض: الممثل الشرعي لا يجتمع مع الورثة — احذف الممثل أو غيّر نوع التمثيل/الورثة.
+                      </p>
+                    )}
                   </div>
                 </div>
                 {hasEstate && (
@@ -354,7 +372,8 @@ export function ExecutedSideSections({
                         onSet={(hi, k, v) => onApplicantHeirSet(i, hi, k, v)}
                         onAdd={() => onApplicantHeirAdd(i)}
                         onRemove={(hi) => onApplicantHeirRemove(i, hi)}
-                        allowAdd={isEdit}
+                        allowAdd={isEdit && !aHasRep}
+                        locked={isMirror}
                       />
                     </div>
                   </div>
@@ -366,6 +385,7 @@ export function ExecutedSideSections({
                     representative={a}
                     onSet={(key, value) => onApplicantSet(i, key as keyof ExecutionApplicantDto, value)}
                     onRemove={() => onApplicantRepRemove(i)}
+                    locked={partyRepLocked(`applicant-${i}`)}
                   />
                 )}
               </>
@@ -540,6 +560,7 @@ export function ExecutedSideSections({
       {executedNaturalPersons.map((p, i) => {
         const pHasRep = hasRepresentative(p);
         const hasEstate = p.representationType === 'إضافة لتركة' || p.representationType === 'أصالة وإضافة';
+        const pHasHeirs = (p.heirs ?? []).some((h) => (h.heirName ?? '').trim());
         return (
           <div key={i} className="border border-gray-200 rounded-xl p-4 mb-4">
             <div className="flex justify-between items-center mb-3">
@@ -581,7 +602,7 @@ export function ExecutedSideSections({
                       <option key={o}>{o}</option>
                     ))}
                   </select>
-                  {!pHasRep && (
+                  {!pHasRep && !hasEstate && !pHasHeirs && (
                     <button
                       type="button"
                       onClick={() => onPersonRepActivate(i)}
@@ -591,6 +612,16 @@ export function ExecutedSideSections({
                     </button>
                   )}
                 </div>
+                {!pHasRep && (hasEstate || pHasHeirs) && (
+                  <p className="mt-2 text-xs text-amber-700" role="note">
+                    لا يجتمع الممثل الشرعي مع الورثة/التمثيل بالتركة.
+                  </p>
+                )}
+                {pHasRep && (hasEstate || pHasHeirs) && (
+                  <p className="mt-2 text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2" role="note">
+                    تعارض: الممثل الشرعي لا يجتمع مع الورثة — احذف الممثل أو غيّر نوع التمثيل/الورثة.
+                  </p>
+                )}
               </div>
             </div>
             {hasEstate && (
@@ -608,7 +639,8 @@ export function ExecutedSideSections({
                     onSet={(hi, k, v) => onPersonHeirSet(i, hi, k, v)}
                     onAdd={() => onPersonHeirAdd(i)}
                     onRemove={(hi) => onPersonHeirRemove(i, hi)}
-                    allowAdd={isEdit}
+                    allowAdd={isEdit && !pHasRep}
+                    locked={isMirror}
                   />
                 </div>
               </div>
@@ -620,6 +652,7 @@ export function ExecutedSideSections({
                 representative={p}
                 onSet={(key, value) => onPersonSet(i, key as keyof ExecutedNaturalPersonDto, value)}
                 onRemove={() => onPersonRepRemove(i)}
+                locked={partyRepLocked(`person-${i}`)}
               />
             )}
           </div>

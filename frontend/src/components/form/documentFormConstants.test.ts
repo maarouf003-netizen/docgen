@@ -5,6 +5,9 @@ import {
   guarantorAddState,
   hasStoredRepresentative,
   nextGuarantorNumber,
+  representativeHeirConflictMessage,
+  toExecutedHeirPayload,
+  toHeirPayload,
 } from './documentFormConstants';
 
 describe('documentFormConstants · سقوف الأطراف', () => {
@@ -32,6 +35,89 @@ describe('documentFormConstants · كشف الممثل المخزَّن', () => 
     expect(hasStoredRepresentative({ representativeName: 'سمير' })).toBe(true);
     expect(hasStoredRepresentative({ representativeFather: 'حسن' })).toBe(true);
     expect(hasStoredRepresentative({ representativeFamily: 'علي' })).toBe(true);
+  });
+});
+
+describe('documentFormConstants · حمولة الوريث والممثل', () => {
+  it('بلا ممثل: لا تُرسل مفاتيح الممثل، ويبقى عنوان الوريث', () => {
+    const payload = toHeirPayload({ name: 'محمود', addressType: 'عنوان', address: 'المزة' });
+    expect(payload).toEqual({ name: 'محمود', addressType: 'عنوان', address: 'المزة' });
+    expect('representativeName' in payload).toBe(false);
+  });
+
+  it('مع ممثل: يُصفَّر عنوان الوريث وتُرسل حقول الممثل كاملة', () => {
+    const payload = toHeirPayload({
+      name: 'محمود',
+      addressType: 'عنوان',
+      address: 'المزة',
+      representativeName: 'سمير',
+      representativeFather: 'حسن',
+      representativeFamily: 'علي',
+      representativeCapacity: 'ولي',
+      representativeAddressType: 'عنوان',
+      representativeAddress: 'حلب',
+    });
+    expect(payload.addressType).toBe('');
+    expect(payload.address).toBe('');
+    expect(payload.representativeName).toBe('سمير');
+    expect(payload.representativeAddress).toBe('حلب');
+  });
+
+  it('نفس القاعدة لوريث وضع «منفذ عليه»', () => {
+    const payload = toExecutedHeirPayload({
+      heirName: 'وريث',
+      addressType: 'عنوان',
+      heirAddress: 'المزة',
+      representativeName: 'سمير',
+      representativeCapacity: 'وصي',
+      representativeAddressType: 'موطن مختار',
+      representativeAddress: 'حلب',
+    });
+    expect(payload.addressType).toBe('');
+    expect(payload.heirAddress).toBe('');
+    expect(payload.representativeName).toBe('سمير');
+    expect(('representativeName' in toExecutedHeirPayload({ heirName: 'وريث' }))).toBe(false);
+  });
+
+  it('يكشف تعارض ممثل المقترض مع ورثته', () => {
+    expect(representativeHeirConflictMessage({
+      borrowerNature: 'natural',
+      borrowerHasHeirs: true,
+      borrowerHasRep: true,
+      guarantors: [],
+      executionApplicants: [],
+      executedNaturalPersons: [],
+    })).toContain('المقترض');
+  });
+
+  it('يكشف تعارض ممثل الكفيل مع ورثته', () => {
+    expect(representativeHeirConflictMessage({
+      borrowerHasHeirs: false,
+      borrowerHasRep: false,
+      guarantors: [{ guarantorNumber: 2, representativeName: 'ممثل', heirs: [{ name: 'وريث' }] }],
+      executionApplicants: [],
+      executedNaturalPersons: [],
+    })).toContain('الكفيل 2');
+  });
+
+  it('يكشف تعارض ممثل طالب التنفيذ مع التمثيل بالتركة', () => {
+    expect(representativeHeirConflictMessage({
+      borrowerHasHeirs: false,
+      borrowerHasRep: false,
+      guarantors: [],
+      executionApplicants: [{ name: 'طالب', representationType: 'إضافة لتركة', representativeName: 'ممثل' }],
+      executedNaturalPersons: [],
+    })).toContain('طالب التنفيذ طالب');
+  });
+
+  it('يسمح بممثل بلا ورثة', () => {
+    expect(representativeHeirConflictMessage({
+      borrowerHasHeirs: false,
+      borrowerHasRep: true,
+      guarantors: [],
+      executionApplicants: [],
+      executedNaturalPersons: [],
+    })).toBeNull();
   });
 });
 

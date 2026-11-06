@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\DocGenerator.Domain\DocGenerator.Domain.csproj" />
@@ -19,5 +19,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- المنطق النقي الداخلي (كبناء ملخص الإضافات المحلية) يُختبر مباشرةً بلا توسيع السطح العام. -->
+    <InternalsVisibleTo Include="DocGenerator.Application.Tests" />
+  </ItemGroup>
 
 </Project>

@@ -1415,7 +1415,7 @@ public class DocumentsIntegrationTests
             borrowerRepresentativeCapacity = "ولي",
             borrowerRepresentativeAddressType = "وكيل قانوني",
             borrowerRepresentativeAddress = "المحامي سامر",
-            guarantors = new[]
+            guarantors = new object[]
             {
                 new
                 {
@@ -1428,10 +1428,17 @@ public class DocumentsIntegrationTests
                     representativeAddressType = "موطن مختار",
                     representativeAddress = "دمشق",
                 },
-            },
-            borrowerHeirs = new[]
-            {
-                new { name = "محمود", father = "خالد", family = "الحلبي", capacity = "إضافة لتركة", addressType = "موطن مختار", address = "المزة" },
+                new
+                {
+                    guarantorNumber = 2,
+                    name = "كفيل ثانٍ",
+                    father = "أب",
+                    family = "عائلة",
+                    heirs = new[]
+                    {
+                        new { name = "محمود", father = "خالد", family = "الحلبي", capacity = "إضافة لتركة", addressType = "موطن مختار", address = "المزة" },
+                    },
+                },
             },
         });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
@@ -1449,7 +1456,7 @@ public class DocumentsIntegrationTests
         Assert.Equal("موطن مختار", guarantor.GetProperty("representativeAddressType").GetString());
         Assert.Equal("دمشق", guarantor.GetProperty("representativeAddress").GetString());
 
-        var heir = root.GetProperty("borrowerHeirs")[0];
+        var heir = root.GetProperty("guarantors")[1].GetProperty("heirs")[0];
         Assert.Equal("إضافة لتركة", heir.GetProperty("capacity").GetString());
         Assert.Equal("موطن مختار", heir.GetProperty("addressType").GetString());
     }
@@ -1468,7 +1475,7 @@ public class DocumentsIntegrationTests
             contractTypeSelector = "عادي",
             court = "دمشق",
             applicant = "المدعي",
-            executionApplicants = new[]
+            executionApplicants = new object[]
             {
                 new
                 {
@@ -1479,6 +1486,13 @@ public class DocumentsIntegrationTests
                     deceasedName = "المورث",
                     deceasedFather = "أب المورث",
                     deceasedFamily = "نسبة المورث",
+                },
+                new
+                {
+                    name = "طالب",
+                    father = "ثانٍ",
+                    family = "العائلة",
+                    representationType = "أصالة",
                     representativeName = "القيم",
                     representativeCapacity = "قيم",
                     representativeLegalRepresentative = "المحامي القانوني",
@@ -1508,9 +1522,13 @@ public class DocumentsIntegrationTests
         var applicant = root.GetProperty("executionApplicants")[0];
         Assert.Equal("أصالة وإضافة", applicant.GetProperty("representationType").GetString());
         Assert.Equal("المورث", applicant.GetProperty("deceasedName").GetString());
-        Assert.Equal("القيم", applicant.GetProperty("representativeName").GetString());
-        Assert.Equal("قيم", applicant.GetProperty("representativeCapacity").GetString());
-        Assert.Equal("المحامي القانوني", applicant.GetProperty("representativeLegalRepresentative").GetString());
+        Assert.Null(applicant.GetProperty("representativeName").GetString());
+
+        var representativeApplicant = root.GetProperty("executionApplicants")[1];
+        Assert.Equal("أصالة", representativeApplicant.GetProperty("representationType").GetString());
+        Assert.Equal("القيم", representativeApplicant.GetProperty("representativeName").GetString());
+        Assert.Equal("قيم", representativeApplicant.GetProperty("representativeCapacity").GetString());
+        Assert.Equal("المحامي القانوني", representativeApplicant.GetProperty("representativeLegalRepresentative").GetString());
 
         var person = root.GetProperty("executedNaturalPersons")[0];
         Assert.Equal("ولي الشخص", person.GetProperty("representativeName").GetString());

@@ -67,6 +67,72 @@ public static class DocumentValidator
         request.Guarantors = request.Guarantors?.Where(g => g is not null).ToList() ?? new();
         request.Assets = request.Assets?.Where(a => a is not null).ToList() ?? new();
         request.BorrowerHeirs = request.BorrowerHeirs?.Where(h => h is not null).ToList() ?? new();
+        request.ExecutionApplicants = request.ExecutionApplicants?.Where(a => a is not null).ToList() ?? new();
+        request.ExecutedNaturalPersons = request.ExecutedNaturalPersons?.Where(p => p is not null).ToList() ?? new();
+    }
+
+    /// <summary>
+    /// قاعدة «لا يجتمع الممثل الشرعي مع الورثة»: الشخص الطبيعي إمّا حيّ له ممثل شرعي،
+    /// أو متوفى له ورثة — لا الاثنان. تُطبَّق على كل طرفٍ طبيعي (المقترض/الكفيل/طالب
+    /// التنفيذ/المنفذ عليه) وتُرفض المخالفة صراحةً بلا تصفير صامت.
+    /// الشخص الاعتباري خارج القاعدة: ممثله «من يمثلها» لا الممثل الشرعي.
+    /// </summary>
+    public static void ValidateRepresentativeHeirExclusivity(DocumentUpsertRequest request)
+    {
+        var borrowerNature = DocumentText.NormalizePartyNature(request.BorrowerNature);
+        if (!PartyNatureCatalog.IsLegal(borrowerNature)
+            && DocumentText.NormalizeHeirs(request.BorrowerHeirs, null).Count > 0
+            && !DocumentText.IsEmptyRepresentative(
+                request.BorrowerRepresentativeName,
+                request.BorrowerRepresentativeFather,
+                request.BorrowerRepresentativeFamily))
+        {
+            throw new ArgumentException(
+                "لا يجتمع الممثل الشرعي مع الورثة — المقترض: احذف الممثل الشرعي أو الورثة أولًا");
+        }
+
+        foreach (var g in request.Guarantors)
+        {
+            var nature = DocumentText.NormalizePartyNature(g.Nature);
+            if (PartyNatureCatalog.IsLegal(nature)
+                || DocumentText.NormalizeHeirs(g.Heirs, g.GuarantorNumber).Count == 0
+                || DocumentText.IsEmptyRepresentative(g.RepresentativeName, g.RepresentativeFather, g.RepresentativeFamily))
+                continue;
+
+            throw new ArgumentException(
+                $"لا يجتمع الممثل الشرعي مع الورثة — الكفيل {g.GuarantorNumber}: احذف الممثل الشرعي أو الورثة أولًا");
+        }
+
+        foreach (var a in request.ExecutionApplicants)
+        {
+            var name = (a.Name ?? string.Empty).Trim();
+            var nature = DocumentText.NormalizePartyNature(a.Nature);
+            if (name.Length == 0
+                || PartyNatureCatalog.IsLegal(nature)
+                || DocumentText.IsEmptyRepresentative(a.RepresentativeName, a.RepresentativeFather, a.RepresentativeFamily))
+                continue;
+
+            // «إضافة لتركة» تعني متوفى حتى لو لم تُدخَل ورثته بعد؛ فلا يجتمع معها ممثل.
+            var representationType = (a.RepresentationType ?? string.Empty).Trim();
+            var hasEstate = representationType is "إضافة لتركة" or "أصالة وإضافة";
+            if (hasEstate || DocumentText.NormalizeExecutedHeirs(a.Heirs).Count > 0)
+                throw new ArgumentException(
+                    $"لا يجتمع الممثل الشرعي مع الورثة — طالب التنفيذ {name}: احذف الممثل الشرعي أو الورثة أولًا");
+        }
+
+        foreach (var p in request.ExecutedNaturalPersons)
+        {
+            var name = (p.Name ?? string.Empty).Trim();
+            if (name.Length == 0
+                || DocumentText.IsEmptyRepresentative(p.RepresentativeName, p.RepresentativeFather, p.RepresentativeFamily))
+                continue;
+
+            var representationType = (p.RepresentationType ?? string.Empty).Trim();
+            var hasEstate = representationType is "إضافة لتركة" or "أصالة وإضافة";
+            if (hasEstate || DocumentText.NormalizeExecutedHeirs(p.Heirs).Count > 0)
+                throw new ArgumentException(
+                    $"لا يجتمع الممثل الشرعي مع الورثة — المنفذ عليه {name}: احذف الممثل الشرعي أو الورثة أولًا");
+        }
     }
 
     /// <summary>

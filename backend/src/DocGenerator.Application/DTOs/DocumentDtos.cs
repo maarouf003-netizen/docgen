@@ -488,7 +488,9 @@ public class DocumentResponse : IDocumentSheetFields
     /// </summary>
     private static List<HeirDto> ToHeirDtos(IEnumerable<Heir> heirs, int? guarantorNumber) =>
         heirs.Where(h => h.GuarantorNumber == guarantorNumber)
-            .Select(h => new HeirDto(h.Id, h.HeirName, h.HeirFather, h.HeirFamily, h.HeirCapacity, h.AddressType, h.HeirAddress))
+            .Select(h => new HeirDto(h.Id, h.HeirName, h.HeirFather, h.HeirFamily, h.HeirCapacity, h.AddressType, h.HeirAddress,
+                h.RepresentativeName, h.RepresentativeFather, h.RepresentativeFamily,
+                h.RepresentativeCapacity, h.RepresentativeAddressType, h.RepresentativeAddress))
             .ToList();
 
     /// <summary>
@@ -498,6 +500,8 @@ public class DocumentResponse : IDocumentSheetFields
     private static List<ExecutedHeirDto> ToExecutedHeirDtos(
         IEnumerable<ExecutedHeir> heirs, int? applicantId, int? naturalPersonId) =>
         heirs.Where(h => h.ExecutionApplicantId == applicantId && h.ExecutedNaturalPersonId == naturalPersonId)
-            .Select(h => new ExecutedHeirDto(h.Id, h.HeirName, h.HeirFather, h.HeirFamily, h.AddressType, h.HeirAddress))
+            .Select(h => new ExecutedHeirDto(h.Id, h.HeirName, h.HeirFather, h.HeirFamily, h.AddressType, h.HeirAddress,
+                h.RepresentativeName, h.RepresentativeFather, h.RepresentativeFamily,
+                h.RepresentativeCapacity, h.RepresentativeAddressType, h.RepresentativeAddress))
             .ToList();
 }
