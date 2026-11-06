@@ -127,23 +127,6 @@ public class HeadAlertRepository : Repository<HeadAlert>, IHeadAlertRepository
             query, userId, includeCounters: false, cursor: null, skip, take, ct);
     }
 
-    public async Task<List<DelegationLocalAdditionRow>> ListActiveLocalAdditionsAsync(
-        IReadOnlyCollection<int> delegationIds, CancellationToken ct = default)
-    {
-        if (delegationIds.Count == 0)
-            return new List<DelegationLocalAdditionRow>();
-
-        var ids = delegationIds.Distinct().ToList();
-        return await Db.HeadAlerts
-            .AsNoTracking()
-            .Where(a => a.DelegationId != null
-                && ids.Contains(a.DelegationId.Value)
-                && a.Kind == HeadAlertKindCatalog.DelegationMirrorLocalAddition
-                && !a.IsArchived)
-            .Select(a => new DelegationLocalAdditionRow(a.DelegationId!.Value, a.Message, a.LastContentChangedAt))
-            .ToListAsync(ct);
-    }
-
     private static void ValidatePaging(int skip, int take)
     {
         if (skip < 0)

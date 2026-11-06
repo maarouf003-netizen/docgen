@@ -402,10 +402,10 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
             : await _delegations.ListBySourceAsync(doc.Id, ct);
 
         var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
-        var localAdditions = await _alerts.GetLocalAdditionSummariesAsync(
-            delegations.Select(d => d.Id).ToList(), ct);
+        // ملاحظة الإضافات المحلية تُقرأ من صف الإنابة نفسه (سجل دائم) لا من تنبيهات المرآة
+        // النشطة — فأرشفة التنبيه أو تنظيفه لا تمحو أثر الإضافة من «تشعبات الملف».
         return delegations
-            .Select(d => ToDto(d, d.SourceDocument, currentYear, localAdditions.GetValueOrDefault(d.Id)))
+            .Select(d => ToDto(d, d.SourceDocument, currentYear))
             .ToList();
     }
 
@@ -1606,8 +1606,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
             }));
 
     private static DelegationDto ToDto(
-        DocumentDelegation d, Document source, int currentYear,
-        DelegationLocalAdditionDto? localAddition = null) => new(
+        DocumentDelegation d, Document source, int currentYear) => new(
         d.Id,
         d.SourceDocumentId,
         SourceLabel(source),
@@ -1646,7 +1645,16 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         RedirectedToSectionId: d.RedirectedToSectionId,
         RedirectedToSectionName: d.RedirectedToSection?.Name,
         Version: d.Version,
-        LocalAddition: localAddition);
+        LocalAddition: ToLocalAddition(d));
+
+    /// <summary>ملخص الإضافات المحلية من سجل الإنابة (عدّاد + ملخص + وقت) — لا من التنبيهات.</summary>
+    private static DelegationLocalAdditionDto? ToLocalAddition(DocumentDelegation d) =>
+        d.LocalAdditionCount <= 0
+            ? null
+            : new DelegationLocalAdditionDto(
+                d.LocalAdditionCount,
+                d.LocalAdditionLastMessage ?? string.Empty,
+                d.LocalAdditionLastAt);
 
     private static string SourceLabel(Document source)
     {

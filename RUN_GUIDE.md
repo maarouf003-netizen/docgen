@@ -413,6 +413,15 @@ npm test
 > `PostgreSQL` (65) و`SQLite` (6 مع الخمس المعلّقة). الترتيب: بعد هجرة `ConflictRetries`
 > في كل سياق، ولا تُطبَّق `SQLite` وحدها قبل استكمال سلسلة `G2` (نفس منطق السطر أدناه).
 
+- [ ] **2026-11-06 — `DelegationLocalAdditionSummary` / `DelegationLocalAdditionSummary_Pg`** (سجل الإضافات المحلية على الملف المناب — `DocumentDelegations`):
+  - **الحالة:** `PostgreSQL` ⏳ **معلّقة** (67 هجرة) · `SQLite` ⏳ **معلّقة** (8 مع السبع السابقة).
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261106080801_DelegationLocalAdditionSummary.cs` — يضيف ثلاثة أعمدة إلى `DocumentDelegations`: `LocalAdditionCount` (`INTEGER NOT NULL DEFAULT 0`)، `LocalAdditionLastMessage` (`TEXT(1000)`)، `LocalAdditionLastAt` (`datetime2`, `NULL`).
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261106081025_DelegationLocalAdditionSummary_Pg.cs` — نفسه (`integer NOT NULL DEFAULT 0` / `character varying(1000)` / `timestamp with time zone`).
+  - **لا Backfill:** الصفوف القائمة تبدأ `LocalAdditionCount = 0` (قرار المالك: بيانات تجريبية)؛ بطاقة «تشعبات الملف» تبدأ من أول إضافة محلية بعد النشر. لا تُفقد بيانات ملفات: الإضافات نفسها في `Heirs`/`ExecutedHeirs` كما هي.
+  - **أثر غير مخطط يفسّر صفوف تدقيق (يُقرأ بعد النشر):** قصّ التوقيع في `DocumentChangeTracker` صار يُلحق بصمة `SHA-256` (16 حرفًا سداسيًا)، فأي توقيع مقصوص **مخزَّن قبل النشر** (مستندات بتوقيع > 2000، مثل ~49 كفيلًا) يختلف عن التوقيع المحسوب بعد النشر ⇒ أول تعديل على ذلك المستند يُنتج صفّ تدقيق لـ`__Col_*` بلا تغيير حقيقي يراه المستخدم. لا إجراء مطلوب: الصفوف اللاحقة صحيحة، وهذه ملاحظة تفسيرية لسجل التدقيق فقط.
+  - **إجراء النشر:** `dotnet ef database update --context DocGeneratorDbContext` و`dotnet ef database update --context DocGeneratorPostgresDbContext` **قبل** نشر النسخة، وإلا رفض الإقلاع (`Database:AutoMigrate=false`) أو ظهر عدم تطابق مخطط (`no such column: d.LocalAdditionCount`).
+  - على `SQLite`: لا تُطبَّق وحدها؛ `database update` يسحب الهجرات المعلّقة السابقة ⇒ التزم بسلسلة §9 (`G2`).
+
 - [ ] **2026-11-05 — `AddHeirLegalRepresentative` / `AddHeirLegalRepresentative_Pg`** (الممثل الشرعي لكل وريث — `Heirs` و`ExecutedHeirs`):
   - **الحالة:** `PostgreSQL` ⏳ **معلّقة** (66 هجرة) · `SQLite` ⏳ **معلّقة** (7 مع الست السابقة).
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261105201644_AddHeirLegalRepresentative.cs` — يضيف ستة أعمدة `nullable` إلى `Heirs` و`ExecutedHeirs`: `RepresentativeName/Father/Family` (100)، `RepresentativeCapacity` (30)، `RepresentativeAddressType` (50)، `RepresentativeAddress` (300).

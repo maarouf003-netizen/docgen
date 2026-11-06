@@ -75,6 +75,9 @@ public class DocGeneratorPostgresDbContext : DocGeneratorDbContext
         modelBuilder.Entity<DocumentDelegation>()
             .Property(d => d.ReturnDate)
             .HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<DocumentDelegation>()
+            .Property(d => d.LocalAdditionLastAt)
+            .HasColumnType("timestamp with time zone");
         modelBuilder.Entity<DocumentAppeal>()
             .Property(a => a.AppealedDecisionDate)
             .HasColumnType("timestamp with time zone");

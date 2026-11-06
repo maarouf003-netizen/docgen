@@ -778,10 +778,6 @@ public class HeadAlertOutboxDispatcherTests : IDisposable
             int delegationId, HeadAlertActor actor, AlertPageRequest page, CancellationToken ct = default)
             => _inner.ListByDelegationAsync(delegationId, actor, page, ct);
 
-        public Task<IReadOnlyDictionary<int, DelegationLocalAdditionDto>> GetLocalAdditionSummariesAsync(
-            IReadOnlyCollection<int> delegationIds, CancellationToken ct = default)
-            => _inner.GetLocalAdditionSummariesAsync(delegationIds, ct);
-
         public Task<HeadAlertDto?> GetDetailsAsync(int id, HeadAlertActor actor, CancellationToken ct = default)
             => _inner.GetDetailsAsync(id, actor, ct);
 

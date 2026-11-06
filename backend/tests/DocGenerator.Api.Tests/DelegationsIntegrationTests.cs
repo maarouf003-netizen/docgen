@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using static DocGenerator.Api.Tests.TestHelpers.ApiFixtureExtensions;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Domain.Enums;
@@ -108,6 +109,15 @@ public class DelegationsIntegrationTests
         Assert.NotNull(list);
         Assert.Single(list);
         Assert.Equal(DelegationStatusCatalog.Executed, list![0].Status);
+
+        // عقد السلك: حقل «الإضافات المحلية» يُسلسَل دائمًا في عنصر القائمة (قيمته null قبل أي
+        // إضافة محلية). إعادة تسمية الخاصية أو إخفاؤها ([JsonIgnore]) تُفشل هذا السطر بدل أن
+        // تختفي البطاقة بصمت في الإنتاج — التفاصيل في DelegationsLocalAdditionWireContractTests.
+        using var rawList = JsonDocument.Parse(await (await lawyer1.GetAsync($"/api/documents/{docId}/delegations"))
+            .Content.ReadAsStringAsync());
+        var rawItem = rawList.RootElement[0];
+        Assert.True(rawItem.TryGetProperty("localAddition", out var localAddition));
+        Assert.Equal(JsonValueKind.Null, localAddition.ValueKind);
 
         // الملف المناب «منفذ إنابة» يُعامل منفذًا: يظهر في صفحة «الملفات المنفذة»
         // ويُخفى من القائمة العامة (لا يبقى متداولًا إلى الأبد).

@@ -286,10 +286,11 @@ public sealed class DocumentService : IDocumentService
                 $"عدّل المستند (رقم {doc.Id})", token);
             // التنبيهات تُسجَّل في Outbox داخل معاملة الحفظ نفسها:
             // (1) تنبيهات المرآة إلى المحامين المنابين بتحديث نسخة الملف،
-            // (2) تنبيه المنيب بالإضافات المحلية المضافة على الملف المناب (ورثة/ممثل شرعي).
+            // (2) تنبيه المنيب بالإضافات المحلية المضافة على الملف المناب (ورثة/ممثل شرعي) —
+            //     وتُثبَّت الإضافة في سجل الإنابة (عدّاد + ملخص) قبل الإطلاق.
             await _delegationService.FireMirrorNotificationsAsync(mirrorNotifications, token);
             if (targetEditReport.HasAdditions)
-                await _delegationService.FireTargetEditReportAsync(doc, targetEditReport, token);
+                await _delegationService.RecordLocalAdditionsAndFireReportAsync(doc, targetEditReport, token);
             await _actionService.SeedInitialActionsAsync(doc, request.InitialActions, userId, actorName, token);
             return DocumentResponse.FromEntity(doc, CurrentYear());
         }, ct), doc.FileNumber));

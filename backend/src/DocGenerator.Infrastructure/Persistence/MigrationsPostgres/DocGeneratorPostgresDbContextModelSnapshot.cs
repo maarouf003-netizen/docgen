@@ -1461,6 +1461,16 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Property<bool>("IsExternal")
                         .HasColumnType("boolean");
 
+                    b.Property<int>("LocalAdditionCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("LocalAdditionLastAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LocalAdditionLastMessage")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
                     b.Property<int?>("RedirectedToSectionId")
                         .HasColumnType("integer");
 

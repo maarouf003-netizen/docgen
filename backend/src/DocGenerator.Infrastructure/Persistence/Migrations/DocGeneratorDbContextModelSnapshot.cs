@@ -1420,6 +1420,16 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsExternal")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("LocalAdditionCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LocalAdditionLastAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("LocalAdditionLastMessage")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("RedirectedToSectionId")
                         .HasColumnType("INTEGER");
 

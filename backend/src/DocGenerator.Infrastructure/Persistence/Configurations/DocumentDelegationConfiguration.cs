@@ -45,6 +45,10 @@ public class DocumentDelegationConfiguration : IEntityTypeConfiguration<Document
         builder.Property(d => d.DepositBookDate).HasColumnType("datetime2");
         builder.Property(d => d.DelegationDate).HasColumnType("datetime2");
         builder.Property(d => d.ReturnDate).HasColumnType("datetime2");
+        // سجل الإضافات المحلية على الملف المناب: عدّاد تراكمي + ملخص آخر دفعة + وقتها (UTC).
+        // ملخص مستقل عن تنبيهات المرآة (قابلة للأرشفة) فلا تختفي الملاحظة من «تشعبات الملف».
+        builder.Property(d => d.LocalAdditionLastMessage).HasMaxLength(1000);
+        builder.Property(d => d.LocalAdditionLastAt).HasColumnType("datetime2");
         builder.Property(d => d.SaleCoversFullDebt);
         builder.Property(d => d.Status).HasMaxLength(50).IsRequired();
         builder.HasIndex(d => d.Status);

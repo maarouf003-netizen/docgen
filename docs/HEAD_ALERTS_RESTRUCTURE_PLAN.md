@@ -2506,7 +2506,7 @@ frontend/src/
     بعد النجاح.
   - **مصفوفة الأرشفة:** كل انتقال حالة/حذف/اعتماد/رفض يؤرشف ولا يحذف، ويُختبر الصف بعد العملية.
 - **اختبارات ذرّية مواقع ما بعد الالتزام (جديدة، إلزامية):**
-  - `DocumentService.UpdateAsync`: `FireMirrorNotificationsAsync`/`FireTargetEditReportAsync` تُسجّل
+  - `DocumentService.UpdateAsync`: `FireMirrorNotificationsAsync`/`RecordLocalAdditionsAndFireReportAsync` تُسجّل
     Outbox داخل معاملة العمل؛ فشل التسجيل يُرجع التحديث كاملًا، ولا `catch` يبتلع.
   - `DocumentStatusService`: `CleanupPendingCompletionAlertsAsync`/`FireStatusChangeAlertsAsync` داخل
     معاملة الحالة؛ لا استدعاء بعد `_tx`.

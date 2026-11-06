@@ -83,8 +83,24 @@ public class DocumentDelegation
     /// </summary>
     public bool? SaleCoversFullDebt { get; set; }
 
+    /// <summary>
+    /// عدّاد الإضافات المحلية التراكمي (وريث/ممثل شرعي) المسجَّلة على الملف المناب.
+    /// لا يُصفَّر بأرشفة التنبيهات ولا بحذفها — هو سجل الملف لا حالة الإشعار.
+    /// </summary>
+    public int LocalAdditionCount { get; set; }
+
+    /// <summary>ملخص آخر دفعة إضافات محلية (نصي، مقصوص عند حدود العمود) — يبقى بعد أرشفة التنبيه.</summary>
+    public string? LocalAdditionLastMessage { get; set; }
+
+    /// <summary>وقت آخر إضافة محلية (UTC حصرًا، كبقية أزمنة الكتابة).</summary>
+    public DateTime? LocalAdditionLastAt { get; set; }
+
     public int CreatedById { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    /// <summary>
+    /// آخر مساس بالصف (UTC) — تعديل الإنابة **أو** تسجيل إضافة محلية على الملف المناب
+    /// (`LocalAddition*`). ليس «آخر تعديل للإنابة» حصرًا؛ لا يُستخدم للعرض بوصفه كذلك.
+    /// </summary>
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     public Document SourceDocument { get; set; } = null!;

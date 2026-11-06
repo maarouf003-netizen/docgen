@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "delegation-contracts",
+  "description": "عقد السلك لحقل «الإضافات المحلية» في DelegationDto.LocalAddition (بطاقة «تشعبات الملف»). يستهلكه اختبار الخلفية DelegationsLocalAdditionWireContractTests: أسماء camelCase مطابقة لأنواع الواجهة المكتوبة يدويًا في src/types/delegation.ts، وصيغة lastAt زمنًا UTC صريحًا. أي إضافة/حذف/إعادة تسمية تُفشل الحارس عمدًا. لا تُعدَّد هنا بقية حقول DelegationDto (مسارها مُمارَس في DelegationsIntegrationTests) — القسم محصور فيما لا يغطيه اختبار آخر.",
+  "version": 1,
+  "source": "frontend/src/types/delegation.ts (localAddition)",
+  "localAddition": [
+    "count",
+    "lastMessage",
+    "lastAt"
+  ]
+}

@@ -9,7 +9,8 @@ namespace DocGenerator.Application.Services;
 /// <summary>
 /// «الملف المناب مرآةً للمنيب»: مزامنة نسخ من المنيب إلى المناب عند كل تعديل جوهري
 /// (ref: docs/delegation-mirror-plan.md §3)، مع حارس تعديل المناب في التعديل
-/// (§3-ج) وتنبيهين متعاكسين مدموجين (§3-ب). كل التغييرات قيمية بلا سكيما وبلا هجرات.
+/// (§3-ج) وتنبيهين متعاكسين مدموجين (§3-ب). نسخ الحقول قيمي بلا سكيما؛ الاستثناء الوحيد
+/// سجل الإضافات المحلية على صف الإنابة (`LocalAddition*` في `DocumentDelegation`).
 /// (مدموج من `DocumentService` — المرحلة 3، نقل ميكانيكي بلا سلوك.)
 /// ثابت ملكية المعاملة: المزامنة داخل معاملة المستدعي، وإطلاق التنبيهات بعد تثبيتها —
 /// تُحفَظ المواضع حرفيًا (أي تبديل تغيير سلوكي). بلا `_tx` إطلاقًا في هذا الملف.
@@ -1050,12 +1051,21 @@ public sealed partial class DocumentDelegationService
         };
     }
 
-    /// <summary>إطلاق تنبيه المنيب عند الإضافات المحلية (وريث/ممثل) على الملف المناب.</summary>
-    public async Task FireTargetEditReportAsync(Document target, TargetEditReport report, CancellationToken ct)
+    /// <summary>
+    /// يثبّت الإضافات المحلية (وريث/ممثل) على الملف المناب في سجل الإنابة نفسه (عدّاد +
+    /// ملخص آخر دفعة + وقت UTC) — كتابة دائمة داخل معاملة المستدعي — ثم يطلق تنبيه المنيب.
+    /// </summary>
+    public async Task RecordLocalAdditionsAndFireReportAsync(
+        Document target, TargetEditReport report, CancellationToken ct)
     {
         var delegation = await _delegations.FindByTargetAsync(target.Id, ct);
         if (delegation?.SourceDocument is null)
             return;
+
+        // السجل على صف الإنابة لا على التنبيه: التنبيه قابل للأرشفة والتنظيف، وبطاقة
+        // «تشعبات الملف» يجب أن تُبقي أثر الإضافة المحلية بعد اختفاء التنبيه.
+        RecordLocalAdditions(delegation, report);
+        await _uow.SaveChangesAsync(ct);
 
         var source = delegation.SourceDocument;
         var intent = new MirrorNotification(
@@ -1068,9 +1078,39 @@ public sealed partial class DocumentDelegationService
         await FireMirrorNotificationsAsync([intent], ct);
     }
 
-    private static string ReverseAdditionsMessage(TargetEditReport report)
+    /// <summary>
+    /// يثبّت دفعة الإضافات المحلية على صف الإنابة: العدّاد تراكمي (عدد العناصر لا عدد الحفظات)،
+    /// والملخص أحدث ما اتّسع له العمود (<see cref="LocalAdditionSummary"/>)، والوقت
+    /// <see cref="DateTime.UtcNow"/> حصرًا.
+    ///
+    /// **يحرّك <c>Version</c> عمدًا:** الكتابة هنا تعدّل صف الإنابة، وبلا تحريك توكن الصف
+    /// يبني EF شرط <c>WHERE Version = old</c> يوافق عند كاتبَين متزامنَين ⇒ ينجح الاثنان
+    /// ويسقط تحديث أحد العدّادين بصمت (آخر كاتب يفوز). كل مسارات الكتابة الأخرى على
+    /// الإنابة تحرّكه، وهذا ليس استثناءً. وسلامة العدّاد اليوم لا تعتمد على كتابة صف
+    /// الملف المناب (اقتران خفيّ) بل على توكن الصف نفسه.
+    /// </summary>
+    private static void RecordLocalAdditions(DocumentDelegation delegation, TargetEditReport report)
     {
-        var parts = new List<string>();
+        var parts = CollectAdditionParts(report);
+        if (parts.Count == 0)
+            return;
+
+        var now = DateTime.UtcNow;
+        delegation.LocalAdditionCount += parts.Count;
+        delegation.LocalAdditionLastMessage = LocalAdditionSummary.Build(parts);
+        delegation.LocalAdditionLastAt = now;
+        delegation.Version++;
+        delegation.UpdatedAt = now;
+    }
+
+    private static string ReverseAdditionsMessage(TargetEditReport report)
+        => HeadAlertMessages.DelegationMirrorLocalAddition(
+            new(string.Join(LocalAdditionSummary.Separator, CollectAdditionParts(report))));
+
+    /// <summary>أجزاء رسالة الإضافة المحلية بترتيب الإدخال: الورثة المضافون ثم الممثلون الشرعيون.</summary>
+    private static List<string> CollectAdditionParts(TargetEditReport report)
+    {
+        var parts = new List<string>(report.AddedHeirs.Count + report.NewRepresentativeLabels.Count);
         foreach (var h in report.AddedHeirs)
         {
             if (string.IsNullOrWhiteSpace(h.Name))
@@ -1079,7 +1119,7 @@ public sealed partial class DocumentDelegationService
             parts.Add($"أُضيف الوريث {h.Name}{suffix}");
         }
         parts.AddRange(report.NewRepresentativeLabels.Select(label => $"أُضيف {label}"));
-        return HeadAlertMessages.DelegationMirrorLocalAddition(new(string.Join("؛ ", parts)));
+        return parts;
     }
 
     /// <summary>

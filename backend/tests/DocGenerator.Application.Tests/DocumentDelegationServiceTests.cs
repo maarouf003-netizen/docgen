@@ -1,4 +1,4 @@
-﻿using DocGenerator.Application.Common;
+using DocGenerator.Application.Common;
 using DocGenerator.Application.Common.Interfaces;
 using DocGenerator.Application.DTOs;
 using DocGenerator.Application.Services;
@@ -9,6 +9,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 using DocGenerator.Application.Tests.TestHelpers;
+
+using static DocGenerator.Application.Tests.TestHelpers.MirrorRequests;
 
 namespace DocGenerator.Application.Tests;
 
@@ -155,128 +157,6 @@ public class DocumentDelegationServiceTests : IDisposable
         AssetIds: assetIds.ToList());
 
     /// <summary>طلب تعديل يعيد بناء جميع حقول المستند بدقة من الكيان — للمرآة/الحارس بلا تشويه.</summary>
-    private static DocumentUpsertRequest MirrorRequest(Document doc) => new()
-    {
-        GeneralEntitySide = doc.GeneralEntitySide,
-        DocumentType = doc.DocumentType,
-        BorrowerName = doc.BorrowerName,
-        BorrowerFather = doc.BorrowerFather,
-        BorrowerFamily = doc.BorrowerFamily,
-        BorrowerMother = doc.BorrowerMother,
-        BorrowerBirth = doc.BorrowerBirth,
-        BorrowerRegister = doc.BorrowerRegister,
-        BorrowerNationalId = doc.BorrowerNationalId,
-        BorrowerAddress = doc.BorrowerAddress,
-        BorrowerAddressType = doc.BorrowerAddressType,
-        BorrowerNature = doc.BorrowerNature,
-        BorrowerRegistrationNumber = doc.BorrowerRegistrationNumber,
-        BorrowerRepresentedBy = doc.BorrowerRepresentedBy,
-        BorrowerRepresentativeName = doc.BorrowerRepresentativeName,
-        BorrowerRepresentativeFather = doc.BorrowerRepresentativeFather,
-        BorrowerRepresentativeFamily = doc.BorrowerRepresentativeFamily,
-        BorrowerRepresentativeCapacity = doc.BorrowerRepresentativeCapacity,
-        BorrowerRepresentativeAddressType = doc.BorrowerRepresentativeAddressType,
-        BorrowerRepresentativeAddress = doc.BorrowerRepresentativeAddress,
-        ContractType = doc.ContractType,
-        ContractTypeSelector = doc.ContractTypeSelector,
-        ContractNumber = doc.ContractNumber,
-        ContractDate = doc.ContractDate,
-        AnnexType = doc.AnnexType,
-        AnnexNumber = doc.AnnexNumber,
-        AnnexDate = doc.AnnexDate,
-        InclusionText = doc.InclusionText,
-        InclusionNotes = doc.InclusionNotes,
-        AmountNumeric = doc.AmountNumeric,
-        // لا حقول «كتابة»: التفقيط مشتقّ خادميًا وغير موجود في عقد الطلب — وهذا هو
-        // شكل الحمولة الحقيقي من الواجهة الذي يجب أن يقبله الحارس على المناب.
-        Currency = doc.Currency,
-        Amount2Numeric = doc.Amount2Numeric,
-        Currency2 = doc.Currency2,
-        Amount3Numeric = doc.Amount3Numeric,
-        Currency3 = doc.Currency3,
-        InclusionAmountNumeric = doc.InclusionAmountNumeric,
-        InclusionCurrency = doc.InclusionCurrency,
-        InclusionAmount2Numeric = doc.InclusionAmount2Numeric,
-        InclusionCurrency2 = doc.InclusionCurrency2,
-        InclusionAmount3Numeric = doc.InclusionAmount3Numeric,
-        InclusionCurrency3 = doc.InclusionCurrency3,
-        Court = doc.Court,
-        Applicant = doc.Applicant,
-        FileNumber = doc.FileNumber,
-        FileType = doc.FileType,
-        FileYear = doc.FileYear,
-        FileRegistrationDate = doc.RegistrationDate?.Date ?? "1/1/2024",
-        FileIncoming = doc.FileIncoming,
-        FileIncomingDate = doc.FileIncomingDate,
-        UnderFilingNumber = doc.UnderFilingNumber,
-        BranchName = doc.BranchName,
-        SeizureDate = doc.SeizureDate,
-        ImmediateActions = doc.ImmediateActions,
-        Notes = doc.Notes,
-        FileArrivalNumber = doc.FileArrivalNumber,
-        FileArrivalDate = doc.FileArrivalDate,
-        FileReceiptNumber = doc.FileReceiptNumber,
-        FileReceiptDate = doc.FileReceiptDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
-        ApplicantPublicEntities = new List<ApplicantPublicEntityDto>(),
-        ExecutionApplicants = new List<ExecutionApplicantDto>(),
-        ExecutedPublicEntities = new List<ExecutedPublicEntityDto>(),
-        ExecutedNaturalPersons = new List<ExecutedNaturalPersonDto>(),
-        Guarantors = new List<GuarantorDto>(),
-        BorrowerHeirs = new List<HeirDto>(),
-        Assets = new List<AssetDto>(),
-    };
-
-    /// <summary>صفّ كفلاء المستند كامِلًا (مع ورثتهم) كـ DTO — للطلبات التي تلامس الكفلاء.</summary>
-    private static List<GuarantorDto> MirrorGuarantors(Document doc) =>
-        doc.Guarantors.OrderBy(g => g.GuarantorNumber)
-            .Select(g => new GuarantorDto(
-                g.Id, g.GuarantorNumber, g.GuarantorName, g.GuarantorFather, g.GuarantorFamily,
-                g.GuarantorMother, g.GuarantorBirth, g.GuarantorRegister, g.GuarantorNationalId,
-                g.GuarantorAddress, g.AddressType,
-                g.RepresentativeName, g.RepresentativeFather, g.RepresentativeFamily,
-                g.RepresentativeCapacity, g.RepresentativeAddressType, g.RepresentativeAddress,
-                doc.Heirs.Where(h => h.GuarantorNumber == g.GuarantorNumber)
-                    .Select(h => new HeirDto(h.Id, h.HeirName, h.HeirFather, h.HeirFamily,
-                        h.HeirCapacity, h.AddressType, h.HeirAddress,
-                        h.RepresentativeName, h.RepresentativeFather, h.RepresentativeFamily,
-                        h.RepresentativeCapacity, h.RepresentativeAddressType, h.RepresentativeAddress)).ToList(),
-                g.GuarantorNature, g.GuarantorRegistrationNumber, g.GuarantorRepresentedBy))
-            .ToList();
-
-    /// <summary>ورثة المقترض (بلا رقم كفيل) كـ DTO.</summary>
-    private static List<HeirDto> MirrorBorrowerHeirs(Document doc) =>
-        doc.Heirs.Where(h => h.GuarantorNumber is null)
-            .Select(h => new HeirDto(h.Id, h.HeirName, h.HeirFather, h.HeirFamily,
-                h.HeirCapacity, h.AddressType, h.HeirAddress,
-                h.RepresentativeName, h.RepresentativeFather, h.RepresentativeFamily,
-                h.RepresentativeCapacity, h.RepresentativeAddressType, h.RepresentativeAddress)).ToList();
-
-    /// <summary>صفّ أصول المستند كـ DTO بهوياتها وتواريخها — لطلبات تعديل المنيب ذات
-    /// الإنابات (قفل «الحجز بعد التسطير» يمنع إسقاط صف مرجعي أو تفريغ حجزه).</summary>
-    private static List<AssetDto> MirrorAssets(Document doc) =>
-        doc.Assets
-            .Select(a => new AssetDto(
-                a.Id, a.AssetKind,
-                a.Owners.OrderBy(o => o.Order).Select(o => o.Name).ToList(),
-                a.ShareType,
-                a.Property, a.PropertyNumber, a.PropertyDistrict, a.LandRegistry,
-                a.VehicleType, a.VehicleClass, a.PlateNumber, a.VehicleGovernorate,
-                a.RegisterNumber, a.RegistrationDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), a.ShopGovernorate, a.ShopDescription, a.ShopLocation,
-                a.PublicEntity,
-                a.LicenseNumber, a.LicenseDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), a.LicenseIssuer,
-                a.Notes,
-                a.SeizureDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)))
-            .ToList();
-
-    /// <summary>طلب تعديل يعيد بناء كل حقول المستند بما فيها الأطراف (الكفلاء وورثتهم وورثة المقترض).</summary>
-    private static DocumentUpsertRequest MirrorRequestWithParties(Document doc)
-    {
-        var request = MirrorRequest(doc);
-        request.Guarantors = MirrorGuarantors(doc);
-        request.BorrowerHeirs = MirrorBorrowerHeirs(doc);
-        return request;
-    }
-
     [Fact]
     public async Task Create_SourceFile_ReturnsPendingDelegationWithAssetSnapshot()
     {
@@ -2968,6 +2848,186 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.NotNull(dto.LocalAddition);
         Assert.Equal(1, dto.LocalAddition!.Count);
         Assert.Contains("الممثل الشرعي للوريث", dto.LocalAddition.LastMessage);
+        Assert.NotNull(dto.LocalAddition.LastAt);
+    }
+
+    [Fact]
+    public async Task Update_TargetMirror_LocalAdditionSurvivesAlertArchiving()
+    {
+        // سجل الإضافة المحلية محفوظ على صف الإنابة لا على التنبيه: أرشفة تنبيه المرآة
+        // (أو تنظيفه لاحقًا) لا تمحو الملاحظة من بطاقة «تشعبات الملف».
+        var source = await CreateSourceAsync();
+        _db.Heirs.Add(new Heir
+        {
+            DocumentId = source.Id,
+            GuarantorNumber = null,
+            HeirName = "محمود",
+            HeirFather = "سامي",
+            HeirFamily = "الحلبي",
+            AddressType = "عنوان",
+            HeirAddress = "المزة",
+        });
+        await _db.SaveChangesAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        var target = await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .Include(d => d.Heirs)
+            .SingleAsync(d => d.Id == targetId);
+        var request = MirrorRequestWithParties(target);
+        request.BorrowerHeirs = new List<HeirDto>
+        {
+            request.BorrowerHeirs.Single() with
+            {
+                AddressType = "",
+                Address = "",
+                RepresentativeName = "سمير",
+                RepresentativeFather = "حسن",
+                RepresentativeFamily = "علي",
+                RepresentativeCapacity = "ولي",
+                RepresentativeAddressType = "موطن مختار",
+                RepresentativeAddress = "المزة",
+            },
+        };
+
+        await _documentService.UpdateAsync(targetId, request, _lawyer2.FullName, _lawyer2.Id);
+        await FlushAlertsAsync();
+
+        var archived = await _headAlerts.ArchiveByDelegationAsync(
+            created.Id,
+            new HashSet<string> { HeadAlertKindCatalog.DelegationMirrorLocalAddition },
+            "أرشفة تنبيه الإضافة المحلية في الاختبار");
+        await _db.SaveChangesAsync();
+        await FlushAlertsAsync();
+        Assert.Equal(1, archived);
+
+        var activeAlerts = await _db.HeadAlerts.CountAsync(a =>
+            a.DelegationId == created.Id
+            && a.Kind == HeadAlertKindCatalog.DelegationMirrorLocalAddition
+            && !a.IsArchived);
+        Assert.Equal(0, activeAlerts);
+
+        var dto = Assert.Single(await _service.ListForDocumentAsync(source.Id));
+        Assert.NotNull(dto.LocalAddition);
+        Assert.Equal(1, dto.LocalAddition!.Count);
+        Assert.Contains("الممثل الشرعي للوريث", dto.LocalAddition.LastMessage);
+        Assert.NotNull(dto.LocalAddition.LastAt);
+    }
+
+    [Fact]
+    public async Task Update_TargetMirror_LocalAdditionCountAccumulatesAcrossSaves()
+    {
+        // العدّاد تراكمي بعدد العناصر المضافة (وريث/ممثل) لا بعدد عمليات الحفظ.
+        var source = await CreateSourceAsync();
+        _db.Heirs.Add(new Heir
+        {
+            DocumentId = source.Id,
+            GuarantorNumber = null,
+            HeirName = "محمود",
+            HeirFather = "سامي",
+            HeirFamily = "الحلبي",
+            AddressType = "عنوان",
+            HeirAddress = "المزة",
+        });
+        await _db.SaveChangesAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        // (1) ممثل شرعي للوريث القائم ⇒ إضافة واحدة.
+        var target = await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .Include(d => d.Heirs)
+            .SingleAsync(d => d.Id == targetId);
+        var first = MirrorRequestWithParties(target);
+        first.BorrowerHeirs = new List<HeirDto>
+        {
+            first.BorrowerHeirs.Single() with
+            {
+                AddressType = "",
+                Address = "",
+                RepresentativeName = "سمير",
+                RepresentativeFather = "حسن",
+                RepresentativeFamily = "علي",
+                RepresentativeCapacity = "ولي",
+                RepresentativeAddressType = "موطن مختار",
+                RepresentativeAddress = "المزة",
+            },
+        };
+        await _documentService.UpdateAsync(targetId, first, _lawyer2.FullName, _lawyer2.Id);
+        await FlushAlertsAsync();
+
+        // (2) وريث جديد ⇒ إضافة ثانية (الحفظ نفسه لا يحتسب مرة أخرى).
+        var refreshed = await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .Include(d => d.Heirs)
+            .SingleAsync(d => d.Id == targetId);
+        var second = MirrorRequestWithParties(refreshed);
+        second.BorrowerHeirs = second.BorrowerHeirs
+            .Append(new HeirDto(null, "سامر", "حسن", "العلي", "أصالة", "عنوان", "الحريقة"))
+            .ToList();
+        await _documentService.UpdateAsync(targetId, second, _lawyer2.FullName, _lawyer2.Id);
+        await FlushAlertsAsync();
+
+        var dto = Assert.Single(await _service.ListForDocumentAsync(source.Id));
+        Assert.NotNull(dto.LocalAddition);
+        Assert.Equal(2, dto.LocalAddition!.Count);
+        Assert.Contains("أُضيف الوريث سامر حسن العلي", dto.LocalAddition.LastMessage);
+        Assert.DoesNotContain("محمود", dto.LocalAddition.LastMessage);
+    }
+
+    [Fact]
+    public async Task Update_TargetMirror_LocalAdditionSummaryKeepsNewestWithinColumnLimit()
+    {
+        // الدفعة الكبيرة تُلخَّص بأحدث الإضافات داخل سقف العمود (1000) بعلامة قص في البداية،
+        // والعدّاد يبقى صحيحًا بعدد العناصر كلها.
+        var source = await CreateSourceAsync();
+        var assetId = await _db.Assets.Where(a => a.DocumentId == source.Id).Select(a => a.Id).SingleAsync();
+        var created = await _service.CreateAsync(source.Id, SampleRequest(assetId), _lawyer1.Id, "lawyer1");
+        var assigned = await _service.AssignAsync(created.Id, new AssignDelegationRequest(_lawyer2.Id),
+            _head1.Id, _branch.Id, "head1");
+        var targetId = assigned!.TargetDocumentId!.Value;
+        await _service.RegisterAsync(created.Id, new RegisterDelegationRequest("890", "2026", "5/8/2026"),
+            _lawyer2.Id, "lawyer2");
+
+        var target = await _db.Documents
+            .Include(d => d.RegistrationDate)
+            .Include(d => d.Heirs)
+            .SingleAsync(d => d.Id == targetId);
+        var request = MirrorRequestWithParties(target);
+        var longName = new string('م', 80);
+        request.BorrowerHeirs = Enumerable.Range(1, 12)
+            .Select(i => new HeirDto(
+                null, $"{longName}{i:00}", "والد", "عائلة", "أصالة", "عنوان", "دمشق"))
+            .ToList();
+
+        await _documentService.UpdateAsync(targetId, request, _lawyer2.FullName, _lawyer2.Id);
+        await FlushAlertsAsync();
+
+        var dto = Assert.Single(await _service.ListForDocumentAsync(source.Id));
+        Assert.NotNull(dto.LocalAddition);
+        Assert.Equal(12, dto.LocalAddition!.Count);
+        Assert.True(dto.LocalAddition.LastMessage.Length <= 1000);
+        Assert.StartsWith("… ", dto.LocalAddition.LastMessage);
+        // أحدث وريث يبقى ظاهرًا في الملخص، وأقدمهم يُقصّ.
+        Assert.Contains($"{longName}12", dto.LocalAddition.LastMessage);
+        Assert.DoesNotContain($"{longName}01", dto.LocalAddition.LastMessage);
+        // العلاقة الملزمة بين العدّاد والملخص: الملخص يعرض أحدث ما اتّسع له العمود فقط،
+        // بينما العدّاد يحصي **كل** الإضافات. الواجهة تفصل الدلالتين بتسمية «آخر إضافة»،
+        // فهذا الفرق مقصود ولا يعني نقصًا في العدّاد (أي «إصلاح» يجعله يعدّ الظاهر يخالف العقد).
+        var visible = dto.LocalAddition.LastMessage.Split("أُضيف الوريث").Length - 1;
+        Assert.InRange(visible, 1, 11);
+        Assert.True(visible < dto.LocalAddition.Count);
     }
 
     [Fact]

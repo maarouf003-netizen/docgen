@@ -36,7 +36,7 @@ public sealed class DelegationPendingCountBranchGuardTests
         public Task SyncSnapshotsAsync(Document doc, CancellationToken ct) => throw new NotImplementedException();
         public Task<List<MirrorNotification>> MirrorSourceEditsAsync(Document doc, CancellationToken ct) => throw new NotImplementedException();
         public Task FireMirrorNotificationsAsync(IReadOnlyList<MirrorNotification> notifications, CancellationToken ct) => throw new NotImplementedException();
-        public Task FireTargetEditReportAsync(Document target, TargetEditReport report, CancellationToken ct) => throw new NotImplementedException();
+        public Task RecordLocalAdditionsAndFireReportAsync(Document target, TargetEditReport report, CancellationToken ct) => throw new NotImplementedException();
         public Task FireStatusChangeAlertsAsync(Document doc, DelegationStatusAlertKind kind, CancellationToken ct) => throw new NotImplementedException();
     }
 
