@@ -3,6 +3,12 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ExecutionCircuitsPage from './ExecutionCircuitsPage';
 
+const useAuthMock = vi.hoisted(() => vi.fn());
+
+vi.mock('../auth/useAuth', () => ({
+  useAuth: () => useAuthMock(),
+}));
+
 vi.mock('../api/client', () => ({
   api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() },
   getApiErrorMessage: (e: unknown) => {
@@ -20,6 +26,7 @@ function circuit(id: number, name: string, fileCount = 0, deletedFileCount = 0) 
 describe('ExecutionCircuitsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useAuthMock.mockReturnValue({ isHead: true });
     (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
       if (url === '/execution-circuits/mine') {
         return Promise.resolve({ data: [circuit(1, 'دائرة أ', 2, 41), circuit(2, 'دائرة ب', 0, 7)] });
@@ -76,5 +83,30 @@ describe('ExecutionCircuitsPage', () => {
     );
     expect(api.delete).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
+  });
+
+  it('يعرض لرئيس القسم توضيح أن الإدخال لدوائر القسم فقط', async () => {
+    const user = userEvent.setup();
+    render(<ExecutionCircuitsPage />);
+    await screen.findByText('دائرة أ');
+    await user.click(screen.getByRole('button', { name: '➕ إدخال دائرة' }));
+    expect(screen.getByText(/أدخل دوائر القسم فقط/)).toBeInTheDocument();
+  });
+
+  it('يعرض لرئيس الشعبة توضيح أن الإدخال لدوائر شعبتك فقط', async () => {
+    useAuthMock.mockReturnValue({ isHead: false });
+    const user = userEvent.setup();
+    render(<ExecutionCircuitsPage />);
+    await screen.findByText('دائرة أ');
+    await user.click(screen.getByRole('button', { name: '➕ إدخال دائرة' }));
+    expect(screen.getByText(/أدخل دوائر شعبتك فقط/)).toBeInTheDocument();
+  });
+
+  it('يعرض تنبيه فرادة الاسم داخل الفرع في نافذة إعادة التسمية', async () => {
+    const user = userEvent.setup();
+    render(<ExecutionCircuitsPage />);
+    await screen.findByText('دائرة أ');
+    await user.click(screen.getByRole('button', { name: 'تعديل دائرة أ' }));
+    expect(screen.getByText(/الاسم فريد داخل الفرع/)).toBeInTheDocument();
   });
 });

@@ -1066,6 +1066,47 @@ public class ExecutionCircuitServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Create_DuplicateDepartmentCircuit_SubHead_MessageNamesDepartmentOwner()
+    {
+        await CreateCircuitAsync("دائرة القسم المشتركة");
+        var sectionId = await AddSectionAsync("شعبة مصياف");
+        var subId = await AddSubHeadAsync("sub_masyaf", sectionId);
+
+        var ex = await Assert.ThrowsAsync<DocumentConflictException>(() =>
+            _circuits.CreateAsync(_branchId, subId, "sub_masyaf", "دائرة  القسم المشتركة"));
+
+        Assert.Contains("ضمن دوائر القسم", ex.Message);
+        Assert.Contains("دائرة القسم المشتركة", ex.Message);
+    }
+
+    [Fact]
+    public async Task Create_DuplicateSectionCircuit_Head_MessageNamesSectionOwner()
+    {
+        var sectionId = await AddSectionAsync("شعبة مصياف");
+        var subId = await AddSubHeadAsync("sub_masyaf", sectionId);
+        await _circuits.CreateAsync(_branchId, subId, "sub_masyaf", "دائرة الشعبة");
+
+        var ex = await Assert.ThrowsAsync<DocumentConflictException>(() =>
+            _circuits.CreateAsync(_branchId, _headId, "head1", "دائرة الشعبة"));
+
+        Assert.Contains("شعبة «شعبة مصياف»", ex.Message);
+    }
+
+    [Fact]
+    public async Task Rename_ToDepartmentCircuitName_MessageNamesDepartmentOwner()
+    {
+        await CreateCircuitAsync("دائرة القسم");
+        var sectionId = await AddSectionAsync("شعبة مصياف");
+        var subId = await AddSubHeadAsync("sub_masyaf", sectionId);
+        var own = await _circuits.CreateAsync(_branchId, subId, "sub_masyaf", "دائرة الشعبة");
+
+        var ex = await Assert.ThrowsAsync<DocumentConflictException>(() =>
+            _circuits.RenameAsync(own.Id, _branchId, sectionId, "sub_masyaf", "دائرة القسم", null, actorUserId: subId));
+
+        Assert.Contains("ضمن دوائر القسم", ex.Message);
+    }
+
+    [Fact]
     public async Task Create_HeadCreator_OwnedByDivision()
     {
         var circuit = await _circuits.CreateAsync(_branchId, _headId, "head1", "دائرة القسم");
