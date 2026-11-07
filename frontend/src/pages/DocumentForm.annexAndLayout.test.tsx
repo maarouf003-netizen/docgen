@@ -2,7 +2,7 @@
 // vi.hoisted/vi.mock تُكرَّر عمدًا في كل ملف موزَّع — vitest يعزل الملفات وكذا تقلبات المحاكاة.
 // كتلة الاستيراد كاملة إلزامية (لا تختصرها — أي نقص يكسر tsc/oxlint):
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import DocumentForm from './DocumentForm';
@@ -142,9 +142,39 @@ render(<DocumentForm />);
 
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
     const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
-    expect(payload.annexType).toBe('تعديل');
-    expect(payload.annexNumber).toBe('A-42');
-    expect(payload.annexDate).toBe('15/3/2026');
+    expect(payload.annexes).toEqual([
+      { annexType: 'تعديل', annexNumber: 'A-42', annexDate: '15/3/2026' },
+    ]);
+    // الحقول المفردة القديمة تُرسل فارغة (قراءة فقط خادميًا).
+    expect(payload.annexType).toBe('');
+    expect(payload.annexNumber).toBe('');
+    expect(payload.annexDate).toBe('');
+  });
+
+
+  it('يضيف ملحقين للمصرفي ويرسلهما بالترتيب في نفس الملف', async () => {
+    const user = userEvent.setup();
+    render(<DocumentForm />);
+
+    await user.click(screen.getByRole('button', { name: 'إضافة ملحق' }));
+    await user.type(screen.getByLabelText('نوع الملحق'), 'تعديل');
+    await user.type(screen.getByLabelText('رقم الملحق'), 'A-1');
+    await user.type(screen.getByLabelText('تاريخ الملحق'), '1/1/2026');
+
+    await user.click(screen.getByRole('button', { name: 'إضافة ملحق' }));
+    expect(screen.getByLabelText('نوع الملحق 2')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('نوع الملحق 2'), 'تمديد');
+    await user.type(screen.getByLabelText('رقم الملحق 2'), 'A-2');
+    await user.type(screen.getByLabelText('تاريخ الملحق 2'), '2/2/2026');
+
+    await user.click(screen.getByRole('button', { name: /حفظ/ }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    const [, payload] = vi.mocked(api.post).mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.annexes).toEqual([
+      { annexType: 'تعديل', annexNumber: 'A-1', annexDate: '1/1/2026' },
+      { annexType: 'تمديد', annexNumber: 'A-2', annexDate: '2/2/2026' },
+    ]);
   });
 
 
@@ -170,11 +200,12 @@ render(<DocumentForm />);
     expect(screen.getByLabelText('نوع الملحق')).toHaveValue('تعديل');
     expect(screen.getByLabelText('رقم الملحق')).toHaveValue('A-42');
     expect(screen.getByLabelText('تاريخ الملحق')).toHaveValue('15/3/2026');
-    expect(screen.getByRole('button', { name: 'إزالة الملحق' })).toBeInTheDocument();
+    const annexCard = screen.getByText('الملحق 1').closest('.rounded-lg') as HTMLElement;
+    expect(within(annexCard).getByRole('button', { name: '✖ حذف' })).toBeInTheDocument();
   });
 
 
-  it('يزيل الملحق المحفوظ عند الضغط على «إزالة الملحق» ويُرسل قيمه فارغة عند الحفظ', async () => {
+  it('يزيل الملحق المحفوظ عند الضغط على «حذف» في صفه ويُرسل قائمة فارغة عند الحفظ', async () => {
     const user = userEvent.setup();
     await renderEdit({
       ...mockDoc,
@@ -184,7 +215,8 @@ render(<DocumentForm />);
       annexDate: '15/3/2026',
     });
 
-    await user.click(screen.getByRole('button', { name: 'إزالة الملحق' }));
+    const annexCard = screen.getByText('الملحق 1').closest('.rounded-lg') as HTMLElement;
+    await user.click(within(annexCard).getByRole('button', { name: '✖ حذف' }));
     expect(screen.queryByLabelText('نوع الملحق')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('رقم الملحق')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('تاريخ الملحق')).not.toBeInTheDocument();
@@ -194,6 +226,7 @@ render(<DocumentForm />);
 
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
     const [, payload] = vi.mocked(api.put).mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.annexes).toEqual([]);
     expect(payload.annexType).toBe('');
     expect(payload.annexNumber).toBe('');
     expect(payload.annexDate).toBe('');

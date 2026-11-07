@@ -92,9 +92,12 @@ public sealed partial class DocumentDelegationService
         RequireSame(errors, "نوع العقد (المفصل)", r.ContractTypeSelector, doc.ContractTypeSelector);
         RequireSame(errors, "رقم العقد", r.ContractNumber, doc.ContractNumber);
         RequireSame(errors, "تاريخ العقد", r.ContractDate, doc.ContractDate);
-        RequireSame(errors, "نوع الإلحاق", r.AnnexType, doc.AnnexType);
-        RequireSame(errors, "رقم الإلحاق", r.AnnexNumber, doc.AnnexNumber);
-        RequireSame(errors, "تاريخ الإلحاق", r.AnnexDate, doc.AnnexDate);
+        if (!DocumentAnnexText.ListsEqual(
+                DocumentAnnexText.Build(r),
+                doc.Annexes.OrderBy(a => a.Sequence).ToList()))
+        {
+            errors.Add("ملاحق السند التنفيذي مقفلة على الملف المناب");
+        }
         RequireSame(errors, "نص الإدراج", r.InclusionText, doc.InclusionText);
         RequireSame(errors, "ملاحظات السند (القرارات الأخرى)", r.InclusionNotes, doc.InclusionNotes);
         RequireSameNumeric(errors, "المبلغ (الأول)", r.AmountNumeric, doc.AmountNumeric);
@@ -677,9 +680,22 @@ public sealed partial class DocumentDelegationService
         changed |= CopyField(source.ContractTypeSelector, target.ContractTypeSelector, v => target.ContractTypeSelector = v);
         changed |= CopyField(source.ContractNumber, target.ContractNumber, v => target.ContractNumber = v);
         changed |= CopyField(source.ContractDate, target.ContractDate, v => target.ContractDate = v);
-        changed |= CopyField(source.AnnexType, target.AnnexType, v => target.AnnexType = v);
-        changed |= CopyField(source.AnnexNumber, target.AnnexNumber, v => target.AnnexNumber = v);
-        changed |= CopyField(source.AnnexDate, target.AnnexDate, v => target.AnnexDate = v);
+        var sourceAnnexes = source.Annexes.OrderBy(a => a.Sequence).ToList();
+        if (!DocumentAnnexText.ListsEqual(sourceAnnexes, target.Annexes.OrderBy(a => a.Sequence).ToList()))
+        {
+            target.Annexes.Clear();
+            foreach (var annex in sourceAnnexes)
+            {
+                target.Annexes.Add(new DocumentAnnex
+                {
+                    Sequence = annex.Sequence,
+                    AnnexType = annex.AnnexType,
+                    AnnexNumber = annex.AnnexNumber,
+                    AnnexDate = annex.AnnexDate,
+                });
+            }
+            changed = true;
+        }
         changed |= CopyField(source.InclusionText, target.InclusionText, v => target.InclusionText = v);
         changed |= CopyField(source.InclusionNotes, target.InclusionNotes, v => target.InclusionNotes = v);
         changed |= CopyNumeric(source.AmountNumeric, target.AmountNumeric, v => target.AmountNumeric = v);

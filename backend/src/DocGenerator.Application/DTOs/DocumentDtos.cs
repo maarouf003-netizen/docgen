@@ -5,6 +5,9 @@ using DocGenerator.Domain.Enums;
 
 namespace DocGenerator.Application.DTOs;
 
+/// <summary>ملحق السند التنفيذي — صف واحد بترتيبه (Sequence يبدأ من 1).</summary>
+public record DocumentAnnexDto(int? Id, string? AnnexType, string? AnnexNumber, string? AnnexDate, int Sequence = 0);
+
 public class DocumentResponse : IDocumentSheetFields
 {
     // تحقيق صريح لحقول القوائم في `IDocumentSheetFields`: `List<T>` لا يطابق
@@ -14,6 +17,7 @@ public class DocumentResponse : IDocumentSheetFields
     IReadOnlyList<IExportPublicEntity> IDocumentSheetFields.ExecutedPublicEntities => ExecutedPublicEntities;
     IReadOnlyList<IExportNaturalPerson> IDocumentSheetFields.ExecutedNaturalPersons => ExecutedNaturalPersons;
     IReadOnlyList<IExportAction> IDocumentSheetFields.ExecutionActions => ExecutionActions;
+    IReadOnlyList<DocumentAnnexDto> IDocumentSheetFields.Annexes => Annexes;
 
     public int Id { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -50,9 +54,12 @@ public class DocumentResponse : IDocumentSheetFields
     public string? ContractTypeSelector { get; set; }
     public string? ContractNumber { get; set; }
     public string? ContractDate { get; set; }
+    /// <summary>أول ملحق (توافق خلفي للعرض) — المصدر الحقيقي هو <see cref="Annexes"/>.</summary>
     public string? AnnexType { get; set; }
     public string? AnnexNumber { get; set; }
     public string? AnnexDate { get; set; }
+    /// <summary>ملاحق السند التنفيذي (المصدر الحقيقي — حتى 5).</summary>
+    public List<DocumentAnnexDto> Annexes { get; set; } = new();
     public string? InclusionText { get; set; }
     /// <summary>ملاحظات السند التنفيذي (القرارات الأخرى) تحت «المتضمن» — نص حر اختياري.</summary>
     public string? InclusionNotes { get; set; }
@@ -231,8 +238,14 @@ public class DocumentResponse : IDocumentSheetFields
     /// </summary>
     public List<DocumentOccurrenceDto> Occurrences { get; set; } = new();
 
-    public static DocumentResponse FromEntity(Document d, int currentYear) => new()
+    public static DocumentResponse FromEntity(Document d, int currentYear)
     {
+        // الملاحق: الجدول الفرعي هو المصدر؛ الحقول المفردة القديمة تُعرض كأول ملحق
+        // للتوافق الخلفي (قراءة فقط) — ولا تُكتب بعد الآن.
+        var orderedAnnexes = d.Annexes.OrderBy(a => a.Sequence).ToList();
+        var firstAnnex = orderedAnnexes.FirstOrDefault();
+        return new()
+        {
 
             DisplayStatus = DocumentStatusResolver.Resolve(d),
         Id = d.Id,
@@ -265,9 +278,12 @@ public class DocumentResponse : IDocumentSheetFields
         ContractTypeSelector = d.ContractTypeSelector,
         ContractNumber = d.ContractNumber,
         ContractDate = d.ContractDate,
-        AnnexType = d.AnnexType,
-        AnnexNumber = d.AnnexNumber,
-        AnnexDate = d.AnnexDate,
+        AnnexType = firstAnnex?.AnnexType ?? d.AnnexType,
+        AnnexNumber = firstAnnex?.AnnexNumber ?? d.AnnexNumber,
+        AnnexDate = firstAnnex?.AnnexDate ?? d.AnnexDate,
+        Annexes = orderedAnnexes
+            .Select(a => new DocumentAnnexDto(a.Id, a.AnnexType, a.AnnexNumber, a.AnnexDate, a.Sequence))
+            .ToList(),
         InclusionText = d.InclusionText,
         InclusionNotes = d.InclusionNotes,
         AmountNumeric = d.AmountNumeric,
@@ -437,7 +453,8 @@ public class DocumentResponse : IDocumentSheetFields
             .ThenBy(o => o.Id)
             .Select(ToOccurrenceDto)
             .ToList(),
-    };
+        };
+    }
 
     private static DocumentOccurrenceDto ToOccurrenceDto(DocGenerator.Domain.Entities.DocumentOccurrence o)
     {

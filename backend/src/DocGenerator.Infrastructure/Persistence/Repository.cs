@@ -54,6 +54,7 @@ public class Repository<T> : IRepository<T> where T : class
             .Include(d => ((Document)(object)d).ExecutionCircuit)
                 .ThenInclude(c => c!.Section)
             .Include(d => ((Document)(object)d).BaseNumbers)
+                .Include(d => ((Document)(object)d).Annexes)
                 .Include(d => ((Document)(object)d).ExecutionApplicants)
                 .ThenInclude(a => a.Heirs)
                 .Include(d => ((Document)(object)d).ExecutedPublicEntities)

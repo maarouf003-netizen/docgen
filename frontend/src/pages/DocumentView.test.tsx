@@ -300,6 +300,27 @@ describe('DocumentView', () => {
     expect(within(card).getByText('تعديل — A-42 — 2026-03-01')).toBeInTheDocument();
   });
 
+  it('يعرض ملاحق متعددة كل صف في بيانات السند التنفيذي', async () => {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        ...mockDoc,
+        contractTypeSelector: 'مصرفي',
+        annexes: [
+          { annexType: 'تعديل', annexNumber: 'A-1', annexDate: '2026-01-01' },
+          { annexType: 'تمديد', annexNumber: 'A-2', annexDate: '2026-02-02' },
+        ],
+      },
+    });
+    renderView();
+
+    const heading = await screen.findByText('بيانات السند التنفيذي');
+    const card = heading.closest('div') as HTMLElement;
+    expect(within(card).getByText('ملحق 1')).toBeInTheDocument();
+    expect(within(card).getByText('ملحق 2')).toBeInTheDocument();
+    expect(within(card).getByText('تعديل — A-1 — 2026-01-01')).toBeInTheDocument();
+    expect(within(card).getByText('تمديد — A-2 — 2026-02-02')).toBeInTheDocument();
+  });
+
   it('يخفي صف «ملحق العقد» عندما لا يوجد ملحق محفوظ', async () => {
     renderView();
     await screen.findByText('بيانات السند التنفيذي');

@@ -23,7 +23,13 @@ public static class DocumentSearchTextBuilder
             .ThenByDescending(b => b.CreatedAt)
             .Select(b => b.BaseNumber!.Trim())
             .Where(v => !string.IsNullOrWhiteSpace(v));
-        var parts = baseNumberParts.Concat(new[] { doc.BorrowerName, doc.BorrowerFamily, doc.Applicant, doc.Lawyer,
+        // أرقام الملاحق (الجدول الفرعي) تُقدَّم بعد أرقام الأساس لتنجو من القصّ،
+        // ويبقى الحقل المفرد القديم للتوافق مع الملفات غير المرحّلة.
+        var annexNumbers = doc.Annexes
+            .OrderBy(a => a.Sequence)
+            .Select(a => a.AnnexNumber)
+            .Where(v => !string.IsNullOrWhiteSpace(v));
+        var parts = baseNumberParts.Concat(annexNumbers).Concat(new[] { doc.BorrowerName, doc.BorrowerFamily, doc.Applicant, doc.Lawyer,
             doc.Court, doc.FileNumber, doc.ContractNumber, doc.AnnexNumber, doc.BorrowerNationalId,
             doc.BorrowerRegistrationNumber, doc.BorrowerRepresentedBy,
             doc.FileArrivalNumber, doc.FileArrivalDate }

@@ -413,6 +413,14 @@ npm test
 > `PostgreSQL` (65) و`SQLite` (6 مع الخمس المعلّقة). الترتيب: بعد هجرة `ConflictRetries`
 > في كل سياق، ولا تُطبَّق `SQLite` وحدها قبل استكمال سلسلة `G2` (نفس منطق السطر أدناه).
 
+- [ ] **2026-11-07 — `AddDocumentAnnexes` / `AddDocumentAnnexes_Pg`** (تعدد ملاحق السند التنفيذي — جدول `DocumentAnnexes`):
+  - **الحالة:** `PostgreSQL` ⏳ **معلّقة** (68 هجرة) · `SQLite` ⏳ **معلّقة** (9 مع الثماني السابقة).
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261107065601_AddDocumentAnnexes.cs` — ينشئ `DocumentAnnexes` (`Id`, `DocumentId`, `Sequence`, `AnnexType/Number/Date` بأطوال 100/100/50) + `FK` إلى `Documents` (`Cascade`) + فهرس `(DocumentId, Sequence)` + **Backfill** من الأعمدة المفردة القديمة (الصف الأول لكل ملف له ملحق).
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261107065740_AddDocumentAnnexes_Pg.cs` — نفسه (`integer` + `character varying(100/100/50)`؛ التاريخ نص حر).
+  - **لا حذف للأعمدة القديمة:** `Documents.AnnexType/AnnexNumber/AnnexDate` تبقى **قراءة فقط**؛ الجدول الفرعي هو المصدر الجديد. لا فقدان بيانات (Backfill فقط).
+  - **إجراء النشر:** `dotnet ef database update --context DocGeneratorDbContext` و`dotnet ef database update --context DocGeneratorPostgresDbContext` **قبل** نشر النسخة، وإلا رفض الإقلاع (`Database:AutoMigrate=false`) أو ظهر عدم تطابق مخطط (`no such table: DocumentAnnexes`).
+  - على `SQLite`: لا تُطبَّق وحدها؛ `database update` يسحب الهجرات المعلّقة السابقة ⇒ التزم بسلسلة §9 (`G2`).
+
 - [ ] **2026-11-06 — `DelegationLocalAdditionSummary` / `DelegationLocalAdditionSummary_Pg`** (سجل الإضافات المحلية على الملف المناب — `DocumentDelegations`):
   - **الحالة:** `PostgreSQL` ⏳ **معلّقة** (67 هجرة) · `SQLite` ⏳ **معلّقة** (8 مع السبع السابقة).
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261106080801_DelegationLocalAdditionSummary.cs` — يضيف ثلاثة أعمدة إلى `DocumentDelegations`: `LocalAdditionCount` (`INTEGER NOT NULL DEFAULT 0`)، `LocalAdditionLastMessage` (`TEXT(1000)`)، `LocalAdditionLastAt` (`datetime2`, `NULL`).

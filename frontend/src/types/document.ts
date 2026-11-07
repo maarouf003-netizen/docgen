@@ -222,6 +222,15 @@ export interface InitialActionRequest {
   reminderColor?: string | null;
 }
 
+/** ملحق السند التنفيذي — صف واحد بترتيبه (Sequence يبدأ من 1). */
+export interface DocumentAnnexDto {
+  id?: number;
+  sequence?: number;
+  annexType?: string;
+  annexNumber?: string;
+  annexDate?: string;
+}
+
 export interface DocumentResponse {
   id: number;
   createdAt: string;
@@ -259,10 +268,12 @@ documentType?: string;
   contractTypeSelector?: string;
   contractNumber?: string;
   contractDate?: string;
-  /** ملحق العقد (للعقد المصرفي فقط، اختياري): نوعه ورقمه وتاريخه. */
+  /** ملحق العقد (للعقد المصرفي فقط، اختياري): نوعه ورقمه وتاريخه — أول ملحق للتوافق. */
   annexType?: string;
   annexNumber?: string;
   annexDate?: string;
+  /** ملاحق السند التنفيذي (المصدر الحقيقي — حتى 5). */
+  annexes?: DocumentAnnexDto[];
   inclusionText?: string;
   /** ملاحظات السند التنفيذي (القرارات الأخرى) تحت «المتضمن» — نص حر اختياري. */
   inclusionNotes?: string;
@@ -457,10 +468,12 @@ export interface DocumentUpsertRequest {
   contractTypeSelector?: string;
   contractNumber?: string;
   contractDate?: string;
-  /** ملحق العقد (للعقد المصرفي فقط، اختياري): نوعه ورقمه وتاريخه. */
+  /** ملحق العقد (للعقد المصرفي فقط، اختياري): نوعه ورقمه وتاريخه — أول ملحق للتوافق. */
   annexType?: string;
   annexNumber?: string;
   annexDate?: string;
+  /** ملاحق السند التنفيذي (المصدر الحقيقي — حتى 5). */
+  annexes?: DocumentAnnexDto[];
   inclusionText?: string;
   /** ملاحظات السند التنفيذي (القرارات الأخرى) تحت «المتضمن» — نص حر اختياري. */
   inclusionNotes?: string;

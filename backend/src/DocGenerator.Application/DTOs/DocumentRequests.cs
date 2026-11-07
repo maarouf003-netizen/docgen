@@ -179,9 +179,15 @@ public class DocumentUpsertRequest : RenewalRequest
     public string? ContractTypeSelector { get; set; } = "مصرفي";
     public string? ContractNumber { get; set; }
     public string? ContractDate { get; set; }
+    /// <summary>
+    /// حقول الملحق المفرد القديمة — تُقرأ كملحق واحد للتوافق الخلفي فقط، ولا تُكتب
+    /// إلى الأعمدة القديمة. المصدر الجديد هو <see cref="Annexes"/>.
+    /// </summary>
     public string? AnnexType { get; set; }
     public string? AnnexNumber { get; set; }
     public string? AnnexDate { get; set; }
+    /// <summary>ملاحق السند التنفيذي (حتى 5) — الترتيب هو ترتيب الإدخال.</summary>
+    public List<DocumentAnnexDto>? Annexes { get; set; }
     public string? InclusionText { get; set; }
     /// <summary>ملاحظات السند التنفيذي (القرارات الأخرى) تحت «المتضمن» — نص حر اختياري.</summary>
     public string? InclusionNotes { get; set; }

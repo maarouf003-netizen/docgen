@@ -68,12 +68,14 @@ public class Document : IDocumentExecutionState
     public string? ContractNumber { get; set; }
     public string? ContractDate { get; set; }
     /// <summary>
-    /// ملحق العقد (للعقد المصرفي فقط، ملحق واحد اختياري): نوعه ورقمه وتاريخه.
-    /// يُحفظ كمصطلحًا اختياريًا إلى جانب بيانات العقد ولا يُنشئ جدولًا مستقلاً.
+    /// حقول الملحق المفرد القديمة — تبقى قراءة فقط للتواريخ القديمة؛ المصدر الجديد
+    /// هو <see cref="Annexes"/> (جدول DocumentAnnexes).
     /// </summary>
     public string? AnnexType { get; set; }
     public string? AnnexNumber { get; set; }
     public string? AnnexDate { get; set; }
+    /// <summary>ملاحق السند التنفيذي (للعقد المصرفي) — حتى 5 بترتيب Sequence.</summary>
+    public ICollection<DocumentAnnex> Annexes { get; set; } = new List<DocumentAnnex>();
     public string? InclusionText { get; set; }
     /// <summary>
     /// ملاحظات السند التنفيذي (القرارات الأخرى): نص حر اختياري يُعرض تحت حقل «المتضمن»
