@@ -162,6 +162,7 @@ public static class DocumentChangeTracker
 
         // حقول المجموعات (توقيعات التركيب)
         ["__Col_Guarantors"] = "الكفلاء",
+        ["__Col_Annexes"] = "ملاحق السند التنفيذي",
         ["__Col_Heirs"] = "ورثة المنفذ عليه",
         ["__Col_Assets"] = "الأموال المحجوزة",
         ["__Col_ExecutionApplicants"] = "طالبو التنفيذ",
@@ -192,7 +193,7 @@ public static class DocumentChangeTracker
     {
         ArgumentNullException.ThrowIfNull(document);
 
-        var snapshot = new Dictionary<string, string?>(TrackedProperties.Length + 7, StringComparer.Ordinal);
+        var snapshot = new Dictionary<string, string?>(TrackedProperties.Length + 8, StringComparer.Ordinal);
         foreach (var property in TrackedProperties)
             snapshot[property.Name] = Format(property.GetValue(document), property.Name);
         foreach (var collection in CollectionSignatures)
@@ -304,6 +305,8 @@ public static class DocumentChangeTracker
         {
             ["__Col_Guarantors"] = d => Signature(d.Guarantors,
                 g => Join(g.GuarantorName, g.GuarantorFather, g.GuarantorFamily)),
+            ["__Col_Annexes"] = d => Signature(d.Annexes.OrderBy(a => a.Sequence),
+                a => Join(a.AnnexType, a.AnnexNumber, a.AnnexDate)),
             ["__Col_Heirs"] = d => Signature(d.Heirs,
                 h => Join(h.HeirName, h.HeirFather, h.HeirFamily,
                     h.RepresentativeName, h.RepresentativeFather, h.RepresentativeFamily,
