@@ -413,6 +413,21 @@ npm test
 > `PostgreSQL` (65) و`SQLite` (6 مع الخمس المعلّقة). الترتيب: بعد هجرة `ConflictRetries`
 > في كل سياق، ولا تُطبَّق `SQLite` وحدها قبل استكمال سلسلة `G2` (نفس منطق السطر أدناه).
 
+- [ ] **2026-11-07 — `DocumentAnnexSequence_Unique` / `DocumentAnnexSequence_Unique_Pg`** (فرادة ترتيب الملحق داخل الملف — `DocumentAnnexes`):
+  - **الحالة:** `PostgreSQL` ⏳ **معلّقة** (69 هجرة) · `SQLite` ⏳ **معلّقة** (10 مع التسع السابقة).
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261107090514_DocumentAnnexSequence_Unique.cs` — يسقط الفهرس `IX_DocumentAnnexes_DocumentId_Sequence` غير الفريد ويعيد إنشاءه `UNIQUE` على `(DocumentId, Sequence)`.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261107090617_DocumentAnnexSequence_Unique_Pg.cs` — نفسه.
+  - **لا فقدان بيانات:** الفهرس الجديد يمنع تكرار `Sequence` داخل الملف نفسه فقط؛ ويسمح بتكراره بين ملفات مختلفة. لا علاقة له بتكرار اسم الممثل الشرعي (المخزَّن في `Heirs`/`ExecutedHeirs`) عبر الورثة أو الملفات.
+  - **فحص قبل التطبيق (يجب أن يعيد صفرًا):**
+    ```sql
+    SELECT "DocumentId", "Sequence", COUNT(*)
+    FROM "DocumentAnnexes"
+    GROUP BY "DocumentId", "Sequence"
+    HAVING COUNT(*) > 1;
+    ```
+  - **إجراء النشر:** `dotnet ef database update --context DocGeneratorDbContext` و`dotnet ef database update --context DocGeneratorPostgresDbContext` **قبل** نشر النسخة، وإلا رفض الإقلاع (`Database:AutoMigrate=false`) أو ظهر عدم تطابق مخطط.
+  - على `SQLite`: لا تُطبَّق وحدها؛ `database update` يسحب الهجرات المعلّقة السابقة ⇒ التزم بسلسلة §9 (`G2`).
+
 - [ ] **2026-11-07 — `AddDocumentAnnexes` / `AddDocumentAnnexes_Pg`** (تعدد ملاحق السند التنفيذي — جدول `DocumentAnnexes`):
   - **الحالة:** `PostgreSQL` ⏳ **معلّقة** (68 هجرة) · `SQLite` ⏳ **معلّقة** (9 مع الثماني السابقة).
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261107065601_AddDocumentAnnexes.cs` — ينشئ `DocumentAnnexes` (`Id`, `DocumentId`, `Sequence`, `AnnexType/Number/Date` بأطوال 100/100/50) + `FK` إلى `Documents` (`Cascade`) + فهرس `(DocumentId, Sequence)` + **Backfill** من الأعمدة المفردة القديمة (الصف الأول لكل ملف له ملحق).

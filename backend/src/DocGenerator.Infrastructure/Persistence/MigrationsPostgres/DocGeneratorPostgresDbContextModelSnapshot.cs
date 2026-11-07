@@ -1191,7 +1191,8 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
                     b.HasKey("Id");
 
-                    b.HasIndex("DocumentId", "Sequence");
+                    b.HasIndex("DocumentId", "Sequence")
+                        .IsUnique();
 
                     b.ToTable("DocumentAnnexes", (string)null);
                 });
