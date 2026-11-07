@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import AppealDetailsBody from './AppealDetailsBody';
 import { makeDocument } from '../../test/factories';
 import type { AppealDto } from '../../types';
@@ -90,5 +90,24 @@ describe('AppealDetailsBody', () => {
 
     rerender(<AppealDetailsBody appeal={makeAppeal({ partiesDegraded: false })} />);
     expect(screen.queryByText('بيانات أطراف تالفة')).not.toBeInTheDocument();
+  });
+
+  it('يعرض «لعام» سنة الرقم الحالي لا سنة القيد الأصلية', () => {
+    render(
+      <AppealDetailsBody
+        appeal={makeAppeal({
+          appealBaseNumber: '900',
+          appealYear: '2025',
+          currentBaseNumber: '1450',
+          currentBaseYear: '2026',
+        })}
+      />,
+    );
+
+    expect(screen.getByText('1450')).toBeInTheDocument();
+    expect(screen.queryByText('900')).not.toBeInTheDocument();
+    const yearCell = screen.getByText('لعام').closest('div');
+    expect(yearCell).not.toBeNull();
+    expect(within(yearCell as HTMLElement).getByText('2026')).toBeInTheDocument();
   });
 });

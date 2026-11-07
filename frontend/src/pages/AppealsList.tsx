@@ -6,6 +6,7 @@ import { hasFullAccessRole, isHeadOrSubHeadRole } from '../auth/roles';
 import { useCancellableRequest } from '../hooks/useCancellableRequest';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { formatDate } from '../utils/dates';
+import { appealBaseNumberOf } from '../utils/appealBaseNumber';
 import {
   APPEAL_STATUS_DECIDED,
   APPEAL_STATUS_PENDING,
@@ -99,8 +100,10 @@ export default function AppealsList() {
   const refresh = () => listQuery.refetch();
 
   const isFollower = (a: AppealDto) => role === 'lawyer' && a.assignedLawyerId === user?.id;
-  // (R3 + الخيار ب): التدوير للمسند المنظور دائمًا — needsRotation للتمييز الأحمر فقط، لا بوابة.
-  const canRotateAppeal = (a: AppealDto) => isFollower(a) && a.status === APPEAL_STATUS_PENDING;
+  // سجل الأرقام (قراءة + تصحيح موضعي) متاح للمسند له في أي حالة — كـ«تعديل القيد»،
+  // وزر «تدوير» يظهر فقط عند غياب هوية السنة الحالية (والخادم يحصره بالمنظور).
+  const canOpenBaseHistory = (a: AppealDto) => isFollower(a);
+  const canRotateAppeal = (a: AppealDto) => canOpenBaseHistory(a) && a.needsRotation;
   const canAssign = (a: AppealDto) => isHeadOrSubHead && a.status === APPEAL_STATUS_PENDING;
 
   const openAssign = (a: AppealDto) =>
@@ -118,15 +121,13 @@ export default function AppealsList() {
         </Link>
         {isFollower(a) && (
           <>
-            {a.direction === 'appellants' && (
-              <button
-                type="button"
-                onClick={() => setRegistrationTarget(a)}
-                className="bg-sky-800 hover:bg-sky-700 text-white rounded-lg px-3 py-2 min-h-11 inline-flex items-center text-xs"
-              >
-                تعديل القيد
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setRegistrationTarget(a)}
+              className="bg-sky-800 hover:bg-sky-700 text-white rounded-lg px-3 py-2 min-h-11 inline-flex items-center text-xs"
+            >
+              تعديل القيد
+            </button>
             {a.status === APPEAL_STATUS_PENDING && (
               <>
                 <button
@@ -151,11 +152,7 @@ export default function AppealsList() {
           <button
             type="button"
             onClick={() => setRotationTarget(a)}
-            className={`rounded-lg px-3 py-2 min-h-11 inline-flex items-center text-xs border ${
-              a.needsRotation
-                ? 'text-red-700 border-red-300 hover:bg-red-50'
-                : 'text-gray-700 border-gray-300 hover:bg-gray-50'
-            }`}
+            className="text-red-700 border-red-300 hover:bg-red-50 rounded-lg px-3 py-2 min-h-11 inline-flex items-center text-xs border"
             aria-label={`تدوير رقم الأساس الاستئنافي للاستئناف رقم ${a.id}`}
           >
             تدوير
@@ -175,32 +172,34 @@ export default function AppealsList() {
     );
   }
 
-  /** خلية «الأساس والنوع» المدمجة: الرقم (رابط تدوير للمسند المنظور) وتحته النوع ثم الشارة. */
+  /** رقم الأساس التفاعلي: يفتح سجل الأرقام للمسند له، ويبقى نصًا لغيره. */
+  function BaseNumberAction({ a, className = '' }: { a: AppealDto; className?: string }) {
+    const number = appealBaseNumberOf(a);
+    if (!number) return <span className={`text-gray-400 ${className}`}>—</span>;
+
+    const tone = a.needsRotation ? 'text-red-600 font-bold' : 'text-gray-800';
+    if (!canOpenBaseHistory(a)) {
+      return <span className={`tabular-nums ${tone} ${className}`}>{number}</span>;
+    }
+
+    return (
+      <button
+        type="button"
+        onClick={() => setRotationTarget(a)}
+        aria-label={`رقم الأساس الاستئنافي ${number} — فتح سجل الأرقام للاستئناف رقم ${a.id}`}
+        className={`tabular-nums font-medium underline-offset-2 hover:underline min-h-11 inline-flex items-center ${tone} ${className}`}
+      >
+        {number}
+      </button>
+    );
+  }
+
+  /** خلية «الأساس والنوع» المدمجة: الرقم (رابط سجل الأرقام للمسند له) وتحته النوع ثم الشارة. */
   function BaseNumberCell({ a }: { a: AppealDto }) {
     const badge = appealStatusBadge(a.status);
-    const number = a.currentBaseNumber ?? a.appealBaseNumber;
     return (
       <div className="flex flex-col gap-1 items-start">
-        {number ? (
-          canRotateAppeal(a) ? (
-            <button
-              type="button"
-              onClick={() => setRotationTarget(a)}
-              aria-label={`رقم الأساس الاستئنافي ${number} — فتح نافذة التدوير`}
-              className={`tabular-nums font-medium underline-offset-2 hover:underline min-h-11 inline-flex items-center ${
-                a.needsRotation ? 'text-red-600 font-bold' : 'text-gray-800'
-              }`}
-            >
-              {number}
-            </button>
-          ) : (
-            <span className={`tabular-nums ${a.needsRotation ? 'text-red-600 font-bold' : 'text-gray-800'}`}>
-              {number}
-            </span>
-          )
-        ) : (
-          <span className="text-gray-400">—</span>
-        )}
+        <BaseNumberAction a={a} />
         <span className="text-xs text-gray-500">{a.appealTypeLabel || '—'}</span>
         <span className={`rounded-full px-2 py-0.5 text-[11px] ${badge.cls}`}>{badge.text}</span>
       </div>
@@ -346,9 +345,7 @@ export default function AppealsList() {
                     </span>
                   </div>
                   <div className="flex flex-col items-end gap-0.5 min-w-0">
-                    <span className={`tabular-nums text-sm ${a.needsRotation ? 'text-red-600 font-bold' : 'text-gray-800'}`}>
-                      {a.currentBaseNumber ?? a.appealBaseNumber ?? '—'}
-                    </span>
+                    <BaseNumberAction a={a} className="text-sm" />
                     <span className="text-[11px] text-gray-500">{a.appealTypeLabel || '—'}</span>
                   </div>
                 </div>
@@ -434,7 +431,8 @@ export default function AppealsList() {
         <AppealRotationModal
           appeal={rotationTarget}
           onClose={() => setRotationTarget(null)}
-          onSaved={() => { setRotationTarget(null); setNotice('أُضيف سجل رقم أساس استئنافي جديد (تُحفظ السجلات السابقة).'); refresh(); }}
+          onSaved={() => { setRotationTarget(null); setNotice('تم تحديث سجل أرقام الأساس الاستئنافي.'); refresh(); }}
+          onCorrected={() => { setNotice('تم تصحيح رقم الأساس الاستئنافي.'); refresh(); }}
         />
       )}
       {assignTarget && (

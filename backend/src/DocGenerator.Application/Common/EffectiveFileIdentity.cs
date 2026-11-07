@@ -27,12 +27,6 @@ public static class EffectiveFileIdentity
     public static DocumentBaseNumber? LatestFrom(ICollection<DocumentBaseNumber>? numbers, int asOfYear)
         => Pick(numbers, b => b.Year, b => b.CreatedAt, asOfYear);
 
-    /// <summary>
-    /// المحلل المشترك على أرقام أساس استئناف (نفس قاعدة الرقم الفعّال للملفات).
-    /// </summary>
-    public static AppealBaseNumber? LatestFrom(ICollection<AppealBaseNumber>? numbers, int asOfYear)
-        => Pick(numbers, b => b.Year, b => b.CreatedAt, asOfYear);
-
     /// <summary>الرقم الفعّال لملف: رقم أحدث رقم أساس ≤ سنة الفحص، وإلا رقم الملف الأصلي.</summary>
     public static string? Number(Document? doc, int asOfYear)
         => Latest(doc, asOfYear)?.BaseNumber ?? doc?.FileNumber;

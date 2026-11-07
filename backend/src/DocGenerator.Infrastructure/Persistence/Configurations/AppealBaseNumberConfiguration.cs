@@ -1,3 +1,4 @@
+using DocGenerator.Application.Common;
 using DocGenerator.Domain.Entities;
 using DocGenerator.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -18,7 +19,7 @@ public class AppealBaseNumberConfiguration : IEntityTypeConfiguration<AppealBase
         // سجلات متعددة لكل (استئناف، سنة): كل تدوير يُنشئ سجلًا جديدًا — الأحدث (Year ثم CreatedAt) هو المعتبر.
         builder.HasIndex(b => new { b.AppealId, b.Year });
         builder.HasIndex(b => b.AppealId);
-        builder.Property(b => b.BaseNumber).HasMaxLength(50).IsRequired();
+        builder.Property(b => b.BaseNumber).HasMaxLength(AppealBaseNumberPolicy.MaxNumberLength).IsRequired();
         // عامل مطابق لقفل الحذف المنطقي للملف عبر سلسلة الاستئناف.
         builder.HasQueryFilter(b => b.Appeal == null
             || b.Appeal.Document == null
