@@ -17,7 +17,9 @@ public class DocumentAnnexConfiguration : IEntityTypeConfiguration<DocumentAnnex
         builder.Property(a => a.AnnexNumber).HasMaxLength(100);
         builder.Property(a => a.AnnexDate).HasMaxLength(50);
 
-        builder.HasIndex(a => new { a.DocumentId, a.Sequence });
+        // فريد: يمنع تكرار ترتيب الملحق داخل الملف (Sequence) — يحمي الترتيب وحارس
+        // المرآة وتوقيع التدقيق. لا علاقة له بتكرار اسم الممثل الشرعي عبر الورثة/الملفات.
+        builder.HasIndex(a => new { a.DocumentId, a.Sequence }).IsUnique();
         builder.HasOne(a => a.Document)
             .WithMany(d => d.Annexes)
             .HasForeignKey(a => a.DocumentId)
