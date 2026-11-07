@@ -186,7 +186,7 @@ export default function AppealsList() {
       <button
         type="button"
         onClick={() => setRotationTarget(a)}
-        aria-label={`رقم الأساس الاستئنافي ${number} — فتح سجل الأرقام`}
+        aria-label={`رقم الأساس الاستئنافي ${number} — فتح سجل الأرقام للاستئناف رقم ${a.id}`}
         className={`tabular-nums font-medium underline-offset-2 hover:underline min-h-11 inline-flex items-center ${tone} ${className}`}
       >
         {number}

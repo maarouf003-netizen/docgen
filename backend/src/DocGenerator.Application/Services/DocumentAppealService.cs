@@ -1196,11 +1196,14 @@ public sealed class DocumentAppealService : IDocumentAppealService
         appeal.NoticeDate = DocumentValidator.ParseDateTime(request.NoticeDate, "تاريخ ورود سند تبليغ الاستئناف");
         appeal.AppellateCourt = Bounded(request.AppellateCourt, 300, "محكمة الاستئناف التنفيذية المختصة");
         // رقم الأساس يخضع لسياسة واحدة في كل المسارات: الطول والحدود الزمنية.
-        appeal.AppealBaseNumber = Bounded(
+        // السنة بلا رقم لا معنى لها فلا تُحفظ (بيانات نظيفة).
+        var appealBaseNumber = Bounded(
             request.AppealBaseNumber, AppealBaseNumberPolicy.MaxNumberLength, "رقم الأساس الاستئنافي");
-        appeal.AppealYear = AppealBaseNumberPolicy
-            .ValidateYear(request.AppealYear, currentYear, "لعام")
-            ?.ToString(CultureInfo.InvariantCulture);
+        var appealBaseYear = AppealBaseNumberPolicy.ValidateYear(request.AppealYear, currentYear, "لعام");
+        appeal.AppealBaseNumber = appealBaseNumber;
+        appeal.AppealYear = appealBaseNumber is null
+            ? null
+            : appealBaseYear?.ToString(CultureInfo.InvariantCulture);
         // كتاب إيداع الملف رئيس القسم: مسار «مستأنف علينا» فقط — يُصفَّر لمسار «مستأنِفين»
         // (appeal.Direction مضبوط قبل الاستدعاء في CreateAsync وUpdateAsync).
         if (appeal.Direction == AppealDirectionCatalog.Appellants)

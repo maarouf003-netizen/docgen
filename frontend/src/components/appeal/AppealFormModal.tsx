@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { api, getApiErrorMessage } from '../../api/client';
 import { useCurrentYear } from '../../hooks/useCurrentYear';
 import { normalizeArabicDigits } from '../../utils/arabicDigits';
-import { APPEAL_BASE_NUMBER_MAX_LENGTH } from '../../utils/appealBaseNumber';
+import { APPEAL_BASE_NUMBER_MAX_LENGTH, appealYearError } from '../../utils/appealBaseNumber';
 import { APPEAL_DIRECTION_APPELLANTS } from '../../utils/appealStatus';
 import type { AppealDirection, AppealDto, AppealPartySelectionDto, DocumentResponse } from '../../types';
 import { buildAllParties, buildAppellantOptions } from './appealOptions';
@@ -213,10 +213,11 @@ export default function AppealFormModal({
 
     // «لعام» يخضع لقاعدة واحدة: سنة موجبة غير مستقبلية (مطابقة لتحقق الخادم).
     const baseYearText = normalizeArabicDigits(baseYear).trim();
-    if (!appellantsVariant && baseYearText) {
-      const yearNumber = Number(baseYearText);
-      if (!Number.isInteger(yearNumber) || yearNumber <= 0 || yearNumber > currentYear) {
-        setError(`لعام غير صالح — أدخل سنة بين 1 و${currentYear} (لا تُقبل سنة مستقبلية)`);
+    if (!appellantsVariant) {
+      const yearError = appealYearError(baseYear, currentYear);
+      if (yearError) {
+        setError(yearError);
+        document.getElementById('appeal-base-year')?.focus();
         return;
       }
     }

@@ -734,6 +734,27 @@ public class DocumentAppealServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Create_YearWithoutNumber_IsDropped()
+    {
+        var doc = await CreateApplicantDocAsync();
+        var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
+
+        var created = await _service.CreateAsync(doc.Id,
+            Request(AppealDirectionCatalog.Appellants,
+                new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }) with
+            {
+                AppealBaseNumber = null,
+                AppealYear = DateTime.Today.Year.ToString(),
+            },
+            _lawyer1.Id, "lawyer1");
+
+        // سنة بلا رقم أساس لا تُحفظ (بيانات نظيفة).
+        var entity = await _db.DocumentAppeals.SingleAsync(a => a.Id == created.Id);
+        Assert.Null(entity.AppealYear);
+        Assert.Null(created.CurrentBaseNumber);
+    }
+
+    [Fact]
     public async Task CorrectBaseNumber_RejectsFutureUnknownAndEmpty()
     {
         var doc = await CreateApplicantDocAsync();

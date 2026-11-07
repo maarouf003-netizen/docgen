@@ -6,6 +6,7 @@ import { normalizeArabicDigits } from '../../utils/arabicDigits';
 import {
   APPEAL_BASE_NUMBER_MAX_LENGTH,
   appealBaseNumberOf,
+  appealYearError,
 } from '../../utils/appealBaseNumber';
 import type { AppealDto } from '../../types';
 
@@ -47,16 +48,10 @@ export default function AppealRegistrationModal({
       return;
     }
 
-    if (yearText) {
-      const yearNumber = Number(yearText);
-      if (!Number.isInteger(yearNumber) || yearNumber <= 0) {
-        setError('لعام غير صالح — أدخل سنة مثل 2026');
-        return;
-      }
-      if (yearNumber > currentYear) {
-        setError(`لا يمكن إدخال رقم أساس لسنة مستقبلية — السنة الحالية ${currentYear}`);
-        return;
-      }
+    const yearError = appealYearError(appealYear, currentYear);
+    if (yearError) {
+      setError(yearError);
+      return;
     }
 
     setSaving(true);

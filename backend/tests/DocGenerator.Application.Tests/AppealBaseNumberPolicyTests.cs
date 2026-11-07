@@ -87,6 +87,18 @@ public class AppealBaseNumberPolicyTests
     }
 
     [Fact]
+    public void ResolveCurrent_NumberWithoutYear_IsDisplayedButNotCurrent()
+    {
+        var appeal = Appeal("700", null);
+
+        var identity = AppealBaseNumberPolicy.ResolveCurrent(appeal, 2026);
+
+        Assert.NotNull(identity);
+        Assert.Equal("700", identity!.Number);
+        Assert.Null(identity.Year);
+    }
+
+    [Fact]
     public void ResolveCurrent_RowBeatsRegistrationOnSameYear()
     {
         var appeal = Appeal("900", "2026");
