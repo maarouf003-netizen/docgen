@@ -1,6 +1,7 @@
 import type {
   ApplicantPublicEntityDto,
   AssetDto,
+  DocumentAnnexDto,
   DocumentResponse,
   DocumentUpsertRequest,
   ExecutedHeirDto,
@@ -120,6 +121,9 @@ export const MAX_ASSETS_PER_KIND = 20;
 /** سقف عدد الكفلاء/المنفذ عليهم الآخرين (قرار المالك: إجمالي 50 شاملًا المقترض).
  * يطابق `PartyLimitsCatalog.MaxGuarantors` في الخلفية — أي تغيير يستلزم تغييرًا
  * مقابلًا هناك (وقد يستلزم تحديث قالب `Seizure.docx` إن تجاوز 50). */
+/** الحد الأقصى لملاحق السند التنفيذي (مطابق AnnexLimitsCatalog.MaxAnnexes خادميًا). */
+export const MAX_ANNEXES = 5;
+
 export const MAX_GUARANTORS = 49;
 
 /** إجمالي المنفذ عليهم في الملف شاملًا المقترض (1 مقترض + حتى 49 كفيلًا). */
@@ -418,6 +422,17 @@ export const ordinaryCurrencyKeys = [
   'inclusionCurrency3',
 ] as const;
 
+/** صف ملحق جديد فارغ — الترتيب يُحسب عند الحفظ. */
+export function emptyAnnex(): DocumentAnnexDto {
+  return { annexType: '', annexNumber: '', annexDate: '' };
+}
+
+/** توافق خلفي: الملحق المفرد القديم يُقرأ كصف واحد عند غياب القائمة. */
+export function legacyToAnnexes(d: Pick<DocumentResponse, 'annexType' | 'annexNumber' | 'annexDate'>): DocumentAnnexDto[] {
+  if (![d.annexType, d.annexNumber, d.annexDate].some((v) => (v ?? '').trim())) return [];
+  return [{ annexType: d.annexType ?? '', annexNumber: d.annexNumber ?? '', annexDate: d.annexDate ?? '' }];
+}
+
 /** تحويل مستند مُحمَّل إلى طلب تحديث يملأ النموذج، مع ترك القوائم المركّبة فارغة تنتظر تفصيلها. */
 export function toUpsert(d: DocumentResponse): DocumentUpsertRequest {
   return {
@@ -447,6 +462,7 @@ export function toUpsert(d: DocumentResponse): DocumentUpsertRequest {
     annexType: d.annexType ?? '',
     annexNumber: d.annexNumber ?? '',
     annexDate: d.annexDate ?? '',
+    annexes: d.annexes?.length ? d.annexes : legacyToAnnexes(d),
     inclusionText: d.inclusionText ?? '',
     inclusionNotes: d.inclusionNotes ?? '',
     amountNumeric: d.amountNumeric,

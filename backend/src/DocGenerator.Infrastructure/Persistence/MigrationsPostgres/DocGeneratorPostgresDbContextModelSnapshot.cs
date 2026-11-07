@@ -1163,6 +1163,39 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                         });
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentAnnex", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AnnexDate")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("AnnexNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("AnnexType")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId", "Sequence");
+
+                    b.ToTable("DocumentAnnexes", (string)null);
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentAppeal", b =>
                 {
                     b.Property<int>("Id")
@@ -3493,6 +3526,17 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     b.Navigation("SourceDelegation");
                 });
 
+            modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentAnnex", b =>
+                {
+                    b.HasOne("DocGenerator.Domain.Entities.Document", "Document")
+                        .WithMany("Annexes")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Document");
+                });
+
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentAppeal", b =>
                 {
                     b.HasOne("DocGenerator.Domain.Entities.User", "AssignedLawyer")
@@ -4136,6 +4180,8 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.Document", b =>
                 {
+                    b.Navigation("Annexes");
+
                     b.Navigation("ApplicantPublicEntities");
 
                     b.Navigation("Assets");

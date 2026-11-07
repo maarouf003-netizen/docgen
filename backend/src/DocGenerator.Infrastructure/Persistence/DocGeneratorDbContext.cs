@@ -26,6 +26,7 @@ public class DocGeneratorDbContext : DbContext
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<ExecutionAction> ExecutionActions => Set<ExecutionAction>();
     public DbSet<DocumentBaseNumber> BaseNumbers => Set<DocumentBaseNumber>();
+    public DbSet<DocumentAnnex> DocumentAnnexes => Set<DocumentAnnex>();
     public DbSet<LoginAttempt> LoginAttempts => Set<LoginAttempt>();
     public DbSet<DocumentRegistrationDate> DocumentRegistrationDates => Set<DocumentRegistrationDate>();
     public DbSet<HeadAlert> HeadAlerts => Set<HeadAlert>();

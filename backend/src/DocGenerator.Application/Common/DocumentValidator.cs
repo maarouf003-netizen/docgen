@@ -136,6 +136,18 @@ public static class DocumentValidator
     }
 
     /// <summary>
+    /// سقف ملاحق السند التنفيذي: الصفوف الفارغة تُتجاهل، والحد الأقصى 5. يُقرأ الطلب
+    /// القديم (بلا قائمة) كملحق واحد للتوافق الخلفي.
+    /// </summary>
+    public static void ValidateAnnexes(DocumentUpsertRequest request)
+    {
+        var rows = DocumentAnnexText.Build(request);
+        if (rows.Count > AnnexLimitsCatalog.MaxAnnexes)
+            throw new ArgumentException(
+                $"عدد ملاحق السند التنفيذي يتجاوز الحد الأقصى ({AnnexLimitsCatalog.MaxAnnexes})");
+    }
+
+    /// <summary>
     /// سقف أطراف الملف في صفة «الجهة العامة طالبة التنفيذ» (مصرفي/عادي):
     /// إجمالي المنفذ عليهم 50 شاملًا المقترض، أي حتى 49 صف كفلاء/منفذ عليهم آخرين
     /// (قرار المالك — `PartyLimitsCatalog`). ورثة الكفلاء والممثلون بلا سقف.

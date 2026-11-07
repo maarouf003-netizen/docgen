@@ -44,6 +44,29 @@ public class DocumentChangeTrackerTests
     }
 
     [Fact]
+    public void Diff_ReportsAnnexCollectionChanges()
+    {
+        var doc = NewDocument();
+        var before = DocumentChangeTracker.Capture(doc);
+
+        doc.Annexes.Add(new DocumentAnnex
+        {
+            Sequence = 1,
+            AnnexType = "تعديل",
+            AnnexNumber = "A-1",
+            AnnexDate = "1/1/2026",
+        });
+
+        var changes = DocumentChangeTracker.Diff(before, doc);
+
+        var row = Assert.Single(changes);
+        Assert.Equal("__Col_Annexes", row.FieldKey);
+        Assert.Equal("ملاحق السند التنفيذي", row.FieldLabel);
+        Assert.Null(row.OldValue);
+        Assert.Contains("A-1", row.NewValue);
+    }
+
+    [Fact]
     public void Diff_IgnoresEqualValues_TechnicalFields_AndEmptyVsNull()
     {
         var doc = NewDocument();

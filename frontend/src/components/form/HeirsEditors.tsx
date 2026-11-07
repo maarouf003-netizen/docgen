@@ -99,7 +99,7 @@ function HeirRepresentativeSection({
           aria-label="إضافة ممثل شرعي لهذا الوريث"
           className="bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
         >
-          ＋ إضافة ممثل شرعي
+          ＋ إضافة ممثل شرعي لهذا الوريث
         </button>
       </div>
     );
@@ -125,7 +125,6 @@ export function HeirsEditor({
   idPrefix,
   locked = false,
   allowAdd = true,
-  allowRepresentative = true,
 }: {
   heirs: HeirDto[];
   onSet: (i: number, key: keyof HeirDto, value: string) => void;
@@ -136,8 +135,6 @@ export function HeirsEditor({
   locked?: boolean;
   /** يُخفى زر الإضافة عند وجود ممثل شرعي للطرف (لا يجتمعان). */
   allowAdd?: boolean;
-  /** يُخفى زر الممثل عند وجود ورثة للطرف (لا يجتمعان). */
-  allowRepresentative?: boolean;
 }) {
   const drafts = useDraftRepresentatives();
 
@@ -165,7 +162,6 @@ export function HeirsEditor({
         // الظهور/الإخفاء يتبع المخزَّن فعلًا (كحمولة `toHeirPayload`)، بينما ظهور المحرر
         // يتبع التفعيل (صفة/اسم) — فتفعيل الممثل بصفة وحدها لا يُخفي العنوان بلا حفظ.
         const hHasStoredRep = hasStoredRepresentative(h);
-        const hShowsRep = hasRepresentative(h);
         const rowKey = heirRowKey(h.id, i);
         return (
           <div key={rowKey} className="rounded-lg border border-gray-200 bg-white p-3 mb-3 last:mb-0">
@@ -257,27 +253,21 @@ export function HeirsEditor({
               </div>
             </div>
 
-            {allowRepresentative || hShowsRep ? (
-              <HeirRepresentativeSection
-                heir={h}
-                idPrefix={`${idPrefix}-heir-rep-${rowKey}`}
-                locked={drafts.isLocked(h.id, locked)}
-                onSet={(key, value) => onSet(i, key as keyof HeirDto, value)}
-                onActivate={() => {
-                  if (h.id != null) drafts.mark(h.id);
-                  onSet(i, 'representativeCapacity', 'ولي');
-                  onSet(i, 'representativeAddressType', 'عنوان');
-                }}
-                onRemove={() => {
-                  if (h.id != null) drafts.clear(h.id);
-                  for (const key of REPRESENTATIVE_KEYS) onSet(i, key, '');
-                }}
-              />
-            ) : (
-              <p className="mt-2 text-xs text-amber-700" role="note">
-                لا يجتمع الممثل الشرعي مع الورثة — احذف الورثة لإضافة ممثل شرعي.
-              </p>
-            )}
+            <HeirRepresentativeSection
+              heir={h}
+              idPrefix={`${idPrefix}-heir-rep-${rowKey}`}
+              locked={drafts.isLocked(h.id, locked)}
+              onSet={(key, value) => onSet(i, key as keyof HeirDto, value)}
+              onActivate={() => {
+                if (h.id != null) drafts.mark(h.id);
+                onSet(i, 'representativeCapacity', 'ولي');
+                onSet(i, 'representativeAddressType', 'عنوان');
+              }}
+              onRemove={() => {
+                if (h.id != null) drafts.clear(h.id);
+                for (const key of REPRESENTATIVE_KEYS) onSet(i, key, '');
+              }}
+            />
           </div>
         );
       })}
@@ -293,7 +283,6 @@ export function ExecutedHeirsEditor({
   onRemove,
   idPrefix,
   allowAdd = true,
-  allowRepresentative = true,
   locked = false,
 }: {
   heirs: ExecutedHeirDto[];
@@ -302,14 +291,12 @@ export function ExecutedHeirsEditor({
   onRemove: (i: number) => void;
   idPrefix: string;
   allowAdd?: boolean;
-  /** يُخفى زر الممثل عند وجود ورثة للطرف (لا يجتمعان). */
-  allowRepresentative?: boolean;
   /** الملف المناب: يمنع حذف الورثة ويقفل ممثلهم المخزَّن. */
   locked?: boolean;
 }) {
   const drafts = useDraftRepresentatives();
 
-  if (heirs.length === 0 && !allowAdd && allowRepresentative) return null;
+  if (heirs.length === 0 && !allowAdd) return null;
 
   return (
     <div className="mt-4 rounded-lg bg-gray-50 border border-gray-200 p-4">
@@ -332,7 +319,6 @@ export function ExecutedHeirsEditor({
 
       {heirs.map((h, i) => {
         const hHasStoredRep = hasStoredRepresentative(h);
-        const hShowsRep = hasRepresentative(h);
         const rowKey = heirRowKey(h.id, i);
         return (
           <div key={rowKey} className="rounded-lg border border-gray-200 bg-white p-3 mb-3 last:mb-0">
@@ -410,27 +396,21 @@ export function ExecutedHeirsEditor({
               </div>
             </div>
 
-            {allowRepresentative || hShowsRep ? (
-              <HeirRepresentativeSection
-                heir={h}
-                idPrefix={`${idPrefix}-heir-rep-${rowKey}`}
-                locked={drafts.isLocked(h.id, locked)}
-                onSet={(key, value) => onSet(i, key as keyof ExecutedHeirDto, value)}
-                onActivate={() => {
-                  if (h.id != null) drafts.mark(h.id);
-                  onSet(i, 'representativeCapacity', 'ولي');
-                  onSet(i, 'representativeAddressType', 'عنوان');
-                }}
-                onRemove={() => {
-                  if (h.id != null) drafts.clear(h.id);
-                  for (const key of REPRESENTATIVE_KEYS) onSet(i, key, '');
-                }}
-              />
-            ) : (
-              <p className="mt-2 text-xs text-amber-700" role="note">
-                لا يجتمع الممثل الشرعي مع الورثة — احذف الورثة لإضافة ممثل شرعي.
-              </p>
-            )}
+            <HeirRepresentativeSection
+              heir={h}
+              idPrefix={`${idPrefix}-heir-rep-${rowKey}`}
+              locked={drafts.isLocked(h.id, locked)}
+              onSet={(key, value) => onSet(i, key as keyof ExecutedHeirDto, value)}
+              onActivate={() => {
+                if (h.id != null) drafts.mark(h.id);
+                onSet(i, 'representativeCapacity', 'ولي');
+                onSet(i, 'representativeAddressType', 'عنوان');
+              }}
+              onRemove={() => {
+                if (h.id != null) drafts.clear(h.id);
+                for (const key of REPRESENTATIVE_KEYS) onSet(i, key, '');
+              }}
+            />
           </div>
         );
       })}

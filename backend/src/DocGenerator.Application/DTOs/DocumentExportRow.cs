@@ -48,6 +48,7 @@ public interface IDocumentSheetFields : IDocumentExecutionState
     string? FileYear { get; }
     string? DisplayFileYear { get; }
     string? AnnexNumber { get; }
+    IReadOnlyList<DocumentAnnexDto> Annexes { get; }
     string? Lawyer { get; }
     string? Applicant { get; }
     string? BorrowerName { get; }
@@ -79,6 +80,7 @@ public sealed class DocumentExportRow : IDocumentSheetFields
     public string? FileYear { get; set; }
     public string? DisplayFileYear { get; set; }
     public string? AnnexNumber { get; set; }
+    public List<DocumentAnnexDto> Annexes { get; set; } = new();
     public string? Lawyer { get; set; }
     public string? GeneralEntitySide { get; set; }
     public string? ExecutedStatus { get; set; }
@@ -100,6 +102,7 @@ public sealed class DocumentExportRow : IDocumentSheetFields
     IReadOnlyList<IExportPublicEntity> IDocumentSheetFields.ExecutedPublicEntities => ExecutedPublicEntities;
     IReadOnlyList<IExportNaturalPerson> IDocumentSheetFields.ExecutedNaturalPersons => ExecutedNaturalPersons;
     IReadOnlyList<IExportAction> IDocumentSheetFields.ExecutionActions => ExecutionActions;
+    IReadOnlyList<DocumentAnnexDto> IDocumentSheetFields.Annexes => Annexes;
 }
 
 /// <summary>طالب تنفيذ مسقط (للورقة فقط).</summary>

@@ -613,6 +613,40 @@ render(<DocumentForm />);
   });
 
 
+  it('يخفي زر ممثل المنفذ عليه فور إضافة صف وريث ويُبقي زر ممثل الوريث', async () => {
+    const user = userEvent.setup();
+    await renderExecutedEdit({
+      generalEntitySide: 'executed',
+      executedNaturalPersons: [
+        {
+          id: 1,
+          name: 'منفذ متوفى',
+          father: 'أب',
+          family: 'عائلة',
+          addressType: 'عنوان',
+          addressOrRepresentative: 'حلب',
+          representationType: 'إضافة لتركة',
+          deceasedName: 'منفذ متوفى',
+          deceasedFather: 'أب',
+          deceasedFamily: 'عائلة',
+          heirs: [],
+        },
+      ],
+    });
+
+    const personCard = screen.getByText('شخص طبيعي 1').closest('.rounded-xl') as HTMLElement;
+    // زر ممثل الطرف غير معروض أصلًا عند «إضافة لتركة» (التركة/الورثة تمنعه).
+    expect(within(personCard).queryByRole('button', { name: '＋ إضافة ممثل شرعي' })).not.toBeInTheDocument();
+
+    await user.click(within(personCard).getByRole('button', { name: '＋ إضافة وريث' }));
+
+    // زر ممثل الوريث يبقى، لكن بنص يوضّح أنه للوريث لا للمتوفى.
+    expect(
+      within(personCard).getByRole('button', { name: 'إضافة ممثل شرعي لهذا الوريث' }),
+    ).toBeInTheDocument();
+  });
+
+
   it('يُرسل بيانات «الممثل الشرعي» للشخص الطبيعي عند الحفظ', async () => {
     const user = userEvent.setup();
     await selectExecutedSide(user);

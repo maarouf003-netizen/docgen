@@ -40,6 +40,10 @@ internal static class MirrorRequests
         AnnexType = doc.AnnexType,
         AnnexNumber = doc.AnnexNumber,
         AnnexDate = doc.AnnexDate,
+        Annexes = doc.Annexes
+            .OrderBy(a => a.Sequence)
+            .Select(a => new DocumentAnnexDto(a.Id, a.AnnexType, a.AnnexNumber, a.AnnexDate, a.Sequence))
+            .ToList(),
         InclusionText = doc.InclusionText,
         InclusionNotes = doc.InclusionNotes,
         AmountNumeric = doc.AmountNumeric,

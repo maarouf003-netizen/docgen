@@ -233,11 +233,34 @@ public sealed class ExcelExportService : IExcelExportService
         values.Add(doc.SectionName ?? "القسم");
         values.Add(FileNumberText(doc));
         values.Add(doc.DisplayFileYear ?? doc.FileYear ?? string.Empty);
-        values.Add(doc.AnnexNumber ?? string.Empty);
+        values.Add(AnnexText(doc));
         if (includeAssignedLawyer)
             values.Add(doc.Lawyer ?? string.Empty);
         values.Add(HtmlInputSanitizer.ToPlainText(doc.ExecutionActions.FirstOrDefault()?.Text));
         return values;
+    }
+
+    /// <summary>
+    /// عمود «ملحق العقد»: ملحق واحد يعرض رقمه (سلوك التصدير القائم)، وتعدد الملاحق
+    /// يُدمج في خلية واحدة «ملحق 1: نوع — رقم — تاريخ؛ ملحق 2: …» حفاظًا على عمود واحد.
+    /// </summary>
+    private static string AnnexText(IDocumentSheetFields doc)
+    {
+        var annexes = doc.Annexes
+            .Where(a => !string.IsNullOrWhiteSpace(a.AnnexType)
+                || !string.IsNullOrWhiteSpace(a.AnnexNumber)
+                || !string.IsNullOrWhiteSpace(a.AnnexDate))
+            .ToList();
+        if (annexes.Count == 0)
+            return doc.AnnexNumber ?? string.Empty;
+        if (annexes.Count == 1)
+            return annexes[0].AnnexNumber ?? string.Empty;
+        return string.Join("؛ ", annexes.Select((a, i) =>
+        {
+            var parts = new[] { a.AnnexType, a.AnnexNumber, a.AnnexDate }
+                .Where(v => !string.IsNullOrWhiteSpace(v));
+            return $"ملحق {i + 1}: {string.Join(" — ", parts)}";
+        }));
     }
 
     /// <summary>اسم طالب التنفيذ/العرض: في عائلة وضع «منفذ عليه» يُؤخذ من أول «طالب تنفيذ/عرض» (اسم ثلاثي)، وإلا الحقل المباشر.</summary>

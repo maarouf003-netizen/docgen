@@ -161,6 +161,7 @@ export default function DocumentForm() {
     executionApplicants: [],
     executedPublicEntities: [],
     executedNaturalPersons: [],
+    annexes: [],
   });
 // تحميل كامل للمستند عند دخول وضع التعديل.
   // تصفير كامل لحالة النموذج المشتقة من ملف: يُستدعى قبل كل جلب (فلا يبقى
@@ -185,6 +186,7 @@ export default function DocumentForm() {
       executionApplicants: [],
       executedPublicEntities: [],
       executedNaturalPersons: [],
+      annexes: [],
     });
     setGuarantors([emptyGuarantor()]);
     setBorrowerHeirs([]);
@@ -902,7 +904,16 @@ export default function DocumentForm() {
         // ليتسق المخزَّن مع ما يُعرض ولتقبله الخلفية في تحليلها (تحافظ على الحقول الأخرى كما هي).
         borrowerBirth: normalizeArabicDigits(form.borrowerBirth ?? '').trim(),
         contractDate: normalizeArabicDigits(form.contractDate ?? '').trim(),
-        annexDate: normalizeArabicDigits(form.annexDate ?? '').trim(),
+        // الملاحق: الجدول الفرعي هو المصدر. الحقول المفردة القديمة تُرسل فارغة
+        // (قراءة فقط خادميًا) فلا تُكتب فوق القيم القديمة.
+        annexType: '',
+        annexNumber: '',
+        annexDate: '',
+        annexes: (form.annexes ?? []).map((a) => ({
+          annexType: (a.annexType ?? '').trim(),
+          annexNumber: (a.annexNumber ?? '').trim(),
+          annexDate: normalizeArabicDigits(a.annexDate ?? '').trim(),
+        })),
         fileIncomingDate: normalizeArabicDigits(form.fileIncomingDate ?? '').trim(),
         fileArrivalDate: normalizeArabicDigits(form.fileArrivalDate ?? '').trim(),
         fileRegistrationDate: normalizeArabicDigits(form.fileRegistrationDate ?? '').trim(),

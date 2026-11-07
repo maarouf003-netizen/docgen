@@ -64,9 +64,32 @@ public class DocumentContextBuilder : IDocumentContextBuilder
         context["contract_number"] = doc.ContractNumber ?? string.Empty;
         context["contract_date"] = doc.ContractDate ?? string.Empty;
         // مفاتيح ملحق العقد (للعقد المصرفي؛ اختيارية وتظهر في القالب إذا وُضعت رموزها).
-        context["annex_type"] = doc.AnnexType ?? string.Empty;
-        context["annex_number"] = doc.AnnexNumber ?? string.Empty;
-        context["annex_date"] = doc.AnnexDate ?? string.Empty;
+        // الجدول الفرعي هو المصدر، مع إبقاء المفاتيح المفردة كأول ملحق للتوافق.
+        var annexes = doc.Annexes.OrderBy(a => a.Sequence).ToList();
+        if (annexes.Count == 0
+            && (!string.IsNullOrWhiteSpace(doc.AnnexType)
+                || !string.IsNullOrWhiteSpace(doc.AnnexNumber)
+                || !string.IsNullOrWhiteSpace(doc.AnnexDate)))
+        {
+            annexes.Add(new DocGenerator.Domain.Entities.DocumentAnnex
+            {
+                Sequence = 1,
+                AnnexType = doc.AnnexType,
+                AnnexNumber = doc.AnnexNumber,
+                AnnexDate = doc.AnnexDate,
+            });
+        }
+        context["annexes_count"] = annexes.Count;
+        for (var i = 0; i < DocGenerator.Domain.Enums.AnnexLimitsCatalog.MaxAnnexes; i++)
+        {
+            var annex = i < annexes.Count ? annexes[i] : null;
+            context[$"annex{i + 1}_type"] = annex?.AnnexType ?? string.Empty;
+            context[$"annex{i + 1}_number"] = annex?.AnnexNumber ?? string.Empty;
+            context[$"annex{i + 1}_date"] = annex?.AnnexDate ?? string.Empty;
+        }
+        context["annex_type"] = annexes.ElementAtOrDefault(0)?.AnnexType ?? string.Empty;
+        context["annex_number"] = annexes.ElementAtOrDefault(0)?.AnnexNumber ?? string.Empty;
+        context["annex_date"] = annexes.ElementAtOrDefault(0)?.AnnexDate ?? string.Empty;
         context["amount_numeric"] = doc.AmountNumeric;
         context["amount_words"] = doc.AmountWords ?? string.Empty;
         context["current_date"] = ServerClock.TodayString(_clock, _timeZone, "dd/MM/yyyy");

@@ -219,7 +219,8 @@ export function ExecutedSideSections({
         // صفة وحدها (بلا اسم) لا تُحفظ، فمسح/إخفاء قيمة لها فقدان صامت.
         const aRepStored = hasStoredRepresentative(a);
         const hasEstate = a.representationType === 'إضافة لتركة' || a.representationType === 'أصالة وإضافة';
-        const aHasHeirs = (a.heirs ?? []).some((h) => (h.heirName ?? '').trim());
+        // زر ممثل الطرف يختفي فور وجود أي صف وريث (حتى فارغ) — وزر ممثل كل وريث يبقى.
+        const aHasHeirRows = (a.heirs ?? []).length > 0;
         const aIsLegal = a.nature === 'legal';
         return (
           <div key={i} className="border border-gray-200 rounded-xl p-4 mb-4">
@@ -335,7 +336,7 @@ export function ExecutedSideSections({
                           <option key={o}>{o}</option>
                         ))}
                       </select>
-                      {!aHasRep && !hasEstate && !aHasHeirs && (
+                      {!aHasRep && !hasEstate && !aHasHeirRows && (
                         <button
                           type="button"
                           onClick={() => onApplicantRepActivate(i)}
@@ -345,12 +346,12 @@ export function ExecutedSideSections({
                         </button>
                       )}
                     </div>
-                    {!aHasRep && (hasEstate || aHasHeirs) && (
+                    {!aHasRep && (hasEstate || aHasHeirRows) && (
                       <p className="mt-2 text-xs text-amber-700" role="note">
                         لا يجتمع الممثل الشرعي مع الورثة/التمثيل بالتركة.
                       </p>
                     )}
-                    {aHasRep && (hasEstate || aHasHeirs) && (
+                    {aHasRep && (hasEstate || aHasHeirRows) && (
                       <p className="mt-2 text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2" role="note">
                         تعارض: الممثل الشرعي لا يجتمع مع الورثة — احذف الممثل أو غيّر نوع التمثيل/الورثة.
                       </p>
@@ -560,7 +561,8 @@ export function ExecutedSideSections({
       {executedNaturalPersons.map((p, i) => {
         const pHasRep = hasRepresentative(p);
         const hasEstate = p.representationType === 'إضافة لتركة' || p.representationType === 'أصالة وإضافة';
-        const pHasHeirs = (p.heirs ?? []).some((h) => (h.heirName ?? '').trim());
+        // زر ممثل المنفذ عليه يختفي فور وجود أي صف وريث (حتى فارغ) — وزر ممثل كل وريث يبقى.
+        const pHasHeirRows = (p.heirs ?? []).length > 0;
         return (
           <div key={i} className="border border-gray-200 rounded-xl p-4 mb-4">
             <div className="flex justify-between items-center mb-3">
@@ -602,7 +604,7 @@ export function ExecutedSideSections({
                       <option key={o}>{o}</option>
                     ))}
                   </select>
-                  {!pHasRep && !hasEstate && !pHasHeirs && (
+                  {!pHasRep && !hasEstate && !pHasHeirRows && (
                     <button
                       type="button"
                       onClick={() => onPersonRepActivate(i)}
@@ -612,12 +614,12 @@ export function ExecutedSideSections({
                     </button>
                   )}
                 </div>
-                {!pHasRep && (hasEstate || pHasHeirs) && (
+                {!pHasRep && (hasEstate || pHasHeirRows) && (
                   <p className="mt-2 text-xs text-amber-700" role="note">
                     لا يجتمع الممثل الشرعي مع الورثة/التمثيل بالتركة.
                   </p>
                 )}
-                {pHasRep && (hasEstate || pHasHeirs) && (
+                {pHasRep && (hasEstate || pHasHeirRows) && (
                   <p className="mt-2 text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2" role="note">
                     تعارض: الممثل الشرعي لا يجتمع مع الورثة — احذف الممثل أو غيّر نوع التمثيل/الورثة.
                   </p>

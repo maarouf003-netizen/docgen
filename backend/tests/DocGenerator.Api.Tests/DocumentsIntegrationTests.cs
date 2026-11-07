@@ -2085,6 +2085,72 @@ public class DocumentsIntegrationTests
     }
 
     [Fact]
+    public async Task Annexes_MultipleRoundTripAndAreSearchable()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.ClientWithToken(token);
+
+        var create = await client.PostAsJsonAsync("/api/documents", new
+        {
+            generalEntitySide = "applicant",
+            borrowerName = "مقترض الملاحق المتعددة",
+            applicant = "المصرف",
+            court = "دمشق",
+            contractType = "تعهد",
+            contractTypeSelector = "مصرفي",
+            contractNumber = "C-999",
+            annexes = new[]
+            {
+                new { annexType = "تعديل", annexNumber = "A-901", annexDate = "1/1/2026" },
+                new { annexType = "تمديد", annexNumber = "A-902", annexDate = "2/2/2026" },
+            },
+            amountNumeric = 500,
+            branchName = "الفرع الرئيسي - دمشق",
+        });
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        using var createdBody = await create.Content.ReadFromJsonAsync<JsonDocument>();
+        var id = createdBody!.RootElement.GetProperty("id").GetInt32();
+
+        using var fetched = await (await client.GetAsync($"/api/documents/{id}")).Content.ReadFromJsonAsync<JsonDocument>();
+        var annexes = fetched!.RootElement.GetProperty("annexes").EnumerateArray().ToList();
+        Assert.Equal(2, annexes.Count);
+        Assert.Equal("A-901", annexes[0].GetProperty("annexNumber").GetString());
+        Assert.Equal("A-902", annexes[1].GetProperty("annexNumber").GetString());
+
+        // البحث النصي برقم الملحق الثاني يجد الملف.
+        var searched = await client.GetAsync("/api/documents?q=" + Uri.EscapeDataString("A-902") + "&perPage=50");
+        using var searchedBody = await searched.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.Contains(id, searchedBody!.RootElement.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("id").GetInt32()));
+    }
+
+    [Fact]
+    public async Task Annexes_MoreThanFive_BadRequest()
+    {
+        var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
+        var client = _factory.ClientWithToken(token);
+
+        var response = await client.PostAsJsonAsync("/api/documents", new
+        {
+            generalEntitySide = "applicant",
+            borrowerName = "مقترض تجاوز الملاحق",
+            applicant = "المصرف",
+            court = "دمشق",
+            contractType = "تعهد",
+            contractTypeSelector = "مصرفي",
+            contractNumber = "C-1000",
+            annexes = Enumerable.Range(1, 6)
+                .Select(i => new { annexType = "تعديل", annexNumber = $"A-{i}", annexDate = "1/1/2026" })
+                .ToArray(),
+            amountNumeric = 500,
+            branchName = "الفرع الرئيسي - دمشق",
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("الحد الأقصى", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task Annex_ForBankingDocument_RoundTripsAndIsSearchable()
     {
         // ملحق العقد (للعقد المصرفي): يُحفظ ويُعاد عرضه، ويمكن البحث برقمه (مُضمّن في SearchText).

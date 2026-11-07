@@ -120,6 +120,7 @@ public sealed class DocumentService : IDocumentService
         DocumentValidator.ValidateRegistrationDate(request);
         DocumentValidator.ValidateFileYearNotFuture(request.FileYear, CurrentYear());
         DocumentValidator.ValidateRepresentativeHeirExclusivity(request);
+        DocumentValidator.ValidateAnnexes(request);
 
         // المحامي المختص هو الذي سجّل الدخول وأنشأ الملف: يُسنَد الملف إليه تلقائياً
         // باسمه الكامل (وليس من الطلب)، ويبقى محصّناً من أي كتابة عبر نموذج التعديل.
@@ -204,6 +205,7 @@ public sealed class DocumentService : IDocumentService
         DocumentValidator.ValidateRegistrationDate(request);
         DocumentValidator.ValidateFileYearNotFuture(request.FileYear, CurrentYear());
         DocumentValidator.ValidateRepresentativeHeirExclusivity(request);
+        DocumentValidator.ValidateAnnexes(request);
 
         // لقطة ما قبل التعديل — لتوليد صفوف «حقل/قبل/بعد» في سجل التعديلات.
         var before = Common.Audit.DocumentChangeTracker.Capture(doc);
@@ -609,9 +611,11 @@ public sealed class DocumentService : IDocumentService
         doc.ContractTypeSelector = r.ContractTypeSelector;
         doc.ContractNumber = r.ContractNumber;
         doc.ContractDate = r.ContractDate;
-        doc.AnnexType = r.AnnexType;
-        doc.AnnexNumber = r.AnnexNumber;
-        doc.AnnexDate = r.AnnexDate;
+        // الملاحق: الجدول الفرعي هو المصدر. الأعمدة المفردة القديمة تبقى كما هي
+        // (قراءة فقط) ولا تُكتب بعد الآن.
+        doc.Annexes.Clear();
+        foreach (var annex in DocumentAnnexText.Build(r))
+            doc.Annexes.Add(annex);
         doc.InclusionText = r.InclusionText;
         doc.InclusionNotes = r.InclusionNotes;
         // المبالغ: الأرقام والعملات من الطلب، والتفقيط مشتقّ خادميًا من الرقم الجديد

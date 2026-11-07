@@ -3716,6 +3716,34 @@ public class DocumentDelegationServiceTests : IDisposable
     }
 
     [Fact]
+    public void MirrorGuard_LocksAnnexList()
+    {
+        var doc = new Document
+        {
+            SourceDelegationId = 1,
+            GeneralEntitySide = "applicant",
+            ContractTypeSelector = "مصرفي",
+        };
+        doc.Annexes.Add(new DocumentAnnex
+        {
+            Sequence = 1,
+            AnnexType = "تعديل",
+            AnnexNumber = "A-1",
+            AnnexDate = "1/1/2026",
+        });
+
+        var request = MirrorRequests.MirrorRequest(doc);
+        _service.ValidateTargetEdit(doc, request); // إعادة إرسال القائمة نفسها مقبولة.
+
+        request.Annexes = new List<DocumentAnnexDto>
+        {
+            new(null, "تعديل", "A-2", "1/1/2026", 1),
+        };
+        var ex = Assert.Throws<ArgumentException>(() => _service.ValidateTargetEdit(doc, request));
+        Assert.Contains("ملاحق السند التنفيذي", ex.Message);
+    }
+
+    [Fact]
     public async Task MirrorAndGuard_FieldLists_AreEquivalentAcrossCreateMirrorGuard()
     {
         // B6: قائمة الحقول المشتركة بين (نسخ الإنشاء ↔ دمج المرآة ↔ فحوص الحارس)
@@ -3734,9 +3762,7 @@ public class DocumentDelegationServiceTests : IDisposable
             textCase("نوع العقد (المفصل)", d => d.ContractTypeSelector, (d, v) => d.ContractTypeSelector = v, (r, v) => r.ContractTypeSelector = v),
             textCase("رقم العقد", d => d.ContractNumber, (d, v) => d.ContractNumber = v, (r, v) => r.ContractNumber = v),
             textCase("تاريخ العقد", d => d.ContractDate, (d, v) => d.ContractDate = v, (r, v) => r.ContractDate = v),
-            textCase("نوع الإلحاق", d => d.AnnexType, (d, v) => d.AnnexType = v, (r, v) => r.AnnexType = v),
-            textCase("رقم الإلحاق", d => d.AnnexNumber, (d, v) => d.AnnexNumber = v, (r, v) => r.AnnexNumber = v),
-            textCase("تاريخ الإلحاق", d => d.AnnexDate, (d, v) => d.AnnexDate = v, (r, v) => r.AnnexDate = v),
+            // الملاحق قائمة مستقلة: يقفلها فحص القائمة المخصص أدناه لا حالات الحقل المفرد.
             textCase("نص الإدراج", d => d.InclusionText, (d, v) => d.InclusionText = v, (r, v) => r.InclusionText = v),
             textCase("ملاحظات السند (القرارات الأخرى)", d => d.InclusionNotes, (d, v) => d.InclusionNotes = v, (r, v) => r.InclusionNotes = v),
             // «المبلغ كتابة» خارج القائمة قصدًا: مشتقّ خادميًا من الرقم والعملة، وغير موجود

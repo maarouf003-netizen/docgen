@@ -5,12 +5,14 @@ import type { AssetDto, DocumentUpsertRequest, GuarantorDto, HeirDto, PartyNatur
 import {
   ASSET_KINDS,
   ADDRESS_TYPE_OPTIONS,
+  MAX_ANNEXES,
   MAX_ASSETS_PER_KIND,
   MAX_GUARANTORS,
   PARTY_NATURE_OPTIONS,
   addressLabelOf,
   bankingAmountKeys,
   bankingCurrencyKeys,
+  emptyAnnex,
   guarantorAddState,
   hasHeirName,
   hasRepresentative,
@@ -120,25 +122,23 @@ export function ApplicantSideSections({
   const lock = isMirror;
   const { field, selectField, optionSelectField } = makeFieldHelpers(form, set, lock);
 
-  // «إضافة ملحق» للعقد المصرفي فقط: يُوسّع ثلاثة حقول (نوع/رقم/تاريخ الملحق). إن كانت
-  // بيانات الملحق موجودة (عند التعديل) تُعرض مباشرة، ويصبح الزر «إزالة الملحق».
-  const hasAnnex = Boolean(form.annexType || form.annexNumber || form.annexDate);
-  const [annexOpen, setAnnexOpen] = useState(() => false);
-  const showAnnexFields = annexOpen || hasAnnex;
-  const toggleAnnex = () => {
-    if (showAnnexFields) {
-      set('annexType', '');
-      set('annexNumber', '');
-      set('annexDate', '');
-      setAnnexOpen(false);
-    } else {
-      setAnnexOpen(true);
-    }
+  // ملاحق العقد المصرفي: قائمة صفوف (حتى MAX_ANNEXES) — الجدول الفرعي هو المصدر.
+  const annexes = form.annexes ?? [];
+  const addAnnex = () => {
+    if (annexes.length >= MAX_ANNEXES) return;
+    set('annexes', [...annexes, emptyAnnex()]);
   };
+  const removeAnnex = (i: number) =>
+    set('annexes', annexes.filter((_, idx) => idx !== i));
+  const setAnnex = (i: number, key: 'annexType' | 'annexNumber' | 'annexDate', value: string) =>
+    set('annexes', annexes.map((a, idx) => (idx === i ? { ...a, [key]: value } : a)));
 
   // إظهار حقول العنوان يتبع المخزَّن فعليًا (كقرارات الحمولة): صف وريث فارغ
   // الاسم الثلاثي ليس وريثًا فيُبقي الحقول ظاهرة وقيمها محفوظة عند الحفظ.
   const borrowerHasHeirs = borrowerHeirs.some(hasHeirName);
+  // زر ممثل الطرف يختفي فور وجود أي صف وريث (حتى فارغ) — بينما إخفاء العنوان يتبع
+  // الوريث المسمّى فقط (صف فارغ ليس وريثًا فيُبقي العنوان وقيمته).
+  const borrowerHasHeirRows = borrowerHeirs.length > 0;
   // حالة زر الإضافة (عددًا ورقمًا) تُحسب مرة واحدة: تُستخدم في الزرين والنص.
   const guarantorAdd = guarantorAddState(guarantors, isOrdinary);
   // إخفاء العنوان يتبع «المخزَّن» فعلًا (كحمولة toHeirPayload)؛ تفعيل الممثل بصفة
@@ -184,23 +184,77 @@ export function ApplicantSideSections({
           {!lock && isBanking && (
             <button
               type="button"
-              onClick={toggleAnnex}
-              className="shrink-0 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
+              onClick={addAnnex}
+              disabled={annexes.length >= MAX_ANNEXES}
+              title={annexes.length >= MAX_ANNEXES ? `الحد الأقصى ${MAX_ANNEXES} ملاحق` : undefined}
+              className="shrink-0 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-md px-3 py-2 min-h-11"
             >
-              {showAnnexFields ? 'إزالة الملحق' : 'إضافة ملحق'}
+              إضافة ملحق
             </button>
           )}
         </div>
       </div>
 
-      {isBanking && showAnnexFields && (
+      {isBanking && annexes.length > 0 && (
         <div className="mt-4 rounded-lg bg-gray-50 border border-gray-200 p-4">
-          <span className="block text-xs font-bold text-gray-600 mb-2">ملحق العقد</span>
-          <div className="grid md:grid-cols-3 gap-4">
-            {field('نوع الملحق', 'annexType')}
-            {field('رقم الملحق', 'annexNumber')}
-            {field('تاريخ الملحق', 'annexDate')}
-          </div>
+          <span className="block text-xs font-bold text-gray-600 mb-2">ملاحق العقد</span>
+          {annexes.map((a, i) => (
+            <div key={i} className="mt-3 rounded-lg border border-gray-200 bg-white p-3">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-xs font-bold text-gray-700">الملحق {i + 1}</span>
+                {!lock && (
+                  <button
+                    type="button"
+                    onClick={() => removeAnnex(i)}
+                    className="text-red-500 text-xs hover:underline min-h-11"
+                  >
+                    ✖ حذف
+                  </button>
+                )}
+              </div>
+              <div className="grid md:grid-cols-3 gap-4">
+                <div>
+                  <label htmlFor={`annex-${i}-type`} className="block text-xs font-bold text-gray-600 mb-1">
+                    {i === 0 ? 'نوع الملحق' : `نوع الملحق ${i + 1}`}
+                  </label>
+                  <input
+                    id={`annex-${i}-type`}
+                    value={a.annexType ?? ''}
+                    readOnly={lock}
+                    aria-readonly={lock || undefined}
+                    onChange={(e) => setAnnex(i, 'annexType', e.target.value)}
+                    className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label htmlFor={`annex-${i}-number`} className="block text-xs font-bold text-gray-600 mb-1">
+                    {i === 0 ? 'رقم الملحق' : `رقم الملحق ${i + 1}`}
+                  </label>
+                  <input
+                    id={`annex-${i}-number`}
+                    value={a.annexNumber ?? ''}
+                    readOnly={lock}
+                    aria-readonly={lock || undefined}
+                    onChange={(e) => setAnnex(i, 'annexNumber', e.target.value)}
+                    className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label htmlFor={`annex-${i}-date`} className="block text-xs font-bold text-gray-600 mb-1">
+                    {i === 0 ? 'تاريخ الملحق' : `تاريخ الملحق ${i + 1}`}
+                  </label>
+                  <input
+                    id={`annex-${i}-date`}
+                    value={a.annexDate ?? ''}
+                    readOnly={lock}
+                    aria-readonly={lock || undefined}
+                    onChange={(e) => setAnnex(i, 'annexDate', e.target.value)}
+                    className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -325,9 +379,8 @@ export function ApplicantSideSections({
             onRemove={onBorrowerHeirRemove}
             locked={lock}
             allowAdd={!borrowerHasRep}
-            allowRepresentative={!borrowerHasHeirs}
           />
-          {!borrowerHasRep && !borrowerHasHeirs && (
+          {!borrowerHasRep && !borrowerHasHeirRows && (
             <div className="mt-3 flex justify-end">
               <button
                 type="button"
@@ -338,7 +391,7 @@ export function ApplicantSideSections({
               </button>
             </div>
           )}
-          {!borrowerHasRep && borrowerHasHeirs && (
+          {!borrowerHasRep && borrowerHasHeirRows && (
             <p className="mt-3 text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2" role="note">
               لا يجتمع الممثل الشرعي مع الورثة — احذف الورثة لإضافة ممثل شرعي.
             </p>
@@ -378,6 +431,7 @@ export function ApplicantSideSections({
       {guarantors.map((g, i) => {
         // كالمقترض أعلاه: الفارغ من الاسم الثلاثي ليس وريثًا مخزَّنًا.
         const gHasHeirs = (g.heirs ?? []).some(hasHeirName);
+        const gHasHeirRows = (g.heirs ?? []).length > 0;
         const gHasRep = hasRepresentative(g);
         // إخفاء العنوان يتبع المخزَّن فعلًا (كحمولة toHeirPayload) — لا مجرد التفعيل بصفة.
         const gRepStored = hasStoredRepresentative(g);
@@ -492,9 +546,8 @@ export function ApplicantSideSections({
                   onRemove={(hi) => onGuarantorHeirRemove(i, hi)}
                   locked={lock}
                   allowAdd={!gHasRep}
-                  allowRepresentative={!gHasHeirs}
                 />
-                {!gHasRep && !gHasHeirs && (
+                {!gHasRep && !gHasHeirRows && (
                   <div className="mt-3 flex justify-end">
                     <button
                       type="button"
@@ -505,7 +558,7 @@ export function ApplicantSideSections({
                     </button>
                   </div>
                 )}
-                {!gHasRep && gHasHeirs && (
+                {!gHasRep && gHasHeirRows && (
                   <p className="mt-3 text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2" role="note">
                     لا يجتمع الممثل الشرعي مع الورثة — احذف الورثة لإضافة ممثل شرعي.
                   </p>

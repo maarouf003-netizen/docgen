@@ -1451,9 +1451,17 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         target.ContractTypeSelector = source.ContractTypeSelector;
         target.ContractNumber = source.ContractNumber;
         target.ContractDate = source.ContractDate;
-        target.AnnexType = source.AnnexType;
-        target.AnnexNumber = source.AnnexNumber;
-        target.AnnexDate = source.AnnexDate;
+        target.Annexes.Clear();
+        foreach (var annex in source.Annexes.OrderBy(a => a.Sequence))
+        {
+            target.Annexes.Add(new DocumentAnnex
+            {
+                Sequence = annex.Sequence,
+                AnnexType = annex.AnnexType,
+                AnnexNumber = annex.AnnexNumber,
+                AnnexDate = annex.AnnexDate,
+            });
+        }
         target.InclusionText = source.InclusionText;
         target.InclusionNotes = source.InclusionNotes;
 

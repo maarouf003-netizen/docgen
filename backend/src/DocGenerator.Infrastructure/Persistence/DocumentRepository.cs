@@ -112,6 +112,10 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
                 FileType = d.FileType,
                 FileYear = d.FileYear,
                 AnnexNumber = d.AnnexNumber,
+                Annexes = d.Annexes
+                    .OrderBy(a => a.Sequence)
+                    .Select(a => new DocumentAnnexDto(a.Id, a.AnnexType, a.AnnexNumber, a.AnnexDate, a.Sequence))
+                    .ToList(),
                 Lawyer = d.Lawyer,
                 GeneralEntitySide = d.GeneralEntitySide,
                 ExecutedStatus = d.ExecutedStatus,
@@ -446,6 +450,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             .Include(d => d.CreatedBy)
             .Include(d => d.Branch)
             .Include(d => d.BaseNumbers)
+            .Include(d => d.Annexes)
             // الدائرة وشعبتها للتوجيه بالنطاق (§5 — قرار §2.21): بدونهما يبقى
             // `SectionId` فارغًا بصمت في منطق النطاق.
             .Include(d => d.ExecutionCircuit)
