@@ -71,9 +71,9 @@ export interface AppealDto {
   /** يحتاج تدوير رقم أساسه لسنة التدوير الحالية (يظهر بالأحمر). */
   needsRotation: boolean;
   /** رقم الأساس المعروض: هوية السنة الحالية إن وُجدت وإلا آخر رقم مسجّل. */
-  currentBaseNumber?: string;
+  currentBaseNumber?: string | null;
   /** سنة الهوية الحالية لرقم الأساس (سنة أحدث رقم فعّال ≤ السنة الحالية). */
-  currentBaseYear?: string;
+  currentBaseYear?: string | null;
   assignedLawyerId?: number;
   assignedLawyerName?: string;
   createdAt: string;

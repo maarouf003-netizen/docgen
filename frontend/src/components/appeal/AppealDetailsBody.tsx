@@ -1,4 +1,5 @@
 import { formatDate, formatDateTime } from '../../utils/dates';
+import { appealBaseNumberOf, appealBaseYearOf } from '../../utils/appealBaseNumber';
 import {
   APPEAL_DIRECTION_APPELLANTS,
   APPEAL_STATUS_DECIDED,
@@ -101,8 +102,8 @@ export default function AppealDetailsBody({
         <h4 className="font-semibold text-gray-700">القيد الاستئنافي</h4>
         <dl className="grid sm:grid-cols-2 gap-x-4 gap-y-2.5">
           <FieldCell label="محكمة الاستئناف التنفيذية المختصة" value={appeal.appellateCourt} showEmpty />
-          <FieldCell label="رقم الأساس الاستئنافي" value={appeal.currentBaseNumber ?? appeal.appealBaseNumber} showEmpty />
-          <FieldCell label="لعام" value={appeal.currentBaseYear ?? appeal.appealYear} showEmpty />
+          <FieldCell label="رقم الأساس الاستئنافي" value={appealBaseNumberOf(appeal)} showEmpty />
+          <FieldCell label="لعام" value={appealBaseYearOf(appeal)} showEmpty />
           <FieldCell label="تاريخ إقرار الاستئناف" value={formatDate(appeal.registrationDate)} showEmpty />
         </dl>
       </section>

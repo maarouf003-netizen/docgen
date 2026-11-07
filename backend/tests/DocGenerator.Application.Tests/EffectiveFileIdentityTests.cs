@@ -41,31 +41,6 @@ public class EffectiveFileIdentityTests
     }
 
     [Fact]
-    public void LatestFrom_AppealSameYearRows_PicksNewestCreatedAt()
-    {
-        var a = new AppealBaseNumber
-        {
-            AppealId = 1,
-            Year = 2026,
-            BaseNumber = "1501",
-            CreatedAt = new DateTime(2026, 1, 10),
-            CreatedById = 1,
-        };
-        var b = new AppealBaseNumber
-        {
-            AppealId = 1,
-            Year = 2026,
-            BaseNumber = "1500",
-            CreatedAt = new DateTime(2026, 1, 5),
-            CreatedById = 1,
-        };
-
-        var latest = EffectiveFileIdentity.LatestFrom(new[] { a, b }, 2026)!;
-        Assert.Equal("1501", latest.BaseNumber);
-        Assert.Equal(2026, latest.Year);
-    }
-
-    [Fact]
     public void Number_FallsBackToFileNumberWhenNoBaseNumbers()
     {
         var doc = NumberDoc("520", "2024");

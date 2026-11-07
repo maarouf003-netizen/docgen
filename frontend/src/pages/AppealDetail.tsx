@@ -103,19 +103,20 @@ export default function AppealDetail() {
                 >
                   تعديل القيد
                 </button>
+                {/* سجل الأرقام للقراءة والتصحيح الموضعي — متاح بعد الحسم أيضًا (بلا تدوير). */}
+                <button
+                  type="button"
+                  onClick={() => setRotationOpen(true)}
+                  className={`rounded-lg px-4 py-2 text-sm min-h-11 border ${
+                    appeal.needsRotation
+                      ? 'text-red-700 border-red-300 hover:bg-red-50'
+                      : 'text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {appeal.needsRotation ? 'تدوير' : 'سجل الأرقام'}
+                </button>
                 {appeal.status === 'pending' && (
                   <>
-                    <button
-                      type="button"
-                      onClick={() => setRotationOpen(true)}
-                      className={`rounded-lg px-4 py-2 text-sm min-h-11 border ${
-                        appeal.needsRotation
-                          ? 'text-red-700 border-red-300 hover:bg-red-50'
-                          : 'text-gray-700 border-gray-300 hover:bg-gray-50'
-                      }`}
-                    >
-                      {appeal.needsRotation ? 'تدوير' : 'سجل الأرقام'}
-                    </button>
                     <button
                       type="button"
                       onClick={() => setDecideOpen(true)}

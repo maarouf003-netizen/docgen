@@ -71,6 +71,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
 
         var direction = ParseDirection(request.Direction);
         var (appellantsJson, appelleesJson) = BuildSnapshots(source, direction, request.Appellants);
+        var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
 
         var appeal = new DocumentAppeal
         {
@@ -85,7 +86,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };
-        ApplyUpsertFields(appeal, request);
+        ApplyUpsertFields(appeal, request, currentYear);
 
         await _tx.RunAsync(async token =>
         {
@@ -98,7 +99,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
                 $"تسطير الاستئناف ({AppealDirectionCatalog.ToLabel(direction)}) على الملف (رقم {source.Id})", token);
         }, ct);
 
-        return ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
+        return ToDto(appeal, currentYear);
     }
 
     public async Task<AppealDto?> UpdateAsync(
@@ -120,7 +121,8 @@ public sealed class DocumentAppealService : IDocumentAppealService
         appeal.Direction = direction;
         appeal.AppellantsJson = appellantsJson;
         appeal.AppelleesJson = appelleesJson;
-        ApplyUpsertFields(appeal, request);
+        var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
+        ApplyUpsertFields(appeal, request, currentYear);
         appeal.UpdatedAt = DateTime.UtcNow;
 
         await _tx.RunAsync(async token =>
@@ -132,7 +134,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
                 $"عدّل الاستئناف (رقم {appeal.Id}) على الملف (رقم {source.Id})", token);
         }, ct);
 
-        return ToDto(appeal, ServerClock.CurrentYear(_clock, _timeZone));
+        return ToDto(appeal, currentYear);
     }
 
     public async Task<bool> DeleteAsync(int appealId, int userId, string? actorName, CancellationToken ct = default)
@@ -221,25 +223,11 @@ public sealed class DocumentAppealService : IDocumentAppealService
         EnsureAssignedFollower(appeal, userId);
 
         var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
-        var currentIdentity = ResolveCurrentIdentity(appeal, currentYear);
+        var currentIdentity = AppealBaseNumberPolicy.ResolveCurrent(appeal, currentYear);
 
-        var requestedNumber = Bounded(request.AppealBaseNumber, 100, "رقم الأساس الاستئنافي");
-        var requestedYear = ParseYearOrNull(request.AppealYear, "لعام");
-        if (requestedYear > currentYear)
-            throw new ArgumentException($"لا يمكن إدخال رقم أساس لسنة مستقبلية — السنة الحالية {currentYear}");
-
-        var targetYear = requestedYear ?? currentIdentity?.Year ?? currentYear;
-
-        // نقل الرقم الحالي إلى سنة لها هوية أخرى يطمس تلك الهوية في السجل؛
-        // تصحيح رقم سنة سابقة مساره المستقل.
-        if (requestedNumber is not null
-            && requestedYear is int yearToApply
-            && yearToApply != currentIdentity?.Year
-            && HasIdentityForYear(appeal, yearToApply))
-        {
-            throw new ArgumentException(
-                $"يوجد رقم أساس مسجّل لسنة {yearToApply} — استخدم التصحيح لتعديله");
-        }
+        var requestedNumber = Bounded(
+            request.AppealBaseNumber, AppealBaseNumberPolicy.MaxNumberLength, "رقم الأساس الاستئنافي");
+        var requestedYear = AppealBaseNumberPolicy.ValidateYear(request.AppealYear, currentYear, "لعام");
 
         appeal.AppealTypeLabel = Bounded(request.AppealTypeLabel, 100, "نوع الاستئناف");
         appeal.AppellateCourt = Bounded(request.AppellateCourt, 300, "محكمة الاستئناف التنفيذية المختصة");
@@ -247,29 +235,43 @@ public sealed class DocumentAppealService : IDocumentAppealService
 
         // الرقم الحالي واحد: «تعديل القيد» يصحّح مصدر الهوية الحالية في مكانه
         // (أحدث صف سنة ≤ الحالية، أو حقول القيد إن لم يوجد صف)، ولا يُلحق سجلًا جديدًا.
-        if (requestedNumber is null)
+        // الإفراغ لا يمسّ الرقم المسجَّل (لا مسار لحذفه)؛ التصحيح هو مسار التعديل.
+        var effectiveYear = currentIdentity?.Year;
+        if (requestedNumber is not null)
         {
             if (currentIdentity?.Row is not null)
             {
-                currentIdentity.Row.BaseNumber = string.Empty;
+                // سنة صف التدوير مُولَّدة من الخادم؛ إعادة كتابتها تطمس سنة مؤرشفة.
+                if (requestedYear is int rowYear && rowYear != currentIdentity.Row.Year)
+                    throw new ArgumentException(
+                        "سنة رقم الأساس الحالية مُدارة آليًا — استخدم «تدوير» لسنة جديدة أو «تصحيح» لتعديل سجل سابق");
+
+                currentIdentity.Row.BaseNumber = requestedNumber;
                 currentIdentity.Row.UpdatedAt = DateTime.UtcNow;
+                effectiveYear = currentIdentity.Row.Year;
             }
             else
             {
-                appeal.AppealBaseNumber = null;
-                appeal.AppealYear = null;
+                // لا هوية: تُنسب الكتابة الجديدة للسنة الحالية افتراضيًا.
+                // رقم قديم بسنة غير رقمية: تبقى سنته فارغة (لا تُختلق سنة للسنة الحالية).
+                var targetYear = requestedYear
+                    ?? currentIdentity?.Year
+                    ?? (currentIdentity is null ? currentYear : (int?)null);
+
+                // نقل الرقم الحالي إلى سنة لها هوية أخرى يطمس تلك الهوية في السجل؛
+                // تصحيح رقم سنة سابقة مساره المستقل.
+                if (requestedYear is int yearToApply
+                    && yearToApply != currentIdentity?.Year
+                    && AppealBaseNumberPolicy.HasIdentityForYear(appeal, yearToApply))
+                {
+                    throw new ArgumentException(
+                        $"يوجد رقم أساس مسجّل لسنة {yearToApply} — استخدم التصحيح لتعديله");
+                }
+
+                appeal.AppealBaseNumber = requestedNumber;
+                appeal.AppealYear = targetYear?.ToString(CultureInfo.InvariantCulture);
+                effectiveYear = targetYear;
             }
-        }
-        else if (currentIdentity?.Row is not null)
-        {
-            currentIdentity.Row.BaseNumber = requestedNumber;
-            currentIdentity.Row.Year = targetYear;
-            currentIdentity.Row.UpdatedAt = DateTime.UtcNow;
-        }
-        else
-        {
-            appeal.AppealBaseNumber = requestedNumber;
-            appeal.AppealYear = targetYear.ToString(CultureInfo.InvariantCulture);
         }
 
         appeal.UpdatedAt = DateTime.UtcNow;
@@ -278,9 +280,11 @@ public sealed class DocumentAppealService : IDocumentAppealService
         {
             _appeals.Update(appeal);
             await _uow.SaveChangesAsync(token);
+            var loggedNumber = requestedNumber ?? currentIdentity?.Number ?? "—";
+            var loggedYear = effectiveYear?.ToString(CultureInfo.InvariantCulture) ?? "—";
             await _audit.LogAsync(actorName, "update_appeal_registration",
                 appeal.DocumentId, appeal.Document.DocumentType,
-                $"حدّث قيد الاستئناف (رقم {appeal.Id}) برقم أساس {requestedNumber ?? "—"} لعام {targetYear}", token);
+                $"حدّث قيد الاستئناف (رقم {appeal.Id}) برقم أساس {loggedNumber} لعام {loggedYear}", token);
         }, ct);
 
         return ToDto(appeal, currentYear);
@@ -632,108 +636,11 @@ public sealed class DocumentAppealService : IDocumentAppealService
     {
         var appeal = await _appeals.GetByIdWithDetailsAsync(appealId, ct)
             ?? throw new ArgumentException("الاستئناف غير موجود");
-        return BuildBaseNumberHistory(appeal);
-    }
-
-    /// <summary>
-    /// تاريخ أرقام الأساس الاستئنافية: سجل واحد لكل سنة (الأحدث CreatedAt هو المعتبر)،
-    /// مع الرقم الأصلي المسجّل عند القيد إن لم يكن له سجل بنفس السنة — لتظهر النافذة
-    /// «بكافة أرقام الأساس السابقة» كاملة. الهوية الحالية (رقم السنة الحالية) تُوسم
-    /// <c>IsCurrent</c> لتمييزها عن الأرقام المؤرشفة.
-    /// </summary>
-    private List<AppealBaseNumberHistoryDto> BuildBaseNumberHistory(DocumentAppeal appeal)
-    {
         var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
-
-        var history = appeal.BaseNumbers
-            .Where(b => !string.IsNullOrWhiteSpace(b.BaseNumber))
-            .GroupBy(b => b.Year)
-            .Select(g => g.OrderByDescending(b => b.CreatedAt).First())
-            .OrderBy(b => b.Year)
-            .Select(b => new AppealBaseNumberHistoryDto(
-                b.Year, b.BaseNumber.Trim(), b.Year == currentYear))
+        return AppealBaseNumberPolicy.BuildHistory(appeal, currentYear)
+            .Select(h => new AppealBaseNumberHistoryDto(h.Year, h.Number, h.IsCurrent))
             .ToList();
-
-        if (!string.IsNullOrWhiteSpace(appeal.AppealBaseNumber)
-            && TryParseYear(appeal.AppealYear) is int registeredYear
-            && !history.Any(h => h.Year == registeredYear))
-        {
-            history.Add(new AppealBaseNumberHistoryDto(
-                registeredYear, appeal.AppealBaseNumber.Trim(), registeredYear == currentYear));
-            history = history.OrderBy(h => h.Year).ToList();
-        }
-
-        return history;
     }
-
-    /// <summary>
-    /// الهوية الحالية لرقم الأساس الاستئنافي: أحدث هوية سنة ≤ السنة الحالية من صفوف
-    /// التدوير أو حقول القيد الأصلية. صفوف السنوات المستقبلية لا تُحتسب (ممنوعة أصلًا).
-    /// عند تعادل السنة يفوز صف التدوير (أحدث إنشاء) على حقول القيد.
-    /// </summary>
-    private static CurrentBaseIdentity? ResolveCurrentIdentity(DocumentAppeal appeal, int currentYear)
-    {
-        var candidates = new List<CurrentBaseIdentity>();
-        foreach (var row in appeal.BaseNumbers)
-        {
-            if (row.Year > currentYear || string.IsNullOrWhiteSpace(row.BaseNumber))
-                continue;
-            candidates.Add(new CurrentBaseIdentity(row.Year, row.BaseNumber.Trim(), row));
-        }
-
-        if (!string.IsNullOrWhiteSpace(appeal.AppealBaseNumber)
-            && TryParseYear(appeal.AppealYear) is int registeredYear
-            && registeredYear <= currentYear)
-        {
-            candidates.Add(new CurrentBaseIdentity(
-                registeredYear, appeal.AppealBaseNumber.Trim(), null));
-        }
-
-        var picked = candidates
-            .OrderByDescending(c => c.Year)
-            .ThenByDescending(c => c.Row?.CreatedAt ?? DateTime.MinValue)
-            .FirstOrDefault();
-        if (picked is not null)
-            return picked;
-
-        // رقم بلا سنة صالحة: يُعرض للقراءة لكنه ليس هوية للسنة الحالية (يستوجب تدويرًا).
-        return string.IsNullOrWhiteSpace(appeal.AppealBaseNumber)
-            ? null
-            : new CurrentBaseIdentity(null, appeal.AppealBaseNumber.Trim(), null);
-    }
-
-    /// <summary>هوية رقم أساس حالية: السنة (null عند غياب سنة صالحة) والرقم ومصدره.</summary>
-    private sealed record CurrentBaseIdentity(int? Year, string BaseNumber, AppealBaseNumber? Row);
-
-    /// <summary>يقرأ سنة حرّة (مع تطبيع الأرقام العربية) ويرفض غير الصالح غير الفارغ.</summary>
-    private static int? ParseYearOrNull(string? value, string fieldName = "السنة")
-    {
-        var normalized = DigitNormalizer.NormalizeDigitsOrNull(value);
-        if (normalized is null)
-            return null;
-        if (!int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out var year))
-            throw new ArgumentException($"{fieldName} غير صالح — أدخل سنة مثل 2026");
-        return year;
-    }
-
-    /// <summary>
-    /// قراءة سنة مخزَّنة بلا رفض: البيانات القديمة قد تحوي سنة حرّة غير رقمية
-    /// (`AppealYear` كان نصًا حرًا)، فلا يجوز أن يُعطّل ذلك عرض الاستئناف أو سجله.
-    /// </summary>
-    private static int? TryParseYear(string? value)
-    {
-        var normalized = DigitNormalizer.NormalizeDigitsOrNull(value);
-        return normalized is not null
-            && int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out var year)
-            ? year
-            : null;
-    }
-
-    /// <summary>هل توجد هوية رقم أساس مسجّلة لهذه السنة (صف تدوير أو حقول القيد)؟</summary>
-    private static bool HasIdentityForYear(DocumentAppeal appeal, int year)
-        => appeal.BaseNumbers.Any(b => b.Year == year && !string.IsNullOrWhiteSpace(b.BaseNumber))
-           || (!string.IsNullOrWhiteSpace(appeal.AppealBaseNumber)
-               && TryParseYear(appeal.AppealYear) == year);
 
     public async Task SaveBaseNumbersAsync(
         int appealId,
@@ -755,12 +662,12 @@ public sealed class DocumentAppealService : IDocumentAppealService
             throw new ArgumentException("يُدخل رقم أساس واحد لسنة التدوير الحالية");
 
         var year = ServerClock.CurrentYear(_clock, _timeZone);
-        var currentIdentity = ResolveCurrentIdentity(appeal, year);
+        var currentIdentity = AppealBaseNumberPolicy.ResolveCurrent(appeal, year);
         if (currentIdentity?.Year == year)
             throw new ArgumentException("لا حاجة لتدوير رقم الأساس — يوجد رقم مسجّل للسنة الحالية؛ استخدم التصحيح");
 
         var entry = request.Entries[0];
-        var value = Normalize(entry.BaseNumber)
+        var value = Bounded(entry.BaseNumber, AppealBaseNumberPolicy.MaxNumberLength, "رقم الأساس الاستئنافي")
             ?? throw new ArgumentException("أدخل رقم الأساس الاستئنافي للسنة الحالية");
 
         await _tx.RunAsync(async token =>
@@ -783,8 +690,9 @@ public sealed class DocumentAppealService : IDocumentAppealService
 
     /// <summary>
     /// تصحيح رقم أساس استئنافي مسجّل مسبقًا لسنة محددة — تعديل في مكانه بلا إلحاق سجل
-    /// جديد، للمحامي المتابع على الاستئناف المنظور. إن كانت السنة بلا صف تدوير تُصحَّح
-    /// حقول القيد الأصلية (رقم القيد) بدلًا من ذلك.
+    /// جديد، للمحامي المسند له. إن كانت السنة بلا صف تدوير تُصحَّح حقول القيد الأصلية
+    /// (رقم القيد) بدلًا من ذلك. متاح في أي حالة كـ«تعديل القيد» (تصحيح بيانات موضعي)،
+    /// بخلاف «التدوير» المحصور بالمنظور لأنه ينشئ هوية سنة جديدة.
     /// </summary>
     public async Task CorrectBaseNumberAsync(
         int appealId,
@@ -798,27 +706,21 @@ public sealed class DocumentAppealService : IDocumentAppealService
             ?? throw new ArgumentException("الاستئناف غير موجود");
 
         EnsureAssignedFollower(appeal, userId);
-        if (appeal.Status != AppealStatusCatalog.Pending)
-            throw new ArgumentException("لا يمكن تصحيح رقم أساس استئناف لم يبق منظورًا");
 
         var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
-        if (year > currentYear)
-            throw new ArgumentException($"لا يمكن إدخال رقم أساس لسنة مستقبلية — السنة الحالية {currentYear}");
+        AppealBaseNumberPolicy.EnsureAllowedYear(year, currentYear);
 
-        var value = Normalize(request.BaseNumber)
+        var value = Bounded(request.BaseNumber, AppealBaseNumberPolicy.MaxNumberLength, "رقم الأساس الاستئنافي")
             ?? throw new ArgumentException("أدخل رقم الأساس الاستئنافي");
 
-        var row = appeal.BaseNumbers
-            .Where(b => b.Year == year)
-            .OrderByDescending(b => b.CreatedAt)
-            .FirstOrDefault();
+        var row = AppealBaseNumberPolicy.LatestRowForYear(appeal, year);
 
         if (row is not null)
         {
             row.BaseNumber = value;
             row.UpdatedAt = DateTime.UtcNow;
         }
-        else if (TryParseYear(appeal.AppealYear) == year
+        else if (AppealBaseNumberPolicy.TryParseYear(appeal.AppealYear) == year
                  && !string.IsNullOrWhiteSpace(appeal.AppealBaseNumber))
         {
             appeal.AppealBaseNumber = value;
@@ -1281,7 +1183,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
             AppealSnapshotSerializer.SerializeParties(appellees));
     }
 
-    private static void ApplyUpsertFields(DocumentAppeal appeal, UpsertAppealRequest request)
+    private static void ApplyUpsertFields(DocumentAppeal appeal, UpsertAppealRequest request, int currentYear)
     {
         appeal.AppealTypeLabel = Bounded(request.AppealTypeLabel, 100, "نوع الاستئناف");
         appeal.AppealedDecisionText = RequireText(request.AppealedDecisionText, "نص القرار المستأنف", 2000);
@@ -1293,8 +1195,12 @@ public sealed class DocumentAppealService : IDocumentAppealService
         appeal.NoticeNumber = Bounded(request.NoticeNumber, 200, "رقم ورود سند تبليغ الاستئناف");
         appeal.NoticeDate = DocumentValidator.ParseDateTime(request.NoticeDate, "تاريخ ورود سند تبليغ الاستئناف");
         appeal.AppellateCourt = Bounded(request.AppellateCourt, 300, "محكمة الاستئناف التنفيذية المختصة");
-        appeal.AppealBaseNumber = Bounded(request.AppealBaseNumber, 100, "رقم الأساس الاستئنافي");
-        appeal.AppealYear = Bounded(request.AppealYear, 50, "لعام");
+        // رقم الأساس يخضع لسياسة واحدة في كل المسارات: الطول والحدود الزمنية.
+        appeal.AppealBaseNumber = Bounded(
+            request.AppealBaseNumber, AppealBaseNumberPolicy.MaxNumberLength, "رقم الأساس الاستئنافي");
+        appeal.AppealYear = AppealBaseNumberPolicy
+            .ValidateYear(request.AppealYear, currentYear, "لعام")
+            ?.ToString(CultureInfo.InvariantCulture);
         // كتاب إيداع الملف رئيس القسم: مسار «مستأنف علينا» فقط — يُصفَّر لمسار «مستأنِفين»
         // (appeal.Direction مضبوط قبل الاستدعاء في CreateAsync وUpdateAsync).
         if (appeal.Direction == AppealDirectionCatalog.Appellants)
@@ -1551,7 +1457,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
     {
         var d = a.Document;
         var currentYear = asOfYear;
-        var currentIdentity = ResolveCurrentIdentity(a, currentYear);
+        var currentIdentity = AppealBaseNumberPolicy.ResolveCurrent(a, currentYear);
         // الأهلية للتدوير: منظور بلا هوية لسنة اليوم — بمن فيه من لا رقم له إطلاقًا.
         // (رقم السنة الحالية = صف تدوير لسنة اليوم أو قيد هذه السنة؛ السنوات المستقبلية ممنوعة.)
         var needsRotation = a.Status == AppealStatusCatalog.Pending
@@ -1600,7 +1506,7 @@ public sealed class DocumentAppealService : IDocumentAppealService
             a.StruckOffDecisionNumber,
             a.Notes,
             needsRotation,
-            currentIdentity?.BaseNumber,
+            currentIdentity?.Number,
             a.AssignedLawyerId,
             a.AssignedLawyer?.FullName,
             a.CreatedAt,

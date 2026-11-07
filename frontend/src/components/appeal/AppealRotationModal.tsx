@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
+import type { FormEvent } from 'react';
 import { api, getApiErrorMessage } from '../../api/client';
 import { useCurrentYear } from '../../hooks/useCurrentYear';
 import { normalizeArabicDigits } from '../../utils/arabicDigits';
+import { APPEAL_BASE_NUMBER_MAX_LENGTH } from '../../utils/appealBaseNumber';
 import type { AppealBaseNumberHistoryDto, AppealDto } from '../../types';
 
 /**
@@ -70,10 +72,8 @@ export default function AppealRotationModal({
     setHistory(Array.isArray(r.data) ? r.data : []);
   };
 
-  const submitRotation = (e: React.FormEvent<HTMLFormElement>) => {
+  const submitRotation = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    // وضع السجل للقراءة: لا تدوير — Enter داخل حقل التصحيح لا يطلق مسار الحفظ.
-    if (!rotationMode) return;
     setError(null);
     const trimmed = normalizeArabicDigits(value).trim();
     if (!trimmed) {
@@ -119,22 +119,36 @@ export default function AppealRotationModal({
       setCorrectionError('أدخل رقم الأساس الاستئنافي');
       return;
     }
+
     setSaving(true);
     setCorrectionError(null);
     try {
       await api.put(`/appeals/${appeal.id}/base-numbers/${correctingYear}`, {
         baseNumber: trimmed,
       });
-      setCorrectingYear(null);
-      setCorrectValue('');
-      await reloadHistory();
-      if (onCorrected) onCorrected();
-      else onSaved();
     } catch (err) {
+      // فشل الحفظ فقط هو خطأ التصحيح؛ لا يُخلط بخطأ تحديث السجل بعده.
       setCorrectionError(getApiErrorMessage(err));
-    } finally {
       setSaving(false);
+      return;
     }
+
+    setSaving(false);
+    setCorrectingYear(null);
+    setCorrectValue('');
+    if (onCorrected) onCorrected();
+    else onSaved();
+
+    try {
+      await reloadHistory();
+    } catch {
+      setError('تم حفظ التصحيح، لكن تعذّر تحديث السجل — أعد فتح النافذة.');
+    }
+  };
+
+  const submitCorrection = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    void doSaveCorrection();
   };
 
   const fieldCls =
@@ -164,7 +178,7 @@ export default function AppealRotationModal({
           </button>
         </div>
 
-        <form onSubmit={submitRotation} noValidate className="px-5 py-4 space-y-4">
+        <div className="px-5 py-4 space-y-4">
           {error && (
             <div role="alert" className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
               {error}
@@ -179,8 +193,8 @@ export default function AppealRotationModal({
               <p className="text-gray-400 text-sm">لا توجد أرقام مسجلة بعد.</p>
             ) : (
               <ul className="rounded-lg border border-gray-200 divide-y divide-gray-100">
-                {history.map((h, i) => (
-                  <li key={`${h.year}-${i}`} className="px-3 py-2 text-sm">
+                {history.map((h) => (
+                  <li key={h.year} className="px-3 py-2 text-sm">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-gray-500 tabular-nums">{h.year}</span>
                       <span className="flex items-center gap-2 min-w-0">
@@ -205,7 +219,11 @@ export default function AppealRotationModal({
                     </div>
 
                     {correctingYear === h.year && (
-                      <div className="mt-2 space-y-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                      <form
+                        onSubmit={submitCorrection}
+                        noValidate
+                        className="mt-2 space-y-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2"
+                      >
                         <label
                           htmlFor={`correct-base-${h.year}`}
                           className="block text-xs font-medium text-amber-900"
@@ -218,6 +236,7 @@ export default function AppealRotationModal({
                           onChange={(e) => setCorrectValue(e.target.value)}
                           inputMode="numeric"
                           autoComplete="off"
+                          maxLength={APPEAL_BASE_NUMBER_MAX_LENGTH}
                           className={fieldCls}
                         />
                         {correctionError && (
@@ -225,8 +244,7 @@ export default function AppealRotationModal({
                         )}
                         <div className="flex gap-2 flex-wrap">
                           <button
-                            type="button"
-                            onClick={doSaveCorrection}
+                            type="submit"
                             disabled={saving}
                             className="bg-emerald-800 hover:bg-emerald-700 disabled:opacity-60 text-white rounded-lg px-4 py-2 text-sm font-medium min-h-11"
                           >
@@ -241,7 +259,7 @@ export default function AppealRotationModal({
                             إلغاء
                           </button>
                         </div>
-                      </div>
+                      </form>
                     )}
                   </li>
                 ))}
@@ -289,7 +307,7 @@ export default function AppealRotationModal({
                 </div>
               </section>
             ) : (
-              <>
+              <form onSubmit={submitRotation} noValidate className="space-y-4">
                 <div>
                   <label htmlFor="rotate-year-number" className="block text-sm font-medium text-gray-700 mb-1">
                     رقم الأساس الاستئنافي لسنة {currentYear}
@@ -300,6 +318,7 @@ export default function AppealRotationModal({
                     onChange={(e) => setValue(e.target.value)}
                     inputMode="numeric"
                     autoComplete="off"
+                    maxLength={APPEAL_BASE_NUMBER_MAX_LENGTH}
                     placeholder="مثال: 1450…"
                     className={fieldCls}
                   />
@@ -325,7 +344,7 @@ export default function AppealRotationModal({
                     إلغاء
                   </button>
                 </div>
-              </>
+              </form>
             )
           ) : (
             <div className="flex gap-2 pt-1">
@@ -339,7 +358,7 @@ export default function AppealRotationModal({
               </button>
             </div>
           )}
-        </form>
+        </div>
       </div>
     </div>
   );

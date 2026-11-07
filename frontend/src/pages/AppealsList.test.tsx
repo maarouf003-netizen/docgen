@@ -182,6 +182,43 @@ describe('AppealsList', () => {
     expect(screen.getAllByRole('button', { name: /فتح سجل الأرقام/ })).toHaveLength(2);
   });
 
+  it('رقم الأساس يفتح السجل للمسند له حتى بعد الحسم (قراءة وتصحيح)', async () => {
+    setup('lawyer', 7);
+    apiMock.get.mockResolvedValueOnce({
+      data: {
+        items: [
+          makeAppeal({ id: 4, assignedLawyerId: 7, status: 'decided', currentBaseNumber: '200/2026' }),
+        ],
+        totalCount: 1,
+        totalPages: 1,
+      },
+    });
+    render(<AppealsList />);
+
+    await screen.findByRole('table');
+    expect(screen.getByRole('button', { name: /فتح سجل الأرقام/ })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /تدوير رقم الأساس الاستئنافي/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('على الجوال: رقم الأساس في البطاقة يفتح السجل (هدف لمس)', async () => {
+    stubMobile(true);
+    setup('lawyer', 7);
+    apiMock.get.mockResolvedValueOnce({
+      data: {
+        items: [makeAppeal({ id: 1, assignedLawyerId: 7, currentBaseNumber: '200/2026' })],
+        totalCount: 1,
+        totalPages: 1,
+      },
+    });
+    render(<AppealsList />);
+
+    const link = await screen.findByRole('button', { name: /فتح سجل الأرقام/ });
+    expect(link).toBeInTheDocument();
+    expect(link.className).toContain('min-h-11');
+  });
+
   it('يعرض «تعديل القيد» لاستئناف «مستأنف علينا» للمسند مثل «مستأنفين»', async () => {
     setup('lawyer', 7);
     apiMock.get.mockResolvedValueOnce({

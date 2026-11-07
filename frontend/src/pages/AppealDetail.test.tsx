@@ -153,12 +153,15 @@ describe('AppealDetail — تعديل القيد وسجل الأرقام', () =>
     expect(await screen.findByRole('button', { name: 'تعديل القيد' })).toBeEnabled();
   });
 
-  it('يعطّل «تعديل القيد» لغير المنظور', async () => {
+  it('يعطّل «تعديل القيد» لغير المنظور ويُبقي سجل الأرقام متاحًا', async () => {
     useAuthMock.mockReturnValue({ user: { id: 7, role: 'lawyer' } });
     mockAppeal(appeal({ direction: 'against-us', assignedLawyerId: 7, status: 'decided' }));
     renderDetail();
 
     expect(await screen.findByRole('button', { name: 'تعديل القيد' })).toBeDisabled();
+    // سجل الأرقام يبقى متاحًا للقراءة والتصحيح الموضعي بعد الحسم.
+    expect(screen.getByRole('button', { name: 'سجل الأرقام' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'حسم' })).not.toBeInTheDocument();
   });
 
   it('يعرض «تدوير» عند غياب هوية السنة الحالية و«سجل الأرقام» عند وجودها', async () => {

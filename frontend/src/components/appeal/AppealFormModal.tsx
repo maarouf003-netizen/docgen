@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { api, getApiErrorMessage } from '../../api/client';
+import { useCurrentYear } from '../../hooks/useCurrentYear';
 import { normalizeArabicDigits } from '../../utils/arabicDigits';
+import { APPEAL_BASE_NUMBER_MAX_LENGTH } from '../../utils/appealBaseNumber';
 import { APPEAL_DIRECTION_APPELLANTS } from '../../utils/appealStatus';
 import type { AppealDirection, AppealDto, AppealPartySelectionDto, DocumentResponse } from '../../types';
 import { buildAllParties, buildAppellantOptions } from './appealOptions';
@@ -44,11 +46,15 @@ function TextField({
   label,
   value,
   onChange,
+  maxLength,
+  inputMode,
 }: {
   id: string;
   label: string;
   value: string;
   onChange: (v: string) => void;
+  maxLength?: number;
+  inputMode?: 'numeric' | 'text';
 }) {
   return (
     <div>
@@ -59,7 +65,9 @@ function TextField({
         id={id}
         name={id}
         type="text"
+        inputMode={inputMode}
         autoComplete="off"
+        maxLength={maxLength}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-11"
@@ -133,6 +141,7 @@ export default function AppealFormModal({
 }) {
   const appellantsVariant = variant === APPEAL_DIRECTION_APPELLANTS;
   const options = useMemo(() => buildAppellantOptions(doc, variant), [doc, variant]);
+  const currentYear = useCurrentYear().currentYear;
 
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [appealTypeLabel, setAppealTypeLabel] = useState('');
@@ -202,6 +211,16 @@ export default function AppealFormModal({
       return;
     }
 
+    // «لعام» يخضع لقاعدة واحدة: سنة موجبة غير مستقبلية (مطابقة لتحقق الخادم).
+    const baseYearText = normalizeArabicDigits(baseYear).trim();
+    if (!appellantsVariant && baseYearText) {
+      const yearNumber = Number(baseYearText);
+      if (!Number.isInteger(yearNumber) || yearNumber <= 0 || yearNumber > currentYear) {
+        setError(`لعام غير صالح — أدخل سنة بين 1 و${currentYear} (لا تُقبل سنة مستقبلية)`);
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       const response = await api.post<AppealDto>(`/documents/${doc.id}/appeals`, {
@@ -218,7 +237,7 @@ export default function AppealFormModal({
         noticeDate: appellantsVariant ? undefined : cleanDate(noticeDate),
         appellateCourt: appellantsVariant ? undefined : clean(court),
         appealBaseNumber: appellantsVariant ? undefined : clean(baseNumber),
-        appealYear: appellantsVariant ? undefined : clean(normalizeArabicDigits(baseYear)),
+        appealYear: appellantsVariant ? undefined : (baseYearText || undefined),
         depositBookNumber: appellantsVariant ? undefined : clean(depositBookNumber),
         depositBookDate: appellantsVariant ? undefined : cleanDate(depositBookDate),
         defenseOpinion: appellantsVariant ? undefined : clean(defenseOpinion),
@@ -385,12 +404,15 @@ export default function AppealFormModal({
                 label="رقم الأساس الاستئنافي"
                 value={baseNumber}
                 onChange={setBaseNumber}
+                maxLength={APPEAL_BASE_NUMBER_MAX_LENGTH}
               />
               <TextField
                 id="appeal-base-year"
                 label="لعام"
                 value={baseYear}
                 onChange={setBaseYear}
+                inputMode="numeric"
+                maxLength={4}
               />
               <AutoGrowField
                 id="appeal-defense-opinion"

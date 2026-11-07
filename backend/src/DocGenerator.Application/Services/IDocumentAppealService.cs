@@ -70,7 +70,7 @@ public interface IDocumentAppealService
     /// <summary>إدخال/تدوير رقم الأساس الاستئنافي لسنة التدوير الحالية — المحامي المتابع المسند له.</summary>
     Task SaveBaseNumbersAsync(int appealId, SaveAppealBaseNumbersRequest request, int userId, string? actorName, CancellationToken ct = default);
 
-    /// <summary>تصحيح رقم أساس استئنافي مسجّل مسبقًا لسنة محددة — تعديل في مكانه بلا إلحاق سجل.</summary>
+    /// <summary>تصحيح رقم أساس استئنافي مسجّل مسبقًا لسنة محددة — تعديل في مكانه بلا إلحاق سجل، للمسند له في أي حالة.</summary>
     Task CorrectBaseNumberAsync(int appealId, int year, CorrectAppealBaseNumberRequest request, int userId, string? actorName, CancellationToken ct = default);
 
     /// <summary>هل المستخدم هو المحامي المسند إليه متابعة استئناف على الملف؟ (وصول قرائي للملف الأساس).</summary>

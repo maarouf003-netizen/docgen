@@ -222,16 +222,22 @@ public sealed class PortalService : IPortalService
             return null;
 
         var appeals = await _appeals.ListByDocumentAsync(documentId, ct);
-        return appeals.Select(a => new PortalAppealDto(
-            a.Id,
-            a.Direction,
-            a.Status,
-            a.AppealTypeLabel,
-            a.AppealBaseNumber,
-            a.AppealYear,
-            a.CreatedAt,
-            a.DecisionDate,
-            a.DecisionRuling)).ToList();
+        var currentYear = ServerClock.CurrentYear(_clock, _timeZone);
+        return appeals.Select(a =>
+        {
+            // البوابة تعرض الهوية الفعّالة (رقم السنة الحالية أو آخر رقم مسجّل) لا القيد الأصلي.
+            var identity = AppealBaseNumberPolicy.ResolveCurrent(a, currentYear);
+            return new PortalAppealDto(
+                a.Id,
+                a.Direction,
+                a.Status,
+                a.AppealTypeLabel,
+                identity?.Number,
+                identity?.Year?.ToString(CultureInfo.InvariantCulture),
+                a.CreatedAt,
+                a.DecisionDate,
+                a.DecisionRuling);
+        }).ToList();
     }
 
     /// <inheritdoc />

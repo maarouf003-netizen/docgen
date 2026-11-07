@@ -592,17 +592,211 @@ public class DocumentAppealServiceTests : IDisposable
             new SaveAppealBaseNumbersRequest(new List<AppealBaseNumberEntry> { new("1000") }),
             _lawyer2.Id, "lawyer2");
 
-        // نقل الرقم الحالي فوق هوية سنة مؤرشفة يطمسها؛ التصحيح هو المسار المخصص.
+        // نقل الرقم الحالي (صف السنة الحالية) إلى سنة مؤرشفة يطمسها؛ التصحيح هو المسار المخصص.
         var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
             _service.UpdateRegistrationAsync(created.Id,
                 new UpdateAppealRegistrationRequest(null, null, "1450", previousYear, null),
                 _lawyer2.Id, "lawyer2"));
-        Assert.Contains("استخدم التصحيح", ex.Message);
+        Assert.Contains("مُدارة آليًا", ex.Message);
 
         var dto = await _service.GetAsync(created.Id);
         Assert.NotNull(dto);
         Assert.Equal("1000", dto!.CurrentBaseNumber);
         Assert.Equal(DateTime.Today.Year.ToString(), dto.CurrentBaseYear);
+    }
+
+    [Fact]
+    public async Task UpdateRegistration_DoesNotRelabelRotationRowYear()
+    {
+        var doc = await CreateApplicantDocAsync();
+        var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
+        var created = await _service.CreateAsync(doc.Id,
+            Request(AppealDirectionCatalog.Appellants,
+                new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
+            _lawyer1.Id, "lawyer1");
+        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+
+        var previousYear = DateTime.Today.Year - 1;
+        await _service.UpdateRegistrationAsync(created.Id,
+            new UpdateAppealRegistrationRequest(null, null, "900", previousYear.ToString(), null),
+            _lawyer2.Id, "lawyer2");
+        await _service.SaveBaseNumbersAsync(created.Id,
+            new SaveAppealBaseNumbersRequest(new List<AppealBaseNumberEntry> { new("1000") }),
+            _lawyer2.Id, "lawyer2");
+
+        // سنة صف التدوير مُولَّدة من الخادم: تحريفها إلى سنة بلا هوية يطمس سنة مؤرشفة.
+        var unusedYear = (DateTime.Today.Year - 3).ToString();
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateRegistrationAsync(created.Id,
+                new UpdateAppealRegistrationRequest(null, null, "1450", unusedYear, null),
+                _lawyer2.Id, "lawyer2"));
+        Assert.Contains("مُدارة آليًا", ex.Message);
+
+        var dto = await _service.GetAsync(created.Id);
+        Assert.Equal("1000", dto!.CurrentBaseNumber);
+        Assert.Equal(DateTime.Today.Year.ToString(), dto.CurrentBaseYear);
+        var history = await _service.GetBaseNumberHistoryAsync(created.Id);
+        Assert.Equal(2, history.Count);
+        Assert.Contains(history, h => h.Year == previousYear && h.BaseNumber == "900");
+        Assert.Contains(history, h => h.Year == DateTime.Today.Year && h.BaseNumber == "1000");
+    }
+
+    [Fact]
+    public async Task UpdateRegistration_EmptyNumberKeepsCurrentIdentity()
+    {
+        var doc = await CreateApplicantDocAsync();
+        var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
+        var created = await _service.CreateAsync(doc.Id,
+            Request(AppealDirectionCatalog.Appellants,
+                new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
+            _lawyer1.Id, "lawyer1");
+        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+
+        var previousYear = (DateTime.Today.Year - 1).ToString();
+        await _service.UpdateRegistrationAsync(created.Id,
+            new UpdateAppealRegistrationRequest(null, null, "900", previousYear, null),
+            _lawyer2.Id, "lawyer2");
+
+        // الإفراغ لا يمسّ الرقم المسجَّل (لا مسار لحذفه): تُحفظ الهوية كما هي.
+        var updated = await _service.UpdateRegistrationAsync(created.Id,
+            new UpdateAppealRegistrationRequest("جمركي", null, null, null, null),
+            _lawyer2.Id, "lawyer2");
+
+        Assert.NotNull(updated);
+        Assert.Equal("900", updated!.CurrentBaseNumber);
+        Assert.Equal(previousYear, updated.CurrentBaseYear);
+        Assert.True(updated.NeedsRotation);
+    }
+
+    [Fact]
+    public async Task UpdateRegistration_LegacyNonNumericYear_IsNotFabricatedToCurrentYear()
+    {
+        var doc = await CreateApplicantDocAsync();
+        var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
+        var created = await _service.CreateAsync(doc.Id,
+            Request(AppealDirectionCatalog.Appellants,
+                new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
+            _lawyer1.Id, "lawyer1");
+        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+
+        var entity = await _db.DocumentAppeals.SingleAsync(a => a.Id == created.Id);
+        entity.AppealBaseNumber = "777";
+        entity.AppealYear = "عام غير محدد";
+        await _db.SaveChangesAsync();
+
+        // تعديل الرقم بلا سنة لا يختلق سنة للسنة الحالية؛ يبقى بلا سنة ويستوجب التدوير.
+        var updated = await _service.UpdateRegistrationAsync(created.Id,
+            new UpdateAppealRegistrationRequest(null, null, "778", null, null),
+            _lawyer2.Id, "lawyer2");
+
+        Assert.NotNull(updated);
+        Assert.Equal("778", updated!.CurrentBaseNumber);
+        Assert.Null(updated.CurrentBaseYear);
+        Assert.True(updated.NeedsRotation);
+    }
+
+    [Fact]
+    public async Task UpdateRegistration_RejectsNumberLongerThanColumn()
+    {
+        var doc = await CreateApplicantDocAsync();
+        var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
+        var created = await _service.CreateAsync(doc.Id,
+            Request(AppealDirectionCatalog.Appellants,
+                new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
+            _lawyer1.Id, "lawyer1");
+        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+
+        var tooLong = new string('9', AppealBaseNumberPolicy.MaxNumberLength + 1);
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.UpdateRegistrationAsync(created.Id,
+                new UpdateAppealRegistrationRequest(null, null, tooLong, null, null),
+                _lawyer2.Id, "lawyer2"));
+        Assert.Contains("يتجاوز الحد الأقصى", ex.Message);
+    }
+
+  [Fact]
+    public async Task Create_RejectsFutureBaseYear()
+    {
+        var doc = await CreateApplicantDocAsync();
+        var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CreateAsync(doc.Id,
+                Request(AppealDirectionCatalog.Appellants,
+                    new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }) with
+                {
+                    AppealBaseNumber = "500",
+                    AppealYear = (DateTime.Today.Year + 1).ToString(),
+                },
+                _lawyer1.Id, "lawyer1"));
+
+        Assert.Contains("سنة مستقبلية", ex.Message);
+    }
+
+    [Fact]
+    public async Task CorrectBaseNumber_RejectsFutureUnknownAndEmpty()
+    {
+        var doc = await CreateApplicantDocAsync();
+        var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
+        var created = await _service.CreateAsync(doc.Id,
+            Request(AppealDirectionCatalog.Appellants,
+                new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
+            _lawyer1.Id, "lawyer1");
+        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+
+        var currentYear = DateTime.Today.Year;
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CorrectBaseNumberAsync(created.Id, currentYear + 1,
+                new CorrectAppealBaseNumberRequest("1"), _lawyer2.Id, "lawyer2"));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CorrectBaseNumberAsync(created.Id, currentYear - 2,
+                new CorrectAppealBaseNumberRequest("1"), _lawyer2.Id, "lawyer2"));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CorrectBaseNumberAsync(created.Id, currentYear,
+                new CorrectAppealBaseNumberRequest("   "), _lawyer2.Id, "lawyer2"));
+    }
+
+    [Fact]
+    public async Task CorrectBaseNumber_RequiresAssignedLawyer()
+    {
+        var doc = await CreateApplicantDocAsync();
+        var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
+        var created = await _service.CreateAsync(doc.Id,
+            Request(AppealDirectionCatalog.Appellants,
+                new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
+            _lawyer1.Id, "lawyer1");
+        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.CorrectBaseNumberAsync(created.Id, DateTime.Today.Year,
+                new CorrectAppealBaseNumberRequest("1"), _lawyer1.Id, "lawyer1"));
+    }
+
+    [Fact]
+    public async Task CorrectBaseNumber_AllowedAfterDecision()
+    {
+        var doc = await CreateApplicantDocAsync();
+        var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
+        var created = await _service.CreateAsync(doc.Id,
+            Request(AppealDirectionCatalog.Appellants,
+                new List<AppealPartySelectionDto> { new("applicant-entity", entities[0].Id) }),
+            _lawyer1.Id, "lawyer1");
+        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+
+        var previousYear = DateTime.Today.Year - 1;
+        await _service.UpdateRegistrationAsync(created.Id,
+            new UpdateAppealRegistrationRequest(null, null, "900", previousYear.ToString(), null),
+            _lawyer2.Id, "lawyer2");
+        await _service.DecideAsync(created.Id,
+            new DecideAppealRequest("قرار-1", "15/9/2026", "نص", AppealOutcomeCatalog.InFavor),
+            _lawyer2.Id, "lawyer2");
+
+        // التصحيح الموضعي كـ«تعديل القيد»: متاح في أي حالة للمسند له، بخلاف التدوير.
+        await _service.CorrectBaseNumberAsync(created.Id, previousYear,
+            new CorrectAppealBaseNumberRequest("950"), _lawyer2.Id, "lawyer2");
+
+        var history = await _service.GetBaseNumberHistoryAsync(created.Id);
+        Assert.Equal("950", Assert.Single(history).BaseNumber);
     }
 
     [Fact]
@@ -630,7 +824,7 @@ public class DocumentAppealServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task UpdateRegistration_CurrentYearRegistrationBeatsOlderRow()
+    public async Task AppealDto_CurrentYearRegistrationBeatsOlderRow()
     {
         var doc = await CreateApplicantDocAsync();
         var entities = await _db.ApplicantPublicEntities.Where(e => e.DocumentId == doc.Id).ToListAsync();
@@ -647,11 +841,11 @@ public class DocumentAppealServiceTests : IDisposable
             BaseNumber = "900",
             CreatedById = _lawyer2.Id,
         });
+        // هوية قيد أحدث سنة (بيانات مسجَّلة مسبقًا) تغلب صف السنة الأقدم في العرض.
+        var entity = await _db.DocumentAppeals.SingleAsync(a => a.Id == created.Id);
+        entity.AppealBaseNumber = "500";
+        entity.AppealYear = DateTime.Today.Year.ToString();
         await _db.SaveChangesAsync();
-
-        await _service.UpdateRegistrationAsync(created.Id,
-            new UpdateAppealRegistrationRequest(null, null, "500", DateTime.Today.Year.ToString(), null),
-            _lawyer2.Id, "lawyer2");
 
         var dto = await _service.GetAsync(created.Id);
         Assert.NotNull(dto);
