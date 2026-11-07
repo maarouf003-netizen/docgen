@@ -12,6 +12,7 @@ import AppealRegistrationModal from '../components/appeal/AppealRegistrationModa
 import DecideAppealModal from '../components/appeal/DecideAppealModal';
 import StrikeAppealModal from '../components/appeal/StrikeAppealModal';
 import AssignAppealModal from '../components/appeal/AssignAppealModal';
+import AppealRotationModal from '../components/appeal/AppealRotationModal';
 import type { AppealDto, DocumentResponse } from '../types';
 
 /**
@@ -44,6 +45,7 @@ export default function AppealDetail() {
 
   const [actionsOpen, setActionsOpen] = useState(false);
   const [registrationOpen, setRegistrationOpen] = useState(false);
+  const [rotationOpen, setRotationOpen] = useState(false);
   const [decideOpen, setDecideOpen] = useState(false);
   const [strikeOpen, setStrikeOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState<'assign' | 'transfer' | null>(null);
@@ -92,19 +94,28 @@ export default function AppealDetail() {
           <div className="flex gap-2 flex-wrap">
             {isFollower && (
               <>
-                {appeal.direction === 'appellants' && (
-                  <button
-                    type="button"
-                    onClick={() => setRegistrationOpen(true)}
-                    disabled={appeal.status !== 'pending'}
-                    title={appeal.status !== 'pending' ? 'متاح للاستئنافات المنظورة فقط' : undefined}
-                    className="bg-sky-800 hover:bg-sky-700 disabled:opacity-40 text-white rounded-lg px-4 py-2 text-sm min-h-11"
-                  >
-                    تعديل القيد
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setRegistrationOpen(true)}
+                  disabled={appeal.status !== 'pending'}
+                  title={appeal.status !== 'pending' ? 'متاح للاستئنافات المنظورة فقط' : undefined}
+                  className="bg-sky-800 hover:bg-sky-700 disabled:opacity-40 text-white rounded-lg px-4 py-2 text-sm min-h-11"
+                >
+                  تعديل القيد
+                </button>
                 {appeal.status === 'pending' && (
                   <>
+                    <button
+                      type="button"
+                      onClick={() => setRotationOpen(true)}
+                      className={`rounded-lg px-4 py-2 text-sm min-h-11 border ${
+                        appeal.needsRotation
+                          ? 'text-red-700 border-red-300 hover:bg-red-50'
+                          : 'text-gray-700 border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {appeal.needsRotation ? 'تدوير' : 'سجل الأرقام'}
+                    </button>
                     <button
                       type="button"
                       onClick={() => setDecideOpen(true)}
@@ -286,6 +297,14 @@ export default function AppealDetail() {
           appeal={appeal}
           onClose={() => setRegistrationOpen(false)}
           onSaved={() => { setRegistrationOpen(false); appealQuery.refetch(); }}
+        />
+      )}
+      {rotationOpen && appeal && (
+        <AppealRotationModal
+          appeal={appeal}
+          onClose={() => setRotationOpen(false)}
+          onSaved={() => { setRotationOpen(false); appealQuery.refetch(); }}
+          onCorrected={() => appealQuery.refetch()}
         />
       )}
       {decideOpen && appeal && (

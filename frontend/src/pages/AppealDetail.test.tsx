@@ -132,3 +132,45 @@ describe('AppealDetail — الإحالة لرئيس القسم (§6)', () => {
     expect(await screen.findByRole('button', { name: 'إدخال ملاحظات وإجراءات جديدة' })).toBeInTheDocument();
   });
 });
+
+describe('AppealDetail — تعديل القيد وسجل الأرقام', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function mockAppeal(a: AppealDto) {
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      if (url === '/appeals/7') return Promise.resolve({ data: a });
+      return Promise.resolve({ data: { id: 10, executionActions: [] } });
+    });
+  }
+
+  it('يعرض «تعديل القيد» لاستئناف «مستأنف علينا» للمسند مثل «مستأنفين»', async () => {
+    useAuthMock.mockReturnValue({ user: { id: 7, role: 'lawyer' } });
+    mockAppeal(appeal({ direction: 'against-us', assignedLawyerId: 7 }));
+    renderDetail();
+
+    expect(await screen.findByRole('button', { name: 'تعديل القيد' })).toBeEnabled();
+  });
+
+  it('يعطّل «تعديل القيد» لغير المنظور', async () => {
+    useAuthMock.mockReturnValue({ user: { id: 7, role: 'lawyer' } });
+    mockAppeal(appeal({ direction: 'against-us', assignedLawyerId: 7, status: 'decided' }));
+    renderDetail();
+
+    expect(await screen.findByRole('button', { name: 'تعديل القيد' })).toBeDisabled();
+  });
+
+  it('يعرض «تدوير» عند غياب هوية السنة الحالية و«سجل الأرقام» عند وجودها', async () => {
+    useAuthMock.mockReturnValue({ user: { id: 7, role: 'lawyer' } });
+    mockAppeal(appeal({ assignedLawyerId: 7, needsRotation: true, currentBaseNumber: '900/2025' }));
+    const { unmount } = renderDetail();
+    expect(await screen.findByRole('button', { name: 'تدوير' })).toBeInTheDocument();
+    unmount();
+
+    mockAppeal(appeal({ assignedLawyerId: 7, needsRotation: false, currentBaseNumber: '200/2026' }));
+    renderDetail();
+    expect(await screen.findByRole('button', { name: 'سجل الأرقام' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'تدوير' })).not.toBeInTheDocument();
+  });
+});

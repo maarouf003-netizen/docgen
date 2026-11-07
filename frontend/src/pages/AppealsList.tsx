@@ -99,8 +99,10 @@ export default function AppealsList() {
   const refresh = () => listQuery.refetch();
 
   const isFollower = (a: AppealDto) => role === 'lawyer' && a.assignedLawyerId === user?.id;
-  // (R3 + الخيار ب): التدوير للمسند المنظور دائمًا — needsRotation للتمييز الأحمر فقط، لا بوابة.
-  const canRotateAppeal = (a: AppealDto) => isFollower(a) && a.status === APPEAL_STATUS_PENDING;
+  // فتح سجل الأرقام متاح للمسند المنظور دائمًا (للقراءة والتصحيح)،
+  // وزر «تدوير» يظهر فقط عند غياب هوية السنة الحالية.
+  const canOpenRotationModal = (a: AppealDto) => isFollower(a) && a.status === APPEAL_STATUS_PENDING;
+  const canRotateAppeal = (a: AppealDto) => canOpenRotationModal(a) && a.needsRotation;
   const canAssign = (a: AppealDto) => isHeadOrSubHead && a.status === APPEAL_STATUS_PENDING;
 
   const openAssign = (a: AppealDto) =>
@@ -118,15 +120,13 @@ export default function AppealsList() {
         </Link>
         {isFollower(a) && (
           <>
-            {a.direction === 'appellants' && (
-              <button
-                type="button"
-                onClick={() => setRegistrationTarget(a)}
-                className="bg-sky-800 hover:bg-sky-700 text-white rounded-lg px-3 py-2 min-h-11 inline-flex items-center text-xs"
-              >
-                تعديل القيد
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setRegistrationTarget(a)}
+              className="bg-sky-800 hover:bg-sky-700 text-white rounded-lg px-3 py-2 min-h-11 inline-flex items-center text-xs"
+            >
+              تعديل القيد
+            </button>
             {a.status === APPEAL_STATUS_PENDING && (
               <>
                 <button
@@ -151,11 +151,7 @@ export default function AppealsList() {
           <button
             type="button"
             onClick={() => setRotationTarget(a)}
-            className={`rounded-lg px-3 py-2 min-h-11 inline-flex items-center text-xs border ${
-              a.needsRotation
-                ? 'text-red-700 border-red-300 hover:bg-red-50'
-                : 'text-gray-700 border-gray-300 hover:bg-gray-50'
-            }`}
+            className="text-red-700 border-red-300 hover:bg-red-50 rounded-lg px-3 py-2 min-h-11 inline-flex items-center text-xs border"
             aria-label={`تدوير رقم الأساس الاستئنافي للاستئناف رقم ${a.id}`}
           >
             تدوير
@@ -182,11 +178,11 @@ export default function AppealsList() {
     return (
       <div className="flex flex-col gap-1 items-start">
         {number ? (
-          canRotateAppeal(a) ? (
+          canOpenRotationModal(a) ? (
             <button
               type="button"
               onClick={() => setRotationTarget(a)}
-              aria-label={`رقم الأساس الاستئنافي ${number} — فتح نافذة التدوير`}
+              aria-label={`رقم الأساس الاستئنافي ${number} — فتح سجل الأرقام`}
               className={`tabular-nums font-medium underline-offset-2 hover:underline min-h-11 inline-flex items-center ${
                 a.needsRotation ? 'text-red-600 font-bold' : 'text-gray-800'
               }`}
@@ -434,7 +430,8 @@ export default function AppealsList() {
         <AppealRotationModal
           appeal={rotationTarget}
           onClose={() => setRotationTarget(null)}
-          onSaved={() => { setRotationTarget(null); setNotice('أُضيف سجل رقم أساس استئنافي جديد (تُحفظ السجلات السابقة).'); refresh(); }}
+          onSaved={() => { setRotationTarget(null); setNotice('تم تحديث سجل أرقام الأساس الاستئنافي.'); refresh(); }}
+          onCorrected={() => { setNotice('تم تصحيح رقم الأساس الاستئنافي.'); refresh(); }}
         />
       )}
       {assignTarget && (

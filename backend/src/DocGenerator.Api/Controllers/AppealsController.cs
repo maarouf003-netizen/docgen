@@ -364,6 +364,17 @@ public class AppealsController : ControllerBase
         return NoContent();
     }
 
+    /// <summary>تصحيح رقم أساس استئنافي مسجّل مسبقًا لسنة محددة — تعديل في مكانه بلا إلحاق سجل.</summary>
+    [HttpPut("appeals/{id:int}/base-numbers/{year:int}")]
+    public async Task<IActionResult> CorrectBaseNumber(
+        int id, int year, [FromBody] CorrectAppealBaseNumberRequest request, CancellationToken ct)
+    {
+        if (!CanManageAppeals)
+            return Forbid();
+        await _appeals.CorrectBaseNumberAsync(id, year, request, User.GetUserId(), ActorName, ct);
+        return NoContent();
+    }
+
     // ── الإجراءات والملاحظات المستقلة للاستئناف ───────────────────────────
 
     /// <summary>إجراءات وملاحظات الاستئناف (قائمة مستقلة عن الملف الأساس).</summary>

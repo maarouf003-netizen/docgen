@@ -102,7 +102,7 @@ export default function AppealDetailsBody({
         <dl className="grid sm:grid-cols-2 gap-x-4 gap-y-2.5">
           <FieldCell label="محكمة الاستئناف التنفيذية المختصة" value={appeal.appellateCourt} showEmpty />
           <FieldCell label="رقم الأساس الاستئنافي" value={appeal.currentBaseNumber ?? appeal.appealBaseNumber} showEmpty />
-          <FieldCell label="لعام" value={appeal.appealYear} showEmpty />
+          <FieldCell label="لعام" value={appeal.currentBaseYear ?? appeal.appealYear} showEmpty />
           <FieldCell label="تاريخ إقرار الاستئناف" value={formatDate(appeal.registrationDate)} showEmpty />
         </dl>
       </section>

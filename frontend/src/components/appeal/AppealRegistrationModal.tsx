@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { api, getApiErrorMessage } from '../../api/client';
+import { useCurrentYear } from '../../hooks/useCurrentYear';
 import { normalizeArabicDigits } from '../../utils/arabicDigits';
 import type { AppealDto } from '../../types';
 
@@ -17,10 +18,13 @@ export default function AppealRegistrationModal({
   onClose: () => void;
   onSaved: (updated: AppealDto) => void;
 }) {
+  const currentYear = useCurrentYear().currentYear;
   const [appealTypeLabel, setAppealTypeLabel] = useState(appeal.appealTypeLabel ?? '');
   const [appellateCourt, setAppellateCourt] = useState(appeal.appellateCourt ?? '');
+  // الرقم الحالي هو المصدر: تعديله هنا يصحّح الهوية الحالية في مكانها،
+  // ورقم القيد الأصلي يبقى في سجل الأرقام لا يُستبدل.
   const [appealBaseNumber, setAppealBaseNumber] = useState(appeal.currentBaseNumber ?? appeal.appealBaseNumber ?? '');
-  const [appealYear, setAppealYear] = useState(appeal.appealYear ?? '');
+  const [appealYear, setAppealYear] = useState(appeal.currentBaseYear ?? appeal.appealYear ?? '');
   const [registrationDate, setRegistrationDate] = useState(appeal.registrationDate ?? '');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -28,13 +32,27 @@ export default function AppealRegistrationModal({
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
+
+    const yearText = normalizeArabicDigits(appealYear).trim();
+    if (yearText) {
+      const yearNumber = Number(yearText);
+      if (!Number.isInteger(yearNumber) || yearNumber <= 0) {
+        setError('لعام غير صالح — أدخل سنة مثل 2026');
+        return;
+      }
+      if (yearNumber > currentYear) {
+        setError(`لا يمكن إدخال رقم أساس لسنة مستقبلية — السنة الحالية ${currentYear}`);
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       const response = await api.put<AppealDto>(`/appeals/${appeal.id}/registration`, {
         appealTypeLabel: appealTypeLabel.trim() || null,
         appellateCourt: appellateCourt.trim() || null,
-        appealBaseNumber: appealBaseNumber.trim() || null,
-        appealYear: normalizeArabicDigits(appealYear).trim() || null,
+        appealBaseNumber: normalizeArabicDigits(appealBaseNumber).trim() || null,
+        appealYear: yearText || null,
         registrationDate: normalizeArabicDigits(registrationDate).trim() || null,
       });
       onSaved(response.data);
@@ -77,8 +95,11 @@ export default function AppealRegistrationModal({
             </div>
           )}
           <div>
-            <label htmlFor="reg-base-number" className="block text-sm font-medium text-gray-700 mb-1">رقم الأساس الاستئنافي</label>
+            <label htmlFor="reg-base-number" className="block text-sm font-medium text-gray-700 mb-1">رقم الأساس الاستئنافي (الحالي)</label>
             <input id="reg-base-number" value={appealBaseNumber} onChange={(e) => setAppealBaseNumber(e.target.value)} autoComplete="off" className={fieldCls} />
+            <p className="mt-1.5 text-xs text-gray-500">
+              تعديله هنا يصحّح الرقم الحالي في مكانه، وتبقى الأرقام السابقة محفوظة في سجل الأرقام.
+            </p>
           </div>
           <div>
             <label htmlFor="reg-base-year" className="block text-sm font-medium text-gray-700 mb-1">لعام</label>

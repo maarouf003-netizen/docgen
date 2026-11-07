@@ -70,8 +70,10 @@ export interface AppealDto {
   notes?: string;
   /** يحتاج تدوير رقم أساسه لسنة التدوير الحالية (يظهر بالأحمر). */
   needsRotation: boolean;
-  /** رقم الأساس المعروض: سجل السنة الحالية إن وُجد وإلا الرقم الأصلي المسجّل. */
+  /** رقم الأساس المعروض: هوية السنة الحالية إن وُجدت وإلا آخر رقم مسجّل. */
   currentBaseNumber?: string;
+  /** سنة الهوية الحالية لرقم الأساس (سنة أحدث رقم فعّال ≤ السنة الحالية). */
+  currentBaseYear?: string;
   assignedLawyerId?: number;
   assignedLawyerName?: string;
   createdAt: string;
@@ -178,6 +180,8 @@ export interface SaveAppealBaseNumbersRequest {
 export interface AppealBaseNumberHistoryDto {
   year: number;
   baseNumber: string;
+  /** وسم هوية السنة الحالية (رقم السنة الحالية) لتمييزه عن الأرقام المؤرشفة. */
+  isCurrent?: boolean;
 }
 
 /** إجراء/ملاحظة على الاستئناف مع تذكيره الاختياري (مدة + لون). */

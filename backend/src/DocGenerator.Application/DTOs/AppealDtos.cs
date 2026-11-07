@@ -76,8 +76,14 @@ public record AppealBaseNumberEntry(string? BaseNumber);
 
 public record SaveAppealBaseNumbersRequest(List<AppealBaseNumberEntry> Entries);
 
-/// <summary>سجل رقم أساس استئنافي لسنة سابقة أو حالية.</summary>
-public record AppealBaseNumberHistoryDto(int Year, string BaseNumber);
+/// <summary>
+/// سجل رقم أساس استئنافي لسنة سابقة أو حالية. <c>IsCurrent</c> يوسم الهوية الحالية
+/// (رقم السنة الحالية) لتمييزها في السجل عن الأرقام المؤرشفة.
+/// </summary>
+public record AppealBaseNumberHistoryDto(int Year, string BaseNumber, bool IsCurrent = false);
+
+/// <summary>تصحيح رقم أساس استئنافي مسجّل مسبقًا لسنة محددة (تعديل في مكانه بلا إلحاق سجل).</summary>
+public record CorrectAppealBaseNumberRequest(string? BaseNumber);
 
 /// <summary>إجراء/ملاحظة على الاستئناف مع تذكيره الاختياري (مدة + لون).</summary>
 public record AddAppealActionRequest(
@@ -194,4 +200,9 @@ public record AppealDto(
     /// رمز التزامن التفاؤلي للصف — يُعاد في القراءة ويُرسَل في طلبات الكتابة
     /// التي تدعمه (`إسناد/نقل/إحالة`) لكشف السباق مبكرًا برسالة ودية.
     /// </summary>
-    long Version = 0);
+    long Version = 0,
+    /// <summary>
+    /// سنة الهوية الحالية لرقم الأساس الاستئنافي (سنة أحدث رقم فعّال ≤ السنة الحالية)،
+    /// أو `null` إن لم يوجد رقم. تُستخدم لتهيئة نموذج «تعديل القيد» بالرقم الحالي لا الأصلي.
+    /// </summary>
+    string? CurrentBaseYear = null);

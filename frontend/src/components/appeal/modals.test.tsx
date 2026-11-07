@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import DecideAppealModal from './DecideAppealModal';
 import AppealRotationModal from './AppealRotationModal';
+import AppealRegistrationModal from './AppealRegistrationModal';
 import { makeDocument } from '../../test/factories';
 import type { AppealDto } from '../../types';
 
@@ -117,18 +118,42 @@ describe('AppealRotationModal', () => {
     expect(apiMock.put).not.toHaveBeenCalled();
   });
 
-  it('يعرض تنبيهًا كهرمانيًا عند إعادة تدوير رقم سنة اليوم (تصحيح)', async () => {
-    apiMock.get.mockResolvedValueOnce({ data: [] });
+  it('وضع السجل (لا حاجة لتدوير): يعرض الأرقام للقراءة ويصحّح رقمًا في مكانه', async () => {
+    const previousYear = new Date().getFullYear() - 1;
+    const currentYear = new Date().getFullYear();
+    apiMock.get.mockResolvedValue({
+      data: [
+        { year: previousYear, baseNumber: '900', isCurrent: false },
+        { year: currentYear, baseNumber: '200/2026', isCurrent: true },
+      ],
+    });
+    apiMock.put.mockResolvedValueOnce({ data: null });
+    const onCorrected = vi.fn();
+    const user = userEvent.setup();
     render(
       <AppealRotationModal
-        appeal={{ ...makeAppeal(), needsRotation: false, currentBaseNumber: '200/2026' }}
+        appeal={{ ...makeAppeal(), needsRotation: false, currentBaseNumber: '200/2026', currentBaseYear: String(currentYear) }}
         onClose={vi.fn()}
         onSaved={vi.fn()}
+        onCorrected={onCorrected}
       />,
     );
 
-    await screen.findByText('لا توجد أرقام مسجلة بعد.');
-    expect(screen.getByText(/يوجد رقم مسجل لسنة اليوم/)).toBeInTheDocument();
+    // لا نموذج تدوير في وضع السجل.
+    expect(screen.queryByRole('button', { name: 'حفظ التدوير' })).not.toBeInTheDocument();
+    expect(await screen.findByText('200/2026')).toBeInTheDocument();
+    expect(screen.getByText('الحالي')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: `تصحيح رقم الأساس لسنة ${previousYear}` }));
+    const input = screen.getByLabelText(`تصحيح رقم سنة ${previousYear}`);
+    await user.clear(input);
+    await user.type(input, '950');
+    await user.click(screen.getByRole('button', { name: 'حفظ التصحيح' }));
+
+    await vi.waitFor(() => expect(onCorrected).toHaveBeenCalled());
+    expect(apiMock.put).toHaveBeenCalledWith(`/appeals/5/base-numbers/${previousYear}`, {
+      baseNumber: '950',
+    });
   });
 
   it('يمنع الحفظ دون إدخال رقم', async () => {
@@ -153,5 +178,58 @@ describe('AppealRotationModal', () => {
 
     expect(await screen.findByText('1500')).toBeInTheDocument();
     expect(screen.getByText('1501')).toBeInTheDocument();
+  });
+});
+
+describe('AppealRegistrationModal', () => {
+  it('يهيّئ الرقم/السنة من الهوية الحالية لا من القيد الأصلي', async () => {
+    const currentYear = new Date().getFullYear();
+    apiMock.put.mockResolvedValueOnce({ data: makeAppeal() });
+    const onSaved = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <AppealRegistrationModal
+        appeal={{
+          ...makeAppeal(),
+          appealBaseNumber: '900',
+          appealYear: '2025',
+          currentBaseNumber: '1450',
+          currentBaseYear: String(currentYear),
+        }}
+        onClose={vi.fn()}
+        onSaved={onSaved}
+      />,
+    );
+
+    expect(screen.getByLabelText(/رقم الأساس الاستئنافي/)).toHaveValue('1450');
+    expect(screen.getByLabelText('لعام')).toHaveValue(String(currentYear));
+
+    await user.click(screen.getByRole('button', { name: 'حفظ' }));
+
+    await vi.waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(apiMock.put).toHaveBeenCalledWith(
+      '/appeals/5/registration',
+      expect.objectContaining({ appealBaseNumber: '1450', appealYear: String(currentYear) }),
+    );
+  });
+
+  it('يرفض سنة مستقبلية قبل الإرسال', async () => {
+    const currentYear = new Date().getFullYear();
+    const user = userEvent.setup();
+    render(
+      <AppealRegistrationModal
+        appeal={{ ...makeAppeal(), currentBaseNumber: '1450', currentBaseYear: String(currentYear) }}
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    const yearInput = screen.getByLabelText('لعام');
+    await user.clear(yearInput);
+    await user.type(yearInput, String(currentYear + 1));
+    await user.click(screen.getByRole('button', { name: 'حفظ' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('سنة مستقبلية');
+    expect(apiMock.put).not.toHaveBeenCalled();
   });
 });

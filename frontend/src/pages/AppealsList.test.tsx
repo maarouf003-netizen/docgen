@@ -155,7 +155,7 @@ describe('AppealsList', () => {
     });
   });
 
-  it('زر التدوير للمسند المنظور فقط: أحمر عند الحاجة ومحايد otherwise', async () => {
+  it('زر التدوير للمسند المنظور عند غياب رقم السنة الحالية فقط، والرقم يفتح السجل دائمًا', async () => {
     setup('lawyer', 7);
     apiMock.get.mockResolvedValueOnce({
       data: {
@@ -174,11 +174,27 @@ describe('AppealsList', () => {
     render(<AppealsList />);
 
     await screen.findByRole('table');
-    // زرّا التدوير في صفّي الإجراءات (اسمهما المُعلن من aria-label) — للمسندين المنظورين فقط.
+    // زر تدوير واحد فقط لصاحب الحاجة (أحمر).
     const rotationButtons = screen.getAllByRole('button', { name: /تدوير رقم الأساس الاستئنافي/ });
-    expect(rotationButtons).toHaveLength(2);
+    expect(rotationButtons).toHaveLength(1);
     expect(rotationButtons[0]).toHaveClass('text-red-700');
-    expect(rotationButtons[1]).not.toHaveClass('text-red-700');
+    // الرقمان لصاحبي الهوية الحالية/السابقة يفتحان السجل للقراءة والتصحيح.
+    expect(screen.getAllByRole('button', { name: /فتح سجل الأرقام/ })).toHaveLength(2);
+  });
+
+  it('يعرض «تعديل القيد» لاستئناف «مستأنف علينا» للمسند مثل «مستأنفين»', async () => {
+    setup('lawyer', 7);
+    apiMock.get.mockResolvedValueOnce({
+      data: {
+        items: [makeAppeal({ id: 1, direction: 'against-us', assignedLawyerId: 7 })],
+        totalCount: 1,
+        totalPages: 1,
+      },
+    });
+    render(<AppealsList />);
+
+    await screen.findByRole('table');
+    expect(screen.getByRole('button', { name: 'تعديل القيد' })).toBeInTheDocument();
   });
 
   it('يخفي زر النقل لرئيس القسم عن الاستئناف المحسوم بدل تعطيله', async () => {
