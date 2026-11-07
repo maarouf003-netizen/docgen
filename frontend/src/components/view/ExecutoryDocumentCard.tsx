@@ -15,6 +15,15 @@ export function ExecutoryDocumentCard({ doc, isMirror }: { doc: DocumentResponse
   // المبلغ رقمًا لا تفقيطًا في بطاقة العرض: التفقيط مشتق خادميًا للتوليد،
   // وعرضه وحده كان يُخفي تعديل الرقم ويُظهر نصًا قديمًا بعد التعديل.
   const claimedAmounts = formatClaimedAmounts(doc);
+  // الملاحق: الجدول الفرعي أولًا، ثم الحقول المفردة القديمة للتوافق.
+  const storedAnnexes = (doc.annexes ?? []).filter(
+    (a) => (a.annexType ?? '').trim() || (a.annexNumber ?? '').trim() || (a.annexDate ?? '').trim(),
+  );
+  const annexRows = storedAnnexes.length
+    ? storedAnnexes
+    : (doc.annexType || doc.annexNumber || doc.annexDate)
+      ? [{ annexType: doc.annexType, annexNumber: doc.annexNumber, annexDate: doc.annexDate }]
+      : [];
 
   return (
     <SectionCard title="بيانات السند التنفيذي">
@@ -24,30 +33,19 @@ export function ExecutoryDocumentCard({ doc, isMirror }: { doc: DocumentResponse
         <FieldCell label={numberLabel} value={doc.contractNumber} />
         <FieldCell label={dateLabel} value={doc.contractDate} />
       </div>
-      {(() => {
-        const stored = (doc.annexes ?? []).filter(
-          (a) => (a.annexType ?? '').trim() || (a.annexNumber ?? '').trim() || (a.annexDate ?? '').trim(),
-        );
-        const legacy =
-          !stored.length && (doc.annexType || doc.annexNumber || doc.annexDate)
-            ? [{ annexType: doc.annexType, annexNumber: doc.annexNumber, annexDate: doc.annexDate }]
-            : [];
-        const rows = stored.length ? stored : legacy;
-        if (!rows.length) return null;
-        return (
-          <div className="mt-2.5 space-y-1.5">
-            {rows.map((a, i) => (
-              <FieldCell
-                key={i}
-                label={rows.length > 1 ? `ملحق ${i + 1}` : 'ملحق العقد'}
-                value={[a.annexType, a.annexNumber, a.annexDate]
-                  .filter((v) => v && v.trim())
-                  .join(' — ')}
-              />
-            ))}
-          </div>
-        );
-      })()}
+      {annexRows.length > 0 && (
+        <div className="mt-2.5 space-y-1.5">
+          {annexRows.map((a, i) => (
+            <FieldCell
+              key={i}
+              label={annexRows.length > 1 ? `ملحق ${i + 1}` : 'ملحق العقد'}
+              value={[a.annexType, a.annexNumber, a.annexDate]
+                .filter((v) => v && v.trim())
+                .join(' — ')}
+            />
+          ))}
+        </div>
+      )}
       {isOrdinary && (
         <div className="mt-2.5">
           <FieldCell label="خلاصة الحكم" value={doc.inclusionText} showEmpty />
