@@ -2968,13 +2968,16 @@ public class DocumentServiceTests : IDisposable
     public async Task GetRotationList_ReturnsOnlyEligibleOwnedFiles()
     {
         var active = await CreateDocForRotation(1);
+        await AddPreviousYearBaseAsync(active.Id, "901");
         var partially = await CreateDocForRotation(1, ExecutionStatusCatalog.ExecutedForcibly, ExecutionStatusCatalog.SubPartiallyExecuted);
+        await AddPreviousYearBaseAsync(partially.Id, "902");
         var settled = await CreateDocForRotation(1, ExecutionStatusCatalog.ExecutedBySettlement);
         var forced = await CreateDocForRotation(1, ExecutionStatusCatalog.ExecutedForcibly, ExecutionStatusCatalog.SubFullyExecuted);
         var draft = await CreateDocForRotation(1, draft: true);
         var deleted = await CreateDocForRotation(1, deleted: true);
         await SeedUser2Async();
         var otherOwner = await CreateDocForRotation(1);
+        await AddPreviousYearBaseAsync(otherOwner.Id, "903");
         otherOwner.CreatedById = 2;
         await _db.SaveChangesAsync();
 
@@ -3056,10 +3059,12 @@ public class DocumentServiceTests : IDisposable
         Assert.DoesNotContain(both.Id, ids);
         Assert.DoesNotContain(currentYearRegistered.Id, ids);
         Assert.Contains(previousOnly.Id, ids);
+        // انتقالي: ملف بلا دائرة (اختبارات البناء اليدوي) يبقى على سلوك «طالبة تنفيذ» القديم.
         Assert.Contains(never.Id, ids);
 
-        // رقم السنة الحالية دائمًا فارغ في الاستجابة لأن الظاهرين فقط لم يُدوَّروا لها.
-        Assert.All(list.Items, r => Assert.Null(r.BaseNumber));
+        // v2: BaseNumber في صفحة التدوير = الرقم الفعّال السابق (لا رقم السنة الحالية).
+        var previousRow = Assert.Single(list.Items, r => r.DocumentId == previousOnly.Id);
+        Assert.Equal("1100", previousRow.BaseNumber);
 
         // بقية الحقول تصل سليمة.
         var row = Assert.Single(list.Items, r => r.DocumentId == previousOnly.Id);
@@ -3072,8 +3077,11 @@ public class DocumentServiceTests : IDisposable
     public async Task GetRotationList_PaginatesResultsAcrossPages()
     {
         var doc1 = await CreateDocForRotation(1);
+        await AddPreviousYearBaseAsync(doc1.Id, "911");
         var doc2 = await CreateDocForRotation(1);
+        await AddPreviousYearBaseAsync(doc2.Id, "912");
         var doc3 = await CreateDocForRotation(1);
+        await AddPreviousYearBaseAsync(doc3.Id, "913");
 
         var first = await _service.GetRotationListAsync(1, 1, 2);
         Assert.Equal(3, first.TotalCount);
@@ -3162,7 +3170,9 @@ public class DocumentServiceTests : IDisposable
     public async Task GetRotationList_ClampsPagingParameters()
     {
         var doc1 = await CreateDocForRotation(1);
+        await AddPreviousYearBaseAsync(doc1.Id, "921");
         var doc2 = await CreateDocForRotation(1);
+        await AddPreviousYearBaseAsync(doc2.Id, "922");
 
         // page=0 يُعتبر الصفحة الأولى، و perPage أكبر من الحد الأقصى يُقصّ إلى 100.
         var clamped = await _service.GetRotationListAsync(1, 0, 500);
@@ -3249,7 +3259,7 @@ public class DocumentServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task SaveBaseNumbers_EmptyClearsAllCurrentYearRecordsPreservingPrevious()
+    public async Task SaveBaseNumbers_EmptyEntryIsNoChange_PreservingAllRows()
     {
         var doc = await CreateDocForRotation(1);
         var year = DateTime.Today.Year;
@@ -3262,11 +3272,10 @@ public class DocumentServiceTests : IDisposable
         _db.ChangeTracker.Clear();
         await _service.SaveBaseNumbersAsync(1, new List<BaseNumberEntry> { new(doc.Id, "   ") }, "lawyer1");
 
-        // إلغاء رقم سنة اليوم يحذف كل سجلاتها (لا واحدة فقط) مع الإبقاء على أرقام السنوات السابقة.
+        // v2/G8: الإدخال الفارغ لا يغيّر شيئًا (الإلغاء له مسار التراجع المستقل).
         var rows = await _db.BaseNumbers.AsNoTracking().Where(b => b.DocumentId == doc.Id).OrderBy(b => b.Year).ToListAsync();
-        var single = Assert.Single(rows);
-        Assert.Equal(year - 1, single.Year);
-        Assert.Equal("999", single.BaseNumber);
+        Assert.Equal(3, rows.Count);
+        Assert.Equal("999", rows[0].BaseNumber);
     }
 
     [Fact]

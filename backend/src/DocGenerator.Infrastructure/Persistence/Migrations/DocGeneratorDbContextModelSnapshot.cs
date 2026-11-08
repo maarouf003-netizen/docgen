@@ -1380,6 +1380,10 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("CircuitName")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
@@ -1389,8 +1393,42 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.Property<int>("DocumentId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("ExecutionCircuitId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FileType")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NumberKey")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Source")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TypeKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
+
+                    b.Property<int?>("UpdatedById")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("VoidReason")
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("VoidedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("VoidedById")
+                        .HasColumnType("INTEGER");
 
                     b.Property<int>("Year")
                         .HasColumnType("INTEGER");
@@ -1399,9 +1437,18 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CreatedById");
 
-                    b.HasIndex("DocumentId");
+                    b.HasIndex("UpdatedById");
 
-                    b.HasIndex("DocumentId", "Year");
+                    b.HasIndex("VoidedById");
+
+                    b.HasIndex("ExecutionCircuitId", "Year");
+
+                    b.HasIndex("DocumentId", "Year", "CreatedAt");
+
+                    b.HasIndex("ExecutionCircuitId", "TypeKey", "Year", "NumberKey")
+                        .IsUnique()
+                        .HasDatabaseName("UX_DocumentBaseNumbers_Active")
+                        .HasFilter("\"VoidedAt\" IS NULL");
 
                     b.ToTable("DocumentBaseNumbers", (string)null);
                 });
@@ -3487,12 +3534,33 @@ namespace DocGenerator.Infrastructure.Persistence.Migrations
                     b.HasOne("DocGenerator.Domain.Entities.Document", "Document")
                         .WithMany("BaseNumbers")
                         .HasForeignKey("DocumentId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("DocGenerator.Domain.Entities.ExecutionCircuit", "ExecutionCircuit")
+                        .WithMany()
+                        .HasForeignKey("ExecutionCircuitId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("DocGenerator.Domain.Entities.User", "UpdatedBy")
+                        .WithMany()
+                        .HasForeignKey("UpdatedById")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DocGenerator.Domain.Entities.User", "VoidedBy")
+                        .WithMany()
+                        .HasForeignKey("VoidedById")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("CreatedBy");
 
                     b.Navigation("Document");
+
+                    b.Navigation("ExecutionCircuit");
+
+                    b.Navigation("UpdatedBy");
+
+                    b.Navigation("VoidedBy");
                 });
 
             modelBuilder.Entity("DocGenerator.Domain.Entities.DocumentDelegation", b =>

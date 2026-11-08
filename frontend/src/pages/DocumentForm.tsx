@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { api, getApiErrorMessage } from '../api/client';
+import { getNumberReuseWarning, type NumberReuseWarning } from '../api/numberWarning';
+import NumberReuseWarningModal from '../components/NumberReuseWarningModal';
 import { normalizeDocumentResponse } from '../utils/apiNormalization';
 import { useAuth } from '../auth/useAuth';
 import { useCurrentYear } from '../hooks/useCurrentYear';
@@ -86,6 +88,7 @@ export default function DocumentForm() {
   });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [numberWarning, setNumberWarning] = useState<NumberReuseWarning | null>(null);
   // مفتاح عدم التكرار (RF-011): واحد لكل فتح نموذج إدخال — يُرسَل في `POST` الإنشاء
   // فقط (التعديل `PUT` خارج النطاق)؛ والبصمة الخادمية تحمي تصحيح-ثم-إعادة-إرسال.
   const [idempotencyKey] = useState(newIdempotencyKey);
@@ -783,8 +786,8 @@ export default function DocumentForm() {
     }
   };
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
+  const submit = async (e?: FormEvent, warningToken?: string) => {
+    e?.preventDefault();
     setError('');
 
     const isExecutedSubmit = form.generalEntitySide === 'executed' || form.generalEntitySide === 'deposit';
@@ -1013,10 +1016,16 @@ export default function DocumentForm() {
           : applicantPublicEntities.filter((a) => (a.name ?? '').trim()),
         ...(initialActions.length > 0 ? { initialActions } : {}),
       };
+      if (warningToken) payload.warningToken = warningToken;
       if (isEdit) await api.put(`/documents/${id}`, payload);
       else await api.post('/documents', payload, idempotencyHeaders(idempotencyKey));
       navigate('/documents');
     } catch (err: unknown) {
+      const reuse = getNumberReuseWarning(err);
+      if (reuse) {
+        setNumberWarning(reuse);
+        return;
+      }
       const msg = (err as { response?: { data?: { message?: string } } }).response?.data?.message;
       setError(msg || 'حدث خطأ في حفظ المستند');
     } finally {
@@ -1450,6 +1459,19 @@ export default function DocumentForm() {
             setCircuitPickerOpen(false);
           }}
           onClose={() => setCircuitPickerOpen(false)}
+        />
+      )}
+
+      {numberWarning && (
+        <NumberReuseWarningModal
+          message={numberWarning.message}
+          busy={busy}
+          onCancel={() => setNumberWarning(null)}
+          onConfirm={() => {
+            const token = numberWarning.warningToken;
+            setNumberWarning(null);
+            void submit(undefined, token);
+          }}
         />
       )}
     </div>

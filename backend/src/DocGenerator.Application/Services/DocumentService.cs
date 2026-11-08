@@ -29,11 +29,18 @@ public interface IDocumentService
     /// تاريخ أرقام الأساس للملف (سنة + رقم) مرتبًا تنازليًا بالسنوات — لعرضه عند الضغط على رقم الملف.
     /// </summary>
     Task<List<BaseNumberHistoryDto>> GetBaseNumberHistoryAsync(int documentId, CancellationToken ct = default);
+    /// <summary>سجل أرقام ملف محذوف (IgnoreQueryFilters) — لصفحة المحذوفات.</summary>
+    Task<List<BaseNumberHistoryDto>> GetDeletedBaseNumberHistoryAsync(int documentId, CancellationToken ct = default);
+    /// <summary>تصحيح رقم أساس سنة محددة موضعيًا (لا حذف).</summary>
+    Task CorrectBaseNumberAsync(int documentId, int year, CorrectBaseNumberRequest request, int userId, string? actorName, CancellationToken ct = default);
+    /// <summary>التراجع عن تدوير السنة الحالية (VoidedAt + بقاء الصف).</summary>
+    Task UndoRotationAsync(int documentId, int year, int userId, string? actorName, CancellationToken ct = default);
     /// <summary>
-    /// حفظ أرقام أساس السنة الحالية ذرّيًا: رقم جديد يُنشأ، موجود يُحدَّث، فارغ يحذف سجل
-    /// السنة الحالية. يتحقق من ملكية المحامي وأهلية الملف (مقيد وغير منفَّذ وغير محذوف).
+    /// حفظ أرقام أساس السنة الحالية ذرّيًا: رقم جديد يُنشأ (صف تدوير)، والإدخال الفارغ لا يغيّر
+    /// شيئًا. يتحقق من ملكية المحامي وأهلية الملف (مقيد وغير منفَّذ وغير محذوف)، ويطبّق
+    /// طبقتَي التكرار (حجب صلب/تحذير بـ warningToken).
     /// </summary>
-    Task SaveBaseNumbersAsync(int userId, List<BaseNumberEntry> entries, string? actorName, CancellationToken ct = default);
+    Task SaveBaseNumbersAsync(int userId, List<BaseNumberEntry> entries, string? actorName, string? warningToken = null, CancellationToken ct = default);
 }
 
 public sealed class DocumentService : IDocumentService
@@ -50,6 +57,7 @@ public sealed class DocumentService : IDocumentService
     private readonly IDocumentDelegationService _delegationService;
     private readonly IDocumentStatusService _statusService;
     private readonly IDocumentWriteGuard _writeGuard;
+    private readonly IDocumentNumberRegistry _numberRegistry;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
     private readonly IIdempotencyStore? _idempotency;
@@ -71,6 +79,7 @@ public sealed class DocumentService : IDocumentService
         IDocumentDelegationService delegationService,
         IDocumentStatusService statusService,
         IDocumentWriteGuard writeGuard,
+        IDocumentNumberRegistry numberRegistry,
         IIdempotencyStore? idempotency = null,
         IRepository<ExecutionCircuit>? circuits = null,
         IExecutionCircuitService? executionCircuits = null)
@@ -89,6 +98,7 @@ public sealed class DocumentService : IDocumentService
         _delegationService = delegationService;
         _statusService = statusService;
         _writeGuard = writeGuard;
+        _numberRegistry = numberRegistry;
         _clock = clock;
         _timeZone = timeZone;
         _idempotency = idempotency;
@@ -177,6 +187,8 @@ public sealed class DocumentService : IDocumentService
         {
             await _documents.AddAsync(doc, token);
             await _uow.SaveChangesAsync(token);
+            // الكاتب الوحيد: مزامنة صف القيد بعد حصول المستند على معرّفه (داخل المعاملة).
+            await _numberRegistry.SyncRegistrationAsync(doc, userId, actorName, request.WarningToken, token, isNewDocument: true);
             // أول سجل تعاقب: منشئ الملف (Lawyer هو اسم المنشئ عند الإنشاء).
             await _documents.AddAssignmentAsync(doc.Id, AssignmentKindCatalog.Create,
                 doc.Lawyer ?? actor.Username, null, DateTime.UtcNow, token);
@@ -277,6 +289,8 @@ public sealed class DocumentService : IDocumentService
                 await _statusService.AddStruckOffOccurrenceAsync(doc, userId, token);
             _documents.Update(doc);
             await _uow.SaveChangesAsync(token);
+            // الكاتب الوحيد: مزامنة صف القيد/فحص التفرد بعد حفظ حقول المستند.
+            await _numberRegistry.SyncRegistrationAsync(doc, userId, actorName, request.WarningToken, token);
             // تبديل الدائرة من التعديل يسجل الوقوعتين تلقائيًا (قديم/جديد) — وإلا قفزت بلا أثر.
             if (circuitSwitched)
                 await _writeGuard.AddCircuitSwitchOccurrencesAsync(doc, oldCircuitName, userId, token);
@@ -350,6 +364,9 @@ public sealed class DocumentService : IDocumentService
 
         return await _tx.RunAsync(async token =>
         {
+            // الكاتب الوحيد: إلغاء صفوف الأرقام (document-deleted) قبل رفع علم الحذف
+            // حتى تبقى الصفوف مرئية لاستعلام الإلغاء، وتبقى معروضة في السجل.
+            await _numberRegistry.VoidForDocumentDeleteAsync(doc, doc.CreatedById, actorName, token);
             doc.IsDeleted = true;
             doc.DeletedAt = DateTime.UtcNow;
             doc.UpdatedAt = DateTime.UtcNow;
@@ -367,16 +384,9 @@ public sealed class DocumentService : IDocumentService
         if (doc is null || !doc.IsDeleted)
             return false;
 
-        // RF-009 (INT-008): الاستعادة تفحص تعارض المفتاح الفعّال (قد أُعيد استعمال رقمه
-        // أثناء حذفه) — 409 بدل تكرار ظاهري. بتوقيع الدائرة (البند 34).
-        // مسار إفراغ المحذوفة (بند 41 معدَّل — قرار المالك 2026-10-17): التطهير النهائي
-        // ضمن معاملة حذف الدائرة نفسها (ExecutionCircuitService.DeleteAsync).
-        // الاستعادة العامة تبقى لسياقها خارج الإفراغ — سلوك ما يلي (فحص الرقم) لم يتغير.
-        var currentYear = CurrentYear();
-        await _writeGuard.EnsureNumberUniqueByCircuitAsync(documentId, doc.ExecutionCircuitId, doc.CourtNorm,
-            Common.EffectiveFileIdentity.Number(doc, currentYear), doc.FileType,
-            Common.EffectiveFileIdentity.Year(doc, currentYear), ct);
-
+        // الاستعادة = إعادة قيد برقم جديد: تُفرَّغ حقول الرقم الجارية ويُرفع
+        // NeedsRegistration، وتبقى الصفوف الملغاة توثيقًا (لا إحياء لصف ملغى).
+        // لا فحص تفرد هنا: لا رقم بعد الاستعادة حتى يسجّل المحامي رقمه الجديد.
         return await _writeGuard.WithNumberGuardAsync(() => _tx.RunAsync(async token =>
         {
             // الاستعادة تعيد اشتقاق الدائرة من السجل (M3): التسمية الجماعية أثناء
@@ -394,6 +404,11 @@ public sealed class DocumentService : IDocumentService
             }
             doc.IsDeleted = false;
             doc.DeletedAt = null;
+            doc.NeedsRegistration = true;
+            doc.FileNumber = null;
+            doc.FileYear = null;
+            doc.SearchText = DocumentSearchTextBuilder.Build(doc);
+            doc.FullData = DocumentSearchTextBuilder.BuildFullData(doc);
             doc.UpdatedAt = DateTime.UtcNow;
             _documents.Update(doc);
             await _uow.SaveChangesAsync(token);
@@ -1007,7 +1022,7 @@ public sealed class DocumentService : IDocumentService
                 d.BorrowerFamily,
                 d.FileNumber,
                 d.FileType,
-                d.BaseNumbers.Where(b => b.Year == currentYear).OrderByDescending(b => b.CreatedAt).FirstOrDefault()?.BaseNumber,
+                EffectiveFileIdentity.Latest(d, currentYear)?.BaseNumber,
                 DocumentText.RotationDisplayName(d),
                 EffectiveFileIdentity.Number(d, currentYear),
                 EffectiveFileIdentity.Year(d, currentYear)))
@@ -1024,117 +1039,40 @@ public sealed class DocumentService : IDocumentService
 
     public async Task<List<BaseNumberHistoryDto>> GetBaseNumberHistoryAsync(int documentId, CancellationToken ct = default)
     {
-        var doc = await _documents.GetByIdAsync(documentId, ct);
-        if (doc is null)
-            return new List<BaseNumberHistoryDto>();
-
-        return doc.BaseNumbers
-            .OrderByDescending(b => b.Year)
-            .ThenByDescending(b => b.CreatedAt)
-            .Select(b => new BaseNumberHistoryDto(b.Year, b.BaseNumber))
-            .ToList();
+        var history = await _numberRegistry.GetHistoryAsync(documentId, includeDeletedDocument: false, ct);
+        return history.ToList();
     }
 
-    public async Task SaveBaseNumbersAsync(int userId, List<BaseNumberEntry> entries, string? actorName, CancellationToken ct = default)
+    public async Task<List<BaseNumberHistoryDto>> GetDeletedBaseNumberHistoryAsync(int documentId, CancellationToken ct = default)
     {
-        if (entries is null || entries.Count == 0)
-            return;
-
-        // حماية من طلب غير صالح يحتوي عنصرًا فارغًا — نرفضه بدل خطأ داخلي.
-        if (entries.Any(e => e is null))
-            throw new ArgumentException("طلب تدوير غير صالح");
-
-        var year = CurrentYear();
-
-        // منع تكرار نفس الملف داخل الطلب (سلوك غامض) — يُرفض الطلب كاملًا.
-        var unique = entries
-            .GroupBy(e => e.DocumentId)
-            .Select(g => g.Last())
-            .ToList();
-        if (unique.Count != entries.Count)
-            throw new ArgumentException("لا يمكن تكرار نفس الملف في طلب التدوير");
-
-        await _writeGuard.WithNumberGuardAsync(() => _tx.RunAsync(async token =>
-        {
-            var docs = await _documents.GetByIdsAsync(unique.Select(e => e.DocumentId).ToList(), token);
-            var found = docs.ToDictionary(d => d.Id);
-            var auditEntries = new List<AuditLogEntry>(unique.Count);
-
-            foreach (var entry in unique)
-            {
-                if (!found.TryGetValue(entry.DocumentId, out var doc))
-                    throw new ArgumentException("أحد الملفات غير موجود أو محذوف");
-                if (doc.CreatedById != userId)
-                    throw new ArgumentException("لا يمكن تعديل رقم أساس لملف لا يملكه المحامي");
-
-                // الأهلية: مقيد برقم ملف وغير مقيد في السنة الحالية — حتى لا يُدوَّر محتوى
-                // الملف تحت رفع أو ملفٌ حديث عهد قيده (رقم ملفه الأصلي هو نفسه رقم أساس سنته،
-                // فلا يحتاج رقم أساس جديدًا لهذه السنة).
-                // الفحص العائلي قطعي ومطابق حرفيًا لعبارة القائمة في المستودع: عائلتا وضع
-                // «منفذ عليه» (Executed + Deposit) تُحكمان حصريًا بحالة الوضع (متداولٌ فقط = لا
-                // منفذ ولا مشطوب) وبشرط وجود رقم أساس من سنة سابقة — التدوير فيهما استمرار لدوران
-                // سبق أن بدأ، ولا تُعدُّ حالة نظام «طالبة تنفيذ» (ExecStatus/ExecSubStatus) ذات
-                // فائدة فيهما. أما نظام «طالبة تنفيذ» فشرطه القديم نفسه.
-                if (doc.IsDraft || doc.FileYear == year.ToString(CultureInfo.InvariantCulture))
-                    throw new ArgumentException($"الملف (رقم {doc.Id}) غير مؤهل للتدوير");
-
-                // حارس التدوير للمعلق (البند 53): يُستبعد المعلق من التدوير دائمًا —
-                // لا اعتماد على IsDraft (الذي صار false للمعلق بموجب البند 31).
-                if (doc.NeedsRegistration)
-                    throw new ArgumentException($"الملف (رقم {doc.Id}) بانتظار إعادة القيد — غير مؤهل للتدوير");
-
-                var eligible = GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide)
-                    ? doc.ExecutedStatus == ExecutedStatusCatalog.None
-                        && doc.BaseNumbers.Any(b => b.Year < year)
-                    : !ExecutionStatusCatalog.IsExecuted(doc.ExecStatus, doc.ExecSubStatus);
-                if (!eligible)
-                    throw new ArgumentException($"الملف (رقم {doc.Id}) غير مؤهل للتدوير");
-
-                var normalized = entry.BaseNumber?.Trim();
-                if (string.IsNullOrEmpty(normalized))
-                {
-                    // إلغاء رقم أساس السنة الحالية: حذف كل سجلاتها مع الاحتفاظ بأرقام السنوات السابقة.
-                    var currentYearRows = doc.BaseNumbers.Where(b => b.Year == year).ToList();
-                    if (currentYearRows.Count == 0)
-                        continue;
-
-                    auditEntries.Add(new AuditLogEntry(actorName, "rotate", doc.Id, doc.DocumentType,
-                        DocumentText.AuditWithActor($"ألغى رقم أساس {year}: {string.Join("، ", currentYearRows.Select(r => r.BaseNumber))}", doc)));
-                    foreach (var row in currentYearRows)
-                        _baseNumbers.Remove(row);
-                    continue;
-                }
-
-                if (normalized.Length > 50)
-                    throw new ArgumentException("رقم الأساس يتجاوز الطول المسموح");
-
-                // RF-009 بتوقيع الدائرة (البند 34): مطابقة FK مباشرة — قبل إدراجه.
-                await _writeGuard.EnsureNumberUniqueByCircuitAsync(doc.Id, doc.ExecutionCircuitId, doc.CourtNorm,
-                    normalized, doc.FileType, year.ToString(CultureInfo.InvariantCulture), token);
-
-                // سجل جديد دائمًا: كل تدوير يلحق سجلًا بسنة التدوير، والأحدث (Year ثم CreatedAt) هو المعتبر.
-                var record = new DocumentBaseNumber
-                {
-                    DocumentId = doc.Id,
-                    Year = year,
-                    BaseNumber = normalized,
-                    CreatedById = userId,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow,
-                };
-                auditEntries.Add(new AuditLogEntry(actorName, "rotate", doc.Id, doc.DocumentType,
-                    DocumentText.AuditWithActor($"دوّر الملف برقم أساس {year}: {normalized}", doc)));
-                await _baseNumbers.AddAsync(record, ct);
-
-                // إلحاق رقم الأساس الجديد لنص البحث القائم (إلحاق لا إعادة بناء) ليُلتقط البحث.
-                doc.SearchText = DocumentSearchTextBuilder.Append(doc.SearchText, normalized);
-            }
-
-            // حفظ ذرّي واحد لكل تغييرات الأرقام ثم دفعة تدقيق واحدة — بدل حفظٍ لكل ملف
-            // (مهم في الحسابات الكبيرة التي قد تصل لآلاف الملفات).
-            await _uow.SaveChangesAsync(token);
-            await _audit.LogManyAsync(auditEntries, token);
-        }, ct), entries.FirstOrDefault(e => !string.IsNullOrWhiteSpace(e?.BaseNumber))?.BaseNumber);
+        var history = await _numberRegistry.GetHistoryAsync(documentId, includeDeletedDocument: true, ct);
+        return history.ToList();
     }
+
+    public Task CorrectBaseNumberAsync(
+        int documentId,
+        int year,
+        CorrectBaseNumberRequest request,
+        int userId,
+        string? actorName,
+        CancellationToken ct = default)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.BaseNumber))
+            throw new ArgumentException("رقم الأساس مطلوب");
+        return _numberRegistry.CorrectAsync(
+            documentId, year, request.RowId, request.BaseNumber!, userId, actorName, request.WarningToken, ct);
+    }
+
+    public Task UndoRotationAsync(
+        int documentId, int year, int userId, string? actorName, CancellationToken ct = default)
+        => _numberRegistry.UndoRotationAsync(documentId, year, userId, actorName, ct);
+
+    public Task SaveBaseNumbersAsync(
+        int userId,
+        List<BaseNumberEntry> entries,
+        string? actorName,
+        string? warningToken = null,
+        CancellationToken ct = default)
+        => _numberRegistry.SaveRotationsAsync(userId, actorName, entries, warningToken, ct);
 }
 

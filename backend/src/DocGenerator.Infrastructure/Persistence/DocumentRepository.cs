@@ -102,6 +102,7 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
                 AdministrativeBranchName = d.Branch != null ? d.Branch.Name : null,
                 BranchName = d.BranchName,
                 Court = d.Court,
+                ExecutionCircuitId = d.ExecutionCircuitId,
                 // FR-013: فحص صريح للقيم الفارغة بدل تحذير `CS8602` — الدلالة مطابقة في `SQL`
                 // (انتشار `NULL` في الإسقاط) ولا تغيير سلوكي.
                 SectionName = d.ExecutionCircuit != null && d.ExecutionCircuit.Section != null
@@ -143,7 +144,14 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
                     .Select(a => new ExportAction { Text = a.Text })
                     .ToList(),
                 BaseNumbers = d.BaseNumbers
-                    .Select(b => new DocumentBaseNumber { Year = b.Year, CreatedAt = b.CreatedAt, BaseNumber = b.BaseNumber })
+                    .Select(b => new DocumentBaseNumber
+                    {
+                        Year = b.Year,
+                        CreatedAt = b.CreatedAt,
+                        BaseNumber = b.BaseNumber,
+                        ExecutionCircuitId = b.ExecutionCircuitId,
+                        VoidedAt = b.VoidedAt,
+                    })
                     .ToList(),
             })
             .ToListAsync(ct);
@@ -927,7 +935,11 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
                     && (d.FileType ?? string.Empty).Trim() == t)
                 .Where(d => (d.FileNumber != null && d.FileNumber.Trim() == n
                         && d.FileYear != null && d.FileYear.Trim() == y)
-                    || (yearInt != null && d.BaseNumbers.Any(b => b.Year == yearInt && b.BaseNumber.Trim() == n)))
+                    || (yearInt != null && d.BaseNumbers.Any(b =>
+                        b.ExecutionCircuitId == circuitId
+                        && b.VoidedAt == null
+                        && b.Year == yearInt
+                        && b.NumberKey == n)))
                 .AnyAsync(ct);
         }
         // صفوف NULL (المناب الخارجي): الوحدانية النصية القديمة.
@@ -962,10 +974,15 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             .Where(d => !d.IsDraft)
             // الملفات المعلقة (NULL الرقم آمن فريدًا): تُستبعد من التدوير حتى إعادة القيد.
             .Where(d => !d.NeedsRegistration)
+            .Where(d => d.BaseNumbers.Any(b => b.VoidedAt == null
+                    && b.ExecutionCircuitId == d.ExecutionCircuitId
+                    && b.Year < currentYear)
+                || (d.ExecutionCircuitId == null
+                    && d.GeneralEntitySide != GeneralEntitySideCatalog.Executed
+                    && d.GeneralEntitySide != GeneralEntitySideCatalog.Deposit))
             .Where(d => (d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
                 || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit)
                 ? d.ExecutedStatus == ExecutedStatusCatalog.None
-                    && d.BaseNumbers.Any(b => b.Year < currentYear)
                 : d.ExecStatus != ExecutionStatusCatalog.ExecutedBySettlement
                     && d.ExecStatus != ExecutionStatusCatalog.DelegationExecuted
                     && d.ExecStatus != ExecutionStatusCatalog.Recovered
@@ -974,8 +991,14 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
                         && (d.ExecSubStatus == null
                             || d.ExecSubStatus != ExecutionStatusCatalog.SubPartiallyExecuted))
                     && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff)
-            .Where(d => !d.BaseNumbers.Any(b => b.Year == currentYear))
-            .Where(d => d.FileYear != currentYear.ToString(CultureInfo.InvariantCulture));
+            .Where(d => !d.BaseNumbers.Any(b => b.VoidedAt == null
+                && b.ExecutionCircuitId == d.ExecutionCircuitId
+                && b.Year == currentYear))
+            // توافق انتقالي: ملف بلا دائرة/بلا سجل أرقام ومسجّل لسنة القيد الحالية لا يُدوَّر.
+            .Where(d => d.FileYear != currentYear.ToString(CultureInfo.InvariantCulture)
+                || (d.ExecutionCircuitId != null
+                    && d.BaseNumbers.Any(b => b.VoidedAt == null
+                        && b.ExecutionCircuitId == d.ExecutionCircuitId)));
 
         var total = await q.CountAsync(ct);
 

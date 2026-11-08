@@ -37,6 +37,7 @@ public sealed class DocumentStatusService : IDocumentStatusService
     private readonly TimeZoneInfo _timeZone;
     private readonly IDocumentDelegationService _delegationService;
     private readonly IDocumentWriteGuard _writeGuard;
+    private readonly IDocumentNumberRegistry? _numberRegistry;
 
     public DocumentStatusService(
         IDocumentRepository documents,
@@ -49,7 +50,8 @@ public sealed class DocumentStatusService : IDocumentStatusService
         TimeProvider clock,
         TimeZoneInfo timeZone,
         IDocumentDelegationService delegationService,
-        IDocumentWriteGuard writeGuard)
+        IDocumentWriteGuard writeGuard,
+        IDocumentNumberRegistry? numberRegistry = null)
     {
         _documents = documents;
         _occurrences = occurrences;
@@ -62,6 +64,7 @@ public sealed class DocumentStatusService : IDocumentStatusService
         _timeZone = timeZone;
         _delegationService = delegationService;
         _writeGuard = writeGuard;
+        _numberRegistry = numberRegistry;
     }
 
     /// <summary>
@@ -893,17 +896,27 @@ public sealed class DocumentStatusService : IDocumentStatusService
         if (!string.IsNullOrEmpty(type))
             doc.FileType = type;
 
-        // يعود الملف برقم سنة الإعادة: سجل جديد دائمًا يُلحق بسجلات السنوات السابقة فيظهر عبر
-        // EffectiveFileIdentity (الأحدث Year ثم CreatedAt) — والمعتبر هو الأحدث CreatedAt لنفس السنة.
-        await _baseNumbers.AddAsync(new DocumentBaseNumber
+        // يعود الملف برقم سنة الإعادة: الكاتب الوحيد للسجل يضيف صف Source=renewal
+        // (فحص قفل/سنة/تفرد داخله)، ويبقى المعتبر الأحدث CreatedAt لنفس السنة.
+        if (_numberRegistry is not null)
         {
-            DocumentId = doc.Id,
-            Year = year,
-            BaseNumber = number,
-            CreatedById = userId ?? doc.CreatedById,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
-        }, ct);
+            await _numberRegistry.ApplyRenewalAsync(
+                doc, number, year, doc.RenewalFileType, userId ?? doc.CreatedById, null,
+                renewal?.WarningToken, ct);
+        }
+        else
+        {
+            // مسار اختباري قديم بلا سجل (البناءات المباشرة في الاختبارات) — لا يُستخدم في الإنتاج.
+            await _baseNumbers.AddAsync(new DocumentBaseNumber
+            {
+                DocumentId = doc.Id,
+                Year = year,
+                BaseNumber = number,
+                CreatedById = userId ?? doc.CreatedById,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            }, ct);
+        }
 
         // إلحاق الرقم الجديد لنص البحث القائم (إلحاق لا إعادة بناء) ليُلتقط البحث.
         doc.SearchText = DocumentSearchTextBuilder.Append(doc.SearchText, number);

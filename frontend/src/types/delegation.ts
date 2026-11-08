@@ -125,6 +125,10 @@ export interface RegisterDelegationRequest {
   fileYear: string;
   /** تاريخ قيد الإنابة (نص حر). */
   fileRegistrationDate: string;
+  /** دائرة إدخال رقم الإنابة — إلزامية للإنابة الخارجية. */
+  executionCircuitId?: number;
+  /** رمز تحذير إعادة استخدام الرقم. */
+  warningToken?: string;
 }
 
 /** بدل المبيع لأصل مباعٍ بالمزاد ضمن إتمام الإنابة (بالليرة السورية). */

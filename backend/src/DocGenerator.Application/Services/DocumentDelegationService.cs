@@ -31,6 +31,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
     private readonly TimeZoneInfo _timeZone;
     private readonly IRepository<ExecutionCircuit> _circuits;
     private readonly IRepository<Section> _sections;
+    private readonly IDocumentNumberRegistry? _numberRegistry;
 
     public DocumentDelegationService(
         IDelegationRepository delegations,
@@ -49,7 +50,8 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         TimeProvider clock,
         TimeZoneInfo timeZone,
         IRepository<ExecutionCircuit>? circuits = null,
-        IRepository<Section>? sections = null)
+        IRepository<Section>? sections = null,
+        IDocumentNumberRegistry? numberRegistry = null)
     {
         _delegations = delegations;
         _reservations = reservations;
@@ -68,6 +70,7 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         _timeZone = timeZone;
         _circuits = circuits ?? new UnconfiguredCircuitRepository();
         _sections = sections ?? new UnconfiguredSectionRepository();
+        _numberRegistry = numberRegistry;
     }
 
     private sealed class UnconfiguredSectionRepository : IRepository<Section>
@@ -953,8 +956,36 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         if (registrationDate is null)
             throw new ArgumentException("تاريخ قيد الإنابة مطلوب");
 
-        // RF-009 بتوقيع الدائرة (البند 28/34): مطابقة FK مباشرة بدل النص.
-        if (await _documents.ExistsActiveWithNumberByCircuitAsync(target.Id, target.ExecutionCircuitId, target.CourtNorm, fileNumber, target.FileType, fileYear, ct))
+        // V-18: لا رقم بلا دائرة. الإنابة الخارجية تصل بدائرة الإدخال في الطلب؛
+        // الداخلية تستخدم دائرة الإنابة؛ وإن كان للملف دائرة نبقّيها.
+        var circuitId = request.ExecutionCircuitId
+            ?? delegation.DelegatedCircuitId
+            ?? target.ExecutionCircuitId;
+        if (target.ExecutionCircuitId is null)
+        {
+            if (circuitId is null)
+            {
+                // الإلزام في مسار الإنتاج (سجل الأرقام موجود). بناءات الاختبار القديمة
+                // بلا سجل أرقام تُبقي السلوك الانتقالي (رقم بلا دائرة).
+                if (_numberRegistry is not null && delegation.IsExternal)
+                    throw new ArgumentException("دائرة إدخال رقم الإنابة مطلوبة — لا يمكن تسجيل رقم بلا دائرة");
+            }
+            else
+            {
+                var circuit = await _circuits.GetByIdAsync(circuitId.Value, ct)
+                    ?? throw new ArgumentException("دائرة إدخال رقم الإنابة غير موجودة");
+                if (target.BranchId is not null && circuit.BranchId != target.BranchId)
+                    throw new ArgumentException("دائرة إدخال رقم الإنابة ليست ضمن فرع الملف");
+                target.ExecutionCircuitId = circuit.Id;
+                target.Court = circuit.Name;
+                target.CourtNorm = ArabicNameNormalizer.Normalize(circuit.Name);
+            }
+        }
+
+        // الوحدانية عبر الكاتب الوحيد عند توفره (داخل معاملة التسجيل)؛
+        // وإلا الفحص الخدمي القديم للاختبارات المبنية يدويًا.
+        if (_numberRegistry is null
+            && await _documents.ExistsActiveWithNumberByCircuitAsync(target.Id, target.ExecutionCircuitId, target.CourtNorm, fileNumber, target.FileType, fileYear, ct))
             throw new DocumentConflictException($"رقم الأساس {fileNumber} مكرر في {target.Court} لسنة {fileYear} — تحقق من الدائرة والرقم والنوع");
 
         // الاستهداف (§7.1 + §7.3): الموجَّهة لشعبة لرئيس شعبته، وإلا مالك
@@ -990,6 +1021,9 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
                 target.UpdatedAt = DateTime.UtcNow;
                 await ApplyRegistrationDateAsync(target, registrationDate.Value, token);
                 _documents.Update(target);
+                if (_numberRegistry is not null)
+                    await _numberRegistry.SyncRegistrationAsync(
+                        target, userId, actorName, request.WarningToken, token);
 
                 delegation.Status = DelegationStatusCatalog.Registered;
                 delegation.UpdatedAt = DateTime.UtcNow;

@@ -316,6 +316,55 @@ public class DocumentsController : ControllerBase
         return Ok(await _documents.GetBaseNumberHistoryAsync(id, ct));
     }
 
+    /// <summary>سجل أرقام ملف محذوف (مع الملغاة) — من صفحة المحذوفات بنفس صلاحياتها.</summary>
+    [HttpGet("deleted/{id:int}/base-numbers")]
+    public async Task<IActionResult> GetDeletedBaseNumberHistory(int id, CancellationToken ct)
+    {
+        var doc = await _documents.GetDeletedAsync(id, ct);
+        if (doc is null) return NotFound();
+        if (!await CanAccessAsync(doc)) return Forbid();
+        return Ok(await _documents.GetDeletedBaseNumberHistoryAsync(id, ct));
+    }
+
+    /// <summary>تصحيح رقم أساس سنة محددة موضعيًا (لا حذف ولا صف جديد).</summary>
+    [HttpPut("{id:int}/base-numbers/{year:int}")]
+    public async Task<IActionResult> CorrectBaseNumber(
+        int id, int year, [FromBody] CorrectBaseNumberRequest request, CancellationToken ct)
+    {
+        if (!CanRotate) return Forbid();
+        var doc = await _documents.GetAsync(id, ct);
+        if (doc is null) return NotFound();
+        if (!await CanAccessAsync(doc)) return Forbid();
+        try
+        {
+            await _documents.CorrectBaseNumberAsync(id, year, request, User.GetUserId(), ActorName, ct);
+            return NoContent();
+        }
+        catch (DocumentConflictException e)
+        {
+            return Conflict(new { message = ApiErrorMessages.From(e), code = e.Code });
+        }
+    }
+
+    /// <summary>التراجع عن تدوير السنة الحالية (الصف يبقى معروضًا «ملغى»).</summary>
+    [HttpDelete("{id:int}/base-numbers/{year:int}")]
+    public async Task<IActionResult> UndoRotation(int id, int year, CancellationToken ct)
+    {
+        if (!CanRotate) return Forbid();
+        var doc = await _documents.GetAsync(id, ct);
+        if (doc is null) return NotFound();
+        if (!await CanAccessAsync(doc)) return Forbid();
+        try
+        {
+            await _documents.UndoRotationAsync(id, year, User.GetUserId(), ActorName, ct);
+            return NoContent();
+        }
+        catch (DocumentConflictException e)
+        {
+            return Conflict(new { message = ApiErrorMessages.From(e), code = e.Code });
+        }
+    }
+
     /// <summary>
     /// سجل تعديلات الملف على مستوى الحقول (قبل/بعد) — لصاحب الملف ورئيس قسمه
     /// والمدير/المشرف. أداة المراجعة المؤسسية؛ لا تُفتح لمتابعي الإنابة/الاستئناف.
@@ -381,7 +430,8 @@ public class DocumentsController : ControllerBase
         if (!CanRotate)
             return Forbid();
 
-        await _documents.SaveBaseNumbersAsync(User.GetUserId(), request.Entries, ActorName, ct);
+        await _documents.SaveBaseNumbersAsync(
+            User.GetUserId(), request.Entries, ActorName, request.WarningToken, ct);
         return NoContent();
     }
 

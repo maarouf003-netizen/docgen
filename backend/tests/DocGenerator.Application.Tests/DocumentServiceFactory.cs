@@ -79,6 +79,21 @@ public static class DocumentServiceFactory
         var registrationDatesValue = registrationDates ?? new Repository<DocumentRegistrationDate>(db);
         var occurrencesValue = occurrences ?? new Repository<DocumentOccurrence>(db);
         var baseNumbersValue = baseNumbers ?? new Repository<DocumentBaseNumber>(db);
+        var txContext = txValue as ITransactionContext
+            ?? throw new InvalidOperationException(
+                "DocumentServiceFactory يتطلب ITransactionRunner يُنفّذ ITransactionContext.");
+        var baseNumberRepository = new DocumentBaseNumberRepository(db);
+        var numberRegistry = new DocumentNumberRegistry(
+            documentsValue,
+            baseNumberRepository,
+            circuits ?? new Repository<ExecutionCircuit>(db),
+            uowValue,
+            txValue,
+            txContext,
+            audit,
+            new DocGenerator.Infrastructure.Security.NumberWarningTokenService(),
+            clockValue,
+            timeZoneValue);
         var writeGuard = new DocumentWriteGuard(
             documentsValue,
             dbErrorsValue,
@@ -86,9 +101,6 @@ public static class DocumentServiceFactory
             occurrencesValue,
             uowValue,
             circuits);
-        var txContext = txValue as ITransactionContext
-            ?? throw new InvalidOperationException(
-                "DocumentServiceFactory يتطلب ITransactionRunner يُنفّذ ITransactionContext.");
         var delegationService = new DocumentDelegationService(
             delegationsValue,
             new DelegationReservationRepository(db),
@@ -104,7 +116,8 @@ public static class DocumentServiceFactory
             alertServiceValue,
             new HeadAlertOutbox(new HeadAlertOutboxStore(db), txContext),
             clockValue,
-            timeZoneValue);
+            timeZoneValue,
+            numberRegistry: numberRegistry);
 
         var statusService = new DocumentStatusService(
             documentsValue,
@@ -117,7 +130,8 @@ public static class DocumentServiceFactory
             clockValue,
             timeZoneValue,
             delegationService,
-            writeGuard);
+            writeGuard,
+            numberRegistry);
 
         var documentService = new DocumentService(
             documentsValue,
@@ -134,6 +148,7 @@ public static class DocumentServiceFactory
             delegationService,
             statusService,
             writeGuard,
+            numberRegistry,
             idempotency,
             circuits);
 

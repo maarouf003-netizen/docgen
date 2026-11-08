@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
+import { getNumberReuseWarning, type NumberReuseWarning } from '../api/numberWarning';
+import NumberReuseWarningModal from './NumberReuseWarningModal';
 import { normalizeArabicDigits } from '../utils/arabicDigits';
 import { useCurrentYear } from '../hooks/useCurrentYear';
 import { assetDisplayName } from '../utils/assetDisplay';
@@ -122,6 +124,7 @@ export default function StatusChangeModal({
   const [collectedSlots, setCollectedSlots] = useState(1);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [numberWarning, setNumberWarning] = useState<NumberReuseWarning | null>(null);
 
   useEffect(() => {
     setTarget(targets[0] ?? '');
@@ -242,7 +245,7 @@ export default function StatusChangeModal({
     return payload;
   };
 
-  const submit = async () => {
+  const submit = async (warningToken?: string) => {
     setError('');
     let payload: Record<string, string>;
     try {
@@ -255,11 +258,12 @@ export default function StatusChangeModal({
     try {
       // عدّاد التزامن المتفائل (RF-010): يُرسَل مع كل انتقال — غيابه توافق (بلا فحص مبكر).
       const version = doc.version ?? null;
+      const fields = warningToken ? { ...payload, warningToken } : payload;
       if (target === STATUS_ACTION_REVERT) {
-        await api.post(`/documents/${doc.id}/revert-status`, { fields: payload, version });
+        await api.post(`/documents/${doc.id}/revert-status`, { fields, version });
       } else if (target === STATUS_ACTION_COMPLETE_SALE) {
         await api.post(`/documents/${doc.id}/consider-executed-by-delegation`, {
-          fields: payload,
+          fields,
           version,
         });
       } else if (
@@ -272,16 +276,20 @@ export default function StatusChangeModal({
         // الصارم لا يحوّل نصًا إلى int؟).
         const returnBody =
           payload.renewalYear !== undefined
-            ? { ...payload, renewalYear: Number(payload.renewalYear), version }
-            : { ...payload, version };
+            ? { ...payload, renewalYear: Number(payload.renewalYear), version,
+                ...(warningToken ? { warningToken } : {}) }
+            : { ...payload, version, ...(warningToken ? { warningToken } : {}) };
         await api.post(`/documents/${doc.id}/return-referred-to-start`, returnBody);
       } else {
-        await api.post(`/documents/${doc.id}/status`, { status: target, fields: payload, version });
+        await api.post(`/documents/${doc.id}/status`, { status: target, fields, version });
       }
+      setNumberWarning(null);
       onChanged();
       onClose();
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      const reuse = getNumberReuseWarning(err);
+      if (reuse) setNumberWarning(reuse);
+      else setError(getApiErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -568,7 +576,7 @@ export default function StatusChangeModal({
                 </button>
                 <button
                   type="button"
-                  onClick={submit}
+                  onClick={() => void submit()}
                   disabled={busy}
                   className="bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white rounded-lg px-4 py-2 text-sm min-h-11"
                 >
@@ -579,6 +587,19 @@ export default function StatusChangeModal({
           )}
         </div>
       </div>
+
+      {numberWarning && (
+        <NumberReuseWarningModal
+          message={numberWarning.message}
+          busy={busy}
+          onCancel={() => setNumberWarning(null)}
+          onConfirm={() => {
+            const token = numberWarning.warningToken;
+            setNumberWarning(null);
+            void submit(token);
+          }}
+        />
+      )}
     </div>
   );
 }

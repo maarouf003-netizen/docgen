@@ -57,6 +57,7 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
             ArgumentException => StatusCodes.Status400BadRequest,
             KeyNotFoundException => StatusCodes.Status404NotFound,
             DocumentConflictException => StatusCodes.Status409Conflict,
+            NumberReuseWarningException => StatusCodes.Status409Conflict,
             // RF-010 + المرحلة 5ب: أي تعارض تفاؤلية يفلت من الحراس الخدميين
             // (رموز التزامن `Document.Version` و`DocumentAppeal.Version`)
             // يُردّ 409 لا 500.
@@ -149,7 +150,7 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
             // (تسطيح/تجريد/قصّ) قبل الرد، وبالرسالة البديلة إن صار النص فارغًا — السياسة
             // نفسها التي كانت في كتل `catch` المتحكمات، فلا فرق في الجسم بين المسارين.
             ArgumentException or KeyNotFoundException or DocumentConflictException
-                or UnauthorizedAccessException => ApiErrorMessages.From(exception),
+                or UnauthorizedAccessException or NumberReuseWarningException => ApiErrorMessages.From(exception),
             // W1-7: رسالة عامة لا تكشف اسم القيد/الجدول/المزود — التفاصيل في السجل أعلاه.
             DbUpdateException when isUniqueViolation =>
                 "تعارض في البيانات — القيمة مكررة، حدّث الصفحة وحاول مجددًا",
@@ -162,7 +163,15 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         };
 
         httpContext.Response.StatusCode = statusCode;
-        await httpContext.Response.WriteAsJsonAsync(new { message }, cancellationToken);
+        var code = exception switch
+        {
+            NumberReuseWarningException => "number_reuse_warning",
+            DocumentConflictException conflict => conflict.Code,
+            _ => null,
+        };
+        var warningToken = exception is NumberReuseWarningException warning ? warning.WarningToken : null;
+        await httpContext.Response.WriteAsJsonAsync(
+            new { message, code, warningToken }, cancellationToken);
         return true;
     }
 

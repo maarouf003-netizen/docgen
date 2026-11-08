@@ -171,7 +171,7 @@ public sealed class DocumentSearchService : IDocumentSearchService
         // في الذاكرة (رخيص: بضعة أرقام أساس لكل صف).
         foreach (var row in rows)
         {
-            var latest = EffectiveFileIdentity.LatestFrom(row.BaseNumbers, currentYear);
+            var latest = EffectiveFileIdentity.LatestFrom(row.BaseNumbers, currentYear, row.ExecutionCircuitId);
             row.DisplayFileNumber = latest?.BaseNumber ?? row.FileNumber;
             row.DisplayFileYear = latest?.Year.ToString(CultureInfo.InvariantCulture) ?? row.FileYear;
         }

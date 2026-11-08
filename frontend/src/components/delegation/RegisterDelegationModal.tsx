@@ -1,9 +1,11 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, getApiErrorMessage } from '../../api/client';
+import { getNumberReuseWarning, type NumberReuseWarning } from '../../api/numberWarning';
+import NumberReuseWarningModal from '../NumberReuseWarningModal';
 import { normalizeArabicDigits } from '../../utils/arabicDigits';
 import { useCurrentYear } from '../../hooks/useCurrentYear';
 import { FUTURE_FILE_YEAR_MESSAGE, isFutureFileYear } from '../form/documentFormConstants';
-import type { DelegationDto, RegisterDelegationRequest } from '../../types';
+import type { DelegationDto, ExecutionCircuitDto, RegisterDelegationRequest } from '../../types';
 import { DelegationDetails } from './DelegationDetails';
 
 const DATE_PLACEHOLDER = 'مثال: 1/8/2026';
@@ -26,13 +28,35 @@ export default function RegisterDelegationModal({
   const [fileRegistrationDate, setFileRegistrationDate] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const [circuits, setCircuits] = useState<ExecutionCircuitDto[]>([]);
+  const [circuitId, setCircuitId] = useState('');
+  const [warning, setWarning] = useState<NumberReuseWarning | null>(null);
   const numberRef = useRef<HTMLInputElement>(null);
   const yearRef = useRef<HTMLInputElement>(null);
   const dateRef = useRef<HTMLInputElement>(null);
   // سقف سنة القيد (تصبح سنة الملف): الجارية خادميًا — المستقبل مرفوض خلفيةً أيضًا.
   const { currentYear } = useCurrentYear();
 
+  // الإنابة الخارجية: الملف المناب بلا دائرة، فتختار دائرة الإدخال هنا (V-18).
+  useEffect(() => {
+    if (!delegation.isExternal) return;
+    let alive = true;
+    api
+      .get<ExecutionCircuitDto[]>('/execution-circuits/for-delegation')
+      .then((r) => {
+        if (alive) setCircuits(Array.isArray(r.data) ? r.data : []);
+      })
+      .catch(() => {
+        if (alive) setCircuits([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [delegation.isExternal]);
+
   const validate = (): { message: string; ref: HTMLInputElement | null } => {
+    if (delegation.isExternal && !circuitId)
+      return { message: 'دائرة إدخال رقم الإنابة مطلوبة', ref: null };
     if (!fileNumber.trim()) return { message: 'رقم أساس الإنابة مطلوب', ref: numberRef.current };
     if (!fileYear.trim()) return { message: 'سنة قيد الإنابة مطلوبة', ref: yearRef.current };
     if (isFutureFileYear(normalizeArabicDigits(fileYear).trim(), currentYear))
@@ -41,7 +65,7 @@ export default function RegisterDelegationModal({
     return { message: '', ref: null };
   };
 
-  const submit = async (e: FormEvent) => {
+  const submit = async (e: FormEvent, warningToken?: string) => {
     e.preventDefault();
     const problem = validate();
     if (problem.message) {
@@ -55,12 +79,17 @@ export default function RegisterDelegationModal({
       fileNumber: normalizeArabicDigits(fileNumber).trim(),
       fileYear: normalizeArabicDigits(fileYear).trim(),
       fileRegistrationDate: normalizeArabicDigits(fileRegistrationDate).trim(),
+      ...(delegation.isExternal ? { executionCircuitId: Number(circuitId) } : {}),
+      ...(warningToken ? { warningToken } : {}),
     };
     try {
       await api.post(`/delegations/${delegation.id}/register`, payload);
+      setWarning(null);
       onRegistered();
     } catch (err) {
-      setFormError(getApiErrorMessage(err));
+      const reuse = getNumberReuseWarning(err);
+      if (reuse) setWarning(reuse);
+      else setFormError(getApiErrorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -135,6 +164,33 @@ export default function RegisterDelegationModal({
             </div>
           </div>
 
+          {delegation.isExternal && (
+            <div>
+              <label htmlFor="executionCircuitId" className="block text-xs font-bold text-gray-600 mb-1">
+                دائرة إدخال رقم الإنابة
+              </label>
+              <select
+                id="executionCircuitId"
+                value={circuitId}
+                onChange={(e) => setCircuitId(e.target.value)}
+                className={inputCls}
+                autoComplete="off"
+              >
+                <option value="">— اختر الدائرة —</option>
+                {circuits.map((circuit) => (
+                  <option key={circuit.id} value={circuit.id}>
+                    {circuit.name}
+                  </option>
+                ))}
+              </select>
+              {circuits.length === 0 && (
+                <p className="mt-1 text-xs text-amber-700">
+                  لا توجد دوائر متاحة للإنابة في محافظة فرعك — راجع الإدارة.
+                </p>
+              )}
+            </div>
+          )}
+
           <div>
             <label htmlFor="fileRegistrationDate" className="block text-xs font-bold text-gray-600 mb-1">
               تاريخ قيد الإنابة
@@ -169,6 +225,19 @@ export default function RegisterDelegationModal({
           </div>
         </form>
       </div>
+
+      {warning && (
+        <NumberReuseWarningModal
+          message={warning.message}
+          busy={saving}
+          onCancel={() => setWarning(null)}
+          onConfirm={() => {
+            const token = warning.warningToken;
+            setWarning(null);
+            void submit({ preventDefault() {} } as FormEvent, token);
+          }}
+        />
+      )}
     </div>
   );
 }

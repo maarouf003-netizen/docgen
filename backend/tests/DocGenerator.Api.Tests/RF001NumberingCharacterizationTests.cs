@@ -53,9 +53,9 @@ public class RF001NumberingCharacterizationTests
     }
 
     [Fact]
-    public async Task RestoreAfterNumberReuse_Conflict()
+    public async Task RestoreAfterNumberReuse_ReturnsToPendingWithoutConflict()
     {
-        // RF-009 (INT-008): الاستعادة تفحص تعارض المفتاح الفعّال — 409 بدل تكرار ظاهري.
+        // v2: الاستعادة = NeedsRegistration + رقم جديد؛ لا فحص تفرد لأن الرقم يُفرَّغ.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var client = _factory.ClientWithToken(token);
         var number = $"8{Random.Shared.Next(100000, 999999)}";
@@ -66,6 +66,10 @@ public class RF001NumberingCharacterizationTests
         await CreateIdAsync(client, NumberedPayload("إعادة استعمال", number));
 
         var restore = await client.PostAsync($"/api/documents/{doomed}/restore", null);
-        Assert.Equal(HttpStatusCode.Conflict, restore.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, restore.StatusCode);
+
+        var restored = await client.GetFromJsonAsync<JsonElement>($"/api/documents/{doomed}");
+        Assert.True(restored.GetProperty("needsRegistration").GetBoolean());
+        Assert.True(string.IsNullOrEmpty(restored.GetProperty("fileNumber").GetString()));
     }
 }

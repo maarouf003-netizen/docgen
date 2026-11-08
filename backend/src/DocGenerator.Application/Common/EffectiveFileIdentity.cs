@@ -6,28 +6,28 @@ namespace DocGenerator.Application.Common;
 
 /// <summary>
 /// المحلل المركزي لهوية رقم الملف: يختار «آخر رقم فعّال» من أرقام الأساس
-/// (أحدث سجل بسنة ≤ سنة الفحص، مرتبًا بالسنة ثم CreatedAt تنازليًا)، وإلا رقم الملف الأصلي.
-/// مبدأ «الأحدث هو المعتبر»: رقم سنة سابقة يحل محل الرقم الأصلي، ولا يُستخدم
-/// رقمُ مستقبلي قبل حلول سنته، ولا يُخلط رقمُ سنةٍ مع سنةِ قيدٍ أصلية.
+/// في دائرة الملف الحالية (أحدث صف غير ملغى بسنة ≤ سنة الفحص، مرتبًا بالسنة ثم
+/// CreatedAt ثم Id تنازليًا)، وإلا رقم الملف الأصلي. صفوف الدوائر الأخرى والملغاة
+/// توثيق لا يدخل الهوية اليومية.
 /// </summary>
 public static class EffectiveFileIdentity
 {
     /// <summary>
-    /// أحدث سجل رقم أساس لملف بسنة ≤ سنة الفحص، وإلا null. سنة الفحص إلزامية:
-    /// القرارات تُمرَّرها صراحة (سنة اليوم من ServerClock، أو سنة شطب في وقعة الشطب) —
-    /// يُمرَّر int.MaxValue للانتقاء غير المقيد بحلول سنة السجلات.
+    /// أحدث سجل رقم أساس فعّال لملف في دائرته الحالية بسنة ≤ سنة الفحص، وإلا null.
+    /// سنة الفحص إلزامية؛ يُمرَّر int.MaxValue للانتقاء غير المقيد بحلول سنة السجلات.
     /// </summary>
     public static DocumentBaseNumber? Latest(Document? doc, int asOfYear)
-        => Pick(doc?.BaseNumbers, b => b.Year, b => b.CreatedAt, asOfYear);
+        => Pick(doc?.BaseNumbers, doc?.ExecutionCircuitId, asOfYear);
 
     /// <summary>
-    /// المحلل المشترك على أرقام أساس ملف: أحدث سجل بسنة ≤ سنة الفحص
-    /// مرتبًا بالسنة ثم CreatedAt تنازليًا، وإلا null. لا تُستعمل الأرقام المستقبلية قبل حلول سنتها.
+    /// المحلل المشترك على أرقام أساس ملف: أحدث سجل فعّال بسنة ≤ سنة الفحص
+    /// في الدائرة الممرَّرة (أو الصفوف بلا دائرة عند null)، وإلا null.
     /// </summary>
-    public static DocumentBaseNumber? LatestFrom(ICollection<DocumentBaseNumber>? numbers, int asOfYear)
-        => Pick(numbers, b => b.Year, b => b.CreatedAt, asOfYear);
+    public static DocumentBaseNumber? LatestFrom(
+        ICollection<DocumentBaseNumber>? numbers, int asOfYear, int? circuitId = null)
+        => Pick(numbers, circuitId, asOfYear);
 
-    /// <summary>الرقم الفعّال لملف: رقم أحدث رقم أساس ≤ سنة الفحص، وإلا رقم الملف الأصلي.</summary>
+    /// <summary>الرقم الفعّال لملف: رقم أحدث رقم أساس فعّال ≤ سنة الفحص، وإلا رقم الملف الأصلي.</summary>
     public static string? Number(Document? doc, int asOfYear)
         => Latest(doc, asOfYear)?.BaseNumber ?? doc?.FileNumber;
 
@@ -36,29 +36,29 @@ public static class EffectiveFileIdentity
         => Latest(doc, asOfYear)?.Year.ToString(CultureInfo.InvariantCulture) ?? doc?.FileYear;
 
     /// <summary>
-    /// الانتخاب المشترك: أحدث سجل بسنة ≤ سنة الفحص مرتبًا بالسنة ثم CreatedAt تنازليًا.
-    /// يُسجَّل كشف تشخيصي (Debug.Write) عندما تُحُمِّل أرقامٌ دون موافِق قطعي — مؤشر على Include
-    /// ناقص أو بيانات مستقبلية فقط — فيبقى الاحتياطي (FileNumber) لا التدهور الصامت المطلق.
+    /// الانتخاب المشترك: أحدث صف غير ملغى في الدائرة المطلوبة وبسنة ≤ سنة الفحص.
+    /// يُسجَّل كشف تشخيصي (Debug.Write) عندما تُحُمِّل أرقامٌ دون موافِق قطعي — مؤشر على
+    /// Include ناقص أو بيانات مستقبلية فقط — فيبقى الاحتياطي (FileNumber) لا التدهور الصامت.
     /// </summary>
-    private static T? Pick<T>(
-        ICollection<T>? items,
-        Func<T, int> getYear,
-        Func<T, DateTime> getCreated,
-        int asOfYear)
+    private static DocumentBaseNumber? Pick(
+        ICollection<DocumentBaseNumber>? items, int? circuitId, int asOfYear)
     {
         if (items is null || items.Count == 0)
-            return default;
+            return null;
 
         var match = items
-            .Where(b => getYear(b) <= asOfYear)
-            .OrderByDescending(getYear)
-            .ThenByDescending(getCreated)
+            .Where(b => b.VoidedAt is null
+                && (circuitId is null ? b.ExecutionCircuitId is null : b.ExecutionCircuitId == circuitId)
+                && b.Year <= asOfYear)
+            .OrderByDescending(b => b.Year)
+            .ThenByDescending(b => b.CreatedAt)
+            .ThenByDescending(b => b.Id)
             .FirstOrDefault();
         if (match is not null)
             return match;
 
         // مؤشر على Include ناقص أو بيانات مستقبلية فقط؛ الاحتياطي يعود FileNumber.
         Debug.WriteLine($"EffectiveFileIdentity: عند ({asOfYear}) أرقام محمّلة دون موافِق قطَعي — رجع الاحتياطي.");
-        return default;
+        return null;
     }
 }

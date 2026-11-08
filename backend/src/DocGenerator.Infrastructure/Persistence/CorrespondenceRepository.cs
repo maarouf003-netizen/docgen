@@ -188,6 +188,7 @@ public class CorrespondenceRepository : Repository<Correspondence>, ICorresponde
                     FileType = c.Document.FileType,
                     FileYear = c.Document.FileYear,
                     Court = c.Document.Court,
+                    ExecutionCircuitId = c.Document.ExecutionCircuitId,
                     // أرقام الأساس لازمة للمحلل المركزي (EffectiveFileIdentity) في سياق
                     // المراسلة — بدونها يتدهور العرض بصمت إلى رقم الملف الأصلي.
                     BaseNumbers = c.Document.BaseNumbers
@@ -198,6 +199,8 @@ public class CorrespondenceRepository : Repository<Correspondence>, ICorresponde
                             Year = b.Year,
                             BaseNumber = b.BaseNumber,
                             CreatedAt = b.CreatedAt,
+                            ExecutionCircuitId = b.ExecutionCircuitId,
+                            VoidedAt = b.VoidedAt,
                         }).ToList(),
                 },
                 Messages = c.Messages

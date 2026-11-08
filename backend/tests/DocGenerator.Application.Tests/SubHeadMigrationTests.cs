@@ -109,7 +109,12 @@ public class SubHeadMigrationTests : IDisposable
             $"VALUES ('lawyer_old', 'محام قديم', 'Lawyer', 'x', {branchId}, 1, 0, 0, '2026-01-01', '2026-01-01')");
         var userId = (await _db.Database.SqlQueryRaw<int>(
             "SELECT \"Id\" AS Value FROM \"Users\" WHERE \"Username\" = 'lawyer_old'").ToListAsync()).Single();
-        await InsertLegacyDocumentAsync(userId);
+        await _db.Database.ExecuteSqlRawAsync(
+            "INSERT INTO \"ExecutionCircuits\" (\"BranchId\", \"Name\", \"NameNorm\", \"IsActive\", \"CreatedById\", \"CreatedAt\", \"UpdatedAt\", \"Version\") " +
+            $"VALUES ({branchId}, 'دائرة قديمة', 'دائره قديمه', 1, {userId}, '2026-01-01', '2026-01-01', 0)");
+        var circuitId = (await _db.Database.SqlQueryRaw<int>(
+            "SELECT \"Id\" AS Value FROM \"ExecutionCircuits\" WHERE \"Name\" = 'دائرة قديمة'").ToListAsync()).Single();
+        await InsertLegacyDocumentAsync(userId, circuitId);
         var docId = (await _db.Database.SqlQueryRaw<int>(
             "SELECT \"Id\" AS Value FROM \"Documents\" WHERE \"FileNumber\" = '1'").ToListAsync()).Single();
         await _db.Database.ExecuteSqlRawAsync(
@@ -139,7 +144,7 @@ public class SubHeadMigrationTests : IDisposable
     /// القيود (`GeneralEntitySide`) والقيم المقصودة — فيتكيف الاختبار مع أي عمود
     /// مستقبلي بلا كسر.
     /// </summary>
-    private async Task InsertLegacyDocumentAsync(int userId)
+    private async Task InsertLegacyDocumentAsync(int userId, int circuitId)
     {
         RequireAllowedTable("Documents");
         var names = await _db.Database.SqlQueryRaw<string>(
@@ -156,6 +161,9 @@ public class SubHeadMigrationTests : IDisposable
         var overrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["FileNumber"] = "'1'",
+            ["FileYear"] = "'2026'",
+            ["FileType"] = "'صلح'",
+            ["ExecutionCircuitId"] = circuitId.ToString(),
             ["CreatedById"] = userId.ToString(),
             ["CreatedAt"] = "'2026-01-01'",
             ["UpdatedAt"] = "'2026-01-01'",

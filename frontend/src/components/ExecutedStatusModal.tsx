@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
+import { getNumberReuseWarning, type NumberReuseWarning } from '../api/numberWarning';
+import NumberReuseWarningModal from './NumberReuseWarningModal';
 import { useCurrentYear } from '../hooks/useCurrentYear';
 import { normalizeArabicDigits } from '../utils/arabicDigits';
 import type { DocumentResponse } from '../types';
@@ -83,6 +85,7 @@ export default function ExecutedStatusModal({
   const [renewal, setRenewal] = useState<RenewalFieldsValue>({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [numberWarning, setNumberWarning] = useState<NumberReuseWarning | null>(null);
 
   const set = <K extends keyof ExecutedFields>(key: K, value: ExecutedFields[K]) =>
     setFields((f) => ({ ...f, [key]: value }));
@@ -152,7 +155,7 @@ export default function ExecutedStatusModal({
     return body;
   };
 
-  const submit = async () => {
+  const submit = async (warningToken?: string) => {
     setError('');
     let body: Record<string, unknown>;
     try {
@@ -161,13 +164,17 @@ export default function ExecutedStatusModal({
       setError(e instanceof Error ? e.message : 'بيانات غير مكتملة');
       return;
     }
+    if (warningToken) body.warningToken = warningToken;
     setBusy(true);
     try {
       await api.post(`/documents/${doc.id}/executed-status`, body);
+      setNumberWarning(null);
       onChanged();
       onClose();
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      const reuse = getNumberReuseWarning(err);
+      if (reuse) setNumberWarning(reuse);
+      else setError(getApiErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -306,7 +313,7 @@ export default function ExecutedStatusModal({
                 </button>
                 <button
                   type="button"
-                  onClick={submit}
+                  onClick={() => void submit()}
                   disabled={busy}
                   className="bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white rounded-lg px-4 py-2 text-sm min-h-11"
                 >
@@ -317,6 +324,19 @@ export default function ExecutedStatusModal({
           )}
         </div>
       </div>
+
+      {numberWarning && (
+        <NumberReuseWarningModal
+          message={numberWarning.message}
+          busy={busy}
+          onCancel={() => setNumberWarning(null)}
+          onConfirm={() => {
+            const token = numberWarning.warningToken;
+            setNumberWarning(null);
+            void submit(token);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
+import { getNumberReuseWarning, type NumberReuseWarning } from '../api/numberWarning';
+import NumberReuseWarningModal from '../components/NumberReuseWarningModal';
 import { useAuth } from '../auth/useAuth';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { useCurrentYear } from '../hooks/useCurrentYear';
@@ -26,6 +28,7 @@ export default function Rotation() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [warning, setWarning] = useState<NumberReuseWarning | null>(null);
 
   // سنة التدوير المعتمدة من الخادم (سنة «قرار السنة») — لا من عداد المتصفح.
   const year = useCurrentYear().currentYear;
@@ -53,7 +56,8 @@ export default function Rotation() {
     if (!data) return;
     const v: Record<number, string> = {};
     (data.items ?? []).forEach((row) => {
-      v[row.documentId] = row.baseNumber ?? '';
+      // v2: الحقل إدخال لرقم السنة الحالية الجديد — لا يُعبّأ بالرقم السابق.
+      v[row.documentId] = '';
     });
     setValues(v);
     setInitial(v);
@@ -70,16 +74,22 @@ export default function Rotation() {
     [rows, values, initial],
   );
 
-  const handleSave = async () => {
+  const handleSave = async (warningToken?: string) => {
     setSaving(true);
     setError('');
     setMessage('');
     try {
-      await api.put('/documents/rotate', { entries: changedEntries });
+      await api.put('/documents/rotate', {
+        entries: changedEntries,
+        ...(warningToken ? { warningToken } : {}),
+      });
+      setWarning(null);
       setMessage('تم حفظ أرقام الأساس بنجاح');
       rotationQuery.refetch();
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      const reuse = getNumberReuseWarning(err);
+      if (reuse) setWarning(reuse);
+      else setError(getApiErrorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -139,8 +149,11 @@ export default function Rotation() {
                   <div className="text-sm font-medium text-gray-800 mt-1">
                     رقم الملف: {displayFileNumber(row) || '—'} · نوعه: {row.fileType || '—'}
                   </div>
+                  <div className="text-sm text-gray-600 mt-1">
+                    الرقم السابق: {row.baseNumber || row.effectiveFileNumber || '—'}
+                  </div>
                   <label className="block mt-3">
-                    <span className="block text-sm text-gray-600 mb-1">رقم أساس {year}</span>
+                    <span className="block text-sm text-gray-600 mb-1">رقم أساس {year} الجديد</span>
                     <input
                       value={values[row.documentId] ?? ''}
                       onChange={(e) =>
@@ -148,7 +161,7 @@ export default function Rotation() {
                       }
                       maxLength={50}
                       aria-label={`رقم أساس ${fullName(row) || row.documentId}`}
-                      placeholder="رقم الأساس"
+                      placeholder="رقم الأساس الجديد"
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-11"
                     />
                   </label>
@@ -184,7 +197,7 @@ export default function Rotation() {
                           }
                           maxLength={50}
                           aria-label={`رقم أساس ${fullName(row) || row.documentId}`}
-                          placeholder="رقم الأساس"
+                          placeholder="رقم الأساس الجديد"
                           className="w-full max-w-56 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-11"
                         />
                       </td>
@@ -222,7 +235,7 @@ export default function Rotation() {
           <div className="flex items-center justify-end mt-4">
             <button
               type="button"
-              onClick={handleSave}
+              onClick={() => void handleSave()}
               disabled={saving || changedEntries.length === 0}
               className="bg-emerald-800 hover:bg-emerald-700 text-white rounded-lg px-6 py-2.5 text-sm font-medium min-h-11 disabled:opacity-50"
             >
@@ -230,6 +243,15 @@ export default function Rotation() {
             </button>
           </div>
         </>
+      )}
+
+      {warning && (
+        <NumberReuseWarningModal
+          message={warning.message}
+          busy={saving}
+          onCancel={() => setWarning(null)}
+          onConfirm={() => void handleSave(warning.warningToken)}
+        />
       )}
     </div>
   );

@@ -464,3 +464,23 @@ public record BaseNumberHistoryDto(
 **مراجعة v2 (2026‑11‑08):** أُدمجت F1–F10 (E1–E13)، ثم **R1–R10** (المراجعة النهائية)؛ ملفّا المراجعة: `docs/audit/base-number-registry-review-2026-11-08.md` و`docs/audit/base-number-registry-review-final-2026-11-08.md`.
 
 > **الضمان النهائي:** لا يُحذف صف رقم أساس فيزيائيًا في أي مسار؛ الحذف والتراجع يوسمانه `VoidedAt` ويبقى معروضًا في «سجل أرقام الأساس» للتوثيق.
+
+
+---
+
+## 16) حالة التنفيذ (2026-11-09)
+
+- **الكاتب الوحيد:** `IDocumentNumberRegistry` (`DocumentNumberRegistry`) يكتب صفوف
+  `DocumentBaseNumbers` وحقول رقم الملف؛ المسارات الموصولة: الإنشاء/التعديل/التدوير/
+  التصحيح/التراجع/التجديد/الإحالة/إعادة القيد/تسجيل الإنابة/الحذف/الاستعادة.
+- **السياسة:** `DocumentBaseNumberPolicy` + اختباراتها (تطبيع/سنة/أهلية/هوية/سجل).
+- **الهجرة:** `BaseNumberRegistry` (SQLite) و`BaseNumberRegistry_Pg` (PostgreSQL) — تعبئة
+  صفوف القيد، `VoidedAt=document-deleted` للمحذوف، بوابات توقف صريحة (دائرة/تبديل دائرة/
+  سنة/تكرار)، ثم الفهرس الفريد الجزئي. أُضيفت إلى `RUN_GUIDE.md` §9.
+- **الهوية/التصدير:** `EffectiveFileIdentity` مقيّد بدائرة الملف و`VoidedAt`، و`LatestFrom`
+  يقبل `int? circuitId`، و`DocumentExportRow.ExecutionCircuitId`.
+- **الواجهة:** سجل كامل (بما فيه الملغى) + تصحيح موضعي + زر تراجع + نافذة تحذير
+  `number_reuse_warning` في نموذج الملف/التدوير/الإنابة/المعلقات/تغيير الحالة،
+  ومنتقي دائرة للإنابة الخارجية.
+- **التدقيق الحي:** تعذّر من بيئة التنفيذ (IPv6-only/بركة غير صالحة)؛ انظر
+  `docs/audit/base-number-registry-audit-2026-11-09.md` (قبول مخاطرة موثّق قبل النشر).

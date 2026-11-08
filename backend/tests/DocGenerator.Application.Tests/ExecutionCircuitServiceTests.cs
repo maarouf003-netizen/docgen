@@ -63,7 +63,8 @@ public class ExecutionCircuitServiceTests : IDisposable
             circuitsRepo, branchesRepo, new Repository<Section>(_db), documents, new DelegationRepository(_db),
             new AppealRepository(_db),
             occurrences, baseNumbers, new Repository<HeadSuccession>(_db), alertsRepo, users,
-            uow, _tx, _audit, outbox, classifier, TimeProvider.System, TestClock.TimeZone);
+            uow, _tx, _audit, outbox, classifier, TimeProvider.System, TestClock.TimeZone,
+            baseNumberRepository: new DocumentBaseNumberRepository(_db));
         _headAlerts = new HeadAlertService(alertsRepo, documents, users,
             branchesRepo, new DelegationRepository(_db), uow, _tx, _audit, _tx);
         var docBundle = DocumentServiceFactory.Create(_db, _audit, documents: documents, users: users, baseNumbers: baseNumbers, occurrences: occurrences, uow: uow, tx: _tx, alertService: _headAlerts, dbErrors: classifier, circuits: circuitsRepo, branches: branchesRepo);
@@ -159,13 +160,17 @@ public class ExecutionCircuitServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Uniqueness_IsPerCircuit_SameNumberDifferentCircuits_Allowed()
+    public async Task Uniqueness_IsPerCircuit_SameNumberDifferentCircuits_WarnsThenAllowsWithToken()
     {
         var a = await CreateCircuitAsync("دائرة أ");
         var b = await CreateCircuitAsync("دائرة ب");
         await CreateDocAsync(a, _lawyer1Id, "100", "2026");
         var req = Sample("100", "2026");
         req.ExecutionCircuitId = b;
+        var warning = await Assert.ThrowsAsync<DocGenerator.Application.Common.NumberReuseWarningException>(() =>
+            _documents.CreateAsync(req, _lawyer1Id, "lawyer", _branchId));
+        _db.ChangeTracker.Clear();
+        req.WarningToken = warning.WarningToken;
         var created = await _documents.CreateAsync(req, _lawyer1Id, "lawyer", _branchId);
         Assert.Equal(b, created.ExecutionCircuitId);
     }
@@ -207,7 +212,7 @@ public class ExecutionCircuitServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Refer_EmptiesCircuit_ClearsBaseNumbers_SetsPending_CheckOccurrenceColumns()
+    public async Task Refer_EmptiesCircuit_KeepsBaseNumbersInOldCircuit_SetsPending_CheckOccurrenceColumns()
     {
         var source = await CreateCircuitAsync("دائرة المصدر");
         var target = await CreateCircuitAsync("دائرة الهدف");
@@ -215,7 +220,9 @@ public class ExecutionCircuitServiceTests : IDisposable
         // رقم أساس سابق لإثبات المسح عند الإحالة.
         _db.BaseNumbers.Add(new DocumentBaseNumber
         {
-            DocumentId = docId, Year = 2025, BaseNumber = "99",
+            DocumentId = docId, ExecutionCircuitId = source, CircuitName = "دائرة المصدر",
+            Year = 2025, BaseNumber = "99", NumberKey = "99", TypeKey = "صلح", FileType = "صلح",
+            Source = "rotation",
             CreatedById = _lawyer1Id, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
         });
         await _db.SaveChangesAsync();
@@ -230,14 +237,17 @@ public class ExecutionCircuitServiceTests : IDisposable
         Assert.Null(doc.FileNumber);
         Assert.True(doc.NeedsRegistration);
         Assert.False(doc.IsDraft);
-        Assert.Empty(_db.BaseNumbers.Where(b => b.DocumentId == docId).ToList());
+        // V-07: صفوف الدائرة القديمة تبقى (توثيق/حجز) ولا تظهر في هوية الدائرة الجديدة.
+        var oldRows = _db.BaseNumbers.Where(b => b.DocumentId == docId && b.ExecutionCircuitId == source).ToList();
+        Assert.Equal(2, oldRows.Count);
+        Assert.DoesNotContain(_db.BaseNumbers, b => b.DocumentId == docId && b.ExecutionCircuitId == target);
         var occ = _db.DocumentOccurrences
             .Where(o => o.DocumentId == docId && o.OccurrenceType == OccurrenceTypeCatalog.CircuitReferred)
             .OrderByDescending(o => o.Id).First();
         Assert.Equal("دائرة المصدر", occ.FromCircuitName);
         Assert.Equal("دائرة الهدف", occ.ToCircuitName);
         // الرقم القديم من EffectiveFileIdentity (رقم الأساس 99 لسنة 2025 يغلب رقم الملف 200).
-        Assert.Equal("99", occ.FileNumber);
+        Assert.Equal("200", occ.FileNumber);
     }
 
     [Fact]
@@ -1425,6 +1435,7 @@ public class ExecutionCircuitServiceTests : IDisposable
             new Repository<HeadSuccession>(_db), new HeadAlertRepository(_db), users,
             uow, tx, _audit, new HeadAlertOutbox(new HeadAlertOutboxStore(_db), tx),
             classifier, TimeProvider.System, TestClock.TimeZone,
-            new IdempotencyStore(_db));
+            new IdempotencyStore(_db),
+            baseNumberRepository: new DocumentBaseNumberRepository(_db));
     }
 }

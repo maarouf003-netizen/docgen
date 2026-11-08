@@ -54,4 +54,30 @@ public class EffectiveFileIdentityTests
         Assert.Null(EffectiveFileIdentity.Number(null, 2026));
         Assert.Null(EffectiveFileIdentity.Year(null, 2026));
     }
+
+    [Fact]
+    public void Latest_IgnoresVoidedAndOtherCircuitRows()
+    {
+        var doc = new Document { Id = 1, FileNumber = "520", FileYear = "2024", ExecutionCircuitId = 1 };
+        doc.BaseNumbers.Add(new DocumentBaseNumber
+        {
+            Id = 1, DocumentId = 1, ExecutionCircuitId = 2, Year = 2026,
+            BaseNumber = "other", CreatedAt = new DateTime(2026, 5, 1), CreatedById = 1,
+        });
+        doc.BaseNumbers.Add(new DocumentBaseNumber
+        {
+            Id = 2, DocumentId = 1, ExecutionCircuitId = 1, Year = 2026,
+            BaseNumber = "voided", CreatedAt = new DateTime(2026, 4, 1), CreatedById = 1,
+            VoidedAt = DateTime.UtcNow,
+        });
+        doc.BaseNumbers.Add(new DocumentBaseNumber
+        {
+            Id = 3, DocumentId = 1, ExecutionCircuitId = 1, Year = 2025,
+            BaseNumber = "current", CreatedAt = new DateTime(2025, 4, 1), CreatedById = 1,
+        });
+
+        Assert.Equal("current", EffectiveFileIdentity.Number(doc, 2026));
+        Assert.Equal("2025", EffectiveFileIdentity.Year(doc, 2026));
+        Assert.Equal("current", EffectiveFileIdentity.Latest(doc, 2026)!.BaseNumber);
+    }
 }

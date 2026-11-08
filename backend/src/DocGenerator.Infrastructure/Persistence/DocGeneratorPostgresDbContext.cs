@@ -57,6 +57,9 @@ public class DocGeneratorPostgresDbContext : DocGeneratorDbContext
         modelBuilder.Entity<DocumentOccurrence>()
             .Property(o => o.ReceiptDate)
             .HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<DocumentBaseNumber>()
+            .Property(b => b.VoidedAt)
+            .HasColumnType("timestamp with time zone");
         modelBuilder.Entity<DocumentAssignment>()
             .Property(a => a.AssignedAt)
             .HasColumnType("timestamp with time zone");

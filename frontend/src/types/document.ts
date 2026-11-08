@@ -442,6 +442,8 @@ fileNumber?: string;
 }
 
 export interface DocumentUpsertRequest {
+  /** رمز تحذير إعادة استخدام رقم أساس الصادر مع 409. */
+  warningToken?: string | null;
   documentType?: string;
   borrowerName?: string;
   borrowerFather?: string;
@@ -612,12 +614,28 @@ export interface BaseNumberEntry {
 
 export interface SaveBaseNumbersRequest {
   entries: BaseNumberEntry[];
+  /** رمز تحذير إعادة الاستخدام الصادر مع 409. */
+  warningToken?: string | null;
 }
 
-/** سجل سنة واحدة في تاريخ أرقام الأساس للملف. */
+/** سجل رقم أساس واحد: السنة والرقم والدائرة والمصدر وحالة الإلغاء والفعّالية. */
 export interface BaseNumberHistoryDto {
   year: number;
   baseNumber: string;
+  id?: number;
+  source?: string | null;
+  circuitId?: number | null;
+  circuitName?: string | null;
+  isVoided?: boolean;
+  voidReason?: string | null;
+  isEffective?: boolean;
+}
+
+/** طلب تصحيح رقم أساس سنة محددة (rowId اختياري = الصف الفعّال). */
+export interface CorrectBaseNumberRequest {
+  baseNumber: string;
+  rowId?: number | null;
+  warningToken?: string | null;
 }
 
 /**

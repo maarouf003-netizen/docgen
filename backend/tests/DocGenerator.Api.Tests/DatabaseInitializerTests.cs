@@ -232,6 +232,25 @@ public class DatabaseInitializerTests
                 db, FileNumber: "900", StruckOffDate: new DateTime(2026, 8, 1),
                 RenewalFileNumber: "2026/99");
 
+            // قبل هجرة سجل أرقام الأساس: تهيئة دائرة/سنة للملفات القديمة (وإلا ترفض الهجرة
+            // صراحةً ملفًا مرقّمًا بلا دائرة — R2/R3).
+            await db.Database.MigrateAsync("20261107090514_DocumentAnnexSequence_Unique");
+            await db.Database.ExecuteSqlRawAsync(
+                "INSERT INTO \"Branches\" (\"Name\", \"Code\", \"IsActive\", \"CreatedAt\") VALUES ({0}, {1}, 1, '2026-01-01')",
+                "دمشق", "DAM");
+            var branchId = (await db.Database.SqlQueryRaw<int>(
+                "SELECT \"Id\" AS Value FROM \"Branches\" WHERE \"Code\" = 'DAM'").ToListAsync()).Single();
+            await db.Database.ExecuteSqlRawAsync(
+                "INSERT INTO \"ExecutionCircuits\" (\"BranchId\", \"Name\", \"NameNorm\", \"IsActive\", \"CreatedById\", \"CreatedAt\", \"UpdatedAt\", \"Version\") " +
+                "VALUES ({0}, {1}, {2}, 1, 1, '2026-01-01', '2026-01-01', 0)",
+                branchId, "دائرة قديمة", "دائره قديمه");
+            var circuitId = (await db.Database.SqlQueryRaw<int>(
+                "SELECT \"Id\" AS Value FROM \"ExecutionCircuits\" WHERE \"Name\" = 'دائرة قديمة'").ToListAsync()).Single();
+            await db.Database.ExecuteSqlRawAsync(
+                "UPDATE \"Documents\" SET \"ExecutionCircuitId\" = {0}, \"FileYear\" = '2026' " +
+                "WHERE \"Id\" IN ({1}, {2}, {3})",
+                circuitId, struckId, renewedId, bothId);
+
             // تطبيق مهاجرة AddDocumentOccurrences: يجب أن تُنشئ الوقوعات من البيانات القديمة.
             await db.Database.MigrateAsync();
 

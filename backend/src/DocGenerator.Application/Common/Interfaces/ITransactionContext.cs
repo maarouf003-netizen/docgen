@@ -21,6 +21,13 @@ public interface ITransactionContext
 
     /// <summary>التراجع إلى نقطة حفظ سابقة ضمن المعاملة ذاتها (لا تُغلق المعاملة).</summary>
     Task RollbackToSavepointAsync(string name, CancellationToken ct = default);
+
+    /// <summary>
+    /// قفل نطاق داخل المعاملة النشطة — في PostgreSQL: <c>pg_advisory_xact_lock</c>
+    /// على مفتاح مستمد من النص؛ وفي SQLite: لا شيء (كاتب واحد). يُستخدم لقفل
+    /// (دائرة، سنة) أثناء فحص/كتابة رقم الأساس.
+    /// </summary>
+    Task AcquireScopeLockAsync(string key, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -41,4 +48,7 @@ public sealed class NullTransactionContext : ITransactionContext
 
     public Task RollbackToSavepointAsync(string name, CancellationToken ct = default)
         => throw new InvalidOperationException("لا توجد معاملة نشطة للتراجع إلى نقطة حفظ");
+
+    public Task AcquireScopeLockAsync(string key, CancellationToken ct = default)
+        => Task.CompletedTask;
 }
