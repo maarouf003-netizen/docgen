@@ -48,6 +48,8 @@ public sealed class DatabaseInitializer : IDatabaseInitializer
         else
             await EnsureSchemaIsCurrentAsync(ct);
 
+        await EnsureNumberRegistryConsistencyAsync(ct);
+
         if (development)
             await DbSeeder.SeedAsync(_db, _hasher, ct, devSeedPassword);
         else
@@ -139,6 +141,51 @@ public sealed class DatabaseInitializer : IDatabaseInitializer
             + string.Join(", ", pending)
             + ". أوامر التطبيق: dotnet ef database update --context DocGeneratorDbContext "
             + "dotnet ef database update --context DocGeneratorPostgresDbContext");
+    }
+
+    /// <summary>
+    /// R9: مراجعة اتساق سجل أرقام الأساس عند الإقلاع — كل ملف مرقّم (غير محذوف)
+    /// له صف قيد غير ملغى في دائرته/سنته، ولا صفوف يتيمة أو بلا دائرة.
+    /// في الإنتاج قاطعة (ترفض الإقلاع) وفي التطوير تحذير فقط.
+    /// </summary>
+    private async Task EnsureNumberRegistryConsistencyAsync(CancellationToken ct)
+    {
+        var missing = await _db.Documents
+            .AsNoTracking()
+            .Where(d => !d.IsDeleted
+                && d.FileNumber != null && d.FileNumber.Trim() != ""
+                && d.ExecutionCircuitId != null
+                && d.FileYear != null && d.FileYear.Trim() != "")
+            .Where(d => !_db.BaseNumbers.Any(b =>
+                b.DocumentId == d.Id
+                && b.VoidedAt == null
+                && b.Source == NumberSources.Registration
+                && b.ExecutionCircuitId == d.ExecutionCircuitId
+                && b.Year.ToString() == d.FileYear!.Trim()))
+            .Select(d => d.Id)
+            .Take(11)
+            .ToListAsync(ct);
+
+        var orphans = await _db.BaseNumbers
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(b => b.ExecutionCircuitId == null)
+            .Select(b => b.Id)
+            .Take(11)
+            .ToListAsync(ct);
+
+        if (missing.Count == 0 && orphans.Count == 0)
+            return;
+
+        var message = "مراجعة اتساق سجل أرقام الأساس فشلت: "
+            + $"ملفات مرقّمة بلا صف قيد فعّال في دائرتها/سنتها = {missing.Count}"
+            + (missing.Count > 10 ? "+" : "")
+            + $"، صفوف بلا دائرة = {orphans.Count}"
+            + (orphans.Count > 10 ? "+" : "")
+            + " — راجع تدقيق خطة v2 §8.1/§10 (R9).";
+        if (_strictSchemaChecks)
+            throw new InvalidOperationException(message);
+        Console.Error.WriteLine("[schema-check] WARNING: " + message);
     }
 
     private static async Task ExecutePragmaAsync(

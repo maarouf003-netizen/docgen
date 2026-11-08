@@ -33,6 +33,21 @@ public sealed class TransactionRunner : ITransactionRunner, ITransactionContext
         return transaction.RollbackToSavepointAsync(name, ct);
     }
 
+    /// <summary>
+    /// قفل نطاق داخل المعاملة: في PostgreSQL قفل استشاري على مفتاح مستمد من النص
+    /// (يُحرَّر تلقائيًا عند نهاية المعاملة)، وفي SQLite لا شيء (كاتب واحد).
+    /// لا يفعل شيئًا بلا معاملة نشطة — والمسارات الملزمة تفتح معاملة قبل الاستدعاء.
+    /// </summary>
+    public async Task AcquireScopeLockAsync(string key, CancellationToken ct = default)
+    {
+        if (!_db.Database.IsNpgsql() || _db.Database.CurrentTransaction is null)
+            return;
+        await _db.Database.ExecuteSqlRawAsync(
+            "SELECT pg_advisory_xact_lock(hashtextextended({0}, 0))",
+            new object[] { key },
+            ct);
+    }
+
     public Task<T> RunAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct = default)
         => RunInTransactionAsync(ct, action);
 

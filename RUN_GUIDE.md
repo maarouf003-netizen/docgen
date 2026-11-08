@@ -415,6 +415,14 @@ npm test
 
 > **تحديث 2026‑11‑07:** طُبِّقت هجرتا الملاحق على `PostgreSQL` حيًا (عبر `Database__AutoMigrate=true` مؤقتًا ثم أُعيد إلى `false`)؛ `SQLite` ما زالت معلّقة.
 
+- [ ] **2026-11-08 — `BaseNumberRegistry` / `BaseNumberRegistry_Pg`** (سجل أرقام الأساس v2 — جدول واحد + عمودا الإلغاء + فهرس فريد جزئي):
+  - **الحالة:** `PostgreSQL` و`SQLite` — **بانتظار التطبيق** (لم تُطبَّق حيًا في هذه الجلسة بسبب تعذر الوصول المباشر إلى `Supabase` من بيئة التنفيذ).
+  - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261108202145_BaseNumberRegistry.cs`.
+  - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261108202211_BaseNumberRegistry_Pg.cs`.
+  - **التعبئة داخل الهجرة:** تُوقف الهجرة صراحةً عند: صف بلا دائرة، أو صف أقدم من وقعة تبديل دائرة من التعديل (R3)، أو سنة/تكرار غير صالح — لا نسبة صامتة.
+  - **التطبيق:** `dotnet ef database update --context DocGeneratorDbContext` ثم `dotnet ef database update --context DocGeneratorPostgresDbContext` قبل نشر النسخة؛ وإلا رفض الإقلاع (`Database:AutoMigrate=false`).
+  - **تحقق مسبق (Supabase):** نفّذ تدقيق §8.1 على النسخة/قاعدة الإنتاج قبل التطبيق لأن الهجرة ترفض أي تكرار/صف بلا دائرة.
+
 - [ ] **2026-11-07 — `DocumentAnnexSequence_Unique` / `DocumentAnnexSequence_Unique_Pg`** (فرادة ترتيب الملحق داخل الملف — `DocumentAnnexes`):
   - **الحالة:** `PostgreSQL` ✅ **مطبَّقة حيًا** (69 هجرة) · `SQLite` ⏳ **معلّقة** (10 مع التسع السابقة).
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261107090514_DocumentAnnexSequence_Unique.cs` — يسقط الفهرس `IX_DocumentAnnexes_DocumentId_Sequence` غير الفريد ويعيد إنشاءه `UNIQUE` على `(DocumentId, Sequence)`.

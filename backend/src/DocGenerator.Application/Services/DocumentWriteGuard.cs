@@ -134,7 +134,7 @@ public sealed class DocumentWriteGuard : IDocumentWriteGuard
         string? year,
         CancellationToken ct)
     {
-        var n = DigitNormalizer.NormalizeDigits(number)?.Trim();
+        var n = DocumentBaseNumberPolicy.NormalizeNumberOrNull(number);
         var y = DigitNormalizer.NormalizeDigits(year)?.Trim();
         if (string.IsNullOrWhiteSpace(n) || string.IsNullOrWhiteSpace(y))
             return Task.CompletedTask;

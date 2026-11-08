@@ -44,8 +44,9 @@ public class RF009NumberingTests
     }
 
     [Fact]
-    public async Task RestoreConflictingNumber_Conflict()
+    public async Task RestoreConflictingNumber_ReturnsToPendingWithoutConflict()
     {
+        // v2: الاستعادة تُفرِّغ الرقم وتعيد الملف إلى «بانتظار إعادة القيد» بلا فحص تفرد.
         var token = (await _factory.LoginAsync("lawyer1", "123456"))!.Token!;
         var client = _factory.ClientWithToken(token);
         var number = $"6{Random.Shared.Next(100000, 999999)}";
@@ -59,6 +60,10 @@ public class RF009NumberingTests
         Assert.Equal(HttpStatusCode.Created, createB.StatusCode);
 
         var restore = await client.PostAsync($"/api/documents/{doomed}/restore", null);
-        Assert.Equal(HttpStatusCode.Conflict, restore.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, restore.StatusCode);
+
+        var restored = await client.GetFromJsonAsync<JsonElement>($"/api/documents/{doomed}");
+        Assert.True(restored.GetProperty("needsRegistration").GetBoolean());
+        Assert.True(string.IsNullOrEmpty(restored.GetProperty("fileNumber").GetString()));
     }
 }

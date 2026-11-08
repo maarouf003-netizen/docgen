@@ -31,6 +31,7 @@ public static class DependencyInjection
         }
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
         services.AddScoped<IDocumentRepository, DocumentRepository>();
+        services.AddScoped<IDocumentBaseNumberRepository, DocumentBaseNumberRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IBranchRepository, BranchRepository>();
         services.AddScoped<IHeadAlertRepository, HeadAlertRepository>();
@@ -55,6 +56,7 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IDatabaseInitializer, DatabaseInitializer>();
         services.AddScoped<ITransactionRunner, TransactionRunner>();
+        services.AddSingleton<INumberWarningTokenService, DocGenerator.Infrastructure.Security.NumberWarningTokenService>();
         // حالة المعاملة: نفس مُنفِّذ ITransactionRunner (نفس النطاق ونفس DbContext)
         // فيرى الحارس المعاملة النشطة فعلًا.
         services.AddScoped<ITransactionContext>(sp => (ITransactionContext)sp.GetRequiredService<ITransactionRunner>());

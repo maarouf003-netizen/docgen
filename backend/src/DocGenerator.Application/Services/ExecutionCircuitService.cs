@@ -78,6 +78,8 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
     private readonly IIdempotencyStore? _idempotency;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
+    private readonly IDocumentNumberRegistry? _numberRegistry;
+    private readonly IDocumentBaseNumberRepository? _baseNumberRepository;
 
     public ExecutionCircuitService(
         IRepository<ExecutionCircuit> circuits,
@@ -98,7 +100,9 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         IDbExceptionClassifier dbErrors,
         TimeProvider clock,
         TimeZoneInfo timeZone,
-        IIdempotencyStore? idempotency = null)
+        IIdempotencyStore? idempotency = null,
+        IDocumentNumberRegistry? numberRegistry = null,
+        IDocumentBaseNumberRepository? baseNumberRepository = null)
     {
         _circuits = circuits;
         _branches = branches;
@@ -119,6 +123,8 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
         _idempotency = idempotency;
         _clock = clock;
         _timeZone = timeZone;
+        _numberRegistry = numberRegistry;
+        _baseNumberRepository = baseNumberRepository;
     }
 
     private async Task<Branch> RequireBranchWithGovernorateAsync(int branchId, CancellationToken ct)
@@ -467,6 +473,30 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
             var purged = 0;
             var deletedDocs = await _documents.ListDeletedByCircuitAsync(circuitId, token);
             var deletedDocIds = deletedDocs.Select(d => d.Id).ToList();
+            // FK أرقام الأساس على المستند Restrict (V-18/E17): التطهير الفيزيائي للدائرة
+            // يزيل صفوف أرقام الملفات المحذوفة صراحةً قبل حذف المستندات (وإلا انفجر الحذف).
+            if (deletedDocIds.Count > 0)
+            {
+                if (_baseNumberRepository is not null)
+                {
+                    foreach (var deletedDocId in deletedDocIds)
+                    {
+                        var rows = await _baseNumberRepository.ListByDocumentAsync(
+                            deletedDocId, includeDeletedDocument: true, token);
+                        foreach (var row in rows)
+                            _baseNumberRepository.Remove(row);
+                    }
+                }
+                else
+                {
+                    var idSet = deletedDocIds.ToHashSet();
+                    var baseRows = (await _baseNumbers.ListAsync(token))
+                        .Where(b => idSet.Contains(b.DocumentId))
+                        .ToList();
+                    foreach (var row in baseRows)
+                        _baseNumbers.Remove(row);
+                }
+            }
             var linkedAlerts = await _alerts.ListActiveByCircuitOrDocumentsAsync(circuitId, deletedDocIds, token);
             foreach (var alert in linkedAlerts)
             {
@@ -748,10 +778,8 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                 doc.IsDraft = false;
                 doc.UpdatedAt = now;
                 doc.Version++;
-                // مصير BaseNumbers عند الإحالة: تُمسح (التاريخ محفوظ في وقوعّة circuit-referred).
-                var baseRows = doc.BaseNumbers.ToList();
-                foreach (var b in baseRows)
-                    _baseNumbers.Remove(b);
+                // V-07: صفوف الدائرة القديمة تبقى غير ملغاة (توثيق وحجز في دائرتها/سنتها)،
+                // ولا تظهر في هوية الدائرة الجديدة. لا حذف ولا إلغاء هنا.
                 doc.SearchText = DocumentSearchTextBuilder.Build(doc);
                 doc.FullData = DocumentSearchTextBuilder.BuildFullData(doc);
                 _documents.Update(doc);
@@ -1049,9 +1077,11 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                     DocumentValidator.ValidateFileYearNotFuture(year, ServerClock.CurrentYear(_clock, _timeZone));
                     if (doc.ExecutionCircuitId is null)
                         throw new ArgumentException($"الملف ({e.DocumentId}) بلا دائرة");
-                    // وحدانية (circuitId): فحص خدمي داخل المعاملة + قيد فريد ظهرًا للسباق.
-                    if (await _documents.ExistsActiveWithNumberByCircuitAsync(
-                        doc.Id, doc.ExecutionCircuitId, doc.CourtNorm, number, type, year, token))
+                    // الوحدانية عبر الكاتب الوحيد (قفل + طبقتا تكرار) عند توفره؛
+                    // وإلا الفحص الخدمي القديم للاختبارات المبنية يدويًا.
+                    if (_numberRegistry is null
+                        && await _documents.ExistsActiveWithNumberByCircuitAsync(
+                            doc.Id, doc.ExecutionCircuitId, doc.CourtNorm, number, type, year, token))
                         throw new DocumentConflictException($"رقم الأساس {number} مكرر في دائرة الملف ({e.DocumentId}) لسنة {year}");
 
                     // لقطة «قبل» للتدقيق الحقلي (S5) — قبل أي طفرة (بعد كل الحراس).
@@ -1066,6 +1096,10 @@ public sealed class ExecutionCircuitService : IExecutionCircuitService
                     doc.SearchText = DocumentSearchTextBuilder.Build(doc);
                     doc.FullData = DocumentSearchTextBuilder.BuildFullData(doc);
                     _documents.Update(doc);
+
+                    if (_numberRegistry is not null)
+                        await _numberRegistry.SyncRegistrationAsync(
+                            doc, lawyerId, actorName, request.WarningToken, token);
 
                     var occ = new DocumentOccurrence
                     {

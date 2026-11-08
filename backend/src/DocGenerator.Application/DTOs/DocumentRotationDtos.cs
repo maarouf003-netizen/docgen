@@ -35,15 +35,37 @@ public record BaseNumberEntry(
 public class SaveBaseNumbersRequest
 {
     public List<BaseNumberEntry> Entries { get; set; } = new();
+
+    /// <summary>رمز تحذير إعادة الاستخدام الصادر مع 409 (R7) — يُمرَّر عند إعادة الإرسال.</summary>
+    public string? WarningToken { get; set; }
 }
 
 /// <summary>
-/// سجل رقم أساس لسنة واحدة من تاريخ تدوير أرقام الأساس للملف — تُعرض كل السجلات
-/// (سنة واحدة قد تملك أكثر من رقم — الأحدث CreatedAt هو المعتبر)، مرتبة بالسنة ثم CreatedAt تنازليًا.
+/// سجل رقم أساس واحد: السنة والرقم والدائرة والمصدر وحالة الإلغاء والفعّالية.
+/// يُعرض كل السجل (بما فيه الملغى) مرتبًا بالسنة ثم CreatedAt تنازليًا.
 /// </summary>
 public record BaseNumberHistoryDto(
     int Year,
-    string BaseNumber);
+    string BaseNumber,
+    int Id = 0,
+    string? Source = null,
+    int? CircuitId = null,
+    string? CircuitName = null,
+    bool IsVoided = false,
+    string? VoidReason = null,
+    bool IsEffective = false);
+
+/// <summary>طلب تصحيح رقم أساس لسنة محددة (rowId اختياري؛ افتراضيًا الصف الفعّال).</summary>
+public record CorrectBaseNumberRequest(
+    string? BaseNumber,
+    int? RowId = null,
+    string? WarningToken = null);
+
+/// <summary>جسم تحذير إعادة استخدام رقم (لا يحمل معرّف/اسم/حالة الملف الآخر).</summary>
+public record NumberReuseWarningBody(
+    string Code,
+    string Message,
+    string WarningToken);
 
 /// <summary>
 /// وقعة واحدة من «وقوعات الملف»: شطب/تجديد (وضع «منفذ عليه») أو إجراء تغيير حالة

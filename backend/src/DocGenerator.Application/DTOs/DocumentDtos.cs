@@ -488,16 +488,22 @@ public class DocumentResponse : IDocumentSheetFields
     /// </summary>
     private static bool NeedsRotationOf(Document d, int currentYear)
     {
+        // سجل أرقام الأساس: صفوف دائرة الملف الحالية فقط (والملغاة لا تُحتسب).
+        // الملفات القديمة بلا دائرة تبقى على السلوك السابق للتوافق الانتقالي.
+        var rows = d.ExecutionCircuitId is null
+            ? d.BaseNumbers
+            : d.BaseNumbers.Where(b => b.ExecutionCircuitId == d.ExecutionCircuitId);
+        var active = rows.Where(b => b.VoidedAt is null).ToList();
         if (GeneralEntitySideCatalog.IsExecutedLike(d.GeneralEntitySide))
             return !d.IsDraft
                 && d.ExecutedStatus == ExecutedStatusCatalog.None
-                && d.BaseNumbers.Any(b => b.Year < currentYear)
-                && !d.BaseNumbers.Any(b => b.Year == currentYear);
+                && active.Any(b => b.Year < currentYear)
+                && !active.Any(b => b.Year == currentYear);
         return !d.IsDraft
             && !ExecutionStatusCatalog.IsExecuted(d.ExecStatus, d.ExecSubStatus)
             && d.ExecStatus != ExecutionStatusCatalog.StateStruckOff
-            && d.BaseNumbers.Any(b => b.Year < currentYear)
-            && !d.BaseNumbers.Any(b => b.Year == currentYear);
+            && active.Any(b => b.Year < currentYear)
+            && !active.Any(b => b.Year == currentYear);
     }
 
     /// <summary>

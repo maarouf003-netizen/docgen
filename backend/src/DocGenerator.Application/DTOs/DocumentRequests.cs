@@ -54,6 +54,9 @@ public class RescheduleActionReminderRequest
 /// </summary>
 public class RenewalRequest
 {
+    /// <summary>رمز تحذير إعادة استخدام رقم أساس (يُعاد كما صدر مع 409).</summary>
+    public string? WarningToken { get; set; }
+
     /// <summary>
     /// عدّاد التزامن المتفائل (RF-010): قيمة `Version` كما قُرئت عند الجلب.
     /// اختياري للتوافق (غيابه = قبول بلا فحص مبكر)؛ القديم يُرفض `409`.

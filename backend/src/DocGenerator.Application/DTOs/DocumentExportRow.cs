@@ -73,6 +73,7 @@ public sealed class DocumentExportRow : IDocumentSheetFields
     public string? AdministrativeBranchName { get; set; }
     public string? BranchName { get; set; }
     public string? Court { get; set; }
+    public int? ExecutionCircuitId { get; set; }
     public string? SectionName { get; set; }
     public string? FileNumber { get; set; }
     public string? DisplayFileNumber { get; set; }

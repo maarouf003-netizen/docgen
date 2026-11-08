@@ -222,9 +222,9 @@ describe('PortalFileDetail المرآة القرائية', () => {
       await screen.findByRole('button', { name: 'عرض أرقام الأساس للسنوات السابقة' }),
     );
 
-    expect(await screen.findByRole('dialog', { name: 'أرقام الأساس للسنوات السابقة' })).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: 'سجل أرقام الأساس' })).toBeInTheDocument();
     expect(apiMock.get).toHaveBeenCalledWith('/portal/files/1/base-numbers');
-    expect(screen.getByText('55')).toBeInTheDocument();
+    expect(screen.getAllByText('55').length).toBeGreaterThan(0);
   });
 
   it('بلاطة «المحامي المختص» تفتح سجل التعاقب من بيانات الاستجابة ذاتها (ف3/ف5)', async () => {

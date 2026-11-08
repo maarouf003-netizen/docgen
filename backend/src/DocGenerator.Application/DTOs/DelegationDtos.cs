@@ -53,7 +53,11 @@ public record RejectDelegationRequest(
 public record RegisterDelegationRequest(
     string? FileNumber,
     string? FileYear,
-    string? FileRegistrationDate);
+    string? FileRegistrationDate,
+    /// <summary>دائرة إدخال رقم الإنابة — إلزامية للإنابة الخارجية (V-18).</summary>
+    int? ExecutionCircuitId = null,
+    /// <summary>رمز تحذير إعادة استخدام الرقم (R7).</summary>
+    string? WarningToken = null);
 
 /// <summary>
 /// إتمام الإنابة من محامي الملف المناب: بيع الأموال موضوع الإنابة بالمزاد العلني،

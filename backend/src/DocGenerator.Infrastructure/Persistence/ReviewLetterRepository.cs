@@ -160,6 +160,7 @@ public class ReviewLetterRepository : Repository<ReviewLetter>, IReviewLetterRep
                     FileType = l.Document.FileType,
                     FileYear = l.Document.FileYear,
                     Court = l.Document.Court,
+                    ExecutionCircuitId = l.Document.ExecutionCircuitId,
                     // أرقام الأساس لازمة للمحلل المركزي (EffectiveFileIdentity) في سياق
                     // كتاب المراجعة — بدونها يتدهور العرض بصمت إلى رقم الملف الأصلي.
                     BaseNumbers = l.Document.BaseNumbers
@@ -170,6 +171,8 @@ public class ReviewLetterRepository : Repository<ReviewLetter>, IReviewLetterRep
                             Year = b.Year,
                             BaseNumber = b.BaseNumber,
                             CreatedAt = b.CreatedAt,
+                            ExecutionCircuitId = b.ExecutionCircuitId,
+                            VoidedAt = b.VoidedAt,
                         }).ToList(),
                 },
                 Messages = l.Messages

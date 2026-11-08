@@ -289,11 +289,8 @@ public sealed class PortalService : IPortalService
         if (doc is null)
             return null;
 
-        return doc.BaseNumbers
-            .OrderByDescending(b => b.Year)
-            .ThenByDescending(b => b.CreatedAt)
-            .Select(b => new BaseNumberHistoryDto(b.Year, b.BaseNumber))
-            .ToList();
+        return DocumentBaseNumberPolicy.BuildHistory(
+            doc, doc.BaseNumbers, ServerClock.CurrentYear(_clock, _timeZone));
     }
 
     public async Task<Stream> ExportWorkbookAsync(int userId, string? query, string? status, string? viewerName, CancellationToken ct = default, int? entryId = null)
@@ -575,7 +572,7 @@ public sealed class PortalService : IPortalService
         // انحراف مقصود وموثّق عن بقية النظام (as-of السنة الحالية): قرار صاحب المشروع
         // «دائمًا أحدث رقم أساس مع السنة» — فرقم بسنة مستقبلية (خطأ إدخال) يظهر هنا
         // دون قوائم المحامين؛ مثبّت باختبار سنة مستقبلية قصدًا لا سهوًا.
-        var latestBase = EffectiveFileIdentity.LatestFrom(d.BaseNumbers, int.MaxValue);
+        var latestBase = EffectiveFileIdentity.LatestFrom(d.BaseNumbers, int.MaxValue, d.ExecutionCircuitId);
         var displayNumber = latestBase?.BaseNumber ?? d.FileNumber;
         var displayYear = latestBase is not null ? latestBase.Year.ToString(CultureInfo.InvariantCulture) : d.FileYear;
         return new(

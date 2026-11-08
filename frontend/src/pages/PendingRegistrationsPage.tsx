@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
+import { getNumberReuseWarning, type NumberReuseWarning } from '../api/numberWarning';
+import NumberReuseWarningModal from '../components/NumberReuseWarningModal';
 import { normalizeArabicDigits } from '../utils/arabicDigits';
 import { useCurrentYear } from '../hooks/useCurrentYear';
 import { FUTURE_FILE_YEAR_MESSAGE, isFutureFileYear } from '../components/form/documentFormConstants';
@@ -24,6 +26,7 @@ export default function PendingRegistrationsPage() {
   const [rows, setRows] = useState<Record<number, RowState>>({});
   const [saving, setSaving] = useState(false);
   const [savedMessage, setSavedMessage] = useState('');
+  const [numberWarning, setNumberWarning] = useState<NumberReuseWarning | null>(null);
   // سنة اليوم المعتمدة من الخادم — سقف سنوات إعادة القيد (المستقبل مرفوض خلفيةً أيضًا).
   const { currentYear } = useCurrentYear();
 
@@ -71,7 +74,7 @@ export default function PendingRegistrationsPage() {
     setRows((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
   };
 
-  const save = async () => {
+  const save = async (warningToken?: string) => {
     setError('');
     setSavedMessage('');
     const entries = pending.map((p) => {
@@ -101,11 +104,17 @@ export default function PendingRegistrationsPage() {
     }
     setSaving(true);
     try {
-      const r = await api.post<{ completedCount: number }>('/documents/complete-registrations', { entries });
+      const r = await api.post<{ completedCount: number }>('/documents/complete-registrations', {
+        entries,
+        ...(warningToken ? { warningToken } : {}),
+      });
+      setNumberWarning(null);
       setSavedMessage(`حُفظ ${r.data.completedCount} ملفًا — خرجت من الانتظار`);
       await load();
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      const reuse = getNumberReuseWarning(err);
+      if (reuse) setNumberWarning(reuse);
+      else setError(getApiErrorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -206,7 +215,7 @@ export default function PendingRegistrationsPage() {
           <div className="flex justify-end">
             <button
               type="button"
-              onClick={save}
+              onClick={() => void save()}
               disabled={saving}
               className="bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg px-5 py-2 text-sm min-h-11 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
@@ -214,6 +223,19 @@ export default function PendingRegistrationsPage() {
             </button>
           </div>
         </>
+      )}
+
+      {numberWarning && (
+        <NumberReuseWarningModal
+          message={numberWarning.message}
+          busy={saving}
+          onCancel={() => setNumberWarning(null)}
+          onConfirm={() => {
+            const token = numberWarning.warningToken;
+            setNumberWarning(null);
+            void save(token);
+          }}
+        />
       )}
     </div>
   );

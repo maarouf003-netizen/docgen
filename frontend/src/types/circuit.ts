@@ -66,6 +66,8 @@ export interface CompleteRegistrationsRequest {
     fileType?: string | null;
     fileYear?: string | null;
   }>;
+  /** رمز تحذير إعادة استخدام الرقم. */
+  warningToken?: string | null;
 }
 
 /** صف إحصائية دائرة (الدائرة × ملفاتها × محامون نشطون × معلقات) — مع عمود الشعبة (§12). */

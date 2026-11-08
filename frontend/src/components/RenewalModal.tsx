@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { api, getApiErrorMessage } from '../api/client';
+import { getNumberReuseWarning, type NumberReuseWarning } from '../api/numberWarning';
+import NumberReuseWarningModal from './NumberReuseWarningModal';
 import { useCurrentYear } from '../hooks/useCurrentYear';
 import { FUTURE_FILE_YEAR_MESSAGE, isFutureFileYear } from './form/documentFormConstants';
 import { displayFileNumber, isExecutedLike } from '../utils/documentDisplay';
@@ -40,6 +42,7 @@ export default function RenewalModal({
   const [renewal, setRenewal] = useState<RenewalFieldsValue>({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [numberWarning, setNumberWarning] = useState<NumberReuseWarning | null>(null);
 
   const onRenewalSet: (key: keyof RenewalFieldsValue, value: string) => void = (key, value) => {
     setRenewal((r) => ({
@@ -53,7 +56,7 @@ export default function RenewalModal({
   const hideRenewalYear = isExecutedLike(doc.generalEntitySide);
   const { currentYear } = useCurrentYear();
 
-  const submit = async () => {
+  const submit = async (warningToken?: string) => {
     if (!(renewal.renewalFileNumber ?? '').trim()) {
       setError('رقم الملف الجديد مطلوب عند إعادة الملف المشطوب');
       return;
@@ -81,11 +84,15 @@ export default function RenewalModal({
         // عائلة «منفذ عليها» لا ترسل سنة مدخلة بل سنة الخادم الحالية ليتسق مع رفض الخلفية الدفاعي.
         renewalYear: hideRenewalYear ? currentYear : renewal.renewalYear ?? undefined,
         renewalDate: trimNull(renewal.renewalDate),
+        ...(warningToken ? { warningToken } : {}),
       });
+      setNumberWarning(null);
       onChanged();
       onClose();
     } catch (err) {
-      setError(getApiErrorMessage(err));
+      const reuse = getNumberReuseWarning(err);
+      if (reuse) setNumberWarning(reuse);
+      else setError(getApiErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -135,7 +142,7 @@ export default function RenewalModal({
             </button>
             <button
               type="button"
-              onClick={submit}
+              onClick={() => void submit()}
               disabled={busy}
               className="bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg px-4 py-2 text-sm min-h-11"
             >
@@ -144,6 +151,19 @@ export default function RenewalModal({
           </div>
         </div>
       </div>
+
+      {numberWarning && (
+        <NumberReuseWarningModal
+          message={numberWarning.message}
+          busy={busy}
+          onCancel={() => setNumberWarning(null)}
+          onConfirm={() => {
+            const token = numberWarning.warningToken;
+            setNumberWarning(null);
+            void submit(token);
+          }}
+        />
+      )}
     </div>
   );
 }

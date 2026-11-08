@@ -76,6 +76,9 @@ public class CompleteRegistrationEntry
 public class CompleteRegistrationsRequest
 {
     public List<CompleteRegistrationEntry> Entries { get; set; } = new();
+
+    /// <summary>رمز تحذير إعادة الاستخدام الصادر مع 409 (R7).</summary>
+    public string? WarningToken { get; set; }
 }
 
 /// <summary>صف إحصائية دائرة (الدائرة × ملفاتها × محامون نشطون × معلقات) — كل ملف
