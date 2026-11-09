@@ -158,10 +158,11 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                     SELECT lower(btrim(regexp_replace(
                         regexp_replace(
                             regexp_replace(
-                                translate(coalesce(value, ''), 'أإآةى', 'اااهي'),
-                                '[ً-ٰ]', '', 'g'),
-                            '[ۖ-ۭ]', '', 'g'),
-                        'ـ', '', 'g'),
+                                regexp_replace(
+                                    translate(coalesce(value, ''), 'أإآةى', 'اااهي'),
+                                    '[ً-ٰ]', '', 'g'),
+                                '[ۖ-ۭ]', '', 'g'),
+                            'ـ', '', 'g'),
                         '\s+', ' ', 'g')));
                 $$ LANGUAGE SQL IMMUTABLE;
 
