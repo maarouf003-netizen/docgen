@@ -152,8 +152,22 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                 FROM "Documents" d
                 WHERE d."Id" = b."DocumentId";
 
+
+                CREATE OR REPLACE FUNCTION pg_temp.docgen_normalize_type(value text)
+                RETURNS text AS $$
+                    SELECT lower(btrim(regexp_replace(
+                        regexp_replace(
+                            regexp_replace(
+                                regexp_replace(
+                                    translate(coalesce(value, ''), 'أإآةى', 'اااهي'),
+                                    '[ً-ٰ]', '', 'g'),
+                                '[ۖ-ۭ]', '', 'g'),
+                            'ـ', '', 'g'),
+                        '\s+', ' ', 'g')));
+                $$ LANGUAGE SQL IMMUTABLE;
+
                 UPDATE "DocumentBaseNumbers"
-                SET "TypeKey" = lower(btrim(translate(COALESCE("FileType", ''), 'أإآةى', 'اااهي')));
+                SET "TypeKey" = pg_temp.docgen_normalize_type(COALESCE("FileType", ''));
 
                 UPDATE "DocumentBaseNumbers"
                 SET "NumberKey" = regexp_replace(
@@ -169,7 +183,7 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                 SELECT d."Id", d."ExecutionCircuitId",
                        COALESCE(NULLIF(btrim(d."Court"), ''), '—'),
                        d."FileYear"::int, d."FileType",
-                       lower(btrim(translate(COALESCE(d."FileType", ''), 'أإآةى', 'اااهي'))),
+                       pg_temp.docgen_normalize_type(COALESCE(d."FileType", '')),
                        d."FileNumber",
                        regexp_replace(translate(btrim(d."FileNumber"),
                            '٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹',
@@ -195,7 +209,7 @@ namespace DocGenerator.Infrastructure.Persistence.MigrationsPostgres
                 SELECT d."Id", d."ExecutionCircuitId",
                        COALESCE(NULLIF(btrim(d."Court"), ''), '—'),
                        d."FileYear"::int, d."FileType",
-                       lower(btrim(translate(COALESCE(d."FileType", ''), 'أإآةى', 'اااهي'))),
+                       pg_temp.docgen_normalize_type(COALESCE(d."FileType", '')),
                        d."FileNumber",
                        regexp_replace(translate(btrim(d."FileNumber"),
                            '٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹',
