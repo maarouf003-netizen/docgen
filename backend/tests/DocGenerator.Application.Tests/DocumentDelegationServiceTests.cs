@@ -1737,6 +1737,7 @@ public class DocumentDelegationServiceTests : IDisposable
         Assert.NotNull(dto);
         Assert.Equal(DelegationStatusCatalog.Executed, dto!.Status);
         Assert.Equal("2026-08-10", dto.ReturnDate);
+        Assert.Equal("12/8/2026", dto.ForcedExecutionDate);
         Assert.Equal(750_000m, dto.Assets.Single().SalePrice);
 
         // دائرة كاملة لتغطية البدل: يُرسَل → يُخزّن → يُعاد قراءةً ويظهر في الاستجابة.

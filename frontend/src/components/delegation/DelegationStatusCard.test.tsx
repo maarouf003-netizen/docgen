@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { DelegationStatusCard } from './DelegationStatusCard';
-import type { DocumentResponse } from '../../types';
+import type { DelegationDto, DocumentResponse } from '../../types';
 import { makeHeadAlertSummary } from '../../test/factories';
 
 vi.mock('../../api/client', async (importOriginal) => {
@@ -58,5 +58,37 @@ describe('DelegationStatusCard', () => {
     render(<DelegationStatusCard doc={doc('تريث')} delegationId={9} />);
 
     expect(await screen.findByText('حدّث المنيب بيانات السند')).toBeInTheDocument();
+  });
+
+  it('يعرض حقول إتمام الإنابة في بطاقة حالة الإنابة', async () => {
+    const delegation = {
+      id: 9,
+      sourceDocumentId: 10,
+      sourceDocumentLabel: 'الملف المنيب',
+      status: 'منفذ إنابة',
+      isExternal: false,
+      createdAt: '2026-08-01',
+      createdById: 7,
+      returnDate: '2026-09-01',
+      forcedExecutionDate: '10/5/2026',
+      saleCoversFullDebt: false,
+      assets: [
+        { id: 1, assetKind: 'عقار', assetLabel: 'عقار المزة', salePrice: 750000, snapshotAdjusted: false },
+      ],
+    } as DelegationDto;
+
+    render(
+      <DelegationStatusCard
+        doc={doc('منفذ إنابة')}
+        delegationId={9}
+        delegation={delegation}
+      />,
+    );
+
+    expect(await screen.findByText('بيانات إتمام الإنابة')).toBeInTheDocument();
+    expect(screen.getByText('تاريخ إعادة الملف للدائرة المنيبة')).toBeInTheDocument();
+    expect(screen.getByText('تاريخ قرار الإحالة القطعية')).toBeInTheDocument();
+    expect(screen.getByText('لم يغطِ كامل المديونية')).toBeInTheDocument();
+    expect(screen.getByText('عقار المزة')).toBeInTheDocument();
   });
 });

@@ -4,6 +4,7 @@ import { assetDisplayName } from '../../utils/assetDisplay';
 import { delegationAssetLabel, delegationAssetsLine } from '../../utils/delegationAssets';
 import { DELEGATION_STATUS_EXECUTED, delegationStatusBadge } from '../../utils/delegationStatus';
 import { formatNumber } from '../dashboard/dashboardFormat';
+import { DelegationCompletionSummary } from './DelegationCompletionSummary';
 
 /** صف «كتب» اختياري: «كتاب الإيداع رقم X بتاريخ Y» (يظهر متى وُجد أحد حقلَيه). */
 function bookRow(label: string, number?: string | null, date?: string | null): string {
@@ -152,13 +153,7 @@ export function DelegationDetails({ d, sourceAssets }: { d: DelegationDto; sourc
         </p>
       )}
 
-      {d.saleCoversFullDebt !== null && d.saleCoversFullDebt !== undefined && (
-        <p
-          className={`text-xs font-bold rounded-lg px-3 py-2 border ${d.saleCoversFullDebt ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}
-        >
-          {d.saleCoversFullDebt ? 'البدل غطى كامل المديونية' : 'البدل لم يغطِ كامل المديونية'}
-        </p>
-      )}
+      <DelegationCompletionSummary delegation={d} />
     </div>
   );
 }

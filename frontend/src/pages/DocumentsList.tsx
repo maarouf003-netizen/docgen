@@ -17,6 +17,20 @@ import { loadDocumentsListPosition, loadLastViewedDocumentId, saveDocumentsListP
 import ExecutionActionsModal from '../components/ExecutionActionsModal';
 import type { DocumentResponse, PagedResult } from '../types';
 
+/** شارة «استئناف»: للملفات التي عليها استئناف منظور — تفتح تفاصيل الاستئناف. */
+export function AppealBadge({ d }: { d: DocumentResponse }) {
+  if (!d.hasAppeals || !d.matchedAppealId) return null;
+  return (
+    <Link
+      to={`/appeals/${d.matchedAppealId}`}
+      aria-label={`فتح تفاصيل استئناف الملف رقم ${displayFileNumber(d)}`}
+      className="text-[11px] px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 font-medium"
+    >
+      استئناف
+    </Link>
+  );
+}
+
 export function FileNumber({ d, fallback }: { d: DocumentResponse; fallback?: string }) {
   const text = displayFileNumber(d);
   const hasAppealBadge = Boolean(d.hasAppeals && d.matchedAppealId);
@@ -27,16 +41,8 @@ export function FileNumber({ d, fallback }: { d: DocumentResponse; fallback?: st
   return (
     <div className="flex flex-col items-start gap-1">
       <span className={d.needsRotation ? 'text-red-600 font-bold' : 'text-gray-800'}>{text}</span>
-      {/* شارة «استئناف»: للملفات التي عليها استئناف منظور — تفتح تفاصيل الاستئناف. المحسوم والمشطوب لا يُظهران الشارة. */}
-      {hasAppealBadge && (
-        <Link
-          to={`/appeals/${d.matchedAppealId}`}
-          aria-label={`فتح تفاصيل استئناف الملف رقم ${text}`}
-          className="text-[11px] px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 font-medium"
-        >
-          استئناف
-        </Link>
-      )}
+      {/* شارة «استئناف»: للملفات التي عليها استئناف منظور — المحسوم والمشطوب لا يُظهران الشارة. */}
+      <AppealBadge d={d} />
     </div>
   );
 }
@@ -300,7 +306,16 @@ function MoreMenu({
   );
 }
 
-function ActionsCell({ d, onClick }: { d: DocumentResponse; onClick: () => void }) {
+function ActionsCell({
+  d,
+  onClick,
+  compact = false,
+}: {
+  d: DocumentResponse;
+  onClick: () => void;
+  /** بطاقة الجوال: تصغير خط آخر إجراء/ملاحظة ليطابق «المحكمة الناظرة» في بطاقات الاستئناف. */
+  compact?: boolean;
+}) {
   const latest = d.executionActions?.[0];
   return (
     <button
@@ -310,7 +325,9 @@ function ActionsCell({ d, onClick }: { d: DocumentResponse; onClick: () => void 
     >
       {latest ? (
         <>
-          <div className="text-gray-800 truncate">{richToPlainText(latest.text)}</div>
+          <div className={`${compact ? 'text-xs' : ''} text-gray-800 truncate`}>
+            {richToPlainText(latest.text)}
+          </div>
           <div className="text-emerald-600 text-xs mt-0.5">{latest.actionDate || '—'}</div>
         </>
       ) : (
@@ -732,8 +749,18 @@ export default function DocumentsList() {
                       فرع الإدارة: {d.administrativeBranchName || '—'}
                     </div>
                   )}
-                  <div className="flex items-center justify-between mb-2">
-                    <StatusBadge d={d} />
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                      <StatusBadge d={d} />
+                      <AppealBadge d={d} />
+                    </div>
+                    <span
+                      className={`shrink-0 text-sm font-medium ${
+                        d.needsRotation ? 'text-red-600 font-bold' : 'text-gray-800'
+                      }`}
+                    >
+                      {displayFileNumber(d) || '—'}
+                    </span>
                   </div>
                   <Link
                     to={`/documents/${d.id}`}
@@ -755,11 +782,8 @@ export default function DocumentsList() {
                       المحامي المختص: {d.lawyer || '—'}
                     </div>
                   )}
-                  <div className="text-sm font-medium text-gray-800 mt-1">
-                    رقم الملف: <FileNumber d={d} fallback="؟" />
-                  </div>
                   <div className="mt-3 pt-3 border-t border-gray-100">
-                    <ActionsCell d={d} onClick={() => setActionsDocId(d.id)} />
+                    <ActionsCell d={d} compact onClick={() => setActionsDocId(d.id)} />
                   </div>
                 </article>
               ))}

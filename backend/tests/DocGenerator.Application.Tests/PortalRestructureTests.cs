@@ -770,6 +770,9 @@ public class PortalRestructureTests : IDisposable
             // مفتاح تسريع خلفي مشتق (لا يقرؤه العرض): معرّفات القيود مكشوفة أصلًا
             // عبر النطاق والقيود المطابقة — فلا حساسية إضافية.
             "ApplicantRegistryId",
+            // تاريخ إعادة الملف للدائرة المنيبة: معلومة تشغيلية غير حساسة،
+            // تُستهلك في صفحة «الملفات المنفذة» لا في تفاصيل بوابة المندوب.
+            "DelegationReturnDate",
         };
         var undisposed = typeof(DocumentResponse).GetProperties(
                 BindingFlags.Public | BindingFlags.Instance)

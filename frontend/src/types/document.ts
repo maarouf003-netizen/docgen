@@ -241,6 +241,8 @@ documentType?: string;
   isDraft: boolean;
   /** الملف منابٌ من ملف آخر (إنابة سطرها محامي الملف المنيب): الحقول الجوهرية مقفلة ومُزامنة. */
   sourceDelegationId?: number | null;
+  /** تاريخ إعادة الملف للدائرة المنيبة من صف الإنابة المصدر (yyyy-MM-dd) — للمناب المنفذ. */
+  delegationReturnDate?: string | null;
   borrowerName?: string;
   borrowerFather?: string;
   borrowerFamily?: string;

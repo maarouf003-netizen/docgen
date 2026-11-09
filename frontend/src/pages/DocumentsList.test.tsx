@@ -643,6 +643,27 @@ describe('DocumentsList', () => {
     expect(screen.getByText(/99 حقوق/)).toBeInTheDocument();
   });
 
+  it('يعرض شارة الاستئناف بجانب شارة الحالة ورقم/نوع الملف في الجهة المقابلة', async () => {
+    stubMobile(true);
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        page: 1,
+        perPage: 20,
+        totalCount: 1,
+        totalPages: 1,
+        items: [makeDocument({ id: 5, hasAppeals: true, matchedAppealId: 42 })],
+      },
+    });
+
+    renderList();
+
+    expect(
+      await screen.findByRole('link', { name: /فتح تفاصيل استئناف الملف/ }),
+    ).toHaveAttribute('href', '/appeals/42');
+    expect(screen.getByText('99 حقوق')).toBeInTheDocument();
+    expect(screen.queryByText(/رقم الملف:/)).not.toBeInTheDocument();
+  });
+
   it('يعرض بطاقة الموبايل للمحامي بصيغة «طالب التنفيذ · فرع الجهة العامة · دائرة التنفيذ»', async () => {
     stubMobile(true);
     (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({

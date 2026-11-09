@@ -1694,7 +1694,8 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
         RedirectedToSectionId: d.RedirectedToSectionId,
         RedirectedToSectionName: d.RedirectedToSection?.Name,
         Version: d.Version,
-        LocalAddition: ToLocalAddition(d));
+        LocalAddition: ToLocalAddition(d),
+        ForcedExecutionDate: source.ForcedExecutionDate);
 
     /// <summary>ملخص الإضافات المحلية من سجل الإنابة (عدّاد + ملخص + وقت) — لا من التنبيهات.</summary>
     private static DelegationLocalAdditionDto? ToLocalAddition(DocumentDelegation d) =>
