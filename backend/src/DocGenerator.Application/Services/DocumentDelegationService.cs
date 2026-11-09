@@ -876,12 +876,18 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
                     await _alertOutbox.EnqueueSystemAsync(
                         new CreateSystemHeadAlertRequest(
                             HeadAlertKindCatalog.DelegationRejectedWrongCourt,
-                            HeadAlertMessages.DelegationRejectedWrongCourt(new(delegation.Id, reason)),
-                            HeadAlertAudience.DocumentCreator,
+                            HeadAlertMessages.DelegationRejectedWrongCourt(new(
+                                delegation.Id,
+                                CourtWithExecutionPrefix(delegation.DelegatedCourt),
+                                SourceLabel(delegation.SourceDocument),
+                                reason)),
+                            HeadAlertAudience.SingleLawyer,
                             sourceBranch.Value,
                             userId,
                             DocumentId: delegation.SourceDocumentId,
-                            DelegationId: delegation.Id),
+                            TargetLawyerId: delegation.CreatedById,
+                            DelegationId: delegation.Id,
+                            RecipientUserId: delegation.CreatedById),
                         new HeadAlertSupersedePlan(
                             delegation.Id,
                             AppealId: null,
@@ -1728,6 +1734,24 @@ public sealed partial class DocumentDelegationService : IDocumentDelegationServi
     /// والقابلة للتعديل)، وإلا نيّة التسطير المحفوظة على السجل (قبل الاعتماد).</summary>
     private static string? TargetCourt(Document? target, string? recorded) =>
         Normalize(target?.Court) ?? Normalize(recorded);
+
+    /// <summary>
+    /// اسم دائرة للعرض مع بادئة «دائرة تنفيذ» مرة واحدة فقط، ويمنع «دائرة دائرة تنفيذ»
+    /// أو «دائرة تنفيذ تنفيذ …» حين يكون المخزَّن يحمل البادئة أصلًا.
+    /// </summary>
+    private static string CourtWithExecutionPrefix(string? court)
+    {
+        var value = Normalize(court);
+        if (value is null)
+            return "الدائرة المنابة";
+
+        static bool HasPrefix(string text, string prefix) =>
+            text == prefix || text.StartsWith($"{prefix} ", StringComparison.Ordinal);
+
+        return HasPrefix(value, "دائرة") || HasPrefix(value, "محكمة") || HasPrefix(value, "تنفيذ")
+            ? value
+            : $"دائرة تنفيذ {value}";
+    }
 
     /// <summary>يجهّز اسم الدائرة للقوالب التي تضيف «دائرة » قبل الحقل، فيمنع «دائرة دائرة تنفيذ».</summary>
     private static string AlertCourtAfterDaira(string? court)

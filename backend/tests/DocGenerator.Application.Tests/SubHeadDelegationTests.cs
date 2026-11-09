@@ -365,6 +365,17 @@ public class SubHeadDelegationTests : IDisposable
         Assert.NotNull(rejected);
         Assert.Equal("الدائرة غير مختصة مكانيًا", rejected!.RejectReason);
 
+        // التنبيه يذهب إلى كاتب الإنابة صراحةً (لا إلى منشئ الملف بالاشتقاق)،
+        // ونصه يذكر الدائرة واسم الملف والسبب.
+        await FlushAlertsAsync();
+        var rejectionAlert = await _db.HeadAlerts.Include(a => a.Recipients)
+            .SingleAsync(a => a.DelegationId == created.Id && a.ArchivedAt == null);
+        Assert.Equal(HeadAlertTargetType.Lawyer, rejectionAlert.TargetType);
+        Assert.Equal(_lawyer1.Id, Assert.Single(rejectionAlert.Recipients).UserId);
+        Assert.Contains("أحمد خالد الخطيب", rejectionAlert.Message);
+        Assert.Contains("دائرة القسم", rejectionAlert.Message);
+        Assert.Contains("سبب الإعادة", rejectionAlert.Message);
+
         // المرفوضة خارج الاعتماد الافتراضي، حاضرة بفلترها، والاعتماد مرفوض.
         Assert.DoesNotContain(await _service.ListPendingForHeadAsync(_branch.Id), d => d.Id == created.Id);
         var rejectedOnly = await _service.ListPendingForHeadAsync(_branch.Id, null, true);

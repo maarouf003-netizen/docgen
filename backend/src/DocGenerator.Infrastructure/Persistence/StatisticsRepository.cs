@@ -862,6 +862,19 @@ public class StatisticsRepository : IStatisticsRepository
             })
             .ToListAsync(ct);
 
+        // اسم العرض الموحّد يحتاج أطراف عائلة «منفذ عليها/عرض وايداع» — استعلام ثانٍ
+        // محصور بملفات التذكيرات نفسها (لا يشمل كل المستندات) مع SplitQuery.
+        var documentIds = rows.Select(r => r.DocumentId).Distinct().ToList();
+        var documentLabels = documentIds.Count == 0
+            ? new Dictionary<int, string>()
+            : await _db.Documents.AsNoTracking()
+                .Where(d => documentIds.Contains(d.Id))
+                .Include(d => d.ExecutedNaturalPersons)
+                .Include(d => d.ExecutedPublicEntities)
+                .Include(d => d.ExecutionApplicants)
+                .AsSplitQuery()
+                .ToDictionaryAsync(d => d.Id, d => DocumentDisplayName.Build(d), ct);
+
         return rows
             .Select(r =>
             {
@@ -878,7 +891,8 @@ public class StatisticsRepository : IStatisticsRepository
                     r.ReminderDuration,
                     r.ReminderColor,
                     dueDate,
-                    suspect);
+                    suspect,
+                    documentLabels.GetValueOrDefault(r.DocumentId));
             })
             .OrderBy(r => r.DueDate)
             .ThenBy(r => r.DocumentId)

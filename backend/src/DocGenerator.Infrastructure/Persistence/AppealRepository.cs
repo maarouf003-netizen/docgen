@@ -212,9 +212,17 @@ public class AppealRepository : Repository<DocumentAppeal>, IAppealRepository
             .Include(a => a.Document)
                 .ThenInclude(d => d!.ExecutionCircuit)
                 .ThenInclude(c => c!.Section)
+            // أطراف الملف: لازمة لبناء اسم العرض الموحّد (منفذ عليه/طالب تنفيذ/عرض).
+            .Include(a => a.Document)
+                .ThenInclude(d => d!.ExecutedNaturalPersons)
+            .Include(a => a.Document)
+                .ThenInclude(d => d!.ExecutedPublicEntities)
+            .Include(a => a.Document)
+                .ThenInclude(d => d!.ExecutionApplicants)
             .Include(a => a.AssignedLawyer)
             .Include(a => a.CreatedBy)
             .Include(a => a.BaseNumbers)
             .Include(a => a.Actions)
-                .ThenInclude(ac => ac.CreatedBy);
+                .ThenInclude(ac => ac.CreatedBy)
+            .AsSplitQuery();
 }

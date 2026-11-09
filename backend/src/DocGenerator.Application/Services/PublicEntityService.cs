@@ -194,43 +194,6 @@ public sealed partial class PublicEntityService : IPublicEntityService
             }
         }
 
-        // طالبو التنفيذ الاعتباريون المربوطون جهة عامة (RegistryId != null): يُعاد
-        // تسمية صفوفهم كبقية الجهات — لا يُلمس natural (بلا RegistryId) إطلاقًا.
-        var executionApplicantNames = (await _entities.ListDistinctExecutionApplicantTextsAsync(token))
-            .Select(t => t.Name)
-            .Where(n => ArabicNameNormalizer.Normalize(n) == oldNorm)
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
-        if (executionApplicantNames.Count > 0)
-        {
-            var rows = await _entities.ListExecutionApplicantRowsByNamesAsync(executionApplicantNames, token);
-            foreach (var row in rows)
-            {
-                row.Name = newCanonical;
-                AddLog(row.DocumentId, "__Col_ExecutionApplicants", "طالبو التنفيذ",
-                    Clamp(oldCanonical), Clamp(newCanonical));
-            }
-
-            var applicantDocs = rows.Select(r => r.Document).GroupBy(d => d.Id).Select(g => g.First());
-            foreach (var doc in applicantDocs)
-            {
-                affectedDocs[doc.Id] = doc;
-                // ملف «منفذ عليه»/«عرض وايداع» بلا جهة طالبة كلاسية: اسم الطالب يُشتق من
-                // طلبات التنفيذ الاعتباريين المربوطين جهة عامة فيتطابق العنوان مع الاسم
-                // المعياري بعد إعادة التسمية (لا يبقى الاسم القديم في نص البحث).
-                if (GeneralEntitySideCatalog.IsExecutedLike(doc.GeneralEntitySide)
-                    && doc.ApplicantPublicEntities.Count == 0)
-                {
-                    var executedApplicantName = doc.ExecutionApplicants
-                        .Select(a => (a.Name ?? string.Empty).Trim())
-                        .FirstOrDefault(v => v.Length > 0);
-                    doc.Applicant = executedApplicantName ?? doc.Applicant;
-                }
-                doc.SearchText = DocumentSearchTextBuilder.Build(doc);
-                doc.FullData = DocumentSearchTextBuilder.BuildFullData(doc);
-            }
-        }
-
         await _uow.SaveChangesAsync(token);
         var details = $"مزامنة إعادة تسمية الجهة: «{oldCanonical}» ← «{newCanonical}»";
         foreach (var (documentId, changes) in logs)
@@ -412,8 +375,6 @@ public sealed partial class PublicEntityService : IPublicEntityService
             a.RegistryId = toEntryId;
         foreach (var e in doc.ExecutedPublicEntities.Where(e => e.RegistryId == fromEntryId))
             e.RegistryId = toEntryId;
-        foreach (var ea in doc.ExecutionApplicants.Where(ea => ea.RegistryId == fromEntryId))
-            ea.RegistryId = toEntryId;
         doc.ApplicantRegistryId = ApplicantRegistryIdDeriver.Derive(doc);
     }
     /// <summary>أسماء بديلة «للبحث فقط» على قيد الناجي: المعياري + الكامل + سوابق القيد الممتصّ.</summary>
@@ -516,11 +477,6 @@ public sealed partial class PublicEntityService : IPublicEntityService
             foreach (var e in doc.ExecutedPublicEntities)
                 if (!string.IsNullOrWhiteSpace(e.EntityName))
                     newNames[(AppealSnapshotSerializer.KindExecutedPublic, e.Id)] = e.EntityName;
-            // طالب التنفيذ الاعتباري المربوط جهة عامة (RegistryId != null): الاسم الاعتباري
-            // يعادل TripleOr(Name, null, null, null) == Name — لا يُلمس natural (بلا RegistryId).
-            foreach (var ea in doc.ExecutionApplicants.Where(ea => ea.RegistryId.HasValue))
-                if (!string.IsNullOrWhiteSpace(ea.Name))
-                    newNames[(AppealSnapshotSerializer.KindExecutionApplicant, ea.Id)] = ea.Name;
         }
         if (newNames.Count == 0)
             return;

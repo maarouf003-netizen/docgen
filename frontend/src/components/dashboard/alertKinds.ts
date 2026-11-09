@@ -59,7 +59,7 @@ export const ALERT_KINDS: Readonly<Record<string, AlertKindDefinition>> = {
   delegation_sent_to_subhead: text('إنابة من اختصاص الشعبة'),
   delegation_assigned_to_lawyer: text('إسناد ملف إنابة'),
   delegation_transferred_to_lawyer: text('نقل ملف إنابة'),
-  delegation_rejected_wrong_court: text('رفض إنابة للدائرة الخطأ'),
+  delegation_rejected_wrong_court: text('إعادة إنابة للتصحيح'),
   delegation_pending_completion: text('بانتظار إتمام الإنابة'),
   delegation_completed_returned: text('إعادة الإنابة المسطرة'),
   delegation_mirror_deferred: text('كتاب تريث (تأجيل)'),

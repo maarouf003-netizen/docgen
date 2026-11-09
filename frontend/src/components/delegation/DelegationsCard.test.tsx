@@ -51,6 +51,22 @@ describe('DelegationsCard', () => {
     expect(screen.getByText(/كتاب الإيداع رقم K-1 بتاريخ/)).toBeInTheDocument();
   });
 
+  it('يعرض سبب إعادة الإنابة للتصحيح داخل البطاقة', () => {
+    render(
+      <DelegationsCard
+        delegations={[delegation({ rejectReason: 'الدائرة غير مختصة مكانيًا' })]}
+        canCreate={false}
+        onCreate={noop}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'أُعيدت الإنابة للتصحيح: الدائرة غير مختصة مكانيًا',
+    );
+  });
+
   it('يعرض سجل الإضافات المحلية على المناب في تشعبات المنيب', () => {
     render(
       <DelegationsCard

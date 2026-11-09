@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import type { AppealReminderDto, ReminderDto } from '../../types';
 import { richToPlainText } from '../../utils/richText';
-import { borrowerFullName, dueLabel } from './dashboardFormat';
+import { appealReminderTitle, borrowerFullName, dueLabel } from './dashboardFormat';
 
 const REMINDER_COLOR_STYLES: Record<string, string> = {
   'أحمر': 'bg-red-100 text-red-700 border-red-200',
@@ -66,7 +66,7 @@ export function ReminderList({
                     <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 ml-1">
                       استئناف
                     </span>
-                    {r.appealTitle}
+                    {appealReminderTitle(r)}
                   </span>
                   <span className="block text-sm text-gray-500 truncate mt-0.5">{richToPlainText(r.actionText)}</span>
                 </Link>

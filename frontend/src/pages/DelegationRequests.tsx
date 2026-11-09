@@ -142,9 +142,6 @@ export default function DelegationRequests() {
               {d.redirectedToSectionName && (
                 <p className="text-xs text-indigo-700 mt-1">موجَّه لشعبة {d.redirectedToSectionName}</p>
               )}
-              {d.rejectReason && (
-                <p className="text-xs text-red-700 mt-1 break-words">مرفوض: {d.rejectReason}</p>
-              )}
               <div className="mt-4 pt-3 border-t border-gray-100 flex justify-end gap-2 flex-wrap">
                 {isHead && d.isExternal && !d.redirectedToSectionId && d.assignedLawyerId == null && (
                   <button

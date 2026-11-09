@@ -18,7 +18,8 @@ public static class HeadAlertMessages
 
     public sealed record DelegationTransferredToLawyerContext(string SourceLabel);
 
-    public sealed record DelegationRejectedWrongCourtContext(int DelegationId, string Reason);
+    public sealed record DelegationRejectedWrongCourtContext(
+        int DelegationId, string Court, string SourceLabel, string Reason);
 
     public sealed record DelegationPendingCompletionContext(int DelegationId, string SourceLabel);
 
@@ -94,7 +95,8 @@ public static class HeadAlertMessages
         => $"تم نقل ملف {context.SourceLabel} لك، يرجى المتابعة أصولًا";
 
     public static string DelegationRejectedWrongCourt(DelegationRejectedWrongCourtContext context)
-        => $"رُفضت الإنابة رقم {context.DelegationId} للدائرة الخطأ — {context.Reason} — صحّح الدائرة من بطاقة تشعبات الملف";
+        => $"يرجى تصحيح الإنابة رقم {context.DelegationId} المسطرة إلى {context.Court} " +
+           $"في ملف {context.SourceLabel} وإعادة تسطيرها — سبب الإعادة: {context.Reason}";
 
     public static string DelegationPendingCompletion(DelegationPendingCompletionContext context)
         => $"بانتظار إتمام الإنابة رقم {context.DelegationId} — ملف {context.SourceLabel}";

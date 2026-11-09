@@ -127,10 +127,11 @@ public class CorrespondenceServiceTests : IDisposable
     /// <summary>ربط الملف بقيد نطاق — شرط أهلية المراسلات المربوطة بالملف.</summary>
     private async Task LinkDocumentToEntryAsync(Document doc, int entryId)
     {
-        doc.ExecutionApplicants.Add(new ExecutionApplicant
+        // الربط عبر الجهة الطالبة الكلاسية (ApplicantPublicEntity) لا عبر
+        // ExecutionApplicant (أُلغي ربطه السجلي بقرار المالك).
+        doc.ApplicantPublicEntities.Add(new ApplicantPublicEntity
         {
             Name = "وزارة التعليم",
-            ApplicantNature = PartyNatureCatalog.Legal,
             RegistryId = entryId,
         });
         await _db.SaveChangesAsync();

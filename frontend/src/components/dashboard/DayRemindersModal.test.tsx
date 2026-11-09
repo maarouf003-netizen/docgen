@@ -47,6 +47,7 @@ function appealOccurrence(): CalendarOccurrence {
     appealId: 9,
     documentId: 5,
     appealTitle: 'استئناف القرار 9',
+    documentLabel: 'شركة بركات التجارية',
     actionText: 'جلسة',
     dueDate: '2026-08-08',
     dueDateSuspect: false,
@@ -88,7 +89,8 @@ describe('DayRemindersModal', () => {
 
     expect(screen.getByRole('dialog', { name: /تذكيرات/ })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'سامر محمد حسن' })).toHaveAttribute('href', '/documents/5');
-    expect(screen.getByRole('link', { name: 'استئناف القرار 9' })).toHaveAttribute('href', '/appeals/9');
+    expect(screen.getByRole('link', { name: 'شركة بركات التجارية — استئناف القرار 9' }))
+      .toHaveAttribute('href', '/appeals/9');
     expect(screen.getByText('تذكير شخصي')).toBeInTheDocument();
     expect(screen.getByText('مراجعة دائرة التنفيذ')).toBeInTheDocument();
   });

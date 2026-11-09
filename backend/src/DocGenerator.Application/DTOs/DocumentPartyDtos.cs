@@ -116,6 +116,7 @@ public record ExecutedHeirDto(
 
 /// <summary>
 /// طالب التنفيذ في وضع «منفذ عليه» مع ورثة مورثه المتوفى إن اختير «إضافة لتركة».
+/// الاسم الاعتباري حر بلا ربط سجلي (قرار المالك) — لا يوجد حقل `RegistryId`.
 /// </summary>
 public record ExecutionApplicantDto(
     int? Id,
@@ -137,9 +138,7 @@ public record ExecutionApplicantDto(
     string? RegistrationNumber = null,
     string? RepresentedBy = null,
     string? AddressType = null,
-    string? Address = null,
-    /// <summary>معرّف قيد طالب التنفيذ الاعتباري (الجهة العامة) في السجل المرجعي (اختياري — من نافذة الاختيار).</summary>
-    int? RegistryId = null) : IExportApplicant;
+    string? Address = null) : IExportApplicant;
 
 /// <summary>الجهة العامة أو الشخص الاعتباري المنفذ عليه في وضع «منفذ عليه».</summary>
 public record ExecutedPublicEntityDto(

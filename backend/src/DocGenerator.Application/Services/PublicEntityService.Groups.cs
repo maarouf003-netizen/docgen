@@ -279,11 +279,6 @@ public sealed partial class PublicEntityService
                             e.RegistryId = newParentEntry.Id;
                             e.EntityName = newCanonical;
                         }
-                        foreach (var ea in doc.ExecutionApplicants.Where(ea => ea.RegistryId == entry.Id))
-                        {
-                            ea.RegistryId = newParentEntry.Id;
-                            ea.Name = newCanonical;
-                        }
                         doc.ApplicantRegistryId = ApplicantRegistryIdDeriver.Derive(doc);
                         if (!affectedDocsById.ContainsKey(doc.Id))
                             affectedDocsById[doc.Id] = doc;

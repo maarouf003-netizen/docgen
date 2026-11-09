@@ -260,14 +260,14 @@ public class PortalStatsTests : IDisposable
     }
 
     [Fact]
-    public async Task Stats_ExecutionApplicantLegalLink_CountedPerEntry()
+    public async Task Stats_ExecutionApplicantRegistryId_IsIgnored()
     {
         var executedLike = new Document
         {
             CreatedById = 1, BorrowerName = "ملف طالب تنفيذ اعتباري", IsDraft = false, ExecStatus = "",
             AmountNumeric = 100, GeneralEntitySide = "executed",
         };
-        // رابط طالب تنفيذ اعتباري على قيد دمشق من نطاق المندوب: يُحتسب ضمن توزيع القيد.
+        // قيمة تاريخية متبقية من مرحلة الربط الملغاة: لا تدخل إحصاء أي قيد.
         executedLike.ExecutionApplicants.Add(new ExecutionApplicant
         {
             Name = "وزارة التعليم",
@@ -277,7 +277,6 @@ public class PortalStatsTests : IDisposable
         executedLike.SearchText = DocumentSearchTextBuilder.Build(executedLike);
         _db.Documents.Add(executedLike);
 
-        // طالب تنفيذ طبيعي بلا رقم قيد: لا يدخل إحصاء أي قيد ضمن نطاق المندوب.
         var naturalLike = new Document
         {
             CreatedById = 1, BorrowerName = "ملف طالب طبيعي", IsDraft = false, ExecStatus = "",
@@ -293,9 +292,6 @@ public class PortalStatsTests : IDisposable
 
         var stats = await _portal.GetStatsAsync(_delegateGroupId);
 
-        // ملف الطالب الاعتباري المربوط يُحتسب؛ الطبيعي بلا رقم قيد لا يُحتسب إحصائيًا.
-        var damascus = stats.PerEntry.Single(e => e.EntryId == _entryAId);
-        Assert.Equal(1, damascus.Files);
-        Assert.Equal(1, stats.TotalFiles);
+        Assert.Equal(0, stats.TotalFiles);
     }
 }

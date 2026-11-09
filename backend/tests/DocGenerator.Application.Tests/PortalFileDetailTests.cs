@@ -501,9 +501,6 @@ public class PortalFileDetailTests : IDisposable
         foreach (var e in doc.ExecutedPublicEntities)
             if (e.RegistryId.HasValue)
                 matchedIds.Add(e.RegistryId.Value);
-        foreach (var a in doc.ExecutionApplicants)
-            if (a.RegistryId.HasValue)
-                matchedIds.Add(a.RegistryId.Value);
         var expected = scope!.Entries
             .Where(e => matchedIds.Contains(e.Id))
             .Select(e => PublicEntityBranchCatalog.Label(e.Governorate, e.BranchName))

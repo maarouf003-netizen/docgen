@@ -130,7 +130,9 @@ public record AppealReminderDto(
     string? ReminderDuration,
     string? ReminderColor,
     DateTime DueDate,
-    bool DueDateSuspect);
+    bool DueDateSuspect,
+    /// <summary>اسم عرض الملف المستأنف (مثل «شركة بركات التجارية») — لا يُحشر في `AppealTitle`.</summary>
+    string? DocumentLabel = null);
 
 /// <summary>
 /// استئناف للعرض: كامل حقوله ولقطتا الأطراف وبيانات الملف الأساس اللازمة للأعمدة،

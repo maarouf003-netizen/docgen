@@ -967,25 +967,28 @@ public sealed class DocumentAppealService : IDocumentAppealService
                     r.ReminderDuration,
                     r.ReminderColor,
                     dueDate,
-                    suspect);
+                    suspect,
+                    r.DocumentLabel);
             })
             .OrderBy(r => r.DueDate)
             .ThenBy(r => r.AppealId)
             .ToList();
     }
 
-    private async Task<List<(int ActionId, int AppealId, int DocumentId, string AppealTitle, string Text,
-        string? ActionDate, string? ReminderDuration, string? ReminderColor, DateTime CreatedAt)>>
+    private async Task<List<(int ActionId, int AppealId, int DocumentId, string AppealTitle,
+        string DocumentLabel, string Text, string? ActionDate, string? ReminderDuration,
+        string? ReminderColor, DateTime CreatedAt)>>
         ListReminderRowsAsync(int userId, CancellationToken ct)
     {
         var appeals = await _appeals.ListByAssigneeAsync(userId, null, asNoTracking: true, ct);
-        var rows = new List<(int, int, int, string, string, string?, string?, string?, DateTime)>();
+        var rows = new List<(int, int, int, string, string, string, string?, string?, string?, DateTime)>();
         foreach (var appeal in appeals)
         {
+            var documentLabel = DocumentDisplayName.Build(appeal.Document);
             foreach (var action in appeal.Actions.Where(a => a.ReminderDuration != null || a.ReminderColor != null))
             {
                 rows.Add((action.Id, appeal.Id, appeal.DocumentId,
-                    AppealTitleOf(appeal), action.Text, action.ActionDate,
+                    AppealTitleOf(appeal), documentLabel, action.Text, action.ActionDate,
                     action.ReminderDuration, action.ReminderColor, action.CreatedAt));
             }
         }
@@ -1430,17 +1433,8 @@ public sealed class DocumentAppealService : IDocumentAppealService
         return !string.IsNullOrWhiteSpace(triple) ? triple : (string.IsNullOrWhiteSpace(fallback) ? "—" : fallback!.Trim());
     }
 
-    /// <summary>اسم عرض للملف: الثلاثي إن توفر وإلا نوع المستند وإلا «ملف رقم».</summary>
-    private static string DocumentTitle(Document doc)
-    {
-        var parts = new[] { doc.BorrowerName, doc.BorrowerFather, doc.BorrowerFamily }
-            .Where(v => !string.IsNullOrWhiteSpace(v));
-        var name = string.Join(' ', parts);
-        if (!string.IsNullOrWhiteSpace(name)) return name;
-        if (!string.IsNullOrWhiteSpace(doc.ExecutedNaturalPersons.FirstOrDefault(p => p.Name != null)?.Name))
-            return doc.ExecutedNaturalPersons.First(p => p.Name != null).Name!.Trim();
-        return string.IsNullOrWhiteSpace(doc.DocumentType) ? $"ملف رقم {doc.Id}" : doc.DocumentType!;
-    }
+    /// <summary>اسم عرض للملف — مصدره الموحّد `DocumentDisplayName`.</summary>
+    private static string DocumentTitle(Document doc) => DocumentDisplayName.Build(doc);
 
     /// <summary>عنوان موجز للاستئناف في التذكيرات.</summary>
     private static string AppealTitleOf(DocumentAppeal appeal)

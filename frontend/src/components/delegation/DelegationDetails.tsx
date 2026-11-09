@@ -64,6 +64,15 @@ export function DelegationDetails({ d, sourceAssets }: { d: DelegationDto; sourc
           : 'إنابة داخلية'}
       </p>
 
+      {d.rejectReason && (
+        <p
+          role="alert"
+          className="text-xs font-medium text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2 break-words"
+        >
+          أُعيدت الإنابة للتصحيح: {d.rejectReason}
+        </p>
+      )}
+
       {targetNumber && (
         <p className="text-sm text-gray-700">
           <span className="text-gray-500 text-xs block">الملف المناب</span>

@@ -67,6 +67,8 @@ export interface ReminderDto {
   dueDate: string;
   /** وسم جودة: تاريخ/مدة قديمة لا تُحلَّل فسقط الحساب إلى احتياط — يُعرض موسومًا. */
   dueDateSuspect: boolean;
+  /** اسم عرض الملف الموحّد (يشمل عائلة «منفذ عليها/عرض وايداع») — تفضّله الواجهة على الحقول القديمة. */
+  documentLabel?: string | null;
 }
 
 export interface MonthlyStatDto {
@@ -350,6 +352,8 @@ export interface AppealReminderDto {
   dueDate: string;
   /** وسم جودة: تاريخ/مدة قديمة لا تُحلَّل فسقط الحساب إلى احتياط — يُعرض موسومًا. */
   dueDateSuspect: boolean;
+  /** اسم عرض الملف المستأنف (مثل «شركة بركات التجارية») — يسبق نوع الاستئناف في العرض. */
+  documentLabel?: string | null;
 }
 
 export interface CreateHeadAlertRequest {

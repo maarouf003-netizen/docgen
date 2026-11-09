@@ -233,7 +233,12 @@ public static class HeadAlertKindCatalog
             // ── DocumentCreator ──
             [DelegationAssignedToLawyer] = Set(HeadAlertAudience.DocumentCreator),
             [DelegationTransferredToLawyer] = Set(HeadAlertAudience.DocumentCreator),
-            [DelegationRejectedWrongCourt] = Set(HeadAlertAudience.DocumentCreator),
+            // المسار الحالي: كاتب الإنابة صراحةً (SingleLawyer).
+            // DocumentCreator مسموح فقط لتوافق رسائل صندوق الصادر المعلّقة قبل النشر
+            // (كاتب الإنابة هو منشئ الملف عمليًا بشرط CreateAsync).
+            [DelegationRejectedWrongCourt] = Set(
+                HeadAlertAudience.SingleLawyer,
+                HeadAlertAudience.DocumentCreator),
             [DelegationCompletedReturned] = Set(HeadAlertAudience.DocumentCreator),
             [AppealFinalToBaseLawyer] = Set(HeadAlertAudience.DocumentCreator),
 
@@ -299,7 +304,7 @@ public static class HeadAlertKindCatalog
         DelegationSentToSubhead => "إنابة من اختصاص الشعبة",
         DelegationAssignedToLawyer => "إسناد ملف إنابة",
         DelegationTransferredToLawyer => "نقل ملف إنابة",
-        DelegationRejectedWrongCourt => "رفض إنابة للدائرة الخطأ",
+        DelegationRejectedWrongCourt => "إعادة إنابة للتصحيح",
         DelegationPendingCompletion => "بانتظار إتمام الإنابة",
         DelegationCompletedReturned => "إعادة الإنابة المسطرة",
         DelegationMirrorDeferred => "كتاب تريث (تأجيل)",

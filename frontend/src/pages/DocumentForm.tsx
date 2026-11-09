@@ -101,7 +101,7 @@ export default function DocumentForm() {
   // نافذة اختيار الجهة العامة من السجل المرجعي (المرحلة 2): الجهة المستهدفة
   // من الطرفين ورقم صفها، وتُملأ حقولها النصية من القيد المختار مع ربطه.
   const [registryPicker, setRegistryPicker] = useState<
-    { side: 'applicant' | 'executed' | 'execution-applicant'; index: number } | null
+    { side: 'applicant' | 'executed'; index: number } | null
   >(null);
   // سجل دوائر التنفيذ (BQ-004): الحقل زر مقفل بداخله «اختيار» — القائمة من
   // دوائر الفرع حصرًا، والإلزامية تمنع الحفظ مع تركيز أول خطأ.
@@ -421,20 +421,9 @@ export default function DocumentForm() {
   const removeBorrowerHeir = (i: number) =>
     setBorrowerHeirs((hs) => hs.filter((_, idx) => idx !== i));
 
-  const EXECUTION_APPLICANT_IDENTITY_KEYS: ReadonlyArray<keyof ExecutionApplicantDto> = ['name'];
-
   const setApplicant = (i: number, key: keyof ExecutionApplicantDto, value: string) =>
     setExecutionApplicants((xs) =>
-      xs.map((x, idx) => {
-        if (idx !== i) return x;
-        const next = key === 'registryId'
-          ? { ...x, registryId: value ? Number(value) : null }
-          : { ...x, [key]: value };
-        return {
-          ...next,
-          ...(EXECUTION_APPLICANT_IDENTITY_KEYS.includes(key) && next.registryId != null ? { registryId: null } : {}),
-        };
-      }),
+      xs.map((x, idx) => (idx === i ? { ...x, [key]: value } : x)),
     );
 
   const addApplicant = (nature: PartyNature = 'natural') =>
@@ -519,11 +508,6 @@ export default function DocumentForm() {
       ),
     );
 
-  const unlinkExecutionApplicant = (i: number) =>
-    setExecutionApplicants((xs) =>
-      xs.map((x, idx) => (idx === i ? { ...x, name: '', registryId: null } : x)),
-    );
-
   // ربط صف جهة بالقيد المختار من نافذة السجل: تُملأ حقول الهوية النصية من القيد
   // المعتمد نفسه فتظل الأعمدة النصية متسقة مع السجل، ويُحفظ معرّف الربط.
   const applyRegistryPick = (entry: PublicEntityEntryDto) => {
@@ -534,14 +518,6 @@ export default function DocumentForm() {
         xs.map((x, idx) =>
           idx === index
             ? { ...x, name: entry.canonicalName, branch: entry.branchName, governorate: entry.governorate, registryId: entry.id }
-            : x,
-        ),
-      );
-    } else if (side === 'execution-applicant') {
-      setExecutionApplicants((xs) =>
-        xs.map((x, idx) =>
-          idx === index
-            ? { ...x, name: entry.canonicalName, registryId: entry.id }
             : x,
         ),
       );
@@ -848,13 +824,6 @@ export default function DocumentForm() {
       setError('يجب اختيار جميع الجهات العامة المنفذ عليها من السجل المرجعي قبل الحفظ');
       return;
     }
-    if (isExecutedSubmit && executionApplicants.some(
-      (a) => a.nature === 'legal' && (a.name ?? '').trim() && a.registryId == null,
-    )) {
-      setError('يجب اختيار طالب التنفيذ الاعتباري من السجل المرجعي قبل الحفظ');
-      return;
-    }
-
     const repConflict = representativeHeirConflictMessage({
       borrowerNature: form.borrowerNature,
       borrowerHasHeirs: borrowerHeirs.some(hasHeirName),
@@ -1324,9 +1293,7 @@ export default function DocumentForm() {
             onEntityAdd={addExecutedEntity}
             onEntityRemove={removeExecutedEntity}
             onPickRegistry={(i) => setRegistryPicker({ side: 'executed', index: i })}
-            onPickExecutionApplicantRegistry={(i) => setRegistryPicker({ side: 'execution-applicant', index: i })}
             onEntityUnlink={unlinkExecutedEntity}
-            onApplicantUnlink={unlinkExecutionApplicant}
             executedNaturalPersons={executedNaturalPersons}
             onPersonSet={setExecutedPerson}
             onPersonAdd={addExecutedPerson}
