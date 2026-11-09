@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { ReminderList } from './ReminderList';
 import type { AppealReminderDto, ReminderDto } from '../../types';
 
@@ -78,5 +79,26 @@ describe('ReminderList', () => {
 
     expect(screen.getByText('شركة بركات التجارية')).toBeInTheDocument();
     expect(screen.queryByText('متداول')).not.toBeInTheDocument();
+  });
+
+  it('يعرض النص الكامل في نافذة «عرض التذكير» ويفتح الإجراءات', async () => {
+    const user = userEvent.setup();
+    const onOpenActions = vi.fn();
+    const fullText = 'نص التذكير الكامل الذي كان مقتطعًا في القائمة';
+
+    render(
+      <ReminderList
+        reminders={[makeFileReminder({ actionText: `<p>${fullText}</p>` })]}
+        onOpenActions={onOpenActions}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'عرض التذكير' }));
+    const dialog = screen.getByRole('dialog', { name: 'عرض التذكير' });
+    expect(within(dialog).getByText(fullText)).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: 'فتح الإجراءات والملاحظات' }));
+    expect(onOpenActions).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog', { name: 'عرض التذكير' })).not.toBeInTheDocument();
   });
 });

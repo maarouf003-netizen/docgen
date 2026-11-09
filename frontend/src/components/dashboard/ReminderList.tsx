@@ -1,7 +1,9 @@
+import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { AppealReminderDto, ReminderDto } from '../../types';
 import { richToPlainText } from '../../utils/richText';
 import { appealReminderTitle, borrowerFullName, dueLabel } from './dashboardFormat';
+import { ReminderViewModal, type ReminderViewItem } from './ReminderViewModal';
 
 const REMINDER_COLOR_STYLES: Record<string, string> = {
   'أحمر': 'bg-red-100 text-red-700 border-red-200',
@@ -20,6 +22,39 @@ type UnifiedReminder =
   | { kind: 'file'; dueDate: string; r: ReminderDto }
   | { kind: 'appeal'; dueDate: string; r: AppealReminderDto };
 
+/** عمود الأزرار الموحّد: إلغاء التذكير (اختياري) فوق «عرض التذكير». */
+function ReminderRowActions({
+  isCancelling,
+  onCancel,
+  onView,
+}: {
+  isCancelling: boolean;
+  onCancel?: () => void;
+  onView: () => void;
+}) {
+  return (
+    <div className="shrink-0 flex flex-col items-stretch gap-1.5">
+      {onCancel && (
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={isCancelling}
+          className="min-h-11 px-2 py-1 rounded-lg text-[11px] font-medium border border-gray-200 text-gray-600 hover:text-red-700 hover:border-red-200 hover:bg-red-50 disabled:opacity-50 transition-colors whitespace-nowrap"
+        >
+          {isCancelling ? 'جارِ الإلغاء...' : 'إلغاء التذكير'}
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={onView}
+        className="min-h-11 px-2 py-1 rounded-lg text-[11px] font-medium border border-emerald-200 text-emerald-800 hover:bg-emerald-50 transition-colors whitespace-nowrap"
+      >
+        عرض التذكير
+      </button>
+    </div>
+  );
+}
+
 /**
  * قائمة تذكيرات مشتركة للمحامي ورئيس القسم، تضم تذكيرات الملفات وتذكيرات
  * الاستئنافات مرتبة معًا بالأقرب أولاً.
@@ -31,6 +66,8 @@ export function ReminderList({
   appealReminders = [],
   onCancel,
   onCancelAppeal,
+  onOpenActions,
+  onOpenAppealActions,
   cancellingKey,
 }: {
   reminders: ReminderDto[];
@@ -38,17 +75,42 @@ export function ReminderList({
   appealReminders?: AppealReminderDto[];
   onCancel?: (r: ReminderDto) => void;
   onCancelAppeal?: (r: AppealReminderDto) => void;
+  /** فتح نافذة الإجراءات والملاحظات لملف من نافذة «عرض التذكير». */
+  onOpenActions?: (r: ReminderDto) => void;
+  /** فتح نافذة إجراءات الاستئناف من نافذة «عرض التذكير». */
+  onOpenAppealActions?: (r: AppealReminderDto) => void;
   cancellingKey?: string | null;
 }) {
+  const [viewing, setViewing] = useState<ReminderViewItem | null>(null);
+  const closeView = useCallback(() => setViewing(null), []);
   const unified: UnifiedReminder[] = [
     ...reminders.map((r) => ({ kind: 'file' as const, dueDate: r.dueDate, r })),
     ...appealReminders.map((r) => ({ kind: 'appeal' as const, dueDate: r.dueDate, r })),
   ].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 
+  const openActions = (() => {
+    if (!viewing) return undefined;
+    if (viewing.kind === 'file') {
+      return onOpenActions
+        ? () => {
+            onOpenActions(viewing.r);
+            closeView();
+          }
+        : undefined;
+    }
+    return onOpenAppealActions
+      ? () => {
+          onOpenAppealActions(viewing.r);
+          closeView();
+        }
+      : undefined;
+  })();
+
   return (
-    <ul className="divide-y divide-gray-100 max-h-[420px] overflow-y-auto">
-      {unified.map((item) => {
-        if (item.kind === 'appeal') {
+    <>
+      <ul className="divide-y divide-gray-100 max-h-[420px] overflow-y-auto">
+        {unified.map((item) => {
+          if (item.kind === 'appeal') {
           const r = item.r;
           const due = dueLabel(r.dueDate);
           const dot = REMINDER_COLOR_DOTS[r.reminderColor ?? ''];
@@ -87,16 +149,11 @@ export function ReminderList({
                   ) : null}
                   <span className={`text-[11px] px-2 py-0.5 rounded-full border ${due.tone}`}>{due.text}</span>
                 </span>
-                {onCancelAppeal ? (
-                  <button
-                    type="button"
-                    onClick={() => onCancelAppeal(r)}
-                    disabled={isCancelling}
-                    className="shrink-0 min-h-11 px-3 rounded-lg text-xs font-medium border border-gray-200 text-gray-600 hover:text-red-700 hover:border-red-200 hover:bg-red-50 disabled:opacity-50 transition-colors"
-                  >
-                    {isCancelling ? 'جارِ الإلغاء...' : 'إلغاء التذكير'}
-                  </button>
-                ) : null}
+                <ReminderRowActions
+                  isCancelling={isCancelling}
+                  onCancel={onCancelAppeal ? () => onCancelAppeal(r) : undefined}
+                  onView={() => setViewing({ kind: 'appeal', r })}
+                />
               </div>
             </li>
           );
@@ -140,20 +197,23 @@ export function ReminderList({
                 ) : null}
                 <span className={`text-[11px] px-2 py-0.5 rounded-full border ${due.tone}`}>{due.text}</span>
               </span>
-              {onCancel ? (
-                <button
-                  type="button"
-                  onClick={() => onCancel(r)}
-                  disabled={isCancelling}
-                  className="shrink-0 min-h-11 px-3 rounded-lg text-xs font-medium border border-gray-200 text-gray-600 hover:text-red-700 hover:border-red-200 hover:bg-red-50 disabled:opacity-50 transition-colors"
-                >
-                  {isCancelling ? 'جارِ الإلغاء...' : 'إلغاء التذكير'}
-                </button>
-              ) : null}
+              <ReminderRowActions
+                isCancelling={isCancelling}
+                onCancel={onCancel ? () => onCancel(r) : undefined}
+                onView={() => setViewing({ kind: 'file', r })}
+              />
             </div>
           </li>
         );
       })}
-    </ul>
+      </ul>
+      {viewing && (
+        <ReminderViewModal
+          item={viewing}
+          onClose={closeView}
+          onOpenActions={openActions}
+        />
+      )}
+    </>
   );
 }

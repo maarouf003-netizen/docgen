@@ -93,13 +93,20 @@ export function formatFileNumber(doc: DocumentResponse): string {
  * وإلا الزوج الخام (`file*`). فلا يُخلط رقمُ سجلٍ مع سنةِ سجلٍ آخر، والفراغ
  * النصي يُعامَل غيابًا عند اختيار المصدر لا بعده فقط.
  */
-export function identityFileNumber(doc: DocumentResponse): string {
-  if (doc.isDraft) return '—';
+export function identityFileParts(doc: DocumentResponse): { number: string; year: string } {
+  if (doc.isDraft) return { number: '', year: '' };
   const displayNumber = (doc.displayFileNumber ?? '').trim();
   const displayYear = (doc.displayFileYear ?? '').trim();
   const hasDisplay = displayNumber !== '' || displayYear !== '';
-  const number = hasDisplay ? displayNumber : (doc.fileNumber ?? '').trim();
-  const year = hasDisplay ? displayYear : (doc.fileYear ?? '').trim();
+  return {
+    number: hasDisplay ? displayNumber : (doc.fileNumber ?? '').trim(),
+    year: hasDisplay ? displayYear : (doc.fileYear ?? '').trim(),
+  };
+}
+
+export function identityFileNumber(doc: DocumentResponse): string {
+  if (doc.isDraft) return '—';
+  const { number, year } = identityFileParts(doc);
   if (number && year) return `${number} / ${year}`;
   return number || year || '—';
 }

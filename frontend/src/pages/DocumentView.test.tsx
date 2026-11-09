@@ -541,9 +541,10 @@ describe('DocumentView', () => {
 
     expect(await screen.findByText('بيانات الملف')).toBeInTheDocument();
     expect(screen.getByText('1500 سند مصارف لعام 2025')).toBeInTheDocument();
-    // شريط الهوية المدمج: رقم/سنة + نوع + دائرة في عقدة واحدة بلا تسميات منفصلة.
-    const facts = screen.getByText('1500/2025 سند مصارف محكمة دمشق').closest('dl') as HTMLElement;
-    expect(facts).toBeInTheDocument();
+    // على الكومبيوتر: الحقول المنفصلة القديمة (رقم/سنة + نوع + دائرة).
+    const facts = screen.getByText('رقم الملف والسنة').closest('dl') as HTMLElement;
+    expect(within(facts).getByText('1500 / 2025')).toBeInTheDocument();
+    expect(within(facts).getByText('سند مصارف')).toBeInTheDocument();
   });
 
   it('يعرض شريط خطأ محصورًا عند فشل جلب الإنابات مع إعادة محاولة ناجحة', async () => {
@@ -2264,15 +2265,36 @@ it('يُسجّل الملف كآخر ما فُتح في الجلسة ليُمي�
     expect(screen.queryByRole('button', { name: 'إتمام الإنابة' })).not.toBeInTheDocument();
   });
 
-  it('يعرض شريط هوية لاصقًا أعلى الصفحة بسطر مدمج «رقم/سنة نوع دائرة» بلا تسميات', async () => {
+  it('يعرض شريط هوية لاصقًا أعلى الصفحة بالحقول المنفصلة القديمة على الكومبيوتر', async () => {
     renderView();
 
     await screen.findByText('بيانات الملف');
-    const facts = screen.getByText('99/2026 محكمة دمشق').closest('dl') as HTMLElement;
-    expect(facts).toBeInTheDocument();
-    expect(within(facts).queryByText('رقم الملف والسنة')).not.toBeInTheDocument();
-    expect(within(facts).queryByText('نوع الملف')).not.toBeInTheDocument();
-    expect(within(facts).queryByText('الدائرة')).not.toBeInTheDocument();
+    const facts = screen.getByText('رقم الملف والسنة').closest('dl') as HTMLElement;
+    expect(within(facts).getByText('99 / 2026')).toBeInTheDocument();
+    expect(within(facts).getByText('محكمة دمشق')).toBeInTheDocument();
+    // نوع الملف غائب في mockDoc → الحقل يظهر فارغًا كما كان.
+    expect(within(facts).getByText('نوع الملف')).toBeInTheDocument();
+  });
+
+  it('يجزئ حقول الهوية على الجوال إلى أربعة حقول خضراء متلاصقة', async () => {
+    stubMobile(true);
+    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: {
+        ...mockDoc,
+        fileType: 'سند مصارف',
+        displayFileNumber: '44',
+        displayFileYear: '2026',
+        court: 'اللاذقية',
+      },
+    });
+    renderView();
+
+    await screen.findByText('بيانات الملف');
+    const facts = screen.getByText('دائرة تنفيذ اللاذقية').closest('dl') as HTMLElement;
+    expect(within(facts).getByText('44')).toBeInTheDocument();
+    expect(within(facts).getByText('2026')).toBeInTheDocument();
+    expect(within(facts).getByText('سند مصارف')).toBeInTheDocument();
+    expect(within(facts).getByText('دائرة تنفيذ اللاذقية')).toBeInTheDocument();
   });
 
   it('يجمع إجراءات الترويسة في «المزيد» على الجوال دون تكرار خارجها', async () => {

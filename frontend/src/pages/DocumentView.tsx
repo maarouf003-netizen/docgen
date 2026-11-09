@@ -48,9 +48,32 @@ import { PartyDetailsModal } from '../components/view/PartyDetailsModal';
 import { AssetsSection } from '../components/view/AssetsSection';
 import { TransferHistoryModal } from '../components/view/TransferHistoryModal';
 import DocumentChangesModal from '../components/view/DocumentChangesModal';
-import { executedTitle, fullName, identityFileNumber } from '../components/view/viewFormat';
+import { executedTitle, fullName, identityFileNumber, identityFileParts } from '../components/view/viewFormat';
 import { StatusCard } from '../components/view/StatusCard';
 import type { PartyModal } from '../components/view/viewTypes';
+
+/** حقل هوية أخضر مضغوط للجوال: القيمة وحدها مع تسمية مخفية لقارئ الشاشة. */
+function MobileIdentityField({
+  label,
+  value,
+  numeric = false,
+}: {
+  label: string;
+  value: string;
+  numeric?: boolean;
+}) {
+  return (
+    <div className="inline-flex min-w-0 items-baseline rounded-lg bg-emerald-50 border border-emerald-200 px-2.5 py-1.5">
+      <dt className="sr-only">{label}</dt>
+      <dd
+        dir={numeric ? 'ltr' : 'auto'}
+        className={`text-gray-800 font-semibold break-words ${numeric ? 'tabular-nums isolate' : ''}`}
+      >
+        {value || '—'}
+      </dd>
+    </div>
+  );
+}
 
 export default function DocumentView() {
   const { id } = useParams();
@@ -183,14 +206,11 @@ export default function DocumentView() {
   };
   const debtorFullName = fullName(debtor);
   const statusBadge = getDocumentBadge(doc);
-  // سطر الهوية المضغوط: رقم/سنة + نوع + دائرة ببادئة واحدة، بلا تسميات منفصلة.
-  const identityLine = [
-    identityFileNumber(doc).replace(/\s*\/\s*/g, '/'),
-    (doc.fileType ?? '').trim(),
-    withCourtPrefix(doc.court),
-  ]
-    .filter(Boolean)
-    .join(' ');
+  // حقول الهوية: على الجوال تُجزَّأ إلى حقول خضراء متلاصقة، وعلى الكومبيوتر تبقى
+  // التسميات المنفصلة كما كانت.
+  const fileIdentity = identityFileParts(doc);
+  const fileType = (doc.fileType ?? '').trim();
+  const courtDisplay = withCourtPrefix(doc.court);
   // الإنابة: يعرض الملف المناب بطاقة «معلومات الملف المنيب» (إنابته الخاصة)، والملف المنيب
   // بطاقة «تشعبات الملف» (إناباته الصادرة) — وكلتاهما من نقطة الإنابات نفسها.
   const delegationOfThisFile = delegations.find((d) => d.targetDocumentId === doc.id);
@@ -671,13 +691,32 @@ export default function DocumentView() {
         </div>
 
         {/* شريط الهوية: بطاقات الملف الأساسية (رقم/سنة مدمجان + نوع + دائرة/فرع) لقراءة فورية أثناء التمرير. */}
-        <dl className="mt-3 flex flex-wrap gap-2 text-sm">
-          <div className="inline-flex min-w-0 items-baseline rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-1.5">
-            <dt className="sr-only">هوية الملف</dt>
-            <dd dir="auto" className="text-gray-800 font-semibold break-words">
-              {identityLine || '—'}
-            </dd>
-          </div>
+        <dl className={`mt-3 flex flex-wrap text-sm ${isMobile ? 'gap-1' : 'gap-2'}`}>
+          {isMobile ? (
+            <>
+              <MobileIdentityField label="رقم الملف" value={fileIdentity.number} numeric />
+              <MobileIdentityField label="السنة" value={fileIdentity.year} numeric />
+              <MobileIdentityField label="نوع الملف" value={fileType} />
+              <MobileIdentityField label="دائرة التنفيذ" value={courtDisplay} />
+            </>
+          ) : (
+            <>
+              <div className="inline-flex items-baseline gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-1.5">
+                <dt className="text-xs text-emerald-800 font-medium">رقم الملف والسنة</dt>
+                <dd dir="ltr" className="text-gray-800 font-semibold tabular-nums isolate">
+                  {identityFileNumber(doc)}
+                </dd>
+              </div>
+              <div className="inline-flex items-baseline gap-1.5 rounded-lg bg-gray-50 border border-gray-200 px-3 py-1.5">
+                <dt className="text-xs text-gray-500 font-medium">نوع الملف</dt>
+                <dd className="text-gray-800 font-semibold">{fileType}</dd>
+              </div>
+              <div className="inline-flex items-baseline gap-1.5 rounded-lg bg-gray-50 border border-gray-200 px-3 py-1.5">
+                <dt className="text-xs text-gray-500 font-medium">الدائرة</dt>
+                <dd className="text-gray-800 font-semibold">{doc.court || '—'}</dd>
+              </div>
+            </>
+          )}
           {showBranch && (
             <div className="inline-flex items-baseline gap-1.5 rounded-lg bg-gray-50 border border-gray-200 px-3 py-1.5">
               <dt className="text-xs text-gray-500 font-medium">الفرع</dt>

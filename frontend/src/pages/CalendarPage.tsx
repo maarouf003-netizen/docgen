@@ -6,6 +6,8 @@ import { useReminderCancellation } from '../hooks/useReminderCancellation';
 import { DayRemindersModal, PersonalForm } from '../components/dashboard/DayRemindersModal';
 import { LawyerCalendar } from '../components/dashboard/LawyerCalendar';
 import { ReminderList } from '../components/dashboard/ReminderList';
+import ExecutionActionsModal from '../components/ExecutionActionsModal';
+import AppealActionsModal from '../components/appeal/AppealActionsModal';
 import {
   dayLabelOf,
   dotTone,
@@ -48,6 +50,10 @@ export default function CalendarPage() {
 
   const { cancellingKey, actionError, cancelReminder, cancelAppealReminder } =
     useReminderCancellation(remindersQuery, appealRemindersQuery);
+
+  // نافذة الإجراءات والملاحظات المفتوحة من «عرض التذكير».
+  const [actionsDocumentId, setActionsDocumentId] = useState<number | null>(null);
+  const [actionsAppealId, setActionsAppealId] = useState<number | null>(null);
 
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const dayOccurrences = useMemo(() => {
@@ -112,12 +118,30 @@ export default function CalendarPage() {
             appealReminders={appealReminders}
             onCancel={cancelReminder}
             onCancelAppeal={cancelAppealReminder}
+            onOpenActions={(r) => setActionsDocumentId(r.documentId)}
+            onOpenAppealActions={(r) => setActionsAppealId(r.appealId)}
             cancellingKey={cancellingKey}
           />
         )}
       </section>
 
       <PersonalDefinitionsSection personal={personalReminders} onChanged={personalQuery.refetch} todayKey={todayKey} />
+
+      {actionsDocumentId != null && (
+        <ExecutionActionsModal
+          documentId={actionsDocumentId}
+          onClose={() => setActionsDocumentId(null)}
+          onChanged={() => remindersQuery.refetch()}
+        />
+      )}
+      {actionsAppealId != null && (
+        <AppealActionsModal
+          appealId={actionsAppealId}
+          onClose={() => setActionsAppealId(null)}
+          onChanged={() => appealRemindersQuery.refetch()}
+          canWrite={user?.role === 'lawyer'}
+        />
+      )}
     </div>
   );
 }
