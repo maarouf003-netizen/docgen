@@ -414,9 +414,15 @@ npm test
 > في كل سياق، ولا تُطبَّق `SQLite` وحدها قبل استكمال سلسلة `G2` (نفس منطق السطر أدناه).
 
 > **تحديث 2026‑11‑07:** طُبِّقت هجرتا الملاحق على `PostgreSQL` حيًا (عبر `Database__AutoMigrate=true` مؤقتًا ثم أُعيد إلى `false`)؛ `SQLite` ما زالت معلّقة.
+>
+> **تحديث 2026‑11‑09:** طُبِّقت `BaseNumberRegistry_Pg` على `PostgreSQL` حيًا (70 هجرة) عبر
+> `Database__AutoMigrate=true` مؤقتًا، ثم أُعيد إلى `false` ونُشرت النسخة بنجاح (`AutoMigrate=false`،
+> `/healthz` = 200). صُحّحت أيضًا قيمة `ASPNETCORE_ENVIRONMENT` في Render من `Production???` إلى
+> `Production` (القيمة المشوّهة كانت تُبقي `IsDevelopment()` خاطئة فقط، لكنها كانت ستُفشل تحميل
+> `appsettings.Production.json` لو أُضيف لاحقًا).
 
 - [ ] **2026-11-08 — `BaseNumberRegistry` / `BaseNumberRegistry_Pg`** (سجل أرقام الأساس v2 — جدول واحد + عمودا الإلغاء + فهرس فريد جزئي):
-  - **الحالة:** `PostgreSQL` و`SQLite` — **بانتظار التطبيق** (لم تُطبَّق حيًا في هذه الجلسة بسبب تعذر الوصول المباشر إلى `Supabase` من بيئة التنفيذ).
+  - **الحالة:** `PostgreSQL` ✅ **مطبَّقة حيًا** (2026‑11‑09 — 70 هجرة، عبر `Database__AutoMigrate=true` مؤقتًا ثم أُعيد إلى `false`) · `SQLite` ⏳ **معلّقة** (مع السلسلة المعلّقة أدناه؛ لا تُطبَّق وحدها قبل استكمال `G2`).
   - `DocGeneratorDbContext` (SQLite): `Persistence\Migrations\20261108202145_BaseNumberRegistry.cs`.
   - `DocGeneratorPostgresDbContext` (PostgreSQL): `Persistence\MigrationsPostgres\20261108202211_BaseNumberRegistry_Pg.cs`.
   - **التعبئة داخل الهجرة:** تُوقف الهجرة صراحةً عند: صف بلا دائرة، أو صف أقدم من وقعة تبديل دائرة من التعديل (R3)، أو سنة/تكرار غير صالح — لا نسبة صامتة.
