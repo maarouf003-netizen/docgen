@@ -670,3 +670,40 @@ npm test
     حقيقية، مع قيد `sqlite_sequence` (يبدأ التراجع من `Backfill` لا من `Contract`)
     — راجع `docs/audit/12-head-alerts-pr3-g2-rehearsal-20261026.md` §6.
 
+
+
+---
+
+## 10) تذكير نشر سجل أرقام الأساس v2 (2026-11-09)
+
+> **النطاق:** `DocumentBaseNumbers` وهجرتا `BaseNumberRegistry` (SQLite) و`BaseNumberRegistry_Pg` (PostgreSQL).
+> **مهم:** الإنتاج على `PostgreSQL` جديدة؛ لا تعتمد على قواعد `SQLite`/`Supabase` التجريبية.
+
+### قبل النشر
+1. خُذ نسخة احتياطية من قاعدة PostgreSQL (حتى لو كانت جديدة): لقطة مزوّد أو `pg_dump` إلى ملف خارج المستودع.
+2. شغّل التدقيق المسبق (قراءة فقط):
+   - عبر `psql`: `psql "$DATABASE_URL" -f scripts/base-number-registry-preflight.sql`
+   - أو عبر محرر SQL في مزوّد القاعدة بنسخ محتوى `scripts/base-number-registry-preflight.sql`.
+   - يجب أن تكون نتائج V‑18/السنوات/التكرارات/تبديل الدائرة صفرًا قبل المتابعة.
+3. أوقف الخدمة مؤقتًا (Render Suspend) إن أمكن — لا كتابة أثناء الهجرة.
+
+### تطبيق الهجرات (إلزامي قبل تشغيل النسخة)
+```bash
+dotnet ef database update --context DocGeneratorDbContext
+dotnet ef database update --context DocGeneratorPostgresDbContext
+```
+- `Database:AutoMigrate=false` في الإنتاج؛ **إن لم تُطبّق الهجرات سيرفض التطبيق الإقلاع**.
+- الهجرتان تحملان نفس الاسم (`BaseNumberRegistry` / `BaseNumberRegistry_Pg`) لكن محتواهما يشمل
+  تعبئة الصفوف، `VoidedAt=document-deleted` للمحذوف، صف القيد، الفهرس الفريد الجزئي، وقيد
+  `CK_Documents_FileNumberRequiresCircuit` على PostgreSQL.
+
+### بعد النشر
+1. شغّل الخدمة وتحقق من `GET /healthz`.
+2. راقب سجل `[schema-check]` عند أول إقلاع: يجب ألا يظهر تحذير/فشل R9.
+3. تأكد أن `NumberRegistry:AllowCircuitlessLegacy` **غير موجود** في أي إعداد إنتاجي (لا يوجد مسار تكوين يفعّله).
+4. افتح ملفًا تجريبيًا وتحقق من: سجل أرقام الأساس، تصحيح صف، تدوير سنة، ومنع رقم مكرر صلب.
+
+### التراجع
+- أوقف النسخة الجديدة أولًا، ثم `dotnet ef database update <PreviousMigration> --context ...` (Down) بحسب الحاجة.
+- `Down` يحذف صفوف `Source=registration` التي أنشأتها التعبئة؛ لا تُشغّله والكود الجديد يكتب.
+- `render.yaml` غير مُودَع/غير مُعدّل في هذه المهمة.
