@@ -356,7 +356,6 @@ export function emptyExecutionApplicant(): ExecutionApplicantDto {
     representedBy: '',
     addressType: '',
     address: '',
-    registryId: null,
   };
 }
 

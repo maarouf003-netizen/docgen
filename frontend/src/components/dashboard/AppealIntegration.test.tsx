@@ -44,6 +44,7 @@ describe('تكامل الاستئنافات مع اللوحة والقائمة',
       appealId: 7,
       documentId: 100,
       appealTitle: 'استئناف قرار رئيس التنفيذ — مستأنِفين',
+      documentLabel: 'شركة بركات التجارية',
       actionText: '<p>إيداع موجبات الاستئناف</p>',
       reminderColor: 'أصفر',
       dueDate: '2026-09-01T00:00:00Z',
@@ -59,6 +60,7 @@ describe('تكامل الاستئنافات مع اللوحة والقائمة',
 
     const items = screen.getAllByRole('listitem');
     // الأقرب أولًا: تذكير الاستئناف (1 أيلول) قبل تذكير الملف (10 أيلول).
+    expect(items[0]).toHaveTextContent('شركة بركات التجارية');
     expect(items[0]).toHaveTextContent('استئناف قرار رئيس التنفيذ');
     expect(items[1]).toHaveTextContent('أحمد خالد الخطيب');
 

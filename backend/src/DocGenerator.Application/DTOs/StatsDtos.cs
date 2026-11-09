@@ -49,7 +49,9 @@ public record ReminderDto(
     string? ReminderDuration,
     string? ReminderColor,
     DateTime DueDate,
-    bool DueDateSuspect);
+    bool DueDateSuspect,
+    /// <summary>اسم عرض الملف الموحّد (يشمل عائلة «منفذ عليها/عرض وايداع») — الواجهة تفضّله.</summary>
+    string? DocumentLabel = null);
 
 /// <summary>شهر إحصائي (تاريخ القيد، وإن غاب أو تعذّر تحليله فشهر الإدخال).</summary>
 public record MonthlyStatDto(int Year, int Month, int Count);

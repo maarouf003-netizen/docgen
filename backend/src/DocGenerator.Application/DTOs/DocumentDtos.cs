@@ -425,8 +425,7 @@ public class DocumentResponse : IDocumentSheetFields
                 a.RepresentativeCapacity, a.RepresentativeLegalRepresentative,
                 ToExecutedHeirDtos(d.ExecutedHeirs, a.Id, null),
                 a.ApplicantNature, a.ApplicantRegistrationNumber, a.ApplicantRepresentedBy,
-                a.ApplicantAddressType, a.ApplicantAddress,
-                a.RegistryId))
+                a.ApplicantAddressType, a.ApplicantAddress))
             .ToList(),
         ExecutedPublicEntities = d.ExecutedPublicEntities
             .Select(e => new ExecutedPublicEntityDto(e.Id, e.EntityName, e.EntityBranch,

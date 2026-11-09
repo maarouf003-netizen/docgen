@@ -90,16 +90,6 @@ public class PublicEntityRepository : IPublicEntityRepository
         return rows.Select(r => (r.EntityName!, r.Governorate, r.DocumentCount)).ToList();
     }
 
-    public async Task<List<(string Name, int DocumentCount)>> ListDistinctExecutionApplicantTextsAsync(CancellationToken ct = default)
-    {
-        var rows = await _db.ExecutionApplicants.AsNoTracking()
-            .Where(a => a.Name != null && a.Name != "" && a.RegistryId != null)
-            .GroupBy(a => a.Name)
-            .Select(g => new { Name = g.Key, DocumentCount = g.Select(x => x.DocumentId).Distinct().Count() })
-            .ToListAsync(ct);
-        return rows.Select(r => (r.Name!, r.DocumentCount)).ToList();
-    }
-
     // ── مزامنة النصوص عند إعادة التسمية (د5) ──
     //
     // إعادة بناء SearchText تمرّ على كل مجموعات الملف (ورثة/كفلاء/طالبو تنفيذ/منفذ
@@ -133,19 +123,6 @@ public class PublicEntityRepository : IPublicEntityRepository
                 && names.Contains(e.EntityName))
             .ToListAsync(ct);
 
-    public Task<List<ExecutionApplicant>> ListExecutionApplicantRowsByNamesAsync(
-        IReadOnlyCollection<string> names, CancellationToken ct = default)
-        => _db.ExecutionApplicants
-            .Include(a => a.Document).ThenInclude(d => d.ApplicantPublicEntities)
-            .Include(a => a.Document).ThenInclude(d => d.Heirs)
-            .Include(a => a.Document).ThenInclude(d => d.Guarantors)
-            .Include(a => a.Document).ThenInclude(d => d.ExecutionApplicants)
-            .Include(a => a.Document).ThenInclude(d => d.ExecutedPublicEntities)
-            .Include(a => a.Document).ThenInclude(d => d.ExecutedNaturalPersons)
-            .Include(a => a.Document).ThenInclude(d => d.ExecutedHeirs)
-            .Where(a => a.Name != null && a.RegistryId != null && names.Contains(a.Name))
-            .ToListAsync(ct);
-
     // ── نقل القيد (د3) ──
 
     public async Task<List<Document>> ListDocumentsLinkedToEntryAsync(int entryId, CancellationToken ct = default)
@@ -159,11 +136,6 @@ public class PublicEntityRepository : IPublicEntityRepository
         ids.AddRange(await _db.ExecutedPublicEntities.AsNoTracking()
             .Where(e => e.RegistryId == entryId)
             .Select(e => e.DocumentId)
-            .Distinct()
-            .ToListAsync(ct));
-        ids.AddRange(await _db.ExecutionApplicants.AsNoTracking()
-            .Where(a => a.RegistryId == entryId)
-            .Select(a => a.DocumentId)
             .Distinct()
             .ToListAsync(ct));
         var uniqueIds = ids.Distinct().ToList();
@@ -213,7 +185,7 @@ public class PublicEntityRepository : IPublicEntityRepository
             return new Dictionary<int, int>();
 
         // كل صف ربط يحدد groupId عبر قيد الجهة (PublicEntities.GroupId) — نجمع عدّاد الملفات
-        // المميّزة لكل مجموعة من جداول الطرف الثلاثة دفعة واحدة. تُترجم شرط Contains إلى IN في SQL.
+        // المميّزة لكل مجموعة من جدولي الطرفين (طالبة/منفذ عليها) دفعة واحدة. تُترجم Contains إلى IN.
         var applicantGroupDocs = await _db.ApplicantPublicEntities.AsNoTracking()
             .Where(a => a.RegistryId != null && ids.Contains(a.Registry!.GroupId))
             .Select(a => new { a.DocumentId, a.Registry!.GroupId })
@@ -222,19 +194,12 @@ public class PublicEntityRepository : IPublicEntityRepository
             .Where(e => e.RegistryId != null && ids.Contains(e.Registry!.GroupId))
             .Select(e => new { e.DocumentId, e.Registry!.GroupId })
             .ToListAsync(ct);
-        var executionApplicantGroupDocs = await _db.ExecutionApplicants.AsNoTracking()
-            .Where(x => x.RegistryId != null && ids.Contains(x.Registry!.GroupId))
-            .Select(x => new { x.DocumentId, x.Registry!.GroupId })
-            .ToListAsync(ct);
 
         var countsByGroup = ids.ToDictionary(id => id, _ => new HashSet<int>());
         foreach (var row in applicantGroupDocs)
             if (countsByGroup.TryGetValue(row.GroupId, out var set))
                 set.Add(row.DocumentId);
         foreach (var row in executedGroupDocs)
-            if (countsByGroup.TryGetValue(row.GroupId, out var set))
-                set.Add(row.DocumentId);
-        foreach (var row in executionApplicantGroupDocs)
             if (countsByGroup.TryGetValue(row.GroupId, out var set))
                 set.Add(row.DocumentId);
 
@@ -249,7 +214,7 @@ public class PublicEntityRepository : IPublicEntityRepository
             return new Dictionary<int, int>();
 
         // كل صف ربط يحدد القيد عبر RegistryId مباشرة — نجمع عدّاد الملفات المميّزة لكل قيد
-        // من جداول الطرف الثلاثة دفعة واحدة. تُترجم شرط Contains إلى IN في SQL.
+        // من جدولي الطرفين (طالبة/منفذ عليها) دفعة واحدة. تُترجم Contains إلى IN.
         var applicantEntryDocs = await _db.ApplicantPublicEntities.AsNoTracking()
             .Where(a => a.RegistryId != null && ids.Contains(a.RegistryId.Value))
             .Select(a => new { a.DocumentId, a.RegistryId })
@@ -258,19 +223,12 @@ public class PublicEntityRepository : IPublicEntityRepository
             .Where(e => e.RegistryId != null && ids.Contains(e.RegistryId.Value))
             .Select(e => new { e.DocumentId, e.RegistryId })
             .ToListAsync(ct);
-        var executionApplicantEntryDocs = await _db.ExecutionApplicants.AsNoTracking()
-            .Where(x => x.RegistryId != null && ids.Contains(x.RegistryId.Value))
-            .Select(x => new { x.DocumentId, x.RegistryId })
-            .ToListAsync(ct);
 
         var countsByEntry = ids.ToDictionary(id => id, _ => new HashSet<int>());
         foreach (var row in applicantEntryDocs)
             if (countsByEntry.TryGetValue(row.RegistryId!.Value, out var set))
                 set.Add(row.DocumentId);
         foreach (var row in executedEntryDocs)
-            if (countsByEntry.TryGetValue(row.RegistryId!.Value, out var set))
-                set.Add(row.DocumentId);
-        foreach (var row in executionApplicantEntryDocs)
             if (countsByEntry.TryGetValue(row.RegistryId!.Value, out var set))
                 set.Add(row.DocumentId);
 

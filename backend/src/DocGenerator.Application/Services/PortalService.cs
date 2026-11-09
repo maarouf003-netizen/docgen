@@ -622,9 +622,6 @@ public sealed class PortalService : IPortalService
         foreach (var e in d.ExecutedPublicEntities)
             if (e.RegistryId.HasValue && byId.ContainsKey(e.RegistryId.Value))
                 matchedIds.Add(e.RegistryId.Value);
-        foreach (var a in d.ExecutionApplicants)
-            if (a.RegistryId.HasValue && byId.ContainsKey(a.RegistryId.Value))
-                matchedIds.Add(a.RegistryId.Value);
         return matchedIds
             .Select(id => byId[id])
             // الترتيب العربي الوحيد نفسه (`PortalScopeOrdering`): خلية التصدير

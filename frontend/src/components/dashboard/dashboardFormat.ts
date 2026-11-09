@@ -1,4 +1,4 @@
-import type { HeadAlertTargetType, ManagerStatsDto, MonthlyStatDto, ReminderDto, StatsPeriod } from '../../types';
+import type { AppealReminderDto, HeadAlertTargetType, ManagerStatsDto, MonthlyStatDto, ReminderDto, StatsPeriod } from '../../types';
 import { tripleName } from '../../utils/documentDisplay';
 import type { PeriodOption, PeriodSelection } from './dashboardTypes';
 
@@ -150,7 +150,20 @@ export function dueLabel(dueDate: string): { text: string; tone: string } {
 }
 
 export function borrowerFullName(r: ReminderDto): string {
-  return tripleName(r.borrowerName, r.borrowerFather, r.borrowerFamily) || r.documentType || `مستند ${r.documentId}`;
+  // اسم العرض الموحّد من الخادم يغطي عائلة «منفذ عليها/عرض وايداع» التي لا تحمل
+  // اسم مقترض، فلا يسقط التذكير إلى نوع المستند (مثل «متداول»).
+  return r.documentLabel?.trim()
+    || tripleName(r.borrowerName, r.borrowerFather, r.borrowerFamily)
+    || r.documentType
+    || `مستند ${r.documentId}`;
+}
+
+/** عنوان تذكير الاستئناف: اسم الملف أولًا ثم نوع الاستئناف/اتجاهه. */
+export function appealReminderTitle(
+  r: Pick<AppealReminderDto, 'appealTitle' | 'documentLabel'>,
+): string {
+  const label = r.documentLabel?.trim();
+  return label ? `${label} — ${r.appealTitle}` : r.appealTitle;
 }
 
 /** الاسم الأول من الاسم الكامل (أول كلمة بعد تطبيع الفراغات)، مع `fallback` للكامل عند غيابه. */

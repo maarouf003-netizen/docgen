@@ -1051,6 +1051,37 @@ public class DocumentAppealServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Reminders_AppealOnExecutedFile_UsesDocumentLabel()
+    {
+        var doc = NewDoc(GeneralEntitySideCatalog.Executed);
+        _db.Documents.Add(doc);
+        await _db.SaveChangesAsync();
+        _db.ExecutedPublicEntities.Add(new ExecutedPublicEntity
+        {
+            DocumentId = doc.Id,
+            EntityName = "شركة بركات التجارية",
+            EntityNature = PartyNatureCatalog.Legal,
+        });
+        await _db.SaveChangesAsync();
+        var entity = await _db.ExecutedPublicEntities.SingleAsync(e => e.DocumentId == doc.Id);
+
+        var created = await _service.CreateAsync(doc.Id,
+            Request(AppealDirectionCatalog.AgainstUs,
+                new List<AppealPartySelectionDto> { new("executed-public", entity.Id) }),
+            _lawyer1.Id, "lawyer1");
+        await _service.AssignAsync(created.Id, new AssignAppealRequest(_lawyer2.Id), _head1.Id, "head1");
+        var action = await _service.AddActionAsync(created.Id,
+            new AddAppealActionRequest("action", "متابعة", "3/8/2026", "أسبوع", "أحمر"),
+            _lawyer2.Id, "lawyer2");
+
+        var reminder = Assert.Single(await _service.GetRemindersAsync(_lawyer2.Id),
+            r => r.ActionId == action.Id);
+
+        Assert.Equal("شركة بركات التجارية", reminder.DocumentLabel);
+        Assert.Contains("استئناف قرار رئيس التنفيذ", reminder.AppealTitle);
+    }
+
+    [Fact]
     public async Task Actions_SanitizeHtmlOnWrite_StripsDisallowedTags()
     {
         // FR-009: نص الإجراء يُعرض كـ HTML فيُخزَّن معقّمًا خادميًا (القائمة البيضاء المركزية).

@@ -49,9 +49,13 @@ public class HeadAlertMessageTests
     public void DelegationRejectedWrongCourt_UsesApprovedWording()
     {
         var text = HeadAlertMessages.DelegationRejectedWrongCourt(
-            new HeadAlertMessages.DelegationRejectedWrongCourtContext(9, "الدائرة غير مختصة"));
+            new HeadAlertMessages.DelegationRejectedWrongCourtContext(
+                9, "دائرة تنفيذ دمشق", "أحمد خالد الخطيب", "الدائرة غير مختصة"));
 
-        Assert.Equal("رُفضت الإنابة رقم 9 للدائرة الخطأ — الدائرة غير مختصة — صحّح الدائرة من بطاقة تشعبات الملف", text);
+        Assert.Equal(
+            "يرجى تصحيح الإنابة رقم 9 المسطرة إلى دائرة تنفيذ دمشق في ملف أحمد خالد الخطيب " +
+            "وإعادة تسطيرها — سبب الإعادة: الدائرة غير مختصة",
+            text);
     }
 
     [Fact]

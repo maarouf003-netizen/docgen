@@ -67,12 +67,8 @@ export interface ExecutedSideSectionsProps {
   onEntityRemove: (i: number) => void;
   /** فتح نافذة اختيار الجهة العامة من السجل المرجعي لصف المنفذ رقم i (اختياري). */
   onPickRegistry?: (i: number) => void;
-  /** فتح نافذة اختيار الجهة العامة من السجل المرجعي لصف طالب التنفيذ رقم i (اختياري). */
-  onPickExecutionApplicantRegistry?: (i: number) => void;
   /** فك ربط جهة عامة منفذ عليها: يُفرّغ هويتها ورابطها (حقولها مقفلة لا تقبل تحريرًا يدويًا). */
   onEntityUnlink?: (i: number) => void;
-  /** فك ربط طالب تنفيذ اعتباري: يُفرّغ اسمه ورابطه (اسمه مقفل لا يقبل تحريرًا يدويًا). */
-  onApplicantUnlink?: (i: number) => void;
   executedNaturalPersons: ExecutedNaturalPersonDto[];
   onPersonSet: (i: number, key: keyof ExecutedNaturalPersonDto, value: string) => void;
   onPersonAdd: () => void;
@@ -118,9 +114,7 @@ export function ExecutedSideSections({
   onEntityAdd,
   onEntityRemove,
   onPickRegistry,
-  onPickExecutionApplicantRegistry,
   onEntityUnlink,
-  onApplicantUnlink,
   executedNaturalPersons,
   onPersonSet,
   onPersonAdd,
@@ -235,7 +229,7 @@ export function ExecutedSideSections({
             <div className="grid md:grid-cols-3 gap-3 mb-3">
               <select
                 aria-label="نوع الطرف"
-                disabled={isMirror || a.registryId != null}
+                disabled={isMirror}
                 value={a.nature ?? 'natural'}
                 onChange={(e) => onApplicantSet(i, 'nature', e.target.value)}
                 className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-50 disabled:cursor-not-allowed"
@@ -248,47 +242,16 @@ export function ExecutedSideSections({
             {aIsLegal ? (
               <div className="grid md:grid-cols-3 gap-3">
                 <div>
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="block text-xs font-bold text-gray-600">الشخص الاعتباري</span>
-                    {a.registryId != null && (
-                      <span className="rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 px-2 py-0.5 text-[11px] whitespace-nowrap">
-                        مرتبطة بالسجل ✓
-                      </span>
-                    )}
-                  </div>
-                  <input aria-label="الشخص الاعتباري" value={a.name ?? ''} readOnly placeholder="اختر من السجل المرجعي…" className="w-full min-h-11 border border-gray-300 bg-gray-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-not-allowed" />
-                  {(a.name ?? '').trim() && a.registryId == null && (
-                    <p className="text-xs text-red-600 mt-1">يجب اختيار هذا الطلب من السجل المرجعي</p>
-                  )}
-                  {!isMirror && onPickExecutionApplicantRegistry && (
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <button
-                        type="button"
-                        onClick={() => onPickExecutionApplicantRegistry(i)}
-                        className="border border-emerald-200 text-emerald-800 hover:bg-emerald-50 rounded-lg px-3 py-2 text-xs min-h-11"
-                      >
-                        {a.registryId != null ? 'تغيير من السجل…' : 'اختيار من السجل…'}
-                      </button>
-                      {a.registryId != null && onApplicantUnlink && (
-                        <button
-                          type="button"
-                          onClick={() => onApplicantUnlink(i)}
-                          className="border border-gray-200 text-gray-500 hover:bg-gray-50 rounded-lg px-3 py-2 text-xs min-h-11"
-                        >
-                          فك الربط
-                        </button>
-                      )}
-                      {(a.name ?? '').trim() && a.registryId == null && onApplicantUnlink && (
-                        <button
-                          type="button"
-                          onClick={() => onApplicantUnlink(i)}
-                          className="border border-gray-200 text-gray-500 hover:bg-gray-50 rounded-lg px-3 py-2 text-xs min-h-11"
-                        >
-                          مسح
-                        </button>
-                      )}
-                    </div>
-                  )}
+                  <label className="block text-xs font-bold text-gray-600 mb-1">الشخص الاعتباري</label>
+                  <input
+                    aria-label="الشخص الاعتباري"
+                    value={a.name ?? ''}
+                    readOnly={isMirror}
+                    aria-readonly={isMirror || undefined}
+                    placeholder="اسم الشخص الاعتباري (شركة خاصة)…"
+                    onChange={(e) => onApplicantSet(i, 'name', e.target.value)}
+                    className="w-full min-h-11 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-600 mb-1">رقم تسجيله</label>

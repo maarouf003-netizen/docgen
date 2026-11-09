@@ -94,10 +94,9 @@ public sealed class CorrespondenceIntegrationTests : IsolatedApiTestBase
             AmountNumeric = 0,
             ExecStatus = string.Empty,
         };
-        document.ExecutionApplicants.Add(new ExecutionApplicant
+        document.ApplicantPublicEntities.Add(new ApplicantPublicEntity
         {
             Name = "وزارة التعليم",
-            ApplicantNature = PartyNatureCatalog.Legal,
             RegistryId = entryId,
         });
         db.Documents.Add(document);

@@ -28,6 +28,7 @@ function makeAppealReminder(overrides: Partial<AppealReminderDto> = {}): AppealR
     appealId: 5,
     documentId: 11,
     appealTitle: 'استئناف القرار',
+    documentLabel: 'شركة بركات التجارية',
     actionText: 'متابعة',
     actionDate: '2026-08-01',
     reminderDuration: 'أسبوع',
@@ -60,5 +61,22 @@ describe('ReminderList', () => {
     );
 
     expect(screen.queryByText('تاريخ مشتبه — تحقق')).not.toBeInTheDocument();
+  });
+
+  it('يعرض اسم الملف في تذكير الاستئناف قبل نوعه', () => {
+    render(<ReminderList reminders={[]} appealReminders={[makeAppealReminder()]} />);
+
+    expect(screen.getByText(/شركة بركات التجارية/)).toBeInTheDocument();
+  });
+
+  it('يعرض اسم الملف الموحّد لتذكير ملف «منفذ عليه» بدل نوع المستند', () => {
+    render(
+      <ReminderList
+        reminders={[makeFileReminder({ documentType: 'متداول', documentLabel: 'شركة بركات التجارية' })]}
+      />,
+    );
+
+    expect(screen.getByText('شركة بركات التجارية')).toBeInTheDocument();
+    expect(screen.queryByText('متداول')).not.toBeInTheDocument();
   });
 });

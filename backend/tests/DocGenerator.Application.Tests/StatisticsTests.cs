@@ -215,6 +215,44 @@ public class StatisticsRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task Reminders_ExecutedFile_UsesExecutedEntityNameAsDocumentLabel()
+    {
+        var doc = new Document
+        {
+            BranchId = 1,
+            CreatedById = 1,
+            IsDraft = false,
+            GeneralEntitySide = GeneralEntitySideCatalog.Executed,
+            AmountNumeric = 0,
+            ExecStatus = string.Empty,
+        };
+        _db.Documents.Add(doc);
+        _db.SaveChanges();
+        _db.ExecutedPublicEntities.Add(new ExecutedPublicEntity
+        {
+            DocumentId = doc.Id,
+            EntityName = "شركة بركات التجارية",
+            EntityNature = PartyNatureCatalog.Legal,
+        });
+        _db.ExecutionActions.Add(new ExecutionAction
+        {
+            DocumentId = doc.Id,
+            CreatedById = 1,
+            Type = "action",
+            Text = "متابعة",
+            ActionDate = "1/8/2026",
+            ReminderDuration = "أسبوع",
+            ReminderColor = "أحمر",
+            CreatedAt = new DateTime(2026, 8, 1),
+        });
+        _db.SaveChanges();
+
+        var reminder = Assert.Single(await _stats.GetRemindersAsync(1));
+
+        Assert.Equal("شركة بركات التجارية", reminder.DocumentLabel);
+    }
+
+    [Fact]
     public async Task Reminders_FiltersByUser()
     {
         var doc = new Document { BranchId = 1, CreatedById = 1, IsDraft = false, BorrowerName = "أحمد", BorrowerFamily = "العلي", AmountNumeric = 100, ExecStatus = string.Empty };

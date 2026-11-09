@@ -866,7 +866,9 @@ public sealed class DocumentService : IDocumentService
                 RepresentativeFamily = hasRep ? (a.RepresentativeFamily ?? string.Empty).Trim() : null,
                 RepresentativeCapacity = hasRep ? DocumentText.NormalizeRepresentativeCapacity(a.RepresentativeCapacity) : null,
                 RepresentativeLegalRepresentative = hasRep ? (a.RepresentativeLegalRepresentative ?? string.Empty).Trim() : null,
-                RegistryId = isLegal ? a.RegistryId : null,
+                // الربط السجلي لطالب التنفيذ/العرض الاعتباري أُلغي بقرار المالك:
+                // الاسم حر دائمًا، ويبقى عمود RegistryId التاريخي غير مستخدم.
+                RegistryId = null,
             };
             if (!isLegal)
             {

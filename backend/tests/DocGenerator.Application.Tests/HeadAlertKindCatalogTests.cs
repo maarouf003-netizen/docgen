@@ -125,7 +125,7 @@ public class HeadAlertKindCatalogTests
     [InlineData(HeadAlertKindCatalog.AppealAssignedToLawyer, HeadAlertAudience.SingleLawyer)]
     [InlineData(HeadAlertKindCatalog.DelegationAssignedToLawyer, HeadAlertAudience.DocumentCreator)]
     [InlineData(HeadAlertKindCatalog.DelegationTransferredToLawyer, HeadAlertAudience.DocumentCreator)]
-    [InlineData(HeadAlertKindCatalog.DelegationRejectedWrongCourt, HeadAlertAudience.DocumentCreator)]
+    [InlineData(HeadAlertKindCatalog.DelegationRejectedWrongCourt, HeadAlertAudience.SingleLawyer)]
     [InlineData(HeadAlertKindCatalog.DelegationCompletedReturned, HeadAlertAudience.DocumentCreator)]
     [InlineData(HeadAlertKindCatalog.AppealFinalToBaseLawyer, HeadAlertAudience.DocumentCreator)]
     [InlineData(HeadAlertKindCatalog.EntityBranchChanged, HeadAlertAudience.BranchHeads)]
@@ -142,6 +142,17 @@ public class HeadAlertKindCatalogTests
     public void AllowedAudiences_MatrixMatchesPlan(string kind, HeadAlertAudience expected)
     {
         Assert.Contains(expected, HeadAlertKindCatalog.AllowedAudiences(kind));
+    }
+
+    [Fact]
+    public void DelegationRejectedWrongCourt_AllowsWriterAndLegacyDocumentCreator()
+    {
+        var audiences = HeadAlertKindCatalog.AllowedAudiences(
+            HeadAlertKindCatalog.DelegationRejectedWrongCourt);
+
+        Assert.Contains(HeadAlertAudience.SingleLawyer, audiences);
+        // توافق صندوق الصادر: رسائل قديمة أُدرجت بجمهور منشئ الملف قبل النشر.
+        Assert.Contains(HeadAlertAudience.DocumentCreator, audiences);
     }
 
     [Theory]

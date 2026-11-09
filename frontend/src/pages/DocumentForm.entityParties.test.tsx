@@ -107,53 +107,22 @@ render(<DocumentForm />);
   });
 
 
-  it('يربط طالب تنفيذ اعتباري بقيد السجل عبر نافذة الاختيار ويملأ اسمه ورقم ربطه', async () => {
+  it('يسمح بتحرير اسم طالب التنفيذ الاعتباري يدويًا بلا أي ربط سجلي', async () => {
     const user = userEvent.setup();
     await renderExecutedEdit({
       generalEntitySide: 'executed',
       executionApplicants: [{ id: 1, name: 'المؤسسة السورية للتجارة', nature: 'legal' }],
     });
 
-    (api.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: {
-        items: [
-          {
-            id: 22, groupId: 9, canonicalName: 'هيئة التجارة الموحدة', entityType: 'authority',
-            governorate: 'دمشق', branchName: 'الفرع الرئيسي', citationFormula: 'add-to-position',
-            status: 'final', isActive: true, createdAt: '2026-08-24', aliases: [],
-          },
-        ],
-        page: 1, perPage: 50, totalCount: 1, totalPages: 1,
-      },
-    });
-
     const applicantCard = screen.getByText('طالب التنفيذ 1').closest('.rounded-xl') as HTMLElement;
-    await user.click(within(applicantCard).getByRole('button', { name: 'اختيار من السجل…' }));
-    const dialog = screen.getByRole('dialog', { name: 'اختيار الجهة العامة' });
-    await user.type(within(dialog).getByLabelText('بحث باسم الجهة'), 'هيئة');
-    await user.click(await within(dialog).findByRole('button', { name: /^هيئة التجارة الموحدة/ }));
+    const input = within(applicantCard).getByLabelText('الشخص الاعتباري');
+    expect(input).not.toHaveAttribute('readonly');
+    expect(within(applicantCard).queryByText('مرتبطة بالسجل ✓')).not.toBeInTheDocument();
+    expect(within(applicantCard).queryByRole('button', { name: /السجل/ })).not.toBeInTheDocument();
 
-    expect(screen.getByText('مرتبطة بالسجل ✓')).toBeInTheDocument();
-    expect(screen.getByLabelText('الشخص الاعتباري')).toHaveValue('هيئة التجارة الموحدة');
-    expect(screen.queryByRole('dialog', { name: 'اختيار الجهة العامة' })).not.toBeInTheDocument();
-  });
-
-
-  it('يقفل اسم طالب التنفيذ الاعتباري ويفك ربطه عبر الزر لا بالتحرير اليدوي', async () => {
-    const user = userEvent.setup();
-    await renderExecutedEdit({
-      generalEntitySide: 'executed',
-      executionApplicants: [{ id: 1, name: 'هيئة التجارة الموحدة', nature: 'legal', registryId: 22 }],
-    });
-
-    expect(screen.getByText('مرتبطة بالسجل ✓')).toBeInTheDocument();
-    expect(screen.getByLabelText('الشخص الاعتباري')).toHaveAttribute('readonly');
-
-    const applicantCard = screen.getByText('طالب التنفيذ 1').closest('.rounded-xl') as HTMLElement;
-    await user.click(within(applicantCard).getByRole('button', { name: 'فك الربط' }));
-
-    expect(screen.queryByText('مرتبطة بالسجل ✓')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('الشخص الاعتباري')).toHaveValue('');
+    await user.clear(input);
+    await user.type(input, 'شركة بركات التجارية');
+    expect(input).toHaveValue('شركة بركات التجارية');
   });
 
 

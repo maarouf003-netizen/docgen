@@ -10,6 +10,7 @@ import { PERSONAL_COLORS, PERSONAL_RECURRENCES } from '../../types';
 import { normalizeArabicDigits } from '../../utils/arabicDigits';
 import { richToPlainText } from '../../utils/richText';
 import {
+  appealReminderTitle,
   borrowerFullName,
   dueLabel,
 } from './dashboardFormat';
@@ -116,7 +117,7 @@ export function DayRemindersModal({
           o.kind === 'personal' ? o.personal?.title : null,
           o.kind === 'personal' ? o.personal?.notes : null,
           o.reminder && 'borrowerName' in o.reminder ? borrowerFullName(o.reminder as ReminderDto) : null,
-          o.reminder && 'appealTitle' in o.reminder ? (o.reminder as AppealReminderDto).appealTitle : null,
+          o.reminder && 'appealTitle' in o.reminder ? appealReminderTitle(o.reminder as AppealReminderDto) : null,
           // نص الإجراء غني (`<p>…</p>`) فيُجرَّد قبل البحث كما في العرض.
           o.reminder?.actionText ? richToPlainText(o.reminder.actionText) : null,
         ]
@@ -440,7 +441,9 @@ function DayRow({
   const parentId = isAppeal ? (r.appealId as number) : r.documentId;
   const linkTo = isAppeal ? `/appeals/${parentId}` : `/documents/${parentId}`;
   const title = isAppeal
-    ? (r.appealTitle ?? `استئناف ${parentId}`)
+    ? (r.appealTitle
+        ? appealReminderTitle({ appealTitle: r.appealTitle, documentLabel: (r as AppealReminderDto).documentLabel })
+        : `استئناف ${parentId}`)
     : borrowerFullName(r as ReminderDto);
   const rescheduleKey = `${o.kind}-${r.actionId}`;
   // نص الإجراء غني (`<p>…</p>`) فيُعرض نصًا عاديًا كما في `ReminderList` — الفارغ

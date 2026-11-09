@@ -123,24 +123,32 @@ render(<DocumentForm />);
   });
 
 
-  it('يمنع الحفظ عند بقاء طالب تنفيذ اعتباري نصّي بلا ارتباط بالسجل (مستند قديم)', async () => {
+  it('يحفظ طالب تنفيذ اعتباري باسم حر ويسمح بالحفظ', async () => {
     const user = userEvent.setup();
     await renderExecutedEdit({
       generalEntitySide: 'executed',
       fileNumber: '55',
       fileYear: '2026',
-      executionApplicants: [{ name: 'المؤسسة السورية للتجارة', nature: 'legal' }],
+      executionApplicants: [{
+        name: 'شركة بركات التجارية',
+        nature: 'legal',
+        registrationNumber: '1234',
+        representedBy: 'المدير',
+      }],
       executedNaturalPersons: [],
       executedPublicEntities: [],
     });
 
-    expect(screen.getByText('يجب اختيار هذا الطلب من السجل المرجعي')).toBeInTheDocument();
+    expect(screen.queryByText('يجب اختيار هذا الطلب من السجل المرجعي')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('الشخص الاعتباري')).not.toHaveAttribute('readonly');
 
     await user.click(screen.getByRole('button', { name: /حفظ/ }));
 
-    expect(screen.getByText('يجب اختيار طالب التنفيذ الاعتباري من السجل المرجعي قبل الحفظ')).toBeInTheDocument();
-    expect(api.post).not.toHaveBeenCalled();
-    expect(api.put).not.toHaveBeenCalled();
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    const [, payload] = vi.mocked(api.put).mock.calls[0] as [string, Record<string, unknown>];
+    const applicants = payload.executionApplicants as { name?: string; registryId?: number | null }[];
+    expect(applicants[0].name).toBe('شركة بركات التجارية');
+    expect(applicants[0].registryId).toBeUndefined();
   });
 
 
@@ -163,28 +171,6 @@ render(<DocumentForm />);
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
     const [, payload] = vi.mocked(api.put).mock.calls[0] as [string, Record<string, unknown>];
     expect(payload.executedPublicEntities).toEqual([]);
-  });
-
-
-  it('زر «مسح» يفرّغ طالب التنفيذ الاعتباري اليتيم ويسمح بالحفظ', async () => {
-    const user = userEvent.setup();
-    await renderExecutedEdit({
-      generalEntitySide: 'executed',
-      fileNumber: '55',
-      fileYear: '2026',
-      executionApplicants: [{ name: 'المؤسسة السورية للتجارة', nature: 'legal' }],
-      executedNaturalPersons: [],
-      executedPublicEntities: [],
-    });
-
-    const applicantCard = screen.getByText('طالب التنفيذ 1').closest('.rounded-xl') as HTMLElement;
-    await user.click(within(applicantCard).getByRole('button', { name: 'مسح' }));
-    expect(screen.getByLabelText('الشخص الاعتباري')).toHaveValue('');
-
-    await user.click(screen.getByRole('button', { name: /حفظ/ }));
-    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
-    const [, payload] = vi.mocked(api.put).mock.calls[0] as [string, Record<string, unknown>];
-    expect(payload.executionApplicants).toEqual([]);
   });
 
 
@@ -228,14 +214,14 @@ render(<DocumentForm />);
   });
 
 
-  it('يعطّل منتقي الطبيعة لطالب التنفيذ المرتبط بالسجل', async () => {
+  it('يبقي منتقي الطبيعة مفعّلًا لطالب التنفيذ الاعتباري (لا ربط سجلي)', async () => {
     await renderExecutedEdit({
       generalEntitySide: 'executed',
-      executionApplicants: [{ id: 1, name: 'هيئة التجارة الموحدة', nature: 'legal', registryId: 22 }],
+      executionApplicants: [{ id: 1, name: 'شركة بركات التجارية', nature: 'legal' }],
     });
 
     const applicantCard = screen.getByText('طالب التنفيذ 1').closest('.rounded-xl') as HTMLElement;
-    expect(within(applicantCard).getByLabelText('نوع الطرف')).toBeDisabled();
+    expect(within(applicantCard).getByLabelText('نوع الطرف')).toBeEnabled();
   });
 
 
