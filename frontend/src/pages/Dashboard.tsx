@@ -32,6 +32,8 @@ import {
 } from '../components/suggestions/suggestionsDisplay';
 import { useBadgeCount } from '../hooks/useBadgeCount';
 import { ReminderList } from '../components/dashboard/ReminderList';
+import ExecutionActionsModal from '../components/ExecutionActionsModal';
+import AppealActionsModal from '../components/appeal/AppealActionsModal';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -69,6 +71,10 @@ export default function Dashboard() {
 
   const { cancellingKey, actionError, cancelReminder, cancelAppealReminder } =
     useReminderCancellation(remindersQuery, appealRemindersQuery);
+
+  // نافذة الإجراءات والملاحظات المفتوحة من «عرض التذكير» — ملف أو استئناف.
+  const [actionsDocumentId, setActionsDocumentId] = useState<number | null>(null);
+  const [actionsAppealId, setActionsAppealId] = useState<number | null>(null);
 
   // نطاق شارة غير المقروء لرئيس القسم/الشعبة يشترط **الفرع** فقط (`RequireBranch` خلفيًا)،
   // لا الشعبة — فاشتراط الشعبة هنا كان يحجب عدّادًا مشروعًا ويُبقي 403 لرئيس بلا فرع.
@@ -330,6 +336,8 @@ export default function Dashboard() {
                     appealReminders={inWeekFileReminders.appealReminders}
                     onCancel={cancelReminder}
                     onCancelAppeal={cancelAppealReminder}
+                    onOpenActions={(r) => setActionsDocumentId(r.documentId)}
+                    onOpenAppealActions={(r) => setActionsAppealId(r.appealId)}
                     cancellingKey={cancellingKey}
                   />
                 ) : null}
@@ -351,6 +359,22 @@ export default function Dashboard() {
 
         </>
       ) : null}
+
+      {actionsDocumentId != null && (
+        <ExecutionActionsModal
+          documentId={actionsDocumentId}
+          onClose={() => setActionsDocumentId(null)}
+          onChanged={() => remindersQuery.refetch()}
+        />
+      )}
+      {actionsAppealId != null && (
+        <AppealActionsModal
+          appealId={actionsAppealId}
+          onClose={() => setActionsAppealId(null)}
+          onChanged={() => appealRemindersQuery.refetch()}
+          canWrite={isLawyer}
+        />
+      )}
     </div>
   );
 }
