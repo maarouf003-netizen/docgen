@@ -958,7 +958,8 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
     }
 
     public async Task<(int TotalCount, List<Document> Items)> GetRotationCandidatesAsync(
-        int userId, int currentYear, int page, int perPage, CancellationToken ct = default)
+        int userId, int currentYear, int page, int perPage,
+        bool allowCircuitlessLegacy = false, CancellationToken ct = default)
     {
         // المؤهل للتدوير: مقيد برقم ملف (ليس تحت رفع) وغير منفَّذ وغير محذوف
         // (Query Filter مطبق تلقائيًا)، ولم يُدوَّر في السنة الحالية (لا يملك رقم أساس لها).
@@ -973,13 +974,25 @@ public class DocumentRepository : Repository<Document>, IDocumentRepository
             .Where(d => d.CreatedById == userId)
             .Where(d => !d.IsDraft)
             // الملفات المعلقة (NULL الرقم آمن فريدًا): تُستبعد من التدوير حتى إعادة القيد.
-            .Where(d => !d.NeedsRegistration)
-            .Where(d => d.BaseNumbers.Any(b => b.VoidedAt == null
+            .Where(d => !d.NeedsRegistration);
+        // v2/V-12: لا أهلية بلا صف سابق غير ملغى في دائرة الملف الحالية.
+        // استثناء بلا دائرة مخصّص للاختبارات القائمة فقط (AllowCircuitlessLegacy).
+        if (allowCircuitlessLegacy)
+        {
+            q = q.Where(d => d.BaseNumbers.Any(b => b.VoidedAt == null
                     && b.ExecutionCircuitId == d.ExecutionCircuitId
                     && b.Year < currentYear)
                 || (d.ExecutionCircuitId == null
                     && d.GeneralEntitySide != GeneralEntitySideCatalog.Executed
-                    && d.GeneralEntitySide != GeneralEntitySideCatalog.Deposit))
+                    && d.GeneralEntitySide != GeneralEntitySideCatalog.Deposit));
+        }
+        else
+        {
+            q = q.Where(d => d.BaseNumbers.Any(b => b.VoidedAt == null
+                && b.ExecutionCircuitId == d.ExecutionCircuitId
+                && b.Year < currentYear));
+        }
+        q = q
             .Where(d => (d.GeneralEntitySide == GeneralEntitySideCatalog.Executed
                 || d.GeneralEntitySide == GeneralEntitySideCatalog.Deposit)
                 ? d.ExecutedStatus == ExecutedStatusCatalog.None

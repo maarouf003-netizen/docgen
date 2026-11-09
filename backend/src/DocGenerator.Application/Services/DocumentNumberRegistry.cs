@@ -21,6 +21,7 @@ public sealed class DocumentNumberRegistry : IDocumentNumberRegistry
     private readonly ITransactionContext _txContext;
     private readonly IAuditLogger _audit;
     private readonly INumberWarningTokenService _tokens;
+    private readonly NumberRegistryOptions _options;
     private readonly TimeProvider _clock;
     private readonly TimeZoneInfo _timeZone;
 
@@ -33,6 +34,7 @@ public sealed class DocumentNumberRegistry : IDocumentNumberRegistry
         ITransactionContext txContext,
         IAuditLogger audit,
         INumberWarningTokenService tokens,
+        NumberRegistryOptions options,
         TimeProvider clock,
         TimeZoneInfo timeZone)
     {
@@ -44,9 +46,12 @@ public sealed class DocumentNumberRegistry : IDocumentNumberRegistry
         _txContext = txContext;
         _audit = audit;
         _tokens = tokens;
+        _options = options;
         _clock = clock;
         _timeZone = timeZone;
     }
+
+    public bool AllowsCircuitlessLegacy => _options.AllowCircuitlessLegacy;
 
     private int CurrentYear() => ServerClock.CurrentYear(_clock, _timeZone);
 
@@ -126,7 +131,7 @@ public sealed class DocumentNumberRegistry : IDocumentNumberRegistry
         => string.IsNullOrWhiteSpace(doc.Court) ? "—" : doc.Court;
 
     private static string Fingerprint(int documentId, int circuitId, string typeKey, int year, string numberKey)
-        => string.Join('|',
+        => string.Join('|', documentId.ToString(CultureInfo.InvariantCulture),
             circuitId.ToString(CultureInfo.InvariantCulture), typeKey,
             year.ToString(CultureInfo.InvariantCulture), numberKey);
 
@@ -144,23 +149,44 @@ public sealed class DocumentNumberRegistry : IDocumentNumberRegistry
                     year.ToString(CultureInfo.InvariantCulture)), ct);
     }
 
+    /// <summary>
+    /// قفل الملف أولًا: يُسلسل كل كتابات السجل لنفس الملف (قيد/تدوير/تصحيح/حذف/تجديد)
+    /// حتى لو اختلفت السنة/الدائرة، ثم تُؤخذ أقفال النطاق مرتّبة لمنع الجمود.
+    /// </summary>
+    private async Task LockDocumentAsync(int documentId, CancellationToken ct)
+    {
+        if (_txContext.HasActiveTransaction)
+            await _txContext.AcquireScopeLockAsync(
+                $"doc:{documentId.ToString(CultureInfo.InvariantCulture)}", ct);
+    }
+
+    private async Task LockScopesAsync(IEnumerable<(int Circuit, int Year)> scopes, CancellationToken ct)
+    {
+        foreach (var scope in scopes.Distinct().OrderBy(s => s.Circuit).ThenBy(s => s.Year))
+            await LockAsync(scope.Circuit, scope.Year, ct);
+    }
+
     private sealed record PreparedRegistration(
         Document Doc, int CircuitId, int Year, string Number, string NumberKey,
         string TypeKey, string FileType, string CircuitName);
 
-    private PreparedRegistration PrepareRegistration(Document doc, string number)
+    private PreparedRegistration PrepareRegistration(Document doc, string number, string circuitName)
     {
         if (doc.ExecutionCircuitId is null)
             throw new ArgumentException("لا يمكن تسجيل رقم أساس لملف بلا دائرة تنفيذ");
         var currentYear = CurrentYear();
-        var year = DocumentBaseNumberPolicy.ValidateYear(doc.FileYear, currentYear, "سنة القيد")
-            ?? currentYear;
+        var year = DocumentBaseNumberPolicy.ValidateYear(doc.FileYear, currentYear, "سنة القيد");
+        if (year is null)
+        {
+            if (!_options.AllowCircuitlessLegacy)
+                throw new ArgumentException("سنة قيد الملف مطلوبة عند تسجيل رقم أساس");
+            year = currentYear;
+        }
         var numberKey = DocumentBaseNumberPolicy.ValidateNumber(number)
             ?? throw new ArgumentException("رقم الأساس مطلوب");
         var typeKey = DocumentBaseNumberPolicy.NormalizeType(doc.FileType);
-        var circuitName = string.IsNullOrWhiteSpace(doc.Court) ? "—" : doc.Court.Trim();
         return new PreparedRegistration(
-            doc, doc.ExecutionCircuitId.Value, year, numberKey, numberKey,
+            doc, doc.ExecutionCircuitId.Value, year.Value, numberKey, numberKey,
             typeKey, (doc.FileType ?? string.Empty).Trim(), circuitName);
     }
 
@@ -204,18 +230,29 @@ public sealed class DocumentNumberRegistry : IDocumentNumberRegistry
         bool isNewDocument = false)
         => InTransactionAsync(async () =>
         {
+            await LockDocumentAsync(doc.Id, ct);
             if (doc.ExecutionCircuitId is null)
             {
-                // توافق انتقالي: الملفات القديمة/اختبارات البناء اليدوي بلا دائرة — لا سجل أرقام.
-                // مسار الكتابة الإنتاجي يفرض الدائرة قبل الوصول إلى هنا (V-18).
+                if (!string.IsNullOrWhiteSpace(doc.FileNumber) && !_options.AllowCircuitlessLegacy)
+                    throw new ArgumentException("لا يمكن تسجيل رقم أساس لملف بلا دائرة تنفيذ");
                 return;
             }
             var circuitId = doc.ExecutionCircuitId.Value;
+            var circuit = await _circuits.GetByIdAsync(circuitId, ct);
+            var circuitName = circuit?.Name;
+            if (string.IsNullOrWhiteSpace(circuitName))
+                circuitName = string.IsNullOrWhiteSpace(doc.Court) ? "—" : doc.Court.Trim();
             var prepared = string.IsNullOrWhiteSpace(doc.FileNumber)
                 ? null
-                : PrepareRegistration(doc, doc.FileNumber);
+                : PrepareRegistration(doc, doc.FileNumber, circuitName!);
             var year = prepared?.Year ?? CurrentYear();
-            await LockAsync(circuitId, year, ct);
+
+            // نقرأ الصفوف أولًا لاكتشاف السنوات المتأثرة، ثم نقفل الملف (أُخذ) وكل نطاق
+            // (الدائرة، السنة) مرتّبًا، ثم نعيد القراءة داخل الأقفال (G3).
+            var initial = await _baseNumbers.ListActiveByDocumentCircuitAsync(doc.Id, circuitId, ct);
+            await LockScopesAsync(
+                initial.Select(r => (r.ExecutionCircuitId ?? circuitId, r.Year))
+                    .Append((circuitId, year)), ct);
 
             // إعادة قراءة الصفوف داخل القفل (G3) — لا الاعتماد على doc.BaseNumbers المحمّلة قبل القفل.
             var active = await _baseNumbers.ListActiveByDocumentCircuitAsync(doc.Id, circuitId, ct);
@@ -317,7 +354,11 @@ public sealed class DocumentNumberRegistry : IDocumentNumberRegistry
         return InTransactionAsync(async () =>
         {
             var currentYear = CurrentYear();
-            var docs = await _documents.GetByIdsAsync(unique.Select(e => e.DocumentId).ToList(), ct);
+            var ids = unique.Select(e => e.DocumentId).Distinct().OrderBy(id => id).ToList();
+            // قفل كل ملف قبل قراءة حالته: يمنع سباق الحذف/التعديل مع التدوير.
+            foreach (var id in ids)
+                await LockDocumentAsync(id, ct);
+            var docs = await _documents.GetByIdsAsync(ids, ct);
             var found = docs.ToDictionary(d => d.Id);
             var prepared = new List<(Document Doc, string Number)>();
             var legacy = new List<(Document Doc, string Number)>();
@@ -337,7 +378,10 @@ public sealed class DocumentNumberRegistry : IDocumentNumberRegistry
 
                 if (doc.ExecutionCircuitId is null)
                 {
-                    // توافق انتقالي لبناءات الاختبار بلا دائرة (المسار الإنتاجي يفرض الدائرة).
+                    if (!_options.AllowCircuitlessLegacy)
+                        throw new ArgumentException(
+                            $"الملف (رقم {doc.Id}) بلا دائرة تنفيذ — لا يمكن تدويره (V-18)");
+                    // توافق انتقالي لبناءات الاختبار بلا دائرة.
                     if (doc.IsDraft || doc.NeedsRegistration
                         || doc.FileYear == currentYear.ToString(CultureInfo.InvariantCulture))
                         throw new ArgumentException($"الملف (رقم {doc.Id}) غير مؤهل للتدوير");
@@ -365,10 +409,8 @@ public sealed class DocumentNumberRegistry : IDocumentNumberRegistry
             if (prepared.Count == 0 && legacy.Count == 0)
                 return;
 
-            foreach (var group in prepared
-                .GroupBy(p => (p.Doc.ExecutionCircuitId!.Value, currentYear))
-                .OrderBy(g => g.Key.Item1).ThenBy(g => g.Key.Item2))
-                await LockAsync(group.Key.Item1, group.Key.Item2, ct);
+            await LockScopesAsync(
+                prepared.Select(p => (p.Doc.ExecutionCircuitId!.Value, currentYear)), ct);
 
             var softRows = new List<int>();
             foreach (var (doc, number) in prepared)
@@ -427,6 +469,7 @@ public sealed class DocumentNumberRegistry : IDocumentNumberRegistry
                     UpdatedAt = DateTime.UtcNow,
                 }, ct);
                 doc.SearchText = DocumentSearchTextBuilder.Append(doc.SearchText, number);
+                doc.Version++;
                 auditEntries.Add(new AuditLogEntry(actorName, "rotate", doc.Id, doc.DocumentType,
                     DocumentText.AuditWithActor($"دوّر الملف برقم أساس {currentYear}: {number}", doc)));
             }
@@ -447,6 +490,7 @@ public sealed class DocumentNumberRegistry : IDocumentNumberRegistry
                     UpdatedAt = DateTime.UtcNow,
                 }, ct);
                 doc.SearchText = DocumentSearchTextBuilder.Append(doc.SearchText, number);
+                doc.Version++;
                 auditEntries.Add(new AuditLogEntry(actorName, "rotate", doc.Id, doc.DocumentType,
                     DocumentText.AuditWithActor($"دوّر الملف برقم أساس {currentYear}: {number}", doc)));
             }
@@ -479,6 +523,7 @@ public sealed class DocumentNumberRegistry : IDocumentNumberRegistry
         CancellationToken ct)
         => InTransactionAsync(async () =>
         {
+            await LockDocumentAsync(documentId, ct);
             var doc = await _documents.GetByIdAsync(documentId, ct)
                 ?? throw new KeyNotFoundException("الملف غير موجود");
             if (doc.CreatedById != actorUserId)
@@ -494,14 +539,19 @@ public sealed class DocumentNumberRegistry : IDocumentNumberRegistry
                     : await _baseNumbers.FindActiveRowForYearAsync(documentId, doc.ExecutionCircuitId.Value, year, ct);
             if (row is null || row.DocumentId != documentId || row.Year != year || row.VoidedAt is not null)
                 throw new KeyNotFoundException("صف رقم الأساس غير موجود أو ملغى أو لا يخص هذا الملف/السنة");
-            if (row.ExecutionCircuitId is null)
-                throw new ArgumentException("صف رقم الأساس بلا دائرة — لا يمكن تصحيحه");
+            if (row.ExecutionCircuitId is null && !_options.AllowCircuitlessLegacy)
+                throw new ArgumentException("صف رقم الأساس بلا دائرة — لا يمكن تصحيحه (V-18)");
 
             var normalized = DocumentBaseNumberPolicy.ValidateNumber(number)
                 ?? throw new ArgumentException("رقم الأساس مطلوب");
             var numberKey = DocumentBaseNumberPolicy.NormalizeNumber(normalized);
-            var circuitId = row.ExecutionCircuitId.Value;
-            await LockAsync(circuitId, year, ct);
+            var circuitId = row.ExecutionCircuitId ?? 0;
+            await LockScopesAsync(new[] { (circuitId, year) }, ct);
+
+            // إعادة قراءة الصف داخل القفل: قد يكون أُلغي/حُذف بين القراءة والقفل.
+            row = await _baseNumbers.FindRowWithDocumentAsync(row.Id, ct);
+            if (row is null || row.DocumentId != documentId || row.Year != year || row.VoidedAt is not null)
+                throw new KeyNotFoundException("صف رقم الأساس غير موجود أو ملغى أو لا يخص هذا الملف/السنة");
 
             await EnsureNoConflictAsync(
                 doc, row.Id, actorUserId, actorName,
@@ -521,6 +571,7 @@ public sealed class DocumentNumberRegistry : IDocumentNumberRegistry
                 doc.SearchText = DocumentSearchTextBuilder.Build(doc);
                 doc.FullData = DocumentSearchTextBuilder.BuildFullData(doc);
                 doc.UpdatedAt = DateTime.UtcNow;
+                doc.Version++;
                 _documents.Update(doc);
             }
 
@@ -534,6 +585,7 @@ public sealed class DocumentNumberRegistry : IDocumentNumberRegistry
         int documentId, int year, int actorUserId, string? actorName, CancellationToken ct)
         => InTransactionAsync(async () =>
         {
+            await LockDocumentAsync(documentId, ct);
             var doc = await _documents.GetByIdAsync(documentId, ct)
                 ?? throw new KeyNotFoundException("الملف غير موجود");
             if (doc.CreatedById != actorUserId)
@@ -544,7 +596,7 @@ public sealed class DocumentNumberRegistry : IDocumentNumberRegistry
             if (doc.ExecutionCircuitId is null)
                 throw new ArgumentException("الملف بلا دائرة تنفيذ");
             var circuitId = doc.ExecutionCircuitId.Value;
-            await LockAsync(circuitId, year, ct);
+            await LockScopesAsync(new[] { (circuitId, year) }, ct);
 
             var rows = await _baseNumbers.ListActiveByCircuitYearAsync(circuitId, year, ct);
             var row = rows
@@ -575,8 +627,11 @@ public sealed class DocumentNumberRegistry : IDocumentNumberRegistry
         CancellationToken ct)
         => InTransactionAsync(async () =>
         {
+            await LockDocumentAsync(doc.Id, ct);
             if (doc.ExecutionCircuitId is null)
             {
+                if (!_options.AllowCircuitlessLegacy)
+                    throw new ArgumentException("لا يمكن تجديد رقم أساس لملف بلا دائرة تنفيذ (V-18)");
                 // توافق انتقالي لبناءات الاختبار اليدوية بلا دائرة (لا يُستخدم في الإنتاج).
                 await _baseNumbers.AddAsync(new DocumentBaseNumber
                 {
@@ -602,7 +657,7 @@ public sealed class DocumentNumberRegistry : IDocumentNumberRegistry
                 ?? throw new ArgumentException("رقم الملف الجديد مطلوب");
             var numberKey = DocumentBaseNumberPolicy.NormalizeNumber(normalized);
             var circuitId = doc.ExecutionCircuitId.Value;
-            await LockAsync(circuitId, year, ct);
+            await LockScopesAsync(new[] { (circuitId, year) }, ct);
 
             var active = await _baseNumbers.ListActiveByDocumentCircuitAsync(doc.Id, circuitId, ct);
             var latestYear = active.Count == 0 ? 0 : active.Max(r => r.Year);
@@ -641,14 +696,13 @@ public sealed class DocumentNumberRegistry : IDocumentNumberRegistry
         Document doc, int actorUserId, string? actorName, CancellationToken ct)
         => InTransactionAsync(async () =>
         {
+            await LockDocumentAsync(doc.Id, ct);
             var rows = await _baseNumbers.ListByDocumentAsync(
                 doc.Id, includeDeletedDocument: true, ct);
             if (rows.Count == 0)
                 return;
-            foreach (var group in rows
-                .GroupBy(r => (Circuit: r.ExecutionCircuitId ?? 0, r.Year))
-                .OrderBy(g => g.Key.Circuit).ThenBy(g => g.Key.Year))
-                await LockAsync(group.Key.Circuit, group.Key.Year, ct);
+            await LockScopesAsync(
+                rows.Select(r => (r.ExecutionCircuitId ?? 0, r.Year)), ct);
 
             foreach (var row in rows)
             {

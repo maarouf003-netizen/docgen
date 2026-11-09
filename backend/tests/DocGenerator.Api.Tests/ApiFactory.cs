@@ -59,6 +59,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         // `false` عمدًا للإنتاج. بدون هذا السطر تفشل كل اختبارات القاعدة في CI فقط
         // (المضيف يرفض الإقلاع: مخطط غير مطابق + هجرات معلّقة).
         builder.UseSetting("Database:AutoMigrate", "true");
+        // اختبارات البناء القديم تنشئ ملفات بلا دائرة (سجل الدوائر غير مهيأ)؛
+        // مفتاح صريح للاختبار فقط. الإنتاج يبقى false (V-18).
+        builder.UseSetting("NumberRegistry:AllowCircuitlessLegacy", "true");
         // مشغّل صندوق الصادر معطَّل في اختبارات التكامل: يعمل على القاعدة نفسها
         // فيتنافس مع معاملات الاختبار على قفل SQLite (تشويش/تذبذب)، ومشغّله
         // مغطّى باختبارات وحدة مستقلة.
